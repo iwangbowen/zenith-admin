@@ -10,13 +10,14 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import {
   type RuleScorecardSaveValues,
+  ruleScorecardKeys,
   useDeleteRuleScorecard, useEvaluateRuleScorecard, usePublishRuleScorecard,
   useRollbackRuleScorecard, useRuleScorecardList, useRuleScorecardVersions,
   useSaveRuleScorecard, useToggleRuleScorecard,
@@ -71,12 +72,12 @@ export default function RuleScorecardsPage() {
   const canDelete = hasPermission('rule:scorecard:delete');
   const canPublish = hasPermission('rule:scorecard:publish');
   const canEvaluate = hasPermission('rule:scorecard:evaluate');
-  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const {
+    page, pageSize, buildPagination,
+    bind, bindKeyword, submittedParams,
+    handleSearch, handleReset,
+  } = useListSearch<{ keyword: string; status?: string }>({ defaults: { keyword: '', status: undefined }, listKey: ruleScorecardKeys.lists });
 
-  const [draftKeyword, setDraftKeyword] = useState('');
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
-  const [draftStatus, setDraftStatus] = useState<string | undefined>(undefined);
-  const [submittedStatus, setSubmittedStatus] = useState<string | undefined>(undefined);
   // 编辑器为嵌套动态结构（变量 × 分段 × 等级），不适用 useEditModal 的 Form 模式，走受控状态
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [testTarget, setTestTarget] = useState<RuleScorecard | null>(null);
@@ -86,8 +87,8 @@ export default function RuleScorecardsPage() {
 
   const listQuery = useRuleScorecardList({
     page, pageSize,
-    keyword: submittedKeyword || undefined,
-    status: enumValueOf(RULE_DECISION_STATUSES, submittedStatus),
+    keyword: submittedParams.keyword.trim() || undefined,
+    status: enumValueOf(RULE_DECISION_STATUSES, submittedParams.status),
   });
   const saveMutation = useSaveRuleScorecard();
   const deleteMutation = useDeleteRuleScorecard();
@@ -96,9 +97,6 @@ export default function RuleScorecardsPage() {
   const versionsQuery = useRuleScorecardVersions(versionsRow?.id, !!versionsRow);
   const rollbackMutation = useRollbackRuleScorecard();
   const evaluateMutation = useEvaluateRuleScorecard();
-
-  const handleSearch = () => { setPage(1); setSubmittedKeyword(draftKeyword.trim()); setSubmittedStatus(draftStatus); };
-  const handleReset = () => { setPage(1); setDraftKeyword(''); setSubmittedKeyword(''); setDraftStatus(undefined); setSubmittedStatus(undefined); };
 
   const openCreate = () => setEditor(emptyEditor());
   const openEdit = (r: RuleScorecard) => setEditor({
@@ -220,8 +218,8 @@ export default function RuleScorecardsPage() {
       <SearchToolbar
         primary={(
           <>
-            <KeywordInput placeholder="搜索名称" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} width={200} />
-            <StatusSelect value={draftStatus} onChange={(v) => setDraftStatus(v || undefined)} items={STATUS_OPTIONS} />
+            <KeywordInput placeholder="搜索名称" {...bindKeyword('keyword')} width={200} />
+            <StatusSelect {...bind('status')} items={STATUS_OPTIONS} />
             <SearchButton onClick={handleSearch} />
             <ResetButton onClick={handleReset} />
           </>
@@ -229,7 +227,7 @@ export default function RuleScorecardsPage() {
         actions={canCreate ? <CreateButton onClick={openCreate} /> : null}
         mobilePrimary={(
           <>
-            <KeywordInput placeholder="搜索名称" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} />
+            <KeywordInput placeholder="搜索名称" {...bindKeyword('keyword')} />
             {canCreate ? <CreateButton onClick={openCreate} /> : null}
           </>
         )}

@@ -1,13 +1,11 @@
-import { useState } from 'react';
 import { listTableProps } from '@/components/list-page';
-import { useQueryClient } from '@tanstack/react-query';
 import { Space, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { RuleExecution, RuleExecutionSource, RuleRefKind } from '@zenith/shared/rules';
 import { RULE_EXECUTION_SOURCE_LABELS, RULE_REF_KIND_LABELS, RULE_EXECUTION_SOURCES, RULE_REF_KINDS } from '@zenith/shared/rules';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { ruleKeys, useRuleExecutions } from '@/hooks/queries/rules';
 import { formatDateTimeRangeValuesForApi } from '@/utils/date';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
@@ -25,37 +23,33 @@ const REF_KIND_COLORS: Record<RuleRefKind, 'indigo' | 'teal' | 'violet' | 'amber
   table: 'indigo', flow: 'teal', scorecard: 'violet', list: 'amber',
 };
 
-interface Filters {
+interface SearchParams {
   ruleKey?: string;
   refKind?: RuleRefKind;
   caller?: string;
   source?: RuleExecutionSource;
-  matched?: boolean;
-  range?: [Date, Date];
+  /** 下拉以字符串承载，查询时再转布尔 */
+  matched?: 'true' | 'false';
+  range?: [Date, Date] | null;
 }
+
+const MATCHED_OPTIONS = [{ value: 'true', label: '命中' }, { value: 'false', label: '未命中' }] as const;
 
 /** 规则中心 · 执行记录（决策表/决策流/评分卡/名单统一 trace / 审计） */
 export default function RuleExecutionsPage() {
-  const queryClient = useQueryClient();
-  const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [draft, setDraft] = useState<Filters>({});
-  const [submitted, setSubmitted] = useState<Filters>({});
+  const {
+    page, pageSize, buildPagination,
+    bind, bindKeyword, submittedParams,
+    handleSearch, handleReset,
+  } = useListSearch<SearchParams>({ defaults: {}, listKey: ruleKeys.executions.all });
 
-  const { range, ...submittedFilters } = submitted;
+  const { range, matched, ...submittedFilters } = submittedParams;
   const [dateStart, dateEnd] = formatDateTimeRangeValuesForApi(range);
-  const listQuery = useRuleExecutions({ page, pageSize, ...submittedFilters, dateStart, dateEnd });
-
-  const handleSearch = () => {
-    setPage(1);
-    setSubmitted(draft);
-    void queryClient.invalidateQueries({ queryKey: ruleKeys.executions.all });
-  };
-  const handleReset = () => {
-    setDraft({});
-    setSubmitted({});
-    setPage(1);
-    void queryClient.invalidateQueries({ queryKey: ruleKeys.executions.all });
-  };
+  const listQuery = useRuleExecutions({
+    page, pageSize, ...submittedFilters,
+    matched: matched === undefined ? undefined : matched === 'true',
+    dateStart, dateEnd,
+  });
 
   const columns: ColumnProps<RuleExecution>[] = [
     dateTimeColumn('时间', 'createdAt'),
@@ -98,30 +92,24 @@ export default function RuleExecutionsPage() {
       <SearchToolbar
         primary={(
           <>
-            <KeywordInput placeholder="规则 Key" value={draft.ruleKey ?? ''} onChange={(v) => setDraft((p) => ({ ...p, ruleKey: v }))} onSearch={handleSearch} width={180} />
+            <KeywordInput placeholder="规则 Key" {...bindKeyword('ruleKey')} width={180} />
             <FilterSelect
               placeholder="全部类型"
               items={RULE_REF_KINDS.map((k) => ({ value: k, label: RULE_REF_KIND_LABELS[k] }))}
-              value={draft.refKind}
-              onChange={(v) => setDraft((p) => ({ ...p, refKind: v as Filters['refKind'] }))}
+              {...bind('refKind')}
             />
-            <KeywordInput placeholder="调用方" value={draft.caller ?? ''} onChange={(v) => setDraft((p) => ({ ...p, caller: v }))} onSearch={handleSearch} width={150} />
+            <KeywordInput placeholder="调用方" {...bindKeyword('caller')} width={150} />
             <FilterSelect
               placeholder="全部来源"
               items={RULE_EXECUTION_SOURCES.map((s) => ({ value: s, label: RULE_EXECUTION_SOURCE_LABELS[s] }))}
-              value={draft.source}
-              onChange={(v) => setDraft((p) => ({ ...p, source: v as Filters['source'] }))}
+              {...bind('source')}
             />
             <FilterSelect
               placeholder="全部结果"
-              items={[{ value: 'true', label: '命中' }, { value: 'false', label: '未命中' }]}
-              value={draft.matched === undefined ? undefined : String(draft.matched)}
-              onChange={(v) => setDraft((p) => ({ ...p, matched: v === undefined ? undefined : v === 'true' }))}
+              items={MATCHED_OPTIONS}
+              {...bind('matched')}
             />
-            <DateRangeFilter
-              value={draft.range}
-              onChange={(range) => setDraft((p) => ({ ...p, range: range ?? undefined }))}
-            />
+            <DateRangeFilter {...bind('range')} />
             <SearchButton onClick={handleSearch} />
             <ResetButton onClick={handleReset} />
           </>

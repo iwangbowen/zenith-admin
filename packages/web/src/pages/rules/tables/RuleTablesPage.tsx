@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
 import { listTableProps } from '@/components/list-page';
-import { useQueryClient } from '@tanstack/react-query';
 import { Button, Checkbox, DatePicker, Input, InputNumber, Select, Space, Tag, Modal, Form, TextArea, Toast, Typography, SideSheet, List, Empty } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Save, Upload } from 'lucide-react';
@@ -13,7 +12,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import DecisionTableEditor from './DecisionTableEditor';
 import { buildExpectedValues, buildTestScope, coerceRuleValue, diffCaseOutputs, explainDecisionRows, flattenInputValues, formatRuleValue, generateCaseFromRule, inspectDecisionDraft } from './ruleTableUtils';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { formatDateTimeForApi } from '@/utils/date';
@@ -141,17 +140,16 @@ function DictValueSelect({ dictCode, value, onChange, placeholder, size }: Reado
 
 export default function RuleTablesPage() {
   const { hasPermission } = usePermission();
-  const queryClient = useQueryClient();
   const canEdit = hasPermission('rule:table:update');
   const canCreate = hasPermission('rule:table:create');
   const canDelete = hasPermission('rule:table:delete');
   const canPublish = hasPermission('rule:table:publish');
-  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const {
+    page, pageSize, buildPagination,
+    bind, bindKeyword, submittedParams,
+    handleSearch, handleReset,
+  } = useListSearch<{ keyword: string; status?: string }>({ defaults: { keyword: '', status: undefined }, listKey: ruleKeys.decisionTables.lists });
 
-  const [draftKeyword, setDraftKeyword] = useState('');
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
-  const [draftStatus, setDraftStatus] = useState<string | undefined>(undefined);
-  const [submittedStatus, setSubmittedStatus] = useState<string | undefined>(undefined);
   const [editorFullscreen, setEditorFullscreen] = useState(false);
   const [editorHitPolicy, setEditorHitPolicy] = useState<RuleHitPolicy>('first');
   const [importSeed, setImportSeed] = useState<Partial<DecisionTableExport> | null>(null);
@@ -174,7 +172,7 @@ export default function RuleTablesPage() {
   const [execRow, setExecRow] = useState<RuleDecisionTable | null>(null);
   const [draft, setDraft] = useState<{ inputs: RuleDecisionTable['inputs']; outputs: RuleDecisionTable['outputs']; rules: RuleDecisionTable['rules'] }>({ inputs: [], outputs: [], rules: [] });
 
-  const listQuery = useRuleDecisionTableList({ page, pageSize, keyword: submittedKeyword || undefined, status: enumValueOf(RULE_DECISION_STATUSES, submittedStatus) });
+  const listQuery = useRuleDecisionTableList({ page, pageSize, keyword: submittedParams.keyword || undefined, status: enumValueOf(RULE_DECISION_STATUSES, submittedParams.status) });
   const versionsQuery = useRuleVersions(verRow?.id, !!verRow);
   const versions = versionsQuery.data ?? [];
   const diffQuery = useRuleVersionDiff(verRow?.id, diffVersion, diffTarget, !!verRow && diffVersion !== null);
@@ -805,14 +803,13 @@ export default function RuleTablesPage() {
       <SearchToolbar
         primary={(
           <>
-            <KeywordInput placeholder="搜索名称" value={draftKeyword} onChange={setDraftKeyword} onSearch={() => { setPage(1); setSubmittedKeyword(draftKeyword); setSubmittedStatus(draftStatus); void queryClient.invalidateQueries({ queryKey: ruleKeys.decisionTables.lists }); }} />
+            <KeywordInput placeholder="搜索名称" {...bindKeyword('keyword')} />
             <StatusSelect
               items={[{ value: 'draft', label: '草稿' }, { value: 'published', label: '已发布' }, { value: 'disabled', label: '已禁用' }]}
-              value={draftStatus}
-              onChange={(v) => setDraftStatus(v as string | undefined)}
+              {...bind('status')}
             />
-            <SearchButton onClick={() => { setPage(1); setSubmittedKeyword(draftKeyword); setSubmittedStatus(draftStatus); void queryClient.invalidateQueries({ queryKey: ruleKeys.decisionTables.lists }); }} />
-            <ResetButton onClick={() => { setDraftKeyword(''); setSubmittedKeyword(''); setDraftStatus(undefined); setSubmittedStatus(undefined); setPage(1); void queryClient.invalidateQueries({ queryKey: ruleKeys.decisionTables.lists }); }} />
+            <SearchButton onClick={handleSearch} />
+            <ResetButton onClick={handleReset} />
             {canCreate && <Button icon={<Upload size={14} />} onClick={importTable}>导入</Button>}
             {canCreate && <CreateButton onClick={openCreate} />}
           </>

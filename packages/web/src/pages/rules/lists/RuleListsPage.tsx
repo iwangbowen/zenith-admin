@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { listTableProps } from '@/components/list-page';
-import { useQueryClient } from '@tanstack/react-query';
 import { Button, DatePicker, Form, Input, Modal, Select, SideSheet, Space, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search } from 'lucide-react';
@@ -11,7 +10,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { formatDateTimeForApi } from '@/utils/date';
 import {
@@ -46,20 +45,21 @@ const TYPE_OPTIONS = [
   { value: 'grey', label: '灰名单' },
 ];
 
+interface SearchParams { keyword: string; type?: string }
+
 /** 规则中心 · 名单库：黑/白/灰名单与条目管理（支持过期时间、批量导入、命中测试） */
 export default function RuleListsPage() {
   const { hasPermission } = usePermission();
-  const queryClient = useQueryClient();
   const canCreate = hasPermission('rule:list:create');
   const canEdit = hasPermission('rule:list:update');
   const canDelete = hasPermission('rule:list:delete');
   const canManageItems = hasPermission('rule:list:item');
-  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const {
+    page, pageSize, buildPagination,
+    bind, bindKeyword, submittedParams,
+    handleSearch, handleReset,
+  } = useListSearch<SearchParams>({ defaults: { keyword: '', type: undefined }, listKey: ruleKeys.ruleLists.lists });
 
-  const [draftKeyword, setDraftKeyword] = useState('');
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
-  const [draftType, setDraftType] = useState<string | undefined>(undefined);
-  const [submittedType, setSubmittedType] = useState<string | undefined>(undefined);
   const [itemsRow, setItemsRow] = useState<RuleList | null>(null);
   const [itemsPage, setItemsPage] = useState(1);
   const [itemKeyword, setItemKeyword] = useState('');
@@ -68,7 +68,7 @@ export default function RuleListsPage() {
   const [checkValue, setCheckValue] = useState('');
   const [checkResult, setCheckResult] = useState<{ hit: boolean; listType?: string } | null>(null);
 
-  const listQuery = useRuleListList({ page, pageSize, keyword: submittedKeyword || undefined, type: enumValueOf(RULE_LIST_TYPES, submittedType) });
+  const listQuery = useRuleListList({ page, pageSize, keyword: submittedParams.keyword || undefined, type: enumValueOf(RULE_LIST_TYPES, submittedParams.type) });
   const itemsQuery = useRuleListItems(itemsRow?.id, { page: itemsPage, pageSize: 10, keyword: itemKeyword || undefined }, !!itemsRow);
   const items = itemsQuery.data ?? null;
   const saveMutation = useSaveRuleList();
@@ -183,15 +183,14 @@ export default function RuleListsPage() {
       <SearchToolbar
         primary={(
           <>
-            <KeywordInput placeholder="搜索名称" value={draftKeyword} onChange={setDraftKeyword} onSearch={() => { setPage(1); setSubmittedKeyword(draftKeyword); setSubmittedType(draftType); void queryClient.invalidateQueries({ queryKey: ruleKeys.ruleLists.lists }); }} width={200} />
+            <KeywordInput placeholder="搜索名称" {...bindKeyword('keyword')} width={200} />
             <FilterSelect
               placeholder="全部类型"
               items={TYPE_OPTIONS}
-              value={draftType}
-              onChange={(v) => setDraftType(v as string | undefined)}
+              {...bind('type')}
             />
-            <SearchButton onClick={() => { setPage(1); setSubmittedKeyword(draftKeyword); setSubmittedType(draftType); void queryClient.invalidateQueries({ queryKey: ruleKeys.ruleLists.lists }); }} />
-            <ResetButton onClick={() => { setDraftKeyword(''); setSubmittedKeyword(''); setDraftType(undefined); setSubmittedType(undefined); setPage(1); void queryClient.invalidateQueries({ queryKey: ruleKeys.ruleLists.lists }); }} />
+            <SearchButton onClick={handleSearch} />
+            <ResetButton onClick={handleReset} />
             {canCreate && <CreateButton onClick={modal.openCreate} />}
           </>
         )}

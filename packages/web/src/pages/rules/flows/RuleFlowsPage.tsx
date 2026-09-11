@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { listTableProps } from '@/components/list-page';
-import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Input, List, Modal, Select, SideSheet, Space, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
@@ -10,7 +9,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useWorkflowDesignerDecisionRefOptions } from '@/hooks/queries/workflow-designer';
 import {
@@ -42,22 +41,23 @@ const newStepId = () => `s${Date.now()}_${sid++}`;
 /** 规则中心 · 决策流：多决策表顺序编排（前序输出并入 scope 供后续步骤引用） */
 export default function RuleFlowsPage() {
   const { hasPermission } = usePermission();
-  const queryClient = useQueryClient();
   const canCreate = hasPermission('rule:flow:create');
   const canEdit = hasPermission('rule:flow:update');
   const canDelete = hasPermission('rule:flow:delete');
   const canPublish = hasPermission('rule:flow:publish');
-  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const {
+    page, pageSize, buildPagination,
+    bindKeyword, submittedParams,
+    handleSearch, handleReset,
+  } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: ruleKeys.flows.lists });
 
-  const [draftKeyword, setDraftKeyword] = useState('');
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
   const [steps, setSteps] = useState<RuleFlowStep[]>([]);
   const [testRow, setTestRow] = useState<RuleDecisionFlow | null>(null);
   const [testInput, setTestInput] = useState('{\n  "form": {}\n}');
   const [testResult, setTestResult] = useState<RuleFlowEvaluateResult | null>(null);
   const [versionsRow, setVersionsRow] = useState<RuleDecisionFlow | null>(null);
 
-  const listQuery = useRuleFlowList({ page, pageSize, keyword: submittedKeyword || undefined });
+  const listQuery = useRuleFlowList({ page, pageSize, keyword: submittedParams.keyword || undefined });
   const saveMutation = useSaveRuleFlow();
   const publishMutation = usePublishRuleFlow();
   const toggleMutation = useToggleRuleFlow();
@@ -155,9 +155,9 @@ export default function RuleFlowsPage() {
       <SearchToolbar
         primary={(
           <>
-            <KeywordInput placeholder="搜索名称" value={draftKeyword} onChange={setDraftKeyword} onSearch={() => { setPage(1); setSubmittedKeyword(draftKeyword); void queryClient.invalidateQueries({ queryKey: ruleKeys.flows.lists }); }} />
-            <SearchButton onClick={() => { setPage(1); setSubmittedKeyword(draftKeyword); void queryClient.invalidateQueries({ queryKey: ruleKeys.flows.lists }); }} />
-            <ResetButton onClick={() => { setDraftKeyword(''); setSubmittedKeyword(''); setPage(1); void queryClient.invalidateQueries({ queryKey: ruleKeys.flows.lists }); }} />
+            <KeywordInput placeholder="搜索名称" {...bindKeyword('keyword')} />
+            <SearchButton onClick={handleSearch} />
+            <ResetButton onClick={handleReset} />
             {canCreate && <CreateButton onClick={openCreate} />}
           </>
         )}
