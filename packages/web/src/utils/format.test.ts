@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatClock, formatDurationMs, formatSecondsBetween, formatSecondsHuman } from './format';
+import { formatClock, formatDurationMs, formatSecondsBetween, formatSecondsHuman, formatUptime } from './format';
 
 describe('formatDurationMs', () => {
   it('按量级切换单位，空值返回占位符', () => {
@@ -28,6 +28,16 @@ describe('formatSecondsHuman', () => {
     expect(formatSecondsHuman(undefined)).toBe('—');
     expect(formatSecondsHuman(Number.NaN)).toBe('—');
     expect(formatSecondsHuman(-30)).toBe('0秒');
+  });
+});
+
+describe('formatUptime', () => {
+  it('正值按 formatSecondsHuman 口径，0 / 负值 / 空值视为未知返回占位符', () => {
+    expect(formatUptime(3 * 86400 + 2 * 3600)).toBe('3天2小时');
+    expect(formatUptime(45)).toBe('45秒');
+    expect(formatUptime(0)).toBe('—');
+    expect(formatUptime(-1)).toBe('—');
+    expect(formatUptime(null)).toBe('—');
   });
 });
 

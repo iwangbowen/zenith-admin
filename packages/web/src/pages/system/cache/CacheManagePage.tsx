@@ -28,6 +28,7 @@ import {
 import { BatchDeleteButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
+import { formatUptime } from '@/utils/format';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 
 interface CategoryRow {
@@ -90,16 +91,6 @@ function TtlBadge({ ttl }: Readonly<{ ttl: number }>) {
   else if (ttl < 3600) color = 'yellow';
   else color = 'green';
   return <Tag color={color} size="small">{text}</Tag>;
-}
-
-function formatUptime(seconds: number): string {
-  if (seconds <= 0) return '—';
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  if (days > 0) return `${days}天 ${hours}小时`;
-  if (hours > 0) return `${hours}小时 ${minutes}分`;
-  return `${minutes}分`;
 }
 
 export default function CacheManagePage() {

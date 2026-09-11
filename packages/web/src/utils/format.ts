@@ -27,6 +27,11 @@ export function formatSecondsHuman(seconds: number | null | undefined): string {
   return parts.join('');
 }
 
+/** 服务 / 数据库运行时长：`formatSecondsHuman` 口径；0 或负值视为未知，返回占位符 */
+export function formatUptime(seconds: number | null | undefined): string {
+  return seconds != null && seconds > 0 ? formatSecondsHuman(seconds) : EMPTY_PLACEHOLDER;
+}
+
 /** 两个 `YYYY-MM-DD HH:mm:ss` 时刻之间的时长（`formatSecondsHuman` 口径），终点早于起点按 0 处理 */
 export function formatSecondsBetween(start: string | Date, end: string | Date): string {
   return formatSecondsHuman(Math.max(0, dayjs(end).diff(dayjs(start), 'second')));

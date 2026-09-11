@@ -2,6 +2,7 @@ import { Button, Empty, Spin, Typography, Tag, Space } from '@douyinfe/semi-ui';
 import { BarChart, EmptyChart, chartOptions, makeBarSpec, useChartPalette, datumNumber, datumText, StatCard, StatGrid } from '@/components/charts';
 import { RefreshCw, Database, Table as TableIcon, Eye, KeyRound, Network, Activity, HardDrive, Server } from 'lucide-react';
 import { useDbAdminOverview } from '@/hooks/queries/db-admin';
+import { formatUptime } from '@/utils/format';
 
 const { Text } = Typography;
 
@@ -31,18 +32,6 @@ export interface DbOverview {
 }
 
 const BAR_COLORS = ['#3b82f6', '#06b6d4', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6', '#6366f1', '#84cc16'];
-
-function formatUptime(seconds: number): string {
-  if (seconds <= 0) return '-';
-  const d = Math.floor(seconds / 86400);
-  const h = Math.floor((seconds % 86400) / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const parts: string[] = [];
-  if (d > 0) parts.push(`${d} 天`);
-  if (h > 0) parts.push(`${h} 小时`);
-  if (m > 0 && d === 0) parts.push(`${m} 分`);
-  return parts.join(' ') || '< 1 分';
-}
 
 
 
