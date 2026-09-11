@@ -13,7 +13,7 @@
  *  6. 路由层通过 guard({ permission: 'system:db-admin:*' }) 双层鉴权。
  */
 import { sql, desc, eq, and, type SQL } from 'drizzle-orm';
-import type { QueryOutputOf } from '@zenith/shared/core';
+import { isPlainObject, type QueryOutputOf } from '@zenith/shared/core';
 import { dbAdminContract } from '@zenith/shared/ops';
 import { keywordCondition } from '../../lib/where-helpers';
 import { HTTPException } from 'hono/http-exception';
@@ -504,14 +504,23 @@ export async function getTableStructure(schema: string, name: string): Promise<T
 }
 
 // ─── 3. 表数据分页 ──────────────────────────────────────────────────────────────
-type RowsParams = Omit<QueryOutputOf<typeof dbAdminContract.tableRows>, 'filters' | 'where'> & {
+type RowsParams = QueryOutputOf<typeof dbAdminContract.tableRows> & {
   schema: string;
   name: string;
-  /** 列名 -> 关键字（使用 col::text ILIKE %kw% 匹配） */
-  filters?: Record<string, string>;
-  /** 原生 WHERE 片段（需 query 权限；只读事务内执行，经 sanitizeWhereFragment 校验） */
-  whereRaw?: string;
 };
+
+/** 契约 `filters` 为 JSON 字符串 `{ 列名: 关键字 }`；非法 JSON / 非对象视为无列筛选，空关键字忽略 */
+function parseColumnFilters(raw: string | undefined): Array<[string, string]> {
+  if (!raw) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!isPlainObject(parsed)) return [];
+  return Object.entries(parsed).filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].length > 0);
+}
 
 const WHERE_FRAGMENT_MAX = 2000;
 
@@ -541,15 +550,14 @@ export async function getTableRows(params: RowsParams): Promise<{
   page: number;
   pageSize: number;
 }> {
-  const { schema, name, page, pageSize, orderBy, orderDir = 'asc', filters, search, whereRaw } = params;
+  const { schema, name, page, pageSize, orderBy, orderDir = 'asc', filters, search, where } = params;
   assertIdent(schema, 'schema');
   assertIdent(name, 'table');
-  const safeWhereRaw = whereRaw === undefined ? undefined : sanitizeWhereFragment(whereRaw);
+  // 原生 WHERE 片段只读事务内执行，经 sanitizeWhereFragment 校验；权限门（system:db-admin:query）由路由把守
+  const safeWhereRaw = where?.trim() ? sanitizeWhereFragment(where) : undefined;
 
   // 收集需要校验存在性的列（orderBy + filters 列名），一次性查 information_schema
-  const filterEntries: Array<[string, string]> = filters
-    ? Object.entries(filters).filter(([, v]) => typeof v === 'string' && v.length > 0)
-    : [];
+  const filterEntries = parseColumnFilters(filters);
   if (orderBy) assertIdent(orderBy, 'orderBy');
   for (const [col] of filterEntries) assertIdent(col, 'filter列');
 

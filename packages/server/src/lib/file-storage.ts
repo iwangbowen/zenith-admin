@@ -12,6 +12,7 @@ import { FILE_OBJECT_ACL_SUPPORT } from '@zenith/shared/platform';
 import { trimTrailingSlash } from '@zenith/shared/core';
 import { HTTPException } from 'hono/http-exception';
 import { formatDate } from './datetime';
+import { httpGet } from './http-client';
 import logger from './logger';
 
 // 惰性加载：各云存储 SDK 模块图大（Azure/ali-oss 实测 1.5-2.3s），仅在首次使用对应存储类型时加载。
@@ -971,23 +972,24 @@ export async function readStoredFile(file: StoredObjectSource, config: FileStora
     const domain = effectiveConfig.kodoEndpoint ?? '';
     const bucketManager = new (loadQiniu().rs.BucketManager)(mac, conf);
     const privateUrl = bucketManager.privateDownloadUrl(domain, file.objectKey, Math.floor(Date.now() / 1000) + 3600);
-    const response = await fetch(privateUrl);
-    const stream = response.body!;
+    const response = await httpGet(privateUrl, { httpLog: { logResponseBody: false } });
+    if (!response.ok) throw new Error(`Kodo 下载失败: ${response.status}`);
+    const stream = response.raw.body as ReadableStream<Uint8Array>;
     return { stream, contentType, fileName };
   }
 
   if (effectiveConfig.provider === 'bos') {
     const bosClient = createBosClient(effectiveConfig);
-    // BOS getObject 始终缓冲到内存，改用预签名 URL + fetch 流式下载
+    // BOS getObject 始终缓冲到内存，改用预签名 URL 流式下载
     const presignedUrl = (bosClient as unknown as BosStreamClient).generatePresignedUrl(
       effectiveConfig.bosBucket!,
       file.objectKey,
       Math.floor(Date.now() / 1000),
       3600,
     );
-    const response = await fetch(presignedUrl);
+    const response = await httpGet(presignedUrl, { httpLog: { logResponseBody: false } });
     if (!response.ok) throw new Error(`BOS 下载失败: ${response.status}`);
-    const stream = response.body as ReadableStream<Uint8Array>;
+    const stream = response.raw.body as ReadableStream<Uint8Array>;
     return { stream, contentType, fileName };
   }
 

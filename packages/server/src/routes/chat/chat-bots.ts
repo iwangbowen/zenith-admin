@@ -16,8 +16,7 @@ const MODULE = '聊天机器人';
 const list = defineContractRoute(chatBotContract.list, {
   middleware: [authMiddleware, guard({ permission: 'chat:bot:list' })],
   handler: async (c) => {
-    const { page, pageSize, keyword } = c.req.valid('query');
-    return c.json(okBody(await listChatWebhooks({ page, pageSize, keyword })), 200);
+    return c.json(okBody(await listChatWebhooks(c.req.valid('query'))), 200);
   },
 });
 

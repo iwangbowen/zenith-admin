@@ -98,23 +98,9 @@ const tableRowsRoute = defineContractRoute(dbAdminContract.tableRows, {
   middleware: view,
   handler: async (c) => {
     const { schema, name } = c.req.valid('param');
-    const { page, pageSize, orderBy, orderDir, filters: filtersStr, search, where } = c.req.valid('query');
-    let filters: Record<string, string> | undefined;
-    if (filtersStr) {
-      try {
-        const parsed: unknown = JSON.parse(filtersStr);
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          filters = Object.fromEntries(
-            Object.entries(parsed as Record<string, unknown>)
-              .filter(([, v]) => typeof v === 'string' && v.length > 0) as Array<[string, string]>,
-          );
-        }
-      } catch {
-        // ignore invalid JSON; fall through with undefined filters
-      }
-    }
+    const query = c.req.valid('query');
     // 原生 WHERE 片段可含跨表子查询，要求与 SQL 控制台一致的 query 权限
-    if (where?.trim()) {
+    if (query.where?.trim()) {
       const user = c.get('user');
       if (!isSuperAdmin(user)) {
         const perms = await getUserPermissions(user.userId);
@@ -123,11 +109,7 @@ const tableRowsRoute = defineContractRoute(dbAdminContract.tableRows, {
         }
       }
     }
-    const data = await getTableRows({
-      schema, name, page, pageSize, orderBy, orderDir, filters, search,
-      whereRaw: where?.trim() ? where : undefined,
-    });
-    return c.json(okBody(data), 200);
+    return c.json(okBody(await getTableRows({ schema, name, ...query })), 200);
   },
 });
 

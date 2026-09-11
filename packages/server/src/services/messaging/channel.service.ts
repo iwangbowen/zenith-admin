@@ -16,8 +16,8 @@ import {
   type ChannelRow, type ChannelMessageRow,
 } from '../../db/schema';
 import type { ChatCard, ChatMessageExtra } from '@zenith/shared/chat';
-import type { PaginatedResponse } from '@zenith/shared/core';
-import type { Channel, ChannelAdmin, ChannelMessage, ChannelMessageType, ChannelSubscriber, CreateChannelInput, UpdateChannelInput, ChannelPublishAudienceInput } from '@zenith/shared/messaging';
+import type { PaginatedResponse, QueryOutputOf } from '@zenith/shared/core';
+import { channelContract, channelMessageContract, type Channel, type ChannelAdmin, type ChannelMessage, type ChannelMessageType, type ChannelSubscriber, type CreateChannelInput, type UpdateChannelInput, type ChannelPublishAudienceInput } from '@zenith/shared/messaging';
 import type { PublishChannelInput } from '@zenith/shared/mp';
 import { SYSTEM_CHANNEL_CODE } from '@zenith/shared/platform';
 import { HTTPException } from 'hono/http-exception';
@@ -383,8 +383,9 @@ async function countSubscribers(ch: ChannelRow, userCount: number): Promise<numb
     : db.$count(channelSubscriptions, eq(channelSubscriptions.channelId, ch.id));
 }
 
-export async function listChannelsAdmin(page: number, pageSize: number, keyword?: string) {
-  const where = keywordCondition(keyword, [channels.name, channels.code], 'ilike');
+export async function listChannelsAdmin(q: QueryOutputOf<typeof channelContract.list>) {
+  const { page, pageSize } = q;
+  const where = keywordCondition(q.keyword, [channels.name, channels.code], 'ilike');
   return buildListResult({
     page,
     pageSize,
@@ -622,14 +623,13 @@ export async function publishDueScheduledMessages(): Promise<void> {
 /** 管理端：某频道的群发消息记录列表（direction=out，含已发/草稿/定时） */
 export async function listChannelMessageRecords(
   channelId: number,
-  page: number,
-  pageSize: number,
-  status?: 'sent' | 'draft' | 'scheduled',
+  q: QueryOutputOf<typeof channelMessageContract.adminMessages>,
 ): Promise<PaginatedResponse<ChannelMessage>> {
+  const { page, pageSize } = q;
   const where = and(
     eq(channelMessages.channelId, channelId),
     eq(channelMessages.direction, 'out'),
-    status ? eq(channelMessages.status, status) : undefined,
+    q.status ? eq(channelMessages.status, q.status) : undefined,
   );
   return buildListResult({
     page,
@@ -752,9 +752,10 @@ function mapSubscriber(u: { id: number; nickname: string | null; username: strin
 }
 
 /** 订阅者列表：系统号=全员用户（只读）；运营号=订阅表用户。分页 + 按名称搜索。 */
-export async function listChannelSubscribers(channelId: number, page: number, pageSize: number, keyword?: string): Promise<PaginatedResponse<ChannelSubscriber>> {
+export async function listChannelSubscribers(channelId: number, q: QueryOutputOf<typeof channelContract.subscribers>): Promise<PaginatedResponse<ChannelSubscriber>> {
+  const { page, pageSize } = q;
   const ch = requireRow(await db.query.channels.findFirst({ where: eq(channels.id, channelId) }), '频道不存在');
-  const nameWhere = keywordCondition(keyword, [users.nickname, users.username], 'ilike');
+  const nameWhere = keywordCondition(q.keyword, [users.nickname, users.username], 'ilike');
 
   if (ch.type === 'system') {
     return buildListResult({

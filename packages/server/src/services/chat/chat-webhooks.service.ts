@@ -17,7 +17,8 @@ import { pageOffset } from '../../lib/pagination';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { keywordCondition } from '../../lib/where-helpers';
 import { HTTPException } from 'hono/http-exception';
-import type { ChatWebhook, CreateChatWebhookInput, UpdateChatWebhookInput, ChatWebhookPayloadInput, ChatMessageExtra } from '@zenith/shared/chat';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { chatBotContract, type ChatWebhook, type CreateChatWebhookInput, type UpdateChatWebhookInput, type ChatWebhookPayloadInput, type ChatMessageExtra } from '@zenith/shared/chat';
 import { postBotMessage } from './chat.service';
 
 const TOKEN_PREFIX = 'cwh_';
@@ -65,19 +66,20 @@ async function ensureConversationExists(conversationId: number): Promise<void> {
   requireRow(conv, '目标会话不存在', 400);
 }
 
-export async function listChatWebhooks(params: { page: number; pageSize: number; keyword?: string }) {
-  const where = keywordCondition(params.keyword, [chatWebhooks.name], 'ilike');
+export async function listChatWebhooks(q: QueryOutputOf<typeof chatBotContract.list>) {
+  const { page, pageSize } = q;
+  const where = keywordCondition(q.keyword, [chatWebhooks.name], 'ilike');
 
   return buildListResult({
-    page: params.page,
-    pageSize: params.pageSize,
+    page,
+    pageSize,
     count: () => db.$count(chatWebhooks, where),
     rows: () => db.query.chatWebhooks.findMany({
       where,
       with: { conversation: { columns: { name: true } } },
       orderBy: desc(chatWebhooks.id),
-      limit: params.pageSize,
-      offset: pageOffset(params.page, params.pageSize),
+      limit: pageSize,
+      offset: pageOffset(page, pageSize),
     }),
     map: (r) => mapChatWebhook(r, r.conversation?.name ?? null),
   });

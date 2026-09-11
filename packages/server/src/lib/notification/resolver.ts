@@ -4,7 +4,7 @@
  * 解析与投递刻意分成两步。合成一步的话，被抑制的通知就只剩一行日志，
  * 而用户来问「为什么我没收到」时最需要的恰恰是这一步的结论与依据。
  */
-import { and, eq, inArray, isNull, or, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, or, type SQL } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import type {
   NotificationChannel,
@@ -24,7 +24,7 @@ import {
   type NotificationEventOverrideRow,
   type NotificationRecipientSettingsRow,
 } from '../../db/schema';
-import { buildWhere } from '../where-helpers';
+import { inheritedTenantCondition } from '../tenant';
 import { hasNotificationAdapter } from './registry';
 
 export interface ChannelResolution {
@@ -169,11 +169,9 @@ function pickOverride(
 }
 
 async function loadOverrides(eventKey: string, tenantId: number | null): Promise<NotificationEventOverrideRow[]> {
-  return db.select().from(notificationEventOverrides).where(buildWhere(
+  return db.select().from(notificationEventOverrides).where(and(
     eq(notificationEventOverrides.eventKey, eventKey),
-    tenantId === null
-      ? isNull(notificationEventOverrides.tenantId)
-      : or(isNull(notificationEventOverrides.tenantId), eq(notificationEventOverrides.tenantId, tenantId)),
+    inheritedTenantCondition(notificationEventOverrides.tenantId, tenantId),
   ));
 }
 

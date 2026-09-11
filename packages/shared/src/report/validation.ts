@@ -441,19 +441,6 @@ export type CreateReportCategoryInput = z.input<typeof createReportCategorySchem
 
 export type UpdateReportCategoryInput = z.input<typeof updateReportCategorySchema>;
 
-export const reportExecutionStatsQuerySchema = z.object({
-  datasetId: z.coerce.number().int().positive().optional(),
-  datasourceId: z.coerce.number().int().positive().optional(),
-  dashboardId: z.coerce.number().int().positive().optional(),
-  scene: z.string().max(32).optional(),
-  // 查询串布尔:不能用 z.coerce.boolean()('false' 会变 true);空串视为未传
-  success: z.union([z.literal('').transform(() => undefined), z.stringbool()]).optional(),
-  startAt: z.string().optional(),
-  endAt: z.string().optional(),
-});
-
-export type ReportExecutionStatsQueryInput = z.input<typeof reportExecutionStatsQuerySchema>;
-
 // ─── 版本 ──────────────────────────────────────────────────────────────────
 export const createReportVersionSchema = z.object({ remark: z.string().max(256).optional() });
 

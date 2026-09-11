@@ -62,8 +62,7 @@ const read = defineContractRoute(channelContract.markRead, {
 const adminList = defineContractRoute(channelContract.list, {
   middleware: [authMiddleware, guard({ permission: 'channel:channel:list' })],
   handler: async (c) => {
-    const { page, pageSize, keyword } = c.req.valid('query');
-    return c.json(okBody(await listChannelsAdmin(page, pageSize, keyword)), 200);
+    return c.json(okBody(await listChannelsAdmin(c.req.valid('query'))), 200);
   },
 });
 
@@ -232,8 +231,7 @@ const adminMessages = defineContractRoute(channelMessageContract.adminMessages, 
   middleware: publisher,
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    const { page, pageSize, status } = c.req.valid('query');
-    return c.json(okBody(await listChannelMessageRecords(id, page, pageSize, status)), 200);
+    return c.json(okBody(await listChannelMessageRecords(id, c.req.valid('query'))), 200);
   },
 });
 
@@ -287,8 +285,7 @@ const subscribers = defineContractRoute(channelContract.subscribers, {
   middleware: [authMiddleware, guard({ permission: 'channel:channel:list' })],
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    const { page, pageSize, keyword } = c.req.valid('query');
-    return c.json(okBody(await listChannelSubscribers(id, page, pageSize, keyword)), 200);
+    return c.json(okBody(await listChannelSubscribers(id, c.req.valid('query'))), 200);
   },
 });
 
