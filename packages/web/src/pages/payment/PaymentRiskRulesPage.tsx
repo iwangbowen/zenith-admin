@@ -1,14 +1,12 @@
 import type { CSSProperties } from 'react';
 import { useState } from 'react';
 import { formatYuan } from '@/utils/payment';
-import { useQueryClient } from '@tanstack/react-query';
 import { Banner, Form, Space, Tabs, TabPane, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
 import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
-import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import {
@@ -64,7 +62,6 @@ type ReviewDecision = 'approve' | 'reject';
 export default function PaymentRiskRulesPage() {
   const { items: statusItems, options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
-  const queryClient = useQueryClient();
   const canReview = hasPermission('payment:risk:review');
   const canReadRuleLists = hasPermission('rule:list:list');
   const [activeTab, setActiveTab] = useUrlTabState(['rules', 'hits', 'reviews'] as const, 'rules');
@@ -80,18 +77,11 @@ export default function PaymentRiskRulesPage() {
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentRiskKeys.lists });
   const [scopeWatch, setScopeWatch] = useState<PaymentRiskScope>('global');
 
-  // ── 拦截记录 ──
-  const { page: hPage, pageSize: hPageSize, setPage: setHPage, buildPagination: buildHPagination } = usePagination();
-  const [hitKeyword, setHitKeyword] = useState('');
-  const [hitAction, setHitAction] = useState<string | undefined>();
-  const [hitDimension, setHitDimension] = useState<string | undefined>();
-  const [submittedHitParams, setSubmittedHitParams] = useState<{ keyword: string; action?: string; dimension?: string }>({ keyword: '' });
-
-  // ── 审核队列 ──
-  const { page: rPage, pageSize: rPageSize, setPage: setRPage, buildPagination: buildRPagination } = usePagination();
-  const [reviewKeyword, setReviewKeyword] = useState('');
-  const [reviewStatus, setReviewStatus] = useState<string | undefined>();
-  const [submittedReviewParams, setSubmittedReviewParams] = useState<{ keyword: string; status?: string }>({ keyword: '' });
+  // ── 拦截记录 / 审核队列：各自独立的搜索 + 分页 ──
+  const hitSearch = useListSearch<{ keyword: string; action?: string; dimension?: string }>({ defaults: { keyword: '' }, listKey: paymentRiskKeys.hitLists });
+  const reviewSearch = useListSearch<{ keyword: string; status?: string }>({ defaults: { keyword: '' }, listKey: paymentRiskKeys.reviewLists });
+  const submittedHitParams = hitSearch.submittedParams;
+  const submittedReviewParams = reviewSearch.submittedParams;
 
   const listQuery = usePaymentRiskRuleList({
     page,
@@ -100,8 +90,8 @@ export default function PaymentRiskRulesPage() {
     status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
   const hitQuery = usePaymentRiskHitList({
-    page: hPage,
-    pageSize: hPageSize,
+    page: hitSearch.page,
+    pageSize: hitSearch.pageSize,
     keyword: submittedHitParams.keyword || undefined,
     action: enumValueOf(PAYMENT_RISK_ACTIONS, submittedHitParams.action),
     dimension: enumValueOf(PAYMENT_RISK_HIT_QUERY_DIMENSIONS, submittedHitParams.dimension),
@@ -109,8 +99,8 @@ export default function PaymentRiskRulesPage() {
   const hits = hitQuery.data?.list ?? [];
   const hitTotal = hitQuery.data?.total ?? 0;
   const reviewQuery = usePaymentRiskReviewList({
-    page: rPage,
-    pageSize: rPageSize,
+    page: reviewSearch.page,
+    pageSize: reviewSearch.pageSize,
     keyword: submittedReviewParams.keyword || undefined,
     status: enumValueOf(PAYMENT_RISK_REVIEW_STATUSES, submittedReviewParams.status),
   });
@@ -133,10 +123,6 @@ export default function PaymentRiskRulesPage() {
   const blockListOptions = allRuleLists.filter((l) => l.type !== 'white').map((l) => ({ value: l.key, label: `${l.name}（${l.key}）` }));
   const allowListOptions = allRuleLists.filter((l) => l.type === 'white').map((l) => ({ value: l.key, label: `${l.name}（${l.key}）` }));
 
-  function handleHitSearch() { setHPage(1); setSubmittedHitParams({ keyword: hitKeyword, action: hitAction, dimension: hitDimension }); void queryClient.invalidateQueries({ queryKey: paymentRiskKeys.hitLists }); }
-  function handleHitReset() { setHitKeyword(''); setHitAction(undefined); setHitDimension(undefined); setHPage(1); setSubmittedHitParams({ keyword: '', action: '', dimension: '' }); void queryClient.invalidateQueries({ queryKey: paymentRiskKeys.hitLists }); }
-  function handleReviewSearch() { setRPage(1); setSubmittedReviewParams({ keyword: reviewKeyword, status: reviewStatus }); void queryClient.invalidateQueries({ queryKey: paymentRiskKeys.reviewLists }); }
-  function handleReviewReset() { setReviewKeyword(''); setReviewStatus(undefined); setRPage(1); setSubmittedReviewParams({ keyword: '' }); void queryClient.invalidateQueries({ queryKey: paymentRiskKeys.reviewLists }); }
 
   const modal = useEditModal<PaymentRiskRule, RiskFormValues, Partial<CreatePaymentRiskRuleInput>>({
     entityName: '风控规则',
@@ -312,39 +298,38 @@ export default function PaymentRiskRulesPage() {
 
         <TabPane tab="拦截记录" itemKey="hits">
           <ListSearchToolbar
-            keyword={<KeywordInput placeholder="规则名/订单号/业务ID..." value={hitKeyword} onChange={setHitKeyword} onSearch={handleHitSearch} />}
+            keyword={<KeywordInput placeholder="规则名/订单号/业务ID..." {...hitSearch.bindKeyword('keyword')} />}
             filters={(
               <>
-                <FilterSelect placeholder="全部动作" items={actionOptions} value={hitAction} onChange={setHitAction} />
+                <FilterSelect placeholder="全部动作" items={actionOptions} {...hitSearch.bind('action')} />
                 <FilterSelect
                   placeholder="全部维度"
                   items={dimensionOptions}
-                  value={hitDimension}
-                  onChange={setHitDimension}
+                  {...hitSearch.bind('dimension')}
                 />
               </>
             )}
-            onSearch={handleHitSearch}
-            onReset={handleHitReset}
+            onSearch={hitSearch.handleSearch}
+            onReset={hitSearch.handleReset}
             filterTitle="拦截记录筛选"
           />
           <ConfigurableTable
             bordered columns={hitColumns} dataSource={hits} loading={hitQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-            onRefresh={() => void hitQuery.refetch()} refreshLoading={hitQuery.isFetching} pagination={buildHPagination(hitTotal)}
+            onRefresh={() => void hitQuery.refetch()} refreshLoading={hitQuery.isFetching} pagination={hitSearch.buildPagination(hitTotal)}
           />
         </TabPane>
 
         <TabPane tab="审核队列" itemKey="reviews">
           <ListSearchToolbar
-            keyword={<KeywordInput placeholder="审核单号/订单号/业务ID..." value={reviewKeyword} onChange={setReviewKeyword} onSearch={handleReviewSearch} />}
-            filters={<StatusSelect items={reviewStatusOptions} value={reviewStatus} onChange={setReviewStatus} />}
-            onSearch={handleReviewSearch}
-            onReset={handleReviewReset}
+            keyword={<KeywordInput placeholder="审核单号/订单号/业务ID..." {...reviewSearch.bindKeyword('keyword')} />}
+            filters={<StatusSelect items={reviewStatusOptions} {...reviewSearch.bind('status')} />}
+            onSearch={reviewSearch.handleSearch}
+            onReset={reviewSearch.handleReset}
             filterTitle="审核队列筛选"
           />
           <ConfigurableTable
             bordered columns={reviewColumns} dataSource={reviews} loading={reviewQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-            onRefresh={() => void reviewQuery.refetch()} refreshLoading={reviewQuery.isFetching} pagination={buildRPagination(reviewTotal)}
+            onRefresh={() => void reviewQuery.refetch()} refreshLoading={reviewQuery.isFetching} pagination={reviewSearch.buildPagination(reviewTotal)}
           />
         </TabPane>
       </Tabs>

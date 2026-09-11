@@ -1,6 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
 import { formatYuan } from '@/utils/payment';
-import { useQueryClient } from '@tanstack/react-query';
 import { Col, Form, Modal, Row, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { Tabs, TabPane } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -10,7 +9,6 @@ import { AppModal } from '@/components/AppModal';
 import ExportButton from '@/components/ExportButton';
 import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { useListSearch } from '@/hooks/useListSearch';
-import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import {
@@ -60,7 +58,6 @@ const defaultSearchParams: SearchParams = { keyword: '', status: undefined, chan
 
 export default function PaymentContractsPage() {
   const { hasPermission } = usePermission();
-  const queryClient = useQueryClient();
   const canManage = hasPermission('payment:contract:manage');
   const canPlan = hasPermission('payment:contract:plan');
   const latestContractResult = useRef<PaymentContractSignResult | null>(null);
@@ -74,9 +71,8 @@ export default function PaymentContractsPage() {
   } = useListSearch({ defaults: defaultSearchParams, listKey: paymentContractKeys.lists });
 
   // ── 扣款计划 ──
-  const { page: pPage, pageSize: pPageSize, setPage: setPPage, buildPagination: buildPPagination } = usePagination();
-  const [planKeyword, setPlanKeyword] = useState('');
-  const [submittedPlanKeyword, setSubmittedPlanKeyword] = useState('');
+  const planSearch = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: paymentContractKeys.planLists });
+  const { page: pPage, pageSize: pPageSize, buildPagination: buildPPagination } = planSearch;
   const [planPeriod, setPlanPeriod] = useState<PaymentDeductPeriod>('monthly');
   const [selectedAppId, setSelectedAppId] = useState<number | null>(null);
   const [contractAppId, setContractAppId] = useState<number | null>(null);
@@ -94,7 +90,7 @@ export default function PaymentContractsPage() {
   }, effectiveContractAppId != null);
   const contracts = contractQuery.data?.list ?? [];
   const contractTotal = contractQuery.data?.total ?? 0;
-  const planQuery = useDeductPlanList({ page: pPage, pageSize: pPageSize, keyword: submittedPlanKeyword || undefined });
+  const planQuery = useDeductPlanList({ page: pPage, pageSize: pPageSize, keyword: planSearch.submittedParams.keyword || undefined });
   const plans = planQuery.data?.list ?? [];
   const planTotal = planQuery.data?.total ?? 0;
   const allPlansQuery = useAllDeductPlans();
@@ -287,19 +283,6 @@ export default function PaymentContractsPage() {
     }),
   ];
 
-  // ── 搜索 ──
-  const handlePlanSearch = () => {
-    setPPage(1);
-    setSubmittedPlanKeyword(planKeyword);
-    void queryClient.invalidateQueries({ queryKey: paymentContractKeys.planLists });
-  };
-  const handlePlanReset = () => {
-    setPlanKeyword('');
-    setPPage(1);
-    setSubmittedPlanKeyword('');
-    void queryClient.invalidateQueries({ queryKey: paymentContractKeys.planLists });
-  };
-
   const exportQuery = {
     applicationId: effectiveContractAppId,
     keyword: submittedParams.keyword || undefined,
@@ -350,9 +333,9 @@ export default function PaymentContractsPage() {
         </TabPane>
         <TabPane tab="扣款计划" itemKey="plans">
           <ListSearchToolbar
-            keyword={<KeywordInput placeholder="计划名称..." value={planKeyword} onChange={setPlanKeyword} onSearch={handlePlanSearch} width={200} />}
-            onSearch={handlePlanSearch}
-            onReset={handlePlanReset}
+            keyword={<KeywordInput placeholder="计划名称..." {...planSearch.bindKeyword('keyword')} width={200} />}
+            onSearch={planSearch.handleSearch}
+            onReset={planSearch.handleReset}
             create={(
               canPlan ? (
                 <CreateButton onClick={openCreatePlan} />
