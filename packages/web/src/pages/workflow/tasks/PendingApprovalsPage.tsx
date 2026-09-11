@@ -34,10 +34,10 @@ import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 interface SearchParams {
   keyword: string;
-  definitionId: number | null;
+  definitionId?: number;
 }
 
-const defaultSearchParams: SearchParams = { keyword: '', definitionId: null };
+const defaultSearchParams: SearchParams = { keyword: '', definitionId: undefined };
 
 type PendingItem = PendingWorkflowItem;
 type SheetState = { instanceId: number; taskId: number; action: 'approve' | 'reject' | null };
@@ -50,7 +50,7 @@ export default function PendingApprovalsPage() {
   const queryClient = useQueryClient();
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, setField, bindKeyword, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, applySearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowTaskKeys.pendingLists });
   const [sheet, setSheet] = useState<SheetState | null>(null);
@@ -75,7 +75,7 @@ export default function PendingApprovalsPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    definitionId: submittedParams.definitionId ?? undefined,
+    definitionId: submittedParams.definitionId,
   };
   const listQuery = usePendingWorkflowTasks(listParams);
   const definitionsQuery = usePublishedWorkflowDefinitions();
@@ -244,11 +244,10 @@ export default function PendingApprovalsPage() {
       <ListSearchToolbar
         keyword={<KeywordInput placeholder="请输入审批标题" {...bindKeyword('keyword')} width={200} />}
         filters={(
-          <FilterSelect
+          <FilterSelect<number>
             placeholder="全部流程类型"
             items={definitions.map((d) => ({ value: d.id, label: d.name }))}
-            value={draftParams.definitionId ?? undefined}
-            onChange={(v) => setField('definitionId')(v ?? null)}
+            {...bind('definitionId')}
             width={180}
           />
         )}

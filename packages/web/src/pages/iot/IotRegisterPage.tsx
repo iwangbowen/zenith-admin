@@ -25,11 +25,12 @@ const { Text, Paragraph } = Typography;
 
 interface WhitelistSearchParams {
   keyword: string;
-  productId: number | null;
-  used: '' | 'true' | 'false';
+  productId?: number;
+  /** 注册状态：'true' 已注册 / 'false' 待注册，undefined = 全部 */
+  used?: 'true' | 'false';
 }
 
-const defaultSearch: WhitelistSearchParams = { keyword: '', productId: null, used: '' };
+const defaultSearch: WhitelistSearchParams = { keyword: '', productId: undefined, used: undefined };
 
 export default function IotRegisterPage() {
   const { hasPermission } = usePermission();
@@ -37,7 +38,7 @@ export default function IotRegisterPage() {
 
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, bind, bindKeyword, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<WhitelistSearchParams>({ defaults: defaultSearch, listKey: iotWhitelistKeys.lists });
 
@@ -45,11 +46,11 @@ export default function IotRegisterPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    productId: submittedParams.productId ?? undefined,
-    used: submittedParams.used ? submittedParams.used === 'true' : undefined,
+    productId: submittedParams.productId,
+    used: submittedParams.used === undefined ? undefined : submittedParams.used === 'true',
   });
 
-  const statsQuery = useIotWhitelistStats(submittedParams.productId ?? undefined);
+  const statsQuery = useIotWhitelistStats(submittedParams.productId);
   const stats = statsQuery.data;
 
   const { items: products, options: productOptions } = useIotProductOptions();
@@ -185,16 +186,15 @@ export default function IotRegisterPage() {
           />
         )}
         filters={<>
-          <FilterSelect
+          <FilterSelect<number>
             placeholder="全部产品"
             items={productOptions}
-            value={draftParams.productId ?? undefined}
-            onChange={(v) => setField('productId')(v ?? null)}
+            {...bind('productId')}
             width={180}
           />
-          <StatusSelect
+          <StatusSelect<'true' | 'false'>
             items={[{ value: 'false', label: '待注册' }, { value: 'true', label: '已注册' }]}
-            {...bind('used', (v) => v as WhitelistSearchParams['used'] | '')}
+            {...bind('used')}
           />
         </>}
         onSearch={handleSearch}

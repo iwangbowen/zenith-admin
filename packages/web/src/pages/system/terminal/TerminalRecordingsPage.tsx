@@ -28,7 +28,7 @@ import { dateTimeColumn } from '@/utils/table-columns';
 
 interface SearchParams {
   keyword: string;
-  operatorUserId: number | null;
+  operatorUserId?: number;
   timeRange: [Date, Date] | null;
 }
 
@@ -37,7 +37,7 @@ interface CommandItem {
   cmd: string;
 }
 
-const defaultSearchParams: SearchParams = { keyword: '', operatorUserId: null, timeRange: null };
+const defaultSearchParams: SearchParams = { keyword: '', operatorUserId: undefined, timeRange: null };
 
 /** 从录屏事件中还原用户执行的命令列表（按行切割 'i' 输入事件，处理退格和 ANSI 转义序列）。 */
 function extractCommands(events: TerminalRecordingEvent[]): CommandItem[] {
@@ -111,7 +111,7 @@ export default function TerminalRecordingsPage() {
   const queryClient = useQueryClient();
   const {
     page, pageSize, resetPage, buildPagination,
-    draftParams, setField, bind, bindKeyword, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: terminalKeys.recordingLists });
   const [playRec, setPlayRec] = useState<TerminalRecordingDetail | null>(null);
@@ -124,7 +124,7 @@ export default function TerminalRecordingsPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    operatorUserId: submittedParams.operatorUserId ?? undefined,
+    operatorUserId: submittedParams.operatorUserId,
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
   const [playId, setPlayId] = useState<number | undefined>();
@@ -260,11 +260,10 @@ export default function TerminalRecordingsPage() {
         keyword={<KeywordInput placeholder="搜索标题" {...bindKeyword('keyword')} />}
         filters={(
           <>
-            <FilterSelect
+            <FilterSelect<number>
               placeholder="全部操作人"
               items={userOptions}
-              value={draftParams.operatorUserId ?? undefined}
-              onChange={(v) => setField('operatorUserId')(v ?? null)}
+              {...bind('operatorUserId')}
               width={180}
               loading={userOptionsLoading}
               filter
