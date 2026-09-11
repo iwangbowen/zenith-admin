@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { listTableProps } from '@/components/list-page';
-import { Banner, InputNumber, Select, Typography, Tag, Tooltip, Space, Card } from '@douyinfe/semi-ui';
+import { Banner, Select, Typography, Tag, Tooltip, Space, Card } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import dayjs from 'dayjs';
 import type { OpenApiCallLog } from '@zenith/shared/open-platform';
@@ -20,7 +20,7 @@ import {
   useOpenAppOptions,
 } from '@/hooks/queries/open-platform';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
-import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
+import { DateRangeFilter, FilterSelect, KeywordInput, NumberFilter } from '@/components/search-filters';
 import { dateTimeColumn } from '@/utils/table-columns';
 
 const { Text, Title } = Typography;
@@ -33,7 +33,8 @@ export default function OpenApiStatsPage() {
     keyword: string;
     clientId?: string;
     method?: string;
-    success?: boolean;
+    /** 调用结果在草稿里以 'true' / 'false' 字串保存（Select 选项值），提交时收窄为布尔 */
+    success?: 'true' | 'false';
     statusCode?: number;
     environment?: OpenApiCallLog['environment'];
   }
@@ -44,10 +45,12 @@ export default function OpenApiStatsPage() {
   });
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, bind, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch: handleApply, handleReset,
   } = useListSearch<SearchParams>({ defaults: createDefaultParams, listKey: openApiStatsKeys.all });
   const appOptions = useOpenAppOptions().data ?? [];
+  // 统计区间必选：清空时回到默认的近 7 天
+  const bindRange = () => bind('range', (range: [Date, Date] | null) => range ?? createDefaultParams().range);
 
   const rangeParams = useMemo(() => ({
     startTime: dayjs(submittedParams.range[0]).startOf('day').format('YYYY-MM-DD HH:mm:ss'),
@@ -65,7 +68,7 @@ export default function OpenApiStatsPage() {
     pageSize,
     keyword: submittedParams.keyword || undefined,
     method: submittedParams.method,
-    success: submittedParams.success,
+    success: submittedParams.success === undefined ? undefined : submittedParams.success === 'true',
     statusCode: submittedParams.statusCode,
   };
   const logsQuery = useOpenApiCallLogs(logParams);
@@ -166,17 +169,11 @@ export default function OpenApiStatsPage() {
 
   return (
     <div className="page-container zx-flat-panels">
+      {/* 统计页：主区是必选区间 + 粒度（视图控制），明细筛选进抽屉——结构与标准列表页不同，保留结构化 SearchToolbar */}
       <SearchToolbar
         primary={(
           <>
-            <DateRangeFilter
-              type="dateRange"
-              value={draftParams.range}
-              onChange={(range) => {
-                if (range) setField('range')(range);
-              }}
-              density="compact"
-            />
+            <DateRangeFilter type="dateRange" {...bindRange()} density="compact" />
             <Select
               {...bind('granularity', (v) => v as 'hour' | 'day')}
               optionList={[{ value: 'day', label: '按天' }, { value: 'hour', label: '按小时' }]}
@@ -188,7 +185,7 @@ export default function OpenApiStatsPage() {
         )}
         filters={(
           <>
-            <KeywordInput placeholder="路径 / 应用名称" {...bind('keyword')} onSearch={handleApply} width={190} />
+            <KeywordInput placeholder="路径 / 应用名称" {...bindKeyword('keyword')} width={190} />
             <FilterSelect
               placeholder="全部应用"
               items={appOptions.map((app) => ({ value: app.clientId, label: app.name }))}
@@ -207,39 +204,25 @@ export default function OpenApiStatsPage() {
               {...bind('method')}
               width={140}
             />
-            <FilterSelect
+            <FilterSelect<'true' | 'false'>
               placeholder="全部调用结果"
               items={[{ value: 'true', label: '成功' }, { value: 'false', label: '失败' }]}
-              value={draftParams.success === undefined ? undefined : String(draftParams.success)}
-              onChange={(success) => setField('success')(success === undefined ? undefined : success === 'true')}
+              {...bind('success')}
               width={140}
             />
-            <InputNumber
-              placeholder="状态码"
-              {...bind('statusCode', (statusCode) => typeof statusCode === 'number' ? statusCode : undefined)}
-              min={100}
-              max={599}
-              style={{ width: 110 }}
-            />
+            <NumberFilter placeholder="状态码" min={100} max={599} width={110} {...bind('statusCode')} />
           </>
         )}
         actions={<ExportButton entity="open-platform.call-logs" query={logParams} executionMode="auto" />}
         mobilePrimary={(
           <>
-            <KeywordInput placeholder="搜索调用日志" {...bind('keyword')} onSearch={handleApply} width={190} />
+            <KeywordInput placeholder="搜索调用日志" {...bindKeyword('keyword')} width={190} />
             <SearchButton onClick={handleApply} />
           </>
         )}
         mobileFilters={(
           <>
-            <DateRangeFilter
-              type="dateRange"
-              value={draftParams.range}
-              onChange={(range) => {
-                if (range) setField('range')(range);
-              }}
-              width="100%"
-            />
+            <DateRangeFilter type="dateRange" {...bindRange()} width="100%" />
             <FilterSelect
               placeholder="全部应用"
               items={appOptions.map((app) => ({ value: app.clientId, label: app.name }))}

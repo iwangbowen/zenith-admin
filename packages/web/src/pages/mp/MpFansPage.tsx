@@ -43,11 +43,12 @@ export default function MpFansPage() {
   const tags = tagsQuery.data?.list ?? [];
   const tagMap = new Map(tags.map((t) => [t.id, t.name]));
 
-  interface SearchParams { keyword: string; subscribe: MpFanSubscribe | undefined; tagId: number | undefined; blacklisted: boolean | undefined; }
+  /** 黑名单筛选在草稿里以 'true' / 'false' 字串保存（Select 选项值），提交时收窄为布尔 */
+  interface SearchParams { keyword: string; subscribe: MpFanSubscribe | undefined; tagId: number | undefined; blacklisted?: 'true' | 'false'; }
   const defaultSearch: SearchParams = { keyword: '', subscribe: undefined, tagId: undefined, blacklisted: undefined };
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, setField, bind, bindKeyword, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpFanKeys.lists });
 
@@ -58,7 +59,7 @@ export default function MpFansPage() {
     keyword: submittedParams.keyword || undefined,
     subscribe: submittedParams.subscribe,
     tagId: submittedParams.tagId,
-    blacklisted: submittedParams.blacklisted,
+    blacklisted: submittedParams.blacklisted === undefined ? undefined : submittedParams.blacklisted === 'true',
   }, !!currentId);
   const syncFansMutation = useSyncMpFans();
   const syncBlacklistMutation = useSyncMpBlacklist();
@@ -216,11 +217,10 @@ export default function MpFansPage() {
               width={150}
               filter
             />
-            <FilterSelect
+            <FilterSelect<'true' | 'false'>
               placeholder="全部黑名单"
               items={[{ label: '黑名单', value: 'true' }, { label: '正常', value: 'false' }]}
-              value={draftParams.blacklisted === undefined ? undefined : String(draftParams.blacklisted)}
-              onChange={(v) => setField('blacklisted')(v === undefined ? undefined : v === 'true')}
+              {...bind('blacklisted')}
               width={140}
             />
           </>
