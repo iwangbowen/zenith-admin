@@ -21,7 +21,8 @@ import { streamToExcel, streamToCsv, formatDateTimeForExcel } from '../../lib/ex
 import { clearUserPermissionCache } from '../../lib/permissions';
 import type { JwtPayload } from '../../middleware/auth';
 import type { AlertRecipientUser, User } from '@zenith/shared/identity';
-import { mostPermissiveDataScope } from '@zenith/shared/identity';
+import { mostPermissiveDataScope, userContract } from '@zenith/shared/identity';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { currentUser } from '../../lib/context';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
@@ -253,32 +254,28 @@ export async function listAlertRecipientUsers(): Promise<AlertRecipientUser[]> {
   }));
 }
 
-export interface ListUsersQuery {
-  page?: number; pageSize?: number; keyword?: string; phone?: string;
-  departmentId?: number; status?: 'enabled' | 'disabled';
-  startTime?: string; endTime?: string;
-}
+/** 列表筛选条件（不含分页）：导出中心与列表共用同一 WHERE 构造 */
+export type UsersListFilter = Omit<QueryOutputOf<typeof userContract.list>, 'page' | 'pageSize'>;
 
-export async function buildUsersListWhere(q: ListUsersQuery, user: JwtPayload): Promise<SQL | undefined> {
+export async function buildUsersListWhere(q: UsersListFilter, user: JwtPayload): Promise<SQL | undefined> {
   const { keyword, phone, departmentId, status, startTime, endTime } = q;
-  const conditions: (SQL | undefined)[] = [];
-  conditions.push(keywordCondition(keyword, [users.username, users.nickname, users.email]));
-  conditions.push(keywordCondition(phone, [users.phone]));
-  if (departmentId) conditions.push(eq(users.departmentId, departmentId));
-  if (status) conditions.push(eq(users.status, status));
-  conditions.push(...dateRangeConditions(users.createdAt, startTime, endTime));
   const scopeCondition = await getDataScopeCondition({
     currentUserId: user.userId, deptColumn: users.departmentId, ownerColumn: users.id,
   });
-  if (scopeCondition) conditions.push(scopeCondition);
-  const tc = tenantCondition(users, user);
-  conditions.push(tc);
-  return buildWhere(...conditions);
+  return buildWhere(
+    keywordCondition(keyword, [users.username, users.nickname, users.email]),
+    keywordCondition(phone, [users.phone]),
+    departmentId ? eq(users.departmentId, departmentId) : undefined,
+    status ? eq(users.status, status) : undefined,
+    ...dateRangeConditions(users.createdAt, startTime, endTime),
+    scopeCondition,
+    tenantCondition(users, user),
+  );
 }
 
-export async function listUsers(q: ListUsersQuery) {
+export async function listUsers(q: QueryOutputOf<typeof userContract.list>) {
   const user = currentUser();
-  const { page = 1, pageSize = 10 } = q;
+  const { page, pageSize } = q;
   const where = await buildUsersListWhere(q, user);
   return buildListResult({
     page,

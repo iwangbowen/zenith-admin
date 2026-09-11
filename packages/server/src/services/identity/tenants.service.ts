@@ -3,7 +3,9 @@ import { requireRow } from '../../lib/db-assert';
 import { eq, and, ne, desc, count, inArray } from 'drizzle-orm';
 import crypto from 'node:crypto';
 import { hashPassword } from '../../lib/password';
-import { keywordCondition } from '../../lib/where-helpers';
+import { keywordCondition, buildWhere } from '../../lib/where-helpers';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { tenantContract } from '@zenith/shared/identity';
 import { pageOffset } from '../../lib/pagination';
 import { db } from '../../db';
 import { tenants, users, departments, roles, positions, tenantPackageFeatures, menus, userRoles, roleMenus } from '../../db/schema';
@@ -29,19 +31,12 @@ export function mapTenant(row: typeof tenants.$inferSelect, packageName: string 
   };
 }
 
-export interface ListTenantsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: string;
-}
-
-export async function listTenants(q: ListTenantsQuery) {
-  const { page = 1, pageSize = 10, keyword, status } = q;
-  const conditions = [];
-  conditions.push(keywordCondition(keyword, [tenants.name]));
-  if (status === 'enabled' || status === 'disabled') conditions.push(eq(tenants.status, status));
-  const where = and(...conditions);
+export async function listTenants(q: QueryOutputOf<typeof tenantContract.list>) {
+  const { page, pageSize, keyword, status } = q;
+  const where = buildWhere(
+    keywordCondition(keyword, [tenants.name]),
+    status ? eq(tenants.status, status) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,

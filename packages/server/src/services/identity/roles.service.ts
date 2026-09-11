@@ -1,7 +1,8 @@
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { eq, and, inArray } from 'drizzle-orm';
-import { SUPER_ADMIN_CODE } from '@zenith/shared/identity';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { roleContract, SUPER_ADMIN_CODE } from '@zenith/shared/identity';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { db } from '../../db';
 import type { DbTransaction } from '../../db/types';
@@ -34,25 +35,15 @@ export async function listAllRoles() {
   return list.map((r) => mapRole(r));
 }
 
-export interface ListRolesQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: 'enabled' | 'disabled';
-  startTime?: string;
-  endTime?: string;
-}
-
-export async function listRoles(q: ListRolesQuery) {
+export async function listRoles(q: QueryOutputOf<typeof roleContract.list>) {
   const user = currentUser();
-  const { page = 1, pageSize = 10 } = q;
-  const conditions = [];
-  conditions.push(keywordCondition(q.keyword, [roles.name, roles.code]));
-  if (q.status) conditions.push(eq(roles.status, q.status));
-  conditions.push(...dateRangeConditions(roles.createdAt, q.startTime, q.endTime));
-  const where = and(...conditions);
-  const tc = tenantCondition(roles, user);
-  const finalWhere = buildWhere(where, tc);
+  const { page, pageSize } = q;
+  const finalWhere = buildWhere(
+    keywordCondition(q.keyword, [roles.name, roles.code]),
+    q.status ? eq(roles.status, q.status) : undefined,
+    ...dateRangeConditions(roles.createdAt, q.startTime, q.endTime),
+    tenantCondition(roles, user),
+  );
   return buildListResult({
     page,
     pageSize,

@@ -1,6 +1,8 @@
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { positionContract } from '@zenith/shared/identity';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { db } from '../../db';
 import { positions, userPositions, users } from '../../db/schema';
@@ -33,32 +35,20 @@ export interface CreatePositionInput {
 }
 export type UpdatePositionInput = Partial<CreatePositionInput>;
 
-export interface ListPositionsQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
-  status?: 'enabled' | 'disabled';
-  startTime?: string;
-  endTime?: string;
-}
-
 export async function listAllPositions() {
   const tc = tenantCondition(positions, currentUser());
   const list = await db.select().from(positions).where(tc).orderBy(asc(positions.sort), asc(positions.id));
   return list.map(mapPosition);
 }
 
-export async function listPositions(q: ListPositionsQuery) {
-  const page = q.page ?? 1;
-  const pageSize = q.pageSize ?? 10;
-  const conditions = [];
-  conditions.push(keywordCondition(q.keyword, [positions.name, positions.code]));
-  if (q.status) conditions.push(eq(positions.status, q.status));
-  conditions.push(...dateRangeConditions(positions.createdAt, q.startTime, q.endTime));
-
-  const where = and(...conditions);
-  const tc = tenantCondition(positions, currentUser());
-  const finalWhere = buildWhere(where, tc);
+export async function listPositions(q: QueryOutputOf<typeof positionContract.list>) {
+  const { page, pageSize } = q;
+  const finalWhere = buildWhere(
+    keywordCondition(q.keyword, [positions.name, positions.code]),
+    q.status ? eq(positions.status, q.status) : undefined,
+    ...dateRangeConditions(positions.createdAt, q.startTime, q.endTime),
+    tenantCondition(positions, currentUser()),
+  );
 
   return buildListResult({
     page,
