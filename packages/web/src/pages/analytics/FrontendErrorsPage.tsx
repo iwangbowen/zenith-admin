@@ -54,6 +54,7 @@ import { NOTIFY_CHANNEL_OPTIONS } from '@zenith/shared/messaging';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { formatDateTime } from '@/utils/date';
@@ -123,7 +124,7 @@ const CHANNEL_CONFIG: Record<string, { label: string; color: TagColor }> = {
 
 const CHART_COLORS = ['#f93920', '#ff8800', '#f5b70a', '#6a5af9', '#00b42a', '#14c9c9', '#8a38f5'];
 
-const ENVIRONMENT_OPTIONS = [
+const ENVIRONMENT_OPTIONS: { value: AnalyticsEnvironment; label: string }[] = [
   { value: 'production', label: '生产' },
   { value: 'staging', label: '预发' },
   { value: 'development', label: '开发' },
@@ -197,8 +198,9 @@ function toAlertChannels(values: readonly unknown[]): ErrorAlertChannel[] {
   });
 }
 
-function labelOptions(config: Record<string, { label: string }>) {
-  return Object.entries(config).map(([value, item]) => ({ label: item.label, value }));
+/** 配置表 → 筛选下拉选项；键集合按调用方指定的枚举类型收窄，便于直接接 `bind()` */
+function labelOptions<K extends string>(config: Record<string, { label: string }>): { label: string; value: K }[] {
+  return Object.entries(config).map(([value, item]) => ({ label: item.label, value: value as K }));
 }
 
 function safeJson(value: unknown) {
@@ -372,15 +374,14 @@ export default function FrontendErrorsPage() {
 
   const [overviewDays, setOverviewDays] = useState(30);
 
-  const [issueFilters, setIssueFilters] = useState<IssueFilters>(defaultIssueFilters);
-  const [submittedIssueFilters, setSubmittedIssueFilters] = useState<IssueFilters>(defaultIssueFilters);
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const issueSearch = useListSearch<IssueFilters>({ defaults: defaultIssueFilters, listKey: analyticsKeys.frontendErrors.groupsLists, pageSize: 20 });
   const {
     page: groupPage,
     pageSize: groupPageSize,
-    setPage: setGroupPage,
     buildPagination: buildGroupPagination,
-  } = usePagination(20);
+    submittedParams: submittedIssueFilters,
+  } = issueSearch;
 
   const [detailVisible, setDetailVisible] = useState(false);
   const [detailGroupId, setDetailGroupId] = useState<number | undefined>(undefined);
@@ -394,16 +395,16 @@ export default function FrontendErrorsPage() {
     buildPagination: buildEventPagination,
   } = usePagination(20);
 
-  const [sourceRelease, setSourceRelease] = useState('');
-  const [submittedSourceRelease, setSubmittedSourceRelease] = useState('');
   const [uploadVisible, setUploadVisible] = useState(false);
   const [uploadForm, setUploadForm] = useState<SourceMapUploadForm>(defaultSourceMapUpload);
+  const sourceMapSearch = useListSearch<{ release: string }>({ defaults: { release: '' }, listKey: analyticsKeys.frontendErrors.sourceMapsLists, pageSize: 20 });
   const {
     page: sourceMapPage,
     pageSize: sourceMapPageSize,
     setPage: setSourceMapPage,
     buildPagination: buildSourceMapPagination,
-  } = usePagination(20);
+  } = sourceMapSearch;
+  const submittedSourceRelease = sourceMapSearch.submittedParams.release;
 
   const [alertModalVisible, setAlertModalVisible] = useState(false);
   const [editingAlert, setEditingAlert] = useState<ErrorAlertRule | null>(null);
@@ -418,9 +419,9 @@ export default function FrontendErrorsPage() {
     pageSize: alertLogPageSize,
     buildPagination: buildAlertLogPagination,
   } = usePagination(20);
-  const typeOptions = useMemo(() => labelOptions(ERROR_TYPE_CONFIG), []);
-  const levelOptions = useMemo(() => labelOptions(LEVEL_CONFIG), []);
-  const statusOptions = useMemo(() => labelOptions(STATUS_CONFIG), []);
+  const typeOptions = useMemo(() => labelOptions<FrontendErrorType>(ERROR_TYPE_CONFIG), []);
+  const levelOptions = useMemo(() => labelOptions<ErrorLevel>(LEVEL_CONFIG), []);
+  const statusOptions = useMemo(() => labelOptions<ErrorStatus>(STATUS_CONFIG), []);
   const overviewQuery = useFrontendErrorOverview(overviewDays, activeTab === 'overview');
   const overview = overviewQuery.data ?? null;
   const groupsQuery = useFrontendErrorGroups({
@@ -642,24 +643,9 @@ export default function FrontendErrorsPage() {
     Toast.success(enabled ? '已启用' : '已停用');
   }, [saveAlertMutation]);
 
-  const handleIssueSearch = () => {
-    setGroupPage(1);
-    setSubmittedIssueFilters(issueFilters);
-    void queryClient.invalidateQueries({ queryKey: analyticsKeys.frontendErrors.groupsLists });
-  };
-
-  const handleIssueReset = () => {
-    setIssueFilters(defaultIssueFilters);
-    setSubmittedIssueFilters(defaultIssueFilters);
-    setGroupPage(1);
-    void queryClient.invalidateQueries({ queryKey: analyticsKeys.frontendErrors.groupsLists });
-  };
-
-  const handleSourceMapSearch = () => {
-    setSourceMapPage(1);
-    setSubmittedSourceRelease(sourceRelease);
-    void queryClient.invalidateQueries({ queryKey: analyticsKeys.frontendErrors.sourceMapsLists });
-  };
+  const handleIssueSearch = issueSearch.handleSearch;
+  const handleIssueReset = issueSearch.handleReset;
+  const handleSourceMapSearch = sourceMapSearch.handleSearch;
 
   const openSourceMapUpload = () => {
     setUploadForm(defaultSourceMapUpload);
@@ -988,9 +974,8 @@ export default function FrontendErrorsPage() {
       prefix={<FileCode size={14} />}
       placeholder="Release"
       showClear
-      value={sourceRelease}
+      {...sourceMapSearch.bind('release')}
       style={{ width: 220 }}
-      onChange={setSourceRelease}
       onEnterPress={handleSourceMapSearch}
     />
   );
@@ -1003,32 +988,28 @@ export default function FrontendErrorsPage() {
       <Tabs collapsible="auto" type="line" activeKey={activeTab} onChange={(key) => setActiveTab(key as TabKey)} lazyRender>
         <TabPane tab="错误 Issue" itemKey="issues">
           <ListSearchToolbar
-            keyword={<KeywordInput placeholder="错误信息关键词" value={issueFilters.keyword} onChange={(value) => setIssueFilters((prev) => ({ ...prev, keyword: value }))} onSearch={handleIssueSearch} />}
+            keyword={<KeywordInput placeholder="错误信息关键词" {...issueSearch.bindKeyword('keyword')} />}
             filters={(
               <>
                 <StatusSelect
                   items={statusOptions}
-                  value={issueFilters.status}
-                  onChange={(value) => setIssueFilters((prev) => ({ ...prev, status: value as ErrorStatus | undefined }))}
+                  {...issueSearch.bind('status')}
                 />
                 <FilterSelect
                   placeholder="全部类型"
                   items={typeOptions}
-                  value={issueFilters.errorType}
-                  onChange={(value) => setIssueFilters((prev) => ({ ...prev, errorType: value as FrontendErrorType | undefined }))}
+                  {...issueSearch.bind('errorType')}
                   width={150}
                 />
                 <FilterSelect
                   placeholder="全部级别"
                   items={levelOptions}
-                  value={issueFilters.level}
-                  onChange={(value) => setIssueFilters((prev) => ({ ...prev, level: value as ErrorLevel | undefined }))}
+                  {...issueSearch.bind('level')}
                 />
                 <FilterSelect
                   placeholder="全部环境"
                   items={ENVIRONMENT_OPTIONS}
-                  value={issueFilters.environment}
-                  onChange={(value) => setIssueFilters((prev) => ({ ...prev, environment: value as AnalyticsEnvironment | undefined }))}
+                  {...issueSearch.bind('environment')}
                 />
               </>
             )}

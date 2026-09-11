@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ListSearchToolbar } from '@/components/list-page';
 import { useQueryClient } from '@tanstack/react-query';
+import { useListSearch } from '@/hooks/useListSearch';
 import { Tabs, TabPane, Select, Button, Toast, Form, Switch, Slider, Input, InputNumber, TagInput, Tag, Typography, SplitButtonGroup, Dropdown, SideSheet, Descriptions, Card, Banner } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
@@ -89,7 +90,7 @@ const META_STATUS_LABEL: Record<AnalyticsEventMeta['status'], { label: string; c
   deprecated: { label: '废弃', color: 'orange' },
   blocked: { label: '屏蔽', color: 'red' },
 };
-const META_STATUS_OPTIONS = Object.entries(META_STATUS_LABEL).map(([value, meta]) => ({ value, label: meta.label }));
+const META_STATUS_OPTIONS = (Object.keys(META_STATUS_LABEL) as AnalyticsEventMeta['status'][]).map((value) => ({ value, label: META_STATUS_LABEL[value].label }));
 const ROLLUP_DAY_OPTIONS = [30, 90, 180].map((value) => ({ value, label: `${value} 天` }));
 const CLEAN_DAY_OPTIONS = [
   { value: 30, label: '30 天' },
@@ -209,17 +210,13 @@ export default function AnalyticsDataPage() {
   const canClean = hasPermission('analytics:clean');
   const [activeTab, setActiveTab] = useUrlTabState(DATA_TABS, 'events');
 
-  const [eventsPage, setEventsPage] = useState(1);
-  const [eventsPageSize, setEventsPageSize] = useState(PAGE_SIZE);
-  const [eventSearch, setEventSearch] = useState<EventSearchParams>(defaultEventSearch);
-  const [submittedEventSearch, setSubmittedEventSearch] = useState<EventSearchParams>(defaultEventSearch);
+  const eventList = useListSearch<EventSearchParams>({ defaults: defaultEventSearch, listKey: analyticsKeys.data.eventsLists, pageSize: PAGE_SIZE });
+  const { submittedParams: submittedEventSearch } = eventList;
   const [detailVisible, setDetailVisible] = useState(false);
   const [detailEventId, setDetailEventId] = useState<number | undefined>(undefined);
 
-  const [metaPage, setMetaPage] = useState(1);
-  const [metaPageSize, setMetaPageSize] = useState(PAGE_SIZE);
-  const [metaSearch, setMetaSearch] = useState<MetaSearchParams>(defaultMetaSearch);
-  const [submittedMetaSearch, setSubmittedMetaSearch] = useState<MetaSearchParams>(defaultMetaSearch);
+  const metaList = useListSearch<MetaSearchParams>({ defaults: defaultMetaSearch, listKey: analyticsKeys.data.metaLists, pageSize: PAGE_SIZE });
+  const { submittedParams: submittedMetaSearch } = metaList;
 
   const [rollupDays, setRollupDays] = useState(30);
 
@@ -236,8 +233,8 @@ export default function AnalyticsDataPage() {
   });
 
   const eventsQuery = useAnalyticsEvents({
-    page: eventsPage,
-    pageSize: eventsPageSize,
+    page: eventList.page,
+    pageSize: eventList.pageSize,
     eventType: enumValueOf(userBehaviorEventTypeEnum.options, submittedEventSearch.eventType),
     eventName: submittedEventSearch.eventName || undefined,
     username: submittedEventSearch.username || undefined,
@@ -254,13 +251,13 @@ export default function AnalyticsDataPage() {
   const detailLoading = detailQuery.isFetching;
 
   const metaQuery = useAnalyticsEventMeta({
-    page: metaPage,
-    pageSize: metaPageSize,
+    page: metaList.page,
+    pageSize: metaList.pageSize,
     keyword: submittedMetaSearch.keyword || undefined,
     status: submittedMetaSearch.status || undefined,
     category: submittedMetaSearch.category || undefined,
   });
-  const metaList = metaQuery.data?.list ?? [];
+  const metaRows = metaQuery.data?.list ?? [];
   const metaTotal = metaQuery.data?.total ?? 0;
 
   const rollupQuery = useAnalyticsRollup(rollupDays, activeTab === 'rollup');
@@ -325,22 +322,9 @@ export default function AnalyticsDataPage() {
   const ownerOptions = toUserOptions(ownerUsersQuery.data?.list ?? []);
   const metaReferencesQuery = useEventMetaReferences(metaModal.editing?.eventName, metaModal.visible);
 
-  const handleEventSearch = () => {
-    setEventsPage(1);
-    setSubmittedEventSearch(eventSearch);
-    void queryClient.invalidateQueries({ queryKey: analyticsKeys.data.eventsLists });
-  };
-
-  const handleEventReset = () => {
-    setEventSearch(defaultEventSearch);
-    setSubmittedEventSearch(defaultEventSearch);
-    setEventsPage(1);
-    void queryClient.invalidateQueries({ queryKey: analyticsKeys.data.eventsLists });
-  };
-
   const handleEventRangeChange = (range: [Date, Date] | null) => {
     const [startTime, endTime] = formatDateTimeRangeValuesForApi(range, '');
-    setEventSearch((prev) => ({
+    eventList.setDraftParams((prev) => ({
       ...prev,
       timeRange: range,
       startTime,
@@ -363,7 +347,7 @@ export default function AnalyticsDataPage() {
       onOk: async () => {
         await cleanMutation.mutateAsync({ query: { days } });
         Toast.success('清除成功');
-        setEventsPage(1);
+        eventList.setPage(1);
       },
     });
   };
@@ -371,19 +355,6 @@ export default function AnalyticsDataPage() {
   const openEventDetail = (record: EventListItem) => {
     setDetailVisible(true);
     setDetailEventId(record.id);
-  };
-
-  const handleMetaSearch = () => {
-    setMetaPage(1);
-    setSubmittedMetaSearch(metaSearch);
-    void queryClient.invalidateQueries({ queryKey: analyticsKeys.data.metaLists });
-  };
-
-  const handleMetaReset = () => {
-    setMetaSearch(defaultMetaSearch);
-    setSubmittedMetaSearch(defaultMetaSearch);
-    setMetaPage(1);
-    void queryClient.invalidateQueries({ queryKey: analyticsKeys.data.metaLists });
   };
 
   const handleMetaDelete = async (record: AnalyticsEventMeta) => {
@@ -811,32 +782,30 @@ export default function AnalyticsDataPage() {
       <Tabs collapsible="auto" activeKey={activeTab} onChange={(key) => setActiveTab(key as typeof activeTab)} type="line" lazyRender keepDOM={false}>
         <TabPane tab="事件明细" itemKey="events">
           <ListSearchToolbar
-            keyword={<KeywordInput placeholder="事件名" value={eventSearch.eventName} onChange={(value) => setEventSearch((prev) => ({ ...prev, eventName: value }))} onSearch={handleEventSearch} width={160} />}
+            keyword={<KeywordInput placeholder="事件名" {...eventList.bindKeyword('eventName')} width={160} />}
             filters={
               <>
                 <FilterSelect
                   placeholder="全部事件类型"
                   items={EVENT_TYPE_OPTIONS}
-                  value={eventSearch.eventType}
-                  onChange={(value) => setEventSearch((prev) => ({ ...prev, eventType: value }))}
+                  {...eventList.bind('eventType')}
                   width={150}
                 />
-                <KeywordInput placeholder="用户名" value={eventSearch.username} onChange={(value) => setEventSearch((prev) => ({ ...prev, username: value }))} onSearch={handleEventSearch} width={140} />
-                <KeywordInput placeholder="页面路径" value={eventSearch.pagePath} onChange={(value) => setEventSearch((prev) => ({ ...prev, pagePath: value }))} onSearch={handleEventSearch} width={180} />
+                <KeywordInput placeholder="用户名" {...eventList.bindKeyword('username')} width={140} />
+                <KeywordInput placeholder="页面路径" {...eventList.bindKeyword('pagePath')} width={180} />
                 <FilterSelect
                   placeholder="全部设备"
                   items={DEVICE_OPTIONS}
-                  value={eventSearch.deviceType}
-                  onChange={(value) => setEventSearch((prev) => ({ ...prev, deviceType: value }))}
+                  {...eventList.bind('deviceType')}
                 />
                 <DateRangeFilter
-                  value={eventSearch.timeRange ?? undefined}
+                  value={eventList.draftParams.timeRange ?? undefined}
                   onChange={handleEventRangeChange}
                 />
               </>
             }
-            onSearch={handleEventSearch}
-            onReset={handleEventReset}
+            onSearch={eventList.handleSearch}
+            onReset={eventList.handleReset}
             actions={
               <>
                 <ExportButton entity="analytics.events" query={buildExportQuery()} />
@@ -891,18 +860,7 @@ export default function AnalyticsDataPage() {
             dataSource={events}
             onRefresh={() => void eventsQuery.refetch()}
             refreshLoading={eventsQuery.isFetching}
-            pagination={{
-              currentPage: eventsPage,
-              pageSize: eventsPageSize,
-              total: eventsTotal,
-              onPageChange: (page) => {
-                setEventsPage(page);
-              },
-              onPageSizeChange: (pageSize) => {
-                setEventsPage(1);
-                setEventsPageSize(pageSize);
-              },
-            }}
+            pagination={eventList.buildPagination(eventsTotal)}
             empty="暂无数据"
           />
 
@@ -917,19 +875,18 @@ export default function AnalyticsDataPage() {
         </TabPane>
         <TabPane tab="事件字典" itemKey="meta">
           <ListSearchToolbar
-            keyword={<KeywordInput placeholder="关键词" value={metaSearch.keyword} onChange={(value) => setMetaSearch((prev) => ({ ...prev, keyword: value }))} onSearch={handleMetaSearch} width={180} />}
+            keyword={<KeywordInput placeholder="关键词" {...metaList.bindKeyword('keyword')} width={180} />}
             filters={
               <>
-                <KeywordInput placeholder="分类" value={metaSearch.category} onChange={(value) => setMetaSearch((prev) => ({ ...prev, category: value }))} onSearch={handleMetaSearch} width={140} />
+                <KeywordInput placeholder="分类" {...metaList.bindKeyword('category')} width={140} />
                 <StatusSelect
                   items={META_STATUS_OPTIONS}
-                  value={metaSearch.status}
-                  onChange={(value) => setMetaSearch((prev) => ({ ...prev, status: value as AnalyticsEventMeta['status'] | undefined }))}
+                  {...metaList.bind('status')}
                 />
               </>
             }
-            onSearch={handleMetaSearch}
-            onReset={handleMetaReset}
+            onSearch={metaList.handleSearch}
+            onReset={metaList.handleReset}
             create={<CreateButton onClick={metaModal.openCreate} />}
             filterTitle="事件字典筛选"
           />
@@ -939,21 +896,10 @@ export default function AnalyticsDataPage() {
             rowKey="id"
             loading={metaQuery.isFetching}
             columns={metaColumns}
-            dataSource={metaList}
+            dataSource={metaRows}
             onRefresh={() => void metaQuery.refetch()}
             refreshLoading={metaQuery.isFetching}
-            pagination={{
-              currentPage: metaPage,
-              pageSize: metaPageSize,
-              total: metaTotal,
-              onPageChange: (page) => {
-                setMetaPage(page);
-              },
-              onPageSizeChange: (pageSize) => {
-                setMetaPage(1);
-                setMetaPageSize(pageSize);
-              },
-            }}
+            pagination={metaList.buildPagination(metaTotal)}
             empty="暂无数据"
           />
 

@@ -1,8 +1,7 @@
 /**
  * 行为中心阶段 1：数据质量看板 —— 埋点质量日聚合明细 + 租户级事件启停覆盖管理。
  */
-import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useListSearch } from '@/hooks/useListSearch';
 import { Form, Select, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { AlertTriangle, ShieldAlert } from 'lucide-react';
@@ -47,24 +46,18 @@ const defaultOverrideFilter: OverrideFilter = { eventName: '', status: undefined
 type OverrideFormValues = { eventName: string; status: AnalyticsEventOverride['status']; reason: string | null };
 
 export default function AnalyticsQualityTab() {
-  const queryClient = useQueryClient();
+  const quality = useListSearch<QualityFilter>({ defaults: defaultQualityFilter, listKey: analyticsKeys.data.quality, pageSize: PAGE_SIZE });
+  const { submittedParams: submittedFilter } = quality;
 
-  const [filter, setFilter] = useState<QualityFilter>(defaultQualityFilter);
-  const [submittedFilter, setSubmittedFilter] = useState<QualityFilter>(defaultQualityFilter);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
-
-  const [overrideFilter, setOverrideFilter] = useState<OverrideFilter>(defaultOverrideFilter);
-  const [submittedOverrideFilter, setSubmittedOverrideFilter] = useState<OverrideFilter>(defaultOverrideFilter);
-  const [overridePage, setOverridePage] = useState(1);
-  const [overridePageSize, setOverridePageSize] = useState(PAGE_SIZE);
+  const overrides = useListSearch<OverrideFilter>({ defaults: defaultOverrideFilter, listKey: analyticsKeys.data.overridesLists, pageSize: PAGE_SIZE });
+  const { submittedParams: submittedOverrideFilter } = overrides;
 
   const qualityQuery = useAnalyticsQuality({
     days: submittedFilter.days,
     eventName: submittedFilter.eventName || undefined,
     issueType: submittedFilter.issueType || undefined,
-    page,
-    pageSize,
+    page: quality.page,
+    pageSize: quality.pageSize,
   });
   const qualityItems = qualityQuery.data?.items ?? [];
   const qualityTotal = qualityQuery.data?.totalCount ?? 0;
@@ -72,8 +65,8 @@ export default function AnalyticsQualityTab() {
   const totalsByType = new Map(totals.map((t) => [t.issueType, t.count]));
 
   const overrideQuery = useAnalyticsEventOverrides({
-    page: overridePage,
-    pageSize: overridePageSize,
+    page: overrides.page,
+    pageSize: overrides.pageSize,
     eventName: submittedOverrideFilter.eventName || undefined,
     status: submittedOverrideFilter.status || undefined,
   }, config.multiTenantMode);
@@ -89,30 +82,6 @@ export default function AnalyticsQualityTab() {
     toValues: (record) => ({ eventName: record.eventName, status: record.status, reason: record.reason }),
     beforeSave: (values) => ({ eventName: values.eventName.trim(), status: values.status, reason: values.reason?.trim() || null }),
   });
-
-  const handleSearch = () => {
-    setPage(1);
-    setSubmittedFilter(filter);
-    void queryClient.invalidateQueries({ queryKey: analyticsKeys.data.quality });
-  };
-  const handleReset = () => {
-    setFilter(defaultQualityFilter);
-    setSubmittedFilter(defaultQualityFilter);
-    setPage(1);
-    void queryClient.invalidateQueries({ queryKey: analyticsKeys.data.quality });
-  };
-
-  const handleOverrideSearch = () => {
-    setOverridePage(1);
-    setSubmittedOverrideFilter(overrideFilter);
-    void queryClient.invalidateQueries({ queryKey: analyticsKeys.data.overridesLists });
-  };
-  const handleOverrideReset = () => {
-    setOverrideFilter(defaultOverrideFilter);
-    setSubmittedOverrideFilter(defaultOverrideFilter);
-    setOverridePage(1);
-    void queryClient.invalidateQueries({ queryKey: analyticsKeys.data.overridesLists });
-  };
 
   const handleOverrideDelete = async (record: AnalyticsEventOverride) => {
     await deleteOverrideMutation.mutateAsync({ params: { id: record.id } });
@@ -192,17 +161,16 @@ export default function AnalyticsQualityTab() {
       <div>
         <Typography.Title heading={6} style={{ marginBottom: 12 }}>质量明细（按日 / 事件 / 问题类型）</Typography.Title>
         <SearchToolbar>
-          <Select value={filter.days} onChange={(value) => setFilter((prev) => ({ ...prev, days: Number(value) }))} optionList={DAY_OPTIONS} style={{ width: 110 }} />
-          <KeywordInput placeholder="事件名" value={filter.eventName} onChange={(value) => setFilter((prev) => ({ ...prev, eventName: value }))} onSearch={handleSearch} width={160} />
+          <Select {...quality.bind('days', (value: unknown) => Number(value))} optionList={DAY_OPTIONS} style={{ width: 110 }} />
+          <KeywordInput placeholder="事件名" {...quality.bindKeyword('eventName')} width={160} />
           <FilterSelect
             placeholder="全部问题类型"
             items={ANALYTICS_QUALITY_ISSUE_TYPE_OPTIONS}
-            value={filter.issueType}
-            onChange={(value) => setFilter((prev) => ({ ...prev, issueType: value as AnalyticsQualityIssueType | undefined }))}
+            {...quality.bind('issueType')}
             width={160}
           />
-          <SearchButton onClick={handleSearch} />
-          <ResetButton onClick={handleReset} />
+          <SearchButton onClick={quality.handleSearch} />
+          <ResetButton onClick={quality.handleReset} />
         </SearchToolbar>
         <ConfigurableTable
           bordered
@@ -212,13 +180,7 @@ export default function AnalyticsQualityTab() {
           dataSource={qualityItems}
           onRefresh={() => void qualityQuery.refetch()}
           refreshLoading={qualityQuery.isFetching}
-          pagination={{
-            currentPage: page,
-            pageSize,
-            total: qualityTotal,
-            onPageChange: (p) => setPage(p),
-            onPageSizeChange: (ps) => { setPage(1); setPageSize(ps); },
-          }}
+          pagination={quality.buildPagination(qualityTotal)}
           empty="暂无质量问题"
         />
       </div>
@@ -233,14 +195,13 @@ export default function AnalyticsQualityTab() {
         ) : (
           <>
             <SearchToolbar>
-              <KeywordInput placeholder="事件名" value={overrideFilter.eventName} onChange={(value) => setOverrideFilter((prev) => ({ ...prev, eventName: value }))} onSearch={handleOverrideSearch} width={160} />
+              <KeywordInput placeholder="事件名" {...overrides.bindKeyword('eventName')} width={160} />
               <StatusSelect
                 items={ANALYTICS_EVENT_OVERRIDE_STATUS_OPTIONS}
-                value={overrideFilter.status}
-                onChange={(value) => setOverrideFilter((prev) => ({ ...prev, status: value as AnalyticsEventOverride['status'] | undefined }))}
+                {...overrides.bind('status')}
               />
-              <SearchButton onClick={handleOverrideSearch} />
-              <ResetButton onClick={handleOverrideReset} />
+              <SearchButton onClick={overrides.handleSearch} />
+              <ResetButton onClick={overrides.handleReset} />
               <CreateButton onClick={overrideModal.openCreate}>新增覆盖</CreateButton>
             </SearchToolbar>
             <ConfigurableTable
@@ -251,13 +212,7 @@ export default function AnalyticsQualityTab() {
               dataSource={overrideList}
               onRefresh={() => void overrideQuery.refetch()}
               refreshLoading={overrideQuery.isFetching}
-              pagination={{
-                currentPage: overridePage,
-                pageSize: overridePageSize,
-                total: overrideTotal,
-                onPageChange: (p) => setOverridePage(p),
-                onPageSizeChange: (ps) => { setOverridePage(1); setOverridePageSize(ps); },
-              }}
+              pagination={overrides.buildPagination(overrideTotal)}
               empty="当前租户暂无覆盖规则"
             />
           </>

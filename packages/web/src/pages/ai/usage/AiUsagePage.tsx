@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Card, Spin, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { CommonChart, chartOptions, makeMixedBarLineSpec, useChartPalette, StatCard, StatGrid } from '@/components/charts';
 import { Bot, CircleCheck, Coins, Gauge, MessageCircle, Users, Wallet } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useListSearch } from '@/hooks/useListSearch';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { ListSearchToolbar } from '@/components/list-page';
 import { formatDateForApi, shortDate } from '@/utils/date';
@@ -33,27 +33,18 @@ function formatCostYuan(fen: number | null | undefined) {
 }
 
 export default function AiUsagePage() {
-  const queryClient = useQueryClient();
-  const [draftRange, setDraftRange] = useState<[Date, Date]>(getDefaultRange);
-  const [submittedRange, setSubmittedRange] = useState<[Date, Date]>(draftRange);
+  // 区间必选：清空时保持原值；重置重新取「默认区间」
+  const { draftParams, setField, submittedParams, handleSearch, handleReset } = useListSearch<{ range: [Date, Date] }>({
+    defaults: () => ({ range: getDefaultRange() }),
+    listKey: aiUsageKeys.statsRoot,
+  });
+  const submittedRange = submittedParams.range;
   const palette = useChartPalette();
   const statsQuery = useAiUsageStats({
     startDate: formatDateForApi(submittedRange[0]),
     endDate: formatDateForApi(submittedRange[1]),
   });
   const stats = statsQuery.data ?? null;
-
-  function handleSearch() {
-    setSubmittedRange(draftRange);
-    void queryClient.invalidateQueries({ queryKey: aiUsageKeys.statsRoot });
-  }
-
-  function handleReset() {
-    const nextRange = getDefaultRange();
-    setDraftRange(nextRange);
-    setSubmittedRange(nextRange);
-    void queryClient.invalidateQueries({ queryKey: aiUsageKeys.statsRoot });
-  }
 
   const modelData = useMemo(
     () => [...(stats?.byModel ?? [])].sort((a, b) => b.totalTokens - a.totalTokens),
@@ -118,10 +109,8 @@ export default function AiUsagePage() {
     <div className="page-container zx-flat-panels">
       <ListSearchToolbar
         filters={(
-          <DateRangeFilter type="dateRange" value={draftRange} onChange={(value) => {
-              if (Array.isArray(value) && value.length >= 2 && value[0] instanceof Date && value[1] instanceof Date) {
-                setDraftRange([value[0], value[1]]);
-              }
+          <DateRangeFilter type="dateRange" value={draftParams.range} onChange={(value) => {
+              if (value) setField('range')(value);
             }} />
         )}
         onSearch={handleSearch}

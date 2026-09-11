@@ -3,13 +3,13 @@ import { Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { aiAuditContract } from '@zenith/shared/ai';
 import type { AiFeedbackItem } from '@zenith/shared/ai';
-import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { enumValueOf } from '@zenith/shared/core';
 import { formatDateForApi } from '@/utils/date';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import AppModal from '@/components/AppModal';
 import AiConversationContextModal from '../components/AiConversationContextModal';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
@@ -41,13 +41,15 @@ const ROLE_OPTIONS = [
   { value: 'assistant', label: 'AI 回复' },
 ];
 
+interface AuditSearch { keyword: string; role?: string; range: [Date, Date] | null }
+
 /** 对话内容合规审计：跨用户全量消息检索 */
 export default function AiAuditPage() {
-  const queryClient = useQueryClient();
-  const [draft, setDraft] = useState<{ keyword: string; role?: string }>({ keyword: '' });
-  const [draftRange, setDraftRange] = useState<[Date, Date] | null>(null);
-  const [submitted, setSubmitted] = useState<{ keyword: string; role?: string; startDate: string; endDate: string }>({ keyword: '', startDate: '', endDate: '' });
-  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const {
+    page, pageSize, buildPagination,
+    bind, bindKeyword, submittedParams: submitted,
+    handleSearch, handleReset,
+  } = useListSearch<AuditSearch>({ defaults: { keyword: '', range: null }, listKey: auditKeys.lists });
   const [contextMsgId, setContextMsgId] = useState<number | null>(null);
   const [traceMsg, setTraceMsg] = useState<AiFeedbackItem | null>(null);
   const listQuery = useAuditList({
@@ -55,27 +57,10 @@ export default function AiAuditPage() {
     pageSize,
     keyword: submitted.keyword || undefined,
     role: enumValueOf(AUDIT_ROLES, submitted.role),
-    startDate: submitted.startDate || undefined,
-    endDate: submitted.endDate || undefined,
+    startDate: submitted.range?.[0] ? formatDateForApi(submitted.range[0]) : undefined,
+    endDate: submitted.range?.[1] ? formatDateForApi(submitted.range[1]) : undefined,
   });
   const contextQuery = useAuditContext(contextMsgId);
-
-  const handleSearch = () => {
-    setPage(1);
-    setSubmitted({
-      ...draft,
-      startDate: draftRange?.[0] ? formatDateForApi(draftRange[0]) : '',
-      endDate: draftRange?.[1] ? formatDateForApi(draftRange[1]) : '',
-    });
-    void queryClient.invalidateQueries({ queryKey: auditKeys.lists });
-  };
-  const handleReset = () => {
-    setDraft({ keyword: '' });
-    setDraftRange(null);
-    setSubmitted({ keyword: '', startDate: '', endDate: '' });
-    setPage(1);
-    void queryClient.invalidateQueries({ queryKey: auditKeys.lists });
-  };
 
   const columns: ColumnProps<AiFeedbackItem>[] = [
     {
@@ -128,17 +113,13 @@ export default function AiAuditPage() {
       <ListSearchToolbar
         filters={(
           <>
-            <KeywordInput placeholder="搜索消息内容" value={draft.keyword} onChange={(v) => setDraft((p) => ({ ...p, keyword: String(v ?? '') }))} onSearch={handleSearch} />
+            <KeywordInput placeholder="搜索消息内容" {...bindKeyword('keyword')} />
             <FilterSelect
               placeholder="全部角色"
               items={ROLE_OPTIONS}
-              value={draft.role}
-              onChange={(v) => setDraft((p) => ({ ...p, role: v }))}
+              {...bind('role')}
             />
-            <DateRangeFilter type="dateRange" value={draftRange ?? undefined} onChange={(value) => {
-                if (Array.isArray(value) && value.length >= 2 && value[0] instanceof Date && value[1] instanceof Date) setDraftRange([value[0], value[1]]);
-                else setDraftRange(null);
-              }} />
+            <DateRangeFilter type="dateRange" {...bind('range')} />
           </>
         )}
         onSearch={handleSearch}

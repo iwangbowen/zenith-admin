@@ -1,6 +1,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useListSearch } from '@/hooks/useListSearch';
 import { Banner, Button, Col, Form, Input, InputNumber, Modal, Row, SideSheet, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, Trash2 } from 'lucide-react';
@@ -113,11 +113,11 @@ function normalizePayload(values: ExperimentFormValues, variants: AnalyticsExper
 }
 
 export default function AnalyticsExperimentsTab() {
-  const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
-  const [draft, setDraft] = useState(defaultSearch);
-  const [submitted, setSubmitted] = useState(defaultSearch);
+  const {
+    page, pageSize, buildPagination,
+    bind, bindKeyword, submittedParams: submitted,
+    handleSearch, handleReset,
+  } = useListSearch<typeof defaultSearch>({ defaults: defaultSearch, listKey: analyticsKeys.data.experimentsLists, pageSize: PAGE_SIZE });
   const [variants, setVariants] = useState<AnalyticsExperimentVariant[]>(defaultVariants);
   const [reporting, setReporting] = useState<AnalyticsExperiment | null>(null);
 
@@ -167,18 +167,6 @@ export default function AnalyticsExperimentsTab() {
     setVariants(experimentModal.editing ? experimentModal.editing.variants.map((item) => ({ ...item })) : defaultVariants.map((item) => ({ ...item })));
   }, [experimentModal.editing, experimentModal.visible]);
 
-  const handleSearch = () => {
-    setPage(1);
-    setSubmitted(draft);
-    void queryClient.invalidateQueries({ queryKey: analyticsKeys.data.experimentsLists });
-  };
-  const handleReset = () => {
-    setDraft(defaultSearch);
-    setSubmitted(defaultSearch);
-    setPage(1);
-    void queryClient.invalidateQueries({ queryKey: analyticsKeys.data.experimentsLists });
-  };
-
   const updateVariant = (index: number, patch: Partial<AnalyticsExperimentVariant>) => {
     setVariants((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   };
@@ -227,11 +215,10 @@ export default function AnalyticsExperimentsTab() {
   return (
     <>
       <SearchToolbar>
-        <KeywordInput placeholder="实验名称" value={draft.name} onChange={(name) => setDraft((prev) => ({ ...prev, name }))} />
+        <KeywordInput placeholder="实验名称" {...bindKeyword('name')} />
         <StatusSelect
           items={ANALYTICS_EXPERIMENT_STATUS_OPTIONS}
-          value={draft.status}
-          onChange={(status) => setDraft((prev) => ({ ...prev, status: status as AnalyticsExperiment['status'] | undefined }))}
+          {...bind('status')}
         />
         <SearchButton onClick={handleSearch} />
         <ResetButton onClick={handleReset} />
@@ -241,7 +228,7 @@ export default function AnalyticsExperimentsTab() {
       <ConfigurableTable
         bordered rowKey="id" loading={listQuery.isFetching} columns={columns} dataSource={list}
         onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} empty="暂无实验"
-        pagination={{ currentPage: page, pageSize, total: listQuery.data?.total ?? 0, onPageChange: setPage, onPageSizeChange: (next) => { setPage(1); setPageSize(next); } }}
+        pagination={buildPagination(listQuery.data?.total ?? 0)}
       />
 
       <Modal {...experimentModal.modalProps} title={experimentModal.isEdit ? '编辑 A/B 实验' : '新增 A/B 实验'} width={660}>

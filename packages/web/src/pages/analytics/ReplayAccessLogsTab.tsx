@@ -2,24 +2,24 @@
  * 回放访问审计 Tab：谁在什么时候查看了谁的操作录像（合规留痕，manage 权限）。
  * 同一用户对同一回放 10 分钟内去重，实时旁观轮询不会刷屏。
  */
-import { useState } from 'react';
 import { Table, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { KeywordInput } from '@/components/search-filters';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import type { ReplayAccessLog } from '@zenith/shared/analytics';
-import { useReplayAccessLogs } from '@/hooks/queries/session-replays';
+import { replayKeys, useReplayAccessLogs } from '@/hooks/queries/session-replays';
 
 const { Text } = Typography;
 
 export default function ReplayAccessLogsTab({ onOpenReplay }: Readonly<{ onOpenReplay: (id: string) => void }>) {
-  const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [keyword, setKeyword] = useState('');
-  const [submitted, setSubmitted] = useState('');
+  const {
+    page, pageSize, buildPagination,
+    bindKeyword, submittedParams, handleSearch, handleReset,
+  } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: replayKeys.accessLogs });
 
-  const listQuery = useReplayAccessLogs({ page, pageSize, keyword: submitted || undefined });
+  const listQuery = useReplayAccessLogs({ page, pageSize, keyword: submittedParams.keyword || undefined });
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
 
@@ -45,13 +45,11 @@ export default function ReplayAccessLogsTab({ onOpenReplay }: Readonly<{ onOpenR
       <SearchToolbar>
         <KeywordInput
           placeholder="操作人/录像归属/回放 ID"
-          value={keyword}
-          onChange={setKeyword}
-          onSearch={() => { setPage(1); setSubmitted(keyword); }}
+          {...bindKeyword('keyword')}
           width={240}
         />
-        <SearchButton onClick={() => { setPage(1); setSubmitted(keyword); }} />
-        <ResetButton onClick={() => { setKeyword(''); setSubmitted(''); setPage(1); }} />
+        <SearchButton onClick={handleSearch} />
+        <ResetButton onClick={handleReset} />
       </SearchToolbar>
       <Table
         columns={columns}

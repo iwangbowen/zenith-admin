@@ -13,6 +13,7 @@ export const replayKeys = {
   list: (params: ReplayListParams) => contractKey(sessionReplayContract.list, { query: params }),
   detail: (id: string) => contractKey(sessionReplayContract.detail, { params: { id } }),
   stats: contractKey(sessionReplayContract.stats),
+  accessLogs: contractKey(sessionReplayContract.accessLogs),
 };
 
 /** 存储统计（容量看板） */

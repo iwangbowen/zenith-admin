@@ -3,7 +3,7 @@
  */
 import { useMemo, useState } from 'react';
 import { listTableProps } from '@/components/list-page';
-import { useQueryClient } from '@tanstack/react-query';
+import { useListSearch } from '@/hooks/useListSearch';
 import { Button, InputNumber, Input, Select, SideSheet, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, Trash2 } from 'lucide-react';
@@ -241,11 +241,11 @@ function CampaignDrawer({ segment, onClose }: { segment: AnalyticsUserSegment; o
 }
 
 export default function AnalyticsSegmentsTab() {
-  const queryClient = useQueryClient();
-  const [filter, setFilter] = useState<SegmentFilter>(defaultFilter);
-  const [submittedFilter, setSubmittedFilter] = useState<SegmentFilter>(defaultFilter);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const {
+    page, pageSize, buildPagination,
+    bind, bindKeyword, submittedParams: submittedFilter,
+    handleSearch, handleReset,
+  } = useListSearch<SegmentFilter>({ defaults: defaultFilter, listKey: analyticsKeys.data.segmentsLists, pageSize: PAGE_SIZE });
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<AnalyticsUserSegment | null>(null);
@@ -280,18 +280,6 @@ export default function AnalyticsSegmentsTab() {
   );
   const members = membersQuery.data?.list ?? [];
   const membersTotal = membersQuery.data?.total ?? 0;
-
-  const handleSearch = () => {
-    setPage(1);
-    setSubmittedFilter(filter);
-    void queryClient.invalidateQueries({ queryKey: analyticsKeys.data.segmentsLists });
-  };
-  const handleReset = () => {
-    setFilter(defaultFilter);
-    setSubmittedFilter(defaultFilter);
-    setPage(1);
-    void queryClient.invalidateQueries({ queryKey: analyticsKeys.data.segmentsLists });
-  };
 
   const openCreate = () => {
     setEditing(null);
@@ -415,11 +403,10 @@ export default function AnalyticsSegmentsTab() {
   return (
     <div>
       <SearchToolbar>
-        <KeywordInput placeholder="分群名称" value={filter.keyword} onChange={(value) => setFilter((prev) => ({ ...prev, keyword: value }))} onSearch={handleSearch} width={200} />
+        <KeywordInput placeholder="分群名称" {...bindKeyword('keyword')} width={200} />
         <StatusSelect
           items={ANALYTICS_EVENT_OVERRIDE_STATUS_OPTIONS}
-          value={filter.status}
-          onChange={(value) => setFilter((prev) => ({ ...prev, status: value as SegmentFilter['status'] | undefined }))}
+          {...bind('status')}
         />
         <SearchButton onClick={handleSearch} />
         <ResetButton onClick={handleReset} />
@@ -433,13 +420,7 @@ export default function AnalyticsSegmentsTab() {
         dataSource={segments}
         onRefresh={() => void segmentsQuery.refetch()}
         refreshLoading={segmentsQuery.isFetching}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total,
-          onPageChange: (p) => setPage(p),
-          onPageSizeChange: (ps) => { setPage(1); setPageSize(ps); },
-        }}
+        pagination={buildPagination(total)}
         empty="暂无分群"
       />
 

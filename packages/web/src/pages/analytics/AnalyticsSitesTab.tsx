@@ -1,6 +1,6 @@
 
-import { useMemo, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { useListSearch } from '@/hooks/useListSearch';
 import { Form, Modal, Space, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { AnalyticsSite } from '@zenith/shared/analytics';
@@ -22,7 +22,7 @@ import { copyableNoColumn, dateTimeColumn } from '@/utils/table-columns';
 import { confirmDelete } from '@/utils/confirm';
 
 const PAGE_SIZE = 20;
-const STATUS_OPTIONS = [
+const STATUS_OPTIONS: { value: AnalyticsSite['status']; label: string }[] = [
   { value: 'enabled', label: '启用' },
   { value: 'disabled', label: '停用' },
 ];
@@ -63,11 +63,11 @@ function renderUsage(record: AnalyticsSite) {
 }
 
 export default function AnalyticsSitesTab() {
-  const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(PAGE_SIZE);
-  const [draft, setDraft] = useState<SearchState>(defaultSearch);
-  const [submitted, setSubmitted] = useState<SearchState>(defaultSearch);
+  const {
+    page, pageSize, buildPagination,
+    bind, bindKeyword, submittedParams: submitted,
+    handleSearch, handleReset,
+  } = useListSearch<SearchState>({ defaults: defaultSearch, listKey: analyticsKeys.data.sitesLists, pageSize: PAGE_SIZE });
 
   const params = useMemo(() => ({ page, pageSize, name: submitted.name || undefined, status: submitted.status || undefined }), [page, pageSize, submitted]);
   const listQuery = useAnalyticsSites(params);
@@ -79,17 +79,6 @@ export default function AnalyticsSitesTab() {
   const data = listQuery.data;
   const list = data?.list ?? [];
 
-  const handleSearch = () => {
-    setPage(1);
-    setSubmitted(draft);
-    void queryClient.invalidateQueries({ queryKey: analyticsKeys.data.sitesLists });
-  };
-  const handleReset = () => {
-    setDraft(defaultSearch);
-    setSubmitted(defaultSearch);
-    setPage(1);
-    void queryClient.invalidateQueries({ queryKey: analyticsKeys.data.sitesLists });
-  };
   const siteModal = useEditModal<AnalyticsSite, SiteFormValues, ReturnType<typeof normalizeForm>>({
     entityName: '站点',
     save: {
@@ -141,11 +130,10 @@ export default function AnalyticsSitesTab() {
   return (
     <>
       <SearchToolbar>
-        <KeywordInput placeholder="站点名称" value={draft.name} onChange={(name) => setDraft((prev) => ({ ...prev, name }))} />
+        <KeywordInput placeholder="站点名称" {...bindKeyword('name')} />
         <StatusSelect
           items={STATUS_OPTIONS}
-          value={draft.status}
-          onChange={(status) => setDraft((prev) => ({ ...prev, status: status as AnalyticsSite['status'] | undefined }))}
+          {...bind('status')}
         />
         <SearchButton onClick={handleSearch} />
         <ResetButton onClick={handleReset} />
@@ -160,13 +148,7 @@ export default function AnalyticsSitesTab() {
         dataSource={list}
         onRefresh={() => void listQuery.refetch()}
         refreshLoading={listQuery.isFetching}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total: data?.total ?? 0,
-          onPageChange: setPage,
-          onPageSizeChange: (next) => { setPage(1); setPageSize(next); },
-        }}
+        pagination={buildPagination(data?.total ?? 0)}
         empty="暂无站点"
       />
 
