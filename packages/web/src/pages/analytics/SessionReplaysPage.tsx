@@ -14,9 +14,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import ReplayPlayer from '@/components/ReplayPlayer';
 import ReplayHeatmapTab from './ReplayHeatmapTab';
 import ReplayAccessLogsTab from './ReplayAccessLogsTab';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { formatDurationMs } from '@/utils/format';
@@ -27,6 +25,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { StatCard, StatGrid } from '@/components/charts';
 import { replayKeys, useBatchDeleteReplays, useReplayDetail, useReplayList, useReplayStorageStats } from '@/hooks/queries/session-replays';
 import { formatBytes } from '@zenith/shared/core';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 const { Text } = Typography;
 
@@ -41,8 +40,6 @@ interface SearchParams {
 }
 
 const defaultSearchParams: SearchParams = { status: undefined, triggerType: undefined, source: undefined, keyword: '', hasError: false, pagePath: '', clickLabel: '' };
-const EMPTY_LIST: ReplaySession[] = [];
-
 const STATUS_META = {
   recording: { label: '录制中', color: 'blue' },
   completed: { label: '已完成', color: 'green' },
@@ -102,7 +99,6 @@ export default function SessionReplaysPage() {
     pagePath: submittedParams.pagePath || undefined,
     clickLabel: submittedParams.clickLabel || undefined,
   });
-  const list = listQuery.data?.list ?? EMPTY_LIST;
   const total = listQuery.data?.total ?? 0;
 
   const detailQuery = useReplayDetail(detailId, detailId !== null);
@@ -215,67 +211,75 @@ export default function SessionReplaysPage() {
       )}
       <Tabs type="line" lazyRender>
         <TabPane tab="回放列表" itemKey="list">
-          <SearchToolbar>
-        <StatusSelect
-          items={statusOptions}
-          {...bind('status')}
-        />
-        <FilterSelect
-          placeholder="全部触发方式"
-          items={triggerOptions}
-          {...bind('triggerType')}
-          width={140}
-        />
-        <FilterSelect
-          placeholder="全部来源"
-          items={sourceOptions}
-          {...bind('source')}
-        />
-        <KeywordInput
-          placeholder="用户名/页面/回放 ID"
-          {...bindKeyword('keyword')}
-          width={200}
-        />
-        <KeywordInput
-          placeholder="访问过的页面路径"
-          {...bindKeyword('pagePath')}
-          width={170}
-        />
-        <KeywordInput
-          placeholder="点击过的内容"
-          {...bindKeyword('clickLabel')}
-          width={150}
-        />
-        <Checkbox
-          checked={draftParams.hasError}
-          onChange={(e) => setField('hasError')(Boolean(e.target.checked))}
-        >
-          仅看有错误
-        </Checkbox>
-        <SearchButton onClick={handleSearch} />
-        <ResetButton onClick={handleReset} />
-        {selectedRowKeys.length > 0 && (
-          <Button type="danger" icon={<Trash2 size={14} />} loading={batchDeleteMutation.isPending} onClick={() => void handleBatchDelete()}>
-            批量删除 ({selectedRowKeys.length})
-          </Button>
-        )}
-          </SearchToolbar>
+          <ListSearchToolbar
+            keyword={(
+              <>
+                <KeywordInput
+                  placeholder="用户名/页面/回放 ID"
+                  {...bindKeyword('keyword')}
+                  width={200}
+                />
+                <KeywordInput
+                  placeholder="访问过的页面路径"
+                  {...bindKeyword('pagePath')}
+                  width={170}
+                />
+                <KeywordInput
+                  placeholder="点击过的内容"
+                  {...bindKeyword('clickLabel')}
+                  width={150}
+                />
+              </>
+            )}
+            filters={(
+              <>
+                <StatusSelect
+                  items={statusOptions}
+                  {...bind('status')}
+                />
+                <FilterSelect
+                  placeholder="全部触发方式"
+                  items={triggerOptions}
+                  {...bind('triggerType')}
+                  width={140}
+                />
+                <FilterSelect
+                  placeholder="全部来源"
+                  items={sourceOptions}
+                  {...bind('source')}
+                />
+                <Checkbox
+                  checked={draftParams.hasError}
+                  onChange={(e) => setField('hasError')(Boolean(e.target.checked))}
+                >
+                  仅看有错误
+                </Checkbox>
+              </>
+            )}
+            onSearch={handleSearch}
+            onReset={handleReset}
+            actions={selectedRowKeys.length > 0 ? (
+              <Button type="danger" icon={<Trash2 size={14} />} loading={batchDeleteMutation.isPending} onClick={() => void handleBatchDelete()}>
+                批量删除 ({selectedRowKeys.length})
+              </Button>
+            ) : null}
+            mobileActions={selectedRowKeys.length > 0 ? (
+              <Button type="danger" theme="borderless" icon={<Trash2 size={14} />} loading={batchDeleteMutation.isPending} onClick={() => void handleBatchDelete()}>
+                批量删除 ({selectedRowKeys.length})
+              </Button>
+            ) : null}
+          />
 
           <ConfigurableTable
-            bordered
             columns={columns}
-            dataSource={list}
-            loading={listQuery.isFetching && !listQuery.data}
-            onRefresh={() => void listQuery.refetch()}
-            refreshLoading={listQuery.isFetching}
-            pagination={buildPagination(total)}
-            rowKey="id"
-            rowSelection={{
-              selectedRowKeys,
-              onChange: (keys) => setSelectedRowKeys((keys ?? []) as string[]),
-            }}
-            size="small"
-            empty="暂无回放记录。开启「数据分析设置 → 会话回放」后，报错现场将自动录制。"
+            {...listTableProps(listQuery, {
+              pagination: () => buildPagination(total),
+              rowSelection: {
+                selectedRowKeys,
+                onChange: (keys) => setSelectedRowKeys((keys ?? []) as string[]),
+              },
+              empty: '暂无回放记录。开启「数据分析设置 → 会话回放」后，报错现场将自动录制。',
+            })}
           />
         </TabPane>
         <TabPane tab="点击热力" itemKey="heatmap">

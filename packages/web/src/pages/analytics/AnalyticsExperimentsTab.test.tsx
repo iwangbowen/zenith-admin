@@ -1,6 +1,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
+import { desktopToolbar } from '@/test-utils/toolbar';
 import type { AnalyticsExperiment } from '@zenith/shared/analytics';
 import { PreferencesContext, defaultPreferences } from '@/hooks/usePreferences';
 
@@ -63,10 +64,11 @@ describe('AnalyticsExperimentsTab', () => {
   });
 
   it('invalidates experiment lists when searching and resetting', () => {
-    renderWithPreferences();
-    fireEvent.change(screen.getByPlaceholderText('实验名称'), { target: { value: 'Banner' } });
-    fireEvent.click(screen.getByText('查询'));
-    fireEvent.click(screen.getByText('重置'));
+    const { container } = renderWithPreferences();
+    const toolbar = desktopToolbar(container);
+    fireEvent.change(toolbar.getByPlaceholderText('实验名称'), { target: { value: 'Banner' } });
+    fireEvent.click(toolbar.getByText('查询'));
+    fireEvent.click(toolbar.getByText('重置'));
     expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['analytics', 'experiments'] });
   });
 });

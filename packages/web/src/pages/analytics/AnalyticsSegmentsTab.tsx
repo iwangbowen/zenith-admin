@@ -2,8 +2,9 @@
  * 行为中心阶段 1：用户分群 CRUD + 成员物化（异步任务）+ 成员明细查看。
  */
 import { useMemo, useState } from 'react';
-import { listTableProps } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useListSearch } from '@/hooks/useListSearch';
+import { usePagination } from '@/hooks/usePagination';
 import { Button, InputNumber, Input, Select, SideSheet, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, Trash2 } from 'lucide-react';
@@ -28,7 +29,7 @@ import { useInAppTemplateList } from '@/hooks/queries/in-app-templates';
 import { useSmsTemplateList } from '@/hooks/queries/sms-templates';
 import type { AnalyticsSegmentAttributeCondition, AnalyticsSegmentCompareOp, AnalyticsSegmentCondition, AnalyticsSegmentEventCondition, AnalyticsSegmentMember, AnalyticsSegmentCampaign, AnalyticsSegmentPropertyFilter, AnalyticsUserSegment } from '@zenith/shared/analytics';
 import { ANALYTICS_EVENT_OVERRIDE_STATUS_OPTIONS, ANALYTICS_CAMPAIGN_CHANNEL_OPTIONS, ANALYTICS_CAMPAIGN_STATUS_LABELS, ANALYTICS_IDENTITY_TYPE_OPTIONS, ANALYTICS_SEGMENT_COMPARE_OP_OPTIONS } from '@zenith/shared/analytics';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
@@ -257,8 +258,7 @@ export default function AnalyticsSegmentsTab() {
 
   const [membersSegment, setMembersSegment] = useState<AnalyticsUserSegment | null>(null);
   const [campaignSegment, setCampaignSegment] = useState<AnalyticsUserSegment | null>(null);
-  const [membersPage, setMembersPage] = useState(1);
-  const [membersPageSize, setMembersPageSize] = useState(PAGE_SIZE);
+  const membersPagination = usePagination(PAGE_SIZE);
 
   const segmentsQuery = useAnalyticsSegments({
     page,
@@ -275,7 +275,7 @@ export default function AnalyticsSegmentsTab() {
 
   const membersQuery = useAnalyticsSegmentMembers(
     membersSegment?.id,
-    { page: membersPage, pageSize: membersPageSize },
+    { page: membersPagination.page, pageSize: membersPagination.pageSize },
     membersSegment != null,
   );
   const members = membersQuery.data?.list ?? [];
@@ -372,7 +372,7 @@ export default function AnalyticsSegmentsTab() {
       width: 240,
       desktopInlineKeys: ['members', 'campaign', 'edit'],
       actions: (record) => [
-        { key: 'members', label: '成员', onClick: () => { setMembersSegment(record); setMembersPage(1); } },
+        { key: 'members', label: '成员', onClick: () => { setMembersSegment(record); membersPagination.setPage(1); } },
         { key: 'campaign', label: '触达', onClick: () => setCampaignSegment(record) },
         { key: 'materialize', label: '重算', loading: materializeMutation.isPending, onClick: () => handleMaterialize(record) },
         { key: 'edit', label: '编辑', onClick: () => openEdit(record) },
@@ -402,16 +402,13 @@ export default function AnalyticsSegmentsTab() {
 
   return (
     <div>
-      <SearchToolbar>
-        <KeywordInput placeholder="分群名称" {...bindKeyword('keyword')} width={200} />
-        <StatusSelect
-          items={ANALYTICS_EVENT_OVERRIDE_STATUS_OPTIONS}
-          {...bind('status')}
-        />
-        <SearchButton onClick={handleSearch} />
-        <ResetButton onClick={handleReset} />
-        <CreateButton onClick={openCreate} />
-      </SearchToolbar>
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="分群名称" {...bindKeyword('keyword')} width={200} />}
+        filters={<StatusSelect items={ANALYTICS_EVENT_OVERRIDE_STATUS_OPTIONS} {...bind('status')} />}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={<CreateButton onClick={openCreate} />}
+      />
       <ConfigurableTable
         bordered
         rowKey="id"
@@ -522,13 +519,7 @@ export default function AnalyticsSegmentsTab() {
           loading={membersQuery.isFetching}
           columns={memberColumns}
           dataSource={members}
-          pagination={{
-            currentPage: membersPage,
-            pageSize: membersPageSize,
-            total: membersTotal,
-            onPageChange: (p) => setMembersPage(p),
-            onPageSizeChange: (ps) => { setMembersPage(1); setMembersPageSize(ps); },
-          }}
+          pagination={membersPagination.buildPagination(membersTotal)}
           empty="尚未物化或暂无成员，请先点击「重算」"
         />
       </SideSheet>

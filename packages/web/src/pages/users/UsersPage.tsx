@@ -270,13 +270,8 @@ export default function UsersPage() {
     [allDepartments]
   );
 
-  const deptTreeData = useMemo<TreeNodeData[]>(
-    () => [{ key: '__all__', value: '__all__', label: '全部部门' }, ...departmentTreeData],
-    [departmentTreeData]
-  );
-
   const allDeptExpandedKeys = useMemo(
-    () => ['__all__', ...allDepartments.map((item) => String(item.id))],
+    () => allDepartments.map((item) => String(item.id)),
     [allDepartments]
   );
 
@@ -524,18 +519,18 @@ export default function UsersPage() {
         <span className="users-dept-sidebar-title-text">组织架构</span>
       </MasterDetailLayout.Header>
       <Tree
-        treeData={deptTreeData}
+        treeData={departmentTreeData}
         expandedKeys={deptTreeExpandedKeys}
-      value={draftParams.departmentId === undefined ? '__all__' : String(draftParams.departmentId)}
+        value={draftParams.departmentId === undefined ? undefined : String(draftParams.departmentId)}
         filterTreeNode
         showFilteredOnly
-        searchPlaceholder="搜索部门"
+        searchPlaceholder="全部部门"
         onExpand={(expandedKeys) => {
           setDeptTreeExpandedKeys((expandedKeys as Array<string | number>).map(String));
         }}
         onSelect={(selectedKey) => {
           const key = selectedKey;
-          const newDeptId = !key || key === '__all__' ? undefined : Number(key);
+          const newDeptId = !key ? undefined : Number(key);
           const newParams = { ...draftParams, departmentId: newDeptId };
           applySearch(newParams);
           setShowDeptTree(false);

@@ -6,7 +6,6 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { AnalyticsSite } from '@zenith/shared/analytics';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import {
   analyticsKeys,
   useAnalyticsSites,
@@ -15,11 +14,12 @@ import {
   useRegenerateSiteKey,
   useUpdateSite,
 } from '@/hooks/queries/analytics';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { useEditModal } from '@/hooks/useEditModal';
 import { copyableNoColumn, dateTimeColumn } from '@/utils/table-columns';
 import { confirmDelete } from '@/utils/confirm';
+import { ListSearchToolbar } from '@/components/list-page';
 
 const PAGE_SIZE = 20;
 const STATUS_OPTIONS: { value: AnalyticsSite['status']; label: string }[] = [
@@ -129,16 +129,13 @@ export default function AnalyticsSitesTab() {
 
   return (
     <>
-      <SearchToolbar>
-        <KeywordInput placeholder="站点名称" {...bindKeyword('name')} />
-        <StatusSelect
-          items={STATUS_OPTIONS}
-          {...bind('status')}
-        />
-        <SearchButton onClick={handleSearch} />
-        <ResetButton onClick={handleReset} />
-        <CreateButton onClick={siteModal.openCreate} />
-      </SearchToolbar>
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="站点名称" {...bindKeyword('name')} />}
+        filters={<StatusSelect items={STATUS_OPTIONS} {...bind('status')} />}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={<CreateButton onClick={siteModal.openCreate} />}
+      />
 
       <ConfigurableTable
         bordered

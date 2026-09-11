@@ -3,7 +3,6 @@ import { Button, Dropdown, Form, Modal, Space, Tag, Toast, Tooltip, Typography, 
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
 import { Upload, FileText, Film, Music, File as FileIcon, FolderPlus, FolderPen, FolderX, Move, ShieldCheck, MoreHorizontal } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -13,7 +12,7 @@ import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import { ExportButton } from '@/components/ExportButton';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import {
   cmsResourceKeys, useCmsResourceList, useCmsResourceReferences,
   useUploadCmsResource, useUpdateCmsResource, useCropCmsResource, useDeleteCmsResources,
@@ -25,18 +24,22 @@ import { CMS_RESOURCE_OWNER_TYPE_LABELS, CMS_RESOURCE_TYPE_LABELS, CMS_RESOURCE_
 import type { CmsResource, CmsResourceFolder, CmsResourceReference, CmsResourceOwnerType, CmsResourceType } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { formatDateTimeRangeForApi } from '@/utils/date';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { formatBytes, mapTree } from '@zenith/shared/core';
-import { confirmAndDelete, deleteAction, listTableProps } from '@/components/list-page';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import ModalFooter from '@/components/ModalFooter';
 
 const TYPE_COLORS: Record<CmsResourceType, 'blue' | 'purple' | 'cyan' | 'orange' | 'grey'> = {
   image: 'blue', video: 'purple', audio: 'cyan', document: 'orange', other: 'grey',
 };
+interface SearchParams {
+  keyword: string;
+  type?: CmsResourceType;
+}
+const defaultSearchParams: SearchParams = { keyword: '', type: undefined };
 
 const REFERENCE_KIND_LABELS = CMS_RESOURCE_OWNER_TYPE_LABELS;
 
@@ -222,16 +225,21 @@ function ReferencesModal({ resource, onClose }: Readonly<{ resource: CmsResource
 
 export default function ResourcesPage() {
   const { hasPermission } = usePermission();
-  const qc = useQueryClient();
   const [siteId, setSiteId] = useState<number | undefined>(undefined);
   const [folderKey, setFolderKey] = useState('all');
   /** 窄屏单栏模式下当前展示素材列表（宽屏忽略）：默认进列表，「返回」回到文件夹树 */
   const [showListOnNarrow, setShowListOnNarrow] = useState(true);
   const [governanceRange, setGovernanceRange] = useState<[Date, Date] | null>(null);
-  const [type, setType] = useState<CmsResourceType | undefined>(undefined);
-  const [keywordDraft, setKeywordDraft] = useState('');
-  const [keyword, setKeyword] = useState<string | undefined>(undefined);
-  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const {
+    page, pageSize, setPage, buildPagination,
+    bind, bindKeyword, submittedParams,
+    handleSearch, handleReset,
+  } = useListSearch<SearchParams>({
+    defaults: defaultSearchParams,
+    listKey: cmsResourceKeys.lists,
+    onSearch: () => setSelectedIds([]),
+    onReset: () => setSelectedIds([]),
+  });
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [moveModalVisible, setMoveModalVisible] = useState(false);
   const [renameTarget, setRenameTarget] = useState<CmsResource | null>(null);
@@ -242,7 +250,14 @@ export default function ResourcesPage() {
   const [replaceTarget, setReplaceTarget] = useState<CmsResource | null>(null);
 
   const folderId = folderKey === 'all' ? undefined : Number(folderKey);
-  const listQuery = useCmsResourceList({ page, pageSize, siteId: siteId ?? 0, type, keyword, folderId }, siteId !== undefined);
+  const listQuery = useCmsResourceList({
+    page,
+    pageSize,
+    siteId: siteId ?? 0,
+    type: submittedParams.type,
+    keyword: submittedParams.keyword || undefined,
+    folderId,
+  }, siteId !== undefined);
   const foldersQuery = useCmsResourceFolders(siteId);
   const uploadMutation = useUploadCmsResource();
   const updateMutation = useUpdateCmsResource();
@@ -281,22 +296,6 @@ export default function ResourcesPage() {
     setFolderKey('all');
     setPage(1);
     setSelectedIds([]);
-  }
-
-  function handleSearch() {
-    setKeyword(keywordDraft.trim() || undefined);
-    setPage(1);
-    setSelectedIds([]);
-    void qc.invalidateQueries({ queryKey: cmsResourceKeys.lists });
-  }
-
-  function handleReset() {
-    setKeywordDraft('');
-    setKeyword(undefined);
-    setType(undefined);
-    setPage(1);
-    setSelectedIds([]);
-    void qc.invalidateQueries({ queryKey: cmsResourceKeys.lists });
   }
 
   async function handleUploadFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -487,31 +486,48 @@ export default function ResourcesPage() {
         )}
         detail={(
           <MasterDetailLayout.Body padding="0 0 0 16px">
-            <SearchToolbar>
-              <FilterSelect
-                placeholder="全部素材类型"
-                items={CMS_RESOURCE_TYPES.map((t) => ({ label: CMS_RESOURCE_TYPE_LABELS[t], value: t }))}
-                value={type}
-                onChange={(v) => { setType(v as CmsResourceType | undefined); setPage(1); setSelectedIds([]); }}
-                width={140}
-              />
-              <KeywordInput placeholder="搜索素材名称" value={keywordDraft} onChange={setKeywordDraft} onSearch={handleSearch} width={200} />
-              <SearchButton onClick={handleSearch} />
-              <ResetButton onClick={handleReset} />
-              {canUpload ? (
+            <ListSearchToolbar
+              keyword={<KeywordInput placeholder="搜索素材名称" {...bindKeyword('keyword')} width={200} />}
+              filters={(
+                <FilterSelect
+                  placeholder="全部素材类型"
+                  items={CMS_RESOURCE_TYPES.map((t) => ({ label: CMS_RESOURCE_TYPE_LABELS[t], value: t }))}
+                  {...bind('type')}
+                  width={140}
+                />
+              )}
+              onSearch={handleSearch}
+              onReset={handleReset}
+              create={canUpload ? (
                 <Button type="primary" icon={<Upload size={14} />} loading={uploadMutation.isPending} disabled={siteId === undefined} onClick={() => fileInputRef.current?.click()}>
                   上传素材
                 </Button>
               ) : null}
-              {selectedIds.length > 0 && canDelete ? (
-                <Button type="danger" onClick={() => handleDelete(selectedIds)}>批量删除（{selectedIds.length}）</Button>
-              ) : null}
-              {selectedIds.length > 0 && canUpdate ? (
-                <Button icon={<Move size={14} />} onClick={() => setMoveModalVisible(true)}>
-                  移动到目录（{selectedIds.length}）
-                </Button>
-              ) : null}
-            </SearchToolbar>
+              actions={(
+                <>
+                  {selectedIds.length > 0 && canDelete ? (
+                    <Button type="danger" onClick={() => handleDelete(selectedIds)}>批量删除（{selectedIds.length}）</Button>
+                  ) : null}
+                  {selectedIds.length > 0 && canUpdate ? (
+                    <Button icon={<Move size={14} />} onClick={() => setMoveModalVisible(true)}>
+                      移动到目录（{selectedIds.length}）
+                    </Button>
+                  ) : null}
+                </>
+              )}
+              mobileActions={(
+                <>
+                  {selectedIds.length > 0 && canDelete ? (
+                    <Button type="danger" theme="borderless" onClick={() => handleDelete(selectedIds)}>批量删除（{selectedIds.length}）</Button>
+                  ) : null}
+                  {selectedIds.length > 0 && canUpdate ? (
+                    <Button theme="borderless" icon={<Move size={14} />} onClick={() => setMoveModalVisible(true)}>
+                      移动到目录（{selectedIds.length}）
+                    </Button>
+                  ) : null}
+                </>
+              )}
+            />
             <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={(e) => void handleUploadFile(e)} />
             <input ref={replaceInputRef} type="file" style={{ display: 'none' }} onChange={(e) => void handleReplaceFile(e)} />
             <ConfigurableTable<CmsResource>

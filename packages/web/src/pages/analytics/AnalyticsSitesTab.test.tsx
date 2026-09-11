@@ -1,6 +1,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { desktopToolbar } from '@/test-utils/toolbar';
 import type { AnalyticsSite } from '@zenith/shared/analytics';
 import { PreferencesContext, defaultPreferences } from '@/hooks/usePreferences';
 
@@ -71,10 +72,11 @@ describe('AnalyticsSitesTab', () => {
   });
 
   it('invalidates site lists when searching and resetting', () => {
-    renderWithPreferences();
-    fireEvent.change(screen.getByPlaceholderText('站点名称'), { target: { value: '管理' } });
-    fireEvent.click(screen.getByText('查询'));
-    fireEvent.click(screen.getByText('重置'));
+    const { container } = renderWithPreferences();
+    const toolbar = desktopToolbar(container);
+    fireEvent.change(toolbar.getByPlaceholderText('站点名称'), { target: { value: '管理' } });
+    fireEvent.click(toolbar.getByText('查询'));
+    fireEvent.click(toolbar.getByText('重置'));
     expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['analytics', 'sites'] });
   });
 });

@@ -7,7 +7,6 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { AlertTriangle, ShieldAlert } from 'lucide-react';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { config } from '@/config';
 import {
@@ -19,13 +18,14 @@ import {
 } from '@/hooks/queries/analytics';
 import type { AnalyticsEventOverride, AnalyticsQualityDaily, AnalyticsQualityIssueType } from '@zenith/shared/analytics';
 import { ANALYTICS_EVENT_OVERRIDE_STATUS_OPTIONS, ANALYTICS_QUALITY_ISSUE_TYPE_LABELS, ANALYTICS_QUALITY_ISSUE_TYPE_OPTIONS } from '@zenith/shared/analytics';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 import { dateColumn, dateTimeColumn } from '@/utils/table-columns';
 import { ANALYTICS_ISSUE_TAG_COLOR } from './analytics-tag-colors';
+import { ListSearchToolbar } from '@/components/list-page';
 
 const PAGE_SIZE = 20;
 const DAY_OPTIONS = [7, 30, 90].map((value) => ({ value, label: `${value} 天` }));
@@ -160,18 +160,22 @@ export default function AnalyticsQualityTab() {
 
       <div>
         <Typography.Title heading={6} style={{ marginBottom: 12 }}>质量明细（按日 / 事件 / 问题类型）</Typography.Title>
-        <SearchToolbar>
-          <Select {...quality.bind('days', (value: unknown) => Number(value))} optionList={DAY_OPTIONS} style={{ width: 110 }} />
-          <KeywordInput placeholder="事件名" {...quality.bindKeyword('eventName')} width={160} />
-          <FilterSelect
-            placeholder="全部问题类型"
-            items={ANALYTICS_QUALITY_ISSUE_TYPE_OPTIONS}
-            {...quality.bind('issueType')}
-            width={160}
-          />
-          <SearchButton onClick={quality.handleSearch} />
-          <ResetButton onClick={quality.handleReset} />
-        </SearchToolbar>
+        <ListSearchToolbar
+          keyword={<KeywordInput placeholder="事件名" {...quality.bindKeyword('eventName')} width={160} />}
+          filters={(
+            <>
+              <Select {...quality.bind('days', (value: unknown) => Number(value))} optionList={DAY_OPTIONS} style={{ width: 110 }} />
+              <FilterSelect
+                placeholder="全部问题类型"
+                items={ANALYTICS_QUALITY_ISSUE_TYPE_OPTIONS}
+                {...quality.bind('issueType')}
+                width={160}
+              />
+            </>
+          )}
+          onSearch={quality.handleSearch}
+          onReset={quality.handleReset}
+        />
         <ConfigurableTable
           bordered
           rowKey="id"
@@ -194,16 +198,13 @@ export default function AnalyticsQualityTab() {
           <Typography.Text type="tertiary">当前未启用多租户模式，请直接在事件字典中管理全局状态。</Typography.Text>
         ) : (
           <>
-            <SearchToolbar>
-              <KeywordInput placeholder="事件名" {...overrides.bindKeyword('eventName')} width={160} />
-              <StatusSelect
-                items={ANALYTICS_EVENT_OVERRIDE_STATUS_OPTIONS}
-                {...overrides.bind('status')}
-              />
-              <SearchButton onClick={overrides.handleSearch} />
-              <ResetButton onClick={overrides.handleReset} />
-              <CreateButton onClick={overrideModal.openCreate}>新增覆盖</CreateButton>
-            </SearchToolbar>
+            <ListSearchToolbar
+              keyword={<KeywordInput placeholder="事件名" {...overrides.bindKeyword('eventName')} width={160} />}
+              filters={<StatusSelect items={ANALYTICS_EVENT_OVERRIDE_STATUS_OPTIONS} {...overrides.bind('status')} />}
+              onSearch={overrides.handleSearch}
+              onReset={overrides.handleReset}
+              create={<CreateButton onClick={overrideModal.openCreate}>新增覆盖</CreateButton>}
+            />
             <ConfigurableTable
               bordered
               rowKey="id"

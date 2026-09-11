@@ -1,16 +1,14 @@
 /** 页面搭建：区块 JSON 装配（P3 Batch6）——列表 + 区块搭建器 SideSheet */
 import { useEffect, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { Button, Dropdown, Form, Input, Select, SideSheet, Tag, Toast, Typography, Empty } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Plus, ArrowUp, ArrowDown, Trash2, Pencil, ExternalLink, ChevronDown, GripVertical, RefreshCw, LockKeyhole, ShieldCheck } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { usePermission } from '@/hooks/usePermission';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import { formRemountKey } from '@/hooks/useEditModal';
 import {
@@ -24,13 +22,13 @@ import type { CmsChannel, CmsPage, CmsPageBlock, CmsPageBlockType } from '@zenit
 import { CmsSiteSelect, cmsPreviewUrl } from './CmsSiteSelect';
 import { formatDateTimeForApi } from '@/utils/date';
 import { useCmsWidgetRenderers, usePublishedCmsWidgets } from '@/hooks/queries/cms-widgets';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { mapTree } from '@zenith/shared/core';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
-import { deleteAction, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import ModalFooter from '@/components/ModalFooter';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 
@@ -44,6 +42,8 @@ function newBlockId(): string {
 }
 
 const BLOCK_TYPE_LABEL = Object.fromEntries(CMS_PAGE_BLOCK_TYPES.map((t) => [t.value, t.label]));
+interface SearchParams { keyword: string }
+const defaultSearchParams: SearchParams = { keyword: '' };
 
 /** 区块摘要（列表卡片展示用） */
 function blockSummary(block: CmsPageBlock): string {
@@ -62,13 +62,14 @@ function blockSummary(block: CmsPageBlock): string {
 export default function PagesPage() {
   const { hasPermission } = usePermission();
   const isMobile = useIsMobile();
-  const qc = useQueryClient();
   const [siteId, setSiteId] = useState<number | undefined>(undefined);
-  const [keywordDraft, setKeywordDraft] = useState('');
-  const [keyword, setKeyword] = useState('');
-  const { page, pageSize, buildPagination, resetPage } = usePagination();
+  const {
+    page, pageSize, buildPagination, resetPage,
+    bindKeyword, submittedParams,
+    handleSearch, handleReset,
+  } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: cmsPageKeys.lists });
 
-  const listQuery = useCmsPageList({ page, pageSize, siteId, ...(keyword ? { keyword } : {}) });
+  const listQuery = useCmsPageList({ page, pageSize, siteId, keyword: submittedParams.keyword || undefined });
   const { data: sitesPage } = useCmsSiteList({ page: 1, pageSize: 100 });
   const treeQuery = useCmsChannelTree(siteId);
   const tagOptionsQuery = useCmsTagList({ page: 1, pageSize: 200, siteId: siteId ?? 0 }, siteId !== undefined);
@@ -116,19 +117,6 @@ export default function PagesPage() {
     setAclUserIds(grants.filter((grant) => grant.subjectType === 'user').map((grant) => grant.subjectId));
     setAclRoleIds(grants.filter((grant) => grant.subjectType === 'role').map((grant) => grant.subjectId));
   }, [aclBlock, aclQuery.data]);
-
-  function handleSearch() {
-    setKeyword(keywordDraft.trim());
-    resetPage();
-    void qc.invalidateQueries({ queryKey: cmsPageKeys.lists });
-  }
-
-  function handleReset() {
-    setKeywordDraft('');
-    setKeyword('');
-    resetPage();
-    void qc.invalidateQueries({ queryKey: cmsPageKeys.lists });
-  }
 
   function openBuilder(record: CmsPage | null) {
     setEditingPage(record);
@@ -305,15 +293,17 @@ export default function PagesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <CmsSiteSelect value={siteId} onChange={(v) => { setSiteId(v); resetPage(); }} />
-        <KeywordInput placeholder="页面名称 / slug" value={keywordDraft} onChange={setKeywordDraft} width={200} />
-        <SearchButton onClick={handleSearch} />
-        <ResetButton onClick={handleReset} />
-        {hasPermission('cms:page:create') ? (
-          <CreateButton onClick={() => openBuilder(null)} />
-        ) : null}
-      </SearchToolbar>
+      <ListSearchToolbar
+        keyword={(
+          <>
+            <CmsSiteSelect value={siteId} onChange={(v) => { setSiteId(v); resetPage(); }} />
+            <KeywordInput placeholder="页面名称 / slug" {...bindKeyword('keyword')} width={200} />
+          </>
+        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={hasPermission('cms:page:create') ? <CreateButton onClick={() => openBuilder(null)} /> : null}
+      />
 
       <ConfigurableTable<CmsPage>
         columns={columns}

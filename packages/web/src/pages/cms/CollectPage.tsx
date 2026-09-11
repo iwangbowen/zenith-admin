@@ -1,15 +1,14 @@
 /** 采集中心：规则 CRUD + 任务中心执行 + 采集明细（P3 Batch5） */
 import { useMemo, useState } from 'react';
 import ModalFooter from '@/components/ModalFooter';
-import { useQueryClient } from '@tanstack/react-query';
 import { Col, Form, Row, SideSheet, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { useMyAsyncTasks } from '@/hooks/useAsyncTasks';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import {
@@ -18,12 +17,12 @@ import {
 } from '@/hooks/queries/cms';
 import type { CmsCollectRule, CmsCollectItem } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { channelsToSelectTree } from './channel-tree';
-import { deleteAction, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 
 const ITEM_STATUS_META: Record<CmsCollectItem['status'], { label: string; color: 'green' | 'grey' | 'red' }> = {
@@ -31,18 +30,21 @@ const ITEM_STATUS_META: Record<CmsCollectItem['status'], { label: string; color:
   skipped: { label: '跳过', color: 'grey' },
   failed: { label: '失败', color: 'red' },
 };
+interface SearchParams { keyword: string }
+const defaultSearchParams: SearchParams = { keyword: '' };
 
 export default function CollectPage() {
   const { hasPermission } = usePermission();
-  const qc = useQueryClient();
   const [siteId, setSiteId] = useState<number | undefined>(undefined);
-  const [keywordDraft, setKeywordDraft] = useState('');
-  const [keyword, setKeyword] = useState('');
-  const { page, pageSize, buildPagination, resetPage } = usePagination();
+  const {
+    page, pageSize, buildPagination, resetPage,
+    bindKeyword, submittedParams,
+    handleSearch, handleReset,
+  } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: cmsCollectKeys.lists });
   const [itemsRule, setItemsRule] = useState<CmsCollectRule | null>(null);
-  const [itemsPage, setItemsPage] = useState(1);
+  const itemsPagination = usePagination(10);
 
-  const listQuery = useCmsCollectRules({ page, pageSize, siteId, ...(keyword ? { keyword } : {}) });
+  const listQuery = useCmsCollectRules({ page, pageSize, siteId, keyword: submittedParams.keyword || undefined });
   const treeQuery = useCmsChannelTree(siteId);
   const saveMutation = useSaveCmsCollectRule();
   const modal = useEditModal<CmsCollectRule, Partial<CmsCollectRule>, Record<string, unknown>>({
@@ -63,22 +65,9 @@ export default function CollectPage() {
   });
   const deleteMutation = useDeleteCmsCollectRules();
   const runMutation = useRunCmsCollectRule();
-  const itemsQuery = useCmsCollectItems(itemsRule?.id, { page: itemsPage, pageSize: 10 });
+  const itemsQuery = useCmsCollectItems(itemsRule?.id, { page: itemsPagination.page, pageSize: itemsPagination.pageSize });
   const { tasks, refresh: refreshTasks } = useMyAsyncTasks({ taskTypes: ['cms-collect-run'] });
   const runningTasks = useMemo(() => tasks.filter((t) => t.status === 'running' || t.status === 'pending'), [tasks]);
-
-  function handleSearch() {
-    setKeyword(keywordDraft.trim());
-    resetPage();
-    void qc.invalidateQueries({ queryKey: cmsCollectKeys.lists });
-  }
-
-  function handleReset() {
-    setKeywordDraft('');
-    setKeyword('');
-    resetPage();
-    void qc.invalidateQueries({ queryKey: cmsCollectKeys.lists });
-  }
 
   async function handleRun(record: CmsCollectRule) {
     await runMutation.mutateAsync({ params: { id: record.id } });
@@ -127,7 +116,7 @@ export default function CollectPage() {
         {
           key: 'items',
           label: '明细',
-          onClick: () => { setItemsPage(1); setItemsRule(record); },
+          onClick: () => { itemsPagination.setPage(1); setItemsRule(record); },
         },
         ...(hasPermission('cms:collect:update') ? [{
           key: 'edit',
@@ -164,15 +153,17 @@ export default function CollectPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <CmsSiteSelect value={siteId} onChange={(v) => { setSiteId(v); resetPage(); }} />
-        <KeywordInput placeholder="规则名称" value={keywordDraft} onChange={setKeywordDraft} width={200} />
-        <SearchButton onClick={handleSearch} />
-        <ResetButton onClick={handleReset} />
-        {hasPermission('cms:collect:create') ? (
-          <CreateButton onClick={modal.openCreate} />
-        ) : null}
-      </SearchToolbar>
+      <ListSearchToolbar
+        keyword={(
+          <>
+            <CmsSiteSelect value={siteId} onChange={(v) => { setSiteId(v); resetPage(); }} />
+            <KeywordInput placeholder="规则名称" {...bindKeyword('keyword')} width={200} />
+          </>
+        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={hasPermission('cms:collect:create') ? <CreateButton onClick={modal.openCreate} /> : null}
+      />
 
       {runningTasks.length > 0 ? (
         <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -268,13 +259,7 @@ export default function CollectPage() {
         <ConfigurableTable<CmsCollectItem>
           columns={itemColumns}
           {...listTableProps(itemsQuery, {
-            pagination: (total) => ({
-              currentPage: itemsPage,
-              pageSize: 10,
-              total,
-              onPageChange: setItemsPage,
-              onPageSizeChange: () => undefined,
-            }),
+            pagination: itemsPagination.buildPagination,
           })}
         />
       </SideSheet>

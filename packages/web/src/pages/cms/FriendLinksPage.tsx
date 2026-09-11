@@ -4,7 +4,6 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { FolderTree } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import AppModal from '@/components/AppModal';
 import { createdAtColumn, renderEnabledStatusTag } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
@@ -17,10 +16,10 @@ import {
 } from '@/hooks/queries/cms';
 import type { CmsFriendLink, CmsFriendLinkGroup } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
-import { deleteAction, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 
 interface SearchParams { keyword: string; groupId?: number }
@@ -102,26 +101,31 @@ export default function FriendLinksPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar>
-        <CmsSiteSelect value={siteId} onChange={(v) => { setSiteId(v); setPage(1); }} width={180} />
-        <KeywordInput placeholder="搜索名称..." {...bindKeyword('keyword')} width={200} />
-        <FilterSelect
-          placeholder="全部分组"
-          items={[
-            { value: 0, label: '未分组' },
-            ...groupOptions.map((g) => ({ value: g.id, label: g.name })),
-          ]}
-          {...bind('groupId')}
-          width={160}
-          disabled={!siteId}
-        />
-        <SearchButton onClick={handleSearch} />
-        <ResetButton onClick={handleReset} />
-        {hasPermission('cms:link:create') ? (
-          <CreateButton onClick={linkModal.openCreate} />
-        ) : null}
-        <Button icon={<FolderTree size={14} />} disabled={!siteId} onClick={() => setGroupSheetVisible(true)}>分组管理</Button>
-      </SearchToolbar>
+      <ListSearchToolbar
+        keyword={(
+          <>
+            <CmsSiteSelect value={siteId} onChange={(v) => { setSiteId(v); setPage(1); }} width={180} />
+            <KeywordInput placeholder="搜索名称..." {...bindKeyword('keyword')} width={200} />
+          </>
+        )}
+        filters={(
+          <FilterSelect
+            placeholder="全部分组"
+            items={[
+              { value: 0, label: '未分组' },
+              ...groupOptions.map((g) => ({ value: g.id, label: g.name })),
+            ]}
+            {...bind('groupId')}
+            width={160}
+            disabled={!siteId}
+          />
+        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={hasPermission('cms:link:create') ? <CreateButton onClick={linkModal.openCreate} /> : null}
+        actions={<Button icon={<FolderTree size={14} />} disabled={!siteId} onClick={() => setGroupSheetVisible(true)}>分组管理</Button>}
+        mobileActions={<Button theme="borderless" icon={<FolderTree size={14} />} disabled={!siteId} onClick={() => setGroupSheetVisible(true)}>分组管理</Button>}
+      />
 
       <ConfigurableTable<CmsFriendLink>
         columns={columns}

@@ -32,7 +32,7 @@ interface SearchParams {
   status?: string;
 }
 
-const defaultSearchParams: SearchParams = { keyword: '', visibility: undefined, status: '' };
+const defaultSearchParams: SearchParams = { keyword: '', visibility: undefined, status: undefined };
 
 export default function WikiSpacesPage() {
   const { hasPermission } = usePermission();

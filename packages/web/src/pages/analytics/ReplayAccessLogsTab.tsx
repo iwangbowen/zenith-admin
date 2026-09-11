@@ -4,12 +4,11 @@
  */
 import { Table, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { KeywordInput } from '@/components/search-filters';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { useListSearch } from '@/hooks/useListSearch';
 import type { ReplayAccessLog } from '@zenith/shared/analytics';
 import { replayKeys, useReplayAccessLogs } from '@/hooks/queries/session-replays';
+import { ListSearchToolbar } from '@/components/list-page';
 
 const { Text } = Typography;
 
@@ -42,15 +41,17 @@ export default function ReplayAccessLogsTab({ onOpenReplay }: Readonly<{ onOpenR
 
   return (
     <div>
-      <SearchToolbar>
-        <KeywordInput
-          placeholder="操作人/录像归属/回放 ID"
-          {...bindKeyword('keyword')}
-          width={240}
-        />
-        <SearchButton onClick={handleSearch} />
-        <ResetButton onClick={handleReset} />
-      </SearchToolbar>
+      <ListSearchToolbar
+        keyword={(
+          <KeywordInput
+            placeholder="操作人/录像归属/回放 ID"
+            {...bindKeyword('keyword')}
+            width={240}
+          />
+        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+      />
       <Table
         columns={columns}
         dataSource={list}

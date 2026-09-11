@@ -7,7 +7,6 @@ import type { CmsInteraction, CmsInteractionKind, CmsInteractionResponse, CmsInt
 import ConfigurableTable from '@/components/ConfigurableTable';
 import ExportButton from '@/components/ExportButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import {
@@ -25,9 +24,9 @@ import { formatDateTimeRangeForApi } from '@/utils/date';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { CmsSiteSelect, cmsPreviewUrl } from './CmsSiteSelect';
 import InteractionResultsSheet from './interaction/InteractionResultsSheet';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { deleteAction, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 interface ListSearch {
@@ -35,8 +34,14 @@ interface ListSearch {
   kind?: CmsInteractionKind;
   status?: CmsInteractionStatus;
 }
+interface ResponseSearch {
+  interactionId?: number;
+  kind?: CmsInteractionKind;
+  timeRange?: [Date, Date] | null;
+}
 
 const initialSearch: ListSearch = { keyword: '' };
+const initialResponseSearch: ResponseSearch = { interactionId: undefined, kind: undefined, timeRange: null };
 const STATUS_COLORS: Record<CmsInteractionStatus, 'grey' | 'green' | 'orange'> = {
   draft: 'grey',
   published: 'green',
@@ -51,20 +56,19 @@ export default function SurveysPage() {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [resultsTarget, setResultsTarget] = useState<CmsInteraction | null>(null);
   const [responseDetail, setResponseDetail] = useState<CmsInteractionResponse | null>(null);
-  const [responsePage, setResponsePage] = useState(1);
-  const [responseTimeRange, setResponseTimeRange] = useState<[Date, Date] | undefined>();
-  const [responseInteractionId, setResponseInteractionId] = useState<number | undefined>();
-  // 两个页签共用 kind 筛选：查询同时回源互动列表与答卷列表，答卷页自身的即时筛选随重置一起清空
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, setField, bind, bindKeyword, submittedParams: submitted,
+    bind, bindKeyword, submittedParams: submitted,
     handleSearch, handleReset,
   } = useListSearch<ListSearch>({
     defaults: initialSearch,
     listKey: cmsInteractionKeys.lists,
-    extraKeys: [cmsInteractionKeys.responseLists],
-    onSearch: () => { setResponsePage(1); setSelectedIds([]); },
-    onReset: () => { setResponsePage(1); setResponseTimeRange(undefined); setResponseInteractionId(undefined); setSelectedIds([]); },
+    onSearch: () => { setSelectedIds([]); },
+    onReset: () => { setSelectedIds([]); },
+  });
+  const responseSearch = useListSearch<ResponseSearch>({
+    defaults: initialResponseSearch,
+    listKey: cmsInteractionKeys.responseLists,
   });
 
   const listQuery = useCmsInteractionList({
@@ -83,12 +87,12 @@ export default function SurveysPage() {
   const batchMutation = useBatchCmsInteractionStatus();
   const interactionOptionsQuery = useCmsInteractionOptions(siteId);
   const responseQuery = useCmsInteractionResponseList({
-    page: responsePage,
-    pageSize,
+    page: responseSearch.page,
+    pageSize: responseSearch.pageSize,
     siteId: siteId ?? 0,
-    interactionId: responseInteractionId,
-    kind: submitted.kind,
-    ...formatDateTimeRangeForApi(responseTimeRange),
+    interactionId: responseSearch.submittedParams.interactionId,
+    kind: responseSearch.submittedParams.kind,
+    ...formatDateTimeRangeForApi(responseSearch.submittedParams.timeRange),
   }, !!siteId);
 
   const canManage = hasPermission('cms:interaction:manage');
@@ -205,55 +209,56 @@ export default function SurveysPage() {
     }),
   ];
 
-  const listSearch = (
+  const interactionKeyword = (
     <>
-      <CmsSiteSelect value={siteId} onChange={(value) => { setSiteId(value); setPage(1); setResponsePage(1); setSelectedIds([]); setResponseInteractionId(undefined); }} />
+      <CmsSiteSelect value={siteId} onChange={(value) => { setSiteId(value); setPage(1); responseSearch.handleReset(); setSelectedIds([]); }} />
       <KeywordInput placeholder="标题/标识" {...bindKeyword('keyword')} width={200} />
+    </>
+  );
+  const interactionFilters = (
+    <>
       <FilterSelect
         placeholder="全部类型"
         items={CMS_INTERACTION_KIND_OPTIONS}
-        value={draftParams.kind}
-        onChange={(value) => { setField('kind')(value); setSelectedIds([]); }}
+        {...bind('kind')}
       />
-      <StatusSelect items={CMS_INTERACTION_STATUS_OPTIONS} value={draftParams.status}
-        onChange={(value) => { setField('status')(value); setSelectedIds([]); }} />
-      <SearchButton onClick={handleSearch} />
-      <ResetButton onClick={handleReset} />
+      <StatusSelect items={CMS_INTERACTION_STATUS_OPTIONS} {...bind('status')} />
     </>
   );
+  const interactionBatchActions = selectedIds.length > 0 && canBatch ? (
+    <>
+      <Button onClick={() => submitBatch('published')}>批量发布（{selectedIds.length}）</Button>
+      <Button type="warning" onClick={() => submitBatch('closed')}>批量关闭</Button>
+    </>
+  ) : null;
+  const interactionMobileBatchActions = selectedIds.length > 0 && canBatch ? (
+    <>
+      <Button theme="borderless" onClick={() => submitBatch('published')}>批量发布（{selectedIds.length}）</Button>
+      <Button type="warning" theme="borderless" onClick={() => submitBatch('closed')}>批量关闭</Button>
+    </>
+  ) : null;
 
   const responseExportQuery = {
     siteId,
-    interactionId: responseInteractionId,
-    kind: submitted.kind,
-    ...formatDateTimeRangeForApi(responseTimeRange),
+    interactionId: responseSearch.submittedParams.interactionId,
+    kind: responseSearch.submittedParams.kind,
+    ...formatDateTimeRangeForApi(responseSearch.submittedParams.timeRange),
   };
 
   return (
     <div className="page-container page-tabs-page">
       <Tabs collapsible="auto" type="line" lazyRender keepDOM={false} activeKey={activeTab} onChange={(k) => setActiveTab(k as typeof activeTab)}>
         <TabPane tab="互动管理" itemKey="interactions">
-          <SearchToolbar
-            primary={listSearch}
-            actions={canManage && siteId ? <CreateButton onClick={openCreate} /> : null}
-            mobilePrimary={(
-              <>
-                <CmsSiteSelect value={siteId} onChange={(value) => { setSiteId(value); setPage(1); setResponsePage(1); setSelectedIds([]); setResponseInteractionId(undefined); }} />
-                <SearchButton onClick={handleSearch} />
-                {canManage ? <CreateButton onClick={openCreate} /> : null}
-              </>
-            )}
-            mobileFilters={listSearch}
+          <ListSearchToolbar
+            keyword={interactionKeyword}
+            filters={interactionFilters}
+            onSearch={handleSearch}
+            onReset={handleReset}
+            create={canManage && siteId ? <CreateButton onClick={openCreate} /> : null}
+            actions={interactionBatchActions}
+            mobileActions={interactionMobileBatchActions}
             filterTitle="互动问卷筛选"
-            onFilterApply={handleSearch}
-            onFilterReset={handleReset}
           />
-          {selectedIds.length > 0 && canBatch ? (
-            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-              <Button onClick={() => submitBatch('published')}>批量发布（{selectedIds.length}）</Button>
-              <Button type="warning" onClick={() => submitBatch('closed')}>批量关闭</Button>
-            </div>
-          ) : null}
           <ConfigurableTable<CmsInteraction>
             columns={listColumns}
             {...listTableProps(listQuery, {
@@ -265,15 +270,14 @@ export default function SurveysPage() {
           />
         </TabPane>
         <TabPane tab="答卷明细" itemKey="responses">
-          <SearchToolbar
-            primary={(
+          <ListSearchToolbar
+            keyword={<CmsSiteSelect value={siteId} onChange={(value) => { setSiteId(value); setPage(1); responseSearch.handleReset(); setSelectedIds([]); }} />}
+            filters={(
               <>
-                <CmsSiteSelect value={siteId} onChange={(value) => { setSiteId(value); setPage(1); setResponsePage(1); setSelectedIds([]); setResponseInteractionId(undefined); }} />
-                <FilterSelect
+                <FilterSelect<number>
                   placeholder="全部互动问卷"
                   items={(interactionOptionsQuery.data ?? []).map((item) => ({ value: item.id, label: item.title }))}
-                  value={responseInteractionId}
-                  onChange={(value) => { setResponseInteractionId(value as number | undefined); setResponsePage(1); }}
+                  {...responseSearch.bind('interactionId')}
                   width={200}
                   filter
                   loading={interactionOptionsQuery.isFetching}
@@ -281,14 +285,14 @@ export default function SurveysPage() {
                 <FilterSelect
                   placeholder="全部类型"
                   items={CMS_INTERACTION_KIND_OPTIONS}
-                  {...bind('kind')}
+                  {...responseSearch.bind('kind')}
                   width={140}
                 />
-                <DateRangeFilter placeholder={['提交开始时间', '提交结束时间']} value={responseTimeRange} onChange={(value) => setResponseTimeRange(value as [Date, Date] | undefined)} />
-                <SearchButton onClick={handleSearch} />
-                <ResetButton onClick={handleReset} />
+                <DateRangeFilter placeholder={['提交开始时间', '提交结束时间']} {...responseSearch.bind('timeRange')} />
               </>
             )}
+            onSearch={responseSearch.handleSearch}
+            onReset={responseSearch.handleReset}
             actions={siteId && hasPermission('cms:interaction:export')
               ? <ExportButton entity="cms.interaction-responses" permission="cms:interaction:export" query={responseExportQuery} />
               : null}
@@ -298,13 +302,7 @@ export default function SurveysPage() {
             {...listTableProps(responseQuery, {
               rowKey: (record) => String(record?.id ?? ''),
               empty: siteId ? '暂无答卷' : '请先选择站点',
-              pagination: (total) => ({
-                total,
-                pageSize,
-                currentPage: responsePage,
-                onPageChange: setResponsePage,
-                onPageSizeChange: () => undefined,
-              }),
+              pagination: responseSearch.buildPagination,
             })}
           />
         </TabPane>

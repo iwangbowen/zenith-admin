@@ -123,7 +123,8 @@ describe('AnalyticsSegmentsTab', () => {
 
   it('creates a new segment with one event condition and submits the compiled rules', async () => {
     renderWithPreferences(<AnalyticsSegmentsTab />);
-    fireEvent.click(screen.getByText('新增'));
+    // 工具栏桌面 / 移动两份「新增」按钮，取桌面端（DOM 中靠前）
+    fireEvent.click(screen.getAllByText('新增')[0]);
     const nameInput = await screen.findByPlaceholderText('如「近 7 天活跃用户」');
     fireEvent.change(nameInput, { target: { value: '新分群' } });
     const eventNameInput = screen.getByPlaceholderText('事件名，如 order_submit');

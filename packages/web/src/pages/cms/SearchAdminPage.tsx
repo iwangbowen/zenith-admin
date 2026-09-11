@@ -12,6 +12,7 @@ import { useMyAsyncTasks } from '@/hooks/useAsyncTasks';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
+import { usePagination } from '@/hooks/usePagination';
 import {
   useCmsSearchTest, useCmsSegmentPreview, useCmsSearchReindex,
   useCmsSearchWordList, useSaveCmsSearchWord, useDeleteCmsSearchWord,
@@ -25,12 +26,12 @@ import { COMMON_STATUS_OPTIONS, enumValueOf, USER_STATUSES } from '@zenith/share
 import type { CmsSearchResult, CmsSearchWord, CmsHotKeyword } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { formatDateTimeRangeForApi } from '@/utils/date';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import { dateTimeColumn, renderEnabledStatusTag } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
-import { confirmAndDelete, deleteAction, listTableProps } from '@/components/list-page';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
@@ -40,7 +41,7 @@ function SearchTestTab({ siteId, onSiteChange }: Readonly<{ siteId: number | und
   const queryClient = useQueryClient();
   const [draftKeyword, setDraftKeyword] = useState('');
   const [keyword, setKeyword] = useState('');
-  const [page, setPage] = useState(1);
+  const { page, setPage, buildPagination } = usePagination(10);
 
   const searchQuery = useCmsSearchTest({ siteId, keyword, page }, !!keyword && siteId !== undefined);
   const segmentQuery = useCmsSegmentPreview(siteId, keyword, !!keyword && siteId !== undefined);
@@ -125,7 +126,7 @@ function SearchTestTab({ siteId, onSiteChange }: Readonly<{ siteId: number | und
         columns={columns}
         {...listTableProps({ ...searchQuery, data: searchQuery.data }, {
           rowKey: (record) => String(record?.id ?? ''),
-          pagination: (total) => ({ currentPage: page, pageSize: 10, total, onPageChange: setPage, onPageSizeChange: () => undefined }),
+          pagination: buildPagination,
           empty: keyword ? '未检索到内容' : '输入关键词开始检索测试',
         })}
       />
@@ -144,16 +145,25 @@ function DictTab({ siteId, onSiteChange }: Readonly<{ siteId: number | undefined
   const { hasPermission } = usePermission();
   const {
     page, pageSize, setPage, buildPagination,
-    bindKeyword, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
-  } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: cmsSearchWordKeys.lists });
-  const [type, setType] = useState<'extension' | 'stop' | undefined>(undefined);
-  const [groupName, setGroupName] = useState('');
-  const [status, setStatus] = useState<string | undefined>(undefined);
+  } = useListSearch<{
+    keyword: string;
+    type?: 'extension' | 'stop';
+    groupName: string;
+    status?: string;
+  }>({
+    defaults: { keyword: '', type: undefined, groupName: '', status: undefined },
+    listKey: cmsSearchWordKeys.lists,
+    onSearch: () => setSelectedIds([]),
+    onReset: () => setSelectedIds([]),
+  });
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const listQuery = useCmsSearchWordList({
     page, pageSize, siteId: siteId ?? 0, keyword: submittedParams.keyword || undefined,
-    type, groupName: groupName || undefined, status: enumValueOf(USER_STATUSES, status),
+    type: submittedParams.type,
+    groupName: submittedParams.groupName || undefined,
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
   }, siteId !== undefined);
   const saveMutation = useSaveCmsSearchWord();
   const modal = useEditModal<CmsSearchWord, Partial<CmsSearchWord>, Record<string, unknown>>({
@@ -198,26 +208,32 @@ function DictTab({ siteId, onSiteChange }: Readonly<{ siteId: number | undefined
   return (
     <>
       <Banner type="info" closeIcon={null} style={{ marginBottom: 12 }} description="自定义词典用于纠正分词（如品牌名、行业术语）。新增/修改即时对新内容生效；历史内容需在「检索测试」中重建索引。" />
-      <SearchToolbar>
-        <CmsSiteSelect value={siteId} onChange={(value) => { onSiteChange(value); setPage(1); setSelectedIds([]); }} width={180} />
-        <KeywordInput placeholder="搜索词条..." {...bindKeyword('keyword')} width={200} />
-        <FilterSelect
-          placeholder="全部词典类型"
-          items={CMS_SEARCH_WORD_TYPES.map((value) => ({ value, label: CMS_SEARCH_WORD_TYPE_LABELS[value] }))}
-          value={type}
-          onChange={(value) => { setType(value as 'extension' | 'stop' | undefined); setSelectedIds([]); }}
-          width={140}
-        />
-        <Input placeholder="分组" value={groupName} onChange={(value) => { setGroupName(value); setSelectedIds([]); }} style={{ width: 130 }} />
-        <StatusSelect
-          items={COMMON_STATUS_OPTIONS}
-          value={status}
-          onChange={(value) => { setStatus(value as string | undefined); setSelectedIds([]); }}
-        />
-        <SearchButton onClick={handleSearch} />
-        <ResetButton onClick={() => { handleReset(); setType(undefined); setGroupName(''); setStatus(undefined); setSelectedIds([]); }} />
-        {canManage ? <CreateButton onClick={modal.openCreate}>新增词条</CreateButton> : null}
-        {canManage && selectedIds.length > 0 ? (
+      <ListSearchToolbar
+        keyword={(
+          <>
+            <CmsSiteSelect value={siteId} onChange={(value) => { onSiteChange(value); setPage(1); setSelectedIds([]); }} width={180} />
+            <KeywordInput placeholder="搜索词条..." {...bindKeyword('keyword')} width={200} />
+          </>
+        )}
+        filters={(
+          <>
+            <FilterSelect
+              placeholder="全部词典类型"
+              items={CMS_SEARCH_WORD_TYPES.map((value) => ({ value, label: CMS_SEARCH_WORD_TYPE_LABELS[value] }))}
+              {...bind('type')}
+              width={140}
+            />
+            <KeywordInput placeholder="分组" {...bindKeyword('groupName')} width={130} />
+            <StatusSelect
+              items={COMMON_STATUS_OPTIONS}
+              {...bind('status')}
+            />
+          </>
+        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={canManage ? <CreateButton onClick={modal.openCreate}>新增词条</CreateButton> : null}
+        actions={canManage && selectedIds.length > 0 ? (
           <>
             <Button onClick={() => void batchMutation.mutateAsync({ action: 'update', body: { ids: selectedIds, status: 'enabled' } }).then(() => setSelectedIds([]))}>批量启用</Button>
             <Button onClick={() => {
@@ -243,7 +259,33 @@ function DictTab({ siteId, onSiteChange }: Readonly<{ siteId: number | undefined
             }}>批量删除</Button>
           </>
         ) : null}
-      </SearchToolbar>
+        mobileActions={canManage && selectedIds.length > 0 ? (
+          <>
+            <Button theme="borderless" onClick={() => void batchMutation.mutateAsync({ action: 'update', body: { ids: selectedIds, status: 'enabled' } }).then(() => setSelectedIds([]))}>批量启用</Button>
+            <Button theme="borderless" onClick={() => {
+              let nextGroup = '';
+              Modal.confirm({
+                title: '批量调整词典分组',
+                content: <Input placeholder="目标分组" onChange={(value) => { nextGroup = value; }} />,
+                onOk: async () => {
+                  if (!nextGroup.trim()) abortSubmit('validation');
+                  await batchMutation.mutateAsync({ action: 'update', body: { ids: selectedIds, groupName: nextGroup.trim() } });
+                  setSelectedIds([]);
+                },
+              });
+            }}>批量分组</Button>
+            <Button type="danger" theme="borderless" onClick={() => {
+              confirmAndDelete({
+                title: `删除 ${selectedIds.length} 个词条？`,
+                content: '删除后不可恢复。',
+                run: () => batchMutation.mutateAsync({ action: 'delete', body: { ids: selectedIds } }),
+                successMessage: null,
+                onDeleted: () => setSelectedIds([]),
+              });
+            }}>批量删除</Button>
+          </>
+        ) : null}
+      />
       <ConfigurableTable<CmsSearchWord>
         columns={columns}
         {...listTableProps(listQuery, {

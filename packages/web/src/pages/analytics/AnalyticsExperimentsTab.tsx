@@ -9,10 +9,9 @@ import { DataBar } from '@/components/data-viz/DataBar';
 import { ANALYTICS_EXPERIMENT_STATUS_LABELS, ANALYTICS_EXPERIMENT_STATUS_OPTIONS } from '@zenith/shared/analytics';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { analyticsKeys, useAnalyticsEventMeta, useCreateExperiment, useDeleteExperiment, useExperimentAction, useExperimentReport, useExperiments, useUpdateExperiment } from '@/hooks/queries/analytics';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { useEditModal } from '@/hooks/useEditModal';
 import { FormSliderInput } from '@/components/SliderInput';
@@ -20,6 +19,7 @@ import { dateTimeColumn } from '@/utils/table-columns';
 import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 import { trimToNull } from './analytics-format';
+import { ListSearchToolbar } from '@/components/list-page';
 
 const PAGE_SIZE = 20;
 const defaultSearch = { name: '', status: undefined as AnalyticsExperiment['status'] | undefined };
@@ -214,16 +214,13 @@ export default function AnalyticsExperimentsTab() {
 
   return (
     <>
-      <SearchToolbar>
-        <KeywordInput placeholder="实验名称" {...bindKeyword('name')} />
-        <StatusSelect
-          items={ANALYTICS_EXPERIMENT_STATUS_OPTIONS}
-          {...bind('status')}
-        />
-        <SearchButton onClick={handleSearch} />
-        <ResetButton onClick={handleReset} />
-        <CreateButton onClick={experimentModal.openCreate} />
-      </SearchToolbar>
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="实验名称" {...bindKeyword('name')} />}
+        filters={<StatusSelect items={ANALYTICS_EXPERIMENT_STATUS_OPTIONS} {...bind('status')} />}
+        onSearch={handleSearch}
+        onReset={handleReset}
+        create={<CreateButton onClick={experimentModal.openCreate} />}
+      />
 
       <ConfigurableTable
         bordered rowKey="id" loading={listQuery.isFetching} columns={columns} dataSource={list}

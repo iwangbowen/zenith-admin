@@ -13,6 +13,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import type { AnalyticsDebugEvent } from '@zenith/shared/analytics';
 import { PreferencesContext, defaultPreferences } from '@/hooks/usePreferences';
 import { createTestQueryClient } from '@/test-utils/query-harness';
+import { desktopToolbar } from '@/test-utils/toolbar';
 
 const useAnalyticsDebugEventsMock = vi.fn();
 vi.mock('@/hooks/queries/analytics', () => ({
@@ -76,20 +77,20 @@ describe('AnalyticsDebugTab', () => {
   });
 
   it('查询按钮使用输入的事件名调用 hook', () => {
-    renderWithPreferences(<AnalyticsDebugTab active />);
-    const input = screen.getByPlaceholderText('事件名');
-    fireEvent.change(input, { target: { value: 'order_submit' } });
-    fireEvent.click(screen.getByText('查询'));
+    const { container } = renderWithPreferences(<AnalyticsDebugTab active />);
+    const toolbar = desktopToolbar(container);
+    fireEvent.change(toolbar.getByPlaceholderText('事件名'), { target: { value: 'order_submit' } });
+    fireEvent.click(toolbar.getByText('查询'));
     const lastCallParams = useAnalyticsDebugEventsMock.mock.calls.at(-1)?.[0];
     expect(lastCallParams).toEqual({ page: 1, pageSize: 10, eventName: 'order_submit' });
   });
 
   it('重置按钮清空事件名过滤', () => {
-    renderWithPreferences(<AnalyticsDebugTab active />);
-    const input = screen.getByPlaceholderText('事件名');
-    fireEvent.change(input, { target: { value: 'order_submit' } });
-    fireEvent.click(screen.getByText('查询'));
-    fireEvent.click(screen.getByText('重置'));
+    const { container } = renderWithPreferences(<AnalyticsDebugTab active />);
+    const toolbar = desktopToolbar(container);
+    fireEvent.change(toolbar.getByPlaceholderText('事件名'), { target: { value: 'order_submit' } });
+    fireEvent.click(toolbar.getByText('查询'));
+    fireEvent.click(toolbar.getByText('重置'));
     const lastCallParams = useAnalyticsDebugEventsMock.mock.calls.at(-1)?.[0];
     expect(lastCallParams).toEqual({ page: 1, pageSize: 10, eventName: undefined });
   });

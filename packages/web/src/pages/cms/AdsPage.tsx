@@ -21,7 +21,7 @@ import { CMS_AD_EVENT_TYPE_LABELS, CMS_DEVICE_TYPE_LABELS, CMS_AD_EVENT_TYPE_OPT
 import type { CmsAdEvent, CmsAdSlot, CmsAd } from '@zenith/shared/cms';
 import { percentOf } from '@zenith/shared/core';
 import { CmsSiteSelect } from './CmsSiteSelect';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import { dateColumn, dateTimeColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
@@ -366,24 +366,28 @@ function StatsTab({ siteId, setSiteId }: Readonly<{
   ];
   return (
     <>
-      <SearchToolbar>
-        <CmsSiteSelect value={siteId} onChange={setSiteId} />
-        <FilterSelect
-          placeholder="全部事件类型"
-          items={CMS_AD_EVENT_TYPE_OPTIONS}
-          {...bind('eventType')}
-          width={140}
-        />
-        <FilterSelect
-          placeholder="全部设备"
-          items={CMS_DEVICE_TYPE_OPTIONS}
-          {...bind('device')}
-          width={140}
-        />
-        <DateRangeFilter placeholder={['统计开始时间', '统计结束时间']} {...bind('timeRange')} />
-        <SearchButton onClick={handleSearch} />
-        <ResetButton onClick={handleReset} />
-      </SearchToolbar>
+      <ListSearchToolbar
+        keyword={<CmsSiteSelect value={siteId} onChange={setSiteId} />}
+        filters={(
+          <>
+            <FilterSelect
+              placeholder="全部事件类型"
+              items={CMS_AD_EVENT_TYPE_OPTIONS}
+              {...bind('eventType')}
+              width={140}
+            />
+            <FilterSelect
+              placeholder="全部设备"
+              items={CMS_DEVICE_TYPE_OPTIONS}
+              {...bind('device')}
+              width={140}
+            />
+            <DateRangeFilter placeholder={['统计开始时间', '统计结束时间']} {...bind('timeRange')} />
+          </>
+        )}
+        onSearch={handleSearch}
+        onReset={handleReset}
+      />
       {statsQuery.data ? (
         <div style={{ display: 'flex', gap: 24, marginBottom: 12 }} aria-label="广告事件统计摘要">
           <Typography.Text>曝光 <strong>{statsQuery.data.summary.impressions}</strong></Typography.Text>

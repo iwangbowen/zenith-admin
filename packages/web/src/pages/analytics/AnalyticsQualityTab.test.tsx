@@ -118,7 +118,8 @@ describe('AnalyticsQualityTab', () => {
 
   it('新增覆盖表单提交调用 saveOverrideMutation', async () => {
     renderWithPreferences(<AnalyticsQualityTab />);
-    fireEvent.click(screen.getByText('新增覆盖'));
+    // 工具栏桌面 / 移动两份「新增覆盖」按钮，取桌面端（DOM 中靠前）
+    fireEvent.click(screen.getAllByText('新增覆盖')[0]);
     const eventNameField = await screen.findByPlaceholderText('如 order_submit');
     fireEvent.change(eventNameField, { target: { value: 'custom_event' } });
     const okButtons = screen.getAllByText('确定');

@@ -6,7 +6,6 @@ import type { CmsMemberSubscription, CmsSubscriptionAggregate, CmsSubscriptionSu
 import ConfigurableTable from '@/components/ConfigurableTable';
 import ExportButton from '@/components/ExportButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import {
@@ -16,12 +15,11 @@ import {
 } from '@/hooks/queries/cms';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { CmsSiteSelect } from './CmsSiteSelect';
-import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
 import { dateTimeColumn } from '@/utils/table-columns';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
-import { listTableProps } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 interface SearchState {
   subjectType?: CmsSubscriptionSubjectType;
   subjectKeyword: string;
@@ -61,13 +59,10 @@ export default function SubscriptionsPage() {
     </>
   );
 
-  const primary = (
+  const keyword = (
     <>
       <CmsSiteSelect value={siteId} onChange={(value) => { setSiteId(value); setPage(1); }} />
       <KeywordInput placeholder="订阅对象" {...bindKeyword('subjectKeyword')} width={200} />
-      {filters}
-      <SearchButton onClick={handleSearch} />
-      <ResetButton onClick={handleReset} />
     </>
   );
 
@@ -107,20 +102,14 @@ export default function SubscriptionsPage() {
     <div className="page-container page-tabs-page">
       <Tabs collapsible="auto" type="line" lazyRender keepDOM={false} activeKey={activeTab} onChange={(k) => setActiveTab(k as typeof activeTab)}>
         <TabPane tab="订阅聚合" itemKey="aggregate">
-          <SearchToolbar
-            primary={primary}
+          <ListSearchToolbar
+            keyword={keyword}
+            filters={filters}
+            onSearch={handleSearch}
+            onReset={handleReset}
             actions={siteId && hasPermission('cms:subscription:export') ? <ExportButton entity="cms.subscriptions" permission="cms:subscription:export" query={exportQuery} label="导出订阅明细" /> : null}
-            mobilePrimary={(
-              <>
-                <CmsSiteSelect value={siteId} onChange={setSiteId} />
-                <SearchButton onClick={handleSearch} />
-              </>
-            )}
-            mobileFilters={filters}
             mobileActions={siteId && hasPermission('cms:subscription:export') ? <ExportButton entity="cms.subscriptions" permission="cms:subscription:export" query={exportQuery} variant="flat" /> : null}
             filterTitle="订阅筛选"
-            onFilterApply={handleSearch}
-            onFilterReset={handleReset}
           />
           <ConfigurableTable<CmsSubscriptionAggregate>
             columns={aggregateColumns}
@@ -131,20 +120,14 @@ export default function SubscriptionsPage() {
           />
         </TabPane>
         <TabPane tab="订阅明细" itemKey="detail">
-          <SearchToolbar
-            primary={primary}
+          <ListSearchToolbar
+            keyword={keyword}
+            filters={filters}
+            onSearch={handleSearch}
+            onReset={handleReset}
             actions={siteId && hasPermission('cms:subscription:export') ? <ExportButton entity="cms.subscriptions" permission="cms:subscription:export" query={exportQuery} /> : null}
-            mobilePrimary={(
-              <>
-                <CmsSiteSelect value={siteId} onChange={setSiteId} />
-                <SearchButton onClick={handleSearch} />
-              </>
-            )}
-            mobileFilters={filters}
             mobileActions={siteId && hasPermission('cms:subscription:export') ? <ExportButton entity="cms.subscriptions" permission="cms:subscription:export" query={exportQuery} variant="flat" /> : null}
             filterTitle="订阅筛选"
-            onFilterApply={handleSearch}
-            onFilterReset={handleReset}
           />
           <ConfigurableTable<CmsMemberSubscription>
             columns={detailColumns}
