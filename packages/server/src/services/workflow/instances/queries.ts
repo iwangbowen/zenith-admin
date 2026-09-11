@@ -24,8 +24,6 @@ import { mapInstance, mapTask } from './mapping';
 import { buildListResult } from '../../../lib/list-query';
 import { requireRow } from '../../../lib/db-assert';
 
-type InstanceStatus = 'draft' | 'running' | 'approved' | 'rejected' | 'withdrawn';
-
 /** 优先级排序：urgent > high > normal > low（用于审批/申请列表置顶加急） */
 const priorityRankOrder = sql`CASE ${workflowInstances.priority} WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END`;
 
@@ -89,7 +87,7 @@ export async function listMyInstances(query: QueryOutputOf<typeof workflowInstan
   const where = buildWhere(
     eq(workflowInstances.initiatorId, user.userId),
     tenantCondition(workflowInstances, user),
-    status ? eq(workflowInstances.status, status as InstanceStatus) : undefined,
+    status ? eq(workflowInstances.status, status) : undefined,
     priority ? eq(workflowInstances.priority, priority) : undefined,
     definitionId !== undefined ? eq(workflowInstances.definitionId, definitionId) : undefined,
   );
@@ -332,7 +330,7 @@ export async function listAllInstances(query: QueryOutputOf<typeof workflowInsta
   const where = buildWhere(
     tc,
     scopeCond,
-    status ? eq(workflowInstances.status, status as InstanceStatus) : undefined,
+    status ? eq(workflowInstances.status, status) : undefined,
     keywordCondition(keyword, [workflowInstances.title, workflowDefinitions.name], 'ilike'),
     categoryId !== undefined ? eq(workflowDefinitions.categoryId, categoryId) : undefined,
     definitionId !== undefined ? eq(workflowInstances.definitionId, definitionId) : undefined,

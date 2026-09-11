@@ -69,6 +69,7 @@ export {
   rejectTaskCore,
 } from './instances/task-actions';
 export type { ApproveResult } from './instances/task-actions';
+export { requireCallbackTaskContext } from './instances/shared';
 export {
   transferTask,
   systemTransferTaskToManager,

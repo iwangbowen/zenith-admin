@@ -29,6 +29,21 @@ export async function requireVisibleInstance(id: number, message = '流程实例
 }
 
 /**
+ * 外部回调定位（公开回调路由、外部审批 / 触发器唤醒共用）：按 `externalCallbackId` 取任务与所属实例，
+ * 并从实例快照解析该任务节点的配置；任务不存在 404。回调无登录态，不带租户条件。
+ */
+export async function requireCallbackTaskContext(callbackId: string) {
+  const [task] = await db.select().from(workflowTasks).where(eq(workflowTasks.externalCallbackId, callbackId)).limit(1);
+  requireRow(task, '回调任务不存在');
+  const inst = requireRow(
+    (await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1))[0],
+    '流程实例不存在',
+  );
+  const nodeConfig = inst.definitionSnapshot?.flowData?.nodes.find((n) => n.data.key === task.nodeKey)?.data;
+  return { task, inst, nodeConfig };
+}
+
+/**
  * 事务内对实例加行级锁并在锁内重校验状态：把同一实例上的并发审批 / 推进 / 管理操作串行化，
  * 避免状态互相覆盖或残留任务。状态与预期不符时抛 409，文案由调用方按操作给出。
  */

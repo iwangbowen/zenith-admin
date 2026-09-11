@@ -163,7 +163,7 @@ export async function listMyConsults(query: QueryOutputOf<typeof workflowTaskCon
   const { page, pageSize } = query;
   const where = buildWhere(
     eq(workflowTaskConsults.consulteeId, user.userId),
-    query.status ? eq(workflowTaskConsults.status, query.status as ConsultRow['status']) : undefined,
+    query.status ? eq(workflowTaskConsults.status, query.status) : undefined,
     tenantCondition(workflowTaskConsults, user),
   );
   return buildListResult({

@@ -141,7 +141,7 @@ export async function listDefinitions(query: QueryOutputOf<typeof workflowDefini
   const where = buildWhere(
     tenantCondition(workflowDefinitions, user),
     keywordCondition(keyword, [workflowDefinitions.name]),
-    status ? eq(workflowDefinitions.status, status as WorkflowDefinitionStatus) : undefined,
+    status ? eq(workflowDefinitions.status, status) : undefined,
     categoryId ? eq(workflowDefinitions.categoryId, categoryId) : undefined,
   );
   return buildListResult({

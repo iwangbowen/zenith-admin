@@ -9,15 +9,11 @@
  * 3. 调用 approveTaskByCallback / rejectTaskByCallback
  */
 import { OpenAPIHono } from '@hono/zod-openapi';
-import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { workflowExternalCallbackContract, type WorkflowExternalApprovalConfig } from '@zenith/shared/workflow';
-import { db } from '../../db';
-import { workflowInstances, workflowTasks } from '../../db/schema';
 import { defineContractRoute } from '../../lib/contract-route';
-import { requireFirstRow } from '../../lib/db-assert';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
-import { approveTaskByCallback, rejectTaskByCallback } from '../../services/workflow/workflow-instances.service';
+import { approveTaskByCallback, rejectTaskByCallback, requireCallbackTaskContext } from '../../services/workflow/workflow-instances.service';
 import { assertWorkflowCallbackSignature, captureWorkflowCallbackRawBody, getWorkflowCallbackRawBody } from '../../lib/workflow-callback-security';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
@@ -28,13 +24,8 @@ const callback = defineContractRoute(workflowExternalCallbackContract.callback, 
     const { callbackId } = c.req.valid('param');
     const body = c.req.valid('json');
 
-    const task = await requireFirstRow(db.select().from(workflowTasks).where(eq(workflowTasks.externalCallbackId, callbackId)).limit(1), '回调任务不存在');
-
-    const inst = await requireFirstRow(db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1), '流程实例不存在');
-
-    const snapshot = inst.definitionSnapshot;
-    const nodeCfg = snapshot?.flowData?.nodes.find((n) => n.data.key === task.nodeKey)?.data;
-    const ext: WorkflowExternalApprovalConfig | undefined = nodeCfg?.externalApproval;
+    const { nodeConfig } = await requireCallbackTaskContext(callbackId);
+    const ext: WorkflowExternalApprovalConfig | undefined = nodeConfig?.externalApproval;
     if (!ext?.enabled) throw new HTTPException(400, { message: '当前任务未启用外部审批' });
 
     // 签名校验（如果配置了 hmacSha256）

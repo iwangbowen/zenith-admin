@@ -19,7 +19,7 @@ import { assertSelectedNextApprovers } from './initiator-select';
 import { mapInstance, mapTask } from './mapping';
 import { advanceAndMaterialize, checkNodeCompletion, filterCurrentActivation, killInstanceTokens } from './materialize';
 import type { MaterializeTrigger } from './materialize';
-import { emitInstanceEvent, emitNodeEvent, emitTaskEvent, emitTasksEnteredEvents, lockInstanceExpecting } from './shared';
+import { emitInstanceEvent, emitNodeEvent, emitTaskEvent, emitTasksEnteredEvents, lockInstanceExpecting, requireCallbackTaskContext } from './shared';
 import { hasUserHandledTask } from './transfers';
 import { bridgeReportFillWorkflowOutcome } from '../../report/report-fill-workflow-bridge.service';
 import { submitReportFillSyncForWorkflowInstance } from '../../report/report-fill-task.service';
@@ -162,10 +162,7 @@ export async function approveTask(taskId: number, comment?: string, attachments?
 
 /** 外部审批回调：根据 callbackId 找到 waiting 任务并审批通过 */
 export async function approveTaskByCallback(callbackId: string, comment: string | undefined, approverName: string): Promise<ApproveResult> {
-  const [task] = await db.select().from(workflowTasks).where(eq(workflowTasks.externalCallbackId, callbackId)).limit(1);
-  requireRow(task, '回调任务不存在');
-  const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
-  if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
+  const { task, inst } = await requireCallbackTaskContext(callbackId);
   if (task.status === 'approved') {
     return { instance: mapInstance(inst), message: '回调已处理' };
   }
@@ -390,10 +387,7 @@ export async function rejectTask(taskId: number, comment: string, attachments?: 
 
 /** 外部审批回调：根据 callbackId 找到 waiting 任务并驳回 */
 export async function rejectTaskByCallback(callbackId: string, comment: string, approverName: string) {
-  const [task] = await db.select().from(workflowTasks).where(eq(workflowTasks.externalCallbackId, callbackId)).limit(1);
-  requireRow(task, '回调任务不存在');
-  const [inst] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).limit(1);
-  if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
+  const { task, inst } = await requireCallbackTaskContext(callbackId);
   if (task.status === 'rejected') {
     return { instance: mapInstance(inst), message: '回调已处理' };
   }
