@@ -15,6 +15,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { listTableProps } from '@/components/list-page';
 import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { formatDurationMs as formatDuration } from '@/utils/format';
@@ -140,10 +141,9 @@ export default function SystemSchedulerPage() {
   const { hasPermission } = usePermission();
   const [activeTab, setActiveTab] = useUrlTabState(['tasks', 'runs', 'nodes'] as const, 'tasks');
   const [taskSearch, setTaskSearch] = useState<TaskSearchParams>(defaultTaskSearch);
-  const [draftRunSearch, setDraftRunSearch] = useState<RunSearchParams>(defaultRunSearch);
-  const [submittedRunSearch, setSubmittedRunSearch] = useState<RunSearchParams>(defaultRunSearch);
+  const runSearch = useListSearch<RunSearchParams>({ defaults: defaultRunSearch, listKey: systemSchedulerKeys.runs, pageSize: 20 });
+  const { page, pageSize, buildPagination, submittedParams: submittedRunSearch } = runSearch;
   const [detailRun, setDetailRun] = useState<SystemSchedulerRun | null>(null);
-  const { page, pageSize, setPage, buildPagination } = usePagination(20);
   const { page: nodesPage, pageSize: nodesPageSize, buildPagination: buildNodesPagination } = usePagination(10);
   const tasksQuery = useSystemSchedulerTasks();
   const runsQuery = useSystemSchedulerRuns({
@@ -252,19 +252,14 @@ export default function SystemSchedulerPage() {
       onOk: async () => {
         const data = await runTaskMutation.mutateAsync({ params: { name: record.name } });
         Toast.success(data.message || '任务已投递后台执行');
-        setSubmittedRunSearch((prev) => ({ ...prev }));
         void queryClient.invalidateQueries({ queryKey: systemSchedulerKeys.all });
       },
     });
   };
 
   const openTaskRuns = (record: SystemSchedulerTask) => {
-    const next = { ...defaultRunSearch, taskName: record.name };
-    setDraftRunSearch(next);
-    setSubmittedRunSearch(next);
-    setPage(1);
+    runSearch.applySearch({ ...defaultRunSearch, taskName: record.name });
     setActiveTab('runs');
-    void queryClient.invalidateQueries({ queryKey: systemSchedulerKeys.runs });
   };
 
   const openTaskConfig = (record: SystemSchedulerTask) => {
@@ -527,19 +522,6 @@ export default function SystemSchedulerPage() {
     { title: '运行任务', dataIndex: 'runningJobCount', width: 120, align: 'right' },
   ];
 
-  const handleRunSearch = () => {
-    setPage(1);
-    setSubmittedRunSearch(draftRunSearch);
-    void queryClient.invalidateQueries({ queryKey: systemSchedulerKeys.runs });
-  };
-
-  const handleRunReset = () => {
-    setDraftRunSearch(defaultRunSearch);
-    setSubmittedRunSearch(defaultRunSearch);
-    setPage(1);
-    void queryClient.invalidateQueries({ queryKey: systemSchedulerKeys.runs });
-  };
-
   return (
     <div className="page-container page-tabs-page">
       <Tabs collapsible="auto" type="line" activeKey={activeTab} onChange={(key) => setActiveTab(key as TabKey)} lazyRender>
@@ -594,8 +576,7 @@ export default function SystemSchedulerPage() {
             <FilterSelect
               placeholder="全部任务"
               items={taskOptions}
-              value={draftRunSearch.taskName}
-              onChange={(value) => setDraftRunSearch((prev) => ({ ...prev, taskName: value }))}
+              {...runSearch.bind('taskName')}
               width={220}
               filter
             />
@@ -603,49 +584,43 @@ export default function SystemSchedulerPage() {
               placeholder="全部类型"
               items={[{ value: 'recurring', label: '周期任务' },
                 { value: 'queue', label: '队列 Worker' },]}
-              value={draftRunSearch.taskType}
-              onChange={(value) => setDraftRunSearch((prev) => ({ ...prev, taskType: value }))}
+              {...runSearch.bind('taskType')}
             />
             <FilterSelect
               placeholder="全部触发方式"
               items={[{ value: 'schedule', label: '自动调度' },
                 { value: 'manual', label: '手动执行' },
                 { value: 'queue', label: '队列触发' },]}
-              value={draftRunSearch.triggerType}
-              onChange={(value) => setDraftRunSearch((prev) => ({ ...prev, triggerType: value }))}
+              {...runSearch.bind('triggerType')}
               width={140}
             />
             <StatusSelect
               items={[{ value: 'running', label: '运行中' },
                 { value: 'success', label: '成功' },
                 { value: 'failed', label: '失败' },]}
-              value={draftRunSearch.status}
-              onChange={(value) => setDraftRunSearch((prev) => ({ ...prev, status: value }))}
+              {...runSearch.bind('status')}
             />
             <FilterSelect
               placeholder="全部告警状态"
               items={[{ value: 'alerted', label: '有告警' },
                 { value: 'unacked', label: '未确认' },]}
-              value={draftRunSearch.alertStatus}
-              onChange={(value) => setDraftRunSearch((prev) => ({ ...prev, alertStatus: value }))}
+              {...runSearch.bind('alertStatus')}
               width={140}
             />
             <Input
               placeholder="开始时间"
-              value={draftRunSearch.startTime}
-              onChange={(value) => setDraftRunSearch((prev) => ({ ...prev, startTime: value }))}
+              {...runSearch.bind('startTime')}
               showClear
               style={{ width: 180 }}
             />
             <Input
               placeholder="结束时间"
-              value={draftRunSearch.endTime}
-              onChange={(value) => setDraftRunSearch((prev) => ({ ...prev, endTime: value }))}
+              {...runSearch.bind('endTime')}
               showClear
               style={{ width: 180 }}
             />
-            <SearchButton onClick={handleRunSearch} />
-            <ResetButton onClick={handleRunReset} />
+            <SearchButton onClick={runSearch.handleSearch} />
+            <ResetButton onClick={runSearch.handleReset} />
             <Button icon={<RefreshCw size={14} />} onClick={() => void runsQuery.refetch()} loading={runsQuery.isFetching}>刷新</Button>
             <Button
               type="danger"

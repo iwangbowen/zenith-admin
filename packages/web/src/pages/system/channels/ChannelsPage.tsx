@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Space, Tag, Toast, Typography, Upload } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ImagePlus, Trash2 } from 'lucide-react';
@@ -14,7 +13,7 @@ import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/li
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
 import { UserAvatar } from '@/components/UserAvatar';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
 import { ChannelMenuDrawer } from './ChannelMenuDrawer';
@@ -38,12 +37,12 @@ const TYPE_META: Record<string, { text: string; color: 'green' | 'blue' }> = {
 };
 
 export default function ChannelsPage() {
-  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const { options: statusOptions } = useDictItems('common_status');
-  const { page, setPage, pageSize, buildPagination } = usePagination();
-  const [draftKeyword, setDraftKeyword] = useState('');
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
+  const {
+    page, pageSize, buildPagination,
+    bindKeyword, submittedParams, handleSearch, handleReset,
+  } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: channelKeys.lists });
 
   const [avatarUrl, setAvatarUrl] = useState('');
 
@@ -58,22 +57,10 @@ export default function ChannelsPage() {
   const listQuery = useChannelList({
     page,
     pageSize,
-    keyword: submittedKeyword || undefined,
+    keyword: submittedParams.keyword || undefined,
   });
   const saveMutation = useSaveChannel();
   const deleteMutation = useDeleteChannel();
-
-  const handleSearch = () => {
-    setPage(1);
-    setSubmittedKeyword(draftKeyword);
-    void queryClient.invalidateQueries({ queryKey: channelKeys.lists });
-  };
-  const handleReset = () => {
-    setDraftKeyword('');
-    setSubmittedKeyword('');
-    setPage(1);
-    void queryClient.invalidateQueries({ queryKey: channelKeys.lists });
-  };
 
   const modal = useEditModal<ChannelAdmin, Record<string, unknown>>({
     save: saveMutation,
@@ -173,7 +160,7 @@ export default function ChannelsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索频道名称/编码" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="搜索频道名称/编码" {...bindKeyword('keyword')} />}
         onSearch={handleSearch}
         onReset={handleReset}
         create={hasPermission('channel:channel:create') && <CreateButton onClick={openCreate} />}

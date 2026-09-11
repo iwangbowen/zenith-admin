@@ -9,7 +9,7 @@ import { OAUTH2_GRANT_TYPE_LABELS, OAUTH2_GRANT_TYPES, OPEN_APP_ENVIRONMENT_LABE
 import type { OAuth2Client, OAuth2GrantType } from '@zenith/shared/open-platform';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { useOAuth2ApiScopes } from '@/hooks/queries/oauth2-apps';
 import {
   developerAppKeys,
@@ -21,7 +21,6 @@ import {
   useSaveMyApp,
   useSubmitMyApp,
 } from '@/hooks/queries/developer-apps';
-import { useQueryClient } from '@tanstack/react-query';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
@@ -71,16 +70,16 @@ function UsageLine({ label, used, limit, percentage }: Readonly<{
 
 export default function MyAppsPage() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { page, pageSize, setPage, buildPagination } = usePagination();
   type SearchParams = {
     keyword: string;
     environment?: OAuth2Client['environment'];
     reviewStatus?: OAuth2Client['reviewStatus'];
   };
-  const defaults: SearchParams = { keyword: '' };
-  const [draft, setDraft] = useState<SearchParams>(defaults);
-  const [submitted, setSubmitted] = useState<SearchParams>(defaults);
+  const {
+    page, pageSize, buildPagination,
+    bind, bindKeyword, submittedParams: submitted,
+    handleSearch: search, handleReset: reset,
+  } = useListSearch<SearchParams>({ defaults: { keyword: '' }, listKey: developerAppKeys.lists });
   const [secret, setSecret] = useState<{ clientId: string; value: string; previousValidUntil?: string } | null>(null);
   const [usageApp, setUsageApp] = useState<OAuth2Client | null>(null);
 
@@ -131,17 +130,6 @@ export default function MyAppsPage() {
     labelWidth: 140,
   });
 
-  const search = () => {
-    setPage(1);
-    setSubmitted(draft);
-    void queryClient.invalidateQueries({ queryKey: developerAppKeys.lists });
-  };
-  const reset = () => {
-    setDraft(defaults);
-    setSubmitted(defaults);
-    setPage(1);
-    void queryClient.invalidateQueries({ queryKey: developerAppKeys.lists });
-  };
   const rotateSecret = async (app: OAuth2Client) => {
     const result = await rotateMutation.mutateAsync({ params: { id: app.id } });
     setSecret({
@@ -227,20 +215,18 @@ export default function MyAppsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索我的应用" value={draft.keyword} onChange={(keyword) => setDraft({ ...draft, keyword })} onSearch={search} width={210} />}
+        keyword={<KeywordInput placeholder="搜索我的应用" {...bindKeyword('keyword')} width={210} />}
         filters={(
           <>
             <FilterSelect
               placeholder="全部环境"
               items={OPEN_APP_ENVIRONMENTS.map((value) => ({ value, label: OPEN_APP_ENVIRONMENT_LABELS[value] }))}
-              value={draft.environment}
-              onChange={(environment) => setDraft({ ...draft, environment: environment as OAuth2Client['environment'] })}
+              {...bind('environment')}
             />
             <FilterSelect
               placeholder="全部审核状态"
               items={OPEN_APP_REVIEW_STATUSES.map((value) => ({ value, label: OPEN_APP_REVIEW_STATUS_LABELS[value] }))}
-              value={draft.reviewStatus}
-              onChange={(reviewStatus) => setDraft({ ...draft, reviewStatus: reviewStatus as OAuth2Client['reviewStatus'] })}
+              {...bind('reviewStatus')}
               width={140}
             />
           </>

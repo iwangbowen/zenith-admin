@@ -6,12 +6,11 @@
  * - 运营号（business）：可添加订阅者（用户选择器）、按行移除、导出。
  */
 import { useEffect, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { Banner, SideSheet, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { ChannelAdmin, ChannelSubscriber } from '@zenith/shared/messaging';
 import { usePermission } from '@/hooks/usePermission';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { deleteAction, listTableProps, ListSearchToolbar } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -20,6 +19,7 @@ import UserSelect from '@/components/UserSelect';
 import { AppModal } from '@/components/AppModal';
 import { ExportButton } from '@/components/ExportButton';
 import {
+  channelKeys,
   useAddChannelSubscribers,
   useChannelSubscribers,
   useRemoveChannelSubscriber,
@@ -35,14 +35,15 @@ interface Props {
 }
 
 export function ChannelSubscribersDrawer({ channel, visible, onClose }: Readonly<Props>) {
-  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const canManage = hasPermission('channel:channel:update');
   const isSystem = channel?.type === 'system';
 
-  const { page, pageSize, setPage, buildPagination } = usePagination();
-  const [draftKeyword, setDraftKeyword] = useState('');
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
+  const {
+    page, pageSize, buildPagination,
+    bindKeyword, submittedParams, handleSearch, handleReset, applySearch,
+  } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: channelKeys.channelSubscribers(channel?.id) });
+  const submittedKeyword = submittedParams.keyword;
 
   const [addVisible, setAddVisible] = useState(false);
   const [addUserIds, setAddUserIds] = useState<number[]>([]);
@@ -57,25 +58,10 @@ export function ChannelSubscribersDrawer({ channel, visible, onClose }: Readonly
     ? { channelId: channel.id, ...(submittedKeyword.trim() ? { keyword: submittedKeyword.trim() } : {}) }
     : {};
 
+  // 每次打开抽屉都从空条件、第 1 页开始
   useEffect(() => {
-    if (visible && channel) {
-      setDraftKeyword('');
-      setSubmittedKeyword('');
-      setPage(1);
-    }
-  }, [visible, channel, setPage]);
-
-  const handleSearch = () => {
-    setPage(1);
-    setSubmittedKeyword(draftKeyword);
-    if (channel) void queryClient.invalidateQueries({ queryKey: ['channels', 'subscribers', channel.id] });
-  };
-  const handleReset = () => {
-    setDraftKeyword('');
-    setSubmittedKeyword('');
-    setPage(1);
-    if (channel) void queryClient.invalidateQueries({ queryKey: ['channels', 'subscribers', channel.id] });
-  };
+    if (visible && channel) applySearch({ keyword: '' });
+  }, [visible, channel, applySearch]);
 
   const openAdd = () => { setAddUserIds([]); setAddVisible(true); };
 
@@ -138,7 +124,7 @@ export function ChannelSubscribersDrawer({ channel, visible, onClose }: Readonly
       )}
 
       <ListSearchToolbar
-        keyword={(<KeywordInput placeholder="搜索用户姓名" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} width={200} />)}
+        keyword={(<KeywordInput placeholder="搜索用户姓名" {...bindKeyword('keyword')} width={200} />)}
         onSearch={handleSearch}
         onReset={handleReset}
         create={canManage && !isSystem && (

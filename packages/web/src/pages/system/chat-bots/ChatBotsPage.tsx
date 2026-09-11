@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Copy } from 'lucide-react';
@@ -11,7 +10,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { AppModal } from '@/components/AppModal';
 import { useEditModal } from '@/hooks/useEditModal';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import {
@@ -59,16 +58,16 @@ function maskToken(token: string): string {
 
 export default function ChatBotsPage() {
   const { hasPermission } = usePermission();
-  const queryClient = useQueryClient();
-  const [draftKeyword, setDraftKeyword] = useState('');
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
-  const { page, pageSize, setPage, buildPagination } = usePagination();
+  const {
+    page, pageSize, buildPagination,
+    bindKeyword, submittedParams, handleSearch, handleReset,
+  } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: chatBotKeys.lists });
   const [secretInfo, setSecretInfo] = useState<ChatWebhook | null>(null);
 
   const listQuery = useChatBotList({
     page,
     pageSize,
-    keyword: submittedKeyword.trim() || undefined,
+    keyword: submittedParams.keyword.trim() || undefined,
   });
   const saveMutation = useSaveChatBot();
   const botModal = useEditModal<ChatWebhook, BotFormValues, SaveChatBotValues>({
@@ -126,19 +125,6 @@ export default function ChatBotsPage() {
     }
     return options;
   }, [editingBot, groupConversations]);
-
-  function handleSearch() {
-    setPage(1);
-    setSubmittedKeyword(draftKeyword);
-    void queryClient.invalidateQueries({ queryKey: chatBotKeys.lists });
-  }
-
-  function handleReset() {
-    setDraftKeyword('');
-    setSubmittedKeyword('');
-    setPage(1);
-    void queryClient.invalidateQueries({ queryKey: chatBotKeys.lists });
-  }
 
   async function handleRegenerate(row: ChatWebhook) {
     const result = await regenerateMutation.mutateAsync({ params: { id: row.id } });
@@ -222,7 +208,7 @@ export default function ChatBotsPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索机器人名称" value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} width={260} />}
+        keyword={<KeywordInput placeholder="搜索机器人名称" {...bindKeyword('keyword')} width={260} />}
         onSearch={handleSearch}
         onReset={handleReset}
         create={hasPermission('chat:bot:create') && (

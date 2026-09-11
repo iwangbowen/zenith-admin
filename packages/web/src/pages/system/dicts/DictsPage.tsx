@@ -24,7 +24,7 @@ import { formatDateTime } from '@/utils/date';
 import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useTreeExpansion } from '@/hooks/useTreeExpansion';
 import { useUrlSelectionState } from '@/hooks/useUrlSelectionState';
@@ -63,9 +63,11 @@ export default function DictsPage() {
 
   // ─── 字典列表 ──────────────────────────────────────────────────────────────
   const [dicts, setDicts] = useState<Dict[]>([]);
-  const [keyword, setKeyword] = useState('');
-  const [submittedKeyword, setSubmittedKeyword] = useState('');
-  const { page, pageSize, setPage, setPageSize } = usePagination();
+  const {
+    page, pageSize, setPage, setPageSize,
+    draftParams, setField, submittedParams, handleSearch,
+  } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: dictKeys.lists });
+  const submittedKeyword = submittedParams.keyword;
   // ─── 字典项列表 ────────────────────────────────────────────────────────────
   // 显式选中的字典以 `?dict=` 同步到 URL（深链/刷新/页签直达）；选中对象按 key 派生
   const [selectedDictKey, setSelectedDictKey] = useUrlSelectionState('dict');
@@ -174,12 +176,6 @@ export default function DictsPage() {
     setItemKeyword('');
     setItemStatusFilter(undefined);
     if (selectedDict) void queryClient.invalidateQueries({ queryKey: dictKeys.items(selectedDict.id) });
-  }
-
-  function handleSearch() {
-    setPage(1);
-    setSubmittedKeyword(keyword);
-    void queryClient.invalidateQueries({ queryKey: dictKeys.lists });
   }
 
   const filteredItems = useMemo(() => {
@@ -437,8 +433,8 @@ export default function DictsPage() {
         </Space>
       }
       search={{
-        value: keyword,
-        onChange: (v) => setKeyword(v),
+        value: draftParams.keyword,
+        onChange: setField('keyword'),
         placeholder: '名称/编码',
         onEnterPress: handleSearch,
       }}

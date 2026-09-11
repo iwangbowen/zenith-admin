@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { Modal, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { workflowTaskContract, type WorkflowHealthIssue, type WorkflowHealthSummary } from '@zenith/shared/workflow';
@@ -10,6 +9,7 @@ import WorkflowInstanceCell from '@/components/workflow/WorkflowInstanceCell';
 import WorkflowInstanceDetailSheet from '@/components/workflow/WorkflowInstanceDetailSheet';
 import { useWorkflowHealthSummary, workflowHealthKeys } from '@/hooks/queries/workflow-health';
 import { usePermission } from '@/hooks/usePermission';
+import { useListSearch } from '@/hooks/useListSearch';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { dateTimeColumn } from '@/utils/table-columns';
@@ -45,13 +45,16 @@ const THRESHOLD_OPTIONS = [
 ];
 
 export default function WorkflowHealthPage() {
-  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
-  const [thresholdMinutes, setThresholdMinutes] = useState(30);
-  const [submittedThresholdMinutes, setSubmittedThresholdMinutes] = useState(30);
   const [issueType, setIssueType] = useState<WorkflowHealthIssue['type'] | undefined>();
+  // 等待阈值走「草稿 → 查询」并回源健康汇总；问题类型为即时本地过滤，重置时一并清空
+  const { bind, submittedParams, handleSearch, handleReset } = useListSearch<{ thresholdMinutes: number }>({
+    defaults: { thresholdMinutes: 30 },
+    listKey: workflowHealthKeys.all,
+    onReset: () => setIssueType(undefined),
+  });
   const [detailInstanceId, setDetailInstanceId] = useState<number | null>(null);
-  const summaryQuery = useWorkflowHealthSummary({ thresholdMinutes: submittedThresholdMinutes });
+  const summaryQuery = useWorkflowHealthSummary({ thresholdMinutes: submittedParams.thresholdMinutes });
   const data: WorkflowHealthSummary | null = summaryQuery.data ?? null;
 
   // 与任务监控同一入口：非 0 code（如催办限频）由 api() 抛错走全局提示
@@ -62,18 +65,6 @@ export default function WorkflowHealthPage() {
   });
 
   const canUrge = hasPermission('workflow:instance:monitor');
-
-  const handleSearch = () => {
-    setSubmittedThresholdMinutes(thresholdMinutes);
-    void queryClient.invalidateQueries({ queryKey: workflowHealthKeys.all });
-  };
-
-  const handleReset = () => {
-    setThresholdMinutes(30);
-    setSubmittedThresholdMinutes(30);
-    setIssueType(undefined);
-    void queryClient.invalidateQueries({ queryKey: workflowHealthKeys.all });
-  };
 
   const columns: ColumnProps<WorkflowHealthIssue>[] = [
     {
@@ -165,8 +156,7 @@ export default function WorkflowHealthPage() {
         primary={(
           <>
             <Select
-              value={thresholdMinutes}
-              onChange={(v) => setThresholdMinutes(Number(v) || 30)}
+              {...bind('thresholdMinutes', (v: unknown) => Number(v) || 30)}
               optionList={THRESHOLD_OPTIONS}
               prefix="只看等待"
               suffix="的问题"
@@ -182,8 +172,7 @@ export default function WorkflowHealthPage() {
             <FilterSelect
               placeholder="全部等待阈值"
               items={THRESHOLD_OPTIONS}
-              value={thresholdMinutes}
-              onChange={(v) => setThresholdMinutes(Number(v) || 30)}
+              {...bind('thresholdMinutes', (v: number | undefined) => Number(v) || 30)}
               width={180}
             />
             {renderSearchButton()}
