@@ -8,8 +8,9 @@
  * 发送者身份由频道（name/avatar）承载，消息 publishedById 仅记录触发的管理员/系统（可空），
  * 不再依赖 users 表的机器人假用户。
  */
-import { and, desc, eq, exists, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, exists, gt, inArray, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
+import type { DbExecutor } from '../../db/types';
 import {
   channels, channelMessages, channelSubscriptions, channelMessageTargets, users, userRoles,
   type ChannelRow, type ChannelMessageRow,
@@ -63,10 +64,10 @@ export function mapChannelMessage(row: ChannelMessageRow, isRead: boolean, sende
   };
 }
 
-/** 当前用户对某频道可见消息的 WHERE 条件（broadcast 全员 ∪ targeted 命中本人 ∪ 本人发出的 in 消息） */
-function visibleMessageWhere(channelId: number, userId: number) {
+/** 当前用户对频道可见消息的 WHERE 条件（broadcast 全员 ∪ targeted 命中本人 ∪ 本人发出的 in 消息） */
+function visibleMessagesWhere(channelCondition: SQL, userId: number) {
   return and(
-    eq(channelMessages.channelId, channelId),
+    channelCondition,
     eq(channelMessages.status, 'sent'),
     or(
       eq(channelMessages.audienceType, 'broadcast'),
@@ -79,6 +80,11 @@ function visibleMessageWhere(channelId: number, userId: number) {
       ),
     ),
   );
+}
+
+/** 单频道形态：消息流分页与 markRead 使用 */
+function visibleMessageWhere(channelId: number, userId: number) {
+  return visibleMessagesWhere(eq(channelMessages.channelId, channelId), userId);
 }
 
 // ─── 系统号定位 ──────────────────────────────────────────────────────────────
@@ -157,66 +163,108 @@ export async function publishTargeted(
 
 // ─── 查询（HTTP 上下文） ───────────────────────────────────────────────────────
 
-async function buildChannelView(ch: ChannelRow, userId: number, isSubscribed: boolean): Promise<Channel> {
-  const sub = await db.query.channelSubscriptions.findFirst({
-    where: and(eq(channelSubscriptions.channelId, ch.id), eq(channelSubscriptions.userId, userId)),
-  });
-  const lastReadAt = sub?.lastReadAt ?? null;
+type SubscriptionState = Pick<typeof channelSubscriptions.$inferSelect, 'lastReadAt' | 'isMuted'>;
 
-  const targetedMsgIds = db.select({ id: channelMessages.id }).from(channelMessages)
-    .where(and(eq(channelMessages.channelId, ch.id), eq(channelMessages.audienceType, 'targeted'), eq(channelMessages.status, 'sent'), isNull(channelMessages.retractedAt)));
+/** 当前用户的全部订阅：channelId → 订阅状态（未订阅的频道不在其中） */
+async function loadSubscriptionMap(userId: number, executor: DbExecutor = db): Promise<Map<number, SubscriptionState>> {
+  const rows = await executor.select({
+    channelId: channelSubscriptions.channelId,
+    lastReadAt: channelSubscriptions.lastReadAt,
+    isMuted: channelSubscriptions.isMuted,
+  }).from(channelSubscriptions).where(eq(channelSubscriptions.userId, userId));
+  return new Map(rows.map((r) => [r.channelId, { lastReadAt: r.lastReadAt, isMuted: r.isMuted }]));
+}
 
-  const [broadcastUnread, targetedUnread, lastRows] = await Promise.all([
-    db.$count(channelMessages, and(
-      eq(channelMessages.channelId, ch.id),
-      eq(channelMessages.audienceType, 'broadcast'),
-      eq(channelMessages.status, 'sent'),
-      isNull(channelMessages.retractedAt),
-      lastReadAt ? gt(channelMessages.createdAt, lastReadAt) : undefined,
-    )),
-    db.$count(channelMessageTargets, and(
-      eq(channelMessageTargets.userId, userId),
-      isNull(channelMessageTargets.readAt),
-      inArray(channelMessageTargets.messageId, targetedMsgIds),
-    )),
-    db.select().from(channelMessages)
-      .where(visibleMessageWhere(ch.id, userId))
-      .orderBy(desc(channelMessages.id))
-      .limit(1),
+/**
+ * 批量装配频道视图：未读数与最后一条消息按频道集合一次聚合，查询数与频道数无关（固定 3 条）。
+ * 曾经逐频道 `findFirst` + 两次 `$count` + 取尾消息（每频道 4 次、`Promise.all` 一次打满连接池），
+ * 频道列表与「发现频道」搜索每次都要为全部可见频道付这笔账。
+ *
+ * - 广播未读：与该用户的订阅行 LEFT JOIN，`created_at > last_read_at`（无订阅 / 未读过 → 全部计入），与旧语义一致；
+ * - 定向未读：`channel_message_targets` 本人未读 ⋈ 频道为 `targeted` 的已发送未撤回消息；
+ * - 尾消息：对用户可见的消息按频道 `DISTINCT ON` 取 id 最大的一条。
+ */
+export async function buildChannelViews(
+  chs: ChannelRow[],
+  userId: number,
+  subscriptions: Map<number, SubscriptionState>,
+  isSubscribed: (ch: ChannelRow) => boolean,
+  executor: DbExecutor = db,
+): Promise<Channel[]> {
+  if (chs.length === 0) return [];
+  const channelIds = chs.map((ch) => ch.id);
+  const inChannels = inArray(channelMessages.channelId, channelIds);
+  const sentAndVisible = and(eq(channelMessages.status, 'sent'), isNull(channelMessages.retractedAt));
+  const unread = sql<number>`count(*)::int`;
+
+  const [broadcastRows, targetedRows, lastRows] = await Promise.all([
+    executor.select({ channelId: channelMessages.channelId, unread })
+      .from(channelMessages)
+      .leftJoin(channelSubscriptions, and(
+        eq(channelSubscriptions.channelId, channelMessages.channelId),
+        eq(channelSubscriptions.userId, userId),
+      ))
+      .where(and(
+        inChannels,
+        eq(channelMessages.audienceType, 'broadcast'),
+        sentAndVisible,
+        or(isNull(channelSubscriptions.lastReadAt), gt(channelMessages.createdAt, channelSubscriptions.lastReadAt)),
+      ))
+      .groupBy(channelMessages.channelId),
+    executor.select({ channelId: channelMessages.channelId, unread })
+      .from(channelMessageTargets)
+      .innerJoin(channelMessages, eq(channelMessages.id, channelMessageTargets.messageId))
+      .where(and(
+        eq(channelMessageTargets.userId, userId),
+        isNull(channelMessageTargets.readAt),
+        inChannels,
+        eq(channelMessages.audienceType, 'targeted'),
+        sentAndVisible,
+      ))
+      .groupBy(channelMessages.channelId),
+    executor.selectDistinctOn([channelMessages.channelId])
+      .from(channelMessages)
+      .where(visibleMessagesWhere(inChannels, userId))
+      .orderBy(channelMessages.channelId, desc(channelMessages.id)),
   ]);
 
-  const last = lastRows[0];
-  return {
-    id: ch.id,
-    code: ch.code,
-    name: ch.name,
-    avatar: ch.avatar,
-    description: ch.description,
-    type: ch.type,
-    builtin: ch.builtin,
-    status: ch.status,
-    unreadCount: broadcastUnread + targetedUnread,
-    lastMessage: last ? mapChannelMessage(last, true) : null,
-    isMuted: sub?.isMuted ?? false,
-    isSubscribed,
-    tenantId: ch.tenantId,
-    createdAt: formatDateTime(ch.createdAt),
-    updatedAt: formatDateTime(ch.updatedAt),
-  };
+  const broadcastUnread = new Map(broadcastRows.map((r) => [r.channelId, r.unread]));
+  const targetedUnread = new Map(targetedRows.map((r) => [r.channelId, r.unread]));
+  const lastMessage = new Map(lastRows.map((r) => [r.channelId, r]));
+
+  return chs.map((ch) => {
+    const sub = subscriptions.get(ch.id);
+    const last = lastMessage.get(ch.id);
+    return {
+      id: ch.id,
+      code: ch.code,
+      name: ch.name,
+      avatar: ch.avatar,
+      description: ch.description,
+      type: ch.type,
+      builtin: ch.builtin,
+      status: ch.status,
+      unreadCount: (broadcastUnread.get(ch.id) ?? 0) + (targetedUnread.get(ch.id) ?? 0),
+      lastMessage: last ? mapChannelMessage(last, true) : null,
+      isMuted: sub?.isMuted ?? false,
+      isSubscribed: isSubscribed(ch),
+      tenantId: ch.tenantId,
+      createdAt: formatDateTime(ch.createdAt),
+      updatedAt: formatDateTime(ch.updatedAt),
+    };
+  });
 }
 
 /** 我的频道列表（系统号全部强制可见 + 已订阅的运营号） */
 export async function listMyChannels(): Promise<Channel[]> {
   const me = currentUser().userId;
-  const subRows = await db.select({ channelId: channelSubscriptions.channelId })
-    .from(channelSubscriptions).where(eq(channelSubscriptions.userId, me));
-  const subscribedIds = new Set(subRows.map((r) => r.channelId));
+  const subscriptions = await loadSubscriptionMap(me);
   const chs = await db.query.channels.findMany({
     where: eq(channels.status, 'enabled'),
     orderBy: [desc(channels.builtin), channels.id],
   });
-  const visible = chs.filter((ch) => ch.type === 'system' || subscribedIds.has(ch.id));
-  return Promise.all(visible.map((ch) => buildChannelView(ch, me, ch.type === 'system' || subscribedIds.has(ch.id))));
+  const visible = chs.filter((ch) => ch.type === 'system' || subscriptions.has(ch.id));
+  return buildChannelViews(visible, me, subscriptions, (ch) => ch.type === 'system' || subscriptions.has(ch.id));
 }
 
 /** 频道消息流（仅当前用户可见的消息，分页，按时间倒序） */
@@ -684,9 +732,7 @@ export async function unsubscribeChannel(channelId: number): Promise<void> {
 /** 可发现（未订阅）的运营号列表 */
 export async function listDiscoverableChannels(keyword?: string): Promise<Channel[]> {
   const me = currentUser().userId;
-  const subRows = await db.select({ channelId: channelSubscriptions.channelId })
-    .from(channelSubscriptions).where(eq(channelSubscriptions.userId, me));
-  const subscribedIds = new Set(subRows.map((r) => r.channelId));
+  const subscriptions = await loadSubscriptionMap(me);
   const chs = await db.query.channels.findMany({
     where: and(
       eq(channels.status, 'enabled'),
@@ -695,8 +741,8 @@ export async function listDiscoverableChannels(keyword?: string): Promise<Channe
     ),
     orderBy: [channels.id],
   });
-  const discoverable = chs.filter((ch) => !subscribedIds.has(ch.id));
-  return Promise.all(discoverable.map((ch) => buildChannelView(ch, me, false)));
+  const discoverable = chs.filter((ch) => !subscriptions.has(ch.id));
+  return buildChannelViews(discoverable, me, subscriptions, () => false);
 }
 
 // ─── 订阅者管理 ────────────────────────────────────────────────────────────────
