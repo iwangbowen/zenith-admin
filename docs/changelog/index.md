@@ -4,6 +4,83 @@
 
 ---
 
+## v2.31.0 - 2026-09-12
+
+**列表查询链路与前端数据层的规范收敛**：服务端 20 个业务域的列表 / 统计函数入参统一为契约派生类型 `QueryOutputOf`，WHERE 条件从「攒数组再 `and(...)`」改为单个 `buildWhere(...)` 调用，路由把校验后的 query 原样交给 service；前端约 130 个列表页的搜索区收敛到 `ListSearchToolbar + bind`，约 100 个域 hooks 文件从手写 `useQuery` / `useMutation` + 字面量 key 树迁到契约派生（`useApiQuery` / `useApiMutation` / `createResourceQueries`，key 一律 `contractKey`），域根广播失效替换为按真实副作用枚举的具名 helper；两端各加 ESLint 守卫防复发，zenith skill 文档同步改写为最优形态。
+
+### 升级注意
+
+- 本次**没有**数据库迁移。
+- 新增环境变量（均有默认值，见 `packages/server/.env.example`）：`FRONTEND_BASE_URL`（前端页面基地址，用于密码重置 / 报表推送等邮件深链；取代此前未声明的 `FRONTEND_URL` / `APP_URL`）、`PAYMENT_NOTIFY_BASE_URL`（此前只在 .env.example 出现、代码直读 `process.env`）、`AI_STREAM_IDLE_TIMEOUT_MS`；`PUBLIC_BASE_URL` / `APP_TIME_ZONE` / `CMS_TSVECTOR_CONFIG` / `OPENSSL_BIN` 补入样例。若此前依赖 `FRONTEND_URL` / `APP_URL`，请改为 `FRONTEND_BASE_URL`。
+- 前端 query key 形状变化（仅影响自定义代码）：`createResourceQueries().keys.list(params)` / `detail(id)` 现与 `contractKey(op, input)` 同键（`['tenants', 'detail', { params: { id } }]`），`keyPrefix` 选项移除；`src/hooks/queries/**` 直接 import `useQuery` / `useMutation` 会被 ESLint 拦截。
+- 契约查询串的启用 / 禁用筛选统一为 `entityStatusQuery`（空串视为未筛选），此前 `status: entityStatusSchema.optional()` 在筛选控件清空后会 400。
+
+### Added
+
+#### 契约与查询积木（shared）
+
+- `QueryOutputOf<Op>`：服务端视角的解析后查询参数类型（`page` / `pageSize` 必填、`queryEnum` 空串已归一），与路由 `c.req.valid('query')` 同型；`entityStatusQuery`：启用 / 禁用状态的查询串筛选积木。
+
+#### 前端数据层（web）
+
+- `useApiMutation<Op, TVariables>`：变量可携带契约输入之外的失效上下文（被移动节点的原目录、外链所属 nodeId），额外字段只传给 `invalidate`、请求前剥离；`useApiQuery` / `apiQueryOptions` 支持类型变换的 `select`。
+- `createResourceQueries().keys` 与 `contractKey` 同键，工厂之外预取 / 失效同一操作天然命中同一缓存。
+- 搜索栏 `NumberFilter` 数字筛选控件；`formatDateRangeValuesForApi` / `formatDateRangeForApi` 日期级区间转换；`emptyIllustration(name, size)` 懒加载插画积木；`FormStatusRadioGroup` 支持 `rules`；`useEditModal` 的 `DetailHook` 接受第三参数 `record`（父级绑定子资源的详情查询）；测试工具 `desktopToolbar(container)`，query-harness 的 `countOf` 与 TanStack `invalidateQueries` 同一套前缀语义并支持 `{ exact }`。
+- 各域导出按意图命名的失效 helper（`invalidateAfterInstanceChange` / `invalidateAfterTaskAction` / `invalidateAfterCmsContentChange` / `invalidateGovernedReportResource` / `invalidateAfterContainerStateChange` 等），页面与跨域调用 helper 而不是拼 key。
+
+#### 服务端积木（server）
+
+- `requireCallbackTaskContext(callbackId)`：外部审批 / 触发器回调按 `externalCallbackId` 定位任务、实例与节点配置，路由与唤醒 service 共用；`touchConversation(id)`：聊天会话「只触碰时间戳」的唯一手写 `updatedAt` 出口。
+- `getTableRows` 的列筛选 JSON 解析下沉到 service（`parseColumnFilters`）。
+
+#### ESLint 守卫
+
+- server（`src/services/**`、`src/lib/export-center/**`）：封禁含 `pageSize` 的手写查询 interface、`and(...conditions)`、只带一个展开实参的 `buildWhere(...conditions)`、`page = 1` / `pageSize = 10` 默认值与 `q.page ?? 1`。
+- web：列表页封禁单字段 `setDraftParams({ x })`、`onChange={setField('x')}`、裸 `<DatePicker type=…Range>`；`src/hooks/queries/**` 封禁直接 import `useQuery` / `useMutation`（保留处须在 import 行注明理由）。
+
+### Changed
+
+#### 服务端列表查询链路
+
+- 20 个业务域、约 170 个手写 `interface XxxQuery { page?: number; … }` 删除，列表 / 统计 / 导出函数入参改为 `QueryOutputOf<typeof xxxContract.op>`，筛选子集用 `Omit<…, 'page' | 'pageSize'>`；约 115 处 `page = 1 / pageSize = 10` 解构默认值与 `?? 1` 移除（默认值只在契约 `paginationQuery` 声明）。
+- 约 250 处 `const conditions = []` + `push` + `and(...conditions)` / `buildWhere(...conditions)` 内联为单个 `buildWhere(cond, flag ? cond : undefined, ...dateRangeConditions(...))` 调用；同一基础条件集抽取具名 helper（`pendingMineWhere` / `catalogResourceWhere` / `buildCmsPublishingWhere` / `rangeWhere` 等）；仅规则属性循环等数据驱动拼装保留数组并注明。
+- 契约 query 已收窄枚举后，service 内 `status === 'enabled' || …` / `as XxxStatus` 运行时收窄全部删除；导出中心 `normalizeQuery` 统一用 `enumValueOf`。
+- 路由 handler 不再重组装 query 对象（ai / chat / messaging / ops 等 15 处），`parseTypes` / `parseFeedbackFilters` 等解析下沉 service；`getTableRows` 路径参数改独立形参。
+- 手写 `{ list, total, page, pageSize }` 信封 → `buildListResult`；单表 `select({ total: count() })` → `db.$count`（含 iot 12 处）；`(page - 1) * pageSize` → `pageOffset`；手写 `select users + Map` → `resolveUserNames`（9 处）。
+- 租户条件用积木：`inheritedTenantCondition` / `exactTenantCondition` 替换手写三目，`nullableEq` 修正 report-metric 对非租户可空列的误用；chat 契约与 cms 检索测试的分页边界统一取 `paginationQuery`；`chatScheduledMessagesQuery.status` 改 `queryEnum`。
+- 文件存储 Kodo / BOS 预签名下载改走 `lib/http-client`（禁止全局 `fetch`）；工作流回调地址、支付回调基址、密码重置链接、报表推送深链、AI 流超时改经 `config` 读取。
+
+#### 前端列表页搜索区
+
+- 约 130 个列表页：`SearchToolbar` 双份 JSX / 渲染闭包 → `ListSearchToolbar` 槽位；`value + onChange={setField()}` 三件套 → `{...bind('x')}` / `{...bindKeyword('x')}`；可选筛选字段的 `null` / `''` 哨兵归一为 `undefined`；数字 id 筛选改 `FilterSelect<number>`，布尔筛选草稿存 `'true' | 'false'` 提交时收窄；日期级区间改 `formatDateRangeValuesForApi`，导出条件改 `compactQuery`；状态筛选项统一取 `useDictItems('common_status').items`。
+
+#### 前端域 hooks
+
+- cms / workflow / identity-messaging / ops-drive / report-payment-misc 约 100 个 hooks 文件：手写 `useQuery` / `useMutation` 309 → 64（保留的均为多操作分派、非契约通道、上传进度、`apiRaw` 读信封、幂等头、`useInfiniteQuery`，逐处注释），字面量 key 树归零；导出 key 名称保持不变、取值改由 `contractKey` 生成。
+- 22 处 `['workflow']` 根广播、cms 27 处、report-governance 13 处、wiki 10 处等 `.all` 广播替换为精确前缀 helper；成对 create / update 带父级路径参数的拆成两个 `useApiMutation`；void 操作用 `TVariables` 携带上下文；drive 目录 key 改为契约 `list` 的 `{ query }` 子集（含 spaceId 维度）；设计器字典项改用 `dictContract` 的 `apiQueryOptions`（与 `useDictItems` 共享缓存并随字典变更失效）。
+- 新增 27 个 query-harness 行为测试文件（+104 例），断言「改动 A 后列表 B 回源、无关查询 C 不回源」。
+
+#### 前端页面规范
+
+- 空值占位：约 540 处 `'-'` / `'–'` / `'—'` 字面量 → `EMPTY_PLACEHOLDER`；约 110 处裸 `<Typography.Text ellipsis>` → `renderEllipsis`；13 处静态 / 手写懒加载插画 → `emptyIllustration`；`@douyinfe/semi-icons` 清零；`Object.entries(XXX_LABELS).map` → `XXX_OPTIONS` / `createLabelOptionsFromMap`。
+- 原生 `<Table>`：10 处分页列表 → `ConfigurableTable + listTableProps`，23 处服务端表补 `onRefresh` / `refreshLoading`，`ConfigurableTable` 上的 `scroll.x` 移除；原生 `<Modal>`：7 处表单弹窗 → `AppModal`，13 处补 `closeOnEsc`；5 处新增 / 编辑弹窗迁 `useEditModal`，其余 `useRef<FormApi>` 按文档例外加注释。
+- 页面级 Tabs 补 `collapsible="auto"` 与 `page-tabs-page` 容器类；`TracePage` 改 `useUrlTabState`；`toUserOptions` / `DEFAULT_TIMEZONE` / `SearchButton` / `abortSubmit` / `ModalFooter` 替换对应手写；Docker 容器日志轮询由 `setInterval` 改 `refetchInterval`。
+
+#### 文档
+
+- zenith skill：`constraints.md` / `constraints-frontend.md` / `crud-backend.md` / `crud-frontend.md` / `module-modification.md` / `query-cache.md` 改写为上述最优形态（`QueryOutputOf`、`entityStatusQuery`、内联 `buildWhere`、`contractKey` 统一 key、具名失效 helper、`TVariables` / `select` 扩展、harness 前缀语义、ESLint 守卫、`desktopToolbar`、插画积木、回调定位 helper、`updatedAt` 手写例外）；`docs/backend/api-conventions.md`、`docs/backend/database-operations.md`、`docs/frontend/data-fetching.md` 同步。
+
+### Fixed
+
+- 分发规则校验、智能体服务商配置缺失、支付报表精度越界等请求路径上的 `throw new Error` 改为 `HTTPException(400)`，用户可见业务文案不再被全局 `onError` 吞成 500「服务器内部错误」。
+- 密码重置链接与报表推送深链此前读取未声明的 `FRONTEND_URL` / `APP_URL` / `VITE_API_BASE_URL`，未配置时生成 `http://localhost:5373` 或空基址的链接；现统一取 `config.frontendBaseUrl`。
+- 系统调度任务策略响应的 `createdAt` / `updatedAt` 由 ISO 串改为统一的 `YYYY-MM-DD HH:mm:ss`。
+- 结束本机进程 / 控制本机 systemd 服务会连带失效全部远端主机的列表（本机 key 的 `query` 为 `{}`，按前缀语义命中一切）；改为精确匹配。
+- 报表数据源 / 打印模板保存后下拉源欠失效、设计器字典项与 `useDictItems` 缓存不共享、已发布流程 lookup 被 `staleTime: undefined` 覆盖为始终过期、biz-leave 审批详情藏在错误 key 下、`PublishingPage` / `AnalyticsDataPage` 的 `startTime` / `endTime` 与 `timeRange` 双状态、drive 水印日期 `toISOString` 的 UTC 日偏移。
+- 文件存储配置状态筛选与列表 `status` 收紧为契约枚举（清空筛选不再 400）；`PaymentContracts` / `PaymentTransfers` 枚举筛选默认值统一为 `undefined`。
+
+---
+
 ## v2.30.0 - 2026-09-12
 
 **性能专项 + 三波去重收敛 + PDF 字体子集化**：会员鉴权主体、套餐功能集接入进程内副本并由数据库触发器跨实例失效，频道列表 / 存储目录浏览的按行查询改为集合聚合，日志表补租户复合索引；server / shared / web 三包分三波把统计窗口、支付单号、租户条件拼装、契约字段积木、41 个列表页的搜索状态等重复实现收敛到公共模块；server 发布包内置的 PDF 字体改为构建期子集（8.3MB → 2.5MB），全量作为自行打包 / 构建镜像的选项。
