@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { deleteAction, listTableProps, ListSearchToolbar } from '@/components/list-page';
 import { Form, Modal, Select, Spin, Tag, Toast, Banner, Tooltip, Input, Descriptions } from '@douyinfe/semi-ui';
-import { MP_BROADCAST_TYPE_LABELS, MP_BROADCAST_TYPE_OPTIONS } from '@zenith/shared/mp';
+import { MP_BROADCAST_STATUS_OPTIONS, MP_BROADCAST_TYPE_LABELS, MP_BROADCAST_TYPE_OPTIONS } from '@zenith/shared/mp';
 import type { CreateMpBroadcastInput, MpBroadcast, MpBroadcastType, MpBroadcastTarget, MpBroadcastStatus } from '@zenith/shared/mp';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -28,11 +28,6 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { abortSubmit } from '@/lib/abort-submit';
 import { StatusSelect } from '@/components/search-filters';
 
-const STATUS_OPTIONS: { label: string; value: MpBroadcastStatus }[] = [
-  { label: '草稿', value: 'draft' },
-  { label: '已发送', value: 'sent' },
-  { label: '失败', value: 'failed' },
-];
 /** 表单里定时发送用 DatePicker 的 Date，提交时再格式化为接口字符串 */
 interface BroadcastFormValues { content?: string; mediaId?: string; tagId?: number; scheduledAt?: Date }
 
@@ -180,7 +175,7 @@ export default function MpBroadcastsPage() {
         keyword={<MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />}
         filters={
           <StatusSelect
-            items={STATUS_OPTIONS}
+            items={MP_BROADCAST_STATUS_OPTIONS}
             {...bind('status')}
           />
         }

@@ -317,6 +317,14 @@ export const PAYMENT_DEDUCT_METHODS = ['wechat_papay', 'alipay_cycle'] as const 
 
 export type PaymentDeductMethod = typeof PAYMENT_DEDUCT_METHODS[number];
 
+export const PAYMENT_DEDUCT_METHOD_LABELS: Record<PaymentDeductMethod, string> = {
+  wechat_papay: PAYMENT_METHOD_LABELS.wechat_papay,
+  alipay_cycle: PAYMENT_METHOD_LABELS.alipay_cycle,
+};
+
+export const PAYMENT_DEDUCT_METHOD_OPTIONS: Array<{ value: PaymentDeductMethod; label: string }> =
+  createLabelOptions(PAYMENT_DEDUCT_METHODS, PAYMENT_DEDUCT_METHOD_LABELS);
+
 /** 收银台可选支付方式（用户主动支付，不含服务端发起的签约代扣方式） */
 export const PAYMENT_CASHIER_METHODS = [
   'wechat_native', 'wechat_jsapi', 'wechat_h5',
@@ -378,6 +386,14 @@ export const PAYMENT_PREAUTH_METHODS = ['wechat_preauth', 'alipay_preauth'] as c
 
 export type PaymentPreauthMethod = typeof PAYMENT_PREAUTH_METHODS[number];
 
+export const PAYMENT_PREAUTH_METHOD_LABELS: Record<PaymentPreauthMethod, string> = {
+  wechat_preauth: '微信预授权',
+  alipay_preauth: '支付宝预授权',
+};
+
+export const PAYMENT_PREAUTH_METHOD_OPTIONS: Array<{ value: PaymentPreauthMethod; label: string }> =
+  createLabelOptions(PAYMENT_PREAUTH_METHODS, PAYMENT_PREAUTH_METHOD_LABELS);
+
 // ─── 最终资金内核：双分录账户与预占 ──────────────────────────────────
 export const PAYMENT_LEDGER_ACCOUNT_CODES = [
   'provider_clearing',
@@ -409,6 +425,14 @@ export const PAYMENT_LEDGER_NORMAL_BALANCES = ['debit', 'credit'] as const;
 
 export type PaymentLedgerNormalBalance = typeof PAYMENT_LEDGER_NORMAL_BALANCES[number];
 
+export const PAYMENT_LEDGER_NORMAL_BALANCE_LABELS: Record<PaymentLedgerNormalBalance, string> = {
+  debit: '借方',
+  credit: '贷方',
+};
+
+export const PAYMENT_LEDGER_NORMAL_BALANCE_OPTIONS: Array<{ value: PaymentLedgerNormalBalance; label: string }> =
+  createLabelOptions(PAYMENT_LEDGER_NORMAL_BALANCES, PAYMENT_LEDGER_NORMAL_BALANCE_LABELS);
+
 /** 标准科目的正常余额方向（会计事实，服务端建账与 Demo Mock 同源） */
 export const PAYMENT_LEDGER_ACCOUNT_NORMAL_BALANCE: Record<PaymentLedgerAccountCode, PaymentLedgerNormalBalance> = {
   provider_clearing: 'debit',
@@ -433,6 +457,16 @@ export const PAYMENT_FUND_RESERVATION_STATUSES = ['active', 'captured', 'release
 
 export type PaymentFundReservationStatus = typeof PAYMENT_FUND_RESERVATION_STATUSES[number];
 
+export const PAYMENT_FUND_RESERVATION_STATUS_LABELS: Record<PaymentFundReservationStatus, string> = {
+  active: '有效',
+  captured: '已核销',
+  released: '已释放',
+  expired: '已过期',
+};
+
+export const PAYMENT_FUND_RESERVATION_STATUS_OPTIONS: Array<{ value: PaymentFundReservationStatus; label: string }> =
+  createLabelOptions(PAYMENT_FUND_RESERVATION_STATUSES, PAYMENT_FUND_RESERVATION_STATUS_LABELS);
+
 // ─── 支付应用 / 运营 ─────────────────────────────────────────────────────
 export const PAYMENT_APP_ENVIRONMENTS = ['production', 'sandbox'] as const;
 
@@ -441,6 +475,15 @@ export type PaymentAppEnvironment = typeof PAYMENT_APP_ENVIRONMENTS[number];
 export const PAYMENT_OUTBOX_EVENT_STATUSES = ['pending', 'done', 'failed'] as const;
 
 export type PaymentOutboxEventStatus = typeof PAYMENT_OUTBOX_EVENT_STATUSES[number];
+
+export const PAYMENT_OUTBOX_EVENT_STATUS_LABELS: Record<PaymentOutboxEventStatus, string> = {
+  pending: '待处理',
+  done: '已完成',
+  failed: '失败',
+};
+
+export const PAYMENT_OUTBOX_EVENT_STATUS_OPTIONS: Array<{ value: PaymentOutboxEventStatus; label: string }> =
+  createLabelOptions(PAYMENT_OUTBOX_EVENT_STATUSES, PAYMENT_OUTBOX_EVENT_STATUS_LABELS);
 
 /** 支付链接不可用原因 */
 export const PAYMENT_LINK_UNAVAILABLE_REASONS = ['disabled', 'expired', 'usage_limit'] as const;
@@ -456,6 +499,15 @@ export type PaymentLinkPayMethod = typeof PAYMENT_LINK_PAY_METHODS[number];
 export const PAYMENT_DISPUTE_REPLY_AUTHORS = ['merchant', 'user', 'system'] as const;
 
 export type PaymentDisputeReplyAuthor = typeof PAYMENT_DISPUTE_REPLY_AUTHORS[number];
+
+export const PAYMENT_DISPUTE_REPLY_AUTHOR_LABELS: Record<PaymentDisputeReplyAuthor, string> = {
+  merchant: '商户',
+  user: '投诉人',
+  system: '系统',
+};
+
+export const PAYMENT_DISPUTE_REPLY_AUTHOR_OPTIONS: Array<{ value: PaymentDisputeReplyAuthor; label: string }> =
+  createLabelOptions(PAYMENT_DISPUTE_REPLY_AUTHORS, PAYMENT_DISPUTE_REPLY_AUTHOR_LABELS);
 
 /** 单期扣款 / 预授权等资金操作的执行结果 */
 export const PAYMENT_DEDUCT_RESULT_STATUSES = ['success', 'processing', 'failed'] as const;

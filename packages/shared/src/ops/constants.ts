@@ -13,8 +13,27 @@ export type MaintenanceLogStatus = (typeof MAINTENANCE_LOG_STATUSES)[number];
 export const SSL_CERT_TYPES = ['self_signed', 'uploaded', 'letsencrypt'] as const;
 export type SslCertType = (typeof SSL_CERT_TYPES)[number];
 
+export const SSL_CERT_TYPE_LABELS: Record<SslCertType, string> = {
+  self_signed: '自签名',
+  uploaded: '上传',
+  letsencrypt: 'Let\'s Encrypt',
+};
+
+export const SSL_CERT_TYPE_OPTIONS: Array<{ value: SslCertType; label: string }> =
+  createLabelOptions(SSL_CERT_TYPES, SSL_CERT_TYPE_LABELS);
+
 export const SSL_CERT_STATUSES = ['valid', 'expiring', 'expired', 'invalid'] as const;
 export type SslCertStatus = (typeof SSL_CERT_STATUSES)[number];
+
+export const SSL_CERT_STATUS_LABELS: Record<SslCertStatus, string> = {
+  valid: '有效',
+  expiring: '即将过期',
+  expired: '已过期',
+  invalid: '无效',
+};
+
+export const SSL_CERT_STATUS_OPTIONS: Array<{ value: SslCertStatus; label: string }> =
+  createLabelOptions(SSL_CERT_STATUSES, SSL_CERT_STATUS_LABELS);
 
 /** 证书下载文件类型：公钥证书 / 私钥 */
 export const SSL_CERT_DOWNLOAD_KINDS = ['cert', 'key'] as const;
@@ -63,8 +82,27 @@ export type DbAdminSqlExportMode = (typeof DB_ADMIN_SQL_EXPORT_MODES)[number];
 export const DB_ADMIN_COLUMN_DIFF_ISSUES = ['missing_in_db', 'extra_in_db', 'type_mismatch', 'nullable_mismatch'] as const;
 export type DbAdminColumnDiffIssue = (typeof DB_ADMIN_COLUMN_DIFF_ISSUES)[number];
 
+export const DB_ADMIN_COLUMN_DIFF_ISSUE_LABELS: Record<DbAdminColumnDiffIssue, string> = {
+  missing_in_db: '列缺失',
+  extra_in_db: '多余列',
+  type_mismatch: '类型不符',
+  nullable_mismatch: '可空性不符',
+};
+
+export const DB_ADMIN_COLUMN_DIFF_ISSUE_OPTIONS: Array<{ value: DbAdminColumnDiffIssue; label: string }> =
+  createLabelOptions(DB_ADMIN_COLUMN_DIFF_ISSUES, DB_ADMIN_COLUMN_DIFF_ISSUE_LABELS);
+
 export const DB_ADMIN_TABLE_DRIFT_STATUSES = ['missing_in_db', 'extra_in_db', 'column_diff'] as const;
 export type DbAdminTableDriftStatus = (typeof DB_ADMIN_TABLE_DRIFT_STATUSES)[number];
+
+export const DB_ADMIN_TABLE_DRIFT_STATUS_LABELS: Record<DbAdminTableDriftStatus, string> = {
+  missing_in_db: '表在 DB 中缺失',
+  extra_in_db: '表未在 schema.ts 声明',
+  column_diff: '列差异',
+};
+
+export const DB_ADMIN_TABLE_DRIFT_STATUS_OPTIONS: Array<{ value: DbAdminTableDriftStatus; label: string }> =
+  createLabelOptions(DB_ADMIN_TABLE_DRIFT_STATUSES, DB_ADMIN_TABLE_DRIFT_STATUS_LABELS);
 
 // ─── 数据保留策略 ────────────────────────────────────────────────────────────
 
@@ -83,14 +121,51 @@ export type RetentionMode = (typeof RETENTION_MODES)[number];
 export const FIREWALL_TYPES = ['ufw', 'firewalld', 'iptables', 'unknown'] as const;
 export type FirewallType = (typeof FIREWALL_TYPES)[number];
 
+export const FIREWALL_TYPE_LABELS: Record<FirewallType, string> = {
+  ufw: 'UFW',
+  firewalld: 'firewalld',
+  iptables: 'iptables',
+  unknown: '未知',
+};
+
+export const FIREWALL_TYPE_OPTIONS: Array<{ value: FirewallType; label: string }> =
+  createLabelOptions(FIREWALL_TYPES, FIREWALL_TYPE_LABELS);
+
 export const FIREWALL_RULE_TYPES = ['allow', 'deny', 'reject'] as const;
 export type FirewallRuleType = (typeof FIREWALL_RULE_TYPES)[number];
+
+export const FIREWALL_RULE_TYPE_LABELS: Record<FirewallRuleType, string> = {
+  allow: '允许',
+  deny: '拒绝',
+  reject: '拒止',
+};
+
+export const FIREWALL_RULE_TYPE_OPTIONS: Array<{ value: FirewallRuleType; label: string }> =
+  createLabelOptions(FIREWALL_RULE_TYPES, FIREWALL_RULE_TYPE_LABELS);
 
 export const FIREWALL_PROTOCOLS = ['tcp', 'udp', 'any'] as const;
 export type FirewallProtocol = (typeof FIREWALL_PROTOCOLS)[number];
 
+export const FIREWALL_PROTOCOL_LABELS: Record<FirewallProtocol, string> = {
+  tcp: 'TCP',
+  udp: 'UDP',
+  any: 'ANY',
+};
+
+export const FIREWALL_PROTOCOL_OPTIONS: Array<{ value: FirewallProtocol; label: string }> =
+  createLabelOptions(FIREWALL_PROTOCOLS, FIREWALL_PROTOCOL_LABELS);
+
 export const FIREWALL_DIRECTIONS = ['in', 'out', 'any'] as const;
 export type FirewallDirection = (typeof FIREWALL_DIRECTIONS)[number];
+
+export const FIREWALL_DIRECTION_LABELS: Record<FirewallDirection, string> = {
+  in: '入站',
+  out: '出站',
+  any: '任意',
+};
+
+export const FIREWALL_DIRECTION_OPTIONS: Array<{ value: FirewallDirection; label: string }> =
+  createLabelOptions(FIREWALL_DIRECTIONS, FIREWALL_DIRECTION_LABELS);
 
 // ─── Nginx 站点 ──────────────────────────────────────────────────────────────
 
@@ -116,9 +191,31 @@ export type DnsRecordType = (typeof DNS_RECORD_TYPES)[number];
 export const PROCESS_KILL_SIGNALS = ['SIGTERM', 'SIGKILL', 'SIGINT', 'SIGHUP'] as const;
 export type ProcessKillSignal = (typeof PROCESS_KILL_SIGNALS)[number];
 
+export const PROCESS_KILL_SIGNAL_LABELS: Record<ProcessKillSignal, string> = {
+  SIGTERM: 'SIGTERM（优雅退出，推荐）',
+  SIGKILL: 'SIGKILL（强制终止）',
+  SIGINT: 'SIGINT（中断）',
+  SIGHUP: 'SIGHUP（挂起/重载）',
+};
+
+export const PROCESS_KILL_SIGNAL_OPTIONS: Array<{ value: ProcessKillSignal; label: string }> =
+  createLabelOptions(PROCESS_KILL_SIGNALS, PROCESS_KILL_SIGNAL_LABELS);
+
 /** Windows 进程优先级类 */
 export const PROCESS_PRIORITY_CLASSES = ['Idle', 'BelowNormal', 'Normal', 'AboveNormal', 'High', 'RealTime'] as const;
 export type ProcessPriorityClass = (typeof PROCESS_PRIORITY_CLASSES)[number];
+
+export const PROCESS_PRIORITY_CLASS_LABELS: Record<ProcessPriorityClass, string> = {
+  Idle: 'Idle（最低）',
+  BelowNormal: 'BelowNormal（低于正常）',
+  Normal: 'Normal（正常）',
+  AboveNormal: 'AboveNormal（高于正常）',
+  High: 'High（高）',
+  RealTime: 'RealTime（实时，慎用）',
+};
+
+export const PROCESS_PRIORITY_CLASS_OPTIONS: Array<{ value: ProcessPriorityClass; label: string }> =
+  createLabelOptions(PROCESS_PRIORITY_CLASSES, PROCESS_PRIORITY_CLASS_LABELS);
 
 // ─── 文件系统（宿主机 / SFTP / 远程主机） ─────────────────────────────────────
 

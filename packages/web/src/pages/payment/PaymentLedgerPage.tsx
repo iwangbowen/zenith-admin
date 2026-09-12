@@ -18,9 +18,12 @@ import type {
 } from '@zenith/shared/payment';
 import {
   PAYMENT_CHANNEL_LABELS,
+  PAYMENT_FUND_RESERVATION_STATUS_LABELS,
+  PAYMENT_FUND_RESERVATION_STATUS_OPTIONS,
   PAYMENT_FUND_RESERVATION_STATUSES,
   PAYMENT_LEDGER_ACCOUNT_CODE_LABELS,
   PAYMENT_LEDGER_ACCOUNT_CODES,
+  PAYMENT_LEDGER_NORMAL_BALANCE_LABELS,
 } from '@zenith/shared/payment';
 import './PaymentLedgerPage.css';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -54,29 +57,14 @@ import { confirmDanger } from '@/utils/confirm';
 import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { compactParams } from '@/lib/query';
-import { enumValueOf } from '@zenith/shared/core';
+import { COMMON_STATUS_OPTIONS, enumValueOf } from '@zenith/shared/core';
 
-const ACCOUNT_STATUS_ITEMS = [
-  { value: 'enabled', label: '启用' },
-  { value: 'disabled', label: '停用' },
-];
-const NORMAL_BALANCE_LABELS: Record<PaymentLedgerNormalBalance, string> = { debit: '借方', credit: '贷方' };
-const RESERVATION_STATUS_LABELS: Record<PaymentFundReservationStatus, string> = {
-  active: '有效',
-  captured: '已核销',
-  released: '已释放',
-  expired: '已过期',
-};
 const RESERVATION_STATUS_COLORS = {
   active: 'blue',
   captured: 'green',
   released: 'grey',
   expired: 'orange',
 } as const satisfies Record<PaymentFundReservationStatus, string>;
-const RESERVATION_STATUS_ITEMS = PAYMENT_FUND_RESERVATION_STATUSES.map((value) => ({
-  value,
-  label: RESERVATION_STATUS_LABELS[value],
-}));
 const CURRENCY_OPTIONS = [{ value: 'CNY', label: 'CNY · 人民币' }];
 
 function amountTotal(lines: readonly PaymentJournalLine[], field: 'debitAmount' | 'creditAmount'): bigint {
@@ -496,7 +484,7 @@ export default function PaymentLedgerPage() {
     copyableNoColumn('账户号', 'accountNo'),
     { title: '账户名称', dataIndex: 'name', minWidth: 240, render: renderEllipsis },
     { title: '科目', dataIndex: 'code', width: 130, render: (value: PaymentLedgerAccountCode) => PAYMENT_LEDGER_ACCOUNT_CODE_LABELS[value] },
-    { title: '余额方向', dataIndex: 'normalBalance', width: 100, render: (value: PaymentLedgerNormalBalance) => NORMAL_BALANCE_LABELS[value] },
+    { title: '余额方向', dataIndex: 'normalBalance', width: 100, render: (value: PaymentLedgerNormalBalance) => PAYMENT_LEDGER_NORMAL_BALANCE_LABELS[value] },
     { title: '应用', dataIndex: 'appId', width: 200, render: (value: number) => renderEllipsis(appNameById.get(value) ?? `应用 #${value}`) },
     { title: '商户配置', dataIndex: 'channelConfigId', width: 220, render: (value: number) => renderEllipsis(merchantNameById.get(value) ?? `配置 #${value}`) },
     { title: '币种', dataIndex: 'currency', width: 80 },
@@ -552,7 +540,7 @@ export default function PaymentLedgerPage() {
     dateTimeColumn('到期时间', 'expiresAt', { empty: '不限' }),
     dateTimeColumn('完成时间', 'finalizedAt'),
     { title: '版本', dataIndex: 'version', width: 80, align: 'right', render: (value: number) => `v${value}` },
-    { title: '状态', dataIndex: 'status', width: 90, fixed: 'right', render: (value: PaymentFundReservationStatus) => <Tag color={RESERVATION_STATUS_COLORS[value]}>{RESERVATION_STATUS_LABELS[value]}</Tag> },
+    { title: '状态', dataIndex: 'status', width: 90, fixed: 'right', render: (value: PaymentFundReservationStatus) => <Tag color={RESERVATION_STATUS_COLORS[value]}>{PAYMENT_FUND_RESERVATION_STATUS_LABELS[value]}</Tag> },
     createOperationColumn<PaymentFundReservation>({
       width: 150,
       actions: (record) => canReserve && record.status === 'active' ? [
@@ -607,7 +595,7 @@ export default function PaymentLedgerPage() {
                 {appFilter(accountSearch.draftParams.appId, accountSearch.setField('appId'))}
                 {merchantFilter(accountSearch.draftParams.channelConfigId, accountSearch.setField('channelConfigId'))}
                 {currencyFilter(accountSearch.draftParams.currency, accountSearch.setField('currency'))}
-                <StatusSelect items={ACCOUNT_STATUS_ITEMS} {...accountSearch.bind('status')} />
+                <StatusSelect items={COMMON_STATUS_OPTIONS} {...accountSearch.bind('status')} />
               </>
             )}
             onSearch={accountSearch.handleSearch}
@@ -655,7 +643,7 @@ export default function PaymentLedgerPage() {
                   width={180}
                   filter
                 />
-                <StatusSelect items={RESERVATION_STATUS_ITEMS} {...reservationSearch.bind('status')} />
+                <StatusSelect items={PAYMENT_FUND_RESERVATION_STATUS_OPTIONS} {...reservationSearch.bind('status')} />
                 <DateRangeFilter {...reservationSearch.bind('timeRange')} />
               </>
             )}

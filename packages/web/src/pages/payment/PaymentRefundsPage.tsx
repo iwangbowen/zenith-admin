@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { formatYuan, PAYMENT_CHANNEL_TAG_COLOR } from '@/utils/payment';
+import { formatYuan, PAYMENT_CHANNEL_TAG_COLOR, PAYMENT_REFUND_STATUS_TAG_COLOR } from '@/utils/payment';
 import { Form, Input, Tag, Toast, Typography, Descriptions } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -26,7 +26,6 @@ import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/com
 import { EMPTY_PLACEHOLDER, copyableNoColumn, dateTimeColumn } from '@/utils/table-columns';
 import { compactParams } from '@/lib/query';
 
-const STATUS_COLOR = { pending: 'grey', processing: 'blue', unknown: 'amber', success: 'green', failed: 'red' } as const satisfies Record<PaymentRefundStatus, string>;
 const APPROVAL_COLOR = { none: 'grey', pending: 'amber', approved: 'green', rejected: 'red' } as const satisfies Record<PaymentRefundApprovalStatus, string>;
 const yuan = formatYuan;
 
@@ -100,7 +99,7 @@ export default function PaymentRefundsPage() {
       title: '审批', dataIndex: 'approvalStatus', width: 100, fixed: 'right',
       render: (v: PaymentRefundApprovalStatus) => (v === 'none' ? <Typography.Text type="tertiary">-</Typography.Text> : <Tag color={APPROVAL_COLOR[v]}>{PAYMENT_REFUND_APPROVAL_STATUS_LABELS[v]}</Tag>),
     },
-    { title: '状态', dataIndex: 'status', width: 110, fixed: 'right', render: (v: PaymentRefundStatus) => <Tag color={STATUS_COLOR[v]}>{PAYMENT_REFUND_STATUS_LABELS[v]}</Tag> },
+    { title: '状态', dataIndex: 'status', width: 110, fixed: 'right', render: (v: PaymentRefundStatus) => <Tag color={PAYMENT_REFUND_STATUS_TAG_COLOR[v]}>{PAYMENT_REFUND_STATUS_LABELS[v]}</Tag> },
     createOperationColumn<PaymentRefund>({
       width: 120,
       desktopInlineKeys: ['detail'],
@@ -183,7 +182,7 @@ export default function PaymentRefundsPage() {
               { key: '渠道', value: PAYMENT_CHANNEL_LABELS[refundDetail.channel] },
               { key: '退款金额', value: yuan(refundDetail.refundAmount) },
               { key: '原单金额', value: yuan(refundDetail.totalAmount) },
-              { key: '状态', value: <Tag color={STATUS_COLOR[refundDetail.status]}>{PAYMENT_REFUND_STATUS_LABELS[refundDetail.status]}</Tag> },
+              { key: '状态', value: <Tag color={PAYMENT_REFUND_STATUS_TAG_COLOR[refundDetail.status]}>{PAYMENT_REFUND_STATUS_LABELS[refundDetail.status]}</Tag> },
               { key: '审批状态', value: <Tag color={APPROVAL_COLOR[refundDetail.approvalStatus]}>{PAYMENT_REFUND_APPROVAL_STATUS_LABELS[refundDetail.approvalStatus]}</Tag> },
               { key: '审批时间', value: refundDetail.approvedAt ? formatDateTime(refundDetail.approvedAt) : EMPTY_PLACEHOLDER },
               { key: '退款时间', value: refundDetail.refundedAt ? formatDateTime(refundDetail.refundedAt) : EMPTY_PLACEHOLDER },

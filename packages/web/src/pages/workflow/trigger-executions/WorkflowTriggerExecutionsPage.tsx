@@ -11,10 +11,13 @@ import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import WorkflowInstanceCell from '@/components/workflow/WorkflowInstanceCell';
 import WorkflowInstanceDetailSheet from '@/components/workflow/WorkflowInstanceDetailSheet';
-import type {
-  WorkflowTriggerExecution,
-  WorkflowTriggerExecutionStatus,
-  WorkflowTriggerType,
+import {
+  WORKFLOW_TRIGGER_EXECUTION_STATUS_LABELS,
+  WORKFLOW_TRIGGER_EXECUTION_STATUS_OPTIONS,
+  WORKFLOW_TRIGGER_TYPE_LABELS,
+  type WorkflowTriggerExecution,
+  type WorkflowTriggerExecutionStatus,
+  type WorkflowTriggerType,
 } from '@zenith/shared/workflow';
 import {
   useWorkflowTriggerExecutionDetail,
@@ -28,26 +31,13 @@ import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { JsonBlock } from '@/components/JsonBlock';
 
-const STATUS_MAP: Record<WorkflowTriggerExecutionStatus, { label: string; color: 'grey' | 'blue' | 'green' | 'red' | 'orange' }> = {
-  pending: { label: '待执行', color: 'grey' },
-  running: { label: '执行中', color: 'blue' },
-  success: { label: '成功', color: 'green' },
-  failed: { label: '失败', color: 'red' },
-  retrying: { label: '重试中', color: 'orange' },
+const STATUS_COLORS: Record<WorkflowTriggerExecutionStatus, 'grey' | 'blue' | 'green' | 'red' | 'orange'> = {
+  pending: 'grey',
+  running: 'blue',
+  success: 'green',
+  failed: 'red',
+  retrying: 'orange',
 };
-
-const TRIGGER_TYPE_LABEL: Record<WorkflowTriggerType, string> = {
-  webhook: 'Webhook',
-  callback: '回调',
-  updateData: '更新数据',
-  deleteData: '删除数据',
-};
-
-const STATUS_OPTIONS = [
-  ...(Object.entries(STATUS_MAP) as [WorkflowTriggerExecutionStatus, { label: string }][]).map(
-    ([value, meta]) => ({ value, label: meta.label }),
-  ),
-];
 
 export default function WorkflowTriggerExecutionsPage() {
 
@@ -95,7 +85,7 @@ export default function WorkflowTriggerExecutionsPage() {
       title: '触发类型',
       dataIndex: 'triggerType',
       width: 110,
-      render: (v: WorkflowTriggerType) => TRIGGER_TYPE_LABEL[v] ?? v,
+      render: (v: WorkflowTriggerType) => WORKFLOW_TRIGGER_TYPE_LABELS[v] ?? v,
     },
     { title: '尝试次数', dataIndex: 'attempt', width: 90, align: 'right' },
     {
@@ -126,8 +116,7 @@ export default function WorkflowTriggerExecutionsPage() {
       width: 100,
       fixed: 'right',
       render: (v: WorkflowTriggerExecutionStatus) => {
-        const meta = STATUS_MAP[v];
-        return <Tag color={meta?.color ?? 'grey'} size="small">{meta?.label ?? v}</Tag>;
+        return <Tag color={STATUS_COLORS[v] ?? 'grey'} size="small">{WORKFLOW_TRIGGER_EXECUTION_STATUS_LABELS[v] ?? v}</Tag>;
       },
     },
     createOperationColumn<WorkflowTriggerExecution>({
@@ -146,7 +135,7 @@ export default function WorkflowTriggerExecutionsPage() {
         filters={(
           <>
             <StatusSelect
-              items={STATUS_OPTIONS}
+              items={WORKFLOW_TRIGGER_EXECUTION_STATUS_OPTIONS}
               {...bind('status')}
             />
             <InputNumber
@@ -178,10 +167,10 @@ export default function WorkflowTriggerExecutionsPage() {
             <Row label="实例">{detail.instanceTitle ? `#${detail.instanceId} · ${detail.instanceTitle}` : `#${detail.instanceId}`}</Row>
             <Row label="任务 ID">{detail.taskId ?? EMPTY_PLACEHOLDER}</Row>
             <Row label="节点">{detail.nodeName}（{detail.nodeKey}）</Row>
-            <Row label="触发类型">{TRIGGER_TYPE_LABEL[detail.triggerType] ?? detail.triggerType}</Row>
+            <Row label="触发类型">{WORKFLOW_TRIGGER_TYPE_LABELS[detail.triggerType] ?? detail.triggerType}</Row>
             <Row label="状态">
-              <Tag color={STATUS_MAP[detail.status]?.color ?? 'grey'} size="small">
-                {STATUS_MAP[detail.status]?.label ?? detail.status}
+              <Tag color={STATUS_COLORS[detail.status] ?? 'grey'} size="small">
+                {WORKFLOW_TRIGGER_EXECUTION_STATUS_LABELS[detail.status] ?? detail.status}
               </Tag>
             </Row>
             <Row label="尝试次数">{detail.attempt}</Row>

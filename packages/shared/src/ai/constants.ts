@@ -1,3 +1,5 @@
+import { createLabelOptions } from '../core/enum-options';
+
 /**
  * 自定义 OpenAI 兼容端点的 provider ID。
  * 走 Mastra OpenAICompatibleConfig `{ id: 'custom/<model>', url, apiKey }` 直连,
@@ -42,6 +44,15 @@ export type AiMessageRole = (typeof AI_MESSAGE_ROLES)[number];
 export const AI_FEEDBACK_STATUSES = ['pending', 'resolved', 'ignored'] as const;
 
 export type AiFeedbackStatus = (typeof AI_FEEDBACK_STATUSES)[number];
+
+export const AI_FEEDBACK_STATUS_LABELS: Record<AiFeedbackStatus, string> = {
+  pending: '待处理',
+  resolved: '已处理',
+  ignored: '已忽略',
+};
+
+export const AI_FEEDBACK_STATUS_OPTIONS: Array<{ value: AiFeedbackStatus; label: string }> =
+  createLabelOptions(AI_FEEDBACK_STATUSES, AI_FEEDBACK_STATUS_LABELS);
 
 /** 提示词模板范围：system 系统级 / user 用户私有 */
 export const AI_PROMPT_SCOPES = ['system', 'user'] as const;

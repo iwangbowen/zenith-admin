@@ -4,7 +4,7 @@ import { Button, Modal, Select, Space, Tag, Typography, Toast } from '@douyinfe/
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Ban, CircleCheck, GitCompare, Layers, LayoutTemplate, Save, Upload } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { importWorkflowDefinitionSchema, workflowDefinitionContract, WORKFLOW_DEFINITION_STATUSES, WORKFLOW_FORM_TYPE_LABELS, type WorkflowDefinition, type WorkflowFormType, type WorkflowVersionDiff as WorkflowVersionDiffData } from '@zenith/shared/workflow';
+import { importWorkflowDefinitionSchema, workflowDefinitionContract, WORKFLOW_DEFINITION_STATUS_OPTIONS, WORKFLOW_DEFINITION_STATUSES, WORKFLOW_FORM_TYPE_LABELS, type WorkflowDefinition, type WorkflowFormType, type WorkflowVersionDiff as WorkflowVersionDiffData } from '@zenith/shared/workflow';
 import { enumValueOf } from '@zenith/shared/core';
 import { api } from '@/lib/contract-query';
 import { downloadBlob } from '@/utils/download';
@@ -43,8 +43,6 @@ import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import { confirmDanger } from '@/utils/confirm';
-
-const STATUS_FILTER_OPTIONS = [{ value: 'draft', label: '草稿' }, { value: 'published', label: '已发布' }, { value: 'disabled', label: '已禁用' }];
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
 
@@ -461,7 +459,7 @@ export default function WorkflowDefinitionsPage() {
             keyword={<KeywordInput placeholder="搜索流程名称" {...bind('keyword')} width={200} />}
             filters={(
               <StatusSelect
-                items={STATUS_FILTER_OPTIONS}
+                items={WORKFLOW_DEFINITION_STATUS_OPTIONS}
                 {...bind('status')}
               />
             )}

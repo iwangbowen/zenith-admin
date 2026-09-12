@@ -1,3 +1,5 @@
+import { createLabelOptions } from '../core/enum-options';
+
 export const USER_ROLES = ['admin', 'user'] as const;
 
 export const SUPER_ADMIN_CODE = 'super_admin';
@@ -37,9 +39,25 @@ export const LOGIN_EVENT_TYPES = ['login', 'logout'] as const;
 
 export type LoginEventType = (typeof LOGIN_EVENT_TYPES)[number];
 
+export const LOGIN_EVENT_TYPE_LABELS: Record<LoginEventType, string> = {
+  login: '登录',
+  logout: '退出登录',
+};
+
+export const LOGIN_EVENT_TYPE_OPTIONS: Array<{ value: LoginEventType; label: string }> =
+  createLabelOptions(LOGIN_EVENT_TYPES, LOGIN_EVENT_TYPE_LABELS);
+
 export const LOGIN_STATUSES = ['success', 'fail'] as const;
 
 export type LoginStatus = (typeof LOGIN_STATUSES)[number];
+
+export const LOGIN_STATUS_LABELS: Record<LoginStatus, string> = {
+  success: '成功',
+  fail: '失败',
+};
+
+export const LOGIN_STATUS_OPTIONS: Array<{ value: LoginStatus; label: string }> =
+  createLabelOptions(LOGIN_STATUSES, LOGIN_STATUS_LABELS);
 
 export const IDENTITY_PROVIDER_TYPES = ['oidc', 'saml', 'ldap', 'ad'] as const;
 

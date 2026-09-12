@@ -3,7 +3,7 @@ import ModalFooter from '@/components/ModalFooter';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Banner, Col, Form, Row, SideSheet, Spin, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
-import { MP_ACCOUNT_TYPES, type CreateMpAccountInput, type MpAccount, type MpAccountType } from '@zenith/shared/mp';
+import { MP_ACCOUNT_TYPE_LABELS, MP_ACCOUNT_TYPE_OPTIONS, MP_ACCOUNT_TYPES, MP_ENCRYPT_MODE_LABELS, MP_ENCRYPT_MODE_OPTIONS, type CreateMpAccountInput, type MpAccount, type MpAccountType } from '@zenith/shared/mp';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -25,18 +25,6 @@ import {
 } from '@/hooks/queries/mp-accounts';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-
-const TYPE_OPTIONS = [
-  { label: '订阅号', value: 'subscribe' },
-  { label: '服务号', value: 'service' },
-  { label: '测试号', value: 'test' },
-];
-
-const ENCRYPT_MODE_OPTIONS = [
-  { label: '明文模式', value: 'plaintext' },
-  { label: '兼容模式', value: 'compatible' },
-  { label: '安全模式', value: 'safe' },
-];
 
 const TYPE_TAG_COLOR: Record<MpAccountType, 'blue' | 'green' | 'grey'> = {
   subscribe: 'blue',
@@ -135,7 +123,7 @@ export default function MpAccountsPage() {
     {
       title: '类型', dataIndex: 'type', width: 90,
       render: (v: MpAccountType) => (
-        <Tag color={TYPE_TAG_COLOR[v]} type="light">{TYPE_OPTIONS.find((t) => t.value === v)?.label ?? v}</Tag>
+        <Tag color={TYPE_TAG_COLOR[v]} type="light">{MP_ACCOUNT_TYPE_LABELS[v]}</Tag>
       ),
     },
     { title: 'AppID', dataIndex: 'appId', width: 200, render: renderEllipsis },
@@ -195,7 +183,7 @@ export default function MpAccountsPage() {
           <>
             <FilterSelect
               placeholder="全部类型"
-              items={TYPE_OPTIONS}
+              items={MP_ACCOUNT_TYPE_OPTIONS}
               {...bind('filterType', (v) => v as MpAccountType | undefined)}
             />
             <StatusSelect
@@ -235,7 +223,7 @@ export default function MpAccountsPage() {
                     rules={[{ required: true, message: '请输入公众号名称' }]} />
                 </Col>
                 <Col span={12}>
-                  <Form.Select field="type" label="账号类型" style={{ width: '100%' }} optionList={TYPE_OPTIONS}
+                  <Form.Select field="type" label="账号类型" style={{ width: '100%' }} optionList={MP_ACCOUNT_TYPE_OPTIONS}
                     placeholder="请选择账号类型" rules={[{ required: true, message: '请选择账号类型' }]} />
                 </Col>
               </Row>
@@ -270,7 +258,7 @@ export default function MpAccountsPage() {
                     rules={[{ required: true, message: '请输入 Token' }]} />
                 </Col>
                 <Col span={12}>
-                  <Form.Select field="encryptMode" label="消息加解密" style={{ width: '100%' }} optionList={ENCRYPT_MODE_OPTIONS}
+                  <Form.Select field="encryptMode" label="消息加解密" style={{ width: '100%' }} optionList={MP_ENCRYPT_MODE_OPTIONS}
                     placeholder="请选择消息加解密方式" />
                 </Col>
               </Row>
@@ -304,7 +292,7 @@ export default function MpAccountsPage() {
             <ConfigRow label="Token" value={configRecord.token} />
             <ConfigRow label="EncodingAESKey" value={configRecord.encodingAesKey || '（未配置）'} copyable={!!configRecord.encodingAesKey} />
             <ConfigRow label="消息加解密方式"
-              value={ENCRYPT_MODE_OPTIONS.find((m) => m.value === configRecord.encryptMode)?.label ?? configRecord.encryptMode}
+              value={MP_ENCRYPT_MODE_LABELS[configRecord.encryptMode]}
               copyable={false} />
           </div>
         )}

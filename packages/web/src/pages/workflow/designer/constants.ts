@@ -25,6 +25,7 @@ import type {
   FieldPermission,
   SameInitiatorStrategy,
   DeduplicateStrategy,
+  NodeRuntimeInfo,
 } from './types';
 import type { WorkflowNodeFailureAction } from '@zenith/shared/workflow';
 import { WORKFLOW_APPROVE_METHOD_LABELS } from '@zenith/shared/workflow';
@@ -101,6 +102,15 @@ export const NODE_COLOR_MAP: Record<FlowNodeType, string> = {
   delay:           '#999',
   trigger:         '#722ed1',
   subProcess:      '#8c6e36',
+};
+
+/** 运行态节点表头配色（与画布图例一致：当前/通过/拒绝/等待/跳过） */
+export const RUNTIME_STATUS_HEADER_COLOR: Record<NodeRuntimeInfo['status'], string> = {
+  approved: 'var(--semi-color-success)',
+  rejected: 'var(--semi-color-danger)',
+  pending: 'var(--semi-color-primary)',
+  waiting: 'var(--semi-color-warning)',
+  skipped: 'var(--semi-color-tertiary)',
 };
 
 /** 分支节点默认子分支数量 */

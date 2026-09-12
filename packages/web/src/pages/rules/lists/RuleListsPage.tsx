@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { confirmAndDelete, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, DatePicker, Form, Input, Modal, Select, SideSheet, Space, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { RULE_LIST_TYPES, type RuleList, type RuleListItem, type RuleUsageItem } from '@zenith/shared/rules';
+import { RULE_LIST_TYPE_OPTIONS, RULE_LIST_TYPES, type RuleList, type RuleListItem, type RuleUsageItem } from '@zenith/shared/rules';
 import { enumValueOf } from '@zenith/shared/core';
 import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { AppModal } from '@/components/AppModal';
@@ -38,12 +38,6 @@ const TYPE_META: Record<string, { text: string; color: 'red' | 'green' | 'grey' 
   white: { text: '白名单', color: 'green' },
   grey: { text: '灰名单', color: 'grey' },
 };
-const TYPE_OPTIONS = [
-  { value: 'black', label: '黑名单' },
-  { value: 'white', label: '白名单' },
-  { value: 'grey', label: '灰名单' },
-];
-
 interface SearchParams { keyword: string; type?: string }
 
 /** 规则中心 · 名单库：黑/白/灰名单与条目管理（支持过期时间、批量导入、命中测试） */
@@ -190,7 +184,7 @@ export default function RuleListsPage() {
         filters={(
           <FilterSelect
             placeholder="全部类型"
-            items={TYPE_OPTIONS}
+            items={RULE_LIST_TYPE_OPTIONS}
             {...bind('type')}
           />
         )}
@@ -210,7 +204,7 @@ export default function RuleListsPage() {
         <Form key={modal.formKey} {...modal.formProps}>
           <Form.Input field="key" label="Key" disabled={modal.isEdit} rules={[{ required: true, message: 'key 必填' }]} placeholder="如 risk_blacklist" />
           <Form.Input field="name" label="名称" rules={[{ required: true, message: '名称必填' }]} />
-          <Form.Select field="type" label="类型" optionList={TYPE_OPTIONS} style={{ width: '100%' }} />
+          <Form.Select field="type" label="类型" optionList={RULE_LIST_TYPE_OPTIONS} style={{ width: '100%' }} />
           <Form.TextArea field="description" label="描述" autosize={{ minRows: 2, maxRows: 3 }} maxCount={500} />
         </Form>
       </AppModal>

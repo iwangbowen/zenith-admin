@@ -129,6 +129,15 @@ export const ANALYTICS_EVENT_META_STATUSES = ['active', 'deprecated', 'blocked']
 
 export type AnalyticsEventMetaStatus = (typeof ANALYTICS_EVENT_META_STATUSES)[number];
 
+export const ANALYTICS_EVENT_META_STATUS_LABELS: Record<AnalyticsEventMetaStatus, string> = {
+  active: '启用',
+  deprecated: '废弃',
+  blocked: '屏蔽',
+};
+
+export const ANALYTICS_EVENT_META_STATUS_OPTIONS: Array<{ value: AnalyticsEventMetaStatus; label: string }> =
+  createLabelOptions(ANALYTICS_EVENT_META_STATUSES, ANALYTICS_EVENT_META_STATUS_LABELS);
+
 export const ANALYTICS_QUALITY_ISSUE_TYPES = ['missing_required', 'type_mismatch', 'invalid_enum', 'event_disabled', 'origin_rejected', 'quota_exceeded'] as const;
 
 export type AnalyticsQualityIssueType = (typeof ANALYTICS_QUALITY_ISSUE_TYPES)[number];
@@ -581,22 +590,73 @@ export const FRONTEND_ERROR_TYPES = [
 
 export type FrontendErrorType = (typeof FRONTEND_ERROR_TYPES)[number];
 
+export const FRONTEND_ERROR_TYPE_LABELS: Record<FrontendErrorType, string> = {
+  js_error: 'JS 错误',
+  promise_rejection: 'Promise 异常',
+  resource_error: '资源错误',
+  console_error: 'Console 错误',
+  http_error: '接口错误',
+  white_screen: '白屏',
+  crash: '崩溃',
+};
+
+export const FRONTEND_ERROR_TYPE_OPTIONS: Array<{ value: FrontendErrorType; label: string }> =
+  createLabelOptions(FRONTEND_ERROR_TYPES, FRONTEND_ERROR_TYPE_LABELS);
+
 export const ERROR_LEVELS = ['fatal', 'error', 'warning', 'info'] as const;
 
 export type ErrorLevel = (typeof ERROR_LEVELS)[number];
+
+export const ERROR_LEVEL_LABELS: Record<ErrorLevel, string> = {
+  fatal: '致命',
+  error: '错误',
+  warning: '警告',
+  info: '信息',
+};
+
+export const ERROR_LEVEL_OPTIONS: Array<{ value: ErrorLevel; label: string }> =
+  createLabelOptions(ERROR_LEVELS, ERROR_LEVEL_LABELS);
 
 export const ERROR_STATUSES = ['unresolved', 'resolved', 'ignored', 'muted'] as const;
 
 export type ErrorStatus = (typeof ERROR_STATUSES)[number];
 
+export const ERROR_STATUS_LABELS: Record<ErrorStatus, string> = {
+  unresolved: '未解决',
+  resolved: '已解决',
+  ignored: '已忽略',
+  muted: '已静音',
+};
+
+export const ERROR_STATUS_OPTIONS: Array<{ value: ErrorStatus; label: string }> =
+  createLabelOptions(ERROR_STATUSES, ERROR_STATUS_LABELS);
+
 export const ERROR_ALERT_CONDITIONS = ['new_error', 'threshold', 'spike'] as const;
 
 export type ErrorAlertCondition = (typeof ERROR_ALERT_CONDITIONS)[number];
+
+export const ERROR_ALERT_CONDITION_LABELS: Record<ErrorAlertCondition, string> = {
+  new_error: '新错误',
+  threshold: '阈值',
+  spike: '激增',
+};
+
+export const ERROR_ALERT_CONDITION_OPTIONS: Array<{ value: ErrorAlertCondition; label: string }> =
+  createLabelOptions(ERROR_ALERT_CONDITIONS, ERROR_ALERT_CONDITION_LABELS);
 
 /** 告警规则可选通知渠道 */
 export const ERROR_ALERT_CHANNELS = ['email', 'webhook', 'inapp'] as const;
 
 export type ErrorAlertChannel = (typeof ERROR_ALERT_CHANNELS)[number];
+
+export const ERROR_ALERT_CHANNEL_LABELS: Record<ErrorAlertChannel, string> = {
+  email: '邮件',
+  webhook: 'Webhook',
+  inapp: '站内',
+};
+
+export const ERROR_ALERT_CHANNEL_OPTIONS: Array<{ value: ErrorAlertChannel; label: string }> =
+  createLabelOptions(ERROR_ALERT_CHANNELS, ERROR_ALERT_CHANNEL_LABELS);
 
 /** 错误现场面包屑类型 */
 export const ERROR_BREADCRUMB_TYPES = ['navigation', 'click', 'http', 'console', 'custom'] as const;
@@ -614,7 +674,27 @@ export const REPLAY_STATUSES = ['recording', 'completed', 'expired'] as const;
 
 export type ReplayStatus = (typeof REPLAY_STATUSES)[number];
 
+export const REPLAY_STATUS_LABELS: Record<ReplayStatus, string> = {
+  recording: '录制中',
+  completed: '已完成',
+  expired: '已超时',
+};
+
+export const REPLAY_STATUS_OPTIONS: Array<{ value: ReplayStatus; label: string }> =
+  createLabelOptions(REPLAY_STATUSES, REPLAY_STATUS_LABELS);
+
 /** 回放触发器类型（可扩展：二期 rage_click/white_screen，三期反馈联动等） */
 export const REPLAY_TRIGGER_TYPES = ['error', 'sampled', 'manual', 'rage_click', 'white_screen'] as const;
 
 export type ReplayTriggerType = (typeof REPLAY_TRIGGER_TYPES)[number];
+
+export const REPLAY_TRIGGER_TYPE_LABELS: Record<ReplayTriggerType, string> = {
+  error: '错误触发',
+  sampled: '采样录制',
+  manual: '手动开启',
+  rage_click: '暴躁点击',
+  white_screen: '白屏',
+};
+
+export const REPLAY_TRIGGER_TYPE_OPTIONS: Array<{ value: ReplayTriggerType; label: string }> =
+  createLabelOptions(REPLAY_TRIGGER_TYPES, REPLAY_TRIGGER_TYPE_LABELS);

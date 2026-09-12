@@ -9,7 +9,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { useAllPaymentChannelConfigsLookup } from '@/hooks/queries/payment-channels';
 import { paymentAppKeys, useDeletePaymentApp, usePaymentAppList, useSavePaymentApp } from '@/hooks/queries/payment-apps';
 import { useOpenAppOptions } from '@/hooks/queries/open-platform';
-import { EMPTY_PLACEHOLDER, copyableNoColumn, createdAtColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, copyableNoColumn, createdAtColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import type { CreatePaymentAppInput, PaymentApp, PaymentChannel, PaymentChannelConfig } from '@zenith/shared/payment';
 import { useDictItems } from '@/hooks/useDictItems';
@@ -21,9 +21,6 @@ import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/li
 
 interface SearchParams { keyword: string; status?: string; }
 const defaultSearch: SearchParams = { keyword: '', status: undefined };
-const STATUS_COLOR = { enabled: 'green', disabled: 'grey' } as const satisfies Record<PaymentApp['status'], string>;
-const STATUS_LABEL = { enabled: '启用', disabled: '停用' } as const satisfies Record<PaymentApp['status'], string>;
-
 interface AppFormValues {
   name: string;
   openClientId: number;
@@ -129,7 +126,7 @@ export default function PaymentAppsPage() {
     { title: '云闪付配置', dataIndex: 'unionpayConfigName', width: 160, render: renderEllipsis },
     { title: '备注', dataIndex: 'remark', width: 180, render: renderEllipsis },
     createdAtColumn as ColumnProps<PaymentApp>,
-    { title: '状态', dataIndex: 'status', width: 90, fixed: 'right', render: (v: PaymentApp['status']) => <Tag color={STATUS_COLOR[v]}>{STATUS_LABEL[v]}</Tag> },
+    { title: '状态', dataIndex: 'status', width: 90, fixed: 'right', render: renderEnabledStatusTag },
     createOperationColumn<PaymentApp>({
       width: 150,
       actions: (r) => canManage ? [

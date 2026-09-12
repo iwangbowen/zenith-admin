@@ -5,7 +5,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Download, FileText, UserRoundCog } from 'lucide-react';
 import dayjs from 'dayjs';
-import { WORKFLOW_INSTANCE_PRIORITIES, WORKFLOW_INSTANCE_STATUSES, type WorkflowApproveMethod, type WorkflowAssigneeType, type WorkflowCategory, type WorkflowExecutionToken, type WorkflowFlowData, type WorkflowInstanceListItem, type WorkflowNodeConfig, type WorkflowRuntimeDiagnostics, type WorkflowRuntimeIssue, type WorkflowRuntimeOutboxEvent, type WorkflowTask, type WorkflowTriggerExecution } from '@zenith/shared/workflow';
+import { WORKFLOW_APPROVE_METHOD_LABELS, WORKFLOW_INSTANCE_PRIORITIES, WORKFLOW_INSTANCE_STATUSES, type WorkflowAssigneeType, type WorkflowCategory, type WorkflowExecutionToken, type WorkflowFlowData, type WorkflowInstanceListItem, type WorkflowNodeConfig, type WorkflowRuntimeDiagnostics, type WorkflowRuntimeIssue, type WorkflowRuntimeOutboxEvent, type WorkflowTask, type WorkflowTriggerExecution } from '@zenith/shared/workflow';
 import { enumValueOf } from '@zenith/shared/core';
 import { WORKFLOW_ISSUE_SEVERITY_META as ISSUE_SEVERITY_MAP } from './constants';
 import { downloadBlob } from '@/utils/download';
@@ -107,16 +107,6 @@ const ASSIGNEE_TYPE_LABEL: Partial<Record<WorkflowAssigneeType, string>> = {
   expression: '流程表达式',
 };
 
-/** 审批方式 → 中文标签 */
-const APPROVE_METHOD_LABEL: Partial<Record<WorkflowApproveMethod, string>> = {
-  and: '会签',
-  or: '或签',
-  sequential: '顺序会签',
-  ratio: '比例会签',
-  random: '随机',
-  auto: '自动通过',
-};
-
 /** 节点运行态（由关联任务派生） */
 type DiagNodeState = 'done' | 'active' | 'rejected' | 'idle';
 
@@ -163,9 +153,9 @@ function getNodeConfigItems(cfg: WorkflowNodeConfig): Array<{ label: string; val
   if (cfg.assigneeType && ASSIGNEE_TYPE_LABEL[cfg.assigneeType]) {
     items.push({ label: '处理人来源', value: ASSIGNEE_TYPE_LABEL[cfg.assigneeType] as string });
   }
-  if (cfg.approveMethod && APPROVE_METHOD_LABEL[cfg.approveMethod]) {
+  if (cfg.approveMethod && WORKFLOW_APPROVE_METHOD_LABELS[cfg.approveMethod]) {
     const ratio = cfg.approveMethod === 'ratio' && cfg.approveRatio ? ` ${cfg.approveRatio}%` : '';
-    items.push({ label: '审批方式', value: `${APPROVE_METHOD_LABEL[cfg.approveMethod]}${ratio}` });
+    items.push({ label: '审批方式', value: `${WORKFLOW_APPROVE_METHOD_LABELS[cfg.approveMethod]}${ratio}` });
   }
   const names = getConfiguredAssigneeNames(cfg);
   if (names.length > 0) items.push({ label: '指定处理人', value: names.join('、') });

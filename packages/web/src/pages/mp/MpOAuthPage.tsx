@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button, Select, Input, Toast, Banner, Typography, Card, Tag } from '@douyinfe/semi-ui';
 import { Link2, Copy } from 'lucide-react';
 import { fillPath } from '@zenith/shared/core';
-import { mpOAuthPublicContract, type MpJsConfig, type MpOAuthScope } from '@zenith/shared/mp';
+import { MP_OAUTH_SCOPE_OPTIONS, mpOAuthPublicContract, type MpJsConfig, type MpOAuthScope } from '@zenith/shared/mp';
 import { config } from '@/config';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -10,11 +10,6 @@ import { useMpAccounts } from './useMpAccounts';
 import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import { useGenerateMpJsConfig, useGenerateMpOAuthUrl } from '@/hooks/queries/mp-oauth';
-
-const SCOPE_OPTIONS = [
-  { label: 'snsapi_base（静默授权，仅取 openid）', value: 'snsapi_base' },
-  { label: 'snsapi_userinfo（弹窗授权，取用户信息）', value: 'snsapi_userinfo' },
-];
 
 export default function MpOAuthPage() {
   const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
@@ -71,7 +66,7 @@ export default function MpOAuthPage() {
 
         <div>
           <Typography.Text type="secondary" size="small">授权作用域 scope</Typography.Text>
-          <Select style={{ width: '100%', marginTop: 4 }} value={scope} onChange={(v) => setScope(v as MpOAuthScope)} optionList={SCOPE_OPTIONS} />
+          <Select style={{ width: '100%', marginTop: 4 }} value={scope} onChange={(v) => setScope(v as MpOAuthScope)} optionList={MP_OAUTH_SCOPE_OPTIONS} />
         </div>
 
         <div>

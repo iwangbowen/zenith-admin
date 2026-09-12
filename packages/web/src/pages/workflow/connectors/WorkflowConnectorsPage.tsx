@@ -21,7 +21,7 @@ import AppModal from '@/components/AppModal';
 import { createdAtColumn, dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
-import { WORKFLOW_CONNECTOR_TYPES, type WorkflowConnector, type WorkflowConnectorType, type WorkflowConnectorBreakerState, type WorkflowConnectorInvokeResult, type WorkflowConnectorHttpConfig, type WorkflowConnectorInvocation } from '@zenith/shared/workflow';
+import { WORKFLOW_CONNECTOR_BREAKER_STATE_LABELS, WORKFLOW_CONNECTOR_INVOCATION_SOURCE_LABELS, WORKFLOW_CONNECTOR_TYPE_LABELS, WORKFLOW_CONNECTOR_TYPES, type WorkflowConnector, type WorkflowConnectorType, type WorkflowConnectorBreakerState, type WorkflowConnectorInvokeResult, type WorkflowConnectorHttpConfig, type WorkflowConnectorInvocation } from '@zenith/shared/workflow';
 import {
   useDeleteWorkflowConnectors,
   useSaveWorkflowConnector,
@@ -49,18 +49,10 @@ const TYPE_OPTIONS: Array<{ value: WorkflowConnectorType; label: string }> = [
   { value: 'dingtalk', label: '钉钉' },
   { value: 'feishu', label: '飞书' },
 ];
-/** 展示标签额外覆盖存量 mq/database 数据（仅显示，不可新建） */
-const TYPE_LABEL = {
-  ...Object.fromEntries(TYPE_OPTIONS.map((t) => [t.value, t.label])),
-  mq: '消息队列', database: '数据库',
-} as Record<WorkflowConnectorType, string>;
-const SOURCE_LABEL: Record<WorkflowConnectorInvocation['source'], string> = {
-  test: '测试', trigger: '触发器', external: '外部审批', webhook: '事件订阅', manual: '手动',
-};
-const BREAKER_META: Record<WorkflowConnectorBreakerState, { text: string; color: 'green' | 'red' | 'orange' }> = {
-  closed: { text: '正常', color: 'green' },
-  open: { text: '熔断', color: 'red' },
-  halfOpen: { text: '半开', color: 'orange' },
+const BREAKER_COLORS: Record<WorkflowConnectorBreakerState, 'green' | 'red' | 'orange'> = {
+  closed: 'green',
+  open: 'red',
+  halfOpen: 'orange',
 };
 
 interface SearchParams { keyword: string; type?: string; status?: string }
@@ -209,10 +201,10 @@ export default function WorkflowConnectorsPage() {
   const columns: ColumnProps<WorkflowConnector>[] = [
     { title: '名称', dataIndex: 'name', minWidth: 160, render: renderEllipsis },
     { title: '编码', dataIndex: 'code', width: 140, render: (v: string) => <Typography.Text size="small" type="tertiary">{v}</Typography.Text> },
-    { title: '类型', dataIndex: 'type', width: 100, render: (t: WorkflowConnectorType) => <Tag size="small" color={t === 'http' ? 'blue' : 'grey'}>{TYPE_LABEL[t] ?? t}</Tag> },
+    { title: '类型', dataIndex: 'type', width: 100, render: (t: WorkflowConnectorType) => <Tag size="small" color={t === 'http' ? 'blue' : 'grey'}>{WORKFLOW_CONNECTOR_TYPE_LABELS[t] ?? t}</Tag> },
     { title: '地址', dataIndex: 'config', width: 240, render: (_: unknown, r: WorkflowConnector) => renderEllipsis((r.config as unknown as WorkflowConnectorHttpConfig)?.baseUrl) },
     { title: '凭据', dataIndex: 'hasCredentials', width: 80, render: (v: boolean) => v ? <Tag size="small" color="green">已配</Tag> : <Tag size="small" color="grey">无</Tag> },
-    { title: '熔断', dataIndex: 'breakerState', width: 80, render: (s: WorkflowConnectorBreakerState) => { const m = BREAKER_META[s] ?? BREAKER_META.closed; return <Tag size="small" color={m.color}>{m.text}</Tag>; } },
+    { title: '熔断', dataIndex: 'breakerState', width: 80, render: (s: WorkflowConnectorBreakerState) => { const color = BREAKER_COLORS[s] ?? BREAKER_COLORS.closed; return <Tag size="small" color={color}>{WORKFLOW_CONNECTOR_BREAKER_STATE_LABELS[s] ?? s}</Tag>; } },
     createdAtColumn,
     status.column(),
     createOperationColumn<WorkflowConnector>({
@@ -399,7 +391,7 @@ export default function WorkflowConnectorsPage() {
             pagination={false}
             empty="暂无调用记录"
             columns={[
-              { title: '来源', dataIndex: 'source', width: 100, render: (s: WorkflowConnectorInvocation['source']) => <Tag size="small" color="blue">{SOURCE_LABEL[s] ?? s}</Tag> },
+              { title: '来源', dataIndex: 'source', width: 100, render: (s: WorkflowConnectorInvocation['source']) => <Tag size="small" color="blue">{WORKFLOW_CONNECTOR_INVOCATION_SOURCE_LABELS[s] ?? s}</Tag> },
               { title: '结果', dataIndex: 'ok', width: 80, render: (ok: boolean) => <Tag size="small" color={ok ? 'green' : 'red'}>{ok ? '成功' : '失败'}</Tag> },
               { title: '状态码', dataIndex: 'status', width: 80, render: (v: number | null) => v ?? EMPTY_PLACEHOLDER },
               { title: '耗时', dataIndex: 'durationMs', width: 80, align: 'right', render: (v: number) => `${v}ms` },

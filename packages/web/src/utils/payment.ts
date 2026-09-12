@@ -2,7 +2,7 @@
  * 支付中心前端公共工具：金额格式化与渠道/状态色映射。
  * 各支付页面统一从此处导入，禁止在页面内重复定义。
  */
-import type { PaymentChannel, PaymentMethod } from '@zenith/shared/payment';
+import type { PaymentChannel, PaymentMethod, PaymentOrderStatus, PaymentRefundStatus } from '@zenith/shared/payment';
 
 /** 分 → 元展示（`¥0.00`）；空值显示 nullText（默认 '-'）。 */
 export function formatYuan(cents: number | null | undefined, nullText = '-'): string {
@@ -37,4 +37,23 @@ export const PAYMENT_CHANNEL_TAG_COLOR: Record<PaymentChannel, 'green' | 'blue' 
   wechat: 'green',
   alipay: 'blue',
   unionpay: 'red',
+};
+
+export const PAYMENT_REFUND_STATUS_TAG_COLOR: Record<PaymentRefundStatus, 'grey' | 'blue' | 'green' | 'red' | 'amber'> = {
+  pending: 'grey',
+  processing: 'blue',
+  unknown: 'amber',
+  success: 'green',
+  failed: 'red',
+};
+
+export const PAYMENT_ORDER_STATUS_TAG_COLOR: Record<PaymentOrderStatus, 'grey' | 'blue' | 'green' | 'amber' | 'orange' | 'red'> = {
+  pending: 'grey',
+  paying: 'blue',
+  unknown: 'amber',
+  success: 'green',
+  closed: 'grey',
+  refunding: 'amber',
+  refunded: 'orange',
+  failed: 'red',
 };

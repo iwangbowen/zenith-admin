@@ -5,7 +5,7 @@ import { Download, ThumbsUp, ThumbsDown } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { AiFeedbackItem, AiFeedbackStatus, AiMessage } from '@zenith/shared/ai';
-import { AI_FEEDBACK_STATUSES } from '@zenith/shared/ai';
+import { AI_FEEDBACK_STATUSES, AI_FEEDBACK_STATUS_OPTIONS } from '@zenith/shared/ai';
 import { enumValueOf } from '@zenith/shared/core';
 import { formatDateForApi } from '@/utils/date';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -30,17 +30,6 @@ const FEEDBACK_OPTIONS = [
 /** 反馈类型查询值（与 FEEDBACK_OPTIONS 的 value 一致） */
 const FEEDBACK_FILTER_VALUES = ['1', '-1'] as const;
 
-const STATUS_FILTER_OPTIONS = [
-  { value: 'pending', label: '待处理' },
-  { value: 'resolved', label: '已处理' },
-  { value: 'ignored', label: '已忽略' },
-];
-
-const HANDLE_STATUS_OPTIONS = [
-  { value: 'resolved', label: '已处理' },
-  { value: 'ignored', label: '已忽略' },
-  { value: 'pending', label: '待处理' },
-];
 
 function renderReason(reason: AiMessage['feedbackReason'], getLabel: (value: string) => string) {
   if (!reason) return EMPTY_PLACEHOLDER;
@@ -239,7 +228,7 @@ export default function AiFeedbackPage() {
             />
             <FilterSelect
               placeholder="全部处理状态"
-              items={STATUS_FILTER_OPTIONS}
+              items={AI_FEEDBACK_STATUS_OPTIONS}
               {...bind('status', (v) => String(v))}
               width={140}
             />
@@ -287,7 +276,7 @@ export default function AiFeedbackPage() {
           <Form.Select
             field="status"
             label="处理状态"
-            optionList={HANDLE_STATUS_OPTIONS}
+            optionList={AI_FEEDBACK_STATUS_OPTIONS}
             style={{ width: '100%' }}
             rules={[{ required: true, message: '请选择处理状态' }]}
           />

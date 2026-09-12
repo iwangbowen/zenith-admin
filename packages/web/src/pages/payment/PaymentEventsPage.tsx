@@ -7,17 +7,15 @@ import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { JsonBlock } from '@/components/JsonBlock';
 import { usePermission } from '@/hooks/usePermission';
-import { PAYMENT_OUTBOX_EVENT_STATUSES, type PaymentOutboxEvent } from '@zenith/shared/payment';
+import { PAYMENT_OUTBOX_EVENT_STATUS_LABELS, PAYMENT_OUTBOX_EVENT_STATUS_OPTIONS, PAYMENT_OUTBOX_EVENT_STATUSES, type PaymentOutboxEvent } from '@zenith/shared/payment';
 import { paymentEventKeys, usePaymentEventList, usePaymentOpsHealth, useRedispatchPaymentEvent } from '@/hooks/queries/payment-events';
 import { useListSearch } from '@/hooks/useListSearch';
 import { compactParams } from '@/lib/query';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
-import { createLabelOptionsFromMap, enumValueOf } from '@zenith/shared/core';
+import { enumValueOf } from '@zenith/shared/core';
 
-const EVENT_STATUS_LABELS = { pending: '待处理', done: '已完成', failed: '失败' } as const satisfies Record<PaymentOutboxEvent['status'], string>;
-const EVENT_STATUS_OPTIONS = createLabelOptionsFromMap(EVENT_STATUS_LABELS);
 const EVENT_STATUS_COLOR = { pending: 'blue', done: 'green', failed: 'red' } as const satisfies Record<PaymentOutboxEvent['status'], string>;
 const HEALTH_LABELS = [
   ['outboxPending', 'Outbox 积压'],
@@ -87,7 +85,7 @@ export default function PaymentEventsPage() {
     { title: '错误信息', dataIndex: 'lastError', minWidth: 260, render: renderEllipsis },
     dateTimeColumn('创建时间', 'createdAt'),
     dateTimeColumn('处理时间', 'processedAt'),
-    { title: '状态', dataIndex: 'status', width: 90, fixed: 'right', render: (v: PaymentOutboxEvent['status']) => <Tag color={EVENT_STATUS_COLOR[v]}>{EVENT_STATUS_LABELS[v]}</Tag> },
+    { title: '状态', dataIndex: 'status', width: 90, fixed: 'right', render: (v: PaymentOutboxEvent['status']) => <Tag color={EVENT_STATUS_COLOR[v]}>{PAYMENT_OUTBOX_EVENT_STATUS_LABELS[v]}</Tag> },
     createOperationColumn<PaymentOutboxEvent>({
       width: 100,
       actions: (r) => [
@@ -128,7 +126,7 @@ export default function PaymentEventsPage() {
         filters={(
           <>
             <StatusSelect
-              items={EVENT_STATUS_OPTIONS}
+              items={PAYMENT_OUTBOX_EVENT_STATUS_OPTIONS}
               {...bind('status')}
             />
             <KeywordInput placeholder="事件类型..." {...bindKeyword('type')} width={180} />

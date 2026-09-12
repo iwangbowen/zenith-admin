@@ -12,11 +12,9 @@ import { operationLogKeys, useCleanOperationLogs, useOperationLogList } from '@/
 import { useListSearch } from '@/hooks/useListSearch';
 import { DateRangeFilter, FilterSelect, KeywordInput, NumberFilter, StatusSelect } from '@/components/search-filters';
 import { enumValueOf } from '@zenith/shared/core';
-import { OPERATION_LOG_RESULTS } from '@zenith/shared/platform';
+import { OPERATION_LOG_RESULT_OPTIONS, OPERATION_LOG_RESULTS } from '@zenith/shared/platform';
 
 const METHOD_OPTIONS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((value) => ({ value, label: value }));
-const STATUS_OPTIONS = [{ value: 'success', label: '成功' }, { value: 'fail', label: '失败' }];
-
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 interface SearchParams {
   username: string;
@@ -93,7 +91,7 @@ export default function OperationLogsPage() {
                 <KeywordInput placeholder="请输入 IP 地址" {...bindKeyword('ip')} width={160} />
                 <KeywordInput placeholder="请求/变更内容包含…" {...bindKeyword('content')} width={180} />
                 <StatusSelect
-                  items={STATUS_OPTIONS}
+                  items={OPERATION_LOG_RESULT_OPTIONS}
                   {...bind('status')}
                 />
                 <DateRangeFilter {...bind('timeRange')} />

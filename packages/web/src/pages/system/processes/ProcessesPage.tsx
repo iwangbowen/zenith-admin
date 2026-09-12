@@ -15,7 +15,7 @@ import { readSseStream } from '@/utils/streaming';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
-import { PROCESS_KILL_SIGNALS, PROCESS_PRIORITY_CLASSES, matchesProcessFilter, type ProcessInfo, type ProcessKillSignal, type ProcessListResponse, type SetProcessPriorityInput } from '@zenith/shared/ops';
+import { PROCESS_KILL_SIGNAL_OPTIONS, PROCESS_KILL_SIGNALS, PROCESS_PRIORITY_CLASS_OPTIONS, PROCESS_PRIORITY_CLASSES, matchesProcessFilter, type ProcessInfo, type ProcessKillSignal, type ProcessListResponse, type SetProcessPriorityInput } from '@zenith/shared/ops';
 import { enumValueOf } from '@zenith/shared/core';
 import { hostQueryOf } from '@/hooks/queries/ops-hosts';
 import { processStreamUrl, useKillProcess, useProcessDetail, useProcessList, useSetProcessPriority } from '@/hooks/queries/processes';
@@ -39,22 +39,6 @@ const STATUS_META: Record<string, { color: string; label: string }> = {
   idle:       { color: 'grey',   label: '空闲' },
   unknown:    { color: 'grey',   label: '未知' },
 };
-
-const WIN_PRIORITY_OPTIONS = [
-  { value: 'Idle',        label: 'Idle（最低）' },
-  { value: 'BelowNormal', label: 'BelowNormal（低于正常）' },
-  { value: 'Normal',      label: 'Normal（正常）' },
-  { value: 'AboveNormal', label: 'AboveNormal（高于正常）' },
-  { value: 'High',        label: 'High（高）' },
-  { value: 'RealTime',    label: 'RealTime（实时，慎用）' },
-];
-
-const SIGNAL_OPTIONS = [
-  { value: 'SIGTERM', label: 'SIGTERM（优雅退出，推荐）' },
-  { value: 'SIGKILL', label: 'SIGKILL（强制终止）' },
-  { value: 'SIGINT',  label: 'SIGINT（中断）' },
-  { value: 'SIGHUP',  label: 'SIGHUP（挂起/重载）' },
-];
 
 type SseStatus = 'idle' | 'connecting' | 'open' | 'error';
 
@@ -634,7 +618,7 @@ export default function ProcessesPage() {
                   label="终止信号"
                   initValue="SIGTERM"
                   style={{ width: '100%' }}
-                  optionList={SIGNAL_OPTIONS}
+                  optionList={PROCESS_KILL_SIGNAL_OPTIONS}
                   onChange={(v) => setKillSignal(enumValueOf(PROCESS_KILL_SIGNALS, v) ?? 'SIGTERM')}
                 />
               </Form>
@@ -659,7 +643,7 @@ export default function ProcessesPage() {
                 field="priorityClass"
                 label="优先级类"
                 style={{ width: '100%' }}
-                optionList={WIN_PRIORITY_OPTIONS}
+                optionList={PROCESS_PRIORITY_CLASS_OPTIONS}
                 rules={[{ required: true, message: '请选择优先级类' }]}
               />
             ) : (

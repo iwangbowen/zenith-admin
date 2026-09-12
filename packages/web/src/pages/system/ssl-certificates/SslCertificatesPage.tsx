@@ -4,6 +4,9 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Lock, Upload } from 'lucide-react';
 import { enumValueOf } from '@zenith/shared/core';
 import {
+  SSL_CERT_STATUS_LABELS,
+  SSL_CERT_TYPE_LABELS,
+  SSL_CERT_TYPE_OPTIONS,
   SSL_CERT_TYPES,
   type GenerateSelfSignedCertInput,
   type SslCertDownloadKind,
@@ -38,18 +41,11 @@ interface SearchParams {
 
 const defaultSearchParams: SearchParams = { keyword: '', type: undefined };
 
-const TYPE_LABELS: Record<SslCertificate['type'], string> = {
-  self_signed: '自签名',
-  uploaded: '上传',
-  letsencrypt: 'Let\'s Encrypt',
-};
-const TYPE_OPTIONS = SSL_CERT_TYPES.map((value) => ({ value, label: TYPE_LABELS[value] }));
-
-const STATUS_CONFIG: Record<SslCertificate['status'], { label: string; color: 'green' | 'orange' | 'red' | 'grey' }> = {
-  valid: { label: '有效', color: 'green' },
-  expiring: { label: '即将过期', color: 'orange' },
-  expired: { label: '已过期', color: 'red' },
-  invalid: { label: '无效', color: 'grey' },
+const STATUS_COLORS: Record<SslCertificate['status'], 'green' | 'orange' | 'red' | 'grey'> = {
+  valid: 'green',
+  expiring: 'orange',
+  expired: 'red',
+  invalid: 'grey',
 };
 
 function renderDaysRemaining(daysRemaining: number | null) {
@@ -133,7 +129,7 @@ export default function SslCertificatesPage() {
       title: '类型',
       dataIndex: 'type',
       width: 110,
-      render: (value: SslCertificate['type']) => <Tag size="small">{TYPE_LABELS[value]}</Tag>,
+      render: (value: SslCertificate['type']) => <Tag size="small">{SSL_CERT_TYPE_LABELS[value]}</Tag>,
     },
     { title: '颁发者', dataIndex: 'issuer', width: 220, render: renderEllipsis },
     dateTimeColumn('有效期至', 'validTo'),
@@ -150,8 +146,8 @@ export default function SslCertificatesPage() {
       width: 110,
       fixed: 'right',
       render: (value: SslCertificate['status']) => (
-        <Tag color={STATUS_CONFIG[value].color} size="small">
-          {STATUS_CONFIG[value].label}
+        <Tag color={STATUS_COLORS[value]} size="small">
+          {SSL_CERT_STATUS_LABELS[value]}
         </Tag>
       ),
     },
@@ -186,7 +182,7 @@ export default function SslCertificatesPage() {
         filters={(
           <FilterSelect
             placeholder="全部证书类型"
-            items={TYPE_OPTIONS}
+            items={SSL_CERT_TYPE_OPTIONS}
             {...bind('type')}
             width={160}
           />
@@ -262,8 +258,8 @@ export default function SslCertificatesPage() {
                 data={[
                   { key: '名称', value: displayDetail.name },
                   { key: '域名', value: displayDetail.domain },
-                  { key: '类型', value: TYPE_LABELS[displayDetail.type] },
-                  { key: '状态', value: <Tag color={STATUS_CONFIG[displayDetail.status].color} size="small">{STATUS_CONFIG[displayDetail.status].label}</Tag> },
+                  { key: '类型', value: SSL_CERT_TYPE_LABELS[displayDetail.type] },
+                  { key: '状态', value: <Tag color={STATUS_COLORS[displayDetail.status]} size="small">{SSL_CERT_STATUS_LABELS[displayDetail.status]}</Tag> },
                   { key: '生效时间', value: displayDetail.validFrom ? formatDateTime(displayDetail.validFrom) : EMPTY_PLACEHOLDER },
                   { key: '失效时间', value: displayDetail.validTo ? formatDateTime(displayDetail.validTo) : EMPTY_PLACEHOLDER },
                   { key: '剩余天数', value: renderDaysRemaining(displayDetail.daysRemaining) },

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Modal, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { workflowTaskContract, type WorkflowHealthIssue, type WorkflowHealthSummary } from '@zenith/shared/workflow';
+import { WORKFLOW_HEALTH_ISSUE_TYPE_LABELS, WORKFLOW_HEALTH_ISSUE_TYPE_OPTIONS, workflowTaskContract, type WorkflowHealthIssue, type WorkflowHealthSummary } from '@zenith/shared/workflow';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import WorkflowInstanceCell from '@/components/workflow/WorkflowInstanceCell';
@@ -12,26 +12,8 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { useApiMutation } from '@/lib/contract-query';
-import { createLabelOptionsFromMap } from '@zenith/shared/core';
 import { FilterSelect } from '@/components/search-filters';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
-
-const ISSUE_LABELS: Record<WorkflowHealthIssue['type'], string> = {
-  external_dispatch_failed: '外部审批失败',
-  external_dispatch_pending: '外部审批未派发',
-  trigger_waiting_no_execution: '触发器无执行记录',
-  trigger_execution_failed: '触发器执行失败',
-  subprocess_waiting: '子流程等待',
-  delay_overdue: '延迟未唤醒',
-  delay_missing_wake_job: '延迟缺唤醒作业',
-  task_timeout_overdue: '任务超时',
-  token_task_mismatch: 'Token 与任务不一致',
-  workflow_event_outbox_failed: '事件派发失败',
-  workflow_event_outbox_pending: '事件派发待处理',
-  waiting_task_stuck: '任务等待过久',
-  instance_stalled: '实例疑似卡死',
-};
-const ISSUE_OPTIONS = createLabelOptionsFromMap(ISSUE_LABELS);
 
 const THRESHOLD_OPTIONS = [
   { value: 10, label: '超过 10 分钟' },
@@ -78,7 +60,7 @@ export default function WorkflowHealthPage() {
       title: '问题类型',
       dataIndex: 'type',
       width: 150,
-      render: (v: WorkflowHealthIssue['type']) => ISSUE_LABELS[v] ?? v,
+      render: (v: WorkflowHealthIssue['type']) => WORKFLOW_HEALTH_ISSUE_TYPE_LABELS[v] ?? v,
     },
     {
       title: '说明',
@@ -148,7 +130,7 @@ export default function WorkflowHealthPage() {
             />
             <FilterSelect
               placeholder="全部问题类型"
-              items={ISSUE_OPTIONS}
+              items={WORKFLOW_HEALTH_ISSUE_TYPE_OPTIONS}
               value={issueType}
               onChange={setIssueType}
               width={220}

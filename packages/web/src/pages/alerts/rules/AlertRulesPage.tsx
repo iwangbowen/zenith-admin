@@ -11,7 +11,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
 import type { CreateMonitorAlertRuleInput, MonitorAlertRule, MonitorMetric } from '@zenith/shared/platform';
-import { MONITOR_ALERT_LEVELS, MONITOR_ALERT_LEVEL_OPTIONS, MONITOR_ALERT_STATES, MONITOR_METRICS } from '@zenith/shared/platform';
+import { MONITOR_ALERT_LEVELS, MONITOR_ALERT_LEVEL_OPTIONS, MONITOR_ALERT_STATE_OPTIONS, MONITOR_ALERT_STATES, MONITOR_METRICS } from '@zenith/shared/platform';
 import { BASIC_COMPARISON_OPERATOR_LABELS, enumValueOf } from '@zenith/shared/core';
 import { NOTIFY_CHANNEL_OPTIONS } from '@zenith/shared/messaging';
 import {
@@ -47,7 +47,6 @@ const FormAlertRecipientUserSelect = withField(AlertRecipientUserSelect);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const ENABLED_OPTIONS = [{ value: 'true', label: '已启用' }, { value: 'false', label: '已停用' }];
-const STATE_OPTIONS = [{ value: 'firing', label: '告警中' }, { value: 'ok', label: '未触发' }];
 
 interface SearchParams {
   keyword: string;
@@ -294,7 +293,7 @@ export default function AlertRulesPage() {
           />
           <FilterSelect
             placeholder="全部告警状态"
-            items={STATE_OPTIONS}
+            items={MONITOR_ALERT_STATE_OPTIONS}
             {...bind('state')}
             width={140}
           />

@@ -3,7 +3,7 @@ import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/li
 import { Button, Col, Form, Input, Row, Select, Space, Spin, Tag, Toast, Switch, Typography } from '@douyinfe/semi-ui';
 import { Plus, Trash2, Flame } from 'lucide-react';
 import { enumValueOf } from '@zenith/shared/core';
-import { MP_AUTO_REPLY_TYPES, MP_REPLY_CONTENT_TYPE_LABELS, MP_REPLY_CONTENT_TYPE_OPTIONS } from '@zenith/shared/mp';
+import { MP_AUTO_REPLY_MATCH_OPTIONS, MP_AUTO_REPLY_TYPE_LABELS, MP_AUTO_REPLY_TYPE_OPTIONS, MP_AUTO_REPLY_TYPES, MP_REPLY_CONTENT_TYPE_LABELS, MP_REPLY_CONTENT_TYPE_OPTIONS } from '@zenith/shared/mp';
 import type { CreateMpAutoReplyInput, MpAutoReply, MpAutoReplyType, MpReplyContentType, MpReplyArticle } from '@zenith/shared/mp';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -30,16 +30,6 @@ import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
 import { compactParams } from '@/lib/query';
 
-const REPLY_TYPE_OPTIONS = [
-  { label: '关注回复', value: 'subscribe' },
-  { label: '关键词回复', value: 'keyword' },
-  { label: '默认回复', value: 'default' },
-];
-const MATCH_OPTIONS = [
-  { label: '全匹配', value: 'exact' },
-  { label: '包含匹配', value: 'contain' },
-  { label: '正则匹配', value: 'regex' },
-];
 const TYPE_TAG_COLOR: Record<MpAutoReplyType, 'green' | 'blue' | 'orange'> = {
   subscribe: 'green', keyword: 'blue', default: 'orange',
 };
@@ -151,7 +141,7 @@ export default function MpAutoRepliesPage() {
   const columns = [
     {
       title: '类型', dataIndex: 'replyType', width: 110,
-      render: (v: MpAutoReplyType) => <Tag color={TYPE_TAG_COLOR[v]} type="light">{REPLY_TYPE_OPTIONS.find((t) => t.value === v)?.label ?? v}</Tag>,
+      render: (v: MpAutoReplyType) => <Tag color={TYPE_TAG_COLOR[v]} type="light">{MP_AUTO_REPLY_TYPE_LABELS[v]}</Tag>,
     },
     { title: '关键词', dataIndex: 'keyword', width: 130, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
     { title: '匹配', dataIndex: 'matchType', width: 80, render: (v: string, r: MpAutoReply) => (r.replyType === 'keyword' ? (v === 'exact' ? '全匹配' : '包含') : EMPTY_PLACEHOLDER) },
@@ -210,7 +200,7 @@ export default function MpAutoRepliesPage() {
         filters={(
           <FilterSelect
             placeholder="全部回复类型"
-            items={REPLY_TYPE_OPTIONS}
+            items={MP_AUTO_REPLY_TYPE_OPTIONS}
             {...bind('filterType', (v) => enumValueOf(MP_AUTO_REPLY_TYPES, v))}
             width={140}
           />
@@ -240,13 +230,13 @@ export default function MpAutoRepliesPage() {
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Slot label="回复类型">
-                  <Select style={{ width: '100%' }} optionList={REPLY_TYPE_OPTIONS} value={modalType}
+                  <Select style={{ width: '100%' }} optionList={MP_AUTO_REPLY_TYPE_OPTIONS} value={modalType}
                     disabled={modal.isEdit} onChange={(v) => setModalType(v as MpAutoReplyType)} />
                 </Form.Slot>
               </Col>
               {modalType === 'keyword' && (
                 <Col span={12}>
-                  <Form.Select field="matchType" label="匹配方式" style={{ width: '100%' }} optionList={MATCH_OPTIONS} />
+                  <Form.Select field="matchType" label="匹配方式" style={{ width: '100%' }} optionList={MP_AUTO_REPLY_MATCH_OPTIONS} />
                 </Col>
               )}
             </Row>

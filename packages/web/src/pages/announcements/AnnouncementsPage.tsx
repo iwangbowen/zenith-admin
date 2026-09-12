@@ -5,6 +5,8 @@ import {
 } from '@douyinfe/semi-ui';
 import { usePagination } from '@/hooks/usePagination';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
+import { ANNOUNCEMENT_PRIORITIES, ANNOUNCEMENT_PRIORITY_LABELS } from '@zenith/shared/messaging';
+import { enumValueOf } from '@zenith/shared/core';
 import { CheckCheck } from 'lucide-react';
 import { formatDateTime } from '@/utils/date';
 import { RefreshButton } from '@/components/toolbar-controls';
@@ -24,6 +26,11 @@ import {
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 type AnnouncementWithRead = MyAnnouncement;
+
+function priorityLabel(priority: string): string {
+  const value = enumValueOf(ANNOUNCEMENT_PRIORITIES, priority);
+  return value ? ANNOUNCEMENT_PRIORITY_LABELS[value] : priority;
+}
 type AnnouncementTab = 'all' | 'unread' | 'read';
 
 const TYPE_LABEL: Record<string, string> = {
@@ -38,11 +45,6 @@ const PRIORITY_COLOR: Record<string, TagColor> = {
   high: 'red',
 };
 
-const PRIORITY_LABEL: Record<string, string> = {
-  low: '普通',
-  medium: '重要',
-  high: '紧急',
-};
 
 export default function AnnouncementsPage() {
   const queryClient = useQueryClient();
@@ -165,7 +167,7 @@ export default function AnnouncementsPage() {
                         </Typography.Text>
                         <Tag size="small" style={{ flexShrink: 0 }}>{TYPE_LABEL[item.type] ?? item.type}</Tag>
                         <Tag color={PRIORITY_COLOR[item.priority] ?? 'blue'} size="small" style={{ flexShrink: 0 }}>
-                          {PRIORITY_LABEL[item.priority] ?? item.priority}
+                          {priorityLabel(item.priority)}
                         </Tag>
                         <Typography.Text style={{ fontSize: 12, color: 'var(--semi-color-text-3)', marginLeft: 'auto', flexShrink: 0 }}>
                           发布于 {formatDateTime(item.publishTime ?? item.createdAt)}

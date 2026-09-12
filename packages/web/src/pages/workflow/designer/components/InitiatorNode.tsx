@@ -3,15 +3,7 @@
  */
 import { ChevronRight, User } from 'lucide-react';
 import type { FlowNode, FieldPermission, NodeRuntimeInfo } from '../types';
-
-/** 运行态节点表头配色（与画布图例一致） */
-const RT_HEADER_COLOR: Record<NodeRuntimeInfo['status'], string> = {
-  approved: 'var(--semi-color-success)',
-  rejected: 'var(--semi-color-danger)',
-  pending: 'var(--semi-color-primary)',
-  waiting: 'var(--semi-color-warning)',
-  skipped: 'var(--semi-color-tertiary)',
-};
+import { RUNTIME_STATUS_HEADER_COLOR } from '../constants';
 
 interface InitiatorNodeProps {
   node: FlowNode;
@@ -75,7 +67,7 @@ export default function InitiatorNode({
             onClick={(e) => { e.stopPropagation(); onSimulationNodeContextMenu(node); }}
           />
         )}
-        <div className="fd-node-card__header" style={{ background: runtime ? (runtime.active ? 'var(--semi-color-primary)' : RT_HEADER_COLOR[runtime.status] ?? '#ff943e') : '#ff943e' }}>
+        <div className="fd-node-card__header" style={{ background: runtime ? (runtime.active ? 'var(--semi-color-primary)' : RUNTIME_STATUS_HEADER_COLOR[runtime.status] ?? '#ff943e') : '#ff943e' }}>
           <span className="fd-node-card__header-icon"><User size={14} /></span>
           <span className="fd-node-card__header-title">{node.name}</span>
           {started && <span className="fd-node-card__header-status" style={{ marginLeft: 'auto', fontSize: 12 }}>已发起</span>}

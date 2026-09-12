@@ -4,7 +4,7 @@ import { Breadcrumb, Button, Dropdown, Empty, Form, Progress, Space, Tag, Toast,
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ChevronDown, Copy, Download, FolderPlus, LayoutGrid, List as ListIcon, Lock, MoveRight, Star, Trash2, Upload } from 'lucide-react';
 import { formatBytes } from '@zenith/shared/core';
-import { DRIVE_ROLE_LABELS, type DriveNode, type DriveNodeListResult } from '@zenith/shared/drive';
+import { DRIVE_NODE_SORT_FIELD_OPTIONS, DRIVE_ROLE_LABELS, type DriveNode, type DriveNodeListResult, type DriveNodeSortField } from '@zenith/shared/drive';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { CursorContextDropdown, type CursorPoint } from '@/components/CursorContextDropdown';
@@ -30,7 +30,7 @@ import { nodeDownloadUrl, nodeToManagedFile, roleAtLeast, usagePercent } from '.
 import { collectDroppedDirectory, type DirectoryUploadFile } from '@/utils/directory-upload';
 
 type ViewMode = 'list' | 'grid';
-type SortBy = 'name' | 'size' | 'updatedAt' | 'createdAt';
+type SortBy = DriveNodeSortField;
 const VIEW_MODE_KEY = 'drive.viewMode';
 
 interface SearchParams {
@@ -50,12 +50,6 @@ interface DriveBrowserProps {
   readonly refreshToken?: number;
 }
 
-const SORT_OPTIONS: Array<{ value: SortBy; label: string }> = [
-  { value: 'name', label: '按名称' },
-  { value: 'updatedAt', label: '按修改时间' },
-  { value: 'createdAt', label: '按创建时间' },
-  { value: 'size', label: '按大小' },
-];
 
 /** 目录浏览器：面包屑 + 工具栏 + 列表 / 网格 + 拖拽上传 + 右键菜单 */
 export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUpload }: DriveBrowserProps) {
@@ -282,7 +276,7 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
             clickToHide
             render={(
               <Dropdown.Menu>
-                {SORT_OPTIONS.map((o) => (
+                {DRIVE_NODE_SORT_FIELD_OPTIONS.map((o) => (
                   <Dropdown.Item key={o.value} active={submittedParams.sortBy === o.value}
                     onClick={() => { setField('sortBy')(o.value); setTimeout(handleSearch, 0); }}>{o.label}</Dropdown.Item>
                 ))}
@@ -294,7 +288,7 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
             )}
           >
             <Button theme="borderless" type="tertiary" icon={<ChevronDown size={14} />} iconPosition="right">
-              {SORT_OPTIONS.find((o) => o.value === submittedParams.sortBy)?.label}
+              {DRIVE_NODE_SORT_FIELD_OPTIONS.find((o) => o.value === submittedParams.sortBy)?.label}
             </Button>
           </Dropdown>
           <Tooltip content={viewMode === 'list' ? '网格视图' : '列表视图'}>

@@ -3,7 +3,7 @@ import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/li
 import { Button, Form, Image, Select, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import { Plus } from 'lucide-react';
 import { enumValueOf } from '@zenith/shared/core';
-import { MP_QRCODE_TYPES, type CreateMpQrcodeInput, type MpQrcode, type MpQrcodeType } from '@zenith/shared/mp';
+import { MP_QRCODE_TYPE_OPTIONS, MP_QRCODE_TYPES, type CreateMpQrcodeInput, type MpQrcode, type MpQrcodeType } from '@zenith/shared/mp';
 import { usePermission } from '@/hooks/usePermission';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -19,10 +19,6 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
 import { compactParams } from '@/lib/query';
 
-const TYPE_OPTIONS = [
-  { label: '永久二维码', value: 'permanent' },
-  { label: '临时二维码', value: 'temporary' },
-];
 const TYPE_META: Record<MpQrcodeType, { label: string; color: 'green' | 'orange' }> = {
   permanent: { label: '永久', color: 'green' },
   temporary: { label: '临时', color: 'orange' },
@@ -113,7 +109,7 @@ export default function MpQrcodesPage() {
             <MpAccountSwitcher accounts={accounts} value={currentId} onChange={setCurrentId} loading={accountsLoading} />
             <FilterSelect
               placeholder="全部类型"
-              items={TYPE_OPTIONS}
+              items={MP_QRCODE_TYPE_OPTIONS}
               {...bind('filterType', (v) => enumValueOf(MP_QRCODE_TYPES, v))}
             />
           </>
@@ -141,7 +137,7 @@ export default function MpQrcodesPage() {
             key={`${createModal.formKey}-${modalType}`}
           >
             <Form.Slot label="二维码类型">
-              <Select style={{ width: '100%' }} optionList={TYPE_OPTIONS} value={modalType} onChange={(v) => setModalType(v as MpQrcodeType)} />
+              <Select style={{ width: '100%' }} optionList={MP_QRCODE_TYPE_OPTIONS} value={modalType} onChange={(v) => setModalType(v as MpQrcodeType)} />
             </Form.Slot>
             <Form.Input field="name" label="名称" placeholder="如：线下门店物料"
               rules={[{ required: true, message: '请输入名称' }]} maxLength={100} />

@@ -13,7 +13,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Info } from 'lucide-react';
 import { enumValueOf } from '@zenith/shared/core';
 import { PAYMENT_CASHIER_METHODS, PAYMENT_METHOD_CHANNEL, PAYMENT_METHOD_LABELS } from '@zenith/shared/payment';
-import type { BizPayDemo, BizPayDemoStatus, CreateBizPayDemoInput } from '@zenith/shared/biz';
+import { BIZ_PAY_DEMO_STATUS_LABELS, BIZ_PAY_DEMO_STATUS_OPTIONS, type BizPayDemo, type BizPayDemoStatus, type CreateBizPayDemoInput } from '@zenith/shared/biz';
 import type { CreatePaymentResult, PaymentMethod } from '@zenith/shared/payment';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -39,11 +39,11 @@ import { usePaymentMethodList } from '@/hooks/queries/payment-methods';
 
 type TagColor = 'grey' | 'blue' | 'green' | 'orange';
 
-const STATUS_MAP: Record<BizPayDemoStatus, { text: string; color: TagColor }> = {
-  pending: { text: '待支付', color: 'grey' },
-  paying: { text: '支付中', color: 'blue' },
-  paid: { text: '已支付', color: 'green' },
-  closed: { text: '已关闭', color: 'orange' },
+const STATUS_COLORS: Record<BizPayDemoStatus, TagColor> = {
+  pending: 'grey',
+  paying: 'blue',
+  paid: 'green',
+  closed: 'orange',
 };
 
 const PAY_METHOD_OPTIONS = PAYMENT_CASHIER_METHODS.map((value) => ({ value, label: PAYMENT_METHOD_LABELS[value] }));
@@ -203,7 +203,7 @@ export default function PayDemoPage() {
     createdAtColumn as ColumnProps<BizPayDemo>,
     {
       title: '状态', dataIndex: 'status', width: 100, fixed: 'right',
-      render: (v: BizPayDemoStatus) => { const s = STATUS_MAP[v]; return s ? <Tag color={s.color}>{s.text}</Tag> : <span>{v}</span>; },
+      render: (v: BizPayDemoStatus) => <Tag color={STATUS_COLORS[v] ?? 'grey'}>{BIZ_PAY_DEMO_STATUS_LABELS[v] ?? v}</Tag>,
     },
     createOperationColumn<BizPayDemo>({
       width: 300,
@@ -270,7 +270,7 @@ export default function PayDemoPage() {
         keyword={<KeywordInput placeholder="搜索示例事项" {...bindKeyword('keyword')} />}
         filters={(
           <StatusSelect
-            items={(Object.keys(STATUS_MAP) as BizPayDemoStatus[]).map((value) => ({ value, label: STATUS_MAP[value].text }))}
+            items={BIZ_PAY_DEMO_STATUS_OPTIONS}
             {...bind('status')}
           />
         )}

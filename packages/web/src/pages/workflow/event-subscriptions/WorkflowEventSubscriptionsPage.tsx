@@ -8,7 +8,7 @@ import { Button, Col, Form, Modal, Row, Space, SideSheet, Spin, Switch, Tag, Toa
 
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw } from 'lucide-react';
-import type { CreateWorkflowEventSubscriptionInput, WorkflowDefinition, WorkflowEventDelivery, WorkflowEventSubscription, WorkflowEventType } from '@zenith/shared/workflow';
+import { WORKFLOW_EVENT_DELIVERY_STATUS_LABELS, WORKFLOW_EVENT_TYPE_LABELS, WORKFLOW_EVENT_TYPE_OPTIONS, type CreateWorkflowEventSubscriptionInput, type WorkflowDefinition, type WorkflowEventDelivery, type WorkflowEventDeliveryStatus, type WorkflowEventSubscription, type WorkflowEventType } from '@zenith/shared/workflow';
 import { isPlainObject } from '@zenith/shared/core';
 import { formatDateTimeRangeValuesForApi } from '@/utils/date';
 import { AppModal } from '@/components/AppModal';
@@ -41,30 +41,11 @@ import { abortSubmit } from '@/lib/abort-submit';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import ModalFooter from '@/components/ModalFooter';
 
-const EVENT_OPTIONS: Array<{ value: WorkflowEventType; label: string }> = [
-  { value: 'instance.created',   label: '实例创建' },
-  { value: 'instance.approved',  label: '实例通过' },
-  { value: 'instance.rejected',  label: '实例驳回' },
-  { value: 'instance.withdrawn', label: '实例撤回' },
-  { value: 'node.entered',       label: '节点进入' },
-  { value: 'node.left',          label: '节点离开' },
-  { value: 'task.created',       label: '任务创建' },
-  { value: 'task.assigned',      label: '任务分配' },
-  { value: 'task.approved',      label: '任务通过' },
-  { value: 'task.rejected',      label: '任务驳回' },
-  { value: 'task.skipped',       label: '任务跳过' },
-  { value: 'task.transferred',   label: '任务转交' },
-  { value: 'task.addSigned',     label: '任务加签' },
-  { value: 'task.reduceSigned',  label: '任务减签' },
-  { value: 'task.urged',         label: '任务催办' },
-];
-const EVENT_LABEL_MAP = Object.fromEntries(EVENT_OPTIONS.map((o) => [o.value, o.label])) as Record<string, string>;
-
-const DELIVERY_STATUS_MAP: Record<string, { text: string; color: 'green' | 'red' | 'orange' | 'grey' }> = {
-  pending: { text: '待发送', color: 'grey' },
-  success: { text: '成功', color: 'green' },
-  failed: { text: '失败', color: 'red' },
-  retrying: { text: '重试中', color: 'orange' },
+const DELIVERY_STATUS_COLORS: Record<WorkflowEventDeliveryStatus, 'green' | 'red' | 'orange' | 'grey'> = {
+  pending: 'grey',
+  success: 'green',
+  failed: 'red',
+  retrying: 'orange',
 };
 
 interface FormValues {
@@ -246,7 +227,7 @@ export default function WorkflowEventSubscriptionsPage() {
       title: '订阅事件', dataIndex: 'events', width: 280,
       render: (v: WorkflowEventType[]) => (
         <Space wrap spacing={4}>
-          {v.map((e) => <Tag key={e} size="small">{EVENT_LABEL_MAP[e] ?? e}</Tag>)}
+          {v.map((e) => <Tag key={e} size="small">{WORKFLOW_EVENT_TYPE_LABELS[e] ?? e}</Tag>)}
         </Space>
       ),
     },
@@ -301,7 +282,7 @@ export default function WorkflowEventSubscriptionsPage() {
     { title: 'ID', dataIndex: 'id', width: 70 },
     {
       title: '事件', dataIndex: 'eventType', width: 140,
-      render: (v: string) => EVENT_LABEL_MAP[v] ?? v,
+      render: (v: string) => WORKFLOW_EVENT_TYPE_LABELS[v as WorkflowEventType] ?? v,
     },
     { title: '次数', dataIndex: 'attempt', width: 70, align: 'right' },
     { title: 'HTTP', dataIndex: 'responseStatus', width: 80, render: (v: number | null) => v ?? EMPTY_PLACEHOLDER },
@@ -311,8 +292,8 @@ export default function WorkflowEventSubscriptionsPage() {
     {
       title: '状态', dataIndex: 'status', width: 90, fixed: 'right',
       render: (v: string) => {
-        const m = DELIVERY_STATUS_MAP[v] ?? { text: v, color: 'grey' as const };
-        return <Tag color={m.color}>{m.text}</Tag>;
+        const status = v as WorkflowEventDeliveryStatus;
+        return <Tag color={DELIVERY_STATUS_COLORS[status] ?? 'grey'}>{WORKFLOW_EVENT_DELIVERY_STATUS_LABELS[status] ?? v}</Tag>;
       },
     },
     createOperationColumn<WorkflowEventDelivery>({
@@ -401,7 +382,7 @@ export default function WorkflowEventSubscriptionsPage() {
                 field="events" label="订阅事件" multiple maxTagCount={5}
                 style={{ width: '100%' }}
                 rules={[{ required: true, type: 'array', min: 1, message: '至少选择一个事件' }]}
-                optionList={EVENT_OPTIONS}
+                optionList={WORKFLOW_EVENT_TYPE_OPTIONS}
               />
             </Col>
           </Row>
@@ -491,12 +472,12 @@ export default function WorkflowEventSubscriptionsPage() {
             <Row gutter={[12, 8]}>
               <Col span={12}>
                 <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>事件</Typography.Text>
-                <Typography.Text>{EVENT_LABEL_MAP[deliveryDetail.eventType] ?? deliveryDetail.eventType}</Typography.Text>
+                <Typography.Text>{WORKFLOW_EVENT_TYPE_LABELS[deliveryDetail.eventType as WorkflowEventType] ?? deliveryDetail.eventType}</Typography.Text>
               </Col>
               <Col span={12}>
                 <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>状态</Typography.Text>
-                <Tag color={(DELIVERY_STATUS_MAP[deliveryDetail.status] ?? { color: 'grey' as const }).color}>
-                  {(DELIVERY_STATUS_MAP[deliveryDetail.status] ?? { text: deliveryDetail.status }).text}
+                <Tag color={DELIVERY_STATUS_COLORS[deliveryDetail.status] ?? 'grey'}>
+                  {WORKFLOW_EVENT_DELIVERY_STATUS_LABELS[deliveryDetail.status] ?? deliveryDetail.status}
                 </Tag>
               </Col>
               <Col span={12}>
@@ -580,7 +561,7 @@ export default function WorkflowEventSubscriptionsPage() {
             <Typography.Text size="small" strong style={{ display: 'block', marginBottom: 4 }}>事件类型（可选）</Typography.Text>
             <FilterSelect
               placeholder="全部事件类型"
-              items={EVENT_OPTIONS}
+              items={WORKFLOW_EVENT_TYPE_OPTIONS}
               value={replayEventType}
               onChange={(v) => setReplayEventType(v as WorkflowEventType | undefined)}
               width="100%"

@@ -4,7 +4,7 @@ import { deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from
 import { Button, Tag, TagGroup, Modal, Form, Toast, Typography, Banner, SideSheet, Descriptions } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
-import { OPEN_WEBHOOK_DELIVERY_STATUS_LABELS, OPEN_WEBHOOK_EVENTS, OPEN_WEBHOOK_EVENT_LABELS, PAYMENT_WEBHOOK_EVENTS, OPEN_WEBHOOK_DELIVERY_STATUS_OPTIONS } from '@zenith/shared/open-platform';
+import { OPEN_WEBHOOK_DELIVERY_STATUS_LABELS, OPEN_WEBHOOK_EVENTS, OPEN_WEBHOOK_EVENT_LABELS, OPEN_WEBHOOK_SIGN_MODE_OPTIONS, PAYMENT_WEBHOOK_EVENTS, OPEN_WEBHOOK_DELIVERY_STATUS_OPTIONS } from '@zenith/shared/open-platform';
 import type { AppWebhookSubscription, AppWebhookDelivery, OpenWebhookEvent, OpenWebhookSignMode } from '@zenith/shared/open-platform';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -36,11 +36,6 @@ import { compactParams } from '@/lib/query';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 
 const { Text, Paragraph } = Typography;
-
-const SIGN_MODE_OPTIONS = [
-  { value: 'hmacSha256', label: 'HMAC-SHA256（推荐）' },
-  { value: 'none', label: '不签名（仅非支付事件）' },
-];
 
 const SENSITIVE_EVENTS = new Set<string>(PAYMENT_WEBHOOK_EVENTS);
 
@@ -369,7 +364,7 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
             }}
             rules={paymentScope ? [{ required: true, message: '请至少选择一个支付或退款事件' }] : undefined}
           />
-          <Form.Select field="signMode" label="签名方式" style={{ width: '100%' }} optionList={SIGN_MODE_OPTIONS}
+          <Form.Select field="signMode" label="签名方式" style={{ width: '100%' }} optionList={OPEN_WEBHOOK_SIGN_MODE_OPTIONS}
             disabled={formEvents.some((event) => SENSITIVE_EVENTS.has(event))}
             rules={[{ required: true, message: '请选择签名方式' }]} />
           <Form.TextArea field="headersText" label="自定义请求头" placeholder='JSON 格式，如 {"X-Custom":"abc"}（可选）' rows={2} />

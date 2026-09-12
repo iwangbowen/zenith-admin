@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Avatar, Button, Form, Modal, Space, Spin, Tag, Toast } from '@douyinfe/semi-ui';
 import { RefreshCw, Ban } from 'lucide-react';
-import { MP_FAN_SUBSCRIBES, type MpFan, type MpFanSubscribe, type UpdateMpFanInput } from '@zenith/shared/mp';
+import { MP_FAN_SUBSCRIBE_OPTIONS, MP_FAN_SUBSCRIBES, type MpFan, type MpFanSubscribe, type UpdateMpFanInput } from '@zenith/shared/mp';
 import { enumValueOf } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
 import { AppModal } from '@/components/AppModal';
@@ -31,10 +31,6 @@ import { confirmDanger } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 
 const SEX_LABELS: Record<number, string> = { 0: '未知', 1: '男', 2: '女' };
-const SUBSCRIBE_OPTIONS = [
-  { label: '已关注', value: 'subscribed' },
-  { label: '已取关', value: 'unsubscribed' },
-];
 
 export default function MpFansPage() {
   const { hasPermission: can } = usePermission();
@@ -209,7 +205,7 @@ export default function MpFansPage() {
           <>
             <FilterSelect
               placeholder="全部关注状态"
-              items={SUBSCRIBE_OPTIONS}
+              items={MP_FAN_SUBSCRIBE_OPTIONS}
               {...bind('subscribe', (v) => enumValueOf(MP_FAN_SUBSCRIBES, v))}
               width={140}
             />

@@ -3,7 +3,7 @@ import { Button, Col, Form, Radio, Row, Select, SideSheet, Spin, Switch, Tag, To
 import { PlugZap } from 'lucide-react';
 import type { CreateFileStorageConfigInput, FileObjectAcl, FileStorageConfig, FileStorageProvider, FileUrlStrategy, UpdateFileStorageConfigInput } from '@zenith/shared/platform';
 import { COMMON_STATUS_OPTIONS, enumValueOf, USER_STATUSES } from '@zenith/shared/core';
-import { FILE_OBJECT_ACL_SUPPORT, FILE_STORAGE_PROVIDER_LABELS, FILE_STORAGE_PROVIDER_OPTIONS, FILE_URL_STRATEGY_LABELS, FILE_URL_STRATEGY_OPTIONS, PRESIGNED_EXPIRY_DEFAULT_SECONDS, PRESIGNED_EXPIRY_MAX_SECONDS, PRESIGNED_EXPIRY_MIN_SECONDS } from '@zenith/shared/platform';
+import { FILE_OBJECT_ACL_LABELS, FILE_OBJECT_ACL_SUPPORT, FILE_STORAGE_PROVIDER_LABELS, FILE_STORAGE_PROVIDER_OPTIONS, FILE_URL_STRATEGY_LABELS, FILE_URL_STRATEGY_OPTIONS, PRESIGNED_EXPIRY_DEFAULT_SECONDS, PRESIGNED_EXPIRY_MAX_SECONDS, PRESIGNED_EXPIRY_MIN_SECONDS } from '@zenith/shared/platform';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
@@ -37,13 +37,6 @@ type FileStorageConfigFormValues = UpdateFileStorageConfigInput;
 
 /** 支持对象级读写权限（canned ACL）的 provider */
 const OBJECT_ACL_PROVIDERS = Object.keys(FILE_OBJECT_ACL_SUPPORT) as FileStorageProvider[];
-
-const OBJECT_ACL_LABELS: Record<FileObjectAcl, string> = {
-  'default': '继承 Bucket',
-  'private': '私有',
-  'public-read': '公共读',
-  'public-read-write': '公共读写',
-};
 
 function normalizeOptional(value?: string): string {
   return value?.trim() ?? '';
@@ -431,7 +424,7 @@ export default function FileStorageConfigsPage() {
           'public-read-write': 'red',
         };
         const acl = value ?? 'default';
-        return <Tag color={colorMap[acl]} size="small">{OBJECT_ACL_LABELS[acl]}</Tag>;
+        return <Tag color={colorMap[acl]} size="small">{FILE_OBJECT_ACL_LABELS[acl]}</Tag>;
       },
     },
     {
@@ -860,7 +853,7 @@ export default function FileStorageConfigsPage() {
                     : '上传文件将按此权限设置对象 ACL；「继承 Bucket」表示不单独指定、跟随 Bucket 权限。公共读 / 公共读写存在数据泄露风险，请谨慎选择。'}
                 >
                   {(FILE_OBJECT_ACL_SUPPORT[formProvider] ?? []).map((acl) => (
-                    <Radio key={acl} value={acl}>{OBJECT_ACL_LABELS[acl]}</Radio>
+                    <Radio key={acl} value={acl}>{FILE_OBJECT_ACL_LABELS[acl]}</Radio>
                   ))}
                 </Form.RadioGroup>
               )}

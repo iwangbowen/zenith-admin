@@ -1,4 +1,5 @@
-import { createLabelOptionsFromMap } from '../core/enum-options';
+import { createLabelOptions, createLabelOptionsFromMap } from '../core/enum-options';
+import type { AnnouncementPriority } from './types';
 
 export const BUSINESS_TYPES = ['announcement'] as const;
 
@@ -16,6 +17,17 @@ export type AnnouncementTargetType = (typeof ANNOUNCEMENT_TARGET_TYPES)[number];
 export const ANNOUNCEMENT_RECIPIENT_TYPES = ['user', 'role', 'dept'] as const;
 
 export type AnnouncementRecipientType = (typeof ANNOUNCEMENT_RECIPIENT_TYPES)[number];
+
+export const ANNOUNCEMENT_PRIORITIES = ['low', 'medium', 'high'] as const;
+
+export const ANNOUNCEMENT_PRIORITY_LABELS: Record<AnnouncementPriority, string> = {
+  low: '普通',
+  medium: '重要',
+  high: '紧急',
+};
+
+export const ANNOUNCEMENT_PRIORITY_OPTIONS: Array<{ value: AnnouncementPriority; label: string }> =
+  createLabelOptions(ANNOUNCEMENT_PRIORITIES, ANNOUNCEMENT_PRIORITY_LABELS);
 
 // ─── 邮件配置 ─────────────────────────────────────────────────────────────────
 export const EMAIL_ENCRYPTIONS = ['none', 'ssl', 'tls'] as const;

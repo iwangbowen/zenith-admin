@@ -3,7 +3,7 @@ import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/li
 import { Banner, Button, Divider, Input, InputNumber, Modal, Select, Space, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, Trash2 } from 'lucide-react';
-import { RULE_DECISION_STATUSES, type RuleScorecard, type RuleScorecardBand, type RuleScorecardEvaluateResult, type RuleScorecardGrade, type RuleScorecardVariable } from '@zenith/shared/rules';
+import { RULE_DECISION_STATUS_OPTIONS, RULE_DECISION_STATUSES, RULE_SCORECARD_BAND_OP_OPTIONS, RULE_SCORECARD_VARIABLE_TYPE_OPTIONS, type RuleScorecard, type RuleScorecardBand, type RuleScorecardEvaluateResult, type RuleScorecardGrade, type RuleScorecardVariable } from '@zenith/shared/rules';
 import { enumValueOf } from '@zenith/shared/core';
 import { createdAtColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { AppModal } from '@/components/AppModal';
@@ -30,23 +30,6 @@ const STATUS_META: Record<string, { text: string; color: 'grey' | 'green' | 'red
   published: { text: '已发布', color: 'green' },
   disabled: { text: '已停用', color: 'red' },
 };
-const STATUS_OPTIONS = [
-  { value: 'draft', label: '草稿' },
-  { value: 'published', label: '已发布' },
-  { value: 'disabled', label: '已停用' },
-];
-const BAND_OP_OPTIONS = [
-  { value: 'range', label: '数值区间' },
-  { value: 'eq', label: '等值' },
-  { value: 'in', label: '集合' },
-  { value: 'default', label: '兜底' },
-];
-const VAR_TYPE_OPTIONS = [
-  { value: 'number', label: '数值' },
-  { value: 'string', label: '文本' },
-  { value: 'boolean', label: '布尔' },
-];
-
 interface EditorState {
   id?: number;
   key: string;
@@ -215,7 +198,7 @@ export default function RuleScorecardsPage() {
     <div className="page-container">
       <ListSearchToolbar
         keyword={<KeywordInput placeholder="搜索名称" {...bindKeyword('keyword')} width={200} />}
-        filters={<StatusSelect {...bind('status')} items={STATUS_OPTIONS} />}
+        filters={<StatusSelect {...bind('status')} items={RULE_DECISION_STATUS_OPTIONS} />}
         onSearch={handleSearch}
         onReset={handleReset}
         create={canCreate ? <CreateButton onClick={openCreate} /> : null}
@@ -262,7 +245,7 @@ export default function RuleScorecardsPage() {
                   <Input prefix="key" size="small" value={variable.key} onChange={(v) => patchVariable(vi, { key: v })} />
                   <Input prefix="名称" size="small" value={variable.label} onChange={(v) => patchVariable(vi, { label: v })} />
                   <Input prefix="表达式" size="small" value={variable.expr} placeholder="form.age" onChange={(v) => patchVariable(vi, { expr: v })} />
-                  <Select size="small" value={variable.type} optionList={VAR_TYPE_OPTIONS} style={{ width: '100%' }}
+                  <Select size="small" value={variable.type} optionList={RULE_SCORECARD_VARIABLE_TYPE_OPTIONS} style={{ width: '100%' }}
                     onChange={(v) => patchVariable(vi, { type: v as RuleScorecardVariable['type'] })} />
                   <InputNumber prefix="权重" size="small" value={variable.weight ?? 1} min={0} style={{ width: '100%' }}
                     onChange={(v) => patchVariable(vi, { weight: Number(v) || 0 })} />
@@ -275,7 +258,7 @@ export default function RuleScorecardsPage() {
                 </div>
                 {variable.bands.map((band, bi) => (
                   <div key={band.id} style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
-                    <Select size="small" value={band.op} optionList={BAND_OP_OPTIONS} style={{ width: 110 }}
+                    <Select size="small" value={band.op} optionList={RULE_SCORECARD_BAND_OP_OPTIONS} style={{ width: 110 }}
                       onChange={(v) => patchBand(vi, bi, { op: v as RuleScorecardBand['op'] })} />
                     {band.op === 'range' ? (
                       <>

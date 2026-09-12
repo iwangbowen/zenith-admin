@@ -1,4 +1,4 @@
-import { createLabelOptionsFromMap } from '../core/enum-options';
+import { createLabelOptions, createLabelOptionsFromMap } from '../core/enum-options';
 // OAuth2 服务端常量
 export const OAUTH2_GRANT_TYPES = ['authorization_code', 'client_credentials', 'refresh_token'] as const;
 
@@ -13,6 +13,16 @@ export const OAUTH2_GRANT_TYPE_LABELS: Record<OAuth2GrantType, string> = {
 export const OAUTH2_SCOPES = ['openid', 'profile', 'email', 'offline_access'] as const;
 
 export type OAuth2Scope = typeof OAUTH2_SCOPES[number];
+
+export const OAUTH2_SCOPE_LABELS: Record<OAuth2Scope, string> = {
+  openid: 'OpenID（确认身份）',
+  profile: 'Profile（基本信息）',
+  email: 'Email（邮箱）',
+  offline_access: 'Offline Access（离线访问）',
+};
+
+export const OAUTH2_SCOPE_OPTIONS: Array<{ value: OAuth2Scope; label: string }> =
+  createLabelOptions(OAUTH2_SCOPES, OAUTH2_SCOPE_LABELS);
 
 export const OAUTH2_SCOPE_DESCRIPTIONS: Record<string, string> = {
   openid: '确认您的身份（用户 ID）',
@@ -110,6 +120,14 @@ export const API_SCOPE_GROUP_LABELS: Record<string, string> = {
 export const OPEN_WEBHOOK_SIGN_MODES = ['hmacSha256', 'none'] as const;
 
 export type OpenWebhookSignMode = (typeof OPEN_WEBHOOK_SIGN_MODES)[number];
+
+export const OPEN_WEBHOOK_SIGN_MODE_LABELS: Record<OpenWebhookSignMode, string> = {
+  hmacSha256: 'HMAC-SHA256（推荐）',
+  none: '不签名（仅非支付事件）',
+};
+
+export const OPEN_WEBHOOK_SIGN_MODE_OPTIONS: Array<{ value: OpenWebhookSignMode; label: string }> =
+  createLabelOptions(OPEN_WEBHOOK_SIGN_MODES, OPEN_WEBHOOK_SIGN_MODE_LABELS);
 
 export const OPEN_WEBHOOK_DELIVERY_STATUSES = ['pending', 'success', 'failed', 'retrying'] as const;
 

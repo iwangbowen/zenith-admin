@@ -9,13 +9,10 @@ import { formatDateTimeRangeForApi } from '@/utils/date';
 import LoginLogStatsPanel from './LoginLogStatsPanel';
 import { loginLogKeys, useCleanLoginLogs, useLoginLogList } from '@/hooks/queries/login-logs';
 import { enumValueOf } from '@zenith/shared/core';
-import { LOGIN_EVENT_TYPES, LOGIN_STATUSES } from '@zenith/shared/identity';
+import { LOGIN_EVENT_TYPE_OPTIONS, LOGIN_EVENT_TYPES, LOGIN_STATUS_OPTIONS, LOGIN_STATUSES } from '@zenith/shared/identity';
 import { useListSearch } from '@/hooks/useListSearch';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { compactParams } from '@/lib/query';
-
-const STATUS_OPTIONS = [{ value: 'success', label: '成功' }, { value: 'fail', label: '失败' }];
-const EVENT_TYPE_OPTIONS = [{ value: 'login', label: '登录' }, { value: 'logout', label: '退出登录' }];
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 export default function LoginLogsPage() {
@@ -62,11 +59,11 @@ export default function LoginLogsPage() {
               <>
                 <FilterSelect
                   placeholder="全部事件"
-                  items={EVENT_TYPE_OPTIONS}
+                  items={LOGIN_EVENT_TYPE_OPTIONS}
                   {...bind('eventType')}
                 />
                 <StatusSelect
-                  items={STATUS_OPTIONS}
+                  items={LOGIN_STATUS_OPTIONS}
                   {...bind('status')}
                 />
                 <DateRangeFilter {...bind('timeRange')} />

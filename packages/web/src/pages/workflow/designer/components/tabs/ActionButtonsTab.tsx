@@ -8,13 +8,8 @@ import { useState } from 'react';
 import { Switch, Popover, Input, Button, Select, Empty } from '@douyinfe/semi-ui';
 import { Pencil } from 'lucide-react';
 import type { ActionButtonKey, ActionButtonConfig, ActionButtonsConfig, ActionUploadMode, FlowNodeType } from '../../types';
+import { WORKFLOW_ACTION_UPLOAD_MODE_OPTIONS } from '@zenith/shared/workflow';
 import { ACTION_BUTTON_META, getActionButtonConfig, normalizeActionButtons } from '../../action-buttons';
-
-const UPLOAD_MODE_OPTIONS: Array<{ value: ActionUploadMode; label: string }> = [
-  { value: 'hidden', label: '不显示' },
-  { value: 'optional', label: '选填' },
-  { value: 'required', label: '必填' },
-];
 
 interface JumpTargetNode {
   id: string;
@@ -188,7 +183,7 @@ export default function ActionButtonsTab({
                       value={cfg.uploadMode ?? 'hidden'}
                       disabled={disabled}
                       onChange={(v) => updateButton(meta.key, { uploadMode: v as ActionUploadMode })}
-                      optionList={UPLOAD_MODE_OPTIONS}
+                      optionList={WORKFLOW_ACTION_UPLOAD_MODE_OPTIONS}
                       style={{ width: '100%' }}
                     />
                   </td>

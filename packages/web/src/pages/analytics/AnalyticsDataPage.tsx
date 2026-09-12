@@ -29,7 +29,7 @@ import {
   useSaveAnalyticsSettings,
 } from '@/hooks/queries/analytics';
 import type { AnalyticsEventMeta, AnalyticsEventMetaReferences, AnalyticsRollupItem, AnalyticsSettings, EventListItem, UserBehaviorEventType } from '@zenith/shared/analytics';
-import { ANALYTICS_DEVICE_TYPES, ANALYTICS_DEVICE_TYPE_OPTIONS, ANALYTICS_EVENT_PROPERTY_TYPES, USER_BEHAVIOR_EVENT_TYPE_LABELS, userBehaviorEventTypeEnum } from '@zenith/shared/analytics';
+import { ANALYTICS_DEVICE_TYPES, ANALYTICS_DEVICE_TYPE_OPTIONS, ANALYTICS_EVENT_META_STATUS_LABELS, ANALYTICS_EVENT_META_STATUS_OPTIONS, ANALYTICS_EVENT_PROPERTY_TYPES, USER_BEHAVIOR_EVENT_TYPE_LABELS, USER_BEHAVIOR_EVENT_TYPE_OPTIONS, userBehaviorEventTypeEnum } from '@zenith/shared/analytics';
 import { enumValueOf } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
@@ -77,21 +77,13 @@ const EVENT_TYPE_COLOR: Record<UserBehaviorEventType, TagColor> = {
 };
 
 // 中文标签取 shared SSOT，颜色属 UI 表现留在页面侧
-const EVENT_TYPE_LABEL: Record<string, { label: string; color: TagColor }> = Object.fromEntries(
-  (Object.keys(EVENT_TYPE_COLOR) as UserBehaviorEventType[]).map((value) => [
-    value,
-    { label: USER_BEHAVIOR_EVENT_TYPE_LABELS[value], color: EVENT_TYPE_COLOR[value] },
-  ]),
-);
-
-const EVENT_TYPE_OPTIONS = Object.entries(EVENT_TYPE_LABEL).map(([value, meta]) => ({ value, label: meta.label }));
 const DEVICE_OPTIONS = ANALYTICS_DEVICE_TYPE_OPTIONS;
-const META_STATUS_LABEL: Record<AnalyticsEventMeta['status'], { label: string; color: TagColor }> = {
-  active: { label: '启用', color: 'green' },
-  deprecated: { label: '废弃', color: 'orange' },
-  blocked: { label: '屏蔽', color: 'red' },
+const META_STATUS_COLORS: Record<AnalyticsEventMeta['status'], TagColor> = {
+  active: 'green',
+  deprecated: 'orange',
+  blocked: 'red',
 };
-const META_STATUS_OPTIONS = (Object.keys(META_STATUS_LABEL) as AnalyticsEventMeta['status'][]).map((value) => ({ value, label: META_STATUS_LABEL[value].label }));
+const META_STATUS_OPTIONS = ANALYTICS_EVENT_META_STATUS_OPTIONS;
 const ROLLUP_DAY_OPTIONS = [30, 90, 180].map((value) => ({ value, label: `${value} 天` }));
 const CLEAN_DAY_OPTIONS = [
   { value: 30, label: '30 天' },
@@ -182,13 +174,14 @@ function numberValue(value: unknown, fallback: number) {
 }
 
 function EventTypeTag({ value }: Readonly<{ value: string }>) {
-  const meta: { label: string; color: TagColor } = EVENT_TYPE_LABEL[value] ?? { label: value, color: 'grey' };
-  return <Tag color={meta.color} size="small">{meta.label}</Tag>;
+  const eventType = enumValueOf(userBehaviorEventTypeEnum.options, value);
+  const label = eventType ? USER_BEHAVIOR_EVENT_TYPE_LABELS[eventType] : value;
+  const color = eventType ? EVENT_TYPE_COLOR[eventType] : 'grey';
+  return <Tag color={color} size="small">{label}</Tag>;
 }
 
 function MetaStatusTag({ value }: Readonly<{ value: AnalyticsEventMeta['status'] }>) {
-  const meta: { label: string; color: TagColor } = META_STATUS_LABEL[value] ?? { label: value, color: 'grey' };
-  return <Tag color={meta.color} size="small">{meta.label}</Tag>;
+  return <Tag color={META_STATUS_COLORS[value] ?? 'grey'} size="small">{ANALYTICS_EVENT_META_STATUS_LABELS[value] ?? value}</Tag>;
 }
 
 const DATA_TABS = ['events', 'meta', 'quality', 'debug', 'segments', 'sites', 'rollup', 'settings'] as const;
@@ -755,7 +748,7 @@ export default function AnalyticsDataPage() {
               <>
                 <FilterSelect
                   placeholder="全部事件类型"
-                  items={EVENT_TYPE_OPTIONS}
+                  items={USER_BEHAVIOR_EVENT_TYPE_OPTIONS}
                   {...eventList.bind('eventType')}
                   width={150}
                 />

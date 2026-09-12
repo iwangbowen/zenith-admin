@@ -8,8 +8,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Checkbox, Descriptions, SideSheet, Space, TabPane, Tabs, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Download, Trash2 } from 'lucide-react';
-import type { ReplaySession, ReplayTriggerType } from '@zenith/shared/analytics';
-import { REPLAY_STATUSES, REPLAY_TRIGGER_TYPES } from '@zenith/shared/analytics';
+import type { ReplaySession, ReplayStatus, ReplayTriggerType } from '@zenith/shared/analytics';
+import { REPLAY_STATUS_LABELS, REPLAY_STATUS_OPTIONS, REPLAY_STATUSES, REPLAY_TRIGGER_TYPE_LABELS, REPLAY_TRIGGER_TYPE_OPTIONS, REPLAY_TRIGGER_TYPES } from '@zenith/shared/analytics';
 import { enumValueOf } from '@zenith/shared/core';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import ReplayPlayer from '@/components/ReplayPlayer';
@@ -41,33 +41,19 @@ interface SearchParams {
 }
 
 const defaultSearchParams: SearchParams = { status: undefined, triggerType: undefined, source: undefined, keyword: '', hasError: false, pagePath: '', clickLabel: '' };
-const STATUS_META = {
-  recording: { label: '录制中', color: 'blue' },
-  completed: { label: '已完成', color: 'green' },
-  expired: { label: '已超时', color: 'grey' },
-} as const;
-
-const TRIGGER_META: Record<ReplayTriggerType, { label: string; color: string }> = {
-  error: { label: '错误触发', color: 'red' },
-  sampled: { label: '采样录制', color: 'blue' },
-  manual: { label: '手动开启', color: 'purple' },
-  rage_click: { label: '暴躁点击', color: 'orange' },
-  white_screen: { label: '白屏', color: 'red' },
+const STATUS_COLORS: Record<ReplayStatus, 'blue' | 'green' | 'grey'> = {
+  recording: 'blue',
+  completed: 'green',
+  expired: 'grey',
 };
 
-const statusOptions = [
-  { value: 'recording', label: '录制中' },
-  { value: 'completed', label: '已完成' },
-  { value: 'expired', label: '已超时' },
-];
-
-const triggerOptions = [
-  { value: 'error', label: '错误触发' },
-  { value: 'sampled', label: '采样录制' },
-  { value: 'manual', label: '手动开启' },
-  { value: 'rage_click', label: '暴躁点击' },
-  { value: 'white_screen', label: '白屏' },
-];
+const TRIGGER_COLORS: Record<ReplayTriggerType, string> = {
+  error: 'red',
+  sampled: 'blue',
+  manual: 'purple',
+  rage_click: 'orange',
+  white_screen: 'red',
+};
 
 /** 回放只来自两个 Web 端（服务端埋点不产生录像） */
 const REPLAY_SOURCES = ['web_admin', 'web_member'] as const;
@@ -132,8 +118,9 @@ export default function SessionReplaysPage() {
       render: (_: unknown, r: ReplaySession) => {
         const primary = r.triggers.find((t) => t.type === 'error') ?? r.triggers[0];
         if (!primary) return <Tag size="small" color="grey">缓冲中</Tag>;
-        const meta = TRIGGER_META[primary.type] ?? { label: primary.type, color: 'grey' };
-        return <Tag size="small" color={meta.color as 'grey'}>{meta.label}</Tag>;
+        const label = REPLAY_TRIGGER_TYPE_LABELS[primary.type] ?? primary.type;
+        const color = TRIGGER_COLORS[primary.type] ?? 'grey';
+        return <Tag size="small" color={color as 'grey'}>{label}</Tag>;
       },
     },
     {
@@ -175,8 +162,7 @@ export default function SessionReplaysPage() {
     {
       title: '状态', dataIndex: 'status', width: 90,
       render: (v: ReplaySession['status']) => {
-        const meta = STATUS_META[v] ?? { label: v, color: 'grey' as const };
-        return <Tag size="small" color={meta.color as 'grey'}>{meta.label}</Tag>;
+        return <Tag size="small" color={(STATUS_COLORS[v] ?? 'grey') as 'grey'}>{REPLAY_STATUS_LABELS[v] ?? v}</Tag>;
       },
     },
     dateTimeColumn('开始时间', 'startedAt'),
@@ -236,12 +222,12 @@ export default function SessionReplaysPage() {
             filters={(
               <>
                 <StatusSelect
-                  items={statusOptions}
+                  items={REPLAY_STATUS_OPTIONS}
                   {...bind('status')}
                 />
                 <FilterSelect
                   placeholder="全部触发方式"
-                  items={triggerOptions}
+                  items={REPLAY_TRIGGER_TYPE_OPTIONS}
                   {...bind('triggerType')}
                   width={140}
                 />
@@ -319,8 +305,9 @@ export default function SessionReplaysPage() {
             </div>
             <Space wrap>
               {detail.triggers.map((t, i) => {
-                const meta = TRIGGER_META[t.type] ?? { label: t.type, color: 'grey' };
-                return <Tag key={`${t.type}-${i}`} size="small" color={meta.color as 'grey'}>{meta.label} · {t.at.slice(11, 19)}</Tag>;
+                const label = REPLAY_TRIGGER_TYPE_LABELS[t.type] ?? t.type;
+                const color = TRIGGER_COLORS[t.type] ?? 'grey';
+                return <Tag key={`${t.type}-${i}`} size="small" color={color as 'grey'}>{label} · {t.at.slice(11, 19)}</Tag>;
               })}
             </Space>
 

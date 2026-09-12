@@ -1,4 +1,5 @@
 import { createLabelOptions, createLabelOptionsFromMap } from '../core/enum-options';
+import type { FileObjectAcl } from './types';
 
 // ─── WebSocket ────────────────────────────────────────────────────────────────
 
@@ -17,6 +18,16 @@ export function wsAuthProtocols(accessToken: string): string[] {
 export const FILE_STORAGE_PROVIDERS = ['local', 'oss', 's3', 'cos', 'obs', 'kodo', 'bos', 'azure', 'sftp'] as const;
 
 export const FILE_OBJECT_ACLS = ['default', 'private', 'public-read', 'public-read-write'] as const;
+
+export const FILE_OBJECT_ACL_LABELS: Record<FileObjectAcl, string> = {
+  default: '继承 Bucket',
+  private: '私有',
+  'public-read': '公共读',
+  'public-read-write': '公共读写',
+};
+
+export const FILE_OBJECT_ACL_OPTIONS: Array<{ value: FileObjectAcl; label: string }> =
+  createLabelOptions(FILE_OBJECT_ACLS, FILE_OBJECT_ACL_LABELS);
 
 /**
  * 各 provider 支持的对象级读写权限（canned ACL）；default = 继承 Bucket（上传时不发送 ACL 参数）。
@@ -198,6 +209,14 @@ export type IpAccessBlockType = (typeof IP_ACCESS_BLOCK_TYPES)[number];
 export const OPERATION_LOG_RESULTS = ['success', 'fail'] as const;
 
 export type OperationLogResult = (typeof OPERATION_LOG_RESULTS)[number];
+
+export const OPERATION_LOG_RESULT_LABELS: Record<OperationLogResult, string> = {
+  success: '成功',
+  fail: '失败',
+};
+
+export const OPERATION_LOG_RESULT_OPTIONS: Array<{ value: OperationLogResult; label: string }> =
+  createLabelOptions(OPERATION_LOG_RESULTS, OPERATION_LOG_RESULT_LABELS);
 
 // ─── 意见反馈 ─────────────────────────────────────────────────────────────────
 
@@ -530,6 +549,14 @@ export type MonitorAlertOperator = (typeof MONITOR_ALERT_OPERATORS)[number];
 export const MONITOR_ALERT_STATES = ['ok', 'firing'] as const;
 
 export type MonitorAlertState = (typeof MONITOR_ALERT_STATES)[number];
+
+export const MONITOR_ALERT_STATE_LABELS: Record<MonitorAlertState, string> = {
+  ok: '未触发',
+  firing: '告警中',
+};
+
+export const MONITOR_ALERT_STATE_OPTIONS: Array<{ value: MonitorAlertState; label: string }> =
+  createLabelOptions(MONITOR_ALERT_STATES, MONITOR_ALERT_STATE_LABELS);
 
 export const MONITOR_ALERT_LEVELS = ['info', 'warning', 'critical'] as const;
 

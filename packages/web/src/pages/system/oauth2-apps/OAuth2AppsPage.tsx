@@ -3,7 +3,7 @@ import ModalFooter from '@/components/ModalFooter';
 import { useNavigate } from 'react-router-dom';
 import { Button, Tag, TagGroup, Modal, Form, Toast, Typography, Checkbox, Spin, Banner, Row, Col, SideSheet, TextArea } from '@douyinfe/semi-ui';
 import { enumValueOf } from '@zenith/shared/core';
-import { OAUTH2_GRANT_TYPE_LABELS, OAUTH2_GRANT_TYPES, OAUTH2_SCOPES, OPEN_APP_ENVIRONMENT_LABELS, OPEN_APP_ENVIRONMENTS, OPEN_APP_REVIEW_STATUS_LABELS, OPEN_APP_REVIEW_STATUSES } from '@zenith/shared/open-platform';
+import { OAUTH2_GRANT_TYPE_LABELS, OAUTH2_GRANT_TYPES, OAUTH2_SCOPE_LABELS, OAUTH2_SCOPES, OPEN_APP_ENVIRONMENT_LABELS, OPEN_APP_ENVIRONMENTS, OPEN_APP_REVIEW_STATUS_LABELS, OPEN_APP_REVIEW_STATUSES } from '@zenith/shared/open-platform';
 import type { OAuth2Client, OAuth2GrantType } from '@zenith/shared/open-platform';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { copyableNoColumn, createdAtColumn } from '@/utils/table-columns';
@@ -32,13 +32,6 @@ import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
 
 const { Text, Paragraph } = Typography;
-
-const SCOPE_LABELS: Record<string, string> = {
-  openid: 'OpenID（确认身份）',
-  profile: 'Profile（基本信息）',
-  email: 'Email（邮箱）',
-  offline_access: 'Offline Access（离线访问）',
-};
 
 type FormValues = {
   name: string;
@@ -398,7 +391,7 @@ export default function OAuth2AppsPage() {
                 >
                   {(scopeOptions.length
                     ? scopeOptions.map((s) => ({ value: s.code, label: `${s.name}（${s.code}）` }))
-                    : OAUTH2_SCOPES.map((s) => ({ value: s, label: SCOPE_LABELS[s] ?? s }))
+                    : OAUTH2_SCOPES.map((s) => ({ value: s, label: OAUTH2_SCOPE_LABELS[s] ?? s }))
                   ).map((o) => (
                     <Checkbox key={o.value} value={o.value}>{o.label}</Checkbox>
                   ))}

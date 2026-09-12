@@ -1,19 +1,16 @@
 import { Tag } from '@douyinfe/semi-ui';
 import { formatBytes, percentOf } from '@zenith/shared/core';
 import type { ManagedFile } from '@zenith/shared/platform';
-import { DRIVE_ROLE_RANK, driveNodeContract, type DriveNode, type DriveRole, type DriveShareLink, type DriveShareLinkState, type DriveSpaceType } from '@zenith/shared/drive';
+import { DRIVE_ROLE_RANK, DRIVE_SHARE_LINK_STATE_LABELS, driveNodeContract, type DriveNode, type DriveRole, type DriveShareLink, type DriveShareLinkState, type DriveSpaceType } from '@zenith/shared/drive';
 import { urlOf } from '@/lib/contract-query';
 
-export const SHARE_STATE_LABELS: Record<DriveShareLinkState, string> = {
-  active: '有效', expired: '已过期', exhausted: '次数用尽', disabled: '已停用', revoked: '已撤销',
-};
 
 export const SHARE_STATE_COLORS: Record<DriveShareLinkState, 'green' | 'grey' | 'orange' | 'red'> = {
   active: 'green', expired: 'grey', exhausted: 'orange', disabled: 'grey', revoked: 'red',
 };
 
 export function shareLinkStateTag(state: DriveShareLinkState) {
-  return <Tag color={SHARE_STATE_COLORS[state]} size="small">{SHARE_STATE_LABELS[state]}</Tag>;
+  return <Tag color={SHARE_STATE_COLORS[state]} size="small">{DRIVE_SHARE_LINK_STATE_LABELS[state]}</Tag>;
 }
 
 /** 外链完整地址（前端公开页） */

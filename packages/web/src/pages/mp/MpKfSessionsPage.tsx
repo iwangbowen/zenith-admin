@@ -21,7 +21,8 @@ import {
 } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { RefreshCw, Settings, Send, UserCheck, ArrowRightLeft, XCircle, MessageSquare, Star } from 'lucide-react';
-import type { MpKfSessionStatus, MpKfSessionEventType, MpKfSessionCloseReason, MpMessage, UpdateMpKfRoutingConfigInput } from '@zenith/shared/mp';
+import { MP_KF_ROUTING_STRATEGY_OPTIONS, MP_KF_SESSION_CLOSE_REASON_LABELS, MP_KF_SESSION_EVENT_TYPE_LABELS, MP_KF_SESSION_STATUS_LABELS } from '@zenith/shared/mp';
+import type { MpKfSessionStatus, MpMessage, UpdateMpKfRoutingConfigInput } from '@zenith/shared/mp';
 import type { WsMessage } from '@zenith/shared/platform';
 import { usePermission } from '@/hooks/usePermission';
 import { useWebSocket } from '@/hooks/useWebSocket';
@@ -53,17 +54,10 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { confirmDanger } from '@/utils/confirm';
 const { Text } = Typography;
 
-const STATUS_TAG: Record<MpKfSessionStatus, { label: string; color: 'orange' | 'green' | 'grey' }> = {
-  waiting: { label: '排队中', color: 'orange' },
-  active: { label: '进行中', color: 'green' },
-  closed: { label: '已结束', color: 'grey' },
-};
-const STRATEGY_LABEL: Record<string, string> = { manual: '人工抢单', round_robin: '轮询分配', least_active: '负载最小' };
-const EVENT_LABEL: Record<MpKfSessionEventType, string> = {
-  create: '粉丝发起', assign: '自动分配', accept: '人工接入', transfer: '转接', reroute: '超时重路由', close: '结束',
-};
-const CLOSE_REASON_LABEL: Record<MpKfSessionCloseReason, string> = {
-  manual: '手动结束', wait_timeout: '等待超时', idle_timeout: '空闲超时', system: '系统结束',
+const STATUS_COLORS: Record<MpKfSessionStatus, 'orange' | 'green' | 'grey'> = {
+  waiting: 'orange',
+  active: 'green',
+  closed: 'grey',
 };
 
 function msgPreview(m: Pick<MpMessage, 'msgType' | 'content'>): string {
@@ -294,7 +288,7 @@ export default function MpKfSessionsPage() {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
                           <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 150, fontWeight: 500 }}>{s.fanNickname || s.openid}</Text>
-                          <Tag size="small" color={STATUS_TAG[s.status].color} type="light">{STATUS_TAG[s.status].label}</Tag>
+                          <Tag size="small" color={STATUS_COLORS[s.status]} type="light">{MP_KF_SESSION_STATUS_LABELS[s.status]}</Tag>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, marginTop: 2 }}>
                           <Text type="tertiary" size="small" ellipsis={{ showTooltip: true }} style={{ maxWidth: 150 }}>
@@ -320,8 +314,8 @@ export default function MpKfSessionsPage() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <Space spacing={6}>
                     <Text strong>{detail.fanNickname || detail.openid}</Text>
-                    <Tag size="small" color={STATUS_TAG[detail.status].color} type="light">{STATUS_TAG[detail.status].label}</Tag>
-                    {detail.closeReason && <Tag size="small" color="grey" type="light">{CLOSE_REASON_LABEL[detail.closeReason]}</Tag>}
+                    <Tag size="small" color={STATUS_COLORS[detail.status]} type="light">{MP_KF_SESSION_STATUS_LABELS[detail.status]}</Tag>
+                    {detail.closeReason && <Tag size="small" color="grey" type="light">{MP_KF_SESSION_CLOSE_REASON_LABELS[detail.closeReason]}</Tag>}
                   </Space>
                   <div><Text type="tertiary" size="small" ellipsis={{ showTooltip: true }} style={{ display: 'block' }}>{detail.kfNickname ? `承接客服：${detail.kfNickname}` : '未分配'} · {detail.openid}</Text></div>
                 </div>
@@ -368,7 +362,7 @@ export default function MpKfSessionsPage() {
                     <div style={{ borderTop: '1px dashed var(--semi-color-border)', padding: '6px 16px', maxHeight: 84, overflowY: 'auto', background: 'var(--semi-color-fill-0)' }}>
                       {detail.events.map((e) => (
                         <Text key={e.id} type="tertiary" size="small" style={{ display: 'block' }}>
-                          {e.createdAt?.slice(5, 16)} · {EVENT_LABEL[e.type]}
+                          {e.createdAt?.slice(5, 16)} · {MP_KF_SESSION_EVENT_TYPE_LABELS[e.type]}
                           {e.toKfNickname ? ` → ${e.toKfNickname}` : ''}{e.operatorName ? `（${e.operatorName}）` : ''}{e.detail ? ` · ${e.detail}` : ''}
                         </Text>
                       ))}
@@ -420,7 +414,7 @@ export default function MpKfSessionsPage() {
             }}>
             <Form.Switch field="enabled" label="启用会话治理" />
             <Form.Select field="strategy" label="分配策略" style={{ width: '100%' }}
-              optionList={Object.entries(STRATEGY_LABEL).map(([value, label]) => ({ label, value }))} />
+              optionList={MP_KF_ROUTING_STRATEGY_OPTIONS} />
             <Form.InputNumber field="maxConcurrent" label="单客服最大并发" min={1} max={100} style={{ width: '100%' }} />
             <Form.InputNumber field="waitTimeoutMinutes" label="排队超时(分钟)" min={1} max={1440} style={{ width: '100%' }} />
             <Form.InputNumber field="idleTimeoutMinutes" label="空闲超时(分钟)" min={1} max={1440} style={{ width: '100%' }} />

@@ -20,7 +20,7 @@ import {
   useSimulatePaymentDispute,
 } from '@/hooks/queries/payment-disputes';
 import { enumValueOf } from '@zenith/shared/core';
-import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNELS, PAYMENT_DISPUTE_ROUTE_LABELS, PAYMENT_DISPUTE_ROUTE_OPTIONS, PAYMENT_DISPUTE_ROUTES, PAYMENT_DISPUTE_STATUS_LABELS, PAYMENT_DISPUTE_STATUS_OPTIONS, PAYMENT_DISPUTE_STATUSES, PAYMENT_DISPUTE_TYPE_LABELS, PAYMENT_DISPUTE_TYPE_OPTIONS, PAYMENT_DISPUTE_TYPES, PAYMENT_ORDER_STATUS_LABELS, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
+import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNELS, PAYMENT_DISPUTE_ROUTE_LABELS, PAYMENT_DISPUTE_ROUTE_OPTIONS, PAYMENT_DISPUTE_ROUTES, PAYMENT_DISPUTE_STATUS_LABELS, PAYMENT_DISPUTE_STATUS_OPTIONS, PAYMENT_DISPUTE_STATUSES, PAYMENT_DISPUTE_REPLY_AUTHOR_LABELS, PAYMENT_DISPUTE_TYPE_LABELS, PAYMENT_DISPUTE_TYPE_OPTIONS, PAYMENT_DISPUTE_TYPES, PAYMENT_ORDER_STATUS_LABELS, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
 import type { PaymentChannel, PaymentDispute, PaymentDisputeRoute, PaymentDisputeStatus, PaymentDisputeType } from '@zenith/shared/payment';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
@@ -31,8 +31,6 @@ const yuan = formatYuan;
 const STATUS_COLOR = { pending: 'red', processing: 'blue', resolved: 'green', refunded: 'purple' } as const satisfies Record<PaymentDisputeStatus, string>;
 const ROUTE_COLOR = { urgent: 'red', manual: 'grey', auto_refund_suggest: 'orange' } as const satisfies Record<PaymentDisputeRoute, string>;
 const channelOptions = PAYMENT_CHANNEL_OPTIONS;
-const REPLY_AUTHOR_LABELS = { merchant: '商户', user: '投诉人', system: '系统' } as const;
-
 interface SearchParams { keyword: string; status?: string; type?: string; channel?: string; route?: string }
 const defaultSearchParams: SearchParams = { keyword: '', status: undefined, type: undefined, channel: undefined, route: '' };
 
@@ -255,7 +253,7 @@ export default function PaymentDisputesPage() {
                 {detail.replies.map((r) => (
                   <Timeline.Item key={r.id} time={r.createdAt} type={r.author === 'user' ? 'warning' : r.author === 'system' ? 'success' : 'default'}>
                     <div style={{ fontSize: 13 }}>
-                      <strong>{REPLY_AUTHOR_LABELS[r.author]}{r.operatorName ? `（${r.operatorName}）` : ''}</strong>：{r.content}
+                      <strong>{PAYMENT_DISPUTE_REPLY_AUTHOR_LABELS[r.author]}{r.operatorName ? `（${r.operatorName}）` : ''}</strong>：{r.content}
                     </div>
                   </Timeline.Item>
                 ))}

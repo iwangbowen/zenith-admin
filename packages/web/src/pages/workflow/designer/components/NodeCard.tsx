@@ -6,7 +6,7 @@
 import { ChevronRight, Copy, X } from 'lucide-react';
 import { Popconfirm, Tooltip } from '@douyinfe/semi-ui';
 import type { FlowNode, AssigneeType, ApproveMethod, ApprovalType, FieldPermission, NodeRuntimeInfo, NodeHealthInfo } from '../types';
-import { NODE_COLOR_MAP, ADDABLE_NODE_TYPES, ASSIGNEE_TYPE_OPTIONS, APPROVE_METHOD_OPTIONS, APPROVAL_TYPE_OPTIONS } from '../constants';
+import { NODE_COLOR_MAP, ADDABLE_NODE_TYPES, ASSIGNEE_TYPE_OPTIONS, APPROVE_METHOD_OPTIONS, APPROVAL_TYPE_OPTIONS, RUNTIME_STATUS_HEADER_COLOR } from '../constants';
 import { UserAvatar } from '@/components/UserAvatar';
 import { formatDateTime } from '@/utils/date';
 import NodeHealthBadge from './NodeHealthBadge';
@@ -40,15 +40,6 @@ const RT_NODE_STATUS: Record<NodeRuntimeInfo['status'], { label: string }> = {
   pending: { label: NODE_RT_STATUS_LABEL.pending },
   waiting: { label: NODE_RT_STATUS_LABEL.waiting },
   skipped: { label: NODE_RT_STATUS_LABEL.skipped },
-};
-
-/** 运行态节点表头配色（与画布图例一致：当前/通过/拒绝/等待/跳过） */
-const RT_HEADER_COLOR: Record<NodeRuntimeInfo['status'], string> = {
-  approved: 'var(--semi-color-success)',
-  rejected: 'var(--semi-color-danger)',
-  pending: 'var(--semi-color-primary)',
-  waiting: 'var(--semi-color-warning)',
-  skipped: 'var(--semi-color-tertiary)',
 };
 
 /** 单处理人状态文案（抄送节点语义不同：CC 任务送达即完成） */
@@ -207,7 +198,7 @@ export default function NodeCard({
   // 抄送节点送达即完成：skipped 视作成功送达
   const isDeliveredCc = node.type === 'cc' && runtime?.status === 'skipped';
   const headerBg = runtime
-    ? (runtime.active ? 'var(--semi-color-primary)' : (isDeliveredCc ? 'var(--semi-color-success)' : RT_HEADER_COLOR[runtime.status] ?? color))
+    ? (runtime.active ? 'var(--semi-color-primary)' : (isDeliveredCc ? 'var(--semi-color-success)' : RUNTIME_STATUS_HEADER_COLOR[runtime.status] ?? color))
     : color;
   const Icon = info?.icon;
 

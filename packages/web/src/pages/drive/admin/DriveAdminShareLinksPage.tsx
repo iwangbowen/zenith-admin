@@ -4,7 +4,7 @@ import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate } from 'react-router-dom';
-import { type DriveShareLink, type DriveShareLinkState } from '@zenith/shared/drive';
+import { DRIVE_SHARE_LINK_STATE_OPTIONS, type DriveShareLink, type DriveShareLinkState } from '@zenith/shared/drive';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -16,7 +16,6 @@ import { driveKeys, useAdminRevokeDriveShareLink, useDriveAdminShareLinks, useDr
 import { confirmDanger } from '@/utils/confirm';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
-import { SHARE_STATE_LABELS } from '../drive-utils';
 import {
   shareLinkAccessColumn, shareLinkCapabilitiesColumn, shareLinkCopyAction, shareLinkExpireColumn, shareLinkFileColumn, shareLinkStateColumn,
 } from '../drive-share-link-columns';
@@ -28,7 +27,7 @@ interface SearchParams {
   timeRange: [Date, Date] | null;
 }
 
-const STATE_OPTIONS = (Object.keys(SHARE_STATE_LABELS) as DriveShareLinkState[]).map((v) => ({ value: v, label: SHARE_STATE_LABELS[v] }));
+const STATE_OPTIONS = DRIVE_SHARE_LINK_STATE_OPTIONS;
 
 /** 外链访问日志动作文案（服务端 logShareAccess 的 action 取值） */
 const ACCESS_ACTION_LABELS: Record<string, string> = { access: '访问', list: '浏览目录', download: '下载', preview: '预览', password_fail: '密码错误', save: '转存' };

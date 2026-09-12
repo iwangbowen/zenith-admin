@@ -11,7 +11,7 @@ import { Button, Form, Modal, Space, Tag, Toast, Typography } from '@douyinfe/se
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Send } from 'lucide-react';
 import dayjs from 'dayjs';
-import { BIZ_LEAVE_TYPES, type BizLeave, type CreateBizLeaveInput } from '@zenith/shared/biz';
+import { BIZ_LEAVE_STATUS_LABELS, BIZ_LEAVE_STATUS_OPTIONS, BIZ_LEAVE_TYPES, type BizLeave, type BizLeaveStatus, type CreateBizLeaveInput } from '@zenith/shared/biz';
 import { enumValueOf } from '@zenith/shared/core';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { AppModal } from '@/components/AppModal';
@@ -36,12 +36,12 @@ import { abortSubmit } from '@/lib/abort-submit';
 
 type TagColor = 'grey' | 'blue' | 'green' | 'red' | 'orange';
 
-const STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
-  draft: { text: '草稿', color: 'grey' },
-  pending: { text: '审批中', color: 'blue' },
-  approved: { text: '已通过', color: 'green' },
-  rejected: { text: '已驳回', color: 'red' },
-  cancelled: { text: '已取消', color: 'orange' },
+const STATUS_COLORS: Record<BizLeaveStatus, TagColor> = {
+  draft: 'grey',
+  pending: 'blue',
+  approved: 'green',
+  rejected: 'red',
+  cancelled: 'orange',
 };
 
 interface LeaveSearchParams {
@@ -169,7 +169,7 @@ export default function LeavePage() {
     createdAtColumn as ColumnProps<BizLeave>,
     {
       title: '状态', dataIndex: 'status', width: 110, fixed: 'right',
-      render: (v: string) => { const s = STATUS_MAP[v]; return s ? <Tag color={s.color}>{s.text}</Tag> : <span>{v}</span>; },
+      render: (v: BizLeaveStatus) => <Tag color={STATUS_COLORS[v] ?? 'grey'}>{BIZ_LEAVE_STATUS_LABELS[v] ?? v}</Tag>,
     },
     createOperationColumn<BizLeave>({
       // 草稿只有「编辑」（流程实例在转回草稿时清空），其余状态只有「流程详情」；低频动作进更多
@@ -228,7 +228,7 @@ export default function LeavePage() {
         keyword={<KeywordInput placeholder="搜索事由" {...bindKeyword('keyword')} />}
         filters={(
           <StatusSelect
-            items={Object.entries(STATUS_MAP).map(([value, s]) => ({ value, label: s.text }))}
+            items={BIZ_LEAVE_STATUS_OPTIONS}
             {...bind('status', (value) => value as LeaveSearchParams['status'] | undefined)}
           />
         )}

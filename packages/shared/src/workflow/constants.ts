@@ -1,7 +1,35 @@
-import { createLabelOptionsFromMap } from '../core/enum-options';
-import type { WorkflowApproveMethod, WorkflowApproverDedupMode } from './types';
+import { createLabelOptions, createLabelOptionsFromMap } from '../core/enum-options';
+import type {
+  NodeListenerEvent,
+  WorkflowActionUploadMode,
+  WorkflowApproveMethod,
+  WorkflowApproverDedupMode,
+  WorkflowAutomationTrigger,
+  WorkflowCompensationActionType,
+  WorkflowConnectorBreakerState,
+  WorkflowConnectorType,
+  WorkflowEngineActionKey,
+  WorkflowEngineComponentStatus,
+  WorkflowEngineQueueKey,
+  WorkflowEventDeliveryStatus,
+  WorkflowEventType,
+  WorkflowFormStatus,
+  WorkflowJobType,
+  WorkflowNodeType,
+  WorkflowTriggerExecutionStatus,
+  WorkflowTriggerType,
+} from './types';
 
 export const WORKFLOW_DEFINITION_STATUSES = ['draft', 'published', 'disabled'] as const;
+
+export const WORKFLOW_DEFINITION_STATUS_LABELS: Record<(typeof WORKFLOW_DEFINITION_STATUSES)[number], string> = {
+  draft: '草稿',
+  published: '已发布',
+  disabled: '已禁用',
+};
+
+export const WORKFLOW_DEFINITION_STATUS_OPTIONS: Array<{ value: (typeof WORKFLOW_DEFINITION_STATUSES)[number]; label: string }> =
+  createLabelOptions(WORKFLOW_DEFINITION_STATUSES, WORKFLOW_DEFINITION_STATUS_LABELS);
 
 export const WORKFLOW_INSTANCE_STATUSES = ['draft', 'running', 'suspended', 'returned', 'approved', 'rejected', 'withdrawn', 'cancelled'] as const;
 
@@ -22,10 +50,39 @@ export const WORKFLOW_INSTANCE_PRIORITIES = ['low', 'normal', 'high', 'urgent'] 
 
 export const WORKFLOW_NODE_TYPES = ['start', 'approve', 'end', 'exclusiveGateway', 'parallelGateway', 'ccNode'] as const;
 
+export const WORKFLOW_NODE_TYPE_LABELS: Record<WorkflowNodeType, string> = {
+  start: '开始',
+  approve: '审批',
+  handler: '办理',
+  end: '结束',
+  exclusiveGateway: '条件网关',
+  parallelGateway: '并行网关',
+  inclusiveGateway: '包容网关',
+  routeGateway: '路由网关',
+  ccNode: '抄送',
+  delay: '延时',
+  trigger: '触发器',
+  subProcess: '子流程',
+  catchNode: '捕获',
+};
+
+export const WORKFLOW_NODE_TYPE_OPTIONS: Array<{ value: WorkflowNodeType; label: string }> =
+  createLabelOptionsFromMap(WORKFLOW_NODE_TYPE_LABELS);
+
 export const WORKFLOW_CONDITION_OPERATORS = ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'contains'] as const;
 
 /** 流程级自动化规则触发时机 */
 export const WORKFLOW_AUTOMATION_TRIGGERS = ['approved', 'rejected', 'withdrawn', 'created'] as const;
+
+export const WORKFLOW_AUTOMATION_TRIGGER_LABELS: Record<WorkflowAutomationTrigger, string> = {
+  approved: '流程通过',
+  rejected: '流程驳回',
+  withdrawn: '流程撤回',
+  created: '流程发起时',
+};
+
+export const WORKFLOW_AUTOMATION_TRIGGER_OPTIONS: Array<{ value: WorkflowAutomationTrigger; label: string }> =
+  createLabelOptions(WORKFLOW_AUTOMATION_TRIGGERS, WORKFLOW_AUTOMATION_TRIGGER_LABELS);
 
 export const WORKFLOW_AUTOMATION_RUN_STATUSES = ['success', 'failed', 'skipped'] as const;
 
@@ -36,13 +93,66 @@ export const WORKFLOW_EVENT_TYPES = [
   'task.created', 'task.assigned', 'task.approved', 'task.rejected', 'task.skipped', 'task.transferred', 'task.addSigned', 'task.reduceSigned', 'task.urged',
 ] as const;
 
+export const WORKFLOW_EVENT_TYPE_LABELS: Record<WorkflowEventType, string> = {
+  'instance.created': '实例创建',
+  'instance.approved': '实例通过',
+  'instance.rejected': '实例驳回',
+  'instance.withdrawn': '实例撤回',
+  'instance.returned': '实例退回',
+  'node.entered': '节点进入',
+  'node.left': '节点离开',
+  'task.created': '任务创建',
+  'task.assigned': '任务分配',
+  'task.approved': '任务通过',
+  'task.rejected': '任务驳回',
+  'task.skipped': '任务跳过',
+  'task.transferred': '任务转交',
+  'task.addSigned': '任务加签',
+  'task.reduceSigned': '任务减签',
+  'task.urged': '任务催办',
+};
+
+export const WORKFLOW_EVENT_TYPE_OPTIONS: Array<{ value: WorkflowEventType; label: string }> =
+  createLabelOptions(WORKFLOW_EVENT_TYPES, WORKFLOW_EVENT_TYPE_LABELS);
+
 export const WORKFLOW_EVENT_SIGN_MODES = ['hmacSha256', 'none'] as const;
 
 export const WORKFLOW_EVENT_DELIVERY_STATUSES = ['pending', 'success', 'failed', 'retrying'] as const;
 
+export const WORKFLOW_EVENT_DELIVERY_STATUS_LABELS: Record<WorkflowEventDeliveryStatus, string> = {
+  pending: '待发送',
+  success: '成功',
+  failed: '失败',
+  retrying: '重试中',
+};
+
+export const WORKFLOW_EVENT_DELIVERY_STATUS_OPTIONS: Array<{ value: WorkflowEventDeliveryStatus; label: string }> =
+  createLabelOptions(WORKFLOW_EVENT_DELIVERY_STATUSES, WORKFLOW_EVENT_DELIVERY_STATUS_LABELS);
+
 export const WORKFLOW_TRIGGER_TYPES = ['webhook', 'callback', 'updateData', 'deleteData'] as const;
 
+export const WORKFLOW_TRIGGER_TYPE_LABELS: Record<WorkflowTriggerType, string> = {
+  webhook: 'Webhook',
+  callback: '回调',
+  updateData: '更新数据',
+  deleteData: '删除数据',
+};
+
+export const WORKFLOW_TRIGGER_TYPE_OPTIONS: Array<{ value: WorkflowTriggerType; label: string }> =
+  createLabelOptions(WORKFLOW_TRIGGER_TYPES, WORKFLOW_TRIGGER_TYPE_LABELS);
+
 export const WORKFLOW_TRIGGER_EXECUTION_STATUSES = ['pending', 'running', 'success', 'failed', 'retrying'] as const;
+
+export const WORKFLOW_TRIGGER_EXECUTION_STATUS_LABELS: Record<WorkflowTriggerExecutionStatus, string> = {
+  pending: '待执行',
+  running: '执行中',
+  success: '成功',
+  failed: '失败',
+  retrying: '重试中',
+};
+
+export const WORKFLOW_TRIGGER_EXECUTION_STATUS_OPTIONS: Array<{ value: WorkflowTriggerExecutionStatus; label: string }> =
+  createLabelOptions(WORKFLOW_TRIGGER_EXECUTION_STATUSES, WORKFLOW_TRIGGER_EXECUTION_STATUS_LABELS);
 
 /** 统一作业账本（workflow_jobs）作业类型 */
 export const WORKFLOW_JOB_TYPES = [
@@ -50,6 +160,21 @@ export const WORKFLOW_JOB_TYPES = [
   'subprocess_spawn', 'subprocess_join', 'event_dispatch', 'webhook_delivery',
   'compensation_action',
 ] as const;
+
+export const WORKFLOW_JOB_TYPE_LABELS: Record<WorkflowJobType, string> = {
+  delay_wake: '延时唤醒',
+  task_timeout: '任务超时',
+  trigger_dispatch: '触发器派发',
+  external_dispatch: '外部派发',
+  subprocess_spawn: '子流程发起',
+  subprocess_join: '子流程汇聚',
+  event_dispatch: '事件派发',
+  webhook_delivery: 'Webhook 投递',
+  compensation_action: '补偿动作',
+};
+
+export const WORKFLOW_JOB_TYPE_OPTIONS: Array<{ value: WorkflowJobType; label: string }> =
+  createLabelOptions(WORKFLOW_JOB_TYPES, WORKFLOW_JOB_TYPE_LABELS);
 
 export const WORKFLOW_JOB_STATUSES = ['pending', 'running', 'paused', 'succeeded', 'failed', 'dead', 'canceled'] as const;
 export const WORKFLOW_ADVANCING_JOB_TYPES = ['delay_wake', 'task_timeout', 'external_dispatch', 'subprocess_spawn', 'subprocess_join'] as const;
@@ -65,7 +190,28 @@ export const WORKFLOW_ENGINE_ACTION_KEYS = [
   'replay-outbox', 'recover-delays', 'recover-subprocess', 'process-timeouts', 'recover-triggers', 'recover-webhooks',
 ] as const;
 
+export const WORKFLOW_ENGINE_ACTION_KEY_LABELS: Record<WorkflowEngineActionKey, string> = {
+  'replay-outbox': '重放事件派发',
+  'recover-delays': '恢复延时任务',
+  'recover-subprocess': '恢复子流程',
+  'process-timeouts': '处理超时任务',
+  'recover-triggers': '恢复触发器重派',
+  'recover-webhooks': '恢复 Webhook 投递',
+};
+
+export const WORKFLOW_ENGINE_ACTION_KEY_OPTIONS: Array<{ value: WorkflowEngineActionKey; label: string }> =
+  createLabelOptions(WORKFLOW_ENGINE_ACTION_KEYS, WORKFLOW_ENGINE_ACTION_KEY_LABELS);
+
 export const WORKFLOW_ENGINE_COMPONENT_STATUSES = ['healthy', 'warning', 'critical'] as const;
+
+export const WORKFLOW_ENGINE_COMPONENT_STATUS_LABELS: Record<WorkflowEngineComponentStatus, string> = {
+  healthy: '正常',
+  warning: '关注',
+  critical: '严重',
+};
+
+export const WORKFLOW_ENGINE_COMPONENT_STATUS_OPTIONS: Array<{ value: WorkflowEngineComponentStatus; label: string }> =
+  createLabelOptions(WORKFLOW_ENGINE_COMPONENT_STATUSES, WORKFLOW_ENGINE_COMPONENT_STATUS_LABELS);
 
 export const WORKFLOW_ENGINE_COMPONENT_KEYS = [
   'dagExecutor', 'taskMaterializer', 'delayScheduler', 'timeoutProcessor', 'triggerDispatcher',
@@ -76,6 +222,19 @@ export const WORKFLOW_ENGINE_QUEUE_KEYS = [
   'humanTasks', 'delayWakeups', 'timeouts', 'triggerDispatch', 'externalApprovals', 'subProcessJoin', 'eventOutbox',
 ] as const;
 
+export const WORKFLOW_ENGINE_QUEUE_KEY_LABELS: Record<WorkflowEngineQueueKey, string> = {
+  humanTasks: '人工任务',
+  delayWakeups: '延时唤醒',
+  timeouts: '超时处理',
+  triggerDispatch: '触发器调度',
+  externalApprovals: '外部审批',
+  subProcessJoin: '子流程汇聚',
+  eventOutbox: '事件派发',
+};
+
+export const WORKFLOW_ENGINE_QUEUE_KEY_OPTIONS: Array<{ value: WorkflowEngineQueueKey; label: string }> =
+  createLabelOptions(WORKFLOW_ENGINE_QUEUE_KEYS, WORKFLOW_ENGINE_QUEUE_KEY_LABELS);
+
 export const WORKFLOW_RUNTIME_ISSUE_SEVERITIES = ['info', 'warning', 'critical'] as const;
 
 /** 健康巡检问题类型 */
@@ -85,12 +244,68 @@ export const WORKFLOW_HEALTH_ISSUE_TYPES = [
   'workflow_event_outbox_failed', 'workflow_event_outbox_pending', 'waiting_task_stuck', 'instance_stalled',
 ] as const;
 
+export const WORKFLOW_HEALTH_ISSUE_TYPE_LABELS: Record<(typeof WORKFLOW_HEALTH_ISSUE_TYPES)[number], string> = {
+  external_dispatch_failed: '外部审批失败',
+  external_dispatch_pending: '外部审批未派发',
+  trigger_waiting_no_execution: '触发器无执行记录',
+  trigger_execution_failed: '触发器执行失败',
+  subprocess_waiting: '子流程等待',
+  delay_overdue: '延迟未唤醒',
+  delay_missing_wake_job: '延迟缺唤醒作业',
+  task_timeout_overdue: '任务超时',
+  token_task_mismatch: 'Token 与任务不一致',
+  workflow_event_outbox_failed: '事件派发失败',
+  workflow_event_outbox_pending: '事件派发待处理',
+  waiting_task_stuck: '任务等待过久',
+  instance_stalled: '实例疑似卡死',
+};
+
+export const WORKFLOW_HEALTH_ISSUE_TYPE_OPTIONS: Array<{ value: (typeof WORKFLOW_HEALTH_ISSUE_TYPES)[number]; label: string }> =
+  createLabelOptions(WORKFLOW_HEALTH_ISSUE_TYPES, WORKFLOW_HEALTH_ISSUE_TYPE_LABELS);
+
 /** 连接器类型（含尚未开放创建的 mq / database，历史数据可能存在） */
 export const WORKFLOW_CONNECTOR_TYPES = ['http', 'webhook', 'email', 'sms', 'wecom', 'dingtalk', 'feishu', 'mq', 'database'] as const;
 
+export const WORKFLOW_CONNECTOR_TYPE_LABELS: Record<WorkflowConnectorType, string> = {
+  http: 'HTTP',
+  webhook: 'Webhook',
+  email: '邮件',
+  sms: '短信',
+  wecom: '企业微信',
+  dingtalk: '钉钉',
+  feishu: '飞书',
+  mq: '消息队列',
+  database: '数据库',
+};
+
+export const WORKFLOW_CONNECTOR_TYPE_OPTIONS: Array<{ value: WorkflowConnectorType; label: string }> =
+  createLabelOptions(WORKFLOW_CONNECTOR_TYPES, WORKFLOW_CONNECTOR_TYPE_LABELS);
+
 export const WORKFLOW_CONNECTOR_BREAKER_STATES = ['closed', 'open', 'halfOpen'] as const;
 
+export const WORKFLOW_CONNECTOR_BREAKER_STATE_LABELS: Record<WorkflowConnectorBreakerState, string> = {
+  closed: '正常',
+  open: '熔断',
+  halfOpen: '半开',
+};
+
+export const WORKFLOW_CONNECTOR_BREAKER_STATE_OPTIONS: Array<{ value: WorkflowConnectorBreakerState; label: string }> =
+  createLabelOptions(WORKFLOW_CONNECTOR_BREAKER_STATES, WORKFLOW_CONNECTOR_BREAKER_STATE_LABELS);
+
 export const WORKFLOW_CONNECTOR_INVOCATION_SOURCES = ['test', 'trigger', 'external', 'webhook', 'manual'] as const;
+
+export const WORKFLOW_CONNECTOR_INVOCATION_SOURCE_LABELS: Record<(typeof WORKFLOW_CONNECTOR_INVOCATION_SOURCES)[number], string> = {
+  test: '测试',
+  trigger: '触发器',
+  external: '外部审批',
+  webhook: '事件订阅',
+  manual: '手动',
+};
+
+export const WORKFLOW_CONNECTOR_INVOCATION_SOURCE_OPTIONS: Array<{
+  value: (typeof WORKFLOW_CONNECTOR_INVOCATION_SOURCES)[number];
+  label: string;
+}> = createLabelOptions(WORKFLOW_CONNECTOR_INVOCATION_SOURCES, WORKFLOW_CONNECTOR_INVOCATION_SOURCE_LABELS);
 
 /** 待办 SLA 紧急度：none=未配置超时, safe=充裕, warning=临近, overdue=已超时 */
 export const WORKFLOW_SLA_LEVELS = ['none', 'safe', 'warning', 'overdue'] as const;
@@ -155,6 +370,44 @@ export const WORKFLOW_FORM_TYPE_LABELS: Record<WorkflowFormType, string> = {
   custom: '自定义业务表单',
   external: '业务系统主导',
 };
+
+export const WORKFLOW_FORM_STATUS_LABELS: Record<WorkflowFormStatus, string> = {
+  enabled: '启用',
+  disabled: '停用',
+};
+
+export const WORKFLOW_FORM_STATUS_OPTIONS: Array<{ value: WorkflowFormStatus; label: string }> =
+  createLabelOptionsFromMap(WORKFLOW_FORM_STATUS_LABELS);
+
+export const WORKFLOW_ACTION_UPLOAD_MODE_LABELS: Record<WorkflowActionUploadMode, string> = {
+  hidden: '不显示',
+  optional: '选填',
+  required: '必填',
+};
+
+export const WORKFLOW_ACTION_UPLOAD_MODE_OPTIONS: Array<{ value: WorkflowActionUploadMode; label: string }> =
+  createLabelOptionsFromMap(WORKFLOW_ACTION_UPLOAD_MODE_LABELS);
+
+export const NODE_LISTENER_EVENT_LABELS: Record<NodeListenerEvent, string> = {
+  onCreate: '任务创建（onCreate）',
+  onApprove: '任务通过（onApprove）',
+  onReject: '任务驳回（onReject）',
+};
+
+export const NODE_LISTENER_EVENT_OPTIONS: Array<{ value: NodeListenerEvent; label: string }> =
+  createLabelOptionsFromMap(NODE_LISTENER_EVENT_LABELS);
+
+export const WORKFLOW_COMPENSATION_ACTION_TYPE_LABELS: Record<WorkflowCompensationActionType, string> = {
+  none: '无',
+  http: 'HTTP 直连',
+  connector: '流程连接器',
+  sms: '短信',
+  email: '邮件',
+  updateData: '回填/回滚表单字段',
+};
+
+export const WORKFLOW_COMPENSATION_ACTION_TYPE_OPTIONS: Array<{ value: WorkflowCompensationActionType; label: string }> =
+  createLabelOptionsFromMap(WORKFLOW_COMPENSATION_ACTION_TYPE_LABELS);
 
 export const WORKFLOW_APPROVE_METHOD_LABELS: Record<WorkflowApproveMethod, string>
   & Record<string, string> = {

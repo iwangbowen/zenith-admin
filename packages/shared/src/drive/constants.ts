@@ -130,6 +130,18 @@ export function describeShareCapabilities(capabilities: readonly DriveShareCapab
 // ─── 查询筛选 ─────────────────────────────────────────────────────────────────
 export const DRIVE_ACCESS_REQUEST_BOXES = ['inbox', 'outbox'] as const;
 export const DRIVE_NODE_SORT_FIELDS = ['name', 'size', 'updatedAt', 'createdAt'] as const;
+export type DriveNodeSortField = (typeof DRIVE_NODE_SORT_FIELDS)[number];
+
+export const DRIVE_NODE_SORT_FIELD_LABELS: Record<DriveNodeSortField, string> = {
+  name: '按名称',
+  size: '按大小',
+  updatedAt: '按修改时间',
+  createdAt: '按创建时间',
+};
+
+export const DRIVE_NODE_SORT_FIELD_OPTIONS: Array<{ value: DriveNodeSortField; label: string }> =
+  createLabelOptions(DRIVE_NODE_SORT_FIELDS, DRIVE_NODE_SORT_FIELD_LABELS);
+
 export const DRIVE_SORT_ORDERS = ['asc', 'desc'] as const;
 export const DRIVE_NODE_ACCESS_PURPOSES = ['preview', 'download'] as const;
 
@@ -209,6 +221,17 @@ export type DriveRenditionStatus = (typeof DRIVE_RENDITION_STATUSES)[number];
 export const DRIVE_SHARE_LINK_STATES = ['active', 'expired', 'exhausted', 'disabled', 'revoked'] as const;
 
 export type DriveShareLinkState = (typeof DRIVE_SHARE_LINK_STATES)[number];
+
+export const DRIVE_SHARE_LINK_STATE_LABELS: Record<DriveShareLinkState, string> = {
+  active: '有效',
+  expired: '已过期',
+  exhausted: '次数用尽',
+  disabled: '已停用',
+  revoked: '已撤销',
+};
+
+export const DRIVE_SHARE_LINK_STATE_OPTIONS: Array<{ value: DriveShareLinkState; label: string }> =
+  createLabelOptions(DRIVE_SHARE_LINK_STATES, DRIVE_SHARE_LINK_STATE_LABELS);
 
 // ─── 同名冲突策略 ─────────────────────────────────────────────────────────────
 export const DRIVE_UPLOAD_CONFLICT_POLICIES = ['rename', 'version', 'fail'] as const;

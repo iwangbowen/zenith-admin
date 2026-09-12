@@ -20,7 +20,7 @@ import {
   useReleasePaymentPreauth,
 } from '@/hooks/queries/payment-preauths';
 import { enumValueOf } from '@zenith/shared/core';
-import { PAYMENT_CHANNELS, PAYMENT_PREAUTH_STATUS_LABELS, PAYMENT_PREAUTH_STATUS_OPTIONS, PAYMENT_PREAUTH_STATUSES, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
+import { PAYMENT_CHANNELS, PAYMENT_PREAUTH_METHOD_OPTIONS, PAYMENT_PREAUTH_STATUS_LABELS, PAYMENT_PREAUTH_STATUS_OPTIONS, PAYMENT_PREAUTH_STATUSES, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
 import type { CreatePaymentPreauthInput, PaymentChannel, PaymentPreauth, PaymentPreauthMethod, PaymentPreauthStatus } from '@zenith/shared/payment';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { listTableProps, ListSearchToolbar } from '@/components/list-page';
@@ -31,10 +31,6 @@ import { PaymentAppField, PaymentAppFilterSelect, PaymentCurrencyField } from '.
 const yuan = formatYuan;
 const STATUS_COLOR = { pending: 'grey', unknown: 'orange', frozen: 'blue', captured: 'green', released: 'teal', failed: 'red' } as const satisfies Record<PaymentPreauthStatus, string>;
 const channelOptions = PAYMENT_CHANNEL_OPTIONS;
-const PREAUTH_METHOD_OPTIONS = [
-  { value: 'wechat_preauth', label: '微信预授权' },
-  { value: 'alipay_preauth', label: '支付宝预授权' },
-];
 
 interface PreauthFormValues { applicationId: number; payMethod: PaymentPreauthMethod; currency: 'CNY'; payerAccount: string; subject: string; amountYuan: number; bizType?: string; bizId: string; remark?: string; }
 
@@ -72,7 +68,7 @@ export default function PaymentPreauthsPage() {
   }, effectivePreauthAppId != null);
   const preauthMethodOptions = useMemo(() => {
     const app = selectedAppId == null ? null : appById.get(selectedAppId);
-    return PREAUTH_METHOD_OPTIONS.filter((option) => option.value === 'wechat_preauth' ? app?.wechatConfigId != null : app?.alipayConfigId != null);
+    return PAYMENT_PREAUTH_METHOD_OPTIONS.filter((option) => option.value === 'wechat_preauth' ? app?.wechatConfigId != null : app?.alipayConfigId != null);
   }, [appById, selectedAppId]);
   const createMutation = useCreatePaymentPreauth();
   const captureMutation = useCapturePaymentPreauth();

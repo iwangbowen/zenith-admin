@@ -6,7 +6,7 @@ import {
 } from '@douyinfe/semi-ui';
 import { usePagination } from '@/hooks/usePagination';
 import { CheckCheck, ChevronLeft, ChevronRight } from 'lucide-react';
-import type { InAppMessage } from '@zenith/shared/messaging';
+import { IN_APP_MESSAGE_TYPE_LABELS, type InAppMessage } from '@zenith/shared/messaging';
 import { formatDateTime } from '@/utils/date';
 import { BatchDeleteButton, RefreshButton } from '@/components/toolbar-controls';
 import { emptyIllustration } from '@/components/EmptyIllustration';
@@ -27,12 +27,6 @@ import { useMyInAppMessageUnreadCount } from '@/hooks/queries/in-app-messages';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { IN_APP_MESSAGE_TYPE_COLORS } from '@/pages/system/in-app-message-constants';
-const TYPE_LABEL: Record<string, string> = {
-  info: '通知',
-  success: '成功',
-  warning: '警告',
-  error: '错误',
-};
 
 const { Text } = Typography;
 
@@ -198,7 +192,7 @@ export default function InboxPage() {
                         {item.title}
                       </Text>
                       <Tag color={IN_APP_MESSAGE_TYPE_COLORS[item.type] ?? 'blue'} size="small" style={{ flexShrink: 0 }}>
-                        {TYPE_LABEL[item.type] ?? item.type}
+                        {IN_APP_MESSAGE_TYPE_LABELS[item.type] ?? item.type}
                       </Tag>
                       <Text style={{ fontSize: 12, color: 'var(--semi-color-text-3)', marginLeft: 'auto', flexShrink: 0 }}>
                         {item.senderName ?? '系统'} · {formatDateTime(item.createdAt)}

@@ -26,7 +26,7 @@ import {
   useTerminatePaymentContract,
 } from '@/hooks/queries/payment-contracts';
 import { enumValueOf } from '@zenith/shared/core';
-import { PAYMENT_CHANNELS, PAYMENT_CONTRACT_STATUS_LABELS, PAYMENT_CONTRACT_STATUSES, PAYMENT_DEDUCT_PERIOD_LABELS, PAYMENT_DEDUCT_PERIOD_OPTIONS, PAYMENT_CONTRACT_STATUS_OPTIONS, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
+import { PAYMENT_CHANNELS, PAYMENT_CONTRACT_STATUS_LABELS, PAYMENT_CONTRACT_STATUSES, PAYMENT_DEDUCT_METHOD_OPTIONS, PAYMENT_DEDUCT_PERIOD_LABELS, PAYMENT_DEDUCT_PERIOD_OPTIONS, PAYMENT_CONTRACT_STATUS_OPTIONS, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
 import type { CreatePaymentContractInput, CreatePaymentDeductPlanInput, PaymentChannel, PaymentContract, PaymentContractSignResult, PaymentContractStatus, PaymentDeductMethod, PaymentDeductPeriod, PaymentDeductPlan } from '@zenith/shared/payment';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
@@ -40,10 +40,6 @@ const yuan = formatYuan;
 const CONTRACT_STATUS_COLOR = { pending: 'grey', unknown: 'orange', signed: 'green', paused: 'orange', terminated: 'red', failed: 'red' } as const satisfies Record<PaymentContractStatus, string>;
 const contractStatusOptions = PAYMENT_CONTRACT_STATUS_OPTIONS;
 const channelOptions = PAYMENT_CHANNEL_OPTIONS;
-const DEDUCT_METHOD_OPTIONS = [
-  { value: 'wechat_papay', label: '微信委托代扣' },
-  { value: 'alipay_cycle', label: '支付宝周期扣款' },
-];
 
 interface PlanFormValues { name: string; period: PaymentDeductPeriod; customDays?: number; amountYuan: number; maxRetries: number; status?: 'enabled' | 'disabled'; remark?: string; }
 type PlanPayload = Partial<CreatePaymentDeductPlanInput>;
@@ -107,7 +103,7 @@ export default function PaymentContractsPage() {
   const allPlans = allPlansQuery.data ?? [];
   const deductMethodOptions = useMemo(() => {
     const app = selectedAppId == null ? null : appById.get(selectedAppId);
-    return DEDUCT_METHOD_OPTIONS.filter((option) => option.value === 'wechat_papay' ? app?.wechatConfigId != null : app?.alipayConfigId != null);
+    return PAYMENT_DEDUCT_METHOD_OPTIONS.filter((option) => option.value === 'wechat_papay' ? app?.wechatConfigId != null : app?.alipayConfigId != null);
   }, [appById, selectedAppId]);
 
   const createContractMutation = useCreatePaymentContract();

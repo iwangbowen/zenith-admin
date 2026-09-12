@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { formatYuan } from '@/utils/payment';
+import { formatYuan, PAYMENT_ORDER_STATUS_TAG_COLOR, PAYMENT_REFUND_STATUS_TAG_COLOR } from '@/utils/payment';
 import { useQueryClient } from '@tanstack/react-query';
 import { Banner, Col, Divider, Form, Row, SideSheet, Tabs, TabPane, Toast, Tag, Timeline, Typography, Modal, Descriptions } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -44,11 +44,6 @@ import { usePaymentAppList } from '@/hooks/queries/payment-apps';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { PaymentChannelTag, paymentMoneyColumn } from './payment-display';
 import { useAppPaymentMethodOptions } from './payment-app-options';
-const STATUS_COLOR = {
-  pending: 'grey', paying: 'blue', success: 'green', closed: 'grey', refunding: 'amber', refunded: 'orange', failed: 'red',
-  unknown: 'amber',
-} as const satisfies Record<PaymentOrderStatus, string>;
-const REFUND_STATUS_COLOR = { pending: 'grey', processing: 'blue', success: 'green', failed: 'red', unknown: 'amber' } as const satisfies Record<PaymentRefundStatus, string>;
 const yuan = formatYuan;
 const PAYMENT_CREATE_METHODS = createPaymentSchema.shape.payMethod.options;
 
@@ -279,7 +274,7 @@ export default function PaymentOrdersPage() {
     dateTimeColumn('创建时间', 'createdAt'),
     {
       title: '状态', dataIndex: 'status', width: 110, fixed: 'right',
-      render: (v: PaymentOrderStatus) => <Tag color={STATUS_COLOR[v]}>{PAYMENT_ORDER_STATUS_LABELS[v]}</Tag>,
+      render: (v: PaymentOrderStatus) => <Tag color={PAYMENT_ORDER_STATUS_TAG_COLOR[v]}>{PAYMENT_ORDER_STATUS_LABELS[v]}</Tag>,
     },
     createOperationColumn<PaymentOrder>({
       width: 180,
@@ -319,7 +314,7 @@ export default function PaymentOrdersPage() {
   const detailRefundColumns: ColumnProps<PaymentRefund>[] = [
     copyableNoColumn('退款单号', 'refundNo'),
     { ...paymentMoneyColumn<PaymentRefund>('金额', 'refundAmount'), width: 90 },
-    { title: '状态', dataIndex: 'status', width: 110, render: (v: PaymentRefundStatus) => <Tag color={REFUND_STATUS_COLOR[v]}>{PAYMENT_REFUND_STATUS_LABELS[v]}</Tag> },
+    { title: '状态', dataIndex: 'status', width: 110, render: (v: PaymentRefundStatus) => <Tag color={PAYMENT_REFUND_STATUS_TAG_COLOR[v]}>{PAYMENT_REFUND_STATUS_LABELS[v]}</Tag> },
     dateTimeColumn('退款时间', 'refundedAt'),
   ];
 
@@ -393,7 +388,7 @@ export default function PaymentOrdersPage() {
                 <span style={{ fontSize: 28, fontWeight: 600, lineHeight: 1.2, fontVariantNumeric: 'tabular-nums' }}>
                   {yuan(detailOrder.paidAmount ?? detailOrder.amount)}
                 </span>
-                <Tag color={STATUS_COLOR[detailOrder.status]} size="large">{PAYMENT_ORDER_STATUS_LABELS[detailOrder.status]}</Tag>
+                <Tag color={PAYMENT_ORDER_STATUS_TAG_COLOR[detailOrder.status]} size="large">{PAYMENT_ORDER_STATUS_LABELS[detailOrder.status]}</Tag>
               </div>
               <Typography.Text type="tertiary" style={{ marginTop: 4, display: 'block' }}>{detailOrder.subject}</Typography.Text>
             </div>

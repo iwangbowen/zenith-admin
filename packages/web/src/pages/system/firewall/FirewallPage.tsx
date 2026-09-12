@@ -17,7 +17,13 @@ import {
   useDisableFirewall,
   useEnableFirewall,
 } from '@/hooks/queries/firewall';
-import type { AddFirewallRuleInput, FirewallRule, FirewallStatus } from '@zenith/shared/ops';
+import type { AddFirewallRuleInput, FirewallRule } from '@zenith/shared/ops';
+import {
+  FIREWALL_DIRECTION_LABELS,
+  FIREWALL_PROTOCOL_LABELS,
+  FIREWALL_RULE_TYPE_LABELS,
+  FIREWALL_TYPE_LABELS,
+} from '@zenith/shared/ops';
 import { CreateButton, ResetButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { HostSelector } from '@/components/HostSelector';
@@ -25,29 +31,10 @@ import { useOpsHostSelection } from '@/hooks/useOpsHostSelection';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
-const RULE_TYPE_CONFIG: Record<FirewallRule['type'], { label: string; color: 'green' | 'red' | 'orange' }> = {
-  allow: { label: '允许', color: 'green' },
-  deny: { label: '拒绝', color: 'red' },
-  reject: { label: '拒止', color: 'orange' },
-};
-
-const DIRECTION_LABELS: Record<FirewallRule['direction'], string> = {
-  in: '入站',
-  out: '出站',
-  any: '任意',
-};
-
-const PROTOCOL_LABELS: Record<FirewallRule['protocol'], string> = {
-  tcp: 'TCP',
-  udp: 'UDP',
-  any: 'ANY',
-};
-
-const STATUS_TYPE_LABELS: Record<FirewallStatus['type'], string> = {
-  ufw: 'UFW',
-  firewalld: 'firewalld',
-  iptables: 'iptables',
-  unknown: '未知',
+const RULE_TYPE_COLORS: Record<FirewallRule['type'], 'green' | 'red' | 'orange'> = {
+  allow: 'green',
+  deny: 'red',
+  reject: 'orange',
 };
 const EMPTY_RULES: FirewallRule[] = [];
 
@@ -127,13 +114,13 @@ export default function FirewallPage() {
       title: '规则类型',
       dataIndex: 'type',
       width: 100,
-      render: (value: FirewallRule['type']) => <Tag color={RULE_TYPE_CONFIG[value].color} size="small">{RULE_TYPE_CONFIG[value].label}</Tag>,
+      render: (value: FirewallRule['type']) => <Tag color={RULE_TYPE_COLORS[value]} size="small">{FIREWALL_RULE_TYPE_LABELS[value]}</Tag>,
     },
     {
       title: '协议',
       dataIndex: 'protocol',
       width: 90,
-      render: (value: FirewallRule['protocol']) => <Tag color="blue" size="small" type="light">{PROTOCOL_LABELS[value]}</Tag>,
+      render: (value: FirewallRule['protocol']) => <Tag color="blue" size="small" type="light">{FIREWALL_PROTOCOL_LABELS[value]}</Tag>,
     },
     {
       title: '端口',
@@ -147,7 +134,7 @@ export default function FirewallPage() {
       title: '方向',
       dataIndex: 'direction',
       width: 90,
-      render: (value: FirewallRule['direction']) => <Tag size="small" type="ghost">{DIRECTION_LABELS[value]}</Tag>,
+      render: (value: FirewallRule['direction']) => <Tag size="small" type="ghost">{FIREWALL_DIRECTION_LABELS[value]}</Tag>,
     },
     {
       title: '备注',
@@ -206,7 +193,7 @@ export default function FirewallPage() {
       </div>
       <div style={{ marginBottom: 16 }}>
         <StatGrid minItemWidth={170}>
-          <StatCard title="防火墙类型" value={STATUS_TYPE_LABELS[currentStatus.type]} />
+          <StatCard title="防火墙类型" value={FIREWALL_TYPE_LABELS[currentStatus.type]} />
           <StatCard
             title="运行状态"
             value={currentStatus.enabled ? '已启用' : '已关闭'}

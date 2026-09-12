@@ -4,6 +4,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { MemberRecharge, MemberRechargeStatus } from '@zenith/shared/member';
 import { MEMBER_RECHARGE_STATUSES } from '@zenith/shared/member';
 import type { PaymentChannel, PaymentOrderStatus } from '@zenith/shared/payment';
+import { PAYMENT_ORDER_STATUS_TAG_COLOR } from '@/utils/payment';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_METHOD_LABELS, PAYMENT_ORDER_STATUS_LABELS } from '@zenith/shared/payment';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
@@ -28,10 +29,6 @@ const defaultSearch: SearchParams = { keyword: undefined, status: undefined, cha
 // 筛选项与服务端可筛选状态对齐：不含瞬态的 unknown（渠道结果待确认）
 const statusOptions = MEMBER_RECHARGE_STATUSES.map((v) => ({ value: v, label: PAYMENT_ORDER_STATUS_LABELS[v] }));
 const channelOptions = (Object.keys(PAYMENT_CHANNEL_LABELS) as PaymentChannel[]).map((v) => ({ value: v, label: PAYMENT_CHANNEL_LABELS[v] }));
-
-const STATUS_COLORS: Record<PaymentOrderStatus, string> = {
-  pending: 'grey', paying: 'blue', unknown: 'amber', success: 'green', closed: 'grey', refunding: 'orange', refunded: 'orange', failed: 'red',
-};
 
 export default function MemberRechargesPage() {
   const {
@@ -61,7 +58,7 @@ export default function MemberRechargesPage() {
     { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => PAYMENT_CHANNEL_LABELS[v] ?? v },
     { title: '支付方式', dataIndex: 'payMethod', width: 130, render: (v: string) => PAYMENT_METHOD_LABELS[v as keyof typeof PAYMENT_METHOD_LABELS] ?? v },
     { title: '说明', dataIndex: 'subject', minWidth: 160, render: (v: string) => renderEllipsis(v) },
-    { title: '状态', dataIndex: 'status', width: 110, fixed: 'right', render: (v: PaymentOrderStatus) => <Tag color={STATUS_COLORS[v] as 'green'}>{PAYMENT_ORDER_STATUS_LABELS[v] ?? v}</Tag> },
+    { title: '状态', dataIndex: 'status', width: 110, fixed: 'right', render: (v: PaymentOrderStatus) => <Tag color={PAYMENT_ORDER_STATUS_TAG_COLOR[v]}>{PAYMENT_ORDER_STATUS_LABELS[v] ?? v}</Tag> },
     dateTimeColumn('支付时间', 'paidAt', { fixed: 'right' }),
     dateTimeColumn('创建时间', 'createdAt', { fixed: 'right' }),
   ];

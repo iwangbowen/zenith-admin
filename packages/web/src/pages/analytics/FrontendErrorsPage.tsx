@@ -49,7 +49,20 @@ import {
 } from '@/components/charts';
 import AppModal from '@/components/AppModal';
 import type { ErrorAlertChannel, ErrorAlertCondition, ErrorAlertLog, ErrorAlertRule, ErrorBreadcrumb, ErrorEvent, ErrorGroup, ErrorLevel, ErrorStatus, FrontendErrorType, SourceMapItem, AnalyticsEnvironment } from '@zenith/shared/analytics';
-import { ANALYTICS_ENVIRONMENT_OPTIONS, ERROR_ALERT_CHANNELS, SOURCE_MAP_MAX_BYTES } from '@zenith/shared/analytics';
+import {
+  ANALYTICS_ENVIRONMENT_OPTIONS,
+  ERROR_ALERT_CHANNELS,
+  ERROR_ALERT_CONDITION_LABELS,
+  ERROR_ALERT_CONDITION_OPTIONS,
+  ERROR_ALERT_CHANNEL_LABELS,
+  ERROR_LEVEL_LABELS,
+  ERROR_LEVEL_OPTIONS,
+  ERROR_STATUS_LABELS,
+  ERROR_STATUS_OPTIONS,
+  FRONTEND_ERROR_TYPE_LABELS,
+  FRONTEND_ERROR_TYPE_OPTIONS,
+  SOURCE_MAP_MAX_BYTES,
+} from '@zenith/shared/analytics';
 import { enumValueOf } from '@zenith/shared/core';
 import { NOTIFY_CHANNEL_OPTIONS } from '@zenith/shared/messaging';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
@@ -86,40 +99,34 @@ import { formatBytes } from '@zenith/shared/core';
 
 const { Text, Title, Paragraph } = Typography;
 
-const ERROR_TYPE_CONFIG: Record<string, { label: string; color: TagColor }> = {
-  js_error: { label: 'JS 错误', color: 'red' },
-  promise_rejection: { label: 'Promise 异常', color: 'orange' },
-  resource_error: { label: '资源错误', color: 'amber' },
-  console_error: { label: 'Console 错误', color: 'grey' },
-  http_error: { label: '接口错误', color: 'violet' },
-  white_screen: { label: '白屏', color: 'pink' },
-  crash: { label: '崩溃', color: 'red' },
+const ERROR_TYPE_COLORS: Record<FrontendErrorType, TagColor> = {
+  js_error: 'red',
+  promise_rejection: 'orange',
+  resource_error: 'amber',
+  console_error: 'grey',
+  http_error: 'violet',
+  white_screen: 'pink',
+  crash: 'red',
 };
 
-const LEVEL_CONFIG: Record<string, { label: string; color: TagColor }> = {
-  fatal: { label: '致命', color: 'red' },
-  error: { label: '错误', color: 'orange' },
-  warning: { label: '警告', color: 'amber' },
-  info: { label: '信息', color: 'blue' },
+const LEVEL_COLORS: Record<ErrorLevel, TagColor> = {
+  fatal: 'red',
+  error: 'orange',
+  warning: 'amber',
+  info: 'blue',
 };
 
-const STATUS_CONFIG: Record<string, { label: string; color: TagColor }> = {
-  unresolved: { label: '未解决', color: 'red' },
-  resolved: { label: '已解决', color: 'green' },
-  ignored: { label: '已忽略', color: 'grey' },
-  muted: { label: '已静音', color: 'blue' },
+const STATUS_COLORS: Record<ErrorStatus, TagColor> = {
+  unresolved: 'red',
+  resolved: 'green',
+  ignored: 'grey',
+  muted: 'blue',
 };
 
-const CONDITION_CONFIG: Record<ErrorAlertCondition, string> = {
-  new_error: '新错误',
-  threshold: '阈值',
-  spike: '激增',
-};
-
-const CHANNEL_CONFIG: Record<string, { label: string; color: TagColor }> = {
-  email: { label: '邮件', color: 'blue' },
-  webhook: { label: 'Webhook', color: 'violet' },
-  inapp: { label: '站内', color: 'green' },
+const CHANNEL_COLORS: Record<ErrorAlertChannel, TagColor> = {
+  email: 'blue',
+  webhook: 'violet',
+  inapp: 'green',
 };
 
 const CHART_COLORS = ['#f93920', '#ff8800', '#f5b70a', '#6a5af9', '#00b42a', '#14c9c9', '#8a38f5'];
@@ -192,9 +199,11 @@ function toAlertChannels(values: readonly unknown[]): ErrorAlertChannel[] {
   });
 }
 
-/** 配置表 → 筛选下拉选项；键集合按调用方指定的枚举类型收窄，便于直接接 `bind()` */
-function labelOptions<K extends string>(config: Record<string, { label: string }>): { label: string; value: K }[] {
-  return Object.entries(config).map(([value, item]) => ({ label: item.label, value: value as K }));
+function alertChannelMeta(channel: string): { label: string; color: TagColor } {
+  const value = enumValueOf(ERROR_ALERT_CHANNELS, channel);
+  return value
+    ? { label: ERROR_ALERT_CHANNEL_LABELS[value], color: CHANNEL_COLORS[value] }
+    : { label: channel, color: 'grey' };
 }
 
 function safeJson(value: unknown) {
@@ -241,18 +250,15 @@ function TextBlock({ children, maxHeight = 280 }: { readonly children: ReactNode
 }
 
 function TypeTag({ type }: { readonly type: FrontendErrorType }) {
-  const config = ERROR_TYPE_CONFIG[type] ?? { label: type, color: 'grey' };
-  return <Tag color={config.color}>{config.label}</Tag>;
+  return <Tag color={ERROR_TYPE_COLORS[type] ?? 'grey'}>{FRONTEND_ERROR_TYPE_LABELS[type] ?? type}</Tag>;
 }
 
 function LevelTag({ level }: { readonly level: ErrorLevel }) {
-  const config = LEVEL_CONFIG[level] ?? { label: level, color: 'grey' };
-  return <Tag color={config.color}>{config.label}</Tag>;
+  return <Tag color={LEVEL_COLORS[level] ?? 'grey'}>{ERROR_LEVEL_LABELS[level] ?? level}</Tag>;
 }
 
 function StatusTag({ status }: { readonly status: ErrorStatus }) {
-  const config = STATUS_CONFIG[status] ?? { label: status, color: 'grey' };
-  return <Tag color={config.color}>{config.label}</Tag>;
+  return <Tag color={STATUS_COLORS[status] ?? 'grey'}>{ERROR_STATUS_LABELS[status] ?? status}</Tag>;
 }
 
 function TypeIcon({ type }: { readonly type: FrontendErrorType }) {
@@ -413,9 +419,9 @@ export default function FrontendErrorsPage() {
     pageSize: alertLogPageSize,
     buildPagination: buildAlertLogPagination,
   } = usePagination(20);
-  const typeOptions = useMemo(() => labelOptions<FrontendErrorType>(ERROR_TYPE_CONFIG), []);
-  const levelOptions = useMemo(() => labelOptions<ErrorLevel>(LEVEL_CONFIG), []);
-  const statusOptions = useMemo(() => labelOptions<ErrorStatus>(STATUS_CONFIG), []);
+  const typeOptions = FRONTEND_ERROR_TYPE_OPTIONS;
+  const levelOptions = ERROR_LEVEL_OPTIONS;
+  const statusOptions = ERROR_STATUS_OPTIONS;
   const overviewQuery = useFrontendErrorOverview(overviewDays, activeTab === 'overview');
   const overview = overviewQuery.data ?? null;
   // 已提交筛选 → 契约查询参数：只映射一次
@@ -513,7 +519,7 @@ export default function FrontendErrorsPage() {
   const batchUpdateStatus = useCallback((status: ErrorStatus) => {
     if (selectedRowKeys.length === 0) return;
     Modal.confirm({
-      title: `确认批量${STATUS_CONFIG[status]?.label ?? '更新'}？`,
+      title: `确认批量${ERROR_STATUS_LABELS[status] ?? '更新'}？`,
       content: `即将处理 ${selectedRowKeys.length} 个错误 Issue。`,
       onOk: async () => {
         await batchStatusMutation.mutateAsync({ query: { status }, body: { ids: selectedRowKeys } });
@@ -784,7 +790,7 @@ export default function FrontendErrorsPage() {
 
   const alertColumns = useMemo<ColumnProps<ErrorAlertRule>[]>(() => [
     { title: '名称', dataIndex: 'name', minWidth: 180 },
-    { title: '条件', dataIndex: 'condition', width: 100, render: (_value, record) => CONDITION_CONFIG[record.condition] },
+    { title: '条件', dataIndex: 'condition', width: 100, render: (_value, record) => ERROR_ALERT_CONDITION_LABELS[record.condition] },
     { title: '阈值', dataIndex: 'thresholdCount', width: 90, align: 'right' },
     { title: '窗口', dataIndex: 'windowMinutes', width: 110, align: 'right', render: (value) => `${value} 分钟` },
     { title: '类型', dataIndex: 'errorType', width: 130, render: (_value, record) => record.errorType ? <TypeTag type={record.errorType} /> : <Tag color="grey">全部</Tag> },
@@ -796,7 +802,7 @@ export default function FrontendErrorsPage() {
       render: (_value, record) => (
         <Space spacing={4} wrap>
           {record.channels.length > 0 ? record.channels.map((channel) => (
-            <Tag key={channel} color={CHANNEL_CONFIG[channel]?.color ?? 'grey'}>{CHANNEL_CONFIG[channel]?.label ?? channel}</Tag>
+            <Tag key={channel} color={alertChannelMeta(channel).color}>{alertChannelMeta(channel).label}</Tag>
           )) : <Text type="tertiary">未配置</Text>}
         </Space>
       ),
@@ -836,7 +842,7 @@ export default function FrontendErrorsPage() {
   const alertLogColumns = useMemo<ColumnProps<ErrorAlertLog>[]>(() => [
     dateTimeColumn('触发时间', 'createdAt'),
     { title: '规则', dataIndex: 'ruleName', width: 180 },
-    { title: '条件', dataIndex: 'condition', width: 100, render: (_value, record) => CONDITION_CONFIG[record.condition] },
+    { title: '条件', dataIndex: 'condition', width: 100, render: (_value, record) => ERROR_ALERT_CONDITION_LABELS[record.condition] },
     { title: '详情', dataIndex: 'detail' },
     {
       title: '渠道',
@@ -845,7 +851,7 @@ export default function FrontendErrorsPage() {
       render: (_value, record) => (
         <Space spacing={4} wrap>
           {record.channels.length > 0 ? record.channels.map((channel) => (
-            <Tag key={channel} color={CHANNEL_CONFIG[channel]?.color ?? 'grey'}>{CHANNEL_CONFIG[channel]?.label ?? channel}</Tag>
+            <Tag key={channel} color={alertChannelMeta(channel).color}>{alertChannelMeta(channel).label}</Tag>
           )) : <Text type="tertiary">未配置</Text>}
         </Space>
       ),
@@ -861,13 +867,13 @@ export default function FrontendErrorsPage() {
   ], []);
 
   const overviewTypeData = (overview?.byType ?? []).map((item) => ({
-    name: ERROR_TYPE_CONFIG[item.errorType]?.label ?? item.errorType,
+    name: FRONTEND_ERROR_TYPE_LABELS[item.errorType] ?? item.errorType,
     value: item.occurrences,
     groups: item.groups,
   }));
 
   const overviewLevelData = (overview?.byLevel ?? []).map((item) => ({
-    name: LEVEL_CONFIG[item.level]?.label ?? item.level,
+    name: ERROR_LEVEL_LABELS[item.level] ?? item.level,
     occurrences: item.occurrences,
     groups: item.groups,
   }));
@@ -1285,8 +1291,8 @@ export default function FrontendErrorsPage() {
               <Descriptions
                 align="plain"
                 data={[
-                  { key: '类型', value: ERROR_TYPE_CONFIG[eventDetail.errorType]?.label ?? eventDetail.errorType },
-                  { key: '级别', value: LEVEL_CONFIG[eventDetail.level]?.label ?? eventDetail.level },
+                  { key: '类型', value: FRONTEND_ERROR_TYPE_LABELS[eventDetail.errorType] ?? eventDetail.errorType },
+                  { key: '级别', value: ERROR_LEVEL_LABELS[eventDetail.level] ?? eventDetail.level },
                   { key: '用户', value: eventDetail.username || '匿名' },
                   { key: '浏览器/系统', value: `${eventDetail.browser || '未知'} ${eventDetail.browserVersion || ''} / ${eventDetail.os || '未知'}` },
                   { key: '页面', value: eventDetail.pageUrl || EMPTY_PLACEHOLDER },
@@ -1404,7 +1410,7 @@ export default function FrontendErrorsPage() {
                 <Select
                   value={alertForm.condition}
                   style={{ width: '100%' }}
-                  optionList={Object.entries(CONDITION_CONFIG).map(([value, label]) => ({ value, label }))}
+                  optionList={ERROR_ALERT_CONDITION_OPTIONS}
                   onChange={(value) => setAlertForm((prev) => ({ ...prev, condition: value as ErrorAlertCondition }))}
                 />
               </Form.Slot>

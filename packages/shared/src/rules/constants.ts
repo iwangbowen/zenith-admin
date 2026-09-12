@@ -2,6 +2,8 @@
  * 规则中心通用常量（SSOT）：统一求值门面的资产类型与执行留痕来源。
  * validation / 契约实体通过 z.enum() 引用，前端展示复用 labels。
  */
+import { createLabelOptions } from '../core/enum-options';
+import type { RuleDecisionStatus, RuleListType, RuleScorecardBandOp } from './types';
 
 /** 可求值的规则资产类型：决策表 / 决策流 / 评分卡 / 名单 */
 export const RULE_REF_KINDS = ['table', 'flow', 'scorecard', 'list'] as const;
@@ -42,6 +44,15 @@ export const RULE_HIT_POLICIES = ['first', 'unique', 'priority', 'collect', 'any
 /** 规则资产（决策表 / 决策流 / 评分卡）的生命周期状态 */
 export const RULE_DECISION_STATUSES = ['draft', 'published', 'disabled'] as const;
 
+export const RULE_DECISION_STATUS_LABELS: Record<RuleDecisionStatus, string> = {
+  draft: '草稿',
+  published: '已发布',
+  disabled: '已停用',
+};
+
+export const RULE_DECISION_STATUS_OPTIONS: Array<{ value: RuleDecisionStatus; label: string }> =
+  createLabelOptions(RULE_DECISION_STATUSES, RULE_DECISION_STATUS_LABELS);
+
 export const RULE_FIELD_TYPES = ['string', 'number', 'boolean', 'date'] as const;
 
 /** collect 策略聚合方式：list=输出数组（默认）；sum/min/max 数值聚合；count=命中行数；distinct=去重数组 */
@@ -77,11 +88,41 @@ export const RULE_ASSET_VERSION_KINDS = ['flow', 'scorecard'] as const;
 /** 分段匹配方式：range=数值区间[min,max)；eq=等值；in=集合；default=兜底恒中 */
 export const RULE_SCORECARD_BAND_OPS = ['range', 'eq', 'in', 'default'] as const;
 
+export const RULE_SCORECARD_BAND_OP_LABELS: Record<RuleScorecardBandOp, string> = {
+  range: '数值区间',
+  eq: '等值',
+  in: '集合',
+  default: '兜底',
+};
+
+export const RULE_SCORECARD_BAND_OP_OPTIONS: Array<{ value: RuleScorecardBandOp; label: string }> =
+  createLabelOptions(RULE_SCORECARD_BAND_OPS, RULE_SCORECARD_BAND_OP_LABELS);
+
 export const RULE_SCORECARD_VARIABLE_TYPES = ['number', 'string', 'boolean'] as const;
+
+export type RuleScorecardVariableType = (typeof RULE_SCORECARD_VARIABLE_TYPES)[number];
+
+export const RULE_SCORECARD_VARIABLE_TYPE_LABELS: Record<RuleScorecardVariableType, string> = {
+  number: '数值',
+  string: '文本',
+  boolean: '布尔',
+};
+
+export const RULE_SCORECARD_VARIABLE_TYPE_OPTIONS: Array<{ value: RuleScorecardVariableType; label: string }> =
+  createLabelOptions(RULE_SCORECARD_VARIABLE_TYPES, RULE_SCORECARD_VARIABLE_TYPE_LABELS);
 
 // ─── 名单库 ───────────────────────────────────────────────────────────────────
 
 export const RULE_LIST_TYPES = ['black', 'white', 'grey'] as const;
+
+export const RULE_LIST_TYPE_LABELS: Record<RuleListType, string> = {
+  black: '黑名单',
+  white: '白名单',
+  grey: '灰名单',
+};
+
+export const RULE_LIST_TYPE_OPTIONS: Array<{ value: RuleListType; label: string }> =
+  createLabelOptions(RULE_LIST_TYPES, RULE_LIST_TYPE_LABELS);
 
 /** 条目匹配模式：exact=精确；prefix=前缀；regex=正则 */
 export const RULE_LIST_MATCH_MODES = ['exact', 'prefix', 'regex'] as const;

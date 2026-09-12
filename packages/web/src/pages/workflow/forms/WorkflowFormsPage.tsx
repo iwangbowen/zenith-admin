@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate } from 'react-router-dom';
-import type { WorkflowForm, WorkflowFormStatus } from '@zenith/shared/workflow';
+import { WORKFLOW_FORM_STATUS_LABELS, type WorkflowForm, type WorkflowFormStatus } from '@zenith/shared/workflow';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
@@ -32,9 +32,9 @@ interface SearchParams {
 
 const defaultSearchParams: SearchParams = { keyword: '', status: undefined, categoryId: undefined };
 
-const STATUS_MAP: Record<WorkflowFormStatus, { text: string; color: TagColor }> = {
-  enabled: { text: '启用', color: 'green' },
-  disabled: { text: '停用', color: 'grey' },
+const STATUS_COLORS: Record<WorkflowFormStatus, TagColor> = {
+  enabled: 'green',
+  disabled: 'grey',
 };
 
 function toStatus(value: unknown): StatusFilter {
@@ -127,8 +127,7 @@ export default function WorkflowFormsPage() {
       width: 90,
       fixed: 'right',
       render: (value: WorkflowFormStatus) => {
-        const status = STATUS_MAP[value];
-        return <Tag color={status.color}>{status.text}</Tag>;
+        return <Tag color={STATUS_COLORS[value]}>{WORKFLOW_FORM_STATUS_LABELS[value]}</Tag>;
       },
     },
     createOperationColumn<WorkflowForm>({

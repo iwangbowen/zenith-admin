@@ -20,6 +20,7 @@ import {
   useDbAdminRunMaintenance,
   useDbAdminSchemaDrift,
 } from '@/hooks/queries/db-admin';
+import { DB_ADMIN_COLUMN_DIFF_ISSUE_LABELS, DB_ADMIN_TABLE_DRIFT_STATUS_LABELS } from '@zenith/shared/ops';
 import type {
   DbAdminActivityConnection,
   DbAdminColumnDiff,
@@ -369,16 +370,16 @@ function IndexHealthPanel() {
 }
 
 // ─── Drizzle Schema 漂移 ─────────────────────────────────────────────────────────
-const ISSUE_LABEL: Record<ColumnDiff['issue'], { text: string; color: 'red' | 'amber' | 'violet' }> = {
-  missing_in_db: { text: '列缺失', color: 'red' },
-  extra_in_db: { text: '多余列', color: 'amber' },
-  type_mismatch: { text: '类型不符', color: 'violet' },
-  nullable_mismatch: { text: '可空性不符', color: 'amber' },
+const ISSUE_COLORS: Record<ColumnDiff['issue'], 'red' | 'amber' | 'violet'> = {
+  missing_in_db: 'red',
+  extra_in_db: 'amber',
+  type_mismatch: 'violet',
+  nullable_mismatch: 'amber',
 };
-const STATUS_LABEL: Record<TableDrift['status'], { text: string; color: 'red' | 'amber' | 'violet' }> = {
-  missing_in_db: { text: '表在 DB 中缺失', color: 'red' },
-  extra_in_db: { text: '表未在 schema.ts 声明', color: 'amber' },
-  column_diff: { text: '列差异', color: 'violet' },
+const STATUS_COLORS: Record<TableDrift['status'], 'red' | 'amber' | 'violet'> = {
+  missing_in_db: 'red',
+  extra_in_db: 'amber',
+  column_diff: 'violet',
 };
 
 function DriftPanel() {
@@ -410,7 +411,7 @@ function DriftPanel() {
               <div key={`${d.schema}.${d.table}`} style={{ width: '100%', border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', padding: 10 }}>
                 <Space spacing={8} style={{ marginBottom: d.columns.length > 0 ? 8 : 0 }}>
                   <Text strong>{d.schema === 'public' ? d.table : `${d.schema}.${d.table}`}</Text>
-                  <Tag color={STATUS_LABEL[d.status].color} size="small">{STATUS_LABEL[d.status].text}</Tag>
+                  <Tag color={STATUS_COLORS[d.status]} size="small">{DB_ADMIN_TABLE_DRIFT_STATUS_LABELS[d.status]}</Tag>
                 </Space>
                 {d.columns.length > 0 && (
                   <Table
@@ -420,7 +421,7 @@ function DriftPanel() {
                     rowKey={(r) => (r ? `${r.column}-${r.issue}` : '')}
                     columns={[
                       { title: '列', dataIndex: 'column', width: 200, render: (v: string) => <Text style={{ fontFamily: 'monospace' }}>{v}</Text> },
-                      { title: '问题', dataIndex: 'issue', width: 130, render: (v: ColumnDiff['issue']) => <Tag color={ISSUE_LABEL[v].color} size="small">{ISSUE_LABEL[v].text}</Tag> },
+                      { title: '问题', dataIndex: 'issue', width: 130, render: (v: ColumnDiff['issue']) => <Tag color={ISSUE_COLORS[v]} size="small">{DB_ADMIN_COLUMN_DIFF_ISSUE_LABELS[v]}</Tag> },
                       { title: '期望 (schema.ts)', dataIndex: 'expected', render: (v: string | null) => v ? <Text code>{v}</Text> : <Text type="tertiary">-</Text> },
                       { title: '实际 (DB)', dataIndex: 'actual', render: (v: string | null) => v ? <Text code>{v}</Text> : <Text type="tertiary">-</Text> },
                     ]}

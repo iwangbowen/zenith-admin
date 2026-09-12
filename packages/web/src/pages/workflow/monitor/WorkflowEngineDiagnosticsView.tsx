@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Col, Dropdown, Empty, Form, JsonViewer, List, Modal, Popover, Row, Select, Skeleton, Space, Tabs, TabPane, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, CheckCircle2, DatabaseZap, Download, GaugeCircle, GitBranch, Layers, LifeBuoy, Minus, RefreshCw, Stethoscope, Timer, TimerReset, TrendingUp, Wrench, Workflow, Zap } from 'lucide-react';
-import type { WorkflowEngineActionKey, WorkflowEngineActionPreview, WorkflowEngineActionSampleJob, WorkflowEngineComponent, WorkflowEngineComponentStatus, WorkflowEngineDefinitionValidationItem, WorkflowEngineHistogramBucket, WorkflowEngineIntrospection, WorkflowEngineOutboxEvent, WorkflowEngineQueueKey, WorkflowEngineQueueSnapshot, WorkflowEngineRuntimeIssue, WorkflowEngineRuntimeTask, WorkflowEngineTriggerExecution } from '@zenith/shared/workflow';
+import { WORKFLOW_ENGINE_ACTION_KEY_OPTIONS, WORKFLOW_ENGINE_COMPONENT_STATUS_LABELS, WORKFLOW_ENGINE_QUEUE_KEY_LABELS, WORKFLOW_JOB_TYPE_LABELS, WORKFLOW_NODE_TYPE_LABELS, type WorkflowEngineActionKey, type WorkflowEngineActionPreview, type WorkflowEngineActionSampleJob, type WorkflowEngineComponent, type WorkflowEngineComponentStatus, type WorkflowEngineDefinitionValidationItem, type WorkflowEngineHistogramBucket, type WorkflowEngineIntrospection, type WorkflowEngineOutboxEvent, type WorkflowEngineQueueKey, type WorkflowEngineQueueSnapshot, type WorkflowEngineRuntimeIssue, type WorkflowEngineRuntimeTask, type WorkflowEngineTriggerExecution } from '@zenith/shared/workflow';
 import {
   WORKFLOW_ISSUE_SEVERITY_META as ISSUE_META,
   WORKFLOW_JOB_STATUS_META as JOB_STATUS_META,
@@ -29,20 +29,10 @@ interface Props {
   onOpenInstanceDiagnostics?: (instanceId: number) => void;
 }
 
-const STATUS_META: Record<WorkflowEngineComponentStatus, { text: string; color: TagColor }> = {
-  healthy: { text: '正常', color: 'green' },
-  warning: { text: '关注', color: 'orange' },
-  critical: { text: '严重', color: 'red' },
-};
-
-const QUEUE_LABEL: Record<WorkflowEngineQueueKey, string> = {
-  humanTasks: '人工任务',
-  delayWakeups: '延时唤醒',
-  timeouts: '超时处理',
-  triggerDispatch: '触发器调度',
-  externalApprovals: '外部审批',
-  subProcessJoin: '子流程汇聚',
-  eventOutbox: '事件派发',
+const STATUS_COLORS: Record<WorkflowEngineComponentStatus, TagColor> = {
+  healthy: 'green',
+  warning: 'orange',
+  critical: 'red',
 };
 
 const REF_TYPE_LABEL: Record<NonNullable<WorkflowEngineRuntimeIssue['refType']>, string> = {
@@ -52,18 +42,6 @@ const REF_TYPE_LABEL: Record<NonNullable<WorkflowEngineRuntimeIssue['refType']>,
   triggerExecution: '触发器执行',
   outbox: '事件派发',
   scheduler: '调度器',
-};
-
-const NODE_TYPE_LABEL: Record<string, string> = {
-  start: '开始', approve: '审批', handler: '办理', end: '结束',
-  exclusiveGateway: '条件网关', parallelGateway: '并行网关', inclusiveGateway: '包容网关', routeGateway: '路由网关',
-  ccNode: '抄送', delay: '延时', trigger: '触发器', subProcess: '子流程', catchNode: '捕获',
-};
-
-const JOB_TYPE_LABEL: Record<string, string> = {
-  delay_wake: '延时唤醒', task_timeout: '任务超时', trigger_dispatch: '触发器派发', external_dispatch: '外部派发',
-  subprocess_spawn: '子流程发起', subprocess_join: '子流程汇聚', event_dispatch: '事件派发', webhook_delivery: 'Webhook 投递',
-  compensation_action: '补偿动作',
 };
 
 const THRESHOLD_OPTIONS = [
@@ -88,15 +66,6 @@ const HISTORY_RANGE_OPTIONS = [
   { label: '近 7 天', value: 168 },
 ];
 
-const ACTION_ITEMS: Array<{ key: WorkflowEngineActionKey; label: string }> = [
-  { key: 'replay-outbox', label: '重放事件派发' },
-  { key: 'recover-triggers', label: '恢复触发器重派' },
-  { key: 'recover-delays', label: '恢复延时任务' },
-  { key: 'process-timeouts', label: '处理超时任务' },
-  { key: 'recover-webhooks', label: '恢复 Webhook 投递' },
-  { key: 'recover-subprocess', label: '恢复子流程' },
-];
-
 const QUEUE_SEGMENTS = [
   { key: 'ready' as const, label: 'Ready' },
   { key: 'running' as const, label: 'Running' },
@@ -107,8 +76,7 @@ const QUEUE_SEGMENTS = [
 const STATUS_RANK: Record<WorkflowEngineComponentStatus, number> = { healthy: 0, warning: 1, critical: 2 };
 
 function statusTag(status: WorkflowEngineComponentStatus) {
-  const meta = STATUS_META[status];
-  return <Tag color={meta.color}>{meta.text}</Tag>;
+  return <Tag color={STATUS_COLORS[status]}>{WORKFLOW_ENGINE_COMPONENT_STATUS_LABELS[status]}</Tag>;
 }
 
 function issueTag(severity: WorkflowEngineRuntimeIssue['severity']) {
@@ -118,6 +86,14 @@ function issueTag(severity: WorkflowEngineRuntimeIssue['severity']) {
 
 function rawTag(value: string | null | undefined, color: TagColor = 'grey') {
   return value ? <Tag color={color}>{value}</Tag> : <Typography.Text type="tertiary">—</Typography.Text>;
+}
+
+function workflowNodeTypeLabel(value: string) {
+  return WORKFLOW_NODE_TYPE_LABELS[value as keyof typeof WORKFLOW_NODE_TYPE_LABELS] ?? value;
+}
+
+function workflowJobTypeLabel(value: string) {
+  return WORKFLOW_JOB_TYPE_LABELS[value as keyof typeof WORKFLOW_JOB_TYPE_LABELS] ?? value;
 }
 
 function formatAge(value: number | null | undefined) {
@@ -593,7 +569,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
   const nodeTypeRows = useMemo(() => (
     Object.entries(data?.definitions.nodeTypeCounts ?? {}).map(([type, count]) => ({
       type,
-      label: NODE_TYPE_LABEL[type] ?? type,
+      label: workflowNodeTypeLabel(type),
       count,
     }))
   ), [data]);
@@ -669,7 +645,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
   ), [data]);
 
   const taskColumns: ColumnProps<WorkflowEngineRuntimeTask>[] = [
-    { title: '队列', dataIndex: 'queue', width: 120, render: (value) => <Tag color="blue">{QUEUE_LABEL[value as WorkflowEngineQueueKey]}</Tag> },
+    { title: '队列', dataIndex: 'queue', width: 120, render: (value) => <Tag color="blue">{WORKFLOW_ENGINE_QUEUE_KEY_LABELS[value as WorkflowEngineQueueKey]}</Tag> },
     { title: 'Task ID', dataIndex: 'taskId', width: 90 },
     {
       title: '实例',
@@ -686,7 +662,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
         />
       ),
     },
-    { title: '节点', dataIndex: 'nodeName', width: 180, render: (_value, record) => `${record.nodeName || record.nodeKey}${record.nodeType ? ` / ${NODE_TYPE_LABEL[record.nodeType] ?? record.nodeType}` : ''}` },
+    { title: '节点', dataIndex: 'nodeName', width: 180, render: (_value, record) => `${record.nodeName || record.nodeKey}${record.nodeType ? ` / ${workflowNodeTypeLabel(record.nodeType)}` : ''}` },
     { title: '状态', dataIndex: 'status', width: 100, render: (value) => rawTag(value as string, 'grey') },
     { title: '处理人', dataIndex: 'assigneeName', width: 110, render: (value) => value || EMPTY_PLACEHOLDER },
     { title: '触发器', dataIndex: 'triggerDispatchStatus', width: 110, render: (value) => rawTag(value as string | null, value === 'failed' ? 'red' : value === 'retrying' ? 'orange' : 'grey') },
@@ -776,7 +752,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
 
   const actionSampleColumns: ColumnProps<WorkflowEngineActionSampleJob>[] = [
     { title: 'ID', dataIndex: 'id', width: 84 },
-    { title: '类型', dataIndex: 'jobType', width: 116, render: (v: string) => JOB_TYPE_LABEL[v] ?? v },
+    { title: '类型', dataIndex: 'jobType', width: 116, render: (v: string) => workflowJobTypeLabel(v) },
     {
       title: '状态', dataIndex: 'status', width: 84,
       render: (v: string) => { const m = JOB_STATUS_META[v]; return m ? <Tag color={m.color}>{m.text}</Tag> : <Tag>{v}</Tag>; },
@@ -832,8 +808,8 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
             onVisibleChange={setActionMenuVisible}
             render={(
               <Dropdown.Menu>
-                {ACTION_ITEMS.map((item) => (
-                  <Dropdown.Item key={item.key} disabled={actionLoading != null} onClick={() => openActionModal(item.key, item.label)}>
+                {WORKFLOW_ENGINE_ACTION_KEY_OPTIONS.map((item) => (
+                  <Dropdown.Item key={item.value} disabled={actionLoading != null} onClick={() => openActionModal(item.value, item.label)}>
                     {item.label}
                   </Dropdown.Item>
                 ))}
@@ -866,7 +842,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
         >
           <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 12 }}>
             {actionPreview && actionPreview.jobTypes.length > 0 && (
-              <> 作业类型：{actionPreview.jobTypes.map((jt) => JOB_TYPE_LABEL[jt] ?? jt).join(' / ')}。</>
+              <> 作业类型：{actionPreview.jobTypes.map((jt) => workflowJobTypeLabel(jt)).join(' / ')}。</>
             )}
           </Typography.Text>
           <Form

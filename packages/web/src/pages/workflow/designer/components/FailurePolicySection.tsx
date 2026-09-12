@@ -1,15 +1,7 @@
 import { useState } from 'react';
 import { Select, Input, InputNumber, Switch, Typography, RadioGroup, Radio, TextArea } from '@douyinfe/semi-ui';
-import type { WorkflowNodeFailurePolicy, WorkflowCompensationAction, WorkflowCompensationActionType, WorkflowNodeFailureAction } from '@zenith/shared/workflow';
+import { WORKFLOW_COMPENSATION_ACTION_TYPE_OPTIONS, type WorkflowNodeFailurePolicy, type WorkflowCompensationAction, type WorkflowCompensationActionType, type WorkflowNodeFailureAction } from '@zenith/shared/workflow';
 import { WORKFLOW_NODE_FAILURE_ACTION_OPTIONS as ACTION_OPTIONS } from '../constants';
-const COMP_TYPE_OPTIONS: Array<{ value: WorkflowCompensationActionType; label: string }> = [
-  { value: 'none', label: '无' },
-  { value: 'http', label: 'HTTP 直连' },
-  { value: 'connector', label: '流程连接器' },
-  { value: 'sms', label: '短信' },
-  { value: 'email', label: '邮件' },
-  { value: 'updateData', label: '回填/回滚表单字段' },
-];
 const METHOD_OPTIONS = ['GET', 'POST', 'PUT', 'DELETE'].map((v) => ({ value: v, label: v }));
 
 const rowStyle: React.CSSProperties = { display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 10 };
@@ -40,7 +32,7 @@ function CompensationActionEditor({ value, onChange, connectorOptions }: CompPro
   return (
     <div style={{ border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', padding: 12, marginBottom: 10 }}>
       <Row label="动作类型">
-        <Select value={v.type} optionList={COMP_TYPE_OPTIONS} onChange={(t) => set({ type: t as WorkflowCompensationActionType })} style={{ width: '100%' }} />
+        <Select value={v.type} optionList={WORKFLOW_COMPENSATION_ACTION_TYPE_OPTIONS} onChange={(t) => set({ type: t as WorkflowCompensationActionType })} style={{ width: '100%' }} />
       </Row>
       {(v.type === 'http' || v.type === 'connector') && (
         <>

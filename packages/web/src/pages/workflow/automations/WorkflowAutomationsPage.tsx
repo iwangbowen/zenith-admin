@@ -12,7 +12,7 @@ import { Button, Col, Empty, Form, Input, Row, Select, SideSheet, Space, Spin, T
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag/interface';
 import { Plus, Trash2 } from 'lucide-react';
-import type { WorkflowAutomation, WorkflowAutomationAction, WorkflowAutomationRun, WorkflowAutomationTrigger, WorkflowDefinition } from '@zenith/shared/workflow';
+import { WORKFLOW_AUTOMATION_TRIGGER_LABELS, WORKFLOW_AUTOMATION_TRIGGER_OPTIONS, type WorkflowAutomation, type WorkflowAutomationAction, type WorkflowAutomationRun, type WorkflowAutomationTrigger, type WorkflowDefinition } from '@zenith/shared/workflow';
 import { isPlainObject } from '@zenith/shared/core';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -37,13 +37,12 @@ import { abortSubmit } from '@/lib/abort-submit';
 import { FilterSelect, StatusSelect } from '@/components/search-filters';
 import ModalFooter from '@/components/ModalFooter';
 
-const TRIGGER_OPTIONS: Array<{ value: WorkflowAutomationTrigger; label: string; color: TagColor }> = [
-  { value: 'created',   label: '流程发起时', color: 'blue' },
-  { value: 'approved',  label: '流程通过', color: 'green' },
-  { value: 'rejected',  label: '流程驳回', color: 'red' },
-  { value: 'withdrawn', label: '流程撤回', color: 'orange' },
-];
-const TRIGGER_LABEL_MAP = Object.fromEntries(TRIGGER_OPTIONS.map((o) => [o.value, o])) as Record<string, typeof TRIGGER_OPTIONS[number]>;
+const TRIGGER_COLORS: Record<WorkflowAutomationTrigger, TagColor> = {
+  created: 'blue',
+  approved: 'green',
+  rejected: 'red',
+  withdrawn: 'orange',
+};
 
 type ActionType = WorkflowAutomationAction['type'];
 
@@ -132,8 +131,8 @@ function AutomationRunsSheet({ rule, onClose }: { rule: WorkflowAutomation | nul
     {
       title: '触发时机', dataIndex: 'trigger', width: 100,
       render: (v: WorkflowAutomationTrigger) => {
-        const t = TRIGGER_LABEL_MAP[v];
-        return t ? <Tag color={t.color} size="small">{t.label}</Tag> : v;
+        const color = TRIGGER_COLORS[v];
+        return color ? <Tag color={color} size="small">{WORKFLOW_AUTOMATION_TRIGGER_LABELS[v]}</Tag> : v;
       },
     },
     {
@@ -410,8 +409,8 @@ export default function WorkflowAutomationsPage() {
     {
       title: '触发时机', dataIndex: 'trigger', width: 110,
       render: (v: WorkflowAutomationTrigger) => {
-        const t = TRIGGER_LABEL_MAP[v];
-        return t ? <Tag color={t.color}>{t.label}</Tag> : <Tag>{v}</Tag>;
+        const color = TRIGGER_COLORS[v];
+        return color ? <Tag color={color}>{WORKFLOW_AUTOMATION_TRIGGER_LABELS[v]}</Tag> : <Tag>{v}</Tag>;
       },
     },
     {
@@ -463,7 +462,7 @@ export default function WorkflowAutomationsPage() {
             />
             <FilterSelect
               placeholder="全部触发时机"
-              items={TRIGGER_OPTIONS}
+              items={WORKFLOW_AUTOMATION_TRIGGER_OPTIONS}
               {...bind('trigger')}
               width={140}
             />
@@ -515,7 +514,7 @@ export default function WorkflowAutomationsPage() {
           </Row>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Select field="trigger" label="触发时机" style={{ width: '100%' }} rules={[{ required: true }]} optionList={TRIGGER_OPTIONS} />
+              <Form.Select field="trigger" label="触发时机" style={{ width: '100%' }} rules={[{ required: true }]} optionList={WORKFLOW_AUTOMATION_TRIGGER_OPTIONS} />
             </Col>
             <Col span={12}>
               <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusOptions} />

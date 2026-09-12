@@ -5,18 +5,12 @@
 import { useState } from 'react';
 import { Typography, Button, Select, Checkbox, Input, TextArea, Space, Popconfirm, Toast } from '@douyinfe/semi-ui';
 import { Plus, Trash2 } from 'lucide-react';
-import type { NodeListenerConfig, NodeListenerEvent } from '@zenith/shared/workflow';
+import { NODE_LISTENER_EVENT_OPTIONS, type NodeListenerConfig, type NodeListenerEvent } from '@zenith/shared/workflow';
 
 interface NodeListenersTabProps {
   value: NodeListenerConfig[] | undefined;
   onChange: (next: NodeListenerConfig[]) => void;
 }
-
-const EVENT_OPTIONS: Array<{ label: string; value: NodeListenerEvent }> = [
-  { label: '任务创建（onCreate）', value: 'onCreate' },
-  { label: '任务通过（onApprove）', value: 'onApprove' },
-  { label: '任务驳回（onReject）', value: 'onReject' },
-];
 
 const METHOD_OPTIONS = [
   { label: 'POST', value: 'POST' },
@@ -120,7 +114,7 @@ export default function NodeListenersTab({ value, onChange }: Readonly<NodeListe
                 onChange={(v) => update(idx, { events: v as NodeListenerEvent[] })}
                 style={{ display: 'flex', flexDirection: 'column', gap: 4 }}
               >
-                {EVENT_OPTIONS.map((opt) => (
+                {NODE_LISTENER_EVENT_OPTIONS.map((opt) => (
                   <Checkbox key={opt.value} value={opt.value}>{opt.label}</Checkbox>
                 ))}
               </Checkbox.Group>
