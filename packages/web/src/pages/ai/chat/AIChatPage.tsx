@@ -8,6 +8,7 @@ import { Bot } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useDebouncedValue } from '@tanstack/react-pacer';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
+import { compactParams } from '@/lib/query';
 import { useAuth } from '@/hooks/useAuth';
 import UserAiConfigModal from '../components/UserAiConfigModal';
 import AiSettingsModal from '../components/AiSettingsModal';
@@ -72,10 +73,11 @@ export default function AIChatPage() {
   const promptTemplates = promptTemplatesQuery.data ?? [];
   const kbQuery = useAvailableKnowledgeBases();
   const knowledgeBases = kbQuery.data ?? [];
-  const conversationsQuery = useInfiniteAiConversationList({
-    keyword: debouncedSearchKeyword.trim() || undefined,
-    archived: showArchived || undefined,
-  });
+  // 边输边筛（防抖）+ 归档开关：勾选才筛选
+  const conversationsQuery = useInfiniteAiConversationList(compactParams({
+    keyword: debouncedSearchKeyword.trim(),
+    archived: showArchived ? true : undefined,
+  }));
   const messagesQuery = useAiConversationMessages(activeConvId);
   const createConversationMutation = useCreateAiConversation();
 

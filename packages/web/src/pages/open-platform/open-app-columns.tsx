@@ -45,7 +45,7 @@ export function openAppScopesColumn<T extends Pick<OpenAppRow, 'allowedScopes'>>
         maxTagCount={2}
         showPopover
         size="small"
-        tagList={(values ?? []).map((value) => ({ tagKey: value, children: value, size: 'small' as const, ...(color ? { color } : {}) }))}
+        tagList={(values ?? []).map((value) => ({ tagKey: value, children: value, size: 'small' as const, color }))}
       />
     ),
   };

@@ -414,10 +414,46 @@ const handleBatchDelete = () => confirmAndDelete({
 
 `useDeleteXxxs` 内部按 ids 长度自动选择 `remove` / `removeBatch`（契约未声明 `removeBatch` 时并发逐条删除）。
 
+**批量启用 / 停用**同样不手写确认→提交→清选中→Toast 流程：
+
+```tsx
+import { batchStatusHandler } from '@/components/list-page';
+import { BatchStatusButtons } from '@/components/toolbar-controls';
+
+// 默认只有停用弹确认；启用 / 停用都要确认传 confirm: 'always'，禁用账号之类的破坏性停用加 danger: true（红色实心确认）
+const handleBatchStatus = batchStatusHandler({
+  selectedRowKeys, clearSelection,
+  run: (ids, status) => batchStatusMutation.mutateAsync({ body: { ids, status } }),   // 载荷形状在此适配（{ ids, enabled } / 两个 mutation 亦可）
+  entity: '个示例',                                                                   // 「确认批量停用选中的 N 个示例？」
+  confirmContent: (status, count) => (status === 'disabled' ? `停用后 ${count} 个示例将不可用` : undefined),
+});
+
+// 工具栏 actions 槽：仍由调用方按「有选中 && 有权限」判断是否渲染；文案为「禁用」时传 disableLabel="批量禁用"
+{hasSelection && canUpdate && <BatchStatusButtons count={selectedRowKeys.length} onChange={handleBatchStatus} />}
+```
+
+## 即时过滤页（无「查询」按钮）
+
+进程 / 服务 / 容器 / 端口这类一次取全量、在客户端边输边筛的页面不用 `useListSearch`，工具栏用 `components/list-page` 的
+`InstantFilterToolbar`：控件仍由页面创建并直接受控，刷新与重置由组件按桌面 / 移动排布：
+
+```tsx
+<InstantFilterToolbar
+  primary={<KeywordInput placeholder="搜索服务名 / 描述" value={keyword} onChange={setKeyword} />}
+  filters={<StatusSelect items={SERVICE_STATE_OPTIONS} value={state} onChange={setState} />}
+  onRefresh={() => void listQuery.refetch()}
+  refreshing={listQuery.isFetching}
+  onReset={() => setState(undefined)}
+  actions={canManage && <CreateButton onClick={openCreate} />}
+  extra={<Typography.Text type="tertiary" size="small">共 {filtered.length} 项</Typography.Text>}   // 仅桌面展示
+/>
+```
+
 ## 状态与时间的展示
 
 - 状态选项用 `useDictItems('common_status')`：筛选栏用 `items`，表单 `Form.Select` 用 `options`；表格中用
-  `<DictTag dictCode="common_status" value={status} />` 或手动 `find` 映射
+  `<DictTag dictCode="common_status" value={status} />` 或手动 `find` 映射；当前用户不可切换的只读启停列直接放
+  `enabledStatusColumn()`（`utils/table-columns`，与 `useStatusToggle().column()` 同位同宽）
 - 时间列用 `utils/table-columns` 的列工厂（`dateTimeColumn` / `dateColumn`，`createdAt` / `updatedAt` 直接用预置的
   `createdAtColumn` / `updatedAtColumn`），长文本列用 `renderEllipsis`
 - 非列渲染场景可直接 `formatDateTime()`（`utils/date`）

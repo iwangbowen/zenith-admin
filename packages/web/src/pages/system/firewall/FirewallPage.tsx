@@ -4,8 +4,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RefreshCw, Shield, ShieldOff } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { deleteAction } from '@/components/list-page';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { deleteAction, InstantFilterToolbar } from '@/components/list-page';
 import AppModal from '@/components/AppModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -24,7 +23,7 @@ import {
   FIREWALL_RULE_TYPE_LABELS,
   FIREWALL_TYPE_LABELS,
 } from '@zenith/shared/ops';
-import { CreateButton, ResetButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { HostSelector } from '@/components/HostSelector';
 import { useOpsHostSelection } from '@/hooks/useOpsHostSelection';
@@ -205,27 +204,12 @@ export default function FirewallPage() {
         </StatGrid>
       </div>
 
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="搜索端口/来源/目标/备注" value={keyword} onChange={setKeyword} width={240} />
-            <ResetButton onClick={() => { setKeyword(''); void fetchAll(); }} />
-            <Button icon={<RefreshCw size={14} />} loading={rulesQuery.isFetching} onClick={() => void fetchAll()}>刷新</Button>
-            {canManageCurrent && <CreateButton onClick={ruleModal.openCreate}>新增规则</CreateButton>}
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索端口/来源/目标/备注" value={keyword} onChange={setKeyword} width={240} />
-            {canManageCurrent && <CreateButton onClick={ruleModal.openCreate}>新增规则</CreateButton>}
-          </>
-        )}
-        mobileActions={(
-          <>
-            <ResetButton onClick={() => { setKeyword(''); void fetchAll(); }} />
-            <Button icon={<RefreshCw size={14} />} loading={rulesQuery.isFetching} onClick={() => void fetchAll()}>刷新</Button>
-          </>
-        )}
+      <InstantFilterToolbar
+        primary={<KeywordInput placeholder="搜索端口/来源/目标/备注" value={keyword} onChange={setKeyword} width={240} />}
+        onRefresh={() => void fetchAll()}
+        refreshing={rulesQuery.isFetching}
+        onReset={() => { setKeyword(''); void fetchAll(); }}
+        actions={canManageCurrent && <CreateButton onClick={ruleModal.openCreate}>新增规则</CreateButton>}
         actionTitle="防火墙操作"
       />
 

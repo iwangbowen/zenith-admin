@@ -102,7 +102,8 @@ export default function DepartmentsPage() {
   const toggleStatusMutation = useSaveDepartment();
   const deleteMutation = useDeleteDepartment();
   const [leaderKeyword, setLeaderKeyword] = useState('');
-  const leaderOptionsQuery = useUserList({ pageSize: 50, keyword: leaderKeyword || undefined }, modal.visible);
+  // 负责人下拉的远程搜索：边输边查，空关键字取前 50 条
+  const leaderOptionsQuery = useUserList({ pageSize: 50, ...compactParams({ keyword: leaderKeyword }) }, modal.visible);
   const leaderOptions = (leaderOptionsQuery.data?.list ?? []).map((u) => ({
     value: u.id,
     label: u.departmentName ? `${u.nickname}-${u.departmentName}` : u.nickname,

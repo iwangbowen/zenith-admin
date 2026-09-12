@@ -38,12 +38,11 @@ import {
 import { usePermission } from '@/hooks/usePermission';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useEditModal } from '@/hooks/useEditModal';
-import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { deleteAction, listTableProps, useStatusToggle } from '@/components/list-page';
+import { deleteAction, InstantFilterToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { CreateButton, RefreshButton } from '@/components/toolbar-controls';
+import { CreateButton } from '@/components/toolbar-controls';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { LineChart, chartOptions, makeLineSpec, useChartPalette } from '@/components/charts';
 import { confirmDanger } from '@/utils/confirm';
@@ -440,21 +439,14 @@ export default function RateLimitPage() {
     <div className="page-container page-tabs-page">
       <Tabs type="line" collapsible="auto" activeKey={activeTab} onChange={(key) => setActiveTab(key as 'rules' | 'blocks')}>
         <TabPane tab="规则管理" itemKey="rules">
-          <SearchToolbar
-            primary={(
-              <>
-                <Text type="tertiary" style={{ fontSize: 13 }}>
-                  规则保存后立即热更新到运行中的服务；统计每 30 秒自动刷新。
-                </Text>
-                {canManage && <CreateButton onClick={editModal.openCreate}>新增规则</CreateButton>}
-                <RefreshButton onClick={refreshAll} loading={refreshing} />
-              </>
-            )}
-            mobilePrimary={(
-              <>
-                {canManage && <CreateButton onClick={editModal.openCreate}>新增规则</CreateButton>}
-                <RefreshButton onClick={refreshAll} loading={refreshing} />
-              </>
+          <InstantFilterToolbar
+            actions={canManage && <CreateButton onClick={editModal.openCreate}>新增规则</CreateButton>}
+            onRefresh={refreshAll}
+            refreshing={refreshing}
+            extra={(
+              <Text type="tertiary" style={{ fontSize: 13 }}>
+                规则保存后立即热更新到运行中的服务；统计每 30 秒自动刷新。
+              </Text>
             )}
           />
 
@@ -479,8 +471,9 @@ export default function RateLimitPage() {
         </TabPane>
 
         <TabPane tab="拦截记录" itemKey="blocks">
-          <SearchToolbar
-            primary={(
+          <InstantFilterToolbar
+            primary={<KeywordInput value={blockKeyword} onChange={setBlockKeyword} placeholder="搜索 Key / 路径" />}
+            filters={(
               <>
                 <FilterSelect
                   placeholder="全部规则"
@@ -499,16 +492,11 @@ export default function RateLimitPage() {
                   onChange={setBlockTypeFilter}
                   aria-label="按类型筛选"
                 />
-                <KeywordInput value={blockKeyword} onChange={setBlockKeyword} placeholder="搜索 Key / 路径" />
-                <RefreshButton onClick={() => void statsQuery.refetch()} loading={statsQuery.isFetching} />
               </>
             )}
-            mobilePrimary={(
-              <>
-                <KeywordInput value={blockKeyword} onChange={setBlockKeyword} placeholder="搜索 Key / 路径" />
-                <RefreshButton onClick={() => void statsQuery.refetch()} loading={statsQuery.isFetching} />
-              </>
-            )}
+            onRefresh={() => void statsQuery.refetch()}
+            refreshing={statsQuery.isFetching}
+            filterTitle="拦截记录筛选"
           />
           <ConfigurableTable
             bordered
@@ -523,17 +511,13 @@ export default function RateLimitPage() {
         </TabPane>
 
         <TabPane tab="封禁列表" itemKey="bans">
-          <SearchToolbar
-            primary={(
-              <>
-                <Text type="tertiary" style={{ fontSize: 13 }}>
-                  手动封禁的身份在封禁期内一律拦截（无视限额与观察模式），到期自动解除。
-                </Text>
-                <RefreshButton onClick={() => void bansQuery.refetch()} loading={bansQuery.isFetching} />
-              </>
-            )}
-            mobilePrimary={(
-              <RefreshButton onClick={() => void bansQuery.refetch()} loading={bansQuery.isFetching} />
+          <InstantFilterToolbar
+            onRefresh={() => void bansQuery.refetch()}
+            refreshing={bansQuery.isFetching}
+            extra={(
+              <Text type="tertiary" style={{ fontSize: 13 }}>
+                手动封禁的身份在封禁期内一律拦截（无视限额与观察模式），到期自动解除。
+              </Text>
             )}
           />
           <ConfigurableTable

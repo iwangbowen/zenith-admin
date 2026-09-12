@@ -20,12 +20,11 @@ import {
   Switch,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { FileText, RefreshCw, ChevronDown, ChevronUp, Activity, Info, Download, Trash2 } from 'lucide-react';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { FileText, ChevronDown, ChevronUp, Activity, Info, Download, Trash2 } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { MetricMeter } from '@/components/data-viz/MetricMeter';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { confirmAndDelete, deleteAction } from '@/components/list-page';
+import { confirmAndDelete, deleteAction, InstantFilterToolbar } from '@/components/list-page';
 import AppModal from '@/components/AppModal';
 import {
   useDockerAvailable,
@@ -328,13 +327,10 @@ function ContainersTab() {
 
   return (
     <>
-      <SearchToolbar
-        primary={(
-          <>
-            <KeywordInput placeholder="搜索容器名 / 镜像 / Compose 项目" value={keyword} onChange={setKeyword} width={280} />
-            <Button type="primary" icon={<RefreshCw size={14} />} onClick={() => void containersQuery.refetch()}>刷新</Button>
-          </>
-        )}
+      <InstantFilterToolbar
+        primary={<KeywordInput placeholder="搜索容器名 / 镜像 / Compose 项目" value={keyword} onChange={setKeyword} width={280} />}
+        onRefresh={() => void containersQuery.refetch()}
+        refreshing={containersQuery.isFetching}
         actions={(
           <>
             {allGroupIds.length > 0 && (
@@ -351,12 +347,6 @@ function ContainersTab() {
             )}>
               <Button icon={<Trash2 size={14} />}>清理</Button>
             </Dropdown>
-          </>
-        )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索容器名 / 镜像 / Compose 项目" value={keyword} onChange={setKeyword} width={280} />
-            <Button type="primary" icon={<RefreshCw size={14} />} onClick={() => void containersQuery.refetch()}>刷新</Button>
           </>
         )}
         mobileActions={(
@@ -608,14 +598,15 @@ function ImagesTab() {
 
   return (
     <>
-      <SearchToolbar
+      <InstantFilterToolbar
         primary={(
           <>
             <KeywordInput placeholder="搜索镜像名 / 标签 / ID" value={keyword} onChange={setKeyword} width={260} />
-            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void imagesQuery.refetch()}>刷新</Button>
             <Button type="primary" icon={<Download size={14} />} onClick={() => setPullVisible(true)}>拉取镜像</Button>
           </>
         )}
+        onRefresh={() => void imagesQuery.refetch()}
+        refreshing={imagesQuery.isFetching}
         actions={(
           <>
             {allGroupIds.length > 0 && (
@@ -636,15 +627,8 @@ function ImagesTab() {
             </Dropdown>
           </>
         )}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索镜像名 / 标签 / ID" value={keyword} onChange={setKeyword} width={260} />
-            <Button type="primary" icon={<Download size={14} />} onClick={() => setPullVisible(true)}>拉取镜像</Button>
-          </>
-        )}
         mobileActions={(
           <>
-            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void imagesQuery.refetch()}>刷新</Button>
             {allGroupIds.length > 0 && (
               <Button type="tertiary"
                 icon={allExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -752,27 +736,16 @@ function NetworksTab() {
 
   return (
     <>
-      <SearchToolbar
+      <InstantFilterToolbar
         primary={(
           <>
             <KeywordInput placeholder="搜索网络名 / 驱动" value={keyword} onChange={setKeyword} width={260} />
-            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void networksQuery.refetch()}>刷新</Button>
             <CreateButton onClick={() => setCreateVisible(true)}>创建网络</CreateButton>
           </>
         )}
+        onRefresh={() => void networksQuery.refetch()}
+        refreshing={networksQuery.isFetching}
         actions={<Button icon={<Trash2 size={14} />} onClick={() => runPrune({ scope: 'networks' }, '清理未用网络', '将删除所有未被容器使用的网络，确定继续？', pruneMutation.mutateAsync)}>清理</Button>}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索网络名 / 驱动" value={keyword} onChange={setKeyword} width={260} />
-            <CreateButton onClick={() => setCreateVisible(true)}>创建网络</CreateButton>
-          </>
-        )}
-        mobileActions={(
-          <>
-            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void networksQuery.refetch()}>刷新</Button>
-            <Button icon={<Trash2 size={14} />} onClick={() => runPrune({ scope: 'networks' }, '清理未用网络', '将删除所有未被容器使用的网络，确定继续？', pruneMutation.mutateAsync)}>清理</Button>
-          </>
-        )}
         actionTitle="网络操作"
       />
       <ConfigurableTable bordered rowKey="id" dataSource={filtered} columns={columns} loading={networksQuery.isFetching}
@@ -857,27 +830,16 @@ function VolumesTab() {
 
   return (
     <>
-      <SearchToolbar
+      <InstantFilterToolbar
         primary={(
           <>
             <KeywordInput placeholder="搜索卷名 / 驱动" value={keyword} onChange={setKeyword} width={260} />
-            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void volumesQuery.refetch()}>刷新</Button>
             <CreateButton onClick={() => setCreateVisible(true)}>创建存储卷</CreateButton>
           </>
         )}
+        onRefresh={() => void volumesQuery.refetch()}
+        refreshing={volumesQuery.isFetching}
         actions={<Button type="danger" icon={<Trash2 size={14} />} onClick={() => runPrune({ scope: 'volumes' }, '清理未用存储卷', '将删除所有未被容器使用的存储卷（数据不可恢复），确定继续？', pruneMutation.mutateAsync)}>清理</Button>}
-        mobilePrimary={(
-          <>
-            <KeywordInput placeholder="搜索卷名 / 驱动" value={keyword} onChange={setKeyword} width={260} />
-            <CreateButton onClick={() => setCreateVisible(true)}>创建存储卷</CreateButton>
-          </>
-        )}
-        mobileActions={(
-          <>
-            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void volumesQuery.refetch()}>刷新</Button>
-            <Button type="danger" icon={<Trash2 size={14} />} onClick={() => runPrune({ scope: 'volumes' }, '清理未用存储卷', '将删除所有未被容器使用的存储卷（数据不可恢复），确定继续？', pruneMutation.mutateAsync)}>清理</Button>
-          </>
-        )}
         actionTitle="存储卷操作"
       />
       <ConfigurableTable bordered rowKey="name" dataSource={filtered} columns={columns} loading={volumesQuery.isFetching}

@@ -34,6 +34,16 @@ const listSearchRestrictions = [
     message: '已提交筛选 → 契约查询参数只映射一次：const filterQuery = useMemo(() => compactParams({ keyword: submittedParams.keyword, … }), [submittedParams])，再 useXxxList({ page, pageSize, ...filterQuery })；不要逐字段写 `x || undefined`。布尔开关按「勾选才筛选」语义写 `flag ? true : undefined`。',
   },
   {
+    // 按上下文兜底：不论草稿对象叫什么（catalogSearch / f / draft…），列表 hook 实参与导出 query 里的 `x || undefined` 都应由 compactParams 归一
+    selector: ':matches(CallExpression[callee.name=/^use[A-Z]\\w*(List|Lists|Logs|Records|Catalog|Templates|Deliveries)$/] > ObjectExpression, JSXAttribute[name.name="query"] > JSXExpressionContainer) LogicalExpression[operator="||"][right.type="Identifier"][right.name="undefined"]',
+    message: '列表查询 / 导出条件里的 `x || undefined` 请统一由 compactParams({ … }) 一次映射（丢弃 undefined / null / 空串、保留 0 / false），列表与 ExportButton 共用同一份 filterQuery。',
+  },
+  {
+    // 手写「刷新回到第 1 页」的另一形态：resetPage() 同样应改为 resetKey
+    selector: 'CallExpression[callee.name="useEffect"] > ArrowFunctionExpression:matches([body.type="CallExpression"][body.callee.name="resetPage"], [body.type="BlockStatement"][body.body.length=1][body.body.0.expression.callee.name="resetPage"])',
+    message: '外部作用域切换回第 1 页请用 useListSearch / usePagination 的 resetKey（多个来源传数组），不要在 useEffect 里调用 resetPage()。',
+  },
+  {
     selector: 'CallExpression[callee.name="useEffect"] > ArrowFunctionExpression:matches([body.type="CallExpression"][body.callee.name="setPage"][body.arguments.0.value=1], [body.type="CallExpression"][body.callee.property.name="setPage"][body.arguments.0.value=1], [body.type="BlockStatement"][body.body.length=1][body.body.0.expression.callee.name="setPage"][body.body.0.expression.arguments.0.value=1], [body.type="BlockStatement"][body.body.length=1][body.body.0.expression.callee.property.name="setPage"][body.body.0.expression.arguments.0.value=1])',
     message: '外部作用域（当前公众号 / 站点 / 空间 / 目录）切换回第 1 页请用 useListSearch / usePagination 的 resetKey（多个来源传数组）；useEffect(() => setPage(1), [scopeId]) 会先用旧页码请求一次新作用域的数据。',
   },

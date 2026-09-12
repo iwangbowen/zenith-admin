@@ -1,5 +1,5 @@
 /** 页面停留：访问深度与停留分布（treemap 热区 TOP N + 分页明细表） */
-import { useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import { Card, Select, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { BarChart3, Clock, Eye } from 'lucide-react';
@@ -70,16 +70,14 @@ function buildDwellTreemap(rows: readonly PageStatsRow[]): TreemapNode {
 export default function AnalyticsDwellTab() {
   const palette = useChartPalette();
   const [days, setDays] = useBehaviorDays();
-  const { page, pageSize, resetPage, buildPagination } = usePagination();
+  // 天数切换回到第 1 页（resetKey），不会先用旧页码请求一次
+  const { page, pageSize, buildPagination } = usePagination({ resetKey: days });
   // 图表固定订阅第 1 页：它是 TOP N 概览，不能跟着表格翻页；
   // 表格停在第 1 页且页长相同时，TanStack 会把两个查询去重成一个请求
   const chartQuery = useAnalyticsPageStats(days, 1, CHART_TOP_N);
   const pageStatsQuery = useAnalyticsPageStats(days, page, pageSize);
   const data = pageStatsQuery.data ?? null;
   const loading = pageStatsQuery.isFetching;
-
-  useEffect(() => { resetPage(); }, [days, resetPage]);
-
   const rows = useMemo<PageStatsRow[]>(() => (data?.list ?? []).map((item) => ({ ...item, id: item.pagePath })), [data]);
   const chartRows = useMemo<PageStatsRow[]>(
     () => (chartQuery.data?.list ?? []).map((item) => ({ ...item, id: item.pagePath })),

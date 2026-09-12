@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button, Tag, Toast, SideSheet, Typography, Empty } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { FileText, RefreshCw, Play, Square } from 'lucide-react';
+import { FileText, Play, Square } from 'lucide-react';
 import { streamText } from '@/utils/streaming';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { InstantFilterToolbar } from '@/components/list-page';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
@@ -205,37 +205,14 @@ export default function ServicesPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
+      <InstantFilterToolbar
         primary={(
           <>
             <HostSelector value={hostId} onChange={handleHostChange} />
             <KeywordInput placeholder="搜索服务名 / 描述" value={keyword} onChange={setKeyword} width={240} />
-            <StatusSelect
-              items={[
-                { label: '运行中', value: 'active' },
-                { label: '已停止', value: 'inactive' },
-                { label: '失败', value: 'failed' },
-                { label: '激活中', value: 'activating' },
-              ]}
-              value={stateFilter}
-              onChange={setStateFilter}
-            />
-            {failedCount > 0 && (
-              <Button size="default" type={stateFilter === 'failed' ? 'primary' : 'tertiary'} theme={stateFilter === 'failed' ? 'solid' : 'light'} onClick={() => setStateFilter(stateFilter === 'failed' ? '' : 'failed')}>
-                失败服务 {failedCount}
-              </Button>
-            )}
-            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void listQuery.refetch()}>刷新</Button>
           </>
         )}
-        mobilePrimary={(
-          <>
-            <HostSelector value={hostId} onChange={handleHostChange} />
-            <KeywordInput placeholder="搜索服务名 / 描述" value={keyword} onChange={setKeyword} width={240} />
-            <Button type="tertiary" icon={<RefreshCw size={14} />} onClick={() => void listQuery.refetch()}>刷新</Button>
-          </>
-        )}
-        mobileFilters={(
+        filters={(
           <>
             <StatusSelect
               items={[
@@ -254,8 +231,10 @@ export default function ServicesPage() {
             )}
           </>
         )}
+        onRefresh={() => void listQuery.refetch()}
+        refreshing={listQuery.isFetching}
+        onReset={() => setStateFilter('')}
         filterTitle="服务筛选"
-        onFilterReset={() => setStateFilter('')}
       />
       <ConfigurableTable
         bordered rowKey="name" dataSource={filtered} columns={columns} loading={listQuery.isFetching}

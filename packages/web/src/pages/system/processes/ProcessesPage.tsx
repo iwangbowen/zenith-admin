@@ -3,11 +3,11 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Button, Descriptions, Form, InputNumber, Space, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import {
-  Activity, RefreshCw,
+  Activity,
 } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { InstantFilterToolbar } from '@/components/list-page';
 import ExportButton from '@/components/ExportButton';
 import AppModal from '@/components/AppModal';
 import { request } from '@/utils/request';
@@ -327,8 +327,8 @@ export default function ProcessesPage() {
   return (
     <div className="page-container">
       <style>{processesTableStyle}</style>
-      {/* 搜索与操作栏 */}
-      <SearchToolbar
+      {/* 搜索与操作栏：进程列表由 SSE / 轮询实时推送，关键字与状态即时过滤 */}
+      <InstantFilterToolbar
         primary={(
           <>
             <HostSelector
@@ -341,28 +341,26 @@ export default function ProcessesPage() {
               onChange={setKeyword}
               width={240}
             />
-            {/* 状态筛选 */}
-            <StatusSelect
-              items={Object.entries(STATUS_META).map(([k, v]) => ({ value: k, label: v.label }))}
-              value={filterStatus}
-              onChange={setFilterStatus}
-            />
-            {/* 手动刷新 */}
-            <Button
-              type="tertiary"
-              icon={<RefreshCw size={14} />}
-              onClick={() => {
-                if (hostId == null) {
-                  sseAbortRef.current?.abort();
-                  connectSse();
-                } else {
-                  void remoteListQuery.refetch();
-                }
-              }}
-              loading={hostId == null ? sseStatus === 'connecting' : remoteListQuery.isFetching}
-            >
-              刷新
-            </Button>
+          </>
+        )}
+        filters={(
+          <StatusSelect
+            items={Object.entries(STATUS_META).map(([k, v]) => ({ value: k, label: v.label }))}
+            value={filterStatus}
+            onChange={setFilterStatus}
+          />
+        )}
+        onRefresh={() => {
+          if (hostId == null) {
+            sseAbortRef.current?.abort();
+            connectSse();
+          } else {
+            void remoteListQuery.refetch();
+          }
+        }}
+        refreshing={hostId == null ? sseStatus === 'connecting' : remoteListQuery.isFetching}
+        extra={(
+          <>
             {/* SSE 状态指示 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8 }}>
               <span style={{
@@ -390,44 +388,7 @@ export default function ProcessesPage() {
           </>
         )}
         actions={hostId == null ? <ExportButton entity="system.processes" query={filterQuery} /> : undefined}
-        mobilePrimary={(
-          <>
-            <HostSelector value={hostId} onChange={handleHostChange} />
-            <KeywordInput
-              placeholder="搜索进程名、用户、PID..."
-              value={keyword}
-              onChange={setKeyword}
-              width={240}
-            />
-          </>
-        )}
-        mobileFilters={(
-          <StatusSelect
-            items={Object.entries(STATUS_META).map(([k, v]) => ({ value: k, label: v.label }))}
-            value={filterStatus}
-            onChange={setFilterStatus}
-          />
-        )}
-        mobileActions={(
-          <>
-            <Button
-              type="tertiary"
-              icon={<RefreshCw size={14} />}
-              onClick={() => {
-                if (hostId == null) {
-                  sseAbortRef.current?.abort();
-                  connectSse();
-                } else {
-                  void remoteListQuery.refetch();
-                }
-              }}
-              loading={hostId == null ? sseStatus === 'connecting' : remoteListQuery.isFetching}
-            >
-              刷新
-            </Button>
-            {hostId == null && <ExportButton entity="system.processes" query={filterQuery} variant="flat" />}
-          </>
-        )}
+        mobileActions={hostId == null ? <ExportButton entity="system.processes" query={filterQuery} variant="flat" /> : undefined}
         filterTitle="进程筛选"
         actionTitle="进程操作"
       />

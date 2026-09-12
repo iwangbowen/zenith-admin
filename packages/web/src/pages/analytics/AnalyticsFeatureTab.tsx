@@ -1,5 +1,5 @@
 /** 功能使用：按页面 → UI 区域 → 元素聚合的功能热点 treemap + 全局排名分页表 */
-import { useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import { Card, Select, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { DataBar } from '@/components/data-viz/DataBar';
@@ -65,14 +65,12 @@ function buildFeatureTreemap(rows: readonly FeatureStatsRow[]): TreemapNode {
 export default function AnalyticsFeatureTab() {
   const palette = useChartPalette();
   const [days, setDays] = useBehaviorDays();
-  const { page, pageSize, resetPage, buildPagination } = usePagination();
+  // 天数切换回到第 1 页（resetKey），不会先用旧页码请求一次
+  const { page, pageSize, buildPagination } = usePagination({ resetKey: days });
   const chartQuery = useAnalyticsFeatureStats(days, 1, CHART_TOP_N);
   const featureStatsQuery = useAnalyticsFeatureStats(days, page, pageSize);
   const data = featureStatsQuery.data ?? null;
   const loading = featureStatsQuery.isFetching;
-
-  useEffect(() => { resetPage(); }, [days, resetPage]);
-
   // 排名是全局序号，不能用当前页下标，否则第 2 页又从 #1 开始
   const rows = useMemo<FeatureStatsRow[]>(() => (data?.list ?? []).map((item, index) => ({
     ...item,

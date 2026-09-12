@@ -2,14 +2,13 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Tag, Select, Space, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { SearchToolbar } from '@/components/SearchToolbar';
+import { InstantFilterToolbar } from '@/components/list-page';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePermission } from '@/hooks/usePermission';
 import type { PortEntry } from '@zenith/shared/ops';
 import { hostQueryOf } from '@/hooks/queries/ops-hosts';
 import { useKillPortProcess, usePortList } from '@/hooks/queries/ports';
-import { ResetButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
 import { HostSelector } from '@/components/HostSelector';
@@ -99,29 +98,14 @@ export default function PortsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar
+      <InstantFilterToolbar
         primary={(
           <>
             <HostSelector value={hostId} onChange={setHostId} />
             <KeywordInput placeholder="搜索端口/进程/服务/地址" value={keyword} onChange={setKeyword} width={240} />
-            <FilterSelect
-              placeholder="全部协议"
-              items={[{ label: 'TCP', value: 'tcp' }, { label: 'UDP', value: 'udp' }]}
-              value={protocol}
-              onChange={setProtocol}
-            />
-            <Select value={refreshInterval} onChange={(v) => setRefreshInterval(v as number)} style={{ width: 180 }} optionList={REFRESH_OPTIONS} />
-            <ResetButton onClick={handleReset} />
-            <Space style={{ color: 'var(--semi-color-text-2)', fontSize: 12 }}>共 {data.length} 个监听端口</Space>
           </>
         )}
-        mobilePrimary={(
-          <>
-            <HostSelector value={hostId} onChange={setHostId} />
-            <KeywordInput placeholder="搜索端口/进程/服务/地址" value={keyword} onChange={setKeyword} width={240} />
-          </>
-        )}
-        mobileFilters={(
+        filters={(
           <>
             <FilterSelect
               placeholder="全部协议"
@@ -132,10 +116,10 @@ export default function PortsPage() {
             <Select value={refreshInterval} onChange={(v) => setRefreshInterval(v as number)} style={{ width: 180 }} optionList={REFRESH_OPTIONS} />
           </>
         )}
-        mobileActions={<ResetButton onClick={handleReset} />}
+        onReset={handleReset}
+        extra={<Space style={{ color: 'var(--semi-color-text-2)', fontSize: 12 }}>共 {data.length} 个监听端口</Space>}
         filterTitle="端口筛选"
         actionTitle="端口操作"
-        onFilterReset={handleReset}
       />
 
       <ConfigurableTable

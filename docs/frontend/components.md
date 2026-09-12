@@ -109,8 +109,11 @@ const operationColumn = createOperationColumn<User>({
 | `ResetButton` | `type="tertiary"` + `RotateCcw` 图标 | 重置 |
 | `RefreshButton` | `type="tertiary"` + `RotateCcw` 图标 | 刷新 |
 | `CreateButton` | `type="primary"` + `Plus` 图标 | 新增 |
+| `BatchDeleteButton` | `type="danger"` + `theme="light"` + `Trash2` 图标，文案带选中数 | 批量删除 (N) |
+| `BatchEnableButton` / `BatchDisableButton` | `theme="light"` + `CircleCheck` / `Ban` 图标，文案带选中数；停用侧 `warning`，传 `danger` 变红 | 批量启用 (N) / 批量停用 (N) |
+| `BatchStatusButtons` | 上面两个按钮的成对形态，`onChange(status)` 通常接 `components/list-page` 的 `batchStatusHandler(...)` | — |
 
-四者 props 一致：`onClick`、`disabled`、`loading`、`children`。文案不同时用 `children` 覆盖。
+前四者 props 一致：`onClick`、`disabled`、`loading`、`children`。文案不同时用 `children` 覆盖；批量按钮的是否渲染仍由调用方按「有选中 && 有权限」判断。
 
 ### search-filters
 
@@ -123,7 +126,8 @@ const operationColumn = createOperationColumn<User>({
 | `StatusSelect` | `items`、`value`、`onChange(value)`、`width` | `FilterSelect` 的状态特化，占位固定 `全部状态` |
 | `DateRangeFilter` | `value`、`onChange(range)`、`type`、`width` | 默认 `dateTimeRange`、宽度 400（`DATE_TIME_RANGE_FILTER_WIDTH`）；`type="dateRange"` 时宽度 280（`DATE_RANGE_FILTER_WIDTH`）。默认宽度是不截断内容的下限，`width` 只用于 `100%` 之类自适应场景 |
 
-`KeywordSearchToolbar` 适用于只有关键字、查询、重置和少量操作的列表页，内部组合 `SearchToolbar`、`KeywordInput` 与标准按钮。
+标准列表页的工具栏用 `@/components/list-page` 的 `ListSearchToolbar`（关键字 / 筛选 / 查询 / 重置 / 新增 / 低频操作按桌面与移动端排布）；
+边输边筛、没有「查询」按钮语义的即时过滤页用同目录的 `InstantFilterToolbar`（`primary` / `filters` / `onRefresh` / `onReset` / `actions` / `extra`）。
 
 ---
 
@@ -166,6 +170,7 @@ const operationColumn = createOperationColumn<User>({
 | `MasterDetailLayout.Header` / `Body` / `SideToggle` | 分栏内部标题、内容区与左右切换按钮 |
 | `NavListPanel` | 左侧平铺列表面板；props 包含 `title`、`headerExtra`、`search`、`loading`、`emptyText`、`footer`、`dataSource`、`renderItem`、`bodyNoPadding`、`rawBody` |
 | `NavListItem` | 平铺列表项；支持 `active`、`primary`、`secondary`、`meta`、`icon`、`extra`、`extraAlwaysVisible` |
+| `NavListItemActions` | 列表项 / 面板头部的「更多」菜单（`items: { key, label, icon?, danger?, hidden?, disabled?, onClick }[]`），触发按钮阻止冒泡，全部隐藏时不渲染 |
 | `BreadcrumbMenuPopover` | 面包屑菜单 Popover，支持目录层级跳转 |
 | `MenuSearchInput` | 顶栏菜单搜索触发器 |
 | `MenuCommandPalette` | 菜单命令面板，支持搜索和快速跳转 |

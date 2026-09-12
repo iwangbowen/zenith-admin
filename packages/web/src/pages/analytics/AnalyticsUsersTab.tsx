@@ -1,5 +1,5 @@
 /** 用户分析：按操作量排名的用户列表，点击行打开行为时间线 */
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Avatar, Empty, Select, SideSheet, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { DataBar } from '@/components/data-viz/DataBar';
@@ -19,16 +19,14 @@ export default function AnalyticsUsersTab() {
   const [days, setDays] = useBehaviorDays();
   const [timelineVisible, setTimelineVisible] = useState(false);
   const [timelineUserId, setTimelineUserId] = useState<number | null>(null);
-  const { page, pageSize, resetPage, buildPagination } = usePagination();
+  // 天数切换回到第 1 页（resetKey），不会先用旧页码请求一次
+  const { page, pageSize, buildPagination } = usePagination({ resetKey: days });
   const userStatsQuery = useAnalyticsUserStats(days, page, pageSize);
   const timelineQuery = useAnalyticsUserTimeline(timelineUserId, timelineVisible);
   const data = userStatsQuery.data ?? null;
   const loading = userStatsQuery.isFetching;
   const timeline = timelineQuery.data ?? null;
   const timelineLoading = timelineQuery.isFetching;
-
-  useEffect(() => { resetPage(); }, [days, resetPage]);
-
   const rows = useMemo<UserStatsRow[]>(() => (data?.list ?? []).map((item, index) => ({
     ...item,
     id: item.userId == null ? `anonymous-${index}` : String(item.userId),

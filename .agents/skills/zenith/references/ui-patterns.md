@@ -40,8 +40,9 @@ return (
 - **激活态统一用 `hooks/useUrlTabState.ts`**（`?tab=` 深链定位），约束与豁免清单见
   [constraints-frontend.md → 布局与响应式](./constraints-frontend.md#布局与响应式)；
   切换需附带副作用（清勾选、重置页码）时包一层：`onChange={(k) => { setActiveTab(k as typeof activeTab); setPage(1); }}`
-- 每个 `TabPane` 内承载该 tab 的完整内容：`SearchToolbar`、操作按钮、空状态、表格或统计面板
-- tab 相关操作按钮（「全部标记为已读」「清理日志」）放在对应 `TabPane` 内的 `SearchToolbar`，
+- 每个 `TabPane` 内承载该 tab 的完整内容：工具栏（标准列表 `ListSearchToolbar`、即时过滤 `InstantFilterToolbar`、纯操作按钮 `SearchToolbar`）、
+  空状态、表格或统计面板
+- tab 相关操作按钮（「全部标记为已读」「清理日志」）放在对应 `TabPane` 内的工具栏，
   不要放在 TabBar 右侧
 - `page-tabs-page` 只用于页面最外层业务 Tabs；抽屉、弹窗、卡片内代码示例、左右分栏内部小 tabs 不使用
 - 非激活 tab 的查询用 `enabled: activeTab === 'xxx'` 门控，切换时懒加载并缓存

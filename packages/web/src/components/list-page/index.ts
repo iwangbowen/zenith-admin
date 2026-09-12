@@ -6,6 +6,8 @@ export { useStatusToggle } from './useStatusToggle';
 export type { StatusToggleColumnOptions, StatusToggleConfirm, StatusToggleController, UseStatusToggleOptions } from './useStatusToggle';
 export { ListSearchToolbar } from './ListSearchToolbar';
 export type { ListSearchToolbarProps } from './ListSearchToolbar';
+export { InstantFilterToolbar } from './InstantFilterToolbar';
+export type { InstantFilterToolbarProps } from './InstantFilterToolbar';
 export { confirmAndDelete, deleteAction } from './deleteAction';
 export type { DeleteActionOptions, DeleteConfirmOptions } from './deleteAction';
 export { batchStatusHandler } from './batchStatus';

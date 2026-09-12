@@ -3,6 +3,8 @@ import { Toast } from '@douyinfe/semi-ui';
 import type { ModalReactProps } from '@douyinfe/semi-ui/lib/es/modal';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ListSearchToolbar } from './ListSearchToolbar';
+import { InstantFilterToolbar } from './InstantFilterToolbar';
+import { batchStatusHandler } from './batchStatus';
 import { confirmAndDelete, deleteAction } from './deleteAction';
 import { listTableProps } from './listTableProps';
 
@@ -54,6 +56,96 @@ describe('ListSearchToolbar', () => {
     expect(container.querySelector('.responsive-toolbar__mobile-extra')).toBeNull();
     expect(screen.queryByRole('button', { name: '筛选' })).toBeNull();
     expect(screen.queryByRole('button', { name: '更多操作' })).toBeNull();
+  });
+});
+
+describe('InstantFilterToolbar', () => {
+  it('桌面：主区 → 筛选 → 刷新 → 重置 → 操作 → 说明；移动：主区 + 刷新，筛选进抽屉，操作进更多菜单，说明不出现', () => {
+    const onRefresh = vi.fn();
+    const onReset = vi.fn();
+    const { container } = render(
+      <InstantFilterToolbar
+        primary={<input placeholder="搜索进程" />}
+        filters={<select aria-label="状态"><option>全部状态</option></select>}
+        onRefresh={onRefresh}
+        onReset={onReset}
+        actions={<button type="button">导出</button>}
+        extra={<span>共 3 个</span>}
+      />,
+    );
+    const desktop = container.querySelector('.responsive-toolbar__desktop')!;
+    expect([...desktop.querySelectorAll('button, input, select')].map(controlLabel)).toEqual(['搜索进程', '状态', '刷新', '重置', '导出']);
+    expect(desktop.textContent).toContain('共 3 个');
+
+    const mobilePrimary = container.querySelector('.responsive-toolbar__mobile-primary')!;
+    expect([...mobilePrimary.querySelectorAll('button, input')].map(controlLabel)).toEqual(['搜索进程', '刷新']);
+    expect(mobilePrimary.textContent).not.toContain('共 3 个');
+    expect(screen.getByRole('button', { name: '筛选' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '更多操作' })).toBeTruthy();
+
+    const desktopButtons = desktop.querySelectorAll('button');
+    fireEvent.click(desktopButtons[0]);
+    fireEvent.click(desktopButtons[1]);
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(onReset).toHaveBeenCalledTimes(1);
+  });
+
+  it('只有刷新与说明文字：桌面不出现重置，移动端没有筛选按钮也没有更多菜单', () => {
+    const { container } = render(<InstantFilterToolbar onRefresh={() => {}} extra={<span>规则保存后立即热更新</span>} />);
+    expect([...container.querySelector('.responsive-toolbar__desktop')!.querySelectorAll('button')].map(controlLabel)).toEqual(['刷新']);
+    expect(container.querySelector('.responsive-toolbar__mobile-extra')).toBeNull();
+    expect(screen.queryByRole('button', { name: '筛选' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '更多操作' })).toBeNull();
+  });
+});
+
+describe('batchStatusHandler', () => {
+  it('默认只有停用需要确认：启用直接执行 → 清选中 → 「批量启用成功」', async () => {
+    const success = vi.spyOn(Toast, 'success');
+    const run = vi.fn(() => Promise.resolve());
+    const clearSelection = vi.fn();
+    const handle = batchStatusHandler({ selectedRowKeys: [1, 2], clearSelection, run });
+    await handle('enabled');
+    expect(confirmCalls).toHaveLength(0);
+    expect(run).toHaveBeenCalledWith([1, 2], 'enabled');
+    expect(clearSelection).toHaveBeenCalledTimes(1);
+    expect(success).toHaveBeenCalledWith('批量启用成功');
+
+    await handle('disabled');
+    expect(confirmCalls).toHaveLength(1);
+    expect(confirmCalls[0]).toMatchObject({ title: '确认批量停用选中的 2 项？' });
+    expect(confirmCalls[0].okButtonProps).toBeUndefined();
+    await confirmCalls[0].onOk?.({} as never);
+    expect(run).toHaveBeenLastCalledWith([1, 2], 'disabled');
+    expect(success).toHaveBeenLastCalledWith('批量停用成功');
+  });
+
+  it('confirm=always + danger + 自定义文案：启用普通确认、禁用红色实心确认，成功提示可覆盖', async () => {
+    const success = vi.spyOn(Toast, 'success');
+    const run = vi.fn(() => Promise.resolve());
+    const handle = batchStatusHandler({
+      selectedRowKeys: [7], clearSelection: () => {}, run,
+      confirm: 'always', disableLabel: '禁用', entity: '个用户', danger: true,
+      confirmContent: (status) => (status === 'disabled' ? '停用后无法登录' : undefined),
+      successMessage: () => '操作成功',
+    });
+    await handle('enabled');
+    expect(confirmCalls[0]).toMatchObject({ title: '确认批量启用选中的 1 个用户？' });
+    expect(confirmCalls[0].okButtonProps).toBeUndefined();
+    await handle('disabled');
+    expect(confirmCalls[1]).toMatchObject({ title: '确认批量禁用选中的 1 个用户？', content: '停用后无法登录', okButtonProps: { type: 'danger', theme: 'solid' } });
+    await confirmCalls[1].onOk?.({} as never);
+    expect(run).toHaveBeenCalledWith([7], 'disabled');
+    expect(success).toHaveBeenCalledWith('操作成功');
+  });
+
+  it('空选中直接返回；confirm=never 时停用也不弹确认', async () => {
+    const run = vi.fn(() => Promise.resolve());
+    await batchStatusHandler({ selectedRowKeys: [], clearSelection: () => {}, run })('disabled');
+    expect(run).not.toHaveBeenCalled();
+    await batchStatusHandler({ selectedRowKeys: [3], clearSelection: () => {}, run, confirm: 'never' })('disabled');
+    expect(confirmCalls).toHaveLength(0);
+    expect(run).toHaveBeenCalledWith([3], 'disabled');
   });
 });
 

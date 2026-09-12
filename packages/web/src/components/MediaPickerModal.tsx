@@ -1,10 +1,13 @@
-import { useState } from 'react';
-import { Button, Empty, Input, Pagination, Spin, Upload, Toast } from '@douyinfe/semi-ui';
-import { FileText, Search, UploadCloud } from 'lucide-react';
+import { useMemo } from 'react';
+import { Button, Empty, Pagination, Spin, Upload, Toast } from '@douyinfe/semi-ui';
+import { FileText, UploadCloud } from 'lucide-react';
 import { AppModal } from '@/components/AppModal';
-import { useFileList, useUploadFile } from '@/hooks/queries/files';
+import { fileKeys, useFileList, useUploadFile } from '@/hooks/queries/files';
+import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import type { ManagedFile } from '@zenith/shared/platform';
 import { SearchButton } from '@/components/toolbar-controls';
+import { KeywordInput } from '@/components/search-filters';
 
 export interface MediaPickerModalProps {
   visible: boolean;
@@ -18,30 +21,33 @@ export interface MediaPickerModalProps {
 
 const PAGE_SIZE = 12;
 
+interface MediaSearchParams {
+  keyword: string;
+}
+
+const defaultMediaSearch: MediaSearchParams = { keyword: '' };
+
 /**
  * 媒体库选择器：从文件中心（managed_files）挑选已有文件，支持关键词搜索与就地上传。
  * 用于 CMS 封面图、模型 image/file 字段、广告图等需要复用媒资的场景。
  */
 export function MediaPickerModal({ visible, onCancel, onSelect, imageOnly = true, title = '媒体库' }: Readonly<MediaPickerModalProps>) {
-  const [page, setPage] = useState(1);
-  const [draftKeyword, setDraftKeyword] = useState('');
-  const [keyword, setKeyword] = useState('');
-
-  const listQuery = useFileList({
-    page,
+  // 选择器固定 12 条 / 页；关键字经「查询」/ 回车提交并回源
+  const { page, setPage, bindKeyword, submittedParams, handleSearch } = useListSearch<MediaSearchParams>({
+    defaults: defaultMediaSearch,
+    listKey: fileKeys.lists,
     pageSize: PAGE_SIZE,
-    keyword: keyword || undefined,
-    fileType: imageOnly ? 'image' : undefined,
   });
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword.trim(),
+    fileType: imageOnly ? 'image' as const : undefined,
+  }), [submittedParams, imageOnly]);
+
+  const listQuery = useFileList({ page, pageSize: PAGE_SIZE, ...filterQuery });
   const uploadMutation = useUploadFile();
 
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
-
-  function handleSearch() {
-    setPage(1);
-    setKeyword(draftKeyword.trim());
-  }
 
   return (
     <AppModal
@@ -53,15 +59,8 @@ export function MediaPickerModal({ visible, onCancel, onSelect, imageOnly = true
       closeOnEsc
     >
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <Input
-          prefix={<Search size={14} />}
-          placeholder="搜索文件名"
-          value={draftKeyword}
-          onChange={setDraftKeyword}
-          onEnterPress={handleSearch}
-          showClear
-          style={{ flex: 1 }}
-        />
+        {/* 弹窗内的搜索框跟随剩余宽度自适应 */}
+        <KeywordInput placeholder="搜索文件名" {...bindKeyword('keyword')} width="auto" style={{ flex: 1 }} />
         <SearchButton onClick={handleSearch} />
         <Upload
           action=""
