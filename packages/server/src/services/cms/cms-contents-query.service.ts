@@ -1,7 +1,7 @@
 import { requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
-import { eq, asc, desc, and, or, inArray, notInArray, isNull, isNotNull, ne, lt, gt, sql } from 'drizzle-orm';
+import { eq, asc, desc, and, or, inArray, notInArray, isNull, isNotNull, ne, lt, gt, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { cmsContents, cmsContentTags, cmsContentChannels, cmsContentRelations } from '../../db/schema';
 import type { CmsContentRow, CmsTagRow } from '../../db/schema';
@@ -201,8 +201,14 @@ export async function getCmsContent(id: number) {
 }
 
 // ─── 列表 ─────────────────────────────────────────────────────────────────────
-export async function listCmsContents(q: QueryOutputOf<typeof cmsContentContract.list>) {
-  const site = await ensureCmsSiteExists(q.siteId);
+export type CmsContentListFilter = Omit<QueryOutputOf<typeof cmsContentContract.list>, 'page' | 'pageSize'>;
+
+/**
+ * 后台内容列表与导出中心共用的访问条件 + 页面筛选：
+ * 站点 / 栏目访问断言、可见栏目集合（非管理员无授权栏目时为空集 → 不返回任何行）、数据范围，再叠加筛选字段。
+ * 两边只在这里维护一份，避免导出侧自行拼装出更宽松的栏目可见性。
+ */
+export async function buildCmsContentListWhere(q: CmsContentListFilter): Promise<SQL | undefined> {
   await assertSiteAccess(q.siteId);
   if (q.channelId) await assertChannelAccess(q.channelId);
   const accessibleChannelIds = await getAccessibleChannelIds();
@@ -215,7 +221,7 @@ export async function listCmsContents(q: QueryOutputOf<typeof cmsContentContract
     })
     : undefined;
 
-  const where = buildWhere(
+  return buildWhere(
     eq(cmsContents.siteId, q.siteId),
     accessibleChannelIds !== null ? inArray(cmsContents.channelId, accessibleChannelIds) : undefined,
     q.deleted ? isNotNull(cmsContents.deletedAt) : isNull(cmsContents.deletedAt),
@@ -230,6 +236,11 @@ export async function listCmsContents(q: QueryOutputOf<typeof cmsContentContract
     ...dateRangeConditions(cmsContents.createdAt, q.startTime, q.endTime),
     scopeCondition,
   );
+}
+
+export async function listCmsContents(q: QueryOutputOf<typeof cmsContentContract.list>) {
+  const site = await ensureCmsSiteExists(q.siteId);
+  const where = await buildCmsContentListWhere(q);
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

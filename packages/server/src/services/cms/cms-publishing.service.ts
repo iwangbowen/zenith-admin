@@ -384,39 +384,49 @@ async function cmsPublishTaskNeedsFreshInput(task: Pick<AsyncTaskRow, 'payload' 
   return false;
 }
 
-export async function listCmsPublishArtifacts(query: QueryOutputOf<typeof cmsPublishingContract.artifacts>) {
+export type CmsPublishArtifactListFilter = Omit<QueryOutputOf<typeof cmsPublishingContract.artifacts>, 'page' | 'pageSize'>;
+
+/**
+ * 产物列表与导出中心共用的 where：任务受权投影（buildCmsPublishingWhere）⋈ 产物筛选。
+ * 调用方需 `innerJoin(asyncTasks, eq(cmsPublishArtifacts.taskId, asyncTasks.id))`；
+ * `taskStatus`（active / terminal / 具体状态）是导出侧的附加维度，契约列表查询不含。
+ */
+export async function buildCmsPublishArtifactsWhere(query: CmsPublishArtifactListFilter & { taskStatus?: string }): Promise<SQL | undefined> {
   const taskWhere = await buildCmsPublishingWhere({ siteId: query.siteId });
   const start = parseDateRangeStart(query.startTime);
   const end = parseDateRangeEnd(query.endTime);
   const artifactTime = sql`coalesce(${cmsPublishArtifacts.generatedAt}, ${cmsPublishArtifacts.updatedAt})`;
-  const where = buildWhere(
+  return buildWhere(
     taskWhere,
-    query.taskId ? eq(asyncTasks.id, query.taskId) : undefined,
     eq(cmsPublishArtifacts.taskId, asyncTasks.id),
+    asyncTaskStatusCondition(query.taskStatus),
+    query.taskId ? eq(asyncTasks.id, query.taskId) : undefined,
     query.targetType ? eq(cmsPublishArtifacts.targetType, query.targetType) : undefined,
     query.status ? eq(cmsPublishArtifacts.status, query.status) : undefined,
     keywordCondition(query.keyword, [cmsPublishArtifacts.path, cmsPublishArtifacts.url, cmsPublishArtifacts.error], 'ilike'),
     start ? sql`${artifactTime} >= ${start}` : undefined,
     end ? sql`${artifactTime} <= ${end}` : undefined,
   );
-  const base = db.select({ artifact: cmsPublishArtifacts })
+}
+
+export async function listCmsPublishArtifacts(query: QueryOutputOf<typeof cmsPublishingContract.artifacts>) {
+  const where = await buildCmsPublishArtifactsWhere(query);
+  const joined = () => db.select({ artifact: cmsPublishArtifacts })
     .from(cmsPublishArtifacts)
     .innerJoin(asyncTasks, eq(cmsPublishArtifacts.taskId, asyncTasks.id))
-    .where(where)
-    .orderBy(desc(cmsPublishArtifacts.id))
-    .limit(query.pageSize)
-    .offset(pageOffset(query.page, query.pageSize));
-  const [countRows, rows] = await Promise.all([
-    db.select({ total: sql<number>`count(*)::int` }).from(cmsPublishArtifacts)
-      .innerJoin(asyncTasks, eq(cmsPublishArtifacts.taskId, asyncTasks.id)).where(where),
-    base,
-  ]);
-  return {
-    list: rows.map((row) => mapArtifact(row.artifact)),
-    total: countRows[0]?.total ?? 0,
+    .where(where);
+  return buildListResult({
     page: query.page,
     pageSize: query.pageSize,
-  };
+    // 跨表 JOIN 计数，不能用单表 db.$count
+    count: async () => {
+      const [row] = await db.select({ total: sql<number>`count(*)::int` }).from(cmsPublishArtifacts)
+        .innerJoin(asyncTasks, eq(cmsPublishArtifacts.taskId, asyncTasks.id)).where(where);
+      return row?.total ?? 0;
+    },
+    rows: () => joined().orderBy(desc(cmsPublishArtifacts.id)).limit(query.pageSize).offset(pageOffset(query.page, query.pageSize)),
+    map: (row) => mapArtifact(row.artifact),
+  });
 }
 
 async function validatePublishInput(input: CmsPublishSubmitInput, skipAccessCheck = false): Promise<void> {

@@ -1,4 +1,4 @@
-import { desc, eq, sql, type SQL } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import { enumValueOf } from '@zenith/shared/core';
 import {
   CMS_PUBLISH_ARTIFACT_STATUS_LABELS,
@@ -8,10 +8,9 @@ import {
 } from '@zenith/shared/cms';
 import { db } from '../../../db';
 import { asyncTasks, cmsPublishArtifacts } from '../../../db/schema';
-import { formatDateTime, formatNullableDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../datetime';
-import { buildWhere, keywordCondition } from '../../where-helpers';
-import { asyncTaskStatusCondition } from '../../task-center/status-filter';
-import { buildCmsPublishingWhere } from '../../../services/cms/cms-publishing.service';
+import { formatDateTime, formatNullableDateTime } from '../../datetime';
+import { buildCmsPublishArtifactsWhere, type CmsPublishArtifactListFilter } from '../../../services/cms/cms-publishing.service';
+import { asPositiveInt, asString } from '../query-normalize';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
@@ -44,29 +43,21 @@ const columns: ExportColumn<PublishArtifactExportRow>[] = [
   { key: 'createdAt', header: '记录时间', width: 22, type: 'datetime' },
 ];
 
-async function buildArtifactWhere(query: Record<string, unknown>): Promise<SQL | undefined> {
-  const siteId = Number(query.siteId);
-  const taskId = Number(query.taskId);
-  const targetType = enumValueOf(CMS_PUBLISH_TARGET_TYPES, query.targetType);
-  const status = enumValueOf(CMS_PUBLISH_ARTIFACT_STATUSES, query.status);
-  const taskWhere = await buildCmsPublishingWhere({
-    siteId: Number.isInteger(siteId) && siteId > 0 ? siteId : undefined,
-  });
-  const start = parseDateRangeStart(typeof query.startTime === 'string' ? query.startTime : undefined);
-  const end = parseDateRangeEnd(typeof query.endTime === 'string' ? query.endTime : undefined);
-  const artifactTime = sql`coalesce(${cmsPublishArtifacts.generatedAt}, ${cmsPublishArtifacts.updatedAt})`;
-  return buildWhere(
-    taskWhere,
-    eq(cmsPublishArtifacts.taskId, asyncTasks.id),
-    asyncTaskStatusCondition(query.taskStatus),
-    Number.isInteger(taskId) && taskId > 0 ? eq(cmsPublishArtifacts.taskId, taskId) : undefined,
-    targetType ? eq(cmsPublishArtifacts.targetType, targetType) : undefined,
-    status ? eq(cmsPublishArtifacts.status, status) : undefined,
-    start ? sql`${artifactTime} >= ${start}` : undefined,
-    end ? sql`${artifactTime} <= ${end}` : undefined,
-    typeof query.keyword === 'string' ? keywordCondition(query.keyword, [cmsPublishArtifacts.path], 'ilike') : undefined,
-  );
+/** 页面透传的原始 query → 契约筛选类型；where 复用产物列表 service（关键字同列表匹配 path / url / error） */
+function normalizeQuery(query: Record<string, unknown>): CmsPublishArtifactListFilter & { taskStatus?: string } {
+  return {
+    siteId: asPositiveInt(query.siteId),
+    taskId: asPositiveInt(query.taskId),
+    targetType: enumValueOf(CMS_PUBLISH_TARGET_TYPES, query.targetType),
+    status: enumValueOf(CMS_PUBLISH_ARTIFACT_STATUSES, query.status),
+    startTime: asString(query.startTime),
+    endTime: asString(query.endTime),
+    keyword: asString(query.keyword),
+    taskStatus: asString(query.taskStatus),
+  };
 }
+
+const buildArtifactWhere = (query: Record<string, unknown>) => buildCmsPublishArtifactsWhere(normalizeQuery(query));
 
 async function loadRows(query: Record<string, unknown>): Promise<PublishArtifactExportRow[]> {
   const rows = await db.select({ artifact: cmsPublishArtifacts }).from(cmsPublishArtifacts)

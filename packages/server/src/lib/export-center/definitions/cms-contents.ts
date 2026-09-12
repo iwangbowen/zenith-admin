@@ -1,15 +1,12 @@
-import { and, desc, eq, inArray, isNotNull, isNull, type SQL } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { enumValueOf } from '@zenith/shared/core';
 import { CMS_CONTENT_STATUS_LABELS, CMS_CONTENT_STATUSES, CMS_CONTENT_TYPES } from '@zenith/shared/cms';
 import { db } from '../../../db';
-import { cmsChannelUsers, cmsContents, cmsChannels } from '../../../db/schema';
+import { cmsContents, cmsChannels } from '../../../db/schema';
 import { formatDateTime, formatNullableDateTime } from '../../datetime';
-import { assertSiteAccess } from '../../../services/cms/cms-sites.service';
-import { getDataScopeCondition } from '../../data-scope';
-import { currentUser } from '../../context';
-import { isCmsPlatformAdmin } from '../../../services/cms/cms-access';
-import { buildWhere, dateRangeConditions, keywordCondition } from '../../where-helpers';
-import { asBoolean } from '../query-normalize';
+import { cmsContentListColumns } from '../../../services/cms/cms-content-columns';
+import { buildCmsContentListWhere, type CmsContentListFilter } from '../../../services/cms/cms-contents-query.service';
+import { asBoolean, asPositiveInt, asString } from '../query-normalize';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
@@ -40,73 +37,39 @@ const columns: ExportColumn[] = [
   { key: 'createdAt', header: '创建时间', width: 22, type: 'datetime' },
 ];
 
-function asPositive(value: unknown): number | undefined {
-  const n = Number(value);
-  return Number.isInteger(n) && n > 0 ? n : undefined;
-}
-
-/** 非平台管理员只能导出自己被授权栏目下的内容；未授权任何栏目时沿用原行为（不加栏目限制） */
-async function allowedChannelCondition(userId: number): Promise<SQL | undefined> {
-  const allowed = await db.select({ channelId: cmsChannelUsers.channelId })
-    .from(cmsChannelUsers)
-    .where(eq(cmsChannelUsers.userId, userId));
-  const channelIds = allowed.map((row) => row.channelId);
-  return channelIds.length > 0 ? inArray(cmsContents.channelId, channelIds) : undefined;
-}
-
-async function buildContentWhere(query: Record<string, unknown>): Promise<SQL> {
-  const siteId = asPositive(query.siteId);
+/** 页面透传的原始 query → 契约筛选类型；访问控制与 where 拼装复用列表 service，不在导出侧另写一份 */
+function normalizeQuery(query: Record<string, unknown>): CmsContentListFilter {
+  const siteId = asPositiveInt(query.siteId);
   if (!siteId) throw new Error('导出内容必须指定站点');
-  await assertSiteAccess(siteId);
-  const user = currentUser();
-  const channelScope = isCmsPlatformAdmin(user) ? undefined : await allowedChannelCondition(user.userId);
-  const deleted = asBoolean(query.deleted) === true;
-  const channelId = asPositive(query.channelId);
-  const status = enumValueOf(CMS_CONTENT_STATUSES, query.status);
-  const contentType = enumValueOf(CMS_CONTENT_TYPES, query.contentType);
-  const isTop = asBoolean(query.isTop);
-  const isRecommend = asBoolean(query.isRecommend);
-  const isHot = asBoolean(query.isHot);
-  const scopeCondition = await getDataScopeCondition({
-    currentUserId: user.userId,
-    deptColumn: cmsContents.deptId,
-    ownerColumn: cmsContents.createdBy,
-  });
-  return buildWhere(
-    eq(cmsContents.siteId, siteId),
-    channelScope,
-    deleted ? isNotNull(cmsContents.deletedAt) : isNull(cmsContents.deletedAt),
-    deleted
-      ? undefined
-      : (asBoolean(query.archived) === true ? isNotNull(cmsContents.archivedAt) : isNull(cmsContents.archivedAt)),
-    channelId ? eq(cmsContents.channelId, channelId) : undefined,
-    status ? eq(cmsContents.status, status) : undefined,
-    contentType ? eq(cmsContents.contentType, contentType) : undefined,
-    isTop === undefined ? undefined : eq(cmsContents.isTop, isTop),
-    isRecommend === undefined ? undefined : eq(cmsContents.isRecommend, isRecommend),
-    isHot === undefined ? undefined : eq(cmsContents.isHot, isHot),
-    keywordCondition(typeof query.keyword === 'string' ? query.keyword : undefined, [cmsContents.title, cmsContents.author]),
-    ...dateRangeConditions(
-      cmsContents.createdAt,
-      typeof query.startTime === 'string' ? query.startTime : undefined,
-      typeof query.endTime === 'string' ? query.endTime : undefined,
-    ),
-    scopeCondition,
-  )!;
+  return {
+    siteId,
+    channelId: asPositiveInt(query.channelId),
+    status: enumValueOf(CMS_CONTENT_STATUSES, query.status),
+    contentType: enumValueOf(CMS_CONTENT_TYPES, query.contentType),
+    keyword: asString(query.keyword),
+    isTop: asBoolean(query.isTop),
+    isRecommend: asBoolean(query.isRecommend),
+    isHot: asBoolean(query.isHot),
+    deleted: asBoolean(query.deleted),
+    archived: asBoolean(query.archived),
+    startTime: asString(query.startTime),
+    endTime: asString(query.endTime),
+  };
 }
 
 async function loadRows(query: Record<string, unknown>): Promise<CmsContentExportRow[]> {
-  const where = await buildContentWhere(query);
-  const rows = await db.select({ content: cmsContents, channelName: cmsChannels.name })
+  const where = await buildCmsContentListWhere(normalizeQuery(query));
+  // 列表投影：不拉正文 / 检索向量 / 附件三个 TOAST 大列
+  const rows = await db.select({ ...cmsContentListColumns, channelName: cmsChannels.name })
     .from(cmsContents)
     .leftJoin(cmsChannels, and(eq(cmsContents.channelId, cmsChannels.id), eq(cmsChannels.siteId, cmsContents.siteId)))
     .where(where)
     .orderBy(desc(cmsContents.id))
     .limit(50_000);
-  return rows.map(({ content, channelName }) => ({
+  return rows.map((content) => ({
     id: content.id,
     title: content.title,
-    channelName: channelName ?? '',
+    channelName: content.channelName ?? '',
     author: content.author ?? '',
     source: content.source ?? '',
     statusText: CMS_CONTENT_STATUS_LABELS[content.status] ?? content.status,
