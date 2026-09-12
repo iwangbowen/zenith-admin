@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, entityStatusSchema, idParam, paginated, paginationQuery, entityStatusQuery, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, entityStatusQuery, entityStatusSchema, idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, fileField, multipart, op } from '../../core/contract';
 import { uploadChunkBody, uploadChunkResultSchema, uploadSessionInitSchema, uploadSessionStatusSchema } from '../../platform/contracts';
 import { completeChunkUploadSchema } from '../../platform/validation';
@@ -84,13 +84,13 @@ export type IotOtaPayload = z.infer<typeof iotOtaPayloadSchema>;
 
 export const iotFirmwareListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按版本 / 文件名模糊匹配' }),
-  productId: z.coerce.number().int().positive().optional(),
+  productId: idQuery(),
   status: entityStatusQuery,
 });
 
 export const iotOtaTaskListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按任务标题 / 目标版本模糊匹配' }),
-  productId: z.coerce.number().int().positive().optional(),
+  productId: idQuery(),
   status: queryEnum(IOT_OTA_TASK_STATUSES),
 });
 

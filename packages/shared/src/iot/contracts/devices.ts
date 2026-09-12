@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, batchIdsBody, dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, batchIdsBody, dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   IOT_COMMAND_STATUSES, IOT_DEVICE_EVENT_KINDS, IOT_EVENT_LEVELS, IOT_LOG_LEVELS, IOT_NODE_TYPES,
@@ -152,10 +152,10 @@ export type IotDeviceLog = z.infer<typeof iotDeviceLogSchema>;
 export const iotDeviceListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按 SN / 设备名模糊匹配' }),
   status: entityStatusQuery,
-  productId: z.coerce.number().int().positive().optional(),
-  groupId: z.coerce.number().int().positive().optional(),
+  productId: idQuery(),
+  groupId: idQuery(),
   nodeType: queryEnum(IOT_NODE_TYPES),
-  gatewayId: z.coerce.number().int().positive().optional(),
+  gatewayId: idQuery(),
   ...dateRangeQuery('创建时间'),
 });
 

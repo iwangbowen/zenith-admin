@@ -1,6 +1,6 @@
 import { describe, it, expect, expectTypeOf } from 'vitest';
 import * as z from 'zod';
-import { dateRangeBound, dateRangeQuery, entityStatusQuery, paginated, paginationQuery, queryBool, queryEnum } from './api-schemas';
+import { dateRangeBound, dateRangeQuery, entityStatusQuery, idQuery, paginated, paginationQuery, queryBool, queryEnum } from './api-schemas';
 
 describe('queryBool', () => {
   const schema = z.object({ enabled: queryBool() });
@@ -57,6 +57,16 @@ describe('paginationQuery / dateRangeBound', () => {
     const generic = dateRangeQuery();
     expect(generic.startTime.meta()?.description).toBe('起始时间');
     expect(generic.endTime.meta()?.description).toBe('结束时间');
+  });
+
+  it('idQuery：查询串关联 ID 可选、字符串 coerce 为正整数，非法值 400', () => {
+    const query = z.object({ channelId: idQuery('栏目'), taskId: idQuery() });
+    expect(query.parse({})).toEqual({});
+    expect(query.parse({ channelId: '12', taskId: 3 })).toEqual({ channelId: 12, taskId: 3 });
+    expect(query.safeParse({ channelId: '0' }).success).toBe(false);
+    expect(query.safeParse({ taskId: 'abc' }).success).toBe(false);
+    expect(query.shape.channelId.meta()?.description).toBe('栏目');
+    expect(query.shape.taskId.meta()).toBeUndefined();
   });
 
   it('wraps items into the paginated payload shape', () => {

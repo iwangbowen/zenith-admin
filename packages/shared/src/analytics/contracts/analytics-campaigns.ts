@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import { ANALYTICS_CAMPAIGN_CHANNELS, ANALYTICS_CAMPAIGN_STATUSES } from '../constants';
@@ -36,7 +36,7 @@ export type AnalyticsSegmentCampaign = z.infer<typeof analyticsSegmentCampaignSc
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const analyticsCampaignListQuery = paginationQuery.extend({
-  segmentId: z.coerce.number().int().positive().optional(),
+  segmentId: idQuery(),
   status: queryEnum(ANALYTICS_CAMPAIGN_STATUSES),
 });
 

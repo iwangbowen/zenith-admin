@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { batchIdsBody, dateRangeQuery, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
+import { batchIdsBody, dateRangeQuery, idParam, idQuery, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { CMS_CONTENT_STATUSES, CMS_CONTENT_TYPES } from '../constants';
 import type { CmsLinkTarget } from '../link';
@@ -255,7 +255,7 @@ export type CmsContentBatchStatusResult = z.infer<typeof cmsContentBatchStatusRe
 
 export const cmsContentListQuery = paginationQuery.extend({
   siteId: z.coerce.number().int().positive(),
-  channelId: z.coerce.number().int().positive().optional(),
+  channelId: idQuery(),
   status: queryEnum(CMS_CONTENT_STATUSES),
   contentType: queryEnum(CMS_CONTENT_TYPES),
   keyword: z.string().optional(),
@@ -270,7 +270,7 @@ export const cmsContentListQuery = paginationQuery.extend({
 export const cmsContentTitleCheckQuery = z.object({
   siteId: z.coerce.number().int().positive(),
   title: z.string().min(1).max(255),
-  excludeId: z.coerce.number().int().positive().optional(),
+  excludeId: idQuery(),
 });
 
 export const cmsLinkTargetQuery = z.object({

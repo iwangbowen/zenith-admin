@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeBound, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { aiFeedbackContextSchema, aiFeedbackItemSchema, aiMessageIdParam } from './ai-messages';
 
@@ -7,7 +7,7 @@ import { aiFeedbackContextSchema, aiFeedbackItemSchema, aiMessageIdParam } from 
 
 export const aiAuditMessageQuery = paginationQuery.extend({
   keyword: z.string().max(200).optional().meta({ description: '内容关键词' }),
-  userId: z.coerce.number().int().positive().optional().meta({ description: '按用户 ID 筛选' }),
+  userId: idQuery('按用户 ID 筛选'),
   role: queryEnum(['user', 'assistant'] as const, '按消息角色筛选'),
   startDate: dateRangeBound('时间起（YYYY-MM-DD）'),
   endDate: dateRangeBound('时间止（YYYY-MM-DD）'),

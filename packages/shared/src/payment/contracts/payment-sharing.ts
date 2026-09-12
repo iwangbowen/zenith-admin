@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { PAYMENT_SHARING_ORDER_STATUSES, PAYMENT_SHARING_RECEIVER_TYPES, PAYMENT_SHARING_REVERSAL_STATUSES } from '../constants';
 import {
@@ -80,7 +80,7 @@ export const paymentSharingOrderListQuery = paginationQuery.extend({
 });
 
 export const paymentSharingReversalListQuery = paginationQuery.extend({
-  sharingOrderId: z.coerce.number().int().positive().optional(),
+  sharingOrderId: idQuery(),
   status: queryEnum(PAYMENT_SHARING_REVERSAL_STATUSES),
   ...dateRangeQuery(),
 });

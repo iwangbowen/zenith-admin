@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery, queryBool } from '../../core/api-schemas';
+import { auditFieldsSchema, idParam, idQuery, paginated, paginationQuery, queryBool } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import { createReportSubscriptionSchema, reportBatchEnabledSchema, updateReportSubscriptionSchema } from '../validation';
@@ -33,7 +33,7 @@ export type ReportDashboardSubscription = z.infer<typeof reportDashboardSubscrip
 
 export const reportSubscriptionListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  dashboardId: z.coerce.number().int().positive().optional(),
+  dashboardId: idQuery(),
   enabled: queryBool(),
 });
 

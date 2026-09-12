@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, idParam, idQuery, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import { REPORT_DQ_SEVERITIES, REPORT_SLA_TYPES, REPORT_SLA_VIOLATION_STATUSES } from '../types';
@@ -57,14 +57,14 @@ export const reportSlaViolationSchema = z.object({
 export type ReportSlaViolation = z.infer<typeof reportSlaViolationSchema>;
 
 export const reportSlaRuleListQuery = paginationQuery.extend({
-  datasetId: z.coerce.number().int().positive().optional(),
+  datasetId: idQuery(),
   type: queryEnum(REPORT_SLA_TYPES),
   enabled: queryBool(),
 });
 
 export const reportSlaViolationListQuery = paginationQuery.extend({
-  datasetId: z.coerce.number().int().positive().optional(),
-  ruleId: z.coerce.number().int().positive().optional(),
+  datasetId: idQuery(),
+  ruleId: idQuery(),
   status: queryEnum(REPORT_SLA_VIOLATION_STATUSES),
 });
 

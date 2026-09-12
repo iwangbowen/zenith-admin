@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { batchIdsBody, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { batchIdsBody, idParam, idQuery, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, fileField, multipart, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import { CMS_RESOURCE_OWNER_TYPES, CMS_RESOURCE_TYPES } from '../constants';
@@ -87,7 +87,7 @@ export const cmsResourceListQuery = paginationQuery.extend({
 
 export const cmsResourceUploadQuery = z.object({
   siteId: z.coerce.number().int().positive(),
-  folderId: z.coerce.number().int().positive().optional(),
+  folderId: idQuery(),
 });
 
 const cmsResourceFileBody = multipart(z.object({

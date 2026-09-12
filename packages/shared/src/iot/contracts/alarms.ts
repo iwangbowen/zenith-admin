@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { IOT_ALARM_LEVELS, IOT_ALARM_RULE_TYPES, IOT_ALARM_STATUSES, IOT_COMPARE_OPS } from '../constants';
 import {
@@ -88,13 +88,13 @@ export const iotAlarmListQuery = paginationQuery.extend({
   status: queryEnum(IOT_ALARM_STATUSES),
   level: queryEnum(IOT_ALARM_LEVELS),
   ruleType: queryEnum(IOT_ALARM_RULE_TYPES),
-  deviceId: z.coerce.number().int().positive().optional(),
+  deviceId: idQuery(),
   ...dateRangeQuery('触发时间'),
 });
 
 export const iotAlarmRuleListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  productId: z.coerce.number().int().positive().optional(),
+  productId: idQuery(),
   ruleType: queryEnum(IOT_ALARM_RULE_TYPES),
   status: entityStatusQuery,
 });

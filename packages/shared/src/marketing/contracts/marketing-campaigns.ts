@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, dateRangeQuery, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, dateRangeQuery, idParam, idQuery, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   MARKETING_CAMPAIGN_STATUSES,
@@ -73,7 +73,7 @@ export const marketingCampaignListQuery = paginationQuery.extend({
 });
 
 export const marketingParticipationListQuery = paginationQuery.extend({
-  memberId: z.coerce.number().int().positive().optional().meta({ description: '按会员筛选' }),
+  memberId: idQuery('按会员筛选'),
   wonOnly: queryBool('仅中奖记录'),
 });
 

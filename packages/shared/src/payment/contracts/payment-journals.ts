@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { PAYMENT_FUND_RESERVATION_STATUSES, PAYMENT_LEDGER_ACCOUNT_CODES, PAYMENT_LEDGER_NORMAL_BALANCES } from '../constants';
 import {
@@ -98,14 +98,14 @@ const currencyQuery = z.string().regex(/^[A-Z]{3}$/).optional();
 
 export const paymentLedgerAccountListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  appId: z.coerce.number().int().positive().optional(),
-  channelConfigId: z.coerce.number().int().positive().optional(),
+  appId: idQuery(),
+  channelConfigId: idQuery(),
   currency: currencyQuery,
   status: entityStatusQuery,
 });
 
 export const paymentFundReservationListQuery = paginationQuery.extend({
-  accountId: z.coerce.number().int().positive().optional(),
+  accountId: idQuery(),
   status: queryEnum(PAYMENT_FUND_RESERVATION_STATUSES),
   sourceType: z.string().max(64).optional(),
   ...dateRangeQuery(),
@@ -113,8 +113,8 @@ export const paymentFundReservationListQuery = paginationQuery.extend({
 
 export const paymentJournalListQuery = paginationQuery.extend({
   sourceType: z.string().max(64).optional(),
-  appId: z.coerce.number().int().positive().optional(),
-  channelConfigId: z.coerce.number().int().positive().optional(),
+  appId: idQuery(),
+  channelConfigId: idQuery(),
   currency: currencyQuery,
   ...dateRangeQuery(),
 });

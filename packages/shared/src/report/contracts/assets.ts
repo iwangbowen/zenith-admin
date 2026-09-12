@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, dateRangeBound, entityStatusQuery, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, dateRangeBound, entityStatusQuery, idParam, idQuery, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { REPORT_ASSET_TEMPLATE_TYPES, REPORT_RESOURCE_TYPES } from '../types';
 import {
@@ -128,8 +128,8 @@ export type ReportAssetTemplateApplyResult = z.infer<typeof reportAssetTemplateA
 export const reportAssetCatalogQuery = paginationQuery.extend({
   keyword: z.string().max(128).optional(),
   types: z.string().optional().meta({ description: '资源类型，逗号分隔' }),
-  ownerId: z.coerce.number().int().positive().optional(),
-  folderId: z.coerce.number().int().positive().optional(),
+  ownerId: idQuery(),
+  folderId: idQuery(),
   lifecycle: z.string().max(32).optional(),
   status: z.string().max(32).optional(),
   updatedStart: dateRangeBound('更新时间起'),
@@ -157,12 +157,12 @@ export const reportAssetTrendQuery = z.object({
   days: daysQuery(90, 30),
   bucket: z.enum(['hour', 'day']).default('day'),
   resourceType: queryEnum(REPORT_RESOURCE_TYPES),
-  resourceId: z.coerce.number().int().positive().optional(),
+  resourceId: idQuery(),
 });
 
 export const reportDeprecationListQuery = paginationQuery.extend({
   resourceType: queryEnum(REPORT_RESOURCE_TYPES),
-  resourceId: z.coerce.number().int().positive().optional(),
+  resourceId: idQuery(),
   published: queryBool(),
 });
 

@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery, queryBool } from '../../core/api-schemas';
+import { auditFieldsSchema, idParam, idQuery, paginated, paginationQuery, queryBool } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { REPORT_DASHBOARD_LIFECYCLE_STATUSES, REPORT_SORT_ORDERS } from '../constants';
 import { REPORT_WIDGET_TYPES } from '../types';
@@ -210,16 +210,16 @@ export type ReportDashboardRevisionConflict = z.infer<typeof reportDashboardRevi
 
 export const reportDashboardListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  folderId: z.coerce.number().int().positive().optional(),
-  ownerId: z.coerce.number().int().positive().optional(),
+  folderId: idQuery(),
+  ownerId: idQuery(),
   status: reportStatusSchema.optional(),
   lifecycleStatus: reportDashboardLifecycleStatusSchema.optional(),
-  categoryId: z.coerce.number().int().positive().optional(),
+  categoryId: idQuery(),
   favorited: queryBool('仅收藏'),
 });
 
 export const reportDashboardLookupQuery = reportLookupQuerySchema.extend({
-  excludeId: z.coerce.number().int().positive().optional(),
+  excludeId: idQuery(),
 });
 
 /** 视图模式：auto = 有发布态优先发布态；draft / published 强制指定 */

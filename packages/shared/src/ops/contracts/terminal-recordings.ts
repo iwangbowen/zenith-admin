@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeQuery, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { dateRangeQuery, idParam, idQuery, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { createTerminalRecordingSchema, terminalRecordingEventSchema } from '../validation';
 
@@ -32,7 +32,7 @@ export type TerminalRecordingDetail = z.infer<typeof terminalRecordingDetailSche
 
 export const terminalRecordingListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  operatorUserId: z.coerce.number().int().positive().optional(),
+  operatorUserId: idQuery(),
   ...dateRangeQuery(),
 });
 

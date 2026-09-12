@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeBound, idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { sensitive } from '../../core/sensitive';
 import { LOGIN_STATUSES } from '../../identity/constants';
@@ -104,8 +104,8 @@ export type MemberOverview = z.infer<typeof memberOverviewSchema>;
 export const memberListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '昵称 / 手机号 / 用户名 / 邮箱模糊匹配' }),
   status: queryEnum(MEMBER_STATUSES),
-  levelId: z.coerce.number().int().positive().optional(),
-  tagId: z.coerce.number().int().positive().optional(),
+  levelId: idQuery(),
+  tagId: idQuery(),
 });
 
 export const memberOptionsQuery = z.object({

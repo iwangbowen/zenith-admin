@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { entityStatusQuery, entityStatusSchema, idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   CMS_SITE_INHERITABLE_FIELDS,
@@ -298,7 +298,7 @@ export const cmsSiteTreeQuery = z.object({
 });
 
 export const cmsThemeScopeQuery = z.object({
-  siteId: z.coerce.number().int().positive().optional(),
+  siteId: idQuery(),
 });
 
 export const cmsThemeCodeParam = z.object({

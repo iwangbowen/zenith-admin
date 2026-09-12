@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { entityStatusQuery, entityStatusSchema, idParam, idQuery, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { CMS_FIELD_OPTION_SOURCES, CMS_FIELD_TYPES } from '../constants';
 import { createCmsModelSchema, updateCmsModelSchema } from '../validation';
@@ -69,13 +69,13 @@ export type CmsModelRefs = z.infer<typeof cmsModelRefsSchema>;
 
 /** 普通用户读写模型必须限定站点；平台管理员省略即全局视角 */
 export const cmsModelScopeQuery = z.object({
-  siteId: z.coerce.number().int().positive().optional(),
+  siteId: idQuery(),
 });
 
 export const cmsModelListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
   status: entityStatusQuery,
-  siteId: z.coerce.number().int().positive().optional().meta({ description: '站群可见性过滤：返回平台共享 + 该站点专属的模型' }),
+  siteId: idQuery('站群可见性过滤：返回平台共享 + 该站点专属的模型'),
 });
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────

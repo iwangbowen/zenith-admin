@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeBound, idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { httpUrl } from '../../core/validation';
 import { CHAT_SCHEDULED_STATUSES } from '../constants';
@@ -89,7 +89,7 @@ export const chatLinkPreviewQuery = z.object({
 
 /** 游标分页：取 `beforeId` 之前的消息，最新在前 */
 export const chatMessagesQuery = z.object({
-  beforeId: z.coerce.number().int().positive().optional(),
+  beforeId: idQuery(),
   limit: z.coerce.number().int().positive().max(50).default(30),
 });
 
@@ -97,7 +97,7 @@ export const chatMessagesQuery = z.object({
 export const chatMessageSearchQuery = paginationQuery.extend({
   keyword: z.string().optional(),
   types: z.string().optional().meta({ description: '逗号分隔的消息类型', example: 'text,image' }),
-  senderId: z.coerce.number().int().positive().optional(),
+  senderId: idQuery(),
   startAt: dateRangeBound('起始时间'),
   endAt: dateRangeBound('结束时间'),
 });

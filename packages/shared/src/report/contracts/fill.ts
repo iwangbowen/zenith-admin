@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, idParam, idQuery, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import type { WorkflowFormSchema } from '../../workflow/types';
 import { workflowFormSchemaSchema } from '../../workflow/validation';
@@ -89,20 +89,20 @@ export type ReportFillRecord = z.infer<typeof reportFillRecordSchema>;
 export const reportFillTemplateListQuery = paginationQuery.extend({
   keyword: z.string().max(128).optional(),
   status: reportFillTemplateStatusSchema.optional(),
-  ownerId: z.coerce.number().int().positive().optional(),
-  folderId: z.coerce.number().int().positive().optional(),
+  ownerId: idQuery(),
+  folderId: idQuery(),
 });
 
 export const reportFillMyRecordsQuery = paginationQuery.extend({
   keyword: z.string().max(128).optional(),
   status: reportFillRecordStatusSchema.optional(),
-  templateId: z.coerce.number().int().positive().optional(),
+  templateId: idQuery(),
 });
 
 export const reportFillAdminRecordsQuery = paginationQuery.extend({
   status: reportFillRecordStatusSchema.optional(),
-  templateId: z.coerce.number().int().positive().optional(),
-  submitterId: z.coerce.number().int().positive().optional(),
+  templateId: idQuery(),
+  submitterId: idQuery(),
 });
 
 export const reportFillContract = defineContract('/api/report/fill', {

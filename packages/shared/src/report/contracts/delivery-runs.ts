@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
+import { dateRangeBound, idParam, idQuery, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { REPORT_DELIVERY_STATUSES, REPORT_DELIVERY_TRIGGER_TYPES } from '../constants';
 import { acknowledgeReportDeliveryRunSchema } from '../validation';
@@ -64,8 +64,8 @@ export type ReportDeliveryRun = z.infer<typeof reportDeliveryRunSchema>;
 
 export const reportDeliveryRunListQuery = paginationQuery.extend({
   targetType: queryEnum(['subscription', 'alert'] as const),
-  subscriptionId: z.coerce.number().int().positive().optional(),
-  alertRuleId: z.coerce.number().int().positive().optional(),
+  subscriptionId: idQuery(),
+  alertRuleId: idQuery(),
   status: queryEnum(REPORT_DELIVERY_STATUSES),
   triggerType: queryEnum(REPORT_DELIVERY_TRIGGER_TYPES),
   startAt: dateRangeBound('起始时间'),

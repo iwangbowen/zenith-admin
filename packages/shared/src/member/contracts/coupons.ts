@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { COUPON_TEMPLATE_STATUSES, COUPON_TYPES, COUPON_VALID_TYPES, MEMBER_COUPON_STATUSES } from '../constants';
 import { createCouponSchema, issueCouponSchema, redeemCouponSchema, updateCouponSchema } from '../validation';
@@ -57,7 +57,7 @@ export const couponListQuery = paginationQuery.extend({
 
 export const memberCouponRecordListQuery = paginationQuery.extend({
   memberKeyword: z.string().optional().meta({ description: '会员昵称 / 手机号 / 用户名模糊匹配；纯数字额外按会员 ID 精确匹配' }),
-  couponId: z.coerce.number().int().positive().optional(),
+  couponId: idQuery(),
   status: queryEnum(MEMBER_COUPON_STATUSES),
 });
 

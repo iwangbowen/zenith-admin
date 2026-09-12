@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { memberSubmitCmsCommentSchema } from '../../member/validation';
 import { CMS_CONTENT_STATUSES, CMS_CONTENT_TYPES, CMS_SUBSCRIPTION_SUBJECT_TYPES } from '../constants';
@@ -97,7 +97,7 @@ export const memberCmsSubscriptionListQuery = paginationQuery.extend({
 export const memberCmsSubscriptionStatusQuery = z.object({
   siteId: z.coerce.number().int().positive(),
   subjectType: z.enum(CMS_SUBSCRIPTION_SUBJECT_TYPES),
-  subjectId: z.coerce.number().int().positive().optional(),
+  subjectId: idQuery(),
   subjectKey: z.string().max(255).optional(),
 });
 

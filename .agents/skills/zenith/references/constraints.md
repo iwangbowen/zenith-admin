@@ -87,7 +87,8 @@
   加 `eslint-disable-next-line no-restricted-syntax -- 理由` 注明
 - **契约操作命名**：标准 CRUD 固定为 `list` / `detail` / `create` / `update` / `remove`，可选 `all`（下拉源）/
   `removeBatch`（`DELETE /batch`）——web 的 `createResourceQueries` 按此约定派生 hooks；其余操作按业务动词命名
-- **契约积木**：路径 `{id}` 用 `idParam`；列表查询 `paginationQuery.extend({...})`；分页响应 `paginated(xxxSchema)`；
+- **契约积木**：路径 `{id}` 用 `idParam`；查询串里的关联 ID 筛选（`channelId` / `taskId`…）用 `idQuery(description?)`；
+  列表查询 `paginationQuery.extend({...})`；分页响应 `paginated(xxxSchema)`；
   标准 `startTime` / `endTime` 范围 `...dateRangeQuery('创建时间')`（非标准键名如 `startAt` / `dateStart` 才逐个 `dateRangeBound()`）；
   查询串布尔 `queryBool()`、查询串枚举筛选 `queryEnum(XXX_VALUES)`（空串 = 未筛选）、
   启用 / 禁用状态筛选 `entityStatusQuery`；

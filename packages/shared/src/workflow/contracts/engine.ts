@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { batchIdsBody, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { batchIdsBody, idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { systemSchedulerTaskBaseSchema } from '../../platform/contracts';
 import {
@@ -593,7 +593,7 @@ export const workflowEngineActionParam = z.object({
 export const workflowJobListQuery = paginationQuery.extend({
   jobType: queryEnum(WORKFLOW_JOB_TYPES),
   status: queryEnum(WORKFLOW_JOB_STATUSES),
-  instanceId: z.coerce.number().int().positive().optional(),
+  instanceId: idQuery(),
   keyword: z.string().optional().meta({ description: '按幂等键 / traceId / 节点 key 模糊匹配' }),
 });
 

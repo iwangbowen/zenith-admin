@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, entityStatusQuery, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, entityStatusQuery, idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   createReportPrintTemplateSchema,
@@ -105,13 +105,13 @@ export type ReportPrintRenderResult = z.infer<typeof reportPrintRenderResultSche
 
 export const reportPrintListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  folderId: z.coerce.number().int().positive().optional(),
-  ownerId: z.coerce.number().int().positive().optional(),
+  folderId: idQuery(),
+  ownerId: idQuery(),
   status: entityStatusQuery,
   sourceType: queryEnum(REPORT_PRINT_SOURCE_TYPES),
   entityKind: queryEnum(REPORT_PRINT_ENTITY_KINDS),
   /** 与 entityKind 联用：命中该参照 ID 或通用模板（entityRefId 为空） */
-  entityRefId: z.coerce.number().int().positive().optional(),
+  entityRefId: idQuery(),
 });
 
 export const reportPrintContract = defineContract('/api/report/print', {

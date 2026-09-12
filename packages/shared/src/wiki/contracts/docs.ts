@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, idParam, idQuery, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { lazyRecursive } from '../../core/validation';
 import { businessFileSchema } from '../../platform/contracts';
@@ -134,18 +134,18 @@ export type WikiDocReadReceipts = z.infer<typeof wikiDocReadReceiptsSchema>;
 
 export const wikiDocListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按标题 / 摘要 / 正文模糊匹配' }),
-  spaceId: z.coerce.number().int().positive().optional(),
+  spaceId: idQuery(),
   status: queryEnum(WIKI_DOC_STATUSES),
-  tagId: z.coerce.number().int().positive().optional(),
+  tagId: idQuery(),
   mine: queryBool('只查当前用户创建的文档'),
   submitted: queryBool('只查当前用户提交过审核的文档'),
 });
 
 export const wikiDocSearchQuery = paginationQuery.extend({
   keyword: z.string().min(1).meta({ description: '检索关键词', example: '入职' }),
-  spaceId: z.coerce.number().int().positive().optional(),
+  spaceId: idQuery(),
   status: queryEnum(WIKI_DOC_STATUSES),
-  tagId: z.coerce.number().int().positive().optional(),
+  tagId: idQuery(),
 });
 
 export const wikiDocTreeQuery = z.object({

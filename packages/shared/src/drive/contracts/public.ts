@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { queryBool } from '../../core/api-schemas';
+import { idQuery, queryBool } from '../../core/api-schemas';
 import { defineContract, fileField, multipart, op } from '../../core/contract';
 import { DRIVE_NODE_TYPES, DRIVE_SHARE_CAPABILITIES, DRIVE_SHARE_KINDS } from '../constants';
 import { driveCollectPolicySchema, drivePublicAccessSchema, saveFromDriveShareSchema } from '../validation';
@@ -71,7 +71,7 @@ const publicSessionQuery = {
 };
 
 export const drivePublicChildrenQuery = z.object({
-  parentId: z.coerce.number().int().positive().optional().meta({ description: '子目录 ID；缺省为外链根节点' }),
+  parentId: idQuery('子目录 ID；缺省为外链根节点'),
   ...publicSessionQuery,
 });
 

@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, entityStatusSchema, idParam, idQuery, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts';
 import { DRIVE_ACTIVITY_ACTIONS, DRIVE_NODE_TYPES, DRIVE_QUOTA_REQUEST_STATUSES, DRIVE_ROLES, DRIVE_SPACE_TYPES } from '../constants';
@@ -68,8 +68,8 @@ export type DriveAdminStats = z.infer<typeof driveAdminStatsSchema>;
 // ─── 入参 ────────────────────────────────────────────────────────────────────
 
 export const driveAdminSpaceListQuery = driveSpaceListQuery.extend({
-  departmentId: z.coerce.number().int().positive().optional(),
-  ownerId: z.coerce.number().int().positive().optional(),
+  departmentId: idQuery(),
+  ownerId: idQuery(),
   orphaned: queryBool('只显示待接管空间'),
 });
 
@@ -79,33 +79,33 @@ export const driveAdminShareLinkListQuery = driveShareLinkListQuery.extend({
 
 export const driveAdminActivityListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  spaceId: z.coerce.number().int().positive().optional(),
-  actorId: z.coerce.number().int().positive().optional(),
+  spaceId: idQuery(),
+  actorId: idQuery(),
   action: queryEnum(DRIVE_ACTIVITY_ACTIONS),
   ...dateRangeQuery('时间'),
 });
 
 export const driveAdminShareLogListQuery = paginationQuery.extend({
-  shareId: z.coerce.number().int().positive().optional(),
-  spaceId: z.coerce.number().int().positive().optional(),
+  shareId: idQuery(),
+  spaceId: idQuery(),
   action: z.string().max(16).optional(),
   ok: queryBool('只看通过 / 只看被拒绝'),
   ...dateRangeQuery('时间'),
 });
 
 export const driveLegalHoldListQuery = paginationQuery.extend({
-  spaceId: z.coerce.number().int().positive().optional(),
-  nodeId: z.coerce.number().int().positive().optional(),
+  spaceId: idQuery(),
+  nodeId: idQuery(),
   active: queryBool('只显示生效中的保留'),
 });
 
 export const driveQuotaRequestListQuery = paginationQuery.extend({
   status: queryEnum(DRIVE_QUOTA_REQUEST_STATUSES),
-  spaceId: z.coerce.number().int().positive().optional(),
+  spaceId: idQuery(),
 });
 
 export const driveOpenAppGrantListQuery = z.object({
-  spaceId: z.coerce.number().int().positive().optional(),
+  spaceId: idQuery(),
   clientId: z.string().max(64).optional(),
 });
 

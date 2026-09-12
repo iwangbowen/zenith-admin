@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, entityStatusQuery, entityStatusSchema, idParam, idQuery, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, fileField, multipart, op } from '../../core/contract';
 import { uploadChunkBody, uploadChunkResultSchema, uploadSessionInitSchema, uploadSessionStatusSchema } from '../../platform/contracts';
 import { completeChunkUploadSchema, initChunkUploadSchema } from '../../platform/validation';
@@ -168,7 +168,7 @@ export const clientAppListQuery = paginationQuery.extend({
 });
 
 export const appReleaseListQuery = paginationQuery.extend({
-  appId: z.coerce.number().int().positive().optional(),
+  appId: idQuery(),
   channel: queryEnum(APP_RELEASE_CHANNELS),
   status: queryEnum(APP_RELEASE_STATUSES),
   keyword: z.string().max(256).optional(),
@@ -180,7 +180,7 @@ export const appReleaseStatsQuery = z.object({
 });
 
 export const clientDeviceListQuery = paginationQuery.extend({
-  appId: z.coerce.number().int().positive().optional(),
+  appId: idQuery(),
   platform: queryEnum(APP_PLATFORMS),
   subjectType: queryEnum(DEVICE_SUBJECT_TYPES),
   pushBound: queryBool('true 只看已绑定推送的设备'),

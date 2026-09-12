@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeQuery, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, idParam, idQuery, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, fileField, multipart, op } from '../../core/contract';
 import { fileAccessUrlSchema, uploadChunkResultSchema, uploadSessionInitSchema, uploadSessionStatusSchema } from '../../platform/contracts';
 import {
@@ -264,9 +264,9 @@ const optionalSpaceId = z.coerce.number().int().positive().optional();
 
 export const driveNodeListQuery = paginationQuery.extend({
   spaceId: optionalSpaceId.meta({ description: '空间 ID；与 parentId 二选一（parentId 缺省 = 空间根级）' }),
-  parentId: z.coerce.number().int().positive().optional().meta({ description: '目录节点 ID' }),
+  parentId: idQuery('目录节点 ID'),
   keyword: z.string().optional(),
-  tagId: z.coerce.number().int().positive().optional(),
+  tagId: idQuery(),
   type: queryEnum(DRIVE_NODE_TYPES),
   sortBy: queryEnum(DRIVE_NODE_SORT_FIELDS),
   order: queryEnum(DRIVE_SORT_ORDERS),
@@ -287,7 +287,7 @@ export const driveNodeSearchQuery = paginationQuery.extend({
   spaceId: optionalSpaceId,
   type: queryEnum(DRIVE_NODE_TYPES),
   extension: z.string().max(32).optional(),
-  tagId: z.coerce.number().int().positive().optional(),
+  tagId: idQuery(),
   createdBy: z.coerce.number().int().positive().optional(),
   fullText: queryBool('是否同时检索文本正文'),
   ...dateRangeQuery('更新时间'),

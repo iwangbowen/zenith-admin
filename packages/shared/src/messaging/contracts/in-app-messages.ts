@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { batchIdsBody, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
+import { batchIdsBody, idParam, idQuery, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { IN_APP_MESSAGE_TYPES, SEND_SOURCES } from '../constants';
 import { sendInAppSchema } from '../validation';
@@ -48,8 +48,8 @@ export const inAppMessageListQuery = paginationQuery.extend({
 });
 
 export const inAppMessageAdminListQuery = inAppMessageListQuery.extend({
-  recipientId: z.coerce.number().int().positive().optional(),
-  senderId: z.coerce.number().int().positive().optional(),
+  recipientId: idQuery(),
+  senderId: idQuery(),
 });
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────

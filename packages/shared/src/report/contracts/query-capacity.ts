@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, dateRangeBound, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, dateRangeBound, idParam, idQuery, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { REPORT_QUOTA_SCOPES } from '../types';
 import { createReportQueryQuotaSchema, resetReportQueryQuotaSchema, updateReportQueryQuotaSchema } from '../validation';
@@ -81,8 +81,8 @@ export type ReportQueryCostStats = z.infer<typeof reportQueryCostStatsSchema>;
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 const rangeQueryFields = {
-  datasetId: z.coerce.number().int().positive().optional(),
-  datasourceId: z.coerce.number().int().positive().optional(),
+  datasetId: idQuery(),
+  datasourceId: idQuery(),
   start: dateRangeBound('起始时间'),
   end: dateRangeBound('结束时间'),
 };
@@ -95,9 +95,9 @@ export const reportQueryCostTrendQuery = z.object({
 });
 
 export const reportQueryCostLogListQuery = paginationQuery.extend({
-  userId: z.coerce.number().int().positive().optional(),
-  datasetId: z.coerce.number().int().positive().optional(),
-  datasourceId: z.coerce.number().int().positive().optional(),
+  userId: idQuery(),
+  datasetId: idQuery(),
+  datasourceId: idQuery(),
   scene: z.string().max(64).optional(),
   success: queryBool(),
   start: dateRangeBound('起始时间'),

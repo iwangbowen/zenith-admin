@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { assignConversationSchema, setConversationTagsSchema } from '../../mp/validation';
 import { CHANNEL_CONVERSATION_ASSIGNEE_FILTERS, CHANNEL_CONVERSATION_STATUSES, CHANNEL_MESSAGE_DIRECTIONS } from '../constants';
@@ -85,7 +85,7 @@ export const channelConversationListQuery = z.object({
 });
 
 export const channelQuickReplyListQuery = z.object({
-  channelId: z.coerce.number().int().positive().optional().meta({ description: '省略时仅返回全局快捷回复' }),
+  channelId: idQuery('省略时仅返回全局快捷回复'),
 });
 
 // ─── 契约：客服工作台 ────────────────────────────────────────────────────────

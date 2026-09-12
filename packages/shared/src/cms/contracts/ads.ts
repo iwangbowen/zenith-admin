@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, entityStatusSchema, idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import { CMS_AD_EVENT_TYPES, CMS_DEVICE_TYPES } from '../constants';
@@ -91,13 +91,13 @@ export type CmsAdEventStats = z.infer<typeof cmsAdEventStatsSchema>;
 
 export const cmsAdListQuery = paginationQuery.extend({
   siteId: z.coerce.number().int().positive(),
-  slotId: z.coerce.number().int().positive().optional(),
+  slotId: idQuery(),
 });
 
 const cmsAdEventFilters = {
   siteId: z.coerce.number().int().positive(),
-  adId: z.coerce.number().int().positive().optional(),
-  slotId: z.coerce.number().int().positive().optional(),
+  adId: idQuery(),
+  slotId: idQuery(),
   eventType: queryEnum(CMS_AD_EVENT_TYPES),
   device: queryEnum(CMS_DEVICE_TYPES),
   ...dateRangeQuery(),

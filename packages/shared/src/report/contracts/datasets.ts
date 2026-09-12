@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, entityStatusQuery, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, entityStatusQuery, idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, fileField, multipart, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import { REPORT_DATASOURCE_TYPES, REPORT_MATERIALIZATION_STRATEGIES } from '../types';
@@ -175,9 +175,9 @@ export type ReportDatasetRefs = z.infer<typeof reportDatasetRefsSchema>;
 
 export const reportDatasetListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
-  folderId: z.coerce.number().int().positive().optional(),
-  ownerId: z.coerce.number().int().positive().optional(),
-  datasourceId: z.coerce.number().int().positive().optional(),
+  folderId: idQuery(),
+  ownerId: idQuery(),
+  datasourceId: idQuery(),
   type: queryEnum(REPORT_DATASOURCE_TYPES),
   status: entityStatusQuery,
 });

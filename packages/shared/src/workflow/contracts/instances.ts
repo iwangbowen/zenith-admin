@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { WORKFLOW_INSTANCE_PRIORITIES, WORKFLOW_INSTANCE_STATUSES, WORKFLOW_SLA_LEVELS, WORKFLOW_TASK_CONSULT_STATUSES, WORKFLOW_TASK_STATUSES, WORKFLOW_INSTANCE_STATUS_FILTERS, WORKFLOW_INSTANCE_PRINT_SOURCES } from '../constants';
 import {
@@ -439,7 +439,7 @@ export const workflowCcTaskParam = z.object({
 
 /** 审批单打印：可临时指定模板（设计器预览 / 更正版式），缺省用流程绑定模板，再缺省按表单快照自动生成 */
 export const workflowInstancePrintQuery = z.object({
-  templateId: z.coerce.number().int().positive().optional().meta({ description: '临时指定的打印模板 ID（需为 workflow_instance 实体模板）' }),
+  templateId: idQuery('临时指定的打印模板 ID（需为 workflow_instance 实体模板）'),
   source: queryEnum(WORKFLOW_INSTANCE_PRINT_SOURCES, 'auto（默认）= 有归档件则返回归档件否则实时渲染；archive = 只要归档件；live = 强制按当前模板重新渲染'),
 });
 

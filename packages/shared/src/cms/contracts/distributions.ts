@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskItemSchema, asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import {
@@ -76,15 +76,15 @@ export type CmsDistributionRunDetail = z.infer<typeof cmsDistributionRunDetailSc
 
 export const cmsDistributionRuleListQuery = paginationQuery.extend({
   keyword: z.string().max(100).optional(),
-  sourceSiteId: z.coerce.number().int().positive().optional(),
-  targetSiteId: z.coerce.number().int().positive().optional(),
+  sourceSiteId: idQuery(),
+  targetSiteId: idQuery(),
   mode: queryEnum(CMS_DISTRIBUTION_MODES),
   status: entityStatusQuery,
 });
 
 export const cmsDistributionRunListQuery = paginationQuery.extend({
-  ruleId: z.coerce.number().int().positive().optional(),
-  siteId: z.coerce.number().int().positive().optional(),
+  ruleId: idQuery(),
+  siteId: idQuery(),
   status: queryEnum(CMS_DISTRIBUTION_TASK_STATUSES),
   ...dateRangeQuery(),
 });

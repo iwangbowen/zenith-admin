@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, paginated, paginationQuery, queryBool } from '../../core/api-schemas';
+import { dateRangeBound, idQuery, paginated, paginationQuery, queryBool } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 
 // ─── 数据集执行记录 / 运行治理 ──────────────────────────────────────────────────
@@ -100,9 +100,9 @@ export const reportExecutionStatsSchema = z.object({
 export type ReportExecutionStats = z.infer<typeof reportExecutionStatsSchema>;
 
 const executionFilterFields = {
-  datasetId: z.coerce.number().int().positive().optional(),
-  datasourceId: z.coerce.number().int().positive().optional(),
-  dashboardId: z.coerce.number().int().positive().optional(),
+  datasetId: idQuery(),
+  datasourceId: idQuery(),
+  dashboardId: idQuery(),
   scene: z.string().max(32).optional(),
   success: queryBool(),
   startAt: dateRangeBound('起始时间'),

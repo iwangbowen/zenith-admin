@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, idParam, idQuery, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import { REPORT_DQ_TRIGGER_TYPES } from '../constants';
@@ -107,19 +107,19 @@ export const reportDqAnomalySchema = z.object({
 export type ReportDqAnomaly = z.infer<typeof reportDqAnomalySchema>;
 
 export const reportDqRuleListQuery = paginationQuery.extend({
-  datasetId: z.coerce.number().int().positive().optional(),
+  datasetId: idQuery(),
   type: queryEnum(REPORT_DQ_RULE_TYPES),
   enabled: queryBool(),
 });
 
 export const reportDqRunListQuery = paginationQuery.extend({
-  datasetId: z.coerce.number().int().positive().optional(),
-  ruleId: z.coerce.number().int().positive().optional(),
+  datasetId: idQuery(),
+  ruleId: idQuery(),
   status: queryEnum(REPORT_DQ_RUN_STATUSES),
 });
 
 export const reportDqAnomalyListQuery = paginationQuery.extend({
-  datasetId: z.coerce.number().int().positive().optional(),
+  datasetId: idQuery(),
   status: queryEnum(REPORT_DQ_ANOMALY_STATUSES),
 });
 

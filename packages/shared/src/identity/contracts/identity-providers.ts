@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { IDENTITY_PROVIDER_STATUSES, IDENTITY_PROVIDER_SYNC_STATUSES, IDENTITY_PROVIDER_TYPES } from '../constants';
 import {
@@ -96,7 +96,7 @@ export type IdentityProviderSyncResult = z.infer<typeof identityProviderSyncResu
 
 export const identityProviderListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按名称 / 编码模糊匹配' }),
-  tenantId: z.coerce.number().int().positive().optional(),
+  tenantId: idQuery(),
   type: queryEnum(IDENTITY_PROVIDER_TYPES),
   status: queryEnum(IDENTITY_PROVIDER_STATUSES),
 });

@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeQuery, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskItemSchema, asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import { CMS_PUBLISH_ACTIONS, CMS_PUBLISH_ARTIFACT_STATUSES, CMS_PUBLISH_TARGET_TYPES, CMS_PUBLISHING_TASK_STATUS_FILTERS } from '../constants';
@@ -75,7 +75,7 @@ export type CmsPublishBatchActionResult = z.infer<typeof cmsPublishBatchActionRe
 // ─── 入参 ────────────────────────────────────────────────────────────────────
 
 export const cmsPublishingListQuery = paginationQuery.extend({
-  siteId: z.coerce.number().int().positive().optional(),
+  siteId: idQuery(),
   targetType: queryEnum(CMS_PUBLISH_TARGET_TYPES),
   status: queryEnum(CMS_PUBLISHING_TASK_STATUS_FILTERS),
   taskType: z.string().max(64).optional(),
@@ -85,8 +85,8 @@ export const cmsPublishingListQuery = paginationQuery.extend({
 });
 
 export const cmsPublishArtifactListQuery = paginationQuery.extend({
-  siteId: z.coerce.number().int().positive().optional(),
-  taskId: z.coerce.number().int().positive().optional(),
+  siteId: idQuery(),
+  taskId: idQuery(),
   targetType: queryEnum(CMS_PUBLISH_TARGET_TYPES),
   status: queryEnum(CMS_PUBLISH_ARTIFACT_STATUSES),
   ...dateRangeQuery(),

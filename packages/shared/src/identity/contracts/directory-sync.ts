@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, batchIdsBody, dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, batchIdsBody, dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import {
@@ -168,7 +168,7 @@ export const directorySyncSourceContract = defineContract('/api/directory-sync/s
 // ─── 契约：同步记录 / 冲突 ───────────────────────────────────────────────────
 
 export const directorySyncRunListQuery = paginationQuery.extend({
-  sourceId: z.coerce.number().int().positive().optional(),
+  sourceId: idQuery(),
   status: queryEnum(DIRECTORY_SYNC_RUN_STATUSES),
   ...dateRangeQuery('开始时间'),
 });
@@ -180,7 +180,7 @@ export const directorySyncRunItemListQuery = paginationQuery.extend({
 
 export const directorySyncConflictListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按外部 ID / 名称模糊匹配' }),
-  sourceId: z.coerce.number().int().positive().optional(),
+  sourceId: idQuery(),
   status: queryEnum(DIRECTORY_SYNC_CONFLICT_STATUSES),
 });
 

@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, entityStatusSchema, idParam, paginated, paginationQuery, entityStatusQuery, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, entityStatusQuery, entityStatusSchema, idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { IOT_FORWARD_SOURCES, IOT_FORWARD_STATUSES } from '../constants';
 import { createIotForwardRuleSchema, updateIotForwardRuleSchema } from '../validation';
@@ -53,7 +53,7 @@ export const iotForwardRuleListQuery = paginationQuery.extend({
 });
 
 export const iotForwardLogListQuery = paginationQuery.extend({
-  ruleId: z.coerce.number().int().positive().optional(),
+  ruleId: idQuery(),
   status: queryEnum(IOT_FORWARD_STATUSES),
 });
 

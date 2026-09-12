@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { entityStatusSchema, queryEnum } from '../../core/api-schemas';
+import { entityStatusSchema, idQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   PAYMENT_CAPABILITY_REASON_CODES,
@@ -64,7 +64,7 @@ export type PaymentCapabilitiesResponse = z.infer<typeof paymentCapabilitiesResp
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const paymentCapabilityQuery = z.object({
-  channelConfigId: z.coerce.number().int().positive().optional(),
+  channelConfigId: idQuery(),
   channel: queryEnum(PAYMENT_CHANNELS),
   operation: queryEnum(PAYMENT_PROVIDER_OPERATIONS),
   method: queryEnum(PAYMENT_METHODS),
