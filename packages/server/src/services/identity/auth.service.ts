@@ -576,7 +576,7 @@ export async function getMyProfile() {
   }), '用户不存在');
   const userRoleList = user.userRoles.map(({ role: r }) => ({
     id: r.id, name: r.name, code: r.code, description: r.description, status: r.status,
-    createdAt: formatDateTime(r.createdAt), updatedAt: formatDateTime(r.updatedAt),
+    ...formatTimestamps(r),
   }));
   const [requirePasswordChange, tenantRows] = await Promise.all([
     checkPasswordExpiry(user),
@@ -607,7 +607,7 @@ export async function getMyProfile() {
     positions: user.userPositions.map(({ position: p }) => ({
       id: p.id, name: p.name, code: p.code, sort: p.sort, status: p.status,
       remark: p.remark ?? null,
-      createdAt: formatDateTime(p.createdAt), updatedAt: formatDateTime(p.updatedAt),
+      ...formatTimestamps(p),
     })),
     tenantName,
     viewingTenantId: authUser.viewingTenantId ?? null,
@@ -635,7 +635,7 @@ export async function updateMyProfile(data: { nickname?: string; email?: string;
     getUserRoles(userId),
   ]);
   const { password: _pw, ...userInfo } = updated;
-  return { ...userInfo, roles: userRoleList, createdAt: formatDateTime(updated.createdAt), updatedAt: formatDateTime(updated.updatedAt) };
+  return { ...userInfo, roles: userRoleList, ...formatTimestamps(updated) };
 }
 
 export async function changeMyPassword(oldPassword: string, newPassword: string) {

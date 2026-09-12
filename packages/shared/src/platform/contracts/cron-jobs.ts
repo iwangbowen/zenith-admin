@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, dateRangeBound, entityStatusQuery, idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, dateRangeQuery, entityStatusQuery, idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { CRON_ALERT_LEVELS, CRON_ALERT_TYPES, CRON_JOB_STATUSES, CRON_RUN_STATUSES, CRON_RUN_TRIGGERS } from '../constants';
 import { createCronJobSchema, cronJobStatusSchema, cronValidateSchema, updateCronJobSchema } from '../validation';
@@ -263,8 +263,7 @@ export const cronJobLogListQuery = paginationQuery.extend({
   status: queryEnum(CRON_RUN_STATUSES, '按执行状态筛选'),
   trigger: queryEnum(CRON_RUN_TRIGGERS, '按触发方式筛选'),
   keyword: z.string().optional().meta({ description: '按任务名称 / 输出模糊匹配' }),
-  startTime: dateRangeBound('开始时间下限'),
-  endTime: dateRangeBound('开始时间上限'),
+  ...dateRangeQuery('开始时间'),
 });
 
 

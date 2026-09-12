@@ -139,6 +139,7 @@ export function LeftPaneContextMenu({
                             content: '解散后所有成员将被移出，聊天记录一并删除且无法恢复。如需保留群聊请先转让群主。',
                             onOk: () => {
                               void api(chatContract.disbandConversation, { params: { id: conv.id } }).then(() => {
+                                // eslint-disable-next-line no-restricted-syntax -- 确认后立即关闭菜单，不等待请求完成
                                 Toast.success('群聊已解散');
                                 removeLocal();
                               }).catch(() => undefined);
@@ -152,6 +153,7 @@ export function LeftPaneContextMenu({
                               : '删除后仅移除你当前账号下的会话记录，无法恢复。',
                             onOk: () => {
                               void api(chatContract.removeConversation, { params: { id: conv.id } }).then(() => {
+                                // eslint-disable-next-line no-restricted-syntax -- 确认后立即关闭菜单，不等待请求完成
                                 Toast.success(isGroup ? '已退出群聊' : '会话已删除');
                                 removeLocal();
                               }).catch(() => undefined);

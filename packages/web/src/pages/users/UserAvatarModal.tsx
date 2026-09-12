@@ -53,6 +53,7 @@ export function UserAvatarModal({ visible, user, onClose, onUpdated }: UserAvata
       onOk: async () => {
         try {
           onUpdated(await updateAvatar(null));
+          // eslint-disable-next-line no-restricted-syntax -- 头像弹窗使用静默请求并在本地 catch 展示失败
           Toast.success('头像已移除');
           onClose();
         } catch (err) {

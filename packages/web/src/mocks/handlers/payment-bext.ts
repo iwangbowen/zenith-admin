@@ -356,7 +356,7 @@ function computeLinkStatus(l: PaymentLink): PaymentLinkStatus {
 
 const linkHandlers = [
   mock(paymentLinkContract.list, ({ query, ok, paginate }) => {
-    const filtered = filterByKeyword(links, query.keyword, [(l) => l.subject]).filter((l) => !query.status || computeLinkStatus(l) === query.status);
+    const filtered = filterByKeyword(links, query.keyword, [(l) => l.subject]).filter((l) => matchesFilter(computeLinkStatus(l), query.status));
     return ok(paginate([...filtered].reverse().map((l) => ({ ...l, status: computeLinkStatus(l) }))));
   }),
   mock(paymentLinkContract.detail, ({ params, ok }) => {

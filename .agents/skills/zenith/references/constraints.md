@@ -90,6 +90,8 @@
 - **契约积木**：路径 `{id}` 用 `idParam`；查询串里的关联 ID 筛选（`channelId` / `taskId`…）用 `idQuery(description?)`；
   列表查询 `paginationQuery.extend({...})`；分页响应 `paginated(xxxSchema)`；
   标准 `startTime` / `endTime` 范围 `...dateRangeQuery('创建时间')`（非标准键名如 `startAt` / `dateStart` 才逐个 `dateRangeBound()`）；
+  `packages/shared/eslint.config.js` 对 `src/*/contracts/**` 封禁 `startTime` / `endTime` 键下的 `dateRangeBound()`
+  与 `xxxId` 键下手写的 `z.coerce.number().int().positive().optional()`；
   查询串布尔 `queryBool()`、查询串枚举筛选 `queryEnum(XXX_VALUES)`（空串 = 未筛选）、
   启用 / 禁用状态筛选 `entityStatusQuery`；
   批量 ID `batchIdsBody`；审计列 `...auditFieldsSchema`；业务请求头 `headers: z.object({...})`；
@@ -263,7 +265,7 @@
   `removeBatch`（`/batch`）等静态路径的 handler 必须排在 `detail` / `remove`（`/{id}`）**之前**
 - **自增 ID**：用 `nextIdFrom(list)`；**禁止**手写 `Math.max(...list.map((x) => x.id)) + 1`（空列表得 `-Infinity`）
 - **机械 CRUD 用工具**：关键词多字段过滤用 `filterByKeyword`、枚举 / ID / 布尔精确筛选用 `matchesFilter(actual, expected)`
-  （`mocks/utils/filter.ts`；`!query.x || item.x === query.x` 会把 `false` / `0` 当成未筛选），按 id 取 / 改 / 删 / 批删用
+  （`mocks/utils/filter.ts`；`!query.x || item.x === query.x` 会把 `false` / `0` 当成未筛选，`src/mocks/**` 下 ESLint 已封禁该写法），按 id 取 / 改 / 删 / 批删用
   `requireItem` / `updateItem` / `removeItem` / `removeByIds`（`mocks/utils/crud.ts`，找不到抛 `MockHttpError`，`mock()` 映射为 404 响应；
   主键可为 number 或 string），表单或 JSON 请求体用 `readFormOrJsonBody`，`Idempotency-Key` 回放用 `resolveIdempotent`；
   **禁止**在 handler 里手写 `find → notFound → Object.assign` / `findIndex → notFound → splice` / 多字段 `includes` 链。

@@ -60,4 +60,27 @@ export default tseslint.config(
       ],
     },
   },
+  // 契约积木纪律（constraints.md → Shared 层「契约积木」）：查询串里的标准时间范围与关联 ID 只用 core/api-schemas 的积木，
+  // 逐个手写六段链式调用是本轮收敛前 141 / 72 处重复的来源。同名规则整体覆盖，故把 .partial() 那条一并带上。
+  {
+    files: ['src/*/contracts/**/*.ts'],
+    ignores: ['src/**/*.test.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.property.name='partial']",
+          message: '禁止直接调用 .partial()：请改用 partialForUpdate()（core/validation），否则字段省略时会注入 .default() 并覆盖未提交的字段。',
+        },
+        {
+          selector: "Property[key.name=/^(startTime|endTime)$/] > CallExpression[callee.name='dateRangeBound']",
+          message: "标准 startTime / endTime 范围端点请展开 ...dateRangeQuery('作用的时间字段')（core/api-schemas）；只有 startAt / dateStart 等非标准键名才逐个写 dateRangeBound。",
+        },
+        {
+          selector: "Property[key.name=/Id$/] > CallExpression[callee.property.name='optional'][callee.object.callee.property.name='positive'][callee.object.callee.object.callee.property.name='int']",
+          message: '查询串里的关联 ID 筛选请用 idQuery(description?)（core/api-schemas），不要逐个写 z.coerce.number().int().positive().optional()。',
+        },
+      ],
+    },
+  },
 );

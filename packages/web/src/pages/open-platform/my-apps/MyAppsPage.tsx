@@ -26,7 +26,7 @@ import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useEditModal } from '@/hooks/useEditModal';
 import { MetricMeter, type MetricMeterTone } from '@/components/data-viz/MetricMeter';
-import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { copyableNoColumn, dateTimeColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 
 const { Paragraph, Text } = Typography;
 
@@ -165,7 +165,7 @@ export default function MyAppsPage() {
       dataIndex: 'status',
       width: 90,
       fixed: 'right',
-      render: (value: string) => <Tag size="small" color={value === 'enabled' ? 'green' : 'grey'}>{value === 'enabled' ? '启用' : '禁用'}</Tag>,
+      render: renderEnabledStatusTag,
     },
     createOperationColumn<OAuth2Client>({
       // 提交审核 / 在线调试 / 轮换密钥 / 删除 随审核状态出现，进更多；行内保留编辑 / 用量

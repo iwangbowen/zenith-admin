@@ -166,6 +166,7 @@ export default function FmListView({
       virtualized={tableScrollY ? { itemSize: VIRTUAL_ITEM_HEIGHT } : undefined}
       rowSelection={{
         selectedRowKeys: [...selectedPaths],
+        // eslint-disable-next-line no-restricted-syntax -- 选中集合由父组件以 Set<string> 持有并跨视图共享，不走 useRowSelection
         onChange: (keys) => onSelectionChange(new Set(keys as string[])),
       }}
       onChange={({ sorter }) => {

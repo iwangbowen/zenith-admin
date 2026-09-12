@@ -15,7 +15,7 @@ import { db } from '../../db';
 import { driveNodeComments, driveNodes, driveNodeTags, driveTags } from '../../db/schema';
 import { currentUser, currentUserId } from '../../lib/context';
 import { requireRow } from '../../lib/db-assert';
-import { formatDateTime, formatTimestamps } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { getCreateTenantId } from '../../lib/tenant';
 import { ensureNodeRole, ensureSpaceRole, loadDriveSubjects } from './drive-access.service';
@@ -142,7 +142,7 @@ export async function createDriveNodeComment(nodeId: number, data: CreateDriveNo
   });
   return {
     id: row.id, nodeId, parentId: row.parentId ?? null, content: row.content, mentionUserIds: row.mentionUserIds, authorId: uid, authorName: names.get(uid) ?? null,
-    createdAt: formatDateTime(row.createdAt), updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -169,7 +169,7 @@ export async function updateDriveNodeComment(nodeId: number, commentId: number, 
   return {
     id: updated.id, nodeId, parentId: updated.parentId, content: updated.content, mentionUserIds: updated.mentionUserIds,
     authorId: updated.authorId, authorName: updated.authorId ? names.get(updated.authorId) ?? null : null,
-    createdAt: formatDateTime(updated.createdAt), updatedAt: formatDateTime(updated.updatedAt),
+    ...formatTimestamps(updated),
   };
 }
 

@@ -206,6 +206,7 @@ export default function AssetsPage() {
       title: '状态', dataIndex: 'status', width: 100, fixed: 'right',
       render: (v: string | null, r) => r.deprecationEffectiveAt
         ? <Tag color="orange">即将弃用</Tag>
+        // eslint-disable-next-line no-restricted-syntax -- 三态：enabled / disabled / 其它生命周期值（正常）
         : <Tag color={v === 'enabled' ? 'green' : v === 'disabled' ? 'grey' : undefined}>{v === 'enabled' ? '启用' : v === 'disabled' ? '停用' : v || '正常'}</Tag>,
     },
     createOperationColumn<ReportAssetCatalogItem>({

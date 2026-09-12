@@ -238,6 +238,7 @@ export default function MpKfSessionsPage() {
             <Text type="tertiary" size="small">客服负载：</Text>
             {stats.agents.length === 0 && <Text type="tertiary" size="small">暂无客服</Text>}
             {stats.agents.map((a) => (
+              // eslint-disable-next-line no-restricted-syntax -- 客服负载徽标：按在线状态着色，内容是昵称与会话数而非状态文案
               <Tag key={a.kfId} color={a.status === 'enabled' ? 'blue' : 'grey'} type="light">
                 {a.nickname}：{a.activeCount}
               </Tag>

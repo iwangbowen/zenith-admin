@@ -313,7 +313,7 @@ export async function updateSystemSchedulerTaskConfig(name: string, input: Updat
     },
   }).returning();
   await updateSystemTaskRuntimePolicy(name, normalized);
-  return { ...row, createdAt: formatDateTime(row.createdAt), updatedAt: formatDateTime(row.updatedAt) };
+  return { ...row, ...formatTimestamps(row) };
 }
 
 export async function cleanupSystemSchedulerRuns(input: CleanupSystemSchedulerRunsInput = {}) {

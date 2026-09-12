@@ -5,7 +5,7 @@ import { eq, asc, desc, and, or, inArray, notInArray, isNull, isNotNull, ne, lt,
 import { db } from '../../db';
 import { cmsContents, cmsContentTags, cmsContentChannels, cmsContentRelations } from '../../db/schema';
 import type { CmsContentRow, CmsTagRow } from '../../db/schema';
-import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { config } from '../../config';
 import redis from '../../lib/redis';
@@ -124,7 +124,7 @@ export function mapCmsContent(row: CmsContentMapRow, extra?: {
     ...(extra?.tags ? {
       tags: extra.tags.map((t) => ({
         id: t.id, siteId: t.siteId, name: t.name, slug: t.slug, groupName: t.groupName ?? null, contentCount: t.contentCount,
-        createdAt: formatDateTime(t.createdAt), updatedAt: formatDateTime(t.updatedAt),
+        ...formatTimestamps(t),
       })),
       tagIds: extra.tags.map((t) => t.id),
     } : {}),

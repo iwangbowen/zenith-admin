@@ -14,7 +14,7 @@ import { currentUser } from '../../lib/context';
 import { forceLogoutAllByUsers } from '../../lib/session-manager';
 import { HTTPException } from 'hono/http-exception';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { formatDateTime, formatTimestamps } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { getScopeMemberSummaries, validateScopeUserIds } from './user-scope.service';
 import { RESERVED_ROLE_CODES } from './role-grant';
 
@@ -198,7 +198,7 @@ export async function getRoleUsers(id: number) {
   return role.userRoles.map(({ user: u }) => ({
     id: u.id, username: u.username, nickname: u.nickname, email: u.email,
     avatar: u.avatar, status: u.status,
-    createdAt: formatDateTime(u.createdAt), updatedAt: formatDateTime(u.updatedAt),
+    ...formatTimestamps(u),
   }));
 }
 

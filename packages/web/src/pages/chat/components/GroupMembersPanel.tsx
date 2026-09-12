@@ -113,6 +113,7 @@ export function GroupMembersPanel({
         } catch {
           return;
         }
+        // eslint-disable-next-line no-restricted-syntax -- try/catch 吞掉删除失败，保持原弹窗关闭行为
         Toast.success('已移除');
       },
     });

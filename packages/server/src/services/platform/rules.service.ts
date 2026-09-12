@@ -754,7 +754,7 @@ export async function shadowRunDecisionTable(id: number, limit = 100): Promise<R
 
 /** 测试用例 CRUD + 批跑 + 覆盖率 */
 type CaseRow = typeof ruleTestCases.$inferSelect;
-const mapCase = (r: CaseRow) => ({ id: r.id, tableId: r.tableId, name: r.name, input: (r.input ?? {}) as Record<string, unknown>, expected: (r.expected ?? {}) as Record<string, unknown>, createdAt: formatDateTime(r.createdAt), updatedAt: formatDateTime(r.updatedAt) });
+const mapCase = (r: CaseRow) => ({ id: r.id, tableId: r.tableId, name: r.name, input: (r.input ?? {}) as Record<string, unknown>, expected: (r.expected ?? {}) as Record<string, unknown>, ...formatTimestamps(r) });
 
 export async function listTestCases(tableId: number) {
   await ensureDecisionTable(tableId);

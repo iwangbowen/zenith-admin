@@ -31,6 +31,33 @@ const listSearchRestrictions = [
   },
 ];
 
+// ── 列表页样板纪律（constraints-frontend.md → 必须复用的公共 hook / 表格列）：
+//    删除确认 + 成功提示、多选状态、启用/禁用状态标签都已收口到 components/list-page 与 utils/table-columns，
+//    页面内再手写一遍只会在文案、颜色、清选中等细节上慢慢漂移。──
+const listPageBoilerplateRestrictions = [
+  {
+    selector: 'CallExpression[callee.name="confirmDelete"] CallExpression[callee.object.name="Toast"][callee.property.name="success"]',
+    message: '删除确认后再手写 Toast.success 的组合请用 @/components/list-page 的 deleteAction（操作列）/ confirmAndDelete（批量、面板内）；confirmDelete 只留给不提示成功的场景。',
+  },
+  {
+    selector: ':matches(Property[key.name="rowSelection"], JSXAttribute[name.name="rowSelection"]) Property[key.name="onChange"] > ArrowFunctionExpression TSAsExpression:matches([expression.type="Identifier"], [expression.type="LogicalExpression"])',
+    message: '表格多选状态请用 @/components/list-page 的 useRowSelection()，直接把返回的 rowSelection 交给表格；额外的 getCheckboxProps / fixed 走 extra 参数。',
+  },
+  {
+    selector: 'JSXOpeningElement[name.name="Tag"] > JSXAttribute[name.name="color"] > JSXExpressionContainer > ConditionalExpression > BinaryExpression[right.value="enabled"]',
+    message: 'enabled / disabled 两态状态标签请用 @/utils/table-columns 的 renderEnabledStatusTag（文案与颜色跟随 COMMON_STATUS_LABELS）；三态或语义不同的标签请加 eslint-disable 注释并注明理由。',
+  },
+];
+
+// ── Mock 纪律（crud-mock.md）：可选等值筛选统一 matchesFilter(actual, expected)，
+//    手写 `!query.x || item.x === query.x` 会把 false / 0 当成「未筛选」。──
+const mockRestrictions = [
+  {
+    selector: 'LogicalExpression[operator="||"][left.type="UnaryExpression"][left.operator="!"][left.argument.type="MemberExpression"][left.argument.object.name="query"] > BinaryExpression.right[operator="==="]',
+    message: '可选等值筛选请用 @/mocks/utils/filter 的 matchesFilter(item.x, query.x)；`!query.x || …` 会把 false / 0 误判为未筛选。',
+  },
+];
+
 export default [
   { ignores: ['dist/**', 'node_modules/**', 'public/mockServiceWorker.js'] },
   js.configs.recommended,
@@ -120,6 +147,7 @@ export default [
         'error',
         ...clipboardRestrictions,
         ...listSearchRestrictions,
+        ...listPageBoilerplateRestrictions,
         {
           selector: 'Property[key.name="borderRadius"][value.type="Literal"][value.value>=2][value.value<=14]',
           message: '内联圆角请使用 var(--semi-border-radius-small/medium/large)，以便跟随「圆角大小」偏好；刻意的造型值请加 eslint-disable 注释并注明理由。',
@@ -132,10 +160,18 @@ export default [
     },
   },
   {
-    // 会员端 / 审批端不受 Token 纪律管辖，但列表页搜索纪律同样适用
+    // 会员端 / 审批端不受 Token 纪律管辖，但列表页搜索与样板纪律同样适用
     files: ['src/member/**/*.tsx', 'src/approval/**/*.tsx'],
     rules: {
-      'no-restricted-syntax': ['error', ...clipboardRestrictions, ...listSearchRestrictions],
+      'no-restricted-syntax': ['error', ...clipboardRestrictions, ...listSearchRestrictions, ...listPageBoilerplateRestrictions],
+    },
+  },
+  {
+    // ── MSW Mock handler：同名规则整体覆盖，故把 clipboardRestrictions 一并带上 ──
+    files: ['src/mocks/**/*.ts'],
+    ignores: ['src/mocks/**/*.test.ts'],
+    rules: {
+      'no-restricted-syntax': ['error', ...clipboardRestrictions, ...mockRestrictions],
     },
   },
   {

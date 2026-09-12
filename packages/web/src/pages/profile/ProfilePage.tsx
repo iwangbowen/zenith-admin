@@ -23,8 +23,9 @@ import { useDictItems } from '@/hooks/useDictItems';
 import { usePagination } from '@/hooks/usePagination';
 import DictTag from '@/components/DictTag';
 import { LoginLogsTable } from '@/components/logs/LoginLogsTable';
+import { confirmAndDelete } from '@/components/list-page';
 import { OperationLogsTable } from '@/components/logs/OperationLogsTable';
-import { confirmDanger, confirmDelete } from '@/utils/confirm';
+import { confirmDanger } from '@/utils/confirm';
 import { copyText } from '@/utils/clipboard';
 import {
   useBeginTotpSetup,
@@ -326,13 +327,11 @@ export default function ProfilePage({ user }: ProfilePageProps) {
   }
 
   async function handleRemoveAvatar() {
-    confirmDelete({
+    confirmAndDelete({
       title: '确定要移除头像吗？',
       content: '移除后将使用昵称缩写作为默认头像。',
-      onOk: async () => {
-        await updateAvatarMutation.mutateAsync({ body: { avatar: null } });
-        Toast.success('头像已移除');
-      },
+      run: () => updateAvatarMutation.mutateAsync({ body: { avatar: null } }),
+      successMessage: '头像已移除',
     });
   }
 
@@ -547,6 +546,7 @@ export default function ProfilePage({ user }: ProfilePageProps) {
                         main={(
                           <div className="oauth-list-main">
                             <Text strong>{factor.name}</Text>
+                            {/* eslint-disable-next-line no-restricted-syntax -- 三态：已启用 / 待验证 / 已停用 */}
                             <Tag color={factor.status === 'enabled' ? 'green' : 'grey'} size="small">
                               {factor.status === 'enabled' ? '已启用' : factor.status === 'pending' ? '待验证' : '已停用'}
                             </Tag>

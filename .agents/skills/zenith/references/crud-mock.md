@@ -49,7 +49,7 @@ packages/web/src/mocks/
 | 工具 | 用途 |
 | --- | --- |
 | `filterByKeyword(list, keyword, [selectors])`（`filter.ts`） | 关键词对多个字段做 `includes` 过滤；默认大小写敏感，需要时传 `{ caseInsensitive: true }` |
-| `matchesFilter(actual, expected)`（`filter.ts`） | 枚举 / ID / 布尔精确筛选：`expected` 为 `undefined` / `null` / 空串不过滤，否则严格相等；`false` / `0` 是有效筛选值 |
+| `matchesFilter(actual, expected)`（`filter.ts`） | 枚举 / ID / 布尔精确筛选：`expected` 为 `undefined` / `null` / 空串不过滤，否则严格相等；`false` / `0` 是有效筛选值。手写 `!query.x || item.x === query.x` 已被 ESLint 封禁 |
 | `requireItem(list, id, message)`（`crud.ts`） | 按 id 取记录，找不到抛出 `MockHttpError`，`mock()` 把它映射为 `notFound(message)` 响应 |
 | `updateItem(list, id, patch, { notFoundMessage, now })` | 取记录并 `Object.assign` 补丁，`now` 存在时写入 `updatedAt` |
 | `removeByIds(list, ids)` | 按 id 集合就地删除，返回删除数量 |

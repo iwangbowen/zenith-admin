@@ -11,7 +11,7 @@ import { currentUserOrNull } from '../../lib/context';
 import { currentMemberOrNull } from '../../lib/member-context';
 import { tenantScope, getCreateTenantId } from '../../lib/tenant';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime, formatNullableDateTime, formatDate, APP_TIME_ZONE, parseDateRangeStart } from '../../lib/datetime';
+import { APP_TIME_ZONE, formatDate, formatDateTime, formatNullableDateTime, formatTimestamps, parseDateRangeStart } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { parseClientEnv, computeErrorFingerprint, startOfDaysAgo, clampDays, resolveIngestPlatformFields } from '../../lib/analytics-helpers';
 import { clearSymbolicateCache, symbolicateStack } from '../../lib/source-map-symbolicate';
@@ -478,7 +478,7 @@ export async function uploadSourceMap(input: SourceMapUploadInput) {
   await db.delete(sourceMaps).where(buildWhere(and(eq(sourceMaps.release, input.release), eq(sourceMaps.fileName, input.fileName)), tenantScope(sourceMaps)));
   const [row] = await db.insert(sourceMaps).values({ tenantId, release: input.release, fileName: input.fileName, content: input.content, size: input.content.length }).returning();
   clearSymbolicateCache();
-  return { id: row.id, release: row.release, fileName: row.fileName, size: row.size, createdAt: formatDateTime(row.createdAt), updatedAt: formatDateTime(row.updatedAt) };
+  return { id: row.id, release: row.release, fileName: row.fileName, size: row.size, ...formatTimestamps(row) };
 }
 
 export async function listSourceMaps(q: QueryOutputOf<typeof frontendErrorContract.sourceMaps>) {
@@ -489,7 +489,7 @@ export async function listSourceMaps(q: QueryOutputOf<typeof frontendErrorContra
     pageSize,
     count: () => db.$count(sourceMaps, where),
     rows: () => db.select({ id: sourceMaps.id, release: sourceMaps.release, fileName: sourceMaps.fileName, size: sourceMaps.size, createdAt: sourceMaps.createdAt, updatedAt: sourceMaps.updatedAt }).from(sourceMaps).where(where).orderBy(desc(sourceMaps.id)).limit(pageSize).offset(pageOffset(page, pageSize)),
-    map: (r) => ({ id: r.id, release: r.release, fileName: r.fileName, size: r.size, createdAt: formatDateTime(r.createdAt), updatedAt: formatDateTime(r.updatedAt) }),
+    map: (r) => ({ id: r.id, release: r.release, fileName: r.fileName, size: r.size, ...formatTimestamps(r) }),
   });
 }
 

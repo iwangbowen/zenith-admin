@@ -172,7 +172,10 @@ function DatasetDetail({ dataset, canManage }: { dataset: AiEvalDataset; canMana
             confirmDelete({
               title: '确定要删除该条目吗？',
               onOk: async () => {
-                await deleteItemMutation.mutateAsync({ params: { id: dataset.id, itemId: record.id } }).then(() => Toast.success('已删除')).catch(() => {});
+                await deleteItemMutation.mutateAsync({ params: { id: dataset.id, itemId: record.id } }).then(() => {
+                  // eslint-disable-next-line no-restricted-syntax -- catch 吞掉删除失败，保持原弹窗关闭行为
+                  Toast.success('已删除');
+                }).catch(() => {});
               },
             });
           }}
@@ -465,7 +468,10 @@ export default function AiEvalPage() {
               title: '确定要删除该数据集吗？',
               content: '将级联删除全部条目与实验记录',
               onOk: async () => {
-                await deleteMutation.mutateAsync({ params: { id: record.id } }).then(() => Toast.success('已删除')).catch(() => {});
+                await deleteMutation.mutateAsync({ params: { id: record.id } }).then(() => {
+                  // eslint-disable-next-line no-restricted-syntax -- catch 吞掉删除失败，保持原弹窗关闭行为
+                  Toast.success('已删除');
+                }).catch(() => {});
               },
             });
           },

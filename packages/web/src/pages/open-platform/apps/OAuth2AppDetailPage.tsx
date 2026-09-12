@@ -171,6 +171,7 @@ function WebhooksTab({ clientId }: Readonly<{ clientId: string }>) {
       width: 100,
       fixed: 'right',
       render: (value: string, row) => (
+        // eslint-disable-next-line no-restricted-syntax -- 三态：启用 / 自动停用（红）/ 禁用
         <Tag size="small" color={value === 'enabled' ? 'green' : row.autoDisabledAt ? 'red' : 'grey'}>
           {row.autoDisabledAt ? '自动停用' : value === 'enabled' ? '启用' : '禁用'}
         </Tag>
@@ -211,6 +212,7 @@ export default function OAuth2AppDetailPage() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
         <Button theme="borderless" icon={<ArrowLeft size={16} />} onClick={() => navigate('/system/oauth2-apps')}>返回</Button>
         <Title heading={4} style={{ margin: 0 }}>{app.name}</Title>
+        {/* eslint-disable-next-line no-restricted-syntax -- 页头标签与标题同排，保留默认尺寸（renderEnabledStatusTag 为表格用的 small） */}
         <Tag color={app.status === 'enabled' ? 'green' : 'grey'}>{app.status === 'enabled' ? '启用' : '禁用'}</Tag>
         <Text type="tertiary" copyable={{ content: app.clientId }}>{app.clientId}</Text>
       </div>

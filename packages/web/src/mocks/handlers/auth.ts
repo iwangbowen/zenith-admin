@@ -171,7 +171,7 @@ export const authHandlers = [
     const userId = mockUsers[0].id;
     const list = mockLoginLogs.filter((l) =>
       l.userId === userId
-      && (!query.eventType || (l.eventType ?? 'login') === query.eventType)
+      && matchesFilter(l.eventType ?? 'login', query.eventType)
       && matchesFilter(l.status, query.status));
     return ok(paginate(list));
   }),

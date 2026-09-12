@@ -114,7 +114,10 @@ export default function AiToolsPage() {
               title: '确定要删除该工具吗？',
               content: '已勾选此工具的智能体将无法再调用',
               onOk: async () => {
-                await deleteMutation.mutateAsync({ params: { id: record.id } }).then(() => Toast.success('已删除')).catch(() => {});
+                await deleteMutation.mutateAsync({ params: { id: record.id } }).then(() => {
+                  // eslint-disable-next-line no-restricted-syntax -- catch 吞掉删除失败，保持原弹窗关闭行为
+                  Toast.success('已删除');
+                }).catch(() => {});
               },
             });
           },

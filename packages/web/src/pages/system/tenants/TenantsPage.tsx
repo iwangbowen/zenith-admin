@@ -346,6 +346,7 @@ export default function TenantsPage() {
                 row
                 size="small"
                 data={[
+                  // eslint-disable-next-line no-restricted-syntax -- 租户状态文案为「正常 / 停用」，与通用启用 / 禁用语义不同
                   { key: '状态', value: <Tag color={stats.status === 'enabled' ? 'green' : 'grey'}>{stats.status === 'enabled' ? '正常' : '停用'}</Tag> },
                   { key: '租户编码', value: stats.code },
                   { key: '所用套餐', value: stats.packageName ?? '未分配' },
