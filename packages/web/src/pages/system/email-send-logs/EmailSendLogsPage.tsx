@@ -1,10 +1,8 @@
 import { useMemo } from 'react';
-import { Button, Form, Input } from '@douyinfe/semi-ui';
+import { Button, Form } from '@douyinfe/semi-ui';
 import { AppModal } from '@/components/AppModal';
 import { Plus } from 'lucide-react';
-import { enumValueOf } from '@zenith/shared/core';
-import { SEND_SOURCES } from '@zenith/shared/messaging';
-import type { EmailSendLog, SendEmailInput, SendStatus } from '@zenith/shared/messaging';
+import type { EmailSendLog, SendEmailInput, SendSource, SendStatus } from '@zenith/shared/messaging';
 import { usePermission } from '@/hooks/usePermission';
 import ExportButton from '@/components/ExportButton';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -38,11 +36,11 @@ interface TestEmailFormValues {
 export default function EmailSendLogsPage() {
   const { hasPermission: can } = usePermission();
 
-  interface SearchParams { keyword: string; toEmail: string; filterStatus: SendStatus | undefined; filterSource: string | undefined; }
+  interface SearchParams { keyword: string; toEmail: string; filterStatus?: SendStatus; filterSource?: SendSource }
   const defaultSearchParams: SearchParams = { keyword: '', toEmail: '', filterStatus: undefined, filterSource: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, bind, bindKeyword, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: emailSendLogKeys.lists });
 
@@ -51,7 +49,7 @@ export default function EmailSendLogsPage() {
     keyword: submittedParams.keyword,
     toEmail: submittedParams.toEmail,
     status: submittedParams.filterStatus,
-    source: enumValueOf(SEND_SOURCES, submittedParams.filterSource),
+    source: submittedParams.filterSource,
   }), [submittedParams]);
   const listQuery = useEmailSendLogList({ page, pageSize, ...filterQuery });
   const testMutation = useTestEmailSendLog();
@@ -100,14 +98,8 @@ export default function EmailSendLogsPage() {
         keyword={<KeywordInput placeholder="主题/内容关键词" {...bindKeyword('keyword')} width={200} />}
         filters={(
           <>
-            <Input placeholder="收件人邮箱" {...bind('toEmail')}
-              onEnterPress={handleSearch} showClear style={{ width: 200 }} />
-            <SendLogStatusSourceFilters
-              status={draftParams.filterStatus}
-              source={draftParams.filterSource}
-              onStatusChange={setField('filterStatus')}
-              onSourceChange={setField('filterSource')}
-            />
+            <KeywordInput placeholder="收件人邮箱" {...bindKeyword('toEmail')} width={200} />
+            <SendLogStatusSourceFilters status={bind('filterStatus')} source={bind('filterSource')} />
           </>
         )}
         onSearch={handleSearch}

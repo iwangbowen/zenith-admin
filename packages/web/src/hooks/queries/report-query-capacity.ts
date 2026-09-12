@@ -24,6 +24,10 @@ export const reportQueryCapacityKeys = {
   costLogs: (params: ReportQueryCostLogParams) => contractKey(reportQueryCapacityContract.costLogs, { query: params }),
   costStats: (params: ReportQueryCostParams) => contractKey(reportQueryCapacityContract.costStats, { query: params }),
   costTrend: (params: ReportQueryCostTrendParams) => contractKey(reportQueryCapacityContract.costTrend, { query: params }),
+  /** 成本日志 / 统计 / 趋势的公共前缀：成本筛选条「查询」时一并回源 */
+  costLogsLists: contractKey(reportQueryCapacityContract.costLogs),
+  costStatsAll: contractKey(reportQueryCapacityContract.costStats),
+  costTrendAll: contractKey(reportQueryCapacityContract.costTrend),
 };
 
 const silent = { requestOptions: { silent: true } } as const;

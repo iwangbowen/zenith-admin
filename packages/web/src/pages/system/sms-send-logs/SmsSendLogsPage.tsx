@@ -1,10 +1,9 @@
 import { useMemo } from 'react';
-import { Button, Form, Input } from '@douyinfe/semi-ui';
+import { Button, Form } from '@douyinfe/semi-ui';
 import { AppModal } from '@/components/AppModal';
 import { Plus } from 'lucide-react';
-import { enumValueOf } from '@zenith/shared/core';
-import { SEND_SOURCES, SMS_PROVIDER_OPTIONS } from '@zenith/shared/messaging';
-import type { SendSmsInput, SendStatus, SmsSendLog } from '@zenith/shared/messaging';
+import { SMS_PROVIDER_OPTIONS } from '@zenith/shared/messaging';
+import type { SendSmsInput, SendSource, SendStatus, SmsSendLog } from '@zenith/shared/messaging';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import ExportButton from '@/components/ExportButton';
@@ -36,11 +35,11 @@ interface TestSmsFormValues {
 export default function SmsSendLogsPage() {
   const { hasPermission: can } = usePermission();
 
-  interface SearchParams { keyword: string; phone: string; filterStatus: SendStatus | undefined; filterSource: string | undefined; }
+  interface SearchParams { keyword: string; phone: string; filterStatus?: SendStatus; filterSource?: SendSource }
   const defaultSearchParams: SearchParams = { keyword: '', phone: '', filterStatus: undefined, filterSource: undefined };
   const {
     page, pageSize, buildPagination,
-    draftParams, setField, bind, bindKeyword, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: smsSendLogKeys.lists });
 
@@ -49,7 +48,7 @@ export default function SmsSendLogsPage() {
     keyword: submittedParams.keyword,
     phone: submittedParams.phone,
     status: submittedParams.filterStatus,
-    source: enumValueOf(SEND_SOURCES, submittedParams.filterSource),
+    source: submittedParams.filterSource,
   }), [submittedParams]);
   const listQuery = useSmsSendLogList({ page, pageSize, ...filterQuery });
   const testMutation = useTestSmsSendLog();
@@ -100,14 +99,8 @@ export default function SmsSendLogsPage() {
         keyword={<KeywordInput placeholder="内容关键词" {...bindKeyword('keyword')} width={180} />}
         filters={(
           <>
-            <Input placeholder="手机号" {...bind('phone')}
-              onEnterPress={handleSearch} showClear style={{ width: 160 }} />
-            <SendLogStatusSourceFilters
-              status={draftParams.filterStatus}
-              source={draftParams.filterSource}
-              onStatusChange={setField('filterStatus')}
-              onSourceChange={setField('filterSource')}
-            />
+            <KeywordInput placeholder="手机号" {...bindKeyword('phone')} width={160} />
+            <SendLogStatusSourceFilters status={bind('filterStatus')} source={bind('filterSource')} />
           </>
         )}
         onSearch={handleSearch}

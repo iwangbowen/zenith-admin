@@ -275,13 +275,16 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
     openReplay(prefill);
   };
 
+  // 重放筛选 → 请求体：空白关键字 / 未选维度一律丢弃，预览与执行共用同一份映射
   const buildReplayBody = (f: ReplayFilterState) => ({
     status: f.status,
-    jobType: f.jobType,
-    instanceId: f.instanceId,
-    traceId: f.traceId?.trim() || undefined,
-    reasonKeyword: f.reasonKeyword?.trim() || undefined,
-    olderThanMinutes: f.olderThanMinutes,
+    ...compactParams({
+      jobType: f.jobType,
+      instanceId: f.instanceId,
+      traceId: f.traceId?.trim(),
+      reasonKeyword: f.reasonKeyword?.trim(),
+      olderThanMinutes: f.olderThanMinutes,
+    }),
   });
 
   const doPreview = async () => {

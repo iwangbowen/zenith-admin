@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentProps } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Dropdown,
@@ -54,6 +53,13 @@ import { abortSubmit } from '@/lib/abort-submit';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { compactParams } from '@/lib/query';
 
+interface ItemSearchParams {
+  keyword: string;
+  status?: string;
+}
+
+const defaultItemSearch: ItemSearchParams = { keyword: '', status: undefined };
+
 /** 字典项详情按 (dictId, itemId) 取数；useEditModal 只传 itemId，所属字典从打开弹窗时的行记录取 */
 function useDictItemModalDetail(id: number | undefined, enabled?: boolean, record?: DictItem) {
   return useDictItemDetail(record?.dictId, id, enabled);
@@ -61,7 +67,6 @@ function useDictItemModalDetail(id: number | undefined, enabled?: boolean, recor
 
 export default function DictsPage() {
   const { hasPermission } = usePermission();
-  const queryClient = useQueryClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const jsonViewerRef = useRef<any>(null);
 
@@ -78,10 +83,6 @@ export default function DictsPage() {
   // ─── 字典项列表 ────────────────────────────────────────────────────────────
   // 显式选中的字典以 `?dict=` 同步到 URL（深链/刷新/页签直达）；选中对象按 key 派生
   const [selectedDictKey, setSelectedDictKey] = useUrlSelectionState('dict');
-  const [pendingItemKeyword, setPendingItemKeyword] = useState('');
-  const [pendingItemStatus, setPendingItemStatus] = useState<string | undefined>();
-  const [itemKeyword, setItemKeyword] = useState('');
-  const [itemStatusFilter, setItemStatusFilter] = useState<string | undefined>();
   const [itemParentId, setItemParentId] = useState<number | null>(null);
   const [itemColor, setItemColor] = useState<string | null>(null);
   // metadataStr 仅用于 JsonViewer 的初始值（非受控），提交时通过 ref.getValue() 读取
@@ -119,6 +120,8 @@ export default function DictsPage() {
 
   const itemsQuery = useDictItemsById(selectedDict?.id);
   const items = useMemo(() => itemsQuery.data ?? [], [itemsQuery.data]);
+  // 字典项全量取回后在客户端过滤：submittedParams 进过滤谓词，「查询 / 重置」仍回源刷新当前字典的项
+  const itemSearch = useListSearch<ItemSearchParams>({ defaults: defaultItemSearch, listKey: dictKeys.items(selectedDict?.id) });
 
   const saveDictMutation = useSaveDict();
   const dictModal = useEditModal<Dict, Partial<CreateDictInput>>({
@@ -196,34 +199,18 @@ export default function DictsPage() {
 
   const selectDict = (dict: Dict) => {
     setSelectedDictKey(String(dict.id));
-    setPendingItemKeyword('');
-    setPendingItemStatus(undefined);
-    setItemKeyword('');
-    setItemStatusFilter(undefined);
+    itemSearch.handleReset();
   };
 
-  function handleItemSearch() {
-    setItemKeyword(pendingItemKeyword);
-    setItemStatusFilter(pendingItemStatus);
-    if (selectedDict) void queryClient.invalidateQueries({ queryKey: dictKeys.items(selectedDict.id) });
-  }
-
-  function handleItemReset() {
-    setPendingItemKeyword('');
-    setPendingItemStatus(undefined);
-    setItemKeyword('');
-    setItemStatusFilter(undefined);
-    if (selectedDict) void queryClient.invalidateQueries({ queryKey: dictKeys.items(selectedDict.id) });
-  }
-
   const filteredItems = useMemo(() => {
+    const { keyword: itemKeyword, status: itemStatusFilter } = itemSearch.submittedParams;
     const flat = items.filter((item) => {
       if (itemKeyword && !item.label.includes(itemKeyword) && !item.value.includes(itemKeyword)) return false;
       if (itemStatusFilter && item.status !== itemStatusFilter) return false;
       return true;
     });
     return flat;
-  }, [items, itemKeyword, itemStatusFilter]);
+  }, [items, itemSearch.submittedParams]);
 
   // 将扁平列表递归转为树结构，用于表格展示
   const treeItems = useMemo(() => {
@@ -537,9 +524,7 @@ export default function DictsPage() {
           keyword={(
             <KeywordInput
               placeholder="标签/键值"
-              value={pendingItemKeyword}
-              onChange={setPendingItemKeyword}
-              onSearch={handleItemSearch}
+              {...itemSearch.bindKeyword('keyword')}
               width={180}
               disabled={!selectedDict}
             />
@@ -547,13 +532,12 @@ export default function DictsPage() {
           filters={(
             <StatusSelect
               items={statusItems}
-              value={pendingItemStatus}
-              onChange={setPendingItemStatus}
+              {...itemSearch.bind('status')}
               disabled={!selectedDict}
             />
           )}
-          onSearch={handleItemSearch}
-          onReset={handleItemReset}
+          onSearch={itemSearch.handleSearch}
+          onReset={itemSearch.handleReset}
           create={(
             hasPermission('system:dict:item') ? (
               <CreateButton onClick={() => openCreateItem()} disabled={!selectedDict} />

@@ -51,6 +51,13 @@ type FormValues = {
   status: 'enabled' | 'disabled';
 };
 
+interface DeliverySearchParams {
+  status?: AppWebhookDelivery['status'];
+  eventType?: string;
+}
+
+const defaultDeliverySearch: DeliverySearchParams = { status: undefined, eventType: undefined };
+
 export interface WebhooksPageProps {
   scope?: WebhookApiScope;
 }
@@ -81,13 +88,18 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
   const [oneTimeSecret, setOneTimeSecret] = useState('');
   const [formEvents, setFormEvents] = useState<string[]>([]);
 
-  // 投递日志抽屉
+  // 投递日志抽屉：状态 / 事件类型选中即查询；换订阅（resetKey）回到第 1 页并清空条件
   const [drawerSub, setDrawerSub] = useState<AppWebhookSubscription | null>(null);
-  const [deliveryPage, setDeliveryPage] = useState(1);
-  const [deliveryStatus, setDeliveryStatus] = useState<AppWebhookDelivery['status'] | undefined>();
-  const [deliveryEventType, setDeliveryEventType] = useState<string | undefined>();
   const { selectedRowKeys: selectedDeliveryIds, clear: clearDeliverySelection, rowSelection: deliveryRowSelection } = useRowSelection<number, AppWebhookDelivery>({
     extra: { getCheckboxProps: (record: AppWebhookDelivery) => ({ disabled: record.status !== 'failed' }) },
+  });
+  const deliveries = useListSearch<DeliverySearchParams>({
+    defaults: defaultDeliverySearch,
+    listKey: webhookKeys(scope).deliveriesLists,
+    pageSize: 10,
+    resetKey: drawerSub?.id,
+    onSearch: clearDeliverySelection,
+    onReset: clearDeliverySelection,
   });
 
   // 已提交筛选 → 契约查询参数：只映射一次
@@ -103,10 +115,9 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
   }, scope);
   const deliveryQuery = useWebhookDeliveries({
     subscriptionId: drawerSub?.id,
-    page: deliveryPage,
-    pageSize: 10,
-    status: deliveryStatus,
-    eventType: deliveryEventType,
+    page: deliveries.page,
+    pageSize: deliveries.pageSize,
+    ...compactParams({ status: deliveries.submittedParams.status, eventType: deliveries.submittedParams.eventType }),
   }, !!drawerSub, scope);
   const saveMutation = useSaveWebhook(scope);
   const deleteMutation = useDeleteWebhook(scope);
@@ -198,10 +209,7 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
   // ─── 投递日志 ──────────────────────────────────────────────────────────────
   function openDeliveries(sub: AppWebhookSubscription) {
     setDrawerSub(sub);
-    setDeliveryPage(1);
-    setDeliveryStatus(undefined);
-    setDeliveryEventType(undefined);
-    clearDeliverySelection();
+    deliveries.handleReset();
   }
   async function retryDelivery(id: number) {
     await retryMutation.mutateAsync({ params: { id } });
@@ -384,23 +392,15 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
           <FilterSelect
             placeholder="全部投递状态"
             items={OPEN_WEBHOOK_DELIVERY_STATUS_OPTIONS}
-            value={deliveryStatus}
-            onChange={(value) => {
-              setDeliveryStatus(value as AppWebhookDelivery['status']);
-              setDeliveryPage(1);
-              clearDeliverySelection();
-            }}
+            value={deliveries.draftParams.status}
+            onChange={(value) => deliveries.applySearch({ ...deliveries.draftParams, status: value })}
             width={140}
           />
           <FilterSelect
             placeholder="全部事件类型"
             items={eventOptions.map((event) => ({ value: event.code, label: event.label }))}
-            value={deliveryEventType}
-            onChange={(value) => {
-              setDeliveryEventType(value as string);
-              setDeliveryPage(1);
-              clearDeliverySelection();
-            }}
+            value={deliveries.draftParams.eventType}
+            onChange={(value) => deliveries.applySearch({ ...deliveries.draftParams, eventType: value })}
             width={180}
             filter
           />
@@ -419,13 +419,7 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
           {...listTableProps(deliveryQuery, {
             empty: '暂无投递记录',
             rowSelection: deliveryRowSelection,
-            pagination: (total) => ({
-              currentPage: deliveryPage,
-              pageSize: 10,
-              total,
-              onPageChange: (p: number) => setDeliveryPage(p),
-              onPageSizeChange: () => setDeliveryPage(1),
-            }),
+            pagination: deliveries.buildPagination,
           })}
           expandedRowRender={renderDeliveryExpanded}
           hideExpandedColumn={false}

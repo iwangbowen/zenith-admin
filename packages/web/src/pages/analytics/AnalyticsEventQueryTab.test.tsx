@@ -11,14 +11,17 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { QueryClientProvider } from '@tanstack/react-query';
 import type { AnalyticsEventQueryResult } from '@zenith/shared/analytics';
 import { PreferencesContext, defaultPreferences } from '@/hooks/usePreferences';
+import { createTestQueryClient } from '@/test-utils/query-harness';
 
 const useAnalyticsEventQueryMock = vi.fn();
 const useAnalyticsEventMetaMock = vi.fn();
 const useAnalyticsSegmentsMock = vi.fn();
 
 vi.mock('@/hooks/queries/analytics', () => ({
+  analyticsKeys: { eventQueries: ['analytics', 'query-events'] },
   useAnalyticsEventQuery: (input: unknown) => useAnalyticsEventQueryMock(input),
   useAnalyticsEventMeta: (...args: unknown[]) => useAnalyticsEventMetaMock(...args),
   useAnalyticsSegments: (...args: unknown[]) => useAnalyticsSegmentsMock(...args),
@@ -35,10 +38,13 @@ vi.mock('@/components/charts', () => ({
 import AnalyticsEventQueryTab from './AnalyticsEventQueryTab';
 
 function renderWithPreferences(ui: React.ReactElement) {
+  // 搜索状态经 useListSearch 在「查询 / 重置」时强制失效，需要 QueryClient
   return render(
-    <PreferencesContext.Provider value={{ preferences: defaultPreferences, setPreferences: vi.fn(), resetPreferences: vi.fn(), ready: true }}>
-      {ui}
-    </PreferencesContext.Provider>,
+    <QueryClientProvider client={createTestQueryClient()}>
+      <PreferencesContext.Provider value={{ preferences: defaultPreferences, setPreferences: vi.fn(), resetPreferences: vi.fn(), ready: true }}>
+        {ui}
+      </PreferencesContext.Provider>
+    </QueryClientProvider>,
   );
 }
 

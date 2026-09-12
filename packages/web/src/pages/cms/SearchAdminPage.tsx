@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { compactParams } from '@/lib/query';
-import { useQueryClient } from '@tanstack/react-query';
 import { Banner, Button, Form, Input, Tag, Toast, Typography, Tabs, TabPane, Modal, Select } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RefreshCw, SplitSquareHorizontal, Plus, Trash2 } from 'lucide-react';
@@ -13,7 +12,6 @@ import { useMyAsyncTasks } from '@/hooks/useAsyncTasks';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
-import { usePagination } from '@/hooks/usePagination';
 import {
   useCmsSearchTest, useCmsSegmentPreview, useCmsSearchReindex,
   useCmsSearchWordList, useSaveCmsSearchWord, useDeleteCmsSearchWord,
@@ -36,12 +34,23 @@ import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } fro
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 // ─── 检索测试 Tab ─────────────────────────────────────────────────────────────
+interface SearchTestParams {
+  keyword: string;
+}
+
+const defaultSearchTestParams: SearchTestParams = { keyword: '' };
+
 function SearchTestTab({ siteId, onSiteChange }: Readonly<{ siteId: number | undefined; onSiteChange: (v: number) => void }>) {
   const { hasPermission } = usePermission();
-  const queryClient = useQueryClient();
-  const [draftKeyword, setDraftKeyword] = useState('');
-  const [keyword, setKeyword] = useState('');
-  const { page, setPage, buildPagination } = usePagination(10);
+  // 「检索测试」是可重复点击的动作型按钮：关键词未变时 query key 不变，useListSearch 保证每次点击都失效回源；
+  // 分词预览与检索结果同源于关键词，一并失效
+  const { page, buildPagination, bindKeyword, submittedParams, handleSearch, handleReset } = useListSearch<SearchTestParams>({
+    defaults: defaultSearchTestParams,
+    listKey: cmsSearchKeys.tests,
+    extraKeys: [cmsSearchKeys.segments],
+    pageSize: 10,
+  });
+  const keyword = submittedParams.keyword.trim();
 
   const searchQuery = useCmsSearchTest({ siteId, keyword, page }, !!keyword && siteId !== undefined);
   const segmentQuery = useCmsSegmentPreview(siteId, keyword, !!keyword && siteId !== undefined);
@@ -49,14 +58,6 @@ function SearchTestTab({ siteId, onSiteChange }: Readonly<{ siteId: number | und
   const { tasks, loading: tasksLoading, refresh } = useMyAsyncTasks({ taskTypes: ['cms-search-reindex'] });
 
   const total = searchQuery.data?.total ?? 0;
-
-  function handleSearch() {
-    setPage(1);
-    setKeyword(draftKeyword.trim());
-    // 「检索测试」是可重复点击的动作型按钮：关键词未变时 query key 不变，
-    // 不显式失效就会在 staleTime 内静默复用上一次结果
-    void queryClient.invalidateQueries({ queryKey: cmsSearchKeys.test({ siteId, keyword: draftKeyword.trim(), page: 1 }) });
-  }
 
   async function handleReindex() {
     await reindexMutation.mutateAsync({ body: { siteId: siteId ?? null } });
@@ -103,8 +104,8 @@ function SearchTestTab({ siteId, onSiteChange }: Readonly<{ siteId: number | und
   return (
     <>
       <SearchToolbar>
-        <CmsSiteSelect value={siteId} onChange={(v) => { onSiteChange(v); setPage(1); setKeyword(''); setDraftKeyword(''); }} width={180} />
-        <KeywordInput placeholder="输入关键词测试检索效果..." value={draftKeyword} onChange={setDraftKeyword} onSearch={handleSearch} width={260} />
+        <CmsSiteSelect value={siteId} onChange={(v) => { onSiteChange(v); handleReset(); }} width={180} />
+        <KeywordInput placeholder="输入关键词测试检索效果..." {...bindKeyword('keyword')} width={260} />
         <SearchButton onClick={handleSearch}>检索测试</SearchButton>
         {hasPermission('cms:search:manage') ? (
           <Button icon={<RefreshCw size={14} />} loading={reindexMutation.isPending} onClick={() => void handleReindex()}>
@@ -210,6 +211,34 @@ function DictTab({ siteId, onSiteChange }: Readonly<{ siteId: number | undefined
     }),
   ];
 
+  // 批量操作按钮组：桌面 `actions` 与移动端更多菜单（无边框视觉）共用一份定义
+  const renderBatchActions = (theme?: 'borderless') => (canManage && selectedIds.length > 0 ? (
+    <>
+      <Button theme={theme} onClick={() => void batchMutation.mutateAsync({ action: 'update', body: { ids: selectedIds, status: 'enabled' } }).then(() => setSelectedIds([]))}>批量启用</Button>
+      <Button theme={theme} onClick={() => {
+        let nextGroup = '';
+        Modal.confirm({
+          title: '批量调整词典分组',
+          content: <Input placeholder="目标分组" onChange={(value) => { nextGroup = value; }} />,
+          onOk: async () => {
+            if (!nextGroup.trim()) abortSubmit('validation');
+            await batchMutation.mutateAsync({ action: 'update', body: { ids: selectedIds, groupName: nextGroup.trim() } });
+            setSelectedIds([]);
+          },
+        });
+      }}>批量分组</Button>
+      <Button type="danger" theme={theme} onClick={() => {
+        confirmAndDelete({
+          title: `删除 ${selectedIds.length} 个词条？`,
+          content: '删除后不可恢复。',
+          run: () => batchMutation.mutateAsync({ action: 'delete', body: { ids: selectedIds } }),
+          successMessage: null,
+          onDeleted: () => setSelectedIds([]),
+        });
+      }}>批量删除</Button>
+    </>
+  ) : null);
+
   return (
     <>
       <Banner type="info" closeIcon={null} style={{ marginBottom: 12 }} description="自定义词典用于纠正分词（如品牌名、行业术语）。新增/修改即时对新内容生效；历史内容需在「检索测试」中重建索引。" />
@@ -238,58 +267,8 @@ function DictTab({ siteId, onSiteChange }: Readonly<{ siteId: number | undefined
         onSearch={handleSearch}
         onReset={handleReset}
         create={canManage ? <CreateButton onClick={modal.openCreate}>新增词条</CreateButton> : null}
-        actions={canManage && selectedIds.length > 0 ? (
-          <>
-            <Button onClick={() => void batchMutation.mutateAsync({ action: 'update', body: { ids: selectedIds, status: 'enabled' } }).then(() => setSelectedIds([]))}>批量启用</Button>
-            <Button onClick={() => {
-              let nextGroup = '';
-              Modal.confirm({
-                title: '批量调整词典分组',
-                content: <Input placeholder="目标分组" onChange={(value) => { nextGroup = value; }} />,
-                onOk: async () => {
-                  if (!nextGroup.trim()) abortSubmit('validation');
-                  await batchMutation.mutateAsync({ action: 'update', body: { ids: selectedIds, groupName: nextGroup.trim() } });
-                  setSelectedIds([]);
-                },
-              });
-            }}>批量分组</Button>
-            <Button type="danger" onClick={() => {
-              confirmAndDelete({
-                title: `删除 ${selectedIds.length} 个词条？`,
-                content: '删除后不可恢复。',
-                run: () => batchMutation.mutateAsync({ action: 'delete', body: { ids: selectedIds } }),
-                successMessage: null,
-                onDeleted: () => setSelectedIds([]),
-              });
-            }}>批量删除</Button>
-          </>
-        ) : null}
-        mobileActions={canManage && selectedIds.length > 0 ? (
-          <>
-            <Button theme="borderless" onClick={() => void batchMutation.mutateAsync({ action: 'update', body: { ids: selectedIds, status: 'enabled' } }).then(() => setSelectedIds([]))}>批量启用</Button>
-            <Button theme="borderless" onClick={() => {
-              let nextGroup = '';
-              Modal.confirm({
-                title: '批量调整词典分组',
-                content: <Input placeholder="目标分组" onChange={(value) => { nextGroup = value; }} />,
-                onOk: async () => {
-                  if (!nextGroup.trim()) abortSubmit('validation');
-                  await batchMutation.mutateAsync({ action: 'update', body: { ids: selectedIds, groupName: nextGroup.trim() } });
-                  setSelectedIds([]);
-                },
-              });
-            }}>批量分组</Button>
-            <Button type="danger" theme="borderless" onClick={() => {
-              confirmAndDelete({
-                title: `删除 ${selectedIds.length} 个词条？`,
-                content: '删除后不可恢复。',
-                run: () => batchMutation.mutateAsync({ action: 'delete', body: { ids: selectedIds } }),
-                successMessage: null,
-                onDeleted: () => setSelectedIds([]),
-              });
-            }}>批量删除</Button>
-          </>
-        ) : null}
+        actions={renderBatchActions()}
+        mobileActions={renderBatchActions('borderless')}
       />
       <ConfigurableTable<CmsSearchWord>
         columns={columns}
@@ -321,11 +300,10 @@ function HotKeywordsTab({ siteId, onSiteChange }: Readonly<{ siteId: number | un
   const [keyword, setKeyword] = useState('');
   const [timeRange, setTimeRange] = useState<[Date, Date] | null>(null);
   const groupsQuery = useCmsHotwordGroups(siteId);
+  // 选中即查询（无查询按钮语义），筛选值直接进查询参数
   const hotQuery = useCmsHotKeywords({
     siteId,
-    groupId,
-    keyword: keyword || undefined,
-    ...formatDateTimeRangeForApi(timeRange),
+    ...compactParams({ groupId, keyword, ...formatDateTimeRangeForApi(timeRange) }),
   });
   const clearMutation = useClearCmsHotKeywords();
   const saveGroupMutation = useSaveCmsHotwordGroup();
@@ -384,7 +362,7 @@ function HotKeywordsTab({ siteId, onSiteChange }: Readonly<{ siteId: number | un
           onChange={(value) => setGroupId(value as number | undefined)}
           width={150}
         />
-        <Input placeholder="关键词" value={keyword} onChange={setKeyword} showClear style={{ width: 150 }} />
+        <KeywordInput placeholder="关键词" value={keyword} onChange={setKeyword} width={150} />
         <DateRangeFilter value={timeRange} onChange={setTimeRange} />
         {canManage && siteId ? (
           <Button icon={<Plus size={14} />} onClick={() => {

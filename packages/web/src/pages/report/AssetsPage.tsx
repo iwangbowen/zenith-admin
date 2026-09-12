@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
 import { Banner, Col, Empty, Form, Input, Modal, Row, Select, SideSheet, Space, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { ReportAssetCatalogItem, ReportAssetTemplate, ReportAssetTemplateType, ReportAssetUsageSummary, ReportAssetUsageTrendPoint, ReportDeprecationNotice, ReportResourceType } from '@zenith/shared/report';
@@ -9,9 +8,11 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import ExportButton from '@/components/ExportButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { useListSearch } from '@/hooks/useListSearch';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
+import { compactParams } from '@/lib/query';
 import {
   reportAssetKeys,
   useApplyReportAssetTemplate,
@@ -32,62 +33,81 @@ import {
 import { flattenReportFolders, useReportFolderTree } from '@/hooks/queries/report-folders';
 import { ReportFolderFilter, ReportOwnerFilter } from './report-filters';
 import { useReportOwnerFolderOptions } from './report-lookups';
-import { formatDateTime, formatDateTimeForApi, formatDateTimeRangeForApi } from '@/utils/date';
+import { formatDateTime, formatDateTimeForApi, formatDateTimeRangeValuesForApi } from '@/utils/date';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { normalizeTemplateApplyValues, parseJsonObject } from './report-platform-utils';
 import { REPORT_RESOURCE_TYPE_OPTIONS } from './report-platform-options';
 import { CreateButton } from '@/components/toolbar-controls';
-import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
+import { DateRangeFilter, FilterSelect, KeywordInput, type FilterOption } from '@/components/search-filters';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { abortSubmit } from '@/lib/abort-submit';
 import { JsonBlock } from '@/components/JsonBlock';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 const resourceTypeOptions = REPORT_RESOURCE_TYPE_OPTIONS;
-const templateTypeOptions = [
+const templateTypeOptions: FilterOption<ReportAssetTemplateType>[] = [
   { value: 'dashboard', label: '仪表盘模板' },
   { value: 'widget', label: '组件模板' },
   { value: 'print', label: '打印模板' },
   { value: 'semantic_model', label: '语义模型' },
 ];
 
+interface CatalogSearchParams {
+  keyword: string;
+  types: ReportResourceType[];
+  ownerId?: number;
+  folderId?: number;
+  lifecycle?: string;
+  timeRange: [Date, Date] | null;
+}
+
+const defaultCatalogSearch: CatalogSearchParams = {
+  keyword: '', types: [], ownerId: undefined, folderId: undefined, lifecycle: undefined, timeRange: null,
+};
+
+interface TemplateSearchParams {
+  keyword: string;
+  type?: ReportAssetTemplateType;
+}
+
+const defaultTemplateSearch: TemplateSearchParams = { keyword: '', type: undefined };
+
 export default function AssetsPage() {
-  const qc = useQueryClient();
   const { hasPermission } = usePermission();
-  const { page, pageSize, setPage, buildPagination } = usePagination();
+  // 三个 Tab 各自分页：资产目录 / 可复用模板走 useListSearch，「使用与弃用」Tab 的闲置资产与弃用公告共用一份分页
+  const catalog = useListSearch<CatalogSearchParams>({ defaults: defaultCatalogSearch, listKey: reportAssetKeys.lists });
+  const templates = useListSearch<TemplateSearchParams>({ defaults: defaultTemplateSearch, listKey: reportAssetKeys.templateLists });
+  const usagePagination = usePagination();
   const [activeTab, setActiveTab] = useUrlTabState(['catalog', 'templates', 'usage'] as const, 'catalog');
-  const [catalogDraft, setCatalogDraft] = useState({
-    keyword: '', types: [] as ReportResourceType[], ownerId: undefined as number | undefined,
-    folderId: undefined as number | undefined, lifecycle: undefined as string | undefined, timeRange: null as [Date, Date] | null,
-  });
-  const [catalogSearch, setCatalogSearch] = useState(catalogDraft);
   const [usageTarget, setUsageTarget] = useState<ReportAssetCatalogItem | null>(null);
-  const [templateKeyword, setTemplateKeyword] = useState('');
-  const [templateType, setTemplateType] = useState<ReportAssetTemplateType | undefined>();
-  const [templateSearch, setTemplateSearch] = useState({ keyword: '', type: undefined as ReportAssetTemplateType | undefined });
   const [previewTemplate, setPreviewTemplate] = useState<ReportAssetTemplate | null>(null);
   const [usageDays, setUsageDays] = useState(30);
 
   const { userOptions, folders } = useReportOwnerFolderOptions();
   const templateFoldersQuery = useReportFolderTree({ resourceType: 'asset_template' });
   const templateFolders = flattenReportFolders(templateFoldersQuery.data ?? []);
-  const {
-    startTime: updatedStart,
-    endTime: updatedEnd,
-  } = formatDateTimeRangeForApi(catalogSearch.timeRange);
-  const catalogQueryParams = {
-    page, pageSize,
-    keyword: catalogSearch.keyword || undefined,
-    types: catalogSearch.types.length ? catalogSearch.types.join(',') : undefined,
-    ownerId: catalogSearch.ownerId,
-    folderId: catalogSearch.folderId,
-    lifecycle: catalogSearch.lifecycle || undefined,
-    updatedStart,
-    updatedEnd,
-  };
-  const catalogQuery = useReportAssetCatalog(catalogQueryParams);
+  // 已提交筛选 → 契约查询参数：只映射一次，列表与导出共用
+  const catalogFilterQuery = useMemo(() => {
+    const submitted = catalog.submittedParams;
+    const [updatedStart, updatedEnd] = formatDateTimeRangeValuesForApi(submitted.timeRange);
+    return compactParams({
+      keyword: submitted.keyword,
+      types: submitted.types.length ? submitted.types.join(',') : undefined,
+      ownerId: submitted.ownerId,
+      folderId: submitted.folderId,
+      lifecycle: submitted.lifecycle,
+      updatedStart,
+      updatedEnd,
+    });
+  }, [catalog.submittedParams]);
+  const templateFilterQuery = useMemo(() => compactParams({
+    keyword: templates.submittedParams.keyword,
+    type: templates.submittedParams.type,
+  }), [templates.submittedParams]);
+  const catalogQuery = useReportAssetCatalog({ page: catalog.page, pageSize: catalog.pageSize, ...catalogFilterQuery });
   const usageQuery = useReportAssetUsage(usageTarget?.resourceType, usageTarget?.resourceId, usageDays, !!usageTarget);
-  const templatesQuery = useReportAssetTemplateList({ page, pageSize, keyword: templateSearch.keyword || undefined, type: templateSearch.type });
+  const templatesQuery = useReportAssetTemplateList({ page: templates.page, pageSize: templates.pageSize, ...templateFilterQuery });
+  const { page, pageSize, buildPagination } = usagePagination;
   const noticesQuery = useReportDeprecationList({ page, pageSize });
   const topQuery = useTopReportAssets({ days: usageDays, limit: 20 });
   const inactiveQuery = useInactiveReportAssets({ days: Math.max(usageDays, 90), page, pageSize });
@@ -99,31 +119,6 @@ export default function AssetsPage() {
   const saveNoticeMutation = useSaveReportDeprecation();
   const publishNoticeMutation = usePublishReportDeprecation();
   const deleteNoticeMutation = useDeleteReportDeprecation();
-
-  const searchCatalog = () => {
-    setPage(1);
-    setCatalogSearch(catalogDraft);
-    void qc.invalidateQueries({ queryKey: reportAssetKeys.lists });
-  };
-  const resetCatalog = () => {
-    const empty = { keyword: '', types: [] as ReportResourceType[], ownerId: undefined, folderId: undefined, lifecycle: undefined, timeRange: null as [Date, Date] | null };
-    setPage(1);
-    setCatalogDraft(empty);
-    setCatalogSearch(empty);
-    void qc.invalidateQueries({ queryKey: reportAssetKeys.lists });
-  };
-  const searchTemplates = () => {
-    setPage(1);
-    setTemplateSearch({ keyword: templateKeyword, type: templateType });
-    void qc.invalidateQueries({ queryKey: reportAssetKeys.templateLists });
-  };
-  const resetTemplates = () => {
-    setTemplateKeyword('');
-    setTemplateType(undefined);
-    setTemplateSearch({ keyword: '', type: undefined });
-    setPage(1);
-    void qc.invalidateQueries({ queryKey: reportAssetKeys.templateLists });
-  };
 
   const templateModal = useEditModal<ReportAssetTemplate, Record<string, unknown>>({
     entityName: '资产模板',
@@ -300,52 +295,45 @@ export default function AssetsPage() {
 
   return (
     <div className="page-container page-tabs-page">
-      <Tabs collapsible="auto" type="line" activeKey={activeTab} onChange={(key) => { setActiveTab(key as typeof activeTab); setPage(1); }}>
+      <Tabs collapsible="auto" type="line" activeKey={activeTab} onChange={(key) => { setActiveTab(key as typeof activeTab); catalog.setPage(1); templates.setPage(1); usagePagination.setPage(1); }}>
         <TabPane tab="统一资产目录" itemKey="catalog">
           <ListSearchToolbar
-            keyword={<KeywordInput placeholder="搜索资产名称" value={catalogDraft.keyword} onChange={(value) => setCatalogDraft((p) => ({ ...p, keyword: value }))} onSearch={searchCatalog} />}
+            keyword={<KeywordInput placeholder="搜索资产名称" {...catalog.bindKeyword('keyword')} />}
             filters={<>
-              <Select multiple placeholder="资产类型" value={catalogDraft.types} optionList={resourceTypeOptions} style={{ width: 210 }} onChange={(value) => setCatalogDraft((p) => ({ ...p, types: value as ReportResourceType[] }))} />
-              <ReportOwnerFilter
-                items={userOptions}
-                value={catalogDraft.ownerId}
-                onChange={(value) => setCatalogDraft((p) => ({ ...p, ownerId: value }))}
-                width={150}
-              />
+              <Select multiple placeholder="资产类型" optionList={resourceTypeOptions} style={{ width: 210 }} {...catalog.bind('types', (value) => (value ?? []) as ReportResourceType[])} />
+              <ReportOwnerFilter items={userOptions} {...catalog.bind('ownerId')} width={150} />
               <ReportFolderFilter
                 items={folders.map((f) => ({ value: f.id, label: `[${f.resourceType}] ${f.name}` }))}
-                value={catalogDraft.folderId}
-                onChange={(value) => setCatalogDraft((p) => ({ ...p, folderId: value }))}
+                {...catalog.bind('folderId')}
                 width={180}
               />
               <FilterSelect
                 placeholder="全部生命周期"
                 items={['draft', 'published', 'deprecated'].map((value) => ({ value, label: value === 'deprecated' ? '已弃用' : REPORT_DASHBOARD_LIFECYCLE_LABELS[value as keyof typeof REPORT_DASHBOARD_LIFECYCLE_LABELS] ?? value }))}
-                value={catalogDraft.lifecycle}
-                onChange={(value) => setCatalogDraft((p) => ({ ...p, lifecycle: value }))}
+                {...catalog.bind('lifecycle')}
                 width={140}
               />
-              <DateRangeFilter value={catalogDraft.timeRange ?? undefined} onChange={(value) => setCatalogDraft((p) => ({ ...p, timeRange: value ? value as [Date, Date] : null }))} />
+              <DateRangeFilter {...catalog.bind('timeRange')} />
             </>}
-            onSearch={searchCatalog}
-            onReset={resetCatalog}
-            actions={<ExportButton entity="report.assets" query={catalogQueryParams} />}
-            mobileActions={<ExportButton entity="report.assets" query={catalogQueryParams} variant="flat" />}
+            onSearch={catalog.handleSearch}
+            onReset={catalog.handleReset}
+            actions={<ExportButton entity="report.assets" query={catalogFilterQuery} />}
+            mobileActions={<ExportButton entity="report.assets" query={catalogFilterQuery} variant="flat" />}
           />
           {catalogQuery.isError && <Banner type="danger" description={catalogQuery.error instanceof Error ? catalogQuery.error.message : '资产目录加载失败'} />}
-          <ConfigurableTable<ReportAssetCatalogItem> columns={catalogColumns} {...listTableProps(catalogQuery, { rowKey: (r) => `${r!.resourceType}-${r!.resourceId}`, pagination: buildPagination, empty: <Empty title="暂无匹配资产" /> })} />
+          <ConfigurableTable<ReportAssetCatalogItem> columns={catalogColumns} {...listTableProps(catalogQuery, { rowKey: (r) => `${r!.resourceType}-${r!.resourceId}`, pagination: catalog.buildPagination, empty: <Empty title="暂无匹配资产" /> })} />
         </TabPane>
 
         <TabPane tab="可复用模板" itemKey="templates">
           <ListSearchToolbar
-            keyword={<KeywordInput placeholder="搜索模板名称/编码" value={templateKeyword} onChange={setTemplateKeyword} onSearch={searchTemplates} width={230} />}
-            filters={<FilterSelect placeholder="全部模板类型" items={templateTypeOptions} value={templateType} onChange={(v) => setTemplateType(v as ReportAssetTemplateType | undefined)} width={150} />}
-            onSearch={searchTemplates}
-            onReset={resetTemplates}
+            keyword={<KeywordInput placeholder="搜索模板名称/编码" {...templates.bindKeyword('keyword')} width={230} />}
+            filters={<FilterSelect placeholder="全部模板类型" items={templateTypeOptions} {...templates.bind('type')} width={150} />}
+            onSearch={templates.handleSearch}
+            onReset={templates.handleReset}
             create={hasPermission('report:asset-template:create') ? <CreateButton onClick={() => openTemplate()} /> : null}
           />
           {templatesQuery.isError && <Banner type="danger" description="资产模板加载失败" />}
-          <ConfigurableTable<ReportAssetTemplate> columns={templateColumns} {...listTableProps(templatesQuery, { pagination: buildPagination, empty: <Empty title="暂无资产模板" /> })} />
+          <ConfigurableTable<ReportAssetTemplate> columns={templateColumns} {...listTableProps(templatesQuery, { pagination: templates.buildPagination, empty: <Empty title="暂无资产模板" /> })} />
         </TabPane>
 
         <TabPane tab="使用与弃用" itemKey="usage">

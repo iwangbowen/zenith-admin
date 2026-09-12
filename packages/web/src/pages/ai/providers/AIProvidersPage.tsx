@@ -2,9 +2,9 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Button, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ChevronsUpDown, ChevronsDownUp } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useTreeExpansion, type TreeRowKey } from '@/hooks/useTreeExpansion';
 import type { AiProviderConfig } from '@zenith/shared/ai';
@@ -19,7 +19,7 @@ import {
 } from '@/hooks/queries/ai-providers';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { deleteAction, ListSearchToolbar, useStatusToggle } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 
 const { Text } = Typography;
 
@@ -28,10 +28,20 @@ const COMMON_ORDER = new Map(AI_COMMON_PROVIDERS.map((p, i) => [p.id, i]));
 
 const EMPTY_PROVIDER_CONFIGS: AiProviderConfig[] = [];
 
+interface SearchParams {
+  keyword: string;
+}
+
+const defaultSearchParams: SearchParams = { keyword: '' };
+
 export default function AIProvidersPage() {
   const { hasPermission } = usePermission();
-  const queryClient = useQueryClient();
-  const [search, setSearch] = useState('');
+  // 全量列表 + 客户端过滤：submittedParams 进过滤谓词，「查询 / 重置」仍回源刷新
+  const { bindKeyword, submittedParams, handleSearch, handleReset } = useListSearch<SearchParams>({
+    defaults: defaultSearchParams,
+    listKey: aiProviderKeys.lists,
+  });
+  const search = submittedParams.keyword;
   const [editTarget, setEditTarget] = useState<AiProviderConfig | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const listQuery = useAiProviderList();
@@ -49,15 +59,6 @@ export default function AIProvidersPage() {
     disabled: !hasPermission('ai:provider:edit'),
     messages: { disabled: '已禁用' },
   });
-
-  function handleSearch() {
-    void queryClient.invalidateQueries({ queryKey: aiProviderKeys.lists });
-  }
-
-  function handleReset() {
-    setSearch('');
-    void queryClient.invalidateQueries({ queryKey: aiProviderKeys.lists });
-  }
 
   const openCreate = () => {
     setEditTarget(null);
@@ -168,7 +169,7 @@ export default function AIProvidersPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索名称/模型" value={search} onChange={(v) => setSearch(String(v ?? ''))} onSearch={handleSearch} />}
+        keyword={<KeywordInput placeholder="搜索名称/模型" {...bindKeyword('keyword')} />}
         onSearch={handleSearch}
         onReset={handleReset}
         create={(
@@ -187,15 +188,11 @@ export default function AIProvidersPage() {
         )}
         actionTitle="表格操作"
       />
+      {/* 数据源是客户端过滤 / 排序后的结果，覆盖 listTableProps 接好的 dataSource；分组表格不分页 */}
       <ConfigurableTable
-        bordered
         columns={columns}
+        {...listTableProps(listQuery)}
         dataSource={flatData}
-        loading={listQuery.isFetching}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        rowKey="id"
-        pagination={false}
         groupBy={(record?: AiProviderConfig) => record?.providerId ?? ''}
         clickGroupedRowToExpand
         renderGroupSection={(groupKey) => {

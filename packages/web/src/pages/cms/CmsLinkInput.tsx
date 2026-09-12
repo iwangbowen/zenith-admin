@@ -1,20 +1,29 @@
 import { useMemo, useState } from 'react';
-import { Button, Dropdown, Input, Modal, Tag, Tree, Typography } from '@douyinfe/semi-ui';
+import { Button, Dropdown, Modal, Tag, Tree, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
-import { ChevronDown, Home, Link2, Search } from 'lucide-react';
+import { ChevronDown, Home, Link2 } from 'lucide-react';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
+import { listTableProps } from '@/components/list-page';
 import { buildCmsEntityLink, buildCmsChannelCodeLink, parseCmsLink, CMS_CONTENT_STATUS_LABELS } from '@zenith/shared/cms';
 import type { CmsChannel, CmsContent } from '@zenith/shared/cms';
-import { useQueryClient } from '@tanstack/react-query';
 import { cmsContentKeys, useAllCmsSites, useCmsChannelTree, useCmsContentList, useCmsLinkTarget } from '@/hooks/queries/cms';
 import { useIsMobile } from '@/hooks/useMediaQuery';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { KeywordInput } from '@/components/search-filters';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { channelsToTree } from './channel-tree';
 
 type PickerMode = 'content' | 'channel' | null;
+
+interface ContentPickerSearchParams {
+  keyword: string;
+  channelId?: number;
+}
+
+const defaultContentPickerSearch: ContentPickerSearchParams = { keyword: '', channelId: undefined };
 
 /** 内容选择弹窗：左侧栏目树定位，右侧按关键词检索本站内容 */
 function ContentPickerModal({ siteId, visible, onCancel, onSelect, excludeId }: Readonly<{
@@ -24,16 +33,20 @@ function ContentPickerModal({ siteId, visible, onCancel, onSelect, excludeId }: 
   onSelect: (content: CmsContent) => void;
   excludeId?: number;
 }>) {
-  const queryClient = useQueryClient();
-  const [draftKeyword, setDraftKeyword] = useState('');
-  const [keyword, setKeyword] = useState('');
-  const [channelId, setChannelId] = useState<number | undefined>(undefined);
-  // 选择器弹窗固定 10 条 / 页；usePagination 提供总数收缩后的页码钳制
-  const { page, pageSize, setPage, buildPagination } = usePagination(10);
+  // 选择器弹窗固定 10 条 / 页；关键词经「查询」提交，点栏目树则立即应用（applySearch）
+  const {
+    page, pageSize, buildPagination,
+    draftParams, bindKeyword, submittedParams, applySearch,
+    handleSearch, handleReset,
+  } = useListSearch<ContentPickerSearchParams>({ defaults: defaultContentPickerSearch, listKey: cmsContentKeys.lists, pageSize: 10 });
   const isMobile = useIsMobile();
   const enabled = visible && siteId !== undefined;
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    channelId: submittedParams.channelId,
+  }), [submittedParams]);
   const listQuery = useCmsContentList(
-    { page, pageSize, siteId: siteId ?? 0, channelId, keyword: keyword || undefined, status: 'published' },
+    { page, pageSize, siteId: siteId ?? 0, ...filterQuery, status: 'published' },
     enabled,
   );
   const rows = (listQuery.data?.list ?? []).filter((c) => c.id !== excludeId);
@@ -47,20 +60,6 @@ function ContentPickerModal({ siteId, visible, onCancel, onSelect, excludeId }: 
     icon: <Home size={14} style={{ marginRight: 4 }} />,
     children: channelsToTree(treeQuery.data ?? []),
   }], [siteName, treeQuery.data]);
-
-  const handleSearch = () => {
-    setKeyword(draftKeyword);
-    setPage(1);
-    // 关键词未变时 query key 不变，不显式失效就不会真正回源刷新
-    void queryClient.invalidateQueries({ queryKey: cmsContentKeys.lists });
-  };
-  const handleReset = () => {
-    setDraftKeyword('');
-    setKeyword('');
-    setChannelId(undefined);
-    setPage(1);
-    void queryClient.invalidateQueries({ queryKey: cmsContentKeys.lists });
-  };
 
   const columns: ColumnProps<CmsContent>[] = [
     { title: '标题', dataIndex: 'title', ellipsis: true },
@@ -101,38 +100,28 @@ function ContentPickerModal({ siteId, visible, onCancel, onSelect, excludeId }: 
         >
           <Tree
             treeData={treeData}
-            value={channelId ? String(channelId) : 'all'}
+            value={submittedParams.channelId ? String(submittedParams.channelId) : 'all'}
             filterTreeNode
             showFilteredOnly
             searchPlaceholder="输入栏目名称"
             defaultExpandAll
-            onSelect={(key) => { setChannelId(key === 'all' ? undefined : Number(key)); setPage(1); }}
+            onSelect={(key) => applySearch({ ...draftParams, channelId: key === 'all' ? undefined : Number(key) })}
             style={{ flex: 1, width: '100%', overflow: 'auto' }}
           />
         </div>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-            <Input
-              prefix={<Search size={14} />}
-              placeholder="输入内容标题"
-              value={draftKeyword}
-              onChange={setDraftKeyword}
-              onEnterPress={handleSearch}
-              showClear
-              style={{ flex: 1, minWidth: 160 }}
-            />
+            {/* 弹窗内的搜索框跟随剩余宽度自适应 */}
+            <KeywordInput placeholder="输入内容标题" {...bindKeyword('keyword')} width="auto" style={{ flex: 1, minWidth: 160 }} />
             <SearchButton onClick={handleSearch} />
             <ResetButton onClick={handleReset} />
           </div>
+          {/* 数据源按 excludeId 过滤后覆盖；选择器固定页大小，不显示切换 */}
           <ConfigurableTable
-            size="small"
-            rowKey="id"
             columnSettingsKey="cms-link-content-picker"
             columns={columns}
+            {...listTableProps(listQuery, { bordered: false })}
             dataSource={rows}
-            loading={listQuery.isFetching}
-            onRefresh={() => void listQuery.refetch()}
-            refreshLoading={listQuery.isFetching}
             scroll={{ y: isMobile ? 240 : 336 }}
             pagination={{ ...buildPagination(listQuery.data?.total ?? 0), showSizeChanger: false }}
           />

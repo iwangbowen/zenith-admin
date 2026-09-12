@@ -1,13 +1,14 @@
 import { useMemo, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Empty, List, Space, Spin, Toast, Typography } from '@douyinfe/semi-ui';
 import { useNavigate } from 'react-router-dom';
 import { ExternalLink, Send } from 'lucide-react';
 import type { WorkflowDefinition } from '@zenith/shared/workflow';
-import { KeywordSearchToolbar } from '@/components/KeywordSearchToolbar';
+import { ListSearchToolbar } from '@/components/list-page';
+import { KeywordInput } from '@/components/search-filters';
 import WorkflowLaunchForm, { type WorkflowLaunchFormHandle } from '@/components/workflow/WorkflowLaunchForm';
 import WorkflowSideSheet from '@/components/workflow/WorkflowSideSheet';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
+import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useLaunchWorkflowInstance } from '@/hooks/queries/workflow-launch';
 import { usePublishedWorkflowDefinitions } from '@/hooks/queries/workflow-definitions';
@@ -15,13 +16,22 @@ import { workflowDefinitionKeys } from '@/hooks/queries/workflow-definitions';
 
 const UNCATEGORIZED = -1;
 
+interface SearchParams {
+  keyword: string;
+}
+
+const defaultSearchParams: SearchParams = { keyword: '' };
+
 export default function WorkflowLaunchpadPage() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const { categories } = useWorkflowCategories();
-  const [keyword, setKeyword] = useState('');
-  const [activeKeyword, setActiveKeyword] = useState('');
+  // 已发布定义一次取全量，关键字在客户端过滤：submittedParams 进过滤谓词，「查询 / 重置」仍回源刷新
+  const { bindKeyword, submittedParams, handleSearch, handleReset } = useListSearch<SearchParams>({
+    defaults: defaultSearchParams,
+    listKey: workflowDefinitionKeys.published,
+  });
+  const activeKeyword = submittedParams.keyword;
 
   const launchFormRef = useRef<WorkflowLaunchFormHandle>(null);
   const [applyVisible, setApplyVisible] = useState(false);
@@ -91,16 +101,6 @@ export default function WorkflowLaunchpadPage() {
     });
     Toast.success(asDraft ? '草稿已保存' : '申请已提交');
     closeApply();
-  };
-
-  const handleSearch = () => {
-    setActiveKeyword(keyword);
-    void queryClient.invalidateQueries({ queryKey: workflowDefinitionKeys.published });
-  };
-  const handleReset = () => {
-    setKeyword('');
-    setActiveKeyword('');
-    void queryClient.invalidateQueries({ queryKey: workflowDefinitionKeys.published });
   };
 
   const renderDefinitionCard = (def: WorkflowDefinition) => (
@@ -187,13 +187,10 @@ export default function WorkflowLaunchpadPage() {
 
   return (
     <div className="page-container">
-      <KeywordSearchToolbar
-        placeholder="搜索流程名称 / 说明"
-        value={keyword}
-        onChange={setKeyword}
+      <ListSearchToolbar
+        keyword={<KeywordInput placeholder="搜索流程名称 / 说明" {...bindKeyword('keyword')} width={240} />}
         onSearch={handleSearch}
         onReset={handleReset}
-        width={240}
       />
 
       {renderContent()}

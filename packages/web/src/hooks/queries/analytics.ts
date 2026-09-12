@@ -62,6 +62,10 @@ export const analyticsKeys = {
   all: [resourceKeyOf(analyticsContract.basePath)] as const,
   realtime: contractKey(analyticsContract.realtime),
   sessionsLists: contractKey(analyticsContract.sessions),
+  /** 事件分析工作台的查询（body 进 key），「查询」按钮据此回源 */
+  eventQueries: contractKey(analyticsContract.queryEvents),
+  /** 页面跳转路径（任意天数 / 起点 / 链路数） */
+  paths: contractKey(analyticsContract.path),
   retention: (params: AnalyticsRetentionParams) => contractKey(analyticsContract.retention, { body: params }),
   savedReports: contractKey(analyticsContract.reports),
   data: {

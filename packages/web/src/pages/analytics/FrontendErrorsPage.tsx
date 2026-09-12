@@ -91,7 +91,6 @@ import {
   useTestFrontendAlert,
   useUpdateFrontendErrorGroup,
 } from '@/hooks/queries/analytics';
-import { SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { toUserOptions } from '@/hooks/queries/users';
@@ -925,19 +924,6 @@ export default function FrontendErrorsPage() {
   const renderOverviewRefreshButton = () => (
     <Button type="primary" icon={<RefreshCcw size={14} />} loading={overviewQuery.isFetching} onClick={() => void overviewQuery.refetch()}>刷新</Button>
   );
-  const renderSourceReleaseSearch = () => (
-    <Input
-      prefix={<FileCode size={14} />}
-      placeholder="Release"
-      showClear
-      {...sourceMapSearch.bind('release')}
-      style={{ width: 220 }}
-      onEnterPress={handleSourceMapSearch}
-    />
-  );
-  const renderSourceMapSearchButton = () => <SearchButton onClick={handleSourceMapSearch} />;
-  const renderSourceMapUploadButton = () => <Button type="primary" icon={<FileCode size={14} />} onClick={openSourceMapUpload}>上传</Button>;
-  const renderAlertCreateButton = () => <Button type="primary" icon={<Bell size={14} />} onClick={() => openAlertModal()}>新增</Button>;
 
   return (
     <div className="page-container page-tabs-page zx-flat-panels">
@@ -1023,14 +1009,9 @@ export default function FrontendErrorsPage() {
         </TabPane>
 
         <TabPane tab="概览" itemKey="overview">
+          {/* 视图控制（天数 + 刷新），无查询语义；移动端缺省沿用 primary */}
           <SearchToolbar
             primary={(
-              <>
-                {renderOverviewDaysFilter()}
-                {renderOverviewRefreshButton()}
-              </>
-            )}
-            mobilePrimary={(
               <>
                 {renderOverviewDaysFilter()}
                 {renderOverviewRefreshButton()}
@@ -1116,21 +1097,11 @@ export default function FrontendErrorsPage() {
         </TabPane>
 
         <TabPane tab="Source Map" itemKey="sourcemaps">
-          <SearchToolbar
-            primary={(
-              <>
-                {renderSourceReleaseSearch()}
-                {renderSourceMapSearchButton()}
-                {renderSourceMapUploadButton()}
-              </>
-            )}
-            mobilePrimary={(
-              <>
-                {renderSourceReleaseSearch()}
-                {renderSourceMapSearchButton()}
-                {renderSourceMapUploadButton()}
-              </>
-            )}
+          <ListSearchToolbar
+            keyword={<KeywordInput placeholder="Release" {...sourceMapSearch.bindKeyword('release')} />}
+            onSearch={handleSourceMapSearch}
+            onReset={sourceMapSearch.handleReset}
+            create={<Button type="primary" icon={<FileCode size={14} />} onClick={openSourceMapUpload}>上传</Button>}
           />
 
           <ConfigurableTable<SourceMapItem>
@@ -1141,8 +1112,7 @@ export default function FrontendErrorsPage() {
 
         <TabPane tab="告警规则" itemKey="alerts">
           <SearchToolbar
-            primary={renderAlertCreateButton()}
-            mobilePrimary={renderAlertCreateButton()}
+            primary={<Button type="primary" icon={<Bell size={14} />} onClick={() => openAlertModal()}>新增</Button>}
           />
 
           <ConfigurableTable<ErrorAlertRule>

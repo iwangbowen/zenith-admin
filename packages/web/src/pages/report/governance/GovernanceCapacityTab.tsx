@@ -1,18 +1,21 @@
-import { useState } from 'react';
-import { Banner, Col, Empty, Form, InputNumber, Row, SideSheet, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { useMemo, useState } from 'react';
+import { Banner, Col, Empty, Form, Row, SideSheet, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { ReportQueryCostLog, ReportQueryCostTrendPoint, ReportQueryQuota, ReportQuotaScope } from '@zenith/shared/report';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { confirmAndDelete, listTableProps } from '@/components/list-page';
+import { confirmAndDelete, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import ExportButton from '@/components/ExportButton';
 import { FormTimezoneSelect } from '@/components/FormTimezoneSelect';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
+import { useListSearch } from '@/hooks/useListSearch';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
+import { compactParams } from '@/lib/query';
 import {
+  reportQueryCapacityKeys,
   useDeleteReportQueryQuota,
   useReportQueryCostLogs,
   useReportQueryCostStats,
@@ -23,35 +26,43 @@ import {
   useSaveReportQueryQuota,
 } from '@/hooks/queries/report-query-capacity';
 import { toUserOptions, useAllUsers } from '@/hooks/queries/users';
-import { formatDateTimeRangeForApi } from '@/utils/date';
+import { formatDateTimeRangeValuesForApi } from '@/utils/date';
 import { validateQuotaForm } from '../report-platform-utils';
-import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
-import { DateRangeFilter } from '@/components/search-filters';
+import { CreateButton } from '@/components/toolbar-controls';
+import { DateRangeFilter, NumberFilter } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { DEFAULT_TIMEZONE } from '@/utils/timezones';
+
+interface CostSearchParams {
+  datasetId?: number;
+  datasourceId?: number;
+  timeRange: [Date, Date] | null;
+}
+
+const defaultCostSearch: CostSearchParams = { datasetId: undefined, datasourceId: undefined, timeRange: null };
 
 export default function GovernanceCapacityTab() {
   const { hasPermission } = usePermission();
   const { page, pageSize, buildPagination } = usePagination();
   const [quotaScope, setQuotaScope] = useState<ReportQuotaScope>('tenant');
   const [usageQuota, setUsageQuota] = useState<ReportQueryQuota | null>(null);
-  const [costDraft, setCostDraft] = useState({ datasetId: undefined as number | undefined, datasourceId: undefined as number | undefined, timeRange: null as [Date, Date] | null });
-  const [costSearch, setCostSearch] = useState(costDraft);
+  // 成本筛选条驱动日志 / 统计 / 趋势三个查询：「查询」时一并回源
+  const costs = useListSearch<CostSearchParams>({
+    defaults: defaultCostSearch,
+    listKey: reportQueryCapacityKeys.costLogsLists,
+    extraKeys: [reportQueryCapacityKeys.costStatsAll, reportQueryCapacityKeys.costTrendAll],
+  });
 
   const quotasQuery = useReportQueryQuotaList({ page, pageSize });
   const usageQuery = useReportQueryQuotaUsage(usageQuota?.id, undefined, !!usageQuota);
-  const {
-    startTime: costStart,
-    endTime: costEnd,
-  } = formatDateTimeRangeForApi(costSearch.timeRange);
-  const costParams = {
-    datasetId: costSearch.datasetId,
-    datasourceId: costSearch.datasourceId,
-    start: costStart,
-    end: costEnd,
-  };
-  const costsQuery = useReportQueryCostLogs({ ...costParams, page, pageSize });
+  // 已提交筛选 → 契约查询参数：只映射一次，日志 / 统计 / 趋势 / 导出共用（契约端点键名为 start / end，取元组形态）
+  const costParams = useMemo(() => {
+    const submitted = costs.submittedParams;
+    const [start, end] = formatDateTimeRangeValuesForApi(submitted.timeRange);
+    return compactParams({ datasetId: submitted.datasetId, datasourceId: submitted.datasourceId, start, end });
+  }, [costs.submittedParams]);
+  const costsQuery = useReportQueryCostLogs({ ...costParams, page: costs.page, pageSize: costs.pageSize });
   const statsQuery = useReportQueryCostStats(costParams);
   const trendQuery = useReportQueryCostTrend({ ...costParams, bucket: 'day' });
   const usersQuery = useAllUsers();
@@ -83,13 +94,6 @@ export default function GovernanceCapacityTab() {
     if (record) quotaModal.openEdit(record);
     else quotaModal.openCreate();
   };
-  const searchCosts = () => setCostSearch(costDraft);
-  const resetCosts = () => {
-    const empty = { datasetId: undefined, datasourceId: undefined, timeRange: null as [Date, Date] | null };
-    setCostDraft(empty);
-    setCostSearch(empty);
-  };
-
   const quotaColumns: ColumnProps<ReportQueryQuota>[] = [
     { title: '范围', dataIndex: 'scope', width: 100, render: (v, r) => v === 'tenant' ? '当前租户' : `用户 #${r.userId}` },
     { title: '并发上限', dataIndex: 'maxConcurrent', width: 110 },
@@ -154,14 +158,20 @@ export default function GovernanceCapacityTab() {
       <ConfigurableTable columns={quotaColumns} {...listTableProps(quotasQuery, { pagination: buildPagination, empty: <Empty title="暂无查询配额" /> })} />
 
       <Typography.Title heading={5} style={{ marginTop: 20 }}>成本与容量趋势</Typography.Title>
-      <SearchToolbar>
-        <InputNumber placeholder="数据集 ID" value={costDraft.datasetId} min={1} onChange={(v) => setCostDraft((p) => ({ ...p, datasetId: v ? Number(v) : undefined }))} />
-        <InputNumber placeholder="数据源 ID" value={costDraft.datasourceId} min={1} onChange={(v) => setCostDraft((p) => ({ ...p, datasourceId: v ? Number(v) : undefined }))} />
-        <DateRangeFilter value={costDraft.timeRange ?? undefined} onChange={(v) => setCostDraft((p) => ({ ...p, timeRange: v ? v as [Date, Date] : null }))} />
-        <SearchButton onClick={searchCosts} />
-        <ResetButton onClick={resetCosts} />
-        <ExportButton entity="report.query-costs" query={costParams} />
-      </SearchToolbar>
+      <ListSearchToolbar
+        filters={(
+          <>
+            <NumberFilter placeholder="数据集 ID" min={1} {...costs.bind('datasetId')} />
+            <NumberFilter placeholder="数据源 ID" min={1} {...costs.bind('datasourceId')} />
+            <DateRangeFilter {...costs.bind('timeRange')} />
+          </>
+        )}
+        onSearch={costs.handleSearch}
+        onReset={costs.handleReset}
+        actions={<ExportButton entity="report.query-costs" query={costParams} />}
+        mobileActions={<ExportButton entity="report.query-costs" query={costParams} variant="flat" />}
+        filterTitle="成本筛选"
+      />
       {(statsQuery.isError || trendQuery.isError || costsQuery.isError) && <Banner type="danger" description="查询成本数据加载失败" />}
       {statsQuery.data && (
         <Space spacing={24} style={{ marginBottom: 14 }}>
@@ -174,7 +184,7 @@ export default function GovernanceCapacityTab() {
       )}
       <ConfigurableTable columns={trendColumns} {...listTableProps(trendQuery, { rowKey: 'bucket', empty: <Empty title="暂无成本趋势" /> })} />
       <ConfigurableTable columns={costColumns} empty={<Empty title="暂无查询成本日志" />} style={{ marginTop: 16 }}
-        {...listTableProps(costsQuery, { pagination: buildPagination })}
+        {...listTableProps(costsQuery, { pagination: costs.buildPagination })}
       />
 
       <AppModal {...quotaModal.modalProps} width={700}>

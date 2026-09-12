@@ -1,22 +1,29 @@
 /** 页面跳转路径：会话内相邻跳转的桑基图 + 本地分页的跳转明细（回流链路单独标出） */
-import { useEffect, useMemo, useState } from 'react';
-import { Card, Input, Select, Tag, Typography } from '@douyinfe/semi-ui';
+import { useMemo, useState } from 'react';
+import { Card, Select, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Activity, BarChart3, RefreshCcw, Search } from 'lucide-react';
+import { Activity, BarChart3, RefreshCcw } from 'lucide-react';
 import { DataBar } from '@/components/data-viz/DataBar';
 import { SankeyChart, chartOptions, makeSankeySpec, datumNumber, datumText, useChartPalette, StatCard, StatGrid } from '@/components/charts';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { renderEllipsis } from '@/utils/table-columns';
-import { usePagination } from '@/hooks/usePagination';
-import { useAnalyticsPath } from '@/hooks/queries/analytics';
+import { useListSearch } from '@/hooks/useListSearch';
+import { analyticsKeys, useAnalyticsPath } from '@/hooks/queries/analytics';
 import type { PathLink } from '@zenith/shared/analytics';
 import { ANALYTICS_PATH_EXIT_PAGE } from '@zenith/shared/analytics';
 import { SearchButton } from '@/components/toolbar-controls';
+import { KeywordInput } from '@/components/search-filters';
 import { useBehaviorDays } from './behavior-days-context';
 import { DAYS_OPTIONS, chartColor, getRouteSegments, numberText, sectionStyle } from './analytics-format';
 import { ChartPlaceholder, SectionHeader } from './analytics-shared';
 
 const PATH_EXIT_COLOR = '#94a3b8';
+
+interface PathSearchParams {
+  startPage: string;
+}
+
+const defaultPathSearch: PathSearchParams = { startPage: '' };
 
 function pathNodeText(label: string): string {
   if (label === ANALYTICS_PATH_EXIT_PAGE) return '退出';
@@ -52,14 +59,16 @@ export default function AnalyticsPathTab() {
   const palette = useChartPalette();
   const [days, setDays] = useBehaviorDays();
   const [linkLimit, setLinkLimit] = useState(30);
-  const [startPageInput, setStartPageInput] = useState('');
-  const [startPage, setStartPage] = useState('');
-  const { page, pageSize, resetPage, buildPagination } = usePagination();
-  const pathQuery = useAnalyticsPath(days, startPage || undefined, linkLimit);
+  // 起点页面经「查询」/ 回车提交；天数 / 链路数切换（resetKey）回到第 1 页
+  const { page, pageSize, buildPagination, bindKeyword, submittedParams, handleSearch, applySearch } = useListSearch<PathSearchParams>({
+    defaults: defaultPathSearch,
+    listKey: analyticsKeys.paths,
+    resetKey: [days, linkLimit],
+  });
+  const startPage = submittedParams.startPage.trim();
+  const pathQuery = useAnalyticsPath(days, startPage, linkLimit);
   const data = pathQuery.data ?? null;
   const loading = pathQuery.isFetching;
-
-  useEffect(() => { resetPage(); }, [days, linkLimit, startPage, resetPage]);
 
   const nodes = useMemo(() => data?.nodes ?? [], [data]);
   const links = useMemo(() => data?.links ?? [], [data]);
@@ -143,17 +152,13 @@ export default function AnalyticsPathTab() {
         description="会话内全部相邻跳转"
         extra={(
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Input
-              prefix={<Search size={14} />}
+            {/* 清空起点即立即应用空条件 */}
+            <KeywordInput
               placeholder="起点页面（可选），如 /users"
-              value={startPageInput}
-              showClear
-              onChange={setStartPageInput}
-              onClear={() => setStartPage('')}
-              onKeyDown={(e) => { if (e.key === 'Enter') setStartPage(startPageInput.trim()); }}
-              style={{ width: 220 }}
+              {...bindKeyword('startPage')}
+              onClear={() => applySearch({ startPage: '' })}
             />
-            <SearchButton onClick={() => setStartPage(startPageInput.trim())} />
+            <SearchButton onClick={handleSearch} />
             <Select value={linkLimit} optionList={PATH_LINK_LIMIT_OPTIONS} onChange={(v) => setLinkLimit(Number(v))} style={{ width: 150 }} />
             <Select value={days} optionList={DAYS_OPTIONS} onChange={(v) => setDays(Number(v))} style={{ width: 120 }} />
           </div>

@@ -5,7 +5,7 @@ import { Badge, Button, Dropdown, InputNumber, JsonViewer, Radio, RadioGroup, Sp
 import { RefreshCw, Trash2, MoreHorizontal, Pencil, Clock } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { usePermission } from '@/hooks/usePermission';
-import { usePagination } from '@/hooks/usePagination';
+import { useListSearch } from '@/hooks/useListSearch';
 import { useUrlSelectionState } from '@/hooks/useUrlSelectionState';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -36,6 +36,12 @@ interface CategoryRow {
   segment: string;
   count: number;
 }
+
+interface SearchParams {
+  keyword: string;
+}
+
+const defaultSearchParams: SearchParams = { keyword: '' };
 
 const TYPE_COLORS: Record<string, 'blue' | 'green' | 'orange' | 'purple' | 'cyan'> = {
   string: 'blue',
@@ -96,13 +102,16 @@ function TtlBadge({ ttl }: Readonly<{ ttl: number }>) {
 export default function CacheManagePage() {
   const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
-  const { pageSize } = usePagination();
   const canEdit = hasPermission('system:cache:update');
   const canDelete = hasPermission('system:cache:delete');
   // 显式选中的分类以 `?category=` 同步到 URL（深链/刷新/页签直达）；选中对象按 key 派生
   const [selectedCategoryKey, setSelectedCategoryKey] = useUrlSelectionState('category');
-  const [keyword, setKeyword] = useState('');
-  const [searchInput, setSearchInput] = useState('');
+  // 全量键列表 + 客户端过滤 / 客户端分页：submittedParams 进过滤谓词，「查询 / 重置」仍回源刷新
+  const { pageSize, bindKeyword, submittedParams, handleSearch, handleReset } = useListSearch<SearchParams>({
+    defaults: defaultSearchParams,
+    listKey: cacheKeys.lists,
+  });
+  const keyword = submittedParams.keyword;
   const [viewingItem, setViewingItem] = useState<CacheItem | null>(null);
   const [fullValue, setFullValue] = useState<string | null>(null);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
@@ -189,17 +198,6 @@ export default function CacheManagePage() {
   useEffect(() => {
     setSelectedKeys([]);
   }, [selectedCategory?.category]);
-
-  const handleSearch = () => {
-    setKeyword(searchInput);
-    void queryClient.invalidateQueries({ queryKey: cacheKeys.lists });
-  };
-
-  const handleReset = () => {
-    setSearchInput('');
-    setKeyword('');
-    void queryClient.invalidateQueries({ queryKey: cacheKeys.lists });
-  };
 
   const handleBatchDelete = () => {
     if (selectedKeys.length === 0) return;
@@ -429,7 +427,7 @@ export default function CacheManagePage() {
         {selectedCategory ? (
           <>
             <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-              <KeywordInput placeholder="搜索 Key 名称" value={searchInput} onChange={setSearchInput} onSearch={handleSearch} width={260} />
+              <KeywordInput placeholder="搜索 Key 名称" {...bindKeyword('keyword')} width={260} />
               <SearchButton onClick={handleSearch} />
               <ResetButton onClick={handleReset} />
               {canDelete && selectedKeys.length > 0 && (

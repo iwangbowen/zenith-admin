@@ -24,7 +24,7 @@ import { HostSelector } from '@/components/HostSelector';
 import { deriveInitialHostSelection, useOpsHostSelection } from '@/hooks/useOpsHostSelection';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { formatBytes } from '@zenith/shared/core';
-import { compactQuery } from '@/lib/query';
+import { compactParams } from '@/lib/query';
 
 // 自定义进程表格 CSS
 const processesTableStyle = '';
@@ -132,14 +132,12 @@ export default function ProcessesPage() {
   }, []);
 
   // ─── 客户端过滤（谓词与导出中心共用，见 @zenith/shared/ops matchesProcessFilter）─
+  // 筛选条件 → 查询参数只映射一次：过滤谓词与导出共用同一份
+  const filterQuery = useMemo(() => compactParams({ keyword: keyword.trim(), status: filterStatus }), [keyword, filterStatus]);
   const filteredProcesses = useMemo(
-    () => processes.filter((p) => matchesProcessFilter(p, { keyword, status: filterStatus })),
-    [processes, keyword, filterStatus],
+    () => processes.filter((p) => matchesProcessFilter(p, filterQuery)),
+    [processes, filterQuery],
   );
-  const buildExportQuery = () => compactQuery({
-    keyword: keyword.trim(),
-    status: filterStatus,
-  });
 
   // ─── SSE 连接 ──────────────────────────────────────────────────────────
   const connectSse = useCallback(() => {
@@ -391,7 +389,7 @@ export default function ProcessesPage() {
             )}
           </>
         )}
-        actions={hostId == null ? <ExportButton entity="system.processes" query={buildExportQuery()} /> : undefined}
+        actions={hostId == null ? <ExportButton entity="system.processes" query={filterQuery} /> : undefined}
         mobilePrimary={(
           <>
             <HostSelector value={hostId} onChange={handleHostChange} />
@@ -427,7 +425,7 @@ export default function ProcessesPage() {
             >
               刷新
             </Button>
-            {hostId == null && <ExportButton entity="system.processes" query={buildExportQuery()} variant="flat" />}
+            {hostId == null && <ExportButton entity="system.processes" query={filterQuery} variant="flat" />}
           </>
         )}
         filterTitle="进程筛选"

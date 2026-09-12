@@ -1,17 +1,19 @@
 /**
  * 行为中心阶段 1：通用事件分析工作台 —— 自定义事件 + 维度 + 指标查询，展示图表 + 明细表格。
  */
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Button, Card, Empty, Input, Select, Toast, Typography } from '@douyinfe/semi-ui';
 import { Plus, Trash2 } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { BarChart, chartOptions, makeBarSpec, useChartPalette } from '@/components/charts';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
-import { formatDateForApi } from '@/utils/date';
+import { listTableProps } from '@/components/list-page';
+import { formatDateRangeValuesForApi } from '@/utils/date';
 import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
-import { useAnalyticsEventMeta, useAnalyticsEventQuery, useAnalyticsSegments } from '@/hooks/queries/analytics';
-import { usePagination } from '@/hooks/usePagination';
-import type { AnalyticsEventQueryGroupByField, AnalyticsEventQueryInput, AnalyticsEventQueryMetric, AnalyticsEventQueryRow, AnalyticsSegmentPropertyFilter } from '@zenith/shared/analytics';
+import { analyticsKeys, useAnalyticsEventMeta, useAnalyticsEventQuery, useAnalyticsSegments } from '@/hooks/queries/analytics';
+import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
+import type { AnalyticsDeviceType, AnalyticsEnvironment, AnalyticsEventQueryGroupByField, AnalyticsEventQueryInput, AnalyticsEventQueryMetric, AnalyticsEventQueryRow, AnalyticsEventSource, AnalyticsSegmentPropertyFilter } from '@zenith/shared/analytics';
 import { ANALYTICS_DEVICE_TYPE_OPTIONS, ANALYTICS_ENVIRONMENT_OPTIONS, ANALYTICS_EVENT_QUERY_GROUP_BY_LABELS, ANALYTICS_EVENT_QUERY_GROUP_BY_OPTIONS, ANALYTICS_EVENT_QUERY_METRIC_OPTIONS, ANALYTICS_EVENT_SOURCE_OPTIONS, ANALYTICS_SEGMENT_COMPARE_OP_OPTIONS, analyticsMetricRequiresProperty } from '@zenith/shared/analytics';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect } from '@/components/search-filters';
@@ -32,10 +34,10 @@ interface EventQueryDraft {
   days: number;
   dateRange?: [Date, Date];
   eventNames: string[];
-  source?: string;
+  source?: AnalyticsEventSource;
   appId?: string;
-  environment?: string;
-  deviceType?: string;
+  environment?: AnalyticsEnvironment;
+  deviceType?: AnalyticsDeviceType;
   segmentId?: number;
   propertyFilters: PropertyFilterDraft[];
   groupBy: AnalyticsEventQueryGroupByField[];
@@ -43,6 +45,7 @@ interface EventQueryDraft {
   metricProperty?: string;
 }
 
+// 默认条件本身即可执行（全部事件 / 按日期分组 / 近 30 天），进入页签自动首查，避免先见空态
 const defaultDraft: EventQueryDraft = {
   days: 30,
   eventNames: [],
@@ -50,9 +53,6 @@ const defaultDraft: EventQueryDraft = {
   groupBy: ['date'],
   metric: 'events',
 };
-
-// 默认条件本身即可执行（全部事件 / 按日期分组 / 近 30 天），进入页签自动首查，避免先见空态
-const defaultSubmitted: AnalyticsEventQueryInput = { groupBy: ['date'], metric: 'events', days: 30 };
 
 /**
  * `in` 接收逗号分隔的多值；其余运算符按单值提交。
@@ -70,20 +70,48 @@ function toPropertyFilter(draft: PropertyFilterDraft): AnalyticsSegmentPropertyF
   return value ? { key, op: draft.op, value } : null;
 }
 
+/** 已提交条件 → 查询 body（分页参数不在其中：翻页只改 page/pageSize，不算一次新的查询提交） */
+function toQueryInput(submitted: EventQueryDraft): AnalyticsEventQueryInput {
+  const propertyFilters = submitted.propertyFilters
+    .map(toPropertyFilter)
+    .filter((f): f is AnalyticsSegmentPropertyFilter => f != null);
+  // 自定义区间优先于「最近 N 天」
+  const [startDate, endDate] = formatDateRangeValuesForApi(submitted.dateRange);
+  return {
+    ...compactParams({
+      eventNames: submitted.eventNames.length ? submitted.eventNames.slice(0, 20) : undefined,
+      source: submitted.source,
+      appId: submitted.appId?.trim(),
+      environment: submitted.environment,
+      deviceType: submitted.deviceType,
+      segmentId: submitted.segmentId,
+      propertyFilters: propertyFilters.length ? propertyFilters : undefined,
+      metricProperty: submitted.metricProperty?.trim(),
+      startDate,
+      endDate,
+      days: submitted.dateRange ? undefined : submitted.days,
+    }),
+    groupBy: submitted.groupBy.length ? submitted.groupBy : ['date'],
+    metric: submitted.metric,
+  };
+}
+
 function rowKey(row?: AnalyticsEventQueryRow, index?: number): string {
   if (!row) return String(index ?? 0);
   return `${Object.values(row.dimensions).join('|')}-${index ?? 0}`;
 }
 
 export default function AnalyticsEventQueryTab() {
-  const [draft, setDraft] = useState<EventQueryDraft>(defaultDraft);
-  const [submitted, setSubmitted] = useState<AnalyticsEventQueryInput | null>(defaultSubmitted);
+  const {
+    page, pageSize, buildPagination,
+    draftParams: draft, setDraftParams, setField, bind, submittedParams,
+    handleSearch, handleReset,
+  } = useListSearch<EventQueryDraft>({ defaults: defaultDraft, listKey: analyticsKeys.eventQueries });
   const palette = useChartPalette();
-  const { page, pageSize, resetPage, buildPagination } = usePagination();
-  // 分页参数不进 submitted：翻页只改 page/pageSize，不应算作一次新的查询提交
-  const queryInput = useMemo<AnalyticsEventQueryInput | null>(
-    () => (submitted ? { ...submitted, page, pageSize } : null),
-    [submitted, page, pageSize],
+  const submittedBody = useMemo(() => toQueryInput(submittedParams), [submittedParams]);
+  const queryInput = useMemo<AnalyticsEventQueryInput>(
+    () => ({ ...submittedBody, page, pageSize }),
+    [submittedBody, page, pageSize],
   );
   const eventQuery = useAnalyticsEventQuery(queryInput);
   const result = eventQuery.data ?? null;
@@ -102,64 +130,28 @@ export default function AnalyticsEventQueryTab() {
     [segmentsQuery.data?.list],
   );
 
-  const updateDraft = <K extends keyof EventQueryDraft>(key: K, value: EventQueryDraft[K]) => {
-    setDraft((prev) => ({ ...prev, [key]: value }));
-  };
+  const setPropertyFilters = setField('propertyFilters');
 
   const addPropertyFilter = () => {
-    setDraft((prev) => (prev.propertyFilters.length >= MAX_PROPERTY_FILTERS ? prev : {
-      ...prev,
-      propertyFilters: [...prev.propertyFilters, { id: `pf-${Date.now()}-${prev.propertyFilters.length}`, key: '', op: 'eq', value: '' }],
-    }));
+    if (draft.propertyFilters.length >= MAX_PROPERTY_FILTERS) return;
+    setPropertyFilters([...draft.propertyFilters, { id: `pf-${Date.now()}-${draft.propertyFilters.length}`, key: '', op: 'eq', value: '' }]);
   };
 
   const updatePropertyFilter = (id: string, patch: Partial<Omit<PropertyFilterDraft, 'id'>>) => {
-    setDraft((prev) => ({
-      ...prev,
-      propertyFilters: prev.propertyFilters.map((f) => (f.id === id ? { ...f, ...patch } : f)),
-    }));
+    setPropertyFilters(draft.propertyFilters.map((f) => (f.id === id ? { ...f, ...patch } : f)));
   };
 
   const removePropertyFilter = (id: string) => {
-    setDraft((prev) => ({ ...prev, propertyFilters: prev.propertyFilters.filter((f) => f.id !== id) }));
-  };
-
-  const handleReset = () => {
-    setDraft(defaultDraft);
-    setSubmitted(defaultSubmitted);
-    resetPage();
+    setPropertyFilters(draft.propertyFilters.filter((f) => f.id !== id));
   };
 
   const handleQuery = () => {
-    const propertyFilters = draft.propertyFilters
-      .map(toPropertyFilter)
-      .filter((f): f is AnalyticsSegmentPropertyFilter => f != null);
-    const metricProperty = draft.metricProperty?.trim() || undefined;
     // 服务端 schema 会拒绝缺 key 的数值指标；前端先拦一道，给出比 400 更明确的提示
-    if (analyticsMetricRequiresProperty(draft.metric) && !metricProperty) {
+    if (analyticsMetricRequiresProperty(draft.metric) && !draft.metricProperty?.trim()) {
       Toast.warning('该指标需要填写数值属性 key');
       return;
     }
-    const body: AnalyticsEventQueryInput = {
-      eventNames: draft.eventNames.length ? draft.eventNames.slice(0, 20) : undefined,
-      source: (draft.source as AnalyticsEventQueryInput['source']) || undefined,
-      appId: draft.appId?.trim() || undefined,
-      environment: (draft.environment as AnalyticsEventQueryInput['environment']) || undefined,
-      deviceType: (draft.deviceType as AnalyticsEventQueryInput['deviceType']) || undefined,
-      segmentId: draft.segmentId,
-      propertyFilters: propertyFilters.length ? propertyFilters : undefined,
-      groupBy: draft.groupBy.length ? draft.groupBy : ['date'],
-      metric: draft.metric,
-      metricProperty,
-    };
-    if (draft.dateRange) {
-      body.startDate = formatDateForApi(draft.dateRange[0]);
-      body.endDate = formatDateForApi(draft.dateRange[1]);
-    } else {
-      body.days = draft.days;
-    }
-    resetPage();
-    setSubmitted(body);
+    handleSearch();
   };
 
   const primaryDim = result?.queryMeta.groupBy[0];
@@ -205,9 +197,8 @@ export default function AnalyticsEventQueryTab() {
               multiple
               filter
               placeholder="全部事件"
-              value={draft.eventNames}
               optionList={eventNameOptions}
-              onChange={(v) => updateDraft('eventNames', (v as string[]) ?? [])}
+              {...bind('eventNames', (v) => (v as string[]) ?? [])}
               loading={eventMetaQuery.isFetching}
               showClear
               style={{ width: '100%' }}
@@ -219,23 +210,22 @@ export default function AnalyticsEventQueryTab() {
             <Select
               multiple
               placeholder="按日期"
-              value={draft.groupBy}
               optionList={ANALYTICS_EVENT_QUERY_GROUP_BY_OPTIONS}
-              onChange={(v) => updateDraft('groupBy', ((v as AnalyticsEventQueryGroupByField[]) ?? []).slice(0, 2))}
+              {...bind('groupBy', (v) => ((v as AnalyticsEventQueryGroupByField[]) ?? []).slice(0, 2))}
               style={{ width: '100%' }}
             />
           </div>
           <div>
             <Typography.Text type="tertiary" size="small">指标</Typography.Text>
-            <Select value={draft.metric} optionList={ANALYTICS_EVENT_QUERY_METRIC_OPTIONS} onChange={(v) => updateDraft('metric', v as AnalyticsEventQueryMetric)} style={{ width: '100%' }} />
+            <Select optionList={ANALYTICS_EVENT_QUERY_METRIC_OPTIONS} {...bind('metric', (v) => v as AnalyticsEventQueryMetric)} style={{ width: '100%' }} />
           </div>
           {analyticsMetricRequiresProperty(draft.metric) && (
             <div>
               <Typography.Text type="tertiary" size="small">数值属性 key（必填）</Typography.Text>
               <Input
                 placeholder="如 amount"
+                {...bind('metricProperty')}
                 value={draft.metricProperty ?? ''}
-                onChange={(value) => updateDraft('metricProperty', value)}
                 style={{ width: '100%' }}
               />
             </div>
@@ -245,8 +235,7 @@ export default function AnalyticsEventQueryTab() {
             <FilterSelect
               placeholder="全部来源"
               items={ANALYTICS_EVENT_SOURCE_OPTIONS}
-              value={draft.source}
-              onChange={(v) => updateDraft('source', v as string)}
+              {...bind('source')}
               width="100%"
             />
           </div>
@@ -255,8 +244,7 @@ export default function AnalyticsEventQueryTab() {
             <FilterSelect
               placeholder="全部环境"
               items={ANALYTICS_ENVIRONMENT_OPTIONS}
-              value={draft.environment}
-              onChange={(v) => updateDraft('environment', v as string)}
+              {...bind('environment')}
               width="100%"
             />
           </div>
@@ -265,8 +253,7 @@ export default function AnalyticsEventQueryTab() {
             <FilterSelect
               placeholder="全部设备"
               items={ANALYTICS_DEVICE_TYPE_OPTIONS}
-              value={draft.deviceType}
-              onChange={(v) => updateDraft('deviceType', v as string)}
+              {...bind('deviceType')}
               width="100%"
             />
           </div>
@@ -275,8 +262,7 @@ export default function AnalyticsEventQueryTab() {
             <FilterSelect
               placeholder="全部用户"
               items={segmentOptions}
-              value={draft.segmentId}
-              onChange={(v) => updateDraft('segmentId', v)}
+              {...bind('segmentId')}
               width="100%"
               loading={segmentsQuery.isFetching}
             />
@@ -284,17 +270,17 @@ export default function AnalyticsEventQueryTab() {
           <div>
             <Typography.Text type="tertiary" size="small">日期</Typography.Text>
             <div style={{ display: 'flex', gap: 8 }}>
+              {/* 「最近 N 天」与自定义区间互斥：选天数即清空区间 */}
               <Select
                 value={draft.dateRange ? undefined : draft.days}
                 placeholder="最近 N 天"
                 optionList={DAY_OPTIONS}
-                onChange={(v) => setDraft((prev) => ({ ...prev, days: Number(v), dateRange: undefined }))}
+                onChange={(v) => setDraftParams((prev) => ({ ...prev, days: Number(v), dateRange: undefined }))}
                 style={{ width: 130 }}
               />
               <DateRangeFilter
                 type="dateRange"
-                value={draft.dateRange}
-                onChange={(range) => setDraft((prev) => ({ ...prev, dateRange: range ?? undefined }))}
+                {...bind('dateRange', (range: [Date, Date] | null) => range ?? undefined)}
                 style={{ flex: 1 }}
               />
             </div>
@@ -365,13 +351,9 @@ export default function AnalyticsEventQueryTab() {
               <BarChart {...barSpec} options={chartOptions} height={280} />
             )}
             <ConfigurableTable
-              bordered
-              rowKey={rowKey}
               columns={columns}
-              dataSource={result.list}
-              loading={loading}
-              pagination={buildPagination(result.total)}
               empty="暂无数据"
+              {...listTableProps(eventQuery, { rowKey, pagination: buildPagination })}
             />
           </div>
         )}

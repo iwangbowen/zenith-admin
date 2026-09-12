@@ -21,7 +21,7 @@ import {
   useUpdateNginxSite,
 } from '@/hooks/queries/nginx-sites';
 import type { NginxInfo, NginxSite } from '@zenith/shared/ops';
-import { useQueryClient } from '@tanstack/react-query';
+import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
@@ -34,6 +34,12 @@ const RUNNING_STATUS_TAG: Record<NginxInfo['runningStatus'], { color: 'green' | 
   unknown: { color: 'grey', text: '未知' },
 };
 const EMPTY_SITES: NginxSite[] = [];
+
+interface SearchParams {
+  keyword: string;
+}
+
+const defaultSearchParams: SearchParams = { keyword: '' };
 
 interface CreateNginxSiteModalRecord {
   id: number;
@@ -53,10 +59,13 @@ interface CreateNginxSiteFormValues {
 export default function NginxSitesPage() {
   const navigate = useNavigate();
   const { hasPermission } = usePermission();
-  const queryClient = useQueryClient();
   const canManage = hasPermission('system:nginx:manage');
   const canReload = hasPermission('system:nginx:reload');
-  const [keyword, setKeyword] = useState('');
+  // 站点总览一次取全量，关键字在客户端过滤：submittedParams 进过滤谓词，「查询 / 重置」仍回源刷新
+  const { bindKeyword, submittedParams, handleSearch, handleReset } = useListSearch<SearchParams>({
+    defaults: defaultSearchParams,
+    listKey: nginxSiteKeys.lists,
+  });
   const [editorVisible, setEditorVisible] = useState(false);
   const [editorName, setEditorName] = useState<string | undefined>(undefined);
   const [editorContent, setEditorContent] = useState('');
@@ -97,15 +106,10 @@ export default function NginxSitesPage() {
   }, [editorVisible, detailQuery.data]);
 
   const filteredSites = useMemo(() => {
-    const kw = keyword.trim().toLowerCase();
+    const kw = submittedParams.keyword.trim().toLowerCase();
     if (!kw) return sites;
     return sites.filter((site) => [site.name, site.serverName ?? '', site.configPath].some((value) => value.toLowerCase().includes(kw)));
-  }, [keyword, sites]);
-
-  const handleReset = () => {
-    setKeyword('');
-    void overviewQuery.refetch();
-  };
+  }, [submittedParams.keyword, sites]);
 
   const openEditor = (name: string) => {
     setEditorVisible(true);
@@ -251,8 +255,8 @@ export default function NginxSitesPage() {
       </div>
 
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索站点名 / 域名 / 配置路径" value={keyword} onChange={setKeyword} width={260} />}
-        onSearch={() => { void queryClient.invalidateQueries({ queryKey: nginxSiteKeys.lists }); }}
+        keyword={<KeywordInput placeholder="搜索站点名 / 域名 / 配置路径" {...bindKeyword('keyword')} width={260} />}
+        onSearch={handleSearch}
         onReset={handleReset}
         create={canManage && <CreateButton onClick={createModal.openCreate}>新增站点</CreateButton>}
         actions={(
