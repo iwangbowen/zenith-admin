@@ -28,7 +28,7 @@ import { REPORT_DELIVERY_STATUS_LABELS, REPORT_DELIVERY_TRIGGER_LABELS, REPORT_M
 import { useDictItems } from '@/hooks/useDictItems';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import { DEFAULT_TIMEZONE } from '@/utils/timezones';
 
 const deliveryStatusColorMap: Record<string, 'green' | 'red' | 'orange' | 'grey' | 'blue' | 'amber'> = {
@@ -48,7 +48,7 @@ export default function SubscriptionsPage() {
     page, pageSize, buildPagination,
     bindKeyword, submittedParams, handleSearch, handleReset,
   } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: reportSubscriptionKeys.lists });
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
   const [historyTarget, setHistoryTarget] = useState<ReportDashboardSubscription | null>(null);
   const [cronExprValue, setCronExprValue] = useState('');
   const [selectedChannels, setSelectedChannels] = useState<string[]>(['inApp']);
@@ -105,7 +105,7 @@ export default function SubscriptionsPage() {
       title: `确认批量${enabled ? '启用' : '停用'}选中的 ${selectedRowKeys.length} 条订阅？`,
       onOk: async () => {
         await batchEnabledMutation.mutateAsync({ body: { ids: selectedRowKeys, enabled } });
-        setSelectedRowKeys([]);
+        clearSelection();
         Toast.success(enabled ? '批量启用成功' : '批量停用成功');
       },
     });
@@ -170,10 +170,7 @@ export default function SubscriptionsPage() {
         {...listTableProps(listQuery, {
           pagination: buildPagination,
           empty: '暂无订阅',
-          rowSelection: hasPermission('report:subscription:update') ? {
-            selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
-          } : undefined,
+          rowSelection: hasPermission('report:subscription:update') ? rowSelection : undefined,
         })}
       />
 

@@ -40,7 +40,7 @@ import { WORKFLOW_DIFF_KIND_META as DIFF_KIND_META } from '../constants';
 import { PUBLISHABLE_STATUS_META as STATUS_MAP } from '@/lib/publishable-status';
 import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import { confirmDanger } from '@/utils/confirm';
 
 const STATUS_FILTER_OPTIONS = [{ value: 'draft', label: '草稿' }, { value: 'published', label: '已发布' }, { value: 'disabled', label: '已禁用' }];
@@ -67,7 +67,7 @@ export default function WorkflowDefinitionsPage() {
   const { hasPermission } = usePermission();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
   const {
     page, pageSize, buildPagination,
     draftParams, bind, submittedParams,
@@ -76,8 +76,8 @@ export default function WorkflowDefinitionsPage() {
     defaults: defaultSearchParams,
     listKey: workflowDefinitionKeys.lists,
     // 条件变化后原先勾选的行可能已不在结果集里，一并清空
-    onSearch: () => setSelectedRowKeys([]),
-    onReset: () => setSelectedRowKeys([]),
+    onSearch: clearSelection,
+    onReset: clearSelection,
   });
   const canBatchOperate = hasPermission('workflow:definition:publish') || hasPermission('workflow:definition:delete');
   const [historyTarget, setHistoryTarget] = useState<WorkflowDefinition | null>(null);
@@ -153,7 +153,7 @@ export default function WorkflowDefinitionsPage() {
       onOk: async () => {
         await batchDisableMutation.mutateAsync({ body: { ids: selectedRowKeys } });
         Toast.success('操作成功');
-        setSelectedRowKeys([]);
+        clearSelection();
       },
     });
   };
@@ -166,7 +166,7 @@ export default function WorkflowDefinitionsPage() {
       onOk: async () => {
         await batchEnableMutation.mutateAsync({ body: { ids: selectedRowKeys } });
         Toast.success('操作成功');
-        setSelectedRowKeys([]);
+        clearSelection();
       },
     });
   };
@@ -177,7 +177,7 @@ export default function WorkflowDefinitionsPage() {
       title: `确定删除选中的 ${selectedRowKeys.length} 个流程？`,
       content: '仅「非已发布」且无发起实例的流程会被删除，删除后无法恢复。',
       run: () => batchDeleteMutation.mutateAsync({ body: { ids: selectedRowKeys } }),
-      onDeleted: () => setSelectedRowKeys([]),
+      onDeleted: clearSelection,
     });
   };
 
@@ -499,10 +499,7 @@ export default function WorkflowDefinitionsPage() {
             columns={columns}
             {...listTableProps(listQuery, {
               pagination: buildPagination,
-              rowSelection: canBatchOperate ? {
-                selectedRowKeys,
-                onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
-              } : undefined,
+              rowSelection: canBatchOperate ? rowSelection : undefined,
             })}
           />
           {historyTarget && (

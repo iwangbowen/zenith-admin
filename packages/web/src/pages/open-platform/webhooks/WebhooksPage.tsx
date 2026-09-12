@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import { Button, Tag, TagGroup, Modal, Form, Toast, Typography, Banner, SideSheet, Descriptions } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
@@ -90,7 +90,9 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
   const [deliveryPage, setDeliveryPage] = useState(1);
   const [deliveryStatus, setDeliveryStatus] = useState<AppWebhookDelivery['status'] | undefined>();
   const [deliveryEventType, setDeliveryEventType] = useState<string | undefined>();
-  const [selectedDeliveryIds, setSelectedDeliveryIds] = useState<number[]>([]);
+  const { selectedRowKeys: selectedDeliveryIds, clear: clearDeliverySelection, rowSelection: deliveryRowSelection } = useRowSelection<number, AppWebhookDelivery>({
+    extra: { getCheckboxProps: (record: AppWebhookDelivery) => ({ disabled: record.status !== 'failed' }) },
+  });
 
   const listQuery = useWebhookList({
     page,
@@ -200,7 +202,7 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
     setDeliveryPage(1);
     setDeliveryStatus(undefined);
     setDeliveryEventType(undefined);
-    setSelectedDeliveryIds([]);
+    clearDeliverySelection();
   }
   async function retryDelivery(id: number) {
     await retryMutation.mutateAsync({ params: { id } });
@@ -208,7 +210,7 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
   }
   async function batchRetryDeliveries() {
     const result = await batchRetryMutation.mutateAsync({ body: { ids: selectedDeliveryIds } });
-    setSelectedDeliveryIds([]);
+    clearDeliverySelection();
     Toast.success(`已将 ${result.scheduled} 条投递加入重试队列`);
   }
 
@@ -387,7 +389,7 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
             onChange={(value) => {
               setDeliveryStatus(value as AppWebhookDelivery['status']);
               setDeliveryPage(1);
-              setSelectedDeliveryIds([]);
+              clearDeliverySelection();
             }}
             width={140}
           />
@@ -398,7 +400,7 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
             onChange={(value) => {
               setDeliveryEventType(value as string);
               setDeliveryPage(1);
-              setSelectedDeliveryIds([]);
+              clearDeliverySelection();
             }}
             width={180}
             filter
@@ -425,11 +427,7 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
           empty="暂无投递记录"
           expandedRowRender={renderDeliveryExpanded}
           hideExpandedColumn={false}
-          rowSelection={{
-            selectedRowKeys: selectedDeliveryIds,
-            getCheckboxProps: (record: AppWebhookDelivery) => ({ disabled: record.status !== 'failed' }),
-            onChange: (keys) => setSelectedDeliveryIds((keys as number[]) ?? []),
-          }}
+          rowSelection={deliveryRowSelection}
           pagination={{
             currentPage: deliveryPage,
             pageSize: 10,

@@ -39,7 +39,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
-import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 
 const DatasetRefsModal = lazy(() => import('./components/DatasetRefsModal').then((module) => ({
   default: module.DatasetRefsModal,
@@ -104,7 +104,7 @@ export default function DatasetsPage() {
     return m;
   }, [datasources]);
 
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, setSelectedRowKeys, rowSelection } = useRowSelection();
   const [selectedDsId, setSelectedDsId] = useState<number | null>(null);
   const [fields, setFields] = useState<ReportField[]>([]);
   const [computedFields, setComputedFields] = useState<ReportComputedField[]>([]);
@@ -594,10 +594,7 @@ export default function DatasetsPage() {
         {...listTableProps(listQuery, {
           pagination: buildPagination,
           empty: '暂无数据',
-          rowSelection: hasPermission('report:dataset:update') ? {
-            selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
-          } : undefined,
+          rowSelection: hasPermission('report:dataset:update') ? rowSelection : undefined,
         })}
       />
 

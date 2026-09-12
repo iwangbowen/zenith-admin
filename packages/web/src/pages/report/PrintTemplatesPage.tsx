@@ -33,7 +33,7 @@ import { useReportOwnerFolderOptions } from './report-lookups';
 import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle, useRowSelection } from '@/components/list-page';
 
 interface SearchParams { keyword: string; status?: string; ownerId?: number; folderId?: number }
 const defaultSearchParams: SearchParams = { keyword: '', status: undefined, ownerId: undefined, folderId: undefined };
@@ -50,7 +50,7 @@ export default function PrintTemplatesPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: reportPrintKeys.lists });
 
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, setSelectedRowKeys, rowSelection } = useRowSelection();
   // 新增 / 编辑弹窗中的数据来源（控制数据集选择器显隐）；打开弹窗时随记录回填
   const [dialogSourceType, setDialogSourceType] = useState<ReportPrintSourceType>('dataset');
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -266,10 +266,7 @@ export default function PrintTemplatesPage() {
         {...listTableProps(listQuery, {
           pagination: buildPagination,
           empty: '暂无数据',
-          rowSelection: hasPermission('report:print:update') ? {
-            selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
-          } : undefined,
+          rowSelection: hasPermission('report:print:update') ? rowSelection : undefined,
         })}
       />
 

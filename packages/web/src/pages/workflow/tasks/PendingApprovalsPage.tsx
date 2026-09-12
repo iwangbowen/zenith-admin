@@ -30,7 +30,7 @@ import {
 } from '@/hooks/queries/workflow-tasks';
 import { usePublishedWorkflowDefinitions } from '@/hooks/queries/workflow-definitions';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 
 interface SearchParams {
   keyword: string;
@@ -66,7 +66,9 @@ export default function PendingApprovalsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const { renderPhraseBar, phraseManageModal } = useQuickPhrases();
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, setSelectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection<number, PendingItem>({
+    extra: { getCheckboxProps: (record: PendingItem) => ({ disabled: !!record.requiresIndividual }) },
+  });
   const [batch, setBatch] = useState<BatchState>(null);
   const [consult, setConsult] = useState<ConsultState>(null);
   const [myConsultsVisible, setMyConsultsVisible] = useState(false);
@@ -124,12 +126,12 @@ export default function PendingApprovalsPage() {
         Toast.success('批量处理完成');
       }
       setBatch(null);
-      setSelectedRowKeys([]);
+      clearSelection();
     } catch (err) {
       // 409 并发冲突：任务已被他人处理/流程状态变化，刷新列表引导重试（request 层已 toast 兜底其它错误）
       if (err instanceof ApiError && err.code === 409) {
         Toast.warning('任务状态已变化，已刷新列表，请重新选择');
-        setSelectedRowKeys([]);
+        clearSelection();
         void queryClient.invalidateQueries({ queryKey: workflowTaskKeys.pendingLists });
       }
     }
@@ -275,11 +277,7 @@ export default function PendingApprovalsPage() {
         {...listTableProps(listQuery, {
           pagination: buildPagination,
           rowKey: 'pendingTaskId',
-          rowSelection: {
-            selectedRowKeys,
-            getCheckboxProps: (record: PendingItem) => ({ disabled: !!record.requiresIndividual }),
-            onChange: (keys) => setSelectedRowKeys(((keys as (string | number)[]) ?? []).map(Number)),
-          },
+          rowSelection,
         })}
       />
 

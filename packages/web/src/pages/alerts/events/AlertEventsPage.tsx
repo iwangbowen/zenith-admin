@@ -7,7 +7,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import ExportButton from '@/components/ExportButton';
 import AppModal from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { formatDateTimeRangeForApi } from '@/utils/date';
@@ -96,7 +96,7 @@ export default function AlertEventsPage() {
   const ruleId = Number(urlParams.get('ruleId')) || undefined;
 
   const canHandle = hasPermission('alert:event:handle');
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
   const [handleTarget, setHandleTarget] = useState<
     { ids: number[]; handleStatus: MonitorAlertHandleStatus } | null
   >(null);
@@ -116,8 +116,8 @@ export default function AlertEventsPage() {
       handleStatus: urlParams.get('handleStatus') ?? '',
     }),
     listKey: monitorAlertKeys.eventLists,
-    onSearch: () => setSelectedRowKeys([]),
-    onReset: () => setSelectedRowKeys([]),
+    onSearch: clearSelection,
+    onReset: clearSelection,
   });
 
   // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
@@ -153,7 +153,7 @@ export default function AlertEventsPage() {
     const meta = HANDLE_ACTION_META[handleStatus];
     Toast.success(`${meta.done}${ids.length > 1 ? `（${ids.length} 条）` : ''}`);
     setHandleTarget(null);
-    setSelectedRowKeys([]);
+    clearSelection();
   }
 
   const columns: ColumnProps<MonitorAlertEvent>[] = [
@@ -303,7 +303,7 @@ export default function AlertEventsPage() {
         {...listTableProps(listQuery, {
           pagination: buildPagination,
           rowSelection: canHandle
-            ? { selectedRowKeys, onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]) }
+            ? rowSelection
             : undefined,
         })}
       />

@@ -10,7 +10,7 @@ import { formatDateTime } from '@/utils/date';
 import { formatDurationMs } from '@/utils/format';
 import { confirmDanger } from '@/utils/confirm';
 import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
-import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import WorkflowInstanceCell from '@/components/workflow/WorkflowInstanceCell';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -203,8 +203,13 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
   const detail = detailQuery.data ?? null;
   const detailLoading = detailQuery.isFetching;
   const [execView, setExecView] = useState<'timeline' | 'table'>('timeline');
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
-  const clearSelection = useCallback(() => setSelectedRowKeys([]), []);
+  const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection<number, WorkflowJob>({
+    extra: {
+      getCheckboxProps: (record: WorkflowJob) => ({
+        disabled: record.status === 'succeeded',
+      }),
+    },
+  });
   const { page, pageSize, buildPagination, draftParams, bind, bindKeyword, submittedParams, handleSearch, handleReset, applySearch } =
     useListSearch<JobSearchParams>({
       defaults: JOB_SEARCH_DEFAULTS,
@@ -305,9 +310,9 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
     const input = { body: { ids: selectedRowKeys } };
     const result = await (action === 'retry' ? batchRetryMutation.mutateAsync(input) : batchSkipMutation.mutateAsync(input));
     Toast.success(`已${action === 'retry' ? '重试' : '跳过'} ${result.success} 项`);
-    setSelectedRowKeys([]);
+    clearSelection();
     onMutated();
-  }, [batchRetryMutation, batchSkipMutation, selectedRowKeys, onMutated]);
+  }, [batchRetryMutation, batchSkipMutation, clearSelection, selectedRowKeys, onMutated]);
 
   const openDetail = useCallback((id: number) => {
     setDetailVisible(true);
@@ -618,7 +623,7 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
           <Popconfirm title={`确定批量跳过选中的 ${selectedRowKeys.length} 项？`} content="作业将被标记为已取消，不再执行" onConfirm={() => void handleBatch('skip')}>
             <Button size="small" type="danger" loading={batchLoading}>批量跳过</Button>
           </Popconfirm>
-          <Button size="small" theme="borderless" onClick={() => setSelectedRowKeys([])}>取消选择</Button>
+          <Button size="small" theme="borderless" onClick={clearSelection}>取消选择</Button>
         </div>
       )}
 
@@ -626,13 +631,7 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
         columns={columns}
         {...listTableProps(listQuery, {
           pagination: buildPagination,
-          rowSelection: canOperate ? {
-            selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
-            getCheckboxProps: (record: WorkflowJob) => ({
-              disabled: record.status === 'succeeded',
-            }),
-          } : undefined,
+          rowSelection: canOperate ? rowSelection : undefined,
         })}
       />
 

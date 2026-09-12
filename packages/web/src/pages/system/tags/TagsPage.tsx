@@ -10,7 +10,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle, useRowSelection } from '@/components/list-page';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import {
   tagKeys,
@@ -124,7 +124,7 @@ export default function TagsPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: tagKeys.lists });
 
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, setSelectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
 
   const [colorValue, setColorValue] = useState('');
 
@@ -181,7 +181,7 @@ export default function TagsPage() {
       content: '删除后无法恢复，请谨慎操作。',
       run: () => deleteMutation.mutateAsync(selectedRowKeys),
       successMessage: `已删除 ${selectedRowKeys.length} 条标签`,
-      onDeleted: () => setSelectedRowKeys([]),
+      onDeleted: clearSelection,
     });
   };
 
@@ -266,10 +266,7 @@ export default function TagsPage() {
         {...listTableProps(listQuery, {
           pagination: buildPagination,
           rowSelection: can('system:tag:delete')
-            ? {
-                selectedRowKeys,
-                onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
-              }
+            ? rowSelection
             : undefined,
         })}
       />

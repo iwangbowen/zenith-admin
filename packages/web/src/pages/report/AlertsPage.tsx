@@ -30,7 +30,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { switchAlertSource } from './report-platform-utils';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle, useRowSelection } from '@/components/list-page';
 import { DEFAULT_TIMEZONE } from '@/utils/timezones';
 import ModalFooter from '@/components/ModalFooter';
 
@@ -100,7 +100,7 @@ export default function AlertsPage() {
   );
   const metrics = metricsQuery.data ?? [];
 
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
   const [historyTarget, setHistoryTarget] = useState<ReportAlertRule | null>(null);
   const [selectedDatasetId, setSelectedDatasetId] = useState<number | null>(null);
   const [sourceType, setSourceType] = useState<'dataset' | 'metric'>('dataset');
@@ -227,7 +227,7 @@ export default function AlertsPage() {
       title: `确认批量${enabled ? '启用' : '停用'}选中的 ${selectedRowKeys.length} 条预警？`,
       onOk: async () => {
         await batchEnabledMutation.mutateAsync({ body: { ids: selectedRowKeys, enabled } });
-        setSelectedRowKeys([]);
+        clearSelection();
         Toast.success(enabled ? '批量启用成功' : '批量停用成功');
       },
     });
@@ -355,10 +355,7 @@ export default function AlertsPage() {
         {...listTableProps(listQuery, {
           pagination: buildPagination,
           empty: '暂无预警',
-          rowSelection: hasPermission('report:alert:update') ? {
-            selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
-          } : undefined,
+          rowSelection: hasPermission('report:alert:update') ? rowSelection : undefined,
         })}
       />
 

@@ -63,7 +63,7 @@ import { useAllUsers } from '@/hooks/queries/users';
 import { compactParams } from '@/lib/query';
 
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import { workflowInstanceStatusColumn } from '@/components/workflow/WorkflowInstanceListColumns';
 import { confirmDanger } from '@/utils/confirm';
 
@@ -385,7 +385,7 @@ export default function WorkflowMonitorPage() {
   const { categories } = useWorkflowCategories();
   const { hasPermission } = usePermission();
   // 勾选用于批量导出审批单 PDF；翻页 / 重新检索后仅保留仍在当前页的选中项
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, rowSelection } = useRowSelection();
   const selectedPrintableIds = selectedRowKeys.filter((id) => (data?.list ?? []).some((item) => item.id === id));
   const [detailVisible, setDetailVisible] = useState(false);
   const [detailId, setDetailId] = useState<number | undefined>();
@@ -1142,10 +1142,7 @@ export default function WorkflowMonitorPage() {
         columns={columns}
         {...listTableProps(listQuery, {
           pagination: buildPagination,
-          rowSelection: hasPermission('workflow:instance:print') ? {
-            selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys(((keys as (string | number)[]) ?? []).map(Number)),
-          } : undefined,
+          rowSelection: hasPermission('workflow:instance:print') ? rowSelection : undefined,
         })}
       />
         </TabPane>

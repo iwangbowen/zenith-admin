@@ -1,10 +1,9 @@
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Form, Space, Spin, Toast, Modal, Tag, Row, Col, Select, withField } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle, useRowSelection } from '@/components/list-page';
 import AppModal from '@/components/AppModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -73,7 +72,7 @@ function thresholdHint(metric: MonitorMetric | undefined): string {
 export default function AlertRulesPage() {
   const { hasPermission } = usePermission();
   const navigate = useNavigate();
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
 
   const {
     page, pageSize, buildPagination,
@@ -82,8 +81,8 @@ export default function AlertRulesPage() {
   } = useListSearch<SearchParams>({
     defaults: defaultSearchParams,
     listKey: monitorAlertKeys.lists,
-    onSearch: () => setSelectedRowKeys([]),
-    onReset: () => setSelectedRowKeys([]),
+    onSearch: clearSelection,
+    onReset: clearSelection,
   });
 
   // 筛选条件全部下推服务端：此前在当前页做 filter，翻到第 2 页就搜不到第 1 页的规则，
@@ -171,7 +170,7 @@ export default function AlertRulesPage() {
       content: '删除后不可恢复，规则关联的历史告警事件会保留。',
       run: () => deleteMutation.mutateAsync(selectedRowKeys),
       successMessage: '批量删除成功',
-      onDeleted: () => setSelectedRowKeys([]),
+      onDeleted: clearSelection,
     });
   }
 
@@ -179,7 +178,7 @@ export default function AlertRulesPage() {
     const doToggle = async () => {
       await batchToggleMutation.mutateAsync({ body: { ids: selectedRowKeys, enabled } });
       Toast.success(enabled ? '已批量启用' : '已批量停用');
-      setSelectedRowKeys([]);
+      clearSelection();
     };
     // 停用是非破坏性确认，用原生 Modal.confirm
     if (enabled) void doToggle();
@@ -319,7 +318,7 @@ export default function AlertRulesPage() {
         {...listTableProps(listQuery, {
           pagination: buildPagination,
           rowSelection: canUpdate || canDelete
-            ? { selectedRowKeys, onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]) }
+            ? rowSelection
             : undefined,
         })}
       />

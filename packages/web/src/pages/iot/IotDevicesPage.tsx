@@ -15,7 +15,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useDictItems } from '@/hooks/useDictItems';
-import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 import { abortSubmit } from '@/lib/abort-submit';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
@@ -58,7 +58,7 @@ export default function IotDevicesPage() {
   const { hasPermission } = usePermission();
   const { items: statusItems } = useDictItems('common_status');
   const [detailDevice, setDetailDevice] = useState<IotDevice | null>(null);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, setSelectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
   const [groupsVisible, setGroupsVisible] = useState(false);
   const [batchKind, setBatchKind] = useState<'command' | 'desired' | null>(null);
 
@@ -177,7 +177,7 @@ export default function IotDevicesPage() {
     }
     Toast.success('批量任务已提交，可在顶栏任务托盘查看进度');
     setBatchKind(null);
-    setSelectedRowKeys([]);
+    clearSelection();
   }
 
   const columns: ColumnProps<IotDevice>[] = [
@@ -375,10 +375,7 @@ export default function IotDevicesPage() {
         {...listTableProps(listQuery, {
           pagination: buildPagination,
           empty: '暂无设备，点击「注册设备」接入第一台设备',
-          rowSelection: canBatch ? {
-            selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
-          } : undefined,
+          rowSelection: canBatch ? rowSelection : undefined,
         })}
       />
 

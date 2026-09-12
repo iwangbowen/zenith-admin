@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Col, Form, Row, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -31,7 +30,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
-import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle, useRowSelection } from '@/components/list-page';
 
 interface SearchParams { keyword: string; type?: string; status?: string; ownerId?: number; folderId?: number }
 const defaultSearchParams: SearchParams = { keyword: '', type: undefined, status: undefined, ownerId: undefined, folderId: undefined };
@@ -47,7 +46,7 @@ export default function DataSourcesPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: reportDatasourceKeys.lists });
 
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, setSelectedRowKeys, rowSelection } = useRowSelection();
 
   const listQuery = useReportDatasourceList({
     page,
@@ -303,10 +302,7 @@ export default function DataSourcesPage() {
         {...listTableProps(listQuery, {
           pagination: buildPagination,
           empty: '暂无数据',
-          rowSelection: hasPermission('report:datasource:update') ? {
-            selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
-          } : undefined,
+          rowSelection: hasPermission('report:datasource:update') ? rowSelection : undefined,
         })}
       />
 

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Tag, Form, Typography, Row, Col } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
@@ -8,7 +7,7 @@ import { copyableNoColumn, createdAtColumn, renderEnabledStatusTag } from '@/uti
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import {
@@ -39,7 +38,7 @@ export default function ApiScopesPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: apiScopeKeys.lists });
 
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
 
   const listQuery = useApiScopeList({
     page,
@@ -70,7 +69,7 @@ export default function ApiScopesPage() {
       content: '删除后不可恢复',
       run: () => deleteMutation.mutateAsync(selectedRowKeys),
       successMessage: '批量删除成功',
-      onDeleted: () => setSelectedRowKeys([]),
+      onDeleted: clearSelection,
     });
   }
 
@@ -146,7 +145,7 @@ export default function ApiScopesPage() {
         columns={columns}
         {...listTableProps(listQuery, {
           empty: '暂无数据',
-          rowSelection: canManage ? { selectedRowKeys, onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]) } : undefined,
+          rowSelection: canManage ? rowSelection : undefined,
           pagination: buildPagination,
         })}
       />
