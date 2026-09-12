@@ -157,6 +157,9 @@ export default function XxxPage() {
     entityName: '示例',              // 自动生成标题「新增示例 / 编辑示例」
     save: useSaveXxx(),
     useDetail: useXxxDetail,         // 编辑时懒加载详情，必须是模块级稳定函数
+    // 父级绑定的子资源（字典项 / 节点外链）：详情查询还需要父 id 时，写一个模块级包装
+    //   const useItemModalDetail: DetailHook<Item> = (id, enabled, record) => useItemDetail(record?.dictId ?? 0, id, enabled);
+    // 第三个参数 record 是传给 openEdit 的行；成对的 create / update 带父级路径参数时在 `save` 适配器里按 id 分派
     defaults: { status: 'enabled' }, // 仅新增时使用
     toValues: (r) => ({              // 记录 → 表单值：null 归一为未填
       name: r.name,
