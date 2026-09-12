@@ -121,14 +121,12 @@ export function mapContract(row: PaymentContractRow & { plan?: Pick<PaymentDeduc
 
 // ─── 扣款计划 CRUD ────────────────────────────────────────────────────────────
 
-export type ListDeductPlansQuery = QueryOutputOf<typeof paymentDeductPlanContract.deductPlans>;
-
 function plansTenantCondition() {
   const user = currentUserOrNull();
   return user ? tenantCondition(paymentDeductPlans, user) : undefined;
 }
 
-export async function listDeductPlans(q: ListDeductPlansQuery) {
+export async function listDeductPlans(q: QueryOutputOf<typeof paymentDeductPlanContract.deductPlans>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     keywordCondition(q.keyword, [paymentDeductPlans.name]),

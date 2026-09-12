@@ -529,8 +529,6 @@ export async function getInstanceDetail(id: number) {
 
 // ─── 任务级全局监控（运维视角，Tab「任务监控」）──────────────────────────────
 
-export type ListAllTasksQuery = QueryOutputOf<typeof workflowTaskContract.taskMonitor>;
-
 /** 未终态任务优先展示（pending > waiting > 其余），组内按任务创建时间倒序 */
 const taskMonitorOrder = sql`CASE ${workflowTasks.status} WHEN 'pending' THEN 0 WHEN 'waiting' THEN 1 ELSE 2 END`;
 
@@ -539,7 +537,7 @@ const taskMonitorOrder = sql`CASE ${workflowTasks.status} WHEN 'pending' THEN 0 
  * 与实例监控（listAllInstances）同权限口径：租户隔离 + 按发起人部门的数据权限。
  * stats 为口径内任务状态分布（不受筛选影响，供状态卡切换筛选，与实例监控一致）。
  */
-export async function listAllTasks(query: ListAllTasksQuery) {
+export async function listAllTasks(query: QueryOutputOf<typeof workflowTaskContract.taskMonitor>) {
   const user = currentUser();
   const { page, pageSize, status, nodeType, keyword, assigneeKeyword, definitionId, instanceId, startTime, endTime, stuckMinutes } = query;
   const assignee = alias(users, 'wf_task_assignee');

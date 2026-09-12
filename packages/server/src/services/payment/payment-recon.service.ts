@@ -155,9 +155,7 @@ async function loadLocalPaidRowsScoped(channel: PaymentChannel, appId: number, c
     );
 }
 
-export type ListReconBatchesQuery = QueryOutputOf<typeof paymentReconContract.list>;
-
-export async function listReconBatches(q: ListReconBatchesQuery) {
+export async function listReconBatches(q: QueryOutputOf<typeof paymentReconContract.list>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     q.channel ? eq(paymentReconBatches.channel, q.channel) : undefined,
@@ -180,9 +178,7 @@ export async function getReconBatch(id: number): Promise<PaymentReconBatch> {
   return mapReconBatch(row);
 }
 
-export type ListReconItemsQuery = QueryOutputOf<typeof paymentReconContract.items>;
-
-export async function listReconItems(batchId: number, q: ListReconItemsQuery) {
+export async function listReconItems(batchId: number, q: QueryOutputOf<typeof paymentReconContract.items>) {
   await getReconBatch(batchId);
   const { page, pageSize } = q;
   const where = buildWhere(

@@ -29,9 +29,7 @@ const EVENT_DIM_COLUMNS = {
   campaign: userEvents.utmCampaign,
 } as const;
 
-export type ChannelAnalysisQuery = QueryOutputOf<typeof channelAnalysisContract.analyze>;
-
-export async function getChannelAnalysis(q: ChannelAnalysisQuery): Promise<ChannelAnalysisResult> {
+export async function getChannelAnalysis(q: QueryOutputOf<typeof channelAnalysisContract.analyze>): Promise<ChannelAnalysisResult> {
   const days = clampDays(q.days, 30, SHORT_LINK_STATS_MAX_DAYS);
   const since = startOfRecentDays(days);
   const user = currentUser();

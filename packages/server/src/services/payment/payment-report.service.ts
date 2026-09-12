@@ -17,8 +17,6 @@ import { getTenantScopeId, optionalExactTenantCondition } from '../../lib/tenant
 import { APP_TIME_ZONE, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
 import { buildWhere, dateRangeConditions } from '../../lib/where-helpers';
 
-export type ReportSummaryQuery = QueryOutputOf<typeof paymentReportContract.summary>;
-
 export interface ReportTotals {
   totalGross: number;
   totalFee: number;
@@ -223,7 +221,7 @@ function toReportRows(rows: AggRow[]): PaymentReportRow[] {
   }));
 }
 
-export async function getReportSummary(q: ReportSummaryQuery): Promise<ReportSummary> {
+export async function getReportSummary(q: QueryOutputOf<typeof paymentReportContract.summary>): Promise<ReportSummary> {
   const groupBy: PaymentReportGroupBy = q.groupBy ?? 'day';
   const start = parseDateRangeStart(q.startTime);
   const end = parseDateRangeEnd(q.endTime);

@@ -56,8 +56,6 @@ export function mapChannelConfig(row: PaymentChannelConfigRow): PaymentChannelCo
   };
 }
 
-export type ListChannelConfigsQuery = QueryOutputOf<typeof paymentChannelContract.channels>;
-
 export async function listAllChannelConfigs() {
   const tc = tenantCondition(paymentChannelConfigs, currentUser());
   const rows = await db.select().from(paymentChannelConfigs).where(tc).orderBy(asc(paymentChannelConfigs.id));
@@ -82,7 +80,7 @@ export async function listChannelConfigLookup(): Promise<PaymentChannelConfigLoo
   return rows;
 }
 
-export async function listChannelConfigs(q: ListChannelConfigsQuery) {
+export async function listChannelConfigs(q: QueryOutputOf<typeof paymentChannelContract.channels>) {
   const { page, pageSize } = q;
   const finalWhere = buildWhere(
     keywordCondition(q.keyword, [paymentChannelConfigs.name]),

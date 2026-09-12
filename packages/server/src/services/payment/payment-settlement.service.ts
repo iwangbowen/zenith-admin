@@ -70,9 +70,7 @@ export function mapSettlementBatch(row: PaymentSettlementBatchRow): PaymentSettl
   };
 }
 
-export type ListSettlementsQuery = QueryOutputOf<typeof paymentSettlementContract.list>;
-
-export async function listSettlements(q: ListSettlementsQuery) {
+export async function listSettlements(q: QueryOutputOf<typeof paymentSettlementContract.list>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     q.channel ? eq(paymentSettlementBatches.channel, q.channel) : undefined,

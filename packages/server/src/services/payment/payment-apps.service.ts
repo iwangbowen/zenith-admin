@@ -49,9 +49,7 @@ export function mapApp(row: AppWithConfigs): PaymentApp {
   };
 }
 
-export type ListAppsQuery = QueryOutputOf<typeof paymentAppContract.list>;
-
-export async function listApps(q: ListAppsQuery) {
+export async function listApps(q: QueryOutputOf<typeof paymentAppContract.list>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     keywordCondition(q.keyword, [paymentApps.name]),

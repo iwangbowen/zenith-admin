@@ -101,9 +101,7 @@ function accountScopeMatches(account: PaymentLedgerAccountRow, scope: PaymentMon
     && account.currency === scope.currency;
 }
 
-export type ListLedgerAccountsQuery = QueryOutputOf<typeof paymentJournalContract.accounts>;
-
-export async function listLedgerAccounts(q: ListLedgerAccountsQuery) {
+export async function listLedgerAccounts(q: QueryOutputOf<typeof paymentJournalContract.accounts>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     keywordCondition(q.keyword, [paymentLedgerAccounts.accountNo, paymentLedgerAccounts.name]),
@@ -253,9 +251,7 @@ export async function getJournal(id: number): Promise<PaymentJournal> {
   return mapJournal(row, lines.get(row.id) ?? [], reversalMap.get(row.id));
 }
 
-export type ListJournalsQuery = QueryOutputOf<typeof paymentJournalContract.list>;
-
-export async function listJournals(q: ListJournalsQuery) {
+export async function listJournals(q: QueryOutputOf<typeof paymentJournalContract.list>) {
   const { page, pageSize } = q;
   const user = currentUser();
   const tenantScope = tenantCondition(paymentJournals, user);
@@ -705,9 +701,7 @@ async function getReservationRow(id: number): Promise<PaymentFundReservationRow>
   return row;
 }
 
-export type ListFundReservationsQuery = QueryOutputOf<typeof paymentJournalContract.reservations>;
-
-export async function listFundReservations(q: ListFundReservationsQuery) {
+export async function listFundReservations(q: QueryOutputOf<typeof paymentJournalContract.reservations>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     ...dateRangeConditions(paymentFundReservations.createdAt, q.startTime, q.endTime),

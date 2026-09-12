@@ -95,9 +95,7 @@ export async function getWorkflowDelegationBeforeAudit(id: number) {
   return row ? mapDelegation(row) : null;
 }
 
-export type ListWorkflowDelegationsQuery = QueryOutputOf<typeof workflowDelegationContract.list>;
-
-export async function listWorkflowDelegations(q: ListWorkflowDelegationsQuery) {
+export async function listWorkflowDelegations(q: QueryOutputOf<typeof workflowDelegationContract.list>) {
   const { page, pageSize } = q;
   const user = currentUser();
   const admin = isSuperAdmin(user);

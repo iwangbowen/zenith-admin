@@ -91,9 +91,7 @@ export interface CreateCouponInput {
 }
 export type UpdateCouponInput = Partial<CreateCouponInput>;
 
-export type ListCouponsQuery = QueryOutputOf<typeof couponContract.list>;
-
-export async function listCoupons(q: ListCouponsQuery) {
+export async function listCoupons(q: QueryOutputOf<typeof couponContract.list>) {
   const where = buildWhere(
     keywordCondition(q.keyword, [coupons.name], 'ilike'),
     q.status ? eq(coupons.status, q.status) : undefined,

@@ -35,9 +35,7 @@ export async function ensureCategoryExists(id: number) {
   return requireRow(row, '流程分类不存在');
 }
 
-export type ListWorkflowCategoriesQuery = QueryOutputOf<typeof workflowCategoryContract.list>;
-
-export async function listWorkflowCategories(q: ListWorkflowCategoriesQuery) {
+export async function listWorkflowCategories(q: QueryOutputOf<typeof workflowCategoryContract.list>) {
   const { page, pageSize } = q;
   const where = buildWhere(tenantCondition(workflowCategories, currentUser()), keywordCondition(q.keyword, [workflowCategories.name]));
   return buildListResult({

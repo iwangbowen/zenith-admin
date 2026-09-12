@@ -92,9 +92,7 @@ export async function ensureSubscriptionExists(id: number) {
   return requireRow(row, '事件订阅不存在');
 }
 
-export type ListSubscriptionsQuery = QueryOutputOf<typeof workflowEventSubscriptionContract.list>;
-
-export async function listSubscriptions(q: ListSubscriptionsQuery) {
+export async function listSubscriptions(q: QueryOutputOf<typeof workflowEventSubscriptionContract.list>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     tenantCondition(workflowEventSubscriptions, currentUser()),
@@ -299,8 +297,6 @@ export function mapDelivery(row: WebhookDeliveryRow, subscriptionName?: string |
   };
 }
 
-export type ListDeliveriesQuery = QueryOutputOf<typeof workflowEventSubscriptionContract.deliveries>;
-
 const DELIVERY_SELECTION = {
   execution: workflowJobExecutions,
   job: workflowJobs,
@@ -327,7 +323,7 @@ function findDeliveryJobIds(idCondition: SQL): Promise<{ jobId: number }[]> {
   return jobExecutionsWithJob({ jobId: workflowJobs.id }).where(deliveryConditions(idCondition));
 }
 
-export async function listDeliveries(q: ListDeliveriesQuery) {
+export async function listDeliveries(q: QueryOutputOf<typeof workflowEventSubscriptionContract.deliveries>) {
   const { page, pageSize } = q;
   const statusCondition = (): SQL | undefined => {
     switch (q.status) {

@@ -101,9 +101,7 @@ async function validateAutomationActions(actions: WorkflowAutomationActionConfig
   }
 }
 
-export type ListWorkflowAutomationsQuery = QueryOutputOf<typeof workflowAutomationContract.list>;
-
-export async function listWorkflowAutomations(q: ListWorkflowAutomationsQuery) {
+export async function listWorkflowAutomations(q: QueryOutputOf<typeof workflowAutomationContract.list>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     tenantCondition(workflowAutomations, currentUser()),
@@ -126,9 +124,7 @@ export async function listWorkflowAutomations(q: ListWorkflowAutomationsQuery) {
   });
 }
 
-export type ListWorkflowAutomationRunsQuery = QueryOutputOf<typeof workflowAutomationContract.runs>;
-
-export async function listWorkflowAutomationRuns(q: ListWorkflowAutomationRunsQuery) {
+export async function listWorkflowAutomationRuns(q: QueryOutputOf<typeof workflowAutomationContract.runs>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     tenantCondition(workflowAutomationRuns, currentUser()),

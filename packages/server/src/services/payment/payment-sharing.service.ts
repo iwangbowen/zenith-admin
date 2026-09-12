@@ -89,9 +89,7 @@ export function mapSharingOrder(row: PaymentSharingOrderRow & { receiverName?: s
   };
 }
 
-export type ListReceiversQuery = QueryOutputOf<typeof paymentSharingContract.receivers>;
-
-export async function listReceivers(q: ListReceiversQuery) {
+export async function listReceivers(q: QueryOutputOf<typeof paymentSharingContract.receivers>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     keywordCondition(q.keyword, [paymentSharingReceivers.name]),
@@ -159,9 +157,8 @@ export async function deleteReceiver(id: number): Promise<void> {
 }
 
 // ─── 分账单 ───────────────────────────────────────────────────────────────────
-export type ListSharingOrdersQuery = QueryOutputOf<typeof paymentSharingContract.orders>;
 
-export async function listSharingOrders(q: ListSharingOrdersQuery) {
+export async function listSharingOrders(q: QueryOutputOf<typeof paymentSharingContract.orders>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     keywordCondition(q.keyword, [paymentSharingOrders.orderNo]),

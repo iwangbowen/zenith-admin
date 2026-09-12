@@ -131,14 +131,12 @@ async function assertPreauthOperation(
   return assertEffectivePaymentOperation({ configRow: config, operation, method: operation === 'preauth.query' ? undefined : payMethod, currency, recovery });
 }
 
-export type ListPreauthsQuery = QueryOutputOf<typeof paymentPreauthContract.list>;
-
 function preauthsTenantCondition() {
   const user = currentUserOrNull();
   return user ? tenantCondition(paymentPreauths, user) : undefined;
 }
 
-export async function listPreauths(q: ListPreauthsQuery) {
+export async function listPreauths(q: QueryOutputOf<typeof paymentPreauthContract.list>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     eq(paymentPreauths.appId, q.applicationId),

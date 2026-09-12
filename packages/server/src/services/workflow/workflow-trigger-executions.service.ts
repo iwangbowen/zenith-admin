@@ -101,9 +101,7 @@ function triggerExecutionConditions(...extra: (SQL | undefined)[]): SQL | undefi
   );
 }
 
-export type ListTriggerExecutionsParams = QueryOutputOf<typeof workflowTriggerExecutionContract.list>;
-
-export async function listTriggerExecutions(params: ListTriggerExecutionsParams) {
+export async function listTriggerExecutions(params: QueryOutputOf<typeof workflowTriggerExecutionContract.list>) {
   const page = params.page && params.page > 0 ? params.page : 1;
   const pageSize = params.pageSize && params.pageSize > 0 ? params.pageSize : 20;
   const where = triggerExecutionConditions(

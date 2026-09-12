@@ -38,9 +38,7 @@ export function mapFeeRule(row: PaymentFeeRuleRow): PaymentFeeRule {
   };
 }
 
-export type ListFeeRulesQuery = QueryOutputOf<typeof paymentFeeRuleContract.list>;
-
-export async function listFeeRules(q: ListFeeRulesQuery) {
+export async function listFeeRules(q: QueryOutputOf<typeof paymentFeeRuleContract.list>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     q.channel ? eq(paymentFeeRules.channel, q.channel) : undefined,

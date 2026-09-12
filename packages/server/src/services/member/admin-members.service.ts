@@ -23,8 +23,6 @@ import { mapPointAccount, mapPointTransaction, ensurePointAccount } from './memb
 import { mapWallet, mapWalletTransaction, ensureWallet } from './member-wallet.service';
 import type { MemberStatus } from '@zenith/shared/member';
 
-export type ListMembersQuery = QueryOutputOf<typeof memberContract.list>;
-
 export function buildMemberWhere(q: { keyword?: string; status?: MemberStatus; levelId?: number; tagId?: number }): SQL | undefined {
   // 软删除的会员对列表/下拉/导出一律不可见
   return buildWhere(
@@ -57,7 +55,7 @@ const memberRelationSelect = {
   tagBindings: { with: { tag: { columns: { id: true, name: true, color: true } } } },
 } as const;
 
-export async function listMembers(q: ListMembersQuery) {
+export async function listMembers(q: QueryOutputOf<typeof memberContract.list>) {
   const where = buildMemberWhere(q);
   return buildListResult({
     page: q.page,

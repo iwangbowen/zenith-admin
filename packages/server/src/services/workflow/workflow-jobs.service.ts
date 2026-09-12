@@ -14,8 +14,6 @@ import { expiredWorkflowJobCondition } from '../../lib/workflow-jobs/engine';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 
-export type ListWorkflowJobsQuery = QueryOutputOf<typeof workflowEngineContract.jobs>;
-
 function mapJob(row: WorkflowJobRow, extra?: { instanceTitle?: string | null; definitionName?: string | null }) {
   return {
     id: row.id,
@@ -67,7 +65,7 @@ function mapExecution(row: WorkflowJobExecutionRow) {
   };
 }
 
-export async function listWorkflowJobs(query: ListWorkflowJobsQuery) {
+export async function listWorkflowJobs(query: QueryOutputOf<typeof workflowEngineContract.jobs>) {
   const { page, pageSize } = query;
   const where = buildWhere(
     query.jobType ? eq(workflowJobs.jobType, query.jobType) : undefined,

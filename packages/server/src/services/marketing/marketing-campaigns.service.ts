@@ -293,9 +293,8 @@ export async function deleteMarketingPrize(campaignId: number, prizeId: number):
 }
 
 // ─── 参与记录 ─────────────────────────────────────────────────────────────────
-export type ListParticipationsQuery = QueryOutputOf<typeof marketingCampaignContract.listParticipations>;
 
-export async function listMarketingParticipations(campaignId: number, q: ListParticipationsQuery) {
+export async function listMarketingParticipations(campaignId: number, q: QueryOutputOf<typeof marketingCampaignContract.listParticipations>) {
   await ensureMarketingCampaignExists(campaignId);
   const { page, pageSize } = q;
   const where = buildWhere(

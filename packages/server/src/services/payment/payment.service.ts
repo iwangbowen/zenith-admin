@@ -1484,9 +1484,7 @@ export async function refreshRefundById(id: number): Promise<PaymentRefund> {
   }
 }
 
-export type ListNotifyLogsQuery = QueryOutputOf<typeof paymentNotifyLogContract.logs>;
-
-export async function listNotifyLogs(q: ListNotifyLogsQuery) {
+export async function listNotifyLogs(q: QueryOutputOf<typeof paymentNotifyLogContract.logs>) {
   const { page, pageSize } = q;
   const finalWhere = buildWhere(
     keywordCondition(q.keyword, [paymentNotifyLogs.orderNo]),

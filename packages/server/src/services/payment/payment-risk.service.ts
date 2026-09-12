@@ -49,9 +49,7 @@ export function mapRiskRule(row: PaymentRiskRuleRow): PaymentRiskRule {
   };
 }
 
-export type ListRiskRulesQuery = QueryOutputOf<typeof paymentRiskRuleContract.list>;
-
-export async function listRiskRules(q: ListRiskRulesQuery) {
+export async function listRiskRules(q: QueryOutputOf<typeof paymentRiskRuleContract.list>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     q.scope ? eq(paymentRiskRules.scope, q.scope) : undefined,
@@ -365,9 +363,7 @@ export async function recordRiskHit(decision: Exclude<RiskDecision, { action: 'p
   return row.id;
 }
 
-export type ListRiskHitsQuery = QueryOutputOf<typeof paymentRiskOpsContract.hits>;
-
-export async function listRiskHits(q: ListRiskHitsQuery) {
+export async function listRiskHits(q: QueryOutputOf<typeof paymentRiskOpsContract.hits>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     keywordCondition(q.keyword, [paymentRiskHits.ruleName, paymentRiskHits.bizId, paymentRiskHits.orderNo]),
@@ -456,9 +452,7 @@ export async function suspendOrderForReview(order: PaymentOrderRow, decision: Ex
   return review;
 }
 
-export type ListRiskReviewsQuery = QueryOutputOf<typeof paymentRiskOpsContract.reviews>;
-
-export async function listRiskReviews(q: ListRiskReviewsQuery) {
+export async function listRiskReviews(q: QueryOutputOf<typeof paymentRiskOpsContract.reviews>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     keywordCondition(q.keyword, [paymentRiskReviews.reviewNo, paymentRiskReviews.orderNo, paymentRiskReviews.bizId]),

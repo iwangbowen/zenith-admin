@@ -58,9 +58,7 @@ export function getSharingReversal(id: number): Promise<PaymentSharingReversal> 
   return loadReversal(id).then(mapSharingReversal);
 }
 
-export type ListSharingReversalsQuery = QueryOutputOf<typeof paymentSharingContract.reversals>;
-
-export async function listSharingReversals(q: ListSharingReversalsQuery) {
+export async function listSharingReversals(q: QueryOutputOf<typeof paymentSharingContract.reversals>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     ...dateRangeConditions(paymentSharingReversals.createdAt, q.startTime, q.endTime),

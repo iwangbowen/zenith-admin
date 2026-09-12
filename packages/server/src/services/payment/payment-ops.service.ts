@@ -77,9 +77,7 @@ export async function getPaymentHealth(): Promise<PaymentHealth> {
   return { outboxPending, outboxFailed, webhookPending, webhookFailed24h, sharingProcessing, transferProcessing, reconPendingDiff };
 }
 
-export type ListEventsQuery = QueryOutputOf<typeof paymentOpsContract.events>;
-
-export async function listPaymentEvents(q: ListEventsQuery) {
+export async function listPaymentEvents(q: QueryOutputOf<typeof paymentOpsContract.events>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     keywordCondition(q.keyword, [paymentEvents.orderNo]),
