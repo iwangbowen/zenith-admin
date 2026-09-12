@@ -2,8 +2,7 @@ import { desc } from 'drizzle-orm';
 import { db } from '../../../db';
 import { loginLogs } from '../../../db/schema';
 import { batchIterable } from '../../excel-export';
-import { currentUser } from '../../context';
-import { tenantCondition } from '../../tenant';
+import { buildLoginLogsWhere, type LoginLogListFilter } from '../../../services/identity/login-logs.service';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
@@ -24,7 +23,7 @@ const columns: ExportColumn[] = [
   { key: 'createdAt', header: '操作时间', width: 22, type: 'datetime' },
 ];
 
-export const loginLogsExportDefinition = defineExport({
+export const loginLogsExportDefinition = defineExport<LoginLogListFilter & Record<string, unknown>, Record<string, unknown>>({
   entity: 'system.login-logs',
   moduleName: '登录日志',
   filenamePrefix: '登录日志',
@@ -34,9 +33,10 @@ export const loginLogsExportDefinition = defineExport({
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns,
-  countRows: async () => db.$count(loginLogs, tenantCondition(loginLogs, currentUser())),
-  streamRows: async () => {
-    const where = tenantCondition(loginLogs, currentUser());
+  // buildLoginLogsWhere 已含租户可见性条件
+  countRows: async (query) => db.$count(loginLogs, await buildLoginLogsWhere(query)),
+  streamRows: async (query) => {
+    const where = await buildLoginLogsWhere(query);
     return batchIterable((limit, offset) =>
       db.select().from(loginLogs).where(where).orderBy(desc(loginLogs.id)).limit(limit).offset(offset),
     );

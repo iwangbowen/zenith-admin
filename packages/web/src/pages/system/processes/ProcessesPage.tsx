@@ -15,7 +15,7 @@ import { readSseStream } from '@/utils/streaming';
 import { formatDateTime } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
-import { PROCESS_KILL_SIGNALS, PROCESS_PRIORITY_CLASSES, type ProcessInfo, type ProcessKillSignal, type ProcessListResponse, type SetProcessPriorityInput } from '@zenith/shared/ops';
+import { PROCESS_KILL_SIGNALS, PROCESS_PRIORITY_CLASSES, matchesProcessFilter, type ProcessInfo, type ProcessKillSignal, type ProcessListResponse, type SetProcessPriorityInput } from '@zenith/shared/ops';
 import { enumValueOf } from '@zenith/shared/core';
 import { hostQueryOf } from '@/hooks/queries/ops-hosts';
 import { processStreamUrl, useKillProcess, useProcessDetail, useProcessList, useSetProcessPriority } from '@/hooks/queries/processes';
@@ -147,19 +147,11 @@ export default function ProcessesPage() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // ─── 客户端过滤 ────────────────────────────────────────────────────────
-  const filteredProcesses = useMemo(() => {
-    const kw = keyword.trim().toLowerCase();
-    return processes.filter((p) => {
-      const matchKw = !kw
-        || p.name.toLowerCase().includes(kw)
-        || p.command.toLowerCase().includes(kw)
-        || p.user.toLowerCase().includes(kw)
-        || String(p.pid).includes(kw);
-      const matchStatus = !filterStatus || p.status === filterStatus;
-      return matchKw && matchStatus;
-    });
-  }, [processes, keyword, filterStatus]);
+  // ─── 客户端过滤（谓词与导出中心共用，见 @zenith/shared/ops matchesProcessFilter）─
+  const filteredProcesses = useMemo(
+    () => processes.filter((p) => matchesProcessFilter(p, { keyword, status: filterStatus })),
+    [processes, keyword, filterStatus],
+  );
   const buildExportQuery = () => compactQuery({
     keyword: keyword.trim(),
     status: filterStatus,

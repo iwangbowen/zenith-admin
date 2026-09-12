@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button, Col, Dropdown, SplitButtonGroup, Row, SideSheet, Form, Modal, Popover, Space, Spin, Tabs, Tag, Toast, Tooltip } from '@douyinfe/semi-ui';
 import { ScrollText, Trash2, ChevronDown, HelpCircle } from 'lucide-react';
+import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import type { CreateCronJobInput, CronJob, CronJobLog, CronRunTrigger } from '@zenith/shared/platform';
 import { CRON_RUN_STATUS_LABELS, CRON_RUN_TRIGGER_LABELS, cronSecondsIgnored, toMinuteCron } from '@zenith/shared/platform';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -130,11 +131,11 @@ export default function CronJobsPage() {
     buildPagination: buildAllLogsPagination,
   } = usePagination(20);
   const [allLogsJobFilter, setAllLogsJobFilter] = useState<number | null>(null);
-  // 列表端点只支持 keyword 检索；状态筛选值仅进入导出条件
   const listQuery = useCronJobList({
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
   });
   const data = listQuery.data?.list ?? [];
   const handlersQuery = useCronJobHandlers();

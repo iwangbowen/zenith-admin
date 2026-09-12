@@ -1,6 +1,8 @@
 import { desc } from 'drizzle-orm';
 import { db } from '../../../db';
 import { tenants } from '../../../db/schema';
+import { batchIterable } from '../../excel-export';
+import { buildTenantsWhere, type TenantListFilter } from '../../../services/identity/tenants.service';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS, STATUS_ENUM_MAP } from '../presets';
 import type { ExportColumn } from '../types';
@@ -17,7 +19,7 @@ const columns: ExportColumn[] = [
   { key: 'createdAt', header: '创建时间', width: 22, type: 'datetime' },
 ];
 
-export const tenantsExportDefinition = defineExport({
+export const tenantsExportDefinition = defineExport<TenantListFilter & Record<string, unknown>, Record<string, unknown>>({
   entity: 'system.tenants',
   moduleName: '租户管理',
   filenamePrefix: '租户列表',
@@ -27,6 +29,12 @@ export const tenantsExportDefinition = defineExport({
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns,
-  countRows: async () => db.$count(tenants),
-  streamRows: async () => db.select().from(tenants).orderBy(desc(tenants.id)),
+  // 与列表页同源的筛选：页面把已提交条件透传到 query
+  countRows: async (query) => db.$count(tenants, buildTenantsWhere(query)),
+  streamRows: async (query) => {
+    const where = buildTenantsWhere(query);
+    return batchIterable((limit, offset) =>
+      db.select().from(tenants).where(where).orderBy(desc(tenants.id)).limit(limit).offset(offset),
+    );
+  },
 });

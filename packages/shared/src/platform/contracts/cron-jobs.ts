@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, dateRangeBound, entityStatusQuery, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { CRON_ALERT_LEVELS, CRON_ALERT_TYPES, CRON_JOB_STATUSES, CRON_RUN_STATUSES, CRON_RUN_TRIGGERS } from '../constants';
 import { createCronJobSchema, cronJobStatusSchema, cronValidateSchema, updateCronJobSchema } from '../validation';
@@ -255,6 +255,7 @@ export type CronValidateResult = z.infer<typeof cronValidateResultSchema>;
 
 export const cronJobListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按任务名称模糊匹配' }),
+  status: entityStatusQuery,
 });
 
 export const cronJobLogListQuery = paginationQuery.extend({

@@ -2,8 +2,6 @@ import { desc } from 'drizzle-orm';
 import { db } from '../../../db';
 import { shortLinks } from '../../../db/schema';
 import { batchIterable } from '../../excel-export';
-import { currentUser } from '../../context';
-import { tenantCondition } from '../../tenant';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
 import {
@@ -13,7 +11,7 @@ import {
   SHORT_LINK_BIZ_TYPE_LABELS,
   SHORT_LINK_REDIRECT_TYPE_LABELS,
 } from '@zenith/shared/short-link';
-import { buildShortUrl } from '../../../services/short-link/short-link.service';
+import { buildShortLinkWhere, buildShortUrl, type ShortLinkListFilter } from '../../../services/short-link/short-link.service';
 import type { ExportColumn } from '../types';
 
 const columns: ExportColumn[] = [
@@ -32,7 +30,7 @@ const columns: ExportColumn[] = [
   { key: 'createdAt', header: '创建时间', width: 22, type: 'datetime' },
 ];
 
-export const shortLinksExportDefinition = defineExport({
+export const shortLinksExportDefinition = defineExport<ShortLinkListFilter & Record<string, unknown>, Record<string, unknown>>({
   entity: 'shortlink.links',
   moduleName: '短链管理',
   filenamePrefix: '短链列表',
@@ -42,9 +40,10 @@ export const shortLinksExportDefinition = defineExport({
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns,
-  countRows: async () => db.$count(shortLinks, tenantCondition(shortLinks, currentUser())),
-  streamRows: async () => {
-    const where = tenantCondition(shortLinks, currentUser());
+  // buildShortLinkWhere 已含租户可见性条件
+  countRows: async (query) => db.$count(shortLinks, buildShortLinkWhere(query)),
+  streamRows: async (query) => {
+    const where = buildShortLinkWhere(query);
     return batchIterable(async (limit, offset) => {
       const rows = await db.select().from(shortLinks).where(where).orderBy(desc(shortLinks.id)).limit(limit).offset(offset);
       return rows.map((r) => ({ ...r, shortUrl: buildShortUrl(r.code) }));

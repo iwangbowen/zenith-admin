@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { MONITOR_HISTORY_RANGES, MONITOR_HISTORY_RANGE_CONFIG } from './constants';
 import type { Region } from './contracts/regions';
 import { matchesDataMaskFieldQuery } from './data-mask';
-import { buildRegionTree, filterRegionTree, validateRegionLevelHierarchy } from './regions';
+import { buildRegionTree, filterRegionTree, matchesRegionFilter, validateRegionLevelHierarchy } from './regions';
 
 const region = (code: string, name: string, level: Region['level'], parentCode: string | null, sort = 0, status: Region['status'] = 'enabled'): Omit<Region, 'children'> => ({
   id: Number(code), code, name, level, parentCode, sort, status, createdAt: '2026-01-01 00:00:00', updatedAt: '2026-01-01 00:00:00',
@@ -47,6 +47,16 @@ describe('filterRegionTree', () => {
     const byLevel = filterRegionTree(tree, '', undefined, 'province');
     expect(byLevel.map((n) => n.code)).toEqual(['11', '44']);
     expect(byLevel[0].children).toBeUndefined();
+  });
+});
+
+describe('matchesRegionFilter', () => {
+  it('与 filterRegionTree 同一份判定：平铺导出按同样条件筛出命中行（不含祖先）', () => {
+    const hit = flat.filter((r) => matchesRegionFilter(r, { keyword: '东城' })).map((r) => r.code);
+    expect(hit).toEqual(['110101']);
+    expect(flat.filter((r) => matchesRegionFilter(r, { status: 'disabled' })).map((r) => r.code)).toEqual(['110102']);
+    expect(flat.filter((r) => matchesRegionFilter(r, { level: 'province', keyword: '4' })).map((r) => r.code)).toEqual(['44']);
+    expect(flat.filter((r) => matchesRegionFilter(r, {}))).toHaveLength(flat.length);
   });
 });
 

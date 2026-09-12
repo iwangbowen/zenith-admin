@@ -67,7 +67,10 @@ export async function createUserFeedback(data: CreateUserFeedbackData) {
   return mapUserFeedback(created);
 }
 
-function buildListWhere(q: QueryOutputOf<typeof userFeedbackContract.list>) {
+export type UserFeedbackListFilter = Omit<QueryOutputOf<typeof userFeedbackContract.list>, 'page' | 'pageSize'>;
+
+/** 列表与导出共用的筛选条件 */
+export function buildUserFeedbacksWhere(q: UserFeedbackListFilter) {
   return buildWhere(
     keywordCondition(q.keyword, [userFeedbacks.content]),
     q.category ? eq(userFeedbacks.category, q.category) : undefined,
@@ -78,7 +81,7 @@ function buildListWhere(q: QueryOutputOf<typeof userFeedbackContract.list>) {
 
 export async function listUserFeedbacks(q: QueryOutputOf<typeof userFeedbackContract.list>) {
   const { page, pageSize } = q;
-  const where = buildListWhere(q);
+  const where = buildUserFeedbacksWhere(q);
   return buildListResult({
     page,
     pageSize,

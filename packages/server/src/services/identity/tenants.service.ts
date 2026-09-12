@@ -31,12 +31,19 @@ export function mapTenant(row: typeof tenants.$inferSelect, packageName: string 
   };
 }
 
-export async function listTenants(q: QueryOutputOf<typeof tenantContract.list>) {
-  const { page, pageSize, keyword, status } = q;
-  const where = buildWhere(
-    keywordCondition(keyword, [tenants.name]),
-    status ? eq(tenants.status, status) : undefined,
+export type TenantListFilter = Omit<QueryOutputOf<typeof tenantContract.list>, 'page' | 'pageSize'>;
+
+/** 列表与导出共用的筛选条件 */
+export function buildTenantsWhere(q: TenantListFilter) {
+  return buildWhere(
+    keywordCondition(q.keyword, [tenants.name]),
+    q.status ? eq(tenants.status, q.status) : undefined,
   );
+}
+
+export async function listTenants(q: QueryOutputOf<typeof tenantContract.list>) {
+  const { page, pageSize } = q;
+  const where = buildTenantsWhere(q);
   return buildListResult({
     page,
     pageSize,

@@ -1,6 +1,7 @@
 import { asc, desc } from 'drizzle-orm';
 import { db } from '../../../db';
 import { fileStorageConfigs } from '../../../db/schema';
+import { buildFileStorageConfigsWhere, type FileStorageConfigListFilter } from '../../../services/files/file-storage-configs.service';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
@@ -16,7 +17,7 @@ const columns: ExportColumn[] = [
   { key: 'createdAt', header: '创建时间', width: 20, type: 'datetime' },
 ];
 
-export const fileStorageConfigsExportDefinition = defineExport({
+export const fileStorageConfigsExportDefinition = defineExport<FileStorageConfigListFilter & Record<string, unknown>, Record<string, unknown>>({
   entity: 'system.file-storage-configs',
   moduleName: '文件配置',
   filenamePrefix: '文件存储配置',
@@ -26,7 +27,7 @@ export const fileStorageConfigsExportDefinition = defineExport({
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns,
-  countRows: async () => db.$count(fileStorageConfigs),
-  streamRows: async () =>
-    db.select().from(fileStorageConfigs).orderBy(desc(fileStorageConfigs.isDefault), asc(fileStorageConfigs.id)),
+  countRows: async (query) => db.$count(fileStorageConfigs, buildFileStorageConfigsWhere(query)),
+  streamRows: async (query) =>
+    db.select().from(fileStorageConfigs).where(buildFileStorageConfigsWhere(query)).orderBy(desc(fileStorageConfigs.isDefault), asc(fileStorageConfigs.id)),
 });

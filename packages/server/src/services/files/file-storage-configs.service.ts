@@ -159,12 +159,19 @@ import { db } from '../../db';
 import { buildWhere, dateRangeConditions, withPagination } from '../../lib/where-helpers';
 import { HTTPException } from 'hono/http-exception';
 
-export async function listFileStorageConfigs(q: QueryOutputOf<typeof fileStorageConfigContract.list>) {
-  const { status, startTime, endTime, page, pageSize } = q;
-  const where = buildWhere(
-    status ? eq(fileStorageConfigs.status, status) : undefined,
-    ...dateRangeConditions(fileStorageConfigs.updatedAt, startTime, endTime),
+export type FileStorageConfigListFilter = Omit<QueryOutputOf<typeof fileStorageConfigContract.list>, 'page' | 'pageSize'>;
+
+/** 列表与导出共用的筛选条件（时间范围作用于 updatedAt） */
+export function buildFileStorageConfigsWhere(q: FileStorageConfigListFilter) {
+  return buildWhere(
+    q.status ? eq(fileStorageConfigs.status, q.status) : undefined,
+    ...dateRangeConditions(fileStorageConfigs.updatedAt, q.startTime, q.endTime),
   );
+}
+
+export async function listFileStorageConfigs(q: QueryOutputOf<typeof fileStorageConfigContract.list>) {
+  const { page, pageSize } = q;
+  const where = buildFileStorageConfigsWhere(q);
   return buildListResult({
     page,
     pageSize,

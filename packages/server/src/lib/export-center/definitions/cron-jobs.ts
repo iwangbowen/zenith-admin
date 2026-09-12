@@ -1,6 +1,8 @@
 import { desc } from 'drizzle-orm';
 import { db } from '../../../db';
 import { cronJobs } from '../../../db/schema';
+import { batchIterable } from '../../excel-export';
+import { buildCronJobsWhere, type CronJobListFilter } from '../../../services/tasks/cron-jobs.service';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
@@ -16,7 +18,7 @@ const columns: ExportColumn[] = [
   { key: 'description', header: '描述', width: 30 },
 ];
 
-export const cronJobsExportDefinition = defineExport({
+export const cronJobsExportDefinition = defineExport<CronJobListFilter & Record<string, unknown>, Record<string, unknown>>({
   entity: 'system.cron-jobs',
   moduleName: '定时任务',
   filenamePrefix: '定时任务',
@@ -26,6 +28,11 @@ export const cronJobsExportDefinition = defineExport({
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns,
-  countRows: async () => db.$count(cronJobs),
-  streamRows: async () => db.select().from(cronJobs).orderBy(desc(cronJobs.id)),
+  countRows: async (query) => db.$count(cronJobs, buildCronJobsWhere(query)),
+  streamRows: async (query) => {
+    const where = buildCronJobsWhere(query);
+    return batchIterable((limit, offset) =>
+      db.select().from(cronJobs).where(where).orderBy(desc(cronJobs.id)).limit(limit).offset(offset),
+    );
+  },
 });

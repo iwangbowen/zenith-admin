@@ -2,6 +2,7 @@ import { desc } from 'drizzle-orm';
 import { USER_FEEDBACK_CATEGORY_LABELS, USER_FEEDBACK_STATUS_LABELS } from '@zenith/shared/platform';
 import { db } from '../../../db';
 import { userFeedbacks } from '../../../db/schema';
+import { buildUserFeedbacksWhere, type UserFeedbackListFilter } from '../../../services/platform/user-feedbacks.service';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
@@ -24,7 +25,7 @@ const columns: ExportColumn[] = [
   { key: 'createdAt', header: '提交时间', width: 22, type: 'datetime' },
 ];
 
-export const userFeedbacksExportDefinition = defineExport({
+export const userFeedbacksExportDefinition = defineExport<UserFeedbackListFilter & Record<string, unknown>, Record<string, unknown>>({
   entity: 'system.userFeedbacks',
   moduleName: '意见反馈',
   filenamePrefix: '意见反馈',
@@ -34,9 +35,10 @@ export const userFeedbacksExportDefinition = defineExport({
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns,
-  countRows: async () => db.$count(userFeedbacks),
-  streamRows: async () => {
+  countRows: async (query) => db.$count(userFeedbacks, buildUserFeedbacksWhere(query)),
+  streamRows: async (query) => {
     const rows = await db.query.userFeedbacks.findMany({
+      where: buildUserFeedbacksWhere(query),
       with: {
         user: { columns: { nickname: true } },
         handler: { columns: { nickname: true } },

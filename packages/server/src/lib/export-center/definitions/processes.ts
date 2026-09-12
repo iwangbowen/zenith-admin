@@ -1,6 +1,8 @@
+import { matchesProcessFilter } from '@zenith/shared/ops';
 import { listProcesses } from '../../../services/ops/processes.service';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
+import { asString } from '../query-normalize';
 import type { ExportColumn } from '../types';
 
 const columns: ExportColumn[] = [
@@ -21,6 +23,13 @@ const columns: ExportColumn[] = [
 
 const toMemoryMB = (bytes: number): number => Math.round((bytes / 1024 / 1024) * 100) / 100;
 
+/** 与页面表格同一份筛选谓词（关键字 / 状态）；页面仅在本机视图下提供导出，不带 hostId */
+async function loadRows(query: Record<string, unknown>) {
+  const filter = { keyword: asString(query.keyword), status: asString(query.status) };
+  const { processes } = await listProcesses();
+  return processes.filter((p) => matchesProcessFilter(p, filter));
+}
+
 export const processesExportDefinition = defineExport({
   entity: 'system.processes',
   moduleName: '进程管理',
@@ -31,12 +40,6 @@ export const processesExportDefinition = defineExport({
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns,
-  countRows: async () => {
-    const { processes } = await listProcesses();
-    return processes.length;
-  },
-  streamRows: async () => {
-    const { processes } = await listProcesses();
-    return processes.map((p) => ({ ...p, memoryMB: toMemoryMB(p.memory) }));
-  },
+  countRows: async (query) => (await loadRows(query)).length,
+  streamRows: async (query) => (await loadRows(query)).map((p) => ({ ...p, memoryMB: toMemoryMB(p.memory) })),
 });

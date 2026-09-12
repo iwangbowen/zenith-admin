@@ -36,14 +36,21 @@ export function buildRegionTree(list: readonly Omit<Region, 'children'>[]): Regi
   });
 }
 
+export interface RegionFilter { keyword?: string; status?: string; level?: string }
+
+/** 单个地区是否命中筛选：树形列表（保留祖先链）与平铺导出共用同一份判定 */
+export function matchesRegionFilter(node: Pick<Region, 'name' | 'code' | 'status' | 'level'>, q: RegionFilter): boolean {
+  const keywordMatched = !q.keyword || node.name.includes(q.keyword) || node.code.includes(q.keyword);
+  const statusMatched = !q.status || node.status === q.status;
+  const levelMatched = !q.level || node.level === q.level;
+  return keywordMatched && statusMatched && levelMatched;
+}
+
 /** 按关键词（名称 / 代码）、状态、层级过滤树；子节点命中时保留其祖先链 */
 export function filterRegionTree(nodes: readonly Region[], keyword: string, status?: string, level?: string): Region[] {
   return nodes.reduce<Region[]>((acc, node) => {
     const children = node.children ? filterRegionTree(node.children, keyword, status, level) : [];
-    const keywordMatched = !keyword || node.name.includes(keyword) || node.code.includes(keyword);
-    const statusMatched = !status || node.status === status;
-    const levelMatched = !level || node.level === level;
-    if ((keywordMatched && statusMatched && levelMatched) || children.length > 0) {
+    if (matchesRegionFilter(node, { keyword, status, level }) || children.length > 0) {
       acc.push({ ...node, children: children.length > 0 ? children : undefined });
     }
     return acc;

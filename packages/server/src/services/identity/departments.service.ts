@@ -51,12 +51,19 @@ export function buildDepartmentTree(list: Omit<Department, 'children'>[]): Depar
   return buildTree<Department>(list, { compare: (a, b) => a.sort - b.sort || a.id - b.id });
 }
 
+export interface DepartmentFilter { keyword?: string; status?: string }
+
+/** 单个部门是否命中筛选：树形列表（保留祖先链）与平铺导出共用同一份判定 */
+export function matchesDepartmentFilter(node: Pick<Department, 'name' | 'code' | 'status'>, q: DepartmentFilter): boolean {
+  const keywordMatched = !q.keyword || node.name.includes(q.keyword) || node.code.includes(q.keyword);
+  const statusMatched = !q.status || node.status === q.status;
+  return keywordMatched && statusMatched;
+}
+
 export function filterDepartmentTree(nodes: Department[], keyword: string, status?: string): Department[] {
   return nodes.reduce<Department[]>((acc, node) => {
     const children = node.children ? filterDepartmentTree(node.children, keyword, status) : [];
-    const keywordMatched = !keyword || node.name.includes(keyword) || node.code.includes(keyword);
-    const statusMatched = !status || node.status === status;
-    if ((keywordMatched && statusMatched) || children.length > 0) {
+    if (matchesDepartmentFilter(node, { keyword, status }) || children.length > 0) {
       acc.push({ ...node, children: children.length > 0 ? children : undefined });
     }
     return acc;

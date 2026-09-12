@@ -30,7 +30,7 @@ export default function LoginLogsPage() {
 
   const {
     page, pageSize, setPage, buildPagination,
-    draftParams, bind, bindKeyword, submittedParams,
+    bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultParams, listKey: loginLogKeys.lists });
   const listQuery = useLoginLogList({
@@ -50,11 +50,12 @@ export default function LoginLogsPage() {
     onCleared: () => setPage(1),
   });
 
+  // 导出条件取已提交的筛选，与列表一致（此前误取 draftParams，导出的是未点「查询」的草稿条件）
   const buildExportQuery = () => compactQuery({
-    username: draftParams.username,
-    eventType: draftParams.eventType,
-    status: draftParams.status,
-    ...formatDateTimeRangeForApi(draftParams.timeRange),
+    username: submittedParams.username,
+    eventType: submittedParams.eventType,
+    status: submittedParams.status,
+    ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
 
   return (

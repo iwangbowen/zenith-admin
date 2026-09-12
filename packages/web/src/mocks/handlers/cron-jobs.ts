@@ -46,7 +46,8 @@ export const cronJobsHandlers = [
 
   // 定时任务列表（分页）
   mock(cronJobContract.list, ({ query, ok, paginate }) => {
-    const list = filterByKeyword(mockCronJobs, query.keyword, [(j) => j.name, (j) => j.handler]);
+    const list = filterByKeyword(mockCronJobs, query.keyword, [(j) => j.name, (j) => j.handler])
+      .filter((j) => !query.status || j.status === query.status);
     return ok(paginate(list));
   }),
 

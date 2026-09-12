@@ -76,9 +76,19 @@ function mapLog(r: typeof cronJobLogs.$inferSelect) {
   };
 }
 
+export type CronJobListFilter = Omit<QueryOutputOf<typeof cronJobContract.list>, 'page' | 'pageSize'>;
+
+/** 列表与导出共用的筛选条件 */
+export function buildCronJobsWhere(q: CronJobListFilter) {
+  return buildWhere(
+    keywordCondition(q.keyword, [cronJobs.name]),
+    q.status ? eq(cronJobs.status, q.status) : undefined,
+  );
+}
+
 export async function listCronJobs(q: QueryOutputOf<typeof cronJobContract.list>) {
-  const { page, pageSize, keyword } = q;
-  const where = buildWhere(keywordCondition(keyword, [cronJobs.name]));
+  const { page, pageSize } = q;
+  const where = buildCronJobsWhere(q);
   return buildListResult({
     page,
     pageSize,

@@ -1,9 +1,8 @@
-import { asc } from 'drizzle-orm';
-import { db } from '../../../db';
-import { regions } from '../../../db/schema';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS, STATUS_ENUM_MAP } from '../presets';
-import { REGION_LEVEL_LABELS } from '@zenith/shared/platform';
+import { asString } from '../query-normalize';
+import { REGION_LEVEL_LABELS, matchesRegionFilter } from '@zenith/shared/platform';
+import { listRegionsFlat } from '../../../services/platform/regions.service';
 import type { ExportColumn } from '../types';
 
 const LEVEL_LABELS: Record<string, string> = REGION_LEVEL_LABELS;
@@ -18,6 +17,12 @@ const columns: ExportColumn[] = [
   { key: 'createdAt', header: '创建时间', width: 22, type: 'datetime' },
 ];
 
+/** 与地区树同源的筛选（关键字 / 状态 / 层级）；平铺导出只含命中行，不带祖先链 */
+async function loadRows(query: Record<string, unknown>) {
+  const filter = { keyword: asString(query.keyword), status: asString(query.status), level: asString(query.level) };
+  return (await listRegionsFlat()).filter((r) => matchesRegionFilter(r, filter));
+}
+
 export const regionsExportDefinition = defineExport({
   entity: 'system.regions',
   moduleName: '地区管理',
@@ -28,6 +33,6 @@ export const regionsExportDefinition = defineExport({
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns,
-  countRows: async () => db.$count(regions),
-  streamRows: async () => db.select().from(regions).orderBy(asc(regions.sort), asc(regions.code)),
+  countRows: async (query) => (await loadRows(query)).length,
+  streamRows: async (query) => loadRows(query),
 });

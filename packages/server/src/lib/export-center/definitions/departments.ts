@@ -1,11 +1,7 @@
-import { asc } from 'drizzle-orm';
-import { db } from '../../../db';
-import { departments } from '../../../db/schema';
-import { currentUser } from '../../context';
-import { tenantCondition } from '../../tenant';
-import { buildLeaderMap } from '../../../services/identity/departments.service';
+import { listDepartmentsFlat, matchesDepartmentFilter } from '../../../services/identity/departments.service';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS, STATUS_ENUM_MAP } from '../presets';
+import { asString } from '../query-normalize';
 import type { ExportColumn } from '../types';
 
 const CATEGORY_LABELS: Record<string, string> = { group: '集团', company: '公司', department: '部门' };
@@ -20,6 +16,12 @@ const columns: ExportColumn[] = [
   { key: 'createdAt', header: '创建时间', width: 22, type: 'datetime' },
 ];
 
+/** 与部门树同源：租户可见范围 + 页面筛选（关键字 / 状态）；平铺导出只含命中行，不带祖先链 */
+async function loadRows(query: Record<string, unknown>) {
+  const filter = { keyword: asString(query.keyword), status: asString(query.status) };
+  return (await listDepartmentsFlat()).filter((d) => matchesDepartmentFilter(d, filter));
+}
+
 export const departmentsExportDefinition = defineExport({
   entity: 'system.departments',
   moduleName: '部门管理',
@@ -30,15 +32,6 @@ export const departmentsExportDefinition = defineExport({
   execution: { mode: 'sync', syncModeOverridesAsyncPolicies: true },
   retention: RETENTION_7_DAYS,
   columns,
-  countRows: async () => db.$count(departments, tenantCondition(departments, currentUser())),
-  streamRows: async () => {
-    const rows = await db
-      .select()
-      .from(departments)
-      .where(tenantCondition(departments, currentUser()))
-      .orderBy(asc(departments.sort));
-    const leaderIds = [...new Set(rows.map((r) => r.leaderId).filter((id): id is number => id !== null))];
-    const leaderMap = await buildLeaderMap(leaderIds);
-    return rows.map((r) => ({ ...r, leaderName: r.leaderId ? leaderMap.get(r.leaderId) ?? '' : '' }));
-  },
+  countRows: async (query) => (await loadRows(query)).length,
+  streamRows: async (query) => loadRows(query),
 });

@@ -10,24 +10,28 @@ import { getNicknameMap, findUsernamesByNickname } from '../../lib/user-nickname
 import type { QueryOutputOf } from '@zenith/shared/core';
 import type { loginLogContract } from '@zenith/shared/identity';
 
-export async function listLoginLogs(q: QueryOutputOf<typeof loginLogContract.list>) {
-  const user = currentUser();
-  const { page, pageSize } = q;
+export type LoginLogListFilter = Omit<QueryOutputOf<typeof loginLogContract.list>, 'page' | 'pageSize'>;
+
+/** 列表与导出共用的筛选条件：关键字同时匹配用户名与昵称（昵称先反查出用户名集合），并附加租户可见性 */
+export async function buildLoginLogsWhere(q: LoginLogListFilter): Promise<SQL | undefined> {
   let usernameCondition: SQL | undefined;
   if (q.username) {
-    // 关键字同时匹配用户名与昵称（昵称先反查出用户名集合）
     const byNickname = await findUsernamesByNickname(q.username);
     const usernameLike = keywordCondition(q.username, [loginLogs.username]);
     usernameCondition = byNickname.length > 0 ? or(usernameLike, inArray(loginLogs.username, byNickname)) : usernameLike;
   }
-  const tc = tenantCondition(loginLogs, user);
-  const finalWhere = buildWhere(
+  return buildWhere(
     usernameCondition,
     q.eventType ? eq(loginLogs.eventType, q.eventType) : undefined,
     q.status ? eq(loginLogs.status, q.status) : undefined,
     ...dateRangeConditions(loginLogs.createdAt, q.startTime, q.endTime),
-    tc,
+    tenantCondition(loginLogs, currentUser()),
   );
+}
+
+export async function listLoginLogs(q: QueryOutputOf<typeof loginLogContract.list>) {
+  const { page, pageSize } = q;
+  const finalWhere = await buildLoginLogsWhere(q);
   return buildListResult({
     page,
     pageSize,

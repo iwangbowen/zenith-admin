@@ -108,10 +108,12 @@ function ensureCodeNotReserved(code: string): void {
 
 // ─── 查询 ─────────────────────────────────────────────────────────────────────
 export type ListShortLinksQuery = QueryOutputOf<typeof shortLinkContract.list>;
+export type ShortLinkListFilter = Omit<ListShortLinksQuery, 'page' | 'pageSize'>;
 
-type ShortLinkWhereInput = Omit<ListShortLinksQuery, 'page' | 'pageSize'> & { id?: number };
+type ShortLinkWhereInput = ShortLinkListFilter & { id?: number };
 
-function buildShortLinkWhere(q: ShortLinkWhereInput) {
+/** 列表、详情行级隔离与导出共用的筛选条件（含租户可见性） */
+export function buildShortLinkWhere(q: ShortLinkWhereInput) {
   return buildWhere(
     q.id !== undefined ? eq(shortLinks.id, q.id) : undefined,
     keywordCondition(q.keyword, [shortLinks.code, shortLinks.title, shortLinks.targetUrl]),
