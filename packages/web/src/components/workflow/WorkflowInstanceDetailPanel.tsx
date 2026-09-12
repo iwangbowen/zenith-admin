@@ -14,6 +14,7 @@ import type { WorkflowDefinition, WorkflowFieldPermission, WorkflowInstance, Wor
 import { applyFieldPermissionsToFields, WORKFLOW_TASK_STATUS_LABELS, workflowInstanceContract, workflowTaskContract } from '@zenith/shared/workflow';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useApiMutation } from '@/lib/contract-query';
+import { invalidateAfterTaskAction } from '@/hooks/queries/workflow-tasks';
 import { ApiError } from '@/lib/query';
 import { useAuth } from '@/hooks/useAuth';
 import { usePermission } from '@/hooks/usePermission';
@@ -298,7 +299,10 @@ export default function WorkflowInstanceDetailPanel({
 }: Readonly<Props>) {
   const { user } = useAuth();
   const { hasPermission } = usePermission();
-  const recallMutation = useApiMutation(workflowTaskContract.recall);
+  // 撤回已办让实例回到我的节点：已办 / 待办 / 详情 / 监控与任务动作同一失效口径（响应即所属实例）
+  const recallMutation = useApiMutation(workflowTaskContract.recall, {
+    invalidate: (qc, recalled) => invalidateAfterTaskAction(qc, recalled.id),
+  });
   if (loading) {
     return <WorkflowDetailSkeleton />;
   }

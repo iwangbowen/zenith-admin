@@ -1,29 +1,30 @@
 import { useQuery } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { workflowConnectorContract } from '@zenith/shared/workflow';
-import { api, createResourceQueries, useApiMutation } from '@/lib/contract-query';
+import { api, contractKey, createResourceQueries, useApiMutation } from '@/lib/contract-query';
 
 export type WorkflowConnectorListParams = QueryOf<typeof workflowConnectorContract.list>;
 
-/** 连接器监控（stats + 调用记录）随连接器增删改一并失效 */
-const CONNECTOR_MONITOR_PREFIX = ['workflow', 'connectors', 'monitor'] as const;
+/** 连接器监控（stats + 调用记录）随连接器增删改一并失效；组合查询挂在 stats 操作前缀之下 */
+const CONNECTOR_MONITOR_PREFIX = contractKey(workflowConnectorContract.stats);
 
 const resource = createResourceQueries(workflowConnectorContract, {
-  // 保留原有嵌套 key：运行时流程用 invalidateQueries({ queryKey: ['workflow'] }) 广播失效
-  keyPrefix: ['workflow', 'connectors'],
   onSaved: (qc) => void qc.invalidateQueries({ queryKey: CONNECTOR_MONITOR_PREFIX }),
   onDeleted: (qc) => void qc.invalidateQueries({ queryKey: CONNECTOR_MONITOR_PREFIX }),
 });
 
 export const workflowConnectorKeys = {
   ...resource.keys,
-  monitor: (id: number | null | undefined, days: number) => [...CONNECTOR_MONITOR_PREFIX, id ?? null, days] as const,
+  monitors: CONNECTOR_MONITOR_PREFIX,
+  monitor: (id: number | null | undefined, days: number) =>
+    [...contractKey(workflowConnectorContract.stats, { params: { id: id ?? 0 }, query: { days } }), 'with-invocations'] as const,
 };
 
 export const useWorkflowConnectorList = resource.useList;
 export const useSaveWorkflowConnector = resource.useSave;
 export const useDeleteWorkflowConnectors = resource.useDelete;
 
+/** H5：queryFn 组合两次请求（调用统计 + 最近调用记录） */
 export function useWorkflowConnectorMonitor(id: number | null | undefined, days: number, enabled = true) {
   return useQuery({
     queryKey: workflowConnectorKeys.monitor(id, days),

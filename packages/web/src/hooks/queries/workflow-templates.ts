@@ -1,36 +1,31 @@
-import { useQuery } from '@tanstack/react-query';
 import { workflowTemplateContract } from '@zenith/shared/workflow';
-import { api, useApiMutation } from '@/lib/contract-query';
+import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { workflowDefinitionKeys } from './workflow-definitions';
 
 export const workflowTemplateKeys = {
-  all: ['workflow', 'templates'] as const,
-  lists: ['workflow', 'templates', 'list'] as const,
-  list: () => ['workflow', 'templates', 'list'] as const,
+  lists: contractKey(workflowTemplateContract.list),
+  list: () => contractKey(workflowTemplateContract.list),
 };
 
 export function useWorkflowTemplates(options?: { enabled?: boolean }) {
-  return useQuery({
-    queryKey: workflowTemplateKeys.list(),
-    queryFn: () => api(workflowTemplateContract.list),
-    enabled: options?.enabled ?? true,
-  });
+  return useApiQuery(workflowTemplateContract.list, { enabled: options?.enabled ?? true });
 }
 
 export function useUpdateWorkflowTemplate() {
   return useApiMutation(workflowTemplateContract.update, {
-    invalidate: (qc) => void qc.invalidateQueries({ queryKey: workflowTemplateKeys.all }),
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: workflowTemplateKeys.lists }),
   });
 }
 
 export function useDeleteWorkflowTemplate() {
   return useApiMutation(workflowTemplateContract.remove, {
-    invalidate: (qc) => void qc.invalidateQueries({ queryKey: workflowTemplateKeys.all }),
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: workflowTemplateKeys.lists }),
   });
 }
 
-/** 从模板创建流程定义会新增定义，广播整个 workflow 子树 */
+/** 从模板创建流程定义：模板本身不变，只在定义列表多出一条草稿（未发布，不影响已发布下拉） */
 export function useCloneWorkflowTemplate() {
   return useApiMutation(workflowTemplateContract.clone, {
-    invalidate: (qc) => void qc.invalidateQueries({ queryKey: ['workflow'] }),
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.lists }),
   });
 }

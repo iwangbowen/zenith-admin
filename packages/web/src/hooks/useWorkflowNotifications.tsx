@@ -10,6 +10,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Notification } from '@douyinfe/semi-ui';
 import type { WsMessage } from '@zenith/shared/platform';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { invalidateAfterInstanceChange } from '@/hooks/queries/workflow-instances';
+import { invalidateWorkflowPendingViews } from '@/hooks/queries/workflow-tasks';
 
 /** 消费工作流 WS 事件：刷新待办列表缓存，新待办弹出提醒（点击跳转处理） */
 export function useWorkflowRealtime() {
@@ -17,7 +19,7 @@ export function useWorkflowRealtime() {
   const navigate = useNavigate();
   const handler = useCallback((msg: WsMessage) => {
     if (msg.type === 'workflow:taskCreated') {
-      void queryClient.invalidateQueries({ queryKey: ['workflow', 'tasks'] });
+      invalidateWorkflowPendingViews(queryClient);
       const { instanceId, taskId, instanceTitle, nodeName } = msg.payload;
       const notifyId = `workflow-task-${taskId}`;
       Notification.info({
@@ -47,14 +49,11 @@ export function useWorkflowRealtime() {
       });
     } else if (msg.type === 'workflow:taskFinished') {
       // 自己的任务被超时自动处理/或签抢占/管理员改派等场景，同步刷新待办
-      void queryClient.invalidateQueries({ queryKey: ['workflow', 'tasks'] });
+      invalidateWorkflowPendingViews(queryClient);
     } else if (msg.type === 'workflow:instanceFinished') {
-      // 发起人视角：申请结束（通过/驳回/撤回），刷新实例域缓存（我的申请/抄送/已办/待办/监控）。
-      // 刻意不做全域 ['workflow'] 失效：definitions/designer/forms 等编辑态查询被动 refetch
-      // 会覆盖设计器未保存的画布。
-      void queryClient.invalidateQueries({ queryKey: ['workflow', 'instances'] });
-      void queryClient.invalidateQueries({ queryKey: ['workflow', 'tasks'] });
-      void queryClient.invalidateQueries({ queryKey: ['workflow', 'monitor'] });
+      // 发起人视角：申请结束（通过/驳回/撤回），刷新实例运行态缓存（我的申请/抄送/已办/待办/监控/作业）。
+      // helper 刻意不碰 definitions/designer/forms 等编辑态查询：被动 refetch 会覆盖设计器未保存的画布。
+      invalidateAfterInstanceChange(queryClient, msg.payload.instanceId);
     }
   }, [queryClient, navigate]);
   useWebSocket(handler);

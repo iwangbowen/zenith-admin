@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Banner, Button, Collapse, Empty, Progress, SideSheet, Space, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import { RefreshCw } from 'lucide-react';
 import type { WorkflowDefinitionHealthIssue, WorkflowDefinitionHealthReport, WorkflowFlowData } from '@zenith/shared/workflow';
-import { useWorkflowDesignerHealthCheck } from '@/hooks/queries/workflow-designer';
+import { useWorkflowDesignerHealthCheck, workflowHealthCheckInput } from '@/hooks/queries/workflow-designer';
 import { WORKFLOW_HEALTH_SEVERITY_META as SEVERITY_META } from '../../constants';
 
 interface Props {
@@ -52,7 +52,7 @@ export default function WorkflowHealthCheckDrawer({ visible, flowData, definitio
 
   const runCheck = useCallback(async () => {
     try {
-      const next = await runHealthCheck(latestInputRef.current);
+      const next = await runHealthCheck(workflowHealthCheckInput(latestInputRef.current));
       setReport(next);
     } catch {
       // request 层负责错误提示

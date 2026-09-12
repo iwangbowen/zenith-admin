@@ -32,7 +32,7 @@ interface SearchParams {
 
 export default function HandledPage() {
   const { page, pageSize, buildPagination, bindKeyword, submittedParams, handleSearch, handleReset, applySearch } =
-    useListSearch<SearchParams>({ defaults: { keyword: '' }, listKey: workflowInstanceKeys.lists });
+    useListSearch<SearchParams>({ defaults: { keyword: '' }, listKey: workflowInstanceKeys.handledLists });
   const [detailVisible, setDetailVisible] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
 

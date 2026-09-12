@@ -20,8 +20,10 @@ import { useTreeExpansion } from '@/hooks/useTreeExpansion';
 import {
   type FailureCluster,
   type FailureClusterJob,
-  useWorkflowJobActionMutation,
-  useWorkflowJobBatchMutation,
+  useBatchRetryWorkflowJobs,
+  useBatchSkipWorkflowJobs,
+  useRetryWorkflowJob,
+  useSkipWorkflowJob,
   useWorkflowJobChain,
   useWorkflowJobDetail,
   useWorkflowJobFailureClusters,
@@ -227,9 +229,13 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
   const [replayFormKey, setReplayFormKey] = useState(0);
   const replayPreviewMutation = useWorkflowJobReplayPreview();
   const replayMutation = useWorkflowJobReplayDead();
-  const batchMutation = useWorkflowJobBatchMutation();
-  const jobActionMutation = useWorkflowJobActionMutation();
-  const actingId = jobActionMutation.isPending ? (jobActionMutation.variables?.id ?? null) : null;
+  const batchRetryMutation = useBatchRetryWorkflowJobs();
+  const batchSkipMutation = useBatchSkipWorkflowJobs();
+  const retryMutation = useRetryWorkflowJob();
+  const skipMutation = useSkipWorkflowJob();
+  const actingId = retryMutation.isPending
+    ? (retryMutation.variables?.params.id ?? null)
+    : skipMutation.isPending ? (skipMutation.variables?.params.id ?? null) : null;
 
   const openClusters = (dim: ClusterDimension = clusterDim) => {
     setClusterDim(dim);
@@ -283,7 +289,7 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
     setReplayOpen(false);
     onMutated();
   };
-  const batchLoading = batchMutation.isPending;
+  const batchLoading = batchRetryMutation.isPending || batchSkipMutation.isPending;
   const [chainTraceId, setChainTraceId] = useState<string | undefined>();
   const [chainVisible, setChainVisible] = useState(false);
   const chainQuery = useWorkflowJobChain(chainTraceId, chainVisible);
@@ -296,11 +302,12 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
 
   const handleBatch = useCallback(async (action: 'retry' | 'skip') => {
     if (selectedRowKeys.length === 0) return;
-    const result = await batchMutation.mutateAsync({ action, ids: selectedRowKeys });
+    const input = { body: { ids: selectedRowKeys } };
+    const result = await (action === 'retry' ? batchRetryMutation.mutateAsync(input) : batchSkipMutation.mutateAsync(input));
     Toast.success(`已${action === 'retry' ? '重试' : '跳过'} ${result.success} 项`);
     setSelectedRowKeys([]);
     onMutated();
-  }, [batchMutation, selectedRowKeys, onMutated]);
+  }, [batchRetryMutation, batchSkipMutation, selectedRowKeys, onMutated]);
 
   const openDetail = useCallback((id: number) => {
     setDetailVisible(true);
@@ -328,18 +335,16 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
   }, []);
 
   const handleRetry = useCallback(async (id: number) => {
-    await jobActionMutation.mutateAsync({ id, action: 'retry' });
+    await retryMutation.mutateAsync({ params: { id }, body: {} });
     Toast.success('已重新入队');
     onMutated();
-    if (detail?.id === id) void detailQuery.refetch();
-  }, [detail?.id, detailQuery, jobActionMutation, onMutated]);
+  }, [retryMutation, onMutated]);
 
   const handleSkip = useCallback(async (id: number) => {
-    await jobActionMutation.mutateAsync({ id, action: 'skip' });
+    await skipMutation.mutateAsync({ params: { id } });
     Toast.success('已跳过');
     onMutated();
-    if (detail?.id === id) void detailQuery.refetch();
-  }, [detail?.id, detailQuery, jobActionMutation, onMutated]);
+  }, [skipMutation, onMutated]);
 
   const columns: ColumnProps<WorkflowJob>[] = [
     { title: 'ID', dataIndex: 'id', width: 80 },

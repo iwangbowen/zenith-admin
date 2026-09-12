@@ -45,7 +45,9 @@ import {
   useJumpWorkflowInstance,
   useMigrateWorkflowInstance,
   useReassignWorkflowTask,
+  useReplayWorkflowToken,
   useResumeWorkflowInstance,
+  useSkipWorkflowToken,
   useSuspendWorkflowInstance,
   useWorkflowDefinitionDetail,
   useWorkflowInstanceDetail,
@@ -53,7 +55,6 @@ import {
   useWorkflowMonitorDefinitionOptions,
   useWorkflowMonitorList,
   useWorkflowRuntimeDiagnostics,
-  useWorkflowTokenOperation,
   workflowMonitorDefinitionDetailQuery,
   workflowMonitorInstanceDetailQuery,
   workflowMonitorKeys,
@@ -428,7 +429,8 @@ export default function WorkflowMonitorPage() {
   const deleteMutation = useDeleteWorkflowInstanceAsAdmin();
   const jumpMutation = useJumpWorkflowInstance();
   const reassignMutation = useReassignWorkflowTask();
-  const tokenOpMutation = useWorkflowTokenOperation();
+  const skipTokenMutation = useSkipWorkflowToken();
+  const replayTokenMutation = useReplayWorkflowToken();
   const migratePreflightMutation = useWorkflowMigratePreflight();
   const allUsersQuery = useAllUsers({ enabled: !!reassignRecord });
   const userOptions = (allUsersQuery.data ?? []).map((u) => ({ label: u.nickname ?? u.username, value: u.id }));
@@ -457,11 +459,11 @@ export default function WorkflowMonitorPage() {
   };
   const openDiagnostics = (item: WorkflowInstanceListItem) => openDiagnosticsById(item.id);
 
-  /** Token 运营恢复操作（跳过卡死 / 从节点重放），成功后刷新诊断 */
+  /** Token 运营恢复操作（跳过卡死 / 从节点重放）；成功后诊断由 hook 的失效回源 */
   const runTokenOp = async (tokenId: number, op: 'skip' | 'replay') => {
-    await tokenOpMutation.mutateAsync({ op, params: { id: tokenId }, body: {} });
+    const input = { params: { id: tokenId }, body: {} };
+    await (op === 'skip' ? skipTokenMutation.mutateAsync(input) : replayTokenMutation.mutateAsync(input));
     Toast.success(op === 'skip' ? '已跳过并推进' : '已从该节点重放');
-    if (diagnostics) void diagnosticsQuery.refetch();
   };
 
   /** 导出实例诊断包（诊断 + 轨迹 + 执行 Token）为 JSON 文件 */
@@ -523,7 +525,7 @@ export default function WorkflowMonitorPage() {
   };
 
   const handleMigrate = async (record: WorkflowInstanceListItem) => {
-    const p = await migratePreflightMutation.mutateAsync(record.id);
+    const p = await migratePreflightMutation.mutateAsync({ params: { id: record.id } });
     if (!p) return;
     if (!p.migratable) { Toast.warning(p.blocked.length ? `无法迁移：新版本缺失节点 ${p.blocked.join(', ')}` : '无需迁移或已是最新版本'); return; }
     Modal.confirm({

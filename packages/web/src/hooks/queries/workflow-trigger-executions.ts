@@ -1,29 +1,20 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { workflowTriggerExecutionContract } from '@zenith/shared/workflow';
-import { api } from '@/lib/contract-query';
+import { contractKey, useApiQuery } from '@/lib/contract-query';
 
 export type WorkflowTriggerExecutionListParams = QueryOf<typeof workflowTriggerExecutionContract.list>;
 
 export const workflowTriggerExecutionKeys = {
-  all: ['workflow', 'trigger-executions'] as const,
-  lists: ['workflow', 'trigger-executions', 'list'] as const,
-  list: (params: WorkflowTriggerExecutionListParams) => ['workflow', 'trigger-executions', 'list', params] as const,
-  detail: (id: number | null | undefined) => ['workflow', 'trigger-executions', 'detail', id ?? null] as const,
+  lists: contractKey(workflowTriggerExecutionContract.list),
+  list: (params: WorkflowTriggerExecutionListParams) => contractKey(workflowTriggerExecutionContract.list, { query: params }),
+  detail: (id: number) => contractKey(workflowTriggerExecutionContract.detail, { params: { id } }),
 };
 
 export function useWorkflowTriggerExecutionList(params: WorkflowTriggerExecutionListParams) {
-  return useQuery({
-    queryKey: workflowTriggerExecutionKeys.list(params),
-    queryFn: () => api(workflowTriggerExecutionContract.list, { query: params }),
-    placeholderData: keepPreviousData,
-  });
+  return useApiQuery(workflowTriggerExecutionContract.list, { query: params }, { placeholderData: keepPreviousData });
 }
 
 export function useWorkflowTriggerExecutionDetail(id: number | null | undefined, enabled = true) {
-  return useQuery({
-    queryKey: workflowTriggerExecutionKeys.detail(id),
-    queryFn: () => api(workflowTriggerExecutionContract.detail, { params: { id: id as number } }),
-    enabled: enabled && !!id,
-  });
+  return useApiQuery(workflowTriggerExecutionContract.detail, { params: { id: id ?? 0 } }, { enabled: enabled && !!id });
 }

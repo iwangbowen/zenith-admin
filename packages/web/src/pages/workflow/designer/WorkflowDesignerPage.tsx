@@ -66,6 +66,7 @@ import {
   useWorkflowDesignerHealthCheck,
   useWorkflowDesignerPositionOptions,
   useWorkflowDesignerUserGroupOptions,
+  workflowHealthCheckInput,
 } from '@/hooks/queries/workflow-designer';
 import './styles/flow-designer.css';
 
@@ -181,7 +182,8 @@ export default function WorkflowDesignerPage({
   const publishedDefinitionsQuery = usePublishedWorkflowDefinitions({ enabled: inFlowDesign });
   const saveMutation = useSaveWorkflowDesignerDefinition();
   const publishMutation = usePublishWorkflowDesignerDefinition();
-  const healthCheckMutation = useWorkflowDesignerHealthCheck();
+  // 发布 gate 的体检失败由本页自行提示（阻断弹窗），走静默请求
+  const healthCheckMutation = useWorkflowDesignerHealthCheck({ silent: true });
   const users = (allUsersQuery.data ?? []) as UserOption[];
   const roles = (allRolesQuery.data ?? []) as RoleOption[];
   const departments = useMemo<DepartmentOption[]>(
@@ -583,7 +585,7 @@ export default function WorkflowDesignerPage({
       printTemplateId,
     };
 
-    const saved = await saveMutation.mutateAsync({ id: isNew ? null : definitionId, values: payload });
+    const saved = await saveMutation.mutateAsync({ id: isNew ? undefined : definitionId ?? undefined, values: payload });
     if (options.showToast !== false) Toast.success('保存成功');
     if (isNew && saved) {
       navigate(`/workflow/designer/${saved.id}`, { replace: true, state: { step: currentStep } });
@@ -630,7 +632,7 @@ export default function WorkflowDesignerPage({
   const fetchHealthReport = async () => {
     const flowData = buildCurrentFlowData();
     const fieldPayload = formFields.filter((f) => f.key).map((f) => ({ key: f.key, type: f.type }));
-    return healthCheckMutation.mutateAsync({ flowData, formFields: fieldPayload, silent: true });
+    return healthCheckMutation.mutateAsync(workflowHealthCheckInput({ flowData, formFields: fieldPayload }));
   };
 
   const handlePublish = async () => {

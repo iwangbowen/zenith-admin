@@ -1,5 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { BodyOf } from '@zenith/shared/core';
+import { useQuery } from '@tanstack/react-query';
+import type { BodyOf, InputOf } from '@zenith/shared/core';
 import { dictContract } from '@zenith/shared/platform';
 import { decisionFlowContract, decisionTableContract, ruleScorecardContract } from '@zenith/shared/rules';
 import type { WorkflowFlowData, WorkflowSimulationDecision } from '@zenith/shared/workflow';
@@ -11,26 +11,14 @@ import {
   workflowInstanceContract,
   workflowSimulationCaseContract,
 } from '@zenith/shared/workflow';
-import { api, useApiMutation } from '@/lib/contract-query';
-import { positionContract, userGroupContract } from '@zenith/shared/identity';
+import { api, apiQueryOptions, contractKey, useApiMutation, useApiQuery, useSaveMutation } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
-import { workflowDefinitionKeys } from './workflow-definitions';
+import { positionKeys, useAllPositions } from './positions';
+import { useAllUserGroups, userGroupKeys } from './user-groups';
+import { invalidateAfterWorkflowDefinitionVersionChange, workflowDefinitionKeys } from './workflow-definitions';
+import { workflowFormKeys } from './workflow-forms';
 
-export const workflowDesignerKeys = {
-  all: ['workflow', 'designer'] as const,
-  connectorOptions: ['workflow', 'designer', 'connectors', 'options'] as const,
-  decisionRefOptions: (kind: WorkflowDecisionRefKind) => ['workflow', 'designer', 'decision-refs', kind, 'options'] as const,
-  userGroupOptions: ['workflow', 'designer', 'user-groups', 'options'] as const,
-  positionOptions: ['workflow', 'designer', 'positions', 'options'] as const,
-  dataSourceOptions: ['workflow', 'designer', 'data-sources', 'options'] as const,
-  dictOptions: ['workflow', 'designer', 'dicts', 'options'] as const,
-  relationOptions: (params: WorkflowRelationOptionParams) => ['workflow', 'designer', 'relation-options', params] as const,
-  remoteDataSourceOptions: (params: WorkflowRemoteDataSourceOptionParams) =>
-    ['workflow', 'designer', 'remote-data-source-options', params] as const,
-  simulationCases: (definitionId: number | null | undefined) =>
-    ['workflow', 'designer', 'simulation-cases', definitionId ?? null] as const,
-  formOptions: (formId: number | null | undefined) => ['workflow', 'forms', 'options', formId ?? null] as const,
-};
+export type WorkflowDecisionRefKind = 'table' | 'scorecard' | 'flow';
 
 export interface WorkflowRelationOptionParams {
   definitionId?: number;
@@ -43,6 +31,42 @@ export interface WorkflowRemoteDataSourceOptionParams {
   keyword?: string;
 }
 
+/** 下拉源固定查询条件：进入 key，因而与所有者域的 lists 前缀同源，由所有者域的增删改失效 */
+const CONNECTOR_OPTIONS_QUERY = { status: 'enabled' as const, pageSize: 100 };
+const DECISION_REF_QUERY = { status: 'published' as const, pageSize: 100 };
+const DATA_SOURCE_OPTIONS_QUERY = { page: 1, pageSize: 100, status: 'enabled' as const };
+const DICT_OPTIONS_QUERY = { page: 1, pageSize: 200 };
+
+/**
+ * 设计器只消费别人的资源，key 一律由所有者域的契约操作派生：
+ * 连接器 / 数据源 / 字典 / 规则资产的下拉挂在各自 list 操作之下，所有者域保存 / 删除时随 lists 一起回源；
+ * 用户组 / 岗位直接复用 identity 域的 lookup hook 与缓存。
+ */
+export const workflowDesignerKeys = {
+  connectorOptions: contractKey(workflowConnectorContract.list, { query: CONNECTOR_OPTIONS_QUERY }),
+  decisionRefOptions: (kind: WorkflowDecisionRefKind) => {
+    switch (kind) {
+      case 'table':
+        return contractKey(decisionTableContract.list, { query: DECISION_REF_QUERY });
+      case 'scorecard':
+        return contractKey(ruleScorecardContract.list, { query: DECISION_REF_QUERY });
+      case 'flow':
+        return contractKey(decisionFlowContract.list, { query: DECISION_REF_QUERY });
+    }
+  },
+  userGroupOptions: userGroupKeys.lookup,
+  positionOptions: positionKeys.lookup,
+  dataSourceOptions: contractKey(workflowDataSourceContract.list, { query: DATA_SOURCE_OPTIONS_QUERY }),
+  dictOptions: contractKey(dictContract.list, { query: DICT_OPTIONS_QUERY }),
+  relationOptions: (params: WorkflowRelationOptionParams) => contractKey(workflowInstanceContract.relationOptions, { query: params }),
+  remoteDataSourceOptions: (params: WorkflowRemoteDataSourceOptionParams) =>
+    contractKey(workflowDataSourceContract.options, { params: { id: params.dataSourceId ?? 0 }, query: { keyword: params.keyword } }),
+  simulationCases: (definitionId: number | null | undefined) =>
+    contractKey(workflowSimulationCaseContract.list, { query: { definitionId: definitionId ?? 0 } }),
+  /** 「启用表单 + 当前已停用表单」组合查询，挂在 enabled 操作前缀下，表单域增删改时随之回源 */
+  formOptions: (formId: number | null | undefined) => [...workflowFormKeys.enabled, { formId: formId ?? null }] as const,
+};
+
 /** 结构化流程图以自由 JSON 记录形态进入请求体（写侧契约按 record 校验，结构由引擎运行时保证） */
 const toJsonRecord = (value: WorkflowFlowData): Record<string, unknown> => ({ ...value });
 
@@ -51,16 +75,10 @@ export type WorkflowDefinitionSaveValues = Omit<BodyOf<typeof workflowDefinition
   flowData?: WorkflowFlowData | null;
 };
 
-interface WorkflowDefinitionSavePayload {
-  id?: number | null;
-  values: WorkflowDefinitionSaveValues;
-}
-
 interface WorkflowHealthCheckPayload {
   flowData?: WorkflowFlowData;
   definitionId?: number | null;
   formFields?: ReadonlyArray<{ key: string; type?: string }>;
-  silent?: boolean;
 }
 
 interface WorkflowSimulationPayload {
@@ -72,99 +90,91 @@ interface WorkflowSimulationPayload {
   options: Record<string, unknown>;
 }
 
+/** 触发器节点的连接器下拉（只取启用项） */
 export function useWorkflowDesignerConnectorOptions(enabled = true) {
   return useQuery({
-    queryKey: workflowDesignerKeys.connectorOptions,
-    queryFn: () =>
-      api(workflowConnectorContract.list, { query: { status: 'enabled', pageSize: 100 } })
-        .then((data) => data.list.map((c) => ({ value: c.id, label: `${c.name}（${c.type}）` }))),
+    ...apiQueryOptions(workflowConnectorContract.list, { query: CONNECTOR_OPTIONS_QUERY }),
+    select: (data) => data.list.map((c) => ({ value: c.id, label: `${c.name}（${c.type}）` })),
     staleTime: LOOKUP_STALE_TIME,
     enabled,
   });
 }
 
-export type WorkflowDecisionRefKind = 'table' | 'scorecard' | 'flow';
+const toDecisionRefOptions = (list: ReadonlyArray<{ key: string; name: string }>) =>
+  list.map((t) => ({ value: t.key, label: `${t.name}（${t.key}）` }));
 
-/** 按类型取规则中心已发布资产（决策表/评分卡/决策流），仅保留下拉所需的 key / name */
-function fetchPublishedDecisionRefs(kind: WorkflowDecisionRefKind): Promise<Array<{ key: string; name: string }>> {
-  const query = { status: 'published' as const, pageSize: 100 };
+/**
+ * 网关决策资产下拉源：按类型取规则中心已发布资产（决策表 / 评分卡 / 决策流）。
+ * 三类资产是三个契约操作，各自一个观察者、只启用当前类型，返回值形状一致。
+ */
+export function useWorkflowDesignerDecisionRefOptions(kind: WorkflowDecisionRefKind, enabled = true) {
+  const tables = useQuery({
+    ...apiQueryOptions(decisionTableContract.list, { query: DECISION_REF_QUERY }),
+    select: (data) => toDecisionRefOptions(data.list),
+    staleTime: LOOKUP_STALE_TIME,
+    enabled: enabled && kind === 'table',
+  });
+  const scorecards = useQuery({
+    ...apiQueryOptions(ruleScorecardContract.list, { query: DECISION_REF_QUERY }),
+    select: (data) => toDecisionRefOptions(data.list),
+    staleTime: LOOKUP_STALE_TIME,
+    enabled: enabled && kind === 'scorecard',
+  });
+  const flows = useQuery({
+    ...apiQueryOptions(decisionFlowContract.list, { query: DECISION_REF_QUERY }),
+    select: (data) => toDecisionRefOptions(data.list),
+    staleTime: LOOKUP_STALE_TIME,
+    enabled: enabled && kind === 'flow',
+  });
   switch (kind) {
     case 'table':
-      return api(decisionTableContract.list, { query }).then((data) => data.list);
+      return tables;
     case 'scorecard':
-      return api(ruleScorecardContract.list, { query }).then((data) => data.list);
+      return scorecards;
     case 'flow':
-      return api(decisionFlowContract.list, { query }).then((data) => data.list);
+      return flows;
   }
 }
 
-/** 网关决策资产下拉源：按类型取规则中心已发布资产（决策表/评分卡/决策流） */
-export function useWorkflowDesignerDecisionRefOptions(kind: WorkflowDecisionRefKind, enabled = true) {
-  return useQuery({
-    queryKey: workflowDesignerKeys.decisionRefOptions(kind),
-    queryFn: () =>
-      fetchPublishedDecisionRefs(kind)
-        .then((list) => list.map((t) => ({ value: t.key, label: `${t.name}（${t.key}）` }))),
-    staleTime: LOOKUP_STALE_TIME,
-    enabled,
-  });
-}
-
+/** 用户组 / 岗位下拉复用 identity 域的 lookup：同一份缓存，由所属域的增删改失效 */
 export function useWorkflowDesignerUserGroupOptions(options?: { enabled?: boolean }) {
-  return useQuery({
-    queryKey: workflowDesignerKeys.userGroupOptions,
-    queryFn: () => api(userGroupContract.all),
-    staleTime: LOOKUP_STALE_TIME,
-    enabled: options?.enabled ?? true,
-  });
+  return useAllUserGroups(options);
 }
 
 export function useWorkflowDesignerPositionOptions(options?: { enabled?: boolean }) {
-  return useQuery({
-    queryKey: workflowDesignerKeys.positionOptions,
-    queryFn: () => api(positionContract.all),
-    staleTime: LOOKUP_STALE_TIME,
-    enabled: options?.enabled ?? true,
-  });
+  return useAllPositions(options);
 }
 
 export function useWorkflowDesignerDataSourceOptions() {
   return useQuery({
-    queryKey: workflowDesignerKeys.dataSourceOptions,
-    queryFn: () =>
-      api(workflowDataSourceContract.list, { query: { page: 1, pageSize: 100, status: 'enabled' } }, { silent: true })
-        .then((data) => data.list.map((d) => ({ id: d.id, name: d.name }))),
+    ...apiQueryOptions(workflowDataSourceContract.list, { query: DATA_SOURCE_OPTIONS_QUERY }, { requestOptions: { silent: true } }),
+    select: (data) => data.list.map((d) => ({ id: d.id, name: d.name })),
     staleTime: LOOKUP_STALE_TIME,
   });
 }
 
 export function useWorkflowDesignerDictOptions() {
   return useQuery({
-    queryKey: workflowDesignerKeys.dictOptions,
-    queryFn: () =>
-      api(dictContract.list, { query: { page: 1, pageSize: 200 } }, { silent: true })
-        .then((data) => data.list.map((d) => ({ code: d.code, name: d.name }))),
+    ...apiQueryOptions(dictContract.list, { query: DICT_OPTIONS_QUERY }, { requestOptions: { silent: true } }),
+    select: (data) => data.list.map((d) => ({ code: d.code, name: d.name })),
     staleTime: LOOKUP_STALE_TIME,
   });
 }
 
 export function useWorkflowDesignerRelationOptions(params: WorkflowRelationOptionParams, enabled = true) {
-  return useQuery({
-    queryKey: workflowDesignerKeys.relationOptions(params),
-    queryFn: () => api(workflowInstanceContract.relationOptions, { query: params }, { silent: true }),
+  return useApiQuery(workflowInstanceContract.relationOptions, { query: params }, {
     staleTime: LOOKUP_STALE_TIME,
     enabled,
+    requestOptions: { silent: true },
   });
 }
 
 export function useWorkflowDesignerRemoteDataSourceOptions(params: WorkflowRemoteDataSourceOptionParams, enabled = true) {
-  return useQuery({
-    queryKey: workflowDesignerKeys.remoteDataSourceOptions(params),
-    queryFn: () =>
-      api(workflowDataSourceContract.options, { params: { id: params.dataSourceId as number }, query: { keyword: params.keyword } }, { silent: true }),
-    staleTime: LOOKUP_STALE_TIME,
-    enabled: enabled && !!params.dataSourceId,
-  });
+  return useApiQuery(
+    workflowDataSourceContract.options,
+    { params: { id: params.dataSourceId ?? 0 }, query: { keyword: params.keyword } },
+    { staleTime: LOOKUP_STALE_TIME, enabled: enabled && !!params.dataSourceId, requestOptions: { silent: true } },
+  );
 }
 
 /** 按选项值取数据源完整记录（联动赋值回填用；命令式调用，失败抛错由调用方静默） */
@@ -172,6 +182,7 @@ export function fetchWorkflowDataSourceRecord(dataSourceId: number, value: strin
   return api(workflowDataSourceContract.record, { params: { id: dataSourceId }, query: { value } }, { silent: true });
 }
 
+/** H5：queryFn 组合两次请求 —— 启用表单列表 + 当前绑定表单已停用时补拉其详情，保证选择器仍能显示当前值 */
 export function useWorkflowDesignerFormOptions(formId: number | null | undefined) {
   return useQuery({
     queryKey: workflowDesignerKeys.formOptions(formId),
@@ -187,71 +198,72 @@ export function useWorkflowDesignerFormOptions(formId: number | null | undefined
   });
 }
 
+/**
+ * 设计器保存：无 id 走创建、有 id 走更新。结构化 flowData 直接作为 JSON 记录提交（序列化结果与记录形态一致）。
+ * 保存只改定义本身：详情、列表（名称 / 更新时间列）与版本历史回源；published 只在发布后变化，
+ * 设计器的表单 / 连接器 / 数据源下拉不受影响。
+ */
 export function useSaveWorkflowDesignerDefinition() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, values }: WorkflowDefinitionSavePayload) => {
-      const body = { ...values, flowData: values.flowData ? toJsonRecord(values.flowData) : values.flowData };
-      return id
-        ? api(workflowDefinitionContract.update, { params: { id }, body })
-        : api(workflowDefinitionContract.create, { body });
+  return useSaveMutation<typeof workflowDefinitionContract.create, typeof workflowDefinitionContract.update, WorkflowDefinitionSaveValues>(
+    workflowDefinitionContract.create,
+    workflowDefinitionContract.update,
+    {
+      invalidate: (qc, saved) => {
+        void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.detail(saved.id) });
+        void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.lists });
+        void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.versions(saved.id) });
+      },
     },
-    onSuccess: (saved) => {
-      void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.detail(saved.id) });
-      void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.lists });
-      void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.versions(saved.id) });
-      // published 只在发布后变化；设计器的表单/连接器/数据源下拉不受影响
-    },
-  });
+  );
 }
 
+/** 发布：与定义列表页的发布共用失效口径（含「已发布流程」下拉，发起流程等场景使用） */
 export function usePublishWorkflowDesignerDefinition() {
   return useApiMutation(workflowDefinitionContract.publish, {
-    invalidate: (qc, _saved, { params }) => {
-      void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.detail(params.id) });
-      void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.lists });
-      void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.versions(params.id) });
-      // 发布会改变「已发布流程」下拉源（发起流程等场景使用）
-      void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.published });
-    },
+    invalidate: (qc, _saved, { params }) => invalidateAfterWorkflowDefinitionVersionChange(qc, params.id),
   });
 }
 
-export function useWorkflowDesignerHealthCheck() {
-  return useMutation({
-    mutationFn: ({ flowData, definitionId, formFields, silent }: WorkflowHealthCheckPayload) =>
-      runWorkflowHealthCheck({ flowData, definitionId, formFields, silent }),
+/**
+ * 体检入参：有画布节点时按 inline flowData + 当前表单字段体检，否则按已保存定义体检。
+ * 供 useWorkflowDesignerHealthCheck 的调用方与 fetchWorkflowFlowHealth 共用。
+ */
+export function workflowHealthCheckInput({ flowData, definitionId, formFields }: WorkflowHealthCheckPayload): InputOf<typeof workflowDefinitionContract.healthCheck> {
+  const fieldPayload = formFields?.filter((f) => f.key).map((f) => ({ key: f.key, type: f.type }));
+  const body = flowData?.nodes?.length
+    ? { flowData: toJsonRecord(flowData), ...(fieldPayload?.length ? { formFields: fieldPayload } : {}) }
+    : { definitionId: definitionId ?? undefined };
+  return { body };
+}
+
+/** 发布前体检（只读，不进入缓存）；`silent` 用于发布 gate 等由调用方自行提示的场景 */
+export function useWorkflowDesignerHealthCheck(options?: { silent?: boolean }) {
+  return useApiMutation(workflowDefinitionContract.healthCheck, {
+    requestOptions: options?.silent ? { silent: true } : undefined,
   });
 }
 
 /** 画布实时体检：inline flowData + 当前表单字段，静默失败不打扰编辑 */
 export function fetchWorkflowFlowHealth(flowData: WorkflowFlowData, formFields: ReadonlyArray<{ key: string; type?: string }>) {
-  return runWorkflowHealthCheck({ flowData, formFields, silent: true });
+  return api(workflowDefinitionContract.healthCheck, workflowHealthCheckInput({ flowData, formFields }), { silent: true });
 }
 
-function runWorkflowHealthCheck({ flowData, definitionId, formFields, silent }: WorkflowHealthCheckPayload) {
-  const fieldPayload = formFields?.filter((f) => f.key).map((f) => ({ key: f.key, type: f.type }));
-  const body = flowData?.nodes?.length
-    ? { flowData: toJsonRecord(flowData), ...(fieldPayload?.length ? { formFields: fieldPayload } : {}) }
-    : { definitionId: definitionId ?? undefined };
-  return api(workflowDefinitionContract.healthCheck, { body }, silent ? { silent: true } : undefined);
+/** 仿真入参：结构化 flowData 转 JSON 记录，definitionId 为 null 时省略 */
+export function workflowSimulationInput(payload: WorkflowSimulationPayload): InputOf<typeof workflowDefinitionContract.simulate> {
+  return { body: { ...payload, definitionId: payload.definitionId ?? undefined, flowData: toJsonRecord(payload.flowData) } };
 }
 
+/** 流程仿真（只读，不进入缓存） */
 export function useWorkflowDesignerSimulation() {
-  return useMutation({
-    mutationFn: (payload: WorkflowSimulationPayload) =>
-      api(workflowDefinitionContract.simulate, {
-        body: { ...payload, definitionId: payload.definitionId ?? undefined, flowData: toJsonRecord(payload.flowData) },
-      }),
-  });
+  return useApiMutation(workflowDefinitionContract.simulate);
 }
 
 export function useWorkflowSimulationCases(definitionId: number | null | undefined, enabled = true) {
-  return useQuery({
-    queryKey: workflowDesignerKeys.simulationCases(definitionId),
-    queryFn: () => api(workflowSimulationCaseContract.list, { query: { definitionId: definitionId as number } }, { silent: true }),
-    enabled: enabled && !!definitionId,
-  });
+  return useApiQuery(
+    workflowSimulationCaseContract.list,
+    { query: { definitionId: definitionId ?? 0 } },
+    { enabled: enabled && !!definitionId, requestOptions: { silent: true } },
+  );
 }
 
 export function useSaveWorkflowSimulationCase() {

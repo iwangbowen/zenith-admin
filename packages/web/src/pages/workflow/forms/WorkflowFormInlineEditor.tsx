@@ -282,7 +282,7 @@ export default function WorkflowFormInlineEditor({
       ...(renamedKeys ? { renamedKeys } : {}),
     };
     try {
-      const saved = await saveMutation.mutateAsync({ id: currentId, values: payload });
+      const saved = await saveMutation.mutateAsync({ id: currentId ?? undefined, values: payload });
       Toast.success('保存成功');
       clearDraftNow();
       if (currentId == null) clearFormDraft(null); // 新建首存后清掉「新表单」草稿

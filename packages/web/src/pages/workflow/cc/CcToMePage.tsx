@@ -28,7 +28,7 @@ interface SearchParams {
 
 export default function CcToMePage() {
   const { page, pageSize, buildPagination, bindKeyword, submittedParams, handleSearch, handleReset, applySearch } =
-    useListSearch<SearchParams>({ defaults: { keyword: '' }, listKey: workflowInstanceKeys.lists });
+    useListSearch<SearchParams>({ defaults: { keyword: '' }, listKey: workflowInstanceKeys.ccLists });
   const [detailVisible, setDetailVisible] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   // 转发抄送

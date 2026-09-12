@@ -512,7 +512,6 @@ export default function WorkflowDefinitionsPage() {
               currentVersion={historyTarget.version}
               currentStatus={historyTarget.status}
               onCancel={() => setHistoryTarget(null)}
-              onRestored={() => { void queryClient.invalidateQueries({ queryKey: workflowDefinitionKeys.all }); }}
             />
           )}
           <TemplateGalleryModal

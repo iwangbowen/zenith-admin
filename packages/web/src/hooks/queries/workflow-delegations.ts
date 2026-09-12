@@ -9,7 +9,4 @@ export const {
   useList: useWorkflowDelegationList,
   useSave: useSaveWorkflowDelegation,
   useDelete: useDeleteWorkflowDelegations,
-} = createResourceQueries(workflowDelegationContract, {
-  // 保留原有嵌套 key：运行时流程用 invalidateQueries({ queryKey: ['workflow'] }) 广播失效
-  keyPrefix: ['workflow', 'delegations'],
-});
+} = createResourceQueries(workflowDelegationContract);

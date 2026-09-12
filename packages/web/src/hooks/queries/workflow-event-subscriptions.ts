@@ -1,18 +1,16 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { workflowEventSubscriptionContract } from '@zenith/shared/workflow';
-import { api, createResourceQueries, useApiMutation } from '@/lib/contract-query';
+import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type WorkflowEventSubscriptionListParams = QueryOf<typeof workflowEventSubscriptionContract.list>;
 
 export type WorkflowEventDeliveryListParams = QueryOf<typeof workflowEventSubscriptionContract.deliveries>;
 
 /** 投递记录随订阅增删一并失效（删除订阅级联清理投递） */
-const DELIVERIES_KEY = ['workflow', 'event-subscriptions', 'deliveries'] as const;
+const DELIVERIES_KEY = contractKey(workflowEventSubscriptionContract.deliveries);
 
 const resource = createResourceQueries(workflowEventSubscriptionContract, {
-  // 保留原有嵌套 key：运行时流程用 invalidateQueries({ queryKey: ['workflow'] }) 广播失效
-  keyPrefix: ['workflow', 'event-subscriptions'],
   onSaved: (qc) => void qc.invalidateQueries({ queryKey: DELIVERIES_KEY }),
   onDeleted: (qc) => void qc.invalidateQueries({ queryKey: DELIVERIES_KEY }),
 });
@@ -20,7 +18,7 @@ const resource = createResourceQueries(workflowEventSubscriptionContract, {
 export const workflowEventSubscriptionKeys = {
   ...resource.keys,
   deliveries: DELIVERIES_KEY,
-  deliveryList: (params: WorkflowEventDeliveryListParams) => [...DELIVERIES_KEY, params] as const,
+  deliveryList: (params: WorkflowEventDeliveryListParams) => contractKey(workflowEventSubscriptionContract.deliveries, { query: params }),
 };
 
 export const useWorkflowEventSubscriptionList = resource.useList;
@@ -29,9 +27,7 @@ export const useSaveWorkflowEventSubscription = resource.useSave;
 export const useDeleteWorkflowEventSubscriptions = resource.useDelete;
 
 export function useWorkflowEventDeliveries(params: WorkflowEventDeliveryListParams, enabled = true) {
-  return useQuery({
-    queryKey: workflowEventSubscriptionKeys.deliveryList(params),
-    queryFn: () => api(workflowEventSubscriptionContract.deliveries, { query: params }),
+  return useApiQuery(workflowEventSubscriptionContract.deliveries, { query: params }, {
     enabled: enabled && params.subscriptionId !== undefined,
     placeholderData: keepPreviousData,
   });
@@ -39,7 +35,11 @@ export function useWorkflowEventDeliveries(params: WorkflowEventDeliveryListPara
 
 export function useToggleWorkflowEventSubscription() {
   return useApiMutation(workflowEventSubscriptionContract.toggle, {
-    invalidate: (qc) => void qc.invalidateQueries({ queryKey: workflowEventSubscriptionKeys.all }),
+    // 启停只改订阅自身的 enabled：列表状态列与该订阅详情回源，投递记录不变
+    invalidate: (qc, _saved, { params }) => {
+      void qc.invalidateQueries({ queryKey: workflowEventSubscriptionKeys.lists });
+      void qc.invalidateQueries({ queryKey: workflowEventSubscriptionKeys.detail(params.id) });
+    },
   });
 }
 

@@ -27,14 +27,13 @@ import WorkflowInstanceDetailPanel, { WorkflowDetailSkeleton } from '@/component
 import type { WorkflowBusinessFormApi } from '@/components/workflow/BusinessFormHost';
 import WorkflowSideSheet from '@/components/workflow/WorkflowSideSheet';
 import {
-  fetchWorkflowInstanceWithDefinition,
   useWorkflowInstanceWithDefinition,
   useWorkflowSelectableNextApprovers,
   useWorkflowUserOptions,
-  workflowSharedKeys,
+  workflowInstanceWithDefinitionQueryOptions,
   type WorkflowNextApproverSearch,
 } from '@/hooks/queries/workflow-shared';
-import { useWorkflowTaskAction, type WorkflowTaskActionVariables } from '@/hooks/queries/workflow-tasks';
+import { invalidateAfterTaskAction, useWorkflowTaskAction, type WorkflowTaskActionVariables } from '@/hooks/queries/workflow-tasks';
 
 type ApprovalInitialAction = 'approve' | 'reject' | null;
 type AddSignPosition = 'before' | 'after' | 'parallel';
@@ -357,11 +356,7 @@ export default function WorkflowApprovalDetailSheet({
     setRejectDef(null);
     setRejectHintLoading(true);
     try {
-      const result = await queryClient.fetchQuery({
-        queryKey: workflowSharedKeys.instanceDetail(instanceId),
-        queryFn: () => fetchWorkflowInstanceWithDefinition(instanceId),
-        staleTime: 0,
-      });
+      const result = await queryClient.fetchQuery(workflowInstanceWithDefinitionQueryOptions(instanceId));
       setRejectInstance(result.instance);
       setRejectDef(result.definition);
     } finally {
@@ -389,10 +384,12 @@ export default function WorkflowApprovalDetailSheet({
     [rejectInstance, rejectDef],
   );
 
+  /** 动作成功关闭面板：待办 / 申请 / 监控等缓存在此统一回源（面板内连续动作只回源一次），再通知调用方做业务副作用 */
   const closeAfterAction = useCallback(() => {
+    invalidateAfterTaskAction(queryClient, instanceId ?? undefined);
     onActionDone?.();
     onClose();
-  }, [onActionDone, onClose]);
+  }, [instanceId, onActionDone, onClose, queryClient]);
 
   const taskActionMutation = useWorkflowTaskAction();
   const submitting = taskActionMutation.isPending;

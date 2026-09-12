@@ -14,7 +14,10 @@ import WorkflowInstanceCell from '@/components/workflow/WorkflowInstanceCell';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import {
-  useWorkflowCompensationAction,
+  useAddWorkflowCompensationNote,
+  useResolveWorkflowCompensation,
+  useResumeWorkflowCompensation,
+  useRetryWorkflowCompensation,
   useWorkflowCompensationDetail,
   useWorkflowCompensationList,
 } from '@/hooks/queries/workflow-monitor';
@@ -54,9 +57,12 @@ export default function WorkflowCompensationsView() {
   const detailLoading = detailQuery.isFetching;
   const [noteText, setNoteText] = useState('');
   const [pendingAtt, setPendingAtt] = useState<Attachment[]>([]);
-  const actionMutation = useWorkflowCompensationAction();
+  const resolveMutation = useResolveWorkflowCompensation();
+  const resumeMutation = useResumeWorkflowCompensation();
+  const retryMutation = useRetryWorkflowCompensation();
+  const noteMutation = useAddWorkflowCompensationNote();
   const uploadOneMutation = useUploadOneFile();
-  const acting = actionMutation.isPending;
+  const acting = resolveMutation.isPending || resumeMutation.isPending || retryMutation.isPending || noteMutation.isPending;
 
   const openDetail = (id: number) => {
     setDetailId(id);
@@ -69,31 +75,29 @@ export default function WorkflowCompensationsView() {
     content: action === 'resolve' ? '确认异常已处理，流程继续？' : '将终止该实例并跳过待办，不可恢复',
     okButtonProps: action === 'terminate' ? { type: 'danger' } : undefined,
     onOk: async () => {
-      await actionMutation.mutateAsync({ id: r.id, action: 'resolve', body: { action } });
+      await resolveMutation.mutateAsync({ params: { id: r.id }, body: { action } });
       Toast.success('已处理');
       if (detail?.id === r.id) setDetailId(undefined);
     },
   }); };
 
+  // 工单详情（处理历史）由各 mutation 的失效回源，无需手动 refetch
   const doResume = (id: number) => { Modal.confirm({
     title: '恢复后继续推进', content: '确认补偿已完成？将从失败节点继续推进流程。',
     onOk: async () => {
-      await actionMutation.mutateAsync({ id, action: 'resume' });
+      await resumeMutation.mutateAsync({ params: { id } });
       Toast.success('已恢复推进');
-      void detailQuery.refetch();
     },
   }); };
   const doRetry = async (id: number) => {
-    await actionMutation.mutateAsync({ id, action: 'retry' });
+    await retryMutation.mutateAsync({ params: { id } });
     Toast.success('已重新入队');
-    void detailQuery.refetch();
   };
   const doNote = async (id: number) => {
     if (!noteText.trim() && !pendingAtt.length) { Toast.warning('请输入备注或添加附件'); return; }
-    await actionMutation.mutateAsync({ id, action: 'note', body: { note: noteText.trim() || undefined, attachments: pendingAtt.length ? pendingAtt : undefined } });
+    await noteMutation.mutateAsync({ params: { id }, body: { note: noteText.trim() || undefined, attachments: pendingAtt.length ? pendingAtt : undefined } });
     setNoteText('');
     setPendingAtt([]);
-    void detailQuery.refetch();
   };
 
   const columns: ColumnProps<WorkflowCompensation>[] = [

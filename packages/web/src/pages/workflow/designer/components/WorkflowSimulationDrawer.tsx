@@ -12,7 +12,7 @@ import AppModal from '@/components/AppModal';
 import WorkflowFormRenderer from './WorkflowFormRenderer';
 import FlowRenderer from './FlowRenderer';
 import type { FlowBranch, FlowNode, FlowProcess, NodeRuntimeInfo } from '../types';
-import { useDeleteWorkflowSimulationCase, useSaveWorkflowSimulationCase, useWorkflowDesignerSimulation, useWorkflowSimulationCases } from '@/hooks/queries/workflow-designer';
+import { useDeleteWorkflowSimulationCase, useSaveWorkflowSimulationCase, useWorkflowDesignerSimulation, useWorkflowSimulationCases, workflowSimulationInput } from '@/hooks/queries/workflow-designer';
 
 interface UserOption {
   id: number;
@@ -516,7 +516,7 @@ export default function WorkflowSimulationDrawer({
     const nextDecisions = overrideDecisions ?? decisions;
     stopReplay();
     try {
-      const nextResult = await simulationMutation.mutateAsync({
+      const nextResult = await simulationMutation.mutateAsync(workflowSimulationInput({
         definitionId: definitionId ?? undefined,
         flowData,
         formData: values,
@@ -528,7 +528,7 @@ export default function WorkflowSimulationDrawer({
           mockTrigger: true,
           expandSubProcess: false,
         },
-      });
+      }));
       if (result) setPreviousResult(result);
       setResult(nextResult);
       setFormData(values);

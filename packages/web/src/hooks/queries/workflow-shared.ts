@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { workflowDefinitionContract, workflowInstanceContract, workflowTaskContract, type WorkflowDefinition, type WorkflowInstance, type WorkflowSelectableUser } from '@zenith/shared/workflow';
-import { api } from '@/lib/contract-query';
+import { api, apiQueryOptions, contractKey, useApiQuery } from '@/lib/contract-query';
+import { workflowInstanceKeys } from './workflow-instances';
 
 /** 按组远程搜索「下一节点自选审批人」：只针对一个下游节点，避免关键词过滤掉其它组 */
 export interface WorkflowNextApproverSearch {
@@ -10,15 +11,20 @@ export interface WorkflowNextApproverSearch {
 }
 
 export const workflowSharedKeys = {
-  all: ['workflow'] as const,
-  approvalPreviews: ['workflow', 'approval-preview'] as const,
+  approvalPreviews: contractKey(workflowDefinitionContract.preview),
+  /** 预览是 POST 查询：请求体在取数时刻惰性求值，不进 key；主操作前缀 + 定义 id + reloadKey 区分段驱动重算 */
   approvalPreview: (definitionId: number | null | undefined, reloadKey: number | undefined) =>
-    ['workflow', 'approval-preview', definitionId ?? null, reloadKey ?? 0] as const,
-  instanceDetails: ['workflow', 'instance-detail'] as const,
-  instanceDetail: (instanceId: number | null | undefined) => ['workflow', 'instance-detail', instanceId ?? null] as const,
+    [...contractKey(workflowDefinitionContract.preview), { params: { id: definitionId ?? 0 } }, reloadKey ?? 0] as const,
+  instanceDetails: workflowInstanceKeys.details,
+  /** 「实例 + 定义」组合查询：挂在实例详情 key 之下，失效 detail(id) 时一并回源 */
+  instanceDetail: (instanceId: number | null | undefined) =>
+    [...workflowInstanceKeys.detail(instanceId ?? 0), 'with-definition'] as const,
   selectableNextApprovers: (taskId: number | null | undefined, search?: WorkflowNextApproverSearch) =>
-    ['workflow', 'selectable-next-approvers', taskId ?? null, search ?? null] as const,
-  selectableUsers: ['workflow', 'selectable-users'] as const,
+    contractKey(workflowTaskContract.selectableNextApprovers, {
+      params: { taskId: taskId ?? 0 },
+      query: search ? { nodeKey: search.nodeKey, keyword: search.keyword } : {},
+    }),
+  selectableUsers: contractKey(workflowInstanceContract.selectableUsers),
 };
 
 export async function fetchWorkflowInstanceWithDefinition(instanceId: number): Promise<{
@@ -31,6 +37,13 @@ export async function fetchWorkflowInstanceWithDefinition(instanceId: number): P
   return { instance, definition };
 }
 
+/** 读 key 里的 params.id：占位数据只在定义未切换时沿用，切换定义后立即清空避免展示错误链路 */
+function previewDefinitionIdOf(queryKey: readonly unknown[]): number | undefined {
+  const identity = queryKey[2] as { params?: { id?: number } } | undefined;
+  return identity?.params?.id;
+}
+
+/** H5：queryFn 不是单次直调 —— 请求体由 getFormData 在取数时刻惰性求值，key 用 reloadKey 区分而不含表单数据 */
 export function useWorkflowApprovalPreview(
   definitionId: number | null | undefined,
   reloadKey: number | undefined,
@@ -46,16 +59,24 @@ export function useWorkflowApprovalPreview(
       ),
     enabled: !!definitionId,
     placeholderData: (previousData, previousQuery) =>
-      previousQuery?.queryKey[2] === definitionId ? previousData : undefined,
+      previousQuery && previewDefinitionIdOf(previousQuery.queryKey) === definitionId ? previousData : undefined,
   });
 }
 
+/** 组合查询的 queryOptions（审批面板需要在驳回前用 fetchQuery 命令式取最新实例） */
+export function workflowInstanceWithDefinitionQueryOptions(instanceId: number) {
+  return {
+    queryKey: workflowSharedKeys.instanceDetail(instanceId),
+    queryFn: () => fetchWorkflowInstanceWithDefinition(instanceId),
+    staleTime: 0,
+  };
+}
+
+/** H5：queryFn 组合两次请求（实例详情 + 快照缺失时补拉定义） */
 export function useWorkflowInstanceWithDefinition(instanceId: number | null | undefined, enabled = true) {
   return useQuery({
-    queryKey: workflowSharedKeys.instanceDetail(instanceId),
-    queryFn: () => fetchWorkflowInstanceWithDefinition(instanceId as number),
+    ...workflowInstanceWithDefinitionQueryOptions(instanceId ?? 0),
     enabled: enabled && !!instanceId,
-    staleTime: 0,
   });
 }
 
@@ -68,15 +89,11 @@ export function useWorkflowSelectableNextApprovers(
   enabled = true,
   search?: WorkflowNextApproverSearch,
 ) {
-  return useQuery({
-    queryKey: workflowSharedKeys.selectableNextApprovers(taskId, search),
-    queryFn: () => api(workflowTaskContract.selectableNextApprovers, {
-      params: { taskId: taskId as number },
-      query: search ? { nodeKey: search.nodeKey, keyword: search.keyword } : {},
-    }),
-    enabled: enabled && taskId != null,
-    placeholderData: keepPreviousData,
-  });
+  return useApiQuery(
+    workflowTaskContract.selectableNextApprovers,
+    { params: { taskId: taskId ?? 0 }, query: search ? { nodeKey: search.nodeKey, keyword: search.keyword } : {} },
+    { enabled: enabled && taskId != null, placeholderData: keepPreviousData },
+  );
 }
 
 // ─── 工作流协作选人（转办/委派/加签/协办/转发/抄送共用） ─────────────────────
@@ -87,11 +104,7 @@ export type { WorkflowSelectableUser };
 const SELECTABLE_USERS_STALE_TIME = 5 * 60 * 1000;
 
 export function workflowSelectableUsersQueryOptions() {
-  return {
-    queryKey: workflowSharedKeys.selectableUsers,
-    queryFn: () => api(workflowInstanceContract.selectableUsers),
-    staleTime: SELECTABLE_USERS_STALE_TIME,
-  };
+  return apiQueryOptions(workflowInstanceContract.selectableUsers, { staleTime: SELECTABLE_USERS_STALE_TIME });
 }
 
 /**
@@ -100,8 +113,8 @@ export function workflowSelectableUsersQueryOptions() {
  * 工作流域内所有面向普通用户的选人（转办/委派/加签/协办/转发/抄送/审批代理）一律用它。
  */
 export function useWorkflowSelectableUsers(options?: { enabled?: boolean }) {
-  return useQuery({
-    ...workflowSelectableUsersQueryOptions(),
+  return useApiQuery(workflowInstanceContract.selectableUsers, {
+    staleTime: SELECTABLE_USERS_STALE_TIME,
     enabled: options?.enabled ?? true,
   });
 }

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Empty,
@@ -57,13 +56,11 @@ function InstanceDetailDrawer({
   instanceId,
   visible,
   onClose,
-  onRefresh,
   onResubmitted,
 }: Readonly<{
   instanceId: number | null;
   visible: boolean;
   onClose: () => void;
-  onRefresh: () => void;
   /** 已驳回/已撤回实例在详情内重新提交后回调（父级打开草稿编辑） */
   onResubmitted?: (draft: WorkflowInstance) => void;
 }>) {
@@ -73,6 +70,7 @@ function InstanceDetailDrawer({
   const data = detailQuery.data?.instance ?? null;
   const definition = detailQuery.data?.definition ?? null;
   const loading = detailQuery.isFetching;
+  // 撤回 / 重新提交 / 补加抄送的列表与详情回源都由各自 hook 的失效负责，抽屉不再额外广播
   const withdrawMutation = useWithdrawWorkflowInstance();
   const urgeMutation = useUrgeWorkflowInstance();
   const addCcMutation = useAddWorkflowCc();
@@ -86,7 +84,6 @@ function InstanceDetailDrawer({
     if (!viewId) return;
     const draft = await resubmitMutation.mutateAsync({ params: { id: viewId } });
     Toast.success('已生成草稿');
-    onRefresh();
     onClose();
     onResubmitted?.(draft);
   };
@@ -95,7 +92,6 @@ function InstanceDetailDrawer({
     if (!viewId) return;
     await withdrawMutation.mutateAsync({ params: { id: viewId } });
     Toast.success('已撤回');
-    onRefresh();
     onClose();
   };
 
@@ -135,7 +131,6 @@ function InstanceDetailDrawer({
     await addCcMutation.mutateAsync({ params: { id: viewId }, body: { nodeKey: ccNodeKey, userIds: ccUserIds } });
     Toast.success('已补加抄送');
     setCcVisible(false);
-    onRefresh();
   };
 
   // 打印入口由 WorkflowInstanceDetailPanel 内置提供，这里只保留页面级动作
@@ -251,7 +246,6 @@ function InstanceDetailDrawer({
 }
 
 export default function MyApplicationsPage() {
-  const queryClient = useQueryClient();
   const launchFormRef = useRef<WorkflowLaunchFormHandle>(null);
   const {
     page, pageSize, buildPagination,
@@ -672,7 +666,6 @@ export default function MyApplicationsPage() {
         instanceId={selectedId}
         visible={detailVisible}
         onClose={() => setDetailVisible(false)}
-        onRefresh={() => void queryClient.invalidateQueries({ queryKey: ['workflow'] })}
         onResubmitted={(draft) => { void openEditDraft(draft); }}
       />
 

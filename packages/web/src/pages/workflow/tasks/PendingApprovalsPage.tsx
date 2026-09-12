@@ -289,7 +289,6 @@ export default function PendingApprovalsPage() {
         initialAction={sheet?.action ?? null}
         visible={!!sheet}
         onClose={() => setSheet(null)}
-        onActionDone={() => { void queryClient.invalidateQueries({ queryKey: ['workflow'] }); }}
       />
 
       <AppModal

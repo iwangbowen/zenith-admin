@@ -39,7 +39,6 @@ export default function WorkflowInstancePage() {
           definition={definition}
           loading={loading}
           onOpenInstance={(nextId) => navigate(`/workflow/instance/${nextId}`)}
-          onRecalled={() => void detailQuery.refetch()}
         />
       </div>
     </div>

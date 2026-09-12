@@ -40,7 +40,7 @@ export default function WorkflowHandoverModal({ visible, onClose }: Readonly<Pro
     setResult(null);
     if (!v) return;
     try {
-      setPreview(await previewMutation.mutateAsync(v));
+      setPreview(await previewMutation.mutateAsync({ query: { fromUserId: v } }));
     } catch { /* request 层已提示 */ }
   };
 
