@@ -246,6 +246,19 @@ describe('useApiMutation', () => {
     expect(recorder.calls).toEqual([{ method: 'POST', url: '/api/items/8/archive', body: { reason: 'done' } }]);
     expect(invalidate).toHaveBeenCalledWith(qc, null, { params: { id: 8 }, body: { reason: 'done' } });
   });
+
+  it('passes extra variables to invalidate only, never to the request', async () => {
+    const qc = createTestQueryClient();
+    const invalidate = vi.fn();
+    type RemoveVars = { params: { id: number }; sourceIds: number[] };
+    const { result } = renderHook(
+      () => useApiMutation<typeof itemContract.remove, RemoveVars>(itemContract.remove, { invalidate }),
+      { wrapper: createWrapper(qc) },
+    );
+    await result.current.mutateAsync({ params: { id: 3 }, sourceIds: [1, 2] });
+    expect(recorder.calls).toEqual([{ method: 'DELETE', url: '/api/items/3', body: undefined }]);
+    expect(invalidate).toHaveBeenCalledWith(qc, null, { params: { id: 3 }, sourceIds: [1, 2] });
+  });
 });
 
 describe('useSaveMutation', () => {

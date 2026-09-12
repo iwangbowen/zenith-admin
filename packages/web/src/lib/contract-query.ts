@@ -186,24 +186,43 @@ export function useApiQuery<Op extends AnyOperation>(
 
 // ─── mutation ────────────────────────────────────────────────────────────────
 
-export interface ApiMutationOptions<Op extends AnyOperation> extends Omit<
-  UseMutationOptions<OutputOf<Op>, Error, InputOf<Op>>,
+export interface ApiMutationOptions<Op extends AnyOperation, TVariables extends InputOf<Op> = InputOf<Op>> extends Omit<
+  UseMutationOptions<OutputOf<Op>, Error, TVariables>,
   'mutationFn'
 > {
-  /** 成功后的缓存失效 / 更新；`onSuccess` 仍可用于业务副作用 */
-  invalidate?: (qc: QueryClient, output: OutputOf<Op>, input: InputOf<Op>) => void;
+  /** 成功后的缓存失效 / 更新；`onSuccess` 仍可用于业务副作用。第三个参数是调用方传入的完整变量（含失效上下文） */
+  invalidate?: (qc: QueryClient, output: OutputOf<Op>, variables: TVariables) => void;
   requestOptions?: ApiCallOptions;
 }
 
-/** 契约操作的 mutation：`mutate({ params, body })`，变量形状即契约输入 */
-export function useApiMutation<Op extends AnyOperation>(op: Op, options: ApiMutationOptions<Op> = {}) {
+/** 变量里只有 params / query / headers / body 参与请求；其余字段是给 `invalidate` 用的上下文 */
+function pickContractInput(variables: unknown): LooseInput {
+  if (!variables || typeof variables !== 'object') return undefined;
+  const input: Record<string, unknown> = {};
+  for (const key of INPUT_KEYS) {
+    if (key in variables) input[key] = (variables as Record<string, unknown>)[key];
+  }
+  return Object.keys(input).length > 0 ? (input as LooseInput) : undefined;
+}
+
+/**
+ * 契约操作的 mutation：`mutate({ params, body })`，变量形状即契约输入。
+ *
+ * 响应为空（`okBody(null)`）而精确失效又需要契约输入之外的上下文（被移动节点的原目录、被撤销外链所属的 nodeId…）时，
+ * 用第二个类型参数扩展变量：`useApiMutation<typeof op, InputOf<typeof op> & { sources: NodeRef[] }>(op, { invalidate })`；
+ * 额外字段只传给 `invalidate`，不参与请求。
+ */
+export function useApiMutation<Op extends AnyOperation, TVariables extends InputOf<Op> = InputOf<Op>>(
+  op: Op,
+  options: ApiMutationOptions<Op, TVariables> = {},
+) {
   const qc = useQueryClient();
   const { invalidate, requestOptions, onSuccess, ...rest } = options;
-  return useMutation<OutputOf<Op>, Error, InputOf<Op>>({
-    mutationFn: (input) => api(op, ...([input, requestOptions] as unknown as [...InputArgs<Op>, ApiCallOptions?])),
-    onSuccess: (output, input, onMutateResult, context) => {
-      invalidate?.(qc, output, input);
-      return onSuccess?.(output, input, onMutateResult, context);
+  return useMutation<OutputOf<Op>, Error, TVariables>({
+    mutationFn: (variables) => api(op, ...([pickContractInput(variables), requestOptions] as unknown as [...InputArgs<Op>, ApiCallOptions?])),
+    onSuccess: (output, variables, onMutateResult, context) => {
+      invalidate?.(qc, output, variables);
+      return onSuccess?.(output, variables, onMutateResult, context);
     },
     ...rest,
   });
