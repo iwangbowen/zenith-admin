@@ -25,7 +25,7 @@ import {
 
 interface SearchParams {
   keyword: string;
-  sourceId?: string;
+  sourceId?: number;
   status?: string;
 }
 
@@ -72,13 +72,13 @@ export default function DirectorySyncConflictsPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    sourceId: submittedParams.sourceId ? Number(submittedParams.sourceId) : undefined,
+    sourceId: submittedParams.sourceId,
     status: enumValueOf(DIRECTORY_SYNC_CONFLICT_STATUSES, submittedParams.status),
   });
 
   const sourcesQuery = useDirectorySyncSourceList({ page: 1, pageSize: 100 });
   const sourceItems = useMemo(
-    () => (sourcesQuery.data?.list ?? []).map((s) => ({ value: String(s.id), label: s.name })),
+    () => (sourcesQuery.data?.list ?? []).map((s) => ({ value: s.id, label: s.name })),
     [sourcesQuery.data],
   );
 
@@ -194,7 +194,7 @@ export default function DirectorySyncConflictsPage() {
         )}
         filters={(
           <>
-            <FilterSelect
+            <FilterSelect<number>
               placeholder="全部同步源"
               width={160}
               items={sourceItems}

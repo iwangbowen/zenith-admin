@@ -33,14 +33,14 @@ interface SearchParams {
   keyword: string;
   type?: string;
   status?: string;
-  tenantId: string;
+  tenantId?: number;
 }
 
 const defaultSearchParams: SearchParams = {
   keyword: '',
   type: undefined,
   status: undefined,
-  tenantId: '',
+  tenantId: undefined,
 };
 
 /** 保存载荷：创建入参的部分形态；表单以带点号的扁平键维护属性映射，提交前在 beforeSave 收敛 */
@@ -125,7 +125,7 @@ export default function IdentityProvidersPage() {
     keyword: submittedParams.keyword || undefined,
     type: enumValueOf(IDENTITY_PROVIDER_TYPES, submittedParams.type),
     status: enumValueOf(IDENTITY_PROVIDER_STATUSES, submittedParams.status),
-    tenantId: submittedParams.tenantId ? Number(submittedParams.tenantId) : undefined,
+    tenantId: submittedParams.tenantId,
   });
   // 归属租户只有平台管理员可选；租户管理员的身份源由服务端强制落到自身租户
   const isPlatformAdmin = useIsPlatformAdmin();

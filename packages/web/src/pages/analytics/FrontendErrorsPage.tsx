@@ -956,19 +956,6 @@ export default function FrontendErrorsPage() {
   const renderOverviewRefreshButton = () => (
     <Button type="primary" icon={<RefreshCcw size={14} />} loading={overviewQuery.isFetching} onClick={() => void overviewQuery.refetch()}>刷新</Button>
   );
-  const renderMobileIssueBatchActions = () => selectedRowKeys.length > 0 ? (
-    <>
-      <Button icon={<CheckCircle2 size={14} />} onClick={() => batchUpdateStatus('resolved')}>
-        标记已解决 ({selectedRowKeys.length})
-      </Button>
-      <Button icon={<CheckCircle2 size={14} />} onClick={() => batchUpdateStatus('ignored')}>
-        批量忽略
-      </Button>
-      <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={batchDeleteGroups}>
-        批量删除
-      </Button>
-    </>
-  ) : null;
   const renderSourceReleaseSearch = () => (
     <Input
       prefix={<FileCode size={14} />}
@@ -1039,7 +1026,19 @@ export default function FrontendErrorsPage() {
                 </>
               ) : null
             )}
-            mobileActions={(renderMobileIssueBatchActions())}
+            mobileActions={selectedRowKeys.length > 0 ? (
+              <>
+                <Button icon={<CheckCircle2 size={14} />} onClick={() => batchUpdateStatus('resolved')}>
+                  标记已解决 ({selectedRowKeys.length})
+                </Button>
+                <Button icon={<CheckCircle2 size={14} />} onClick={() => batchUpdateStatus('ignored')}>
+                  批量忽略
+                </Button>
+                <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={batchDeleteGroups}>
+                  批量删除
+                </Button>
+              </>
+            ) : null}
             filterTitle="错误 Issue 筛选"
             actionTitle="Issue 操作"
           />

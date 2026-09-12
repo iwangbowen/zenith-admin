@@ -25,7 +25,7 @@ import {
 import { DIRECTORY_SYNC_RUN_STATUS_TAG_COLOR } from './directory-sync-tag-colors';
 
 interface SearchParams {
-  sourceId?: string;
+  sourceId?: number;
   status?: string;
   timeRange: [Date, Date] | null;
 }
@@ -69,7 +69,7 @@ export default function DirectorySyncLogsPage() {
   const listQuery = useDirectorySyncRunList({
     page,
     pageSize,
-    sourceId: submittedParams.sourceId ? Number(submittedParams.sourceId) : undefined,
+    sourceId: submittedParams.sourceId,
     status: enumValueOf(DIRECTORY_SYNC_RUN_STATUSES, submittedParams.status),
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
@@ -77,7 +77,7 @@ export default function DirectorySyncLogsPage() {
   // 源筛选下拉：复用同步源列表查询
   const sourcesQuery = useDirectorySyncSourceList({ page: 1, pageSize: 100 });
   const sourceItems = useMemo(
-    () => (sourcesQuery.data?.list ?? []).map((s) => ({ value: String(s.id), label: s.name })),
+    () => (sourcesQuery.data?.list ?? []).map((s) => ({ value: s.id, label: s.name })),
     [sourcesQuery.data],
   );
 
@@ -173,7 +173,7 @@ export default function DirectorySyncLogsPage() {
       <ListSearchToolbar
         filters={(
           <>
-            <FilterSelect
+            <FilterSelect<number>
               placeholder="全部同步源"
               width={160}
               items={sourceItems}

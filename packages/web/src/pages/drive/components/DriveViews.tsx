@@ -13,9 +13,7 @@ import { FilePreviewLayer } from '@/components/FilePreviewLayer';
 import { DateRangeFilter, KeywordInput, FilterSelect } from '@/components/search-filters';
 import UserSelect from '@/components/UserSelect';
 import { formatDateTimeRangeForApi } from '@/utils/date';
-import { SearchButton, ResetButton } from '@/components/toolbar-controls';
-import { SearchToolbar } from '@/components/SearchToolbar';
-import { ListSearchToolbar } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { createOperationColumn, type ResponsiveTableAction } from '@/components/ResponsiveTableActions';
 import { useFilePreview } from '@/hooks/useFilePreview';
 import { useAuth } from '@/hooks/useAuth';
@@ -237,13 +235,13 @@ export function DriveSearchView({ keyword, fullText, onOpenFolder, onOpenDetail,
   const filters = useListSearch<{
     spaceId: number | undefined; type: DriveNodeType | undefined; extension: string; tagId: number | undefined;
     createdBy: number | undefined; timeRange: [Date, Date] | null;
-  }>({ defaults: { spaceId: undefined, type: undefined, extension: '', tagId: undefined, createdBy: undefined, timeRange: null }, listKey: driveKeys.viewOf('search') });
-  const { page, setPage, draftParams, setDraftParams, bind, bindKeyword, submittedParams } = filters;
+  }>({ defaults: { spaceId: undefined, type: undefined, extension: '', tagId: undefined, createdBy: undefined, timeRange: null }, listKey: driveKeys.viewOf('search'), pageSize: 20 });
+  const { page, pageSize, setPage, buildPagination, draftParams, setDraftParams, bind, bindKeyword, submittedParams } = filters;
   useEffect(() => setPage(1), [keyword, fullText, setPage]);
   const spaces = useMyDriveSpaces();
   const tags = useDriveTags(draftParams.spaceId);
   const query = useDriveSearch({
-    keyword, fullText, page, pageSize: 20, spaceId: submittedParams.spaceId, type: submittedParams.type,
+    keyword, fullText, page, pageSize, spaceId: submittedParams.spaceId, type: submittedParams.type,
     extension: submittedParams.extension || undefined, tagId: submittedParams.tagId, createdBy: submittedParams.createdBy,
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   });
@@ -279,7 +277,8 @@ export function DriveSearchView({ keyword, fullText, onOpenFolder, onOpenDetail,
         <Typography.Title heading={5} style={{ margin: 0 }}>搜索「{keyword}」{fullText ? '（含正文）' : ''}</Typography.Title>
         <Button size="small" theme="borderless" onClick={onClear}>返回</Button>
       </div>
-      <SearchToolbar filters={<>
+      {/* 关键字来自页头搜索框（keyword prop），这里只有二级筛选 + 查询 / 重置 */}
+      <ListSearchToolbar filters={<>
         <FilterSelect<number> value={draftParams.spaceId} placeholder="全部空间"
           items={(spaces.data ?? []).map((space) => ({ value: space.id, label: space.name }))}
           onChange={(spaceId) => setDraftParams((previous) => ({ ...previous, spaceId, tagId: undefined }))} />
@@ -289,11 +288,9 @@ export function DriveSearchView({ keyword, fullText, onOpenFolder, onOpenDetail,
           items={(tags.data ?? []).map((tag) => ({ value: tag.id, label: tag.name }))} />
         <UserSelect {...bind('createdBy', (value) => typeof value === 'number' ? value : undefined)} placeholder="全部上传人" style={{ width: 160 }} />
         <DateRangeFilter {...bind('timeRange')} />
-      </>} actions={<><SearchButton onClick={filters.handleSearch} /><ResetButton onClick={filters.handleReset} /></>} />
-      <ConfigurableTable<DriveSearchItem> bordered size="small" rowKey="id" columns={columns} dataSource={list}
-        loading={query.isFetching} onRefresh={() => void query.refetch()} refreshLoading={query.isFetching}
-        pagination={{ currentPage: page, pageSize: 20, total: query.data?.total ?? 0, onPageChange: setPage }}
-        empty={<Empty description="没有找到匹配的文件" />} />
+      </>} onSearch={filters.handleSearch} onReset={filters.handleReset} filterTitle="搜索筛选" />
+      <ConfigurableTable<DriveSearchItem> columns={columns}
+        {...listTableProps(query, { pagination: buildPagination, empty: <Empty description="没有找到匹配的文件" /> })} />
       <FilePreviewLayer preview={preview} watermark={watermark} />
     </div>
   );

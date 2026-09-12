@@ -1,18 +1,24 @@
 /** 会话列表：按用户名 / 设备筛选，分页浏览会话并可打开单会话事件时间轴 */
 import { useState } from 'react';
-import { ListSearchToolbar } from '@/components/list-page';
-import { useQueryClient } from '@tanstack/react-query';
-import { Empty, Input, SideSheet, Spin, Tag, Timeline, Typography } from '@douyinfe/semi-ui';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { Empty, SideSheet, Spin, Tag, Timeline, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Search } from 'lucide-react';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { analyticsKeys, useAnalyticsSessions, useSessionTimeline } from '@/hooks/queries/analytics';
+import { useListSearch } from '@/hooks/useListSearch';
 import type { SessionListItem } from '@zenith/shared/analytics';
 import { ANALYTICS_DEVICE_TYPE_OPTIONS, USER_BEHAVIOR_EVENT_TYPE_LABELS } from '@zenith/shared/analytics';
-import { FilterSelect } from '@/components/search-filters';
+import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { msToReadable, sectionStyle, type DeviceFilter } from './analytics-format';
+
+interface SearchParams {
+  username: string;
+  deviceType?: DeviceFilter;
+}
+
+const defaultSearchParams: SearchParams = { username: '', deviceType: undefined };
 
 // 标签取 shared SSOT；颜色是时间轴 UI 表现，留在页面侧
 const TIMELINE_EVENT_META: Record<string, { label: string; color: 'blue' | 'green' | 'orange' | 'grey' | 'red' | 'purple' }> = {
@@ -84,34 +90,19 @@ function SessionTimelineSheet({ sessionId, onClose }: { sessionId: string | null
 }
 
 export default function AnalyticsSessionsTab() {
-  const queryClient = useQueryClient();
-  const [usernameInput, setUsernameInput] = useState('');
-  const [deviceInput, setDeviceInput] = useState<DeviceFilter | undefined>();
-  const [filters, setFilters] = useState<{ username: string; deviceType?: DeviceFilter }>({ username: '' });
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  // 搜索状态：draft 绑输入框，submitted 进 query key；查询 / 重置回到第 1 页并失效会话列表
+  const {
+    page, pageSize, buildPagination,
+    bind, bindKeyword, submittedParams,
+    handleSearch, handleReset,
+  } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: analyticsKeys.sessionsLists, pageSize: 20 });
   const [timelineSessionId, setTimelineSessionId] = useState<string | null>(null);
   const sessionsQuery = useAnalyticsSessions({
     page,
     pageSize,
-    username: filters.username || undefined,
-    deviceType: filters.deviceType,
+    username: submittedParams.username.trim() || undefined,
+    deviceType: submittedParams.deviceType,
   });
-  const data = sessionsQuery.data ?? { list: [], total: 0, page: 1, pageSize: 20 };
-
-  const handleSearch = () => {
-    setPage(1);
-    setFilters({ username: usernameInput.trim(), deviceType: deviceInput });
-    void queryClient.invalidateQueries({ queryKey: analyticsKeys.sessionsLists });
-  };
-
-  const handleReset = () => {
-    setUsernameInput('');
-    setDeviceInput(undefined);
-    setPage(1);
-    setFilters({ username: '' });
-    void queryClient.invalidateQueries({ queryKey: analyticsKeys.sessionsLists });
-  };
 
   const columns: ColumnProps<SessionListItem>[] = [
     { title: '用户', dataIndex: 'username', width: 150, render: (_value, record) => record.username || (record.userId == null ? '匿名访客' : `用户 #${record.userId}`) },
@@ -143,23 +134,12 @@ export default function AnalyticsSessionsTab() {
   return (
     <div style={sectionStyle}>
       <ListSearchToolbar
-        keyword={(
-          <Input
-            prefix={<Search size={14} />}
-            placeholder="用户名"
-            value={usernameInput}
-            showClear
-            onChange={setUsernameInput}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-            style={{ width: 200 }}
-          />
-        )}
+        keyword={<KeywordInput placeholder="用户名" {...bindKeyword('username')} width={200} />}
         filters={(
           <FilterSelect
             placeholder="全部设备"
             items={ANALYTICS_DEVICE_TYPE_OPTIONS}
-            value={deviceInput}
-            onChange={setDeviceInput}
+            {...bind('deviceType')}
             width={150}
           />
         )}
@@ -168,23 +148,8 @@ export default function AnalyticsSessionsTab() {
         filterTitle="会话筛选"
       />
       <ConfigurableTable<SessionListItem>
-        bordered
         columns={columns}
-        dataSource={data.list}
-        loading={sessionsQuery.isFetching}
-        rowKey="id"
-        onRefresh={() => void sessionsQuery.refetch()}
-        refreshLoading={sessionsQuery.isFetching}
-        pagination={{
-          currentPage: page,
-          pageSize,
-          total: data.total,
-          showSizeChanger: true,
-          onChange: (nextPage, nextPageSize) => {
-            setPage(nextPage);
-            setPageSize(nextPageSize);
-          },
-        }}
+        {...listTableProps(sessionsQuery, { pagination: buildPagination })}
       />
       <SessionTimelineSheet sessionId={timelineSessionId} onClose={() => setTimelineSessionId(null)} />
     </div>

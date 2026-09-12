@@ -9,6 +9,7 @@ import type { CmsChannel, CmsContent } from '@zenith/shared/cms';
 import { useQueryClient } from '@tanstack/react-query';
 import { cmsContentKeys, useAllCmsSites, useCmsChannelTree, useCmsContentList, useCmsLinkTarget } from '@/hooks/queries/cms';
 import { useIsMobile } from '@/hooks/useMediaQuery';
+import { usePagination } from '@/hooks/usePagination';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { channelsToTree } from './channel-tree';
@@ -27,8 +28,8 @@ function ContentPickerModal({ siteId, visible, onCancel, onSelect, excludeId }: 
   const [draftKeyword, setDraftKeyword] = useState('');
   const [keyword, setKeyword] = useState('');
   const [channelId, setChannelId] = useState<number | undefined>(undefined);
-  const [page, setPage] = useState(1);
-  const pageSize = 10;
+  // 选择器弹窗固定 10 条 / 页；usePagination 提供总数收缩后的页码钳制
+  const { page, pageSize, setPage, buildPagination } = usePagination(10);
   const isMobile = useIsMobile();
   const enabled = visible && siteId !== undefined;
   const listQuery = useCmsContentList(
@@ -133,13 +134,7 @@ function ContentPickerModal({ siteId, visible, onCancel, onSelect, excludeId }: 
             onRefresh={() => void listQuery.refetch()}
             refreshLoading={listQuery.isFetching}
             scroll={{ y: isMobile ? 240 : 336 }}
-            pagination={{
-              currentPage: page,
-              pageSize,
-              total: listQuery.data?.total ?? 0,
-              onPageChange: setPage,
-              showSizeChanger: false,
-            }}
+            pagination={{ ...buildPagination(listQuery.data?.total ?? 0), showSizeChanger: false }}
           />
         </div>
       </div>

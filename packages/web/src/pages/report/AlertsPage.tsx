@@ -36,8 +36,8 @@ import ModalFooter from '@/components/ModalFooter';
 
 interface SearchParams {
   keyword: string;
-  datasetId?: string;
-  metricId?: string;
+  datasetId?: number;
+  metricId?: number;
   enabled?: string;
 }
 
@@ -111,8 +111,8 @@ export default function AlertsPage() {
     page,
     pageSize,
     keyword: submittedParams.keyword || undefined,
-    datasetId: submittedParams.datasetId ? Number(submittedParams.datasetId) : undefined,
-    metricId: submittedParams.metricId ? Number(submittedParams.metricId) : undefined,
+    datasetId: submittedParams.datasetId,
+    metricId: submittedParams.metricId,
     enabled: submittedParams.enabled ? submittedParams.enabled === 'enabled' : undefined,
   });
   const saveMutation = useSaveReportAlert();
@@ -321,16 +321,16 @@ export default function AlertsPage() {
     <div className="page-container">
       <ListSearchToolbar
         keyword={<KeywordInput placeholder="搜索名称/备注" {...bindKeyword('keyword')} width={200} />}
-        filters={<><FilterSelect
+        filters={<><FilterSelect<number>
           placeholder="全部数据集"
-          items={datasets.map((dataset) => ({ value: String(dataset.id), label: dataset.name }))}
+          items={datasets.map((dataset) => ({ value: dataset.id, label: dataset.name }))}
           value={draftParams.datasetId}
           onChange={(value) => setDraftParams((prev) => ({ ...prev, datasetId: value, metricId: undefined }))}
           width={180}
           filter
-        /><FilterSelect
+        /><FilterSelect<number>
           placeholder="全部指标"
-          items={metrics.map((metric) => ({ value: String(metric.id), label: metric.name }))}
+          items={metrics.map((metric) => ({ value: metric.id, label: metric.name }))}
           value={draftParams.metricId}
           onChange={(value) => setDraftParams((prev) => ({ ...prev, metricId: value, datasetId: undefined }))}
           width={180}

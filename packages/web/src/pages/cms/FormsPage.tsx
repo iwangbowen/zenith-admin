@@ -29,8 +29,7 @@ const FIELD_TYPE_OPTIONS = CMS_FORM_FIELD_TYPES.map((t) => ({ value: t, label: C
 /** 提交数据抽屉 */
 function SubmissionsSheet({ form, onClose }: Readonly<{ form: CmsForm | null; onClose: () => void }>) {
   const { hasPermission } = usePermission();
-  const [page, setPage] = useState(1);
-  const pageSize = 10;
+  const { page, pageSize, buildPagination } = usePagination(10);
   const listQuery = useCmsFormSubmissions(form?.id, page, pageSize);
   const deleteMutation = useDeleteCmsFormSubmissions();
 
@@ -72,7 +71,7 @@ function SubmissionsSheet({ form, onClose }: Readonly<{ form: CmsForm | null; on
       <ConfigurableTable<CmsFormSubmission>
         columns={columns}
         {...listTableProps(listQuery, {
-          pagination: (total) => ({ currentPage: page, pageSize, total, onPageChange: setPage, onPageSizeChange: () => undefined }),
+          pagination: buildPagination,
           empty: '暂无提交数据',
         })}
       />
