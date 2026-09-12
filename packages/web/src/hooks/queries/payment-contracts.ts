@@ -1,7 +1,7 @@
-import { keepPreviousData, useQuery, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
 import { paymentDeductPlanContract, paymentSigningContract } from '@zenith/shared/payment';
-import { api, useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 import { paymentOrderKeys } from './payment-orders';
 
@@ -101,11 +101,7 @@ export function useDeductPlanList(params: DeductPlanListParams) {
 }
 
 export function useAllDeductPlans() {
-  return useQuery({
-    queryKey: paymentContractKeys.planOptions,
-    queryFn: () => api(paymentDeductPlanContract.deductPlansAll),
-    staleTime: LOOKUP_STALE_TIME,
-  });
+  return useApiQuery(paymentDeductPlanContract.deductPlansAll, { staleTime: LOOKUP_STALE_TIME });
 }
 
 /** 无 id 走新增，有 id 走更新 */

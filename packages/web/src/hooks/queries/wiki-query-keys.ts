@@ -8,6 +8,11 @@ import { contractKey } from '@/lib/contract-query';
  */
 
 export const wikiStatsKeys = {
+  /**
+   * 统计资源根：overview / hotDocs / contributors / staleDocs / ops 五个操作全部由文档派生，
+   * 文档新增 / 正文更新 / 删除 / 还原会同时改变全部五项，整资源失效与逐个列举等价；
+   * 只改状态或评论数的动作请用下面的单操作 key。
+   */
   all: [resourceKeyOf(wikiStatsContract.basePath)] as const,
   overview: contractKey(wikiStatsContract.overview),
   hotDocs: contractKey(wikiStatsContract.hotDocs),

@@ -6,6 +6,7 @@ import {
   createRequestMock,
   createTestQueryClient,
   createWrapper,
+  isFresh,
   observeFetches,
 } from '@/test-utils/query-harness';
 
@@ -17,11 +18,14 @@ import {
   useMyProcessedReviews,
   useReviewWikiDoc,
   useSubmitWikiDoc,
+  useUpdateWikiDoc,
   useWikiDocDetail,
   useWikiDocReviewRecords,
   useWikiDocTree,
+  useWikiDocVersions,
   wikiDocKeys,
   wikiDocTreeKeys,
+  wikiDocVersionKeys,
   wikiReviewRecordKeys,
 } from './wiki-docs';
 import { useWikiOpsStats, useWikiStatsOverview } from './wiki-stats';
@@ -92,6 +96,9 @@ beforeEach(() => {
     .on('GET', '/api/wiki/stats/ops', OPS)
     .on('GET', '/api/wiki/docs/tree?spaceId=1', [])
     .on('GET', '/api/wiki/docs/1', DOC)
+    .on('GET', '/api/wiki/docs/1/versions', { list: [], total: 0, page: 1, pageSize: 10 })
+    .on('GET', '/api/wiki/docs/2/versions', { list: [], total: 0, page: 1, pageSize: 10 })
+    .on('PUT', '/api/wiki/docs/1', { ...DOC, currentVersion: 2, revision: 2 })
     .on('POST', '/api/wiki/docs/1/move', DOC)
     .on('POST', '/api/wiki/docs/1/review', { ...DOC, status: 'published' })
     .on('POST', '/api/wiki/docs/1/submit', DOC);
@@ -184,6 +191,33 @@ describe('知识中心审核缓存契约', () => {
     expect(fetches.countOf(wikiDocKeys.detail(1))).toBe(1);
     expect(api.countOf('GET', '/api/wiki/docs/tree?spaceId=1')).toBe(1);
     expect(api.countOf('GET', '/api/wiki/docs/1')).toBe(1);
+    fetches.stop();
+  });
+
+  it('保存正文产生新版本：只回源该文档的版本历史，其它文档的版本列表保持新鲜', async () => {
+    const qc = createTestQueryClient();
+    const { result } = renderHook(
+      () => ({
+        versions1: useWikiDocVersions(1, PROCESSED_PARAMS),
+        versions2: useWikiDocVersions(2, PROCESSED_PARAMS),
+        update: useUpdateWikiDoc(),
+      }),
+      { wrapper: createWrapper(qc) },
+    );
+    await waitFor(() => {
+      expect(result.current.versions1.isSuccess).toBe(true);
+      expect(result.current.versions2.isSuccess).toBe(true);
+    });
+
+    const fetches = observeFetches(qc);
+    api.resetCalls();
+    await result.current.update.mutateAsync({ params: { id: 1 }, body: { title: '审核文档', revision: 1 } });
+    // listOf 对 params 段做部分匹配（分页 query 不参与），用实际请求断言回源
+    await waitFor(() => expect(api.countOf('GET', '/api/wiki/docs/1/versions')).toBe(1));
+
+    expect(fetches.countOf(wikiDocVersionKeys.lists)).toBe(1);
+    expect(api.countOf('GET', '/api/wiki/docs/2/versions')).toBe(0);
+    expect(isFresh(qc, wikiDocVersionKeys.list(2, PROCESSED_PARAMS))).toBe(true);
     fetches.stop();
   });
 });

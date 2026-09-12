@@ -1,7 +1,7 @@
-import { keepPreviousData, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { resourceKeyOf, type QueryOf } from '@zenith/shared/core';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
+import { resourceKeyOf, type InputOf, type QueryOf } from '@zenith/shared/core';
 import { wikiCommentContract } from '@zenith/shared/wiki';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { wikiDocKeys } from './wiki-docs';
 import { wikiStatsKeys } from './wiki-query-keys';
 
@@ -44,21 +44,19 @@ export function useUpdateWikiCommentStatus() {
 
 /**
  * 删除类接口只返回提示文案、路径里也没有 docId，精确失效所需的 docId 由调用方随变量带入
- * （评论树 / 详情 commentCount 都按文档分组，不能退化为全量失效）。
+ * （评论树 / 详情 commentCount 都按文档分组，不能退化为全量失效）；docId 只交给 invalidate，不参与请求。
  */
+type DeleteWikiCommentVariables = InputOf<typeof wikiCommentContract.deleteMine> & { docId: number };
+
 export function useDeleteMyWikiComment() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id }: { id: number; docId: number }) => api(wikiCommentContract.deleteMine, { params: { id } }),
-    onSuccess: (_data, { docId }) => invalidateCommentSurfaces(qc, docId),
+  return useApiMutation<typeof wikiCommentContract.deleteMine, DeleteWikiCommentVariables>(wikiCommentContract.deleteMine, {
+    invalidate: (qc, _output, { docId }) => invalidateCommentSurfaces(qc, docId),
   });
 }
 
 export function useRemoveWikiComment() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id }: { id: number; docId: number }) => api(wikiCommentContract.remove, { params: { id } }),
-    onSuccess: (_data, { docId }) => invalidateCommentSurfaces(qc, docId),
+  return useApiMutation<typeof wikiCommentContract.remove, InputOf<typeof wikiCommentContract.remove> & { docId: number }>(wikiCommentContract.remove, {
+    invalidate: (qc, _output, { docId }) => invalidateCommentSurfaces(qc, docId),
   });
 }
 

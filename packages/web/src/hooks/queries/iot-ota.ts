@@ -37,8 +37,8 @@ interface UploadIotFirmwareVariables {
 }
 
 /**
- * 上传固件：不超过分片阈值走单请求 multipart（XHR 带进度），超过则分片 + 断点续传；
- * 两条路径都由服务端计算 sha256。
+ * H5 保留：上传固件不超过分片阈值走单请求 multipart（XHR 带进度回调），超过则分片 + 断点续传，
+ * mutationFn 组合多步且带 onProgress，不是单次 api(op) 调用；两条路径都由服务端计算 sha256。
  */
 export function useUploadIotFirmware() {
   const qc = useQueryClient();

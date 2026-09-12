@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useDebouncedValue } from '@tanstack/react-pacer';
-import type { AnyOperation, QueryOf } from '@zenith/shared/core';
+import type { QueryOf } from '@zenith/shared/core';
 import {
   reportCategoryContract,
   reportDashboardContract,
@@ -10,19 +9,25 @@ import {
   reportPrintContract,
   type ReportLookupOption,
 } from '@zenith/shared/report';
-import { api, contractKey } from '@/lib/contract-query';
+import { contractKey, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 
 export type ReportLookupEntity = 'datasources' | 'datasets' | 'dashboards' | 'categories' | 'print';
 
 export type ReportLookupParams = NonNullable<QueryOf<typeof reportDatasourceContract.lookup>>;
 
-/** 各资源的轻量下拉操作；分类下拉不接受 status，多余参数由契约解析忽略 */
-const LOOKUP_OPS: Record<ReportLookupEntity, AnyOperation> = {
+/**
+ * 五个轻量下拉操作响应同形（ReportLookupOption[]），查询参数以数据源下拉为准：
+ * 分类下拉不接受 status（多余参数由契约解析忽略）、看板下拉另有 excludeId（本 hook 不暴露），
+ * 因此按同一操作形状登记，调用方拿到统一的输入 / 输出类型。
+ */
+type ReportLookupOperation = typeof reportDatasourceContract.lookup;
+
+const LOOKUP_OPS: Record<ReportLookupEntity, ReportLookupOperation> = {
   datasources: reportDatasourceContract.lookup,
   datasets: reportDatasetContract.lookup,
-  dashboards: reportDashboardContract.lookup,
-  categories: reportCategoryContract.lookup,
+  dashboards: reportDashboardContract.lookup as unknown as ReportLookupOperation,
+  categories: reportCategoryContract.lookup as unknown as ReportLookupOperation,
   print: reportPrintContract.lookup,
 };
 
@@ -31,11 +36,10 @@ export const reportLookupKeys = {
 };
 
 export function useReportLookup(entity: ReportLookupEntity, params: ReportLookupParams = {}, enabled = true) {
-  return useQuery({
-    queryKey: reportLookupKeys.entity(entity, params),
-    queryFn: () => api(LOOKUP_OPS[entity], { query: params }, { silent: true }) as Promise<ReportLookupOption[]>,
+  return useApiQuery(LOOKUP_OPS[entity], { query: params }, {
     staleTime: LOOKUP_STALE_TIME,
     enabled,
+    requestOptions: { silent: true },
   });
 }
 

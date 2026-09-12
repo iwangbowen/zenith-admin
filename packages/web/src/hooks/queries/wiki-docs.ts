@@ -1,7 +1,7 @@
-import { keepPreviousData, useQuery, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { wikiDocContract, type WikiDoc } from '@zenith/shared/wiki';
-import { api, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { wikiStatsKeys } from './wiki-query-keys';
 
 export type WikiDocListParams = NonNullable<QueryOf<typeof wikiDocContract.list>>;
@@ -12,26 +12,33 @@ export type WikiDocPageParams = NonNullable<QueryOf<typeof wikiDocContract.versi
 
 // ─── 独立命名空间的子资源 ─────────────────────────────────────────────────────
 
-/** 目录树：文档中心长期挂载，按空间精确失效 */
+/** 目录树：文档中心长期挂载，按空间精确失效；`all` 是 tree 操作前缀，仅供拿不到 spaceId 的批量删除使用 */
 export const wikiDocTreeKeys = {
   all: contractKey(wikiDocContract.tree),
   of: (spaceId: number) => contractKey(wikiDocContract.tree, { query: { spaceId } }),
 };
 
-/** 版本历史：列表与版本详情按文档分组挂在 versions 操作名下，随文档更新 / 回滚整组失效 */
-const versionsPrefix = contractKey(wikiDocContract.versions);
+/** 版本历史：分页列表与单版本详情是两个操作，按文档 id 对 params 段做部分匹配即可覆盖该文档的全部页 / 全部版本 */
 export const wikiDocVersionKeys = {
-  of: (docId: number | undefined) => [...versionsPrefix, docId] as const,
-  list: (docId: number | undefined, params: WikiDocPageParams) => [...versionsPrefix, docId, params] as const,
-  detail: (docId: number | undefined, version: number | undefined) => [...versionsPrefix, docId, 'detail', version] as const,
+  lists: contractKey(wikiDocContract.versions),
+  listOf: (docId: number) => [...contractKey(wikiDocContract.versions), { params: { id: docId } }] as const,
+  list: (docId: number, params: WikiDocPageParams) => contractKey(wikiDocContract.versions, { params: { id: docId }, query: params }),
+  detailOf: (docId: number) => [...contractKey(wikiDocContract.versionDetail), { params: { id: docId } }] as const,
+  detail: (docId: number, version: number) => contractKey(wikiDocContract.versionDetail, { params: { id: docId, version } }),
 };
 
-/** 我的收藏（列表变体，独立操作名下，不被文档列表广播打掉） */
+/** 文档产生新版本（保存正文 / 回滚）后，该文档的版本列表与已缓存的版本详情整组回源 */
+export function invalidateWikiDocVersions(qc: QueryClient, docId: number) {
+  void qc.invalidateQueries({ queryKey: wikiDocVersionKeys.listOf(docId) });
+  void qc.invalidateQueries({ queryKey: wikiDocVersionKeys.detailOf(docId) });
+}
+
+/** 我的收藏：`all` 是 favorites 操作前缀（任意分页），收藏 / 取消收藏与文档变更后整组回源 */
 export const wikiDocFavoriteKeys = {
   all: contractKey(wikiDocContract.favorites),
 };
 
-/** 回收站（列表变体） */
+/** 回收站：`all` 是 recycle 操作前缀（任意筛选 / 分页），供 useListSearch 与删除 / 还原 / 彻底删除失效 */
 export const wikiDocRecycleKeys = {
   all: contractKey(wikiDocContract.recycle),
 };
@@ -55,12 +62,15 @@ export const {
   useDetail: useWikiDocDetail,
   useDelete: useDeleteWikiDocs,
 } = createResourceQueries(wikiDocContract, {
-  // 删除 = 移入回收站：树、收藏、回收站列表都受影响（ids 无法反查 spaceId，树整组失效）
+  /**
+   * 删除 = 移入回收站：文档从目录树 / 我的收藏消失、进入回收站列表。
+   * 工厂只回传 ids、无法反查 spaceId，目录树退回 tree 操作前缀（同屏只挂载当前空间的树，其余只是标脏）。
+   * 统计资源整组：总量、热门排行、贡献榜、沉睡文档与运营分布全部由文档派生，五个操作都会变。
+   */
   onDeleted: (qc) => {
     void qc.invalidateQueries({ queryKey: wikiDocTreeKeys.all });
     void qc.invalidateQueries({ queryKey: wikiDocFavoriteKeys.all });
     void qc.invalidateQueries({ queryKey: wikiDocRecycleKeys.all });
-    // 删除会同时改变总量、排行、贡献、沉睡文档与运营分布。
     void qc.invalidateQueries({ queryKey: wikiStatsKeys.all });
   },
 });
@@ -99,18 +109,14 @@ export function useRecentWikiDocs(enabled = true) {
 }
 
 export function useWikiDocVersions(docId: number | undefined, params: WikiDocPageParams, enabled = true) {
-  return useQuery({
-    queryKey: wikiDocVersionKeys.list(docId, params),
-    queryFn: () => api(wikiDocContract.versions, { params: { id: docId ?? 0 }, query: params }),
+  return useApiQuery(wikiDocContract.versions, { params: { id: docId ?? 0 }, query: params }, {
     placeholderData: keepPreviousData,
     enabled: enabled && docId !== undefined,
   });
 }
 
 export function useWikiDocVersionDetail(docId: number | undefined, version: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: wikiDocVersionKeys.detail(docId, version),
-    queryFn: () => api(wikiDocContract.versionDetail, { params: { id: docId ?? 0, version: version ?? 0 } }),
+  return useApiQuery(wikiDocContract.versionDetail, { params: { id: docId ?? 0, version: version ?? 0 } }, {
     enabled: enabled && docId !== undefined && version !== undefined,
   });
 }
@@ -129,29 +135,40 @@ export function useMyProcessedReviews(params: WikiDocPageParams, enabled = true)
 
 // ─── 保存 ─────────────────────────────────────────────────────────────────────
 
-/** 保存（含正文更新）会改动目录树节点标题 / 状态并产生新版本；新建或正文更新可同时改变文档 / 发布 / 贡献 / 沉睡 / 运营等全部统计 */
-function invalidateSavedDoc(qc: QueryClient, saved: WikiDoc) {
+/**
+ * 保存（新建 / 正文更新）后的失效面：
+ * - 详情与列表：标题 / 摘要 / 状态 / updatedAt 直接变化
+ * - 所属空间的目录树：节点标题 / 排序随之变化，其它空间的树不动
+ * - 该文档的版本历史：正文更新产生新版本
+ * - 我的收藏：收藏列表渲染文档标题 / 状态
+ * - 统计资源整组：总量、热门排行的标题、贡献榜、沉睡文档（updatedAt）与运营分布都由文档派生，五个操作全部受影响
+ * 回收站、最近访问、审核时间线、已读名单与评论树都不受保存影响。
+ */
+export function invalidateWikiDocAfterSave(qc: QueryClient, saved: WikiDoc) {
   void qc.invalidateQueries({ queryKey: wikiDocKeys.detail(saved.id) });
   void qc.invalidateQueries({ queryKey: wikiDocKeys.lists });
   void qc.invalidateQueries({ queryKey: wikiDocTreeKeys.of(saved.spaceId) });
-  void qc.invalidateQueries({ queryKey: wikiDocVersionKeys.of(saved.id) });
+  invalidateWikiDocVersions(qc, saved.id);
   void qc.invalidateQueries({ queryKey: wikiDocFavoriteKeys.all });
   void qc.invalidateQueries({ queryKey: wikiStatsKeys.all });
 }
 
 /** 创建与更新入参形状不同（更新另带 changeNote / revision / isPinned），分别按契约暴露而不走工厂的 useSave */
 export function useCreateWikiDoc() {
-  return useApiMutation(wikiDocContract.create, { invalidate: (qc, saved) => invalidateSavedDoc(qc, saved) });
+  return useApiMutation(wikiDocContract.create, { invalidate: (qc, saved) => invalidateWikiDocAfterSave(qc, saved) });
 }
 
 export function useUpdateWikiDoc() {
-  return useApiMutation(wikiDocContract.update, { invalidate: (qc, saved) => invalidateSavedDoc(qc, saved) });
+  return useApiMutation(wikiDocContract.update, { invalidate: (qc, saved) => invalidateWikiDocAfterSave(qc, saved) });
 }
 
 // ─── 非标准变更 ───────────────────────────────────────────────────────────────
 
-/** 状态流转在树、列表、详情三处可见，并改变概览 / 运营统计 */
-function invalidateDocStatus(qc: QueryClient, saved: WikiDoc) {
+/**
+ * 状态流转（提交 / 审核 / 撤回 / 回滚）后的失效面：状态在详情、列表与所属空间目录树三处可见；
+ * 统计只动概览（publishedCount / pendingCount）与运营（审核积压 / 通过拒绝计数），热门 / 贡献 / 沉睡与状态无关。
+ */
+export function invalidateWikiDocAfterStatusChange(qc: QueryClient, saved: WikiDoc) {
   void qc.invalidateQueries({ queryKey: wikiDocKeys.detail(saved.id) });
   void qc.invalidateQueries({ queryKey: wikiDocKeys.lists });
   void qc.invalidateQueries({ queryKey: wikiDocTreeKeys.of(saved.spaceId) });
@@ -174,7 +191,7 @@ export function useMoveWikiDoc() {
 export function useSubmitWikiDoc() {
   return useApiMutation(wikiDocContract.submit, {
     invalidate: (qc, saved) => {
-      invalidateDocStatus(qc, saved);
+      invalidateWikiDocAfterStatusChange(qc, saved);
       void qc.invalidateQueries({ queryKey: wikiReviewRecordKeys.of(saved.id) });
     },
   });
@@ -184,7 +201,7 @@ export function useSubmitWikiDoc() {
 export function useReviewWikiDoc() {
   return useApiMutation(wikiDocContract.review, {
     invalidate: (qc, saved) => {
-      invalidateDocStatus(qc, saved);
+      invalidateWikiDocAfterStatusChange(qc, saved);
       void qc.invalidateQueries({ queryKey: wikiReviewRecordKeys.of(saved.id) });
       void qc.invalidateQueries({ queryKey: wikiReviewRecordKeys.processedLists });
     },
@@ -195,7 +212,7 @@ export function useReviewWikiDoc() {
 export function useWithdrawWikiDoc() {
   return useApiMutation(wikiDocContract.withdraw, {
     invalidate: (qc, saved) => {
-      invalidateDocStatus(qc, saved);
+      invalidateWikiDocAfterStatusChange(qc, saved);
       void qc.invalidateQueries({ queryKey: wikiReviewRecordKeys.of(saved.id) });
     },
   });
@@ -224,8 +241,8 @@ export function useRecordWikiDocView() {
 export function useRollbackWikiDoc() {
   return useApiMutation(wikiDocContract.rollback, {
     invalidate: (qc, saved) => {
-      invalidateDocStatus(qc, saved);
-      void qc.invalidateQueries({ queryKey: wikiDocVersionKeys.of(saved.id) });
+      invalidateWikiDocAfterStatusChange(qc, saved);
+      invalidateWikiDocVersions(qc, saved.id);
     },
   });
 }

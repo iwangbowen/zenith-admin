@@ -1,7 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
 import { paymentLinkContract, paymentLinkPublicContract } from '@zenith/shared/payment';
-import { api, contractKey, createResourceQueries, useApiMutation } from '@/lib/contract-query';
+import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type PaymentLinkListParams = NonNullable<QueryOf<typeof paymentLinkContract.list>>;
 
@@ -52,10 +51,9 @@ export function useRotatePaymentLinkToken() {
 const publicRequestOptions = { skipAuth: true, silent: true } as const;
 
 export function usePublicPaymentLink(token: string | undefined) {
-  return useQuery({
-    queryKey: paymentLinkKeys.public(token),
-    queryFn: () => api(paymentLinkPublicContract.detail, { params: { token: token ?? '' } }, publicRequestOptions),
+  return useApiQuery(paymentLinkPublicContract.detail, { params: { token: token ?? '' } }, {
     enabled: !!token,
+    requestOptions: publicRequestOptions,
   });
 }
 
@@ -71,10 +69,9 @@ export function usePayPublicPaymentLink() {
 
 /** 收银台会话恢复与轮询：刷新、第三方回跳均使用同一不可枚举 token */
 export function usePublicPaymentCashierSession(token: string, sessionToken: string | undefined) {
-  return useQuery({
-    queryKey: paymentLinkKeys.publicSession(token, sessionToken),
-    queryFn: () => api(paymentLinkPublicContract.session, { params: { token, sessionToken: sessionToken ?? '' } }, publicRequestOptions),
+  return useApiQuery(paymentLinkPublicContract.session, { params: { token, sessionToken: sessionToken ?? '' } }, {
     enabled: !!token && !!sessionToken,
+    requestOptions: publicRequestOptions,
     refetchInterval: (query) => {
       const status = query.state.data?.status;
       return status === 'succeeded' || status === 'failed' || status === 'expired' ? false : 3000;

@@ -1,7 +1,7 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { paymentJournalContract } from '@zenith/shared/payment';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type PaymentLedgerAccountListParams = NonNullable<QueryOf<typeof paymentJournalContract.accounts>>;
 export type PaymentJournalListParams = NonNullable<QueryOf<typeof paymentJournalContract.list>>;
@@ -37,11 +37,7 @@ export function useCreatePaymentLedgerAccount() {
 }
 
 export function usePaymentActiveReservationAmount(accountId: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: paymentLedgerAccountKeys.activeReservation(accountId),
-    queryFn: () => api(paymentJournalContract.activeReservation, { params: { id: accountId ?? 0 } }),
-    enabled: enabled && accountId !== undefined,
-  });
+  return useApiQuery(paymentJournalContract.activeReservation, { params: { id: accountId ?? 0 } }, { enabled: enabled && accountId !== undefined });
 }
 
 export function usePaymentJournalList(params: PaymentJournalListParams, enabled = true) {
@@ -49,11 +45,7 @@ export function usePaymentJournalList(params: PaymentJournalListParams, enabled 
 }
 
 export function usePaymentJournalDetail(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: paymentJournalKeys.detail(id),
-    queryFn: () => api(paymentJournalContract.detail, { params: { id: id ?? 0 } }),
-    enabled: enabled && id !== undefined,
-  });
+  return useApiQuery(paymentJournalContract.detail, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
 }
 
 /** 过账后把凭证写入详情缓存，列表回源 */

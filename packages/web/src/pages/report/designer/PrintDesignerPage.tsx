@@ -36,7 +36,7 @@ import {
 import { REPORT_FIELD_TYPE_OPTIONS, REPORT_PRINT_ENTITY_KIND_LABELS, reportDatasetContract, reportPrintContract } from '@zenith/shared/report';
 import type { ReportDataset, ReportDatasetParam, ReportFieldType, ReportPrintContent, ReportPrintCrosstabConfig, ReportPrintDatasetBinding, ReportPrintEntityKind, ReportPrintPageConfig, ReportPrintRenderResult, ReportPrintSheet, ReportPrintSourceType, ReportPrintTemplate, UpdateReportPrintTemplateInput } from '@zenith/shared/report';
 import { useDictItems } from '@/hooks/useDictItems';
-import { api } from '@/lib/contract-query';
+import { apiQueryOptions } from '@/lib/contract-query';
 
 type UniverBundle = ReturnType<typeof createUniver>;
 type PanelKey = 'fields' | 'params' | 'bindings' | 'blocks' | 'page';
@@ -444,9 +444,10 @@ export default function PrintDesignerPage() {
       ...(datasetId ? [datasetId] : []),
       ...datasetBindings.map((binding) => binding.datasetId),
     ])];
+    // 与工厂 useDetail 共享同一缓存条目：key 用工厂的 detail(id)，请求由契约派生
     const details = await Promise.all(datasetIds.map((id) => queryClient.ensureQueryData({
+      ...apiQueryOptions(reportDatasetContract.detail, { params: { id } }),
       queryKey: reportDatasetKeys.detail(id),
-      queryFn: () => api(reportDatasetContract.detail, { params: { id } }),
     })));
     const detailsById = new Map(details.map((detail) => [detail.id, detail]));
     const sourceParamNames = new Set(normalizedParams.map((param) => param.name));
@@ -469,8 +470,8 @@ export default function PrintDesignerPage() {
     const subreportCells = (content.sheets ?? []).flatMap((sheet) => sheet.grid.cells.filter((cell) => cell.subreport));
     const subreportIds = [...new Set(subreportCells.map((cell) => cell.subreport!.templateId))];
     const subreportTemplates = await Promise.all(subreportIds.map((id) => queryClient.ensureQueryData({
+      ...apiQueryOptions(reportPrintContract.detail, { params: { id } }),
       queryKey: reportPrintKeys.detail(id),
-      queryFn: () => api(reportPrintContract.detail, { params: { id } }),
     })));
     const subreportById = new Map(subreportTemplates.map((item) => [item.id, item]));
     for (const cell of subreportCells) {

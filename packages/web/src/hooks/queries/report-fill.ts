@@ -96,14 +96,25 @@ export function useDeleteReportFillTemplate() {
 
 // ─── 记录 ───────────────────────────────────────────────────────────────────
 
-/** 记录状态流转会触发同步任务；生成数据集的记录还会影响数据集域 */
+/**
+ * 记录状态流转（新建 / 编辑 / 提交 / 撤回 / 取消 / 审核）后的失效面：
+ * - 详情用响应回填（写接口与详情同源），我的 / 管理两份记录列表回源
+ * - 流转会触发一次同步任务：任务中心列表与统计多出一条记录（items 属于既有任务，types 是元数据，都不动）
+ * - 已生成数据集的记录：worker 会把数据行回写进该数据集——数据集的列表 / 详情 / 下拉源 / 治理概览
+ *   与该数据集的取数缓存一并标脏；其它数据集与数据库元数据（metaTables / metaColumns）不受影响
+ */
 function applyRecord(qc: QueryClient, record: ReportFillRecord) {
   qc.setQueryData(reportFillKeys.recordDetail(record.id), record);
   void qc.invalidateQueries({ queryKey: reportFillKeys.recordMineLists });
   void qc.invalidateQueries({ queryKey: reportFillKeys.recordAdminLists });
-  void qc.invalidateQueries({ queryKey: asyncTaskKeys.all });
+  void qc.invalidateQueries({ queryKey: asyncTaskKeys.lists });
+  void qc.invalidateQueries({ queryKey: asyncTaskKeys.stats });
   if (record.generatedDatasetId) {
-    void qc.invalidateQueries({ queryKey: reportDatasetKeys.all });
+    void qc.invalidateQueries({ queryKey: reportDatasetKeys.lists });
+    void qc.invalidateQueries({ queryKey: reportDatasetKeys.detail(record.generatedDatasetId) });
+    void qc.invalidateQueries({ queryKey: reportDatasetKeys.lookup });
+    void qc.invalidateQueries({ queryKey: reportDatasetKeys.governance });
+    void qc.invalidateQueries({ queryKey: reportDatasetKeys.dataOf(record.generatedDatasetId) });
   }
 }
 

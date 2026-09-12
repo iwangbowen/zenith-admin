@@ -67,7 +67,7 @@ export function ShareModal({ visible, dashboardId, onClose }: Readonly<{ visible
     await updateMutation.mutateAsync({ params: { shareId: s.id }, body: { enabled: !s.enabled } });
   }
   async function remove(share: ReportDashboardShare) {
-    await deleteMutation.mutateAsync({ shareId: share.id, dashboardId: share.dashboardId });
+    await deleteMutation.mutateAsync({ params: { shareId: share.id }, dashboardId: share.dashboardId });
     Toast.success('已删除');
   }
   function urlOf(token: string) { return `${window.location.origin}/public/report/${token}`; }
@@ -112,7 +112,7 @@ export function ShareModal({ visible, dashboardId, onClose }: Readonly<{ visible
                 <Button size="small" icon={<Copy size={13} />} onClick={() => copy(s.token)}>链接</Button>
                 <Button size="small" onClick={() => copyIframe(s.token)}>iframe</Button>
                 <Switch size="small" checked={s.enabled} loading={updateMutation.isPending && updateMutation.variables?.params.shareId === s.id} onChange={() => void toggle(s)} />
-                <Button size="small" theme="borderless" type="danger" icon={<Trash2 size={13} />} loading={deleteMutation.isPending && deleteMutation.variables?.shareId === s.id} onClick={() => void remove(s)} />
+                <Button size="small" theme="borderless" type="danger" icon={<Trash2 size={13} />} loading={deleteMutation.isPending && deleteMutation.variables?.params.shareId === s.id} onClick={() => void remove(s)} />
               </Space>
             )}
           />

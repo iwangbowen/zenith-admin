@@ -1,11 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
 import type { BodyOf } from '@zenith/shared/core';
 import { reportPublicContract, type ReportDatasetQueryOptions } from '@zenith/shared/report';
-import { api, contractKey } from '@/lib/contract-query';
+import { contractKey, useApiQuery } from '@/lib/contract-query';
 import { useReportDashboardBatch } from './report-dashboards';
 
 type EmbedDataBody = BodyOf<typeof reportPublicContract.embedData>;
 
+/** 匿名嵌入端点：不带登录态，失败由嵌入页自行渲染原因 */
 const embedRequest = { skipAuth: true, silent: true } as const;
 
 export const reportEmbedKeys = {
@@ -16,10 +16,9 @@ export const reportEmbedKeys = {
 
 export function useReportEmbedDashboard(dashboardId: number | undefined, embedToken?: string) {
   const batchQuery = useReportDashboardBatch(dashboardId ? [dashboardId] : [], !embedToken && !!dashboardId, 'published');
-  const tokenQuery = useQuery({
-    queryKey: reportEmbedKeys.token(embedToken),
-    queryFn: () => api(reportPublicContract.embed, { params: { token: embedToken ?? '' } }, embedRequest),
+  const tokenQuery = useApiQuery(reportPublicContract.embed, { params: { token: embedToken ?? '' } }, {
     enabled: !!embedToken,
+    requestOptions: embedRequest,
   });
 
   if (embedToken) {
@@ -70,9 +69,8 @@ export function useReportEmbedData(
   enabled = true,
 ) {
   const body: EmbedDataBody = { filters, widgetQueries };
-  return useQuery({
-    queryKey: reportEmbedKeys.data(embedToken, body),
-    queryFn: () => api(reportPublicContract.embedData, { params: { token: embedToken ?? '' }, body }, embedRequest),
+  return useApiQuery(reportPublicContract.embedData, { params: { token: embedToken ?? '' }, body }, {
     enabled: enabled && !!embedToken,
+    requestOptions: embedRequest,
   });
 }

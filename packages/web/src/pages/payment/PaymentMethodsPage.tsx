@@ -32,7 +32,7 @@ export default function PaymentMethodsPage() {
         Toast.error('缺少记录 ID，请刷新后重试');
         abortSubmit('missing-id');
       }
-      return saveMutation.mutateAsync({ id, values });
+      return saveMutation.mutateAsync({ params: { id }, body: values });
     },
     isPending: saveMutation.isPending,
   };
@@ -43,7 +43,7 @@ export default function PaymentMethodsPage() {
   });
 
   const status = useStatusToggle<PaymentMethodConfig>({
-    toggle: (record, checked) => toggleMutation.mutateAsync({ id: record.id, values: { enabled: checked } }),
+    toggle: (record, checked) => toggleMutation.mutateAsync({ params: { id: record.id }, body: { enabled: checked } }),
     disabled: !canUpdate,
     isEnabled: (record) => record.enabled,
   });

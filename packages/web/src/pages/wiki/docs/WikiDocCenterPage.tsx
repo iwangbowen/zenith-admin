@@ -852,7 +852,7 @@ export default function WikiDocCenterPage() {
                     onDelete={(cm) => confirmDelete({
                       title: '确定要删除这条评论吗？',
                       onOk: async () => {
-                        await deleteCommentMutation.mutateAsync({ id: cm.id, docId: cm.docId });
+                        await deleteCommentMutation.mutateAsync({ params: { id: cm.id }, docId: cm.docId });
                         Toast.success('删除成功');
                       },
                     })}

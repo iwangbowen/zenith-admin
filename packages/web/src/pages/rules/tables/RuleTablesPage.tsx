@@ -35,7 +35,8 @@ import {
   useRuleVersions,
   useRunRuleTestCases,
   useSaveRuleDecisionTable,
-  useSaveRuleTestCase,
+  useCreateRuleTestCase,
+  useUpdateRuleTestCase,
   useShadowRunRuleTable,
   useSimulateRuleTable,
   useSubmitRuleTableReview,
@@ -187,12 +188,13 @@ export default function RuleTablesPage() {
   const deleteMutation = useDeleteRuleDecisionTable();
   const rollbackMutation = useRollbackRuleDecisionTable();
   const toggleMutation = useToggleRuleDecisionTable();
-  const saveCaseMutation = useSaveRuleTestCase();
+  const createCaseMutation = useCreateRuleTestCase();
+  const updateCaseMutation = useUpdateRuleTestCase();
   const deleteCaseMutation = useDeleteRuleTestCase();
   const runCasesMutation = useRunRuleTestCases();
   const runTestMutation = useTestRuleDecisionTable();
   const runSingleCaseMutation = useTestRuleDecisionTable();
-  const saveCurrentTestAsCaseMutation = useSaveRuleTestCase();
+  const saveCurrentTestAsCaseMutation = useCreateRuleTestCase();
   const shadowMutation = useShadowRunRuleTable();
   const submitReviewMutation = useSubmitRuleTableReview();
   const reviewMutation = useReviewRuleTable();
@@ -318,7 +320,7 @@ export default function RuleTablesPage() {
         for (const item of parsed) {
           if (!item?.name) { fail += 1; continue; }
           try {
-            await saveCaseMutation.mutateAsync({ tableId: caseRow.id, values: { name: item.name, input: item.input ?? {}, expected: item.expected ?? {} } });
+            await createCaseMutation.mutateAsync({ params: { id: caseRow.id }, body: { name: item.name, input: item.input ?? {}, expected: item.expected ?? {} } });
             ok += 1;
           } catch { fail += 1; }
         }
@@ -534,7 +536,8 @@ export default function RuleTablesPage() {
       input: buildTestScope(caseRow.inputs, caseForm.inputValues),
       expected: buildExpectedValues(caseRow.outputs, caseForm.expectedValues),
     };
-    await saveCaseMutation.mutateAsync({ tableId: caseRow.id, caseId: editingCase?.id, values: payload });
+    if (editingCase) await updateCaseMutation.mutateAsync({ params: { id: caseRow.id, caseId: editingCase.id }, body: payload });
+    else await createCaseMutation.mutateAsync({ params: { id: caseRow.id }, body: payload });
     Toast.success(editingCase ? '用例已更新' : '用例已新增');
     setEditingCase(null);
   };
@@ -599,7 +602,7 @@ export default function RuleTablesPage() {
         const name = nameRef.current.trim();
         if (!name) { Toast.warning('请输入用例名称'); return Promise.reject(new Error('empty')); }
         const input = Object.keys(testScope).length ? testScope : buildTestScope(testRow.inputs, testForm);
-        await saveCurrentTestAsCaseMutation.mutateAsync({ tableId: testRow.id, values: { name, input, expected: testResult.outputs } });
+        await saveCurrentTestAsCaseMutation.mutateAsync({ params: { id: testRow.id }, body: { name, input, expected: testResult.outputs } });
         Toast.success('已保存为测试用例');
       },
     });
@@ -726,7 +729,7 @@ export default function RuleTablesPage() {
             </div>
           </div>
           <Space spacing={8}>
-            <Button size="small" type="primary" loading={saveCaseMutation.isPending} onClick={saveCase}>{editingCase ? '保存用例' : '新增用例'}</Button>
+            <Button size="small" type="primary" loading={createCaseMutation.isPending || updateCaseMutation.isPending} onClick={saveCase}>{editingCase ? '保存用例' : '新增用例'}</Button>
             {editingCase && <Button size="small" theme="borderless" onClick={() => resetCaseEditor()}>取消编辑</Button>}
           </Space>
         </Space>

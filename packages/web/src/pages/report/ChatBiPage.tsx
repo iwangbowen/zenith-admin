@@ -265,9 +265,9 @@ export default function ChatBiPage() {
     }
     try {
       const resource = await saveMutation.mutateAsync({
-        messageId: saveTarget.id,
+        params: { id: saveTarget.id },
         sessionId: activeSessionId,
-        values: {
+        body: {
           resourceType,
           name: values.name ? String(values.name) : undefined,
           targetDashboardId: existingDashboardId,

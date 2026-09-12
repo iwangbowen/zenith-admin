@@ -1,8 +1,8 @@
 import { useCallback } from 'react';
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { resourceKeyOf, type BodyOf, type QueryOf } from '@zenith/shared/core';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { resourceKeyOf, type BodyOf, type InputOf, type QueryOf } from '@zenith/shared/core';
 import { reportCategoryContract, reportDashboardContract, reportDashboardOpsContract, reportExecutionContract, reportPublicContract, type ReportDatasetQueryOptions, type ReportWidget, type ReportWidgetDataResult } from '@zenith/shared/report';
-import { api, useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { api, apiQueryOptions, useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { useReportLookup, type ReportLookupParams } from './report-lookups';
 
 export type ReportDashboardListParams = NonNullable<QueryOf<typeof reportDashboardContract.list>>;
@@ -11,8 +11,6 @@ export type ReportDashboardViewMode = NonNullable<NonNullable<QueryOf<typeof rep
 
 /** 仪表盘取数请求体（筛选值 / 行数上限 / 组件级查询选项） */
 type DashboardDataBody = BodyOf<typeof reportDashboardContract.data>;
-
-const sortIds = (ids: number[]) => [...ids].sort((a, b) => a - b);
 
 export const reportDashboardKeys = {
   /** 仪表盘 CRUD 与运维操作共用资源根路径，该前缀覆盖两个契约组的全部查询 */
@@ -23,8 +21,9 @@ export const reportDashboardKeys = {
   detailOf: (id: number | undefined) => contractKey(reportDashboardContract.detail, { params: { id: id ?? 0 }, query: {} }),
   detail: (id: number | undefined, mode: ReportDashboardViewMode = 'auto') =>
     contractKey(reportDashboardContract.detail, { params: { id: id ?? 0 }, query: { mode } }),
+  /** 服务端按入参顺序回传，ids 不做排序归一 */
   batch: (ids: number[], mode: ReportDashboardViewMode = 'auto') =>
-    contractKey(reportDashboardContract.batch, { body: { ids: sortIds(ids), mode } }),
+    contractKey(reportDashboardContract.batch, { body: { ids, mode } }),
   categories: contractKey(reportCategoryContract.list),
   healthSummary: (dashboardId: number | undefined, params: { startAt?: string; endAt?: string }) =>
     contractKey(reportExecutionContract.stats, { query: { dashboardId, ...params } }),
@@ -71,11 +70,7 @@ export function useReportDashboardDetail(id: number | undefined, enabled = true,
 }
 
 export function useReportDashboardBatch(ids: number[], enabled = true, mode: ReportDashboardViewMode = 'auto') {
-  return useQuery({
-    queryKey: reportDashboardKeys.batch(ids, mode),
-    queryFn: () => api(reportDashboardContract.batch, { body: { ids, mode } }),
-    enabled: enabled && ids.length > 0,
-  });
+  return useApiQuery(reportDashboardContract.batch, { body: { ids, mode } }, { enabled: enabled && ids.length > 0 });
 }
 
 /** 保存会改写看板内容：详情（各模式）、列表与该看板的取数结果都要回源 */
@@ -234,14 +229,12 @@ export function useUpdateReportDashboardShare() {
   });
 }
 
-/** 删除接口不返回实体，调用方随变量携带 dashboardId 以定位失效范围 */
+/** 删除接口不返回实体、路径里也没有看板 id，调用方随变量携带 dashboardId 定位失效范围（只交给 invalidate，不参与请求） */
 export function useDeleteReportDashboardShare() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ shareId }: { shareId: number; dashboardId: number }) =>
-      api(reportDashboardOpsContract.removeShare, { params: { shareId } }),
-    onSuccess: (_data, vars) => void qc.invalidateQueries({ queryKey: reportDashboardKeys.shares(vars.dashboardId) }),
-  });
+  return useApiMutation<typeof reportDashboardOpsContract.removeShare, InputOf<typeof reportDashboardOpsContract.removeShare> & { dashboardId: number }>(
+    reportDashboardOpsContract.removeShare,
+    { invalidate: (qc, _output, { dashboardId }) => void qc.invalidateQueries({ queryKey: reportDashboardKeys.shares(dashboardId) }) },
+  );
 }
 
 export function useReportDashboardEmbedTokens(id: number | undefined, enabled = true) {
@@ -254,14 +247,12 @@ export function useCreateReportDashboardEmbedToken() {
   });
 }
 
-/** 撤销接口不返回实体，调用方随变量携带 dashboardId 以定位失效范围 */
+/** 撤销接口不返回实体、路径里也没有看板 id，调用方随变量携带 dashboardId 定位失效范围（只交给 invalidate，不参与请求） */
 export function useRevokeReportDashboardEmbedToken() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ embedTokenId }: { embedTokenId: number; dashboardId: number }) =>
-      api(reportDashboardOpsContract.revokeEmbedToken, { params: { embedTokenId } }),
-    onSuccess: (_data, vars) => void qc.invalidateQueries({ queryKey: reportDashboardKeys.embedTokens(vars.dashboardId) }),
-  });
+  return useApiMutation<typeof reportDashboardOpsContract.revokeEmbedToken, InputOf<typeof reportDashboardOpsContract.revokeEmbedToken> & { dashboardId: number }>(
+    reportDashboardOpsContract.revokeEmbedToken,
+    { invalidate: (qc, _output, { dashboardId }) => void qc.invalidateQueries({ queryKey: reportDashboardKeys.embedTokens(dashboardId) }) },
+  );
 }
 
 // ─── 版本 ───────────────────────────────────────────────────────────────────
@@ -324,12 +315,14 @@ export function useReportDashboardWidgetData(
   const limit = options?.limit ?? 500;
   const mode = options?.mode ?? 'auto';
   const body: DashboardDataBody = { filters: filterValues, limit, widgetQueries: options?.widgetQueries };
-  const queryKey = reportDashboardKeys.dashboardData(dashboardId, mode, body);
+  const input = { params: { id: dashboardId ?? 0 }, query: { mode }, body };
   const dataQuery = useQuery({
-    queryKey,
-    queryFn: ({ signal }) => api(reportDashboardContract.data, { params: { id: dashboardId ?? 0 }, query: { mode }, body }, { silent: true, signal }),
-    enabled: !!dashboardId,
-    refetchInterval: buildStableJitter(options?.refetchInterval, `dashboard:${dashboardId ?? 'none'}:${mode}`),
+    ...apiQueryOptions(reportDashboardContract.data, input, {
+      enabled: !!dashboardId,
+      refetchInterval: buildStableJitter(options?.refetchInterval, `dashboard:${dashboardId ?? 'none'}:${mode}`),
+    }),
+    // H5 保留：一屏扇出数十个数据集的取数必须随筛选切换 / 卸载中止，需要按次透传 AbortSignal（requestOptions 是静态选项）
+    queryFn: ({ signal }) => api(reportDashboardContract.data, input, { silent: true, signal }),
   });
 
   const get = useCallback((widget: ReportWidget): DashboardWidgetDataState => {
@@ -364,15 +357,19 @@ export function usePublicReportDashboardAccess() {
 
 export function usePublicReportDashboard(token: string | undefined, session: string | undefined, enabled = true) {
   return useQuery({
-    queryKey: reportDashboardKeys.publicDashboard(token, session),
-    queryFn: () => api(reportPublicContract.dashboard, { params: { token: token ?? '' } }, {
-      ...publicRequest,
-      headers: session ? { session } : undefined,
+    ...apiQueryOptions(reportPublicContract.dashboard, { params: { token: token ?? '' } }, {
+      requestOptions: { ...publicRequest, headers: session ? { session } : undefined },
     }),
+    // 访问会话参与缓存身份：重新验密拿到新会话后必须换 key 回源，而契约 key 不含请求头
+    queryKey: reportDashboardKeys.publicDashboard(token, session),
     enabled: enabled && !!token && !!session,
   });
 }
 
+/**
+ * H5 保留：与 usePublicReportDashboard 同样以访问会话追加缓存区分段，且取数要随筛选切换 / 卸载中止，
+ * 需要按次透传 AbortSignal（requestOptions 是静态选项）。
+ */
 export function usePublicReportDashboardData(
   token: string | undefined,
   session: string | undefined,

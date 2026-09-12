@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { resourceKeyOf, type QueryOf } from '@zenith/shared/core';
 import { useMySettings } from './settings';
-import { decisionFlowContract, decisionTableContract, ruleExecutionContract, ruleListContract, type CreateDecisionFlowInput, type CreateDecisionTableInput, type CreateRuleListInput, type CreateRuleTestCaseInput, type RuleTestCase, type RuleUsageItem, type UpdateDecisionFlowInput, type UpdateDecisionTableInput, type UpdateRuleListInput, type UpdateRuleTestCaseInput } from '@zenith/shared/rules';
+import { decisionFlowContract, decisionTableContract, ruleExecutionContract, ruleListContract, type CreateDecisionFlowInput, type CreateDecisionTableInput, type CreateRuleListInput, type RuleUsageItem, type UpdateDecisionFlowInput, type UpdateDecisionTableInput, type UpdateRuleListInput } from '@zenith/shared/rules';
 import { api, useSaveMutation, apiRaw, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { unwrap } from '@/lib/query';
 
@@ -105,16 +105,19 @@ export function useRuleTestCases(id: number | undefined, enabled = true) {
   return useApiQuery(decisionTableContract.cases, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
 }
 
-export type RuleTestCaseSaveValues = Partial<CreateRuleTestCaseInput & UpdateRuleTestCaseInput>;
+/**
+ * 用例只影响所属决策表的用例列表。新增 / 编辑带父级路径参数（tableId），useSaveMutation 只认 id，
+ * 故拆成两个契约 mutation（H5），由页面按是否在编辑决定调用哪个。
+ */
+export function useCreateRuleTestCase() {
+  return useApiMutation(decisionTableContract.createCase, {
+    invalidate: (qc, _output, { params }) => void qc.invalidateQueries({ queryKey: ruleKeys.decisionTables.cases(params.id) }),
+  });
+}
 
-/** 用例只影响所属决策表的用例列表 */
-export function useSaveRuleTestCase() {
-  const qc = useQueryClient();
-  return useMutation<RuleTestCase, Error, { tableId: number; caseId?: number; values: RuleTestCaseSaveValues }>({
-    mutationFn: ({ tableId, caseId, values }) => (caseId === undefined
-      ? api(decisionTableContract.createCase, { params: { id: tableId }, body: values as CreateRuleTestCaseInput })
-      : api(decisionTableContract.updateCase, { params: { id: tableId, caseId }, body: values })),
-    onSuccess: (_data, variables) => void qc.invalidateQueries({ queryKey: ruleKeys.decisionTables.cases(variables.tableId) }),
+export function useUpdateRuleTestCase() {
+  return useApiMutation(decisionTableContract.updateCase, {
+    invalidate: (qc, _output, { params }) => void qc.invalidateQueries({ queryKey: ruleKeys.decisionTables.cases(params.id) }),
   });
 }
 
@@ -244,7 +247,10 @@ export function useSaveRuleListItem() {
   return useApiMutation(ruleListContract.createItem, { invalidate: invalidateRuleLists });
 }
 
-/** 批量导入返回服务端结果消息（新增 / 跳过数量），由调用方展示 */
+/**
+ * H5 保留：批量导入的结果（新增 / 跳过数量）只在响应信封 message 里，调用方要展示它，
+ * 而 useApiMutation 只回传解包后的 data，故经 apiRaw 手写。
+ */
 export function useBatchImportRuleListItems() {
   const qc = useQueryClient();
   return useMutation({
@@ -261,7 +267,7 @@ export function useDeleteRuleListItem() {
   return useApiMutation(ruleListContract.removeItem, { invalidate: invalidateRuleLists });
 }
 
-/** 清理过期条目返回服务端结果消息（删除数量），由调用方展示 */
+/** H5 保留：同上，清理过期条目的删除数量只在响应信封 message 里，经 apiRaw 手写 */
 export function usePurgeExpiredRuleListItems() {
   const qc = useQueryClient();
   return useMutation({

@@ -79,7 +79,7 @@ export default function WikiCommentsPage() {
           hidden: !hasPermission('wiki:comment:delete'),
           title: '确定要删除这条评论吗？',
           content: '删除后其下回复一并删除，不可恢复',
-          run: () => removeMutation.mutateAsync({ id: record.id, docId: record.docId }),
+          run: () => removeMutation.mutateAsync({ params: { id: record.id }, docId: record.docId }),
         }),
       ],
     }),

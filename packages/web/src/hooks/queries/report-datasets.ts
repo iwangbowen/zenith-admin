@@ -28,6 +28,8 @@ export const reportDatasetKeys = {
   ...resource.keys,
   lookup: contractKey(reportDatasetContract.lookup),
   refs: (id: number | undefined) => contractKey(reportDatasetContract.refs, { params: { id: id ?? 0 } }),
+  /** 某个数据集的全部取数结果（设计器 / 筛选器下拉 / 组件预览按不同参数与行数上限分别缓存），数据行被回写时整组失效 */
+  dataOf: (id: number) => [...contractKey(reportDatasetContract.data), { params: { id } }] as const,
   executionLogs: contractKey(reportExecutionContract.list),
   executionStats: contractKey(reportExecutionContract.stats),
   governance: contractKey(reportExecutionContract.governance),

@@ -1,7 +1,7 @@
-import { keepPreviousData, useQuery, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { paymentRefundContract } from '@zenith/shared/payment';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type PaymentRefundListParams = NonNullable<QueryOf<typeof paymentRefundContract.refunds>>;
 
@@ -28,11 +28,7 @@ export function usePaymentRefundList(params: PaymentRefundListParams) {
 }
 
 export function usePaymentRefundDetail(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: paymentRefundKeys.detail(id),
-    queryFn: () => api(paymentRefundContract.refundDetail, { params: { id: id ?? 0 } }),
-    enabled: enabled && id !== undefined,
-  });
+  return useApiQuery(paymentRefundContract.refundDetail, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
 }
 
 export function useQueryPaymentRefund() {

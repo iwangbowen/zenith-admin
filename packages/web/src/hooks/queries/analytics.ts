@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import { resourceKeyOf, type AnyOperation, type BodyOf, type QueryOf } from '@zenith/shared/core';
 import {
   ANALYTICS_CONFIG_VERSION_KEY,
@@ -240,14 +240,17 @@ export function useAnalyticsEventMeta(params: AnalyticsMetaParams) {
   return useApiQuery(analyticsContract.eventMeta, { query: params }, { placeholderData: keepPreviousData });
 }
 
-/** 事件字典下游引用查询配置：hook 与删除确认的 fetchQuery 共用，避免两份 queryFn */
+/** 事件字典下游引用的新鲜期：删除确认前的 fetchQuery 与弹窗内的查询共用 */
+const EVENT_META_REFERENCES_STALE_TIME = 30_000;
+
+/** 事件字典下游引用查询配置：删除确认的 fetchQuery 与 hook 共用同一 key / 新鲜期 */
 export function eventMetaReferencesQueryOptions(eventName: string) {
-  return apiQueryOptions(analyticsContract.eventMetaReferences, { query: { eventName } }, { staleTime: 30_000 });
+  return apiQueryOptions(analyticsContract.eventMetaReferences, { query: { eventName } }, { staleTime: EVENT_META_REFERENCES_STALE_TIME });
 }
 
 export function useEventMetaReferences(eventName: string | undefined, enabled = true) {
-  return useQuery({
-    ...eventMetaReferencesQueryOptions(eventName ?? ''),
+  return useApiQuery(analyticsContract.eventMetaReferences, { query: { eventName: eventName ?? '' } }, {
+    staleTime: EVENT_META_REFERENCES_STALE_TIME,
     enabled: enabled && !!eventName,
   });
 }

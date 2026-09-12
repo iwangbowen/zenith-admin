@@ -180,7 +180,7 @@ export default function PaymentReconPage() {
       Toast.warning('请先选择支付应用、商户配置和账单日期');
       return;
     }
-    const data = await sampleBillMutation.mutateAsync({ applicationId: values.applicationId, channel: config.channel, channelConfigId: config.id, currency: 'CNY', billDate: formatDateForApi(values.billDate) });
+    const data = await sampleBillMutation.mutateAsync({ query: { applicationId: values.applicationId, channel: config.channel, channelConfigId: config.id, currency: 'CNY', billDate: formatDateForApi(values.billDate) } });
     createModal.formApi.current?.setValue('billText', data.billText);
     Toast.success('模拟账单已生成');
   }

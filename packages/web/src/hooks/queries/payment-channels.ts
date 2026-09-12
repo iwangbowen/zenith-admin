@@ -1,7 +1,7 @@
-import { useMutation, useQuery, useQueryClient, keepPreviousData, type QueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
 import { paymentChannelContract } from '@zenith/shared/payment';
-import { api, useSaveMutation, contractKey, useApiMutation } from '@/lib/contract-query';
+import { api, useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 
 export type PaymentChannelListParams = NonNullable<QueryOf<typeof paymentChannelContract.channels>>;
@@ -32,20 +32,11 @@ function invalidateChannelCollections(qc: QueryClient) {
 }
 
 export function usePaymentChannelList(params: PaymentChannelListParams, enabled = true) {
-  return useQuery({
-    queryKey: paymentChannelKeys.list(params),
-    queryFn: () => api(paymentChannelContract.channels, { query: params }),
-    placeholderData: keepPreviousData,
-    enabled,
-  });
+  return useApiQuery(paymentChannelContract.channels, { query: params }, { placeholderData: keepPreviousData, enabled });
 }
 
 export function usePaymentChannelDetail(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: paymentChannelKeys.detail(id),
-    queryFn: () => api(paymentChannelContract.channelDetail, { params: { id: id ?? 0 } }),
-    enabled: enabled && id !== undefined,
-  });
+  return useApiQuery(paymentChannelContract.channelDetail, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
 }
 
 /** 无 id 走新增，有 id 走更新；isDefault 全域唯一，设为默认会连带清掉原默认渠道，其它渠道的详情缓存一并失效 */
@@ -59,7 +50,10 @@ export function useSavePaymentChannel() {
   });
 }
 
-/** 契约无批量删除操作，多选删除按单条并发执行；详情缓存移除而非失效，避免已删记录回源 404 */
+/**
+ * H5 保留：契约无批量删除操作，多选删除按单条并发执行（mutationFn 组合多次请求）；
+ * 详情缓存移除而非失效，避免已删记录回源 404。
+ */
 export function useDeletePaymentChannels() {
   const qc = useQueryClient();
   return useMutation<null, Error, number[]>({
@@ -75,22 +69,12 @@ export function useDeletePaymentChannels() {
 }
 
 export function useAllPaymentChannelConfigsLookup(enabled = true) {
-  return useQuery({
-    queryKey: paymentChannelKeys.lookup,
-    queryFn: () => api(paymentChannelContract.channelsAll),
-    staleTime: LOOKUP_STALE_TIME,
-    enabled,
-  });
+  return useApiQuery(paymentChannelContract.channelsAll, { staleTime: LOOKUP_STALE_TIME, enabled });
 }
 
 /** 资金运营页面专用最小下拉源：仅含当前租户启用的商户配置 */
 export function usePaymentChannelOperationLookup(enabled = true) {
-  return useQuery({
-    queryKey: paymentChannelKeys.operationLookup,
-    queryFn: () => api(paymentChannelContract.channelOperationLookup),
-    staleTime: LOOKUP_STALE_TIME,
-    enabled,
-  });
+  return useApiQuery(paymentChannelContract.channelOperationLookup, { staleTime: LOOKUP_STALE_TIME, enabled });
 }
 
 /** 连通性探测不改变任何数据，无需失效 */

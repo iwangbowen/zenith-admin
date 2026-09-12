@@ -26,7 +26,9 @@ import {
   reportDashboardKeys,
   useCloneReportDashboard,
   useDeleteReportDashboard,
+  useDeleteReportDashboardShare,
   useReportDashboardList,
+  useReportDashboardShares,
   useToggleReportDashboardFavorite,
 } from './report-dashboards';
 
@@ -42,7 +44,36 @@ beforeEach(() => {
     .on('GET', '/api/report/dashboards', { list: [DASHBOARD], total: 1, page: 1, pageSize: 10 })
     .on('POST', '/api/report/dashboards/1/favorite', { favorited: true })
     .on('POST', '/api/report/dashboards/1/clone', { ...DASHBOARD, id: 2 })
-    .on('DELETE', '/api/report/dashboards/1', null);
+    .on('DELETE', '/api/report/dashboards/1', null)
+    .on('GET', '/api/report/dashboards/1/shares', [])
+    .on('GET', '/api/report/dashboards/2/shares', [])
+    .on('DELETE', '/api/report/dashboards/shares/9', null);
+});
+
+describe('useDeleteReportDashboardShare', () => {
+  it('删除分享链接：dashboardId 只作为失效上下文，不进入请求；只回源该看板的分享列表', async () => {
+    const qc = createTestQueryClient();
+    const { result } = renderHook(
+      () => ({ shares1: useReportDashboardShares(1), shares2: useReportDashboardShares(2), remove: useDeleteReportDashboardShare() }),
+      { wrapper: createWrapper(qc) },
+    );
+    await waitFor(() => {
+      expect(result.current.shares1.isSuccess).toBe(true);
+      expect(result.current.shares2.isSuccess).toBe(true);
+    });
+
+    const fetches = observeFetches(qc);
+    api.resetCalls();
+    await result.current.remove.mutateAsync({ params: { shareId: 9 }, dashboardId: 1 });
+    await waitFor(() => expect(fetches.countOf(reportDashboardKeys.shares(1))).toBe(1));
+
+    const deleteCall = api.calls.find((call) => call.method === 'DELETE');
+    expect(deleteCall?.url).toBe('/api/report/dashboards/shares/9');
+    expect(deleteCall?.body).toBeUndefined();
+    expect(fetches.countOf(reportDashboardKeys.shares(2))).toBe(0);
+    expect(isFresh(qc, reportDashboardKeys.shares(2))).toBe(true);
+    fetches.stop();
+  });
 });
 
 describe('useToggleReportDashboardFavorite', () => {

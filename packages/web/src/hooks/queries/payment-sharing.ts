@@ -1,4 +1,4 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
 import { paymentSharingContract } from '@zenith/shared/payment';
 import { api, useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
@@ -9,14 +9,17 @@ export type PaymentSharingOrderListParams = NonNullable<QueryOf<typeof paymentSh
 export type PaymentSharingReversalListParams = NonNullable<QueryOf<typeof paymentSharingContract.reversals>>;
 export type PaymentSharingReceiverSaveValues = Partial<BodyOf<typeof paymentSharingContract.createReceiver>>;
 
+/** 启用中的分账方下拉源取列表首页 100 条启用项：与分账方列表同一操作，只是固定了查询参数 */
+const ENABLED_RECEIVERS_QUERY: PaymentSharingReceiverListParams = { page: 1, pageSize: 100, status: 'enabled' };
+
 /** 分账方 / 分账单 / 冲正共用分账资源根，key 按操作名区分 */
 export const paymentSharingKeys = {
   receiverLists: contractKey(paymentSharingContract.receivers),
   receiverList: (params: PaymentSharingReceiverListParams) => contractKey(paymentSharingContract.receivers, { query: params }),
   receiverDetails: contractKey(paymentSharingContract.receiverDetail),
   receiverDetail: (id: number | undefined) => contractKey(paymentSharingContract.receiverDetail, { params: { id: id ?? 0 } }),
-  /** 启用中的分账方下拉源（发起分账弹窗） */
-  enabledReceivers: [...contractKey(paymentSharingContract.receivers), 'enabled'] as const,
+  /** 启用中的分账方下拉源（发起分账弹窗）：位于 receiverLists 前缀之下，随分账方增删改一并回源 */
+  enabledReceivers: contractKey(paymentSharingContract.receivers, { query: ENABLED_RECEIVERS_QUERY }),
   orderLists: contractKey(paymentSharingContract.orders),
   orderList: (params: PaymentSharingOrderListParams) => contractKey(paymentSharingContract.orders, { query: params }),
   reversalLists: contractKey(paymentSharingContract.reversals),
@@ -25,11 +28,10 @@ export const paymentSharingKeys = {
   reversalDetail: (id: number | undefined) => contractKey(paymentSharingContract.reversalDetail, { params: { id: id ?? 0 } }),
 };
 
-/** 分账方增删改：列表、详情与启用中下拉源一并回源；分账单不受影响 */
+/** 分账方增删改：列表（含启用中下拉源，同前缀）与详情一并回源；分账单不受影响 */
 function invalidateReceivers(qc: QueryClient) {
   void qc.invalidateQueries({ queryKey: paymentSharingKeys.receiverLists });
   void qc.invalidateQueries({ queryKey: paymentSharingKeys.receiverDetails });
-  void qc.invalidateQueries({ queryKey: paymentSharingKeys.enabledReceivers });
 }
 
 /** 分账 / 冲正改变分账单与冲正记录两份列表 */
@@ -50,7 +52,7 @@ export function useSavePaymentSharingReceiver() {
   });
 }
 
-/** 契约无批量删除操作，多选删除按单条并发执行 */
+/** H5 保留：契约无批量删除操作，多选删除按单条并发执行（mutationFn 组合多次请求） */
 export function useDeletePaymentSharingReceivers() {
   const qc = useQueryClient();
   return useMutation<null, Error, number[]>({
@@ -74,20 +76,13 @@ export function usePaymentSharingReversals(params: PaymentSharingReversalListPar
 }
 
 export function usePaymentSharingReversalDetail(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: paymentSharingKeys.reversalDetail(id),
-    queryFn: () => api(paymentSharingContract.reversalDetail, { params: { id: id ?? 0 } }),
-    enabled: enabled && id !== undefined,
-  });
+  return useApiQuery(paymentSharingContract.reversalDetail, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
 }
 
-/** 启用中的分账方下拉源：取列表首页 100 条启用项 */
+/** 启用中的分账方下拉源：与分账方列表共用缓存条目，只在 select 里投影为启用项数组 */
 export function useEnabledPaymentSharingReceivers(enabled = true) {
-  return useQuery({
-    queryKey: paymentSharingKeys.enabledReceivers,
-    queryFn: () =>
-      api(paymentSharingContract.receivers, { query: { page: 1, pageSize: 100, status: 'enabled' } })
-        .then((data) => data.list.filter((r) => r.status === 'enabled')),
+  return useApiQuery(paymentSharingContract.receivers, { query: ENABLED_RECEIVERS_QUERY }, {
+    select: (data) => data.list.filter((r) => r.status === 'enabled'),
     staleTime: LOOKUP_STALE_TIME,
     enabled,
   });

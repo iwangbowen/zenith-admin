@@ -1,7 +1,7 @@
-import { keepPreviousData, useQuery, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { paymentOpsContract, paymentOrderContract, paymentRefundContract } from '@zenith/shared/payment';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { invalidatePaymentRefunds, paymentRefundKeys } from './payment-refunds';
 import { paymentStatsKeys } from './payment-stats';
 
@@ -32,17 +32,11 @@ export function usePaymentOrderList(params: PaymentOrderListParams) {
 }
 
 export function usePaymentOrderDetail(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: paymentOrderKeys.detail(id),
-    queryFn: () => api(paymentOrderContract.orderDetail, { params: { id: id ?? 0 } }),
-    enabled: enabled && id !== undefined,
-  });
+  return useApiQuery(paymentOrderContract.orderDetail, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
 }
 
 export function usePaymentOrderByNo(orderNo: string | undefined, enabled = true) {
-  return useQuery({
-    queryKey: paymentOrderKeys.byNo(orderNo),
-    queryFn: () => api(paymentOrderContract.orderByNo, { params: { orderNo: orderNo ?? '' } }),
+  return useApiQuery(paymentOrderContract.orderByNo, { params: { orderNo: orderNo ?? '' } }, {
     enabled: enabled && !!orderNo,
     // 终态（成功/关闭/退款/失败）自动停止轮询，避免弹窗未及时关闭时空转
     refetchInterval: (query) => {
@@ -55,11 +49,7 @@ export function usePaymentOrderByNo(orderNo: string | undefined, enabled = true)
 }
 
 export function usePaymentOrderRefunds(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: paymentRefundKeys.byOrder(id),
-    queryFn: () => api(paymentRefundContract.orderRefunds, { params: { id: id ?? 0 } }),
-    enabled: enabled && id !== undefined,
-  });
+  return useApiQuery(paymentRefundContract.orderRefunds, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
 }
 
 export function useCreatePaymentOrder() {
