@@ -2,7 +2,7 @@
  * 行为中心阶段 1：用户分群 CRUD + 成员物化（异步任务）+ 成员明细查看。
  */
 import { useMemo, useState } from 'react';
-import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePagination } from '@/hooks/usePagination';
 import { Button, InputNumber, Input, Select, SideSheet, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
@@ -31,7 +31,6 @@ import type { AnalyticsSegmentAttributeCondition, AnalyticsSegmentCompareOp, Ana
 import { ANALYTICS_EVENT_OVERRIDE_STATUS_OPTIONS, ANALYTICS_CAMPAIGN_CHANNEL_OPTIONS, ANALYTICS_CAMPAIGN_STATUS_LABELS, ANALYTICS_IDENTITY_TYPE_OPTIONS, ANALYTICS_SEGMENT_COMPARE_OP_OPTIONS } from '@zenith/shared/analytics';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 const PAGE_SIZE = 20;
@@ -197,7 +196,11 @@ function CampaignDrawer({ segment, onClose }: { segment: AnalyticsUserSegment; o
       desktopInlineKeys: ['execute'],
       actions: (record) => [
         { key: 'execute', label: '执行', loading: executeCampaign.isPending, disabledReason: record.status === 'running' ? '执行中' : undefined, onClick: async () => { await executeCampaign.mutateAsync({ params: { id: record.id } }); Toast.success('触达任务已提交'); } },
-        { key: 'delete', label: '删除', danger: true, disabledReason: record.status === 'running' ? '执行中不可删' : undefined, onClick: () => { confirmDelete({ title: `确定删除触达「${record.name}」吗？`, onOk: () => deleteCampaign.mutateAsync({ params: { id: record.id } }) }); } },
+        deleteAction({
+          disabledReason: record.status === 'running' ? '执行中不可删' : undefined,
+          title: `确定删除触达「${record.name}」吗？`,
+          run: () => deleteCampaign.mutateAsync({ params: { id: record.id } }),
+        }),
       ],
     }),
   ];
@@ -336,11 +339,6 @@ export default function AnalyticsSegmentsTab() {
     setModalVisible(false);
   };
 
-  const handleDelete = async (record: AnalyticsUserSegment) => {
-    await deleteMutation.mutateAsync({ params: { id: record.id } });
-    Toast.success('删除成功');
-  };
-
   const handleMaterialize = async (record: AnalyticsUserSegment) => {
     await materializeMutation.mutateAsync({ params: { id: record.id } });
     Toast.success('重算任务已提交，可在顶部任务中心查看进度');
@@ -376,17 +374,10 @@ export default function AnalyticsSegmentsTab() {
         { key: 'campaign', label: '触达', onClick: () => setCampaignSegment(record) },
         { key: 'materialize', label: '重算', loading: materializeMutation.isPending, onClick: () => handleMaterialize(record) },
         { key: 'edit', label: '编辑', onClick: () => openEdit(record) },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: `确定删除分群「${record.name}」吗？`,
-              onOk: () => handleDelete(record),
-            });
-          },
-        },
+        deleteAction({
+          title: `确定删除分群「${record.name}」吗？`,
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+        }),
       ],
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps

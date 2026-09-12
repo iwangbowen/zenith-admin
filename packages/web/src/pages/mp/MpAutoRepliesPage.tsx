@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, Col, Form, Input, Row, Select, Space, Spin, Tag, Toast, Switch, Typography } from '@douyinfe/semi-ui';
 import { Plus, Trash2, Flame } from 'lucide-react';
 import { enumValueOf } from '@zenith/shared/core';
@@ -27,7 +27,6 @@ import {
 } from '@/hooks/queries/mp-auto-replies';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 
 const REPLY_TYPE_OPTIONS = [
@@ -144,16 +143,6 @@ export default function MpAutoRepliesPage() {
     Toast.success(status === 'enabled' ? '已启用' : '已禁用');
   };
 
-  const handleDelete = (record: MpAutoReply) => {
-    confirmDelete({
-      title: '确定要删除该自动回复吗？',
-      onOk: async () => {
-        await deleteMutation.mutateAsync([record.id]);
-        Toast.success('删除成功');
-      },
-    });
-  };
-
   const updateArticle = (idx: number, patch: Partial<MpReplyArticle>) => {
     setArticles((prev) => prev.map((a, i) => (i === idx ? { ...a, ...patch } : a)));
   };
@@ -181,7 +170,11 @@ export default function MpAutoRepliesPage() {
       menuAriaLabel: '自动回复操作',
       actions: (record) => [
         { key: 'edit', label: '编辑', hidden: !can('mp:reply:update'), onClick: () => openEdit(record) },
-        { key: 'delete', label: '删除', danger: true, hidden: !can('mp:reply:delete'), onClick: () => handleDelete(record) },
+        deleteAction({
+          hidden: !can('mp:reply:delete'),
+          title: '确定要删除该自动回复吗？',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];

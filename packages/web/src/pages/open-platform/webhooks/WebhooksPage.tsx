@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, Tag, TagGroup, Modal, Form, Toast, Typography, Banner, SideSheet, Descriptions } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
@@ -29,7 +29,7 @@ import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton, ResetButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDanger, confirmDelete } from '@/utils/confirm';
+import { confirmDanger } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
@@ -185,10 +185,6 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
     modal.openEdit(record);
   }
 
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync({ params: { id } });
-    Toast.success('删除成功');
-  }
   async function handleRegenerate(id: number) {
     const res = await regenerateMutation.mutateAsync({ params: { id } });
     if (res.secret) { setOneTimeSecret(res.secret); setSecretModal(true); }
@@ -258,12 +254,12 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
             confirmDanger({ title: '重置签名密钥？旧密钥将立即失效', onOk: () => handleRegenerate(record.id) });
           },
         },
-        {
-          key: 'delete', label: '删除', danger: true, hidden: !canManage,
-          onClick: () => {
-            confirmDelete({ title: '确定删除此 Webhook 订阅？', content: '关联投递日志将一并删除', onOk: () => handleDelete(record.id) });
-          },
-        },
+        deleteAction({
+          hidden: !canManage,
+          title: '确定删除此 Webhook 订阅？',
+          content: '关联投递日志将一并删除',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+        }),
       ],
     }),
   ];

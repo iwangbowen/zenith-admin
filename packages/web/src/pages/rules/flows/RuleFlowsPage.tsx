@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, Form, Input, List, Modal, Select, SideSheet, Space, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
@@ -26,7 +26,6 @@ import {
 import { PUBLISHABLE_STATUS_META as STATUS } from '@/lib/publishable-status';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 import { JsonBlock } from '@/components/JsonBlock';
 import { abortSubmit } from '@/lib/abort-submit';
@@ -105,11 +104,6 @@ export default function RuleFlowsPage() {
     okButtonProps: r.status === 'disabled' ? undefined : { type: 'danger' },
     onOk: async () => { await toggleMutation.mutateAsync({ params: { id: r.id }, body: { enabled: r.status === 'disabled' } }); Toast.success('操作成功'); },
   }); };
-  const handleDelete = (r: RuleDecisionFlow) => { confirmDelete({
-    title: '确定删除？', content: '删除后不可恢复',
-    onOk: async () => { await deleteMutation.mutateAsync({ params: { id: r.id } }); Toast.success('删除成功'); },
-  }); };
-
   const runTest = async () => {
     if (!testRow) return;
     let input: Record<string, unknown>;
@@ -144,7 +138,12 @@ export default function RuleFlowsPage() {
         { key: 'publish', label: '发布', hidden: !canPublish || r.status === 'disabled', onClick: () => handlePublish(r) },
         { key: 'versions', label: '版本', onClick: () => setVersionsRow(r) },
         { key: 'toggle', label: r.status === 'disabled' ? '启用' : '停用', danger: r.status !== 'disabled', hidden: !canPublish, onClick: () => handleToggle(r) },
-        { key: 'delete', label: '删除', danger: true, hidden: !canDelete, onClick: () => handleDelete(r) },
+        deleteAction({
+          hidden: !canDelete,
+          title: '确定删除？',
+          content: '删除后不可恢复',
+          run: () => deleteMutation.mutateAsync({ params: { id: r.id } }),
+        }),
       ],
     }),
   ];

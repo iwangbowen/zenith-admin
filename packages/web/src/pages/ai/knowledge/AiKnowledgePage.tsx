@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { deleteAction } from '@/components/list-page';
 import { Button, Form, SideSheet, Space, Tag, Toast, Typography, Upload } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -22,7 +23,6 @@ import {
 } from '@/hooks/queries/ai-extras';
 import { CreateButton, ResetButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
 
@@ -140,22 +140,12 @@ export default function AiKnowledgePage() {
           hidden: !hasPermission('ai:kb:edit'),
           onClick: () => { kbModal.openEdit(record); },
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('ai:kb:delete'),
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该知识库吗？',
-              content: '将级联删除全部文档与分块，且解除已挂载对话',
-              onOk: async () => {
-                await deleteMutation.mutateAsync({ params: { id: record.id } });
-                Toast.success('删除成功');
-              },
-            });
-          },
-        },
+          title: '确定要删除该知识库吗？',
+          content: '将级联删除全部文档与分块，且解除已挂载对话',
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+        }),
       ],
     }),
   ];
@@ -183,22 +173,14 @@ export default function AiKnowledgePage() {
           label: '查看',
           onClick: () => setViewingDoc(record),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('ai:kb:edit'),
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该文档吗？',
-              onOk: async () => {
-                if (!docsKb) return;
-                await deleteDocMutation.mutateAsync({ params: { id: docsKb.id, docId: record.id } });
-                Toast.success('删除成功');
-              },
-            });
+          title: '确定要删除该文档吗？',
+          run: async () => {
+            if (!docsKb) return;
+            await deleteDocMutation.mutateAsync({ params: { id: docsKb.id, docId: record.id } });
           },
-        },
+        }),
       ],
     }),
   ];

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, Form, Input, Modal, Select, Spin, Tag, Toast, Upload, Typography } from '@douyinfe/semi-ui';
 import { RefreshCw, UploadCloud } from 'lucide-react';
 import { MP_MATERIAL_TYPES, MP_MATERIAL_TYPE_LABELS, MP_MATERIAL_TYPE_OPTIONS } from '@zenith/shared/mp';
@@ -24,7 +24,6 @@ import {
 } from '@/hooks/queries/mp-materials';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 import { enumValueOf, formatBytes } from '@zenith/shared/core';
 
@@ -76,16 +75,6 @@ export default function MpMaterialsPage() {
     },
   });
 
-  const handleDelete = (record: MpMaterial) => {
-    confirmDelete({
-      title: `确定要删除素材「${record.name}」吗？`,
-      onOk: async () => {
-        await deleteMutation.mutateAsync([record.id]);
-        Toast.success('删除成功');
-      },
-    });
-  };
-
   const columns = [
     {
       title: '预览', dataIndex: 'url', width: 90,
@@ -106,7 +95,11 @@ export default function MpMaterialsPage() {
       menuAriaLabel: '素材操作',
       actions: (record) => [
         { key: 'rename', label: '重命名', hidden: !can('mp:material:update'), onClick: () => modal.openEdit(record) },
-        { key: 'delete', label: '删除', danger: true, hidden: !can('mp:material:delete'), onClick: () => handleDelete(record) },
+        deleteAction({
+          hidden: !can('mp:material:delete'),
+          title: `确定要删除素材「${record.name}」吗？`,
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];

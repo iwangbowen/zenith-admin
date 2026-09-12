@@ -1,4 +1,4 @@
-import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Avatar, Button, Form, Space, Spin, Tag, Toast } from '@douyinfe/semi-ui';
 import { RefreshCw } from 'lucide-react';
 import type { CreateMpKfAccountInput, MpKfAccount } from '@zenith/shared/mp';
@@ -21,7 +21,6 @@ import {
 } from '@/hooks/queries/mp-kf';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 
 const INVITE_LABEL: Record<string, { label: string; color: 'green' | 'orange' | 'grey' }> = {
@@ -61,17 +60,6 @@ export default function MpKfAccountsPage() {
     },
   });
 
-  const handleDelete = (record: MpKfAccount) => {
-    confirmDelete({
-      title: `确定删除客服「${record.nickname}」吗？`,
-      content: '将同时删除微信侧客服账号。',
-      onOk: async () => {
-        await deleteMutation.mutateAsync([record.id]);
-        Toast.success('删除成功');
-      },
-    });
-  };
-
   const columns = [
     {
       title: '客服', dataIndex: 'nickname', width: 200,
@@ -95,7 +83,12 @@ export default function MpKfAccountsPage() {
       menuAriaLabel: '多客服操作',
       actions: (record) => [
         { key: 'edit', label: '编辑', hidden: !can('mp:kf:update'), onClick: () => modal.openEdit(record) },
-        { key: 'delete', label: '删除', danger: true, hidden: !can('mp:kf:delete'), onClick: () => handleDelete(record) },
+        deleteAction({
+          hidden: !can('mp:kf:delete'),
+          title: `确定删除客服「${record.nickname}」吗？`,
+          content: '将同时删除微信侧客服账号。',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];

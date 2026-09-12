@@ -9,7 +9,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { listTableProps } from '@/components/list-page';
+import { deleteAction, listTableProps } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
@@ -30,7 +30,6 @@ import {
   useSyncMpTemplates,
 } from '@/hooks/queries/mp-templates';
 import { RefreshButton } from '@/components/toolbar-controls';
-import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
@@ -112,16 +111,6 @@ export default function MpTemplateMessagesPage() {
     setIndustryVisible(false);
   };
 
-  const handleDeleteTpl = (record: MpMessageTemplate) => {
-    confirmDelete({
-      title: `确定删除模板「${record.title}」吗？`,
-      onOk: async () => {
-        await deleteMutation.mutateAsync([record.id]);
-        Toast.success('删除成功');
-      },
-    });
-  };
-
   const tplColumns = [
     { title: '模板标题', dataIndex: 'title', width: 180, render: renderEllipsis },
     { title: '模板ID', dataIndex: 'templateId', width: 200, render: renderEllipsis },
@@ -132,7 +121,11 @@ export default function MpTemplateMessagesPage() {
       menuAriaLabel: '模板库操作',
       actions: (record) => [
         { key: 'send', label: '发送', hidden: !can('mp:template:send'), onClick: () => openSend(record) },
-        { key: 'delete', label: '删除', danger: true, hidden: !can('mp:template:delete'), onClick: () => handleDeleteTpl(record) },
+        deleteAction({
+          hidden: !can('mp:template:delete'),
+          title: `确定删除模板「${record.title}」吗？`,
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, Input, Space, Spin, Tag, Toast, Typography, TextArea } from '@douyinfe/semi-ui';
 import { Plus, Trash2 } from 'lucide-react';
 import type { MpDraft, MpArticle } from '@zenith/shared/mp';
@@ -22,7 +22,6 @@ import {
 } from '@/hooks/queries/mp-drafts';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 
 const blankArticle = (): MpArticle => ({ title: '', author: '', digest: '', content: '', thumbUrl: '', showCoverPic: true });
@@ -74,16 +73,6 @@ export default function MpDraftsPage() {
     Toast.success('已推送到微信草稿箱');
   };
 
-  const handleDelete = (record: MpDraft) => {
-    confirmDelete({
-      title: `确定删除图文「${record.title}」吗？`,
-      onOk: async () => {
-        await deleteMutation.mutateAsync([record.id]);
-        Toast.success('删除成功');
-      },
-    });
-  };
-
   const columns = [
     { title: '标题', dataIndex: 'title', minWidth: 220, render: renderEllipsis },
     { title: '文章数', dataIndex: 'articles', width: 90, render: (v: MpArticle[]) => `${v?.length ?? 0} 篇` },
@@ -100,7 +89,11 @@ export default function MpDraftsPage() {
       actions: (record) => [
         { key: 'edit', label: '编辑', hidden: !can('mp:draft:update'), onClick: () => openEdit(record) },
         { key: 'push', label: '推送', loading: pushingId === record.id, hidden: !can('mp:draft:push'), onClick: () => void handlePush(record) },
-        { key: 'delete', label: '删除', danger: true, hidden: !can('mp:draft:delete'), onClick: () => handleDelete(record) },
+        deleteAction({
+          hidden: !can('mp:draft:delete'),
+          title: `确定删除图文「${record.title}」吗？`,
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];

@@ -305,7 +305,6 @@ export default function DictsPage() {
   const handleItemDelete = async (id: number) => {
     if (!selectedDict) return;
     await deleteItemMutation.mutateAsync({ params: { id: selectedDict.id, itemId: id } });
-    Toast.success('删除成功');
   };
 
   const openCreateItem = (parentId: number | null = null) => {

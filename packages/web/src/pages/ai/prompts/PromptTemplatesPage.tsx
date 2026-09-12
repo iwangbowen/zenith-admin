@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, Col, Form, Modal, Row, SideSheet, Space, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useQueryClient } from '@tanstack/react-query';
@@ -20,7 +20,6 @@ import { useAiPromptVersions, useRestoreAiPromptVersion } from '@/hooks/queries/
 import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 
 interface SearchParams {
@@ -103,11 +102,6 @@ export default function PromptTemplatesPage() {
   });
   const openEdit = promptModal.openEdit;
 
-  async function handleDelete(id: number) {
-    await deleteMutation.mutateAsync([id]);
-    Toast.success('删除成功');
-  }
-
   const columns: ColumnProps<AiPromptTemplate>[] = [
     { title: '名称', dataIndex: 'name', width: 180, render: renderEllipsis },
     { title: '分类', dataIndex: 'category', width: 120, render: renderEllipsis },
@@ -138,19 +132,12 @@ export default function PromptTemplatesPage() {
           label: '版本',
           onClick: () => setVersionTemplate(record),
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
+        deleteAction({
           hidden: !hasPermission('ai:prompt:delete') || record.isBuiltin,
-          onClick: () => {
-            confirmDelete({
-              title: '确定要删除该提示词模板吗？',
-              content: '删除后不可恢复',
-              onOk: () => handleDelete(record.id),
-            });
-          },
-        },
+          title: '确定要删除该提示词模板吗？',
+          content: '删除后不可恢复',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];

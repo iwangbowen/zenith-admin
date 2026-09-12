@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -79,7 +79,6 @@ import {
 } from '@/hooks/queries/analytics';
 import { SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { toUserOptions } from '@/hooks/queries/users';
 import { formatBytes } from '@zenith/shared/core';
@@ -525,32 +524,13 @@ export default function FrontendErrorsPage() {
 
   const batchDeleteGroups = useCallback(() => {
     if (selectedRowKeys.length === 0) return;
-    confirmDelete({
+    confirmAndDelete({
       title: `确认删除选中的 ${selectedRowKeys.length} 个错误 Issue？`,
       content: '删除后无法恢复，请确认操作。',
-      onOk: async () => {
-        await batchDeleteMutation.mutateAsync({ body: { ids: selectedRowKeys } });
-        Toast.success('删除成功');
-        clearSelection();
-      },
+      run: () => batchDeleteMutation.mutateAsync({ body: { ids: selectedRowKeys } }),
+      onDeleted: clearSelection,
     });
   }, [batchDeleteMutation, selectedRowKeys, clearSelection]);
-
-  const deleteGroup = useCallback((record: ErrorGroup) => {
-    confirmDelete({
-      title: '确认删除该错误 Issue？',
-      content: `即将删除「${record.message}」，删除后无法恢复。`,
-      onOk: async () => {
-        await batchDeleteMutation.mutateAsync({ body: { ids: [record.id] } });
-        Toast.success('删除成功');
-        setSelectedRowKeys((prev) => prev.filter((key) => key !== record.id));
-        if (detailGroupId === record.id) {
-          setDetailVisible(false);
-          setDetailGroupId(undefined);
-        }
-      },
-    });
-  }, [batchDeleteMutation, detailGroupId, setSelectedRowKeys]);
 
   const saveGroupHandle = useCallback(async () => {
     if (!detail) return;
@@ -566,11 +546,6 @@ export default function FrontendErrorsPage() {
     Toast.success('保存成功');
     void queryClient.invalidateQueries({ queryKey: analyticsKeys.frontendErrors.groupDetail(detail.group.id) });
   }, [detail, groupForm, queryClient, updateGroupMutation]);
-
-  const deleteSourceMap = useCallback(async (id: number) => {
-    await deleteSourceMapMutation.mutateAsync({ params: { id } });
-    Toast.success('删除成功');
-  }, [deleteSourceMapMutation]);
 
   const submitSourceMap = useCallback(async () => {
     if (!uploadForm.release.trim()) {
@@ -632,11 +607,6 @@ export default function FrontendErrorsPage() {
     Toast.success(editingAlert ? '更新成功' : '创建成功');
     setAlertModalVisible(false);
   }, [alertForm, editingAlert, saveAlertMutation]);
-
-  const deleteAlert = useCallback(async (id: number) => {
-    await deleteAlertMutation.mutateAsync({ params: { id } });
-    Toast.success('删除成功');
-  }, [deleteAlertMutation]);
 
   const toggleAlert = useCallback(async (rule: ErrorAlertRule, enabled: boolean) => {
     await saveAlertMutation.mutateAsync({ id: rule.id, values: { enabled } });
@@ -742,15 +712,21 @@ export default function FrontendErrorsPage() {
           label: '忽略',
           onClick: () => { void updateGroupStatus(record.id, 'ignored'); },
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => deleteGroup(record),
-        },
+        deleteAction({
+          title: '确认删除该错误 Issue？',
+          content: `即将删除「${record.message}」，删除后无法恢复。`,
+          run: () => batchDeleteMutation.mutateAsync({ body: { ids: [record.id] } }),
+          onDeleted: () => {
+            setSelectedRowKeys((prev) => prev.filter((key) => key !== record.id));
+            if (detailGroupId === record.id) {
+              setDetailVisible(false);
+              setDetailGroupId(undefined);
+            }
+          },
+        }),
       ],
     }),
-  ], [deleteGroup, openGroupDetail, updateGroupStatus]);
+  ], [batchDeleteMutation, detailGroupId, openGroupDetail, setSelectedRowKeys, updateGroupStatus]);
 
   const eventColumns = useMemo<ColumnProps<ErrorEvent>[]>(() => [
     { title: '类型', dataIndex: 'errorType', width: 140, render: (_value, record) => <TypeTag type={record.errorType} /> },
@@ -797,20 +773,13 @@ export default function FrontendErrorsPage() {
       width: 100,
       desktopInlineKeys: ['delete'],
       actions: (record) => [
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: '确定删除该 Source Map？',
-              onOk: () => deleteSourceMap(record.id),
-            });
-          },
-        },
+        deleteAction({
+          title: '确定删除该 Source Map？',
+          run: () => deleteSourceMapMutation.mutateAsync({ params: { id: record.id } }),
+        }),
       ],
     }),
-  ], [deleteSourceMap]);
+  ], [deleteSourceMapMutation]);
 
   const alertColumns = useMemo<ColumnProps<ErrorAlertRule>[]>(() => [
     { title: '名称', dataIndex: 'name', minWidth: 180 },
@@ -855,20 +824,13 @@ export default function FrontendErrorsPage() {
             void testAlertMutation.mutateAsync({ params: { id: record.id } }).then(() => Toast.success('测试消息已发送，请检查通知渠道'));
           },
         },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: '确定删除该告警规则？',
-              onOk: () => deleteAlert(record.id),
-            });
-          },
-        },
+        deleteAction({
+          title: '确定删除该告警规则？',
+          run: () => deleteAlertMutation.mutateAsync({ params: { id: record.id } }),
+        }),
       ],
     }),
-  ], [deleteAlert, openAlertModal, testAlertMutation, toggleAlert]);
+  ], [deleteAlertMutation, openAlertModal, testAlertMutation, toggleAlert]);
 
   const alertLogColumns = useMemo<ColumnProps<ErrorAlertLog>[]>(() => [
     dateTimeColumn('触发时间', 'createdAt'),

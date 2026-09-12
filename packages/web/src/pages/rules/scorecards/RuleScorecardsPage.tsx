@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Banner, Button, Divider, Input, InputNumber, Modal, Select, Space, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, Trash2 } from 'lucide-react';
@@ -13,7 +13,6 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import {
   type RuleScorecardSaveValues,
   ruleScorecardKeys,
@@ -199,15 +198,12 @@ export default function RuleScorecardsPage() {
           key: 'toggle', label: r.status === 'disabled' ? '启用' : '停用', hidden: !canEdit || r.status === 'draft',
           onClick: async () => { await toggleMutation.mutateAsync({ params: { id: r.id }, body: { enabled: r.status === 'disabled' } }); Toast.success('操作成功'); },
         },
-        {
-          key: 'delete', label: '删除', danger: true, hidden: !canDelete,
-          onClick: () => {
-            confirmDelete({
-              title: `删除评分卡「${r.name}」？`, content: '删除后不可恢复',
-              onOk: async () => { await deleteMutation.mutateAsync({ params: { id: r.id } }); Toast.success('删除成功'); },
-            });
-          },
-        },
+        deleteAction({
+          hidden: !canDelete,
+          title: `删除评分卡「${r.name}」？`,
+          content: '删除后不可恢复',
+          run: () => deleteMutation.mutateAsync({ params: { id: r.id } }),
+        }),
       ],
     }),
   ];

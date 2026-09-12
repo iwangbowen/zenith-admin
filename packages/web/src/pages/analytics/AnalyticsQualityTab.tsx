@@ -2,7 +2,7 @@
  * 行为中心阶段 1：数据质量看板 —— 埋点质量日聚合明细 + 租户级事件启停覆盖管理。
  */
 import { useListSearch } from '@/hooks/useListSearch';
-import { Form, Select, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Form, Select, Space, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { AlertTriangle, ShieldAlert } from 'lucide-react';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
@@ -21,11 +21,10 @@ import { ANALYTICS_EVENT_OVERRIDE_STATUS_OPTIONS, ANALYTICS_QUALITY_ISSUE_TYPE_L
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
-import { confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 import { EMPTY_PLACEHOLDER, dateColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { ANALYTICS_ISSUE_TAG_COLOR } from './analytics-tag-colors';
-import { ListSearchToolbar } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar } from '@/components/list-page';
 
 const PAGE_SIZE = 20;
 const DAY_OPTIONS = [7, 30, 90].map((value) => ({ value, label: `${value} 天` }));
@@ -83,11 +82,6 @@ export default function AnalyticsQualityTab() {
     beforeSave: (values) => ({ eventName: values.eventName.trim(), status: values.status, reason: values.reason?.trim() || null }),
   });
 
-  const handleOverrideDelete = async (record: AnalyticsEventOverride) => {
-    await deleteOverrideMutation.mutateAsync({ params: { id: record.id } });
-    Toast.success('删除成功');
-  };
-
   const qualityColumns: ColumnProps<AnalyticsQualityDaily>[] = [
     dateColumn('日期', 'statDate'),
     { title: '事件名', dataIndex: 'eventName', width: 180, render: renderEllipsis },
@@ -129,17 +123,10 @@ export default function AnalyticsQualityTab() {
       desktopInlineKeys: ['edit', 'delete'],
       actions: (record) => [
         { key: 'edit', label: '编辑', onClick: () => overrideModal.openEdit(record) },
-        {
-          key: 'delete',
-          label: '删除',
-          danger: true,
-          onClick: () => {
-            confirmDelete({
-              title: `确定删除事件「${record.eventName}」的覆盖规则吗？`,
-              onOk: () => handleOverrideDelete(record),
-            });
-          },
-        },
+        deleteAction({
+          title: `确定删除事件「${record.eventName}」的覆盖规则吗？`,
+          run: () => deleteOverrideMutation.mutateAsync({ params: { id: record.id } }),
+        }),
       ],
     }),
   ];

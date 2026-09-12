@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { listTableProps, ListSearchToolbar } from '@/components/list-page';
+import { deleteAction, listTableProps, ListSearchToolbar } from '@/components/list-page';
 import { Form, Modal, Select, Spin, Tag, Toast, Banner, Tooltip, Input, Descriptions } from '@douyinfe/semi-ui';
 import { MP_BROADCAST_TYPE_LABELS, MP_BROADCAST_TYPE_OPTIONS } from '@zenith/shared/mp';
 import type { CreateMpBroadcastInput, MpBroadcast, MpBroadcastType, MpBroadcastTarget, MpBroadcastStatus } from '@zenith/shared/mp';
@@ -25,7 +25,6 @@ import {
   useSendMpBroadcast,
 } from '@/hooks/queries/mp-broadcasts';
 import { CreateButton } from '@/components/toolbar-controls';
-import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 import { StatusSelect } from '@/components/search-filters';
 
@@ -108,16 +107,6 @@ export default function MpBroadcastsPage() {
     });
   };
 
-  const handleDelete = (record: MpBroadcast) => {
-    confirmDelete({
-      title: '确定要删除该群发记录吗？',
-      onOk: async () => {
-        await deleteMutation.mutateAsync([record.id]);
-        Toast.success('删除成功');
-      },
-    });
-  };
-
   const handlePreview = async () => {
     if (!previewState.id || !previewOpenid.trim()) { Toast.warning('请输入预览 openid'); return; }
     await previewMutation.mutateAsync({ params: { id: previewState.id }, body: { openid: previewOpenid.trim() } });
@@ -172,7 +161,11 @@ export default function MpBroadcastsPage() {
         },
         { key: 'result', label: '结果', hidden: record.status !== 'sent', onClick: () => openResult(record) },
         { key: 'edit', label: '编辑', hidden: record.status === 'sent' || !can('mp:broadcast:update'), onClick: () => openEdit(record) },
-        { key: 'delete', label: '删除', danger: true, hidden: !can('mp:broadcast:delete'), onClick: () => handleDelete(record) },
+        deleteAction({
+          hidden: !can('mp:broadcast:delete'),
+          title: '确定要删除该群发记录吗？',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];

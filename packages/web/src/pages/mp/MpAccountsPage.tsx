@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import ModalFooter from '@/components/ModalFooter';
-import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Banner, Col, Form, Row, SideSheet, Spin, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import { MP_ACCOUNT_TYPES, type CreateMpAccountInput, type MpAccount, type MpAccountType } from '@zenith/shared/mp';
@@ -24,7 +24,6 @@ import {
 } from '@/hooks/queries/mp-accounts';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 
 const TYPE_OPTIONS = [
   { label: '订阅号', value: 'subscribe' },
@@ -117,16 +116,6 @@ export default function MpAccountsPage() {
     Toast.success(data.message || '连接成功');
   };
 
-  const handleDelete = (record: MpAccount) => {
-    confirmDelete({
-      title: `确定要删除公众号「${record.name}」吗？`,
-      onOk: async () => {
-        await deleteMutation.mutateAsync([record.id]);
-        Toast.success('删除成功');
-      },
-    });
-  };
-
   const handleToggleStatus = async (record: MpAccount, newStatus: 'enabled' | 'disabled') => {
     if (newStatus === 'disabled' && record.isDefault) {
       Toast.warning('默认公众号不能禁用，请先将其他公众号设为默认');
@@ -184,7 +173,11 @@ export default function MpAccountsPage() {
           hidden: !can('mp:account:token'),
           onClick: () => void handleTest(record),
         },
-        { key: 'delete', label: '删除', danger: true, hidden: !can('mp:account:delete'), onClick: () => handleDelete(record) },
+        deleteAction({
+          hidden: !can('mp:account:delete'),
+          title: `确定要删除公众号「${record.name}」吗？`,
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];

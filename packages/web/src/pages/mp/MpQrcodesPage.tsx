@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ListSearchToolbar, listTableProps } from '@/components/list-page';
-import { Button, Form, Image, Select, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { Button, Form, Image, Select, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import { Plus } from 'lucide-react';
 import { enumValueOf } from '@zenith/shared/core';
 import { MP_QRCODE_TYPES, type CreateMpQrcodeInput, type MpQrcode, type MpQrcodeType } from '@zenith/shared/mp';
@@ -15,7 +15,6 @@ import { MpAccountSwitcher } from './MpAccountSwitcher';
 import { mpQrcodeKeys, useCreateMpQrcode, useDeleteMpQrcodes, useMpQrcodeList } from '@/hooks/queries/mp-qrcodes';
 import { useListSearch } from '@/hooks/useListSearch';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
 
@@ -76,17 +75,6 @@ export default function MpQrcodesPage() {
 
   const openCreate = () => { setModalType('permanent'); createModal.openCreate(); };
 
-  const handleDelete = (record: MpQrcode) => {
-    confirmDelete({
-      title: '确定要删除该二维码吗？',
-      content: '删除后本地记录移除，已投放的二维码图片仍可能被扫描。',
-      onOk: async () => {
-        await deleteMutation.mutateAsync([record.id]);
-        Toast.success('删除成功');
-      },
-    });
-  };
-
   const columns = [
     { title: '名称', dataIndex: 'name', minWidth: 160, render: renderEllipsis },
     { title: '场景值', dataIndex: 'sceneStr', width: 180, render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
@@ -105,7 +93,12 @@ export default function MpQrcodesPage() {
       desktopInlineKeys: ['delete'],
       menuAriaLabel: '二维码操作',
       actions: (record) => [
-        { key: 'delete', label: '删除', danger: true, hidden: !can('mp:qrcode:delete'), onClick: () => handleDelete(record) },
+        deleteAction({
+          hidden: !can('mp:qrcode:delete'),
+          title: '确定要删除该二维码吗？',
+          content: '删除后本地记录移除，已投放的二维码图片仍可能被扫描。',
+          run: () => deleteMutation.mutateAsync([record.id]),
+        }),
       ],
     }),
   ];
