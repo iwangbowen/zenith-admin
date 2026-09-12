@@ -3,11 +3,11 @@ import { mock } from '@/mocks/utils/contract';
 import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { mockMpTemplates, mockMpTemplateLogs, getNextMpTemplateLogId } from '@/mocks/data/mp-templates';
 import { mockDateTime } from '@/mocks/utils/date';
-import { filterByKeyword } from '@/mocks/utils/filter';
+import { filterByKeyword, matchesFilter } from '@/mocks/utils/filter';
 
 export const mpTemplatesHandlers = [
   mock(mpTemplateContract.logs, ({ query, ok, paginate }) => {
-    const filtered = mockMpTemplateLogs.filter((l) => l.accountId === query.accountId && (!query.status || l.status === query.status));
+    const filtered = mockMpTemplateLogs.filter((l) => l.accountId === query.accountId && matchesFilter(l.status, query.status));
     return ok(paginate([...filtered].sort((a, b) => b.id - a.id)));
   }),
 

@@ -35,7 +35,7 @@ import { badRequest, conflict, forbidden, locked, notFound, unauthorized } from 
 import { mockDateTime } from '@/mocks/utils/date';
 import { removeWhere } from '@/mocks/utils/array';
 import { createImmediateMockTask } from './async-tasks';
-import { filterByKeyword } from '@/mocks/utils/filter';
+import { filterByKeyword, matchesFilter } from '@/mocks/utils/filter';
 import {
   MOCK_USER,
   getNextDriveCommentId,
@@ -477,7 +477,7 @@ const nodeStaticHandlers = [
     return ok(null, '已彻底删除');
   }),
   mock(driveNodeContract.emptyRecycle, ({ query, ok }) => {
-    removeWhere(mockDriveNodes, (n) => !!n.deletedAt && (!query.spaceId || n.spaceId === query.spaceId));
+    removeWhere(mockDriveNodes, (n) => !!n.deletedAt && matchesFilter(n.spaceId, query.spaceId));
     recalcMockDriveUsage();
     return ok(null, '回收站已清空');
   }),
@@ -1263,7 +1263,7 @@ const adminHandlers = [
     }
     return ok(request, body.approve ? '已通过并写入配额' : '已拒绝');
   }),
-  mock(driveAdminContract.openGrants, ({ query, ok }) => ok(mockOpenGrants.filter((g) => (!query.spaceId || g.spaceId === query.spaceId) && (!query.clientId || g.clientId === query.clientId)))),
+  mock(driveAdminContract.openGrants, ({ query, ok }) => ok(mockOpenGrants.filter((g) => matchesFilter(g.spaceId, query.spaceId) && matchesFilter(g.clientId, query.clientId)))),
   mock(driveAdminContract.createOpenGrant, ({ body, ok }) => {
     const space = requireItem(mockDriveSpaces, body.spaceId, '空间不存在', { status: 404 });
     if (space.type === 'personal') return badRequest('个人空间不能授权给开放应用', { status: 400 });
@@ -1317,7 +1317,7 @@ const collaborationHandlers = [
   mock(driveCollaborationContract.spaceActivities, ({ params, query, ok, paginate }) => {
     requireItem(mockDriveSpaces, params.id, '空间不存在');
     const list = filterByKeyword(mockDriveActivities.filter((activity) => activity.spaceId === params.id), query.keyword, [(activity) => activity.nodeName])
-      .filter((activity) => (!query.action || activity.action === query.action)
+      .filter((activity) => matchesFilter(activity.action, query.action)
         && (!query.startTime || activity.createdAt >= query.startTime)
         && (!query.endTime || activity.createdAt <= (query.endTime.length === 10 ? `${query.endTime} 23:59:59` : query.endTime)))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id - a.id);

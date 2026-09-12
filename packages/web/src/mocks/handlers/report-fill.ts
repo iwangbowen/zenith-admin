@@ -17,7 +17,7 @@ import { mockDateTime } from '@/mocks/utils/date';
 import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
 import { createProgressingMockTask } from './async-tasks';
 import { DEMO_TENANT_ID, DEMO_USER_ID, DEMO_USER_NAME } from './report-mock-utils';
-import { includesKeyword } from '@/mocks/utils/filter';
+import { includesKeyword, matchesFilter } from '@/mocks/utils/filter';
 
 function templateView(template: ReportFillTemplate): ReportFillTemplate {
   return {
@@ -122,9 +122,9 @@ export const reportFillHandlers = [
   mock(reportFillContract.templates, ({ query, ok, paginate }) => {
     const list = mockReportFillTemplates.filter((item) =>
       includesKeyword(query.keyword, item.name, item.code)
-      && (!query.status || item.status === query.status)
-      && (!query.ownerId || item.ownerId === query.ownerId)
-      && (!query.folderId || item.folderId === query.folderId))
+      && matchesFilter(item.status, query.status)
+      && matchesFilter(item.ownerId, query.ownerId)
+      && matchesFilter(item.folderId, query.folderId))
       .map(templateView);
     return ok(paginate(list));
   }),
@@ -236,17 +236,17 @@ export const reportFillHandlers = [
     const list = mockReportFillRecords.filter((item) =>
       item.submitterId === DEMO_USER_ID
       && includesKeyword(query.keyword, item.templateName)
-      && (!query.status || item.status === query.status)
-      && (!query.templateId || item.templateId === query.templateId))
+      && matchesFilter(item.status, query.status)
+      && matchesFilter(item.templateId, query.templateId))
       .map(recordView);
     return ok(paginate(list));
   }),
 
   mock(reportFillContract.adminRecords, ({ query, ok, paginate }) => {
     const list = mockReportFillRecords.filter((item) =>
-      (!query.status || item.status === query.status)
-      && (!query.templateId || item.templateId === query.templateId)
-      && (!query.submitterId || item.submitterId === query.submitterId))
+      matchesFilter(item.status, query.status)
+      && matchesFilter(item.templateId, query.templateId)
+      && matchesFilter(item.submitterId, query.submitterId))
       .map(recordView);
     return ok(paginate(list));
   }),

@@ -7,6 +7,7 @@ import { mockMenus } from '@/mocks/data/menus';
 import { mockLoginLogs, mockOperationLogs } from '@/mocks/data/logs';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 import { currentMockSession, isMockPlatformAdmin, mockAccessToken, mockRefreshToken, mockUserPermissions, resolveMockSession, MOCK_REFRESH_TOKEN_PREFIX } from '@/mocks/utils/auth';
+import { matchesFilter } from '@/mocks/utils/filter';
 
 function currentMockUser(request: Request) {
   return currentMockSession(request)?.user ?? mockUsers[0];
@@ -171,14 +172,14 @@ export const authHandlers = [
     const list = mockLoginLogs.filter((l) =>
       l.userId === userId
       && (!query.eventType || (l.eventType ?? 'login') === query.eventType)
-      && (!query.status || l.status === query.status));
+      && matchesFilter(l.status, query.status));
     return ok(paginate(list));
   }),
 
   // 我的操作记录（仅返回当前 mock 用户的记录）
   mock(authContract.myOperationLogs, ({ query, ok, paginate }) => {
     const userId = mockUsers[0].id;
-    const list = mockOperationLogs.filter((l) => l.userId === userId && (!query.module || l.module === query.module));
+    const list = mockOperationLogs.filter((l) => l.userId === userId && matchesFilter(l.module, query.module));
     return ok(paginate(list));
   }),
 

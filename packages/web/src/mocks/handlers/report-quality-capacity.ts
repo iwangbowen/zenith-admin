@@ -32,7 +32,7 @@ import { mockDate, mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
 import { createProgressingMockTask } from './async-tasks';
 import { DEMO_TENANT_ID, DEMO_USER_ID, DEMO_USER_NAME } from './report-mock-utils';
-import { includesKeyword } from '@/mocks/utils/filter';
+import { includesKeyword, matchesFilter } from '@/mocks/utils/filter';
 
 function dqRuleView(rule: ReportDqRule): ReportDqRule {
   return { ...rule, datasetName: mockReportDatasets.find((item) => item.id === rule.datasetId)?.name ?? null };
@@ -100,9 +100,9 @@ function usageSummary(resourceType: ReportResourceType, resourceId: number): Rep
 export const reportQualityCapacityHandlers = [
   mock(reportDqContract.rules, ({ query, ok, paginate }) => {
     const list = mockReportDqRules.filter((item) =>
-      (!query.datasetId || item.datasetId === query.datasetId)
-      && (!query.type || item.type === query.type)
-      && (query.enabled === undefined || item.enabled === query.enabled))
+      matchesFilter(item.datasetId, query.datasetId)
+      && matchesFilter(item.type, query.type)
+      && (matchesFilter(item.enabled, query.enabled)))
       .map(dqRuleView);
     return ok(paginate(list));
   }),
@@ -233,9 +233,9 @@ export const reportQualityCapacityHandlers = [
 
   mock(reportDqContract.runs, ({ query, ok, paginate }) => {
     const list = mockReportDqRuns.filter((item) =>
-      (!query.datasetId || item.datasetId === query.datasetId)
-      && (!query.ruleId || item.ruleId === query.ruleId)
-      && (!query.status || item.status === query.status));
+      matchesFilter(item.datasetId, query.datasetId)
+      && matchesFilter(item.ruleId, query.ruleId)
+      && matchesFilter(item.status, query.status));
     return ok(paginate(list));
   }),
 
@@ -247,8 +247,8 @@ export const reportQualityCapacityHandlers = [
 
   mock(reportDqContract.anomalies, ({ query, ok, paginate }) => {
     const list = mockReportDqAnomalies.filter((item) =>
-      (!query.datasetId || item.datasetId === query.datasetId)
-      && (!query.status || item.status === query.status));
+      matchesFilter(item.datasetId, query.datasetId)
+      && matchesFilter(item.status, query.status));
     return ok(paginate(list));
   }),
 
@@ -389,11 +389,11 @@ export const reportQualityCapacityHandlers = [
 
   mock(reportQueryCapacityContract.costLogs, ({ query, ok, paginate }) => {
     const list = mockReportQueryCostLogs.filter((item) =>
-      (!query.userId || item.userId === query.userId)
-      && (!query.datasetId || item.datasetId === query.datasetId)
-      && (!query.datasourceId || item.datasourceId === query.datasourceId)
-      && (!query.scene || item.scene === query.scene)
-      && (query.success === undefined || item.success === query.success));
+      matchesFilter(item.userId, query.userId)
+      && matchesFilter(item.datasetId, query.datasetId)
+      && matchesFilter(item.datasourceId, query.datasourceId)
+      && matchesFilter(item.scene, query.scene)
+      && (matchesFilter(item.success, query.success)));
     return ok(paginate(list));
   }),
 
@@ -424,9 +424,9 @@ export const reportQualityCapacityHandlers = [
 
   mock(reportSlaContract.rules, ({ query, ok, paginate }) => {
     const list = mockReportSlaRules.filter((item) =>
-      (!query.datasetId || item.datasetId === query.datasetId)
-      && (!query.type || item.type === query.type)
-      && (query.enabled === undefined || item.enabled === query.enabled));
+      matchesFilter(item.datasetId, query.datasetId)
+      && matchesFilter(item.type, query.type)
+      && (matchesFilter(item.enabled, query.enabled)));
     return ok(paginate(list));
   }),
 
@@ -481,9 +481,9 @@ export const reportQualityCapacityHandlers = [
 
   mock(reportSlaContract.violations, ({ query, ok, paginate }) => {
     const list = mockReportSlaViolations.filter((item) =>
-      (!query.datasetId || item.datasetId === query.datasetId)
-      && (!query.ruleId || item.ruleId === query.ruleId)
-      && (!query.status || item.status === query.status));
+      matchesFilter(item.datasetId, query.datasetId)
+      && matchesFilter(item.ruleId, query.ruleId)
+      && matchesFilter(item.status, query.status));
     return ok(paginate(list));
   }),
 
@@ -508,10 +508,10 @@ export const reportQualityCapacityHandlers = [
     const list = assetCatalog().filter((item) =>
       includesKeyword(query.keyword, item.name)
       && (!types.length || types.includes(item.resourceType))
-      && (!query.ownerId || item.ownerId === query.ownerId)
-      && (!query.folderId || item.folderId === query.folderId)
-      && (!query.lifecycle || item.lifecycleStatus === query.lifecycle)
-      && (!query.status || item.status === query.status));
+      && matchesFilter(item.ownerId, query.ownerId)
+      && matchesFilter(item.folderId, query.folderId)
+      && matchesFilter(item.lifecycleStatus, query.lifecycle)
+      && matchesFilter(item.status, query.status));
     return ok(paginate(list));
   }),
 
@@ -545,8 +545,8 @@ export const reportQualityCapacityHandlers = [
 
   mock(reportAssetContract.deprecations, ({ query, ok, paginate }) => {
     const list = mockReportDeprecations.filter((item) =>
-      (!query.resourceType || item.resourceType === query.resourceType)
-      && (!query.resourceId || item.resourceId === query.resourceId)
+      matchesFilter(item.resourceType, query.resourceType)
+      && matchesFilter(item.resourceId, query.resourceId)
       && (query.published === undefined || Boolean(item.publishedAt) === query.published));
     return ok(paginate(list));
   }),
@@ -598,8 +598,8 @@ export const reportQualityCapacityHandlers = [
   mock(reportAssetContract.templates, ({ query, ok, paginate }) => {
     const list = mockReportAssetTemplates.filter((item) =>
       includesKeyword(query.keyword, item.name, item.code)
-      && (!query.type || item.type === query.type)
-      && (!query.status || item.status === query.status));
+      && matchesFilter(item.type, query.type)
+      && matchesFilter(item.status, query.status));
     return ok(paginate(list));
   }),
 

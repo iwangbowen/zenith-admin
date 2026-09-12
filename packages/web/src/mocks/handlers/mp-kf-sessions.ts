@@ -7,7 +7,7 @@ import {
 } from '@/mocks/data/mp-kf-sessions';
 import { mockMpKfAccounts } from '@/mocks/data/mp-kf-accounts';
 import { mockDateTime } from '@/mocks/utils/date';
-import { includesKeyword } from '@/mocks/utils/filter';
+import { includesKeyword, matchesFilter } from '@/mocks/utils/filter';
 
 function kfNick(kfId: number | null): string | null {
   if (!kfId) return null;
@@ -19,8 +19,8 @@ export const mpKfSessionsHandlers = [
   mock(mpKfSessionContract.list, ({ query, ok, paginate }) => {
     const filtered = mockMpKfSessions.filter((s) =>
       s.accountId === query.accountId
-      && (!query.status || s.status === query.status)
-      && (!query.kfId || s.kfId === query.kfId)
+      && matchesFilter(s.status, query.status)
+      && matchesFilter(s.kfId, query.kfId)
       && includesKeyword(query.keyword, s.openid, s.fanNickname));
     return ok(paginate(filtered));
   }),

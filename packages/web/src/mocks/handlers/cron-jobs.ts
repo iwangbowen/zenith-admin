@@ -7,7 +7,7 @@ import { notFound } from '@/mocks/utils/handlers';
 import { mockCronJobs, getNextCronJobId } from '@/mocks/data/system';
 import { mockCronJobLogs } from '@/mocks/data/cron-job-logs';
 import { mockDateTime } from '@/mocks/utils/date';
-import { filterByKeyword } from '@/mocks/utils/filter';
+import { filterByKeyword, matchesFilter } from '@/mocks/utils/filter';
 import { buildMockCronJobDetailStats, buildMockCronJobStats } from './cron-job-stats';
 
 export const cronJobsHandlers = [
@@ -21,8 +21,8 @@ export const cronJobsHandlers = [
     const from = query.startTime ? dayjs(query.startTime).valueOf() : null;
     const to = query.endTime ? dayjs(query.endTime.length === 10 ? `${query.endTime} 23:59:59` : query.endTime).valueOf() : null;
     const list = filterByKeyword(mockCronJobLogs, query.keyword, [(l) => l.jobName, (l) => l.output], { caseInsensitive: true })
-      .filter((l) => (!query.jobId || l.jobId === query.jobId)
-        && (!query.status || l.status === query.status)
+      .filter((l) => matchesFilter(l.jobId, query.jobId)
+        && matchesFilter(l.status, query.status)
         && (from == null || l.ts >= from)
         && (to == null || l.ts <= to));
     return ok(paginate(list));
@@ -47,7 +47,7 @@ export const cronJobsHandlers = [
   // 定时任务列表（分页）
   mock(cronJobContract.list, ({ query, ok, paginate }) => {
     const list = filterByKeyword(mockCronJobs, query.keyword, [(j) => j.name, (j) => j.handler])
-      .filter((j) => !query.status || j.status === query.status);
+      .filter((j) => matchesFilter(j.status, query.status));
     return ok(paginate(list));
   }),
 

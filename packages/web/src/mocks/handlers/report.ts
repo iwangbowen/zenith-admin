@@ -27,7 +27,7 @@ import {
 } from '@/mocks/data/report';
 import { createImmediateMockTask } from '@/mocks/handlers/async-tasks';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
-import { filterByKeyword, includesKeyword } from '@/mocks/utils/filter';
+import { filterByKeyword, includesKeyword, matchesFilter } from '@/mocks/utils/filter';
 import type {
   ReportAlertRule,
   ReportDashboard,
@@ -191,7 +191,7 @@ export const reportHandlers = [
   mock(reportDatasourceContract.test, ({ ok }) => ok({ ok: true, message: '连接成功（Demo 模拟）', latencyMs: 12 })),
   mock(reportDatasourceContract.list, ({ query, ok, paginate }) => {
     const list = mockReportDatasources.filter((d) =>
-      includesKeyword(query.keyword, d.name) && (!query.type || d.type === query.type) && (!query.status || d.status === query.status));
+      includesKeyword(query.keyword, d.name) && matchesFilter(d.type, query.type) && matchesFilter(d.status, query.status));
     return ok(paginate(list));
   }),
   mock(reportDatasourceContract.detail, ({ params, ok }) => {
@@ -284,8 +284,8 @@ export const reportHandlers = [
   mock(reportDatasetContract.list, ({ query, ok, paginate }) => {
     const list = mockReportDatasets.filter((d) =>
       includesKeyword(query.keyword, d.name)
-      && (!query.datasourceId || d.datasourceId === query.datasourceId)
-      && (!query.status || d.status === query.status));
+      && matchesFilter(d.datasourceId, query.datasourceId)
+      && matchesFilter(d.status, query.status));
     return ok(paginate(list));
   }),
   mock(reportDatasetContract.detail, ({ params, ok }) => {
@@ -375,7 +375,7 @@ export const reportHandlers = [
 
   mock(reportDashboardOpsContract.comments, ({ params, query, ok, paginate }) => {
     const list = mockReportComments
-      .filter((c) => c.dashboardId === params.id && (!query.widgetId || c.widgetId === query.widgetId))
+      .filter((c) => c.dashboardId === params.id && matchesFilter(c.widgetId, query.widgetId))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return ok(paginate(list));
   }),
@@ -413,8 +413,8 @@ export const reportHandlers = [
   mock(reportDashboardContract.list, ({ query, ok, paginate }) => {
     const list = mockReportDashboards.filter((d) =>
       includesKeyword(query.keyword, d.name)
-      && (!query.status || d.status === query.status)
-      && (!query.categoryId || d.categoryId === query.categoryId)
+      && matchesFilter(d.status, query.status)
+      && matchesFilter(d.categoryId, query.categoryId)
       && (!query.favorited || !!d.favorited));
     return ok(paginate(list));
   }),
@@ -668,9 +668,9 @@ export const reportHandlers = [
 
   mock(reportDeliveryRunContract.list, ({ query, ok, paginate }) => {
     const list = mockDeliveryRuns.filter((item) =>
-      (!query.targetType || item.targetType === query.targetType)
-      && (!query.subscriptionId || item.subscriptionId === query.subscriptionId)
-      && (!query.alertRuleId || item.alertRuleId === query.alertRuleId));
+      matchesFilter(item.targetType, query.targetType)
+      && matchesFilter(item.subscriptionId, query.subscriptionId)
+      && matchesFilter(item.alertRuleId, query.alertRuleId));
     return ok(paginate(list));
   }),
   mock(reportDeliveryRunContract.acknowledge, ({ params, body, ok }) => {

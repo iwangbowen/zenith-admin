@@ -49,6 +49,7 @@ packages/web/src/mocks/
 | 工具 | 用途 |
 | --- | --- |
 | `filterByKeyword(list, keyword, [selectors])`（`filter.ts`） | 关键词对多个字段做 `includes` 过滤；默认大小写敏感，需要时传 `{ caseInsensitive: true }` |
+| `matchesFilter(actual, expected)`（`filter.ts`） | 枚举 / ID / 布尔精确筛选：`expected` 为 `undefined` / `null` / 空串不过滤，否则严格相等；`false` / `0` 是有效筛选值 |
 | `requireItem(list, id, message)`（`crud.ts`） | 按 id 取记录，找不到抛出 `MockHttpError`，`mock()` 把它映射为 `notFound(message)` 响应 |
 | `updateItem(list, id, patch, { notFoundMessage, now })` | 取记录并 `Object.assign` 补丁，`now` 存在时写入 `updatedAt` |
 | `removeByIds(list, ids)` | 按 id 集合就地删除，返回删除数量 |
@@ -101,16 +102,16 @@ import { xxxContract } from '@zenith/shared/{业务域}';
 import type { Xxx } from '@zenith/shared/{业务域}';
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
-import { filterByKeyword } from '@/mocks/utils/filter';
+import { filterByKeyword, matchesFilter } from '@/mocks/utils/filter';
 import { removeByIds, requireItem, updateItem } from '@/mocks/utils/crud';
 import { mockXxxs, getNextXxxId } from '../data/xxxs';
 import { mockDateTime } from '../utils/date';
 
 export const xxxsHandlers = [
-  // ─── 列表：关键词搜索 + 状态筛选 + 分页 ────────────────────────────────
+  // ─── 列表：关键词搜索 + 状态筛选 + 分页（枚举 / 布尔筛选用 matchesFilter，不写 `!query.x || …`）──
   mock(xxxContract.list, ({ query, ok, paginate }) => {
-    let list = filterByKeyword(mockXxxs, query.keyword, [(x) => x.name, (x) => x.description]);
-    if (query.status) list = list.filter((x) => x.status === query.status);
+    const list = filterByKeyword(mockXxxs, query.keyword, [(x) => x.name, (x) => x.description])
+      .filter((x) => matchesFilter(x.status, query.status));
     return ok(paginate(list));
   }),
 

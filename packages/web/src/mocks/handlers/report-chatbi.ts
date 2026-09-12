@@ -17,7 +17,7 @@ import { mock } from '@/mocks/utils/contract';
 import { mockDateTime } from '@/mocks/utils/date';
 import { badRequest, conflict, forbidden, notFound } from '@/mocks/utils/handlers';
 import { DEMO_TENANT_ID, DEMO_USER_ID } from './report-mock-utils';
-import { includesKeyword } from '@/mocks/utils/filter';
+import { includesKeyword, matchesFilter } from '@/mocks/utils/filter';
 
 const SAFE_TABLES = ['menus', 'departments', 'users'] as const;
 
@@ -49,8 +49,8 @@ export const reportChatbiHandlers = [
     const list = mockReportChatbiSessions.filter((item) =>
       item.userId === DEMO_USER_ID
       && includesKeyword(query.keyword, item.title)
-      && (!query.status || item.status === query.status)
-      && (!query.userId || item.userId === query.userId));
+      && matchesFilter(item.status, query.status)
+      && matchesFilter(item.userId, query.userId));
     return ok(paginate(list));
   }),
 
@@ -293,7 +293,7 @@ export const reportChatbiHandlers = [
   mock(reportChatbiContract.audit, ({ query, ok, paginate }) => {
     const list = mockReportChatbiMessages.filter((item) =>
       item.role === 'assistant'
-      && (!query.userId || item.userId === query.userId)
+      && matchesFilter(item.userId, query.userId)
       && (!query.failedOnly || Boolean(item.errorMessage)));
     return ok(paginate(list));
   }),

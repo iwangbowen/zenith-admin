@@ -4,10 +4,11 @@ import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { badRequest } from '@/mocks/utils/handlers';
 import { mockMpBroadcasts, getNextMpBroadcastId } from '@/mocks/data/mp-broadcasts';
 import { mockDateTime } from '@/mocks/utils/date';
+import { matchesFilter } from '@/mocks/utils/filter';
 
 export const mpBroadcastsHandlers = [
   mock(mpBroadcastContract.list, ({ query, ok, paginate }) => {
-    const filtered = mockMpBroadcasts.filter((b) => b.accountId === query.accountId && (!query.status || b.status === query.status));
+    const filtered = mockMpBroadcasts.filter((b) => b.accountId === query.accountId && matchesFilter(b.status, query.status));
     return ok(paginate([...filtered].sort((a, b) => b.id - a.id)));
   }),
 

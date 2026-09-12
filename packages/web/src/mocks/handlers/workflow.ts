@@ -82,7 +82,7 @@ import { removeWhere } from '@/mocks/utils/array';
 import dayjs from 'dayjs';
 import { DATE_TIME_FORMAT } from '@/utils/date';
 import { mockWorkflowTriggerExecutions } from './workflow-trigger-executions';
-import { filterByKeyword } from '@/mocks/utils/filter';
+import { filterByKeyword, matchesFilter } from '@/mocks/utils/filter';
 
 /** 业务编号内存计数器（按 定义ID:周期键 自增），模拟后端的 workflow_serial_counters */
 const mockSerialCounters = new Map<string, number>();
@@ -2455,7 +2455,7 @@ export const workflowHandlers = [
     if (!flowData) return ok([]);
     const keyword = query.keyword?.trim().toLowerCase() ?? '';
     const groups = findNextApproverSelectNodes(flowData, task.nodeKey)
-      .filter((node) => !query.nodeKey || node.data.key === query.nodeKey)
+      .filter((node) => matchesFilter(node.data.key, query.nodeKey))
       .map((node) => {
         const scopeType = node.data.selectScopeType ?? 'user';
         const scopeIds = node.data.selectScopeIds ?? [];

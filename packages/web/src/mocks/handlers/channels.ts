@@ -16,7 +16,7 @@ import {
   type MockChannelMessage,
 } from '@/mocks/data/channels';
 import { mockDateTime } from '@/mocks/utils/date';
-import { filterByKeyword } from '@/mocks/utils/filter';
+import { filterByKeyword, matchesFilter } from '@/mocks/utils/filter';
 
 const CURRENT_USER_NAME = '超级管理员';
 let nextMenuId = 1000;
@@ -354,7 +354,7 @@ export const channelsHandlers = [
   // 消息记录列表（某频道全部 out 消息，可按状态过滤）
   mock(channelMessageContract.adminMessages, ({ params, query, ok, paginate }) => {
     const all = mockChannelMessages
-      .filter((m) => m.channelId === params.id && m.direction === 'out' && (!query.status || m.status === query.status))
+      .filter((m) => m.channelId === params.id && m.direction === 'out' && matchesFilter(m.status, query.status))
       .sort((a, b) => b.id - a.id);
     return ok(paginate(all));
   }),

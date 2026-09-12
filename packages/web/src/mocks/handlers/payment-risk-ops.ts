@@ -4,7 +4,7 @@ import { mockDateTime } from '@/mocks/utils/date';
 import { badRequest } from '@/mocks/utils/handlers';
 import { paymentRiskOpsContract, type PaymentRiskHit, type PaymentRiskReview } from '@zenith/shared/payment';
 import dayjs from 'dayjs';
-import { includesKeyword } from '@/mocks/utils/filter';
+import { includesKeyword, matchesFilter } from '@/mocks/utils/filter';
 
 const hits: PaymentRiskHit[] = [
   {
@@ -50,7 +50,7 @@ export const paymentRiskOpsHandlers = [
   mock(paymentRiskOpsContract.hits, ({ query, ok, paginate }) => {
     const filtered = hits.filter((h) =>
       includesKeyword(query.keyword, h.ruleName, h.orderNo, h.bizId) &&
-      (!query.action || h.action === query.action) && (!query.dimension || h.dimension === query.dimension) && (!query.channel || h.channel === query.channel) &&
+      matchesFilter(h.action, query.action) && matchesFilter(h.dimension, query.dimension) && matchesFilter(h.channel, query.channel) &&
       (!query.startTime || h.createdAt >= query.startTime) && (!query.endTime || h.createdAt <= query.endTime),
     );
     return ok(paginate([...filtered].sort((a, b) => b.id - a.id)));
@@ -58,7 +58,7 @@ export const paymentRiskOpsHandlers = [
   mock(paymentRiskOpsContract.reviews, ({ query, ok, paginate }) => {
     const filtered = reviews.filter((r) =>
       includesKeyword(query.keyword, r.reviewNo, r.orderNo, r.bizId) &&
-      (!query.status || r.status === query.status) && (!query.channel || r.channel === query.channel),
+      matchesFilter(r.status, query.status) && matchesFilter(r.channel, query.channel),
     );
     return ok(paginate([...filtered].sort((a, b) => b.id - a.id)));
   }),

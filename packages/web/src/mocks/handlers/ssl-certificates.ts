@@ -4,7 +4,7 @@ import { mock } from '@/mocks/utils/contract';
 import { requireItem } from '@/mocks/utils/crud';
 import { nextIdFrom } from '@/mocks/utils/handlers';
 import { mockDateTime } from '../utils/date';
-import { includesKeyword } from '@/mocks/utils/filter';
+import { includesKeyword, matchesFilter } from '@/mocks/utils/filter';
 
 const mockCerts: SslCertificate[] = [
   {
@@ -71,7 +71,7 @@ export const sslCertificatesHandlers = [
     const keyword = (query.keyword ?? '').toLowerCase();
     const filtered = mockCerts.filter((cert) => {
       const matchesKeyword = includesKeyword(keyword, cert.name, cert.domain, { caseInsensitive: true });
-      const matchesType = !query.type || cert.type === query.type;
+      const matchesType = matchesFilter(cert.type, query.type);
       return matchesKeyword && matchesType;
     });
     return ok(paginate(filtered));

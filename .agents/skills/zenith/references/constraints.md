@@ -262,7 +262,8 @@
 - **静态路径先于动态路径**：`mock(op)` 把 `{id}` 转成 `:id`，MSW 按数组顺序首个命中即返回——`all`（`/all`）、
   `removeBatch`（`/batch`）等静态路径的 handler 必须排在 `detail` / `remove`（`/{id}`）**之前**
 - **自增 ID**：用 `nextIdFrom(list)`；**禁止**手写 `Math.max(...list.map((x) => x.id)) + 1`（空列表得 `-Infinity`）
-- **机械 CRUD 用工具**：关键词多字段过滤用 `filterByKeyword`（`mocks/utils/filter.ts`），按 id 取 / 改 / 删 / 批删用
+- **机械 CRUD 用工具**：关键词多字段过滤用 `filterByKeyword`、枚举 / ID / 布尔精确筛选用 `matchesFilter(actual, expected)`
+  （`mocks/utils/filter.ts`；`!query.x || item.x === query.x` 会把 `false` / `0` 当成未筛选），按 id 取 / 改 / 删 / 批删用
   `requireItem` / `updateItem` / `removeItem` / `removeByIds`（`mocks/utils/crud.ts`，找不到抛 `MockHttpError`，`mock()` 映射为 404 响应；
   主键可为 number 或 string），表单或 JSON 请求体用 `readFormOrJsonBody`，`Idempotency-Key` 回放用 `resolveIdempotent`；
   **禁止**在 handler 里手写 `find → notFound → Object.assign` / `findIndex → notFound → splice` / 多字段 `includes` 链。

@@ -48,7 +48,7 @@ import { requireItem, updateItem } from '@/mocks/utils/crud';
 import { badRequest, nextIdFrom, notFound, pageResult } from '@/mocks/utils/handlers';
 import { mockDateTime, mockDateTimeOffset, mockDateOffset } from '../utils/date';
 import { createProgressingMockTask } from './async-tasks';
-import { filterByKeyword, includesKeyword } from '@/mocks/utils/filter';
+import { filterByKeyword, includesKeyword, matchesFilter } from '@/mocks/utils/filter';
 
 function daysAxis(days: number): string[] {
   const arr: string[] = [];
@@ -422,7 +422,7 @@ export const analyticsHandlers = [
   }),
 
   mock(analyticsExperimentContract.experiments, ({ query, ok, paginate }) => {
-    const list = mockExperiments.filter((exp) => (!query.name || exp.name.includes(query.name)) && (!query.status || exp.status === query.status));
+    const list = mockExperiments.filter((exp) => (!query.name || exp.name.includes(query.name)) && matchesFilter(exp.status, query.status));
     return ok(paginate(list));
   }),
 
@@ -808,8 +808,8 @@ export const analyticsHandlers = [
   mock(analyticsSiteContract.sites, ({ query, ok, paginate }) => {
     const list = mockSites.filter((site) =>
       (!query.name || site.name.includes(query.name))
-      && (!query.appId || site.appId === query.appId)
-      && (!query.status || site.status === query.status));
+      && matchesFilter(site.appId, query.appId)
+      && matchesFilter(site.status, query.status));
     return ok(paginate(list));
   }),
   mock(analyticsSiteContract.createSite, ({ body, ok }) => {
@@ -877,7 +877,7 @@ export const analyticsHandlers = [
   // ─── 租户覆盖（Tracking Plan 租户级启停）──────────────────────────────────
   mock(analyticsContract.eventOverrides, ({ query, ok, paginate }) => {
     const list = mockEventOverrides.filter((o) =>
-      (!query.eventName || o.eventName.includes(query.eventName)) && (!query.status || o.status === query.status));
+      (!query.eventName || o.eventName.includes(query.eventName)) && matchesFilter(o.status, query.status));
     return ok(paginate(list));
   }),
   mock(analyticsContract.createEventOverride, ({ body, ok }) => {
@@ -907,7 +907,7 @@ export const analyticsHandlers = [
     const filtered = mockQualityDaily.filter((row) =>
       row.statDate >= since
       && (!query.eventName || row.eventName.includes(query.eventName))
-      && (!query.issueType || row.issueType === query.issueType));
+      && matchesFilter(row.issueType, query.issueType));
     const totalsMap = new Map<AnalyticsQualityIssueType, number>();
     filtered.forEach((row) => totalsMap.set(row.issueType, (totalsMap.get(row.issueType) ?? 0) + row.count));
     const totals = Array.from(totalsMap.entries()).map(([type, count]) => ({ issueType: type, count }));
@@ -1033,7 +1033,7 @@ export const analyticsHandlers = [
   mock(analyticsContract.segments, ({ query, ok, paginate }) => {
     const list = mockSegments.filter((s) =>
       includesKeyword(query.keyword, s.name, s.description)
-      && (!query.status || s.status === query.status));
+      && matchesFilter(s.status, query.status));
     return ok(paginate(list));
   }),
   mock(analyticsContract.createSegment, ({ body, ok }) => {
@@ -1092,7 +1092,7 @@ export const analyticsHandlers = [
 
   // ─── 分群触达（消息中心 + Webhook）─────────────────────────────────────────
   mock(analyticsCampaignContract.campaigns, ({ query, ok, paginate }) => {
-    const list = mockCampaigns.filter((c) => (!query.segmentId || c.segmentId === query.segmentId) && (!query.status || c.status === query.status));
+    const list = mockCampaigns.filter((c) => matchesFilter(c.segmentId, query.segmentId) && matchesFilter(c.status, query.status));
     return ok(paginate(list));
   }),
   mock(analyticsCampaignContract.createCampaign, ({ body, ok }) => {

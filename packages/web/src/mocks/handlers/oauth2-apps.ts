@@ -4,7 +4,7 @@ import { mock } from '@/mocks/utils/contract';
 import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockDateTime } from '@/mocks/utils/date';
-import { includesKeyword } from '@/mocks/utils/filter';
+import { includesKeyword, matchesFilter } from '@/mocks/utils/filter';
 import { randomHex } from '@/mocks/utils/random';
 
 let nextId = 1;
@@ -138,8 +138,8 @@ export const oauth2AppsHandlers = [
   mock(oauth2ClientContract.list, ({ query, ok, paginate }) => {
     const filtered = mockOAuth2Clients.filter((client) =>
       includesKeyword(query.keyword, client.name)
-      && (!query.environment || client.environment === query.environment)
-      && (!query.reviewStatus || client.reviewStatus === query.reviewStatus),
+      && matchesFilter(client.environment, query.environment)
+      && matchesFilter(client.reviewStatus, query.reviewStatus),
     );
     return ok(paginate(filtered));
   }),

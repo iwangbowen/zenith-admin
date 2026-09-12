@@ -16,7 +16,7 @@ import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { mockDateTime } from '@/mocks/utils/date';
 import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
 import { recordMockSystemJournal } from './payment-journals';
-import { filterByKeyword } from '@/mocks/utils/filter';
+import { filterByKeyword, matchesFilter } from '@/mocks/utils/filter';
 
 const SEED = PAYMENT_MOCK_SEED_TIME;
 
@@ -93,7 +93,7 @@ function createBatchFromBill(applicationId: number, channel: PaymentChannel, cha
 
 const reconHandlers = [
   mock(paymentReconContract.list, ({ query, ok, paginate }) => {
-    const filtered = reconBatches.filter((b) => (!query.channel || b.channel === query.channel) && (!query.status || b.status === query.status));
+    const filtered = reconBatches.filter((b) => matchesFilter(b.channel, query.channel) && matchesFilter(b.status, query.status));
     return ok(paginate([...filtered].reverse()));
   }),
   mock(paymentReconContract.sampleBill, ({ query, ok }) => ok({ billText: sampleBill(query.channel) })),
@@ -119,7 +119,7 @@ const reconHandlers = [
     return ok(b);
   }),
   mock(paymentReconContract.items, ({ params, query, ok, paginate }) => {
-    const items = (reconItemsByBatch[params.id] ?? []).filter((i) => (!query.result || i.result === query.result) && (!query.handleStatus || i.handleStatus === query.handleStatus));
+    const items = (reconItemsByBatch[params.id] ?? []).filter((i) => matchesFilter(i.result, query.result) && matchesFilter(i.handleStatus, query.handleStatus));
     return ok(paginate(items));
   }),
   mock(paymentReconContract.handleItem, ({ params, body, ok }) => {
@@ -239,7 +239,7 @@ const opsHandlers = [
   mock(paymentOpsContract.health, ({ ok }) => ok(MOCK_OPS_HEALTH)),
   mock(paymentOpsContract.events, ({ query, ok, paginate }) => {
     const filtered = filterByKeyword(outboxEvents, query.keyword, [(e) => e.orderNo])
-      .filter((e) => (!query.status || e.status === query.status) && (!query.type || e.type === query.type));
+      .filter((e) => matchesFilter(e.status, query.status) && matchesFilter(e.type, query.type));
     return ok(paginate([...filtered].reverse()));
   }),
   mock(paymentOpsContract.redispatchEvent, ({ params, ok }) => {

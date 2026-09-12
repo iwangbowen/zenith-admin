@@ -24,7 +24,7 @@ import { removeByIds, removeItem, requireItem } from '@/mocks/utils/crud';
 import { mockDateTime } from '@/mocks/utils/date';
 import { badRequest, conflict, forbidden, notFound } from '@/mocks/utils/handlers';
 import { DEMO_TENANT_ID, DEMO_USER_ID, DEMO_USER_NAME } from './report-mock-utils';
-import { filterByKeyword, includesKeyword } from '@/mocks/utils/filter';
+import { filterByKeyword, includesKeyword, matchesFilter } from '@/mocks/utils/filter';
 
 type MutableResource = {
   id: number;
@@ -100,7 +100,7 @@ function filterGovernance<T extends { resourceType: ReportResourceType; status: 
   source: T[],
   query: { resourceType?: ReportResourceType; status?: string },
 ) {
-  return source.filter((item) => (!query.resourceType || item.resourceType === query.resourceType) && (!query.status || item.status === query.status));
+  return source.filter((item) => matchesFilter(item.resourceType, query.resourceType) && matchesFilter(item.status, query.status));
 }
 
 /** 指标发布 / 废弃：修订号匹配后推进生命周期 */
@@ -191,7 +191,7 @@ export const reportPlatformHandlers = [
 
   mock(reportMetricContract.lookup, ({ query, ok }) => {
     const list = filterByKeyword(mockReportMetrics, query.keyword, [(item) => item.name, (item) => item.code])
-      .filter((item) => !query.status || item.lifecycleStatus === query.status)
+      .filter((item) => matchesFilter(item.lifecycleStatus, query.status))
       .slice(0, query.limit)
       .map((item) => ({ id: item.id, name: item.name, code: item.code, status: item.lifecycleStatus, datasetId: item.datasetId, type: 'metric' as const }));
     return ok(list);
@@ -200,11 +200,11 @@ export const reportPlatformHandlers = [
   mock(reportMetricContract.list, ({ query, ok, paginate }) => {
     const list = mockReportMetrics.filter((item) =>
       includesKeyword(query.keyword, item.name, item.code)
-      && (!query.datasetId || item.datasetId === query.datasetId)
-      && (!query.folderId || item.folderId === query.folderId)
-      && (!query.ownerId || item.ownerId === query.ownerId)
-      && (!query.type || item.type === query.type)
-      && (!query.status || item.lifecycleStatus === query.status))
+      && matchesFilter(item.datasetId, query.datasetId)
+      && matchesFilter(item.folderId, query.folderId)
+      && matchesFilter(item.ownerId, query.ownerId)
+      && matchesFilter(item.type, query.type)
+      && matchesFilter(item.lifecycleStatus, query.status))
       .map(metricView);
     return ok(paginate(list));
   }),
@@ -474,8 +474,8 @@ export const reportPlatformHandlers = [
 
   mock(reportEnvironmentContract.promotions, ({ query, ok, paginate }) => {
     const list = mockReportPromotions.filter((item) =>
-      (!query.resourceType || item.resourceType === query.resourceType)
-      && (!query.status || item.status === query.status));
+      matchesFilter(item.resourceType, query.resourceType)
+      && matchesFilter(item.status, query.status));
     return ok(paginate(list));
   }),
 

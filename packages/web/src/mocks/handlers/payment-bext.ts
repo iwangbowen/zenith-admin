@@ -41,7 +41,7 @@ import { SEED_PAYMENT_METHOD_CONFIGS } from '@zenith/shared/seed';
 import { recordMockPaymentSucceeded } from './payment-ext';
 import { recordMockSystemJournal } from './payment-journals';
 import { mockOAuth2Clients } from './oauth2-apps';
-import { filterByKeyword, includesKeyword } from '@/mocks/utils/filter';
+import { filterByKeyword, includesKeyword, matchesFilter } from '@/mocks/utils/filter';
 import { removeByIds, requireItem, updateItem } from '@/mocks/utils/crud';
 
 const SEED = PAYMENT_MOCK_SEED_TIME;
@@ -74,7 +74,7 @@ let nextFeeId = 3;
 
 const feeHandlers = [
   mock(paymentFeeRuleContract.list, ({ query, ok, paginate }) => {
-    const filtered = feeRules.filter((r) => (!query.channel || r.channel === query.channel) && (!query.status || r.status === query.status));
+    const filtered = feeRules.filter((r) => matchesFilter(r.channel, query.channel) && matchesFilter(r.status, query.status));
     return ok(paginate([...filtered].sort((a, b) => b.priority - a.priority)));
   }),
   mock(paymentFeeRuleContract.detail, ({ params, ok }) => {
@@ -128,7 +128,7 @@ const TRANSITIONS: Record<PaymentSettlementStatus, PaymentSettlementStatus[]> = 
 
 const settlementHandlers = [
   mock(paymentSettlementContract.list, ({ query, ok, paginate }) => {
-    const filtered = settlements.filter((s) => (!query.channel || s.channel === query.channel) && (!query.status || s.status === query.status));
+    const filtered = settlements.filter((s) => matchesFilter(s.channel, query.channel) && matchesFilter(s.status, query.status));
     return ok(paginate([...filtered].reverse()));
   }),
   mock(paymentSettlementContract.items, ({ params, ok }) => {
@@ -233,7 +233,7 @@ const sharingReversalIdempotency = new Map<string, { requestHash: string; revers
 
 const sharingHandlers = [
   mock(paymentSharingContract.receivers, ({ query, ok, paginate }) => {
-    const filtered = filterByKeyword(receivers, query.keyword, [(r) => r.name]).filter((r) => !query.status || r.status === query.status);
+    const filtered = filterByKeyword(receivers, query.keyword, [(r) => r.name]).filter((r) => matchesFilter(r.status, query.status));
     return ok(paginate([...filtered].reverse()));
   }),
   mock(paymentSharingContract.receiverDetail, ({ params, ok }) => {
@@ -260,7 +260,7 @@ const sharingHandlers = [
   }),
   mock(paymentSharingContract.orders, ({ query, ok, paginate }) => {
     const filtered = filterByKeyword(sharingOrders, query.keyword, [(o) => o.orderNo])
-      .filter((o) => (!query.status || o.status === query.status) && (!query.receiverId || o.receiverId === query.receiverId));
+      .filter((o) => matchesFilter(o.status, query.status) && matchesFilter(o.receiverId, query.receiverId));
     return ok(paginate([...filtered].reverse()));
   }),
   mock(paymentSharingContract.dispatch, ({ body, ok }) => {
@@ -283,8 +283,8 @@ const sharingHandlers = [
   }),
   mock(paymentSharingContract.reversals, ({ query, ok, paginate }) => {
     const filtered = sharingReversals.filter((record) =>
-      (!query.sharingOrderId || record.sharingOrderId === query.sharingOrderId)
-      && (!query.status || record.status === query.status)
+      matchesFilter(record.sharingOrderId, query.sharingOrderId)
+      && matchesFilter(record.status, query.status)
       && (!query.startTime || record.createdAt >= query.startTime)
       && (!query.endTime || record.createdAt <= query.endTime));
     return ok(paginate([...filtered].reverse()));
@@ -559,7 +559,7 @@ function fillPaymentAppConfigNames(app: PaymentApp) {
 const appHandlers = [
   mock(paymentAppContract.list, ({ query, ok, paginate }) => {
     const filtered = filterByKeyword(apps, query.keyword, [(a) => a.name, (a) => a.openClientKey, (a) => a.openClientName])
-      .filter((a) => !query.status || a.status === query.status);
+      .filter((a) => matchesFilter(a.status, query.status));
     return ok(paginate([...filtered].reverse().map((a) => fillPaymentAppConfigNames({ ...a }))));
   }),
   mock(paymentAppContract.detail, ({ params, ok }) => {
@@ -616,7 +616,7 @@ let nextRiskId = 3;
 
 const riskHandlers = [
   mock(paymentRiskRuleContract.list, ({ query, ok, paginate }) => {
-    const filtered = riskRules.filter((r) => (!query.scope || r.scope === query.scope) && (!query.status || r.status === query.status));
+    const filtered = riskRules.filter((r) => matchesFilter(r.scope, query.scope) && matchesFilter(r.status, query.status));
     return ok(paginate([...filtered].reverse()));
   }),
   mock(paymentRiskRuleContract.detail, ({ params, ok }) => {
@@ -747,7 +747,7 @@ const transferIdempotency = new Map<string, { requestHash: string; transferId: n
 
 const transferHandlers = [
   mock(paymentTransferContract.summary, ({ query, ok }) => {
-    const scoped = transfers.filter((t) => !query.channel || t.channel === query.channel);
+    const scoped = transfers.filter((t) => matchesFilter(t.channel, query.channel));
     const success = scoped.filter((t) => t.status === 'success');
     return ok({
       totalAmount: success.reduce((s, t) => s + t.amount, 0),
@@ -760,9 +760,9 @@ const transferHandlers = [
     const filtered = transfers.filter(
       (t) =>
         includesKeyword(query.keyword, t.transferNo, t.receiverAccount) &&
-        (!query.channel || t.channel === query.channel) &&
-        (!query.status || t.status === query.status) &&
-        (!query.approvalStatus || t.approvalStatus === query.approvalStatus) &&
+        matchesFilter(t.channel, query.channel) &&
+        matchesFilter(t.status, query.status) &&
+        matchesFilter(t.approvalStatus, query.approvalStatus) &&
         (!query.startTime || t.createdAt >= query.startTime) &&
         (!query.endTime || t.createdAt <= query.endTime),
     );

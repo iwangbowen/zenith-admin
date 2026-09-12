@@ -32,3 +32,15 @@ export function filterByKeyword<T>(
   if (!keyword) return [...list];
   return list.filter((item) => includesKeyword(keyword, ...selectors.map((select) => select(item)), options));
 }
+
+/**
+ * 枚举 / ID / 布尔类精确筛选：`expected` 未传（`undefined` / `null` / 空串）即不过滤，否则严格相等。
+ * 与契约 `queryEnum` / `queryBool` 及前端 `compactParams` 的「空串 = 未筛选」一致——
+ * `false` / `0` 是有效筛选值，不要再写 `!query.x || item.x === query.x`（会把 false / 0 当成未筛选）。
+ *
+ * @example
+ * list.filter((item) => matchesFilter(item.status, query.status) && matchesFilter(item.channel, query.channel))
+ */
+export function matchesFilter<T>(actual: T, expected: T | null | undefined | ''): boolean {
+  return expected === undefined || expected === null || expected === '' || actual === expected;
+}

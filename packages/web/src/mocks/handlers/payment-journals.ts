@@ -11,7 +11,7 @@ import { mock } from '@/mocks/utils/contract';
 import { requireItem } from '@/mocks/utils/crud';
 import { mockDateTime } from '@/mocks/utils/date';
 import { badRequest, conflict } from '@/mocks/utils/handlers';
-import { filterByKeyword } from '@/mocks/utils/filter';
+import { filterByKeyword, matchesFilter } from '@/mocks/utils/filter';
 
 const accounts: PaymentLedgerAccount[] = [];
 const journals: PaymentJournal[] = [];
@@ -140,10 +140,10 @@ export const paymentJournalHandlers = [
   mock(paymentJournalContract.accounts, ({ query, ok, paginate }) => {
     const keyword = query.keyword?.trim() ?? '';
     const filtered = filterByKeyword(accounts, keyword, [(account) => account.accountNo, (account) => account.name]).filter((account) =>
-      (!query.appId || account.appId === query.appId)
-      && (!query.channelConfigId || account.channelConfigId === query.channelConfigId)
-      && (!query.currency || account.currency === query.currency)
-      && (!query.status || account.status === query.status));
+      matchesFilter(account.appId, query.appId)
+      && matchesFilter(account.channelConfigId, query.channelConfigId)
+      && matchesFilter(account.currency, query.currency)
+      && matchesFilter(account.status, query.status));
     return ok(paginate([...filtered].reverse()));
   }),
   mock(paymentJournalContract.createAccount, ({ body, ok }) => {
@@ -163,9 +163,9 @@ export const paymentJournalHandlers = [
     return ok({ accountId, amount: amount.toString() });
   }),
   mock(paymentJournalContract.reservations, ({ query, ok, paginate }) => {
-    const filtered = reservations.filter((reservation) => (!query.accountId || reservation.accountId === query.accountId)
-      && (!query.sourceType || reservation.sourceType === query.sourceType)
-      && (!query.status || reservation.status === query.status)
+    const filtered = reservations.filter((reservation) => matchesFilter(reservation.accountId, query.accountId)
+      && matchesFilter(reservation.sourceType, query.sourceType)
+      && matchesFilter(reservation.status, query.status)
       && (!query.startTime || reservation.createdAt >= query.startTime)
       && (!query.endTime || reservation.createdAt <= query.endTime));
     return ok(paginate([...filtered].reverse()));
@@ -204,10 +204,10 @@ export const paymentJournalHandlers = [
     return reservationTransition(reservation, 'release', body) ?? ok(reservation, '释放成功');
   }),
   mock(paymentJournalContract.list, ({ query, ok, paginate }) => {
-    const filtered = journals.filter((journal) => (!query.sourceType || journal.sourceType === query.sourceType)
-      && (!query.appId || journal.appId === query.appId)
-      && (!query.channelConfigId || journal.channelConfigId === query.channelConfigId)
-      && (!query.currency || journal.currency === query.currency)
+    const filtered = journals.filter((journal) => matchesFilter(journal.sourceType, query.sourceType)
+      && matchesFilter(journal.appId, query.appId)
+      && matchesFilter(journal.channelConfigId, query.channelConfigId)
+      && matchesFilter(journal.currency, query.currency)
       && (!query.startTime || journal.postedAt >= query.startTime)
       && (!query.endTime || journal.postedAt <= query.endTime));
     return ok(paginate(filtered));

@@ -6,7 +6,7 @@ import { mock } from '@/mocks/utils/contract';
 import { requireItem } from '@/mocks/utils/crud';
 import { notFound } from '@/mocks/utils/handlers';
 import { mockDateTime } from '@/mocks/utils/date';
-import { includesKeyword } from '@/mocks/utils/filter';
+import { includesKeyword, matchesFilter } from '@/mocks/utils/filter';
 
 let nextId = 102;
 let apps: OAuth2Client[] = [{
@@ -52,8 +52,8 @@ export const developerAppsHandlers = [
   mock(developerAppContract.list, ({ query, ok, paginate }) => {
     const filtered = apps.filter((app) =>
       includesKeyword(query.keyword, app.name)
-      && (!query.environment || app.environment === query.environment)
-      && (!query.reviewStatus || app.reviewStatus === query.reviewStatus),
+      && matchesFilter(app.environment, query.environment)
+      && matchesFilter(app.reviewStatus, query.reviewStatus),
     );
     return ok(paginate(filtered));
   }),

@@ -6,7 +6,7 @@ import dayjs from 'dayjs';
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockDateOffset, mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
-import { includesKeyword } from '@/mocks/utils/filter';
+import { includesKeyword, matchesFilter } from '@/mocks/utils/filter';
 import { removeByIds, requireItem } from '../utils/crud';
 
 /**
@@ -761,7 +761,7 @@ export const asyncTasksHandlers = [
   mock(asyncTaskContract.items, ({ params, query, ok, paginate }) => {
     tickAll();
     const all = (itemsByTask.get(params.id) ?? [])
-      .filter((item) => !query.status || item.status === query.status)
+      .filter((item) => matchesFilter(item.status, query.status))
       .sort((a, b) => b.id - a.id);
     return ok(paginate(all));
   }),

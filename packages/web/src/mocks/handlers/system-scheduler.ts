@@ -5,6 +5,7 @@ import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { removeWhere } from '@/mocks/utils/array';
 import type { SystemSchedulerNode, SystemSchedulerRun, SystemSchedulerTask } from '@zenith/shared/platform';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
+import { matchesFilter } from '@/mocks/utils/filter';
 
 function baseTask(extra: Partial<SystemSchedulerTask>): SystemSchedulerTask {
   return {
@@ -307,10 +308,10 @@ export const systemSchedulerHandlers = [
 
   mock(systemSchedulerContract.runs, ({ query, ok, paginate }) => {
     const filtered = runs
-      .filter((item) => !query.taskName || item.taskName === query.taskName)
-      .filter((item) => !query.taskType || item.taskType === query.taskType)
-      .filter((item) => !query.triggerType || item.triggerType === query.triggerType)
-      .filter((item) => !query.status || item.status === query.status)
+      .filter((item) => matchesFilter(item.taskName, query.taskName))
+      .filter((item) => matchesFilter(item.taskType, query.taskType))
+      .filter((item) => matchesFilter(item.triggerType, query.triggerType))
+      .filter((item) => matchesFilter(item.status, query.status))
       .filter((item) => query.alertStatus !== 'alerted' || !!item.alertMessage)
       .filter((item) => query.alertStatus !== 'unacked' || (!!item.alertMessage && !item.alertAckAt))
       .filter((item) => !query.startTime || item.startedAt >= query.startTime)

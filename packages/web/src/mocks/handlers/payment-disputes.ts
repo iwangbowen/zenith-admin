@@ -4,7 +4,7 @@ import { mockDateTime } from '@/mocks/utils/date';
 import { notFound, badRequest } from '@/mocks/utils/handlers';
 import { paymentDisputeContract, type PaymentDispute, type PaymentDisputeDetail, type PaymentDisputeReply, type PaymentDisputeStats } from '@zenith/shared/payment';
 import dayjs from 'dayjs';
-import { includesKeyword } from '@/mocks/utils/filter';
+import { includesKeyword, matchesFilter } from '@/mocks/utils/filter';
 
 let nextDisputeId = 4;
 let nextReplyId = 10;
@@ -121,7 +121,7 @@ export const paymentDisputeHandlers = [
     disputes.forEach(refreshOverdue);
     const filtered = disputes.filter((d) =>
       includesKeyword(query.keyword, d.disputeNo, d.orderNo, d.complainant) &&
-      (!query.status || d.status === query.status) && (!query.type || d.type === query.type) && (!query.channel || d.channel === query.channel) && (!query.route || d.route === query.route) &&
+      matchesFilter(d.status, query.status) && matchesFilter(d.type, query.type) && matchesFilter(d.channel, query.channel) && matchesFilter(d.route, query.route) &&
       (!query.overdueOnly || d.overdue) &&
       (!query.startTime || d.createdAt >= query.startTime) && (!query.endTime || d.createdAt <= query.endTime),
     ).map(({ replies: _r, ...rest }) => rest);

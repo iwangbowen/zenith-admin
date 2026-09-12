@@ -13,7 +13,7 @@ import {
 import { mockDepartments } from '@/mocks/data/departments';
 import { mockUsers } from '@/mocks/data/users';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
-import { includesKeyword } from '@/mocks/utils/filter';
+import { includesKeyword, matchesFilter } from '@/mocks/utils/filter';
 
 // 当前 demo 用户 ID（对应 admin = 1）
 const CURRENT_USER_ID = 1;
@@ -505,7 +505,7 @@ export const chatHandlers = [
 
   mock(chatContract.scheduledMessages, ({ query, ok }) => {
     const list = mockScheduledMessages
-      .filter((m) => !query.status || m.status === query.status)
+      .filter((m) => matchesFilter(m.status, query.status))
       .sort((a, b) => b.scheduledAt.localeCompare(a.scheduledAt));
     return ok(list);
   }),

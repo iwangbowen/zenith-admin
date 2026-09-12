@@ -4,7 +4,7 @@ import type { OpenApiCallLog, OpenApiStatsGroupItem } from '@zenith/shared/open-
 import type { QueryOf } from '@zenith/shared/core';
 import { mock } from '@/mocks/utils/contract';
 import { mockOpenApiLogs } from '@/mocks/data/open-api-logs';
-import { includesKeyword } from '@/mocks/utils/filter';
+import { includesKeyword, matchesFilter } from '@/mocks/utils/filter';
 
 type LogFilter = QueryOf<typeof openApiStatsContract.logs>;
 
@@ -19,12 +19,12 @@ function filtered(query: LogFilter): OpenApiCallLog[] {
   const keyword = query.keyword?.toLowerCase();
   return mockOpenApiLogs.filter((log) =>
     inRange(log, query.startTime, query.endTime)
-    && (!query.clientId || log.clientId === query.clientId)
+    && matchesFilter(log.clientId, query.clientId)
     && includesKeyword(keyword, log.path, log.appName, { caseInsensitive: true })
-    && (!query.method || log.method === query.method)
-    && (query.success === undefined || log.success === query.success)
-    && (query.statusCode === undefined || log.statusCode === query.statusCode)
-    && (!query.environment || log.environment === query.environment),
+    && matchesFilter(log.method, query.method)
+    && (matchesFilter(log.success, query.success))
+    && (matchesFilter(log.statusCode, query.statusCode))
+    && matchesFilter(log.environment, query.environment),
   );
 }
 

@@ -4,7 +4,7 @@ import { notFound, badRequest } from '@/mocks/utils/handlers';
 import { PAYMENT_METHOD_CHANNEL, paymentPreauthContract } from '@zenith/shared/payment';
 import type { PaymentChannel, PaymentPreauth } from '@zenith/shared/payment';
 import dayjs from 'dayjs';
-import { includesKeyword } from '@/mocks/utils/filter';
+import { includesKeyword, matchesFilter } from '@/mocks/utils/filter';
 
 let nextId = 4;
 
@@ -45,7 +45,7 @@ export const paymentPreauthHandlers = [
   mock(paymentPreauthContract.list, ({ query, ok, paginate }) => {
     const filtered = preauths.filter((p) => p.appId === query.applicationId &&
       includesKeyword(query.keyword, p.preauthNo, p.payerAccount, p.subject) &&
-      (!query.status || p.status === query.status) && (!query.channel || p.channel === query.channel) &&
+      matchesFilter(p.status, query.status) && matchesFilter(p.channel, query.channel) &&
       (!query.startTime || p.createdAt >= query.startTime) && (!query.endTime || p.createdAt <= query.endTime),
     );
     return ok(paginate([...filtered].sort((a, b) => b.id - a.id)));

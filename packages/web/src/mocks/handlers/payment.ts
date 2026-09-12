@@ -24,7 +24,7 @@ import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { mockDateTime, mockDateTimeOffset, mockDate } from '@/mocks/utils/date';
 import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
 import { recordMockPaymentSucceeded, recordMockRefundSucceeded } from './payment-ext';
-import { filterByKeyword, includesKeyword } from '@/mocks/utils/filter';
+import { filterByKeyword, includesKeyword, matchesFilter } from '@/mocks/utils/filter';
 
 interface MockRefundIdempotencyRecord {
   requestHash: string;
@@ -122,7 +122,7 @@ export const paymentHandlers = [
   )),
   mock(paymentChannelContract.channels, ({ query, ok, paginate }) => {
     const filtered = filterByKeyword(mockPaymentChannels, query.keyword, [(c) => c.name])
-      .filter((c) => (!query.channel || c.channel === query.channel) && (!query.status || c.status === query.status));
+      .filter((c) => matchesFilter(c.channel, query.channel) && matchesFilter(c.status, query.status));
     return ok(paginate(filtered));
   }),
   mock(paymentChannelContract.channelDetail, ({ params, ok }) => {
@@ -202,10 +202,10 @@ export const paymentHandlers = [
     const filtered = mockPaymentOrders.filter(
       (o) =>
         includesKeyword(query.keyword, o.orderNo, o.subject) &&
-        (!query.channel || o.channel === query.channel) &&
-        (!query.status || o.status === query.status) &&
-        (!query.bizType || o.bizType === query.bizType) &&
-        (!query.payMethod || o.payMethod === query.payMethod) &&
+        matchesFilter(o.channel, query.channel) &&
+        matchesFilter(o.status, query.status) &&
+        matchesFilter(o.bizType, query.bizType) &&
+        matchesFilter(o.payMethod, query.payMethod) &&
         (query.minAmount == null || o.amount >= query.minAmount) &&
         (query.maxAmount == null || o.amount <= query.maxAmount) &&
         (!query.startTime || o.createdAt >= query.startTime) &&
@@ -304,9 +304,9 @@ export const paymentHandlers = [
     const filtered = mockPaymentRefunds.filter(
       (r) =>
         includesKeyword(query.keyword, r.refundNo, r.orderNo) &&
-        (!query.channel || r.channel === query.channel) &&
-        (!query.status || r.status === query.status) &&
-        (!query.approvalStatus || r.approvalStatus === query.approvalStatus) &&
+        matchesFilter(r.channel, query.channel) &&
+        matchesFilter(r.status, query.status) &&
+        matchesFilter(r.approvalStatus, query.approvalStatus) &&
         (!query.startTime || r.createdAt >= query.startTime) &&
         (!query.endTime || r.createdAt <= query.endTime),
     );
@@ -338,9 +338,9 @@ export const paymentHandlers = [
     const filtered = mockPaymentLogs.filter(
       (l) =>
         includesKeyword(query.keyword, l.orderNo) &&
-        (!query.channel || l.channel === query.channel) &&
-        (!query.scene || l.scene === query.scene) &&
-        (query.signatureValid == null || l.signatureValid === query.signatureValid) &&
+        matchesFilter(l.channel, query.channel) &&
+        matchesFilter(l.scene, query.scene) &&
+        (matchesFilter(l.signatureValid, query.signatureValid)) &&
         (!query.startTime || l.createdAt >= query.startTime) &&
         (!query.endTime || l.createdAt <= query.endTime),
     );
