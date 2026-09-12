@@ -2,7 +2,7 @@
  * 会员投稿（前台 C 端）：会员在 member SPA 提交内容 → 进入 CMS 审核（简单/工作流按站点配置）。
  * 全部按 currentMemberId() 过滤防越权；发布仍走后台既有审核/发布管道。
  */
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { and, desc, eq, isNull, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -105,10 +105,12 @@ export async function listMyContributions(params: { page: number; pageSize: numb
 
 async function getOwnContribution(id: number): Promise<CmsContentRow> {
   const memberId = currentMemberId();
-  const [row] = await db.select().from(cmsContents)
-    .where(and(eq(cmsContents.id, id), eq(cmsContents.memberId, memberId), isNull(cmsContents.deletedAt)))
-    .limit(1);
-  return requireRow(row, '投稿不存在');
+  return requireFirstRow(
+    db.select().from(cmsContents)
+      .where(and(eq(cmsContents.id, id), eq(cmsContents.memberId, memberId), isNull(cmsContents.deletedAt)))
+      .limit(1),
+    '投稿不存在',
+  );
 }
 
 export async function getMyContribution(id: number) {

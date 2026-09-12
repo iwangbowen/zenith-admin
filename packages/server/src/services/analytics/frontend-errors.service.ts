@@ -1,6 +1,6 @@
 import { and, eq, gte, desc, inArray, sql, countDistinct } from 'drizzle-orm';
 import { db } from '../../db';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { errorGroups, errorEvents, errorGroupIdentities, sourceMaps, users } from '../../db/schema';
 import type { ErrorGroupRow, ErrorEventRow } from '../../db/schema';
@@ -282,8 +282,7 @@ export async function listGroups(q: QueryOutputOf<typeof frontendErrorContract.g
 }
 
 export async function ensureGroupExists(id: number) {
-  const [row] = await db.select().from(errorGroups).where(buildWhere(eq(errorGroups.id, id), tenantScope(errorGroups))).limit(1);
-  return requireRow(row, '错误分组不存在');
+  return requireFirstRow(db.select().from(errorGroups).where(buildWhere(eq(errorGroups.id, id), tenantScope(errorGroups))).limit(1), '错误分组不存在');
 }
 
 // ─── 分组详情（趋势 / 分布 / 最近事件 / 堆栈还原）────────────────────────────

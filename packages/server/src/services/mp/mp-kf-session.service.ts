@@ -10,7 +10,7 @@
  * 回调接入钩子 onFanInboundMessage 与定时任务 runMpKfSessionTimeouts 无登录上下文，按 accountId 直接查询。
  */
 import { eq, and, ne, lt, gte, inArray, desc, asc, sql, type SQL } from 'drizzle-orm';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { alias } from 'drizzle-orm/pg-core';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -340,8 +340,7 @@ export async function listMpKfSessions(q: QueryOutputOf<typeof mpKfSessionContra
 }
 
 async function ensureSession(id: number): Promise<MpKfSessionRow> {
-  const [row] = await db.select().from(mpKfSessions).where(and(eq(mpKfSessions.id, id), tenantScope(mpKfSessions))).limit(1);
-  return requireRow(row, '会话不存在');
+  return requireFirstRow(db.select().from(mpKfSessions).where(and(eq(mpKfSessions.id, id), tenantScope(mpKfSessions))).limit(1), '会话不存在');
 }
 
 async function ensureKf(accountId: number, kfId: number) {

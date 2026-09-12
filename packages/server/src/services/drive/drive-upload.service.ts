@@ -16,7 +16,7 @@ import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import { driveFileVersions, driveNodeRenditions, driveNodeTexts, driveNodes, driveUploadBindings, managedFiles, type DriveNodeRow, type DriveSpaceRow } from '../../db/schema';
 import { currentUser, currentUserId } from '../../lib/context';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { formatDateTime } from '../../lib/datetime';
 import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
 import { uploadManagedFile, assertUploadSizeAllowed, simpleUploadLimitBytes } from '../files/files.service';
@@ -367,10 +367,12 @@ export async function initDriveUpload(data: DriveUploadInitInput): Promise<Uploa
 }
 
 async function ensureBinding(uploadId: string) {
-  const [binding] = await db.select().from(driveUploadBindings)
-    .where(and(eq(driveUploadBindings.uploadId, uploadId), eq(driveUploadBindings.createdBy, currentUserId())))
-    .limit(1);
-  return requireRow(binding, '上传会话不存在');
+  return requireFirstRow(
+    db.select().from(driveUploadBindings)
+      .where(and(eq(driveUploadBindings.uploadId, uploadId), eq(driveUploadBindings.createdBy, currentUserId())))
+      .limit(1),
+    '上传会话不存在',
+  );
 }
 
 export async function uploadDriveChunk(uploadId: string, index: number, chunk: File) {
@@ -451,9 +453,11 @@ export async function listDriveNodeVersions(nodeId: number): Promise<DriveFileVe
 }
 
 export async function ensureVersionExists(nodeId: number, version: number) {
-  const [row] = await db.select().from(driveFileVersions)
-    .where(and(eq(driveFileVersions.nodeId, nodeId), eq(driveFileVersions.version, version))).limit(1);
-  return requireRow(row, '版本不存在');
+  return requireFirstRow(
+    db.select().from(driveFileVersions)
+      .where(and(eq(driveFileVersions.nodeId, nodeId), eq(driveFileVersions.version, version))).limit(1),
+    '版本不存在',
+  );
 }
 
 /** 回滚：以历史版本内容生成新版本（不删除历史） */

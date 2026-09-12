@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { clearDefaultFlag } from '../../lib/default-flag';
@@ -291,8 +291,7 @@ function mapCmsSiteRows(
 
 // ─── 前置校验 ─────────────────────────────────────────────────────────────────
 export async function ensureCmsSiteExists(id: number): Promise<CmsSiteRow> {
-  const [row] = await db.select().from(cmsSites).where(eq(cmsSites.id, id)).limit(1);
-  return requireRow(row, '站点不存在');
+  return requireFirstRow(db.select().from(cmsSites).where(eq(cmsSites.id, id)).limit(1), '站点不存在');
 }
 
 export async function getCmsSite(id: number) {

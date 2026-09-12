@@ -34,7 +34,7 @@ import { notify } from '../messaging/notification-outbox.service';
 import type { WorkflowAutomationTrigger, WorkflowInstance } from '@zenith/shared/workflow';
 import { buildWhere } from '../../lib/where-helpers';
 import { buildListResult } from '../../lib/list-query';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 
 export function mapAutomation(row: WorkflowAutomationRow, definitionName?: string | null) {
   return {
@@ -54,9 +54,11 @@ export function mapAutomation(row: WorkflowAutomationRow, definitionName?: strin
 }
 
 async function ensureAutomationExists(id: number) {
-  const [row] = await db.select().from(workflowAutomations)
-    .where(buildWhere(eq(workflowAutomations.id, id), tenantCondition(workflowAutomations, currentUser()))).limit(1);
-  return requireRow(row, '自动化规则不存在');
+  return requireFirstRow(
+    db.select().from(workflowAutomations)
+      .where(buildWhere(eq(workflowAutomations.id, id), tenantCondition(workflowAutomations, currentUser()))).limit(1),
+    '自动化规则不存在',
+  );
 }
 
 export async function getWorkflowAutomationBeforeAudit(id: number) {
@@ -77,9 +79,11 @@ export async function getWorkflowAutomationsBeforeAudit(ids: number[]) {
 }
 
 async function ensureDefinitionExists(definitionId: number) {
-  const [row] = await db.select().from(workflowDefinitions)
-    .where(buildWhere(eq(workflowDefinitions.id, definitionId), tenantCondition(workflowDefinitions, currentUser()))).limit(1);
-  return requireRow(row, '流程定义不存在');
+  return requireFirstRow(
+    db.select().from(workflowDefinitions)
+      .where(buildWhere(eq(workflowDefinitions.id, definitionId), tenantCondition(workflowDefinitions, currentUser()))).limit(1),
+    '流程定义不存在',
+  );
 }
 
 async function ensureStartWorkflowActionTarget(definitionId: number) {

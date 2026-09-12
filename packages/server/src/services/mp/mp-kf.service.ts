@@ -1,5 +1,5 @@
 import { eq, and } from 'drizzle-orm';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { db } from '../../db';
 import { mpKfAccounts } from '../../db/schema';
@@ -32,8 +32,7 @@ export function mapMpKfAccount(row: MpKfAccountRow) {
 }
 
 export async function ensureMpKfAccountExists(id: number): Promise<MpKfAccountRow> {
-  const [row] = await db.select().from(mpKfAccounts).where(and(eq(mpKfAccounts.id, id), tenantScope(mpKfAccounts))).limit(1);
-  return requireRow(row, '客服账号不存在');
+  return requireFirstRow(db.select().from(mpKfAccounts).where(and(eq(mpKfAccounts.id, id), tenantScope(mpKfAccounts))).limit(1), '客服账号不存在');
 }
 
 export async function getMpKfAccountBeforeAudit(id: number) {

@@ -1,5 +1,5 @@
 import { eq, and, desc, sql } from 'drizzle-orm';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -33,8 +33,7 @@ export function mapMpAutoReply(row: MpAutoReplyRow) {
 }
 
 export async function ensureMpAutoReplyExists(id: number): Promise<MpAutoReplyRow> {
-  const [row] = await db.select().from(mpAutoReplies).where(and(eq(mpAutoReplies.id, id), tenantScope(mpAutoReplies))).limit(1);
-  return requireRow(row, '自动回复不存在');
+  return requireFirstRow(db.select().from(mpAutoReplies).where(and(eq(mpAutoReplies.id, id), tenantScope(mpAutoReplies))).limit(1), '自动回复不存在');
 }
 
 export async function getMpAutoReplyBeforeAudit(id: number) {

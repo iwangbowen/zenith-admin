@@ -17,7 +17,7 @@ import {
   type IotDeviceRow, type IotDeviceStateRow, type IotProductRow,
 } from '../../db/schema';
 import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
@@ -118,8 +118,7 @@ export async function listAllIotProducts() {
 }
 
 export async function ensureIotProductExists(id: number): Promise<IotProductRow> {
-  const [row] = await db.select().from(iotProducts).where(buildProductWhere({ id })).limit(1);
-  return requireRow(row, '产品不存在');
+  return requireFirstRow(db.select().from(iotProducts).where(buildProductWhere({ id })).limit(1), '产品不存在');
 }
 
 export async function getIotProduct(id: number) {
@@ -303,8 +302,7 @@ export async function listIotDevices(q: QueryOutputOf<typeof iotDeviceContract.l
 }
 
 export async function ensureIotDeviceExists(id: number): Promise<IotDeviceRow> {
-  const [row] = await db.select().from(iotDevices).where(buildDeviceWhere({ id })).limit(1);
-  return requireRow(row, '设备不存在');
+  return requireFirstRow(db.select().from(iotDevices).where(buildDeviceWhere({ id })).limit(1), '设备不存在');
 }
 
 export async function getIotDevice(id: number) {

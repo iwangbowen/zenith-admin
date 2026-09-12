@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { and, eq, desc, max, inArray } from 'drizzle-orm';
 import { db } from '../../db';
 import { cmsContentVersions, cmsContents } from '../../db/schema';
@@ -105,13 +105,15 @@ export async function listContentVersions(contentId: number) {
 
 export async function ensureVersionExists(contentId: number, versionId: number): Promise<CmsContentVersionRow> {
   await ensureContentVersionAccess(contentId);
-  const [row] = await db.select().from(cmsContentVersions)
-    .where(and(
-      eq(cmsContentVersions.id, versionId),
-      eq(cmsContentVersions.contentId, contentId),
-    ))
-    .limit(1);
-  return requireRow(row, '版本不存在');
+  return requireFirstRow(
+    db.select().from(cmsContentVersions)
+      .where(and(
+        eq(cmsContentVersions.id, versionId),
+        eq(cmsContentVersions.contentId, contentId),
+      ))
+      .limit(1),
+    '版本不存在',
+  );
 }
 
 async function ensureContentVersionAccess(contentId: number): Promise<CmsContentRow> {

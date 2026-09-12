@@ -14,7 +14,7 @@ import { enqueueJob } from '../../lib/workflow-jobs/engine';
 import { bridgeReportFillWorkflowOutcome } from '../report/report-fill-workflow-bridge.service';
 import { buildWhere, withPagination } from '../../lib/where-helpers';
 import { buildListResult } from '../../lib/list-query';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 
 type Row = typeof workflowCompensations.$inferSelect;
 const map = (r: Row) => ({
@@ -129,9 +129,11 @@ const mapLog = (r: { id: number; compensationId: number; action: string; note: s
 });
 
 async function findCompensationOr404(id: number): Promise<Row> {
-  const [row] = await db.select().from(workflowCompensations)
-    .where(buildWhere(eq(workflowCompensations.id, id), tenantCondition(workflowCompensations, currentUser()))).limit(1);
-  return requireRow(row, '补偿工单不存在');
+  return requireFirstRow(
+    db.select().from(workflowCompensations)
+      .where(buildWhere(eq(workflowCompensations.id, id), tenantCondition(workflowCompensations, currentUser()))).limit(1),
+    '补偿工单不存在',
+  );
 }
 
 /** 补偿工单详情（含处理历史时间线）。 */

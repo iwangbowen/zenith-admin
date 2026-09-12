@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { eq, asc, desc, and, or, inArray, notInArray, isNull, isNotNull, ne, lt, gt, sql, type SQL } from 'drizzle-orm';
@@ -136,15 +136,16 @@ export function mapCmsContent(row: CmsContentMapRow, extra?: {
 
 // ─── 前置校验 ─────────────────────────────────────────────────────────────────
 export async function ensureCmsContentExists(id: number): Promise<CmsContentRow> {
-  const [row] = await db.select().from(cmsContents).where(eq(cmsContents.id, id)).limit(1);
-  return requireRow(row, '内容不存在');
+  return requireFirstRow(db.select().from(cmsContents).where(eq(cmsContents.id, id)).limit(1), '内容不存在');
 }
 
 /** 只为站点 / 栏目访问断言取归属列，不解压正文（`getCmsContent` 随后会带关联取全行） */
 async function ensureCmsContentOwnership(id: number): Promise<Pick<CmsContentRow, 'id' | 'siteId' | 'channelId'>> {
-  const [row] = await db.select({ id: cmsContents.id, siteId: cmsContents.siteId, channelId: cmsContents.channelId })
-    .from(cmsContents).where(eq(cmsContents.id, id)).limit(1);
-  return requireRow(row, '内容不存在');
+  return requireFirstRow(
+    db.select({ id: cmsContents.id, siteId: cmsContents.siteId, channelId: cmsContents.channelId })
+      .from(cmsContents).where(eq(cmsContents.id, id)).limit(1),
+    '内容不存在',
+  );
 }
 
 export async function getCmsContent(id: number) {

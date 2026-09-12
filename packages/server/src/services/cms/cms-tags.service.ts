@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { eq, asc, and } from 'drizzle-orm';
@@ -28,8 +28,7 @@ export function mapCmsTag(row: CmsTagRow) {
 
 // ─── 前置校验 ─────────────────────────────────────────────────────────────────
 export async function ensureCmsTagExists(id: number): Promise<CmsTagRow> {
-  const [row] = await db.select().from(cmsTags).where(eq(cmsTags.id, id)).limit(1);
-  return requireRow(row, '标签不存在');
+  return requireFirstRow(db.select().from(cmsTags).where(eq(cmsTags.id, id)).limit(1), '标签不存在');
 }
 
 export async function getCmsTag(id: number) {

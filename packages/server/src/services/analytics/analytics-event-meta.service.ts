@@ -1,6 +1,6 @@
 import { eq, desc, sql } from 'drizzle-orm';
 import { buildListResult } from '../../lib/list-query';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { analyticsEventMeta, analyticsSavedReports, analyticsUserSegments, analyticsExperiments, users } from '../../db/schema';
@@ -86,8 +86,7 @@ export async function listEventMeta(q: QueryOutputOf<typeof analyticsContract.ev
 }
 
 export async function ensureEventMetaExists(id: number) {
-  const [row] = await db.select().from(analyticsEventMeta).where(eq(analyticsEventMeta.id, id)).limit(1);
-  return requireRow(row, '事件不存在');
+  return requireFirstRow(db.select().from(analyticsEventMeta).where(eq(analyticsEventMeta.id, id)).limit(1), '事件不存在');
 }
 
 function ensureBlockedStatusPermission(currentStatus: AnalyticsEventMetaRow['status'] | null, nextStatus: AnalyticsEventMetaRow['status'] | null): void {

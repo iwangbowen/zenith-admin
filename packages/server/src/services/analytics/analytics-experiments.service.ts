@@ -1,7 +1,7 @@
 
 import { createHash } from 'node:crypto';
 import { buildListResult } from '../../lib/list-query';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { and, desc, eq, gte, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { QueryOutputOf } from '@zenith/shared/core';
@@ -112,10 +112,12 @@ export async function listExperiments(q: QueryOutputOf<typeof analyticsExperimen
 }
 
 export async function ensureExperimentExists(id: number): Promise<AnalyticsExperimentRow> {
-  const [row] = await db.select().from(analyticsExperiments)
-    .where(buildWhere(eq(analyticsExperiments.id, id), tenantScope(analyticsExperiments)))
-    .limit(1);
-  return requireRow(row, '实验不存在');
+  return requireFirstRow(
+    db.select().from(analyticsExperiments)
+      .where(buildWhere(eq(analyticsExperiments.id, id), tenantScope(analyticsExperiments)))
+      .limit(1),
+    '实验不存在',
+  );
 }
 
 export async function getExperiment(id: number) {

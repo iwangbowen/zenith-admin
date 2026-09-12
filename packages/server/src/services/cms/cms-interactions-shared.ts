@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { CMS_INTERACTION_OTHER_PREFIX, CMS_INTERACTION_OTHER_VALUE } from '@zenith/shared/cms';
@@ -8,8 +8,7 @@ import { cmsInteractions } from '../../db/schema';
 import type { CmsInteractionRow } from '../../db/schema';
 
 export async function ensureCmsInteractionExists(id: number): Promise<CmsInteractionRow> {
-  const [row] = await db.select().from(cmsInteractions).where(eq(cmsInteractions.id, id)).limit(1);
-  return requireRow(row, '互动问卷不存在');
+  return requireFirstRow(db.select().from(cmsInteractions).where(eq(cmsInteractions.id, id)).limit(1), '互动问卷不存在');
 }
 
 export function repeatKeyFor(

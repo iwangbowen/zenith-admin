@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { eq, asc, and, or, isNull, lte, gte, inArray, sql } from 'drizzle-orm';
@@ -50,13 +50,11 @@ export function mapCmsAd(row: CmsAdRow, slotName?: string | null) {
 }
 
 export async function ensureCmsAdSlotExists(id: number): Promise<CmsAdSlotRow> {
-  const [row] = await db.select().from(cmsAdSlots).where(eq(cmsAdSlots.id, id)).limit(1);
-  return requireRow(row, '广告位不存在');
+  return requireFirstRow(db.select().from(cmsAdSlots).where(eq(cmsAdSlots.id, id)).limit(1), '广告位不存在');
 }
 
 export async function ensureCmsAdExists(id: number): Promise<CmsAdRow> {
-  const [row] = await db.select().from(cmsAds).where(eq(cmsAds.id, id)).limit(1);
-  return requireRow(row, '广告不存在');
+  return requireFirstRow(db.select().from(cmsAds).where(eq(cmsAds.id, id)).limit(1), '广告不存在');
 }
 
 // ─── 前台渲染：站点投放中广告（按 slot code 分组）──────────────────────────────

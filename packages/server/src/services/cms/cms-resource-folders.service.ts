@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -23,8 +23,7 @@ export function mapCmsResourceFolder(row: CmsResourceFolderRow, resourceCount = 
 }
 
 export async function ensureCmsResourceFolderExists(id: number): Promise<CmsResourceFolderRow> {
-  const [row] = await db.select().from(cmsResourceFolders).where(eq(cmsResourceFolders.id, id)).limit(1);
-  return requireRow(row, '素材文件夹不存在');
+  return requireFirstRow(db.select().from(cmsResourceFolders).where(eq(cmsResourceFolders.id, id)).limit(1), '素材文件夹不存在');
 }
 
 async function ensureParent(siteId: number, parentId: number | null, selfId?: number): Promise<void> {

@@ -19,7 +19,7 @@ import {
   type IotForwardLogRow, type IotForwardRuleRow,
 } from '../../db/schema';
 import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { currentUser } from '../../lib/context';
@@ -123,8 +123,7 @@ export async function listIotForwardRules(q: QueryOutputOf<typeof iotForwardRule
 }
 
 export async function ensureIotForwardRuleExists(id: number): Promise<IotForwardRuleRow> {
-  const [row] = await db.select().from(iotForwardRules).where(buildRuleWhere({ id })).limit(1);
-  return requireRow(row, '流转规则不存在');
+  return requireFirstRow(db.select().from(iotForwardRules).where(buildRuleWhere({ id })).limit(1), '流转规则不存在');
 }
 
 export async function createIotForwardRule(data: CreateIotForwardRuleInput) {

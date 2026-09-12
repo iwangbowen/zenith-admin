@@ -1,5 +1,5 @@
 import { eq, and, or } from 'drizzle-orm';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -46,9 +46,11 @@ export function mapMpAccountForEdit(row: MpAccountRow) {
 }
 
 export async function ensureMpAccountExists(id: number): Promise<MpAccountRow> {
-  const [row] = await db.select().from(mpAccounts)
-    .where(and(eq(mpAccounts.id, id), tenantScope(mpAccounts))).limit(1);
-  return requireRow(row, '公众号不存在');
+  return requireFirstRow(
+    db.select().from(mpAccounts)
+      .where(and(eq(mpAccounts.id, id), tenantScope(mpAccounts))).limit(1),
+    '公众号不存在',
+  );
 }
 
 export async function listMpAccounts(q: QueryOutputOf<typeof mpAccountContract.list>) {

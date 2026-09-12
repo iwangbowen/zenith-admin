@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { asc, desc, eq, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { QueryOutputOf } from '@zenith/shared/core';
@@ -28,8 +28,7 @@ export function mapCmsHotwordGroup(row: CmsHotwordGroupRow) {
 }
 
 export async function ensureCmsHotwordGroupExists(id: number): Promise<CmsHotwordGroupRow> {
-  const [row] = await db.select().from(cmsHotwordGroups).where(eq(cmsHotwordGroups.id, id)).limit(1);
-  return requireRow(row, '热词分组不存在');
+  return requireFirstRow(db.select().from(cmsHotwordGroups).where(eq(cmsHotwordGroups.id, id)).limit(1), '热词分组不存在');
 }
 
 export async function listCmsHotwordGroups(siteId: number) {

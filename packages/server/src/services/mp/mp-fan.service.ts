@@ -1,5 +1,5 @@
 import { eq, and, inArray, sql, desc } from 'drizzle-orm';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -39,8 +39,7 @@ export function mapMpFan(row: MpFanRow) {
 }
 
 export async function ensureMpFanExists(id: number): Promise<MpFanRow> {
-  const [row] = await db.select().from(mpFans).where(and(eq(mpFans.id, id), tenantScope(mpFans))).limit(1);
-  return requireRow(row, '粉丝不存在');
+  return requireFirstRow(db.select().from(mpFans).where(and(eq(mpFans.id, id), tenantScope(mpFans))).limit(1), '粉丝不存在');
 }
 
 export async function getMpFanBeforeAudit(id: number) {

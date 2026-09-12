@@ -19,7 +19,7 @@ import {
   type IotDeviceRow, type IotFirmwareRow, type IotOtaTaskDeviceRow, type IotOtaTaskRow,
 } from '../../db/schema';
 import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { currentUser } from '../../lib/context';
@@ -110,8 +110,7 @@ export async function listIotOtaTasks(q: QueryOutputOf<typeof iotOtaTaskContract
 }
 
 export async function ensureIotOtaTaskExists(id: number): Promise<IotOtaTaskRow> {
-  const [row] = await db.select().from(iotOtaTasks).where(buildTaskWhere({ id })).limit(1);
-  return requireRow(row, '升级任务不存在');
+  return requireFirstRow(db.select().from(iotOtaTasks).where(buildTaskWhere({ id })).limit(1), '升级任务不存在');
 }
 
 export async function getIotOtaTask(id: number) {

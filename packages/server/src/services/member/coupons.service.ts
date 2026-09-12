@@ -18,7 +18,7 @@ import { decide } from '../platform/rules-runtime.service';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { buildListResult } from '../../lib/list-query';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { trackServerEvent } from '../analytics/analytics-server-events.service';
 import type { CouponType, CouponValidType, CouponTemplateStatus } from '@zenith/shared/member';
@@ -67,8 +67,7 @@ export function mapMemberCoupon(row: MemberCouponRow, coupon?: CouponRow | null,
 
 // ─── 校验 ─────────────────────────────────────────────────────────────────────
 export async function ensureCouponExists(id: number): Promise<CouponRow> {
-  const [row] = await db.select().from(coupons).where(eq(coupons.id, id)).limit(1);
-  return requireRow(row, '优惠券不存在');
+  return requireFirstRow(db.select().from(coupons).where(eq(coupons.id, id)).limit(1), '优惠券不存在');
 }
 
 // ─── 模板 CRUD ────────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { eq, asc, inArray } from 'drizzle-orm';
@@ -32,8 +32,7 @@ export function mapCmsSearchWord(row: CmsSearchWordRow) {
 }
 
 export async function ensureCmsSearchWordExists(id: number): Promise<CmsSearchWordRow> {
-  const [row] = await db.select().from(cmsSearchWords).where(eq(cmsSearchWords.id, id)).limit(1);
-  return requireRow(row, '词条不存在');
+  return requireFirstRow(db.select().from(cmsSearchWords).where(eq(cmsSearchWords.id, id)).limit(1), '词条不存在');
 }
 
 export async function listCmsSearchWords(q: QueryOutputOf<typeof cmsSearchContract.wordList>) {

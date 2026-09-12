@@ -2,7 +2,7 @@
  * 采集中心：列表页翻页 + CSS 选择器抽取 → 清洗 → 可选图片本地化 → 入库（草稿或直接发布）。
  * 执行走任务中心（进度/取消/行级明细）；URL 级去重防重复采集；全程 http-client SSRF 防护。
  */
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { createRequire } from 'node:module';
 import { and, desc, eq, inArray } from 'drizzle-orm';
@@ -181,8 +181,7 @@ export async function ensureCollectRuleRunnable(id: number): Promise<CmsCollectR
 }
 
 async function ensureCollectRuleExists(id: number): Promise<CmsCollectRuleRow> {
-  const [rule] = await db.select().from(cmsCollectRules).where(eq(cmsCollectRules.id, id)).limit(1);
-  return requireRow(rule, '采集规则不存在');
+  return requireFirstRow(db.select().from(cmsCollectRules).where(eq(cmsCollectRules.id, id)).limit(1), '采集规则不存在');
 }
 
 // ─── 采集明细 ─────────────────────────────────────────────────────────────────

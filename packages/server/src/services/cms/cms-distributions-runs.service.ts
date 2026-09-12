@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { enumValueOf, type QueryOutputOf } from '@zenith/shared/core';
 import {
@@ -119,8 +119,7 @@ export async function listCmsDistributionRuns(query: QueryOutputOf<typeof cmsDis
 
 async function ensureDistributionRunAccessible(id: number) {
   const runWhere = await buildCmsDistributionRunWhere({});
-  const [row] = await db.select().from(asyncTasks).where(and(eq(asyncTasks.id, id), runWhere)).limit(1);
-  return requireRow(row, '分发同步记录不存在');
+  return requireFirstRow(db.select().from(asyncTasks).where(and(eq(asyncTasks.id, id), runWhere)).limit(1), '分发同步记录不存在');
 }
 
 export async function getCmsDistributionRunDetail(id: number) {

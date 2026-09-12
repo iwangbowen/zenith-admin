@@ -1,5 +1,5 @@
 import { eq, and, asc } from 'drizzle-orm';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { mpFans, members, memberPointAccounts, memberWallets, memberLevels } from '../../db/schema';
@@ -9,8 +9,7 @@ import type { DbTransaction } from '../../db/types';
 import { mapMpFan } from './mp-fan.service';
 
 async function getFanScoped(fanId: number): Promise<MpFanRow> {
-  const [fan] = await db.select().from(mpFans).where(and(eq(mpFans.id, fanId), tenantScope(mpFans))).limit(1);
-  return requireRow(fan, '粉丝不存在');
+  return requireFirstRow(db.select().from(mpFans).where(and(eq(mpFans.id, fanId), tenantScope(mpFans))).limit(1), '粉丝不存在');
 }
 
 async function defaultMemberLevelId(): Promise<number | null> {

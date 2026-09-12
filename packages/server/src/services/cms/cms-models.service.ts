@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { eq, asc, and, or, inArray, isNull, type SQL } from 'drizzle-orm';
@@ -116,8 +116,7 @@ export function mapCmsModel(row: CmsModelRow, fields?: CmsModelFieldRow[], owner
 
 // ─── 前置校验 ─────────────────────────────────────────────────────────────────
 export async function ensureCmsModelExists(id: number): Promise<CmsModelRow> {
-  const [row] = await db.select().from(cmsModels).where(eq(cmsModels.id, id)).limit(1);
-  return requireRow(row, '内容模型不存在');
+  return requireFirstRow(db.select().from(cmsModels).where(eq(cmsModels.id, id)).limit(1), '内容模型不存在');
 }
 
 /**

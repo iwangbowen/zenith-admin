@@ -18,7 +18,7 @@ import { formatDateTime, formatTimestamps, parseDateTimeInput, startOfToday } fr
 import logger from '../../lib/logger';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { currentUser } from '../../lib/context';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { buildShortUrl, ensureShortLink } from '../short-link/short-link.service';
@@ -139,8 +139,7 @@ export async function listMarketingCampaigns(q: ListMarketingCampaignsQuery) {
 }
 
 export async function ensureMarketingCampaignExists(id: number): Promise<MarketingCampaignRow> {
-  const [row] = await db.select().from(marketingCampaigns).where(buildCampaignWhere({ id })).limit(1);
-  return requireRow(row, '营销活动不存在');
+  return requireFirstRow(db.select().from(marketingCampaigns).where(buildCampaignWhere({ id })).limit(1), '营销活动不存在');
 }
 
 export async function getMarketingCampaign(id: number) {

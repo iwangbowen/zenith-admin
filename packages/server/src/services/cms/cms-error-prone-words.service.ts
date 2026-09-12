@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { eq, asc } from 'drizzle-orm';
@@ -58,8 +58,7 @@ export function mapCmsErrorProneWord(row: CmsErrorProneWordRow) {
 }
 
 export async function ensureCmsErrorProneWordExists(id: number): Promise<CmsErrorProneWordRow> {
-  const [row] = await db.select().from(cmsErrorProneWords).where(eq(cmsErrorProneWords.id, id)).limit(1);
-  return requireRow(row, '易错词不存在');
+  return requireFirstRow(db.select().from(cmsErrorProneWords).where(eq(cmsErrorProneWords.id, id)).limit(1), '易错词不存在');
 }
 
 // ─── 查询 ─────────────────────────────────────────────────────────────────────

@@ -11,7 +11,7 @@ import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { pageOffset } from '../../lib/pagination';
 import { formatTimestamps } from '../../lib/datetime';
 import { buildListResult } from '../../lib/list-query';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { renameWorkflowFormFieldKeys } from '@zenith/shared/workflow';
 import type { CreateWorkflowFormInput, UpdateWorkflowFormInput, WorkflowFlowData, WorkflowFormField, WorkflowFormSchema, WorkflowFormSettings, WorkflowFormStatus } from '@zenith/shared/workflow';
 import type { DbExecutor, DbTransaction } from '../../db/types';
@@ -48,8 +48,7 @@ function findForm(id: number) {
 }
 
 export async function ensureFormExists(id: number) {
-  const [row] = await db.select().from(workflowForms).where(findForm(id)).limit(1);
-  return requireRow(row, '表单不存在');
+  return requireFirstRow(db.select().from(workflowForms).where(findForm(id)).limit(1), '表单不存在');
 }
 
 /**

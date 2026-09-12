@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { eq, asc, and, isNull } from 'drizzle-orm';
@@ -34,8 +34,7 @@ export function mapCmsFriendLink(row: CmsFriendLinkRow, groupName?: string | nul
 
 // ─── 前置校验 ─────────────────────────────────────────────────────────────────
 export async function ensureCmsFriendLinkExists(id: number): Promise<CmsFriendLinkRow> {
-  const [row] = await db.select().from(cmsFriendLinks).where(eq(cmsFriendLinks.id, id)).limit(1);
-  return requireRow(row, '友情链接不存在');
+  return requireFirstRow(db.select().from(cmsFriendLinks).where(eq(cmsFriendLinks.id, id)).limit(1), '友情链接不存在');
 }
 
 // ─── 列表 ─────────────────────────────────────────────────────────────────────

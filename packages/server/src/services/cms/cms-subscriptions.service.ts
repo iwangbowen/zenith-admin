@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { createHash } from 'node:crypto';
@@ -241,11 +241,13 @@ export async function getMyCmsSubscriptionStatus(input: CmsSubscriptionSubjectIn
 
 async function ensureOwnedSubscription(id: number): Promise<CmsMemberSubscriptionRow> {
   const memberId = currentMemberId();
-  const [row] = await db.select().from(cmsMemberSubscriptions).where(and(
-    eq(cmsMemberSubscriptions.id, id),
-    eq(cmsMemberSubscriptions.memberId, memberId),
-  )).limit(1);
-  return requireRow(row, '订阅不存在');
+  return requireFirstRow(
+    db.select().from(cmsMemberSubscriptions).where(and(
+      eq(cmsMemberSubscriptions.id, id),
+      eq(cmsMemberSubscriptions.memberId, memberId),
+    )).limit(1),
+    '订阅不存在',
+  );
 }
 
 export async function cancelMyCmsSubscription(id: number) {

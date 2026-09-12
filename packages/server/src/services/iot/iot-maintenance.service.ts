@@ -16,7 +16,7 @@ import {
   type IotMaintenanceWindowRow,
 } from '../../db/schema';
 import { formatDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { currentUser } from '../../lib/context';
@@ -87,8 +87,7 @@ export async function listIotMaintenanceWindows(q: QueryOutputOf<typeof iotMaint
 }
 
 export async function ensureIotMaintenanceWindowExists(id: number): Promise<IotMaintenanceWindowRow> {
-  const [row] = await db.select().from(iotMaintenanceWindows).where(buildWindowWhere({ id })).limit(1);
-  return requireRow(row, '维护窗口不存在');
+  return requireFirstRow(db.select().from(iotMaintenanceWindows).where(buildWindowWhere({ id })).limit(1), '维护窗口不存在');
 }
 
 export async function createIotMaintenanceWindow(data: CreateIotMaintenanceWindowInput) {

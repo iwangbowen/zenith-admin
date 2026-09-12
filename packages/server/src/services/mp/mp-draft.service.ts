@@ -1,5 +1,5 @@
 import { eq, and, desc } from 'drizzle-orm';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { db } from '../../db';
 import { mpDrafts } from '../../db/schema';
@@ -28,8 +28,7 @@ export function mapMpDraft(row: MpDraftRow) {
 }
 
 export async function ensureMpDraftExists(id: number): Promise<MpDraftRow> {
-  const [row] = await db.select().from(mpDrafts).where(and(eq(mpDrafts.id, id), tenantScope(mpDrafts))).limit(1);
-  return requireRow(row, '图文草稿不存在');
+  return requireFirstRow(db.select().from(mpDrafts).where(and(eq(mpDrafts.id, id), tenantScope(mpDrafts))).limit(1), '图文草稿不存在');
 }
 
 export async function getMpDraft(id: number) {

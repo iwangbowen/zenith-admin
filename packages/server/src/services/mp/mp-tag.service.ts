@@ -1,5 +1,5 @@
 import { eq, and, sql } from 'drizzle-orm';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -28,8 +28,7 @@ export function mapMpTag(row: MpTagRow) {
 }
 
 export async function ensureMpTagExists(id: number): Promise<MpTagRow> {
-  const [row] = await db.select().from(mpTags).where(and(eq(mpTags.id, id), tenantScope(mpTags))).limit(1);
-  return requireRow(row, '标签不存在');
+  return requireFirstRow(db.select().from(mpTags).where(and(eq(mpTags.id, id), tenantScope(mpTags))).limit(1), '标签不存在');
 }
 
 export async function listMpTags(q: QueryOutputOf<typeof mpTagContract.list>) {

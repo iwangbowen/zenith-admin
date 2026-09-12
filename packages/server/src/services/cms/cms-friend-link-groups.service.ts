@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { eq, asc, and } from 'drizzle-orm';
@@ -31,8 +31,7 @@ export function mapCmsFriendLinkGroup(row: CmsFriendLinkGroupRow, linkCount?: nu
 
 // ─── 前置校验 ─────────────────────────────────────────────────────────────────
 export async function ensureCmsFriendLinkGroupExists(id: number): Promise<CmsFriendLinkGroupRow> {
-  const [row] = await db.select().from(cmsFriendLinkGroups).where(eq(cmsFriendLinkGroups.id, id)).limit(1);
-  return requireRow(row, '友链分组不存在');
+  return requireFirstRow(db.select().from(cmsFriendLinkGroups).where(eq(cmsFriendLinkGroups.id, id)).limit(1), '友链分组不存在');
 }
 
 /** 校验分组归属站点：跨站点引用会让前台按组取数取到别站数据 */

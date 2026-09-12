@@ -16,7 +16,7 @@ import {
   type IotProductEventRow, type IotProductPropertyRow, type IotProductRow, type IotProductServiceRow,
 } from '../../db/schema';
 import { formatTimestamps } from '../../lib/datetime';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { TtlCache } from '../../lib/ttl-cache';
 import { invalidateAnomalyBaselines } from './iot-anomaly.service';
@@ -152,10 +152,12 @@ export async function createIotProperty(productId: number, data: CreateIotProper
 }
 
 export async function ensureIotPropertyExists(productId: number, propertyId: number): Promise<IotProductPropertyRow> {
-  const [row] = await db.select().from(iotProductProperties)
-    .where(and(eq(iotProductProperties.id, propertyId), eq(iotProductProperties.productId, productId)))
-    .limit(1);
-  return requireRow(row, '属性不存在');
+  return requireFirstRow(
+    db.select().from(iotProductProperties)
+      .where(and(eq(iotProductProperties.id, propertyId), eq(iotProductProperties.productId, productId)))
+      .limit(1),
+    '属性不存在',
+  );
 }
 
 export async function updateIotProperty(productId: number, propertyId: number, data: UpdateIotPropertyInput) {
@@ -205,10 +207,12 @@ export async function createIotService(productId: number, data: CreateIotService
 }
 
 export async function ensureIotServiceExists(productId: number, serviceId: number): Promise<IotProductServiceRow> {
-  const [row] = await db.select().from(iotProductServices)
-    .where(and(eq(iotProductServices.id, serviceId), eq(iotProductServices.productId, productId)))
-    .limit(1);
-  return requireRow(row, '服务不存在');
+  return requireFirstRow(
+    db.select().from(iotProductServices)
+      .where(and(eq(iotProductServices.id, serviceId), eq(iotProductServices.productId, productId)))
+      .limit(1),
+    '服务不存在',
+  );
 }
 
 export async function updateIotService(productId: number, serviceId: number, data: UpdateIotServiceInput) {
@@ -252,10 +256,12 @@ export async function createIotEvent(productId: number, data: CreateIotEventInpu
 }
 
 export async function ensureIotEventExists(productId: number, eventId: number): Promise<IotProductEventRow> {
-  const [row] = await db.select().from(iotProductEvents)
-    .where(and(eq(iotProductEvents.id, eventId), eq(iotProductEvents.productId, productId)))
-    .limit(1);
-  return requireRow(row, '事件不存在');
+  return requireFirstRow(
+    db.select().from(iotProductEvents)
+      .where(and(eq(iotProductEvents.id, eventId), eq(iotProductEvents.productId, productId)))
+      .limit(1),
+    '事件不存在',
+  );
 }
 
 export async function updateIotEvent(productId: number, eventId: number, data: UpdateIotEventInput) {

@@ -24,7 +24,7 @@ import {
 } from '../../db/schema';
 import { users } from '../../db/schema/core';
 import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { currentUser, currentUserId } from '../../lib/context';
@@ -104,8 +104,7 @@ export async function listIotAlarmRules(q: QueryOutputOf<typeof iotAlarmRuleCont
 }
 
 export async function ensureIotAlarmRuleExists(id: number): Promise<IotAlarmRuleRow> {
-  const [row] = await db.select().from(iotAlarmRules).where(buildRuleWhere({ id })).limit(1);
-  return requireRow(row, '告警规则不存在');
+  return requireFirstRow(db.select().from(iotAlarmRules).where(buildRuleWhere({ id })).limit(1), '告警规则不存在');
 }
 
 /** threshold/event 规则的标识符必须在产品物模型中已声明 */

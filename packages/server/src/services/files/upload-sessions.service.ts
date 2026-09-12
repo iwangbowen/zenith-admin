@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs, createReadStream, createWriteStream } from 'node:fs';
 import { Readable } from 'node:stream';
@@ -46,8 +46,7 @@ async function ensureSession(uploadId: string) {
   const user = currentUser();
   const tc = tenantCondition(uploadSessions, user);
   const where = buildWhere(eq(uploadSessions.uploadId, uploadId), tc);
-  const [session] = await db.select().from(uploadSessions).where(where).limit(1);
-  return requireRow(session, '上传会话不存在或已过期');
+  return requireFirstRow(db.select().from(uploadSessions).where(where).limit(1), '上传会话不存在或已过期');
 }
 
 async function getReceivedIndices(sessionId: number): Promise<number[]> {

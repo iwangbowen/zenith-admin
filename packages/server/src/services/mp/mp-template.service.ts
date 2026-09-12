@@ -1,5 +1,5 @@
 import { eq, and, desc } from 'drizzle-orm';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -43,8 +43,7 @@ export function mapMpTemplateSendLog(row: MpTemplateSendLogRow) {
 }
 
 export async function ensureMpTemplateExists(id: number): Promise<MpMessageTemplateRow> {
-  const [row] = await db.select().from(mpMessageTemplates).where(and(eq(mpMessageTemplates.id, id), tenantScope(mpMessageTemplates))).limit(1);
-  return requireRow(row, '模板不存在');
+  return requireFirstRow(db.select().from(mpMessageTemplates).where(and(eq(mpMessageTemplates.id, id), tenantScope(mpMessageTemplates))).limit(1), '模板不存在');
 }
 
 export async function getMpTemplateBeforeAudit(id: number) {

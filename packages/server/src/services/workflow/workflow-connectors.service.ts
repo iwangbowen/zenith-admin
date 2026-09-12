@@ -16,7 +16,7 @@ import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { buildListResult } from '../../lib/list-query';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { encryptField, decryptField } from '../../lib/encryption';
 import { assertSafeWorkflowUrl, buildConnectorUrl, workflowHttp } from '../../lib/workflow-outbound';
@@ -74,8 +74,7 @@ function findConnector(id: number): SQL {
 }
 
 async function ensureConnector(id: number): Promise<WorkflowConnectorRow> {
-  const [row] = await db.select().from(workflowConnectors).where(findConnector(id)).limit(1);
-  return requireRow(row, '连接器不存在');
+  return requireFirstRow(db.select().from(workflowConnectors).where(findConnector(id)).limit(1), '连接器不存在');
 }
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────

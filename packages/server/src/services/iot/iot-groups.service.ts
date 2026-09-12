@@ -10,7 +10,7 @@ import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import { iotDeviceGroupMembers, iotDeviceGroups, iotDevices, type IotDeviceGroupRow } from '../../db/schema';
 import { formatTimestamps } from '../../lib/datetime';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { currentUser } from '../../lib/context';
@@ -77,8 +77,7 @@ export async function listAllIotDeviceGroups() {
 }
 
 export async function ensureIotDeviceGroupExists(id: number): Promise<IotDeviceGroupRow> {
-  const [row] = await db.select().from(iotDeviceGroups).where(buildGroupWhere({ id })).limit(1);
-  return requireRow(row, '设备分组不存在');
+  return requireFirstRow(db.select().from(iotDeviceGroups).where(buildGroupWhere({ id })).limit(1), '设备分组不存在');
 }
 
 export async function getIotDeviceGroup(id: number) {

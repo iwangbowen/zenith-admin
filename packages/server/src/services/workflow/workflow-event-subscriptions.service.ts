@@ -17,7 +17,7 @@ import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { pageOffset } from '../../lib/pagination';
 import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { buildListResult } from '../../lib/list-query';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { decryptSecret, encryptSecret } from '../../lib/secret-crypto';
 import { assertSafeWorkflowUrl, workflowHttpPost } from '../../lib/workflow-outbound';
 import { payloadRecord, payloadString } from './payload-utils';
@@ -88,8 +88,7 @@ function findSubscription(id: number) {
 }
 
 export async function ensureSubscriptionExists(id: number) {
-  const [row] = await db.select().from(workflowEventSubscriptions).where(findSubscription(id)).limit(1);
-  return requireRow(row, '事件订阅不存在');
+  return requireFirstRow(db.select().from(workflowEventSubscriptions).where(findSubscription(id)).limit(1), '事件订阅不存在');
 }
 
 export async function listSubscriptions(q: QueryOutputOf<typeof workflowEventSubscriptionContract.list>) {

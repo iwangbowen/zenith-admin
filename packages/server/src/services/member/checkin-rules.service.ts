@@ -3,7 +3,7 @@ import { db } from '../../db';
 import { checkinRules } from '../../db/schema';
 import type { CheckinRuleRow } from '../../db/schema';
 import { formatTimestamps } from '../../lib/datetime';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 
 function mapCheckinRule(row: CheckinRuleRow) {
@@ -23,8 +23,7 @@ export async function listCheckinRules() {
 }
 
 export async function ensureCheckinRuleExists(id: number): Promise<CheckinRuleRow> {
-  const [row] = await db.select().from(checkinRules).where(eq(checkinRules.id, id)).limit(1);
-  return requireRow(row, '签到规则不存在');
+  return requireFirstRow(db.select().from(checkinRules).where(eq(checkinRules.id, id)).limit(1), '签到规则不存在');
 }
 
 export async function createCheckinRule(data: {

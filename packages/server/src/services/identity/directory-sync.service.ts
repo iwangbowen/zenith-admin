@@ -1,5 +1,5 @@
 import { buildListResult } from '../../lib/list-query';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
@@ -171,10 +171,12 @@ export async function listDirectorySyncSources(q: QueryOutputOf<typeof directory
 
 /** 管理侧读取：id + 调用者租户作用域，越界一律 404（SCIM 回调与 worker 走各自的按 key / id 加载，不经此处） */
 export async function ensureDirectorySyncSourceExists(id: number): Promise<DirectorySyncSourceRow> {
-  const [row] = await db.select().from(directorySyncSources)
-    .where(and(eq(directorySyncSources.id, id), tenantScope(directorySyncSources)))
-    .limit(1);
-  return requireRow(row, '同步源不存在');
+  return requireFirstRow(
+    db.select().from(directorySyncSources)
+      .where(and(eq(directorySyncSources.id, id), tenantScope(directorySyncSources)))
+      .limit(1),
+    '同步源不存在',
+  );
 }
 
 export async function getDirectorySyncSource(id: number) {
@@ -362,10 +364,12 @@ export async function getDirectorySyncRun(id: number) {
 }
 
 async function ensureRunManageable(runId: number): Promise<DirectorySyncRunRow> {
-  const [run] = await db.select().from(directorySyncRuns)
-    .where(and(eq(directorySyncRuns.id, runId), manageableSourceScope(directorySyncRuns.sourceId)))
-    .limit(1);
-  return requireRow(run, '同步记录不存在');
+  return requireFirstRow(
+    db.select().from(directorySyncRuns)
+      .where(and(eq(directorySyncRuns.id, runId), manageableSourceScope(directorySyncRuns.sourceId)))
+      .limit(1),
+    '同步记录不存在',
+  );
 }
 
 export async function listDirectorySyncRunItems(runId: number, q: QueryOutputOf<typeof directorySyncContract.listRunItems>) {
@@ -430,10 +434,12 @@ export async function listDirectorySyncConflicts(q: QueryOutputOf<typeof directo
 }
 
 export async function ensureDirectorySyncConflictExists(id: number): Promise<DirectorySyncConflictRow> {
-  const [row] = await db.select().from(directorySyncConflicts)
-    .where(and(eq(directorySyncConflicts.id, id), manageableSourceScope(directorySyncConflicts.sourceId)))
-    .limit(1);
-  return requireRow(row, '冲突记录不存在');
+  return requireFirstRow(
+    db.select().from(directorySyncConflicts)
+      .where(and(eq(directorySyncConflicts.id, id), manageableSourceScope(directorySyncConflicts.sourceId)))
+      .limit(1),
+    '冲突记录不存在',
+  );
 }
 
 /** 将源侧快照字段应用到本地用户 */

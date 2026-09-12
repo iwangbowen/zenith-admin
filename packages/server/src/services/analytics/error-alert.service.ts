@@ -1,6 +1,6 @@
 import { and, eq, gte, lt, desc, isNull, or } from 'drizzle-orm';
 import { buildListResult } from '../../lib/list-query';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import { db } from '../../db';
 import { errorAlertRules, errorAlertLogs, errorEvents, errorGroups } from '../../db/schema';
 import type { ErrorAlertRuleRow, ErrorAlertLogRow } from '../../db/schema';
@@ -46,8 +46,7 @@ export async function listAlertRules(q: AlertRuleListQuery) {
 }
 
 export async function ensureRuleExists(id: number) {
-  const [row] = await db.select().from(errorAlertRules).where(buildWhere(eq(errorAlertRules.id, id), tenantScope(errorAlertRules))).limit(1);
-  return requireRow(row, '告警规则不存在');
+  return requireFirstRow(db.select().from(errorAlertRules).where(buildWhere(eq(errorAlertRules.id, id), tenantScope(errorAlertRules))).limit(1), '告警规则不存在');
 }
 
 export async function createAlertRule(input: CreateErrorAlertRuleInput) {

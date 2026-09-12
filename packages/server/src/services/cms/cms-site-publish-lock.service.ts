@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { eq, sql } from 'drizzle-orm';
 import { TaskCancelledError } from '../../lib/task-center';
@@ -20,8 +20,7 @@ export async function acquireCmsGlobalThemeLifecycleLock(executor: DbExecutor): 
 
 export async function lockCmsSiteForMutation(tx: DbTransaction, siteId: number): Promise<CmsSiteRow> {
   await acquireCmsSitePublishLock(tx, siteId);
-  const [site] = await tx.select().from(cmsSites).where(eq(cmsSites.id, siteId)).for('update').limit(1);
-  return requireRow(site, '站点不存在');
+  return requireFirstRow(tx.select().from(cmsSites).where(eq(cmsSites.id, siteId)).for('update').limit(1), '站点不存在');
 }
 
 /**

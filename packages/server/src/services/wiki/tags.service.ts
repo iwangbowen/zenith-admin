@@ -6,7 +6,7 @@ import { db } from '../../db';
 import { wikiDocTags, wikiTags, type WikiTagRow } from '../../db/schema';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { formatTimestamps } from '../../lib/datetime';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 
@@ -65,8 +65,7 @@ export async function listAllWikiTags() {
 }
 
 export async function ensureWikiTagExists(id: number) {
-  const [row] = await db.select().from(wikiTags).where(buildWikiTagWhere({ id })).limit(1);
-  return requireRow(row, '标签不存在');
+  return requireFirstRow(db.select().from(wikiTags).where(buildWikiTagWhere({ id })).limit(1), '标签不存在');
 }
 
 export async function createWikiTag(data: CreateWikiTagInput) {

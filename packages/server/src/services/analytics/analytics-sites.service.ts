@@ -1,6 +1,6 @@
 
 import { randomBytes } from 'node:crypto';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import type { QueryOutputOf } from '@zenith/shared/core';
@@ -114,8 +114,7 @@ export async function listSites(q: QueryOutputOf<typeof analyticsSiteContract.si
 
 async function ensureSiteExists(id: number): Promise<AnalyticsSiteRow> {
   const where = buildWhere(eq(analyticsSites.id, id), tenantScope(analyticsSites));
-  const [row] = await db.select().from(analyticsSites).where(where).limit(1);
-  return requireRow(row, '站点不存在');
+  return requireFirstRow(db.select().from(analyticsSites).where(where).limit(1), '站点不存在');
 }
 
 export async function createSite(input: CreateAnalyticsSiteInput) {

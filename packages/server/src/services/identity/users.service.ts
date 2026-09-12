@@ -1,5 +1,5 @@
 import { buildListResult } from '../../lib/list-query';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { eq, and, ne, inArray, type SQL } from 'drizzle-orm';
 import { hashPassword } from '../../lib/password';
 import { db } from '../../db';
@@ -88,9 +88,11 @@ async function manageableUsersCondition(): Promise<SQL | undefined> {
 /** 校验目标用户存在且落在当前操作者可管理范围内（防越权/跨租户 IDOR），返回其租户归属 */
 async function ensureUserManageable(userId: number): Promise<{ id: number; tenantId: number | null }> {
   const cond = await manageableUsersCondition();
-  const [row] = await db.select({ id: users.id, tenantId: users.tenantId }).from(users)
-    .where(cond ? and(eq(users.id, userId), cond) : eq(users.id, userId)).limit(1);
-  return requireRow(row, '用户不存在或超出数据权限范围');
+  return requireFirstRow(
+    db.select({ id: users.id, tenantId: users.tenantId }).from(users)
+      .where(cond ? and(eq(users.id, userId), cond) : eq(users.id, userId)).limit(1),
+    '用户不存在或超出数据权限范围',
+  );
 }
 
 /** 批量版：全部命中才放行（任一目标越权则整体拒绝，避免部分成功掩盖越权尝试） */

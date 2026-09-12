@@ -3,7 +3,7 @@
  */
 import { and, desc, eq } from 'drizzle-orm';
 import { buildListResult } from '../../lib/list-query';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { analyticsEventOverrides } from '../../db/schema';
@@ -58,9 +58,11 @@ export async function listEventOverrides(q: QueryOutputOf<typeof analyticsContra
 }
 
 export async function ensureEventOverrideExists(id: number, tenantId: number) {
-  const [row] = await db.select().from(analyticsEventOverrides)
-    .where(and(eq(analyticsEventOverrides.id, id), eq(analyticsEventOverrides.tenantId, tenantId))).limit(1);
-  return requireRow(row, '事件覆盖规则不存在');
+  return requireFirstRow(
+    db.select().from(analyticsEventOverrides)
+      .where(and(eq(analyticsEventOverrides.id, id), eq(analyticsEventOverrides.tenantId, tenantId))).limit(1),
+    '事件覆盖规则不存在',
+  );
 }
 
 export async function createEventOverride(input: CreateAnalyticsEventOverrideInput) {

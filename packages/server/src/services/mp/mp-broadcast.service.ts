@@ -1,5 +1,5 @@
 import { eq, and, desc, inArray, isNotNull, lte } from 'drizzle-orm';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
@@ -36,8 +36,7 @@ export function mapMpBroadcast(row: MpBroadcastRow) {
 }
 
 export async function ensureMpBroadcastExists(id: number): Promise<MpBroadcastRow> {
-  const [row] = await db.select().from(mpBroadcasts).where(and(eq(mpBroadcasts.id, id), tenantScope(mpBroadcasts))).limit(1);
-  return requireRow(row, '群发记录不存在');
+  return requireFirstRow(db.select().from(mpBroadcasts).where(and(eq(mpBroadcasts.id, id), tenantScope(mpBroadcasts))).limit(1), '群发记录不存在');
 }
 
 export async function getMpBroadcastBeforeAudit(id: number) {

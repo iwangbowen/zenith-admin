@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { eq, asc, and, inArray, isNull, isNotNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -74,8 +74,7 @@ function sanitizeChannelPageContent<T extends { pageContent?: string | null }>(d
 
 // ─── 前置校验 ─────────────────────────────────────────────────────────────────
 export async function ensureCmsChannelExists(id: number): Promise<CmsChannelRow> {
-  const [row] = await db.select().from(cmsChannels).where(eq(cmsChannels.id, id)).limit(1);
-  return requireRow(row, '栏目不存在');
+  return requireFirstRow(db.select().from(cmsChannels).where(eq(cmsChannels.id, id)).limit(1), '栏目不存在');
 }
 
 /** 按栏目标识查栏目（开放 API / 模板按 code 引用栏目时用） */

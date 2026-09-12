@@ -18,7 +18,7 @@ import { departments, driveFileVersions, driveNodes, driveSpaceMembers, driveSpa
 import { currentUser, currentUserId, isSuperAdmin } from '../../lib/context';
 import { getDataScopeCondition } from '../../lib/data-scope';
 import { formatDateTime } from '../../lib/datetime';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
 import { buildListResult } from '../../lib/list-query';
@@ -64,8 +64,7 @@ function buildSpaceWhere(q: SpaceWhereInput, extra?: SQL): SQL | undefined {
 }
 
 export async function ensureDriveSpaceExists(id: number): Promise<DriveSpaceRow> {
-  const [row] = await db.select().from(driveSpaces).where(buildSpaceWhere({ id })).limit(1);
-  return requireRow(row, '空间不存在');
+  return requireFirstRow(db.select().from(driveSpaces).where(buildSpaceWhere({ id })).limit(1), '空间不存在');
 }
 
 // ─── 容量趋势 ─────────────────────────────────────────────────────────────────

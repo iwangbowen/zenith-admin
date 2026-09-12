@@ -14,7 +14,7 @@ import { db } from '../../db';
 import { shortLinks, type ShortLinkRow } from '../../db/schema';
 import { config } from '../../config';
 import { formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { isPgUniqueViolation, rethrowPgUniqueViolation } from '../../lib/db-errors';
@@ -140,8 +140,7 @@ export async function listShortLinks(q: ListShortLinksQuery) {
 }
 
 export async function ensureShortLinkExists(id: number): Promise<ShortLinkRow> {
-  const [row] = await db.select().from(shortLinks).where(buildShortLinkWhere({ id })).limit(1);
-  return requireRow(row, '短链不存在');
+  return requireFirstRow(db.select().from(shortLinks).where(buildShortLinkWhere({ id })).limit(1), '短链不存在');
 }
 
 export async function getShortLink(id: number) {

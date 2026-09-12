@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { eq, asc } from 'drizzle-orm';
@@ -59,8 +59,7 @@ export function mapCmsSensitiveWord(row: CmsSensitiveWordRow) {
 }
 
 export async function ensureCmsSensitiveWordExists(id: number): Promise<CmsSensitiveWordRow> {
-  const [row] = await db.select().from(cmsSensitiveWords).where(eq(cmsSensitiveWords.id, id)).limit(1);
-  return requireRow(row, '敏感词不存在');
+  return requireFirstRow(db.select().from(cmsSensitiveWords).where(eq(cmsSensitiveWords.id, id)).limit(1), '敏感词不存在');
 }
 
 export async function listCmsSensitiveWords(q: QueryOutputOf<typeof cmsSensitiveWordContract.list>) {

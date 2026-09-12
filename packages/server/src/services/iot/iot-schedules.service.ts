@@ -20,7 +20,7 @@ import {
   type IotDeviceRow, type IotScheduleRow, type IotScheduleRunRow,
 } from '../../db/schema';
 import { formatDateTime, formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { currentUser } from '../../lib/context';
@@ -140,8 +140,7 @@ export async function listIotSchedules(q: QueryOutputOf<typeof iotScheduleContra
 }
 
 export async function ensureIotScheduleExists(id: number): Promise<IotScheduleRow> {
-  const [row] = await db.select().from(iotSchedules).where(buildScheduleWhere({ id })).limit(1);
-  return requireRow(row, '计划任务不存在');
+  return requireFirstRow(db.select().from(iotSchedules).where(buildScheduleWhere({ id })).limit(1), '计划任务不存在');
 }
 
 /** 目标与动作引用校验：设备/分组归属、服务在物模型中声明 */

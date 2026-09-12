@@ -7,7 +7,7 @@ import { memberLevels, members } from '../../db/schema';
 import type { MemberLevelRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import { formatTimestamps } from '../../lib/datetime';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 
 export interface CreateLevelInput {
@@ -43,8 +43,7 @@ export function mapLevel(row: MemberLevelRow, memberCount?: number) {
 
 // ─── 校验 ─────────────────────────────────────────────────────────────────────
 export async function ensureLevelExists(id: number): Promise<MemberLevelRow> {
-  const [row] = await db.select().from(memberLevels).where(eq(memberLevels.id, id)).limit(1);
-  return requireRow(row, '会员等级不存在');
+  return requireFirstRow(db.select().from(memberLevels).where(eq(memberLevels.id, id)).limit(1), '会员等级不存在');
 }
 
 // ─── 列表 ─────────────────────────────────────────────────────────────────────

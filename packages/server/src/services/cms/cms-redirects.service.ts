@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { eq, asc } from 'drizzle-orm';
@@ -86,8 +86,7 @@ export function mapCmsRedirect(row: CmsRedirectRow) {
 }
 
 export async function ensureCmsRedirectExists(id: number): Promise<CmsRedirectRow> {
-  const [row] = await db.select().from(cmsRedirects).where(eq(cmsRedirects.id, id)).limit(1);
-  return requireRow(row, '重定向规则不存在');
+  return requireFirstRow(db.select().from(cmsRedirects).where(eq(cmsRedirects.id, id)).limit(1), '重定向规则不存在');
 }
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────

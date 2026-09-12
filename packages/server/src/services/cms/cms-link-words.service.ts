@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { eq, asc } from 'drizzle-orm';
@@ -98,8 +98,7 @@ export function mapCmsLinkWord(row: CmsLinkWordRow) {
 }
 
 export async function ensureCmsLinkWordExists(id: number): Promise<CmsLinkWordRow> {
-  const [row] = await db.select().from(cmsLinkWords).where(eq(cmsLinkWords.id, id)).limit(1);
-  return requireRow(row, '内链词不存在');
+  return requireFirstRow(db.select().from(cmsLinkWords).where(eq(cmsLinkWords.id, id)).limit(1), '内链词不存在');
 }
 
 export async function listCmsLinkWords(q: QueryOutputOf<typeof cmsSeoContract.linkWordList>) {

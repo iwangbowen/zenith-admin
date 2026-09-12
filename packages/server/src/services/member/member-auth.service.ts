@@ -14,7 +14,7 @@ import type { MemberRow } from '../../db/schema';
 import { signToken, verifyToken } from '../../lib/jwt';
 import { pageOffset } from '../../lib/pagination';
 import { buildListResult } from '../../lib/list-query';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import {
   generateMemberTokenId,
   registerMemberSession,
@@ -143,9 +143,11 @@ async function findMemberByAccount(account: string): Promise<MemberRow | undefin
 }
 
 export async function ensureMemberExists(id: number): Promise<MemberRow> {
-  const [row] = await db.select().from(members)
-    .where(and(eq(members.id, id), isNull(members.deletedAt))).limit(1);
-  return requireRow(row, '会员不存在');
+  return requireFirstRow(
+    db.select().from(members)
+      .where(and(eq(members.id, id), isNull(members.deletedAt))).limit(1),
+    '会员不存在',
+  );
 }
 
 // ─── 登录日志 ─────────────────────────────────────────────────────────────────

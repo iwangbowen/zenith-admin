@@ -8,7 +8,7 @@ import type { DbExecutor } from '../../db/types';
 import { users, wikiDocs, wikiSpaceMembers, wikiSpaces, type WikiSpaceRow } from '../../db/schema';
 import { currentUser, isSuperAdmin } from '../../lib/context';
 import { formatDateTime, formatTimestamps } from '../../lib/datetime';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
@@ -90,8 +90,7 @@ export async function listWikiSpaces(q: QueryOutputOf<typeof wikiSpaceContract.l
 }
 
 export async function ensureWikiSpaceExists(id: number) {
-  const [row] = await db.select().from(wikiSpaces).where(buildWikiSpaceWhere({ id })).limit(1);
-  return requireRow(row, '知识空间不存在');
+  return requireFirstRow(db.select().from(wikiSpaces).where(buildWikiSpaceWhere({ id })).limit(1), '知识空间不存在');
 }
 
 export async function getWikiSpace(id: number) {

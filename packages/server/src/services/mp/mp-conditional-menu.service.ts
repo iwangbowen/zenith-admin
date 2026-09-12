@@ -1,5 +1,5 @@
 import { eq, and, desc } from 'drizzle-orm';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { db } from '../../db';
 import { mpConditionalMenus } from '../../db/schema';
 import type { MpConditionalMenuRow } from '../../db/schema';
@@ -41,8 +41,7 @@ function toWechatMatchRule(rule: MpMenuMatchRule): WechatMenuMatchRule {
 }
 
 async function ensureExists(id: number): Promise<MpConditionalMenuRow> {
-  const [row] = await db.select().from(mpConditionalMenus).where(and(eq(mpConditionalMenus.id, id), tenantScope(mpConditionalMenus))).limit(1);
-  return requireRow(row, '个性化菜单不存在');
+  return requireFirstRow(db.select().from(mpConditionalMenus).where(and(eq(mpConditionalMenus.id, id), tenantScope(mpConditionalMenus))).limit(1), '个性化菜单不存在');
 }
 
 export async function getMpConditionalMenuBeforeAudit(id: number) {

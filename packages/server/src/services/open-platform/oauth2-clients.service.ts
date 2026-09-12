@@ -1,6 +1,6 @@
 import { randomBytes, createHash, randomUUID } from 'node:crypto';
 import { buildListResult } from '../../lib/list-query';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { isIP } from 'node:net';
 import { and, eq, desc, inArray } from 'drizzle-orm';
 import type { QueryOutputOf } from '@zenith/shared/core';
@@ -468,15 +468,17 @@ export async function reviewOAuth2Client(
 // ─── 令牌管理 ─────────────────────────────────────────────────────────────────
 
 async function ensureScopedClientByClientId(clientId: string) {
-  const [row] = await db
-    .select({ clientId: oauth2Clients.clientId })
-    .from(oauth2Clients)
-    .where(and(
-      eq(oauth2Clients.clientId, clientId),
-      tenantCondition(oauth2Clients, currentUser()),
-    ))
-    .limit(1);
-  return requireRow(row, 'OAuth2 应用不存在');
+  return requireFirstRow(
+    db
+      .select({ clientId: oauth2Clients.clientId })
+      .from(oauth2Clients)
+      .where(and(
+        eq(oauth2Clients.clientId, clientId),
+        tenantCondition(oauth2Clients, currentUser()),
+      ))
+      .limit(1),
+    'OAuth2 应用不存在',
+  );
 }
 
 export async function listClientTokens(clientId: string, opts: { page: number; pageSize: number }) {

@@ -9,7 +9,7 @@
  */
 import { desc, eq, gte, isNotNull, sql, type SQL } from 'drizzle-orm';
 import { buildListResult } from '../../lib/list-query';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { analyticsUserSegments, analyticsSegmentMembers, analyticsUserProfiles, userEvents } from '../../db/schema';
@@ -87,8 +87,7 @@ export async function listSegments(q: QueryOutputOf<typeof analyticsContract.seg
 /** 取分群行并校验 tenant 归属；不存在或无权访问时抛 404。供路由与物化任务共用作为唯一鉴权入口。 */
 export async function ensureSegmentExists(id: number): Promise<AnalyticsUserSegmentRow> {
   const where = buildWhere(eq(analyticsUserSegments.id, id), tenantScope(analyticsUserSegments));
-  const [row] = await db.select().from(analyticsUserSegments).where(where).limit(1);
-  return requireRow(row, '分群不存在');
+  return requireFirstRow(db.select().from(analyticsUserSegments).where(where).limit(1), '分群不存在');
 }
 
 /** 供其他模块（漏斗 segmentId、事件分析 segmentId）复用的只读归属校验。 */

@@ -1,6 +1,6 @@
 import { randomBytes, createHmac, randomUUID } from 'node:crypto';
 import { buildListResult } from '../../lib/list-query';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { eq, and, or, desc, inArray, isNotNull, isNull, lte, sql, arrayContained, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { appWebhookSubscriptions, appWebhookDeliveries, cmsOpenAppGrants, oauth2Clients, users } from '../../db/schema';
@@ -170,12 +170,14 @@ function mapDelivery(row: AppWebhookDeliveryRow) {
 }
 
 async function ensureAppExists(clientId: string, tenantId: number | null) {
-  const [row] = await db
-    .select({ id: oauth2Clients.id, tenantId: oauth2Clients.tenantId })
-    .from(oauth2Clients)
-    .where(and(eq(oauth2Clients.clientId, clientId), clientTenantScope(tenantId)))
-    .limit(1);
-  return requireRow(row, '指定的应用（AppKey）不存在', 400);
+  return requireFirstRow(
+    db
+      .select({ id: oauth2Clients.id, tenantId: oauth2Clients.tenantId })
+      .from(oauth2Clients)
+      .where(and(eq(oauth2Clients.clientId, clientId), clientTenantScope(tenantId)))
+      .limit(1),
+    '指定的应用（AppKey）不存在', 400,
+  );
 }
 
 async function getExternalSubscriptionRow(
@@ -183,12 +185,14 @@ async function getExternalSubscriptionRow(
   tenantId = currentTenantId(),
   domain: AppWebhookDomain = 'all',
 ): Promise<AppWebhookSubscriptionRow> {
-  const [row] = await db
-    .select()
-    .from(appWebhookSubscriptions)
-    .where(and(eq(appWebhookSubscriptions.id, id), externalSubscriptionScope(tenantId, domain)))
-    .limit(1);
-  return requireRow(row, 'Webhook 订阅不存在');
+  return requireFirstRow(
+    db
+      .select()
+      .from(appWebhookSubscriptions)
+      .where(and(eq(appWebhookSubscriptions.id, id), externalSubscriptionScope(tenantId, domain)))
+      .limit(1),
+    'Webhook 订阅不存在',
+  );
 }
 
 async function getExternalDeliveryRow(
@@ -196,12 +200,14 @@ async function getExternalDeliveryRow(
   tenantId = currentTenantId(),
   domain: AppWebhookDomain = 'all',
 ): Promise<AppWebhookDeliveryRow> {
-  const [row] = await db
-    .select()
-    .from(appWebhookDeliveries)
-    .where(and(eq(appWebhookDeliveries.id, id), externalDeliveryScope(tenantId, domain)))
-    .limit(1);
-  return requireRow(row, '投递记录不存在');
+  return requireFirstRow(
+    db
+      .select()
+      .from(appWebhookDeliveries)
+      .where(and(eq(appWebhookDeliveries.id, id), externalDeliveryScope(tenantId, domain)))
+      .limit(1),
+    '投递记录不存在',
+  );
 }
 
 // ─── 订阅 CRUD ────────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { eq, and, inArray, sql } from 'drizzle-orm';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { db } from '../../db';
 import { mpMaterials } from '../../db/schema';
@@ -30,8 +30,7 @@ export function mapMpMaterial(row: MpMaterialRow) {
 }
 
 export async function ensureMpMaterialExists(id: number): Promise<MpMaterialRow> {
-  const [row] = await db.select().from(mpMaterials).where(and(eq(mpMaterials.id, id), tenantScope(mpMaterials))).limit(1);
-  return requireRow(row, '素材不存在');
+  return requireFirstRow(db.select().from(mpMaterials).where(and(eq(mpMaterials.id, id), tenantScope(mpMaterials))).limit(1), '素材不存在');
 }
 
 export async function getMpMaterialBeforeAudit(id: number) {

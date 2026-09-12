@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, ne, type SQL } from 'drizzle-orm';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import type { QueryOutputOf } from '@zenith/shared/core';
@@ -102,10 +102,12 @@ export async function listCampaigns(q: QueryOutputOf<typeof analyticsCampaignCon
 }
 
 export async function ensureCampaignExists(id: number): Promise<AnalyticsSegmentCampaignRow> {
-  const [row] = await db.select().from(analyticsSegmentCampaigns)
-    .where(buildWhere(eq(analyticsSegmentCampaigns.id, id), tenantScope(analyticsSegmentCampaigns)))
-    .limit(1);
-  return requireRow(row, '触达活动不存在');
+  return requireFirstRow(
+    db.select().from(analyticsSegmentCampaigns)
+      .where(buildWhere(eq(analyticsSegmentCampaigns.id, id), tenantScope(analyticsSegmentCampaigns)))
+      .limit(1),
+    '触达活动不存在',
+  );
 }
 
 async function ensureTemplateForChannel(channel: CreateAnalyticsCampaignInput['channel'], templateId?: number | null) {

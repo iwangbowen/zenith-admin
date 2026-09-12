@@ -12,7 +12,7 @@ import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { formatTimestamps } from '../../lib/datetime';
 import { buildListResult } from '../../lib/list-query';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { assertSafeWorkflowUrl, workflowHttp } from '../../lib/workflow-outbound';
 import { decryptSecret, encryptSecret } from '../../lib/secret-crypto';
@@ -83,8 +83,7 @@ export function mapDataSource(row: WorkflowDataSourceRow): WorkflowDataSource {
 }
 
 export async function ensureDataSourceExists(id: number): Promise<WorkflowDataSourceRow> {
-  const [row] = await db.select().from(workflowDataSources).where(eq(workflowDataSources.id, id)).limit(1);
-  return requireRow(row, '数据源不存在');
+  return requireFirstRow(db.select().from(workflowDataSources).where(eq(workflowDataSources.id, id)).limit(1), '数据源不存在');
 }
 
 export async function getDataSource(id: number): Promise<WorkflowDataSource> {

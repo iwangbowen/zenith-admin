@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { eq, asc, desc, and, inArray, sql } from 'drizzle-orm';
@@ -57,8 +57,7 @@ export function mapCmsFormSubmission(row: CmsFormSubmissionRow) {
 }
 
 export async function ensureCmsFormExists(id: number): Promise<CmsFormRow> {
-  const [row] = await db.select().from(cmsForms).where(eq(cmsForms.id, id)).limit(1);
-  return requireRow(row, '表单不存在');
+  return requireFirstRow(db.select().from(cmsForms).where(eq(cmsForms.id, id)).limit(1), '表单不存在');
 }
 
 /** 前台渲染/提交：按站点+标识取启用表单 */

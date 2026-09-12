@@ -1,5 +1,5 @@
 import dayjs from 'dayjs';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import type { CreateDeveloperOAuth2ClientInput, UpdateDeveloperOAuth2ClientInput } from '@zenith/shared/open-platform';
 import { db } from '../../db';
@@ -24,12 +24,14 @@ import { getDefaultRatePlanRow, getRatePlanRowById } from './rate-plans.service'
 
 async function ensureOwnedApp(id: number) {
   const user = currentUser();
-  const [row] = await db.select().from(oauth2Clients).where(and(
-    eq(oauth2Clients.id, id),
-    eq(oauth2Clients.ownerId, user.userId),
-    tenantCondition(oauth2Clients, user),
-  )).limit(1);
-  return requireRow(row, '应用不存在或不属于当前用户');
+  return requireFirstRow(
+    db.select().from(oauth2Clients).where(and(
+      eq(oauth2Clients.id, id),
+      eq(oauth2Clients.ownerId, user.userId),
+      tenantCondition(oauth2Clients, user),
+    )).limit(1),
+    '应用不存在或不属于当前用户',
+  );
 }
 
 export function listMyOAuth2Clients(opts: {

@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { and, desc, eq, gt } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { createHash, randomBytes } from 'node:crypto';
@@ -292,12 +292,14 @@ export async function listLoginRiskEvents(query: QueryOutputOf<typeof identitySe
 }
 
 async function ensureOwnTotpFactor(userId: number, factorId: number) {
-  const [factor] = await db
-    .select()
-    .from(userMfaFactors)
-    .where(and(eq(userMfaFactors.id, factorId), eq(userMfaFactors.userId, userId), eq(userMfaFactors.type, 'totp')))
-    .limit(1);
-  return requireRow(factor, 'MFA 因子不存在');
+  return requireFirstRow(
+    db
+      .select()
+      .from(userMfaFactors)
+      .where(and(eq(userMfaFactors.id, factorId), eq(userMfaFactors.userId, userId), eq(userMfaFactors.type, 'totp')))
+      .limit(1),
+    'MFA 因子不存在',
+  );
 }
 
 function mapMfaFactor(row: typeof userMfaFactors.$inferSelect) {

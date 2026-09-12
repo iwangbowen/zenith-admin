@@ -23,7 +23,7 @@ import {
   type IotAutomationActionDef, type IotAutomationRow, type IotAutomationRunRow, type IotDeviceRow,
 } from '../../db/schema';
 import { formatDateTime, formatTimestamps } from '../../lib/datetime';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { currentUser } from '../../lib/context';
@@ -130,8 +130,7 @@ export async function listIotAutomations(q: QueryOutputOf<typeof iotAutomationCo
 }
 
 export async function ensureIotAutomationExists(id: number): Promise<IotAutomationRow> {
-  const [row] = await db.select().from(iotAutomations).where(buildAutomationWhere({ id })).limit(1);
-  return requireRow(row, '联动规则不存在');
+  return requireFirstRow(db.select().from(iotAutomations).where(buildAutomationWhere({ id })).limit(1), '联动规则不存在');
 }
 
 /** 触发引用校验：属性/事件需在物模型中声明，限定设备需属于该产品 */

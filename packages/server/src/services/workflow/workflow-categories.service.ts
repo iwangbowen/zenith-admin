@@ -11,7 +11,7 @@ import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { pageOffset } from '../../lib/pagination';
 import { formatTimestamps } from '../../lib/datetime';
 import { buildListResult } from '../../lib/list-query';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 
 export function mapCategory(row: typeof workflowCategories.$inferSelect) {
   return {
@@ -30,9 +30,11 @@ export function mapCategory(row: typeof workflowCategories.$inferSelect) {
 }
 
 export async function ensureCategoryExists(id: number) {
-  const [row] = await db.select().from(workflowCategories)
-    .where(buildWhere(eq(workflowCategories.id, id), tenantCondition(workflowCategories, currentUser()))).limit(1);
-  return requireRow(row, '流程分类不存在');
+  return requireFirstRow(
+    db.select().from(workflowCategories)
+      .where(buildWhere(eq(workflowCategories.id, id), tenantCondition(workflowCategories, currentUser()))).limit(1),
+    '流程分类不存在',
+  );
 }
 
 export async function listWorkflowCategories(q: QueryOutputOf<typeof workflowCategoryContract.list>) {

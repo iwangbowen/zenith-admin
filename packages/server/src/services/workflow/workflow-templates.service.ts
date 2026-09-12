@@ -9,7 +9,7 @@ import { formatTimestamps } from '../../lib/datetime';
 import type { WorkflowTemplate, WorkflowFlowData, WorkflowFormSchema, CreateWorkflowTemplateInput, UpdateWorkflowTemplateInput, SaveAsTemplateInput } from '@zenith/shared/workflow';
 import { createDefinition } from './workflow-definitions.service';
 import { createWorkflowForm } from './workflow-forms.service';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildWhere } from '../../lib/where-helpers';
 
 type TemplateRow = typeof workflowTemplates.$inferSelect;
@@ -32,9 +32,11 @@ export function mapTemplate(row: TemplateRow): WorkflowTemplate {
 }
 
 async function ensureTemplate(id: number): Promise<TemplateRow> {
-  const [row] = await db.select().from(workflowTemplates)
-    .where(buildWhere(eq(workflowTemplates.id, id), tenantCondition(workflowTemplates, currentUser()))).limit(1);
-  return requireRow(row, '模板不存在');
+  return requireFirstRow(
+    db.select().from(workflowTemplates)
+      .where(buildWhere(eq(workflowTemplates.id, id), tenantCondition(workflowTemplates, currentUser()))).limit(1),
+    '模板不存在',
+  );
 }
 
 export async function listWorkflowTemplates(): Promise<WorkflowTemplate[]> {

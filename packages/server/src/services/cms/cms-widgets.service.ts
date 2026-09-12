@@ -1,4 +1,4 @@
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import {
   and, desc, eq, gt, inArray, isNull, or, sql,
@@ -161,8 +161,7 @@ export async function listCmsWidgetRenderersForSite(siteId: number, type: CmsWid
 }
 
 export async function ensureCmsWidgetExists(id: number, executor: DbExecutor = db): Promise<CmsWidgetRow> {
-  const [row] = await executor.select().from(cmsWidgets).where(eq(cmsWidgets.id, id)).limit(1);
-  return requireRow(row, '页面部件不存在');
+  return requireFirstRow(executor.select().from(cmsWidgets).where(eq(cmsWidgets.id, id)).limit(1), '页面部件不存在');
 }
 
 export async function getCmsWidget(id: number) {

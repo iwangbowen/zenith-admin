@@ -1,5 +1,5 @@
 import { eq, and, desc, sql } from 'drizzle-orm';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { db } from '../../db';
 import { mpQrcodes, mpFans } from '../../db/schema';
@@ -33,8 +33,7 @@ export function mapMpQrcode(row: MpQrcodeRow) {
 }
 
 export async function ensureMpQrcodeExists(id: number): Promise<MpQrcodeRow> {
-  const [row] = await db.select().from(mpQrcodes).where(and(eq(mpQrcodes.id, id), tenantScope(mpQrcodes))).limit(1);
-  return requireRow(row, '二维码不存在');
+  return requireFirstRow(db.select().from(mpQrcodes).where(and(eq(mpQrcodes.id, id), tenantScope(mpQrcodes))).limit(1), '二维码不存在');
 }
 
 export async function getMpQrcodeBeforeAudit(id: number) {

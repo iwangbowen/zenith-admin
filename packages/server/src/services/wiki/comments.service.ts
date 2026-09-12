@@ -7,7 +7,7 @@ import { db } from '../../db';
 import { users, wikiComments, wikiDocs, type WikiCommentRow } from '../../db/schema';
 import { currentUser, currentUserId } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { getSettings } from '../../lib/settings';
 import { tenantCondition } from '../../lib/tenant';
@@ -160,8 +160,7 @@ export async function listWikiComments(q: QueryOutputOf<typeof wikiCommentContra
 }
 
 export async function ensureWikiCommentExists(id: number) {
-  const [row] = await db.select().from(wikiComments).where(eq(wikiComments.id, id)).limit(1);
-  return requireRow(row, '评论不存在');
+  return requireFirstRow(db.select().from(wikiComments).where(eq(wikiComments.id, id)).limit(1), '评论不存在');
 }
 
 export async function updateWikiCommentStatus(id: number, status: WikiCommentStatus) {

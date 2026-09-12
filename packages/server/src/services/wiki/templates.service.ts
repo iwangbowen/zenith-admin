@@ -5,7 +5,7 @@ import { wikiTemplateContract } from '@zenith/shared/wiki';
 import { db } from '../../db';
 import { wikiTemplates, type WikiTemplateRow } from '../../db/schema';
 import { formatTimestamps } from '../../lib/datetime';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 
@@ -63,8 +63,7 @@ export async function listAllWikiTemplates() {
 }
 
 export async function ensureWikiTemplateExists(id: number) {
-  const [row] = await db.select().from(wikiTemplates).where(buildWikiTemplateWhere({ id })).limit(1);
-  return requireRow(row, '模板不存在');
+  return requireFirstRow(db.select().from(wikiTemplates).where(buildWikiTemplateWhere({ id })).limit(1), '模板不存在');
 }
 
 export async function getWikiTemplate(id: number) {

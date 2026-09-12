@@ -16,7 +16,7 @@ import {
 } from '../../db/schema';
 import { currentUser, currentUserId } from '../../lib/context';
 import { formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { isPgUniqueViolation } from '../../lib/db-errors';
 import { buildListResult } from '../../lib/list-query';
 import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
@@ -60,9 +60,11 @@ async function mapRequests(rows: DriveAccessRequestRow[]): Promise<DriveAccessRe
 }
 
 async function ensureRequestExists(id: number): Promise<DriveAccessRequestRow> {
-  const [row] = await db.select().from(driveAccessRequests)
-    .where(buildWhere(eq(driveAccessRequests.id, id), tenantCondition(driveAccessRequests, currentUser()))).limit(1);
-  return requireRow(row, '访问申请不存在');
+  return requireFirstRow(
+    db.select().from(driveAccessRequests)
+      .where(buildWhere(eq(driveAccessRequests.id, id), tenantCondition(driveAccessRequests, currentUser()))).limit(1),
+    '访问申请不存在',
+  );
 }
 
 /** 节点在租户内存在但当前用户无权访问时，暴露申请所需的最小信息 */

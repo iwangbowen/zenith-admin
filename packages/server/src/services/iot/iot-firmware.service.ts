@@ -15,7 +15,7 @@ import { IOT_FIRMWARE_VERSION_PATTERN } from '@zenith/shared/iot';
 import { db } from '../../db';
 import { iotFirmwares, iotOtaTasks, iotProducts, type IotFirmwareRow } from '../../db/schema';
 import { formatTimestamps } from '../../lib/datetime';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
@@ -91,8 +91,7 @@ export async function listIotFirmwares(q: QueryOutputOf<typeof iotFirmwareContra
 }
 
 export async function ensureIotFirmwareExists(id: number): Promise<IotFirmwareRow> {
-  const [row] = await db.select().from(iotFirmwares).where(buildFirmwareWhere({ id })).limit(1);
-  return requireRow(row, '固件不存在');
+  return requireFirstRow(db.select().from(iotFirmwares).where(buildFirmwareWhere({ id })).limit(1), '固件不存在');
 }
 
 export interface CreateFirmwareMeta {

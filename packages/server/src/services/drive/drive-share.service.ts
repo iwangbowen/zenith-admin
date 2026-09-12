@@ -32,7 +32,7 @@ import { config } from '../../config';
 import { currentUser, currentUserId, currentUserOrNull, isSuperAdmin, runWithCurrentUser, type AppEnv } from '../../lib/context';
 import { getDataScopeCondition } from '../../lib/data-scope';
 import { formatDateTime, formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
-import { requireRow } from '../../lib/db-assert';
+import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { decryptField, encryptField } from '../../lib/encryption';
 import { readStoredFile } from '../../lib/file-storage';
 import type { StoredFileRange } from '../../lib/file-storage';
@@ -430,8 +430,7 @@ function logShareAccess(share: DriveShareLinkRow, action: string, ok: boolean) {
 }
 
 async function findShareByToken(token: string): Promise<DriveShareLinkRow> {
-  const [share] = await db.select().from(driveShareLinks).where(eq(driveShareLinks.token, hashToken(token))).limit(1);
-  return requireRow(share, '链接不存在或已失效');
+  return requireFirstRow(db.select().from(driveShareLinks).where(eq(driveShareLinks.token, hashToken(token))).limit(1), '链接不存在或已失效');
 }
 
 function assertShareUsable(share: DriveShareLinkRow, action: string, existingSession = false) {
