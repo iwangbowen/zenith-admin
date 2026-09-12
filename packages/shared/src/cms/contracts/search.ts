@@ -88,7 +88,6 @@ export type CmsHotwordGroup = z.infer<typeof cmsHotwordGroupSchema>;
 export const cmsSearchTestQuery = paginationQuery.extend({
   siteId: z.coerce.number().int().positive(),
   keyword: z.string().min(1),
-  pageSize: z.coerce.number().int().min(1).max(50).default(10),
 });
 
 export const cmsSegmentQuery = z.object({
@@ -136,4 +135,3 @@ export const cmsSearchContract = defineContract('/api/cms/search', {
   hotwordGroupUpdate: op.put('/hotword-groups/{id}', { params: idParam, body: updateCmsHotwordGroupSchema, response: cmsHotwordGroupSchema, summary: '更新热词分组' }),
   hotwordGroupRemove: op.delete('/hotword-groups/{id}', { params: idParam, summary: '删除空热词分组' }),
 }, { tags: ['CMS-全文检索'] });
-

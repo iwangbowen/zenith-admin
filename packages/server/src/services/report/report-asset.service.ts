@@ -181,26 +181,27 @@ async function catalogRowsForType(
 ): Promise<CatalogRowsResult> {
   const accessibleIds = await listAccessibleReportResourceIds(resourceType);
   if (accessibleIds && accessibleIds.length === 0) return { rows: [], total: 0 };
-  const common = (columns: {
+  const catalogResourceWhere = (columns: {
     id: AnyPgColumn;
     ownerId: AnyPgColumn;
     folderId: AnyPgColumn;
     name: AnyPgColumn;
     updatedAt: AnyPgColumn;
-  }, scope: SQL | undefined) => {
-    const conds: (SQL | undefined)[] = [scope, keywordCondition(query.keyword, [columns.name], 'ilike')];
-    if (accessibleIds) conds.push(inArray(columns.id, accessibleIds));
-    if (query.ownerId) conds.push(eq(columns.ownerId, query.ownerId));
-    if (query.folderId) conds.push(eq(columns.folderId, query.folderId));
-    if (query.updatedStart) conds.push(gte(columns.updatedAt, query.updatedStart));
-    if (query.updatedEnd) conds.push(lte(columns.updatedAt, query.updatedEnd));
-    return conds;
-  };
+    status?: AnyPgColumn;
+  }, scope: SQL | undefined, extra?: SQL | undefined) => buildWhere(
+    scope,
+    keywordCondition(query.keyword, [columns.name], 'ilike'),
+    accessibleIds ? inArray(columns.id, accessibleIds) : undefined,
+    query.ownerId ? eq(columns.ownerId, query.ownerId) : undefined,
+    query.folderId ? eq(columns.folderId, query.folderId) : undefined,
+    query.updatedStart ? gte(columns.updatedAt, query.updatedStart) : undefined,
+    query.updatedEnd ? lte(columns.updatedAt, query.updatedEnd) : undefined,
+    columns.status && query.status ? eq(columns.status, query.status) : undefined,
+    extra,
+  );
   switch (resourceType) {
     case 'datasource': {
-      const conds = common(reportDatasources, reportTenantScope(reportDatasources));
-      if (query.status) conds.push(eq(reportDatasources.status, query.status === 'enabled' ? 'enabled' : 'disabled'));
-      const where = buildWhere(...conds);
+      const where = catalogResourceWhere(reportDatasources, reportTenantScope(reportDatasources));
       const [total, rows] = await Promise.all([
         db.$count(reportDatasources, where),
         db.select().from(reportDatasources).where(where).orderBy(desc(reportDatasources.updatedAt)).limit(limit),
@@ -211,9 +212,7 @@ async function catalogRowsForType(
       })) };
     }
     case 'dataset': {
-      const conds = common(reportDatasets, reportTenantScope(reportDatasets));
-      if (query.status) conds.push(eq(reportDatasets.status, query.status === 'enabled' ? 'enabled' : 'disabled'));
-      const where = buildWhere(...conds);
+      const where = catalogResourceWhere(reportDatasets, reportTenantScope(reportDatasets));
       const [total, rows] = await Promise.all([
         db.$count(reportDatasets, where),
         db.select().from(reportDatasets).where(where).orderBy(desc(reportDatasets.updatedAt)).limit(limit),
@@ -224,11 +223,13 @@ async function catalogRowsForType(
       })) };
     }
     case 'dashboard': {
-      const conds = common(reportDashboards, reportTenantScope(reportDashboards));
-      if (query.lifecycle && ['draft', 'published', 'offline'].includes(query.lifecycle)) {
-        conds.push(eq(reportDashboards.lifecycleStatus, query.lifecycle as 'draft' | 'published' | 'offline'));
-      }
-      const where = buildWhere(...conds);
+      const where = catalogResourceWhere(
+        reportDashboards,
+        reportTenantScope(reportDashboards),
+        query.lifecycle && ['draft', 'published', 'offline'].includes(query.lifecycle)
+          ? eq(reportDashboards.lifecycleStatus, query.lifecycle as 'draft' | 'published' | 'offline')
+          : undefined,
+      );
       const [total, rows] = await Promise.all([
         db.$count(reportDashboards, where),
         db.select().from(reportDashboards).where(where).orderBy(desc(reportDashboards.updatedAt)).limit(limit),
@@ -239,11 +240,13 @@ async function catalogRowsForType(
       })) };
     }
     case 'metric': {
-      const conds = common(reportMetrics, reportTenantScope(reportMetrics));
-      if (query.lifecycle && ['draft', 'published', 'deprecated'].includes(query.lifecycle)) {
-        conds.push(eq(reportMetrics.lifecycleStatus, query.lifecycle as 'draft' | 'published' | 'deprecated'));
-      }
-      const where = buildWhere(...conds);
+      const where = catalogResourceWhere(
+        reportMetrics,
+        reportTenantScope(reportMetrics),
+        query.lifecycle && ['draft', 'published', 'deprecated'].includes(query.lifecycle)
+          ? eq(reportMetrics.lifecycleStatus, query.lifecycle as 'draft' | 'published' | 'deprecated')
+          : undefined,
+      );
       const [total, rows] = await Promise.all([
         db.$count(reportMetrics, where),
         db.select().from(reportMetrics).where(where).orderBy(desc(reportMetrics.updatedAt)).limit(limit),
@@ -254,9 +257,7 @@ async function catalogRowsForType(
       })) };
     }
     case 'print_template': {
-      const conds = common(reportPrintTemplates, reportTenantScope(reportPrintTemplates));
-      if (query.status) conds.push(eq(reportPrintTemplates.status, query.status === 'enabled' ? 'enabled' : 'disabled'));
-      const where = buildWhere(...conds);
+      const where = catalogResourceWhere(reportPrintTemplates, reportTenantScope(reportPrintTemplates));
       const [total, rows] = await Promise.all([
         db.$count(reportPrintTemplates, where),
         db.select().from(reportPrintTemplates).where(where).orderBy(desc(reportPrintTemplates.updatedAt)).limit(limit),
@@ -267,11 +268,13 @@ async function catalogRowsForType(
       })) };
     }
     case 'fill_template': {
-      const conds = common(reportFillTemplates, reportTenantScope(reportFillTemplates));
-      if (query.status && ['draft', 'published', 'disabled'].includes(query.status)) {
-        conds.push(eq(reportFillTemplates.status, query.status as 'draft' | 'published' | 'disabled'));
-      }
-      const where = buildWhere(...conds);
+      const where = catalogResourceWhere(
+        reportFillTemplates,
+        reportTenantScope(reportFillTemplates),
+        query.status && ['draft', 'published', 'disabled'].includes(query.status)
+          ? eq(reportFillTemplates.status, query.status as 'draft' | 'published' | 'disabled')
+          : undefined,
+      );
       const [total, rows] = await Promise.all([
         db.$count(reportFillTemplates, where),
         db.select().from(reportFillTemplates).where(where).orderBy(desc(reportFillTemplates.updatedAt)).limit(limit),
@@ -282,9 +285,7 @@ async function catalogRowsForType(
       })) };
     }
     case 'asset_template': {
-      const conds = common(reportAssetTemplates, reportTenantScope(reportAssetTemplates));
-      if (query.status) conds.push(eq(reportAssetTemplates.status, query.status === 'enabled' ? 'enabled' : 'disabled'));
-      const where = buildWhere(...conds);
+      const where = catalogResourceWhere(reportAssetTemplates, reportTenantScope(reportAssetTemplates));
       const [total, rows] = await Promise.all([
         db.$count(reportAssetTemplates, where),
         db.select().from(reportAssetTemplates).where(where).orderBy(desc(reportAssetTemplates.updatedAt)).limit(limit),
@@ -523,19 +524,20 @@ async function validateDeprecationReferences(input: {
 
 export async function listReportDeprecationNotices(query: QueryOutputOf<typeof reportAssetContract.deprecations>) {
   const { page, pageSize } = query;
-  const conds = [];
   const scope = reportTenantScope(reportDeprecationNotices);
-  if (scope) conds.push(scope);
-  conds.push(await resourceAclCondition(
+  const aclCondition = await resourceAclCondition(
     reportDeprecationNotices.resourceType,
     reportDeprecationNotices.resourceId,
-  ));
-  if (query.resourceType) conds.push(eq(reportDeprecationNotices.resourceType, query.resourceType));
-  if (query.resourceId) conds.push(eq(reportDeprecationNotices.resourceId, query.resourceId));
-  if (query.published !== undefined) conds.push(query.published
+  );
+  const where = buildWhere(
+    scope,
+    aclCondition,
+    query.resourceType ? eq(reportDeprecationNotices.resourceType, query.resourceType) : undefined,
+    query.resourceId ? eq(reportDeprecationNotices.resourceId, query.resourceId) : undefined,
+    query.published !== undefined ? (query.published
     ? isNotNull(reportDeprecationNotices.publishedAt)
-    : isNull(reportDeprecationNotices.publishedAt));
-  const where = buildWhere(...conds);
+    : isNull(reportDeprecationNotices.publishedAt)) : undefined,
+  );
   const [total, rows] = await Promise.all([
     db.$count(reportDeprecationNotices, where),
     db.select().from(reportDeprecationNotices).where(where).orderBy(desc(reportDeprecationNotices.id))
@@ -673,16 +675,16 @@ async function ensureAssetTemplate(id: number, role: 'viewer' | 'editor' | 'owne
 
 export async function listReportAssetTemplates(query: QueryOutputOf<typeof reportAssetContract.templates>) {
   const { page, pageSize } = query;
-  const conds = [];
   const scope = reportTenantScope(reportAssetTemplates);
-  if (scope) conds.push(scope);
   const accessibleIds = await listAccessibleReportResourceIds('asset_template');
   if (accessibleIds && !accessibleIds.length) return { list: [], total: 0, page, pageSize };
-  if (accessibleIds) conds.push(inArray(reportAssetTemplates.id, accessibleIds));
-  conds.push(keywordCondition(query.keyword, [reportAssetTemplates.name, reportAssetTemplates.code], 'ilike'));
-  if (query.type) conds.push(eq(reportAssetTemplates.type, query.type));
-  if (query.status) conds.push(eq(reportAssetTemplates.status, query.status));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    scope,
+    accessibleIds ? inArray(reportAssetTemplates.id, accessibleIds) : undefined,
+    keywordCondition(query.keyword, [reportAssetTemplates.name, reportAssetTemplates.code], 'ilike'),
+    query.type ? eq(reportAssetTemplates.type, query.type) : undefined,
+    query.status ? eq(reportAssetTemplates.status, query.status) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,

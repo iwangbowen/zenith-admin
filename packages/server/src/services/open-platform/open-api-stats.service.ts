@@ -15,26 +15,29 @@ const APP_TIME_ZONE_SQL = sql.raw(`'${APP_TIME_ZONE.replaceAll("'", "''")}'`);
 
 type OpenApiStatsRangeInput = QueryOutputOf<typeof openApiStatsContract.overview>;
 
-function rangeConditions(opts: OpenApiStatsRangeInput): SQL[] {
+/** 原始调用日志范围：时间窗 + 应用 + 环境 */
+function rangeWhere(opts: OpenApiStatsRangeInput): SQL | undefined {
   const start = parseDateRangeStart(opts.startTime);
   const end = parseDateRangeEnd(opts.endTime);
-  return [
+  return buildWhere(
     start ? gte(openApiCallLogs.createdAt, start) : undefined,
     end ? lte(openApiCallLogs.createdAt, end) : undefined,
     opts.clientId ? eq(openApiCallLogs.clientId, opts.clientId) : undefined,
     opts.environment ? eq(openApiCallLogs.environment, opts.environment) : undefined,
-  ].filter((condition): condition is SQL => condition !== undefined);
+  );
 }
 
-function dailyRangeConditions(opts: OpenApiStatsRangeInput): SQL[] {
+/** 日聚合表范围：时间窗 + 应用 + 环境，且只取已聚合到水位线的日期（无水位线时恒 false） */
+function dailyRangeWhere(opts: OpenApiStatsRangeInput, watermark: string | null): SQL | undefined {
   const start = parseDateRangeStart(opts.startTime);
   const end = parseDateRangeEnd(opts.endTime);
-  return [
+  return buildWhere(
     start ? gte(openApiCallStatsDaily.statDate, formatDate(start)) : undefined,
     end ? lte(openApiCallStatsDaily.statDate, formatDate(end)) : undefined,
     opts.clientId ? eq(openApiCallStatsDaily.clientId, opts.clientId) : undefined,
     opts.environment ? eq(openApiCallStatsDaily.environment, opts.environment) : undefined,
-  ].filter((condition): condition is SQL => condition !== undefined);
+    watermark ? lte(openApiCallStatsDaily.statDate, watermark) : sql`false`,
+  );
 }
 
 function todayStart(): Date {
@@ -48,12 +51,12 @@ async function aggregationWatermark(): Promise<string | null> {
   return row?.value ?? null;
 }
 
-function rawTailConditions(opts: OpenApiStatsRangeInput, watermark: string | null): SQL[] {
+/** 原始日志中尚未被日聚合覆盖的尾段：范围条件 + 水位线次日起 */
+function rawTailWhere(opts: OpenApiStatsRangeInput, watermark: string | null): SQL | undefined {
   const tailStart = watermark
     ? dayjs.tz(`${watermark} 00:00:00`, APP_TIME_ZONE).add(1, 'day').toDate()
     : undefined;
-  return [...rangeConditions(opts), tailStart ? gte(openApiCallLogs.createdAt, tailStart) : undefined]
-    .filter((condition): condition is SQL => condition !== undefined);
+  return buildWhere(rangeWhere(opts), tailStart ? gte(openApiCallLogs.createdAt, tailStart) : undefined);
 }
 
 function assertAggregateBoundaryCompatible(opts: OpenApiStatsRangeInput, watermark: string | null): void {
@@ -76,10 +79,9 @@ const p99Duration = sql<number>`coalesce(percentile_cont(0.99) within group (ord
 export async function getOpenApiStatsOverview(opts: OpenApiStatsRangeInput) {
   const watermark = await aggregationWatermark();
   assertAggregateBoundaryCompatible(opts, watermark);
-  const rawConditions = rawTailConditions(opts, watermark);
-  const rawWhere = buildWhere(...rawConditions);
-  const dailyWhere = buildWhere(...dailyRangeConditions(opts), watermark ? lte(openApiCallStatsDaily.statDate, watermark) : sql`false`);
-  const percentileWhere = rangeConditions(opts);
+  const rawWhere = rawTailWhere(opts, watermark);
+  const dailyWhere = dailyRangeWhere(opts, watermark);
+  const percentileWhere = rangeWhere(opts);
   const todayWhere = buildWhere(
     gte(openApiCallLogs.createdAt, todayStart()),
     opts.clientId ? eq(openApiCallLogs.clientId, opts.clientId) : undefined,
@@ -102,7 +104,7 @@ export async function getOpenApiStatsOverview(opts: OpenApiStatsRangeInput) {
     db.select({
         p95: p95Duration,
         p99: p99Duration,
-    }).from(openApiCallLogs).where(buildWhere(...percentileWhere)),
+    }).from(openApiCallLogs).where(percentileWhere),
     db.selectDistinct({ clientId: openApiCallLogs.clientId })
       .from(openApiCallLogs)
       .where(rawWhere),
@@ -138,13 +140,12 @@ export async function getOpenApiStatsOverview(opts: OpenApiStatsRangeInput) {
 }
 
 export async function getOpenApiStatsTrend(opts: QueryOutputOf<typeof openApiStatsContract.trend>) {
-  const conds = rangeConditions(opts);
-  const where = buildWhere(...conds);
+  const where = rangeWhere(opts);
   if (opts.granularity !== 'hour') {
     const watermark = await aggregationWatermark();
     assertAggregateBoundaryCompatible(opts, watermark);
-    const dailyWhere = buildWhere(...dailyRangeConditions(opts), watermark ? lte(openApiCallStatsDaily.statDate, watermark) : sql`false`);
-    const rawConditions = rawTailConditions(opts, watermark);
+    const dailyWhere = dailyRangeWhere(opts, watermark);
+    const rawWhere = rawTailWhere(opts, watermark);
     const [dailyRows, rawRows] = await Promise.all([
       db.select({
         time: openApiCallStatsDaily.statDate,
@@ -160,7 +161,7 @@ export async function getOpenApiStatsTrend(opts: QueryOutputOf<typeof openApiSta
         total: count(),
         success: successFilter,
       }).from(openApiCallLogs)
-        .where(buildWhere(...rawConditions))
+        .where(rawWhere)
         .groupBy(sql`to_char(${openApiCallLogs.createdAt} at time zone 'UTC' at time zone ${APP_TIME_ZONE_SQL}, 'YYYY-MM-DD')`),
     ]);
     return [...dailyRows.map((row) => ({
@@ -214,8 +215,8 @@ async function groupBy(opts: QueryOutputOf<typeof openApiStatsContract.byApp>, w
     : sql<string>`${dailyColumn}`;
   const watermark = await aggregationWatermark();
   assertAggregateBoundaryCompatible(opts, watermark);
-  const dailyWhere = buildWhere(...dailyRangeConditions(opts), watermark ? lte(openApiCallStatsDaily.statDate, watermark) : sql`false`);
-  const rawConditions = rawTailConditions(opts, watermark);
+  const dailyWhere = dailyRangeWhere(opts, watermark);
+  const rawWhere = rawTailWhere(opts, watermark);
   const [rawRows, dailyRows] = await Promise.all([
     db.select({
       key: rawColumn,
@@ -224,7 +225,7 @@ async function groupBy(opts: QueryOutputOf<typeof openApiStatsContract.byApp>, w
       success: successFilter,
       durationSum: sql<number>`coalesce(sum(${openApiCallLogs.durationMs}), 0)`,
     }).from(openApiCallLogs)
-      .where(buildWhere(...rawConditions))
+      .where(rawWhere)
       .groupBy(rawColumn),
     db.select({
       key: dailyColumn,
@@ -281,12 +282,13 @@ export function getOpenApiStatsByEndpoint(opts: QueryOutputOf<typeof openApiStat
 type OpenApiCallLogQuery = QueryOutputOf<typeof openApiStatsContract.logs>;
 
 export function buildOpenApiCallLogWhere(opts: Omit<OpenApiCallLogQuery, 'page' | 'pageSize'>): SQL | undefined {
-  const conds: (SQL | undefined)[] = rangeConditions(opts);
-  if (typeof opts.success === 'boolean') conds.push(eq(openApiCallLogs.success, opts.success));
-  if (opts.method) conds.push(eq(openApiCallLogs.method, opts.method.toUpperCase()));
-  if (opts.statusCode !== undefined) conds.push(eq(openApiCallLogs.statusCode, opts.statusCode));
-  conds.push(keywordCondition(opts.keyword, [openApiCallLogs.path, openApiCallLogs.appName], 'ilike'));
-  return buildWhere(...conds);
+  return buildWhere(
+    rangeWhere(opts),
+    typeof opts.success === 'boolean' ? eq(openApiCallLogs.success, opts.success) : undefined,
+    opts.method ? eq(openApiCallLogs.method, opts.method.toUpperCase()) : undefined,
+    opts.statusCode === undefined ? undefined : eq(openApiCallLogs.statusCode, opts.statusCode),
+    keywordCondition(opts.keyword, [openApiCallLogs.path, openApiCallLogs.appName], 'ilike'),
+  );
 }
 
 export async function listOpenApiCallLogs(opts: OpenApiCallLogQuery) {

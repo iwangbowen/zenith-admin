@@ -216,11 +216,12 @@ export async function listSubscriptions(opts: {
 }, domain: AppWebhookDomain = 'all') {
   const { page, pageSize, clientId, status, keyword } = opts;
   const tenantId = currentTenantId();
-  const conds: (SQL | undefined)[] = [externalSubscriptionScope(tenantId, domain)];
-  if (clientId) conds.push(eq(appWebhookSubscriptions.clientId, clientId));
-  if (status) conds.push(eq(appWebhookSubscriptions.status, status));
-  conds.push(keywordCondition(keyword, [appWebhookSubscriptions.name, appWebhookSubscriptions.url], 'ilike'));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    externalSubscriptionScope(tenantId, domain),
+    clientId ? eq(appWebhookSubscriptions.clientId, clientId) : undefined,
+    status ? eq(appWebhookSubscriptions.status, status) : undefined,
+    keywordCondition(keyword, [appWebhookSubscriptions.name, appWebhookSubscriptions.url], 'ilike'),
+  );
   return buildListResult({
     page: page,
     pageSize: pageSize,
@@ -340,12 +341,13 @@ export async function listDeliveries(opts: {
 }, domain: AppWebhookDomain = 'all') {
   const { page, pageSize, subscriptionId, clientId, status, eventType } = opts;
   const tenantId = currentTenantId();
-  const conds: SQL[] = [externalDeliveryScope(tenantId, domain)];
-  if (subscriptionId) conds.push(eq(appWebhookDeliveries.subscriptionId, subscriptionId));
-  if (clientId) conds.push(eq(appWebhookDeliveries.clientId, clientId));
-  if (status) conds.push(eq(appWebhookDeliveries.status, status));
-  if (eventType) conds.push(eq(appWebhookDeliveries.eventType, eventType));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    externalDeliveryScope(tenantId, domain),
+    subscriptionId ? eq(appWebhookDeliveries.subscriptionId, subscriptionId) : undefined,
+    clientId ? eq(appWebhookDeliveries.clientId, clientId) : undefined,
+    status ? eq(appWebhookDeliveries.status, status) : undefined,
+    eventType ? eq(appWebhookDeliveries.eventType, eventType) : undefined,
+  );
   return buildListResult({
     page: page,
     pageSize: pageSize,

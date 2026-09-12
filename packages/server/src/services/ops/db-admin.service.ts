@@ -504,10 +504,7 @@ export async function getTableStructure(schema: string, name: string): Promise<T
 }
 
 // ─── 3. 表数据分页 ──────────────────────────────────────────────────────────────
-type RowsParams = QueryOutputOf<typeof dbAdminContract.tableRows> & {
-  schema: string;
-  name: string;
-};
+type RowsParams = QueryOutputOf<typeof dbAdminContract.tableRows>;
 
 /** 契约 `filters` 为 JSON 字符串 `{ 列名: 关键字 }`；非法 JSON / 非对象视为无列筛选，空关键字忽略 */
 function parseColumnFilters(raw: string | undefined): Array<[string, string]> {
@@ -544,13 +541,13 @@ export function sanitizeWhereFragment(input: string): string | undefined {
   return s;
 }
 
-export async function getTableRows(params: RowsParams): Promise<{
+export async function getTableRows(schema: string, name: string, params: RowsParams): Promise<{
   list: Array<Record<string, unknown>>;
   total: number;
   page: number;
   pageSize: number;
 }> {
-  const { schema, name, page, pageSize, orderBy, orderDir = 'asc', filters, search, where } = params;
+  const { page, pageSize, orderBy, orderDir = 'asc', filters, search, where } = params;
   assertIdent(schema, 'schema');
   assertIdent(name, 'table');
   // 原生 WHERE 片段只读事务内执行，经 sanitizeWhereFragment 校验；权限门（system:db-admin:query）由路由把守

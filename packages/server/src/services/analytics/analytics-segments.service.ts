@@ -179,7 +179,7 @@ function buildEventConditionSelect(condition: AnalyticsSegmentEventCondition, te
     exactTenantCondition(sql`${userEvents.tenantId}`, tenantId),
   ];
   for (const f of condition.properties ?? []) conditions.push(buildJsonPropertyCondition(userEvents.properties, f));
-  // 数据驱动的条件数组（按规则属性逐条追加）；基础条件保证非空
+  // eslint-disable-next-line no-restricted-syntax -- 数据驱动：按规则 properties 逐条追加 JSON 属性条件；基础条件保证非空
   const where = buildWhere(...conditions);
   const minCount = condition.minCount ?? 1;
   if (minCount <= 1) {
@@ -188,20 +188,28 @@ function buildEventConditionSelect(condition: AnalyticsSegmentEventCondition, te
   return sql`(SELECT ${userEvents.distinctId} AS distinct_id FROM ${userEvents} WHERE ${where} GROUP BY ${userEvents.distinctId} HAVING COUNT(*) >= ${minCount})`;
 }
 
-function buildAttributeConditionSelect(condition: AnalyticsSegmentAttributeCondition, tenantId: number | null): SQL {
-  const conditions: SQL[] = [exactTenantCondition(sql`${analyticsUserProfiles.tenantId}`, tenantId)];
+/** 属性条件：内置列直接比较，`properties.xxx` 走 JSON 属性比较 */
+function attributeFieldCondition(condition: AnalyticsSegmentAttributeCondition): SQL {
   if (condition.field === 'identityType') {
-    conditions.push(buildColumnCompareCondition(analyticsUserProfiles.identityType, condition.op, condition.value));
-  } else if (condition.field === 'userId') {
-    conditions.push(buildColumnCompareCondition(analyticsUserProfiles.userId, condition.op, condition.value));
-  } else if (condition.field === 'memberId') {
-    conditions.push(buildColumnCompareCondition(analyticsUserProfiles.memberId, condition.op, condition.value));
-  } else {
-    const match = ATTRIBUTE_PROPERTY_FIELD_RE.exec(condition.field);
-    if (!match) throw new HTTPException(400, { message: `不支持的属性字段：${condition.field}` });
-    conditions.push(buildJsonPropertyCondition(analyticsUserProfiles.properties, { key: match[1], op: condition.op, value: condition.value }));
+    return buildColumnCompareCondition(analyticsUserProfiles.identityType, condition.op, condition.value);
   }
-  return sql`(SELECT DISTINCT ${analyticsUserProfiles.distinctId} AS distinct_id FROM ${analyticsUserProfiles} WHERE ${buildWhere(...conditions)})`;
+  if (condition.field === 'userId') {
+    return buildColumnCompareCondition(analyticsUserProfiles.userId, condition.op, condition.value);
+  }
+  if (condition.field === 'memberId') {
+    return buildColumnCompareCondition(analyticsUserProfiles.memberId, condition.op, condition.value);
+  }
+  const match = ATTRIBUTE_PROPERTY_FIELD_RE.exec(condition.field);
+  if (!match) throw new HTTPException(400, { message: `不支持的属性字段：${condition.field}` });
+  return buildJsonPropertyCondition(analyticsUserProfiles.properties, { key: match[1], op: condition.op, value: condition.value });
+}
+
+function buildAttributeConditionSelect(condition: AnalyticsSegmentAttributeCondition, tenantId: number | null): SQL {
+  const where = buildWhere(
+    exactTenantCondition(sql`${analyticsUserProfiles.tenantId}`, tenantId),
+    attributeFieldCondition(condition),
+  );
+  return sql`(SELECT DISTINCT ${analyticsUserProfiles.distinctId} AS distinct_id FROM ${analyticsUserProfiles} WHERE ${where})`;
 }
 
 /** 将分群规则编译为 distinctId 集合 SQL（AND→INTERSECT，OR→UNION），全部下推数据库执行。导出供单测验证注入防护与 AND/OR 语义。 */

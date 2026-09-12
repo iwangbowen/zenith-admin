@@ -223,38 +223,35 @@ export async function listDashboards(query: QueryOutputOf<typeof reportDashboard
     categoryId ? eq(reportDashboards.categoryId, categoryId) : undefined,
     favoriteIds ? inArray(reportDashboards.id, favoriteIds) : undefined,
   );
-  const { list: rows, total } = await buildListResult({
+  return buildListResult({
     page,
     pageSize,
     count: () => db.$count(reportDashboards, where),
-    rows: () => db.query.reportDashboards.findMany({
-      where,
-      with: {
-        category: { columns: { name: true } },
-        publishedByUser: { columns: { nickname: true, username: true } },
-        folder: { columns: { name: true } },
-        owner: { columns: { nickname: true, username: true } },
-      },
-      orderBy: desc(reportDashboards.id),
-      limit: pageSize,
-      offset: pageOffset(page, pageSize),
-    }),
+    rows: async () => {
+      const rows = await db.query.reportDashboards.findMany({
+        where,
+        with: {
+          category: { columns: { name: true } },
+          publishedByUser: { columns: { nickname: true, username: true } },
+          folder: { columns: { name: true } },
+          owner: { columns: { nickname: true, username: true } },
+        },
+        orderBy: desc(reportDashboards.id),
+        limit: pageSize,
+        offset: pageOffset(page, pageSize),
+      });
+      let favSet = new Set<number>();
+      if (uid && rows.length > 0) {
+        const favRows = await db.select({ id: reportDashboardFavorites.dashboardId }).from(reportDashboardFavorites)
+          .where(and(
+            eq(reportDashboardFavorites.userId, uid),
+            inArray(reportDashboardFavorites.dashboardId, rows.map((row) => row.id)),
+          ));
+        favSet = new Set(favRows.map((row) => row.id));
+      }
+      return rows.map((row) => mapDashboard(row, uid ? favSet.has(row.id) : undefined));
+    },
   });
-  let favSet = new Set<number>();
-  if (uid && rows.length > 0) {
-    const favRows = await db.select({ id: reportDashboardFavorites.dashboardId }).from(reportDashboardFavorites)
-      .where(and(
-        eq(reportDashboardFavorites.userId, uid),
-        inArray(reportDashboardFavorites.dashboardId, rows.map((row) => row.id)),
-      ));
-    favSet = new Set(favRows.map((row) => row.id));
-  }
-  return {
-    list: rows.map((row) => mapDashboard(row, uid ? favSet.has(row.id) : undefined)),
-    total,
-    page,
-    pageSize,
-  };
 }
 
 export async function listDashboardLookup(query: {
@@ -264,16 +261,16 @@ export async function listDashboardLookup(query: {
   excludeId?: number;
 }): Promise<ReportLookupOption[]> {
   const { keyword, status, limit = 20, excludeId } = query;
-  const conds = [];
   const tenantScope = reportTenantScope(reportDashboards);
-  if (tenantScope) conds.push(tenantScope);
   const accessibleIds = await listAccessibleReportResourceIds('dashboard');
   if (accessibleIds && accessibleIds.length === 0) return [];
-  if (accessibleIds) conds.push(inArray(reportDashboards.id, accessibleIds));
-  conds.push(keywordCondition(keyword, [reportDashboards.name, reportDashboards.remark], 'ilike'));
-  if (status) conds.push(eq(reportDashboards.status, status));
-  if (excludeId) conds.push(sql`${reportDashboards.id} <> ${excludeId}`);
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    tenantScope,
+    accessibleIds ? inArray(reportDashboards.id, accessibleIds) : undefined,
+    keywordCondition(keyword, [reportDashboards.name, reportDashboards.remark], 'ilike'),
+    status ? eq(reportDashboards.status, status) : undefined,
+    excludeId ? sql`${reportDashboards.id} <> ${excludeId}` : undefined,
+  );
   const rows = await db.select({
     id: reportDashboards.id,
     name: reportDashboards.name,

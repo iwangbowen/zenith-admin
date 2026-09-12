@@ -17,7 +17,7 @@ export {
   submitCmsMappingDistributionSideEffects,
 } from './cms-distributions-sync.service';
 export {
-  buildCmsDistributionRunConditions,
+  buildCmsDistributionRunWhere,
   dispatchDueCmsDistributionRules,
   getCmsDistributionRunDetail,
   listCmsDistributionRuns,

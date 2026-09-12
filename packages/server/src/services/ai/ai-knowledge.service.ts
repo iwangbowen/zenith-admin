@@ -174,11 +174,8 @@ export async function ingestKbDocument(kbId: number, input: { name: string; cont
   const chunks = await chunkText(input.content);
   requireRow(chunks[0], '内容为空，无法入库', 400);
 
-  const [existingCount] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(aiKbChunks)
-    .where(eq(aiKbChunks.kbId, kbId));
-  if ((existingCount?.count ?? 0) + chunks.length > MAX_CHUNKS_PER_KB) {
+  const existingCount = await db.$count(aiKbChunks, eq(aiKbChunks.kbId, kbId));
+  if (existingCount + chunks.length > MAX_CHUNKS_PER_KB) {
     throw new HTTPException(400, { message: `知识库分块数超出上限（${MAX_CHUNKS_PER_KB}），请拆分知识库` });
   }
 

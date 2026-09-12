@@ -43,8 +43,7 @@ const listMessages = defineContractRoute(channelContract.messages, {
   middleware: [authMiddleware],
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    const { page, pageSize } = c.req.valid('query');
-    return c.json(okBody(await listChannelMessages(id, page, pageSize)), 200);
+    return c.json(okBody(await listChannelMessages(id, c.req.valid('query'))), 200);
   },
 });
 
@@ -202,8 +201,7 @@ const csConversations = defineContractRoute(channelCsContract.conversations, {
   middleware: cs,
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    const { status, assignee, keyword, tag } = c.req.valid('query');
-    return c.json(okBody(await listChannelConversations(id, { status, assignee, keyword, tag })), 200);
+    return c.json(okBody(await listChannelConversations(id, c.req.valid('query'))), 200);
   },
 });
 
@@ -211,8 +209,7 @@ const csMessages = defineContractRoute(channelCsContract.conversationMessages, {
   middleware: cs,
   handler: async (c) => {
     const { id, userId } = c.req.valid('param');
-    const { page, pageSize } = c.req.valid('query');
-    return c.json(okBody(await listConversationMessages(id, userId, page, pageSize)), 200);
+    return c.json(okBody(await listConversationMessages(id, userId, c.req.valid('query'))), 200);
   },
 });
 

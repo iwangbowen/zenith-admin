@@ -154,10 +154,10 @@ export async function deleteCmsDistributionRule(id: number): Promise<void> {
   if (result.tasks.length > 0) await enqueueCmsPublishOutboxes(result.tasks, '分发规则删除');
 }
 
-async function sourceConditions(rule: CmsDistributionRuleRow, afterId?: number): Promise<(SQL | undefined)[]> {
+async function sourceWhere(rule: CmsDistributionRuleRow, afterId?: number): Promise<SQL | undefined> {
   const filters = normalizedFilters(rule.filters);
   const effectiveChannels = await getEffectivelyEnabledCmsChannelIds(rule.sourceSiteId);
-  return [
+  return buildWhere(
     eq(cmsContents.siteId, rule.sourceSiteId),
     eq(cmsContents.status, 'published'),
     isNull(cmsContents.deletedAt),
@@ -171,7 +171,7 @@ async function sourceConditions(rule: CmsDistributionRuleRow, afterId?: number):
     keywordCondition(filters.keyword, [cmsContents.title, cmsContents.summary], 'ilike'),
     ...dateRangeConditions(cmsContents.publishedAt, filters.publishedFrom ?? undefined, filters.publishedTo ?? undefined),
     afterId ? gt(cmsContents.id, afterId) : undefined,
-  ];
+  );
 }
 
 function sourceMatchesRule(rule: CmsDistributionRuleRow, source: CmsContentRow, effectiveChannelIds?: ReadonlySet<number>): boolean {
@@ -195,7 +195,7 @@ async function sourceWatermark(rule: CmsDistributionRuleRow): Promise<string> {
     maxId: sql<number>`coalesce(max(${cmsContents.id}), 0)::int`,
     maxVersion: sql<number>`coalesce(max(${cmsContents.version}), 0)::int`,
     count: sql<number>`count(*)::int`,
-  }).from(cmsContents).where(buildWhere(...await sourceConditions(rule)));
+  }).from(cmsContents).where(await sourceWhere(rule));
   return `${row?.count ?? 0}-${row?.maxId ?? 0}-${row?.maxVersion ?? 0}`;
 }
 
@@ -633,7 +633,7 @@ export function registerCmsDistributionTaskHandler(): void {
         throw new TaskCancelledError('分发目标栏目已停用、失效或不再是列表栏目', { stale: true, ruleId });
       }
       const sourceEffectiveChannelIds = await getEffectivelyEnabledCmsChannelIds(rule.sourceSiteId);
-      const sourceTotal = await db.$count(cmsContents, buildWhere(...await sourceConditions(rule)));
+      const sourceTotal = await db.$count(cmsContents, await sourceWhere(rule));
       let total = sourceTotal;
       let lastSourceId = Number(ctx.checkpoint?.lastSourceId ?? 0);
       let lastTargetId = Number(ctx.checkpoint?.lastTargetId ?? 0);
@@ -645,7 +645,7 @@ export function registerCmsDistributionTaskHandler(): void {
       while (true) {
         await assertDistributionRuleFence(ruleId, expectedRevision);
         const rows = await db.select().from(cmsContents)
-          .where(buildWhere(...await sourceConditions(rule, lastSourceId)))
+          .where(await sourceWhere(rule, lastSourceId))
           .orderBy(asc(cmsContents.id))
           .limit(100);
         if (!rows.length) break;

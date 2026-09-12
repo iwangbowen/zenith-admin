@@ -132,17 +132,17 @@ export async function getDatasetExecutionStats(query: {
   startAt?: Date;
   endAt?: Date;
 }): Promise<ReportExecutionStats> {
-  const conds = [];
   const tenantScope = reportTenantScope(reportDatasetExecutionLogs);
-  if (tenantScope) conds.push(tenantScope);
-  if (query.datasetId) conds.push(eq(reportDatasetExecutionLogs.datasetId, query.datasetId));
-  if (query.datasourceId) conds.push(eq(reportDatasetExecutionLogs.datasourceId, query.datasourceId));
-  if (query.scene) conds.push(eq(reportDatasetExecutionLogs.scene, query.scene));
-  if (query.success !== undefined) conds.push(eq(reportDatasetExecutionLogs.success, query.success));
-  if (query.dashboardId) conds.push(and(eq(reportDatasetExecutionLogs.scene, 'dashboard'), eq(reportDatasetExecutionLogs.sourceRefId, String(query.dashboardId))));
-  if (query.startAt) conds.push(gte(reportDatasetExecutionLogs.executedAt, query.startAt));
-  if (query.endAt) conds.push(lte(reportDatasetExecutionLogs.executedAt, query.endAt));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    tenantScope,
+    query.datasetId ? eq(reportDatasetExecutionLogs.datasetId, query.datasetId) : undefined,
+    query.datasourceId ? eq(reportDatasetExecutionLogs.datasourceId, query.datasourceId) : undefined,
+    query.scene ? eq(reportDatasetExecutionLogs.scene, query.scene) : undefined,
+    query.success !== undefined ? eq(reportDatasetExecutionLogs.success, query.success) : undefined,
+    query.dashboardId ? and(eq(reportDatasetExecutionLogs.scene, 'dashboard'), eq(reportDatasetExecutionLogs.sourceRefId, String(query.dashboardId))) : undefined,
+    query.startAt ? gte(reportDatasetExecutionLogs.executedAt, query.startAt) : undefined,
+    query.endAt ? lte(reportDatasetExecutionLogs.executedAt, query.endAt) : undefined,
+  );
   const trendStart = query.startAt ?? dayjs().subtract(7, 'day').toDate();
   const trendEnd = query.endAt ?? new Date();
   // 汇总与慢查询 Top 来自同一张日志表，必须取同一数据快照，否则并发写入下

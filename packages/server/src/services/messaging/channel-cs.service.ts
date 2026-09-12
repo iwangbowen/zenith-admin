@@ -562,7 +562,12 @@ export async function getCsPerformance(): Promise<ChannelCsPerformance[]> {
 /** 某会话（channelId + userId）的双向消息流，分页倒序（前端反转为正序展示）。 */
 
 /** 某会话（channelId + userId）的双向消息流，分页倒序（前端反转为正序展示）。 */
-export async function listConversationMessages(channelId: number, userId: number, page: number, pageSize: number) {
+export async function listConversationMessages(
+  channelId: number,
+  userId: number,
+  q: QueryOutputOf<typeof channelCsContract.conversationMessages>,
+) {
+  const { page, pageSize } = q;
   await ensureBusinessChannel(channelId);
   const where = and(
     eq(channelMessages.channelId, channelId),

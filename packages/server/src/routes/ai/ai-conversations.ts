@@ -74,28 +74,10 @@ const submitFeedback = defineContractRoute(aiConversationContract.submitFeedback
   },
 });
 
-/** 反馈类型查询串 '1' / '-1' → 数值 */
-function parseFeedbackFilters(q: {
-  feedback?: '1' | '-1';
-  status?: 'pending' | 'resolved' | 'ignored';
-  model?: string;
-  startDate?: string;
-  endDate?: string;
-}) {
-  return {
-    feedback: q.feedback ? (Number(q.feedback) as 1 | -1) : undefined,
-    status: q.status,
-    model: q.model,
-    startDate: q.startDate,
-    endDate: q.endDate,
-  };
-}
-
 const adminFeedbackList = defineContractRoute(aiConversationContract.feedbackList, {
   middleware: feedbackViewer,
   handler: async (c) => {
-    const { page, pageSize, ...filters } = c.req.valid('query');
-    return c.json(okBody(await listFeedbackMessages({ page, pageSize, ...parseFeedbackFilters(filters) })), 200);
+    return c.json(okBody(await listFeedbackMessages(c.req.valid('query'))), 200);
   },
 });
 
@@ -110,8 +92,7 @@ const adminFeedbackContext = defineContractRoute(aiConversationContract.feedback
 const adminFeedbackExport = defineContractRoute(aiConversationContract.feedbackExport, {
   middleware: [authMiddleware, guard({ permission: 'ai:feedback:view', audit: { description: '导出 AI 反馈列表', module: '智能助手' } })],
   handler: async (c) => {
-    const filters = c.req.valid('query');
-    const { stream, filename } = await exportFeedbackMessages(parseFeedbackFilters(filters));
+    const { stream, filename } = await exportFeedbackMessages(c.req.valid('query'));
     return csvStreamBody(c, stream, filename);
   },
 });

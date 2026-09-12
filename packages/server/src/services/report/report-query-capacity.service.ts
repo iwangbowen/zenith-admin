@@ -219,11 +219,8 @@ function quotaCounterKey(quotaId: number, day: string): string {
 }
 
 async function loadApplicableQuotaRows(identity: QuotaIdentity): Promise<QuotaRow[]> {
-  const tenantCondition = identity.tenantId === null
-    ? isNull(reportQueryQuotas.tenantId)
-    : eq(reportQueryQuotas.tenantId, identity.tenantId);
   return db.select().from(reportQueryQuotas).where(and(
-    tenantCondition,
+    exactTenantCondition(reportQueryQuotas.tenantId, identity.tenantId),
     eq(reportQueryQuotas.enabled, true),
     or(
       and(eq(reportQueryQuotas.scope, 'tenant'), isNull(reportQueryQuotas.userId)),

@@ -220,60 +220,51 @@ function assertCursorSortable(rules: CmsOpenSortRule[]): void {
   }
 }
 
-async function buildListConditions(site: CmsSiteRow, query: ParsedCmsOpenQuery): Promise<SQL[]> {
-  const conditions: SQL[] = [publicWhere(site.id)];
-  const effectivelyEnabledIds = await getEffectivelyEnabledCmsChannelIds(site.id);
-  if (effectivelyEnabledIds.size === 0) {
-    conditions.push(sql`false`);
-  } else {
-    conditions.push(inArray(cmsContents.channelId, [...effectivelyEnabledIds]));
-  }
+/** 按 code 解析站点可见的内容模型（公共模型或本站专属），不存在时 404 */
+async function resolveModelId(siteId: number, modelCode: string): Promise<number> {
+  const [model] = await db.select({ id: cmsModels.id }).from(cmsModels).where(and(
+    eq(cmsModels.code, modelCode),
+    or(isNull(cmsModels.ownerSiteId), eq(cmsModels.ownerSiteId, siteId)),
+  )).limit(1);
+  return requireRow(model, `内容模型「${modelCode}」不存在`).id;
+}
 
+/** 栏目筛选：聚合主栏目与副栏目，与前台栏目列表保持一致 */
+function channelScopeCondition(channelIds: number[]): SQL {
+  const extraIds = db.select({ contentId: cmsContentChannels.contentId })
+    .from(cmsContentChannels).where(inArray(cmsContentChannels.channelId, channelIds));
+  return or(inArray(cmsContents.channelId, channelIds), inArray(cmsContents.id, extraIds))!;
+}
+
+async function buildListWhere(site: CmsSiteRow, query: ParsedCmsOpenQuery): Promise<SQL | undefined> {
+  const effectivelyEnabledIds = await getEffectivelyEnabledCmsChannelIds(site.id);
   const channelIds = [
     ...await resolveChannelIds(site.id, query.channels),
     ...(query.channelPath ? await resolveChannelPathIds(site.id, query.channelPath) : []),
   ].filter((id, index, all) => effectivelyEnabledIds.has(id) && all.indexOf(id) === index);
-  if (channelIds.length > 0) {
-    // 聚合主栏目与副栏目，与前台栏目列表保持一致
-    const extraIds = db.select({ contentId: cmsContentChannels.contentId })
-      .from(cmsContentChannels).where(inArray(cmsContentChannels.channelId, channelIds));
-    conditions.push(or(inArray(cmsContents.channelId, channelIds), inArray(cmsContents.id, extraIds))!);
-  }
-
   const tagIds = await resolveTagIds(site.id, query.tags);
-  if (tagIds.length > 0) {
-    const taggedIds = db.select({ contentId: cmsContentTags.contentId })
-      .from(cmsContentTags).where(inArray(cmsContentTags.tagId, tagIds));
-    conditions.push(inArray(cmsContents.id, taggedIds));
-  }
-
-  if (query.contentTypes.length > 0) {
-    conditions.push(inArray(cmsContents.contentType, query.contentTypes as CmsContentRow['contentType'][]));
-  }
-  if (query.author) conditions.push(eq(cmsContents.author, query.author));
-  if (query.modelCode) {
-    const [model] = await db.select({ id: cmsModels.id }).from(cmsModels).where(and(
-      eq(cmsModels.code, query.modelCode),
-      or(isNull(cmsModels.ownerSiteId), eq(cmsModels.ownerSiteId, site.id)),
-    )).limit(1);
-    requireRow(model, `内容模型「${query.modelCode}」不存在`);
-    conditions.push(eq(cmsContents.modelId, model.id));
-  }
-  if (query.flags.isTop !== undefined) conditions.push(eq(cmsContents.isTop, query.flags.isTop));
-  if (query.flags.isRecommend !== undefined) conditions.push(eq(cmsContents.isRecommend, query.flags.isRecommend));
-  if (query.flags.isHot !== undefined) conditions.push(eq(cmsContents.isHot, query.flags.isHot));
-  if (query.flags.isOriginal !== undefined) conditions.push(eq(cmsContents.isOriginal, query.flags.isOriginal));
-
-  conditions.push(...dateRangeConditions(cmsContents.publishedAt, query.publishedFrom, query.publishedTo));
-
-  if (query.keyword) {
+  const modelId = query.modelCode ? await resolveModelId(site.id, query.modelCode) : undefined;
+  const extendConditions = await buildExtendConditions(site.id, query.extendFilters);
+  return buildWhere(
+    publicWhere(site.id),
+    effectivelyEnabledIds.size === 0 ? sql`false` : inArray(cmsContents.channelId, [...effectivelyEnabledIds]),
+    channelIds.length > 0 ? channelScopeCondition(channelIds) : undefined,
+    tagIds.length > 0
+      ? inArray(cmsContents.id, db.select({ contentId: cmsContentTags.contentId })
+        .from(cmsContentTags).where(inArray(cmsContentTags.tagId, tagIds)))
+      : undefined,
+    query.contentTypes.length > 0 ? inArray(cmsContents.contentType, query.contentTypes as CmsContentRow['contentType'][]) : undefined,
+    query.author ? eq(cmsContents.author, query.author) : undefined,
+    modelId === undefined ? undefined : eq(cmsContents.modelId, modelId),
+    query.flags.isTop === undefined ? undefined : eq(cmsContents.isTop, query.flags.isTop),
+    query.flags.isRecommend === undefined ? undefined : eq(cmsContents.isRecommend, query.flags.isRecommend),
+    query.flags.isHot === undefined ? undefined : eq(cmsContents.isHot, query.flags.isHot),
+    query.flags.isOriginal === undefined ? undefined : eq(cmsContents.isOriginal, query.flags.isOriginal),
+    ...dateRangeConditions(cmsContents.publishedAt, query.publishedFrom, query.publishedTo),
     // 与站内搜索共用分词与 tsquery 构造，保证同一关键词结果集一致
-    const condition = buildCmsSearchCondition(query.keyword, site.id);
-    conditions.push(condition ?? sql`false`);
-  }
-
-  conditions.push(...await buildExtendConditions(site.id, query.extendFilters));
-  return conditions;
+    query.keyword ? (buildCmsSearchCondition(query.keyword, site.id) ?? sql`false`) : undefined,
+    ...extendConditions,
+  );
 }
 
 // ─── 输出映射 ────────────────────────────────────────────────────────────────
@@ -440,8 +431,7 @@ async function buildMapOptions(
 // ─── 列表 ────────────────────────────────────────────────────────────────────
 
 export async function listOpenCmsContents(site: CmsSiteRow, query: ParsedCmsOpenQuery) {
-  const conditions = await buildListConditions(site, query);
-  const baseWhere = buildWhere(...conditions);
+  const baseWhere = await buildListWhere(site, query);
   const order = orderByOf(query.sort);
 
   return buildListResult({
@@ -464,7 +454,7 @@ export async function listOpenCmsContents(site: CmsSiteRow, query: ParsedCmsOpen
  */
 export async function listOpenCmsContentsByCursor(site: CmsSiteRow, query: ParsedCmsOpenQuery) {
   assertCursorSortable(query.sort);
-  const conditions = await buildListConditions(site, query);
+  const baseWhere = await buildListWhere(site, query);
   const cursor = query.cursor;
   const primaryField = query.sort[0].field;
   const isTimeSort = TIME_SORT_FIELDS.has(primaryField);
@@ -473,7 +463,7 @@ export async function listOpenCmsContentsByCursor(site: CmsSiteRow, query: Parse
     ...openContentColumns(query.includes),
     micros: isTimeSort ? microsOf(SORT_COLUMNS[primaryField]) : sql<string | null>`null`,
   }).from(cmsContents)
-    .where(cursor ? and(buildWhere(...conditions), cursorCondition(query.sort, cursor)) : buildWhere(...conditions))
+    .where(cursor ? and(baseWhere, cursorCondition(query.sort, cursor)) : baseWhere)
     .orderBy(...orderByOf(query.sort))
     .limit(query.pageSize + 1);
   const hasMore = rows.length > query.pageSize;

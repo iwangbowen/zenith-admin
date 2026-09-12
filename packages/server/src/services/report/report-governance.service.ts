@@ -19,6 +19,7 @@ import { clearDefaultFlag } from '../../lib/default-flag';
 import { exactTenantCondition } from '../../lib/tenant';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
+import { buildListResult } from '../../lib/list-query';
 import { reportCreateTenantId, reportScopedWhere, reportTenantScope } from './report-access';
 import { ensureReportResourceAccess } from './report-resource-acl.service';
 import {
@@ -156,15 +157,18 @@ export async function createReportResourceTransfer(
 
 export async function listReportResourceTransfers(query: QueryOutputOf<typeof reportGovernanceContract.transfers>) {
   const { page, pageSize, status, resourceType } = query;
-  const conds = [];
   const tenantScope = reportTenantScope(reportResourceTransfers);
-  if (tenantScope) conds.push(tenantScope);
-  if (status) conds.push(eq(reportResourceTransfers.status, status));
-  if (resourceType) conds.push(eq(reportResourceTransfers.resourceType, resourceType));
-  const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(reportResourceTransfers, where),
-    db.query.reportResourceTransfers.findMany({
+  const where = buildWhere(
+    tenantScope,
+    status ? eq(reportResourceTransfers.status, status) : undefined,
+    resourceType ? eq(reportResourceTransfers.resourceType, resourceType) : undefined,
+  );
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportResourceTransfers, where),
+    rows: async () => {
+      const rows = await db.query.reportResourceTransfers.findMany({
       where,
       with: {
         fromOwner: { columns: { nickname: true, username: true } },
@@ -173,11 +177,11 @@ export async function listReportResourceTransfers(query: QueryOutputOf<typeof re
       orderBy: desc(reportResourceTransfers.id),
       limit: pageSize,
       offset: pageOffset(page, pageSize),
-    }),
-  ]);
-  const names = await resolveReportResourceNames(rows);
-  const list = rows.map((row) => mapReportResourceTransfer(row, names.get(`${row.resourceType}:${row.resourceId}`) ?? null));
-  return { list, total, page, pageSize };
+      });
+      const names = await resolveReportResourceNames(rows);
+      return rows.map((row) => mapReportResourceTransfer(row, names.get(`${row.resourceType}:${row.resourceId}`) ?? null));
+    },
+  });
 }
 
 async function ensureTransfer(id: number) {
@@ -300,28 +304,31 @@ export async function createReportPublishApproval(
 
 export async function listReportPublishApprovals(query: QueryOutputOf<typeof reportGovernanceContract.approvals>) {
   const { page, pageSize, status, resourceType } = query;
-  const conds = [];
   const tenantScope = reportTenantScope(reportPublishApprovals);
-  if (tenantScope) conds.push(tenantScope);
-  if (status) conds.push(eq(reportPublishApprovals.status, status));
-  if (resourceType) conds.push(eq(reportPublishApprovals.resourceType, resourceType));
-  const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(reportPublishApprovals, where),
-    db.query.reportPublishApprovals.findMany({
-      where,
-      with: {
-        requestedByUser: { columns: { nickname: true, username: true } },
-        decidedByUser: { columns: { nickname: true, username: true } },
-      },
-      orderBy: desc(reportPublishApprovals.requestedAt),
-      limit: pageSize,
-      offset: pageOffset(page, pageSize),
-    }),
-  ]);
-  const names = await resolveReportResourceNames(rows);
-  const list = rows.map((row) => mapReportPublishApproval(row, names.get(`${row.resourceType}:${row.resourceId}`) ?? null));
-  return { list, total, page, pageSize };
+  const where = buildWhere(
+    tenantScope,
+    status ? eq(reportPublishApprovals.status, status) : undefined,
+    resourceType ? eq(reportPublishApprovals.resourceType, resourceType) : undefined,
+  );
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportPublishApprovals, where),
+    rows: async () => {
+      const rows = await db.query.reportPublishApprovals.findMany({
+        where,
+        with: {
+          requestedByUser: { columns: { nickname: true, username: true } },
+          decidedByUser: { columns: { nickname: true, username: true } },
+        },
+        orderBy: desc(reportPublishApprovals.requestedAt),
+        limit: pageSize,
+        offset: pageOffset(page, pageSize),
+      });
+      const names = await resolveReportResourceNames(rows);
+      return rows.map((row) => mapReportPublishApproval(row, names.get(`${row.resourceType}:${row.resourceId}`) ?? null));
+    },
+  });
 }
 
 async function ensureApproval(id: number) {
@@ -617,28 +624,31 @@ export async function createReportEnvironmentPromotion(
 
 export async function listReportEnvironmentPromotions(query: QueryOutputOf<typeof reportEnvironmentContract.promotions>) {
   const { page, pageSize, status, resourceType } = query;
-  const conds = [];
   const tenantScope = reportTenantScope(reportEnvironmentPromotions);
-  if (tenantScope) conds.push(tenantScope);
-  if (status) conds.push(eq(reportEnvironmentPromotions.status, status));
-  if (resourceType) conds.push(eq(reportEnvironmentPromotions.resourceType, resourceType));
-  const where = buildWhere(...conds);
-  const [total, rows] = await Promise.all([
-    db.$count(reportEnvironmentPromotions, where),
-    db.query.reportEnvironmentPromotions.findMany({
-      where,
-      with: {
-        sourceEnvironment: { columns: { name: true } },
-        targetEnvironment: { columns: { name: true } },
-      },
-      orderBy: desc(reportEnvironmentPromotions.id),
-      limit: pageSize,
-      offset: pageOffset(page, pageSize),
-    }),
-  ]);
-  const names = await resolveReportResourceNames(rows);
-  const list = rows.map((row) => mapReportEnvironmentPromotion(row, names.get(`${row.resourceType}:${row.resourceId}`) ?? null));
-  return { list, total, page, pageSize };
+  const where = buildWhere(
+    tenantScope,
+    status ? eq(reportEnvironmentPromotions.status, status) : undefined,
+    resourceType ? eq(reportEnvironmentPromotions.resourceType, resourceType) : undefined,
+  );
+  return buildListResult({
+    page,
+    pageSize,
+    count: () => db.$count(reportEnvironmentPromotions, where),
+    rows: async () => {
+      const rows = await db.query.reportEnvironmentPromotions.findMany({
+        where,
+        with: {
+          sourceEnvironment: { columns: { name: true } },
+          targetEnvironment: { columns: { name: true } },
+        },
+        orderBy: desc(reportEnvironmentPromotions.id),
+        limit: pageSize,
+        offset: pageOffset(page, pageSize),
+      });
+      const names = await resolveReportResourceNames(rows);
+      return rows.map((row) => mapReportEnvironmentPromotion(row, names.get(`${row.resourceType}:${row.resourceId}`) ?? null));
+    },
+  });
 }
 
 async function ensurePromotion(id: number) {

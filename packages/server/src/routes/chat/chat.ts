@@ -1,5 +1,5 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
-import { chatContract, type ChatMessageType } from '@zenith/shared/chat';
+import { chatContract } from '@zenith/shared/chat';
 import { authMiddleware } from '../../middleware/auth';
 import { namedRateLimit } from '../../middleware/rate-limit';
 import { defineContractRoute } from '../../lib/contract-route';
@@ -35,11 +35,6 @@ const chatRouter = new OpenAPIHono({ defaultHook: validationHook });
 const authed = [authMiddleware] as const;
 /** 发送 / 转发消息受同一限流桶约束 */
 const sender = [authMiddleware, namedRateLimit('chat_send')] as const;
-
-/** 逗号分隔的消息类型筛选 → 数组；空串视为不过滤 */
-function parseTypes(types: string | undefined): ChatMessageType[] | undefined {
-  return types ? (types.split(',').filter(Boolean) as ChatMessageType[]) : undefined;
-}
 
 // ─── 用户搜索（开始聊天前选对象） ────────────────────────────────────────────
 
@@ -129,16 +124,7 @@ const searchMessagesRoute = defineContractRoute(chatContract.searchMessages, {
   middleware: authed,
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    const query = c.req.valid('query');
-    const result = await searchConversationMessages(id, {
-      keyword: query.keyword,
-      types: parseTypes(query.types),
-      senderId: query.senderId,
-      startAt: query.startAt,
-      endAt: query.endAt,
-      page: query.page,
-      pageSize: query.pageSize,
-    });
+    const result = await searchConversationMessages(id, c.req.valid('query'));
     return c.json(okBody(result), 200);
   },
 });
@@ -633,13 +619,7 @@ const batchDeleteMessagesRoute = defineContractRoute(chatContract.batchDeleteMes
 const globalSearchRoute = defineContractRoute(chatContract.globalSearch, {
   middleware: authed,
   handler: async (c) => {
-    const query = c.req.valid('query');
-    const result = await searchGlobalMessages({
-      keyword: query.keyword,
-      types: parseTypes(query.types),
-      page: query.page,
-      pageSize: query.pageSize,
-    });
+    const result = await searchGlobalMessages(c.req.valid('query'));
     return c.json(okBody(result), 200);
   },
 });

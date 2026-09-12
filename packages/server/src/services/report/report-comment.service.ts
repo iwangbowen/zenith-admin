@@ -134,47 +134,48 @@ export async function listComments(
     isNull(reportDashboardComments.parentId),
     query.widgetId ? eq(reportDashboardComments.widgetId, query.widgetId) : undefined,
   );
-  const { list: roots, total } = await buildListResult({
+  return buildListResult({
     page,
     pageSize,
     count: () => db.$count(reportDashboardComments, where),
-    rows: () => db.query.reportDashboardComments.findMany({
-      where,
-      with: {
-        user: { columns: { nickname: true, username: true, avatar: true } },
-        resolvedByUser: { columns: { nickname: true, username: true } },
-      },
-      orderBy: desc(reportDashboardComments.id),
-      limit: pageSize,
-      offset: pageOffset(page, pageSize),
-    }),
-  });
-  const rootIds = roots.map((row) => row.id);
-  const replies = rootIds.length === 0 ? [] : await db.query.reportDashboardComments.findMany({
-    where: and(
-      eq(reportDashboardComments.dashboardId, dashboardId),
-      inArray(reportDashboardComments.parentId, rootIds),
-    ),
-    with: {
-      user: { columns: { nickname: true, username: true, avatar: true } },
-      resolvedByUser: { columns: { nickname: true, username: true } },
+    rows: async () => {
+      const roots = await db.query.reportDashboardComments.findMany({
+        where,
+        with: {
+          user: { columns: { nickname: true, username: true, avatar: true } },
+          resolvedByUser: { columns: { nickname: true, username: true } },
+        },
+        orderBy: desc(reportDashboardComments.id),
+        limit: pageSize,
+        offset: pageOffset(page, pageSize),
+      });
+      const rootIds = roots.map((row) => row.id);
+      const replies = rootIds.length === 0 ? [] : await db.query.reportDashboardComments.findMany({
+        where: and(
+          eq(reportDashboardComments.dashboardId, dashboardId),
+          inArray(reportDashboardComments.parentId, rootIds),
+        ),
+        with: {
+          user: { columns: { nickname: true, username: true, avatar: true } },
+          resolvedByUser: { columns: { nickname: true, username: true } },
+        },
+        orderBy: asc(reportDashboardComments.id),
+      });
+      const replyMap = new Map<number, ReportDashboardComment[]>();
+      for (const row of replies) {
+        const rendered = mapComment(row, viewer.userId, canManage);
+        if (!commentVisibleTo(row, viewer.userId, canManage, false)) continue;
+        const list = replyMap.get(row.parentId!) ?? [];
+        list.push(rendered);
+        replyMap.set(row.parentId!, list);
+      }
+      return roots.flatMap((row) => {
+        const childList = replyMap.get(row.id) ?? [];
+        if (!commentVisibleTo(row, viewer.userId, canManage, childList.length > 0)) return [];
+        return [mapComment(row, viewer.userId, canManage, childList)];
+      });
     },
-    orderBy: asc(reportDashboardComments.id),
   });
-  const replyMap = new Map<number, ReportDashboardComment[]>();
-  for (const row of replies) {
-    const rendered = mapComment(row, viewer.userId, canManage);
-    if (!commentVisibleTo(row, viewer.userId, canManage, false)) continue;
-    const list = replyMap.get(row.parentId!) ?? [];
-    list.push(rendered);
-    replyMap.set(row.parentId!, list);
-  }
-  const list = roots.flatMap((row) => {
-    const childList = replyMap.get(row.id) ?? [];
-    if (!commentVisibleTo(row, viewer.userId, canManage, childList.length > 0)) return [];
-    return [mapComment(row, viewer.userId, canManage, childList)];
-  });
-  return { list, total, page, pageSize };
 }
 
 export async function createComment(

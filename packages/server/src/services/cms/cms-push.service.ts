@@ -1,6 +1,6 @@
 import { buildListResult } from '../../lib/list-query';
 import type { QueryOutputOf } from '@zenith/shared/core';
-import { eq, desc, type SQL } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { cmsSeoContract } from '@zenith/shared/cms';
 import { db } from '../../db';
@@ -147,9 +147,10 @@ export async function listCmsPushLogs(q: QueryOutputOf<typeof cmsSeoContract.pus
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
   await assertAllCmsSiteChannelsAccess(q.siteId);
-  const conditions: SQL[] = [eq(cmsPushLogs.siteId, q.siteId)];
-  if (q.engine) conditions.push(eq(cmsPushLogs.engine, q.engine));
-  const where = buildWhere(...conditions);
+  const where = buildWhere(
+    eq(cmsPushLogs.siteId, q.siteId),
+    q.engine ? eq(cmsPushLogs.engine, q.engine) : undefined,
+  );
   return buildListResult({
     page: q.page,
     pageSize: q.pageSize,

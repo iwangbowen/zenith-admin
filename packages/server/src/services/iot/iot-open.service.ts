@@ -7,7 +7,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
  * 因此不走 currentUser()/tenantCondition；对外以 SN 为设备寻址标识，
  * 不暴露内部 id、secret 与租户信息。
  */
-import { count, desc, eq, type SQL } from 'drizzle-orm';
+import { count, desc, eq } from 'drizzle-orm';
 import { db } from '../../db';
 import { iotDevices, iotDeviceState, iotProducts, type IotDeviceRow } from '../../db/schema';
 import { formatNullableDateTime } from '../../lib/datetime';
@@ -37,12 +37,11 @@ export type ListOpenIotDevicesQuery = QueryOutputOf<typeof openIotContract.devic
 
 export async function listOpenIotDevices(q: ListOpenIotDevicesQuery) {
   const { page, pageSize } = q;
-  const conditions: (SQL | undefined)[] = [
+  const where = buildWhere(
     keywordCondition(q.keyword, [iotDevices.sn, iotDevices.name], 'ilike'),
     q.productId ? eq(iotDevices.productId, q.productId) : undefined,
     q.status ? eq(iotDevices.status, q.status) : undefined,
-  ];
-  const where = buildWhere(...conditions);
+  );
   const base = db.select({ device: iotDevices, productName: iotProducts.name })
     .from(iotDevices)
     .innerJoin(iotProducts, eq(iotDevices.productId, iotProducts.id));

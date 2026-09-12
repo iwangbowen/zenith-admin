@@ -1,6 +1,7 @@
 import { db } from '../../../db';
 import { cmsAdEvents } from '../../../db/schema';
-import { CMS_AD_EVENT_TYPE_LABELS } from '@zenith/shared/cms';
+import { enumValueOf } from '@zenith/shared/core';
+import { CMS_AD_EVENT_TYPE_LABELS, CMS_AD_EVENT_TYPES, CMS_DEVICE_TYPES } from '@zenith/shared/cms';
 import {
   buildCmsAdEventWhere,
   streamCmsAdEvents,
@@ -53,10 +54,8 @@ function queryOf(query: Record<string, unknown>): CmsAdEventListFilter {
     siteId: Number(query.siteId),
     adId: query.adId ? Number(query.adId) : undefined,
     slotId: query.slotId ? Number(query.slotId) : undefined,
-    eventType: query.eventType === 'impression' || query.eventType === 'click' ? query.eventType : undefined,
-    device: ['pc', 'mobile', 'bot'].includes(String(query.device))
-      ? query.device as 'pc' | 'mobile' | 'bot'
-      : undefined,
+    eventType: enumValueOf(CMS_AD_EVENT_TYPES, query.eventType),
+    device: enumValueOf(CMS_DEVICE_TYPES, query.device),
     startTime: typeof query.startTime === 'string' ? query.startTime : undefined,
     endTime: typeof query.endTime === 'string' ? query.endTime : undefined,
   };

@@ -1,15 +1,16 @@
-import { eq, desc, and, or, inArray, isNotNull, gt, gte, lte, sql, arrayContains } from 'drizzle-orm';
+import { eq, desc, and, or, inArray, isNotNull, gt, lte, sql, arrayContains } from 'drizzle-orm';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { db } from '../../db';
 import { aiConversations, aiMessages, users } from '../../db/schema';
 import { currentUser } from '../../lib/context';
-import { formatDateTime, formatNullableDateTime, formatFileTimestamp, parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatFileTimestamp } from '../../lib/datetime';
 import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { streamToCsv } from '../../lib/excel-export';
 import { HTTPException } from 'hono/http-exception';
 import { resolveAgentForChat, incrementAgentUsage } from './ai-agents.service';
-import { buildChildrenMap, buildEffectiveParents, descendToLeaf, resolveActivePath, resolveAncestorPath, sortMessagesByTime, type AiFeedbackStatus, type BranchTreeNode } from '@zenith/shared/ai';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { aiAuditContract, aiConversationContract, buildChildrenMap, buildEffectiveParents, descendToLeaf, resolveActivePath, resolveAncestorPath, sortMessagesByTime, type AiFeedbackStatus, type BranchTreeNode } from '@zenith/shared/ai';
 
 function mapConversation(row: typeof aiConversations.$inferSelect) {
   return {
@@ -465,25 +466,14 @@ export async function deleteMessageCascade(conversationId: number, messageId: nu
 /**
  * 管理员：对话内容合规审计检索（跨用户全量消息，支持关键词 / 用户 / 角色 / 时间过滤）。
  */
-export async function listAuditMessages(params: {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  userId?: number;
-  role?: 'user' | 'assistant';
-  startDate?: string;
-  endDate?: string;
-}) {
+export async function listAuditMessages(params: QueryOutputOf<typeof aiAuditContract.messages>) {
   const { page, pageSize } = params;
-  const conds = [];
-  conds.push(keywordCondition(params.keyword, [aiMessages.content], 'ilike'));
-  if (params.role) conds.push(eq(aiMessages.role, params.role));
-  if (params.userId) conds.push(eq(aiConversations.userId, params.userId));
-  const start = params.startDate ? parseDateRangeStart(params.startDate) : null;
-  const end = params.endDate ? parseDateRangeEnd(params.endDate) : null;
-  if (start) conds.push(gte(aiMessages.createdAt, start));
-  if (end) conds.push(lte(aiMessages.createdAt, end));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    keywordCondition(params.keyword, [aiMessages.content], 'ilike'),
+    params.role ? eq(aiMessages.role, params.role) : undefined,
+    params.userId ? eq(aiConversations.userId, params.userId) : undefined,
+    ...dateRangeConditions(aiMessages.createdAt, params.startDate, params.endDate),
+  );
 
   const baseQuery = db
     .select({
@@ -561,15 +551,9 @@ export async function updateFeedbackStatus(messageId: number, status: AiFeedback
  * 管理员：列出所有有反馈的 assistant 消息（分页，支持按反馈类型/处理状态/模型/时间范围筛选），
  * 附带反馈人、所属会话标题与该回复之前最近一条用户提问。
  */
-export async function listFeedbackMessages(params: {
-  page: number;
-  pageSize: number;
-  feedback?: 1 | -1;
-  status?: AiFeedbackStatus;
-  model?: string;
-  startDate?: string;
-  endDate?: string;
-}) {
+type AiFeedbackFilterQuery = QueryOutputOf<typeof aiConversationContract.feedbackExport>;
+
+export async function listFeedbackMessages(params: QueryOutputOf<typeof aiConversationContract.feedbackList>) {
   const { page, pageSize } = params;
   const where = feedbackConds(params);
   const listQuery = feedbackSelect().where(where).orderBy(desc(aiMessages.createdAt), desc(aiMessages.id));
@@ -592,18 +576,13 @@ const QUESTION_EXPR = sql<string | null>`(
   limit 1
 )`;
 
-function feedbackConds(params: {
-  feedback?: 1 | -1;
-  status?: AiFeedbackStatus;
-  model?: string;
-  startDate?: string;
-  endDate?: string;
-}) {
+function feedbackConds(params: AiFeedbackFilterQuery) {
   const model = params.model?.trim();
+  const feedback = params.feedback ? (Number(params.feedback) as 1 | -1) : undefined;
   return buildWhere(
     isNotNull(aiMessages.feedback),
     eq(aiMessages.role, 'assistant'),
-    params.feedback === 1 || params.feedback === -1 ? eq(aiMessages.feedback, params.feedback) : undefined,
+    feedback ? eq(aiMessages.feedback, feedback) : undefined,
     params.status ? eq(aiMessages.feedbackStatus, params.status) : undefined,
     model ? eq(aiMessages.model, model) : undefined,
     ...dateRangeConditions(aiMessages.createdAt, params.startDate, params.endDate),
@@ -683,13 +662,7 @@ export async function getFeedbackContext(msgId: number, before = 8, after = 2) {
 /**
  * 管理员：导出反馈列表 CSV（与列表筛选一致，上限 10000 条）。
  */
-export async function exportFeedbackMessages(params: {
-  feedback?: 1 | -1;
-  status?: AiFeedbackStatus;
-  model?: string;
-  startDate?: string;
-  endDate?: string;
-}) {
+export async function exportFeedbackMessages(params: AiFeedbackFilterQuery) {
   const rows = await feedbackSelect()
     .where(feedbackConds(params))
     .orderBy(desc(aiMessages.createdAt), desc(aiMessages.id))

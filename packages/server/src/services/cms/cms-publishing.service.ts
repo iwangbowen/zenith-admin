@@ -150,7 +150,8 @@ async function hasGlobalPublishingAccess(): Promise<boolean> {
   return isCmsPlatformAdmin() || hasPermission('system:async-task:list');
 }
 
-export async function buildCmsPublishingConditions(query: CmsPublishingListFilter): Promise<(SQL | undefined)[]> {
+/** 发布任务列表 / 产物 / 日志共用的任务级范围条件：任务类型 + 归属与站点可见性 + 列表筛选 */
+export async function buildCmsPublishingWhere(query: CmsPublishingListFilter): Promise<SQL | undefined> {
   const user = currentUser();
   const global = await hasGlobalPublishingAccess();
   let ownerCondition: SQL | undefined;
@@ -175,7 +176,7 @@ export async function buildCmsPublishingConditions(query: CmsPublishingListFilte
       .limit(500);
     creatorCondition = creators.length ? inArray(asyncTasks.createdBy, creators.map((row) => row.id)) : sql`false`;
   }
-  return [
+  return buildWhere(
     inArray(asyncTasks.taskType, [...CMS_PUBLISH_TASK_TYPES]),
     ownerCondition,
     accessibleCondition,
@@ -186,12 +187,11 @@ export async function buildCmsPublishingConditions(query: CmsPublishingListFilte
     keywordCondition(query.keyword, [asyncTasks.title, asyncTasks.taskType], 'ilike'),
     ...dateRangeConditions(asyncTasks.createdAt, query.startTime, query.endTime),
     creatorCondition,
-  ];
+  );
 }
 
 export async function listCmsPublishingTasks(query: QueryOutputOf<typeof cmsPublishingContract.list>) {
-  const conditions = await buildCmsPublishingConditions(query);
-  const where = buildWhere(...conditions);
+  const where = await buildCmsPublishingWhere(query);
   return buildListResult({
     page: query.page,
     pageSize: query.pageSize,
@@ -385,12 +385,12 @@ async function cmsPublishTaskNeedsFreshInput(task: Pick<AsyncTaskRow, 'payload' 
 }
 
 export async function listCmsPublishArtifacts(query: QueryOutputOf<typeof cmsPublishingContract.artifacts>) {
-  const taskConditions = await buildCmsPublishingConditions({ siteId: query.siteId });
+  const taskWhere = await buildCmsPublishingWhere({ siteId: query.siteId });
   const start = parseDateRangeStart(query.startTime);
   const end = parseDateRangeEnd(query.endTime);
   const artifactTime = sql`coalesce(${cmsPublishArtifacts.generatedAt}, ${cmsPublishArtifacts.updatedAt})`;
   const where = buildWhere(
-    ...taskConditions,
+    taskWhere,
     query.taskId ? eq(asyncTasks.id, query.taskId) : undefined,
     eq(cmsPublishArtifacts.taskId, asyncTasks.id),
     query.targetType ? eq(cmsPublishArtifacts.targetType, query.targetType) : undefined,

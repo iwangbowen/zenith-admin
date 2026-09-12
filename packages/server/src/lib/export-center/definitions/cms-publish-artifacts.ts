@@ -1,11 +1,17 @@
-import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
-import { CMS_PUBLISH_ARTIFACT_STATUS_LABELS, CMS_PUBLISH_TARGET_TYPE_LABELS } from '@zenith/shared/cms';
+import { desc, eq, sql, type SQL } from 'drizzle-orm';
+import { enumValueOf } from '@zenith/shared/core';
+import {
+  CMS_PUBLISH_ARTIFACT_STATUS_LABELS,
+  CMS_PUBLISH_ARTIFACT_STATUSES,
+  CMS_PUBLISH_TARGET_TYPE_LABELS,
+  CMS_PUBLISH_TARGET_TYPES,
+} from '@zenith/shared/cms';
 import { db } from '../../../db';
 import { asyncTasks, cmsPublishArtifacts } from '../../../db/schema';
 import { formatDateTime, formatNullableDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../datetime';
-import { keywordCondition } from '../../where-helpers';
+import { buildWhere, keywordCondition } from '../../where-helpers';
 import { asyncTaskStatusCondition } from '../../task-center/status-filter';
-import { buildCmsPublishingConditions } from '../../../services/cms/cms-publishing.service';
+import { buildCmsPublishingWhere } from '../../../services/cms/cms-publishing.service';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
@@ -38,35 +44,34 @@ const columns: ExportColumn<PublishArtifactExportRow>[] = [
   { key: 'createdAt', header: '记录时间', width: 22, type: 'datetime' },
 ];
 
-async function conditions(query: Record<string, unknown>): Promise<(SQL | undefined)[]> {
+async function buildArtifactWhere(query: Record<string, unknown>): Promise<SQL | undefined> {
   const siteId = Number(query.siteId);
   const taskId = Number(query.taskId);
-  const targetType = typeof query.targetType === 'string' && query.targetType in CMS_PUBLISH_TARGET_TYPE_LABELS
-    ? query.targetType as keyof typeof CMS_PUBLISH_TARGET_TYPE_LABELS
-    : undefined;
-  const status = typeof query.status === 'string' && query.status in CMS_PUBLISH_ARTIFACT_STATUS_LABELS
-    ? query.status as keyof typeof CMS_PUBLISH_ARTIFACT_STATUS_LABELS
-    : undefined;
-  const taskConditions = await buildCmsPublishingConditions({
+  const targetType = enumValueOf(CMS_PUBLISH_TARGET_TYPES, query.targetType);
+  const status = enumValueOf(CMS_PUBLISH_ARTIFACT_STATUSES, query.status);
+  const taskWhere = await buildCmsPublishingWhere({
     siteId: Number.isInteger(siteId) && siteId > 0 ? siteId : undefined,
   });
-  const result: (SQL | undefined)[] = [...taskConditions, eq(cmsPublishArtifacts.taskId, asyncTasks.id), asyncTaskStatusCondition(query.taskStatus)];
-  if (Number.isInteger(taskId) && taskId > 0) result.push(eq(cmsPublishArtifacts.taskId, taskId));
-  if (targetType) result.push(eq(cmsPublishArtifacts.targetType, targetType));
-  if (status) result.push(eq(cmsPublishArtifacts.status, status));
   const start = parseDateRangeStart(typeof query.startTime === 'string' ? query.startTime : undefined);
   const end = parseDateRangeEnd(typeof query.endTime === 'string' ? query.endTime : undefined);
   const artifactTime = sql`coalesce(${cmsPublishArtifacts.generatedAt}, ${cmsPublishArtifacts.updatedAt})`;
-  if (start) result.push(sql`${artifactTime} >= ${start}`);
-  if (end) result.push(sql`${artifactTime} <= ${end}`);
-  if (typeof query.keyword === 'string') result.push(keywordCondition(query.keyword, [cmsPublishArtifacts.path], 'ilike'));
-  return result;
+  return buildWhere(
+    taskWhere,
+    eq(cmsPublishArtifacts.taskId, asyncTasks.id),
+    asyncTaskStatusCondition(query.taskStatus),
+    Number.isInteger(taskId) && taskId > 0 ? eq(cmsPublishArtifacts.taskId, taskId) : undefined,
+    targetType ? eq(cmsPublishArtifacts.targetType, targetType) : undefined,
+    status ? eq(cmsPublishArtifacts.status, status) : undefined,
+    start ? sql`${artifactTime} >= ${start}` : undefined,
+    end ? sql`${artifactTime} <= ${end}` : undefined,
+    typeof query.keyword === 'string' ? keywordCondition(query.keyword, [cmsPublishArtifacts.path], 'ilike') : undefined,
+  );
 }
 
 async function loadRows(query: Record<string, unknown>): Promise<PublishArtifactExportRow[]> {
   const rows = await db.select({ artifact: cmsPublishArtifacts }).from(cmsPublishArtifacts)
     .innerJoin(asyncTasks, eq(cmsPublishArtifacts.taskId, asyncTasks.id))
-    .where(and(...await conditions(query)))
+    .where(await buildArtifactWhere(query))
     .orderBy(desc(cmsPublishArtifacts.id))
     .limit(50_000);
   return rows.map(({ artifact }) => ({
@@ -98,7 +103,7 @@ export const cmsPublishArtifactsExportDefinition = defineExport<Record<string, u
   countRows: async (query) => {
     const [row] = await db.select({ total: sql<number>`count(*)::int` }).from(cmsPublishArtifacts)
       .innerJoin(asyncTasks, eq(cmsPublishArtifacts.taskId, asyncTasks.id))
-      .where(and(...await conditions(query)));
+      .where(await buildArtifactWhere(query));
     return row?.total ?? 0;
   },
   streamRows: async (query) => loadRows(query),

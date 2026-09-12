@@ -268,7 +268,8 @@ export async function listMyChannels(): Promise<Channel[]> {
 }
 
 /** 频道消息流（仅当前用户可见的消息，分页，按时间倒序） */
-export async function listChannelMessages(channelId: number, page: number, pageSize: number) {
+export async function listChannelMessages(channelId: number, q: QueryOutputOf<typeof channelContract.messages>) {
+  const { page, pageSize } = q;
   const me = currentUser().userId;
   const sub = await db.query.channelSubscriptions.findFirst({
     where: and(eq(channelSubscriptions.channelId, channelId), eq(channelSubscriptions.userId, me)),

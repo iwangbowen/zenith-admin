@@ -1,18 +1,23 @@
-import { eq, and, desc, sql, inArray, ne, asc, gte, lte, lt, gt, type SQL } from 'drizzle-orm';
+import { eq, and, desc, sql, inArray, ne, asc, lt, gt, type SQL } from 'drizzle-orm';
 import type { PgSelect } from 'drizzle-orm/pg-core';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { db } from '../../db';
 import { chatConversations, chatConversationMembers, chatMessages, chatMessageFavorites, users } from '../../db/schema';
 import { scheduleSendToUsers } from '../../lib/ws-manager';
 import { currentUser } from '../../lib/context';
-import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
+import { formatDateTime } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
 import { HTTPException } from 'hono/http-exception';
-import type { ForwardMessagesInput, ChatMessage, ChatMessageExtra, ChatMessageSearchResult, ChatMessageContext, ChatMessageType, ChatForwardedItem, SendChatMessageInput } from '@zenith/shared/chat';
+import { chatContract, type ForwardMessagesInput, type ChatMessage, type ChatMessageExtra, type ChatMessageSearchResult, type ChatMessageContext, type ChatMessageType, type ChatForwardedItem, type SendChatMessageInput } from '@zenith/shared/chat';
 import { notHiddenFor, rowSender, mapChatMessage, fetchUserBrief, listConversationMemberIds, ensureConversationMember, ensureMessageAccessible, touchConversation } from './chat-shared';
 import { aggregateReactions } from './chat-reactions.service';
-import { keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
+
+function parseMessageTypes(types: string | undefined): ChatMessage['type'][] {
+  return types ? (types.split(',').filter(Boolean) as ChatMessage['type'][]) : [];
+}
 
 async function fetchReplySnapshotMap(
   rows: Array<{ replyToId: number | null }>,
@@ -361,31 +366,20 @@ export async function deleteAnnouncementHistory(conversationId: number, messageI
 
 export async function searchConversationMessages(
   conversationId: number,
-  params: {
-    keyword?: string;
-    types?: ChatMessage['type'][];
-    senderId?: number;
-    startAt?: string;
-    endAt?: string;
-    page: number;
-    pageSize: number;
-  },
+  params: QueryOutputOf<typeof chatContract.searchMessages>,
 ): Promise<ChatMessageSearchResult> {
   const me = currentUser();
   await ensureConversationMember(conversationId);
 
   const keyword = params.keyword?.trim();
-  const types = params.types?.filter(Boolean) ?? [];
-  const startAt = parseDateRangeStart(params.startAt);
-  const endAt = parseDateRangeEnd(params.endAt);
+  const types = parseMessageTypes(params.types);
 
-  const where = and(
+  const where = buildWhere(
     eq(chatMessages.conversationId, conversationId),
     notHiddenFor(me.userId),
     params.senderId ? eq(chatMessages.senderId, params.senderId) : undefined,
     types.length > 0 ? inArray(chatMessages.type, types) : undefined,
-    startAt ? gte(chatMessages.createdAt, startAt) : undefined,
-    endAt ? lte(chatMessages.createdAt, endAt) : undefined,
+    ...dateRangeConditions(chatMessages.createdAt, params.startAt, params.endAt),
     keywordCondition(keyword, [
       chatMessages.content,
       sql`COALESCE(${users.nickname}, '')`,
@@ -771,21 +765,16 @@ export async function editMessage(messageId: number, content: string): Promise<C
 // ─── 全局消息搜索 ────────────────────────────────────────────────────────────
 
 export async function searchGlobalMessages(
-  params: {
-    keyword: string;
-    types?: ChatMessage['type'][];
-    page: number;
-    pageSize: number;
-  },
+  params: QueryOutputOf<typeof chatContract.globalSearch>,
 ): Promise<ChatMessageSearchResult & { conversationNames: Record<number, string> }> {
   const me = currentUser();
 
   const keyword = params.keyword.trim();
   if (!keyword) return { list: [], total: 0, page: params.page, pageSize: params.pageSize, conversationNames: {} };
 
-  const types = params.types?.filter(Boolean) ?? [];
+  const types = parseMessageTypes(params.types);
 
-  const where = and(
+  const where = buildWhere(
     // 只搜当前用户参与的会话
     eq(chatConversationMembers.userId, me.userId),
     notHiddenFor(me.userId),

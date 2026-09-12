@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, gte, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, gte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import type { RuleDecisionInput, RuleDecisionOutput, RuleDecisionRow, RuleHitPolicy, RuleEvaluateResult, RuleTestRunResult, RuleCaseResult, RuleDecisionTableSettings, RuleUsageItem, RuleTableStats, RuleShadowRunResult, RuleShadowDiffSample, RuleSimulateResult, RuleSimulateRowResult } from '@zenith/shared/rules';
@@ -171,7 +171,7 @@ export async function updateDecisionTable(id: number, input: UpdateDecisionTable
     throw new HTTPException(409, { message: '决策表已被他人修改，请刷新后重试' });
   }
   const tc = tenantCondition(ruleDecisionTables, currentUser());
-  const conds: (SQL | undefined)[] = [eq(ruleDecisionTables.id, id), tc];
+  const where = buildWhere(eq(ruleDecisionTables.id, id), tc);
   const patch: Partial<typeof ruleDecisionTables.$inferInsert> = {};
   if (input.name !== undefined) patch.name = input.name;
   if (input.description !== undefined) patch.description = input.description;
@@ -190,7 +190,7 @@ export async function updateDecisionTable(id: number, input: UpdateDecisionTable
     patch.reviewRequestedAt = null;
     patch.reviewComment = '内容在审批期间被修改，发布申请已自动作废，请重新提交';
   }
-  const [row] = await db.update(ruleDecisionTables).set(patch).where(buildWhere(...conds)).returning();
+  const [row] = await db.update(ruleDecisionTables).set(patch).where(where).returning();
   const updated = requireRow(row, '决策表不存在');
   invalidateRuleRuntimeCache();
   return mapDecisionTable(updated, await latestVersionOf(id));
@@ -200,18 +200,17 @@ export async function deleteDecisionTable(id: number): Promise<void> {
   const row = await ensureDecisionTable(id);
   await ensureNotReferenced(row);
   const tc = tenantCondition(ruleDecisionTables, currentUser());
-  const conds: (SQL | undefined)[] = [eq(ruleDecisionTables.id, id), tc];
-  await db.delete(ruleDecisionTables).where(buildWhere(...conds));
+  await db.delete(ruleDecisionTables).where(buildWhere(eq(ruleDecisionTables.id, id), tc));
   invalidateRuleRuntimeCache();
 }
 
 export async function deleteDecisionTables(ids: number[]): Promise<void> {
   if (!ids.length) return;
   const tc = tenantCondition(ruleDecisionTables, currentUser());
-  const conds: (SQL | undefined)[] = [inArray(ruleDecisionTables.id, ids), tc];
-  const rows = await db.select().from(ruleDecisionTables).where(buildWhere(...conds));
+  const where = buildWhere(inArray(ruleDecisionTables.id, ids), tc);
+  const rows = await db.select().from(ruleDecisionTables).where(where);
   for (const row of rows) await ensureNotReferenced(row);
-  await db.delete(ruleDecisionTables).where(buildWhere(...conds));
+  await db.delete(ruleDecisionTables).where(where);
   invalidateRuleRuntimeCache();
 }
 
@@ -230,11 +229,13 @@ export async function listDecisionTableUsages(id: number): Promise<RuleUsageItem
 export async function findWorkflowGatewayUsages(key: string, kind: 'table' | 'scorecard' | 'flow', assetTenantId: number | null): Promise<RuleUsageItem[]> {
   // jsonb @> containment 走 flow_data 的 GIN 索引粗筛（穿透 nodes 数组），替代逐行 ::text LIKE 全表扫描
   const needle = JSON.stringify({ nodes: [{ data: { decisionRuleKey: key } }] });
-  const conds = [sql`${workflowDefinitions.flowData} @> ${needle}::jsonb`];
-  if (assetTenantId != null) conds.push(eq(workflowDefinitions.tenantId, assetTenantId));
+  const where = buildWhere(
+    sql`${workflowDefinitions.flowData} @> ${needle}::jsonb`,
+    assetTenantId != null ? eq(workflowDefinitions.tenantId, assetTenantId) : undefined,
+  );
   const defs = await db.select({ id: workflowDefinitions.id, name: workflowDefinitions.name, status: workflowDefinitions.status, flowData: workflowDefinitions.flowData })
     .from(workflowDefinitions)
-    .where(buildWhere(...conds));
+    .where(where);
   // containment 只做粗筛；kind 与 key 的精确匹配在 JS 侧完成（防止同 key 不同类型资产误报）
   type GatewayNode = { data?: { type?: string; decisionRuleKey?: string | null; decisionRefKind?: string | null } };
   return defs
@@ -552,10 +553,11 @@ async function loadRuntimeSnapshot(key: string, opts?: { tenantId?: number | nul
   const resolve = async (): Promise<RuntimeSnapshot | null> => {
     const row = await resolveTableRowByKey(key, tenantId);
     if (!row || row.status === 'disabled') return null;
-    const versionConds = [eq(ruleDecisionTableVersions.tableId, row.id)];
-    if (opts?.version !== undefined) versionConds.push(eq(ruleDecisionTableVersions.version, opts.version));
     const [snapshot] = await db.select().from(ruleDecisionTableVersions)
-      .where(buildWhere(...versionConds)).orderBy(desc(ruleDecisionTableVersions.version)).limit(1);
+      .where(buildWhere(
+        eq(ruleDecisionTableVersions.tableId, row.id),
+        opts?.version !== undefined ? eq(ruleDecisionTableVersions.version, opts.version) : undefined,
+      )).orderBy(desc(ruleDecisionTableVersions.version)).limit(1);
     if (snapshot) {
       return {
         tableId: row.id,
@@ -580,9 +582,8 @@ async function loadRuntimeSnapshot(key: string, opts?: { tenantId?: number | nul
 /** 按 key 求值（对外通用）：已发布用最新发布快照；草稿直接跑编辑态（便于联调）；禁用报错。留痕 source=manual */
 export async function evaluateDecisionTableByKey(key: string, input: Record<string, unknown>): Promise<RuleEvaluateResult> {
   const tc = tenantCondition(ruleDecisionTables, currentUser());
-  const conds: (SQL | undefined)[] = [eq(ruleDecisionTables.key, key), tc];
   const row = await requireFirstRow(
-    db.select().from(ruleDecisionTables).where(buildWhere(...conds)).limit(1),
+    db.select().from(ruleDecisionTables).where(buildWhere(eq(ruleDecisionTables.key, key), tc)).limit(1),
     '决策表不存在',
   );
   if (row.status === 'disabled') throw new HTTPException(400, { message: '决策表已禁用' });
@@ -593,10 +594,12 @@ export async function evaluateDecisionTableByKey(key: string, input: Record<stri
     const pinned = row.grayPercent != null && row.grayVersion != null
       ? await resolveGrayPinnedVersion(key, input)
       : undefined;
-    const versionConds = [eq(ruleDecisionTableVersions.tableId, row.id)];
-    if (pinned !== undefined) versionConds.push(eq(ruleDecisionTableVersions.version, pinned));
+    const versionWhere = buildWhere(
+      eq(ruleDecisionTableVersions.tableId, row.id),
+      pinned !== undefined ? eq(ruleDecisionTableVersions.version, pinned) : undefined,
+    );
     const [snapshot] = await db.select().from(ruleDecisionTableVersions)
-      .where(buildWhere(...versionConds))
+      .where(versionWhere)
       .orderBy(desc(ruleDecisionTableVersions.version)).limit(1);
     if (snapshot) {
       version = snapshot.version;

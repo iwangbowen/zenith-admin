@@ -1,7 +1,8 @@
-import { and, desc, eq, gte, lte, sql, type SQL } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../../db';
 import { asyncTaskItems, asyncTasks } from '../../../db/schema';
-import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../datetime';
+import { formatDateTime } from '../../datetime';
+import { buildWhere, dateRangeConditions } from '../../where-helpers';
 import { assertSiteAccess, ensureCmsSiteExists } from '../../../services/cms/cms-sites.service';
 import { resolveAsyncTaskAccessScope } from '../../../services/tasks/async-tasks.service';
 import { defineExport } from '../registry';
@@ -43,21 +44,22 @@ async function loadRows(query: Record<string, unknown>): Promise<GovernanceExpor
   const access = await resolveAsyncTaskAccessScope('system:async-task:list');
   if (access.global) await ensureCmsSiteExists(siteId);
   else await assertSiteAccess(siteId);
-  const conditions: SQL[] = [
+  const taskId = positive(query.taskId);
+  const where = buildWhere(
     eq(asyncTasks.taskType, 'cms-resource-governance'),
     sql`${asyncTasks.payload}->>'siteId' = ${String(siteId)}`,
-  ];
-  if (!access.global) conditions.push(eq(asyncTasks.createdBy, access.userId));
-  const taskId = positive(query.taskId);
-  if (taskId) conditions.push(eq(asyncTasks.id, taskId));
-  const start = parseDateRangeStart(typeof query.startTime === 'string' ? query.startTime : undefined);
-  const end = parseDateRangeEnd(typeof query.endTime === 'string' ? query.endTime : undefined);
-  if (start) conditions.push(gte(asyncTasks.createdAt, start));
-  if (end) conditions.push(lte(asyncTasks.createdAt, end));
+    access.global ? undefined : eq(asyncTasks.createdBy, access.userId),
+    taskId ? eq(asyncTasks.id, taskId) : undefined,
+    ...dateRangeConditions(
+      asyncTasks.createdAt,
+      typeof query.startTime === 'string' ? query.startTime : undefined,
+      typeof query.endTime === 'string' ? query.endTime : undefined,
+    ),
+  );
   const rows = await db.select({ task: asyncTasks, item: asyncTaskItems })
     .from(asyncTaskItems)
     .innerJoin(asyncTasks, eq(asyncTaskItems.taskId, asyncTasks.id))
-    .where(and(...conditions))
+    .where(where)
     .orderBy(desc(asyncTasks.id), asyncTaskItems.id)
     .limit(50_000);
   return rows.map(({ task, item }) => ({

@@ -2,7 +2,7 @@
  * 评分卡服务（规则中心）：CRUD、发布快照与求值。
  * 发布采用单快照（publishedSnapshot），运行时按快照执行；编辑态求值仅用于测试。
  */
-import { and, desc, eq, type SQL } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import type {
@@ -250,8 +250,11 @@ export async function testEvaluateRuleScorecard(id: number, input: Record<string
 /** 运行时求值：按 key 取发布快照执行（disabled/未发布视为不可用）。留痕 source=manual */
 export async function evaluateRuleScorecardByKey(key: string, input: Record<string, unknown>): Promise<RuleScorecardEvaluateResult> {
   const tc = tenantCondition(ruleScorecards, currentUser());
-  const conds: (SQL | undefined)[] = [eq(ruleScorecards.key, key), eq(ruleScorecards.status, 'published'), tc];
-  const [row] = await db.select().from(ruleScorecards).where(buildWhere(...conds)).limit(1);
+  const [row] = await db.select().from(ruleScorecards).where(buildWhere(
+    eq(ruleScorecards.key, key),
+    eq(ruleScorecards.status, 'published'),
+    tc,
+  )).limit(1);
   requireRow(row, `评分卡不可用：${key}`);
   if (row.publishedSnapshot == null) throw new HTTPException(404, { message: `评分卡不可用：${key}` });
   const res = evaluateScorecard(row.publishedSnapshot as ScorecardLike, snapshotRuleScope(input));

@@ -71,8 +71,8 @@ export default tseslint.config(
   // 入参类型只从契约派生、默认值只在契约声明、WHERE 静态条件直接写成 buildWhere 实参。
   // 同名规则在更窄的 files 块中整体覆盖而非合并，这里要把 .partial() 那条一并带上。
   {
-    files: ['src/services/**/*.ts'],
-    ignores: ['src/services/**/*.test.ts'],
+    files: ['src/services/**/*.ts', 'src/lib/export-center/**/*.ts'],
+    ignores: ['src/services/**/*.test.ts', 'src/lib/export-center/**/*.test.ts'],
     rules: {
       'no-restricted-syntax': [
         'error',
@@ -87,6 +87,10 @@ export default tseslint.config(
         {
           selector: "CallExpression[callee.name='and'][arguments.length=1] > SpreadElement",
           message: '禁止 and(...conditions)：可选条件用 buildWhere(...)（lib/where-helpers）合并，静态条件直接写成实参。',
+        },
+        {
+          selector: "CallExpression[callee.name='buildWhere'][arguments.length=1] > SpreadElement",
+          message: '静态条件序列直接写成 buildWhere(cond1, flag ? cond2 : undefined, ...) 的实参，不要先攒 conditions 数组；只有循环 / 数据驱动拼装才保留数组并加 eslint-disable 注明理由。',
         },
         {
           selector: "ObjectPattern > Property[key.name=/^(page|pageSize)$/] > AssignmentPattern",

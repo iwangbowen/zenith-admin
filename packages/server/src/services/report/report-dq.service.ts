@@ -337,20 +337,21 @@ async function ensureRule(id: number, role: 'viewer' | 'editor' = 'viewer') {
 
 export async function listReportDqRules(query: QueryOutputOf<typeof reportDqContract.rules>) {
   const { page, pageSize } = query;
-  const conds = [];
   const scope = reportTenantScope(reportDqRules);
-  if (scope) conds.push(scope);
+  let accessibleIds: number[] | null | undefined;
   if (query.datasetId) {
     await ensureReportResourceAccess('dataset', query.datasetId, 'viewer');
-    conds.push(eq(reportDqRules.datasetId, query.datasetId));
   } else {
-    const accessibleIds = await listAccessibleReportResourceIds('dataset');
+    accessibleIds = await listAccessibleReportResourceIds('dataset');
     if (accessibleIds?.length === 0) return { list: [], total: 0, page, pageSize };
-    if (accessibleIds) conds.push(inArray(reportDqRules.datasetId, accessibleIds));
   }
-  if (query.type) conds.push(eq(reportDqRules.type, query.type));
-  if (query.enabled !== undefined) conds.push(eq(reportDqRules.enabled, query.enabled));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    scope,
+    query.datasetId ? eq(reportDqRules.datasetId, query.datasetId) : undefined,
+    accessibleIds ? inArray(reportDqRules.datasetId, accessibleIds) : undefined,
+    query.type ? eq(reportDqRules.type, query.type) : undefined,
+    query.enabled !== undefined ? eq(reportDqRules.enabled, query.enabled) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,
@@ -620,23 +621,26 @@ async function resolveDqNames(rows: Array<{ ruleId?: number | null; datasetId: n
 
 export async function listReportDqRuns(query: QueryOutputOf<typeof reportDqContract.runs>) {
   const { page, pageSize } = query;
-  const conds = [];
   const scope = reportTenantScope(reportDqRuns);
-  if (scope) conds.push(scope);
+  let accessibleIds: number[] | null | undefined;
   if (query.datasetId) {
     await ensureReportResourceAccess('dataset', query.datasetId, 'viewer');
-    conds.push(eq(reportDqRuns.datasetId, query.datasetId));
   } else {
-    const accessibleIds = await listAccessibleReportResourceIds('dataset');
+    accessibleIds = await listAccessibleReportResourceIds('dataset');
     if (accessibleIds?.length === 0) return { list: [], total: 0, page, pageSize };
-    if (accessibleIds) conds.push(inArray(reportDqRuns.datasetId, accessibleIds));
   }
+  let ruleId: number | undefined;
   if (query.ruleId) {
     const rule = await ensureRule(query.ruleId);
-    conds.push(eq(reportDqRuns.ruleId, rule.id));
+    ruleId = rule.id;
   }
-  if (query.status) conds.push(eq(reportDqRuns.status, query.status));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    scope,
+    query.datasetId ? eq(reportDqRuns.datasetId, query.datasetId) : undefined,
+    accessibleIds ? inArray(reportDqRuns.datasetId, accessibleIds) : undefined,
+    ruleId ? eq(reportDqRuns.ruleId, ruleId) : undefined,
+    query.status ? eq(reportDqRuns.status, query.status) : undefined,
+  );
   const { list: rows, total } = await buildListResult({
     page,
     pageSize,
@@ -679,19 +683,20 @@ export async function getCurrentReportDqScore(datasetId: number): Promise<Report
 
 export async function listReportDqAnomalies(query: QueryOutputOf<typeof reportDqContract.anomalies>) {
   const { page, pageSize } = query;
-  const conds = [];
   const scope = reportTenantScope(reportDqAnomalies);
-  if (scope) conds.push(scope);
+  let accessibleIds: number[] | null | undefined;
   if (query.datasetId) {
     await ensureReportResourceAccess('dataset', query.datasetId, 'viewer');
-    conds.push(eq(reportDqAnomalies.datasetId, query.datasetId));
   } else {
-    const accessibleIds = await listAccessibleReportResourceIds('dataset');
+    accessibleIds = await listAccessibleReportResourceIds('dataset');
     if (accessibleIds?.length === 0) return { list: [], total: 0, page, pageSize };
-    if (accessibleIds) conds.push(inArray(reportDqAnomalies.datasetId, accessibleIds));
   }
-  if (query.status) conds.push(eq(reportDqAnomalies.status, query.status));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    scope,
+    query.datasetId ? eq(reportDqAnomalies.datasetId, query.datasetId) : undefined,
+    accessibleIds ? inArray(reportDqAnomalies.datasetId, accessibleIds) : undefined,
+    query.status ? eq(reportDqAnomalies.status, query.status) : undefined,
+  );
   const { list: rows, total } = await buildListResult({
     page,
     pageSize,

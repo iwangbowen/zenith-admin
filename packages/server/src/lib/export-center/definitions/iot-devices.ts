@@ -1,4 +1,6 @@
 import { desc, eq } from 'drizzle-orm';
+import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
+import { IOT_NODE_TYPES } from '@zenith/shared/iot';
 import { db } from '../../../db';
 import { iotDevices, iotProducts } from '../../../db/schema';
 import { defineExport } from '../registry';
@@ -23,16 +25,12 @@ const columns: ExportColumn[] = [
 type Query = ListIotDevicesFilter & Record<string, unknown>;
 
 function normalizeQuery(query: Record<string, unknown>): ListIotDevicesFilter {
-  const status = query.status === 'enabled' || query.status === 'disabled' ? query.status : undefined;
-  const nodeType = query.nodeType === 'direct' || query.nodeType === 'gateway' || query.nodeType === 'sub'
-    ? query.nodeType
-    : undefined;
   return {
     keyword: asString(query.keyword),
-    status,
+    status: enumValueOf(USER_STATUSES, query.status),
     productId: asPositiveInt(query.productId),
     groupId: asPositiveInt(query.groupId),
-    nodeType,
+    nodeType: enumValueOf(IOT_NODE_TYPES, query.nodeType),
     gatewayId: asPositiveInt(query.gatewayId),
     startTime: asString(query.startTime),
     endTime: asString(query.endTime),

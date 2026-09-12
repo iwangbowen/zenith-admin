@@ -276,11 +276,14 @@ export async function updateOAuth2Client(
         signEnabled: input.signEnabled ?? locked.signEnabled,
         ipAllowlist: input.ipAllowlist ?? locked.ipAllowlist,
       });
-      const updateConditions = [eq(oauth2Clients.id, id), tenantCondition(oauth2Clients, user)];
-      if (options.ownerId !== undefined) updateConditions.push(eq(oauth2Clients.ownerId, options.ownerId));
-      if (options.allowedReviewStatuses?.length) {
-        updateConditions.push(inArray(oauth2Clients.reviewStatus, options.allowedReviewStatuses));
-      }
+      const updateWhere = buildWhere(
+        eq(oauth2Clients.id, id),
+        tenantCondition(oauth2Clients, user),
+        options.ownerId !== undefined ? eq(oauth2Clients.ownerId, options.ownerId) : undefined,
+        options.allowedReviewStatuses?.length
+          ? inArray(oauth2Clients.reviewStatus, options.allowedReviewStatuses)
+          : undefined,
+      );
       const [row] = await executor.update(oauth2Clients)
         .set({
           name: input.name?.trim() ?? undefined,
@@ -301,7 +304,7 @@ export async function updateOAuth2Client(
           reviewedBy: options.resetReview ? null : undefined,
           status: input.status,
         })
-        .where(buildWhere(...updateConditions))
+        .where(updateWhere)
         .returning();
       requireRow(row, '应用状态已变化，请刷新后重试', 409);
       if (shouldRevokeTokens) {
@@ -346,12 +349,15 @@ export async function deleteOAuth2Client(
       .limit(1);
 
     // 先删主行：ownerId / reviewStatus 条件不满足时直接失败，避免误删他人应用的从属数据
-    const deleteConditions = [eq(oauth2Clients.id, id), tenantCondition(oauth2Clients, user)];
-    if (options.ownerId !== undefined) deleteConditions.push(eq(oauth2Clients.ownerId, options.ownerId));
-    if (options.allowedReviewStatuses?.length) {
-      deleteConditions.push(inArray(oauth2Clients.reviewStatus, options.allowedReviewStatuses));
-    }
-    const result = await tx.delete(oauth2Clients).where(buildWhere(...deleteConditions)).returning();
+    const deleteWhere = buildWhere(
+      eq(oauth2Clients.id, id),
+      tenantCondition(oauth2Clients, user),
+      options.ownerId !== undefined ? eq(oauth2Clients.ownerId, options.ownerId) : undefined,
+      options.allowedReviewStatuses?.length
+        ? inArray(oauth2Clients.reviewStatus, options.allowedReviewStatuses)
+        : undefined,
+    );
+    const result = await tx.delete(oauth2Clients).where(deleteWhere).returning();
     requireRow(result[0], 'OAuth2 应用不存在');
 
     // Webhook：先删投递记录再删订阅（投递以订阅为父）

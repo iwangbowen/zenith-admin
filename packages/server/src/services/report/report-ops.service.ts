@@ -114,11 +114,10 @@ export async function listCategories(): Promise<ReportDashboardCategory[]> {
 }
 
 export async function listCategoryLookup(query: { keyword?: string; limit?: number }): Promise<ReportLookupOption[]> {
-  const conds = [
+  const where = buildWhere(
     reportTenantScope(reportDashboardCategories),
     keywordCondition(query.keyword, [reportDashboardCategories.name, reportDashboardCategories.remark], 'ilike'),
-  ];
-  const where = buildWhere(...conds);
+  );
   const rows = await db.select({
     id: reportDashboardCategories.id,
     name: reportDashboardCategories.name,

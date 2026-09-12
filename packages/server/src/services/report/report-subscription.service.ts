@@ -126,13 +126,13 @@ export async function ensureSubscriptionExists(id: number): Promise<ReportDashbo
 
 export async function listSubscriptions(query: QueryOutputOf<typeof reportSubscriptionContract.list>) {
   const { page, pageSize, keyword, dashboardId } = query;
-  const conds = [];
   const tenantScope = reportTenantScope(reportDashboardSubscriptions);
-  if (tenantScope) conds.push(tenantScope);
-  conds.push(keywordCondition(keyword, [reportDashboardSubscriptions.cron, reportDashboardSubscriptions.remark], 'ilike'));
-  if (dashboardId) conds.push(eq(reportDashboardSubscriptions.dashboardId, dashboardId));
-  if (query.enabled !== undefined) conds.push(eq(reportDashboardSubscriptions.enabled, query.enabled));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    tenantScope,
+    keywordCondition(keyword, [reportDashboardSubscriptions.cron, reportDashboardSubscriptions.remark], 'ilike'),
+    dashboardId ? eq(reportDashboardSubscriptions.dashboardId, dashboardId) : undefined,
+    query.enabled !== undefined ? eq(reportDashboardSubscriptions.enabled, query.enabled) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,

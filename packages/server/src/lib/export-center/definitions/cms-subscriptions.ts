@@ -1,6 +1,7 @@
 import { db } from '../../../db';
 import { cmsMemberSubscriptions } from '../../../db/schema';
-import { CMS_SUBSCRIPTION_SUBJECT_TYPE_LABELS } from '@zenith/shared/cms';
+import { enumValueOf } from '@zenith/shared/core';
+import { CMS_SUBSCRIPTION_SUBJECT_TYPE_LABELS, CMS_SUBSCRIPTION_SUBJECT_TYPES } from '@zenith/shared/cms';
 import {
   buildCmsSubscriptionWhere,
   streamCmsSubscriptions,
@@ -39,9 +40,7 @@ async function* exportRows(
 function queryOf(query: Record<string, unknown>): CmsSubscriptionListFilter {
   return {
     siteId: Number(query.siteId),
-    subjectType: ['site', 'channel', 'author'].includes(String(query.subjectType))
-      ? query.subjectType as 'site' | 'channel' | 'author'
-      : undefined,
+    subjectType: enumValueOf(CMS_SUBSCRIPTION_SUBJECT_TYPES, query.subjectType),
     subjectKeyword: typeof query.subjectKeyword === 'string' ? query.subjectKeyword : undefined,
     startTime: typeof query.startTime === 'string' ? query.startTime : undefined,
     endTime: typeof query.endTime === 'string' ? query.endTime : undefined,

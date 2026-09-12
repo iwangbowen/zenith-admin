@@ -16,6 +16,7 @@ import type { AnalyticsEventQuery, AnalyticsEventQueryResult, AnalyticsEventQuer
 import { ANALYTICS_EVENT_QUERY_METRICS, analyticsMetricRequiresProperty } from '@zenith/shared/analytics';
 import { tenantScope } from '../../lib/tenant';
 import { buildWhere, withPagination } from '../../lib/where-helpers';
+import { pageOffset } from '../../lib/pagination';
 import { APP_TIME_ZONE, formatDate, parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
 import { clampDays } from '../../lib/analytics-helpers';
 import { buildJsonPropertyCondition, PROPERTY_KEY_RE } from './analytics-property-filter';
@@ -181,7 +182,7 @@ export async function queryEvents(input: AnalyticsEventQuery): Promise<Analytics
 
   // COUNT(*) OVER() 是分组后的窗口计数，即分组总行数；翻到空页时窗口没有行可读，
   // 只能退回「已翻过的行数」，此时前端也不会再往后翻
-  const total = rows.length > 0 ? Number(rows[0].__total ?? rows.length) : (page - 1) * pageSize;
+  const total = rows.length > 0 ? Number(rows[0].__total ?? rows.length) : pageOffset(page, pageSize);
 
   return {
     list: rows.map((r) => ({
@@ -194,4 +195,3 @@ export async function queryEvents(input: AnalyticsEventQuery): Promise<Analytics
     queryMeta: { metric, metricProperty, groupBy, startDate: startLabel, endDate: endLabel },
   };
 }
-

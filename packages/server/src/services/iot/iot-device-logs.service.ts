@@ -3,7 +3,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * IoT 设备日志通道：设备上报运行日志（追加型，保留策略裁剪）。
  */
-import { count, desc, eq, gte, lte, type SQL } from 'drizzle-orm';
+import { count, desc, eq, gte, lte } from 'drizzle-orm';
 import type { IotLogIngestInput } from '@zenith/shared/iot';
 import { db } from '../../db';
 import { iotDeviceLogs, type IotDeviceLogRow, type IotDeviceRow } from '../../db/schema';
@@ -40,16 +40,15 @@ export type ListDeviceLogsQuery = QueryOutputOf<typeof iotDeviceContract.logs>;
 
 export async function listIotDeviceLogs(deviceId: number, q: ListDeviceLogsQuery) {
   const { page, pageSize } = q;
-  const conditions: (SQL | undefined)[] = [
+  const start = q.startTime ? parseDateTimeInput(q.startTime) : null;
+  const end = q.endTime ? parseDateTimeInput(q.endTime) : null;
+  const where = buildWhere(
     eq(iotDeviceLogs.deviceId, deviceId),
     q.level ? eq(iotDeviceLogs.level, q.level) : undefined,
     keywordCondition(q.keyword, [iotDeviceLogs.content], 'ilike'),
-  ];
-  const start = q.startTime ? parseDateTimeInput(q.startTime) : null;
-  const end = q.endTime ? parseDateTimeInput(q.endTime) : null;
-  if (start) conditions.push(gte(iotDeviceLogs.reportedAt, start));
-  if (end) conditions.push(lte(iotDeviceLogs.reportedAt, end));
-  const where = buildWhere(...conditions);
+    start ? gte(iotDeviceLogs.reportedAt, start) : undefined,
+    end ? lte(iotDeviceLogs.reportedAt, end) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,

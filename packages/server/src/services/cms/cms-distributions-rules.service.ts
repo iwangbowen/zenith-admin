@@ -118,19 +118,17 @@ async function ruleAccessConditions(): Promise<(SQL | undefined)[]> {
 }
 
 export async function listCmsDistributionRules(query: QueryOutputOf<typeof cmsDistributionContract.list>) {
-  const conditions = await ruleAccessConditions();
-  conditions.push(keywordCondition(query.keyword, [cmsDistributionRules.name], 'ilike'));
-  if (query.sourceSiteId) {
-    await assertSiteAccess(query.sourceSiteId);
-    conditions.push(eq(cmsDistributionRules.sourceSiteId, query.sourceSiteId));
-  }
-  if (query.targetSiteId) {
-    await assertSiteAccess(query.targetSiteId);
-    conditions.push(eq(cmsDistributionRules.targetSiteId, query.targetSiteId));
-  }
-  if (query.mode) conditions.push(eq(cmsDistributionRules.mode, query.mode));
-  if (query.status) conditions.push(eq(cmsDistributionRules.status, query.status));
-  const where = buildWhere(...conditions);
+  const accessConditions = await ruleAccessConditions();
+  if (query.sourceSiteId) await assertSiteAccess(query.sourceSiteId);
+  if (query.targetSiteId) await assertSiteAccess(query.targetSiteId);
+  const where = buildWhere(
+    ...accessConditions,
+    keywordCondition(query.keyword, [cmsDistributionRules.name], 'ilike'),
+    query.sourceSiteId ? eq(cmsDistributionRules.sourceSiteId, query.sourceSiteId) : undefined,
+    query.targetSiteId ? eq(cmsDistributionRules.targetSiteId, query.targetSiteId) : undefined,
+    query.mode ? eq(cmsDistributionRules.mode, query.mode) : undefined,
+    query.status ? eq(cmsDistributionRules.status, query.status) : undefined,
+  );
   return buildListResult({
     page: query.page,
     pageSize: query.pageSize,

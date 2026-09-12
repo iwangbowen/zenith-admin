@@ -41,7 +41,7 @@ import {
   defaultReportOwnerId,
   validateReportResourcePlacement,
 } from './report-resource.service';
-import { isExternalDbType, REPORT_DATASOURCE_TYPES, reportDatasourceContract } from '@zenith/shared/report';
+import { isExternalDbType, reportDatasourceContract } from '@zenith/shared/report';
 import type { ReportDatasourceRow } from '../../db/schema';
 import type { ReportDatasource, ReportDatasourceConfig, ReportDatasourceType, ReportExternalDbConfig, ReportApiDatasourceConfig, CreateReportDatasourceInput, UpdateReportDatasourceInput, ReportDatasourceTestInput, ReportLookupOption } from '@zenith/shared/report';
 
@@ -227,21 +227,18 @@ export async function getDatasource(id: number): Promise<ReportDatasource> {
 
 export async function listDatasources(query: QueryOutputOf<typeof reportDatasourceContract.list>) {
   const { page, pageSize, keyword, folderId, ownerId, type, status } = query;
-  const conds = [];
   const tenantScope = reportTenantScope(reportDatasources);
-  if (tenantScope) conds.push(tenantScope);
   const accessibleIds = await listAccessibleReportResourceIds('datasource');
   if (accessibleIds && accessibleIds.length === 0) return { list: [], total: 0, page, pageSize };
-  if (accessibleIds) conds.push(inArray(reportDatasources.id, accessibleIds));
-  if (folderId) conds.push(eq(reportDatasources.folderId, folderId));
-  if (ownerId) conds.push(eq(reportDatasources.ownerId, ownerId));
-  conds.push(keywordCondition(keyword, [reportDatasources.name, reportDatasources.remark], 'ilike'));
-  const reportTypes = REPORT_DATASOURCE_TYPES as readonly string[];
-  if (type && reportTypes.includes(type)) {
-    conds.push(eq(reportDatasources.type, type as ReportDatasourceType));
-  }
-  if (status === 'enabled' || status === 'disabled') conds.push(eq(reportDatasources.status, status));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    tenantScope,
+    accessibleIds ? inArray(reportDatasources.id, accessibleIds) : undefined,
+    folderId ? eq(reportDatasources.folderId, folderId) : undefined,
+    ownerId ? eq(reportDatasources.ownerId, ownerId) : undefined,
+    keywordCondition(keyword, [reportDatasources.name, reportDatasources.remark], 'ilike'),
+    type ? eq(reportDatasources.type, type) : undefined,
+    status ? eq(reportDatasources.status, status) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,
@@ -266,15 +263,15 @@ export async function listDatasourceLookup(query: {
   limit?: number;
 }): Promise<ReportLookupOption[]> {
   const { keyword, status, limit = 20 } = query;
-  const conds = [];
   const tenantScope = reportTenantScope(reportDatasources);
-  if (tenantScope) conds.push(tenantScope);
   const accessibleIds = await listAccessibleReportResourceIds('datasource');
   if (accessibleIds && accessibleIds.length === 0) return [];
-  if (accessibleIds) conds.push(inArray(reportDatasources.id, accessibleIds));
-  conds.push(keywordCondition(keyword, [reportDatasources.name, reportDatasources.remark], 'ilike'));
-  if (status) conds.push(eq(reportDatasources.status, status));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    tenantScope,
+    accessibleIds ? inArray(reportDatasources.id, accessibleIds) : undefined,
+    keywordCondition(keyword, [reportDatasources.name, reportDatasources.remark], 'ilike'),
+    status ? eq(reportDatasources.status, status) : undefined,
+  );
   const rows = await db.select({
     id: reportDatasources.id,
     name: reportDatasources.name,

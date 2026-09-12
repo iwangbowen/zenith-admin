@@ -142,14 +142,14 @@ export async function getAlert(id: number): Promise<ReportAlertRule> {
 
 export async function listAlerts(query: QueryOutputOf<typeof reportAlertContract.list>) {
   const { page, pageSize, keyword, datasetId, metricId, enabled } = query;
-  const conds = [];
   const tenantScope = reportTenantScope(reportAlertRules);
-  if (tenantScope) conds.push(tenantScope);
-  conds.push(keywordCondition(keyword, [reportAlertRules.name, reportAlertRules.remark], 'ilike'));
-  if (datasetId) conds.push(eq(reportAlertRules.datasetId, datasetId));
-  if (metricId) conds.push(eq(reportAlertRules.metricId, metricId));
-  if (enabled !== undefined) conds.push(eq(reportAlertRules.enabled, enabled));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    tenantScope,
+    keywordCondition(keyword, [reportAlertRules.name, reportAlertRules.remark], 'ilike'),
+    datasetId ? eq(reportAlertRules.datasetId, datasetId) : undefined,
+    metricId ? eq(reportAlertRules.metricId, metricId) : undefined,
+    enabled !== undefined ? eq(reportAlertRules.enabled, enabled) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,

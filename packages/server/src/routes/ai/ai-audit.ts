@@ -11,8 +11,7 @@ const router = new OpenAPIHono({ defaultHook: validationHook });
 const list = defineContractRoute(aiAuditContract.messages, {
   middleware: [authMiddleware, guard({ permission: 'ai:audit:view', audit: { description: 'AI 对话审计检索', module: '智能助手' } })],
   handler: async (c) => {
-    const { page, pageSize, keyword, userId, role, startDate, endDate } = c.req.valid('query');
-    return c.json(okBody(await listAuditMessages({ page, pageSize, keyword, userId, role, startDate, endDate })), 200);
+    return c.json(okBody(await listAuditMessages(c.req.valid('query'))), 200);
   },
 });
 

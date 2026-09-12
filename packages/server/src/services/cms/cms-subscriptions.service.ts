@@ -274,12 +274,11 @@ export async function listMyCmsSubscriptions(q: {
   subjectType?: CmsSubscriptionSubjectType;
 }) {
   const memberId = currentMemberId();
-  const conditions: SQL[] = [
+  const where = buildWhere(
     eq(cmsMemberSubscriptions.memberId, memberId),
     eq(cmsMemberSubscriptions.active, true),
-  ];
-  if (q.subjectType) conditions.push(eq(cmsMemberSubscriptions.subjectType, q.subjectType));
-  const where = buildWhere(...conditions);
+    q.subjectType ? eq(cmsMemberSubscriptions.subjectType, q.subjectType) : undefined,
+  );
   const base = db.select({ subscription: cmsMemberSubscriptions, siteName: cmsSites.name })
     .from(cmsMemberSubscriptions)
     .innerJoin(cmsSites, eq(cmsMemberSubscriptions.siteId, cmsSites.id))

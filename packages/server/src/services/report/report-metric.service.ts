@@ -16,7 +16,7 @@ import { currentUserId, currentUserOrNull } from '../../lib/context';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
-import { buildWhere, keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, keywordCondition, nullableEq } from '../../lib/where-helpers';
 import {
   assertDatasetEvaluableGlobally,
   ensureDatasetExists,
@@ -127,21 +127,19 @@ export async function getReportMetric(id: number): Promise<ReportMetric> {
 
 export async function listReportMetrics(query: QueryOutputOf<typeof reportMetricContract.list>) {
   const { page, pageSize, keyword, datasetId, folderId, ownerId, type, status } = query;
-  const conds = [];
   const tenantScope = reportTenantScope(reportMetrics);
-  if (tenantScope) conds.push(tenantScope);
   const accessibleIds = await listAccessibleReportResourceIds('metric');
   if (accessibleIds && accessibleIds.length === 0) return { list: [], total: 0, page, pageSize };
-  if (accessibleIds) conds.push(inArray(reportMetrics.id, accessibleIds));
-  conds.push(keywordCondition(keyword, [reportMetrics.name, reportMetrics.code], 'ilike'));
-  if (datasetId) conds.push(eq(reportMetrics.datasetId, datasetId));
-  if (folderId !== undefined) conds.push(exactTenantCondition(reportMetrics.folderId, folderId));
-  if (ownerId !== undefined) conds.push(exactTenantCondition(reportMetrics.ownerId, ownerId));
-  if (type) conds.push(eq(reportMetrics.type, type));
-  if (status === 'draft' || status === 'published' || status === 'deprecated') {
-    conds.push(eq(reportMetrics.lifecycleStatus, status));
-  }
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    tenantScope,
+    accessibleIds ? inArray(reportMetrics.id, accessibleIds) : undefined,
+    keywordCondition(keyword, [reportMetrics.name, reportMetrics.code], 'ilike'),
+    datasetId ? eq(reportMetrics.datasetId, datasetId) : undefined,
+    folderId !== undefined ? nullableEq(reportMetrics.folderId, folderId) : undefined,
+    ownerId !== undefined ? nullableEq(reportMetrics.ownerId, ownerId) : undefined,
+    type ? eq(reportMetrics.type, type) : undefined,
+    status ? eq(reportMetrics.lifecycleStatus, status) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,
@@ -168,12 +166,13 @@ export async function listReportMetricLookup(query: {
 }) {
   const accessibleIds = await listAccessibleReportResourceIds('metric');
   if (accessibleIds && accessibleIds.length === 0) return [];
-  const conds = [];
   const tenantScope = reportTenantScope(reportMetrics);
-  if (tenantScope) conds.push(tenantScope);
-  if (accessibleIds) conds.push(inArray(reportMetrics.id, accessibleIds));
-  conds.push(keywordCondition(query.keyword, [reportMetrics.name, reportMetrics.code], 'ilike'));
-  if (query.status) conds.push(eq(reportMetrics.lifecycleStatus, query.status));
+  const where = buildWhere(
+    tenantScope,
+    accessibleIds ? inArray(reportMetrics.id, accessibleIds) : undefined,
+    keywordCondition(query.keyword, [reportMetrics.name, reportMetrics.code], 'ilike'),
+    query.status ? eq(reportMetrics.lifecycleStatus, query.status) : undefined,
+  );
   const rows = await db.select({
     id: reportMetrics.id,
     name: reportMetrics.name,
@@ -181,7 +180,7 @@ export async function listReportMetricLookup(query: {
     status: reportMetrics.lifecycleStatus,
     datasetId: reportMetrics.datasetId,
   }).from(reportMetrics)
-    .where(buildWhere(...conds))
+    .where(where)
     .orderBy(desc(reportMetrics.id))
     .limit(Math.min(Math.max(query.limit ?? 20, 1), 200));
   return rows.map((row) => ({ ...row, type: 'metric' as const }));

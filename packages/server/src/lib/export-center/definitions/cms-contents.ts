@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, isNotNull, isNull, type SQL } from 'drizzle-orm';
-import { CMS_CONTENT_STATUS_LABELS } from '@zenith/shared/cms';
+import { enumValueOf } from '@zenith/shared/core';
+import { CMS_CONTENT_STATUS_LABELS, CMS_CONTENT_STATUSES, CMS_CONTENT_TYPES } from '@zenith/shared/cms';
 import { db } from '../../../db';
 import { cmsChannelUsers, cmsContents, cmsChannels } from '../../../db/schema';
 import { formatDateTime, formatNullableDateTime } from '../../datetime';
@@ -7,7 +8,7 @@ import { assertSiteAccess } from '../../../services/cms/cms-sites.service';
 import { getDataScopeCondition } from '../../data-scope';
 import { currentUser } from '../../context';
 import { isCmsPlatformAdmin } from '../../../services/cms/cms-access';
-import { dateRangeConditions, keywordCondition } from '../../where-helpers';
+import { buildWhere, dateRangeConditions, keywordCondition } from '../../where-helpers';
 import { asBoolean } from '../query-normalize';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
@@ -44,55 +45,58 @@ function asPositive(value: unknown): number | undefined {
   return Number.isInteger(n) && n > 0 ? n : undefined;
 }
 
-async function buildWhere(query: Record<string, unknown>): Promise<SQL> {
+/** 非平台管理员只能导出自己被授权栏目下的内容；未授权任何栏目时沿用原行为（不加栏目限制） */
+async function allowedChannelCondition(userId: number): Promise<SQL | undefined> {
+  const allowed = await db.select({ channelId: cmsChannelUsers.channelId })
+    .from(cmsChannelUsers)
+    .where(eq(cmsChannelUsers.userId, userId));
+  const channelIds = allowed.map((row) => row.channelId);
+  return channelIds.length > 0 ? inArray(cmsContents.channelId, channelIds) : undefined;
+}
+
+async function buildContentWhere(query: Record<string, unknown>): Promise<SQL> {
   const siteId = asPositive(query.siteId);
   if (!siteId) throw new Error('导出内容必须指定站点');
   await assertSiteAccess(siteId);
-  const conditions: (SQL | undefined)[] = [eq(cmsContents.siteId, siteId)];
   const user = currentUser();
-  if (!isCmsPlatformAdmin(user)) {
-    const allowed = await db.select({ channelId: cmsChannelUsers.channelId })
-      .from(cmsChannelUsers)
-      .where(eq(cmsChannelUsers.userId, user.userId));
-    const channelIds = allowed.map((row) => row.channelId);
-    conditions.push(channelIds.length > 0 ? inArray(cmsContents.channelId, channelIds) : undefined);
-  }
+  const channelScope = isCmsPlatformAdmin(user) ? undefined : await allowedChannelCondition(user.userId);
   const deleted = asBoolean(query.deleted) === true;
-  conditions.push(deleted ? isNotNull(cmsContents.deletedAt) : isNull(cmsContents.deletedAt));
-  if (!deleted) {
-    conditions.push(asBoolean(query.archived) === true ? isNotNull(cmsContents.archivedAt) : isNull(cmsContents.archivedAt));
-  }
   const channelId = asPositive(query.channelId);
-  if (channelId) conditions.push(eq(cmsContents.channelId, channelId));
-  const status = typeof query.status === 'string' && query.status in CMS_CONTENT_STATUS_LABELS
-    ? query.status as keyof typeof CMS_CONTENT_STATUS_LABELS : undefined;
-  if (status) conditions.push(eq(cmsContents.status, status));
-  const contentType = typeof query.contentType === 'string' && ['article', 'album', 'media', 'link'].includes(query.contentType)
-    ? query.contentType as 'article' | 'album' | 'media' | 'link' : undefined;
-  if (contentType) conditions.push(eq(cmsContents.contentType, contentType));
+  const status = enumValueOf(CMS_CONTENT_STATUSES, query.status);
+  const contentType = enumValueOf(CMS_CONTENT_TYPES, query.contentType);
   const isTop = asBoolean(query.isTop);
   const isRecommend = asBoolean(query.isRecommend);
   const isHot = asBoolean(query.isHot);
-  if (isTop !== undefined) conditions.push(eq(cmsContents.isTop, isTop));
-  if (isRecommend !== undefined) conditions.push(eq(cmsContents.isRecommend, isRecommend));
-  if (isHot !== undefined) conditions.push(eq(cmsContents.isHot, isHot));
-  conditions.push(keywordCondition(typeof query.keyword === 'string' ? query.keyword : undefined, [cmsContents.title, cmsContents.author]));
-  conditions.push(...dateRangeConditions(
-    cmsContents.createdAt,
-    typeof query.startTime === 'string' ? query.startTime : undefined,
-    typeof query.endTime === 'string' ? query.endTime : undefined,
-  ));
   const scopeCondition = await getDataScopeCondition({
     currentUserId: user.userId,
     deptColumn: cmsContents.deptId,
     ownerColumn: cmsContents.createdBy,
   });
-  conditions.push(scopeCondition);
-  return and(...conditions)!;
+  return buildWhere(
+    eq(cmsContents.siteId, siteId),
+    channelScope,
+    deleted ? isNotNull(cmsContents.deletedAt) : isNull(cmsContents.deletedAt),
+    deleted
+      ? undefined
+      : (asBoolean(query.archived) === true ? isNotNull(cmsContents.archivedAt) : isNull(cmsContents.archivedAt)),
+    channelId ? eq(cmsContents.channelId, channelId) : undefined,
+    status ? eq(cmsContents.status, status) : undefined,
+    contentType ? eq(cmsContents.contentType, contentType) : undefined,
+    isTop === undefined ? undefined : eq(cmsContents.isTop, isTop),
+    isRecommend === undefined ? undefined : eq(cmsContents.isRecommend, isRecommend),
+    isHot === undefined ? undefined : eq(cmsContents.isHot, isHot),
+    keywordCondition(typeof query.keyword === 'string' ? query.keyword : undefined, [cmsContents.title, cmsContents.author]),
+    ...dateRangeConditions(
+      cmsContents.createdAt,
+      typeof query.startTime === 'string' ? query.startTime : undefined,
+      typeof query.endTime === 'string' ? query.endTime : undefined,
+    ),
+    scopeCondition,
+  )!;
 }
 
 async function loadRows(query: Record<string, unknown>): Promise<CmsContentExportRow[]> {
-  const where = await buildWhere(query);
+  const where = await buildContentWhere(query);
   const rows = await db.select({ content: cmsContents, channelName: cmsChannels.name })
     .from(cmsContents)
     .leftJoin(cmsChannels, and(eq(cmsContents.channelId, cmsChannels.id), eq(cmsChannels.siteId, cmsContents.siteId)))

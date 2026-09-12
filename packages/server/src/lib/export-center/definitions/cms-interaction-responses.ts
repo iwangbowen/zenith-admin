@@ -1,6 +1,7 @@
 import { db } from '../../../db';
 import { cmsInteractionQuestions, cmsInteractionResponses, cmsInteractions } from '../../../db/schema';
-import { CMS_INTERACTION_KIND_LABELS } from '@zenith/shared/cms';
+import { enumValueOf } from '@zenith/shared/core';
+import { CMS_INTERACTION_KIND_LABELS, CMS_INTERACTION_KINDS } from '@zenith/shared/cms';
 import {
   buildCmsInteractionResponseWhere,
   streamCmsInteractionResponses,
@@ -76,7 +77,7 @@ function queryOf(query: Record<string, unknown>): CmsInteractionResponseListFilt
   return {
     siteId: Number(query.siteId),
     interactionId: query.interactionId ? Number(query.interactionId) : undefined,
-    kind: query.kind === 'survey' || query.kind === 'poll' ? query.kind : undefined,
+    kind: enumValueOf(CMS_INTERACTION_KINDS, query.kind),
     startTime: typeof query.startTime === 'string' ? query.startTime : undefined,
     endTime: typeof query.endTime === 'string' ? query.endTime : undefined,
   };

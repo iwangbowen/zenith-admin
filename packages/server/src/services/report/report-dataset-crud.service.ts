@@ -41,7 +41,7 @@ import {
 } from './report-resource.service';
 import { assertMaterializable, normalizeDatasetContent, normalizeIdentifier } from './report-dataset-shared';
 import { clearDatasetCache } from './report-dataset-execution.service';
-import { isSqlLikeType, REPORT_DATASOURCE_TYPES, reportDatasetContract } from '@zenith/shared/report';
+import { isSqlLikeType, reportDatasetContract } from '@zenith/shared/report';
 import type { ReportDatasetRow } from '../../db/schema';
 import type { ReportDataset, ReportField, ReportDatasetContent, ReportDatasetParam, ReportDatasourceType, ReportComputedField, ReportDatasetMaterialize, ReportRowRule, ReportDatasetRefs, ReportWidget, ReportFilter, ReportSqlDatasetContent, ReportDashboardSnapshot, ReportPrintContent, ReportLookupOption, CreateReportDatasetInput, UpdateReportDatasetInput } from '@zenith/shared/report';
 
@@ -173,21 +173,19 @@ export async function getDataset(id: number): Promise<ReportDataset> {
 
 export async function listDatasets(query: QueryOutputOf<typeof reportDatasetContract.list>) {
   const { page, pageSize, keyword, folderId, ownerId, datasourceId, type, status } = query;
-  const conds = [];
   const tenantScope = reportTenantScope(reportDatasets);
-  if (tenantScope) conds.push(tenantScope);
   const accessibleIds = await listAccessibleReportResourceIds('dataset');
   if (accessibleIds && accessibleIds.length === 0) return { list: [], total: 0, page, pageSize };
-  if (accessibleIds) conds.push(inArray(reportDatasets.id, accessibleIds));
-  if (folderId) conds.push(eq(reportDatasets.folderId, folderId));
-  if (ownerId) conds.push(eq(reportDatasets.ownerId, ownerId));
-  conds.push(keywordCondition(keyword, [reportDatasets.name, reportDatasets.remark], 'ilike'));
-  if (datasourceId) conds.push(eq(reportDatasets.datasourceId, datasourceId));
-  if (type && (REPORT_DATASOURCE_TYPES as readonly string[]).includes(type)) {
-    conds.push(eq(reportDatasets.type, type as ReportDatasourceType));
-  }
-  if (status === 'enabled' || status === 'disabled') conds.push(eq(reportDatasets.status, status));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    tenantScope,
+    accessibleIds ? inArray(reportDatasets.id, accessibleIds) : undefined,
+    folderId ? eq(reportDatasets.folderId, folderId) : undefined,
+    ownerId ? eq(reportDatasets.ownerId, ownerId) : undefined,
+    keywordCondition(keyword, [reportDatasets.name, reportDatasets.remark], 'ilike'),
+    datasourceId ? eq(reportDatasets.datasourceId, datasourceId) : undefined,
+    type ? eq(reportDatasets.type, type) : undefined,
+    status ? eq(reportDatasets.status, status) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,
@@ -213,15 +211,15 @@ export async function listDatasetLookup(query: {
   limit?: number;
 }): Promise<ReportLookupOption[]> {
   const { keyword, status, limit = 20 } = query;
-  const conds = [];
   const tenantScope = reportTenantScope(reportDatasets);
-  if (tenantScope) conds.push(tenantScope);
   const accessibleIds = await listAccessibleReportResourceIds('dataset');
   if (accessibleIds && accessibleIds.length === 0) return [];
-  if (accessibleIds) conds.push(inArray(reportDatasets.id, accessibleIds));
-  conds.push(keywordCondition(keyword, [reportDatasets.name, reportDatasets.remark], 'ilike'));
-  if (status) conds.push(eq(reportDatasets.status, status));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    tenantScope,
+    accessibleIds ? inArray(reportDatasets.id, accessibleIds) : undefined,
+    keywordCondition(keyword, [reportDatasets.name, reportDatasets.remark], 'ilike'),
+    status ? eq(reportDatasets.status, status) : undefined,
+  );
   const rows = await db.select({
     id: reportDatasets.id,
     name: reportDatasets.name,

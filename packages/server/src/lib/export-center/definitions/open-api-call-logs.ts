@@ -1,8 +1,9 @@
-import { and, desc, lt, lte, type SQL } from 'drizzle-orm';
+import { desc, lt, lte } from 'drizzle-orm';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { openApiStatsContract } from '@zenith/shared/open-platform';
 import { db } from '../../../db';
 import { openApiCallLogs } from '../../../db/schema';
+import { buildWhere } from '../../where-helpers';
 import { buildOpenApiCallLogWhere } from '../../../services/open-platform/open-api-stats.service';
 import { defineExport } from '../registry';
 import type { ExportColumn } from '../types';
@@ -37,11 +38,12 @@ async function* streamOpenApiCallLogs(query: ExportQuery) {
 
   let cursor: number | null = null;
   while (true) {
-    const conditions: SQL[] = [lte(openApiCallLogs.id, maxRow.id)];
-    if (baseWhere) conditions.push(baseWhere);
-    if (cursor !== null) conditions.push(lt(openApiCallLogs.id, cursor));
     const rows = await db.select().from(openApiCallLogs)
-      .where(and(...conditions))
+      .where(buildWhere(
+        lte(openApiCallLogs.id, maxRow.id),
+        baseWhere,
+        cursor === null ? undefined : lt(openApiCallLogs.id, cursor),
+      ))
       .orderBy(desc(openApiCallLogs.id))
       .limit(1000);
     if (rows.length === 0) return;

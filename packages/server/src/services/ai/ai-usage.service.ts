@@ -10,14 +10,14 @@ export interface UsageRange {
   endDate?: string;
 }
 
-/** 消息时间范围条件（基于 ai_messages.created_at） */
-function messageRangeConds(range: UsageRange) {
-  const conds = [] as ReturnType<typeof gte>[];
-  const start = range.startDate ? parseDateRangeStart(range.startDate) : null;
-  const end = range.endDate ? parseDateRangeEnd(range.endDate) : null;
-  if (start) conds.push(gte(aiMessages.createdAt, start));
-  if (end) conds.push(lte(aiMessages.createdAt, end));
-  return conds;
+/** 消息时间范围 WHERE（基于 ai_messages.created_at；两端为空时不加条件） */
+function messageRangeWhere(range: UsageRange) {
+  const start = parseDateRangeStart(range.startDate);
+  const end = parseDateRangeEnd(range.endDate);
+  return buildWhere(
+    start ? gte(aiMessages.createdAt, start) : undefined,
+    end ? lte(aiMessages.createdAt, end) : undefined,
+  );
 }
 
 const MODEL_EXPR = sql<string>`coalesce(${aiMessages.model}, ${aiConversations.providerSnapshot}->>'model', '未知')`;
@@ -60,8 +60,7 @@ function estimateCostFen(
 }
 
 export async function getUsageOverview(range: UsageRange) {
-  const msgConds = messageRangeConds(range);
-  const msgWhere = buildWhere(...msgConds);
+  const msgWhere = messageRangeWhere(range);
 
   // 对话数 / 活跃用户：以「在范围内有消息」的对话为准
   const [aggMsg] = await db
@@ -95,7 +94,6 @@ export async function getUsageOverview(range: UsageRange) {
 }
 
 export async function getUsageByModel(range: UsageRange) {
-  const msgConds = messageRangeConds(range);
   const rows = await db
     .select({
       model: MODEL_EXPR,
@@ -107,7 +105,7 @@ export async function getUsageByModel(range: UsageRange) {
     })
     .from(aiMessages)
     .innerJoin(aiConversations, eq(aiMessages.conversationId, aiConversations.id))
-    .where(buildWhere(...msgConds))
+    .where(messageRangeWhere(range))
     .groupBy(MODEL_EXPR)
     .orderBy(desc(TOTAL_TOKENS_EXPR));
 
@@ -123,7 +121,6 @@ export async function getUsageByModel(range: UsageRange) {
 }
 
 export async function getUsageByUser(range: UsageRange, limit = 10) {
-  const msgConds = messageRangeConds(range);
   const rows = await db
     .select({
       userId: aiConversations.userId,
@@ -136,7 +133,7 @@ export async function getUsageByUser(range: UsageRange, limit = 10) {
     .from(aiMessages)
     .innerJoin(aiConversations, eq(aiMessages.conversationId, aiConversations.id))
     .innerJoin(users, eq(aiConversations.userId, users.id))
-    .where(buildWhere(...msgConds))
+    .where(messageRangeWhere(range))
     .groupBy(aiConversations.userId, users.username, users.nickname)
     .orderBy(desc(TOTAL_TOKENS_EXPR))
     .limit(limit);
@@ -144,7 +141,6 @@ export async function getUsageByUser(range: UsageRange, limit = 10) {
 }
 
 export async function getUsageTrend(range: UsageRange) {
-  const msgConds = messageRangeConds(range);
   const dateExpr = sql<string>`to_char(${aiMessages.createdAt}, 'YYYY-MM-DD')`;
   const rows = await db
     .select({
@@ -153,7 +149,7 @@ export async function getUsageTrend(range: UsageRange) {
       totalTokens: TOTAL_TOKENS_EXPR,
     })
     .from(aiMessages)
-    .where(buildWhere(...msgConds))
+    .where(messageRangeWhere(range))
     .groupBy(dateExpr)
     .orderBy(dateExpr);
   return rows;

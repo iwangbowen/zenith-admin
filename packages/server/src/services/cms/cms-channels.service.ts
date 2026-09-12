@@ -1,6 +1,6 @@
 import { requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
-import { eq, asc, and, inArray, isNull, isNotNull, type SQL } from 'drizzle-orm';
+import { eq, asc, and, inArray, isNull, isNotNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { pinyin } from 'pinyin-pro';
 import { cmsChannelContract } from '@zenith/shared/cms';
@@ -111,13 +111,14 @@ export async function listCmsChannelTree(
     await assertSiteAccess(q.siteId);
     accessible = await getAccessibleChannelIds();
   }
-  const conditions: SQL[] = [eq(cmsChannels.siteId, q.siteId)];
-  if (accessible !== null) conditions.push(inArray(cmsChannels.id, accessible));
-  // When callers ask for enabled channels, load the parent rows as well so a
-  // child under a disabled ancestor cannot be promoted to a new tree root.
-  if (q.status && q.status !== 'enabled') conditions.push(eq(cmsChannels.status, q.status));
   const rows = await db.query.cmsChannels.findMany({
-    where: buildWhere(...conditions),
+    where: buildWhere(
+      eq(cmsChannels.siteId, q.siteId),
+      accessible === null ? undefined : inArray(cmsChannels.id, accessible),
+      // When callers ask for enabled channels, load the parent rows as well so a
+      // child under a disabled ancestor cannot be promoted to a new tree root.
+      q.status && q.status !== 'enabled' ? eq(cmsChannels.status, q.status) : undefined,
+    ),
     with: { model: { columns: { name: true } } },
     orderBy: [asc(cmsChannels.sort), asc(cmsChannels.id)],
   });

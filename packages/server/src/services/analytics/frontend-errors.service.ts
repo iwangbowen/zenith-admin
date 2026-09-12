@@ -427,7 +427,7 @@ export async function getErrorOverview(daysRaw: unknown) {
       .groupBy(sql`1`),
     db.select({ n: sql<number>`COUNT(DISTINCT ${affectedIdentity})::int` }).from(errorEvents).where(buildWhere(gte(errorEvents.createdAt, start), eScope)),
     db.select().from(errorGroups).where(buildWhere(and(eq(errorGroups.status, 'unresolved'), gte(errorGroups.lastSeenAt, start)), gScope)).orderBy(desc(errorGroups.count)).limit(10),
-    db.select({ n: sql<number>`COUNT(*)::int` }).from(errorGroups).where(buildWhere(gte(errorGroups.firstSeenAt, todayStart), gScope)),
+    db.$count(errorGroups, buildWhere(gte(errorGroups.firstSeenAt, todayStart), gScope)),
   ]);
 
   const axis = dateAxis(days);
@@ -438,7 +438,7 @@ export async function getErrorOverview(daysRaw: unknown) {
     unresolved: Number(totals[0]?.unresolved ?? 0),
     totalOccurrences: Number(totals[0]?.totalOccurrences ?? 0),
     affectedUsers: Number(affected[0]?.n ?? 0),
-    newToday: Number(newToday[0]?.n ?? 0),
+    newToday,
     byType: byType.map((r) => ({ errorType: r.errorType, groups: Number(r.groups), occurrences: Number(r.occurrences) })),
     byLevel: byLevel.map((r) => ({ level: r.level, groups: Number(r.groups), occurrences: Number(r.occurrences) })),
     trend: axis.map((date) => ({ date, occurrences: Number(trendMap.get(date)?.occurrences ?? 0), groups: Number(trendMap.get(date)?.groups ?? 0) })),

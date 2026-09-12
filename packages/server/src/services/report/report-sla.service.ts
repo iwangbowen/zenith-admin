@@ -128,20 +128,21 @@ async function validateSlaInput(input: CreateReportSlaRuleInput | UpdateReportSl
 
 export async function listReportSlaRules(query: QueryOutputOf<typeof reportSlaContract.rules>) {
   const { page, pageSize } = query;
-  const conds = [];
   const scope = reportTenantScope(reportSlaRules);
-  if (scope) conds.push(scope);
+  let accessibleIds: number[] | null | undefined;
   if (query.datasetId) {
     await ensureReportResourceAccess('dataset', query.datasetId, 'viewer');
-    conds.push(eq(reportSlaRules.datasetId, query.datasetId));
   } else {
-    const accessibleIds = await listAccessibleReportResourceIds('dataset');
+    accessibleIds = await listAccessibleReportResourceIds('dataset');
     if (accessibleIds?.length === 0) return { list: [], total: 0, page, pageSize };
-    if (accessibleIds) conds.push(inArray(reportSlaRules.datasetId, accessibleIds));
   }
-  if (query.type) conds.push(eq(reportSlaRules.type, query.type));
-  if (query.enabled !== undefined) conds.push(eq(reportSlaRules.enabled, query.enabled));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    scope,
+    query.datasetId ? eq(reportSlaRules.datasetId, query.datasetId) : undefined,
+    accessibleIds ? inArray(reportSlaRules.datasetId, accessibleIds) : undefined,
+    query.type ? eq(reportSlaRules.type, query.type) : undefined,
+    query.enabled !== undefined ? eq(reportSlaRules.enabled, query.enabled) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,
@@ -363,23 +364,26 @@ export async function submitReportSlaEvaluation(id: number) {
 
 export async function listReportSlaViolations(query: QueryOutputOf<typeof reportSlaContract.violations>) {
   const { page, pageSize } = query;
-  const conds = [];
   const scope = reportTenantScope(reportSlaViolations);
-  if (scope) conds.push(scope);
+  let accessibleIds: number[] | null | undefined;
   if (query.datasetId) {
     await ensureReportResourceAccess('dataset', query.datasetId, 'viewer');
-    conds.push(eq(reportSlaViolations.datasetId, query.datasetId));
   } else {
-    const accessibleIds = await listAccessibleReportResourceIds('dataset');
+    accessibleIds = await listAccessibleReportResourceIds('dataset');
     if (accessibleIds?.length === 0) return { list: [], total: 0, page, pageSize };
-    if (accessibleIds) conds.push(inArray(reportSlaViolations.datasetId, accessibleIds));
   }
+  let ruleId: number | undefined;
   if (query.ruleId) {
     await ensureSlaRule(query.ruleId);
-    conds.push(eq(reportSlaViolations.ruleId, query.ruleId));
+    ruleId = query.ruleId;
   }
-  if (query.status) conds.push(eq(reportSlaViolations.status, query.status));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    scope,
+    query.datasetId ? eq(reportSlaViolations.datasetId, query.datasetId) : undefined,
+    accessibleIds ? inArray(reportSlaViolations.datasetId, accessibleIds) : undefined,
+    ruleId ? eq(reportSlaViolations.ruleId, ruleId) : undefined,
+    query.status ? eq(reportSlaViolations.status, query.status) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,

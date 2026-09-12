@@ -36,20 +36,17 @@ export type CmsInteractionResponseListFilter = Omit<QueryOutputOf<typeof cmsInte
 export function buildCmsInteractionResponseWhere(
   q: CmsInteractionResponseListFilter,
 ): SQL | undefined {
-  const conditions: SQL[] = [eq(cmsInteractions.siteId, q.siteId)];
-  if (q.interactionId) conditions.push(eq(cmsInteractionResponses.interactionId, q.interactionId));
-  if (q.kind) conditions.push(eq(cmsInteractions.kind, q.kind));
-  if (q.startTime) {
-    const parsed = parseDateRangeStart(q.startTime);
-    if (!parsed) throw new HTTPException(400, { message: '开始时间格式无效' });
-    conditions.push(gte(cmsInteractionResponses.createdAt, parsed));
-  }
-  if (q.endTime) {
-    const parsed = parseDateRangeEnd(q.endTime);
-    if (!parsed) throw new HTTPException(400, { message: '结束时间格式无效' });
-    conditions.push(lte(cmsInteractionResponses.createdAt, parsed));
-  }
-  return buildWhere(...conditions);
+  const start = q.startTime ? parseDateRangeStart(q.startTime) : null;
+  if (q.startTime && !start) throw new HTTPException(400, { message: '开始时间格式无效' });
+  const end = q.endTime ? parseDateRangeEnd(q.endTime) : null;
+  if (q.endTime && !end) throw new HTTPException(400, { message: '结束时间格式无效' });
+  return buildWhere(
+    eq(cmsInteractions.siteId, q.siteId),
+    q.interactionId ? eq(cmsInteractionResponses.interactionId, q.interactionId) : undefined,
+    q.kind ? eq(cmsInteractions.kind, q.kind) : undefined,
+    start ? gte(cmsInteractionResponses.createdAt, start) : undefined,
+    end ? lte(cmsInteractionResponses.createdAt, end) : undefined,
+  );
 }
 
 /**

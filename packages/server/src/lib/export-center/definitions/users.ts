@@ -1,3 +1,4 @@
+import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import { db } from '../../../db';
 import { users } from '../../../db/schema';
 import type { JwtPayload } from '../../../middleware/auth';
@@ -21,12 +22,11 @@ interface UserExportRow extends Record<string, unknown> {
 }
 
 function normalizeQuery(query: Record<string, unknown>): UsersListFilter {
-  const status = query.status === 'enabled' || query.status === 'disabled' ? query.status : undefined;
   return {
     keyword: asString(query.keyword),
     phone: asString(query.phone),
     departmentId: asPositiveInt(query.departmentId),
-    status,
+    status: enumValueOf(USER_STATUSES, query.status),
     startTime: asString(query.startTime),
     endTime: asString(query.endTime),
   };

@@ -1435,8 +1435,8 @@ export async function getRealtime() {
 
   const [active, pv30, ev1, topPages, recent, perMin] = await Promise.all([
     db.select({ n: countDistinct(userEvents.distinctId) }).from(userEvents).where(buildWhere(gte(userEvents.createdAt, last5), tenantScope(userEvents))),
-    db.select({ n: sql<number>`COUNT(*)::int` }).from(userEvents).where(buildWhere(and(eq(userEvents.eventType, 'page_view'), gte(userEvents.createdAt, last30)), tenantScope(userEvents))),
-    db.select({ n: sql<number>`COUNT(*)::int` }).from(userEvents).where(buildWhere(gte(userEvents.createdAt, last1), tenantScope(userEvents))),
+    db.$count(userEvents, buildWhere(and(eq(userEvents.eventType, 'page_view'), gte(userEvents.createdAt, last30)), tenantScope(userEvents))),
+    db.$count(userEvents, buildWhere(gte(userEvents.createdAt, last1), tenantScope(userEvents))),
     db
       .select({ pagePath: userEvents.pagePath, pageTitle: sql<string | null>`MAX(${userEvents.pageTitle})`, active: countDistinct(userEvents.sessionId) })
       .from(userEvents)
@@ -1460,8 +1460,8 @@ export async function getRealtime() {
 
   return {
     activeUsers: Number(active[0]?.n ?? 0),
-    pageViewsLast30Min: Number(pv30[0]?.n ?? 0),
-    eventsLastMinute: Number(ev1[0]?.n ?? 0),
+    pageViewsLast30Min: pv30,
+    eventsLastMinute: ev1,
     topPages: topPages.map((p) => ({ pagePath: p.pagePath, pageTitle: p.pageTitle, active: Number(p.active) })),
     recentEvents: recent.map((r) => ({ eventType: r.eventType, eventName: r.eventName, pagePath: r.pagePath, username: r.username, createdAt: formatDateTime(r.createdAt) })),
     perMinute: perMin.map((m) => ({ minute: m.minute, events: Number(m.events) })),

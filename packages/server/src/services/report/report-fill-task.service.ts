@@ -1,6 +1,6 @@
 import { requireRow } from '../../lib/db-assert';
 import { randomUUID } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import {
@@ -13,6 +13,7 @@ import {
 import { config } from '../../config';
 import redis from '../../lib/redis';
 import { runWithCurrentUser } from '../../lib/context';
+import { exactTenantCondition } from '../../lib/tenant';
 import { registerTaskHandler, submitAsyncTask } from '../../lib/task-center';
 import type { JwtPayload } from '../../middleware/auth';
 import type { ReportField, ReportFieldType } from '@zenith/shared/report';
@@ -122,9 +123,7 @@ export async function synchronizeApprovedFillRecords(input: {
     if (await input.isCancelled?.()) return { skipped: true, reason: '任务已取消' };
     const shape = buildDatasetShape(template, approved);
     const marker = `report-fill-template:${template.id}`;
-    const tenantWhere = template.tenantId === null
-      ? isNull(reportDatasources.tenantId)
-      : eq(reportDatasources.tenantId, template.tenantId);
+    const tenantWhere = exactTenantCondition(reportDatasources.tenantId, template.tenantId);
     let datasource = await db.query.reportDatasources.findFirst({
       where: and(tenantWhere, eq(reportDatasources.type, 'static'), eq(reportDatasources.remark, marker)),
     });

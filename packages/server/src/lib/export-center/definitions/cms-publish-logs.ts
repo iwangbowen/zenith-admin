@@ -1,11 +1,12 @@
-import { and, desc, eq, gte, lte, sql, type SQL } from 'drizzle-orm';
-import { ASYNC_TASK_ITEM_STATUSES, type AsyncTaskItemStatus } from '@zenith/shared/tasks';
+import { desc, eq, sql, type SQL } from 'drizzle-orm';
+import { enumValueOf } from '@zenith/shared/core';
+import { ASYNC_TASK_ITEM_STATUSES } from '@zenith/shared/tasks';
 import { db } from '../../../db';
 import { asyncTaskItems, asyncTasks } from '../../../db/schema';
-import { formatDateTime, parseDateRangeEnd, parseDateRangeStart } from '../../datetime';
-import { keywordCondition } from '../../where-helpers';
+import { formatDateTime } from '../../datetime';
+import { buildWhere, dateRangeConditions, keywordCondition } from '../../where-helpers';
 import { asyncTaskStatusCondition } from '../../task-center/status-filter';
-import { buildCmsPublishingConditions } from '../../../services/cms/cms-publishing.service';
+import { buildCmsPublishingWhere } from '../../../services/cms/cms-publishing.service';
 import { defineExport } from '../registry';
 import { RETENTION_7_DAYS } from '../presets';
 import type { ExportColumn } from '../types';
@@ -32,29 +33,32 @@ const columns: ExportColumn<PublishLogExportRow>[] = [
   { key: 'createdAt', header: '记录时间', width: 22, type: 'datetime' },
 ];
 
-async function conditions(query: Record<string, unknown>): Promise<(SQL | undefined)[]> {
+async function buildLogWhere(query: Record<string, unknown>): Promise<SQL | undefined> {
   const siteId = Number(query.siteId);
   const taskId = Number(query.taskId);
-  const taskConditions = await buildCmsPublishingConditions({
+  const status = enumValueOf(ASYNC_TASK_ITEM_STATUSES, query.status);
+  const taskWhere = await buildCmsPublishingWhere({
     siteId: Number.isInteger(siteId) && siteId > 0 ? siteId : undefined,
   });
-  const result: (SQL | undefined)[] = [...taskConditions, eq(asyncTaskItems.taskId, asyncTasks.id), asyncTaskStatusCondition(query.taskStatus)];
-  if (Number.isInteger(taskId) && taskId > 0) result.push(eq(asyncTaskItems.taskId, taskId));
-  if (typeof query.status === 'string' && (ASYNC_TASK_ITEM_STATUSES as readonly string[]).includes(query.status)) {
-    result.push(eq(asyncTaskItems.status, query.status as AsyncTaskItemStatus));
-  }
-  const start = parseDateRangeStart(typeof query.startTime === 'string' ? query.startTime : undefined);
-  const end = parseDateRangeEnd(typeof query.endTime === 'string' ? query.endTime : undefined);
-  if (start) result.push(gte(asyncTaskItems.createdAt, start));
-  if (end) result.push(lte(asyncTaskItems.createdAt, end));
-  if (typeof query.keyword === 'string') result.push(keywordCondition(query.keyword, [asyncTaskItems.itemKey], 'ilike'));
-  return result;
+  return buildWhere(
+    taskWhere,
+    eq(asyncTaskItems.taskId, asyncTasks.id),
+    asyncTaskStatusCondition(query.taskStatus),
+    Number.isInteger(taskId) && taskId > 0 ? eq(asyncTaskItems.taskId, taskId) : undefined,
+    status ? eq(asyncTaskItems.status, status) : undefined,
+    ...dateRangeConditions(
+      asyncTaskItems.createdAt,
+      typeof query.startTime === 'string' ? query.startTime : undefined,
+      typeof query.endTime === 'string' ? query.endTime : undefined,
+    ),
+    typeof query.keyword === 'string' ? keywordCondition(query.keyword, [asyncTaskItems.itemKey], 'ilike') : undefined,
+  );
 }
 
 async function loadRows(query: Record<string, unknown>): Promise<PublishLogExportRow[]> {
   const rows = await db.select({ task: asyncTasks, item: asyncTaskItems }).from(asyncTaskItems)
     .innerJoin(asyncTasks, eq(asyncTaskItems.taskId, asyncTasks.id))
-    .where(and(...await conditions(query)))
+    .where(await buildLogWhere(query))
     .orderBy(desc(asyncTaskItems.id))
     .limit(50_000);
   return rows.map(({ task, item }) => ({
@@ -83,7 +87,7 @@ export const cmsPublishLogsExportDefinition = defineExport<Record<string, unknow
   countRows: async (query) => {
     const [row] = await db.select({ total: sql<number>`count(*)::int` }).from(asyncTaskItems)
       .innerJoin(asyncTasks, eq(asyncTaskItems.taskId, asyncTasks.id))
-      .where(and(...await conditions(query)));
+      .where(await buildLogWhere(query));
     return row?.total ?? 0;
   },
   streamRows: async (query) => loadRows(query),

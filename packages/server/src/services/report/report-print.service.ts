@@ -122,21 +122,21 @@ export async function getPrintTemplate(id: number): Promise<ReportPrintTemplate>
 
 export async function listPrintTemplates(query: QueryOutputOf<typeof reportPrintContract.list>) {
   const { page, pageSize, keyword, folderId, ownerId, status, sourceType, entityKind, entityRefId } = query;
-  const conds = [];
   const tenantScope = reportTenantScope(reportPrintTemplates);
-  if (tenantScope) conds.push(tenantScope);
   const accessibleIds = await listAccessibleReportResourceIds('print_template');
   if (accessibleIds && accessibleIds.length === 0) return { list: [], total: 0, page, pageSize };
-  if (accessibleIds) conds.push(inArray(reportPrintTemplates.id, accessibleIds));
-  if (folderId) conds.push(eq(reportPrintTemplates.folderId, folderId));
-  if (ownerId) conds.push(eq(reportPrintTemplates.ownerId, ownerId));
-  if (sourceType) conds.push(eq(reportPrintTemplates.sourceType, sourceType));
-  if (entityKind) conds.push(eq(reportPrintTemplates.entityKind, entityKind));
-  // 指定参照时同时命中该参照的专用模板与通用模板（entityRefId 为空）
-  if (entityRefId) conds.push(or(eq(reportPrintTemplates.entityRefId, entityRefId), isNull(reportPrintTemplates.entityRefId)));
-  conds.push(keywordCondition(keyword, [reportPrintTemplates.name, reportPrintTemplates.remark], 'ilike'));
-  if (status === 'enabled' || status === 'disabled') conds.push(eq(reportPrintTemplates.status, status));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    tenantScope,
+    accessibleIds ? inArray(reportPrintTemplates.id, accessibleIds) : undefined,
+    folderId ? eq(reportPrintTemplates.folderId, folderId) : undefined,
+    ownerId ? eq(reportPrintTemplates.ownerId, ownerId) : undefined,
+    sourceType ? eq(reportPrintTemplates.sourceType, sourceType) : undefined,
+    entityKind ? eq(reportPrintTemplates.entityKind, entityKind) : undefined,
+    // 指定参照时同时命中该参照的专用模板与通用模板（entityRefId 为空）
+    entityRefId ? or(eq(reportPrintTemplates.entityRefId, entityRefId), isNull(reportPrintTemplates.entityRefId)) : undefined,
+    keywordCondition(keyword, [reportPrintTemplates.name, reportPrintTemplates.remark], 'ilike'),
+    status ? eq(reportPrintTemplates.status, status) : undefined,
+  );
   return buildListResult({
     page,
     pageSize,
@@ -162,15 +162,15 @@ export async function listPrintTemplateLookup(query: {
   limit?: number;
 }): Promise<ReportLookupOption[]> {
   const { keyword, status, limit = 20 } = query;
-  const conds = [];
   const tenantScope = reportTenantScope(reportPrintTemplates);
-  if (tenantScope) conds.push(tenantScope);
   const accessibleIds = await listAccessibleReportResourceIds('print_template');
   if (accessibleIds && accessibleIds.length === 0) return [];
-  if (accessibleIds) conds.push(inArray(reportPrintTemplates.id, accessibleIds));
-  conds.push(keywordCondition(keyword, [reportPrintTemplates.name, reportPrintTemplates.remark], 'ilike'));
-  if (status) conds.push(eq(reportPrintTemplates.status, status));
-  const where = buildWhere(...conds);
+  const where = buildWhere(
+    tenantScope,
+    accessibleIds ? inArray(reportPrintTemplates.id, accessibleIds) : undefined,
+    keywordCondition(keyword, [reportPrintTemplates.name, reportPrintTemplates.remark], 'ilike'),
+    status ? eq(reportPrintTemplates.status, status) : undefined,
+  );
   const rows = await db.select({
     id: reportPrintTemplates.id,
     name: reportPrintTemplates.name,

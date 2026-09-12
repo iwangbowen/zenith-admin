@@ -109,7 +109,7 @@ const tableRowsRoute = defineContractRoute(dbAdminContract.tableRows, {
         }
       }
     }
-    return c.json(okBody(await getTableRows({ schema, name, ...query })), 200);
+    return c.json(okBody(await getTableRows(schema, name, query)), 200);
   },
 });
 

@@ -1,6 +1,6 @@
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
-import type { QueryOutputOf } from '@zenith/shared/core';
+import { enumValueOf, type QueryOutputOf } from '@zenith/shared/core';
 import {
   and,
   asc,
@@ -12,7 +12,7 @@ import {
   sql,
   type SQL,
 } from 'drizzle-orm';
-import { cmsDistributionContract } from '@zenith/shared/cms';
+import { CMS_DISTRIBUTION_TASK_STATUSES, cmsDistributionContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import {
   asyncTaskItems,
@@ -33,9 +33,10 @@ import { mapAsyncTaskItem } from '../../lib/task-center';
 
 export type CmsDistributionRunListFilter = Omit<QueryOutputOf<typeof cmsDistributionContract.runs>, 'page' | 'pageSize'>;
 
-export async function buildCmsDistributionRunConditions(
+/** 分发同步记录共用的任务级范围条件：任务类型 + 站点可见性 + 列表筛选 */
+export async function buildCmsDistributionRunWhere(
   query: CmsDistributionRunListFilter,
-): Promise<(SQL | undefined)[]> {
+): Promise<SQL | undefined> {
   const accessible = await getAccessibleSiteIds();
   let accessibleSourceCondition: SQL | undefined;
   let accessibleTargetCondition: SQL | undefined;
@@ -55,7 +56,7 @@ export async function buildCmsDistributionRunConditions(
       or ${asyncTasks.payload}->>'targetSiteId' = ${String(query.siteId)}
     )`;
   }
-  return [
+  return buildWhere(
     eq(asyncTasks.taskType, DISTRIBUTION_TASK_TYPE),
     accessibleSourceCondition,
     accessibleTargetCondition,
@@ -63,7 +64,7 @@ export async function buildCmsDistributionRunConditions(
     siteCondition,
     query.status ? eq(asyncTasks.status, query.status) : undefined,
     ...dateRangeConditions(asyncTasks.createdAt, query.startTime, query.endTime),
-  ];
+  );
 }
 
 async function mapRuns(rows: Array<typeof asyncTasks.$inferSelect>) {
@@ -106,7 +107,7 @@ async function mapRuns(rows: Array<typeof asyncTasks.$inferSelect>) {
 }
 
 export async function listCmsDistributionRuns(query: QueryOutputOf<typeof cmsDistributionContract.runs>) {
-  const where = buildWhere(...await buildCmsDistributionRunConditions(query));
+  const where = await buildCmsDistributionRunWhere(query);
   return buildListResult({
     page: query.page,
     pageSize: query.pageSize,
@@ -117,8 +118,8 @@ export async function listCmsDistributionRuns(query: QueryOutputOf<typeof cmsDis
 }
 
 async function ensureDistributionRunAccessible(id: number) {
-  const conditions = await buildCmsDistributionRunConditions({});
-  const [row] = await db.select().from(asyncTasks).where(and(eq(asyncTasks.id, id), ...conditions)).limit(1);
+  const runWhere = await buildCmsDistributionRunWhere({});
+  const [row] = await db.select().from(asyncTasks).where(and(eq(asyncTasks.id, id), runWhere)).limit(1);
   return requireRow(row, '分发同步记录不存在');
 }
 
@@ -137,19 +138,17 @@ export async function loadCmsDistributionExportRows(query: Record<string, unknow
     const parsed = Number(value);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
   };
-  const conditions = await buildCmsDistributionRunConditions({
+  const where = await buildCmsDistributionRunWhere({
     ruleId: positive(query.ruleId),
     siteId: positive(query.siteId),
-    status: typeof query.status === 'string'
-      ? query.status as CmsDistributionRunListFilter['status']
-      : undefined,
+    status: enumValueOf(CMS_DISTRIBUTION_TASK_STATUSES, query.status),
     startTime: typeof query.startTime === 'string' ? query.startTime : undefined,
     endTime: typeof query.endTime === 'string' ? query.endTime : undefined,
   });
   const rows = await db.select({ task: asyncTasks, item: asyncTaskItems })
     .from(asyncTaskItems)
     .innerJoin(asyncTasks, eq(asyncTaskItems.taskId, asyncTasks.id))
-    .where(buildWhere(...conditions))
+    .where(where)
     .orderBy(desc(asyncTasks.id), asc(asyncTaskItems.id))
     .limit(50_000);
   const mappedRuns = await mapRuns([...new Map(rows.map(({ task }) => [task.id, task])).values()]);
