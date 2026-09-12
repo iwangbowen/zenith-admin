@@ -62,14 +62,10 @@ export function useInAppNotifications() {
     void queryClient.invalidateQueries({ queryKey: announcementKeys.myUnreadCount });
   }, [queryClient]);
 
+  /** 已读后的气泡 / 未读数刷新由 `useMarkMyAnnouncementRead` 的失效契约负责，这里不再重复失效（重复会取消并重发在途请求） */
   const markAnnouncementAsRead = useCallback((id: number) => {
-    markAnnouncementReadMutation.mutate({ params: { id } }, {
-      onSuccess: () => {
-        void queryClient.invalidateQueries({ queryKey: announcementKeys.published });
-        void queryClient.invalidateQueries({ queryKey: announcementKeys.myUnreadCount });
-      },
-    });
-  }, [markAnnouncementReadMutation, queryClient]);
+    markAnnouncementReadMutation.mutate({ params: { id } });
+  }, [markAnnouncementReadMutation]);
 
   return {
     inAppMessages, setInAppMessages,

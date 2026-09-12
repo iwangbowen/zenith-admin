@@ -28,7 +28,10 @@ export function useSaveMpMenu() {
   });
 }
 
-/** 发布 = 先保存当前草稿再推送到微信，两步串联为一次变更 */
+/**
+ * 发布 = 先保存当前草稿再推送到微信，两步串联为一次变更。
+ * H5 保留手写 useMutation：mutationFn 组合两个契约操作（先保存再发布）；失效目标仍由契约 key 表达。
+ */
 export function usePublishMpMenu() {
   const qc = useQueryClient();
   return useMutation({

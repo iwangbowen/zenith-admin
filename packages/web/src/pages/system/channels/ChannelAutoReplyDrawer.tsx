@@ -24,8 +24,9 @@ import {
 import { EMPTY_CHANNEL_CONTENT, validateChannelContent, type ChannelContentValue } from './channel-content';
 import {
   useChannelAutoReplies,
+  useCreateChannelAutoReply,
   useDeleteChannelAutoReply,
-  useSaveChannelAutoReply,
+  useUpdateChannelAutoReply,
 } from '@/hooks/queries/channels';
 import { CreateButton } from '@/components/toolbar-controls';
 import { renderEllipsis } from '@/utils/table-columns';
@@ -72,7 +73,9 @@ export function ChannelAutoReplyDrawer({ channelId, channelName, visible, onClos
   const [previewVisible, setPreviewVisible] = useState(false);
   const listQuery = useChannelAutoReplies(channelId, visible && !!channelId);
   const list = listQuery.data ?? [];
-  const saveMutation = useSaveChannelAutoReply();
+  const createMutation = useCreateChannelAutoReply();
+  const updateMutation = useUpdateChannelAutoReply();
+  const saving = createMutation.isPending || updateMutation.isPending;
   const deleteMutation = useDeleteChannelAutoReply();
 
   const openCreate = () => {
@@ -126,11 +129,11 @@ export function ChannelAutoReplyDrawer({ channelId, channelName, visible, onClos
       status: values.status ?? 'enabled',
       sort: Number(values.sort) || 0,
     };
-    await saveMutation.mutateAsync({
-      channelId,
-      id: editing?.id,
-      values: editing ? payload : { matchType: values.matchType, ...payload },
-    });
+    if (editing) {
+      await updateMutation.mutateAsync({ params: { channelId, replyId: editing.id }, body: payload });
+    } else {
+      await createMutation.mutateAsync({ params: { id: channelId }, body: { matchType: values.matchType, ...payload } });
+    }
     Toast.success(editing ? '已更新' : '已创建');
     setEditVisible(false);
   };
@@ -212,7 +215,7 @@ export function ChannelAutoReplyDrawer({ channelId, channelName, visible, onClos
         visible={editVisible}
         onCancel={() => setEditVisible(false)}
         onOk={() => void handleSubmit()}
-        confirmLoading={saveMutation.isPending}
+        confirmLoading={saving}
         okText="保存"
         width={760}
       >

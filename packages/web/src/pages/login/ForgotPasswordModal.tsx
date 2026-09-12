@@ -19,7 +19,7 @@ export default function ForgotPasswordModal({ visible, onClose }: Readonly<Forgo
 
   const handleSubmit = async (values: { email: string }) => {
     try {
-      await forgotPasswordMutation.mutateAsync({ email: values.email });
+      await forgotPasswordMutation.mutateAsync({ body: { email: values.email } });
       setSent(true);
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : '发送失败，请稍后重试');

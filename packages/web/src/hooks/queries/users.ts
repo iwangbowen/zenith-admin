@@ -1,28 +1,35 @@
-import { queryOptions, useQuery } from '@tanstack/react-query';
 import { sessionContract, userContract } from '@zenith/shared/identity';
-import { api, createResourceQueries, useApiMutation } from '@/lib/contract-query';
+import { apiQueryOptions, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 import { invalidateCurrentUserAccess } from './menus';
+import { invalidateScopeMemberPreviews } from './scope-members';
 
 const resource = createResourceQueries(userContract, {
-  // 下拉源展示昵称与用户名，且被角色分配、岗位成员、用户组等多页共享；告警接收人下拉同样渲染昵称
-  onSaved: (qc) => void qc.invalidateQueries({ queryKey: userKeys.alertRecipients }),
+  // 下拉源展示昵称与用户名，且被角色分配、岗位成员、用户组等多页共享；告警接收人下拉同样渲染昵称。
+  // 保存可能改动用户的部门 / 岗位 / 角色，各归属范围的成员预览随之变化
+  onSaved: (qc) => {
+    void qc.invalidateQueries({ queryKey: userKeys.alertRecipients });
+    invalidateScopeMemberPreviews(qc);
+  },
   onDeleted: (qc, ids) => {
     for (const id of ids) {
       qc.removeQueries({ queryKey: userKeys.dataPermission(id) });
       qc.removeQueries({ queryKey: userKeys.effectivePermissions(id) });
     }
     void qc.invalidateQueries({ queryKey: userKeys.alertRecipients });
+    invalidateScopeMemberPreviews(qc);
   },
 });
 
 export const userKeys = {
   ...resource.keys,
-  /** 全量用户下拉源（角色分配、岗位成员、用户组等场景全局共享缓存） */
+  /** 全量用户下拉源（角色分配、岗位成员、用户组等场景全局共享缓存）；与 `contractKey(userContract.all)` 同值 */
   allUsers: resource.keys.lookup,
-  alertRecipients: [...resource.keys.all, 'alert-recipients'] as const,
-  dataPermission: (userId: number | undefined) => [...resource.keys.all, 'data-permission', userId] as const,
-  effectivePermissions: (userId: number | undefined) => [...resource.keys.all, 'effective-permissions', userId] as const,
+  alertRecipients: contractKey(userContract.alertRecipients),
+  dataPermission: (userId: number | undefined) => contractKey(userContract.dataPermission, { params: { id: userId ?? 0 } }),
+  /** 全部用户的有效权限视图（用户组角色变更等定位不到具体用户时用） */
+  effectivePermissionsAll: contractKey(userContract.effectivePermissions),
+  effectivePermissions: (userId: number | undefined) => contractKey(userContract.effectivePermissions, { params: { id: userId ?? 0 } }),
 };
 
 /**
@@ -35,13 +42,9 @@ export const useUserDetail = resource.useDetail;
 /** 单个与批量删除；同时移除该用户的权限类缓存 */
 export const useDeleteUsers = resource.useDelete;
 
-/** 全量用户下拉源的 queryOptions（供 ensureQueryData 等命令式取数） */
+/** 全量用户下拉源的 queryOptions（供 ensureQueryData 等命令式取数）；key 与 `useAllUsers` 完全一致，命中同一缓存 */
 export function allUsersQueryOptions() {
-  return queryOptions({
-    queryKey: userKeys.allUsers,
-    queryFn: () => api(userContract.all),
-    staleTime: LOOKUP_STALE_TIME,
-  });
+  return apiQueryOptions(userContract.all, { staleTime: LOOKUP_STALE_TIME });
 }
 
 export function useAllUsers(options?: { enabled?: boolean }) {
@@ -54,9 +57,7 @@ export function toUserOptions(users: readonly { id: number; username: string; ni
 }
 
 export function useAlertRecipientUsers(options?: { enabled?: boolean }) {
-  return useQuery({
-    queryKey: userKeys.alertRecipients,
-    queryFn: () => api(userContract.alertRecipients),
+  return useApiQuery(userContract.alertRecipients, {
     staleTime: LOOKUP_STALE_TIME,
     enabled: options?.enabled ?? true,
   });
@@ -119,11 +120,7 @@ export function useKickUserSessions() {
 }
 
 export function useUserDataPermission(userId: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: userKeys.dataPermission(userId),
-    queryFn: () => api(userContract.dataPermission, { params: { id: userId ?? 0 } }),
-    enabled: enabled && userId !== undefined,
-  });
+  return useApiQuery(userContract.dataPermission, { params: { id: userId ?? 0 } }, { enabled: enabled && userId !== undefined });
 }
 
 /** 数据权限自成一份查询，不出现在列表与详情 */
@@ -144,9 +141,5 @@ export function useSaveUserMenus() {
 }
 
 export function useUserEffectivePermissions(userId: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: userKeys.effectivePermissions(userId),
-    queryFn: () => api(userContract.effectivePermissions, { params: { id: userId ?? 0 } }),
-    enabled: enabled && userId !== undefined,
-  });
+  return useApiQuery(userContract.effectivePermissions, { params: { id: userId ?? 0 } }, { enabled: enabled && userId !== undefined });
 }

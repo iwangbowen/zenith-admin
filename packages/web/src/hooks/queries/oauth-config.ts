@@ -1,24 +1,19 @@
-import { useQuery } from '@tanstack/react-query';
-import { oauthConfigContract, type OAuthProviderType } from '@zenith/shared/identity';
-import { api, useApiMutation } from '@/lib/contract-query';
+import { oauthConfigContract } from '@zenith/shared/identity';
+import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
+/** 本域只有一份不分页的配置列表（无 detail 操作），写操作后列表即唯一需要刷新的面 */
 export const oauthConfigKeys = {
-  all: ['oauth-config'] as const,
-  lists: ['oauth-config', 'list'] as const,
-  list: () => ['oauth-config', 'list'] as const,
-  detail: (provider: OAuthProviderType | undefined) => ['oauth-config', 'detail', provider] as const,
+  lists: contractKey(oauthConfigContract.list),
+  list: () => contractKey(oauthConfigContract.list),
 };
 
 export function useOAuthConfigs() {
-  return useQuery({
-    queryKey: oauthConfigKeys.list(),
-    queryFn: () => api(oauthConfigContract.list),
-  });
+  return useApiQuery(oauthConfigContract.list);
 }
 
 /** 整体替换保存单个 provider 的配置（`clientSecret` 传掩码或省略时保留原值） */
 export function useSaveOAuthConfig() {
   return useApiMutation(oauthConfigContract.update, {
-    invalidate: (qc) => void qc.invalidateQueries({ queryKey: oauthConfigKeys.all }),
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: oauthConfigKeys.lists }),
   });
 }

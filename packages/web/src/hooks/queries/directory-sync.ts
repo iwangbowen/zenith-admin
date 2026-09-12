@@ -1,7 +1,7 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { directorySyncContract, directorySyncSourceContract, type DirectorySyncRun } from '@zenith/shared/identity';
-import { api, createResourceQueries, useApiMutation, type PageOf } from '@/lib/contract-query';
+import { contractKey, createResourceQueries, useApiMutation, useApiQuery, type PageOf } from '@/lib/contract-query';
 
 // ─── 同步源（标准 CRUD）────────────────────────────────────────────────────────
 export const {
@@ -34,18 +34,17 @@ export function useRunDirectorySyncSource() {
   });
 }
 
-// ─── 同步记录（独立生命周期，另起命名空间）───────────────────────────────────────
+// ─── 同步记录（`directorySyncContract` 的 runs 操作，与同步源 CRUD 分属不同契约 / 资源键）───────────
 export type DirectorySyncRunListParams = NonNullable<QueryOf<typeof directorySyncContract.listRuns>>;
 
 export type DirectorySyncRunItemListParams = NonNullable<QueryOf<typeof directorySyncContract.listRunItems>>;
 
 export const directorySyncRunKeys = {
-  all: ['directory-sync-runs'] as const,
-  lists: ['directory-sync-runs', 'list'] as const,
-  list: (params: DirectorySyncRunListParams) => ['directory-sync-runs', 'list', params] as const,
-  detail: (id: number | undefined) => ['directory-sync-runs', 'detail', id] as const,
+  lists: contractKey(directorySyncContract.listRuns),
+  list: (params: DirectorySyncRunListParams) => contractKey(directorySyncContract.listRuns, { query: params }),
+  detail: (id: number | undefined) => contractKey(directorySyncContract.runDetail, { params: { id: id ?? 0 } }),
   items: (runId: number | undefined, params: DirectorySyncRunItemListParams) =>
-    ['directory-sync-runs', 'items', runId, params] as const,
+    contractKey(directorySyncContract.listRunItems, { params: { id: runId ?? 0 }, query: params }),
 };
 
 function hasRunningRun(data: PageOf<DirectorySyncRun> | undefined): boolean {
@@ -53,9 +52,7 @@ function hasRunningRun(data: PageOf<DirectorySyncRun> | undefined): boolean {
 }
 
 export function useDirectorySyncRunList(params: DirectorySyncRunListParams) {
-  return useQuery({
-    queryKey: directorySyncRunKeys.list(params),
-    queryFn: () => api(directorySyncContract.listRuns, { query: params }),
+  return useApiQuery(directorySyncContract.listRuns, { query: params }, {
     placeholderData: keepPreviousData,
     // 有进行中的同步时轮询刷新
     refetchInterval: (query) => (hasRunningRun(query.state.data) ? 5000 : false),
@@ -63,17 +60,11 @@ export function useDirectorySyncRunList(params: DirectorySyncRunListParams) {
 }
 
 export function useDirectorySyncRunDetail(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: directorySyncRunKeys.detail(id),
-    queryFn: () => api(directorySyncContract.runDetail, { params: { id: id ?? 0 } }),
-    enabled: enabled && id !== undefined,
-  });
+  return useApiQuery(directorySyncContract.runDetail, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
 }
 
 export function useDirectorySyncRunItems(runId: number | undefined, params: DirectorySyncRunItemListParams, enabled = true) {
-  return useQuery({
-    queryKey: directorySyncRunKeys.items(runId, params),
-    queryFn: () => api(directorySyncContract.listRunItems, { params: { id: runId ?? 0 }, query: params }),
+  return useApiQuery(directorySyncContract.listRunItems, { params: { id: runId ?? 0 }, query: params }, {
     placeholderData: keepPreviousData,
     enabled: enabled && runId !== undefined,
   });
@@ -86,21 +77,16 @@ export function useRetryDirectorySyncRun() {
   });
 }
 
-// ─── 冲突处理（独立生命周期，另起命名空间）───────────────────────────────────────
+// ─── 冲突处理（`directorySyncContract` 的 conflicts 操作）─────────────────────────────────
 export type DirectorySyncConflictListParams = NonNullable<QueryOf<typeof directorySyncContract.listConflicts>>;
 
 export const directorySyncConflictKeys = {
-  all: ['directory-sync-conflicts'] as const,
-  lists: ['directory-sync-conflicts', 'list'] as const,
-  list: (params: DirectorySyncConflictListParams) => ['directory-sync-conflicts', 'list', params] as const,
+  lists: contractKey(directorySyncContract.listConflicts),
+  list: (params: DirectorySyncConflictListParams) => contractKey(directorySyncContract.listConflicts, { query: params }),
 };
 
 export function useDirectorySyncConflictList(params: DirectorySyncConflictListParams) {
-  return useQuery({
-    queryKey: directorySyncConflictKeys.list(params),
-    queryFn: () => api(directorySyncContract.listConflicts, { query: params }),
-    placeholderData: keepPreviousData,
-  });
+  return useApiQuery(directorySyncContract.listConflicts, { query: params }, { placeholderData: keepPreviousData });
 }
 
 /**

@@ -36,6 +36,7 @@ import {
   usePublishChannelMessage,
   useSaveChannelTemplate,
   useTestSendChannelMessage,
+  useUpdateChannelDraft,
 } from '@/hooks/queries/channels';
 
 const FormUserSelect = withField(UserSelect);
@@ -114,6 +115,8 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
   const templates = templatesQuery.data ?? [];
   const roleOptions = useMemo(() => (rolesQuery.data ?? []).map((r) => ({ label: r.name, value: r.id })), [rolesQuery.data]);
   const publishMutation = usePublishChannelMessage();
+  const updateDraftMutation = useUpdateChannelDraft();
+  const submitting = publishMutation.isPending || updateDraftMutation.isPending;
   const testSendMutation = useTestSendChannelMessage();
   const saveTemplateMutation = useSaveChannelTemplate();
   const audienceEstimateMutation = useAudienceEstimate();
@@ -230,7 +233,11 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
     const body = buildBody(values);
     if (!body) return;
 
-    await publishMutation.mutateAsync({ channelId: channel.id, id: editing?.id, values: body });
+    if (editing) {
+      await updateDraftMutation.mutateAsync({ params: { id: editing.id }, body });
+    } else {
+      await publishMutation.mutateAsync({ params: { id: channel.id }, body });
+    }
     const okMsg = values.sendMode === 'draft' ? '已保存草稿'
       : values.sendMode === 'scheduled' ? '已设置定时发送' : '已群发';
     Toast.success(editing ? '已保存' : okMsg);
@@ -335,7 +342,7 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
         <Button
           icon={<Send size={14} />}
           loading={testSendMutation.isPending}
-          disabled={publishMutation.isPending}
+          disabled={submitting}
           onClick={() => void handleTestSend()}
         >
           测试发送
@@ -348,7 +355,7 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
       </Space>
       <Space>
         <Button onClick={onClose}>取消</Button>
-        <Button type="primary" loading={publishMutation.isPending} onClick={() => void handleSubmit()}>
+        <Button type="primary" loading={submitting} onClick={() => void handleSubmit()}>
           {editing ? '保存' : '提交'}
         </Button>
       </Space>

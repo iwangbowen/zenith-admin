@@ -1,8 +1,7 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { resourceKeyOf, type BodyOf, type QueryOf } from '@zenith/shared/core';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
+import type { AnyOperation, BodyOf, InputOf, QueryOf } from '@zenith/shared/core';
 import { channelContract, channelMessageContract } from '@zenith/shared/messaging';
-import type { ChannelAutoReply, ChannelMessage } from '@zenith/shared/messaging';
-import { api, useSaveMutation, createResourceQueries, useApiMutation } from '@/lib/contract-query';
+import { contractKey, createResourceQueries, useApiMutation, useApiQuery, useSaveMutation } from '@/lib/contract-query';
 
 export type ChannelListParams = NonNullable<QueryOf<typeof channelContract.list>>;
 
@@ -13,29 +12,32 @@ export type ChannelSubscribersParams = NonNullable<QueryOf<typeof channelContrac
 /** 群发 / 编辑草稿共用的请求体（`publishChannelSchema`） */
 export type ChannelPublishValues = NonNullable<BodyOf<typeof channelMessageContract.publish>>;
 
-/** 新建 / 编辑自动回复共用的表单载荷：编辑时省略 matchType */
-export type ChannelAutoReplyValues = Partial<NonNullable<BodyOf<typeof channelContract.createAutoReply>>>;
+/** 新建自动回复的请求体 */
+export type ChannelAutoReplyCreateValues = NonNullable<BodyOf<typeof channelContract.createAutoReply>>;
+
+/** 编辑自动回复的请求体（省略 matchType） */
+export type ChannelAutoReplyUpdateValues = NonNullable<BodyOf<typeof channelContract.updateAutoReply>>;
 
 /** 新建 / 编辑群发模板共用的表单载荷 */
 export type ChannelTemplateValues = Partial<NonNullable<BodyOf<typeof channelMessageContract.createTemplate>>>;
 
-const KEY = resourceKeyOf(channelContract.basePath);
-
 /**
- * 子资源缓存按频道 ID 分段（`[KEY, 'messages', channelId, params]`），
- * 删除频道时才能按前缀整体移除该频道的消息 / 订阅者缓存。
+ * 子资源 key 全部由契约操作派生。「某频道的全部消息 / 订阅者分页」这类前缀用 `query: {}` 表达：
+ * TanStack 对对象段做深部分匹配，空对象命中任意分页 / 筛选条件，删除频道时才能按前缀整体移除。
  */
 const subKeys = {
-  menus: (channelId: number | undefined) => [KEY, 'menus', channelId] as const,
-  autoReplies: (channelId: number | undefined) => [KEY, 'auto-replies', channelId] as const,
-  /** 全部频道的消息（消息类接口只带 messageId，无法定位所属频道时用） */
-  messagesAll: [KEY, 'messages'] as const,
-  channelMessages: (channelId: number | undefined) => [KEY, 'messages', channelId] as const,
-  messages: (channelId: number | undefined, params: ChannelMessagesParams) => [KEY, 'messages', channelId, params] as const,
+  menus: (channelId: number | undefined) => contractKey(channelContract.menus, { params: { id: channelId ?? 0 } }),
+  autoReplies: (channelId: number | undefined) => contractKey(channelContract.autoReplies, { params: { id: channelId ?? 0 } }),
+  channelMessages: (channelId: number | undefined) =>
+    contractKey(channelMessageContract.adminMessages, { params: { id: channelId ?? 0 }, query: {} }),
+  messages: (channelId: number | undefined, params: ChannelMessagesParams) =>
+    contractKey(channelMessageContract.adminMessages, { params: { id: channelId ?? 0 }, query: params }),
   /** 指定频道的全部订阅者分页 */
-  channelSubscribers: (channelId: number | undefined) => [KEY, 'subscribers', channelId] as const,
-  subscribers: (channelId: number | undefined, params: ChannelSubscribersParams) => [KEY, 'subscribers', channelId, params] as const,
-  templates: [KEY, 'templates'] as const,
+  channelSubscribers: (channelId: number | undefined) =>
+    contractKey(channelContract.subscribers, { params: { id: channelId ?? 0 }, query: {} }),
+  subscribers: (channelId: number | undefined, params: ChannelSubscribersParams) =>
+    contractKey(channelContract.subscribers, { params: { id: channelId ?? 0 }, query: params }),
+  templates: contractKey(channelMessageContract.templates),
 };
 
 const {
@@ -66,46 +68,38 @@ const silent = { silent: true } as const;
  * `useSaveChannelMenus` 保存后两侧同时刷新。聊天侧菜单变动极少，可传 `staleTime` 减少重复拉取。
  */
 export function useChannelMenus(channelId: number | undefined, enabled = true, options?: { staleTime?: number }) {
-  return useQuery({
-    queryKey: channelKeys.menus(channelId),
-    queryFn: () => api(channelContract.menus, { params: { id: channelId ?? 0 } }, silent),
+  return useApiQuery(channelContract.menus, { params: { id: channelId ?? 0 } }, {
     enabled: enabled && channelId !== undefined,
     staleTime: options?.staleTime,
+    requestOptions: silent,
   });
 }
 
 export function useChannelAutoReplies(channelId: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: channelKeys.autoReplies(channelId),
-    queryFn: () => api(channelContract.autoReplies, { params: { id: channelId ?? 0 } }, silent),
+  return useApiQuery(channelContract.autoReplies, { params: { id: channelId ?? 0 } }, {
     enabled: enabled && channelId !== undefined,
+    requestOptions: silent,
   });
 }
 
 export function useChannelMessages(channelId: number | undefined, params: ChannelMessagesParams, enabled = true) {
-  return useQuery({
-    queryKey: channelKeys.messages(channelId, params),
-    queryFn: () => api(channelMessageContract.adminMessages, { params: { id: channelId ?? 0 }, query: params }, silent),
+  return useApiQuery(channelMessageContract.adminMessages, { params: { id: channelId ?? 0 }, query: params }, {
     enabled: enabled && channelId !== undefined,
     placeholderData: keepPreviousData,
+    requestOptions: silent,
   });
 }
 
 export function useChannelSubscribers(channelId: number | undefined, params: ChannelSubscribersParams, enabled = true) {
-  return useQuery({
-    queryKey: channelKeys.subscribers(channelId, params),
-    queryFn: () => api(channelContract.subscribers, { params: { id: channelId ?? 0 }, query: params }, silent),
+  return useApiQuery(channelContract.subscribers, { params: { id: channelId ?? 0 }, query: params }, {
     enabled: enabled && channelId !== undefined,
     placeholderData: keepPreviousData,
+    requestOptions: silent,
   });
 }
 
 export function useChannelTemplates(enabled = true) {
-  return useQuery({
-    queryKey: channelKeys.templates,
-    queryFn: () => api(channelMessageContract.templates, silent),
-    enabled,
-  });
+  return useApiQuery(channelMessageContract.templates, { enabled, requestOptions: silent });
 }
 
 /** 菜单不出现在频道列表（列表只有 subscriberCount / messageCount），故只动菜单自身 */
@@ -117,14 +111,23 @@ export function useSaveChannelMenus() {
   });
 }
 
-export function useSaveChannelAutoReply() {
-  const qc = useQueryClient();
-  return useMutation<ChannelAutoReply, Error, { channelId: number; id?: number; values: ChannelAutoReplyValues }>({
-    mutationFn: ({ channelId, id, values }) =>
-      id === undefined
-        ? api(channelContract.createAutoReply, { params: { id: channelId }, body: values as BodyOf<typeof channelContract.createAutoReply> })
-        : api(channelContract.updateAutoReply, { params: { channelId, replyId: id }, body: values }),
-    onSuccess: (_data, variables) => qc.invalidateQueries({ queryKey: channelKeys.autoReplies(variables.channelId) }),
+/**
+ * 自动回复的新建 / 编辑带父级路径参数（channelId），`useSaveMutation` 只认 `id`，
+ * 故拆成两个契约 mutation；两者都只影响该频道的自动回复列表。
+ */
+export function useCreateChannelAutoReply() {
+  return useApiMutation(channelContract.createAutoReply, {
+    invalidate: (qc, _output, { params }) => {
+      void qc.invalidateQueries({ queryKey: channelKeys.autoReplies(params.id) });
+    },
+  });
+}
+
+export function useUpdateChannelAutoReply() {
+  return useApiMutation(channelContract.updateAutoReply, {
+    invalidate: (qc, _output, { params }) => {
+      void qc.invalidateQueries({ queryKey: channelKeys.autoReplies(params.channelId) });
+    },
   });
 }
 
@@ -136,40 +139,51 @@ export function useDeleteChannelAutoReply() {
   });
 }
 
-/** 群发 / 编辑草稿：消息记录与列表的 messageCount 一起刷新 */
+/** 消息记录与列表的 messageCount 一起刷新 */
+function invalidateChannelMessagesOf(qc: QueryClient, channelId: number) {
+  void qc.invalidateQueries({ queryKey: channelKeys.channelMessages(channelId) });
+  void qc.invalidateQueries({ queryKey: channelKeys.lists });
+}
+
+/** 群发（含存草稿 / 定时）：路径参数是频道 id */
 export function usePublishChannelMessage() {
-  const qc = useQueryClient();
-  return useMutation<ChannelMessage, Error, { channelId: number; id?: number; values: ChannelPublishValues }>({
-    mutationFn: ({ channelId, id, values }) =>
-      id === undefined
-        ? api(channelMessageContract.publish, { params: { id: channelId }, body: values })
-        : api(channelMessageContract.updateDraft, { params: { id }, body: values }),
-    onSuccess: (_data, variables) => {
-      void qc.invalidateQueries({ queryKey: channelKeys.channelMessages(variables.channelId) });
-      void qc.invalidateQueries({ queryKey: channelKeys.lists });
-    },
+  return useApiMutation(channelMessageContract.publish, {
+    invalidate: (qc, _output, { params }) => invalidateChannelMessagesOf(qc, params.id),
+  });
+}
+
+/** 编辑草稿 / 定时消息：路径参数是消息 id，所属频道取自响应 */
+export function useUpdateChannelDraft() {
+  return useApiMutation(channelMessageContract.updateDraft, {
+    invalidate: (qc, saved) => invalidateChannelMessagesOf(qc, saved.channelId),
   });
 }
 
 /**
- * 消息类接口只给消息 id，定位不到所属频道，退一步失效全部频道的消息列表；
- * 仍远小于 `.all`（不会波及菜单、自动回复、订阅者、模板）
+ * 空响应的消息动作（删除草稿 / 撤回）：契约输入只有消息 id，定位不到所属频道，
+ * 调用方额外传 `channelId`（消息行自带）供精确失效；该字段只进 `invalidate`，不参与请求。
  */
-function invalidateChannelMessages(qc: ReturnType<typeof useQueryClient>) {
-  void qc.invalidateQueries({ queryKey: channelKeys.messagesAll });
-  void qc.invalidateQueries({ queryKey: channelKeys.lists });
-}
+type ChannelMessageActionVariables<Op extends AnyOperation> = InputOf<Op> & { channelId: number };
 
 export function useDeleteChannelMessage() {
-  return useApiMutation(channelMessageContract.removeDraft, { invalidate: invalidateChannelMessages });
+  return useApiMutation<typeof channelMessageContract.removeDraft, ChannelMessageActionVariables<typeof channelMessageContract.removeDraft>>(
+    channelMessageContract.removeDraft,
+    { invalidate: (qc, _output, { channelId }) => invalidateChannelMessagesOf(qc, channelId) },
+  );
 }
 
+/** 立即发送草稿：响应带 channelId */
 export function usePublishChannelMessageNow() {
-  return useApiMutation(channelMessageContract.publishDraftNow, { invalidate: invalidateChannelMessages });
+  return useApiMutation(channelMessageContract.publishDraftNow, {
+    invalidate: (qc, saved) => invalidateChannelMessagesOf(qc, saved.channelId),
+  });
 }
 
 export function useRetractChannelMessage() {
-  return useApiMutation(channelMessageContract.retract, { invalidate: invalidateChannelMessages });
+  return useApiMutation<typeof channelMessageContract.retract, ChannelMessageActionVariables<typeof channelMessageContract.retract>>(
+    channelMessageContract.retract,
+    { invalidate: (qc, _output, { channelId }) => invalidateChannelMessagesOf(qc, channelId) },
+  );
 }
 
 /** 测试发送只投递给本人，不产生频道消息记录，无需失效 */

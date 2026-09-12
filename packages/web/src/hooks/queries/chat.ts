@@ -1,8 +1,8 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { chatContract } from '@zenith/shared/chat';
 import { resourceKeyOf, type QueryOf } from '@zenith/shared/core';
 import { channelContract } from '@zenith/shared/messaging';
-import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { apiQueryOptions, contractKey, useApiMutation, useApiQuery, useSaveMutation } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 
 export type ChatUserSearchParams = QueryOf<typeof chatContract.users>;
@@ -25,17 +25,19 @@ const CHAT_KEY = resourceKeyOf(chatContract.basePath);
 
 export const chatKeys = {
   all: [CHAT_KEY] as const,
-  lists: [CHAT_KEY, 'list'] as const,
-  list: (scope: string, params: object) => [CHAT_KEY, 'list', scope, params] as const,
   /**
    * 会话列表。ChatPage 以本地 state + WebSocket 增量维护自己的副本；壳层与弹窗类消费方经
    * `conversationsQueryOptions()` 共用本 key 的缓存，会话级 mutation 以此为失效目标。
    */
   conversations: contractKey(chatContract.conversations),
-  /** 顶栏聊天未读数聚合（初值由查询拉取，之后由 WebSocket 推送写入缓存） */
+  /**
+   * 顶栏聊天未读数：客户端自持的计数（冷启动由会话列表缓存求和播种，之后由 WebSocket 推送写入，
+   * 进入 /chat 置 0）。刻意放在资源根下与 `conversations` 并列而非其子键：
+   * 会话级 mutation 失效会话列表时不得把这份 WS 维护的计数打回服务端求和。
+   */
   unreadCount: [CHAT_KEY, 'unread-count'] as const,
-  channels: [CHAT_KEY, 'channels'] as const,
-  discoverableChannels: (params: DiscoverableChannelParams) => [CHAT_KEY, 'list', 'discoverable-channels', params] as const,
+  /** 可订阅的运营号列表归 channels 契约所有 */
+  discoverableChannels: (params: DiscoverableChannelParams) => contractKey(channelContract.discoverable, { query: params }),
   users: (params: ChatUserSearchParams) => contractKey(chatContract.users, { query: params }),
   /**
    * 群成员与入群申请刻意不挂在 conversations 之下：
@@ -52,15 +54,16 @@ export const chatKeys = {
   joinRequestsAll: contractKey(chatContract.joinRequests),
   joinRequests: (conversationId: number | undefined) => contractKey(chatContract.joinRequests, { params: { id: conversationId ?? 0 } }),
   inviteInfo: (token: string | null) => contractKey(chatContract.inviteInfo, { params: { token: token ?? '' } }),
-  channelMessages: (params: ChannelMessageParams) => [CHAT_KEY, 'list', 'channel-messages', params] as const,
+  /** 用户侧频道消息流（聊天页频道视图），归 channels 契约所有 */
+  channelMessages: (params: ChannelMessageParams) =>
+    contractKey(channelContract.messages, { params: { id: params.channelId }, query: { page: params.page, pageSize: params.pageSize } }),
 };
 
 export function useDiscoverableChannels(params: DiscoverableChannelParams, enabled = true) {
-  return useQuery({
-    queryKey: chatKeys.discoverableChannels(params),
-    queryFn: () => api(channelContract.discoverable, { query: params }, silent),
+  return useApiQuery(channelContract.discoverable, { query: params }, {
     enabled,
     placeholderData: keepPreviousData,
+    requestOptions: silent,
   });
 }
 
@@ -160,13 +163,8 @@ export function useChatQuickReplies(enabled = true) {
 
 /** 无 id 走新增，有 id 走更新；两者都只影响常用语列表 */
 export function useSaveChatQuickReply() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, content }: { id?: number; content: string }) =>
-      (id === undefined
-        ? api(chatContract.createQuickReply, { body: { content } })
-        : api(chatContract.updateQuickReply, { params: { id }, body: { content } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: chatKeys.quickReplies }),
+  return useSaveMutation(chatContract.createQuickReply, chatContract.updateQuickReply, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: chatKeys.quickReplies }),
   });
 }
 
@@ -297,19 +295,19 @@ export function useCreateChatGroup() {
 }
 
 export function useChannelMessages(params: ChannelMessageParams) {
-  return useQuery({
-    queryKey: chatKeys.channelMessages(params),
-    queryFn: () => api(channelContract.messages, {
-      params: { id: params.channelId },
-      query: { page: params.page, pageSize: params.pageSize },
-    }, silent),
-  });
+  return useApiQuery(channelContract.messages, {
+    params: { id: params.channelId },
+    query: { page: params.page, pageSize: params.pageSize },
+  }, { requestOptions: silent });
 }
 
 /**
  * 顶栏聊天未读数。初值由共享的会话列表缓存求和（`fetchQuery` 与其它壳层消费方合并为一次请求），
  * 后续增量由 WebSocket 推送经 setQueryData 写入本 key
  * （会话列表本身仍由 ChatPage 以本地 state + WS 维护，属文档白名单的流式场景）。
+ *
+ * H5 保留手写 useQuery：queryFn 是纯客户端派生计算（对会话列表缓存求和），不是单次 `api(op)`；
+ * key 见 `chatKeys.unreadCount` 的说明（资源根 + 客户端伪操作名，刻意不挂在 conversations 之下）。
  */
 export function useChatUnreadCount() {
   const qc = useQueryClient();
@@ -329,13 +327,9 @@ export function useChatUnreadCount() {
  * ChatPage 本体仍以本地 state + WS 增量维护会话列表，不消费本查询。
  */
 export function conversationsQueryOptions() {
-  return {
-    queryKey: chatKeys.conversations,
-    queryFn: () => api(chatContract.conversations, silent),
-    staleTime: LOOKUP_STALE_TIME,
-  };
+  return apiQueryOptions(chatContract.conversations, { staleTime: LOOKUP_STALE_TIME, requestOptions: silent });
 }
 
 export function useConversations(enabled = true) {
-  return useQuery({ ...conversationsQueryOptions(), enabled });
+  return useApiQuery(chatContract.conversations, { enabled, staleTime: LOOKUP_STALE_TIME, requestOptions: silent });
 }

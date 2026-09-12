@@ -26,7 +26,10 @@ interface UploadVariables {
   onProgress?: (percent: number) => void;
 }
 
-/** 二进制素材上传：带上传进度，故走 XHR 表单通道而非 api()；成功后新增一条素材，刷新列表 */
+/**
+ * 二进制素材上传：带上传进度，故走 XHR 表单通道而非 api()；成功后新增一条素材，刷新列表。
+ * H5 保留手写 useMutation：mutationFn 带进度回调（`request.postForm(..., { onProgress })`）；URL 仍由契约 `urlOf` 生成。
+ */
 export function useUploadMpMaterial() {
   const qc = useQueryClient();
   return useMutation({

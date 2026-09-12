@@ -1,7 +1,7 @@
-import { useQuery, type QueryClient } from '@tanstack/react-query';
+import type { QueryClient } from '@tanstack/react-query';
 import type { BodyOf } from '@zenith/shared/core';
 import { menuContract } from '@zenith/shared/identity';
-import { api, useSaveMutation, useApiMutation } from '@/lib/contract-query';
+import { apiQueryOptions, contractKey, useApiMutation, useApiQuery, useSaveMutation } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 import { authKeys } from './auth';
 import { dataMaskKeys } from './data-mask';
@@ -9,12 +9,13 @@ import { dataMaskKeys } from './data-mask';
 /** 保存载荷：创建入参的部分形态，同一表单同时服务新增与编辑，必填字段由表单 rules 与服务端 schema 保证 */
 export type MenuFormValues = Partial<BodyOf<typeof menuContract.create>>;
 
+const silent = { silent: true } as const;
+
 export const menuKeys = {
-  all: ['menus'] as const,
-  tree: ['menus', 'tree'] as const,
+  tree: contractKey(menuContract.tree),
   /** 当前登录用户可见菜单树（侧边栏与动态路由注册的数据源） */
-  userTree: ['menus', 'user-tree'] as const,
-  detail: (id: number | undefined) => ['menus', 'detail', id] as const,
+  userTree: contractKey(menuContract.userTree),
+  detail: (id: number | undefined) => contractKey(menuContract.detail, { params: { id: id ?? 0 } }),
 };
 
 /**
@@ -22,34 +23,25 @@ export const menuKeys = {
  * 失败静默：错误展示责任在消费方（App 判别器降级 403→404，MenusPage 展示错误横幅）。
  */
 export function useMenuTree(options?: { enabled?: boolean }) {
-  return useQuery({
-    queryKey: menuKeys.tree,
-    queryFn: () => api(menuContract.tree, { silent: true }),
+  return useApiQuery(menuContract.tree, {
     staleTime: LOOKUP_STALE_TIME,
     enabled: options?.enabled ?? true,
+    requestOptions: silent,
   });
 }
 
 /** 当前用户可见菜单树的查询定义：hook 与启动期预取共用同一 key / fn，预取结果直接被 hook 命中 */
 export function userMenuTreeQueryOptions() {
-  return {
-    queryKey: menuKeys.userTree,
-    queryFn: () => api(menuContract.userTree, { silent: true }),
-    staleTime: LOOKUP_STALE_TIME,
-  };
+  return apiQueryOptions(menuContract.userTree, { staleTime: LOOKUP_STALE_TIME, requestOptions: silent });
 }
 
 /** 当前用户可见菜单树；失败静默，由 App 渲染显式重试页（空菜单不得伪装成正常态） */
 export function useCurrentUserMenuTree() {
-  return useQuery(userMenuTreeQueryOptions());
+  return useApiQuery(menuContract.userTree, { staleTime: LOOKUP_STALE_TIME, requestOptions: silent });
 }
 
 export function useMenuDetail(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: menuKeys.detail(id),
-    queryFn: () => api(menuContract.detail, { params: { id: id ?? 0 } }),
-    enabled: enabled && id !== undefined,
-  });
+  return useApiQuery(menuContract.detail, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
 }
 
 export function useSaveMenu() {

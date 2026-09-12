@@ -1,7 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
 import type { BodyOf } from '@zenith/shared/core';
 import { positionContract } from '@zenith/shared/identity';
-import { api, useSaveMutation, createResourceQueries, useApiMutation } from '@/lib/contract-query';
+import { contractKey, createResourceQueries, useApiMutation, useApiQuery, useSaveMutation } from '@/lib/contract-query';
+import { scopeMemberKeys } from './scope-members';
 
 /** 保存载荷：创建入参的部分形态，同一表单同时服务新增与编辑 */
 export type PositionFormValues = Partial<BodyOf<typeof positionContract.create>>;
@@ -9,7 +9,10 @@ export type PositionFormValues = Partial<BodyOf<typeof positionContract.create>>
 const resource = createResourceQueries(positionContract, {
   onDeleted: (qc, ids) => {
     // 实体已不存在：移除缓存而非失效，否则仍挂载的成员抽屉会去请求一个必然 404 的资源
-    for (const id of ids) qc.removeQueries({ queryKey: positionKeys.members(id) });
+    for (const id of ids) {
+      qc.removeQueries({ queryKey: positionKeys.members(id) });
+      qc.removeQueries({ queryKey: scopeMemberKeys.of('position', id) });
+    }
   },
 });
 
@@ -17,7 +20,7 @@ export const positionKeys = {
   ...resource.keys,
   /** 全量岗位下拉源（用户管理等跨页共享缓存） */
   allPositions: resource.keys.lookup,
-  members: (id: number | undefined) => [...resource.keys.all, 'members', id] as const,
+  members: (id: number | undefined) => contractKey(positionContract.members, { params: { id: id ?? 0 } }),
 };
 
 export const usePositionList = resource.useList;
@@ -29,11 +32,7 @@ export function useAllPositions(options?: { enabled?: boolean }) {
 }
 
 export function usePositionMembers(id: number | undefined, enabled = true) {
-  return useQuery({
-    queryKey: positionKeys.members(id),
-    queryFn: () => api(positionContract.members, { params: { id: id ?? 0 } }),
-    enabled: enabled && id !== undefined,
-  });
+  return useApiQuery(positionContract.members, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
 }
 
 /**
@@ -50,11 +49,15 @@ export function useSavePosition() {
   });
 }
 
-/** 列表的「成员」列渲染 userCount / userPreview（仅列表接口注入），成员变更后必须回源；详情与下拉源都不含成员字段 */
+/**
+ * 列表的「成员」列渲染 userCount / userPreview（仅列表接口注入），成员变更后必须回源；详情与下拉源都不含成员字段。
+ * 查看弹窗的成员预览（`memberPreview` 操作）与 `members` 不共享前缀，需显式失效。
+ */
 export function useAssignPositionMembers() {
   return useApiMutation(positionContract.setMembers, {
     invalidate: (qc, _output, { params }) => {
       void qc.invalidateQueries({ queryKey: positionKeys.members(params.id) });
+      void qc.invalidateQueries({ queryKey: scopeMemberKeys.of('position', params.id) });
       void qc.invalidateQueries({ queryKey: positionKeys.lists });
     },
   });

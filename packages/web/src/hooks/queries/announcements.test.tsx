@@ -41,6 +41,7 @@ import {
 } from './announcements';
 import { roleKeys, useSaveRole } from './roles';
 import { departmentKeys } from './departments';
+import { useSaveUser } from './users';
 
 const LIST_PARAMS = { page: 1, pageSize: 10 };
 const MY_LIST_PARAMS = { page: 1, pageSize: 10 };
@@ -59,6 +60,7 @@ beforeEach(() => {
     .on('PUT', '/api/announcements/1', NOTICE)
     .on('POST', '/api/announcements/1/read', null)
     .on('POST', '/api/roles', { id: 2, name: '审核员' })
+    .on('PUT', '/api/users/1', { id: 1, nickname: '张三（改）', username: 'zhangsan' })
     .on('DELETE', '/api/announcements/1', null);
 });
 
@@ -209,6 +211,22 @@ describe('收件人选项归还所有者域', () => {
 
     // 角色域的 mutation 现在能正确波及公告页的收件人下拉
     await waitFor(() => expect(api.countOf('GET', '/api/roles/all')).toBe(1));
+  });
+
+  it('keys the recipient user search under the users contract, so a user save refreshes it', async () => {
+    const qc = createTestQueryClient();
+    const { result } = renderHook(
+      () => ({ userSearch: useAnnouncementUserSearch('张', true), saveUser: useSaveUser() }),
+      { wrapper: createWrapper(qc) },
+    );
+    await waitFor(() => expect(result.current.userSearch.isSuccess).toBe(true));
+    expect(result.current.userSearch.data).toEqual([{ value: 1, label: '张三（zhangsan）' }]);
+
+    api.resetCalls();
+    await result.current.saveUser.mutateAsync({ id: 1, values: { nickname: '张三（改）' } });
+
+    // 原先以 announcementKeys.userSearch 为键，用户改名后没有任何来源会失效它
+    await waitFor(() => expect(api.countOf('GET', '/api/users')).toBe(1));
   });
 });
 

@@ -1,73 +1,47 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { apiTokenContract, authContract, oauthContract } from '@zenith/shared/identity';
-import { api, useApiMutation } from '@/lib/contract-query';
+import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { updateCachedAuthUser } from './auth';
 
 export type ProfileLoginLogParams = NonNullable<QueryOf<typeof authContract.myLoginLogs>>;
 
 export type ProfileOperationLogParams = NonNullable<QueryOf<typeof authContract.myOperationLogs>>;
 
+/** 个人中心各页签的查询散落在 auth / oauth / api-tokens 三个契约里，key 各自由操作派生，写操作只动对应页签 */
 export const profileKeys = {
-  all: ['profile'] as const,
-  oauthAccounts: ['profile', 'oauth-accounts'] as const,
-  mfaFactors: ['profile', 'mfa-factors'] as const,
-  sessions: ['profile', 'sessions'] as const,
-  loginLogs: ['profile', 'login-logs'] as const,
-  loginLogList: (params: ProfileLoginLogParams) => ['profile', 'login-logs', params] as const,
-  operationLogs: ['profile', 'operation-logs'] as const,
-  operationLogList: (params: ProfileOperationLogParams) => ['profile', 'operation-logs', params] as const,
-  apiTokens: ['profile', 'api-tokens'] as const,
+  oauthAccounts: contractKey(oauthContract.accounts),
+  mfaFactors: contractKey(authContract.mfaFactors),
+  sessions: contractKey(authContract.mySessions),
+  loginLogs: contractKey(authContract.myLoginLogs),
+  loginLogList: (params: ProfileLoginLogParams) => contractKey(authContract.myLoginLogs, { query: params }),
+  operationLogs: contractKey(authContract.myOperationLogs),
+  operationLogList: (params: ProfileOperationLogParams) => contractKey(authContract.myOperationLogs, { query: params }),
+  apiTokens: contractKey(apiTokenContract.list),
 };
 
 export function useProfileOauthAccounts(enabled = true) {
-  return useQuery({
-    queryKey: profileKeys.oauthAccounts,
-    queryFn: () => api(oauthContract.accounts),
-    enabled,
-  });
+  return useApiQuery(oauthContract.accounts, { enabled });
 }
 
 export function useProfileMfaFactors(enabled = true) {
-  return useQuery({
-    queryKey: profileKeys.mfaFactors,
-    queryFn: () => api(authContract.mfaFactors),
-    enabled,
-  });
+  return useApiQuery(authContract.mfaFactors, { enabled });
 }
 
 export function useProfileSessions(enabled = true) {
-  return useQuery({
-    queryKey: profileKeys.sessions,
-    queryFn: () => api(authContract.mySessions),
-    enabled,
-  });
+  return useApiQuery(authContract.mySessions, { enabled });
 }
 
 export function useProfileLoginLogs(params: ProfileLoginLogParams, enabled = true) {
-  return useQuery({
-    queryKey: profileKeys.loginLogList(params),
-    queryFn: () => api(authContract.myLoginLogs, { query: params }),
-    placeholderData: keepPreviousData,
-    enabled,
-  });
+  return useApiQuery(authContract.myLoginLogs, { query: params }, { placeholderData: keepPreviousData, enabled });
 }
 
 export function useProfileOperationLogs(params: ProfileOperationLogParams, enabled = true) {
-  return useQuery({
-    queryKey: profileKeys.operationLogList(params),
-    queryFn: () => api(authContract.myOperationLogs, { query: params }),
-    placeholderData: keepPreviousData,
-    enabled,
-  });
+  return useApiQuery(authContract.myOperationLogs, { query: params }, { placeholderData: keepPreviousData, enabled });
 }
 
 export function useProfileApiTokens(enabled = true) {
-  return useQuery({
-    queryKey: profileKeys.apiTokens,
-    queryFn: () => api(apiTokenContract.list),
-    enabled,
-  });
+  return useApiQuery(apiTokenContract.list, { enabled });
 }
 
 /** 修改资料后直接回填登录态里的用户快照，头像 / 昵称立即生效 */

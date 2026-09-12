@@ -13,7 +13,7 @@ import AnnouncementDetailModal from '@/components/AnnouncementDetailModal';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { ListPagination } from '@/components/ListPagination';
 import {
-  announcementKeys,
+  invalidateMyAnnouncements,
   type MyAnnouncement,
   useMarkAllMyAnnouncementsRead,
   useMarkMyAnnouncementRead,
@@ -69,8 +69,8 @@ export default function AnnouncementsPage() {
 
   useEffect(() => {
     const handler = () => {
-      // WS 公告事件影响列表、未读数与铃铛气泡，整个 my 前缀一起失效
-      void queryClient.invalidateQueries({ queryKey: announcementKeys.my });
+      // WS 公告事件影响列表、未读数与铃铛气泡，读者侧整体失效
+      invalidateMyAnnouncements(queryClient);
     };
     globalThis.addEventListener('announcement:refresh', handler);
     return () => globalThis.removeEventListener('announcement:refresh', handler);

@@ -57,7 +57,7 @@ export function ComposerExtras({
     const content = editContent.trim();
     if (!content) { Toast.warning('内容不能为空'); return; }
     try {
-      await saveQuickMutation.mutateAsync({ id: editingId ?? undefined, content });
+      await saveQuickMutation.mutateAsync({ id: editingId ?? undefined, values: { content } });
     } catch {
       return;
     }

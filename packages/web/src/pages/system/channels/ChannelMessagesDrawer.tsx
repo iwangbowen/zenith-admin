@@ -85,7 +85,7 @@ export function ChannelMessagesDrawer({ channel, visible, onClose }: Readonly<Pr
   };
 
   const handleRetract = async (m: ChannelMessage) => {
-    await retractMutation.mutateAsync({ params: { id: m.id } });
+    await retractMutation.mutateAsync({ params: { id: m.id }, channelId: m.channelId });
     Toast.success('已撤回');
   };
 
@@ -154,7 +154,7 @@ export function ChannelMessagesDrawer({ channel, visible, onClose }: Readonly<Pr
           },
           deleteAction({
             title: '确定删除该消息？',
-            run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+            run: () => deleteMutation.mutateAsync({ params: { id: record.id }, channelId: record.channelId }),
             successMessage: '已删除',
           }),
         ];

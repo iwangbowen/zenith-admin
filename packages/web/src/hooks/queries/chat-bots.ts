@@ -17,9 +17,9 @@ export const chatBotKeys = {
   list: (params: ChatBotListParams) => contractKey(chatBotContract.list, { query: params }),
 };
 
-/** 列表行即完整实体（令牌已脱敏），任何写操作后整体失效即可 */
+/** 本域只有列表查询，列表行即完整实体（令牌已脱敏）：任何写操作后失效全部列表页即可，不必广播资源根 */
 function invalidateChatBots(qc: QueryClient) {
-  void qc.invalidateQueries({ queryKey: chatBotKeys.all });
+  void qc.invalidateQueries({ queryKey: chatBotKeys.lists });
 }
 
 export function useChatBotList(params: ChatBotListParams) {
@@ -28,7 +28,7 @@ export function useChatBotList(params: ChatBotListParams) {
 
 const selectGroupConversations = (items: ChatConversation[]) => items.filter((item) => item.type === 'group');
 
-/** 机器人表单的目标会话下拉源：会话列表归 chat 域所有，这里只对其共享缓存做 select 派生，不另起请求 */
+/** 机器人表单的目标会话下拉源：会话列表归 chat 域所有，这里只对其共享缓存做 select 派生（改变数据形状，故展开 queryOptions），不另起请求 */
 export function useChatBotGroupConversations(enabled = true) {
   return useQuery({ ...conversationsQueryOptions(), select: selectGroupConversations, enabled });
 }
