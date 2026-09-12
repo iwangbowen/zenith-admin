@@ -8,6 +8,8 @@ export { ListSearchToolbar } from './ListSearchToolbar';
 export type { ListSearchToolbarProps } from './ListSearchToolbar';
 export { confirmAndDelete, deleteAction } from './deleteAction';
 export type { DeleteActionOptions, DeleteConfirmOptions } from './deleteAction';
+export { batchStatusHandler } from './batchStatus';
+export type { BatchStatus, BatchStatusOptions } from './batchStatus';
 export { listTableProps } from './listTableProps';
 export type { ListQueryLike, ListTablePropsOptions } from './listTableProps';
 export { useRowSelection } from './useRowSelection';

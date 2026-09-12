@@ -13,7 +13,6 @@ import { db } from '../../db';
 import { memberWallets, memberWalletTransactions, members, paymentOrders, paymentRefunds } from '../../db/schema';
 import type { MemberWalletRow, MemberWalletTransactionRow } from '../../db/schema';
 import type { DbTransaction } from '../../db/types';
-import { formatDateTime } from '../../lib/datetime';
 import { currentMemberId, currentMemberOrNull } from '../../lib/member-context';
 import { currentUserOrNull } from '../../lib/context';
 import { exactTenantCondition, tenantCondition } from '../../lib/tenant';
@@ -24,7 +23,7 @@ import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import logger from '../../lib/logger';
 import { createPayment } from '../payment/payment.service';
-import { memberReferenceCondition } from './member-query-helpers';
+import { memberReferenceCondition, mapLedgerTransaction } from './member-query-helpers';
 import type { WalletTxType } from '@zenith/shared/member';
 import type { PaymentCashierMethod } from '@zenith/shared/payment';
 
@@ -42,20 +41,7 @@ export function mapWallet(row: MemberWalletRow) {
   };
 }
 
-export function mapWalletTransaction(row: MemberWalletTransactionRow, memberName?: string | null) {
-  return {
-    id: row.id,
-    memberId: row.memberId,
-    type: row.type,
-    amount: row.amount,
-    balanceAfter: row.balanceAfter,
-    bizType: row.bizType ?? null,
-    bizId: row.bizId ?? null,
-    remark: row.remark ?? null,
-    memberName: memberName ?? undefined,
-    createdAt: formatDateTime(row.createdAt),
-  };
-}
+export const mapWalletTransaction = (row: MemberWalletTransactionRow, memberName?: string | null) => mapLedgerTransaction(row, memberName);
 
 /** Admin wallet APIs must resolve the member through the active tenant scope.
  * Member-facing calls run without an admin user and intentionally remain

@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Button, Dropdown, Toast, Typography } from '@douyinfe/semi-ui';
 import { Icon } from '@iconify/react';
-import { Download, FileText, MoreHorizontal, RefreshCw, Trash2 } from 'lucide-react';
+import { Download, FileText, RefreshCw, Trash2 } from 'lucide-react';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
-import { NavListPanel, NavListItem } from '@/components/NavListPanel';
+import { NavListPanel, NavListItem, NavListItemActions } from '@/components/NavListPanel';
 import { LogWorkbench } from '@/components/log-workbench/LogWorkbench';
 import type { LogLevel } from '@/components/log-workbench/log-search';
 import { request } from '@/utils/request';
@@ -152,26 +152,9 @@ export default function LogFilesPage() {
                   onClick={() => void filesQuery.refetch()}
                 />
                 {canDelete && (
-                  <Dropdown
-                    trigger="click"
-                    position="bottomRight"
-                    clickToHide
-                    render={
-                      <Dropdown.Menu>
-                        <Dropdown.Item
-                          type="danger"
-                          disabled={gzFiles.length === 0}
-                          onClick={handleCleanGz}
-                        >
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <Trash2 size={14} /> 清理压缩日志（{gzFiles.length} 个）
-                          </span>
-                        </Dropdown.Item>
-                      </Dropdown.Menu>
-                    }
-                  >
-                    <Button theme="borderless" size="small" icon={<MoreHorizontal size={14} />} />
-                  </Dropdown>
+                  <NavListItemActions items={[
+                    { key: 'clean-gz', label: `清理压缩日志（${gzFiles.length} 个）`, icon: <Trash2 size={14} />, danger: true, disabled: gzFiles.length === 0, onClick: handleCleanGz },
+                  ]} />
                 )}
               </>
             }
@@ -210,39 +193,10 @@ export default function LogFilesPage() {
                     </>
                   }
                   extra={
-                    <Dropdown
-                      trigger="click"
-                      position="bottomRight"
-                      clickToHide
-                      render={
-                        <Dropdown.Menu>
-                          {canDownload && (
-                            <Dropdown.Item onClick={() => void handleDownload(file)}>
-                              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <Download size={14} /> 下载
-                              </span>
-                            </Dropdown.Item>
-                          )}
-                          {canDelete && (
-                            <Dropdown.Item
-                              type="danger"
-                              onClick={() => handleDelete(file)}
-                            >
-                              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <Trash2 size={14} /> 删除
-                              </span>
-                            </Dropdown.Item>
-                          )}
-                        </Dropdown.Menu>
-                      }
-                    >
-                      <Button
-                        theme="borderless"
-                        size="small"
-                        icon={<MoreHorizontal size={14} />}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    </Dropdown>
+                    <NavListItemActions items={[
+                      { key: 'download', label: '下载', icon: <Download size={14} />, hidden: !canDownload, onClick: () => void handleDownload(file) },
+                      { key: 'delete', label: '删除', icon: <Trash2 size={14} />, danger: true, hidden: !canDelete, onClick: () => handleDelete(file) },
+                    ]} />
                   }
                 />
               );

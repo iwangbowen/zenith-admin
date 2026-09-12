@@ -1,7 +1,7 @@
 import { Children } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import { Input, List, Spin } from '@douyinfe/semi-ui';
-import { Search } from 'lucide-react';
+import { Button, Dropdown, Input, List, Spin } from '@douyinfe/semi-ui';
+import { MoreHorizontal, Search } from 'lucide-react';
 import './NavListPanel.css';
 import { MasterDetailLayout } from './MasterDetailLayout';
 
@@ -208,5 +208,55 @@ export function NavListItem({
         </div>
       )}
     </List.Item>
+  );
+}
+
+/* ─────────────────────────── NavListItemActions ────────────────────────── */
+
+export interface NavListItemAction {
+  key: string;
+  label: ReactNode;
+  /** 菜单项前的小图标，按 14px 传入（如 `<Pencil size={14} />`） */
+  icon?: ReactNode;
+  /** 危险动作（删除等）用红色文字 */
+  danger?: boolean;
+  /** 无权限时不渲染该项 */
+  hidden?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}
+
+/**
+ * 列表条目右侧的「更多」菜单（`NavListItem` 的 `extra` 槽）：借用 `Dropdown` 承载编辑 / 删除等低频动作，
+ * 触发按钮阻止冒泡以免顺带选中条目。全部动作都隐藏时不渲染。
+ *
+ * @example
+ * extra={<NavListItemActions items={[
+ *   { key: 'edit', label: '编辑', icon: <Pencil size={14} />, hidden: !canManage, onClick: () => openEdit(item) },
+ *   { key: 'delete', label: '删除', icon: <Trash2 size={14} />, danger: true, hidden: !canManage, onClick: () => remove(item) },
+ * ]} />}
+ */
+export function NavListItemActions({ items }: Readonly<{ items: readonly NavListItemAction[] }>) {
+  const visible = items.filter((item) => !item.hidden);
+  if (visible.length === 0) return null;
+  return (
+    <Dropdown
+      trigger="click"
+      position="bottomRight"
+      clickToHide
+      render={(
+        <Dropdown.Menu>
+          {visible.map((item) => (
+            <Dropdown.Item key={item.key} type={item.danger ? 'danger' : undefined} disabled={item.disabled} onClick={item.onClick}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {item.icon}{item.label}
+              </span>
+            </Dropdown.Item>
+          ))}
+        </Dropdown.Menu>
+      )}
+    >
+      <Button theme="borderless" size="small" icon={<MoreHorizontal size={14} />} onClick={(e) => e.stopPropagation()} />
+    </Dropdown>
   );
 }

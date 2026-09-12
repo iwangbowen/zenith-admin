@@ -1,15 +1,14 @@
 import { useState, useMemo } from 'react';
 import ModalFooter from '@/components/ModalFooter';
-import { Button, Col, Collapse, Form, Modal, Row, SideSheet, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Col, Collapse, Form, Modal, Row, SideSheet, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { QRCodeSVG } from 'qrcode.react';
-import { Ban, CircleCheck } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import ExportButton from '@/components/ExportButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection, useStatusToggle } from '@/components/list-page';
+import { batchStatusHandler, confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection, useStatusToggle } from '@/components/list-page';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
+import { BatchDeleteButton, BatchStatusButtons, CreateButton } from '@/components/toolbar-controls';
 import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -148,25 +147,15 @@ export default function ShortLinksPage() {
     });
   }
 
-  function handleBatchStatus(status: 'enabled' | 'disabled') {
-    const doBatch = () => {
-      batchStatusMutation.mutate(
-        { body: { ids: selectedRowKeys, status } },
-        {
-          onSuccess: () => {
-            Toast.success(status === 'enabled' ? '批量启用成功' : '批量禁用成功');
-            clearSelection();
-          },
-        },
-      );
-    };
-    if (status === 'enabled') doBatch();
-    else Modal.confirm({
-      title: '确认批量禁用',
-      content: `禁用后选中的 ${selectedRowKeys.length} 条短链将无法访问，确认禁用？`,
-      onOk: doBatch,
-    });
-  }
+  // 批量启用直接执行；批量禁用会让短链立即不可访问，需要确认
+  const handleBatchStatus = batchStatusHandler({
+    selectedRowKeys,
+    clearSelection,
+    run: (ids, status) => batchStatusMutation.mutateAsync({ body: { ids, status } }),
+    disableLabel: '禁用',
+    entity: '条短链',
+    confirmContent: (_status, count) => `禁用后选中的 ${count} 条短链将无法访问，确认禁用？`,
+  });
 
   const columns: ColumnProps<ShortLink>[] = [
     copyableNoColumn('短链', 'code', {
@@ -215,14 +204,7 @@ export default function ShortLinksPage() {
   const renderBatchButtons = () => selectedRowKeys.length > 0 ? (
     <>
       {hasPermission('shortlink:link:update') && (
-        <>
-          <Button icon={<CircleCheck size={14} />} theme="light" onClick={() => handleBatchStatus('enabled')}>
-            批量启用 ({selectedRowKeys.length})
-          </Button>
-          <Button icon={<Ban size={14} />} theme="light" type="warning" onClick={() => handleBatchStatus('disabled')}>
-            批量禁用 ({selectedRowKeys.length})
-          </Button>
-        </>
+        <BatchStatusButtons count={selectedRowKeys.length} onChange={handleBatchStatus} disableLabel="批量禁用" />
       )}
       {hasPermission('shortlink:link:delete') && (
         <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />

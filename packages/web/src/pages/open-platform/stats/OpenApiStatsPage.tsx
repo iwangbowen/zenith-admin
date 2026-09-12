@@ -4,7 +4,8 @@ import { Banner, Select, Typography, Tag, Tooltip, Space, Card } from '@douyinfe
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import dayjs from 'dayjs';
 import type { OpenApiCallLog } from '@zenith/shared/open-platform';
-import { OPEN_APP_ENVIRONMENT_LABELS, OPEN_APP_ENVIRONMENTS } from '@zenith/shared/open-platform';
+import { OPEN_APP_ENVIRONMENT_OPTIONS } from '@zenith/shared/open-platform';
+import { openAppEnvironmentColumn } from '../open-app-columns';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { ExportButton } from '@/components/ExportButton';
@@ -151,14 +152,7 @@ export default function OpenApiStatsPage() {
     },
     { title: '耗时', dataIndex: 'durationMs', width: 90, align: 'right', render: (v: number) => `${v} ms` },
     { title: 'IP', dataIndex: 'ip', width: 130, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
-    {
-      title: '环境',
-      dataIndex: 'environment',
-      width: 100,
-      render: (value: OpenApiCallLog['environment']) => (
-        <Tag size="small" color={value === 'sandbox' ? 'orange' : 'blue'}>{OPEN_APP_ENVIRONMENT_LABELS[value]}</Tag>
-      ),
-    },
+    openAppEnvironmentColumn(),
     {
       title: '状态',
       dataIndex: 'statusCode',
@@ -196,7 +190,7 @@ export default function OpenApiStatsPage() {
             />
             <FilterSelect
               placeholder="全部环境"
-              items={OPEN_APP_ENVIRONMENTS.map((value) => ({ value, label: OPEN_APP_ENVIRONMENT_LABELS[value] }))}
+              items={OPEN_APP_ENVIRONMENT_OPTIONS}
               {...bind('environment')}
             />
             <FilterSelect
@@ -233,7 +227,7 @@ export default function OpenApiStatsPage() {
             />
             <FilterSelect
               placeholder="全部环境"
-              items={OPEN_APP_ENVIRONMENTS.map((value) => ({ value, label: OPEN_APP_ENVIRONMENT_LABELS[value] }))}
+              items={OPEN_APP_ENVIRONMENT_OPTIONS}
               {...bind('environment')}
               width="100%"
             />

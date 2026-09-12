@@ -8,7 +8,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { CreateButton } from '@/components/toolbar-controls';
 import AppModal from '@/components/AppModal';
-import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis, enabledStatusColumn } from '@/utils/table-columns';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -25,7 +25,6 @@ import {
 } from '@zenith/shared/iot';
 import type { CreateIotScheduleInput, IotSchedule, IotScheduleRun } from '@zenith/shared/iot';
 import { IotDeviceSelectField, IotProductSelectField, useIotGroupOptions } from './components/IotSelectors';
-import { IotEnabledTag } from './components/IotStatus';
 import { IotServiceSelectField } from './components/ThingModelFields';
 import { formatIotDateTime, jsonObjectToText, parseJsonObjectInput, toFiveFieldCron, toSixFieldCron } from './iot-form-utils';
 import {
@@ -148,10 +147,7 @@ function SchedulesTab({ onShowRuns }: Readonly<{ onShowRuns: (schedule: IotSched
         : EMPTY_PLACEHOLDER,
     },
     createdAtColumn,
-    {
-      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (v: IotSchedule['status']) => <IotEnabledTag status={v} />,
-    },
+    enabledStatusColumn(),
     createOperationColumn<IotSchedule>({
       width: 240,
       actions: (record) => [

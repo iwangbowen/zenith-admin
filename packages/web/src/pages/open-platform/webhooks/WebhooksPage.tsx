@@ -33,7 +33,7 @@ import { confirmDanger } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
 import { compactParams } from '@/lib/query';
-import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis, enabledStatusColumn } from '@/utils/table-columns';
 
 const { Text, Paragraph } = Typography;
 
@@ -243,13 +243,7 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
     },
     { title: '签名', dataIndex: 'signMode', width: 90, render: (v: string) => v === 'hmacSha256' ? <Tag size="small" color="orange">HMAC</Tag> : <Text type="tertiary">无</Text> },
     dateTimeColumn('最近投递', 'lastDeliveryAt'),
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 80,
-      fixed: 'right' as const,
-      render: renderEnabledStatusTag,
-    },
+    enabledStatusColumn(),
     createOperationColumn<AppWebhookSubscription>({
       width: 210,
       desktopInlineKeys: ['deliveries', 'edit'],

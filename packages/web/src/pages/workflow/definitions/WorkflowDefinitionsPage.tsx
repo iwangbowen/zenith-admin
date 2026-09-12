@@ -2,7 +2,7 @@ import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Modal, Select, Space, Tag, Typography, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Ban, CircleCheck, GitCompare, Layers, LayoutTemplate, Save, Upload } from 'lucide-react';
+import { GitCompare, Layers, LayoutTemplate, Save, Upload } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { importWorkflowDefinitionSchema, workflowDefinitionContract, WORKFLOW_DEFINITION_STATUS_OPTIONS, WORKFLOW_DEFINITION_STATUSES, WORKFLOW_FORM_TYPE_LABELS, type WorkflowDefinition, type WorkflowFormType, type WorkflowVersionDiff as WorkflowVersionDiffData } from '@zenith/shared/workflow';
 import { enumValueOf } from '@zenith/shared/core';
@@ -39,9 +39,9 @@ import {
 } from '@/hooks/queries/workflow-definitions';
 import { WORKFLOW_DIFF_KIND_META as DIFF_KIND_META } from '../constants';
 import { PUBLISHABLE_STATUS_META as STATUS_MAP } from '@/lib/publishable-status';
-import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
+import { BatchDeleteButton, BatchDisableButton, BatchEnableButton, CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
+import { batchStatusHandler, confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import { confirmDanger } from '@/utils/confirm';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
@@ -145,31 +145,22 @@ export default function WorkflowDefinitionsPage() {
     Toast.success('已启用');
   };
 
-  const batchDisable = () => {
-    if (selectedRowKeys.length === 0) return;
-    confirmDanger({
-      title: `确定禁用选中的 ${selectedRowKeys.length} 个流程？`,
-      content: '仅「已发布」状态的流程会被禁用，禁用后不可发起新申请。',
-      onOk: async () => {
-        await batchDisableMutation.mutateAsync({ body: { ids: selectedRowKeys } });
-        Toast.success('操作成功');
-        clearSelection();
-      },
-    });
-  };
-
-  const batchEnable = () => {
-    if (selectedRowKeys.length === 0) return;
-    Modal.confirm({
-      title: `确定启用选中的 ${selectedRowKeys.length} 个流程？`,
-      content: '仅「已禁用」状态的流程会被启用，启用后恢复为已发布状态。',
-      onOk: async () => {
-        await batchEnableMutation.mutateAsync({ body: { ids: selectedRowKeys } });
-        Toast.success('操作成功');
-        clearSelection();
-      },
-    });
-  };
+  // 禁用 / 启用只作用于对应状态的流程；禁用后不可发起新申请，走红色实心确认
+  const handleBatchStatus = batchStatusHandler({
+    selectedRowKeys,
+    clearSelection,
+    run: (ids, status) => (status === 'enabled'
+      ? batchEnableMutation.mutateAsync({ body: { ids } })
+      : batchDisableMutation.mutateAsync({ body: { ids } })),
+    confirm: 'always',
+    disableLabel: '禁用',
+    entity: '个流程',
+    danger: true,
+    confirmContent: (status) => (status === 'enabled'
+      ? '仅「已禁用」状态的流程会被启用，启用后恢复为已发布状态。'
+      : '仅「已发布」状态的流程会被禁用，禁用后不可发起新申请。'),
+    successMessage: () => '操作成功',
+  });
 
   const batchDelete = () => {
     if (selectedRowKeys.length === 0) return;
@@ -410,14 +401,10 @@ export default function WorkflowDefinitionsPage() {
   const batchButtons = (
     <>
       {selectedRowKeys.length > 0 && hasPermission('workflow:definition:publish') && (
-        <Button type="warning" icon={<Ban size={14} />} onClick={batchDisable}>
-          批量禁用 ({selectedRowKeys.length})
-        </Button>
+        <BatchDisableButton count={selectedRowKeys.length} label="批量禁用" onClick={() => void handleBatchStatus('disabled')} />
       )}
       {selectedRowKeys.length > 0 && hasPermission('workflow:definition:publish') && (
-        <Button type="tertiary" icon={<CircleCheck size={14} />} onClick={batchEnable}>
-          批量启用 ({selectedRowKeys.length})
-        </Button>
+        <BatchEnableButton count={selectedRowKeys.length} onClick={() => void handleBatchStatus('enabled')} />
       )}
       {selectedRowKeys.length > 0 && hasPermission('workflow:definition:delete') && (
         <BatchDeleteButton count={selectedRowKeys.length} onClick={batchDelete} />

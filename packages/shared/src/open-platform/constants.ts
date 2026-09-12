@@ -53,6 +53,8 @@ export const OPEN_APP_ENVIRONMENT_LABELS: Record<OpenAppEnvironment, string> = {
   sandbox: '沙箱环境',
 };
 
+export const OPEN_APP_ENVIRONMENT_OPTIONS = createLabelOptions(OPEN_APP_ENVIRONMENTS, OPEN_APP_ENVIRONMENT_LABELS);
+
 export const OPEN_APP_REVIEW_STATUSES = ['draft', 'pending', 'approved', 'rejected'] as const;
 
 export type OpenAppReviewStatus = typeof OPEN_APP_REVIEW_STATUSES[number];
@@ -63,6 +65,8 @@ export const OPEN_APP_REVIEW_STATUS_LABELS: Record<OpenAppReviewStatus, string> 
   approved: '已通过',
   rejected: '已驳回',
 };
+
+export const OPEN_APP_REVIEW_STATUS_OPTIONS = createLabelOptions(OPEN_APP_REVIEW_STATUSES, OPEN_APP_REVIEW_STATUS_LABELS);
 
 export const OAUTH2_TOKEN_EXPIRY = {
   accessToken: 2 * 60 * 60, // 2 小时（秒）

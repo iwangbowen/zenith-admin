@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
 import ModalFooter from '@/components/ModalFooter';
 import { useNavigate } from 'react-router-dom';
-import { Banner, Button, Checkbox, Col, Form, Modal, Row, SideSheet, Spin, Tag, TagGroup, Toast, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Checkbox, Col, Form, Modal, Row, SideSheet, Spin, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Activity } from 'lucide-react';
 import { enumValueOf } from '@zenith/shared/core';
-import { OAUTH2_GRANT_TYPE_LABELS, OAUTH2_GRANT_TYPES, OPEN_APP_ENVIRONMENT_LABELS, OPEN_APP_ENVIRONMENTS, OPEN_APP_REVIEW_STATUS_LABELS, OPEN_APP_REVIEW_STATUSES } from '@zenith/shared/open-platform';
+import { OAUTH2_GRANT_TYPE_LABELS, OAUTH2_GRANT_TYPES, OPEN_APP_ENVIRONMENT_OPTIONS, OPEN_APP_REVIEW_STATUS_OPTIONS } from '@zenith/shared/open-platform';
 import type { OAuth2Client, OAuth2GrantType } from '@zenith/shared/open-platform';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -28,6 +28,7 @@ import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/li
 import { useEditModal } from '@/hooks/useEditModal';
 import { MetricMeter, type MetricMeterTone } from '@/components/data-viz/MetricMeter';
 import { copyableNoColumn, dateTimeColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
+import { openAppEnvironmentColumn, openAppReviewStatusColumn, openAppScopesColumn } from '../open-app-columns';
 
 const { Paragraph, Text } = Typography;
 
@@ -147,23 +148,9 @@ export default function MyAppsPage() {
   const columns: ColumnProps<OAuth2Client>[] = [
     { title: '应用名称', dataIndex: 'name', minWidth: 240, render: renderEllipsis },
     copyableNoColumn('Client ID', 'clientId', { width: 270 }),
-    {
-      title: '环境',
-      dataIndex: 'environment',
-      width: 100,
-      render: (value: OAuth2Client['environment']) => <Tag size="small" color={value === 'sandbox' ? 'orange' : 'blue'}>{OPEN_APP_ENVIRONMENT_LABELS[value]}</Tag>,
-    },
-    {
-      title: '审核状态',
-      dataIndex: 'reviewStatus',
-      width: 110,
-      render: (value: OAuth2Client['reviewStatus']) => (
-        <Tag size="small" color={value === 'approved' ? 'green' : value === 'rejected' ? 'red' : value === 'pending' ? 'orange' : 'grey'}>
-          {OPEN_APP_REVIEW_STATUS_LABELS[value]}
-        </Tag>
-      ),
-    },
-    { title: 'Scope', dataIndex: 'allowedScopes', width: 240, render: (values: string[]) => <TagGroup maxTagCount={2} showPopover size="small" tagList={(values ?? []).map((value) => ({ tagKey: value, children: value, size: 'small' as const }))} /> },
+    openAppEnvironmentColumn(),
+    openAppReviewStatusColumn(),
+    openAppScopesColumn(),
     dateTimeColumn('创建时间', 'createdAt'),
     {
       title: '状态',
@@ -225,12 +212,12 @@ export default function MyAppsPage() {
           <>
             <FilterSelect
               placeholder="全部环境"
-              items={OPEN_APP_ENVIRONMENTS.map((value) => ({ value, label: OPEN_APP_ENVIRONMENT_LABELS[value] }))}
+              items={OPEN_APP_ENVIRONMENT_OPTIONS}
               {...bind('environment')}
             />
             <FilterSelect
               placeholder="全部审核状态"
-              items={OPEN_APP_REVIEW_STATUSES.map((value) => ({ value, label: OPEN_APP_REVIEW_STATUS_LABELS[value] }))}
+              items={OPEN_APP_REVIEW_STATUS_OPTIONS}
               {...bind('reviewStatus')}
               width={140}
             />
@@ -261,7 +248,7 @@ export default function MyAppsPage() {
           <Form key={modal.formKey} {...modal.formProps}>
             <Row gutter={16}>
               <Col span={12}><Form.Input field="name" label="应用名称" rules={[{ required: true, message: '请输入应用名称' }]} /></Col>
-              <Col span={12}><Form.Select field="environment" label="环境" optionList={OPEN_APP_ENVIRONMENTS.map((value) => ({ value, label: OPEN_APP_ENVIRONMENT_LABELS[value] }))} rules={[{ required: true, message: '请选择环境' }]} style={{ width: '100%' }} /></Col>
+              <Col span={12}><Form.Select field="environment" label="环境" optionList={OPEN_APP_ENVIRONMENT_OPTIONS} rules={[{ required: true, message: '请选择环境' }]} style={{ width: '100%' }} /></Col>
             </Row>
             <Form.TagInput field="redirectUris" label="回调 URL" placeholder="授权码模式必填，输入后回车" />
             <Form.CheckboxGroup field="allowedScopes" label="允许 Scope" direction="horizontal" rules={[{ required: true, message: '请选择 Scope' }]}>

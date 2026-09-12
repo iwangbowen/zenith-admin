@@ -25,14 +25,14 @@ import { REPORT_DATASOURCE_TYPE_OPTIONS, REPORT_DATASOURCE_TYPES, isExternalDbTy
 import { useDictItems } from '@/hooks/useDictItems';
 import { renderReportDatasourceTypeTag } from './report-datasource-ui';
 import { ReportFolderFilter, ReportOwnerFilter } from './report-filters';
-import { ReportBatchStatusButtons, ReportOwnerFolderFields, useReportBatchStatus } from './report-form-fields';
+import { ReportOwnerFolderFields } from './report-form-fields';
 import { useReportOwnerFolderOptions } from './report-lookups';
 import { useListSearch } from '@/hooks/useListSearch';
 import { compactParams } from '@/lib/query';
-import { CreateButton } from '@/components/toolbar-controls';
+import { BatchStatusButtons, CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
-import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle, useRowSelection } from '@/components/list-page';
+import { batchStatusHandler, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle, useRowSelection } from '@/components/list-page';
 
 interface SearchParams { keyword: string; type?: string; status?: string; ownerId?: number; folderId?: number }
 const defaultSearchParams: SearchParams = { keyword: '', type: undefined, status: undefined, ownerId: undefined, folderId: undefined };
@@ -57,7 +57,7 @@ export default function DataSourcesPage() {
     folderId: submittedParams.folderId,
   }), [submittedParams]);
 
-  const { selectedRowKeys, setSelectedRowKeys, rowSelection } = useRowSelection();
+  const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
 
   const listQuery = useReportDatasourceList({ page, pageSize, ...filterQuery });
   const { userOptions, folderOptions } = useReportOwnerFolderOptions('datasource');
@@ -185,8 +185,10 @@ export default function DataSourcesPage() {
     return <Typography.Text type="tertiary">未检测</Typography.Text>;
   }
 
-  const handleBatchStatus = useReportBatchStatus({
-    selectedRowKeys, setSelectedRowKeys, mutation: batchStatusMutation, confirmEntity: '数据源',
+  const handleBatchStatus = batchStatusHandler({
+    selectedRowKeys, clearSelection,
+    run: (ids, status) => batchStatusMutation.mutateAsync({ body: { ids, status } }),
+    confirm: 'always', entity: '个数据源',
     confirmContent: (status) => (status === 'disabled' ? '停用后相关数据集将无法继续取数。' : '启用后数据集可继续使用这些数据源。'),
   });
 
@@ -272,7 +274,9 @@ export default function DataSourcesPage() {
   const toolbarActions = (
     <>
       {renderBatchHealthBtn()}
-      <ReportBatchStatusButtons visible={selectedRowKeys.length > 0 && hasPermission('report:datasource:update')} onChange={handleBatchStatus} />
+      {selectedRowKeys.length > 0 && hasPermission('report:datasource:update') && (
+        <BatchStatusButtons count={selectedRowKeys.length} onChange={handleBatchStatus} />
+      )}
     </>
   );
 

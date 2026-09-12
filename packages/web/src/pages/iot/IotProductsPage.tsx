@@ -6,7 +6,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { CreateButton } from '@/components/toolbar-controls';
 import AppModal from '@/components/AppModal';
-import { createdAtColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
+import { createdAtColumn, renderEllipsis, EMPTY_PLACEHOLDER, enabledStatusColumn } from '@/utils/table-columns';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -16,7 +16,6 @@ import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/li
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import { IOT_VALIDATION_MODE_OPTIONS } from '@zenith/shared/iot';
-import { IotEnabledTag } from './components/IotStatus';
 import type { CreateIotProductInput, IotProduct } from '@zenith/shared/iot';
 import {
   iotProductKeys, useDeleteIotProducts, useIotProductList, useSaveIotProduct,
@@ -108,10 +107,7 @@ export default function IotProductsPage() {
       render: (v: number) => <Text strong>{v}</Text>,
     },
     createdAtColumn,
-    {
-      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (v: IotProduct['status']) => <IotEnabledTag status={v} />,
-    },
+    enabledStatusColumn(),
     createOperationColumn<IotProduct>({
       width: 220,
       actions: (record) => [

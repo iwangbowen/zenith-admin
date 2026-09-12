@@ -7,7 +7,7 @@ import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-fi
 import { CreateButton } from '@/components/toolbar-controls';
 import AppModal from '@/components/AppModal';
 import UserSelect from '@/components/UserSelect';
-import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis, enabledStatusColumn } from '@/utils/table-columns';
 import { StatCard, StatGrid } from '@/components/charts';
 import { formatDateForApi } from '@/utils/date';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -28,7 +28,6 @@ import type {
   CreateIotAlarmRuleInput, CreateIotMaintenanceWindowInput, IotAlarm, IotAlarmRule, IotMaintenanceWindow,
 } from '@zenith/shared/iot';
 import { IotDeviceSelectField, IotProductSelectField, useIotGroupOptions, useIotProductOptions } from './components/IotSelectors';
-import { IotEnabledTag } from './components/IotStatus';
 import { IotEventSelectField, IotPropertyConditionFields } from './components/ThingModelFields';
 import { formatIotDateTime } from './iot-form-utils';
 import {
@@ -415,10 +414,7 @@ function AlarmRulesTab() {
       render: (_: unknown, r: IotAlarmRule) => r.notifyUserIds.length > 0 ? `${r.notifyUserIds.length} 人` : EMPTY_PLACEHOLDER,
     },
     createdAtColumn,
-    {
-      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (v: IotAlarmRule['status']) => <IotEnabledTag status={v} />,
-    },
+    enabledStatusColumn(),
     createOperationColumn<IotAlarmRule>({
       width: 150,
       actions: (record) => [

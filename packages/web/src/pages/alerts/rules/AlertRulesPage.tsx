@@ -1,11 +1,11 @@
 import { useMemo } from 'react';
 import { compactParams } from '@/lib/query';
 import { useNavigate } from 'react-router-dom';
-import { Button, Form, Space, Spin, Toast, Modal, Tag, Row, Col, Select, withField } from '@douyinfe/semi-ui';
+import { Form, Space, Spin, Toast, Tag, Row, Col, Select, withField } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle, useRowSelection } from '@/components/list-page';
+import { batchStatusHandler, confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle, useRowSelection } from '@/components/list-page';
 import AppModal from '@/components/AppModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -29,7 +29,7 @@ import {
   MONITOR_METRIC_META as METRIC_META,
   formatMonitorMetricValue,
 } from './constants';
-import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
+import { BatchDeleteButton, BatchStatusButtons, CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import AlertRecipientUserSelect from './AlertRecipientUserSelect';
@@ -175,20 +175,15 @@ export default function AlertRulesPage() {
     });
   }
 
-  function handleBatchToggle(enabled: boolean) {
-    const doToggle = async () => {
-      await batchToggleMutation.mutateAsync({ body: { ids: selectedRowKeys, enabled } });
-      Toast.success(enabled ? '已批量启用' : '已批量停用');
-      clearSelection();
-    };
-    // 停用是非破坏性确认，用原生 Modal.confirm
-    if (enabled) void doToggle();
-    else Modal.confirm({
-      title: '确认批量停用',
-      content: `停用后选中的 ${selectedRowKeys.length} 条规则将不再参与评估，其未恢复的告警会被关闭。`,
-      onOk: doToggle,
-    });
-  }
+  // 停用会让规则退出评估并关闭其未恢复的告警，需要确认（非破坏性，普通样式）
+  const handleBatchStatus = batchStatusHandler({
+    selectedRowKeys,
+    clearSelection,
+    run: (ids, status) => batchToggleMutation.mutateAsync({ body: { ids, enabled: status === 'enabled' } }),
+    entity: '条规则',
+    confirmContent: (_status, count) => `停用后选中的 ${count} 条规则将不再参与评估，其未恢复的告警会被关闭。`,
+    successMessage: (status) => (status === 'enabled' ? '已批量启用' : '已批量停用'),
+  });
 
   const columns: ColumnProps<MonitorAlertRule>[] = [
     { title: '规则名称', dataIndex: 'name', width: 180, fixed: 'left' },
@@ -258,14 +253,7 @@ export default function AlertRulesPage() {
   const renderBatchActions = () => selectedRowKeys.length > 0 ? (
     <>
       {canUpdate && (
-        <>
-          <Button theme="light" onClick={() => handleBatchToggle(true)} loading={batchToggleMutation.isPending}>
-            批量启用 ({selectedRowKeys.length})
-          </Button>
-          <Button theme="light" onClick={() => handleBatchToggle(false)} loading={batchToggleMutation.isPending}>
-            批量停用 ({selectedRowKeys.length})
-          </Button>
-        </>
+        <BatchStatusButtons count={selectedRowKeys.length} onChange={handleBatchStatus} loading={batchToggleMutation.isPending} />
       )}
       {canDelete && (
         <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />

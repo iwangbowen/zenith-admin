@@ -10,7 +10,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { CreateButton } from '@/components/toolbar-controls';
 import AppModal from '@/components/AppModal';
-import { EMPTY_PLACEHOLDER, copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis, enabledStatusColumn } from '@/utils/table-columns';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
@@ -27,7 +27,6 @@ import {
 } from '@zenith/shared/iot';
 import type { IotFirmware, IotOtaTask, IotOtaTaskDevice, UpdateIotFirmwareInput } from '@zenith/shared/iot';
 import { IotProductSelectField, useIotDeviceOptions, useIotGroupOptions, useIotProductOptions } from './components/IotSelectors';
-import { IotEnabledTag } from './components/IotStatus';
 import {
   iotFirmwareKeys, iotOtaTaskKeys, useCancelIotOtaTask, useCreateIotOtaTask, useDeleteIotFirmwares,
   useReleaseNextIotOtaBatch, useResumeIotOtaTask,
@@ -132,10 +131,7 @@ function FirmwaresTab({ onCreateTask }: Readonly<{ onCreateTask: (firmware: IotF
       render: (v: string | null) => v ? renderEllipsis(v) : EMPTY_PLACEHOLDER,
     },
     createdAtColumn,
-    {
-      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (v: IotFirmware['status']) => <IotEnabledTag status={v} />,
-    },
+    enabledStatusColumn(),
     createOperationColumn<IotFirmware>({
       width: 150,
       desktopInlineKeys: ['upgrade'],

@@ -10,7 +10,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import ExportButton from '@/components/ExportButton';
 import ImportButton from '@/components/ImportButton';
 import AppModal from '@/components/AppModal';
-import { EMPTY_PLACEHOLDER, copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, copyableNoColumn, dateTimeColumn, renderEllipsis, enabledStatusColumn } from '@/utils/table-columns';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -21,7 +21,6 @@ import { abortSubmit } from '@/lib/abort-submit';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import type { CreateIotDeviceGroupInput, CreateIotDeviceInput, IotDevice, IotDeviceGroup, IotMetricValue } from '@zenith/shared/iot';
 import { IOT_NODE_TYPES, IOT_NODE_TYPE_OPTIONS } from '@zenith/shared/iot';
-import { IotEnabledTag } from './components/IotStatus';
 import { IotProductSelectField, useIotGroupOptions, useIotProductOptions } from './components/IotSelectors';
 import { parseJsonObjectInput } from './iot-form-utils';
 import {
@@ -250,10 +249,7 @@ export default function IotDevicesPage() {
       render: (v: string | null) => v ?? EMPTY_PLACEHOLDER,
     },
     dateTimeColumn<IotDevice>('最后在线', 'lastSeenAt'),
-    {
-      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (v: IotDevice['status']) => <IotEnabledTag status={v} />,
-    },
+    enabledStatusColumn(),
     createOperationColumn<IotDevice>({
       width: 120,
       desktopInlineKeys: ['detail'],

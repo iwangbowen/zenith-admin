@@ -29,14 +29,14 @@ import {
 } from '@/hooks/queries/report-dashboards';
 import { useDictItems } from '@/hooks/useDictItems';
 import { ReportFolderFilter, ReportOwnerFilter } from './report-filters';
-import { ReportBatchStatusButtons, ReportOwnerFolderFields, useReportBatchStatus } from './report-form-fields';
+import { ReportOwnerFolderFields } from './report-form-fields';
 import { useReportOwnerFolderOptions } from './report-lookups';
 import { useReportDeprecationList } from '@/hooks/queries/report-assets';
 import { useListSearch } from '@/hooks/useListSearch';
 import { compactParams } from '@/lib/query';
-import { CreateButton } from '@/components/toolbar-controls';
+import { BatchStatusButtons, CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
+import { batchStatusHandler, confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 
 interface SearchParams { keyword: string; status?: string; lifecycleStatus?: ReportDashboard['lifecycleStatus']; categoryId?: number; favorited: boolean; ownerId?: number; folderId?: number }
 const defaultSearchParams: SearchParams = { keyword: '', status: undefined, lifecycleStatus: undefined, favorited: false, ownerId: undefined, folderId: undefined };
@@ -64,7 +64,7 @@ export default function DashboardListPage() {
     folderId: submittedParams.folderId,
   }), [submittedParams]);
 
-  const { selectedRowKeys, setSelectedRowKeys, rowSelection } = useRowSelection();
+  const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
   const [categorySheetVisible, setCategorySheetVisible] = useState(false);
   const [shareTarget, setShareTarget] = useState<number | null>(null);
   const [versionTarget, setVersionTarget] = useState<number | null>(null);
@@ -133,7 +133,12 @@ export default function DashboardListPage() {
     successMessage: ({ isEdit }) => isEdit ? '分类更新成功' : '分类创建成功',
   });
 
-  const handleBatchStatus = useReportBatchStatus({ selectedRowKeys, setSelectedRowKeys, mutation: batchStatusMutation });
+  // 仪表盘批量启停不弹确认（与此前一致）
+  const handleBatchStatus = batchStatusHandler({
+    selectedRowKeys, clearSelection,
+    run: (ids, status) => batchStatusMutation.mutateAsync({ body: { ids, status } }),
+    confirm: 'never',
+  });
 
   async function handleClone(record: ReportDashboard) {
     const cloned = await cloneMutation.mutateAsync({ params: { id: record.id }, body: {} });
@@ -226,7 +231,9 @@ export default function DashboardListPage() {
     ? <Button icon={<FolderTree size={14} />} onClick={() => setCategorySheetVisible(true)}>分类管理</Button> : null;
   const toolbarActions = (
     <>
-      <ReportBatchStatusButtons visible={selectedRowKeys.length > 0 && hasPermission('report:dashboard:update')} onChange={handleBatchStatus} />
+      {selectedRowKeys.length > 0 && hasPermission('report:dashboard:update') && (
+        <BatchStatusButtons count={selectedRowKeys.length} onChange={handleBatchStatus} />
+      )}
       {renderCategoryManageBtn()}
     </>
   );

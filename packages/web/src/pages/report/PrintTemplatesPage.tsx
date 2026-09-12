@@ -28,13 +28,13 @@ import type { CreateReportPrintTemplateInput, ReportPrintRenderResult, ReportPri
 import type { ExportJobFormat } from '@zenith/shared/tasks';
 import { useDictItems } from '@/hooks/useDictItems';
 import { ReportFolderFilter, ReportOwnerFilter } from './report-filters';
-import { ReportBatchStatusButtons, ReportOwnerFolderFields, useReportBatchStatus } from './report-form-fields';
+import { ReportOwnerFolderFields } from './report-form-fields';
 import { useReportOwnerFolderOptions } from './report-lookups';
 import { useListSearch } from '@/hooks/useListSearch';
 import { compactParams } from '@/lib/query';
-import { CreateButton } from '@/components/toolbar-controls';
+import { BatchStatusButtons, CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle, useRowSelection } from '@/components/list-page';
+import { batchStatusHandler, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle, useRowSelection } from '@/components/list-page';
 
 interface SearchParams { keyword: string; status?: string; ownerId?: number; folderId?: number }
 const defaultSearchParams: SearchParams = { keyword: '', status: undefined, ownerId: undefined, folderId: undefined };
@@ -59,7 +59,7 @@ export default function PrintTemplatesPage() {
     folderId: submittedParams.folderId,
   }), [submittedParams]);
 
-  const { selectedRowKeys, setSelectedRowKeys, rowSelection } = useRowSelection();
+  const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
   // 新增 / 编辑弹窗中的数据来源（控制数据集选择器显隐）；打开弹窗时随记录回填
   const [dialogSourceType, setDialogSourceType] = useState<ReportPrintSourceType>('dataset');
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -123,8 +123,10 @@ export default function PrintTemplatesPage() {
     Toast.success(`已复制为「${cloned.name}」`);
   }
 
-  const handleBatchStatus = useReportBatchStatus({
-    selectedRowKeys, setSelectedRowKeys, mutation: batchStatusMutation, confirmEntity: '打印模板',
+  const handleBatchStatus = batchStatusHandler({
+    selectedRowKeys, clearSelection,
+    run: (ids, status) => batchStatusMutation.mutateAsync({ body: { ids, status } }),
+    confirm: 'always', entity: '个打印模板',
   });
 
   async function runPreview(record: ReportPrintTemplate, values: Record<string, unknown>) {
@@ -240,9 +242,9 @@ export default function PrintTemplatesPage() {
     }),
   ];
 
-  const batchStatusButtons = (
-    <ReportBatchStatusButtons visible={selectedRowKeys.length > 0 && hasPermission('report:print:update')} onChange={handleBatchStatus} />
-  );
+  const batchStatusButtons = selectedRowKeys.length > 0 && hasPermission('report:print:update') ? (
+    <BatchStatusButtons count={selectedRowKeys.length} onChange={handleBatchStatus} />
+  ) : null;
 
   return (
     <div className="page-container">

@@ -9,7 +9,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { CreateButton } from '@/components/toolbar-controls';
 import UserSelect from '@/components/UserSelect';
-import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis, enabledStatusColumn } from '@/utils/table-columns';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -28,7 +28,7 @@ import {
 } from '@zenith/shared/iot';
 import type { CreateIotAutomationInput, IotAutomation, IotAutomationAction, IotAutomationRun } from '@zenith/shared/iot';
 import { IotDeviceSelectField, IotProductSelectField, useIotDeviceOptions, useIotGroupOptions } from './components/IotSelectors';
-import { IotEnabledTag, IotSuccessTag } from './components/IotStatus';
+import { IotSuccessTag } from './components/IotStatus';
 import { IotEventSelectField, IotPropertyConditionFields, useIotThingModelSelects } from './components/ThingModelFields';
 import { jsonObjectToText, parseJsonObjectInput } from './iot-form-utils';
 import { usePublishedWorkflowDefinitions } from '@/hooks/queries/workflow-definitions';
@@ -238,10 +238,7 @@ function AutomationRulesTab({ onShowRuns }: Readonly<{ onShowRuns: (automation: 
         : EMPTY_PLACEHOLDER,
     },
     createdAtColumn,
-    {
-      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (v: IotAutomation['status']) => <IotEnabledTag status={v} />,
-    },
+    enabledStatusColumn(),
     createOperationColumn<IotAutomation>({
       width: 240,
       actions: (record) => [

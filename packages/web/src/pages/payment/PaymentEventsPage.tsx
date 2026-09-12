@@ -6,6 +6,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { JsonBlock } from '@/components/JsonBlock';
+import { PaymentExpandedDetail } from './payment-expanded-detail';
 import { usePermission } from '@/hooks/usePermission';
 import { PAYMENT_OUTBOX_EVENT_STATUS_LABELS, PAYMENT_OUTBOX_EVENT_STATUS_OPTIONS, PAYMENT_OUTBOX_EVENT_STATUSES, type PaymentOutboxEvent } from '@zenith/shared/payment';
 import { paymentEventKeys, usePaymentEventList, usePaymentOpsHealth, useRedispatchPaymentEvent } from '@/hooks/queries/payment-events';
@@ -101,20 +102,13 @@ export default function PaymentEventsPage() {
 
   /** 行内展开：完整错误信息与事件载荷 */
   const renderExpanded = (r?: PaymentOutboxEvent) => (r ? (
-    // flex: 1 + minWidth: 0：Semi 展开行容器是 flex row，不声明会被收缩成内容最小宽
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '4px 0', flex: 1, minWidth: 0 }}>
-      <Typography.Text type="tertiary" size="small">事件 ID：{r.id}</Typography.Text>
-      {r.lastError && (
-        <div>
-          <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>最近错误</Typography.Text>
-          <Typography.Text type="danger" style={{ wordBreak: 'break-all' }}>{r.lastError}</Typography.Text>
-        </div>
-      )}
-      <div>
-        <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>事件载荷</Typography.Text>
-        <JsonBlock value={formatPayload(r.payload)} />
-      </div>
-    </div>
+    <PaymentExpandedDetail
+      meta={`事件 ID：${r.id}`}
+      sections={[
+        { title: '最近错误', visible: Boolean(r.lastError), content: <Typography.Text type="danger" style={{ wordBreak: 'break-all' }}>{r.lastError}</Typography.Text> },
+        { title: '事件载荷', content: <JsonBlock value={formatPayload(r.payload)} /> },
+      ]}
+    />
   ) : null);
 
   // 与订单统计等页面统一的无边框统计形态（StatGrid/StatCard）

@@ -110,6 +110,27 @@ export function renderEnabledStatusTag(value: string): React.ReactNode {
   );
 }
 
+/**
+ * 只读的启用 / 禁用状态列（默认「状态」/ `status` / 80 / `fixed: 'right'`，与 `useStatusToggle().column()` 同位同宽），
+ * 用于当前用户不可切换、或在别处（详情 / 弹窗）切换状态的列表。
+ *
+ * @example
+ * const columns = [..., enabledStatusColumn(), createOperationColumn(...)];
+ * enabledStatusColumn({ fixed: undefined })   // 弹窗内的小表格不固定
+ */
+export function enabledStatusColumn<RecordType extends Data = Data>(
+  options: Omit<ColumnProps<RecordType>, 'render'> = {},
+): ColumnProps<RecordType> {
+  return {
+    title: '状态',
+    dataIndex: 'status',
+    width: 80,
+    fixed: 'right',
+    ...options,
+    render: renderEnabledStatusTag,
+  };
+}
+
 type DateColumnValue = Date | string | number | null | undefined;
 
 /** 时间戳数值的单位；后端多数返回字符串时间，Docker 等外部系统返回 unix 秒 */

@@ -13,7 +13,7 @@
  */
 import type { ReactNode } from 'react';
 import { Button } from '@douyinfe/semi-ui';
-import { Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
+import { Ban, CircleCheck, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
 
 interface ToolbarButtonProps {
   readonly onClick?: () => void;
@@ -78,5 +78,50 @@ export function BatchDeleteButton({ count, onClick, disabled, loading, label = '
     <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={onClick} disabled={disabled} loading={loading}>
       {label} ({count})
     </Button>
+  );
+}
+
+interface BatchStatusButtonProps extends Omit<ToolbarButtonProps, 'children'> {
+  /** 当前选中数，拼进文案 */
+  readonly count: number;
+  /** 覆盖默认文案（「批量启用」/「批量停用」），如「批量禁用」 */
+  readonly label?: ReactNode;
+}
+
+/** 批量启用按钮（浅色 + 对勾图标），文案带选中数；渲染时机同 `BatchDeleteButton`，由调用方按「有选中 && 有权限」判断 */
+export function BatchEnableButton({ count, onClick, disabled, loading, label = '批量启用' }: BatchStatusButtonProps) {
+  return (
+    <Button theme="light" icon={<CircleCheck size={14} />} onClick={onClick} disabled={disabled} loading={loading}>
+      {label} ({count})
+    </Button>
+  );
+}
+
+/** 批量停用 / 禁用按钮（浅色 warning + 禁止图标）；停用是破坏性语义（如禁用账号）时传 `danger` */
+export function BatchDisableButton({ count, onClick, disabled, loading, label = '批量停用', danger = false }: BatchStatusButtonProps & { readonly danger?: boolean }) {
+  return (
+    <Button type={danger ? 'danger' : 'warning'} theme="light" icon={<Ban size={14} />} onClick={onClick} disabled={disabled} loading={loading}>
+      {label} ({count})
+    </Button>
+  );
+}
+
+interface BatchStatusButtonsProps {
+  readonly count: number;
+  /** 通常是 `components/list-page` 的 `batchStatusHandler(...)` 返回值 */
+  readonly onChange: (status: 'enabled' | 'disabled') => void | Promise<void>;
+  /** 停用侧文案，如「批量禁用」 */
+  readonly disableLabel?: ReactNode;
+  readonly danger?: boolean;
+  readonly loading?: boolean;
+}
+
+/** 「批量启用 + 批量停用」按钮对；是否渲染仍由调用方按「有选中 && 有权限」判断 */
+export function BatchStatusButtons({ count, onChange, disableLabel, danger, loading }: BatchStatusButtonsProps) {
+  return (
+    <>
+      <BatchEnableButton count={count} onClick={() => void onChange('enabled')} loading={loading} />
+      <BatchDisableButton count={count} label={disableLabel} danger={danger} onClick={() => void onChange('disabled')} loading={loading} />
+    </>
   );
 }

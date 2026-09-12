@@ -3,10 +3,11 @@ import ModalFooter from '@/components/ModalFooter';
 import { useNavigate } from 'react-router-dom';
 import { Button, Tag, TagGroup, Modal, Form, Toast, Typography, Checkbox, Spin, Banner, Row, Col, SideSheet, TextArea } from '@douyinfe/semi-ui';
 import { enumValueOf } from '@zenith/shared/core';
-import { OAUTH2_GRANT_TYPE_LABELS, OAUTH2_GRANT_TYPES, OAUTH2_SCOPE_LABELS, OAUTH2_SCOPES, OPEN_APP_ENVIRONMENT_LABELS, OPEN_APP_ENVIRONMENTS, OPEN_APP_REVIEW_STATUS_LABELS, OPEN_APP_REVIEW_STATUSES } from '@zenith/shared/open-platform';
+import { OAUTH2_GRANT_TYPE_LABELS, OAUTH2_GRANT_TYPES, OAUTH2_SCOPE_LABELS, OAUTH2_SCOPES, OPEN_APP_ENVIRONMENT_OPTIONS, OPEN_APP_REVIEW_STATUS_OPTIONS } from '@zenith/shared/open-platform';
 import type { OAuth2Client, OAuth2GrantType } from '@zenith/shared/open-platform';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { copyableNoColumn, createdAtColumn } from '@/utils/table-columns';
+import { openAppEnvironmentColumn, openAppReviewStatusColumn, openAppScopesColumn } from '../../open-platform/open-app-columns';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
@@ -211,37 +212,9 @@ export default function OAuth2AppsPage() {
         />
       ),
     },
-    {
-      title: '权限范围',
-      dataIndex: 'allowedScopes',
-      width: 220,
-      render: (v: string[]) => (
-        <TagGroup
-          maxTagCount={2}
-          showPopover
-          size="small"
-          tagList={(v ?? []).map((s) => ({ tagKey: s, children: s, color: 'blue' as const, size: 'small' as const }))}
-        />
-      ),
-    },
-    {
-      title: '环境',
-      dataIndex: 'environment',
-      width: 100,
-      render: (value: OAuth2Client['environment']) => (
-        <Tag size="small" color={value === 'sandbox' ? 'orange' : 'blue'}>{OPEN_APP_ENVIRONMENT_LABELS[value]}</Tag>
-      ),
-    },
-    {
-      title: '审核',
-      dataIndex: 'reviewStatus',
-      width: 100,
-      render: (value: OAuth2Client['reviewStatus']) => (
-        <Tag size="small" color={value === 'approved' ? 'green' : value === 'rejected' ? 'red' : value === 'pending' ? 'orange' : 'grey'}>
-          {OPEN_APP_REVIEW_STATUS_LABELS[value]}
-        </Tag>
-      ),
-    },
+    openAppScopesColumn({ title: '权限范围', width: 220, color: 'blue' }),
+    openAppEnvironmentColumn(),
+    openAppReviewStatusColumn({ title: '审核', width: 100 }),
     {
       title: '限流套餐',
       dataIndex: 'ratePlanId',
@@ -324,12 +297,12 @@ export default function OAuth2AppsPage() {
           <>
             <FilterSelect
               placeholder="全部环境"
-              items={OPEN_APP_ENVIRONMENTS.map((value) => ({ value, label: OPEN_APP_ENVIRONMENT_LABELS[value] }))}
+              items={OPEN_APP_ENVIRONMENT_OPTIONS}
               {...bind('environment')}
             />
             <FilterSelect
               placeholder="全部审核状态"
-              items={OPEN_APP_REVIEW_STATUSES.map((value) => ({ value, label: OPEN_APP_REVIEW_STATUS_LABELS[value] }))}
+              items={OPEN_APP_REVIEW_STATUS_OPTIONS}
               {...bind('reviewStatus')}
               width={140}
             />
@@ -428,7 +401,7 @@ export default function OAuth2AppsPage() {
                 <Form.Select
                   field="environment"
                   label="运行环境"
-                  optionList={OPEN_APP_ENVIRONMENTS.map((value) => ({ value, label: OPEN_APP_ENVIRONMENT_LABELS[value] }))}
+                  optionList={OPEN_APP_ENVIRONMENT_OPTIONS}
                   style={{ width: '100%' }}
                   rules={[{ required: true, message: '请选择运行环境' }]}
                 />

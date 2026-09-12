@@ -2,12 +2,12 @@
  * 流程定义页左侧分类侧栏
  */
 import { useState } from 'react';
-import { Button, Dropdown, Form, Input } from '@douyinfe/semi-ui';
-import { MoreHorizontal, Plus, Layers, LayoutGrid, Pencil, Trash2 } from 'lucide-react';
+import { Button, Form, Input } from '@douyinfe/semi-ui';
+import { Plus, Layers, LayoutGrid, Pencil, Trash2 } from 'lucide-react';
 import type { CreateWorkflowCategoryInput, WorkflowCategory } from '@zenith/shared/workflow';
 import AppModal from '@/components/AppModal';
 import { useDeleteWorkflowCategories, useSaveWorkflowCategory } from '@/hooks/useWorkflowCategories';
-import { NavListPanel, NavListItem } from '@/components/NavListPanel';
+import { NavListPanel, NavListItem, NavListItemActions } from '@/components/NavListPanel';
 import { confirmAndDelete } from '@/components/list-page';
 import { useEditModal } from '@/hooks/useEditModal';
 
@@ -107,35 +107,10 @@ export default function CategorySidebar({ categories, selectedId, onSelect, onCh
               primary={item.name}
               extra={
                 canManage && !isAll ? (
-                  <Dropdown
-                    trigger="click"
-                    position="bottomRight"
-                    clickToHide
-                    render={
-                      <Dropdown.Menu>
-                        <Dropdown.Item onClick={() => openEdit(item as WorkflowCategory)}>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <Pencil size={14} /> 编辑
-                          </span>
-                        </Dropdown.Item>
-                        <Dropdown.Item
-                          type="danger"
-                          onClick={() => handleDelete(item as WorkflowCategory)}
-                        >
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <Trash2 size={14} /> 删除
-                          </span>
-                        </Dropdown.Item>
-                      </Dropdown.Menu>
-                    }
-                  >
-                    <Button
-                      theme="borderless"
-                      size="small"
-                      icon={<MoreHorizontal size={14} />}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  </Dropdown>
+                  <NavListItemActions items={[
+                    { key: 'edit', label: '编辑', icon: <Pencil size={14} />, onClick: () => openEdit(item as WorkflowCategory) },
+                    { key: 'delete', label: '删除', icon: <Trash2 size={14} />, danger: true, onClick: () => handleDelete(item as WorkflowCategory) },
+                  ]} />
                 ) : undefined
               }
             />

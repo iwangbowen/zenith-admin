@@ -31,16 +31,16 @@ import VisualModelBuilder from './components/VisualModelBuilder';
 import { useDictItems } from '@/hooks/useDictItems';
 import { renderReportDatasourceTypeTag } from './report-datasource-ui';
 import { ReportFolderFilter, ReportOwnerFilter } from './report-filters';
-import { ReportBatchStatusButtons, ReportOwnerFolderFields, useReportBatchStatus } from './report-form-fields';
+import { ReportOwnerFolderFields } from './report-form-fields';
 import { useReportOwnerFolderOptions } from './report-lookups';
 import { useReportDqAnomalyList } from '@/hooks/queries/report-dq';
 import { useReportDeprecationList } from '@/hooks/queries/report-assets';
 import { useListSearch } from '@/hooks/useListSearch';
 import { compactParams } from '@/lib/query';
-import { CreateButton } from '@/components/toolbar-controls';
+import { BatchStatusButtons, CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
-import { deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
+import { batchStatusHandler, deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 
 const DatasetRefsModal = lazy(() => import('./components/DatasetRefsModal').then((module) => ({
   default: module.DatasetRefsModal,
@@ -113,7 +113,7 @@ export default function DatasetsPage() {
     return m;
   }, [datasources]);
 
-  const { selectedRowKeys, setSelectedRowKeys, rowSelection } = useRowSelection();
+  const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
   const [selectedDsId, setSelectedDsId] = useState<number | null>(null);
   const [fields, setFields] = useState<ReportField[]>([]);
   const [computedFields, setComputedFields] = useState<ReportComputedField[]>([]);
@@ -445,8 +445,10 @@ export default function DatasetsPage() {
     Toast.success(`已复制为「${cloned.name}」`);
   }
 
-  const handleBatchStatus = useReportBatchStatus({
-    selectedRowKeys, setSelectedRowKeys, mutation: batchStatusMutation, confirmEntity: '数据集',
+  const handleBatchStatus = batchStatusHandler({
+    selectedRowKeys, clearSelection,
+    run: (ids, status) => batchStatusMutation.mutateAsync({ body: { ids, status } }),
+    confirm: 'always', entity: '个数据集',
   });
 
   async function handleRefreshMaterialize(record: ReportDataset) {
@@ -568,9 +570,9 @@ export default function DatasetsPage() {
   const previewColumns: ColumnProps<Record<string, unknown>>[] = (preview?.columns ?? []).map((c) => ({ title: c, dataIndex: c, width: 140 }));
   const previewData = (preview?.rows ?? []).map((r, i) => ({ ...r, __rk: i }));
 
-  const batchStatusButtons = (
-    <ReportBatchStatusButtons visible={selectedRowKeys.length > 0 && hasPermission('report:dataset:update')} onChange={handleBatchStatus} />
-  );
+  const batchStatusButtons = selectedRowKeys.length > 0 && hasPermission('report:dataset:update') ? (
+    <BatchStatusButtons count={selectedRowKeys.length} onChange={handleBatchStatus} />
+  ) : null;
 
   return (
     <div className="page-container">

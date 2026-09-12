@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Button, Select, Space, Modal, Form, Toast, Tag, Row, Col, Tree, Spin } from '@douyinfe/semi-ui';
+import { Button, Select, Space, Form, Toast, Tag, Row, Col, Tree, Spin } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { ChevronsUpDown, ChevronsDownUp, Building2, KeyRound, ToggleLeft, ToggleRight } from 'lucide-react';
+import { ChevronsUpDown, ChevronsDownUp, Building2, KeyRound } from 'lucide-react';
 import type { CreateUserInput, User, Role, Department, Position } from '@zenith/shared/identity';
 import { USER_STATUSES, enumValueOf, type BodyOf } from '@zenith/shared/core';
 import { userContract } from '@zenith/shared/identity';
@@ -46,10 +46,10 @@ import {
   useUserList,
   userKeys,
 } from '@/hooks/queries/users';
-import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
+import { BatchDeleteButton, BatchStatusButtons, CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
-import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
+import { batchStatusHandler, confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useSensitiveFormFields } from '@/hooks/useSensitiveFormFields';
 import { SensitiveFormInput, SensitiveText } from '@/components/sensitive';
@@ -232,20 +232,16 @@ export default function UsersPage() {
     disabled: (user) => isAdminUser(user) || !hasPermission('system:user:update'),
   });
 
-  const handleBatchStatus = (status: 'enabled' | 'disabled') => {
-    if (selectedNonAdminIds.length === 0) return;
-    const label = status === 'enabled' ? '启用' : '停用';
-    Modal.confirm({
-      title: `确认批量${label}选中的 ${selectedNonAdminIds.length} 个用户？`,
-      content: status === 'disabled' ? '停用后该用户将无法登录。' : '启用后该用户可正常登录。',
-      okButtonProps: { type: status === 'disabled' ? 'danger' : 'primary', theme: 'solid' },
-      onOk: async () => {
-        await batchStatusMutation.mutateAsync({ body: { ids: selectedNonAdminIds, status } });
-        Toast.success(`批量${label}成功`);
-        setSelectedRowKeys([]);
-      },
-    });
-  };
+  // 启用 / 停用都需确认（停用后无法登录，红色实心确认）；admin 账号不在选中集里
+  const handleBatchStatus = batchStatusHandler({
+    selectedRowKeys: selectedNonAdminIds,
+    clearSelection: () => setSelectedRowKeys([]),
+    run: (ids, status) => batchStatusMutation.mutateAsync({ body: { ids, status } }),
+    confirm: 'always',
+    entity: '个用户',
+    confirmContent: (status) => (status === 'disabled' ? '停用后该用户将无法登录。' : '启用后该用户可正常登录。'),
+    danger: true,
+  });
 
   const handleBatchDelete = () => {
     const deletableIds = userList
@@ -551,12 +547,7 @@ export default function UsersPage() {
       )}
       {selectedNonAdminIds.length > 0 && hasPermission('system:user:update') && (
         <>
-          <Button theme="light" icon={<ToggleRight size={14} />} onClick={() => handleBatchStatus('enabled')}>
-            批量启用 ({selectedNonAdminIds.length})
-          </Button>
-          <Button theme="light" type="danger" icon={<ToggleLeft size={14} />} onClick={() => handleBatchStatus('disabled')}>
-            批量停用 ({selectedNonAdminIds.length})
-          </Button>
+          <BatchStatusButtons count={selectedNonAdminIds.length} onChange={handleBatchStatus} danger />
           <Button theme="light" icon={<KeyRound size={14} />} onClick={() => setBatchPasswordModalVisible(true)}>
             批量修改密码 ({selectedNonAdminIds.length})
           </Button>

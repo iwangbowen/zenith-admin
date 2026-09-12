@@ -23,7 +23,7 @@ import { percentOf } from '@zenith/shared/core';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect } from '@/components/search-filters';
-import { EMPTY_PLACEHOLDER, dateColumn, dateTimeColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateColumn, dateTimeColumn, renderEllipsis, enabledStatusColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { confirmAndDelete, deleteAction, listTableProps, ListSearchToolbar } from '@/components/list-page';
 import { compactParams } from '@/lib/query';
@@ -137,10 +137,7 @@ function AdsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
     dateTimeColumn('开始时间', 'startAt', { empty: '不限' }),
     dateTimeColumn('结束时间', 'endAt', { empty: '不限' }),
     { title: '排序', dataIndex: 'sort', width: 70 },
-    {
-      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: renderEnabledStatusTag,
-    },
+    enabledStatusColumn(),
     createOperationColumn<CmsAd>({
       width: 150,
       desktopInlineKeys: ['edit', 'delete'],

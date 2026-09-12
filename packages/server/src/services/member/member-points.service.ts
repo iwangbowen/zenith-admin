@@ -11,7 +11,6 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { memberPointAccounts, memberPointTransactions } from '../../db/schema';
 import type { MemberPointAccountRow, MemberPointTransactionRow } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
 import { currentMemberId } from '../../lib/member-context';
 import { withOptimisticRetry, OptimisticLockError } from '../../lib/optimistic';
 import { pageOffset } from '../../lib/pagination';
@@ -19,7 +18,7 @@ import { buildWhere } from '../../lib/where-helpers';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { ensureMemberExists } from './member-auth.service';
-import { memberReferenceCondition } from './member-query-helpers';
+import { memberReferenceCondition, mapLedgerTransaction } from './member-query-helpers';
 import { trackServerEvent } from '../analytics/analytics-server-events.service';
 import { memberSelfContract } from '@zenith/shared/member';
 import type { PointTxType } from '@zenith/shared/member';
@@ -37,20 +36,7 @@ export function mapPointAccount(row: MemberPointAccountRow) {
   };
 }
 
-export function mapPointTransaction(row: MemberPointTransactionRow, memberName?: string | null) {
-  return {
-    id: row.id,
-    memberId: row.memberId,
-    type: row.type,
-    amount: row.amount,
-    balanceAfter: row.balanceAfter,
-    bizType: row.bizType ?? null,
-    bizId: row.bizId ?? null,
-    remark: row.remark ?? null,
-    memberName: memberName ?? undefined,
-    createdAt: formatDateTime(row.createdAt),
-  };
-}
+export const mapPointTransaction = (row: MemberPointTransactionRow, memberName?: string | null) => mapLedgerTransaction(row, memberName);
 
 // ─── 账户查询 / 确保存在 ───────────────────────────────────────────────────────
 export async function ensurePointAccount(memberId: number): Promise<MemberPointAccountRow> {

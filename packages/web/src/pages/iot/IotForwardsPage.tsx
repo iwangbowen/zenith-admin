@@ -7,7 +7,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { CreateButton } from '@/components/toolbar-controls';
 import AppModal from '@/components/AppModal';
-import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis, enabledStatusColumn } from '@/utils/table-columns';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -23,7 +23,7 @@ import {
 } from '@zenith/shared/iot';
 import type { CreateIotForwardRuleInput, IotForwardLog, IotForwardRule } from '@zenith/shared/iot';
 import { useIotGroupOptions, useIotProductOptions } from './components/IotSelectors';
-import { IotEnabledTag, IotSuccessTag } from './components/IotStatus';
+import { IotSuccessTag } from './components/IotStatus';
 import { jsonObjectToText, parseJsonObjectInput } from './iot-form-utils';
 import {
   iotForwardRuleKeys, useDeleteIotForwardRules, useIotForwardLogList,
@@ -142,10 +142,7 @@ function ForwardRulesTab({ onShowLogs }: Readonly<{ onShowLogs: (rule: IotForwar
       },
     },
     createdAtColumn,
-    {
-      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: (v: IotForwardRule['status']) => <IotEnabledTag status={v} />,
-    },
+    enabledStatusColumn(),
     createOperationColumn<IotForwardRule>({
       width: 240,
       actions: (record) => [

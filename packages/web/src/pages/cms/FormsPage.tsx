@@ -19,7 +19,7 @@ import { CMS_FORM_CAPTCHA_PROVIDERS, CMS_FORM_CAPTCHA_PROVIDER_LABELS, CMS_FORM_
 import type { CmsForm, CmsFormSubmission } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { CreateButton } from '@/components/toolbar-controls';
-import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis, enabledStatusColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { deleteAction, listTableProps } from '@/components/list-page';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
@@ -127,10 +127,7 @@ export default function FormsPage() {
       render: (fields: CmsForm['fields']) => fields.map((f) => <Tag key={f.name} size="small" style={{ marginRight: 4 }}>{f.label}</Tag>),
     },
     { title: '提交数', dataIndex: 'submissionCount', width: 90, align: 'right' },
-    {
-      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: renderEnabledStatusTag,
-    },
+    enabledStatusColumn(),
     createOperationColumn<CmsForm>({
       width: 260,
       desktopInlineKeys: ['data', 'edit', 'delete'],

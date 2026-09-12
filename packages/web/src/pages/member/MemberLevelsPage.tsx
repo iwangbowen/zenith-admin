@@ -10,7 +10,7 @@ import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, listTableProps } from '@/components/list-page';
-import { EMPTY_PLACEHOLDER, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, renderEllipsis, enabledStatusColumn } from '@/utils/table-columns';
 import { memberAdminKeys, useDeleteMemberLevel, useMemberLevels, useSaveMemberLevel, type MemberLevelFormValues } from '@/hooks/queries/member-admin';
 import { useDictItems } from '@/hooks/useDictItems';
 import { CreateButton, RefreshButton } from '@/components/toolbar-controls';
@@ -43,10 +43,7 @@ export default function MemberLevelsPage() {
         : 0
     ) },
     { title: '权益', dataIndex: 'benefits', width: 220, render: (v: string[]) => (v?.length ? <Space wrap spacing={4}>{v.map((b, i) => <Tag key={i} color="light-blue">{b}</Tag>)}</Space> : EMPTY_PLACEHOLDER) },
-    {
-      title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
-      render: renderEnabledStatusTag,
-    },
+    enabledStatusColumn(),
     createOperationColumn<MemberLevel>({
       width: 150,
       desktopInlineKeys: ['edit', 'delete'],

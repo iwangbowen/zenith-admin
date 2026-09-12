@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentProps } from 'react';
 import {
   Button,
-  Dropdown,
   Select,
   Tag,
   Form,
@@ -16,7 +15,7 @@ import {
   Space,
   Switch,
 } from '@douyinfe/semi-ui';
-import { Plus, MoreHorizontal, BookOpen, ChevronsDownUp, ChevronsUpDown, RefreshCw, Pencil, Trash2 } from 'lucide-react';
+import { Plus, BookOpen, ChevronsDownUp, ChevronsUpDown, RefreshCw, Pencil, Trash2 } from 'lucide-react';
 import type { CreateDictInput, CreateDictItemInput, Dict, DictItem } from '@zenith/shared/platform';
 import { formatDateTime } from '@/utils/date';
 import ExportButton from '@/components/ExportButton';
@@ -27,7 +26,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { useTreeExpansion } from '@/hooks/useTreeExpansion';
 import { useUrlSelectionState } from '@/hooks/useUrlSelectionState';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
-import { NavListPanel, NavListItem } from '@/components/NavListPanel';
+import { NavListPanel, NavListItem, NavListItemActions } from '@/components/NavListPanel';
 import { useDictItems } from '@/hooks/useDictItems';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { usePermission } from '@/hooks/usePermission';
@@ -347,45 +346,19 @@ export default function DictsPage() {
         }
         style={dict.status === 'disabled' ? { opacity: 0.55 } : undefined}
         extra={
-          <Dropdown
-            trigger="click"
-            position="bottomRight"
-            clickToHide
-            render={
-              <Dropdown.Menu>
-                {hasPermission('system:dict:update') && (
-                  <Dropdown.Item onClick={() => void openEditDict(dict)}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Pencil size={14} /> 编辑
-                    </span>
-                  </Dropdown.Item>
-                )}
-                {hasPermission('system:dict:delete') && (
-                  <Dropdown.Item
-                    type="danger"
-                    onClick={() => {
-                      confirmDelete({
-                        title: '确认删除此字典？',
-                        content: '字典下的所有字典项也将一并删除',
-                        onOk: () => handleDictDelete(dict.id),
-                      });
-                    }}
-                  >
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Trash2 size={14} /> 删除
-                    </span>
-                  </Dropdown.Item>
-                )}
-              </Dropdown.Menu>
-            }
-          >
-            <Button
-              theme="borderless"
-              size="small"
-              icon={<MoreHorizontal size={14} />}
-              onClick={(e) => e.stopPropagation()}
-            />
-          </Dropdown>
+          <NavListItemActions items={[
+            { key: 'edit', label: '编辑', icon: <Pencil size={14} />, hidden: !hasPermission('system:dict:update'), onClick: () => void openEditDict(dict) },
+            {
+              key: 'delete', label: '删除', icon: <Trash2 size={14} />, danger: true, hidden: !hasPermission('system:dict:delete'),
+              onClick: () => {
+                confirmDelete({
+                  title: '确认删除此字典？',
+                  content: '字典下的所有字典项也将一并删除',
+                  onOk: () => handleDictDelete(dict.id),
+                });
+              },
+            },
+          ]} />
         }
       />
     );
@@ -397,33 +370,10 @@ export default function DictsPage() {
       headerExtra={
         <Space spacing={6}>
           <ExportButton entity="system.dicts" query={filterQuery} />
-          <Dropdown
-            trigger="click"
-            position="bottomRight"
-            clickToHide
-            render={
-              <Dropdown.Menu>
-                <Dropdown.Item onClick={() => void dictListQuery.refetch()}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <RefreshCw size={14} /> 刷新
-                  </span>
-                </Dropdown.Item>
-                {hasPermission('system:dict:create') && (
-                  <Dropdown.Item onClick={dictModal.openCreate}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Plus size={14} /> 新增字典
-                    </span>
-                  </Dropdown.Item>
-                )}
-              </Dropdown.Menu>
-            }
-          >
-            <Button
-              theme="borderless"
-              size="small"
-              icon={<MoreHorizontal size={14} />}
-            />
-          </Dropdown>
+          <NavListItemActions items={[
+            { key: 'refresh', label: '刷新', icon: <RefreshCw size={14} />, onClick: () => void dictListQuery.refetch() },
+            { key: 'create', label: '新增字典', icon: <Plus size={14} />, hidden: !hasPermission('system:dict:create'), onClick: dictModal.openCreate },
+          ]} />
         </Space>
       }
       search={{
