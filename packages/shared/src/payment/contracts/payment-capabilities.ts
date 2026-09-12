@@ -71,8 +71,6 @@ export const paymentCapabilityQuery = z.object({
   currency: z.string().length(3).transform((value) => value.toUpperCase()).optional(),
 });
 
-export type PaymentCapabilityQuery = z.output<typeof paymentCapabilityQuery>;
-
 export const paymentCapabilityContract = defineContract('/api/payment/capabilities', {
   list: op.get('/', {
     query: paymentCapabilityQuery,

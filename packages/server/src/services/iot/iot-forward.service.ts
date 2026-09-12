@@ -75,7 +75,6 @@ export function mapIotForwardLog(row: IotForwardLogRow) {
 }
 
 export type ListIotForwardRulesFilter = Omit<QueryOutputOf<typeof iotForwardRuleContract.list>, 'page' | 'pageSize'>;
-export type ListIotForwardRulesQuery = QueryOutputOf<typeof iotForwardRuleContract.list>;
 
 function buildRuleWhere(q: ListIotForwardRulesFilter & { id?: number }): SQL | undefined {
   return buildWhere(
@@ -87,7 +86,7 @@ function buildRuleWhere(q: ListIotForwardRulesFilter & { id?: number }): SQL | u
   );
 }
 
-export async function listIotForwardRules(q: ListIotForwardRulesQuery) {
+export async function listIotForwardRules(q: QueryOutputOf<typeof iotForwardRuleContract.list>) {
   const { page, pageSize } = q;
   const where = buildRuleWhere(q);
   return buildListResult({
@@ -170,10 +169,7 @@ export async function deleteIotForwardRule(id: number): Promise<void> {
   invalidateForwardCache();
 }
 
-export type ListForwardLogsFilter = Omit<QueryOutputOf<typeof iotForwardRuleContract.logs>, 'page' | 'pageSize'>;
-export type ListForwardLogsQuery = QueryOutputOf<typeof iotForwardRuleContract.logs>;
-
-export async function listIotForwardLogs(q: ListForwardLogsQuery) {
+export async function listIotForwardLogs(q: QueryOutputOf<typeof iotForwardRuleContract.logs>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     q.ruleId ? eq(iotForwardLogs.ruleId, q.ruleId) : undefined,

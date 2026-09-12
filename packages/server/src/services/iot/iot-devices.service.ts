@@ -60,7 +60,6 @@ export function mapIotProduct(
 }
 
 export type ListIotProductsFilter = Omit<QueryOutputOf<typeof iotProductContract.list>, 'page' | 'pageSize'>;
-export type ListIotProductsQuery = QueryOutputOf<typeof iotProductContract.list>;
 
 function buildProductWhere(q: ListIotProductsFilter & { id?: number }): SQL | undefined {
   return buildWhere(
@@ -81,7 +80,7 @@ async function loadCountMap(table: typeof iotDevices | typeof iotProductProperti
   return new Map(rows.map((r) => [r.productId, Number(r.cnt)]));
 }
 
-export async function listIotProducts(q: ListIotProductsQuery) {
+export async function listIotProducts(q: QueryOutputOf<typeof iotProductContract.list>) {
   const { page, pageSize } = q;
   const where = buildProductWhere(q);
   return buildListResult({
@@ -216,7 +215,6 @@ export function mapIotDevice(
 }
 
 export type ListIotDevicesFilter = Omit<QueryOutputOf<typeof iotDeviceContract.list>, 'page' | 'pageSize'>;
-export type ListIotDevicesQuery = QueryOutputOf<typeof iotDeviceContract.list>;
 
 function buildDeviceWhere(q: ListIotDevicesFilter & { id?: number }): SQL | undefined {
   return buildWhere(
@@ -261,7 +259,7 @@ async function loadGroupMap(deviceIds: number[]): Promise<Map<number, { ids: num
   return map;
 }
 
-export async function listIotDevices(q: ListIotDevicesQuery) {
+export async function listIotDevices(q: QueryOutputOf<typeof iotDeviceContract.list>) {
   const { page, pageSize } = q;
   const where = buildDeviceWhere(q);
   const gatewayAlias = aliasedTable(iotDevices, 'gateway_device');

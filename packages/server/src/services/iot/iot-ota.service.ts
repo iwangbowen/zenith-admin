@@ -78,7 +78,6 @@ export function mapIotOtaTaskDevice(
 
 // ─── 任务查询 ─────────────────────────────────────────────────────────────────
 export type ListIotOtaTasksFilter = Omit<QueryOutputOf<typeof iotOtaTaskContract.list>, 'page' | 'pageSize'>;
-export type ListIotOtaTasksQuery = QueryOutputOf<typeof iotOtaTaskContract.list>;
 
 function buildTaskWhere(q: ListIotOtaTasksFilter & { id?: number }): SQL | undefined {
   return buildWhere(
@@ -90,7 +89,7 @@ function buildTaskWhere(q: ListIotOtaTasksFilter & { id?: number }): SQL | undef
   );
 }
 
-export async function listIotOtaTasks(q: ListIotOtaTasksQuery) {
+export async function listIotOtaTasks(q: QueryOutputOf<typeof iotOtaTaskContract.list>) {
   const { page, pageSize } = q;
   const where = buildTaskWhere(q);
   return buildListResult({
@@ -123,10 +122,7 @@ export async function getIotOtaTask(id: number) {
   return mapIotOtaTask(row, { productName: product?.name ?? null });
 }
 
-export type ListOtaTaskDevicesFilter = Omit<QueryOutputOf<typeof iotOtaTaskContract.devices>, 'page' | 'pageSize'>;
-export type ListOtaTaskDevicesQuery = QueryOutputOf<typeof iotOtaTaskContract.devices>;
-
-export async function listIotOtaTaskDevices(taskId: number, q: ListOtaTaskDevicesQuery) {
+export async function listIotOtaTaskDevices(taskId: number, q: QueryOutputOf<typeof iotOtaTaskContract.devices>) {
   await ensureIotOtaTaskExists(taskId);
   const { page, pageSize } = q;
   const where = buildWhere(
@@ -136,10 +132,7 @@ export async function listIotOtaTaskDevices(taskId: number, q: ListOtaTaskDevice
   return buildListResult({
     page,
     pageSize,
-    count: async () => {
-      const [row] = await db.select({ value: count() }).from(iotOtaTaskDevices).where(where);
-      return Number(row?.value ?? 0);
-    },
+    count: () => db.$count(iotOtaTaskDevices, where),
     rows: () => withPagination(
       db.select({ row: iotOtaTaskDevices, deviceName: iotDevices.name, deviceSn: iotDevices.sn })
         .from(iotOtaTaskDevices)

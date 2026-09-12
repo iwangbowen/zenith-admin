@@ -32,10 +32,7 @@ function mapOpenIotDevice(
   };
 }
 
-export type ListOpenIotDevicesFilter = Omit<QueryOutputOf<typeof openIotContract.devices>, 'page' | 'pageSize'>;
-export type ListOpenIotDevicesQuery = QueryOutputOf<typeof openIotContract.devices>;
-
-export async function listOpenIotDevices(q: ListOpenIotDevicesQuery) {
+export async function listOpenIotDevices(q: QueryOutputOf<typeof openIotContract.devices>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     keywordCondition(q.keyword, [iotDevices.sn, iotDevices.name], 'ilike'),

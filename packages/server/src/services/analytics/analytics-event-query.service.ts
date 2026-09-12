@@ -133,24 +133,21 @@ export async function queryEvents(input: AnalyticsEventQuery): Promise<Analytics
   const { page, pageSize } = input;
   const { start, end, startLabel, endLabel } = resolveDateRange(input);
 
-  const conditions: SQL[] = [gte(userEvents.createdAt, start), lte(userEvents.createdAt, end), isNotNull(userEvents.distinctId)];
-  if (input.eventNames && input.eventNames.length > 0) {
-    conditions.push(inArray(userEvents.eventName, input.eventNames.slice(0, 20)));
-  }
-  if (input.source) conditions.push(eq(userEvents.source, input.source));
-  if (input.appId) conditions.push(eq(userEvents.appId, input.appId));
-  if (input.environment) conditions.push(eq(userEvents.environment, input.environment));
-  if (input.deviceType) conditions.push(eq(userEvents.deviceType, input.deviceType));
-  for (const filter of (input.propertyFilters ?? []).slice(0, 10)) {
-    conditions.push(buildJsonPropertyCondition(userEvents.properties, filter));
-  }
-  const guard = metricPropertyGuard(metric, metricProperty);
-  if (guard) conditions.push(guard);
-  if (input.segmentId) {
-    await ensureSegmentAccessible(input.segmentId);
-    conditions.push(inArray(userEvents.distinctId, segmentMemberDistinctIdSubquery(input.segmentId)));
-  }
-  const where = buildWhere(...conditions, tenantScope(userEvents));
+  if (input.segmentId) await ensureSegmentAccessible(input.segmentId);
+  const where = buildWhere(
+    gte(userEvents.createdAt, start),
+    lte(userEvents.createdAt, end),
+    isNotNull(userEvents.distinctId),
+    input.eventNames && input.eventNames.length > 0 ? inArray(userEvents.eventName, input.eventNames.slice(0, 20)) : undefined,
+    input.source ? eq(userEvents.source, input.source) : undefined,
+    input.appId ? eq(userEvents.appId, input.appId) : undefined,
+    input.environment ? eq(userEvents.environment, input.environment) : undefined,
+    input.deviceType ? eq(userEvents.deviceType, input.deviceType) : undefined,
+    ...(input.propertyFilters ?? []).slice(0, 10).map((filter) => buildJsonPropertyCondition(userEvents.properties, filter)),
+    metricPropertyGuard(metric, metricProperty) ?? undefined,
+    input.segmentId ? inArray(userEvents.distinctId, segmentMemberDistinctIdSubquery(input.segmentId)) : undefined,
+    tenantScope(userEvents),
+  );
 
   const groupByExprs = groupBy.map((g) => groupByExpr(g));
   const { value: valueExpr, order: orderExpr } = metricExpr(metric, metricProperty);

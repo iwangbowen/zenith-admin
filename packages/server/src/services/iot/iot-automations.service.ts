@@ -81,7 +81,6 @@ export function mapIotAutomationRun(
 }
 
 export type ListIotAutomationsFilter = Omit<QueryOutputOf<typeof iotAutomationContract.list>, 'page' | 'pageSize'>;
-export type ListIotAutomationsQuery = QueryOutputOf<typeof iotAutomationContract.list>;
 
 function buildAutomationWhere(q: ListIotAutomationsFilter & { id?: number }): SQL | undefined {
   return buildWhere(
@@ -94,7 +93,7 @@ function buildAutomationWhere(q: ListIotAutomationsFilter & { id?: number }): SQ
   );
 }
 
-export async function listIotAutomations(q: ListIotAutomationsQuery) {
+export async function listIotAutomations(q: QueryOutputOf<typeof iotAutomationContract.list>) {
   const { page, pageSize } = q;
   const where = buildAutomationWhere(q);
   return buildListResult({
@@ -201,10 +200,7 @@ export async function deleteIotAutomation(id: number): Promise<void> {
   invalidateAutomationCache();
 }
 
-export type ListAutomationRunsFilter = Omit<QueryOutputOf<typeof iotAutomationContract.runs>, 'page' | 'pageSize'>;
-export type ListAutomationRunsQuery = QueryOutputOf<typeof iotAutomationContract.runs>;
-
-export async function listIotAutomationRuns(q: ListAutomationRunsQuery) {
+export async function listIotAutomationRuns(q: QueryOutputOf<typeof iotAutomationContract.runs>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     q.automationId ? eq(iotAutomationRuns.automationId, q.automationId) : undefined,
@@ -214,10 +210,7 @@ export async function listIotAutomationRuns(q: ListAutomationRunsQuery) {
   return buildListResult({
     page,
     pageSize,
-    count: async () => {
-      const [row] = await db.select({ value: count() }).from(iotAutomationRuns).where(where);
-      return Number(row?.value ?? 0);
-    },
+    count: () => db.$count(iotAutomationRuns, where),
     rows: () => withPagination(
       db.select({ run: iotAutomationRuns, deviceName: iotDevices.name, deviceSn: iotDevices.sn })
         .from(iotAutomationRuns)

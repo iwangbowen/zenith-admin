@@ -90,7 +90,6 @@ function computeNextRunAt(
 }
 
 export type ListIotSchedulesFilter = Omit<QueryOutputOf<typeof iotScheduleContract.list>, 'page' | 'pageSize'>;
-export type ListIotSchedulesQuery = QueryOutputOf<typeof iotScheduleContract.list>;
 
 function buildScheduleWhere(q: ListIotSchedulesFilter & { id?: number }): SQL | undefined {
   return buildWhere(
@@ -102,7 +101,7 @@ function buildScheduleWhere(q: ListIotSchedulesFilter & { id?: number }): SQL | 
   );
 }
 
-export async function listIotSchedules(q: ListIotSchedulesQuery) {
+export async function listIotSchedules(q: QueryOutputOf<typeof iotScheduleContract.list>) {
   const { page, pageSize } = q;
   const where = buildScheduleWhere(q);
   return buildListResult({
@@ -225,10 +224,7 @@ export async function deleteIotSchedule(id: number): Promise<void> {
   await db.delete(iotSchedules).where(buildScheduleWhere({ id }));
 }
 
-export type ListScheduleRunsFilter = Omit<QueryOutputOf<typeof iotScheduleContract.runs>, 'page' | 'pageSize'>;
-export type ListScheduleRunsQuery = QueryOutputOf<typeof iotScheduleContract.runs>;
-
-export async function listIotScheduleRuns(q: ListScheduleRunsQuery) {
+export async function listIotScheduleRuns(q: QueryOutputOf<typeof iotScheduleContract.runs>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     q.scheduleId ? eq(iotScheduleRuns.scheduleId, q.scheduleId) : undefined,

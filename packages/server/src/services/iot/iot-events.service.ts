@@ -128,10 +128,7 @@ export async function ingestIotDeviceEvents(device: IotDeviceRow, input: IotEven
   return rows.length;
 }
 
-export type ListDeviceEventsFilter = Omit<QueryOutputOf<typeof iotDeviceContract.events>, 'page' | 'pageSize'>;
-export type ListDeviceEventsQuery = QueryOutputOf<typeof iotDeviceContract.events>;
-
-export async function listIotDeviceEvents(deviceId: number, q: ListDeviceEventsQuery) {
+export async function listIotDeviceEvents(deviceId: number, q: QueryOutputOf<typeof iotDeviceContract.events>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     eq(iotDeviceEvents.deviceId, deviceId),

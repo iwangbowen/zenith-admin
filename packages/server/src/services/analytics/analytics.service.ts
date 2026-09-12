@@ -949,8 +949,7 @@ export async function getHeatmapData(q: HeatmapQuery) {
   };
 }
 
-export interface HeatmapPageListQuery { days?: number }
-export async function getHeatmapPageList(q: HeatmapPageListQuery) {
+export async function getHeatmapPageList(q: QueryOutputOf<typeof analyticsContract.heatmapPages>) {
   const days = clampDays(q.days, 30);
   const start = startOfDaysAgo(days);
   const where = buildWhere(

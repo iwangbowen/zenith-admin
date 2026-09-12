@@ -70,7 +70,6 @@ export function mapIotAlarmRule(
 }
 
 export type ListIotAlarmRulesFilter = Omit<QueryOutputOf<typeof iotAlarmRuleContract.list>, 'page' | 'pageSize'>;
-export type ListIotAlarmRulesQuery = QueryOutputOf<typeof iotAlarmRuleContract.list>;
 
 function buildRuleWhere(q: ListIotAlarmRulesFilter & { id?: number }): SQL | undefined {
   return buildWhere(
@@ -83,7 +82,7 @@ function buildRuleWhere(q: ListIotAlarmRulesFilter & { id?: number }): SQL | und
   );
 }
 
-export async function listIotAlarmRules(q: ListIotAlarmRulesQuery) {
+export async function listIotAlarmRules(q: QueryOutputOf<typeof iotAlarmRuleContract.list>) {
   const { page, pageSize } = q;
   const where = buildRuleWhere(q);
   return buildListResult({
@@ -211,10 +210,7 @@ export function mapIotAlarm(
   };
 }
 
-export type ListIotAlarmsFilter = Omit<QueryOutputOf<typeof iotAlarmContract.list>, 'page' | 'pageSize'>;
-export type ListIotAlarmsQuery = QueryOutputOf<typeof iotAlarmContract.list>;
-
-export async function listIotAlarms(q: ListIotAlarmsQuery) {
+export async function listIotAlarms(q: QueryOutputOf<typeof iotAlarmContract.list>) {
   const { page, pageSize } = q;
   const where = buildWhere(
     buildWhere(

@@ -146,11 +146,8 @@ export async function ingestTelemetry(device: IotDeviceRow, input: IotTelemetryI
   return rows.length;
 }
 
-export type ListTelemetryFilter = Omit<QueryOutputOf<typeof iotDeviceContract.telemetry>, 'page' | 'pageSize'>;
-export type ListTelemetryQuery = QueryOutputOf<typeof iotDeviceContract.telemetry>;
-
 /** 设备遥测点列（时间窗内最近 N 条，升序返回供图表直接使用） */
-export async function listIotTelemetry(deviceId: number, q: ListTelemetryQuery) {
+export async function listIotTelemetry(deviceId: number, q: QueryOutputOf<typeof iotDeviceContract.telemetry>) {
   await ensureIotDeviceExists(deviceId);
   const days = clampDays(q.days, 1, 90);
   const limit = clampLimit(q.limit, 500, 2000);
@@ -271,10 +268,7 @@ export async function sendIotCommandToDevice(device: IotDeviceRow, input: SendIo
   return mapIotCommand(row);
 }
 
-export type ListCommandsFilter = Omit<QueryOutputOf<typeof iotDeviceContract.listCommands>, 'page' | 'pageSize'>;
-export type ListCommandsQuery = QueryOutputOf<typeof iotDeviceContract.listCommands>;
-
-export async function listIotCommands(deviceId: number, q: ListCommandsQuery) {
+export async function listIotCommands(deviceId: number, q: QueryOutputOf<typeof iotDeviceContract.listCommands>) {
   await ensureIotDeviceExists(deviceId);
   await expireStaleCommands(deviceId);
   const { page, pageSize } = q;

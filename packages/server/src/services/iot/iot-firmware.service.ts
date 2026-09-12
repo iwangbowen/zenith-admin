@@ -48,7 +48,6 @@ export function mapIotFirmware(row: IotFirmwareRow, extra?: { productName?: stri
 }
 
 export type ListIotFirmwaresFilter = Omit<QueryOutputOf<typeof iotFirmwareContract.list>, 'page' | 'pageSize'>;
-export type ListIotFirmwaresQuery = QueryOutputOf<typeof iotFirmwareContract.list>;
 
 function buildFirmwareWhere(q: ListIotFirmwaresFilter & { id?: number }): SQL | undefined {
   return buildWhere(
@@ -60,7 +59,7 @@ function buildFirmwareWhere(q: ListIotFirmwaresFilter & { id?: number }): SQL | 
   );
 }
 
-export async function listIotFirmwares(q: ListIotFirmwaresQuery) {
+export async function listIotFirmwares(q: QueryOutputOf<typeof iotFirmwareContract.list>) {
   const { page, pageSize } = q;
   const where = buildFirmwareWhere(q);
   return buildListResult({

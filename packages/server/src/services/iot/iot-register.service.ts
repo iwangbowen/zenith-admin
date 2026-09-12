@@ -70,7 +70,6 @@ export function mapIotWhitelistEntry(
 }
 
 export type ListWhitelistFilter = Omit<QueryOutputOf<typeof iotWhitelistContract.list>, 'page' | 'pageSize'>;
-export type ListWhitelistQuery = QueryOutputOf<typeof iotWhitelistContract.list>;
 
 function buildWhitelistWhere(q: ListWhitelistFilter & { id?: number }): SQL | undefined {
   return buildWhere(
@@ -82,7 +81,7 @@ function buildWhitelistWhere(q: ListWhitelistFilter & { id?: number }): SQL | un
   );
 }
 
-export async function listIotWhitelist(q: ListWhitelistQuery) {
+export async function listIotWhitelist(q: QueryOutputOf<typeof iotWhitelistContract.list>) {
   const { page, pageSize } = q;
   const where = buildWhitelistWhere(q);
   return buildListResult({

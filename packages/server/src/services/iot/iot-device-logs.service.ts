@@ -3,13 +3,13 @@ import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * IoT 设备日志通道：设备上报运行日志（追加型，保留策略裁剪）。
  */
-import { desc, eq, gte, lte } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import type { IotLogIngestInput } from '@zenith/shared/iot';
 import { db } from '../../db';
 import { iotDeviceLogs, type IotDeviceLogRow, type IotDeviceRow } from '../../db/schema';
 import { formatDateTime, parseDateTimeInput } from '../../lib/datetime';
 import { buildListResult } from '../../lib/list-query';
-import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 
 export function mapIotDeviceLog(row: IotDeviceLogRow) {
   return {
@@ -35,19 +35,13 @@ export async function ingestIotDeviceLogs(device: IotDeviceRow, input: IotLogIng
   return rows.length;
 }
 
-export type ListDeviceLogsFilter = Omit<QueryOutputOf<typeof iotDeviceContract.logs>, 'page' | 'pageSize'>;
-export type ListDeviceLogsQuery = QueryOutputOf<typeof iotDeviceContract.logs>;
-
-export async function listIotDeviceLogs(deviceId: number, q: ListDeviceLogsQuery) {
+export async function listIotDeviceLogs(deviceId: number, q: QueryOutputOf<typeof iotDeviceContract.logs>) {
   const { page, pageSize } = q;
-  const start = q.startTime ? parseDateTimeInput(q.startTime) : null;
-  const end = q.endTime ? parseDateTimeInput(q.endTime) : null;
   const where = buildWhere(
     eq(iotDeviceLogs.deviceId, deviceId),
     q.level ? eq(iotDeviceLogs.level, q.level) : undefined,
     keywordCondition(q.keyword, [iotDeviceLogs.content], 'ilike'),
-    start ? gte(iotDeviceLogs.reportedAt, start) : undefined,
-    end ? lte(iotDeviceLogs.reportedAt, end) : undefined,
+    ...dateRangeConditions(iotDeviceLogs.reportedAt, q.startTime, q.endTime),
   );
   return buildListResult({
     page,

@@ -48,7 +48,6 @@ export function mapIotMaintenanceWindow(
 }
 
 export type ListMaintenanceWindowsFilter = Omit<QueryOutputOf<typeof iotMaintenanceWindowContract.list>, 'page' | 'pageSize'>;
-export type ListMaintenanceWindowsQuery = QueryOutputOf<typeof iotMaintenanceWindowContract.list>;
 
 function buildWindowWhere(q: ListMaintenanceWindowsFilter & { id?: number }): SQL | undefined {
   return buildWhere(
@@ -58,7 +57,7 @@ function buildWindowWhere(q: ListMaintenanceWindowsFilter & { id?: number }): SQ
   );
 }
 
-export async function listIotMaintenanceWindows(q: ListMaintenanceWindowsQuery) {
+export async function listIotMaintenanceWindows(q: QueryOutputOf<typeof iotMaintenanceWindowContract.list>) {
   const { page, pageSize } = q;
   const where = buildWindowWhere(q);
   return buildListResult({

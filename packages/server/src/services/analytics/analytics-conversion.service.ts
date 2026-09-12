@@ -33,15 +33,15 @@ function clampConversionWindowHours(hours: unknown): number {
   return Math.min(Math.max(Number(hours) || 72, 1), 720);
 }
 
-/** 单步的事件/页面/属性过滤条件（不含时间窗，时间窗由调用方按 CTE 层级拼接）。 */
-function buildStepConditions(step: FunnelQuery['steps'][number]): SQL[] {
-  const conditions: SQL[] = [];
-  if (step.eventType) conditions.push(eq(userEvents.eventType, step.eventType));
-  if (step.eventName) conditions.push(eq(userEvents.eventName, step.eventName));
-  if (step.pagePath) conditions.push(eq(userEvents.pagePath, step.pagePath));
-  if (step.elementKey) conditions.push(eq(userEvents.elementKey, step.elementKey));
-  for (const f of step.properties ?? []) conditions.push(buildJsonPropertyCondition(userEvents.properties, f));
-  return conditions;
+/** 单步的事件/页面/属性过滤条件（不含时间窗，时间窗由调用方按 CTE 层级拼接）；未设置的维度为 undefined，由 buildWhere 过滤 */
+function buildStepConditions(step: FunnelQuery['steps'][number]): (SQL | undefined)[] {
+  return [
+    step.eventType ? eq(userEvents.eventType, step.eventType) : undefined,
+    step.eventName ? eq(userEvents.eventName, step.eventName) : undefined,
+    step.pagePath ? eq(userEvents.pagePath, step.pagePath) : undefined,
+    step.elementKey ? eq(userEvents.elementKey, step.elementKey) : undefined,
+    ...(step.properties ?? []).map((f) => buildJsonPropertyCondition(userEvents.properties, f)),
+  ];
 }
 
 /**
@@ -124,9 +124,7 @@ export function buildFunnelCtes(
   return input.steps.map((step, i) => {
     const stepConditions = buildStepConditions(step);
     if (i === 0) {
-      const conditions: SQL[] = [gte(userEvents.createdAt, start), isNotNull(userEvents.distinctId), ...stepConditions];
-      if (seriesCondition) conditions.push(seriesCondition);
-      const where = buildWhere(...conditions, tenantScope(userEvents))!;
+      const where = buildWhere(gte(userEvents.createdAt, start), isNotNull(userEvents.distinctId), ...stepConditions, seriesCondition, tenantScope(userEvents))!;
       return sql`${sql.raw(`s${i}`)} AS (
         SELECT ${userEvents.distinctId} AS distinct_id,
                MIN(${userEvents.createdAt}) AS first_at,
@@ -137,8 +135,7 @@ export function buildFunnelCtes(
         GROUP BY ${userEvents.distinctId}
       )`;
     }
-    const conditions: SQL[] = [isNotNull(userEvents.distinctId), ...stepConditions];
-    const where = buildWhere(...conditions, tenantScope(userEvents))!;
+    const where = buildWhere(isNotNull(userEvents.distinctId), ...stepConditions, tenantScope(userEvents))!;
     const prevAlias = sql.raw(`s${i - 1}`);
     return sql`${sql.raw(`s${i}`)} AS (
       SELECT prev.distinct_id AS distinct_id,
@@ -277,9 +274,7 @@ async function loadRetentionMatrix(input: RetentionMatrixInput): Promise<Map<str
   const { mode, periodType, start, axis, seriesCondition } = input;
   const axisStart = axis[0];
   const axisEnd = axis[axis.length - 1];
-  const activityConditions: SQL[] = [gte(userEvents.createdAt, start), isNotNull(userEvents.distinctId)];
-  if (seriesCondition) activityConditions.push(seriesCondition);
-  const activityWhere = buildWhere(...activityConditions, tenantScope(userEvents))!;
+  const activityWhere = buildWhere(gte(userEvents.createdAt, start), isNotNull(userEvents.distinctId), seriesCondition, tenantScope(userEvents))!;
   // periodType 来自白名单枚举，仍以绑定参数传入（date_trunc 首参为 text），不做字符串拼接
   const activityPeriod = sql`to_char(date_trunc(${periodType}, timezone(${APP_TIME_ZONE}, ${userEvents.createdAt})), 'YYYY-MM-DD')`;
 
@@ -287,9 +282,7 @@ async function loadRetentionMatrix(input: RetentionMatrixInput): Promise<Map<str
   if (mode === 'first_seen') {
     // 全历史（仅 tenantScope + 序列条件，无日期过滤）计算真实首访日，
     // 避免把窗口起点误当作全局首访起点
-    const historyConditions: SQL[] = [isNotNull(userEvents.distinctId)];
-    if (seriesCondition) historyConditions.push(seriesCondition);
-    const historyWhere = buildWhere(...historyConditions, tenantScope(userEvents))!;
+    const historyWhere = buildWhere(isNotNull(userEvents.distinctId), seriesCondition, tenantScope(userEvents))!;
     rows = (await db.execute(sql`
       WITH activity AS (
         SELECT DISTINCT ${userEvents.distinctId} AS distinct_id,
