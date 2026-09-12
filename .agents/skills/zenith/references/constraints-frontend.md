@@ -244,7 +244,9 @@
   | 代码耦合枚举（pg enum / 状态机 / 协议值） | `shared/src/{业务域}/constants.ts` 的 `XXX_LABELS` / `XXX_OPTIONS` |
   | 工作流实例 / 任务状态 | `components/workflow/workflow-runtime.ts` 的 `INSTANCE_STATUS_MAP` / `TASK_STATUS_MAP` |
 
-  Tag 颜色、图表色板、CSS 变量留在使用方；外部协议值（如微信 `sex: '1'/'2'`）
+  Tag 颜色、图表色板、CSS 变量留在使用方：页面把 `Record<T, { text, color }>` 拆成只含颜色的 `XXX_COLORS: Record<T, TagColor>`，
+  文案取 shared 的 `XXX_LABELS[value]`；同一枚举的颜色映射被多个页面共用时提到该域的 web utils
+  （如 `utils/payment.ts` 的 `PAYMENT_ORDER_STATUS_TAG_COLOR`），不要在两个页面各写一份。外部协议值（如微信 `sex: '1'/'2'`）
   与视角特化文案（如「我已同意」）不做统一
 - **单图上传字段**：统一用 `components/ImageUploadField.tsx`，**禁止**重新拼
   `<Upload action headers>` + 预览 `<img>` + 删除按钮
