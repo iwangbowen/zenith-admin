@@ -4,6 +4,7 @@ import { Banner, Descriptions, Form, Rating, Tag, Toast, Typography } from '@dou
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { UserFeedback, UserFeedbackCategory, UserFeedbackStatus } from '@zenith/shared/platform';
 import { USER_FEEDBACK_CATEGORY_LABELS, USER_FEEDBACK_STATUS_LABELS } from '@zenith/shared/platform';
+import { createLabelOptionsFromMap } from '@zenith/shared/core';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import ExportButton from '@/components/ExportButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -21,23 +22,24 @@ import { BatchDeleteButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { compactParams } from '@/lib/query';
 
-// 文案统一来自 @zenith/shared；Tag 色为本页特化
-const CATEGORY_OPTIONS: Array<{ value: UserFeedbackCategory; label: string; color: 'blue' | 'red' | 'orange' | 'grey' }> = [
-  { value: 'suggestion', label: USER_FEEDBACK_CATEGORY_LABELS.suggestion, color: 'blue' },
-  { value: 'bug', label: USER_FEEDBACK_CATEGORY_LABELS.bug, color: 'red' },
-  { value: 'ux', label: USER_FEEDBACK_CATEGORY_LABELS.ux, color: 'orange' },
-  { value: 'other', label: USER_FEEDBACK_CATEGORY_LABELS.other, color: 'grey' },
-];
+const CATEGORY_OPTIONS = createLabelOptionsFromMap<UserFeedbackCategory>(USER_FEEDBACK_CATEGORY_LABELS);
+const STATUS_OPTIONS = createLabelOptionsFromMap<UserFeedbackStatus>(USER_FEEDBACK_STATUS_LABELS);
 
-const STATUS_OPTIONS: Array<{ value: UserFeedbackStatus; label: string; color: 'amber' | 'blue' | 'green' | 'grey' }> = [
-  { value: 'pending', label: USER_FEEDBACK_STATUS_LABELS.pending, color: 'amber' },
-  { value: 'processing', label: USER_FEEDBACK_STATUS_LABELS.processing, color: 'blue' },
-  { value: 'resolved', label: USER_FEEDBACK_STATUS_LABELS.resolved, color: 'green' },
-  { value: 'ignored', label: USER_FEEDBACK_STATUS_LABELS.ignored, color: 'grey' },
-];
+const CATEGORY_COLORS: Record<UserFeedbackCategory, 'blue' | 'red' | 'orange' | 'grey'> = {
+  suggestion: 'blue',
+  bug: 'red',
+  ux: 'orange',
+  other: 'grey',
+};
+const STATUS_COLORS: Record<UserFeedbackStatus, 'amber' | 'blue' | 'green' | 'grey'> = {
+  pending: 'amber',
+  processing: 'blue',
+  resolved: 'green',
+  ignored: 'grey',
+};
 
-const categoryMap = new Map(CATEGORY_OPTIONS.map((o) => [o.value, o]));
-const statusMap = new Map(STATUS_OPTIONS.map((o) => [o.value, o]));
+const categoryMap = new Map(CATEGORY_OPTIONS.map((o) => [o.value, { ...o, color: CATEGORY_COLORS[o.value] }]));
+const statusMap = new Map(STATUS_OPTIONS.map((o) => [o.value, { ...o, color: STATUS_COLORS[o.value] }]));
 
 interface SearchParams {
   keyword: string;

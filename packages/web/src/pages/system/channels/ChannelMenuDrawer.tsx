@@ -9,6 +9,8 @@ import { useEffect, useState } from 'react';
 import { Button, Empty, Input, Select, SideSheet, Space, Toast, Typography } from '@douyinfe/semi-ui';
 import { Plus, Trash2 } from 'lucide-react';
 import type { ChannelMenu, ChannelMenuType } from '@zenith/shared/messaging';
+import { CHANNEL_MENU_TYPE_LABELS } from '@zenith/shared/messaging';
+import { createLabelOptionsFromMap } from '@zenith/shared/core';
 import { useChannelMenus, useSaveChannelMenus } from '@/hooks/queries/channels';
 import ModalFooter from '@/components/ModalFooter';
 
@@ -30,10 +32,7 @@ interface EditTop extends EditChild {
 }
 
 const { Text } = Typography;
-const TYPE_OPTIONS = [
-  { label: '关键词', value: 'click' },
-  { label: '跳转链接', value: 'view' },
-];
+const TYPE_OPTIONS = createLabelOptionsFromMap(CHANNEL_MENU_TYPE_LABELS);
 
 function fromMenu(m: ChannelMenu): EditChild {
   return { name: m.name, type: m.type, value: m.value ?? '' };

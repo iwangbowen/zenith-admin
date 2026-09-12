@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { Button, Col, Form, Radio, Row, Select, SideSheet, Spin, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { PlugZap } from 'lucide-react';
 import type { CreateFileStorageConfigInput, FileObjectAcl, FileStorageConfig, FileStorageProvider, FileUrlStrategy, UpdateFileStorageConfigInput } from '@zenith/shared/platform';
-import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
+import { COMMON_STATUS_OPTIONS, enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import { FILE_OBJECT_ACL_SUPPORT, FILE_STORAGE_PROVIDER_LABELS, FILE_STORAGE_PROVIDER_OPTIONS, FILE_URL_STRATEGY_LABELS, FILE_URL_STRATEGY_OPTIONS, PRESIGNED_EXPIRY_DEFAULT_SECONDS, PRESIGNED_EXPIRY_MAX_SECONDS, PRESIGNED_EXPIRY_MIN_SECONDS } from '@zenith/shared/platform';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { formatDateTimeRangeForApi } from '@/utils/date';
@@ -29,7 +29,6 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, StatusSelect } from '@/components/search-filters';
 import { compactParams } from '@/lib/query';
 
-const STATUS_FILTER_OPTIONS = [{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '禁用' }];
 import './FileStorageConfigsPage.css';
 
 const { Text } = Typography;
@@ -501,7 +500,7 @@ export default function FileStorageConfigsPage() {
         filters={(
           <>
             <StatusSelect
-              items={STATUS_FILTER_OPTIONS}
+              items={COMMON_STATUS_OPTIONS}
               {...bind('status')}
             />
             <DateRangeFilter {...bind('timeRange')} />

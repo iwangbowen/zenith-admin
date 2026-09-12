@@ -4,6 +4,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { Form, Modal, Space, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { AnalyticsSite } from '@zenith/shared/analytics';
+import { COMMON_STATUS_LABELS, COMMON_STATUS_OPTIONS } from '@zenith/shared/core';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import {
@@ -22,13 +23,9 @@ import { confirmDelete } from '@/utils/confirm';
 import { ListSearchToolbar } from '@/components/list-page';
 
 const PAGE_SIZE = 20;
-const STATUS_OPTIONS: { value: AnalyticsSite['status']; label: string }[] = [
-  { value: 'enabled', label: '启用' },
-  { value: 'disabled', label: '停用' },
-];
 const STATUS_META: Record<AnalyticsSite['status'], { label: string; color: 'green' | 'red' }> = {
-  enabled: { label: '启用', color: 'green' },
-  disabled: { label: '停用', color: 'red' },
+  enabled: { label: COMMON_STATUS_LABELS.enabled, color: 'green' },
+  disabled: { label: COMMON_STATUS_LABELS.disabled, color: 'red' },
 };
 
 interface SearchState { name: string; status?: AnalyticsSite['status'] }
@@ -131,7 +128,7 @@ export default function AnalyticsSitesTab() {
     <>
       <ListSearchToolbar
         keyword={<KeywordInput placeholder="站点名称" {...bindKeyword('name')} />}
-        filters={<StatusSelect items={STATUS_OPTIONS} {...bind('status')} />}
+        filters={<StatusSelect items={COMMON_STATUS_OPTIONS} {...bind('status')} />}
         onSearch={handleSearch}
         onReset={handleReset}
         create={<CreateButton onClick={siteModal.openCreate} />}
@@ -158,7 +155,7 @@ export default function AnalyticsSitesTab() {
           <Form.Input field="appId" label="AppId" placeholder="如 admin/member" rules={[{ required: true, message: '请输入 appId' }, { pattern: /^[a-z][a-z0-9_-]*$/, message: '以小写字母开头，仅允许小写字母、数字、下划线和中划线' }]} />
           <Form.TagInput field="allowedOrigins" label="来源白名单" placeholder="输入 origin 后回车，如 https://example.com" />
           <Form.InputNumber field="dailyEventQuota" label="日事件配额" min={1} placeholder="留空表示不限" style={{ width: '100%' }} />
-          <Form.Select field="status" label="状态" optionList={STATUS_OPTIONS} style={{ width: '100%' }} />
+          <Form.Select field="status" label="状态" optionList={COMMON_STATUS_OPTIONS} style={{ width: '100%' }} />
           <Form.TextArea field="remark" label="备注" maxCount={500} autosize={{ minRows: 3, maxRows: 5 }} />
         </Form>
       </Modal>

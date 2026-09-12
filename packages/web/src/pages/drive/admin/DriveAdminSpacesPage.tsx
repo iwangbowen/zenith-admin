@@ -4,7 +4,7 @@ import { Button, Checkbox, Form, Input, InputNumber, Select, Skeleton, Space, Sp
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate } from 'react-router-dom';
 import { Building2, Files, HardDrive, Link2, RefreshCcw, Search, Upload } from 'lucide-react';
-import { formatBytes } from '@zenith/shared/core';
+import { COMMON_STATUS_OPTIONS, formatBytes } from '@zenith/shared/core';
 import {
   DRIVE_ROLE_OPTIONS, DRIVE_SPACE_TYPE_OPTIONS, DRIVE_HANDOFF_MODE_OPTIONS, handoffDriveSpaceSchema, isOrphanedDriveSpace,
   type HandoffDriveSpaceInput, type AdminUpdateDriveSpaceInput, type CreateDepartmentDriveSpaceInput, type DriveRole, type DriveSpace, type DriveSpaceType,
@@ -54,7 +54,6 @@ interface AdminSpaceFormValues {
   ownerId?: number;
 }
 
-const STATUS_OPTIONS = [{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }] as const;
 const ROLE_OPTIONS_WITH_NONE = [{ value: '', label: '不开放' }, ...DRIVE_ROLE_OPTIONS];
 
 function DepartmentSpaceModal({ visible, onClose }: { readonly visible: boolean; readonly onClose: () => void }) {
@@ -203,7 +202,7 @@ export default function DriveAdminSpacesPage() {
         filters={(
           <>
             <FilterSelect<DriveSpaceType> {...bind('type')} placeholder="全部类型" items={DRIVE_SPACE_TYPE_OPTIONS} />
-            <StatusSelect<'enabled' | 'disabled'> {...bind('status')} items={STATUS_OPTIONS} />
+            <StatusSelect<'enabled' | 'disabled'> {...bind('status')} items={COMMON_STATUS_OPTIONS} />
             <Checkbox checked={draftParams.orphaned} onChange={(event) => setField('orphaned')(!!event.target.checked)}>仅待接管</Checkbox>
             <Checkbox checked={draftParams.archived} onChange={(event) => setField('archived')(!!event.target.checked)}>仅已归档</Checkbox>
           </>

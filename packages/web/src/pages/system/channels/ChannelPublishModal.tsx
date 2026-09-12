@@ -16,7 +16,9 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Eye, Save, Send, Settings2, Users } from 'lucide-react';
 import type { ChatCard, ChatMessageExtra } from '@zenith/shared/chat';
 import type { ChannelAdmin, ChannelMessage, ChannelMessageTemplate, ChannelPublishAudienceMode, ChannelSendMode } from '@zenith/shared/messaging';
+import { CHANNEL_PUBLISH_AUDIENCE_MODE_LABELS, CHANNEL_SEND_MODE_LABELS } from '@zenith/shared/messaging';
 import type { PublishChannelInput } from '@zenith/shared/mp';
+import { createLabelOptionsFromMap } from '@zenith/shared/core';
 import { formatDateTimeForApi } from '@/utils/date';
 import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { AppModal } from '@/components/AppModal';
@@ -76,17 +78,8 @@ const TYPE_OPTIONS = [
   { label: '图片', value: 'image' },
   { label: '图文', value: 'news' },
 ];
-const AUDIENCE_OPTIONS = [
-  { label: '全员', value: 'all' },
-  { label: '指定用户', value: 'users' },
-  { label: '按部门', value: 'departments' },
-  { label: '按角色', value: 'roles' },
-];
-const SEND_OPTIONS = [
-  { label: '立即发送', value: 'now' },
-  { label: '定时发送', value: 'scheduled' },
-  { label: '存草稿', value: 'draft' },
-];
+const AUDIENCE_OPTIONS = createLabelOptionsFromMap(CHANNEL_PUBLISH_AUDIENCE_MODE_LABELS);
+const SEND_OPTIONS = createLabelOptionsFromMap(CHANNEL_SEND_MODE_LABELS);
 
 function toDateValue(v: string | null | undefined): Date | undefined {
   if (!v) return undefined;

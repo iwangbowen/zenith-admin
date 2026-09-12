@@ -48,7 +48,7 @@ import {
 } from '@/components/charts';
 import AppModal from '@/components/AppModal';
 import type { ErrorAlertChannel, ErrorAlertCondition, ErrorAlertLog, ErrorAlertRule, ErrorBreadcrumb, ErrorEvent, ErrorGroup, ErrorLevel, ErrorStatus, FrontendErrorType, SourceMapItem, AnalyticsEnvironment } from '@zenith/shared/analytics';
-import { ERROR_ALERT_CHANNELS, SOURCE_MAP_MAX_BYTES } from '@zenith/shared/analytics';
+import { ANALYTICS_ENVIRONMENT_OPTIONS, ERROR_ALERT_CHANNELS, SOURCE_MAP_MAX_BYTES } from '@zenith/shared/analytics';
 import { enumValueOf } from '@zenith/shared/core';
 import { NOTIFY_CHANNEL_OPTIONS } from '@zenith/shared/messaging';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
@@ -122,12 +122,6 @@ const CHANNEL_CONFIG: Record<string, { label: string; color: TagColor }> = {
 };
 
 const CHART_COLORS = ['#f93920', '#ff8800', '#f5b70a', '#6a5af9', '#00b42a', '#14c9c9', '#8a38f5'];
-
-const ENVIRONMENT_OPTIONS: { value: AnalyticsEnvironment; label: string }[] = [
-  { value: 'production', label: '生产' },
-  { value: 'staging', label: '预发' },
-  { value: 'development', label: '开发' },
-];
 
 interface IssueFilters {
   status?: ErrorStatus;
@@ -957,7 +951,7 @@ export default function FrontendErrorsPage() {
                 />
                 <FilterSelect
                   placeholder="全部环境"
-                  items={ENVIRONMENT_OPTIONS}
+                  items={ANALYTICS_ENVIRONMENT_OPTIONS}
                   {...issueSearch.bind('environment')}
                 />
               </>
