@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { Button, Form, Radio, TreeSelect, Row, Col, Spin, Tooltip, Banner } from '@douyinfe/semi-ui';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
@@ -11,6 +10,7 @@ import IconPicker from '@/components/IconPicker';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useElementSize } from '@/hooks/useElementSize';
+import { useListSearch } from '@/hooks/useListSearch';
 import { useTreeExpansion } from '@/hooks/useTreeExpansion';
 import DictTag from '@/components/DictTag';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
@@ -23,19 +23,26 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { deleteAction, ListSearchToolbar, useStatusToggle } from '@/components/list-page';
 
+interface SearchParams {
+  keyword: string;
+  status?: string;
+}
+
+const defaultSearchParams: SearchParams = { keyword: '', status: undefined };
+
 export default function MenusPage() {
   const { hasPermission } = usePermission();
-  const queryClient = useQueryClient();
   const createParentIdRef = useRef<number>(0);
   const [parentId, setParentId] = useState<number | null>(null);
   const [iconValue, setIconValue] = useState('');
   const [menuType, setMenuType] = useState<string>('menu');
   const [isExternalVal, setIsExternalVal] = useState<boolean>(false);
 
-  const [keyword, setKeyword] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('');
-  const [pendingKeyword, setPendingKeyword] = useState('');
-  const [pendingStatus, setPendingStatus] = useState<string | undefined>();
+  // 树形列表不分页：只取草稿 / 已提交双状态与「查询 / 重置必回源」，submitted 进客户端过滤谓词
+  const { bind, bindKeyword, submittedParams, handleSearch, handleReset } = useListSearch<SearchParams>({
+    defaults: defaultSearchParams,
+    listKey: menuKeys.tree,
+  });
   const { ref: tableWrapperRef, height: tableHeight } = useElementSize<HTMLDivElement>({ height: 500 });
 
   const { items: menuTypeItems } = useDictItems('menu_type');
@@ -106,6 +113,7 @@ export default function MenusPage() {
     }, []);
   }, []);
 
+  const { keyword, status: statusFilter = '' } = submittedParams;
   const filteredData = useMemo(
     () => (keyword || statusFilter ? filterTree(data, keyword, statusFilter) : data),
     [data, keyword, statusFilter, filterTree]
@@ -125,19 +133,10 @@ export default function MenusPage() {
     }
   }, [keyword, statusFilter, allRowKeys, setExpandedRowKeys]);
 
-  const handleSearch = () => {
-    setKeyword(pendingKeyword);
-    setStatusFilter(pendingStatus ?? '');
-    void queryClient.invalidateQueries({ queryKey: menuKeys.tree });
-  };
-
-  const handleReset = () => {
-    setPendingKeyword('');
-    setPendingStatus(undefined);
-    setKeyword('');
-    setStatusFilter('');
+  // 重置除清条件外还要收起全部节点；useTreeExpansion 依赖 filteredData，声明在 useListSearch 之后，故在此组合
+  const handleResetAndCollapse = () => {
+    handleReset();
     setExpandedRowKeys([]);
-    void queryClient.invalidateQueries({ queryKey: menuKeys.tree });
   };
 
   // Semi Table 原生支持 children 字段树形展示，无需手动 flatten
@@ -291,10 +290,10 @@ export default function MenusPage() {
   return (
     <div className="page-container" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="菜单名称" value={pendingKeyword} onChange={setPendingKeyword} onSearch={handleSearch} width={200} />}
-        filters={<StatusSelect items={statusItems} value={pendingStatus} onChange={setPendingStatus} />}
+        keyword={<KeywordInput placeholder="菜单名称" {...bindKeyword('keyword')} width={200} />}
+        filters={<StatusSelect items={statusItems} {...bind('status')} />}
         onSearch={handleSearch}
-        onReset={handleReset}
+        onReset={handleResetAndCollapse}
         create={(
           hasPermission('system:menu:create') ? (
             <CreateButton onClick={() => openCreate()} />

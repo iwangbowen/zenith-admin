@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { Space, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { LayoutTemplate } from 'lucide-react';
@@ -8,6 +7,7 @@ import type { WorkflowTemplate } from '@zenith/shared/workflow';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePermission } from '@/hooks/usePermission';
+import { useListSearch } from '@/hooks/useListSearch';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { KeywordInput } from '@/components/search-filters';
@@ -23,12 +23,14 @@ import {
 export default function WorkflowTemplatesPage() {
   const { hasPermission } = usePermission();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const canEdit = hasPermission('workflow:definition:edit');
   const canCreate = hasPermission('workflow:definition:create');
 
-  const [keyword, setKeyword] = useState('');
-  const [activeKeyword, setActiveKeyword] = useState('');
+  // 全量模板在客户端过滤：只取草稿 / 已提交双状态与「查询 / 重置必回源」
+  const { bindKeyword, submittedParams, handleSearch, handleReset } = useListSearch<{ keyword: string }>({
+    defaults: { keyword: '' },
+    listKey: workflowTemplateKeys.lists,
+  });
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<WorkflowTemplate | null>(null);
@@ -41,23 +43,13 @@ export default function WorkflowTemplatesPage() {
   const cloningId = cloneMutation.isPending ? (cloneMutation.variables?.params.id ?? null) : null;
 
   const filtered = useMemo(() => {
-    const kw = activeKeyword.trim().toLowerCase();
+    const kw = submittedParams.keyword.trim().toLowerCase();
     if (!kw) return templates;
     return templates.filter((t) =>
       [t.name, t.code, t.description, t.categoryName]
         .some((v) => (v ?? '').toLowerCase().includes(kw)),
     );
-  }, [templates, activeKeyword]);
-
-  const handleSearch = () => {
-    setActiveKeyword(keyword);
-    void queryClient.invalidateQueries({ queryKey: workflowTemplateKeys.lists });
-  };
-  const handleReset = () => {
-    setKeyword('');
-    setActiveKeyword('');
-    void queryClient.invalidateQueries({ queryKey: workflowTemplateKeys.lists });
-  };
+  }, [templates, submittedParams.keyword]);
 
   const openEdit = (record: WorkflowTemplate) => {
     setEditing(record);
@@ -175,7 +167,7 @@ export default function WorkflowTemplatesPage() {
   return (
     <div className="page-container">
       <ListSearchToolbar
-        keyword={<KeywordInput placeholder="搜索名称 / 编码 / 描述" value={keyword} onChange={setKeyword} onSearch={handleSearch} width={240} />}
+        keyword={<KeywordInput placeholder="搜索名称 / 编码 / 描述" {...bindKeyword('keyword')} width={240} />}
         onSearch={handleSearch}
         onReset={handleReset}
       />

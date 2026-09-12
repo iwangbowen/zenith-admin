@@ -7,7 +7,7 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { AiFeedbackItem, AiFeedbackStatus, AiMessage } from '@zenith/shared/ai';
 import { AI_FEEDBACK_STATUSES, AI_FEEDBACK_STATUS_OPTIONS } from '@zenith/shared/ai';
 import { enumValueOf } from '@zenith/shared/core';
-import { formatDateForApi } from '@/utils/date';
+import { formatDateRangeValuesForApi } from '@/utils/date';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -75,14 +75,15 @@ export default function AiFeedbackPage() {
   const [handlingMessage, setHandlingMessage] = useState<AiFeedbackItem | null>(null);
   const [contextMsgId, setContextMsgId] = useState<number | null>(null);
   // 筛选值来自 Select 字符串，收窄为契约枚举后再进入查询
-  // 已提交筛选 → 契约查询参数：只映射一次
+  // 已提交筛选 → 契约查询参数：只映射一次；日期级区间按契约键名 startDate / endDate 取元组形态
+  const [startDate, endDate] = formatDateRangeValuesForApi(submittedParams.timeRange);
   const filterQuery = useMemo(() => compactParams({
     feedback: enumValueOf(FEEDBACK_FILTER_VALUES, submittedParams.feedback),
     status: enumValueOf(AI_FEEDBACK_STATUSES, submittedParams.status),
     model: submittedParams.model,
-    startDate: submittedParams.timeRange ? formatDateForApi(submittedParams.timeRange[0]) : undefined,
-    endDate: submittedParams.timeRange ? formatDateForApi(submittedParams.timeRange[1]) : undefined,
-  }), [submittedParams]);
+    startDate,
+    endDate,
+  }), [submittedParams, startDate, endDate]);
   const listQuery = useAiFeedbackList({ page, pageSize, ...filterQuery });
   const data = listQuery.data ?? null;
   const handleMutation = useHandleAiFeedback();

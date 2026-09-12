@@ -5,7 +5,7 @@ import { buildWhere, withPagination, keywordCondition } from '../../lib/where-he
 import { db } from '../../db';
 import { tags } from '../../db/schema';
 import type { TagRow } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
@@ -22,8 +22,7 @@ export function mapTag(row: TagRow) {
     description: row.description ?? null,
     status:      row.status,
     sortOrder:   row.sortOrder,
-    createdAt:   formatDateTime(row.createdAt),
-    updatedAt:   formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

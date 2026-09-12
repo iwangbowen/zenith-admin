@@ -15,7 +15,7 @@ import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table
 import { JsonBlock } from '@/components/JsonBlock';
 import { ANALYTICS_ISSUE_TAG_COLOR } from './analytics-tag-colors';
 import { nullableText } from './analytics-format';
-import { ListSearchToolbar } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 /** 枚举原值 → 中文标签，未收录的自定义值原样展示 */
 function labelOf(labels: Record<string, string>, value: string | null | undefined): string {
@@ -37,7 +37,6 @@ export default function AnalyticsDebugTab({ active }: Readonly<{ active: boolean
   const filterQuery = useMemo(() => compactParams({ eventName: submittedParams.eventName }), [submittedParams]);
   const debugQuery = useAnalyticsDebugEvents({ page, pageSize, ...filterQuery }, active);
   const events = debugQuery.data?.list ?? [];
-  const total = debugQuery.data?.total ?? 0;
 
   const columns: ColumnProps<AnalyticsDebugEvent>[] = [
     dateTimeColumn('时间', 'createdAt'),
@@ -84,15 +83,10 @@ export default function AnalyticsDebugTab({ active }: Readonly<{ active: boolean
         onReset={handleReset}
       />
       <ConfigurableTable
-        bordered
-        rowKey="id"
-        loading={debugQuery.isFetching && events.length === 0}
         columns={columns}
-        dataSource={events}
-        onRefresh={() => void debugQuery.refetch()}
-        refreshLoading={debugQuery.isFetching}
-        pagination={buildPagination(total)}
-        empty="暂无最近事件"
+        {...listTableProps(debugQuery, { pagination: buildPagination, empty: '暂无最近事件' })}
+        // 遮罩只在首屏出现：Tab 切回时的后台刷新不遮住已有事件
+        loading={debugQuery.isFetching && events.length === 0}
         expandedRowRender={renderExpanded}
         hideExpandedColumn={false}
         expandRowByClick

@@ -11,11 +11,12 @@ import { ListSearchToolbar, listTableProps, useStatusToggle } from '@/components
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 
-import { dataMaskKeys, useDataMaskFields, useResetDataMaskPolicy, useSaveDataMaskPolicy, type DataMaskFieldsQuery } from '@/hooks/queries/data-mask';
+import { dataMaskKeys, useDataMaskFields, useResetDataMaskPolicy, useSaveDataMaskPolicy } from '@/hooks/queries/data-mask';
 import { useMenuTree } from '@/hooks/queries/menus';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
+import { compactParams } from '@/lib/query';
 import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 
 const { Text } = Typography;
@@ -56,15 +57,8 @@ interface SearchParams {
 
 const defaultSearchParams: SearchParams = { keyword: '', entity: undefined, maskType: undefined, enabled: undefined, overridden: undefined };
 
-function toQuery(params: SearchParams): DataMaskFieldsQuery {
-  return {
-    keyword: params.keyword || undefined,
-    entity: params.entity,
-    maskType: enumValueOf(MASK_TYPES, params.maskType),
-    enabled: params.enabled === undefined ? undefined : params.enabled === 'true',
-    overridden: params.overridden === undefined ? undefined : params.overridden === 'true',
-  };
-}
+/** 布尔筛选在草稿里以 'true' / 'false' 字串保存（Select 选项值），提交时收窄为布尔；compactParams 保留 false */
+const boolFilter = (value: string | undefined) => (value === undefined ? undefined : value === 'true');
 
 function customRuleOf(values: Pick<FormValues, 'maskType' | 'prefixKeep' | 'suffixKeep' | 'maskChar'>): CustomMaskRule | null {
   if (values.maskType !== 'custom') return null;
@@ -94,7 +88,16 @@ export default function DataMaskPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: dataMaskKeys.fields });
 
-  const listQuery = useDataMaskFields(toQuery(submittedParams));
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    entity: submittedParams.entity,
+    maskType: enumValueOf(MASK_TYPES, submittedParams.maskType),
+    enabled: boolFilter(submittedParams.enabled),
+    overridden: boolFilter(submittedParams.overridden),
+  }), [submittedParams]);
+
+  const listQuery = useDataMaskFields(filterQuery);
   const rows = useMemo<DataMaskFieldRow[]>(() => (listQuery.data ?? []).map((item, index) => ({ ...item, id: index + 1 })), [listQuery.data]);
   const entityOptions = useMemo(() => {
     const entities = Array.from(new Set((listQuery.data ?? []).map((item) => item.entity))).sort();

@@ -9,6 +9,8 @@ import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { formatTimestamps } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import type { Department, createDepartmentSchema, updateDepartmentSchema } from '@zenith/shared/identity';
+import { departmentContract } from '@zenith/shared/identity';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import type * as z from 'zod';
 import { getScopeMemberSummaries } from './user-scope.service';
 import { buildTree } from '@zenith/shared/core';
@@ -50,7 +52,8 @@ export function buildDepartmentTree(list: Omit<Department, 'children'>[]): Depar
   return buildTree<Department>(list, { compare: (a, b) => a.sort - b.sort || a.id - b.id });
 }
 
-export interface DepartmentFilter { keyword?: string; status?: string }
+/** 部门树的筛选条件由契约派生（不分页）；平铺导出复用同一形状 */
+export type DepartmentFilter = QueryOutputOf<typeof departmentContract.tree>;
 
 /** 单个部门是否命中筛选：树形列表（保留祖先链）与平铺导出共用同一份判定 */
 export function matchesDepartmentFilter(node: Pick<Department, 'name' | 'code' | 'status'>, q: DepartmentFilter): boolean {
@@ -59,10 +62,10 @@ export function matchesDepartmentFilter(node: Pick<Department, 'name' | 'code' |
   return keywordMatched && statusMatched;
 }
 
-export function filterDepartmentTree(nodes: Department[], keyword: string, status?: string): Department[] {
+export function filterDepartmentTree(nodes: Department[], q: DepartmentFilter): Department[] {
   return nodes.reduce<Department[]>((acc, node) => {
-    const children = node.children ? filterDepartmentTree(node.children, keyword, status) : [];
-    if (matchesDepartmentFilter(node, { keyword, status }) || children.length > 0) {
+    const children = node.children ? filterDepartmentTree(node.children, q) : [];
+    if (matchesDepartmentFilter(node, q) || children.length > 0) {
       acc.push({ ...node, children: children.length > 0 ? children : undefined });
     }
     return acc;
@@ -94,7 +97,7 @@ export async function ensureParentValid(parentId: number, currentId?: number) {
 
 // ─── 业务方法 ─────────────────────────────────────────────────────────────────
 
-export async function listDepartmentTree(params: { keyword?: string; status?: string }): Promise<Department[]> {
+export async function listDepartmentTree(q: DepartmentFilter): Promise<Department[]> {
   const tc = tenantCondition(departments, currentUser());
   const rows = await db.select().from(departments).where(tc).orderBy(asc(departments.sort), asc(departments.id));
   const leaderIds = [...new Set(rows.map((r) => r.leaderId).filter((id): id is number => id !== null))];
@@ -111,8 +114,7 @@ export async function listDepartmentTree(params: { keyword?: string; status?: st
     userPreview: memberSummaries.get(r.id)?.preview ?? [],
   }));
   const tree = buildDepartmentTree(mapped);
-  const { keyword = '', status } = params;
-  return keyword || status ? filterDepartmentTree(tree, keyword, status) : tree;
+  return q.keyword || q.status ? filterDepartmentTree(tree, q) : tree;
 }
 
 export async function listDepartmentsFlat(): Promise<Omit<Department, 'children'>[]> {

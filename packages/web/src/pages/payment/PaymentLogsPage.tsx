@@ -1,17 +1,21 @@
 import { PAYMENT_CHANNEL_TAG_COLOR } from '@/utils/payment';
+import { useMemo } from 'react';
 import { Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { formatDateTimeRangeForApi } from '@/utils/date';
-import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
+import { enumValueOf } from '@zenith/shared/core';
+import { PAYMENT_CHANNELS, PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
 import type { PaymentChannel, PaymentNotifyLog } from '@zenith/shared/payment';
 import { paymentLogKeys, usePaymentLogList } from '@/hooks/queries/payment-logs';
 import { useListSearch } from '@/hooks/useListSearch';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
-import { compactQuery } from '@/lib/query';
+import { compactParams } from '@/lib/query';
 import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { JsonBlock } from '@/components/JsonBlock';
+
+const NOTIFY_SCENES = ['payment', 'refund'] as const;
 
 interface SearchParams { keyword: string; channel?: string; scene?: string; signatureValid?: string; timeRange: [Date, Date] | null; }
 const defaultSearch: SearchParams = { keyword: '', channel: undefined, scene: undefined, signatureValid: undefined, timeRange: null };
@@ -27,17 +31,17 @@ export default function PaymentLogsPage() {  const {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentLogKeys.lists });
 
-  function buildQuery(active: SearchParams): Record<string, string> {
-    return compactQuery({
-      keyword: active.keyword,
-      channel: active.channel,
-      scene: active.scene,
-      signatureValid: active.signatureValid,
-      ...formatDateTimeRangeForApi(active.timeRange),
-    });
-  }
+  // 已提交筛选 → 契约查询参数：只映射一次；枚举筛选从 string 收窄，
+  // 验签结果在草稿以 'true' / 'false' 字串保存（Select 选项值），提交时收窄为布尔（compactParams 保留 false）
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
+    scene: enumValueOf(NOTIFY_SCENES, submittedParams.scene),
+    signatureValid: submittedParams.signatureValid === undefined ? undefined : submittedParams.signatureValid === 'true',
+    ...formatDateTimeRangeForApi(submittedParams.timeRange),
+  }), [submittedParams]);
 
-  const listQuery = usePaymentLogList({ page, pageSize, ...buildQuery(submittedParams) });
+  const listQuery = usePaymentLogList({ page, pageSize, ...filterQuery });
 
   const columns: ColumnProps<PaymentNotifyLog>[] = [
     // 订单号置于首列承载展开箭头；内部日志 ID 移入展开详情

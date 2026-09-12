@@ -7,7 +7,7 @@ import type { AiFeedbackItem } from '@zenith/shared/ai';
 import { keepPreviousData } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { enumValueOf } from '@zenith/shared/core';
-import { formatDateForApi } from '@/utils/date';
+import { formatDateRangeValuesForApi } from '@/utils/date';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -53,13 +53,14 @@ export default function AiAuditPage() {
   } = useListSearch<AuditSearch>({ defaults: { keyword: '', range: null }, listKey: auditKeys.lists });
   const [contextMsgId, setContextMsgId] = useState<number | null>(null);
   const [traceMsg, setTraceMsg] = useState<AiFeedbackItem | null>(null);
-  // 已提交筛选 → 契约查询参数：只映射一次
+  // 已提交筛选 → 契约查询参数：只映射一次；日期级区间按契约键名 startDate / endDate 取元组形态
+  const [startDate, endDate] = formatDateRangeValuesForApi(submitted.range);
   const filterQuery = useMemo(() => compactParams({
     keyword: submitted.keyword,
     role: enumValueOf(AUDIT_ROLES, submitted.role),
-    startDate: submitted.range?.[0] ? formatDateForApi(submitted.range[0]) : undefined,
-    endDate: submitted.range?.[1] ? formatDateForApi(submitted.range[1]) : undefined,
-  }), [submitted]);
+    startDate,
+    endDate,
+  }), [submitted, startDate, endDate]);
   const listQuery = useAuditList({ page, pageSize, ...filterQuery });
   const contextQuery = useAuditContext(contextMsgId);
 

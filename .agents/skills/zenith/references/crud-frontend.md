@@ -251,9 +251,9 @@ export default function XxxPage() {
       {/* 新增 / 编辑共用一个弹窗 */}
       <AppModal {...modal.modalProps} width={660}>
         <Spin spinning={modal.detailLoading} wrapperClassName="modal-spin-wrapper">
-          {/* formProps 已含 key（详情到达时重挂载）、getFormApi、allowEmpty、
-              initValues、labelPosition 与 labelWidth */}
-          <Form {...modal.formProps}>
+          {/* key 必须显式写在 JSX 上（React 不从 spread 里取 key）：formKey 在详情到达时变化，驱动表单重挂载；
+              formProps 含 getFormApi、allowEmpty、initValues、labelPosition 与 labelWidth */}
+          <Form key={modal.formKey} {...modal.formProps}>
             {/* 全宽字段（树形选择、长文本）：直接写，不包 Col */}
             <Form.TreeSelect field="parentId" label="上级" style={{ width: '100%' }}
               treeData={[]} placeholder="请选择上级" filterTreeNode showClear />
@@ -304,6 +304,12 @@ const { draftParams, applySearch } = useListSearch<SearchParams>({ ... });
 
 onSelect={(deptId) => applySearch({ ...draftParams, departmentId: deptId })}
 ```
+
+**树形 / 不分页 / 客户端过滤的列表**（菜单树、部门树、模板全量列表）同样用 `useListSearch`：
+`listKey` 传该数据的查询 key（如 `menuKeys.tree`），`submittedParams` 进请求参数或客户端过滤谓词，
+返回的 `page` / `pageSize` 不取即可。它收口的「草稿 / 已提交双状态 + 查询必回源」与是否分页无关，
+不要退回手写 `pendingKeyword` / `keyword` 两个 `useState` + `invalidateQueries`（参考 `DepartmentsPage`）。
+只有**边输边筛、没有「查询」按钮语义**的即时过滤才不属于本 hook。
 
 ## 搜索工具栏筛选控件
 

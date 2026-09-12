@@ -47,6 +47,15 @@ export function buildAccessFilter(userId: number) {
   );
 }
 
+/** 当前用户可见的公告：已发布 ∧ 在收件范围内 ∧ 租户可见；收件箱、未读数与顶部公告列表共用同一口径 */
+function visibleAnnouncementsWhere(user: ReturnType<typeof currentUser>) {
+  return buildWhere(
+    eq(announcements.publishStatus, 'published'),
+    buildAccessFilter(user.userId),
+    tenantCondition(announcements, user),
+  );
+}
+
 // ─── 收件人管理 ───────────────────────────────────────────────────────────────
 
 export async function saveRecipients(
@@ -118,10 +127,8 @@ export async function broadcastAnnouncement(announcement: ReturnType<typeof mapA
 
 export async function listPublishedForUser() {
   const user = currentUser();
-  const tc = tenantCondition(announcements, user);
-  const accessFilter = buildAccessFilter(user.userId);
   const rows = await db.query.announcements.findMany({
-    where: and(eq(announcements.publishStatus, 'published'), accessFilter, ...(tc ? [tc] : [])),
+    where: visibleAnnouncementsWhere(user),
     with: { reads: { where: eq(announcementReads.userId, user.userId), columns: { id: true } } },
     orderBy: [desc(announcements.publishTime)],
     limit: 20,
@@ -151,9 +158,7 @@ export async function markAllAnnouncementsRead() {
 
 export async function getUnreadAnnouncementCount(): Promise<number> {
   const user = currentUser();
-  const tc = tenantCondition(announcements, user);
-  const accessFilter = buildAccessFilter(user.userId);
-  const baseWhere = and(eq(announcements.publishStatus, 'published'), accessFilter, ...(tc ? [tc] : []));
+  const baseWhere = visibleAnnouncementsWhere(user);
   const joinCond = and(eq(announcementReads.announcementId, announcements.id), eq(announcementReads.userId, user.userId));
   const [row] = await db
     .select({ count: count() })
@@ -166,9 +171,7 @@ export async function getUnreadAnnouncementCount(): Promise<number> {
 export async function getInbox(q: QueryOutputOf<typeof announcementContract.inbox>) {
   const user = currentUser();
   const { page, pageSize, isRead } = q;
-  const tc = tenantCondition(announcements, user);
-  const accessFilter = buildAccessFilter(user.userId);
-  const baseWhere = and(eq(announcements.publishStatus, 'published'), accessFilter, ...(tc ? [tc] : []));
+  const baseWhere = visibleAnnouncementsWhere(user);
   const joinCond = and(eq(announcementReads.announcementId, announcements.id), eq(announcementReads.userId, user.userId));
   let readFilter: ReturnType<typeof isNotNull | typeof isNull> | undefined;
   const readValue: unknown = isRead;

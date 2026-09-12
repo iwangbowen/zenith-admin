@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNull, lt, lte, notInArray, or, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, lt, lte, notInArray, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import {
   ASYNC_TASK_ACTIVE_STATUSES as UNFINISHED_STATUSES,
@@ -13,7 +13,7 @@ import { ensureLocalNodeQueue, isQueueNotFoundError, registerLocalNodeQueueWorke
 import { PROCESS_ID } from '../process-identity';
 import { currentUser, runWithCurrentUser, currentTraceId, runWithTraceId, currentParentRef, runWithParentRef } from '../context';
 import { exactTenantCondition, getCreateTenantId } from '../tenant';
-import { nullableEq } from '../where-helpers';
+import { buildWhere, nullableEq } from '../where-helpers';
 import type { JwtPayload } from '../../middleware/auth';
 import logger from '../logger';
 import {
@@ -512,56 +512,47 @@ async function failIfNodeGone(task: Pick<AsyncTaskRow, 'id' | 'nodeId'>): Promis
   return true;
 }
 
-/** 清理超过保留期的已结束任务记录（支持类型级保留期覆盖），返回清理数量 */
-export async function cleanupAsyncTasks(retentionDays = ASYNC_TASK_RETENTION_DAYS): Promise<number> {
+/**
+ * 保留期清理的口径：有类型级覆盖的任务类型各按自身保留期，其余类型走全局保留期。
+ * 清理与「数据保留策略」预览计数共用这一组条件，二者不会漂移。
+ */
+async function cleanableTaskWheres(retentionDays: number): Promise<SQL[]> {
   const now = Date.now();
   const dayMs = 24 * 60 * 60 * 1000;
-  // 类型级覆盖：按各自保留期清理；全局保留天数由「数据保留策略」async_tasks 配置驱动
+  const expiredBefore = (days: number) => lt(asyncTasks.completedAt, new Date(now - days * dayMs));
   const overrides = await db.select({ taskType: asyncTaskTypeConfigs.taskType, retentionDays: asyncTaskTypeConfigs.retentionDays })
     .from(asyncTaskTypeConfigs).where(gt(asyncTaskTypeConfigs.retentionDays, 0));
+  const overridden = overrides.flatMap((o) => (o.retentionDays == null ? [] : [{ taskType: o.taskType, retentionDays: o.retentionDays }]));
+  const perType = overridden.map((o) => and(
+    eq(asyncTasks.taskType, o.taskType),
+    inArray(asyncTasks.status, TERMINAL_STATUSES),
+    expiredBefore(o.retentionDays),
+  ));
+  const overriddenTypes = overridden.map((o) => o.taskType);
+  const rest = buildWhere(
+    inArray(asyncTasks.status, TERMINAL_STATUSES),
+    expiredBefore(retentionDays),
+    overriddenTypes.length > 0 ? notInArray(asyncTasks.taskType, overriddenTypes) : undefined,
+  );
+  // 每组都至少含状态 + 截止时间两个条件，不可能退化为「无 WHERE」；此处只收窄类型
+  return [...perType, rest].filter((where): where is SQL => where !== undefined);
+}
+
+/** 清理超过保留期的已结束任务记录（支持类型级保留期覆盖），返回清理数量 */
+export async function cleanupAsyncTasks(retentionDays = ASYNC_TASK_RETENTION_DAYS): Promise<number> {
   let cleaned = 0;
-  const overriddenTypes: string[] = [];
-  for (const override of overrides) {
-    if (override.retentionDays == null) continue;
-    overriddenTypes.push(override.taskType);
-    const cutoff = new Date(now - override.retentionDays * dayMs);
-    const rows = await db.delete(asyncTasks)
-      .where(and(
-        eq(asyncTasks.taskType, override.taskType),
-        inArray(asyncTasks.status, TERMINAL_STATUSES),
-        lt(asyncTasks.completedAt, cutoff),
-      ))
-      .returning({ id: asyncTasks.id });
+  for (const where of await cleanableTaskWheres(retentionDays)) {
+    const rows = await db.delete(asyncTasks).where(where).returning({ id: asyncTasks.id });
     cleaned += rows.length;
   }
-  // 其余类型走全局保留期
-  const globalCutoff = new Date(now - retentionDays * dayMs);
-  const conditions = [inArray(asyncTasks.status, TERMINAL_STATUSES), lt(asyncTasks.completedAt, globalCutoff)];
-  if (overriddenTypes.length > 0) conditions.push(notInArray(asyncTasks.taskType, overriddenTypes));
-  const rows = await db.delete(asyncTasks).where(and(...conditions)).returning({ id: asyncTasks.id });
-  return cleaned + rows.length;
+  return cleaned;
 }
 
 /** 待清理的已结束任务数量（与 cleanupAsyncTasks 同口径，供数据保留策略预览） */
 export async function countCleanableAsyncTasks(retentionDays = ASYNC_TASK_RETENTION_DAYS): Promise<number> {
-  const now = Date.now();
-  const dayMs = 24 * 60 * 60 * 1000;
-  const overrides = await db.select({ taskType: asyncTaskTypeConfigs.taskType, retentionDays: asyncTaskTypeConfigs.retentionDays })
-    .from(asyncTaskTypeConfigs).where(gt(asyncTaskTypeConfigs.retentionDays, 0));
   let pending = 0;
-  const overriddenTypes: string[] = [];
-  for (const override of overrides) {
-    if (override.retentionDays == null) continue;
-    overriddenTypes.push(override.taskType);
-    pending += await db.$count(asyncTasks, and(
-      eq(asyncTasks.taskType, override.taskType),
-      inArray(asyncTasks.status, TERMINAL_STATUSES),
-      lt(asyncTasks.completedAt, new Date(now - override.retentionDays * dayMs)),
-    ));
-  }
-  const conditions = [inArray(asyncTasks.status, TERMINAL_STATUSES), lt(asyncTasks.completedAt, new Date(now - retentionDays * dayMs))];
-  if (overriddenTypes.length > 0) conditions.push(notInArray(asyncTasks.taskType, overriddenTypes));
-  return pending + await db.$count(asyncTasks, and(...conditions));
+  for (const where of await cleanableTaskWheres(retentionDays)) pending += await db.$count(asyncTasks, where);
+  return pending;
 }
 
 /**

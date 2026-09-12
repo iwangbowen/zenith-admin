@@ -12,7 +12,7 @@ import { useCronJobAllLogs } from '@/hooks/queries/cron-jobs';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { formatDurationMs } from '@/utils/format';
 import { DATE_TIME_COLUMN_WIDTH, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
-import { compactQuery } from '@/lib/query';
+import { compactParams } from '@/lib/query';
 import { RelativeTime, TRIGGER_TAG, statusMeta, type RecentLogsSearchParams } from './cron-dashboard-shared';
 
 interface Props {
@@ -26,7 +26,7 @@ interface Props {
 /** 执行记录：可按状态 / 任务 / 关键字 / 时间筛选的分页表 */
 export function CronJobRecentLogs({ jobOptions, now, search, onViewLogs }: Props) {
   const { page, pageSize, buildPagination, bind, bindKeyword, submittedParams, handleSearch, handleReset } = search;
-  const query = useMemo(() => compactQuery({
+  const query = useMemo(() => compactParams({
     page,
     pageSize,
     keyword: submittedParams.keyword,

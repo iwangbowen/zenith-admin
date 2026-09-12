@@ -19,7 +19,7 @@ import {
   useTenantPackageDetail,
   useTenantPackageList,
 } from '@/hooks/queries/tenant-packages';
-import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
+import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
@@ -42,7 +42,7 @@ export default function TenantPackagesPage() {
     bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: tenantPackageKeys.lists });
-  const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
+  const { selectedRowKeys, hasSelection, clear: clearSelection, rowSelection } = useRowSelection();
 
   // 已提交筛选 → 契约查询参数：只映射一次
   const filterQuery = useMemo(() => compactParams({
@@ -173,7 +173,7 @@ export default function TenantPackagesPage() {
             <CreateButton onClick={modal.openCreate} />
           ) : null
         )}
-        actions={selectedRowKeys.length > 0 && hasPermission('system:tenant-package:delete') && <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />}
+        actions={hasSelection && hasPermission('system:tenant-package:delete') && <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />}
         filterTitle="套餐筛选"
         actionTitle="套餐操作"
       />

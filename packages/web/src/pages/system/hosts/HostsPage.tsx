@@ -272,7 +272,7 @@ export default function HostsPage() {
 
       <AppModal {...modal.modalProps} width={760}>
         <Spin spinning={modal.detailLoading}>
-          <Form {...modal.formProps}>
+          <Form key={modal.formKey} {...modal.formProps}>
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Input field="name" label="名称" rules={[{ required: true }]} />

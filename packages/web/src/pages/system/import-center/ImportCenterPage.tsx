@@ -12,7 +12,7 @@ import { enumValueOf } from '@zenith/shared/core';
 import { ImportProgressModal } from '@/components/ImportButton';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { ListSearchToolbar } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { CreateButton } from '@/components/toolbar-controls';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -88,7 +88,6 @@ export default function ImportCenterPage() {
     { refetchInterval: hasActiveTask ? 3000 : false },
   );
   const list = listQuery.data?.list ?? EMPTY_TASKS;
-  const total = listQuery.data?.total ?? 0;
 
   useEffect(() => {
     setHasActiveTask(list.some((t) => t.status === 'pending' || t.status === 'running'));
@@ -172,16 +171,10 @@ export default function ImportCenterPage() {
       />
 
       <ConfigurableTable
-        bordered
         columns={columns}
-        dataSource={list}
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无导入记录，点击「新建导入」开始' })}
+        // 进行中任务每 3s 轮询：遮罩只在首屏出现，后台刷新不遮住表格（刷新图标仍由 refreshLoading 转动）
         loading={listQuery.isFetching && !listQuery.data}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(total)}
-        rowKey="id"
-        size="small"
-        empty="暂无导入记录，点击「新建导入」开始"
       />
 
       <NewImportModal

@@ -22,6 +22,7 @@ import {
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput, NumberFilter } from '@/components/search-filters';
 import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
+import { formatDateRangeForApi } from '@/utils/date';
 import { compactParams } from '@/lib/query';
 
 const { Text, Title } = Typography;
@@ -53,9 +54,9 @@ export default function OpenApiStatsPage() {
   // 统计区间必选：清空时回到默认的近 7 天
   const bindRange = () => bind('range', (range: [Date, Date] | null) => range ?? createDefaultParams().range);
 
+  // 日期级区间 → 契约标准端点（YYYY-MM-DD）：服务端把纯日期起点解析为 00:00:00、终点补到当天末尾，且日对齐区间可直接命中日汇总表
   const rangeParams = useMemo(() => ({
-    startTime: dayjs(submittedParams.range[0]).startOf('day').format('YYYY-MM-DD HH:mm:ss'),
-    endTime: dayjs(submittedParams.range[1]).endOf('day').format('YYYY-MM-DD HH:mm:ss'),
+    ...formatDateRangeForApi(submittedParams.range),
     clientId: submittedParams.clientId,
     environment: submittedParams.environment,
   }), [submittedParams]);
