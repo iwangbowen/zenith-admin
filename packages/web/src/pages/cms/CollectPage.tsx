@@ -1,5 +1,6 @@
 /** 采集中心：规则 CRUD + 任务中心执行 + 采集明细（P3 Batch5） */
 import { useMemo, useState } from 'react';
+import { compactParams } from '@/lib/query';
 import ModalFooter from '@/components/ModalFooter';
 import { Col, Form, Row, SideSheet, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -44,7 +45,9 @@ export default function CollectPage() {
   const [itemsRule, setItemsRule] = useState<CmsCollectRule | null>(null);
   const itemsPagination = usePagination(10);
 
-  const listQuery = useCmsCollectRules({ page, pageSize, siteId, keyword: submittedParams.keyword || undefined });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({ keyword: submittedParams.keyword }), [submittedParams]);
+  const listQuery = useCmsCollectRules({ page, pageSize, siteId, ...filterQuery });
   const treeQuery = useCmsChannelTree(siteId);
   const saveMutation = useSaveCmsCollectRule();
   const modal = useEditModal<CmsCollectRule, Partial<CmsCollectRule>, Record<string, unknown>>({

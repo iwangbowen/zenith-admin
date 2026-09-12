@@ -16,7 +16,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { useQuickPhrases } from '@/hooks/useQuickPhrases';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '../../../utils/table-columns';
 import { useWorkflowSelectableUsers } from '@/hooks/queries/workflow-shared';
-import { ApiError } from '@/lib/query';
+import { ApiError, compactParams } from '@/lib/query';
 import {
   fetchPendingWorkflowTasks,
   type PendingWorkflowItem,
@@ -73,12 +73,13 @@ export default function PendingApprovalsPage() {
   const [consult, setConsult] = useState<ConsultState>(null);
   const [myConsultsVisible, setMyConsultsVisible] = useState(false);
   const [replyDraft, setReplyDraft] = useState<Record<number, string>>({});
-  const listParams = {
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     definitionId: submittedParams.definitionId,
-  };
+  }), [submittedParams]);
+
+  const listParams = { page, pageSize, ...filterQuery };
   const listQuery = usePendingWorkflowTasks(listParams);
   const definitionsQuery = usePublishedWorkflowDefinitions();
   const usersQuery = useWorkflowSelectableUsers({ enabled: consult !== null });

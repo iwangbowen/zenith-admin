@@ -10,6 +10,7 @@ import AppModal from '@/components/AppModal';
 import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import {
   directorySyncConflictKeys, useDirectorySyncConflictList,
   useResolveDirectorySyncConflict, useIgnoreDirectorySyncConflicts,
@@ -72,13 +73,14 @@ export default function DirectorySyncConflictsPage() {
     onReset: clearSelection,
   });
 
-  const listQuery = useDirectorySyncConflictList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     sourceId: submittedParams.sourceId,
     status: enumValueOf(DIRECTORY_SYNC_CONFLICT_STATUSES, submittedParams.status),
-  });
+  }), [submittedParams]);
+
+  const listQuery = useDirectorySyncConflictList({ page, pageSize, ...filterQuery });
 
   const sourcesQuery = useDirectorySyncSourceList({ page: 1, pageSize: 100 });
   const sourceItems = useMemo(

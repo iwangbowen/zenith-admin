@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -10,6 +11,7 @@ import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/li
 import { DateRangeFilter, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import {
@@ -34,13 +36,14 @@ export default function WikiCommentsPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: wikiCommentKeys.lists });
 
-  const listQuery = useWikiCommentList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     status: enumValueOf(WIKI_COMMENT_STATUSES, submittedParams.status),
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
-  });
+  }), [submittedParams]);
+
+  const listQuery = useWikiCommentList({ page, pageSize, ...filterQuery });
 
   const statusMutation = useUpdateWikiCommentStatus();
   const removeMutation = useRemoveWikiComment();

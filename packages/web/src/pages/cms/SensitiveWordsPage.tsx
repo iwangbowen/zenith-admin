@@ -1,3 +1,5 @@
+import { useMemo } from 'react';
+import { compactParams } from '@/lib/query';
 import { Banner, Form, Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -24,7 +26,9 @@ export default function SensitiveWordsPage() {
     bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: cmsSensitiveWordKeys.lists });
-  const listQuery = useCmsSensitiveWordList({ page, pageSize, keyword: submittedParams.keyword || undefined });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({ keyword: submittedParams.keyword }), [submittedParams]);
+  const listQuery = useCmsSensitiveWordList({ page, pageSize, ...filterQuery });
   const saveMutation = useSaveCmsSensitiveWord();
   const modal = useEditModal<CmsSensitiveWord, Partial<CmsSensitiveWord>, Record<string, unknown>>({
     entityName: '敏感词',

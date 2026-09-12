@@ -13,6 +13,7 @@ import { useThemeController } from '@/providers/theme-controller';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { useTerminalPreferences } from './useTerminalPreferences';
@@ -133,12 +134,13 @@ export default function TerminalSessionsPage() {
   const [watching, setWatching] = useState<TerminalSession | null>(null);
   const [takeover, setTakeover] = useState(false);
 
-  const listQuery = useTerminalSessionList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
-    kind: submittedParams.kind || undefined,
-  }, { refetchInterval: autoRefresh ? 5000 : false });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    kind: submittedParams.kind,
+  }), [submittedParams]);
+
+  const listQuery = useTerminalSessionList({ page, pageSize, ...filterQuery }, { refetchInterval: autoRefresh ? 5000 : false });
   const terminateMutation = useTerminateTerminalSession();
 
   const handleTerminate = async (record: TerminalSession) => {

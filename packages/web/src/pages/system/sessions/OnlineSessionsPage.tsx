@@ -9,6 +9,7 @@ import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
 import { sessionKeys, useForceLogoutSession, useForceLogoutUserSessions, useSessionList } from '@/hooks/queries/sessions';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { KeywordInput } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
@@ -22,7 +23,10 @@ export default function OnlineSessionsPage() {
     bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: sessionKeys.lists });
-  const listQuery = useSessionList({ page, pageSize, keyword: submittedParams.keyword || undefined });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({ keyword: submittedParams.keyword }), [submittedParams]);
+
+  const listQuery = useSessionList({ page, pageSize, ...filterQuery });
   const forceLogoutMutation = useForceLogoutSession();
   const forceLogoutUserMutation = useForceLogoutUserSessions();
 

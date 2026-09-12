@@ -17,6 +17,7 @@ import type { PaymentApp, PaymentCashierMethod, PaymentLink, PaymentLinkStatus }
 import { paymentLinkKeys, useDeletePaymentLinks, usePaymentLinkDetail, usePaymentLinkList, useRotatePaymentLinkToken, useSavePaymentLink, type PaymentLinkSaveValues } from '@/hooks/queries/payment-links';
 import { useEnsureShortLink } from '@/hooks/queries/short-links';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
@@ -72,11 +73,15 @@ export default function PaymentLinksPage() {
   const [payShortUrl, setPayShortUrl] = useState<string | null>(null);
   const ensureShortLinkMutation = useEnsureShortLink();
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    status: submittedParams.status,
+  }), [submittedParams]);
   const listQuery = usePaymentLinkList({
     page,
     pageSize,
-    keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
+    ...filterQuery,
   });
   const { apps: paymentApps, appOptions, isFetching: appsFetching } = useEnabledPaymentAppLookup({ label: paymentAppOptionLabel });
   const appNameById = useMemo(() => new Map(paymentApps.map((app) => [app.id, app.name])), [paymentApps]);

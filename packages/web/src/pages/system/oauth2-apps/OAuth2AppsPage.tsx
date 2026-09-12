@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import ModalFooter from '@/components/ModalFooter';
 import { useNavigate } from 'react-router-dom';
 import { Button, Tag, TagGroup, Modal, Form, Toast, Typography, Checkbox, Spin, Banner, Row, Col, SideSheet, TextArea } from '@douyinfe/semi-ui';
@@ -25,6 +25,7 @@ import {
   type SaveOAuth2AppValues,
 } from '@/hooks/queries/oauth2-apps';
 import { useDictItems } from '@/hooks/useDictItems';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
@@ -93,13 +94,14 @@ export default function OAuth2AppsPage() {
   const [previousValidUntil, setPreviousValidUntil] = useState('');
 
   // ─── 数据加载 ──────────────────────────────────────────────────────────
-  const listQuery = useOAuth2AppList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     environment: submittedParams.environment,
     reviewStatus: submittedParams.reviewStatus,
-  });
+  }), [submittedParams]);
+
+  const listQuery = useOAuth2AppList({ page, pageSize, ...filterQuery });
   const ratePlans = useOAuth2RatePlans().data ?? [];
   const scopeOptions = useOAuth2ApiScopes().data ?? [];
   const saveMutation = useSaveOAuth2App();

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { compactParams } from '@/lib/query';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, Col, Form, Modal, Row, SideSheet, Space, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -72,12 +73,12 @@ export default function PromptTemplatesPage() {
   const [versionTemplate, setVersionTemplate] = useState<AiPromptTemplate | null>(null);
   const versionsQuery = useAiPromptVersions(versionTemplate?.id ?? null);
   const restoreVersionMutation = useRestoreAiPromptVersion();
-  const listQuery = useAiPromptList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
-    scope: submittedParams.scope || undefined,
-  });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    scope: submittedParams.scope,
+  }), [submittedParams]);
+  const listQuery = useAiPromptList({ page, pageSize, ...filterQuery });
   const saveMutation = useSaveAiPrompt();
   const deleteMutation = useDeleteAiPrompts();
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { WorkflowInstance } from '@zenith/shared/workflow';
@@ -7,6 +7,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import WorkflowInstanceDetailSheet from '@/components/workflow/WorkflowInstanceDetailSheet';
 import { dateTimeColumn, EMPTY_PLACEHOLDER } from '../../../utils/table-columns';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { KeywordInput } from '@/components/search-filters';
@@ -36,11 +37,10 @@ export default function HandledPage() {
   const [detailVisible, setDetailVisible] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
-  const listQuery = useHandledWorkflowInstances({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
-  });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({ keyword: submittedParams.keyword }), [submittedParams]);
+
+  const listQuery = useHandledWorkflowInstances({ page, pageSize, ...filterQuery });
 
   const openDetail = (id: number) => {
     setSelectedId(id);

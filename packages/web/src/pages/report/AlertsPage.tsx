@@ -27,6 +27,7 @@ import { NOTIFY_CHANNEL_LABELS } from '@zenith/shared/messaging';
 import { REPORT_DELIVERY_STATUS_LABELS, REPORT_DELIVERY_TRIGGER_LABELS, REPORT_MISFIRE_POLICY_OPTIONS } from '@zenith/shared/report';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { switchAlertSource } from './report-platform-utils';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
@@ -100,6 +101,14 @@ export default function AlertsPage() {
   );
   const metrics = metricsQuery.data ?? [];
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    datasetId: submittedParams.datasetId,
+    metricId: submittedParams.metricId,
+    enabled: submittedParams.enabled ? submittedParams.enabled === 'enabled' : undefined,
+  }), [submittedParams]);
+
   const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
   const [historyTarget, setHistoryTarget] = useState<ReportAlertRule | null>(null);
   const [selectedDatasetId, setSelectedDatasetId] = useState<number | null>(null);
@@ -107,14 +116,7 @@ export default function AlertsPage() {
   const [selectedAggregate, setSelectedAggregate] = useState<ReportAlertAggregate>('sum');
   const [selectedChannels, setSelectedChannels] = useState<Array<'email' | 'inApp' | 'webhook'>>(['inApp']);
   const [cronExprValue, setCronExprValue] = useState('');
-  const listQuery = useReportAlertList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
-    datasetId: submittedParams.datasetId,
-    metricId: submittedParams.metricId,
-    enabled: submittedParams.enabled ? submittedParams.enabled === 'enabled' : undefined,
-  });
+  const listQuery = useReportAlertList({ page, pageSize, ...filterQuery });
   const saveMutation = useSaveReportAlert();
   const toggleMutation = useToggleReportAlertEnabled();
   const batchEnabledMutation = useBatchReportAlertEnabled();

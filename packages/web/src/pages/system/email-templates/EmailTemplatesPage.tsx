@@ -1,9 +1,11 @@
+import { useMemo } from 'react';
 import { Col, Form, Row, Spin } from '@douyinfe/semi-ui';
 import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import type { CreateEmailTemplateInput, EmailTemplate } from '@zenith/shared/messaging';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { useEditModal } from '@/hooks/useEditModal';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -33,12 +35,13 @@ export default function EmailTemplatesPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: emailTemplateKeys.lists });
 
-  const listQuery = useEmailTemplateList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     status: enumValueOf(USER_STATUSES, submittedParams.filterStatus),
-  });
+  }), [submittedParams]);
+
+  const listQuery = useEmailTemplateList({ page, pageSize, ...filterQuery });
   const saveMutation = useSaveEmailTemplate();
   const modal = useEditModal<EmailTemplate, Partial<CreateEmailTemplateInput>>({
     entityName: '邮件模板',

@@ -2,6 +2,7 @@
  * 行为中心阶段 1：用户分群 CRUD + 成员物化（异步任务）+ 成员明细查看。
  */
 import { useMemo, useState } from 'react';
+import { compactParams } from '@/lib/query';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePagination } from '@/hooks/usePagination';
@@ -263,12 +264,12 @@ export default function AnalyticsSegmentsTab() {
   const [campaignSegment, setCampaignSegment] = useState<AnalyticsUserSegment | null>(null);
   const membersPagination = usePagination(PAGE_SIZE);
 
-  const segmentsQuery = useAnalyticsSegments({
-    page,
-    pageSize,
-    keyword: submittedFilter.keyword || undefined,
-    status: submittedFilter.status || undefined,
-  });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedFilter.keyword,
+    status: submittedFilter.status,
+  }), [submittedFilter]);
+  const segmentsQuery = useAnalyticsSegments({ page, pageSize, ...filterQuery });
   const segments = segmentsQuery.data?.list ?? [];
   const total = segmentsQuery.data?.total ?? 0;
 

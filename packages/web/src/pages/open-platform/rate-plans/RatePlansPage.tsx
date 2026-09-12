@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Tag, Form, Typography, Row, Col, Space } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
@@ -12,6 +13,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { ratePlanKeys, useDeleteRatePlans, useRatePlanList, useSaveRatePlan } from '@/hooks/queries/open-platform';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 
@@ -32,11 +34,15 @@ export default function RatePlansPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: ratePlanKeys.lists });
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
+  }), [submittedParams]);
   const listQuery = useRatePlanList({
     page,
     pageSize,
-    keyword: submittedParams.keyword || undefined,
-    status: enumValueOf(USER_STATUSES, submittedParams.status),
+    ...filterQuery,
   });
   const deleteMutation = useDeleteRatePlans();
 

@@ -15,6 +15,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { usePagination } from '@/hooks/usePagination';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -145,16 +146,17 @@ export default function SystemSchedulerPage() {
   const [detailRun, setDetailRun] = useState<SystemSchedulerRun | null>(null);
   const { page: nodesPage, pageSize: nodesPageSize, buildPagination: buildNodesPagination } = usePagination(10);
   const tasksQuery = useSystemSchedulerTasks();
-  const runsQuery = useSystemSchedulerRuns({
-    page,
-    pageSize,
-    taskName: submittedRunSearch.taskName || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const runFilterQuery = useMemo(() => compactParams({
+    taskName: submittedRunSearch.taskName,
     taskType: enumValueOf(SYSTEM_SCHEDULER_TASK_TYPES, submittedRunSearch.taskType),
     triggerType: enumValueOf(SYSTEM_SCHEDULER_TRIGGER_TYPES, submittedRunSearch.triggerType),
     status: enumValueOf(SYSTEM_SCHEDULER_RUN_STATUSES, submittedRunSearch.status),
     alertStatus: enumValueOf(SYSTEM_SCHEDULER_ALERT_FILTERS, submittedRunSearch.alertStatus),
     ...formatDateTimeRangeForApi(submittedRunSearch.timeRange),
-  }, activeTab === 'runs');
+  }), [submittedRunSearch]);
+
+  const runsQuery = useSystemSchedulerRuns({ page, pageSize, ...runFilterQuery }, activeTab === 'runs');
   const nodesQuery = useSystemSchedulerNodes({ page: nodesPage, pageSize: nodesPageSize }, activeTab === 'nodes');
   const detailQuery = useSystemSchedulerRunDetail(detailRun?.id, detailRun != null);
   const runTaskMutation = useRunSystemSchedulerTask();
@@ -287,7 +289,7 @@ export default function SystemSchedulerPage() {
       content: submittedRunSearch.taskName ? '将按当前任务的留存策略清理运行日志。' : '将按所有任务的留存策略清理运行日志。',
       okText: '清理',
       onOk: async () => {
-        const data = await cleanupRunsMutation.mutateAsync({ query: { taskName: submittedRunSearch.taskName || undefined } });
+        const data = await cleanupRunsMutation.mutateAsync({ query: { taskName: runFilterQuery.taskName } });
         Toast.success(data.message);
       },
     });

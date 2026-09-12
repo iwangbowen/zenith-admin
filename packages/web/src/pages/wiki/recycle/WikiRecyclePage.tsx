@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { WikiDoc } from '@zenith/shared/wiki';
@@ -7,6 +8,7 @@ import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/li
 import { KeywordInput } from '@/components/search-filters';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePurgeWikiDoc, useRestoreWikiDoc, useWikiDocRecycleList, wikiDocRecycleKeys } from '@/hooks/queries/wiki-docs';
 
@@ -25,11 +27,10 @@ export default function WikiRecyclePage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: wikiDocRecycleKeys.all });
 
-  const listQuery = useWikiDocRecycleList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
-  });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({ keyword: submittedParams.keyword }), [submittedParams]);
+
+  const listQuery = useWikiDocRecycleList({ page, pageSize, ...filterQuery });
 
   const restoreMutation = useRestoreWikiDoc();
   const purgeMutation = usePurgeWikiDoc();

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Col, Form, Modal, Row, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -11,6 +11,7 @@ import { createdAtColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { formatDateTimeForApi, formatDateTimeRangeForApi } from '@/utils/date';
 import {
   marketingCampaignKeys, useDeleteMarketingCampaigns, useEndMarketingCampaign,
@@ -57,12 +58,16 @@ export default function MarketingCampaignsPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: marketingCampaignKeys.lists });
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    status: enumValueOf(MARKETING_CAMPAIGN_STATUSES, submittedParams.status),
+    ...formatDateTimeRangeForApi(submittedParams.timeRange),
+  }), [submittedParams]);
   const listQuery = useMarketingCampaignList({
     page,
     pageSize,
-    keyword: submittedParams.keyword || undefined,
-    status: enumValueOf(MARKETING_CAMPAIGN_STATUSES, submittedParams.status),
-    ...formatDateTimeRangeForApi(submittedParams.timeRange),
+    ...filterQuery,
   });
 
   const modal = useEditModal<MarketingCampaign, MarketingCampaignFormValues, Partial<CreateMarketingCampaignInput>>({

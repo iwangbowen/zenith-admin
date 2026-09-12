@@ -1,3 +1,5 @@
+import { useMemo } from 'react';
+import { compactParams } from '@/lib/query';
 import { useNavigate } from 'react-router-dom';
 import { Button, Form, Space, Spin, Toast, Modal, Tag, Row, Col, Select, withField } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -87,15 +89,15 @@ export default function AlertRulesPage() {
 
   // 筛选条件全部下推服务端：此前在当前页做 filter，翻到第 2 页就搜不到第 1 页的规则，
   // 且分页总数仍是未过滤的值，列表与页码对不上
-  const listQuery = useMonitorAlertList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     metric: enumValueOf(MONITOR_METRICS, submittedParams.metric),
     level: enumValueOf(MONITOR_ALERT_LEVELS, submittedParams.level),
     enabled: submittedParams.enabled === undefined ? undefined : submittedParams.enabled === 'true',
     state: enumValueOf(MONITOR_ALERT_STATES, submittedParams.state),
-  });
+  }), [submittedParams]);
+  const listQuery = useMonitorAlertList({ page, pageSize, ...filterQuery });
   const canCreate = hasPermission('alert:rule:create');
   const canUpdate = hasPermission('alert:rule:update');
   const canDelete = hasPermission('alert:rule:delete');

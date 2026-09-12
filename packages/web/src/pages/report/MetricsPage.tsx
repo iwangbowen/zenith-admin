@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Banner, Button, Col, Empty, Form, Modal, Row, SideSheet, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { ReportMetric, ReportMetricType } from '@zenith/shared/report';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import {
@@ -57,20 +58,21 @@ export default function MetricsPage() {
     bind, bindKeyword, submittedParams: submitted,
     handleSearch, handleReset,
   } = useListSearch<MetricSearch>({ defaults: defaultSearch, listKey: reportMetricKeys.lists });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submitted.keyword,
+    type: submitted.type,
+    status: submitted.status,
+    datasetId: submitted.datasetId,
+    folderId: submitted.folderId,
+    ownerId: submitted.ownerId,
+  }), [submitted]);
+
   const [conflict, setConflict] = useState('');
   const [sheetMetric, setSheetMetric] = useState<ReportMetric | null>(null);
   const [sheetMode, setSheetMode] = useState<'preview' | 'refs'>('preview');
 
-  const listQuery = useReportMetricList({
-    page,
-    pageSize,
-    keyword: submitted.keyword || undefined,
-    type: submitted.type || undefined,
-    status: submitted.status || undefined,
-    datasetId: submitted.datasetId,
-    folderId: submitted.folderId,
-    ownerId: submitted.ownerId,
-  });
+  const listQuery = useReportMetricList({ page, pageSize, ...filterQuery });
   const evaluateMutation = useEvaluateReportMetric();
   const refsQuery = useReportMetricRefs(sheetMetric?.id, !!sheetMetric && sheetMode === 'refs');
   const saveMutation = useSaveReportMetric();

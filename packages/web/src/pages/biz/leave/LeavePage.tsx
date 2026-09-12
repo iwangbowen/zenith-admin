@@ -4,6 +4,8 @@
  * 演示「业务模块自存数据 + 工作流编排」：请假数据存 biz_leaves，提交审批时由后端
  * 通过 workflow-biz-bridge 发起并关联工作流；列表展示业务状态，详情跳转到流程实例整页。
  */
+import { useMemo } from 'react';
+import { compactParams } from '@/lib/query';
 import { useNavigate } from 'react-router-dom';
 import { Button, Form, Modal, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -61,12 +63,12 @@ export default function LeavePage() {
     handleSearch, handleReset,
   } = useListSearch<LeaveSearchParams>({ defaults: DEFAULT_LEAVE_SEARCH_PARAMS, listKey: bizLeaveKeys.lists });
 
-  const listQuery = useBizLeaveList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword.trim() || undefined,
-    status: submittedParams.status || undefined,
-  });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword.trim(),
+    status: submittedParams.status,
+  }), [submittedParams]);
+  const listQuery = useBizLeaveList({ page, pageSize, ...filterQuery });
   const saveMutation = useSaveBizLeave();
   const saveForApprovalMutation = useSaveBizLeave();
   const submitApprovalMutation = useSubmitBizLeave();

@@ -4,7 +4,7 @@
  * 聚合供应商凭证管理(一对一挂应用、密钥脱敏、APNs 环境)+ 测试发送(直发 RegistrationID)。
  * 厂商通道(华为/小米/OV/荣耀/APNs)在供应商后台配置,本页只管聚合商凭证。
  */
-import { useRef, useState } from 'react';
+import { useRef, useState, useMemo } from 'react';
 import { Banner, Col, Form, Modal, Row, Spin, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
@@ -26,6 +26,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useAllClientApps } from '@/hooks/queries/app-releases';
@@ -105,12 +106,13 @@ export default function PushConfigsPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: pushConfigKeys.lists });
 
-  const listQuery = usePushConfigList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
-  });
+  }), [submittedParams]);
+
+  const listQuery = usePushConfigList({ page, pageSize, ...filterQuery });
 
   const modal = useEditModal<PushConfig, Partial<CreatePushConfigInput>>({
     entityName: '推送配置',

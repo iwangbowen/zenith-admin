@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { compactParams } from '@/lib/query';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -417,21 +418,27 @@ export default function FrontendErrorsPage() {
   const statusOptions = useMemo(() => labelOptions<ErrorStatus>(STATUS_CONFIG), []);
   const overviewQuery = useFrontendErrorOverview(overviewDays, activeTab === 'overview');
   const overview = overviewQuery.data ?? null;
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const groupFilterQuery = useMemo(() => compactParams({
+    status: submittedIssueFilters.status,
+    errorType: submittedIssueFilters.errorType,
+    level: submittedIssueFilters.level,
+    keyword: submittedIssueFilters.keyword.trim(),
+    environment: submittedIssueFilters.environment,
+  }), [submittedIssueFilters]);
   const groupsQuery = useFrontendErrorGroups({
     page: groupPage,
     pageSize: groupPageSize,
-    status: submittedIssueFilters.status || undefined,
-    errorType: submittedIssueFilters.errorType || undefined,
-    level: submittedIssueFilters.level || undefined,
-    keyword: submittedIssueFilters.keyword.trim() || undefined,
-    environment: submittedIssueFilters.environment || undefined,
+    ...groupFilterQuery,
   }, activeTab === 'issues');
   const detailQuery = useFrontendErrorGroupDetail(detailGroupId, detailVisible);
   const detail = detailQuery.data ?? null;
   const adminUsersQuery = useFrontendAdminUsers(detailVisible);
   const adminUsers = adminUsersQuery.data?.list ?? EMPTY_ADMIN_USERS;
   const eventsQuery = useFrontendErrorEvents({ page: eventPage, pageSize: eventPageSize }, activeTab === 'events');
-  const sourceMapsQuery = useFrontendSourceMaps({ page: sourceMapPage, pageSize: sourceMapPageSize, release: submittedSourceRelease.trim() || undefined }, activeTab === 'sourcemaps');
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const sourceMapFilterQuery = useMemo(() => compactParams({ release: submittedSourceRelease.trim() }), [submittedSourceRelease]);
+  const sourceMapsQuery = useFrontendSourceMaps({ page: sourceMapPage, pageSize: sourceMapPageSize, ...sourceMapFilterQuery }, activeTab === 'sourcemaps');
   const alertsQuery = useFrontendAlerts({ page: alertPage, pageSize: alertPageSize }, activeTab === 'alerts');
   const alertLogsQuery = useFrontendAlertLogs({ page: alertLogPage, pageSize: alertLogPageSize }, activeTab === 'alertlogs');
   const updateGroupMutation = useUpdateFrontendErrorGroup();

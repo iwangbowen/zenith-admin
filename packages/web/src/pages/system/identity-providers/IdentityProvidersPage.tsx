@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import ModalFooter from '@/components/ModalFooter';
 import { useQueryClient } from '@tanstack/react-query';
 import { Col, Form, Modal, Row, SideSheet, Spin, Table, Tag, Toast } from '@douyinfe/semi-ui';
@@ -24,6 +24,7 @@ import {
 } from '@/hooks/queries/identity-providers';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { useEditModal } from '@/hooks/useEditModal';
 import { CreateButton, SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
@@ -119,14 +120,15 @@ export default function IdentityProvidersPage() {
     bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: identityProviderKeys.lists });
-  const listQuery = useIdentityProviderList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     type: enumValueOf(IDENTITY_PROVIDER_TYPES, submittedParams.type),
     status: enumValueOf(IDENTITY_PROVIDER_STATUSES, submittedParams.status),
     tenantId: submittedParams.tenantId,
-  });
+  }), [submittedParams]);
+
+  const listQuery = useIdentityProviderList({ page, pageSize, ...filterQuery });
   // 归属租户只有平台管理员可选；租户管理员的身份源由服务端强制落到自身租户
   const isPlatformAdmin = useIsPlatformAdmin();
   const tenantsQuery = useIdentityProviderTenants({ enabled: isPlatformAdmin });

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { compactParams } from '@/lib/query';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -54,9 +55,13 @@ export default function DriveAdminShareLinksPage() {
   const { hasPermission } = usePermission();
   const { page, pageSize, buildPagination, bind, bindKeyword, submittedParams, handleSearch, handleReset } =
     useListSearch<SearchParams>({ defaults: { keyword: '', state: undefined, timeRange: null }, listKey: driveKeys.adminShareLinksPrefix });
-  const query = useDriveAdminShareLinks({
-    page, pageSize, keyword: submittedParams.keyword || undefined, state: submittedParams.state, ...formatDateTimeRangeForApi(submittedParams.timeRange),
-  });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    state: submittedParams.state,
+    ...formatDateTimeRangeForApi(submittedParams.timeRange),
+  }), [submittedParams]);
+  const query = useDriveAdminShareLinks({ page, pageSize, ...filterQuery });
   const revoke = useAdminRevokeDriveShareLink();
   const [logsOf, setLogsOf] = useState<DriveShareLink | null>(null);
 

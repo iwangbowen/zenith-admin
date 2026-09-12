@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Button, Descriptions, Form, SideSheet, Space, Spin, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Lock, Upload } from 'lucide-react';
@@ -16,6 +16,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { formatDateTime } from '@/utils/date';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
@@ -73,12 +74,13 @@ export default function SslCertificatesPage() {
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: sslCertificateKeys.lists });
   const [detailVisible, setDetailVisible] = useState(false);
   const [detail, setDetail] = useState<SslCertificate | null>(null);
-  const listQuery = useSslCertificateList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword.trim() || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword.trim(),
     type: enumValueOf(SSL_CERT_TYPES, submittedParams.type),
-  });
+  }), [submittedParams]);
+
+  const listQuery = useSslCertificateList({ page, pageSize, ...filterQuery });
   const detailQuery = useSslCertificateDetail(detail?.id, detailVisible);
   const displayDetail = detail ? (detailQuery.data ?? detail) : null;
   const generateMutation = useGenerateSslCertificate();

@@ -6,6 +6,7 @@ import type { WorkflowForm, WorkflowFormStatus } from '@zenith/shared/workflow';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -50,13 +51,14 @@ export default function WorkflowFormsPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowFormKeys.lists });
   const { categories } = useWorkflowCategories();
-  const listQuery = useWorkflowFormList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    status: submittedParams.status,
     categoryId: submittedParams.categoryId,
-  });
+  }), [submittedParams]);
+
+  const listQuery = useWorkflowFormList({ page, pageSize, ...filterQuery });
   const deleteMutation = useDeleteWorkflowForm();
   const duplicateMutation = useDuplicateWorkflowForm();
 

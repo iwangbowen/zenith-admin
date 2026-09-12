@@ -5,7 +5,8 @@
  * createPayment 拿到二维码/跳转链接；③ 支付成功后由 paymentEventBus 订阅器按 bizType
  * 履约（置 paid、发放权益）。「模拟支付成功」用于在未配置真实渠道时演示完整闭环。
  */
-import { useRef, useState, type CSSProperties } from 'react';
+import { useMemo, useRef, useState, type CSSProperties } from 'react';
+import { compactParams } from '@/lib/query';
 import { Banner, Collapse, Form, Modal, Space, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -142,12 +143,12 @@ export default function PayDemoPage() {
     return configId != null && allowedConfigIds.has(configId);
   });
 
-  const listQuery = useBizPayDemoList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword.trim() || undefined,
-    status: submittedParams.status || undefined,
-  });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword.trim(),
+    status: submittedParams.status,
+  }), [submittedParams]);
+  const listQuery = useBizPayDemoList({ page, pageSize, ...filterQuery });
   const createMutation = useCreateBizPayDemo();
   const payMutation = usePayBizPayDemo();
   const simulateMutation = useSimulateBizPayDemoPaid();

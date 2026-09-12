@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useMemo, useEffect, useState } from 'react';
+import { compactParams } from '@/lib/query';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Checkbox, Input, InputNumber, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -137,7 +138,13 @@ export default function DriveSpacesPage() {
   const { hasPermission } = usePermission();
   const { page, pageSize, buildPagination, draftParams, setField, bind, bindKeyword, submittedParams, handleSearch, handleReset } =
     useListSearch<SearchParams>({ defaults: { keyword: '', type: undefined, archived: false }, listKey: driveKeys.spaceLists });
-  const listQuery = useDriveSpaceList({ page, pageSize, keyword: submittedParams.keyword || undefined, type: submittedParams.type, archived: submittedParams.archived || undefined });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    type: submittedParams.type,
+    archived: submittedParams.archived ? true : undefined,
+  }), [submittedParams]);
+  const listQuery = useDriveSpaceList({ page, pageSize, ...filterQuery });
   const remove = useDeleteDriveSpaces();
   const archive = useArchiveDriveSpace();
   const unarchive = useUnarchiveDriveSpace();

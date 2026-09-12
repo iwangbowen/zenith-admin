@@ -80,7 +80,7 @@ export default function PaymentContractsPage() {
   const { apps: paymentApps, appById, appOptions, isFetching: appsFetching } = useEnabledPaymentAppLookup();
   const effectiveContractAppId = contractAppId ?? paymentApps[0]?.id;
 
-  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  // 已提交筛选 → 契约查询参数：只映射一次
   const filterQuery = useMemo(() => ({
     applicationId: effectiveContractAppId ?? 0,
     ...compactParams({
@@ -96,7 +96,15 @@ export default function PaymentContractsPage() {
   }, effectiveContractAppId != null);
   const contracts = contractQuery.data?.list ?? [];
   const contractTotal = contractQuery.data?.total ?? 0;
-  const planQuery = useDeductPlanList({ page: pPage, pageSize: pPageSize, keyword: planSearch.submittedParams.keyword || undefined });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const planFilterQuery = useMemo(() => compactParams({
+    keyword: planSearch.submittedParams.keyword,
+  }), [planSearch.submittedParams]);
+  const planQuery = useDeductPlanList({
+    page: pPage,
+    pageSize: pPageSize,
+    ...planFilterQuery,
+  });
   const plans = planQuery.data?.list ?? [];
   const planTotal = planQuery.data?.total ?? 0;
   const allPlansQuery = useAllDeductPlans();

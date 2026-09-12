@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   Button, Form, Progress, SideSheet, TabPane, Tabs, Tag, Toast, Typography, Upload,
 } from '@douyinfe/semi-ui';
@@ -20,6 +20,7 @@ import { useDictItems } from '@/hooks/useDictItems';
 import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 import { abortSubmit } from '@/lib/abort-submit';
+import { compactParams } from '@/lib/query';
 import {
   IOT_OTA_DEVICE_STATUSES, IOT_OTA_DEVICE_STATUS_LABELS, IOT_OTA_DEVICE_STATUS_OPTIONS, IOT_OTA_TASK_STATUSES,
   IOT_OTA_TASK_STATUS_LABELS, IOT_OTA_TASK_STATUS_OPTIONS,
@@ -63,12 +64,16 @@ function FirmwaresTab({ onCreateTask }: Readonly<{ onCreateTask: (firmware: IotF
     handleSearch, handleReset,
   } = useListSearch<FirmwareSearchParams>({ defaults: defaultFirmwareSearch, listKey: iotFirmwareKeys.lists });
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    productId: submittedParams.productId,
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
+  }), [submittedParams]);
   const listQuery = useIotFirmwareList({
     page,
     pageSize,
-    keyword: submittedParams.keyword || undefined,
-    productId: submittedParams.productId,
-    status: enumValueOf(USER_STATUSES, submittedParams.status),
+    ...filterQuery,
   });
 
   // 上传固件（multipart 手工编排，不走 useEditModal 的 JSON 语义）
@@ -251,11 +256,15 @@ function OtaTasksTab({ detailTask, onOpenDetail }: Readonly<{
     handleSearch, handleReset,
   } = useListSearch<TaskSearchParams>({ defaults: defaultTaskSearch, listKey: iotOtaTaskKeys.lists });
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    status: enumValueOf(IOT_OTA_TASK_STATUSES, submittedParams.status),
+  }), [submittedParams]);
   const listQuery = useIotOtaTaskList({
     page,
     pageSize,
-    keyword: submittedParams.keyword || undefined,
-    status: enumValueOf(IOT_OTA_TASK_STATUSES, submittedParams.status),
+    ...filterQuery,
   });
 
   const cancelMutation = useCancelIotOtaTask();

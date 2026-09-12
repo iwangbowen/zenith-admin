@@ -31,6 +31,7 @@ import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { DateRangeFilter, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { formatDateTimeRangeForApi, shortDate } from '@/utils/date';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { pushSendLogKeys, usePushSendLogList, usePushSendLogStats } from '@/hooks/queries/push';
 import { SEND_LOG_STATUS_OPTIONS } from '../send-log-constants';
@@ -123,13 +124,14 @@ export default function PushSendLogsPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: pushSendLogKeys.lists });
 
-  const listQuery = usePushSendLogList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     status: enumValueOf(SEND_STATUSES, submittedParams.status),
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
-  });
+  }), [submittedParams]);
+
+  const listQuery = usePushSendLogList({ page, pageSize, ...filterQuery });
 
   const columns: ColumnProps<PushSendLog>[] = [
     { title: '应用', dataIndex: 'appName', width: 120, render: renderEllipsis },

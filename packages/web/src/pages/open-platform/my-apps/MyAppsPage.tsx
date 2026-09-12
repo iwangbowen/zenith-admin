@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import ModalFooter from '@/components/ModalFooter';
 import { useNavigate } from 'react-router-dom';
 import { Banner, Button, Checkbox, Col, Form, Modal, Row, SideSheet, Spin, Tag, TagGroup, Toast, Typography } from '@douyinfe/semi-ui';
@@ -10,6 +10,7 @@ import type { OAuth2Client, OAuth2GrantType } from '@zenith/shared/open-platform
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { useOAuth2ApiScopes } from '@/hooks/queries/oauth2-apps';
 import {
   developerAppKeys,
@@ -83,12 +84,16 @@ export default function MyAppsPage() {
   const [secret, setSecret] = useState<{ clientId: string; value: string; previousValidUntil?: string } | null>(null);
   const [usageApp, setUsageApp] = useState<OAuth2Client | null>(null);
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submitted.keyword,
+    environment: submitted.environment,
+    reviewStatus: submitted.reviewStatus,
+  }), [submitted]);
   const listQuery = useMyAppList({
     page,
     pageSize,
-    keyword: submitted.keyword || undefined,
-    environment: submitted.environment,
-    reviewStatus: submitted.reviewStatus,
+    ...filterQuery,
   });
   const scopes = useOAuth2ApiScopes().data ?? [];
   const quotaQuery = useMyAppQuota(usageApp?.id, Boolean(usageApp));

@@ -2,7 +2,7 @@
  * 工作流触发器执行记录
  * 列表 + 详情抽屉，支持按状态 / 实例 ID / 节点 key 过滤
  */
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { InputNumber, SideSheet, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { formatDateTime } from '@/utils/date';
@@ -24,6 +24,7 @@ import {
 
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { JsonBlock } from '@/components/JsonBlock';
 
@@ -58,13 +59,14 @@ export default function WorkflowTriggerExecutionsPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowTriggerExecutionKeys.lists });
 
-  const listQuery = useWorkflowTriggerExecutionList({
-    page,
-    pageSize,
-    status: submittedParams.status || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    status: submittedParams.status,
     instanceId: submittedParams.instanceId,
-    nodeKey: submittedParams.nodeKey || undefined,
-  });
+    nodeKey: submittedParams.nodeKey,
+  }), [submittedParams]);
+
+  const listQuery = useWorkflowTriggerExecutionList({ page, pageSize, ...filterQuery });
   const [detailId, setDetailId] = useState<number | null>(null);
   const detailQuery = useWorkflowTriggerExecutionDetail(detailId, detailId !== null);
   const detail = detailQuery.data ?? null;

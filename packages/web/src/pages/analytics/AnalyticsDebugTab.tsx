@@ -1,6 +1,8 @@
 /**
  * 行为中心：事件调试 —— 事件明细分页查询，行内展开查看属性 payload。
  */
+import { useMemo } from 'react';
+import { compactParams } from '@/lib/query';
 import { Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
@@ -31,7 +33,9 @@ export default function AnalyticsDebugTab({ active }: Readonly<{ active: boolean
     listKey: ['analytics', 'data', 'debug-events'],
   });
 
-  const debugQuery = useAnalyticsDebugEvents({ page, pageSize, eventName: submittedParams.eventName || undefined }, active);
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({ eventName: submittedParams.eventName }), [submittedParams]);
+  const debugQuery = useAnalyticsDebugEvents({ page, pageSize, ...filterQuery }, active);
   const events = debugQuery.data?.list ?? [];
   const total = debugQuery.data?.total ?? 0;
 

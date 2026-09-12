@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { compactParams } from '@/lib/query';
 import { Button, Empty, Space, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw, Trash2 } from 'lucide-react';
@@ -68,14 +69,20 @@ export function DriveViews({ view, onOpenFolder, onOpenDetail }: DriveViewsProps
   const listKey = driveKeys.viewOf(view === 'links' ? 'links' : view);
   const { page, pageSize, buildPagination, bind, bindKeyword, submittedParams, handleSearch, handleReset } =
     useListSearch<ViewSearch>({ defaults: { keyword: '', spaceId: undefined }, listKey });
-  const baseParams = { page, pageSize, keyword: submittedParams.keyword || undefined };
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({ keyword: submittedParams.keyword }), [submittedParams]);
+  const recycleFilterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    spaceId: submittedParams.spaceId,
+  }), [submittedParams]);
+  const baseParams = { page, pageSize, ...filterQuery };
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
   const shared = useDriveSharedWithMe(baseParams, view === 'shared');
   const starred = useDriveStarred(baseParams, view === 'starred');
   const recent = useDriveRecent(baseParams, view === 'recent');
   // 个人视图中只有回收站支持按空间筛选
-  const recycle = useDriveRecycle({ ...baseParams, spaceId: submittedParams.spaceId }, view === 'recycle');
+  const recycle = useDriveRecycle({ page, pageSize, ...recycleFilterQuery }, view === 'recycle');
   const links = useMyDriveShareLinks(baseParams, view === 'links');
 
   const active = view === 'shared' ? shared : view === 'starred' ? starred : view === 'recent' ? recent : view === 'recycle' ? recycle : links;
@@ -240,11 +247,16 @@ export function DriveSearchView({ keyword, fullText, onOpenFolder, onOpenDetail,
   useEffect(() => setPage(1), [keyword, fullText, setPage]);
   const spaces = useMyDriveSpaces();
   const tags = useDriveTags(draftParams.spaceId);
-  const query = useDriveSearch({
-    keyword, fullText, page, pageSize, spaceId: submittedParams.spaceId, type: submittedParams.type,
-    extension: submittedParams.extension || undefined, tagId: submittedParams.tagId, createdBy: submittedParams.createdBy,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const searchFilterQuery = useMemo(() => compactParams({
+    spaceId: submittedParams.spaceId,
+    type: submittedParams.type,
+    extension: submittedParams.extension,
+    tagId: submittedParams.tagId,
+    createdBy: submittedParams.createdBy,
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
-  });
+  }), [submittedParams]);
+  const query = useDriveSearch({ keyword, fullText, page, pageSize, ...searchFilterQuery });
   const list = query.data?.list ?? [];
   const preview = useFilePreview(() => list.filter((n) => n.type === 'file' && n.url).map(nodeToManagedFile));
   const openNode = (node: DriveSearchItem) => {

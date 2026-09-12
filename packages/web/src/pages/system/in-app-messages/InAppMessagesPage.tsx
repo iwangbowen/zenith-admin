@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 
 import { Button, Col, Form, Modal, Row, Tag, Toast } from '@douyinfe/semi-ui';
 import { AppModal } from '@/components/AppModal';
@@ -10,6 +11,7 @@ import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/li
 import { createdAtColumn, dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '../../../utils/table-columns';
 import { useAllUsers } from '@/hooks/queries/users';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { useEditModal } from '@/hooks/useEditModal';
 import {
   inAppMessageKeys,
@@ -51,13 +53,14 @@ export default function InAppMessagesPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: inAppMessageKeys.lists });
 
-  const listQuery = useInAppMessageList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     type: submittedParams.filterType,
     isRead: submittedParams.filterRead === undefined ? undefined : submittedParams.filterRead === 'true',
-  });
+  }), [submittedParams]);
+
+  const listQuery = useInAppMessageList({ page, pageSize, ...filterQuery });
   const sendMutation = useSendInAppMessage();
   const sendModal = useEditModal<{ id: number }, SendInAppFormValues, SendInAppValues>({
     save: {

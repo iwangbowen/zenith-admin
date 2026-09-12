@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useMemo, useEffect, useRef, useState } from 'react';
+import { compactParams } from '@/lib/query';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Modal, SideSheet, Tag, Toast, Typography } from '@douyinfe/semi-ui';
@@ -57,14 +58,13 @@ export default function WidgetsPage() {
   } = useListSearch<SearchState>({ defaults: DEFAULT_SEARCH, listKey: cmsWidgetKeys.lists, onSearch: clearSelection, onReset: clearSelection });
   const [refsWidget, setRefsWidget] = useState<CmsWidget | null>(null);
 
-  const listQuery = useCmsWidgetList({
-    page,
-    pageSize,
-    siteId,
-    keyword: submitted.keyword.trim() || undefined,
-    status: submitted.status || undefined,
-    type: submitted.type || undefined,
-  });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submitted.keyword.trim(),
+    status: submitted.status,
+    type: submitted.type,
+  }), [submitted]);
+  const listQuery = useCmsWidgetList({ page, pageSize, siteId, ...filterQuery });
   const refsQuery = useCmsWidgetRefs(refsWidget?.id, !!refsWidget);
   const publishMutation = usePublishCmsWidget();
   const offlineMutation = useOfflineCmsWidget();

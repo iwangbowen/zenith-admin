@@ -1,6 +1,7 @@
 import { Button, Form, Tag, ArrayField, Row, Col, useFormApi, Spin } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { compactParams } from '@/lib/query';
 import { Plus, Trash2 } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -75,7 +76,9 @@ export default function ModelsPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: cmsModelKeys.lists });
 
-  const listQuery = useCmsModelList({ page, pageSize, keyword: submittedParams.keyword || undefined, siteId }, siteId !== undefined);
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({ keyword: submittedParams.keyword }), [submittedParams]);
+  const listQuery = useCmsModelList({ page, pageSize, siteId, ...filterQuery }, siteId !== undefined);
   const saveMutation = useSaveCmsModel(siteId);
   const modal = useEditModal<CmsModel, Record<string, unknown>, Record<string, unknown>>({
     entityName: '模型',

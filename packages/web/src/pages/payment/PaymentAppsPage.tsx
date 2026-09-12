@@ -14,6 +14,7 @@ import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import type { CreatePaymentAppInput, PaymentApp, PaymentChannel, PaymentChannelConfig } from '@zenith/shared/payment';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
@@ -49,11 +50,15 @@ export default function PaymentAppsPage() {
     bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentAppKeys.lists });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
+  }), [submittedParams]);
   const listQuery = usePaymentAppList({
     page,
     pageSize,
-    keyword: submittedParams.keyword || undefined,
-    status: enumValueOf(USER_STATUSES, submittedParams.status),
+    ...filterQuery,
   });
   const saveMutation = useSavePaymentApp();
   const modal = useEditModal<PaymentApp, AppFormValues, Partial<CreatePaymentAppInput>>({

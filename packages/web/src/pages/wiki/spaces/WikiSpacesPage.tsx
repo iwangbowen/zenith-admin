@@ -16,6 +16,7 @@ import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useAllUsers } from '@/hooks/queries/users';
 import {
@@ -44,13 +45,14 @@ export default function WikiSpacesPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: wikiSpaceKeys.lists });
 
-  const listQuery = useWikiSpaceList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     visibility: enumValueOf(WIKI_SPACE_VISIBILITIES, submittedParams.visibility),
     status: enumValueOf(USER_STATUSES, submittedParams.status),
-  });
+  }), [submittedParams]);
+
+  const listQuery = useWikiSpaceList({ page, pageSize, ...filterQuery });
 
   const modal = useEditModal<WikiSpace, Partial<CreateWikiSpaceInput>>({
     entityName: '知识空间',

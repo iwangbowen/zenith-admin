@@ -9,6 +9,7 @@
  * settings JSONB ⇄ 表单映射的纯函数与单测见 ./sites/site-form-mapping.ts。
  */
 import React, { useMemo, useRef, useState } from 'react';
+import { compactParams } from '@/lib/query';
 import { Button, Modal, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Upload as UploadIcon, ChevronsDownUp, ChevronsUpDown, ListTree, List as ListIcon } from 'lucide-react';
@@ -60,18 +61,15 @@ export default function SitesPage() {
   });
   const [treeView, setTreeView] = useState(true);
 
-  const listQuery = useCmsSiteList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
-  });
+  }), [submittedParams]);
+  const listQuery = useCmsSiteList({ page, pageSize, ...filterQuery });
   const list = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
-  const treeQuery = useCmsSiteTree({
-    keyword: submittedParams.keyword || undefined,
-    status: enumValueOf(USER_STATUSES, submittedParams.status),
-  }, treeView);
+  const treeQuery = useCmsSiteTree(filterQuery, treeView);
   const tree = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
   const {
     expandedRowKeys, isAllExpanded: allExpanded, toggleExpandAll, onExpandedRowsChange,

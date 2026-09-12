@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Tag, Form, Typography, Row, Col } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
@@ -18,6 +19,7 @@ import {
 } from '@/hooks/queries/open-platform';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 
@@ -40,12 +42,16 @@ export default function ApiScopesPage() {
 
   const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    scopeGroup: submittedParams.scopeGroup,
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
+  }), [submittedParams]);
   const listQuery = useApiScopeList({
     page,
     pageSize,
-    keyword: submittedParams.keyword || undefined,
-    scopeGroup: submittedParams.scopeGroup,
-    status: enumValueOf(USER_STATUSES, submittedParams.status),
+    ...filterQuery,
   });
   const deleteMutation = useDeleteApiScopes();
 

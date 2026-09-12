@@ -89,6 +89,7 @@ import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } fr
 import { copyTextWithToast } from '@/utils/clipboard';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { usePermission } from '@/hooks/usePermission';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import {
@@ -484,14 +485,15 @@ function ReleaseManageTab({ active }: { active: boolean }) {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: appReleaseKeys.lists });
 
-  const listQuery = useAppReleaseList({
-    page,
-    pageSize,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
     appId: submittedParams.appId,
     channel: enumValueOf(APP_RELEASE_CHANNELS, submittedParams.channel),
     status: enumValueOf(APP_RELEASE_STATUSES, submittedParams.status),
-    keyword: submittedParams.keyword || undefined,
-  }, active);
+    keyword: submittedParams.keyword,
+  }), [submittedParams]);
+
+  const listQuery = useAppReleaseList({ page, pageSize, ...filterQuery }, active);
 
   const appsQuery = useAllClientApps(active);
   const apps = appsQuery.data ?? [];
@@ -862,15 +864,16 @@ function DevicesTab({ active }: { active: boolean }) {
     handleSearch, handleReset,
   } = useListSearch<DeviceSearchParams>({ defaults: defaultDeviceSearchParams, listKey: clientDeviceKeys.lists });
 
-  const listQuery = useClientDeviceList({
-    page,
-    pageSize,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
     appId: submittedParams.appId,
     platform: enumValueOf(APP_PLATFORMS, submittedParams.platform),
     subjectType: enumValueOf(DEVICE_SUBJECT_TYPES, submittedParams.subjectType),
     pushBound: submittedParams.pushBound === undefined ? undefined : submittedParams.pushBound === 'true',
-    keyword: submittedParams.keyword || undefined,
-  }, active);
+    keyword: submittedParams.keyword,
+  }), [submittedParams]);
+
+  const listQuery = useClientDeviceList({ page, pageSize, ...filterQuery }, active);
 
   const appsQuery = useAllClientApps(active);
   const appOptions = (appsQuery.data ?? []).map((a) => ({ value: a.id, label: a.name }));

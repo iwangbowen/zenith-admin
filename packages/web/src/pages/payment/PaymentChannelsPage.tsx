@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import ModalFooter from '@/components/ModalFooter';
 import { Button, Form, SideSheet, Spin, Toast, Tag, Row, Col } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -20,6 +20,7 @@ import {
 } from '@/hooks/queries/payment-channels';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
@@ -44,12 +45,16 @@ export default function PaymentChannelsPage() {
 
   const [formChannel, setFormChannel] = useState<PaymentChannel>('wechat');
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
+  }), [submittedParams]);
   const listQuery = usePaymentChannelList({
     page,
     pageSize,
-    keyword: submittedParams.keyword || undefined,
-    channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
-    status: enumValueOf(USER_STATUSES, submittedParams.status),
+    ...filterQuery,
   });
   const saveMutation = useSavePaymentChannel();
   const modal = useEditModal<PaymentChannelConfig, Record<string, unknown>>({

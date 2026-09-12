@@ -8,6 +8,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
 import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import {
@@ -57,13 +58,17 @@ export default function PaymentPreauthsPage() {
   const { apps: paymentApps, appById, appOptions, isFetching: appsFetching } = useEnabledPaymentAppLookup();
   const effectivePreauthAppId = preauthAppId ?? paymentApps[0]?.id;
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    status: enumValueOf(PAYMENT_PREAUTH_STATUSES, submittedParams.status),
+    channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
+  }), [submittedParams]);
   const listQuery = usePaymentPreauthList({
     applicationId: effectivePreauthAppId ?? 0,
     page,
     pageSize,
-    keyword: submittedParams.keyword || undefined,
-    status: enumValueOf(PAYMENT_PREAUTH_STATUSES, submittedParams.status),
-    channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
+    ...filterQuery,
   }, effectivePreauthAppId != null);
   const preauthMethodOptions = useMemo(() => {
     const app = selectedAppId == null ? null : appById.get(selectedAppId);

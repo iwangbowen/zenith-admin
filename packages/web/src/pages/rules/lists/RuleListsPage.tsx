@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { confirmAndDelete, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, DatePicker, Form, Input, Modal, Select, SideSheet, Space, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -9,6 +9,7 @@ import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { formatDateTimeForApi } from '@/utils/date';
@@ -58,6 +59,12 @@ export default function RuleListsPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: { keyword: '', type: undefined }, listKey: ruleKeys.ruleLists.lists });
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    type: enumValueOf(RULE_LIST_TYPES, submittedParams.type),
+  }), [submittedParams]);
+
   const [itemsRow, setItemsRow] = useState<RuleList | null>(null);
   const { page: itemsPage, pageSize: itemsPageSize, setPage: setItemsPage, buildPagination: buildItemsPagination } = usePagination(10);
   const [itemKeyword, setItemKeyword] = useState('');
@@ -66,7 +73,7 @@ export default function RuleListsPage() {
   const [checkValue, setCheckValue] = useState('');
   const [checkResult, setCheckResult] = useState<{ hit: boolean; listType?: string } | null>(null);
 
-  const listQuery = useRuleListList({ page, pageSize, keyword: submittedParams.keyword || undefined, type: enumValueOf(RULE_LIST_TYPES, submittedParams.type) });
+  const listQuery = useRuleListList({ page, pageSize, ...filterQuery });
   const itemsQuery = useRuleListItems(itemsRow?.id, { page: itemsPage, pageSize: itemsPageSize, keyword: itemKeyword || undefined }, !!itemsRow);
   const items = itemsQuery.data ?? null;
   const saveMutation = useSaveRuleList();

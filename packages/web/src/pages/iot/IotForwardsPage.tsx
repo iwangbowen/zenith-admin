@@ -11,6 +11,7 @@ import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } fr
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { usePagination } from '@/hooks/usePagination';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useDictItems } from '@/hooks/useDictItems';
@@ -53,12 +54,16 @@ function ForwardRulesTab({ onShowLogs }: Readonly<{ onShowLogs: (rule: IotForwar
     handleSearch, handleReset,
   } = useListSearch<ForwardSearchParams>({ defaults: defaultSearch, listKey: iotForwardRuleKeys.lists });
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    source: enumValueOf(IOT_FORWARD_SOURCES, submittedParams.source),
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
+  }), [submittedParams]);
   const listQuery = useIotForwardRuleList({
     page,
     pageSize,
-    keyword: submittedParams.keyword || undefined,
-    source: enumValueOf(IOT_FORWARD_SOURCES, submittedParams.source),
-    status: enumValueOf(USER_STATUSES, submittedParams.status),
+    ...filterQuery,
   });
   const { items: statusItems } = useDictItems('common_status');
 

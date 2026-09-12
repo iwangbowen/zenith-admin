@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useMemo, useEffect } from 'react';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Avatar, Button, Form, Modal, Space, Spin, Tag, Toast } from '@douyinfe/semi-ui';
 import { RefreshCw, Ban } from 'lucide-react';
@@ -25,6 +25,7 @@ import {
 } from '@/hooks/queries/mp-fans';
 import { useMpTagOptions } from '@/hooks/queries/mp-tags';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -52,14 +53,18 @@ export default function MpFansPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpFanKeys.lists });
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    subscribe: submittedParams.subscribe,
+    tagId: submittedParams.tagId,
+    blacklisted: submittedParams.blacklisted === undefined ? undefined : submittedParams.blacklisted === 'true',
+  }), [submittedParams]);
   const listQuery = useMpFanList({
     accountId: currentId ?? 0,
     page,
     pageSize,
-    keyword: submittedParams.keyword || undefined,
-    subscribe: submittedParams.subscribe,
-    tagId: submittedParams.tagId,
-    blacklisted: submittedParams.blacklisted === undefined ? undefined : submittedParams.blacklisted === 'true',
+    ...filterQuery,
   }, !!currentId);
   const syncFansMutation = useSyncMpFans();
   const syncBlacklistMutation = useSyncMpBlacklist();

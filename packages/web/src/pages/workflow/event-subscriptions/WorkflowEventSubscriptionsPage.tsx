@@ -3,7 +3,7 @@
  *
  * 提供事件订阅 CRUD + 启用/禁用 + 投递记录查看与重试。
  */
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Button, Col, Form, Modal, Row, Space, SideSheet, Spin, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -31,6 +31,7 @@ import {
   workflowEventSubscriptionKeys,
 } from '@/hooks/queries/workflow-event-subscriptions';
 import { useWorkflowConnectorList } from '@/hooks/queries/workflow-connectors';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton } from '@/components/toolbar-controls';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
@@ -89,13 +90,14 @@ export default function WorkflowEventSubscriptionsPage() {
     bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowEventSubscriptionKeys.lists });
-  const listQuery = useWorkflowEventSubscriptionList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     definitionId: submittedParams.definitionId,
     enabled: submittedParams.enabled === undefined ? undefined : submittedParams.enabled === 'true',
-  });
+  }), [submittedParams]);
+
+  const listQuery = useWorkflowEventSubscriptionList({ page, pageSize, ...filterQuery });
   const definitionsQuery = useWorkflowDefinitionList({ page: 1, pageSize: 200 });
   const defs: WorkflowDefinition[] = definitionsQuery.data?.list ?? [];
   const connectorsQuery = useWorkflowConnectorList({ page: 1, pageSize: 100, status: 'enabled' });

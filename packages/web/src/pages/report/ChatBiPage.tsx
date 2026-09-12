@@ -61,7 +61,7 @@ import {
   useReportDashboardDetail,
   useReportDashboardLookup,
 } from '@/hooks/queries/report-dashboards';
-import { ApiError } from '@/lib/query';
+import { ApiError, compactParams } from '@/lib/query';
 import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 import {
@@ -161,6 +161,10 @@ export default function ChatBiPage() {
     draftParams, setField, submittedParams, handleSearch,
   } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: reportChatbiKeys.lists, pageSize: 20 });
   const [status, setStatus] = useState<'active' | 'archived'>('active');
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword.trim(),
+  }), [submittedParams]);
   const [activeSessionId, setActiveSessionId] = useState<number>();
   const [saveTarget, setSaveTarget] = useState<ReportChatbiMessage | null>(null);
   const [contextType, setContextType] = useState<'dataset' | 'datasource'>('dataset');
@@ -175,12 +179,7 @@ export default function ChatBiPage() {
   // useEditModal 例外：「保存为数据集 / 仪表盘」另存对话框，目标资源类型与新建 / 覆盖模式在表单外选择
   const saveFormApi = useRef<FormApi | null>(null);
 
-  const listQuery = useReportChatbiSessionList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword.trim() || undefined,
-    status,
-  });
+  const listQuery = useReportChatbiSessionList({ page, pageSize, status, ...filterQuery });
   const detailQuery = useReportChatbiSessionDetail(activeSessionId);
   const quotaQuery = useReportChatbiQuota();
   const createMutation = useCreateReportChatbiSession();

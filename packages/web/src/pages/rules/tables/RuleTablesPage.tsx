@@ -12,6 +12,7 @@ import DecisionTableEditor from './DecisionTableEditor';
 import { buildExpectedValues, buildTestScope, coerceRuleValue, diffCaseOutputs, explainDecisionRows, flattenInputValues, formatRuleValue, generateCaseFromRule, inspectDecisionDraft } from './ruleTableUtils';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { formatDateTimeForApi } from '@/utils/date';
@@ -150,6 +151,12 @@ export default function RuleTablesPage() {
     handleSearch, handleReset,
   } = useListSearch<{ keyword: string; status?: string }>({ defaults: { keyword: '', status: undefined }, listKey: ruleKeys.decisionTables.lists });
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    status: enumValueOf(RULE_DECISION_STATUSES, submittedParams.status),
+  }), [submittedParams]);
+
   const [editorFullscreen, setEditorFullscreen] = useState(false);
   const [editorHitPolicy, setEditorHitPolicy] = useState<RuleHitPolicy>('first');
   const [importSeed, setImportSeed] = useState<Partial<DecisionTableExport> | null>(null);
@@ -172,7 +179,7 @@ export default function RuleTablesPage() {
   const [execRow, setExecRow] = useState<RuleDecisionTable | null>(null);
   const [draft, setDraft] = useState<{ inputs: RuleDecisionTable['inputs']; outputs: RuleDecisionTable['outputs']; rules: RuleDecisionTable['rules'] }>({ inputs: [], outputs: [], rules: [] });
 
-  const listQuery = useRuleDecisionTableList({ page, pageSize, keyword: submittedParams.keyword || undefined, status: enumValueOf(RULE_DECISION_STATUSES, submittedParams.status) });
+  const listQuery = useRuleDecisionTableList({ page, pageSize, ...filterQuery });
   const versionsQuery = useRuleVersions(verRow?.id, !!verRow);
   const versions = versionsQuery.data ?? [];
   const diffQuery = useRuleVersionDiff(verRow?.id, diffVersion, diffTarget, !!verRow && diffVersion !== null);

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Col, Form, Row, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -27,6 +28,7 @@ import { ReportFolderFilter, ReportOwnerFilter } from './report-filters';
 import { ReportBatchStatusButtons, ReportOwnerFolderFields, useReportBatchStatus } from './report-form-fields';
 import { useReportOwnerFolderOptions } from './report-lookups';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
@@ -46,17 +48,18 @@ export default function DataSourcesPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: reportDatasourceKeys.lists });
 
-  const { selectedRowKeys, setSelectedRowKeys, rowSelection } = useRowSelection();
-
-  const listQuery = useReportDatasourceList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     type: enumValueOf(REPORT_DATASOURCE_TYPES, submittedParams.type),
     status: enumValueOf(USER_STATUSES, submittedParams.status),
     ownerId: submittedParams.ownerId,
     folderId: submittedParams.folderId,
-  });
+  }), [submittedParams]);
+
+  const { selectedRowKeys, setSelectedRowKeys, rowSelection } = useRowSelection();
+
+  const listQuery = useReportDatasourceList({ page, pageSize, ...filterQuery });
   const { userOptions, folderOptions } = useReportOwnerFolderOptions('datasource');
   const saveMutation = useSaveReportDatasource();
   const toggleMutation = useSaveReportDatasource();

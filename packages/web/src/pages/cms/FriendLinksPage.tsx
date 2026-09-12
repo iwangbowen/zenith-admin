@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { compactParams } from '@/lib/query';
 import { Button, Form, SideSheet, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { FolderTree } from 'lucide-react';
@@ -36,10 +37,14 @@ export default function FriendLinksPage() {
   const [groupSheetVisible, setGroupSheetVisible] = useState(false);
   const groupOptions = useAllCmsFriendLinkGroups(siteId).data ?? [];
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    groupId: submittedParams.groupId,
+  }), [submittedParams]);
   const listQuery = useCmsFriendLinkList({
     page, pageSize, siteId: siteId ?? 0,
-    keyword: submittedParams.keyword || undefined,
-    groupId: submittedParams.groupId,
+    ...filterQuery,
   }, siteId !== undefined);
   const saveMutation = useSaveCmsFriendLink();
   const linkModal = useEditModal<CmsFriendLink, Partial<CmsFriendLink>, Record<string, unknown>>({

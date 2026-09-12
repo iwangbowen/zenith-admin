@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { compactParams } from '@/lib/query';
 import { Form } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -29,8 +30,10 @@ export default function TagsPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: cmsTagKeys.lists });
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({ keyword: submittedParams.keyword }), [submittedParams]);
   const listQuery = useCmsTagList({
-    page, pageSize, siteId: siteId ?? 0, keyword: submittedParams.keyword || undefined,
+    page, pageSize, siteId: siteId ?? 0, ...filterQuery,
   }, siteId !== undefined);
   const saveMutation = useSaveCmsTag();
   const modal = useEditModal<CmsTag, Partial<CmsTag>, Partial<CreateCmsTagInput>>({

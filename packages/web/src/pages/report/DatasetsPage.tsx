@@ -36,6 +36,7 @@ import { useReportOwnerFolderOptions } from './report-lookups';
 import { useReportDqAnomalyList } from '@/hooks/queries/report-dq';
 import { useReportDeprecationList } from '@/hooks/queries/report-assets';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
@@ -94,6 +95,14 @@ export default function DatasetsPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: reportDatasetKeys.lists });
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
+    ownerId: submittedParams.ownerId,
+    folderId: submittedParams.folderId,
+  }), [submittedParams]);
+
   const datasourcesQuery = useEnabledReportDatasources();
   const datasources = useMemo<ReportLookupOption[]>(() => datasourcesQuery.data ?? [], [datasourcesQuery.data]);
   const dsTypeMap = useMemo(() => {
@@ -123,14 +132,7 @@ export default function DatasetsPage() {
   const [aiQuestion, setAiQuestion] = useState('');
   const [datasetTab, setDatasetTab] = useState('basic');
 
-  const listQuery = useReportDatasetList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
-    status: enumValueOf(USER_STATUSES, submittedParams.status),
-    ownerId: submittedParams.ownerId,
-    folderId: submittedParams.folderId,
-  });
+  const listQuery = useReportDatasetList({ page, pageSize, ...filterQuery });
   const { userOptions, folderOptions } = useReportOwnerFolderOptions('dataset');
   const anomalyQuery = useReportDqAnomalyList({ page: 1, pageSize: 200, status: 'open' });
   const deprecationQuery = useReportDeprecationList({ page: 1, pageSize: 200, resourceType: 'dataset', published: true });

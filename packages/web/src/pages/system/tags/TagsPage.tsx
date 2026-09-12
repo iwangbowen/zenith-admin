@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { Form, Input, Space, Spin, Typography } from '@douyinfe/semi-ui';
 import { Tags } from 'lucide-react';
 import type { CreateTagInput, Tag } from '@zenith/shared/platform';
@@ -6,6 +6,7 @@ import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -128,13 +129,14 @@ export default function TagsPage() {
 
   const [colorValue, setColorValue] = useState('');
 
-  const listQuery = useTagList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     status: enumValueOf(USER_STATUSES, submittedParams.filterStatus),
-    groupName: submittedParams.filterGroup || undefined,
-  });
+    groupName: submittedParams.filterGroup,
+  }), [submittedParams]);
+
+  const listQuery = useTagList({ page, pageSize, ...filterQuery });
   const groupsQuery = useTagGroups();
   const saveMutation = useSaveTag();
   const tagModal = useEditModal<Tag, Partial<CreateTagInput>>({

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Button, Card, Switch, TextArea, Toast, Spin, Typography, Tabs, TabPane, Tag } from '@douyinfe/semi-ui';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
@@ -10,7 +10,7 @@ import { dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
 import { ipAccessKeys, useIpAccessLogs } from '@/hooks/queries/ip-access';
 import { useSaveSettings, useSettings } from '@/hooks/queries/settings';
 import { isIpOrCidr, type IpAccessSettings } from '@zenith/shared/settings';
-import { ApiError } from '@/lib/query';
+import { ApiError, compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 
@@ -38,12 +38,13 @@ interface SearchParams { filterIp: string; filterBlockType: string | undefined; 
     bind, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: ipAccessKeys.logs });
-  const logsQuery = useIpAccessLogs({
-    page,
-    pageSize,
-    ip: submittedParams.filterIp || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    ip: submittedParams.filterIp,
     blockType: enumValueOf(IP_ACCESS_BLOCK_TYPES, submittedParams.filterBlockType),
-  });
+  }), [submittedParams]);
+
+  const logsQuery = useIpAccessLogs({ page, pageSize, ...filterQuery });
 
   const columns: ColumnProps<IpAccessLog>[] = [
     { title: 'IP 地址', dataIndex: 'ip', width: 160 },

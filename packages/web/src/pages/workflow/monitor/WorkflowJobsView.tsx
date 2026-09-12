@@ -14,6 +14,7 @@ import { ListSearchToolbar, listTableProps, useRowSelection } from '@/components
 import ConfigurableTable from '@/components/ConfigurableTable';
 import WorkflowInstanceCell from '@/components/workflow/WorkflowInstanceCell';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useTreeExpansion } from '@/hooks/useTreeExpansion';
@@ -217,13 +218,13 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
       onSearch: clearSelection,
       onReset: clearSelection,
     });
-  const listQuery = useWorkflowJobList({
-    page,
-    pageSize,
-    jobType,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
     status: submittedParams.status,
-    keyword: submittedParams.keyword.trim() || undefined,
-  });
+    keyword: submittedParams.keyword.trim(),
+  }), [submittedParams]);
+
+  const listQuery = useWorkflowJobList({ page, pageSize, jobType, ...filterQuery });
   const [clustersOpen, setClustersOpen] = useState(false);
   const [clusterDim, setClusterDim] = useState<ClusterDimension>('reason');
   const clustersQuery = useWorkflowJobFailureClusters(clusterDim, clustersOpen);

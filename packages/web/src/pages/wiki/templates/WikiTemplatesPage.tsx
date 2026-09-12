@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Col, Form, Row, Spin } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { CreateWikiTemplateInput, WikiTemplate } from '@zenith/shared/wiki';
@@ -12,6 +13,7 @@ import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import {
   useDeleteWikiTemplates, useSaveWikiTemplate, useWikiTemplateDetail, useWikiTemplateList, wikiTemplateKeys,
@@ -33,12 +35,13 @@ export default function WikiTemplatesPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: wikiTemplateKeys.lists });
 
-  const listQuery = useWikiTemplateList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
-  });
+  }), [submittedParams]);
+
+  const listQuery = useWikiTemplateList({ page, pageSize, ...filterQuery });
 
   const modal = useEditModal<WikiTemplate, Partial<CreateWikiTemplateInput>>({
     entityName: '文档模板',

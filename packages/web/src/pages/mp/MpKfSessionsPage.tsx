@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useMemo, useCallback, useRef, useState } from 'react';
 import { ListSearchToolbar } from '@/components/list-page';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -47,6 +47,7 @@ import { KeywordInput } from '@/components/search-filters';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { abortSubmit } from '@/lib/abort-submit';
+import { compactParams } from '@/lib/query';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useListSearch } from '@/hooks/useListSearch';
 import { confirmDanger } from '@/utils/confirm';
@@ -98,7 +99,17 @@ export default function MpKfSessionsPage() {
   const [rateValue, setRateValue] = useState(5);
   const [rateRemark, setRateRemark] = useState('');
 
-  const listQuery = useMpKfSessionList({ accountId: currentId ?? 0, status: tab, keyword: submittedParams.keyword || undefined, page: 1, pageSize: 50 }, !!currentId);
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+  }), [submittedParams]);
+  const listQuery = useMpKfSessionList({
+    accountId: currentId ?? 0,
+    status: tab,
+    page: 1,
+    pageSize: 50,
+    ...filterQuery,
+  }, !!currentId);
   const statsQuery = useMpKfSessionStats(currentId);
   const detailQuery = useMpKfSessionDetail(selectedId ?? undefined);
   const configQuery = useMpKfRoutingConfig(currentId, configVisible);

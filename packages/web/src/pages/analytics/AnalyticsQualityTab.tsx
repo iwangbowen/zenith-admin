@@ -1,6 +1,8 @@
 /**
  * 行为中心阶段 1：数据质量看板 —— 埋点质量日聚合明细 + 租户级事件启停覆盖管理。
  */
+import { useMemo } from 'react';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { Form, Select, Space, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -51,23 +53,31 @@ export default function AnalyticsQualityTab() {
   const overrides = useListSearch<OverrideFilter>({ defaults: defaultOverrideFilter, listKey: analyticsKeys.data.overridesLists, pageSize: PAGE_SIZE });
   const { submittedParams: submittedOverrideFilter } = overrides;
 
-  const qualityQuery = useAnalyticsQuality({
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const qualityFilterQuery = useMemo(() => compactParams({
     days: submittedFilter.days,
-    eventName: submittedFilter.eventName || undefined,
-    issueType: submittedFilter.issueType || undefined,
+    eventName: submittedFilter.eventName,
+    issueType: submittedFilter.issueType,
+  }), [submittedFilter]);
+  const qualityQuery = useAnalyticsQuality({
     page: quality.page,
     pageSize: quality.pageSize,
+    ...qualityFilterQuery,
   });
   const qualityItems = qualityQuery.data?.items ?? [];
   const qualityTotal = qualityQuery.data?.totalCount ?? 0;
   const totals = qualityQuery.data?.totals ?? [];
   const totalsByType = new Map(totals.map((t) => [t.issueType, t.count]));
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const overrideFilterQuery = useMemo(() => compactParams({
+    eventName: submittedOverrideFilter.eventName,
+    status: submittedOverrideFilter.status,
+  }), [submittedOverrideFilter]);
   const overrideQuery = useAnalyticsEventOverrides({
     page: overrides.page,
     pageSize: overrides.pageSize,
-    eventName: submittedOverrideFilter.eventName || undefined,
-    status: submittedOverrideFilter.status || undefined,
+    ...overrideFilterQuery,
   }, config.multiTenantMode);
   const overrideList = overrideQuery.data?.list ?? [];
   const overrideTotal = overrideQuery.data?.total ?? 0;

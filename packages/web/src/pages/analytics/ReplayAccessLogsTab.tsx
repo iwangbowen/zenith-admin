@@ -2,6 +2,8 @@
  * 回放访问审计 Tab：谁在什么时候查看了谁的操作录像（合规留痕，manage 权限）。
  * 同一用户对同一回放 10 分钟内去重，实时旁观轮询不会刷屏。
  */
+import { useMemo } from 'react';
+import { compactParams } from '@/lib/query';
 import { Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
@@ -20,7 +22,9 @@ export default function ReplayAccessLogsTab({ onOpenReplay }: Readonly<{ onOpenR
     bindKeyword, submittedParams, handleSearch, handleReset,
   } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: replayKeys.accessLogs });
 
-  const listQuery = useReplayAccessLogs({ page, pageSize, keyword: submittedParams.keyword || undefined });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({ keyword: submittedParams.keyword }), [submittedParams]);
+  const listQuery = useReplayAccessLogs({ page, pageSize, ...filterQuery });
 
   const columns: ColumnProps<ReplayAccessLog>[] = [
     { title: '时间', dataIndex: 'createdAt', width: 170 },

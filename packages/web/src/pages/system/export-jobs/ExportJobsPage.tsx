@@ -29,6 +29,7 @@ import {
 import { BatchDeleteButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { copyTextWithToast } from '@/utils/clipboard';
 
 interface SearchParams {
@@ -93,14 +94,15 @@ export default function ExportJobsPage() {
   const { selectedRowKeys, setSelectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
   const entitiesQuery = useExportEntities();
   const entities = entitiesQuery.data ?? EMPTY_ENTITIES;
-  const listQuery = useExportJobList({
-    page,
-    pageSize,
-    entity: submittedParams.entity || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    entity: submittedParams.entity,
     status: enumValueOf(EXPORT_JOB_STATUSES, submittedParams.status),
     format: enumValueOf(EXPORT_JOB_FORMATS, submittedParams.format),
-    keyword: submittedParams.keyword || undefined,
-  });
+    keyword: submittedParams.keyword,
+  }), [submittedParams]);
+
+  const listQuery = useExportJobList({ page, pageSize, ...filterQuery });
   const data = listQuery.data?.list ?? EMPTY_EXPORT_JOBS;
   const downloadsQuery = useExportJobDownloads(currentJob?.id, logsVisible && currentJob != null);
   const cancelMutation = useCancelExportJob();

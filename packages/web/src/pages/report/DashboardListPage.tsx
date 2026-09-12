@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Form, SideSheet, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -33,6 +33,7 @@ import { ReportBatchStatusButtons, ReportOwnerFolderFields, useReportBatchStatus
 import { useReportOwnerFolderOptions } from './report-lookups';
 import { useReportDeprecationList } from '@/hooks/queries/report-assets';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
@@ -52,22 +53,23 @@ export default function DashboardListPage() {
     handleSearch, applySearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: reportDashboardKeys.lists });
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
+    lifecycleStatus: submittedParams.lifecycleStatus,
+    categoryId: submittedParams.categoryId,
+    favorited: submittedParams.favorited ? true : undefined,
+    ownerId: submittedParams.ownerId,
+    folderId: submittedParams.folderId,
+  }), [submittedParams]);
+
   const { selectedRowKeys, setSelectedRowKeys, rowSelection } = useRowSelection();
   const [categorySheetVisible, setCategorySheetVisible] = useState(false);
   const [shareTarget, setShareTarget] = useState<number | null>(null);
   const [versionTarget, setVersionTarget] = useState<number | null>(null);
 
-  const listQuery = useReportDashboardList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
-    status: enumValueOf(USER_STATUSES, submittedParams.status),
-    lifecycleStatus: submittedParams.lifecycleStatus || undefined,
-    categoryId: submittedParams.categoryId,
-    favorited: submittedParams.favorited || undefined,
-    ownerId: submittedParams.ownerId,
-    folderId: submittedParams.folderId,
-  });
+  const listQuery = useReportDashboardList({ page, pageSize, ...filterQuery });
   const { userOptions, folderOptions } = useReportOwnerFolderOptions('dashboard');
   const deprecationQuery = useReportDeprecationList(
     { page: 1, pageSize: 200, resourceType: 'dashboard', published: true },

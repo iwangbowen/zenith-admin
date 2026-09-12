@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import ModalFooter from '@/components/ModalFooter';
 import { useNavigate } from 'react-router-dom';
 import { Form, Toast, Tag, Row, Col, Typography, SideSheet } from '@douyinfe/semi-ui';
@@ -27,6 +27,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
+import { compactParams } from '@/lib/query';
 
 const typeOptions = (Object.keys(COUPON_TYPE_LABELS) as CouponType[]).map((v) => ({ value: v, label: COUPON_TYPE_LABELS[v] }));
 const statusOptions = (Object.keys(COUPON_TEMPLATE_STATUS_LABELS) as CouponTemplateStatus[]).map((v) => ({ value: v, label: COUPON_TEMPLATE_STATUS_LABELS[v] }));
@@ -64,12 +65,16 @@ export default function CouponsPage() {
 
   const [issueVisible, setIssueVisible] = useState(false);
   const [issuing, setIssuing] = useState<Coupon | null>(null);
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    status: enumValueOf(COUPON_TEMPLATE_STATUSES, submittedParams.status),
+    type: enumValueOf(COUPON_TYPES, submittedParams.type),
+  }), [submittedParams]);
   const listQuery = useCouponList({
     page,
     pageSize,
-    keyword: submittedParams.keyword || undefined,
-    status: enumValueOf(COUPON_TEMPLATE_STATUSES, submittedParams.status),
-    type: enumValueOf(COUPON_TYPES, submittedParams.type),
+    ...filterQuery,
   });
   const saveMutation = useSaveCoupon();
   const deleteMutation = useDeleteCoupons();

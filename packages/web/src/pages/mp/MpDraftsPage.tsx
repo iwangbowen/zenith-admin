@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, Input, Space, Spin, Tag, Toast, Typography, TextArea } from '@douyinfe/semi-ui';
 import { Plus, Trash2 } from 'lucide-react';
@@ -23,6 +23,7 @@ import {
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
+import { compactParams } from '@/lib/query';
 
 const blankArticle = (): MpArticle => ({ title: '', author: '', digest: '', content: '', thumbUrl: '', showCoverPic: true });
 
@@ -34,7 +35,16 @@ export default function MpDraftsPage() {
     bindKeyword, submittedParams, handleSearch, handleReset,
   } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: mpDraftKeys.lists });
 
-  const listQuery = useMpDraftList({ accountId: currentId ?? 0, page, pageSize, keyword: submittedParams.keyword || undefined }, !!currentId);
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+  }), [submittedParams]);
+  const listQuery = useMpDraftList({
+    accountId: currentId ?? 0,
+    page,
+    pageSize,
+    ...filterQuery,
+  }, !!currentId);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<MpDraft | null>(null);

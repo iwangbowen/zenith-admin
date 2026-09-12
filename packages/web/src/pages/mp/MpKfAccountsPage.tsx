@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Avatar, Button, Form, Space, Spin, Tag, Toast } from '@douyinfe/semi-ui';
 import { RefreshCw } from 'lucide-react';
@@ -22,6 +23,7 @@ import {
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
+import { compactParams } from '@/lib/query';
 
 const INVITE_LABEL: Record<string, { label: string; color: 'green' | 'orange' | 'grey' }> = {
   none: { label: '未邀请', color: 'grey' },
@@ -37,7 +39,16 @@ export default function MpKfAccountsPage() {
     page, pageSize, buildPagination,
     bindKeyword, submittedParams, handleSearch, handleReset,
   } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: mpKfAccountKeys.lists });
-  const listQuery = useMpKfAccountList({ accountId: currentId ?? 0, page, pageSize, keyword: submittedParams.keyword || undefined }, !!currentId);
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+  }), [submittedParams]);
+  const listQuery = useMpKfAccountList({
+    accountId: currentId ?? 0,
+    page,
+    pageSize,
+    ...filterQuery,
+  }, !!currentId);
 
   const syncMutation = useSyncMpKfAccounts();
   const saveMutation = useSaveMpKfAccount();

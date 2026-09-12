@@ -13,6 +13,7 @@ import { MemberSelect } from '@/components/MemberSelect';
 import { memberAdminKeys, useAdjustMemberPoints, useMemberPointTransactions } from '@/hooks/queries/member-admin';
 import { useEditModal } from '@/hooks/useEditModal';
 import { signedNumberChange } from './member-admin-display';
+import { compactParams } from '@/lib/query';
 import {
   MemberLedgerToolbar,
   ledgerMemberColumn,
@@ -35,11 +36,15 @@ export default function MemberPointsPage() {
   const { hasPermission } = usePermission();
   const search = useMemberLedgerSearch(memberAdminKeys.pointLists);
   const { page, pageSize, buildPagination, submittedParams } = search;
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    memberKeyword: submittedParams.memberKeyword,
+    type: enumValueOf(POINT_TX_TYPES, submittedParams.type),
+  }), [submittedParams]);
   const listQuery = useMemberPointTransactions({
     page,
     pageSize,
-    memberKeyword: submittedParams.memberKeyword || undefined,
-    type: enumValueOf(POINT_TX_TYPES, submittedParams.type),
+    ...filterQuery,
   });
   const adjustMutation = useAdjustMemberPoints();
   const adjustSave = useMemo(() => ({

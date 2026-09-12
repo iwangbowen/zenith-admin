@@ -1,9 +1,11 @@
+import { useMemo } from 'react';
 import { Col, Form, Row, Spin, Tag } from '@douyinfe/semi-ui';
 import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import type { CreateInAppTemplateInput, InAppMessageType, InAppTemplate } from '@zenith/shared/messaging';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { useEditModal } from '@/hooks/useEditModal';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -34,13 +36,14 @@ export default function InAppTemplatesPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: inAppTemplateKeys.lists });
 
-  const listQuery = useInAppTemplateList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     type: submittedParams.filterType,
     status: enumValueOf(USER_STATUSES, submittedParams.filterStatus),
-  });
+  }), [submittedParams]);
+
+  const listQuery = useInAppTemplateList({ page, pageSize, ...filterQuery });
   const saveMutation = useSaveInAppTemplate();
   const modal = useEditModal<InAppTemplate, Partial<CreateInAppTemplateInput>>({
     entityName: '站内信模板',

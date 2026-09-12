@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -9,6 +10,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { PAYMENT_OUTBOX_EVENT_STATUSES, type PaymentOutboxEvent } from '@zenith/shared/payment';
 import { paymentEventKeys, usePaymentEventList, usePaymentOpsHealth, useRedispatchPaymentEvent } from '@/hooks/queries/payment-events';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
@@ -47,12 +49,16 @@ export default function PaymentEventsPage() {
     bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentEventKeys.lists });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    status: enumValueOf(PAYMENT_OUTBOX_EVENT_STATUSES, submittedParams.status),
+    type: submittedParams.type,
+  }), [submittedParams]);
   const listQuery = usePaymentEventList({
     page,
     pageSize,
-    keyword: submittedParams.keyword || undefined,
-    status: enumValueOf(PAYMENT_OUTBOX_EVENT_STATUSES, submittedParams.status),
-    type: submittedParams.type || undefined,
+    ...filterQuery,
   });
   const healthQuery = usePaymentOpsHealth();
   const health = healthQuery.data ?? null;

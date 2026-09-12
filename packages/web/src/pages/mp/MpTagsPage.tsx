@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useMemo, useEffect } from 'react';
 import { Button, Form, Spin, Toast } from '@douyinfe/semi-ui';
 import { RefreshCw } from 'lucide-react';
 import type { CreateMpTagInput, MpTag } from '@zenith/shared/mp';
@@ -17,6 +17,7 @@ import { mpTagKeys, useDeleteMpTags, useMpTagList, useSaveMpTag, useSyncMpTags }
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
+import { compactParams } from '@/lib/query';
 
 export default function MpTagsPage() {
   const { hasPermission: can } = usePermission();
@@ -27,11 +28,15 @@ export default function MpTagsPage() {
     bindKeyword, submittedParams, handleSearch, handleReset,
   } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: mpTagKeys.lists });
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+  }), [submittedParams]);
   const listQuery = useMpTagList({
     accountId: currentId ?? 0,
     page,
     pageSize,
-    keyword: submittedParams.keyword || undefined,
+    ...filterQuery,
   }, !!currentId);
   const syncMutation = useSyncMpTags();
   const saveMutation = useSaveMpTag();

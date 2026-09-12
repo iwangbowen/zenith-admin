@@ -1,5 +1,6 @@
 /** 会话列表：按用户名 / 设备筛选，分页浏览会话并可打开单会话事件时间轴 */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { compactParams } from '@/lib/query';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Empty, SideSheet, Spin, Tag, Timeline, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -97,12 +98,12 @@ export default function AnalyticsSessionsTab() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: analyticsKeys.sessionsLists, pageSize: 20 });
   const [timelineSessionId, setTimelineSessionId] = useState<string | null>(null);
-  const sessionsQuery = useAnalyticsSessions({
-    page,
-    pageSize,
-    username: submittedParams.username.trim() || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    username: submittedParams.username.trim(),
     deviceType: submittedParams.deviceType,
-  });
+  }), [submittedParams]);
+  const sessionsQuery = useAnalyticsSessions({ page, pageSize, ...filterQuery });
 
   const columns: ColumnProps<SessionListItem>[] = [
     { title: '用户', dataIndex: 'username', width: 150, render: (_value, record) => record.username || (record.userId == null ? '匿名访客' : `用户 #${record.userId}`) },

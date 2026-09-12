@@ -1,5 +1,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { Banner, Button, Col, Form, Input, InputNumber, Modal, Row, SideSheet, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -122,7 +123,12 @@ export default function AnalyticsExperimentsTab() {
   const [variants, setVariants] = useState<AnalyticsExperimentVariant[]>(defaultVariants);
   const [reporting, setReporting] = useState<AnalyticsExperiment | null>(null);
 
-  const params = useMemo(() => ({ page, pageSize, name: submitted.name || undefined, status: submitted.status || undefined }), [page, pageSize, submitted]);
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const params = useMemo(() => ({
+    page,
+    pageSize,
+    ...compactParams({ name: submitted.name, status: submitted.status }),
+  }), [page, pageSize, submitted]);
   const listQuery = useExperiments(params);
   const metaQuery = useAnalyticsEventMeta({ page: 1, pageSize: 100, status: 'active' });
   const createMutation = useCreateExperiment();

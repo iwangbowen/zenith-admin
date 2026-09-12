@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Modal, Tag, Toast, Dropdown, SplitButtonGroup, Typography, Space } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -6,6 +6,7 @@ import { Trash2, ChevronDown, Copy, Terminal, Star } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useUserOptions } from '@/hooks/useUserOptions';
 import { formatDateTimeRangeForApi } from '@/utils/date';
@@ -120,13 +121,14 @@ export default function TerminalRecordingsPage() {
   const [exportingId, setExportingId] = useState<number | null>(null);
   const { userOptions, loading: userOptionsLoading, ensureLoaded } = useUserOptions({ immediate: true });
 
-  const listQuery = useTerminalRecordingList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     operatorUserId: submittedParams.operatorUserId,
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
-  });
+  }), [submittedParams]);
+
+  const listQuery = useTerminalRecordingList({ page, pageSize, ...filterQuery });
   const [playId, setPlayId] = useState<number | undefined>();
   const [detailId, setDetailId] = useState<number | undefined>();
   const playQuery = useTerminalRecordingDetail(playId, playId !== undefined);

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Button, Form, Space, Tag, Toast, Typography, Upload } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ImagePlus, Trash2 } from 'lucide-react';
@@ -14,6 +14,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
 import { UserAvatar } from '@/components/UserAvatar';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
 import { ChannelMenuDrawer } from './ChannelMenuDrawer';
@@ -54,11 +55,12 @@ export default function ChannelsPage() {
   const [messagesDrawer, setMessagesDrawer] = useState<ChannelAdmin | null>(null);
   const [subscribersDrawer, setSubscribersDrawer] = useState<ChannelAdmin | null>(null);
 
-  const listQuery = useChannelList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
-  });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+  }), [submittedParams]);
+
+  const listQuery = useChannelList({ page, pageSize, ...filterQuery });
   const saveMutation = useSaveChannel();
   const deleteMutation = useDeleteChannel();
 

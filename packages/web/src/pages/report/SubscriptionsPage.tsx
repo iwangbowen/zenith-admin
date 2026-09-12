@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Button, Form, Tag, Toast, Modal, SideSheet, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -9,6 +9,7 @@ import { FormTimezoneSelect } from '@/components/FormTimezoneSelect';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -48,12 +49,17 @@ export default function SubscriptionsPage() {
     page, pageSize, buildPagination,
     bindKeyword, submittedParams, handleSearch, handleReset,
   } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: reportSubscriptionKeys.lists });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+  }), [submittedParams]);
+
   const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
   const [historyTarget, setHistoryTarget] = useState<ReportDashboardSubscription | null>(null);
   const [cronExprValue, setCronExprValue] = useState('');
   const [selectedChannels, setSelectedChannels] = useState<string[]>(['inApp']);
 
-  const listQuery = useReportSubscriptionList({ page, pageSize, keyword: submittedParams.keyword || undefined });
+  const listQuery = useReportSubscriptionList({ page, pageSize, ...filterQuery });
   const dashboardsQuery = useReportSubscriptionDashboardOptions();
   const dashboards = dashboardsQuery.data ?? [];
   const saveMutation = useSaveReportSubscription();

@@ -18,6 +18,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePermission } from '@/hooks/usePermission';
 import { useWorkflowDefinitionList } from '@/hooks/queries/workflow-definitions';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePagination } from '@/hooks/usePagination';
 import {
@@ -313,13 +314,14 @@ export default function WorkflowAutomationsPage() {
     bind, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowAutomationKeys.lists });
-  const listQuery = useWorkflowAutomationList({
-    page,
-    pageSize,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
     definitionId: submittedParams.definitionId,
-    trigger: submittedParams.trigger || undefined,
-    status: submittedParams.status || undefined,
-  });
+    trigger: submittedParams.trigger,
+    status: submittedParams.status,
+  }), [submittedParams]);
+
+  const listQuery = useWorkflowAutomationList({ page, pageSize, ...filterQuery });
   const definitionsQuery = useWorkflowDefinitionList({ page: 1, pageSize: 200 });
   const defs: WorkflowDefinition[] = useMemo(() => definitionsQuery.data?.list ?? [], [definitionsQuery.data]);
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, Form, Image, Select, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import { Plus } from 'lucide-react';
@@ -17,6 +17,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
+import { compactParams } from '@/lib/query';
 
 const TYPE_OPTIONS = [
   { label: '永久二维码', value: 'permanent' },
@@ -42,12 +43,16 @@ export default function MpQrcodesPage() {
 
   const [modalType, setModalType] = useState<MpQrcodeType>('permanent');
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    type: submittedParams.filterType,
+    keyword: submittedParams.keyword,
+  }), [submittedParams]);
   const listQuery = useMpQrcodeList({
     accountId: currentId ?? 0,
     page,
     pageSize,
-    type: submittedParams.filterType,
-    keyword: submittedParams.keyword || undefined,
+    ...filterQuery,
   }, !!currentId);
   const createMutation = useCreateMpQrcode();
   const deleteMutation = useDeleteMpQrcodes();

@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react';
+import { useMemo, useState, useRef } from 'react';
+import { compactParams } from '@/lib/query';
 import { Button, Form, Tag, Toast } from '@douyinfe/semi-ui';
 import { Download, ThumbsUp, ThumbsDown } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -85,14 +86,15 @@ export default function AiFeedbackPage() {
   const [handlingMessage, setHandlingMessage] = useState<AiFeedbackItem | null>(null);
   const [contextMsgId, setContextMsgId] = useState<number | null>(null);
   // 筛选值来自 Select 字符串，收窄为契约枚举后再进入查询
-  const filters = {
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
     feedback: enumValueOf(FEEDBACK_FILTER_VALUES, submittedParams.feedback),
     status: enumValueOf(AI_FEEDBACK_STATUSES, submittedParams.status),
-    model: submittedParams.model || undefined,
+    model: submittedParams.model,
     startDate: submittedParams.timeRange ? formatDateForApi(submittedParams.timeRange[0]) : undefined,
     endDate: submittedParams.timeRange ? formatDateForApi(submittedParams.timeRange[1]) : undefined,
-  };
-  const listQuery = useAiFeedbackList({ page, pageSize, ...filters });
+  }), [submittedParams]);
+  const listQuery = useAiFeedbackList({ page, pageSize, ...filterQuery });
   const data = listQuery.data ?? null;
   const handleMutation = useHandleAiFeedback();
   const contextQuery = useAiFeedbackContext(contextMsgId);
@@ -102,7 +104,7 @@ export default function AiFeedbackPage() {
     .map((m) => ({ value: m, label: m }));
 
   const handleExport = () => {
-    void downloadAiFeedbackCsv(filters);
+    void downloadAiFeedbackCsv(filterQuery);
   };
 
   function openHandleModal(record: AiFeedbackItem) {

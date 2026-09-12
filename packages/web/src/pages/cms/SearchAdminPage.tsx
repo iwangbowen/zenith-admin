@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { compactParams } from '@/lib/query';
 import { useQueryClient } from '@tanstack/react-query';
 import { Banner, Button, Form, Input, Tag, Toast, Typography, Tabs, TabPane, Modal, Select } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -158,11 +159,16 @@ function DictTab({ siteId, onSiteChange }: Readonly<{ siteId: number | undefined
     onReset: () => setSelectedIds([]),
   });
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const listQuery = useCmsSearchWordList({
-    page, pageSize, siteId: siteId ?? 0, keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     type: submittedParams.type,
-    groupName: submittedParams.groupName || undefined,
+    groupName: submittedParams.groupName,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
+  }), [submittedParams]);
+  const listQuery = useCmsSearchWordList({
+    page, pageSize, siteId: siteId ?? 0,
+    ...filterQuery,
   }, siteId !== undefined);
   const saveMutation = useSaveCmsSearchWord();
   const modal = useEditModal<CmsSearchWord, Partial<CmsSearchWord>, Record<string, unknown>>({

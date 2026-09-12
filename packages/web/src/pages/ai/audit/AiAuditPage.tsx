@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { compactParams } from '@/lib/query';
 import { Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { aiAuditContract } from '@zenith/shared/ai';
@@ -52,14 +53,14 @@ export default function AiAuditPage() {
   } = useListSearch<AuditSearch>({ defaults: { keyword: '', range: null }, listKey: auditKeys.lists });
   const [contextMsgId, setContextMsgId] = useState<number | null>(null);
   const [traceMsg, setTraceMsg] = useState<AiFeedbackItem | null>(null);
-  const listQuery = useAuditList({
-    page,
-    pageSize,
-    keyword: submitted.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submitted.keyword,
     role: enumValueOf(AUDIT_ROLES, submitted.role),
     startDate: submitted.range?.[0] ? formatDateForApi(submitted.range[0]) : undefined,
     endDate: submitted.range?.[1] ? formatDateForApi(submitted.range[1]) : undefined,
-  });
+  }), [submitted]);
+  const listQuery = useAuditList({ page, pageSize, ...filterQuery });
   const contextQuery = useAuditContext(contextMsgId);
 
   const columns: ColumnProps<AiFeedbackItem>[] = [

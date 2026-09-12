@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useMemo, useEffect, useRef, useState } from 'react';
 import { Button, Empty, Form, Tabs, Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -13,7 +13,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { identitySecurityKeys, useLoginRiskEventList } from '@/hooks/queries/identity-security';
 import { useSaveSettings, useSettings } from '@/hooks/queries/settings';
-import { ApiError } from '@/lib/query';
+import { ApiError, compactParams } from '@/lib/query';
 import { RefreshButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 
@@ -41,8 +41,13 @@ export default function IdentitySecurityPage() {
   // 页面级全局配置表单（无弹窗、保存后不关闭），不走 useEditModal；策略由运行时设置 identitySecurity 模块承载
   const policyQuery = useSettings('identitySecurity', canManagePolicy && activeTab === 'policy');
   const savePolicyMutation = useSaveSettings('identitySecurity');
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword.trim(),
+  }), [submittedParams]);
+
   const riskQuery = useLoginRiskEventList(
-    { page, pageSize, keyword: submittedParams.keyword.trim() || undefined },
+    { page, pageSize, ...filterQuery },
     canReadRiskEvents && activeTab === 'risk',
   );
 

@@ -19,6 +19,7 @@ import {
   workflowScheduleKeys,
 } from '@/hooks/queries/workflow-schedules';
 import { useDictItems } from '@/hooks/useDictItems';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton } from '@/components/toolbar-controls';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
@@ -84,12 +85,13 @@ export default function WorkflowSchedulesPage() {
     bind, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowScheduleKeys.lists });
-  const listQuery = useWorkflowScheduleList({
-    page,
-    pageSize,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
     definitionId: submittedParams.definitionId,
-    status: submittedParams.status || undefined,
-  });
+    status: submittedParams.status,
+  }), [submittedParams]);
+
+  const listQuery = useWorkflowScheduleList({ page, pageSize, ...filterQuery });
   const definitionsQuery = usePublishedWorkflowDefinitions();
   const usersQuery = useAllUsers();
 

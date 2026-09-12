@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Form, Toast, Spin, CheckboxGroup, Tag, Space } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { CreateTenantPackageInput, TenantPackage } from '@zenith/shared/identity';
@@ -9,6 +9,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useDictItems } from '@/hooks/useDictItems';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import {
   tenantPackageKeys,
@@ -43,12 +44,13 @@ export default function TenantPackagesPage() {
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: tenantPackageKeys.lists });
   const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
 
-  const listQuery = useTenantPackageList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
-  });
+  }), [submittedParams]);
+
+  const listQuery = useTenantPackageList({ page, pageSize, ...filterQuery });
 
   // 新增/编辑弹窗：详情到达时由 useEditModal 自动重挂载表单
   const saveMutation = useSaveTenantPackage();

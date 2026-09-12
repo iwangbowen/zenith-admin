@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { compactParams } from '@/lib/query';
 import { Breadcrumb, Button, Dropdown, Empty, Form, Progress, Space, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ChevronDown, Copy, Download, FolderPlus, LayoutGrid, List as ListIcon, Lock, MoveRight, Star, Trash2, Upload } from 'lucide-react';
@@ -73,10 +74,16 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
     useListSearch<SearchParams>({ defaults: { keyword: '', tagId: undefined, sortBy: 'name', order: 'asc' }, listKey, pageSize: 50 });
   const tags = useDriveTags(spaceId);
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    sortBy: submittedParams.sortBy,
+    order: submittedParams.order,
+    tagId: submittedParams.tagId,
+  }), [submittedParams]);
   const dirQuery = useDriveDir({
     spaceId, parentId: folderId, page, pageSize,
-    keyword: submittedParams.keyword || undefined, sortBy: submittedParams.sortBy, order: submittedParams.order,
-    tagId: submittedParams.tagId,
+    ...filterQuery,
   });
   const data: DriveNodeListResult | undefined = dirQuery.data;
   const list = useMemo(() => data?.list ?? [], [data?.list]);

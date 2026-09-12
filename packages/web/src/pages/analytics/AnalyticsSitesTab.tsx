@@ -1,5 +1,6 @@
 
 import { useMemo } from 'react';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { Form, Modal, Space, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -66,7 +67,12 @@ export default function AnalyticsSitesTab() {
     handleSearch, handleReset,
   } = useListSearch<SearchState>({ defaults: defaultSearch, listKey: analyticsKeys.data.sitesLists, pageSize: PAGE_SIZE });
 
-  const params = useMemo(() => ({ page, pageSize, name: submitted.name || undefined, status: submitted.status || undefined }), [page, pageSize, submitted]);
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const params = useMemo(() => ({
+    page,
+    pageSize,
+    ...compactParams({ name: submitted.name, status: submitted.status }),
+  }), [page, pageSize, submitted]);
   const listQuery = useAnalyticsSites(params);
   const createMutation = useCreateSite();
   const updateMutation = useUpdateSite();

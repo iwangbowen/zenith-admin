@@ -10,6 +10,7 @@ import { EMPTY_PLACEHOLDER, copyableNoColumn, createdAtColumn, dateTimeColumn, r
 import { usePermission } from '@/hooks/usePermission';
 import { useAuth } from '@/hooks/useAuth';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { useEditModal } from '@/hooks/useEditModal';
 import {
   paymentTransferKeys,
@@ -71,13 +72,17 @@ export default function PaymentTransfersPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentTransferKeys.lists });
 
-  const listQuery = usePaymentTransferList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
     status: enumValueOf(PAYMENT_TRANSFER_STATUSES, submittedParams.status),
     approvalStatus: enumValueOf(PAYMENT_TRANSFER_APPROVAL_STATUSES, submittedParams.approvalStatus),
+  }), [submittedParams]);
+  const listQuery = usePaymentTransferList({
+    page,
+    pageSize,
+    ...filterQuery,
   });
   const summaryQuery = usePaymentTransferSummary();
   const summary = summaryQuery.data ?? null;

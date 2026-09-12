@@ -18,6 +18,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { useImportEntities } from '@/hooks/queries/import-jobs';
 import { asyncTaskKeys, useAsyncTaskList } from '@/hooks/queries/async-tasks';
 import NewImportModal from './NewImportModal';
@@ -73,15 +74,16 @@ export default function ImportCenterPage() {
   const entitiesQuery = useImportEntities();
   const entities = entitiesQuery.data ?? EMPTY_ENTITIES;
   const entityMap = useMemo(() => new Map(entities.map((e) => [e.entity, e])), [entities]);
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    status: enumValueOf(ASYNC_TASK_STATUSES, submittedParams.status),
+    keyword: submittedParams.keyword,
+    // 实体标识存于任务 payload，走内容匹配筛选
+    content: submittedParams.entity,
+  }), [submittedParams]);
 
   const listQuery = useAsyncTaskList(
-    {
-      page, pageSize, taskType: 'data-import',
-      status: enumValueOf(ASYNC_TASK_STATUSES, submittedParams.status),
-      keyword: submittedParams.keyword || undefined,
-      // 实体标识存于任务 payload，走内容匹配筛选
-      content: submittedParams.entity || undefined,
-    },
+    { page, pageSize, taskType: 'data-import', ...filterQuery },
     // 有进行中的任务时轮询列表（渲染期重新求值，任务终态后自动停止）
     { refetchInterval: hasActiveTask ? 3000 : false },
   );

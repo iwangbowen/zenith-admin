@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import ModalFooter from '@/components/ModalFooter';
 import {
   Form,
@@ -31,6 +31,7 @@ import {
   workflowConnectorKeys,
 } from '@/hooks/queries/workflow-connectors';
 import { useDictItems } from '@/hooks/useDictItems';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
@@ -90,13 +91,14 @@ export default function WorkflowConnectorsPage() {
     bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowConnectorKeys.lists });
-  const listQuery = useWorkflowConnectorList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     type: enumValueOf(WORKFLOW_CONNECTOR_TYPES, submittedParams.type),
     status: enumValueOf(USER_STATUSES, submittedParams.status),
-  });
+  }), [submittedParams]);
+
+  const listQuery = useWorkflowConnectorList({ page, pageSize, ...filterQuery });
   const saveMutation = useSaveWorkflowConnector();
   const toggleStatusMutation = useSaveWorkflowConnector();
   const deleteMutation = useDeleteWorkflowConnectors();

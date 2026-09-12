@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import ModalFooter from '@/components/ModalFooter';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Banner, Col, Form, Row, SideSheet, Spin, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
@@ -7,6 +7,7 @@ import { MP_ACCOUNT_TYPES, type CreateMpAccountInput, type MpAccount, type MpAcc
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { useEditModal } from '@/hooks/useEditModal';
 import { config } from '@/config';
 import { AppModal } from '@/components/AppModal';
@@ -63,12 +64,16 @@ export default function MpAccountsPage() {
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: mpAccountKeys.lists });
 
   const [configRecord, setConfigRecord] = useState<MpAccount | null>(null);
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    type: enumValueOf(MP_ACCOUNT_TYPES, submittedParams.filterType),
+    status: enumValueOf(USER_STATUSES, submittedParams.filterStatus),
+  }), [submittedParams]);
   const listQuery = useMpAccountList({
     page,
     pageSize,
-    keyword: submittedParams.keyword || undefined,
-    type: enumValueOf(MP_ACCOUNT_TYPES, submittedParams.filterType),
-    status: enumValueOf(USER_STATUSES, submittedParams.filterStatus),
+    ...filterQuery,
   });
   const saveMutation = useSaveMpAccount();
   const modal = useEditModal<MpAccount, Partial<CreateMpAccountInput>>({

@@ -19,6 +19,7 @@ import CategorySidebar from './components/CategorySidebar';
 import { TemplateGalleryModal } from './components/TemplateGalleryModal';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import {
   useBatchDeleteWorkflowDefinitions,
@@ -94,13 +95,14 @@ export default function WorkflowDefinitionsPage() {
   const [isLayoutNarrow, setIsLayoutNarrow] = useState(false);
   const [showCategorySidebar, setShowCategorySidebar] = useState(false);
 
-  const listQuery = useWorkflowDefinitionList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     status: enumValueOf(WORKFLOW_DEFINITION_STATUSES, submittedParams.status),
     categoryId: submittedParams.selectedCategoryId ?? undefined,
-  });
+  }), [submittedParams]);
+
+  const listQuery = useWorkflowDefinitionList({ page, pageSize, ...filterQuery });
   const publishMutation = usePublishWorkflowDefinition();
   const disableMutation = useDisableWorkflowDefinition();
   const enableMutation = useEnableWorkflowDefinition();

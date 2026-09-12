@@ -9,6 +9,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
 import WorkflowInstanceDetailSheet from '@/components/workflow/WorkflowInstanceDetailSheet';
 import { dateTimeColumn } from '../../../utils/table-columns';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { KeywordInput } from '@/components/search-filters';
@@ -35,7 +36,10 @@ export default function CcToMePage() {
   const [forwardTarget, setForwardTarget] = useState<WorkflowInstance | null>(null);
   const [forwardUserIds, setForwardUserIds] = useState<number[]>([]);
   const [forwardNote, setForwardNote] = useState('');
-  const listQuery = useCcWorkflowInstances({ page, pageSize, keyword: submittedParams.keyword || undefined });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({ keyword: submittedParams.keyword }), [submittedParams]);
+
+  const listQuery = useCcWorkflowInstances({ page, pageSize, ...filterQuery });
   const markReadMutation = useMarkWorkflowCcRead();
   const forwardMutation = useForwardWorkflowCc();
   const usersQuery = useWorkflowSelectableUsers({ enabled: forwardTarget !== null });

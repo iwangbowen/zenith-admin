@@ -11,6 +11,7 @@ import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/li
 import { AppModal } from '@/components/AppModal';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { usePermission } from '@/hooks/usePermission';
 import { copyableNoColumn, createdAtColumn, dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import {
@@ -64,11 +65,12 @@ export default function ChatBotsPage() {
   } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: chatBotKeys.lists });
   const [secretInfo, setSecretInfo] = useState<ChatWebhook | null>(null);
 
-  const listQuery = useChatBotList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword.trim() || undefined,
-  });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword.trim(),
+  }), [submittedParams]);
+
+  const listQuery = useChatBotList({ page, pageSize, ...filterQuery });
   const saveMutation = useSaveChatBot();
   const botModal = useEditModal<ChatWebhook, BotFormValues, SaveChatBotValues>({
     entityName: ' Webhook 机器人',

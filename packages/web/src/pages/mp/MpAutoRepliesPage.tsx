@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, Col, Form, Input, Row, Select, Space, Spin, Tag, Toast, Switch, Typography } from '@douyinfe/semi-ui';
 import { Plus, Trash2, Flame } from 'lucide-react';
@@ -28,6 +28,7 @@ import {
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
+import { compactParams } from '@/lib/query';
 
 const REPLY_TYPE_OPTIONS = [
   { label: '关注回复', value: 'subscribe' },
@@ -71,12 +72,16 @@ export default function MpAutoRepliesPage() {
   const [modalType, setModalType] = useState<MpAutoReplyType>('keyword');
   const [contentType, setContentType] = useState<MpReplyContentType>('text');
   const [articles, setArticles] = useState<MpReplyArticle[]>([emptyArticle()]);
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    replyType: submittedParams.filterType,
+    keyword: submittedParams.keyword,
+  }), [submittedParams]);
   const listQuery = useMpAutoReplyList({
     accountId: currentId ?? 0,
     page,
     pageSize,
-    replyType: submittedParams.filterType,
-    keyword: submittedParams.keyword || undefined,
+    ...filterQuery,
   }, !!currentId);
   const materialsQuery = useMpAutoReplyMaterials(currentId);
   const materials = (materialsQuery.data?.list ?? []).filter((m) => m.wechatMediaId);

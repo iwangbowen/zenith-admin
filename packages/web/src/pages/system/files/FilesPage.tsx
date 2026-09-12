@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useMemo, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { AppModal } from '@/components/AppModal';
 import { FileDetailModal } from '@/components/FileDetailModal';
@@ -27,6 +27,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useDefaultFileStorageConfig } from '@/hooks/queries/file-storage-configs';
 import { fileKeys, invalidateAfterFilesAdded, useChunkUploadThreshold, useDeleteFiles, useFileDetail, useFileList, useUploadFile } from '@/hooks/queries/files';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { BatchDeleteButton } from '@/components/toolbar-controls';
 import { confirmAndDelete, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { copyTextWithToast } from '@/utils/clipboard';
@@ -142,14 +143,15 @@ export default function FilesPage() {
   const viewMode = preferences.filesViewMode ?? 'list';
   const defaultConfigQuery = useDefaultFileStorageConfig();
   const defaultConfig = defaultConfigQuery.data ?? null;
-  const listQuery = useFileList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     provider: enumValueOf(FILE_STORAGE_PROVIDERS, submittedParams.provider),
     fileType: enumValueOf(FILE_TYPE_FILTERS, submittedParams.fileType),
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
-  });
+  }), [submittedParams]);
+
+  const listQuery = useFileList({ page, pageSize, ...filterQuery });
   const data = listQuery.data ?? null;
   const preview = useFilePreview(() => data?.list ?? []);
   const uploadFileMutation = useUploadFile();

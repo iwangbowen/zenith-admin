@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useMemo, useEffect, useState } from 'react';
+import { compactParams } from '@/lib/query';
 import { Banner, Button, Form, Tag, Toast, Tabs, TabPane, TextArea } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, Send } from 'lucide-react';
@@ -39,7 +40,9 @@ function RedirectsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
     bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<KeywordSearch>({ defaults: defaultKeywordSearch, listKey: cmsRedirectKeys.lists });
-  const listQuery = useCmsRedirectList({ page, pageSize, siteId: siteId ?? 0, keyword: submittedParams.keyword || undefined }, siteId !== undefined);
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({ keyword: submittedParams.keyword }), [submittedParams]);
+  const listQuery = useCmsRedirectList({ page, pageSize, siteId: siteId ?? 0, ...filterQuery }, siteId !== undefined);
   const saveMutation = useSaveCmsRedirect();
   const modal = useEditModal<CmsRedirect, Partial<CmsRedirect>, Record<string, unknown>>({
     entityName: '重定向',
@@ -112,7 +115,9 @@ function LinkWordsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
     bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<KeywordSearch>({ defaults: defaultKeywordSearch, listKey: cmsLinkWordKeys.lists });
-  const listQuery = useCmsLinkWordList({ page, pageSize, siteId: siteId ?? 0, keyword: submittedParams.keyword || undefined }, siteId !== undefined);
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({ keyword: submittedParams.keyword }), [submittedParams]);
+  const listQuery = useCmsLinkWordList({ page, pageSize, siteId: siteId ?? 0, ...filterQuery }, siteId !== undefined);
   const saveMutation = useSaveCmsLinkWord();
   const modal = useEditModal<CmsLinkWord, Partial<CmsLinkWord>, Record<string, unknown>>({
     entityName: '内链词',

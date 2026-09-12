@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Banner, Button, Col, Form, Modal, Row, SideSheet, Space, Steps, TabPane, Tabs, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -10,6 +10,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import AppModal from '@/components/AppModal';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { ReportFolderFilter, ReportOwnerFilter } from './report-filters';
@@ -59,6 +60,14 @@ export default function FillTemplatesPage() {
     bind, bindKeyword, submittedParams: submitted,
     handleSearch, handleReset,
   } = useListSearch<SearchState>({ defaults: DEFAULT_SEARCH, listKey: reportFillKeys.templateLists });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submitted.keyword,
+    status: submitted.status,
+    ownerId: submitted.ownerId,
+    folderId: submitted.folderId,
+  }), [submitted]);
+
   const [fields, setFields] = useState<WorkflowFormField[]>([]);
   const [settings, setSettings] = useState<WorkflowFormSettings>(DEFAULT_SCHEMA.settings);
   const [editorStep, setEditorStep] = useState(0);
@@ -66,14 +75,7 @@ export default function FillTemplatesPage() {
   const [editorTab, setEditorTab] = useState('designer');
   const [conflictMessage, setConflictMessage] = useState<string | null>(null);
 
-  const listQuery = useReportFillTemplateList({
-    page,
-    pageSize,
-    keyword: submitted.keyword || undefined,
-    status: submitted.status,
-    ownerId: submitted.ownerId,
-    folderId: submitted.folderId,
-  });
+  const listQuery = useReportFillTemplateList({ page, pageSize, ...filterQuery });
   const { userOptions, folderOptions } = useReportOwnerFolderOptions('fill_template');
   const definitions = (usePublishedWorkflowDefinitions().data ?? []).filter((definition) => definition.formType === 'external');
   const createMutation = useCreateReportFillTemplate();

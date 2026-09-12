@@ -29,6 +29,10 @@ const listSearchRestrictions = [
     selector: 'JSXOpeningElement[name.name="DatePicker"] > JSXAttribute[name.name="type"] > Literal[value=/Range$/]',
     message: '搜索区的时间区间请用 @/components/search-filters 的 DateRangeFilter（秒级默认，日期级 type="dateRange"）；表单内用 Form.DatePicker。',
   },
+  {
+    selector: 'LogicalExpression[operator="||"][right.type="Identifier"][right.name="undefined"]:matches([left.object.name=/^submitted/], [left.object.property.name=/^submitted/], [left.callee.object.object.name=/^submitted/], [left.callee.object.object.property.name=/^submitted/])',
+    message: '已提交筛选 → 契约查询参数只映射一次：const filterQuery = useMemo(() => compactParams({ keyword: submittedParams.keyword, … }), [submittedParams])，再 useXxxList({ page, pageSize, ...filterQuery })；不要逐字段写 `x || undefined`。布尔开关按「勾选才筛选」语义写 `flag ? true : undefined`。',
+  },
 ];
 
 // ── 列表页样板纪律（constraints-frontend.md → 必须复用的公共 hook / 表格列）：

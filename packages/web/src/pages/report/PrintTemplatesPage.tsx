@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Form, Radio, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -31,6 +31,7 @@ import { ReportFolderFilter, ReportOwnerFilter } from './report-filters';
 import { ReportBatchStatusButtons, ReportOwnerFolderFields, useReportBatchStatus } from './report-form-fields';
 import { useReportOwnerFolderOptions } from './report-lookups';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle, useRowSelection } from '@/components/list-page';
@@ -50,6 +51,14 @@ export default function PrintTemplatesPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: reportPrintKeys.lists });
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    status: enumValueOf(USER_STATUSES, submittedParams.status),
+    ownerId: submittedParams.ownerId,
+    folderId: submittedParams.folderId,
+  }), [submittedParams]);
+
   const { selectedRowKeys, setSelectedRowKeys, rowSelection } = useRowSelection();
   // 新增 / 编辑弹窗中的数据来源（控制数据集选择器显隐）；打开弹窗时随记录回填
   const [dialogSourceType, setDialogSourceType] = useState<ReportPrintSourceType>('dataset');
@@ -59,14 +68,7 @@ export default function PrintTemplatesPage() {
   const [paramDialogVisible, setParamDialogVisible] = useState(false);
   const [paramDialogContext, setParamDialogContext] = useState<{ record: ReportPrintTemplate; mode: 'preview' | 'export'; format?: ExportJobFormat } | null>(null);
 
-  const listQuery = useReportPrintTemplateList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
-    status: enumValueOf(USER_STATUSES, submittedParams.status),
-    ownerId: submittedParams.ownerId,
-    folderId: submittedParams.folderId,
-  });
+  const listQuery = useReportPrintTemplateList({ page, pageSize, ...filterQuery });
   const { userOptions, folderOptions } = useReportOwnerFolderOptions('print_template');
   const datasetsQuery = useReportDesignerDatasets();
   const datasets = datasetsQuery.data ?? [];

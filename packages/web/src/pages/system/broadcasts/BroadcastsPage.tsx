@@ -4,7 +4,7 @@
  * 活动 = 受众 × 渠道 × 文案;发送经任务中心分批走通知派发层
  * (站内信/推送/邮件复用各渠道适配器与用户免打扰设置),进度实时展示。
  */
-import { useEffect, useRef, useState } from 'react';
+import { useMemo, useEffect, useRef, useState } from 'react';
 import { Form, Modal, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import {
@@ -33,6 +33,7 @@ import { EMPTY_PLACEHOLDER, createdAtColumn, renderEllipsis } from '@/utils/tabl
 import { useEditModal } from '@/hooks/useEditModal';
 import InsertShortLinkButton from '@/components/short-link/InsertShortLinkButton';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { usePermission } from '@/hooks/usePermission';
 import { useMyAsyncTasks } from '@/hooks/useAsyncTasks';
 import {
@@ -87,12 +88,13 @@ export default function BroadcastsPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: broadcastKeys.lists });
 
-  const listQuery = useBroadcastList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     status: enumValueOf(BROADCAST_STATUSES, submittedParams.status),
-  });
+  }), [submittedParams]);
+
+  const listQuery = useBroadcastList({ page, pageSize, ...filterQuery });
 
   // 群发任务实时进度;任务结束时刷新列表让状态列落定
   const { tasks } = useMyAsyncTasks({ taskTypes: ['messaging-broadcast'] });

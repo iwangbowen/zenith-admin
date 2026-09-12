@@ -12,6 +12,7 @@ import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import {
   directorySyncSourceKeys, useDirectorySyncSourceList, useDirectorySyncSourceDetail,
@@ -67,13 +68,14 @@ export default function DirectorySyncSourcesPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: directorySyncSourceKeys.lists });
 
-  const listQuery = useDirectorySyncSourceList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     type: enumValueOf(DIRECTORY_SYNC_SOURCE_TYPES, submittedParams.type),
     status: enumValueOf(USER_STATUSES, submittedParams.status),
-  });
+  }), [submittedParams]);
+
+  const listQuery = useDirectorySyncSourceList({ page, pageSize, ...filterQuery });
 
   // LDAP 绑定下拉：复用身份源域的列表查询（该域无 /all 端点）
   const providersQuery = useIdentityProviderList({ page: 1, pageSize: 100 });

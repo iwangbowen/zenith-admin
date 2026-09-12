@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Form, Spin, Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { CreateWikiTagInput, WikiTag } from '@zenith/shared/wiki';
@@ -10,6 +11,7 @@ import AppModal from '@/components/AppModal';
 import { createdAtColumn } from '@/utils/table-columns';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useDeleteWikiTags, useSaveWikiTag, useWikiTagList, wikiTagKeys } from '@/hooks/queries/wiki-tags';
 
@@ -30,11 +32,10 @@ export default function WikiTagsPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: wikiTagKeys.lists });
 
-  const listQuery = useWikiTagList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
-  });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({ keyword: submittedParams.keyword }), [submittedParams]);
+
+  const listQuery = useWikiTagList({ page, pageSize, ...filterQuery });
 
   const modal = useEditModal<WikiTag, Partial<CreateWikiTagInput>>({
     entityName: '标签',

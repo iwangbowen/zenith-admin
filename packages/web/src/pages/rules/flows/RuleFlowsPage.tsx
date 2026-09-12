@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, Form, Input, List, Modal, Select, SideSheet, Space, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -9,6 +9,7 @@ import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { usePermission } from '@/hooks/usePermission';
 import { useWorkflowDesignerDecisionRefOptions } from '@/hooks/queries/workflow-designer';
 import {
@@ -49,13 +50,18 @@ export default function RuleFlowsPage() {
     handleSearch, handleReset,
   } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: ruleKeys.flows.lists });
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+  }), [submittedParams]);
+
   const [steps, setSteps] = useState<RuleFlowStep[]>([]);
   const [testRow, setTestRow] = useState<RuleDecisionFlow | null>(null);
   const [testInput, setTestInput] = useState('{\n  "form": {}\n}');
   const [testResult, setTestResult] = useState<RuleFlowEvaluateResult | null>(null);
   const [versionsRow, setVersionsRow] = useState<RuleDecisionFlow | null>(null);
 
-  const listQuery = useRuleFlowList({ page, pageSize, keyword: submittedParams.keyword || undefined });
+  const listQuery = useRuleFlowList({ page, pageSize, ...filterQuery });
   const saveMutation = useSaveRuleFlow();
   const publishMutation = usePublishRuleFlow();
   const toggleMutation = useToggleRuleFlow();

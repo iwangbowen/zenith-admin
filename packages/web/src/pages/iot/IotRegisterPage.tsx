@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Banner, Button, Form, Modal, Popconfirm, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { RefreshCw } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -11,6 +11,7 @@ import { StatCard, StatGrid } from '@/components/charts';
 import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
+import { compactParams } from '@/lib/query';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { iotIngestContract } from '@zenith/shared/iot';
@@ -42,12 +43,16 @@ export default function IotRegisterPage() {
     handleSearch, handleReset,
   } = useListSearch<WhitelistSearchParams>({ defaults: defaultSearch, listKey: iotWhitelistKeys.lists });
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    productId: submittedParams.productId,
+    used: submittedParams.used === undefined ? undefined : submittedParams.used === 'true',
+  }), [submittedParams]);
   const listQuery = useIotWhitelistList({
     page,
     pageSize,
-    keyword: submittedParams.keyword || undefined,
-    productId: submittedParams.productId,
-    used: submittedParams.used === undefined ? undefined : submittedParams.used === 'true',
+    ...filterQuery,
   });
 
   const statsQuery = useIotWhitelistStats(submittedParams.productId);

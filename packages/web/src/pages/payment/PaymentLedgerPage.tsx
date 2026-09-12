@@ -53,6 +53,7 @@ import { formatMinorAmount } from '@/utils/payment';
 import { confirmDanger } from '@/utils/confirm';
 import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
+import { compactParams } from '@/lib/query';
 import { enumValueOf } from '@zenith/shared/core';
 
 const ACCOUNT_STATUS_ITEMS = [
@@ -248,31 +249,43 @@ export default function PaymentLedgerPage() {
     listKey: paymentFundReservationKeys.lists,
   });
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const accountFilterQuery = useMemo(() => compactParams({
+    keyword: accountSearch.submittedParams.keyword.trim(),
+    appId: accountSearch.submittedParams.appId,
+    channelConfigId: accountSearch.submittedParams.channelConfigId,
+    currency: accountSearch.submittedParams.currency,
+    status: enumValueOf(['enabled', 'disabled'] as const, accountSearch.submittedParams.status),
+  }), [accountSearch.submittedParams]);
   const accountQuery = usePaymentLedgerAccountList({
     page: accountSearch.page,
     pageSize: accountSearch.pageSize,
-    keyword: accountSearch.submittedParams.keyword.trim() || undefined,
-    appId: accountSearch.submittedParams.appId,
-    channelConfigId: accountSearch.submittedParams.channelConfigId,
-    currency: accountSearch.submittedParams.currency || undefined,
-    status: enumValueOf(['enabled', 'disabled'] as const, accountSearch.submittedParams.status),
+    ...accountFilterQuery,
   }, canView && activeTab === 'accounts');
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const journalFilterQuery = useMemo(() => compactParams({
+    sourceType: journalSearch.submittedParams.sourceType.trim(),
+    appId: journalSearch.submittedParams.appId,
+    channelConfigId: journalSearch.submittedParams.channelConfigId,
+    currency: journalSearch.submittedParams.currency,
+    ...formatDateTimeRangeForApi(journalSearch.submittedParams.timeRange),
+  }), [journalSearch.submittedParams]);
   const journalQuery = usePaymentJournalList({
     page: journalSearch.page,
     pageSize: journalSearch.pageSize,
-    sourceType: journalSearch.submittedParams.sourceType.trim() || undefined,
-    appId: journalSearch.submittedParams.appId,
-    channelConfigId: journalSearch.submittedParams.channelConfigId,
-    currency: journalSearch.submittedParams.currency || undefined,
-    ...formatDateTimeRangeForApi(journalSearch.submittedParams.timeRange),
+    ...journalFilterQuery,
   }, canView && activeTab === 'journals');
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const reservationFilterQuery = useMemo(() => compactParams({
+    accountId: reservationSearch.submittedParams.accountId,
+    status: enumValueOf(PAYMENT_FUND_RESERVATION_STATUSES, reservationSearch.submittedParams.status),
+    sourceType: reservationSearch.submittedParams.sourceType.trim(),
+    ...formatDateTimeRangeForApi(reservationSearch.submittedParams.timeRange),
+  }), [reservationSearch.submittedParams]);
   const reservationQuery = usePaymentFundReservationList({
     page: reservationSearch.page,
     pageSize: reservationSearch.pageSize,
-    accountId: reservationSearch.submittedParams.accountId,
-    status: enumValueOf(PAYMENT_FUND_RESERVATION_STATUSES, reservationSearch.submittedParams.status),
-    sourceType: reservationSearch.submittedParams.sourceType.trim() || undefined,
-    ...formatDateTimeRangeForApi(reservationSearch.submittedParams.timeRange),
+    ...reservationFilterQuery,
   }, canView && activeTab === 'reservations');
 
   const accountData = accountQuery.data?.list ?? [];

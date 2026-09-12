@@ -18,6 +18,7 @@ import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useR
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { useTaskProgressEvents } from '@/hooks/useAsyncTasks';
+import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { ASYNC_TASK_STATUS_TAG_MAP as statusTagMap, asyncTaskRateColor as rateColor } from '@/utils/async-task';
 import { formatDurationMs as formatDuration } from '@/utils/format';
@@ -117,15 +118,16 @@ export default function TaskCenterPage() {
   const [configType, setConfigType] = useState<AsyncTaskTypeMeta | null>(null);
   const [configDraft, setConfigDraft] = useState({ enabled: true, allowConcurrent: true, maxAttempts: 1, retryDelayMs: 5000, retentionDays: null as number | null });
   const refetchInterval = refreshInterval > 0 && activeTab === 'tasks' ? refreshInterval : false;
-  const listQuery = useAsyncTaskList({
-    page,
-    pageSize,
-    taskType: submittedParams.taskType || undefined,
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    taskType: submittedParams.taskType,
     status: enumValueOf(ASYNC_TASK_STATUSES, submittedParams.status),
-    keyword: submittedParams.keyword || undefined,
-    content: submittedParams.content || undefined,
-    createdBy: submittedParams.createdBy || undefined,
-  }, { refetchInterval });
+    keyword: submittedParams.keyword,
+    content: submittedParams.content,
+    createdBy: submittedParams.createdBy,
+  }), [submittedParams]);
+
+  const listQuery = useAsyncTaskList({ page, pageSize, ...filterQuery }, { refetchInterval });
   const statsQuery = useAsyncTaskStats({ refetchInterval });
   const typesQuery = useAsyncTaskTypes();
   const itemsQuery = useAsyncTaskItems({

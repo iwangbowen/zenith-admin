@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { formatYuan } from '@/utils/payment';
 import { Button, Descriptions, Form, SideSheet, Spin, Tabs, TabPane, Tag, TextArea, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -31,6 +31,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
+import { compactParams } from '@/lib/query';
 import { deleteAction, useStatusToggle, ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
@@ -58,21 +59,33 @@ export default function PaymentSharingPage() {
   const [reverseIdempotencyKey, setReverseIdempotencyKey] = useState('');
   const [reversalDetailTarget, setReversalDetailTarget] = useState<PaymentSharingReversal | null>(null);
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const receiverFilterQuery = useMemo(() => compactParams({
+    keyword: receiverSearch.submittedParams.keyword,
+  }), [receiverSearch.submittedParams]);
   const receiverQuery = usePaymentSharingReceivers({
     page: receiverSearch.page,
     pageSize: receiverSearch.pageSize,
-    keyword: receiverSearch.submittedParams.keyword || undefined,
+    ...receiverFilterQuery,
   });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const orderFilterQuery = useMemo(() => compactParams({
+    keyword: orderSearch.submittedParams.keyword,
+    status: enumValueOf(PAYMENT_SHARING_ORDER_STATUSES, orderSearch.submittedParams.status),
+  }), [orderSearch.submittedParams]);
   const orderQuery = usePaymentSharingOrders({
     page: orderSearch.page,
     pageSize: orderSearch.pageSize,
-    keyword: orderSearch.submittedParams.keyword || undefined,
-    status: enumValueOf(PAYMENT_SHARING_ORDER_STATUSES, orderSearch.submittedParams.status),
+    ...orderFilterQuery,
   });
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const reversalFilterQuery = useMemo(() => compactParams({
+    status: enumValueOf(PAYMENT_SHARING_REVERSAL_STATUSES, reversalSearch.submittedParams.status),
+  }), [reversalSearch.submittedParams]);
   const reversalQuery = usePaymentSharingReversals({
     page: reversalSearch.page,
     pageSize: reversalSearch.pageSize,
-    status: enumValueOf(PAYMENT_SHARING_REVERSAL_STATUSES, reversalSearch.submittedParams.status),
+    ...reversalFilterQuery,
   });
   const reversalDetailQuery = usePaymentSharingReversalDetail(reversalDetailTarget?.id, !!reversalDetailTarget);
   const reversalDetail = reversalDetailTarget ? (reversalDetailQuery.data ?? reversalDetailTarget) : null;

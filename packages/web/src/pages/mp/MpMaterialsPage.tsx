@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, Form, Input, Modal, Select, Spin, Tag, Toast, Upload, Typography } from '@douyinfe/semi-ui';
 import { RefreshCw, UploadCloud } from 'lucide-react';
@@ -25,6 +25,7 @@ import {
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
+import { compactParams } from '@/lib/query';
 import { enumValueOf, formatBytes } from '@zenith/shared/core';
 
 interface SearchParams { filterType: MpMaterialType | undefined; keyword: string; }
@@ -39,12 +40,16 @@ export default function MpMaterialsPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpMaterialKeys.lists });
 
+  // 已提交筛选 → 契约查询参数：只映射一次
+  const filterQuery = useMemo(() => compactParams({
+    type: submittedParams.filterType,
+    keyword: submittedParams.keyword,
+  }), [submittedParams]);
   const listQuery = useMpMaterialList({
     accountId: currentId ?? 0,
     page,
     pageSize,
-    type: submittedParams.filterType,
-    keyword: submittedParams.keyword || undefined,
+    ...filterQuery,
   }, !!currentId);
 
   const [uploadVisible, setUploadVisible] = useState(false);
