@@ -78,9 +78,13 @@
 
 - `createResourceQueries` 覆盖契约的 `list` / `detail` / `create` / `update` / `remove` / `removeBatch` / `all`；
   非标准命名的新增 / 编辑对用 `useSaveMutation(createOp, updateOp, { invalidate })`（`values` 接受 create / update 入参的部分形态，
-  路径参数固定为 `id`；带父级路径参数的成对操作仍手写 `useMutation`），域内其余操作用 `useApiMutation(xxxContract.op, { invalidate })` /
-  `useApiQuery(xxxContract.op, input)`，失效用工厂导出的 `keys`。mutation 变量即契约输入 `{ params?, query?, headers?, body? }`，
-  **禁止**再包一层手写 `useMutation`
+  路径参数固定为 `id`；带父级路径参数的成对操作拆成两个 `useApiMutation`，由页面按有无 id 选择），域内其余操作用
+  `useApiMutation(xxxContract.op, { invalidate })` / `useApiQuery(xxxContract.op, input, { enabled, select, … })`，失效用工厂导出的 `keys`
+  或 `contractKey(op)`。mutation 变量即契约输入 `{ params?, query?, headers?, body? }`；空响应而失效需要额外上下文时用
+  `useApiMutation<typeof op, InputOf<typeof op> & { 上下文 }>`（额外字段只进 `invalidate`，不发请求），
+  **禁止**再包一层手写 `useMutation`。`src/hooks/queries/**` 直接 import `useQuery` / `useMutation` 被 ESLint 拦截，
+  仅组合多次请求、非契约通道（`request.getBlob` / SSE）、按参数在多个契约操作间分派、上传进度、`apiRaw` 读信封、`useInfiniteQuery`
+  可在 import 行 `eslint-disable` 并注明理由，其 key 仍由 `contractKey` 生成
 - 需要读取响应信封（结果 `message`、非零 `code` 分支、限流倒计时等）的调用用 `apiRaw(op, input, options)`，
   **禁止**用 `request.post<T>(urlOf(op), body)` 手写响应泛型；`urlOf(op)` 只用于上传 / 下载 / SSE 等非 JSON 通道
 - `useEditModal` 的表单值类型取契约的创建入参：`useEditModal<Xxx, Partial<CreateXxxInput>>`；记录里的 `null`
@@ -114,17 +118,19 @@
 - **精确失效**：`onSuccess` 按真实副作用失效，**禁止**无条件 `invalidateQueries({ queryKey: xxxKeys.all })`；
   判据是「有没有已挂载的查询读了这次被改动的状态」。删除用 `removeQueries(detail(id))`；
   确需全域失效（批量覆盖、切租户、全量导入）须在注释写明理由
-- **key 结构**：`createResourceQueries` 的 key 由契约 `basePath` 派生（`/api/tenants` → `['tenants', 'list', params]` /
-  `['tenants', 'detail', id]` / `['tenants', 'all']`），单操作查询 `contractKey(op, input)` = `[资源键, 操作名, input]`；
-  `xxxKeys.all` 只能是本域自己的根；独立生命周期的子资源另起命名空间；
-  多变体查询导出 `detailOf(id)` / `dataOf(id)` / `lookupPrefix` 前缀键；
-  静态 lookup、数据库元数据与昂贵派生取数不与列表同前缀
+- **key 结构**：一切 key 由 `contractKey(op, input)` = `[resourceKeyOf(basePath), 操作名, input?]` 生成；`createResourceQueries` 的
+  `keys.lists / list(params) / detail(id) / lookup` 与对应操作的 `contractKey` 同键（`/api/tenants` → `['tenants', 'list', { query: params }]` /
+  `['tenants', 'detail', { params: { id } }]` / `['tenants', 'all']`）。**禁止**手写字面量 key 树与域根广播（`['workflow']` 之类在契约 key 下匹配不到任何查询）；
+  按意图失效导出具名 helper（`invalidateAfterXxx(qc, …)`）列出精确前缀，别的域调用 helper 而不是拼对方 key；
+  输入子集即前缀（`contractKey(op, { params: { id } })` 覆盖该 id 的全部 query 变体），空输入 `{ query: {} }` 是所有同操作 key 的前缀，只想打掉它自己时 `exact: true`；
+  独立生命周期的子资源另起契约操作；静态 lookup、数据库元数据与昂贵派生取数是独立操作，不与列表同前缀
 - **下拉源归属所有者域**：**禁止**用本域 key 请求别域资源（所有者域增删改时无人失效它，界面静默显示旧列表），
   一律复用 `useAllRoles` / `useFlatDepartments` / `useAllUsers` / `useAllPositions` / `useDictItems` 等共享 lookup hook
 - **手写 mutation 的回填红线**：`setQueryData(detail(id), saved)` 仅限写接口与详情接口同源；脱敏口径不一致（`unmasked` 端点 /
   非契约通道的响应）、详情多出关联数据、写接口不回传编辑过的关联字段、列表 / 树含聚合字段这四种情形**必须**改为失效 `detail(id)`
-- **失效行为需可证伪**：测试用 `test-utils/query-harness.ts` 断言实际请求数、进入 fetching 的查询与缓存新鲜度；
-  **禁止**只 spy「调用了 `invalidateQueries(某 key)`」——`all` 是 `detail` 的前缀，冗余的广播写法下同样通过
+- **失效行为需可证伪**：测试用 `test-utils/query-harness.ts` 断言实际请求数、进入 fetching 的查询与缓存新鲜度
+  （`countOf(prefix)` 与 `invalidateQueries` 同一套部分匹配语义，断言「另一组参数未被波及」传 `{ exact: true }`）；
+  **禁止**只 spy「调用了 `invalidateQueries(某 key)`」——广播写法与被改坏的精确写法下同样通过
 - **轮询**用 `refetchInterval`，禁止手写 `setInterval` 拉数据
 
 ## 搜索栏与表格

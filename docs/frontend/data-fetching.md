@@ -50,17 +50,17 @@ packages/web/src/
 | `api(op, input?, options?)` | 单次调用，返回解包后的 `data`；`input` 为契约输入 `{ params?, query?, headers?, body? }`（`headers` 段仅当契约声明了业务请求头时存在，自动并入请求头，不参与 query key），`options` 为请求选项（`silent`、`client` 等） |
 | `apiRaw(op, input?, options?)` | 同 `api`，但返回完整响应信封 `{ code, message, data }` 且不抛业务错误：供需要 `message`（结果文案）、非零 `code` 分支或额外信封字段（限流倒计时）的调用使用，如登录 / 注册 / 验证码、解封等 |
 | `urlOf(op, { params?, query? })` | 契约操作 + URL 相关输入段 → 完整 URL；带 body 的操作也只需 params / query（`request.postForm(urlOf(op), formData)`、`<Upload action>`、下载链接） |
-| `contractKey(op, input?)` | 单操作查询的 query key：`[资源键, 操作名, input]`；省略 input 得到该操作的公共前缀（`invalidateQueries` / `useListSearch({ listKey })`） |
-| `apiQueryOptions(op, input?, options?)` / `useApiQuery(op, input?, options?)` | 可缓存查询；`options` 透传 TanStack Query 选项（`enabled`、`staleTime`…） |
-| `useApiMutation(op, { invalidate, requestOptions, ...mutationOptions })` | 变更；变量即契约输入，`invalidate(qc, output, input)` 负责失效 |
+| `contractKey(op, input?)` | 查询 key：`[资源键, 操作名, input]`；省略 input 得到该操作的公共前缀（`invalidateQueries` / `useListSearch({ listKey })`）；传部分输入（如只有 `params`）得到该输入子集的前缀。`createResourceQueries` 的 `keys` 也由它生成 |
+| `apiQueryOptions(op, input?, options?)` / `useApiQuery(op, input?, options?)` | 可缓存查询；`options` 透传 TanStack Query 选项（`enabled`、`staleTime`、`placeholderData`、`refetchInterval`…），`select` 可改变返回数据形状（缓存与 key 仍是契约响应） |
+| `useApiMutation(op, { invalidate, requestOptions, ...mutationOptions })` | 变更；变量即契约输入，`invalidate(qc, output, variables)` 负责失效。第二个类型参数 `TVariables extends InputOf<Op>` 允许变量携带失效上下文（如被移动节点的原目录），额外字段只传给 `invalidate`、请求前剥离 |
 | `useSaveMutation(createOp, updateOp, { invalidate, requestOptions, ...mutationOptions })` | 非标准命名的新增 / 编辑对：变量 `{ id?, values }`，无 id 走 `createOp`、有 id 走 `updateOp`（路径参数 `id`）；`values` 接受 create / update 入参的部分形态，`invalidate(qc, saved, vars)` 负责失效 |
 | `createResourceQueries(contract, options?)` | 标准 CRUD 契约组的 `keys` 与 `useList` / `useDetail` / `useSave` / `useDelete` / `useLookup` |
 
 `createResourceQueries` 依赖契约操作命名：`list`（分页）必填；`detail` / `create` / `update` / `remove` / `removeBatch`（多条删除走 `/batch`）/ `all`（下拉源）均可选，声明了才提供对应 hook（未声明 `detail` 时不提供 `useDetail`，实体类型取列表项）。主键类型依次取 `detail` / `update` / `remove` 的路径参数 `id`（`idParam` → number，`z.object({ id: z.string() })` → string），`useDetail` / `useSave` / `useDelete` / `keys.detail` 随之推导。
+`keys.lists / list(params) / detail(id) / lookup` 就是对应操作的 `contractKey`（`keys.all` 为资源根 `[resourceKeyOf(basePath)]`），工厂之外按契约操作预取 / 失效同一缓存无需换 key。
 
 | 选项 | 说明 |
 | --- | --- |
-| `keyPrefix` | 覆盖 query key 前缀（默认由契约 `basePath` 派生，`/api/tenants` → `['tenants']`） |
 | `onSaved` / `onDeleted` | 保存 / 删除成功后的跨域联动失效 |
 | `listStaleTime` | 覆盖列表查询 staleTime |
 | `requestOptions` | 请求选项，如 `{ client: memberRequest }` 切换到会员端请求实例 |

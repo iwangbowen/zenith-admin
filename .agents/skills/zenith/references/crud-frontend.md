@@ -35,10 +35,12 @@ export const {
   useDelete: useDeleteXxxs,
   useLookup: useAllXxxs,        // 契约声明 all 时才有意义
 } = createResourceQueries(xxxContract, {
-  // keyPrefix: ['workflow', 'automations'], // 本域需被纳入某个跨域失效前缀时指定
   // onSaved: (qc) => invalidateCurrentUserAccess(qc), // 跨域联动的额外失效
 });
 ```
+
+工厂的 `keys` 与对应契约操作的 `contractKey` 同键（`keys.detail(id)` ≡ `contractKey(xxxContract.detail, { params: { id } })`），
+工厂之外用 `useApiQuery` / `apiQueryOptions` 预取或失效同一操作时天然命中同一缓存。
 
 工厂的失效行为见 [query-cache.md → 标准 CRUD 与手写 mutation 的边界](./query-cache.md#标准-crud-与手写-mutation-的边界)。
 列表参数类型即契约查询参数（`QueryOf<typeof xxxContract.list>`），无需单独声明参数接口。
