@@ -16,7 +16,7 @@ import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
 import { createPayment } from './payment.service';
 import { bindCashierSession, bindCashierSessionAfterCreateFailure, buildCashierSessionExpiry, createCashierSession, failCashierSession, getPublicCashierSession, releaseExpiredCashierUseSlots } from './payment-cashier-session.service';
 import type { CreatePaymentLinkInput, UpdatePaymentLinkInput } from '@zenith/shared/payment';
@@ -66,8 +66,7 @@ export function mapLink(row: PaymentLinkRow): PaymentLink {
     expiredAt: formatNullableDateTime(row.expiredAt),
     status: computeLinkStatus(row),
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

@@ -15,7 +15,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
 import { db } from '../../db';
 import { broadcastCampaigns, members, users, type BroadcastCampaignRow } from '../../db/schema';
 import { currentUser } from '../../lib/context';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { mapAsyncTask, submitAsyncTask } from '../../lib/task-center';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
@@ -37,8 +37,7 @@ export function mapBroadcast(row: BroadcastCampaignRow & { creator?: { nickname:
     remark: row.remark ?? null,
     createdBy: row.createdBy ?? null,
     createdByName: row.creator?.nickname ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

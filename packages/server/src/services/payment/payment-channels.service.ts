@@ -16,7 +16,7 @@ import { currentUser } from '../../lib/context';
 import { tenantCondition, requireTenantScopeId } from '../../lib/tenant';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { encryptField } from '../../lib/encryption';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { clearDefaultFlag } from '../../lib/default-flag';
 import type { CreatePaymentChannelConfigInput, PaymentChannel, PaymentChannelConfig, PaymentChannelConfigLookup, UpdatePaymentChannelConfigInput } from '@zenith/shared/payment';
 
@@ -52,8 +52,7 @@ export function mapChannelConfig(row: PaymentChannelConfigRow): PaymentChannelCo
     unionpayGateway: row.unionpayGateway ?? null,
     hasUnionpayPrivateKey: Boolean(row.unionpayPrivateKeyEncrypted),
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

@@ -6,7 +6,7 @@ import { db } from '../../db';
 import { appWebhookSubscriptions, appWebhookDeliveries, cmsOpenAppGrants, oauth2Clients, users } from '../../db/schema';
 import type { AppWebhookSubscriptionRow, AppWebhookDeliveryRow } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { encryptField, decryptField } from '../../lib/encryption';
@@ -144,8 +144,7 @@ export function mapSubscription(row: AppWebhookSubscriptionRow) {
     autoDisabledAt: formatNullableDateTime(row.autoDisabledAt),
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

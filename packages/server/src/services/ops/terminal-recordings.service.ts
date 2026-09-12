@@ -4,7 +4,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
 import { terminalRecordingContract } from '@zenith/shared/ops';
 import { db } from '../../db';
 import { terminalRecordings, users, type RecordingEvent } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { buildListResult } from '../../lib/list-query';
 import { requireFirstRow } from '../../lib/db-assert';
 import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
@@ -40,8 +40,7 @@ function mapRow(r: RecordingRow) {
     duration: r.duration,
     sizeBytes: Number(r.sizeBytes ?? 0),
     commandCount: Number(r.commandCount ?? 0),
-    createdAt: formatDateTime(r.createdAt),
-    updatedAt: formatDateTime(r.updatedAt),
+    ...formatTimestamps(r),
   };
 }
 

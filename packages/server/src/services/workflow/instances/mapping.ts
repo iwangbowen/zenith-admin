@@ -1,5 +1,5 @@
 // ─── 实例/任务数据映射与定义快照辅助（拆分自 workflow-instances.service.ts）───
-import { formatDateTime, formatNullableDateTime } from '../../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../../lib/datetime';
 import { workflowInstances, workflowTasks, workflowDefinitions } from '../../../db/schema';
 import { normalizeWorkflowFormSnapshot, type WorkflowDefinitionSnapshot, type WorkflowFlowData, type WorkflowActionButtonKey, type WorkflowActionButtonConfig, type WorkflowFormField, type WorkflowFormSettings, type WorkflowCustomFormConfig, type WorkflowFormType, type WorkflowInstanceFormSnapshot } from '@zenith/shared/workflow';
 import { type TaskAction } from '../../../lib/workflow-engine';
@@ -133,8 +133,7 @@ export function mapInstance(
       : null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
   return extras.includeDefinitionSnapshot
     ? { ...mapped, definitionSnapshot: mapDefinitionSnapshot(row.definitionSnapshot, row.formSnapshot) }

@@ -12,7 +12,7 @@ import { runAsUser } from '../../lib/audit-context';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { isPgUniqueViolation, rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 
@@ -39,8 +39,7 @@ function mapLedgerAccount(row: PaymentLedgerAccountRow): PaymentLedgerAccount {
     channelConfigId: row.channelConfigId,
     currency: row.currency,
     status: row.status,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -61,8 +60,7 @@ function mapFundReservation(row: PaymentFundReservationRow): PaymentFundReservat
     currency: row.currency,
     expiresAt: formatNullableDateTime(row.expiresAt),
     finalizedAt: formatNullableDateTime(row.finalizedAt),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

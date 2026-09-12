@@ -7,7 +7,7 @@ import { db } from '../../db';
 import { cmsPageBlockAcls, cmsPages, cmsChannels, cmsContents } from '../../db/schema';
 import type { CmsPageRow } from '../../db/schema';
 import type { CmsPageBlock } from '@zenith/shared/cms';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { assertSiteAccess } from './cms-sites.service';
@@ -40,8 +40,7 @@ export function mapCmsPage(row: CmsPageRow, blocks?: CmsPageBlock[]) {
     seoDescription: row.seoDescription ?? null,
     status: row.status,
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

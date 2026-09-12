@@ -5,7 +5,7 @@ import { eq, asc, desc, and, or, inArray, notInArray, isNull, isNotNull, ne, lt,
 import { db } from '../../db';
 import { cmsContents, cmsContentTags, cmsContentChannels, cmsContentRelations } from '../../db/schema';
 import type { CmsContentRow, CmsTagRow } from '../../db/schema';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { config } from '../../config';
 import redis from '../../lib/redis';
@@ -130,8 +130,7 @@ export function mapCmsContent(row: CmsContentMapRow, extra?: {
     } : {}),
     ...(extra?.extraChannelIds ? { extraChannelIds: extra.extraChannelIds } : {}),
     ...(extra?.relatedIds ? { relatedIds: extra.relatedIds } : {}),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

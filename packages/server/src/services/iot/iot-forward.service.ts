@@ -18,7 +18,7 @@ import {
   iotDeviceGroupMembers, iotDeviceGroups, iotForwardLogs, iotForwardRules, iotProducts,
   type IotForwardLogRow, type IotForwardRuleRow,
 } from '../../db/schema';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
@@ -53,8 +53,7 @@ export function mapIotForwardRule(
     recentDeliveryCount: extra?.recentDeliveryCount ?? 0,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

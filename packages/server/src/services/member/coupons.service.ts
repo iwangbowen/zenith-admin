@@ -12,7 +12,7 @@ import { db } from '../../db';
 import { coupons, memberCoupons, memberPointAccounts, memberPointTransactions, members } from '../../db/schema';
 import type { CouponRow, MemberCouponRow } from '../../db/schema';
 import type { DbTransaction } from '../../db/types';
-import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
 import { currentMemberId } from '../../lib/member-context';
 import { decide } from '../platform/rules-runtime.service';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
@@ -45,8 +45,7 @@ export function mapCoupon(row: CouponRow) {
     exchangePoints: row.exchangePoints,
     status: row.status,
     description: row.description ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

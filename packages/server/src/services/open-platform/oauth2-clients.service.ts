@@ -20,7 +20,7 @@ import {
 import { currentUser } from '../../lib/context';
 import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
 import { HTTPException } from 'hono/http-exception';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { pageOffset } from '../../lib/pagination';
 import { encryptField, decryptField } from '../../lib/encryption';
@@ -64,8 +64,7 @@ function mapClientRow(row: typeof oauth2Clients.$inferSelect) {
     tenantId: row.tenantId,
     createdBy: row.createdBy,
     updatedBy: row.updatedBy,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -534,8 +533,7 @@ export async function listClientGrants(clientId: string, opts: { page: number; p
     map: (row) => ({
       ...row,
       scopes: row.scopes ?? [],
-      createdAt: formatDateTime(row.createdAt),
-      updatedAt: formatDateTime(row.updatedAt),
+      ...formatTimestamps(row),
     }),
   });
 }
@@ -599,8 +597,7 @@ export async function listMyGrants(userId: number, opts: { page: number; pageSiz
       appDescription: row.appDescription ?? null,
       environment: row.environment ?? 'production',
       scopes: row.scopes ?? [],
-      createdAt: formatDateTime(row.createdAt),
-      updatedAt: formatDateTime(row.updatedAt),
+      ...formatTimestamps(row),
     }),
   });
 }

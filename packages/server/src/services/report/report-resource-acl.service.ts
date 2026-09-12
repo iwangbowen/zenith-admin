@@ -22,7 +22,7 @@ import {
 import { getUserEnabledGroupIds } from '../../lib/user-group-access';
 import { currentUserOrNull } from '../../lib/context';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
 import { isSuperAdmin } from '../../lib/context';
 import { reportScopedWhere, reportTenantScope } from './report-access';
 import { resolveReportResource } from './report-resource.service';
@@ -317,8 +317,7 @@ export function mapReportResourceAcl(row: typeof reportResourceAcls.$inferSelect
     grantedBy: row.grantedBy ?? null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

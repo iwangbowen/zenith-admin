@@ -13,12 +13,7 @@ import { db } from '../../db';
 import { reportQueryCostLogs, reportQueryQuotas, users } from '../../db/schema';
 import { currentUserId, currentUserOrNull } from '../../lib/context';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import {
-  DATE_FORMAT,
-  formatDateTime,
-  parseDateRangeEnd,
-  parseDateRangeStart,
-} from '../../lib/datetime';
+import { DATE_FORMAT, formatDateTime, formatTimestamps, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import redis from '../../lib/redis';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
@@ -346,8 +341,7 @@ export function mapReportQueryQuota(row: QuotaRow): ReportQueryQuota {
     enabled: row.enabled,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

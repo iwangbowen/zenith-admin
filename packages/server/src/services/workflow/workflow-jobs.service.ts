@@ -8,7 +8,7 @@ import { workflowJobs, workflowJobExecutions, workflowInstances, workflowDefinit
 import type { WorkflowJobRow, WorkflowJobExecutionRow } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { retryJob, skipJob } from '../../lib/workflow-jobs/engine';
 import { expiredWorkflowJobCondition } from '../../lib/workflow-jobs/engine';
 import { buildListResult } from '../../lib/list-query';
@@ -42,8 +42,7 @@ function mapJob(row: WorkflowJobRow, extra?: { instanceTitle?: string | null; de
     lastError: row.lastError ?? null,
     result: (row.result ?? null) as Record<string, unknown> | null,
     tenantId: row.tenantId ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

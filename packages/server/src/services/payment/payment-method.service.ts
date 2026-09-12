@@ -7,7 +7,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { paymentMethodConfigs, type PaymentMethodConfigRow } from '../../db/schema';
 import { config } from '../../config';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { getTenantScopeId, exactTenantCondition } from '../../lib/tenant';
@@ -23,8 +23,7 @@ export function mapMethodConfig(row: PaymentMethodConfigRow): PaymentMethodConfi
     icon: row.icon ?? null,
     enabled: row.enabled,
     sort: row.sort,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

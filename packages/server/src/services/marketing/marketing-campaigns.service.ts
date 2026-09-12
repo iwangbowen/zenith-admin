@@ -14,7 +14,7 @@ import { HTTPException } from 'hono/http-exception';
 import type { CreateMarketingCampaignInput, SaveMarketingPrizeInput, UpdateMarketingCampaignInput, MarketingDrawResult } from '@zenith/shared/marketing';
 import { db } from '../../db';
 import { marketingCampaigns, marketingParticipations, marketingPrizes, coupons, members, shortLinks, type MarketingCampaignRow, type MarketingPrizeRow, type MarketingParticipationRow } from '../../db/schema';
-import { formatDateTime, parseDateTimeInput, startOfToday } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps, parseDateTimeInput, startOfToday } from '../../lib/datetime';
 import logger from '../../lib/logger';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { currentUser } from '../../lib/context';
@@ -44,8 +44,7 @@ export function mapMarketingCampaign(row: MarketingCampaignRow, extra?: { partic
     awardCount: extra?.awardCount ?? 0,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -62,8 +61,7 @@ export function mapMarketingPrize(row: MarketingPrizeRow, couponName: string | n
     totalStock: row.totalStock,
     weight: row.weight,
     sort: row.sort,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

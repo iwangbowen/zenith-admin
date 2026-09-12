@@ -6,7 +6,7 @@ import type { UserFeedbackRow } from '../../db/schema';
 import { userFeedbackContract, USER_FEEDBACK_STATUS_LABELS } from '@zenith/shared/platform';
 import type { UserFeedbackCategory, UserFeedbackStatus } from '@zenith/shared/platform';
 import { currentUser } from '../../lib/context';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import logger from '../../lib/logger';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
@@ -34,8 +34,7 @@ export function mapUserFeedback(row: UserFeedbackWithUsers) {
     handledBy: row.handledBy ?? null,
     handlerNickname: row.handler?.nickname ?? null,
     handledAt: formatNullableDateTime(row.handledAt),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

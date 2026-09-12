@@ -15,7 +15,7 @@ import {
   iotProductEvents, iotProductProperties, iotProducts, iotProductServices,
   type IotProductEventRow, type IotProductPropertyRow, type IotProductRow, type IotProductServiceRow,
 } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { TtlCache } from '../../lib/ttl-cache';
@@ -45,8 +45,7 @@ export function mapIotProperty(row: IotProductPropertyRow) {
     anomalyEnabled: row.anomalyEnabled,
     sort: row.sort,
     description: row.description ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -60,8 +59,7 @@ export function mapIotService(row: IotProductServiceRow) {
     danger: row.danger,
     sort: row.sort,
     description: row.description ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -75,8 +73,7 @@ export function mapIotEvent(row: IotProductEventRow) {
     params: row.params ?? [],
     sort: row.sort,
     description: row.description ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

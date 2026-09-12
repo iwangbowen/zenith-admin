@@ -9,7 +9,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsContents, cmsChannels, cmsSites, members } from '../../db/schema';
 import type { CmsContentRow } from '../../db/schema';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { buildWhere, withPagination } from '../../lib/where-helpers';
 import { currentMemberId } from '../../lib/member-context';
 import { contentSearchVector } from './cms-search.service';
@@ -40,8 +40,7 @@ function mapContribution(row: CmsContentRow, channelName?: string | null) {
     rejectReason: row.rejectReason ?? null,
     publishedAt: formatNullableDateTime(row.publishedAt),
     viewCount: row.viewCount,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

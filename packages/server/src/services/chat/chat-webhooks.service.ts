@@ -10,7 +10,7 @@ import { eq, desc } from 'drizzle-orm';
 import { db } from '../../db';
 import { chatWebhooks, chatConversations } from '../../db/schema';
 import { currentUser } from '../../lib/context';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
@@ -45,8 +45,7 @@ function mapChatWebhook(row: WebhookRow, conversationName: string | null): ChatW
     webhookUrl: webhookUrl(row.token),
     token: row.token,
     lastUsedAt: formatNullableDateTime(row.lastUsedAt),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

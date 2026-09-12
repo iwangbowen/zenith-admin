@@ -13,7 +13,7 @@ import { rethrowPgUniqueViolation, isPgUniqueViolation } from '../../lib/db-erro
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { evaluateDecisionTable, isOutputExpression } from '../../lib/rules-engine';
 import { evaluateExpression, validateExpression } from '../../lib/workflow-expression';
 import { validateRuleCell } from '@zenith/shared/rules';
@@ -67,8 +67,7 @@ export function mapDecisionTable(row: TableRow, latestVersion?: VersionRow | nul
     reviewComment: row.reviewComment ?? null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

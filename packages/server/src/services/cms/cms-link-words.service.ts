@@ -5,7 +5,7 @@ import { eq, asc } from 'drizzle-orm';
 import { db } from '../../db';
 import { cmsLinkWords } from '../../db/schema';
 import type { CmsLinkWordRow } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { assertSiteAccess } from './cms-sites.service';
@@ -93,8 +93,7 @@ export function mapCmsLinkWord(row: CmsLinkWordRow) {
     url: row.url,
     maxReplaces: row.maxReplaces,
     status: row.status,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

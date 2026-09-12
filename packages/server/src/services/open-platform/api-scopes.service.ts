@@ -7,7 +7,7 @@ import { db } from '../../db';
 import { apiScopes, oauth2Clients } from '../../db/schema';
 import type { ApiScopeRow } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
@@ -25,8 +25,7 @@ export function mapApiScope(row: ApiScopeRow, usedByAppCount = 0) {
     usedByAppCount,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

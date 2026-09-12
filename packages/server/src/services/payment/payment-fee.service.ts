@@ -13,7 +13,7 @@ import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, withPagination } from '../../lib/where-helpers';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { postSystemJournal, postSystemJournalWithin } from './payment-journal.service';
 import { paymentEventBus } from '../../lib/payment-event-bus';
 import logger from '../../lib/logger';
@@ -34,8 +34,7 @@ export function mapFeeRule(row: PaymentFeeRuleRow): PaymentFeeRule {
     status: row.status,
     priority: row.priority,
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

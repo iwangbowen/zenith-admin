@@ -14,7 +14,7 @@ import { db } from '../../db';
 import { reportDatasources, reportDatasets } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { encryptField, decryptField } from '../../lib/encryption';
 import { invalidateExternalDatasourcePools, testExternalConnection } from '../../lib/report-external-db';
@@ -114,8 +114,7 @@ export function mapDatasource(row: DatasourceRowExt): ReportDatasource {
     remark: row.remark ?? null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

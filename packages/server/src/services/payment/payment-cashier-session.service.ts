@@ -19,7 +19,7 @@ import {
   type PaymentLinkRow,
   type PaymentOrderRow,
 } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import type { PaymentEvent } from '../../lib/payment-event-bus';
 import logger from '../../lib/logger';
 import { syncOrderStatus } from './payment.service';
@@ -39,8 +39,7 @@ function mapCashierSession(row: PaymentCashierSessionRow): PaymentCashierSession
     errorMessage: row.errorMessage ?? null,
     expiresAt: formatDateTime(row.expiresAt),
     version: row.version,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

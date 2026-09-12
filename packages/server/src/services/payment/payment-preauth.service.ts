@@ -8,7 +8,7 @@ import { paymentChannelConfigs, paymentOrders, paymentPreauths, type PaymentChan
 import type { DbExecutor } from '../../db/types';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser, currentUserOrNull } from '../../lib/context';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import type { PaymentEvent } from '../../lib/payment-event-bus';
 import { getAdapter } from '../../lib/payment';
 import logger from '../../lib/logger';
@@ -53,8 +53,7 @@ export function mapPreauth(row: PaymentPreauthRow & { operatorName?: string | nu
     finishedAt: formatNullableDateTime(row.finishedAt),
     remark: row.remark ?? null,
     operatorName: row.operatorName ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

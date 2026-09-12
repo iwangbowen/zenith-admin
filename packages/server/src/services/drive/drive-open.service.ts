@@ -13,7 +13,7 @@ import {
 import { db } from '../../db';
 import { driveNodes, driveOpenAppGrants, driveSpaces, oauth2Clients, type DriveNodeRow, type DriveOpenAppGrantRow, type DriveSpaceRow } from '../../db/schema';
 import { currentUser, runWithCurrentUser } from '../../lib/context';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { readStoredFile, type StoredFileRange } from '../../lib/file-storage';
 import { buildListResult } from '../../lib/list-query';
@@ -163,8 +163,7 @@ function mapOpenNode(row: DriveNodeRow, held: Set<number>): OpenDriveNode {
     contentHash: row.contentHash ?? null,
     version: row.currentVersion,
     legalHold: held.has(row.id),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

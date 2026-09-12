@@ -38,7 +38,7 @@ import type { CmsContentRow, CmsMemberSubscriptionRow } from '../../db/schema';
 import { currentMemberId } from '../../lib/member-context';
 import { getEffectivelyEnabledCmsChannelIds } from './cms-channel-visibility.service';
 import { resolveEffectiveCmsSite } from './cms-site-inheritance.service';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { maskedMemberDisplay } from './cms-member-display';
 import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { streamByDescendingId } from '../../lib/export-center/cursor-stream';
@@ -188,8 +188,7 @@ export function mapCmsMemberSubscription(row: CmsMemberSubscriptionRow, extra?: 
     notificationEnabled: row.notificationEnabled,
     active: row.active,
     pointsAwardedAt: formatNullableDateTime(row.pointsAwardedAt),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

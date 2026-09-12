@@ -26,7 +26,7 @@ import { buildListResult } from '../../lib/list-query';
 import { bizPayDemos, paymentOrders, type BizPayDemoRow } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { keywordCondition, buildWhere } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
@@ -49,8 +49,7 @@ export function mapBizPayDemo(row: BizPayDemoRow): BizPayDemo {
     paidAt: formatNullableDateTime(row.paidAt),
     fulfillRemark: row.fulfillRemark ?? null,
     tenantId: row.tenantId,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

@@ -27,7 +27,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
 import type { SaveChannelMenusInput } from '@zenith/shared/mp';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { broadcast, scheduleSendToUsers } from '../../lib/ws-manager';
 import { htmlToPlainExcerpt, mapChannelMessage } from './channel.service';
@@ -132,8 +132,7 @@ function mapAutoReply(row: ChannelAutoReplyRow): ChannelAutoReply {
     hitCount: row.hitCount,
     status: row.status,
     sort: row.sort,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -623,8 +622,7 @@ function mapQuickReply(row: ChannelQuickReplyRow, channelName: string | null = n
     title: row.title,
     content: row.content,
     sort: row.sort,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

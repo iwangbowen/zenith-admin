@@ -15,7 +15,7 @@ import { inheritedTenantCondition, tenantCondition, getCreateTenantId } from '..
 import { buildWhere, dateRangeConditions, keywordCondition, nullableEq } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { pageOffset } from '../../lib/pagination';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { decryptSecret, encryptSecret } from '../../lib/secret-crypto';
@@ -78,8 +78,7 @@ export function mapSubscription(
     tenantId: row.tenantId,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

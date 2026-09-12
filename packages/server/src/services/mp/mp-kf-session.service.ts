@@ -22,7 +22,7 @@ import type {
   MpKfSessionRow, MpKfRoutingConfigRow, MpAccountRow,
 } from '../../db/schema';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime, formatNullableDateTime, formatDate, startOfRecentDays, startOfToday } from '../../lib/datetime';
+import { formatDate, formatDateTime, formatNullableDateTime, formatTimestamps, startOfRecentDays, startOfToday } from '../../lib/datetime';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { currentUserOrNull } from '../../lib/context';
 import { ensureMpAccountExists } from './mp-account.service';
@@ -72,8 +72,7 @@ function mapSession(r: SessionJoinRow): MpKfSession {
     ratingRemark: s.ratingRemark ?? null,
     remark: s.remark ?? null,
     waitSeconds,
-    createdAt: formatDateTime(s.createdAt),
-    updatedAt: formatDateTime(s.updatedAt),
+    ...formatTimestamps(s),
   };
 }
 

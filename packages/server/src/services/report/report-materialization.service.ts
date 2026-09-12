@@ -11,7 +11,7 @@ import { config } from '../../config';
 import { db } from '../../db';
 import { reportDatasets, reportMaterializationSnapshots } from '../../db/schema';
 import { currentUserId } from '../../lib/context';
-import { formatDateTime, formatFileTimestamp, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { formatFileTimestamp, formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
 import logger from '../../lib/logger';
 import { pageOffset } from '../../lib/pagination';
 import redis from '../../lib/redis';
@@ -103,8 +103,7 @@ export function mapReportMaterializationSnapshot(row: SnapshotRow): ReportMateri
     expiresAt: formatNullableDateTime(row.expiresAt),
     errorMessage: row.errorMessage ?? null,
     createdBy: row.createdBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

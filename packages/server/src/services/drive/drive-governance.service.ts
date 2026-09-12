@@ -20,7 +20,7 @@ import {
 } from '../../db/schema';
 import { currentUser, currentUserId, currentUserOrNull, isSuperAdmin } from '../../lib/context';
 import { getDataScopeCondition } from '../../lib/data-scope';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { isPgUniqueViolation } from '../../lib/db-errors';
 import { buildListResult } from '../../lib/list-query';
@@ -270,8 +270,7 @@ async function mapQuotaRequests(rows: DriveQuotaRequestRow[]): Promise<DriveQuot
     decidedByName: r.decidedBy ? names.get(r.decidedBy) ?? null : null,
     decidedAt: formatNullableDateTime(r.decidedAt),
     decisionNote: r.decisionNote ?? null,
-    createdAt: formatDateTime(r.createdAt),
-    updatedAt: formatDateTime(r.updatedAt),
+    ...formatTimestamps(r),
   }));
 }
 

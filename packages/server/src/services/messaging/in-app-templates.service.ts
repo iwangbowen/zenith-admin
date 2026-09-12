@@ -5,7 +5,7 @@ import { db } from '../../db';
 import { inAppTemplates } from '../../db/schema';
 import type { InAppTemplateRow } from '../../db/schema';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import type { CreateInAppTemplateInput, UpdateInAppTemplateInput, inAppTemplateContract } from '@zenith/shared/messaging';
@@ -22,8 +22,7 @@ export function mapInAppTemplate(row: InAppTemplateRow) {
     variables: row.variables ?? null,
     status: row.status,
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

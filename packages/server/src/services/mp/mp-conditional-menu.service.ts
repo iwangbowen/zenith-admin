@@ -3,7 +3,7 @@ import { requireRow } from '../../lib/db-assert';
 import { db } from '../../db';
 import { mpConditionalMenus } from '../../db/schema';
 import type { MpConditionalMenuRow } from '../../db/schema';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { ensureMpAccountExists } from './mp-account.service';
 import {
@@ -23,8 +23,7 @@ export function mapMpConditionalMenu(row: MpConditionalMenuRow): MpConditionalMe
     menuId: row.menuId ?? null,
     status: row.status,
     publishedAt: formatNullableDateTime(row.publishedAt),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

@@ -24,7 +24,7 @@ import { requireRow } from '../../lib/db-assert';
 import { currentUser, currentUserOrNull } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { isPgUniqueViolation } from '../../lib/db-errors';
 import { getAdapter } from '../../lib/payment';
 import { paymentEventBus } from '../../lib/payment-event-bus';
@@ -82,8 +82,7 @@ export function mapDeductPlan(row: PaymentDeductPlanRow & { contractCount?: numb
     status: row.status,
     remark: row.remark ?? null,
     contractCount: row.contractCount,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -116,8 +115,7 @@ export function mapContract(row: PaymentContractRow & { plan?: Pick<PaymentDeduc
     signedAt: formatNullableDateTime(row.signedAt),
     terminatedAt: formatNullableDateTime(row.terminatedAt),
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

@@ -7,7 +7,7 @@ import { cmsSensitiveWordContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import { cmsSensitiveWords } from '../../db/schema';
 import type { CmsSensitiveWordRow } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { AhoCorasick, applyReplacements, createTtlCache, toCodePoints, type AcMatch } from '../../lib/aho-corasick';
@@ -54,8 +54,7 @@ export function mapCmsSensitiveWord(row: CmsSensitiveWordRow) {
     word: row.word,
     replaceWith: row.replaceWith ?? null,
     status: row.status,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

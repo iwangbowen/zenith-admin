@@ -6,7 +6,7 @@ import { managedFiles, fileStorageConfigs } from '../../db/schema';
 import type { FileStorageConfigRow } from '../../db/schema';
 import type { FileVisibility } from '@zenith/shared/platform';
 import { buildManagedFileProxyUrl, buildPublicFileUrl, deleteStoredFile, readStoredFile, resolveFileAccessUrl, resolveObjectAcl, uploadFileByConfig } from '../../lib/file-storage';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { getSettings } from '../../lib/settings';
 import type { FilesSettings } from '@zenith/shared/settings';
 
@@ -26,8 +26,7 @@ export function mapManagedFile(row: typeof managedFiles.$inferSelect, config?: F
     // url 为稳定代理路径（合同：可持久化、永不失效）；directUrl 为 public 策略的永久直链（仅渲染用，禁止持久化）
     url: buildManagedFileProxyUrl(row.id),
     directUrl: buildPublicFileUrl(row, config),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

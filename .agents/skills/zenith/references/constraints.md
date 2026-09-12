@@ -296,7 +296,8 @@
   范围用 `formatDateTimeRangeForApi()`，非标准字段名（`startAt` / `endAt`）用
   `formatDateTimeRangeValuesForApi()` 后显式赋值（均来自 `@/utils/date`）。
   **禁止**在页面中手写 `[0]` / `[1]` 两端转换。仅接收 `YYYY-MM-DD` 的纯日期端点用 `formatDateForApi()`
-- **后端格式化**：`lib/datetime.ts` 的 `formatDateTime()` / `formatNullableDateTime()`
+- **后端格式化**：`lib/datetime.ts` 的 `formatDateTime()` / `formatNullableDateTime()`；`mapXxx` 里 `timestampColumns()`
+  产生的 `createdAt` / `updatedAt` 一律 `...formatTimestamps(row)` 成对展开，**禁止**再逐个写两行 `formatDateTime(row.xxxAt)`
 - **后端解析**：范围端点**必须**走 `parseDateRangeStart()` / `parseDateRangeEnd()`（或直接用 `dateRangeConditions()`），
   纯日期时起点取 `00:00:00`、终点取 `23:59:59.999`；`parseDateTimeInput()` **只**用于单点时间
   （`scheduledAt` / `expireAt` 等实体字段）——它把 `2026-08-01` 解析成 `00:00:00`，用作范围终点会漏掉整天数据

@@ -2,7 +2,7 @@ import { asc, eq } from 'drizzle-orm';
 import { db } from '../../db';
 import { checkinRules } from '../../db/schema';
 import type { CheckinRuleRow } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 
@@ -13,8 +13,7 @@ function mapCheckinRule(row: CheckinRuleRow) {
     points: row.points,
     experience: row.experience,
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

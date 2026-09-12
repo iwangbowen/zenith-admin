@@ -6,7 +6,7 @@ import { HTTPException } from 'hono/http-exception';
 import { syncAllDynamicGroupsSafe } from './user-group-rules.service';
 import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import type { Department, createDepartmentSchema, updateDepartmentSchema } from '@zenith/shared/identity';
 import type * as z from 'zod';
@@ -36,8 +36,7 @@ export function mapDepartment(
     email: row.email ?? undefined,
     sort: row.sort,
     status: row.status,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

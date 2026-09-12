@@ -18,7 +18,7 @@ import {
   cmsContentTombstones, cmsModels, cmsTags,
 } from '../../db/schema';
 import type { CmsContentRow, CmsSiteRow } from '../../db/schema';
-import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import {
@@ -322,8 +322,7 @@ function mapOpenContent(row: CmsOpenContentSourceRow & { coverThumb: string | nu
     seoDescription: row.seoDescription ?? null,
     publishedAt: formatNullableDateTime(row.publishedAt),
     expireAt: formatNullableDateTime(row.expireAt),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
     url: row.externalLink
       ? (resolvedExternal?.url ?? null)
       : (channel

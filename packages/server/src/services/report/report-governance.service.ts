@@ -17,7 +17,7 @@ import { currentUserId, isSuperAdmin } from '../../lib/context';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { clearDefaultFlag } from '../../lib/default-flag';
 import { exactTenantCondition } from '../../lib/tenant';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { buildListResult } from '../../lib/list-query';
 import { reportCreateTenantId, reportScopedWhere, reportTenantScope } from './report-access';
@@ -121,8 +121,7 @@ export function mapReportResourceTransfer(row: TransferRow, resourceName?: strin
     decisionNote: row.decisionNote ?? null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -263,8 +262,7 @@ export function mapReportPublishApproval(row: ApprovalRow, resourceName?: string
     decisionNote: row.decisionNote ?? null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -435,8 +433,7 @@ export function mapReportEnvironment(row: typeof reportEnvironments.$inferSelect
     status: row.status,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -546,8 +543,7 @@ export function mapReportEnvironmentPromotion(
     errorMessage: row.errorMessage ?? null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

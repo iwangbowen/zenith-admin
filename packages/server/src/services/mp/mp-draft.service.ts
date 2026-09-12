@@ -5,7 +5,7 @@ import { db } from '../../db';
 import { mpDrafts } from '../../db/schema';
 import type { MpDraftRow } from '../../db/schema';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { ensureMpAccountExists } from './mp-account.service';
 import { addWechatDraft } from '../../lib/wechat';
@@ -23,8 +23,7 @@ export function mapMpDraft(row: MpDraftRow) {
     status: row.status,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

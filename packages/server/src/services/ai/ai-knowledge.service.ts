@@ -3,7 +3,7 @@ import { requireRow } from '../../lib/db-assert';
 import { db } from '../../db';
 import { aiKnowledgeBases, aiKbDocuments, aiKbChunks, aiConversations } from '../../db/schema';
 import { currentUser } from '../../lib/context';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { estimateTokens } from '../../lib/ai/tokens';
 import { getSettings } from '../../lib/settings';
 import { getMastraVector, resolveEmbedderConfig } from '../../lib/mastra';
@@ -35,8 +35,7 @@ function mapKb(row: typeof aiKnowledgeBases.$inferSelect, documentCount = 0, chu
     embeddingModel: row.embeddingModel,
     documentCount,
     chunkCount,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

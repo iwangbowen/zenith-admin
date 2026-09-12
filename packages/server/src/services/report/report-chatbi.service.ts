@@ -17,7 +17,7 @@ import {
 import { config } from '../../config';
 import redis from '../../lib/redis';
 import { currentUser } from '../../lib/context';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { getUserPermissions, isSuperAdmin } from '../../lib/permissions';
@@ -86,8 +86,7 @@ export function mapChatbiSession(row: typeof reportChatbiSessions.$inferSelect):
   return {
     ...row,
     lastMessageAt: row.lastMessageAt ? formatDateTime(row.lastMessageAt) : null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

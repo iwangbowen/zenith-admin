@@ -19,7 +19,7 @@ import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { validateExpression } from '../../lib/workflow-expression';
 import { evaluateDecisionFlowSteps } from '../../lib/rules-flow';
 import { resolveRuntimeDecisionTable, resolveDecisionTableForTest, findWorkflowGatewayUsages } from './rules.service';
@@ -46,8 +46,7 @@ export function mapDecisionFlow(row: FlowRow) {
     version: row.version,
     publishedAt: formatNullableDateTime(row.publishedAt),
     dirty: publishedSteps ? stepsComparable(steps) !== stepsComparable(publishedSteps) : false,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

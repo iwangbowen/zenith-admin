@@ -6,7 +6,7 @@ import { cmsErrorProneWordContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import { cmsErrorProneWords } from '../../db/schema';
 import type { CmsErrorProneWordRow } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { AhoCorasick, applyReplacements, createTtlCache, toCodePoints, type AcMatch } from '../../lib/aho-corasick';
@@ -53,8 +53,7 @@ export function mapCmsErrorProneWord(row: CmsErrorProneWordRow) {
     correction: row.correction,
     status: row.status,
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

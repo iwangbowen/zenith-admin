@@ -7,7 +7,7 @@ import { cmsAdContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import { cmsAdSlots, cmsAds } from '../../db/schema';
 import type { CmsAdSlotRow, CmsAdRow } from '../../db/schema';
-import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { assertSiteAccess } from './cms-sites.service';
 import { canonicalizeCmsResourceFields, deleteCmsResourceRefsForOwner, isSafeCmsResourceUrl, syncCmsResourceRefs, resolveCmsResourcePayload } from './cms-resource-refs.service';
@@ -27,8 +27,7 @@ export function mapCmsAdSlot(row: CmsAdSlotRow, adCount?: number) {
     name: row.name,
     remark: row.remark ?? null,
     ...(adCount !== undefined ? { adCount } : {}),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -46,8 +45,7 @@ export function mapCmsAd(row: CmsAdRow, slotName?: string | null) {
     viewCount: row.viewCount,
     sort: row.sort,
     status: row.status,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

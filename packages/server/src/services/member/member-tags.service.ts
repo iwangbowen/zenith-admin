@@ -7,7 +7,7 @@ import { db } from '../../db';
 import { members, memberTagBindings, memberTags } from '../../db/schema';
 import type { MemberTagRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 
@@ -28,8 +28,7 @@ export function mapMemberTag(row: MemberTagRow, memberCount?: number) {
     sort: row.sort,
     status: row.status,
     memberCount,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

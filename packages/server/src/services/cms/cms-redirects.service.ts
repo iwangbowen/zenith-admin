@@ -7,7 +7,7 @@ import { cmsSeoContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import { cmsRedirects, cmsSites } from '../../db/schema';
 import type { CmsRedirectRow } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { assertSiteAccess } from './cms-sites.service';
@@ -81,8 +81,7 @@ export function mapCmsRedirect(row: CmsRedirectRow) {
     redirectType: row.redirectType,
     status: row.status,
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

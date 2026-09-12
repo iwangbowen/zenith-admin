@@ -21,7 +21,7 @@ import { db, pgClient } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import { dbAdminQueryHistory, dbQueryFavorites } from '../../db/schema';
 import { currentUserId } from '../../lib/context';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
@@ -1713,8 +1713,7 @@ export function mapDbQueryFavorite(row: DbQueryFavoriteRow) {
     sql: row.sql,
     description: row.description ?? null,
     tags: row.tags ?? [],
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

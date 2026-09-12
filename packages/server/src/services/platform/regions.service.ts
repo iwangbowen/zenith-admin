@@ -5,7 +5,7 @@ import { buildRegionTree, filterRegionTree, REGION_LEVEL_SHORT_LABELS, validateR
 import { HTTPException } from 'hono/http-exception';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 
 export function mapRegion(row: typeof regions.$inferSelect): Omit<Region, 'children'> {
   return {
@@ -16,8 +16,7 @@ export function mapRegion(row: typeof regions.$inferSelect): Omit<Region, 'child
     parentCode: row.parentCode ?? null,
     sort: row.sort,
     status: row.status,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

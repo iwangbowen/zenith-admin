@@ -162,7 +162,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
 import { xxxContract } from '@zenith/shared/{业务域}';
 import { db } from '../../db';
 import { xxxs, type XxxRow } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
@@ -176,8 +176,8 @@ export function mapXxx(row: XxxRow) {
     status:      row.status,
     createdBy:   row.createdBy ?? null,
     updatedBy:   row.updatedBy ?? null,
-    createdAt:   formatDateTime(row.createdAt),
-    updatedAt:   formatDateTime(row.updatedAt),
+    // 审计时间戳成对映射；其它单点时间仍用 formatDateTime / formatNullableDateTime
+    ...formatTimestamps(row),
   };
 }
 

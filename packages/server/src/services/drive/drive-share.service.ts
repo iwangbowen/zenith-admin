@@ -31,7 +31,7 @@ import { driveCollectSubmissions, driveNodes, driveShareAccessLogs, driveShareLi
 import { config } from '../../config';
 import { currentUser, currentUserId, currentUserOrNull, isSuperAdmin, runWithCurrentUser, type AppEnv } from '../../lib/context';
 import { getDataScopeCondition } from '../../lib/data-scope';
-import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { decryptField, encryptField } from '../../lib/encryption';
 import { readStoredFile } from '../../lib/file-storage';
@@ -133,8 +133,7 @@ async function mapShareLinks(rows: DriveShareLinkRow[]): Promise<DriveShareLink[
       state: shareLinkState(r),
       createdBy: r.createdBy ?? null,
       createdByName: r.createdBy ? names.get(r.createdBy) ?? null : null,
-      createdAt: formatDateTime(r.createdAt),
-      updatedAt: formatDateTime(r.updatedAt),
+      ...formatTimestamps(r),
     };
   });
 }

@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { db } from '../../db';
 import { sshProfiles } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { encryptField, decryptField } from '../../lib/encryption';
 import { requireRow } from '../../lib/db-assert';
 
@@ -41,8 +41,7 @@ function mapRow(r: typeof sshProfiles.$inferSelect) {
     groupName: r.groupName ?? null,
     tags: r.tags ?? [],
     orderNum: r.orderNum,
-    createdAt: formatDateTime(r.createdAt),
-    updatedAt: formatDateTime(r.updatedAt),
+    ...formatTimestamps(r),
   };
 }
 

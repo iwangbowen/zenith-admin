@@ -12,7 +12,7 @@ import {
   users,
 } from '../../db/schema';
 import { currentUser, currentUserOrNull, hasPermission } from '../../lib/context';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { sendWebhookNotification } from '../../lib/webhook-notify';
 import { sendEmail } from '../messaging/email-send-logs.service';
@@ -130,8 +130,7 @@ function mapDeliveryAttempt(row: typeof reportDeliveryAttempts.$inferSelect): Re
     payloadSummary: (row.payloadSummary ?? {}) as Record<string, unknown>,
     startedAt: formatNullableDateTime(row.startedAt),
     completedAt: formatNullableDateTime(row.completedAt),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -163,8 +162,7 @@ function mapDeliveryRun(row: DeliveryRunQueryRow, attempts?: ReportDeliveryAttem
     completedAt: formatNullableDateTime(row.completedAt),
     nextRetryAt: formatNullableDateTime(row.nextRetryAt),
     attempts,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

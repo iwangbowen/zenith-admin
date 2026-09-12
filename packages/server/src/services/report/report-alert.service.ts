@@ -7,7 +7,7 @@ import { db } from '../../db';
 import { reportAlertRules, reportDeliveryRuns } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { currentUserOrNull } from '../../lib/context';
 import { escapeHtml } from '@zenith/shared/core';
@@ -117,8 +117,7 @@ export function mapAlert(row: AlertRowExt): ReportAlertRule {
     lastDeliveryError: row.latestDelivery?.lastDeliveryError ?? row.lastDeliveryError ?? null,
     remark: row.remark ?? null,
     createdBy: row.createdBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

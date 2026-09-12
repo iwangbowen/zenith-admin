@@ -16,7 +16,7 @@ import {
 } from '../../db/schema';
 import type { CmsSiteInheritanceRow, CmsSiteRow } from '../../db/schema';
 import type { DbExecutor, DbTransaction } from '../../db/types';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import logger from '../../lib/logger';
@@ -252,8 +252,7 @@ export function mapCmsSite(row: CmsSiteRow, meta: CmsSiteMapMeta = {}) {
     sort: row.sort,
     remark: row.remark ?? null,
     inheritance: meta.inheritance,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

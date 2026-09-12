@@ -5,7 +5,7 @@ import { db } from '../../db';
 import { smsConfigs } from '../../db/schema';
 import type { SmsConfigRow } from '../../db/schema';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { clearDefaultFlag, ensureSingleDefault } from '../../lib/default-flag';
 import { currentUserOrNull } from '../../lib/context';
@@ -26,8 +26,7 @@ export function mapSmsConfigSafe(row: SmsConfigRow) {
     isDefault: row.isDefault,
     status: row.status,
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -44,8 +43,7 @@ export function mapSmsConfigForEdit(row: SmsConfigRow) {
     isDefault: row.isDefault,
     status: row.status,
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

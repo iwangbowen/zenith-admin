@@ -4,7 +4,7 @@ import { clearDefaultFlag } from '../../lib/default-flag';
 import { db } from '../../db';
 import { aiProviderConfigs } from '../../db/schema';
 import { currentUser } from '../../lib/context';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { encryptField, decryptField } from '../../lib/encryption';
 import { AI_SSRF_OPTIONS } from '../../lib/ai/outbound';
@@ -65,8 +65,7 @@ function mapRow(row: typeof aiProviderConfigs.$inferSelect) {
     isDefault: row.isDefault,
     isEnabled: row.isEnabled,
     maxConcurrent: row.maxConcurrent,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

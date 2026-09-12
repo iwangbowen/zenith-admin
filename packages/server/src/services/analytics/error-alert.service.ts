@@ -8,7 +8,7 @@ import { frontendErrorContract } from '@zenith/shared/analytics';
 import type { CreateErrorAlertRuleInput, UpdateErrorAlertRuleInput, FrontendErrorType, ErrorLevel } from '@zenith/shared/analytics';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { buildWhere, nullableEq } from '../../lib/where-helpers';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { validateAlertDelivery } from '../../lib/alert-validation';
 import { dispatchAlertChannels } from '../../lib/alert-dispatch';
@@ -28,8 +28,7 @@ export function mapRule(row: ErrorAlertRuleRow) {
     recipients: row.recipients ?? [],
     enabled: row.enabled,
     lastTriggeredAt: formatNullableDateTime(row.lastTriggeredAt),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

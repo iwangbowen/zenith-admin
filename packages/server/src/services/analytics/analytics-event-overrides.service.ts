@@ -11,7 +11,7 @@ import type { AnalyticsEventOverrideRow } from '../../db/schema';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { analyticsContract } from '@zenith/shared/analytics';
 import type { CreateAnalyticsEventOverrideInput, UpdateAnalyticsEventOverrideInput } from '@zenith/shared/analytics';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { currentUser } from '../../lib/context';
@@ -28,8 +28,7 @@ export function mapEventOverride(row: AnalyticsEventOverrideRow) {
     reason: row.reason,
     createdBy: row.createdBy,
     updatedBy: row.updatedBy,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

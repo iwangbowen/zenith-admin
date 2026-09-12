@@ -7,7 +7,7 @@ import { db } from '../../db';
 import { cmsComments, cmsContents, cmsSites, members } from '../../db/schema';
 import type { CmsSiteRow } from '../../db/schema';
 import type { CmsCommentRow } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { buildWhere, withPagination } from '../../lib/where-helpers';
 import { config } from '../../config';
 import redis from '../../lib/redis';
@@ -53,8 +53,7 @@ export function mapCmsComment(row: CmsCommentRow, extra?: { contentTitle?: strin
     riskFlag: row.riskFlag ?? null,
     ip: row.ip ?? null,
     userAgent: row.userAgent ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

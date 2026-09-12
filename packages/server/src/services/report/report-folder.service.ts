@@ -16,7 +16,7 @@ import {
 } from '../../db/schema';
 import { currentUserOrNull, isSuperAdmin } from '../../lib/context';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { reportCreateTenantId, reportScopedWhere, reportTenantScope } from './report-access';
 import { defaultReportOwnerId, ensureReportOwner } from './report-resource.service';
 import { buildTree } from '@zenith/shared/core';
@@ -38,8 +38,7 @@ export function mapReportFolder(row: FolderRow): ReportFolder {
     status: row.status,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

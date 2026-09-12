@@ -8,7 +8,7 @@ import { currentUser } from '../../lib/context';
 import { isSuperAdmin } from '../../lib/permissions';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { pageOffset } from '../../lib/pagination';
-import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import type { DbExecutor } from '../../db/types';
@@ -42,8 +42,7 @@ export function mapDelegation(
     endAt: formatNullableDateTime(row.endAt),
     enabled: row.enabled,
     active: isActive(row),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

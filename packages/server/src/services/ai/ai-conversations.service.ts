@@ -4,7 +4,7 @@ import { requireRow } from '../../lib/db-assert';
 import { db } from '../../db';
 import { aiConversations, aiMessages, users } from '../../db/schema';
 import { currentUser } from '../../lib/context';
-import { formatDateTime, formatNullableDateTime, formatFileTimestamp } from '../../lib/datetime';
+import { formatDateTime, formatFileTimestamp, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { streamToCsv } from '../../lib/excel-export';
 import { HTTPException } from 'hono/http-exception';
@@ -26,8 +26,7 @@ function mapConversation(row: typeof aiConversations.$inferSelect) {
     agentId: row.agentId,
     tags: row.tags ?? [],
     activeLeafMsgId: row.activeLeafMsgId,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

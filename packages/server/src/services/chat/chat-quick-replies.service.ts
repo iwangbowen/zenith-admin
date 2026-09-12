@@ -5,7 +5,7 @@ import { chatQuickReplies } from '../../db/schema';
 import type { ChatQuickReplyRow } from '../../db/schema/chat';
 import { currentUser } from '../../lib/context';
 import { requireRow } from '../../lib/db-assert';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import type { ChatQuickReply } from '@zenith/shared/chat';
 
 const MAX_QUICK_REPLIES = 50;
@@ -15,8 +15,7 @@ function mapQuickReply(row: ChatQuickReplyRow): ChatQuickReply {
     id: row.id,
     content: row.content,
     sort: row.sort,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

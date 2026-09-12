@@ -14,7 +14,7 @@ import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { pageOffset } from '../../lib/pagination';
-import { formatDateTime, formatNullableDateTime, formatDate } from '../../lib/datetime';
+import { formatDate, formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import logger from '../../lib/logger';
 import { createInstance } from './workflow-instances.service';
 import type { WorkflowSchedule, CreateWorkflowScheduleInput, UpdateWorkflowScheduleInput } from '@zenith/shared/workflow';
@@ -44,8 +44,7 @@ function mapSchedule(row: Row, extras: { definitionName?: string | null; initiat
     lastRunMessage: row.lastRunMessage ?? null,
     nextRunAt: formatNullableDateTime(row.nextRunAt),
     tenantId: row.tenantId,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

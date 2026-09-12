@@ -27,13 +27,7 @@ import {
 } from '../../db/schema';
 import { currentUserId } from '../../lib/context';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import {
-  formatDateTime,
-  formatNullableDateTime,
-  parseDateRangeEnd,
-  parseDateRangeStart,
-  parseDateTimeInput,
-} from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps, parseDateRangeEnd, parseDateRangeStart, parseDateTimeInput } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { createDashboard, getDashboard, updateDashboardDraft } from './report-dashboard.service';
@@ -122,8 +116,7 @@ export function mapReportAssetTemplate(
     status: row.status,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -144,8 +137,7 @@ export function mapReportDeprecationNotice(row: DeprecationRow): ReportDeprecati
     processedAt: formatNullableDateTime(row.processedAt),
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

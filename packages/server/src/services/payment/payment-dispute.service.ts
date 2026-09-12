@@ -22,7 +22,7 @@ import { requireRow } from '../../lib/db-assert';
 import { currentUser, currentUserOrNull } from '../../lib/context';
 import { tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { refund } from './payment.service';
 import { decide } from '../platform/rules-runtime.service';
 import logger from '../../lib/logger';
@@ -59,8 +59,7 @@ export function mapDispute(row: PaymentDisputeRow): PaymentDispute {
     overdue: isOverdue(row),
     refundNo: row.refundNo ?? null,
     resolvedAt: formatNullableDateTime(row.resolvedAt),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

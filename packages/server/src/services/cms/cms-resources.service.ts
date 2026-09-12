@@ -8,7 +8,7 @@ import { cmsResourceContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import { cmsResources, cmsResourceFolders, cmsResourceRefs } from '../../db/schema';
 import type { CmsResourceRow } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { uploadManagedFile, deleteManagedFile, readFileContent } from '../files/files.service';
 import { processCmsImageUpload } from './cms-image.service';
@@ -48,8 +48,7 @@ export function mapCmsResource(row: CmsResourceRow, folderName?: string | null, 
     remark: row.remark ?? null,
     ownsFile: row.ownsFile,
     ...(refCount !== undefined ? { refCount } : {}),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

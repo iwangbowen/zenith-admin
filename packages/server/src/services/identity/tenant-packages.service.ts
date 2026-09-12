@@ -9,7 +9,7 @@ import { tenantPackages, tenantPackageFeatures, tenants, type TenantPackageRow }
 import { HTTPException } from 'hono/http-exception';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { clearUserPermissionCache } from '../../lib/permissions';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { isLicenseFeatureKey, type TenantPackageQuotas } from '@zenith/shared/licensing';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import type { tenantPackageContract } from '@zenith/shared/identity';
@@ -26,8 +26,7 @@ export function mapTenantPackage(
     remark: row.remark ?? null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
     ...(opts?.features === undefined ? {} : { features: opts.features, featureCount: opts.features.length }),
   };
 }

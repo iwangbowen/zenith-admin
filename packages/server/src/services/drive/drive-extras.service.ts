@@ -15,7 +15,7 @@ import { db } from '../../db';
 import { driveNodeComments, driveNodes, driveNodeTags, driveTags } from '../../db/schema';
 import { currentUser, currentUserId } from '../../lib/context';
 import { requireRow } from '../../lib/db-assert';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { getCreateTenantId } from '../../lib/tenant';
 import { ensureNodeRole, ensureSpaceRole, loadDriveSubjects } from './drive-access.service';
@@ -112,8 +112,7 @@ export async function listDriveNodeComments(nodeId: number): Promise<DriveNodeCo
     mentionUserIds: r.mentionUserIds,
     authorId: r.authorId ?? null,
     authorName: r.authorId ? names.get(r.authorId) ?? null : null,
-    createdAt: formatDateTime(r.createdAt),
-    updatedAt: formatDateTime(r.updatedAt),
+    ...formatTimestamps(r),
   }));
 }
 

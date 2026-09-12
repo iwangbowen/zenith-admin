@@ -15,7 +15,7 @@ import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, withPagination } from '../../lib/where-helpers';
-import { formatDate, formatDateTime, formatNullableDateTime, parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
+import { formatDate, formatDateTime, formatNullableDateTime, formatTimestamps, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
 import { isPgUniqueViolation, rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { postSystemJournalWithin } from './payment-journal.service';
 import logger from '../../lib/logger';
@@ -66,8 +66,7 @@ export function mapSettlementBatch(row: PaymentSettlementBatchRow): PaymentSettl
     payoutReference: row.payoutReference ?? null,
     version: row.version,
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

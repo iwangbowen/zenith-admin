@@ -15,7 +15,7 @@ import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
-import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
 
 type ListRow = typeof ruleLists.$inferSelect;
 type ItemRow = typeof ruleListItems.$inferSelect;
@@ -29,8 +29,7 @@ export function mapRuleList(row: ListRow, itemCount?: number) {
     description: row.description ?? null,
     status: row.status,
     itemCount,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

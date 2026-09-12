@@ -6,7 +6,7 @@ import { db } from '../../db';
 import { mpFans, mpTags } from '../../db/schema';
 import type { MpFanRow } from '../../db/schema';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { ensureMpAccountExists } from './mp-account.service';
 import { getFollowerOpenids, batchGetFanInfo, getWechatBlacklist, batchBlacklistFans, batchUnblacklistFans, WechatApiError } from '../../lib/wechat';
@@ -34,8 +34,7 @@ export function mapMpFan(row: MpFanRow) {
     blacklisted: row.blacklisted,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

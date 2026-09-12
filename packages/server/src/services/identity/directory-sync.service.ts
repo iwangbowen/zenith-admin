@@ -17,7 +17,7 @@ import type {
   directorySyncSourceContract, directorySyncContract,
 } from '@zenith/shared/identity';
 import type { QueryOutputOf } from '@zenith/shared/core';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
@@ -70,8 +70,7 @@ export function mapDirectorySyncSource(row: DirectorySyncSourceRow & { identityP
     remark: row.remark ?? null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -135,8 +134,7 @@ export function mapDirectorySyncConflict(row: DirectorySyncConflictRow & { sourc
     resolvedBy: row.resolvedBy ?? null,
     resolvedByNickname: row.resolvedByUser?.nickname ?? null,
     resolvedAt: formatNullableDateTime(row.resolvedAt),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

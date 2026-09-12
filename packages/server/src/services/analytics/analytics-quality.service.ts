@@ -10,7 +10,7 @@ import { buildListResult } from '../../lib/list-query';
 import { analyticsContract } from '@zenith/shared/analytics';
 import type { AnalyticsQualityIssueType } from '@zenith/shared/analytics';
 import type { QueryOutputOf } from '@zenith/shared/core';
-import { formatDate, formatDateTime } from '../../lib/datetime';
+import { formatDate, formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { config } from '../../config';
 import { currentUser } from '../../lib/context';
@@ -58,8 +58,7 @@ export async function queryQuality(q: QueryOutputOf<typeof analyticsContract.qua
       count: Number(r.count),
       sample: r.sample ?? null,
       lastSeenAt: formatDateTime(r.lastSeenAt),
-      createdAt: formatDateTime(r.createdAt),
-      updatedAt: formatDateTime(r.updatedAt),
+      ...formatTimestamps(r),
     })),
     totals: totals.map((t) => ({ issueType: t.issueType, count: Number(t.count) })),
     totalCount,

@@ -7,7 +7,7 @@ import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import { users, wikiDocs, wikiSpaceMembers, wikiSpaces, type WikiSpaceRow } from '../../db/schema';
 import { currentUser, isSuperAdmin } from '../../lib/context';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { getCreateTenantId, tenantCondition } from '../../lib/tenant';
@@ -30,8 +30,7 @@ export function mapWikiSpace(row: WikiSpaceRow) {
     tenantId: row.tenantId ?? null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

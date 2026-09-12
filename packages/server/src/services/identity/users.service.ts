@@ -25,7 +25,7 @@ import { mostPermissiveDataScope, userContract } from '@zenith/shared/identity';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { currentUser } from '../../lib/context';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { registerRevealSource } from '../../lib/data-mask/reveal';
 import logger from '../../lib/logger';
 import { userHasPlatformSuperRole } from './role-grant';
@@ -124,8 +124,7 @@ export function mapUser(row: UserWithRelations): User {
     description: r.description ?? undefined,
     dataScope: r.dataScope,
     status: r.status,
-    createdAt: formatDateTime(r.createdAt),
-    updatedAt: formatDateTime(r.updatedAt),
+    ...formatTimestamps(r),
   }));
   const positionList = row.userPositions.map(({ position: p }) => ({
     id: p.id,
@@ -134,8 +133,7 @@ export function mapUser(row: UserWithRelations): User {
     sort: p.sort,
     status: p.status,
     remark: p.remark ?? undefined,
-    createdAt: formatDateTime(p.createdAt),
-    updatedAt: formatDateTime(p.updatedAt),
+    ...formatTimestamps(p),
   }));
 
   return {
@@ -154,8 +152,7 @@ export function mapUser(row: UserWithRelations): User {
     status: row.status,
     passwordUpdatedAt: formatDateTime(row.passwordUpdatedAt),
     lastLoginAt: formatNullableDateTime(row.lastLoginAt),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   } satisfies User;
 }
 

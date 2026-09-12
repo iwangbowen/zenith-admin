@@ -9,7 +9,7 @@ import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { pageOffset } from '../../lib/pagination';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 
@@ -25,8 +25,7 @@ export function mapCategory(row: typeof workflowCategories.$inferSelect) {
     tenantId: row.tenantId,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

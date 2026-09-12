@@ -25,7 +25,7 @@ import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { currentUser } from '../../lib/context';
-import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { broadcast, scheduleBroadcast, scheduleSendToUsers } from '../../lib/ws-manager';
 import { keywordCondition } from '../../lib/where-helpers';
@@ -249,8 +249,7 @@ export async function buildChannelViews(
       isMuted: sub?.isMuted ?? false,
       isSubscribed: isSubscribed(ch),
       tenantId: ch.tenantId,
-      createdAt: formatDateTime(ch.createdAt),
-      updatedAt: formatDateTime(ch.updatedAt),
+      ...formatTimestamps(ch),
     };
   });
 }
@@ -372,8 +371,7 @@ function mapChannelAdmin(ch: ChannelRow, subscriberCount: number, messageCount: 
     status: ch.status,
     subscriberCount,
     messageCount,
-    createdAt: formatDateTime(ch.createdAt),
-    updatedAt: formatDateTime(ch.updatedAt),
+    ...formatTimestamps(ch),
   };
 }
 

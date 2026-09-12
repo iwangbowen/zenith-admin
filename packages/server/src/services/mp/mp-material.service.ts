@@ -5,7 +5,7 @@ import { db } from '../../db';
 import { mpMaterials } from '../../db/schema';
 import type { MpMaterialRow } from '../../db/schema';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { ensureMpAccountExists } from './mp-account.service';
 import { batchGetWechatMaterials, deleteWechatMaterial, uploadWechatMaterial } from '../../lib/wechat';
@@ -25,8 +25,7 @@ export function mapMpMaterial(row: MpMaterialRow) {
     fileSize: row.fileSize ?? null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

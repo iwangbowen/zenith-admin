@@ -14,7 +14,7 @@ import type { OpsHostRow } from '../../db/schema';
 import { encryptSecret } from '../../lib/secret-crypto';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { requireFirstRow } from '../../lib/db-assert';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { evictHostConnection, getRemoteExecutor } from '../../lib/host-exec';
 import logger from '../../lib/logger';
 import { getSshConnectParams, getSshProfile } from './ssh-profiles.service';
@@ -38,8 +38,7 @@ function mapHost(row: OpsHostRow): OpsHost {
     probeError: row.probeError,
     enabled: row.enabled,
     remark: row.remark,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

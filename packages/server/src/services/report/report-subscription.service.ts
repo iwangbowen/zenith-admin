@@ -9,7 +9,7 @@ import { db } from '../../db';
 import { reportDashboardSubscriptions, reportDeliveryRuns } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { currentUserOrNull } from '../../lib/context';
 import { escapeHtml } from '@zenith/shared/core';
 import { trimNullableText } from '../../lib/text-utils';
@@ -112,8 +112,7 @@ export function mapSubscription(row: SubRowExt): ReportDashboardSubscription {
     lastDeliveryStatus: row.latestDelivery?.lastDeliveryStatus ?? row.lastDeliveryStatus ?? null,
     lastDeliveryError: row.latestDelivery?.lastDeliveryError ?? row.lastDeliveryError ?? null,
     createdBy: row.createdBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

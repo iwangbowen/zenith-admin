@@ -25,7 +25,7 @@ import type {
   CmsInteractionRow,
 } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
-import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
@@ -88,8 +88,7 @@ export function mapCmsInteraction(row: CmsInteractionRow, questions?: CmsInterac
     ...(questions
       ? { questions: [...questions].sort((a, b) => a.sort - b.sort || a.id - b.id).map(mapCmsInteractionQuestion) }
       : {}),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

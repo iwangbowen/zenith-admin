@@ -19,7 +19,7 @@ import {
   iotDeviceGroupMembers, iotDeviceGroups, iotDevices, iotProducts, iotScheduleRuns, iotSchedules,
   type IotDeviceRow, type IotScheduleRow, type IotScheduleRunRow,
 } from '../../db/schema';
-import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
@@ -54,8 +54,7 @@ export function mapIotSchedule(
     recentRunCount: extra?.recentRunCount ?? 0,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

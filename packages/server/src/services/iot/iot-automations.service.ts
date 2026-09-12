@@ -22,7 +22,7 @@ import {
   iotAutomationRuns, iotAutomations, iotDeviceGroupMembers, iotDevices, iotProducts,
   type IotAutomationActionDef, type IotAutomationRow, type IotAutomationRunRow, type IotDeviceRow,
 } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
@@ -57,8 +57,7 @@ export function mapIotAutomation(
     recentRunCount: extra?.recentRunCount ?? 0,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

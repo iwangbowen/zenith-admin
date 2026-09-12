@@ -10,7 +10,7 @@ import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { getScopeMemberSummaries, validateScopeUserIds } from './user-scope.service';
 
 export function mapPosition(row: typeof positions.$inferSelect) {
@@ -21,8 +21,7 @@ export function mapPosition(row: typeof positions.$inferSelect) {
     sort: row.sort,
     status: row.status,
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

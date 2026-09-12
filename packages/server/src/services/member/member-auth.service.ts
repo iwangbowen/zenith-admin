@@ -30,7 +30,7 @@ import {
 } from '../../lib/member-session-manager';
 import type { MemberJwtPayload } from '../../middleware/member-auth';
 import { currentMember } from '../../lib/member-context';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { parseUserAgent } from '../../lib/request-helpers';
 import { lookupIpLocation } from '../../lib/ip-location';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
@@ -77,8 +77,7 @@ export function mapMember(
     pointBalance: extra?.pointBalance,
     walletBalance: extra?.walletBalance,
     tags: extra?.tags,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

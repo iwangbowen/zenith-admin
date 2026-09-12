@@ -14,15 +14,14 @@ import { currentUser } from '../../lib/context';
 import { forceLogoutAllByUsers } from '../../lib/session-manager';
 import { HTTPException } from 'hono/http-exception';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { getScopeMemberSummaries, validateScopeUserIds } from './user-scope.service';
 import { RESERVED_ROLE_CODES } from './role-grant';
 
 export function mapRole(row: typeof roles.$inferSelect, menuIds?: number[], deptScopeIds?: number[]) {
   return {
     ...row,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
     ...(menuIds === undefined ? {} : { menuIds }),
     ...(deptScopeIds === undefined ? {} : { deptScopeIds }),
   };

@@ -4,7 +4,7 @@ import { db } from '../../db';
 import { chatConversationMembers, chatConversations, chatMessages, users } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { requireRow } from '../../lib/db-assert';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import type { ChatMessage, ChatReactionGroup } from '@zenith/shared/chat';
 
 /** 生成排除当前用户已删除消息的 SQL 条件 */
@@ -47,8 +47,7 @@ export function mapChatMessage(
     isEdited: row.isEdited,
     extra: sanitizeStoredExtra(row.extra),
     reactions,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

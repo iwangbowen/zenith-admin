@@ -6,7 +6,7 @@ import { cmsFriendLinkContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import { cmsFriendLinkGroups, cmsFriendLinks } from '../../db/schema';
 import type { CmsFriendLinkRow } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import type { CreateCmsFriendLinkInput, UpdateCmsFriendLinkInput } from '@zenith/shared/cms';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
@@ -28,8 +28,7 @@ export function mapCmsFriendLink(row: CmsFriendLinkRow, groupName?: string | nul
     status: row.status,
     sort: row.sort,
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

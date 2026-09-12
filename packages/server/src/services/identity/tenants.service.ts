@@ -18,7 +18,7 @@ import { isTenantActive } from '../../lib/tenant';
 import logger from '../../lib/logger';
 import { validatePassword } from '@zenith/shared/settings';
 import { getSettings } from '../../lib/settings';
-import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
 import { registerRevealSource } from '../../lib/data-mask/reveal';
 
 export function mapTenant(row: typeof tenants.$inferSelect, packageName: string | null = null) {
@@ -26,8 +26,7 @@ export function mapTenant(row: typeof tenants.$inferSelect, packageName: string 
     ...row,
     packageName,
     expireAt: formatNullableDateTime(row.expireAt),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

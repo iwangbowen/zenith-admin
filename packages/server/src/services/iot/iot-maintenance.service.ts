@@ -15,7 +15,7 @@ import {
   iotDeviceGroupMembers, iotDeviceGroups, iotDevices, iotMaintenanceWindows, iotProducts,
   type IotMaintenanceWindowRow,
 } from '../../db/schema';
-import { formatDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
@@ -42,8 +42,7 @@ export function mapIotMaintenanceWindow(
     active: row.startAt <= now && now <= row.endAt,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

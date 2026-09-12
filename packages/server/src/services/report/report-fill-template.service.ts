@@ -7,7 +7,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { reportFillRecords, reportFillTemplates, workflowDefinitions } from '../../db/schema';
 import { currentUser } from '../../lib/context';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { pageOffset } from '../../lib/pagination';
 import { tenantCondition } from '../../lib/tenant';
@@ -30,8 +30,7 @@ export function mapReportFillTemplate(row: TemplateRow): ReportFillTemplate {
   return {
     ...row,
     publishedAt: row.publishedAt ? formatDateTime(row.publishedAt) : null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

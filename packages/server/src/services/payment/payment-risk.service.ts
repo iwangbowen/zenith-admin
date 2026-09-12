@@ -21,7 +21,7 @@ import { requireTenantScopeId, tenantCondition, exactTenantCondition, inheritedT
 import { buildWhere, dateRangeConditions, keywordCondition, nullableEq, withPagination } from '../../lib/where-helpers';
 import logger from '../../lib/logger';
 import { pageOffset } from '../../lib/pagination';
-import { formatDateTime, formatNullableDateTime, startOfToday } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps, startOfToday } from '../../lib/datetime';
 import { recordEvent, processEvent } from './payment-outbox.service';
 import { buildPaymentEventPayload } from './payment-events';
 import { checkRuleListsBatch, type RuleListBatchHit } from '../platform/rules-lists.service';
@@ -45,8 +45,7 @@ export function mapRiskRule(row: PaymentRiskRuleRow): PaymentRiskRule {
     action: row.action,
     status: row.status,
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -406,8 +405,7 @@ function mapRiskReview(row: PaymentRiskReviewRow & { reviewer?: { nickname: stri
     reviewerName: row.reviewer?.nickname ?? null,
     reviewedAt: formatNullableDateTime(row.reviewedAt),
     reviewRemark: row.reviewRemark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

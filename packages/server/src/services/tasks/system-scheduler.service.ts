@@ -9,7 +9,7 @@ import { CronExpressionParser } from 'cron-parser';
 import { db } from '../../db';
 import { systemSchedulerNodes, systemSchedulerRuns, systemSchedulerTaskConfigs, users } from '../../db/schema';
 import { currentUserOrNull } from '../../lib/context';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import {
   getSchedulerIntrospection,
   getSystemQueueMetrics,
@@ -101,8 +101,7 @@ function mapNode(row: typeof systemSchedulerNodes.$inferSelect) {
     active: row.active,
     stale,
     metadata: row.metadata ?? {},
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

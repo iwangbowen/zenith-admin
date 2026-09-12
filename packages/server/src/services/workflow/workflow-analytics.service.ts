@@ -8,7 +8,7 @@ import { currentUser } from '../../lib/context';
 import { tenantCondition } from '../../lib/tenant';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { buildListResult } from '../../lib/list-query';
 import type { WorkflowAnalytics, WorkflowInstanceStatus, WorkflowAnalyticsTrendPoint, WorkflowOverdueTask } from '@zenith/shared/workflow';
 import { WORKFLOW_INSTANCE_STATUS_LABELS } from '@zenith/shared/workflow';
@@ -317,8 +317,7 @@ export async function getWorkflowInstancesForExport(query: WorkflowInstanceExpor
     categoryName: r.categoryName ?? '',
     initiatorName: r.initiatorName ?? '',
     status: INSTANCE_STATUS_TEXT[r.status] ?? r.status,
-    createdAt: formatDateTime(r.createdAt),
-    updatedAt: formatDateTime(r.updatedAt),
+    ...formatTimestamps(r),
   }));
 }
 

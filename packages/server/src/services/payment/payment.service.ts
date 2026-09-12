@@ -19,7 +19,7 @@ import { currentUser, currentUserOrNull } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { getDataScopeCondition } from '../../lib/data-scope';
 import { buildWhere, dateRangeConditions, keywordCondition, nullableEq, withPagination } from '../../lib/where-helpers';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { decryptField } from '../../lib/encryption';
 import { isPgUniqueViolation } from '../../lib/db-errors';
 import { getSettings } from '../../lib/settings';
@@ -268,8 +268,7 @@ export function mapOrder(row: PaymentOrderRow): PaymentOrder {
     returnUrl: row.returnUrl ?? null,
     errorMessage: row.errorMessage ?? null,
     version: row.version,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -295,8 +294,7 @@ export function mapRefund(row: PaymentRefundRow): PaymentRefund {
     refundedAt: formatNullableDateTime(row.refundedAt),
     errorMessage: row.errorMessage ?? null,
     version: row.version,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

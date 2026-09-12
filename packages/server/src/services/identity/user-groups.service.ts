@@ -12,7 +12,7 @@ import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { clearUserPermissionCache } from '../../lib/permissions';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { getScopeMemberSummaries, validateScopeUserIds } from './user-scope.service';
 import { previewDynamicGroupRule, syncDynamicGroup, type RulePreviewResult } from './user-group-rules.service';
 
@@ -47,8 +47,7 @@ function mapGroup(row: RawGroupRow) {
     memberCount: row.memberCount ?? 0,
     roleCount: row.roleCount ?? 0,
     status: row.status,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

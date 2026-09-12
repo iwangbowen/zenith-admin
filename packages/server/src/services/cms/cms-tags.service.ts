@@ -6,7 +6,7 @@ import { cmsTagContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import { cmsTags } from '../../db/schema';
 import type { CmsTagRow } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import type { CreateCmsTagInput, UpdateCmsTagInput } from '@zenith/shared/cms';
@@ -22,8 +22,7 @@ export function mapCmsTag(row: CmsTagRow) {
     slug: row.slug,
     groupName: row.groupName ?? null,
     contentCount: row.contentCount,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

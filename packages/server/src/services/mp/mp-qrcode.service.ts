@@ -5,7 +5,7 @@ import { db } from '../../db';
 import { mpQrcodes, mpFans } from '../../db/schema';
 import type { MpQrcodeRow } from '../../db/schema';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { ensureMpAccountExists } from './mp-account.service';
 import { createWechatQrcode } from '../../lib/wechat';
@@ -28,8 +28,7 @@ export function mapMpQrcode(row: MpQrcodeRow) {
     rewardPoints: row.rewardPoints,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

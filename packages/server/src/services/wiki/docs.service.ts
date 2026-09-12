@@ -30,7 +30,7 @@ import {
   type WikiDocRow,
 } from '../../db/schema';
 import { currentUser, currentUserId, isSuperAdmin, setAuditBefore } from '../../lib/context';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { getSettings } from '../../lib/settings';
@@ -71,8 +71,7 @@ export function mapWikiDoc(row: WikiDocRow) {
     deletedAt: formatNullableDateTime(row.deletedAt),
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

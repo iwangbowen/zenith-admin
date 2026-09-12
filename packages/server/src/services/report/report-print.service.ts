@@ -12,7 +12,7 @@ import { db } from '../../db';
 import { reportDatasets, reportPrintTemplates } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
-import { currentDateTime, formatDateTime } from '../../lib/datetime';
+import { currentDateTime, formatTimestamps } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { currentUserOrNull } from '../../lib/context';
 import { buildReportCopyName } from './report-copy-name';
@@ -55,8 +55,7 @@ export function mapPrintTemplate(row: PrintRowExt): ReportPrintTemplate {
     remark: row.remark ?? null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

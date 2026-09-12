@@ -6,7 +6,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsForms, cmsFormSubmissions } from '../../db/schema';
 import type { CmsFormRow, CmsFormSubmissionRow, CmsSiteRow } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { sanitizeUserText } from './cms-sensitive-words.service';
@@ -41,8 +41,7 @@ export function mapCmsForm(row: CmsFormRow, submissionCount?: number) {
     turnstileSecret: row.turnstileSecret ? CMS_SECRET_MASK : null,
     status: row.status,
     ...(submissionCount !== undefined ? { submissionCount } : {}),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

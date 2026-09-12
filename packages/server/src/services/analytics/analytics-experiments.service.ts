@@ -10,7 +10,7 @@ import { ANALYTICS_EXPERIMENT_EXPOSURE_EVENT, analyticsExperimentContract } from
 import { db } from '../../db';
 import { analyticsExperiments, userEvents } from '../../db/schema';
 import type { AnalyticsExperimentRow } from '../../db/schema';
-import { formatDateTime, formatNullableDateTime, parseDateRangeEnd, parseDateRangeStart, parseDateTimeInput } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps, parseDateRangeEnd, parseDateRangeStart, parseDateTimeInput } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { pageOffset } from '../../lib/pagination';
 import { currentCreateTenantId, tenantScope, exactTenantCondition } from '../../lib/tenant';
@@ -82,8 +82,7 @@ function mapExperiment(row: ExperimentWithTenant) {
     endAt: formatNullableDateTime(row.endAt),
     createdBy: row.createdBy,
     updatedBy: row.updatedBy,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

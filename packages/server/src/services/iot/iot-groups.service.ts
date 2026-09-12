@@ -9,7 +9,7 @@ import type { CreateIotDeviceGroupInput, UpdateIotDeviceGroupInput } from '@zeni
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import { iotDeviceGroupMembers, iotDeviceGroups, iotDevices, type IotDeviceGroupRow } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
@@ -25,8 +25,7 @@ export function mapIotDeviceGroup(row: IotDeviceGroupRow, extra?: { deviceCount?
     deviceIds: extra?.deviceIds ?? [],
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

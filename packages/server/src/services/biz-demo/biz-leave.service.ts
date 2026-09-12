@@ -16,7 +16,7 @@ import { WORKFLOW_ACTIVE_INSTANCE_STATUSES } from '@zenith/shared/workflow';
 import { db } from '../../db';
 import { bizLeaves, workflowInstances, workflowTasks, type BizLeaveRow } from '../../db/schema';
 import { currentUser } from '../../lib/context';
-import { formatDate, formatDateTime, parseDateRangeStart } from '../../lib/datetime';
+import { formatDate, formatTimestamps, parseDateRangeStart } from '../../lib/datetime';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { isSuperAdmin, getUserPermissions } from '../../lib/permissions';
 import { keywordCondition, buildWhere } from '../../lib/where-helpers';
@@ -51,8 +51,7 @@ export function mapBizLeave(row: BizLeaveRow, applicantName?: string | null): Bi
     applicantId: row.createdBy ?? null,
     applicantName: applicantName ?? null,
     tenantId: row.tenantId,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

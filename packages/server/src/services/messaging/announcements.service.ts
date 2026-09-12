@@ -12,7 +12,7 @@ import { currentUser } from '../../lib/context';
 import type { AnnouncementAttachment, announcementContract } from '@zenith/shared/messaging';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { listBusinessFiles, saveBusinessFiles } from '../files/business-files.service';
-import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
 import { sanitizeCmsHtml } from '../cms/cms-html-sanitizer';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
@@ -22,8 +22,7 @@ export function mapAnnouncement(row: typeof announcements.$inferSelect) {
     ...row,
     targetType: row.targetType as 'all' | 'specific',
     publishTime: formatNullableDateTime(row.publishTime),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

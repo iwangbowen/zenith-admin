@@ -18,7 +18,7 @@ import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { currentUserId, currentUsername } from '../../lib/context';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { getMetricSnapshotsByTenant } from './monitor-history.service';
@@ -93,8 +93,7 @@ export function mapRule(row: MonitorAlertRuleRow) {
     state: row.state,
     lastTriggeredAt: formatNullableDateTime(row.lastTriggeredAt),
     lastValue: row.lastValue,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

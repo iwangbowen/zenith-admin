@@ -6,7 +6,7 @@ import { db } from '../../db';
 import { mpAccounts } from '../../db/schema';
 import type { MpAccountRow } from '../../db/schema';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { tenantScope, currentCreateTenantId, exactTenantCondition } from '../../lib/tenant';
 import { clearDefaultFlag } from '../../lib/default-flag';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
@@ -36,8 +36,7 @@ export function mapMpAccountSafe(row: MpAccountRow) {
     remark: row.remark ?? null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

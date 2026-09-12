@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { mpMenus } from '../../db/schema';
 import type { MpMenuRow } from '../../db/schema';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { ensureMpAccountExists } from './mp-account.service';
 import { createWechatMenu, getWechatMenu, deleteWechatMenu, WechatApiError } from '../../lib/wechat';
@@ -21,8 +21,7 @@ export function mapMpMenu(row: MpMenuRow): MpMenu {
     buttons: (row.buttons ?? []) as MpMenuButton[],
     status: row.status,
     publishedAt: formatNullableDateTime(row.publishedAt),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

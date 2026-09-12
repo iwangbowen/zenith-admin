@@ -1,7 +1,7 @@
 import { workflowDefinitionContract } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { workflowDefinitions, workflowDefinitionVersions, workflowForms, workflowCategories, workflowInstances, users, userRoles } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import type { WorkflowFormSchema, WorkflowCustomFormConfig, WorkflowFormType } from '@zenith/shared/workflow';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
@@ -43,8 +43,7 @@ export function mapDefinition(
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
     createdByName: createdByName ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

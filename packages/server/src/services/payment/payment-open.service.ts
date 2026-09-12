@@ -15,7 +15,7 @@ import { exactTenantCondition } from '../../lib/tenant';
 import { requireRow } from '../../lib/db-assert';
 import { paymentChannelConfigs, paymentMethodConfigs, paymentOrders, paymentRefunds } from '../../db/schema';
 import type { OpenPrincipal } from '../../middleware/open-gateway';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { getProviderManifest, initPaymentAdapters } from '../../lib/payment';
 import { createPayment, refund } from './payment.service';
 import { resolvePaymentApplicationByOpenClient } from './payment-apps.service';
@@ -36,8 +36,7 @@ function mapOpenIntent(row: typeof paymentOrders.$inferSelect): OpenPaymentInten
     paidAt: formatNullableDateTime(row.paidAt),
     expiredAt: formatNullableDateTime(row.expiredAt),
     errorMessage: row.errorMessage ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -50,8 +49,7 @@ function mapOpenRefund(row: typeof paymentRefunds.$inferSelect): OpenPaymentRefu
     approvalStatus: row.approvalStatus,
     refundedAt: formatNullableDateTime(row.refundedAt),
     errorMessage: row.errorMessage ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

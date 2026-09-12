@@ -8,7 +8,7 @@ import type { CreateAnalyticsCampaignInput, UpdateAnalyticsCampaignInput } from 
 import { db } from '../../db';
 import { analyticsSegmentCampaigns, analyticsUserSegments, emailTemplates, inAppTemplates, shortLinks, smsTemplates } from '../../db/schema';
 import type { AnalyticsSegmentCampaignRow } from '../../db/schema';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { currentCreateTenantId, tenantScope } from '../../lib/tenant';
 import { buildWhere, withPagination } from '../../lib/where-helpers';
 import { submitAsyncTask } from '../../lib/task-center';
@@ -49,8 +49,7 @@ export function mapCampaign(row: AnalyticsSegmentCampaignRow, segmentName: strin
     lastError: row.lastError ?? null,
     createdBy: row.createdBy,
     updatedBy: row.updatedBy,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

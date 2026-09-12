@@ -9,7 +9,7 @@ import { db } from '../../db';
 import { cmsModels, cmsModelFields, cmsChannels, cmsContents, cmsSites, dicts, dictItems } from '../../db/schema';
 import type { CmsModelRow, CmsModelFieldRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import type { CreateCmsModelInput, UpdateCmsModelInput, CmsModelFieldInput } from '@zenith/shared/cms';
@@ -88,8 +88,7 @@ export function mapCmsModelField(row: CmsModelFieldRow, resolvedOptions?: { labe
     options: row.options ?? null,
     ...(resolvedOptions ? { resolvedOptions } : {}),
     sort: row.sort,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -111,8 +110,7 @@ export function mapCmsModel(row: CmsModelRow, fields?: CmsModelFieldRow[], owner
     status: row.status,
     sort: row.sort,
     ...(fields ? { fields: fields.map((field) => mapCmsModelField(field)) } : {}),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

@@ -7,7 +7,7 @@ import { cmsHotwordGroups, cmsHotwords, cmsSearchLogs } from '../../db/schema';
 import type { CmsHotwordGroupRow } from '../../db/schema';
 import { config } from '../../config';
 import redis from '../../lib/redis';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import { cmsSearchContract } from '@zenith/shared/cms';
@@ -23,8 +23,7 @@ export function mapCmsHotwordGroup(row: CmsHotwordGroupRow) {
     name: row.name,
     sort: row.sort,
     status: row.status,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

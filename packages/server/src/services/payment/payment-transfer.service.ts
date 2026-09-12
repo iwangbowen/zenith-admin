@@ -22,7 +22,7 @@ import { currentUser } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { buildAdapterContext } from './payment.service';
 import { computeAccountAvailable, ensureSystemLedgerAccount, postSystemJournal } from './payment-journal.service';
 import { getAdapter } from '../../lib/payment/registry';
@@ -71,8 +71,7 @@ export function mapTransfer(row: PaymentTransferRow & { operatorName?: string | 
     bizId: row.bizId ?? null,
     finishedAt: formatNullableDateTime(row.finishedAt),
     operatorName: row.operatorName ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

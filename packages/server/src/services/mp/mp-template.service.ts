@@ -6,7 +6,7 @@ import { db } from '../../db';
 import { mpMessageTemplates, mpTemplateSendLogs } from '../../db/schema';
 import type { MpMessageTemplateRow, MpTemplateSendLogRow } from '../../db/schema';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { ensureMpAccountExists } from './mp-account.service';
 import { getAllPrivateTemplates, sendTemplateMessage, setTemplateIndustry, getTemplateIndustry, WechatApiError } from '../../lib/wechat';
@@ -23,8 +23,7 @@ export function mapMpTemplate(row: MpMessageTemplateRow) {
     title: row.title,
     content: row.content ?? null,
     example: row.example ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

@@ -9,7 +9,7 @@ import { buildListResult } from '../../lib/list-query';
 import { paymentOrders, paymentChannelConfigs, paymentSharingOrders, paymentSharingReversals, type PaymentOrderRow, type PaymentSharingOrderRow, type PaymentSharingReversalRow } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { assertProviderCapability, getAdapter, type AdapterContext, type ProfitShareReverseInput, type ProfitShareReverseResult } from '../../lib/payment';
 import { tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, dateRangeConditions, withPagination } from '../../lib/where-helpers';
@@ -35,8 +35,7 @@ function mapSharingReversal(row: ReversalWithSharing): PaymentSharingReversal {
     version: row.version,
     errorMessage: row.errorMessage ?? null,
     finishedAt: formatNullableDateTime(row.finishedAt),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

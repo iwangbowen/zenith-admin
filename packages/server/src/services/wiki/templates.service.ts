@@ -4,7 +4,7 @@ import type { CreateWikiTemplateInput, UpdateWikiTemplateInput } from '@zenith/s
 import { wikiTemplateContract } from '@zenith/shared/wiki';
 import { db } from '../../db';
 import { wikiTemplates, type WikiTemplateRow } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
@@ -19,8 +19,7 @@ export function mapWikiTemplate(row: WikiTemplateRow) {
     sort: row.sort,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

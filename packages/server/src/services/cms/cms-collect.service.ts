@@ -12,7 +12,7 @@ import { cmsCollectRules, cmsCollectItems, cmsContents, cmsChannels } from '../.
 import type { CmsCollectRuleRow } from '../../db/schema';
 import { httpRequest } from '../../lib/http-client';
 import { registerTaskHandler } from '../../lib/task-center';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { buildManagedFileProxyUrl } from '../../lib/file-storage';
 import { contentSearchVector } from './cms-search.service';
@@ -52,8 +52,7 @@ export function mapCollectRule(row: CmsCollectRuleRow, channelName?: string | nu
     status: row.status,
     lastRunAt: formatNullableDateTime(row.lastRunAt),
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

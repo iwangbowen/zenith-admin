@@ -16,7 +16,7 @@ import { reserveTenantSeats } from '../../lib/tenant-quota';
 import { exactTenantCondition, isTenantActive, isTenantExpired, resolveManagedTenantId, tenantScope } from '../../lib/tenant';
 import { syncUserDynamicMembershipsSafe } from './user-group-rules.service';
 import redis from '../../lib/redis';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
@@ -165,8 +165,7 @@ export function mapIdentityProvider(row: ProviderRow) {
     remark: row.remark,
     createdBy: row.createdBy,
     updatedBy: row.updatedBy,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

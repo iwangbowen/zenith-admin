@@ -17,7 +17,7 @@ import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, withPagination } from '../../lib/where-helpers';
-import { formatDate, formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { formatDate, formatDateTime, formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
 import { postSystemJournalWithin } from './payment-journal.service';
 import { buildAdapterContext } from './payment.service';
 import { getAdapter } from '../../lib/payment/registry';
@@ -45,8 +45,7 @@ export function mapReconBatch(row: PaymentReconBatchRow): PaymentReconBatch {
     matchedCount: row.matchedCount,
     diffCount: row.diffCount,
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

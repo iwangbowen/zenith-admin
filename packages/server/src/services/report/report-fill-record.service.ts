@@ -7,7 +7,7 @@ import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { reportFillRecords, reportFillTemplates, users } from '../../db/schema';
 import { currentUser } from '../../lib/context';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { getUserPermissions, isSuperAdmin } from '../../lib/permissions';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
@@ -40,8 +40,7 @@ export function mapReportFillRecord(
     submittedAt: row.submittedAt ? formatDateTime(row.submittedAt) : null,
     reviewedAt: row.reviewedAt ? formatDateTime(row.reviewedAt) : null,
     syncedAt: row.syncedAt ? formatDateTime(row.syncedAt) : null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

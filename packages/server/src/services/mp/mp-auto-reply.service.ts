@@ -6,7 +6,7 @@ import { db } from '../../db';
 import { mpAutoReplies, mpUnmatchedKeywords } from '../../db/schema';
 import type { MpAutoReplyRow, MpUnmatchedKeywordRow } from '../../db/schema';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { ensureMpAccountExists } from './mp-account.service';
 import type { CreateMpAutoReplyInput, UpdateMpAutoReplyInput, MpReplyContentType, MpReplyArticle, mpAutoReplyContract } from '@zenith/shared/mp';
@@ -28,8 +28,7 @@ export function mapMpAutoReply(row: MpAutoReplyRow) {
     sort: row.sort,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

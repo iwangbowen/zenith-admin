@@ -4,7 +4,7 @@ import { requireRow } from '../../lib/db-assert';
 import { db } from '../../db';
 import { aiPromptTemplates, aiPromptTemplateVersions, users } from '../../db/schema';
 import { currentUser } from '../../lib/context';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { HTTPException } from 'hono/http-exception';
 import type { QueryOutputOf } from '@zenith/shared/core';
@@ -24,8 +24,7 @@ function mapTemplate(row: typeof aiPromptTemplates.$inferSelect) {
     sort: row.sort,
     usageCount: row.usageCount,
     isEnabled: row.isEnabled,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

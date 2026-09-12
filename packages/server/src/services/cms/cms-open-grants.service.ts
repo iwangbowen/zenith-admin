@@ -12,7 +12,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsChannels, cmsOpenAppGrants, cmsSites, oauth2Clients } from '../../db/schema';
 import type { CmsOpenAppGrantRow } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { resolveCmsSiteOpsSettings } from './cms-site-settings';
 import { assertSiteAccess } from './cms-sites.service';
 
@@ -27,8 +27,7 @@ export function mapCmsOpenAppGrant(row: CmsOpenAppGrantRow, extra?: { siteName?:
     canPublish: row.canPublish,
     status: row.status,
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

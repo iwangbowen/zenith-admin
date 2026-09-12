@@ -8,7 +8,7 @@ import { db } from '../../db';
 import { checkinMilestones, coupons } from '../../db/schema';
 import type { CheckinMilestoneRow } from '../../db/schema';
 import type { CheckinMilestoneRewardType } from '@zenith/shared/member';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 
@@ -23,8 +23,7 @@ export function mapCheckinMilestone(row: CheckinMilestoneRow, couponName?: strin
     couponName: couponName ?? null,
     enabled: row.enabled,
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

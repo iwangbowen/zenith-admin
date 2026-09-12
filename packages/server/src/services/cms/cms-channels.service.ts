@@ -8,7 +8,7 @@ import { db } from '../../db';
 import { cmsChannels, cmsContents, cmsModels, cmsContentChannels, cmsCollectRules, cmsChannelUsers, cmsPages, users } from '../../db/schema';
 import type { CmsChannelRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { buildWhere } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { currentCmsOpenApiAccess, currentUser } from '../../lib/context';
@@ -57,8 +57,7 @@ export function mapCmsChannel(row: CmsChannelRow, modelName?: string | null): Cm
     status: row.status,
     sort: row.sort,
     settings: row.settings ?? {},
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

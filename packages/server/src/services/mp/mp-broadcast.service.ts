@@ -6,7 +6,7 @@ import { db } from '../../db';
 import { mpBroadcasts, mpTags, mpAccounts } from '../../db/schema';
 import type { MpBroadcastRow } from '../../db/schema';
 import { buildWhere, withPagination } from '../../lib/where-helpers';
-import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { ensureMpAccountExists } from './mp-account.service';
 import { assertContentSafe } from './mp-security.service';
@@ -31,8 +31,7 @@ export function mapMpBroadcast(row: MpBroadcastRow) {
     sentAt: formatNullableDateTime(row.sentAt),
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

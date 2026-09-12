@@ -14,7 +14,7 @@ import type { InitIotFirmwareUploadInput, UpdateIotFirmwareInput } from '@zenith
 import { IOT_FIRMWARE_VERSION_PATTERN } from '@zenith/shared/iot';
 import { db } from '../../db';
 import { iotFirmwares, iotOtaTasks, iotProducts, type IotFirmwareRow } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
@@ -42,8 +42,7 @@ export function mapIotFirmware(row: IotFirmwareRow, extra?: { productName?: stri
     taskCount: extra?.taskCount ?? 0,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

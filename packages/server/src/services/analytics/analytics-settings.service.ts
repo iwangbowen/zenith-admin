@@ -4,7 +4,7 @@ import { analyticsSettings } from '../../db/schema';
 import type { AnalyticsSettingsRow } from '../../db/schema';
 import type { UpdateAnalyticsSettingsInput, AnalyticsPublicConfig } from '@zenith/shared/analytics';
 import { currentCreateTenantId, getCreateTenantId, exactTenantCondition } from '../../lib/tenant';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { currentUserOrNull } from '../../lib/context';
 import { currentMemberOrNull } from '../../lib/member-context';
 import { broadcast } from '../../lib/ws-manager';
@@ -35,8 +35,7 @@ export function mapSettings(row: AnalyticsSettingsRow) {
     replayBlockSelector: row.replayBlockSelector,
     replayRetentionDays: row.replayRetentionDays,
     replayStorageQuotaMb: row.replayStorageQuotaMb,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

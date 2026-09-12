@@ -4,7 +4,7 @@ import { workflowQuickPhrases } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import type { WorkflowQuickPhrase, CreateWorkflowQuickPhraseInput, UpdateWorkflowQuickPhraseInput } from '@zenith/shared/workflow';
 import { requireRow } from '../../lib/db-assert';
 import { buildWhere } from '../../lib/where-helpers';
@@ -17,8 +17,7 @@ export function mapQuickPhrase(row: PhraseRow): WorkflowQuickPhrase {
     userId: row.userId ?? null,
     content: row.content,
     sort: row.sort,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

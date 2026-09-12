@@ -4,7 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { userAiConfigs } from '../../db/schema';
 import { currentUser } from '../../lib/context';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { sealApiKey, unsealApiKey } from './ai-providers.service';
 import type { SaveUserAiConfigInput } from '@zenith/shared/ai';
 import { maskSecret, SECRET_PLACEHOLDER } from '@zenith/shared/core';
@@ -27,8 +27,7 @@ function mapRow(row: typeof userAiConfigs.$inferSelect) {
     capabilities: row.capabilities ?? null,
     systemPrompt: row.systemPrompt,
     isEnabled: row.isEnabled,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

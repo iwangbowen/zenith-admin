@@ -8,7 +8,7 @@ import { currentUser } from '../../lib/context';
 import { getEffectiveTenantId } from '../../lib/tenant';
 import { getTenantPackageFeatureSet } from '../../lib/tenant-package';
 import { isSuperAdmin, getUserMenuIds } from '../../lib/permissions';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { buildTree } from '@zenith/shared/core';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
@@ -32,8 +32,7 @@ export function mapMenu(row: typeof menus.$inferSelect): Omit<Menu, 'children'> 
     status: row.status,
     visible: row.visible,
     featureKey: row.featureKey,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

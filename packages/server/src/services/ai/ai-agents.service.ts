@@ -4,7 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { aiAgents, aiKnowledgeBases, aiProviderConfigs } from '../../db/schema';
 import { currentUser } from '../../lib/context';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import logger from '../../lib/logger';
 import type { AiAgentRow } from '../../db/schema';
 import type { AiBuiltinAgent, CreateAiAgentInput, UpdateAiAgentInput } from '@zenith/shared/ai';
@@ -34,8 +34,7 @@ function mapAgent(row: AiAgentRow) {
     suggestedQuestions: row.suggestedQuestions ?? [],
     usageCount: row.usageCount,
     isEnabled: row.isEnabled,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

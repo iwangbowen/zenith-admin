@@ -18,7 +18,7 @@ import {
   iotDevices, iotFirmwares, iotOtaTaskDevices, iotOtaTasks, iotProducts,
   type IotDeviceRow, type IotFirmwareRow, type IotOtaTaskDeviceRow, type IotOtaTaskRow,
 } from '../../db/schema';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
@@ -50,8 +50,7 @@ export function mapIotOtaTask(row: IotOtaTaskRow, extra?: { productName?: string
     succeededCount: row.succeededCount,
     failedCount: row.failedCount,
     createdBy: row.createdBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

@@ -85,6 +85,14 @@ export function formatNullableDateTime(date: NullableDateInput): string | null {
   return formatDateTime(date);
 }
 
+/**
+ * 审计时间戳列（`timestampColumns()` 的 `createdAt` / `updatedAt`）→ 契约字符串。
+ * `mapXxx` 里写 `...formatTimestamps(row)`，不再逐个 `createdAt: formatDateTime(row.createdAt)`。
+ */
+export function formatTimestamps(row: { createdAt: DateInput; updatedAt: DateInput }): { createdAt: string; updatedAt: string } {
+  return { createdAt: formatDateTime(row.createdAt), updatedAt: formatDateTime(row.updatedAt) };
+}
+
 export function formatDate(date: DateInput): string {
   const fast = toFastDate(date);
   const parts = fast ? zonedParts(fast) : null;

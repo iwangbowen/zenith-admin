@@ -14,7 +14,7 @@ import {
 } from '../../db/schema';
 import { currentUserId, currentUserOrNull } from '../../lib/context';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition, nullableEq } from '../../lib/where-helpers';
 import {
@@ -97,8 +97,7 @@ export function mapReportMetric(row: MetricRowExt): ReportMetric {
     deprecationReason: row.deprecationReason ?? null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

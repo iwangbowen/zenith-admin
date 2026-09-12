@@ -19,7 +19,7 @@ import {
 import { pageOffset } from '../../lib/pagination';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { currentUserOrNull, hasPermission } from '../../lib/context';
 import { mapWithConcurrency } from '../../lib/concurrency';
@@ -107,8 +107,7 @@ export function mapDashboard(
     remark: snapshotOrRowValue(snapshot, 'remark', row.remark ?? null),
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

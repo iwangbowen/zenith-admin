@@ -1,6 +1,6 @@
 import { isAsyncTaskTerminal, type AsyncTask, type AsyncTaskItem } from '@zenith/shared/tasks';
 import type { AsyncTaskRow, asyncTaskItems } from '../../db/schema';
-import { formatDateTime, formatNullableDateTime } from '../datetime';
+import { formatNullableDateTime, formatTimestamps } from '../datetime';
 import { sendToUser } from '../ws-manager';
 import { getTaskTypeMeta } from './registry';
 
@@ -33,8 +33,7 @@ export function mapAsyncTask(row: AsyncTaskRowWithCreator): AsyncTask {
     traceId: row.traceId ?? null,
     startedAt: formatNullableDateTime(row.startedAt),
     completedAt: formatNullableDateTime(row.completedAt),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -49,8 +48,7 @@ export function mapAsyncTaskItem(row: typeof asyncTaskItems.$inferSelect): Async
     message: row.message ?? null,
     data: row.data ?? null,
     attempt: row.attempt,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

@@ -9,7 +9,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
 import { analyticsContract } from '@zenith/shared/analytics';
 import type { TrackEventInput, CreateAnalyticsEventMetaInput, UpdateAnalyticsEventMetaInput } from '@zenith/shared/analytics';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { currentUser } from '../../lib/context';
@@ -32,8 +32,7 @@ export function mapEventMeta(row: AnalyticsEventMetaRow) {
     eventCount: Number(row.eventCount),
     firstSeenAt: formatNullableDateTime(row.firstSeenAt),
     lastSeenAt: formatNullableDateTime(row.lastSeenAt),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

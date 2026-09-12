@@ -17,7 +17,7 @@ import type { AnalyticsUserSegmentRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import { analyticsContract } from '@zenith/shared/analytics';
 import type { AnalyticsSegmentRule, AnalyticsSegmentEventCondition, AnalyticsSegmentAttributeCondition, CreateAnalyticsUserSegmentInput, UpdateAnalyticsUserSegmentInput } from '@zenith/shared/analytics';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
@@ -39,8 +39,7 @@ export function mapSegment(row: AnalyticsUserSegmentRow) {
     snapshotAt: formatNullableDateTime(row.snapshotAt),
     createdBy: row.createdBy,
     updatedBy: row.updatedBy,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

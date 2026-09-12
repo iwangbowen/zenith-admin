@@ -5,7 +5,7 @@ import { db } from '../../db';
 import { mpKfAccounts } from '../../db/schema';
 import type { MpKfAccountRow } from '../../db/schema';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { ensureMpAccountExists } from './mp-account.service';
 import { getWechatKfList, addWechatKfAccount, updateWechatKfAccount, delWechatKfAccount } from '../../lib/wechat';
@@ -27,8 +27,7 @@ export function mapMpKfAccount(row: MpKfAccountRow) {
     status: row.status,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

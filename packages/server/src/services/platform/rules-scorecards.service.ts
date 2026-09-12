@@ -22,7 +22,7 @@ import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { evaluateScorecard, type ScorecardLike } from '../../lib/rules-scorecard';
 import { recordRuleExecution, snapshotRuleScope } from './rules-executions.service';
 import { invalidateRuleRuntimeCache } from './rules-runtime-cache';
@@ -61,8 +61,7 @@ export function mapRuleScorecard(row: Row) {
     version: row.version,
     publishedAt: formatNullableDateTime(row.publishedAt),
     dirty,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

@@ -29,12 +29,7 @@ import {
 } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
 import type { DbTransaction } from '../../db/types';
-import {
-  formatDateTime,
-  formatNullableDateTime,
-  parseDateRangeEnd,
-  parseDateRangeStart,
-} from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps, parseDateRangeEnd, parseDateRangeStart } from '../../lib/datetime';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import {
   currentUser,
@@ -247,8 +242,7 @@ function mapArtifact(row: CmsPublishArtifactRow) {
     status: row.status,
     error: row.error ?? null,
     generatedAt: formatNullableDateTime(row.generatedAt),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

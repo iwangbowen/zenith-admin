@@ -20,7 +20,7 @@ import {
   type CmsWidgetRow,
 } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { getThemeWidgetSlots, listThemeWidgetRenderers, resolveThemeWidgetRenderer } from '../../cms/themes/registry';
@@ -91,8 +91,7 @@ export function mapCmsWidget(
     hasUnpublishedChanges: row.draftRevision !== row.publishedRevision,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -478,8 +477,7 @@ async function mapWidgetRefs(rows: CmsWidgetRefRow[]) {
     rendererKey: rendererKey(row.rendererKey),
     styleProps: row.styleProps ?? {},
     ownerName: names.get(`${row.ownerType}:${row.ownerId}`) ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   }));
 }
 

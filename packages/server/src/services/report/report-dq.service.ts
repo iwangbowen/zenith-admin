@@ -18,7 +18,7 @@ import {
 } from '../../db/schema';
 import { currentUserId, runWithCurrentUser } from '../../lib/context';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { applyReadonlyTransactionGuards } from '../../lib/db-readonly-role';
 import { normalizeReadonlyReportSql } from '../../lib/report-sql-safety';
 import { mapAsyncTask, submitAsyncTask } from '../../lib/task-center';
@@ -215,8 +215,7 @@ export function mapReportDqRule(row: DqRuleRow, datasetName?: string | null): Re
     lastStatus: row.lastStatus ?? null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -242,8 +241,7 @@ export function mapReportDqRun(row: DqRunRow, names?: { ruleName?: string | null
     errorMessage: row.errorMessage ?? null,
     schemaSignature: row.schemaSignature ?? null,
     requestedBy: row.requestedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -283,8 +281,7 @@ export function mapReportDqAnomaly(row: DqAnomalyRow, names?: { ruleName?: strin
     acknowledgementNote: row.acknowledgementNote ?? null,
     resolvedAt: formatNullableDateTime(row.resolvedAt),
     resolvedBy: row.resolvedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

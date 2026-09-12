@@ -6,7 +6,7 @@ import { cmsSearchContract } from '@zenith/shared/cms';
 import { db } from '../../db';
 import { cmsSearchWords } from '../../db/schema';
 import type { CmsSearchWordRow } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { reloadCmsSearchDict } from './cms-search.service';
@@ -27,8 +27,7 @@ export function mapCmsSearchWord(row: CmsSearchWordRow) {
     weight: row.weight,
     status: row.status,
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

@@ -19,7 +19,7 @@ import { currentUser } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { buildAdapterContext, createOrderConfigResolver, loadOrderConfig } from './payment.service';
 import { postSystemJournal } from './payment-journal.service';
 import { getAdapter } from '../../lib/payment/registry';
@@ -68,8 +68,7 @@ export function mapReceiver(row: PaymentSharingReceiverRow): PaymentSharingRecei
     autoShare: row.autoShare,
     status: row.status,
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -86,8 +85,7 @@ export function mapSharingOrder(row: PaymentSharingOrderRow & { receiverName?: s
     version: row.version,
     finishedAt: formatNullableDateTime(row.finishedAt),
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

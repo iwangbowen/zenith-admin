@@ -23,7 +23,7 @@ import {
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { currentUser } from '../../lib/context';
 import { pageOffset } from '../../lib/pagination';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { workflowEventBus } from '../../lib/workflow-event-bus';
 import { createInstance } from './workflow-instances.service';
 import { assertSafeWorkflowUrl, renderUrlTemplate, workflowHttp } from '../../lib/workflow-outbound';
@@ -49,8 +49,7 @@ export function mapAutomation(row: WorkflowAutomationRow, definitionName?: strin
     tenantId: row.tenantId,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

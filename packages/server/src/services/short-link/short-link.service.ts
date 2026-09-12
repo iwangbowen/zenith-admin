@@ -13,7 +13,7 @@ import type { CreateShortLinkInput, UpdateShortLinkInput } from '@zenith/shared/
 import { db } from '../../db';
 import { shortLinks, type ShortLinkRow } from '../../db/schema';
 import { config } from '../../config';
-import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, dateRangeConditions, keywordCondition, withPagination } from '../../lib/where-helpers';
@@ -53,8 +53,7 @@ export function mapShortLink(row: ShortLinkRow) {
     lastVisitAt: formatNullableDateTime(row.lastVisitAt),
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

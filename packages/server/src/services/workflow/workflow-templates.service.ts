@@ -5,7 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import type { WorkflowTemplate, WorkflowFlowData, WorkflowFormSchema, CreateWorkflowTemplateInput, UpdateWorkflowTemplateInput, SaveAsTemplateInput } from '@zenith/shared/workflow';
 import { createDefinition } from './workflow-definitions.service';
 import { createWorkflowForm } from './workflow-forms.service';
@@ -27,8 +27,7 @@ export function mapTemplate(row: TemplateRow): WorkflowTemplate {
     formSchema: (row.formSchema ?? null) as WorkflowFormSchema | null,
     sort: row.sort,
     builtin: row.builtin,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

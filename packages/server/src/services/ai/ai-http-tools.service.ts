@@ -4,7 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { aiHttpTools } from '../../db/schema';
 import { currentUser } from '../../lib/context';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import type { AiHttpToolRow } from '../../db/schema';
 import type { CreateAiHttpToolInput, UpdateAiHttpToolInput } from '@zenith/shared/ai';
@@ -22,8 +22,7 @@ function mapTool(row: AiHttpToolRow) {
     headers: row.headers,
     params: row.params ?? [],
     isEnabled: row.isEnabled,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

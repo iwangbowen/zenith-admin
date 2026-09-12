@@ -6,7 +6,7 @@ import { db } from '../../db';
 import { mpTags } from '../../db/schema';
 import type { MpTagRow } from '../../db/schema';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { tenantScope, currentCreateTenantId } from '../../lib/tenant';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { ensureMpAccountExists } from './mp-account.service';
@@ -23,8 +23,7 @@ export function mapMpTag(row: MpTagRow) {
     fansCount: row.fansCount,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

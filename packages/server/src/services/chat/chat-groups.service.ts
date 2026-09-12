@@ -5,7 +5,7 @@ import { scheduleSendToUsers } from '../../lib/ws-manager';
 import { invalidateConversationMembers } from '../../lib/chat-member-cache';
 import { currentUser } from '../../lib/context';
 import { requireRow } from '../../lib/db-assert';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { HTTPException } from 'hono/http-exception';
 import type { ChatConversation } from '@zenith/shared/chat';
 import { fetchUserBrief, getUserNickname, listConversationMemberIds } from './chat-shared';
@@ -62,8 +62,7 @@ export async function createGroupConversation(name: string, memberIds: number[] 
     muteAll: false,
     myRole: 'owner',
     myMutedUntil: null,
-    createdAt: formatDateTime(conv.createdAt),
-    updatedAt: formatDateTime(conv.updatedAt),
+    ...formatTimestamps(conv),
   };
 }
 

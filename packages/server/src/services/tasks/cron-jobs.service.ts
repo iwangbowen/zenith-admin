@@ -44,14 +44,13 @@ import {
 } from '../../lib/pg-boss-scheduler';
 import { HTTPException } from 'hono/http-exception';
 import { currentUserOrNull } from '../../lib/context';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 
 export function mapCronJob(row: typeof cronJobs.$inferSelect) {
   return {
     ...row,
     lastRunAt: formatNullableDateTime(row.lastRunAt),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

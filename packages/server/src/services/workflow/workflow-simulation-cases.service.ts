@@ -8,7 +8,7 @@ import { workflowSimulationCases, workflowDefinitions } from '../../db/schema';
 import type { WorkflowSimulationCaseRow } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import type { WorkflowSimulationCase, WorkflowSimulationDecision, SaveWorkflowSimulationCaseInput } from '@zenith/shared/workflow';
 import { requireRow } from '../../lib/db-assert';
@@ -25,8 +25,7 @@ function mapCase(row: WorkflowSimulationCaseRow): WorkflowSimulationCase {
     tenantId: row.tenantId ?? null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

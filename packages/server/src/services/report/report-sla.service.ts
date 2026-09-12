@@ -15,7 +15,7 @@ import {
 } from '../../db/schema';
 import { currentUserId, runWithCurrentUser } from '../../lib/context';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { pageOffset } from '../../lib/pagination';
 import { mapAsyncTask, submitAsyncTask } from '../../lib/task-center';
 import { ensureDatasetExists } from './report-dataset.service';
@@ -73,8 +73,7 @@ export function mapReportSlaRule(row: SlaRuleRow): ReportSlaRule {
     lastNotifiedAt: formatNullableDateTime(row.lastNotifiedAt),
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -95,8 +94,7 @@ export function mapReportSlaViolation(row: SlaViolationRow): ReportSlaViolation 
     resolvedAt: formatNullableDateTime(row.resolvedAt),
     resolvedBy: row.resolvedBy ?? null,
     resolutionNote: row.resolutionNote ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

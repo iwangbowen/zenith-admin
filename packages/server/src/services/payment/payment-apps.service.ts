@@ -11,7 +11,7 @@ import { currentUser } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import type { CreatePaymentAppInput, UpdatePaymentAppInput, PaymentApp, PaymentChannel } from '@zenith/shared/payment';
 
@@ -45,8 +45,7 @@ export function mapApp(row: AppWithConfigs): PaymentApp {
     unionpayConfigId: row.unionpayConfigId ?? null,
     unionpayConfigName: row.unionpayConfig?.name ?? null,
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

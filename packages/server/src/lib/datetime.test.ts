@@ -8,6 +8,7 @@ import {
   formatDateTime,
   formatFileTimestamp,
   formatNullableDateTime,
+  formatTimestamps,
   isDateTimeString,
   parseDateRangeEnd,
   parseDateRangeStart,
@@ -33,6 +34,12 @@ describe('datetime utilities', () => {
   it('returns null for nullable empty values', () => {
     expect(formatNullableDateTime(null)).toBeNull();
     expect(formatNullableDateTime(undefined)).toBeNull();
+  });
+
+  it('formatTimestamps 只映射 createdAt / updatedAt 两列，可展开进 mapXxx', () => {
+    const row = { id: 1, name: 'x', createdAt: '2026-03-22 20:09:37', updatedAt: new Date(2026, 2, 23, 8, 0, 0) };
+    expect(formatTimestamps(row)).toEqual({ createdAt: '2026-03-22 20:09:37', updatedAt: formatDateTime(row.updatedAt) });
+    expect(Object.keys(formatTimestamps(row))).toEqual(['createdAt', 'updatedAt']);
   });
 
   it('formats date and file timestamp', () => {

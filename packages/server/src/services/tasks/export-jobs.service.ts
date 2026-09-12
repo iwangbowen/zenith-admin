@@ -8,7 +8,7 @@ import { db } from '../../db';
 import { exportJobDownloads, exportJobs, fileStorageConfigs, managedFiles, users } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime, formatFileTimestamp, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatFileTimestamp, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { currentUser, runWithCurrentUser } from '../../lib/context';
 import { getUserPermissions, isSuperAdmin } from '../../lib/permissions';
 import { exactTenantCondition, getCreateTenantId } from '../../lib/tenant';
@@ -135,8 +135,7 @@ function mapExportJob(row: typeof exportJobs.$inferSelect & { createdByUser?: { 
     createdByName: row.createdByUser?.nickname || row.createdByUser?.username || null,
     startedAt: formatNullableDateTime(row.startedAt),
     completedAt: formatNullableDateTime(row.completedAt),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

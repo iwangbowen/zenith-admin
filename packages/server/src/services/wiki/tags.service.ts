@@ -5,7 +5,7 @@ import { wikiTagContract } from '@zenith/shared/wiki';
 import { db } from '../../db';
 import { wikiDocTags, wikiTags, type WikiTagRow } from '../../db/schema';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
@@ -17,8 +17,7 @@ export function mapWikiTag(row: WikiTagRow) {
     color: row.color ?? null,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

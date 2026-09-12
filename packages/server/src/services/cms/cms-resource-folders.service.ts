@@ -4,7 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsResourceFolders, cmsResources } from '../../db/schema';
 import type { CmsResourceFolderRow } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import type { CmsResourceFolder, CreateCmsResourceFolderInput, UpdateCmsResourceFolderInput } from '@zenith/shared/cms';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
@@ -18,8 +18,7 @@ export function mapCmsResourceFolder(row: CmsResourceFolderRow, resourceCount = 
     name: row.name,
     sort: row.sort,
     resourceCount,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

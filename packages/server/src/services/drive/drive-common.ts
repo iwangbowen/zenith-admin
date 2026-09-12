@@ -4,7 +4,7 @@ import { db } from '../../db';
 import { departments, driveNodes, driveSpaces, roles, userGroups, userRoles, users, type DriveNodeRow, type DriveSpaceRow, type DriveTagRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import type { JwtPayload } from '../../middleware/auth';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { resolveUserNames, type UserNameMap } from '../../lib/user-nicknames';
 
 /** 节点内容鉴权地址（与 routes/drive/drive-nodes.ts 的 /{id}/content 一致） */
@@ -140,8 +140,7 @@ export function mapDriveSpace(row: DriveSpaceRow, extras: SpaceMapExtras): Drive
     daysUntilFull: extras.daysUntilFull,
     createdBy: row.createdBy ?? null,
     updatedBy: row.updatedBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -187,8 +186,7 @@ export function mapDriveNode(row: DriveNodeRow, extras: NodeMapExtras = {}): Dri
     createdByName: row.createdBy ? names?.get(row.createdBy) ?? null : null,
     updatedBy: row.updatedBy ?? null,
     updatedByName: row.updatedBy ? names?.get(row.updatedBy) ?? null : null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -198,8 +196,7 @@ export function mapDriveTag(row: DriveTagRow): DriveTag {
     spaceId: row.spaceId,
     name: row.name,
     color: row.color ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

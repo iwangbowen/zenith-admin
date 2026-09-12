@@ -11,7 +11,7 @@ import {
   forceLogoutAllByUserExcept, getSession,
 } from '../../lib/session-manager';
 import type { JwtPayload } from '../../middleware/auth';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { parseUserAgent } from '../../lib/request-helpers';
 import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { lookupIpLocation } from '../../lib/ip-location';
@@ -43,8 +43,7 @@ export async function getUserRoles(userId: number) {
     code: r.code,
     description: r.description,
     status: r.status,
-    createdAt: formatDateTime(r.createdAt),
-    updatedAt: formatDateTime(r.updatedAt),
+    ...formatTimestamps(r),
   }));
 }
 
@@ -206,8 +205,7 @@ export async function finalizeLogin(
     user: {
       ...userInfo,
       roles: userRoleList,
-      createdAt: formatDateTime(user.createdAt),
-      updatedAt: formatDateTime(user.updatedAt),
+      ...formatTimestamps(user),
       requirePasswordChange: options.requirePasswordChange,
     },
     token: { accessToken, refreshToken },
@@ -616,8 +614,7 @@ export async function getMyProfile() {
     roles: userRoleList,
     permissions,
     requirePasswordChange,
-    createdAt: formatDateTime(user.createdAt),
-    updatedAt: formatDateTime(user.updatedAt),
+    ...formatTimestamps(user),
   };
 }
 

@@ -9,7 +9,7 @@ import type { CreateAnalyticsSiteInput, UpdateAnalyticsSiteInput } from '@zenith
 import { db } from '../../db';
 import { analyticsSites, userEvents } from '../../db/schema';
 import type { AnalyticsSiteRow } from '../../db/schema';
-import { formatDate, formatDateTime, parseDateRangeStart } from '../../lib/datetime';
+import { formatDate, formatTimestamps, parseDateRangeStart } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { pageOffset } from '../../lib/pagination';
 import { currentCreateTenantId, tenantScope } from '../../lib/tenant';
@@ -53,8 +53,7 @@ export function mapSite(row: SiteWithTenant) {
     remark: row.remark,
     createdBy: row.createdBy,
     updatedBy: row.updatedBy,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

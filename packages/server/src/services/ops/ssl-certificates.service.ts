@@ -12,7 +12,7 @@ import { db } from '../../db';
 import { sslCertificates, users } from '../../db/schema';
 import type { SslCertificateRow } from '../../db/schema';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { formatDate, formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDate, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
@@ -177,8 +177,7 @@ function mapCert(row: SslCertificateRow) {
     status: row.status,
     autoRenew: row.autoRenew,
     daysRemaining,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

@@ -7,7 +7,7 @@ import type { DbExecutor } from '../../db/types';
 import type { createFileStorageConfigSchema } from '@zenith/shared/platform';
 import { FILE_OBJECT_ACL_SUPPORT, fileStorageConfigContract } from '@zenith/shared/platform';
 import type { z } from '@hono/zod-openapi';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { uploadObjectByConfig, deleteObjectByConfig } from '../../lib/file-storage';
@@ -44,8 +44,7 @@ export function mapFileStorageConfig(row: typeof fileStorageConfigs.$inferSelect
   } = row;
   return {
     ...safe,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

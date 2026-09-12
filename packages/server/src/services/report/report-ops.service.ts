@@ -17,7 +17,7 @@ import {
   reportDashboards,
   reportShareAccessLogs,
 } from '../../db/schema';
-import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { currentUserId, getCtx } from '../../lib/context';
 import { getClientIp } from '../../lib/request-helpers';
@@ -76,8 +76,7 @@ export function mapCategory(row: ReportDashboardCategoryRow): ReportDashboardCat
     name: row.name,
     sort: row.sort,
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -108,8 +107,7 @@ export async function listCategories(): Promise<ReportDashboardCategory[]> {
     sort: row.sort,
     remark: row.remark ?? null,
     dashboardCount: Number(row.dashboardCount ?? 0),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   }));
 }
 
@@ -428,8 +426,7 @@ export function mapShare(
     accessCount: row.accessCount ?? 0,
     lastAccessAt: formatNullableDateTime(stats?.lastAccessAt ?? null),
     createdBy: row.createdBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
@@ -812,8 +809,7 @@ export function mapEmbedToken(row: ReportDashboardEmbedTokenRow): ReportDashboar
     revokedAt: formatNullableDateTime(row.revokedAt),
     remark: row.remark ?? null,
     createdBy: row.createdBy ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

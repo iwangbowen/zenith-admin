@@ -15,7 +15,7 @@ import {
   type DriveAccessRequestRow, type DriveNodeRow,
 } from '../../db/schema';
 import { currentUser, currentUserId } from '../../lib/context';
-import { formatDateTime, formatNullableDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { formatNullableDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import { isPgUniqueViolation } from '../../lib/db-errors';
 import { buildListResult } from '../../lib/list-query';
@@ -55,8 +55,7 @@ async function mapRequests(rows: DriveAccessRequestRow[]): Promise<DriveAccessRe
     decidedByName: r.decidedBy ? names.get(r.decidedBy) ?? null : null,
     decidedAt: formatNullableDateTime(r.decidedAt),
     decisionNote: r.decisionNote ?? null,
-    createdAt: formatDateTime(r.createdAt),
-    updatedAt: formatDateTime(r.updatedAt),
+    ...formatTimestamps(r),
   }));
 }
 

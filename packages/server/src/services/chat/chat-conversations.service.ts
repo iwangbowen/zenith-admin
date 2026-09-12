@@ -8,7 +8,7 @@ import { scheduleSendToUsers } from '../../lib/ws-manager';
 import { invalidateConversationMembers } from '../../lib/chat-member-cache';
 import { currentUser } from '../../lib/context';
 import { requireRow } from '../../lib/db-assert';
-import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { HTTPException } from 'hono/http-exception';
 import type { ChatConversation, ChatReadState } from '@zenith/shared/chat';
 import { notHiddenFor, rowSender, mapChatMessage, ensureConversationMember, getUserNickname } from './chat-shared';
@@ -182,8 +182,7 @@ export async function listConversations(): Promise<ChatConversation[]> {
     joinApproval: conv.joinApproval,
     myRole: myRoleMap.get(conv.id) ?? 'member',
     myMutedUntil: formatNullableDateTime(myMutedUntilMap.get(conv.id) ?? null),
-    createdAt: formatDateTime(conv.createdAt),
-    updatedAt: formatDateTime(conv.updatedAt),
+    ...formatTimestamps(conv),
   }));
 
   // 置顶优先，然后按最新消息时间排序
@@ -278,8 +277,7 @@ export async function getOrCreateDirectConversation(targetUserId: number): Promi
     muteAll: false,
     myRole: 'member',
     myMutedUntil: null,
-    createdAt: formatDateTime(conv.createdAt),
-    updatedAt: formatDateTime(conv.updatedAt),
+    ...formatTimestamps(conv),
   };
 }
 

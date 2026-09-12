@@ -6,7 +6,7 @@ import { chatConversations, chatConversationMembers, chatScheduledMessages, user
 import type { ChatScheduledMessageRow } from '../../db/schema/chat';
 import { currentUser, runWithCurrentUser } from '../../lib/context';
 import { requireRow } from '../../lib/db-assert';
-import { formatDateTime, parseDateTimeInput } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps, parseDateTimeInput } from '../../lib/datetime';
 import logger from '../../lib/logger';
 import { sendMessage } from './chat.service';
 import type { ChatMessageExtra, ChatScheduledMessage, SendChatMessageInput } from '@zenith/shared/chat';
@@ -26,8 +26,7 @@ function mapScheduled(row: ChatScheduledMessageRow, conversationName: string | n
     status: row.status,
     failReason: row.failReason,
     sentMessageId: row.sentMessageId,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

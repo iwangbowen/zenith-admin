@@ -4,7 +4,7 @@ import { workflowSavedViews } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
 import { getCreateTenantId } from '../../lib/tenant';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { clearDefaultFlag } from '../../lib/default-flag';
 import type { WorkflowSavedView, CreateWorkflowSavedViewInput, UpdateWorkflowSavedViewInput } from '@zenith/shared/workflow';
 
@@ -24,8 +24,7 @@ function mapView(row: Row): WorkflowSavedView {
     filters: (row.filters ?? {}) as Record<string, unknown>,
     isDefault: row.isDefault,
     sort: row.sort,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

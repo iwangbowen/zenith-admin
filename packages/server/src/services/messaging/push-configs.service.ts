@@ -12,7 +12,7 @@ import { buildListResult } from '../../lib/list-query';
 import type { CreatePushConfigInput, TestPushSendInput, UpdatePushConfigInput, pushConfigContract } from '@zenith/shared/messaging';
 import { db } from '../../db';
 import { pushConfigs, pushSendLogs, type PushConfigRow } from '../../db/schema';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { sendPushByProvider } from '../../lib/push-sender';
 import { clearInvalidPushRegistrations } from '../ops/client-devices.service';
@@ -35,8 +35,7 @@ export function mapPushConfigSafe(row: PushConfigWithApp) {
     apnsProduction: row.apnsProduction,
     status: row.status,
     remark: row.remark ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

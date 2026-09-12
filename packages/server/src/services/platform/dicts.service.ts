@@ -5,7 +5,7 @@ import { buildWhere, withPagination, keywordCondition, dateRangeConditions } fro
 import { db } from '../../db';
 import { dicts, dictItems } from '../../db/schema';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { currentUser } from '../../lib/context';
 import { HTTPException } from 'hono/http-exception';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
@@ -20,8 +20,7 @@ export function mapDictItem(row: typeof dictItems.$inferSelect) {
   return {
     ...row,
     metadata: row.metadata as Record<string, unknown> | null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

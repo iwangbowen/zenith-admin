@@ -6,7 +6,7 @@ import { db } from '../../db';
 import { channelMessageTemplates, type ChannelMessageTemplateRow } from '../../db/schema';
 import type { ChatMessageExtra } from '@zenith/shared/chat';
 import type { ChannelMessageTemplate, CreateChannelTemplateInput, UpdateChannelTemplateInput } from '@zenith/shared/messaging';
-import { formatDateTime } from '../../lib/datetime';
+import { formatTimestamps } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 
 function mapTemplate(row: ChannelMessageTemplateRow): ChannelMessageTemplate {
@@ -17,8 +17,7 @@ function mapTemplate(row: ChannelMessageTemplateRow): ChannelMessageTemplate {
     title: row.title,
     content: row.content,
     extra: (row.extra as ChatMessageExtra | null) ?? null,
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 

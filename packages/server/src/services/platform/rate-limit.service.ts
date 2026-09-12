@@ -6,7 +6,7 @@ import { rateLimitRules } from '../../db/schema';
 import type { RateLimitRuleRow } from '../../db/schema';
 import redis from '../../lib/redis';
 import { config } from '../../config';
-import { formatDateTime } from '../../lib/datetime';
+import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import {
   listRuleConfigs,
   refreshRateLimitRules,
@@ -41,8 +41,7 @@ function mapRule(row: RateLimitRuleRow) {
     pathPatterns: row.pathPatterns ?? [],
     predefined: PREDEFINED_NAMES.has(row.name),
     mountSource: getMountSource(row.name, row.pathPatterns ?? []),
-    createdAt: formatDateTime(row.createdAt),
-    updatedAt: formatDateTime(row.updatedAt),
+    ...formatTimestamps(row),
   };
 }
 
