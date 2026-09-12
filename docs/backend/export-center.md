@@ -127,18 +127,20 @@ export const positionsExportDefinition = defineExport({
 
 ## 前端接入
 
-列表页使用 `ExportButton`，将当前已提交筛选条件传给 `query`；条件用 `compactQuery`（`lib/query.ts`）去掉 `undefined` / `null` / 空串，时间区间直接展开 `formatDateTimeRangeForApi(range)`：
+列表页使用 `ExportButton`，将当前已提交筛选条件传给 `query`。条件与列表查询**同源**：用 `compactParams`（`lib/query.ts`）从 `submittedParams` 映射一次得到 `filterQuery`（去掉 `undefined` / `null` / 空串、保留 `0` / `false`、键类型保留），列表与导出都用它；时间区间直接展开 `formatDateTimeRangeForApi(range)`；权限门交给组件的 `permission`：
 
 ```tsx
-const buildExportQuery = () => compactQuery({
+const filterQuery = useMemo(() => compactParams({
   keyword: submittedParams.keyword,
   status: submittedParams.status,
   ...formatDateTimeRangeForApi(submittedParams.timeRange),
-});
+}), [submittedParams]);
 
-const renderExportButtons = () => hasPermission('system:xxx:export') ? (
-  <ExportButton entity="system.xxxs" query={buildExportQuery()} />
-) : null;
+const listQuery = useXxxList({ page, pageSize, ...filterQuery });
+
+<ExportButton entity="system.xxxs" query={filterQuery} permission="system:xxx:export" />
 ```
+
+导出定义侧的 `countRows` / `streamRows` 必须消费这个 `query`（复用 service 导出的 `buildXxxWhere(filter)`），否则页面上的筛选对导出无效。
 
 `ExportButton` 默认 `formats={['xlsx', 'csv']}`、`raw=false`、`watermark=true`、`executionMode="sync"`。同步导出成功后自动下载；异步导出提示用户到导出中心查看进度和下载文件。移动端可使用 `variant="flat"` 放入页面的移动操作区。

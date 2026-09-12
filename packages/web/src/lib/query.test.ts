@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ApiError, compactQuery, LOOKUP_STALE_TIME, toQueryString, unwrap } from './query';
+import { ApiError, compactParams, compactQuery, LOOKUP_STALE_TIME, toQueryString, unwrap } from './query';
 
 describe('unwrap', () => {
   it('code 为 0 时返回 data', () => {
@@ -45,6 +45,22 @@ describe('toQueryString', () => {
         enabled: false,
         channel: 'wechat',
       });
+    });
+  });
+
+  describe('compactParams', () => {
+    it('与 compactQuery 同语义：丢弃 undefined / null / 空串，保留 0 / false', () => {
+      expect(compactParams({ keyword: '', status: undefined, tenantId: null, minDurationMs: 0, enabled: false, type: 'a' }))
+        .toEqual({ minDurationMs: 0, enabled: false, type: 'a' });
+    });
+
+    it('保留键类型：结果可展开进带可选字段的契约查询参数', () => {
+      interface ListQuery { page: number; pageSize: number; keyword?: string; status?: 'enabled' | 'disabled'; limit?: number }
+      const status = 'enabled' as 'enabled' | 'disabled' | undefined;
+      const filter = compactParams({ keyword: '' as string | undefined, status, limit: 0 as number | null });
+      // 类型断言：filter 的键为可选且已剔除 null / ''，可与分页字段一起满足 ListQuery
+      const query: ListQuery = { page: 1, pageSize: 10, ...filter };
+      expect(query).toEqual({ page: 1, pageSize: 10, status: 'enabled', limit: 0 });
     });
   });
 

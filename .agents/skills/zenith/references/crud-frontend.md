@@ -97,6 +97,7 @@ export const usePurgeXxxs = () =>
 删除动作（`deleteAction` / `confirmAndDelete`）、表格接线（`listTableProps`）。页面只显式声明筛选控件、列、权限与文案。
 
 ```tsx
+import { useMemo } from 'react';
 import { Form, Spin, Row, Col } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -111,7 +112,7 @@ import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
-import { compactQuery } from '@/lib/query';
+import { compactParams } from '@/lib/query';
 // 有日期时间范围筛选时：import { formatDateTimeRangeForApi } from '@/utils/date';
 // beforeSave 需要中断提交时：import { abortSubmit } from '@/lib/abort-submit';
 import { useDeleteXxxs, useSaveXxx, useXxxDetail, useXxxList, xxxKeys } from '@/hooks/queries/xxxs';
@@ -140,16 +141,19 @@ export default function XxxPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: xxxKeys.lists });
 
-  // ─── 列表查询（key 驱动：page/pageSize/submittedParams 变化自动请求）────
-  const listQuery = useXxxList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // ─── 已提交筛选 → 契约查询参数：只映射一次，列表 / 导出 / 深链共用 ──────────
+  // compactParams 丢弃 undefined / null / 空串、保留 0 / false，并保留键类型（可直接展开进 QueryOf）；
+  // 不要为列表写一份 `x || undefined`、再为导出写一份 compactQuery({...})
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     // 契约查询参数按枚举声明，筛选控件的 string 值先收窄
     status: enumValueOf(XXX_STATUSES, submittedParams.status),
     // 标准 startTime / endTime 范围（Date → 字符串后再进 params）：
     // ...formatDateTimeRangeForApi(submittedParams.timeRange),
-  });
+  }), [submittedParams]);
+
+  // ─── 列表查询（key 驱动：page/pageSize/filterQuery 变化自动请求）────────
+  const listQuery = useXxxList({ page, pageSize, ...filterQuery });
 
   // ─── 新增 / 编辑弹窗 ────────────────────────────────────────────────────
   // 表单值类型取契约创建入参的部分形态；保存 mutation 的 values 类型与之一致
@@ -193,13 +197,6 @@ export default function XxxPage() {
   // items 给筛选栏 StatusSelect；options（{ value, label }[]）直接给表单 Form.Select 的 optionList
   const { items: statusItems, options: statusOptions } = useDictItems('common_status');
 
-  // 导出条件：compactQuery 丢弃 undefined / null / 空串，时间区间直接展开 formatDateTimeRangeForApi(range)
-  const buildExportQuery = () => compactQuery({
-    keyword: submittedParams.keyword,
-    status: enumValueOf(XXX_STATUSES, submittedParams.status),
-    // ...formatDateTimeRangeForApi(submittedParams.timeRange),
-  });
-
   // ─── 表格列 ─────────────────────────────────────────────────────────────
   // 有且只有一个弹性主列（minWidth、不写 width），其余列固定 width；不传 scroll.x
   const columns: ColumnProps<Xxx>[] = [
@@ -239,9 +236,10 @@ export default function XxxPage() {
         onSearch={handleSearch}
         onReset={handleReset}
         create={hasPermission('system:xxx:create') ? <CreateButton onClick={modal.openCreate} /> : null}
-        actions={hasPermission('system:xxx:export') ? <ExportButton entity="system.xxxs" query={buildExportQuery()} /> : null}
+        {/* 导出：query 直接给 filterQuery（与列表同源）；权限门交给组件的 permission，不再手写 hasPermission ? : null */}
+        actions={<ExportButton entity="system.xxxs" query={filterQuery} permission="system:xxx:export" />}
         // 移动端更多菜单里的按钮用无边框视觉；缺省与 actions 相同
-        mobileActions={hasPermission('system:xxx:export') ? <ExportButton entity="system.xxxs" query={buildExportQuery()} label="导出" variant="flat" /> : null}
+        mobileActions={<ExportButton entity="system.xxxs" query={filterQuery} permission="system:xxx:export" variant="flat" />}
       />
 
       {/* 数据源 / loading / 刷新 / 分页由 listTableProps 接好；默认 rowKey id · size small · bordered */}

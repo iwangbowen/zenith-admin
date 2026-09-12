@@ -29,15 +29,37 @@ export function toQueryString(params: object): string {
   return qs ? `?${qs}` : '';
 }
 
-export function compactQuery<T extends string | number | boolean>(
-  params: Record<string, T | null | undefined>,
-): Record<string, T> {
-  const result: Record<string, T> = {};
+/** 从对象类型中剔除「未填」形态（`undefined` / `null` / 空串），键全部变为可选 */
+export type CompactParams<T> = { [K in keyof T]?: Exclude<T[K], null | undefined | ''> };
+
+/**
+ * 已提交筛选 → 契约查询参数：丢弃 `undefined` / `null` / 空串，保留 `0` / `false`，并**保留键的类型**，
+ * 结果可直接展开进 `QueryOf<typeof xxxContract.list>`。列表查询、导出条件、深链都从同一份映射派生，
+ * 页面不再为列表写一份 `x || undefined`、为导出再写一份 `compactQuery({...})`。
+ *
+ * @example
+ * const filterQuery = useMemo(() => compactParams({
+ *   keyword: submittedParams.keyword,
+ *   status: enumValueOf(XXX_STATUSES, submittedParams.status),
+ *   ...formatDateTimeRangeForApi(submittedParams.timeRange),
+ * }), [submittedParams]);
+ * const listQuery = useXxxList({ page, pageSize, ...filterQuery });
+ * <ExportButton entity="system.xxxs" query={filterQuery} permission="system:xxx:export" />
+ */
+export function compactParams<T extends Record<string, unknown>>(params: T): CompactParams<T> {
+  const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(params)) {
     if (value === undefined || value === null || value === '') continue;
     result[key] = value;
   }
-  return result;
+  return result as CompactParams<T>;
+}
+
+/** `compactParams` 的弱类型形态：结果为 `Record<string, T>`，用于不需要契约类型的场景（拼查询串、透传给非契约通道） */
+export function compactQuery<T extends string | number | boolean>(
+  params: Record<string, T | null | undefined>,
+): Record<string, T> {
+  return compactParams(params) as Record<string, T>;
 }
 
 /** 变化频率低的 lookup 数据（字典项、部门树、用户下拉源等）的默认 staleTime */

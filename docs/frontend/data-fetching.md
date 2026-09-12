@@ -37,7 +37,8 @@ packages/web/src/
 | `unwrap(res)` | 解包统一响应：`code !== 0` 时抛 `ApiError` |
 | `ApiError` | 携带业务 `code` 的错误类型，`mutateAsync` 抛出后可保持弹窗打开 |
 | `toQueryString(params)` | 构建查询串，过滤 `undefined` / `null` / 空字符串，非空时带 `?` 前缀 |
-| `compactQuery(params)` | 过滤空值并返回纯对象，适合传给导出、深链或需要对象参数的接口 |
+| `compactParams(params)` | 过滤 `undefined` / `null` / 空串、保留 `0` / `false`，**保留键类型**：由 `submittedParams` 映射一次得到 `filterQuery`，直接展开进契约列表参数并传给 `ExportButton` / 深链 |
+| `compactQuery(params)` | `compactParams` 的弱类型形态（`Record<string, T>`），用于拼查询串或透传非契约通道 |
 | `LOOKUP_STALE_TIME` | 5 分钟，用于字典、部门树、用户下拉源等低频 lookup |
 | `createLimiter(max)` | 轻量并发信号量，限制同类请求并发数 |
 
