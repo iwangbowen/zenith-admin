@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import { CMS_SEARCH_WORD_TYPES } from '../constants';
@@ -108,8 +108,7 @@ export const cmsHotKeywordQuery = z.object({
   groupId: z.coerce.number().int().positive().optional(),
   keyword: z.string().optional(),
   status: entityStatusQuery,
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
+  ...dateRangeQuery(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
 });
 

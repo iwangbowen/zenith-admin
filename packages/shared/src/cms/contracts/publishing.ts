@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskItemSchema, asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import { CMS_PUBLISH_ACTIONS, CMS_PUBLISH_ARTIFACT_STATUSES, CMS_PUBLISH_TARGET_TYPES, CMS_PUBLISHING_TASK_STATUS_FILTERS } from '../constants';
@@ -80,8 +80,7 @@ export const cmsPublishingListQuery = paginationQuery.extend({
   status: queryEnum(CMS_PUBLISHING_TASK_STATUS_FILTERS),
   taskType: z.string().max(64).optional(),
   createdBy: z.string().max(100).optional(),
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
+  ...dateRangeQuery(),
   keyword: z.string().max(100).optional(),
 });
 
@@ -90,8 +89,7 @@ export const cmsPublishArtifactListQuery = paginationQuery.extend({
   taskId: z.coerce.number().int().positive().optional(),
   targetType: queryEnum(CMS_PUBLISH_TARGET_TYPES),
   status: queryEnum(CMS_PUBLISH_ARTIFACT_STATUSES),
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
+  ...dateRangeQuery(),
   keyword: z.string().max(100).optional(),
 });
 

@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { DRIVE_NODE_TYPES, DRIVE_SHARE_CAPABILITIES, DRIVE_SHARE_KINDS, DRIVE_SHARE_LINK_STATES } from '../constants';
 import { driveCollectPolicySchema, updateDriveShareLinkSchema } from '../validation';
@@ -80,8 +80,7 @@ export const driveShareLinkListQuery = paginationQuery.extend({
   spaceId: z.coerce.number().int().positive().optional(),
   kind: queryEnum(DRIVE_SHARE_KINDS),
   state: queryEnum(DRIVE_SHARE_LINK_STATES),
-  startTime: dateRangeBound('创建时间起'),
-  endTime: dateRangeBound('创建时间止'),
+  ...dateRangeQuery('创建时间'),
 });
 
 export const driveShareLinkContract = defineContract('/api/drive/share-links', {

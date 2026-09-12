@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   PROCESS_ROLES,
@@ -157,8 +157,7 @@ export const systemSchedulerRunListQuery = paginationQuery.extend({
   triggerType: queryEnum(SYSTEM_SCHEDULER_TRIGGER_TYPES),
   status: queryEnum(SYSTEM_SCHEDULER_RUN_STATUSES),
   alertStatus: queryEnum(SYSTEM_SCHEDULER_ALERT_FILTERS),
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
+  ...dateRangeQuery(),
 });
 
 export const systemSchedulerCleanupQuery = z.object({

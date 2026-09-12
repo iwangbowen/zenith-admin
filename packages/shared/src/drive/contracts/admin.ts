@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, entityStatusSchema, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts';
 import { DRIVE_ACTIVITY_ACTIONS, DRIVE_NODE_TYPES, DRIVE_QUOTA_REQUEST_STATUSES, DRIVE_ROLES, DRIVE_SPACE_TYPES } from '../constants';
@@ -82,8 +82,7 @@ export const driveAdminActivityListQuery = paginationQuery.extend({
   spaceId: z.coerce.number().int().positive().optional(),
   actorId: z.coerce.number().int().positive().optional(),
   action: queryEnum(DRIVE_ACTIVITY_ACTIONS),
-  startTime: dateRangeBound('时间起'),
-  endTime: dateRangeBound('时间止'),
+  ...dateRangeQuery('时间'),
 });
 
 export const driveAdminShareLogListQuery = paginationQuery.extend({
@@ -91,8 +90,7 @@ export const driveAdminShareLogListQuery = paginationQuery.extend({
   spaceId: z.coerce.number().int().positive().optional(),
   action: z.string().max(16).optional(),
   ok: queryBool('只看通过 / 只看被拒绝'),
-  startTime: dateRangeBound('时间起'),
-  endTime: dateRangeBound('时间止'),
+  ...dateRangeQuery('时间'),
 });
 
 export const driveLegalHoldListQuery = paginationQuery.extend({

@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { LOGIN_EVENT_TYPES, LOGIN_STATUSES } from '../constants';
 
@@ -62,8 +62,7 @@ export const loginLogListQuery = paginationQuery.extend({
   username: z.string().optional().meta({ description: '按用户名 / 昵称模糊匹配' }),
   eventType: queryEnum(LOGIN_EVENT_TYPES),
   status: queryEnum(LOGIN_STATUSES),
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
+  ...dateRangeQuery(),
 });
 
 export const loginLogStatsQuery = z.object({

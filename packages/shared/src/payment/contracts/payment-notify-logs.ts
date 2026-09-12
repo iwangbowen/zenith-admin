@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { PAYMENT_CHANNELS } from '../constants';
 
@@ -35,8 +35,7 @@ export const paymentNotifyLogListQuery = paginationQuery.extend({
   channel: queryEnum(PAYMENT_CHANNELS),
   scene: queryEnum(['payment', 'refund']),
   signatureValid: queryBool('只看验签通过 / 失败的回调'),
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
+  ...dateRangeQuery(),
 });
 
 /** 渠道回调日志：共用支付资源根 */

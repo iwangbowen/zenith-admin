@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   PAYMENT_CHANNELS,
@@ -97,8 +97,7 @@ export const paymentRiskHitListQuery = paginationQuery.extend({
   action: queryEnum(PAYMENT_RISK_ACTIONS),
   dimension: queryEnum(PAYMENT_RISK_HIT_QUERY_DIMENSIONS),
   channel: queryEnum(PAYMENT_CHANNELS),
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
+  ...dateRangeQuery(),
 });
 
 export const paymentRiskReviewListQuery = paginationQuery.extend({

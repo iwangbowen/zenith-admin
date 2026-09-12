@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, batchIdsBody, dateRangeBound, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, batchIdsBody, dateRangeQuery, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { ANNOUNCEMENT_RECIPIENT_TYPES, ANNOUNCEMENT_TARGET_TYPES } from '../constants';
 import { createAnnouncementSchema, updateAnnouncementSchema } from '../validation';
@@ -104,8 +104,7 @@ export const announcementListQuery = paginationQuery.extend({
   title: z.string().optional(),
   type: z.string().optional(),
   publishStatus: z.string().optional(),
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
+  ...dateRangeQuery(),
 });
 
 export const announcementInboxQuery = paginationQuery.extend({

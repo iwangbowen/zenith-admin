@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { OPEN_API_STATS_GRANULARITIES, OPEN_APP_ENVIRONMENTS, OPEN_AUTH_CHANNELS } from '../constants';
 
@@ -71,8 +71,7 @@ export type OpenApiStatsGroupItem = z.infer<typeof openApiStatsGroupItemSchema>;
 
 /** 统计维度：时间范围 / 应用 / 环境 */
 export const openApiStatsRangeQuery = z.object({
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
+  ...dateRangeQuery(),
   clientId: z.string().optional(),
   environment: queryEnum(OPEN_APP_ENVIRONMENTS),
 });
@@ -92,8 +91,7 @@ export const openApiCallLogListQuery = paginationQuery.extend({
   statusCode: z.coerce.number().int().min(100).max(599).optional(),
   environment: queryEnum(OPEN_APP_ENVIRONMENTS),
   keyword: z.string().optional().meta({ description: '按路径 / 应用名称模糊匹配' }),
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
+  ...dateRangeQuery(),
 });
 
 export const openApiStatsContract = defineContract('/api/open-api-stats', {

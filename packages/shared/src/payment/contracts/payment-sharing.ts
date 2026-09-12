@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { PAYMENT_SHARING_ORDER_STATUSES, PAYMENT_SHARING_RECEIVER_TYPES, PAYMENT_SHARING_REVERSAL_STATUSES } from '../constants';
 import {
@@ -82,8 +82,7 @@ export const paymentSharingOrderListQuery = paginationQuery.extend({
 export const paymentSharingReversalListQuery = paginationQuery.extend({
   sharingOrderId: z.coerce.number().int().positive().optional(),
   status: queryEnum(PAYMENT_SHARING_REVERSAL_STATUSES),
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
+  ...dateRangeQuery(),
 });
 
 /** 分账：接收方 / 分账单 / 分账冲正共用一个路由根 */

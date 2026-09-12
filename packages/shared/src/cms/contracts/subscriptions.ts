@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, fileField, multipart, op } from '../../core/contract';
 import { CMS_SUBSCRIPTION_SUBJECT_TYPES } from '../constants';
 
@@ -56,8 +56,7 @@ const cmsSubscriptionFilters = {
   siteId: z.coerce.number().int().positive(),
   subjectType: queryEnum(CMS_SUBSCRIPTION_SUBJECT_TYPES),
   subjectKeyword: z.string().max(255).optional(),
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
+  ...dateRangeQuery(),
 };
 
 export const cmsSubscriptionListQuery = paginationQuery.extend(cmsSubscriptionFilters);

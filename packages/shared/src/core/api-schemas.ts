@@ -43,6 +43,19 @@ export function dateRangeBound(description: string) {
 }
 
 /**
+ * 列表查询的标准时间范围端点 `startTime` / `endTime`，展开进 `paginationQuery.extend({ ..., ...dateRangeQuery('创建时间') })`。
+ * `subject` 写明作用的时间字段（描述生成「创建时间起 / 创建时间止」），缺省为通用「起始时间 / 结束时间」；
+ * 非标准键名（`startAt` / `dateStart` / `publishedFrom`…）仍逐个写 `dateRangeBound`。
+ * 服务端配合 `dateRangeConditions(column, q.startTime, q.endTime)`，前端配合 `formatDateTimeRangeForApi(range)`。
+ */
+export function dateRangeQuery(subject?: string) {
+  return {
+    startTime: dateRangeBound(subject ? `${subject}起` : '起始时间'),
+    endTime: dateRangeBound(subject ? `${subject}止` : '结束时间'),
+  };
+}
+
+/**
  * 查询串布尔参数（`?enabled=true` / `?enabled=false`）。
  * 禁止 `z.coerce.boolean()`——它把字符串 `'false'` 转成 `true`。
  * `'true' | '1' | 'yes' | 'on'` → true；`'false' | '0' | 'no' | 'off'` → false；空串视为未传；其余 400。

@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import {
@@ -228,8 +228,7 @@ export const cmsInteractionResponseListQuery = paginationQuery.extend({
   siteId: z.coerce.number().int().positive(),
   interactionId: z.coerce.number().int().positive().optional(),
   kind: queryEnum(CMS_INTERACTION_KINDS),
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
+  ...dateRangeQuery(),
 });
 
 export const cmsInteractionTextsQuery = paginationQuery.extend({

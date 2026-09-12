@@ -93,7 +93,7 @@ export type UpdateXxxInput = z.infer<typeof updateXxxSchema>;
 
 ```ts
 import * as z from 'zod';
-import { auditFieldsSchema, batchIdsBody, dateRangeBound, entityStatusQuery, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, batchIdsBody, dateRangeQuery, entityStatusQuery, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { XXX_STATUSES } from '../constants';
 import { createXxxSchema, updateXxxSchema } from '../validation';
@@ -121,13 +121,13 @@ export const xxxOptionSchema = xxxSchema.pick({ id: true, name: true, status: tr
 export type XxxOption = z.infer<typeof xxxOptionSchema>;
 
 // ─── 列表查询参数：分页 + 筛选。启用 / 禁用状态用 entityStatusQuery，其它枚举用 queryEnum（空串 = 全部），
-//     范围端点必须用 dateRangeBound；不导出 z.infer 类型——server 用 QueryOutputOf、web 用 QueryOf 从契约操作派生 ──
+//     标准 startTime / endTime 范围用 ...dateRangeQuery('作用的时间字段')（非标准键名才逐个 dateRangeBound）；
+//     不导出 z.infer 类型——server 用 QueryOutputOf、web 用 QueryOf 从契约操作派生 ──
 export const xxxListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按名称 / 描述模糊匹配' }),
   status: entityStatusQuery,
   type: queryEnum(XXX_TYPES),
-  startTime: dateRangeBound('创建时间起'),
-  endTime: dateRangeBound('创建时间止'),
+  ...dateRangeQuery('创建时间'),
 });
 
 // ─── 契约：键名即操作名（list / detail / create / update / remove 为标准 CRUD 约定）──

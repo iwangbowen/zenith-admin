@@ -88,7 +88,8 @@
 - **契约操作命名**：标准 CRUD 固定为 `list` / `detail` / `create` / `update` / `remove`，可选 `all`（下拉源）/
   `removeBatch`（`DELETE /batch`）——web 的 `createResourceQueries` 按此约定派生 hooks；其余操作按业务动词命名
 - **契约积木**：路径 `{id}` 用 `idParam`；列表查询 `paginationQuery.extend({...})`；分页响应 `paginated(xxxSchema)`；
-  时间范围端点 `dateRangeBound()`；查询串布尔 `queryBool()`、查询串枚举筛选 `queryEnum(XXX_VALUES)`（空串 = 未筛选）、
+  标准 `startTime` / `endTime` 范围 `...dateRangeQuery('创建时间')`（非标准键名如 `startAt` / `dateStart` 才逐个 `dateRangeBound()`）；
+  查询串布尔 `queryBool()`、查询串枚举筛选 `queryEnum(XXX_VALUES)`（空串 = 未筛选）、
   启用 / 禁用状态筛选 `entityStatusQuery`；
   批量 ID `batchIdsBody`；审计列 `...auditFieldsSchema`；业务请求头 `headers: z.object({...})`；
   上传 `multipart(z.object({ file: fileField() }))`；非 JSON 响应 `kind: 'excel' | 'csv' | 'file' | 'sse'`。
@@ -301,7 +302,8 @@
 - **后端解析**：范围端点**必须**走 `parseDateRangeStart()` / `parseDateRangeEnd()`（或直接用 `dateRangeConditions()`），
   纯日期时起点取 `00:00:00`、终点取 `23:59:59.999`；`parseDateTimeInput()` **只**用于单点时间
   （`scheduledAt` / `expireAt` 等实体字段）——它把 `2026-08-01` 解析成 `00:00:00`，用作范围终点会漏掉整天数据
-- **范围端点查询参数必须校验格式**：契约查询参数用 `dateRangeBound('说明')`（`@zenith/shared/core`），
+- **范围端点查询参数必须校验格式**：契约查询参数标准 `startTime` / `endTime` 用 `...dateRangeQuery('说明')`，
+  其它键名用 `dateRangeBound('说明')`（均来自 `@zenith/shared/core`），
   同时接受 `YYYY-MM-DD` 与 `YYYY-MM-DD HH:mm:ss`；**禁止**裸 `z.string().optional()`——
   `?endTime=abc` 会被静默当成「无筛选」返回全量数据
 - **Mock**：`mockDateTime()`（`mocks/utils/date.ts`）

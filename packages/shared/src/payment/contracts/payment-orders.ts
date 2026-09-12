@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { PAYMENT_CASHIER_METHODS, PAYMENT_CHANNELS, PAYMENT_METHODS, PAYMENT_ORDER_STATUSES } from '../constants';
 import { createPaymentSchema } from '../validation';
@@ -75,8 +75,7 @@ export const paymentOrderListQuery = paginationQuery.extend({
   bizType: z.string().optional(),
   minAmount: z.coerce.number().int().nonnegative().optional(),
   maxAmount: z.coerce.number().int().nonnegative().optional(),
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
+  ...dateRangeQuery(),
 });
 
 export const paymentOrderNoParam = z.object({

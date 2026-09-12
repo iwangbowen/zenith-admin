@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { batchIdsBody, dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { batchIdsBody, dateRangeQuery, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { ASYNC_TASK_ITEM_STATUSES, ASYNC_TASK_STATUSES } from '../constants';
 import { updateAsyncTaskTypePolicySchema } from '../validation';
@@ -151,8 +151,7 @@ export const asyncTaskListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '匹配任务标题 / 任务类型' }),
   content: z.string().optional().meta({ description: '任务内容关键字（匹配入参与产出）' }),
   createdBy: z.string().optional().meta({ description: '提交人（模糊匹配用户名 / 昵称）' }),
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
+  ...dateRangeQuery(),
 });
 
 export const asyncTaskItemListQuery = paginationQuery.extend({

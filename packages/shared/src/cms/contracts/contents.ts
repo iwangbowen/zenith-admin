@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { batchIdsBody, dateRangeBound, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
+import { batchIdsBody, dateRangeQuery, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { CMS_CONTENT_STATUSES, CMS_CONTENT_TYPES } from '../constants';
 import type { CmsLinkTarget } from '../link';
@@ -264,8 +264,7 @@ export const cmsContentListQuery = paginationQuery.extend({
   isHot: queryBool(),
   deleted: queryBool('仅回收站内容'),
   archived: queryBool('仅已归档内容'),
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
+  ...dateRangeQuery(),
 });
 
 export const cmsContentTitleCheckQuery = z.object({

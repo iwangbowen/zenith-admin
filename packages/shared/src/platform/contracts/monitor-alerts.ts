@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   MONITOR_ALERT_EVENT_STATUSES,
@@ -143,8 +143,7 @@ export const monitorAlertEventListQuery = paginationQuery.extend({
   notifyStatus: queryEnum(MONITOR_ALERT_NOTIFY_STATUSES),
   handleStatus: queryEnum(MONITOR_ALERT_HANDLE_STATUSES),
   ruleId: z.coerce.number().int().positive().optional(),
-  startTime: dateRangeBound('触发时间起'),
-  endTime: dateRangeBound('触发时间止'),
+  ...dateRangeQuery('触发时间'),
 });
 
 export type MonitorAlertEventQuery = z.infer<typeof monitorAlertEventListQuery>;

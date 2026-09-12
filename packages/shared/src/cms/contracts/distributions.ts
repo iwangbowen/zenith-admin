@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, dateRangeBound, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskItemSchema, asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import {
@@ -86,8 +86,7 @@ export const cmsDistributionRunListQuery = paginationQuery.extend({
   ruleId: z.coerce.number().int().positive().optional(),
   siteId: z.coerce.number().int().positive().optional(),
   status: queryEnum(CMS_DISTRIBUTION_TASK_STATUSES),
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
+  ...dateRangeQuery(),
 });
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────

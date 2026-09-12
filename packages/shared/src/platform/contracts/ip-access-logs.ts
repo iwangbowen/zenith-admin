@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { IP_ACCESS_BLOCK_TYPES } from '../constants';
 
@@ -22,8 +22,7 @@ export type IpAccessLog = z.infer<typeof ipAccessLogSchema>;
 export const ipAccessLogListQuery = paginationQuery.extend({
   ip: z.string().optional(),
   blockType: queryEnum(IP_ACCESS_BLOCK_TYPES),
-  startTime: dateRangeBound('拦截时间起'),
-  endTime: dateRangeBound('拦截时间止'),
+  ...dateRangeQuery('拦截时间'),
 });
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────

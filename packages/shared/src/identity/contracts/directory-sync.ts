@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, batchIdsBody, dateRangeBound, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, batchIdsBody, dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { asyncTaskSchema } from '../../tasks/contracts/async-tasks';
 import {
@@ -170,8 +170,7 @@ export const directorySyncSourceContract = defineContract('/api/directory-sync/s
 export const directorySyncRunListQuery = paginationQuery.extend({
   sourceId: z.coerce.number().int().positive().optional(),
   status: queryEnum(DIRECTORY_SYNC_RUN_STATUSES),
-  startTime: dateRangeBound('开始时间起'),
-  endTime: dateRangeBound('开始时间止'),
+  ...dateRangeQuery('开始时间'),
 });
 
 export const directorySyncRunItemListQuery = paginationQuery.extend({

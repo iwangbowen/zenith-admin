@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, batchIdsBody, dateRangeBound, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, batchIdsBody, dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { SHORT_LINK_BIZ_TYPES, SHORT_LINK_REDIRECT_TYPES, SHORT_LINK_STATS_MAX_DAYS } from '../constants';
 import {
@@ -79,8 +79,7 @@ export const shortLinkListQuery = paginationQuery.extend({
   keyword: z.string().optional().meta({ description: '按短码 / 标题 / 目标地址模糊匹配' }),
   status: entityStatusQuery,
   bizType: queryEnum(SHORT_LINK_BIZ_TYPES),
-  startTime: dateRangeBound('创建时间起'),
-  endTime: dateRangeBound('创建时间止'),
+  ...dateRangeQuery('创建时间'),
 });
 
 export const shortLinkStatsQuery = z.object({

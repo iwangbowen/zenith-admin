@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, batchIdsBody, dateRangeBound, entityStatusSchema, idParam, paginated, paginationQuery, entityStatusQuery, queryEnum } from '../../core/api-schemas';
+import { auditFieldsSchema, batchIdsBody, dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   IOT_COMMAND_STATUSES, IOT_DEVICE_EVENT_KINDS, IOT_EVENT_LEVELS, IOT_LOG_LEVELS, IOT_NODE_TYPES,
@@ -156,8 +156,7 @@ export const iotDeviceListQuery = paginationQuery.extend({
   groupId: z.coerce.number().int().positive().optional(),
   nodeType: queryEnum(IOT_NODE_TYPES),
   gatewayId: z.coerce.number().int().positive().optional(),
-  startTime: dateRangeBound('创建时间起'),
-  endTime: dateRangeBound('创建时间止'),
+  ...dateRangeQuery('创建时间'),
 });
 
 export const iotTelemetryQuery = z.object({
@@ -178,8 +177,7 @@ export const iotDeviceEventListQuery = paginationQuery.extend({
 export const iotDeviceLogListQuery = paginationQuery.extend({
   level: queryEnum(IOT_LOG_LEVELS),
   keyword: z.string().optional().meta({ description: '按日志内容模糊匹配' }),
-  startTime: dateRangeBound('上报时间起'),
-  endTime: dateRangeBound('上报时间止'),
+  ...dateRangeQuery('上报时间'),
 });
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────

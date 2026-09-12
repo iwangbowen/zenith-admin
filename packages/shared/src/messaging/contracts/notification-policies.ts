@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   NOTIFICATION_CHANNELS,
@@ -70,8 +70,7 @@ export const notificationDispatchListQuery = paginationQuery.extend({
   decision: queryEnum(NOTIFICATION_DECISIONS),
   recipientType: queryEnum(NOTIFICATION_RECIPIENT_TYPES),
   recipientId: z.coerce.number().int().positive().optional(),
-  startTime: dateRangeBound('派发时间起'),
-  endTime: dateRangeBound('派发时间止'),
+  ...dateRangeQuery('派发时间'),
 });
 
 export const notificationPolicyContract = defineContract('/api/notification-policies', {

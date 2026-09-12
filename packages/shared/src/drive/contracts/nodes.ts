@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, idParam, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, fileField, multipart, op } from '../../core/contract';
 import { fileAccessUrlSchema, uploadChunkResultSchema, uploadSessionInitSchema, uploadSessionStatusSchema } from '../../platform/contracts';
 import {
@@ -290,8 +290,7 @@ export const driveNodeSearchQuery = paginationQuery.extend({
   tagId: z.coerce.number().int().positive().optional(),
   createdBy: z.coerce.number().int().positive().optional(),
   fullText: queryBool('是否同时检索文本正文'),
-  startTime: dateRangeBound('更新时间起'),
-  endTime: dateRangeBound('更新时间止'),
+  ...dateRangeQuery('更新时间'),
 });
 
 export const driveEmptyRecycleQuery = z.object({

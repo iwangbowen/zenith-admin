@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, dateRangeBound, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { FILE_OBJECT_ACLS, FILE_STORAGE_PROVIDERS, FILE_URL_STRATEGIES } from '../constants';
 import { createFileStorageConfigSchema, updateFileStorageConfigSchema } from '../validation';
@@ -72,8 +72,7 @@ export type FileStorageConfig = z.infer<typeof fileStorageConfigSchema>;
 
 export const fileStorageConfigListQuery = paginationQuery.extend({
   status: entityStatusQuery,
-  startTime: dateRangeBound('更新时间起'),
-  endTime: dateRangeBound('更新时间止'),
+  ...dateRangeQuery('更新时间'),
 });
 
 export const fileStorageConfigContract = defineContract('/api/file-storage-configs', {

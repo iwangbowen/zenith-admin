@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { WORKFLOW_TASK_MONITOR_NODE_TYPES, WORKFLOW_TASK_STATUSES, WORKFLOW_TASK_CONSULT_STATUSES } from '../constants';
 import {
@@ -140,8 +140,7 @@ export const workflowTaskMonitorQuery = paginationQuery.extend({
   assigneeKeyword: z.string().optional(),
   definitionId: z.coerce.number().int().optional(),
   instanceId: z.coerce.number().int().optional(),
-  startTime: dateRangeBound('任务创建时间起'),
-  endTime: dateRangeBound('任务创建时间止'),
+  ...dateRangeQuery('任务创建时间'),
   stuckMinutes: z.coerce.number().int().positive().optional().meta({ description: '仅看停留超过 N 分钟的未终态任务' }),
 });
 

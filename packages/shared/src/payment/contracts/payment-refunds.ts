@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { PAYMENT_CHANNELS, PAYMENT_REFUND_APPROVAL_STATUSES, PAYMENT_REFUND_STATUSES } from '../constants';
 import { approveRefundSchema, createRefundSchema, idempotencyKeyHeaders, rejectRefundSchema } from '../validation';
@@ -48,8 +48,7 @@ export const paymentRefundListQuery = paginationQuery.extend({
   channel: queryEnum(PAYMENT_CHANNELS),
   status: queryEnum(PAYMENT_REFUND_STATUSES),
   approvalStatus: queryEnum(PAYMENT_REFUND_APPROVAL_STATUSES),
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
+  ...dateRangeQuery(),
 });
 
 /** 退款：与商户配置 / 订单 / 签约代扣共用支付资源根，操作名在根内唯一 */

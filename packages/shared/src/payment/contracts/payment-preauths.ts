@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeBound, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { PAYMENT_CHANNELS, PAYMENT_PREAUTH_STATUSES, PAYMENT_PREAUTH_UNKNOWN_OPERATIONS } from '../constants';
 import { capturePaymentPreauthSchema, createPaymentPreauthSchema } from '../validation';
@@ -44,8 +44,7 @@ export const paymentPreauthListQuery = paginationQuery.extend({
   keyword: z.string().optional(),
   status: queryEnum(PAYMENT_PREAUTH_STATUSES),
   channel: queryEnum(PAYMENT_CHANNELS),
-  startTime: dateRangeBound('起始时间'),
-  endTime: dateRangeBound('结束时间'),
+  ...dateRangeQuery(),
 });
 
 export const paymentPreauthContract = defineContract('/api/payment/preauths', {

@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { auditFieldsSchema, batchIdsBody, dateRangeBound, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
+import { auditFieldsSchema, batchIdsBody, dateRangeQuery, entityStatusQuery, entityStatusSchema, idParam, paginated, paginationQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { sensitive } from '../../core/sensitive';
 import { DATA_SCOPES } from '../constants';
@@ -106,8 +106,7 @@ export const userListQuery = paginationQuery.extend({
   phone: z.string().optional(),
   departmentId: z.coerce.number().optional(),
   status: entityStatusQuery,
-  startTime: dateRangeBound('创建时间起'),
-  endTime: dateRangeBound('创建时间止'),
+  ...dateRangeQuery('创建时间'),
 });
 
 export const userContract = defineContract('/api/users', {

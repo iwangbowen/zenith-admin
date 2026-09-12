@@ -1,6 +1,6 @@
 import { describe, it, expect, expectTypeOf } from 'vitest';
 import * as z from 'zod';
-import { dateRangeBound, entityStatusQuery, paginated, paginationQuery, queryBool, queryEnum } from './api-schemas';
+import { dateRangeBound, dateRangeQuery, entityStatusQuery, paginated, paginationQuery, queryBool, queryEnum } from './api-schemas';
 
 describe('queryBool', () => {
   const schema = z.object({ enabled: queryBool() });
@@ -46,6 +46,17 @@ describe('paginationQuery / dateRangeBound', () => {
     expect(range.parse({ startTime: '2026-09-01' })).toEqual({ startTime: '2026-09-01' });
     expect(range.parse({ startTime: '2026-09-01 08:00:00' })).toEqual({ startTime: '2026-09-01 08:00:00' });
     expect(range.safeParse({ startTime: 'yesterday' }).success).toBe(false);
+  });
+
+  it('dateRangeQuery 展开为标准 startTime / endTime 端点，描述随 subject 生成', () => {
+    const query = paginationQuery.extend({ ...dateRangeQuery('创建时间') });
+    expect(query.parse({ startTime: '2026-09-01', endTime: '2026-09-30 23:59:59' })).toEqual({ page: 1, pageSize: 10, startTime: '2026-09-01', endTime: '2026-09-30 23:59:59' });
+    expect(query.safeParse({ endTime: 'tomorrow' }).success).toBe(false);
+    expect(query.shape.startTime.meta()?.description).toBe('创建时间起');
+    expect(query.shape.endTime.meta()?.description).toBe('创建时间止');
+    const generic = dateRangeQuery();
+    expect(generic.startTime.meta()?.description).toBe('起始时间');
+    expect(generic.endTime.meta()?.description).toBe('结束时间');
   });
 
   it('wraps items into the paginated payload shape', () => {
