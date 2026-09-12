@@ -129,12 +129,8 @@ export default function AiAuditPage() {
       <ConfigurableTable<AiFeedbackItem>
         columns={columns}
         {...listTableProps(listQuery, {
-          pagination: (total) => ({
-            ...buildPagination(total),
-            pageSizeOpts: [10, 20, 50],
-            showSizeChanger: true,
-            showTotal: true,
-          }),
+          // showTotal / showSizeChanger 由 ConfigurableTable 按桌面 / 移动端决定，这里只覆盖页大小候选
+          pagination: (total) => ({ ...buildPagination(total), pageSizeOpts: [10, 20, 50] }),
         })}
       />
       <AiConversationContextModal

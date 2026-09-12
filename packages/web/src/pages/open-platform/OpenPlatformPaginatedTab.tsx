@@ -22,20 +22,13 @@ export function OpenPlatformPaginatedTab<T extends Data>({
   empty,
   pageSize: initialPageSize = 10,
 }: OpenPlatformPaginatedTabProps<T>) {
-  const { page, pageSize, setPage, buildPagination } = usePagination(initialPageSize);
+  const { page, pageSize, buildPagination } = usePagination(initialPageSize);
   const query = useList(page, pageSize);
 
   return (
     <ConfigurableTable<T>
       columns={columns}
-      {...listTableProps(query, {
-        rowKey,
-        empty,
-        pagination: (total) => ({
-          ...buildPagination(total),
-          onPageChange: setPage,
-        }),
-      })}
+      {...listTableProps(query, { rowKey, empty, pagination: buildPagination })}
     />
   );
 }
