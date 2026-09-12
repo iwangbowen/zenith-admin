@@ -1,12 +1,11 @@
 import { keepPreviousData, useMutation, useQueryClient } from '@tanstack/react-query';
-import { resourceKeyOf, type QueryOf } from '@zenith/shared/core';
+import type { BodyOf, InputOf, QueryOf } from '@zenith/shared/core';
 import { exportJobContract, type ExportJob } from '@zenith/shared/tasks';
 import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type ExportJobListParams = NonNullable<QueryOf<typeof exportJobContract.list>>;
 
 export const exportJobKeys = {
-  all: [resourceKeyOf(exportJobContract.basePath)] as const,
   entities: contractKey(exportJobContract.entities),
   lists: contractKey(exportJobContract.list),
   list: (params: ExportJobListParams) => contractKey(exportJobContract.list, { query: params }),
@@ -48,24 +47,26 @@ export function useRetryExportJob() {
   });
 }
 
-/** 按历史任务的参数重新提交一条导出任务 */
+/** 按历史任务的参数构造一条新导出任务的请求体（供 useRerunExportJob 调用方使用） */
+export function rerunExportJobBody(record: ExportJob): NonNullable<BodyOf<typeof exportJobContract.create>> {
+  return {
+    entity: record.entity,
+    format: record.format,
+    query: record.query ?? {},
+    columns: record.columns ?? undefined,
+    raw: record.raw,
+    watermark: record.watermark,
+    executionMode: record.executionMode,
+  };
+}
+
+/** 重新提交的变量：请求体 + 原任务 id（仅供页面标记行级忙碌态，不参与请求） */
+export type RerunExportJobVariables = InputOf<typeof exportJobContract.create> & { sourceId: number };
+
+/** 重新提交：另起一条新任务，原任务的下载记录不变；调用 `mutate({ body: rerunExportJobBody(record), sourceId: record.id })` */
 export function useRerunExportJob() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (record: ExportJob) =>
-      api(exportJobContract.create, {
-        body: {
-          entity: record.entity,
-          format: record.format,
-          query: record.query ?? {},
-          columns: record.columns ?? undefined,
-          raw: record.raw,
-          watermark: record.watermark,
-          executionMode: record.executionMode,
-        },
-      }),
-    // 另起一条新任务，原任务的下载记录不变
-    onSuccess: () => qc.invalidateQueries({ queryKey: exportJobKeys.lists }),
+  return useApiMutation<typeof exportJobContract.create, RerunExportJobVariables>(exportJobContract.create, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: exportJobKeys.lists }),
   });
 }
 
@@ -79,6 +80,7 @@ export function useDeleteExportJob() {
   });
 }
 
+/** H5：契约无 removeBatch，并发逐条删除；每条任务的下载记录移除而非失效 */
 export function useBatchDeleteExportJobs() {
   const qc = useQueryClient();
   return useMutation({

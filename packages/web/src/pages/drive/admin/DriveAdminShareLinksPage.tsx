@@ -74,7 +74,7 @@ export default function DriveAdminShareLinksPage() {
       shareLinkCopyAction(l),
       { key: 'revoke', label: '撤销', danger: true, hidden: l.state === 'revoked' || !hasPermission('drive:admin:link:revoke'),
         onClick: () => { confirmDanger({ title: '撤销这条外链？', content: `「${l.nodeName}」的外链将立即失效，访客无法再访问。`, okText: '撤销',
-          onOk: () => revoke.mutateAsync({ id: l.id, nodeId: l.nodeId }).then(() => Toast.success('已撤销')) }); } },
+          onOk: () => revoke.mutateAsync({ params: { id: l.id }, nodeId: l.nodeId }).then(() => Toast.success('已撤销')) }); } },
     ] }),
   ];
 

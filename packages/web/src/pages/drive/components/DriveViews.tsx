@@ -23,7 +23,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import {
   driveKeys, useDeleteDriveShareLink, useDriveRecent, useDriveRecycle, useDriveSearch, useDriveSharedWithMe, useDriveStarred,
-  useMyDriveShareLinks, useMyDriveSpaces, usePurgeDriveNodes, useRestoreDriveNodes, useRevokeDriveShareLink, useStarDriveNode,
+  useEmptyDriveRecycle, useMyDriveShareLinks, useMyDriveSpaces, usePurgeDriveNodes, useRestoreDriveNodes, useRevokeDriveShareLink, useStarDriveNode, useUnstarDriveNode,
   useDriveTags, useDrivePreviewWatermark,
 } from '@/hooks/queries/drive';
 import { confirmDanger } from '@/utils/confirm';
@@ -85,8 +85,10 @@ export function DriveViews({ view, onOpenFolder, onOpenDetail }: DriveViewsProps
   const total = active.data?.total ?? 0;
 
   const star = useStarDriveNode();
+  const unstar = useUnstarDriveNode();
   const restore = useRestoreDriveNodes();
   const purge = usePurgeDriveNodes();
+  const emptyRecycle = useEmptyDriveRecycle();
   const revoke = useRevokeDriveShareLink();
   const removeLink = useDeleteDriveShareLink();
 
@@ -106,7 +108,7 @@ export function DriveViews({ view, onOpenFolder, onOpenDetail }: DriveViewsProps
         { key: 'restore', label: '还原', hidden: !hasPermission('drive:recycle:restore'), onClick: async () => { await restore.mutateAsync({ body: { ids: [node.id] } }); Toast.success('已还原'); } },
         { key: 'purge', label: '彻底删除', danger: true, hidden: !hasPermission('drive:recycle:purge'), onClick: () => { confirmDanger({
           title: `彻底删除「${node.name}」？`, content: '文件将被永久删除且不可恢复。', okText: '彻底删除',
-          onOk: () => purge.mutateAsync({ ids: [node.id] }).then(() => Toast.success('已彻底删除')),
+          onOk: () => purge.mutateAsync({ body: { ids: [node.id] } }).then(() => Toast.success('已彻底删除')),
         }); } },
       ];
     }
@@ -116,7 +118,7 @@ export function DriveViews({ view, onOpenFolder, onOpenDetail }: DriveViewsProps
         ? [{ key: 'download', label: '下载', onClick: async () => downloadBlob(await fetchManagedFileBlob(nodeDownloadUrl(node)), node.name) }] : []),
       { key: 'locate', label: '打开所在目录', onClick: () => onOpenFolder(node.spaceId, node.parentId) },
       { key: 'detail', label: '详情', onClick: () => onOpenDetail(node.id) },
-      { key: 'star', label: node.isStarred ? '取消收藏' : '收藏', onClick: () => star.mutate({ node, starred: !node.isStarred }) },
+      { key: 'star', label: node.isStarred ? '取消收藏' : '收藏', onClick: () => (node.isStarred ? unstar : star).mutate({ params: { id: node.id }, node }) },
     ];
   };
 
@@ -166,9 +168,9 @@ export function DriveViews({ view, onOpenFolder, onOpenDetail }: DriveViewsProps
       shareLinkCopyAction(l),
       { key: 'node', label: '查看文件', onClick: () => onOpenDetail(l.nodeId) },
       { key: 'revoke', label: '撤销', hidden: l.state === 'revoked', onClick: () => { confirmDanger({ title: '撤销这条外链？', content: '撤销后链接立即失效。', okText: '撤销',
-        onOk: () => revoke.mutateAsync({ id: l.id, nodeId: l.nodeId }).then(() => Toast.success('已撤销')) }); } },
+        onOk: () => revoke.mutateAsync({ params: { id: l.id }, nodeId: l.nodeId }).then(() => Toast.success('已撤销')) }); } },
       { key: 'delete', label: '删除记录', danger: true, hidden: l.state !== 'revoked' && l.state !== 'expired',
-        onClick: async () => { await removeLink.mutateAsync({ id: l.id, nodeId: l.nodeId }); Toast.success('已删除'); } },
+        onClick: async () => { await removeLink.mutateAsync({ params: { id: l.id }, nodeId: l.nodeId }); Toast.success('已删除'); } },
     ] }),
   ];
 
@@ -180,7 +182,7 @@ export function DriveViews({ view, onOpenFolder, onOpenDetail }: DriveViewsProps
       {hasPermission('drive:recycle:purge') && (
         <Button size="small" type="danger" icon={<Trash2 size={14} />} onClick={() => confirmDanger({
           title: `彻底删除选中的 ${selectedIds.length} 项？`, content: '永久删除且不可恢复。', okText: '彻底删除',
-          onOk: () => purge.mutateAsync({ ids: selectedIds }).then(() => { Toast.success('已彻底删除'); setSelectedIds([]); }),
+          onOk: () => purge.mutateAsync({ body: { ids: selectedIds } }).then(() => { Toast.success('已彻底删除'); setSelectedIds([]); }),
         })}>彻底删除所选</Button>
       )}
     </Space>
@@ -193,7 +195,7 @@ export function DriveViews({ view, onOpenFolder, onOpenDetail }: DriveViewsProps
         {view === 'recycle' && hasPermission('drive:recycle:purge') && total > 0 && (
           <Button size="small" type="danger" theme="borderless" onClick={() => confirmDanger({
             title: '清空回收站？', content: submittedParams.spaceId ? '将永久删除该空间回收站中的全部项目。' : '将永久删除你可管理的全部回收站项目。', okText: '清空',
-            onOk: () => purge.mutateAsync({ ids: [], spaceId: submittedParams.spaceId }).then(() => Toast.success('回收站已清空')),
+            onOk: () => emptyRecycle.mutateAsync({ query: { spaceId: submittedParams.spaceId } }).then(() => Toast.success('回收站已清空')),
           })}>清空回收站</Button>
         )}
       </div>

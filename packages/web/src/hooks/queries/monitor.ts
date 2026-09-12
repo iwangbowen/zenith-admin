@@ -1,15 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
-import { resourceKeyOf } from '@zenith/shared/core';
 import { monitorContract, type MonitorHistoryRange } from '@zenith/shared/platform';
 import { api, contractKey, useApiQuery } from '@/lib/contract-query';
 
 export const monitorKeys = {
-  all: [resourceKeyOf(monitorContract.basePath)] as const,
-  /** 快照 / 时序 / WS 三个端点合并为一次查询，供页面整屏刷新 */
-  snapshot: [resourceKeyOf(monitorContract.basePath), 'snapshot'] as const,
+  /** 快照 / 时序 / WS 三个端点合并为一次查询：snapshot 操作的契约 key 追加区分段，与纯快照查询不共键 */
+  snapshot: [...contractKey(monitorContract.snapshot), 'overview'] as const,
   history: (range: MonitorHistoryRange) => contractKey(monitorContract.history, { query: { range } }),
 };
 
+/** H5：组合三次契约请求，供页面整屏刷新 */
 export function useMonitorSnapshot(refetchInterval: number | false, enabled = true) {
   return useQuery({
     queryKey: monitorKeys.snapshot,

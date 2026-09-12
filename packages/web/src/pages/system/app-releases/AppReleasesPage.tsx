@@ -337,7 +337,7 @@ function ArtifactsSheet({ releaseId, onClose }: { releaseId: number | null; onCl
           hidden: !canDelete,
           title: `确定要删除制品「${record.fileName}」吗？`,
           content: '删除后该文件立即不可下载',
-          run: () => deleteMutation.mutateAsync({ artifactId: record.id, releaseId: record.releaseId }),
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id }, releaseId: record.releaseId }),
         }),
       ],
     }),

@@ -167,13 +167,13 @@ export function DriveShareLinksPanel({ node, allowExternalShare }: DriveShareLin
   const canManage = hasPermission('drive:link:create') && roleAtLeast(node.myRole, 'editor');
 
   const revokeLink = (r: DriveShareLink) => {
-    confirmDanger({ title: '撤销该外链？', content: '撤销后所有已签发的访问会话与短链立即失效，记录保留以便审计。', onOk: () => revoke.mutateAsync({ id: r.id, nodeId: node.id }).then(() => Toast.success('已撤销')) });
+    confirmDanger({ title: '撤销该外链？', content: '撤销后所有已签发的访问会话与短链立即失效，记录保留以便审计。', onOk: () => revoke.mutateAsync({ params: { id: r.id }, nodeId: node.id }).then(() => Toast.success('已撤销')) });
   };
   const deleteLink = (r: DriveShareLink) => {
-    confirmDelete({ title: '删除该外链记录？', content: '访问日志与收集记录将一并删除。', onOk: () => remove.mutateAsync({ id: r.id, nodeId: node.id }).then(() => Toast.success('已删除')) });
+    confirmDelete({ title: '删除该外链记录？', content: '访问日志与收集记录将一并删除。', onOk: () => remove.mutateAsync({ params: { id: r.id }, nodeId: node.id }).then(() => Toast.success('已删除')) });
   };
   const makeShortLink = async (r: DriveShareLink) => {
-    const result = await shortLink.mutateAsync({ id: r.id, nodeId: node.id });
+    const result = await shortLink.mutateAsync({ params: { id: r.id }, nodeId: node.id });
     await copyTextWithToast(result.shortUrl, { success: '短链已生成并复制到剪贴板' });
   };
 
@@ -211,7 +211,7 @@ export function DriveShareLinksPanel({ node, allowExternalShare }: DriveShareLin
             </Popover>
             {canManage && r.state !== 'revoked' && (
               <Tooltip content={r.shortUrl ? '复制短链' : '生成短链'}>
-                <Button size="small" theme="borderless" type="tertiary" icon={<Scissors size={14} />} aria-label={r.shortUrl ? '复制短链' : '生成短链'} loading={shortLink.isPending && shortLink.variables?.id === r.id}
+                <Button size="small" theme="borderless" type="tertiary" icon={<Scissors size={14} />} aria-label={r.shortUrl ? '复制短链' : '生成短链'} loading={shortLink.isPending && shortLink.variables?.params.id === r.id}
                   onClick={() => (r.shortUrl ? void copyTextWithToast(r.shortUrl) : void makeShortLink(r))} />
               </Tooltip>
             )}

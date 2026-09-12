@@ -12,20 +12,16 @@ export const {
   useDelete: useDeleteSslCertificates,
 } = createResourceQueries(sslCertificateContract);
 
-/** 生成自签名证书：新增一条记录，列表随之变化 */
+/** 生成自签名证书 / 上传证书都新增一条记录：列表回源；已有证书的详情不变 */
 export function useGenerateSslCertificate() {
   return useApiMutation(sslCertificateContract.generate, {
-    invalidate: (qc) => {
-      void qc.invalidateQueries({ queryKey: sslCertificateKeys.all });
-    },
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: sslCertificateKeys.lists }),
   });
 }
 
 export function useUploadSslCertificate() {
   return useApiMutation(sslCertificateContract.upload, {
-    invalidate: (qc) => {
-      void qc.invalidateQueries({ queryKey: sslCertificateKeys.all });
-    },
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: sslCertificateKeys.lists }),
   });
 }
 

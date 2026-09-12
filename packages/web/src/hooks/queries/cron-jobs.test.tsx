@@ -30,6 +30,7 @@ vi.mock('@/utils/request', () => ({ request: createRequestMock(() => api) }));
 import {
   cronJobKeys,
   useClearCronJobLogs,
+  useClearCronJobLogsOfJob,
   useCronJobAllLogs,
   useCronJobDetail,
   useCronJobHandlers,
@@ -117,7 +118,7 @@ describe('handlers 静态 lookup 不再被任何写操作波及', () => {
     await hook.result.current.run.mutateAsync({ params: { id: 1 } });
     await hook.result.current.save.mutateAsync({ id: 1, values: { name: '对账（改）' } });
     await hook.result.current.status.mutateAsync({ params: { id: 1 }, body: { status: 'disabled' } });
-    await hook.result.current.clearLogs.mutateAsync({ days: 90 });
+    await hook.result.current.clearLogs.mutateAsync({ query: { days: 90 } });
     await hook.result.current.remove.mutateAsync([1]);
     await waitFor(() => expect(hook.result.current.list.isFetching).toBe(false));
 
@@ -171,13 +172,34 @@ describe('useClearCronJobLogs —— 只影响日志与由日志聚合的概览'
     const fetches = observeFetches(qc);
     api.resetCalls();
 
-    await hook.result.current.clearLogs.mutateAsync({ days: 90 });
+    await hook.result.current.clearLogs.mutateAsync({ query: { days: 90 } });
     await waitFor(() => expect(fetches.countOf(cronJobKeys.stats)).toBe(1));
 
     expect(fetches.countOf(cronJobKeys.lists)).toBe(0);
     expect(fetches.countOf(cronJobKeys.detail(1))).toBe(0);
     expect(isFresh(qc, cronJobKeys.detail(1))).toBe(true);
     expect(api.countOf('GET', '/api/cron-jobs')).toBe(0);
+
+    fetches.stop();
+  });
+
+  it('per-job clearing hits the job endpoint and shares the same invalidation surface', async () => {
+    const { qc, hook } = mountJobsTab();
+    await settle(hook);
+
+    const extra = renderHook(() => ({ detail: useCronJobDetail(1), clearJobLogs: useClearCronJobLogsOfJob() }), { wrapper: createWrapper(qc) });
+    await waitFor(() => expect(extra.result.current.detail.isSuccess).toBe(true));
+
+    const fetches = observeFetches(qc);
+    api.resetCalls();
+
+    await extra.result.current.clearJobLogs.mutateAsync({ params: { id: 1 }, query: { days: 30 } });
+    await waitFor(() => expect(fetches.countOf(cronJobKeys.stats)).toBe(1));
+
+    expect(api.urls('DELETE')).toEqual(['/api/cron-jobs/1/logs/clean?days=30']);
+    expect(fetches.countOf(cronJobKeys.lists)).toBe(0);
+    expect(fetches.countOf(cronJobKeys.detail(1))).toBe(0);
+    expect(isFresh(qc, cronJobKeys.detail(1))).toBe(true);
 
     fetches.stop();
   });

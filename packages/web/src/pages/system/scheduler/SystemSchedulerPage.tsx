@@ -250,7 +250,6 @@ export default function SystemSchedulerPage() {
       onOk: async () => {
         const data = await runTaskMutation.mutateAsync({ params: { name: record.name } });
         Toast.success(data.message || '任务已投递后台执行');
-        void queryClient.invalidateQueries({ queryKey: systemSchedulerKeys.all });
       },
     });
   };

@@ -181,21 +181,21 @@ export default function NetworkDiagPage() {
       }
       abortRef.current = null;
     } else if (tool === 'nslookup') {
-      const res = await nslookupMutation.mutateAsync(host.trim());
+      const res = await nslookupMutation.mutateAsync({ query: { host: host.trim() } });
       setOutput(res.output);
     } else if (tool === 'dns') {
-      const res = await dnsLookupMutation.mutateAsync({ host: host.trim(), type: dnsType });
+      const res = await dnsLookupMutation.mutateAsync({ query: { host: host.trim(), type: dnsType } });
       const { records } = res;
       setOutput(records.length
         ? `${dnsType} 记录（${host.trim()}）:\n\n${records.map((r) => `  ${r}`).join('\n')}`
         : `未找到 ${dnsType} 记录`);
     } else if (tool === 'reverse') {
-      const res = await reverseLookupMutation.mutateAsync(host.trim());
+      const res = await reverseLookupMutation.mutateAsync({ query: { ip: host.trim() } });
       setOutput(res.hostnames.length
         ? `${host.trim()} 反查结果:\n\n${res.hostnames.map((h) => `  ${h}`).join('\n')}`
         : '未找到 PTR 记录');
     } else if (tool === 'http') {
-      const d = await httpProbeMutation.mutateAsync(host.trim());
+      const d = await httpProbeMutation.mutateAsync({ body: { url: host.trim() } });
       if (d.error) {
         setOutput(`❌ 探测失败：${d.error}（耗时 ${d.latencyMs} ms）`);
       } else {

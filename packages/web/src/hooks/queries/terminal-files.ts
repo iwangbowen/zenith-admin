@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { resourceKeyOf, type OutputOf } from '@zenith/shared/core';
+import type { OutputOf } from '@zenith/shared/core';
 import {
   dockerContract,
   hostFileContract,
@@ -13,23 +13,42 @@ import { asyncTaskContract } from '@zenith/shared/tasks';
 import { request } from '@/utils/request';
 import { api, apiQueryOptions, contractKey, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { unwrap } from '@/lib/query';
-import { dockerKeys } from './docker';
+import { useDockerContainerAction } from './docker';
 
 /**
  * 宿主机 / SFTP / 远程主机 / 容器四类文件系统的前端数据访问层。
  *
  * 消费者：文件管理器页（FileManagerPage）与终端页的三个 Explorer（本地 / SFTP / Docker）
- * + 在线编辑（EditorTab）。四类目录浏览各自按契约 query key 缓存，写操作按所属目录前缀失效。
+ * + 在线编辑（EditorTab）。四类目录浏览各自按契约 query key 缓存，写操作按所属目录树前缀失效
+ * （rename / move / copy 跨目录，无法精确到单目录，故以「某一来源的全部目录」为最小失效单位）。
+ *
+ * 目录项写操作的变量是判别联合（FsEntryOperation / TerminalFileOperation），一个 mutation 分派到多条契约操作，
+ * 并以 `UseMutationResult` 贯穿 Explorer / 对话框组件，故保留手写 useMutation（H5），key 与失效均按契约派生。
  */
 
-// ─── query key 前缀（按契约操作派生；写操作按目录树整体失效，跨目录 move / copy 无法精确到单目录） ───
+// ─── query key 前缀（按契约操作派生） ────────────────────────────────────────
+
+/** 编辑器打开的文件引用：本地路径 / SFTP（个人 SSH 配置）/ 容器内文件（只读） */
+export type EditableFileRef =
+  | { kind: 'local'; path: string }
+  | { kind: 'sftp'; profileId: number; path: string }
+  | { kind: 'docker'; containerId: string; path: string };
+
+/** 在线编辑内容的 key：按来源取所分派契约操作的 key（与 SFTP / 容器目录浏览同一资源前缀，互不连坐） */
+function editableContentKey(ref: EditableFileRef) {
+  switch (ref.kind) {
+    case 'local': return contractKey(terminalFileContract.content, { query: { path: ref.path } });
+    case 'sftp': return contractKey(sshSftpContract.content, { params: { profileId: ref.profileId }, query: { path: ref.path } });
+    case 'docker': return contractKey(dockerContract.containerFileContent, { params: { id: ref.containerId }, query: { path: ref.path } });
+  }
+}
 
 export const terminalFileKeys = {
-  all: [resourceKeyOf(terminalFileContract.basePath)] as const,
   rootInfo: contractKey(terminalFileContract.rootInfo),
   localBrowsePrefix: contractKey(terminalFileContract.list),
   localBrowse: (path: string) => contractKey(terminalFileContract.list, { query: { path } }),
   localContent: (path: string) => contractKey(terminalFileContract.content, { query: { path } }),
+  editorContent: editableContentKey,
   checksumPrefix: contractKey(terminalFileContract.checksum),
   checksum: (path: string | undefined, algo: FileChecksumAlgo | undefined) =>
     contractKey(terminalFileContract.checksum, { query: { path: path ?? '', algo } }),
@@ -86,8 +105,7 @@ export function useHostFileHome(hostId: number) {
 }
 
 export function useHostFileList(hostId: number, path: string, enabled = true) {
-  return useQuery({
-    ...hostBrowseQueryOptions(hostId, path),
+  return useApiQuery(hostFileContract.list, { params: { hostId }, query: { path } }, {
     enabled: enabled && path !== '',
     placeholderData: keepPreviousData,
   });
@@ -105,6 +123,7 @@ export type FsEntryOperation =
   | { kind: 'chmod'; path: string; mode: number }
   | { kind: 'write'; path: string; content: string; baseEtag?: string };
 
+/** H5：五种目录项操作分派到五条契约操作，变量为判别联合；远程主机的目录树与文件内容按主机整体失效 */
 export function useHostFileMutation(hostId: number) {
   const qc = useQueryClient();
   const params = { hostId };
@@ -131,7 +150,7 @@ interface UploadVariables {
   silent?: boolean;
 }
 
-/** 上传带进度，走 XHR 表单通道而非 api() */
+/** 上传带进度，走 XHR 表单通道而非 api()（H5：带进度回调的上传） */
 export function useHostFileUpload(hostId: number) {
   const qc = useQueryClient();
   return useMutation({
@@ -147,12 +166,6 @@ export function hostFileDownloadUrl(hostId: number, path: string) {
 
 // ─── 在线编辑：三类来源的文本文件 ──────────────────────────────────────────────
 
-/** 编辑器打开的文件引用：本地路径 / SFTP（个人 SSH 配置）/ 容器内文件（只读） */
-export type EditableFileRef =
-  | { kind: 'local'; path: string }
-  | { kind: 'sftp'; profileId: number; path: string }
-  | { kind: 'docker'; containerId: string; path: string };
-
 /** 统一的文本内容载荷；容器文件没有版本标识 */
 export interface EditableFileContent {
   content: string;
@@ -167,8 +180,7 @@ async function readEditableFile(ref: EditableFileRef): Promise<EditableFileConte
   }
 }
 
-const editableContentKey = (ref: EditableFileRef) => ['terminal-files', 'editor-content', ref] as const;
-
+/** H5：queryFn 按来源分派到本地 / SFTP / 容器三条契约操作，无法以单一操作表达；key 取所分派操作的契约 key */
 export function useFileContent(ref: EditableFileRef, enabled: boolean) {
   return useQuery({
     queryKey: editableContentKey(ref),
@@ -177,7 +189,7 @@ export function useFileContent(ref: EditableFileRef, enabled: boolean) {
   });
 }
 
-/** 保存文本：本地与 SFTP 均返回目录项；容器文件只读，调用方不得对其触发保存 */
+/** 保存文本：本地与 SFTP 均返回目录项；容器文件只读，调用方不得对其触发保存（H5：按来源分派到两条契约操作） */
 export function useSaveFileContent(ref: EditableFileRef) {
   const qc = useQueryClient();
   return useMutation({
@@ -199,13 +211,12 @@ export function editableFileDownloadUrl(ref: EditableFileRef): string {
 // ─── 文件管理器页专用查询（宿主机） ────────────────────────────────────────────
 
 export function useTerminalRootInfo() {
-  return useQuery(rootInfoQueryOptions());
+  return useApiQuery(terminalFileContract.rootInfo);
 }
 
 /** 目录浏览（keepPreviousData：目录切换保留旧列表避免闪白） */
 export function useTerminalFileList(path: string, enabled = true) {
-  return useQuery({
-    ...localBrowseQueryOptions(path),
+  return useApiQuery(terminalFileContract.list, { query: { path } }, {
     enabled: enabled && path !== '',
     placeholderData: keepPreviousData,
   });
@@ -213,10 +224,7 @@ export function useTerminalFileList(path: string, enabled = true) {
 
 /** 文件夹选择器（移动 / 复制目标）目录浏览，与主列表共享缓存 */
 export function useTerminalPickerList(path: string, enabled = true) {
-  return useQuery({
-    ...localBrowseQueryOptions(path),
-    enabled: enabled && path !== '',
-  });
+  return useApiQuery(terminalFileContract.list, { query: { path } }, { enabled: enabled && path !== '' });
 }
 
 export function useTerminalChecksum(path: string | undefined, algo: FileChecksumAlgo | undefined, enabled = true) {
@@ -249,7 +257,8 @@ export type TerminalFileOperation =
   | { kind: 'create'; path: string; type: FsEntryType }
   | { kind: 'chmod'; path: string; mode: number };
 
-/** 成功后失效所有目录浏览缓存（操作可能跨目录，如 move / copy，无法精确到单目录） */
+/** H5：rename / move / copy / create / chmod 分派到五条契约操作，以 `UseMutationResult<null, Error, TerminalFileOperation>` 贯穿文件管理器组件；
+ * 成功后失效全部本地目录浏览缓存（操作可能跨目录，如 move / copy，无法精确到单目录） */
 export function useTerminalFileOperation() {
   const qc = useQueryClient();
   return useMutation({
@@ -267,7 +276,7 @@ export function useTerminalFileOperation() {
   });
 }
 
-/** 批量删除条目（逐个串行删除，任一失败即中断抛出） */
+/** 批量删除条目（逐个串行删除，任一失败即中断抛出）（H5：多步串联） */
 export function useDeleteTerminalEntries() {
   const qc = useQueryClient();
   return useMutation({
@@ -311,6 +320,7 @@ export async function waitForAsyncTask(taskId: number, options: { intervalMs?: n
 
 // ─── 终端页 Explorer：本地 / SFTP / Docker ────────────────────────────────────
 
+/** H5：五种目录项操作分派到五条契约操作，变量为判别联合 */
 export function useLocalFileMutation() {
   const qc = useQueryClient();
   return useMutation({
@@ -327,6 +337,7 @@ export function useLocalFileMutation() {
   });
 }
 
+/** 上传带进度，走 XHR 表单通道而非 api()（H5：带进度回调的上传） */
 export function useLocalFileUpload() {
   const qc = useQueryClient();
   return useMutation({
@@ -336,6 +347,7 @@ export function useLocalFileUpload() {
   });
 }
 
+/** H5：五种目录项操作分派到五条契约操作，变量为判别联合；按 SSH 配置整体失效其目录树 */
 export function useSftpFileMutation(profileId: number) {
   const qc = useQueryClient();
   const params = { profileId };
@@ -362,16 +374,8 @@ export function sftpDownloadUrl(profileId: number, path: string) {
   return urlOf(sshSftpContract.download, { params: { profileId }, query: { path } });
 }
 
-export function useDockerExplorerAction() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, action }: { id: string; action: 'start' | 'stop' | 'restart' }) => {
-      const op = action === 'start' ? dockerContract.start : action === 'stop' ? dockerContract.stop : dockerContract.restart;
-      return api(op, { params: { id } });
-    },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: dockerKeys.all });
-      void qc.invalidateQueries({ queryKey: terminalFileKeys.all });
-    },
-  });
-}
+/**
+ * Docker Explorer 的容器启停：与 Docker 管理页同一 mutation（容器清单 + 该容器的目录浏览失效）。
+ * 原先额外广播整个 terminal-files 域，但容器启停不影响宿主机本地文件。
+ */
+export const useDockerExplorerAction = useDockerContainerAction;

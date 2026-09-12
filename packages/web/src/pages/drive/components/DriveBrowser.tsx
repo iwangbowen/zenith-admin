@@ -16,7 +16,7 @@ import { useFilePreview } from '@/hooks/useFilePreview';
 import { useAuth } from '@/hooks/useAuth';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
-import { batchDownloadDriveNodes, driveKeys, useCopyDriveNodes, useCreateDriveFolder, useDeleteDriveNodes, useDriveDir, useDrivePreviewWatermark, useDriveTags, useLockDriveNode, useMoveDriveNodes, useRenameDriveNode, useStarDriveNode } from '@/hooks/queries/drive';
+import { batchDownloadDriveNodes, deleteDriveNodesVariables, driveKeys, useCopyDriveNodes, useCreateDriveFolder, useDeleteDriveNodes, useDriveDir, useDrivePreviewWatermark, useDriveTags, useLockDriveNode, useMoveDriveNodes, useRenameDriveNode, useStarDriveNode, useUnlockDriveNode, useUnstarDriveNode } from '@/hooks/queries/drive';
 import { confirmDelete, confirmDangerAsync } from '@/utils/confirm';
 import { canPreviewFile, fetchManagedFileBlob } from '@/utils/file-utils';
 import { downloadBlob } from '@/utils/download';
@@ -98,7 +98,9 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
   const copy = useCopyDriveNodes();
   const remove = useDeleteDriveNodes();
   const star = useStarDriveNode();
+  const unstar = useUnstarDriveNode();
   const lock = useLockDriveNode();
+  const unlock = useUnlockDriveNode();
 
   const preview = useFilePreview(() => list.filter((n) => n.type === 'file' && n.url).map(nodeToManagedFile));
 
@@ -130,7 +132,7 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
     confirmDelete({
       title: nodes.length === 1 ? `删除「${nodes[0].name}」？` : `删除选中的 ${nodes.length} 个项目？`,
       content: '将移入回收站，可在保留期内还原。',
-      onOk: () => remove.mutateAsync({ nodes }).then(() => { Toast.success('已移入回收站'); setSelectedIds([]); }),
+      onOk: () => remove.mutateAsync(deleteDriveNodesVariables(nodes)).then(() => { Toast.success('已移入回收站'); setSelectedIds([]); }),
     });
   };
 
@@ -175,13 +177,13 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
       ...(previewable ? [{ key: 'preview', label: '预览', onClick: () => openNode(node) }] : []),
       ...(canDownload && roleAtLeast(node.myRole, 'downloader') ? [{ key: 'download', label: '下载', onClick: () => void downloadOne(node) }] : []),
       { key: 'detail', label: '详情', onClick: () => onOpenDetail(node.id) },
-      { key: 'star', label: node.isStarred ? '取消收藏' : '收藏', onClick: () => star.mutate({ node, starred: !node.isStarred }) },
+      { key: 'star', label: node.isStarred ? '取消收藏' : '收藏', onClick: () => (node.isStarred ? unstar : star).mutate({ params: { id: node.id }, node }) },
       ...(nodeCanEdit ? [
         { key: 'rename', label: '重命名', onClick: () => setRenaming(node), dividerBefore: true },
         { key: 'move', label: '移动到', onClick: () => setPicker({ mode: 'move', nodes: [node] }) },
         { key: 'copy', label: '复制到', onClick: () => setPicker({ mode: 'copy', nodes: [node] }) },
       ] : []),
-      ...(nodeCanEdit && node.type === 'file' ? [{ key: 'lock', label: node.lockedBy ? '解除锁定' : '签出锁定', onClick: () => lock.mutate({ id: node.id, lock: !node.lockedBy }) }] : []),
+      ...(nodeCanEdit && node.type === 'file' ? [{ key: 'lock', label: node.lockedBy ? '解除锁定' : '签出锁定', onClick: () => (node.lockedBy ? unlock.mutate({ params: { id: node.id } }) : lock.mutate({ params: { id: node.id }, body: {} })) }] : []),
       ...(canDelete && roleAtLeast(node.myRole, 'editor') ? [{ key: 'delete', label: '删除', danger: true, dividerBefore: true, onClick: () => deleteNodes([node]) }] : []),
     ];
   };

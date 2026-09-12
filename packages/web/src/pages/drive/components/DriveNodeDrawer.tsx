@@ -5,7 +5,7 @@ import { formatBytes } from '@zenith/shared/core';
 import { DRIVE_NODE_TYPE_LABELS, DRIVE_ROLE_LABELS, type DriveNode, type DriveNodeDetail } from '@zenith/shared/drive';
 import { AppModal } from '@/components/AppModal';
 import { useConversations } from '@/hooks/queries/chat';
-import { useCreateDriveLegalHold, useCreateDriveTag, useDriveNode, useDriveTags, useLockDriveNode, useSendDriveNodeToChat, useSetDriveNodeTags, useStarDriveNode } from '@/hooks/queries/drive';
+import { useCreateDriveLegalHold, useCreateDriveTag, useDriveNode, useDriveTags, useLockDriveNode, useSendDriveNodeToChat, useSetDriveNodeTags, useStarDriveNode, useUnlockDriveNode, useUnstarDriveNode } from '@/hooks/queries/drive';
 import { ForwardModal } from '@/pages/chat/components/ForwardModal';
 import { usePermission } from '@/hooks/usePermission';
 import { getFileTypeIcon } from '@/utils/file-utils';
@@ -108,17 +108,20 @@ export function DriveNodeDrawer({ nodeId, allowExternalShare, onClose, onDownloa
   const { hasPermission } = usePermission();
   const query = useDriveNode(nodeId ?? undefined);
   const star = useStarDriveNode();
+  const unstar = useUnstarDriveNode();
   const lock = useLockDriveNode();
+  const unlock = useUnlockDriveNode();
   const [tab, setTab] = useState('detail');
   const node = query.data;
 
   const toggleStar = () => {
     if (!node) return;
-    star.mutate({ node, starred: !node.isStarred }, { onSuccess: () => Toast.success(node.isStarred ? '已取消收藏' : '已收藏') });
+    (node.isStarred ? unstar : star).mutate({ params: { id: node.id }, node }, { onSuccess: () => Toast.success(node.isStarred ? '已取消收藏' : '已收藏') });
   };
   const toggleLock = () => {
     if (!node) return;
-    lock.mutate({ id: node.id, lock: !node.lockedBy }, { onSuccess: () => Toast.success(node.lockedBy ? '已解锁' : '已锁定') });
+    if (node.lockedBy) unlock.mutate({ params: { id: node.id } }, { onSuccess: () => Toast.success('已解锁') });
+    else lock.mutate({ params: { id: node.id }, body: {} }, { onSuccess: () => Toast.success('已锁定') });
   };
 
   const title = node ? (
@@ -136,14 +139,14 @@ export function DriveNodeDrawer({ nodeId, allowExternalShare, onClose, onDownloa
           <>
             <div className="drive-drawer__actions">
               <DriveSubscriptionButton nodeId={node.id} />
-              <Button size="small" icon={node.isStarred ? <StarOff size={14} /> : <Star size={14} />} onClick={toggleStar} loading={star.isPending}>
+              <Button size="small" icon={node.isStarred ? <StarOff size={14} /> : <Star size={14} />} onClick={toggleStar} loading={star.isPending || unstar.isPending}>
                 {node.isStarred ? '取消收藏' : '收藏'}
               </Button>
               {node.type === 'file' && hasPermission('drive:node:download') && roleAtLeast(node.myRole, 'downloader') && (
                 <Button size="small" icon={<Download size={14} />} onClick={() => onDownload(node)}>下载</Button>
               )}
               {node.type === 'file' && hasPermission('drive:node:edit') && roleAtLeast(node.myRole, 'editor') && !node.spaceArchived && (
-                <Button size="small" icon={node.lockedBy ? <LockOpen size={14} /> : <Lock size={14} />} onClick={toggleLock} loading={lock.isPending}>
+                <Button size="small" icon={node.lockedBy ? <LockOpen size={14} /> : <Lock size={14} />} onClick={toggleLock} loading={lock.isPending || unlock.isPending}>
                   {node.lockedBy ? '解除锁定' : '签出锁定'}
                 </Button>
               )}

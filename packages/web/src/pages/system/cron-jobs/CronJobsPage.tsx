@@ -21,6 +21,7 @@ import { TRIGGER_TAG } from './cron-dashboard-shared';
 import {
   cronJobKeys,
   useClearCronJobLogs,
+  useClearCronJobLogsOfJob,
   useCronJobAllLogs,
   useCronJobDetail,
   useCronJobHandlers,
@@ -169,6 +170,8 @@ export default function CronJobsPage() {
   const runMutation = useRunCronJob();
   const toggleStatusMutation = useUpdateCronJobStatus();
   const clearLogsMutation = useClearCronJobLogs();
+  const clearJobLogsMutation = useClearCronJobLogsOfJob();
+  const clearingLogs = clearLogsMutation.isPending || clearJobLogsMutation.isPending;
   const status = useStatusToggle<CronJob>({
     toggle: (job, enabled) => toggleStatusMutation.mutateAsync({ params: { id: job.id }, body: { status: enabled ? 'enabled' : 'disabled' } }),
     confirmDisable: (job) => ({
@@ -230,10 +233,15 @@ export default function CronJobsPage() {
       title: '确认清除日志',
       content: `将删除${label}的执行日志，此操作不可恢复，确认继续吗？`,
       onOk: async () => {
-        await clearLogsMutation.mutateAsync({ days, jobId });
-        Toast.success('清除成功');
-        if (jobId !== null && jobId !== undefined) setLogsPage(1);
-        else setAllLogsPage(1);
+        if (jobId !== null && jobId !== undefined) {
+          await clearJobLogsMutation.mutateAsync({ params: { id: jobId }, query: { days } });
+          Toast.success('清除成功');
+          setLogsPage(1);
+        } else {
+          await clearLogsMutation.mutateAsync({ query: { days } });
+          Toast.success('清除成功');
+          setAllLogsPage(1);
+        }
       },
     });
   };
@@ -519,7 +527,7 @@ export default function CronJobsPage() {
           />
           {hasPermission('system:cronjob:delete') && (
             <SplitButtonGroup>
-              <Button icon={<Trash2 size={14} />} type="danger" theme="light" loading={clearLogsMutation.isPending} onClick={() => handleClearLogs(365, null)}>清除日志</Button>
+              <Button icon={<Trash2 size={14} />} type="danger" theme="light" loading={clearingLogs} onClick={() => handleClearLogs(365, null)}>清除日志</Button>
               <Dropdown
                 trigger="click"
                 position="bottomRight"
@@ -575,7 +583,7 @@ export default function CronJobsPage() {
         {hasPermission('system:cronjob:delete') && (
           <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'flex-end' }}>
             <SplitButtonGroup>
-              <Button icon={<Trash2 size={14} />} type="danger" theme="light" loading={clearLogsMutation.isPending} onClick={() => handleClearLogs(365, logsJobId)}>清除日志</Button>
+              <Button icon={<Trash2 size={14} />} type="danger" theme="light" loading={clearingLogs} onClick={() => handleClearLogs(365, logsJobId)}>清除日志</Button>
               <Dropdown
                 trigger="click"
                 position="bottomRight"

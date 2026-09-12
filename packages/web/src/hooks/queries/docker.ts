@@ -1,16 +1,36 @@
-import { keepPreviousData, useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { dockerContract } from '@zenith/shared/ops';
 import { api, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export const dockerKeys = {
-  all: ['docker'] as const,
   containers: contractKey(dockerContract.containers),
   images: contractKey(dockerContract.images),
   networks: contractKey(dockerContract.networks),
   volumes: contractKey(dockerContract.volumes),
   stats: (id: string | undefined) => contractKey(dockerContract.stats, { params: { id: id ?? '' } }),
+  /** 某容器的全部目录浏览（`query: {}` 对任何 path 都子集匹配） */
+  filesOf: (containerId: string) => contractKey(dockerContract.containerFiles, { params: { id: containerId }, query: {} }),
   files: (containerId: string, path: string) => contractKey(dockerContract.containerFiles, { params: { id: containerId }, query: { path } }),
 };
+
+/**
+ * 启停 / 重启只改容器自身：容器清单的状态列与该容器的容器内目录浏览（停止后不可读；资源占用按需拉取不进缓存）；
+ * 镜像 / 网络 / 存储卷清单与其占用计数都不变。终端页 Docker Explorer 与 Docker 管理页共用。
+ */
+export function invalidateAfterContainerStateChange(qc: QueryClient, id: string) {
+  void qc.invalidateQueries({ queryKey: dockerKeys.containers });
+  void qc.invalidateQueries({ queryKey: dockerKeys.filesOf(id) });
+}
+
+/**
+ * 清理会跨资源改变占用计数：删掉停止的容器后镜像 / 网络 / 存储卷的 containers / 使用中标记随之变化，
+ * `system` 更是一次动三类资源——四张清单都需回源；容器级的 stats / 目录浏览只属于仍在运行的容器，不受影响。
+ */
+export function invalidateDockerInventory(qc: QueryClient) {
+  for (const queryKey of [dockerKeys.containers, dockerKeys.images, dockerKeys.networks, dockerKeys.volumes]) {
+    void qc.invalidateQueries({ queryKey });
+  }
+}
 
 export function useDockerContainers(options?: { enabled?: boolean; silent?: boolean; refetchInterval?: number | false }) {
   return useApiQuery(dockerContract.containers, {
@@ -46,12 +66,12 @@ const CONTAINER_ACTION_OPS = {
   restart: dockerContract.restart,
 } as const;
 
-/** 启停只改容器状态：镜像 / 网络 / 存储卷清单与其占用计数都不变 */
+/** H5：start / stop / restart 三条同形操作按动作分派，页面以 `{ id, action }` 一个变量驱动行级忙碌态 */
 export function useDockerContainerAction() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, action }: { id: string; action: DockerContainerAction }) => api(CONTAINER_ACTION_OPS[action], { params: { id } }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dockerKeys.containers }),
+    onSuccess: (_data, { id }) => invalidateAfterContainerStateChange(qc, id),
   });
 }
 
@@ -116,10 +136,7 @@ export interface DockerPruneVariables {
   all?: boolean;
 }
 
-/**
- * 清理：`system` 一次清理已停止容器 + 悬空镜像 + 未使用网络，
- * 各范围对其他资源的占用计数亦有影响，故保留域根广播。
- */
+/** H5：五个清理范围分派到五条操作，页面以 `{ scope, all }` 一个变量驱动；失效面见 invalidateDockerInventory */
 export function useDockerPrune() {
   const qc = useQueryClient();
   return useMutation({
@@ -132,7 +149,7 @@ export function useDockerPrune() {
         case 'system': return api(dockerContract.pruneSystem);
       }
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: dockerKeys.all }),
+    onSuccess: () => invalidateDockerInventory(qc),
   });
 }
 

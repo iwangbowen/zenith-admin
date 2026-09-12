@@ -1,4 +1,4 @@
-import { keepPreviousData, useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { dbAdminContract, type DbAdminSqlExportMode, type DbBackupStatus } from '@zenith/shared/ops';
 import { api, useSaveMutation, contractKey, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
@@ -10,7 +10,6 @@ export type DbBackupListParams = NonNullable<QueryOf<typeof dbAdminContract.back
 const tableParams = (schema: string, table: string) => ({ schema, name: table });
 
 export const dbAdminKeys = {
-  all: ['db-admin'] as const,
   tables: contractKey(dbAdminContract.tables),
   overview: contractKey(dbAdminContract.overview),
   structure: (schema: string | undefined, table: string | undefined) =>
@@ -159,11 +158,13 @@ export function useDbAdminTruncateTable() {
   });
 }
 
-/** 刷新物化视图影响行数与维护统计等多处，按域根广播 */
+/** 刷新物化视图重算其数据：表清单的行数 / 体积估算、总览的库体积、维护统计的 analyze / vacuum 时间随之变化；对象清单不含物化视图 */
 export function useDbAdminRefreshMatview() {
   return useApiMutation(dbAdminContract.refreshMatview, {
     invalidate: (qc) => {
-      void qc.invalidateQueries({ queryKey: dbAdminKeys.all });
+      void qc.invalidateQueries({ queryKey: dbAdminKeys.tables });
+      void qc.invalidateQueries({ queryKey: dbAdminKeys.overview });
+      void qc.invalidateQueries({ queryKey: dbAdminKeys.maintenance });
     },
   });
 }
@@ -196,12 +197,15 @@ export function useDbAdminUpdateRow() {
 // ─── 运维 ─────────────────────────────────────────────────────────────────────
 
 /** 取消查询 / 终止连接：活动连接列表随之变化 */
-export function useDbAdminActivityAction() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ pid, action }: { pid: number; action: 'cancel' | 'terminate' }) =>
-      api(action === 'cancel' ? dbAdminContract.cancelBackend : dbAdminContract.terminateBackend, { params: { pid } }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: dbAdminKeys.activity }),
+export function useDbAdminCancelBackend() {
+  return useApiMutation(dbAdminContract.cancelBackend, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: dbAdminKeys.activity }),
+  });
+}
+
+export function useDbAdminTerminateBackend() {
+  return useApiMutation(dbAdminContract.terminateBackend, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: dbAdminKeys.activity }),
   });
 }
 

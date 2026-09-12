@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { OutputOf, QueryOf } from '@zenith/shared/core';
 import { fileContract, UPLOAD_CHUNK_MIN_BYTES, type FileAccessPurpose, type FileAccessUrl } from '@zenith/shared/platform';
 import { api, contractKey, createResourceQueries, urlOf, useApiQuery } from '@/lib/contract-query';
@@ -50,19 +50,27 @@ interface UploadVariables {
   signal?: AbortSignal;
 }
 
-/** 多文件上传（进入文件管理列表）；带上传进度，故走 XHR 表单通道而非 api() */
+/** 多文件上传（进入文件管理列表）；带上传进度，故走 XHR 表单通道而非 api()（H5：带进度回调的上传）。
+ * 新文件进入列表、统计面板与目录浏览（按文件表汇总），三者一并回源；详情缓存与本次无关 */
 export function useUploadFile() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ formData, onProgress, signal }: UploadVariables) =>
       request.postForm<OutputOf<typeof fileContract.upload>>(urlOf(fileContract.upload), formData, { onProgress, signal }).then(unwrap),
-    onSuccess: () => qc.invalidateQueries({ queryKey: fileKeys.all }),
+    onSuccess: () => invalidateAfterFilesAdded(qc),
   });
+}
+
+/** 新增托管文件后的失效面：列表、统计面板与目录浏览都按文件表汇总（页面上传队列完成后同样调用） */
+export function invalidateAfterFilesAdded(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: fileKeys.lists });
+  void qc.invalidateQueries({ queryKey: contractKey(fileContract.stats) });
+  void qc.invalidateQueries({ queryKey: contractKey(fileContract.browse) });
 }
 
 /**
  * 单文件直传——聊天附件、工作流补偿附件、头像等共用。
- * 与 useUploadFile 的区别：不进文件管理列表，故不失效 fileKeys。
+ * 与 useUploadFile 的区别：不进文件管理列表，故不失效 fileKeys（H5：带进度回调的上传）。
  */
 export function useUploadOneFile() {
   return useMutation({

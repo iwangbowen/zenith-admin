@@ -6,7 +6,7 @@
  * 不随版本 CRUD 失效（发布 / 下载事件由客户端行为产生，刷新按钮手动回源）。
  */
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import type { OutputOf, QueryOf } from '@zenith/shared/core';
+import type { InputOf, OutputOf, QueryOf } from '@zenith/shared/core';
 import {
   appArtifactContract,
   appReleaseContract,
@@ -18,7 +18,7 @@ import {
   type AppFileArtifactKind,
   type AppPlatform,
 } from '@zenith/shared/ops';
-import { api, contractKey, createResourceQueries, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { contractKey, createResourceQueries, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { unwrap } from '@/lib/query';
 import { request } from '@/utils/request';
 import { chunkedUpload, type ChunkedUploadEndpoints } from '@/utils/chunked-upload';
@@ -114,6 +114,7 @@ interface UploadAppArtifactVariables {
 /**
  * 制品文件上传：不超过分片阈值走单请求 multipart（XHR 带进度），超过则分片 + 断点续传
  * （安装包普遍几十到几百 MB，单请求受反向代理请求体上限约束）。两条路径都由服务端计算 sha256。
+ * （H5：带进度回调的上传 / 多步分片流程）
  */
 export function useUploadAppArtifact() {
   const qc = useQueryClient();
@@ -150,13 +151,12 @@ export function useAddExternalArtifact() {
   });
 }
 
-/** 删除制品：制品 ID 走制品契约，所属版本 ID 只用于失效 */
+/** 删除制品：制品 ID 走制品契约；响应为空，所属版本 ID 由调用方随变量带入，只用于失效 */
+export type DeleteAppArtifactVariables = InputOf<typeof appArtifactContract.remove> & { releaseId: number };
+
 export function useDeleteAppArtifact() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ artifactId }: { artifactId: number; releaseId: number }) =>
-      api(appArtifactContract.remove, { params: { id: artifactId } }),
-    onSuccess: (_data, { releaseId }) => invalidateReleaseArtifacts(qc, releaseId),
+  return useApiMutation<typeof appArtifactContract.remove, DeleteAppArtifactVariables>(appArtifactContract.remove, {
+    invalidate: (qc, _data, { releaseId }) => invalidateReleaseArtifacts(qc, releaseId),
   });
 }
 

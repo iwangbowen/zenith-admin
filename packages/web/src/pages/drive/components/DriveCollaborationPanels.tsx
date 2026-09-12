@@ -103,7 +103,7 @@ function SpaceTagEditor({ space }: { readonly space: DriveSpace }) {
         extra={canEdit ? <Space>
           <Button size="small" theme="borderless" onClick={() => modal.openEdit(tag)}>编辑</Button>
           <Button size="small" theme="borderless" onClick={() => { setMerging(tag); setTargetId(undefined); }}>合并</Button>
-          <Button size="small" theme="borderless" type="danger" onClick={() => confirmDelete({ title: `删除标签「${tag.name}」？`, onOk: () => remove.mutateAsync({ id: tag.id, spaceId: space.id }) })}>删除</Button>
+          <Button size="small" theme="borderless" type="danger" onClick={() => confirmDelete({ title: `删除标签「${tag.name}」？`, onOk: () => remove.mutateAsync({ params: { id: tag.id }, spaceId: space.id }) })}>删除</Button>
         </Space> : undefined} />} />
     <AppModal {...modal.modalProps} width={460}><Form key={modal.formKey} {...modal.formProps}>
       <Form.Input field="name" label="名称" maxLength={50} rules={[{ required: true }]} />

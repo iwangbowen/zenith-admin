@@ -21,7 +21,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import {
-  driveKeys, useAdminDeleteDriveSpace, useAdminUpdateDriveSpace, useCreateDepartmentDriveSpace, useDriveAdminSpaces, useDriveAdminStats, useDriveSpaceDetail, useSubmitDriveAdminTask,
+  driveKeys, useAdminDeleteDriveSpace, useAdminUpdateDriveSpace, useCreateDepartmentDriveSpace, useDriveAdminSpaces, useDriveAdminStats, useDriveSpaceDetail, useRecalcDriveUsage, useReindexDrive,
 } from '@/hooks/queries/drive';
 import { confirmDanger, confirmDangerAsync } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
@@ -105,7 +105,9 @@ export default function DriveAdminSpacesPage() {
   });
   const update = useAdminUpdateDriveSpace();
   const remove = useAdminDeleteDriveSpace();
-  const submitTask = useSubmitDriveAdminTask();
+  const submitRecalc = useRecalcDriveUsage();
+  const submitReindex = useReindexDrive();
+  const taskPending = submitRecalc.isPending || submitReindex.isPending;
   const [deptModal, setDeptModal] = useState(false);
   const handoffMutation = useHandoffDriveSpace();
   const handoff = useEditModal<DriveSpace, Partial<HandoffDriveSpaceInput>, HandoffDriveSpaceInput>({
@@ -138,7 +140,7 @@ export default function DriveAdminSpacesPage() {
   });
 
   const runTask = (kind: 'recalc' | 'reindex', spaceId?: number) => {
-    submitTask.mutate({ kind, spaceId }, { onSuccess: () => Toast.info(kind === 'recalc' ? '容量重算任务已提交，完成后会通知你' : '索引补建任务已提交，完成后会通知你') });
+    (kind === 'recalc' ? submitRecalc : submitReindex).mutate({ body: { spaceId } }, { onSuccess: () => Toast.info(kind === 'recalc' ? '容量重算任务已提交，完成后会通知你' : '索引补建任务已提交，完成后会通知你') });
   };
 
   const stats = statsQuery.data;
@@ -211,14 +213,14 @@ export default function DriveAdminSpacesPage() {
         create={canEdit ? <CreateButton onClick={() => setDeptModal(true)}>创建部门空间</CreateButton> : null}
         actions={(
           <>
-            {canEdit && <Button icon={<RefreshCcw size={14} />} onClick={() => runTask('recalc')} loading={submitTask.isPending}>全量重算容量</Button>}
-            {canEdit && <Button icon={<Search size={14} />} onClick={() => runTask('reindex')} loading={submitTask.isPending}>补建全文索引</Button>}
+            {canEdit && <Button icon={<RefreshCcw size={14} />} onClick={() => runTask('recalc')} loading={taskPending}>全量重算容量</Button>}
+            {canEdit && <Button icon={<Search size={14} />} onClick={() => runTask('reindex')} loading={taskPending}>补建全文索引</Button>}
           </>
         )}
         mobileActions={(
           <>
-            {canEdit && <Button theme="borderless" onClick={() => runTask('recalc')} loading={submitTask.isPending}>全量重算容量</Button>}
-            {canEdit && <Button theme="borderless" onClick={() => runTask('reindex')} loading={submitTask.isPending}>补建全文索引</Button>}
+            {canEdit && <Button theme="borderless" onClick={() => runTask('recalc')} loading={taskPending}>全量重算容量</Button>}
+            {canEdit && <Button theme="borderless" onClick={() => runTask('reindex')} loading={taskPending}>补建全文索引</Button>}
           </>
         )}
         filterTitle="空间治理筛选"

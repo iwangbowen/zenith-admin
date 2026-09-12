@@ -199,10 +199,10 @@ export default function PublicSharePage() {
       Toast.error(err instanceof Error ? err.message : '下载失败');
     }
   };
-  const save = useSaveFromDriveShare();
+  const save = useSaveFromDriveShare(session);
   const handleSave = async (target: FolderTarget) => {
     if (!session || !saving) return;
-    await save.mutateAsync({ params: { token }, body: { targetSpaceId: target.spaceId, targetParentId: target.parentId, nodeIds: saving.map((n) => n.id) }, session });
+    await save.mutateAsync({ params: { token }, body: { targetSpaceId: target.spaceId, targetParentId: target.parentId, nodeIds: saving.map((n) => n.id) } });
     Toast.success(`已转存到「${target.label}」`);
     setSaving(null);
   };

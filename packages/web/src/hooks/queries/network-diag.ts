@@ -1,35 +1,22 @@
-import { useMutation } from '@tanstack/react-query';
-import { networkDiagContract, type DnsRecordType, type NetDiagStreamType } from '@zenith/shared/ops';
-import { api, urlOf, useApiMutation } from '@/lib/contract-query';
+import { networkDiagContract, type NetDiagStreamType } from '@zenith/shared/ops';
+import { urlOf, useApiMutation } from '@/lib/contract-query';
 
-export const networkDiagKeys = {
-  all: ['network-diag'] as const,
-};
-
-/** 诊断均为一次性查询（不进缓存），故以 mutation 形态暴露 */
+/** 诊断均为一次性查询（不进缓存），故以 mutation 形态暴露；变量即契约输入（`{ query }` / `{ body }`） */
 
 export function useNslookup() {
-  return useMutation({
-    mutationFn: (host: string) => api(networkDiagContract.nslookup, { query: { host } }),
-  });
+  return useApiMutation(networkDiagContract.nslookup);
 }
 
 export function useDnsLookup() {
-  return useMutation({
-    mutationFn: ({ host, type }: { host: string; type: DnsRecordType }) => api(networkDiagContract.dns, { query: { host, type } }),
-  });
+  return useApiMutation(networkDiagContract.dns);
 }
 
 export function useReverseLookup() {
-  return useMutation({
-    mutationFn: (ip: string) => api(networkDiagContract.reverse, { query: { ip } }),
-  });
+  return useApiMutation(networkDiagContract.reverse);
 }
 
 export function useHttpProbe() {
-  return useMutation({
-    mutationFn: (url: string) => api(networkDiagContract.httpProbe, { body: { url } }),
-  });
+  return useApiMutation(networkDiagContract.httpProbe);
 }
 
 export function useNetworkInterfaces() {

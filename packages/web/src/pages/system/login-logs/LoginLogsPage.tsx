@@ -32,7 +32,7 @@ export default function LoginLogsPage() {
     page, pageSize, setPage, buildPagination,
     draftParams, bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
-  } = useListSearch<SearchParams>({ defaults: defaultParams, listKey: loginLogKeys.all });
+  } = useListSearch<SearchParams>({ defaults: defaultParams, listKey: loginLogKeys.lists });
   const listQuery = useLoginLogList({
     page,
     pageSize,

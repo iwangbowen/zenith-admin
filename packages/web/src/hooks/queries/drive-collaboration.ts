@@ -1,7 +1,7 @@
 import type { QueryOf } from '@zenith/shared/core';
 import { driveAdminContract, driveCollaborationContract, driveTagContract, driveNodeContract } from '@zenith/shared/drive';
 import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
-import { driveKeys } from './drive';
+import { driveKeys, invalidateDriveTagSurface } from './drive';
 
 export function useDriveProfile(nodeId: number) {
   return useApiQuery(driveCollaborationContract.profile, { params: { id: nodeId } });
@@ -48,16 +48,9 @@ export function useEditDriveComment(spaceId: number) {
 export function useDriveSpaceActivities(spaceId: number | undefined, query: NonNullable<QueryOf<typeof driveCollaborationContract.spaceActivities>>) {
   return useApiQuery(driveCollaborationContract.spaceActivities, { params: { id: spaceId ?? 0 }, query }, { enabled: spaceId !== undefined });
 }
+/** 合并标签改写文件关联：与增删改标签同一失效面（标签源、该空间目录列表、节点详情、个人视图） */
 export function useMergeDriveTags(spaceId: number) {
   return useApiMutation(driveTagContract.merge, {
-    invalidate: (qc) => {
-      void qc.invalidateQueries({ queryKey: driveKeys.tags(spaceId) });
-      void qc.invalidateQueries({ queryKey: [...driveKeys.dirs, spaceId] });
-      void qc.invalidateQueries({ queryKey: contractKey(driveNodeContract.detail), predicate: (query) => {
-        const data = query.state.data;
-        return !!data && typeof data === 'object' && 'spaceId' in data && data.spaceId === spaceId;
-      } });
-      void qc.invalidateQueries({ queryKey: driveKeys.viewOf('search') });
-    },
+    invalidate: (qc) => invalidateDriveTagSurface(qc, spaceId),
   });
 }

@@ -3,7 +3,6 @@ import { contractKey, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-
 import { hostQueryOf } from './ops-hosts';
 
 export const processKeys = {
-  all: ['processes'] as const,
   list: (hostId: number | null) => contractKey(processContract.list, { query: hostQueryOf(hostId) }),
   detail: (pid: number | undefined, hostId: number | null) =>
     contractKey(processContract.detail, { params: { pid: pid ?? 0 }, query: hostQueryOf(hostId) }),
@@ -29,18 +28,24 @@ export function processStreamUrl(hostId: number | null = null) {
   return urlOf(processContract.stream, { query: hostQueryOf(hostId) });
 }
 
+/** 结束进程：该主机的进程列表回源；进程已不存在，其详情缓存移除而非失效（避免 404 重拉）。其它主机不受影响 */
 export function useKillProcess() {
   return useApiMutation(processContract.kill, {
-    invalidate: (qc) => {
-      void qc.invalidateQueries({ queryKey: processKeys.all });
+    invalidate: (qc, _output, { params, query }) => {
+      const hostId = query.hostId ?? null;
+      qc.removeQueries({ queryKey: processKeys.detail(params.pid, hostId) });
+      void qc.invalidateQueries({ queryKey: processKeys.list(hostId) });
     },
   });
 }
 
+/** 调整优先级：该主机的进程列表（nice 列）与该进程详情回源 */
 export function useSetProcessPriority() {
   return useApiMutation(processContract.setPriority, {
-    invalidate: (qc) => {
-      void qc.invalidateQueries({ queryKey: processKeys.all });
+    invalidate: (qc, _output, { params, query }) => {
+      const hostId = query.hostId ?? null;
+      void qc.invalidateQueries({ queryKey: processKeys.detail(params.pid, hostId) });
+      void qc.invalidateQueries({ queryKey: processKeys.list(hostId) });
     },
   });
 }

@@ -1,7 +1,7 @@
-import { keepPreviousData, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { cronJobContract } from '@zenith/shared/platform';
-import { api, useSaveMutation, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { useSaveMutation, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 
 export type CronJobListParams = NonNullable<QueryOf<typeof cronJobContract.list>>;
@@ -135,18 +135,18 @@ export function useUpdateCronJobStatus() {
   });
 }
 
-/** 清除执行日志：指定 jobId 走单任务端点，否则清除全部 */
+/** 清除全部执行日志（按天数） */
 export function useClearCronJobLogs() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ days, jobId }: { days: number; jobId?: number | null }) => (jobId !== null && jobId !== undefined
-      ? api(cronJobContract.clearJobLogs, { params: { id: jobId }, query: { days } })
-      : api(cronJobContract.clearLogs, { query: { days } })),
-    onSuccess: () => {
-      invalidateCronJobLogs(qc);
-      // 概览的汇总 / 趋势 / perJob / 错误聚合均由日志聚合而来
-      invalidateCronJobStats(qc);
-      // 任务本身字段不受影响，不动 lists / detail
-    },
-  });
+  return useApiMutation(cronJobContract.clearLogs, { invalidate: invalidateAfterLogsCleared });
+}
+
+/** 清除单个任务的执行日志 */
+export function useClearCronJobLogsOfJob() {
+  return useApiMutation(cronJobContract.clearJobLogs, { invalidate: invalidateAfterLogsCleared });
+}
+
+/** 清日志后：两个日志端点与由日志聚合的概览（汇总 / 趋势 / perJob / 错误聚合）回源；任务本身字段不受影响，不动 lists / detail */
+function invalidateAfterLogsCleared(qc: QueryClient) {
+  invalidateCronJobLogs(qc);
+  invalidateCronJobStats(qc);
 }

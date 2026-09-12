@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { resourceKeyOf } from '@zenith/shared/core';
 import { rateLimitContract, type RateLimitAlgorithm, type RateLimitKeyType, type RateLimitMode, type RateLimitMountSource } from '@zenith/shared/platform';
 import { config } from '@/config';
@@ -8,10 +8,10 @@ import { unwrap, LOOKUP_STALE_TIME } from '@/lib/query';
 export type { RateLimitAlgorithm, RateLimitKeyType, RateLimitMode, RateLimitMountSource };
 
 export const rateLimitKeys = {
-  all: [resourceKeyOf(rateLimitContract.basePath)] as const,
   rules: contractKey(rateLimitContract.rules),
   stats: contractKey(rateLimitContract.stats),
   bans: contractKey(rateLimitContract.bans),
+  /** OpenAPI 路径集来自 /api/openapi.json（非契约操作），沿用本域资源键 + 区分段 */
   apiPaths: [resourceKeyOf(rateLimitContract.basePath), 'api-paths'] as const,
 };
 
@@ -25,6 +25,7 @@ export function useRateLimitStats() {
   return useApiQuery(rateLimitContract.stats, { refetchInterval: 30 * 1000 });
 }
 
+/** H5：openapi.json 不是契约操作、也不是 ApiResponse 信封，走原生 fetch 的非契约通道 */
 export function useRateLimitApiPaths() {
   return useQuery({
     queryKey: rateLimitKeys.apiPaths,
@@ -43,7 +44,7 @@ export function useRateLimitApiPaths() {
 }
 
 /** 统计接口的规则元信息（enabled/mode/窗口）派生自规则配置，两者都需失效 */
-function invalidateRuleViews(qc: import('@tanstack/react-query').QueryClient) {
+function invalidateRuleViews(qc: QueryClient) {
   void qc.invalidateQueries({ queryKey: rateLimitKeys.rules });
   void qc.invalidateQueries({ queryKey: rateLimitKeys.stats });
 }
@@ -59,7 +60,7 @@ export function useDeleteRateLimitRule() {
   return useApiMutation(rateLimitContract.removeRule, { invalidate: invalidateRuleViews });
 }
 
-/** 解封返回服务端结果消息（成功 / 未找到活跃计数窗口），由调用方展示 */
+/** 解封返回服务端结果消息（成功 / 未找到活跃计数窗口），由调用方展示（H5：需读取信封 message，api() 会丢弃） */
 export function useUnblockRateLimitKey() {
   const qc = useQueryClient();
   return useMutation({
@@ -91,7 +92,7 @@ export function useBanRateLimitKey() {
   });
 }
 
-/** 解除封禁返回服务端结果消息（成功 / 封禁不存在），由调用方展示 */
+/** 解除封禁返回服务端结果消息（成功 / 封禁不存在），由调用方展示（H5：需读取信封 message，api() 会丢弃） */
 export function useUnbanRateLimitKey() {
   const qc = useQueryClient();
   return useMutation({

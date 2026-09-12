@@ -91,7 +91,7 @@ export function DriveVersionsPanel({ node }: DriveVersionsPanelProps) {
             confirmDelete({
               title: `删除历史版本 v${r.version}？`,
               content: '删除后该版本内容不可恢复，并释放对应容量。',
-              onOk: () => remove.mutateAsync({ node, version: r.version }).then(() => Toast.success('已删除')),
+              onOk: () => remove.mutateAsync({ params: { id: node.id, version: r.version }, node }).then(() => Toast.success('已删除')),
             });
           },
         },

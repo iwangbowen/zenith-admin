@@ -22,7 +22,7 @@ export function useSshProfiles(enabled = true) {
   return useApiQuery(sshProfileContract.list, { enabled });
 }
 
-/** 拖动排序：成对交换 orderNum，逐条更新后统一失效列表 */
+/** 拖动排序：成对交换 orderNum，逐条更新后统一失效列表（H5：多条更新并发组合） */
 export function useUpdateSshProfileOrder() {
   const qc = useQueryClient();
   return useMutation({
@@ -63,7 +63,7 @@ const {
 
 export { useTerminalRecordingList, useTerminalRecordingDetail, useDeleteTerminalRecordings };
 
-/** 清除录屏：接口只回提示文案（含删除条数），透传给调用方展示 */
+/** 清除录屏：接口只回提示文案（含删除条数），透传给调用方展示（H5：需读取信封 message，api() 会丢弃） */
 export function useCleanTerminalRecordings() {
   const qc = useQueryClient();
   return useMutation({
@@ -81,7 +81,6 @@ export function downloadTerminalRecordingAsciinema(id: number, filename: string)
 }
 
 export const terminalKeys = {
-  all: ['terminal'] as const,
   sshProfiles: contractKey(sshProfileContract.list),
   sessionLists: terminalSessionKeys.lists,
   sessionList: (params: TerminalSessionListParams) => terminalSessionKeys.list(params),

@@ -70,7 +70,7 @@ export default function RetentionPage() {
    * 待清理量是随时间变化的瞬时值，只在这一刻有意义，因此不入表格列。
    */
   const handleRun = async (policy: RetentionPolicy) => {
-    const preview = await previewMutation.mutateAsync(policy.key);
+    const preview = await previewMutation.mutateAsync({ params: { key: policy.key } });
     if (preview.pending === 0) {
       Toast.info(`「${policy.title}」当前没有超期数据`);
       return;

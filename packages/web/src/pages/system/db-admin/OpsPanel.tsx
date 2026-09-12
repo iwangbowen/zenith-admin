@@ -13,7 +13,8 @@ import { EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { MetricMeter } from '@/components/data-viz/MetricMeter';
 import {
   useDbAdminActivity,
-  useDbAdminActivityAction,
+  useDbAdminCancelBackend,
+  useDbAdminTerminateBackend,
   useDbAdminIndexHealth,
   useDbAdminMaintenance,
   useDbAdminRunMaintenance,
@@ -80,12 +81,13 @@ const qualifiedName = (schema: string, name: string) => (schema === 'public' ? n
 function ActivityPanel({ canMaintain }: Readonly<{ canMaintain: boolean }>) {
   const [auto, setAuto] = useState(false);
   const activityQuery = useDbAdminActivity(auto);
-  const actionMutation = useDbAdminActivityAction();
+  const cancelMutation = useDbAdminCancelBackend();
+  const terminateMutation = useDbAdminTerminateBackend();
   const list = activityQuery.data ?? [];
   const loading = activityQuery.isFetching;
 
   const act = async (pid: number, action: 'cancel' | 'terminate') => {
-    const res = await actionMutation.mutateAsync({ pid, action });
+    const res = await (action === 'cancel' ? cancelMutation : terminateMutation).mutateAsync({ params: { pid } });
     Toast.success(res.ok ? (action === 'cancel' ? '已请求取消查询' : '已终止连接') : '操作未生效（连接可能已结束）');
   };
 

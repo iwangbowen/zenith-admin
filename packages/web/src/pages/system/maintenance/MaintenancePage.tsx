@@ -11,7 +11,6 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Wrench, Power, PowerOff, RefreshCw } from 'lucide-react';
 import type { MaintenanceLog } from '@zenith/shared/ops';
-import { useQueryClient } from '@tanstack/react-query';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { listTableProps } from '@/components/list-page';
 import PageLoading from '@/components/PageLoading';
@@ -20,7 +19,6 @@ import { usePagination } from '@/hooks/usePagination';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import { formatSecondsHuman } from '@/utils/format';
 import {
-  maintenanceKeys,
   useMaintenanceLogs,
   useMaintenanceStatus,
   useUpdateMaintenanceStatus,
@@ -40,7 +38,6 @@ export default function MaintenancePage() {
   const { hasPermission } = usePermission();
   const canManage = hasPermission('system:maintenance:manage');
   const formApi = useRef<FormApi | null>(null);
-  const queryClient = useQueryClient();
 
   const { page, pageSize, setPage, buildPagination } = usePagination();
   const statusQuery = useMaintenanceStatus();
@@ -77,11 +74,10 @@ export default function MaintenancePage() {
         estimatedEndAt: values?.estimatedEndAt ? formatDateTimeForApi(values.estimatedEndAt) : null,
       },
     });
-    // mutation 的 onSuccess 已按 maintenanceKeys.all 失效（含超管横幅消费的 publicStatus），
-    // 无需再手工 dispatch CustomEvent 跨组件广播。
+    // mutation 已按 invalidateMaintenanceAfterToggle 失效公开状态（超管横幅）、管理详情与维护记录，
+    // 无需再手工 dispatch CustomEvent 跨组件广播或重复失效日志。
     Toast.success(enable ? '维护模式已开启' : '维护模式已关闭');
     setPage(1);
-    void queryClient.invalidateQueries({ queryKey: maintenanceKeys.logs });
   };
 
   if (statusQuery.isFetching && !status) {

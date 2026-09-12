@@ -1,15 +1,15 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { systemdContract, type SystemdService } from '@zenith/shared/ops';
 import { api, contractKey, urlOf, useApiMutation } from '@/lib/contract-query';
 import { hostQueryOf } from './ops-hosts';
 
 export const serviceKeys = {
-  all: ['systemd'] as const,
   lists: contractKey(systemdContract.list),
-  list: (hostId: number | null) => contractKey(systemdContract.list, { query: hostQueryOf(hostId) }),
+  /** 「可用性探测 + 服务清单」合并查询：list 操作的契约 key 追加区分段，与纯清单查询不共键；仍在 `lists` 前缀之下 */
+  list: (hostId: number | null) => [...contractKey(systemdContract.list, { query: hostQueryOf(hostId) }), 'with-availability'] as const,
 };
 
-/** 先探测 systemd 可用性，不可用时不再请求服务清单（Windows / 容器环境） */
+/** 先探测 systemd 可用性，不可用时不再请求服务清单（Windows / 容器环境）（H5：组合两次契约请求） */
 export function useServiceList(hostId: number | null = null) {
   return useQuery({
     queryKey: serviceKeys.list(hostId),
@@ -23,20 +23,18 @@ export function useServiceList(hostId: number | null = null) {
   });
 }
 
+/** 启停 / 重启 / 开机自启只改该主机的服务状态列；其它主机的清单不受影响 */
 export function useServiceAction() {
   return useApiMutation(systemdContract.control, {
-    invalidate: (qc) => {
-      void qc.invalidateQueries({ queryKey: serviceKeys.all });
+    invalidate: (qc, _output, { query }) => {
+      void qc.invalidateQueries({ queryKey: serviceKeys.list(query.hostId ?? null) });
     },
   });
 }
 
 /** 近期日志按需拉取（打开日志抽屉时），不进缓存 */
 export function useServiceLogs() {
-  return useMutation({
-    mutationFn: ({ name, hostId = null }: { name: string; hostId?: number | null }) =>
-      api(systemdContract.logs, { params: { name }, query: hostQueryOf(hostId) }),
-  });
+  return useApiMutation(systemdContract.logs);
 }
 
 /** journalctl -f 实时跟踪的流式地址（`streamText` 消费） */

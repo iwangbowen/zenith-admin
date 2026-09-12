@@ -16,6 +16,7 @@ import { formatDateTime } from '@/utils/date';
 import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import {
   exportJobKeys,
+  rerunExportJobBody,
   useBatchDeleteExportJobs,
   useCancelExportJob,
   useDeleteExportJob,
@@ -112,7 +113,7 @@ export default function ExportJobsPage() {
     downloadLoadingId
     ?? (cancelMutation.isPending ? cancelMutation.variables?.params.id : null)
     ?? (retryMutation.isPending ? retryMutation.variables?.params.id : null)
-    ?? (rerunMutation.isPending ? rerunMutation.variables?.id : null)
+    ?? (rerunMutation.isPending ? rerunMutation.variables?.sourceId : null)
     ?? (deleteMutation.isPending ? deleteMutation.variables?.params.id : null)
     ?? null;
   const batchDeleting = batchDeleteMutation.isPending;
@@ -132,7 +133,9 @@ export default function ExportJobsPage() {
     try {
       await request.download(urlOf(exportJobContract.download, { params: { id: record.id } }), record.filename ?? `export-${record.id}.${record.format}`);
       Toast.success('下载完成');
-      void queryClient.invalidateQueries({ queryKey: exportJobKeys.all });
+      // 下载会写入该任务的下载记录（列表的下载次数列随之变化），不涉及可导出实体元数据
+      void queryClient.invalidateQueries({ queryKey: exportJobKeys.lists });
+      void queryClient.invalidateQueries({ queryKey: exportJobKeys.downloads(record.id) });
     } finally {
       setDownloadLoadingId(null);
     }
@@ -149,7 +152,7 @@ export default function ExportJobsPage() {
   };
 
   const handleRerun = async (record: ExportJob) => {
-    const data = await rerunMutation.mutateAsync(record);
+    const data = await rerunMutation.mutateAsync({ body: rerunExportJobBody(record), sourceId: record.id });
     Toast.success(data.mode === 'async' ? '已重新提交导出任务' : '已重新导出');
   };
 

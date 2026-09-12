@@ -14,7 +14,8 @@ import {
   useDeleteFirewallRule,
   useFirewallRules,
   useFirewallStatus,
-  useToggleFirewall,
+  useDisableFirewall,
+  useEnableFirewall,
 } from '@/hooks/queries/firewall';
 import type { AddFirewallRuleInput, FirewallRule, FirewallStatus } from '@zenith/shared/ops';
 import { CreateButton, ResetButton } from '@/components/toolbar-controls';
@@ -64,7 +65,9 @@ export default function FirewallPage() {
   const rulesQuery = useFirewallRules(hostId);
   const addRuleMutation = useAddFirewallRule();
   const deleteRuleMutation = useDeleteFirewallRule();
-  const toggleFirewallMutation = useToggleFirewall();
+  const enableFirewallMutation = useEnableFirewall();
+  const disableFirewallMutation = useDisableFirewall();
+  const togglingFirewall = enableFirewallMutation.isPending || disableFirewallMutation.isPending;
   const status = statusQuery.data ?? null;
   const rules = rulesQuery.data?.rules ?? EMPTY_RULES;
   const fetchAll = async () => {
@@ -114,7 +117,7 @@ export default function FirewallPage() {
   }, [keyword, rules]);
 
   async function handleToggle(enabled: boolean) {
-    await toggleFirewallMutation.mutateAsync(enabled);
+    await (enabled ? enableFirewallMutation : disableFirewallMutation).mutateAsync({ query: {} });
     Toast.success(enabled ? '防火墙已启用' : '防火墙已关闭');
   }
 
@@ -194,9 +197,9 @@ export default function FirewallPage() {
         <Button icon={<RefreshCw size={14} />} loading={statusQuery.isFetching || rulesQuery.isFetching} onClick={() => void fetchAll()}>刷新</Button>
         {canManageCurrent && (
           currentStatus.enabled ? (
-            <Button type="danger" icon={<ShieldOff size={14} />} loading={toggleFirewallMutation.isPending} onClick={() => void handleToggle(false)}>禁用</Button>
+            <Button type="danger" icon={<ShieldOff size={14} />} loading={togglingFirewall} onClick={() => void handleToggle(false)}>禁用</Button>
           ) : (
-            <Button type="primary" icon={<Shield size={14} />} loading={toggleFirewallMutation.isPending} onClick={() => void handleToggle(true)}>启用</Button>
+            <Button type="primary" icon={<Shield size={14} />} loading={togglingFirewall} onClick={() => void handleToggle(true)}>启用</Button>
           )
         )}
       </div>

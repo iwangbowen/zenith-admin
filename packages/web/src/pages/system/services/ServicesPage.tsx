@@ -64,7 +64,7 @@ export default function ServicesPage() {
     setLogsService(svc);
     setLogs('');
     setLogsFollowing(false);
-    const res = await logsMutation.mutateAsync({ name: svc.name, hostId });
+    const res = await logsMutation.mutateAsync({ params: { name: svc.name }, query: hostQueryOf(hostId) });
     setLogs(res.logs);
   };
 

@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { maintenanceContract } from '@zenith/shared/ops';
 import { apiQueryOptions, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
@@ -6,7 +6,6 @@ import { apiQueryOptions, contractKey, useApiMutation, useApiQuery } from '@/lib
 export type MaintenanceLogListParams = NonNullable<QueryOf<typeof maintenanceContract.logs>>;
 
 export const maintenanceKeys = {
-  all: ['maintenance'] as const,
   /** 管理端详情 —— 需 system:maintenance:manage 权限 */
   status: contractKey(maintenanceContract.detail),
   /** 公开探测 —— 未登录 / 无权限用户也可访问 */
@@ -15,12 +14,14 @@ export const maintenanceKeys = {
   logList: (params: MaintenanceLogListParams) => contractKey(maintenanceContract.logs, { query: params }),
 };
 
+const PUBLIC_STATUS_OPTIONS = {
+  requestOptions: { silent: true },
+  staleTime: 30_000,
+  retry: false,
+} as const;
+
 export function publicMaintenanceStatusQueryOptions() {
-  return apiQueryOptions(maintenanceContract.status, {
-    requestOptions: { silent: true },
-    staleTime: 30_000,
-    retry: false,
-  });
+  return apiQueryOptions(maintenanceContract.status, PUBLIC_STATUS_OPTIONS);
 }
 
 /**
@@ -29,8 +30,8 @@ export function publicMaintenanceStatusQueryOptions() {
  * 手工广播失效，等于手写了一遍 invalidateQueries。
  */
 export function usePublicMaintenanceStatus(options?: { enabled?: boolean; refetchInterval?: number | false }) {
-  return useQuery({
-    ...publicMaintenanceStatusQueryOptions(),
+  return useApiQuery(maintenanceContract.status, {
+    ...PUBLIC_STATUS_OPTIONS,
     enabled: options?.enabled ?? true,
     refetchInterval: options?.refetchInterval ?? false,
   });
@@ -44,11 +45,13 @@ export function useMaintenanceLogs(params: MaintenanceLogListParams) {
   return useApiQuery(maintenanceContract.logs, { query: params }, { placeholderData: keepPreviousData });
 }
 
-/** 开关维护模式：公开状态、管理详情与维护记录（开启 / 关闭各落一条）全部随之变化 */
+/** 开关维护模式：公开状态（遮罩 / 横幅）、管理详情与维护记录（开启 / 关闭各落一条）是本域全部三个查询，逐个失效 */
+export function invalidateMaintenanceAfterToggle(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: maintenanceKeys.publicStatus });
+  void qc.invalidateQueries({ queryKey: maintenanceKeys.status });
+  void qc.invalidateQueries({ queryKey: maintenanceKeys.logs });
+}
+
 export function useUpdateMaintenanceStatus() {
-  return useApiMutation(maintenanceContract.update, {
-    invalidate: (qc) => {
-      void qc.invalidateQueries({ queryKey: maintenanceKeys.all });
-    },
-  });
+  return useApiMutation(maintenanceContract.update, { invalidate: invalidateMaintenanceAfterToggle });
 }

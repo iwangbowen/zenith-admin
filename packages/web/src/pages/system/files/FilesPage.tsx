@@ -25,7 +25,7 @@ import { usePagination } from '@/hooks/usePagination';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useDefaultFileStorageConfig } from '@/hooks/queries/file-storage-configs';
-import { fileKeys, useChunkUploadThreshold, useDeleteFiles, useFileDetail, useFileList, useUploadFile } from '@/hooks/queries/files';
+import { fileKeys, invalidateAfterFilesAdded, useChunkUploadThreshold, useDeleteFiles, useFileDetail, useFileList, useUploadFile } from '@/hooks/queries/files';
 import { useListSearch } from '@/hooks/useListSearch';
 import { BatchDeleteButton } from '@/components/toolbar-controls';
 import { confirmAndDelete, ListSearchToolbar, listTableProps } from '@/components/list-page';
@@ -222,7 +222,7 @@ export default function FilesPage() {
         if (successCount > 0) {
           Toast.success(successCount > 1 ? `成功上传 ${successCount} 个文件` : '文件上传成功');
           setPage(1);
-          void queryClient.invalidateQueries({ queryKey: fileKeys.all });
+          invalidateAfterFilesAdded(queryClient);
         }
       }, 1000);
       return () => clearTimeout(timer);
