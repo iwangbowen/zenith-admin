@@ -197,7 +197,6 @@ export default function ProfilePage({ user }: ProfilePageProps) {
   const loginLogsTotal = loginLogsQuery.data?.total ?? 0;
   const operationLogs = operationLogsQuery.data?.list ?? [];
   const operationLogsTotal = operationLogsQuery.data?.total ?? 0;
-  const apiTokens = apiTokensQuery.data ?? [];
 
   const updateProfileMutation = useUpdateProfile();
   const updateAvatarMutation = useUpdateProfile();
@@ -728,12 +727,7 @@ export default function ProfilePage({ user }: ProfilePageProps) {
                     <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
                   ) : (
                     <ConfigurableTable
-                      bordered
-                      dataSource={apiTokens}
-                      rowKey="id"
-                      onRefresh={() => void apiTokensQuery.refetch()}
-                      refreshLoading={apiTokensLoading}
-                      pagination={false}
+                      {...listTableProps(apiTokensQuery)}
                       columns={[
                         { title: '名称', dataIndex: 'name', minWidth: 150, render: (v: string) => <Text strong>{v}</Text> },
                         { title: 'Token 前缀', dataIndex: 'tokenPrefix', width: 160, render: (v: string) => <code style={{ fontSize: 12 }}>{v}</code> },

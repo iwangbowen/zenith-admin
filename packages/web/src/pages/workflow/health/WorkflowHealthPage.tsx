@@ -14,7 +14,7 @@ import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { useApiMutation } from '@/lib/contract-query';
 import { createLabelOptionsFromMap } from '@zenith/shared/core';
 import { FilterSelect } from '@/components/search-filters';
-import { ListSearchToolbar } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 const ISSUE_LABELS: Record<WorkflowHealthIssue['type'], string> = {
   external_dispatch_failed: '外部审批失败',
@@ -171,14 +171,8 @@ export default function WorkflowHealthPage() {
       </StatGrid>
 
       <ConfigurableTable
-        bordered
-        rowKey="id"
-        loading={summaryQuery.isFetching}
-        dataSource={(data?.issues ?? []).filter((issue) => !issueType || issue.type === issueType)}
         columns={columns}
-        pagination={false}
-        onRefresh={() => void summaryQuery.refetch()}
-        refreshLoading={summaryQuery.isFetching}
+        {...listTableProps({ ...summaryQuery, data: (data?.issues ?? []).filter((issue) => !issueType || issue.type === issueType) })}
       />
 
       <WorkflowInstanceDetailSheet

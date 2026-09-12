@@ -10,7 +10,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { confirmAndDelete } from '@/components/list-page';
+import { confirmAndDelete, listTableProps } from '@/components/list-page';
 import { usePagination } from '@/hooks/usePagination';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
@@ -102,8 +102,6 @@ export default function MpConditionalMenusPage() {
 
   const { buildPagination } = usePagination();
   const listQuery = useMpConditionalMenus(currentId);
-  const list = listQuery.data ?? [];
-
   const [buttons, setButtons] = useState<EditableButton[]>([]);
   const [matchVisible, setMatchVisible] = useState(false);
   const [matchUserId, setMatchUserId] = useState('');
@@ -219,8 +217,10 @@ export default function MpConditionalMenusPage() {
       <MpAccountRequiredBanner loading={accountsLoading} accountCount={accounts.length} />
       <Banner type="info" fullMode={false} description="个性化菜单按匹配规则（标签/性别/地区/客户端/语言）向不同人群下发不同菜单；未命中任何个性化菜单的用户将看到默认自定义菜单。" style={{ marginBottom: 12 }} />
 
-      <ConfigurableTable bordered loading={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching}
-        columns={columns} dataSource={list} rowKey="id" pagination={buildPagination(list.length)} />
+      <ConfigurableTable
+        columns={columns}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
+      />
 
       <AppModal {...modal.modalProps} width={680}>
         <Form key={modal.formKey} {...modal.formProps}>

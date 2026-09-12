@@ -159,15 +159,8 @@ export default function GovernanceResourceTab() {
       </SearchToolbar>
       {foldersQuery.isError && <Banner type="danger" description="资源目录加载失败" />}
       <ConfigurableTable
-        bordered
-        rowKey="id"
         columns={folderColumns}
-        dataSource={folders}
-        loading={foldersQuery.isFetching}
-        empty={<Empty title="暂无资源目录" />}
-        pagination={false}
-        onRefresh={() => void foldersQuery.refetch()}
-        refreshLoading={foldersQuery.isFetching}
+        {...listTableProps({ ...foldersQuery, data: folders }, { empty: <Empty title="暂无资源目录" /> })}
       />
 
       <AppModal {...folderModal.modalProps} width={560}>

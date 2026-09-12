@@ -20,7 +20,7 @@ import { REGION_LEVELS, REGION_LEVEL_LABELS } from '@zenith/shared/platform';
 import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { deleteAction, ListSearchToolbar, useStatusToggle } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { compactParams } from '@/lib/query';
 
 const LEVEL_LABELS: Record<string, string> = REGION_LEVEL_LABELS;
@@ -236,21 +236,14 @@ export default function RegionsPage() {
 
       <div ref={tableWrapperRef} style={{ flex: 1, minHeight: 0 }}>
         <ConfigurableTable
-          bordered
           columns={columns}
-          dataSource={data}
-          loading={treeQuery.isFetching}
-          onRefresh={() => void treeQuery.refetch()}
-          refreshLoading={treeQuery.isFetching}
-          rowKey="id"
-          size="small"
-        expandedRowKeys={expandedRowKeys}
-        onExpandedRowsChange={onExpandedRowsChange}
-        childrenRecordName="children"
-        pagination={false}
-        virtualized
-        scroll={{ y: tableHeight }}
-      />
+          {...listTableProps(treeQuery)}
+          expandedRowKeys={expandedRowKeys}
+          onExpandedRowsChange={onExpandedRowsChange}
+          childrenRecordName="children"
+          virtualized
+          scroll={{ y: tableHeight }}
+        />
       </div>
 
       <AppModal {...regionModal.modalProps} width={520}>

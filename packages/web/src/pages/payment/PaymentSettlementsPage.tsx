@@ -290,8 +290,8 @@ export default function PaymentSettlementsPage() {
             </div>
             <Spin spinning={itemsQuery.isFetching}>
               <ConfigurableTable
-                bordered columns={itemColumns} dataSource={itemsQuery.data ?? []} loading={itemsQuery.isFetching} rowKey="id" size="small" empty="暂无已认领资金明细"
-                onRefresh={() => void itemsQuery.refetch()} refreshLoading={itemsQuery.isFetching} pagination={false}
+                columns={itemColumns}
+                {...listTableProps(itemsQuery, { empty: '暂无已认领资金明细' })}
               />
             </Spin>
           </>

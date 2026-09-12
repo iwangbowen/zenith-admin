@@ -7,6 +7,7 @@ import {
 } from '@xyflow/react';
 import { Badge, Empty, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
+import { listTableProps } from '@/components/list-page';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { IotTopologyChild } from '@zenith/shared/iot';
 import { ThemedReactFlow } from '@/components/ThemedReactFlow';
@@ -189,7 +190,7 @@ function IotTopologyGraph({ deviceId, onOpenChild }: Readonly<IotTopologyViewPro
     return <Empty description="该网关下还没有子设备；在设备管理中注册子设备并指定所属网关" style={{ padding: '48px 0' }} />;
   }
   if (topology.children.length > GRAPH_MAX_CHILDREN) {
-    return <TopologyTable childrenRows={topology.children} onOpenChild={onOpenChild} onRefresh={() => void topologyQuery.refetch()} refreshLoading={topologyQuery.isFetching} />;
+    return <TopologyTable childrenRows={topology.children} onOpenChild={onOpenChild} onRefresh={topologyQuery.refetch} refreshLoading={topologyQuery.isFetching} />;
   }
 
   return (
@@ -260,15 +261,9 @@ function TopologyTable({ childrenRows, onOpenChild, onRefresh, refreshLoading }:
   ];
   return (
     <ConfigurableTable
-      bordered
       columnSettingsKey="iot-topology-children"
       columns={columns}
-      dataSource={childrenRows}
-      rowKey="id"
-      size="small"
-      pagination={false}
-      onRefresh={onRefresh}
-      refreshLoading={refreshLoading}
+      {...listTableProps({ data: childrenRows, isFetching: refreshLoading, refetch: onRefresh })}
       onRow={(record) => ({
         onClick: () => record && onOpenChild?.(record.id),
         style: { cursor: onOpenChild ? 'pointer' : undefined },

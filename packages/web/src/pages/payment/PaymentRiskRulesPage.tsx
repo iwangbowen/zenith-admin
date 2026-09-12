@@ -105,8 +105,6 @@ export default function PaymentRiskRulesPage() {
     pageSize: hitSearch.pageSize,
     ...hitFilterQuery,
   });
-  const hits = hitQuery.data?.list ?? [];
-  const hitTotal = hitQuery.data?.total ?? 0;
   // 已提交筛选 → 契约查询参数：只映射一次
   const reviewFilterQuery = useMemo(() => compactParams({
     keyword: submittedReviewParams.keyword,
@@ -117,8 +115,6 @@ export default function PaymentRiskRulesPage() {
     pageSize: reviewSearch.pageSize,
     ...reviewFilterQuery,
   });
-  const reviews = reviewQuery.data?.list ?? [];
-  const reviewTotal = reviewQuery.data?.total ?? 0;
 
   const saveMutation = useSavePaymentRiskRule();
   const toggleMutation = useSavePaymentRiskRule();
@@ -325,8 +321,8 @@ export default function PaymentRiskRulesPage() {
             filterTitle="拦截记录筛选"
           />
           <ConfigurableTable
-            bordered columns={hitColumns} dataSource={hits} loading={hitQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-            onRefresh={() => void hitQuery.refetch()} refreshLoading={hitQuery.isFetching} pagination={hitSearch.buildPagination(hitTotal)}
+            columns={hitColumns}
+            {...listTableProps(hitQuery, { pagination: hitSearch.buildPagination, empty: '暂无数据' })}
           />
         </TabPane>
 
@@ -339,8 +335,8 @@ export default function PaymentRiskRulesPage() {
             filterTitle="审核队列筛选"
           />
           <ConfigurableTable
-            bordered columns={reviewColumns} dataSource={reviews} loading={reviewQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-            onRefresh={() => void reviewQuery.refetch()} refreshLoading={reviewQuery.isFetching} pagination={reviewSearch.buildPagination(reviewTotal)}
+            columns={reviewColumns}
+            {...listTableProps(reviewQuery, { pagination: reviewSearch.buildPagination, empty: '暂无数据' })}
           />
         </TabPane>
       </Tabs>

@@ -19,7 +19,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { batchDownloadDriveNodes, deleteDriveNodesVariables, driveKeys, useCopyDriveNodes, useCreateDriveFolder, useDeleteDriveNodes, useDriveDir, useDrivePreviewWatermark, useDriveTags, useLockDriveNode, useMoveDriveNodes, useRenameDriveNode, useStarDriveNode, useUnlockDriveNode, useUnstarDriveNode } from '@/hooks/queries/drive';
 import { confirmDangerAsync } from '@/utils/confirm';
-import { confirmAndDelete } from '@/components/list-page';
+import { confirmAndDelete, listTableProps } from '@/components/list-page';
 import { canPreviewFile, fetchManagedFileBlob } from '@/utils/file-utils';
 import { downloadBlob } from '@/utils/download';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
@@ -307,16 +307,11 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
       <div className="drive-browser__body">
         {viewMode === 'list' ? (
           <ConfigurableTable<DriveNode>
-            bordered
-            size="small"
-            rowKey="id"
             columns={columns}
-            dataSource={list}
-            loading={dirQuery.isFetching}
-            onRefresh={() => void dirQuery.refetch()}
-            refreshLoading={dirQuery.isFetching}
-            pagination={buildPagination(data?.total ?? 0)}
-            rowSelection={{ selectedRowKeys: selectedIds, onChange: (keys) => setSelectedIds((keys ?? []).map(Number)) }}
+            {...listTableProps(dirQuery, {
+              pagination: buildPagination,
+              rowSelection: { selectedRowKeys: selectedIds, onChange: (keys) => setSelectedIds((keys ?? []).map(Number)) },
+            })}
             onRow={(record) => ({
               onContextMenu: (e: React.MouseEvent) => { if (!record) return; e.preventDefault(); setCtx({ node: record, point: { x: e.clientX, y: e.clientY } }); },
               onDoubleClick: () => { if (record) openNode(record); },

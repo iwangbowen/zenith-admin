@@ -5,6 +5,7 @@ import { Download } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { AreaChart, BarChart, PieChart, chartOptions, makeAreaSpec, makeBarSpec, makePieSpec, useChartPalette, StatCard, StatGrid } from '@/components/charts';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { listTableProps } from '@/components/list-page';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { downloadBlob } from '@/utils/download';
@@ -286,8 +287,8 @@ export default function PaymentReportsPage() {
           </div>
 
           <ConfigurableTable
-            bordered columns={columns} dataSource={summary?.rows ?? []} loading={loading} rowKey="key" size="small" empty="暂无数据"
-            onRefresh={() => void summaryQuery.refetch()} refreshLoading={loading} pagination={false}
+            columns={columns}
+            {...listTableProps({ ...summaryQuery, data: summary?.rows ?? [] }, { rowKey: 'key', empty: '暂无数据' })}
           />
         </div>
       </Spin>

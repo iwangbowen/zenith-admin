@@ -33,7 +33,7 @@ import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-fi
 import { PaymentChannelTag, paymentMoneyColumn } from './payment-display';
 import { useEnabledPaymentAppLookup } from './payment-app-options';
 import { PaymentAppField, PaymentAppFilterSelect, PaymentCurrencyField } from './payment-form-fields';
-import { deleteAction, ListSearchToolbar } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { compactParams } from '@/lib/query';
 const yuan = formatYuan;
@@ -94,8 +94,6 @@ export default function PaymentContractsPage() {
     pageSize: cPageSize,
     ...filterQuery,
   }, effectiveContractAppId != null);
-  const contracts = contractQuery.data?.list ?? [];
-  const contractTotal = contractQuery.data?.total ?? 0;
   // 已提交筛选 → 契约查询参数：只映射一次
   const planFilterQuery = useMemo(() => compactParams({
     keyword: planSearch.submittedParams.keyword,
@@ -105,8 +103,6 @@ export default function PaymentContractsPage() {
     pageSize: pPageSize,
     ...planFilterQuery,
   });
-  const plans = planQuery.data?.list ?? [];
-  const planTotal = planQuery.data?.total ?? 0;
   const allPlansQuery = useAllDeductPlans();
   const allPlans = allPlansQuery.data ?? [];
   const deductMethodOptions = useMemo(() => {
@@ -333,8 +329,9 @@ export default function PaymentContractsPage() {
             filterTitle="签约协议筛选"
           />
           <ConfigurableTable
-            bordered columns={contractColumns} dataSource={contracts} loading={appsFetching || contractQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-            onRefresh={() => void contractQuery.refetch()} refreshLoading={contractQuery.isFetching} pagination={buildCPagination(contractTotal)}
+            columns={contractColumns}
+            {...listTableProps(contractQuery, { pagination: buildCPagination, empty: '暂无数据' })}
+            loading={appsFetching || contractQuery.isFetching}
           />
         </TabPane>
         <TabPane tab="扣款计划" itemKey="plans">
@@ -349,8 +346,8 @@ export default function PaymentContractsPage() {
             )}
           />
           <ConfigurableTable
-            bordered columns={planColumns} dataSource={plans} loading={planQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-            onRefresh={() => void planQuery.refetch()} refreshLoading={planQuery.isFetching} pagination={buildPPagination(planTotal)}
+            columns={planColumns}
+            {...listTableProps(planQuery, { pagination: buildPPagination, empty: '暂无数据' })}
           />
         </TabPane>
       </Tabs>

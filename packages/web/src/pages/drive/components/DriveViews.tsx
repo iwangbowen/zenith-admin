@@ -215,15 +215,26 @@ export function DriveViews({ view, onOpenFolder, onOpenDetail }: DriveViewsProps
         filterTitle="视图筛选"
       />
       {view === 'links' ? (
-        <ConfigurableTable<DriveShareLink> bordered size="small" rowKey="id" columns={linkColumns} dataSource={rows as DriveShareLink[]}
-          loading={active.isFetching} onRefresh={() => void active.refetch()} refreshLoading={active.isFetching}
-          pagination={buildPagination(total)} empty={<Empty description={VIEW_EMPTY[view]} />} />
+        <ConfigurableTable<DriveShareLink>
+          columns={linkColumns}
+          {...listTableProps<DriveShareLink>(
+            { data: { list: rows as DriveShareLink[], total }, isFetching: active.isFetching, refetch: active.refetch },
+            { pagination: buildPagination, empty: <Empty description={VIEW_EMPTY[view]} /> },
+          )}
+        />
       ) : (
-        <ConfigurableTable<AnyNode> bordered size="small" rowKey="id" columns={nodeColumns} dataSource={rows as AnyNode[]}
-          loading={active.isFetching} onRefresh={() => void active.refetch()} refreshLoading={active.isFetching}
-          pagination={buildPagination(total)} empty={<Empty description={VIEW_EMPTY[view]} />}
-          rowSelection={view === 'recycle' ? { selectedRowKeys: selectedIds, onChange: (keys) => setSelectedIds((keys ?? []).map(Number)) } : undefined}
-          onRow={(record) => ({ onDoubleClick: () => { if (record) openNode(record); } })} />
+        <ConfigurableTable<AnyNode>
+          columns={nodeColumns}
+          {...listTableProps<AnyNode>(
+            { data: { list: rows as AnyNode[], total }, isFetching: active.isFetching, refetch: active.refetch },
+            {
+              pagination: buildPagination,
+              empty: <Empty description={VIEW_EMPTY[view]} />,
+              rowSelection: view === 'recycle' ? { selectedRowKeys: selectedIds, onChange: (keys) => setSelectedIds((keys ?? []).map(Number)) } : undefined,
+            },
+          )}
+          onRow={(record) => ({ onDoubleClick: () => { if (record) openNode(record); } })}
+        />
       )}
       <FilePreviewLayer preview={preview} watermark={watermark} />
     </div>

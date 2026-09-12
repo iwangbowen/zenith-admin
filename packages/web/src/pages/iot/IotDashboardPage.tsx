@@ -3,6 +3,7 @@ import { Card, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Activity, BellRing, Boxes, Cpu, Radio } from 'lucide-react';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
+import { listTableProps } from '@/components/list-page';
 import {
   AreaChart, BarChart, EmptyChart, PieChart, StatCard, StatGrid, chartOptions,
   makeAreaSpec, makeBarSpec, makePieSpec, useChartPalette,
@@ -159,9 +160,8 @@ export default function IotDashboardPage() {
           <Card title="最近告警">
             <ConfigurableTable
               columnSettingsKey="iot-dashboard-recent-alarms"
-              columns={alarmColumns} dataSource={data?.recentAlarms ?? []} rowKey="id"
-              size="small" pagination={false} empty="暂无告警"
-              onRefresh={() => void query.refetch()} refreshLoading={query.isFetching}
+              columns={alarmColumns}
+              {...listTableProps({ ...query, data: data?.recentAlarms ?? [] }, { empty: '暂无告警' })}
             />
           </Card>
         </div>
@@ -169,9 +169,8 @@ export default function IotDashboardPage() {
         <Card title="最近设备事件">
           <ConfigurableTable
             columnSettingsKey="iot-dashboard-recent-events"
-            columns={eventColumns} dataSource={(data?.recentEvents ?? []) as RecentEvent[]} rowKey="id"
-            size="small" pagination={false} empty="暂无设备事件"
-            onRefresh={() => void query.refetch()} refreshLoading={query.isFetching}
+            columns={eventColumns}
+            {...listTableProps({ ...query, data: (data?.recentEvents ?? []) as RecentEvent[] }, { empty: '暂无设备事件' })}
           />
         </Card>
         <Text type="tertiary" size="small" style={{ display: 'block', marginTop: 8 }}>

@@ -388,7 +388,7 @@ export default function QualityPage() {
 
       <SideSheet title={`运行历史：${historyRule?.name ?? ''}`} visible={!!historyRule} width={980} onCancel={() => setHistoryRule(null)}>
         {historyQuery.isError && <Banner type="danger" description="规则运行历史加载失败" />}
-        <ConfigurableTable bordered rowKey="id" columns={runColumns} dataSource={historyQuery.data?.list ?? []} loading={historyQuery.isFetching} empty={<Empty title="暂无运行记录" />} pagination={false} onRefresh={() => void historyQuery.refetch()} refreshLoading={historyQuery.isFetching} />
+        <ConfigurableTable columns={runColumns} {...listTableProps(historyQuery, { empty: <Empty title="暂无运行记录" /> })} />
       </SideSheet>
     </div>
   );

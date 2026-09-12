@@ -21,7 +21,7 @@ import { dateTimeColumn } from '@/utils/table-columns';
 import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 import { trimToNull } from './analytics-format';
-import { ListSearchToolbar } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 const PAGE_SIZE = 20;
 const defaultSearch = { name: '', status: undefined as AnalyticsExperiment['status'] | undefined };
@@ -165,7 +165,6 @@ export default function AnalyticsExperimentsTab() {
     labelWidth: 90,
   });
 
-  const list = listQuery.data?.list ?? [];
   const weightTotal = variants.reduce((sum, item) => sum + Number(item.weight || 0), 0);
   const metricOptions = (metaQuery.data?.list ?? []).map((item) => ({ label: `${item.displayName || item.eventName} (${item.eventName})`, value: item.eventName }));
 
@@ -230,9 +229,8 @@ export default function AnalyticsExperimentsTab() {
       />
 
       <ConfigurableTable
-        bordered rowKey="id" loading={listQuery.isFetching} columns={columns} dataSource={list}
-        onRefresh={() => void listQuery.refetch()} refreshLoading={listQuery.isFetching} empty="暂无实验"
-        pagination={buildPagination(listQuery.data?.total ?? 0)}
+        columns={columns}
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无实验' })}
       />
 
       <AppModal {...experimentModal.modalProps} title={experimentModal.isEdit ? '编辑 A/B 实验' : '新增 A/B 实验'} width={660}>

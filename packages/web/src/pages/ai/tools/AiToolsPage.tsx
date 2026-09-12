@@ -12,6 +12,7 @@ import {
 import { Plus, Trash2 } from 'lucide-react';
 import { AppModal } from '@/components/AppModal';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
+import { listTableProps } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useAiHttpTools, useSaveAiHttpTool, useDeleteAiHttpTool } from '@/hooks/queries/ai-tools';
 import type { AiHttpTool, AiHttpToolParam, CreateAiHttpToolInput } from '@zenith/shared/ai';
@@ -135,15 +136,9 @@ export default function AiToolsPage() {
         <CreateButton onClick={modal.openCreate}>新增工具</CreateButton>
       </div>
       <ConfigurableTable
-        bordered
         columnSettingsKey="ai-http-tools"
         columns={columns}
-        dataSource={listQuery.data ?? []}
-        rowKey="id"
-        loading={listQuery.isFetching}
-        pagination={false}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
+        {...listTableProps(listQuery)}
       />
 
       <AppModal

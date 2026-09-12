@@ -21,7 +21,7 @@ import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { useEditModal } from '@/hooks/useEditModal';
 import { copyableNoColumn, dateTimeColumn } from '@/utils/table-columns';
 import { confirmDelete } from '@/utils/confirm';
-import { ListSearchToolbar } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 const PAGE_SIZE = 20;
 const STATUS_META: Record<AnalyticsSite['status'], { label: string; color: 'green' | 'red' }> = {
@@ -78,9 +78,6 @@ export default function AnalyticsSitesTab() {
   const updateMutation = useUpdateSite();
   const deleteMutation = useDeleteSite();
   const regenerateMutation = useRegenerateSiteKey();
-
-  const data = listQuery.data;
-  const list = data?.list ?? [];
 
   const siteModal = useEditModal<AnalyticsSite, SiteFormValues, ReturnType<typeof normalizeForm>>({
     entityName: '站点',
@@ -141,15 +138,8 @@ export default function AnalyticsSitesTab() {
       />
 
       <ConfigurableTable
-        bordered
-        rowKey="id"
-        loading={listQuery.isFetching}
         columns={columns}
-        dataSource={list}
-        onRefresh={() => void listQuery.refetch()}
-        refreshLoading={listQuery.isFetching}
-        pagination={buildPagination(data?.total ?? 0)}
-        empty="暂无站点"
+        {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无站点' })}
       />
 
       <Modal

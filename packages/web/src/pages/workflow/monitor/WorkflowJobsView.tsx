@@ -703,7 +703,7 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
               {detail.executions.length > 0
                 ? (execView === 'timeline'
                     ? renderExecutionTimeline(detail.executions)
-                    : <ConfigurableTable bordered size="small" columnSettingsKey="workflow-job-executions" columns={execColumns} dataSource={detail.executions} rowKey="id" pagination={false} onRefresh={() => void detailQuery.refetch()} refreshLoading={detailQuery.isFetching} />)
+                    : <ConfigurableTable columnSettingsKey="workflow-job-executions" columns={execColumns} {...listTableProps({ ...detailQuery, data: detail.executions })} />)
                 : <Empty description="暂无执行记录" />}
             </div>
 
@@ -752,17 +752,11 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
               <Tag color="violet">涉及实例 {chain.stats.instanceIds.length}</Tag>
             </Space>
             <ConfigurableTable
-              bordered
-              size="small"
               columnSettingsKey="workflow-job-chain"
               style={{ width: '100%' }}
-              dataSource={chain.jobs}
-              rowKey="id"
-              pagination={false}
-              onRefresh={() => void chainQuery.refetch()}
-              refreshLoading={chainQuery.isFetching}
-              onRow={(record) => ({ onClick: () => { if (record) void openDetail(record.id); }, style: { cursor: 'pointer' } })}
               columns={chainColumns}
+              {...listTableProps({ ...chainQuery, data: chain.jobs })}
+              onRow={(record) => ({ onClick: () => { if (record) void openDetail(record.id); }, style: { cursor: 'pointer' } })}
             />
           </Space>
         )}
@@ -786,20 +780,12 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
           <Typography.Text type="tertiary" size="small">统计全部死信 / 失败作业（跨队列），每簇展示最近 10 条成员作业</Typography.Text>
         </div>
         <ConfigurableTable
-          bordered
-          size="small"
           columnSettingsKey="workflow-job-failure-clusters"
-          dataSource={clusterTreeData}
-          rowKey="id"
-          loading={clustersQuery.isFetching}
-          onRefresh={() => void clustersQuery.refetch()}
-          refreshLoading={clustersQuery.isFetching}
-          pagination={false}
           columns={clusterColumns}
+          {...listTableProps({ ...clustersQuery, data: clusterTreeData }, { empty: <Empty description="暂无失败/死信作业" /> })}
           expandRowByClick
           expandedRowKeys={clusterTree.expandedRowKeys}
           onExpandedRowsChange={clusterTree.onExpandedRowsChange}
-          empty={<Empty description="暂无失败/死信作业" />}
         />
       </Modal>
 

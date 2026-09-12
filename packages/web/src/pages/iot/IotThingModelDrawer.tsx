@@ -7,7 +7,7 @@ import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
-import { confirmAndDelete } from '@/components/list-page';
+import { confirmAndDelete, listTableProps } from '@/components/list-page';
 import {
   IOT_ACCESS_MODE_LABELS, IOT_ACCESS_MODE_OPTIONS, IOT_EVENT_LEVEL_LABELS, IOT_EVENT_LEVEL_OPTIONS,
   IOT_PROPERTY_TYPE_LABELS, IOT_PROPERTY_TYPE_OPTIONS,
@@ -419,9 +419,8 @@ export default function IotThingModelDrawer({ product, onClose }: Readonly<IotTh
             )}
             <ConfigurableTable
               columnSettingsKey="iot-thing-model-properties"
-              columns={propertyColumns} dataSource={model?.properties ?? []} rowKey="id"
-              size="small" pagination={false} empty="尚未声明属性"
-              onRefresh={() => void modelQuery.refetch()} refreshLoading={modelQuery.isFetching}
+              columns={propertyColumns}
+              {...listTableProps({ ...modelQuery, data: model?.properties ?? [] }, { empty: '尚未声明属性' })}
             />
           </TabPane>
           <TabPane tab={`服务（${model?.services.length ?? 0}）`} itemKey="services">
@@ -432,9 +431,8 @@ export default function IotThingModelDrawer({ product, onClose }: Readonly<IotTh
             )}
             <ConfigurableTable
               columnSettingsKey="iot-thing-model-services"
-              columns={serviceColumns} dataSource={model?.services ?? []} rowKey="id"
-              size="small" pagination={false} empty="尚未声明服务"
-              onRefresh={() => void modelQuery.refetch()} refreshLoading={modelQuery.isFetching}
+              columns={serviceColumns}
+              {...listTableProps({ ...modelQuery, data: model?.services ?? [] }, { empty: '尚未声明服务' })}
             />
           </TabPane>
           <TabPane tab={`事件（${model?.events.length ?? 0}）`} itemKey="events">
@@ -445,9 +443,8 @@ export default function IotThingModelDrawer({ product, onClose }: Readonly<IotTh
             )}
             <ConfigurableTable
               columnSettingsKey="iot-thing-model-events"
-              columns={eventColumns} dataSource={model?.events ?? []} rowKey="id"
-              size="small" pagination={false} empty="尚未声明事件"
-              onRefresh={() => void modelQuery.refetch()} refreshLoading={modelQuery.isFetching}
+              columns={eventColumns}
+              {...listTableProps({ ...modelQuery, data: model?.events ?? [] }, { empty: '尚未声明事件' })}
             />
           </TabPane>
         </Tabs>

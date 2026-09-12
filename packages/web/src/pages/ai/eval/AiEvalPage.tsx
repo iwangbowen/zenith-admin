@@ -489,15 +489,9 @@ export default function AiEvalPage() {
         {canManage && <CreateButton onClick={openCreate}>新建数据集</CreateButton>}
       </div>
       <ConfigurableTable
-        bordered
         columnSettingsKey="ai-eval-datasets"
         columns={columns}
-        dataSource={datasetsQuery.data ?? []}
-        rowKey="id"
-        loading={datasetsQuery.isFetching}
-        pagination={false}
-        onRefresh={() => void datasetsQuery.refetch()}
-        refreshLoading={datasetsQuery.isFetching}
+        {...listTableProps(datasetsQuery)}
       />
 
       {/* 数据集编辑 */}

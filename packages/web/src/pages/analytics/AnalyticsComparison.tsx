@@ -12,6 +12,7 @@ import {
   ANALYTICS_COMPARE_MAX_SEGMENTS,
 } from '@zenith/shared/analytics';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
+import { listTableProps } from '@/components/list-page';
 import { useAnalyticsDrillUsers, useAnalyticsSegments } from '@/hooks/queries/analytics';
 import { usePagination } from '@/hooks/usePagination';
 import { dateTimeColumn } from '@/utils/table-columns';
@@ -118,14 +119,7 @@ export function DrillUsersSheet({ context, title, description, onClose }: DrillU
         <Empty description="该位置没有命中用户" />
       ) : (
         <ConfigurableTable
-          bordered
-          rowKey="distinctId"
-          loading={query.isFetching}
-          dataSource={data?.list ?? []}
-          pagination={buildPagination(data?.total ?? 0)}
-          onRefresh={() => void query.refetch()}
-          refreshLoading={query.isFetching}
-          empty="该位置没有命中用户"
+          {...listTableProps(query, { pagination: buildPagination, rowKey: 'distinctId', empty: '该位置没有命中用户' })}
           columns={[
             {
               title: '用户',

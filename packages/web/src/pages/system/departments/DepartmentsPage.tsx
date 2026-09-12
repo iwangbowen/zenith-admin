@@ -28,7 +28,7 @@ import {
 } from '@/hooks/queries/departments';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { deleteAction, ListSearchToolbar, useStatusToggle } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { memberPreviewColumn } from '@/components/members/MemberAssignmentSheet';
 import { compactParams } from '@/lib/query';
 
@@ -220,15 +220,8 @@ export default function DepartmentsPage() {
       />
 
       <ConfigurableTable
-        bordered
         columns={columns}
-        dataSource={data}
-        loading={treeQuery.isFetching}
-        onRefresh={() => void treeQuery.refetch()}
-        refreshLoading={treeQuery.isFetching}
-        rowKey="id"
-        pagination={false}
-        empty="暂无数据"
+        {...listTableProps(treeQuery, { empty: '暂无数据' })}
         expandedRowKeys={expandedRowKeys}
         onExpandedRowsChange={onExpandedRowsChange}
       />

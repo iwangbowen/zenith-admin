@@ -41,7 +41,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { deleteAction, useStatusToggle } from '@/components/list-page';
+import { deleteAction, listTableProps, useStatusToggle } from '@/components/list-page';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { CreateButton, RefreshButton } from '@/components/toolbar-controls';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
@@ -537,12 +537,7 @@ export default function RateLimitPage() {
             )}
           />
           <ConfigurableTable
-            bordered
-            rowKey={(b: { name: string; key: string } | undefined) => `${b?.name}|${b?.key}`}
-            loading={bansQuery.isLoading}
-            onRefresh={() => void bansQuery.refetch()}
-            refreshLoading={bansQuery.isFetching}
-            dataSource={bansQuery.data ?? []}
+            {...listTableProps(bansQuery, { rowKey: (b: { name: string; key: string } | undefined) => `${b?.name}|${b?.key}` })}
             columns={[
               { title: '规则', dataIndex: 'name', minWidth: 200, render: (v: string) => <Tag color="blue" size="small">{v}</Tag> },
               copyableNoColumn('被封禁 Key', 'key', { width: undefined }),

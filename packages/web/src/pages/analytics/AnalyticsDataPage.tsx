@@ -230,9 +230,6 @@ export default function AnalyticsDataPage() {
     pageSize: eventList.pageSize,
     ...eventFilterQuery,
   });
-  const events = eventsQuery.data?.list ?? [];
-  const eventsTotal = eventsQuery.data?.total ?? 0;
-
   const detailQuery = useAnalyticsEventDetail(detailEventId, detailVisible);
   const eventDetail = detailQuery.data ?? null;
   const detailLoading = detailQuery.isFetching;
@@ -821,15 +818,8 @@ export default function AnalyticsDataPage() {
           />
 
           <ConfigurableTable
-            bordered
-            rowKey="id"
-            loading={eventsQuery.isFetching}
             columns={eventColumns}
-            dataSource={events}
-            onRefresh={() => void eventsQuery.refetch()}
-            refreshLoading={eventsQuery.isFetching}
-            pagination={eventList.buildPagination(eventsTotal)}
-            empty="暂无数据"
+            {...listTableProps(eventsQuery, { pagination: eventList.buildPagination, empty: '暂无数据' })}
           />
 
           <SideSheet

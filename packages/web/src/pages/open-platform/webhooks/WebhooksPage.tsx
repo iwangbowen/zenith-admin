@@ -113,7 +113,6 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
     status: deliveryStatus,
     eventType: deliveryEventType,
   }, !!drawerSub, scope);
-  const deliveries = deliveryQuery.data ?? null;
   const saveMutation = useSaveWebhook(scope);
   const deleteMutation = useDeleteWebhook(scope);
   const regenerateMutation = useRegenerateWebhookSecret(scope);
@@ -421,24 +420,20 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
           )}
         </SearchToolbar>
         <ConfigurableTable
-          bordered
           columns={deliveryColumns}
-          dataSource={deliveries?.list ?? []}
-          loading={deliveryQuery.isFetching}
-          onRefresh={() => void deliveryQuery.refetch()}
-          refreshLoading={deliveryQuery.isFetching}
-          rowKey="id"
-          size="small"
-          empty="暂无投递记录"
+          {...listTableProps(deliveryQuery, {
+            empty: '暂无投递记录',
+            rowSelection: deliveryRowSelection,
+            pagination: (total) => ({
+              currentPage: deliveryPage,
+              pageSize: 10,
+              total,
+              onPageChange: (p: number) => setDeliveryPage(p),
+              onPageSizeChange: () => setDeliveryPage(1),
+            }),
+          })}
           expandedRowRender={renderDeliveryExpanded}
           hideExpandedColumn={false}
-          rowSelection={deliveryRowSelection}
-          pagination={{
-            currentPage: deliveryPage,
-            pageSize: 10,
-            total: deliveries?.total ?? 0,
-            onPageChange: (p: number) => setDeliveryPage(p),
-          }}
         />
       </SideSheet>
     </div>

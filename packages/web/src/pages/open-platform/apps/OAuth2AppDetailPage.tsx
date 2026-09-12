@@ -7,6 +7,7 @@ import dayjs from 'dayjs';
 import type { AppWebhookSubscription, OAuth2Token, OAuth2UserGrant } from '@zenith/shared/open-platform';
 import { OPEN_APP_ENVIRONMENT_LABELS, OPEN_APP_REVIEW_STATUS_LABELS } from '@zenith/shared/open-platform';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { listTableProps } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AreaChart, EmptyChart, chartOptions, makeAreaSpec, useChartPalette } from '@/components/charts';
 import {
@@ -73,12 +74,7 @@ function AppStatsTab({ clientId }: Readonly<{ clientId: string }>) {
       <Card title="端点分布" loading={endpointsQuery.isFetching}>
         {endpoints.length ? (
           <ConfigurableTable
-            bordered
-            rowKey="key"
-            pagination={false}
-            onRefresh={() => void endpointsQuery.refetch()}
-            refreshLoading={endpointsQuery.isFetching}
-            dataSource={endpoints}
+            {...listTableProps(endpointsQuery, { rowKey: 'key' })}
             columns={[
               { title: '端点', dataIndex: 'label' },
               { title: '调用数', dataIndex: 'total', width: 120, align: 'right' },

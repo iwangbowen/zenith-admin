@@ -9,7 +9,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePermission } from '@/hooks/usePermission';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
-import { deleteAction, ListSearchToolbar } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { KeywordInput } from '@/components/search-filters';
 import WorkflowTemplateFormModal, { type WorkflowTemplateFormValues } from '../components/WorkflowTemplateFormModal';
 import {
@@ -37,7 +37,6 @@ export default function WorkflowTemplatesPage() {
   const deleteMutation = useDeleteWorkflowTemplate();
   const cloneMutation = useCloneWorkflowTemplate();
   const templates = useMemo(() => templatesQuery.data ?? [], [templatesQuery.data]);
-  const loading = templatesQuery.isFetching;
   const saving = updateMutation.isPending;
   const cloningId = cloneMutation.isPending ? (cloneMutation.variables?.params.id ?? null) : null;
 
@@ -182,13 +181,8 @@ export default function WorkflowTemplatesPage() {
       />
 
       <ConfigurableTable<WorkflowTemplate>
-        bordered
-        loading={loading}
-        onRefresh={() => void templatesQuery.refetch()}
-        refreshLoading={loading}
-        rowKey="id"
-        dataSource={filtered}
         columns={columns}
+        {...listTableProps({ ...templatesQuery, data: filtered })}
         pagination={{ pageSize: 10 }}
       />
 

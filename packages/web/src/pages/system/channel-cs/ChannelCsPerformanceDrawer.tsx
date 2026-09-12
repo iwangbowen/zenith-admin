@@ -6,6 +6,7 @@
 import { Empty, SideSheet, Space, Spin } from '@douyinfe/semi-ui';
 import { Star } from 'lucide-react';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
+import { listTableProps } from '@/components/list-page';
 import { useChannelCsPerformance } from '@/hooks/queries/channel-cs';
 
 interface Props {
@@ -55,14 +56,9 @@ export function ChannelCsPerformanceDrawer({ visible, onClose }: Readonly<Props>
         <Empty description="暂无绩效数据" style={{ padding: 60 }} />
       ) : (
         <ConfigurableTable
-          rowKey="agentId"
           columnSettingsKey="channel-cs-performance"
           columns={columns}
-          dataSource={list}
-          pagination={false}
-          bordered
-          onRefresh={() => void performanceQuery.refetch()}
-          refreshLoading={loading}
+          {...listTableProps(performanceQuery, { rowKey: 'agentId' })}
         />
       )}
     </SideSheet>
