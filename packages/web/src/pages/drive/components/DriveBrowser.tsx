@@ -71,7 +71,7 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
 
   const listKey = driveKeys.dir(spaceId, folderId);
   const { page, pageSize, buildPagination, draftParams, setDraftParams, setField, submittedParams, handleSearch, handleReset, setPage, applySearch } =
-    useListSearch<SearchParams>({ defaults: { keyword: '', tagId: undefined, sortBy: 'name', order: 'asc' }, listKey, pageSize: 50 });
+    useListSearch<SearchParams>({ defaults: { keyword: '', tagId: undefined, sortBy: 'name', order: 'asc' }, listKey, pageSize: 50, resetKey: [spaceId, folderId] });
   const tags = useDriveTags(spaceId);
 
   // 已提交筛选 → 契约查询参数：只映射一次
@@ -95,7 +95,6 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
   useEffect(() => { directoryInputRef.current?.setAttribute('webkitdirectory', ''); }, [canUpload]);
 
   useEffect(() => { setSelectedIds([]); }, [spaceId, folderId, page]);
-  useEffect(() => { setPage(1); }, [spaceId, folderId, setPage]);
 
   const rename = useRenameDriveNode();
   const createFolder = useCreateDriveFolder();

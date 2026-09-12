@@ -166,6 +166,54 @@ describe('页码联动', () => {
     const { result } = setup({ pageSize: 50 });
     expect(result.current.pageSize).toBe(50);
   });
+
+  it('resetKey 变化时回到第 1 页、条件保留；重渲染但键不变则页码不动', () => {
+    const client = createTestQueryClient();
+    const preferences = { preferences: defaultPreferences, updatePreferences: vi.fn(), resetPreferences: vi.fn() } as unknown as PreferencesContextValue;
+    const view = renderHook(
+      ({ scope }: { scope: number }) => useListSearch<SearchParams>({ defaults, listKey, resetKey: scope }),
+      {
+        initialProps: { scope: 1 },
+        wrapper: ({ children }) => (
+          <QueryClientProvider client={client}>
+            <PreferencesContext.Provider value={preferences}>{children}</PreferencesContext.Provider>
+          </QueryClientProvider>
+        ),
+      },
+    );
+    act(() => { view.result.current.setField('keyword')('abc'); });
+    act(() => { view.result.current.handleSearch(); });
+    act(() => { view.result.current.setPage(4); });
+    expect(view.result.current.page).toBe(4);
+
+    view.rerender({ scope: 1 });
+    expect(view.result.current.page).toBe(4);
+
+    view.rerender({ scope: 2 });
+    expect(view.result.current.page).toBe(1);
+    expect(view.result.current.submittedParams.keyword).toBe('abc');
+  });
+
+  it('resetKey 为数组时按元素比较：同值新数组不重置，任一元素变化才重置', () => {
+    const client = createTestQueryClient();
+    const preferences = { preferences: defaultPreferences, updatePreferences: vi.fn(), resetPreferences: vi.fn() } as unknown as PreferencesContextValue;
+    const view = renderHook(
+      ({ spaceId, folderId }: { spaceId: number; folderId: number | null }) => useListSearch<SearchParams>({ defaults, listKey, resetKey: [spaceId, folderId] }),
+      {
+        initialProps: { spaceId: 1, folderId: null as number | null },
+        wrapper: ({ children }) => (
+          <QueryClientProvider client={client}>
+            <PreferencesContext.Provider value={preferences}>{children}</PreferencesContext.Provider>
+          </QueryClientProvider>
+        ),
+      },
+    );
+    act(() => { view.result.current.setPage(3); });
+    view.rerender({ spaceId: 1, folderId: null });
+    expect(view.result.current.page).toBe(3);
+    view.rerender({ spaceId: 1, folderId: 7 });
+    expect(view.result.current.page).toBe(1);
+  });
 });
 
 describe('额外副作用回调', () => {

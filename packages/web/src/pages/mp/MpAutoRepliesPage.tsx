@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, Col, Form, Input, Row, Select, Space, Spin, Tag, Toast, Switch, Typography } from '@douyinfe/semi-ui';
 import { Plus, Trash2, Flame } from 'lucide-react';
@@ -64,10 +64,10 @@ export default function MpAutoRepliesPage() {
   interface SearchParams { filterType: MpAutoReplyType | undefined; keyword: string; }
   const defaultSearch: SearchParams = { filterType: undefined, keyword: '' };
   const {
-    page, pageSize, setPage, buildPagination,
+    page, pageSize, buildPagination,
     bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
-  } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpAutoReplyKeys.lists });
+  } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpAutoReplyKeys.lists, resetKey: currentId });
 
   const [modalType, setModalType] = useState<MpAutoReplyType>('keyword');
   const [contentType, setContentType] = useState<MpReplyContentType>('text');
@@ -89,10 +89,6 @@ export default function MpAutoRepliesPage() {
   const toggleMutation = useSaveMpAutoReply();
   const deleteMutation = useDeleteMpAutoReplies();
   const togglingId = toggleMutation.isPending ? (toggleMutation.variables?.id ?? null) : null;
-
-  useEffect(() => {
-    setPage(1);
-  }, [currentId, setPage]);
 
   const modal = useEditModal<MpAutoReply, Partial<CreateMpAutoReplyInput>>({
     entityName: '自动回复',

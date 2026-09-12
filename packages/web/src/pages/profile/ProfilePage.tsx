@@ -23,7 +23,7 @@ import { useDictItems } from '@/hooks/useDictItems';
 import { usePagination } from '@/hooks/usePagination';
 import DictTag from '@/components/DictTag';
 import { LoginLogsTable } from '@/components/logs/LoginLogsTable';
-import { confirmAndDelete } from '@/components/list-page';
+import { confirmAndDelete, listTableProps } from '@/components/list-page';
 import { OperationLogsTable } from '@/components/logs/OperationLogsTable';
 import { confirmDanger } from '@/utils/confirm';
 import { copyText } from '@/utils/clipboard';
@@ -178,9 +178,6 @@ export default function ProfilePage({ user }: ProfilePageProps) {
     activeSection === 'authorized-apps',
   );
   const revokeGrantMutation = useRevokeMyOAuth2Grant();
-  const myGrants = myGrantsQuery.data?.list ?? [];
-  const myGrantsTotal = myGrantsQuery.data?.total ?? 0;
-  const myGrantsLoading = myGrantsQuery.isFetching;
 
   async function handleRevokeGrant(id: number) {
     await revokeGrantMutation.mutateAsync({ params: { id } });
@@ -772,14 +769,8 @@ export default function ProfilePage({ user }: ProfilePageProps) {
                   这些应用已获得你的授权，可按下列权限范围访问你的账户信息。撤销后，该应用已签发的令牌会立即失效。
                 </Text>
                 <ConfigurableTable
-                  bordered
-                  dataSource={myGrants}
-                  rowKey="id"
-                  loading={myGrantsLoading}
-                  onRefresh={() => void myGrantsQuery.refetch()}
-                  refreshLoading={myGrantsLoading}
                   columnSettingsKey="profile-authorized-apps"
-                  pagination={buildMyGrantsPagination(myGrantsTotal)}
+                  {...listTableProps(myGrantsQuery, { pagination: buildMyGrantsPagination })}
                   columns={[
                     {
                       title: '应用',

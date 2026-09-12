@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { ListSearchToolbar } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useQueryClient } from '@tanstack/react-query';
 import { useListSearch } from '@/hooks/useListSearch';
 import { Tabs, TabPane, Select, Button, Toast, Form, Switch, Slider, Input, InputNumber, TagInput, Tag, Typography, SplitButtonGroup, Dropdown, SideSheet, Descriptions, Card, Banner } from '@douyinfe/semi-ui';
@@ -248,8 +248,6 @@ export default function AnalyticsDataPage() {
     pageSize: metaList.pageSize,
     ...metaFilterQuery,
   });
-  const metaRows = metaQuery.data?.list ?? [];
-  const metaTotal = metaQuery.data?.total ?? 0;
 
   const rollupQuery = useAnalyticsRollup(rollupDays, activeTab === 'rollup');
   const rollupItems = rollupQuery.data?.items ?? [];
@@ -862,15 +860,8 @@ export default function AnalyticsDataPage() {
           />
 
           <ConfigurableTable
-            bordered
-            rowKey="id"
-            loading={metaQuery.isFetching}
             columns={metaColumns}
-            dataSource={metaRows}
-            onRefresh={() => void metaQuery.refetch()}
-            refreshLoading={metaQuery.isFetching}
-            pagination={metaList.buildPagination(metaTotal)}
-            empty="暂无数据"
+            {...listTableProps(metaQuery, { pagination: metaList.buildPagination, empty: '暂无数据' })}
           />
 
           <AppModal {...metaModal.modalProps} width={640}>

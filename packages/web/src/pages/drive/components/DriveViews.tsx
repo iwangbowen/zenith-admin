@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { compactParams } from '@/lib/query';
 import { Button, Empty, Space, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -242,9 +242,8 @@ export function DriveSearchView({ keyword, fullText, onOpenFolder, onOpenDetail,
   const filters = useListSearch<{
     spaceId: number | undefined; type: DriveNodeType | undefined; extension: string; tagId: number | undefined;
     createdBy: number | undefined; timeRange: [Date, Date] | null;
-  }>({ defaults: { spaceId: undefined, type: undefined, extension: '', tagId: undefined, createdBy: undefined, timeRange: null }, listKey: driveKeys.viewOf('search'), pageSize: 20 });
-  const { page, pageSize, setPage, buildPagination, draftParams, setDraftParams, bind, bindKeyword, submittedParams } = filters;
-  useEffect(() => setPage(1), [keyword, fullText, setPage]);
+  }>({ defaults: { spaceId: undefined, type: undefined, extension: '', tagId: undefined, createdBy: undefined, timeRange: null }, listKey: driveKeys.viewOf('search'), pageSize: 20, resetKey: [keyword, fullText] });
+  const { page, pageSize, buildPagination, draftParams, setDraftParams, bind, bindKeyword, submittedParams } = filters;
   const spaces = useMyDriveSpaces();
   const tags = useDriveTags(draftParams.spaceId);
   // 已提交筛选 → 契约查询参数：只映射一次

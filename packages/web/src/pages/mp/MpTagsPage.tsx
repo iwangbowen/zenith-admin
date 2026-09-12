@@ -1,4 +1,4 @@
-import { useMemo, useEffect } from 'react';
+import { useMemo } from 'react';
 import { Button, Form, Spin, Toast } from '@douyinfe/semi-ui';
 import { RefreshCw } from 'lucide-react';
 import type { CreateMpTagInput, MpTag } from '@zenith/shared/mp';
@@ -24,9 +24,9 @@ export default function MpTagsPage() {
   const { accounts, currentId, setCurrentId, loading: accountsLoading } = useMpAccounts();
 
   const {
-    page, pageSize, setPage, buildPagination,
+    page, pageSize, buildPagination,
     bindKeyword, submittedParams, handleSearch, handleReset,
-  } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: mpTagKeys.lists });
+  } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: mpTagKeys.lists, resetKey: currentId });
 
   // 已提交筛选 → 契约查询参数：只映射一次
   const filterQuery = useMemo(() => compactParams({
@@ -42,9 +42,6 @@ export default function MpTagsPage() {
   const saveMutation = useSaveMpTag();
   const deleteMutation = useDeleteMpTags();
   const syncing = syncMutation.isPending;
-  useEffect(() => {
-    setPage(1);
-  }, [currentId, setPage]);
 
   const handleSync = async () => {
     if (!currentId) return;

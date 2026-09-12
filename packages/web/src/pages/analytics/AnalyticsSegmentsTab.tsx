@@ -270,8 +270,6 @@ export default function AnalyticsSegmentsTab() {
     status: submittedFilter.status,
   }), [submittedFilter]);
   const segmentsQuery = useAnalyticsSegments({ page, pageSize, ...filterQuery });
-  const segments = segmentsQuery.data?.list ?? [];
-  const total = segmentsQuery.data?.total ?? 0;
 
   const saveMutation = useSaveAnalyticsSegment();
   const deleteMutation = useDeleteAnalyticsSegment();
@@ -398,15 +396,8 @@ export default function AnalyticsSegmentsTab() {
         create={<CreateButton onClick={openCreate} />}
       />
       <ConfigurableTable
-        bordered
-        rowKey="id"
-        loading={segmentsQuery.isFetching}
         columns={columns}
-        dataSource={segments}
-        onRefresh={() => void segmentsQuery.refetch()}
-        refreshLoading={segmentsQuery.isFetching}
-        pagination={buildPagination(total)}
-        empty="暂无分群"
+        {...listTableProps(segmentsQuery, { pagination: buildPagination, empty: '暂无分群' })}
       />
 
       <AppModal

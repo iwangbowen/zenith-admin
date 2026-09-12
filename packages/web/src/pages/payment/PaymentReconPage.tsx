@@ -102,8 +102,6 @@ export default function PaymentReconPage() {
     result: enumValueOf(PAYMENT_RECON_RESULTS, itemResult),
     handleStatus: enumValueOf(PAYMENT_RECON_HANDLE_STATUSES, itemHandleStatus),
   }, !!detailBatch);
-  const itemsData = itemsQuery.data?.list ?? [];
-  const itemsTotal = itemsQuery.data?.total ?? 0;
   const sampleBillMutation = usePaymentReconSampleBill();
   const createMutation = useCreatePaymentReconBatch();
   const deleteMutation = useDeletePaymentReconBatch();
@@ -352,8 +350,8 @@ export default function PaymentReconPage() {
             />
           </div>
           <ConfigurableTable
-            bordered columns={itemColumns} dataSource={itemsData} loading={itemsQuery.isFetching} rowKey="id" size="small" empty="暂无数据"
-            onRefresh={() => void itemsQuery.refetch()} refreshLoading={itemsQuery.isFetching} pagination={buildItemPagination(itemsTotal)}
+            columns={itemColumns}
+            {...listTableProps(itemsQuery, { pagination: buildItemPagination, empty: '暂无数据' })}
           />
         </Spin>
       </SideSheet>

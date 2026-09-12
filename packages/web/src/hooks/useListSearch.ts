@@ -16,6 +16,11 @@ export interface UseListSearchOptions<T> {
   readonly extraKeys?: readonly QueryKey[];
   /** 覆盖默认页大小（默认取用户偏好） */
   readonly pageSize?: number;
+  /**
+   * 外部作用域键（当前公众号 / 站点 / 空间…）：变化时回到第 1 页，条件保留；多个来源传数组。
+   * 见 `usePagination` 的同名选项；不要再写 `useEffect(() => setPage(1), [scopeId])`。
+   */
+  readonly resetKey?: unknown;
   /** 查询后的额外副作用，如清空已选中的行 */
   readonly onSearch?: () => void;
   /** 重置后的额外副作用 */
@@ -83,7 +88,7 @@ export interface UseListSearchReturn<T> extends UsePaginationReturn {
  *   handleSearch, handleReset,
  * } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: tagKeys.lists });
  *
- * const listQuery = useTagList({ page, pageSize, keyword: submittedParams.keyword || undefined });
+ * const listQuery = useTagList({ page, pageSize, ...filterQuery }); // filterQuery = useMemo(() => compactParams({ keyword: submittedParams.keyword, … }))
  * <KeywordInput placeholder="搜索名称" {...bindKeyword('keyword')} />
  * <StatusSelect items={statusItems} {...bind('status')} />
  */
@@ -92,11 +97,12 @@ export function useListSearch<T>({
   listKey,
   extraKeys,
   pageSize: overridePageSize,
+  resetKey,
   onSearch,
   onReset,
 }: UseListSearchOptions<T>): UseListSearchReturn<T> {
   const queryClient = useQueryClient();
-  const pagination = usePagination(overridePageSize);
+  const pagination = usePagination({ pageSize: overridePageSize, resetKey });
   const { setPage } = pagination;
 
   const [draftParams, setDraftParams] = useState<T>(defaults);

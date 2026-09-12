@@ -33,6 +33,10 @@ const listSearchRestrictions = [
     selector: 'LogicalExpression[operator="||"][right.type="Identifier"][right.name="undefined"]:matches([left.object.name=/^submitted/], [left.object.property.name=/^submitted/], [left.callee.object.object.name=/^submitted/], [left.callee.object.object.property.name=/^submitted/])',
     message: '已提交筛选 → 契约查询参数只映射一次：const filterQuery = useMemo(() => compactParams({ keyword: submittedParams.keyword, … }), [submittedParams])，再 useXxxList({ page, pageSize, ...filterQuery })；不要逐字段写 `x || undefined`。布尔开关按「勾选才筛选」语义写 `flag ? true : undefined`。',
   },
+  {
+    selector: 'CallExpression[callee.name="useEffect"] > ArrowFunctionExpression:matches([body.type="CallExpression"][body.callee.name="setPage"][body.arguments.0.value=1], [body.type="CallExpression"][body.callee.property.name="setPage"][body.arguments.0.value=1], [body.type="BlockStatement"][body.body.length=1][body.body.0.expression.callee.name="setPage"][body.body.0.expression.arguments.0.value=1], [body.type="BlockStatement"][body.body.length=1][body.body.0.expression.callee.property.name="setPage"][body.body.0.expression.arguments.0.value=1])',
+    message: '外部作用域（当前公众号 / 站点 / 空间 / 目录）切换回第 1 页请用 useListSearch / usePagination 的 resetKey（多个来源传数组）；useEffect(() => setPage(1), [scopeId]) 会先用旧页码请求一次新作用域的数据。',
+  },
 ];
 
 // ── 列表页样板纪律（constraints-frontend.md → 必须复用的公共 hook / 表格列）：

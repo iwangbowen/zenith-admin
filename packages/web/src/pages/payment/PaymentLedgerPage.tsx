@@ -1,6 +1,6 @@
 import { useMemo, useState, type CSSProperties } from 'react';
 import ModalFooter from '@/components/ModalFooter';
-import { ListSearchToolbar } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { ArrayField, Banner, Button, Descriptions, Form, Modal, SideSheet, TabPane, Tabs, Tag, TextArea, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, RotateCcw, Trash2 } from 'lucide-react';
@@ -287,10 +287,6 @@ export default function PaymentLedgerPage() {
     pageSize: reservationSearch.pageSize,
     ...reservationFilterQuery,
   }, canView && activeTab === 'reservations');
-
-  const accountData = accountQuery.data?.list ?? [];
-  const journalData = journalQuery.data?.list ?? [];
-  const reservationData = reservationQuery.data?.list ?? [];
 
   const accountCreateMutation = useCreatePaymentLedgerAccount();
   const accountModal = useEditModal<PaymentLedgerAccount, AccountFormValues, CreatePaymentLedgerAccountInput>({
@@ -620,9 +616,8 @@ export default function PaymentLedgerPage() {
             filterTitle="账本账户筛选"
           />
           <ConfigurableTable
-            bordered columns={accountColumns} dataSource={accountData} loading={accountQuery.isFetching} rowKey="id" empty="暂无账本账户"
-            onRefresh={() => void accountQuery.refetch()} refreshLoading={accountQuery.isFetching}
-            pagination={accountSearch.buildPagination(accountQuery.data?.total ?? 0)}
+            columns={accountColumns}
+            {...listTableProps(accountQuery, { pagination: accountSearch.buildPagination, empty: '暂无账本账户' })}
           />
         </TabPane>
 
@@ -643,9 +638,8 @@ export default function PaymentLedgerPage() {
             filterTitle="资金凭证筛选"
           />
           <ConfigurableTable
-            bordered columns={journalColumns} dataSource={journalData} loading={journalQuery.isFetching} rowKey="id" empty="暂无资金凭证"
-            onRefresh={() => void journalQuery.refetch()} refreshLoading={journalQuery.isFetching}
-            pagination={journalSearch.buildPagination(journalQuery.data?.total ?? 0)}
+            columns={journalColumns}
+            {...listTableProps(journalQuery, { pagination: journalSearch.buildPagination, empty: '暂无资金凭证' })}
           />
         </TabPane>
 
@@ -671,9 +665,8 @@ export default function PaymentLedgerPage() {
             filterTitle="资金预占筛选"
           />
           <ConfigurableTable
-            bordered columns={reservationColumns} dataSource={reservationData} loading={reservationQuery.isFetching} rowKey="id" empty="暂无资金预占"
-            onRefresh={() => void reservationQuery.refetch()} refreshLoading={reservationQuery.isFetching}
-            pagination={reservationSearch.buildPagination(reservationQuery.data?.total ?? 0)}
+            columns={reservationColumns}
+            {...listTableProps(reservationQuery, { pagination: reservationSearch.buildPagination, empty: '暂无资金预占' })}
           />
         </TabPane>
       </Tabs>

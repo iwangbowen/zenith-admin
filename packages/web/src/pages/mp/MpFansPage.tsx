@@ -1,4 +1,4 @@
-import { useMemo, useEffect } from 'react';
+import { useMemo } from 'react';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Avatar, Button, Form, Modal, Space, Spin, Tag, Toast } from '@douyinfe/semi-ui';
 import { RefreshCw, Ban } from 'lucide-react';
@@ -48,10 +48,10 @@ export default function MpFansPage() {
   interface SearchParams { keyword: string; subscribe: MpFanSubscribe | undefined; tagId: number | undefined; blacklisted?: 'true' | 'false'; }
   const defaultSearch: SearchParams = { keyword: '', subscribe: undefined, tagId: undefined, blacklisted: undefined };
   const {
-    page, pageSize, setPage, buildPagination,
+    page, pageSize, buildPagination,
     bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
-  } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpFanKeys.lists });
+  } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpFanKeys.lists, resetKey: currentId });
 
   // 已提交筛选 → 契约查询参数：只映射一次
   const filterQuery = useMemo(() => compactParams({
@@ -81,10 +81,6 @@ export default function MpFansPage() {
     successMessage: () => '保存成功',
     labelWidth: 72,
   });
-
-  useEffect(() => {
-    setPage(1);
-  }, [currentId, setPage]);
 
   const handleSync = async () => {
     if (!currentId) return;

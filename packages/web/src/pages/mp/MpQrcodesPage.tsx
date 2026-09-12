@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, Form, Image, Select, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import { Plus } from 'lucide-react';
@@ -36,10 +36,10 @@ export default function MpQrcodesPage() {
   interface SearchParams { filterType: MpQrcodeType | undefined; keyword: string; }
   const defaultSearch: SearchParams = { filterType: undefined, keyword: '' };
   const {
-    page, pageSize, setPage, buildPagination,
+    page, pageSize, buildPagination,
     bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
-  } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpQrcodeKeys.lists });
+  } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: mpQrcodeKeys.lists, resetKey: currentId });
 
   const [modalType, setModalType] = useState<MpQrcodeType>('permanent');
 
@@ -73,10 +73,6 @@ export default function MpQrcodesPage() {
     },
     successMessage: () => '生成成功',
   });
-
-  useEffect(() => {
-    setPage(1);
-  }, [currentId, setPage]);
 
   const openCreate = () => { setModalType('permanent'); createModal.openCreate(); };
 

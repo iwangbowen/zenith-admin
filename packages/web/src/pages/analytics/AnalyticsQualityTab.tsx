@@ -26,7 +26,7 @@ import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { useEditModal } from '@/hooks/useEditModal';
 import { EMPTY_PLACEHOLDER, dateColumn, dateTimeColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { ANALYTICS_ISSUE_TAG_COLOR } from './analytics-tag-colors';
-import { deleteAction, ListSearchToolbar } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 const PAGE_SIZE = 20;
 const DAY_OPTIONS = [7, 30, 90].map((value) => ({ value, label: `${value} 天` }));
@@ -79,8 +79,6 @@ export default function AnalyticsQualityTab() {
     pageSize: overrides.pageSize,
     ...overrideFilterQuery,
   }, config.multiTenantMode);
-  const overrideList = overrideQuery.data?.list ?? [];
-  const overrideTotal = overrideQuery.data?.total ?? 0;
 
   const saveOverrideMutation = useSaveAnalyticsEventOverride();
   const deleteOverrideMutation = useDeleteAnalyticsEventOverride();
@@ -199,15 +197,8 @@ export default function AnalyticsQualityTab() {
               create={<CreateButton onClick={overrideModal.openCreate}>新增覆盖</CreateButton>}
             />
             <ConfigurableTable
-              bordered
-              rowKey="id"
-              loading={overrideQuery.isFetching}
               columns={overrideColumns}
-              dataSource={overrideList}
-              onRefresh={() => void overrideQuery.refetch()}
-              refreshLoading={overrideQuery.isFetching}
-              pagination={overrides.buildPagination(overrideTotal)}
-              empty="当前租户暂无覆盖规则"
+              {...listTableProps(overrideQuery, { pagination: overrides.buildPagination, empty: '当前租户暂无覆盖规则' })}
             />
           </>
         )}
