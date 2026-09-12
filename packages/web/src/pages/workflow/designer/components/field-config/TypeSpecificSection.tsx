@@ -9,6 +9,31 @@ import { DetailChildrenEditor } from './DetailChildrenEditor';
 import { FormulaEditor } from './FormulaEditor';
 import { CascaderOptionsEditor } from './CascaderOptionsEditor';
 import { DateRangeLinkageEditor, DataSourceSourceEditor, AutoFillEditor, CascadeEditor } from './linkage-editors';
+import { MAP_PROVIDER_OPTIONS, type MapProviderId } from '../MapPicker';
+
+function nextMapCenter(
+  center: { lng: number; lat: number } | undefined,
+  axis: 'lng' | 'lat',
+  v: number | string | undefined,
+): { lng: number; lat: number } | undefined {
+  const num = v == null || v === '' ? undefined : Number(v);
+  const lng = axis === 'lng' ? num : center?.lng;
+  const lat = axis === 'lat' ? num : center?.lat;
+  if (lng == null || lat == null) return undefined;
+  return { lng, lat };
+}
+
+function nextMapPopup(
+  popup: { widthPct: number; heightPct: number } | undefined,
+  axis: 'widthPct' | 'heightPct',
+  v: number | string | undefined,
+): { widthPct: number; heightPct: number } | undefined {
+  const num = v == null || v === '' ? undefined : Number(v);
+  const widthPct = axis === 'widthPct' ? num : popup?.widthPct;
+  const heightPct = axis === 'heightPct' ? num : popup?.heightPct;
+  if (widthPct == null || heightPct == null) return undefined;
+  return { widthPct, heightPct };
+}
 
 interface TypeSpecificSectionProps {
   field: WorkflowFormField;
@@ -542,6 +567,62 @@ export function TypeSpecificSection({ field, allFields, flatFields, flags, isRem
                 onChange={(children) => onChange({ children })}
               />
             </div>
+          )}
+
+          {/* 地图选址：厂商 / 中心点 / 缩放 / 弹窗尺寸 */}
+          {field.type === 'mapPicker' && (
+            <>
+              <div className="fd-form-config__field">
+                <Typography.Text strong size="small">地图厂商</Typography.Text>
+                <Select
+                  value={field.mapProvider ?? 'tianditu'}
+                  onChange={(v) => onChange({ mapProvider: typeof v === 'string' ? (v as MapProviderId) : undefined })}
+                  style={{ width: '100%' }}
+                  optionList={MAP_PROVIDER_OPTIONS.map((o) => ({ label: o.label, value: o.value }))}
+                />
+              </div>
+              <div className="fd-form-config__field">
+                <Typography.Text strong size="small">默认中心点（经度 / 纬度，留空走预设）</Typography.Text>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <InputNumber
+                    value={field.mapDefaultCenter?.lng}
+                    onChange={(v) => onChange({ mapDefaultCenter: nextMapCenter(field.mapDefaultCenter, 'lng', v) })}
+                    placeholder="经度"
+                    style={{ width: '100%' }}
+                  />
+                  <InputNumber
+                    value={field.mapDefaultCenter?.lat}
+                    onChange={(v) => onChange({ mapDefaultCenter: nextMapCenter(field.mapDefaultCenter, 'lat', v) })}
+                    placeholder="纬度"
+                    style={{ width: '100%' }}
+                  />
+                </div>
+              </div>
+              <div className="fd-form-config__field">
+                <Typography.Text strong size="small">默认缩放</Typography.Text>
+                <InputNumber
+                  value={field.mapDefaultZoom ?? 15}
+                  onChange={(v) => onChange({ mapDefaultZoom: v == null ? undefined : Number(v) })}
+                  min={1}
+                  max={20}
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div className="fd-form-config__field">
+                <Typography.Text strong size="small">弹窗尺寸·PC（宽 / 高 %）</Typography.Text>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <InputNumber value={field.mapPopupPc?.widthPct} onChange={(v) => onChange({ mapPopupPc: nextMapPopup(field.mapPopupPc, 'widthPct', v) })} placeholder="宽%" style={{ width: '100%' }} />
+                  <InputNumber value={field.mapPopupPc?.heightPct} onChange={(v) => onChange({ mapPopupPc: nextMapPopup(field.mapPopupPc, 'heightPct', v) })} placeholder="高%" style={{ width: '100%' }} />
+                </div>
+              </div>
+              <div className="fd-form-config__field">
+                <Typography.Text strong size="small">弹窗尺寸·移动（宽 / 高 %）</Typography.Text>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <InputNumber value={field.mapPopupMobile?.widthPct} onChange={(v) => onChange({ mapPopupMobile: nextMapPopup(field.mapPopupMobile, 'widthPct', v) })} placeholder="宽%" style={{ width: '100%' }} />
+                  <InputNumber value={field.mapPopupMobile?.heightPct} onChange={(v) => onChange({ mapPopupMobile: nextMapPopup(field.mapPopupMobile, 'heightPct', v) })} placeholder="高%" style={{ width: '100%' }} />
+                </div>
+              </div>
+            </>
           )}
     </>
   );

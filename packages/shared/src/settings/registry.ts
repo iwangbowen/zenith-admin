@@ -13,6 +13,7 @@ import { rulesSettingsModule } from './modules/rules';
 import { terminalSettingsModule } from './modules/terminal';
 import { uiSettingsModule } from './modules/ui';
 import { wikiSettingsModule } from './modules/wiki';
+import { mapSettingsModule } from './modules/map';
 import { workflowSettingsModule } from './modules/workflow';
 
 /**
@@ -33,6 +34,7 @@ export const SETTINGS_MODULES = {
   ipAccess: ipAccessSettingsModule,
   drive: driveSettingsModule,
   wiki: wikiSettingsModule,
+  map: mapSettingsModule,
 } as const satisfies Record<string, SettingsModuleDef>;
 
 export type SettingsModuleKey = keyof typeof SETTINGS_MODULES;
@@ -57,6 +59,7 @@ export const SETTINGS_MODULE_PATHS = {
   ipAccess: '/ip-access',
   drive: '/drive',
   wiki: '/wiki',
+  map: '/map',
 } as const satisfies Record<SettingsModuleKey, `/${string}`>;
 
 export const SETTINGS_MODULE_KEYS = Object.keys(SETTINGS_MODULES) as SettingsModuleKey[];

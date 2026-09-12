@@ -9,6 +9,7 @@ import { identitySecuritySettingsSchema } from './modules/identity-security';
 import { rulesSettingsSchema } from './modules/rules';
 import { terminalSettingsSchema } from './modules/terminal';
 import { uiSettingsSchema } from './modules/ui';
+import { mapSettingsSchema } from './modules/map';
 import { SETTINGS_MODULE_KEYS, SETTINGS_MODULE_PATHS, SETTINGS_MODULES, type SettingsModuleKey, type SettingsOf } from './registry';
 
 // ─── 模块清单 ────────────────────────────────────────────────────────────────
@@ -36,6 +37,7 @@ export type SettingsModuleMeta = z.infer<typeof settingsModuleMetaSchema>;
 export const publicSettingsSchema = z.object({
   auth: authSettingsSchema.pick({ captchaEnabled: true, captchaComplexity: true, allowRegistration: true, forgotPasswordEnabled: true }),
   identitySecurity: identitySecuritySettingsSchema.pick({ password: true }),
+  map: mapSettingsSchema.pick({ tiandituMapKey: true, amapMapKey: true, amapSecurityJsCode: true, tencentMapKey: true, baiduMapKey: true }),
 }).meta({ id: 'PublicSettings' });
 
 export type PublicSettings = z.output<typeof publicSettingsSchema>;
@@ -45,6 +47,7 @@ export const mySettingsSchema = z.object({
   identitySecurity: identitySecuritySettingsSchema.pick({ password: true }),
   ui: uiSettingsSchema.pick({ watermark: true, quickChatEnabled: true, feedbackEntryEnabled: true }),
   files: filesSettingsSchema.pick({ chunkThresholdMb: true, chunkSizeMb: true }),
+  map: mapSettingsSchema.pick({ tiandituMapKey: true, amapMapKey: true, amapSecurityJsCode: true, tencentMapKey: true, baiduMapKey: true }),
   // 带 License 门控的模块：租户套餐未含该特性时不返回
   terminal: terminalSettingsSchema.pick({ recordingEnabled: true }).optional(),
   rules: rulesSettingsSchema.pick({ publishApproval: true }).optional(),
@@ -119,6 +122,7 @@ const workflow = moduleOps('workflow');
 const ipAccess = moduleOps('ipAccess');
 const drive = moduleOps('drive');
 const wiki = moduleOps('wiki');
+const map = moduleOps('map');
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
@@ -140,6 +144,7 @@ export const settingsContract = defineContract('/api/settings', {
   getIpAccess: ipAccess.get, updateIpAccess: ipAccess.update,
   getDrive: drive.get, updateDrive: drive.update,
   getWiki: wiki.get, updateWiki: wiki.update,
+  getMap: map.get, updateMap: map.update,
 }, { tags: ['Settings'] });
 
 export type SettingsContract = typeof settingsContract;

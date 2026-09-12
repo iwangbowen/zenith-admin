@@ -643,6 +643,7 @@ export type WorkflowFormFieldType =
   | 'nps'           // NPS 净推荐值量表（0-10 打分）
   | 'matrix'        // 矩阵量表（多行同一组选项打分/选择）
   | 'location'      // 定位（经纬度 + 地址文本）
+  | 'mapPicker'     // 地图选址（天地图/高德/腾讯/百度 选点 + 逆地理编码）
   | 'detail'        // 明细/表格
   | 'description'   // 说明文字
   | 'serialNumber'  // 流水号
@@ -800,6 +801,12 @@ export interface WorkflowFormField {
   labelPosition?: 'top' | 'left' | 'inset';   // 字段级标签位置
   labelAlign?: 'left' | 'right';               // 字段级标签对齐
   labelWidth?: number;                          // 字段级标签宽度
+  // mapPicker 地图选址（per-form 配置，存字段实例上；勿用 config 子对象）
+  mapProvider?: 'tianditu' | 'amap' | 'tencent' | 'baidu';   // 默认 tianditu
+  mapDefaultCenter?: { lng: number; lat: number };
+  mapDefaultZoom?: number;                                   // 默认 15
+  mapPopupPc?: { widthPct: number; heightPct: number };
+  mapPopupMobile?: { widthPct: number; heightPct: number };
 }
 
 // ─── 表单库 ─────────────────────────────────────────────────────────────────
