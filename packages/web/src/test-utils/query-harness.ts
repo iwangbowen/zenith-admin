@@ -17,7 +17,7 @@
  * `xxxKeys.detail(id)` 的前缀，两者同时调用时后者只是空转，这类 spy 断言
  * 在「冗余现状」与「收敛后被改坏」两种情况下都会通过。
  */
-import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryCache, QueryClient, QueryClientProvider, hashKey, partialMatchKey } from '@tanstack/react-query';
 import type { Query, QueryKey } from '@tanstack/react-query';
 import { createElement, type ReactNode } from 'react';
 
@@ -168,8 +168,11 @@ export interface FetchObserver {
   readonly count: number;
   /** 去重后的 key 序列化列表，便于直观断言 */
   keys(): string[];
-  /** 某个 key（前缀匹配）进入 fetching 的次数 */
-  countOf(prefix: QueryKey): number;
+  /**
+   * 某个 key 进入 fetching 的次数。默认按 TanStack `invalidateQueries` 的前缀语义部分匹配
+   * （`{ query: {} }` 是所有带 query 的同操作 key 的前缀）；断言「同操作的另一组参数没被波及」时传 `{ exact: true }`
+   */
+  countOf(prefix: QueryKey, options?: { exact?: boolean }): number;
   reset(): void;
   stop(): void;
 }
@@ -195,7 +198,7 @@ export function observeFetches(client: QueryClient): FetchObserver {
       return events.length;
     },
     keys: () => [...new Set(events.map((k) => JSON.stringify(k)))],
-    countOf: (prefix) => events.filter((k) => matchesPrefix(k, prefix)).length,
+    countOf: (prefix, options) => events.filter((k) => (options?.exact ? hashKey(k) === hashKey(prefix) : matchesPrefix(k, prefix))).length,
     reset: () => {
       events.length = 0;
     },
@@ -203,9 +206,9 @@ export function observeFetches(client: QueryClient): FetchObserver {
   };
 }
 
+/** 与 TanStack 的 `invalidateQueries({ queryKey })` 同一套前缀语义：段内对象按部分匹配（`{ query: { a } }` 命中 `{ query: { a, b } }`） */
 function matchesPrefix(key: QueryKey, prefix: QueryKey): boolean {
-  if (prefix.length > key.length) return false;
-  return prefix.every((seg, i) => JSON.stringify(seg) === JSON.stringify(key[i]));
+  return partialMatchKey(key, prefix);
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -213,10 +216,7 @@ function matchesPrefix(key: QueryKey, prefix: QueryKey): boolean {
 // ────────────────────────────────────────────────────────────────────────────
 
 function findQuery(client: QueryClient, key: QueryKey): Query | undefined {
-  return client
-    .getQueryCache()
-    .getAll()
-    .find((q) => JSON.stringify(q.queryKey) === JSON.stringify(key));
+  return client.getQueryCache().get(hashKey(key));
 }
 
 /** 缓存条目是否存在（删除后应为 false） */

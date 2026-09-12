@@ -138,4 +138,27 @@ export default [
       'no-restricted-syntax': ['error', ...clipboardRestrictions, ...listSearchRestrictions],
     },
   },
+  {
+    // ── 域 hooks 由契约派生：服务端状态一律经 lib/contract-query 访问，key 由 contractKey 生成 ──
+    // 同名规则整体覆盖，故此处把根配置的 @zenith/shared 路径限制一并带上
+    files: ['src/hooks/queries/**/*.ts'],
+    ignores: ['src/hooks/queries/**/*.test.ts', 'src/hooks/queries/**/*.test.tsx'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@tanstack/react-query',
+              importNames: ['useQuery', 'useMutation'],
+              message:
+                '域 hooks 用 useApiQuery / apiQueryOptions / useApiMutation / useSaveMutation / createResourceQueries（lib/contract-query）；'
+                + '仅组合多次请求、非契约通道、多操作分派、上传进度等场景可手写，须在 import 行加 eslint-disable 并注明理由，且 queryKey 仍由 contractKey 生成。',
+            },
+            { name: '@zenith/shared', message: "请改用域子路径 '@zenith/shared/<domain>'。" },
+          ],
+        },
+      ],
+    },
+  },
 ];

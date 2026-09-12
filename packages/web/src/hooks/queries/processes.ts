@@ -33,8 +33,9 @@ export function useKillProcess() {
   return useApiMutation(processContract.kill, {
     invalidate: (qc, _output, { params, query }) => {
       const hostId = query.hostId ?? null;
-      qc.removeQueries({ queryKey: processKeys.detail(params.pid, hostId) });
-      void qc.invalidateQueries({ queryKey: processKeys.list(hostId) });
+      // 本机 key 的 query 为 {}，按前缀语义会命中全部主机，故按精确 key 操作
+      qc.removeQueries({ queryKey: processKeys.detail(params.pid, hostId), exact: true });
+      void qc.invalidateQueries({ queryKey: processKeys.list(hostId), exact: true });
     },
   });
 }
@@ -44,8 +45,8 @@ export function useSetProcessPriority() {
   return useApiMutation(processContract.setPriority, {
     invalidate: (qc, _output, { params, query }) => {
       const hostId = query.hostId ?? null;
-      void qc.invalidateQueries({ queryKey: processKeys.detail(params.pid, hostId) });
-      void qc.invalidateQueries({ queryKey: processKeys.list(hostId) });
+      void qc.invalidateQueries({ queryKey: processKeys.detail(params.pid, hostId), exact: true });
+      void qc.invalidateQueries({ queryKey: processKeys.list(hostId), exact: true });
     },
   });
 }

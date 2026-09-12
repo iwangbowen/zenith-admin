@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports -- H5 保留：手写 useQuery / useMutation 的理由见本文件对应 hook 的注释；queryKey 仍由 contractKey 生成
 import { useQuery } from '@tanstack/react-query';
 import type { BodyOf, InputOf } from '@zenith/shared/core';
 import { dictContract } from '@zenith/shared/platform';
@@ -11,7 +12,7 @@ import {
   workflowInstanceContract,
   workflowSimulationCaseContract,
 } from '@zenith/shared/workflow';
-import { api, apiQueryOptions, contractKey, useApiMutation, useApiQuery, useSaveMutation } from '@/lib/contract-query';
+import { api, contractKey, useApiMutation, useApiQuery, useSaveMutation } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 import { positionKeys, useAllPositions } from './positions';
 import { useAllUserGroups, userGroupKeys } from './user-groups';
@@ -92,8 +93,7 @@ interface WorkflowSimulationPayload {
 
 /** 触发器节点的连接器下拉（只取启用项） */
 export function useWorkflowDesignerConnectorOptions(enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(workflowConnectorContract.list, { query: CONNECTOR_OPTIONS_QUERY }),
+  return useApiQuery(workflowConnectorContract.list, { query: CONNECTOR_OPTIONS_QUERY }, {
     select: (data) => data.list.map((c) => ({ value: c.id, label: `${c.name}（${c.type}）` })),
     staleTime: LOOKUP_STALE_TIME,
     enabled,
@@ -108,20 +108,17 @@ const toDecisionRefOptions = (list: ReadonlyArray<{ key: string; name: string }>
  * 三类资产是三个契约操作，各自一个观察者、只启用当前类型，返回值形状一致。
  */
 export function useWorkflowDesignerDecisionRefOptions(kind: WorkflowDecisionRefKind, enabled = true) {
-  const tables = useQuery({
-    ...apiQueryOptions(decisionTableContract.list, { query: DECISION_REF_QUERY }),
+  const tables = useApiQuery(decisionTableContract.list, { query: DECISION_REF_QUERY }, {
     select: (data) => toDecisionRefOptions(data.list),
     staleTime: LOOKUP_STALE_TIME,
     enabled: enabled && kind === 'table',
   });
-  const scorecards = useQuery({
-    ...apiQueryOptions(ruleScorecardContract.list, { query: DECISION_REF_QUERY }),
+  const scorecards = useApiQuery(ruleScorecardContract.list, { query: DECISION_REF_QUERY }, {
     select: (data) => toDecisionRefOptions(data.list),
     staleTime: LOOKUP_STALE_TIME,
     enabled: enabled && kind === 'scorecard',
   });
-  const flows = useQuery({
-    ...apiQueryOptions(decisionFlowContract.list, { query: DECISION_REF_QUERY }),
+  const flows = useApiQuery(decisionFlowContract.list, { query: DECISION_REF_QUERY }, {
     select: (data) => toDecisionRefOptions(data.list),
     staleTime: LOOKUP_STALE_TIME,
     enabled: enabled && kind === 'flow',
@@ -146,16 +143,16 @@ export function useWorkflowDesignerPositionOptions(options?: { enabled?: boolean
 }
 
 export function useWorkflowDesignerDataSourceOptions() {
-  return useQuery({
-    ...apiQueryOptions(workflowDataSourceContract.list, { query: DATA_SOURCE_OPTIONS_QUERY }, { requestOptions: { silent: true } }),
+  return useApiQuery(workflowDataSourceContract.list, { query: DATA_SOURCE_OPTIONS_QUERY }, {
+    requestOptions: { silent: true },
     select: (data) => data.list.map((d) => ({ id: d.id, name: d.name })),
     staleTime: LOOKUP_STALE_TIME,
   });
 }
 
 export function useWorkflowDesignerDictOptions() {
-  return useQuery({
-    ...apiQueryOptions(dictContract.list, { query: DICT_OPTIONS_QUERY }, { requestOptions: { silent: true } }),
+  return useApiQuery(dictContract.list, { query: DICT_OPTIONS_QUERY }, {
+    requestOptions: { silent: true },
     select: (data) => data.list.map((d) => ({ code: d.code, name: d.name })),
     staleTime: LOOKUP_STALE_TIME,
   });

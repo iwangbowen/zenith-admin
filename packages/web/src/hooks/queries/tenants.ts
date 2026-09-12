@@ -1,6 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
 import { authContract, tenantContract } from '@zenith/shared/identity';
-import { apiQueryOptions, createResourceQueries, useApiMutation } from '@/lib/contract-query';
+import { createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export const {
   keys: tenantKeys,
@@ -12,7 +11,7 @@ export const {
 } = createResourceQueries(tenantContract);
 
 export function useTenantStats(id: number | undefined, enabled = true) {
-  return useQuery(apiQueryOptions(tenantContract.stats, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined }));
+  return useApiQuery(tenantContract.stats, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
 }
 
 /** 切换当前查看的租户——换发 token 后整页重载，故不做缓存失效 */

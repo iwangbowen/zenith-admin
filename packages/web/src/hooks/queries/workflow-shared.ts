@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+// eslint-disable-next-line no-restricted-imports -- H5 保留：手写 useQuery / useMutation 的理由见本文件对应 hook 的注释；queryKey 仍由 contractKey 生成
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { workflowDefinitionContract, workflowInstanceContract, workflowTaskContract, type WorkflowDefinition, type WorkflowInstance, type WorkflowSelectableUser } from '@zenith/shared/workflow';
 import { api, apiQueryOptions, contractKey, useApiQuery } from '@/lib/contract-query';

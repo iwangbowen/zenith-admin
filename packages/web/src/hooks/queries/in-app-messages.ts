@@ -1,7 +1,7 @@
-import { keepPreviousData, useQuery, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
 import { inAppMessageContract, inAppTemplateContract } from '@zenith/shared/messaging';
-import { apiQueryOptions, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type InAppMessageListParams = NonNullable<QueryOf<typeof inAppMessageContract.adminList>>;
 
@@ -31,16 +31,16 @@ export const inAppMessageKeys = {
 
 /** 我的站内信（顶栏铃铛列表）；缓存里是分页载荷，select 只取列表（WebSocket 回执按分页形状写入） */
 export function useMyInAppMessages() {
-  return useQuery({
-    ...apiQueryOptions(inAppMessageContract.list, { query: MINE_QUERY }, { requestOptions: silent }),
+  return useApiQuery(inAppMessageContract.list, { query: MINE_QUERY }, {
+    requestOptions: silent,
     select: (data) => data?.list ?? [],
   });
 }
 
 /** 我的站内信未读数 */
 export function useMyInAppMessageUnreadCount() {
-  return useQuery({
-    ...apiQueryOptions(inAppMessageContract.unreadCount, { requestOptions: silent }),
+  return useApiQuery(inAppMessageContract.unreadCount, {
+    requestOptions: silent,
     select: (data) => data?.count ?? 0,
   });
 }

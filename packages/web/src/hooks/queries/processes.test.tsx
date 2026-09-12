@@ -64,7 +64,7 @@ describe('useKillProcess', () => {
     await waitFor(() => expect(fetches.countOf(processKeys.list(1))).toBe(1));
 
     // 详情仍有 observer 时 removeQueries 会立刻重建并重拉；这里断言远端列表回源、本机列表不动
-    expect(fetches.countOf(processKeys.list(null))).toBe(0);
+    expect(fetches.countOf(processKeys.list(null), { exact: true })).toBe(0);
     expect(isFresh(qc, processKeys.list(null))).toBe(true);
     expect(api.urls('GET').filter((u) => u.startsWith('/api/processes?'))).toEqual(['/api/processes?hostId=1']);
     fetches.stop();
@@ -97,7 +97,7 @@ describe('useSetProcessPriority', () => {
       expect(fetches.countOf(processKeys.detail(42, 1))).toBe(1);
     });
 
-    expect(fetches.countOf(processKeys.list(null))).toBe(0);
+    expect(fetches.countOf(processKeys.list(null), { exact: true })).toBe(0);
     fetches.stop();
   });
 });

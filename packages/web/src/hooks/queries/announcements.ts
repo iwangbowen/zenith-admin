@@ -1,11 +1,11 @@
 import { useMemo } from 'react';
-import { keepPreviousData, useQuery, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { userContract } from '@zenith/shared/identity';
 import { announcementContract } from '@zenith/shared/messaging';
 import type { Announcement, AnnouncementDetail, MyAnnouncement } from '@zenith/shared/messaging';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
-import { apiQueryOptions, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { useAllRoles } from './roles';
 import { useFlatDepartments } from './departments';
 
@@ -86,8 +86,8 @@ export { useAnnouncementList, useAnnouncementDetail, useSaveAnnouncement, useDel
 
 /** 我的公告未读数（顶栏铃铛 badge） */
 export function useMyAnnouncementUnreadCount() {
-  return useQuery({
-    ...apiQueryOptions(announcementContract.unreadCount, { requestOptions: silent }),
+  return useApiQuery(announcementContract.unreadCount, {
+    requestOptions: silent,
     select: (data) => data?.count ?? 0,
   });
 }
@@ -169,8 +169,8 @@ export function useAnnouncementRecipientOptions(enabled = true) {
 
 /** 用户列表按 keyword 匹配用户名 / 昵称 / 邮箱；选项形状由 select 派生，缓存里仍是用户列表本身 */
 export function useAnnouncementUserSearch(keyword: string, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(userContract.list, { query: { ...USER_SEARCH_PAGE, keyword } }, { staleTime: LOOKUP_STALE_TIME }),
+  return useApiQuery(userContract.list, { query: { ...USER_SEARCH_PAGE, keyword } }, {
+    staleTime: LOOKUP_STALE_TIME,
     select: (data) => data.list.map((u) => ({ value: u.id, label: `${u.nickname}（${u.username}）` })),
     enabled: enabled && keyword.trim().length > 0,
   });

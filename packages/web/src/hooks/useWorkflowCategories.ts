@@ -1,29 +1,17 @@
 import { useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { workflowCategoryContract } from '@zenith/shared/workflow';
-import { api, createResourceQueries } from '@/lib/contract-query';
-import { LOOKUP_STALE_TIME } from '@/lib/query';
+import { createResourceQueries } from '@/lib/contract-query';
 
-const resource = createResourceQueries(workflowCategoryContract, {
-  // 分类下拉（useWorkflowCategories）与列表页共用 ['workflow','categories'] 前缀，保存 / 删除后一并失效
-  keyPrefix: ['workflow', 'categories'],
-});
+const resource = createResourceQueries(workflowCategoryContract);
 
-export const workflowCategoryKeys = {
-  ...resource.keys,
-  /** 全部分类（发起工作台分组 / 定义页侧栏 / 待办筛选共用） */
-  all: ['workflow', 'categories'] as const,
-};
+/** 列表页与分类下拉（发起工作台分组 / 定义页侧栏 / 待办筛选）共用工厂 keys：保存 / 删除后下拉源随 lookup 一并失效 */
+export const workflowCategoryKeys = resource.keys;
 
 export const useSaveWorkflowCategory = resource.useSave;
 export const useDeleteWorkflowCategories = resource.useDelete;
 
 export function useWorkflowCategories() {
-  const categoriesQuery = useQuery({
-    queryKey: workflowCategoryKeys.all,
-    queryFn: () => api(workflowCategoryContract.all),
-    staleTime: LOOKUP_STALE_TIME,
-  });
+  const categoriesQuery = resource.useLookup();
   const { data, isFetching, refetch: refetchCategories } = categoriesQuery;
 
   const refetch = useCallback(async () => {

@@ -1,8 +1,10 @@
-import { keepPreviousData, useQuery, type QueryClient } from '@tanstack/react-query';
-import { chatBotContract, type ChatConversation } from '@zenith/shared/chat';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
+import { chatBotContract, chatContract, type ChatConversation } from '@zenith/shared/chat';
 import { resourceKeyOf, type BodyOf, type QueryOf } from '@zenith/shared/core';
 import { useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
-import { conversationsQueryOptions } from '@/hooks/queries/chat';
+import { LOOKUP_STALE_TIME } from '@/lib/query';
+
+const silentRequest = { silent: true } as const;
 
 export type ChatBotListParams = QueryOf<typeof chatBotContract.list>;
 
@@ -28,9 +30,14 @@ export function useChatBotList(params: ChatBotListParams) {
 
 const selectGroupConversations = (items: ChatConversation[]) => items.filter((item) => item.type === 'group');
 
-/** 机器人表单的目标会话下拉源：会话列表归 chat 域所有，这里只对其共享缓存做 select 派生（改变数据形状，故展开 queryOptions），不另起请求 */
+/** 机器人表单的目标会话下拉源：会话列表归 chat 域所有，这里只对其共享缓存做 select 派生，不另起请求 */
 export function useChatBotGroupConversations(enabled = true) {
-  return useQuery({ ...conversationsQueryOptions(), select: selectGroupConversations, enabled });
+  return useApiQuery(chatContract.conversations, {
+    staleTime: LOOKUP_STALE_TIME,
+    requestOptions: silentRequest,
+    select: selectGroupConversations,
+    enabled,
+  });
 }
 
 /** 无 id 走创建（POST），有 id 走更新（PATCH） */

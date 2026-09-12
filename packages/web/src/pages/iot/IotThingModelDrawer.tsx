@@ -16,8 +16,9 @@ import type {
   IotParamDef, IotProduct, IotProductEvent, IotProductProperty, IotProductService,
 } from '@zenith/shared/iot';
 import {
+  useCreateIotEvent, useCreateIotProperty, useCreateIotService,
   useDeleteIotEvent, useDeleteIotProperty, useDeleteIotService, useImportIotTsl,
-  useIotThingModel, useSaveIotEvent, useSaveIotProperty, useSaveIotService,
+  useIotThingModel, useUpdateIotEvent, useUpdateIotProperty, useUpdateIotService,
 } from '@/hooks/queries/iot-products';
 import { IOT_EVENT_LEVEL_COLORS } from './iot-tag-colors';
 
@@ -141,12 +142,15 @@ export default function IotThingModelDrawer({ product, onClose }: Readonly<IotTh
   const importMutation = useImportIotTsl();
 
   // ─── 属性 ───────────────────────────────────────────────────────────────────
-  const savePropertyMutation = useSaveIotProperty();
+  const createPropertyMutation = useCreateIotProperty();
+  const updatePropertyMutation = useUpdateIotProperty();
   const propertyModal = useEditModal<IotProductProperty, PropertyFormValues, Partial<CreateIotPropertyInput>>({
     entityName: '属性',
     save: {
-      mutateAsync: ({ id, values }) => savePropertyMutation.mutateAsync({ productId: productId!, id, values }),
-      isPending: savePropertyMutation.isPending,
+      mutateAsync: ({ id, values }) => (id === undefined
+        ? createPropertyMutation.mutateAsync({ params: { id: productId! }, body: values as CreateIotPropertyInput })
+        : updatePropertyMutation.mutateAsync({ params: { id: productId!, propertyId: id }, body: values })),
+      isPending: createPropertyMutation.isPending || updatePropertyMutation.isPending,
     },
     toValues: (r) => ({
       identifier: r.identifier,
@@ -182,12 +186,15 @@ export default function IotThingModelDrawer({ product, onClose }: Readonly<IotTh
   const deletePropertyMutation = useDeleteIotProperty();
 
   // ─── 服务 ───────────────────────────────────────────────────────────────────
-  const saveServiceMutation = useSaveIotService();
+  const createServiceMutation = useCreateIotService();
+  const updateServiceMutation = useUpdateIotService();
   const serviceModal = useEditModal<IotProductService, ServiceFormValues, Partial<CreateIotServiceInput>>({
     entityName: '服务',
     save: {
-      mutateAsync: ({ id, values }) => saveServiceMutation.mutateAsync({ productId: productId!, id, values }),
-      isPending: saveServiceMutation.isPending,
+      mutateAsync: ({ id, values }) => (id === undefined
+        ? createServiceMutation.mutateAsync({ params: { id: productId! }, body: values as CreateIotServiceInput })
+        : updateServiceMutation.mutateAsync({ params: { id: productId!, serviceId: id }, body: values })),
+      isPending: createServiceMutation.isPending || updateServiceMutation.isPending,
     },
     toValues: (r) => ({
       identifier: r.identifier,
@@ -211,12 +218,15 @@ export default function IotThingModelDrawer({ product, onClose }: Readonly<IotTh
   const deleteServiceMutation = useDeleteIotService();
 
   // ─── 事件 ───────────────────────────────────────────────────────────────────
-  const saveEventMutation = useSaveIotEvent();
+  const createEventMutation = useCreateIotEvent();
+  const updateEventMutation = useUpdateIotEvent();
   const eventModal = useEditModal<IotProductEvent, EventFormValues, Partial<CreateIotEventInput>>({
     entityName: '事件',
     save: {
-      mutateAsync: ({ id, values }) => saveEventMutation.mutateAsync({ productId: productId!, id, values }),
-      isPending: saveEventMutation.isPending,
+      mutateAsync: ({ id, values }) => (id === undefined
+        ? createEventMutation.mutateAsync({ params: { id: productId! }, body: values as CreateIotEventInput })
+        : updateEventMutation.mutateAsync({ params: { id: productId!, eventId: id }, body: values })),
+      isPending: createEventMutation.isPending || updateEventMutation.isPending,
     },
     toValues: (r) => ({
       identifier: r.identifier,

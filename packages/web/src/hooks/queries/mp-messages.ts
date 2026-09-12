@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData } from '@tanstack/react-query';
 import { mpDraftContract, mpMaterialContract, mpMessageContract, type MpDraft, type MpMaterial } from '@zenith/shared/mp';
-import { apiQueryOptions, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 /** 会话线程固定拉最近 50 条，最新在后 */
 const THREAD_PAGE = { page: 1, pageSize: 50 } as const;
@@ -35,8 +35,8 @@ export function useMpConversations(accountId: number | null | undefined) {
 
 /** 会话线程：缓存里是分页载荷，select 派生「最新在后」的消息数组 */
 export function useMpMessageThread(accountId: number | null | undefined, openid: string | null | undefined) {
-  return useQuery({
-    ...apiQueryOptions(mpMessageContract.list, threadInput(accountId, openid), { placeholderData: keepPreviousData }),
+  return useApiQuery(mpMessageContract.list, threadInput(accountId, openid), {
+    placeholderData: keepPreviousData,
     select: (data) => [...data.list].reverse(),
     enabled: !!accountId && !!openid,
   });

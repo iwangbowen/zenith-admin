@@ -1,11 +1,7 @@
-import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import type { QueryClient } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
-import {
-  iotProductContract,
-  type CreateIotEventInput, type CreateIotPropertyInput, type CreateIotServiceInput,
-  type IotProductEvent, type IotProductProperty, type IotProductService,
-} from '@zenith/shared/iot';
-import { api, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { iotProductContract } from '@zenith/shared/iot';
+import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type IotProductListParams = NonNullable<QueryOf<typeof iotProductContract.list>>;
 
@@ -34,20 +30,16 @@ function invalidateModel(qc: QueryClient, productId: number) {
   void qc.invalidateQueries({ queryKey: iotProductKeys.lists });
 }
 
-/** 物模型子资源的保存变量：无 id 走新增，有 id 走更新；载荷为新增入参的部分形态（必填由表单 rules 保证） */
-interface IotModelSaveVars<TCreate> {
-  productId: number;
-  id?: number;
-  values: Partial<TCreate>;
+// 物模型子资源的新增 / 更新带父级路径参数（productId），成对操作各自一个 useApiMutation，由弹窗按有无 id 选择
+export function useCreateIotProperty() {
+  return useApiMutation(iotProductContract.createProperty, {
+    invalidate: (qc, _saved, { params }) => invalidateModel(qc, params.id),
+  });
 }
 
-export function useSaveIotProperty() {
-  const qc = useQueryClient();
-  return useMutation<IotProductProperty, Error, IotModelSaveVars<CreateIotPropertyInput>>({
-    mutationFn: ({ productId, id, values }) => (id === undefined
-      ? api(iotProductContract.createProperty, { params: { id: productId }, body: values as CreateIotPropertyInput })
-      : api(iotProductContract.updateProperty, { params: { id: productId, propertyId: id }, body: values })),
-    onSuccess: (_saved, { productId }) => invalidateModel(qc, productId),
+export function useUpdateIotProperty() {
+  return useApiMutation(iotProductContract.updateProperty, {
+    invalidate: (qc, _saved, { params }) => invalidateModel(qc, params.id),
   });
 }
 
@@ -57,13 +49,15 @@ export function useDeleteIotProperty() {
   });
 }
 
-export function useSaveIotService() {
-  const qc = useQueryClient();
-  return useMutation<IotProductService, Error, IotModelSaveVars<CreateIotServiceInput>>({
-    mutationFn: ({ productId, id, values }) => (id === undefined
-      ? api(iotProductContract.createService, { params: { id: productId }, body: values as CreateIotServiceInput })
-      : api(iotProductContract.updateService, { params: { id: productId, serviceId: id }, body: values })),
-    onSuccess: (_saved, { productId }) => invalidateModel(qc, productId),
+export function useCreateIotService() {
+  return useApiMutation(iotProductContract.createService, {
+    invalidate: (qc, _saved, { params }) => invalidateModel(qc, params.id),
+  });
+}
+
+export function useUpdateIotService() {
+  return useApiMutation(iotProductContract.updateService, {
+    invalidate: (qc, _saved, { params }) => invalidateModel(qc, params.id),
   });
 }
 
@@ -73,13 +67,15 @@ export function useDeleteIotService() {
   });
 }
 
-export function useSaveIotEvent() {
-  const qc = useQueryClient();
-  return useMutation<IotProductEvent, Error, IotModelSaveVars<CreateIotEventInput>>({
-    mutationFn: ({ productId, id, values }) => (id === undefined
-      ? api(iotProductContract.createEvent, { params: { id: productId }, body: values as CreateIotEventInput })
-      : api(iotProductContract.updateEvent, { params: { id: productId, eventId: id }, body: values })),
-    onSuccess: (_saved, { productId }) => invalidateModel(qc, productId),
+export function useCreateIotEvent() {
+  return useApiMutation(iotProductContract.createEvent, {
+    invalidate: (qc, _saved, { params }) => invalidateModel(qc, params.id),
+  });
+}
+
+export function useUpdateIotEvent() {
+  return useApiMutation(iotProductContract.updateEvent, {
+    invalidate: (qc, _saved, { params }) => invalidateModel(qc, params.id),
   });
 }
 

@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports -- H5 保留：手写 useQuery / useMutation 的理由见本文件对应 hook 的注释；queryKey 仍由 contractKey 生成
 import { useQuery } from '@tanstack/react-query';
 import { systemdContract, type SystemdService } from '@zenith/shared/ops';
 import { api, contractKey, urlOf, useApiMutation } from '@/lib/contract-query';
@@ -23,11 +24,11 @@ export function useServiceList(hostId: number | null = null) {
   });
 }
 
-/** 启停 / 重启 / 开机自启只改该主机的服务状态列；其它主机的清单不受影响 */
+/** 启停 / 重启 / 开机自启只改该主机的服务状态列；其它主机的清单不受影响（本机 key 的 query 为 {}，需精确匹配） */
 export function useServiceAction() {
   return useApiMutation(systemdContract.control, {
     invalidate: (qc, _output, { query }) => {
-      void qc.invalidateQueries({ queryKey: serviceKeys.list(query.hostId ?? null) });
+      void qc.invalidateQueries({ queryKey: serviceKeys.list(query.hostId ?? null), exact: true });
     },
   });
 }

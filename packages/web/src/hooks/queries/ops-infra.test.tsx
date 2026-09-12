@@ -184,7 +184,7 @@ describe('systemd', () => {
     await result.current.action.mutateAsync({ params: { name: 'nginx', action: 'restart' }, query: { hostId: 1 } });
     await waitFor(() => expect(fetches.countOf(serviceKeys.list(1))).toBe(1));
 
-    expect(fetches.countOf(serviceKeys.list(null))).toBe(0);
+    expect(fetches.countOf(serviceKeys.list(null), { exact: true })).toBe(0);
     expect(isFresh(qc, serviceKeys.list(null))).toBe(true);
     fetches.stop();
   });

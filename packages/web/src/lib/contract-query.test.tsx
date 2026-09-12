@@ -145,10 +145,12 @@ describe('apiQueryOptions', () => {
 describe('createResourceQueries', () => {
   const items = createResourceQueries(itemContract);
 
-  it('derives keys from the base path', () => {
+  it('derives keys from the base path, identical to the single-operation contractKey', () => {
     expect(items.keys.all).toEqual(['items']);
     expect(items.keys.lists).toEqual(['items', 'list']);
-    expect(items.keys.detail(3)).toEqual(['items', 'detail', 3]);
+    expect(items.keys.list({ page: 1, pageSize: 10 })).toEqual(contractKey(itemContract.list, { query: { page: 1, pageSize: 10 } }));
+    expect(items.keys.detail(3)).toEqual(['items', 'detail', { params: { id: 3 } }]);
+    expect(items.keys.detail(3)).toEqual(contractKey(itemContract.detail, { params: { id: 3 } }));
     expect(items.keys.lookup).toEqual(['items', 'all']);
   });
 
@@ -213,7 +215,7 @@ describe('createResourceQueries · 字符串主键', () => {
   const docs = createResourceQueries(docContract);
 
   it('derives the id type from the detail contract and passes it through', async () => {
-    expect(docs.keys.detail('a1')).toEqual(['docs', 'detail', 'a1']);
+    expect(docs.keys.detail('a1')).toEqual(['docs', 'detail', { params: { id: 'a1' } }]);
     const qc = createTestQueryClient();
     const { result } = renderHook(() => ({ detail: docs.useDetail('a1'), remove: docs.useDelete() }), { wrapper: createWrapper(qc) });
     await waitFor(() => expect(result.current.detail.isSuccess).toBe(true));

@@ -1,4 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query';
+// eslint-disable-next-line no-restricted-imports -- H5 保留：手写 useQuery / useMutation 的理由见本文件对应 hook 的注释；queryKey 仍由 contractKey 生成
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { OutputOf } from '@zenith/shared/core';
 import {

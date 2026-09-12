@@ -5,6 +5,7 @@
  * app-releases/artifacts、app-releases/devices、app-releases）；看板统计读事件流水（另一份数据源），
  * 不随版本 CRUD 失效（发布 / 下载事件由客户端行为产生，刷新按钮手动回源）。
  */
+// eslint-disable-next-line no-restricted-imports -- H5 保留：手写 useQuery / useMutation 的理由见本文件对应 hook 的注释；queryKey 仍由 contractKey 生成
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { InputOf, OutputOf, QueryOf } from '@zenith/shared/core';
 import {

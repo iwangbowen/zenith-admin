@@ -1,14 +1,10 @@
 import { useCallback, useState, type ReactNode } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { AppModal } from '@/components/AppModal';
 import { Button, Input, Popconfirm, Space, Tag, Typography } from '@douyinfe/semi-ui';
 import { workflowQuickPhraseContract, type WorkflowQuickPhrase } from '@zenith/shared/workflow';
-import { api, useApiMutation } from '@/lib/contract-query';
+import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { CreateButton } from '@/components/toolbar-controls';
-
-const quickPhraseKeys = {
-  all: ['workflow', 'quick-phrases'] as const,
-};
 
 export function useQuickPhrases(): {
   quickPhrases: WorkflowQuickPhrase[];
@@ -21,10 +17,7 @@ export function useQuickPhrases(): {
   const [newPhrase, setNewPhrase] = useState('');
   const [editingPhraseId, setEditingPhraseId] = useState<number | null>(null);
   const [editingPhraseContent, setEditingPhraseContent] = useState('');
-  const quickPhrasesQuery = useQuery({
-    queryKey: quickPhraseKeys.all,
-    queryFn: () => api(workflowQuickPhraseContract.list),
-  });
+  const quickPhrasesQuery = useApiQuery(workflowQuickPhraseContract.list);
   const { data: quickPhraseData, refetch: refetchQuickPhrases } = quickPhrasesQuery;
   const quickPhrases = quickPhraseData ?? [];
 
@@ -33,7 +26,7 @@ export function useQuickPhrases(): {
   }, [refetchQuickPhrases]);
 
   const invalidate = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: quickPhraseKeys.all });
+    void queryClient.invalidateQueries({ queryKey: contractKey(workflowQuickPhraseContract.list) });
   }, [queryClient]);
 
   const addPhraseMutation = useApiMutation(workflowQuickPhraseContract.create, { onSuccess: invalidate });

@@ -350,21 +350,19 @@ type SaveValuesOf<C extends ResourceContract> = C['create'] extends AnyOperation
 type LookupOf<C extends ResourceContract> = C['all'] extends AnyOperation ? OutputOf<C['all']> : never;
 
 export interface ResourceQueryKeys<TListParams, TId = number> {
+  /** 资源根：`[resourceKeyOf(basePath)]`，覆盖该契约全部操作的查询；只在全量导入等确需全域失效时使用 */
   readonly all: readonly string[];
-  /** 全部列表查询的公共前缀，用于「任意条件下的列表都失效」 */
-  readonly lists: readonly string[];
+  /** 全部列表查询的公共前缀（`contractKey(contract.list)`），用于「任意条件下的列表都失效」 */
+  readonly lists: readonly unknown[];
+  /** 某组条件的列表查询 key，与 `useApiQuery(contract.list, { query: params })` 同键 */
   readonly list: (params: TListParams) => readonly unknown[];
+  /** 详情 key，与 `useApiQuery(contract.detail, { params: { id } })` 同键 */
   readonly detail: (id: TId | undefined) => readonly unknown[];
-  /** 下拉源（全量精简列表） */
-  readonly lookup: readonly string[];
+  /** 下拉源（全量精简列表），与 `useApiQuery(contract.all)` 同键 */
+  readonly lookup: readonly unknown[];
 }
 
 export interface CreateResourceQueriesOptions<C extends ResourceContract> {
-  /**
-   * 覆盖 query key 前缀，默认由 basePath 派生（`/api/tenants` → `['tenants']`）。
-   * 仅用于既有跨域广播依赖嵌套前缀的域（如 `['workflow', 'automations']`）。
-   */
-  readonly keyPrefix?: readonly string[];
   /** 保存成功后的额外失效（跨域联动） */
   readonly onSaved?: (qc: QueryClient, saved: EntityOf<C>) => void;
   /** 删除成功后的额外失效 */
@@ -393,14 +391,17 @@ export function createResourceQueries<const C extends ResourceContract>(
   contract: C,
   options: CreateResourceQueriesOptions<C> = {},
 ): ResourceQueries<C> {
-  const { keyPrefix = [resourceKeyOf(contract.basePath)], onSaved, onDeleted, listStaleTime, requestOptions } = options;
-  const prefix = [...keyPrefix];
+  const { onSaved, onDeleted, listStaleTime, requestOptions } = options;
+  const prefix = [resourceKeyOf(contract.basePath)];
+  // 与 useApiQuery / apiQueryOptions 同一套 key：工厂之外按契约操作预取 / 失效时天然命中同一缓存
   const keys: ResourceQueryKeys<ListParamsOf<C>, IdOf<C>> = {
     all: prefix,
-    lists: [...prefix, 'list'],
-    list: (params) => [...prefix, 'list', params] as const,
-    detail: (id) => [...prefix, 'detail', id] as const,
-    lookup: [...prefix, 'all'],
+    lists: contractKey(contract.list),
+    list: (params) => contractKey(contract.list, { query: params } as unknown as InputOf<C['list']>),
+    detail: (id) => (contract.detail
+      ? contractKey(contract.detail, { params: { id } } as unknown as InputOf<DetailOp>)
+      : [...prefix, 'detail', id]),
+    lookup: contract.all ? contractKey(contract.all) : [...prefix, 'all'],
   };
   const call = <Op extends AnyOperation>(op: Op, input?: InputOf<Op>) =>
     api(op, ...([input, requestOptions] as unknown as [...InputArgs<Op>, ApiCallOptions?]));

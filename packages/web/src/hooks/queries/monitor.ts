@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports -- H5 保留：手写 useQuery / useMutation 的理由见本文件对应 hook 的注释；queryKey 仍由 contractKey 生成
 import { useQuery } from '@tanstack/react-query';
 import { monitorContract, type MonitorHistoryRange } from '@zenith/shared/platform';
 import { api, contractKey, useApiQuery } from '@/lib/contract-query';

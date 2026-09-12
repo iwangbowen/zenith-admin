@@ -1,8 +1,8 @@
-import { keepPreviousData, useInfiniteQuery, useQuery, type QueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, type QueryClient } from '@tanstack/react-query';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
 import { resourceKeyOf } from '@zenith/shared/core';
 import { checkinMilestoneContract, checkinRuleContract, checkinSettingsContract, couponContract, memberCheckinContract, memberContract, memberLevelContract, memberPointContract, memberRechargeContract, memberStatsContract, memberTagContract, memberWalletContract } from '@zenith/shared/member';
-import { api, useSaveMutation, apiQueryOptions, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { api, useSaveMutation, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { memberLookupKeys } from './members-lookup';
 
 export type MemberListParams = NonNullable<QueryOf<typeof memberContract.list>>;
@@ -109,7 +109,7 @@ export function useSaveMember() {
 }
 
 export function useMemberOverview(id: number | null | undefined, enabled = true) {
-  return useQuery(apiQueryOptions(memberContract.overview, { params: { id: id ?? 0 } }, { enabled: enabled && !!id }));
+  return useApiQuery(memberContract.overview, { params: { id: id ?? 0 } }, { enabled: enabled && !!id });
 }
 
 /** 密码不出现在任何已挂载的查询里，但详情 / 概览中的 hasPassword 需要回源 */
@@ -229,7 +229,7 @@ export function useDeleteMemberLevel() {
 // ─── 积分 / 钱包 ─────────────────────────────────────────────────────────────
 
 export function useMemberPointTransactions(params: MemberPointTransactionListParams) {
-  return useQuery(apiQueryOptions(memberPointContract.transactions, { query: params }, { placeholderData: keepPreviousData }));
+  return useApiQuery(memberPointContract.transactions, { query: params }, { placeholderData: keepPreviousData });
 }
 
 /** 会员列表的积分余额与概览的积分账户、看板积分总量随流水变化 */
@@ -243,7 +243,7 @@ export function useAdjustMemberPoints() {
 }
 
 export function useMemberWalletTransactions(params: MemberWalletTransactionListParams) {
-  return useQuery(apiQueryOptions(memberWalletContract.transactions, { query: params }, { placeholderData: keepPreviousData }));
+  return useApiQuery(memberWalletContract.transactions, { query: params }, { placeholderData: keepPreviousData });
 }
 
 export function useAdjustMemberWallet() {
@@ -267,11 +267,11 @@ export function useRefundMemberWallet() {
 // ─── 充值记录 / 登录日志 / 看板 ─────────────────────────────────────────────
 
 export function useMemberRechargeList(params: MemberRechargeListParams) {
-  return useQuery(apiQueryOptions(memberRechargeContract.list, { query: params }, { placeholderData: keepPreviousData }));
+  return useApiQuery(memberRechargeContract.list, { query: params }, { placeholderData: keepPreviousData });
 }
 
 export function useMemberLoginLogList(params: MemberLoginLogListParams) {
-  return useQuery(apiQueryOptions(memberContract.loginLogs, { query: params }, { placeholderData: keepPreviousData }));
+  return useApiQuery(memberContract.loginLogs, { query: params }, { placeholderData: keepPreviousData });
 }
 
 export function useMemberStatsOverview() {
@@ -301,7 +301,7 @@ export function useIssueCoupon() {
 }
 
 export function useCouponRecordList(params: CouponRecordListParams) {
-  return useQuery(apiQueryOptions(couponContract.records, { query: params }, { placeholderData: keepPreviousData }));
+  return useApiQuery(couponContract.records, { query: params }, { placeholderData: keepPreviousData });
 }
 
 export function useRevokeCouponRecord() {
@@ -311,7 +311,7 @@ export function useRevokeCouponRecord() {
 }
 
 export function useCouponByCode(code: string, enabled: boolean) {
-  return useQuery(apiQueryOptions(couponContract.byCode, { params: { code } }, { enabled: enabled && code.length >= 4, retry: false }));
+  return useApiQuery(couponContract.byCode, { params: { code } }, { enabled: enabled && code.length >= 4, retry: false });
 }
 
 export function useRedeemCoupon() {
@@ -353,11 +353,11 @@ export function useDeleteCheckinRule() {
 }
 
 export function useCheckinLogList(params: CheckinLogListParams) {
-  return useQuery(apiQueryOptions(memberCheckinContract.list, { query: params }, { placeholderData: keepPreviousData }));
+  return useApiQuery(memberCheckinContract.list, { query: params }, { placeholderData: keepPreviousData });
 }
 
 export function useCheckinCalendar(month: string, enabled = true) {
-  return useQuery(apiQueryOptions(memberCheckinContract.calendar, { query: { month } }, { placeholderData: keepPreviousData, enabled }));
+  return useApiQuery(memberCheckinContract.calendar, { query: { month } }, { placeholderData: keepPreviousData, enabled });
 }
 
 /** 日历悬浮层分页大小 */
