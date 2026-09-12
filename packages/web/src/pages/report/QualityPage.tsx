@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Banner, Col, Empty, Form, Modal, Row, SideSheet, Space, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { ReportDqAnomaly, ReportDqAnomalyStatus, ReportDqRule, ReportDqRuleType, ReportDqRun, ReportDqRunStatus, ReportDqScore } from '@zenith/shared/report';
@@ -37,6 +37,7 @@ import {
 } from './report-platform-utils';
 import { CreateButton } from '@/components/toolbar-controls';
 import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
+import { compactParams } from '@/lib/query';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { FilterSelect } from '@/components/search-filters';
@@ -105,11 +106,24 @@ export default function QualityPage() {
 
   const datasetsQuery = useEnabledReportDatasets();
   const datasetOptions = (datasetsQuery.data ?? []).map((item) => ({ value: item.id, label: item.name }));
-  const submittedEnabled = submitted.enabled === undefined ? undefined : submitted.enabled === 'true';
-  const rulesQuery = useReportDqRuleList({ page, pageSize, datasetId: submitted.datasetId, type: submitted.ruleType, enabled: submittedEnabled });
-  const runsQuery = useReportDqRunList({ page, pageSize, datasetId: submitted.datasetId, status: submitted.runStatus });
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const ruleFilterQuery = useMemo(() => compactParams({
+    datasetId: submitted.datasetId,
+    type: submitted.ruleType,
+    enabled: submitted.enabled === undefined ? undefined : submitted.enabled === 'true',
+  }), [submitted]);
+  const runFilterQuery = useMemo(() => compactParams({
+    datasetId: submitted.datasetId,
+    status: submitted.runStatus,
+  }), [submitted]);
+  const anomalyFilterQuery = useMemo(() => compactParams({
+    datasetId: submitted.datasetId,
+    status: submitted.anomalyStatus,
+  }), [submitted]);
+  const rulesQuery = useReportDqRuleList({ page, pageSize, ...ruleFilterQuery });
+  const runsQuery = useReportDqRunList({ page, pageSize, ...runFilterQuery });
   const historyQuery = useReportDqRunList({ page: 1, pageSize: 30, ruleId: historyRule?.id });
-  const anomaliesQuery = useReportDqAnomalyList({ page, pageSize, datasetId: submitted.datasetId, status: submitted.anomalyStatus });
+  const anomaliesQuery = useReportDqAnomalyList({ page, pageSize, ...anomalyFilterQuery });
   const currentScoreQuery = useCurrentReportDqScore(submitted.datasetId, activeTab === 'scores');
   const scoresQuery = useReportDqScoreHistory(submitted.datasetId, { page, pageSize }, activeTab === 'scores');
   const saveMutation = useSaveReportDqRule();
@@ -325,7 +339,7 @@ export default function QualityPage() {
               {...bind('runStatus')}
               width={140}
             />,
-            <ExportButton entity="report.dq-runs" query={{ datasetId: submitted.datasetId, status: submitted.runStatus }} />,
+            <ExportButton entity="report.dq-runs" query={runFilterQuery} />,
           )}
           {runsQuery.isError && <Banner type="danger" description="运行历史加载失败" />}
           <ConfigurableTable<ReportDqRun> columns={runColumns} {...listTableProps(runsQuery, { pagination: buildPagination, empty: <Empty title="暂无运行记录" /> })} />

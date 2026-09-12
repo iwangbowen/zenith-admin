@@ -36,7 +36,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import ModalFooter from '@/components/ModalFooter';
-import { compactQuery } from '@/lib/query';
+import { compactParams } from '@/lib/query';
 
 export default function RolesPage() {
   const { hasPermission } = usePermission();
@@ -64,13 +64,13 @@ export default function RolesPage() {
   const [selectedDataScope, setSelectedDataScope] = useState<string>('all');
   const [selectedDeptScopeIds, setSelectedDeptScopeIds] = useState<number[]>([]);
 
-  const listQuery = useRoleList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
-  });
+  }), [submittedParams]);
+  const listQuery = useRoleList({ page, pageSize, ...filterQuery });
 
   const menuTreeQuery = useMenuTree({ enabled: menuModalVisible });
   const menuRoleDetailQuery = useRoleDetail(menuRole?.id, menuModalVisible);
@@ -235,12 +235,6 @@ export default function RolesPage() {
     }),
   ];
 
-  const buildExportQuery = () => compactQuery({
-    keyword: submittedParams.keyword,
-    status: submittedParams.status,
-    ...formatDateTimeRangeForApi(submittedParams.timeRange),
-  });
-
   return (
     <div className="page-container">
       <ListSearchToolbar
@@ -261,8 +255,8 @@ export default function RolesPage() {
             <CreateButton onClick={roleModal.openCreate} />
           ) : null
         )}
-        actions={<ExportButton entity="system.roles" query={buildExportQuery()} />}
-        mobileActions={<ExportButton entity="system.roles" query={buildExportQuery()} variant="flat" />}
+        actions={<ExportButton entity="system.roles" query={filterQuery} />}
+        mobileActions={<ExportButton entity="system.roles" query={filterQuery} variant="flat" />}
         filterTitle="角色筛选"
         actionTitle="角色操作"
       />

@@ -22,6 +22,7 @@ import {
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput, NumberFilter } from '@/components/search-filters';
 import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
+import { compactParams } from '@/lib/query';
 
 const { Text, Title } = Typography;
 
@@ -62,16 +63,15 @@ export default function OpenApiStatsPage() {
   const trendQuery = useOpenApiStatsTrend({ ...rangeParams, granularity: submittedParams.granularity });
   const byAppQuery = useOpenApiStatsByApp(rangeParams);
   const byEndpointQuery = useOpenApiStatsByEndpoint(rangeParams);
-  const logParams = {
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
     ...rangeParams,
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+    keyword: submittedParams.keyword,
     method: submittedParams.method,
     success: submittedParams.success === undefined ? undefined : submittedParams.success === 'true',
     statusCode: submittedParams.statusCode,
-  };
-  const logsQuery = useOpenApiCallLogs(logParams);
+  }), [rangeParams, submittedParams]);
+  const logsQuery = useOpenApiCallLogs({ page, pageSize, ...filterQuery });
   // 明细筛选只作用于日志表，KPI/图表走预聚合表，口径差异需向用户显式说明
   const hasDetailFilters = Boolean(
     submittedParams.keyword
@@ -213,7 +213,7 @@ export default function OpenApiStatsPage() {
             <NumberFilter placeholder="状态码" min={100} max={599} width={110} {...bind('statusCode')} />
           </>
         )}
-        actions={<ExportButton entity="open-platform.call-logs" query={logParams} executionMode="auto" />}
+        actions={<ExportButton entity="open-platform.call-logs" query={filterQuery} executionMode="auto" />}
         mobilePrimary={(
           <>
             <KeywordInput placeholder="搜索调用日志" {...bindKeyword('keyword')} width={190} />
@@ -238,7 +238,7 @@ export default function OpenApiStatsPage() {
             />
           </>
         )}
-        mobileActions={<ExportButton entity="open-platform.call-logs" query={logParams} executionMode="auto" variant="flat" />}
+        mobileActions={<ExportButton entity="open-platform.call-logs" query={filterQuery} executionMode="auto" variant="flat" />}
         actionTitle="统计操作"
       />
 

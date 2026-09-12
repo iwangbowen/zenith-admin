@@ -1,20 +1,20 @@
+import { useMemo } from 'react';
 import { Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { MemberRecharge, MemberRechargeStatus } from '@zenith/shared/member';
 import { MEMBER_RECHARGE_STATUSES } from '@zenith/shared/member';
 import type { PaymentChannel, PaymentOrderStatus } from '@zenith/shared/payment';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_METHOD_LABELS, PAYMENT_ORDER_STATUS_LABELS } from '@zenith/shared/payment';
-import { usePermission } from '@/hooks/usePermission';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import ExportButton from '@/components/ExportButton';
 import { dateTimeColumn, renderEllipsis } from '../../utils/table-columns';
 import { formatDateRangeValuesForApi } from '@/utils/date';
-import { compactQuery } from '@/lib/query';
 import { memberAdminKeys, useMemberRechargeList } from '@/hooks/queries/member-admin';
 import { useListSearch } from '@/hooks/useListSearch';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { memberCellColumn, useMemberKeywordDeepLink } from './member-admin-display';
+import { compactParams } from '@/lib/query';
 
 interface SearchParams {
   keyword?: string;
@@ -34,23 +34,24 @@ const STATUS_COLORS: Record<PaymentOrderStatus, string> = {
 };
 
 export default function MemberRechargesPage() {
-  const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
     bind, bindKeyword, submittedParams,
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: memberAdminKeys.rechargeLists });
   useMemberKeywordDeepLink<SearchParams>({ applySearch, buildParams: (memberKeyword) => ({ keyword: memberKeyword, dateRange: null }) });
-  const [dateStart, dateEnd] = formatDateRangeValuesForApi(submittedParams.dateRange);
-  const listQuery = useMemberRechargeList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
-    channel: submittedParams.channel || undefined,
-    dateStart,
-    dateEnd,
-  });
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => {
+    const [dateStart, dateEnd] = formatDateRangeValuesForApi(submittedParams.dateRange);
+    return compactParams({
+      keyword: submittedParams.keyword,
+      status: submittedParams.status,
+      channel: submittedParams.channel,
+      dateStart,
+      dateEnd,
+    });
+  }, [submittedParams]);
+  const listQuery = useMemberRechargeList({ page, pageSize, ...filterQuery });
 
   const columns: ColumnProps<MemberRecharge>[] = [
     { title: '订单号', dataIndex: 'orderNo', width: 200, fixed: 'left', render: (v: string) => <span style={{ fontFamily: 'monospace' }}>{v}</span> },
@@ -65,19 +66,9 @@ export default function MemberRechargesPage() {
     dateTimeColumn('创建时间', 'createdAt', { fixed: 'right' }),
   ];
 
-  const buildExportQuery = () => {
-    const [dateStart, dateEnd] = formatDateRangeValuesForApi(submittedParams.dateRange);
-    return compactQuery({
-      keyword: submittedParams.keyword,
-      status: submittedParams.status,
-      channel: submittedParams.channel,
-      dateStart,
-      dateEnd,
-    });
-  };
-  const renderExportButton = (variant?: 'flat') => hasPermission('member:recharge:list') ? (
-    <ExportButton entity="member.recharges" query={buildExportQuery()} variant={variant} />
-  ) : null;
+  const renderExportButton = (variant?: 'flat') => (
+    <ExportButton entity="member.recharges" query={filterQuery} variant={variant} permission="member:recharge:list" />
+  );
 
   return (
     <div className="page-container">

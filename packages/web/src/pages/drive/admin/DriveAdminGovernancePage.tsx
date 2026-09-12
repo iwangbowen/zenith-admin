@@ -29,6 +29,7 @@ import { formatDateTimeRangeForApi } from '@/utils/date';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { DriveFolderPicker } from '../components/DriveFolderPicker';
 import '../drive.css';
+import { compactParams } from '@/lib/query';
 
 /**
  * 合规治理：法律保留 / 扩容审批 / 外链访问日志 / 开放应用授权。
@@ -64,7 +65,12 @@ function LegalHoldsTab() {
   const spaceOptions = useSpaceOptions();
   const { page, pageSize, buildPagination, draftParams, setField, bind, submittedParams, handleSearch, handleReset } =
     useListSearch<HoldSearch>({ defaults: { spaceId: undefined, activeOnly: true }, listKey: driveKeys.adminLegalHoldsPrefix });
-  const query = useDriveLegalHolds({ page, pageSize, spaceId: submittedParams.spaceId, active: submittedParams.activeOnly ? true : undefined });
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    spaceId: submittedParams.spaceId,
+    active: submittedParams.activeOnly ? true : undefined,
+  }), [submittedParams]);
+  const query = useDriveLegalHolds({ page, pageSize, ...filterQuery });
   const release = useReleaseDriveLegalHold();
   const create = useCreateDriveLegalHold();
   const [picking, setPicking] = useState(false);
@@ -151,7 +157,12 @@ function QuotaRequestsTab() {
   const spaceOptions = useSpaceOptions();
   const { page, pageSize, buildPagination, bind, submittedParams, handleSearch, handleReset } =
     useListSearch<QuotaSearch>({ defaults: { status: 'pending', spaceId: undefined }, listKey: driveKeys.adminQuotaRequestsPrefix });
-  const query = useDriveAdminQuotaRequests({ page, pageSize, status: submittedParams.status, spaceId: submittedParams.spaceId });
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    status: submittedParams.status,
+    spaceId: submittedParams.spaceId,
+  }), [submittedParams]);
+  const query = useDriveAdminQuotaRequests({ page, pageSize, ...filterQuery });
   const decide = useDecideDriveQuotaRequest();
   const [approving, setApproving] = useState<DriveQuotaRequest | null>(null);
   const [quotaGb, setQuotaGb] = useState<number>(0);
@@ -221,11 +232,15 @@ function ShareAccessLogsTab() {
   const spaceOptions = useSpaceOptions();
   const { page, pageSize, buildPagination, bind, submittedParams, handleSearch, handleReset } =
     useListSearch<LogSearch>({ defaults: { spaceId: undefined, shareId: undefined, action: undefined, ok: undefined, timeRange: null }, listKey: driveKeys.adminShareAccessLogsPrefix });
-  const listParams = {
-    spaceId: submittedParams.spaceId, shareId: submittedParams.shareId, action: submittedParams.action,
-    ok: submittedParams.ok === undefined ? undefined : submittedParams.ok === 'true', ...formatDateTimeRangeForApi(submittedParams.timeRange),
-  };
-  const query = useDriveAdminShareAccessLogs({ page, pageSize, ...listParams });
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    spaceId: submittedParams.spaceId,
+    shareId: submittedParams.shareId,
+    action: submittedParams.action,
+    ok: submittedParams.ok === undefined ? undefined : submittedParams.ok === 'true',
+    ...formatDateTimeRangeForApi(submittedParams.timeRange),
+  }), [submittedParams]);
+  const query = useDriveAdminShareAccessLogs({ page, pageSize, ...filterQuery });
 
   const columns: ColumnProps<DriveShareAccessLog>[] = [
     dateTimeColumn('时间', 'createdAt'),
@@ -238,7 +253,7 @@ function ShareAccessLogsTab() {
     { title: 'IP', dataIndex: 'clientIp', width: 150, render: renderEllipsis },
   ];
 
-  const exportButton = <ExportButton entity="drive.share_access_logs" permission="drive:admin:link:export" query={listParams as Record<string, unknown>} />;
+  const exportButton = <ExportButton entity="drive.share_access_logs" permission="drive:admin:link:export" query={filterQuery} />;
 
   return (
     <>

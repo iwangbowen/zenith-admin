@@ -11,7 +11,6 @@ import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } fro
 import AppModal from '@/components/AppModal';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { formatDateRangeForApi } from '@/utils/date';
-import { compactQuery } from '@/lib/query';
 import { usePermission } from '@/hooks/usePermission';
 import { useMySettings } from '@/hooks/queries/settings';
 import { useDeleteFeedbacks, useHandleFeedback, useUserFeedbackList, userFeedbackKeys } from '@/hooks/queries/user-feedbacks';
@@ -20,6 +19,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
 import { BatchDeleteButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
+import { compactParams } from '@/lib/query';
 
 // 文案统一来自 @zenith/shared；Tag 色为本页特化
 const CATEGORY_OPTIONS: Array<{ value: UserFeedbackCategory; label: string; color: 'blue' | 'red' | 'orange' | 'grey' }> = [
@@ -67,14 +67,14 @@ export default function FeedbacksPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: userFeedbackKeys.lists });
 
-  const listQuery = useUserFeedbackList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     category: submittedParams.category,
     status: submittedParams.status,
     ...formatDateRangeForApi(submittedParams.dateRange),
-  });
+  }), [submittedParams]);
+  const listQuery = useUserFeedbackList({ page, pageSize, ...filterQuery });
 
   // ─── 批量选择 ──────────────────────────────────────────────────────────
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
@@ -104,14 +104,6 @@ export default function FeedbacksPage() {
   });
   const deleteMutation = useDeleteFeedbacks();
 
-  function buildExportQuery(): Record<string, unknown> {
-    return compactQuery({
-      keyword: submittedParams.keyword,
-      category: submittedParams.category,
-      status: submittedParams.status,
-      ...formatDateRangeForApi(submittedParams.dateRange),
-    });
-  }
 
   function confirmBatchDelete() {
     confirmAndDelete({
@@ -182,7 +174,7 @@ export default function FeedbacksPage() {
   ) : null;
 
   const renderExportButton = (variant?: 'flat') => hasPermission('system:feedback:list') ? (
-    <ExportButton entity="system.userFeedbacks" query={buildExportQuery()} variant={variant} />
+    <ExportButton entity="system.userFeedbacks" query={filterQuery} variant={variant} />
   ) : null;
 
   return (

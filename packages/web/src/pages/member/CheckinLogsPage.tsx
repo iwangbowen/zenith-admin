@@ -11,7 +11,6 @@ import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import { MemberSelect } from '@/components/MemberSelect';
 import { formatDateForApi, formatDateRangeValuesForApi } from '@/utils/date';
-import { compactQuery } from '@/lib/query';
 import { memberAdminKeys, useCheckinCalendar, useCheckinDayMembersInfinite, useCheckinLogList, useMakeupCheckin } from '@/hooks/queries/member-admin';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useListDeepLink } from '@/hooks/useListDeepLink';
@@ -19,6 +18,7 @@ import { DateRangeFilter, KeywordInput } from '@/components/search-filters';
 import { dateColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { memberCellColumn, renderMemberName } from './member-admin-display';
+import { compactParams } from '@/lib/query';
 
 interface SearchParams {
   memberKeyword?: string;
@@ -113,14 +113,16 @@ export default function CheckinLogsPage() {
     () => new Map((calendarQuery.data ?? []).map((d) => [d.date, d])),
     [calendarQuery.data],
   );
-  const [dateStart, dateEnd] = formatDateRangeValuesForApi(submittedParams.dateRange);
-  const listQuery = useCheckinLogList({
-    page,
-    pageSize,
-    memberKeyword: submittedParams.memberKeyword || undefined,
-    dateStart,
-    dateEnd,
-  });
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => {
+    const [dateStart, dateEnd] = formatDateRangeValuesForApi(submittedParams.dateRange);
+    return compactParams({
+      memberKeyword: submittedParams.memberKeyword,
+      dateStart,
+      dateEnd,
+    });
+  }, [submittedParams]);
+  const listQuery = useCheckinLogList({ page, pageSize, ...filterQuery });
   const makeupMutation = useMakeupCheckin();
 
   const handleMakeup = async () => {
@@ -155,17 +157,9 @@ export default function CheckinLogsPage() {
     dateTimeColumn('签到时间', 'createdAt'),
   ];
 
-  const buildExportQuery = () => {
-    const [dateStart, dateEnd] = formatDateRangeValuesForApi(submittedParams.dateRange);
-    return compactQuery({
-      memberKeyword: submittedParams.memberKeyword,
-      dateStart,
-      dateEnd,
-    });
-  };
-  const renderExportButton = (variant?: 'flat') => hasPermission('member:checkin:log:list') ? (
-    <ExportButton entity="member.checkins" query={buildExportQuery()} variant={variant} />
-  ) : null;
+  const renderExportButton = (variant?: 'flat') => (
+    <ExportButton entity="member.checkins" query={filterQuery} variant={variant} permission="member:checkin:log:list" />
+  );
   /** 点击日历某天：切回列表并按该日过滤 */
   const drillDownDate = (date: Date) => {
     setView('list');

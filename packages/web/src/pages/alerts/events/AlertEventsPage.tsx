@@ -44,6 +44,7 @@ import {
   MonitorMetricCondition,
   MonitorMetricFilterSelect,
 } from '../monitor-alert-display';
+import { compactParams } from '@/lib/query';
 
 /** 日志级别计数指标 → 日志文件页深链的级别过滤 */
 const LOG_METRIC_LEVEL: Record<string, 'error' | 'warn'> = {
@@ -119,8 +120,9 @@ export default function AlertEventsPage() {
     onReset: () => setSelectedRowKeys([]),
   });
 
-  const queryParams = useMemo(() => ({
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     metric: enumValueOf(MONITOR_METRICS, submittedParams.metric),
     level: enumValueOf(MONITOR_ALERT_LEVELS, submittedParams.level),
     status: enumValueOf(MONITOR_ALERT_EVENT_STATUSES, submittedParams.status),
@@ -130,7 +132,7 @@ export default function AlertEventsPage() {
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   }), [submittedParams, ruleId]);
 
-  const listQuery = useMonitorAlertEventList({ page, pageSize, ...queryParams });
+  const listQuery = useMonitorAlertEventList({ page, pageSize, ...filterQuery });
   const handleMutation = useHandleMonitorAlertEvent();
   const batchHandleMutation = useBatchHandleMonitorAlertEvents();
   const submitting = handleMutation.isPending || batchHandleMutation.isPending;
@@ -234,9 +236,9 @@ export default function AlertEventsPage() {
     </>
   ) : null;
 
-  const renderExportButton = (variant?: 'flat') => hasPermission('alert:event:export')
-    ? <ExportButton entity="alert.monitor-alert-events" query={queryParams} variant={variant} />
-    : null;
+  const renderExportButton = (variant?: 'flat') => (
+    <ExportButton entity="alert.monitor-alert-events" query={filterQuery} variant={variant} permission="alert:event:export" />
+  );
 
   const actionMeta = handleTarget ? HANDLE_ACTION_META[handleTarget.handleStatus] : null;
 

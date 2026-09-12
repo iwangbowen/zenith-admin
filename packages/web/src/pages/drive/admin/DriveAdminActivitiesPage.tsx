@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
@@ -13,6 +14,7 @@ import { driveKeys, useDriveAdminActivities, useDriveSpaceList } from '@/hooks/q
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { describeActivityDetail } from '../drive-utils';
+import { compactParams } from '@/lib/query';
 
 interface SearchParams {
   keyword: string;
@@ -28,11 +30,15 @@ export default function DriveAdminActivitiesPage() {
   const navigate = useNavigate();
   const { page, pageSize, buildPagination, bind, bindKeyword, submittedParams, handleSearch, handleReset } =
     useListSearch<SearchParams>({ defaults: { keyword: '', spaceId: undefined, actorId: undefined, action: undefined, timeRange: null }, listKey: driveKeys.adminActivitiesPrefix });
-  const listParams = {
-    keyword: submittedParams.keyword || undefined, spaceId: submittedParams.spaceId, actorId: submittedParams.actorId,
-    action: submittedParams.action, ...formatDateTimeRangeForApi(submittedParams.timeRange),
-  };
-  const query = useDriveAdminActivities({ page, pageSize, ...listParams });
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    spaceId: submittedParams.spaceId,
+    actorId: submittedParams.actorId,
+    action: submittedParams.action,
+    ...formatDateTimeRangeForApi(submittedParams.timeRange),
+  }), [submittedParams]);
+  const query = useDriveAdminActivities({ page, pageSize, ...filterQuery });
   const spacesQuery = useDriveSpaceList({ page: 1, pageSize: 200 });
 
   const columns: ColumnProps<DriveActivity>[] = [
@@ -50,7 +56,7 @@ export default function DriveAdminActivitiesPage() {
   ];
 
   const exportButton = (variant?: 'flat') => (
-    <ExportButton entity="drive.activities" permission="drive:admin:activity:export" variant={variant} query={listParams as Record<string, unknown>} />
+    <ExportButton entity="drive.activities" permission="drive:admin:activity:export" variant={variant} query={filterQuery} />
   );
 
   return (

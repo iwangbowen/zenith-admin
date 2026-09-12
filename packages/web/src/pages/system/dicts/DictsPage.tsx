@@ -52,6 +52,7 @@ import { confirmDelete, confirmDangerAsync } from '@/utils/confirm';
 import { deleteAction, ListSearchToolbar, useStatusToggle } from '@/components/list-page';
 import { abortSubmit } from '@/lib/abort-submit';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
+import { compactParams } from '@/lib/query';
 
 /** 字典项详情按 (dictId, itemId) 取数；useEditModal 只传 itemId，所属字典从打开弹窗时的行记录取 */
 function useDictItemModalDetail(id: number | undefined, enabled?: boolean, record?: DictItem) {
@@ -70,7 +71,10 @@ export default function DictsPage() {
     page, pageSize, setPage, setPageSize,
     draftParams, setField, submittedParams, handleSearch,
   } = useListSearch<{ keyword: string }>({ defaults: { keyword: '' }, listKey: dictKeys.lists });
-  const submittedKeyword = submittedParams.keyword;
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+  }), [submittedParams]);
   // ─── 字典项列表 ────────────────────────────────────────────────────────────
   // 显式选中的字典以 `?dict=` 同步到 URL（深链/刷新/页签直达）；选中对象按 key 派生
   const [selectedDictKey, setSelectedDictKey] = useUrlSelectionState('dict');
@@ -93,7 +97,7 @@ export default function DictsPage() {
   const dictListQuery = useDictList({
     page,
     pageSize,
-    keyword: submittedKeyword || undefined,
+    ...filterQuery,
   });
   const total = dictListQuery.data?.total ?? 0;
 
@@ -406,7 +410,7 @@ export default function DictsPage() {
       title="字典列表"
       headerExtra={
         <Space spacing={6}>
-          <ExportButton entity="system.dicts" query={submittedKeyword ? { keyword: submittedKeyword } : {}} />
+          <ExportButton entity="system.dicts" query={filterQuery} />
           <Dropdown
             trigger="click"
             position="bottomRight"

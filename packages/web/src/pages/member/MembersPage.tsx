@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Select, Form, Toast, Tag, Spin, Row, Col, Dropdown, Modal } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -42,8 +42,8 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { useSensitiveFormFields } from '@/hooks/useSensitiveFormFields';
 import { SensitiveFormInput, SensitiveText } from '@/components/sensitive';
 import { abortSubmit } from '@/lib/abort-submit';
-import { compactQuery } from '@/lib/query';
 import { MEMBER_STATUS_COLORS } from './member-tag-colors';
+import { compactParams } from '@/lib/query';
 
 const statusOptions = (['active', 'inactive', 'banned'] as const).map((v) => ({ value: v, label: MEMBER_STATUS_LABELS[v] }));
 const TAG_FALLBACK_COLOR = 'blue';
@@ -84,14 +84,14 @@ export default function MembersPage() {
   const [batchLevelId, setBatchLevelId] = useState<number | undefined>(undefined);
   // detail drawer
   const [detailMemberId, setDetailMemberId] = useState<number | null>(null);
-  const listQuery = useMemberList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     status: enumValueOf(MEMBER_STATUSES, submittedParams.status),
     levelId: submittedParams.levelId,
     tagId: submittedParams.tagId,
-  });
+  }), [submittedParams]);
+  const listQuery = useMemberList({ page, pageSize, ...filterQuery });
   const levelsQuery = useMemberLevels();
   const tagsQuery = useMemberTags();
   const levels = levelsQuery.data ?? [];
@@ -106,15 +106,6 @@ export default function MembersPage() {
   const setTagsMutation = useSetMemberTags();
   const batchTagsMutation = useBatchMemberTags();
 
-  const buildExportQuery = () => {
-    const ap = submittedParams;
-    return compactQuery({
-      keyword: ap.keyword,
-      status: ap.status,
-      levelId: ap.levelId?.toString(),
-      tagId: ap.tagId?.toString(),
-    });
-  };
 
   // 敏感字段（手机号 / 邮箱）对非豁免用户是掩码：编辑时锁定，提交前剔除未修改的锁定字段
   const sensitiveFieldsRef = useRef<ReturnType<typeof useSensitiveFormFields<Member>> | null>(null);
@@ -297,9 +288,7 @@ export default function MembersPage() {
             <CreateButton onClick={memberModal.openCreate} />
           ) : null
         )}
-        actions={<>{hasPermission('member:member:list') ? (
-          <ExportButton entity="member.members" query={buildExportQuery()} />
-        ) : null}{hasPermission('member:member:create') ? (
+        actions={<><ExportButton entity="member.members" query={filterQuery} permission="member:member:list" />{hasPermission('member:member:create') ? (
           <ImportButton
             entity="member.members"
             title="会员"
@@ -309,9 +298,7 @@ export default function MembersPage() {
           <Button type="tertiary" icon={<Tags size={14} />} onClick={() => setTagsManageVisible(true)}>标签管理</Button>
         ) : null}</>}
         mobileActions={(
-          hasPermission('member:member:list') ? (
-            <ExportButton entity="member.members" query={buildExportQuery()} variant="flat" />
-          ) : null
+          <ExportButton entity="member.members" query={filterQuery} variant="flat" permission="member:member:list" />
         )}
         filterTitle="会员筛选"
       />

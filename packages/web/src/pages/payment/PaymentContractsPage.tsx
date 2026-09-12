@@ -34,8 +34,8 @@ import { PaymentChannelTag, paymentMoneyColumn } from './payment-display';
 import { useEnabledPaymentAppLookup } from './payment-app-options';
 import { PaymentAppField, PaymentAppFilterSelect, PaymentCurrencyField } from './payment-form-fields';
 import { deleteAction, ListSearchToolbar } from '@/components/list-page';
-import { compactQuery } from '@/lib/query';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
+import { compactParams } from '@/lib/query';
 const yuan = formatYuan;
 const CONTRACT_STATUS_COLOR = { pending: 'grey', unknown: 'orange', signed: 'green', paused: 'orange', terminated: 'red', failed: 'red' } as const satisfies Record<PaymentContractStatus, string>;
 const contractStatusOptions = PAYMENT_CONTRACT_STATUS_OPTIONS;
@@ -80,13 +80,19 @@ export default function PaymentContractsPage() {
   const { apps: paymentApps, appById, appOptions, isFetching: appsFetching } = useEnabledPaymentAppLookup();
   const effectiveContractAppId = contractAppId ?? paymentApps[0]?.id;
 
-  const contractQuery = usePaymentContractList({
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => ({
     applicationId: effectiveContractAppId ?? 0,
+    ...compactParams({
+      keyword: submittedParams.keyword,
+      status: enumValueOf(PAYMENT_CONTRACT_STATUSES, submittedParams.status),
+      channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
+    }),
+  }), [submittedParams, effectiveContractAppId]);
+  const contractQuery = usePaymentContractList({
     page: cPage,
     pageSize: cPageSize,
-    keyword: submittedParams.keyword || undefined,
-    status: enumValueOf(PAYMENT_CONTRACT_STATUSES, submittedParams.status),
-    channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
+    ...filterQuery,
   }, effectiveContractAppId != null);
   const contracts = contractQuery.data?.list ?? [];
   const contractTotal = contractQuery.data?.total ?? 0;
@@ -281,12 +287,6 @@ export default function PaymentContractsPage() {
     }),
   ];
 
-  const exportQuery = compactQuery({
-    applicationId: effectiveContractAppId,
-    keyword: submittedParams.keyword,
-    status: submittedParams.status,
-    channel: submittedParams.channel,
-  });
 
   return (
     <div className="page-container page-tabs-page">
@@ -320,8 +320,8 @@ export default function PaymentContractsPage() {
                 <CreateButton onClick={() => { setSelectedAppId(null); signModal.openCreate(); }}>新增签约</CreateButton>
               ) : null
             )}
-            actions={<ExportButton entity="payment.contracts" query={exportQuery} />}
-            mobileActions={(<ExportButton entity="payment.contracts" query={exportQuery} variant="flat" />)}
+            actions={<ExportButton entity="payment.contracts" query={filterQuery} />}
+            mobileActions={(<ExportButton entity="payment.contracts" query={filterQuery} variant="flat" />)}
             filterTitle="签约协议筛选"
           />
           <ConfigurableTable

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Button, Form, Input } from '@douyinfe/semi-ui';
 import { AppModal } from '@/components/AppModal';
 import { Plus } from 'lucide-react';
@@ -23,7 +24,7 @@ import { parseTemplateVariables } from '../send-log-constants';
 import { KeywordInput } from '@/components/search-filters';
 import { SendLogStatusSourceFilters } from '../send-log-ui';
 import { sendLogErrorColumn, sendLogOperatorColumn, sendLogSourceColumn, sendLogStatusColumn } from '../send-log-columns';
-import { compactQuery } from '@/lib/query';
+import { compactParams } from '@/lib/query';
 
 /** 测试发送表单值：变量以 JSON 文本输入 */
 interface TestEmailFormValues {
@@ -45,14 +46,14 @@ export default function EmailSendLogsPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: emailSendLogKeys.lists });
 
-  const listQuery = useEmailSendLogList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
-    toEmail: submittedParams.toEmail || undefined,
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    toEmail: submittedParams.toEmail,
     status: submittedParams.filterStatus,
     source: enumValueOf(SEND_SOURCES, submittedParams.filterSource),
-  });
+  }), [submittedParams]);
+  const listQuery = useEmailSendLogList({ page, pageSize, ...filterQuery });
   const testMutation = useTestEmailSendLog();
   const testModal = useEditModal<{ id: number }, TestEmailFormValues, SendEmailInput>({
     save: {
@@ -69,13 +70,6 @@ export default function EmailSendLogsPage() {
   const templatesQuery = useEmailTemplateList({ page: 1, pageSize: 100, status: 'enabled' }, testModal.visible);
   const templates = templatesQuery.data?.list ?? [];
   const deleteMutation = useDeleteEmailSendLog();
-
-  const buildExportQuery = () => compactQuery({
-    keyword: draftParams.keyword,
-    toEmail: draftParams.toEmail,
-    status: draftParams.filterStatus,
-    source: draftParams.filterSource,
-  });
 
 
   const columns = [
@@ -121,12 +115,12 @@ export default function EmailSendLogsPage() {
         create={can('system:email-send-log:send') && (
           <Button type="primary" icon={<Plus size={14} />} onClick={testModal.openCreate}>测试发送</Button>
         )}
-        actions={can('system:email-send-log:export') && (
-          <ExportButton entity="system.email-send-logs" query={buildExportQuery()} />
+        actions={(
+          <ExportButton entity="system.email-send-logs" query={filterQuery} permission="system:email-send-log:export" />
         )}
-        mobileActions={can('system:email-send-log:export') ? (
-          <ExportButton entity="system.email-send-logs" query={buildExportQuery()} variant="flat" />
-        ) : null}
+        mobileActions={(
+          <ExportButton entity="system.email-send-logs" query={filterQuery} variant="flat" permission="system:email-send-log:export" />
+        )}
         filterTitle="邮件发送日志筛选"
         actionTitle="邮件日志操作"
       />

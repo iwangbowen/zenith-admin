@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Tabs, TabPane } from '@douyinfe/semi-ui';
 import { ListSearchToolbar } from '@/components/list-page';
 import ExportButton from '@/components/ExportButton';
@@ -11,12 +12,12 @@ import { enumValueOf } from '@zenith/shared/core';
 import { LOGIN_EVENT_TYPES, LOGIN_STATUSES } from '@zenith/shared/identity';
 import { useListSearch } from '@/hooks/useListSearch';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
+import { compactParams } from '@/lib/query';
 
 const STATUS_OPTIONS = [{ value: 'success', label: '成功' }, { value: 'fail', label: '失败' }];
 const EVENT_TYPE_OPTIONS = [{ value: 'login', label: '登录' }, { value: 'logout', label: '退出登录' }];
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
-import { compactQuery } from '@/lib/query';
 export default function LoginLogsPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['list', 'stats'] as const, 'list');
   interface SearchParams {
@@ -33,14 +34,14 @@ export default function LoginLogsPage() {
     bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultParams, listKey: loginLogKeys.lists });
-  const listQuery = useLoginLogList({
-    page,
-    pageSize,
-    username: submittedParams.username || undefined,
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    username: submittedParams.username,
     eventType: enumValueOf(LOGIN_EVENT_TYPES, submittedParams.eventType),
     status: enumValueOf(LOGIN_STATUSES, submittedParams.status),
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
-  });
+  }), [submittedParams]);
+  const listQuery = useLoginLogList({ page, pageSize, ...filterQuery });
   const data = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
   const cleanLogsMutation = useCleanLoginLogs();
@@ -50,13 +51,6 @@ export default function LoginLogsPage() {
     onCleared: () => setPage(1),
   });
 
-  // 导出条件取已提交的筛选，与列表一致（此前误取 draftParams，导出的是未点「查询」的草稿条件）
-  const buildExportQuery = () => compactQuery({
-    username: submittedParams.username,
-    eventType: submittedParams.eventType,
-    status: submittedParams.status,
-    ...formatDateTimeRangeForApi(submittedParams.timeRange),
-  });
 
   return (
     <div className="page-container page-tabs-page">
@@ -82,13 +76,13 @@ export default function LoginLogsPage() {
             onReset={handleReset}
             actions={(
               <>
-                <ExportButton entity="system.login-logs" query={buildExportQuery()} />
+                <ExportButton entity="system.login-logs" query={filterQuery} />
                 <ClearLogsButtons loading={clearLogsLoading} onClear={clearLogs.openClearModal} />
               </>
             )}
             mobileActions={(
               <>
-                <ExportButton entity="system.login-logs" query={buildExportQuery()} variant="flat" />
+                <ExportButton entity="system.login-logs" query={filterQuery} variant="flat" />
                 <ClearLogsMobileButtons loading={clearLogsLoading} onClear={clearLogs.openClearModal} />
               </>
             )}

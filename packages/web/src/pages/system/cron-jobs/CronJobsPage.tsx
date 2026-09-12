@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Button, Col, Dropdown, SplitButtonGroup, Row, SideSheet, Form, Modal, Popover, Space, Spin, Tabs, Tag, Toast, Tooltip } from '@douyinfe/semi-ui';
 import { ScrollText, Trash2, ChevronDown, HelpCircle } from 'lucide-react';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
@@ -40,9 +40,9 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
 import { CLEAR_LOGS_LABELS } from '@/hooks/useClearLogs';
+import { compactParams } from '@/lib/query';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
-import { compactQuery } from '@/lib/query';
 interface SearchParams {
   keyword: string;
   status?: string;
@@ -131,12 +131,12 @@ export default function CronJobsPage() {
     buildPagination: buildAllLogsPagination,
   } = usePagination(20);
   const [allLogsJobFilter, setAllLogsJobFilter] = useState<number | null>(null);
-  const listQuery = useCronJobList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
-  });
+  }), [submittedParams]);
+  const listQuery = useCronJobList({ page, pageSize, ...filterQuery });
   const data = listQuery.data?.list ?? [];
   const handlersQuery = useCronJobHandlers();
   const handlers = handlersQuery.data ?? [];
@@ -190,10 +190,6 @@ export default function CronJobsPage() {
     if (modal.visible && modal.editing) setCronExprValue(modal.editing.cronExpression ?? '');
   }, [modal.visible, modal.editing]);
 
-  const buildExportQuery = () => compactQuery({
-    keyword: submittedParams.keyword,
-    status: submittedParams.status,
-  });
 
   const handleRunOnce = (id: number, name: string) => {
     Modal.confirm({
@@ -394,13 +390,13 @@ export default function CronJobsPage() {
             actions={(
               <>
                 <Button icon={<ScrollText size={14} />} onClick={() => { setAllLogsPage(1); setAllLogsJobFilter(null); setAllLogsDrawerVisible(true); }}>全部执行日志</Button>
-                <ExportButton entity="system.cron-jobs" query={buildExportQuery()} />
+                <ExportButton entity="system.cron-jobs" query={filterQuery} />
               </>
             )}
             mobileActions={(
               <>
                 <Button icon={<ScrollText size={14} />} onClick={() => { setAllLogsPage(1); setAllLogsJobFilter(null); setAllLogsDrawerVisible(true); }}>全部执行日志</Button>
-                <ExportButton entity="system.cron-jobs" query={buildExportQuery()} variant="flat" />
+                <ExportButton entity="system.cron-jobs" query={filterQuery} variant="flat" />
               </>
             )}
             filterTitle="定时任务筛选"

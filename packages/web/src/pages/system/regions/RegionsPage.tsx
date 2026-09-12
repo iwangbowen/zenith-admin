@@ -21,7 +21,7 @@ import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { deleteAction, ListSearchToolbar, useStatusToggle } from '@/components/list-page';
-import { compactQuery } from '@/lib/query';
+import { compactParams } from '@/lib/query';
 
 const LEVEL_LABELS: Record<string, string> = REGION_LEVEL_LABELS;
 
@@ -46,11 +46,13 @@ export default function RegionsPage() {
   const { ref: tableWrapperRef, height: tableHeight } = useElementSize<HTMLDivElement>({ height: 500 });
 
   const { items: statusItems, options: statusOptions } = useDictItems('common_status');
-  const treeQuery = useRegionTree({
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：树列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
     level: enumValueOf(REGION_LEVELS, submittedParams.level),
-  });
+  }), [submittedParams]);
+  const treeQuery = useRegionTree(filterQuery);
   const data = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
   const flatQuery = useFlatRegions();
   const flatData = useMemo(() => flatQuery.data ?? [], [flatQuery.data]);
@@ -191,11 +193,6 @@ export default function RegionsPage() {
       {isAllExpanded ? '全部折叠' : '全部展开'}
     </Button>
   );
-  const buildExportQuery = () => compactQuery({
-    keyword: submittedParams.keyword,
-    status: submittedParams.status,
-    level: submittedParams.level,
-  });
 
   return (
     <div className="page-container regions-page" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -224,17 +221,13 @@ export default function RegionsPage() {
         actions={(
           <>
             {renderExpandButton()}
-            {hasPermission('system:region:export') ? (
-              <ExportButton entity="system.regions" query={buildExportQuery()} />
-            ) : null}
+            {<ExportButton entity="system.regions" query={filterQuery} permission="system:region:export" />}
           </>
         )}
         mobileActions={(
           <>
             {renderExpandButton()}
-            {hasPermission('system:region:export') ? (
-              <ExportButton entity="system.regions" query={buildExportQuery()} variant="flat" />
-            ) : null}
+            {<ExportButton entity="system.regions" query={filterQuery} variant="flat" permission="system:region:export" />}
           </>
         )}
         filterTitle="地区筛选"

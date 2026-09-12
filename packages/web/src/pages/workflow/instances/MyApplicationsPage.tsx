@@ -51,6 +51,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { workflowInstanceStatusColumn } from '@/components/workflow/WorkflowInstanceListColumns';
 import { FilterSelect, StatusSelect } from '@/components/search-filters';
+import { compactParams } from '@/lib/query';
 
 function InstanceDetailDrawer({
   instanceId,
@@ -267,12 +268,12 @@ export default function MyApplicationsPage() {
   const [editingDraft, setEditingDraft] = useState<WorkflowInstance | null>(null);
   const [dynamicFormInitValues, setDynamicFormInitValues] = useState<Record<string, unknown>>({});
   const [formKey, setFormKey] = useState(0);
-  const listQuery = useMyWorkflowInstances({
-    page,
-    pageSize,
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
     status: enumValueOf(WORKFLOW_INSTANCE_STATUSES, submittedParams.status),
     priority: enumValueOf(WORKFLOW_INSTANCE_PRIORITIES, submittedParams.priority),
-  });
+  }), [submittedParams]);
+  const listQuery = useMyWorkflowInstances({ page, pageSize, ...filterQuery });
   const data = listQuery.data;
   const definitionsQuery = usePublishedWorkflowDefinitions({ enabled: applyVisible });
   const definitions = definitionsQuery.data ?? [];

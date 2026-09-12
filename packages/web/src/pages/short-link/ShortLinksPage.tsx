@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import ModalFooter from '@/components/ModalFooter';
 import { Button, Col, Collapse, Form, Modal, Row, SideSheet, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -27,6 +27,7 @@ import {
 } from '@zenith/shared/short-link';
 import type { CreateShortLinkInput, ShortLink } from '@zenith/shared/short-link';
 import ShortLinkStatsDrawer from './ShortLinkStatsDrawer';
+import { compactParams } from '@/lib/query';
 
 const { Text } = Typography;
 
@@ -82,14 +83,14 @@ export default function ShortLinksPage() {
     onReset: () => setSelectedRowKeys([]),
   });
 
-  const listQuery = useShortLinkList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
     bizType: enumValueOf(SHORT_LINK_BIZ_TYPES, submittedParams.bizType),
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
-  });
+  }), [submittedParams]);
+  const listQuery = useShortLinkList({ page, pageSize, ...filterQuery });
 
   const modal = useEditModal<ShortLink, ShortLinkFormValues, Partial<CreateShortLinkInput>>({
     entityName: '短链',
@@ -136,12 +137,6 @@ export default function ShortLinksPage() {
 
   const { items: statusItems, options: statusOptions } = useDictItems('common_status');
 
-  const buildExportQuery = (): Record<string, unknown> => ({
-    keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
-    bizType: submittedParams.bizType || undefined,
-    ...formatDateTimeRangeForApi(submittedParams.timeRange),
-  });
 
   function handleBatchDelete() {
     confirmAndDelete({
@@ -266,13 +261,11 @@ export default function ShortLinksPage() {
         )}
         actions={<>
           {renderBatchButtons()}
-          {hasPermission('shortlink:link:export')
-            ? <ExportButton entity="shortlink.links" query={buildExportQuery()} /> : null}
+          <ExportButton entity="shortlink.links" query={filterQuery} permission="shortlink:link:export" />
         </>}
         mobileActions={<>
           {renderBatchButtons()}
-          {hasPermission('shortlink:link:export')
-            ? <ExportButton entity="shortlink.links" query={buildExportQuery()} label="导出" variant="flat" /> : null}
+          <ExportButton entity="shortlink.links" query={filterQuery} variant="flat" permission="shortlink:link:export" />
         </>}
         filterTitle="筛选条件"
       />

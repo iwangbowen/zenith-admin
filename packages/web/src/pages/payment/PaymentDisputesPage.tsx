@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { formatYuan } from '@/utils/payment';
 import { Banner, Button, Input, Modal, SideSheet, Spin, Tag, TextArea, Timeline, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -25,6 +25,7 @@ import type { PaymentChannel, PaymentDispute, PaymentDisputeRoute, PaymentDisput
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
+import { compactParams } from '@/lib/query';
 
 const yuan = formatYuan;
 const STATUS_COLOR = { pending: 'red', processing: 'blue', resolved: 'green', refunded: 'purple' } as const satisfies Record<PaymentDisputeStatus, string>;
@@ -47,15 +48,15 @@ export default function PaymentDisputesPage() {
   const [replyContent, setReplyContent] = useState('');
   const [refundAmountYuan, setRefundAmountYuan] = useState<string>('');
 
-  const listQuery = usePaymentDisputeList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     status: enumValueOf(PAYMENT_DISPUTE_STATUSES, submittedParams.status),
     type: enumValueOf(PAYMENT_DISPUTE_TYPES, submittedParams.type),
     channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
     route: enumValueOf(PAYMENT_DISPUTE_ROUTES, submittedParams.route),
-  });
+  }), [submittedParams]);
+  const listQuery = usePaymentDisputeList({ page, pageSize, ...filterQuery });
   const statsQuery = usePaymentDisputeStats();
   const stats = statsQuery.data ?? null;
   const detailQuery = usePaymentDisputeDetail(detailId ?? undefined);
@@ -155,13 +156,6 @@ export default function PaymentDisputesPage() {
     }),
   ];
 
-  const exportQuery = {
-    keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
-    type: submittedParams.type || undefined,
-    channel: submittedParams.channel || undefined,
-    route: submittedParams.route || undefined,
-  };
 
   const statsText = stats
     ? `未完结 ${stats.open} 单（超时 ${stats.overdue}） · 近30天投诉 ${stats.last30dCount} 单 · 投诉率 ${stats.last30dRate}% · 平均处理 ${stats.avgResolveHours} 小时`
@@ -200,8 +194,8 @@ export default function PaymentDisputesPage() {
             <Button type="primary" icon={<FlaskConical size={14} />} loading={simulateMutation.isPending} onClick={() => void handleSimulate()}>模拟投诉</Button>
           ) : null
         )}
-        actions={<ExportButton entity="payment.disputes" query={exportQuery} />}
-        mobileActions={<ExportButton entity="payment.disputes" query={exportQuery} variant="flat" />}
+        actions={<ExportButton entity="payment.disputes" query={filterQuery} />}
+        mobileActions={<ExportButton entity="payment.disputes" query={filterQuery} variant="flat" />}
         filterTitle="投诉筛选"
       />
 

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Button, Form, Input } from '@douyinfe/semi-ui';
 import { AppModal } from '@/components/AppModal';
 import { Plus } from 'lucide-react';
@@ -23,7 +24,7 @@ import { parseTemplateVariables } from '../send-log-constants';
 import { KeywordInput } from '@/components/search-filters';
 import { SendLogStatusSourceFilters } from '../send-log-ui';
 import { sendLogErrorColumn, sendLogOperatorColumn, sendLogSourceColumn, sendLogStatusColumn } from '../send-log-columns';
-import { compactQuery } from '@/lib/query';
+import { compactParams } from '@/lib/query';
 
 /** 测试发送表单值：变量以 JSON 文本输入 */
 interface TestSmsFormValues {
@@ -43,14 +44,14 @@ export default function SmsSendLogsPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: smsSendLogKeys.lists });
 
-  const listQuery = useSmsSendLogList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
-    phone: submittedParams.phone || undefined,
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    phone: submittedParams.phone,
     status: submittedParams.filterStatus,
     source: enumValueOf(SEND_SOURCES, submittedParams.filterSource),
-  });
+  }), [submittedParams]);
+  const listQuery = useSmsSendLogList({ page, pageSize, ...filterQuery });
   const testMutation = useTestSmsSendLog();
   const testModal = useEditModal<{ id: number }, TestSmsFormValues, SendSmsInput>({
     save: {
@@ -66,13 +67,6 @@ export default function SmsSendLogsPage() {
   const templatesQuery = useSmsTemplateList({ page: 1, pageSize: 100, status: 'enabled' }, testModal.visible);
   const templates = templatesQuery.data?.list ?? [];
   const deleteMutation = useDeleteSmsSendLog();
-
-  const buildExportQuery = () => compactQuery({
-    keyword: draftParams.keyword,
-    phone: draftParams.phone,
-    status: draftParams.filterStatus,
-    source: draftParams.filterSource,
-  });
 
 
   const columns = [
@@ -121,12 +115,12 @@ export default function SmsSendLogsPage() {
         create={can('system:sms-send-log:send') && (
           <Button type="primary" icon={<Plus size={14} />} onClick={testModal.openCreate}>测试发送</Button>
         )}
-        actions={can('system:sms-send-log:export') && (
-          <ExportButton entity="system.sms-send-logs" query={buildExportQuery()} />
+        actions={(
+          <ExportButton entity="system.sms-send-logs" query={filterQuery} permission="system:sms-send-log:export" />
         )}
-        mobileActions={can('system:sms-send-log:export') ? (
-          <ExportButton entity="system.sms-send-logs" query={buildExportQuery()} variant="flat" />
-        ) : null}
+        mobileActions={(
+          <ExportButton entity="system.sms-send-logs" query={filterQuery} variant="flat" permission="system:sms-send-log:export" />
+        )}
         filterTitle="短信发送日志筛选"
         actionTitle="短信日志操作"
       />

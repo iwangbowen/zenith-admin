@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { ListSearchToolbar } from '@/components/list-page';
 import { useQueryClient } from '@tanstack/react-query';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -42,11 +42,11 @@ import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/com
 import { confirmDanger, confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
-import { compactQuery } from '@/lib/query';
 import { toUserOptions } from '@/hooks/queries/users';
 import { EMPTY_PLACEHOLDER, copyableNoColumn, dateColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { JsonBlock } from '@/components/JsonBlock';
 import { msToReadable, nullableText, trimToNull } from './analytics-format';
+import { compactParams } from '@/lib/query';
 
 const PAGE_SIZE = 20;
 
@@ -211,18 +211,19 @@ export default function AnalyticsDataPage() {
 
   const [settingsDraft, setSettingsDraft] = useState<AnalyticsSettings | null>(null);
 
-  const eventFilterQuery = (() => {
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const eventFilterQuery = useMemo(() => {
     const [startTime, endTime] = formatDateTimeRangeValuesForApi(submittedEventSearch.timeRange);
-    return {
+    return compactParams({
       eventType: enumValueOf(userBehaviorEventTypeEnum.options, submittedEventSearch.eventType),
-      eventName: submittedEventSearch.eventName || undefined,
-      username: submittedEventSearch.username || undefined,
-      pagePath: submittedEventSearch.pagePath || undefined,
+      eventName: submittedEventSearch.eventName,
+      username: submittedEventSearch.username,
+      pagePath: submittedEventSearch.pagePath,
       deviceType: enumValueOf(ANALYTICS_DEVICE_TYPES, submittedEventSearch.deviceType),
       startTime,
       endTime,
-    };
-  })();
+    });
+  }, [submittedEventSearch]);
 
   const eventsQuery = useAnalyticsEvents({
     page: eventList.page,
@@ -236,12 +237,16 @@ export default function AnalyticsDataPage() {
   const eventDetail = detailQuery.data ?? null;
   const detailLoading = detailQuery.isFetching;
 
+  const metaFilterQuery = useMemo(() => compactParams({
+    keyword: submittedMetaSearch.keyword,
+    status: submittedMetaSearch.status,
+    category: submittedMetaSearch.category,
+  }), [submittedMetaSearch]);
+
   const metaQuery = useAnalyticsEventMeta({
     page: metaList.page,
     pageSize: metaList.pageSize,
-    keyword: submittedMetaSearch.keyword || undefined,
-    status: submittedMetaSearch.status || undefined,
-    category: submittedMetaSearch.category || undefined,
+    ...metaFilterQuery,
   });
   const metaRows = metaQuery.data?.list ?? [];
   const metaTotal = metaQuery.data?.total ?? 0;
@@ -308,7 +313,6 @@ export default function AnalyticsDataPage() {
   const ownerOptions = toUserOptions(ownerUsersQuery.data?.list ?? []);
   const metaReferencesQuery = useEventMetaReferences(metaModal.editing?.eventName, metaModal.visible);
 
-  const eventExportQuery = compactQuery(eventFilterQuery);
 
   const handleClean = (days: number) => {
     const option = CLEAN_DAY_OPTIONS.find((item) => item.value === days);
@@ -774,7 +778,7 @@ export default function AnalyticsDataPage() {
             onReset={eventList.handleReset}
             actions={
               <>
-                <ExportButton entity="analytics.events" query={eventExportQuery} />
+                <ExportButton entity="analytics.events" query={eventFilterQuery} />
                 {canClean ? (
                   <SplitButtonGroup>
                     <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={cleanMutation.isPending} onClick={() => handleClean(90)}>清除数据</Button>
@@ -799,7 +803,7 @@ export default function AnalyticsDataPage() {
             }
             mobileActions={(
               <>
-                <ExportButton entity="analytics.events" query={eventExportQuery} variant="flat" />
+                <ExportButton entity="analytics.events" query={eventFilterQuery} variant="flat" />
                 {canClean && CLEAN_DAY_OPTIONS.map((item) => (
                   <Button
                     key={item.value}

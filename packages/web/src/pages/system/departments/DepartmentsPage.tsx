@@ -30,7 +30,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { deleteAction, ListSearchToolbar, useStatusToggle } from '@/components/list-page';
 import { memberPreviewColumn } from '@/components/members/MemberAssignmentSheet';
-import { compactQuery } from '@/lib/query';
+import { compactParams } from '@/lib/query';
 
 interface SearchParams {
   keyword: string;
@@ -72,10 +72,12 @@ export default function DepartmentsPage() {
   const { items: statusItems, options: statusOptions } = useDictItems('common_status');
   const { options: categoryOptions } = useDictItems('department_category');
 
-  const treeQuery = useDepartmentTreeSearch({
-    keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
-  });
+  // 已提交筛选 → 契约查询参数：树列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    status: submittedParams.status,
+  }), [submittedParams]);
+  const treeQuery = useDepartmentTreeSearch(filterQuery);
   const data = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
   const flatDepartmentsQuery = useFlatDepartments();
   const allDepartments = useMemo(() => flatDepartmentsQuery.data ?? [], [flatDepartmentsQuery.data]);
@@ -183,10 +185,6 @@ export default function DepartmentsPage() {
       {isAllExpanded ? '全部折叠' : '全部展开'}
     </Button>
   );
-  const buildExportQuery = () => compactQuery({
-    keyword: submittedParams.keyword,
-    status: submittedParams.status,
-  });
 
   return (
     <div className="page-container">
@@ -208,13 +206,13 @@ export default function DepartmentsPage() {
         actions={(
           <>
             {renderExpandButton()}
-            <ExportButton entity="system.departments" query={buildExportQuery()} />
+            <ExportButton entity="system.departments" query={filterQuery} />
           </>
         )}
         mobileActions={(
           <>
             {renderExpandButton(true)}
-            <ExportButton entity="system.departments" query={buildExportQuery()} variant="flat" />
+            <ExportButton entity="system.departments" query={filterQuery} variant="flat" />
           </>
         )}
         filterTitle="部门筛选"

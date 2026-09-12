@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import ModalFooter from '@/components/ModalFooter';
 import { Button, Modal, Form, Row, Col, Spin, SideSheet, Descriptions, Tag, Divider } from '@douyinfe/semi-ui';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
@@ -29,7 +29,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { copyTextWithToast } from '@/utils/clipboard';
-import { compactQuery } from '@/lib/query';
+import { compactParams } from '@/lib/query';
 
 interface SearchParams {
   keyword: string;
@@ -56,12 +56,12 @@ export default function TenantsPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: tenantKeys.lists });
 
-  const listQuery = useTenantList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
-  });
+  }), [submittedParams]);
+  const listQuery = useTenantList({ page, pageSize, ...filterQuery });
 
   const saveMutation = useSaveTenant();
   // 联系电话是契约敏感字段：对非豁免用户是掩码，编辑时锁定、未修改则不提交
@@ -200,11 +200,6 @@ export default function TenantsPage() {
     }),
   ];
 
-  const buildExportQuery = () => compactQuery({
-    keyword: submittedParams.keyword,
-    status: submittedParams.status,
-  });
-
   return (
     <div className="page-container">
       <ListSearchToolbar
@@ -222,8 +217,8 @@ export default function TenantsPage() {
             <CreateButton onClick={tenantModal.openCreate} />
           ) : null
         )}
-        actions={<ExportButton entity="system.tenants" query={buildExportQuery()} />}
-        mobileActions={<ExportButton entity="system.tenants" query={buildExportQuery()} variant="flat" />}
+        actions={<ExportButton entity="system.tenants" query={filterQuery} />}
+        mobileActions={<ExportButton entity="system.tenants" query={filterQuery} variant="flat" />}
         filterTitle="租户筛选"
         actionTitle="租户操作"
       />

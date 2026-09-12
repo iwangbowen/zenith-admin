@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Modal, SideSheet, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -27,6 +27,7 @@ import InteractionResultsSheet from './interaction/InteractionResultsSheet';
 import { CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { compactParams } from '@/lib/query';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 interface ListSearch {
@@ -71,13 +72,19 @@ export default function SurveysPage() {
     listKey: cmsInteractionKeys.responseLists,
   });
 
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => ({
+    siteId: siteId ?? 0,
+    ...compactParams({
+      keyword: submitted.keyword,
+      kind: submitted.kind,
+      status: submitted.status,
+    }),
+  }), [submitted, siteId]);
   const listQuery = useCmsInteractionList({
     page,
     pageSize,
-    siteId: siteId ?? 0,
-    keyword: submitted.keyword || undefined,
-    kind: submitted.kind,
-    status: submitted.status,
+    ...filterQuery,
   }, !!siteId);
   const sitesQuery = useAllCmsSites();
   const currentSite = sitesQuery.data?.find((site) => site.id === siteId);
@@ -86,13 +93,18 @@ export default function SurveysPage() {
   const statusMutation = useSetCmsInteractionStatus();
   const batchMutation = useBatchCmsInteractionStatus();
   const interactionOptionsQuery = useCmsInteractionOptions(siteId);
+  const responseFilterQuery = useMemo(() => ({
+    siteId: siteId ?? 0,
+    ...compactParams({
+      interactionId: responseSearch.submittedParams.interactionId,
+      kind: responseSearch.submittedParams.kind,
+      ...formatDateTimeRangeForApi(responseSearch.submittedParams.timeRange),
+    }),
+  }), [responseSearch.submittedParams, siteId]);
   const responseQuery = useCmsInteractionResponseList({
     page: responseSearch.page,
     pageSize: responseSearch.pageSize,
-    siteId: siteId ?? 0,
-    interactionId: responseSearch.submittedParams.interactionId,
-    kind: responseSearch.submittedParams.kind,
-    ...formatDateTimeRangeForApi(responseSearch.submittedParams.timeRange),
+    ...responseFilterQuery,
   }, !!siteId);
 
   const canManage = hasPermission('cms:interaction:manage');
@@ -238,12 +250,6 @@ export default function SurveysPage() {
     </>
   ) : null;
 
-  const responseExportQuery = {
-    siteId,
-    interactionId: responseSearch.submittedParams.interactionId,
-    kind: responseSearch.submittedParams.kind,
-    ...formatDateTimeRangeForApi(responseSearch.submittedParams.timeRange),
-  };
 
   return (
     <div className="page-container page-tabs-page">
@@ -293,9 +299,7 @@ export default function SurveysPage() {
             )}
             onSearch={responseSearch.handleSearch}
             onReset={responseSearch.handleReset}
-            actions={siteId && hasPermission('cms:interaction:export')
-              ? <ExportButton entity="cms.interaction-responses" permission="cms:interaction:export" query={responseExportQuery} />
-              : null}
+            actions={siteId ? <ExportButton entity="cms.interaction-responses" permission="cms:interaction:export" query={responseFilterQuery} /> : null}
           />
           <ConfigurableTable<CmsInteractionResponse>
             columns={responseColumns}

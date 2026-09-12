@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import ModalFooter from '@/components/ModalFooter';
 import { Badge, Button, Col, Form, Row, SideSheet, Spin, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -30,7 +30,7 @@ import {
 } from '@/hooks/queries/iot-devices';
 import { useAllIotGroups, useDeleteIotGroups, useSaveIotGroup } from '@/hooks/queries/iot-groups';
 import IotDeviceDetailDrawer from './IotDeviceDetailDrawer';
-import { compactQuery } from '@/lib/query';
+import { compactParams } from '@/lib/query';
 
 const { Text } = Typography;
 
@@ -76,14 +76,18 @@ export default function IotDevicesPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: iotDeviceKeys.lists });
 
-  const listQuery = useIotDeviceList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
     productId: submittedParams.productId,
     groupId: submittedParams.groupId,
     nodeType: enumValueOf(IOT_NODE_TYPES, submittedParams.nodeType),
+  }), [submittedParams]);
+  const listQuery = useIotDeviceList({
+    page,
+    pageSize,
+    ...filterQuery,
   });
 
   const modal = useEditModal<IotDevice, IotDeviceFormValues, Partial<CreateIotDeviceInput>>({
@@ -297,13 +301,6 @@ export default function IotDevicesPage() {
 
   const canBatch = hasPermission('iot:device:batch');
 
-  const buildExportQuery = () => compactQuery({
-    keyword: submittedParams.keyword,
-    status: submittedParams.status,
-    productId: submittedParams.productId,
-    groupId: submittedParams.groupId,
-  });
-
   return (
     <div className="page-container">
       <ListSearchToolbar
@@ -350,7 +347,7 @@ export default function IotDevicesPage() {
           {hasPermission('iot:device:import') && (
             <ImportButton entity="iot.devices" title="IoT 设备" onFinished={() => void listQuery.refetch()} />
           )}
-          <ExportButton entity="iot.devices" query={buildExportQuery()} />
+          <ExportButton entity="iot.devices" query={filterQuery} />
           {hasPermission('iot:group:manage') && (
             <Button theme="light" onClick={() => setGroupsVisible(true)}>分组管理</Button>
           )}
@@ -365,7 +362,7 @@ export default function IotDevicesPage() {
           {hasPermission('iot:device:import') && (
             <ImportButton entity="iot.devices" title="IoT 设备" label="导入设备" onFinished={() => void listQuery.refetch()} />
           )}
-          <ExportButton entity="iot.devices" query={buildExportQuery()} variant="flat" />
+          <ExportButton entity="iot.devices" query={filterQuery} variant="flat" />
           {hasPermission('iot:group:manage') && (
             <Button theme="borderless" onClick={() => setGroupsVisible(true)}>分组管理</Button>
           )}

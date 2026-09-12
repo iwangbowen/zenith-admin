@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Tabs, TabPane } from '@douyinfe/semi-ui';
 import { ListSearchToolbar } from '@/components/list-page';
 import ExportButton from '@/components/ExportButton';
@@ -5,7 +6,7 @@ import { OperationLogsTable } from '@/components/logs/OperationLogsTable';
 import { ClearLogsButtons, ClearLogsMobileButtons, ClearLogsModal } from '@/components/logs/ClearLogsControl';
 import { useClearLogs } from '@/hooks/useClearLogs';
 import { formatDateTimeRangeForApi } from '@/utils/date';
-import { compactQuery } from '@/lib/query';
+import { compactParams } from '@/lib/query';
 import OperationLogStatsPanel from './OperationLogStatsPanel';
 import { operationLogKeys, useCleanOperationLogs, useOperationLogList } from '@/hooks/queries/operation-logs';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -41,21 +42,21 @@ export default function OperationLogsPage() {
     bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultParams, listKey: operationLogKeys.all });
-  const listQuery = useOperationLogList({
-    page,
-    pageSize,
-    username: submittedParams.username || undefined,
-    module: submittedParams.module || undefined,
-    description: submittedParams.description || undefined,
-    ip: submittedParams.ip || undefined,
-    method: submittedParams.method || undefined,
-    path: submittedParams.path || undefined,
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    username: submittedParams.username,
+    module: submittedParams.module,
+    description: submittedParams.description,
+    ip: submittedParams.ip,
+    method: submittedParams.method,
+    path: submittedParams.path,
     status: enumValueOf(OPERATION_LOG_RESULTS, submittedParams.status),
-    content: submittedParams.content || undefined,
+    content: submittedParams.content,
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
     minDurationMs: submittedParams.minDurationMs,
     maxDurationMs: submittedParams.maxDurationMs,
-  });
+  }), [submittedParams]);
+  const listQuery = useOperationLogList({ page, pageSize, ...filterQuery });
   const data = listQuery.data?.list ?? [];
   const total = listQuery.data?.total ?? 0;
   const cleanLogsMutation = useCleanOperationLogs();
@@ -64,24 +65,6 @@ export default function OperationLogsPage() {
     clean: (days) => cleanLogsMutation.mutateAsync({ query: { days } }),
     onCleared: () => setPage(1),
   });
-
-  // 导出条件取已提交的筛选，与列表一致
-  const buildExportQuery = () => {
-    const p = submittedParams;
-    return compactQuery({
-      username: p.username,
-      module: p.module,
-      description: p.description,
-      ip: p.ip,
-      method: p.method,
-      path: p.path,
-      status: p.status,
-      content: p.content,
-      ...formatDateTimeRangeForApi(p.timeRange),
-      minDurationMs: p.minDurationMs,
-      maxDurationMs: p.maxDurationMs,
-    });
-  };
 
   return (
     <div className="page-container page-tabs-page">
@@ -122,13 +105,13 @@ export default function OperationLogsPage() {
             onReset={handleReset}
             actions={(
               <>
-                <ExportButton entity="system.operation-logs" query={buildExportQuery()} />
+                <ExportButton entity="system.operation-logs" query={filterQuery} />
                 <ClearLogsButtons loading={clearLogsLoading} onClear={clearLogs.openClearModal} />
               </>
             )}
             mobileActions={(
               <>
-                <ExportButton entity="system.operation-logs" query={buildExportQuery()} variant="flat" />
+                <ExportButton entity="system.operation-logs" query={filterQuery} variant="flat" />
                 <ClearLogsMobileButtons loading={clearLogsLoading} onClear={clearLogs.openClearModal} />
               </>
             )}

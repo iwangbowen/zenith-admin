@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Button, Descriptions, Input, Toast, Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ScanLine } from 'lucide-react';
@@ -18,7 +18,7 @@ import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { KeywordInput, NumberFilter, StatusSelect } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
 import { memberCellColumn } from './member-admin-display';
-import { compactQuery } from '@/lib/query';
+import { compactParams } from '@/lib/query';
 
 const statusOptions = (Object.keys(MEMBER_COUPON_STATUS_LABELS) as MemberCouponStatus[]).map((v) => ({ value: v, label: MEMBER_COUPON_STATUS_LABELS[v] }));
 const STATUS_COLORS: Record<string, string> = { unused: 'blue', used: 'green', expired: 'grey', frozen: 'orange' };
@@ -37,13 +37,13 @@ export default function CouponRecordsPage() {
     memberKeyword: p.memberKeyword,
     couponId: Number(p.couponId) || undefined,
   }));
-  const listQuery = useCouponRecordList({
-    page,
-    pageSize,
-    memberKeyword: submittedParams.memberKeyword || undefined,
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    memberKeyword: submittedParams.memberKeyword,
     couponId: submittedParams.couponId,
     status: enumValueOf(MEMBER_COUPON_STATUSES, submittedParams.status),
-  });
+  }), [submittedParams]);
+  const listQuery = useCouponRecordList({ page, pageSize, ...filterQuery });
   const revokeMutation = useRevokeCouponRecord();
   // 核销
   const [redeemVisible, setRedeemVisible] = useState(false);
@@ -109,14 +109,9 @@ export default function CouponRecordsPage() {
     ] : []),
   ];
 
-  const buildExportQuery = () => compactQuery({
-    memberKeyword: submittedParams.memberKeyword,
-    couponId: submittedParams.couponId?.toString(),
-    status: submittedParams.status,
-  });
-  const renderExportButton = (variant?: 'flat') => hasPermission('member:coupon:list') ? (
-    <ExportButton entity="member.coupon-records" query={buildExportQuery()} variant={variant} />
-  ) : null;
+  const renderExportButton = (variant?: 'flat') => (
+    <ExportButton entity="member.coupon-records" query={filterQuery} variant={variant} permission="member:coupon:list" />
+  );
 
   return (
     <div className="page-container">

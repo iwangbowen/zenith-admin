@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useMemo } from 'react';
 import { Button, Dropdown, Form, Modal, Space, Tag, Toast, Tooltip, Typography, Empty, Tree } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
@@ -31,6 +31,7 @@ import { abortSubmit } from '@/lib/abort-submit';
 import { formatBytes, mapTree } from '@zenith/shared/core';
 import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import ModalFooter from '@/components/ModalFooter';
+import { compactParams } from '@/lib/query';
 
 const TYPE_COLORS: Record<CmsResourceType, 'blue' | 'purple' | 'cyan' | 'orange' | 'grey'> = {
   image: 'blue', video: 'purple', audio: 'cyan', document: 'orange', other: 'grey',
@@ -247,13 +248,19 @@ export default function ResourcesPage() {
   const [replaceTarget, setReplaceTarget] = useState<CmsResource | null>(null);
 
   const folderId = folderKey === 'all' ? undefined : Number(folderKey);
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => ({
+    siteId: siteId ?? 0,
+    ...compactParams({
+      type: submittedParams.type,
+      keyword: submittedParams.keyword,
+      folderId,
+    }),
+  }), [submittedParams, siteId, folderId]);
   const listQuery = useCmsResourceList({
     page,
     pageSize,
-    siteId: siteId ?? 0,
-    type: submittedParams.type,
-    keyword: submittedParams.keyword || undefined,
-    folderId,
+    ...filterQuery,
   }, siteId !== undefined);
   const foldersQuery = useCmsResourceFolders(siteId);
   const uploadMutation = useUploadCmsResource();

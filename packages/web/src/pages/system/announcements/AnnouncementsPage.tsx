@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect, useMemo } from 'react';
 import { useDebouncer } from '@tanstack/react-pacer';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Tag, Space, Modal, SideSheet, Form, Spin, Toast, Select, RadioGroup, Radio, Tabs, TabPane, Typography } from '@douyinfe/semi-ui';
@@ -37,7 +37,7 @@ import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search
 import { confirmDanger } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 import ModalFooter from '@/components/ModalFooter';
-import { compactQuery } from '@/lib/query';
+import { compactParams } from '@/lib/query';
 
 const RichTextEditor = lazy(() => import('@/components/RichTextEditor'));
 const editorLoadingFallback = (
@@ -124,14 +124,14 @@ export default function AnnouncementsPage() {
     buildPagination: buildStatsPagination,
   } = usePagination(10);
 
-  const listQuery = useAnnouncementList({
-    page,
-    pageSize,
-    title: submittedParams.title || undefined,
-    type: submittedParams.type || undefined,
-    publishStatus: submittedParams.publishStatus || undefined,
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    title: submittedParams.title,
+    type: submittedParams.type,
+    publishStatus: submittedParams.publishStatus,
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
-  });
+  }), [submittedParams]);
+  const listQuery = useAnnouncementList({ page, pageSize, ...filterQuery });
   const saveMutation = useSaveAnnouncement();
   const modal = useEditModal<Announcement, AnnouncementFormValues, Partial<CreateAnnouncementInput>>({
     save: saveMutation,
@@ -238,12 +238,6 @@ export default function AnnouncementsPage() {
     setUserOptions((prev) => mergeUserOptions(prev, userSearchQuery.data ?? [], new Set(currentSelectedIds)));
   }, [selectedUserIds, userSearchQuery.data]);
 
-  const buildExportQuery = () => compactQuery({
-    title: submittedParams.title,
-    type: submittedParams.type,
-    publishStatus: submittedParams.publishStatus,
-    ...formatDateTimeRangeForApi(submittedParams.timeRange),
-  });
 
   const openStatsDrawer = (notice: Announcement) => {
     setStatsNotice(notice);
@@ -594,7 +588,7 @@ export default function AnnouncementsPage() {
         create={hasPermission('system:announcement:create') && <CreateButton onClick={openCreateModal} />}
         actions={(
           <>
-            <ExportButton entity="system.announcements" query={buildExportQuery()} />
+            <ExportButton entity="system.announcements" query={filterQuery} />
             {selectedRowKeys.length > 0 && hasPermission('system:announcement:delete') && (
               <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />
             )}
@@ -602,7 +596,7 @@ export default function AnnouncementsPage() {
         )}
         mobileActions={(
           <>
-            <ExportButton entity="system.announcements" query={buildExportQuery()} variant="flat" />
+            <ExportButton entity="system.announcements" query={filterQuery} variant="flat" />
             {selectedRowKeys.length > 0 && hasPermission('system:announcement:delete') && (
               <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />
             )}

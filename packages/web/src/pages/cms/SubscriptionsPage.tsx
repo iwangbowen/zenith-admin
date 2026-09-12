@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { SideSheet, TabPane, Tabs, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { CMS_SUBSCRIPTION_SUBJECT_TYPE_LABELS, CMS_SUBSCRIPTION_SUBJECT_TYPE_OPTIONS } from '@zenith/shared/cms';
@@ -7,7 +7,6 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import ExportButton from '@/components/ExportButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useListSearch } from '@/hooks/useListSearch';
-import { usePermission } from '@/hooks/usePermission';
 import {
   cmsSubscriptionKeys,
   useCmsSubscriptionAggregates,
@@ -17,6 +16,7 @@ import { formatDateTimeRangeForApi } from '@/utils/date';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
 import { dateTimeColumn } from '@/utils/table-columns';
+import { compactParams } from '@/lib/query';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
@@ -30,7 +30,6 @@ const initialSearch: SearchState = { subjectKeyword: '' };
 
 export default function SubscriptionsPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['aggregate', 'detail'] as const, 'aggregate');
-  const { hasPermission } = usePermission();
   const {
     page, pageSize, setPage, buildPagination,
     bind, bindKeyword, submittedParams: submitted,
@@ -38,14 +37,17 @@ export default function SubscriptionsPage() {
   } = useListSearch<SearchState>({ defaults: initialSearch, listKey: cmsSubscriptionKeys.lists });
   const [siteId, setSiteId] = useState<number | undefined>();
   const [detail, setDetail] = useState<CmsMemberSubscription | null>(null);
-  const query = {
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => ({
     siteId: siteId ?? 0,
-    subjectType: submitted.subjectType,
-    subjectKeyword: submitted.subjectKeyword || undefined,
-    ...formatDateTimeRangeForApi(submitted.timeRange),
-  };
-  const listQuery = useCmsSubscriptionList({ ...query, page, pageSize }, !!siteId);
-  const aggregateQuery = useCmsSubscriptionAggregates(query, !!siteId);
+    ...compactParams({
+      subjectType: submitted.subjectType,
+      subjectKeyword: submitted.subjectKeyword,
+      ...formatDateTimeRangeForApi(submitted.timeRange),
+    }),
+  }), [submitted, siteId]);
+  const listQuery = useCmsSubscriptionList({ ...filterQuery, page, pageSize }, !!siteId);
+  const aggregateQuery = useCmsSubscriptionAggregates(filterQuery, !!siteId);
 
   const filters = (
     <>
@@ -96,7 +98,6 @@ export default function SubscriptionsPage() {
     { title: '开启通知', dataIndex: 'notificationEnabledCount', width: 120, align: 'right' },
   ];
 
-  const exportQuery = query as Record<string, unknown>;
 
   return (
     <div className="page-container page-tabs-page">
@@ -107,8 +108,8 @@ export default function SubscriptionsPage() {
             filters={filters}
             onSearch={handleSearch}
             onReset={handleReset}
-            actions={siteId && hasPermission('cms:subscription:export') ? <ExportButton entity="cms.subscriptions" permission="cms:subscription:export" query={exportQuery} label="导出订阅明细" /> : null}
-            mobileActions={siteId && hasPermission('cms:subscription:export') ? <ExportButton entity="cms.subscriptions" permission="cms:subscription:export" query={exportQuery} variant="flat" /> : null}
+            actions={siteId ? <ExportButton entity="cms.subscriptions" permission="cms:subscription:export" query={filterQuery} label="导出订阅明细" /> : null}
+            mobileActions={siteId ? <ExportButton entity="cms.subscriptions" permission="cms:subscription:export" query={filterQuery} variant="flat" /> : null}
             filterTitle="订阅筛选"
           />
           <ConfigurableTable<CmsSubscriptionAggregate>
@@ -125,8 +126,8 @@ export default function SubscriptionsPage() {
             filters={filters}
             onSearch={handleSearch}
             onReset={handleReset}
-            actions={siteId && hasPermission('cms:subscription:export') ? <ExportButton entity="cms.subscriptions" permission="cms:subscription:export" query={exportQuery} /> : null}
-            mobileActions={siteId && hasPermission('cms:subscription:export') ? <ExportButton entity="cms.subscriptions" permission="cms:subscription:export" query={exportQuery} variant="flat" /> : null}
+            actions={siteId ? <ExportButton entity="cms.subscriptions" permission="cms:subscription:export" query={filterQuery} /> : null}
+            mobileActions={siteId ? <ExportButton entity="cms.subscriptions" permission="cms:subscription:export" query={filterQuery} variant="flat" /> : null}
             filterTitle="订阅筛选"
           />
           <ConfigurableTable<CmsMemberSubscription>

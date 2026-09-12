@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { Button, Form, Tag, Toast, Tabs, TabPane, SideSheet, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -27,6 +27,7 @@ import { confirmDelete } from '@/utils/confirm';
 import { EMPTY_PLACEHOLDER, dateColumn, dateTimeColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { deleteAction, listTableProps, ListSearchToolbar } from '@/components/list-page';
+import { compactParams } from '@/lib/query';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
@@ -210,15 +211,18 @@ function EventsTab({ siteId, setSiteId }: Readonly<{
   // The API caps paginated lists at 200. Keep the lookup request within that
   // contract; the event table itself remains independently paginated.
   const adsQuery = useCmsAdList({ page: 1, pageSize: 200, siteId: siteId ?? 0 }, !!siteId);
-  const params = {
-    page,
-    pageSize,
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => ({
     siteId: siteId ?? 0,
-    ...submitted,
-    timeRange: undefined,
-    ...formatDateTimeRangeForApi(submitted.timeRange),
-  };
-  const listQuery = useCmsAdEventList(params, !!siteId);
+    ...compactParams({
+      adId: submitted.adId,
+      slotId: submitted.slotId,
+      eventType: submitted.eventType,
+      device: submitted.device,
+      ...formatDateTimeRangeForApi(submitted.timeRange),
+    }),
+  }), [submitted, siteId]);
+  const listQuery = useCmsAdEventList({ page, pageSize, ...filterQuery }, !!siteId);
   const cleanupMutation = useCleanupCmsAdEvents();
 
   const handleSiteChange = (value: number | undefined) => {
@@ -278,12 +282,6 @@ function EventsTab({ siteId, setSiteId }: Readonly<{
     }),
   ];
 
-  const exportQuery = {
-    siteId,
-    ...submitted,
-    timeRange: undefined,
-    ...formatDateTimeRangeForApi(submitted.timeRange),
-  };
 
   return (
     <>
@@ -294,9 +292,7 @@ function EventsTab({ siteId, setSiteId }: Readonly<{
         onReset={handleReset}
         actions={(
           <>
-            {siteId && hasPermission('cms:ad-event:export')
-              ? <ExportButton entity="cms.ad-events" permission="cms:ad-event:export" query={exportQuery} />
-              : null}
+            {siteId ? <ExportButton entity="cms.ad-events" permission="cms:ad-event:export" query={filterQuery} /> : null}
             {hasPermission('cms:ad-event:cleanup') ? (
               <Button
                 type="danger"
@@ -319,9 +315,7 @@ function EventsTab({ siteId, setSiteId }: Readonly<{
             ) : null}
           </>
         )}
-        mobileActions={(siteId && hasPermission('cms:ad-event:export')
-          ? <ExportButton entity="cms.ad-events" permission="cms:ad-event:export" query={exportQuery} variant="flat" />
-          : null)}
+        mobileActions={(siteId ? <ExportButton entity="cms.ad-events" permission="cms:ad-event:export" query={filterQuery} variant="flat" /> : null)}
         filterTitle="广告事件筛选"
       />
       <ConfigurableTable<CmsAdEvent>
@@ -351,13 +345,17 @@ function StatsTab({ siteId, setSiteId }: Readonly<{
   setSiteId: (siteId: number | undefined) => void;
 }>) {
   const { bind, submittedParams: submitted, handleSearch, handleReset } = useListSearch<AdEventSearch>({ defaults: {}, listKey: cmsAdEventKeys.statsAll });
-  const params = {
+  const statsFilterQuery = useMemo(() => ({
     siteId: siteId ?? 0,
-    ...submitted,
-    timeRange: undefined,
-    ...formatDateTimeRangeForApi(submitted.timeRange),
-  };
-  const statsQuery = useCmsAdEventStats(params, !!siteId);
+    ...compactParams({
+      adId: submitted.adId,
+      slotId: submitted.slotId,
+      eventType: submitted.eventType,
+      device: submitted.device,
+      ...formatDateTimeRangeForApi(submitted.timeRange),
+    }),
+  }), [submitted, siteId]);
+  const statsQuery = useCmsAdEventStats(statsFilterQuery, !!siteId);
   const columns: ColumnProps<NonNullable<typeof statsQuery.data>['trend'][number]>[] = [
     dateColumn('日期', 'date'),
     { title: '曝光', dataIndex: 'impressions', width: 120, align: 'right' },

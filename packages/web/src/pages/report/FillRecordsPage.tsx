@@ -33,6 +33,7 @@ import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-fi
 import { abortSubmit } from '@/lib/abort-submit';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { compactParams } from '@/lib/query';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 interface MineFilters {
@@ -90,19 +91,26 @@ export default function FillRecordsPage() {
   const templateLookupQuery = useReportFillTemplateLookup(canCreate);
   const templates = templateLookupQuery.data ?? [];
   const users = useAllUsers({ enabled: canReview }).data ?? [];
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const mineFilterQuery = useMemo(() => compactParams({
+    keyword: mineSubmitted.keyword,
+    status: mineSubmitted.status,
+    templateId: mineSubmitted.templateId,
+  }), [mineSubmitted]);
+  const adminFilterQuery = useMemo(() => compactParams({
+    status: adminSubmitted.status,
+    templateId: adminSubmitted.templateId,
+    submitterId: adminSubmitted.submitterId,
+  }), [adminSubmitted]);
   const mineQuery = useReportFillRecordMine({
     page: mineSearch.page,
     pageSize: mineSearch.pageSize,
-    keyword: mineSubmitted.keyword || undefined,
-    status: mineSubmitted.status,
-    templateId: mineSubmitted.templateId,
+    ...mineFilterQuery,
   });
   const adminQuery = useReportFillRecordAdmin({
     page: adminSearch.page,
     pageSize: adminSearch.pageSize,
-    status: adminSubmitted.status,
-    templateId: adminSubmitted.templateId,
-    submitterId: adminSubmitted.submitterId,
+    ...adminFilterQuery,
   }, canReview);
   const detailQuery = useReportFillRecordDetail(detailId);
   const { tasks: fillTasks } = useMyAsyncTasks({ taskTypes: ['report-fill-sync'], pageSize: 100 });
@@ -337,29 +345,23 @@ export default function FillRecordsPage() {
               )}
               onSearch={adminSearch.handleSearch}
               onReset={adminSearch.handleReset}
-              actions={hasPermission('report:fill:record:export') ? (
+              actions={(
                 <ExportButton
                   entity="report.fill-records"
-                  query={{
-                    status: adminSubmitted.status,
-                    templateId: adminSubmitted.templateId,
-                    submitterId: adminSubmitted.submitterId,
-                  }}
+                  query={adminFilterQuery}
                   executionMode="async"
+                  permission="report:fill:record:export"
                 />
-              ) : null}
-              mobileActions={hasPermission('report:fill:record:export') ? (
+              )}
+              mobileActions={(
                 <ExportButton
                   variant="flat"
                   entity="report.fill-records"
-                  query={{
-                    status: adminSubmitted.status,
-                    templateId: adminSubmitted.templateId,
-                    submitterId: adminSubmitted.submitterId,
-                  }}
+                  query={adminFilterQuery}
                   executionMode="async"
+                  permission="report:fill:record:export"
                 />
-              ) : null}
+              )}
             />
             <ConfigurableTable<ReportFillRecord>
               columns={adminColumns}

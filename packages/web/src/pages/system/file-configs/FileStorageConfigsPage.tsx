@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Button, Col, Form, Radio, Row, Select, SideSheet, Spin, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { PlugZap } from 'lucide-react';
 import type { CreateFileStorageConfigInput, FileObjectAcl, FileStorageConfig, FileStorageProvider, FileUrlStrategy, UpdateFileStorageConfigInput } from '@zenith/shared/platform';
@@ -27,10 +27,10 @@ import {
 } from '@/hooks/queries/file-storage-configs';
 import { CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, StatusSelect } from '@/components/search-filters';
+import { compactParams } from '@/lib/query';
 
 const STATUS_FILTER_OPTIONS = [{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '禁用' }];
 import './FileStorageConfigsPage.css';
-import { compactQuery } from '@/lib/query';
 
 const { Text } = Typography;
 
@@ -215,12 +215,12 @@ export default function FileStorageConfigsPage() {
   const [formProvider, setFormProvider] = useState<FileStorageProvider>('local');
   const [formIsDefault, setFormIsDefault] = useState(false);
   const [browsingConfig, setBrowsingConfig] = useState<FileStorageConfig | null>(null);
-  const listQuery = useFileStorageConfigList({
-    page,
-    pageSize,
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
     status: enumValueOf(USER_STATUSES, submittedParams.status),
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
-  });
+  }), [submittedParams]);
+  const listQuery = useFileStorageConfigList({ page, pageSize, ...filterQuery });
   const saveMutation = useSaveFileStorageConfig();
   const statusMutation = useSaveFileStorageConfig();
   const modal = useEditModal<FileStorageConfig, FileStorageConfigFormValues, CreateFileStorageConfigInput>({
@@ -494,10 +494,6 @@ export default function FileStorageConfigsPage() {
     }),
   ];
 
-  const buildExportQuery = () => compactQuery({
-    status: submittedParams.status,
-    ...formatDateTimeRangeForApi(submittedParams.timeRange),
-  });
 
   return (
     <div className="page-container">
@@ -515,10 +511,10 @@ export default function FileStorageConfigsPage() {
         onReset={handleReset}
         create={hasPermission('system:file:config:create') && <CreateButton onClick={openCreate} />}
         actions={(
-          <ExportButton entity="system.file-storage-configs" query={buildExportQuery()} />
+          <ExportButton entity="system.file-storage-configs" query={filterQuery} />
         )}
         mobileActions={(
-          <ExportButton entity="system.file-storage-configs" query={buildExportQuery()} variant="flat" />
+          <ExportButton entity="system.file-storage-configs" query={filterQuery} variant="flat" />
         )}
         filterTitle="文件配置筛选"
         actionTitle="文件配置操作"

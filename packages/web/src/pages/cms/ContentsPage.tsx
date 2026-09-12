@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Tag, Toast, Tooltip, Modal, Tabs, TabPane, Tree, TreeSelect, Typography, Dropdown, Form, SplitButtonGroup } from '@douyinfe/semi-ui';
@@ -27,6 +27,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { DATE_TIME_COLUMN_WIDTH, EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
+import { compactParams } from '@/lib/query';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { channelsToSelectTree } from './channel-tree';
@@ -67,7 +68,6 @@ export default function ContentsPage() {
     onSearch: () => setSelectedIds([]),
     onReset: () => { setChannelId(undefined); setContentType(undefined); setSelectedIds([]); },
   });
-  const submittedKeyword = submittedParams.keyword;
   const [widgetSourceTarget, setWidgetSourceTarget] = useState<CmsWidgetSourceTarget | null>(null);
   // 窄屏单栏模式下的栏目树显隐（MasterDetailLayout 响应式）
   const [showChannelTree, setShowChannelTree] = useState(false);
@@ -86,16 +86,22 @@ export default function ContentsPage() {
   const statusFilter: CmsContentStatus | undefined =
     activeTab === 'pending' ? 'pending' : activeTab === 'published' ? 'published' : undefined;
 
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => ({
+    siteId: siteId ?? 0,
+    ...compactParams({
+      channelId,
+      status: statusFilter,
+      contentType,
+      keyword: submittedParams.keyword,
+      deleted: activeTab === 'recycle' ? true : undefined,
+      archived: activeTab === 'archived' ? true : undefined,
+    }),
+  }), [submittedParams, siteId, channelId, statusFilter, contentType, activeTab]);
   const listQuery = useCmsContentList({
     page,
     pageSize,
-    siteId: siteId ?? 0,
-    channelId,
-    status: statusFilter,
-    contentType,
-    keyword: submittedKeyword || undefined,
-    deleted: activeTab === 'recycle' ? true : undefined,
-    archived: activeTab === 'archived' ? true : undefined,
+    ...filterQuery,
   }, siteId !== undefined);
   const list = listQuery.data?.list ?? [];
 
@@ -613,16 +619,11 @@ export default function ContentsPage() {
             </SplitButtonGroup>
           ) : null
         )}
-        actions={<>{renderChannelTreeButton()}{batchBar}{siteId && hasPermission('cms:content:export') ? (
+        actions={<>{renderChannelTreeButton()}{batchBar}{siteId ? (
           <ExportButton
             entity="cms.contents"
             permission="cms:content:export"
-            query={{
-              siteId,
-              channelId,
-              status: statusFilter,
-              keyword: submittedKeyword || undefined,
-            }}
+            query={filterQuery}
           />
         ) : null}{hasPermission('cms:content:create') && siteId ? (
           <ImportButton

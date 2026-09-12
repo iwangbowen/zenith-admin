@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Banner, Button, Descriptions, Form, Input, Modal, Select, SideSheet, Space, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -28,11 +28,11 @@ import {
 } from '@/hooks/queries/cms-stage3';
 import { ASYNC_TASK_STATUS_TAG_MAP } from '@/utils/async-task';
 import { formatDateTime, formatDateTimeRangeValuesForApi } from '@/utils/date';
-import { compactQuery } from '@/lib/query';
 import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { compactParams } from '@/lib/query';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 
@@ -76,31 +76,41 @@ export default function PublishingPage() {
     onSearch: () => { artifactPagination.setPage(1); setSelected([]); },
     onReset: () => { artifactPagination.setPage(1); setSelected([]); },
   });
-  const [startTime, endTime] = formatDateTimeRangeValuesForApi(submitted.timeRange);
-  const filterQuery = {
-    siteId: submitted.siteId,
-    targetType: submitted.targetType,
-    createdBy: submitted.createdBy || undefined,
-    keyword: submitted.keyword || undefined,
-    startTime,
-    endTime,
-  };
+  const taskStatus: 'active' | 'failed' | 'terminal' = activeTab === 'queue' ? 'active' : activeTab === 'failed' ? 'failed' : 'terminal';
+  // 已提交筛选 → 契约查询参数：任务列表与导出共用同一份映射
+  const taskFilterQuery = useMemo(() => {
+    const [startTime, endTime] = formatDateTimeRangeValuesForApi(submitted.timeRange);
+    return compactParams({
+      siteId: submitted.siteId,
+      targetType: submitted.targetType,
+      createdBy: submitted.createdBy,
+      keyword: submitted.keyword,
+      startTime,
+      endTime,
+      status: taskStatus,
+    });
+  }, [submitted, taskStatus]);
+  // 已提交筛选 → 契约查询参数：产物列表与导出共用同一份映射
+  const artifactFilterQuery = useMemo(() => {
+    const [startTime, endTime] = formatDateTimeRangeValuesForApi(submitted.timeRange);
+    return compactParams({
+      siteId: submitted.siteId,
+      targetType: submitted.targetType,
+      startTime,
+      endTime,
+      keyword: submitted.keyword,
+    });
+  }, [submitted]);
 
-  const taskStatus = activeTab === 'queue' ? 'active' : activeTab === 'failed' ? 'failed' : 'terminal';
   const taskListQuery = useCmsPublishingList({
     page: taskPagination.page,
     pageSize: taskPagination.pageSize,
-    ...filterQuery,
-    status: taskStatus,
+    ...taskFilterQuery,
   }, activeTab !== 'artifacts');
   const artifactListQuery = useCmsPublishArtifactList({
     page: artifactPagination.page,
     pageSize: artifactPagination.pageSize,
-    siteId: filterQuery.siteId,
-    targetType: filterQuery.targetType,
-    startTime,
-    endTime,
-    keyword: filterQuery.keyword,
+    ...artifactFilterQuery,
   }, activeTab === 'artifacts');
   // Keep the id independent from the currently loaded tab. Artifact rows can
   // point to a task that is not present in the history page cache.
@@ -241,8 +251,6 @@ export default function PublishingPage() {
     </>
   );
 
-  const taskExportQuery = compactQuery({ ...filterQuery, taskStatus });
-  const artifactExportQuery = compactQuery(filterQuery);
 
   const createBuildButton = canBuild ? <CreateButton onClick={() => { setSubmitVisible(true); setSubmitForm((prev) => ({ ...prev, siteId: sites[0]?.id })); }}>新建发布</CreateButton> : null;
 
@@ -256,15 +264,15 @@ export default function PublishingPage() {
 
   const taskActions = (
     <>
-      <ExportButton entity="cms.publish-artifacts" permission="cms:publish:view" label="导出产物" query={taskExportQuery} />
-      <ExportButton entity="cms.publish-logs" permission="cms:publish:view" label="导出日志" query={taskExportQuery} />
+      <ExportButton entity="cms.publish-artifacts" permission="cms:publish:view" label="导出产物" query={taskFilterQuery} />
+      <ExportButton entity="cms.publish-logs" permission="cms:publish:view" label="导出日志" query={taskFilterQuery} />
     </>
   );
 
   const artifactActions = (
     <>
-      <ExportButton entity="cms.publish-artifacts" permission="cms:publish:view" label="导出产物" query={artifactExportQuery} />
-      <ExportButton entity="cms.publish-logs" permission="cms:publish:view" label="导出日志" query={artifactExportQuery} />
+      <ExportButton entity="cms.publish-artifacts" permission="cms:publish:view" label="导出产物" query={artifactFilterQuery} />
+      <ExportButton entity="cms.publish-logs" permission="cms:publish:view" label="导出日志" query={artifactFilterQuery} />
     </>
   );
 
@@ -280,8 +288,8 @@ export default function PublishingPage() {
         mobileActions={(
           <>
             {batchActions}
-            <ExportButton entity="cms.publish-artifacts" permission="cms:publish:view" label="导出产物" query={taskExportQuery} variant="flat" />
-            <ExportButton entity="cms.publish-logs" permission="cms:publish:view" label="导出日志" query={taskExportQuery} variant="flat" />
+            <ExportButton entity="cms.publish-artifacts" permission="cms:publish:view" label="导出产物" query={taskFilterQuery} variant="flat" />
+            <ExportButton entity="cms.publish-logs" permission="cms:publish:view" label="导出日志" query={taskFilterQuery} variant="flat" />
           </>
         )}
       />

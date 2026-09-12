@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Form, Spin } from '@douyinfe/semi-ui';
 import type { Position } from '@zenith/shared/identity';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
@@ -30,7 +30,7 @@ import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { MemberAssignmentSheet, memberPreviewColumn } from '@/components/members/MemberAssignmentSheet';
-import { compactQuery } from '@/lib/query';
+import { compactParams } from '@/lib/query';
 
 interface SearchParams {
   keyword: string;
@@ -51,13 +51,13 @@ export default function PositionsPage() {
     bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: positionKeys.lists });
-  const listQuery = usePositionList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
-  });
+  }), [submittedParams]);
+  const listQuery = usePositionList({ page, pageSize, ...filterQuery });
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
   const { items: statusItems, options: statusOptions } = useDictItems('common_status');
 
@@ -162,11 +162,6 @@ export default function PositionsPage() {
     }),
   ];
 
-  const buildExportQuery = () => compactQuery({
-    keyword: submittedParams.keyword,
-    status: submittedParams.status,
-    ...formatDateTimeRangeForApi(submittedParams.timeRange),
-  });
 
   return (
     <div className="page-container">
@@ -190,13 +185,13 @@ export default function PositionsPage() {
         )}
         actions={(
           <>
-            <ExportButton entity="system.positions" query={buildExportQuery()} />
+            <ExportButton entity="system.positions" query={filterQuery} />
             {selectedRowKeys.length > 0 && hasPermission('system:position:delete') && <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />}
           </>
         )}
         mobileActions={(
           <>
-            <ExportButton entity="system.positions" query={buildExportQuery()} variant="flat" />
+            <ExportButton entity="system.positions" query={filterQuery} variant="flat" />
             {selectedRowKeys.length > 0 && hasPermission('system:position:delete') && <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />}
           </>
         )}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { formatYuan, PAYMENT_CHANNEL_TAG_COLOR } from '@/utils/payment';
 import { Form, Input, Tag, Toast, Typography, Descriptions } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -24,6 +24,7 @@ import {
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { EMPTY_PLACEHOLDER, copyableNoColumn, dateTimeColumn } from '@/utils/table-columns';
+import { compactParams } from '@/lib/query';
 
 const STATUS_COLOR = { pending: 'grey', processing: 'blue', unknown: 'amber', success: 'green', failed: 'red' } as const satisfies Record<PaymentRefundStatus, string>;
 const APPROVAL_COLOR = { none: 'grey', pending: 'amber', approved: 'green', rejected: 'red' } as const satisfies Record<PaymentRefundApprovalStatus, string>;
@@ -45,17 +46,16 @@ export default function PaymentRefundsPage() {
   const [rejectTarget, setRejectTarget] = useState<PaymentRefund | null>(null);
   const [rejectRemark, setRejectRemark] = useState('');
 
-  function buildQuery(active: SearchParams): Omit<PaymentRefundListParams, 'page' | 'pageSize'> {
-    return {
-      keyword: active.keyword || undefined,
-      channel: enumValueOf(PAYMENT_CHANNELS, active.channel),
-      status: enumValueOf(PAYMENT_REFUND_STATUSES, active.status),
-      approvalStatus: enumValueOf(PAYMENT_REFUND_APPROVAL_STATUSES, active.approvalStatus),
-      ...formatDateTimeRangeForApi(active.timeRange),
-    };
-  }
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo<Omit<PaymentRefundListParams, 'page' | 'pageSize'>>(() => compactParams({
+    keyword: submittedParams.keyword,
+    channel: enumValueOf(PAYMENT_CHANNELS, submittedParams.channel),
+    status: enumValueOf(PAYMENT_REFUND_STATUSES, submittedParams.status),
+    approvalStatus: enumValueOf(PAYMENT_REFUND_APPROVAL_STATUSES, submittedParams.approvalStatus),
+    ...formatDateTimeRangeForApi(submittedParams.timeRange),
+  }), [submittedParams]);
 
-  const listQuery = usePaymentRefundList({ page, pageSize, ...buildQuery(submittedParams) });
+  const listQuery = usePaymentRefundList({ page, pageSize, ...filterQuery });
   const detailQuery = usePaymentRefundDetail(detail?.id, !!detail);
   const refundDetail = detail ? (detailQuery.data ?? detail) : null;
   const queryMutation = useQueryPaymentRefund();
@@ -158,8 +158,8 @@ export default function PaymentRefundsPage() {
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        actions={<ExportButton entity="payment.refunds" query={buildQuery(submittedParams)} />}
-        mobileActions={<ExportButton entity="payment.refunds" query={buildQuery(submittedParams)} variant="flat" />}
+        actions={<ExportButton entity="payment.refunds" query={filterQuery} />}
+        mobileActions={<ExportButton entity="payment.refunds" query={filterQuery} variant="flat" />}
         filterTitle="退款记录筛选"
       />
 

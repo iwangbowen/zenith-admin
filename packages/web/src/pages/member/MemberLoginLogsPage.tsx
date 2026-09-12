@@ -1,17 +1,17 @@
+import { useMemo } from 'react';
 import { Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { MemberLoginLog } from '@zenith/shared/member';
-import { usePermission } from '@/hooks/usePermission';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import ExportButton from '@/components/ExportButton';
 import { dateTimeColumn, renderEllipsis } from '../../utils/table-columns';
 import { formatDateRangeValuesForApi } from '@/utils/date';
-import { compactQuery } from '@/lib/query';
 import { memberAdminKeys, useMemberLoginLogList } from '@/hooks/queries/member-admin';
 import { useListSearch } from '@/hooks/useListSearch';
 import { DateRangeFilter, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { memberCellColumn, useMemberKeywordDeepLink } from './member-admin-display';
+import { compactParams } from '@/lib/query';
 
 interface SearchParams {
   keyword?: string;
@@ -27,22 +27,23 @@ const statusOptions = [
 ];
 
 export default function MemberLoginLogsPage() {
-  const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
     bind, bindKeyword, submittedParams,
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: memberAdminKeys.loginLogLists });
   useMemberKeywordDeepLink<SearchParams>({ applySearch, buildParams: (memberKeyword) => ({ keyword: memberKeyword, dateRange: null }) });
-  const [dateStart, dateEnd] = formatDateRangeValuesForApi(submittedParams.dateRange);
-  const listQuery = useMemberLoginLogList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
-    status: submittedParams.status || undefined,
-    dateStart,
-    dateEnd,
-  });
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => {
+    const [dateStart, dateEnd] = formatDateRangeValuesForApi(submittedParams.dateRange);
+    return compactParams({
+      keyword: submittedParams.keyword,
+      status: submittedParams.status,
+      dateStart,
+      dateEnd,
+    });
+  }, [submittedParams]);
+  const listQuery = useMemberLoginLogList({ page, pageSize, ...filterQuery });
 
   const columns: ColumnProps<MemberLoginLog>[] = [
     memberCellColumn<MemberLoginLog>({ width: 140, nameField: 'memberNickname', idField: 'memberId' }),
@@ -55,18 +56,9 @@ export default function MemberLoginLogsPage() {
     dateTimeColumn('登录时间', 'createdAt', { fixed: 'right' }),
   ];
 
-  const buildExportQuery = () => {
-    const [dateStart, dateEnd] = formatDateRangeValuesForApi(submittedParams.dateRange);
-    return compactQuery({
-      keyword: submittedParams.keyword,
-      status: submittedParams.status,
-      dateStart,
-      dateEnd,
-    });
-  };
-  const renderExportButton = (variant?: 'flat') => hasPermission('member:loginlog:list') ? (
-    <ExportButton entity="member.login-logs" query={buildExportQuery()} variant={variant} />
-  ) : null;
+  const renderExportButton = (variant?: 'flat') => (
+    <ExportButton entity="member.login-logs" query={filterQuery} variant={variant} permission="member:loginlog:list" />
+  );
 
   return (
     <div className="page-container">

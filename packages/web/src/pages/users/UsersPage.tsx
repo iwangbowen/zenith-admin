@@ -7,7 +7,7 @@ import { USER_STATUSES, enumValueOf, type BodyOf } from '@zenith/shared/core';
 import { userContract } from '@zenith/shared/identity';
 import { UserAvatar } from '@/components/UserAvatar';
 import { formatDateTimeRangeForApi } from '@/utils/date';
-import { compactQuery } from '@/lib/query';
+import { compactParams } from '@/lib/query';
 import { formatPasswordPolicyHint, type PasswordRules as PasswordPolicy } from '@zenith/shared/settings';
 import { PasswordStrengthMeter } from '@/components/PasswordStrengthMeter';
 import DictTag from '@/components/DictTag';
@@ -126,15 +126,15 @@ export default function UsersPage() {
   const allPositions = allPositionsQuery.data ?? EMPTY_POSITIONS;
   const passwordPolicy: PasswordPolicy | null = mySettingsQuery.data?.identitySecurity.password ?? null;
 
-  const listQuery = useUserList({
-    page,
-    pageSize,
-    keyword: submittedParams.keyword || undefined,
-    phone: submittedParams.phone || undefined,
+  // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
+  const filterQuery = useMemo(() => compactParams({
+    keyword: submittedParams.keyword,
+    phone: submittedParams.phone,
     departmentId: submittedParams.departmentId,
     status: enumValueOf(USER_STATUSES, submittedParams.status),
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
-  });
+  }), [submittedParams]);
+  const listQuery = useUserList({ page, pageSize, ...filterQuery });
   const userList = listQuery.data?.list ?? EMPTY_USERS;
   const saveMutation = useSaveUser();
   const resetPasswordMutation = useResetUserPassword();
@@ -294,14 +294,6 @@ export default function UsersPage() {
     () => allPositions.map((item) => ({ value: item.id, label: item.name })),
     [allPositions]
   );
-
-  const buildExportQuery = useCallback((params: SearchParams = submittedParams) => compactQuery({
-    keyword: params.keyword,
-    phone: params.phone,
-    departmentId: params.departmentId,
-    status: params.status,
-    ...formatDateTimeRangeForApi(params.timeRange),
-  }), [submittedParams]);
 
   const openCreate = modal.openCreate;
   const openEdit = modal.openEdit;
@@ -610,9 +602,7 @@ export default function UsersPage() {
           <>
             {renderDepartmentButton()}
             {renderBatchActions()}
-            {hasPermission('system:user:export')
-              ? <ExportButton entity="system.users" query={buildExportQuery()} watermark={false} />
-              : null}
+            <ExportButton entity="system.users" query={filterQuery} watermark={false} permission="system:user:export" />
             {renderImportButton()}
           </>
         )}
@@ -620,9 +610,7 @@ export default function UsersPage() {
           <>
             {renderDepartmentButton(true)}
             {renderBatchActions()}
-            {hasPermission('system:user:export')
-              ? <ExportButton entity="system.users" query={buildExportQuery()} watermark={false} label="导出" variant="flat" />
-              : null}
+            <ExportButton entity="system.users" query={filterQuery} watermark={false} permission="system:user:export" variant="flat" />
             {renderImportButton()}
           </>
         )}
