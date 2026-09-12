@@ -6,7 +6,7 @@ import { Plus } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
-import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -186,7 +186,7 @@ export default function PaymentSharingPage() {
     { title: '名称', dataIndex: 'name', minWidth: 180, render: renderEllipsis },
     { title: '类型', dataIndex: 'receiverType', width: 90, render: (v: PaymentSharingReceiverType) => PAYMENT_SHARING_RECEIVER_TYPE_LABELS[v] },
     copyableNoColumn('账号', 'account', { width: 200 }),
-    { title: '默认比例', dataIndex: 'ratioBps', width: 110, align: 'right', render: (v: number | null) => (v == null ? '-' : `${(v / 100).toFixed(2)}%`) },
+    { title: '默认比例', dataIndex: 'ratioBps', width: 110, align: 'right', render: (v: number | null) => (v == null ? EMPTY_PLACEHOLDER : `${(v / 100).toFixed(2)}%`) },
     { title: '自动分账', dataIndex: 'autoShare', width: 100, render: (v: boolean) => (v ? <Tag color="green">自动</Tag> : <Tag color="grey">手动</Tag>) },
     createdAtColumn as ColumnProps<PaymentSharingReceiver>,
     receiverStatus.column(),
@@ -381,12 +381,12 @@ export default function PaymentSharingPage() {
                 { key: '订单号', value: reversalDetail.orderNo },
                 { key: '冲正金额', value: yuan(reversalDetail.amount) },
                 { key: '状态', value: PAYMENT_SHARING_REVERSAL_STATUS_LABELS[reversalDetail.status] },
-                { key: '渠道冲正单号', value: reversalDetail.channelReversalNo ?? '-' },
+                { key: '渠道冲正单号', value: reversalDetail.channelReversalNo ?? EMPTY_PLACEHOLDER },
                 { key: '版本', value: `v${reversalDetail.version}` },
                 { key: '尝试/查单', value: `${reversalDetail.attempts} / ${reversalDetail.queryAttempts}` },
-                { key: '完成时间', value: reversalDetail.finishedAt ?? '-' },
+                { key: '完成时间', value: reversalDetail.finishedAt ?? EMPTY_PLACEHOLDER },
                 { key: '冲正原因', value: reversalDetail.reason, span: 2 },
-                { key: '失败原因', value: reversalDetail.errorMessage ?? '-', span: 2 },
+                { key: '失败原因', value: reversalDetail.errorMessage ?? EMPTY_PLACEHOLDER, span: 2 },
               ]}
             />
           )}

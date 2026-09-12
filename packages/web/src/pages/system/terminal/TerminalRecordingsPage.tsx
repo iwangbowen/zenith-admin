@@ -24,7 +24,7 @@ import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search
 import { confirmDanger } from '@/utils/confirm';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { CLEAR_LOGS_LABELS } from '@/hooks/useClearLogs';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 
 interface SearchParams {
   keyword: string;
@@ -185,17 +185,13 @@ export default function TerminalRecordingsPage() {
       dataIndex: 'title',
       minWidth: 360,
       ellipsis: { showTitle: false },
-      render: (v: string) => (
-        <Typography.Text ellipsis={{ showTooltip: true }} style={{ display: 'block', maxWidth: 340 }}>
-          {v || '（无标题）'}
-        </Typography.Text>
-      ),
+      render: (v: string) => renderEllipsis(v || '（无标题）'),
     },
     {
       title: 'Shell',
       dataIndex: 'shell',
       width: 220,
-      render: (v: string | null) => (v ? <Tag color="blue" size="small">{v}</Tag> : '-'),
+      render: (v: string | null) => (v ? <Tag color="blue" size="small">{v}</Tag> : EMPTY_PLACEHOLDER),
     },
     {
       title: '字符网格',
@@ -214,13 +210,13 @@ export default function TerminalRecordingsPage() {
       align: 'right',
       dataIndex: 'commandCount',
       width: 80,
-      render: (v: number) => (v > 0 ? <Tag color="green" size="small">{v}</Tag> : <span style={{ color: 'var(--semi-color-text-2)' }}>—</span>),
+      render: (v: number) => (v > 0 ? <Tag color="green" size="small">{v}</Tag> : <span style={{ color: 'var(--semi-color-text-2)' }}>{EMPTY_PLACEHOLDER}</span>),
     },
     {
       title: '操作人',
       dataIndex: 'username',
       width: 110,
-      render: (v: string) => v || '-',
+      render: (v: string) => v || EMPTY_PLACEHOLDER,
     },
     dateTimeColumn('录制时间', 'createdAt'),
     createOperationColumn<TerminalRecording>({

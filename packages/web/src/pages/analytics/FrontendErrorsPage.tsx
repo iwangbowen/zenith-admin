@@ -80,7 +80,7 @@ import {
 import { SearchButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { toUserOptions } from '@/hooks/queries/users';
 import { formatBytes } from '@zenith/shared/core';
 
@@ -711,7 +711,7 @@ export default function FrontendErrorsPage() {
       title: '处理人',
       dataIndex: 'assigneeName',
       width: 120,
-      render: (_value, record) => record.assigneeName || '–',
+      render: (_value, record) => record.assigneeName || EMPTY_PLACEHOLDER,
     },
     dateTimeColumn('首次', 'firstSeenAt'),
     dateTimeColumn('最近', 'lastSeenAt'),
@@ -772,7 +772,7 @@ export default function FrontendErrorsPage() {
       title: '页面',
       dataIndex: 'pageUrl',
       width: 260,
-      render: (_value, record) => <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 230 }}>{record.pageUrl || '–'}</Text>,
+      render: (_value, record) => renderEllipsis(record.pageUrl),
     },
     dateTimeColumn('时间', 'createdAt'),
     createOperationColumn<ErrorEvent>({
@@ -1295,8 +1295,8 @@ export default function FrontendErrorsPage() {
                           { key: '时间', value: formatDateTime(event.createdAt) },
                           { key: '浏览器', value: `${event.browser || '未知'} ${event.browserVersion || ''}` },
                           { key: '系统/设备', value: `${event.os || '未知'} / ${event.deviceType || 'unknown'}` },
-                          { key: '页面', value: event.pageUrl || '–' },
-                          { key: '会话', value: event.sessionId || '–' },
+                          { key: '页面', value: event.pageUrl || EMPTY_PLACEHOLDER },
+                          { key: '会话', value: event.sessionId || EMPTY_PLACEHOLDER },
                         ]}
                       />
                       <Title heading={6} style={{ margin: '12px 0 8px' }}>Context <TraceJumpButton context={event.context} /><ReplayJumpButton replayId={event.replayId} /></Title>
@@ -1330,7 +1330,7 @@ export default function FrontendErrorsPage() {
                   { key: '级别', value: LEVEL_CONFIG[eventDetail.level]?.label ?? eventDetail.level },
                   { key: '用户', value: eventDetail.username || '匿名' },
                   { key: '浏览器/系统', value: `${eventDetail.browser || '未知'} ${eventDetail.browserVersion || ''} / ${eventDetail.os || '未知'}` },
-                  { key: '页面', value: eventDetail.pageUrl || '–' },
+                  { key: '页面', value: eventDetail.pageUrl || EMPTY_PLACEHOLDER },
                   { key: '时间', value: formatDateTime(eventDetail.createdAt) },
                 ]}
               />

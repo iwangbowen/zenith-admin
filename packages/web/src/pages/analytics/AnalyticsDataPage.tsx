@@ -44,7 +44,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
 import { compactQuery } from '@/lib/query';
 import { toUserOptions } from '@/hooks/queries/users';
-import { copyableNoColumn, dateColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, copyableNoColumn, dateColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { JsonBlock } from '@/components/JsonBlock';
 import { msToReadable, nullableText, trimToNull } from './analytics-format';
 
@@ -383,16 +383,14 @@ export default function AnalyticsDataPage() {
       render: (value: string) => <EventTypeTag value={value} />,
     },
     { title: '用户', dataIndex: 'username', width: 110, render: (value: string | null) => nullableText(value) },
-    { title: '事件名', dataIndex: 'eventName', minWidth: 150, render: (value: string | null) => renderEllipsis(value ?? '–') },
+    { title: '事件名', dataIndex: 'eventName', minWidth: 150, render: renderEllipsis },
     {
       title: '页面',
       dataIndex: 'pagePath',
       width: 220,
       render: (_: unknown, record) => (
         <div>
-          <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>
-            {record.pageTitle || record.pagePath}
-          </Typography.Text>
+          {renderEllipsis(record.pageTitle || record.pagePath)}
           {record.pageTitle && (
             <Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }} style={{ display: 'block', maxWidth: '100%' }}>
               {record.pagePath}
@@ -407,9 +405,7 @@ export default function AnalyticsDataPage() {
       width: 170,
       render: (_: unknown, record) => (
         <div>
-          <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>
-            {record.elementLabel || record.elementKey || '–'}
-          </Typography.Text>
+          {renderEllipsis(record.elementLabel || record.elementKey)}
           {record.componentArea && (
             <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>
               {record.componentArea}
@@ -436,14 +432,14 @@ export default function AnalyticsDataPage() {
       dataIndex: 'apiUrl',
       width: 180,
       render: (_: unknown, record) => {
-        if (record.apiUrl == null && record.apiStatus == null) return '–';
+        if (record.apiUrl == null && record.apiStatus == null) return EMPTY_PLACEHOLDER;
         const status = record.apiStatus;
         const color = status == null ? 'grey' : status >= 500 ? 'red' : status >= 400 ? 'orange' : 'green';
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {status != null && <Tag color={color} size="small" style={{ flexShrink: 0 }}>{status}</Tag>}
             <Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }} style={{ minWidth: 0 }}>
-              {record.apiUrl ?? '–'}
+              {record.apiUrl ?? EMPTY_PLACEHOLDER}
             </Typography.Text>
           </div>
         );
@@ -467,7 +463,7 @@ export default function AnalyticsDataPage() {
   const metaColumns: ColumnProps<AnalyticsEventMeta>[] = [
     copyableNoColumn('事件名', 'eventName', { width: 200 }),
     { title: '显示名', dataIndex: 'displayName', minWidth: 150, render: (value: string | null) => (value || <Typography.Text type="tertiary" size="small">未设置</Typography.Text>) },
-    { title: '分类', dataIndex: 'category', width: 130, render: (value: string | null) => (value ? (USER_BEHAVIOR_EVENT_TYPE_LABELS[value as UserBehaviorEventType] ?? value) : '–') },
+    { title: '分类', dataIndex: 'category', width: 130, render: (value: string | null) => (value ? (USER_BEHAVIOR_EVENT_TYPE_LABELS[value as UserBehaviorEventType] ?? value) : EMPTY_PLACEHOLDER) },
     { title: '触发次数', dataIndex: 'eventCount', width: 100, align: 'right' },
     dateTimeColumn('首次出现', 'firstSeenAt'),
     dateTimeColumn('最近出现', 'lastSeenAt'),

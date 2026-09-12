@@ -4,14 +4,7 @@ import { Button, Empty } from '@douyinfe/semi-ui';
 import { RefreshCw, Home, Copy } from 'lucide-react';
 import { formatDateTime } from '@/utils/date';
 import { copyTextWithToast } from '@/utils/clipboard';
-
-// 插图仅在错误态渲染，懒加载使 ~130KB 的 semi-illustrations 不进入入口静态图
-const IllustrationFailure = React.lazy(() =>
-  import('@douyinfe/semi-illustrations').then((m) => ({ default: m.IllustrationFailure })),
-);
-const IllustrationFailureDark = React.lazy(() =>
-  import('@douyinfe/semi-illustrations').then((m) => ({ default: m.IllustrationFailureDark })),
-);
+import { emptyIllustration } from '@/components/EmptyIllustration';
 
 interface Props {
   children: React.ReactNode;
@@ -126,8 +119,7 @@ export class PageErrorBoundary extends React.Component<Props, State> {
         }}
       >
         <Empty
-          image={<React.Suspense fallback={null}><IllustrationFailure style={{ width: 120, height: 120 }} /></React.Suspense>}
-          darkModeImage={<React.Suspense fallback={null}><IllustrationFailureDark style={{ width: 120, height: 120 }} /></React.Suspense>}
+          {...emptyIllustration('Failure', 120)}
           title={chunkFailed ? '页面资源加载失败' : '页面加载出错'}
           description={chunkFailed
             ? '可能是网络不稳定，或系统刚刚发布了新版本。点击重新加载获取最新页面。'

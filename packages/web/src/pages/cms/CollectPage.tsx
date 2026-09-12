@@ -1,7 +1,7 @@
 /** 采集中心：规则 CRUD + 任务中心执行 + 采集明细（P3 Batch5） */
 import { useMemo, useState } from 'react';
 import ModalFooter from '@/components/ModalFooter';
-import { Col, Form, Row, SideSheet, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Col, Form, Row, SideSheet, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -19,7 +19,7 @@ import type { CmsCollectRule, CmsCollectItem } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { channelsToSelectTree } from './channel-tree';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
@@ -77,13 +77,8 @@ export default function CollectPage() {
 
   const columns: ColumnProps<CmsCollectRule>[] = [
     { title: '规则名称', dataIndex: 'name', width: 160 },
-    { title: '目标栏目', dataIndex: 'channelName', width: 120, render: (v: string | null) => v ?? '-' },
-    {
-      title: '列表页 URL',
-      dataIndex: 'listUrl',
-      minWidth: 260,
-      render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 240 }}>{v}</Typography.Text>,
-    },
+    { title: '目标栏目', dataIndex: 'channelName', width: 120, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
+    { title: '列表页 URL', dataIndex: 'listUrl', minWidth: 260, render: renderEllipsis },
     { title: '翻页', width: 90, render: (_: unknown, r) => (r.listUrl.includes('{page}') ? `${r.pageStart}-${r.pageEnd}` : '单页') },
     { title: '单次上限', dataIndex: 'maxItems', width: 90, align: 'right' },
     {
@@ -134,20 +129,15 @@ export default function CollectPage() {
   ];
 
   const itemColumns: ColumnProps<CmsCollectItem>[] = [
-    {
-      title: 'URL',
-      dataIndex: 'url',
-      width: 280,
-      render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 260 }}>{v}</Typography.Text>,
-    },
-    { title: '标题', dataIndex: 'title', width: 200, render: (v: string | null) => v ?? '-' },
+    { title: 'URL', dataIndex: 'url', width: 280, render: renderEllipsis },
+    { title: '标题', dataIndex: 'title', width: 200, render: renderEllipsis },
     {
       title: '状态',
       dataIndex: 'status',
       width: 80,
       render: (v: CmsCollectItem['status']) => <Tag size="small" color={ITEM_STATUS_META[v].color}>{ITEM_STATUS_META[v].label}</Tag>,
     },
-    { title: '错误', dataIndex: 'error', width: 200, render: (v: string | null) => v ?? '-' },
+    { title: '错误', dataIndex: 'error', width: 200, render: renderEllipsis },
     dateTimeColumn('采集时间', 'createdAt'),
   ];
 

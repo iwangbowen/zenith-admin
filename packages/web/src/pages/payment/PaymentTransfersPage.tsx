@@ -6,7 +6,7 @@ import { SendHorizontal } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
-import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useAuth } from '@/hooks/useAuth';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -166,15 +166,13 @@ export default function PaymentTransfersPage() {
     copyableNoColumn('转账单号', 'transferNo'),
     { title: '支付应用', dataIndex: 'appId', width: 200, render: (value: number) => renderEllipsis(appById.get(value)?.name ?? `应用 #${value}`) },
     { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <PaymentChannelTag channel={v} /> },
-    { title: '收款账号', dataIndex: 'receiverAccount', width: 180, render: (v: string, r: PaymentTransfer) => (
-      <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 160 }}>{r.receiverName ? `${r.receiverName}（${v}）` : v}</Typography.Text>
-    ) },
+    { title: '收款账号', dataIndex: 'receiverAccount', width: 180, render: (v: string, r: PaymentTransfer) => renderEllipsis(r.receiverName ? `${r.receiverName}（${v}）` : v) },
     { title: '金额', dataIndex: 'amount', width: 110, align: 'right', render: (v: number) => <Typography.Text type="danger">{yuan(v)}</Typography.Text> },
     copyableNoColumn('资金预占 ID', 'fundReservationId', { width: 130 }),
     copyableNoColumn('渠道单号', 'channelTransferNo', { width: 300 }),
-    { title: '失败原因', dataIndex: 'failReason', minWidth: 180, render: (v: string | null) => (v ? <Typography.Text type="danger" ellipsis={{ showTooltip: true }} style={{ maxWidth: 160 }}>{v}</Typography.Text> : '-') },
-    { title: '审批意见', dataIndex: 'approvalRemark', width: 180, render: (v: string | null) => (v ? <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 160 }}>{v}</Typography.Text> : '-') },
-    { title: '备注', dataIndex: 'remark', width: 140, render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 120 }}>{v || '-'}</Typography.Text> },
+    { title: '失败原因', dataIndex: 'failReason', minWidth: 180, render: (v: string | null) => (v ? <Typography.Text type="danger" ellipsis={{ showTooltip: true }} style={{ maxWidth: 160 }}>{v}</Typography.Text> : EMPTY_PLACEHOLDER) },
+    { title: '审批意见', dataIndex: 'approvalRemark', width: 180, render: renderEllipsis },
+    { title: '备注', dataIndex: 'remark', width: 140, render: renderEllipsis },
     { title: '操作人', dataIndex: 'operatorName', width: 110, render: renderEllipsis },
     { title: '币种/版本', width: 100, render: (_: unknown, record: PaymentTransfer) => `${record.currency} · v${record.version}` },
     dateTimeColumn('完成时间', 'finishedAt'),
@@ -340,7 +338,7 @@ export default function PaymentTransfersPage() {
             <Form.Slot label="转账单号">{approveTarget.transferNo}</Form.Slot>
             <Form.Slot label="收款账号">{approveTarget.receiverName ? `${approveTarget.receiverName}（${approveTarget.receiverAccount}）` : approveTarget.receiverAccount}</Form.Slot>
             <Form.Slot label="转账金额"><Typography.Text type="danger" strong>{yuan(approveTarget.amount)}</Typography.Text></Form.Slot>
-            <Form.Slot label="申请原因">{approveTarget.remark || '-'}</Form.Slot>
+            <Form.Slot label="申请原因">{approveTarget.remark || EMPTY_PLACEHOLDER}</Form.Slot>
             <Form.Slot label="审批意见">
               <Input value={approveRemark} onChange={setApproveRemark} placeholder="请填写审批依据（必填）" maxLength={256} showClear />
             </Form.Slot>
@@ -363,7 +361,7 @@ export default function PaymentTransfersPage() {
             <Form.Slot label="转账单号">{rejectTarget.transferNo}</Form.Slot>
             <Form.Slot label="收款账号">{rejectTarget.receiverName ? `${rejectTarget.receiverName}（${rejectTarget.receiverAccount}）` : rejectTarget.receiverAccount}</Form.Slot>
             <Form.Slot label="转账金额"><Typography.Text type="danger" strong>{yuan(rejectTarget.amount)}</Typography.Text></Form.Slot>
-            <Form.Slot label="申请原因">{rejectTarget.remark || '-'}</Form.Slot>
+            <Form.Slot label="申请原因">{rejectTarget.remark || EMPTY_PLACEHOLDER}</Form.Slot>
             <Form.Slot label="驳回原因">
               <Input value={rejectRemark} onChange={setRejectRemark} placeholder="请填写驳回原因（必填）" maxLength={256} showClear />
             </Form.Slot>

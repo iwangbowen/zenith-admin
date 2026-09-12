@@ -1,13 +1,13 @@
 import { useMemo, useRef, useState } from 'react';
 import { formatYuan } from '@/utils/payment';
-import { Col, Form, Modal, Row, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Col, Form, Modal, Row, Tag, Toast } from '@douyinfe/semi-ui';
 import { Tabs, TabPane } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
 import ExportButton from '@/components/ExportButton';
-import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -50,7 +50,7 @@ type PlanPayload = Partial<CreatePaymentDeductPlanInput>;
 interface ContractFormValues { applicationId: number; planId: number; payMethod: PaymentDeductMethod; currency: 'CNY'; signerAccount: string; signerName?: string; remark?: string; firstDeductNow?: boolean; }
 
 function describePlanPeriod(p: Pick<PaymentDeductPlan, 'period' | 'customDays'>): string {
-  return p.period === 'custom' ? `每 ${p.customDays ?? '-'} 天` : PAYMENT_DEDUCT_PERIOD_LABELS[p.period];
+  return p.period === 'custom' ? `每 ${p.customDays ?? EMPTY_PLACEHOLDER} 天` : PAYMENT_DEDUCT_PERIOD_LABELS[p.period];
 }
 
 interface SearchParams { keyword: string; status?: string; channel?: string }
@@ -203,13 +203,11 @@ export default function PaymentContractsPage() {
     copyableNoColumn('协议号', 'contractNo'),
     { title: '支付应用', dataIndex: 'appId', width: 200, render: (value: number) => renderEllipsis(appById.get(value)?.name ?? `应用 #${value}`) },
     { title: '渠道', dataIndex: 'channel', width: 90, render: (v: PaymentChannel) => <PaymentChannelTag channel={v} textOnly /> },
-    { title: '扣款计划', dataIndex: 'planName', minWidth: 200, render: (v: string | null, r) => {
-      const text = v ? `${v}（${r.planPeriod ? describePlanPeriod({ period: r.planPeriod, customDays: null }) : '-'}）` : '-';
-      return <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 180 }}>{text}</Typography.Text>;
-    } },
+    { title: '扣款计划', dataIndex: 'planName', minWidth: 200, render: (v: string | null, r) =>
+      renderEllipsis(v ? `${v}（${r.planPeriod ? describePlanPeriod({ period: r.planPeriod, customDays: null }) : EMPTY_PLACEHOLDER}）` : null) },
     { ...paymentMoneyColumn<PaymentContract>('每期金额', 'planAmount'), width: 100 },
-    { title: '签约账号', dataIndex: 'signerAccount', width: 160, render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 140 }}>{v}</Typography.Text> },
-    { title: '业务', dataIndex: 'bizType', width: 140, render: (v: string, r) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 120 }}>{`${v}:${r.bizId}`}</Typography.Text> },
+    { title: '签约账号', dataIndex: 'signerAccount', width: 160, render: renderEllipsis },
+    { title: '业务', dataIndex: 'bizType', width: 140, render: (v: string, r) => renderEllipsis(`${v}:${r.bizId}`) },
     { title: '已扣期数', dataIndex: 'totalDeductCount', width: 90, align: 'right' },
     { title: '连续失败', dataIndex: 'failCount', width: 90, align: 'right', render: (v: number) => (v > 0 ? <Tag color="red">{v} 次</Tag> : '0') },
     { title: '币种/版本', width: 100, render: (_: unknown, record: PaymentContract) => `${record.currency} · v${record.version}` },

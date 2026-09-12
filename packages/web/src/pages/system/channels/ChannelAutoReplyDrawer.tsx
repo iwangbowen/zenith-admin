@@ -28,6 +28,7 @@ import {
   useSaveChannelAutoReply,
 } from '@/hooks/queries/channels';
 import { CreateButton } from '@/components/toolbar-controls';
+import { renderEllipsis } from '@/utils/table-columns';
 import { CHANNEL_MESSAGE_TYPE_COLOR } from './channel-tag-colors';
 
 interface Props {
@@ -163,7 +164,7 @@ export function ChannelAutoReplyDrawer({ channelId, channelName, visible, onClos
           : r.replyType === 'news'
             ? (r.replyExtra?.title ?? v)
             : v;
-        return <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 210 }}>{text || '—'}</Typography.Text>;
+        return renderEllipsis(text);
       },
     },
     {

@@ -11,10 +11,12 @@ import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { listTableProps } from '@/components/list-page';
 import { usePermission } from '@/hooks/usePermission';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useRecentTraceFailures, useTraceTimeline } from '@/hooks/queries/trace';
 import { useLogFiles, useLogFileContent } from '@/hooks/queries/log-files';
 import { renderEllipsis } from '@/utils/table-columns';
 import { FilterSelect } from '@/components/search-filters';
+import { SearchButton } from '@/components/toolbar-controls';
 
 const { Text, Paragraph } = Typography;
 
@@ -142,7 +144,7 @@ export default function TracePage() {
   const { hasPermission } = usePermission();
   const [searchParams, setSearchParams] = useSearchParams();
   const traceId = searchParams.get('traceId');
-  const [activeTab, setActiveTab] = useState('query');
+  const [activeTab, setActiveTab] = useUrlTabState(['query', 'failures'] as const, 'query');
   const [draft, setDraft] = useState(traceId ?? '');
   const [detailNode, setDetailNode] = useState<TraceTimelineNode | null>(null);
 
@@ -201,7 +203,7 @@ export default function TracePage() {
         description="输入链路 ID（接口响应头 X-Request-Id / 报错提示中的链路ID / 操作日志详情），查看一次操作触发的请求、作业、事件、通知与任务的完整时间线。数据受各锚点保留策略约束，超出保留窗口的节点不再展示。"
       />
 
-      <Tabs type="line" activeKey={activeTab} onChange={setActiveTab}>
+      <Tabs type="line" collapsible="auto" activeKey={activeTab} onChange={(k) => setActiveTab(k as 'query' | 'failures')}>
         <TabPane tab="按 ID 查询" itemKey="query">
           <div style={{ display: 'flex', gap: 8, margin: '12px 0 16px', maxWidth: 560 }}>
             <Input
@@ -212,7 +214,7 @@ export default function TracePage() {
               onEnterPress={handleSearch}
               showClear
             />
-            <Button theme="solid" onClick={handleSearch} disabled={!TRACE_ID_RE.test(draft.trim())}>查询</Button>
+            <SearchButton onClick={handleSearch} disabled={!TRACE_ID_RE.test(draft.trim())} />
           </div>
 
           {!traceId ? (

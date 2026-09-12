@@ -7,6 +7,7 @@ import { useCmsDashboardStats } from '@/hooks/queries/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { DataBar } from '@/components/data-viz/DataBar';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 const STAT_CARDS: { key: 'published' | 'draft' | 'pending' | 'offline' | 'rejected' | 'recycled'; label: string; color: string }[] = [
   { key: 'published', label: '已发布', color: 'var(--semi-color-success)' },
@@ -41,7 +42,7 @@ export default function CmsDashboardPage() {
         </Typography.Text>
       ),
     },
-    { title: '栏目', dataIndex: 'channelName', width: 140, render: (v: string | null) => v ?? '-' },
+    { title: '栏目', dataIndex: 'channelName', width: 140, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
     { title: '浏览量', dataIndex: 'viewCount', width: 100, align: 'right' },
   ];
 

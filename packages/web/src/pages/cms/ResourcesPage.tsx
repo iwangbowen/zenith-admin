@@ -26,7 +26,7 @@ import { CmsSiteSelect } from './CmsSiteSelect';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { formatBytes, mapTree } from '@zenith/shared/core';
 import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
@@ -186,10 +186,7 @@ function ReferencesModal({ resource, onClose }: Readonly<{ resource: CmsResource
       render: (v: CmsResourceOwnerType) => <Tag size="small">{REFERENCE_KIND_LABELS[v]}</Tag>,
     },
     { title: 'ID', dataIndex: 'id', width: 80 },
-    {
-      title: '标题', dataIndex: 'title',
-      render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 260, display: 'block' }}>{v}</Typography.Text>,
-    },
+    { title: '标题', dataIndex: 'title', render: renderEllipsis },
     {
       title: '引用字段', dataIndex: 'field', width: 140,
       render: (v: string) => <Typography.Text type="tertiary" ellipsis={{ showTooltip: true }} style={{ maxWidth: 120, display: 'block' }}>{v}</Typography.Text>,
@@ -354,17 +351,12 @@ export default function ResourcesPage() {
         ? <img src={record.thumbUrl ?? record.url} alt={record.name} style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 'var(--semi-border-radius-medium)' }} />
         : <div style={{ width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--semi-color-text-2)', background: 'var(--semi-color-fill-0)', borderRadius: 'var(--semi-border-radius-medium)' }}><TypeIcon type={record.type} /></div>,
     },
-    {
-      title: '名称', dataIndex: 'name', minWidth: 240,
-      render: (v: string) => (
-        <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 220, display: 'block' }}>{v}</Typography.Text>
-      ),
-    },
+    { title: '名称', dataIndex: 'name', minWidth: 240, render: renderEllipsis },
     {
       title: '备注', dataIndex: 'remark', width: 200,
       render: (v: string | null) => (v
         ? <Typography.Text type="tertiary" ellipsis={{ showTooltip: true }} style={{ maxWidth: 180, display: 'block' }}>{v}</Typography.Text>
-        : '-'),
+        : EMPTY_PLACEHOLDER),
     },
     {
       title: '类型', dataIndex: 'type', width: 90,
@@ -372,7 +364,7 @@ export default function ResourcesPage() {
     },
     {
       title: '尺寸', dataIndex: 'width', width: 110,
-      render: (_: number | null, record: CmsResource) => (record.width && record.height ? `${record.width}×${record.height}` : '-'),
+      render: (_: number | null, record: CmsResource) => (record.width && record.height ? `${record.width}×${record.height}` : EMPTY_PLACEHOLDER),
     },
     { title: '大小', dataIndex: 'size', width: 100, align: 'right', render: (v: number) => formatBytes(v) },
     {
@@ -580,7 +572,7 @@ export default function ResourcesPage() {
                   width: 220,
                   render: (_: unknown, record) => record.result
                     ? `孤立 ${Number(record.result.orphanCount ?? 0)} / 清理 ${Number(record.result.deletedCount ?? 0)}`
-                    : (record.errorMessage ?? '-'),
+                    : (record.errorMessage ?? EMPTY_PLACEHOLDER),
                 },
                 dateTimeColumn('提交时间', 'createdAt'),
               ]}

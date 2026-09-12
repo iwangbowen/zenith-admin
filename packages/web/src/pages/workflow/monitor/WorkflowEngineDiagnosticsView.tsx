@@ -1107,7 +1107,6 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
               rowKey="definitionId"
               pagination={false}
               empty="流程定义均通过当前引擎校验"
-              scroll={{ x: 820 }}
             />
             <ConfigurableTable<{ type: string; label: string; count: number }>
               bordered
@@ -1117,7 +1116,6 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
               rowKey="type"
               pagination={false}
               empty="暂无节点统计"
-              scroll={{ x: 440 }}
             />
           </div>
         </TabPane>

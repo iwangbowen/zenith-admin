@@ -9,7 +9,7 @@ import { useAnalyticsDebugEvents } from '@/hooks/queries/analytics';
 import type { AnalyticsDebugEvent, AnalyticsQualityIssueType } from '@zenith/shared/analytics';
 import { ANALYTICS_ENVIRONMENT_LABELS, ANALYTICS_EVENT_SOURCE_LABELS, ANALYTICS_QUALITY_ISSUE_TYPE_LABELS, USER_BEHAVIOR_EVENT_TYPE_LABELS } from '@zenith/shared/analytics';
 import { KeywordInput } from '@/components/search-filters';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { JsonBlock } from '@/components/JsonBlock';
 import { ANALYTICS_ISSUE_TAG_COLOR } from './analytics-tag-colors';
 import { nullableText } from './analytics-format';
@@ -44,12 +44,7 @@ export default function AnalyticsDebugTab({ active }: Readonly<{ active: boolean
     { title: '环境', dataIndex: 'environment', width: 130, render: (value: string) => labelOf(ANALYTICS_ENVIRONMENT_LABELS, value) },
     { title: 'Distinct ID', dataIndex: 'distinctId', width: 150, render: (value: string | null) => nullableText(value) },
     { title: '会员 ID', dataIndex: 'memberId', width: 90, render: (value: number | null) => nullableText(value) },
-    {
-      title: '页面',
-      dataIndex: 'pagePath',
-      width: 200,
-      render: (value: string) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 180 }}>{value}</Typography.Text>,
-    },
+    { title: '页面', dataIndex: 'pagePath', width: 200, render: renderEllipsis },
     {
       title: '质量问题',
       dataIndex: 'issueTypes',
@@ -57,7 +52,7 @@ export default function AnalyticsDebugTab({ active }: Readonly<{ active: boolean
       render: (value: AnalyticsQualityIssueType[]) => (
         value.length
           ? <>{value.map((t) => <Tag key={t} color={ANALYTICS_ISSUE_TAG_COLOR[t]} size="small" style={{ marginRight: 4 }}>{ANALYTICS_QUALITY_ISSUE_TYPE_LABELS[t]}</Tag>)}</>
-          : <Typography.Text type="tertiary" size="small">–</Typography.Text>
+          : <Typography.Text type="tertiary" size="small">{EMPTY_PLACEHOLDER}</Typography.Text>
       ),
     },
   ];

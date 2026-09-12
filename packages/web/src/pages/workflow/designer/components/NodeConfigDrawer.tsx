@@ -11,6 +11,7 @@
 import { useEffect, useState } from 'react';
 import { SideSheet, Tabs, TabPane, Input, TextArea, Typography, Form, Select, InputNumber, Switch, RadioGroup, Radio, Button, Collapse, Tag } from '@douyinfe/semi-ui';
 import { Plus, Trash2, AlertTriangle } from 'lucide-react';
+import ModalFooter from '@/components/ModalFooter';
 import type { FlowNode, FlowNodeType, AssigneeType, ApproveMethod, ApprovalType, RejectStrategy, EmptyAssigneeStrategy, OperationPermission, FieldPermission, TimeoutConfig, SameInitiatorStrategy, DeduplicateStrategy, ActionButtonsConfig, NodeHealthInfo, NodeHealthIssue } from '../types';
 import type { NodeListenerConfig } from '@zenith/shared/workflow';
 import {
@@ -295,18 +296,13 @@ export default function NodeConfigDrawer({
       width="min(640px, 96vw)"
       zIndex={zIndex}
       className={`fd-config-drawer${readOnly ? ' fd-config-drawer--readonly' : ''}`}
-      footer={
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 0' }}>
-          {readOnly ? (
-            <button type="button" className="fd-drawer-btn fd-drawer-btn--cancel" onClick={onCancel}>关闭</button>
-          ) : (
-            <>
-              <button type="button" className="fd-drawer-btn fd-drawer-btn--cancel" onClick={onCancel}>取消</button>
-              <button type="button" className="fd-drawer-btn fd-drawer-btn--save" onClick={handleSave}>保存</button>
-            </>
-          )}
-        </div>
-      }
+      footer={readOnly
+        ? (
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Button type="tertiary" onClick={onCancel}>关闭</Button>
+          </div>
+        )
+        : <ModalFooter onCancel={onCancel} onOk={handleSave} okText="保存" />}
     >
       {/* 节点实时体检：严重问题（非审批人/表达式类）兜底内联展示；审批人/表达式类内联到「审批人」Tab */}
       <InlineCriticalErrors issues={otherCriticalIssues} />

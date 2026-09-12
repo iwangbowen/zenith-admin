@@ -5,7 +5,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { DataBar } from '@/components/data-viz/DataBar';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { formatDateTime } from '@/utils/date';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { useAnalyticsUserStats, useAnalyticsUserTimeline } from '@/hooks/queries/analytics';
 import type { AnalyticsUserStats } from '@zenith/shared/analytics';
@@ -109,7 +109,7 @@ export default function AnalyticsUsersTab() {
               <div>
                 <Typography.Title heading={5} style={{ margin: 0 }}>{timeline.username || `用户 #${timeline.userId}`}</Typography.Title>
                 <Typography.Text type="tertiary">
-                  共 {numberText(timeline.totalEvents)} 次行为 · {timeline.firstSeenAt ? formatDateTime(timeline.firstSeenAt) : '–'} 至 {timeline.lastSeenAt ? formatDateTime(timeline.lastSeenAt) : '–'}
+                  共 {numberText(timeline.totalEvents)} 次行为 · {timeline.firstSeenAt ? formatDateTime(timeline.firstSeenAt) : EMPTY_PLACEHOLDER} 至 {timeline.lastSeenAt ? formatDateTime(timeline.lastSeenAt) : EMPTY_PLACEHOLDER}
                 </Typography.Text>
               </div>
               {timeline.items.map((item) => (

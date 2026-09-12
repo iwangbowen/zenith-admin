@@ -9,6 +9,7 @@ import { CMS_SITE_INHERITABLE_FIELD_LABELS, CMS_SITE_INHERITABLE_FIELDS } from '
 import type { CmsSite, CmsSiteInheritanceFlags } from '@zenith/shared/cms';
 import { displayEffectiveValue } from './site-tree-utils';
 import ModalFooter from '@/components/ModalFooter';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 const { Text } = Typography;
 
@@ -90,7 +91,7 @@ export default function SiteInheritanceSheet({ site, onClose }: Readonly<SiteInh
           const source = effectiveConfigQuery.data?.sources[field];
           const value = effectiveConfigQuery.data
             ? displayEffectiveValue(field, effectiveConfigQuery.data.resolved as unknown as Record<string, unknown>)
-            : '-';
+            : EMPTY_PLACEHOLDER;
           return (
             <div
               key={field}

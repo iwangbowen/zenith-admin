@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Banner, Descriptions, Form, Rating, Tag, Typography } from '@douyinfe/semi-ui';
+import { Banner, Descriptions, Form, Rating, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { UserFeedback, UserFeedbackCategory, UserFeedbackStatus } from '@zenith/shared/platform';
 import { USER_FEEDBACK_CATEGORY_LABELS, USER_FEEDBACK_STATUS_LABELS } from '@zenith/shared/platform';
@@ -17,6 +17,7 @@ import { useMySettings } from '@/hooks/queries/settings';
 import { useDeleteFeedbacks, useHandleFeedback, useUserFeedbackList, userFeedbackKeys } from '@/hooks/queries/user-feedbacks';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useEditModal } from '@/hooks/useEditModal';
+import { abortSubmit } from '@/lib/abort-submit';
 import { BatchDeleteButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 
@@ -84,7 +85,10 @@ export default function FeedbacksPage() {
     save: {
       isPending: handleMutation.isPending,
       mutateAsync: ({ id, values }) => {
-        if (id === undefined) throw new Error('缺少反馈 ID，请刷新后重试');
+        if (id === undefined) {
+          Toast.error('缺少反馈 ID，请刷新后重试');
+          abortSubmit('missing-id');
+        }
         return handleMutation.mutateAsync({ params: { id }, body: values });
       },
     },

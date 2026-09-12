@@ -6,7 +6,7 @@ import { FlaskConical } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import ExportButton from '@/components/ExportButton';
-import { copyableNoColumn, createdAtColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, copyableNoColumn, createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import {
@@ -126,7 +126,7 @@ export default function PaymentDisputesPage() {
     { title: '渠道', dataIndex: 'channel', width: 90, render: (v: PaymentChannel) => PAYMENT_CHANNEL_LABELS[v] },
     { title: '类型', dataIndex: 'type', width: 100, render: (v: PaymentDisputeType) => PAYMENT_DISPUTE_TYPE_LABELS[v] },
     { title: '涉诉金额', dataIndex: 'amount', width: 100, align: 'right', render: (v: number) => yuan(v) },
-    { title: '投诉人', dataIndex: 'complainant', minWidth: 140, render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 120 }}>{v || '-'}</Typography.Text> },
+    { title: '投诉人', dataIndex: 'complainant', minWidth: 140, render: renderEllipsis },
     {
       title: '分流', dataIndex: 'route', width: 140,
       render: (v: string | null, r) => {
@@ -139,7 +139,7 @@ export default function PaymentDisputesPage() {
     {
       title: '处理时效', dataIndex: 'deadline', width: 180,
       render: (v: string | null, r) => {
-        if (!v) return '-';
+        if (!v) return EMPTY_PLACEHOLDER;
         return r.overdue ? <Tag color="red">已超时 {v}</Tag> : <span>{v}</span>;
       },
     },
@@ -244,8 +244,8 @@ export default function PaymentDisputesPage() {
                   : <Typography.Text type="tertiary">默认队列</Typography.Text>}{'　'}
                 类型：{PAYMENT_DISPUTE_TYPE_LABELS[detail.type]}{'　'}渠道：{PAYMENT_CHANNEL_LABELS[detail.channel]}
               </div>
-              <div>投诉人：{detail.complainant ?? '-'}（{detail.complainantPhone ?? '-'}）{'　'}涉诉金额：{yuan(detail.amount)}</div>
-              <div>渠道投诉号：{detail.channelDisputeNo ?? '-'}</div>
+              <div>投诉人：{detail.complainant ?? EMPTY_PLACEHOLDER}（{detail.complainantPhone ?? EMPTY_PLACEHOLDER}）{'　'}涉诉金额：{yuan(detail.amount)}</div>
+              <div>渠道投诉号：{detail.channelDisputeNo ?? EMPTY_PLACEHOLDER}</div>
               {detail.refundNo && <div>关联退款单：{detail.refundNo}</div>}
               {detail.order && (
                 <div style={{ background: 'var(--semi-color-fill-0)', borderRadius: 'var(--semi-border-radius-medium)', padding: '8px 12px', marginTop: 4 }}>

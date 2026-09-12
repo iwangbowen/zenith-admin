@@ -8,7 +8,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { ruleKeys, useRuleExecutions } from '@/hooks/queries/rules';
 import { formatDateTimeRangeValuesForApi } from '@/utils/date';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
 import { JsonBlock } from '@/components/JsonBlock';
 
 const { Text } = Typography;
@@ -53,13 +53,13 @@ export default function RuleExecutionsPage() {
     dateTimeColumn('时间', 'createdAt'),
     { title: '类型', dataIndex: 'refKind', width: 90, render: (k: RuleRefKind) => <Tag size="small" color={REF_KIND_COLORS[k]}>{RULE_REF_KIND_LABELS[k] ?? k}</Tag> },
     { title: '规则 Key', dataIndex: 'ruleKey', width: 170, render: (t: string) => <Text code>{t}</Text> },
-    { title: '调用方名称', dataIndex: 'callerName', width: 170, render: (n: string | null) => (n ? <Text size="small" ellipsis={{ showTooltip: true }} style={{ maxWidth: 150 }}>{n}</Text> : '-') },
-    { title: '调用方', dataIndex: 'caller', width: 260, render: (c: string | null) => (c ? <Text type="tertiary" size="small" code ellipsis={{ showTooltip: true }} style={{ maxWidth: 240 }}>{c}</Text> : '-') },
+    { title: '调用方名称', dataIndex: 'callerName', width: 170, render: (n: string | null) => (n ? <Text size="small" ellipsis={{ showTooltip: true }} style={{ maxWidth: 150 }}>{n}</Text> : EMPTY_PLACEHOLDER) },
+    { title: '调用方', dataIndex: 'caller', width: 260, render: (c: string | null) => (c ? <Text type="tertiary" size="small" code ellipsis={{ showTooltip: true }} style={{ maxWidth: 240 }}>{c}</Text> : EMPTY_PLACEHOLDER) },
     { title: '来源', dataIndex: 'source', width: 100, render: (s: RuleExecutionSource) => <Tag size="small" color={SOURCE_COLORS[s]}>{RULE_EXECUTION_SOURCE_LABELS[s] ?? s}</Tag> },
     { title: '结果', dataIndex: 'matched', width: 90, render: (m: boolean) => <Tag size="small" color={m ? 'green' : 'red'}>{m ? '命中' : '未命中'}</Tag> },
-    { title: '版本', dataIndex: 'version', width: 70, render: (v: number | null) => (v != null ? <Text type="tertiary" size="small">v{v}</Text> : '-') },
-    { title: '命中行', width: 120, render: (_: unknown, r: RuleExecution) => <Text type="tertiary" size="small">{r.matchedRowIds.join(', ') || '-'}</Text> },
-    { title: '关联对象', dataIndex: 'bizRef', width: 200, render: (b: string | null) => (b ? <Text type="tertiary" size="small" code ellipsis={{ showTooltip: true }} style={{ maxWidth: 180 }}>{b}</Text> : '-') },
+    { title: '版本', dataIndex: 'version', width: 70, render: (v: number | null) => (v != null ? <Text type="tertiary" size="small">v{v}</Text> : EMPTY_PLACEHOLDER) },
+    { title: '命中行', width: 120, render: (_: unknown, r: RuleExecution) => <Text type="tertiary" size="small">{r.matchedRowIds.join(', ') || EMPTY_PLACEHOLDER}</Text> },
+    { title: '关联对象', dataIndex: 'bizRef', width: 200, render: (b: string | null) => (b ? <Text type="tertiary" size="small" code ellipsis={{ showTooltip: true }} style={{ maxWidth: 180 }}>{b}</Text> : EMPTY_PLACEHOLDER) },
   ];
 
   /** 行内展开：命中策略上下文 + 输入 / 输出双栏对比 */

@@ -155,7 +155,10 @@ export default function PaymentReconPage() {
   });
   const handleSaveMutation = {
     mutateAsync: ({ id, values }: { id?: number; values: HandleFormValues }) => {
-      if (id == null) throw new Error('缺少记录 ID，请刷新后重试');
+      if (id == null) {
+        Toast.error('缺少记录 ID，请刷新后重试');
+        abortSubmit('missing-id');
+      }
       return handleItemMutation.mutateAsync({ params: { id }, body: { action: values.action, remark: values.remark.trim() } });
     },
     isPending: handleItemMutation.isPending,

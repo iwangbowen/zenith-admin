@@ -4,7 +4,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import AppModal from '@/components/AppModal';
-import { createdAtColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, createdAtColumn } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -64,7 +64,7 @@ export default function TagsPage() {
   const columns: ColumnProps<CmsTag>[] = [
     { title: '标签名称', dataIndex: 'name', minWidth: 180 },
     { title: 'URL 标识', dataIndex: 'slug', width: 160 },
-    { title: '分组', dataIndex: 'groupName', width: 130, render: (v: string | null) => v ?? '-' },
+    { title: '分组', dataIndex: 'groupName', width: 130, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
     { title: '关联内容数', dataIndex: 'contentCount', width: 120, align: 'right' },
     createdAtColumn,
     createOperationColumn<CmsTag>({

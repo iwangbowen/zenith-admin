@@ -29,7 +29,7 @@ import { formatDateTimeRangeForApi } from '@/utils/date';
 import { CreateButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
-import { dateTimeColumn, renderEnabledStatusTag } from '@/utils/table-columns';
+import { dateTimeColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 
@@ -185,7 +185,7 @@ function DictTab({ siteId, onSiteChange }: Readonly<{ siteId: number | undefined
     { title: '类型', dataIndex: 'type', width: 100, render: (value: CmsSearchWord['type']) => CMS_SEARCH_WORD_TYPE_LABELS[value] },
     { title: '分组', dataIndex: 'groupName', width: 130 },
     { title: '词频权重', dataIndex: 'weight', width: 110, align: 'right' },
-    { title: '备注', dataIndex: 'remark', minWidth: 220, render: (v: string | null) => v ?? '-' },
+    { title: '备注', dataIndex: 'remark', minWidth: 220, render: renderEllipsis },
     {
       title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
       render: renderEnabledStatusTag,

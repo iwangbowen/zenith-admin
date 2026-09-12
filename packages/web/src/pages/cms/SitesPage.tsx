@@ -16,7 +16,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn, type ResponsiveTableAction } from '@/components/ResponsiveTableActions';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { createdAtColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, createdAtColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { request } from '@/utils/request';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -159,7 +159,7 @@ export default function SitesPage() {
       title: '父级 / 层级',
       width: 200,
       render: (_: unknown, record) => record.parentName
-        ? `${record.parentName} / L${record.depth ?? '-'}`
+        ? `${record.parentName} / L${record.depth ?? EMPTY_PLACEHOLDER}`
         : `根站点 / L${record.depth ?? 1}`,
     },
     { title: '标识', dataIndex: 'code', width: 160 },

@@ -18,6 +18,7 @@ import type { ChatCard, ChatMessageExtra } from '@zenith/shared/chat';
 import type { ChannelAdmin, ChannelMessage, ChannelMessageTemplate, ChannelPublishAudienceMode, ChannelSendMode } from '@zenith/shared/messaging';
 import type { PublishChannelInput } from '@zenith/shared/mp';
 import { formatDateTimeForApi } from '@/utils/date';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { AppModal } from '@/components/AppModal';
 import UserSelect from '@/components/UserSelect';
 import DepartmentSelect from '@/components/DepartmentSelect';
@@ -438,7 +439,7 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
                         <Typography.Text type="tertiary" size="small">
                           {audienceEstimateMutation.isPending
                             ? '计算中...'
-                            : <>预计触达 <Typography.Text strong>{estimateCount ?? '-'}</Typography.Text> 人</>}
+                            : <>预计触达 <Typography.Text strong>{estimateCount ?? EMPTY_PLACEHOLDER}</Typography.Text> 人</>}
                         </Typography.Text>
                       </Space>
                     </Form.Slot>

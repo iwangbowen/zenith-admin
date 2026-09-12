@@ -9,6 +9,7 @@ import { CalendarClock } from 'lucide-react';
 import type { WorkflowBusinessFormProps } from '@/components/workflow/BusinessFormHost';
 import { useBizLeaveDetail } from '@/hooks/queries/biz-leave';
 import { useDictItems } from '@/hooks/useDictItems';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 export default function LeaveApprovalView({ bizId }: Readonly<WorkflowBusinessFormProps>) {
   const detailQuery = useBizLeaveDetail(bizId);
@@ -27,12 +28,12 @@ export default function LeaveApprovalView({ bizId }: Readonly<WorkflowBusinessFo
       <Descriptions
         row
         data={[
-          { key: '申请人', value: data.applicantName ?? '-' },
+          { key: '申请人', value: data.applicantName ?? EMPTY_PLACEHOLDER },
           { key: '请假类型', value: getLeaveTypeLabel(data.leaveType) },
           { key: '开始日期', value: data.startDate },
           { key: '结束日期', value: data.endDate },
           { key: '天数', value: `${data.days} 天` },
-          { key: '事由', value: data.reason || '-' },
+          { key: '事由', value: data.reason || EMPTY_PLACEHOLDER },
         ]}
       />
     </div>

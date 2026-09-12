@@ -14,7 +14,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { MemberSelect } from '@/components/MemberSelect';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
+import { EMPTY_PLACEHOLDER, createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { formatDateTimeForApi } from '@/utils/date';
 import {
   memberAdminKeys,
@@ -36,7 +36,7 @@ const yuan = (fen: number) => (fen / 100).toFixed(2);
 const renderFace = (r: Coupon) => (r.type === 'amount' ? `¥${yuan(r.faceValue)}` : `${r.faceValue}%`);
 const renderThreshold = (v: number) => (v > 0 ? `满¥${yuan(v)}` : '无门槛');
 const renderValid = (r: Coupon) =>
-  r.validType === 'fixed' ? `${r.validStart ?? '-'} ~ ${r.validEnd ?? '-'}` : `领取后 ${r.validDays ?? 0} 天`;
+  r.validType === 'fixed' ? `${r.validStart ?? EMPTY_PLACEHOLDER} ~ ${r.validEnd ?? EMPTY_PLACEHOLDER}` : `领取后 ${r.validDays ?? 0} 天`;
 const renderQuantity = (r: Coupon) => `${r.issuedQuantity}/${r.totalQuantity > 0 ? r.totalQuantity : '不限'}`;
 
 interface SearchParams { keyword?: string; status?: CouponType | string; type?: string }
@@ -158,7 +158,7 @@ export default function CouponsPage() {
         : renderQuantity(r)
     ) },
     { title: '每人限领', dataIndex: 'perLimit', width: 90, align: 'right', render: (v: number) => (v > 0 ? v : '不限') },
-    { title: '兑换积分', dataIndex: 'exchangePoints', width: 90, align: 'right', render: (v?: number) => (v && v > 0 ? v : '-') },
+    { title: '兑换积分', dataIndex: 'exchangePoints', width: 90, align: 'right', render: (v?: number) => (v && v > 0 ? v : EMPTY_PLACEHOLDER) },
     { title: '有效期', dataIndex: 'validType', minWidth: 200, render: (_: string, r: Coupon) => <span style={{ fontSize: 12 }}>{renderValid(r)}</span> },
     { title: '状态', dataIndex: 'status', width: 90, render: (v: CouponTemplateStatus) => <Tag color={STATUS_COLORS[v] as 'green'}>{COUPON_TEMPLATE_STATUS_LABELS[v]}</Tag> },
     createdAtColumn,

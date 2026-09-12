@@ -11,7 +11,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import ExportButton from '@/components/ExportButton';
 import { createOperationColumn, type ResponsiveTableAction } from '@/components/ResponsiveTableActions';
-import { createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { formatDateTimeForApi, formatDateTimeRangeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -263,7 +263,7 @@ export default function DistributionPage() {
 
   const runColumns: ColumnProps<CmsDistributionRun>[] = [
     { title: '任务', dataIndex: 'title', minWidth: 240, render: renderEllipsis },
-    { title: '规则', dataIndex: 'ruleName', width: 180, render: (value: string | null) => value ?? '-' },
+    { title: '规则', dataIndex: 'ruleName', width: 180, render: renderEllipsis },
     {
       title: '站点范围',
       width: 230,
@@ -331,7 +331,7 @@ export default function DistributionPage() {
     {
       title: '内容 ID',
       width: 170,
-      render: (_: unknown, item) => `${item.data?.sourceContentId ?? '-'} → ${item.data?.targetContentId ?? '-'}`,
+      render: (_: unknown, item) => `${item.data?.sourceContentId ?? EMPTY_PLACEHOLDER} → ${item.data?.targetContentId ?? EMPTY_PLACEHOLDER}`,
     },
     dateTimeColumn('更新时间', 'updatedAt'),
   ];
@@ -567,7 +567,7 @@ export default function DistributionPage() {
               type="info"
               closeIcon={null}
               style={{ marginBottom: 12 }}
-              description={`规则：${runDetailQuery.data.run.ruleName ?? '-'}；来源 ${runDetailQuery.data.run.sourceSiteName ?? '-'} → 目标 ${runDetailQuery.data.run.targetSiteName ?? '-'}`}
+              description={`规则：${runDetailQuery.data.run.ruleName ?? EMPTY_PLACEHOLDER}；来源 ${runDetailQuery.data.run.sourceSiteName ?? EMPTY_PLACEHOLDER} → 目标 ${runDetailQuery.data.run.targetSiteName ?? EMPTY_PLACEHOLDER}`}
             />
             <div style={{ marginBottom: 12 }}><AsyncTaskProgress task={runDetailQuery.data.run} /></div>
             <ConfigurableTable<NonNullable<typeof runDetailQuery.data>['items'][number]>

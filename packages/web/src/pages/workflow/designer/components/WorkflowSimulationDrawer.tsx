@@ -7,6 +7,7 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { AlertTriangle, Bookmark, Bug, CheckCircle2, ChevronLeft, ChevronRight, CircleDashed, Clock, FastForward, GitCompare, Keyboard, ListChecks, Minus, PanelRightClose, Pause, Play, Plus, RotateCcw, RotateCw, Save, Send, SlidersHorizontal, Trash2, Wand2, XCircle } from 'lucide-react';
 import type { WorkflowFlowData, WorkflowFormField, WorkflowSimulationCase, WorkflowSimulationDecision, WorkflowSimulationHealthIssue, WorkflowSimulationResult } from '@zenith/shared/workflow';
 import { formatDateForApi } from '@/utils/date';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import AppModal from '@/components/AppModal';
 import WorkflowFormRenderer from './WorkflowFormRenderer';
 import FlowRenderer from './FlowRenderer';
@@ -808,8 +809,8 @@ export default function WorkflowSimulationDrawer({
 
   const resultMeta = result ? RESULT_META[result.result] : null;
   const canDecide = nodeTypeCanDecide(currentItem);
-  const currentAssigneeText = currentItem?.assignees?.map((user) => user.name).join('、') || '-';
-  const currentNextText = currentItem?.nextNodeKeys?.map((key) => nodeLabel(flowData, key)).join('、') || '-';
+  const currentAssigneeText = currentItem?.assignees?.map((user) => user.name).join('、') || EMPTY_PLACEHOLDER;
+  const currentNextText = currentItem?.nextNodeKeys?.map((key) => nodeLabel(flowData, key)).join('、') || EMPTY_PLACEHOLDER;
   const currentReasonText = currentItem ? currentItem.detail ?? currentItem.reason ?? '' : '';
   // 摘要 chip 优先展示实际被走的边——多条出边时首条可能是未命中的默认边，误报「默认分支被采用」
   const primaryEdge = currentEdges.find((edge) => edge.taken) ?? currentEdges[0];
@@ -919,7 +920,7 @@ export default function WorkflowSimulationDrawer({
         <div className="fd-simulation-inspector__grid">
           <span>处理人</span><strong title={currentAssigneeText}>{currentAssigneeText}</strong>
           <span>下一步</span><strong title={currentNextText}>{currentNextText}</strong>
-          <span>原因</span><strong title={currentReasonText}>{currentReasonText || '-'}</strong>
+          <span>原因</span><strong title={currentReasonText}>{currentReasonText || EMPTY_PLACEHOLDER}</strong>
         </div>
 
         {hasBranchNotice && (

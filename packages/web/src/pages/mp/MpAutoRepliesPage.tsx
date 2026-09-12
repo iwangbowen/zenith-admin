@@ -10,7 +10,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { createdAtColumn } from '../../utils/table-columns';
+import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useMpAccounts } from './useMpAccounts';
@@ -166,7 +166,7 @@ export default function MpAutoRepliesPage() {
     { title: '关键词', dataIndex: 'keyword', width: 130, render: (v: string | null) => v || '—' },
     { title: '匹配', dataIndex: 'matchType', width: 80, render: (v: string, r: MpAutoReply) => (r.replyType === 'keyword' ? (v === 'exact' ? '全匹配' : '包含') : '—') },
     { title: '内容类型', dataIndex: 'contentType', width: 90, render: (v: MpReplyContentType) => <Tag type="light" color="violet">{MP_REPLY_CONTENT_TYPE_LABELS[v]}</Tag> },
-    { title: '回复内容', dataIndex: 'content', minWidth: 260, render: (_: unknown, r: MpAutoReply) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 240 }}>{summarizeReply(r)}</Typography.Text> },
+    { title: '回复内容', dataIndex: 'content', minWidth: 260, render: (_: unknown, r: MpAutoReply) => renderEllipsis(summarizeReply(r)) },
     createdAtColumn,
     {
       title: '状态', dataIndex: 'status', width: 80, align: 'center' as const, fixed: 'right' as const,

@@ -10,7 +10,7 @@ import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, listTableProps } from '@/components/list-page';
-import { renderEllipsis } from '../../utils/table-columns';
+import { EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { memberAdminKeys, useDeleteMemberLevel, useMemberLevels, useSaveMemberLevel, type MemberLevelFormValues } from '@/hooks/queries/member-admin';
 import { useDictItems } from '@/hooks/useDictItems';
 import { CreateButton, RefreshButton } from '@/components/toolbar-controls';
@@ -42,7 +42,7 @@ export default function MemberLevelsPage() {
         ? <Typography.Text link onClick={() => navigate(`/member/members?levelId=${r.id}`)}>{v}</Typography.Text>
         : 0
     ) },
-    { title: '权益', dataIndex: 'benefits', width: 220, render: (v: string[]) => (v?.length ? <Space wrap spacing={4}>{v.map((b, i) => <Tag key={i} color="light-blue">{b}</Tag>)}</Space> : '-') },
+    { title: '权益', dataIndex: 'benefits', width: 220, render: (v: string[]) => (v?.length ? <Space wrap spacing={4}>{v.map((b, i) => <Tag key={i} color="light-blue">{b}</Tag>)}</Space> : EMPTY_PLACEHOLDER) },
     {
       title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
       render: (v: string) => <Tag color={v === 'enabled' ? 'green' : 'grey'}>{v === 'enabled' ? '启用' : '停用'}</Tag>,

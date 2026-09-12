@@ -19,7 +19,7 @@ import { PROCESS_KILL_SIGNALS, PROCESS_PRIORITY_CLASSES, type ProcessInfo, type 
 import { enumValueOf } from '@zenith/shared/core';
 import { hostQueryOf } from '@/hooks/queries/ops-hosts';
 import { processStreamUrl, useKillProcess, useProcessDetail, useProcessList, useSetProcessPriority } from '@/hooks/queries/processes';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { HostSelector } from '@/components/HostSelector';
 import { deriveInitialHostSelection, useOpsHostSelection } from '@/hooks/useOpsHostSelection';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
@@ -248,16 +248,7 @@ export default function ProcessesPage() {
       width: 80,
       sorter: (a, b) => (a?.pid ?? 0) - (b?.pid ?? 0),
     },
-    {
-      title: '进程名',
-      dataIndex: 'name',
-      minWidth: 160,
-      render: (name: string) => (
-        <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>
-          {name}
-        </Typography.Text>
-      ),
-    },
+    { title: '进程名', dataIndex: 'name', minWidth: 160, render: renderEllipsis },
     {
       title: '用户',
       dataIndex: 'user',

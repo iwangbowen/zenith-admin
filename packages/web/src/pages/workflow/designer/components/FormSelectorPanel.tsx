@@ -6,12 +6,12 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Select, Typography, Empty, Spin } from '@douyinfe/semi-ui';
 import { RefreshCw, Pencil } from 'lucide-react';
-import { IllustrationIdle, IllustrationIdleDark, IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
 import type { WorkflowForm } from '@zenith/shared/workflow';
 import WorkflowFormRenderer from './WorkflowFormRenderer';
 import WorkflowFormInlineEditor from '../../forms/WorkflowFormInlineEditor';
 import { useWorkflowDesignerFormOptions, workflowDesignerKeys } from '@/hooks/queries/workflow-designer';
 import { CreateButton } from '@/components/toolbar-controls';
+import { emptyIllustration } from '@/components/EmptyIllustration';
 
 interface FormSelectorPanelProps {
   formId: number | null;
@@ -111,16 +111,14 @@ export default function FormSelectorPanel({ formId, formName, onSelect }: Readon
             <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}><Spin /></div>
           ) : !selected ? (
             <Empty
-              image={<IllustrationIdle style={{ width: 140, height: 140 }} />}
-              darkModeImage={<IllustrationIdleDark style={{ width: 140, height: 140 }} />}
+              {...emptyIllustration('Idle', 140)}
               title="未选择表单"
               description="从上方下拉选择一个已设计的表单，或点击「新建表单」在下方创建"
               style={{ padding: '48px 0' }}
             />
           ) : fields.length === 0 ? (
             <Empty
-              image={<IllustrationNoContent style={{ width: 140, height: 140 }} />}
-              darkModeImage={<IllustrationNoContentDark style={{ width: 140, height: 140 }} />}
+              {...emptyIllustration('NoContent', 140)}
               title="该表单暂无字段"
               description="点击「编辑此表单」为该表单添加字段"
               style={{ padding: '48px 0' }}

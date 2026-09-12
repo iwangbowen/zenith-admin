@@ -395,8 +395,8 @@ export default function AnalyticsSegmentsTab() {
   const memberColumns: ColumnProps<AnalyticsSegmentMember>[] = [
     { title: 'distinctId', dataIndex: 'distinctId' },
     { title: '身份类型', dataIndex: 'identityType', width: 100 },
-    { title: '管理员 ID', dataIndex: 'userId', width: 100, render: (v: number | null) => v ?? '–' },
-    { title: '会员 ID', dataIndex: 'memberId', width: 100, render: (v: number | null) => v ?? '–' },
+    { title: '管理员 ID', dataIndex: 'userId', width: 100, render: (v: number | null) => v ?? EMPTY_PLACEHOLDER },
+    { title: '会员 ID', dataIndex: 'memberId', width: 100, render: (v: number | null) => v ?? EMPTY_PLACEHOLDER },
     dateTimeColumn('快照时间', 'snapshotAt'),
   ];
 

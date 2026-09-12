@@ -91,7 +91,7 @@ export default function AiSettingsModal({ visible, initialTab = 'instructions', 
         }}
         labelPosition="top"
       >
-        <Tabs type="line" size="small" activeKey={activeTab} onChange={setActiveTab}>
+        <Tabs type="line" size="small" collapsible="auto" activeKey={activeTab} onChange={setActiveTab}>
           <TabPane tab="个人指令" itemKey="instructions">
             <Text type="tertiary" size="small" style={{ display: 'block', margin: '8px 0 12px' }}>
               AI 在所有对话中都会参考这些信息（对话角色模板优先级更高）

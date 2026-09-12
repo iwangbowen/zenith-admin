@@ -6,7 +6,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
-import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import {
@@ -194,16 +194,14 @@ export default function PaymentRiskRulesPage() {
   const columns: ColumnProps<PaymentRiskRule>[] = [
     { title: '名称', dataIndex: 'name', minWidth: 220, render: renderEllipsis },
     { title: '作用域', dataIndex: 'scope', width: 100, render: (v: PaymentRiskScope) => PAYMENT_RISK_SCOPE_LABELS[v] },
-    { title: '范围', dataIndex: 'channel', width: 150, render: (_: unknown, r: PaymentRiskRule) => {
-      const text = r.scope === 'channel' ? (r.channel ? PAYMENT_CHANNEL_LABELS[r.channel] : '-') : r.scope === 'bizType' ? (r.bizType || '-') : '全局';
-      return <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 130 }}>{text}</Typography.Text>;
-    } },
+    { title: '范围', dataIndex: 'channel', width: 150, render: (_: unknown, r: PaymentRiskRule) =>
+      renderEllipsis(r.scope === 'channel' ? (r.channel ? PAYMENT_CHANNEL_LABELS[r.channel] : null) : r.scope === 'bizType' ? r.bizType : '全局') },
     { title: '命中动作', dataIndex: 'action', width: 100, render: (v: PaymentRiskAction) => (v === 'review' ? <Tag color="orange">人工审核</Tag> : <Tag color="red">直接拦截</Tag>) },
     { title: '单笔上限', dataIndex: 'singleLimit', width: 110, align: 'right', render: (v: number | null) => yuan(v) },
     { title: '当日限额', dataIndex: 'dailyLimit', width: 110, align: 'right', render: (v: number | null) => yuan(v) },
-    { title: '当日笔数', dataIndex: 'dailyCountLimit', width: 95, align: 'right', render: (v: number | null) => (v == null ? '-' : v) },
-    { title: '黑名单', dataIndex: 'blockListKeys', width: 150, render: (v: string[]) => (v?.length ? <Space spacing={4} wrap>{v.map((k) => <Tag key={k} size="small" color="red">{k}</Tag>)}</Space> : '-') },
-    { title: '白名单', dataIndex: 'allowListKeys', width: 150, render: (v: string[]) => (v?.length ? <Space spacing={4} wrap>{v.map((k) => <Tag key={k} size="small" color="green">{k}</Tag>)}</Space> : '-') },
+    { title: '当日笔数', dataIndex: 'dailyCountLimit', width: 95, align: 'right', render: (v: number | null) => (v == null ? EMPTY_PLACEHOLDER : v) },
+    { title: '黑名单', dataIndex: 'blockListKeys', width: 150, render: (v: string[]) => (v?.length ? <Space spacing={4} wrap>{v.map((k) => <Tag key={k} size="small" color="red">{k}</Tag>)}</Space> : EMPTY_PLACEHOLDER) },
+    { title: '白名单', dataIndex: 'allowListKeys', width: 150, render: (v: string[]) => (v?.length ? <Space spacing={4} wrap>{v.map((k) => <Tag key={k} size="small" color="green">{k}</Tag>)}</Space> : EMPTY_PLACEHOLDER) },
     createdAtColumn as ColumnProps<PaymentRiskRule>,
     status.column(),
     createOperationColumn<PaymentRiskRule>({
@@ -228,9 +226,9 @@ export default function PaymentRiskRulesPage() {
     { title: '命中规则', dataIndex: 'ruleName', minWidth: 200, render: renderEllipsis },
     { title: '动作', dataIndex: 'action', width: 90, render: (v: PaymentRiskAction) => (v === 'review' ? <Tag color="orange">送审</Tag> : <Tag color="red">拦截</Tag>) },
     { title: '命中维度', dataIndex: 'dimension', width: 110, render: (v: PaymentRiskDimension) => PAYMENT_RISK_DIMENSION_LABELS[v] },
-    { title: '命中详情', dataIndex: 'dimensionValue', width: 180, render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 160 }}>{v || '-'}</Typography.Text> },
+    { title: '命中详情', dataIndex: 'dimensionValue', width: 180, render: renderEllipsis },
     { title: '渠道', dataIndex: 'channel', width: 90, render: (v: PaymentChannel) => PAYMENT_CHANNEL_LABELS[v] },
-    { title: '业务', dataIndex: 'bizType', width: 140, render: (v: string, r) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 120 }}>{`${v}:${r.bizId}`}</Typography.Text> },
+    { title: '业务', dataIndex: 'bizType', width: 140, render: (v: string, r) => renderEllipsis(`${v}:${r.bizId}`) },
     { title: '金额', dataIndex: 'amount', width: 100, align: 'right', render: (v: number) => yuan(v) },
     copyableNoColumn('订单号', 'orderNo'),
     { title: 'IP', dataIndex: 'clientIp', width: 150, render: renderEllipsis },
@@ -241,9 +239,9 @@ export default function PaymentRiskRulesPage() {
     copyableNoColumn('审核单号', 'reviewNo'),
     copyableNoColumn('订单号', 'orderNo'),
     { title: '渠道', dataIndex: 'channel', width: 90, render: (v: PaymentChannel) => PAYMENT_CHANNEL_LABELS[v] },
-    { title: '业务', dataIndex: 'bizType', width: 140, render: (v: string, r) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 120 }}>{`${v}:${r.bizId}`}</Typography.Text> },
+    { title: '业务', dataIndex: 'bizType', width: 140, render: (v: string, r) => renderEllipsis(`${v}:${r.bizId}`) },
     { title: '金额', dataIndex: 'amount', width: 100, align: 'right', render: (v: number) => yuan(v) },
-    { title: '触发原因', dataIndex: 'reason', minWidth: 220, render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 200 }}>{v}</Typography.Text> },
+    { title: '触发原因', dataIndex: 'reason', minWidth: 220, render: renderEllipsis },
     { title: '审核人', dataIndex: 'reviewerName', width: 120, render: renderEllipsis },
     { title: '审核意见', dataIndex: 'reviewRemark', width: 220, render: renderEllipsis },
     dateTimeColumn('审核时间', 'reviewedAt'),

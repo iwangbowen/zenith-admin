@@ -24,7 +24,7 @@ import { CmsSiteSelect } from './CmsSiteSelect';
 import { CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
-import { dateColumn, dateTimeColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateColumn, dateTimeColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { deleteAction, listTableProps, ListSearchToolbar } from '@/components/list-page';
 
@@ -52,7 +52,7 @@ function SlotsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
     { title: '广告位名称', dataIndex: 'name', width: 180 },
     { title: '模板引用标识', dataIndex: 'code', width: 160, render: (v: string) => <Tag size="small">{v}</Tag> },
     { title: '投放广告数', dataIndex: 'adCount', width: 110, align: 'right' },
-    { title: '备注', dataIndex: 'remark', minWidth: 220, render: (v: string | null) => v ?? '-' },
+    { title: '备注', dataIndex: 'remark', minWidth: 220, render: renderEllipsis },
     createOperationColumn<CmsAdSlot>({
       width: 150,
       desktopInlineKeys: ['edit', 'delete'],
@@ -127,12 +127,12 @@ function AdsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
   const columns: ColumnProps<CmsAd>[] = [
     { title: '广告名称', dataIndex: 'name', width: 180 },
     { title: '广告位', dataIndex: 'slotName', width: 140 },
-    { title: '跳转地址', dataIndex: 'linkUrl', minWidth: 200, render: (v: string | null) => renderEllipsis(v ?? '-') },
+    { title: '跳转地址', dataIndex: 'linkUrl', minWidth: 200, render: renderEllipsis },
     { title: '曝光量', dataIndex: 'viewCount', width: 90, align: 'right' },
     { title: '点击量', dataIndex: 'clickCount', width: 90, align: 'right' },
     {
       title: 'CTR', dataIndex: 'ctr', width: 90, align: 'right',
-      render: (_: unknown, record) => record.viewCount > 0 ? `${percentOf(record.clickCount, record.viewCount)}%` : '-',
+      render: (_: unknown, record) => record.viewCount > 0 ? `${percentOf(record.clickCount, record.viewCount)}%` : EMPTY_PLACEHOLDER,
     },
     dateTimeColumn('开始时间', 'startAt', { empty: '不限' }),
     dateTimeColumn('结束时间', 'endAt', { empty: '不限' }),
@@ -269,8 +269,8 @@ function EventsTab({ siteId, setSiteId }: Readonly<{
       title: '设备', dataIndex: 'device', width: 100,
       render: (value: CmsAdEvent['device']) => CMS_DEVICE_TYPE_LABELS[value],
     },
-    { title: '页面路径', dataIndex: 'path', minWidth: 220, render: (value: string | null) => value ?? '-' },
-    { title: '会员 ID', dataIndex: 'memberId', width: 100, render: (value: number | null) => value ?? '-' },
+    { title: '页面路径', dataIndex: 'path', minWidth: 220, render: renderEllipsis },
+    { title: '会员 ID', dataIndex: 'memberId', width: 100, render: (value: number | null) => value ?? EMPTY_PLACEHOLDER },
     createOperationColumn<CmsAdEvent>({
       width: 100,
       desktopInlineKeys: ['view'],
@@ -334,11 +334,11 @@ function EventsTab({ siteId, setSiteId }: Readonly<{
             <dt>事件</dt><dd>{CMS_AD_EVENT_TYPE_LABELS[detail.eventType]}</dd>
             <dt>发生时间</dt><dd>{detail.occurredAt}</dd>
             <dt>广告</dt><dd>{detail.adName}</dd>
-            <dt>页面路径</dt><dd>{detail.path ?? '-'}</dd>
-            <dt>来源</dt><dd style={{ wordBreak: 'break-all' }}>{detail.referrer ?? '-'}</dd>
+            <dt>页面路径</dt><dd>{detail.path ?? EMPTY_PLACEHOLDER}</dd>
+            <dt>来源</dt><dd style={{ wordBreak: 'break-all' }}>{detail.referrer ?? EMPTY_PLACEHOLDER}</dd>
             <dt>访客哈希</dt><dd><Typography.Text code copyable>{detail.visitorHash}</Typography.Text></dd>
             <dt>IP 哈希</dt><dd><Typography.Text code copyable>{detail.ipHash}</Typography.Text></dd>
-            <dt>User-Agent</dt><dd style={{ wordBreak: 'break-word' }}>{detail.userAgent ?? '-'}</dd>
+            <dt>User-Agent</dt><dd style={{ wordBreak: 'break-word' }}>{detail.userAgent ?? EMPTY_PLACEHOLDER}</dd>
           </dl>
         ) : null}
       </SideSheet>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button, Input, InputNumber, SideSheet, Space, Spin, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
+import { abortSubmit } from '@/lib/abort-submit';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ArrowUp, FolderPlus, RefreshCw, Upload, FilePlus } from 'lucide-react';
 import AppModal from '@/components/AppModal';
@@ -84,12 +85,18 @@ export function RemoteHostFiles({ hostId }: Readonly<{ hostId: number }>) {
     if (!dialog) return;
     if (dialog.kind === 'create') {
       const name = dialogValue.trim();
-      if (!name || name.includes('/')) throw new Error('请输入不含 / 的名称');
+      if (!name || name.includes('/')) {
+        Toast.error('请输入不含 / 的名称');
+        abortSubmit('validation');
+      }
       await mutation.mutateAsync({ kind: 'create', path: joinPath(currentPath, name), type: dialog.type });
       Toast.success(dialog.type === 'dir' ? '目录已创建' : '文件已创建');
     } else if (dialog.kind === 'rename') {
       const name = dialogValue.trim();
-      if (!name || name.includes('/')) throw new Error('请输入不含 / 的名称');
+      if (!name || name.includes('/')) {
+        Toast.error('请输入不含 / 的名称');
+        abortSubmit('validation');
+      }
       const parent = dialog.entry.path.slice(0, dialog.entry.path.lastIndexOf('/')) || '/';
       await mutation.mutateAsync({ kind: 'rename', from: dialog.entry.path, to: joinPath(parent, name) });
       Toast.success('已重命名');

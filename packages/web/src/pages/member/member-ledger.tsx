@@ -9,7 +9,7 @@ import ExportButton from '@/components/ExportButton';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { useListSearch, type UseListSearchReturn } from '@/hooks/useListSearch';
 import { compactQuery } from '@/lib/query';
-import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
+import { EMPTY_PLACEHOLDER, createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { memberCellColumn, useMemberKeywordDeepLink } from './member-admin-display';
 
 /**
@@ -51,7 +51,7 @@ export function ledgerTypeColumn<T extends Data>(labels: Record<string, string>,
 /** 业务类型 / 备注 / 创建时间三列 */
 export function ledgerTailColumns<T extends Data>(): ColumnProps<T>[] {
   return [
-    { title: '业务类型', dataIndex: 'bizType', width: 130, render: (v: string | null) => (v ? (MEMBER_BIZ_TYPE_LABELS[v] ?? v) : '-') },
+    { title: '业务类型', dataIndex: 'bizType', width: 130, render: (v: string | null) => (v ? (MEMBER_BIZ_TYPE_LABELS[v] ?? v) : EMPTY_PLACEHOLDER) },
     { title: '备注', dataIndex: 'remark', width: 200, render: renderEllipsis },
     createdAtColumn,
   ];

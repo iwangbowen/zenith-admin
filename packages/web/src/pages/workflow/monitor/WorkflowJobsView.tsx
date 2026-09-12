@@ -885,12 +885,12 @@ function RuntimeStatusBar({ onDeadClick }: Readonly<{ onDeadClick?: () => void }
       <StatGrid minItemWidth={150}>
         <Tooltip content={<pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{workerTip}</pre>}>
           <div style={{ minWidth: 0 }}>
-            <StatCard title="存活 Worker" value={`${status?.activeWorkers ?? '-'} / ${status?.totalWorkers ?? '-'}`} />
+            <StatCard title="存活 Worker" value={`${status?.activeWorkers ?? EMPTY_PLACEHOLDER} / ${status?.totalWorkers ?? EMPTY_PLACEHOLDER}`} />
           </div>
         </Tooltip>
-        <StatCard title="在途作业" value={status?.runningJobs ?? '-'} />
-        <StatCard title="卡死" value={status?.stuckRunningJobs ?? '-'} accent={status && status.stuckRunningJobs > 0 ? danger : undefined} />
-        <StatCard title="积压" value={status?.backlog ?? '-'} accent={status && status.backlog > 0 ? danger : undefined} />
+        <StatCard title="在途作业" value={status?.runningJobs ?? EMPTY_PLACEHOLDER} />
+        <StatCard title="卡死" value={status?.stuckRunningJobs ?? EMPTY_PLACEHOLDER} accent={status && status.stuckRunningJobs > 0 ? danger : undefined} />
+        <StatCard title="积压" value={status?.backlog ?? EMPTY_PLACEHOLDER} accent={status && status.backlog > 0 ? danger : undefined} />
         {status && status.deadLetter > 0 && onDeadClick ? (
           <Tooltip content="查看失败原因聚类（跨队列），可按簇重放">
             <div style={{ minWidth: 0 }}>
@@ -898,11 +898,11 @@ function RuntimeStatusBar({ onDeadClick }: Readonly<{ onDeadClick?: () => void }
             </div>
           </Tooltip>
         ) : (
-          <StatCard title="死信" value={status?.deadLetter ?? '-'} accent={status && status.deadLetter > 0 ? danger : undefined} />
+          <StatCard title="死信" value={status?.deadLetter ?? EMPTY_PLACEHOLDER} accent={status && status.deadLetter > 0 ? danger : undefined} />
         )}
-        <StatCard title="最后领取" value={claimTime ?? '—'} sub={claimDate || undefined} />
-        <StatCard title="失败率(1h)" value={status ? `${status.failureRate}%` : '-'} accent={status && status.failureRate >= 20 ? danger : undefined} />
-        <StatCard title="平均耗时(1h)" value={status?.avgDurationMs != null ? `${status.avgDurationMs}ms` : '—'} />
+        <StatCard title="最后领取" value={claimTime ?? EMPTY_PLACEHOLDER} sub={claimDate || undefined} />
+        <StatCard title="失败率(1h)" value={status ? `${status.failureRate}%` : EMPTY_PLACEHOLDER} accent={status && status.failureRate >= 20 ? danger : undefined} />
+        <StatCard title="平均耗时(1h)" value={status?.avgDurationMs != null ? `${status.avgDurationMs}ms` : EMPTY_PLACEHOLDER} />
       </StatGrid>
     </div>
   );

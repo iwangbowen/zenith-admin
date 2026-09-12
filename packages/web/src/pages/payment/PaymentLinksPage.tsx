@@ -9,7 +9,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
 import { formatDateTimeForApi } from '@/utils/date';
-import { createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { PAYMENT_CASHIER_METHODS, PAYMENT_METHOD_LABELS, PAYMENT_LINK_STATUS_LABELS, PAYMENT_LINK_STATUS_OPTIONS } from '@zenith/shared/payment';
@@ -174,7 +174,7 @@ export default function PaymentLinksPage() {
   }
 
   const columns: ColumnProps<PaymentLink>[] = [
-    { title: '标题', dataIndex: 'subject', minWidth: 180, render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 160 }}>{v}</Typography.Text> },
+    { title: '标题', dataIndex: 'subject', minWidth: 180, render: renderEllipsis },
     { title: '支付应用', dataIndex: 'appId', width: 200, render: (v: number) => renderEllipsis(appNameById.get(v) ?? `应用 #${v}`) },
     { ...paymentMoneyColumn<PaymentLink>('金额', 'amount', { empty: '用户填写' }), width: 110 },
     { title: '支付方式', dataIndex: 'payMethod', width: 130, render: (v: PaymentCashierMethod | null) => (v ? PAYMENT_METHOD_LABELS[v] : '用户选择') },
@@ -259,7 +259,7 @@ export default function PaymentLinksPage() {
         <Form key={modal.formKey} {...modal.formProps}>
           <Form.Input field="subject" label="标题" placeholder="如：会员年费收款" rules={[{ required: true, message: '标题不能为空' }]} />
           {modal.isEdit ? (
-            <Form.Slot label="支付应用">{modal.editing ? (appNameById.get(modal.editing.appId) ?? `应用 #${modal.editing.appId}`) : '-'}</Form.Slot>
+            <Form.Slot label="支付应用">{modal.editing ? (appNameById.get(modal.editing.appId) ?? `应用 #${modal.editing.appId}`) : EMPTY_PLACEHOLDER}</Form.Slot>
           ) : (
             <Form.Select
               field="applicationId"

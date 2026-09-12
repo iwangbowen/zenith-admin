@@ -17,7 +17,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useMyAsyncTasks } from '@/hooks/useAsyncTasks';
-import { useAllUsers } from '@/hooks/queries/users';
+import { toUserOptions, useAllUsers } from '@/hooks/queries/users';
 import {
   reportFillKeys,
   useReportFillRecordAdmin,
@@ -327,7 +327,7 @@ export default function FillRecordsPage() {
                   {templateFilter(adminSearch.draftParams.templateId, adminSearch.setField('templateId'))}
                   <FilterSelect
                     placeholder="全部提交人"
-                    items={users.map((user) => ({ value: user.id, label: user.nickname || user.username }))}
+                    items={toUserOptions(users)}
                     {...adminSearch.bind('submitterId')}
                     width={150}
                     filter

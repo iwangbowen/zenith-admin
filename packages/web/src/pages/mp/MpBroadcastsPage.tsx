@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { listTableProps, ListSearchToolbar } from '@/components/list-page';
-import { Form, Modal, Select, Spin, Tag, Toast, Banner, Typography, Tooltip, Input, Descriptions } from '@douyinfe/semi-ui';
+import { Form, Modal, Select, Spin, Tag, Toast, Banner, Tooltip, Input, Descriptions } from '@douyinfe/semi-ui';
 import { MP_BROADCAST_TYPE_LABELS, MP_BROADCAST_TYPE_OPTIONS } from '@zenith/shared/mp';
 import type { CreateMpBroadcastInput, MpBroadcast, MpBroadcastType, MpBroadcastTarget, MpBroadcastStatus } from '@zenith/shared/mp';
 import { usePermission } from '@/hooks/usePermission';
@@ -9,7 +9,7 @@ import { formatDateTimeForApi } from '@/utils/date';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { createdAtColumn, dateTimeColumn } from '../../utils/table-columns';
+import { createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
@@ -141,7 +141,7 @@ export default function MpBroadcastsPage() {
       title: '群发对象', dataIndex: 'target', width: 130,
       render: (v: MpBroadcastTarget, r: MpBroadcast) => (v === 'all' ? '全部粉丝' : `标签：${r.tagId ? (tagMap.get(r.tagId) ?? `#${r.tagId}`) : '—'}`),
     },
-    { title: '内容', dataIndex: 'content', minWidth: 260, render: (_: unknown, r: MpBroadcast) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 240 }}>{summarize(r)}</Typography.Text> },
+    { title: '内容', dataIndex: 'content', minWidth: 260, render: (_: unknown, r: MpBroadcast) => renderEllipsis(summarize(r)) },
     dateTimeColumn('发送时间', 'sentAt'),
     createdAtColumn,
     {

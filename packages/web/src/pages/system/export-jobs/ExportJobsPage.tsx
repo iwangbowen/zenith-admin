@@ -215,7 +215,7 @@ export default function ExportJobsPage() {
         </Space>
       ),
     },
-    { title: '创建人', dataIndex: 'createdByName', width: 130, render: (value: string | null) => value ?? '-' },
+    { title: '创建人', dataIndex: 'createdByName', width: 130, render: (value: string | null) => value || EMPTY_PLACEHOLDER },
     { title: '下载次数', dataIndex: 'downloadCount', width: 100, align: 'right' },
     dateTimeColumn('过期时间', 'expiresAt'),
     dateTimeColumn('创建时间', 'createdAt'),
@@ -233,7 +233,7 @@ export default function ExportJobsPage() {
         >
           查看失败原因
         </Button>
-      ) : '-',
+      ) : EMPTY_PLACEHOLDER,
     },
     {
       title: '状态',
@@ -308,8 +308,8 @@ export default function ExportJobsPage() {
   ];
 
   const downloadLogColumns: ColumnProps<ExportJobDownload>[] = [
-    { title: '下载人', dataIndex: 'downloadedByName', width: 140, render: (value: string | null) => value ?? '-' },
-    { title: 'IP', dataIndex: 'ip', width: 140, render: (value: string | null) => value ?? '-' },
+    { title: '下载人', dataIndex: 'downloadedByName', width: 140, render: (value: string | null) => value || EMPTY_PLACEHOLDER },
+    { title: 'IP', dataIndex: 'ip', width: 140, render: (value: string | null) => value || EMPTY_PLACEHOLDER },
     { title: 'User Agent', dataIndex: 'userAgent', width: 360, render: renderEllipsis },
     dateTimeColumn('下载时间', 'createdAt'),
   ];
@@ -368,10 +368,10 @@ export default function ExportJobsPage() {
         {currentJob && (
           <Descriptions
             data={[
-              { key: '文件名', value: currentJob.filename ?? '-' },
+              { key: '文件名', value: currentJob.filename ?? EMPTY_PLACEHOLDER },
               { key: '任务ID', value: currentJob.id },
               { key: '下载次数', value: currentJob.downloadCount },
-              { key: '最后下载', value: currentJob.lastDownloadedAt ? formatDateTime(currentJob.lastDownloadedAt) : '-' },
+              { key: '最后下载', value: currentJob.lastDownloadedAt ? formatDateTime(currentJob.lastDownloadedAt) : EMPTY_PLACEHOLDER },
             ]}
             row
             size="small"

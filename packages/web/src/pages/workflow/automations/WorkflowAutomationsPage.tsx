@@ -31,7 +31,7 @@ import {
 import { CreateButton } from '@/components/toolbar-controls';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useEditModal } from '@/hooks/useEditModal';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { FilterSelect, StatusSelect } from '@/components/search-filters';
 import ModalFooter from '@/components/ModalFooter';
@@ -125,8 +125,8 @@ function AutomationRunsSheet({ rule, onClose }: { rule: WorkflowAutomation | nul
     {
       title: '触发实例', dataIndex: 'instanceTitle', width: 200,
       render: (_v, r) => r.instanceTitle
-        ? <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 180 }}>{`#${r.instanceId} ${r.instanceTitle}`}</Typography.Text>
-        : (r.instanceId ? `#${r.instanceId}` : '—'),
+        ? renderEllipsis(`#${r.instanceId} ${r.instanceTitle}`)
+        : (r.instanceId ? `#${r.instanceId}` : EMPTY_PLACEHOLDER),
     },
     {
       title: '触发时机', dataIndex: 'trigger', width: 100,

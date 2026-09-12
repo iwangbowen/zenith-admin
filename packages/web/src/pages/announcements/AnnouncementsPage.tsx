@@ -4,11 +4,11 @@ import {
   Button, Tag, Space, Tabs, TabPane, Toast, Empty, Badge, List, Typography,
 } from '@douyinfe/semi-ui';
 import { usePagination } from '@/hooks/usePagination';
-import { IllustrationIdle, IllustrationIdleDark } from '@douyinfe/semi-illustrations';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
 import { CheckCheck } from 'lucide-react';
 import { formatDateTime } from '@/utils/date';
 import { RefreshButton } from '@/components/toolbar-controls';
+import { emptyIllustration } from '@/components/EmptyIllustration';
 import AnnouncementDetailModal from '@/components/AnnouncementDetailModal';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { ListPagination } from '@/components/ListPagination';
@@ -135,8 +135,7 @@ export default function AnnouncementsPage() {
 
         {list.length === 0 && !loading ? (
           <Empty
-            image={<IllustrationIdle style={{ width: 120, height: 120 }} />}
-            darkModeImage={<IllustrationIdleDark style={{ width: 120, height: 120 }} />}
+            {...emptyIllustration('Idle', 120)}
             description={(() => {
               if (tab === 'unread') return '暂无未读公告';
               if (tab === 'read') return '暂无已读公告';

@@ -10,6 +10,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Banner, Input, Select, SideSheet, Typography } from '@douyinfe/semi-ui';
+import ModalFooter from '@/components/ModalFooter';
 import type { FlowBranch, FlowNode } from '../types';
 
 interface FormField {
@@ -129,12 +130,7 @@ export default function RouteBranchEditor({
       placement="right"
       width={520}
       className="fd-config-drawer"
-      footer={
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 0' }}>
-          <button type="button" className="fd-drawer-btn fd-drawer-btn--cancel" onClick={onCancel}>取消</button>
-          <button type="button" className="fd-drawer-btn fd-drawer-btn--save" onClick={handleSave}>保存</button>
-        </div>
-      }
+      footer={<ModalFooter onCancel={onCancel} onOk={handleSave} okText="保存" />}
     >
       {isDefault ? (
         <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--semi-color-text-2)' }}>

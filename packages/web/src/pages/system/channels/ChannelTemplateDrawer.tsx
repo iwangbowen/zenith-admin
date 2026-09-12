@@ -26,7 +26,7 @@ import {
   useSaveChannelTemplate,
 } from '@/hooks/queries/channels';
 import { CreateButton } from '@/components/toolbar-controls';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { CHANNEL_MESSAGE_TYPE_COLOR } from './channel-tag-colors';
 
 interface Props {
@@ -121,10 +121,7 @@ export function ChannelTemplateDrawer({ visible, onClose, onChanged }: Readonly<
 
 
   const columns: ColumnProps<ChannelMessageTemplate>[] = [
-    {
-      title: '名称', dataIndex: 'name',
-      render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 200 }}>{v}</Typography.Text>,
-    },
+    { title: '名称', dataIndex: 'name', render: renderEllipsis },
     {
       title: '类型', dataIndex: 'type', width: 90,
       render: (v: ChannelMessageType) => <Tag color={CHANNEL_MESSAGE_TYPE_COLOR[v] ?? 'grey'} size="small">{TYPE_LABELS[v] ?? v}</Tag>,

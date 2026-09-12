@@ -4,6 +4,7 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Eye, Inbox, ShieldQuestion } from 'lucide-react';
 import {
   DRIVE_ACCESS_REQUEST_STATUS_LABELS,
+  DRIVE_ACCESS_REQUEST_STATUS_OPTIONS,
   DRIVE_NODE_TYPE_LABELS,
   DRIVE_REQUESTABLE_ROLES,
   DRIVE_ROLE_LABELS,
@@ -179,7 +180,7 @@ export function DriveAccessRequestsModal({ visible, initialBox = 'inbox', onClos
   const total = query.data?.total ?? 0;
   return (
     <AppModal visible={visible} title="访问申请" onCancel={onClose} footer={null} width={720} closeOnEsc>
-      <Tabs type="line" size="small" activeKey={box} onChange={(k) => { setBox(k as 'inbox' | 'outbox'); setPage(1); }}
+      <Tabs type="line" size="small" collapsible="auto" activeKey={box} onChange={(k) => { setBox(k as 'inbox' | 'outbox'); setPage(1); }}
         tabBarExtraContent={(
           <StatusSelect
             value={status}
@@ -187,7 +188,7 @@ export function DriveAccessRequestsModal({ visible, initialBox = 'inbox', onClos
             size="small"
             width={120}
             aria-label="状态"
-            items={Object.entries(DRIVE_ACCESS_REQUEST_STATUS_LABELS).map(([value, label]) => ({ value, label }))}
+            items={DRIVE_ACCESS_REQUEST_STATUS_OPTIONS}
           />
         )}>
         <TabPane tab={<span><Inbox size={14} style={{ verticalAlign: -2, marginRight: 4 }} />待我审批</span>} itemKey="inbox" />

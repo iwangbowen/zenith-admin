@@ -8,6 +8,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { BarChart, chartOptions, makeBarSpec, useChartPalette } from '@/components/charts';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { formatDateForApi } from '@/utils/date';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { useAnalyticsEventMeta, useAnalyticsEventQuery, useAnalyticsSegments } from '@/hooks/queries/analytics';
 import { usePagination } from '@/hooks/usePagination';
 import type { AnalyticsEventQueryGroupByField, AnalyticsEventQueryInput, AnalyticsEventQueryMetric, AnalyticsEventQueryRow, AnalyticsSegmentPropertyFilter } from '@zenith/shared/analytics';
@@ -165,7 +166,7 @@ export default function AnalyticsEventQueryTab() {
   const metricLabel = ANALYTICS_EVENT_QUERY_METRIC_OPTIONS.find((o) => o.value === (result?.queryMeta.metric ?? draft.metric))?.label ?? '指标值';
 
   const chartData = useMemo(
-    () => (result?.list ?? []).map((row) => ({ __label: primaryDim ? row.dimensions[primaryDim] ?? '–' : '–', value: row.value })),
+    () => (result?.list ?? []).map((row) => ({ __label: primaryDim ? row.dimensions[primaryDim] ?? EMPTY_PLACEHOLDER : EMPTY_PLACEHOLDER, value: row.value })),
     [result?.list, primaryDim],
   );
 
@@ -182,7 +183,7 @@ export default function AnalyticsEventQueryTab() {
     const dimCols: ColumnProps<AnalyticsEventQueryRow>[] = groupBy.map((dim) => ({
       title: ANALYTICS_EVENT_QUERY_GROUP_BY_LABELS[dim] ?? dim,
       dataIndex: dim,
-      render: (_: unknown, record: AnalyticsEventQueryRow) => record.dimensions[dim] ?? '–',
+      render: (_: unknown, record: AnalyticsEventQueryRow) => record.dimensions[dim] ?? EMPTY_PLACEHOLDER,
     }));
     return [
       ...dimCols,

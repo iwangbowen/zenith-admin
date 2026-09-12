@@ -35,7 +35,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton } from '@/components/toolbar-controls';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useEditModal } from '@/hooks/useEditModal';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import ModalFooter from '@/components/ModalFooter';
@@ -302,8 +302,8 @@ export default function WorkflowEventSubscriptionsPage() {
       render: (v: string) => EVENT_LABEL_MAP[v] ?? v,
     },
     { title: '次数', dataIndex: 'attempt', width: 70, align: 'right' },
-    { title: 'HTTP', dataIndex: 'responseStatus', width: 80, render: (v: number | null) => v ?? '-' },
-    { title: '耗时', dataIndex: 'durationMs', width: 90, align: 'right', render: (v: number | null) => v == null ? '-' : `${v}ms` },
+    { title: 'HTTP', dataIndex: 'responseStatus', width: 80, render: (v: number | null) => v ?? EMPTY_PLACEHOLDER },
+    { title: '耗时', dataIndex: 'durationMs', width: 90, align: 'right', render: (v: number | null) => v == null ? EMPTY_PLACEHOLDER : `${v}ms` },
     { title: '错误', dataIndex: 'errorMessage', minWidth: 220, ellipsis: { showTitle: true } },
     dateTimeColumn('时间', 'createdAt'),
     {

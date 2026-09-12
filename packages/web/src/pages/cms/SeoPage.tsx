@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Banner, Button, Form, Tag, Toast, Tabs, TabPane, TextArea, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Form, Tag, Toast, Tabs, TabPane, TextArea } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search, Send } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -22,7 +22,7 @@ import type { CmsRedirect, CmsLinkWord, CmsPushLog } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { dateTimeColumn, renderEnabledStatusTag } from '@/utils/table-columns';
+import { dateTimeColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 
@@ -58,7 +58,7 @@ function RedirectsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
     { title: '来源路径', dataIndex: 'fromPath', width: 240 },
     { title: '目标地址', dataIndex: 'toUrl', minWidth: 260 },
     { title: '类型', dataIndex: 'redirectType', width: 80, render: (v: number) => <Tag size="small" color={v === 301 ? 'blue' : 'orange'}>{v}</Tag> },
-    { title: '备注', dataIndex: 'remark', width: 160, render: (v: string | null) => v ?? '-' },
+    { title: '备注', dataIndex: 'remark', width: 160, render: renderEllipsis },
     {
       title: '状态', dataIndex: 'status', width: 80, fixed: 'right',
       render: renderEnabledStatusTag,
@@ -208,7 +208,7 @@ function PushTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
       title: '结果', dataIndex: 'success', width: 120,
       render: (v: boolean, record) => (v ? <Tag color="green" size="small">成功</Tag> : <Tag color="red" size="small">失败{record.statusCode ? `（${record.statusCode}）` : ''}</Tag>),
     },
-    { title: '响应', dataIndex: 'response', width: 320, render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 300 }}>{v ?? '-'}</Typography.Text> },
+    { title: '响应', dataIndex: 'response', width: 320, render: renderEllipsis },
     dateTimeColumn('推送时间', 'createdAt'),
   ];
 

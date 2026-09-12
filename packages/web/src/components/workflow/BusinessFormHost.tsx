@@ -9,9 +9,9 @@
  */
 import { Suspense, useMemo } from 'react';
 import { Empty, Spin, Typography } from '@douyinfe/semi-ui';
-import { IllustrationFailure, IllustrationFailureDark } from '@douyinfe/semi-illustrations';
 import type { WorkflowCustomFormConfig, WorkflowCustomFormVariable } from '@zenith/shared/workflow';
 import { lazyBusinessFormComponent } from '@/utils/business-form-registry';
+import { emptyIllustration } from '@/components/EmptyIllustration';
 
 export type WorkflowBusinessFormMode = 'create' | 'view' | 'approve';
 
@@ -65,8 +65,7 @@ interface BusinessFormHostProps {
 function MissingComponent({ path }: Readonly<{ path: string | null }>) {
   return (
     <Empty
-      image={<IllustrationFailure style={{ width: 140, height: 140 }} />}
-      darkModeImage={<IllustrationFailureDark style={{ width: 140, height: 140 }} />}
+      {...emptyIllustration('Failure', 140)}
       title="未找到业务表单组件"
       description={
         <Typography.Text type="tertiary">

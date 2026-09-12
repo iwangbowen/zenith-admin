@@ -14,7 +14,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useListSearch } from '@/hooks/useListSearch';
-import { dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { useTerminalPreferences } from './useTerminalPreferences';
 import { resolveTheme, toXtermTheme } from './themes';
 import {
@@ -158,7 +158,7 @@ export default function TerminalSessionsPage() {
       render: (k: TerminalSessionKind) => <Tag size="small" color={KIND_META[k].color}>{KIND_META[k].label}</Tag>,
     },
     { title: '标签 / 主机', dataIndex: 'label', minWidth: 200, render: renderEllipsis },
-    { title: '客户端 IP', dataIndex: 'clientIp', width: 140, render: (v: string) => v || '-' },
+    { title: '客户端 IP', dataIndex: 'clientIp', width: 140, render: (v: string) => v || EMPTY_PLACEHOLDER },
     {
       title: '字符网格',
       dataIndex: 'cols',

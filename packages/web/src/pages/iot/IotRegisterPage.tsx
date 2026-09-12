@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Banner, Button, Form, Modal, Popconfirm, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
-import { IconRefresh } from '@douyinfe/semi-icons';
+import { RefreshCw } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -154,7 +154,7 @@ export default function IotRegisterPage() {
               : <Tag color="grey" size="small">未开启</Tag>
           )}
           <Button
-            icon={<IconRefresh />}
+            icon={<RefreshCw size={14} />}
             disabled={secretProductId === null}
             loading={resetSecretMutation.isPending}
             onClick={() => { void handleResetSecret(); }}

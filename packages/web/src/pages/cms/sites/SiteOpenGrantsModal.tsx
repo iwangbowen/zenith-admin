@@ -8,6 +8,7 @@ import AppModal from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { confirmDelete } from '@/utils/confirm';
+import { renderEllipsis } from '@/utils/table-columns';
 import { useCmsChannelTree, useCmsOpenGrants, useDeleteCmsOpenGrant, useSaveCmsOpenGrant } from '@/hooks/queries/cms';
 import type { CmsChannel, CmsOpenAppGrant, CmsSite } from '@zenith/shared/cms';
 
@@ -93,7 +94,7 @@ export default function SiteOpenGrantsModal({ site, onClose }: Readonly<SiteOpen
         empty="尚未授权任何开放应用"
         columns={[
           { title: 'AppKey', dataIndex: 'clientId', width: 180 },
-          { title: '应用', dataIndex: 'appName', width: 140, render: (v: string | null) => v ?? '-' },
+          { title: '应用', dataIndex: 'appName', width: 140, render: renderEllipsis },
           {
             title: '可写栏目', dataIndex: 'channelIds', minWidth: 160,
             render: (v: number[]) => (v?.length ? `${v.length} 个栏目` : <Tag size="small" color="blue">全部栏目</Tag>),

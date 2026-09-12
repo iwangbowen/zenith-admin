@@ -304,7 +304,7 @@ export default function NotifyPoliciesPage() {
 
   return (
     <div className="page-container">
-      <Tabs activeKey={activeTab} onChange={(v) => setActiveTab(v as 'events' | 'dispatches')}>
+      <Tabs collapsible="auto" activeKey={activeTab} onChange={(v) => setActiveTab(v as 'events' | 'dispatches')}>
         <Tabs.TabPane itemKey="events" tab="事件策略">
           <PolicyEventsTab />
         </Tabs.TabPane>

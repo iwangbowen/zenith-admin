@@ -18,7 +18,7 @@ import {
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
 
 type StatusFilter = WorkflowFormStatus | undefined;
 type TagColor = 'green' | 'grey';
@@ -89,14 +89,14 @@ export default function WorkflowFormsPage() {
       title: '标识',
       dataIndex: 'code',
       width: 160,
-      render: (value: string | null) => value || '-',
+      render: (value: string | null) => value || EMPTY_PLACEHOLDER,
     },
     {
       title: '分类',
       dataIndex: 'categoryName',
       width: 140,
       render: (_value: unknown, record: WorkflowForm) => (
-        record.categoryName || (record.categoryId === null ? null : categoryNameMap.get(record.categoryId)) || '-'
+        record.categoryName || (record.categoryId === null ? null : categoryNameMap.get(record.categoryId)) || EMPTY_PLACEHOLDER
       ),
     },
     {
@@ -116,7 +116,7 @@ export default function WorkflowFormsPage() {
       title: '创建人',
       dataIndex: 'createdByName',
       width: 120,
-      render: (value: string | null | undefined) => value || '-',
+      render: (value: string | null | undefined) => value || EMPTY_PLACEHOLDER,
     },
     dateTimeColumn('更新时间', 'updatedAt'),
     {

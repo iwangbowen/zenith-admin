@@ -22,7 +22,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { ASYNC_TASK_STATUS_TAG_MAP as statusTagMap, asyncTaskRateColor as rateColor } from '@/utils/async-task';
 import { formatDurationMs as formatDuration } from '@/utils/format';
 import { formatDateTime } from '@/utils/date';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import {
   asyncTaskKeys,
   useAsyncTaskAction,
@@ -87,7 +87,7 @@ const EMPTY_TASKS: AsyncTask[] = [];
 const EMPTY_TYPES: AsyncTaskTypeMeta[] = [];
 
 function renderJson(value: Record<string, unknown> | null) {
-  if (!value || Object.keys(value).length === 0) return <Typography.Text type="tertiary">-</Typography.Text>;
+  if (!value || Object.keys(value).length === 0) return <Typography.Text type="tertiary">{EMPTY_PLACEHOLDER}</Typography.Text>;
   return <JsonBlock value={value} />;
 }
 
@@ -325,7 +325,7 @@ export default function TaskCenterPage() {
         <Typography.Text size="small">{value} / {record.maxAttempts}</Typography.Text>
       ),
     },
-    { title: '提交人', dataIndex: 'createdByName', width: 120, render: (value: string | null) => value ?? '-' },
+    { title: '提交人', dataIndex: 'createdByName', width: 120, render: (value: string | null) => value || EMPTY_PLACEHOLDER },
     dateTimeColumn('提交时间', 'createdAt'),
     dateTimeColumn('完成时间', 'completedAt'),
     {
@@ -334,7 +334,7 @@ export default function TaskCenterPage() {
       width: 160,
       render: (value: string | null, record: AsyncTask) => (value ? (
         <Button theme="borderless" type="danger" size="small" onClick={() => handleShowError(record)}>查看失败原因</Button>
-      ) : '-'),
+      ) : EMPTY_PLACEHOLDER),
     },
     asyncTaskStatusColumn<AsyncTask>(110),
     createOperationColumn<AsyncTask>({
@@ -639,15 +639,15 @@ export default function TaskCenterPage() {
               data={[
                 { key: '任务标题', value: detailTask.title },
                 { key: '任务类型', value: detailTask.taskType },
-                { key: '所属模块', value: detailTask.module ?? '-' },
+                { key: '所属模块', value: detailTask.module ?? EMPTY_PLACEHOLDER },
                 { key: '状态', value: statusTagMap[detailTask.status].label },
                 { key: '进度', value: `${detailTask.processedCount}${detailTask.totalCount != null ? ` / ${detailTask.totalCount}` : ''}${detailTask.failedCount > 0 ? `（失败 ${detailTask.failedCount}）` : ''}` },
-                { key: '进度说明', value: detailTask.progressNote ?? '-' },
+                { key: '进度说明', value: detailTask.progressNote ?? EMPTY_PLACEHOLDER },
                 { key: '执行次数', value: `${detailTask.attempts} / ${detailTask.maxAttempts}` },
-                { key: '下次重试', value: detailTask.nextRunAt ? formatDateTime(detailTask.nextRunAt) : '-' },
-                { key: '提交人', value: detailTask.createdByName ?? '-' },
-                { key: '开始时间', value: detailTask.startedAt ? formatDateTime(detailTask.startedAt) : '-' },
-                { key: '完成时间', value: detailTask.completedAt ? formatDateTime(detailTask.completedAt) : '-' },
+                { key: '下次重试', value: detailTask.nextRunAt ? formatDateTime(detailTask.nextRunAt) : EMPTY_PLACEHOLDER },
+                { key: '提交人', value: detailTask.createdByName ?? EMPTY_PLACEHOLDER },
+                { key: '开始时间', value: detailTask.startedAt ? formatDateTime(detailTask.startedAt) : EMPTY_PLACEHOLDER },
+                { key: '完成时间', value: detailTask.completedAt ? formatDateTime(detailTask.completedAt) : EMPTY_PLACEHOLDER },
                 {
                   key: '链路 ID',
                   value: detailTask.traceId
@@ -664,7 +664,7 @@ export default function TaskCenterPage() {
                           )}
                         </span>
                       )
-                    : '-',
+                    : EMPTY_PLACEHOLDER,
                 },
               ]}
               size="small"
@@ -702,7 +702,6 @@ export default function TaskCenterPage() {
               <ConfigurableTable<AsyncTaskItem>
                 columns={itemColumns}
                 {...listTableProps(itemsQuery, { pagination: buildItemsPagination, empty: '该任务未上报行级明细' })}
-                scroll={{ x: 670 }}
               />
             </div>
           </div>

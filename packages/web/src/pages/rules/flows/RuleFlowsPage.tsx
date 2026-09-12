@@ -4,7 +4,7 @@ import { Button, Form, Input, List, Modal, Select, SideSheet, Space, Tag, TextAr
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
 import type { RuleDecisionFlow, RuleFlowEvaluateResult, RuleFlowStep } from '@zenith/shared/rules';
-import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -123,7 +123,7 @@ export default function RuleFlowsPage() {
     { title: '名称', dataIndex: 'name', minWidth: 180, render: renderEllipsis },
     { title: '步骤', width: 220, render: (_: unknown, r: RuleDecisionFlow) => (
       <Text type="tertiary" size="small" ellipsis={{ showTooltip: true }} style={{ maxWidth: 200 }}>
-        {r.steps.map((s) => s.label || s.tableKey).join(' → ') || '-'}
+        {r.steps.map((s) => s.label || s.tableKey).join(' → ') || EMPTY_PLACEHOLDER}
       </Text>
     ) },
     { title: '版本', dataIndex: 'version', width: 70 },

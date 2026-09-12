@@ -17,7 +17,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useMyAsyncTasks } from '@/hooks/useAsyncTasks';
 import { usePagination } from '@/hooks/usePagination';
 import { asyncTaskItemColumns, asyncTaskStatusColumn } from '@/components/async-task-columns';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
 import { useBizTaskDemoAction, useBizTaskDemoItems, useBizTaskDemoTypes, useSubmitTaskDemo } from '@/hooks/queries/biz-pay-demo';
 import { JsonBlock } from '@/components/JsonBlock';
 import { listTableProps } from '@/components/list-page';
@@ -137,7 +137,7 @@ export default function TaskDemoPage() {
     Modal.info({
       title: `任务结果 #${record.id}`,
       content: (
-        <JsonBlock value={record.result ?? record.errorMessage ?? '-'} />
+        <JsonBlock value={record.result ?? record.errorMessage ?? EMPTY_PLACEHOLDER} />
       ),
       okText: '知道了',
     });
@@ -288,7 +288,6 @@ export default function TaskDemoPage() {
         {itemsTask && (
           <ConfigurableTable<AsyncTaskItem>
             columns={itemColumns}
-            scroll={{ x: 640 }}
             {...listTableProps(itemsQuery, { pagination: buildItemsPagination, empty: '该任务尚未上报行级明细' })}
           />
         )}

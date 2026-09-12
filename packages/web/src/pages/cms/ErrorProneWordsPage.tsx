@@ -3,7 +3,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import AppModal from '@/components/AppModal';
-import { createdAtColumn, renderEnabledStatusTag } from '@/utils/table-columns';
+import { createdAtColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -44,7 +44,7 @@ export default function ErrorProneWordsPage() {
       width: 200,
       render: (v: string) => <Tag size="small" color="green">{v}</Tag>,
     },
-    { title: '备注', dataIndex: 'remark', minWidth: 220, render: (v: string | null) => v ?? '-' },
+    { title: '备注', dataIndex: 'remark', minWidth: 220, render: renderEllipsis },
     createdAtColumn,
     {
       title: '状态', dataIndex: 'status', width: 80, fixed: 'right',

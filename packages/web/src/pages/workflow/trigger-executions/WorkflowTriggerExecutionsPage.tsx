@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { InputNumber, SideSheet, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { formatDateTime } from '@/utils/date';
-import { createdAtColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, createdAtColumn } from '@/utils/table-columns';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import WorkflowInstanceCell from '@/components/workflow/WorkflowInstanceCell';
@@ -100,21 +100,21 @@ export default function WorkflowTriggerExecutionsPage() {
       title: '响应码',
       dataIndex: 'responseStatus',
       width: 90,
-      render: (v: number | null) => v ?? '-',
+      render: (v: number | null) => v ?? EMPTY_PLACEHOLDER,
     },
     {
       title: '耗时',
       align: 'right',
       dataIndex: 'durationMs',
       width: 90,
-      render: (v: number | null) => (v == null ? '-' : `${v} ms`),
+      render: (v: number | null) => (v == null ? EMPTY_PLACEHOLDER : `${v} ms`),
     },
     {
       title: '错误',
       dataIndex: 'errorMessage',
       ellipsis: { showTitle: true },
       render: (v: string | null) =>
-        v ? <Typography.Text type="danger" ellipsis={{ rows: 1, showTooltip: true }}>{v}</Typography.Text> : '-',
+        v ? <Typography.Text type="danger" ellipsis={{ rows: 1, showTooltip: true }}>{v}</Typography.Text> : EMPTY_PLACEHOLDER,
     },
     createdAtColumn,
     // 固定列必须连续贴在两端：状态若夹在中间，会被抽到右侧固定层，原位留下空洞，表头表体错位
@@ -174,7 +174,7 @@ export default function WorkflowTriggerExecutionsPage() {
         {detail && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <Row label="实例">{detail.instanceTitle ? `#${detail.instanceId} · ${detail.instanceTitle}` : `#${detail.instanceId}`}</Row>
-            <Row label="任务 ID">{detail.taskId ?? '-'}</Row>
+            <Row label="任务 ID">{detail.taskId ?? EMPTY_PLACEHOLDER}</Row>
             <Row label="节点">{detail.nodeName}（{detail.nodeKey}）</Row>
             <Row label="触发类型">{TRIGGER_TYPE_LABEL[detail.triggerType] ?? detail.triggerType}</Row>
             <Row label="状态">
@@ -183,10 +183,10 @@ export default function WorkflowTriggerExecutionsPage() {
               </Tag>
             </Row>
             <Row label="尝试次数">{detail.attempt}</Row>
-            <Row label="请求 URL">{detail.requestUrl ?? '-'}</Row>
-            <Row label="请求方法">{detail.requestMethod ?? '-'}</Row>
-            <Row label="响应码">{detail.responseStatus ?? '-'}</Row>
-            <Row label="耗时">{detail.durationMs == null ? '-' : `${detail.durationMs} ms`}</Row>
+            <Row label="请求 URL">{detail.requestUrl ?? EMPTY_PLACEHOLDER}</Row>
+            <Row label="请求方法">{detail.requestMethod ?? EMPTY_PLACEHOLDER}</Row>
+            <Row label="响应码">{detail.responseStatus ?? EMPTY_PLACEHOLDER}</Row>
+            <Row label="耗时">{detail.durationMs == null ? EMPTY_PLACEHOLDER : `${detail.durationMs} ms`}</Row>
             <Row label="创建时间">{formatDateTime(detail.createdAt)}</Row>
             <CodeBlock label="请求体" content={detail.requestBody} />
             <CodeBlock label="响应体" content={detail.responseBody} />

@@ -1,16 +1,10 @@
-import { lazy, Suspense, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import { Badge, Button, Empty, List, Popover, Typography } from '@douyinfe/semi-ui';
 import { Bell, Megaphone } from 'lucide-react';
 import type { NavigateFunction } from 'react-router-dom';
 import type { InAppMessage, Announcement } from '@zenith/shared/messaging';
 import { formatDateTime } from '@/utils/date';
-
-// 空态插图只在打开弹层且列表为空时出现，懒加载使 ~130KB 的 semi-illustrations 不随布局首屏下载
-const IllustrationIdle = lazy(() => import('@douyinfe/semi-illustrations').then((m) => ({ default: m.IllustrationIdle })));
-const IllustrationIdleDark = lazy(() => import('@douyinfe/semi-illustrations').then((m) => ({ default: m.IllustrationIdleDark })));
-
-const idleImage = <Suspense fallback={null}><IllustrationIdle style={{ width: 80, height: 80 }} /></Suspense>;
-const idleImageDark = <Suspense fallback={null}><IllustrationIdleDark style={{ width: 80, height: 80 }} /></Suspense>;
+import { emptyIllustration } from '@/components/EmptyIllustration';
 
 interface NotificationItem {
   id: number;
@@ -75,8 +69,7 @@ function NotificationPopover<T extends NotificationItem>({
           </div>
           {items.length === 0 ? (
             <Empty
-              image={idleImage}
-              darkModeImage={idleImageDark}
+              {...emptyIllustration('Idle', 80)}
               description={emptyText} style={{ padding: '24px 0' }} />
           ) : (
             <List

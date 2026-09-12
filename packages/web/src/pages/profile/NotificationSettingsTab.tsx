@@ -26,6 +26,7 @@ import {
 } from '@/hooks/queries/notification-preferences';
 import { usePreferences } from '@/hooks/usePreferences';
 import { NOTIFICATION_SOUND_STYLES, NOTIFICATION_SOUND_STYLE_OPTIONS, playNotificationSound } from '@/utils/notification-sound';
+import { DEFAULT_TIMEZONE } from '@/utils/timezones';
 import { NOTIFICATION_SEVERITY_TAG_COLOR } from '../system/notify-policies/notify-tag-colors';
 
 const { Text } = Typography;
@@ -126,7 +127,7 @@ export default function NotificationSettingsTab() {
     }
     const payload: SaveNotificationSettingsInput = {
       globalMuted: Boolean(values.globalMuted),
-      timezone: (values.timezone as string) || 'Asia/Shanghai',
+      timezone: (values.timezone as string) || DEFAULT_TIMEZONE,
       quietStart,
       quietEnd,
       digestMode: values.digestMode as SaveNotificationSettingsInput['digestMode'],
@@ -154,7 +155,7 @@ export default function NotificationSettingsTab() {
         style={{ maxWidth: 560 }}
         initValues={{
           globalMuted: settings?.globalMuted ?? false,
-          timezone: settings?.timezone ?? 'Asia/Shanghai',
+          timezone: settings?.timezone ?? DEFAULT_TIMEZONE,
           quietStart: settings?.quietStart ?? undefined,
           quietEnd: settings?.quietEnd ?? undefined,
           digestMode: settings?.digestMode ?? 'realtime',

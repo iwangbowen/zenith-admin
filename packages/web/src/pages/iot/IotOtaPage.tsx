@@ -279,7 +279,7 @@ function OtaTasksTab({ detailTask, onOpenDetail }: Readonly<{
     {
       title: '批次', width: 100,
       render: (_: unknown, r: IotOtaTask) => r.batchSize
-        ? <Text size="small" style={{ whiteSpace: 'nowrap' }}>{r.currentBatch} / {r.totalBatches ?? '-'} 批</Text>
+        ? <Text size="small" style={{ whiteSpace: 'nowrap' }}>{r.currentBatch} / {r.totalBatches ?? EMPTY_PLACEHOLDER} 批</Text>
         : <Text size="small" type="tertiary">全量</Text>,
     },
     {

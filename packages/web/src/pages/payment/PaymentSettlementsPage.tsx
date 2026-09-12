@@ -7,7 +7,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
 import { formatDateForApi } from '@/utils/date';
-import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -300,8 +300,8 @@ export default function PaymentSettlementsPage() {
 
       <AppModal {...settleModal.modalProps} title="确认结算到账" width={520}>
         <Form key={settleModal.formKey} {...settleModal.formProps}>
-          <Form.Slot label="批次号">{settleModal.editing?.batchNo ?? '-'}</Form.Slot>
-          <Form.Slot label="结算净额">{settleModal.editing ? yuan(settleModal.editing.netAmount) : '-'}</Form.Slot>
+          <Form.Slot label="批次号">{settleModal.editing?.batchNo ?? EMPTY_PLACEHOLDER}</Form.Slot>
+          <Form.Slot label="结算净额">{settleModal.editing ? yuan(settleModal.editing.netAmount) : EMPTY_PLACEHOLDER}</Form.Slot>
           <Form.Input
             field="reference"
             label="到账参考号"
@@ -322,7 +322,7 @@ export default function PaymentSettlementsPage() {
         okButtonProps={{ ...failModal.modalProps.okButtonProps, type: 'danger', theme: 'solid' }}
       >
         <Form key={failModal.formKey} {...failModal.formProps}>
-          <Form.Slot label="批次号">{failModal.editing?.batchNo ?? '-'}</Form.Slot>
+          <Form.Slot label="批次号">{failModal.editing?.batchNo ?? EMPTY_PLACEHOLDER}</Form.Slot>
           <Form.TextArea
             field="reference"
             label="失败原因"

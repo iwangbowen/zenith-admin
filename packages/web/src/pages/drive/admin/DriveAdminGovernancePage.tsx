@@ -3,9 +3,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Checkbox, Form, Input, InputNumber, Select, Space, Tabs, TabPane, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Scale } from 'lucide-react';
-import { formatBytes } from '@zenith/shared/core';
+import { createLabelOptionsFromMap, formatBytes } from '@zenith/shared/core';
 import {
-  DRIVE_ACCESS_REQUEST_STATUS_LABELS, DRIVE_NODE_TYPE_LABELS, DRIVE_ROLE_LABELS, DRIVE_SPACE_TYPE_LABELS,
+  DRIVE_ACCESS_REQUEST_STATUS_LABELS, DRIVE_ACCESS_REQUEST_STATUS_OPTIONS, DRIVE_NODE_TYPE_LABELS, DRIVE_ROLE_LABELS, DRIVE_SPACE_TYPE_LABELS,
   type DriveLegalHold, type DriveOpenAppGrant, type DriveQuotaRequest, type DriveQuotaRequestStatus, type DriveShareAccessLog,
 } from '@zenith/shared/drive';
 import { AppModal } from '@/components/AppModal';
@@ -39,9 +39,9 @@ const TABS = ['holds', 'quota', 'logs', 'open'] as const;
 type TabKey = (typeof TABS)[number];
 
 const STATUS_COLORS: Record<DriveQuotaRequestStatus, 'orange' | 'green' | 'red' | 'grey'> = { pending: 'orange', approved: 'green', rejected: 'red', cancelled: 'grey' };
-const STATUS_OPTIONS = Object.entries(DRIVE_ACCESS_REQUEST_STATUS_LABELS).map(([value, label]) => ({ value: value as DriveQuotaRequestStatus, label }));
+const STATUS_OPTIONS = DRIVE_ACCESS_REQUEST_STATUS_OPTIONS;
 const LOG_ACTION_LABELS: Record<string, string> = { access: '进入 / 校验', list: '浏览目录', preview: '预览', download: '下载', save: '转存', upload: '收集上传' };
-const LOG_ACTION_OPTIONS = Object.entries(LOG_ACTION_LABELS).map(([value, label]) => ({ value, label }));
+const LOG_ACTION_OPTIONS = createLabelOptionsFromMap(LOG_ACTION_LABELS);
 const GRANT_ROLE_OPTIONS = [
   { value: 'viewer', label: `${DRIVE_ROLE_LABELS.viewer}（只读元数据）` },
   { value: 'downloader', label: `${DRIVE_ROLE_LABELS.downloader}（可下载内容）` },
@@ -344,7 +344,7 @@ export default function DriveAdminGovernancePage() {
 
   return (
     <div className="page-container">
-      <Tabs type="line" activeKey={tab} onChange={change} lazyRender keepDOM={false}>
+      <Tabs type="line" collapsible="auto" activeKey={tab} onChange={change} lazyRender keepDOM={false}>
         <TabPane tab="法律保留" itemKey="holds"><LegalHoldsTab /></TabPane>
         <TabPane tab="扩容审批" itemKey="quota"><QuotaRequestsTab /></TabPane>
         {canSeeLogs && <TabPane tab="外链访问日志" itemKey="logs"><ShareAccessLogsTab /></TabPane>}

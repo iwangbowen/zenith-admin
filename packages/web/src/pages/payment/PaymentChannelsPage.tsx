@@ -22,7 +22,7 @@ import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { PaymentChannelTag } from './payment-display';
 
@@ -131,7 +131,7 @@ export default function PaymentChannelsPage() {
       title: '默认', dataIndex: 'isDefault', width: 120,
       render: (v: boolean, r: PaymentChannelConfig) => {
         if (v) return <Tag color="amber">默认</Tag>;
-        if (!hasPermission('payment:channel:update')) return '-';
+        if (!hasPermission('payment:channel:update')) return EMPTY_PLACEHOLDER;
         return (
           <Button size="small" theme="borderless" type="tertiary" loading={defaultingId === r.id} onClick={() => handleSetDefault(r)}>
             设为默认
@@ -139,7 +139,7 @@ export default function PaymentChannelsPage() {
         );
       },
     },
-    { title: '沙箱', dataIndex: 'sandbox', width: 80, render: (v: boolean) => (v ? <Tag color="grey">沙箱</Tag> : '-') },
+    { title: '沙箱', dataIndex: 'sandbox', width: 80, render: (v: boolean) => (v ? <Tag color="grey">沙箱</Tag> : EMPTY_PLACEHOLDER) },
     dateTimeColumn('创建时间', 'createdAt'),
     status.column(),
     createOperationColumn<PaymentChannelConfig>({

@@ -12,6 +12,7 @@ import { Form, Descriptions, Typography, Banner } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { ClipboardList } from 'lucide-react';
 import type { WorkflowBusinessFormProps } from '@/components/workflow/BusinessFormHost';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 export default function DemoBusinessForm({
   mode,
@@ -40,9 +41,9 @@ export default function DemoBusinessForm({
         <Descriptions
           row
           data={[
-            { key: '金额', value: value.amount != null ? `¥ ${String(value.amount)}` : '-' },
-            { key: '事由', value: (value.reason as string) || '-' },
-            { key: '备注', value: (value.remark as string) || '-' },
+            { key: '金额', value: value.amount != null ? `¥ ${String(value.amount)}` : EMPTY_PLACEHOLDER },
+            { key: '事由', value: (value.reason as string) || EMPTY_PLACEHOLDER },
+            { key: '备注', value: (value.remark as string) || EMPTY_PLACEHOLDER },
           ]}
         />
       </div>

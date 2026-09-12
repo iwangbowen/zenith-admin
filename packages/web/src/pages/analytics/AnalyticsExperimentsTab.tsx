@@ -314,7 +314,7 @@ export default function AnalyticsExperimentsTab() {
           />
         )}
         <ConfigurableTable
-          bordered rowKey="variantKey" loading={reportQuery.isFetching} dataSource={reportRows} scroll={{ x: 1080 }}
+          bordered rowKey="variantKey" loading={reportQuery.isFetching} dataSource={reportRows}
           columns={[
             { title: '变体', dataIndex: 'variantKey', width: 150, render: (value: string, record) => (
               <Space spacing={4}>

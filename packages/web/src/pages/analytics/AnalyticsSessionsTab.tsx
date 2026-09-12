@@ -7,7 +7,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Search } from 'lucide-react';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { analyticsKeys, useAnalyticsSessions, useSessionTimeline } from '@/hooks/queries/analytics';
 import type { SessionListItem } from '@zenith/shared/analytics';
 import { ANALYTICS_DEVICE_TYPE_OPTIONS, USER_BEHAVIOR_EVENT_TYPE_LABELS } from '@zenith/shared/analytics';
@@ -42,7 +42,7 @@ function SessionTimelineSheet({ sessionId, onClose }: { sessionId: string | null
           <div style={{ display: 'grid', gap: 16 }}>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <Tag color="blue">{data.username || (data.userId == null ? '匿名访客' : `用户 #${data.userId}`)}</Tag>
-              <Tag>{data.deviceType || 'unknown'} · {data.browser || '–'} / {data.os || '–'}</Tag>
+              <Tag>{data.deviceType || 'unknown'} · {data.browser || EMPTY_PLACEHOLDER} / {data.os || EMPTY_PLACEHOLDER}</Tag>
               {data.startedAt && <Tag color="grey">开始 {data.startedAt}</Tag>}
               {data.durationMs != null && <Tag color="grey">时长 {msToReadable(data.durationMs)}</Tag>}
             </div>
@@ -61,7 +61,7 @@ function SessionTimelineSheet({ sessionId, onClose }: { sessionId: string | null
                           <Tag size="small" color={meta.color}>{meta.label}</Tag>
                           <Typography.Text strong ellipsis={{ showTooltip: true }} style={{ maxWidth: 320 }}>
                             {item.eventType === 'feature_use' || item.eventType === 'area_click'
-                              ? item.elementLabel || item.eventName || '–'
+                              ? item.elementLabel || item.eventName || EMPTY_PLACEHOLDER
                               : item.pageTitle || item.pagePath}
                           </Typography.Text>
                         </div>
@@ -127,11 +127,11 @@ export default function AnalyticsSessionsTab() {
       render: (_value, record) => (
         <div>
           <Tag color="blue">{record.deviceType || 'unknown'}</Tag>
-          <Typography.Text size="small" type="tertiary"> {record.browser || '–'} / {record.os || '–'}</Typography.Text>
+          <Typography.Text size="small" type="tertiary"> {record.browser || EMPTY_PLACEHOLDER} / {record.os || EMPTY_PLACEHOLDER}</Typography.Text>
         </div>
       ),
     },
-    { title: '地域', dataIndex: 'region', width: 120, render: (_value, record) => record.region || '–' },
+    { title: '地域', dataIndex: 'region', width: 120, render: (_value, record) => record.region || EMPTY_PLACEHOLDER },
     { title: '跳出', dataIndex: 'isBounce', width: 90, render: (_value, record) => <Tag color={record.isBounce ? 'red' : 'green'}>{record.isBounce ? '是' : '否'}</Tag> },
     dateTimeColumn('开始时间', 'startedAt'),
     createOperationColumn<SessionListItem>({

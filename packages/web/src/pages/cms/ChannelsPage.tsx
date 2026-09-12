@@ -1,12 +1,12 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Button, Dropdown, Empty, Form, Spin, Tag, Toast, Row, Col, Select, Tooltip, Tree, Typography } from '@douyinfe/semi-ui';
-import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
 import { Plus, ExternalLink, Merge, ListPlus, Eye, MoreHorizontal, RefreshCw } from 'lucide-react';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import AppModal from '@/components/AppModal';
+import { emptyIllustration } from '@/components/EmptyIllustration';
 import { usePermission } from '@/hooks/usePermission';
 import { useUrlSelectionParams } from '@/hooks/useUrlSelectionState';
 import {
@@ -648,8 +648,7 @@ export default function ChannelsPage() {
   ) : (
     <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <Empty
-        image={<IllustrationNoContent style={{ width: 140, height: 140 }} />}
-        darkModeImage={<IllustrationNoContentDark style={{ width: 140, height: 140 }} />}
+        {...emptyIllustration('NoContent', 140)}
         title="未选择栏目"
         description="从左侧栏目树选择一个栏目进行编辑，或点击「新增栏目」创建"
       />

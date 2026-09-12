@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Select, Form, Toast, Tag, Spin, Row, Col, Dropdown, Modal, Typography } from '@douyinfe/semi-ui';
+import { Button, Select, Form, Toast, Tag, Spin, Row, Col, Dropdown, Modal } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { KeyRound, ChevronDown, Tags } from 'lucide-react';
@@ -18,7 +18,7 @@ import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
-import { createdAtColumn, EMPTY_PLACEHOLDER } from '../../utils/table-columns';
+import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { MemberDetailDrawer } from './MemberDetailDrawer';
 import { MemberTagsManageModal } from './MemberTagsManageModal';
 import {
@@ -227,7 +227,7 @@ export default function MembersPage() {
         </div>
       ),
     },
-    { title: '用户名', dataIndex: 'username', width: 150, render: (v: string | null) => (v ? <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 130 }}>{v}</Typography.Text> : EMPTY_PLACEHOLDER) },
+    { title: '用户名', dataIndex: 'username', width: 150, render: renderEllipsis },
     { title: '手机号', dataIndex: 'phone', width: 150, render: (v: string | null, record: Member) => <SensitiveText entity="Member" id={record.id} field="phone" value={v} /> },
     { title: '邮箱', dataIndex: 'email', width: 200, render: (v: string | null, record: Member) => <SensitiveText entity="Member" id={record.id} field="email" value={v} /> },
     { title: '等级', dataIndex: 'levelName', width: 100, render: (v: string | null) => (v ? <Tag color="amber">{v}</Tag> : EMPTY_PLACEHOLDER) },

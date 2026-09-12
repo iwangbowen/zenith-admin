@@ -12,6 +12,7 @@ import { useAuth } from '@/hooks/useAuth';
 const DashboardChartsRow = lazy(() => import('./DashboardCharts'));
 
 import { formatDateTime, stripHtml } from '@/utils/date';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import AnnouncementDetailModal from '@/components/AnnouncementDetailModal';
@@ -161,7 +162,7 @@ export default function DashboardPage() {
                   <span className="notice-summary">{stripHtml(n.content || '', 200)}</span>
                   <span className="notice-item-footer">
                     <Text type="tertiary" size="small">
-                      {n.createByName ?? '-'} · {formatDateTime(n.publishTime)}
+                      {n.createByName ?? EMPTY_PLACEHOLDER} · {formatDateTime(n.publishTime)}
                     </Text>
                   </span>
                 </button>

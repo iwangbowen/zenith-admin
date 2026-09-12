@@ -46,7 +46,7 @@ export default function PaymentLogsPage() {  const {
     { title: '场景', dataIndex: 'scene', width: 100, render: (v: string) => (v === 'refund' ? '退款回调' : '支付回调') },
     { title: '验签', dataIndex: 'signatureValid', width: 90, render: (v: boolean) => <Tag color={v ? 'green' : 'red'}>{v ? '通过' : '失败'}</Tag> },
     { title: '结果', dataIndex: 'result', width: 150, render: renderEllipsis },
-    { title: '说明', dataIndex: 'message', width: 220, render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 200 }}>{v || '-'}</Typography.Text> },
+    { title: '说明', dataIndex: 'message', width: 220, render: renderEllipsis },
     { title: 'IP', dataIndex: 'ip', width: 150, render: renderEllipsis },
     dateTimeColumn('时间', 'createdAt'),
   ];

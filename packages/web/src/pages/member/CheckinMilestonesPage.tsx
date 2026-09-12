@@ -10,7 +10,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { AppModal } from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, listTableProps } from '@/components/list-page';
-import { renderEllipsis } from '../../utils/table-columns';
+import { EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import {
   memberAdminKeys,
   useCheckinMilestones,
@@ -71,7 +71,7 @@ export default function CheckinMilestonesPage() {
       title: '奖励内容',
       width: 160,
       render: (_: unknown, record: CheckinMilestone) =>
-        record.rewardType === 'coupon' ? (record.couponName || `券#${record.couponId ?? '-'}`) : `${record.rewardPoints} 积分`,
+        record.rewardType === 'coupon' ? (record.couponName || `券#${record.couponId ?? EMPTY_PLACEHOLDER}`) : `${record.rewardPoints} 积分`,
     },
     {
       title: '状态',

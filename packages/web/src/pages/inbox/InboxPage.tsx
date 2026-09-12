@@ -5,11 +5,11 @@ import {
   Button, Tag, Space, Tabs, TabPane, Toast, Empty, Badge, Spin, Typography, List, Checkbox,
 } from '@douyinfe/semi-ui';
 import { usePagination } from '@/hooks/usePagination';
-import { IllustrationIdle, IllustrationIdleDark } from '@douyinfe/semi-illustrations';
 import { CheckCheck, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { InAppMessage } from '@zenith/shared/messaging';
 import { formatDateTime } from '@/utils/date';
 import { BatchDeleteButton, RefreshButton } from '@/components/toolbar-controls';
+import { emptyIllustration } from '@/components/EmptyIllustration';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { ListPagination } from '@/components/ListPagination';
 import { confirmAndDelete } from '@/components/list-page';
@@ -155,8 +155,7 @@ export default function InboxPage() {
 
       {list.length === 0 && !loading ? (
         <Empty
-          image={<IllustrationIdle style={{ width: 120, height: 120 }} />}
-          darkModeImage={<IllustrationIdleDark style={{ width: 120, height: 120 }} />}
+          {...emptyIllustration('Idle', 120)}
           description={(() => {
             if (tab === 'unread') return '暂无未读站内信';
             if (tab === 'read') return '暂无已读站内信';

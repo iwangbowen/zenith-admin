@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react';
-import { Modal, Form, Button, Notification } from '@douyinfe/semi-ui';
+import { Modal, Form, Notification } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { authContract, type User } from '@zenith/shared/identity';
 import { api } from '@/lib/contract-query';
 import { PasswordStrengthMeter } from './PasswordStrengthMeter';
+import ModalFooter from './ModalFooter';
 
 interface Props {
   readonly user: Pick<User, 'requirePasswordChange'>;
@@ -62,16 +63,7 @@ export default function ForceChangePasswordModal({ user, onLogout }: Props) {
       closable={false}
       maskClosable={false}
       hasCancel={false}
-      footer={(
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <Button onClick={onLogout} disabled={loading}>
-            退出登录
-          </Button>
-          <Button type="primary" loading={loading} onClick={() => void handleOk()}>
-            确认修改
-          </Button>
-        </div>
-      )}
+      footer={<ModalFooter onCancel={onLogout} onOk={handleOk} cancelText="退出登录" okText="确认修改" loading={loading} />}
     >
       <Form getFormApi={(api) => { formApi.current = api; }} labelPosition="left" labelWidth={80}>
         <Form.Input

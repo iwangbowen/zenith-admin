@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Collapsible, MarkdownRender, Typography } from '@douyinfe/semi-ui';
-import { IconChevronDown } from '@douyinfe/semi-icons';
+import { ChevronDown } from 'lucide-react';
 import type { DialogueContentItemRendererMap } from '@douyinfe/semi-ui/lib/es/aiChatDialogue/interface';
 import type { KbRefDisplay } from './message-adapters';
 
@@ -61,8 +61,8 @@ function CollapsibleCard({ icon, title, extra, defaultOpen = false, children }: 
         <span aria-hidden>{icon}</span>
         <span style={{ fontWeight: 600, color: 'var(--semi-color-text-1)' }}>{title}</span>
         {extra}
-        <IconChevronDown
-          size="small"
+        <ChevronDown
+          size={14}
           style={{ marginLeft: 'auto', color: 'var(--semi-color-text-2)', transform: open ? 'rotate(180deg)' : undefined, transition: 'transform .2s' }}
         />
       </div>

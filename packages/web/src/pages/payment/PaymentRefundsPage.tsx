@@ -23,7 +23,7 @@ import {
 } from '@/hooks/queries/payment-refunds';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { copyableNoColumn, dateTimeColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, copyableNoColumn, dateTimeColumn } from '@/utils/table-columns';
 
 const STATUS_COLOR = { pending: 'grey', processing: 'blue', unknown: 'amber', success: 'green', failed: 'red' } as const satisfies Record<PaymentRefundStatus, string>;
 const APPROVAL_COLOR = { none: 'grey', pending: 'amber', approved: 'green', rejected: 'red' } as const satisfies Record<PaymentRefundApprovalStatus, string>;
@@ -178,19 +178,19 @@ export default function PaymentRefundsPage() {
             style={{ width: '100%' }}
             data={[
               { key: '退款单号', value: refundDetail.refundNo },
-              { key: '渠道退款号', value: refundDetail.channelRefundNo ?? '-' },
+              { key: '渠道退款号', value: refundDetail.channelRefundNo ?? EMPTY_PLACEHOLDER },
               { key: '原订单号', value: refundDetail.orderNo },
               { key: '渠道', value: PAYMENT_CHANNEL_LABELS[refundDetail.channel] },
               { key: '退款金额', value: yuan(refundDetail.refundAmount) },
               { key: '原单金额', value: yuan(refundDetail.totalAmount) },
               { key: '状态', value: <Tag color={STATUS_COLOR[refundDetail.status]}>{PAYMENT_REFUND_STATUS_LABELS[refundDetail.status]}</Tag> },
               { key: '审批状态', value: <Tag color={APPROVAL_COLOR[refundDetail.approvalStatus]}>{PAYMENT_REFUND_APPROVAL_STATUS_LABELS[refundDetail.approvalStatus]}</Tag> },
-              { key: '审批时间', value: refundDetail.approvedAt ? formatDateTime(refundDetail.approvedAt) : '-' },
-              { key: '退款时间', value: refundDetail.refundedAt ? formatDateTime(refundDetail.refundedAt) : '-' },
+              { key: '审批时间', value: refundDetail.approvedAt ? formatDateTime(refundDetail.approvedAt) : EMPTY_PLACEHOLDER },
+              { key: '退款时间', value: refundDetail.refundedAt ? formatDateTime(refundDetail.refundedAt) : EMPTY_PLACEHOLDER },
               { key: '创建时间', value: formatDateTime(refundDetail.createdAt) },
-              { key: '退款原因', value: refundDetail.reason ?? '-', span: 2 },
-              { key: '审批意见', value: refundDetail.approvalRemark ?? '-', span: 2 },
-              { key: '错误信息', value: refundDetail.errorMessage ?? '-', span: 2 },
+              { key: '退款原因', value: refundDetail.reason ?? EMPTY_PLACEHOLDER, span: 2 },
+              { key: '审批意见', value: refundDetail.approvalRemark ?? EMPTY_PLACEHOLDER, span: 2 },
+              { key: '错误信息', value: refundDetail.errorMessage ?? EMPTY_PLACEHOLDER, span: 2 },
             ]}
           />
         )}

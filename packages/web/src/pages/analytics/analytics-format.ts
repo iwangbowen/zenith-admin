@@ -4,18 +4,19 @@
  */
 import type { CSSProperties } from 'react';
 import type { AnalyticsDeviceType } from '@zenith/shared/analytics';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { BEHAVIOR_DAYS_OPTIONS } from './behavior-days-context';
 
 export function msToReadable(ms: number | null): string {
-  if (ms == null) return '–';
+  if (ms == null) return EMPTY_PLACEHOLDER;
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
   return `${Math.floor(ms / 60_000)}m ${Math.floor((ms % 60_000) / 1000)}s`;
 }
 
-/** 表格单元格的空值兜底：null / undefined / 空串统一显示「–」 */
+/** 表格单元格的空值兜底：null / undefined / 空串统一显示「—」 */
 export function nullableText(value: string | number | null | undefined): string {
-  return value == null || value === '' ? '–' : String(value);
+  return value == null || value === '' ? EMPTY_PLACEHOLDER : String(value);
 }
 
 /** 表单可选文本 → 提交值：去空白后为空则视为未填（null） */
@@ -47,7 +48,7 @@ export function numberText(value: number): string {
 }
 
 export function percentText(value: number | null | undefined, digits = 1): string {
-  if (value == null || Number.isNaN(value)) return '–';
+  if (value == null || Number.isNaN(value)) return EMPTY_PLACEHOLDER;
   return `${value.toFixed(digits)}%`;
 }
 

@@ -207,12 +207,12 @@ export default function DataSourcesPage() {
       title: '连接', dataIndex: 'config', width: 320,
       render: (_: unknown, r: ReportDatasource) => {
         if (r.type === 'api') {
-          return <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%', color: 'var(--semi-color-text-1)' }}>{(r.config as ReportApiDatasourceConfig).url ?? '-'}</Typography.Text>;
+          return <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%', color: 'var(--semi-color-text-1)' }}>{(r.config as ReportApiDatasourceConfig).url ?? EMPTY_PLACEHOLDER}</Typography.Text>;
         }
         if (r.type === 'sql') return <span style={{ color: 'var(--semi-color-text-2)' }}>内置只读主库</span>;
         if (r.type === 'static') return <span style={{ color: 'var(--semi-color-text-2)' }}>静态容器</span>;
         const cfg = r.config as ReportExternalDbConfig;
-        const text = `${cfg.user ?? '-'}@${cfg.host ?? '-'}:${cfg.port ?? '-'}/${cfg.database ?? '-'}`;
+        const text = `${cfg.user ?? EMPTY_PLACEHOLDER}@${cfg.host ?? EMPTY_PLACEHOLDER}:${cfg.port ?? EMPTY_PLACEHOLDER}/${cfg.database ?? EMPTY_PLACEHOLDER}`;
         return <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%', color: 'var(--semi-color-text-1)' }}>{text}</Typography.Text>;
       },
     },

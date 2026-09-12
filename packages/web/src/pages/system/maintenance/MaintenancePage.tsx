@@ -25,7 +25,7 @@ import {
   useMaintenanceStatus,
   useUpdateMaintenanceStatus,
 } from '@/hooks/queries/maintenance';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
 import { confirmDangerAsync } from '@/utils/confirm';
 
 const { Title, Text } = Typography;
@@ -193,7 +193,7 @@ export default function MaintenancePage() {
           )}
           <div>
             <Text type="secondary" size="small">最后更新</Text>
-            <div style={{ marginTop: 4 }}><Text>{status ? formatDateTime(status.updatedAt) : '-'}</Text></div>
+            <div style={{ marginTop: 4 }}><Text>{status ? formatDateTime(status.updatedAt) : EMPTY_PLACEHOLDER}</Text></div>
           </div>
         </div>
       </div>

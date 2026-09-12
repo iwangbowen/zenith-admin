@@ -9,7 +9,6 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import AppModal from '@/components/AppModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
-import { useIsMobile } from '@/hooks/useMediaQuery';
 import { formRemountKey } from '@/hooks/useEditModal';
 import {
   useCmsSiteList, useCmsPageList, useSaveCmsPage, useDeleteCmsPages, useCmsChannelTree,
@@ -61,7 +60,6 @@ function blockSummary(block: CmsPageBlock): string {
 
 export default function PagesPage() {
   const { hasPermission } = usePermission();
-  const isMobile = useIsMobile();
   const [siteId, setSiteId] = useState<number | undefined>(undefined);
   const {
     page, pageSize, buildPagination, resetPage,
@@ -315,7 +313,7 @@ export default function PagesPage() {
         title={editingPage ? `搭建：${editingPage.name}` : '新增页面'}
         visible={builderVisible}
         onCancel={() => setBuilderVisible(false)}
-        width={isMobile ? '100%' : 680}
+        width={680}
         footer={<ModalFooter onCancel={() => setBuilderVisible(false)} onOk={handleSavePage} okText="保存" loading={saveMutation.isPending} />}
       >
         <Form

@@ -438,7 +438,7 @@ export default function RateLimitPage() {
 
   return (
     <div className="page-container page-tabs-page">
-      <Tabs type="line" activeKey={activeTab} onChange={(key) => setActiveTab(key as 'rules' | 'blocks')}>
+      <Tabs type="line" collapsible="auto" activeKey={activeTab} onChange={(key) => setActiveTab(key as 'rules' | 'blocks')}>
         <TabPane tab="规则管理" itemKey="rules">
           <SearchToolbar
             primary={(

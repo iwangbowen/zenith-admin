@@ -242,9 +242,7 @@ export default function AlertsPage() {
           {record.metricId
             ? <Tag color="purple" size="small" style={{ flexShrink: 0 }}>指标</Tag>
             : <Tag color="blue" size="small" style={{ flexShrink: 0 }}>数据集</Tag>}
-          <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>
-            {record.metricId ? (record.metricName || `#${record.metricId}`) : (record.datasetName || `#${record.datasetId}`)}
-          </Typography.Text>
+          {renderEllipsis(record.metricId ? (record.metricName || `#${record.metricId}`) : (record.datasetName || `#${record.datasetId}`))}
         </span>
       ),
     },

@@ -9,7 +9,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Empty, Spin, Switch, TabPane, Tabs, Tag, Tooltip, Typography } from '@douyinfe/semi-ui';
-import { IconInfoCircle } from '@douyinfe/semi-icons';
+import { Info } from 'lucide-react';
 import type { ReplaySegmentMeta, ReplaySessionDetail } from '@zenith/shared/analytics';
 import { fetchReplaySegmentEvents } from '@/hooks/queries/session-replays';
 
@@ -347,7 +347,7 @@ export default function ReplayPlayer({ replayId, segments, errors, perfEvents, s
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
               <Text type="tertiary" size="small">点击热点（{clickHeat.points.length}）</Text>
               <Tooltip content="热点为视口相对位置的近似还原，页面滚动时可能存在偏移">
-                <IconInfoCircle size="small" style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} aria-label="点击热点说明" />
+                <Info size={14} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} aria-label="点击热点说明" />
               </Tooltip>
               <Switch size="small" checked={showHeat} onChange={setShowHeat} aria-label="切换点击热点显示" />
             </span>

@@ -8,7 +8,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { createdAtColumn } from '../../utils/table-columns';
+import { EMPTY_PLACEHOLDER, createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
@@ -88,11 +88,11 @@ export default function MpQrcodesPage() {
   };
 
   const columns = [
-    { title: '名称', dataIndex: 'name', minWidth: 160, render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 150 }}>{v}</Typography.Text> },
+    { title: '名称', dataIndex: 'name', minWidth: 160, render: renderEllipsis },
     { title: '场景值', dataIndex: 'sceneStr', width: 180, render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
     { title: '类型', dataIndex: 'type', width: 90, render: (v: MpQrcodeType) => <Tag color={TYPE_META[v].color} type="light">{TYPE_META[v].label}</Tag> },
     { title: '扫码次数', dataIndex: 'scanCount', width: 100, align: 'center' as const },
-    { title: '奖励积分', dataIndex: 'rewardPoints', width: 100, align: 'center' as const, render: (v: number) => (v > 0 ? <Typography.Text type="success">+{v}</Typography.Text> : '—') },
+    { title: '奖励积分', dataIndex: 'rewardPoints', width: 100, align: 'center' as const, render: (v: number) => (v > 0 ? <Typography.Text type="success">+{v}</Typography.Text> : EMPTY_PLACEHOLDER) },
     {
       title: '二维码', dataIndex: 'url', width: 90, align: 'center' as const,
       render: (v: string | null) => (v

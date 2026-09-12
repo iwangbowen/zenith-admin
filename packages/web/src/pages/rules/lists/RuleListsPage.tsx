@@ -4,7 +4,7 @@ import { Button, DatePicker, Form, Input, Modal, Select, SideSheet, Space, Tag, 
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RULE_LIST_TYPES, type RuleList, type RuleListItem, type RuleUsageItem } from '@zenith/shared/rules';
 import { enumValueOf } from '@zenith/shared/core';
-import { createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -117,7 +117,7 @@ export default function RuleListsPage() {
             <div style={{ display: 'grid', gap: 4, marginTop: 8 }}>
               {usages.map((u, i) => (
                 <Text key={`${u.type}-${u.id}-${i}`} size="small" type="warning">
-                  {u.type === 'paymentRisk' ? `支付风控规则 #${u.id}「${u.name}」（${u.status ?? '-'}）` : u.name}
+                  {u.type === 'paymentRisk' ? `支付风控规则 #${u.id}「${u.name}」（${u.status ?? EMPTY_PLACEHOLDER}）` : u.name}
                 </Text>
               ))}
             </div>

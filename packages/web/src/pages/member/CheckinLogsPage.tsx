@@ -16,7 +16,7 @@ import { memberAdminKeys, useCheckinCalendar, useCheckinDayMembersInfinite, useC
 import { useListSearch } from '@/hooks/useListSearch';
 import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { DateRangeFilter, KeywordInput } from '@/components/search-filters';
-import { dateColumn, dateTimeColumn } from '@/utils/table-columns';
+import { dateColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { memberCellColumn, renderMemberName } from './member-admin-display';
 
@@ -150,7 +150,7 @@ export default function CheckinLogsPage() {
         <Tag color={value ? 'orange' : 'green'} size="small">{value ? '补签' : '正常'}</Tag>
       ),
     },
-    { title: '备注', dataIndex: 'remark', width: 180, render: (v?: string | null) => v || '-' },
+    { title: '备注', dataIndex: 'remark', width: 180, render: renderEllipsis },
     dateTimeColumn('签到时间', 'createdAt'),
   ];
 

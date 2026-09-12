@@ -15,7 +15,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
-import { formatDateForApi } from '@/utils/date';
+import { formatDateRangeValuesForApi } from '@/utils/date';
 import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import {
   bizLeaveKeys,
@@ -99,10 +99,11 @@ export default function LeavePage() {
     if (!leaveType) { Toast.error('请选择请假类型'); return null; }
     const range = values.dateRange as [Date, Date] | undefined;
     if (!range || range.length !== 2) { Toast.error('请选择请假日期'); return null; }
+    const [startDate, endDate] = formatDateRangeValuesForApi(range);
     return {
       leaveType,
-      startDate: formatDateForApi(range[0]),
-      endDate: formatDateForApi(range[1]),
+      startDate,
+      endDate,
       days: Number(values.days),
       reason: (values.reason as string) || null,
     };

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Banner, Form, Tag, Typography } from '@douyinfe/semi-ui';
+import { Banner, Form, Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { AppModal } from '@/components/AppModal';
@@ -9,7 +9,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { useAllPaymentChannelConfigsLookup } from '@/hooks/queries/payment-channels';
 import { paymentAppKeys, useDeletePaymentApp, usePaymentAppList, useSavePaymentApp } from '@/hooks/queries/payment-apps';
 import { useOpenAppOptions } from '@/hooks/queries/open-platform';
-import { copyableNoColumn, createdAtColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, copyableNoColumn, createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { enumValueOf, USER_STATUSES } from '@zenith/shared/core';
 import type { CreatePaymentAppInput, PaymentApp, PaymentChannel, PaymentChannelConfig } from '@zenith/shared/payment';
 import { useDictItems } from '@/hooks/useDictItems';
@@ -122,7 +122,7 @@ export default function PaymentAppsPage() {
     { title: '微信配置', dataIndex: 'wechatConfigName', width: 160, render: renderEllipsis },
     { title: '支付宝配置', dataIndex: 'alipayConfigName', width: 160, render: renderEllipsis },
     { title: '云闪付配置', dataIndex: 'unionpayConfigName', width: 160, render: renderEllipsis },
-    { title: '备注', dataIndex: 'remark', width: 180, render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 160 }}>{v || '-'}</Typography.Text> },
+    { title: '备注', dataIndex: 'remark', width: 180, render: renderEllipsis },
     createdAtColumn as ColumnProps<PaymentApp>,
     { title: '状态', dataIndex: 'status', width: 90, fixed: 'right', render: (v: PaymentApp['status']) => <Tag color={STATUS_COLOR[v]}>{STATUS_LABEL[v]}</Tag> },
     createOperationColumn<PaymentApp>({
@@ -167,7 +167,7 @@ export default function PaymentAppsPage() {
           <Form.Input field="name" label="应用名称" placeholder="如：官网商城" rules={[{ required: true, message: '应用名称不能为空' }]} />
           {modal.isEdit ? (
             <Form.Slot label="开放客户端">
-              {modal.editing ? `${modal.editing.openClientName} · ${modal.editing.openClientKey}` : '-'}
+              {modal.editing ? `${modal.editing.openClientName} · ${modal.editing.openClientKey}` : EMPTY_PLACEHOLDER}
             </Form.Slot>
           ) : (
             <Form.Select

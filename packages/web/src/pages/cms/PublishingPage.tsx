@@ -28,7 +28,7 @@ import {
 import { ASYNC_TASK_STATUS_TAG_MAP } from '@/utils/async-task';
 import { formatDateTime, formatDateTimeRangeValuesForApi } from '@/utils/date';
 import { compactQuery } from '@/lib/query';
-import { createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
@@ -169,11 +169,11 @@ export default function PublishingPage() {
       title: '任务', dataIndex: 'title', width: 240,
       render: (_: string, record) => <div><Typography.Text strong>{record.title}</Typography.Text><div><Typography.Text type="tertiary" size="small">{record.taskType}</Typography.Text></div></div>,
     },
-    { title: '站点', dataIndex: 'siteName', minWidth: 140, render: (value: string | null) => value ?? '-' },
+    { title: '站点', dataIndex: 'siteName', minWidth: 140, render: renderEllipsis },
     { title: '目标', dataIndex: 'targetType', width: 120, render: (value: CmsPublishTargetType) => CMS_PUBLISH_TARGET_TYPE_LABELS[value] },
     { title: '进度', width: 220, render: (_: unknown, record) => <AsyncTaskProgress task={record} /> },
     { title: '产物', width: 110, render: (_: unknown, record) => record.failedArtifactCount ? <Typography.Text type="danger">{record.artifactCount}（失败 {record.failedArtifactCount}）</Typography.Text> : record.artifactCount },
-    { title: '创建人', dataIndex: 'createdByName', width: 120, render: (value: string | null) => value ?? '-' },
+    { title: '创建人', dataIndex: 'createdByName', width: 120, render: (value: string | null) => value || EMPTY_PLACEHOLDER },
     createdAtColumn,
     {
       title: '状态', dataIndex: 'status', width: 110, fixed: 'right',
@@ -201,7 +201,7 @@ export default function PublishingPage() {
     { title: '目标', dataIndex: 'targetType', width: 120, render: (value: CmsPublishTargetType) => CMS_PUBLISH_TARGET_TYPE_LABELS[value] },
     { title: '路径', dataIndex: 'path', minWidth: 320, render: renderEllipsis },
     { title: 'URL', dataIndex: 'url', width: 320, render: renderEllipsis },
-    { title: '大小', dataIndex: 'size', width: 100, align: 'right', render: (value: number | null) => value == null ? '-' : `${value} B` },
+    { title: '大小', dataIndex: 'size', width: 100, align: 'right', render: (value: number | null) => value == null ? EMPTY_PLACEHOLDER : `${value} B` },
     dateTimeColumn('生成时间', 'generatedAt'),
     {
       title: '状态', dataIndex: 'status', width: 110, fixed: 'right',

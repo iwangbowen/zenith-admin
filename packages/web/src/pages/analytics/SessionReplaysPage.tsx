@@ -209,7 +209,7 @@ export default function SessionReplaysPage() {
           <StatCard title="回放总数" value={stats.totalCount} sub="按保留天数自动清理" />
         </StatGrid>
       )}
-      <Tabs type="line" lazyRender>
+      <Tabs type="line" collapsible="auto" lazyRender>
         <TabPane tab="回放列表" itemKey="list">
           <ListSearchToolbar
             keyword={(

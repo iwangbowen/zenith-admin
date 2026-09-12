@@ -21,7 +21,7 @@ import {
   useSetCmsInteractionStatus,
 } from '@/hooks/queries/cms';
 import { formatDateTimeRangeForApi } from '@/utils/date';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { CmsSiteSelect, cmsPreviewUrl } from './CmsSiteSelect';
 import InteractionResultsSheet from './interaction/InteractionResultsSheet';
 import { CreateButton } from '@/components/toolbar-controls';
@@ -193,13 +193,13 @@ export default function SurveysPage() {
     { title: '互动问卷', dataIndex: 'interactionTitle', width: 240, render: renderEllipsis },
     {
       title: '类型', dataIndex: 'kind', width: 90,
-      render: (value: CmsInteractionKind | undefined) => value ? CMS_INTERACTION_KIND_LABELS[value] : '-',
+      render: (value: CmsInteractionKind | undefined) => value ? CMS_INTERACTION_KIND_LABELS[value] : EMPTY_PLACEHOLDER,
     },
     { title: '参与者', dataIndex: 'memberDisplay', width: 140 },
     {
       title: '作答摘要', dataIndex: 'answerDetails', minWidth: 320,
       render: (details: CmsInteractionResponse['answerDetails']) =>
-        renderEllipsis(details.map((detail) => `${detail.label}：${detail.display}`).join('；') || '-'),
+        renderEllipsis(details.map((detail) => `${detail.label}：${detail.display}`).join('；')),
     },
     dateTimeColumn('提交时间', 'createdAt'),
     createOperationColumn<CmsInteractionResponse>({

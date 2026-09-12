@@ -22,7 +22,7 @@ import {
   useReportApprovalList,
   useReportTransferList,
 } from '@/hooks/queries/report-governance';
-import { useAllUsers } from '@/hooks/queries/users';
+import { toUserOptions, useAllUsers } from '@/hooks/queries/users';
 import { approvalConflictMessage, parseJsonObject } from '../report-platform-utils';
 import { REPORT_RESOURCE_TYPE_OPTIONS, reportResourceTypeLabel } from '../report-platform-options';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
@@ -228,7 +228,7 @@ export function GovernanceTransferTab() {
             <Col xs={24} md={12}><Form.Select field="resourceType" label="资源类型" style={{ width: '100%' }} optionList={REPORT_RESOURCE_TYPE_OPTIONS} rules={[{ required: true }]} onChange={(v) => setResourceType(v as ReportResourceType)} /></Col>
             <Col xs={24} md={12}><Form.Select field="resourceId" label="资源" filter style={{ width: '100%' }} optionList={(assetsQuery.data?.list ?? []).map((item) => ({ value: item.resourceId, label: item.name }))} rules={[{ required: true }]} /></Col>
           </Row>
-          <Form.Select field="toOwnerId" label="新负责人" filter style={{ width: '100%' }} optionList={(usersQuery.data ?? []).map((user) => ({ value: user.id, label: user.nickname || user.username }))} rules={[{ required: true }]} />
+          <Form.Select field="toOwnerId" label="新负责人" filter style={{ width: '100%' }} optionList={toUserOptions(usersQuery.data ?? [])} rules={[{ required: true }]} />
           <Form.TextArea field="reason" label="转移原因" autosize rows={3} />
         </Form>
       </AppModal>

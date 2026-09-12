@@ -5,7 +5,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Save, Upload } from 'lucide-react';
 import { RULE_DECISION_STATUSES, type RuleDecisionTable, type RuleEvaluateResult, type RuleTestRunResult, type RuleHitPolicy, type RuleTestCase, type RuleUsageItem, type RuleDecisionTableSettings, type RuleShadowRunResult, type RuleSimulateResult } from '@zenith/shared/rules';
 import { enumValueOf } from '@zenith/shared/core';
-import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import DecisionTableEditor from './DecisionTableEditor';
@@ -429,7 +429,7 @@ export default function RuleTablesPage() {
       okButtonProps: approve ? undefined : { type: 'danger' },
       content: (
         <div style={{ display: 'grid', gap: 8 }}>
-          <Text type="tertiary" size="small">申请人：用户 #{r.reviewRequestedBy ?? '-'} · {r.reviewRequestedAt ?? '-'}</Text>
+          <Text type="tertiary" size="small">申请人：用户 #{r.reviewRequestedBy ?? EMPTY_PLACEHOLDER} · {r.reviewRequestedAt ?? EMPTY_PLACEHOLDER}</Text>
           <Input placeholder={approve ? '审批意见（可选）' : '驳回原因'} onChange={(v) => { commentRef.current = v; }} />
         </div>
       ),
@@ -450,7 +450,7 @@ export default function RuleTablesPage() {
     <div style={{ display: 'grid', gap: 4, marginTop: 8 }}>
       {usages.map((u, i) => (
         <Text key={`${u.type}-${u.id}-${i}`} size="small" type="warning">
-          {u.type === 'workflow' ? `工作流定义 #${u.id}「${u.name}」（${u.status ?? '-'}）` : u.name}
+          {u.type === 'workflow' ? `工作流定义 #${u.id}「${u.name}」（${u.status ?? EMPTY_PLACEHOLDER}）` : u.name}
         </Text>
       ))}
     </div>
@@ -1000,7 +1000,7 @@ export default function RuleTablesPage() {
             <List.Item
               main={<>
                 <Text strong>{e.matched ? '命中' : '未命中'}</Text> <Tag size="small">{e.source}</Tag> {e.bizRef ? <Text type="tertiary" size="small">{e.bizRef}</Text> : null}
-                <Text type="tertiary" size="small" style={{ display: 'block' }}>{e.createdAt} · 行 {e.matchedRowIds.join(',') || '-'}</Text>
+                <Text type="tertiary" size="small" style={{ display: 'block' }}>{e.createdAt} · 行 {e.matchedRowIds.join(',') || EMPTY_PLACEHOLDER}</Text>
                 <Text size="small" style={{ display: 'block' }}>out: {JSON.stringify(e.outputs)}</Text>
               </>}
             />

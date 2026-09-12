@@ -25,7 +25,7 @@ import { CmsSiteSelect } from './CmsSiteSelect';
 import { CmsWidgetSourceRefsSheet, type CmsWidgetSourceTarget } from './CmsWidgetSourceRefsSheet';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { DATE_TIME_COLUMN_WIDTH, dateTimeColumn } from '@/utils/table-columns';
+import { DATE_TIME_COLUMN_WIDTH, EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
@@ -312,10 +312,10 @@ export default function ContentsPage() {
         ].filter(Boolean);
         return icons.length > 0
           ? <span style={{ display: 'inline-flex', gap: 6, color: 'var(--semi-color-text-2)' }}>{icons}</span>
-          : '-';
+          : EMPTY_PLACEHOLDER;
       },
     },
-    { title: '作者', dataIndex: 'author', width: 90, render: (v: string | null) => v ?? '-' },
+    { title: '作者', dataIndex: 'author', width: 90, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
     { title: '浏览', dataIndex: 'viewCount', width: 80, align: 'right' },
     { title: '赞/藏', dataIndex: 'likeCount', width: 90, align: 'right', render: (_: number, record) => `${record.likeCount}/${record.favoriteCount}` },
     {
@@ -599,8 +599,8 @@ export default function ContentsPage() {
                 clickToHide
                 render={(
                   <Dropdown.Menu>
-                    {Object.entries(CMS_CONTENT_TYPE_LABELS).map(([value, label]) => (
-                      <Dropdown.Item key={value} onClick={() => gotoCreate(value as CmsContentType)}>
+                    {CMS_CONTENT_TYPE_OPTIONS.map(({ value, label }) => (
+                      <Dropdown.Item key={value} onClick={() => gotoCreate(value)}>
                         新增{label}
                       </Dropdown.Item>
                     ))}

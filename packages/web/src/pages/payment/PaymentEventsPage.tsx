@@ -78,7 +78,7 @@ export default function PaymentEventsPage() {
     copyableNoColumn('订单号', 'orderNo', { width: 300 }),
     { title: '事件类型', dataIndex: 'type', width: 180, render: renderEllipsis },
     { title: '次数', dataIndex: 'attempts', width: 80, align: 'right' },
-    { title: '错误信息', dataIndex: 'lastError', minWidth: 260, render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 240 }}>{v || '-'}</Typography.Text> },
+    { title: '错误信息', dataIndex: 'lastError', minWidth: 260, render: renderEllipsis },
     dateTimeColumn('创建时间', 'createdAt'),
     dateTimeColumn('处理时间', 'processedAt'),
     { title: '状态', dataIndex: 'status', width: 90, fixed: 'right', render: (v: PaymentOutboxEvent['status']) => <Tag color={EVENT_STATUS_COLOR[v]}>{EVENT_STATUS_LABELS[v]}</Tag> },

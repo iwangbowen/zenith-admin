@@ -244,6 +244,7 @@ function DatasetDetail({ dataset, canManage }: { dataset: AiEvalDataset; canMana
     <Space vertical align="start" style={{ width: '100%' }} spacing={8}>
       <Tabs
         type="line"
+        collapsible="auto"
         activeKey={activeTab}
         onChange={setActiveTab}
         style={{ width: '100%' }}

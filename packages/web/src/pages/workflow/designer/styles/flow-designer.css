@@ -1875,33 +1875,6 @@ td.fd-action-button-table__action {
   text-align: center;
 }
 
-.fd-drawer-btn {
-  padding: 6px 20px;
-  border-radius: var(--semi-border-radius-medium);
-  font-size: 14px;
-  cursor: pointer;
-  border: none;
-  transition: all 0.15s;
-}
-
-.fd-drawer-btn--cancel {
-  background: var(--semi-color-fill-0);
-  color: var(--semi-color-text-0);
-}
-
-.fd-drawer-btn--cancel:hover {
-  background: var(--semi-color-fill-1);
-}
-
-.fd-drawer-btn--save {
-  background: var(--semi-color-primary);
-  color: #fff;
-}
-
-.fd-drawer-btn--save:hover {
-  background: var(--semi-color-primary-hover);
-}
-
 /* ─── 审批方式卡片 ─────────────────────────────────────────────────── */
 
 .fd-approve-method-grid {

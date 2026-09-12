@@ -12,7 +12,7 @@ import { TABLE_PAGE_SIZE_OPTIONS, usePagination } from '@/hooks/usePagination';
 import { useMonitorHistory, useMonitorSnapshot } from '@/hooks/queries/monitor';
 import { MetricMeter, type MetricMeterTone } from '@/components/data-viz/MetricMeter';
 import './MonitorPage.css';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
 import { copyTextWithToast } from '@/utils/clipboard';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
@@ -1265,7 +1265,7 @@ export default function MonitorPage() {
                     title: '用户',
                     dataIndex: 'userId',
                     render: (_: unknown, r: WsConnection) => (
-                      <span>{r.nickname || r.username || '-'} <Text type="tertiary" size="small">#{r.userId}</Text></span>
+                      <span>{r.nickname || r.username || EMPTY_PLACEHOLDER} <Text type="tertiary" size="small">#{r.userId}</Text></span>
                     ),
                   },
                   { title: 'Token', dataIndex: 'tokenId', render: (v: string) => <Text type="tertiary" size="small">{v.slice(0, 8)}…</Text> },
@@ -1293,11 +1293,11 @@ export default function MonitorPage() {
                     title: '用户',
                     dataIndex: 'userId',
                     render: (_: unknown, r: WsDisconnect) => (
-                      <span>{r.nickname || r.username || '-'} <Text type="tertiary" size="small">#{r.userId}</Text></span>
+                      <span>{r.nickname || r.username || EMPTY_PLACEHOLDER} <Text type="tertiary" size="small">#{r.userId}</Text></span>
                     ),
                   },
                   dateTimeColumn('断开时间', 'at'),
-                  { title: '原因', dataIndex: 'reason', render: (v: string) => <Tag size="small">{v || '-'}</Tag> },
+                  { title: '原因', dataIndex: 'reason', render: (v: string) => <Tag size="small">{v || EMPTY_PLACEHOLDER}</Tag> },
                   { title: '持续时长', dataIndex: 'duration', render: (v: number) => formatSecondsHuman(v / 1000) },
                   { title: '发送', dataIndex: 'sent', align: 'right' as const, render: (v: number) => formatNumber(v) },
                   { title: '接收', dataIndex: 'recv', align: 'right' as const, render: (v: number) => formatNumber(v) },

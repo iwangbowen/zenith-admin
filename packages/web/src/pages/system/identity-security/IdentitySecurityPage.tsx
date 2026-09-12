@@ -8,7 +8,7 @@ import { identitySecuritySettingsSchema, type IdentitySecuritySettings } from '@
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { identitySecurityKeys, useLoginRiskEventList } from '@/hooks/queries/identity-security';
@@ -76,8 +76,8 @@ export default function IdentitySecurityPage() {
     },
     { title: '处置动作', dataIndex: 'action', width: 110, render: (value: LoginRiskEvent['action']) => ({ allow: '放行', challenge: '二次验证', block: '阻断' }[value]) },
     { title: '原因', dataIndex: 'reason', width: 180 },
-    { title: 'IP', dataIndex: 'ip', width: 140, render: (value) => value || '-' },
-    { title: '位置', dataIndex: 'location', width: 160, render: (value) => value || '-' },
+    { title: 'IP', dataIndex: 'ip', width: 140, render: (value) => value || EMPTY_PLACEHOLDER },
+    { title: '位置', dataIndex: 'location', width: 160, render: renderEllipsis },
     dateTimeColumn('时间', 'createdAt'),
   ];
 

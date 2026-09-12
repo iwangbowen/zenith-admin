@@ -17,6 +17,7 @@ import {
   useSaveChannelQuickReply,
 } from '@/hooks/queries/channel-cs';
 import { CreateButton } from '@/components/toolbar-controls';
+import { renderEllipsis } from '@/utils/table-columns';
 
 interface Props {
   channelId: number;
@@ -58,14 +59,8 @@ export function ChannelQuickReplyDrawer({ channelId, channelName, visible, onClo
 
 
   const columns: ColumnProps<ChannelQuickReply>[] = [
-    {
-      title: '标题', dataIndex: 'title', width: 160,
-      render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 150 }}>{v}</Typography.Text>,
-    },
-    {
-      title: '内容', dataIndex: 'content',
-      render: (v: string) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 240 }}>{v}</Typography.Text>,
-    },
+    { title: '标题', dataIndex: 'title', width: 160, render: renderEllipsis },
+    { title: '内容', dataIndex: 'content', render: renderEllipsis },
     {
       title: '作用域', dataIndex: 'channelId', width: 120,
       render: (v: number | null, r: ChannelQuickReply) => (v == null

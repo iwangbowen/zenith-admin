@@ -13,6 +13,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { useElementSize } from '@/hooks/useElementSize';
 import { useTreeExpansion } from '@/hooks/useTreeExpansion';
 import DictTag from '@/components/DictTag';
+import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 import { useDictItems } from '@/hooks/useDictItems';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -455,11 +456,7 @@ export default function MenusPage() {
 
           <Row gutter={16}>
             <Col span={12}>
-              <Form.RadioGroup field="status" label="状态" type="button" rules={[{ required: true }]}>
-                {statusItems.map((i) => (
-                  <Radio key={i.value} value={i.value}>{i.label}</Radio>
-                ))}
-              </Form.RadioGroup>
+              <FormStatusRadioGroup type="button" rules={[{ required: true }]} />
             </Col>
             {menuType !== 'button' && (
               <Col span={12}>

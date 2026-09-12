@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Tag, Toast, Tabs, TabPane, Typography } from '@douyinfe/semi-ui';
+import { Button, Tag, Toast, Tabs, TabPane } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -10,7 +10,7 @@ import { useCmsCommentList, useCmsCommentAction } from '@/hooks/queries/cms';
 import { CMS_COMMENT_STATUS_LABELS } from '@zenith/shared/cms';
 import type { CmsComment, CmsCommentStatus } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { FilterSelect } from '@/components/search-filters';
@@ -69,20 +69,11 @@ export default function CommentsPage() {
       title: '评论内容',
       dataIndex: 'content',
       minWidth: 300,
-      render: (v: string, record: CmsComment) => (
-        <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 280 }}>
-          {record.parentId > 0 && record.parentNickname ? `回复 @${record.parentNickname}：${v}` : v}
-        </Typography.Text>
-      ),
+      render: (v: string, record: CmsComment) => renderEllipsis(record.parentId > 0 && record.parentNickname ? `回复 @${record.parentNickname}：${v}` : v),
     },
-    {
-      title: '所属内容',
-      dataIndex: 'contentTitle',
-      width: 200,
-      render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 180 }}>{v ?? '-'}</Typography.Text>,
-    },
+    { title: '所属内容', dataIndex: 'contentTitle', width: 200, render: renderEllipsis },
     { title: '点赞', dataIndex: 'likeCount', width: 80, align: 'right' },
-    { title: 'IP', dataIndex: 'ip', width: 130, render: (v: string | null) => v ?? '-' },
+    { title: 'IP', dataIndex: 'ip', width: 130, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
     dateTimeColumn('提交时间', 'createdAt'),
     {
       title: '状态', dataIndex: 'status', width: 90, fixed: 'right',

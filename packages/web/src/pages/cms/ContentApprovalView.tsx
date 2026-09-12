@@ -9,6 +9,7 @@ import { FileCheck } from 'lucide-react';
 import type { WorkflowBusinessFormProps } from '@/components/workflow/BusinessFormHost';
 import { useCmsContentDetail } from '@/hooks/queries/cms';
 import { CMS_CONTENT_STATUS_LABELS } from '@zenith/shared/cms';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 export default function ContentApprovalView({ bizId }: Readonly<WorkflowBusinessFormProps>) {
   const detailQuery = useCmsContentDetail(bizId ? Number(bizId) : undefined);
@@ -27,10 +28,10 @@ export default function ContentApprovalView({ bizId }: Readonly<WorkflowBusiness
         row
         data={[
           { key: '标题', value: data.title },
-          { key: '所属栏目', value: data.channelName ?? '-' },
-          { key: '作者', value: data.author || '-' },
+          { key: '所属栏目', value: data.channelName ?? EMPTY_PLACEHOLDER },
+          { key: '作者', value: data.author || EMPTY_PLACEHOLDER },
           { key: '当前状态', value: CMS_CONTENT_STATUS_LABELS[data.status] ?? data.status },
-          { key: '摘要', value: data.summary || '-' },
+          { key: '摘要', value: data.summary || EMPTY_PLACEHOLDER },
         ]}
       />
       {data.body ? (

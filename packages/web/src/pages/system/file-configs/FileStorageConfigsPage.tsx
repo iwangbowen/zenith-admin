@@ -14,6 +14,7 @@ import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
+import { abortSubmit } from '@/lib/abort-submit';
 import StorageFileBrowser from './StorageFileBrowser';
 import {
   fileStorageConfigKeys,
@@ -344,7 +345,7 @@ export default function FileStorageConfigsPage() {
     toggle: async (config, enabled) => {
       if (!enabled && config.isDefault) {
         Toast.warning('默认配置不能禁用，请先将其他配置设为默认');
-        throw new Error('default file storage config cannot be disabled');
+        abortSubmit('default-config-cannot-be-disabled');
       }
       await statusMutation.mutateAsync({ id: config.id, values: { status: enabled ? 'enabled' : 'disabled' } });
     },

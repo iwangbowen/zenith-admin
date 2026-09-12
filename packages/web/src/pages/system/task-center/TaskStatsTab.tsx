@@ -17,6 +17,7 @@ import {
 import { asyncTaskRateColor } from '@/utils/async-task';
 import { formatDurationMs as formatDuration } from '@/utils/format';
 import { shortDate } from '@/utils/date';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 const SUCCESS_COLOR = '#10b981';
 const FAIL_COLOR = '#ef4444';
@@ -146,52 +147,52 @@ export default function TaskStatsTab({ stats }: Readonly<{ stats: AsyncTaskStats
   return (
     <div className="zx-flat-panels">
       <StatGrid minItemWidth={150} style={{ marginBottom: 16 }}>
-        <StatCard title="总任务" value={stats?.total ?? '-'} />
+        <StatCard title="总任务" value={stats?.total ?? EMPTY_PLACEHOLDER} />
         <StatCard
           title="进行中"
-          value={stats ? stats.pending + stats.running : '-'}
+          value={stats ? stats.pending + stats.running : EMPTY_PLACEHOLDER}
           sub={stats ? `排队 ${stats.pending} · 执行 ${stats.running}` : undefined}
           accent={stats && stats.pending + stats.running > 0 ? 'var(--semi-color-info)' : undefined}
         />
         <StatCard
           title="待执行积压"
-          value={stats?.backlog.pending ?? '-'}
+          value={stats?.backlog.pending ?? EMPTY_PLACEHOLDER}
           sub={stats ? `最久等待 ${formatWaiting(stats.backlog.oldestPendingMinutes)}` : undefined}
           accent={stats && stats.backlog.pending > 0 ? 'var(--semi-color-warning)' : undefined}
         />
         <StatCard
           title="今日提交"
-          value={stats?.today.submitted ?? '-'}
+          value={stats?.today.submitted ?? EMPTY_PLACEHOLDER}
           sub={stats ? `成功 ${stats.today.success} · 失败 ${stats.today.failed}` : undefined}
           delta={todayDelta}
         />
         <StatCard
           title="成功率"
-          value={stats?.successRate == null ? '-' : `${stats.successRate}%`}
+          value={stats?.successRate == null ? EMPTY_PLACEHOLDER : `${stats.successRate}%`}
           accent={asyncTaskRateColor(stats?.successRate ?? null)}
         />
         <StatCard
           title="失败"
-          value={stats?.failed ?? '-'}
+          value={stats?.failed ?? EMPTY_PLACEHOLDER}
           accent={stats && stats.failed > 0 ? 'var(--semi-color-danger)' : undefined}
         />
-        <StatCard title="已完成" value={stats?.success ?? '-'} accent="var(--semi-color-success)" />
-        <StatCard title="已取消" value={stats?.cancelled ?? '-'} accent="var(--semi-color-text-2)" />
+        <StatCard title="已完成" value={stats?.success ?? EMPTY_PLACEHOLDER} accent="var(--semi-color-success)" />
+        <StatCard title="已取消" value={stats?.cancelled ?? EMPTY_PLACEHOLDER} accent="var(--semi-color-text-2)" />
         <StatCard
           title="发生过重试"
-          value={stats?.retried ?? '-'}
+          value={stats?.retried ?? EMPTY_PLACEHOLDER}
           sub={stats ? `重试后成功 ${stats.retriedRecovered} 个` : undefined}
           accent={stats && stats.retried > 0 ? 'var(--semi-color-warning)' : undefined}
         />
-        <StatCard title="近24h平均耗时" value={stats ? formatDuration(stats.avgDurationMs) : '-'} />
+        <StatCard title="近24h平均耗时" value={stats ? formatDuration(stats.avgDurationMs) : EMPTY_PLACEHOLDER} />
         <StatCard
           title="近24h P95 耗时"
-          value={stats ? formatDuration(stats.duration.p95) : '-'}
+          value={stats ? formatDuration(stats.duration.p95) : EMPTY_PLACEHOLDER}
           sub={stats ? `P50 ${formatDuration(stats.duration.p50)} · 最长 ${formatDuration(stats.duration.max)}` : undefined}
         />
         <StatCard
           title="累计处理行数"
-          value={stats ? stats.items.processed.toLocaleString() : '-'}
+          value={stats ? stats.items.processed.toLocaleString() : EMPTY_PLACEHOLDER}
           sub={stats ? `失败 ${stats.items.failed.toLocaleString()} 行` : undefined}
         />
       </StatGrid>

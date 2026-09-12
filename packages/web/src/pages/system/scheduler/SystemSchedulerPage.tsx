@@ -20,7 +20,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { formatDurationMs as formatDuration } from '@/utils/format';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import {
   systemSchedulerKeys,
   useAcknowledgeSystemSchedulerAlert,
@@ -131,8 +131,8 @@ function renderQueue(record: SystemSchedulerTask) {
 }
 
 function renderNode(hostname: string | null, pid: number | null) {
-  if (!hostname && !pid) return '-';
-  return `${hostname ?? '-'}${pid ? ` / ${pid}` : ''}`;
+  if (!hostname && !pid) return EMPTY_PLACEHOLDER;
+  return `${hostname ?? EMPTY_PLACEHOLDER}${pid ? ` / ${pid}` : ''}`;
 }
 
 export default function SystemSchedulerPage() {
@@ -513,7 +513,7 @@ export default function SystemSchedulerPage() {
         </Space>
       ),
     },
-    { title: '版本', dataIndex: 'version', minWidth: 140, render: (value: string | null) => value ?? '-' },
+    { title: '版本', dataIndex: 'version', minWidth: 140, render: renderEllipsis },
     dateTimeColumn('启动时间', 'startedAt'),
     dateTimeColumn('最近心跳', 'lastHeartbeatAt'),
     { title: '注册任务', dataIndex: 'registeredTaskCount', width: 120, align: 'right' },
@@ -743,15 +743,15 @@ export default function SystemSchedulerPage() {
                 { key: '状态', value: statusTag(detailRun.status) },
                 { key: '执行节点', value: renderNode(detailRun.nodeHostname, detailRun.nodePid) },
                 { key: '开始时间', value: detailRun.startedAt },
-                { key: '结束时间', value: detailRun.endedAt ?? '-' },
+                { key: '结束时间', value: detailRun.endedAt ?? EMPTY_PLACEHOLDER },
                 { key: '耗时', value: formatDuration(detailRun.durationMs) },
-                { key: '告警时间', value: detailRun.alertedAt ?? '-' },
-                { key: '确认状态', value: detailRun.alertMessage ? (detailRun.alertAckAt ? `已确认：${detailRun.alertAckByName ?? detailRun.alertAckBy ?? '-'}` : '未确认') : '无告警' },
+                { key: '告警时间', value: detailRun.alertedAt ?? EMPTY_PLACEHOLDER },
+                { key: '确认状态', value: detailRun.alertMessage ? (detailRun.alertAckAt ? `已确认：${detailRun.alertAckByName ?? detailRun.alertAckBy ?? EMPTY_PLACEHOLDER}` : '未确认') : '无告警' },
                 {
                   key: 'Job ID',
                   value: detailRun.jobId
                     ? <Typography.Text copyable={{ content: detailRun.jobId }}>{detailRun.jobId}</Typography.Text>
-                    : '-',
+                    : EMPTY_PLACEHOLDER,
                   span: 2,
                 },
               ]}

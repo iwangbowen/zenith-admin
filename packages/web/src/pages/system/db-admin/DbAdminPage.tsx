@@ -98,7 +98,7 @@ import type {
   DbAdminTableStructure,
 } from '@zenith/shared/ops';
 import './db-admin.css';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { request } from '@/utils/request';
 
 const ErDiagram = lazy(() => import('./ErDiagram').then((module) => ({
@@ -589,8 +589,8 @@ export default function DbAdminPage() {
     )},
     { title: '类型', dataIndex: 'dataType', width: 180 },
     { title: '可空', dataIndex: 'isNullable', width: 80, render: (v: boolean) => v ? '是' : '否' },
-    { title: '默认值', dataIndex: 'defaultValue', width: 180, render: (v: string | null) => v ?? '-' },
-    { title: '注释', dataIndex: 'comment', render: (v: string | null) => v ?? '-' },
+    { title: '默认值', dataIndex: 'defaultValue', width: 180, render: renderEllipsis },
+    { title: '注释', dataIndex: 'comment', render: renderEllipsis },
   ];
 
   const indexColumns: ColumnProps<IndexInfo>[] = [
@@ -898,7 +898,7 @@ export default function DbAdminPage() {
     { title: '耗时', dataIndex: 'durationMs', width: 100, align: 'right', render: (v: number) => `${v}ms` },
     { title: '行数', dataIndex: 'rowCount', width: 80, align: 'right' },
     { title: '错误', dataIndex: 'errorMessage', ellipsis: { showTitle: false }, render: (v: string | null) =>
-      v ? <Tooltip content={<div style={{ maxWidth: 400 }}>{v}</div>}><Text type="danger">{v.slice(0, 60)}</Text></Tooltip> : '-',
+      v ? <Tooltip content={<div style={{ maxWidth: 400 }}>{v}</div>}><Text type="danger">{v.slice(0, 60)}</Text></Tooltip> : EMPTY_PLACEHOLDER,
     },
     createOperationColumn<HistoryItem>({
       width: 150,
@@ -1100,7 +1100,6 @@ export default function DbAdminPage() {
                           rowKey="name"
                           pagination={false}
                           size="small"
-                          scroll={{ x: 'max-content' }}
                         />
                       )}
                     </TabPane>
@@ -1250,7 +1249,6 @@ export default function DbAdminPage() {
                           rowKey="name"
                           pagination={false}
                           size="small"
-                          scroll={{ x: 'max-content' }}
                         />
                       )}
                     </TabPane>
@@ -1265,7 +1263,6 @@ export default function DbAdminPage() {
                           rowKey="name"
                           pagination={false}
                           size="small"
-                          scroll={{ x: 'max-content' }}
                         />
                       )}
                     </TabPane>

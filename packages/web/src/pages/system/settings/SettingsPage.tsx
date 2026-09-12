@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Banner, Button, Empty, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
-import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
 import { ExternalLink, Save, Settings2 } from 'lucide-react';
+import { emptyIllustration } from '@/components/EmptyIllustration';
 import {
   CAPTCHA_COMPLEXITY_LABELS,
   SETTINGS_MODULES,
@@ -89,7 +89,7 @@ export default function SettingsPage() {
         )}
         detail={activeKey && activeMeta ? <ModuleDetail key={activeKey} module={activeKey} meta={activeMeta} /> : (
           <div style={{ padding: 48 }}>
-            <Empty image={<IllustrationNoContent style={{ width: 120, height: 120 }} />} darkModeImage={<IllustrationNoContentDark style={{ width: 120, height: 120 }} />} description="选择左侧模块查看或修改设置" />
+            <Empty {...emptyIllustration('NoContent', 120)} description="选择左侧模块查看或修改设置" />
           </div>
         )}
       />

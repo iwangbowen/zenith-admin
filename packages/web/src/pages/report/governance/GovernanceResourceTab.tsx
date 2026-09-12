@@ -24,7 +24,7 @@ import {
   useReportResourceAcls,
   useRevokeReportResourceAcl,
 } from '@/hooks/queries/report-governance';
-import { useAllUsers } from '@/hooks/queries/users';
+import { toUserOptions, useAllUsers } from '@/hooks/queries/users';
 import { formatDateTimeForApi } from '@/utils/date';
 import { REPORT_RESOURCE_TYPE_OPTIONS, reportResourceTypeLabel } from '../report-platform-options';
 import { aclRevokeWarning, normalizeAclGrantValues } from '../report-platform-utils';
@@ -174,7 +174,7 @@ export default function GovernanceResourceTab() {
           <Form.Input field="name" label="目录名称" rules={[{ required: true }]} />
           <Form.Select field="parentId" label="上级目录" showClear filter style={{ width: '100%' }} optionList={folders.filter((item) => item.id !== folderModal.editing?.id).map((item) => ({ value: item.id, label: item.name }))} />
           <Row gutter={16}>
-            <Col xs={24} md={12}><Form.Select field="ownerId" label="负责人" showClear filter style={{ width: '100%' }} optionList={(usersQuery.data ?? []).map((user) => ({ value: user.id, label: user.nickname || user.username }))} /></Col>
+            <Col xs={24} md={12}><Form.Select field="ownerId" label="负责人" showClear filter style={{ width: '100%' }} optionList={toUserOptions(usersQuery.data ?? [])} /></Col>
             <Col xs={24} md={12}><Form.InputNumber field="sort" label="排序" style={{ width: '100%' }} /></Col>
           </Row>
           <Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={[{ value: 'enabled', label: '启用' }, { value: 'disabled', label: '停用' }]} />
@@ -191,7 +191,7 @@ export default function GovernanceResourceTab() {
         <Form key={aclModal.formKey} {...aclModal.formProps} onValueChange={(values) => values.subjectType && setSubjectType(values.subjectType as ReportAclSubjectType)}>
           <Form.Select field="subjectType" label="主体类型" style={{ width: '100%' }} optionList={[{ value: 'user', label: '用户' }, { value: 'role', label: '角色' }, { value: 'department', label: '部门' }, { value: 'user_group', label: '用户组' }]} rules={[{ required: true }]} />
           {subjectType === 'user'
-            ? <Form.Select field="subjectId" label="主体" filter style={{ width: '100%' }} optionList={(usersQuery.data ?? []).map((user) => ({ value: user.id, label: user.nickname || user.username }))} rules={[{ required: true }]} />
+            ? <Form.Select field="subjectId" label="主体" filter style={{ width: '100%' }} optionList={toUserOptions(usersQuery.data ?? [])} rules={[{ required: true }]} />
             : <Form.InputNumber field="subjectId" label="主体 ID" min={1} style={{ width: '100%' }} rules={[{ required: true }]} />}
           <Form.Select field="role" label="访问角色" style={{ width: '100%' }} optionList={[{ value: 'viewer', label: '查看者' }, { value: 'editor', label: '编辑者' }, { value: 'owner', label: '所有者' }]} rules={[{ required: true }]} />
           <Form.DatePicker field="expiresAt" label="到期时间" type="dateTime" style={{ width: '100%' }} />

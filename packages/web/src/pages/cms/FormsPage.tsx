@@ -19,7 +19,7 @@ import { CMS_FORM_CAPTCHA_PROVIDERS, CMS_FORM_CAPTCHA_PROVIDER_LABELS, CMS_FORM_
 import type { CmsForm, CmsFormSubmission } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { CreateButton } from '@/components/toolbar-controls';
-import { dateTimeColumn, renderEnabledStatusTag } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { deleteAction, listTableProps } from '@/components/list-page';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
@@ -37,16 +37,12 @@ function SubmissionsSheet({ form, onClose }: Readonly<{ form: CmsForm | null; on
   const fieldColumns: ColumnProps<CmsFormSubmission>[] = (form?.fields ?? []).map((f) => ({
     title: f.label,
     width: 150,
-    render: (_: unknown, record: CmsFormSubmission) => (
-      <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 140 }}>
-        {String(record.data[f.name] ?? '')}
-      </Typography.Text>
-    ),
+    render: (_: unknown, record: CmsFormSubmission) => renderEllipsis(String(record.data[f.name] ?? '')),
   }));
 
   const columns: ColumnProps<CmsFormSubmission>[] = [
     ...fieldColumns,
-    { title: 'IP', dataIndex: 'ip', minWidth: 120, render: (v: string | null) => v ?? '-' },
+    { title: 'IP', dataIndex: 'ip', minWidth: 120, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
     dateTimeColumn('提交时间', 'createdAt'),
     createOperationColumn<CmsFormSubmission>({
       width: 100,

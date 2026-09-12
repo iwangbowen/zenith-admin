@@ -22,7 +22,7 @@ import {
   useResetReportQueryQuota,
   useSaveReportQueryQuota,
 } from '@/hooks/queries/report-query-capacity';
-import { useAllUsers } from '@/hooks/queries/users';
+import { toUserOptions, useAllUsers } from '@/hooks/queries/users';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { validateQuotaForm } from '../report-platform-utils';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
@@ -180,7 +180,7 @@ export default function GovernanceCapacityTab() {
         <Form key={quotaModal.formKey} {...quotaModal.formProps} onValueChange={(values) => values.scope && setQuotaScope(values.scope as ReportQuotaScope)}>
           <Row gutter={16}>
             <Col xs={24} md={12}><Form.Select field="scope" label="配额范围" style={{ width: '100%' }} optionList={[{ value: 'tenant', label: '租户' }, { value: 'user', label: '用户' }]} rules={[{ required: true }]} /></Col>
-            {quotaScope === 'user' && <Col xs={24} md={12}><Form.Select field="userId" label="用户" filter style={{ width: '100%' }} optionList={(usersQuery.data ?? []).map((user) => ({ value: user.id, label: user.nickname || user.username }))} rules={[{ required: true }]} /></Col>}
+            {quotaScope === 'user' && <Col xs={24} md={12}><Form.Select field="userId" label="用户" filter style={{ width: '100%' }} optionList={toUserOptions(usersQuery.data ?? [])} rules={[{ required: true }]} /></Col>}
             <Col xs={24} md={12}><Form.InputNumber field="maxConcurrent" label="最大并发" min={0} style={{ width: '100%' }} rules={[{ required: true }]} /></Col>
             <Col xs={24} md={12}><Form.InputNumber field="dailyQueryLimit" label="日查询上限" min={0} style={{ width: '100%' }} rules={[{ required: true }]} /></Col>
             <Col xs={24} md={12}><Form.InputNumber field="dailyRowLimit" label="日行数上限" min={0} style={{ width: '100%' }} rules={[{ required: true }]} /></Col>

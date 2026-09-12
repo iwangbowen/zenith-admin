@@ -4,7 +4,7 @@
  * 审批状态 / 审批建议 / 耗时 / 流程编号 / 任务编号；行操作：详情（实例详情抽屉）/ 催办。
  */
 import { useQueryClient } from '@tanstack/react-query';
-import { Modal, Toast, Typography } from '@douyinfe/semi-ui';
+import { Modal, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { enumValueOf } from '@zenith/shared/core';
 import { WORKFLOW_TASK_MONITOR_NODE_TYPES, WORKFLOW_TASK_STATUSES, workflowTaskContract, type WorkflowTaskMonitorItem } from '@zenith/shared/workflow';
@@ -21,7 +21,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { useWorkflowTaskMonitorList, workflowMonitorKeys, type WorkflowTaskMonitorParams } from '@/hooks/queries/workflow-monitor';
 import { useApiMutation } from '@/lib/contract-query';
 import { formatDateTimeRangeForApi } from '@/utils/date';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 
@@ -100,13 +100,9 @@ export default function WorkflowTasksMonitorView({ onOpenInstance }: Props) {
       title: '流程',
       dataIndex: 'definitionName',
       minWidth: 200,
-      render: (v: string | null, r) => (
-        <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>
-          {r.serialNo ?? `#${r.instanceId}`} · {v ?? '—'}
-        </Typography.Text>
-      ),
+      render: (v: string | null, r) => renderEllipsis(`${r.serialNo ?? `#${r.instanceId}`} · ${v ?? EMPTY_PLACEHOLDER}`),
     },
-    { title: '发起人', dataIndex: 'initiatorName', width: 110, render: (v: string | null) => v ?? '—' },
+    { title: '发起人', dataIndex: 'initiatorName', width: 110, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
     dateTimeColumn('发起时间', 'instanceCreatedAt'),
     taskNodeColumn<WorkflowTaskMonitorItem>({ title: '当前任务', width: 200, withTypeTag: true }),
     dateTimeColumn('任务开始时间', 'createdAt'),

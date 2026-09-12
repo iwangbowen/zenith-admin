@@ -9,6 +9,7 @@
 import { useEffect, useState } from 'react';
 import { Button, Input, InputNumber, Select, SideSheet, Typography } from '@douyinfe/semi-ui';
 import { Plus, Trash2 } from 'lucide-react';
+import ModalFooter from '@/components/ModalFooter';
 import type { ConditionGroup, ConditionRule, ConditionOperator, FlowBranch } from '../types';
 import { OPERATOR_OPTIONS, STARTER_CONDITION_FIELDS } from '../constants';
 
@@ -232,12 +233,7 @@ export default function ConditionEditor({
       placement="right"
       width={520}
       className="fd-config-drawer"
-      footer={
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 0' }}>
-          <button type="button" className="fd-drawer-btn fd-drawer-btn--cancel" onClick={onCancel}>取消</button>
-          <button type="button" className="fd-drawer-btn fd-drawer-btn--save" onClick={handleSave}>保存</button>
-        </div>
-      }
+      footer={<ModalFooter onCancel={onCancel} onOk={handleSave} okText="保存" />}
     >
       {branch?.isDefault ? (
         <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--semi-color-text-2)' }}>

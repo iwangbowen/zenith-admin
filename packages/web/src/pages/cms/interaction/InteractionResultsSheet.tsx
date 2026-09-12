@@ -12,7 +12,6 @@ import {
   Tag,
   Typography,
 } from '@douyinfe/semi-ui';
-import { IllustrationNoContent, IllustrationNoContentDark } from '@douyinfe/semi-illustrations';
 import { Search } from 'lucide-react';
 import { CMS_INTERACTION_QUESTION_TYPE_LABELS } from '@zenith/shared/cms';
 import type { CmsInteraction, CmsInteractionQuestionStats } from '@zenith/shared/cms';
@@ -24,6 +23,7 @@ import {
 } from '@/hooks/queries/cms';
 import './interaction-editor.css';
 import { DataBar } from '@/components/data-viz/DataBar';
+import { emptyIllustration } from '@/components/EmptyIllustration';
 import { dateColumn } from '@/utils/table-columns';
 
 const TEXT_PAGE_SIZE = 10;
@@ -167,7 +167,7 @@ function CrossAnalysis({ interactionId, questions }: Readonly<{
   const query = useCmsInteractionCrossStats(interactionId, x, y, x !== y);
 
   if (choices.length < 2) {
-    return <Empty image={<IllustrationNoContent />} darkModeImage={<IllustrationNoContentDark />} description="至少需要两道单选或多选题才能做交叉分析" />;
+    return <Empty {...emptyIllustration('NoContent')} description="至少需要两道单选或多选题才能做交叉分析" />;
   }
   const optionList = choices.map((question) => ({ value: question.id, label: question.label }));
   return (

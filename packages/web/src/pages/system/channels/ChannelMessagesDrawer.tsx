@@ -21,7 +21,7 @@ import {
   usePublishChannelMessageNow,
   useRetractChannelMessage,
 } from '@/hooks/queries/channels';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 
 interface Props {
   channel: ChannelAdmin | null;
@@ -98,11 +98,7 @@ export function ChannelMessagesDrawer({ channel, visible, onClose }: Readonly<Pr
     },
     {
       title: '内容', dataIndex: 'content',
-      render: (_: string, r: ChannelMessage) => (
-        <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 200 }}>
-          {r.title ? `${r.title} · ` : ''}{r.content || '—'}
-        </Typography.Text>
-      ),
+      render: (_: string, r: ChannelMessage) => renderEllipsis(`${r.title ? `${r.title} · ` : ''}${r.content || EMPTY_PLACEHOLDER}`),
     },
     {
       title: '状态', dataIndex: 'status', width: 100,

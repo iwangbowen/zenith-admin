@@ -4,6 +4,7 @@ import type { ColumnProps, Data } from '@douyinfe/semi-ui/lib/es/table';
 import type { PaymentChannel } from '@zenith/shared/payment';
 import { PAYMENT_CHANNEL_LABELS } from '@zenith/shared/payment';
 import { formatYuan, PAYMENT_CHANNEL_TAG_COLOR } from '@/utils/payment';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 export function PaymentChannelTag({
   channel,
@@ -29,7 +30,7 @@ export function paymentMoneyColumn<T extends Data>(
     dataIndex,
     align: 'right',
     render: (value: number | null | undefined) => {
-      if (value == null) return options.empty ?? '-';
+      if (value == null) return options.empty ?? EMPTY_PLACEHOLDER;
       const text = `${options.signed && value > 0 ? '+' : ''}${formatYuan(value)}`;
       if (!options.strong) return text;
       return <Typography.Text strong>{text}</Typography.Text>;

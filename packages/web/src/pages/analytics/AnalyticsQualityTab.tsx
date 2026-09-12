@@ -23,7 +23,7 @@ import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-fi
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
-import { dateColumn, dateTimeColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { ANALYTICS_ISSUE_TAG_COLOR } from './analytics-tag-colors';
 import { ListSearchToolbar } from '@/components/list-page';
 
@@ -90,7 +90,7 @@ export default function AnalyticsQualityTab() {
 
   const qualityColumns: ColumnProps<AnalyticsQualityDaily>[] = [
     dateColumn('日期', 'statDate'),
-    { title: '事件名', dataIndex: 'eventName', width: 180, render: (value: string) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 160 }}>{value}</Typography.Text> },
+    { title: '事件名', dataIndex: 'eventName', width: 180, render: renderEllipsis },
     {
       title: '问题类型',
       dataIndex: 'issueType',
@@ -103,7 +103,7 @@ export default function AnalyticsQualityTab() {
       dataIndex: 'sample',
       render: (value: Record<string, unknown> | null) => (
         <Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }} style={{ maxWidth: 320, display: 'block' }}>
-          {value ? JSON.stringify(value) : '–'}
+          {value ? JSON.stringify(value) : EMPTY_PLACEHOLDER}
         </Typography.Text>
       ),
     },
@@ -122,7 +122,7 @@ export default function AnalyticsQualityTab() {
         </Tag>
       ),
     },
-    { title: '原因', dataIndex: 'reason', render: (value: string | null) => value || '–' },
+    { title: '原因', dataIndex: 'reason', render: renderEllipsis },
     dateTimeColumn('更新时间', 'updatedAt'),
     createOperationColumn<AnalyticsEventOverride>({
       width: 150,

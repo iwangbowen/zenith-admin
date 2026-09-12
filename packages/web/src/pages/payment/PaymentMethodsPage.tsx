@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { Form } from '@douyinfe/semi-ui';
+import { Form, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -13,6 +13,7 @@ import { paymentMethodKeys, usePaymentMethodList, useSavePaymentMethod, type Pay
 import { RefreshButton } from '@/components/toolbar-controls';
 import { renderEllipsis } from '@/utils/table-columns';
 import { listTableProps, useStatusToggle } from '@/components/list-page';
+import { abortSubmit } from '@/lib/abort-submit';
 import { PaymentChannelTag } from './payment-display';
 
 interface MethodFormValues { label: string; icon?: string; sort?: number; enabled?: boolean; }
@@ -27,7 +28,10 @@ export default function PaymentMethodsPage() {
 
   const methodSaveMutation = {
     mutateAsync: ({ id, values }: { id?: number; values: PaymentMethodSaveValues }) => {
-      if (id == null) throw new Error('缺少记录 ID，请刷新后重试');
+      if (id == null) {
+        Toast.error('缺少记录 ID，请刷新后重试');
+        abortSubmit('missing-id');
+      }
       return saveMutation.mutateAsync({ id, values });
     },
     isPending: saveMutation.isPending,
