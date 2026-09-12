@@ -6,6 +6,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
  * 金额口径由 sourceType + 标准科目 + 借贷方向共同确定，避免把同一凭证的两侧重复计入。
  */
 import { and, eq, sql, type SQL } from 'drizzle-orm';
+import { HTTPException } from 'hono/http-exception';
 import { PAYMENT_CHANNEL_LABELS, paymentReportContract } from '@zenith/shared/payment';
 import type { PaymentChannel, PaymentReportGroupBy, PaymentReportRow } from '@zenith/shared/payment';
 import { readSnapshot } from '../../db';
@@ -58,7 +59,7 @@ interface RawAggRow {
 function toSafeMinorNumber(value: string, label: string): number {
   const parsed = BigInt(value);
   if (parsed > BigInt(Number.MAX_SAFE_INTEGER) || parsed < BigInt(Number.MIN_SAFE_INTEGER)) {
-    throw new Error(`${label} 超出报表安全精度范围，请按更小时间范围查询`);
+    throw new HTTPException(400, { message: `${label} 超出报表安全精度范围，请按更小时间范围查询` });
   }
   return Number(parsed);
 }

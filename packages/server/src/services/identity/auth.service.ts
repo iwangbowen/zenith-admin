@@ -782,7 +782,7 @@ export async function forgotPassword(email: string) {
     const token = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
     await db.insert(passwordResetTokens).values({ userId: user.id, token, expiresAt });
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5373';
+    const frontendUrl = config.frontendBaseUrl;
     const resetLink = `${frontendUrl}/reset-password?token=${token}`;
     try {
       await sendMail(

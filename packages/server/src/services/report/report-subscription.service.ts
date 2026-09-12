@@ -4,6 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, inArray, lte, isNotNull, sql } from 'drizzle-orm';
 import { aggregateReportRows, reportSubscriptionContract } from '@zenith/shared/report';
 import type { QueryOutputOf } from '@zenith/shared/core';
+import { config } from '../../config';
 import { db } from '../../db';
 import { reportDashboardSubscriptions, reportDeliveryRuns } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
@@ -297,8 +298,7 @@ async function buildSummary(row: ReportDashboardSubscriptionRow): Promise<{
     snapshot[widget.i] = value;
     if (compareValue !== undefined) snapshot[`${widget.i}:compare`] = compareValue;
   }
-  const baseUrl = (process.env.APP_URL ?? process.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
-  const link = `${baseUrl}/report/dashboards/${dashboard.id}/view`;
+  const link = `${config.frontendBaseUrl}/report/dashboards/${dashboard.id}/view`;
   const title = `报表推送 · ${dashboard.name}`;
   const text = lines.length
     ? `${lines.map((line) => `· ${line.title}：${line.value}${line.unit}${trendText(line.deltaPct)}`).join('\n')}\n\n查看完整报表：${link}`

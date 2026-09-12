@@ -2,13 +2,14 @@ import { estimateTokens } from './tokens';
 import { estimateMessageTokens, type ChatMessage, type StreamChunk } from './stream-types';
 import { buildModelChain, type ModelChainEntry } from './mastra-models';
 import type { AiModelSettings } from '@zenith/shared/ai';
+import { config } from '../../config';
 
 /**
  * Mastra Agent 聊天桥:注册式 zenith-chat(requestContext 动态注入模型链/提示词/工具),
  * 把 Mastra 流 chunk 映射回系统稳定的 SSE 协议(StreamChunk / tool_result)。
  */
 
-export const STREAM_IDLE_TIMEOUT_MS = Number(process.env.AI_STREAM_IDLE_TIMEOUT_MS) || 90000;
+export const STREAM_IDLE_TIMEOUT_MS = config.ai.streamIdleTimeoutMs;
 
 /** 工具调用最多轮数(Agent maxSteps = 工具轮数 + 最终回答) */
 const MAX_TOOL_ROUNDS = 5;

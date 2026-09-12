@@ -194,7 +194,7 @@ async function buildMastraAgentFromRow(
   const cfg = row.configId
     ? await getRawProviderConfig(row.configId).catch(() => null)
     : await getRawDefaultProviderConfig();
-  if (!cfg) throw new Error('智能体缺少可用的服务商配置');
+  if (!cfg) throw new HTTPException(400, { message: '智能体缺少可用的服务商配置' });
   const model = row.model && cfg.models.includes(row.model) ? row.model : cfg.defaultModel;
 
   const tools = await getMastraTools(row.tools ?? []);

@@ -44,9 +44,9 @@ function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : '未知错误';
 }
 
-function resolveNotifyUrl(channel: PaymentChannel, config: PaymentChannelConfigRow): string {
-  const base = (config.notifyUrl || process.env.PAYMENT_NOTIFY_BASE_URL || process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, '');
-  return `${base}/api/public/payment/notify/${channel}/${config.callbackToken}`;
+function resolveNotifyUrl(channel: PaymentChannel, channelConfig: PaymentChannelConfigRow): string {
+  const base = channelConfig.notifyUrl || config.payment.notifyBaseUrl || config.publicBaseUrl;
+  return `${base.replace(/\/+$/, '')}/api/public/payment/notify/${channel}/${channelConfig.callbackToken}`;
 }
 
 /**

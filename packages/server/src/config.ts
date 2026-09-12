@@ -51,6 +51,8 @@ const envSchema = z.object({
   FIELD_ENCRYPTION_KEY: z.string().default(''),
   /** 对外可访问的服务基地址，用于邮件退订链接等出站 URL 拼接 */
   PUBLIC_BASE_URL: z.string().default('http://localhost:3300'),
+  /** 管理后台 / 会员前台的前端基地址，用于邮件与推送里的页面深链（密码重置、报表推送）；同源部署时与 PUBLIC_BASE_URL 相同 */
+  FRONTEND_BASE_URL: z.string().default('http://localhost:5373'),
   DATABASE_URL: z.string().min(1).default('postgresql://postgres:postgres@localhost:5432/zenith_admin'),
   CORS_ORIGIN: z.string().default('*'),
   /**
@@ -89,6 +91,8 @@ const envSchema = z.object({
   REPORT_OUTBOUND_PRIVATE_ALLOWLIST: z.string().default(''),
   /** AI 出站请求（LLM/embeddings 网关）SSRF 内网允许清单；默认放行本机以兼容 Ollama 等本地网关 */
   AI_OUTBOUND_PRIVATE_ALLOWLIST: z.string().default('127.0.0.1,localhost'),
+  /** AI 流式回复的空闲超时（毫秒）：连续无 token 超过该时长即中止本次生成 */
+  AI_STREAM_IDLE_TIMEOUT_MS: z.coerce.number().int().min(1_000).default(90_000),
   /** 开发环境放开 /api/mastra 鉴权(Studio 免贴 token);NODE_ENV=production 时强制忽略 */
   MASTRA_STUDIO_ALLOW_ANONYMOUS: z.enum(['true', 'false']).default('false'),
   REPORT_PDF_FONT_PATH: z.string().default(''),
@@ -115,6 +119,8 @@ const envSchema = z.object({
   PAYMENT_ENGINE_MODE: z.enum(['off', 'sandbox', 'live']).default('sandbox'),
   /** 公开收银台前端基地址，用于构造第三方支付同步回跳地址。 */
   PAYMENT_CASHIER_BASE_URL: z.url().default('http://localhost:5373'),
+  /** 渠道异步回调基址；留空时回落 PUBLIC_BASE_URL（渠道配置显式填了 notifyUrl 则优先） */
+  PAYMENT_NOTIFY_BASE_URL: z.string().default(''),
   /** 支付业务 Webhook 允许访问的私网/本机目标，语义同开放平台 Webhook allowlist。 */
   PAYMENT_WEBHOOK_ALLOWED_HOSTS: z.string().default(''),
   /** 工作流域出站请求（数据源 / 连接器 / 事件订阅 / 触发器 / 补偿动作 / 节点监听）允许访问的私网/本机目标，语义同上 */
@@ -329,6 +335,8 @@ export const config = {
   /** 字段级加密密钥（64 位 hex）；lib/encryption.ts 与 lib/secret-crypto.ts 的唯一密钥来源 */
   fieldEncryptionKey: runtimeSecrets.fieldEncryptionKey,
   publicBaseUrl: env.PUBLIC_BASE_URL.replace(/\/+$/, ''),
+  /** 前端页面深链基地址（密码重置、报表推送等邮件 / 通知里的链接） */
+  frontendBaseUrl: env.FRONTEND_BASE_URL.replace(/\/+$/, ''),
   databaseUrl: env.DATABASE_URL,
   corsOrigin: env.CORS_ORIGIN,
   database: {
@@ -359,6 +367,8 @@ export const config = {
   ai: {
     /** AI 出站请求 SSRF 内网允许清单（LLM / embeddings 网关地址） */
     outboundPrivateAllowlist: env.AI_OUTBOUND_PRIVATE_ALLOWLIST.split(',').map(s => s.trim()).filter(Boolean),
+    /** 流式回复空闲超时（毫秒） */
+    streamIdleTimeoutMs: env.AI_STREAM_IDLE_TIMEOUT_MS,
     /** 开发环境放开 /api/mastra 鉴权;生产(NODE_ENV=production)强制忽略 */
     mastraStudioAllowAnonymous: env.MASTRA_STUDIO_ALLOW_ANONYMOUS === 'true' && process.env.NODE_ENV !== 'production',
   },
@@ -391,6 +401,8 @@ export const config = {
   payment: {
     engineMode: env.PAYMENT_ENGINE_MODE,
     cashierBaseUrl: env.PAYMENT_CASHIER_BASE_URL.replace(/\/+$/, ''),
+    /** 渠道异步回调基址；未配置时为 undefined，调用方回落 publicBaseUrl */
+    notifyBaseUrl: env.PAYMENT_NOTIFY_BASE_URL.replace(/\/+$/, '') || undefined,
     webhookAllowedHosts: env.PAYMENT_WEBHOOK_ALLOWED_HOSTS.split(',').map((s) => s.trim()).filter(Boolean),
     providerTimeoutMs: env.PAYMENT_PROVIDER_TIMEOUT_MS,
   },

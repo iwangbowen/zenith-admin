@@ -3,6 +3,7 @@ import { throwIfWorkflowExternalEffectUncertain } from '../external-effects';
 import { eq } from 'drizzle-orm';
 import type { WorkflowTriggerNodeConfig } from '@zenith/shared/workflow';
 import { isGatedTrigger } from '@zenith/shared/workflow';
+import { config } from '../../../config';
 import { db } from '../../../db';
 import { workflowTasks, workflowInstances } from '../../../db/schema';
 import type { workflowTasks as workflowTasksTable, workflowInstances as workflowInstancesTable } from '../../../db/schema';
@@ -119,8 +120,7 @@ async function runTrigger(cfg: WorkflowTriggerNodeConfig, task: TaskRow, inst: I
       nodeKey: task.nodeKey,
     };
     if (triggerType === 'callback' && task.externalCallbackId) {
-      const base = (process.env.PUBLIC_BASE_URL ?? '').replace(/\/+$/, '');
-      extras.callbackUrl = `${base}/api/public/workflow/trigger-callback/${task.externalCallbackId}`;
+      extras.callbackUrl = `${config.publicBaseUrl}/api/public/workflow/trigger-callback/${task.externalCallbackId}`;
       extras.callbackId = task.externalCallbackId;
     }
     return executeHttpTrigger(cfg, formData, extras);
