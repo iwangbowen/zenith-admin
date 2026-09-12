@@ -15,7 +15,7 @@ import {
 const recorder = new ApiRecorder();
 vi.mock('@/utils/request', () => ({ request: createRequestMock(() => recorder) }));
 
-import { api, apiQueryOptions, apiRaw, contractKey, createResourceQueries, urlOf, useApiMutation, useSaveMutation } from './contract-query';
+import { api, apiQueryOptions, apiRaw, contractKey, createResourceQueries, urlOf, useApiMutation, useApiQuery, useSaveMutation } from './contract-query';
 
 const itemSchema = z.object({ id: z.int(), name: z.string() });
 const itemContract = defineContract('/api/items', {
@@ -127,6 +127,18 @@ describe('apiQueryOptions', () => {
     expect(opts.queryKey).toEqual(['items', 'detail', { params: { id: 5 } }]);
     const qc = createTestQueryClient();
     await expect(qc.fetchQuery(opts)).resolves.toEqual({ id: 5, name: 'one' });
+  });
+
+  it('lets select change the data shape while the cache keeps the contract response', async () => {
+    const qc = createTestQueryClient();
+    const { result } = renderHook(
+      () => useApiQuery(itemContract.all, { select: (rows) => rows.map((r) => r.name) }),
+      { wrapper: createWrapper(qc) },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expectTypeOf(result.current.data).toEqualTypeOf<string[] | undefined>();
+    expect(result.current.data).toEqual(['one']);
+    expect(qc.getQueryData(contractKey(itemContract.all))).toEqual([{ id: 1, name: 'one' }]);
   });
 });
 

@@ -149,39 +149,42 @@ export function contractKey<Op extends AnyOperation>(op: Op, input?: InputOf<Op>
   return [resourceKeyOf(op.basePath), op.name, identity];
 }
 
-type ApiQueryExtraOptions<Op extends AnyOperation> = Omit<
-  UseQueryOptions<OutputOf<Op>, Error, OutputOf<Op>, readonly unknown[]>,
+type ApiQueryExtraOptions<Op extends AnyOperation, TData = OutputOf<Op>> = Omit<
+  UseQueryOptions<OutputOf<Op>, Error, TData, readonly unknown[]>,
   'queryKey' | 'queryFn'
 > & { requestOptions?: ApiCallOptions };
 
-/** 可缓存查询的 `queryOptions`，可直接给 `useQuery` / `queryClient.prefetchQuery` / `useQueries` */
-export function apiQueryOptions<Op extends AnyOperation>(
+/**
+ * 可缓存查询的 `queryOptions`，可直接给 `useQuery` / `queryClient.prefetchQuery` / `useQueries`。
+ * `select` 允许改变数据形状（`TData`），缓存里仍是契约响应，key 不变。
+ */
+export function apiQueryOptions<Op extends AnyOperation, TData = OutputOf<Op>>(
   op: Op,
-  ...args: [...InputArgs<Op>, options?: ApiQueryExtraOptions<Op>]
+  ...args: [...InputArgs<Op>, options?: ApiQueryExtraOptions<Op, TData>]
 ) {
-  const [input, options] = splitQueryArgs<Op>(args);
+  const [input, options] = splitQueryArgs<Op, TData>(args);
   const { requestOptions, ...queryExtras } = options ?? {};
-  return queryOptions<OutputOf<Op>, Error, OutputOf<Op>, readonly unknown[]>({
+  return queryOptions<OutputOf<Op>, Error, TData, readonly unknown[]>({
     queryKey: contractKey(op, input),
     queryFn: () => api(op, ...([input, requestOptions] as unknown as [...InputArgs<Op>, ApiCallOptions?])),
     ...queryExtras,
   });
 }
 
-function splitQueryArgs<Op extends AnyOperation>(args: unknown[]): [InputOf<Op> | undefined, ApiQueryExtraOptions<Op> | undefined] {
+function splitQueryArgs<Op extends AnyOperation, TData>(args: unknown[]): [InputOf<Op> | undefined, ApiQueryExtraOptions<Op, TData> | undefined] {
   const [first, second] = args;
-  if (args.length >= 2) return [first as InputOf<Op> | undefined, second as ApiQueryExtraOptions<Op> | undefined];
+  if (args.length >= 2) return [first as InputOf<Op> | undefined, second as ApiQueryExtraOptions<Op, TData> | undefined];
   if (first && typeof first === 'object' && ('params' in first || 'query' in first || 'body' in first)) {
     return [first as InputOf<Op>, undefined];
   }
-  return [undefined, first as ApiQueryExtraOptions<Op> | undefined];
+  return [undefined, first as ApiQueryExtraOptions<Op, TData> | undefined];
 }
 
-export function useApiQuery<Op extends AnyOperation>(
+export function useApiQuery<Op extends AnyOperation, TData = OutputOf<Op>>(
   op: Op,
-  ...args: [...InputArgs<Op>, options?: ApiQueryExtraOptions<Op>]
+  ...args: [...InputArgs<Op>, options?: ApiQueryExtraOptions<Op, TData>]
 ) {
-  return useQuery(apiQueryOptions(op, ...args));
+  return useQuery(apiQueryOptions<Op, TData>(op, ...args));
 }
 
 // ─── mutation ────────────────────────────────────────────────────────────────
