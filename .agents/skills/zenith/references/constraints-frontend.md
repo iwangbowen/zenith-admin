@@ -37,6 +37,7 @@
 | 状态开关列 | `components/list-page` 的 `useStatusToggle({ toggle, confirmDisable, disabled })` → `status.column()` | `togglingId = mutation.isPending ? mutation.variables?.id : null` + 手写 `Switch` + `Modal.confirm` + `Toast.success('已启用')` | 行内 loading 与载荷形状耦合；停用确认样式各页不一 |
 | 列表删除动作 | `components/list-page` 的 `deleteAction`（操作列）/ `confirmAndDelete`（批量按钮） | 操作列里手写 `{ key: 'delete', danger: true, onClick: () => confirmDelete({ onOk: async () => { await mutateAsync(); Toast.success('删除成功'); } }) }` | 漏 Toast / 漏 danger / 成功后忘清选中 |
 | 列表表格接线 | `components/list-page` 的 `listTableProps(listQuery, { pagination: buildPagination })` 展开到 `ConfigurableTable` | 手写 `dataSource` / `loading` / `onRefresh` / `refreshLoading` / `rowKey` / `size` / `bordered` 七件套 | 漏 `onRefresh` 没有刷新按钮；分页 total 取错 |
+| 列表多选 / 批量操作的选中状态 | `components/list-page` 的 `useRowSelection()`（在 `useListSearch` 之前声明）：`selectedRowKeys` / `hasSelection` / `clear` / `rowSelection`；行键为字符串用 `useRowSelection<string>()`，行级禁用传 `{ extra: { getCheckboxProps } }`；`onSearch: clearSelection`、`onDeleted: clearSelection`、`listTableProps(q, { rowSelection })`。表格行键与业务 id 类型不一致（CMS 页 `rowKey` 为字符串、状态存数字 id）的页面保留自维护状态 | `useState<number[]>([])` + `rowSelection: { selectedRowKeys, onChange: (keys) => set(keys as number[]) }` + 各处 `setSelectedRowKeys([])` | `keys as number[]` / `(keys ?? []) as` / `.map(Number)` 各页归一写法不一；查询 / 翻页 / 删除后是否清选中各页漂移 |
 | 树形表格展开态 | `hooks/useTreeExpansion.ts` | 递归收集节点 key + `isAllExpanded` 计数比较 + `onExpandedRowsChange` 行→key 映射 | 传未筛选数据时按钮显示「全部展开」却点不动（死按钮）；数据清空后空表格显示「全部折叠」 |
 | 元素尺寸测量（表格 / 画布填满剩余高度） | `hooks/useElementSize.ts`（`const { ref, height } = useElementSize({ height: 500 })`） | `useRef` + `useState` + `new ResizeObserver(...)` + `observe` / `disconnect` effect | 漏 `disconnect` 泄漏观察器；各页取整与初始占位不一致 |
 | 头像选文件 → 裁剪 → 上传 → 落库 | `hooks/useAvatarCropUpload.ts`（`fileInputProps` 展开到隐藏 `<input>`，`cropperProps` 展开到 `AvatarCropperModal`，落库动作放 `onUploaded`） | 手写 `handleAvatarFileSelect` / `FormData.append('file', blob, 'avatar.jpg')` / 上传失败 Toast | 上传错误提示与失败后是否关闭裁剪弹窗各处不一致 |
@@ -209,7 +210,7 @@
   图标已展开用 `ChevronsDownUp`，未展开用 `ChevronsUpDown`。
   **传入的必须是表格实际渲染的数据**（筛选后的那份），传全量树会让筛选后的按钮点不动。
   只有部分行可展开或行 key 不是 `id` 时，用 `collectKeys` / `getRowKey` 覆盖
-- **批量按钮显示时机**：仅 `selectedRowKeys.length > 0` 时显示，放在查询 / 重置按钮之后
+- **批量按钮显示时机**：仅有选中（`useRowSelection` 的 `hasSelection`）时显示，放在查询 / 重置按钮之后
 - **List 列表页分页**：页面主体用 Semi `List` 渲染分页数据时，分页条一律用
   `components/ListPagination.tsx`（左侧条数信息 + 右侧分页器，对齐表格分页形态；
   移动端策略组件内置）；**禁止**手排独立 `<Pagination>` —— 其 `showTotal` 只显示总页数，

@@ -17,7 +17,7 @@ import ImportButton from '@/components/ImportButton';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { MemberDetailDrawer } from './MemberDetailDrawer';
 import { MemberTagsManageModal } from './MemberTagsManageModal';
@@ -77,7 +77,7 @@ export default function MembersPage() {
   const [batchTagsVisible, setBatchTagsVisible] = useState(false);
   const [batchTagIds, setBatchTagIds] = useState<number[]>([]);
   // batch operations
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
   const [batchStatusVisible, setBatchStatusVisible] = useState(false);
   const [batchLevelVisible, setBatchLevelVisible] = useState(false);
   const [batchStatus, setBatchStatus] = useState<string>('');
@@ -174,7 +174,7 @@ export default function MembersPage() {
     Toast.success('已批量打标签');
     setBatchTagsVisible(false);
     setBatchTagIds([]);
-    setSelectedRowKeys([]);
+    clearSelection();
   };
 
   const openResetPwd = (record: Member) => { setPwdMember(record); setPwdVisible(true); };
@@ -196,7 +196,7 @@ export default function MembersPage() {
     Toast.success('已更新');
     setBatchStatusVisible(false);
     setBatchStatus('');
-    setSelectedRowKeys([]);
+    clearSelection();
   };
 
   const handleBatchLevel = async () => {
@@ -204,7 +204,7 @@ export default function MembersPage() {
     Toast.success('已更新');
     setBatchLevelVisible(false);
     setBatchLevelId(undefined);
-    setSelectedRowKeys([]);
+    clearSelection();
   };
 
   const columns: ColumnProps<Member>[] = [
@@ -323,14 +323,14 @@ export default function MembersPage() {
           </Dropdown>
           <Button size="small" type="primary" theme="light" onClick={() => setBatchLevelVisible(true)}>批量调整等级</Button>
           <Button size="small" type="primary" theme="light" onClick={() => setBatchTagsVisible(true)}>批量打标签</Button>
-          <Button size="small" type="tertiary" onClick={() => setSelectedRowKeys([])}>取消选择</Button>
+          <Button size="small" type="tertiary" onClick={() => clearSelection()}>取消选择</Button>
         </div>
       )}
 
       <ConfigurableTable<Member> columns={columns}
         {...listTableProps(listQuery, {
           pagination: buildPagination,
-          rowSelection: { selectedRowKeys, onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]) },
+          rowSelection,
           empty: '暂无数据',
         })} />
 

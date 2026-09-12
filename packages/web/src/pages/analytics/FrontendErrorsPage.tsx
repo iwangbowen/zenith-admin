@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -374,7 +374,7 @@ export default function FrontendErrorsPage() {
 
   const [overviewDays, setOverviewDays] = useState(30);
 
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, setSelectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
   const issueSearch = useListSearch<IssueFilters>({ defaults: defaultIssueFilters, listKey: analyticsKeys.frontendErrors.groupsLists, pageSize: 20 });
   const {
     page: groupPage,
@@ -518,10 +518,10 @@ export default function FrontendErrorsPage() {
       onOk: async () => {
         await batchStatusMutation.mutateAsync({ query: { status }, body: { ids: selectedRowKeys } });
         Toast.success('更新成功');
-        setSelectedRowKeys([]);
+        clearSelection();
       },
     });
-  }, [batchStatusMutation, selectedRowKeys]);
+  }, [batchStatusMutation, selectedRowKeys, clearSelection]);
 
   const batchDeleteGroups = useCallback(() => {
     if (selectedRowKeys.length === 0) return;
@@ -531,10 +531,10 @@ export default function FrontendErrorsPage() {
       onOk: async () => {
         await batchDeleteMutation.mutateAsync({ body: { ids: selectedRowKeys } });
         Toast.success('删除成功');
-        setSelectedRowKeys([]);
+        clearSelection();
       },
     });
-  }, [batchDeleteMutation, selectedRowKeys]);
+  }, [batchDeleteMutation, selectedRowKeys, clearSelection]);
 
   const deleteGroup = useCallback((record: ErrorGroup) => {
     confirmDelete({
@@ -550,7 +550,7 @@ export default function FrontendErrorsPage() {
         }
       },
     });
-  }, [batchDeleteMutation, detailGroupId]);
+  }, [batchDeleteMutation, detailGroupId, setSelectedRowKeys]);
 
   const saveGroupHandle = useCallback(async () => {
     if (!detail) return;
@@ -1047,10 +1047,7 @@ export default function FrontendErrorsPage() {
             columns={issueColumns}
             {...listTableProps(groupsQuery, {
               pagination: buildGroupPagination,
-              rowSelection: {
-                selectedRowKeys,
-                onChange: (keys) => setSelectedRowKeys(keys as number[]),
-              },
+              rowSelection,
               empty: '暂无错误 Issue',
             })}
           />

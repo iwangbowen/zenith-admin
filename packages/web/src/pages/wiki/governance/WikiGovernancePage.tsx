@@ -6,7 +6,7 @@ import type { WikiDocStatus, WikiGovernanceDoc, WikiGovernanceKind, WikiNoResult
 import { WIKI_DOC_STATUS_LABELS, WIKI_GOVERNANCE_KIND_LABELS, WIKI_GOVERNANCE_KINDS } from '@zenith/shared/wiki';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AppModal from '@/components/AppModal';
-import { listTableProps } from '@/components/list-page';
+import { listTableProps, useRowSelection } from '@/components/list-page';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
@@ -28,7 +28,7 @@ function GovernancePane({ kind }: { kind: WikiGovernanceKind }) {
   const { page, pageSize, buildPagination } = usePagination();
   const listQuery = useWikiGovernanceDocs(kind, { page, pageSize });
 
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
   const [ownerModalVisible, setOwnerModalVisible] = useState(false);
   const [ownerId, setOwnerId] = useState<number>();
   const [reviewModalVisible, setReviewModalVisible] = useState(false);
@@ -45,7 +45,7 @@ function GovernancePane({ kind }: { kind: WikiGovernanceKind }) {
 
   function afterBatch(message: string) {
     Toast.success(message);
-    setSelectedRowKeys([]);
+    clearSelection();
   }
 
   function openOwnerModal() {
@@ -133,7 +133,7 @@ function GovernancePane({ kind }: { kind: WikiGovernanceKind }) {
         empty={kind === 'all' ? '当前没有可治理的文档' : '该清单没有需要处理的文档'}
         {...listTableProps(listQuery, {
           pagination: buildPagination,
-          rowSelection: { selectedRowKeys, onChange: (keys) => setSelectedRowKeys(keys as number[]) },
+          rowSelection,
         })}
       />
 

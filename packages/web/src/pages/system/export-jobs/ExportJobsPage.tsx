@@ -11,7 +11,7 @@ import { urlOf } from '@/lib/contract-query';
 import { request } from '@/utils/request';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import { formatDateTime } from '@/utils/date';
 import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import {
@@ -90,7 +90,7 @@ export default function ExportJobsPage() {
   const [logsVisible, setLogsVisible] = useState(false);
   const [currentJob, setCurrentJob] = useState<ExportJob | null>(null);
   const [downloadLoadingId, setDownloadLoadingId] = useState<number | null>(null);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, setSelectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
   const entitiesQuery = useExportEntities();
   const entities = entitiesQuery.data ?? EMPTY_ENTITIES;
   const listQuery = useExportJobList({
@@ -126,7 +126,7 @@ export default function ExportJobsPage() {
 
   useEffect(() => {
     setSelectedRowKeys((prev) => prev.filter((id) => data.some((item) => item.id === id)));
-  }, [data]);
+  }, [data, setSelectedRowKeys]);
 
   const handleDownload = async (record: ExportJob) => {
     setDownloadLoadingId(record.id);
@@ -188,7 +188,7 @@ export default function ExportJobsPage() {
       content: `将删除选中的 ${selectedRowKeys.length} 个导出任务记录。`,
       run: () => batchDeleteMutation.mutateAsync(selectedRowKeys),
       successMessage: `已删除 ${selectedRowKeys.length} 个任务`,
-      onDeleted: () => setSelectedRowKeys([]),
+      onDeleted: clearSelection,
     });
   };
 
@@ -354,10 +354,7 @@ export default function ExportJobsPage() {
         columns={columns}
         {...listTableProps(listQuery, {
           pagination: buildPagination,
-          rowSelection: {
-            selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
-          },
+          rowSelection,
           empty: '暂无导出任务',
         })}
       />

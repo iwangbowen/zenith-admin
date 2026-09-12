@@ -28,7 +28,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
 import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection, useStatusToggle } from '@/components/list-page';
 import { MemberAssignmentSheet, memberPreviewColumn } from '@/components/members/MemberAssignmentSheet';
 import { compactParams } from '@/lib/query';
 
@@ -58,7 +58,7 @@ export default function PositionsPage() {
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
   }), [submittedParams]);
   const listQuery = usePositionList({ page, pageSize, ...filterQuery });
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
   const { items: statusItems, options: statusOptions } = useDictItems('common_status');
 
   // 成员管理
@@ -104,7 +104,7 @@ export default function PositionsPage() {
       title: `确认删除选中的 ${selectedRowKeys.length} 个岗位？`,
       content: '删除后无法恢复，请确认操作',
       run: () => deleteMutation.mutateAsync(selectedRowKeys),
-      onDeleted: () => setSelectedRowKeys([]),
+      onDeleted: clearSelection,
     });
   };
 
@@ -203,10 +203,7 @@ export default function PositionsPage() {
         {...listTableProps(listQuery, {
           pagination: buildPagination,
           empty: '暂无数据',
-          rowSelection: {
-            selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
-          },
+          rowSelection,
         })}
       />
 

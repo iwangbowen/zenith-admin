@@ -25,7 +25,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { StatCard, StatGrid } from '@/components/charts';
 import { replayKeys, useBatchDeleteReplays, useReplayDetail, useReplayList, useReplayStorageStats } from '@/hooks/queries/session-replays';
 import { formatBytes } from '@zenith/shared/core';
-import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 
 const { Text } = Typography;
 
@@ -87,7 +87,7 @@ export default function SessionReplaysPage() {
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: replayKeys.lists });
 
   const [detailId, setDetailId] = useState<string | null>(null);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
+  const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection<string>();
 
   const listQuery = useReplayList({
     page, pageSize,
@@ -191,7 +191,7 @@ export default function SessionReplaysPage() {
     const ok = await confirmDelete({ title: `确认删除选中的 ${selectedRowKeys.length} 条回放？`, content: '录像分片将一并删除，不可恢复。' });
     if (!ok) return;
     await batchDeleteMutation.mutateAsync({ body: { ids: selectedRowKeys } });
-    setSelectedRowKeys([]);
+    clearSelection();
   }
 
   return (
@@ -274,10 +274,7 @@ export default function SessionReplaysPage() {
             columns={columns}
             {...listTableProps(listQuery, {
               pagination: () => buildPagination(total),
-              rowSelection: {
-                selectedRowKeys,
-                onChange: (keys) => setSelectedRowKeys((keys ?? []) as string[]),
-              },
+              rowSelection,
               empty: '暂无回放记录。开启「数据分析设置 → 会话回放」后，报错现场将自动录制。',
             })}
           />

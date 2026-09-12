@@ -22,7 +22,7 @@ import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection, useStatusToggle } from '@/components/list-page';
 
 interface SearchParams {
   keyword: string;
@@ -41,7 +41,7 @@ export default function TenantPackagesPage() {
     bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: tenantPackageKeys.lists });
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
 
   const listQuery = useTenantPackageList({
     page,
@@ -89,7 +89,7 @@ export default function TenantPackagesPage() {
       content: '删除后无法恢复，已绑定该套餐的租户将解除关联。',
       run: () => deleteMutation.mutateAsync(selectedRowKeys),
       successMessage: '批量删除成功',
-      onDeleted: () => setSelectedRowKeys([]),
+      onDeleted: clearSelection,
     });
   };
 
@@ -180,10 +180,7 @@ export default function TenantPackagesPage() {
         columns={columns}
         {...listTableProps(listQuery, {
           pagination: buildPagination,
-          rowSelection: {
-            selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
-          },
+          rowSelection,
         })}
       />
 

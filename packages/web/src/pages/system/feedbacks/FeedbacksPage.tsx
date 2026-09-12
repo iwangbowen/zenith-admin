@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Banner, Descriptions, Form, Rating, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -7,7 +7,7 @@ import { USER_FEEDBACK_CATEGORY_LABELS, USER_FEEDBACK_STATUS_LABELS } from '@zen
 import ConfigurableTable from '@/components/ConfigurableTable';
 import ExportButton from '@/components/ExportButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import AppModal from '@/components/AppModal';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { formatDateRangeForApi } from '@/utils/date';
@@ -77,7 +77,7 @@ export default function FeedbacksPage() {
   const listQuery = useUserFeedbackList({ page, pageSize, ...filterQuery });
 
   // ─── 批量选择 ──────────────────────────────────────────────────────────
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, setSelectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
 
   // ─── 处理弹窗 ──────────────────────────────────────────────────────────
   const handleMutation = useHandleFeedback();
@@ -111,7 +111,7 @@ export default function FeedbacksPage() {
       content: '删除后不可恢复',
       run: () => deleteMutation.mutateAsync(selectedRowKeys),
       successMessage: '删除成功',
-      onDeleted: () => setSelectedRowKeys([]),
+      onDeleted: clearSelection,
     });
   }
 
@@ -235,10 +235,7 @@ export default function FeedbacksPage() {
         empty="暂无反馈"
         {...listTableProps(listQuery, {
           pagination: buildPagination,
-          rowSelection: {
-            selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
-          },
+          rowSelection,
         })}
       />
 

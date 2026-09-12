@@ -7,7 +7,7 @@ import { Ban, CircleCheck } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import ExportButton from '@/components/ExportButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection, useStatusToggle } from '@/components/list-page';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
 import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
@@ -68,7 +68,7 @@ function normalizePayload(values: ShortLinkFormValues, isEdit: boolean): Partial
 
 export default function ShortLinksPage() {
   const { hasPermission } = usePermission();
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
   const [qrLink, setQrLink] = useState<ShortLink | null>(null);
   const [statsLink, setStatsLink] = useState<ShortLink | null>(null);
 
@@ -79,8 +79,8 @@ export default function ShortLinksPage() {
   } = useListSearch<SearchParams>({
     defaults: defaultSearchParams,
     listKey: shortLinkKeys.lists,
-    onSearch: () => setSelectedRowKeys([]),
-    onReset: () => setSelectedRowKeys([]),
+    onSearch: clearSelection,
+    onReset: clearSelection,
   });
 
   // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
@@ -144,7 +144,7 @@ export default function ShortLinksPage() {
       content: '删除后短链立即失效且不可恢复，点击明细一并清除。',
       run: () => deleteMutation.mutateAsync(selectedRowKeys),
       successMessage: '批量删除成功',
-      onDeleted: () => setSelectedRowKeys([]),
+      onDeleted: clearSelection,
     });
   }
 
@@ -155,7 +155,7 @@ export default function ShortLinksPage() {
         {
           onSuccess: () => {
             Toast.success(status === 'enabled' ? '批量启用成功' : '批量禁用成功');
-            setSelectedRowKeys([]);
+            clearSelection();
           },
         },
       );
@@ -275,7 +275,7 @@ export default function ShortLinksPage() {
         empty="暂无数据"
         {...listTableProps(listQuery, {
           pagination: buildPagination,
-          rowSelection: { selectedRowKeys, onChange: (keys) => setSelectedRowKeys(keys as number[]) },
+          rowSelection,
         })}
       />
 

@@ -9,7 +9,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { UserAvatar } from '@/components/UserAvatar';
 import ExportButton from '@/components/ExportButton';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { confirmAndDelete, deleteAction as listDeleteAction, ListSearchToolbar, listTableProps, type ListQueryLike } from '@/components/list-page';
+import { confirmAndDelete, deleteAction as listDeleteAction, ListSearchToolbar, listTableProps, type ListQueryLike, useRowSelection } from '@/components/list-page';
 import { createOperationColumn, type ResponsiveTableAction } from '@/components/ResponsiveTableActions';
 import FileAttachment from '@/components/FileAttachment';
 import { MetricMeter } from '@/components/data-viz/MetricMeter';
@@ -89,7 +89,7 @@ export default function AnnouncementsPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: announcementKeys.lists });
 
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, setSelectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
   const [contentHtml, setContentHtml] = useState('');
   const [editorKey, setEditorKey] = useState(0);
 
@@ -306,7 +306,7 @@ export default function AnnouncementsPage() {
       title: `确认删除选中的 ${selectedRowKeys.length} 条公告？`,
       content: '删除后无法恢复，请确认操作',
       run: () => deleteMutation.mutateAsync(selectedRowKeys),
-      onDeleted: () => setSelectedRowKeys([]),
+      onDeleted: clearSelection,
     });
   };
 
@@ -609,10 +609,7 @@ export default function AnnouncementsPage() {
       <ConfigurableTable<Announcement>
         columns={columns}
         {...listTableProps(listQuery as ListQueryLike<Announcement>, {
-          rowSelection: {
-            selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys(keys as number[]),
-          },
+          rowSelection,
           pagination: buildPagination,
         })}
       />

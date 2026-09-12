@@ -3,7 +3,7 @@ import { Button, Form, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { ListChecks } from 'lucide-react';
-import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import AppModal from '@/components/AppModal';
@@ -56,6 +56,10 @@ function renderDataPreview(data: Record<string, unknown> | null) {
 
 export default function DirectorySyncConflictsPage() {
   const { hasPermission } = usePermission();
+  const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection<number, DirectorySyncConflict>({
+    // 只有挂起中的冲突可参与批量忽略
+    extra: { getCheckboxProps: (record?: DirectorySyncConflict) => ({ disabled: record?.status !== 'pending' }) },
+  });
 
   const {
     page, pageSize, buildPagination,
@@ -64,8 +68,8 @@ export default function DirectorySyncConflictsPage() {
   } = useListSearch<SearchParams>({
     defaults: defaultSearchParams,
     listKey: directorySyncConflictKeys.lists,
-    onSearch: () => setSelectedRowKeys([]),
-    onReset: () => setSelectedRowKeys([]),
+    onSearch: clearSelection,
+    onReset: clearSelection,
   });
 
   const listQuery = useDirectorySyncConflictList({
@@ -84,7 +88,6 @@ export default function DirectorySyncConflictsPage() {
 
   const resolveMutation = useResolveDirectorySyncConflict();
   const ignoreMutation = useIgnoreDirectorySyncConflicts();
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
 
   // ─── 裁决弹窗（非 useEditModal：不是实体编辑表单，提交后关闭并清理本地状态）────
   const [resolving, setResolving] = useState<DirectorySyncConflict | null>(null);
@@ -127,7 +130,7 @@ export default function DirectorySyncConflictsPage() {
     ignoreMutation.mutate({ body: { ids } }, {
       onSuccess: () => {
         Toast.success(`已忽略 ${ids.length} 条冲突`);
-        setSelectedRowKeys([]);
+        clearSelection();
       },
     });
   }
@@ -222,11 +225,7 @@ export default function DirectorySyncConflictsPage() {
         {...listTableProps(listQuery, {
           pagination: buildPagination,
           empty: '暂无冲突，同步产生的挂起项会出现在这里',
-          rowSelection: {
-            selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
-            getCheckboxProps: (record?: DirectorySyncConflict) => ({ disabled: record?.status !== 'pending' }),
-          },
+          rowSelection,
         })}
       />
 

@@ -381,26 +381,28 @@ const { hasPermission } = usePermission();
 
 ## 批量操作（Step 0 确认需要时）
 
+多选状态走 `components/list-page` 的 `useRowSelection`（Semi 回传的 keys 归一、`clear` 引用稳定、`rowSelection` 直接接线），
+在 `useListSearch` **之前**声明，这样 `onSearch: clearSelection` 可直接引用：
+
 ```tsx
-const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+const { selectedRowKeys, hasSelection, clear: clearSelection, rowSelection } = useRowSelection();
+// 行键为字符串时 useRowSelection<string>()；行级禁用传 { extra: { getCheckboxProps: (r) => ({ disabled: … }) } }
+const { ... } = useListSearch<SearchParams>({ defaults, listKey: xxxKeys.lists, onSearch: clearSelection });
 
 const handleBatchDelete = () => confirmAndDelete({
   title: `确认删除选中的 ${selectedRowKeys.length} 条记录？`,
   content: '删除后无法恢复，请谨慎操作。',
   run: () => deleteMutation.mutateAsync(selectedRowKeys),   // 复用 useDeleteXxxs
   successMessage: '批量删除成功',
-  onDeleted: () => setSelectedRowKeys([]),
+  onDeleted: clearSelection,
 });
 
 // 工具栏 actions 槽：仅「有选中 && 有权限」时渲染（工具栏据此决定移动端是否出现更多菜单）
-{selectedRowKeys.length > 0 && hasPermission('system:xxx:delete') && <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />}
+{hasSelection && hasPermission('system:xxx:delete') && <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />}
 
 <ConfigurableTable<Xxx>
   columns={columns}
-  {...listTableProps(listQuery, {
-    pagination: buildPagination,
-    rowSelection: { selectedRowKeys, onChange: (keys) => setSelectedRowKeys(keys as number[]) },
-  })}
+  {...listTableProps(listQuery, { pagination: buildPagination, rowSelection })}
 />
 ```
 

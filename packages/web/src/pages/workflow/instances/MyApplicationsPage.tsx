@@ -48,7 +48,7 @@ import {
 } from '@/hooks/queries/workflow-instances';
 import { usePublishedWorkflowDefinitions } from '@/hooks/queries/workflow-definitions';
 import { useListSearch } from '@/hooks/useListSearch';
-import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import { workflowInstanceStatusColumn } from '@/components/workflow/WorkflowInstanceListColumns';
 import { FilterSelect, StatusSelect } from '@/components/search-filters';
 import { compactParams } from '@/lib/query';
@@ -258,7 +258,10 @@ export default function MyApplicationsPage() {
   const [applyVisible, setApplyVisible] = useState(false);
   const [selectedDef, setSelectedDef] = useState<WorkflowDefinition | null>(null);
   const [applyCategoryId, setApplyCategoryId] = useState<number | null>(null);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection<number, WorkflowInstance>({
+    // 草稿不参与批量操作
+    extra: { getCheckboxProps: (record: WorkflowInstance) => ({ disabled: record.status === 'draft' }) },
+  });
   const [batchWithdrawVisible, setBatchWithdrawVisible] = useState(false);
   const [batchWithdrawComment, setBatchWithdrawComment] = useState('');
   const [batchUrgeVisible, setBatchUrgeVisible] = useState(false);
@@ -470,7 +473,7 @@ export default function MyApplicationsPage() {
     Toast.success(`成功 ${res.succeeded} 条，失败 ${res.failed} 条`);
     setBatchWithdrawVisible(false);
     setBatchWithdrawComment('');
-    setSelectedRowKeys([]);
+    clearSelection();
   };
 
   const openBatchUrge = () => {
@@ -492,7 +495,7 @@ export default function MyApplicationsPage() {
     Toast.success(`成功 ${res.succeeded} 条，失败 ${res.failed} 条`);
     setBatchUrgeVisible(false);
     setBatchUrgeMessage('');
-    setSelectedRowKeys([]);
+    clearSelection();
   };
 
   const columns: ColumnProps<WorkflowInstance>[] = [
@@ -654,11 +657,7 @@ export default function MyApplicationsPage() {
         columns={columns}
         {...listTableProps(listQuery, {
           pagination: buildPagination,
-          rowSelection: {
-            selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys(((keys as (string | number)[]) ?? []).map(Number)),
-            getCheckboxProps: (record: WorkflowInstance) => ({ disabled: record.status === 'draft' }),
-          },
+          rowSelection,
         })}
       />
 
