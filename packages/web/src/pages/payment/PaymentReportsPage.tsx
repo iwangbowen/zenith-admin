@@ -225,7 +225,6 @@ export default function PaymentReportsPage() {
         )}
         actions={exportButton}
         mobilePrimary={searchButton}
-        mobileActions={exportButton}
         mobileFilters={(
           <>
             {groupByFilter}

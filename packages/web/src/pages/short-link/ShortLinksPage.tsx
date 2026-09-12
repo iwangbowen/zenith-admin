@@ -245,10 +245,6 @@ export default function ShortLinksPage() {
           {renderBatchButtons()}
           <ExportButton entity="shortlink.links" query={filterQuery} permission="shortlink:link:export" />
         </>}
-        mobileActions={<>
-          {renderBatchButtons()}
-          <ExportButton entity="shortlink.links" query={filterQuery} variant="flat" permission="shortlink:link:export" />
-        </>}
         filterTitle="筛选条件"
       />
 

@@ -589,7 +589,6 @@ export default function DatasetsPage() {
             ? <CreateButton onClick={openCreate} /> : null
         )}
         actions={batchStatusButtons}
-        mobileActions={batchStatusButtons}
         filterTitle="数据集筛选"
       />
 

@@ -169,7 +169,6 @@ export default function SubscriptionsPage() {
         onReset={handleReset}
         create={hasPermission('report:subscription:create') ? <CreateButton onClick={openCreate} /> : null}
         actions={<>{renderBatchEnable()}{renderBatchDisable()}</>}
-        mobileActions={<>{renderBatchEnable()}{renderBatchDisable()}</>}
       />
       <ConfigurableTable<ReportDashboardSubscription>
         columns={columns}

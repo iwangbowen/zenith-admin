@@ -594,14 +594,6 @@ export default function AnnouncementsPage() {
             )}
           </>
         )}
-        mobileActions={(
-          <>
-            <ExportButton entity="system.announcements" query={filterQuery} variant="flat" />
-            {selectedRowKeys.length > 0 && hasPermission('system:announcement:delete') && (
-              <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />
-            )}
-          </>
-        )}
         filterTitle="公告筛选"
         actionTitle="公告操作"
       />

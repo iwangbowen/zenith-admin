@@ -237,9 +237,8 @@ export default function XxxPage() {
         onReset={handleReset}
         create={hasPermission('system:xxx:create') ? <CreateButton onClick={modal.openCreate} /> : null}
         {/* 导出：query 直接给 filterQuery（与列表同源）；权限门交给组件的 permission，不再手写 hasPermission ? : null */}
+        {/* 移动端更多菜单缺省复用 actions，菜单内按钮自动平铺；内容不同时才传 mobileActions */}
         actions={<ExportButton entity="system.xxxs" query={filterQuery} permission="system:xxx:export" />}
-        // 移动端更多菜单里的按钮用无边框视觉；缺省与 actions 相同
-        mobileActions={<ExportButton entity="system.xxxs" query={filterQuery} permission="system:xxx:export" variant="flat" />}
       />
 
       {/* 数据源 / loading / 刷新 / 分页由 listTableProps 接好；默认 rowKey id · size small · bordered */}

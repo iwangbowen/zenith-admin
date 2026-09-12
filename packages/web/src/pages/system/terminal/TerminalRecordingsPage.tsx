@@ -1,9 +1,10 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Modal, Tag, Toast, Dropdown, SplitButtonGroup, Typography, Space } from '@douyinfe/semi-ui';
+import { Button, Modal, Tag, Toast, Typography, Space } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Trash2, ChevronDown, Copy, Terminal, Star } from 'lucide-react';
+import { Copy, Terminal, Star } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { ClearLogsButtons } from '@/components/logs/ClearLogsControl';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { compactParams } from '@/lib/query';
@@ -272,51 +273,7 @@ export default function TerminalRecordingsPage() {
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        actions={(
-          <SplitButtonGroup>
-            <Button
-              type="danger"
-              theme="light"
-              icon={<Trash2 size={14} />}
-              loading={cleanMutation.isPending}
-              onClick={() => handleClear(365)}
-            >
-              清除录屏
-            </Button>
-            <Dropdown
-              trigger="click"
-              position="bottomRight"
-              clickToHide
-              render={(
-                <Dropdown.Menu>
-                  {([365, 180, 90, 30] as const).map((m) => (
-                    <Dropdown.Item key={m} onClick={() => handleClear(m)}>
-                      清除{CLEAR_LOGS_LABELS[m]}的录屏
-                    </Dropdown.Item>
-                  ))}
-                </Dropdown.Menu>
-              )}
-            >
-              <Button type="danger" theme="light" icon={<ChevronDown size={14} />} />
-            </Dropdown>
-          </SplitButtonGroup>
-        )}
-        mobileActions={(
-          <>
-            {([365, 180, 90, 30] as const).map((m) => (
-              <Button
-                key={m}
-                type="danger"
-                theme="light"
-                icon={<Trash2 size={14} />}
-                loading={cleanMutation.isPending}
-                onClick={() => handleClear(m)}
-              >
-                清除{CLEAR_LOGS_LABELS[m]}的录屏
-              </Button>
-            ))}
-          </>
-        )}
+        actions={<ClearLogsButtons label="录屏" loading={cleanMutation.isPending} onClear={handleClear} />}
         actionTitle="录屏操作"
       />
 

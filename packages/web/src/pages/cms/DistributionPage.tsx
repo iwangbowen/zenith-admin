@@ -430,9 +430,6 @@ export default function DistributionPage() {
                 query={runFilterQuery}
               />
             )}
-            mobileActions={(
-              <ExportButton entity="cms.distribution-runs" permission="cms:distribution:export" query={runFilterQuery} variant="flat" />
-            )}
           />
           <ConfigurableTable<CmsDistributionRun>
             columns={runColumns}

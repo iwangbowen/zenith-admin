@@ -110,9 +110,6 @@ export default function EmailSendLogsPage() {
         actions={(
           <ExportButton entity="system.email-send-logs" query={filterQuery} permission="system:email-send-log:export" />
         )}
-        mobileActions={(
-          <ExportButton entity="system.email-send-logs" query={filterQuery} variant="flat" permission="system:email-send-log:export" />
-        )}
         filterTitle="邮件发送日志筛选"
         actionTitle="邮件日志操作"
       />

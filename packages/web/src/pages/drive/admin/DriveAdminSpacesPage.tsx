@@ -222,12 +222,6 @@ export default function DriveAdminSpacesPage() {
             {canEdit && <Button icon={<Search size={14} />} onClick={() => runTask('reindex')} loading={taskPending}>补建全文索引</Button>}
           </>
         )}
-        mobileActions={(
-          <>
-            {canEdit && <Button theme="borderless" onClick={() => runTask('recalc')} loading={taskPending}>全量重算容量</Button>}
-            {canEdit && <Button theme="borderless" onClick={() => runTask('reindex')} loading={taskPending}>补建全文索引</Button>}
-          </>
-        )}
         filterTitle="空间治理筛选"
         actionTitle="空间治理操作"
       />

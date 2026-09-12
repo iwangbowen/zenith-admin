@@ -169,7 +169,6 @@ export default function GovernanceCapacityTab() {
         onSearch={costs.handleSearch}
         onReset={costs.handleReset}
         actions={<ExportButton entity="report.query-costs" query={costParams} />}
-        mobileActions={<ExportButton entity="report.query-costs" query={costParams} variant="flat" />}
         filterTitle="成本筛选"
       />
       {(statsQuery.isError || trendQuery.isError || costsQuery.isError) && <Banner type="danger" description="查询成本数据加载失败" />}

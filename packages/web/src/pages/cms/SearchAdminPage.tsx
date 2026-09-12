@@ -211,11 +211,11 @@ function DictTab({ siteId, onSiteChange }: Readonly<{ siteId: number | undefined
     }),
   ];
 
-  // 批量操作按钮组：桌面 `actions` 与移动端更多菜单（无边框视觉）共用一份定义
-  const renderBatchActions = (theme?: 'borderless') => (canManage && selectedIds.length > 0 ? (
+  // 批量操作按钮组：桌面 `actions` 与移动端更多菜单共用一份定义（菜单内视觉由容器样式统一）
+  const batchActions = canManage && selectedIds.length > 0 ? (
     <>
-      <Button theme={theme} onClick={() => void batchMutation.mutateAsync({ action: 'update', body: { ids: selectedIds, status: 'enabled' } }).then(() => setSelectedIds([]))}>批量启用</Button>
-      <Button theme={theme} onClick={() => {
+      <Button onClick={() => void batchMutation.mutateAsync({ action: 'update', body: { ids: selectedIds, status: 'enabled' } }).then(() => setSelectedIds([]))}>批量启用</Button>
+      <Button onClick={() => {
         let nextGroup = '';
         Modal.confirm({
           title: '批量调整词典分组',
@@ -227,7 +227,7 @@ function DictTab({ siteId, onSiteChange }: Readonly<{ siteId: number | undefined
           },
         });
       }}>批量分组</Button>
-      <Button type="danger" theme={theme} onClick={() => {
+      <Button type="danger" onClick={() => {
         confirmAndDelete({
           title: `删除 ${selectedIds.length} 个词条？`,
           content: '删除后不可恢复。',
@@ -237,7 +237,7 @@ function DictTab({ siteId, onSiteChange }: Readonly<{ siteId: number | undefined
         });
       }}>批量删除</Button>
     </>
-  ) : null);
+  ) : null;
 
   return (
     <>
@@ -267,8 +267,7 @@ function DictTab({ siteId, onSiteChange }: Readonly<{ siteId: number | undefined
         onSearch={handleSearch}
         onReset={handleReset}
         create={canManage ? <CreateButton onClick={modal.openCreate}>新增词条</CreateButton> : null}
-        actions={renderBatchActions()}
-        mobileActions={renderBatchActions('borderless')}
+        actions={batchActions}
       />
       <ConfigurableTable<CmsSearchWord>
         columns={columns}

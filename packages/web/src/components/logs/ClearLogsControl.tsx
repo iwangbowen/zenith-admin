@@ -1,48 +1,53 @@
+import { useContext } from 'react';
 import { Button, Dropdown, Input, SplitButtonGroup } from '@douyinfe/semi-ui';
 import { ChevronDown, Trash2 } from 'lucide-react';
 import AppModal from '@/components/AppModal';
-import { CLEAR_LOGS_LABELS, type ClearLogsControl } from '@/hooks/useClearLogs';
+import { ToolbarSlotContext } from '@/components/toolbar-slot-context';
+import { CLEAR_LOGS_DAYS, CLEAR_LOGS_LABELS, type ClearLogsControl } from '@/hooks/useClearLogs';
 
 interface ClearLogsButtonsProps {
   loading: boolean;
-  onClear: (months: number) => void;
+  /** 触发清除，参数为保留天数（与契约 `days` 一致） */
+  onClear: (days: number) => void;
+  /** 被清除对象的名称，如「日志」「录屏」 */
+  label?: string;
 }
 
-/** 桌面端：清除日志 SplitButton + 月份下拉 */
-export function ClearLogsButtons({ loading, onClear }: Readonly<ClearLogsButtonsProps>) {
+/**
+ * 清除日志入口：主按钮清除一年前的记录，下拉提供更短的保留档位。
+ * 放进工具栏移动端更多菜单时自动平铺为一组按钮，无需另传 mobileActions。
+ */
+export function ClearLogsButtons({ loading, onClear, label = '日志' }: Readonly<ClearLogsButtonsProps>) {
+  const toolbarSlot = useContext(ToolbarSlotContext);
+  if (toolbarSlot === 'mobile-actions') {
+    return (
+      <>
+        {CLEAR_LOGS_DAYS.map((days) => (
+          <Button key={days} type="danger" theme="light" icon={<Trash2 size={14} />} loading={loading} onClick={() => onClear(days)}>
+            清除{CLEAR_LOGS_LABELS[days]}的{label}
+          </Button>
+        ))}
+      </>
+    );
+  }
   return (
     <SplitButtonGroup>
-      <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={loading} onClick={() => onClear(12)}>清除日志</Button>
+      <Button type="danger" theme="light" icon={<Trash2 size={14} />} loading={loading} onClick={() => onClear(CLEAR_LOGS_DAYS[0])}>清除{label}</Button>
       <Dropdown
         trigger="click"
         position="bottomRight"
         clickToHide
         render={(
           <Dropdown.Menu>
-            {([12, 6, 3, 1] as const).map((m) => (
-              <Dropdown.Item key={m} onClick={() => onClear(m)}>清除{CLEAR_LOGS_LABELS[m]}前的日志</Dropdown.Item>
+            {CLEAR_LOGS_DAYS.map((days) => (
+              <Dropdown.Item key={days} onClick={() => onClear(days)}>清除{CLEAR_LOGS_LABELS[days]}的{label}</Dropdown.Item>
             ))}
-            <Dropdown.Divider />
-            <Dropdown.Item type="danger" onClick={() => onClear(0)}>清除全部日志</Dropdown.Item>
           </Dropdown.Menu>
         )}
       >
         <Button type="danger" theme="light" icon={<ChevronDown size={14} />} />
       </Dropdown>
     </SplitButtonGroup>
-  );
-}
-
-/** 移动端：平铺的清除日志按钮组 */
-export function ClearLogsMobileButtons({ loading, onClear }: Readonly<ClearLogsButtonsProps>) {
-  return (
-    <>
-      {([365, 180, 90, 30] as const).map((m) => (
-        <Button key={m} type="danger" theme="light" icon={<Trash2 size={14} />} loading={loading} onClick={() => onClear(m)}>
-          清除{CLEAR_LOGS_LABELS[m]}的日志
-        </Button>
-      ))}
-    </>
   );
 }
 

@@ -83,7 +83,7 @@ const operationColumn = createOperationColumn<User>({
 | `children` | 简单模式内容，自动包裹 `<Space wrap>` |
 | `className` | 外层 class |
 | `primary` / `filters` / `actions` | 桌面端核心搜索区、筛选区、操作区 |
-| `mobilePrimary` / `mobileFilters` / `mobileActions` | 移动端覆盖内容；未传时分别复用桌面端对应内容 |
+| `mobilePrimary` / `mobileFilters` / `mobileActions` | 移动端覆盖内容；未传时分别复用桌面端对应内容。更多菜单容器会把按钮平铺为无边框整行，`ExportButton`、`ClearLogsButtons` 等槽位感知组件在菜单内自动切换平铺形态，仅内容不同时才需覆盖 |
 | `filterTitle` | 筛选抽屉标题，默认 `筛选条件` |
 | `actionTitle` | 更多操作标题，默认 `更多操作` |
 | `onFilterApply` / `onFilterReset` | 移动端筛选抽屉底部查询 / 重置回调 |

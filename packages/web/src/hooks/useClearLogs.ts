@@ -4,6 +4,8 @@ import { authContract } from '@zenith/shared/identity';
 import { api } from '@/lib/contract-query';
 
 export const CLEAR_LOGS_LABELS: Record<number, string> = { 30: '一个月前', 90: '三个月前', 180: '六个月前', 365: '一年前' };
+/** 手动清除入口提供的保留天数档位（从宽到严），与契约的 `days` 单位一致 */
+export const CLEAR_LOGS_DAYS = [365, 180, 90, 30] as const;
 
 interface UseClearLogsOptions {
   /** 执行清除（通常为 mutation 的 mutateAsync） */

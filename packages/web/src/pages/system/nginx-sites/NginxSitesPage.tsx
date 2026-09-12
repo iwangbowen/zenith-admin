@@ -265,12 +265,6 @@ export default function NginxSitesPage() {
             {canReload && <Button type="primary" theme="light" icon={<RefreshCw size={14} />} loading={reloadMutation.isPending} onClick={() => void handleReload()}>重载 Nginx</Button>}
           </>
         )}
-        mobileActions={(
-          <>
-            {canManage && <Button type="primary" theme="light" icon={<CheckCircle size={14} />} loading={testMutation.isPending} onClick={() => void handleTest()}>测试配置</Button>}
-            {canReload && <Button type="primary" theme="light" icon={<RefreshCw size={14} />} loading={reloadMutation.isPending} onClick={() => void handleReload()}>重载 Nginx</Button>}
-          </>
-        )}
         actionTitle="Nginx 操作"
       />
 

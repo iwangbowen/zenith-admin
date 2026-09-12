@@ -109,7 +109,6 @@ export default function SubscriptionsPage() {
             onSearch={handleSearch}
             onReset={handleReset}
             actions={siteId ? <ExportButton entity="cms.subscriptions" permission="cms:subscription:export" query={filterQuery} label="导出订阅明细" /> : null}
-            mobileActions={siteId ? <ExportButton entity="cms.subscriptions" permission="cms:subscription:export" query={filterQuery} variant="flat" /> : null}
             filterTitle="订阅筛选"
           />
           <ConfigurableTable<CmsSubscriptionAggregate>
@@ -127,7 +126,6 @@ export default function SubscriptionsPage() {
             onSearch={handleSearch}
             onReset={handleReset}
             actions={siteId ? <ExportButton entity="cms.subscriptions" permission="cms:subscription:export" query={filterQuery} /> : null}
-            mobileActions={siteId ? <ExportButton entity="cms.subscriptions" permission="cms:subscription:export" query={filterQuery} variant="flat" /> : null}
             filterTitle="订阅筛选"
           />
           <ConfigurableTable<CmsMemberSubscription>

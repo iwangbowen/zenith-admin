@@ -193,7 +193,6 @@ export default function PaymentDisputesPage() {
           ) : null
         )}
         actions={<ExportButton entity="payment.disputes" query={filterQuery} />}
-        mobileActions={<ExportButton entity="payment.disputes" query={filterQuery} variant="flat" />}
         filterTitle="投诉筛选"
       />
 

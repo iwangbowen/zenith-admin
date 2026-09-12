@@ -104,7 +104,6 @@ export default function MpTagsPage() {
             <CreateButton onClick={modal.openCreate} disabled={!currentId} />
           ) : null
         )}
-        mobileActions={syncButton}
         filterTitle="标签筛选"
         actionTitle="标签操作"
       />

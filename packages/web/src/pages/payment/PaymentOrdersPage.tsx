@@ -365,7 +365,6 @@ export default function PaymentOrdersPage() {
             onReset={handleReset}
             create={hasPermission('payment:order:create') ? <CreateButton onClick={openCreateOrder}>手动下单</CreateButton> : null}
             actions={<ExportButton entity="payment.orders" query={filterQuery} />}
-            mobileActions={<ExportButton entity="payment.orders" query={filterQuery} variant="flat" />}
             filterTitle="支付订单筛选"
           />
           <ConfigurableTable<PaymentOrder>

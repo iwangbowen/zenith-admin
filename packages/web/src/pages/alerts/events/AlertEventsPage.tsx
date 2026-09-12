@@ -236,10 +236,6 @@ export default function AlertEventsPage() {
     </>
   ) : null;
 
-  const renderExportButton = (variant?: 'flat') => (
-    <ExportButton entity="alert.monitor-alert-events" query={filterQuery} variant={variant} permission="alert:event:export" />
-  );
-
   const actionMeta = handleTarget ? HANDLE_ACTION_META[handleTarget.handleStatus] : null;
 
   return (
@@ -286,14 +282,8 @@ export default function AlertEventsPage() {
         onReset={handleReset}
         actions={<>
           {renderBatchActions()}
-          {renderExportButton()}
+          <ExportButton entity="alert.monitor-alert-events" query={filterQuery} permission="alert:event:export" />
         </>}
-        mobileActions={(
-          <>
-            {renderBatchActions()}
-            {renderExportButton('flat')}
-          </>
-        )}
         filterTitle="告警事件筛选"
       />
 

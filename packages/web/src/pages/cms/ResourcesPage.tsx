@@ -512,18 +512,6 @@ export default function ResourcesPage() {
                   ) : null}
                 </>
               )}
-              mobileActions={(
-                <>
-                  {selectedIds.length > 0 && canDelete ? (
-                    <Button type="danger" theme="borderless" onClick={() => handleDelete(selectedIds)}>批量删除（{selectedIds.length}）</Button>
-                  ) : null}
-                  {selectedIds.length > 0 && canUpdate ? (
-                    <Button theme="borderless" icon={<Move size={14} />} onClick={() => setMoveModalVisible(true)}>
-                      移动到目录（{selectedIds.length}）
-                    </Button>
-                  ) : null}
-                </>
-              )}
             />
             <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={(e) => void handleUploadFile(e)} />
             <input ref={replaceInputRef} type="file" style={{ display: 'none' }} onChange={(e) => void handleReplaceFile(e)} />

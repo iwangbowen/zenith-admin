@@ -158,7 +158,6 @@ export default function PaymentRefundsPage() {
         onSearch={handleSearch}
         onReset={handleReset}
         actions={<ExportButton entity="payment.refunds" query={filterQuery} />}
-        mobileActions={<ExportButton entity="payment.refunds" query={filterQuery} variant="flat" />}
         filterTitle="退款记录筛选"
       />
 

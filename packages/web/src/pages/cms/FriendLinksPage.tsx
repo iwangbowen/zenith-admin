@@ -129,7 +129,6 @@ export default function FriendLinksPage() {
         onReset={handleReset}
         create={hasPermission('cms:link:create') ? <CreateButton onClick={linkModal.openCreate} /> : null}
         actions={<Button icon={<FolderTree size={14} />} disabled={!siteId} onClick={() => setGroupSheetVisible(true)}>分组管理</Button>}
-        mobileActions={<Button theme="borderless" icon={<FolderTree size={14} />} disabled={!siteId} onClick={() => setGroupSheetVisible(true)}>分组管理</Button>}
       />
 
       <ConfigurableTable<CmsFriendLink>

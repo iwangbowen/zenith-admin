@@ -156,10 +156,6 @@ export default function CheckinLogsPage() {
     { title: '备注', dataIndex: 'remark', width: 180, render: renderEllipsis },
     dateTimeColumn('签到时间', 'createdAt'),
   ];
-
-  const renderExportButton = (variant?: 'flat') => (
-    <ExportButton entity="member.checkins" query={filterQuery} variant={variant} permission="member:checkin:log:list" />
-  );
   /** 点击日历某天：切回列表并按该日过滤 */
   const drillDownDate = (date: Date) => {
     setView('list');
@@ -208,8 +204,7 @@ export default function CheckinLogsPage() {
         onSearch={handleSearch}
         onReset={handleReset}
         create={makeupButton}
-        actions={view === 'list' ? renderExportButton() : undefined}
-        mobileActions={view === 'list' ? renderExportButton('flat') : undefined}
+        actions={view === 'list' ? <ExportButton entity="member.checkins" query={filterQuery} permission="member:checkin:log:list" /> : undefined}
         filterTitle="签到记录筛选"
       />
 

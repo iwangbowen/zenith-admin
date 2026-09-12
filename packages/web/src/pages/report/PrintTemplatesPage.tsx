@@ -261,7 +261,6 @@ export default function PrintTemplatesPage() {
             ? <CreateButton onClick={() => { setDialogSourceType('dataset'); printModal.openCreate(); }} /> : null
         )}
         actions={batchStatusButtons}
-        mobileActions={batchStatusButtons}
         filterTitle="打印模板筛选"
       />
 

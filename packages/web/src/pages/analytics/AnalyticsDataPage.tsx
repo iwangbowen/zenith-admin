@@ -791,7 +791,7 @@ export default function AnalyticsDataPage() {
             }
             mobileActions={(
               <>
-                <ExportButton entity="analytics.events" query={eventFilterQuery} variant="flat" />
+                <ExportButton entity="analytics.events" query={eventFilterQuery} />
                 {canClean && CLEAN_DAY_OPTIONS.map((item) => (
                   <Button
                     key={item.value}

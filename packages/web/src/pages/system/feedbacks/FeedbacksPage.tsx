@@ -175,10 +175,6 @@ export default function FeedbacksPage() {
     <BatchDeleteButton count={selectedRowKeys.length} onClick={confirmBatchDelete} />
   ) : null;
 
-  const renderExportButton = (variant?: 'flat') => hasPermission('system:feedback:list') ? (
-    <ExportButton entity="system.userFeedbacks" query={filterQuery} variant={variant} />
-  ) : null;
-
   return (
     <div className="page-container">
       {!entryConfigQuery.isLoading && !entryEnabled && (
@@ -220,13 +216,7 @@ export default function FeedbacksPage() {
         actions={(
           <>
             {batchDeleteButton}
-            {renderExportButton()}
-          </>
-        )}
-        mobileActions={(
-          <>
-            {batchDeleteButton}
-            {renderExportButton('flat')}
+            <ExportButton entity="system.userFeedbacks" query={filterQuery} permission="system:feedback:list" />
           </>
         )}
         filterTitle="筛选条件"

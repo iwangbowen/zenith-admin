@@ -243,13 +243,6 @@ export default function SurveysPage() {
       <Button type="warning" onClick={() => submitBatch('closed')}>批量关闭</Button>
     </>
   ) : null;
-  const interactionMobileBatchActions = selectedIds.length > 0 && canBatch ? (
-    <>
-      <Button theme="borderless" onClick={() => submitBatch('published')}>批量发布（{selectedIds.length}）</Button>
-      <Button type="warning" theme="borderless" onClick={() => submitBatch('closed')}>批量关闭</Button>
-    </>
-  ) : null;
-
 
   return (
     <div className="page-container page-tabs-page">
@@ -262,7 +255,6 @@ export default function SurveysPage() {
             onReset={handleReset}
             create={canManage && siteId ? <CreateButton onClick={openCreate} /> : null}
             actions={interactionBatchActions}
-            mobileActions={interactionMobileBatchActions}
             filterTitle="互动问卷筛选"
           />
           <ConfigurableTable<CmsInteraction>

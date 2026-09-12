@@ -393,30 +393,12 @@ export default function FilesPage() {
             上传文件
           </Button>
         )}
-        actions={(
-          <>
-            {selectedRowKeys.length > 0 && (
-              <Button type="tertiary" theme="light" icon={<FolderDown size={14} />} loading={batchDownloadLoading} onClick={handleBatchDownload}>
-                批量下载 ({selectedRowKeys.length})
-              </Button>
-            )}
-            {selectedRowKeys.length > 0 && hasPermission('system:file:delete') && (
-              <BatchDeleteButton count={selectedRowKeys.length} loading={batchDeleteMutation.isPending} onClick={handleBatchDelete} />
-            )}
-            {selectedRowKeys.length > 0 && (
-              <Button type="tertiary" theme="light" icon={<X size={12} />} onClick={() => setSelectedRowKeys([])}>
-                取消选择
-              </Button>
-            )}
-            <input ref={fileInputRef} type="file" hidden multiple onChange={handleUpload} />
-          </>
-        )}
-        mobileActions={selectedRowKeys.length > 0 ? (
+        actions={selectedRowKeys.length > 0 ? (
           <>
             <Button type="tertiary" theme="light" icon={<FolderDown size={14} />} loading={batchDownloadLoading} onClick={handleBatchDownload}>
               批量下载 ({selectedRowKeys.length})
             </Button>
-            {selectedRowKeys.length > 0 && hasPermission('system:file:delete') && (
+            {hasPermission('system:file:delete') && (
               <BatchDeleteButton count={selectedRowKeys.length} loading={batchDeleteMutation.isPending} onClick={handleBatchDelete} />
             )}
             <Button type="tertiary" theme="light" icon={<X size={12} />} onClick={() => setSelectedRowKeys([])}>
@@ -427,6 +409,8 @@ export default function FilesPage() {
         filterTitle="文件筛选"
         actionTitle="文件操作"
       />
+      {/* 隐藏的文件选择器放在工具栏之外：桌面 / 移动端菜单会各渲染一份 actions，ref 只能指向唯一实例 */}
+      <input ref={fileInputRef} type="file" hidden multiple onChange={handleUpload} />
 
       <div className="files-default-tip" style={{ padding: '8px 0' }}>
         <Space>

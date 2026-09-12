@@ -224,12 +224,6 @@ export default function RegionsPage() {
             {<ExportButton entity="system.regions" query={filterQuery} permission="system:region:export" />}
           </>
         )}
-        mobileActions={(
-          <>
-            {renderExpandButton()}
-            {<ExportButton entity="system.regions" query={filterQuery} variant="flat" permission="system:region:export" />}
-          </>
-        )}
         filterTitle="地区筛选"
         actionTitle="地区操作"
       />

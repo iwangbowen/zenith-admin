@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Button, Col, Dropdown, SplitButtonGroup, Row, SideSheet, Form, Modal, Popover, Space, Spin, Tabs, Tag, Toast, Tooltip } from '@douyinfe/semi-ui';
-import { ScrollText, Trash2, ChevronDown, HelpCircle } from 'lucide-react';
+import { Button, Col, Row, SideSheet, Form, Modal, Popover, Space, Spin, Tabs, Tag, Toast, Tooltip } from '@douyinfe/semi-ui';
+import { ScrollText, HelpCircle } from 'lucide-react';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import type { CreateCronJobInput, CronJob, CronJobLog, CronRunTrigger } from '@zenith/shared/platform';
 import { CRON_RUN_STATUS_LABELS, CRON_RUN_TRIGGER_LABELS, cronSecondsIgnored, toMinuteCron } from '@zenith/shared/platform';
@@ -11,6 +11,7 @@ import { CronExpressionParser } from 'cron-parser';
 import dayjs from 'dayjs';
 import { CronBuilderPopover } from '@/components/CronBuilderPopover';
 import ExportButton from '@/components/ExportButton';
+import { ClearLogsButtons } from '@/components/logs/ClearLogsControl';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -393,12 +394,6 @@ export default function CronJobsPage() {
                 <ExportButton entity="system.cron-jobs" query={filterQuery} />
               </>
             )}
-            mobileActions={(
-              <>
-                <Button icon={<ScrollText size={14} />} onClick={() => { setAllLogsPage(1); setAllLogsJobFilter(null); setAllLogsDrawerVisible(true); }}>全部执行日志</Button>
-                <ExportButton entity="system.cron-jobs" query={filterQuery} variant="flat" />
-              </>
-            )}
             filterTitle="定时任务筛选"
             actionTitle="定时任务操作"
           />
@@ -523,25 +518,7 @@ export default function CronJobsPage() {
             width={220}
           />
           {hasPermission('system:cronjob:delete') && (
-            <SplitButtonGroup>
-              <Button icon={<Trash2 size={14} />} type="danger" theme="light" loading={clearingLogs} onClick={() => handleClearLogs(365, null)}>清除日志</Button>
-              <Dropdown
-                trigger="click"
-                position="bottomRight"
-                clickToHide
-                render={
-                  <Dropdown.Menu>
-                    {([365, 180, 90, 30] as const).map((m) => (
-                      <Dropdown.Item key={m} onClick={() => handleClearLogs(m, null)}>
-                        清除{CLEAR_LOGS_LABELS[m]}的日志
-                      </Dropdown.Item>
-                    ))}
-                  </Dropdown.Menu>
-                }
-              >
-                <Button type="danger" theme="light" icon={<ChevronDown size={14} />} />
-              </Dropdown>
-            </SplitButtonGroup>
+            <ClearLogsButtons loading={clearingLogs} onClear={(days) => handleClearLogs(days, null)} />
           )}
         </div>
         <ConfigurableTable
@@ -569,25 +546,7 @@ export default function CronJobsPage() {
       >
         {hasPermission('system:cronjob:delete') && (
           <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'flex-end' }}>
-            <SplitButtonGroup>
-              <Button icon={<Trash2 size={14} />} type="danger" theme="light" loading={clearingLogs} onClick={() => handleClearLogs(365, logsJobId)}>清除日志</Button>
-              <Dropdown
-                trigger="click"
-                position="bottomRight"
-                clickToHide
-                render={
-                  <Dropdown.Menu>
-                    {([365, 180, 90, 30] as const).map((m) => (
-                      <Dropdown.Item key={m} onClick={() => handleClearLogs(m, logsJobId)}>
-                        清除{CLEAR_LOGS_LABELS[m]}的日志
-                      </Dropdown.Item>
-                    ))}
-                  </Dropdown.Menu>
-                }
-              >
-                <Button type="danger" theme="light" icon={<ChevronDown size={14} />} />
-              </Dropdown>
-            </SplitButtonGroup>
+            <ClearLogsButtons loading={clearingLogs} onClear={(days) => handleClearLogs(days, logsJobId)} />
           </div>
         )}
         <ConfigurableTable

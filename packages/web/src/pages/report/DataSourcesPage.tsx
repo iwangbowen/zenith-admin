@@ -300,7 +300,6 @@ export default function DataSourcesPage() {
             ? <CreateButton onClick={datasourceModal.openCreate} /> : null
         )}
         actions={toolbarActions}
-        mobileActions={toolbarActions}
         filterTitle="数据源筛选"
       />
 

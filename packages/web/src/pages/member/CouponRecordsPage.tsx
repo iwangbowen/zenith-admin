@@ -109,10 +109,6 @@ export default function CouponRecordsPage() {
     ] : []),
   ];
 
-  const renderExportButton = (variant?: 'flat') => (
-    <ExportButton entity="member.coupon-records" query={filterQuery} variant={variant} permission="member:coupon:list" />
-  );
-
   return (
     <div className="page-container">
       <ListSearchToolbar
@@ -137,8 +133,7 @@ export default function CouponRecordsPage() {
             <Button type="primary" icon={<ScanLine size={14} />} onClick={openRedeem}>核销券码</Button>
           ) : null
         )}
-        actions={renderExportButton()}
-        mobileActions={renderExportButton('flat')}
+        actions={<ExportButton entity="member.coupon-records" query={filterQuery} permission="member:coupon:list" />}
         filterTitle="领券记录筛选"
       />
 

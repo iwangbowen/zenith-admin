@@ -300,7 +300,6 @@ export default function MenusPage() {
           ) : null
         )}
         actions={renderExpandButton()}
-        mobileActions={renderExpandButton()}
         filterTitle="菜单筛选"
         actionTitle="菜单操作"
       />

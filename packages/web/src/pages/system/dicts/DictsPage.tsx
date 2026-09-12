@@ -494,7 +494,6 @@ export default function DictsPage() {
             ) : null
           )}
           actions={renderItemExpandButton()}
-          mobileActions={renderItemExpandButton()}
           filterTitle="字典项筛选"
           actionTitle="字典项操作"
         />

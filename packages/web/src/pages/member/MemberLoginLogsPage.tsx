@@ -56,10 +56,6 @@ export default function MemberLoginLogsPage() {
     dateTimeColumn('登录时间', 'createdAt', { fixed: 'right' }),
   ];
 
-  const renderExportButton = (variant?: 'flat') => (
-    <ExportButton entity="member.login-logs" query={filterQuery} variant={variant} permission="member:loginlog:list" />
-  );
-
   return (
     <div className="page-container">
       <ListSearchToolbar
@@ -75,8 +71,7 @@ export default function MemberLoginLogsPage() {
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        actions={renderExportButton()}
-        mobileActions={renderExportButton('flat')}
+        actions={<ExportButton entity="member.login-logs" query={filterQuery} permission="member:loginlog:list" />}
         filterTitle="登录日志筛选"
       />
 

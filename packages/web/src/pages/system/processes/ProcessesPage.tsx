@@ -388,7 +388,6 @@ export default function ProcessesPage() {
           </>
         )}
         actions={hostId == null ? <ExportButton entity="system.processes" query={filterQuery} /> : undefined}
-        mobileActions={hostId == null ? <ExportButton entity="system.processes" query={filterQuery} variant="flat" /> : undefined}
         filterTitle="进程筛选"
         actionTitle="进程操作"
       />

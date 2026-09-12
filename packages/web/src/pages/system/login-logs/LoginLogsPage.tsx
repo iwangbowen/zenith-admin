@@ -3,7 +3,7 @@ import { Tabs, TabPane } from '@douyinfe/semi-ui';
 import { ListSearchToolbar } from '@/components/list-page';
 import ExportButton from '@/components/ExportButton';
 import { LoginLogsTable } from '@/components/logs/LoginLogsTable';
-import { ClearLogsButtons, ClearLogsMobileButtons, ClearLogsModal } from '@/components/logs/ClearLogsControl';
+import { ClearLogsButtons, ClearLogsModal } from '@/components/logs/ClearLogsControl';
 import { useClearLogs } from '@/hooks/useClearLogs';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import LoginLogStatsPanel from './LoginLogStatsPanel';
@@ -75,12 +75,6 @@ export default function LoginLogsPage() {
               <>
                 <ExportButton entity="system.login-logs" query={filterQuery} />
                 <ClearLogsButtons loading={clearLogsLoading} onClear={clearLogs.openClearModal} />
-              </>
-            )}
-            mobileActions={(
-              <>
-                <ExportButton entity="system.login-logs" query={filterQuery} variant="flat" />
-                <ClearLogsMobileButtons loading={clearLogsLoading} onClear={clearLogs.openClearModal} />
               </>
             )}
             filterTitle="登录日志筛选"

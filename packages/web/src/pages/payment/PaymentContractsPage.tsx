@@ -321,7 +321,6 @@ export default function PaymentContractsPage() {
               ) : null
             )}
             actions={<ExportButton entity="payment.contracts" query={filterQuery} />}
-            mobileActions={(<ExportButton entity="payment.contracts" query={filterQuery} variant="flat" />)}
             filterTitle="签约协议筛选"
           />
           <ConfigurableTable

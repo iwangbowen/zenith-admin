@@ -125,7 +125,6 @@ export default function MpKfAccountsPage() {
           ) : null
         )}
         actions={syncButton}
-        mobileActions={syncButton}
         filterTitle="多客服筛选"
         actionTitle="多客服操作"
       />

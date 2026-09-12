@@ -139,7 +139,7 @@ export function ChannelSubscribersDrawer({ channel, visible, onClose }: Readonly
         actions={channel ? <ExportButton entity="channel.subscribers" query={exportQuery} /> : null}
         mobileActions={(<>
             <ResetButton onClick={handleReset} />
-            {channel && <ExportButton entity="channel.subscribers" query={exportQuery} variant="flat" />}
+            {channel && <ExportButton entity="channel.subscribers" query={exportQuery} />}
           </>)}
         actionTitle="订阅者操作"
       />

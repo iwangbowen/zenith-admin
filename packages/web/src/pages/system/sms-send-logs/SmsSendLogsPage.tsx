@@ -111,9 +111,6 @@ export default function SmsSendLogsPage() {
         actions={(
           <ExportButton entity="system.sms-send-logs" query={filterQuery} permission="system:sms-send-log:export" />
         )}
-        mobileActions={(
-          <ExportButton entity="system.sms-send-logs" query={filterQuery} variant="flat" permission="system:sms-send-log:export" />
-        )}
         filterTitle="短信发送日志筛选"
         actionTitle="短信日志操作"
       />

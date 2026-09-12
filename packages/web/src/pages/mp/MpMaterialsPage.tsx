@@ -141,7 +141,6 @@ export default function MpMaterialsPage() {
           ) : null
         )}
         actions={materialActions}
-        mobileActions={materialActions}
         filterTitle="素材筛选"
         actionTitle="素材操作"
       />

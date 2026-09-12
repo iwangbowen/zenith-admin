@@ -298,7 +298,7 @@ export default function MembersPage() {
           <Button type="tertiary" icon={<Tags size={14} />} onClick={() => setTagsManageVisible(true)}>标签管理</Button>
         ) : null}</>}
         mobileActions={(
-          <ExportButton entity="member.members" query={filterQuery} variant="flat" permission="member:member:list" />
+          <ExportButton entity="member.members" query={filterQuery} permission="member:member:list" />
         )}
         filterTitle="会员筛选"
       />

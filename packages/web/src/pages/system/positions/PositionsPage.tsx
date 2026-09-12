@@ -189,12 +189,6 @@ export default function PositionsPage() {
             {selectedRowKeys.length > 0 && hasPermission('system:position:delete') && <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />}
           </>
         )}
-        mobileActions={(
-          <>
-            <ExportButton entity="system.positions" query={filterQuery} variant="flat" />
-            {selectedRowKeys.length > 0 && hasPermission('system:position:delete') && <BatchDeleteButton count={selectedRowKeys.length} onClick={handleBatchDelete} />}
-          </>
-        )}
         filterTitle="岗位筛选"
       />
 

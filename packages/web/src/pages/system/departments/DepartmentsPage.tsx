@@ -176,10 +176,10 @@ export default function DepartmentsPage() {
     }),
   ];
 
-  const renderExpandButton = (flat = false) => (
+  // 移动端更多菜单内的按钮由容器 CSS 平铺，无需再传 borderless 版本
+  const expandButton = (
     <Button
       type="primary"
-      theme={flat ? 'borderless' : undefined}
       icon={isAllExpanded ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}
       onClick={toggleExpandAll}
     >
@@ -206,14 +206,8 @@ export default function DepartmentsPage() {
         )}
         actions={(
           <>
-            {renderExpandButton()}
+            {expandButton}
             <ExportButton entity="system.departments" query={filterQuery} />
-          </>
-        )}
-        mobileActions={(
-          <>
-            {renderExpandButton(true)}
-            <ExportButton entity="system.departments" query={filterQuery} variant="flat" />
           </>
         )}
         filterTitle="部门筛选"

@@ -251,11 +251,6 @@ export default function SessionReplaysPage() {
                 批量删除 ({selectedRowKeys.length})
               </Button>
             ) : null}
-            mobileActions={selectedRowKeys.length > 0 ? (
-              <Button type="danger" theme="borderless" icon={<Trash2 size={14} />} loading={batchDeleteMutation.isPending} onClick={() => void handleBatchDelete()}>
-                批量删除 ({selectedRowKeys.length})
-              </Button>
-            ) : null}
           />
 
           <ConfigurableTable

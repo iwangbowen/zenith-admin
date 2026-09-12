@@ -309,7 +309,7 @@ function EventsTab({ siteId, setSiteId }: Readonly<{
             ) : null}
           </>
         )}
-        mobileActions={(siteId ? <ExportButton entity="cms.ad-events" permission="cms:ad-event:export" query={filterQuery} variant="flat" /> : null)}
+        mobileActions={(siteId ? <ExportButton entity="cms.ad-events" permission="cms:ad-event:export" query={filterQuery} /> : null)}
         filterTitle="广告事件筛选"
       />
       <ConfigurableTable<CmsAdEvent>

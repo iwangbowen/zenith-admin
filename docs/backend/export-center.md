@@ -143,4 +143,4 @@ const listQuery = useXxxList({ page, pageSize, ...filterQuery });
 
 导出定义侧的 `countRows` / `streamRows` 必须消费这个 `query`（复用 service 导出的 `buildXxxWhere(filter)`），否则页面上的筛选对导出无效。
 
-`ExportButton` 默认 `formats={['xlsx', 'csv']}`、`raw=false`、`watermark=true`、`executionMode="sync"`。同步导出成功后自动下载；异步导出提示用户到导出中心查看进度和下载文件。移动端可使用 `variant="flat"` 放入页面的移动操作区。
+`ExportButton` 默认 `formats={['xlsx', 'csv']}`、`raw=false`、`watermark=true`、`executionMode="sync"`。同步导出成功后自动下载；异步导出提示用户到导出中心查看进度和下载文件。放入 `SearchToolbar` 的移动端更多菜单时会自动按格式平铺；在其它容器里需要平铺形态可显式传 `variant="flat"`。

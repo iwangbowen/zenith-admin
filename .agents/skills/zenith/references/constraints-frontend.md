@@ -167,8 +167,11 @@
   `SearchButton` / `ResetButton` / `CreateButton` / `RefreshButton`，文案不同时用 children 覆盖；
   批量删除用 `BatchDeleteButton`（`count` 拼进文案，是否渲染仍由调用方按「有选中 && 有权限」判断）。
   **例外**：仅复用同一图标的独立操作（「测试发送」「生成链接」）及视觉本就不同的写法保持原生 `Button`
-- **移动端更多菜单**：`mobileActions` 只放低频操作；普通按钮用 `theme="borderless"`
-  （危险操作保留 `type="danger"`），导出优先 `ExportButton variant="flat"`
+- **移动端更多菜单**：`actions` 缺省即进更多菜单，**不要**为了换视觉再传一份 `mobileActions`——菜单容器样式已把按钮
+  平铺为无边框整行，`ExportButton` / `ClearLogsButtons` 进菜单后自动按格式 / 档位平铺（`variant="flat"` 不必写）。
+  只有内容真的不同（移动端补「重置」「分类」入口、去掉自动刷新选择器、`Dropdown` 需展开为多个按钮）才传 `mobileActions`；
+  危险操作保留 `type="danger"`。日志 / 录屏类清除入口统一 `components/logs/ClearLogsControl` 的
+  `ClearLogsButtons({ loading, onClear(days), label? })`（天数档位取 `CLEAR_LOGS_DAYS`，**禁止**手写 `SplitButtonGroup` + 档位下拉）
 - **表格样式**：统一 `<ConfigurableTable columns={columns} {...listTableProps(listQuery, { pagination: buildPagination })} />`
   （`components/list-page`；默认 `bordered` / `rowKey="id"` / `size="small"`，并接好 `dataSource` / `loading` / `onRefresh` / `refreshLoading`）。
   非分页包络的数据源或树形表格才手写这些属性，但仍必须传 `onRefresh` 与 `refreshLoading`（统一取 `listQuery.isFetching`）

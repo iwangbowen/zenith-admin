@@ -223,7 +223,6 @@ export default function MpKfSessionsPage() {
         onSearch={handleSearch}
         onReset={handleReset}
         actions={sessionActions}
-        mobileActions={sessionActions}
         filterTitle="会话筛选"
         actionTitle="会话操作"
       />

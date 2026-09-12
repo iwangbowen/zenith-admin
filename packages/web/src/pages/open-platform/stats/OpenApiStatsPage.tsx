@@ -233,7 +233,6 @@ export default function OpenApiStatsPage() {
             />
           </>
         )}
-        mobileActions={<ExportButton entity="open-platform.call-logs" query={filterQuery} executionMode="auto" variant="flat" />}
         actionTitle="统计操作"
       />
 

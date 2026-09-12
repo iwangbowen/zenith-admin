@@ -1,6 +1,8 @@
+import { useContext } from 'react';
 import { Button, Dropdown, Space, SplitButtonGroup } from '@douyinfe/semi-ui';
 import { ChevronDown, Download } from 'lucide-react';
 import type { ExportJobFormat, ExportJobRequestMode } from '@zenith/shared/tasks';
+import { ToolbarSlotContext } from '@/components/toolbar-slot-context';
 import { useExportJobRunner } from '@/hooks/useExportJobRunner';
 import { usePermission } from '@/hooks/usePermission';
 
@@ -13,6 +15,7 @@ interface ExportButtonProps {
   raw?: boolean;
   watermark?: boolean;
   executionMode?: ExportJobRequestMode;
+  /** `flat` 为逐格式平铺按钮；放进工具栏移动端「更多操作」菜单时自动切换，无需显式传 */
   variant?: 'primary' | 'flat';
   /** Optional capability gate; omitted for non-CMS/shared callers. */
   permission?: string;
@@ -33,8 +36,9 @@ export function ExportButton({
 }: Readonly<ExportButtonProps>) {
   const exportRunner = useExportJobRunner();
   const { hasPermission } = usePermission();
+  const toolbarSlot = useContext(ToolbarSlotContext);
   if (permission && !hasPermission(permission)) return null;
-  const isFlat = variant === 'flat';
+  const isFlat = variant === 'flat' || toolbarSlot === 'mobile-actions';
   const buttonTheme = isFlat ? 'borderless' : undefined;
   const rootClassName = `export-button${isFlat ? ' export-button--flat' : ''}`;
 

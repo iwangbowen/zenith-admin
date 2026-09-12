@@ -353,15 +353,6 @@ export default function FillRecordsPage() {
                   permission="report:fill:record:export"
                 />
               )}
-              mobileActions={(
-                <ExportButton
-                  variant="flat"
-                  entity="report.fill-records"
-                  query={adminFilterQuery}
-                  executionMode="async"
-                  permission="report:fill:record:export"
-                />
-              )}
             />
             <ConfigurableTable<ReportFillRecord>
               columns={adminColumns}

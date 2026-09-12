@@ -246,7 +246,6 @@ export default function AiFeedbackPage() {
         onSearch={handleSearch}
         onReset={handleReset}
         actions={renderExportButton()}
-        mobileActions={renderExportButton()}
         filterTitle="反馈筛选"
       />
       <ConfigurableTable<AiFeedbackItem>

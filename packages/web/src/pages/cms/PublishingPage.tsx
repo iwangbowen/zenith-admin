@@ -285,13 +285,6 @@ export default function PublishingPage() {
         onReset={resetSearch}
         create={createBuildButton}
         actions={<>{batchActions}{taskActions}</>}
-        mobileActions={(
-          <>
-            {batchActions}
-            <ExportButton entity="cms.publish-artifacts" permission="cms:publish:view" label="导出产物" query={taskFilterQuery} variant="flat" />
-            <ExportButton entity="cms.publish-logs" permission="cms:publish:view" label="导出日志" query={taskFilterQuery} variant="flat" />
-          </>
-        )}
       />
       {taskListQuery.isError ? <Banner type="danger" description="发布任务加载失败，请确认站点权限或网络后刷新重试。" /> : null}
       {tab === 'failed' && taskListQuery.data?.list.length === 0 ? <Banner type="success" description="当前筛选范围内没有失败任务。" /> : null}
@@ -319,7 +312,6 @@ export default function PublishingPage() {
             onReset={resetSearch}
             create={createBuildButton}
             actions={<>{batchActions}{artifactActions}</>}
-            mobileActions={artifactActions}
           />
           {artifactListQuery.isError ? <Banner type="danger" description="发布产物加载失败，请确认任务/站点权限后刷新重试。" /> : null}
           <ConfigurableTable<CmsPublishArtifact>

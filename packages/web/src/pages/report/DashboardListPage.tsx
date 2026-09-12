@@ -272,7 +272,6 @@ export default function DashboardListPage() {
             ? <CreateButton onClick={dashboardModal.openCreate} /> : null
         )}
         actions={toolbarActions}
-        mobileActions={toolbarActions}
         filterTitle="仪表盘筛选"
       />
 

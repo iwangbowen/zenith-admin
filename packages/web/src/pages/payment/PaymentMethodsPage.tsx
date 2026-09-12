@@ -73,7 +73,7 @@ export default function PaymentMethodsPage() {
 
   return (
     <div className="page-container">
-      <SearchToolbar actions={refreshButton} mobileActions={refreshButton} />
+      <SearchToolbar actions={refreshButton} />
 
       <ConfigurableTable<PaymentMethodConfig>
         columns={columns}

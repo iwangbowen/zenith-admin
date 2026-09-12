@@ -223,19 +223,18 @@ export default function WidgetsPage() {
     }),
   ];
 
-  // 站点切换与查询 / 重置都会清空已选行（后两者经 useListSearch 的 onSearch / onReset），避免跨条件误批量操作
-  const batchActions = (flat: boolean) => (
+  // 站点切换与查询 / 重置都会清空已选行（后两者经 useListSearch 的 onSearch / onReset），避免跨条件误批量操作；
+  // 移动端更多菜单内的按钮由容器 CSS 平铺，桌面 / 移动共用同一份
+  const batchActions = (
     <>
       {selectedIds.length > 0 && hasPermission('cms:widget:publish') ? (
-        <Button theme={flat ? 'borderless' : undefined} icon={flat ? undefined : <Send size={14} />} onClick={() => submitBatch('publish')}>
-          {flat ? '批量发布' : `批量发布（${selectedIds.length}）`}
-        </Button>
+        <Button icon={<Send size={14} />} onClick={() => submitBatch('publish')}>批量发布（{selectedIds.length}）</Button>
       ) : null}
       {selectedIds.length > 0 && hasPermission('cms:widget:offline') ? (
-        <Button theme={flat ? 'borderless' : undefined} icon={flat ? undefined : <CircleOff size={14} />} onClick={() => submitBatch('offline')}>批量下线</Button>
+        <Button icon={<CircleOff size={14} />} onClick={() => submitBatch('offline')}>批量下线</Button>
       ) : null}
       {selectedIds.length > 0 && hasPermission('cms:widget:delete') ? (
-        <Button type="danger" theme={flat ? 'borderless' : 'light'} icon={flat ? undefined : <Trash2 size={14} />} onClick={() => submitBatch('delete')}>批量删除</Button>
+        <Button type="danger" theme="light" icon={<Trash2 size={14} />} onClick={() => submitBatch('delete')}>批量删除</Button>
       ) : null}
     </>
   );
@@ -258,8 +257,7 @@ export default function WidgetsPage() {
         onSearch={handleSearch}
         onReset={handleReset}
         create={hasPermission('cms:widget:create') ? <CreateButton onClick={() => navigate(`/cms/widgets/edit?siteId=${siteId}`)} disabled={!siteId} /> : null}
-        actions={batchActions(false)}
-        mobileActions={batchActions(true)}
+        actions={batchActions}
         filterTitle="页面部件筛选"
       />
 

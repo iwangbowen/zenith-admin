@@ -227,7 +227,6 @@ export default function MpFansPage() {
         onSearch={handleSearch}
         onReset={handleReset}
         actions={syncActions}
-        mobileActions={syncActions}
         filterTitle="粉丝筛选"
         actionTitle="粉丝操作"
       />

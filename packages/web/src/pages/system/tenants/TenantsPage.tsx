@@ -218,7 +218,6 @@ export default function TenantsPage() {
           ) : null
         )}
         actions={<ExportButton entity="system.tenants" query={filterQuery} />}
-        mobileActions={<ExportButton entity="system.tenants" query={filterQuery} variant="flat" />}
         filterTitle="租户筛选"
         actionTitle="租户操作"
       />

@@ -597,14 +597,6 @@ export default function UsersPage() {
             {renderImportButton()}
           </>
         )}
-        mobileActions={(
-          <>
-            {renderDepartmentButton(true)}
-            {renderBatchActions()}
-            <ExportButton entity="system.users" query={filterQuery} watermark={false} permission="system:user:export" variant="flat" />
-            {renderImportButton()}
-          </>
-        )}
         filterTitle="用户筛选"
         actionTitle="用户操作"
       />

@@ -75,9 +75,6 @@ export function MemberLedgerToolbar({ search, typeOptions, exportEntity, exportP
     memberKeyword: submittedParams.memberKeyword,
     type: submittedParams.type,
   }), [submittedParams]);
-  const renderExportButton = (variant?: 'flat') => (
-    <ExportButton entity={exportEntity} query={exportQuery} variant={variant} permission={exportPermission} />
-  );
   return (
     <ListSearchToolbar
       keyword={<KeywordInput placeholder="会员ID/昵称" {...bindKeyword('memberKeyword')} width={180} />}
@@ -91,8 +88,7 @@ export function MemberLedgerToolbar({ search, typeOptions, exportEntity, exportP
       onSearch={handleSearch}
       onReset={handleReset}
       create={create}
-      actions={renderExportButton()}
-      mobileActions={renderExportButton('flat')}
+      actions={<ExportButton entity={exportEntity} query={exportQuery} permission={exportPermission} />}
       filterTitle={filterTitle}
     />
   );

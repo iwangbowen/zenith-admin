@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Button, Dropdown, SideSheet, Space } from '@douyinfe/semi-ui';
 import { Filter, MoreHorizontal } from 'lucide-react';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { ToolbarSlotContext } from '@/components/toolbar-slot-context';
 
 interface SearchToolbarProps {
   /** 工具栏内容（搜索输入框、下拉筛选、按钮等），自动用 `<Space wrap>` 包裹 */
@@ -102,7 +103,9 @@ export function SearchToolbar({
                     <div className="responsive-toolbar__mobile-actions">
                       <div className="responsive-toolbar__mobile-actions-title">{actionTitle}</div>
                       <Space vertical spacing={8} style={{ width: '100%' }}>
-                        {mobileActionsContent}
+                        <ToolbarSlotContext.Provider value="mobile-actions">
+                          {mobileActionsContent}
+                        </ToolbarSlotContext.Provider>
                       </Space>
                     </div>
                   )}

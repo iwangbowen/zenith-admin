@@ -213,7 +213,6 @@ export default function MpAutoRepliesPage() {
           ) : null
         )}
         actions={hotwordsButton}
-        mobileActions={hotwordsButton}
         filterTitle="自动回复筛选"
         actionTitle="自动回复操作"
       />

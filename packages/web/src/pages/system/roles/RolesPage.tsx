@@ -256,7 +256,6 @@ export default function RolesPage() {
           ) : null
         )}
         actions={<ExportButton entity="system.roles" query={filterQuery} />}
-        mobileActions={<ExportButton entity="system.roles" query={filterQuery} variant="flat" />}
         filterTitle="角色筛选"
         actionTitle="角色操作"
       />

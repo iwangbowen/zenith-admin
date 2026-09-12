@@ -348,21 +348,6 @@ export default function IotDevicesPage() {
             <Button theme="light" onClick={() => setGroupsVisible(true)}>分组管理</Button>
           )}
         </>}
-        mobileActions={<>
-          {canBatch && selectedRowKeys.length > 0 && (
-            <>
-              <Button theme="borderless" onClick={() => setBatchKind('command')}>批量指令（{selectedRowKeys.length}）</Button>
-              <Button theme="borderless" onClick={() => setBatchKind('desired')}>批量期望值（{selectedRowKeys.length}）</Button>
-            </>
-          )}
-          {hasPermission('iot:device:import') && (
-            <ImportButton entity="iot.devices" title="IoT 设备" label="导入设备" onFinished={() => void listQuery.refetch()} />
-          )}
-          <ExportButton entity="iot.devices" query={filterQuery} variant="flat" />
-          {hasPermission('iot:group:manage') && (
-            <Button theme="borderless" onClick={() => setGroupsVisible(true)}>分组管理</Button>
-          )}
-        </>}
         filterTitle="筛选条件"
       />
 

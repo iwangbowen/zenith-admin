@@ -63,10 +63,6 @@ export default function MemberRechargesPage() {
     dateTimeColumn('创建时间', 'createdAt', { fixed: 'right' }),
   ];
 
-  const renderExportButton = (variant?: 'flat') => (
-    <ExportButton entity="member.recharges" query={filterQuery} variant={variant} permission="member:recharge:list" />
-  );
-
   return (
     <div className="page-container">
       <ListSearchToolbar
@@ -87,8 +83,7 @@ export default function MemberRechargesPage() {
         )}
         onSearch={handleSearch}
         onReset={handleReset}
-        actions={renderExportButton()}
-        mobileActions={renderExportButton('flat')}
+        actions={<ExportButton entity="member.recharges" query={filterQuery} permission="member:recharge:list" />}
         filterTitle="充值记录筛选"
       />
 

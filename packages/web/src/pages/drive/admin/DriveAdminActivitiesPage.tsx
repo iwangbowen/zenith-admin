@@ -79,7 +79,6 @@ export default function DriveAdminActivitiesPage() {
         onSearch={handleSearch}
         onReset={handleReset}
         actions={exportButton()}
-        mobileActions={exportButton('flat')}
         filterTitle="动态审计筛选"
         actionTitle="动态审计操作"
       />

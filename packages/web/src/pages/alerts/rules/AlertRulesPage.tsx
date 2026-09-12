@@ -296,7 +296,6 @@ export default function AlertRulesPage() {
         onReset={handleReset}
         create={canCreate ? <CreateButton onClick={alertModal.openCreate}>新增规则</CreateButton> : null}
         actions={renderBatchActions()}
-        mobileActions={renderBatchActions()}
         filterTitle="告警规则筛选"
         actionTitle="告警规则操作"
       />

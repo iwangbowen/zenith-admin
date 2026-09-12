@@ -505,9 +505,6 @@ export default function FileStorageConfigsPage() {
         actions={(
           <ExportButton entity="system.file-storage-configs" query={filterQuery} />
         )}
-        mobileActions={(
-          <ExportButton entity="system.file-storage-configs" query={filterQuery} variant="flat" />
-        )}
         filterTitle="文件配置筛选"
         actionTitle="文件配置操作"
       />

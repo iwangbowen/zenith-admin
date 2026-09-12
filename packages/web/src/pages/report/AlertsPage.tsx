@@ -348,7 +348,6 @@ export default function AlertsPage() {
             ? <CreateButton onClick={openCreate} /> : null
         )}
         actions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
-        mobileActions={<>{renderBatchEnableBtn()}{renderBatchDisableBtn()}</>}
         filterTitle="预警筛选"
       />
 

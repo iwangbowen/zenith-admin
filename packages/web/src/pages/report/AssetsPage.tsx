@@ -318,7 +318,6 @@ export default function AssetsPage() {
             onSearch={catalog.handleSearch}
             onReset={catalog.handleReset}
             actions={<ExportButton entity="report.assets" query={catalogFilterQuery} />}
-            mobileActions={<ExportButton entity="report.assets" query={catalogFilterQuery} variant="flat" />}
           />
           {catalogQuery.isError && <Banner type="danger" description={catalogQuery.error instanceof Error ? catalogQuery.error.message : '资产目录加载失败'} />}
           <ConfigurableTable<ReportAssetCatalogItem> columns={catalogColumns} {...listTableProps(catalogQuery, { rowKey: (r) => `${r!.resourceType}-${r!.resourceId}`, pagination: catalog.buildPagination, empty: <Empty title="暂无匹配资产" /> })} />

@@ -606,16 +606,6 @@ function ReleaseManageTab({ active }: { active: boolean }) {
     }),
   ];
 
-  const renderAppsManageButton = (borderless?: boolean) => (
-    <Button
-      icon={<Settings2 size={14} />}
-      theme={borderless ? 'borderless' : 'light'}
-      onClick={() => setAppsModalVisible(true)}
-    >
-      应用管理
-    </Button>
-  );
-
   const isEditLocked = modal.isEdit && modal.editing?.status !== 'draft';
 
   return (
@@ -641,14 +631,13 @@ function ReleaseManageTab({ active }: { active: boolean }) {
         </>}
         onSearch={handleSearch}
         onReset={handleReset}
-        actions={<>
-          {renderAppsManageButton()}
-        </>}
+        actions={(
+          <Button icon={<Settings2 size={14} />} theme="light" onClick={() => setAppsModalVisible(true)}>应用管理</Button>
+        )}
         create={(
           hasPermission('system:app-release:create')
             ? <CreateButton onClick={modal.openCreate}>新增版本</CreateButton> : null
         )}
-        mobileActions={renderAppsManageButton(true)}
         filterTitle="筛选条件"
       />
 
