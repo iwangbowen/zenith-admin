@@ -25,7 +25,8 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { copyTextWithToast } from '@/utils/clipboard';
-import { confirmDanger, confirmDelete } from '@/utils/confirm';
+import { confirmDanger } from '@/utils/confirm';
+import { confirmAndDelete } from '@/components/list-page';
 import { formatDateTimeForApi } from '@/utils/date';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { roleAtLeast, shareLinkAbsoluteUrl, shareLinkStateTag } from '../drive-utils';
@@ -197,7 +198,7 @@ export function DriveShareLinksPanel({ node, allowExternalShare }: DriveShareLin
     confirmDanger({ title: '撤销该外链？', content: '撤销后所有已签发的访问会话与短链立即失效，记录保留以便审计。', onOk: () => revoke.mutateAsync({ params: { id: r.id }, nodeId: node.id }).then(() => Toast.success('已撤销')) });
   };
   const deleteLink = (r: DriveShareLink) => {
-    confirmDelete({ title: '删除该外链记录？', content: '访问日志与收集记录将一并删除。', onOk: () => remove.mutateAsync({ params: { id: r.id }, nodeId: node.id }).then(() => Toast.success('已删除')) });
+    confirmAndDelete({ title: '删除该外链记录？', content: '访问日志与收集记录将一并删除。', run: () => remove.mutateAsync({ params: { id: r.id }, nodeId: node.id }), successMessage: '已删除' });
   };
   const makeShortLink = async (r: DriveShareLink) => {
     const result = await shortLink.mutateAsync({ params: { id: r.id }, nodeId: node.id });

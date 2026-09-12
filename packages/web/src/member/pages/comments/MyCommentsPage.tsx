@@ -1,11 +1,11 @@
 /** 我的评论：CMS 内容评论列表（含审核状态，可删除、跳转内容页） */
-import { Button, Empty, Spin, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, Empty, Spin, Tag } from '@douyinfe/semi-ui';
 import { ExternalLink, Trash2 } from 'lucide-react';
 import { CMS_COMMENT_STATUS_LABELS } from '@zenith/shared/cms';
 import type { CmsCommentStatus } from '@zenith/shared/cms';
 import { MemberPage } from '../../components/MemberPage';
 import { useMyCmsComments, useDeleteMyCmsComment } from '../../hooks/queries';
-import { confirmDelete } from '@/utils/confirm';
+import { confirmAndDelete } from '@/components/list-page';
 import { usePagination } from '@/hooks/usePagination';
 import { ListPagination } from '@/components/ListPagination';
 
@@ -24,13 +24,11 @@ export default function MyCommentsPage() {
   const total = listQuery.data?.total ?? 0;
 
   function handleDelete(id: number) {
-    confirmDelete({
+    confirmAndDelete({
       title: '删除评论',
       content: '删除后不可恢复，确定删除这条评论吗？',
-      onOk: async () => {
-        await deleteMutation.mutateAsync({ params: { id } });
-        Toast.success('已删除');
-      },
+      run: () => deleteMutation.mutateAsync({ params: { id } }),
+      successMessage: '已删除',
     });
   }
 

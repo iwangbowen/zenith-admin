@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { confirmAndDelete, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, Checkbox, DatePicker, Input, InputNumber, Select, Space, Tag, Modal, Form, TextArea, Toast, Typography, SideSheet, List, Empty } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Save, Upload } from 'lucide-react';
@@ -46,7 +46,7 @@ import {
 import { PUBLISHABLE_STATUS_META as STATUS } from '@/lib/publishable-status';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDanger, confirmDelete } from '@/utils/confirm';
+import { confirmDanger } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 import { JsonBlock } from '@/components/JsonBlock';
 import { abortSubmit } from '@/lib/abort-submit';
@@ -467,9 +467,9 @@ export default function RuleTablesPage() {
       });
       return;
     }
-    confirmDelete({
+    confirmAndDelete({
       title: '确定删除？', content: '删除后不可恢复',
-      onOk: async () => { await deleteMutation.mutateAsync({ params: { id: r.id } }); Toast.success('删除成功'); },
+      run: () => deleteMutation.mutateAsync({ params: { id: r.id } }),
     });
   };
   const handleToggle = async (r: RuleDecisionTable) => {

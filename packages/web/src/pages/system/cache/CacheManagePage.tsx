@@ -9,7 +9,7 @@ import { usePagination } from '@/hooks/usePagination';
 import { useUrlSelectionState } from '@/hooks/useUrlSelectionState';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { deleteAction } from '@/components/list-page';
+import { confirmAndDelete, deleteAction } from '@/components/list-page';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { NavListPanel, NavListItem } from '@/components/NavListPanel';
 import type { CacheItem, CacheOverview } from '@zenith/shared/platform';
@@ -27,7 +27,6 @@ import {
 } from '@/hooks/queries/cache';
 import { BatchDeleteButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { formatUptime } from '@/utils/format';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
@@ -204,23 +203,21 @@ export default function CacheManagePage() {
 
   const handleBatchDelete = () => {
     if (selectedKeys.length === 0) return;
-    confirmDelete({
+    confirmAndDelete({
       title: `确定要删除选中的 ${selectedKeys.length} 个缓存键吗？`,
       content: '操作不可撤销，请谨慎。',
-      onOk: async () => {
-        const res = await batchDeleteMutation.mutateAsync({ body: { keys: selectedKeys } });
-        Toast.success(`已删除 ${res.count ?? 0} 条缓存`);
-      },
+      run: () => batchDeleteMutation.mutateAsync({ body: { keys: selectedKeys } }),
+      successMessage: (res) => `已删除 ${res.count ?? 0} 条缓存`,
     });
   };
 
   const handleDeleteCategory = (row: CategoryRow) => {
-    confirmDelete({
+    confirmAndDelete({
       title: `确定要删除「${row.category}」分类下的所有缓存吗？`,
       content: `共 ${row.count} 条缓存将被删除，操作不可撤销。`,
-      onOk: async () => {
-        const res = await deleteCategoryMutation.mutateAsync({ body: { segment: row.segment } });
-        Toast.success(`已删除 ${res.count ?? 0} 条缓存`);
+      run: () => deleteCategoryMutation.mutateAsync({ body: { segment: row.segment } }),
+      successMessage: (res) => `已删除 ${res.count ?? 0} 条缓存`,
+      onDeleted: () => {
         if (selectedCategory?.category === row.category) {
           setSelectedCategoryKey(null);
         }
@@ -229,14 +226,12 @@ export default function CacheManagePage() {
   };
 
   const handleClearAll = () => {
-    confirmDelete({
+    confirmAndDelete({
       title: '确定要清空所有缓存吗？',
       content: '此操作将删除当前命名空间下的全部缓存，包括会话数据，操作不可撤销，请谨慎！',
-      onOk: async () => {
-        const res = await clearAllMutation.mutateAsync({});
-        Toast.success(`已清空 ${res.count ?? 0} 条缓存`);
-        setSelectedCategoryKey(null);
-      },
+      run: () => clearAllMutation.mutateAsync({}),
+      successMessage: (res) => `已清空 ${res.count ?? 0} 条缓存`,
+      onDeleted: () => setSelectedCategoryKey(null),
     });
   };
 

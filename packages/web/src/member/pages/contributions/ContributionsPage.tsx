@@ -1,13 +1,13 @@
 /** 我的投稿：列表 + 状态筛选 + 写投稿入口（CMS 会员投稿） */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Empty, Spin, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, Empty, Spin, Tag } from '@douyinfe/semi-ui';
 import { PenLine, Trash2, Pencil } from 'lucide-react';
 import { CMS_CONTENT_STATUSES, type CmsContentStatus } from '@zenith/shared/cms';
 import { enumValueOf } from '@zenith/shared/core';
 import { MemberPage } from '../../components/MemberPage';
 import { useMyContributions, useDeleteContribution } from '../../hooks/queries';
-import { confirmDelete } from '@/utils/confirm';
+import { confirmAndDelete } from '@/components/list-page';
 import { usePagination } from '@/hooks/usePagination';
 import { ListPagination } from '@/components/ListPagination';
 
@@ -37,14 +37,12 @@ export default function ContributionsPage() {
   const total = listQuery.data?.total ?? 0;
 
   function handleDelete(id: number) {
-    confirmDelete({
+    confirmAndDelete({
       title: '删除投稿',
       content: '确定删除该投稿吗？删除后不可恢复。',
       okText: '删除',
-      onOk: async () => {
-        await deleteMutation.mutateAsync({ params: { id } });
-        Toast.success('已删除');
-      },
+      run: () => deleteMutation.mutateAsync({ params: { id } }),
+      successMessage: '已删除',
     });
   }
 

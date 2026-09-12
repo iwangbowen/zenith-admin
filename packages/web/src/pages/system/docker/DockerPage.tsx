@@ -25,7 +25,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { MetricMeter } from '@/components/data-viz/MetricMeter';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { deleteAction } from '@/components/list-page';
+import { confirmAndDelete, deleteAction } from '@/components/list-page';
 import AppModal from '@/components/AppModal';
 import {
   useDockerAvailable,
@@ -57,7 +57,7 @@ import type {
 } from '@zenith/shared/ops';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { confirmDelete, confirmDanger } from '@/utils/confirm';
+import { confirmDanger } from '@/utils/confirm';
 import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { groupContainersByCompose } from './docker-grouping';
 
@@ -65,20 +65,19 @@ import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { formatBytes } from '@zenith/shared/core';
 // ─── Prune（清理）辅助 ──────────────────────────────────────────────────────────
 function runPrune(variables: DockerPruneVariables, title: string, content: string, prune: (variables: DockerPruneVariables) => Promise<DockerPruneResult>): void {
-  confirmDelete({
+  confirmAndDelete({
     title,
     content,
     okText: '确定清理',
-    cancelText: '取消',
-    onOk: async () => {
-      const d = await prune(variables);
+    run: () => prune(variables),
+    successMessage: (d) => {
       const parts: string[] = [];
       if (d.containersDeleted) parts.push(`容器 ${d.containersDeleted}`);
       if (d.imagesDeleted) parts.push(`镜像 ${d.imagesDeleted}`);
       if (d.networksDeleted) parts.push(`网络 ${d.networksDeleted}`);
       if (d.volumesDeleted) parts.push(`卷 ${d.volumesDeleted}`);
       const space = d.spaceReclaimed ? `，释放 ${(d.spaceReclaimed / 1024 / 1024).toFixed(1)} MB` : '';
-      Toast.success(`${title}完成：${parts.length ? parts.join('、') : '无可清理项'}${space}`);
+      return `${title}完成：${parts.length ? parts.join('、') : '无可清理项'}${space}`;
     },
   });
 }

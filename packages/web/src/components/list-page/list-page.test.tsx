@@ -3,7 +3,7 @@ import { Toast } from '@douyinfe/semi-ui';
 import type { ModalReactProps } from '@douyinfe/semi-ui/lib/es/modal';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ListSearchToolbar } from './ListSearchToolbar';
-import { deleteAction } from './deleteAction';
+import { confirmAndDelete, deleteAction } from './deleteAction';
 import { listTableProps } from './listTableProps';
 
 // Modal.confirm 依赖 createRoot 命令式渲染，jsdom 下改为记录配置、由测试手动触发 onOk
@@ -83,6 +83,24 @@ describe('deleteAction', () => {
     expect(confirmCalls[0]).toMatchObject({ title: '彻底删除？', okText: '彻底删除' });
     await confirmCalls[0].onOk?.({} as never);
     expect(success).not.toHaveBeenCalled();
+  });
+
+  it('confirmAndDelete：successMessage / onDeleted 可拿到 run 的结果', async () => {
+    const success = vi.spyOn(Toast, 'success');
+    const onDeleted = vi.fn();
+    confirmAndDelete({ title: '删除选中缓存？', run: () => Promise.resolve({ count: 3 }), successMessage: (r) => `已删除 ${r.count} 条`, onDeleted });
+    await confirmCalls[0].onOk?.({} as never);
+    expect(success).toHaveBeenCalledWith('已删除 3 条');
+    expect(onDeleted).toHaveBeenCalledWith({ count: 3 });
+  });
+
+  it('confirmAndDelete：run 失败时不提示、不回调，异常继续抛给弹窗保持打开', async () => {
+    const success = vi.spyOn(Toast, 'success');
+    const onDeleted = vi.fn();
+    confirmAndDelete({ title: '删除？', run: () => Promise.reject(new Error('boom')), onDeleted });
+    await expect(confirmCalls[0].onOk?.({} as never)).rejects.toThrow('boom');
+    expect(success).not.toHaveBeenCalled();
+    expect(onDeleted).not.toHaveBeenCalled();
   });
 });
 

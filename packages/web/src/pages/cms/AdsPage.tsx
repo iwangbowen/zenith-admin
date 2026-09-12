@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { SearchToolbar } from '@/components/SearchToolbar';
-import { Button, Form, Tag, Toast, Tabs, TabPane, SideSheet, Typography } from '@douyinfe/semi-ui';
+import { Button, Form, Tag, Tabs, TabPane, SideSheet, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Trash2 } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -23,10 +23,9 @@ import { percentOf } from '@zenith/shared/core';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { EMPTY_PLACEHOLDER, dateColumn, dateTimeColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
-import { deleteAction, listTableProps, ListSearchToolbar } from '@/components/list-page';
+import { confirmAndDelete, deleteAction, listTableProps, ListSearchToolbar } from '@/components/list-page';
 import { compactParams } from '@/lib/query';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
@@ -300,13 +299,11 @@ function EventsTab({ siteId, setSiteId }: Readonly<{
                 loading={cleanupMutation.isPending}
                 disabled={!siteId}
                 onClick={() => {
-                  confirmDelete({
+                  confirmAndDelete({
                     title: '按保留策略清理广告事件？',
                     content: '将提交到任务中心分批执行，可查看进度、取消或重试。',
-                    onOk: async () => {
-                      await cleanupMutation.mutateAsync({ body: { siteId } });
-                      Toast.success('清理任务已提交');
-                    },
+                    run: () => cleanupMutation.mutateAsync({ body: { siteId } }),
+                    successMessage: '清理任务已提交',
                   });
                 }}
               >

@@ -7,7 +7,7 @@ import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
-import { confirmDelete } from '@/utils/confirm';
+import { confirmAndDelete } from '@/components/list-page';
 import {
   IOT_ACCESS_MODE_LABELS, IOT_ACCESS_MODE_OPTIONS, IOT_EVENT_LEVEL_LABELS, IOT_EVENT_LEVEL_OPTIONS,
   IOT_PROPERTY_TYPE_LABELS, IOT_PROPERTY_TYPE_OPTIONS,
@@ -325,13 +325,10 @@ export default function IotThingModelDrawer({ product, onClose }: Readonly<IotTh
         <div style={{ display: 'flex', gap: 8 }}>
           <Button theme="borderless" size="small" onClick={() => propertyModal.openEdit(r)}>编辑</Button>
           <Button theme="borderless" size="small" type="danger" onClick={() => {
-            confirmDelete({
+            confirmAndDelete({
               title: `确定要删除属性「${r.identifier}」吗？`,
               content: '历史遥测数据保留，图表与影子将不再声明该属性',
-              onOk: async () => {
-                await deletePropertyMutation.mutateAsync({ params: { id: productId!, propertyId: r.id } });
-                Toast.success('删除成功');
-              },
+              run: () => deletePropertyMutation.mutateAsync({ params: { id: productId!, propertyId: r.id } }),
             });
           }}>删除</Button>
         </div>
@@ -353,13 +350,10 @@ export default function IotThingModelDrawer({ product, onClose }: Readonly<IotTh
         <div style={{ display: 'flex', gap: 8 }}>
           <Button theme="borderless" size="small" onClick={() => serviceModal.openEdit(r)}>编辑</Button>
           <Button theme="borderless" size="small" type="danger" onClick={() => {
-            confirmDelete({
+            confirmAndDelete({
               title: `确定要删除服务「${r.identifier}」吗？`,
               content: '删除后无法再向设备下发该服务',
-              onOk: async () => {
-                await deleteServiceMutation.mutateAsync({ params: { id: productId!, serviceId: r.id } });
-                Toast.success('删除成功');
-              },
+              run: () => deleteServiceMutation.mutateAsync({ params: { id: productId!, serviceId: r.id } }),
             });
           }}>删除</Button>
         </div>
@@ -383,13 +377,10 @@ export default function IotThingModelDrawer({ product, onClose }: Readonly<IotTh
         <div style={{ display: 'flex', gap: 8 }}>
           <Button theme="borderless" size="small" onClick={() => eventModal.openEdit(r)}>编辑</Button>
           <Button theme="borderless" size="small" type="danger" onClick={() => {
-            confirmDelete({
+            confirmAndDelete({
               title: `确定要删除事件「${r.identifier}」吗？`,
               content: '关联的事件告警规则将不再触发',
-              onOk: async () => {
-                await deleteEventMutation.mutateAsync({ params: { id: productId!, eventId: r.id } });
-                Toast.success('删除成功');
-              },
+              run: () => deleteEventMutation.mutateAsync({ params: { id: productId!, eventId: r.id } }),
             });
           }}>删除</Button>
         </div>

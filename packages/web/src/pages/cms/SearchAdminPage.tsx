@@ -28,7 +28,6 @@ import { CmsSiteSelect } from './CmsSiteSelect';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { CreateButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { dateTimeColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
@@ -426,26 +425,22 @@ function HotKeywordsTab({ siteId, onSiteChange }: Readonly<{ siteId: number | un
         ) : null}
         {canManage && groupId ? (
           <Button type="danger" onClick={() => {
-            confirmDelete({
+            confirmAndDelete({
               title: '删除当前热词分组？',
               content: '仅空分组可删除。',
-              onOk: async () => {
-                await deleteGroupMutation.mutateAsync({ params: { id: groupId } });
-                setGroupId(undefined);
-                Toast.success('分组已删除');
-              },
+              run: () => deleteGroupMutation.mutateAsync({ params: { id: groupId } }),
+              successMessage: '分组已删除',
+              onDeleted: () => setGroupId(undefined),
             });
           }}>删除分组</Button>
         ) : null}
         {canManage && siteId ? (
           <Button type="danger" icon={<Trash2 size={14} />} onClick={() => {
-            confirmDelete({
+            confirmAndDelete({
               title: '清空当前站点的搜索热词？',
-              onOk: async () => {
-                await clearMutation.mutateAsync({ body: { siteId } });
-                Toast.success('已清空');
-                void hotQuery.refetch();
-              },
+              run: () => clearMutation.mutateAsync({ body: { siteId } }),
+              successMessage: '已清空',
+              onDeleted: () => { void hotQuery.refetch(); },
             });
           }}>清空热词</Button>
         ) : null}

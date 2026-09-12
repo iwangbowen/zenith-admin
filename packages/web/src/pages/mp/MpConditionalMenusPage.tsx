@@ -10,6 +10,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { confirmAndDelete } from '@/components/list-page';
 import { usePagination } from '@/hooks/usePagination';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
@@ -23,7 +24,6 @@ import {
   type MpConditionalMenuSaveValues,
 } from '@/hooks/queries/mp-menu';
 import { CreateButton, RefreshButton } from '@/components/toolbar-controls';
-import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 
 const { Text } = Typography;
@@ -149,9 +149,10 @@ export default function MpConditionalMenusPage() {
   };
 
   const handleDelete = (r: MpConditionalMenu) => {
-    confirmDelete({
+    confirmAndDelete({
       title: `删除「${r.name}」？`, content: '将同时删除微信侧个性化菜单。',
-      onOk: async () => { await deleteMutation.mutateAsync({ params: { id: r.id } }); Toast.success('已删除'); },
+      run: () => deleteMutation.mutateAsync({ params: { id: r.id } }),
+      successMessage: '已删除',
     });
   };
 

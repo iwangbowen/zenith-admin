@@ -7,7 +7,7 @@ import { Button, Checkbox, Input, Select, Space, Tag, Toast } from '@douyinfe/se
 import AppModal from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { confirmDelete } from '@/utils/confirm';
+import { confirmAndDelete } from '@/components/list-page';
 import { renderEllipsis } from '@/utils/table-columns';
 import { useCmsChannelTree, useCmsOpenGrants, useDeleteCmsOpenGrant, useSaveCmsOpenGrant } from '@/hooks/queries/cms';
 import type { CmsChannel, CmsOpenAppGrant, CmsSite } from '@zenith/shared/cms';
@@ -114,13 +114,11 @@ export default function SiteOpenGrantsModal({ site, onClose }: Readonly<SiteOpen
               key: 'delete',
               label: '删除',
               danger: true,
-              onClick: () => { confirmDelete({
+              onClick: () => { confirmAndDelete({
                 title: `删除对「${record.clientId}」的授权？`,
                 content: '删除后该应用将无法再写入本站点。',
-                onOk: async () => {
-                  await deleteGrantMutation.mutateAsync({ params: { grantId: record.id } });
-                  Toast.success('已删除');
-                },
+                run: () => deleteGrantMutation.mutateAsync({ params: { grantId: record.id } }),
+                successMessage: '已删除',
               }); },
             }],
           }),

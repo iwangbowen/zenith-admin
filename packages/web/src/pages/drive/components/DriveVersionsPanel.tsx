@@ -8,7 +8,8 @@ import { useDeleteDriveNodeVersion, useDriveNodeVersions, useRestoreDriveNodeVer
 import { useChunkUploadThreshold } from '@/hooks/queries/files';
 import { usePermission } from '@/hooks/usePermission';
 import { createOperationColumn, type ResponsiveTableAction } from '@/components/ResponsiveTableActions';
-import { confirmDanger, confirmDelete } from '@/utils/confirm';
+import { deleteAction } from '@/components/list-page';
+import { confirmDanger } from '@/utils/confirm';
 import { fetchProtectedFile } from '@/utils/file-utils';
 import { downloadBlob } from '@/utils/download';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
@@ -85,16 +86,13 @@ export function DriveVersionsPanel({ node }: DriveVersionsPanelProps) {
             });
           },
         },
-        {
-          key: 'delete', label: '删除', danger: true, hidden: !canDeleteVersion || r.isCurrent,
-          onClick: () => {
-            confirmDelete({
-              title: `删除历史版本 v${r.version}？`,
-              content: '删除后该版本内容不可恢复，并释放对应容量。',
-              onOk: () => remove.mutateAsync({ params: { id: node.id, version: r.version }, node }).then(() => Toast.success('已删除')),
-            });
-          },
-        },
+        deleteAction({
+          hidden: !canDeleteVersion || r.isCurrent,
+          title: `删除历史版本 v${r.version}？`,
+          content: '删除后该版本内容不可恢复，并释放对应容量。',
+          run: () => remove.mutateAsync({ params: { id: node.id, version: r.version }, node }),
+          successMessage: '已删除',
+        }),
       ],
     }),
   ];

@@ -35,8 +35,7 @@ import { useReportDeprecationList } from '@/hooks/queries/report-assets';
 import { useListSearch } from '@/hooks/useListSearch';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
-import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 
 interface SearchParams { keyword: string; status?: string; lifecycleStatus?: ReportDashboard['lifecycleStatus']; categoryId?: number; favorited: boolean; ownerId?: number; folderId?: number }
 const defaultSearchParams: SearchParams = { keyword: '', status: undefined, lifecycleStatus: undefined, favorited: false, ownerId: undefined, folderId: undefined };
@@ -53,7 +52,7 @@ export default function DashboardListPage() {
     handleSearch, applySearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: reportDashboardKeys.lists });
 
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, setSelectedRowKeys, rowSelection } = useRowSelection();
   const [categorySheetVisible, setCategorySheetVisible] = useState(false);
   const [shareTarget, setShareTarget] = useState<number | null>(null);
   const [versionTarget, setVersionTarget] = useState<number | null>(null);
@@ -140,15 +139,13 @@ export default function DashboardListPage() {
   }
 
   async function handleCategoryDelete(record: (typeof categories)[number]) {
-    confirmDelete({
+    confirmAndDelete({
       title: `确定删除分类「${record.name}」吗？`,
       content: record.dashboardCount
         ? `该分类已被 ${record.dashboardCount} 个仪表盘引用。删除后这些仪表盘的分类将自动置空。`
         : '删除后不可恢复。',
-      onOk: async () => {
-        await deleteCategoryMutation.mutateAsync({ params: { id: record.id } });
-        Toast.success('分类删除成功');
-      },
+      run: () => deleteCategoryMutation.mutateAsync({ params: { id: record.id } }),
+      successMessage: '分类删除成功',
     });
   }
 
@@ -275,10 +272,7 @@ export default function DashboardListPage() {
         {...listTableProps(listQuery, {
           pagination: buildPagination,
           empty: '暂无数据',
-          rowSelection: hasPermission('report:dashboard:update') ? {
-            selectedRowKeys,
-            onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
-          } : undefined,
+          rowSelection: hasPermission('report:dashboard:update') ? rowSelection : undefined,
         })}
       />
 

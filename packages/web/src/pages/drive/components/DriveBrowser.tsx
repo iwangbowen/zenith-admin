@@ -17,7 +17,8 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { batchDownloadDriveNodes, deleteDriveNodesVariables, driveKeys, useCopyDriveNodes, useCreateDriveFolder, useDeleteDriveNodes, useDriveDir, useDrivePreviewWatermark, useDriveTags, useLockDriveNode, useMoveDriveNodes, useRenameDriveNode, useStarDriveNode, useUnlockDriveNode, useUnstarDriveNode } from '@/hooks/queries/drive';
-import { confirmDelete, confirmDangerAsync } from '@/utils/confirm';
+import { confirmDangerAsync } from '@/utils/confirm';
+import { confirmAndDelete } from '@/components/list-page';
 import { canPreviewFile, fetchManagedFileBlob } from '@/utils/file-utils';
 import { downloadBlob } from '@/utils/download';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
@@ -139,10 +140,12 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
   }, [selectedIds]);
 
   const deleteNodes = (nodes: DriveNode[]) => {
-    confirmDelete({
+    confirmAndDelete({
       title: nodes.length === 1 ? `删除「${nodes[0].name}」？` : `删除选中的 ${nodes.length} 个项目？`,
       content: '将移入回收站，可在保留期内还原。',
-      onOk: () => remove.mutateAsync(deleteDriveNodesVariables(nodes)).then(() => { Toast.success('已移入回收站'); setSelectedIds([]); }),
+      run: () => remove.mutateAsync(deleteDriveNodesVariables(nodes)),
+      successMessage: '已移入回收站',
+      onDeleted: () => setSelectedIds([]),
     });
   };
 

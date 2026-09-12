@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Checkbox, Input, InputNumber, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate } from 'react-router-dom';
@@ -20,7 +20,7 @@ import {
   driveKeys, useArchiveDriveSpace, useDeleteDriveSpaces, useDriveSpaceList, useDriveSpaceMembers, useRequestDriveQuota, useSaveDriveSpaceMembers,
   useSpaceQuotaRequests, useTransferDriveSpace, useUnarchiveDriveSpace,
 } from '@/hooks/queries/drive';
-import { confirmDanger, confirmDelete } from '@/utils/confirm';
+import { confirmDanger } from '@/utils/confirm';
 import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { DriveSpaceFormSheet, type DriveSpaceFormTarget } from '../components/DriveSpaceFormSheet';
 import { DriveSubjectPicker, type SubjectGrant } from '../components/DriveSubjectPicker';
@@ -181,9 +181,13 @@ export default function DriveSpacesPage() {
         { key: 'transfer', label: '转让', hidden: s.type !== 'team' || !isManager || !!s.archivedAt, onClick: () => setTransferOf(s) },
         { key: 'quota', label: '申请扩容', hidden: !isManager || !canEditSpace || !s.quotaBytes, onClick: () => setQuotaOf(s) },
         { key: 'archive', label: s.archivedAt ? '恢复归档' : '归档（只读）', dividerBefore: true, hidden: s.type === 'personal' || !isManager || !canEditSpace, onClick: () => toggleArchive(s) },
-        { key: 'delete', label: '删除', danger: true, hidden: s.type !== 'team' || !isManager || !hasPermission('drive:space:delete'),
-          onClick: () => { confirmDelete({ title: `删除协作空间「${s.name}」？`, content: '空间内文件将进入回收站，保留期后彻底清除。',
-            onOk: () => remove.mutateAsync([s.id]).then(() => Toast.success('已删除')) }); } },
+        deleteAction({
+          hidden: s.type !== 'team' || !isManager || !hasPermission('drive:space:delete'),
+          title: `删除协作空间「${s.name}」？`,
+          content: '空间内文件将进入回收站，保留期后彻底清除。',
+          run: () => remove.mutateAsync([s.id]),
+          successMessage: '已删除',
+        }),
       ];
     } }),
   ];

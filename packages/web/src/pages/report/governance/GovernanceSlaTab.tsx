@@ -4,7 +4,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { ReportSlaRule, ReportSlaType, ReportSlaViolation, ReportSlaViolationStatus } from '@zenith/shared/report';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { listTableProps } from '@/components/list-page';
+import { confirmAndDelete, listTableProps } from '@/components/list-page';
 import { CronBuilderPopover } from '@/components/CronBuilderPopover';
 import { FormTimezoneSelect } from '@/components/FormTimezoneSelect';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -22,7 +22,6 @@ import {
   useUpdateReportSlaViolation,
 } from '@/hooks/queries/report-sla';
 import { CreateButton } from '@/components/toolbar-controls';
-import { confirmDelete } from '@/utils/confirm';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { DEFAULT_TIMEZONE } from '@/utils/timezones';
 import { FilterSelect } from '@/components/search-filters';
@@ -116,9 +115,10 @@ export default function GovernanceSlaTab() {
         { key: 'edit', label: '编辑', hidden: !hasPermission('report:sla:update'), onClick: () => openRule(record) },
         {
           key: 'delete', label: '删除', danger: true, hidden: !hasPermission('report:sla:delete'),
-          onClick: () => { confirmDelete({
+          onClick: () => { confirmAndDelete({
             title: `删除 SLA 规则「${record.name}」？`,
-            onOk: async () => { await deleteMutation.mutateAsync({ params: { id: record.id } }); Toast.success('SLA 规则已删除'); },
+            run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+            successMessage: 'SLA 规则已删除',
           }); },
         },
       ],

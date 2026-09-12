@@ -6,7 +6,7 @@ import { REPORT_PROMOTION_STATUS_LABELS } from '@zenith/shared/report';
 import { Rocket } from 'lucide-react';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { listTableProps } from '@/components/list-page';
+import { confirmAndDelete, listTableProps } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePagination } from '@/hooks/usePagination';
@@ -24,7 +24,7 @@ import {
 import { parseJsonObject } from '../report-platform-utils';
 import { REPORT_RESOURCE_TYPE_OPTIONS, reportResourceTypeLabel } from '../report-platform-options';
 import { CreateButton } from '@/components/toolbar-controls';
-import { confirmDanger, confirmDelete } from '@/utils/confirm';
+import { confirmDanger } from '@/utils/confirm';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 
 const environmentKindOptions = [
@@ -118,10 +118,11 @@ export default function GovernanceEnvironmentTab() {
         { key: 'edit', label: '编辑', hidden: !hasPermission('report:environment:update'), onClick: () => openEnvironment(record) },
         {
           key: 'delete', label: '删除', danger: true, hidden: !hasPermission('report:environment:delete'),
-          onClick: () => { confirmDelete({
+          onClick: () => { confirmAndDelete({
             title: `删除环境「${record.name}」？`,
             content: '默认环境或存在发布记录的环境无法删除。',
-            onOk: async () => { await deleteEnvironmentMutation.mutateAsync({ params: { id: record.id } }); Toast.success('环境已删除'); },
+            run: () => deleteEnvironmentMutation.mutateAsync({ params: { id: record.id } }),
+            successMessage: '环境已删除',
           }); },
         },
       ],

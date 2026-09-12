@@ -9,7 +9,7 @@ import type { AnalyticsComparison, AnalyticsSavedReport, AnalyticsSegmentPropert
 import { ANALYTICS_SEGMENT_COMPARE_OP_OPTIONS } from '@zenith/shared/analytics';
 import { ComparisonPicker, DrillUsersSheet, isComparisonReady, useDrillSheet } from './AnalyticsComparison';
 import { useBehaviorDays } from './behavior-days-context';
-import { confirmDelete } from '@/utils/confirm';
+import { confirmAndDelete } from '@/components/list-page';
 import { DAYS_OPTIONS, chartColor, msToReadable, numberText, percentText, sectionStyle } from './analytics-format';
 import { ChartPlaceholder, SectionHeader } from './analytics-shared';
 
@@ -218,9 +218,10 @@ export default function AnalyticsFunnelTab() {
                         icon={<Trash2 size={12} />}
                         onClick={(e) => {
                           e.stopPropagation();
-                          confirmDelete({
+                          confirmAndDelete({
                             title: `删除报表「${report.name}」？`,
-                            onOk: () => deleteReportMutation.mutateAsync({ params: { id: report.id } }).then(() => Toast.success('已删除')),
+                            run: () => deleteReportMutation.mutateAsync({ params: { id: report.id } }),
+                            successMessage: '已删除',
                           });
                         }}
                       />

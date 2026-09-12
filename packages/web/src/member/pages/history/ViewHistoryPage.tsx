@@ -1,10 +1,10 @@
 /** 浏览历史：CMS 内容浏览记录（最近浏览优先，可清空） */
-import { Button, Toast } from '@douyinfe/semi-ui';
+import { Button } from '@douyinfe/semi-ui';
 import { Trash2 } from 'lucide-react';
 import { MemberPage } from '../../components/MemberPage';
 import { CmsContentPagedList } from '../../components/CmsContentList';
 import { useMyCmsViewHistory, useClearCmsViewHistory } from '../../hooks/queries';
-import { confirmDelete } from '@/utils/confirm';
+import { confirmAndDelete } from '@/components/list-page';
 import { usePagination } from '@/hooks/usePagination';
 
 export default function ViewHistoryPage() {
@@ -16,15 +16,13 @@ export default function ViewHistoryPage() {
   const total = listQuery.data?.total ?? 0;
 
   function handleClear() {
-    confirmDelete({
+    confirmAndDelete({
       title: '清空浏览历史',
       content: '确定清空全部浏览记录吗？',
       okText: '清空',
-      onOk: async () => {
-        await clearMutation.mutateAsync({});
-        setPage(1);
-        Toast.success('已清空');
-      },
+      run: () => clearMutation.mutateAsync({}),
+      successMessage: '已清空',
+      onDeleted: () => setPage(1),
     });
   }
 

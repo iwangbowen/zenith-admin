@@ -8,6 +8,7 @@ import { useMpAccounts } from './useMpAccounts';
 import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
 import { useDeleteMpMenu, useMpMenu, usePublishMpMenu, usePullMpMenu, useSaveMpMenu } from '@/hooks/queries/mp-menu';
+import { confirmAndDelete } from '@/components/list-page';
 import { confirmDelete } from '@/utils/confirm';
 
 const CONTENT_TYPE_OPTIONS = [
@@ -156,11 +157,11 @@ export default function MpMenuPage() {
 
   const doDelete = () => {
     if (!currentId) return;
-    confirmDelete({
+    confirmAndDelete({
       title: '确定要删除微信端的自定义菜单吗？',
-      onOk: async () => {
-        const data = await deleteMutation.mutateAsync({ body: { accountId: currentId } });
-        Toast.success('已删除微信菜单');
+      run: () => deleteMutation.mutateAsync({ body: { accountId: currentId } }),
+      successMessage: '已删除微信菜单',
+      onDeleted: (data) => {
         setMenu(data ?? null);
         setButtons([]);
         setSelected(null);

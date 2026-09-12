@@ -444,14 +444,12 @@ export default function ResourcesPage() {
                               type="danger"
                               icon={<FolderX size={14} />}
                               onClick={() => {
-                                confirmDelete({
+                                confirmAndDelete({
                                   title: `删除文件夹「${selectedFolder.name}」？`,
                                   content: '仅空文件夹可删除。',
-                                  onOk: async () => {
-                                    await deleteFolderMutation.mutateAsync({ params: { id: selectedFolder.id } });
-                                    setFolderKey('all');
-                                    Toast.success('文件夹已删除');
-                                  },
+                                  run: () => deleteFolderMutation.mutateAsync({ params: { id: selectedFolder.id } }),
+                                  successMessage: '文件夹已删除',
+                                  onDeleted: () => setFolderKey('all'),
                                 });
                               }}
                             >

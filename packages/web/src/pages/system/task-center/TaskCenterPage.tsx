@@ -14,7 +14,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import AppModal from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { useTaskProgressEvents } from '@/hooks/useAsyncTasks';
@@ -37,7 +37,6 @@ import {
   useUpdateAsyncTaskTypeConfig,
 } from '@/hooks/queries/async-tasks';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { JsonBlock } from '@/components/JsonBlock';
 import TaskStatsTab from './TaskStatsTab';
 
@@ -108,7 +107,7 @@ export default function TaskCenterPage() {
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: asyncTaskKeys.lists });
   const [detailTask, setDetailTask] = useState<AsyncTask | null>(null);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const { selectedRowKeys, setSelectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
 
   // 详情抽屉：任务项明细
   const [itemStatusFilter, setItemStatusFilter] = useState<string | undefined>();
@@ -207,7 +206,7 @@ export default function TaskCenterPage() {
 
   useEffect(() => {
     setSelectedRowKeys((prev) => prev.filter((id) => data.some((item) => item.id === id)));
-  }, [data]);
+  }, [data, setSelectedRowKeys]);
 
   // 自己提交的任务走 WS 实时合并（其他用户任务靠自动刷新兜底）
   useTaskProgressEvents(
@@ -233,32 +232,28 @@ export default function TaskCenterPage() {
       onOk: async () => {
         const data = await batchCancelMutation.mutateAsync({ body: { ids: selectedRowKeys } });
         Toast.success(`已请求取消 ${data.affected} 个任务`);
-        setSelectedRowKeys([]);
+        clearSelection();
       },
     });
   };
 
   const handleBatchDelete = () => {
     if (selectedRowKeys.length === 0) return;
-    confirmDelete({
+    confirmAndDelete({
       title: '批量删除任务记录',
       content: `将删除选中任务中已结束的记录（进行中的自动跳过），不可恢复。`,
-      onOk: async () => {
-        const data = await batchDeleteMutation.mutateAsync({ body: { ids: selectedRowKeys } });
-        Toast.success(`已删除 ${data.affected} 个任务记录`);
-        setSelectedRowKeys([]);
-      },
+      run: () => batchDeleteMutation.mutateAsync({ body: { ids: selectedRowKeys } }),
+      successMessage: (data) => `已删除 ${data.affected} 个任务记录`,
+      onDeleted: clearSelection,
     });
   };
 
   const handleCleanup = () => {
-    confirmDelete({
+    confirmAndDelete({
       title: '清理已结束任务',
       content: '将按保留策略删除过期的已结束任务记录（默认 30 天，任务类型可单独配置）。',
-      onOk: async () => {
-        const data = await cleanupMutation.mutateAsync({});
-        Toast.success(`已清理 ${data.cleaned} 条任务记录`);
-      },
+      run: () => cleanupMutation.mutateAsync({}),
+      successMessage: (data) => `已清理 ${data.cleaned} 条任务记录`,
     });
   };
 
@@ -580,10 +575,7 @@ export default function TaskCenterPage() {
             refreshLoading={manualRefreshing}
             pagination={buildPagination(total)}
             rowKey="id"
-            rowSelection={canManage ? {
-              selectedRowKeys,
-              onChange: (keys) => setSelectedRowKeys((keys ?? []) as number[]),
-            } : undefined}
+            rowSelection={canManage ? rowSelection : undefined}
             size="small"
             empty="暂无异步任务"
             columnSettingsKey="task-center-tasks"

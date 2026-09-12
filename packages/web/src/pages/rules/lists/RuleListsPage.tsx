@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { confirmAndDelete, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { Button, DatePicker, Form, Input, Modal, Select, SideSheet, Space, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RULE_LIST_TYPES, type RuleList, type RuleListItem, type RuleUsageItem } from '@zenith/shared/rules';
@@ -28,7 +28,6 @@ import {
 } from '@/hooks/queries/rules';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 
 const { Text } = Typography;
@@ -126,9 +125,9 @@ export default function RuleListsPage() {
       });
       return;
     }
-    confirmDelete({
+    confirmAndDelete({
       title: '确定删除？', content: '将级联删除全部条目，删除后不可恢复',
-      onOk: async () => { await deleteMutation.mutateAsync({ params: { id: r.id } }); Toast.success('删除成功'); },
+      run: () => deleteMutation.mutateAsync({ params: { id: r.id } }),
     });
   };
 

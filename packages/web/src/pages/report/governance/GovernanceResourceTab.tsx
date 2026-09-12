@@ -7,7 +7,7 @@ import type { ReportAclSubjectType, ReportFolderTreeNode, ReportResourceAcl, Rep
 import { Plus, Shield } from 'lucide-react';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { listTableProps } from '@/components/list-page';
+import { confirmAndDelete, listTableProps } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { usePermission } from '@/hooks/usePermission';
@@ -29,7 +29,7 @@ import { formatDateTimeForApi } from '@/utils/date';
 import { REPORT_RESOURCE_TYPE_OPTIONS, reportResourceTypeLabel } from '../report-platform-options';
 import { aclRevokeWarning, normalizeAclGrantValues } from '../report-platform-utils';
 import { CreateButton } from '@/components/toolbar-controls';
-import { confirmDanger, confirmDelete } from '@/utils/confirm';
+import { confirmDanger } from '@/utils/confirm';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 
 export default function GovernanceResourceTab() {
@@ -111,10 +111,11 @@ export default function GovernanceResourceTab() {
         { key: 'edit', label: '编辑', hidden: !hasPermission('report:folder:update'), onClick: () => openFolder(record) },
         {
           key: 'delete', label: '删除', danger: true, hidden: !hasPermission('report:folder:delete'),
-          onClick: () => { confirmDelete({
+          onClick: () => { confirmAndDelete({
             title: `删除目录「${record.name}」？`,
             content: '存在子目录或资源时无法删除。',
-            onOk: async () => { await deleteFolderMutation.mutateAsync({ params: { id: record.id } }); Toast.success('目录已删除'); },
+            run: () => deleteFolderMutation.mutateAsync({ params: { id: record.id } }),
+            successMessage: '目录已删除',
           }); },
         },
       ],

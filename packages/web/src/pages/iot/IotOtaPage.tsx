@@ -17,9 +17,8 @@ import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useDictItems } from '@/hooks/useDictItems';
-import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
+import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
-import { confirmDelete } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 import {
   IOT_OTA_DEVICE_STATUSES, IOT_OTA_DEVICE_STATUS_LABELS, IOT_OTA_DEVICE_STATUS_OPTIONS, IOT_OTA_TASK_STATUSES,
@@ -326,13 +325,11 @@ function OtaTasksTab({ detailTask, onOpenDetail }: Readonly<{
           ...(hasPermission('iot:ota:task:create') && (record.status === 'running' || record.status === 'paused') ? [{
             key: 'cancel', label: '取消', danger: true,
             onClick: () => {
-              confirmDelete({
+              confirmAndDelete({
                 title: `确定要取消任务「${record.title}」吗？`,
                 content: '未终态设备将标记为已取消；已升级成功的设备不受影响',
-                onOk: async () => {
-                  await cancelMutation.mutateAsync({ params: { id: record.id } });
-                  Toast.success('任务已取消');
-                },
+                run: () => cancelMutation.mutateAsync({ params: { id: record.id } }),
+                successMessage: '任务已取消',
               });
             },
           }] : []),

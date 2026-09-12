@@ -15,7 +15,6 @@ import type { LogFile } from '@zenith/shared/ops';
 import { logFileDownloadUrl, useDeleteLogFile, useLogFiles } from '@/hooks/queries/log-files';
 import { logSourceKey, type LogSource } from '@/hooks/queries/log-source';
 import { confirmAndDelete } from '@/components/list-page';
-import { confirmDelete } from '@/utils/confirm';
 import { formatBytes } from '@zenith/shared/core';
 
 const EMPTY_LOG_FILES: LogFile[] = [];
@@ -113,14 +112,16 @@ export default function LogFilesPage() {
   const handleCleanGz = () => {
     if (gzFiles.length === 0) return;
     const totalSize = gzFiles.reduce((sum, f) => sum + f.size, 0);
-    confirmDelete({
+    confirmAndDelete({
       title: '确定要清理全部压缩日志吗？',
       content: `共 ${gzFiles.length} 个 .gz 文件（${formatBytes(totalSize)}），删除后无法恢复。`,
-      onOk: async () => {
+      run: async () => {
         for (const file of gzFiles) {
           await deleteMutation.mutateAsync({ params: { filename: file.name } });
         }
-        Toast.success(`已清理 ${gzFiles.length} 个压缩日志`);
+      },
+      successMessage: `已清理 ${gzFiles.length} 个压缩日志`,
+      onDeleted: () => {
         if (selected?.isGzip) deselectFile();
       },
     });

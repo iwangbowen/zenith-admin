@@ -4,7 +4,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { ReportQueryCostLog, ReportQueryCostTrendPoint, ReportQueryQuota, ReportQuotaScope } from '@zenith/shared/report';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { listTableProps } from '@/components/list-page';
+import { confirmAndDelete, listTableProps } from '@/components/list-page';
 import ExportButton from '@/components/ExportButton';
 import { FormTimezoneSelect } from '@/components/FormTimezoneSelect';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -27,7 +27,7 @@ import { formatDateTimeRangeForApi } from '@/utils/date';
 import { validateQuotaForm } from '../report-platform-utils';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter } from '@/components/search-filters';
-import { confirmDanger, confirmDelete } from '@/utils/confirm';
+import { confirmDanger } from '@/utils/confirm';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { DEFAULT_TIMEZONE } from '@/utils/timezones';
 
@@ -115,9 +115,10 @@ export default function GovernanceCapacityTab() {
         },
         {
           key: 'delete', label: '删除', danger: true, hidden: !hasPermission('report:query-quota:delete'),
-          onClick: () => { confirmDelete({
+          onClick: () => { confirmAndDelete({
             title: '删除该查询配额？',
-            onOk: async () => { await deleteMutation.mutateAsync({ params: { id: record.id } }); Toast.success('配额已删除'); },
+            run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+            successMessage: '配额已删除',
           }); },
         },
       ],

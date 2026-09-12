@@ -8,6 +8,7 @@ import {
 import type { WikiComment, WikiDocTreeNode } from '@zenith/shared/wiki';
 import { WIKI_DOC_STATUS_LABELS } from '@zenith/shared/wiki';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
+import { confirmAndDelete } from '@/components/list-page';
 import MarkdownPreviewPanel from '@/components/MarkdownPreviewPanel';
 import FileAttachment from '@/components/FileAttachment';
 import AppModal from '@/components/AppModal';
@@ -15,7 +16,6 @@ import { KeywordInput } from '@/components/search-filters';
 import { usePermission } from '@/hooks/usePermission';
 import { usePreferences } from '@/hooks/usePreferences';
 import { useAuth } from '@/hooks/useAuth';
-import { confirmDelete } from '@/utils/confirm';
 import { EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { extractMarkdownHeadings, type MarkdownHeading } from '@/utils/markdown-outline';
 import { toUserOptions, useAllUsers } from '@/hooks/queries/users';
@@ -396,14 +396,12 @@ export default function WikiDocCenterPage() {
           key="delete"
           type="danger"
           icon={<Trash2 size={14} />}
-          onClick={() => confirmDelete({
+          onClick={() => confirmAndDelete({
             title: `确定要删除「${n.title}」吗？`,
             content: '删除后可在回收站还原',
-            onOk: async () => {
-              await deleteDocs([n.id]);
-              Toast.success('已移入回收站');
-              setSelectedDocId((current) => (current === n.id ? undefined : current));
-            },
+            run: () => deleteDocs([n.id]),
+            successMessage: '已移入回收站',
+            onDeleted: () => setSelectedDocId((current) => (current === n.id ? undefined : current)),
           })}
         >
           删除
@@ -698,14 +696,12 @@ export default function WikiDocCenterPage() {
                   <Dropdown.Item
                     type="danger"
                     icon={<Trash2 size={14} />}
-                    onClick={() => confirmDelete({
+                    onClick={() => confirmAndDelete({
                       title: `确定要删除「${doc.title}」吗？`,
                       content: '删除后可在回收站还原',
-                      onOk: async () => {
-                        await deleteMutation.mutateAsync([doc.id]);
-                        Toast.success('已移入回收站');
-                        setSelectedDocId(undefined);
-                      },
+                      run: () => deleteMutation.mutateAsync([doc.id]),
+                      successMessage: '已移入回收站',
+                      onDeleted: () => setSelectedDocId(undefined),
                     })}
                   >
                     删除
@@ -849,12 +845,9 @@ export default function WikiDocCenterPage() {
                       { params: { id: cm.id } },
                       { onSuccess: () => Toast.success('已标记解决') },
                     )}
-                    onDelete={(cm) => confirmDelete({
+                    onDelete={(cm) => confirmAndDelete({
                       title: '确定要删除这条评论吗？',
-                      onOk: async () => {
-                        await deleteCommentMutation.mutateAsync({ params: { id: cm.id }, docId: cm.docId });
-                        Toast.success('删除成功');
-                      },
+                      run: () => deleteCommentMutation.mutateAsync({ params: { id: cm.id }, docId: cm.docId }),
                     })}
                   />
                 ))}
