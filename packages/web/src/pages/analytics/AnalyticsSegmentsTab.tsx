@@ -31,7 +31,7 @@ import type { AnalyticsSegmentAttributeCondition, AnalyticsSegmentCompareOp, Ana
 import { ANALYTICS_EVENT_OVERRIDE_STATUS_OPTIONS, ANALYTICS_CAMPAIGN_CHANNEL_OPTIONS, ANALYTICS_CAMPAIGN_STATUS_LABELS, ANALYTICS_IDENTITY_TYPE_OPTIONS, ANALYTICS_SEGMENT_COMPARE_OP_OPTIONS } from '@zenith/shared/analytics';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
-import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
+import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER, renderEnabledStatusTag } from '@/utils/table-columns';
 
 const PAGE_SIZE = 20;
 const MAX_CONDITIONS = 10;
@@ -357,11 +357,7 @@ export default function AnalyticsSegmentsTab() {
       title: '状态',
       dataIndex: 'status',
       width: 90,
-      render: (value: AnalyticsUserSegment['status']) => (
-        <Tag color={value === 'enabled' ? 'green' : 'grey'} size="small">
-          {ANALYTICS_EVENT_OVERRIDE_STATUS_OPTIONS.find((o) => o.value === value)?.label ?? value}
-        </Tag>
-      ),
+      render: renderEnabledStatusTag,
     },
     { title: '成员数（快照）', dataIndex: 'estimatedSize', width: 150, align: 'right' },
     dateTimeColumn('快照时间', 'snapshotAt', { empty: '未物化' }),

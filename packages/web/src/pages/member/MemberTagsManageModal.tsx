@@ -6,7 +6,7 @@ import { useDeleteMemberTag, useMemberTags, useSaveMemberTag, type MemberTagForm
 import { useDictItems } from '@/hooks/useDictItems';
 import { CreateButton } from '@/components/toolbar-controls';
 import { useEditModal } from '@/hooks/useEditModal';
-import { renderEllipsis } from '@/utils/table-columns';
+import { renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 
 const TAG_COLORS = ['red', 'orange', 'amber', 'green', 'teal', 'blue', 'purple', 'pink', 'grey'] as const;
 
@@ -45,7 +45,7 @@ export function MemberTagsManageModal({ visible, onClose }: Readonly<Props>) {
     { title: '会员数', dataIndex: 'memberCount', width: 80, align: 'right', render: (v?: number) => v ?? 0 },
     {
       title: '状态', dataIndex: 'status', width: 80,
-      render: (v: string) => <Tag color={v === 'enabled' ? 'green' : 'grey'} size="small">{v === 'enabled' ? '启用' : '停用'}</Tag>,
+      render: renderEnabledStatusTag,
     },
     {
       title: '操作', dataIndex: 'op', width: 150, fixed: 'right',

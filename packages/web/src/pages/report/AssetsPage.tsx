@@ -33,7 +33,7 @@ import { flattenReportFolders, useReportFolderTree } from '@/hooks/queries/repor
 import { ReportFolderFilter, ReportOwnerFilter } from './report-filters';
 import { useReportOwnerFolderOptions } from './report-lookups';
 import { formatDateTime, formatDateTimeForApi, formatDateTimeRangeForApi } from '@/utils/date';
-import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { normalizeTemplateApplyValues, parseJsonObject } from './report-platform-utils';
 import { REPORT_RESOURCE_TYPE_OPTIONS } from './report-platform-options';
 import { CreateButton } from '@/components/toolbar-controls';
@@ -230,7 +230,7 @@ export default function AssetsPage() {
     { title: '负责人', dataIndex: 'ownerName', width: 120, render: (v) => v || EMPTY_PLACEHOLDER },
     { title: '版本/使用', width: 120, render: (_v, r) => `v${r.version} / ${r.usageCount}` },
     dateTimeColumn('更新时间', 'updatedAt'),
-    { title: '状态', dataIndex: 'status', width: 100, fixed: 'right', render: (v) => <Tag color={v === 'enabled' ? 'green' : 'grey'}>{v === 'enabled' ? '启用' : '停用'}</Tag> },
+    { title: '状态', dataIndex: 'status', width: 100, fixed: 'right', render: renderEnabledStatusTag },
     createOperationColumn<ReportAssetTemplate>({
       width: 180,
       desktopInlineKeys: ['apply', 'edit'],

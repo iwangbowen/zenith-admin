@@ -25,7 +25,7 @@ import { parseJsonObject } from '../report-platform-utils';
 import { REPORT_RESOURCE_TYPE_OPTIONS, reportResourceTypeLabel } from '../report-platform-options';
 import { CreateButton } from '@/components/toolbar-controls';
 import { confirmDanger, confirmDelete } from '@/utils/confirm';
-import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 
 const environmentKindOptions = [
   { value: 'development', label: '开发' },
@@ -110,7 +110,7 @@ export default function GovernanceEnvironmentTab() {
     { title: '访问地址', dataIndex: 'baseUrl', minWidth: 240, render: renderEllipsis },
     { title: '默认环境', dataIndex: 'isDefault', width: 100, render: (v) => v ? <Tag color="blue">默认</Tag> : EMPTY_PLACEHOLDER },
     dateTimeColumn('更新时间', 'updatedAt'),
-    { title: '状态', dataIndex: 'status', width: 100, fixed: 'right', render: (v: string) => <Tag color={v === 'enabled' ? 'green' : 'grey'}>{v === 'enabled' ? '启用' : '停用'}</Tag> },
+    { title: '状态', dataIndex: 'status', width: 100, fixed: 'right', render: renderEnabledStatusTag },
     createOperationColumn<ReportEnvironment>({
       width: 120,
       desktopInlineKeys: ['edit'],

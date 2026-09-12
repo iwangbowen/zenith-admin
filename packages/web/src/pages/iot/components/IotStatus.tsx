@@ -1,7 +1,8 @@
 import { Tag } from '@douyinfe/semi-ui';
+import { renderEnabledStatusTag } from '@/utils/table-columns';
 
 export function IotEnabledTag({ status }: Readonly<{ status: 'enabled' | 'disabled' }>) {
-  return <Tag color={status === 'enabled' ? 'green' : 'red'} size="small">{status === 'enabled' ? '启用' : '禁用'}</Tag>;
+  return renderEnabledStatusTag(status);
 }
 
 export function IotSuccessTag({ success }: Readonly<{ success: boolean }>) {

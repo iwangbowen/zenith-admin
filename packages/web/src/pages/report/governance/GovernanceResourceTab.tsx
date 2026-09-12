@@ -30,7 +30,7 @@ import { REPORT_RESOURCE_TYPE_OPTIONS, reportResourceTypeLabel } from '../report
 import { aclRevokeWarning, normalizeAclGrantValues } from '../report-platform-utils';
 import { CreateButton } from '@/components/toolbar-controls';
 import { confirmDanger, confirmDelete } from '@/utils/confirm';
-import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 
 export default function GovernanceResourceTab() {
   const { hasPermission } = usePermission();
@@ -103,7 +103,7 @@ export default function GovernanceResourceTab() {
     { title: '资源数', dataIndex: 'resourceCount', width: 90, align: 'right', render: (v) => v ?? 0 },
     { title: '排序', dataIndex: 'sort', width: 80 },
     dateTimeColumn('更新时间', 'updatedAt'),
-    { title: '状态', dataIndex: 'status', width: 100, fixed: 'right', render: (v) => <Tag color={v === 'enabled' ? 'green' : 'grey'}>{v === 'enabled' ? '启用' : '停用'}</Tag> },
+    { title: '状态', dataIndex: 'status', width: 100, fixed: 'right', render: renderEnabledStatusTag },
     createOperationColumn<ReportFolderTreeNode>({
       width: 120,
       desktopInlineKeys: ['edit'],

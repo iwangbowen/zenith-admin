@@ -11,7 +11,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import ExportButton from '@/components/ExportButton';
 import { createOperationColumn, type ResponsiveTableAction } from '@/components/ResponsiveTableActions';
-import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { formatDateTimeForApi, formatDateTimeRangeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -232,10 +232,7 @@ export default function DistributionPage() {
       dataIndex: 'status',
       width: 80,
       fixed: 'right',
-      render: (value: CmsDistributionRule['status']) =>
-        <Tag color={value === 'enabled' ? 'green' : 'grey'} size="small">
-          {commonStatuses.find((item) => item.value === value)?.label ?? value}
-        </Tag>,
+      render: renderEnabledStatusTag,
     },
     createOperationColumn<CmsDistributionRule>({
       width: 180,

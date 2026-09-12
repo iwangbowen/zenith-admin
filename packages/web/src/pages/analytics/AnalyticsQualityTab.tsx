@@ -22,7 +22,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { useEditModal } from '@/hooks/useEditModal';
-import { EMPTY_PLACEHOLDER, dateColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateColumn, dateTimeColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { ANALYTICS_ISSUE_TAG_COLOR } from './analytics-tag-colors';
 import { deleteAction, ListSearchToolbar } from '@/components/list-page';
 
@@ -110,11 +110,7 @@ export default function AnalyticsQualityTab() {
       title: '状态',
       dataIndex: 'status',
       width: 100,
-      render: (value: AnalyticsEventOverride['status']) => (
-        <Tag color={value === 'enabled' ? 'green' : 'red'} size="small">
-          {ANALYTICS_EVENT_OVERRIDE_STATUS_OPTIONS.find((o) => o.value === value)?.label ?? value}
-        </Tag>
-      ),
+      render: renderEnabledStatusTag,
     },
     { title: '原因', dataIndex: 'reason', render: renderEllipsis },
     dateTimeColumn('更新时间', 'updatedAt'),

@@ -51,7 +51,7 @@ import {
 import { formatDateTimeForApi, formatDateTimeRangeForApi } from '@/utils/date';
 import { formatMinorAmount } from '@/utils/payment';
 import { confirmDanger } from '@/utils/confirm';
-import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { enumValueOf } from '@zenith/shared/core';
 
@@ -492,7 +492,7 @@ export default function PaymentLedgerPage() {
     { title: '商户配置', dataIndex: 'channelConfigId', width: 220, render: (value: number) => renderEllipsis(merchantNameById.get(value) ?? `配置 #${value}`) },
     { title: '币种', dataIndex: 'currency', width: 80 },
     createdAtColumn as ColumnProps<PaymentLedgerAccount>,
-    { title: '状态', dataIndex: 'status', width: 90, fixed: 'right', render: (value: PaymentLedgerAccount['status']) => <Tag color={value === 'enabled' ? 'green' : 'grey'}>{value === 'enabled' ? '启用' : '停用'}</Tag> },
+    { title: '状态', dataIndex: 'status', width: 90, fixed: 'right', render: renderEnabledStatusTag },
   ];
 
   const journalColumns: ColumnProps<PaymentJournal>[] = [

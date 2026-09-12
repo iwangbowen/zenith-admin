@@ -6,6 +6,7 @@
 import { Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps, Data } from '@douyinfe/semi-ui/lib/es/table';
 import { Check } from 'lucide-react';
+import { COMMON_STATUS_LABELS } from '@zenith/shared/core';
 import { formatDate, formatDateTime } from './date';
 
 /** 空值统一占位符，禁止再使用 '-' / '–' 等变体 */
@@ -96,10 +97,15 @@ export function copyableNoColumn<RecordType extends Data = Data>(
   };
 }
 
+/**
+ * 只读的启用 / 禁用状态标签：文案取 `COMMON_STATUS_LABELS`、配色与字典 `common_status` 种子一致（启用绿、禁用灰），
+ * 与 `<DictTag dictCode="common_status">` 渲染结果相同但不依赖字典请求。可切换的状态列用 `useStatusToggle().column()`。
+ */
 export function renderEnabledStatusTag(value: string): React.ReactNode {
+  const enabled = value === 'enabled';
   return (
-    <Tag color={value === 'enabled' ? 'green' : 'red'} size="small">
-      {value === 'enabled' ? '启用' : '停用'}
+    <Tag color={enabled ? 'green' : 'grey'} size="small">
+      {enabled ? COMMON_STATUS_LABELS.enabled : COMMON_STATUS_LABELS.disabled}
     </Tag>
   );
 }

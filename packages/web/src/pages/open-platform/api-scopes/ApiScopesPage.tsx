@@ -4,7 +4,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import { API_SCOPE_GROUPS, API_SCOPE_GROUP_LABELS } from '@zenith/shared/open-platform';
 import type { ApiScope, CreateApiScopeInput } from '@zenith/shared/open-platform';
-import { copyableNoColumn, createdAtColumn } from '@/utils/table-columns';
+import { copyableNoColumn, createdAtColumn, renderEnabledStatusTag } from '@/utils/table-columns';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -102,7 +102,7 @@ export default function ApiScopesPage() {
       dataIndex: 'status',
       width: 80,
       fixed: 'right' as const,
-      render: (v: string) => <Tag color={v === 'enabled' ? 'green' : 'grey'} size="small">{v === 'enabled' ? '启用' : '禁用'}</Tag>,
+      render: renderEnabledStatusTag,
     },
     createOperationColumn<ApiScope>({
       width: 150,

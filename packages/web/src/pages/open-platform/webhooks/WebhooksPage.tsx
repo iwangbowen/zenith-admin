@@ -32,7 +32,7 @@ import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-fi
 import { confirmDanger } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
-import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 
 const { Text, Paragraph } = Typography;
 
@@ -239,7 +239,7 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
       dataIndex: 'status',
       width: 80,
       fixed: 'right' as const,
-      render: (v: string) => <Tag color={v === 'enabled' ? 'green' : 'grey'} size="small">{v === 'enabled' ? '启用' : '禁用'}</Tag>,
+      render: renderEnabledStatusTag,
     },
     createOperationColumn<AppWebhookSubscription>({
       width: 210,

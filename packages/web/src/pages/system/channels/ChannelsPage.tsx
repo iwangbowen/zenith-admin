@@ -29,7 +29,7 @@ import {
 } from '@/hooks/queries/channels';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { dateTimeColumn, renderEnabledStatusTag } from '@/utils/table-columns';
 
 const TYPE_META: Record<string, { text: string; color: 'green' | 'blue' }> = {
   system: { text: '系统号', color: 'green' },
@@ -105,7 +105,7 @@ export default function ChannelsPage() {
     { title: '类型', dataIndex: 'type', width: 90, render: (v: string) => <Tag color={TYPE_META[v]?.color ?? 'grey'} size="small">{TYPE_META[v]?.text ?? v}</Tag> },
     { title: '订阅数', dataIndex: 'subscriberCount', width: 90, align: 'right' },
     { title: '消息数', dataIndex: 'messageCount', width: 90, align: 'right' },
-    { title: '状态', dataIndex: 'status', width: 80, render: (v: string) => <Tag color={v === 'enabled' ? 'green' : 'grey'} size="small">{v === 'enabled' ? '启用' : '停用'}</Tag> },
+    { title: '状态', dataIndex: 'status', width: 80, render: renderEnabledStatusTag },
     dateTimeColumn('创建时间', 'createdAt'),
     createOperationColumn<ChannelAdmin>({
       width: 260,

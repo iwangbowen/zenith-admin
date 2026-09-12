@@ -30,7 +30,7 @@ import {
   useUpdateChannelAutoReply,
 } from '@/hooks/queries/channels';
 import { CreateButton } from '@/components/toolbar-controls';
-import { renderEllipsis } from '@/utils/table-columns';
+import { renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { CHANNEL_MESSAGE_TYPE_COLOR } from './channel-tag-colors';
 
 interface Props {
@@ -174,7 +174,7 @@ export function ChannelAutoReplyDrawer({ channelId, channelName, visible, onClos
       title: '命中', dataIndex: 'hitCount', width: 70, align: 'right',
       render: (v: number) => <Typography.Text>{Number(v) || 0}</Typography.Text>,
     },
-    { title: '状态', dataIndex: 'status', width: 80, render: (v: string) => <Tag color={v === 'enabled' ? 'green' : 'grey'} size="small">{v === 'enabled' ? '启用' : '停用'}</Tag> },
+    { title: '状态', dataIndex: 'status', width: 80, render: renderEnabledStatusTag },
     { title: '排序', dataIndex: 'sort', width: 64 },
     createOperationColumn<ChannelAutoReply>({
       width: 150,

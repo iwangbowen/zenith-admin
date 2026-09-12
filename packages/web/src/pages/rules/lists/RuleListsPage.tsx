@@ -4,7 +4,7 @@ import { Button, DatePicker, Form, Input, Modal, Select, SideSheet, Space, Tag, 
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RULE_LIST_TYPES, type RuleList, type RuleListItem, type RuleUsageItem } from '@zenith/shared/rules';
 import { enumValueOf } from '@zenith/shared/core';
-import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -164,7 +164,7 @@ export default function RuleListsPage() {
     { title: '描述', dataIndex: 'description', render: renderEllipsis },
     createdAtColumn,
     // 固定列必须连续贴在末尾：createdAtColumn 不带 fixed，夹在状态与操作列之间会撕开右侧固定层
-    { title: '状态', dataIndex: 'status', width: 90, fixed: 'right', render: (s: string) => <Tag color={s === 'enabled' ? 'green' : 'red'}>{s === 'enabled' ? '启用' : '停用'}</Tag> },
+    { title: '状态', dataIndex: 'status', width: 90, fixed: 'right', render: renderEnabledStatusTag },
     createOperationColumn<RuleList>({
       width: 180,
       desktopInlineKeys: ['items', 'edit'],
