@@ -4,6 +4,83 @@
 
 ---
 
+## v2.32.0 - 2026-09-12
+
+**查询链路与列表页样板的第二轮去重收敛 + 防复发守卫**：对照 zenith skill 逐层核对实现与规范的偏移，shared 契约的时间范围 / 关联 ID 积木、server 的审计时间戳 / 取首行 404 / 导出 where、web 列表页的筛选映射 / 多选 / 删除流 / 状态标签 / 表格接线 / 枚举文案、MSW 的精确筛选共约 1,600 处重复实现收敛到公共模块，并在 shared / web 各加一组 ESLint 选择器守卫；顺带修正 9 个导出定义忽略页面筛选、CMS 导出绕过栏目可见性等实际缺陷。
+
+### 升级注意
+
+- 本次**没有**数据库迁移。
+- 导出行为变化：租户 / 定时任务 / 部门 / 文件存储配置 / 登录日志 / 进程 / 地区 / 短链 / 用户反馈 9 个导出此前忽略页面筛选（筛选后导出得到全表），现与列表同条件；CMS 内容 / 发布产物导出改走列表 service 的可见性判定，未被授权任何栏目的非管理员不再能导出全站；邮件 / 短信发送日志、流程监控、登录日志导出改取已提交条件而非未点「查询」的草稿。
+- 文案以 shared SSOT 为准的可见变化：支付应用 / 账本账户状态「停用 → 禁用」、流程监控审批方式 random「随机 → 随机一人」、流程事件订阅下拉补齐 `instance.returned`「实例退回」、会员充值页退款中标签色与支付订单页对齐。
+- 契约：`cronJobContract.list` 新增 `status` 筛选（此前页面的状态筛选对列表与导出都无效）；`startTime` / `endTime`、`xxxId` 查询串的校验规则不变，只是改由积木声明。
+- Demo 模式（MSW）：布尔 / 数字 0 的精确筛选此前被当成「未筛选」，现按值过滤。
+- 前端公共 API（仅影响自定义代码）：`usePagination(pageSize)` 数字形态保留，新增 `usePagination({ pageSize, resetKey })` / `useListSearch({ resetKey })`；`confirmAndDelete` 的 `successMessage` 支持 `(result) => string`、`onDeleted(result)` 拿到执行结果；新增 ESLint 守卫（见 Added），命中的旧写法需迁移或加 `eslint-disable-next-line no-restricted-syntax -- 理由`。
+
+### Added
+
+#### 契约积木（shared）
+
+- `...dateRangeQuery(subject?)`：标准 `startTime` / `endTime` 范围端点一次展开；`idQuery(description?)`：查询串关联 ID 筛选积木。
+- 13 个业务域补齐约 60 组 `XXX_LABELS` / `XXX_OPTIONS`（ai 反馈状态、analytics 事件元数据 / 前端错误 / 回放、biz 请假 / 支付示例、drive 排序字段 / 外链状态、identity 登录状态与事件、messaging 公告优先级、mp 账号 / 加密模式 / 关注 / 自动回复 / 群发 / 二维码 / 授权 scope / 客服会话、open-platform OAuth2 scope / Webhook 签名模式、ops SSL 证书 / 库表漂移 / 防火墙 / 进程、payment 扣款与预授权方式 / 账本借贷方向 / 资金预占 / 发件箱事件 / 投诉回复方、platform 文件 ACL / 操作日志结果 / 监控告警状态、rules 清单类型 / 决策状态 / 评分卡、workflow 定义 / 事件 / 投递 / 触发 / 作业 / 引擎 / 连接器 / 表单 / 健康检查 / 节点 / 补偿 / 上传模式 / 监听事件）。
+- `@zenith/shared/ops` 的 `matchesProcessFilter`，server 侧 `matchesDepartmentFilter` / `matchesRegionFilter`：树形列表与平铺导出共用的内存筛选谓词。
+
+#### 服务端积木（server）
+
+- `formatTimestamps(row)`：`createdAt` / `updatedAt` 审计时间戳对一次展开；`requireFirstRow(queryPromise, message, status?)`：「取首行不存在即 404」。
+- `buildCmsContentListWhere(filter)` / `buildCmsPublishArtifactsWhere(filter)`：CMS 内容与发布产物的列表 / 导出共用 where（含站点 / 栏目访问断言与可见栏目集合）；导出改用 `cmsContentListColumns` 投影，不再拉 body / search_vector / attachments 大列。
+- 9 个导出定义对应的 `buildXxxWhere(filter)` + `XxxListFilter` 导出；`filtered-exports.test.ts` / `cms-contents.test.ts` 锁定导出只经 service 构造器取 where。
+
+#### 前端积木（web）
+
+- `compactParams<T>`（`lib/query.ts`）：丢弃 `undefined` / `null` / 空串、保留 `0` / `false`、保留键类型，`filterQuery = useMemo(() => compactParams({...}), [submittedParams])` 供列表 / 导出 / 深链共用；`compactQuery` 退为弱类型包装。
+- `useRowSelection<K, T>({ extra })`（`components/list-page`）：表格多选状态、`clear`、`hasSelection` 与 memo 化的 `rowSelection`。
+- `confirmAndDelete<R>` / `deleteAction<R>`：结果化成功文案与收尾回调。
+- `usePagination` / `useListSearch` 的 `resetKey`（支持数组按元素比较）：外部作用域切换在同一渲染内回到第 1 页，取代 `useEffect(() => setPage(1), [scopeId])`。
+- `mocks/utils/filter.ts` 的 `matchesFilter(actual, expected)`；`utils/payment.ts` 的 `PAYMENT_ORDER_STATUS_TAG_COLOR` / `PAYMENT_REFUND_STATUS_TAG_COLOR`；设计器 `RUNTIME_STATUS_HEADER_COLOR`。
+
+#### ESLint 守卫
+
+- shared（`src/*/contracts/**`）：封禁 `startTime` / `endTime` 键下的 `dateRangeBound()` 与 `xxxId` 键下手写的 `z.coerce.number().int().positive().optional()`。
+- web 列表页（含会员端 / 审批端）：封禁 `confirmDelete({...})` 内再手写 `Toast.success`、`rowSelection.onChange` 里的 `keys as …` 断言、`<Tag color={x === 'enabled' ? … : …}>` 两态标签、`submitted*.x || undefined`（含 `.trim()` 与别名链）、`useEffect(() => setPage(1), [...])`。
+- web mocks：封禁 `!query.x || item.x === query.x`。
+
+### Changed
+
+#### 契约（shared）
+
+- 54 组 `startTime` / `endTime` → `...dateRangeQuery()`；134 处 `xxxId` 查询筛选 → `idQuery()`；IoT 21 个 `ListXxxQuery` 与 10 个未使用的 Filter 别名删除，其余 33 个仅作参数类型的 `QueryOutputOf` 导出别名内联到 service。
+
+#### 服务端
+
+- 245 对 `createdAt: formatDateTime(row.createdAt), updatedAt: …` → `...formatTimestamps(row)`；97 处 `const [row] = await …limit(1); requireRow(row, …)` → `requireFirstRow(...)`；剩余单表计数 → `db.$count`，IoT 设备日志时间范围 → `dateRangeConditions`，analytics 残余 `conditions.push` → 静态 `buildWhere` 实参。
+- 9 个导出定义与 CMS 内容 / 发布产物导出复用列表 service 的 where（见「升级注意」）。
+
+#### 前端列表页
+
+- 170 个列表页 / Tab 共约 360 处 `submittedParams.x || undefined` 与导出侧重复的 `buildExportQuery()` 收敛为一份 `filterQuery`；`ExportButton` 改用 `permission` prop，删除 `hasPermission ? <ExportButton/> : null` 双写；「勾选才筛选」的布尔开关显式写 `flag ? true : undefined`。
+- 28 页多选状态 → `useRowSelection`；16 页 22 处操作列删除 → `deleteAction`，33 处 `confirmDelete + Toast.success` → `confirmAndDelete`（`.then()` 等价形态一并迁入；吞掉失败后关弹窗的 5 处保留并注明）；16 处手写启用 / 禁用标签 → `renderEnabledStatusTag`（文案颜色跟随 `COMMON_STATUS_LABELS`）；3 处对 `buildPagination` 结果的冗余覆盖删除。
+- 44 处手写 `dataSource / loading / onRefresh / refreshLoading / rowKey / size / bordered` 表格接线 → `listTableProps`（派生 / 嵌套数据与专用表格组件保留）；6 处作用域切换 `useEffect(() => setPage(1))` → `resetKey`；搜索区残余的字符串 id 下拉 → `FilterSelect<number>`、手写分页状态 → `usePagination`、双份工具栏 JSX → `ListSearchToolbar`。
+- 40 个页面 / 组件 97 处页面本地枚举文案与选项常量改引 shared SSOT，`Record<T, { text, color }>` 拆为页面 `XXX_COLORS` + shared 文案；重复的支付状态色表与设计器运行态表头色提到公共模块。
+
+#### Mock
+
+- 29 个 handler 160 处 `!query.x || item.x === query.x` → `matchesFilter`。
+
+#### 文档
+
+- zenith skill：`constraints.md` / `constraints-frontend.md` / `crud-frontend.md` / `crud-mock.md` 同步为上述形态（`compactParams` 单次映射、`dateRangeQuery` / `idQuery` / `formatTimestamps` / `requireFirstRow` 积木、`useRowSelection` / `resetKey` / `confirmAndDelete` 用法、文案与颜色拆分、各项 ESLint 守卫与豁免写法）；`docs/backend/export-center.md`、`docs/frontend/data-fetching.md` 同步。
+
+### Fixed
+
+- 租户 / 定时任务 / 部门 / 文件存储配置 / 登录日志 / 进程 / 地区 / 短链 / 用户反馈 9 个导出定义的 `countRows` / `streamRows` 为无参函数，页面传入的筛选被整体丢弃、筛选后导出得到全表；现复用列表 where。
+- CMS 内容导出的栏目可见性用「未授权任何栏目时不加限制」，与列表的 `getAccessibleChannelIds()`（空集不返回任何行）分叉——同一非管理员列表看不到内容却能导出全站；现两侧同一构造器。
+- 定时任务页的状态筛选对列表与导出均无效（契约缺字段）；登录日志 / 邮件发送日志 / 短信发送日志 / 流程监控导出误取未提交的草稿条件；CMS 内容导出漏传回收站 / 归档 / 形态筛选。
+- Demo 模式下 MSW 的布尔 / 数字 0 精确筛选被当成未筛选。
+- 公众号自动回复 / 粉丝 / 标签 / 二维码切换账号、网盘切换目录时，先用旧页码请求一次新作用域的数据再由 effect 纠正；现在同一渲染内回到第 1 页。
+
+---
+
 ## v2.31.0 - 2026-09-12
 
 **列表查询链路与前端数据层的规范收敛**：服务端 20 个业务域的列表 / 统计函数入参统一为契约派生类型 `QueryOutputOf`，WHERE 条件从「攒数组再 `and(...)`」改为单个 `buildWhere(...)` 调用，路由把校验后的 query 原样交给 service；前端约 130 个列表页的搜索区收敛到 `ListSearchToolbar + bind`，约 100 个域 hooks 文件从手写 `useQuery` / `useMutation` + 字面量 key 树迁到契约派生（`useApiQuery` / `useApiMutation` / `createResourceQueries`，key 一律 `contractKey`），域根广播失效替换为按真实副作用枚举的具名 helper；两端各加 ESLint 守卫防复发，zenith skill 文档同步改写为最优形态。
