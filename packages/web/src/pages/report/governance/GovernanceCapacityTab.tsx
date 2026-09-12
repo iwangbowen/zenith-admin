@@ -28,7 +28,7 @@ import { validateQuotaForm } from '../report-platform-utils';
 import { CreateButton, ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter } from '@/components/search-filters';
 import { confirmDanger, confirmDelete } from '@/utils/confirm';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { DEFAULT_TIMEZONE } from '@/utils/timezones';
 
 export default function GovernanceCapacityTab() {
@@ -125,8 +125,8 @@ export default function GovernanceCapacityTab() {
   ];
   const costColumns: ColumnProps<ReportQueryCostLog>[] = [
     { title: '场景', dataIndex: 'scene', minWidth: 130 },
-    { title: '用户 ID', dataIndex: 'userId', width: 100, render: (v) => v || '—' },
-    { title: '数据集/源', width: 130, render: (_v, r) => r.datasetId ? `数据集 #${r.datasetId}` : r.datasourceId ? `数据源 #${r.datasourceId}` : '—' },
+    { title: '用户 ID', dataIndex: 'userId', width: 100, render: (v) => v || EMPTY_PLACEHOLDER },
+    { title: '数据集/源', width: 130, render: (_v, r) => r.datasetId ? `数据集 #${r.datasetId}` : r.datasourceId ? `数据源 #${r.datasourceId}` : EMPTY_PLACEHOLDER },
     { title: '排队/执行', width: 140, render: (_v, r) => `${r.queuedMs} / ${r.durationMs} ms` },
     { title: '行数', dataIndex: 'rowCount', width: 100, align: 'right' },
     { title: '字节', dataIndex: 'byteSize', width: 110, align: 'right' },

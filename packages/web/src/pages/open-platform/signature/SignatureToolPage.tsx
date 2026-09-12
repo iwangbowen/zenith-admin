@@ -33,6 +33,7 @@ function randomNonce(): string {
 export default function SignatureToolPage() {
   const { hasPermission } = usePermission();
   const canUse = hasPermission('open:signature:use');
+  // useEditModal 例外：签名调试工具表单（本地计算并展示结果，不保存实体）
   const formApi = useRef<FormApi | null>(null);
 
   const docQuery = useSignatureAlgorithm(canUse);

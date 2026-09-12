@@ -7,7 +7,7 @@ import { Play, Upload as UploadIcon, Sparkles, Blocks } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useExportJobRunner } from '@/hooks/useExportJobRunner';
-import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
+import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import {
@@ -498,8 +498,8 @@ export default function DatasetsPage() {
       ) : v,
     },
     { title: '数据源', dataIndex: 'datasourceName', width: 160, render: renderEllipsis },
-    { title: '负责人', dataIndex: 'ownerName', width: 120, render: (v: string | null) => v || '—' },
-    { title: '目录', dataIndex: 'folderName', width: 140, render: (v: string | null) => v || '—' },
+    { title: '负责人', dataIndex: 'ownerName', width: 120, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
+    { title: '目录', dataIndex: 'folderName', width: 140, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
     {
       title: '类型', dataIndex: 'type', width: 80,
       render: (t: ReportDatasourceType) => renderReportDatasourceTypeTag(t),
@@ -510,7 +510,7 @@ export default function DatasetsPage() {
       title: '治理提示', dataIndex: '__warnings', width: 170,
       render: (_: unknown, record) => {
         const warning = warningMap.get(record.id);
-        if (!warning) return '—';
+        if (!warning) return EMPTY_PLACEHOLDER;
         return <Space spacing={4}>{warning.anomalies > 0 ? <Tag color="orange" size="small">质量异常 {warning.anomalies}</Tag> : null}{warning.deprecated ? <Tag color="red" size="small">已弃用</Tag> : null}</Space>;
       },
     },

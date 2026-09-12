@@ -8,7 +8,7 @@ import { AppModal } from '@/components/AppModal';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { usePermission } from '@/hooks/usePermission';
-import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
+import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import {
   aiPromptKeys,
   useAiPromptDetail,
@@ -250,7 +250,7 @@ export default function PromptTemplatesPage() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <Space>
                     <Tag color="blue" size="small">v{v.version}</Tag>
-                    <Typography.Text type="tertiary" size="small">{v.creatorName ?? '—'} · {v.createdAt}</Typography.Text>
+                    <Typography.Text type="tertiary" size="small">{v.creatorName ?? EMPTY_PLACEHOLDER} · {v.createdAt}</Typography.Text>
                   </Space>
                   {hasPermission('ai:prompt:edit') && (
                     <Button

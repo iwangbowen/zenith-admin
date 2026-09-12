@@ -5,7 +5,8 @@ import {
   useNodesState, useEdgesState, useReactFlow, useUpdateNodeInternals,
   type Node as RFNode, type Edge as RFEdge, type NodeProps,
 } from '@xyflow/react';
-import { Badge, Empty, Spin, Table, Tag, Typography } from '@douyinfe/semi-ui';
+import { Badge, Empty, Spin, Tag, Typography } from '@douyinfe/semi-ui';
+import { ConfigurableTable } from '@/components/ConfigurableTable';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { IotTopologyChild } from '@zenith/shared/iot';
 import { ThemedReactFlow } from '@/components/ThemedReactFlow';
@@ -188,7 +189,7 @@ function IotTopologyGraph({ deviceId, onOpenChild }: Readonly<IotTopologyViewPro
     return <Empty description="该网关下还没有子设备；在设备管理中注册子设备并指定所属网关" style={{ padding: '48px 0' }} />;
   }
   if (topology.children.length > GRAPH_MAX_CHILDREN) {
-    return <TopologyTable childrenRows={topology.children} onOpenChild={onOpenChild} />;
+    return <TopologyTable childrenRows={topology.children} onOpenChild={onOpenChild} onRefresh={() => void topologyQuery.refetch()} refreshLoading={topologyQuery.isFetching} />;
   }
 
   return (
@@ -235,16 +236,18 @@ function IotTopologyGraph({ deviceId, onOpenChild }: Readonly<IotTopologyViewPro
 }
 
 /** 规模兜底：子设备过多时用表格呈现（同一数据源） */
-function TopologyTable({ childrenRows, onOpenChild }: Readonly<{
+function TopologyTable({ childrenRows, onOpenChild, onRefresh, refreshLoading }: Readonly<{
   childrenRows: IotTopologyChild[];
   onOpenChild?: (childDeviceId: number) => void;
+  onRefresh: () => void;
+  refreshLoading: boolean;
 }>) {
   const columns: ColumnProps<IotTopologyChild>[] = [
     {
       title: '状态', dataIndex: 'online', width: 80,
       render: (v: boolean) => <Tag size="small" color={v ? 'green' : 'grey'}>{v ? '在线' : '离线'}</Tag>,
     },
-    { title: '设备名称', dataIndex: 'name', width: 180 },
+    { title: '设备名称', dataIndex: 'name', minWidth: 180 },
     {
       title: 'SN', dataIndex: 'sn', width: 200,
       render: (v: string) => <Text type="tertiary" size="small" style={{ whiteSpace: 'nowrap' }}>{v}</Text>,
@@ -256,13 +259,16 @@ function TopologyTable({ childrenRows, onOpenChild }: Readonly<{
     dateTimeColumn<IotTopologyChild>('最后在线', 'lastSeenAt'),
   ];
   return (
-    <Table
+    <ConfigurableTable
       bordered
+      columnSettingsKey="iot-topology-children"
       columns={columns}
       dataSource={childrenRows}
       rowKey="id"
       size="small"
       pagination={false}
+      onRefresh={onRefresh}
+      refreshLoading={refreshLoading}
       onRow={(record) => ({
         onClick: () => record && onOpenChild?.(record.id),
         style: { cursor: onOpenChild ? 'pointer' : undefined },

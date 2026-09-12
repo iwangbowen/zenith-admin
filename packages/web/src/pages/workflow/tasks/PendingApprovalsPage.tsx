@@ -14,7 +14,7 @@ import WorkflowApprovalDetailSheet from '@/components/workflow/WorkflowApprovalD
 import SavedViewsBar from '@/components/workflow/SavedViewsBar';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useQuickPhrases } from '@/hooks/useQuickPhrases';
-import { dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '../../../utils/table-columns';
 import { useWorkflowSelectableUsers } from '@/hooks/queries/workflow-shared';
 import { ApiError } from '@/lib/query';
 import {
@@ -202,7 +202,7 @@ export default function PendingApprovalsPage() {
       title: '申请人',
       dataIndex: 'initiatorName',
       width: 120,
-      render: (v: string | null) => v ?? '—',
+      render: (v: string | null) => v ?? EMPTY_PLACEHOLDER,
     },
     dateTimeColumn('提交时间', 'createdAt'),
     createOperationColumn<PendingItem>({

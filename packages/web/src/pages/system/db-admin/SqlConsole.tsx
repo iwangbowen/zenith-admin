@@ -386,7 +386,7 @@ export const SqlConsole = forwardRef<SqlConsoleHandle, SqlConsoleProps>(function
                 display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer',
                 padding: '4px 10px', borderRadius: 'var(--semi-border-radius-medium)', fontSize: 13,
                 border: '1px solid var(--semi-color-border)',
-                background: active ? 'var(--semi-color-primary-light-default)' : 'var(--semi-color-bg-1)',
+                background: active ? 'var(--semi-color-primary-light-default)' : 'var(--surface-card)',
                 color: active ? 'var(--semi-color-primary)' : 'var(--semi-color-text-1)',
               }}
             >

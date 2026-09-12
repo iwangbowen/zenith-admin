@@ -2,12 +2,14 @@ import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Banner, Button, Descriptions, Form, Popconfirm, Radio, RadioGroup, Select,
-  SideSheet, Spin, Table, TabPane, Tabs, Tag, Toast, Tooltip, Typography,
+  SideSheet, Spin, TabPane, Tabs, Tag, Toast, Tooltip, Typography,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { AreaChart, EmptyChart, LineChart, chartOptions, makeAreaSpec, makeLineSpec, useChartPalette } from '@/components/charts';
 import AppModal from '@/components/AppModal';
+import { ConfigurableTable } from '@/components/ConfigurableTable';
+import { listTableProps } from '@/components/list-page';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
@@ -517,7 +519,8 @@ export default function IotDeviceDetailDrawer({ device, onClose }: Readonly<IotD
                   </Popconfirm>
                 )}
               </div>
-              <Table
+              <ConfigurableTable
+                columnSettingsKey="iot-device-properties"
                 columns={propertyColumns}
                 dataSource={propertyRows}
                 rowKey="key"
@@ -525,6 +528,8 @@ export default function IotDeviceDetailDrawer({ device, onClose }: Readonly<IotD
                 pagination={false}
                 loading={shadowQuery.isPending || modelQuery.isPending}
                 empty="物模型未声明属性，且暂无上报数据"
+                onRefresh={() => { void shadowQuery.refetch(); void modelQuery.refetch(); }}
+                refreshLoading={shadowQuery.isFetching || modelQuery.isFetching}
               />
             </TabPane>
 
@@ -600,14 +605,10 @@ export default function IotDeviceDetailDrawer({ device, onClose }: Readonly<IotD
                 <Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 8 }}>
                   设备 WS 在线时即时推送；离线设备在上线或心跳时补收，超时未回执自动标记「已超时」。
                 </Text>
-                <Table
+                <ConfigurableTable
+                  columnSettingsKey="iot-device-commands"
                   columns={commandColumns}
-                  dataSource={commandsQuery.data?.list ?? []}
-                  rowKey="id"
-                  size="small"
-                  loading={commandsQuery.isFetching}
-                  empty="暂无指令记录"
-                  pagination={buildCommandPagination(commandsQuery.data?.total ?? 0)}
+                  {...listTableProps(commandsQuery, { pagination: buildCommandPagination, empty: '暂无指令记录' })}
                 />
               </TabPane>
             )}
@@ -629,14 +630,10 @@ export default function IotDeviceDetailDrawer({ device, onClose }: Readonly<IotD
                   width={140}
                 />
               </div>
-              <Table
+              <ConfigurableTable
+                columnSettingsKey="iot-device-events"
                 columns={eventColumns}
-                dataSource={eventsQuery.data?.list ?? []}
-                rowKey="id"
-                size="small"
-                loading={eventsQuery.isFetching}
-                empty="暂无设备事件"
-                pagination={buildEventPagination(eventsQuery.data?.total ?? 0)}
+                {...listTableProps(eventsQuery, { pagination: buildEventPagination, empty: '暂无设备事件' })}
               />
             </TabPane>
 
@@ -650,14 +647,13 @@ export default function IotDeviceDetailDrawer({ device, onClose }: Readonly<IotD
                   width={140}
                 />
               </div>
-              <Table
+              <ConfigurableTable
+                columnSettingsKey="iot-device-logs"
                 columns={logColumns}
-                dataSource={logsQuery.data?.list ?? []}
-                rowKey="id"
-                size="small"
-                loading={logsQuery.isFetching}
-                empty={`暂无设备日志（设备侧通过 log 帧 / POST ${iotIngestContract.logs.fullPath} 上报）`}
-                pagination={buildLogPagination(logsQuery.data?.total ?? 0)}
+                {...listTableProps(logsQuery, {
+                  pagination: buildLogPagination,
+                  empty: `暂无设备日志（设备侧通过 log 帧 / POST ${iotIngestContract.logs.fullPath} 上报）`,
+                })}
               />
             </TabPane>
 

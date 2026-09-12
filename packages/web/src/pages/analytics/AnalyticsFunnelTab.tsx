@@ -236,6 +236,7 @@ export default function AnalyticsFunnelTab() {
         <Modal
           title="保存漏斗配置"
           visible={saveVisible}
+          closeOnEsc
           onCancel={() => setSaveVisible(false)}
           onOk={() => void saveReport()}
           confirmLoading={saveReportMutation.isPending}

@@ -15,6 +15,7 @@ import { PAYMENT_REPORT_GROUP_BY_LABELS, PAYMENT_REPORT_GROUP_BY_OPTIONS } from 
 import type { PaymentReportGroupBy, PaymentReportRow } from '@zenith/shared/payment';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter } from '@/components/search-filters';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 const yuan = formatYuan;
 const groupByOptions = PAYMENT_REPORT_GROUP_BY_OPTIONS;
@@ -172,8 +173,8 @@ export default function PaymentReportsPage() {
     { title: '分账', dataIndex: 'sharing', width: 120, align: 'right', render: (v: number) => yuan(v ?? 0) },
     { title: '净额', dataIndex: 'net', width: 130, align: 'right', render: (v: number) => yuan(v) },
     { title: '成功笔数', dataIndex: 'count', width: 100, align: 'right' },
-    { title: '笔均', dataIndex: 'avg', width: 110, align: 'right', render: (_: unknown, r: PaymentReportRow) => (r.count > 0 ? yuan(Math.round(r.gross / r.count)) : '—') },
-    { title: '退款率', dataIndex: 'refundRate', width: 100, align: 'right', render: (_: unknown, r: PaymentReportRow) => (r.gross > 0 ? `${((r.refund / r.gross) * 100).toFixed(1)}%` : '—') },
+    { title: '笔均', dataIndex: 'avg', width: 110, align: 'right', render: (_: unknown, r: PaymentReportRow) => (r.count > 0 ? yuan(Math.round(r.gross / r.count)) : EMPTY_PLACEHOLDER) },
+    { title: '退款率', dataIndex: 'refundRate', width: 100, align: 'right', render: (_: unknown, r: PaymentReportRow) => (r.gross > 0 ? `${((r.refund / r.gross) * 100).toFixed(1)}%` : EMPTY_PLACEHOLDER) },
     ...(showCompareCols ? [
       { title: '收款环比', dataIndex: 'grossDelta', width: 110, align: 'right' as const, render: (_: unknown, r: PaymentReportRow) => <DeltaText cur={r.gross} prev={prevRowMap.get(r.key)?.gross} /> },
       { title: '净额环比', dataIndex: 'netDelta', width: 110, align: 'right' as const, render: (_: unknown, r: PaymentReportRow) => <DeltaText cur={r.net} prev={prevRowMap.get(r.key)?.net} /> },
@@ -249,15 +250,15 @@ export default function PaymentReportsPage() {
       <Spin spinning={loading}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <StatGrid minItemWidth={168}>
-            <StatCard title="收款总额" value={summary ? yuan(summary.totalGross) : '—'} accent="var(--semi-color-success)" deltaLabel="环比" deltaFormat="ratio" delta={summary && prev ? calcDelta(summary.totalGross, prev.totalGross) : null} />
-            <StatCard title="手续费总额" value={summary ? yuan(summary.totalFee) : '—'} accent="var(--semi-color-warning)" deltaLabel="环比" deltaFormat="ratio" delta={summary && prev ? calcDelta(summary.totalFee, prev.totalFee) : null} />
-            <StatCard title="退款总额" value={summary ? yuan(summary.totalRefund) : '—'} accent="var(--semi-color-warning)" deltaLabel="环比" deltaFormat="ratio" delta={summary && prev ? calcDelta(summary.totalRefund, prev.totalRefund) : null} />
-            <StatCard title="分账支出" value={summary ? yuan(summary.totalSharing ?? 0) : '—'} deltaLabel="环比" deltaFormat="ratio" delta={summary && prev ? calcDelta(summary.totalSharing, prev.totalSharing) : null} />
-            <StatCard title="净额" value={summary ? yuan(summary.totalNet) : '—'} accent="var(--semi-color-primary)" sub="收款 - 手续费 - 退款 - 分账" deltaLabel="环比" deltaFormat="ratio" delta={summary && prev ? calcDelta(summary.totalNet, prev.totalNet) : null} />
-            <StatCard title="成功笔数" value={summary?.totalCount ?? '—'} deltaLabel="环比" deltaFormat="ratio" delta={summary && prev ? calcDelta(summary.totalCount, prev.totalCount) : null} />
-            <StatCard title="客单价" value={avgTicket != null ? yuan(avgTicket) : '—'} sub="收款总额 / 成功笔数" />
-            <StatCard title="退款率" value={refundRatio != null ? `${refundRatio.toFixed(1)}%` : '—'} accent={refundRatio != null && refundRatio > 20 ? 'var(--semi-color-danger)' : undefined} sub="退款 / 收款" />
-            <StatCard title="费率成本" value={feeRatio != null ? `${feeRatio.toFixed(2)}%` : '—'} sub="手续费 / 收款" />
+            <StatCard title="收款总额" value={summary ? yuan(summary.totalGross) : EMPTY_PLACEHOLDER} accent="var(--semi-color-success)" deltaLabel="环比" deltaFormat="ratio" delta={summary && prev ? calcDelta(summary.totalGross, prev.totalGross) : null} />
+            <StatCard title="手续费总额" value={summary ? yuan(summary.totalFee) : EMPTY_PLACEHOLDER} accent="var(--semi-color-warning)" deltaLabel="环比" deltaFormat="ratio" delta={summary && prev ? calcDelta(summary.totalFee, prev.totalFee) : null} />
+            <StatCard title="退款总额" value={summary ? yuan(summary.totalRefund) : EMPTY_PLACEHOLDER} accent="var(--semi-color-warning)" deltaLabel="环比" deltaFormat="ratio" delta={summary && prev ? calcDelta(summary.totalRefund, prev.totalRefund) : null} />
+            <StatCard title="分账支出" value={summary ? yuan(summary.totalSharing ?? 0) : EMPTY_PLACEHOLDER} deltaLabel="环比" deltaFormat="ratio" delta={summary && prev ? calcDelta(summary.totalSharing, prev.totalSharing) : null} />
+            <StatCard title="净额" value={summary ? yuan(summary.totalNet) : EMPTY_PLACEHOLDER} accent="var(--semi-color-primary)" sub="收款 - 手续费 - 退款 - 分账" deltaLabel="环比" deltaFormat="ratio" delta={summary && prev ? calcDelta(summary.totalNet, prev.totalNet) : null} />
+            <StatCard title="成功笔数" value={summary?.totalCount ?? EMPTY_PLACEHOLDER} deltaLabel="环比" deltaFormat="ratio" delta={summary && prev ? calcDelta(summary.totalCount, prev.totalCount) : null} />
+            <StatCard title="客单价" value={avgTicket != null ? yuan(avgTicket) : EMPTY_PLACEHOLDER} sub="收款总额 / 成功笔数" />
+            <StatCard title="退款率" value={refundRatio != null ? `${refundRatio.toFixed(1)}%` : EMPTY_PLACEHOLDER} accent={refundRatio != null && refundRatio > 20 ? 'var(--semi-color-danger)' : undefined} sub="退款 / 收款" />
+            <StatCard title="费率成本" value={feeRatio != null ? `${feeRatio.toFixed(2)}%` : EMPTY_PLACEHOLDER} sub="手续费 / 收款" />
           </StatGrid>
 
           {/* 期内逐日走势（主维度为「按日」时下方柱状图即走势，避免重复展示） */}

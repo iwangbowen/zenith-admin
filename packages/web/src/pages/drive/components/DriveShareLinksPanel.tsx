@@ -1,6 +1,5 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { Button, Empty, Form, Popover, Spin, Table, Toast, Tooltip, Typography, useFormState } from '@douyinfe/semi-ui';
-import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { QRCodeSVG } from 'qrcode.react';
 import { Copy, Droplets, Inbox, KeyRound, Link2, Pencil, Plus, QrCode, Scissors, ShieldCheck, Trash2, Undo2 } from 'lucide-react';
@@ -15,12 +14,14 @@ import {
   type DriveNode,
   type DriveShareKind,
   type DriveShareLink,
+  type UpdateDriveShareLinkInput,
 } from '@zenith/shared/drive';
 import { AppModal } from '@/components/AppModal';
 import {
   useCreateDriveShareLink, useDeleteDriveShareLink, useDriveCollectSubmissions, useDriveNodeShareLinks, useEnsureDriveShareShortLink,
   useRevokeDriveShareLink, useUpdateDriveShareLink,
 } from '@/hooks/queries/drive';
+import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
 import { copyTextWithToast } from '@/utils/clipboard';
@@ -49,6 +50,28 @@ interface ShareLinkFormValues {
   remark?: string;
 }
 
+/** 新建走节点子资源接口（带 kind），编辑走外链自身接口（不可改 kind、可清密码） */
+type ShareLinkSavePayload = CreateDriveShareLinkInput | UpdateDriveShareLinkInput;
+
+const NEW_SHARE_LINK_VALUES = (): ShareLinkFormValues => ({
+  kind: 'share', capability: 'preview', collectPreview: false, expireAt: new Date(Date.now() + 7 * 86_400_000), maxAccessCount: null, maxDownloadCount: null,
+  allowedIps: [], watermark: false, collectMaxFileSizeMb: null, collectAllowedExtensions: [], collectRequireSubmitter: true, collectMaxUploads: null, remark: '',
+});
+
+const shareLinkToValues = (editing: DriveShareLink): ShareLinkFormValues => ({
+  kind: editing.kind,
+  capability: editing.capabilities.includes('download') ? 'download' : 'preview',
+  collectPreview: editing.capabilities.includes('preview'),
+  expireAt: editing.expireAt ? new Date(editing.expireAt) : null,
+  maxAccessCount: editing.maxAccessCount, maxDownloadCount: editing.maxDownloadCount,
+  allowedIps: editing.allowedIps, watermark: editing.watermark,
+  collectMaxFileSizeMb: editing.collectPolicy?.maxFileSizeMb ?? null,
+  collectAllowedExtensions: editing.collectPolicy?.allowedExtensions ?? [],
+  collectRequireSubmitter: editing.collectPolicy?.requireSubmitter ?? true,
+  collectMaxUploads: editing.collectPolicy?.maxUploads ?? null,
+  remark: editing.remark ?? '',
+});
+
 interface DriveShareLinksPanelProps {
   readonly node: DriveNode;
   readonly allowExternalShare: boolean;
@@ -75,10 +98,10 @@ function CollectSubmissionsModal({ link, onClose }: { readonly link: DriveShareL
   );
 }
 
-/** 表单内按种类切换字段：Semi Form 的 useFormState 只能在 Form 子树中使用 */
-function ShareLinkFormFields({ node, editing }: { readonly node: DriveNode; readonly editing: DriveShareLink | 'new' }) {
+/** 表单内按种类切换字段：Semi Form 的 useFormState 只能在 Form 子树中使用；editing 为 null 表示新建 */
+function ShareLinkFormFields({ node, editing }: { readonly node: DriveNode; readonly editing: DriveShareLink | null }) {
   const { values } = useFormState<ShareLinkFormValues>();
-  const isNew = editing === 'new';
+  const isNew = editing === null;
   const kind = values?.kind ?? 'share';
   return (
     <>
@@ -123,9 +146,7 @@ export function DriveShareLinksPanel({ node, allowExternalShare }: DriveShareLin
   const revoke = useRevokeDriveShareLink();
   const remove = useDeleteDriveShareLink();
   const shortLink = useEnsureDriveShareShortLink();
-  const [editing, setEditing] = useState<DriveShareLink | null | 'new'>(null);
   const [submissionsOf, setSubmissionsOf] = useState<DriveShareLink | null>(null);
-  const formApiRef = useRef<FormApi<ShareLinkFormValues> | null>(null);
   const canCreate = allowExternalShare && hasPermission('drive:link:create') && roleAtLeast(node.myRole, 'editor');
 
   const toPayload = (values: ShareLinkFormValues, kind: DriveShareKind): CreateDriveShareLinkInput => ({
@@ -148,21 +169,27 @@ export function DriveShareLinksPanel({ node, allowExternalShare }: DriveShareLin
     } : null,
   });
 
-  const handleOk = async () => {
-    const api = formApiRef.current;
-    if (!api) return;
-    const values = await api.validate();
-    if (editing === 'new') {
-      const link = await create.mutateAsync({ params: { id: node.id }, body: toPayload(values, values.kind ?? 'share') });
-      setEditing(null);
-      await copyTextWithToast(shareLinkAbsoluteUrl(link), { success: link.kind === 'collect' ? '收集链接已创建并复制到剪贴板' : '外链已创建并复制到剪贴板' });
-    } else if (editing) {
+  const modal = useEditModal<DriveShareLink, ShareLinkFormValues, ShareLinkSavePayload>({
+    save: {
+      mutateAsync: ({ id, values }) => (id === undefined
+        ? create.mutateAsync({ params: { id: node.id }, body: values as CreateDriveShareLinkInput })
+        : update.mutateAsync({ params: { id }, body: values as UpdateDriveShareLinkInput })),
+      isPending: create.isPending || update.isPending,
+    },
+    defaults: NEW_SHARE_LINK_VALUES,
+    toValues: shareLinkToValues,
+    beforeSave: (values, { editing }) => {
+      if (!editing) return toPayload(values, values.kind ?? 'share');
       const { kind: _kind, ...payload } = toPayload(values, editing.kind);
-      await update.mutateAsync({ params: { id: editing.id }, body: { ...payload, clearPassword: editing.hasPassword && !values.password && values.clearPassword ? true : undefined } });
-      setEditing(null);
-      Toast.success('外链已更新');
-    }
-  };
+      return { ...payload, clearPassword: editing.hasPassword && !values.password && values.clearPassword ? true : undefined };
+    },
+    // 新建成功的反馈由「复制到剪贴板」的 Toast 承担，不再叠加默认提示
+    successMessage: ({ isEdit }) => (isEdit ? '外链已更新' : null),
+    onSaved: (link, { isEdit }) => {
+      if (isEdit) return;
+      void copyTextWithToast(shareLinkAbsoluteUrl(link), { success: link.kind === 'collect' ? '收集链接已创建并复制到剪贴板' : '外链已创建并复制到剪贴板' });
+    },
+  });
 
   const canManage = hasPermission('drive:link:create') && roleAtLeast(node.myRole, 'editor');
 
@@ -216,7 +243,7 @@ export function DriveShareLinksPanel({ node, allowExternalShare }: DriveShareLin
               </Tooltip>
             )}
             {isCollect && canManage && <Tooltip content="收集记录"><Button size="small" theme="borderless" type="tertiary" icon={<Inbox size={14} />} aria-label="收集记录" onClick={() => setSubmissionsOf(r)} /></Tooltip>}
-            {canManage && r.state !== 'revoked' && <Tooltip content="编辑"><Button size="small" theme="borderless" type="tertiary" icon={<Pencil size={14} />} aria-label="编辑外链" onClick={() => setEditing(r)} /></Tooltip>}
+            {canManage && r.state !== 'revoked' && <Tooltip content="编辑"><Button size="small" theme="borderless" type="tertiary" icon={<Pencil size={14} />} aria-label="编辑外链" onClick={() => modal.openEdit(r)} /></Tooltip>}
             {canManage && r.state !== 'revoked' && <Tooltip content="撤销"><Button size="small" theme="borderless" type="danger" icon={<Undo2 size={14} />} aria-label="撤销外链" onClick={() => revokeLink(r)} /></Tooltip>}
             {canManage && <Tooltip content="删除记录"><Button size="small" theme="borderless" type="danger" icon={<Trash2 size={14} />} aria-label="删除外链记录" onClick={() => deleteLink(r)} /></Tooltip>}
           </div>
@@ -230,32 +257,13 @@ export function DriveShareLinksPanel({ node, allowExternalShare }: DriveShareLin
     );
   };
 
-  const initValues: ShareLinkFormValues = editing && editing !== 'new'
-    ? {
-      kind: editing.kind,
-      capability: editing.capabilities.includes('download') ? 'download' : 'preview',
-      collectPreview: editing.capabilities.includes('preview'),
-      expireAt: editing.expireAt ? new Date(editing.expireAt) : null,
-      maxAccessCount: editing.maxAccessCount, maxDownloadCount: editing.maxDownloadCount,
-      allowedIps: editing.allowedIps, watermark: editing.watermark,
-      collectMaxFileSizeMb: editing.collectPolicy?.maxFileSizeMb ?? null,
-      collectAllowedExtensions: editing.collectPolicy?.allowedExtensions ?? [],
-      collectRequireSubmitter: editing.collectPolicy?.requireSubmitter ?? true,
-      collectMaxUploads: editing.collectPolicy?.maxUploads ?? null,
-      remark: editing.remark ?? '',
-    }
-    : {
-      kind: 'share', capability: 'preview', collectPreview: false, expireAt: new Date(Date.now() + 7 * 86_400_000), maxAccessCount: null, maxDownloadCount: null,
-      allowedIps: [], watermark: false, collectMaxFileSizeMb: null, collectAllowedExtensions: [], collectRequireSubmitter: true, collectMaxUploads: null, remark: '',
-    };
-
   return (
     <div className="drive-panel">
       <div className="drive-panel__section-head">
         <Typography.Text type="tertiary" size="small">
           {allowExternalShare ? (node.type === 'folder' ? '外链可匿名访问；文件收集链接允许他人向该文件夹提交文件。' : '外链可匿名访问，请谨慎设置有效期与密码。') : '该空间已关闭外链分享。'}
         </Typography.Text>
-        {canCreate && <Button size="small" theme="solid" icon={<Plus size={14} />} onClick={() => setEditing('new')}>创建外链</Button>}
+        {canCreate && <Button size="small" theme="solid" icon={<Plus size={14} />} onClick={modal.openCreate}>创建外链</Button>}
       </div>
       <Spin spinning={query.isFetching}>
         {(query.data ?? []).length === 0
@@ -263,13 +271,10 @@ export function DriveShareLinksPanel({ node, allowExternalShare }: DriveShareLin
           : <ul className="drive-link-list">{(query.data ?? []).map(renderLink)}</ul>}
       </Spin>
 
-      <AppModal visible={!!editing} title={editing === 'new' ? '创建外链' : `编辑${editing ? DRIVE_SHARE_KIND_LABELS[editing.kind] : ''}链接`} onCancel={() => setEditing(null)} onOk={handleOk}
-        okButtonProps={{ loading: create.isPending || update.isPending }} width={560} closeOnEsc>
-        {editing && (
-          <Form<ShareLinkFormValues> key={editing === 'new' ? 'new' : editing.id} getFormApi={(api) => { formApiRef.current = api; }} initValues={initValues} labelPosition="left" labelWidth={90}>
-            <ShareLinkFormFields node={node} editing={editing} />
-          </Form>
-        )}
+      <AppModal {...modal.modalProps} title={modal.editing ? `编辑${DRIVE_SHARE_KIND_LABELS[modal.editing.kind]}链接` : '创建外链'} width={560}>
+        <Form key={modal.formKey} {...modal.formProps}>
+          <ShareLinkFormFields node={node} editing={modal.editing} />
+        </Form>
       </AppModal>
       <CollectSubmissionsModal link={submissionsOf} onClose={() => setSubmissionsOf(null)} />
     </div>

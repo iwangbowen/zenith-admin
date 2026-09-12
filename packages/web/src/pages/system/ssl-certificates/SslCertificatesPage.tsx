@@ -18,7 +18,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
 import { formatDateTime } from '@/utils/date';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import {
   downloadSslCertificate,
   sslCertificateKeys,
@@ -262,18 +262,18 @@ export default function SslCertificatesPage() {
                   { key: '域名', value: displayDetail.domain },
                   { key: '类型', value: TYPE_LABELS[displayDetail.type] },
                   { key: '状态', value: <Tag color={STATUS_CONFIG[displayDetail.status].color} size="small">{STATUS_CONFIG[displayDetail.status].label}</Tag> },
-                  { key: '生效时间', value: displayDetail.validFrom ? formatDateTime(displayDetail.validFrom) : '—' },
-                  { key: '失效时间', value: displayDetail.validTo ? formatDateTime(displayDetail.validTo) : '—' },
+                  { key: '生效时间', value: displayDetail.validFrom ? formatDateTime(displayDetail.validFrom) : EMPTY_PLACEHOLDER },
+                  { key: '失效时间', value: displayDetail.validTo ? formatDateTime(displayDetail.validTo) : EMPTY_PLACEHOLDER },
                   { key: '剩余天数', value: renderDaysRemaining(displayDetail.daysRemaining) },
                   { key: '自动续期', value: displayDetail.autoRenew ? '是' : '否' },
                   { key: '创建时间', value: formatDateTime(displayDetail.createdAt) },
                   { key: '更新时间', value: formatDateTime(displayDetail.updatedAt) },
-                  { key: '颁发者', value: displayDetail.issuer ?? '—', span: 2 },
-                  { key: '主题', value: displayDetail.subject ?? '—', span: 2 },
-                  { key: '序列号', value: displayDetail.serialNumber ?? '—', span: 2 },
-                  { key: '指纹', value: displayDetail.fingerprint ?? '—', span: 2 },
-                  { key: '证书路径', value: displayDetail.certPath ?? '—', span: 2 },
-                  { key: '私钥路径', value: displayDetail.keyPath ?? '—', span: 2 },
+                  { key: '颁发者', value: displayDetail.issuer ?? EMPTY_PLACEHOLDER, span: 2 },
+                  { key: '主题', value: displayDetail.subject ?? EMPTY_PLACEHOLDER, span: 2 },
+                  { key: '序列号', value: displayDetail.serialNumber ?? EMPTY_PLACEHOLDER, span: 2 },
+                  { key: '指纹', value: displayDetail.fingerprint ?? EMPTY_PLACEHOLDER, span: 2 },
+                  { key: '证书路径', value: displayDetail.certPath ?? EMPTY_PLACEHOLDER, span: 2 },
+                  { key: '私钥路径', value: displayDetail.keyPath ?? EMPTY_PLACEHOLDER, span: 2 },
                 ]}
               />
             </div>

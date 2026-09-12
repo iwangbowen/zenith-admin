@@ -14,6 +14,7 @@ import { FileImage, Video, Music, FileText, File } from 'lucide-react';
 import { useFileStats } from '@/hooks/queries/files';
 import { FILE_STORAGE_PROVIDER_LABELS } from '@zenith/shared/platform';
 import { DataBar } from '@/components/data-viz/DataBar';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { formatBytes } from '@zenith/shared/core';
 
 const PROVIDER_LABELS: Record<string, string> = FILE_STORAGE_PROVIDER_LABELS;
@@ -98,16 +99,16 @@ export default function FileStatsPanel() {
 
         {/* 汇总卡片 */}
         <StatGrid>
-          <StatCard title="文件总数" value={totalFiles > 0 ? totalFiles.toLocaleString() : '—'} />
-          <StatCard title="占用空间" value={summary ? formatBytes(summary.totalSize) : '—'} />
+          <StatCard title="文件总数" value={totalFiles > 0 ? totalFiles.toLocaleString() : EMPTY_PLACEHOLDER} />
+          <StatCard title="占用空间" value={summary ? formatBytes(summary.totalSize) : EMPTY_PLACEHOLDER} />
           <StatCard
             title="今日新增"
-            value={summary?.todayCount == null ? '—' : summary.todayCount.toLocaleString()}
+            value={summary?.todayCount == null ? EMPTY_PLACEHOLDER : summary.todayCount.toLocaleString()}
             sub="今日共上传"
           />
           <StatCard
             title="本月新增"
-            value={summary?.thisMonthCount == null ? '—' : summary.thisMonthCount.toLocaleString()}
+            value={summary?.thisMonthCount == null ? EMPTY_PLACEHOLDER : summary.thisMonthCount.toLocaleString()}
             sub="本月共上传"
           />
         </StatGrid>

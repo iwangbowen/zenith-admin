@@ -268,7 +268,7 @@ export default function AlertsPage() {
               {record.lastTriggered ? '已触发' : '正常'}
             </Tag>
             <Typography.Text type="tertiary" size="small">
-              {record.lastValue == null ? '—' : `值 ${record.lastValue}`}
+              {record.lastValue == null ? EMPTY_PLACEHOLDER : `值 ${record.lastValue}`}
             </Typography.Text>
           </span>
         </Tooltip>
@@ -284,7 +284,7 @@ export default function AlertsPage() {
       render: (_: unknown, record: ReportAlertRule) => (
         <div>
           <Tag color={record.lastDeliveryStatus === 'success' ? 'green' : record.lastDeliveryStatus === 'failed' ? 'red' : record.lastDeliveryStatus === 'partial' ? 'orange' : record.lastDeliveryStatus === 'pending' ? 'blue' : 'grey'} size="small">
-            {record.lastDeliveryStatus ? REPORT_DELIVERY_STATUS_LABELS[record.lastDeliveryStatus] : '—'}
+            {record.lastDeliveryStatus ? REPORT_DELIVERY_STATUS_LABELS[record.lastDeliveryStatus] : EMPTY_PLACEHOLDER}
           </Tag>
           <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
             {record.lastDeliveryAt || '未投递'}
@@ -518,7 +518,7 @@ export default function AlertsPage() {
           columns={[
             { title: '类型', dataIndex: 'triggerType', width: 90, render: (value: string) => REPORT_DELIVERY_TRIGGER_LABELS[value as keyof typeof REPORT_DELIVERY_TRIGGER_LABELS] ?? value },
             { title: '状态', dataIndex: 'status', width: 100, render: (value: string) => <Tag color={value === 'success' ? 'green' : value === 'failed' ? 'red' : value === 'partial' ? 'orange' : value === 'pending' ? 'blue' : 'grey'}>{REPORT_DELIVERY_STATUS_LABELS[value as keyof typeof REPORT_DELIVERY_STATUS_LABELS] ?? value}</Tag> },
-            { title: '值', dataIndex: 'lastValue', width: 80, render: (value: number | null) => value ?? '—' },
+            { title: '值', dataIndex: 'lastValue', width: 80, render: (value: number | null) => value ?? EMPTY_PLACEHOLDER },
             dateTimeColumn('开始时间', 'startedAt'),
             dateTimeColumn('完成时间', 'completedAt'),
             dateTimeColumn('确认时间', 'acknowledgedAt', { empty: '未确认' }),

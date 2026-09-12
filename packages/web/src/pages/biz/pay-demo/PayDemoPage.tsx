@@ -122,6 +122,7 @@ export default function PayDemoPage() {
   } = useListSearch<PayDemoSearchParams>({ defaults: DEFAULT_PAY_DEMO_SEARCH_PARAMS, listKey: bizPayDemoKeys.lists });
 
   const [payTarget, setPayTarget] = useState<BizPayDemo | null>(null);
+  // useEditModal 例外：对既有订单发起支付的动作表单（结果为收银台 / 支付信息），非实体新增 / 编辑
   const payFormApi = useRef<FormApi | null>(null);
 
   const [payResult, setPayResult] = useState<CreatePaymentResult | null>(null);

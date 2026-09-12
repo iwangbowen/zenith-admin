@@ -10,7 +10,7 @@ import { getFileIcon, getFolderIcon } from '@/utils/fileIcons';
 import { isArchive, isEditableFile } from '../fs-utils';
 import type { EntryActions } from '../entry-actions';
 import type { ClipOp, FsEntry, SortField, SortState } from '../types';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { formatBytes } from '@zenith/shared/core';
 
 // Table 虚拟滚动：ConfigurableTable 有工具栏（约36px）+ 表头（约37px）= 73px
@@ -57,13 +57,13 @@ export default function FmListView({
         );
       },
     },
-    { title: '大小', dataIndex: 'size', width: 100, align: 'right', sorter: true, sortOrder: sortState?.field === 'size' ? sortState.order : false, render: (v: number, r: FsEntry) => r.type === 'dir' ? '—' : formatBytes(v) },
+    { title: '大小', dataIndex: 'size', width: 100, align: 'right', sorter: true, sortOrder: sortState?.field === 'size' ? sortState.order : false, render: (v: number, r: FsEntry) => r.type === 'dir' ? EMPTY_PLACEHOLDER : formatBytes(v) },
     dateTimeColumn('修改时间', 'mtime', { sorter: true, sortOrder: sortState?.field === 'mtime' ? sortState.order : false }),
     // Windows 下权限/属主概念不适用，隐藏对应列
     ...(isWindows ? [] : [
-      { title: '权限', dataIndex: 'permissions', width: 110, render: (v?: string) => v ? <Tag size="small" color="grey">{v}</Tag> : '—' },
-      { title: 'UID', dataIndex: 'uid', width: 70, render: (v?: number) => v ?? '—' },
-      { title: 'GID', dataIndex: 'gid', width: 70, render: (v?: number) => v ?? '—' },
+      { title: '权限', dataIndex: 'permissions', width: 110, render: (v?: string) => v ? <Tag size="small" color="grey">{v}</Tag> : EMPTY_PLACEHOLDER },
+      { title: 'UID', dataIndex: 'uid', width: 70, render: (v?: number) => v ?? EMPTY_PLACEHOLDER },
+      { title: 'GID', dataIndex: 'gid', width: 70, render: (v?: number) => v ?? EMPTY_PLACEHOLDER },
     ] satisfies ColumnProps<FsEntry>[]),
     createOperationColumn<FsEntry>({
       width: 180,

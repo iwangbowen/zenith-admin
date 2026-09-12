@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { ArrayField, Banner, Button, Col, Form, Row, SideSheet, Spin, Table, Tabs, TabPane, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
+import { ArrayField, Banner, Button, Col, Form, Row, SideSheet, Spin, Tabs, TabPane, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Download, Plus, Upload } from 'lucide-react';
 import AppModal from '@/components/AppModal';
+import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
@@ -425,9 +426,11 @@ export default function IotThingModelDrawer({ product, onClose }: Readonly<IotTh
                 <Button icon={<Plus size={14} />} theme="light" onClick={propertyModal.openCreate}>新增属性</Button>
               </div>
             )}
-            <Table
+            <ConfigurableTable
+              columnSettingsKey="iot-thing-model-properties"
               columns={propertyColumns} dataSource={model?.properties ?? []} rowKey="id"
               size="small" pagination={false} empty="尚未声明属性"
+              onRefresh={() => void modelQuery.refetch()} refreshLoading={modelQuery.isFetching}
             />
           </TabPane>
           <TabPane tab={`服务（${model?.services.length ?? 0}）`} itemKey="services">
@@ -436,9 +439,11 @@ export default function IotThingModelDrawer({ product, onClose }: Readonly<IotTh
                 <Button icon={<Plus size={14} />} theme="light" onClick={serviceModal.openCreate}>新增服务</Button>
               </div>
             )}
-            <Table
+            <ConfigurableTable
+              columnSettingsKey="iot-thing-model-services"
               columns={serviceColumns} dataSource={model?.services ?? []} rowKey="id"
               size="small" pagination={false} empty="尚未声明服务"
+              onRefresh={() => void modelQuery.refetch()} refreshLoading={modelQuery.isFetching}
             />
           </TabPane>
           <TabPane tab={`事件（${model?.events.length ?? 0}）`} itemKey="events">
@@ -447,9 +452,11 @@ export default function IotThingModelDrawer({ product, onClose }: Readonly<IotTh
                 <Button icon={<Plus size={14} />} theme="light" onClick={eventModal.openCreate}>新增事件</Button>
               </div>
             )}
-            <Table
+            <ConfigurableTable
+              columnSettingsKey="iot-thing-model-events"
               columns={eventColumns} dataSource={model?.events ?? []} rowKey="id"
               size="small" pagination={false} empty="尚未声明事件"
+              onRefresh={() => void modelQuery.refetch()} refreshLoading={modelQuery.isFetching}
             />
           </TabPane>
         </Tabs>

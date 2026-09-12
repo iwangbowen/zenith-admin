@@ -50,6 +50,7 @@ interface FormValues {
 export default function CouponsPage() {
   const navigate = useNavigate();
   const { hasPermission } = usePermission();
+  // useEditModal 例外：向指定会员发放优惠券的动作表单，非实体新增 / 编辑
   const issueFormApi = useRef<FormApi | null>(null);
   const {
     page, pageSize, buildPagination,

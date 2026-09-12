@@ -27,6 +27,7 @@ import { ModuleOperationPie } from '@/components/logs/ModuleOperationPie';
 import { buildUserChartLabels, formatUserLabel } from '@/components/UserDisplay';
 import { LogStatsScaffold, calcSuccessRate, calcSuccessRateDelta, deltaOf, weekdayBuckets } from '@/components/logs/LogStatsScaffold';
 import { shortDate } from '@/utils/date';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 const METHOD_COLORS: Record<string, string> = {
   GET: '#3b82f6',
@@ -343,7 +344,7 @@ export default function OperationLogStatsPanel() {
         <StatGrid style={{ marginBottom: 16 }}>
           <StatCard
             title="总请求数"
-            value={summary ? summary.total.toLocaleString() : '—'}
+            value={summary ? summary.total.toLocaleString() : EMPTY_PLACEHOLDER}
             sub={`近 ${days} 天累计`}
             accent="var(--semi-color-primary)"
             delta={summary && prevSummary ? deltaOf(summary.total, prevSummary.total) : null}
@@ -351,29 +352,29 @@ export default function OperationLogStatsPanel() {
           />
           <StatCard
             title="请求成功率"
-            value={successRate == null ? '—' : `${successRate}%`}
+            value={successRate == null ? EMPTY_PLACEHOLDER : `${successRate}%`}
             sub={summary ? `成功 ${summary.successCount.toLocaleString()} · 失败 ${summary.failCount.toLocaleString()}` : undefined}
             accent="var(--semi-color-success)"
             delta={successRateDelta}
             deltaLabel="较上一周期"
             deltaFormat="ratio"
           />
-          <StatCard title="平均响应时间" value={avgDuration ?? '—'} sub="基于有记录的请求" accent="var(--semi-color-warning)" />
+          <StatCard title="平均响应时间" value={avgDuration ?? EMPTY_PLACEHOLDER} sub="基于有记录的请求" accent="var(--semi-color-warning)" />
           <StatCard
             title="P95 响应时间"
-            value={summary?.p95DurationMs == null ? '—' : formatAvgDuration(summary.p95DurationMs)}
+            value={summary?.p95DurationMs == null ? EMPTY_PLACEHOLDER : formatAvgDuration(summary.p95DurationMs)}
             sub={summary?.p50DurationMs == null ? undefined : `P50 ${formatAvgDuration(summary.p50DurationMs)}`}
             accent="var(--semi-color-warning)"
           />
           <StatCard
             title="P99 响应时间"
-            value={summary?.p99DurationMs == null ? '—' : formatAvgDuration(summary.p99DurationMs)}
+            value={summary?.p99DurationMs == null ? EMPTY_PLACEHOLDER : formatAvgDuration(summary.p99DurationMs)}
             sub="长尾请求耗时"
             accent={summary?.p99DurationMs != null && summary.p99DurationMs >= 3000 ? 'var(--semi-color-danger)' : 'var(--semi-color-warning)'}
           />
           <StatCard
             title="活跃用户数"
-            value={summary ? summary.uniqueUsers.toLocaleString() : '—'}
+            value={summary ? summary.uniqueUsers.toLocaleString() : EMPTY_PLACEHOLDER}
             sub="不重复用户账号"
             accent="var(--semi-color-data-2)"
             delta={summary && prevSummary ? deltaOf(summary.uniqueUsers, prevSummary.uniqueUsers) : null}

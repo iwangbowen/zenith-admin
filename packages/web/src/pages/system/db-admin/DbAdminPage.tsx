@@ -1424,6 +1424,7 @@ export default function DbAdminPage() {
       <Modal
         title={`SQL 预览（${pendingCount} 处修改）`}
         visible={sqlPreview !== null}
+        closeOnEsc
         onCancel={() => setSqlPreview(null)}
         width={720}
         footer={

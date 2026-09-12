@@ -7,7 +7,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
+import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '../../utils/table-columns';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
@@ -91,7 +91,7 @@ export default function MpDraftsPage() {
       title: '状态', dataIndex: 'status', width: 100,
       render: (v: string) => (v === 'published' ? <Tag color="green" type="light">已推送</Tag> : <Tag color="grey" type="light">草稿</Tag>),
     },
-    { title: '微信 MediaID', dataIndex: 'wechatMediaId', width: 200, render: (v: string | null) => v || '—' },
+    { title: '微信 MediaID', dataIndex: 'wechatMediaId', width: 200, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
     createdAtColumn,
     createOperationColumn<MpDraft>({
       width: 210,

@@ -3,15 +3,17 @@
  * 版本列表走后端分页（版本数随发布次数线性增长，不再全量拉取）。
  */
 import { useEffect, useState } from 'react';
-import { Modal, Table, Tag, Toast, Button, Spin } from '@douyinfe/semi-ui';
+import { Modal, Tag, Toast, Button, Spin } from '@douyinfe/semi-ui';
 import { GitCompare, ArrowLeft } from 'lucide-react';
 import WorkflowSideSheet from '@/components/workflow/WorkflowSideSheet';
+import { ConfigurableTable } from '@/components/ConfigurableTable';
+import { listTableProps } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowVersionDiff } from '@zenith/shared/workflow';
 import WorkflowVersionDiffView from './WorkflowVersionDiffView';
 import { useRestoreWorkflowDefinitionVersion, useWorkflowDefinitionDiff, useWorkflowDefinitionVersions } from '@/hooks/queries/workflow-definitions';
-import { TABLE_PAGE_SIZE_OPTIONS, usePagination } from '@/hooks/usePagination';
+import { usePagination } from '@/hooks/usePagination';
 import { EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
 
 interface Props {
@@ -36,7 +38,6 @@ export default function WorkflowVersionsSheet({
   const [diffParams, setDiffParams] = useState<{ left: number; right: number } | null>(null);
   const { page, pageSize, resetPage, buildPagination } = usePagination();
   const versionsQuery = useWorkflowDefinitionVersions(definitionId, { page, pageSize }, visible);
-  const versions = versionsQuery.data?.list ?? [];
   const diffQuery = useWorkflowDefinitionDiff(
     { definitionId, left: diffParams?.left ?? 0, right: diffParams?.right ?? 0 },
     visible && !!diffParams,
@@ -123,28 +124,24 @@ export default function WorkflowVersionsSheet({
               onClick={compareSelected}
             >对比所选两个版本</Button>
           </div>
-          <Table
-            dataSource={versions}
-            loading={versionsQuery.isFetching}
-            rowKey="id"
-            pagination={{
-              ...buildPagination(versionsQuery.data?.total ?? 0),
-              showSizeChanger: true,
-              pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS,
-            }}
+          <ConfigurableTable
+            columnSettingsKey="workflow-definition-versions"
             columns={columns}
-            rowSelection={{
-              selectedRowKeys: selectedIds,
-              onChange: (keys) => {
-                const ids = (keys ?? []).map(Number);
-                if (ids.length > 2) {
-                  Toast.warning('最多选择两个版本对比');
-                  setSelectedIds(ids.slice(-2));
-                } else {
-                  setSelectedIds(ids);
-                }
+            {...listTableProps(versionsQuery, {
+              pagination: buildPagination,
+              rowSelection: {
+                selectedRowKeys: selectedIds,
+                onChange: (keys) => {
+                  const ids = (keys ?? []).map(Number);
+                  if (ids.length > 2) {
+                    Toast.warning('最多选择两个版本对比');
+                    setSelectedIds(ids.slice(-2));
+                  } else {
+                    setSelectedIds(ids);
+                  }
+                },
               },
-            }}
+            })}
           />
         </Spin>
       )}

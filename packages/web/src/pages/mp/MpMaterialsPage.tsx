@@ -168,7 +168,7 @@ export default function MpMaterialsPage() {
         </Spin>
       </AppModal>
 
-      <Modal title="上传素材到微信" visible={uploadVisible} footer={null} onCancel={() => setUploadVisible(false)} width={520}>
+      <Modal title="上传素材到微信" visible={uploadVisible} closeOnEsc footer={null} onCancel={() => setUploadVisible(false)} width={520}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 4 }}>
           <div>
             <Typography.Text type="secondary" size="small">素材类型</Typography.Text>

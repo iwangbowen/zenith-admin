@@ -8,6 +8,7 @@ import { usePermission } from '@/hooks/usePermission';
 import {
   useRollbackWikiDoc, useWikiDocDetail, useWikiDocVersionDetail, useWikiDocVersions,
 } from '@/hooks/queries/wiki-docs';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 const { Text, Title } = Typography;
 
@@ -139,7 +140,7 @@ export default function WikiDocHistoryPage() {
                       </Space>
                       <div>
                         <Text type="tertiary" size="small">
-                          {item.authorName ?? '—'} · {item.createdAt}
+                          {item.authorName ?? EMPTY_PLACEHOLDER} · {item.createdAt}
                         </Text>
                       </div>
                       {item.changeNote ? (

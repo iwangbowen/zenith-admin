@@ -1,13 +1,12 @@
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { Button, Col, Form, Row, Spin } from '@douyinfe/semi-ui';
 import { ChevronsUpDown, ChevronsDownUp } from 'lucide-react';
-import { DEPARTMENT_CATEGORIES, userContract, type Department } from '@zenith/shared/identity';
+import { DEPARTMENT_CATEGORIES, type Department } from '@zenith/shared/identity';
 import { enumValueOf } from '@zenith/shared/core';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import DictTag from '@/components/DictTag';
 import { useDictItems } from '@/hooks/useDictItems';
-import { api } from '@/lib/contract-query';
+import { useUserList } from '@/hooks/queries/users';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useTreeExpansion } from '@/hooks/useTreeExpansion';
@@ -16,7 +15,7 @@ import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
+import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '../../../utils/table-columns';
 import {
   departmentKeys,
   departmentsToTreeData,
@@ -101,12 +100,7 @@ export default function DepartmentsPage() {
   const toggleStatusMutation = useSaveDepartment();
   const deleteMutation = useDeleteDepartment();
   const [leaderKeyword, setLeaderKeyword] = useState('');
-  const leaderOptionsQuery = useQuery({
-    queryKey: ['users', 'options', leaderKeyword],
-    queryFn: () => api(userContract.list, { query: { pageSize: 50, keyword: leaderKeyword || undefined } }),
-    enabled: modal.visible,
-    staleTime: 30_000,
-  });
+  const leaderOptionsQuery = useUserList({ pageSize: 50, keyword: leaderKeyword || undefined }, modal.visible);
   const leaderOptions = (leaderOptionsQuery.data?.list ?? []).map((u) => ({
     value: u.id,
     label: u.departmentName ? `${u.nickname}-${u.departmentName}` : u.nickname,
@@ -148,8 +142,8 @@ export default function DepartmentsPage() {
     { title: '部门名称', dataIndex: 'name', minWidth: 220 },
     { title: '部门编码', dataIndex: 'code', width: 180, render: renderEllipsis },
     { title: '类别', dataIndex: 'category', width: 90, render: (value: string) => <DictTag dictCode="department_category" value={value} /> },
-    { title: '负责人', dataIndex: 'leaderName', width: 120, render: (value) => value || '—' },
-    { title: '联系电话', dataIndex: 'phone', width: 140, render: (value) => value || '—' },
+    { title: '负责人', dataIndex: 'leaderName', width: 120, render: (value) => value || EMPTY_PLACEHOLDER },
+    { title: '联系电话', dataIndex: 'phone', width: 140, render: (value) => value || EMPTY_PLACEHOLDER },
     { title: '邮箱', dataIndex: 'email', width: 200, render: renderEllipsis },
     { title: '排序', dataIndex: 'sort', width: 90 },
     memberPreviewColumn<Department>({

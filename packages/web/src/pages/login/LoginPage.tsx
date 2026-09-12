@@ -89,6 +89,7 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
   const [debouncedTenantCode] = useDebouncedValue(tenantCode, { wait: 250 });
   const [directoryProvider, setDirectoryProvider] = useState<TenantIdentityProviderSummary | null>(null);
   const [directoryLoginLoading, setDirectoryLoginLoading] = useState(false);
+  // useEditModal 例外：认证流程（企业目录账号登录）
   const directoryFormApi = useRef<FormApi | null>(null);
 
   const enterpriseProvidersQuery = useEnterpriseProviders(debouncedTenantCode);

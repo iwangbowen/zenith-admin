@@ -269,7 +269,7 @@ function ErDiagramInner({ schema, onNodeDoubleClick }: Readonly<ErDiagramProps>)
       target: `${fk.referencedSchema}.${fk.referencedTable}`,
       label: fk.columns.join(','),
       labelStyle: { fontSize: 10, fill: 'var(--semi-color-text-2)' },
-      labelBgStyle: { fill: 'var(--semi-color-bg-1)' },
+      labelBgStyle: { fill: 'var(--surface-card)' },
       style: { stroke: 'var(--semi-color-primary)', strokeWidth: 1.2 },
       markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--semi-color-primary)' },
     }));

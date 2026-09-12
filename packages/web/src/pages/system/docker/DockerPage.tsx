@@ -43,7 +43,7 @@ import {
   useDockerRemoveNetwork,
   useDockerRemoveVolume,
   useDockerVolumes,
-  fetchDockerContainerLogs,
+  useDockerContainerLogs,
   type DockerPruneVariables,
 } from '@/hooks/queries/docker';
 import type {
@@ -58,7 +58,7 @@ import type {
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { confirmDelete, confirmDanger } from '@/utils/confirm';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { groupContainersByCompose } from './docker-grouping';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
@@ -102,7 +102,7 @@ const STATE_COLOR: Record<string, 'green' | 'grey' | 'orange' | 'blue' | 'red'> 
 
 function formatPorts(ports: DockerPortBinding[]): string {
   const b = ports.filter((p) => p.publicPort).map((p) => `${p.publicPort}→${p.privatePort}/${p.type}`).join(', ');
-  return b || '—';
+  return b || EMPTY_PLACEHOLDER;
 }
 
 function groupByCompose(containers: DockerContainer[]): (DockerContainer & { children?: DockerContainer[] })[] {
@@ -132,8 +132,6 @@ function ContainersTab() {
   const navigate = useNavigate();
   const [keyword, setKeyword] = useState('');
   const [logsContainer, setLogsContainer] = useState<DockerContainer | null>(null);
-  const [logs, setLogs] = useState('');
-  const [logsLoading, setLogsLoading] = useState(false);
   const [statsContainer, setStatsContainer] = useState<DockerContainer | null>(null);
   const [stats, setStats] = useState<DockerContainerStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
@@ -142,8 +140,16 @@ function ContainersTab() {
   const [inspectLoading, setInspectLoading] = useState(false);
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
   const [logsFollowing, setLogsFollowing] = useState(true);
-  const logsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const logsPreRef = useRef<HTMLPreElement>(null);
+
+  // 日志抽屉：追踪态每 2s 轮询末尾 500 行，暂停追踪即停止轮询
+  const logsQuery = useDockerContainerLogs(logsContainer?.id, {
+    tail: 500,
+    enabled: !!logsContainer,
+    refetchInterval: logsFollowing ? 2000 : false,
+  });
+  const logs = logsQuery.data?.logs ?? '';
+  const logsLoading = !!logsContainer && logsQuery.isPending;
 
   const containersQuery = useDockerContainers();
   const containers = containersQuery.data ?? EMPTY_CONTAINERS;
@@ -171,50 +177,26 @@ function ContainersTab() {
     }
   }, [logs, logsFollowing]);
 
-  // 卸载时清理轮询定时器
-  useEffect(() => () => { if (logsIntervalRef.current) clearInterval(logsIntervalRef.current); }, []);
-
   const handleAction = async (id: string, action: 'start' | 'stop' | 'restart') => {
     await actionMutation.mutateAsync({ id, action });
     const msgMap = { start: '已启动', stop: '已停止', restart: '已重启' } as const;
     Toast.success({ content: msgMap[action], duration: 2 });
   };
 
-  const openLogs = async (c: DockerContainer) => {
-    if (logsIntervalRef.current) { clearInterval(logsIntervalRef.current); logsIntervalRef.current = null; }
-    setLogsContainer(c); setLogsLoading(true); setLogs(''); setLogsFollowing(true);
-    const fetchOnce = async () => {
-      try {
-        const { logs: text } = await fetchDockerContainerLogs(c.id, 500);
-        setLogs(text); setLogsLoading(false);
-      } catch { /* 请求层已提示 */ }
-    };
-    await fetchOnce();
-    logsIntervalRef.current = setInterval(() => void fetchOnce(), 2000);
+  const openLogs = (c: DockerContainer) => {
+    setLogsContainer(c);
+    setLogsFollowing(true);
   };
 
   const closeLogs = () => {
-    if (logsIntervalRef.current) { clearInterval(logsIntervalRef.current); logsIntervalRef.current = null; }
-    setLogsContainer(null); setLogs('');
+    setLogsContainer(null);
   };
 
   const toggleLogsFollow = () => {
-    setLogsFollowing(prev => {
-      const next = !prev;
-      if (!next) {
-        if (logsIntervalRef.current) { clearInterval(logsIntervalRef.current); logsIntervalRef.current = null; }
-      } else if (logsContainer) {
-        const fetchOnce = async () => {
-          try {
-            const { logs: text } = await fetchDockerContainerLogs(logsContainer.id, 500);
-            setLogs(text);
-          } catch { /* 请求层已提示 */ }
-        };
-        void fetchOnce();
-        logsIntervalRef.current = setInterval(() => void fetchOnce(), 2000);
-      }
-      return next;
-    });
+    const next = !logsFollowing;
+    setLogsFollowing(next);
+    // 恢复追踪时立即拉一次，不等下一个轮询周期
+    if (next) void logsQuery.refetch();
   };
 
   const openStats = async (c: DockerContainer) => {
@@ -317,7 +299,7 @@ function ContainersTab() {
           {
             key: 'logs',
             label: '日志',
-            onClick: () => { void openLogs(record); },
+            onClick: () => { openLogs(record); },
           },
           {
             key: 'terminal',
@@ -423,7 +405,7 @@ function ContainersTab() {
       </SideSheet>
 
       <Modal title={<span><Activity size={15} style={{ marginRight: 6, verticalAlign: 'middle' }} />资源占用：{statsContainer?.names[0] ?? ''}</span>}
-        visible={!!statsContainer} onCancel={() => { setStatsContainer(null); setStats(null); }} footer={null} width={440}>
+        visible={!!statsContainer} closeOnEsc onCancel={() => { setStatsContainer(null); setStats(null); }} footer={null} width={440}>
         {statsLoading && <div style={{ textAlign: 'center', padding: 32 }}><Typography.Text type="tertiary">正在获取...</Typography.Text></div>}
         {!statsLoading && stats && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20, padding: '8px 0' }}>
@@ -462,7 +444,7 @@ function ContainersTab() {
       </Modal>
 
       <Modal title={<span><Info size={15} style={{ marginRight: 6, verticalAlign: 'middle' }} />检查详情：{inspectTarget?.names[0] ?? ''}</span>}
-        visible={!!inspectTarget} onCancel={() => { setInspectTarget(null); setInspectData(''); }} footer={null} width={780} style={{ top: 40 }} bodyStyle={{ padding: 0 }}>
+        visible={!!inspectTarget} closeOnEsc onCancel={() => { setInspectTarget(null); setInspectData(''); }} footer={null} width={780} style={{ top: 40 }} bodyStyle={{ padding: 0 }}>
         {inspectLoading
           ? <div style={{ textAlign: 'center', padding: 40 }}><Typography.Text type="tertiary">加载中...</Typography.Text></div>
           : <pre style={{ fontFamily: 'monospace', fontSize: 12, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--semi-color-fill-0)', padding: 16, margin: 0, maxHeight: 'calc(100vh - 200px)', overflow: 'auto', borderRadius: '0 0 6px 6px' }}>{inspectData || '（暂无数据）'}</pre>

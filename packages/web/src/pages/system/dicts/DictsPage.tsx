@@ -17,7 +17,6 @@ import {
   Space,
   Switch,
 } from '@douyinfe/semi-ui';
-import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Plus, MoreHorizontal, BookOpen, ChevronsDownUp, ChevronsUpDown, RefreshCw, Pencil, Trash2 } from 'lucide-react';
 import type { CreateDictInput, CreateDictItemInput, Dict, DictItem } from '@zenith/shared/platform';
 import { formatDateTime } from '@/utils/date';
@@ -54,10 +53,14 @@ import { deleteAction, ListSearchToolbar, useStatusToggle } from '@/components/l
 import { abortSubmit } from '@/lib/abort-submit';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 
+/** 字典项详情按 (dictId, itemId) 取数；useEditModal 只传 itemId，所属字典从打开弹窗时的行记录取 */
+function useDictItemModalDetail(id: number | undefined, enabled?: boolean, record?: DictItem) {
+  return useDictItemDetail(record?.dictId, id, enabled);
+}
+
 export default function DictsPage() {
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
-  const itemFormApi = useRef<FormApi | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const jsonViewerRef = useRef<any>(null);
 
@@ -71,8 +74,6 @@ export default function DictsPage() {
   // ─── 字典项列表 ────────────────────────────────────────────────────────────
   // 显式选中的字典以 `?dict=` 同步到 URL（深链/刷新/页签直达）；选中对象按 key 派生
   const [selectedDictKey, setSelectedDictKey] = useUrlSelectionState('dict');
-  const [itemModalVisible, setItemModalVisible] = useState(false);
-  const [editingItemRecord, setEditingItemRecord] = useState<DictItem | null>(null);
   const [pendingItemKeyword, setPendingItemKeyword] = useState('');
   const [pendingItemStatus, setPendingItemStatus] = useState<string | undefined>();
   const [itemKeyword, setItemKeyword] = useState('');
@@ -114,8 +115,6 @@ export default function DictsPage() {
 
   const itemsQuery = useDictItemsById(selectedDict?.id);
   const items = useMemo(() => itemsQuery.data ?? [], [itemsQuery.data]);
-  const itemDetailQuery = useDictItemDetail(selectedDict?.id, editingItemRecord?.id, itemModalVisible);
-  const editingItem = editingItemRecord ? (itemDetailQuery.data ?? editingItemRecord) : null;
 
   const saveDictMutation = useSaveDict();
   const dictModal = useEditModal<Dict, Partial<CreateDictInput>>({
@@ -132,6 +131,40 @@ export default function DictsPage() {
   const deleteItemMutation = useDeleteDictItem();
   const togglingDictStatusId = toggleDictStatusMutation.isPending ? (toggleDictStatusMutation.variables?.id ?? null) : null;
 
+  // 字典项是所选字典的子资源：创建 / 更新契约都绑定 dictId，由 save 适配层按是否有 id 分派；
+  // 父级 / 颜色 / 元数据不在 Semi 表单内（Form.Slot 受控控件），在 beforeSave 合入载荷
+  const itemModal = useEditModal<DictItem, Partial<CreateDictItemInput>, CreateDictItemInput>({
+    entityName: '字典项',
+    save: {
+      mutateAsync: ({ id, values }) => {
+        if (!selectedDict) abortSubmit('validation');
+        return id === undefined
+          ? createItemMutation.mutateAsync({ params: { id: selectedDict.id }, body: values })
+          : updateItemMutation.mutateAsync({ params: { id: selectedDict.id, itemId: id }, body: values });
+      },
+      isPending: createItemMutation.isPending || updateItemMutation.isPending,
+    },
+    useDetail: useDictItemModalDetail,
+    defaults: { status: 'enabled', sort: 0 },
+    toValues: (item) => ({ label: item.label, value: item.value, sort: item.sort, status: item.status, remark: item.remark ?? undefined }),
+    beforeSave: (values) => {
+      let metadata: Record<string, unknown> | null = null;
+      const currentJson = (jsonViewerRef.current?.getValue() ?? metadataStr).trim();
+      if (currentJson && currentJson !== '{}') {
+        try {
+          metadata = JSON.parse(currentJson) as Record<string, unknown>;
+        } catch {
+          Toast.error('元数据 JSON 格式有误，请检查后重试');
+          abortSubmit();
+        }
+      }
+      // 表单值来自 Semi validate()，形状由表单字段决定；label / value 必填由表单 rules 保证
+      return { ...values, parentId: itemParentId ?? undefined, color: itemColor ?? null, metadata } as CreateDictItemInput;
+    },
+    labelWidth: 72,
+  });
+  const editingItem = itemModal.editing;
+
   useEffect(() => {
     if (!dictListQuery.data) return;
     setDicts(dictListQuery.data.list);
@@ -140,12 +173,13 @@ export default function DictsPage() {
   // 每个字典的条目首次加载完成时默认全展开；同一字典内（数据刷新 / keepAlive 页签切回）保持用户展开/折叠状态
   const expandInitedDictIdRef = useRef<number | null>(null);
 
+  // 打开瞬间先按列表行占位，详情到达后（editing 切换为详情对象）用服务端值覆盖表单外的父级 / 颜色 / 元数据
   useEffect(() => {
-    if (!itemModalVisible || !itemDetailQuery.data) return;
-    setItemParentId(itemDetailQuery.data.parentId ?? null);
-    setItemColor(itemDetailQuery.data.color ?? null);
-    setMetadataStr(itemDetailQuery.data.metadata ? JSON.stringify(itemDetailQuery.data.metadata, null, 2) : '{}');
-  }, [itemModalVisible, itemDetailQuery.data]);
+    if (!editingItem) return;
+    setItemParentId(editingItem.parentId ?? null);
+    setItemColor(editingItem.color ?? null);
+    setMetadataStr(editingItem.metadata ? JSON.stringify(editingItem.metadata, null, 2) : '{}');
+  }, [editingItem]);
 
   const handleDictPageChange = (nextPage: number) => {
     setPage(nextPage);
@@ -264,57 +298,27 @@ export default function DictsPage() {
   };
 
   // ─── 字典项 CRUD ───────────────────────────────────────────────────────────
-  const handleItemModalOk = async () => {
-    if (!selectedDict) return;
-    let values;
-    try {
-      values = await itemFormApi.current!.validate();
-    } catch {
-      abortSubmit('validation');
-    }
-    let metadata: Record<string, unknown> | null = null;
-    const currentJson = (jsonViewerRef.current?.getValue() ?? metadataStr).trim();
-    if (currentJson && currentJson !== '{}') {
-      try {
-        metadata = JSON.parse(currentJson) as Record<string, unknown>;
-      } catch {
-        Toast.error('元数据 JSON 格式有误，请检查后重试');
-        abortSubmit();
-      }
-    }
-    // 表单值来自 Semi validate()，形状由表单字段决定；label / value 必填由表单 rules 保证
-    const payload = { ...values, parentId: itemParentId ?? undefined, color: itemColor ?? null, metadata } as CreateDictItemInput;
-    if (editingItemRecord) {
-      await updateItemMutation.mutateAsync({ params: { id: selectedDict.id, itemId: editingItemRecord.id }, body: payload });
-    } else {
-      await createItemMutation.mutateAsync({ params: { id: selectedDict.id }, body: payload });
-    }
-    Toast.success(editingItemRecord ? '更新成功' : '创建成功');
-    setItemModalVisible(false);
-    setEditingItemRecord(null);
-  };
-
   const handleItemDelete = async (id: number) => {
     if (!selectedDict) return;
     await deleteItemMutation.mutateAsync({ params: { id: selectedDict.id, itemId: id } });
     Toast.success('删除成功');
   };
 
-  const openCreateChildItem = (row: DictItem) => {
-    setEditingItemRecord(null);
-    setItemParentId(row.id);
+  const openCreateItem = (parentId: number | null = null) => {
+    setItemParentId(parentId);
     setItemColor(null);
     setMetadataStr('{}');
-    setItemModalVisible(true);
+    itemModal.openCreate();
   };
+
+  const openCreateChildItem = (row: DictItem) => openCreateItem(row.id);
 
   const openEditItem = (row: DictItem) => {
     if (!selectedDict) return;
-    setEditingItemRecord(row);
     setItemParentId(row.parentId ?? null);
     setItemColor(row.color ?? null);
     setMetadataStr(row.metadata ? JSON.stringify(row.metadata, null, 2) : '{}');
-    setItemModalVisible(true);
+    itemModal.openEdit(row);
   };
 
   const itemStatus = useStatusToggle<DictItem>({
@@ -549,7 +553,7 @@ export default function DictsPage() {
           onReset={handleItemReset}
           create={(
             hasPermission('system:dict:item') ? (
-              <CreateButton onClick={() => { setEditingItemRecord(null); setItemParentId(null); setItemColor(null); setMetadataStr('{}'); setItemModalVisible(true); }} disabled={!selectedDict} />
+              <CreateButton onClick={() => openCreateItem()} disabled={!selectedDict} />
             ) : null
           )}
           actions={renderItemExpandButton()}
@@ -613,22 +617,9 @@ export default function DictsPage() {
       </AppModal>
 
       {/* 字典项创建/编辑 Modal */}
-      <AppModal
-        title={editingItem ? '编辑字典项' : '新增字典项'}
-        visible={itemModalVisible}
-        onCancel={() => setItemModalVisible(false)}
-        onOk={handleItemModalOk}
-        width={600}
-      >
-        <Spin spinning={!!editingItemRecord && itemDetailQuery.isFetching}>
-          <Form
-            getFormApi={(api) => itemFormApi.current = api}
-            key={editingItem?.id ?? 'new-item'}
-            allowEmpty
-            initValues={editingItem ?? { status: 'enabled', sort: 0 }}
-            labelPosition="left"
-            labelWidth={72}
-          >
+      <AppModal {...itemModal.modalProps} width={600}>
+        <Spin spinning={itemModal.detailLoading}>
+          <Form key={itemModal.formKey} {...itemModal.formProps}>
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Input field="label" label="标签" placeholder="请输入标签" style={{ width: '100%' }} rules={[{ required: true, message: '请输入标签' }]} />

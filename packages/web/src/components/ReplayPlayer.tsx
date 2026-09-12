@@ -434,7 +434,7 @@ export default function ReplayPlayer({ replayId, segments, errors, perfEvents, s
                 </div>
               )}
               {!live && (networkRows.length > 0 || consoleRows.length > 0) && (
-                <Tabs type="line" size="small" style={{ marginTop: 12 }} lazyRender>
+                <Tabs type="line" size="small" collapsible="auto" style={{ marginTop: 12 }} lazyRender>
                   <TabPane tab={`网络（${networkRows.length}）`} itemKey="network">
                     <div style={{ maxHeight: 220, overflowY: 'auto' }} role="list" aria-label="回放期间的网络请求">
                       {networkRows.map((row, i) => {

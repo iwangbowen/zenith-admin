@@ -16,6 +16,7 @@ import {
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_METHOD_LABELS, PAYMENT_ORDER_STATUS_LABELS } from '@zenith/shared/payment';
 import type { PaymentChannel, PaymentMethod, PaymentOrderStatus } from '@zenith/shared/payment';
 import { usePaymentStats, usePaymentTrend } from '@/hooks/queries/payment-stats';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 const yuan = formatYuan;
 
@@ -139,12 +140,12 @@ export default function PaymentStatsPanel() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {/* 汇总卡片 */}
         <StatGrid minItemWidth={168}>
-          <StatCard title="累计成功金额" value={stats ? yuan(stats.totalAmount) : '—'} accent="var(--semi-color-success)" />
-          <StatCard title="今日成功金额" value={stats ? yuan(stats.todayAmount) : '—'} sub={stats ? `${stats.todayCount} 笔` : ''} />
-          <StatCard title="支付成功率" value={stats ? `${stats.successRate}%` : '—'} sub={stats ? `${stats.successCount}/${stats.orderCount} 单` : ''} accent="var(--semi-color-primary)" />
-          <StatCard title="累计退款" value={stats ? yuan(stats.refundAmount) : '—'} sub={stats ? `${stats.refundCount} 笔` : ''} accent="var(--semi-color-warning)" />
-          <StatCard title="退款率" value={stats ? `${stats.refundRate}%` : '—'} accent={stats && stats.refundRate > 20 ? 'var(--semi-color-danger)' : undefined} />
-          <StatCard title="成功笔均" value={stats ? yuan(stats.avgAmount) : '—'} />
+          <StatCard title="累计成功金额" value={stats ? yuan(stats.totalAmount) : EMPTY_PLACEHOLDER} accent="var(--semi-color-success)" />
+          <StatCard title="今日成功金额" value={stats ? yuan(stats.todayAmount) : EMPTY_PLACEHOLDER} sub={stats ? `${stats.todayCount} 笔` : ''} />
+          <StatCard title="支付成功率" value={stats ? `${stats.successRate}%` : EMPTY_PLACEHOLDER} sub={stats ? `${stats.successCount}/${stats.orderCount} 单` : ''} accent="var(--semi-color-primary)" />
+          <StatCard title="累计退款" value={stats ? yuan(stats.refundAmount) : EMPTY_PLACEHOLDER} sub={stats ? `${stats.refundCount} 笔` : ''} accent="var(--semi-color-warning)" />
+          <StatCard title="退款率" value={stats ? `${stats.refundRate}%` : EMPTY_PLACEHOLDER} accent={stats && stats.refundRate > 20 ? 'var(--semi-color-danger)' : undefined} />
+          <StatCard title="成功笔均" value={stats ? yuan(stats.avgAmount) : EMPTY_PLACEHOLDER} />
         </StatGrid>
 
         {/* 收款趋势 */}

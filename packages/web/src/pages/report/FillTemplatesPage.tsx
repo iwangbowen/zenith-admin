@@ -24,7 +24,7 @@ import {
   useReportFillTemplateList,
   useUpdateReportFillTemplate,
 } from '@/hooks/queries/report-fill';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import FormDesigner from '@/pages/workflow/designer/components/FormDesigner';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
 import { isRevisionConflict, validateFillTemplateInput } from './report-p2-utils';
@@ -221,8 +221,8 @@ export default function FillTemplatesPage() {
   const columns: ColumnProps<ReportFillTemplate>[] = [
     { title: '模板名称', dataIndex: 'name', minWidth: 190, render: renderEllipsis },
     { title: '编码', dataIndex: 'code', width: 220, render: renderEllipsis },
-    { title: '负责人', dataIndex: 'ownerName', width: 110, render: (value: string | null) => value || '—' },
-    { title: '目录', dataIndex: 'folderName', width: 130, render: (value: string | null) => value || '—' },
+    { title: '负责人', dataIndex: 'ownerName', width: 110, render: (value: string | null) => value || EMPTY_PLACEHOLDER },
+    { title: '目录', dataIndex: 'folderName', width: 130, render: (value: string | null) => value || EMPTY_PLACEHOLDER },
     {
       title: '审核',
       dataIndex: 'needReview',

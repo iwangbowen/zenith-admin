@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Button, Dropdown, Input, Modal, Table, Tag, Tree, Typography } from '@douyinfe/semi-ui';
+import { Button, Dropdown, Input, Modal, Tag, Tree, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
 import { ChevronDown, Home, Link2, Search } from 'lucide-react';
+import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { buildCmsEntityLink, buildCmsChannelCodeLink, parseCmsLink, CMS_CONTENT_STATUS_LABELS } from '@zenith/shared/cms';
 import type { CmsChannel, CmsContent } from '@zenith/shared/cms';
 import { useQueryClient } from '@tanstack/react-query';
@@ -122,18 +123,22 @@ function ContentPickerModal({ siteId, visible, onCancel, onSelect, excludeId }: 
             <SearchButton onClick={handleSearch} />
             <ResetButton onClick={handleReset} />
           </div>
-          <Table
+          <ConfigurableTable
             size="small"
             rowKey="id"
+            columnSettingsKey="cms-link-content-picker"
             columns={columns}
             dataSource={rows}
             loading={listQuery.isFetching}
-            scroll={{ x: 520, y: isMobile ? 240 : 336 }}
+            onRefresh={() => void listQuery.refetch()}
+            refreshLoading={listQuery.isFetching}
+            scroll={{ y: isMobile ? 240 : 336 }}
             pagination={{
               currentPage: page,
               pageSize,
               total: listQuery.data?.total ?? 0,
               onPageChange: setPage,
+              showSizeChanger: false,
             }}
           />
         </div>

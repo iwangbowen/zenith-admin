@@ -1,4 +1,5 @@
 import { Typography } from '@douyinfe/semi-ui';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 const { Text } = Typography;
 
@@ -13,7 +14,7 @@ export function AiUserCell({ username, nickname }: AiUserCellProps) {
       <Text style={{ fontSize: 13 }}>{nickname || username}</Text>
       <Text type="tertiary" size="small" style={{ display: 'block' }}>{username}</Text>
     </div>
-  ) : '—';
+  ) : EMPTY_PLACEHOLDER;
 }
 
 interface AiMessageSnippetProps {
@@ -22,7 +23,7 @@ interface AiMessageSnippetProps {
   empty?: string;
 }
 
-export function AiMessageSnippet({ text, maxWidth = 600, empty = '—' }: AiMessageSnippetProps) {
+export function AiMessageSnippet({ text, maxWidth = 600, empty = EMPTY_PLACEHOLDER }: AiMessageSnippetProps) {
   return text ? (
     <Text ellipsis={{ showTooltip: { opts: { style: { maxWidth } } } }} style={{ fontSize: 13 }}>
       {text}

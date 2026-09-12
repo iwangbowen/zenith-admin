@@ -50,10 +50,15 @@ import { showRequestErrorToast } from '@/utils/request-toast';
  * ```
  */
 
-/** 详情查询 hook 的最小形状，与 `createResourceQueries(contract).useDetail` 兼容 */
+/**
+ * 详情查询 hook 的最小形状，与 `createResourceQueries(contract).useDetail` 兼容。
+ * 第三参为打开弹窗时的列表行：子资源详情需要父级 id（如字典项的 `(dictId, itemId)`）时，
+ * 用模块级包装 hook 从行记录取父级 id 再转发，不要传内联箭头函数。
+ */
 export type DetailHook<TRecord> = (
   id: number | undefined,
   enabled?: boolean,
+  record?: TRecord,
 ) => { data?: TRecord; isFetching: boolean };
 
 /** 保存 mutation 的最小形状，与 `createResourceQueries(contract).useSave()` 兼容 */
@@ -148,7 +153,7 @@ export interface UseEditModalReturn<TRecord extends { id: number }> {
 }
 
 /** 未传 useDetail 时的占位：形状一致且不调用任何 hook，保证 hook 调用顺序恒定 */
-const NO_DETAIL: DetailHook<never> = () => ({ data: undefined, isFetching: false });
+const NO_DETAIL = (): { data?: undefined; isFetching: false } => ({ data: undefined, isFetching: false });
 
 /**
  * 表单重挂载 key。
@@ -199,8 +204,8 @@ export function useEditModal<TRecord extends { id: number }, TValues = Partial<T
   optionsRef.current = options;
 
   // 恒定调用，避免条件式 hook；未配置详情时走零成本占位
-  const detailHook = useDetail ?? (NO_DETAIL as DetailHook<TRecord>);
-  const detail = detailHook(editingRecord?.id, visible && editingRecord != null);
+  const detailHook: DetailHook<TRecord> = useDetail ?? NO_DETAIL;
+  const detail = detailHook(editingRecord?.id, visible && editingRecord != null, editingRecord ?? undefined);
 
   // 详情优先于列表行：列表行只是打开弹窗瞬间的占位
   const editing = editingRecord ? ((detail.data as TRecord | undefined) ?? editingRecord) : null;

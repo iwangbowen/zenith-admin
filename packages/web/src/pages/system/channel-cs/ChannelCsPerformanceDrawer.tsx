@@ -3,8 +3,9 @@
  *
  * 打开时拉取客服绩效统计，展示每位客服的回复数、解决数、平均响应时长与平均评分。
  */
-import { Empty, SideSheet, Space, Spin, Table } from '@douyinfe/semi-ui';
+import { Empty, SideSheet, Space, Spin } from '@douyinfe/semi-ui';
 import { Star } from 'lucide-react';
+import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { useChannelCsPerformance } from '@/hooks/queries/channel-cs';
 
 interface Props {
@@ -53,12 +54,15 @@ export function ChannelCsPerformanceDrawer({ visible, onClose }: Readonly<Props>
       ) : list.length === 0 ? (
         <Empty description="暂无绩效数据" style={{ padding: 60 }} />
       ) : (
-        <Table
+        <ConfigurableTable
           rowKey="agentId"
+          columnSettingsKey="channel-cs-performance"
           columns={columns}
           dataSource={list}
           pagination={false}
           bordered
+          onRefresh={() => void performanceQuery.refetch()}
+          refreshLoading={loading}
         />
       )}
     </SideSheet>

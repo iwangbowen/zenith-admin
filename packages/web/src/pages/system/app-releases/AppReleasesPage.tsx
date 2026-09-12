@@ -19,7 +19,6 @@ import {
   Skeleton,
   Space,
   Spin,
-  Table,
   TabPane,
   Tabs,
   Tag,
@@ -147,7 +146,6 @@ function copyArtifactLink(release: AppRelease, artifact: AppArtifact) {
 function AppsManageModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { hasPermission } = usePermission();
   const listQuery = useClientAppList({ page: 1, pageSize: 100 }, visible);
-  const apps = listQuery.data?.list ?? [];
 
   const modal = useEditModal<ClientApp, Partial<CreateClientAppInput>>({
     entityName: '应用',
@@ -203,15 +201,10 @@ function AppsManageModal({ visible, onClose }: { visible: boolean; onClose: () =
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
           {hasPermission('system:app-release:create') && <CreateButton onClick={modal.openCreate}>新增应用</CreateButton>}
         </div>
-        <Table
-          bordered
+        <ConfigurableTable
+          columnSettingsKey="client-apps"
           columns={columns}
-          dataSource={apps}
-          loading={listQuery.isFetching}
-          rowKey="id"
-          size="small"
-          pagination={false}
-          empty="暂无应用，先创建一个（如 zenith-desktop）"
+          {...listTableProps(listQuery, { empty: '暂无应用，先创建一个（如 zenith-desktop）' })}
         />
       </Modal>
 
@@ -263,13 +256,12 @@ function ExternalArtifactModal({ releaseId, visible, onClose }: {
   }
 
   return (
-    <Modal
+    <AppModal
       title="添加外链制品"
       visible={visible}
       onOk={() => void handleOk()}
       onCancel={onClose}
       okButtonProps={{ loading: addMutation.isPending }}
-      closeOnEsc
       width={560}
     >
       <Form
@@ -293,7 +285,7 @@ function ExternalArtifactModal({ releaseId, visible, onClose }: {
         <Form.Input field="fileName" label="显示名" placeholder="如 App Store（对外展示与去重用）"
           rules={[{ required: true, message: '显示名不能为空' }]} />
       </Form>
-    </Modal>
+    </AppModal>
   );
 }
 
@@ -412,8 +404,9 @@ function ArtifactsSheet({ releaseId, onClose }: { releaseId: number | null; onCl
           </Card>
         )}
 
-        <Table
+        <ConfigurableTable
           bordered
+          columnSettingsKey="app-release-artifacts"
           columns={columns}
           dataSource={release?.artifacts ?? []}
           loading={detailQuery.isFetching}
@@ -421,6 +414,8 @@ function ArtifactsSheet({ releaseId, onClose }: { releaseId: number | null; onCl
           size="small"
           pagination={false}
           empty="暂无制品，上传安装包或添加外链后才能发布"
+          onRefresh={() => void detailQuery.refetch()}
+          refreshLoading={detailQuery.isFetching}
         />
       </Spin>
 

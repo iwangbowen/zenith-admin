@@ -18,6 +18,7 @@ interface Props {
 }
 
 export default function WorkflowHandoverModal({ visible, onClose }: Readonly<Props>) {
+  // useEditModal 例外：工作流运行时表单（离职交接：预览待办 + 批量转移），非实体新增 / 编辑
   const formApi = useRef<FormApi | null>(null);
   const { userOptions } = useUserOptions({ immediate: true });
   const previewMutation = useWorkflowHandoverPreview();

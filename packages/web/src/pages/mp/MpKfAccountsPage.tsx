@@ -7,7 +7,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
+import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '../../utils/table-columns';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
@@ -83,7 +83,7 @@ export default function MpKfAccountsPage() {
       ),
     },
     { title: '客服账号', dataIndex: 'kfAccount', minWidth: 220, render: renderEllipsis },
-    { title: '绑定微信号', dataIndex: 'inviteWx', width: 140, render: (v: string | null) => v || '—' },
+    { title: '绑定微信号', dataIndex: 'inviteWx', width: 140, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
     {
       title: '绑定状态', dataIndex: 'inviteStatus', width: 100,
       render: (v: string) => { const m = INVITE_LABEL[v] ?? INVITE_LABEL.none; return <Tag color={m.color} type="light">{m.label}</Tag>; },

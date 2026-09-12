@@ -16,7 +16,7 @@ import ReplayHeatmapTab from './ReplayHeatmapTab';
 import ReplayAccessLogsTab from './ReplayAccessLogsTab';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { formatDurationMs } from '@/utils/format';
 import { confirmDelete } from '@/utils/confirm';
 import { exportReplayHtml } from '@/utils/replay-export';
@@ -138,7 +138,7 @@ export default function SessionReplaysPage() {
       title: '入口页面', dataIndex: 'entryPageUrl', minWidth: 260, ellipsis: { showTitle: false },
       render: (v: string | null) => v
         ? <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }} size="small">{v.replace(/^https?:\/\/[^/]+/, '')}</Text>
-        : '—',
+        : EMPTY_PLACEHOLDER,
     },
     {
       title: '用户', width: 120,
@@ -166,7 +166,7 @@ export default function SessionReplaysPage() {
       title: '浏览器', width: 170,
       render: (_: unknown, r: ReplaySession) => (
         <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }} size="small">
-          {[r.browser, r.os].filter(Boolean).join(' / ') || '—'}
+          {[r.browser, r.os].filter(Boolean).join(' / ') || EMPTY_PLACEHOLDER}
         </Text>
       ),
     },
@@ -201,7 +201,7 @@ export default function SessionReplaysPage() {
           <StatCard title="存储占用" value={formatBytes(stats.totalBytes)} sub={stats.quotaMb > 0 ? `配额 ${stats.quotaMb} MB` : '未设配额'} />
           <StatCard
             title="配额使用率"
-            value={stats.quotaMb > 0 ? `${stats.usagePercent}%` : '—'}
+            value={stats.quotaMb > 0 ? `${stats.usagePercent}%` : EMPTY_PLACEHOLDER}
             accent={stats.usagePercent >= 90 ? 'var(--semi-color-danger)' : stats.usagePercent >= 75 ? 'var(--semi-color-warning)' : undefined}
             sub={stats.usagePercent >= 100 ? '滚动淘汰进行中（旧的无错误回放优先清退）' : stats.usagePercent >= 90 ? '接近配额，即将触发滚动淘汰' : '低于水位线'}
           />
@@ -378,7 +378,7 @@ export default function SessionReplaysPage() {
               </div>
             )}
             <Text type="tertiary" size="small">
-              回放已按隐私策略打码（输入框默认脱敏）；入口页面：{detail.entryPageUrl ?? '—'}
+              回放已按隐私策略打码（输入框默认脱敏）；入口页面：{detail.entryPageUrl ?? EMPTY_PLACEHOLDER}
             </Text>
           </div>
         )}

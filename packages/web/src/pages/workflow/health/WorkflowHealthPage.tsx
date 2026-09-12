@@ -10,7 +10,7 @@ import { useWorkflowHealthSummary, workflowHealthKeys } from '@/hooks/queries/wo
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { useApiMutation } from '@/lib/contract-query';
 import { createLabelOptionsFromMap } from '@zenith/shared/core';
 import { FilterSelect } from '@/components/search-filters';
@@ -103,9 +103,9 @@ export default function WorkflowHealthPage() {
         />
       ),
     },
-    { title: '任务', dataIndex: 'taskId', width: 90, render: (v: number | null) => v ? `#${v}` : '—' },
-    { title: '节点', dataIndex: 'nodeName', width: 160, render: (_: unknown, row) => row.nodeName ?? row.nodeKey ?? '—' },
-    { title: '状态', dataIndex: 'status', width: 110, render: (v: string | null) => v ?? '—' },
+    { title: '任务', dataIndex: 'taskId', width: 90, render: (v: number | null) => v ? `#${v}` : EMPTY_PLACEHOLDER },
+    { title: '节点', dataIndex: 'nodeName', width: 160, render: (_: unknown, row) => row.nodeName ?? row.nodeKey ?? EMPTY_PLACEHOLDER },
+    { title: '状态', dataIndex: 'status', width: 110, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
     { title: '等待时长', dataIndex: 'ageMinutes', width: 110, align: 'right', render: (v: number) => `${v} 分钟` },
     dateTimeColumn('创建时间', 'createdAt'),
     createOperationColumn<WorkflowHealthIssue>({

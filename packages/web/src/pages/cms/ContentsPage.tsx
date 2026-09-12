@@ -106,6 +106,7 @@ export default function ContentsPage() {
   const duplicateMutation = useDuplicateCmsContent();
   const persistentLockMutation = useCmsContentPersistentLock();
   const { data: allTags } = useAllCmsTags(siteId);
+  // useEditModal 例外：以下三个是选中内容的批量操作参数表单（移动 / 打标 / 分发），非实体新增 / 编辑弹窗
   const moveFormApi = useRef<FormApi | null>(null);
   const tagFormApi = useRef<FormApi | null>(null);
   const distributeFormApi = useRef<FormApi | null>(null);
@@ -329,7 +330,7 @@ export default function ContentsPage() {
             </Typography.Text>
           );
         }
-        return '—';
+        return EMPTY_PLACEHOLDER;
       },
     },
     dateTimeColumn('更新时间', 'updatedAt'),

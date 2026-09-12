@@ -13,6 +13,7 @@ import { serviceLogsStreamUrl, useServiceAction, useServiceList, useServiceLogs 
 import { HostSelector } from '@/components/HostSelector';
 import { useOpsHostSelection } from '@/hooks/useOpsHostSelection';
 import { usePermission } from '@/hooks/usePermission';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 const ACTION_MSG: Record<SystemdAction, string> = {
   start: '已启动', stop: '已停止', restart: '已重启', reload: '已重载', enable: '已设为开机自启', disable: '已取消开机自启', mask: '已屏蔽', unmask: '已取消屏蔽',
 };
@@ -111,7 +112,7 @@ export default function ServicesPage() {
     {
       title: '描述',
       render: (_: unknown, r: SystemdService) => (
-        <Typography.Text size="small" type="secondary" ellipsis={{ showTooltip: true }}>{r.description || '—'}</Typography.Text>
+        <Typography.Text size="small" type="secondary" ellipsis={{ showTooltip: true }}>{r.description || EMPTY_PLACEHOLDER}</Typography.Text>
       ),
     },
     {

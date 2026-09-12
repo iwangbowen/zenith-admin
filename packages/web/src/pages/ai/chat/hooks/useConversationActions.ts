@@ -40,6 +40,7 @@ export function useConversationActions({
   const [renameText, setRenameText] = useState('');
   const [dislikeMsgId, setDislikeMsgId] = useState<number | null>(null);
   const [varFillTemplate, setVarFillTemplate] = useState<AiPromptTemplate | null>(null);
+  // useEditModal 例外：提示词模板变量填充表单，提交结果注入对话输入而非保存实体
   const varFormApi = useRef<FormApi | null>(null);
   const [shareConvId, setShareConvId] = useState<number | null>(null);
   /** 标签编辑 */

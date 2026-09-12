@@ -32,7 +32,7 @@ import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-fi
 import { confirmDanger, confirmDelete } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 
 const { Text, Paragraph } = Typography;
 
@@ -272,8 +272,8 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
     dateTimeColumn('时间', 'createdAt'),
     { title: '事件', dataIndex: 'eventType', minWidth: 130, render: (v: string) => OPEN_WEBHOOK_EVENT_LABELS[v] ?? v },
     { title: '尝试', dataIndex: 'attempt', width: 60 },
-    { title: '响应码', dataIndex: 'responseStatus', width: 80, render: (v: number | null) => v ?? '—' },
-    { title: '耗时', dataIndex: 'durationMs', width: 80, align: 'right', render: (v: number | null) => v != null ? `${v}ms` : '—' },
+    { title: '响应码', dataIndex: 'responseStatus', width: 80, render: (v: number | null) => v ?? EMPTY_PLACEHOLDER },
+    { title: '耗时', dataIndex: 'durationMs', width: 80, align: 'right', render: (v: number | null) => v != null ? `${v}ms` : EMPTY_PLACEHOLDER },
     {
       title: '状态', dataIndex: 'status', width: 90, fixed: 'right' as const,
       render: (v: string) => <Tag size="small" color={DELIVERY_STATUS_COLOR[v] ?? 'grey'}>{OPEN_WEBHOOK_DELIVERY_STATUS_LABELS[v as keyof typeof OPEN_WEBHOOK_DELIVERY_STATUS_LABELS] ?? v}</Tag>,
@@ -295,9 +295,9 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
       style={{ width: '100%', padding: '4px 0' }}
       data={[
         { key: '事件 ID', value: record.eventId },
-        { key: '下次重试', value: record.nextRetryAt ?? '—' },
-        { key: '错误信息', value: record.errorMessage ?? '—', span: 2 },
-        { key: '响应内容', span: 2, value: <Paragraph style={{ maxHeight: 200, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0 }}>{record.responseBody || '—'}</Paragraph> },
+        { key: '下次重试', value: record.nextRetryAt ?? EMPTY_PLACEHOLDER },
+        { key: '错误信息', value: record.errorMessage ?? EMPTY_PLACEHOLDER, span: 2 },
+        { key: '响应内容', span: 2, value: <Paragraph style={{ maxHeight: 200, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0 }}>{record.responseBody || EMPTY_PLACEHOLDER}</Paragraph> },
       ]}
     />
   ) : null);

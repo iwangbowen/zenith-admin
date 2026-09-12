@@ -9,7 +9,7 @@ import ExportButton from '@/components/ExportButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import AppModal from '@/components/AppModal';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { formatDateRangeForApi } from '@/utils/date';
 import { compactQuery } from '@/lib/query';
 import { usePermission } from '@/hooks/usePermission';
@@ -128,7 +128,7 @@ export default function FeedbacksPage() {
     { title: '提交人', dataIndex: 'userNickname', width: 110, render: (v: string | null, r: UserFeedback) => v || `#${r.userId}` },
     {
       title: '评分', dataIndex: 'score', width: 150,
-      render: (v: number | null) => v ? <Rating value={v} disabled size="small" /> : '—',
+      render: (v: number | null) => v ? <Rating value={v} disabled size="small" /> : EMPTY_PLACEHOLDER,
     },
     {
       title: '分类', dataIndex: 'category', width: 100,
@@ -137,10 +137,10 @@ export default function FeedbacksPage() {
         return <Tag color={o?.color ?? 'grey'}>{o?.label ?? v}</Tag>;
       },
     },
-    { title: '反馈内容', dataIndex: 'content', minWidth: 260, render: (v: string | null) => renderEllipsis(v ?? '—') },
-    { title: '来源页面', dataIndex: 'pagePath', width: 150, render: (v: string | null) => renderEllipsis(v ?? '—') },
-    { title: '处理人', dataIndex: 'handlerNickname', width: 100, render: (v: string | null) => v ?? '—' },
-    { title: '处理备注', dataIndex: 'handleRemark', width: 180, render: (v: string | null) => renderEllipsis(v ?? '—') },
+    { title: '反馈内容', dataIndex: 'content', minWidth: 260, render: renderEllipsis },
+    { title: '来源页面', dataIndex: 'pagePath', width: 150, render: renderEllipsis },
+    { title: '处理人', dataIndex: 'handlerNickname', width: 100, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
+    { title: '处理备注', dataIndex: 'handleRemark', width: 180, render: renderEllipsis },
     dateTimeColumn('提交时间', 'createdAt'),
     {
       title: '状态', dataIndex: 'status', width: 90, fixed: 'right',
@@ -264,10 +264,10 @@ export default function FeedbacksPage() {
               style={{ marginBottom: 16 }}
               data={[
                 { key: '提交人', value: handleModal.editing.userNickname || `#${handleModal.editing.userId}` },
-                { key: '评分', value: handleModal.editing.score ? <Rating value={handleModal.editing.score} disabled size="small" /> : '—' },
+                { key: '评分', value: handleModal.editing.score ? <Rating value={handleModal.editing.score} disabled size="small" /> : EMPTY_PLACEHOLDER },
                 { key: '分类', value: categoryMap.get(handleModal.editing.category)?.label ?? handleModal.editing.category },
-                { key: '反馈内容', value: handleModal.editing.content ?? '—' },
-                { key: '来源页面', value: handleModal.editing.pagePath ?? '—' },
+                { key: '反馈内容', value: handleModal.editing.content ?? EMPTY_PLACEHOLDER },
+                { key: '来源页面', value: handleModal.editing.pagePath ?? EMPTY_PLACEHOLDER },
                 { key: '提交时间', value: handleModal.editing.createdAt },
               ]}
             />

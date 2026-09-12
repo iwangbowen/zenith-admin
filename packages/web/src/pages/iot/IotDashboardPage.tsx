@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
-import { Card, Spin, Table, Tag, Typography } from '@douyinfe/semi-ui';
+import { Card, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Activity, BellRing, Boxes, Cpu, Radio } from 'lucide-react';
+import { ConfigurableTable } from '@/components/ConfigurableTable';
 import {
   AreaChart, BarChart, EmptyChart, PieChart, StatCard, StatGrid, chartOptions,
   makeAreaSpec, makeBarSpec, makePieSpec, useChartPalette,
@@ -156,17 +157,21 @@ export default function IotDashboardPage() {
               : <PieChart {...distributionSpec} options={chartOptions} height={240} />}
           </Card>
           <Card title="最近告警">
-            <Table
+            <ConfigurableTable
+              columnSettingsKey="iot-dashboard-recent-alarms"
               columns={alarmColumns} dataSource={data?.recentAlarms ?? []} rowKey="id"
               size="small" pagination={false} empty="暂无告警"
+              onRefresh={() => void query.refetch()} refreshLoading={query.isFetching}
             />
           </Card>
         </div>
 
         <Card title="最近设备事件">
-          <Table
+          <ConfigurableTable
+            columnSettingsKey="iot-dashboard-recent-events"
             columns={eventColumns} dataSource={(data?.recentEvents ?? []) as RecentEvent[]} rowKey="id"
             size="small" pagination={false} empty="暂无设备事件"
+            onRefresh={() => void query.refetch()} refreshLoading={query.isFetching}
           />
         </Card>
         <Text type="tertiary" size="small" style={{ display: 'block', marginTop: 8 }}>

@@ -140,7 +140,7 @@ export function getRootStyle(isQuick: boolean): React.CSSProperties {
       height: '100%',
       minHeight: 0,
       overflow: 'hidden',
-      background: 'var(--semi-color-bg-1)',
+      background: 'var(--color-content-bg)',
     }
     : {
       display: 'flex',

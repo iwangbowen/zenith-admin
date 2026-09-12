@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import ModalFooter from '@/components/ModalFooter';
-import { Badge, Button, Col, Form, Row, SideSheet, Spin, Table, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { Badge, Button, Col, Form, Row, SideSheet, Spin, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -28,7 +28,7 @@ import {
   iotDeviceKeys, useDeleteIotDevices, useIotDeviceList, useSaveIotDevice,
   useSubmitIotBatchCommand, useSubmitIotBatchDesired,
 } from '@/hooks/queries/iot-devices';
-import { useDeleteIotGroups, useSaveIotGroup } from '@/hooks/queries/iot-groups';
+import { useAllIotGroups, useDeleteIotGroups, useSaveIotGroup } from '@/hooks/queries/iot-groups';
 import IotDeviceDetailDrawer from './IotDeviceDetailDrawer';
 import { compactQuery } from '@/lib/query';
 
@@ -63,7 +63,9 @@ export default function IotDevicesPage() {
   const [batchKind, setBatchKind] = useState<'command' | 'desired' | null>(null);
 
   const { options: productOptions } = useIotProductOptions();
-  const { items: groups, options: groupOptions, isFetching: groupsFetching } = useIotGroupOptions();
+  const { options: groupOptions } = useIotGroupOptions();
+  // 分组管理弹窗内的表格：与 useIotGroupOptions 同 key，仅为拿到 refetch / isFetching 接刷新按钮
+  const groupsQuery = useAllIotGroups();
   // 网关设备清单（子设备表单「所属网关」选项）
   const gatewaysQuery = useIotDeviceList({ page: 1, pageSize: 100, nodeType: 'gateway' });
   const gatewayOptions = (gatewaysQuery.data?.list ?? []).map((d) => ({ value: d.id, label: `${d.name}（${d.sn}）` }));
@@ -466,10 +468,10 @@ export default function IotDevicesPage() {
         <div style={{ marginBottom: 8 }}>
           <CreateButton onClick={groupModal.openCreate}>新增分组</CreateButton>
         </div>
-        <Table
-          columns={groupColumns} dataSource={groups} rowKey="id"
-          size="small" pagination={false} loading={groupsFetching}
-          empty="暂无分组"
+        <ConfigurableTable
+          columnSettingsKey="iot-device-groups"
+          columns={groupColumns}
+          {...listTableProps(groupsQuery, { empty: '暂无分组' })}
         />
         <Text type="tertiary" size="small" style={{ display: 'block', marginTop: 8 }}>
           设备加入分组：在设备「编辑」表单中选择所属分组；批量操作可按分组圈选目标。

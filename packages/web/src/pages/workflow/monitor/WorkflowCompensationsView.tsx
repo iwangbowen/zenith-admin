@@ -5,7 +5,7 @@ import { Paperclip } from 'lucide-react';
 import { WORKFLOW_COMPENSATION_STATUSES, type WorkflowCompensation } from '@zenith/shared/workflow';
 import { enumValueOf } from '@zenith/shared/core';
 import { useUploadOneFile } from '@/hooks/queries/files';
-import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
+import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { formatDateTime } from '@/utils/date';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -145,7 +145,7 @@ export default function WorkflowCompensationsView() {
               { key: '处理动作', value: ACTION_LABEL[detail.action] ?? detail.action },
               { key: '工单状态', value: <Tag color={STATUS[detail.status]?.color as never}>{STATUS[detail.status]?.text ?? detail.status}</Tag> },
               { key: '自动动作', value: detail.compensationActionStatus === 'none' ? '无' : <Tag color={ACTION_STATUS[detail.compensationActionStatus]?.color as never}>{ACTION_STATUS[detail.compensationActionStatus]?.text ?? detail.compensationActionStatus}</Tag> },
-              { key: '错误信息', value: <Typography.Text type="danger" style={{ wordBreak: 'break-all' }}>{detail.errorMessage ?? '—'}</Typography.Text> },
+              { key: '错误信息', value: <Typography.Text type="danger" style={{ wordBreak: 'break-all' }}>{detail.errorMessage ?? EMPTY_PLACEHOLDER}</Typography.Text> },
             ]} />
 
             {canOperate && detail.status === 'pending' && (

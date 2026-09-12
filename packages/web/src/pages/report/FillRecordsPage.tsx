@@ -31,7 +31,7 @@ import { formatDateTime } from '@/utils/date';
 import { canRunFillRecordAction, isRevisionConflict, shouldShowFillReviewTab } from './report-p2-utils';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
@@ -84,6 +84,7 @@ export default function FillRecordsPage() {
   const [detailId, setDetailId] = useState<number>();
   const [reviewDecision, setReviewDecision] = useState<'approved' | 'rejected'>('approved');
   const [entryVisible, setEntryVisible] = useState(false);
+  // useEditModal 例外：选择填报模板后跳转填报页的入口对话框，不保存实体
   const entryFormApi = useRef<FormApi | null>(null);
 
   const templateLookupQuery = useReportFillTemplateLookup(canCreate);
@@ -201,7 +202,7 @@ export default function FillRecordsPage() {
         >
           #{value}
         </Button>
-      ) : '—',
+      ) : EMPTY_PLACEHOLDER,
     },
     {
       title: '消费同步',
@@ -220,7 +221,7 @@ export default function FillRecordsPage() {
         <Button theme="borderless" size="small" onClick={() => navigate(`/report/datasets?resourceId=${value}`)}>
           数据集 #{value}
         </Button>
-      ) : '—',
+      ) : EMPTY_PLACEHOLDER,
     },
     dateTimeColumn('提交时间', 'submittedAt'),
     dateTimeColumn('更新时间', 'updatedAt'),
@@ -408,9 +409,9 @@ export default function FillRecordsPage() {
                 { key: '模板', value: detail.templateName || `模板 #${detail.templateId}` },
                 { key: '提交人', value: detail.submitterName || `用户 #${detail.submitterId}` },
                 { key: '模板版本', value: detail.templateRevision },
-                { key: '提交时间', value: detail.submittedAt ? formatDateTime(detail.submittedAt) : '—' },
-                { key: '审核时间', value: detail.reviewedAt ? formatDateTime(detail.reviewedAt) : '—' },
-                { key: '审核意见', value: detail.reviewComment || '—' },
+                { key: '提交时间', value: detail.submittedAt ? formatDateTime(detail.submittedAt) : EMPTY_PLACEHOLDER },
+                { key: '审核时间', value: detail.reviewedAt ? formatDateTime(detail.reviewedAt) : EMPTY_PLACEHOLDER },
+                { key: '审核意见', value: detail.reviewComment || EMPTY_PLACEHOLDER },
               ]}
             />
             {detailTask && <AsyncTaskProgress task={detailTask} />}

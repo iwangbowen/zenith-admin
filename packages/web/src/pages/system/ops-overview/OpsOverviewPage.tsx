@@ -11,6 +11,7 @@ import PageLoading from '@/components/PageLoading';
 import type { OpsOverview, OpsOverviewSection } from '@zenith/shared/ops';
 import { useOpsOverview } from '@/hooks/queries/ops-overview';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { formatBytes } from '@zenith/shared/core';
 
@@ -205,7 +206,7 @@ export default function OpsOverviewPage() {
       <StatGrid minItemWidth={168}>
         <StatCard
           title="CPU 使用率"
-          value={host ? `${host.cpuUsage.toFixed(0)}%` : '—'}
+          value={host ? `${host.cpuUsage.toFixed(0)}%` : EMPTY_PLACEHOLDER}
           sub={host ? `${host.cpuCores} 核 · 负载 ${host.load1.toFixed(2)}` : undefined}
           icon={<Cpu size={19} />}
           accent={usageAccent(host?.cpuUsage)}
@@ -213,7 +214,7 @@ export default function OpsOverviewPage() {
         />
         <StatCard
           title="内存使用率"
-          value={host ? `${host.memUsagePercent}%` : '—'}
+          value={host ? `${host.memUsagePercent}%` : EMPTY_PLACEHOLDER}
           sub={host ? `${formatBytes(host.memUsed)} / ${formatBytes(host.memTotal)}` : undefined}
           icon={<MemoryStick size={19} />}
           accent={usageAccent(host?.memUsagePercent)}
@@ -221,7 +222,7 @@ export default function OpsOverviewPage() {
         />
         <StatCard
           title="主磁盘"
-          value={host?.diskUsagePercent != null ? `${host.diskUsagePercent}%` : '—'}
+          value={host?.diskUsagePercent != null ? `${host.diskUsagePercent}%` : EMPTY_PLACEHOLDER}
           sub={host?.diskTotal != null ? `${formatBytes(host.diskUsed ?? 0)} / ${formatBytes(host.diskTotal)}` : undefined}
           icon={<DiskIcon size={19} />}
           accent={usageAccent(host?.diskUsagePercent)}
@@ -229,14 +230,14 @@ export default function OpsOverviewPage() {
         />
         <StatCard
           title="失败服务"
-          value={data.services.available ? failedServices : '—'}
+          value={data.services.available ? failedServices : EMPTY_PLACEHOLDER}
           icon={<Flame size={19} />}
           accent={failedServices > 0 ? DANGER : SUCCESS}
           onClick={() => navigate('/system/services')}
         />
         <StatCard
           title="证书风险"
-          value={data.ssl.available ? sslRisk : '—'}
+          value={data.ssl.available ? sslRisk : EMPTY_PLACEHOLDER}
           sub={data.ssl.data ? `共 ${data.ssl.data.total} 张` : undefined}
           icon={<Lock size={19} />}
           accent={sslRisk > 0 ? WARNING : SUCCESS}
@@ -244,13 +245,13 @@ export default function OpsOverviewPage() {
         />
         <StatCard
           title="活动终端"
-          value={data.terminals.available ? (data.terminals.data?.active ?? 0) : '—'}
+          value={data.terminals.available ? (data.terminals.data?.active ?? 0) : EMPTY_PLACEHOLDER}
           icon={<Monitor size={19} />}
           onClick={() => navigate('/system/terminal/sessions')}
         />
         <StatCard
           title="监听端口"
-          value={data.ports.available ? (data.ports.data?.listening ?? 0) : '—'}
+          value={data.ports.available ? (data.ports.data?.listening ?? 0) : EMPTY_PLACEHOLDER}
           icon={<Network size={19} />}
           onClick={() => navigate('/system/ports')}
         />
@@ -314,19 +315,19 @@ export default function OpsOverviewPage() {
               title: 'CPU / 负载',
               width: 130,
               render: (_value: unknown, record: HostMatrixItem) =>
-                record.snapshot ? `${record.snapshot.cpuCores ?? '—'} 核 / ${record.snapshot.load1 ?? '—'}` : '—',
+                record.snapshot ? `${record.snapshot.cpuCores ?? EMPTY_PLACEHOLDER} 核 / ${record.snapshot.load1 ?? EMPTY_PLACEHOLDER}` : EMPTY_PLACEHOLDER,
             },
             {
               title: '内存',
               width: 100,
               render: (_value: unknown, record: HostMatrixItem) =>
-                record.snapshot?.memUsagePercent == null ? '—' : `${record.snapshot.memUsagePercent}%`,
+                record.snapshot?.memUsagePercent == null ? EMPTY_PLACEHOLDER : `${record.snapshot.memUsagePercent}%`,
             },
             {
               title: '磁盘',
               width: 100,
               render: (_value: unknown, record: HostMatrixItem) =>
-                record.snapshot?.diskUsagePercent == null ? '—' : `${record.snapshot.diskUsagePercent}%`,
+                record.snapshot?.diskUsagePercent == null ? EMPTY_PLACEHOLDER : `${record.snapshot.diskUsagePercent}%`,
             },
             {
               title: '最近采集',

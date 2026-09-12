@@ -136,6 +136,7 @@ export default function WorkflowFormInlineEditor({
 
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [previewVisible, setPreviewVisible] = useState(false);
+  // useEditModal 例外：工作流表单设计器的预览表单（演示填写 / 校验，不提交保存）
   const previewApiRef = useRef<FormApi | null>(null);
   const [previewMode, setPreviewMode] = useState<'pc' | 'mobile'>('pc');
   const [previewState, setPreviewState] = useState<PreviewState>('fill');

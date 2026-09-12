@@ -26,7 +26,7 @@ import {
   useUpdateReportDqAnomalyStatus,
 } from '@/hooks/queries/report-dq';
 import { useEnabledReportDatasets } from '@/hooks/queries/report-datasets';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { DEFAULT_TIMEZONE } from '@/utils/timezones';
 import { REPORT_DQ_ANOMALY_STATUS_LABELS, REPORT_DQ_ANOMALY_STATUS_OPTIONS, REPORT_DQ_TRIGGER_LABELS } from '@zenith/shared/report';
 import {
@@ -197,7 +197,7 @@ export default function QualityPage() {
     { title: '触发方式', dataIndex: 'triggerType', width: 110, render: (v: ReportDqRun['triggerType']) => REPORT_DQ_TRIGGER_LABELS[v] ?? v },
     { title: '检查/失败行', width: 140, render: (_v, r) => `${r.checkedRows} / ${r.failedRows}` },
     { title: '通过率', dataIndex: 'passRate', width: 110, align: 'right', render: (v) => formatDqPassRate(v) },
-    { title: '耗时', dataIndex: 'durationMs', width: 100, align: 'right', render: (v) => v == null ? '—' : `${v}ms` },
+    { title: '耗时', dataIndex: 'durationMs', width: 100, align: 'right', render: (v) => v == null ? EMPTY_PLACEHOLDER : `${v}ms` },
     dateTimeColumn('开始时间', 'startedAt'),
     { title: '状态', dataIndex: 'status', width: 100, fixed: 'right', render: (v: ReportDqRunStatus) => <Tag color={runStatusColor[v]}>{dqRunStatusLabel(v)}</Tag> },
   ];
@@ -231,7 +231,7 @@ export default function QualityPage() {
     { title: '通过', dataIndex: 'passedRules', width: 90 },
     { title: '失败', dataIndex: 'failedRules', width: 90 },
     { title: '维度明细', dataIndex: 'dimensions', width: 260, render: (v: Record<string, number> | null) => {
-      if (!v || Object.keys(v).length === 0) return '—';
+      if (!v || Object.keys(v).length === 0) return EMPTY_PLACEHOLDER;
       return (
         <Space spacing={4} wrap>
           {severityOptions.filter((item) => v[item.value] !== undefined).map((item) => (

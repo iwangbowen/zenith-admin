@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Col, Descriptions, Empty, Form, JsonViewer, Modal, Popconfirm, Radio, RadioGroup, Row, SideSheet, Space, Table, Tabs, TabPane, Tag, Timeline, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { Button, Col, Descriptions, Empty, Form, JsonViewer, Modal, Popconfirm, Radio, RadioGroup, Row, SideSheet, Space, Tabs, TabPane, Tag, Timeline, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ChevronsDownUp, ChevronsUpDown, Download } from 'lucide-react';
 import { workflowEngineContract, type WorkflowJob, type WorkflowJobClusterDimension, type WorkflowJobExecution, type WorkflowJobStatus, type WorkflowJobSummaryItem, type WorkflowJobType } from '@zenith/shared/workflow';
@@ -162,24 +162,24 @@ function jobSummaryText(record: WorkflowJob): string {
   const event = p.event as Record<string, unknown> | undefined;
   switch (record.jobType) {
     case 'event_dispatch':
-      return (event?.type as string) ?? '—';
+      return (event?.type as string) ?? EMPTY_PLACEHOLDER;
     case 'webhook_delivery': {
       const sub = p.subscriptionId != null ? `#${p.subscriptionId} ` : '';
-      return `${sub}${(event?.type as string) ?? ''}`.trim() || '—';
+      return `${sub}${(event?.type as string) ?? ''}`.trim() || EMPTY_PLACEHOLDER;
     }
     case 'trigger_dispatch':
-      return p.kind != null ? `kind=${p.kind}` : (record.nodeKey ?? '—');
+      return p.kind != null ? `kind=${p.kind}` : (record.nodeKey ?? EMPTY_PLACEHOLDER);
     case 'external_dispatch': {
       const method = p.method != null ? `${p.method} ` : '';
       const endpoint = (p.endpoint as string) ?? '';
-      return `${method}${endpoint}`.trim() || (record.nodeKey ?? '—');
+      return `${method}${endpoint}`.trim() || (record.nodeKey ?? EMPTY_PLACEHOLDER);
     }
     case 'subprocess_join':
-      return p.childInstanceId != null ? `child #${p.childInstanceId}` : '—';
+      return p.childInstanceId != null ? `child #${p.childInstanceId}` : EMPTY_PLACEHOLDER;
     case 'subprocess_spawn':
-      return p.childDefinitionId != null ? `def #${p.childDefinitionId}` : (record.nodeKey ?? '—');
+      return p.childDefinitionId != null ? `def #${p.childDefinitionId}` : (record.nodeKey ?? EMPTY_PLACEHOLDER);
     default:
-      return record.nodeKey ?? '—';
+      return record.nodeKey ?? EMPTY_PLACEHOLDER;
   }
 }
 
@@ -355,7 +355,7 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
       minWidth: 180,
       render: (_: unknown, record: WorkflowJob) => {
         const text = jobSummaryText(record);
-        return text === '—'
+        return text === EMPTY_PLACEHOLDER
           ? <Typography.Text size="small" type="tertiary">—</Typography.Text>
           : <Tooltip content={text}><Tag size="small" color="light-blue" type="light" style={{ maxWidth: '100%' }}>{text}</Tag></Tooltip>;
       },
@@ -434,8 +434,8 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
         ? <Typography.Text size="small" ellipsis={{ showTooltip: true }} style={{ maxWidth: 240 }}>{r.requestMethod ? `${r.requestMethod} ` : ''}{r.requestUrl}</Typography.Text>
         : <Typography.Text size="small" type="tertiary">—</Typography.Text>,
     },
-    { title: '响应码', dataIndex: 'responseStatus', width: 80, render: (v: number | null) => v ?? '—' },
-    { title: '耗时', dataIndex: 'durationMs', width: 90, align: 'right', render: (v: number | null) => v != null ? `${v}ms` : '—' },
+    { title: '响应码', dataIndex: 'responseStatus', width: 80, render: (v: number | null) => v ?? EMPTY_PLACEHOLDER },
+    { title: '耗时', dataIndex: 'durationMs', width: 90, align: 'right', render: (v: number | null) => v != null ? `${v}ms` : EMPTY_PLACEHOLDER },
     {
       title: '错误',
       dataIndex: 'errorMessage',
@@ -450,7 +450,7 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
     dateTimeColumn('时间', 'createdAt', { className: 'table-cell-compact' }),
     { title: '类型', dataIndex: 'jobType', width: 130, render: (v: WorkflowJobType) => <Tag color={JOB_TYPE_META[v].color} size="small">{JOB_TYPE_META[v].text}</Tag> },
     { title: '状态', dataIndex: 'status', width: 90, render: (v: WorkflowJobStatus) => renderStatusTag(v) },
-    { title: '节点 / 实例', render: (_: unknown, r: WorkflowJob) => <Typography.Text size="small">{r.nodeKey ?? '—'}{r.instanceId ? ` · #${r.instanceId}` : ''}</Typography.Text> },
+    { title: '节点 / 实例', render: (_: unknown, r: WorkflowJob) => <Typography.Text size="small">{r.nodeKey ?? EMPTY_PLACEHOLDER}{r.instanceId ? ` · #${r.instanceId}` : ''}</Typography.Text> },
     { title: '尝试', width: 64, render: (_: unknown, r: WorkflowJob) => `${r.attempts}/${r.maxAttempts}` },
   ];
 
@@ -651,19 +651,19 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
               data={[
                 { key: '作业类型', value: <Tag color={JOB_TYPE_META[detail.jobType].color} size="small">{JOB_TYPE_META[detail.jobType].text}</Tag> },
                 { key: '状态', value: renderStatusTag(detail.status) },
-                { key: '流程', value: detail.definitionName ?? '—' },
+                { key: '流程', value: detail.definitionName ?? EMPTY_PLACEHOLDER },
                 { key: '实例', value: detail.instanceId ? `#${detail.instanceId}${detail.instanceTitle ? ` · ${detail.instanceTitle}` : ''}` : '系统事件' },
-                { key: '任务 / 节点', value: `${detail.taskId ? `#${detail.taskId}` : '—'}${detail.nodeKey ? ` / ${detail.nodeKey}` : ''}` },
+                { key: '任务 / 节点', value: `${detail.taskId ? `#${detail.taskId}` : EMPTY_PLACEHOLDER}${detail.nodeKey ? ` / ${detail.nodeKey}` : ''}` },
                 { key: '尝试次数', value: `${detail.attempts}/${detail.maxAttempts}` },
                 { key: '执行轮次', value: detail.generation },
                 { key: '单次时限', value: formatDurationMs(detail.executionTimeoutMs) },
                 { key: '优先级', value: detail.priority },
                 { key: '计划执行', value: formatDateTime(detail.runAt) },
-                { key: '幂等键', value: detail.idempotencyKey ?? '—' },
+                { key: '幂等键', value: detail.idempotencyKey ?? EMPTY_PLACEHOLDER },
                 { key: 'TraceId', value: detail.traceId
                   ? <Button theme="borderless" size="small" style={{ padding: 0, height: 'auto' }} onClick={() => detail.traceId && void openChain(detail.traceId)}>{detail.traceId} · 查看链路</Button>
-                  : '—' },
-                { key: '锁定', value: detail.lockedBy ? `${detail.lockedBy}（${detail.lockedAt ? formatDateTime(detail.lockedAt) : '—'}）` : '—' },
+                  : EMPTY_PLACEHOLDER },
+                { key: '锁定', value: detail.lockedBy ? `${detail.lockedBy}（${detail.lockedAt ? formatDateTime(detail.lockedAt) : EMPTY_PLACEHOLDER}）` : EMPTY_PLACEHOLDER },
                 { key: '租约到期', value: detail.leaseUntil ? formatDateTime(detail.leaseUntil) : EMPTY_PLACEHOLDER },
                 { key: '执行截止', value: detail.executionDeadline ? formatDateTime(detail.executionDeadline) : EMPTY_PLACEHOLDER },
                 { key: '创建时间', value: formatDateTime(detail.createdAt) },
@@ -703,7 +703,7 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
               {detail.executions.length > 0
                 ? (execView === 'timeline'
                     ? renderExecutionTimeline(detail.executions)
-                    : <Table bordered size="small" columns={execColumns} dataSource={detail.executions} rowKey="id" pagination={false} />)
+                    : <ConfigurableTable bordered size="small" columnSettingsKey="workflow-job-executions" columns={execColumns} dataSource={detail.executions} rowKey="id" pagination={false} onRefresh={() => void detailQuery.refetch()} refreshLoading={detailQuery.isFetching} />)
                 : <Empty description="暂无执行记录" />}
             </div>
 
@@ -751,13 +751,16 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
               {chain.stats.canceled > 0 && <Tag color="grey">已取消 {chain.stats.canceled}</Tag>}
               <Tag color="violet">涉及实例 {chain.stats.instanceIds.length}</Tag>
             </Space>
-            <Table
+            <ConfigurableTable
               bordered
               size="small"
+              columnSettingsKey="workflow-job-chain"
               style={{ width: '100%' }}
               dataSource={chain.jobs}
               rowKey="id"
               pagination={false}
+              onRefresh={() => void chainQuery.refetch()}
+              refreshLoading={chainQuery.isFetching}
               onRow={(record) => ({ onClick: () => { if (record) void openDetail(record.id); }, style: { cursor: 'pointer' } })}
               columns={chainColumns}
             />
@@ -803,6 +806,7 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
       <Modal
         title="条件重放（死信 / 失败作业）"
         visible={replayOpen}
+        closeOnEsc
         onCancel={() => setReplayOpen(false)}
         okText="确认重放"
         cancelText="取消"
@@ -875,7 +879,7 @@ function RuntimeStatusBar({ onDeadClick }: Readonly<{ onDeadClick?: () => void }
   const danger = 'var(--semi-color-danger)';
 
   const workerTip = status?.workers.length
-    ? status.workers.map((w) => `${w.hostname ?? w.nodeId}｜在途 ${w.runningJobCount}｜心跳 ${w.lastHeartbeatAt ?? '—'}${w.fresh ? '' : '（离线）'}`).join('\n')
+    ? status.workers.map((w) => `${w.hostname ?? w.nodeId}｜在途 ${w.runningJobCount}｜心跳 ${w.lastHeartbeatAt ?? EMPTY_PLACEHOLDER}${w.fresh ? '' : '（离线）'}`).join('\n')
     : '暂无注册节点';
 
   // 'YYYY-MM-DD HH:mm:ss' → 数值位展示时间、副文案展示日期，避免长串在数值字号下折行

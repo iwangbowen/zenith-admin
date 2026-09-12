@@ -97,7 +97,7 @@ export default function MpQrcodesPage() {
       title: '二维码', dataIndex: 'url', width: 90, align: 'center' as const,
       render: (v: string | null) => (v
         ? <Image src={v} width={48} height={48} style={{ borderRadius: 'var(--semi-border-radius-small)' }} />
-        : '—'),
+        : EMPTY_PLACEHOLDER),
     },
     createdAtColumn,
     createOperationColumn<MpQrcode>({

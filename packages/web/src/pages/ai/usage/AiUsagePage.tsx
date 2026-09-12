@@ -11,6 +11,7 @@ import { aiUsageKeys, useAiUsageStats } from '@/hooks/queries/ai-usage';
 import type { AiUsageByModel, AiUsageByUser } from '@/hooks/queries/ai-usage';
 import { DateRangeFilter } from '@/components/search-filters';
 import { formatDurationMs } from '@/utils/format';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 const { Text } = Typography;
 
@@ -28,7 +29,7 @@ function formatNumber(value: number | null | undefined) {
 
 /** 分 → 元显示 */
 function formatCostYuan(fen: number | null | undefined) {
-  if (fen == null) return '—';
+  if (fen == null) return EMPTY_PLACEHOLDER;
   return `¥${(fen / 100).toFixed(2)}`;
 }
 
@@ -55,7 +56,7 @@ export default function AiUsagePage() {
 
   const modelColumns: ColumnProps<AiUsageByModel>[] = [
     { title: '模型', dataIndex: 'model', width: 180 },
-    { title: '供应商', dataIndex: 'provider', width: 140, render: (v: string | null) => v ?? '—' },
+    { title: '供应商', dataIndex: 'provider', width: 140, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
     { title: '回复数', dataIndex: 'messages', width: 90, align: 'right', render: (value: number) => formatNumber(value) },
     { title: '输入Token', dataIndex: 'tokensInput', width: 120, align: 'right', render: (value: number) => formatNumber(value) },
     { title: '输出Token', dataIndex: 'tokensOutput', width: 120, align: 'right', render: (value: number) => formatNumber(value) },
@@ -145,7 +146,7 @@ export default function AiUsagePage() {
 
               <StatCard
                 title="请求成功率"
-                value={stats?.overview.successRate == null ? '—' : `${stats.overview.successRate}%`}
+                value={stats?.overview.successRate == null ? EMPTY_PLACEHOLDER : `${stats.overview.successRate}%`}
                 icon={<CircleCheck size={20} />}
                 accent="var(--semi-color-success)"
               />

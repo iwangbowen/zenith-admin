@@ -25,7 +25,7 @@ import {
 import { toUserOptions, useAllUsers } from '@/hooks/queries/users';
 import { approvalConflictMessage, parseJsonObject } from '../report-platform-utils';
 import { REPORT_RESOURCE_TYPE_OPTIONS, reportResourceTypeLabel } from '../report-platform-options';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { confirmDanger } from '@/utils/confirm';
 import { FilterSelect } from '@/components/search-filters';
 
@@ -83,9 +83,9 @@ export function GovernanceApprovalTab() {
     { title: '资源', dataIndex: 'resourceName', minWidth: 200, render: (v, r) => renderEllipsis(v || `${reportResourceTypeLabel(r.resourceType)} #${r.resourceId}`) },
     { title: '动作', dataIndex: 'action', width: 100 },
     { title: '修订', dataIndex: 'requestedRevision', width: 80 },
-    { title: '申请人', dataIndex: 'requestedByName', width: 120, render: (v) => v || '—' },
+    { title: '申请人', dataIndex: 'requestedByName', width: 120, render: (v) => v || EMPTY_PLACEHOLDER },
     dateTimeColumn('申请时间', 'requestedAt'),
-    { title: '处理人', dataIndex: 'decidedByName', width: 120, render: (v) => v || '—' },
+    { title: '处理人', dataIndex: 'decidedByName', width: 120, render: (v) => v || EMPTY_PLACEHOLDER },
     { title: '状态', dataIndex: 'status', width: 100, fixed: 'right', render: (v) => <Tag color={statusColor[v]}>{v}</Tag> },
     createOperationColumn<ReportPublishApproval>({
       width: 120,

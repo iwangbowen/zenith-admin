@@ -57,6 +57,8 @@ function toTreeSelectData(nodes: CmsChannel[], excludeId?: number): TreeNodeData
 /** 栏目树拍平为一维数组，用于按 id 反查最新栏目对象 */
 export default function ChannelsPage() {
   const { hasPermission } = usePermission();
+  // useEditModal 例外：右栏是保存后不关闭的栏目编辑工作区（新建成功后停留在编辑态继续补模板 / SEO），
+  // 编辑对象由 URL 选中态从栏目树派生而非详情查询
   const formApi = useRef<FormApi | null>(null);
   // 选中栏目以 ?site=&channel= 复合同步到 URL（栏目 id 不含站点上下文，深链单带 channel
   // 会落到 localStorage 恢复的站点而查无此栏目）；两参数同一 hook 实例原子写回。
@@ -150,6 +152,7 @@ export default function ChannelsPage() {
     Toast.success('保存成功');
     setUsersModalChannel(null);
   }
+  // useEditModal 例外：栏目合并 / 批量新建是多栏目操作参数表单，非单实体新增 / 编辑弹窗
   const mergeFormApi = useRef<FormApi | null>(null);
   const batchFormApi = useRef<FormApi | null>(null);
 

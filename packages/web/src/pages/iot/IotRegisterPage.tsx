@@ -130,9 +130,9 @@ export default function IotRegisterPage() {
   return (
     <div className="page-container">
       <StatGrid minItemWidth={200} style={{ marginBottom: 16 }}>
-        <StatCard title="白名单总数" value={stats ? `${stats.total} 条` : '—'} />
-        <StatCard title="已注册" value={stats ? `${stats.used} 条` : '—'} accent="var(--semi-color-success)" />
-        <StatCard title="待注册" value={stats ? `${stats.total - stats.used} 条` : '—'} accent="var(--semi-color-primary)" />
+        <StatCard title="白名单总数" value={stats ? `${stats.total} 条` : EMPTY_PLACEHOLDER} />
+        <StatCard title="已注册" value={stats ? `${stats.used} 条` : EMPTY_PLACEHOLDER} accent="var(--semi-color-success)" />
+        <StatCard title="待注册" value={stats ? `${stats.total - stats.used} 条` : EMPTY_PLACEHOLDER} accent="var(--semi-color-primary)" />
       </StatGrid>
 
       {canManage && (

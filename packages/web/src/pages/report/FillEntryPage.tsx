@@ -16,6 +16,7 @@ import {
   useUpdateReportFillRecord,
 } from '@/hooks/queries/report-fill';
 import { formatDateTime } from '@/utils/date';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { canRunFillRecordAction, isRevisionConflict, submitFillEntryValues } from './report-p2-utils';
 import './FillEntryPage.css';
 
@@ -31,6 +32,7 @@ export default function FillEntryPage() {
   const recordId = recordIdText && /^\d+$/.test(recordIdText) ? Number(recordIdText) : undefined;
   const malformedRecordId = Boolean(recordIdText && !recordId);
   const { hasPermission } = usePermission();
+  // useEditModal 例外：整页填报表单（路由页，字段由模板动态生成）；表单 key 含记录 id 与 revision
   const formApi = useRef<FormApi | null>(null);
   const [operationError, setOperationError] = useState('');
   const [savedRecord, setSavedRecord] = useState<ReportFillRecord>();
@@ -230,7 +232,7 @@ export default function FillEntryPage() {
             },
             { key: '创建时间', value: formatDateTime(record.createdAt) },
             { key: '更新时间', value: formatDateTime(record.updatedAt) },
-            { key: '审核意见', value: record.reviewComment || '—' },
+            { key: '审核意见', value: record.reviewComment || EMPTY_PLACEHOLDER },
           ]}
         />
       )}

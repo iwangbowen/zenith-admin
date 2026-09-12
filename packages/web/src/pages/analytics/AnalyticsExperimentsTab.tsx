@@ -7,6 +7,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import type { AnalyticsExperiment, AnalyticsExperimentReportVariant, AnalyticsExperimentVariant, CreateAnalyticsExperimentInput } from '@zenith/shared/analytics';
 import { DataBar } from '@/components/data-viz/DataBar';
 import { ANALYTICS_EXPERIMENT_STATUS_LABELS, ANALYTICS_EXPERIMENT_STATUS_OPTIONS } from '@zenith/shared/analytics';
+import { AppModal } from '@/components/AppModal';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { analyticsKeys, useAnalyticsEventMeta, useCreateExperiment, useDeleteExperiment, useExperimentAction, useExperimentReport, useExperiments, useUpdateExperiment } from '@/hooks/queries/analytics';
@@ -228,7 +229,7 @@ export default function AnalyticsExperimentsTab() {
         pagination={buildPagination(listQuery.data?.total ?? 0)}
       />
 
-      <Modal {...experimentModal.modalProps} title={experimentModal.isEdit ? '编辑 A/B 实验' : '新增 A/B 实验'} width={660}>
+      <AppModal {...experimentModal.modalProps} title={experimentModal.isEdit ? '编辑 A/B 实验' : '新增 A/B 实验'} width={660}>
         <Form key={experimentModal.formKey} {...experimentModal.formProps}>
           <Row gutter={16}>
             <Col span={12}>
@@ -292,7 +293,7 @@ export default function AnalyticsExperimentsTab() {
             </div>
           ))}
         </div>
-      </Modal>
+      </AppModal>
 
       <SideSheet title={reporting ? `实验报告：${reporting.name}` : '实验报告'} visible={!!reporting} onCancel={() => setReporting(null)} width={860}>
         {report?.srm?.mismatch && (

@@ -9,7 +9,7 @@ import ExportButton from '@/components/ExportButton';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
-import { dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '../../../utils/table-columns';
 import { useEmailTemplateList } from '@/hooks/queries/email-templates';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -81,10 +81,10 @@ export default function EmailSendLogsPage() {
   const columns = [
     { title: '收件人', dataIndex: 'toEmail', width: 200 },
     { title: '邮件主题', dataIndex: 'subject', render: renderEllipsis },
-    { title: '模板', dataIndex: 'templateName', width: 140, render: (v: string | null) => v || '—' },
+    { title: '模板', dataIndex: 'templateName', width: 140, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
     sendLogSourceColumn<EmailSendLog>(),
     sendLogOperatorColumn<EmailSendLog>(),
-    { title: 'IP', dataIndex: 'ip', width: 130, render: (v: string | null) => v || '—' },
+    { title: 'IP', dataIndex: 'ip', width: 130, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
     dateTimeColumn('发送时间', 'sentAt'),
     sendLogErrorColumn<EmailSendLog>(),
     sendLogStatusColumn<EmailSendLog>(),

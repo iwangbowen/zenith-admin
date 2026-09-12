@@ -8,7 +8,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { DateRangeFilter, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
+import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { formatDateTimeRangeForApi } from '@/utils/date';
@@ -53,7 +53,7 @@ export default function WikiCommentsPage() {
         <Typography.Text link ellipsis={{ showTooltip: true }} onClick={() => navigate(`/wiki/docs?docId=${record.docId}`)}>
           {v}
         </Typography.Text>
-      ) : '—',
+      ) : EMPTY_PLACEHOLDER,
     },
     { title: '评论人', dataIndex: 'authorName', width: 120, render: (v: string | null) => v ?? '已注销用户' },
     createdAtColumn,

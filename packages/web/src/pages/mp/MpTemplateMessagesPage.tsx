@@ -11,7 +11,7 @@ import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { listTableProps } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { dateTimeColumn, renderEllipsis } from '../../utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '../../utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useMpAccounts } from './useMpAccounts';
@@ -125,7 +125,7 @@ export default function MpTemplateMessagesPage() {
   const tplColumns = [
     { title: '模板标题', dataIndex: 'title', width: 180, render: renderEllipsis },
     { title: '模板ID', dataIndex: 'templateId', width: 200, render: renderEllipsis },
-    { title: '内容', dataIndex: 'content', minWidth: 320, render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 300, whiteSpace: 'pre-wrap' }}>{v || '—'}</Typography.Text> },
+    { title: '内容', dataIndex: 'content', minWidth: 320, render: (v: string | null) => <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 300, whiteSpace: 'pre-wrap' }}>{v || EMPTY_PLACEHOLDER}</Typography.Text> },
     createOperationColumn<MpMessageTemplate>({
       width: 150,
       desktopInlineKeys: ['send', 'delete'],
@@ -144,8 +144,8 @@ export default function MpTemplateMessagesPage() {
       title: '状态', dataIndex: 'status', width: 90,
       render: (v: string) => (v === 'success' ? <Tag color="green" type="light">成功</Tag> : <Tag color="red" type="light">失败</Tag>),
     },
-    { title: 'msgId', dataIndex: 'msgId', width: 140, render: (v: string | null) => v || '—' },
-    { title: '错误信息', dataIndex: 'errorMsg', width: 220, render: (v: string | null) => v || '—' },
+    { title: 'msgId', dataIndex: 'msgId', width: 140, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
+    { title: '错误信息', dataIndex: 'errorMsg', width: 220, render: renderEllipsis },
     dateTimeColumn('发送时间', 'createdAt'),
   ];
 
@@ -176,7 +176,7 @@ export default function MpTemplateMessagesPage() {
   const industry = industryQuery.data;
 
   return (
-    <div className="page-container">
+    <div className="page-container page-tabs-page">
       <SearchToolbar
         primary={accountFilter}
         mobilePrimary={accountFilter}

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { Breadcrumb, Button, Dropdown, Empty, Form, Progress, Space, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { ChevronDown, Copy, Download, FolderPlus, LayoutGrid, List as ListIcon, Lock, MoveRight, Star, Trash2, Upload } from 'lucide-react';
 import { formatBytes } from '@zenith/shared/core';
 import { DRIVE_ROLE_LABELS, type DriveNode, type DriveNodeListResult } from '@zenith/shared/drive';
@@ -14,6 +13,7 @@ import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { createOperationColumn, type ResponsiveTableAction } from '@/components/ResponsiveTableActions';
 import { useFilePreview } from '@/hooks/useFilePreview';
 import { useAuth } from '@/hooks/useAuth';
+import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { batchDownloadDriveNodes, deleteDriveNodesVariables, driveKeys, useCopyDriveNodes, useCreateDriveFolder, useDeleteDriveNodes, useDriveDir, useDrivePreviewWatermark, useDriveTags, useLockDriveNode, useMoveDriveNodes, useRenameDriveNode, useStarDriveNode, useUnlockDriveNode, useUnstarDriveNode } from '@/hooks/queries/drive';
@@ -63,12 +63,9 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [ctx, setCtx] = useState<{ node: DriveNode; point: CursorPoint } | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [renaming, setRenaming] = useState<DriveNode | null>(null);
-  const [creating, setCreating] = useState(false);
   const [picker, setPicker] = useState<{ mode: 'move' | 'copy'; nodes: DriveNode[] } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const directoryInputRef = useRef<HTMLInputElement>(null);
-  const formApiRef = useRef<FormApi<{ name: string }> | null>(null);
 
   const listKey = driveKeys.dir(spaceId, folderId);
   const { page, pageSize, buildPagination, draftParams, setDraftParams, setField, submittedParams, handleSearch, handleReset, setPage, applySearch } =
@@ -101,6 +98,19 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
   const unstar = useUnstarDriveNode();
   const lock = useLockDriveNode();
   const unlock = useUnlockDriveNode();
+  // 命名弹窗：无记录 = 在当前目录新建文件夹，有记录 = 重命名该节点
+  const nameModal = useEditModal<DriveNode, { name: string }>({
+    save: {
+      mutateAsync: ({ id, values }) => (id === undefined
+        ? createFolder.mutateAsync({ body: { spaceId, parentId: folderId, name: values.name } })
+        : rename.mutateAsync({ params: { id }, body: { name: values.name } })),
+      isPending: rename.isPending || createFolder.isPending,
+    },
+    defaults: { name: '' },
+    toValues: (node) => ({ name: node.name }),
+    successMessage: ({ isEdit }) => (isEdit ? '已重命名' : '文件夹已创建'),
+    labelWidth: 70,
+  });
 
   const preview = useFilePreview(() => list.filter((n) => n.type === 'file' && n.url).map(nodeToManagedFile));
 
@@ -155,21 +165,6 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
     setSelectedIds([]);
   };
 
-  const submitName = async (mode: 'rename' | 'create') => {
-    const api = formApiRef.current;
-    if (!api) return;
-    const { name } = await api.validate();
-    if (mode === 'rename' && renaming) {
-      await rename.mutateAsync({ params: { id: renaming.id }, body: { name } });
-      setRenaming(null);
-      Toast.success('已重命名');
-    } else {
-      await createFolder.mutateAsync({ body: { spaceId, parentId: folderId, name } });
-      setCreating(false);
-      Toast.success('文件夹已创建');
-    }
-  };
-
   const nodeActions = (node: DriveNode): ResponsiveTableAction[] => {
     const previewable = node.type === 'file' && canPreviewFile(node.mimeType, node.name);
     const nodeCanEdit = canEdit && roleAtLeast(node.myRole, 'editor');
@@ -179,7 +174,7 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
       { key: 'detail', label: '详情', onClick: () => onOpenDetail(node.id) },
       { key: 'star', label: node.isStarred ? '取消收藏' : '收藏', onClick: () => (node.isStarred ? unstar : star).mutate({ params: { id: node.id }, node }) },
       ...(nodeCanEdit ? [
-        { key: 'rename', label: '重命名', onClick: () => setRenaming(node), dividerBefore: true },
+        { key: 'rename', label: '重命名', onClick: () => nameModal.openEdit(node), dividerBefore: true },
         { key: 'move', label: '移动到', onClick: () => setPicker({ mode: 'move', nodes: [node] }) },
         { key: 'copy', label: '复制到', onClick: () => setPicker({ mode: 'copy', nodes: [node] }) },
       ] : []),
@@ -253,7 +248,7 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
               <input ref={directoryInputRef} type="file" multiple hidden onChange={(e) => { onUpload(Array.from(e.target.files ?? []), { spaceId, parentId: folderId }); e.target.value = ''; }} />
               <Button theme="solid" icon={<Upload size={14} />} onClick={() => fileInputRef.current?.click()}>上传</Button>
               <Button icon={<Upload size={14} />} onClick={() => directoryInputRef.current?.click()}>上传文件夹</Button>
-              <Button icon={<FolderPlus size={14} />} onClick={() => setCreating(true)}>新建文件夹</Button>
+              <Button icon={<FolderPlus size={14} />} onClick={nameModal.openCreate}>新建文件夹</Button>
             </>
           )}
           {selectedIds.length > 0 && (
@@ -357,12 +352,9 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
 
       <FilePreviewLayer preview={preview} watermark={watermark} />
 
-      <AppModal visible={!!renaming || creating} title={renaming ? '重命名' : '新建文件夹'} width={460} closeOnEsc
-        onCancel={() => { setRenaming(null); setCreating(false); }} onOk={() => submitName(renaming ? 'rename' : 'create')}
-        okButtonProps={{ loading: rename.isPending || createFolder.isPending }}>
-        <Form<{ name: string }> key={renaming ? `rename-${renaming.id}` : 'create'} getFormApi={(api) => { formApiRef.current = api; }}
-          initValues={{ name: renaming?.name ?? '' }} labelPosition="left" labelWidth={70}
-          onSubmit={() => void submitName(renaming ? 'rename' : 'create')}>
+      <AppModal {...nameModal.modalProps} title={nameModal.isEdit ? '重命名' : '新建文件夹'} width={460}>
+        {/* onSubmit 接回车提交，与确定按钮走同一条校验 → 保存 → 关闭链路 */}
+        <Form key={nameModal.formKey} {...nameModal.formProps} onSubmit={() => void nameModal.modalProps.onOk()}>
           <Form.Input field="name" label="名称" autoFocus maxLength={255}
             rules={[{ required: true, message: '名称不能为空' }, { pattern: /^[^\\/:*?"<>|]+$/, message: '名称不能包含 \\ / : * ? " < > |' }]} />
         </Form>

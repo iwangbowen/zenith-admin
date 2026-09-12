@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Modal, Spin, Toast, AudioPlayer, VideoPlayer, Typography } from '@douyinfe/semi-ui';
 import { X } from 'lucide-react';
+import { fileContract } from '@zenith/shared/platform';
+import { contractKey } from '@/lib/contract-query';
 import { useThemeController } from '@/providers/theme-controller';
 import { fetchManagedFileBlob, resolveFileMimeType, isSpreadsheetFile, isWordFile, isPresentationFile, isOfdFile, isEmailFile, isMindMapFile, isDrawingFile, isDataAssetFile, isGeoFile, isMarkdownFile, isPlainTextFile, isArchiveFile, isJsonFile, isSvgFile, isCodeFile, getFileTypeIcon } from '@/utils/file-utils';
 import AppModal from '@/components/AppModal';
@@ -135,8 +137,9 @@ export default function FilePreviewModal({
     return 'unsupported';
   }, [fileName, resolvedMimeType]);
 
+  // 非契约 blob 通道（任意文件地址经 fetchManagedFileBlob 取二进制并按类型加工），保留手写 useQuery，key 取文件内容契约 key 追加预览段
   const previewQuery = useQuery({
-    queryKey: ['files', 'preview', visible, fileUrl, fileName, resolvedMimeType, previewKind],
+    queryKey: [...contractKey(fileContract.content), 'preview', visible, fileUrl, fileName, resolvedMimeType, previewKind],
     queryFn: async (): Promise<PreviewData> => {
       const blob = await fetchManagedFileBlob(fileUrl);
       if (previewKind === 'spreadsheet' || previewKind === 'word' || previewKind === 'presentation' || previewKind === 'ofd' || previewKind === 'email' || previewKind === 'mindmap' || previewKind === 'drawing' || previewKind === 'dataAsset' || previewKind === 'geo' || previewKind === 'archive') {

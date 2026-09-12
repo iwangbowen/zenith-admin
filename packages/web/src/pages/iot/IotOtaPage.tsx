@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import {
-  Button, Form, Progress, SideSheet, Table, TabPane, Tabs, Tag, Toast, Typography, Upload,
+  Button, Form, Progress, SideSheet, TabPane, Tabs, Tag, Toast, Typography, Upload,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
@@ -416,14 +416,10 @@ function OtaTaskDetailDrawer({ task, onClose }: Readonly<{ task: IotOtaTask | nu
             />
             {task.status === 'running' && <Text type="tertiary" size="small">进行中任务每 5 秒自动刷新</Text>}
           </div>
-          <Table
+          <ConfigurableTable
+            columnSettingsKey="iot-ota-task-devices"
             columns={columns}
-            dataSource={devicesQuery.data?.list ?? []}
-            rowKey="id"
-            size="small"
-            loading={devicesQuery.isPending}
-            empty="暂无设备明细"
-            pagination={buildPagination(devicesQuery.data?.total ?? 0)}
+            {...listTableProps(devicesQuery, { pagination: buildPagination, empty: '暂无设备明细' })}
           />
         </>
       )}

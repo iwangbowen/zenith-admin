@@ -5,12 +5,13 @@
  * 在此可对全部快捷回复做 CRUD；新建/编辑时作用域可选「全局」或「当前频道」。
  */
 import { useState } from 'react';
-import { Form, SideSheet, Table, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Form, SideSheet, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { ChannelQuickReply } from '@zenith/shared/messaging';
 import { AppModal } from '@/components/AppModal';
+import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { deleteAction } from '@/components/list-page';
+import { deleteAction, listTableProps } from '@/components/list-page';
 import {
   useChannelQuickReplies,
   useDeleteChannelQuickReply,
@@ -32,7 +33,6 @@ export function ChannelQuickReplyDrawer({ channelId, channelName, visible, onClo
   const [editing, setEditing] = useState<ChannelQuickReply | null>(null);
   const [formValues, setFormValues] = useState<Record<string, unknown>>({});
   const listQuery = useChannelQuickReplies(channelId, visible && !!channelId);
-  const list = listQuery.data ?? [];
   const saveMutation = useSaveChannelQuickReply();
   const deleteMutation = useDeleteChannelQuickReply();
 
@@ -92,13 +92,10 @@ export function ChannelQuickReplyDrawer({ channelId, channelName, visible, onClo
         <Typography.Text type="tertiary" size="small">全局快捷回复对所有运营号可用，频道专属仅对当前运营号生效</Typography.Text>
         <CreateButton onClick={openCreate} />
       </div>
-      <Table
+      <ConfigurableTable
+        columnSettingsKey="channel-quick-replies"
         columns={columns}
-        dataSource={list}
-        rowKey="id"
-        loading={listQuery.isFetching}
-        pagination={false}
-        size="small"
+        {...listTableProps(listQuery)}
       />
 
       <AppModal

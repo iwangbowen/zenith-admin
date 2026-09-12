@@ -13,6 +13,7 @@ interface ForgotPasswordModalProps {
 
 export default function ForgotPasswordModal({ visible, onClose }: Readonly<ForgotPasswordModalProps>) {
   const [sent, setSent] = useState(false);
+  // useEditModal 例外：认证流程（找回密码）
   const formApi = useRef<FormApi | null>(null);
   const forgotPasswordMutation = useForgotPassword();
   const loading = forgotPasswordMutation.isPending;

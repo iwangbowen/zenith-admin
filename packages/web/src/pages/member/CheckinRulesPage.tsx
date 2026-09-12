@@ -28,6 +28,7 @@ import { abortSubmit } from '@/lib/abort-submit';
 export default function CheckinRulesPage() {
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
+  // useEditModal 例外：签到设置为单例配置表单（无实体 id、无新增态）；表单 key 跟随 settings.updatedAt 重挂载
   const settingsFormApi = useRef<FormApi | null>(null);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const listQuery = useCheckinRules();

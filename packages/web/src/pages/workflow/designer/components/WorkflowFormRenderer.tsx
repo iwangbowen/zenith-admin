@@ -36,6 +36,7 @@ interface RendererProps {
 export default function WorkflowFormRenderer({
   fields, initValues, getFormApi, onValueChange, readOnly, readOnlyAsText, style, labelPosition = 'top', labelAlign, labelWidth,
 }: Readonly<RendererProps>) {
+  // useEditModal 例外：工作流运行时表单渲染器（字段由定义动态生成，提交由承载页负责）
   const formApiRef = useRef<FormApi | null>(null);
 
   const all = useMemo(() => flattenFields(fields), [fields]);

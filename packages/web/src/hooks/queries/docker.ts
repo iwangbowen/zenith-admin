@@ -76,9 +76,18 @@ export function useDockerContainerAction() {
   });
 }
 
-/** 容器日志（末尾 N 行）；日志抽屉按固定间隔轮询，不进缓存 */
+/** 容器日志（末尾 N 行）；供一次性拉取（终端页 Docker Explorer） */
 export function fetchDockerContainerLogs(id: string, tail: number) {
   return api(dockerContract.logs, { params: { id }, query: { tail } });
+}
+
+/** 日志抽屉：追踪态按固定间隔轮询；关闭后不保留缓存（`gcTime: 0`），重开总是重新拉取 */
+export function useDockerContainerLogs(id: string | undefined, options: { tail: number; enabled: boolean; refetchInterval: number | false }) {
+  return useApiQuery(dockerContract.logs, { params: { id: id ?? '' }, query: { tail: options.tail } }, {
+    enabled: options.enabled && !!id,
+    refetchInterval: options.refetchInterval,
+    gcTime: 0,
+  });
 }
 
 export function useDockerRemoveImage() {

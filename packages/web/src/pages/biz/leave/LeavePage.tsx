@@ -12,6 +12,7 @@ import dayjs from 'dayjs';
 import { BIZ_LEAVE_TYPES, type BizLeave, type CreateBizLeaveInput } from '@zenith/shared/biz';
 import { enumValueOf } from '@zenith/shared/core';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { AppModal } from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -241,7 +242,7 @@ export default function LeavePage() {
         {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
-      <Modal
+      <AppModal
         title={modal.isEdit ? '编辑请假单' : '新建请假单'}
         visible={modal.visible}
         onCancel={modal.close}
@@ -252,7 +253,6 @@ export default function LeavePage() {
             <Button type="primary" loading={submittingApproval} disabled={saving} onClick={() => void handleSubmitFromModal()}>提交审批</Button>
           </Space>
         )}
-        closeOnEsc
         width={520}
       >
         <Form key={modal.formKey} {...modal.formProps}
@@ -272,7 +272,7 @@ export default function LeavePage() {
         <Typography.Text type="tertiary" size="small">
           <Send size={12} style={{ verticalAlign: -2, marginRight: 4 }} />可保存为草稿稍后提交，也可直接「提交审批」发起请假审批流程。
         </Typography.Text>
-      </Modal>
+      </AppModal>
     </div>
   );
 }

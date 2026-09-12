@@ -24,7 +24,7 @@ import {
 } from '@/hooks/queries/open-platform';
 import { usePermission } from '@/hooks/usePermission';
 import { confirmDanger } from '@/utils/confirm';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { OpenPlatformPaginatedTab } from '../OpenPlatformPaginatedTab';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
@@ -96,7 +96,7 @@ function GrantsTab({ appId }: Readonly<{ appId: number }>) {
   const useList = (page: number, pageSize: number) => useOAuth2AppGrants(appId, page, pageSize);
   const columns: ColumnProps<OAuth2UserGrant>[] = [
     { title: '用户', dataIndex: 'nickname', render: (value: string | null, row) => value || row.username || `用户 ${row.userId}` },
-    { title: '用户名', dataIndex: 'username', width: 160, render: (value: string | null) => value ?? '—' },
+    { title: '用户名', dataIndex: 'username', width: 160, render: (value: string | null) => value ?? EMPTY_PLACEHOLDER },
     { title: '授权 Scope', dataIndex: 'scopes', render: (values: string[]) => <Space wrap>{values.map((value) => <Tag key={value} size="small" color="blue">{value}</Tag>)}</Space> },
     dateTimeColumn('首次授权', 'createdAt'),
     dateTimeColumn('最近更新', 'updatedAt'),
@@ -115,7 +115,7 @@ function TokensTab({ clientId, canManage }: Readonly<{ clientId: string; canMana
   const useList = (page: number, pageSize: number) => useOAuth2AppTokens(clientId, page, pageSize);
   const revokeMutation = useRevokeOAuth2Token();
   const columns: ColumnProps<OAuth2Token>[] = [
-    { title: '令牌', dataIndex: 'tokenPrefix', render: (value: string | null) => value ?? '—' },
+    { title: '令牌', dataIndex: 'tokenPrefix', render: (value: string | null) => value ?? EMPTY_PLACEHOLDER },
     { title: '类型', dataIndex: 'tokenType', width: 100, render: (value: string) => <Tag size="small">{value}</Tag> },
     { title: '用户 ID', dataIndex: 'userId', width: 100, render: (value: number | null) => value ?? '服务账号' },
     { title: 'Scope', dataIndex: 'scopes', render: (values: string[]) => <Space wrap>{values.map((value) => <Tag key={value} size="small" color="blue">{value}</Tag>)}</Space> },
@@ -228,15 +228,15 @@ export default function OAuth2AppDetailPage() {
               { key: '运行环境', value: OPEN_APP_ENVIRONMENT_LABELS[app.environment] },
               { key: '审核状态', value: OPEN_APP_REVIEW_STATUS_LABELS[app.reviewStatus] },
               { key: 'AppKey 签名通道', value: app.signEnabled ? '已开启（强制签名）' : '未开启（仅 Bearer）' },
-              { key: '旧密钥有效期', value: app.previousSecretExpiresAt || '—' },
+              { key: '旧密钥有效期', value: app.previousSecretExpiresAt || EMPTY_PLACEHOLDER },
               { key: '创建时间', value: app.createdAt },
               { key: '更新时间', value: app.updatedAt },
-              { key: '审核意见', value: app.reviewComment || '—', span: 2 },
+              { key: '审核意见', value: app.reviewComment || EMPTY_PLACEHOLDER, span: 2 },
               { key: '授权类型', value: app.grantTypes.join('、'), span: 2 },
               { key: '允许 Scope', value: app.allowedScopes.join('、'), span: 2 },
-              { key: '回调 URL', value: app.redirectUris.length ? app.redirectUris.join('\n') : '—', span: 2 },
+              { key: '回调 URL', value: app.redirectUris.length ? app.redirectUris.join('\n') : EMPTY_PLACEHOLDER, span: 2 },
               { key: 'IP 白名单', value: app.ipAllowlist.length ? app.ipAllowlist.join('\n') : '不限制', span: 2 },
-              { key: '描述', value: app.description || '—', span: 2 },
+              { key: '描述', value: app.description || EMPTY_PLACEHOLDER, span: 2 },
             ]}
           />
         </TabPane>

@@ -19,6 +19,7 @@ import { useWorkflowAnalytics, useWorkflowOverdueTasks } from '@/hooks/queries/w
 import { WORKFLOW_INSTANCE_STATUS_LABELS } from '@zenith/shared/workflow';
 import { FilterSelect } from '@/components/search-filters';
 import { shortDate } from '@/utils/date';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 // 文案统一来自 @zenith/shared；hex 色值为图表 canvas 专用（Semi Tag 色名不适用）
 const STATUS_META: Record<string, { text: string; color: string }> = {
@@ -32,7 +33,7 @@ const STATUS_META: Record<string, { text: string; color: string }> = {
 };
 
 function fmtDuration(sec: number | null): string {
-  if (sec == null) return '—';
+  if (sec == null) return EMPTY_PLACEHOLDER;
   if (sec < 60) return `${Math.round(sec)}秒`;
   const m = Math.floor(sec / 60);
   if (m < 60) return `${m}分钟`;
@@ -43,7 +44,7 @@ function fmtDuration(sec: number | null): string {
 }
 
 function fmtPercent(rate: number | null): string {
-  if (rate == null) return '—';
+  if (rate == null) return EMPTY_PLACEHOLDER;
   return `${(rate * 100).toFixed(1)}%`;
 }
 
@@ -203,7 +204,7 @@ export default function WorkflowAnalyticsView({ definitions }: Readonly<{ defini
                         />
                       </td>
                       <td style={{ padding: '6px 8px' }}>{o.nodeName}</td>
-                      <td style={{ padding: '6px 8px' }}>{o.assigneeName ?? '—'}</td>
+                      <td style={{ padding: '6px 8px' }}>{o.assigneeName ?? EMPTY_PLACEHOLDER}</td>
                       <td style={{ padding: '6px 8px', color: 'var(--semi-color-text-2)' }}>{o.timeoutAt}</td>
                       <td style={{ padding: '6px 8px', textAlign: 'right', color: lamp, fontWeight: 600 }}>{fmtDuration(o.overdueSec)}</td>
                     </tr>

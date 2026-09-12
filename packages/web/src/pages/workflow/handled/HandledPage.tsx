@@ -6,7 +6,7 @@ import SavedViewsBar from '@/components/workflow/SavedViewsBar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import WorkflowInstanceDetailSheet from '@/components/workflow/WorkflowInstanceDetailSheet';
-import { dateTimeColumn } from '../../../utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER } from '../../../utils/table-columns';
 import { useListSearch } from '@/hooks/useListSearch';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { KeywordInput } from '@/components/search-filters';
@@ -58,7 +58,7 @@ export default function HandledPage() {
       width: 110,
       render: (v: string | null) => {
         const s = v ? MY_TASK_STATUS_MAP[v] : null;
-        return s ? <Tag color={s.color}>{s.text}</Tag> : '—';
+        return s ? <Tag color={s.color}>{s.text}</Tag> : EMPTY_PLACEHOLDER;
       },
     },
     dateTimeColumn('处理时间', 'myActionAt'),

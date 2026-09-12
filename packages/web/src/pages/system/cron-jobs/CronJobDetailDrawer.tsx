@@ -122,7 +122,7 @@ function DetailBody({ detail, days, updatedAt, onViewLogs }: Readonly<{ detail: 
       <StatGrid minItemWidth={130} gap={12} style={{ margin: '12px 0 4px' }}>
         <StatCard title={`近 ${days} 天执行`} value={period.total} sub={`历史累计 ${job.totalRuns}`} />
         <StatCard
-          title="成功率" value={rate == null ? '—' : `${rate}%`}
+          title="成功率" value={rate == null ? EMPTY_PLACEHOLDER : `${rate}%`}
           sub={`失败 ${period.failCount} · 超时 ${period.timeoutCount}`}
           delta={calcSuccessRateDelta(period, prevPeriod)} deltaLabel="较上期" deltaFormat="ratio"
         />

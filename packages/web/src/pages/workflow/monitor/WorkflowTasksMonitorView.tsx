@@ -72,7 +72,7 @@ export default function WorkflowTasksMonitorView({ onOpenInstance }: Props) {
   const listQuery = useWorkflowTaskMonitorList(params);
   const data = listQuery.data ?? null;
   const stats = data?.stats ?? { total: 0, pending: 0, waiting: 0, approved: 0, rejected: 0, skipped: 0 };
-  const statValue = (v: number) => (listQuery.isLoading ? '—' : v);
+  const statValue = (v: number) => (listQuery.isLoading ? EMPTY_PLACEHOLDER : v);
 
   // 非 0 code（如 429 催办限频）由 api() 抛错走全局错误提示，避免同时弹「已催办」
   const urgeMutation = useApiMutation(workflowTaskContract.urgeTask, {

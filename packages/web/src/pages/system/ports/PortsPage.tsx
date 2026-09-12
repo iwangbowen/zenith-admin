@@ -14,6 +14,7 @@ import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
 import { HostSelector } from '@/components/HostSelector';
 import { useOpsHostSelection } from '@/hooks/useOpsHostSelection';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 function localDisplay(entry: PortEntry): string {
   const addr = entry.localAddress === '0.0.0.0' || entry.localAddress === '::' || entry.localAddress === '*' ? '*' : entry.localAddress;
@@ -64,8 +65,8 @@ export default function PortsPage() {
     { title: '端口', dataIndex: 'localPort', width: 90, sorter: (a, b) => (a?.localPort ?? 0) - (b?.localPort ?? 0), render: (v: number) => <strong>{v}</strong> },
     { title: '服务', dataIndex: 'serviceName', width: 120, render: (v: string | null) => v ? <Tag color="cyan" size="small" type="light">{v}</Tag> : <span style={{ color: 'var(--semi-color-text-2)' }}>—</span> },
     { title: '状态', dataIndex: 'state', width: 100, render: (v: string) => <Tag color={v === 'LISTEN' ? 'green' : 'orange'} size="small">{v}</Tag> },
-    { title: 'PID', dataIndex: 'pid', width: 80, render: (v: number | null) => v ?? '—' },
-    { title: '进程名', dataIndex: 'processName', render: (v: string | null) => v ?? '—' },
+    { title: 'PID', dataIndex: 'pid', width: 80, render: (v: number | null) => v ?? EMPTY_PLACEHOLDER },
+    { title: '进程名', dataIndex: 'processName', render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
     createOperationColumn<PortEntry>({
       width: 210,
       emptyContent: <span style={{ color: 'var(--semi-color-text-2)' }}>—</span>,

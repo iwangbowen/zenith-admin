@@ -40,6 +40,7 @@ export default function NewImportModal({ visible, entities, entitiesLoading, onC
       title="新建导入"
       visible={visible}
       onCancel={onClose}
+      closeOnEsc
       footer={null}
       width={560}
       afterClose={() => setSelectedEntity('')}

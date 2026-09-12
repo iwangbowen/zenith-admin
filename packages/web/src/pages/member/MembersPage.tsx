@@ -55,6 +55,7 @@ export default function MembersPage() {
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
   const { options: genderOptions } = useDictItems('user_gender');
+  // useEditModal 例外：重置密码对话框（针对既有会员的动作表单，非新增 / 编辑）
   const pwdFormApi = useRef<FormApi | null>(null);
   const {
     page, pageSize, buildPagination,
@@ -67,6 +68,7 @@ export default function MembersPage() {
   const [pwdMember, setPwdMember] = useState<Member | null>(null);
   const [growthVisible, setGrowthVisible] = useState(false);
   const [growthMember, setGrowthMember] = useState<Member | null>(null);
+  // useEditModal 例外：调整成长值对话框（针对既有会员的动作表单，非新增 / 编辑）
   const growthFormApi = useRef<FormApi | null>(null);
   // member tags
   const [tagsMember, setTagsMember] = useState<Member | null>(null);

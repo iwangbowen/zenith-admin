@@ -14,6 +14,7 @@ import {
   usePortCheck,
   useReverseLookup,
 } from '@/hooks/queries/network-diag';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 const TOOL_OPTIONS = [
   { value: 'ping', label: 'Ping', desc: '检测主机连通性和延迟' },
@@ -97,7 +98,7 @@ function TracerouteViz({ hops }: { hops: HopInfo[] }) {
             <tr key={hop.hop} style={{ borderBottom: '1px solid var(--semi-color-fill-1)' }}>
               <td style={{ padding: '4px 8px', width: 40, color: 'var(--semi-color-text-2)' }}>{hop.hop}</td>
               <td style={{ padding: '4px 8px', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {hop.timeout ? <span style={{ color: 'var(--semi-color-text-3)' }}>超时</span> : (hop.host !== hop.ip ? hop.host : '—')}
+                {hop.timeout ? <span style={{ color: 'var(--semi-color-text-3)' }}>超时</span> : (hop.host !== hop.ip ? hop.host : EMPTY_PLACEHOLDER)}
               </td>
               <td style={{ padding: '4px 8px', color: 'var(--semi-color-text-2)', whiteSpace: 'nowrap' }}>{hop.ip ?? hop.host}</td>
               <td style={{ padding: '4px 8px', whiteSpace: 'nowrap' }}>
@@ -204,9 +205,9 @@ export default function NetworkDiagPage() {
           ``,
           `状态码      : ${d.status} ${d.statusText}`,
           `响应耗时    : ${d.latencyMs} ms`,
-          `Server      : ${d.server ?? '—'}`,
-          `Content-Type: ${d.contentType ?? '—'}`,
-          `内容长度    : ${d.contentLength ?? '—'}`,
+          `Server      : ${d.server ?? EMPTY_PLACEHOLDER}`,
+          `Content-Type: ${d.contentType ?? EMPTY_PLACEHOLDER}`,
+          `内容长度    : ${d.contentLength ?? EMPTY_PLACEHOLDER}`,
           ...(d.redirectLocation ? [`重定向到    : ${d.redirectLocation}`] : []),
         ];
         setOutput(lines.join('\n'));

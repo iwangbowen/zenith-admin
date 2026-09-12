@@ -6,7 +6,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import AppModal from '@/components/AppModal';
 import { CronBuilderPopover } from '@/components/CronBuilderPopover';
 import { FormTimezoneSelect } from '@/components/FormTimezoneSelect';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -127,7 +127,7 @@ export default function SubscriptionsPage() {
       render: (_: unknown, record) => (
         <div>
           <Tag color={deliveryStatusColorMap[record.lastDeliveryStatus ?? 'cancelled'] ?? 'grey'} size="small">
-            {record.lastDeliveryStatus ? REPORT_DELIVERY_STATUS_LABELS[record.lastDeliveryStatus] : '—'}
+            {record.lastDeliveryStatus ? REPORT_DELIVERY_STATUS_LABELS[record.lastDeliveryStatus] : EMPTY_PLACEHOLDER}
           </Tag>
           <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
             {record.lastDeliveryAt || '未投递'}

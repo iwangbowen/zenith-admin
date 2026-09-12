@@ -10,7 +10,7 @@ import ExportButton from '@/components/ExportButton';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
-import { dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '../../../utils/table-columns';
 import { useSmsTemplateList } from '@/hooks/queries/sms-templates';
 import { useListSearch } from '@/hooks/useListSearch';
 import {
@@ -77,7 +77,7 @@ export default function SmsSendLogsPage() {
 
   const columns = [
     { title: '手机号', dataIndex: 'phone', width: 130 },
-    { title: '模板', dataIndex: 'templateName', width: 140, render: (v: string | null) => v || '—' },
+    { title: '模板', dataIndex: 'templateName', width: 140, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
     {
       title: '服务商', dataIndex: 'provider', width: 100,
       render: (v: string) => SMS_PROVIDER_OPTIONS.find((p) => p.value === v)?.label ?? v,

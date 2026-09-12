@@ -16,7 +16,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
 import { confirmDanger } from '@/utils/confirm';
-import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { copyableNoColumn, dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import {
   useDeleteOpsHosts,
   useImportOpsHost,
@@ -54,12 +54,12 @@ const STATUS_META = {
 
 function snapshotSummary(host: OpsHost): string {
   const s = host.snapshot;
-  if (!s) return '—';
+  if (!s) return EMPTY_PLACEHOLDER;
   return [
     s.cpuCores != null ? `${s.cpuCores} 核` : null,
     s.memUsagePercent != null ? `内存 ${s.memUsagePercent}%` : null,
     s.diskUsagePercent != null ? `磁盘 ${s.diskUsagePercent}%` : null,
-  ].filter(Boolean).join(' · ') || '—';
+  ].filter(Boolean).join(' · ') || EMPTY_PLACEHOLDER;
 }
 
 export default function HostsPage() {
@@ -351,8 +351,8 @@ export default function HostsPage() {
                   },
                   { key: '探测状态', value: STATUS_META[detail.status].label },
                   { key: '最近探测', value: detail.probedAt ?? '从未探测' },
-                  { key: '错误', value: detail.probeError ?? '—' },
-                  { key: '备注', value: detail.remark ?? '—' },
+                  { key: '错误', value: detail.probeError ?? EMPTY_PLACEHOLDER },
+                  { key: '备注', value: detail.remark ?? EMPTY_PLACEHOLDER },
                 ]}
               />
               {detail.snapshot && (
@@ -362,20 +362,20 @@ export default function HostsPage() {
                     align="plain"
                     column={1}
                     data={[
-                      { key: '操作系统', value: detail.snapshot.osName ?? '—' },
-                      { key: '内核', value: detail.snapshot.kernel ?? '—' },
-                      { key: 'CPU / 负载', value: `${detail.snapshot.cpuCores ?? '—'} 核 / ${detail.snapshot.load1 ?? '—'}` },
+                      { key: '操作系统', value: detail.snapshot.osName ?? EMPTY_PLACEHOLDER },
+                      { key: '内核', value: detail.snapshot.kernel ?? EMPTY_PLACEHOLDER },
+                      { key: 'CPU / 负载', value: `${detail.snapshot.cpuCores ?? EMPTY_PLACEHOLDER} 核 / ${detail.snapshot.load1 ?? EMPTY_PLACEHOLDER}` },
                       {
                         key: '内存',
                         value: detail.snapshot.memTotalBytes
-                          ? `${formatBytes(detail.snapshot.memUsedBytes ?? 0)} / ${formatBytes(detail.snapshot.memTotalBytes)} (${detail.snapshot.memUsagePercent ?? '—'}%)`
-                          : '—',
+                          ? `${formatBytes(detail.snapshot.memUsedBytes ?? 0)} / ${formatBytes(detail.snapshot.memTotalBytes)} (${detail.snapshot.memUsagePercent ?? EMPTY_PLACEHOLDER}%)`
+                          : EMPTY_PLACEHOLDER,
                       },
                       {
                         key: '根磁盘',
                         value: detail.snapshot.diskTotalBytes
-                          ? `${formatBytes(detail.snapshot.diskUsedBytes ?? 0)} / ${formatBytes(detail.snapshot.diskTotalBytes)} (${detail.snapshot.diskUsagePercent ?? '—'}%)`
-                          : '—',
+                          ? `${formatBytes(detail.snapshot.diskUsedBytes ?? 0)} / ${formatBytes(detail.snapshot.diskTotalBytes)} (${detail.snapshot.diskUsagePercent ?? EMPTY_PLACEHOLDER}%)`
+                          : EMPTY_PLACEHOLDER,
                       },
                     ]}
                   />

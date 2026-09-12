@@ -16,7 +16,7 @@ import { ListSearchToolbar } from '@/components/list-page';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { CreateButton } from '@/components/toolbar-controls';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useImportEntities } from '@/hooks/queries/import-jobs';
 import { asyncTaskKeys, useAsyncTaskList } from '@/hooks/queries/async-tasks';
@@ -101,7 +101,7 @@ export default function ImportCenterPage() {
       title: '实体', width: 110,
       render: (_: unknown, r: AsyncTask) => {
         const { entity } = parsePayload(r);
-        if (!entity) return '—';
+        if (!entity) return EMPTY_PLACEHOLDER;
         return entityMap.get(entity)?.title ?? entity;
       },
     },
@@ -122,7 +122,7 @@ export default function ImportCenterPage() {
       title: '进度', width: 220,
       render: (_: unknown, r: AsyncTask) => <AsyncTaskProgress task={r} noteDisplay="tooltip" />,
     },
-    { title: '提交人', dataIndex: 'createdByName', width: 110, render: (v: string | null) => v ?? '—' },
+    { title: '提交人', dataIndex: 'createdByName', width: 110, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
     dateTimeColumn('提交时间', 'createdAt'),
     createOperationColumn<AsyncTask>({
       width: 120,

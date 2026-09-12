@@ -6,6 +6,7 @@ import { DRIVE_SPACE_TYPE_LABELS, driveNodeContract, type DriveSpace } from '@ze
 import { AppModal } from '@/components/AppModal';
 import { api } from '@/lib/contract-query';
 import { useMyDriveSpaces } from '@/hooks/queries/drive';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { roleAtLeast } from '../drive-utils';
 
 export interface FolderTarget {
@@ -130,7 +131,7 @@ export function DriveFolderPicker({ visible, title, okText = '确定', defaultSp
           />
         </div>
         <Typography.Text type="tertiary" size="small">
-          目标：{space?.name ?? '—'}{selectedKey !== ROOT_KEY && labelPath ? ` / ${labelPath}` : ' / 根目录'}
+          目标：{space?.name ?? EMPTY_PLACEHOLDER}{selectedKey !== ROOT_KEY && labelPath ? ` / ${labelPath}` : ' / 根目录'}
         </Typography.Text>
       </div>
     </AppModal>

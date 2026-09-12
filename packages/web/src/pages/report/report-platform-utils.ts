@@ -2,6 +2,7 @@ import { createReportDqRuleSchema, createReportMetricSchema, createReportQueryQu
 import type { ApplyReportAssetTemplateInput, CreateReportMetricInput, GrantReportResourceAclInput, ReportDqRunStatus, ReportMetric, ReportResourceType, ReportWidgetType } from '@zenith/shared/report';
 import type { AsyncTask } from '@zenith/shared/tasks';
 import { DEFAULT_TIMEZONE } from '@/utils/timezones';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 export const METRIC_WIDGET_TYPES: readonly ReportWidgetType[] = ['kpi', 'gauge', 'flipper', 'liquid'];
 
@@ -115,7 +116,7 @@ export function dqRunStatusLabel(status: ReportDqRunStatus): string {
 
 export function formatDqPassRate(value: number | null | undefined): string {
   const numeric = Number(value);
-  return value == null || !Number.isFinite(numeric) ? '—' : `${numeric.toFixed(2)}%`;
+  return value == null || !Number.isFinite(numeric) ? EMPTY_PLACEHOLDER : `${numeric.toFixed(2)}%`;
 }
 
 export function dqTaskSubmissionMessage(task: Pick<AsyncTask, 'id'>): string {

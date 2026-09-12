@@ -362,6 +362,7 @@ export default function WorkflowSimulationDrawer({
   users,
   onClose,
 }: Readonly<WorkflowSimulationDrawerProps>) {
+  // useEditModal 例外：工作流设计器仿真抽屉表单（模拟发起 / 审批，不保存实体）
   const formApi = useRef<FormApi | null>(null);
   const replayTimer = useRef<number | null>(null);
   const graphCanvasRef = useRef<HTMLDivElement | null>(null);

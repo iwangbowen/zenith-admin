@@ -13,6 +13,7 @@ const { Title, Text } = Typography;
 export default function EmailConfigPage() {
   const { hasPermission } = usePermission();
   const { options: statusOptions } = useDictItems('common_status');
+  // useEditModal 例外：页面级全局配置表单（邮件服务），保存后不关闭；表单 key 跟随配置 updatedAt 重挂载
   const formApi = useRef<FormApi | null>(null);
   const [testModalVisible, setTestModalVisible] = useState(false);
   const [testEmail, setTestEmail] = useState('');

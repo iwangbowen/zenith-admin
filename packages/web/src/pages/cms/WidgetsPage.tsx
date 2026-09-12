@@ -22,7 +22,7 @@ import {
   useOfflineCmsWidget,
   usePublishCmsWidget,
 } from '@/hooks/queries/cms-widgets';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
@@ -152,7 +152,7 @@ export default function WidgetsPage() {
       width: 110,
       render: (_value: unknown, record) => (
         <span>
-          {record.publishedRevision || '—'}
+          {record.publishedRevision || EMPTY_PLACEHOLDER}
           {record.hasUnpublishedChanges ? <Tag size="small" color="blue" style={{ marginLeft: 6 }}>有草稿</Tag> : null}
         </span>
       ),

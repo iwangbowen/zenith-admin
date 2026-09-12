@@ -16,7 +16,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { usePreferences } from '@/hooks/usePreferences';
 import { useAuth } from '@/hooks/useAuth';
 import { confirmDelete } from '@/utils/confirm';
-import { renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { extractMarkdownHeadings, type MarkdownHeading } from '@/utils/markdown-outline';
 import { toUserOptions, useAllUsers } from '@/hooks/queries/users';
 import { useMyWikiSpaces } from '@/hooks/queries/wiki-spaces';
@@ -576,7 +576,7 @@ export default function WikiDocCenterPage() {
           </Space>
           <div style={{ marginTop: 6 }}>
             <Space spacing={12}>
-              <Text type="tertiary" size="small">{doc.authorName ?? '—'}</Text>
+              <Text type="tertiary" size="small">{doc.authorName ?? EMPTY_PLACEHOLDER}</Text>
               <Text type="tertiary" size="small">更新于 {doc.updatedAt}</Text>
               <Text type="tertiary" size="small"><Eye size={12} style={{ verticalAlign: -2 }} /> {doc.viewCount}</Text>
               <Text type="tertiary" size="small">v{doc.currentVersion}</Text>

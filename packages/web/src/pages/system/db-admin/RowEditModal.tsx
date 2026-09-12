@@ -54,6 +54,7 @@ function toApiValue(v: unknown, col: ColumnInfo, kind: FieldKind): unknown {
 
 export function RowEditModal(props: Readonly<Props>): JSX.Element {
   const { open, mode, schema, table, columns, primaryKey, initial, focusField, onClose, onSuccess } = props;
+  // useEditModal 例外：db-admin 行编辑器（列结构、主键与初始行由 props 动态给出，无详情查询）
   const formRef = useRef<FormApi | null>(null);
   const insertRowMutation = useDbAdminInsertRow();
   const updateRowMutation = useDbAdminUpdateRow();

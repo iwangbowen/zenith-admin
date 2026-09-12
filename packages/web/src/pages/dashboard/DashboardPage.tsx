@@ -249,7 +249,7 @@ export default function DashboardPage() {
             : STAT_ITEMS.map((item) => (
               <div key={item.key} className="dashboard-stat-item">
                 <div className="dashboard-stat-item__value">
-                  {stats?.[item.key] ?? '—'}
+                  {stats?.[item.key] ?? EMPTY_PLACEHOLDER}
                 </div>
                 <div className="dashboard-stat-item__label">
                   <span className="dashboard-stat-item__icon">{item.icon}</span>
@@ -289,7 +289,7 @@ export default function DashboardPage() {
                       // 为 0 时保持中性色：全都染红会让「无告警」和「有告警」看起来一样紧急
                       style={value > 0 ? { color: metric.accent } : undefined}
                     >
-                      {alertOverview ? value : '—'}
+                      {alertOverview ? value : EMPTY_PLACEHOLDER}
                     </span>
                     <span className="dashboard-alerts__label">{metric.label}</span>
                   </button>

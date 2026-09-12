@@ -30,6 +30,7 @@ import type {
 import './ChannelDashboardPage.css';
 import { useChannelDashboard } from '@/hooks/queries/channel-dashboard';
 import { shortDate } from '@/utils/date';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 const { Text, Title } = Typography;
 
@@ -68,17 +69,17 @@ export default function ChannelDashboardPage() {
 
   const overview = data?.overview;
   const statItems: StatItem[] = [
-    { key: 'businessChannelCount', label: '运营号数', icon: <Radio size={20} />, color: '#4A90E2', value: overview?.businessChannelCount ?? '—' },
-    { key: 'subscriptionCount', label: '订阅总数', icon: <Users size={20} />, color: '#13C2C2', value: overview?.subscriptionCount ?? '—' },
-    { key: 'messageCount', label: '消息总数', icon: <MessageSquare size={20} />, color: '#722ED1', value: overview?.messageCount ?? '—' },
-    { key: 'todayPushCount', label: '今日推送', icon: <Send size={20} />, color: '#52C41A', value: overview?.todayPushCount ?? '—' },
-    { key: 'openConversationCount', label: '待处理会话', icon: <Inbox size={20} />, color: '#FA8C16', value: overview?.openConversationCount ?? '—' },
+    { key: 'businessChannelCount', label: '运营号数', icon: <Radio size={20} />, color: '#4A90E2', value: overview?.businessChannelCount ?? EMPTY_PLACEHOLDER },
+    { key: 'subscriptionCount', label: '订阅总数', icon: <Users size={20} />, color: '#13C2C2', value: overview?.subscriptionCount ?? EMPTY_PLACEHOLDER },
+    { key: 'messageCount', label: '消息总数', icon: <MessageSquare size={20} />, color: '#722ED1', value: overview?.messageCount ?? EMPTY_PLACEHOLDER },
+    { key: 'todayPushCount', label: '今日推送', icon: <Send size={20} />, color: '#52C41A', value: overview?.todayPushCount ?? EMPTY_PLACEHOLDER },
+    { key: 'openConversationCount', label: '待处理会话', icon: <Inbox size={20} />, color: '#FA8C16', value: overview?.openConversationCount ?? EMPTY_PLACEHOLDER },
     {
       key: 'avgResponseMinutes',
       label: '平均响应',
       icon: <Clock size={20} />,
       color: '#EB2F96',
-      value: overview ? (overview.avgResponseMinutes == null ? '—' : `${overview.avgResponseMinutes} 分钟`) : '—',
+      value: overview ? (overview.avgResponseMinutes == null ? EMPTY_PLACEHOLDER : `${overview.avgResponseMinutes} 分钟`) : EMPTY_PLACEHOLDER,
     },
   ];
 

@@ -883,7 +883,7 @@ export default function RuleTablesPage() {
               <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
                 <Text strong>命中解释</Text>
                 {testExplanations.map((row) => (
-                  <div key={row.rowId} style={{ padding: 8, border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', background: row.matched ? 'var(--semi-color-success-light-default)' : 'var(--semi-color-bg-1)' }}>
+                  <div key={row.rowId} style={{ padding: 8, border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', background: row.matched ? 'var(--semi-color-success-light-default)' : 'var(--surface-card)' }}>
                     <Space spacing={8} align="center">
                       <Tag color={row.matched ? 'green' : 'grey'}>行 {row.index + 1}</Tag>
                       <Text size="small">{row.label || row.rowId}</Text>

@@ -9,7 +9,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, ListSearchToolbar } from '@/components/list-page';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
-import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
+import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import {
   nginxSiteKeys,
   useCreateNginxSite,
@@ -151,7 +151,7 @@ export default function NginxSitesPage() {
       title: '端口',
       dataIndex: 'listenPort',
       width: 100,
-      render: (value: number | null) => value ?? '—',
+      render: (value: number | null) => value ?? EMPTY_PLACEHOLDER,
     },
     {
       title: 'SSL',
@@ -243,10 +243,10 @@ export default function NginxSitesPage() {
                 ? 'var(--semi-color-danger)'
                 : 'var(--semi-color-text-2)'}
           />
-          <StatCard title="版本" value={info?.version ?? '—'} />
-          <StatCard title="主配置" value={info?.configPath ? '已发现' : '—'} sub={info?.configPath ?? undefined} />
-          <StatCard title="站点配置目录" value={info?.sitesAvailable ? '已发现' : '—'} sub={info?.sitesAvailable ?? undefined} />
-          <StatCard title="启用目录" value={info?.sitesEnabled ? '已发现' : '—'} sub={info?.sitesEnabled ?? undefined} />
+          <StatCard title="版本" value={info?.version ?? EMPTY_PLACEHOLDER} />
+          <StatCard title="主配置" value={info?.configPath ? '已发现' : EMPTY_PLACEHOLDER} sub={info?.configPath ?? undefined} />
+          <StatCard title="站点配置目录" value={info?.sitesAvailable ? '已发现' : EMPTY_PLACEHOLDER} sub={info?.sitesAvailable ?? undefined} />
+          <StatCard title="启用目录" value={info?.sitesEnabled ? '已发现' : EMPTY_PLACEHOLDER} sub={info?.sitesEnabled ?? undefined} />
         </StatGrid>
       </div>
 

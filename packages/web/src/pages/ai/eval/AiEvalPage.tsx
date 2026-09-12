@@ -3,10 +3,8 @@ import {
   ArrayField,
   Button,
   Form,
-  Modal,
   SideSheet,
   Space,
-  Table,
   TabPane,
   Tabs,
   Tag,
@@ -16,6 +14,8 @@ import {
 } from '@douyinfe/semi-ui';
 import { Plus, Trash2, FlaskConical } from 'lucide-react';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
+import { listTableProps } from '@/components/list-page';
+import { AppModal } from '@/components/AppModal';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import {
   useAiEvalDatasets,
@@ -34,7 +34,7 @@ import type { AiEvalDataset, AiEvalExperiment, AiEvalExperimentResult, AiEvalSco
 import { AI_EVAL_SCORERS } from '@zenith/shared/ai';
 import { CreateButton } from '@/components/toolbar-controls';
 import { confirmDelete } from '@/utils/confirm';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import ModalFooter from '@/components/ModalFooter';
 
 const { Text, Paragraph } = Typography;
@@ -60,7 +60,7 @@ const STATUS_META: Record<AiEvalExperiment['status'], { label: string; color: 'b
 
 /** 各打分器分数(0-1)→ 百分比 Tag;reasons 提供时 LLM 评审理由经 Tooltip 透出 */
 function renderScores(scores: Record<string, number> | null, reasons?: Record<string, string>) {
-  if (!scores || Object.keys(scores).length === 0) return '—';
+  if (!scores || Object.keys(scores).length === 0) return EMPTY_PLACEHOLDER;
   return (
     <Space spacing={4} wrap>
       {Object.entries(scores).map(([scorer, score]) => {
@@ -157,7 +157,7 @@ function DatasetDetail({ dataset, canManage }: { dataset: AiEvalDataset; canMana
       title: '期望要点',
       dataIndex: 'groundTruth',
       width: 240,
-      render: (v: string | null) => v ? <Paragraph ellipsis={{ rows: 2, showTooltip: true }} style={{ fontSize: 13 }}>{v}</Paragraph> : '—',
+      render: (v: string | null) => v ? <Paragraph ellipsis={{ rows: 2, showTooltip: true }} style={{ fontSize: 13 }}>{v}</Paragraph> : EMPTY_PLACEHOLDER,
     },
     ...(canManage ? [{
       title: '操作',
@@ -229,7 +229,7 @@ function DatasetDetail({ dataset, canManage }: { dataset: AiEvalDataset; canMana
       title: '期望要点',
       dataIndex: 'groundTruth',
       width: 180,
-      render: (v: string | null) => v ? <Paragraph ellipsis={{ rows: 3, showTooltip: true }} style={{ fontSize: 13 }}>{v}</Paragraph> : '—',
+      render: (v: string | null) => v ? <Paragraph ellipsis={{ rows: 3, showTooltip: true }} style={{ fontSize: 13 }}>{v}</Paragraph> : EMPTY_PLACEHOLDER,
     },
     {
       title: '得分',
@@ -257,35 +257,25 @@ function DatasetDetail({ dataset, canManage }: { dataset: AiEvalDataset; canMana
         }
       >
         <TabPane tab="条目" itemKey="items">
-          <Table
+          <ConfigurableTable
             style={{ marginTop: 12 }}
+            columnSettingsKey="ai-eval-items"
             columns={itemColumns}
-            dataSource={itemsQuery.data ?? []}
-            rowKey="id"
-            loading={itemsQuery.isFetching}
-            pagination={false}
-            size="small"
-            bordered
-            empty="暂无条目，添加评测问题后即可发起实验"
+            {...listTableProps(itemsQuery, { empty: '暂无条目，添加评测问题后即可发起实验' })}
           />
         </TabPane>
         <TabPane tab="实验记录" itemKey="experiments">
-          <Table
+          <ConfigurableTable
             style={{ marginTop: 12 }}
+            columnSettingsKey="ai-eval-experiments"
             columns={experimentColumns}
-            dataSource={experimentsQuery.data ?? []}
-            rowKey="id"
-            loading={experimentsQuery.isFetching}
-            pagination={false}
-            size="small"
-            bordered
-            empty="暂无实验，发起实验后 Mastra 在后台逐条执行并打分"
+            {...listTableProps(experimentsQuery, { empty: '暂无实验，发起实验后 Mastra 在后台逐条执行并打分' })}
           />
         </TabPane>
       </Tabs>
 
       {/* 批量添加条目 */}
-      <Modal
+      <AppModal
         title="添加评测条目"
         visible={addVisible}
         onCancel={() => setAddVisible(false)}
@@ -316,10 +306,10 @@ function DatasetDetail({ dataset, canManage }: { dataset: AiEvalDataset; canMana
             </>
           )}
         </Form>
-      </Modal>
+      </AppModal>
 
       {/* 发起实验 */}
-      <Modal
+      <AppModal
         title={`发起实验：${dataset.name}`}
         visible={runVisible}
         onCancel={() => setRunVisible(false)}
@@ -375,7 +365,7 @@ function DatasetDetail({ dataset, canManage }: { dataset: AiEvalDataset; canMana
             </>
           )}
         </Form>
-      </Modal>
+      </AppModal>
 
       {/* 实验结果 */}
       <SideSheet
@@ -394,13 +384,16 @@ function DatasetDetail({ dataset, canManage }: { dataset: AiEvalDataset; canMana
               <Tag color="white">{detailQuery.data.experiment.succeededCount}/{detailQuery.data.experiment.totalCount} 成功</Tag>
               {renderScores(detailQuery.data.experiment.avgScores)}
             </Space>
-            <Table
+            <ConfigurableTable
+              columnSettingsKey="ai-eval-experiment-results"
               columns={resultColumns}
               dataSource={detailQuery.data.results}
               rowKey="itemId"
               pagination={false}
               size="small"
               bordered
+              onRefresh={() => void detailQuery.refetch()}
+              refreshLoading={detailQuery.isFetching}
             />
           </Space>
         )}
@@ -452,7 +445,7 @@ export default function AiEvalPage() {
 
   const columns = [
     { title: '名称', dataIndex: 'name', width: 220 },
-    { title: '描述', dataIndex: 'description', minWidth: 260, render: (v: string | null) => v || '—' },
+    { title: '描述', dataIndex: 'description', minWidth: 260, render: renderEllipsis },
     { title: '条目数', dataIndex: 'itemCount', width: 90, align: 'right' as const },
     { title: '版本', dataIndex: 'version', width: 70, align: 'right' as const, render: (v: number) => <Text code>v{v}</Text> },
     dateTimeColumn('更新时间', 'updatedAt'),
@@ -502,7 +495,7 @@ export default function AiEvalPage() {
       />
 
       {/* 数据集编辑 */}
-      <Modal
+      <AppModal
         title={isEdit ? '编辑数据集' : '新建数据集'}
         visible={editorVisible}
         onCancel={closeEditor}
@@ -533,7 +526,7 @@ export default function AiEvalPage() {
             </>
           )}
         </Form>
-      </Modal>
+      </AppModal>
 
       {/* 数据集详情:条目 + 实验 */}
       <SideSheet

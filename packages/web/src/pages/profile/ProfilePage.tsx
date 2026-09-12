@@ -1,9 +1,8 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import {
   Form, Button, Typography, Toast, Tag, Space, Spin, Avatar,
   Modal, Tabs, List as SemiList, Descriptions, Divider, PinCode,
 } from '@douyinfe/semi-ui';
-import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { UserRound, Shield, Monitor, List, Key, LogOut, Plus, Copy, CheckCircle, Smartphone, ShieldCheck, BellRing } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -55,6 +54,7 @@ import { createdAtColumn, dateTimeColumn } from '../../utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { rememberOAuthPending } from '@/lib/oauth-pending';
 
+import { useEditModal } from '@/hooks/useEditModal';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import NotificationSettingsTab from './NotificationSettingsTab';
 const { Title, Text } = Typography;
@@ -146,9 +146,7 @@ export default function ProfilePage({ user }: ProfilePageProps) {
   } = usePagination();
 
   // ─── API Token ───────────────────────────────────────────────────────────────
-  const [newTokenVisible, setNewTokenVisible] = useState(false);
   const [createdToken, setCreatedToken] = useState<UserApiTokenCreated | null>(null);
-  const newTokenFormApi = useRef<FormApi | null>(null);
   const [tokenCopied, setTokenCopied] = useState(false);
 
   // 密码规则来自运行时设置的登录用户投影（与布局共用一次请求）
@@ -222,6 +220,23 @@ export default function ProfilePage({ user }: ProfilePageProps) {
   const kickSessionMutation = useKickProfileSession();
   const createTokenMutation = useCreateApiToken();
   const deleteTokenMutation = useDeleteApiToken();
+  // 完整 token 只返回一次：创建成功后由结果框展示并复制，不再叠加默认成功提示
+  const tokenModal = useEditModal<UserApiTokenCreated, { name: string; expiresAt?: Date | string | null }, { name: string; expiresAt?: string }>({
+    save: {
+      mutateAsync: ({ values }) => createTokenMutation.mutateAsync({ body: values }),
+      isPending: createTokenMutation.isPending,
+    },
+    beforeSave: (values) => {
+      const name = values.name.trim();
+      if (!name) {
+        Toast.error('请填写 Token 名称');
+        abortSubmit('validation');
+      }
+      return values.expiresAt ? { name, expiresAt: formatDateTimeForApi(values.expiresAt) } : { name };
+    },
+    successMessage: () => null,
+    onSaved: (created) => setCreatedToken(created),
+  });
 
   const profileLoading = updateProfileMutation.isPending;
   const pwdLoading = changePasswordMutation.isPending;
@@ -232,7 +247,6 @@ export default function ProfilePage({ user }: ProfilePageProps) {
   const loginLogsLoading = loginLogsQuery.isFetching;
   const operationLogsLoading = operationLogsQuery.isFetching;
   const apiTokensLoading = apiTokensQuery.isFetching;
-  const newTokenCreating = createTokenMutation.isPending;
   const totpSubmitting = beginTotpSetupMutation.isPending || verifyTotpSetupMutation.isPending;
   const avatarLoading = avatarUpload.uploading || updateAvatarMutation.isPending;
 
@@ -298,31 +312,6 @@ export default function ProfilePage({ user }: ProfilePageProps) {
     Toast.success('已退出该设备');
   }
 
-  function closeNewTokenModal() {
-    setNewTokenVisible(false);
-    newTokenFormApi.current = null;
-  }
-
-  async function handleCreateToken(values: { name: string; expiresAt?: Date | string | null }) {
-    if (!values.name.trim()) { Toast.error('请填写 Token 名称'); return; }
-    const body: { name: string; expiresAt?: string } = { name: values.name.trim() };
-    if (values.expiresAt) body.expiresAt = formatDateTimeForApi(values.expiresAt);
-    const res = await createTokenMutation.mutateAsync({ body });
-    setCreatedToken(res);
-    closeNewTokenModal();
-  }
-
-  async function handleCreateTokenOk() {
-    if (!newTokenFormApi.current) return;
-    let values: { name: string; expiresAt?: Date | string | null };
-    try {
-      values = await newTokenFormApi.current.validate() as { name: string; expiresAt?: Date | string | null };
-    } catch {
-      abortSubmit('validation');
-    }
-    await handleCreateToken(values);
-  }
-
   async function handleDeleteToken(id: number) {
     await deleteTokenMutation.mutateAsync({ params: { id } });
     Toast.success('Token 已撤销');
@@ -360,7 +349,7 @@ export default function ProfilePage({ user }: ProfilePageProps) {
   // ─── 静态配置 ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="page-container">
+    <div className="page-container page-tabs-page">
       <div className="profile-content-card">
         <Tabs
           collapsible="auto"
@@ -731,7 +720,7 @@ export default function ProfilePage({ user }: ProfilePageProps) {
               <div className="profile-section">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <div className="section-title" style={{ margin: 0 }}>API Token</div>
-                    <Button type="primary" size="small" icon={<Plus size={14} />} onClick={() => setNewTokenVisible(true)}>
+                    <Button type="primary" size="small" icon={<Plus size={14} />} onClick={tokenModal.openCreate}>
                       新建 Token
                     </Button>
                   </div>
@@ -887,22 +876,14 @@ export default function ProfilePage({ user }: ProfilePageProps) {
 
       {/* ── 新建 Token Modal ──────────────────────────────────────────────────────────────── */}
       <AppModal
+        {...tokenModal.modalProps}
         title="新建 API Token"
-        visible={newTokenVisible}
-        onCancel={closeNewTokenModal}
-        onOk={handleCreateTokenOk}
         okText="创建"
         cancelText="取消"
-        okButtonProps={{ loading: newTokenCreating }}
         width={480}
         centered
       >
-        <Form
-          key={newTokenVisible ? 'new-token-open' : 'new-token-closed'}
-          getFormApi={(api) => { newTokenFormApi.current = api; }}
-          labelPosition="left"
-          labelWidth={90}
-        >
+        <Form key={tokenModal.formKey} {...tokenModal.formProps}>
           <Form.Input
             field="name"
             label="Token 名称"
@@ -925,6 +906,7 @@ export default function ProfilePage({ user }: ProfilePageProps) {
       <Modal
         title="Token 创建成功"
         visible={!!createdToken}
+        closeOnEsc
         onCancel={() => setCreatedToken(null)}
         footer={<Button type="primary" onClick={() => setCreatedToken(null)}>关闭</Button>}
         width={520}

@@ -92,6 +92,7 @@ export default function MpKfSessionsPage() {
   const [pickKfId, setPickKfId] = useState<number | null>(null);
   const [pickRemark, setPickRemark] = useState('');
   const [configVisible, setConfigVisible] = useState(false);
+  // useEditModal 例外：公众号级客服路由配置表单（单例设置、无新增态）；仅在配置加载后渲染并按 config.id 挂载
   const configFormRef = useRef<FormApi>(null);
   const [rateVisible, setRateVisible] = useState(false);
   const [rateValue, setRateValue] = useState(5);

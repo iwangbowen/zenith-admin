@@ -34,6 +34,7 @@ const yuan = (fen: number) => (fen / 100).toFixed(2);
 
 export default function MemberWalletPage() {
   const { hasPermission } = usePermission();
+  // useEditModal 例外：钱包调整 / 退款动作表单（针对既有会员的资金操作，非实体新增 / 编辑）
   const formApi = useRef<FormApi | null>(null);
   const search = useMemberLedgerSearch(memberAdminKeys.walletLists);
   const { page, pageSize, buildPagination, submittedParams } = search;

@@ -30,7 +30,7 @@ import { REPORT_RESOURCE_TYPE_OPTIONS, reportResourceTypeLabel } from '../report
 import { aclRevokeWarning, normalizeAclGrantValues } from '../report-platform-utils';
 import { CreateButton } from '@/components/toolbar-controls';
 import { confirmDanger, confirmDelete } from '@/utils/confirm';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 
 export default function GovernanceResourceTab() {
   const { hasPermission } = usePermission();
@@ -99,7 +99,7 @@ export default function GovernanceResourceTab() {
   const folderColumns: ColumnProps<ReportFolderTreeNode>[] = [
     { title: '目录名称', dataIndex: 'name', minWidth: 220, render: renderEllipsis },
     { title: '资源类型', dataIndex: 'resourceType', width: 130, render: (v) => reportResourceTypeLabel(v as ReportResourceType) },
-    { title: '负责人', dataIndex: 'ownerName', width: 130, render: (v) => v || '—' },
+    { title: '负责人', dataIndex: 'ownerName', width: 130, render: (v) => v || EMPTY_PLACEHOLDER },
     { title: '资源数', dataIndex: 'resourceCount', width: 90, align: 'right', render: (v) => v ?? 0 },
     { title: '排序', dataIndex: 'sort', width: 80 },
     dateTimeColumn('更新时间', 'updatedAt'),
@@ -126,7 +126,7 @@ export default function GovernanceResourceTab() {
     { title: '角色', dataIndex: 'role', width: 100, render: (v) => <Tag>{v}</Tag> },
     { title: '目录继承', dataIndex: 'inheritFromFolder', width: 100, render: (v) => v ? '是' : '否' },
     dateTimeColumn('到期时间', 'expiresAt', { empty: '永久' }),
-    { title: '授权人', dataIndex: 'grantedByName', minWidth: 120, render: (v) => v || '—' },
+    { title: '授权人', dataIndex: 'grantedByName', minWidth: 120, render: (v) => v || EMPTY_PLACEHOLDER },
     createOperationColumn<ReportResourceAcl>({
       width: 100,
       actions: (record) => [{

@@ -16,6 +16,7 @@ import {
   useAllCmsSites, useCmsThemeTemplates, useCmsContentOpLogs, useCmsCheckText, useUploadCmsResource,
   useCheckCmsContentTitle, useUploadCmsImage, cmsImageUploadUrl,
 } from '@/hooks/queries/cms';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { CMS_CONTENT_STATUS_LABELS, CMS_CONTENT_TYPE_LABELS, CMS_CONTENT_TYPES, CMS_TITLE_STYLE_COLORS } from '@zenith/shared/cms';
 import type { CmsChannel, CmsModelField, CmsEditLock, CmsTextCheckResult, CmsContentType, CmsAlbumImage, CmsContentAttachment } from '@zenith/shared/cms';
 import { useCmsLinkPicker } from './CmsLinkInput';
@@ -167,6 +168,7 @@ export default function ContentEditPage() {
   const { hasPermission } = usePermission();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  // useEditModal 例外：整页内容编辑器（路由页）；表单 key 含详情 id 与 formEpoch，详情到达即重挂载
   const formApi = useRef<FormApi | null>(null);
   const uploadCmsImage = useUploadCmsImage();
 
@@ -782,7 +784,7 @@ export default function ContentEditPage() {
                           style={{ flex: 1, minWidth: 180 }}
                         />
                         <Typography.Text type="tertiary" size="small" style={{ flexShrink: 0 }}>
-                          {att.size > 0 ? formatBytes(att.size) : '—'}
+                          {att.size > 0 ? formatBytes(att.size) : EMPTY_PLACEHOLDER}
                         </Typography.Text>
                         <Button size="small" theme="borderless" disabled={i === 0 || isReadOnly}
                           onClick={() => { setAttachments((l) => { const n = [...l]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; return n.map((x, xi) => ({ ...x, sort: xi })); }); dirtyRef.current = true; }}>上移</Button>

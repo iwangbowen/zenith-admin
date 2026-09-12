@@ -9,7 +9,7 @@ import { formatDateTimeForApi } from '@/utils/date';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { createdAtColumn, dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
@@ -139,7 +139,7 @@ export default function MpBroadcastsPage() {
     { title: '内容类型', dataIndex: 'msgType', width: 90, render: (v: MpBroadcastType) => <Tag type="light" color="blue">{MP_BROADCAST_TYPE_LABELS[v]}</Tag> },
     {
       title: '群发对象', dataIndex: 'target', width: 130,
-      render: (v: MpBroadcastTarget, r: MpBroadcast) => (v === 'all' ? '全部粉丝' : `标签：${r.tagId ? (tagMap.get(r.tagId) ?? `#${r.tagId}`) : '—'}`),
+      render: (v: MpBroadcastTarget, r: MpBroadcast) => (v === 'all' ? '全部粉丝' : `标签：${r.tagId ? (tagMap.get(r.tagId) ?? `#${r.tagId}`) : EMPTY_PLACEHOLDER}`),
     },
     { title: '内容', dataIndex: 'content', minWidth: 260, render: (_: unknown, r: MpBroadcast) => renderEllipsis(summarize(r)) },
     dateTimeColumn('发送时间', 'sentAt'),
@@ -255,10 +255,10 @@ export default function MpBroadcastsPage() {
           {resultQuery.data ? (
             <Descriptions row size="medium" data={[
               { key: '发送状态', value: resultQuery.data.msgStatus },
-              { key: '目标总数', value: String(resultQuery.data.totalCount ?? '—') },
-              { key: '过滤后', value: String(resultQuery.data.filterCount ?? '—') },
-              { key: '送达数', value: String(resultQuery.data.sentCount ?? '—') },
-              { key: '失败数', value: String(resultQuery.data.errorCount ?? '—') },
+              { key: '目标总数', value: String(resultQuery.data.totalCount ?? EMPTY_PLACEHOLDER) },
+              { key: '过滤后', value: String(resultQuery.data.filterCount ?? EMPTY_PLACEHOLDER) },
+              { key: '送达数', value: String(resultQuery.data.sentCount ?? EMPTY_PLACEHOLDER) },
+              { key: '失败数', value: String(resultQuery.data.errorCount ?? EMPTY_PLACEHOLDER) },
             ]} />
           ) : <div style={{ padding: 24, textAlign: 'center', color: 'var(--semi-color-text-2)' }}>暂无数据</div>}
         </Spin>

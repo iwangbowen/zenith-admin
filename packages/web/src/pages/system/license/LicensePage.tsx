@@ -1,5 +1,7 @@
-import { Banner, Button, Descriptions, Empty, Popconfirm, Space, Table, Tabs, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Descriptions, Empty, Popconfirm, Space, Tabs, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import PageLoading from '@/components/PageLoading';
+import { ConfigurableTable } from '@/components/ConfigurableTable';
+import { listTableProps } from '@/components/list-page';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useState } from 'react';
 import { Copy, KeyRound, ShieldCheck, Upload } from 'lucide-react';
@@ -9,6 +11,7 @@ import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useActivateLicense, useDeactivateLicense, useLicenseEvents, useLicensingStatus } from '@/hooks/queries/licensing';
 import { usePagination } from '@/hooks/usePagination';
 import { copyTextWithToast } from '@/utils/clipboard';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 const { Text, Paragraph } = Typography;
 
@@ -96,7 +99,7 @@ function OverviewTab() {
                   { key: '租户上限', value: license.limits.maxTenants ?? '不限' },
                   { key: '签发密钥', value: license.keyId },
                   { key: '激活时间', value: license.activatedAt },
-                  { key: '最近校验', value: license.lastVerifiedAt ?? '—' },
+                  { key: '最近校验', value: license.lastVerifiedAt ?? EMPTY_PLACEHOLDER },
                   ...(license.invalidReason ? [{ key: '异常原因', value: <Text type="danger">{license.invalidReason}</Text> }] : []),
                 ]}
               />
@@ -249,18 +252,14 @@ function EventsTab() {
         return <Tag color={danger ? 'red' : warn ? 'orange' : 'blue'}>{label}</Tag>;
       },
     },
-    { title: '详情', dataIndex: 'detail', render: (v?: string | null) => v ?? '—' },
+    { title: '详情', dataIndex: 'detail', render: (v?: string | null) => v ?? EMPTY_PLACEHOLDER },
   ];
 
   return (
-    <Table
-      bordered
+    <ConfigurableTable
+      columnSettingsKey="license-events"
       columns={columns}
-      dataSource={eventsQuery.data?.list ?? []}
-      rowKey="id"
-      loading={eventsQuery.isFetching}
-      pagination={buildPagination(eventsQuery.data?.total ?? 0)}
-      empty="暂无事件"
+      {...listTableProps(eventsQuery, { pagination: buildPagination, empty: '暂无事件' })}
     />
   );
 }

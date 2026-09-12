@@ -97,6 +97,7 @@ export default function UsersPage() {
     handleSearch, applySearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: userKeys.lists });
   const [batchPasswordModalVisible, setBatchPasswordModalVisible] = useState(false);
+  // useEditModal 例外：批量重置密码对话框（针对选中用户的动作表单，非新增 / 编辑）
   const batchPasswordFormApi = useRef<FormApi | null>(null);
   const [menuPermUser, setMenuPermUser] = useState<User | null>(null);
   const [menuPermVisible, setMenuPermVisible] = useState(false);

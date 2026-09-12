@@ -21,7 +21,7 @@ import {
 } from '@/hooks/queries/open-platform';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, FilterSelect, KeywordInput, NumberFilter } from '@/components/search-filters';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 const { Text, Title } = Typography;
 
@@ -122,7 +122,7 @@ export default function OpenApiStatsPage() {
       dataIndex: 'appName',
       width: 180,
       render: (v: string | null, r: OpenApiCallLog) => (
-        <Tooltip content={`Client ID: ${r.clientId ?? '—'}`}>
+        <Tooltip content={`Client ID: ${r.clientId ?? EMPTY_PLACEHOLDER}`}>
           <Text ellipsis style={{ maxWidth: 165 }}>{v || '未知'}</Text>
         </Tooltip>
       ),
@@ -149,7 +149,7 @@ export default function OpenApiStatsPage() {
       ),
     },
     { title: '耗时', dataIndex: 'durationMs', width: 90, align: 'right', render: (v: number) => `${v} ms` },
-    { title: 'IP', dataIndex: 'ip', width: 130, render: (v: string | null) => v || '—' },
+    { title: 'IP', dataIndex: 'ip', width: 130, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
     {
       title: '环境',
       dataIndex: 'environment',

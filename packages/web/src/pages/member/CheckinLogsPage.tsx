@@ -103,6 +103,7 @@ export default function CheckinLogsPage() {
   // 会员详情等入口的深链筛选（?memberKeyword=，消费后即从 URL 移除）
   useListDeepLink(['memberKeyword'], (p) => applySearch({ memberKeyword: p.memberKeyword, dateRange: null }));
   const [makeupVisible, setMakeupVisible] = useState(false);
+  // useEditModal 例外：会员补签动作表单（为既有会员补录某日签到），非实体新增 / 编辑
   const makeupFormApi = useRef<FormApi | null>(null);
   // 视图切换：列表 / 日历（日历按月聚合展示每日签到量，点击某天回列表查明细）
   const [view, setView] = useState<'list' | 'calendar'>('list');

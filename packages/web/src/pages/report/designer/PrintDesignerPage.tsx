@@ -1381,6 +1381,7 @@ export default function PrintDesignerPage() {
           visible={previewVisible}
           title="预览审批单模板"
           footer={null}
+          closeOnEsc
           onCancel={() => setPreviewVisible(false)}
           width={560}
         >

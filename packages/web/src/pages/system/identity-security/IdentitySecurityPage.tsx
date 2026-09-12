@@ -32,6 +32,7 @@ export default function IdentitySecurityPage() {
     ...(canReadRiskEvents ? ['risk' as const] : []),
   ];
   const [activeTab, setActiveTab] = useUrlTabState(tabs, canManagePolicy ? 'policy' : 'risk');
+  // useEditModal 例外：页面级全局配置表单（身份安全策略），保存后不关闭；表单 key 跟随策略值重挂载
   const formApi = useRef<FormApi | null>(null);
   const [policy, setPolicy] = useState<IdentitySecuritySettings>(defaultPolicy);
   const { page, pageSize, buildPagination, bindKeyword, submittedParams, handleSearch, handleReset } = useListSearch({

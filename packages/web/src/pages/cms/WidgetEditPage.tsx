@@ -72,7 +72,9 @@ export default function WidgetEditPage() {
   const [draftRevision, setDraftRevision] = useState<number | undefined>();
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const initializedRef = useRef<number | 'new' | null>(null);
+  // useEditModal 例外：整页部件编辑工作区（保存草稿后不关闭）；表单 key 含详情 id 与 draftRevision
   const baseFormApi = useRef<FormApi | null>(null);
+  // useEditModal 例外：条目参数只回写本地草稿、随部件一并保存，不是独立实体的新增 / 编辑
   const itemFormApi = useRef<FormApi | null>(null);
 
   const detailQuery = useCmsWidgetDetail(activeId);

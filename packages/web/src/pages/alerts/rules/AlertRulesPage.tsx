@@ -30,7 +30,7 @@ import {
 } from './constants';
 import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import AlertRecipientUserSelect from './AlertRecipientUserSelect';
 import {
   MonitorAlertLevelTag,
@@ -215,7 +215,7 @@ export default function AlertRulesPage() {
     },
     {
       title: '当前值', dataIndex: 'lastValue', width: 100,
-      render: (v: number | null, r: MonitorAlertRule) => v === null ? '—' : formatMonitorMetricValue(r.metric, v),
+      render: (v: number | null, r: MonitorAlertRule) => v === null ? EMPTY_PLACEHOLDER : formatMonitorMetricValue(r.metric, v),
     },
     dateTimeColumn('最近触发', 'lastTriggeredAt', { empty: '从未' }),
     {

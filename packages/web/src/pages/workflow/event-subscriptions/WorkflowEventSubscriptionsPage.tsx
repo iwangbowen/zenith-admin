@@ -115,7 +115,7 @@ export default function WorkflowEventSubscriptionsPage() {
             <div style={{ fontSize: 13, lineHeight: 2 }}>
               <div>请求地址：{result.requestUrl}</div>
               <div>样例事件：{result.eventType}（X-Zenith-Test: 1）</div>
-              <div>HTTP 状态：{result.httpStatus ?? '—'} · 耗时 {result.durationMs}ms</div>
+              <div>HTTP 状态：{result.httpStatus ?? EMPTY_PLACEHOLDER} · 耗时 {result.durationMs}ms</div>
               {result.error && <div style={{ color: 'var(--semi-color-danger)' }}>错误：{result.error}</div>}
               {result.responseSnippet && (
                 <pre style={{ maxHeight: 160, overflow: 'auto', background: 'var(--semi-color-fill-0)', padding: 8, borderRadius: 'var(--semi-border-radius-small)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
@@ -504,14 +504,14 @@ export default function WorkflowEventSubscriptionsPage() {
               <Col span={12}>
                 <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>实例 / 任务</Typography.Text>
                 <Typography.Text size="small">
-                  {deliveryDetail.instanceId != null ? `#${deliveryDetail.instanceId}` : '—'}
+                  {deliveryDetail.instanceId != null ? `#${deliveryDetail.instanceId}` : EMPTY_PLACEHOLDER}
                   {deliveryDetail.taskId != null ? ` / 任务 #${deliveryDetail.taskId}` : ''}
                 </Typography.Text>
               </Col>
               <Col span={12}>
                 <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>HTTP / 耗时 / 尝试</Typography.Text>
                 <Typography.Text size="small">
-                  {deliveryDetail.responseStatus ?? '—'} · {deliveryDetail.durationMs != null ? `${deliveryDetail.durationMs}ms` : '—'} · 第 {deliveryDetail.attempt} 次
+                  {deliveryDetail.responseStatus ?? EMPTY_PLACEHOLDER} · {deliveryDetail.durationMs != null ? `${deliveryDetail.durationMs}ms` : EMPTY_PLACEHOLDER} · 第 {deliveryDetail.attempt} 次
                 </Typography.Text>
               </Col>
               <Col span={12}>
@@ -521,7 +521,7 @@ export default function WorkflowEventSubscriptionsPage() {
             </Row>
             <div>
               <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 4 }}>请求地址</Typography.Text>
-              <Typography.Text size="small" copyable style={{ wordBreak: 'break-all' }}>{deliveryDetail.requestUrl ?? '—'}</Typography.Text>
+              <Typography.Text size="small" copyable style={{ wordBreak: 'break-all' }}>{deliveryDetail.requestUrl ?? EMPTY_PLACEHOLDER}</Typography.Text>
             </div>
             {deliveryDetail.errorMessage && (
               <div>
@@ -532,7 +532,7 @@ export default function WorkflowEventSubscriptionsPage() {
             <div>
               <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 4 }}>事件负载</Typography.Text>
               <pre style={{ margin: 0, maxHeight: 260, overflow: 'auto', padding: 12, borderRadius: 'var(--semi-border-radius-medium)', background: 'var(--semi-color-fill-0)', fontSize: 12, lineHeight: 1.5 }}>
-                {deliveryDetail.payload ? JSON.stringify(deliveryDetail.payload, null, 2) : '—'}
+                {deliveryDetail.payload ? JSON.stringify(deliveryDetail.payload, null, 2) : EMPTY_PLACEHOLDER}
               </pre>
             </div>
             {deliveryDetail.responseBody && (

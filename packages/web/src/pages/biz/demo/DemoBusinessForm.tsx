@@ -20,6 +20,7 @@ export default function DemoBusinessForm({
   readOnly,
   getFormApi,
 }: Readonly<WorkflowBusinessFormProps>) {
+  // useEditModal 例外：工作流运行时业务表单（由流程发起 / 审批页承载提交，本组件只渲染字段）
   const formApiRef = useRef<FormApi | null>(null);
 
   useEffect(() => {

@@ -1,8 +1,9 @@
 /** 访问统计（P4）：PV/UV 趋势、内容 TOP、来源/设备/通道分布 + 搜索分析（无结果词榜） */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Space, Spin, Table, Typography, Empty, Tabs, TabPane, RadioGroup, Radio, Tag } from '@douyinfe/semi-ui';
+import { Card, Space, Spin, Typography, Empty, Tabs, TabPane, RadioGroup, Radio, Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { useCmsVisitStats, useCmsSearchAnalytics } from '@/hooks/queries/cms';
 import type { CmsVisitStats, CmsSearchAnalytics } from '@zenith/shared/cms';
@@ -93,7 +94,7 @@ function VisitsTab({ siteId, days }: { siteId: number | undefined; days: number 
 
       <div className="chart-grid chart-grid--aside" style={{ ['--chart-aside-main' as string]: '1.4fr', ['--chart-aside-side' as string]: '1fr', marginTop: 12 }}>
         <Card title="内容访问 TOP20" bodyStyle={{ padding: 0 }}>
-          <Table columns={topColumns} dataSource={stats?.topContents ?? []} rowKey="contentId" size="small" pagination={false} empty="暂无详情页访问" />
+          <ConfigurableTable columnSettingsKey="cms-stats-top-contents" columns={topColumns} dataSource={stats?.topContents ?? []} rowKey="contentId" size="small" pagination={false} empty="暂无详情页访问" onRefresh={() => void statsQuery.refetch()} refreshLoading={statsQuery.isFetching} />
         </Card>
         <div>
           <Card title="来源域名 TOP10（外部引荐）" bodyStyle={{ padding: '16px 20px' }}>
@@ -143,10 +144,10 @@ function SearchTab({ siteId, days }: { siteId: number | undefined; days: number 
       </Card>
       <div className="chart-grid" style={{ marginTop: 12 }}>
         <Card title="热搜词 TOP20" bodyStyle={{ padding: 0 }}>
-          <Table columns={topColumns} dataSource={data?.topKeywords ?? []} rowKey="keyword" size="small" pagination={false} empty="暂无搜索记录" />
+          <ConfigurableTable columnSettingsKey="cms-stats-top-keywords" columns={topColumns} dataSource={data?.topKeywords ?? []} rowKey="keyword" size="small" pagination={false} empty="暂无搜索记录" onRefresh={() => void query.refetch()} refreshLoading={query.isFetching} />
         </Card>
         <Card title="无结果搜索词榜（内容选题参考）" bodyStyle={{ padding: 0 }}>
-          <Table columns={noResultColumns} dataSource={data?.noResultKeywords ?? []} rowKey="keyword" size="small" pagination={false} empty="暂无无结果搜索" />
+          <ConfigurableTable columnSettingsKey="cms-stats-no-result-keywords" columns={noResultColumns} dataSource={data?.noResultKeywords ?? []} rowKey="keyword" size="small" pagination={false} empty="暂无无结果搜索" onRefresh={() => void query.refetch()} refreshLoading={query.isFetching} />
         </Card>
       </div>
     </Spin>

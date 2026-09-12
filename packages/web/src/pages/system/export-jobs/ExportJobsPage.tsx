@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Descriptions, Modal, SideSheet, Space, Table, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Descriptions, Modal, SideSheet, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
@@ -381,15 +381,10 @@ export default function ExportJobsPage() {
             style={{ marginBottom: 16 }}
           />
         )}
-        <Table
-          bordered
-          loading={downloadsQuery.isFetching}
+        <ConfigurableTable
+          columnSettingsKey="export-job-downloads"
           columns={downloadLogColumns}
-          dataSource={downloadsQuery.data ?? []}
-          rowKey="id"
-          pagination={false}
-          size="small"
-          empty={<div style={{ padding: 24 }}>暂无下载记录</div>}
+          {...listTableProps(downloadsQuery, { empty: <div style={{ padding: 24 }}>暂无下载记录</div> })}
         />
       </SideSheet>
     </div>

@@ -316,7 +316,7 @@ export default function FilesPage() {
       dataIndex: 'mimeType',
       width: 160,
       ellipsis: true,
-      render: (v: string | null) => renderEllipsis(v ?? '—'),
+      render: renderEllipsis,
     },
     {
       title: '大小',
@@ -331,7 +331,7 @@ export default function FilesPage() {
       dataIndex: 'uploaderName',
       width: 100,
       ellipsis: true,
-      render: (value: string) => renderEllipsis(value || '—'),
+      render: renderEllipsis,
     },
     createOperationColumn<ManagedFile>({
       width: 180,

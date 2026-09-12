@@ -3,7 +3,6 @@ import {
   Button,
   Col,
   Form,
-  Modal,
   Row,
   Space,
   Tag,
@@ -11,6 +10,7 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import { Plus, Trash2 } from 'lucide-react';
+import { AppModal } from '@/components/AppModal';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useAiHttpTools, useSaveAiHttpTool, useDeleteAiHttpTool } from '@/hooks/queries/ai-tools';
@@ -143,7 +143,7 @@ export default function AiToolsPage() {
         refreshLoading={listQuery.isFetching}
       />
 
-      <Modal
+      <AppModal
         {...modal.modalProps}
         title={modal.isEdit ? '编辑工具' : '新增工具'}
         width={720}
@@ -195,7 +195,7 @@ export default function AiToolsPage() {
             </ArrayField>
           </Form.Slot>
         </Form>
-      </Modal>
+      </AppModal>
     </div>
   );
 }

@@ -21,7 +21,7 @@ import {
 import { useEnabledReportDatasets, useReportDatasetDetail } from '@/hooks/queries/report-datasets';
 import { ReportFolderFilter, ReportOwnerFilter } from './report-filters';
 import { useReportOwnerFolderOptions } from './report-lookups';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { isRevisionConflict, metricLifecyclePayload, normalizeMetricFormValues } from './report-platform-utils';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
@@ -160,10 +160,10 @@ export default function MetricsPage() {
     },
     { title: '编码', dataIndex: 'code', width: 150, render: renderEllipsis },
     { title: '数据集', dataIndex: 'datasetName', width: 160, render: renderEllipsis },
-    { title: '来源/公式', width: 240, render: (_v, r) => renderEllipsis(r.type === 'simple' ? `${r.aggregate ?? 'sum'}(${r.sourceField ?? '—'})` : r.formula) },
+    { title: '来源/公式', width: 240, render: (_v, r) => renderEllipsis(r.type === 'simple' ? `${r.aggregate ?? 'sum'}(${r.sourceField ?? EMPTY_PLACEHOLDER})` : r.formula) },
     { title: '维度', dataIndex: 'dimensions', width: 180, render: (value: string[]) => renderEllipsis(value?.join(', ')) },
-    { title: '负责人', dataIndex: 'ownerName', width: 120, render: (value) => value || '—' },
-    { title: '目录', dataIndex: 'folderName', width: 140, render: (value) => value || '—' },
+    { title: '负责人', dataIndex: 'ownerName', width: 120, render: (value) => value || EMPTY_PLACEHOLDER },
+    { title: '目录', dataIndex: 'folderName', width: 140, render: (value) => value || EMPTY_PLACEHOLDER },
     { title: '修订', dataIndex: 'revision', width: 80 },
     dateTimeColumn('更新时间', 'updatedAt'),
     {

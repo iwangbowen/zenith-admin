@@ -298,7 +298,7 @@ export function MessageContent({
             gap: 10,
             borderRadius: 'var(--semi-border-radius-medium)',
             border: isSelf ? '1px solid rgba(255,255,255,0.35)' : '1px solid var(--semi-color-border)',
-            background: isSelf ? 'rgba(255,255,255,0.12)' : 'var(--semi-color-bg-1)',
+            background: isSelf ? 'rgba(255,255,255,0.12)' : 'var(--surface-card)',
             color: isSelf ? '#fff' : 'inherit',
             textDecoration: 'none',
             overflow: 'hidden',

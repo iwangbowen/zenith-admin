@@ -36,7 +36,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { DateRangeFilter, FilterSelect, KeywordInput, NumberFilter, StatusSelect } from '@/components/search-filters';
 import { useEditModal } from '@/hooks/useEditModal';
-import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { copyableNoColumn, dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { usePaymentAppList } from '@/hooks/queries/payment-apps';
 
@@ -402,8 +402,8 @@ export default function PaymentOrdersPage() {
             <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
               {[
                 { label: '订单金额', value: yuan(detailOrder.amount) },
-                { label: '手续费', value: detailOrder.feeAmount == null ? '—' : yuan(detailOrder.feeAmount) },
-                { label: '净额', value: detailOrder.netAmount == null ? '—' : yuan(detailOrder.netAmount) },
+                { label: '手续费', value: detailOrder.feeAmount == null ? EMPTY_PLACEHOLDER : yuan(detailOrder.feeAmount) },
+                { label: '净额', value: detailOrder.netAmount == null ? EMPTY_PLACEHOLDER : yuan(detailOrder.netAmount) },
               ].map((it) => (
                 <div key={it.label}>
                   <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>{it.label}</Typography.Text>
@@ -457,7 +457,7 @@ export default function PaymentOrdersPage() {
                 size="small"
                 data={[
                   { key: '创建时间', value: formatDateTime(detailOrder.createdAt) },
-                  { key: '过期时间', value: detailOrder.expiredAt ? formatDateTime(detailOrder.expiredAt) : '—' },
+                  { key: '过期时间', value: detailOrder.expiredAt ? formatDateTime(detailOrder.expiredAt) : EMPTY_PLACEHOLDER },
                   ...(detailOrder.paidAt ? [{ key: '支付时间', value: formatDateTime(detailOrder.paidAt) }] : []),
                 ]}
               />

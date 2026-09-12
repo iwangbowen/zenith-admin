@@ -8,7 +8,7 @@ import AppModal from '@/components/AppModal';
 import { useExportJobRunner } from '@/hooks/useExportJobRunner';
 import ReportParamDialog from '@/components/ReportParamDialog';
 import { buildReportParamInitialValues } from '@/components/report-param-utils';
-import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
+import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useReportDesignerDatasets } from '@/hooks/queries/report-designer';
@@ -205,8 +205,8 @@ export default function PrintTemplatesPage() {
         ? <Typography.Text>{REPORT_PRINT_ENTITY_KIND_LABELS[record.entityKind ?? 'workflow_instance']}{record.entityRefId ? '' : '（通用）'}</Typography.Text>
         : renderEllipsis(v ?? ''),
     },
-    { title: '负责人', dataIndex: 'ownerName', width: 120, render: (v: string | null) => v || '—' },
-    { title: '目录', dataIndex: 'folderName', width: 140, render: (v: string | null) => v || '—' },
+    { title: '负责人', dataIndex: 'ownerName', width: 120, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
+    { title: '目录', dataIndex: 'folderName', width: 140, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
     { title: '备注', dataIndex: 'remark', width: 200, render: renderEllipsis },
     createdAtColumn,
     statusToggle.column(),

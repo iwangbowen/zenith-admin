@@ -10,7 +10,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useEditModal } from '@/hooks/useEditModal';
 import ExportButton from '@/components/ExportButton';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
@@ -187,16 +187,16 @@ function buildPayload(provider: FileStorageProvider, isDefault: boolean, values:
 }
 
 function getStorageSummary(config: FileStorageConfig) {
-  if (config.provider === 'local') return config.localRootPath || '—';
-  if (config.provider === 'oss') return [config.ossBucket, config.ossRegion].filter(Boolean).join(' / ') || '—';
-  if (config.provider === 's3') return [config.s3Bucket, config.s3Region].filter(Boolean).join(' / ') || '—';
-  if (config.provider === 'cos') return [config.cosBucket, config.cosRegion].filter(Boolean).join(' / ') || '—';
-  if (config.provider === 'obs') return [config.obsBucket, config.obsEndpoint].filter(Boolean).join(' / ') || '—';
-  if (config.provider === 'kodo') return [config.kodoBucket, config.kodoRegion].filter(Boolean).join(' / ') || '—';
-  if (config.provider === 'bos') return [config.bosBucket, config.bosEndpoint].filter(Boolean).join(' / ') || '—';
-  if (config.provider === 'azure') return [config.azureContainerName, config.azureAccountName].filter(Boolean).join(' / ') || '—';
-  if (config.provider === 'sftp') return [config.sftpHost, config.sftpRootPath].filter(Boolean).join(':') || '—';
-  return '—';
+  if (config.provider === 'local') return config.localRootPath || EMPTY_PLACEHOLDER;
+  if (config.provider === 'oss') return [config.ossBucket, config.ossRegion].filter(Boolean).join(' / ') || EMPTY_PLACEHOLDER;
+  if (config.provider === 's3') return [config.s3Bucket, config.s3Region].filter(Boolean).join(' / ') || EMPTY_PLACEHOLDER;
+  if (config.provider === 'cos') return [config.cosBucket, config.cosRegion].filter(Boolean).join(' / ') || EMPTY_PLACEHOLDER;
+  if (config.provider === 'obs') return [config.obsBucket, config.obsEndpoint].filter(Boolean).join(' / ') || EMPTY_PLACEHOLDER;
+  if (config.provider === 'kodo') return [config.kodoBucket, config.kodoRegion].filter(Boolean).join(' / ') || EMPTY_PLACEHOLDER;
+  if (config.provider === 'bos') return [config.bosBucket, config.bosEndpoint].filter(Boolean).join(' / ') || EMPTY_PLACEHOLDER;
+  if (config.provider === 'azure') return [config.azureContainerName, config.azureAccountName].filter(Boolean).join(' / ') || EMPTY_PLACEHOLDER;
+  if (config.provider === 'sftp') return [config.sftpHost, config.sftpRootPath].filter(Boolean).join(':') || EMPTY_PLACEHOLDER;
+  return EMPTY_PLACEHOLDER;
 }
 
 export default function FileStorageConfigsPage() {

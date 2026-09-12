@@ -23,6 +23,7 @@ import { KeywordInput } from '@/components/search-filters';
 import { HostSelector } from '@/components/HostSelector';
 import { useOpsHostSelection } from '@/hooks/useOpsHostSelection';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 const RULE_TYPE_CONFIG: Record<FirewallRule['type'], { label: string; color: 'green' | 'red' | 'orange' }> = {
   allow: { label: '允许', color: 'green' },
@@ -211,9 +212,9 @@ export default function FirewallPage() {
             value={currentStatus.enabled ? '已启用' : '已关闭'}
             accent={currentStatus.enabled ? 'var(--semi-color-success)' : 'var(--semi-color-text-2)'}
           />
-          <StatCard title="版本" value={currentStatus.version ?? '—'} />
-          <StatCard title="默认入站" value={currentStatus.defaultIncoming ?? '—'} />
-          <StatCard title="默认出站" value={currentStatus.defaultOutgoing ?? '—'} />
+          <StatCard title="版本" value={currentStatus.version ?? EMPTY_PLACEHOLDER} />
+          <StatCard title="默认入站" value={currentStatus.defaultIncoming ?? EMPTY_PLACEHOLDER} />
+          <StatCard title="默认出站" value={currentStatus.defaultOutgoing ?? EMPTY_PLACEHOLDER} />
         </StatGrid>
       </div>
 

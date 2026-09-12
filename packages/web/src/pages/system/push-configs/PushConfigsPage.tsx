@@ -47,6 +47,7 @@ const defaultSearchParams: SearchParams = { keyword: '', status: undefined };
 
 /** 测试发送对话框:直发 RegistrationID,不依赖设备登记 */
 function TestSendModal({ config, onClose }: { config: PushConfig | null; onClose: () => void }) {
+  // useEditModal 例外：测试发送对话框（动作表单，不保存实体）
   const formApiRef = useRef<FormApi | null>(null);
   const testMutation = useTestPushSend();
 

@@ -12,7 +12,7 @@ import { AppModal } from '@/components/AppModal';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
-import { copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { copyableNoColumn, createdAtColumn, dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import {
   chatBotKeys,
   type SaveChatBotValues,
@@ -52,7 +52,7 @@ function getAbsoluteWebhookUrl(webhookUrl: string): string {
 
 /** 列表展示只露出 token 前 12 位（复制仍取完整值） */
 function maskToken(token: string): string {
-  if (!token) return '—';
+  if (!token) return EMPTY_PLACEHOLDER;
   return maskSecret(token, { head: 12, tail: 0, filler: '••••' });
 }
 

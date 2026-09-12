@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Spin, Table, Typography, Empty } from '@douyinfe/semi-ui';
+import { Card, Spin, Typography, Empty } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { useCmsDashboardStats } from '@/hooks/queries/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
@@ -97,13 +98,16 @@ export default function CmsDashboardPage() {
 
         <div className="chart-grid chart-grid--aside" style={{ ['--chart-aside-main' as string]: '1.4fr', ['--chart-aside-side' as string]: '1fr', marginTop: 12 }}>
           <Card title="热门内容 TOP10（按浏览量）" bodyStyle={{ padding: 0 }}>
-            <Table
+            <ConfigurableTable
+              columnSettingsKey="cms-dashboard-top-viewed"
               columns={topColumns}
               dataSource={stats?.topViewed ?? []}
               rowKey="id"
               size="small"
               pagination={false}
               empty="暂无已发布内容"
+              onRefresh={() => void statsQuery.refetch()}
+              refreshLoading={statsQuery.isFetching}
             />
           </Card>
           <Card title="栏目内容分布 TOP10" bodyStyle={{ padding: '16px 20px' }}>

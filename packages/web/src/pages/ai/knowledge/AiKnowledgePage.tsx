@@ -3,7 +3,7 @@ import { Button, Form, SideSheet, Space, Tag, Toast, Typography, Upload } from '
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Plus, FileUp, Globe } from 'lucide-react';
-import type { AiKnowledgeBase, AiKbDocument } from '@zenith/shared/ai';
+import type { AiKnowledgeBase, AiKbDocument, AddAiKbDocumentInput } from '@zenith/shared/ai';
 import { AppModal } from '@/components/AppModal';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -40,9 +40,8 @@ export default function AiKnowledgePage() {
   const [search, setSearch] = useState('');
   const [docsKb, setDocsKb] = useState<AiKnowledgeBase | null>(null);
   const [viewingDoc, setViewingDoc] = useState<AiKbDocument | null>(null);
-  const [docModalVisible, setDocModalVisible] = useState(false);
   const [urlModalVisible, setUrlModalVisible] = useState(false);
-  const docFormApi = useRef<FormApi | null>(null);
+  // useEditModal 例外：网页导入对话框（抓取入库，非实体新增 / 编辑表单）
   const urlFormApi = useRef<FormApi | null>(null);
 
   const listQuery = useAiKnowledgeBases();
@@ -66,18 +65,20 @@ export default function AiKnowledgePage() {
     labelWidth: 70,
   });
 
-  async function handleAddDoc() {
-    if (!docsKb) return;
-    let values: { name: string; content: string };
-    try {
-      values = (await docFormApi.current?.validate()) as { name: string; content: string };
-    } catch {
-      abortSubmit('validation');
-    }
-    await addDocMutation.mutateAsync({ params: { id: docsKb.id }, body: { name: values.name.trim(), content: values.content } });
-    Toast.success('文档已入库');
-    setDocModalVisible(false);
-  }
+  // 文档是知识库的子资源（仅新增）：添加契约绑定知识库 id，由 save 适配层注入
+  const docModal = useEditModal<AiKbDocument, Partial<AddAiKbDocumentInput>, AddAiKbDocumentInput>({
+    entityName: '文档',
+    save: {
+      mutateAsync: ({ values }) => {
+        if (!docsKb) abortSubmit('validation');
+        return addDocMutation.mutateAsync({ params: { id: docsKb.id }, body: values });
+      },
+      isPending: addDocMutation.isPending,
+    },
+    beforeSave: (values) => ({ name: (values.name ?? '').trim(), content: values.content ?? '' }),
+    successMessage: () => '文档已入库',
+    labelPosition: 'top',
+  });
 
   async function handleImportUrl() {
     if (!docsKb) return;
@@ -100,9 +101,10 @@ export default function AiKnowledgePage() {
     }
     const reader = new FileReader();
     reader.onload = () => {
-      docFormApi.current?.setValue('content', String(reader.result ?? ''));
-      if (!docFormApi.current?.getValue('name')) {
-        docFormApi.current?.setValue('name', file.name.replace(/\.(txt|md|markdown)$/i, ''));
+      const api = docModal.formApi.current;
+      api?.setValue('content', String(reader.result ?? ''));
+      if (!api?.getValue('name')) {
+        api?.setValue('name', file.name.replace(/\.(txt|md|markdown)$/i, ''));
       }
       Toast.success('文件内容已读取');
     };
@@ -248,7 +250,7 @@ export default function AiKnowledgePage() {
                 <Button size="small" icon={<Globe size={13} />} onClick={() => setUrlModalVisible(true)}>
                   导入网页
                 </Button>
-                <Button type="primary" size="small" icon={<Plus size={13} />} onClick={() => setDocModalVisible(true)}>
+                <Button type="primary" size="small" icon={<Plus size={13} />} onClick={docModal.openCreate}>
                   添加文档
                 </Button>
               </Space>
@@ -314,20 +316,8 @@ export default function AiKnowledgePage() {
         )}
       </AppModal>
 
-      <AppModal
-        title="添加文档"
-        visible={docModalVisible}
-        onOk={handleAddDoc}
-        onCancel={() => setDocModalVisible(false)}
-        okButtonProps={{ loading: addDocMutation.isPending }}
-        width={640}
-        closeOnEsc
-      >
-        <Form
-          key={docsKb?.id ?? 'doc'}
-          getFormApi={(api) => { docFormApi.current = api; }}
-          labelPosition="top"
-        >
+      <AppModal {...docModal.modalProps} title="添加文档" width={640}>
+        <Form key={docModal.formKey} {...docModal.formProps}>
           <div style={{ marginBottom: 8 }}>
             <Upload
               action=""

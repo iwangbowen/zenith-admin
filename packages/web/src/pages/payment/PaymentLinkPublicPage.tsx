@@ -11,6 +11,7 @@ import dayjs from 'dayjs';
 import { enumValueOf } from '@zenith/shared/core';
 import { PAYMENT_LINK_PAY_METHODS, PAYMENT_METHOD_LABELS, type PaymentCashierMethod, type PaymentLinkPublic } from '@zenith/shared/payment';
 import { usePayPublicPaymentLink, usePublicPaymentCashierSession, usePublicPaymentLink } from '@/hooks/queries/payment-links';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 const yuan = (cents: number | null | undefined) => formatYuan(cents, '自定义金额');
 
@@ -61,6 +62,7 @@ export default function PaymentLinkPublicPage() {
   const { token = '' } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const sessionToken = searchParams.get('session')?.trim() || undefined;
+  // useEditModal 例外：公开支付页的付款信息表单（提交后进入收银台），非后台实体新增 / 编辑
   const formApi = useRef<FormApi | null>(null);
   const linkQuery = usePublicPaymentLink(token);
   const payMutation = usePayPublicPaymentLink();
@@ -197,7 +199,7 @@ export default function PaymentLinkPublicPage() {
         <div className="payment-cashier__inner">
           <div className="payment-cashier__amount-block">
             <Typography.Text type="tertiary">支付金额</Typography.Text>
-            <div className="payment-cashier__amount">{session ? yuan(session.amount) : link ? yuan(link.amount) : '—'}</div>
+            <div className="payment-cashier__amount">{session ? yuan(session.amount) : link ? yuan(link.amount) : EMPTY_PLACEHOLDER}</div>
           </div>
 
           {link?.status === 'active' && (link.remainingUses != null || link.expiredAt) && (

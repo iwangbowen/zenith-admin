@@ -37,7 +37,7 @@ import WorkflowJobsView from './WorkflowJobsView';
 import WorkflowCompensationsView from './WorkflowCompensationsView';
 import WorkflowEngineTraceView from './WorkflowEngineTraceView';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
-import { dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '../../../utils/table-columns';
 import {
   fetchWorkflowDiagnosticBundle,
   useCancelWorkflowInstance,
@@ -311,13 +311,13 @@ function buildFocusDiagnosis(diagnostics: WorkflowRuntimeDiagnostics, diagNodes:
   const running = RUNNING_STATUSES.has(inst.status);
   const severity: FocusSeverity = hasCriticalRisk ? 'critical' : hasWarningRisk || (running && activeTasks.length === 0) ? 'warning' : running ? 'info' : 'success';
 
-  const activeNodeText = oldestActiveTask ? (oldestActiveTask.nodeName || oldestActiveTask.nodeKey) : '—';
+  const activeNodeText = oldestActiveTask ? (oldestActiveTask.nodeName || oldestActiveTask.nodeKey) : EMPTY_PLACEHOLDER;
   const assigneeText = summarizeNames(activeTasks.map((task) => task.assigneeName), '未指定处理人');
-  const waitText = oldestActiveTask ? formatSecondsBetween(oldestActiveTask.createdAt, diagnostics.generatedAt) : '—';
-  const assigneeSource = oldestActiveNode?.config.assigneeType ? ASSIGNEE_TYPE_LABEL[oldestActiveNode.config.assigneeType] ?? oldestActiveNode.config.assigneeType : '—';
+  const waitText = oldestActiveTask ? formatSecondsBetween(oldestActiveTask.createdAt, diagnostics.generatedAt) : EMPTY_PLACEHOLDER;
+  const assigneeSource = oldestActiveNode?.config.assigneeType ? ASSIGNEE_TYPE_LABEL[oldestActiveNode.config.assigneeType] ?? oldestActiveNode.config.assigneeType : EMPTY_PLACEHOLDER;
   const longestStayText = longestTask && longestTask.seconds > 0
     ? `${longestTask.task.nodeName || longestTask.task.nodeKey} ${formatSecondsBetween(longestTask.task.createdAt, getTaskEndTime(longestTask.task, diagnostics.generatedAt))}`
-    : '—';
+    : EMPTY_PLACEHOLDER;
 
   let title = '流程已结束';
   let description = '该实例没有活动任务，可在任务、表单数据和定义快照中核对历史执行依据。';
@@ -352,7 +352,7 @@ function buildFocusDiagnosis(diagnostics: WorkflowRuntimeDiagnostics, diagNodes:
     riskTags,
     metrics: [
       { label: '当前等待', value: waitText, hint: oldestActiveTask ? `task #${oldestActiveTask.id}` : '无活动任务' },
-      { label: '处理人', value: assigneeText, hint: assigneeSource !== '—' ? `来源：${assigneeSource}` : undefined },
+      { label: '处理人', value: assigneeText, hint: assigneeSource !== EMPTY_PLACEHOLDER ? `来源：${assigneeSource}` : undefined },
       { label: '最久停留', value: longestStayText, hint: longestTask ? `task #${longestTask.task.id}` : undefined },
       { label: '外部事件', value: `${diagnostics.triggerExecutions.length} 触发器 · ${diagnostics.outboxEvents.length} 事件派发`, hint: `${failedTriggers.length + failedOutbox.length} 个失败` },
     ],
@@ -415,10 +415,12 @@ export default function WorkflowMonitorPage() {
   const [jumpRecord, setJumpRecord] = useState<WorkflowInstanceListItem | null>(null);
   const [jumpNodes, setJumpNodes] = useState<Array<{ label: string; value: string }>>([]);
   const [jumpActiveTasks, setJumpActiveTasks] = useState<WorkflowTask[]>([]);
+  // useEditModal 例外：工作流运行时表单（强制跳转节点），非实体新增 / 编辑
   const jumpFormApi = useRef<FormApi | null>(null);
   // 管理员：改派处理人
   const [reassignRecord, setReassignRecord] = useState<WorkflowInstanceListItem | null>(null);
   const [reassignTasks, setReassignTasks] = useState<Array<{ label: string; value: number }>>([]);
+  // useEditModal 例外：工作流运行时表单（改派处理人），非实体新增 / 编辑
   const reassignFormApi = useRef<FormApi | null>(null);
   // 管理员：离职交接
   const [handoverVisible, setHandoverVisible] = useState(false);
@@ -539,7 +541,7 @@ export default function WorkflowMonitorPage() {
 
   const stats = data?.stats ?? { total: 0, running: 0, suspended: 0, returned: 0, approved: 0, rejected: 0, withdrawn: 0, cancelled: 0 };
   // 首次加载完成前显示占位符，避免统计短暂闪现误导性的 0
-  const statValue = (v: number) => (listQuery.isLoading ? '—' : v);
+  const statValue = (v: number) => (listQuery.isLoading ? EMPTY_PLACEHOLDER : v);
 
   const openJump = async (record: WorkflowInstanceListItem) => {
     setJumpRecord(record);
@@ -615,31 +617,31 @@ export default function WorkflowMonitorPage() {
       taskStatusColumn<WorkflowTask>('审批状态', 110),
       taskCommentColumn<WorkflowTask>(),
       taskStayDurationColumn<WorkflowTask>(),
-      { title: '外部分派', dataIndex: 'externalDispatchStatus', width: 120, render: (v: string | null) => v ?? '—' },
-      { title: '触发器状态', dataIndex: 'triggerDispatchStatus', width: 130, render: (v: string | null) => v ?? '—' },
-      { title: '尝试', dataIndex: 'triggerAttempt', width: 70, render: (v: number | undefined) => v ?? '—' },
-      { title: '错误', dataIndex: 'triggerLastError', minWidth: 220, ellipsis: { showTitle: true }, render: (v: string | null) => v ?? '—' },
+      { title: '外部分派', dataIndex: 'externalDispatchStatus', width: 120, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
+      { title: '触发器状态', dataIndex: 'triggerDispatchStatus', width: 130, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
+      { title: '尝试', dataIndex: 'triggerAttempt', width: 70, render: (v: number | undefined) => v ?? EMPTY_PLACEHOLDER },
+      { title: '错误', dataIndex: 'triggerLastError', minWidth: 220, ellipsis: { showTitle: true }, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
     ];
     const triggerColumns: ColumnProps<WorkflowTriggerExecution>[] = [
       { title: 'ID', dataIndex: 'id', width: 70 },
-      { title: '任务', dataIndex: 'taskId', width: 80, render: (v: number | null) => v ? `#${v}` : '—' },
+      { title: '任务', dataIndex: 'taskId', width: 80, render: (v: number | null) => v ? `#${v}` : EMPTY_PLACEHOLDER },
       { title: '节点', dataIndex: 'nodeName', width: 140, render: (_: unknown, row) => row.nodeName || row.nodeKey },
       { title: '类型', dataIndex: 'triggerType', width: 110 },
       { title: '状态', dataIndex: 'status', width: 130 },
       { title: '尝试', dataIndex: 'attempt', width: 70 },
-      { title: 'HTTP', dataIndex: 'responseStatus', width: 80, render: (v: number | null) => v ?? '—' },
-      { title: '耗时', dataIndex: 'durationMs', width: 90, align: 'right', render: (v: number | null) => v != null ? `${v}ms` : '—' },
-      { title: '错误', dataIndex: 'errorMessage', minWidth: 220, ellipsis: { showTitle: true }, render: (v: string | null) => v ?? '—' },
+      { title: 'HTTP', dataIndex: 'responseStatus', width: 80, render: (v: number | null) => v ?? EMPTY_PLACEHOLDER },
+      { title: '耗时', dataIndex: 'durationMs', width: 90, align: 'right', render: (v: number | null) => v != null ? `${v}ms` : EMPTY_PLACEHOLDER },
+      { title: '错误', dataIndex: 'errorMessage', minWidth: 220, ellipsis: { showTitle: true }, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
       dateTimeColumn('创建时间', 'createdAt'),
     ];
     const outboxColumns: ColumnProps<WorkflowRuntimeOutboxEvent>[] = [
       { title: 'ID', dataIndex: 'id', width: 70 },
       { title: '事件', dataIndex: 'eventType', width: 170 },
-      { title: '任务', dataIndex: 'taskId', width: 80, render: (v: number | null) => v ? `#${v}` : '—' },
+      { title: '任务', dataIndex: 'taskId', width: 80, render: (v: number | null) => v ? `#${v}` : EMPTY_PLACEHOLDER },
       { title: '状态', dataIndex: 'status', width: 130 },
       { title: '尝试', dataIndex: 'attempts', width: 70 },
       dateTimeColumn('下次重试', 'nextRetryAt'),
-      { title: '错误', dataIndex: 'errorMessage', minWidth: 260, ellipsis: { showTitle: true }, render: (v: string | null) => v ?? '—' },
+      { title: '错误', dataIndex: 'errorMessage', minWidth: 260, ellipsis: { showTitle: true }, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
       dateTimeColumn('创建时间', 'createdAt'),
     ];
 
@@ -654,8 +656,8 @@ export default function WorkflowMonitorPage() {
       ) },
       { title: '分支', dataIndex: 'branchPath', width: 150, render: (bp: WorkflowExecutionToken['branchPath']) => bp.length === 0 ? '主路径' : bp.map((f) => `${f.index + 1}/${f.total}`).join(' · ') },
       { title: '深度', dataIndex: 'depth', width: 70 },
-      { title: '父 Token', dataIndex: 'parentTokenId', width: 90, render: (v: number | null) => v ? `#${v}` : '—' },
-      { title: '作用域', dataIndex: 'scopeKey', width: 180, ellipsis: { showTitle: true }, render: (v: string | null) => v ?? '—' },
+      { title: '父 Token', dataIndex: 'parentTokenId', width: 90, render: (v: number | null) => v ? `#${v}` : EMPTY_PLACEHOLDER },
+      { title: '作用域', dataIndex: 'scopeKey', width: 180, ellipsis: { showTitle: true }, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
       dateTimeColumn('创建', 'createdAt'),
       dateTimeColumn('消费/终止', 'consumedAt'),
       createOperationColumn<WorkflowExecutionToken>({
@@ -680,7 +682,7 @@ export default function WorkflowMonitorPage() {
     const statusMeta = INSTANCE_STATUS_MAP[inst.status] ?? { text: inst.status, color: 'grey' as TagColor };
     const currentNodeText = inst.currentNodeNames && inst.currentNodeNames.length > 0
       ? inst.currentNodeNames.join('、')
-      : (inst.currentNodeName || '—');
+      : (inst.currentNodeName || EMPTY_PLACEHOLDER);
     const focusDiagnosis = buildFocusDiagnosis(diagnostics, diagNodes);
     const focusMeta = FOCUS_SEVERITY_META[focusDiagnosis.severity];
 
@@ -765,7 +767,7 @@ export default function WorkflowMonitorPage() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
           <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(150px, 100%), 1fr))', gap: 12 }}>
-            <div><Typography.Text type="tertiary" size="small">流程名称</Typography.Text><div>{inst.definitionName || '—'}</div></div>
+            <div><Typography.Text type="tertiary" size="small">流程名称</Typography.Text><div>{inst.definitionName || EMPTY_PLACEHOLDER}</div></div>
             <div><Typography.Text type="tertiary" size="small">状态</Typography.Text><div><Tag color={statusMeta.color}>{statusMeta.text}</Tag></div></div>
             <div><Typography.Text type="tertiary" size="small">当前节点</Typography.Text><div>{currentNodeText}</div></div>
             <div><Typography.Text type="tertiary" size="small">实例 ID</Typography.Text><div>#{inst.id}</div></div>
@@ -774,10 +776,10 @@ export default function WorkflowMonitorPage() {
               <Typography.Text type="tertiary" size="small">发起人</Typography.Text>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
                 {inst.initiatorName ? <UserAvatar name={inst.initiatorName} avatar={inst.initiatorAvatar} size={20} /> : null}
-                <span>{inst.initiatorName || '—'}</span>
+                <span>{inst.initiatorName || EMPTY_PLACEHOLDER}</span>
               </div>
             </div>
-            <div><Typography.Text type="tertiary" size="small">Business Key</Typography.Text><div>{inst.bizType && inst.bizId ? `${inst.bizType}:${inst.bizId}` : '—'}</div></div>
+            <div><Typography.Text type="tertiary" size="small">Business Key</Typography.Text><div>{inst.bizType && inst.bizId ? `${inst.bizType}:${inst.bizId}` : EMPTY_PLACEHOLDER}</div></div>
             <div><Typography.Text type="tertiary" size="small">节点 / 任务</Typography.Text><div>{diagNodes.length} 节点 · {diagnostics.tasks.length} 任务（{diagnostics.activeTasks.length} 活动）</div></div>
             <div><Typography.Text type="tertiary" size="small">生成时间</Typography.Text><div>{diagnostics.generatedAt}</div></div>
           </div>
@@ -979,7 +981,7 @@ export default function WorkflowMonitorPage() {
       render: (v: string | null, record: WorkflowInstanceListItem) => (
         <Space spacing={6}>
           <UserAvatar name={v ?? '?'} avatar={record.initiatorAvatar} semiSize="extra-extra-small" size={20} />
-          <span>{v ?? '—'}</span>
+          <span>{v ?? EMPTY_PLACEHOLDER}</span>
         </Space>
       ),
     },

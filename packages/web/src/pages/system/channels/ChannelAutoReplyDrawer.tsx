@@ -4,7 +4,7 @@
  * 优先级（后端 matchAutoReply）：subscribe → keyword(exact 优先 contains，按 sort) → default。
  */
 import { useState } from 'react';
-import { Button, Form, SideSheet, Table, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Form, SideSheet, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Eye } from 'lucide-react';
@@ -14,8 +14,9 @@ import { enumValueOf } from '@zenith/shared/core';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { AppModal } from '@/components/AppModal';
+import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { deleteAction } from '@/components/list-page';
+import { deleteAction, listTableProps } from '@/components/list-page';
 import {
   ChannelContentFields,
   ChannelNewsBodyField,
@@ -72,7 +73,6 @@ export function ChannelAutoReplyDrawer({ channelId, channelName, visible, onClos
   const updateContent = (patch: Partial<ChannelContentValue>) => setContent((prev) => ({ ...prev, ...patch }));
   const [previewVisible, setPreviewVisible] = useState(false);
   const listQuery = useChannelAutoReplies(channelId, visible && !!channelId);
-  const list = listQuery.data ?? [];
   const createMutation = useCreateChannelAutoReply();
   const updateMutation = useUpdateChannelAutoReply();
   const saving = createMutation.isPending || updateMutation.isPending;
@@ -201,13 +201,10 @@ export function ChannelAutoReplyDrawer({ channelId, channelName, visible, onClos
         <Typography.Text type="tertiary" size="small">优先级：关注欢迎语 → 关键词（完全匹配优先）→ 默认兜底</Typography.Text>
         {canSave && <CreateButton onClick={openCreate}>新增规则</CreateButton>}
       </div>
-      <Table
+      <ConfigurableTable
+        columnSettingsKey="channel-auto-replies"
         columns={columns}
-        dataSource={list}
-        rowKey="id"
-        loading={listQuery.isFetching}
-        pagination={false}
-        size="small"
+        {...listTableProps(listQuery)}
       />
 
       <AppModal

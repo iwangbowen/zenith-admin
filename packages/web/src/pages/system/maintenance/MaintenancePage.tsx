@@ -37,6 +37,7 @@ interface FormValues {
 export default function MaintenancePage() {
   const { hasPermission } = usePermission();
   const canManage = hasPermission('system:maintenance:manage');
+  // useEditModal 例外：页面级全局配置表单（维护模式），保存后不关闭；状态到达后经 setValues 回填
   const formApi = useRef<FormApi | null>(null);
 
   const { page, pageSize, setPage, buildPagination } = usePagination();

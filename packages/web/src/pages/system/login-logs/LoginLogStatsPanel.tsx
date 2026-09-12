@@ -21,6 +21,7 @@ import { useLoginLogStats } from '@/hooks/queries/login-logs';
 import { buildUserChartLabels } from '@/components/UserDisplay';
 import { ChartPanel, LogStatsScaffold, WEEKDAY_LABELS, calcSuccessRate, calcSuccessRateDelta, deltaOf, weekdayBuckets } from '@/components/logs/LogStatsScaffold';
 import { shortDate } from '@/utils/date';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 interface BarDatum {
   readonly name: string;
@@ -301,7 +302,7 @@ export default function LoginLogStatsPanel() {
         <StatGrid style={{ marginBottom: 16 }}>
           <StatCard
             title="总登录次数"
-            value={summary ? summary.total.toLocaleString() : '—'}
+            value={summary ? summary.total.toLocaleString() : EMPTY_PLACEHOLDER}
             sub={`近 ${days} 天累计`}
             icon={<LogIn size={22} />}
             accent="var(--semi-color-primary)"
@@ -310,7 +311,7 @@ export default function LoginLogStatsPanel() {
           />
           <StatCard
             title="登录成功率"
-            value={successRate == null ? '—' : `${successRate}%`}
+            value={successRate == null ? EMPTY_PLACEHOLDER : `${successRate}%`}
             sub={summary ? `成功 ${summary.successCount.toLocaleString()} · 失败 ${summary.failCount.toLocaleString()}` : undefined}
             icon={<CheckCircle2 size={22} />}
             accent="var(--semi-color-success)"
@@ -320,7 +321,7 @@ export default function LoginLogStatsPanel() {
           />
           <StatCard
             title="登录失败次数"
-            value={summary ? summary.failCount.toLocaleString() : '—'}
+            value={summary ? summary.failCount.toLocaleString() : EMPTY_PLACEHOLDER}
             sub="密码错误、账号锁定等"
             icon={<XCircle size={22} />}
             accent={summary && summary.failCount > 0 ? 'var(--semi-color-danger)' : undefined}
@@ -329,7 +330,7 @@ export default function LoginLogStatsPanel() {
           />
           <StatCard
             title="活跃用户数"
-            value={summary ? summary.uniqueUsers.toLocaleString() : '—'}
+            value={summary ? summary.uniqueUsers.toLocaleString() : EMPTY_PLACEHOLDER}
             sub="不重复用户账号"
             icon={<Users size={22} />}
             accent="var(--semi-color-data-2)"

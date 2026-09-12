@@ -5,7 +5,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { KeywordInput } from '@/components/search-filters';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePurgeWikiDoc, useRestoreWikiDoc, useWikiDocRecycleList, wikiDocRecycleKeys } from '@/hooks/queries/wiki-docs';
@@ -37,7 +37,7 @@ export default function WikiRecyclePage() {
   const columns: ColumnProps<WikiDoc>[] = [
     { title: '标题', dataIndex: 'title', minWidth: 240, render: renderEllipsis },
     { title: '所属空间', dataIndex: 'spaceName', width: 140, render: renderEllipsis },
-    { title: '作者', dataIndex: 'authorName', width: 120, render: (v: string | null) => v ?? '—' },
+    { title: '作者', dataIndex: 'authorName', width: 120, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
     dateTimeColumn('删除时间', 'deletedAt'),
     createOperationColumn<WikiDoc>({
       width: 180,

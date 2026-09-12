@@ -2,6 +2,7 @@
 import React from 'react';
 import { Checkbox, Input, Typography } from '@douyinfe/semi-ui';
 import { modeToOctal, modeToSymbolic, octalToMode } from '../fs-utils';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 interface ChmodEditorProps {
   readonly value: string;
@@ -11,7 +12,7 @@ interface ChmodEditorProps {
 export default function ChmodEditor({ value, onChange }: Readonly<ChmodEditorProps>) {
   const mode = octalToMode(value);
   const toggle = (bit: number) => onChange(modeToOctal(mode ^ bit));
-  const symbolic = value ? modeToSymbolic(mode) : '—';
+  const symbolic = value ? modeToSymbolic(mode) : EMPTY_PLACEHOLDER;
   const headers = ['', '所有者', '群组', '其他用户'];
   const rows = [
     { label: '读 (r)', bits: [0o400, 0o040, 0o004] as const },

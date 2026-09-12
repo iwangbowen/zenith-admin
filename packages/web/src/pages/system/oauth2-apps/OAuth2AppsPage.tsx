@@ -547,6 +547,7 @@ export default function OAuth2AppsPage() {
       <Modal
         title="驳回应用审核"
         visible={!!reviewTarget}
+        closeOnEsc
         onCancel={() => { setReviewTarget(null); setReviewComment(''); }}
         onOk={() => void handleReject()}
         okText="确认驳回"

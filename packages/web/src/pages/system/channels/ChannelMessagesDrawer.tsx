@@ -5,14 +5,15 @@
  * 草稿与定时消息可编辑、删除、立即发送；已发消息只读。
  */
 import { useEffect, useState } from 'react';
-import { Modal, SideSheet, Table, Tabs, TabPane, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Modal, SideSheet, Tabs, TabPane, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { ChannelAdmin, ChannelMessage, ChannelMessageStatus } from '@zenith/shared/messaging';
 import { CHANNEL_MESSAGE_STATUS_LABELS, CHANNEL_MESSAGE_TYPE_LABELS } from '@zenith/shared/messaging';
-import { TABLE_PAGE_SIZE_OPTIONS, usePagination } from '@/hooks/usePagination';
+import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
+import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { deleteAction } from '@/components/list-page';
+import { deleteAction, listTableProps } from '@/components/list-page';
 import { confirmDanger } from '@/utils/confirm';
 import { ChannelPublishModal } from './ChannelPublishModal';
 import {
@@ -57,8 +58,6 @@ export function ChannelMessagesDrawer({ channel, visible, onClose }: Readonly<Pr
     pageSize,
     status: tab === 'all' ? undefined : tab,
   }, visible && !!channel);
-  const list = listQuery.data?.list ?? [];
-  const total = listQuery.data?.total ?? 0;
   const deleteMutation = useDeleteChannelMessage();
   const publishNowMutation = usePublishChannelMessageNow();
   const retractMutation = useRetractChannelMessage();
@@ -176,18 +175,10 @@ export function ChannelMessagesDrawer({ channel, visible, onClose }: Readonly<Pr
         <TabPane tab="草稿" itemKey="draft" />
         <TabPane tab="定时" itemKey="scheduled" />
       </Tabs>
-      <Table
+      <ConfigurableTable
+        columnSettingsKey="channel-messages"
         columns={columns}
-        dataSource={list}
-        rowKey="id"
-        loading={listQuery.isFetching}
-        size="small"
-        scroll={{ x: 'max-content' }}
-        pagination={{
-          ...buildPagination(total),
-          showSizeChanger: true,
-          pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS,
-        }}
+        {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
       <ChannelPublishModal

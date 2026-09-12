@@ -55,6 +55,8 @@ interface SiteEditSheetProps {
 
 export default function SiteEditSheet({ open, site, onClose }: Readonly<SiteEditSheetProps>) {
   const { hasPermission } = usePermission();
+  // useEditModal 例外：受控子组件（打开态与编辑对象由父级持有）的多页签站点编辑工作区，
+  // 主题参数 / 模板默认值 / 扩展模型为表单外受控状态；编辑对象来自父级列表行，无详情查询
   const formApi = useRef<FormApi | null>(null);
   const uploadCmsImage = useUploadCmsImage();
   const [activeTab, setActiveTab] = useState('basic');

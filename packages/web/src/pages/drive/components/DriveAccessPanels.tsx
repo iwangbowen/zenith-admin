@@ -115,6 +115,7 @@ function RequestItem({ request, box, onOpenNode }: { readonly request: DriveAcce
   const decide = useDecideDriveAccessRequest();
   const cancel = useCancelDriveAccessRequest();
   const [approving, setApproving] = useState(false);
+  // useEditModal 例外：访问申请审批（通过并授予角色）动作表单，非实体新增 / 编辑
   const formApiRef = useRef<FormApi<DecideFormValues> | null>(null);
   const canDecide = box === 'inbox' && request.status === 'pending' && hasPermission('drive:node:grant');
 

@@ -11,6 +11,7 @@ import {
   useWikiContributors, useWikiHotDocs, useWikiOpsStats, useWikiStaleDocs, useWikiStatsOverview,
 } from '@/hooks/queries/wiki-stats';
 import { shortDate } from '@/utils/date';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 const { Text } = Typography;
 
@@ -61,7 +62,7 @@ export default function WikiStatsPage() {
 
   const searchRate = ops && ops.searchCount30d > 0
     ? `${(((ops.searchCount30d - ops.noResultCount30d) / ops.searchCount30d) * 100).toFixed(1)}%`
-    : '—';
+    : EMPTY_PLACEHOLDER;
 
   return (
     <div className="page-container zx-flat-panels">

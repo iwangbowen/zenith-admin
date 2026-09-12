@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, Col, Dropdown, SplitButtonGroup, Row, SideSheet, Form, Modal, Popover, Space, Spin, Table, Tabs, Tag, Toast, Tooltip } from '@douyinfe/semi-ui';
+import { Button, Col, Dropdown, SplitButtonGroup, Row, SideSheet, Form, Modal, Popover, Space, Spin, Tabs, Tag, Toast, Tooltip } from '@douyinfe/semi-ui';
 import { ScrollText, Trash2, ChevronDown, HelpCircle } from 'lucide-react';
 import type { CreateCronJobInput, CronJob, CronJobLog, CronRunTrigger } from '@zenith/shared/platform';
 import { CRON_RUN_STATUS_LABELS, CRON_RUN_TRIGGER_LABELS, cronSecondsIgnored, toMinuteCron } from '@zenith/shared/platform';
@@ -14,8 +14,8 @@ import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
-import { TABLE_PAGE_SIZE_OPTIONS, usePagination } from '@/hooks/usePagination';
-import { dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
+import { usePagination } from '@/hooks/usePagination';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '../../../utils/table-columns';
 import CronJobDashboard from './CronJobDashboard';
 import { TRIGGER_TAG } from './cron-dashboard-shared';
 import {
@@ -73,7 +73,7 @@ const buildRunLogColumns = (outputWidth: number) => [
     align: 'right' as const,
     dataIndex: 'durationMs',
     width: 90,
-    render: (v: number | null) => v ?? '—',
+    render: (v: number | null) => v ?? EMPTY_PLACEHOLDER,
   },
   {
     title: '状态',
@@ -301,7 +301,7 @@ export default function CronJobsPage() {
       title: '上次执行',
       width: 200,
       render: (_: unknown, record: CronJob) => {
-        if (!record.lastRunStatus) return '—';
+        if (!record.lastRunStatus) return EMPTY_PLACEHOLDER;
         return (
           <Space spacing={6}>
             <Tag color={runStatusColor[record.lastRunStatus] ?? 'grey'} size="small">
@@ -547,13 +547,8 @@ export default function CronJobsPage() {
             </SplitButtonGroup>
           )}
         </div>
-        <Table
-          bordered
-          size="small"
-          rowKey="id"
-          loading={allLogsQuery.isFetching}
-          dataSource={allLogsQuery.data?.list ?? []}
-          scroll={{ x: 'max-content' }}
+        <ConfigurableTable
+          columnSettingsKey="cron-job-all-logs"
           columns={[
             {
               title: '任务名称',
@@ -563,12 +558,7 @@ export default function CronJobsPage() {
             },
             ...buildRunLogColumns(260),
           ]}
-          pagination={{
-            ...buildAllLogsPagination(allLogsQuery.data?.total ?? 0),
-            showSizeChanger: true,
-            pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS,
-            showTotal: true,
-          }}
+          {...listTableProps(allLogsQuery, { pagination: buildAllLogsPagination })}
         />
       </SideSheet>
 
@@ -603,20 +593,10 @@ export default function CronJobsPage() {
             </SplitButtonGroup>
           </div>
         )}
-        <Table
-          bordered
-          size="small"
-          rowKey="id"
-          loading={jobLogsQuery.isFetching}
-          dataSource={jobLogsQuery.data?.list ?? []}
-          scroll={{ x: 'max-content' }}
+        <ConfigurableTable
+          columnSettingsKey="cron-job-logs"
           columns={buildRunLogColumns(270)}
-          pagination={{
-            ...buildLogsPagination(jobLogsQuery.data?.total ?? 0),
-            showSizeChanger: true,
-            pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS,
-            showTotal: true,
-          }}
+          {...listTableProps(jobLogsQuery, { pagination: buildLogsPagination })}
         />
       </SideSheet>
     </div>

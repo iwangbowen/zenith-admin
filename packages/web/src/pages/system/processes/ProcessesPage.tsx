@@ -19,7 +19,7 @@ import { PROCESS_KILL_SIGNALS, PROCESS_PRIORITY_CLASSES, type ProcessInfo, type 
 import { enumValueOf } from '@zenith/shared/core';
 import { hostQueryOf } from '@/hooks/queries/ops-hosts';
 import { processStreamUrl, useKillProcess, useProcessDetail, useProcessList, useSetProcessPriority } from '@/hooks/queries/processes';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { HostSelector } from '@/components/HostSelector';
 import { deriveInitialHostSelection, useOpsHostSelection } from '@/hooks/useOpsHostSelection';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
@@ -512,9 +512,9 @@ export default function ProcessesPage() {
               style={{ width: '100%' }}
               data={[
                 { key: 'PID', value: detailProcess.pid },
-                { key: '父进程 PID', value: detailProcess.ppid || '—' },
+                { key: '父进程 PID', value: detailProcess.ppid || EMPTY_PLACEHOLDER },
                 { key: '进程名', value: detailProcess.name },
-                { key: '用户', value: detailProcess.user || '—' },
+                { key: '用户', value: detailProcess.user || EMPTY_PLACEHOLDER },
                 {
                   key: '状态', value: (
                     <Tag color={(STATUS_META[detailProcess.status]?.color ?? 'grey') as never} size="small">
@@ -530,11 +530,11 @@ export default function ProcessesPage() {
                 {
                   key: platform === 'win32' ? '优先级类' : 'Nice 值',
                   value: platform === 'win32'
-                    ? (detailProcess.priorityClass ?? '—')
-                    : (detailProcess.nice ?? '—'),
+                    ? (detailProcess.priorityClass ?? EMPTY_PLACEHOLDER)
+                    : (detailProcess.nice ?? EMPTY_PLACEHOLDER),
                 },
-                { key: '端口', value: detailProcess.ports ?? '—' },
-                { key: '启动时间', value: detailProcess.startTime ?? '—', span: 2 },
+                { key: '端口', value: detailProcess.ports ?? EMPTY_PLACEHOLDER },
+                { key: '启动时间', value: detailProcess.startTime ?? EMPTY_PLACEHOLDER, span: 2 },
                 {
                   key: '命令行',
                   span: 2,
@@ -544,7 +544,7 @@ export default function ProcessesPage() {
                       ellipsis={{ rows: 3, showTooltip: { opts: { content: detailProcess.command } } }}
                       style={{ maxWidth: '100%', wordBreak: 'break-all' }}
                     >
-                      {detailProcess.command || '—'}
+                      {detailProcess.command || EMPTY_PLACEHOLDER}
                     </Typography.Text>
                   ),
                 },
@@ -588,7 +588,7 @@ export default function ProcessesPage() {
                       <tr key={`${c.protocol}-${c.localAddr}-${c.localPort}`} style={{ borderBottom: '1px solid var(--semi-color-border)' }}>
                         <td style={{ padding: '3px 8px' }}>{c.protocol}</td>
                         <td style={{ padding: '3px 8px' }}>{c.localAddr}:{c.localPort}</td>
-                        <td style={{ padding: '3px 8px' }}>{c.remoteAddr ? `${c.remoteAddr}:${c.remotePort}` : '—'}</td>
+                        <td style={{ padding: '3px 8px' }}>{c.remoteAddr ? `${c.remoteAddr}:${c.remotePort}` : EMPTY_PLACEHOLDER}</td>
                         <td style={{ padding: '3px 8px' }}>{c.state}</td>
                       </tr>
                     ))}

@@ -100,6 +100,7 @@ export default function InteractionEditPage() {
   const editingId = Number(searchParams.get('id')) || undefined;
   const routeSiteId = Number(searchParams.get('siteId')) || undefined;
 
+  // useEditModal 例外：整页编辑器（路由页，保存后跳转列表）；详情到达后经 formKey 重挂载
   const formApi = useRef<FormApi<InteractionFormValues> | null>(null);
   /** 用户是否手动改过访问标识：手改后不再由标题自动生成 */
   const codeTouched = useRef(false);

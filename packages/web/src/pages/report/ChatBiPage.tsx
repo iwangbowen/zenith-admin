@@ -172,6 +172,7 @@ export default function ChatBiPage() {
   const [saveResourceType, setSaveResourceType] = useState<'dataset' | 'dashboard'>('dataset');
   const [saveMode, setSaveMode] = useState<'new' | 'existing'>('new');
   const abortRef = useRef<AbortController | null>(null);
+  // useEditModal 例外：「保存为数据集 / 仪表盘」另存对话框，目标资源类型与新建 / 覆盖模式在表单外选择
   const saveFormApi = useRef<FormApi | null>(null);
 
   const listQuery = useReportChatbiSessionList({

@@ -35,6 +35,7 @@ interface AdvancedSettingsProps {
 export default function AdvancedSettingsPanel({ settings, onChange, readOnly = false, formFields = [], print }: Readonly<AdvancedSettingsProps>) {
   const serialNo: Required<WorkflowSerialNoConfig> = { ...DEFAULT_SERIAL_NO, ...settings.serialNo };
   const notify: WorkflowNotifyChannels = settings.notifyChannels ?? {};
+  // useEditModal 例外：工作流设计器面板（高级设置随设计器整体保存，值经 onChange 回写）
   const formApiRef = useRef<FormApi | null>(null);
   const { hasPermission } = usePermission();
   const summaryFieldOptions = formFields

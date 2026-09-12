@@ -23,7 +23,7 @@ import {
 } from '@/hooks/queries/report-sla';
 import { CreateButton } from '@/components/toolbar-controls';
 import { confirmDelete } from '@/utils/confirm';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { DEFAULT_TIMEZONE } from '@/utils/timezones';
 import { FilterSelect } from '@/components/search-filters';
 
@@ -100,7 +100,7 @@ export default function GovernanceSlaTab() {
     { title: '规则名称', dataIndex: 'name', minWidth: 190, render: renderEllipsis },
     { title: '数据集', dataIndex: 'datasetId', width: 150, render: (v: number) => renderEllipsis(datasetNameMap.get(v) ?? `#${v}`) },
     { title: '类型', dataIndex: 'type', width: 150, render: (v) => slaTypeOptions.find((item) => item.value === v)?.label ?? v },
-    { title: '目标/预警', width: 130, render: (_v, r) => `${r.targetValue} / ${r.warningValue ?? '—'}` },
+    { title: '目标/预警', width: 130, render: (_v, r) => `${r.targetValue} / ${r.warningValue ?? EMPTY_PLACEHOLDER}` },
     { title: '窗口', dataIndex: 'windowMinutes', width: 100, align: 'right', render: (v) => `${v} 分钟` },
     { title: '调度', width: 200, render: (_v, r) => renderEllipsis(r.cron ? `${r.cron} · ${r.timezone}` : '仅手动') },
     dateTimeColumn('最近评估', 'lastEvaluatedAt'),

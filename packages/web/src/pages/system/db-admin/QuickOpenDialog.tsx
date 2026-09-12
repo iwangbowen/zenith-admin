@@ -71,6 +71,7 @@ export function QuickOpenDialog({ visible, tables, onClose, onSelect }: Readonly
     <Modal
       visible={visible}
       onCancel={onClose}
+      closeOnEsc
       footer={null}
       closable={false}
       width={520}

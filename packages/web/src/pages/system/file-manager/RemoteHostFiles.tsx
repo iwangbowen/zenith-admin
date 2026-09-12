@@ -17,6 +17,7 @@ import {
   useHostFileUpload,
   hostFileDownloadUrl,
 } from '@/hooks/queries/terminal-files';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import type { SftpFileEntry } from '@zenith/shared/ops';
 import { permStringToOctal } from './fs-utils';
 import { formatBytes } from '@zenith/shared/core';
@@ -118,8 +119,8 @@ export function RemoteHostFiles({ hostId }: Readonly<{ hostId: number }>) {
       ),
     },
     { title: '类型', dataIndex: 'type', width: 90, render: (value: string) => value === 'dir' ? '目录' : '文件' },
-    { title: '大小', dataIndex: 'size', width: 120, render: (value: number, entry) => entry.type === 'dir' ? '—' : formatBytes(value) },
-    { title: '权限', dataIndex: 'permissions', width: 120, render: (value?: string) => value ?? '—' },
+    { title: '大小', dataIndex: 'size', width: 120, render: (value: number, entry) => entry.type === 'dir' ? EMPTY_PLACEHOLDER : formatBytes(value) },
+    { title: '权限', dataIndex: 'permissions', width: 120, render: (value?: string) => value ?? EMPTY_PLACEHOLDER },
     { title: '修改时间', dataIndex: 'mtime', width: 180 },
     createOperationColumn<SftpFileEntry>({
       width: 180,

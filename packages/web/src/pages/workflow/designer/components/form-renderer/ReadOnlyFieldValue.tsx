@@ -2,6 +2,7 @@ import { useContext } from 'react';
 import { Form, Typography } from '@douyinfe/semi-ui';
 import type { WorkflowFormField } from '@zenith/shared/workflow';
 import { rmbUpper } from '@/utils/rmb';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { ValuesContext } from './contexts';
 import { formatReadOnlyValue, readOnlyFieldLabel } from './read-only-text';
 
@@ -15,7 +16,7 @@ export function ReadOnlyFieldValue({ field }: Readonly<{ field: WorkflowFormFiel
   return (
     <Form.Slot label={{ text: readOnlyFieldLabel(field) }}>
       <Typography.Text style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-        {text || '—'}
+        {text || EMPTY_PLACEHOLDER}
       </Typography.Text>
       {upper && (
         <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 2 }}>

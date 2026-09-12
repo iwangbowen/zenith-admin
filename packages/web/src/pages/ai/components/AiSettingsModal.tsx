@@ -21,6 +21,7 @@ interface AiSettingsModalProps {
 
 /** 用户级 AI 设置弹窗：个人指令（Custom Instructions）+ AI 记忆（working memory 画像） */
 export default function AiSettingsModal({ visible, initialTab = 'instructions', onClose }: AiSettingsModalProps) {
+  // useEditModal 例外：用户级个性化设置表单（单例、无实体 id，无新增态）；设置到达后经 formKey 计数重挂载
   const formApi = useRef<FormApi | null>(null);
   const settingsQuery = useAiSettings(visible);
   const saveMutation = useSaveAiSettings();

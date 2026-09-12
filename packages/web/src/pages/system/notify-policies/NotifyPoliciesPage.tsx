@@ -303,7 +303,7 @@ export default function NotifyPoliciesPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['events', 'dispatches'] as const, 'events');
 
   return (
-    <div className="page-container">
+    <div className="page-container page-tabs-page">
       <Tabs collapsible="auto" activeKey={activeTab} onChange={(v) => setActiveTab(v as 'events' | 'dispatches')}>
         <Tabs.TabPane itemKey="events" tab="事件策略">
           <PolicyEventsTab />

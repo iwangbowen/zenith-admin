@@ -17,6 +17,7 @@ import { api, contractKey, createResourceQueries, urlOf, useApiMutation, useApiQ
 import { LOOKUP_STALE_TIME, unwrap } from '@/lib/query';
 import { request } from '@/utils/request';
 import { chunkedUpload, type ChunkedUploadEndpoints } from '@/utils/chunked-upload';
+import { formatDate } from '@/utils/date';
 import { useMySettings, useSaveSettings, useSettings } from './settings';
 
 /** 网盘自有的分片上传接口（init / chunk / complete / status / abort），由契约派生；目录上传队列与新版本面板共用 */
@@ -753,7 +754,7 @@ export function useCancelDriveAccessRequest() {
 export function useDrivePreviewWatermark(user: { nickname?: string | null; username?: string } | null | undefined): string[] | null {
   const mySettings = useMySettings().data;
   if (!mySettings?.drive?.previewWatermarkEnabled || !user) return null;
-  return [[user.nickname, user.username].filter(Boolean).join(' · '), new Date().toISOString().slice(0, 10)];
+  return [[user.nickname, user.username].filter(Boolean).join(' · '), formatDate(new Date())];
 }
 
 // ─── 公开外链（匿名） ─────────────────────────────────────────────────────────

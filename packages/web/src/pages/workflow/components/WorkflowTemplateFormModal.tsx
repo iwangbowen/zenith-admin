@@ -54,6 +54,7 @@ export default function WorkflowTemplateFormModal({
   onCancel,
   onSubmit,
 }: Readonly<Props>) {
+  // useEditModal 例外：受控共享表单组件——打开态、初始值与提交（onSubmit）由「流程模板编辑」「另存为模板」两个父级承接
   const formApi = useRef<FormApi | null>(null);
 
   return (

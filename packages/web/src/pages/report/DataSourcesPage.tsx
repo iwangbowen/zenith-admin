@@ -201,8 +201,8 @@ export default function DataSourcesPage() {
   const columns: ColumnProps<ReportDatasource>[] = [
     { title: '名称', dataIndex: 'name', minWidth: 180, render: renderEllipsis },
     { title: '类型', dataIndex: 'type', width: 90, render: (t: ReportDatasourceType) => renderReportDatasourceTypeTag(t) },
-    { title: '负责人', dataIndex: 'ownerName', width: 120, render: (v: string | null) => v || '—' },
-    { title: '目录', dataIndex: 'folderName', width: 140, render: (v: string | null) => v || '—' },
+    { title: '负责人', dataIndex: 'ownerName', width: 120, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
+    { title: '目录', dataIndex: 'folderName', width: 140, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
     {
       title: '连接', dataIndex: 'config', width: 320,
       render: (_: unknown, r: ReportDatasource) => {

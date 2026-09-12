@@ -18,6 +18,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { CRON_STATS_REFETCH_INTERVAL_MS, useCronJobStats, useRunCronJob, useUpdateCronJobStatus } from '@/hooks/queries/cron-jobs';
 import { formatDurationMs } from '@/utils/format';
 import { formatRelativeTime } from '@/utils/date';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { CronJobAlertsPanel } from './CronJobAlertsPanel';
 import { CronJobDetailDrawer } from './CronJobDetailDrawer';
 import { CronJobHealthTable } from './CronJobHealthTable';
@@ -452,13 +453,13 @@ export default function CronJobDashboard({ onViewLogs }: Readonly<Props>) {
             delta={deltaOf(today.total, yesterdaySameTime.total)} deltaLabel="较昨日同时段"
           />
           <StatCard
-            title="今日成功率" value={todayRate == null ? '—' : `${todayRate}%`}
-            sub={`昨日全天 ${cronSuccessRatePercent(yesterday.successCount, yesterday.total) ?? '—'}%`}
+            title="今日成功率" value={todayRate == null ? EMPTY_PLACEHOLDER : `${todayRate}%`}
+            sub={`昨日全天 ${cronSuccessRatePercent(yesterday.successCount, yesterday.total) ?? EMPTY_PLACEHOLDER}%`}
             accent={rateAccent(todayRate)}
             delta={calcSuccessRateDelta(today, yesterdaySameTime)} deltaLabel="较昨日同时段" deltaFormat="ratio"
           />
           <StatCard
-            title={`近 ${days} 天成功率`} value={periodRate == null ? '—' : `${periodRate}%`}
+            title={`近 ${days} 天成功率`} value={periodRate == null ? EMPTY_PLACEHOLDER : `${periodRate}%`}
             sub={`${period.total} 次执行`}
             accent={rateAccent(periodRate)}
             delta={calcSuccessRateDelta(period, prevPeriod)} deltaLabel="较上期" deltaFormat="ratio"

@@ -11,7 +11,7 @@ import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
-import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
+import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '../../../utils/table-columns';
 import {
   smsTemplateKeys,
   useDeleteSmsTemplate,
@@ -76,7 +76,7 @@ export default function SmsTemplatesPage() {
     { title: '模板名称', dataIndex: 'name', width: 160 },
     { title: '模板编码', dataIndex: 'code', width: 180 },
     { title: '服务商模板号', dataIndex: 'templateCode', width: 180, render: renderEllipsis },
-    { title: '签名', dataIndex: 'signName', width: 120, render: (v: string | null) => v || '—' },
+    { title: '签名', dataIndex: 'signName', width: 120, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
     {
       title: '服务商', dataIndex: 'provider', width: 100,
       render: (v: string) => SMS_PROVIDER_OPTIONS.find((p) => p.value === v)?.label ?? v,

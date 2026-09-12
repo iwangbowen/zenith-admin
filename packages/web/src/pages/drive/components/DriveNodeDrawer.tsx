@@ -171,7 +171,7 @@ export function DriveNodeDrawer({ nodeId, allowExternalShare, onClose, onDownloa
                   <Descriptions.Item itemKey="我的角色">{node.myRole ? DRIVE_ROLE_LABELS[node.myRole] : EMPTY_PLACEHOLDER}</Descriptions.Item>
                   <Descriptions.Item itemKey="创建">{node.createdByName ?? EMPTY_PLACEHOLDER} · {node.createdAt}</Descriptions.Item>
                   <Descriptions.Item itemKey="更新">{node.updatedByName ?? EMPTY_PLACEHOLDER} · {node.updatedAt}</Descriptions.Item>
-                  {node.lockedBy && <Descriptions.Item itemKey="锁定">{node.lockedByName ?? '—'} 签出中，至 {node.lockExpiresAt ?? '手动解除'}</Descriptions.Item>}
+                  {node.lockedBy && <Descriptions.Item itemKey="锁定">{node.lockedByName ?? EMPTY_PLACEHOLDER} 签出中，至 {node.lockExpiresAt ?? '手动解除'}</Descriptions.Item>}
                   {node.contentHash && <Descriptions.Item itemKey="SHA-256"><Typography.Text code copyable size="small">{node.contentHash.slice(0, 16)}…</Typography.Text></Descriptions.Item>}
                   <Descriptions.Item itemKey="标签"><TagsEditor node={node} /></Descriptions.Item>
                 </Descriptions>

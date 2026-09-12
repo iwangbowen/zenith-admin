@@ -506,7 +506,7 @@ function AutomationRunsTab({ filterAutomation, onClearFilter }: Readonly<{
     {
       title: '动作结果', width: 260,
       render: (_: unknown, r: IotAutomationRun) => renderEllipsis(
-        r.results.map((x) => `${x.type}${x.success ? ' ✓' : ' ✗'}`).join('；') || '—',
+        r.results.map((x) => `${x.type}${x.success ? ' ✓' : ' ✗'}`).join('；') || EMPTY_PLACEHOLDER,
       ),
     },
     {

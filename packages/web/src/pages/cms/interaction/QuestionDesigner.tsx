@@ -41,7 +41,7 @@ function BulkTextModal({ title, initial, hint, onCancel, onOk }: Readonly<{
 }>) {
   const [text, setText] = useState(initial);
   return (
-    <Modal title={title} visible onCancel={onCancel} onOk={() => onOk(text)} okText="覆盖" width={480}>
+    <Modal title={title} visible closeOnEsc onCancel={onCancel} onOk={() => onOk(text)} okText="覆盖" width={480}>
       <Typography.Text type="tertiary" size="small">{hint}</Typography.Text>
       <TextArea
         value={text}

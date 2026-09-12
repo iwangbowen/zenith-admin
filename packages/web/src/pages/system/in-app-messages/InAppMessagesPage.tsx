@@ -7,7 +7,7 @@ import { usePermission } from '@/hooks/usePermission';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
-import { createdAtColumn, dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
+import { createdAtColumn, dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '../../../utils/table-columns';
 import { useAllUsers } from '@/hooks/queries/users';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -109,7 +109,7 @@ export default function InAppMessagesPage() {
         return <Tag color={it?.color ?? 'grey'} type="light">{it?.label ?? v}</Tag>;
       },
     },
-    { title: '收件人', dataIndex: 'username', width: 120, render: (v: string | null) => v || '—' },
+    { title: '收件人', dataIndex: 'username', width: 120, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
     { title: '发送人', dataIndex: 'senderName', width: 120, render: (v: string | null) => v || '系统' },
     dateTimeColumn('阅读时间', 'readAt'),
     createdAtColumn,

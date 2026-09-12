@@ -5,7 +5,7 @@ import { ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
 import type { CreateRegionInput, Region } from '@zenith/shared/platform';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useDictItems } from '@/hooks/useDictItems';
-import { createdAtColumn } from '@/utils/table-columns';
+import { createdAtColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
@@ -152,7 +152,7 @@ export default function RegionsPage() {
       title: '父级代码',
       dataIndex: 'parentCode',
       width: 120,
-      render: (val: string | null) => val ?? '—',
+      render: (val: string | null) => val ?? EMPTY_PLACEHOLDER,
     },
     {
       title: '排序',

@@ -1,7 +1,7 @@
 /** 发送日志（邮件 / 短信）表格共用列 */
 import type { ColumnProps, Data } from '@douyinfe/semi-ui/lib/es/table';
 import type { SendStatus } from '@zenith/shared/messaging';
-import { renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { SEND_SOURCE_OPTIONS as SOURCE_OPTIONS } from './send-log-constants';
 import { SendStatusTag } from './send-log-ui';
 
@@ -10,7 +10,7 @@ export function sendLogSourceColumn<T extends Data = Data>(): ColumnProps<T> {
 }
 
 export function sendLogOperatorColumn<T extends Data = Data>(): ColumnProps<T> {
-  return { title: '操作人', dataIndex: 'userName', width: 120, render: (v: string | null) => v || '—' };
+  return { title: '操作人', dataIndex: 'userName', width: 120, render: (v: string | null) => v || EMPTY_PLACEHOLDER };
 }
 
 export function sendLogErrorColumn<T extends Data = Data>(): ColumnProps<T> {

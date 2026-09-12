@@ -7,12 +7,12 @@ import {
   SideSheet,
   Spin,
   TabPane,
-  Table,
   Tabs,
   Tag,
   Typography,
 } from '@douyinfe/semi-ui';
 import { Search } from 'lucide-react';
+import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { CMS_INTERACTION_QUESTION_TYPE_LABELS } from '@zenith/shared/cms';
 import type { CmsInteraction, CmsInteractionQuestionStats } from '@zenith/shared/cms';
 import {
@@ -229,15 +229,18 @@ function TrendView({ interactionId }: Readonly<{ interactionId: number }>) {
   return (
     <div className="interaction-stats__trend">
       <Select value={days} style={{ width: 140 }} optionList={TREND_OPTIONS} onChange={(value) => setDays(value as number)} />
-      <Table
+      <ConfigurableTable
         size="small"
         bordered
+        columnSettingsKey="cms-interaction-trend"
         columns={columns}
         dataSource={query.data?.points ?? []}
         loading={query.isFetching}
         rowKey="date"
         pagination={false}
         scroll={{ y: 360 }}
+        onRefresh={() => void query.refetch()}
+        refreshLoading={query.isFetching}
       />
     </div>
   );

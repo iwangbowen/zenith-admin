@@ -21,6 +21,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import { RefreshButton } from '@/components/toolbar-controls';
 import { useMonitorAlertOverview } from '@/hooks/queries/monitor-alerts';
 import { usePermission } from '@/hooks/usePermission';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 const { Text } = Typography;
 
@@ -32,7 +33,7 @@ const LEVEL_ACCENT: Record<string, string> = {
 
 /** 时长按量级降级单位：把「1440 分钟」写成「1 天」才读得出严重程度 */
 function formatMinutes(minutes: number | null | undefined): string {
-  if (minutes === null || minutes === undefined) return '—';
+  if (minutes === null || minutes === undefined) return EMPTY_PLACEHOLDER;
   if (minutes < 60) return `${minutes} 分钟`;
   if (minutes < 60 * 24) return `${Math.round(minutes / 6) / 10} 小时`;
   return `${Math.round(minutes / 144) / 10} 天`;
@@ -103,7 +104,7 @@ export default function AlertOverviewPage() {
         <StatGrid minItemWidth={190}>
           <StatCard
             title="当前告警中"
-            value={data?.firingTotal ?? '—'}
+            value={data?.firingTotal ?? EMPTY_PLACEHOLDER}
             accent="var(--semi-color-danger)"
             icon={<BellRing size={19} />}
             onClick={canViewEvents ? () => gotoEvents({ status: 'firing' }) : undefined}
@@ -120,7 +121,7 @@ export default function AlertOverviewPage() {
           ))}
           <StatCard
             title="待处理"
-            value={data?.pendingTotal ?? '—'}
+            value={data?.pendingTotal ?? EMPTY_PLACEHOLDER}
             sub={data?.oldestPendingMinutes == null ? undefined : `最久已等待 ${formatMinutes(data.oldestPendingMinutes)}`}
             accent="var(--semi-color-warning)"
             icon={<Clock size={19} />}
@@ -128,7 +129,7 @@ export default function AlertOverviewPage() {
           />
           <StatCard
             title="通知失败"
-            value={data?.notifyFailedInRange ?? '—'}
+            value={data?.notifyFailedInRange ?? EMPTY_PLACEHOLDER}
             sub="配了渠道却没送达"
             accent="var(--semi-color-danger)"
             icon={<MailWarning size={19} />}

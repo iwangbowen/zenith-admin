@@ -86,9 +86,11 @@ export default function PagesPage() {
   const [blocks, setBlocks] = useState<CmsPageBlock[]>([]);
   const detailQuery = useCmsPageDetail(editingPage?.id);
   const editablePage = detailQuery.data ?? editingPage;
+  // useEditModal 例外：搭建器工作区表单（理由见上方注释），key 用 formRemountKey 跟随详情重挂载
   const baseFormApi = useRef<FormApi | null>(null);
   // 区块编辑
   const [blockModal, setBlockModal] = useState<{ block: CmsPageBlock; index: number } | null>(null);
+  // useEditModal 例外：区块参数只回写本地 blocks 草稿、随页面一并保存，不是独立实体的新增 / 编辑
   const blockFormApi = useRef<FormApi | null>(null);
   // 拖拽排序 + 内嵌预览
   const dragIndexRef = useRef<number | null>(null);

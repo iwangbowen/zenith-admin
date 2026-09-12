@@ -862,7 +862,7 @@ export default function MonitorPage() {
                 { key: '核心数量', value: `${data.cpu.cores} 核` },
                 { key: '主频', value: `${data.cpu.speed} MHz` },
                 { key: '系统 CPU 使用率', value: `${data.cpu.usage}%` },
-                { key: '进程 CPU 使用率', value: data.node.cpuUsagePercent === undefined ? '—' : `${data.node.cpuUsagePercent}%（单核满载=100%）` },
+                { key: '进程 CPU 使用率', value: data.node.cpuUsagePercent === undefined ? EMPTY_PLACEHOLDER : `${data.node.cpuUsagePercent}%（单核满载=100%）` },
                 { key: '系统负载 (1/5/15min)', value: data.cpu.loadAvg.map((v) => v.toFixed(2)).join(' / '), span: 2 },
               ]}
               column={2}
@@ -1012,7 +1012,7 @@ export default function MonitorPage() {
                 { key: '堆内存总量', value: formatBytes(data.node.memoryUsage.heapTotal) },
                 { key: '堆内存已用', value: formatBytes(data.node.memoryUsage.heapUsed) },
                 { key: 'external', value: formatBytes(data.node.memoryUsage.external) },
-                { key: '进程 CPU%', value: data.node.cpuUsagePercent === undefined ? '—' : `${data.node.cpuUsagePercent}%` },
+                { key: '进程 CPU%', value: data.node.cpuUsagePercent === undefined ? EMPTY_PLACEHOLDER : `${data.node.cpuUsagePercent}%` },
               ]}
               column={2}
               layout="horizontal"

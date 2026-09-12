@@ -10,7 +10,7 @@ import type { UserTransferUser } from '@/components/UserTransferSelect';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
+import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '../../../utils/table-columns';
 import { departmentsToTreeData, useFlatDepartments } from '@/hooks/queries/departments';
 import { useAllPositions } from '@/hooks/queries/positions';
 import {
@@ -183,7 +183,7 @@ export default function UserGroupsPage() {
     },
     {
       title: '负责人', dataIndex: 'ownerName', width: 120,
-      render: (v: string | null | undefined) => v || '—',
+      render: (v: string | null | undefined) => v || EMPTY_PLACEHOLDER,
     },
     {
       title: '成员模式', dataIndex: 'memberMode', width: 110,

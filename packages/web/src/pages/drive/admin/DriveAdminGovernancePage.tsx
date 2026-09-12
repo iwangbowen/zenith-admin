@@ -343,7 +343,7 @@ export default function DriveAdminGovernancePage() {
   };
 
   return (
-    <div className="page-container">
+    <div className="page-container page-tabs-page">
       <Tabs type="line" collapsible="auto" activeKey={tab} onChange={change} lazyRender keepDOM={false}>
         <TabPane tab="法律保留" itemKey="holds"><LegalHoldsTab /></TabPane>
         <TabPane tab="扩容审批" itemKey="quota"><QuotaRequestsTab /></TabPane>

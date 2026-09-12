@@ -25,7 +25,7 @@ import { enumValueOf } from '@zenith/shared/core';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS, PAYMENT_CHANNELS, PAYMENT_RECON_HANDLE_STATUS_LABELS, PAYMENT_RECON_HANDLE_STATUSES, PAYMENT_RECON_RESULT_LABELS, PAYMENT_RECON_RESULTS, PAYMENT_RECON_SOURCE_LABELS, PAYMENT_RECON_STATUS_LABELS, PAYMENT_RECON_STATUSES, PAYMENT_RECON_STATUS_OPTIONS, PAYMENT_RECON_RESULT_OPTIONS, PAYMENT_RECON_HANDLE_STATUS_OPTIONS } from '@zenith/shared/payment';
 import type { AutoPaymentReconInput, CreatePaymentReconBatchInput, PaymentChannel, PaymentReconBatch, PaymentReconHandleStatus, PaymentReconItem, PaymentReconResult, PaymentReconSource, PaymentReconStatus } from '@zenith/shared/payment';
 import { CreateButton } from '@/components/toolbar-controls';
-import { copyableNoColumn, dateColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { copyableNoColumn, dateColumn, dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { FilterSelect, StatusSelect } from '@/components/search-filters';
 import { deleteAction, listTableProps, ListSearchToolbar } from '@/components/list-page';
@@ -250,7 +250,7 @@ export default function PaymentReconPage() {
     { ...paymentMoneyColumn<PaymentReconItem>('渠道金额', 'channelAmount'), width: 110 },
     {
       title: '状态（本地/渠道）', dataIndex: 'localStatus', width: 170,
-      render: (_: unknown, r: PaymentReconItem) => `${r.localStatus || '—'} / ${r.channelStatus || '—'}`,
+      render: (_: unknown, r: PaymentReconItem) => `${r.localStatus || EMPTY_PLACEHOLDER} / ${r.channelStatus || EMPTY_PLACEHOLDER}`,
     },
     { title: '结果', dataIndex: 'result', width: 120, render: (v: PaymentReconResult) => <Tag color={RESULT_COLOR[v]}>{PAYMENT_RECON_RESULT_LABELS[v]}</Tag> },
     {

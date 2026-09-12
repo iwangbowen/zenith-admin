@@ -123,7 +123,7 @@ function FieldDependencyGraphInner({ fields }: Readonly<{ fields: WorkflowFormFi
           target: e.target,
           label: e.kind,
           labelStyle: { fontSize: 10, fill: color },
-          labelBgStyle: { fill: 'var(--semi-color-bg-1)' },
+          labelBgStyle: { fill: 'var(--surface-card)' },
           style: { stroke: color, strokeWidth: 1.4 },
           markerEnd: { type: MarkerType.ArrowClosed, color },
         } satisfies RFEdge;

@@ -152,7 +152,7 @@ function AutomationRunsSheet({ rule, onClose }: { rule: WorkflowAutomation | nul
     },
     {
       title: '耗时', dataIndex: 'durationMs', width: 80,
-      render: (v: number | null) => (v == null ? '—' : v < 1000 ? `${v}ms` : `${(v / 1000).toFixed(1)}s`),
+      render: (v: number | null) => (v == null ? EMPTY_PLACEHOLDER : v < 1000 ? `${v}ms` : `${(v / 1000).toFixed(1)}s`),
     },
   ];
 

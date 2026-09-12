@@ -12,7 +12,7 @@ import { config } from '@/config';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { createdAtColumn, renderEllipsis } from '../../utils/table-columns';
+import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '../../utils/table-columns';
 import {
   mpAccountKeys,
   useDeleteMpAccounts,
@@ -145,10 +145,10 @@ export default function MpAccountsPage() {
       ),
     },
     { title: 'AppID', dataIndex: 'appId', width: 200, render: renderEllipsis },
-    { title: '微信号', dataIndex: 'account', width: 150, render: (v: string | null) => v || '—' },
+    { title: '微信号', dataIndex: 'account', width: 150, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
     {
       title: '默认', dataIndex: 'isDefault', width: 80, align: 'center' as const,
-      render: (v: boolean) => (v ? <Tag color="blue" type="light">默认</Tag> : '—'),
+      render: (v: boolean) => (v ? <Tag color="blue" type="light">默认</Tag> : EMPTY_PLACEHOLDER),
     },
     createdAtColumn,
     {

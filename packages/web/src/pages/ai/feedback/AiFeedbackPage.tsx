@@ -13,7 +13,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { useDictItems } from '@/hooks/useDictItems';
 import { usePermission } from '@/hooks/usePermission';
 import AppModal from '@/components/AppModal';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { aiFeedbackKeys, downloadAiFeedbackCsv, useAiFeedbackContext, useAiFeedbackList, useHandleAiFeedback } from '@/hooks/queries/ai-feedback';
 import { DateRangeFilter, FilterSelect } from '@/components/search-filters';
 import { abortSubmit } from '@/lib/abort-submit';
@@ -42,7 +42,7 @@ const HANDLE_STATUS_OPTIONS = [
 ];
 
 function renderReason(reason: AiMessage['feedbackReason'], getLabel: (value: string) => string) {
-  if (!reason) return '—';
+  if (!reason) return EMPTY_PLACEHOLDER;
   return <Tag color="grey" size="small">{getLabel(reason)}</Tag>;
 }
 
@@ -58,7 +58,7 @@ interface FeedbackHandleFormValues {
 }
 
 function renderStatus(status: AiMessage['feedbackStatus']) {
-  if (!status) return '—';
+  if (!status) return EMPTY_PLACEHOLDER;
   const config = STATUS_TAGS[status];
   return <Tag color={config.color} size="small">{config.label}</Tag>;
 }
@@ -74,6 +74,7 @@ const defaultSearchParams: SearchParams = { feedback: undefined, status: undefin
 export default function AiFeedbackPage() {
   const { hasPermission } = usePermission();
   const { getLabel: getReasonLabel } = useDictItems('ai_dislike_reason');
+  // useEditModal 例外：反馈处理动作表单（标记处理结果 / 备注），非实体新增 / 编辑
   const formApi = useRef<FormApi | null>(null);
   const {
     page, pageSize, buildPagination,
@@ -172,7 +173,7 @@ export default function AiFeedbackPage() {
       title: '对话',
       dataIndex: 'conversationTitle',
       width: 140,
-      render: (v: string | null) => v ? renderEllipsis(v) : '—',
+      render: renderEllipsis,
     },
     {
       title: '原因',
@@ -184,7 +185,7 @@ export default function AiFeedbackPage() {
       title: '模型',
       dataIndex: 'model',
       width: 120,
-      render: (v: AiMessage['model']) => v || '—',
+      render: (v: AiMessage['model']) => v || EMPTY_PLACEHOLDER,
     },
     {
       title: '处理备注',

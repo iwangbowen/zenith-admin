@@ -5,6 +5,7 @@ import { Icon } from '@iconify/react';
 import { useTerminalChecksum, useTerminalDirSize } from '@/hooks/queries/terminal-files';
 import { getFileIcon, getFolderIcon } from '@/utils/fileIcons';
 import { copyTextWithToast } from '@/utils/clipboard';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { permStringToOctal } from '../fs-utils';
 import type { FsEntry } from '../types';
 import { formatBytes } from '@zenith/shared/core';
@@ -122,7 +123,7 @@ export default function FmPropsSheet({ entry, onClose, initialChecksumAlgo }: Re
             }]
             : []),
           ...(entry.uid !== undefined
-            ? [{ label: 'UID / GID', value: `${entry.uid} / ${entry.gid ?? '—'}` }]
+            ? [{ label: 'UID / GID', value: `${entry.uid} / ${entry.gid ?? EMPTY_PLACEHOLDER}` }]
             : []),
         ];
         return (

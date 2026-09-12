@@ -402,7 +402,7 @@ export default function TaskCenterPage() {
         </div>
       ),
     },
-    { title: '模块', dataIndex: 'module', width: 110, render: (value: string) => value || '—' },
+    { title: '模块', dataIndex: 'module', width: 110, render: (value: string) => value || EMPTY_PLACEHOLDER },
     { title: '说明', dataIndex: 'description', minWidth: 260, render: renderEllipsis },
     {
       title: '累计执行',

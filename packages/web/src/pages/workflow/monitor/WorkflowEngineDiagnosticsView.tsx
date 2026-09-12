@@ -19,7 +19,7 @@ import {
   useWorkflowEngineDiagnostics,
 } from '@/hooks/queries/workflow-monitor';
 import { DataBar } from '@/components/data-viz/DataBar';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { formatDurationMs } from '@/utils/format';
 
 type TagColor = 'amber' | 'blue' | 'cyan' | 'green' | 'grey' | 'indigo' | 'light-blue' | 'light-green' | 'lime' | 'orange' | 'pink' | 'purple' | 'red' | 'teal' | 'violet' | 'yellow' | 'white';
@@ -121,7 +121,7 @@ function rawTag(value: string | null | undefined, color: TagColor = 'grey') {
 }
 
 function formatAge(value: number | null | undefined) {
-  if (value == null) return '—';
+  if (value == null) return EMPTY_PLACEHOLDER;
   if (value >= 24 * 60) {
     const days = Math.floor(value / (24 * 60));
     const hours = Math.floor((value % (24 * 60)) / 60);
@@ -331,7 +331,7 @@ function ApdexBar({ data, palette }: Readonly<{ data: WorkflowEngineIntrospectio
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
-        <Typography.Text strong style={{ fontSize: 20, color: scoreColor }}>{a.score != null ? a.score.toFixed(2) : '—'}</Typography.Text>
+        <Typography.Text strong style={{ fontSize: 20, color: scoreColor }}>{a.score != null ? a.score.toFixed(2) : EMPTY_PLACEHOLDER}</Typography.Text>
         <Typography.Text type="tertiary" size="small">Apdex · T={a.thresholdMs}ms</Typography.Text>
       </div>
       <div style={{ display: 'flex', height: 12, borderRadius: 'var(--semi-border-radius-small)', overflow: 'hidden', background: 'var(--semi-color-fill-0)' }}>
@@ -688,7 +688,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
     },
     { title: '节点', dataIndex: 'nodeName', width: 180, render: (_value, record) => `${record.nodeName || record.nodeKey}${record.nodeType ? ` / ${NODE_TYPE_LABEL[record.nodeType] ?? record.nodeType}` : ''}` },
     { title: '状态', dataIndex: 'status', width: 100, render: (value) => rawTag(value as string, 'grey') },
-    { title: '处理人', dataIndex: 'assigneeName', width: 110, render: (value) => value || '—' },
+    { title: '处理人', dataIndex: 'assigneeName', width: 110, render: (value) => value || EMPTY_PLACEHOLDER },
     { title: '触发器', dataIndex: 'triggerDispatchStatus', width: 110, render: (value) => rawTag(value as string | null, value === 'failed' ? 'red' : value === 'retrying' ? 'orange' : 'grey') },
     { title: '外部审批', dataIndex: 'externalDispatchStatus', width: 110, render: (value) => rawTag(value as string | null, value === 'failed' ? 'red' : 'grey') },
     dateTimeColumn('timeoutAt', 'timeoutAt'),
@@ -703,8 +703,8 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
     { title: '类型', dataIndex: 'triggerType', width: 120 },
     { title: '状态', dataIndex: 'status', width: 100, render: (value) => rawTag(value as string, value === 'failed' ? 'red' : value === 'retrying' ? 'orange' : 'blue') },
     { title: '尝试', dataIndex: 'attempt', width: 80 },
-    { title: '耗时', dataIndex: 'durationMs', width: 100, align: 'right', render: (value) => value == null ? '—' : `${value}ms` },
-    { title: '错误', dataIndex: 'errorMessage', width: 260, render: (value) => value || '—' },
+    { title: '耗时', dataIndex: 'durationMs', width: 100, align: 'right', render: (value) => value == null ? EMPTY_PLACEHOLDER : `${value}ms` },
+    { title: '错误', dataIndex: 'errorMessage', width: 260, render: (value) => renderEllipsis(value as string | null) },
     dateTimeColumn('创建时间', 'createdAt'),
   ];
 
@@ -715,7 +715,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
     { title: '状态', dataIndex: 'status', width: 100, render: (value) => rawTag(value as string, value === 'failed' ? 'red' : value === 'retrying' ? 'orange' : 'blue') },
     { title: '尝试', dataIndex: 'attempts', width: 80 },
     dateTimeColumn('下次重试', 'nextRetryAt'),
-    { title: '错误', dataIndex: 'errorMessage', width: 260, render: (value) => value || '—' },
+    { title: '错误', dataIndex: 'errorMessage', width: 260, render: (value) => renderEllipsis(value as string | null) },
     { title: '年龄', dataIndex: 'ageMinutes', width: 110, align: 'right', render: (value) => formatAge(value as number | null) },
   ];
 
@@ -724,7 +724,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
     { title: '名称', dataIndex: 'name', width: 180 },
     { title: '状态', dataIndex: 'status', width: 100, render: (value) => rawTag(value as string, value === 'published' ? 'green' : 'grey') },
     { title: '版本', dataIndex: 'version', width: 80 },
-    { title: '错误', dataIndex: 'errors', render: (value) => (Array.isArray(value) ? value.join('；') : '—') },
+    { title: '错误', dataIndex: 'errors', render: (value) => (Array.isArray(value) ? value.join('；') : EMPTY_PLACEHOLDER) },
   ];
 
   const nodeTypeColumns: ColumnProps<{ type: string; label: string; count: number }>[] = [
@@ -856,6 +856,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
         <Modal
           title={`${actionModal.label} · 恢复补投`}
           visible
+          closeOnEsc
           onCancel={() => setActionModal(null)}
           okText="提交补投"
           cancelText="取消"
@@ -959,7 +960,7 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
                 icon={<Timer size={15} color="var(--semi-color-primary)" />}
                 label="延迟 · Latency"
                 value={formatDurationMs(t.events.avgLatencyMs)}
-                sub={`P95 ${formatDurationMs(t.events.p95LatencyMs)} · P99 ${formatDurationMs(t.events.p99LatencyMs)} · Apdex ${t.apdex.score != null ? t.apdex.score.toFixed(2) : '—'}`}
+                sub={`P95 ${formatDurationMs(t.events.p95LatencyMs)} · P99 ${formatDurationMs(t.events.p99LatencyMs)} · Apdex ${t.apdex.score != null ? t.apdex.score.toFixed(2) : EMPTY_PLACEHOLDER}`}
               />
               <GoldenTile
                 icon={<Layers size={15} color={saturationAccent ?? 'var(--semi-color-text-2)'} />}

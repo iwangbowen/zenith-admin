@@ -12,7 +12,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { useListSearch } from '@/hooks/useListSearch';
 import AppModal from '@/components/AppModal';
 import AiConversationContextModal from '../components/AiConversationContextModal';
-import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { contractKey, useApiQuery } from '@/lib/contract-query';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
 import { AiMessageSnippet, AiUserCell } from '../ai-display';
@@ -89,9 +89,9 @@ export default function AiAuditPage() {
       title: '对话',
       dataIndex: 'conversationTitle',
       width: 160,
-      render: (v: string | null) => v ? renderEllipsis(v) : '—',
+      render: renderEllipsis,
     },
-    { title: '模型', dataIndex: 'model', width: 130, render: (v: string | null) => v || '—' },
+    { title: '模型', dataIndex: 'model', width: 130, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
     dateTimeColumn('时间', 'createdAt', { fixed: 'right' }),
     createOperationColumn<AiFeedbackItem>({
       width: 180,
@@ -178,7 +178,7 @@ export default function AiAuditPage() {
           })}
           {traceMsg && (
             <Text type="tertiary" style={{ fontSize: 12, marginTop: 4 }}>
-              总耗时 {traceMsg.durationMs ?? '—'} ms · 首字延迟 {traceMsg.ttftMs ?? '—'} ms · Token {traceMsg.tokensInput}+{traceMsg.tokensOutput}
+              总耗时 {traceMsg.durationMs ?? EMPTY_PLACEHOLDER} ms · 首字延迟 {traceMsg.ttftMs ?? EMPTY_PLACEHOLDER} ms · Token {traceMsg.tokensInput}+{traceMsg.tokensOutput}
             </Text>
           )}
         </div>

@@ -10,7 +10,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { KeywordInput } from '@/components/search-filters';
 import AppModal from '@/components/AppModal';
 import MarkdownPreviewPanel from '@/components/MarkdownPreviewPanel';
-import { renderEllipsis, updatedAtColumn, dateTimeColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, renderEllipsis, updatedAtColumn, dateTimeColumn } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePagination } from '@/hooks/usePagination';
@@ -96,7 +96,7 @@ function PendingPane() {
   const columns: ColumnProps<WikiDoc>[] = [
     { title: '标题', dataIndex: 'title', minWidth: 240, render: renderEllipsis },
     { title: '所属空间', dataIndex: 'spaceName', width: 140, render: renderEllipsis },
-    { title: '作者', dataIndex: 'authorName', width: 120, render: (v: string | null) => v ?? '—' },
+    { title: '作者', dataIndex: 'authorName', width: 120, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
     { title: '版本', dataIndex: 'currentVersion', width: 80, render: (v: number) => `v${v}` },
     updatedAtColumn,
     createOperationColumn<WikiDoc>({
@@ -245,7 +245,7 @@ function MySubmissionsPane() {
             >
               <Space spacing={8}>
                 <Tag size="small" color={ACTION_TAG_COLOR[r.action]}>{WIKI_REVIEW_ACTION_LABELS[r.action]}</Tag>
-                <Text>{r.actorName ?? '—'}</Text>
+                <Text>{r.actorName ?? EMPTY_PLACEHOLDER}</Text>
                 <Text type="tertiary" size="small">v{r.version}</Text>
               </Space>
               {r.reason ? <div><Text type="tertiary" size="small">{r.reason}</Text></div> : null}

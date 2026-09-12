@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState, useEffect } from 'react';
 import { useDebouncer } from '@tanstack/react-pacer';
 import { useQueryClient } from '@tanstack/react-query';
-import { Table, Button, Tag, Space, Modal, SideSheet, Form, Spin, Toast, Select, RadioGroup, Radio, Tabs, TabPane, Typography } from '@douyinfe/semi-ui';
+import { Button, Tag, Space, Modal, SideSheet, Form, Spin, Toast, Select, RadioGroup, Radio, Tabs, TabPane, Typography } from '@douyinfe/semi-ui';
 import { enumValueOf } from '@zenith/shared/core';
 import { ANNOUNCEMENT_PUBLISH_STATUSES } from '@zenith/shared/messaging';
 import type { Announcement, AnnouncementTargetType, AnnouncementReadStats, AnnouncementAttachment, CreateAnnouncementInput } from '@zenith/shared/messaging';
@@ -369,13 +369,16 @@ export default function AnnouncementsPage() {
           }}
         >
           <TabPane tab={`已读 (${statsData.readCount})`} itemKey="read">
-            <Table
+            <ConfigurableTable
               bordered
               size="small"
+              columnSettingsKey="announcement-read-stats-read"
               loading={statsLoading}
               dataSource={statsTab === 'read' ? statsData.list : []}
               rowKey="id"
               pagination={buildStatsPagination(statsTab === 'read' ? statsData.total : statsData.readCount)}
+              onRefresh={() => void statsQuery.refetch()}
+              refreshLoading={statsLoading}
               columns={[
                 ...userColumns,
                 dateTimeColumn('已读时间', 'readAt'),
@@ -383,13 +386,16 @@ export default function AnnouncementsPage() {
             />
           </TabPane>
           <TabPane tab={`未读 (${statsData.totalCount - statsData.readCount})`} itemKey="unread">
-            <Table
+            <ConfigurableTable
               bordered
               size="small"
+              columnSettingsKey="announcement-read-stats-unread"
               loading={statsLoading}
               dataSource={statsTab === 'unread' ? statsData.list : []}
               rowKey="id"
               pagination={buildStatsPagination(statsTab === 'unread' ? statsData.total : statsData.totalCount - statsData.readCount)}
+              onRefresh={() => void statsQuery.refetch()}
+              refreshLoading={statsLoading}
               columns={userColumns}
             />
           </TabPane>

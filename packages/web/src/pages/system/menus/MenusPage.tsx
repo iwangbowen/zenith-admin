@@ -17,7 +17,7 @@ import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 import { useDictItems } from '@/hooks/useDictItems';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
+import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '../../../utils/table-columns';
 import { menuKeys, useDeleteMenu, useMenuDetail, useMenuTree, useSaveMenu, type MenuFormValues } from '@/hooks/queries/menus';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
@@ -242,7 +242,7 @@ export default function MenusPage() {
       dataIndex: 'status',
       width: 80,
       fixed: 'right',
-      render: (_val: string, row: Menu) => row.type === 'button' ? '—' : status.renderSwitch(row),
+      render: (_val: string, row: Menu) => row.type === 'button' ? EMPTY_PLACEHOLDER : status.renderSwitch(row),
     },
     {
       title: '显示',
@@ -250,7 +250,7 @@ export default function MenusPage() {
       width: 80,
       align: 'center',
       fixed: 'right',
-      render: (val: boolean, row: Menu) => row.type === 'button' ? '—' : <DictTag dictCode="menu_visible" value={val ? 'show' : 'hidden'} />,
+      render: (val: boolean, row: Menu) => row.type === 'button' ? EMPTY_PLACEHOLDER : <DictTag dictCode="menu_visible" value={val ? 'show' : 'hidden'} />,
     },
     createOperationColumn<Menu>({
       width: 210,

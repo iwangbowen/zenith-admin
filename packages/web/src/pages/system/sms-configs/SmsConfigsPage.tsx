@@ -10,7 +10,7 @@ import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
-import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
+import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '../../../utils/table-columns';
 import {
   smsConfigKeys,
   useDeleteSmsConfig,
@@ -91,10 +91,10 @@ export default function SmsConfigsPage() {
     },
     { title: 'AccessKeyId', dataIndex: 'accessKeyId', width: 180, render: renderEllipsis },
     { title: '签名', dataIndex: 'signName', width: 120 },
-    { title: '地域', dataIndex: 'region', width: 140, render: (v: string | null) => v || '—' },
+    { title: '地域', dataIndex: 'region', width: 140, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
     {
       title: '默认', dataIndex: 'isDefault', width: 80,
-      render: (v: boolean) => (v ? <Tag color="blue" type="light">默认</Tag> : '—'),
+      render: (v: boolean) => (v ? <Tag color="blue" type="light">默认</Tag> : EMPTY_PLACEHOLDER),
     },
     createdAtColumn,
     status.column(),

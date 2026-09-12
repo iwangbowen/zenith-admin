@@ -24,7 +24,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { DEFAULT_TIMEZONE } from '@/utils/timezones';
 import { FilterSelect, StatusSelect } from '@/components/search-filters';
 
@@ -203,7 +203,7 @@ export default function WorkflowSchedulesPage() {
       width: 220,
       render: (_value: string | null, record) => (
         <Space spacing={6}>
-          <span>{record.lastRunAt ? formatDateTime(record.lastRunAt) : '—'}</span>
+          <span>{record.lastRunAt ? formatDateTime(record.lastRunAt) : EMPTY_PLACEHOLDER}</span>
           {renderLastRunStatus(record.lastRunStatus, record.lastRunMessage)}
         </Space>
       ),

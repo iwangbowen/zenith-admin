@@ -586,7 +586,7 @@ function MaintenanceWindowsTab() {
           r.groupName ? `分组：${r.groupName}` : null,
           r.deviceName ? `设备：${r.deviceName}` : null,
         ].filter(Boolean);
-        return renderEllipsis(parts.join('；') || '—');
+        return renderEllipsis(parts.join('；'));
       },
     },
     dateTimeColumn<IotMaintenanceWindow>('开始时间', 'startAt'),

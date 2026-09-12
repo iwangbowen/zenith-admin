@@ -30,6 +30,7 @@ import { KeywordInput } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import { formatUptime } from '@/utils/format';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
 interface CategoryRow {
   category: string;
@@ -520,7 +521,7 @@ export default function CacheManagePage() {
             <StatCard title="运行时长" value={formatUptime(overview.uptimeSeconds)} />
             <StatCard
               title="内存碎片率"
-              value={overview.memFragmentationRatio ? overview.memFragmentationRatio.toFixed(2) : '—'}
+              value={overview.memFragmentationRatio ? overview.memFragmentationRatio.toFixed(2) : EMPTY_PLACEHOLDER}
               accent={overview.memFragmentationRatio > 1.5 ? 'var(--semi-color-warning)' : undefined}
             />
           </StatGrid>
