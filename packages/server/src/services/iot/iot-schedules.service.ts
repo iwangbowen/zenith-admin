@@ -236,10 +236,7 @@ export async function listIotScheduleRuns(q: ListScheduleRunsQuery) {
   return buildListResult({
     page,
     pageSize,
-    count: async () => {
-      const [row] = await db.select({ value: count() }).from(iotScheduleRuns).where(where);
-      return Number(row?.value ?? 0);
-    },
+    count: () => db.$count(iotScheduleRuns, where),
     rows: () => withPagination(
       db.select().from(iotScheduleRuns).where(where).orderBy(desc(iotScheduleRuns.id)).$dynamic(),
       page,

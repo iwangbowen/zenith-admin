@@ -182,10 +182,7 @@ export async function listIotForwardLogs(q: ListForwardLogsQuery) {
   return buildListResult({
     page,
     pageSize,
-    count: async () => {
-      const [row] = await db.select({ value: count() }).from(iotForwardLogs).where(where);
-      return Number(row?.value ?? 0);
-    },
+    count: () => db.$count(iotForwardLogs, where),
     rows: () => withPagination(
       db.select().from(iotForwardLogs).where(where).orderBy(desc(iotForwardLogs.id)).$dynamic(),
       page,

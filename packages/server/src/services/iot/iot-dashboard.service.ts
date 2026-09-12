@@ -42,10 +42,7 @@ export async function getIotDashboard(): Promise<IotDashboard> {
       .from(iotAlarms)
       .where(eq(iotAlarms.status, 'firing'))
       .groupBy(iotAlarms.level),
-    db.select({ cnt: count() })
-      .from(iotDeviceState)
-      .where(sql`${iotDeviceState.desired} <> '{}'::jsonb`)
-      .then((rows) => Number(rows[0]?.cnt ?? 0)),
+    db.$count(iotDeviceState, sql`${iotDeviceState.desired} <> '{}'::jsonb`),
     db.$count(iotProducts, tenantCondition(iotProducts, user)),
     // 在线趋势：近 24h 按 10 分钟桶取平均
     db.select({

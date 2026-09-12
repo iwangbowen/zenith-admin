@@ -11,7 +11,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { HTTPException } from 'hono/http-exception';
-import { and, count, desc, eq, type SQL } from 'drizzle-orm';
+import { and, desc, eq, type SQL } from 'drizzle-orm';
 import type { CreateIotWhitelistInput, IotRegisterDeviceInput } from '@zenith/shared/iot';
 import { IOT_REGISTER_MAX_SKEW_SECONDS } from '@zenith/shared/iot';
 import { db } from '../../db';
@@ -203,8 +203,7 @@ export async function getIotWhitelistStats(productId?: number) {
     extra,
     tenantCondition(iotDeviceWhitelist, currentUser()),
   );
-  const [totalRow] = await db.select({ value: count() }).from(iotDeviceWhitelist).where(baseWhere());
-  const [usedRow] = await db.select({ value: count() }).from(iotDeviceWhitelist)
-    .where(baseWhere(eq(iotDeviceWhitelist.used, true)));
-  return { total: Number(totalRow?.value ?? 0), used: Number(usedRow?.value ?? 0) };
+  const total = await db.$count(iotDeviceWhitelist, baseWhere());
+  const used = await db.$count(iotDeviceWhitelist, baseWhere(eq(iotDeviceWhitelist.used, true)));
+  return { total, used };
 }

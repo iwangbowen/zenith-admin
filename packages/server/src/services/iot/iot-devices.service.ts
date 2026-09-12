@@ -315,21 +315,19 @@ export async function getIotDevice(id: number) {
   const device = await ensureIotDeviceExists(id);
   const [product] = await db.select({ name: iotProducts.name })
     .from(iotProducts).where(eq(iotProducts.id, device.productId)).limit(1);
-  const [onlineMap, stateMap, groupMap, gatewayRow, subCountRow] = await Promise.all([
+  const [onlineMap, stateMap, groupMap, gatewayRow, subDeviceCount] = await Promise.all([
     getOnlineMap([device.id]),
     loadIotStates([device.id]),
     loadGroupMap([device.id]),
     device.gatewayId
       ? db.select({ name: iotDevices.name }).from(iotDevices).where(eq(iotDevices.id, device.gatewayId)).limit(1).then((r) => r[0])
       : Promise.resolve(undefined),
-    device.nodeType === 'gateway'
-      ? db.select({ cnt: count() }).from(iotDevices).where(eq(iotDevices.gatewayId, device.id)).then((r) => r[0])
-      : Promise.resolve(undefined),
+    device.nodeType === 'gateway' ? db.$count(iotDevices, eq(iotDevices.gatewayId, device.id)) : Promise.resolve(0),
   ]);
   return mapIotDevice(device, {
     productName: product?.name ?? null,
     gatewayName: gatewayRow?.name ?? null,
-    subDeviceCount: Number(subCountRow?.cnt ?? 0),
+    subDeviceCount,
     online: onlineMap.get(device.id) ?? false,
     state: stateMap.get(device.id) ?? null,
     groupIds: groupMap.get(device.id)?.ids ?? [],
@@ -420,9 +418,8 @@ export async function updateIotDevice(id: number, data: UpdateIotDeviceInput) {
 
 export async function deleteIotDevices(ids: number[]): Promise<number> {
   // 网关下存在子设备时禁止删除（FK restrict 兜底，这里给出可读错误）
-  const [blocked] = await db.select({ cnt: count() }).from(iotDevices)
-    .where(inArray(iotDevices.gatewayId, ids));
-  if (Number(blocked?.cnt ?? 0) > 0) {
+  const blocked = await db.$count(iotDevices, inArray(iotDevices.gatewayId, ids));
+  if (blocked > 0) {
     throw new HTTPException(400, { message: '选中设备包含仍有子设备的网关，请先迁移或删除其子设备' });
   }
   const where = and(inArray(iotDevices.id, ids), buildDeviceWhere({}));

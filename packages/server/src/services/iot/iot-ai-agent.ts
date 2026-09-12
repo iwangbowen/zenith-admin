@@ -8,7 +8,7 @@
  * 注册时机：getMastra() 初始化（见 lib/mastra/index.ts）；
  * 前端在智能体列表以「内置」形式出现，可直接发起对话。
  */
-import { and, count, desc, eq, gte, inArray } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray } from 'drizzle-orm';
 import type { Mastra } from '@mastra/core';
 import type { AiBuiltinAgent } from '@zenith/shared/ai';
 import { IOT_ALARM_LEVEL_LABELS, IOT_ALARM_STATUS_LABELS } from '@zenith/shared/iot';
@@ -103,17 +103,17 @@ async function loadRecentEvents(days: number, anomalyOnly: boolean) {
 
 /** 设备/告警关键数字（回答"总体情况"类问题） */
 async function loadIotStats() {
-  const [devices] = await db.select({ value: count() }).from(iotDevices);
+  const deviceTotal = await db.$count(iotDevices);
   const deviceRows = await db.select({ id: iotDevices.id }).from(iotDevices).where(eq(iotDevices.status, 'enabled'));
   const onlineMap = await getOnlineMap(deviceRows.map((r) => r.id));
   const online = [...onlineMap.values()].filter(Boolean).length;
-  const [firing] = await db.select({ value: count() }).from(iotAlarms).where(eq(iotAlarms.status, 'firing'));
-  const [acked] = await db.select({ value: count() }).from(iotAlarms).where(eq(iotAlarms.status, 'acknowledged'));
+  const firing = await db.$count(iotAlarms, eq(iotAlarms.status, 'firing'));
+  const acked = await db.$count(iotAlarms, eq(iotAlarms.status, 'acknowledged'));
   return {
-    deviceTotal: Number(devices?.value ?? 0),
+    deviceTotal,
     onlineCount: online,
-    firingAlarms: Number(firing?.value ?? 0),
-    acknowledgedAlarms: Number(acked?.value ?? 0),
+    firingAlarms: firing,
+    acknowledgedAlarms: acked,
   };
 }
 

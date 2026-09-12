@@ -36,9 +36,8 @@ export async function ensureIotTopologyValid(
   }
   if (data.nodeType && data.nodeType !== 'gateway' && selfId) {
     // 降级校验：从 gateway 改为其他形态时不得存在子设备
-    const [row] = await db.select({ cnt: count() }).from(iotDevices)
-      .where(eq(iotDevices.gatewayId, selfId));
-    if (Number(row?.cnt ?? 0) > 0) {
+    const children = await db.$count(iotDevices, eq(iotDevices.gatewayId, selfId));
+    if (children > 0) {
       throw new HTTPException(400, { message: '该网关下存在子设备，请先迁移或删除子设备' });
     }
   }

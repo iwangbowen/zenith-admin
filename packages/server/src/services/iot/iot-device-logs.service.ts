@@ -3,7 +3,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * IoT 设备日志通道：设备上报运行日志（追加型，保留策略裁剪）。
  */
-import { count, desc, eq, gte, lte } from 'drizzle-orm';
+import { desc, eq, gte, lte } from 'drizzle-orm';
 import type { IotLogIngestInput } from '@zenith/shared/iot';
 import { db } from '../../db';
 import { iotDeviceLogs, type IotDeviceLogRow, type IotDeviceRow } from '../../db/schema';
@@ -52,10 +52,7 @@ export async function listIotDeviceLogs(deviceId: number, q: ListDeviceLogsQuery
   return buildListResult({
     page,
     pageSize,
-    count: async () => {
-      const [row] = await db.select({ value: count() }).from(iotDeviceLogs).where(where);
-      return Number(row?.value ?? 0);
-    },
+    count: () => db.$count(iotDeviceLogs, where),
     rows: () => withPagination(
       db.select().from(iotDeviceLogs).where(where).orderBy(desc(iotDeviceLogs.id)).$dynamic(),
       page,
