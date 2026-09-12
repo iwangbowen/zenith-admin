@@ -32,6 +32,7 @@ import { pageOffset } from '../../lib/pagination';
 import { broadcast, scheduleSendToUsers } from '../../lib/ws-manager';
 import { htmlToPlainExcerpt, mapChannelMessage } from './channel.service';
 import { sanitizeCmsHtml } from '../cms/cms-html-sanitizer';
+import { resolveUserNames } from '../../lib/user-nicknames';
 
 // ─── 频道前置校验 ──────────────────────────────────────────────────────────────
 
@@ -56,12 +57,7 @@ async function getUserName(userId: number): Promise<string | null> {
 }
 
 async function getUserNames(userIds: number[]): Promise<Map<number, string>> {
-  const map = new Map<number, string>();
-  if (userIds.length === 0) return map;
-  const rows = await db.select({ id: users.id, nickname: users.nickname, username: users.username })
-    .from(users).where(inArray(users.id, userIds));
-  rows.forEach((u) => map.set(u.id, u.nickname || u.username));
-  return map;
+  return resolveUserNames(userIds);
 }
 
 // ─── 公众号底部菜单 ────────────────────────────────────────────────────────────

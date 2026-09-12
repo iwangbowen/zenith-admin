@@ -4,16 +4,17 @@
  * 对已发布流程做"干跑"遍历：从 start 沿正常边走，按节点 assigneeType 解析出真实审批人姓名，
  * 供发起页在提交前展示「审批人：张三 → 李四 → …」。条件/并行分支会标注分支名并展开所有分支。
  */
-import { eq, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { workflowDefinitions, users } from '../../db/schema';
+import { workflowDefinitions } from '../../db/schema';
 import { tenantCondition } from '../../lib/tenant';
 import { currentUser } from '../../lib/context';
 import { listSelectableApprovers, resolveAssigneeIds } from './workflow-assignee-resolver.service';
 import type { WorkflowFlowData, WorkflowApproverPreviewNode } from '@zenith/shared/workflow';
 import { requireRow } from '../../lib/db-assert';
 import { buildWhere } from '../../lib/where-helpers';
+import { resolveUserNames } from '../../lib/user-nicknames';
 
 const APPROVER_TYPES = new Set(['approve', 'handler']);
 const INITIATOR_SELECT_TYPES = new Set(['initiatorSelect', 'initiatorSelectScope']);
@@ -101,13 +102,7 @@ export async function previewFlow(
   };
   await walk(startNode.id, null);
 
-  const idList = [...pendingIds];
-  const nameMap = new Map<number, string>();
-  if (idList.length > 0) {
-    const rows = await db.select({ id: users.id, nickname: users.nickname, username: users.username })
-      .from(users).where(inArray(users.id, idList));
-    for (const r of rows) nameMap.set(r.id, r.nickname ?? r.username);
-  }
+  const nameMap = await resolveUserNames(pendingIds);
 
   return entries.map((e) => ({
     nodeKey: e.nodeKey,

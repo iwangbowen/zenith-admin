@@ -1,15 +1,16 @@
 /**
  * App 推送发送记录（追加型日志,回执回调更新送达状态）。
  */
-import { and, desc, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, or, sql } from 'drizzle-orm';
 import type { PushDeliveryStatus, PushProvider, PushSendLogStats, pushSendLogContract } from '@zenith/shared/messaging';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { db } from '../../db';
-import { pushSendLogs, users, type PushSendLogRow } from '../../db/schema';
+import { pushSendLogs, type PushSendLogRow } from '../../db/schema';
 import { formatDateTime, formatNullableDateTime, startOfRecentDays } from '../../lib/datetime';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { buildListResult } from '../../lib/list-query';
+import { resolveUserNames } from '../../lib/user-nicknames';
 
 export function mapPushSendLog(row: PushSendLogRow & { app?: { name: string } | null }, subjectName?: string | null) {
   return {
@@ -61,12 +62,7 @@ export async function listPushSendLogs(q: QueryOutputOf<typeof pushSendLogContra
       });
 
       // 管理端收件人只展示 user 主体的昵称;member 主体显示 ID 即可
-      const userIds = [...new Set(rows.filter((r) => r.subjectType === 'user' && r.subjectId).map((r) => r.subjectId as number))];
-      const nameMap = new Map<number, string>();
-      if (userIds.length > 0) {
-        const nameRows = await db.select({ id: users.id, nickname: users.nickname }).from(users).where(inArray(users.id, userIds));
-        for (const r of nameRows) nameMap.set(r.id, r.nickname);
-      }
+      const nameMap = await resolveUserNames(rows.filter((r) => r.subjectType === 'user').map((r) => r.subjectId));
 
       return rows.map((row) => ({ row, subjectName: row.subjectType === 'user' && row.subjectId ? nameMap.get(row.subjectId) : null }));
     },

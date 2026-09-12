@@ -1,5 +1,5 @@
 import { requireRow } from '../../lib/db-assert';
-import { asc, eq, and, inArray } from 'drizzle-orm';
+import { asc, eq, and } from 'drizzle-orm';
 import { db } from '../../db';
 import { departments, users } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
@@ -13,6 +13,7 @@ import type * as z from 'zod';
 import { getScopeMemberSummaries } from './user-scope.service';
 import { buildTree } from '@zenith/shared/core';
 import { emitIdentityRemoval } from '../../lib/identity-lifecycle';
+import { resolveUserNames } from '../../lib/user-nicknames';
 
 export type CreateDepartmentInput = z.infer<typeof createDepartmentSchema>;
 export type UpdateDepartmentInput = z.infer<typeof updateDepartmentSchema>;
@@ -41,14 +42,7 @@ export function mapDepartment(
 }
 
 export async function buildLeaderMap(leaderIds: number[]): Promise<Map<number, string>> {
-  const map = new Map<number, string>();
-  if (leaderIds.length === 0) return map;
-  const leaderUsers = await db
-    .select({ id: users.id, nickname: users.nickname })
-    .from(users)
-    .where(inArray(users.id, leaderIds));
-  leaderUsers.forEach((u) => map.set(u.id, u.nickname));
-  return map;
+  return resolveUserNames(leaderIds);
 }
 
 // ─── 树形结构构建 ─────────────────────────────────────────────────────────────

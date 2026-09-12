@@ -23,6 +23,7 @@ import { loadInstanceTransfersByTask } from './transfers';
 import { mapInstance, mapTask } from './mapping';
 import { buildListResult } from '../../../lib/list-query';
 import { requireRow } from '../../../lib/db-assert';
+import { resolveUserNames } from '../../../lib/user-nicknames';
 
 /** 优先级排序：urgent > high > normal > low（用于审批/申请列表置顶加急） */
 const priorityRankOrder = sql`CASE ${workflowInstances.priority} WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END`;
@@ -184,10 +185,7 @@ export async function listPendingMine(query: QueryOutputOf<typeof workflowInstan
   ]);
   const activeNodeKeys = await loadActiveNodeKeysByInstance(rows.map((row) => row.inst.id));
   // 规则委托的任务批量补委托人昵称（待办列表「代 xxx」标识）
-  const delegatorIds = [...new Set(rows.map((r) => r.task.delegatedFromId).filter((v): v is number => v != null))];
-  const delegatorNames = delegatorIds.length
-    ? new Map((await db.select({ id: users.id, nickname: users.nickname, username: users.username }).from(users).where(inArray(users.id, delegatorIds))).map((u) => [u.id, u.nickname ?? u.username]))
-    : new Map<number, string>();
+  const delegatorNames = await resolveUserNames(rows.map((r) => r.task.delegatedFromId));
   return {
     list: rows.map((r) => {
       const flow = r.inst.definitionSnapshot?.flowData ?? undefined;

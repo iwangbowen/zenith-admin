@@ -43,6 +43,7 @@ import { removeWikiDocFromAiKb, syncPublishedWikiDocToAiKb } from './ai-sync.ser
 import { ensureSpaceRole, getMySpaceRole, spaceRoleAtLeast } from './spaces.service';
 import { nextWikiDocSort } from './doc-order';
 import { buildTree } from '@zenith/shared/core';
+import { resolveUserNames } from '../../lib/user-nicknames';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 
@@ -116,16 +117,12 @@ async function attachDocExtras(rows: WikiDocRow[], opts: { spaceName?: boolean }
   const ids = rows.map((r) => r.id);
   if (ids.length === 0) return [];
 
-  const [tagRows, authorRows, spaceRows] = await Promise.all([
+  const [tagRows, authorMap, spaceRows] = await Promise.all([
     db.select({ docId: wikiDocTags.docId, id: wikiTags.id, name: wikiTags.name, color: wikiTags.color })
       .from(wikiDocTags)
       .innerJoin(wikiTags, eq(wikiDocTags.tagId, wikiTags.id))
       .where(inArray(wikiDocTags.docId, ids)),
-    db.select({ id: users.id, nickname: users.nickname })
-      .from(users)
-      .where(inArray(users.id, [...new Set(
-        rows.flatMap((r) => [r.createdBy, r.ownerId]).filter((v): v is number => v !== null),
-      )])),
+    resolveUserNames(rows.flatMap((r) => [r.createdBy, r.ownerId])),
     opts.spaceName
       ? db.select({ id: wikiSpaces.id, name: wikiSpaces.name })
         .from(wikiSpaces)
@@ -139,7 +136,6 @@ async function attachDocExtras(rows: WikiDocRow[], opts: { spaceName?: boolean }
     list.push({ id: t.id, name: t.name, color: t.color ?? null });
     tagMap.set(t.docId, list);
   }
-  const authorMap = new Map(authorRows.map((u) => [u.id, u.nickname]));
   const spaceMap = new Map(spaceRows.map((s) => [s.id, s.name]));
 
   return rows.map((r) => ({

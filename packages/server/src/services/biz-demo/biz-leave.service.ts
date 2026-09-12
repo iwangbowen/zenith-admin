@@ -14,7 +14,7 @@ import { BIZ_LEAVE_STATUSES } from '@zenith/shared/biz';
 import type { WorkflowInstanceStatus } from '@zenith/shared/workflow';
 import { WORKFLOW_ACTIVE_INSTANCE_STATUSES } from '@zenith/shared/workflow';
 import { db } from '../../db';
-import { bizLeaves, users, workflowInstances, workflowTasks, type BizLeaveRow } from '../../db/schema';
+import { bizLeaves, workflowInstances, workflowTasks, type BizLeaveRow } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { formatDate, formatDateTime, parseDateRangeStart } from '../../lib/datetime';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
@@ -24,6 +24,7 @@ import { pageOffset } from '../../lib/pagination';
 import { startWorkflowForBiz, resolveBizDefinitionId } from '../../lib/workflow-biz-bridge';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
+import { resolveUserNames } from '../../lib/user-nicknames';
 
 /** 业务类型标识（与订阅器、businessKey 保持一致） */
 export const BIZ_LEAVE_TYPE = 'biz_leave';
@@ -56,12 +57,7 @@ export function mapBizLeave(row: BizLeaveRow, applicantName?: string | null): Bi
 }
 
 async function buildApplicantNameMap(ids: Array<number | null>): Promise<Map<number, string>> {
-  const map = new Map<number, string>();
-  const uniq = [...new Set(ids.filter((v): v is number => typeof v === 'number'))];
-  if (uniq.length === 0) return map;
-  const rows = await db.select({ id: users.id, nickname: users.nickname, username: users.username }).from(users).where(inArray(users.id, uniq));
-  for (const u of rows) map.set(u.id, u.nickname ?? u.username);
-  return map;
+  return resolveUserNames(ids);
 }
 
 // ─── 前置校验 ─────────────────────────────────────────────────────────────────

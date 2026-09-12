@@ -6,10 +6,11 @@ import { and, eq, inArray, ne, or } from 'drizzle-orm';
 import { buildWhere } from '../../../lib/where-helpers';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../../db';
-import { workflowTaskTransfers, workflowTasks, users } from '../../../db/schema';
+import { workflowTaskTransfers, workflowTasks } from '../../../db/schema';
 import type { DbExecutor } from '../../../db/types';
 import { formatDateTime } from '../../../lib/datetime';
 import type { WorkflowTaskTransfer } from '@zenith/shared/workflow';
+import { resolveUserNames } from '../../../lib/user-nicknames';
 
 export type WorkflowTaskTransferAction = 'transfer' | 'delegate' | 'reassign' | 'handover' | 'timeout';
 
@@ -35,10 +36,8 @@ export async function assertAssigneesNotActiveOnNode(
   const dupes = await exec.select({ assigneeId: workflowTasks.assigneeId })
     .from(workflowTasks).where(where).limit(ids.length);
   if (dupes.length === 0) return;
-  const dupeIds = [...new Set(dupes.map((d) => d.assigneeId).filter((v): v is number => v != null))];
-  const nameRows = await exec.select({ id: users.id, nickname: users.nickname, username: users.username })
-    .from(users).where(inArray(users.id, dupeIds));
-  const names = nameRows.map((u) => u.nickname ?? u.username).join('、');
+  const dupeNames = await resolveUserNames(dupes.map((d) => d.assigneeId), exec);
+  const names = [...dupeNames.values()].join('、');
   throw new HTTPException(409, { message: `${names || '所选人员'} 已是本节点待办处理人，无需重复指派` });
 }
 
@@ -103,11 +102,7 @@ export async function loadInstanceTransfersByTask(instanceId: number): Promise<M
     .orderBy(workflowTaskTransfers.id);
   const map = new Map<number, WorkflowTaskTransfer[]>();
   if (rows.length === 0) return map;
-  const userIds = [...new Set(rows.flatMap((r) => [r.fromUserId, r.toUserId, r.operatorId]).filter((v): v is number => v != null))];
-  const nameRows = userIds.length > 0
-    ? await db.select({ id: users.id, nickname: users.nickname, username: users.username }).from(users).where(inArray(users.id, userIds))
-    : [];
-  const names = new Map(nameRows.map((u) => [u.id, u.nickname ?? u.username]));
+  const names = await resolveUserNames(rows.flatMap((r) => [r.fromUserId, r.toUserId, r.operatorId]));
   for (const r of rows) {
     const list = map.get(r.taskId) ?? [];
     list.push({

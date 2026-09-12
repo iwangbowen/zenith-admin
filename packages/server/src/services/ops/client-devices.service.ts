@@ -12,13 +12,14 @@ import type { QueryOutputOf } from '@zenith/shared/core';
 import type { AppArch, AppPlatform, BindPushDeviceInput, DeviceSubjectType } from '@zenith/shared/ops';
 import { clientDeviceContract } from '@zenith/shared/ops';
 import { db } from '../../db';
-import { clientApps, clientDevices, members, users, type ClientDeviceRow } from '../../db/schema';
+import { clientApps, clientDevices, members, type ClientDeviceRow } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
 import { requireFirstRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
 import logger from '../../lib/logger';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
+import { resolveUserNames } from '../../lib/user-nicknames';
 
 /** 判定「在活设备」的窗口（管理端列表徽标与推送寻址共用） */
 export const DEVICE_ACTIVE_WINDOW_DAYS = 30;
@@ -219,13 +220,11 @@ export async function listClientDevices(q: QueryOutputOf<typeof clientDeviceCont
       });
 
       // 绑定人显示名（user → 昵称,member → 昵称/手机号）
-      const userIds = [...new Set(rows.filter((r) => r.subjectType === 'user' && r.subjectId).map((r) => r.subjectId as number))];
       const memberIds = [...new Set(rows.filter((r) => r.subjectType === 'member' && r.subjectId).map((r) => r.subjectId as number))];
-      const [userRows, memberRows] = await Promise.all([
-        userIds.length ? db.select({ id: users.id, nickname: users.nickname }).from(users).where(inArray(users.id, userIds)) : [],
+      const [userNameMap, memberRows] = await Promise.all([
+        resolveUserNames(rows.filter((r) => r.subjectType === 'user').map((r) => r.subjectId)),
         memberIds.length ? db.select({ id: members.id, nickname: members.nickname }).from(members).where(inArray(members.id, memberIds)) : [],
       ]);
-      const userNameMap = new Map(userRows.map((r) => [r.id, r.nickname]));
       const memberNameMap = new Map(memberRows.map((r) => [r.id, r.nickname]));
 
       return rows.map((row) => mapClientDevice(
