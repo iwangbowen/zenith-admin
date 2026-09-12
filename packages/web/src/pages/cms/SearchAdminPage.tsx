@@ -199,7 +199,7 @@ function DictTab({ siteId, onSiteChange }: Readonly<{ siteId: number | undefined
           hidden: !canManage,
           title: '确定要删除该词条吗？',
           content: '词典会即时重建；历史内容索引仍建议重新构建',
-          run: () => deleteMutation.mutateAsync(record.id),
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
         }),
       ],
     }),
@@ -361,7 +361,7 @@ function HotKeywordsTab({ siteId, onSiteChange }: Readonly<{ siteId: number | un
       },       deleteAction({
         hidden: !canManage || !record.id,
         title: `删除热词「${record.keyword}」？`,
-        run: () => deleteHotwordMutation.mutateAsync(record.id!),
+        run: () => deleteHotwordMutation.mutateAsync({ params: { id: record.id! } }),
         successMessage: '热词已删除',
       })] : [],
     }),
@@ -430,7 +430,7 @@ function HotKeywordsTab({ siteId, onSiteChange }: Readonly<{ siteId: number | un
               title: '删除当前热词分组？',
               content: '仅空分组可删除。',
               onOk: async () => {
-                await deleteGroupMutation.mutateAsync(groupId);
+                await deleteGroupMutation.mutateAsync({ params: { id: groupId } });
                 setGroupId(undefined);
                 Toast.success('分组已删除');
               },

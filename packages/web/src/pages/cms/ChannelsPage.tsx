@@ -12,7 +12,7 @@ import { useUrlSelectionParams } from '@/hooks/useUrlSelectionState';
 import {
   useCmsChannelTree, useAllCmsModels, useAllCmsSites, useSaveCmsChannel, useDeleteCmsChannel,
   useCmsThemeTemplates, useMergeCmsChannels, useClearCmsChannel, useBatchCreateCmsChannels,
-  useCmsChannelUsers, useSetCmsChannelUsers, useCmsChannelSampleContent,
+  useCmsChannelUsers, useSetCmsChannelUsers, useCmsChannelSampleContent, CMS_CHANNEL_SAMPLE_CONTENT_QUERY,
 } from '@/hooks/queries/cms';
 import { useAllUsers } from '@/hooks/queries/users';
 import { slugifyName } from '@/utils/slug';
@@ -256,7 +256,7 @@ export default function ChannelsPage() {
   async function previewDetailTemplate() {
     if (!currentSite || !editingRecord) return;
     const tpl = (formApi.current?.getValue('detailTemplate') as string | undefined) ?? '';
-    const data = await sampleContentMutation.mutateAsync({ siteId: currentSite.id, channelId: editingRecord.id })
+    const data = await sampleContentMutation.mutateAsync({ query: { siteId: currentSite.id, channelId: editingRecord.id, ...CMS_CHANNEL_SAMPLE_CONTENT_QUERY } })
       .catch(() => null);
     const content = data?.list?.[0];
     if (!content) {

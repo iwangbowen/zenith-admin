@@ -1,7 +1,7 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { cmsWidgetContract, type CmsWidgetRendererKey, type CmsWidgetType } from '@zenith/shared/cms';
-import { apiQueryOptions, contractKey, createResourceQueries, useApiMutation } from '@/lib/contract-query';
+import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 
 export type CmsWidgetListParams = NonNullable<QueryOf<typeof cmsWidgetContract.list>>;
@@ -13,7 +13,11 @@ const resource = createResourceQueries(cmsWidgetContract, {
 
 export const cmsWidgetKeys = {
   ...resource.keys,
+  /** 全部部件详情的公共前缀（批量任务完成时不知道哪些详情正被查看） */
+  details: contractKey(cmsWidgetContract.detail),
+  refsAll: contractKey(cmsWidgetContract.refs),
   refs: (id: number | undefined) => contractKey(cmsWidgetContract.refs, { params: { id: id ?? 0 } }),
+  previews: contractKey(cmsWidgetContract.preview),
   preview: (id: number | undefined, rendererKey?: CmsWidgetRendererKey) =>
     contractKey(cmsWidgetContract.preview, { params: { id: id ?? 0 }, query: { rendererKey } }),
   /** 某部件全部展示模板的预览（失效 / 移除时按 params 前缀匹配） */
@@ -27,9 +31,19 @@ export const cmsWidgetKeys = {
     contractKey(cmsWidgetContract.sourceRefs, { query: { sourceType, sourceId: sourceId ?? 0 } }),
 };
 
+/**
+ * 部件发布 / 下线 / 删除（含异步批量任务完成）后的失效面：列表（状态列）、可选部件下拉
+ * （只有已发布部件可被选用）与详情。批量任务执行完才知道结果，且不知道哪些详情正被查看，按前缀失效。
+ * renderers / slots 是站点级配置，不随部件状态变化，不动。
+ */
+export function invalidateAfterCmsWidgetStatusChange(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: cmsWidgetKeys.lists });
+  void qc.invalidateQueries({ queryKey: cmsWidgetKeys.optionsPrefix });
+  void qc.invalidateQueries({ queryKey: cmsWidgetKeys.details });
+}
+
 export function useCmsWidgetList(params: Omit<CmsWidgetListParams, 'siteId'> & { siteId: number | undefined }) {
-  return useQuery({
-    ...apiQueryOptions(cmsWidgetContract.list, { query: { ...params, siteId: params.siteId ?? 0 } }),
+  return useApiQuery(cmsWidgetContract.list, { query: { ...params, siteId: params.siteId ?? 0 } }, {
     enabled: params.siteId !== undefined,
     placeholderData: keepPreviousData,
   });
@@ -38,8 +52,7 @@ export function useCmsWidgetList(params: Omit<CmsWidgetListParams, 'siteId'> & {
 export const useCmsWidgetDetail = resource.useDetail;
 
 export function usePublishedCmsWidgets(siteId: number | undefined, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsWidgetContract.options, { query: { siteId: siteId ?? 0 } }),
+  return useApiQuery(cmsWidgetContract.options, { query: { siteId: siteId ?? 0 } }, {
     enabled: enabled && siteId !== undefined,
     staleTime: LOOKUP_STALE_TIME,
   });
@@ -50,16 +63,14 @@ export function useCmsWidgetRenderers(
   type: CmsWidgetType = 'manual-list',
   enabled = true,
 ) {
-  return useQuery({
-    ...apiQueryOptions(cmsWidgetContract.renderers, { query: { siteId: siteId ?? 0, type } }),
+  return useApiQuery(cmsWidgetContract.renderers, { query: { siteId: siteId ?? 0, type } }, {
     enabled: enabled && siteId !== undefined,
     staleTime: LOOKUP_STALE_TIME,
   });
 }
 
 export function useCmsWidgetRefs(id: number | undefined, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsWidgetContract.refs, { params: { id: id ?? 0 } }),
+  return useApiQuery(cmsWidgetContract.refs, { params: { id: id ?? 0 } }, {
     enabled: enabled && id !== undefined,
   });
 }
@@ -69,8 +80,7 @@ export function useCmsWidgetSourceRefs(
   sourceId: number | undefined,
   enabled = true,
 ) {
-  return useQuery({
-    ...apiQueryOptions(cmsWidgetContract.sourceRefs, { query: { sourceType, sourceId: sourceId ?? 0 } }),
+  return useApiQuery(cmsWidgetContract.sourceRefs, { query: { sourceType, sourceId: sourceId ?? 0 } }, {
     enabled: enabled && sourceId !== undefined,
   });
 }
@@ -80,15 +90,13 @@ export function useCmsWidgetPreview(
   rendererKey?: CmsWidgetRendererKey,
   enabled = true,
 ) {
-  return useQuery({
-    ...apiQueryOptions(cmsWidgetContract.preview, { params: { id: id ?? 0 }, query: { rendererKey } }),
+  return useApiQuery(cmsWidgetContract.preview, { params: { id: id ?? 0 }, query: { rendererKey } }, {
     enabled: enabled && id !== undefined,
   });
 }
 
 export function useCmsWidgetSlots(siteId: number | undefined, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsWidgetContract.slots, { query: { siteId: siteId ?? 0 } }),
+  return useApiQuery(cmsWidgetContract.slots, { query: { siteId: siteId ?? 0 } }, {
     enabled: enabled && siteId !== undefined,
   });
 }
@@ -129,7 +137,7 @@ export function useDeleteCmsWidget() {
   });
 }
 
-/** 批量操作异步执行，结果未知，刷新列表与可选部件即可 */
+/** 批量操作异步执行，提交时结果未知，刷新列表与可选部件即可；任务完成后页面再按 invalidateAfterCmsWidgetStatusChange 回源 */
 export function useCmsWidgetBatch() {
   return useApiMutation(cmsWidgetContract.batch, {
     invalidate: (qc) => {

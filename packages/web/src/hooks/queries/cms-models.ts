@@ -1,8 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
+import type { QueryClient } from '@tanstack/react-query';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
 import { cmsModelContract } from '@zenith/shared/cms';
-import { apiQueryOptions, contractKey, createResourceQueries, useApiMutation } from '@/lib/contract-query';
+import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
+import { cmsChannelKeys } from './cms-channels';
 
 export type CmsModelListParams = NonNullable<QueryOf<typeof cmsModelContract.list>>;
 
@@ -13,6 +14,7 @@ const resource = createResourceQueries(cmsModelContract);
 
 export const cmsModelKeys = {
   ...resource.keys,
+  /** 全部（各站点范围）模型下拉源的公共前缀就是工厂的 lookup 键 */
   allModels: (siteId?: number) => contractKey(cmsModelContract.all, { query: { siteId } }),
   refs: (id: number | undefined, siteId?: number) => contractKey(cmsModelContract.refs, { params: { id: id ?? 0 }, query: { siteId } }),
 };
@@ -22,22 +24,30 @@ export const useCmsModelDetail = resource.useDetail;
 
 /** 全部启用模型；siteId 提供时按站群可见性过滤（平台共享 + 该站点专属） */
 export function useAllCmsModels(siteId?: number) {
-  return useQuery({
-    ...apiQueryOptions(cmsModelContract.all, { query: { siteId } }),
-    staleTime: LOOKUP_STALE_TIME,
-  });
+  return useApiQuery(cmsModelContract.all, { query: { siteId } }, { staleTime: LOOKUP_STALE_TIME });
 }
 
 /**
- * 模型写入按站点范围校验（siteId 随更新 / 删除以查询参数携带）；
- * 字段整组替换会影响下拉源与详情，按域根整体失效
+ * 模型写操作后的失效面：模型列表与详情、全部站点范围的模型下拉源（字段整组替换会改变编辑页动态表单），
+ * 以及栏目树——树节点带 modelName，改名后必须回源。模型引用 `refs` 只随栏目 / 内容绑定变化，不动。
+ */
+export function invalidateAfterCmsModelChange(qc: QueryClient, id?: number) {
+  void qc.invalidateQueries({ queryKey: cmsModelKeys.lists });
+  if (id !== undefined) void qc.invalidateQueries({ queryKey: cmsModelKeys.detail(id) });
+  void qc.invalidateQueries({ queryKey: cmsModelKeys.lookup });
+  void qc.invalidateQueries({ queryKey: cmsChannelKeys.trees });
+}
+
+/**
+ * 模型写入按站点范围校验（siteId 随更新 / 删除以查询参数携带）。
+ * H5：成对 create / update 带父级查询参数，useSaveMutation 只认 id，故用两个 useApiMutation 组合。
  */
 export function useSaveCmsModel(siteId?: number) {
   const create = useApiMutation(cmsModelContract.create, {
-    invalidate: (qc) => void qc.invalidateQueries({ queryKey: cmsModelKeys.all }),
+    invalidate: (qc) => invalidateAfterCmsModelChange(qc),
   });
   const update = useApiMutation(cmsModelContract.update, {
-    invalidate: (qc) => void qc.invalidateQueries({ queryKey: cmsModelKeys.all }),
+    invalidate: (qc, _output, { params }) => invalidateAfterCmsModelChange(qc, params.id),
   });
   return {
     mutateAsync: ({ id, values }: { id?: number; values: CmsModelSaveValues }) =>
@@ -48,9 +58,14 @@ export function useSaveCmsModel(siteId?: number) {
   };
 }
 
+/** 删除后详情与引用不再有对应资源，移除而非失效 */
 export function useDeleteCmsModel(siteId?: number) {
   const remove = useApiMutation(cmsModelContract.remove, {
-    invalidate: (qc) => void qc.invalidateQueries({ queryKey: cmsModelKeys.all }),
+    invalidate: (qc, _output, { params }) => {
+      qc.removeQueries({ queryKey: cmsModelKeys.detail(params.id) });
+      qc.removeQueries({ queryKey: [...contractKey(cmsModelContract.refs), { params: { id: params.id } }] });
+      invalidateAfterCmsModelChange(qc);
+    },
   });
   return {
     mutateAsync: (id: number) => remove.mutateAsync({ params: { id }, query: { siteId } }),

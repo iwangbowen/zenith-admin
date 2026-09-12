@@ -18,6 +18,7 @@ import { useTaskProgressEvents } from '@/hooks/useAsyncTasks';
 import { useAllCmsSites } from '@/hooks/queries/cms';
 import {
   cmsPublishingKeys,
+  invalidateCmsPublishingViews,
   useBatchCmsPublishingAction,
   useCmsPublishArtifactList,
   useCmsPublishingAction,
@@ -121,7 +122,7 @@ export default function PublishingPage() {
   });
 
   useTaskProgressEvents(useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: cmsPublishingKeys.all });
+    invalidateCmsPublishingViews(queryClient);
   }, [queryClient]));
 
   const runAction = async (record: CmsPublishingTask, action: 'cancel' | 'resume' | 'restart' | 'rebuild') => {

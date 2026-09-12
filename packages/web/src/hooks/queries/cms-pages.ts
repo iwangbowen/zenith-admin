@@ -1,7 +1,7 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { cmsPageContract } from '@zenith/shared/cms';
-import { apiQueryOptions, contractKey, createResourceQueries, useApiMutation } from '@/lib/contract-query';
+import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type CmsPageListParams = NonNullable<QueryOf<typeof cmsPageContract.list>>;
 
@@ -13,8 +13,7 @@ export const cmsPageKeys = {
 };
 
 export function useCmsPageList(params: Omit<CmsPageListParams, 'siteId'> & { siteId: number | undefined }) {
-  return useQuery({
-    ...apiQueryOptions(cmsPageContract.list, { query: { ...params, siteId: params.siteId ?? 0 } }),
+  return useApiQuery(cmsPageContract.list, { query: { ...params, siteId: params.siteId ?? 0 } }, {
     enabled: !!params.siteId,
     placeholderData: keepPreviousData,
   });
@@ -28,8 +27,7 @@ export const useSaveCmsPage = resource.useSave;
 export const useDeleteCmsPages = resource.useDelete;
 
 export function useCmsPageBlockAcls(id: number | undefined, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsPageContract.blockAcls, { params: { id: id ?? 0 }, query: {} }),
+  return useApiQuery(cmsPageContract.blockAcls, { params: { id: id ?? 0 }, query: {} }, {
     enabled: enabled && !!id,
   });
 }

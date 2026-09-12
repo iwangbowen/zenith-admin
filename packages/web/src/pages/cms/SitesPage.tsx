@@ -136,7 +136,7 @@ export default function SitesPage() {
       return;
     }
     try {
-      const result = await importMutation.mutateAsync(pkg);
+      const result = await importMutation.mutateAsync({ body: pkg });
       Toast.success(`站点「${result.siteName}」导入成功（栏目 ${result.counts.channels ?? 0}、内容 ${result.counts.contents ?? 0}、部件 ${result.counts.widgets ?? 0}）`);
       if (result.warnings.length > 0) {
         Modal.warning({

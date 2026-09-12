@@ -1,30 +1,47 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { cmsFriendLinkContract } from '@zenith/shared/cms';
-import { api, useSaveMutation, apiQueryOptions, contractKey, createResourceQueries } from '@/lib/contract-query';
+import { useSaveMutation, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 
 export type CmsFriendLinkListParams = NonNullable<QueryOf<typeof cmsFriendLinkContract.list>>;
 
 export type CmsFriendLinkGroupListParams = NonNullable<QueryOf<typeof cmsFriendLinkContract.groupList>>;
 
-const resource = createResourceQueries(cmsFriendLinkContract);
+/** 全部分组分页列表的公共前缀 */
+const groupListsKey = contractKey(cmsFriendLinkContract.groupList);
+
+/** 友链增删改由工厂失效列表与详情；分组分页列表带组内友链数 linkCount，这里补上它。分组下拉源不含计数，不动 */
+const resource = createResourceQueries(cmsFriendLinkContract, {
+  onSaved: (qc) => void qc.invalidateQueries({ queryKey: groupListsKey }),
+  onDeleted: (qc) => void qc.invalidateQueries({ queryKey: groupListsKey }),
+});
 
 export const cmsFriendLinkKeys = {
   ...resource.keys,
-  groups: contractKey(cmsFriendLinkContract.groupList),
+  groups: groupListsKey,
   groupList: (params: CmsFriendLinkGroupListParams) => contractKey(cmsFriendLinkContract.groupList, { query: params }),
+  /** 全部站点分组下拉源的公共前缀 */
+  groupAlls: contractKey(cmsFriendLinkContract.groupAll),
   groupAll: (siteId: number | undefined) => contractKey(cmsFriendLinkContract.groupAll, { query: { siteId: siteId ?? 0 } }),
 };
 
+/**
+ * 分组增删改后的失效面：分组分页列表、分组下拉源（LOOKUP_STALE_TIME，改名 / 新增 / 删除都要刷新），
+ * 以及友链列表——列表项带 groupName，分组改名或删除（组内友链转为未分组）后必须回源。友链详情缓存不含分组名，不动。
+ */
+export function invalidateAfterCmsFriendLinkGroupChange(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: cmsFriendLinkKeys.groups });
+  void qc.invalidateQueries({ queryKey: cmsFriendLinkKeys.groupAlls });
+  void qc.invalidateQueries({ queryKey: cmsFriendLinkKeys.lists });
+}
+
 export const useCmsFriendLinkList = resource.useList;
-/** 友链本身的增删改不改变分组集合：工厂只失效列表与详情 */
 export const useSaveCmsFriendLink = resource.useSave;
 export const useDeleteCmsFriendLinks = resource.useDelete;
 
 export function useCmsFriendLinkGroupList(params: CmsFriendLinkGroupListParams, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsFriendLinkContract.groupList, { query: params }),
+  return useApiQuery(cmsFriendLinkContract.groupList, { query: params }, {
     placeholderData: keepPreviousData,
     enabled,
   });
@@ -32,24 +49,18 @@ export function useCmsFriendLinkGroupList(params: CmsFriendLinkGroupListParams, 
 
 /** 站点全部启用分组（友链表单下拉 / 列表筛选） */
 export function useAllCmsFriendLinkGroups(siteId: number | undefined, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsFriendLinkContract.groupAll, { query: { siteId: siteId ?? 0 } }),
+  return useApiQuery(cmsFriendLinkContract.groupAll, { query: { siteId: siteId ?? 0 } }, {
     enabled: enabled && siteId !== undefined,
     staleTime: LOOKUP_STALE_TIME,
   });
 }
 
-/** 分组改名 / 删除会改变友链列表里的分组名与归属，整域失效 */
 export function useSaveCmsFriendLinkGroup() {
   return useSaveMutation(cmsFriendLinkContract.groupCreate, cmsFriendLinkContract.groupUpdate, {
-    invalidate: (qc) => void qc.invalidateQueries({ queryKey: cmsFriendLinkKeys.all }),
+    invalidate: invalidateAfterCmsFriendLinkGroupChange,
   });
 }
 
 export function useDeleteCmsFriendLinkGroup() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: number) => api(cmsFriendLinkContract.groupRemove, { params: { id } }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: cmsFriendLinkKeys.all }),
-  });
+  return useApiMutation(cmsFriendLinkContract.groupRemove, { invalidate: invalidateAfterCmsFriendLinkGroupChange });
 }

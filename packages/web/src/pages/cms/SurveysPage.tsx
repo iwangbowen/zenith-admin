@@ -276,7 +276,7 @@ export default function SurveysPage() {
               <>
                 <FilterSelect<number>
                   placeholder="全部互动问卷"
-                  items={(interactionOptionsQuery.data ?? []).map((item) => ({ value: item.id, label: item.title }))}
+                  items={(interactionOptionsQuery.data?.list ?? []).map((item) => ({ value: item.id, label: item.title }))}
                   {...responseSearch.bind('interactionId')}
                   width={200}
                   filter

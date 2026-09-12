@@ -1,8 +1,8 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { cmsDistributionContract } from '@zenith/shared/cms';
-import { asyncTaskKeys } from './async-tasks';
-import { apiQueryOptions, contractKey, createResourceQueries, useApiMutation } from '@/lib/contract-query';
+import { invalidateAsyncTaskState } from './async-tasks';
+import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type CmsDistributionRuleListParams = NonNullable<QueryOf<typeof cmsDistributionContract.list>>;
 
@@ -24,19 +24,23 @@ export const useCmsDistributionRule = resource.useDetail;
 export const useSaveCmsDistributionRule = resource.useSave;
 export const useDeleteCmsDistributionRules = resource.useDelete;
 
-/** 手动执行会写入规则的 lastRunAt 并新增同步记录 */
+/**
+ * 手动执行会写入规则的 lastRunAt（列表列 + 详情）并新增一条同步记录；同步记录详情是新记录，缓存里还没有。
+ * 执行本身是一条异步任务，任务中心视图随之变化。其它规则不受影响。
+ */
 export function useRunCmsDistributionRule() {
   return useApiMutation(cmsDistributionContract.run, {
-    invalidate: (qc) => {
-      void qc.invalidateQueries({ queryKey: cmsDistributionKeys.all });
-      void qc.invalidateQueries({ queryKey: asyncTaskKeys.all });
+    invalidate: (qc, _output, { params }) => {
+      void qc.invalidateQueries({ queryKey: cmsDistributionKeys.lists });
+      void qc.invalidateQueries({ queryKey: cmsDistributionKeys.detail(params.id) });
+      void qc.invalidateQueries({ queryKey: cmsDistributionKeys.runs });
+      invalidateAsyncTaskState(qc);
     },
   });
 }
 
 export function useCmsDistributionRunList(params: CmsDistributionRunListParams, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsDistributionContract.runs, { query: params }),
+  return useApiQuery(cmsDistributionContract.runs, { query: params }, {
     enabled,
     placeholderData: keepPreviousData,
     refetchInterval: (query) =>
@@ -45,8 +49,7 @@ export function useCmsDistributionRunList(params: CmsDistributionRunListParams, 
 }
 
 export function useCmsDistributionRunDetail(id: number | undefined, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsDistributionContract.runDetail, { params: { id: id ?? 0 } }),
+  return useApiQuery(cmsDistributionContract.runDetail, { params: { id: id ?? 0 } }, {
     enabled: enabled && id !== undefined,
     refetchInterval: (query) =>
       query.state.data && ACTIVE_TASK_STATUSES.includes(query.state.data.run.status) ? 3000 : false,

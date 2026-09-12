@@ -1,7 +1,7 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { cmsSubscriptionContract } from '@zenith/shared/cms';
-import { apiQueryOptions, contractKey } from '@/lib/contract-query';
+import { contractKey, useApiQuery } from '@/lib/contract-query';
 
 export type CmsSubscriptionListParams = NonNullable<QueryOf<typeof cmsSubscriptionContract.list>>;
 
@@ -14,16 +14,14 @@ export const cmsSubscriptionKeys = {
 };
 
 export function useCmsSubscriptionList(params: CmsSubscriptionListParams, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsSubscriptionContract.list, { query: params }),
+  return useApiQuery(cmsSubscriptionContract.list, { query: params }, {
     enabled,
     placeholderData: keepPreviousData,
   });
 }
 
 export function useCmsSubscriptionAggregates(params: CmsSubscriptionAggregateParams, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsSubscriptionContract.aggregates, { query: params }),
+  return useApiQuery(cmsSubscriptionContract.aggregates, { query: params }, {
     enabled,
   });
 }

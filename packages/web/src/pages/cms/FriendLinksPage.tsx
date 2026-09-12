@@ -186,7 +186,7 @@ function FriendLinkGroupSheet({ siteId, visible, onClose }: Readonly<{
         deleteAction({
           hidden: !hasPermission('cms:link:delete'),
           title: '删除后组内友链将转为未分组，确定删除？',
-          run: () => deleteMutation.mutateAsync(record.id),
+          run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
         }),
       ],
     }),

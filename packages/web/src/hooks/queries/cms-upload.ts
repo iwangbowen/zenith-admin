@@ -12,7 +12,8 @@ export function cmsImageUploadUrl(siteId: number): string {
 
 /**
  * CMS 站点图片上传（内容封面 / 图集 / 主题配置图）。
- * 服务端按站点配置决定是否加水印与生成缩略图，故必须带 siteId；带上传进度，走 XHR 表单通道
+ * 服务端按站点配置决定是否加水印与生成缩略图，故必须带 siteId；带上传进度，走 XHR 表单通道。
+ * H5：mutationFn 是带 onProgress 的 `request.postForm`，不是单次 `api(op)`，故保留手写 useMutation；不产生缓存副作用。
  */
 export function useUploadCmsImage() {
   return useMutation({

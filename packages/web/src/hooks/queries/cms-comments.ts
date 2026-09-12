@@ -1,19 +1,28 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { cmsCommentContract } from '@zenith/shared/cms';
-import { api, apiQueryOptions, contractKey } from '@/lib/contract-query';
+import { api, contractKey, useApiQuery } from '@/lib/contract-query';
+import { invalidateCmsDashboardStats } from './cms-stats';
 
 export type CmsCommentListParams = NonNullable<QueryOf<typeof cmsCommentContract.list>>;
 
 export const cmsCommentKeys = {
   lists: contractKey(cmsCommentContract.list),
   list: (params: CmsCommentListParams) => contractKey(cmsCommentContract.list, { query: params }),
+  /** 全部站点待审计数的公共前缀 */
+  pendingCounts: contractKey(cmsCommentContract.pendingCount),
   pendingCount: (siteId: number | undefined) => contractKey(cmsCommentContract.pendingCount, { query: { siteId: siteId ?? 0 } }),
 };
 
+/** 审核 / 拒绝 / 删除都改变评论列表、待审计数徽标与看板的 pendingComments */
+export function invalidateAfterCmsCommentChange(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: cmsCommentKeys.lists });
+  void qc.invalidateQueries({ queryKey: cmsCommentKeys.pendingCounts });
+  invalidateCmsDashboardStats(qc);
+}
+
 export function useCmsCommentList(params: CmsCommentListParams, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsCommentContract.list, { query: params }),
+  return useApiQuery(cmsCommentContract.list, { query: params }, {
     placeholderData: keepPreviousData,
     enabled,
   });
@@ -27,14 +36,14 @@ const COMMENT_ACTIONS = {
   delete: cmsCommentContract.batchDelete,
 } as const;
 
-/** 审核 / 拒绝 / 删除都改变列表与待审计数 */
+/**
+ * 审核 / 拒绝 / 删除（批量）。
+ * H5：mutationFn 按 action 在三个契约操作间分派，不是单一契约操作，故保留手写 useMutation。
+ */
 export function useCmsCommentAction() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ action, ids }: { action: CmsCommentAction; ids: number[] }) => api(COMMENT_ACTIONS[action], { body: { ids } }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: cmsCommentKeys.lists });
-      void qc.invalidateQueries({ queryKey: contractKey(cmsCommentContract.pendingCount) });
-    },
+    onSuccess: () => invalidateAfterCmsCommentChange(qc),
   });
 }

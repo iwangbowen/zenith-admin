@@ -1,7 +1,7 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData } from '@tanstack/react-query';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
 import { cmsSeoContract } from '@zenith/shared/cms';
-import { useSaveMutation, apiQueryOptions, contractKey, useApiMutation } from '@/lib/contract-query';
+import { useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type CmsSeoListParams = NonNullable<QueryOf<typeof cmsSeoContract.redirectList>>;
 
@@ -24,8 +24,7 @@ export const cmsPushLogKeys = {
 
 // ─── 301 重定向 ───────────────────────────────────────────────────────────────
 export function useCmsRedirectList(params: CmsSeoListParams, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsSeoContract.redirectList, { query: params }),
+  return useApiQuery(cmsSeoContract.redirectList, { query: params }, {
     placeholderData: keepPreviousData,
     enabled,
   });
@@ -47,8 +46,7 @@ export function useDeleteCmsRedirect() {
 
 // ─── 内链词 ───────────────────────────────────────────────────────────────────
 export function useCmsLinkWordList(params: CmsSeoListParams, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsSeoContract.linkWordList, { query: params }),
+  return useApiQuery(cmsSeoContract.linkWordList, { query: params }, {
     placeholderData: keepPreviousData,
     enabled,
   });
@@ -70,8 +68,7 @@ export function useDeleteCmsLinkWord() {
 
 // ─── 搜索引擎推送 / 死链检测 ──────────────────────────────────────────────────
 export function useCmsPushLogList(params: CmsPushLogListParams, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsSeoContract.pushLogs, { query: params }),
+  return useApiQuery(cmsSeoContract.pushLogs, { query: params }, {
     placeholderData: keepPreviousData,
     enabled,
   });

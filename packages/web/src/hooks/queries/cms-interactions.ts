@@ -1,13 +1,16 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { cmsInteractionContract } from '@zenith/shared/cms';
-import { api, apiQueryOptions, contractKey, createResourceQueries, useApiMutation } from '@/lib/contract-query';
+import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type CmsInteractionListParams = NonNullable<QueryOf<typeof cmsInteractionContract.list>>;
 
 export type CmsInteractionResponseListParams = NonNullable<QueryOf<typeof cmsInteractionContract.responses>>;
 
 const resource = createResourceQueries(cmsInteractionContract);
+
+/** 站点级可选问卷下拉复用列表操作，以固定的大页参数区分（最多 200 条） */
+const OPTIONS_PAGE = { page: 1, pageSize: 200 } as const;
 
 export const cmsInteractionKeys = {
   ...resource.keys,
@@ -19,16 +22,13 @@ export const cmsInteractionKeys = {
   trend: (id: number | undefined, days: number) => contractKey(cmsInteractionContract.trend, { params: { id: id ?? 0 }, query: { days } }),
   responseLists: contractKey(cmsInteractionContract.responses),
   responseList: (params: CmsInteractionResponseListParams) => contractKey(cmsInteractionContract.responses, { query: params }),
-  /** 站点级可选问卷下拉：复用列表操作，以固定的大页参数区分 */
-  optionsPrefix: [...contractKey(cmsInteractionContract.list), 'options'] as const,
-  options: (siteId: number | undefined) => [...contractKey(cmsInteractionContract.list), 'options', siteId] as const,
+  /** 可选问卷下拉就是一次列表查询，处在 `lists` 前缀之下：凡失效列表即同时失效下拉 */
+  options: (siteId: number | undefined) => contractKey(cmsInteractionContract.list, { query: { siteId: siteId ?? 0, ...OPTIONS_PAGE } }),
 };
 
-/** 站点下全部互动问卷（下拉筛选用，最多 200 条） */
+/** 站点下全部互动问卷（下拉筛选用，最多 200 条）；返回分页载荷，取 `data.list` */
 export function useCmsInteractionOptions(siteId: number | undefined) {
-  return useQuery({
-    queryKey: cmsInteractionKeys.options(siteId),
-    queryFn: () => api(cmsInteractionContract.list, { query: { siteId: siteId ?? 0, page: 1, pageSize: 200 } }).then((data) => data.list),
+  return useApiQuery(cmsInteractionContract.list, { query: { siteId: siteId ?? 0, ...OPTIONS_PAGE } }, {
     enabled: siteId !== undefined,
   });
 }
@@ -37,15 +37,13 @@ export const useCmsInteractionList = resource.useList;
 export const useCmsInteractionDetail = resource.useDetail;
 
 export function useCmsInteractionStats(id: number | undefined, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsInteractionContract.stats, { params: { id: id ?? 0 } }),
+  return useApiQuery(cmsInteractionContract.stats, { params: { id: id ?? 0 } }, {
     enabled: enabled && id !== undefined,
   });
 }
 
 export function useCmsInteractionResponseList(params: CmsInteractionResponseListParams, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsInteractionContract.responses, { query: params }),
+  return useApiQuery(cmsInteractionContract.responses, { query: params }, {
     placeholderData: keepPreviousData,
     enabled,
   });
@@ -60,11 +58,10 @@ export function useCmsInteractionTexts(
   keyword: string,
   enabled = true,
 ) {
-  return useQuery({
-    ...apiQueryOptions(cmsInteractionContract.texts, {
-      params: { id: id ?? 0 },
-      query: { questionId: questionId ?? 0, page, pageSize, keyword: keyword || undefined },
-    }),
+  return useApiQuery(cmsInteractionContract.texts, {
+    params: { id: id ?? 0 },
+    query: { questionId: questionId ?? 0, page, pageSize, keyword: keyword || undefined },
+  }, {
     placeholderData: keepPreviousData,
     enabled: enabled && id !== undefined && questionId !== undefined,
   });
@@ -76,56 +73,49 @@ export function useCmsInteractionCrossStats(
   yQuestionId: number | undefined,
   enabled = true,
 ) {
-  return useQuery({
-    ...apiQueryOptions(cmsInteractionContract.crossStats, {
-      params: { id: id ?? 0 },
-      query: { xQuestionId: xQuestionId ?? 0, yQuestionId: yQuestionId ?? 0 },
-    }),
+  return useApiQuery(cmsInteractionContract.crossStats, {
+    params: { id: id ?? 0 },
+    query: { xQuestionId: xQuestionId ?? 0, yQuestionId: yQuestionId ?? 0 },
+  }, {
     enabled: enabled && id !== undefined && xQuestionId !== undefined && yQuestionId !== undefined,
   });
 }
 
 export function useCmsInteractionTrend(id: number | undefined, days: number, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsInteractionContract.trend, { params: { id: id ?? 0 }, query: { days } }),
+  return useApiQuery(cmsInteractionContract.trend, { params: { id: id ?? 0 }, query: { days } }, {
     enabled: enabled && id !== undefined,
   });
 }
 
 /**
- * 保存问卷定义：工厂失效 detail + lists。stats / texts / cross / trend 是答卷聚合分析，
- * 改问卷定义不产生新答卷；options 是站点级可选问卷下拉，仅在发布状态变化时才需刷新
+ * 保存问卷定义：工厂失效 detail + lists（下拉在 lists 前缀下随之失效）。stats / texts / cross / trend
+ * 是答卷聚合分析，改问卷定义不产生新答卷，不动
  */
 export const useSaveCmsInteraction = resource.useSave;
 
-/** 发布/关闭决定问卷是否出现在可选下拉中 */
+/** 发布/关闭决定问卷是否出现在可选下拉中（下拉即列表查询，lists 前缀已覆盖） */
 export function useSetCmsInteractionStatus() {
   return useApiMutation(cmsInteractionContract.setStatus, {
     invalidate: (qc, _output, { params }) => {
       void qc.invalidateQueries({ queryKey: cmsInteractionKeys.detail(params.id) });
       void qc.invalidateQueries({ queryKey: cmsInteractionKeys.lists });
-      void qc.invalidateQueries({ queryKey: cmsInteractionKeys.optionsPrefix });
     },
   });
 }
 
 export function useBatchCmsInteractionStatus() {
   return useApiMutation(cmsInteractionContract.batchStatus, {
-    invalidate: (qc) => {
-      void qc.invalidateQueries({ queryKey: cmsInteractionKeys.lists });
-      void qc.invalidateQueries({ queryKey: cmsInteractionKeys.optionsPrefix });
-    },
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: cmsInteractionKeys.lists }),
   });
 }
 
-/** 问卷删除后其详情与全部答卷分析都不再有对应资源 */
+/** 问卷删除后其详情与全部答卷分析都不再有对应资源；答卷列表带问卷名，需回源 */
 export function useDeleteCmsInteraction() {
   return useApiMutation(cmsInteractionContract.remove, {
     invalidate: (qc, _output, { params }) => {
       qc.removeQueries({ queryKey: cmsInteractionKeys.detail(params.id) });
       qc.removeQueries({ queryKey: cmsInteractionKeys.stats(params.id) });
       void qc.invalidateQueries({ queryKey: cmsInteractionKeys.lists });
-      void qc.invalidateQueries({ queryKey: cmsInteractionKeys.optionsPrefix });
       void qc.invalidateQueries({ queryKey: cmsInteractionKeys.responseLists });
     },
   });

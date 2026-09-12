@@ -14,6 +14,7 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { useMyAsyncTasks } from '@/hooks/useAsyncTasks';
 import {
   cmsWidgetKeys,
+  invalidateAfterCmsWidgetStatusChange,
   useCmsWidgetBatch,
   useCmsWidgetList,
   useCmsWidgetRefs,
@@ -88,7 +89,7 @@ export default function WidgetsPage() {
       }
       taskStatusesRef.current.set(task.id, task.status);
     }
-    if (batchCompleted) void queryClient.invalidateQueries({ queryKey: cmsWidgetKeys.all });
+    if (batchCompleted) invalidateAfterCmsWidgetStatusChange(queryClient);
   }, [queryClient, tasks]);
 
   function runSingle(action: 'publish' | 'offline', widget: CmsWidget) {

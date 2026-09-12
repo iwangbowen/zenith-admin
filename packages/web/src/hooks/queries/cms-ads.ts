@@ -1,7 +1,7 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
 import { cmsAdContract } from '@zenith/shared/cms';
-import { useSaveMutation, apiQueryOptions, contractKey, createResourceQueries, useApiMutation } from '@/lib/contract-query';
+import { useSaveMutation, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type CmsAdListParams = NonNullable<QueryOf<typeof cmsAdContract.list>>;
 
@@ -9,11 +9,21 @@ export type CmsAdEventListParams = NonNullable<QueryOf<typeof cmsAdContract.even
 
 export type CmsAdEventStatsParams = NonNullable<QueryOf<typeof cmsAdContract.eventStats>>;
 
-/** 广告位与广告互相引用（广告位列表带投放计数、广告列表带广告位名），写操作按域根失效 */
-const resource = createResourceQueries(cmsAdContract);
+/** 全部站点广告位列表的公共前缀 */
+const slotsKey = contractKey(cmsAdContract.slots);
+
+/**
+ * 广告位与广告互相引用：广告位列表带投放中广告数 adCount，广告列表 / 详情带 slotName。
+ * 广告增删改由工厂失效列表与详情，这里补上广告位的计数列。
+ */
+const resource = createResourceQueries(cmsAdContract, {
+  onSaved: (qc) => void qc.invalidateQueries({ queryKey: slotsKey }),
+  onDeleted: (qc) => void qc.invalidateQueries({ queryKey: slotsKey }),
+});
 
 export const cmsAdKeys = {
   ...resource.keys,
+  slotsAll: slotsKey,
   slots: (siteId: number | undefined) => contractKey(cmsAdContract.slots, { query: { siteId: siteId ?? 0 } }),
 };
 
@@ -25,24 +35,28 @@ export const cmsAdEventKeys = {
 };
 
 export function useCmsAdSlots(siteId: number | undefined) {
-  return useQuery({
-    ...apiQueryOptions(cmsAdContract.slots, { query: { siteId: siteId ?? 0 } }),
+  return useApiQuery(cmsAdContract.slots, { query: { siteId: siteId ?? 0 } }, {
     enabled: siteId !== undefined,
   });
 }
 
 export type CmsAdSlotSaveValues = Partial<BodyOf<typeof cmsAdContract.slotCreate>>;
 
+/**
+ * 广告位改名 / 删除会改变广告列表里的 slotName（删除后广告失去归属），一并失效；
+ * 广告没有详情查询，投放事件也不引用广告位。
+ */
+function invalidateAfterCmsAdSlotChange(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: cmsAdKeys.slotsAll });
+  void qc.invalidateQueries({ queryKey: cmsAdKeys.lists });
+}
+
 export function useSaveCmsAdSlot() {
-  return useSaveMutation(cmsAdContract.slotCreate, cmsAdContract.slotUpdate, {
-    invalidate: (qc) => void qc.invalidateQueries({ queryKey: cmsAdKeys.all }),
-  });
+  return useSaveMutation(cmsAdContract.slotCreate, cmsAdContract.slotUpdate, { invalidate: invalidateAfterCmsAdSlotChange });
 }
 
 export function useDeleteCmsAdSlot() {
-  return useApiMutation(cmsAdContract.slotRemove, {
-    invalidate: (qc) => void qc.invalidateQueries({ queryKey: cmsAdKeys.all }),
-  });
+  return useApiMutation(cmsAdContract.slotRemove, { invalidate: invalidateAfterCmsAdSlotChange });
 }
 
 export const useCmsAdList = resource.useList;
@@ -50,16 +64,14 @@ export const useSaveCmsAd = resource.useSave;
 export const useDeleteCmsAds = resource.useDelete;
 
 export function useCmsAdEventList(params: CmsAdEventListParams, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsAdContract.events, { query: params }),
+  return useApiQuery(cmsAdContract.events, { query: params }, {
     placeholderData: keepPreviousData,
     enabled,
   });
 }
 
 export function useCmsAdEventStats(params: CmsAdEventStatsParams, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsAdContract.eventStats, { query: params }),
+  return useApiQuery(cmsAdContract.eventStats, { query: params }, {
     enabled,
   });
 }

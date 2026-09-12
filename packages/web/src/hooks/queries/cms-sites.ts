@@ -1,18 +1,25 @@
-import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import type { QueryOf } from '@zenith/shared/core';
-import { cmsSiteContract, CMS_TEMPLATE_RESOLUTION_SOURCE_LABELS, type CmsThemeTemplateManifest } from '@zenith/shared/cms';
-import { api, apiQueryOptions, contractKey, createResourceQueries, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import type { QueryClient } from '@tanstack/react-query';
+import { resourceKeyOf, type QueryOf } from '@zenith/shared/core';
+import {
+  cmsAdContract,
+  cmsChannelContract,
+  cmsContentContract,
+  cmsFormContract,
+  cmsFriendLinkContract,
+  cmsInteractionContract,
+  cmsModelContract,
+  cmsPageContract,
+  cmsResourceContract,
+  cmsSiteContract,
+  cmsTagContract,
+  cmsWidgetContract,
+  CMS_TEMPLATE_RESOLUTION_SOURCE_LABELS,
+  type CmsThemeTemplateManifest,
+} from '@zenith/shared/cms';
+import { contractKey, createResourceQueries, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
-import { cmsAdKeys } from './cms-ads';
-import { cmsChannelKeys } from './cms-channels';
-import { cmsContentKeys } from './cms-contents';
-import { cmsFormKeys } from './cms-forms';
-import { cmsFriendLinkKeys } from './cms-friend-links';
-import { cmsPageKeys } from './cms-pages';
-import { cmsResourceKeys } from './cms-resources';
 import { cmsLinkWordKeys, cmsRedirectKeys } from './cms-seo';
-import { cmsPublishingKeys } from './cms-stage3';
-import { cmsTagKeys } from './cms-tags';
+import { invalidateCmsPublishingViews } from './cms-stage3';
 
 export type CmsSiteListParams = QueryOf<typeof cmsSiteContract.list>;
 
@@ -26,6 +33,8 @@ const resource = createResourceQueries(cmsSiteContract);
  */
 export const cmsSiteKeys = {
   ...resource.keys,
+  /** 全部站点详情的公共前缀（子树移动改变多个站点的层级字段） */
+  details: contractKey(cmsSiteContract.detail),
   allSites: resource.keys.lookup,
   themes: (siteId?: number) => contractKey(cmsSiteContract.themes, { query: { siteId } }),
   themeTemplates: (code: string | undefined, siteId?: number) =>
@@ -62,29 +71,29 @@ export function useCmsThemes(siteId?: number) {
   return useApiQuery(cmsSiteContract.themes, { query: { siteId } }, { staleTime: LOOKUP_STALE_TIME });
 }
 
+/** 模板清单的下拉标签带上解析来源（主题内置 / 站点覆盖 / 父站继承）——纯展示派生，用 select 完成 */
+function annotateTemplateSources(catalog: CmsThemeTemplateManifest): CmsThemeTemplateManifest {
+  const annotate = (items: CmsThemeTemplateManifest['list']) => items.map((item) => ({
+    ...item,
+    label: item.source
+      ? `${item.label} · ${CMS_TEMPLATE_RESOLUTION_SOURCE_LABELS[item.source]}`
+      : item.label,
+  }));
+  return { list: annotate(catalog.list), detail: annotate(catalog.detail) };
+}
+
 /** 主题可选模板清单（站点默认模板 / 栏目 / 内容模板下拉） */
 export function useCmsThemeTemplates(themeCode: string | undefined, siteId?: number) {
-  return useQuery({
-    queryKey: cmsSiteKeys.themeTemplates(themeCode, siteId),
-    queryFn: () => api(cmsSiteContract.themeTemplates, { params: { code: themeCode ?? '' }, query: { siteId } })
-      .then((catalog) => {
-        const annotate = (items: CmsThemeTemplateManifest['list']) => items.map((item) => ({
-          ...item,
-          label: item.source
-            ? `${item.label} · ${CMS_TEMPLATE_RESOLUTION_SOURCE_LABELS[item.source]}`
-            : item.label,
-        }));
-        return { list: annotate(catalog.list), detail: annotate(catalog.detail) };
-      }),
+  return useApiQuery(cmsSiteContract.themeTemplates, { params: { code: themeCode ?? '' }, query: { siteId } }, {
     enabled: !!themeCode,
     staleTime: LOOKUP_STALE_TIME,
+    select: annotateTemplateSources,
   });
 }
 
 /** 主题参数声明（后台主题参数面板动态表单） */
 export function useCmsThemeSettingsSchema(themeCode: string | undefined) {
-  return useQuery({
-    ...apiQueryOptions(cmsSiteContract.themeSettingsSchema, { params: { code: themeCode ?? '' } }),
+  return useApiQuery(cmsSiteContract.themeSettingsSchema, { params: { code: themeCode ?? '' } }, {
     enabled: !!themeCode,
     staleTime: LOOKUP_STALE_TIME,
   });
@@ -92,16 +101,14 @@ export function useCmsThemeSettingsSchema(themeCode: string | undefined) {
 
 /** 站点模板健康检查（失效模板引用扫描；theme 传目标主题可做切换前预检） */
 export function useCmsSiteTemplateHealth(siteId: number | undefined, theme: string | undefined, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsSiteContract.templateHealth, { params: { id: siteId ?? 0 }, query: { theme } }),
+  return useApiQuery(cmsSiteContract.templateHealth, { params: { id: siteId ?? 0 }, query: { theme } }, {
     enabled: enabled && siteId !== undefined,
   });
 }
 
 // ─── 站点授权用户 ─────────────────────────────────────────────────────────────
 export function useCmsSiteUsers(siteId: number | undefined, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsSiteContract.users, { params: { id: siteId ?? 0 } }),
+  return useApiQuery(cmsSiteContract.users, { params: { id: siteId ?? 0 } }, {
     enabled: enabled && siteId !== undefined,
   });
 }
@@ -130,8 +137,7 @@ export function useEnableSiteAnalytics() {
 
 // ─── 开放应用授权（Headless 写入的 fail-closed 边界）───────────────────────────
 export function useCmsOpenGrants(siteId: number | undefined, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsSiteContract.openGrants, { params: { id: siteId ?? 0 } }),
+  return useApiQuery(cmsSiteContract.openGrants, { params: { id: siteId ?? 0 } }, {
     enabled: enabled && siteId !== undefined,
   });
 }
@@ -150,7 +156,7 @@ export function useDeleteCmsOpenGrant() {
 }
 
 // ─── 站群层级：受权站点树 / 继承链 / 有效配置 / 移动 / 继承策略 ────────────────
-function invalidateHierarchy(qc: ReturnType<typeof useQueryClient>) {
+function invalidateHierarchy(qc: QueryClient) {
   for (const key of cmsSiteKeys.hierarchy) void qc.invalidateQueries({ queryKey: key });
 }
 
@@ -159,25 +165,30 @@ export function useCmsSiteTree(params: CmsSiteTreeParams, enabled = true) {
 }
 
 export function useCmsSiteInheritanceChain(siteId: number | undefined, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsSiteContract.inheritanceChain, { params: { id: siteId ?? 0 } }),
+  return useApiQuery(cmsSiteContract.inheritanceChain, { params: { id: siteId ?? 0 } }, {
     enabled: enabled && siteId !== undefined,
   });
 }
 
 export function useCmsSiteEffectiveConfig(siteId: number | undefined, enabled = true) {
-  return useQuery({
-    ...apiQueryOptions(cmsSiteContract.effectiveConfig, { params: { id: siteId ?? 0 } }),
+  return useApiQuery(cmsSiteContract.effectiveConfig, { params: { id: siteId ?? 0 } }, {
     enabled: enabled && siteId !== undefined,
   });
 }
 
-/** 移动子树改变父子关系与深度：站点列表 / 详情 / 下拉源与全部层级视图都要回源 */
+/**
+ * 移动子树改变父子关系与深度：站点列表（parentId / depth 列）、被移动子树内每个站点的详情、
+ * 站点下拉源（层级排序）与全部层级视图都要回源；服务端还会为受影响站点排队重建任务。
+ * 主题元数据与授权名单不含层级信息，不动。
+ */
 export function useMoveCmsSite() {
   return useApiMutation(cmsSiteContract.move, {
     invalidate: (qc) => {
-      void qc.invalidateQueries({ queryKey: cmsSiteKeys.all });
+      void qc.invalidateQueries({ queryKey: cmsSiteKeys.lists });
+      void qc.invalidateQueries({ queryKey: cmsSiteKeys.details });
+      void qc.invalidateQueries({ queryKey: cmsSiteKeys.allSites });
       invalidateHierarchy(qc);
+      invalidateCmsPublishingViews(qc);
     },
   });
 }
@@ -188,7 +199,7 @@ export function useUpdateCmsSiteInheritance() {
     invalidate: (qc, _output, { params }) => {
       void qc.invalidateQueries({ queryKey: cmsSiteKeys.detail(params.id) });
       invalidateHierarchy(qc);
-      void qc.invalidateQueries({ queryKey: cmsPublishingKeys.all });
+      invalidateCmsPublishingViews(qc);
     },
   });
 }
@@ -199,31 +210,39 @@ export function cmsSiteExportUrl(siteId: number): string {
   return urlOf(cmsSiteContract.export, { params: { id: siteId } });
 }
 
+/** 导入包一次事务写入的契约域（对应 CmsSiteImportResult.counts） */
+const IMPORT_AFFECTED_CONTRACTS = [
+  cmsSiteContract,
+  cmsChannelContract,
+  cmsContentContract,
+  cmsTagContract,
+  cmsResourceContract,
+  cmsFriendLinkContract,
+  cmsAdContract,
+  cmsFormContract,
+  cmsInteractionContract,
+  cmsModelContract,
+  cmsWidgetContract,
+  cmsPageContract,
+] as const;
+
 /**
- * 全量导入：一次事务写入站点、栏目、内容、标签、资源、友链、重定向、内链词、
- * 广告、表单、单页等 19 张表，无法逐条定位，故按受影响的域根整体失效。
- * 仅失效站点域会让其余列表停留在导入前的旧数据。
+ * 全量导入：一次事务写入站点、栏目、内容、标签、资源、友链（含分组）、重定向、内链词、广告（含广告位）、
+ * 表单、互动问卷、内容模型、页面部件、单页等 19 张表，无法逐条定位，故按受影响契约的资源根整体失效
+ * （query-cache.md：批量覆盖 / 全量导入是允许域根失效的两种情形之一）。
+ * 站点契约根会连带主题元数据一起打掉：导入包可能带站点级模板覆盖，模板清单确实会变。
+ * SEO 域只失效重定向与内链词两张列表，推送日志不受导入影响。
  */
+export function invalidateAfterCmsSiteImport(qc: QueryClient) {
+  for (const contract of IMPORT_AFFECTED_CONTRACTS) {
+    void qc.invalidateQueries({ queryKey: [resourceKeyOf(contract.basePath)] });
+  }
+  void qc.invalidateQueries({ queryKey: cmsRedirectKeys.lists });
+  void qc.invalidateQueries({ queryKey: cmsLinkWordKeys.lists });
+  invalidateCmsPublishingViews(qc);
+}
+
+/** 导入站点：`mutate({ body: 导出包 JSON })` */
 export function useImportCmsSite() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (pkg: Record<string, unknown>) => api(cmsSiteContract.import, { body: pkg }),
-    onSuccess: () => {
-      for (const key of [
-        cmsSiteKeys.all,
-        cmsChannelKeys.all,
-        cmsContentKeys.all,
-        cmsTagKeys.all,
-        cmsResourceKeys.all,
-        cmsFriendLinkKeys.all,
-        cmsRedirectKeys.lists,
-        cmsLinkWordKeys.lists,
-        cmsAdKeys.all,
-        cmsFormKeys.all,
-        cmsPageKeys.all,
-      ]) {
-        void qc.invalidateQueries({ queryKey: key });
-      }
-    },
-  });
+  return useApiMutation(cmsSiteContract.import, { invalidate: invalidateAfterCmsSiteImport });
 }
