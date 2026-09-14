@@ -107,6 +107,7 @@ export const FORM_FIELD_TYPES: FormFieldTypeInfo[] = [
   { type: 'image',        label: '图片',     icon: ImageIcon,     group: '高级控件', description: '上传图片' },
   { type: 'region',       label: '省市区',   icon: MapPin,        group: '高级控件', description: '省市区联动选择' },
   { type: 'location',     label: '定位',     icon: LocateFixed,   group: '高级控件', description: '获取经纬度并填写地址' },
+  { type: 'mapPicker',    label: '地图选址', icon: MapPin,        group: '高级控件', description: '天地图/高德/腾讯/百度 选点 + 逆地理编码' },
   { type: 'signature',    label: '手写签名', icon: PenTool,       group: '高级控件', description: '手写签名板' },
   { type: 'richtext',     label: '富文本',   icon: TextQuote,     group: '高级控件', description: '富文本编辑器' },
   { type: 'detail',       label: '明细',     icon: Table,         group: '高级控件', description: '明细/表格，含子字段' },

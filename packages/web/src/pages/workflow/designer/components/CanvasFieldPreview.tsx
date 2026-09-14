@@ -118,6 +118,13 @@ function CanvasFieldPreview({ field }: Readonly<{ field: WorkflowFormField }>) {
           <Button disabled>获取定位</Button>
         </div>
       );
+    case 'mapPicker':
+      return (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Input disabled placeholder={field.placeholder ?? '详细地址'} />
+          <Button disabled>选择位置</Button>
+        </div>
+      );
     case 'tags':
       return <TagInput style={w} disabled placeholder={field.placeholder ?? '输入后回车添加'} />;
     case 'rate':

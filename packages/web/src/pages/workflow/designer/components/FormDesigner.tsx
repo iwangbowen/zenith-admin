@@ -228,6 +228,9 @@ function createField(type: WorkflowFormFieldType): WorkflowFormField {
     case 'location':
       field.placeholder = '点击右侧按钮获取定位或手动填写地址';
       break;
+    case 'mapPicker':
+      field.placeholder = '请输入详细地址，或点击下方按钮获取 / 选择位置';
+      break;
     case 'formula':
       field.formula = '';
       field.precision = 2;

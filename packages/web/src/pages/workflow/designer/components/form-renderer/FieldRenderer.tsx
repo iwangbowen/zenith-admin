@@ -24,6 +24,7 @@ import {
 import { FormDetailTable } from './DetailTableInput';
 import { FormMatrix } from './MatrixInput';
 import { FormLocation } from './LocationInput';
+import { FormMapPicker, MapPickerConfigContext } from '../MapPicker/FormMapPicker';
 import { FormOptionInput } from './OptionInput';
 import { READONLY_TEXT_TYPES } from './read-only-text';
 import { ReadOnlyFieldValue } from './ReadOnlyFieldValue';
@@ -478,6 +479,30 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
           rules={locationRules} disabled={disabled}
           {...extraProps}
         />
+      );
+    }
+
+    case 'mapPicker': {
+      const mapPickerRules = dynamicRequired
+        ? [{
+          validator: (_r: unknown, v: unknown) => {
+            const val = (v ?? {}) as { lng?: number; address?: string };
+            return !!val.address || val.lng != null;
+          },
+          message: `请填写${field.label}`,
+        }]
+        : undefined;
+      return (
+        <MapPickerConfigContext.Provider
+          value={{ provider: field.mapProvider, defaultCenter: field.mapDefaultCenter, defaultZoom: field.mapDefaultZoom, popupPc: field.mapPopupPc, popupMobile: field.mapPopupMobile }}
+        >
+          <FormMapPicker
+            field={field.key} label={fieldLabelNode(field, dynamicRequired)}
+            placeholder={field.placeholder}
+            rules={mapPickerRules} disabled={disabled}
+            {...extraProps}
+          />
+        </MapPickerConfigContext.Provider>
       );
     }
 

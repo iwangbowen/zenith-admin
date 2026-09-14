@@ -155,4 +155,4 @@ export function deriveOptionItems(field: WorkflowFormField): WorkflowFormFieldOp
 
 // ─── select 联动赋值：选中某选项时自动填充其它字段 ──────────────────
 
-export const AUTOFILL_EXCLUDE = new Set<WorkflowFormFieldType>(['row', 'group', 'divider', 'description', 'detail', 'tabs', 'steps', 'matrix', 'location', 'attachment', 'image', 'signature']);
+export const AUTOFILL_EXCLUDE = new Set<WorkflowFormFieldType>(['row', 'group', 'divider', 'description', 'detail', 'tabs', 'steps', 'matrix', 'location', 'attachment', 'image', 'signature', 'mapPicker']);
