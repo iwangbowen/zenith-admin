@@ -4,7 +4,7 @@ import { Button, Checkbox, DatePicker, Input, InputNumber, Select, Space, Tag, M
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Save, Upload } from 'lucide-react';
 import { type RuleDecisionTable, type RuleEvaluateResult, type RuleTestRunResult, type RuleHitPolicy, type RuleTestCase, type RuleUsageItem, type RuleDecisionTableSettings, type RuleShadowRunResult, type RuleSimulateResult, decisionTableContract } from '@zenith/shared/rules';
-import { EMPTY_PLACEHOLDER, createdAtColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, copyableNoColumn, createdAtColumn, renderEllipsis } from '@/utils/table-columns';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import DecisionTableEditor from './DecisionTableEditor';
@@ -756,7 +756,7 @@ export default function RuleTablesPage() {
   };
 
   const columns: ColumnProps<RuleDecisionTable>[] = [
-    { title: 'Key', dataIndex: 'key', width: 160, render: (t: string) => <Text code>{t}</Text> },
+    copyableNoColumn<RuleDecisionTable>('Key', 'key', { width: 200 }),
     { title: '名称', dataIndex: 'name', minWidth: 160, render: renderEllipsis },
     { title: '命中策略', dataIndex: 'hitPolicy', width: 110, render: (p: string) => HIT_POLICIES.find((x) => x.value === p)?.label ?? p },
     { title: '规模', width: 120, render: (_: unknown, r: RuleDecisionTable) => <Text type="tertiary" size="small">{r.inputs.length}入/{r.outputs.length}出/{r.rules.length}行</Text> },

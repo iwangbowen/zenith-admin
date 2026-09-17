@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
-import { Button, ColorPicker, InputNumber, Popover, Radio, RadioGroup, Select, Switch, Tooltip } from '@douyinfe/semi-ui';
-import { Check, ClipboardPaste, Copy, Info, Palette } from 'lucide-react';
+import { Button, InputNumber, Popover, Radio, RadioGroup, Select, Switch, Tooltip } from '@douyinfe/semi-ui';
+import { ClipboardPaste, Copy, Info } from 'lucide-react';
 import { LOADING_STYLE_OPTIONS, DARK_SURFACE_TONE_OPTIONS, UI_SCALE_OPTIONS, FONT_FAMILY_OPTIONS } from '@/hooks/usePreferences';
 import { clearAllListFilterSnapshots } from '@/lib/list-filter-memory';
 import type { NavLayout, TableSizePreference, RouteAnimation, BorderRadiusPreference, TabStyle, TabSize, TabType, DarkSurfaceTone, UserPreferences, UiScale, FontFamilyPreference, WeekStart, TimeDisplay } from '@/hooks/usePreferences';
 import type { ThemeMode } from '@/hooks/useTheme';
 import { THEME_COLOR_PRESETS } from '@/lib/theme-color';
+import { SwatchColorPicker } from '@/components/SwatchColorPicker';
 import { confirmDanger } from '@/utils/confirm';
 import { LoadingIndicator } from '@/components/PageLoading';
 import { PreferenceControl, PreferenceSection } from '@/components/settings/SettingRow';
@@ -256,49 +257,15 @@ export function PrefsAppearanceSection({
       <PreferenceControl path="themeColor">
       <div>
         <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 500, color: 'var(--semi-color-text-0)' }}>主题颜色</div>
-        <div className="theme-color-picker">
-          {THEME_COLOR_PRESETS.map((preset) => {
-            const currentColor = isDark ? preset.dark.primary : preset.light.primary;
-            const isActive = themeColor === preset.key;
-            return (
-              <Tooltip key={preset.key} content={preset.name} position="top">
-                <button
-                  type="button"
-                  className={`theme-color-swatch${isActive ? ' theme-color-swatch--active' : ''}`}
-                  style={{ backgroundColor: currentColor, color: currentColor }}
-                  onClick={() => setThemeColor(preset.key)}
-                  title={preset.name}
-                >
-                  {isActive && (
-                    <span className="theme-color-swatch__check">
-                      <Check size={14} strokeWidth={2.5} />
-                    </span>
-                  )}
-                </button>
-              </Tooltip>
-            );
-          })}
-          {/* 自定义颜色 */}
-          <ColorPicker
-            alpha={false}
-            usePopover
-            value={themeColor.startsWith('#') ? ColorPicker.colorStringToValue(themeColor) : undefined}
-            onChange={(v) => setThemeColor(v.hex)}
-            popoverProps={{ position: 'top', zIndex: 10010 }}
-          >
-            <button
-              type="button"
-              className={`theme-color-swatch theme-color-swatch--custom${themeColor.startsWith('#') ? ' theme-color-swatch--active' : ''}`}
-              style={themeColor.startsWith('#') ? { backgroundColor: themeColor, color: themeColor } : {}}
-              title="自定义颜色"
-            >
-              {themeColor.startsWith('#')
-                ? <span className="theme-color-swatch__check"><Check size={14} strokeWidth={2.5} /></span>
-                : <span className="theme-color-swatch__icon"><Palette size={14} /></span>
-              }
-            </button>
-          </ColorPicker>
-        </div>
+        <SwatchColorPicker
+          value={themeColor}
+          onChange={setThemeColor}
+          options={THEME_COLOR_PRESETS.map((preset) => ({
+            key: preset.key,
+            label: preset.name,
+            color: isDark ? preset.dark.primary : preset.light.primary,
+          }))}
+        />
       </div>
       </PreferenceControl>
       )}

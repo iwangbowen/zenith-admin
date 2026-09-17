@@ -1,11 +1,13 @@
-import { useEffect, useState, useRef } from 'react';
-import { Form, Input, Space, Typography } from '@douyinfe/semi-ui';
+import { useEffect, useState } from 'react';
+import { Form, Space, Typography } from '@douyinfe/semi-ui';
 import { Tags } from 'lucide-react';
 import { tagContract, type CreateTagInput, type Tag } from '@zenith/shared/platform';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
 import { useEditModal } from '@/hooks/useEditModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { SwatchColorPicker } from '@/components/SwatchColorPicker';
+import { THEME_COLOR_PRESETS } from '@/lib/theme-color';
 import { confirmAndDelete, ListSearchToolbar, useStatusToggle, useRowSelection, useCrudOperationColumn } from '@/components/list-page';
 import { createdAtColumn, renderEllipsis } from '../../../utils/table-columns';
 import {
@@ -43,71 +45,12 @@ function ColorDot({ color }: { color: string | null }) {
   );
 }
 
-function ColorInput({ value, onChange }: { readonly value?: string; readonly onChange?: (v: string) => void }) {
-  const [text, setText] = useState(value ?? '');
-  const nativeRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => { setText(value ?? ''); }, [value]);
-
-  const isValidHex = (v: string) => /^#[0-9a-fA-F]{6}$/.test(v);
-
-  const handleTextChange = (v: string) => {
-    setText(v);
-    if (isValidHex(v) || v === '') onChange?.(v);
-  };
-
-  const handleNativeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const c = e.target.value;
-    setText(c);
-    onChange?.(c);
-  };
-
-  return (
-    <Input
-      value={text}
-      onChange={handleTextChange}
-      placeholder="#2563eb（留空则无颜色）"
-      prefix={
-        <button
-          type="button"
-          title="点击选色"
-          style={{
-            display: 'inline-flex',
-            width: 16,
-            height: 16,
-            borderRadius: 'var(--semi-border-radius-small)',
-            background: isValidHex(text) ? text : '#e5e7eb',
-            border: '1px solid rgba(0,0,0,0.15)',
-            cursor: 'pointer',
-            overflow: 'hidden',
-            position: 'relative',
-            padding: 0,
-            flexShrink: 0,
-          }}
-          onClick={() => nativeRef.current?.click()}
-        >
-          <input
-            ref={nativeRef}
-            type="color"
-            value={isValidHex(text) ? text : '#2563eb'}
-            onChange={handleNativeChange}
-            style={{
-              position: 'absolute',
-              width: '300%',
-              height: '300%',
-              top: '-100%',
-              left: '-100%',
-              opacity: 0,
-              cursor: 'pointer',
-              border: 'none',
-              padding: 0,
-            }}
-          />
-        </button>
-      }
-    />
-  );
-}
+/** 标签色板选项：存档值为 hex，与个人偏好主题色同款色板交互 */
+const TAG_COLOR_OPTIONS = THEME_COLOR_PRESETS.map((preset) => ({
+  key: preset.light.primary,
+  label: preset.name,
+  color: preset.light.primary,
+}));
 
 export default function TagsPage() {
   const { hasPermission: can } = usePermission();
@@ -242,7 +185,7 @@ export default function TagsPage() {
         {...tableProps}
       />
 
-      <EditFormModal modal={tagModal} afterClose={() => { setColorValue(''); }} width={520}>
+      <EditFormModal modal={tagModal} afterClose={() => { setColorValue(''); }} width={640}>
         <Form.Input
           field="name"
           label="标签名称"
@@ -250,7 +193,13 @@ export default function TagsPage() {
           rules={[{ required: true, message: '标签名称不能为空' }]}
         />
         <Form.Slot label="颜色">
-          <ColorInput value={colorValue} onChange={setColorValue} />
+          <SwatchColorPicker
+            value={colorValue}
+            onChange={setColorValue}
+            options={TAG_COLOR_OPTIONS}
+            allowClear
+            clearTitle="无颜色（留空则无颜色）"
+          />
         </Form.Slot>
         <Form.Input
           field="groupName"
