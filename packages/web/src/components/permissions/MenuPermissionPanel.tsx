@@ -134,8 +134,9 @@ export function MenuPermissionPanel({
         treeNodeFilterProp="filterLabel"
         showFilteredOnly
         searchPlaceholder="搜索菜单名称"
+        // 唯一的滚动容器：虚拟列表内部滚动；外层不定高（搜索框 + 400 列表自适应），
+        // 否则外层 448 与内层 400 两个滚动容器叠加出现双滚动条
         virtualize={{ height: 400, itemSize: 36 }}
-        style={{ height: 448 }}
       />
     </>
   );
