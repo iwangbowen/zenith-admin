@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Button, Select, Space, Form, Toast, Tag, Row, Col, Tree } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -722,11 +723,10 @@ export default function UsersPage() {
                 />
               </Col>
               <Col span={12}>
-                <Form.Input
+                <FormPasswordInput
                   field="password"
                   label="密码"
                   placeholder="请输入密码"
-                  type="password"
                   rules={[{ required: true, message: '请输入密码' }]}
                   onChange={(v) => setCreatePwdVal(String(v ?? ''))}
                   helpText={<PasswordStrengthMeter password={createPwdVal} policy={passwordPolicy} />}
@@ -812,11 +812,10 @@ export default function UsersPage() {
       </EditFormModal>
 
       <EditFormModal modal={passwordModal} title={passwordModal.editing ? `修改密码 - ${passwordModal.editing.nickname}` : '修改密码'} onCancel={() => { passwordModal.close(); setEditPwdVal(''); }} width={420}>
-        <Form.Input
+        <FormPasswordInput
           field="password"
           label="新密码"
           placeholder="请输入新密码"
-          mode="password"
           rules={[
             { required: true, message: '请输入新密码' },
             { min: 6, message: '密码至少 6 个字符' },
@@ -824,11 +823,10 @@ export default function UsersPage() {
           onChange={(v) => setEditPwdVal(String(v ?? ''))}
           helpText={<PasswordStrengthMeter password={editPwdVal} policy={passwordPolicy} />}
         />
-        <Form.Input
+        <FormPasswordInput
           field="confirmPassword"
           label="确认密码"
           placeholder="请再次输入新密码"
-          mode="password"
           rules={[{ required: true, message: '请确认新密码' }]}
         />
       </EditFormModal>
@@ -865,19 +863,17 @@ export default function UsersPage() {
           labelPosition="left"
           labelWidth={90}
         >
-          <Form.Input
+          <FormPasswordInput
             field="password"
             label="新密码"
-            type="password"
             placeholder={passwordPolicy ? formatPasswordPolicyHint(passwordPolicy) : '请输入新密码'}
             rules={[{ required: true, message: '请输入新密码' }]}
             onChange={(v) => setBatchPwdVal(String(v ?? ''))}
             helpText={<PasswordStrengthMeter password={batchPwdVal} policy={passwordPolicy} />}
           />
-          <Form.Input
+          <FormPasswordInput
             field="confirmPassword"
             label="确认密码"
-            type="password"
             placeholder="请再次输入新密码"
             rules={[{ required: true, message: '请确认密码' }]}
           />

@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useState } from 'react';
 import { ListSearchToolbar, useCrudOperationColumn } from '@/components/list-page';
 import { Banner, Col, Form, Row, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
@@ -203,7 +204,7 @@ export default function MpAccountsPage() {
                 rules={[{ required: true, message: '请输入 AppID' }]} />
             </Col>
             <Col span={12}>
-              <Form.Input field="appSecret" label="AppSecret" mode="password"
+              <FormPasswordInput field="appSecret" label="AppSecret"
                 placeholder={modal.isEdit ? '不修改请留空' : '请输入 AppSecret'}
                 rules={modal.isEdit ? [] : [{ required: true, message: '请输入 AppSecret' }]} />
             </Col>

@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useState } from 'react';
 import { Form, Input, Select, Spin, Toast, Row, Col, Typography, Tag, Banner, SideSheet, Table } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -253,16 +254,16 @@ export default function WorkflowConnectorsPage() {
           {authType === 'apiKey' && (
             <Row gutter={16}>
               <Col span={12}><Form.Input field="apiKeyHeader" label="API Key 头名" placeholder="默认 X-API-Key" /></Col>
-              <Col span={12}><Form.Input field="apiKey" label="API Key" mode="password" /></Col>
+              <Col span={12}><FormPasswordInput field="apiKey" label="API Key" /></Col>
             </Row>
           )}
           {authType === 'bearer' && (
-            <Form.Input field="token" label="Bearer Token" mode="password" />
+            <FormPasswordInput field="token" label="Bearer Token" />
           )}
           {authType === 'basic' && (
             <Row gutter={16}>
               <Col span={12}><Form.Input field="username" label="Basic 用户名" /></Col>
-              <Col span={12}><Form.Input field="password" label="Basic 密码" mode="password" /></Col>
+              <Col span={12}><FormPasswordInput field="password" label="Basic 密码" /></Col>
             </Row>
           )}
           {editing && <Form.Checkbox field="clearCredentials" noLabel>清空已配置凭据</Form.Checkbox>}

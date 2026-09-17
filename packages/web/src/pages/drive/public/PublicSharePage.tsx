@@ -1,3 +1,4 @@
+import { PasswordInput } from '@/components/PasswordInput';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Breadcrumb, Button, Empty, Input, Progress, Spin, Table, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
@@ -233,7 +234,7 @@ export default function PublicSharePage() {
         <Typography.Title heading={5} style={{ margin: 0 }}>此分享需要访问密码</Typography.Title>
         <Typography.Text type="tertiary">{meta.sharerName ? `${meta.sharerName} 分享` : '匿名分享'}{meta.expireAt ? ` · ${formatDateTime(meta.expireAt)} 到期` : ''}</Typography.Text>
         <div style={{ display: 'flex', gap: 8, width: '100%', maxWidth: 360 }}>
-          <Input mode="password" value={password} onChange={setPassword} placeholder="输入访问密码" onEnterPress={() => void unlock(password)} autoFocus aria-label="访问密码" />
+          <PasswordInput value={password} onChange={setPassword} placeholder="输入访问密码" onEnterPress={() => void unlock(password)} autoFocus aria-label="访问密码" />
           <Button theme="solid" loading={verifying} disabled={!password} onClick={() => void unlock(password)}>访问</Button>
         </div>
       </div>

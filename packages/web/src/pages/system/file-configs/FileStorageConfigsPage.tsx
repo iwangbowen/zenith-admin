@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useEffect, useState } from 'react';
 import { Button, Col, Form, Radio, Row, Select, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { PlugZap } from 'lucide-react';
@@ -568,11 +569,10 @@ export default function FileStorageConfigsPage() {
               </Row>
               <Row gutter={16}>
                 <Col span={24}>
-                  <Form.Input
+                  <FormPasswordInput
                     field="ossAccessKeySecret"
                     label="AccessKey Secret"
                     placeholder={modal.isEdit ? '留空表示不修改' : '请输入 AccessKey Secret'}
-                    type="password"
                     rules={modal.isEdit ? [] : [{ required: true, message: '请输入 AccessKey Secret' }]}
                   />
                 </Col>
@@ -602,11 +602,10 @@ export default function FileStorageConfigsPage() {
               </Row>
               <Row gutter={16}>
                 <Col span={24}>
-                  <Form.Input
+                  <FormPasswordInput
                     field="s3SecretAccessKey"
                     label="Secret Access Key"
                     placeholder={modal.isEdit ? '留空表示不修改' : '请输入 Secret Access Key'}
-                    type="password"
                     rules={modal.isEdit ? [] : [{ required: true, message: '请输入 Secret Access Key' }]}
                   />
                 </Col>
@@ -632,11 +631,10 @@ export default function FileStorageConfigsPage() {
               </Row>
               <Row gutter={16}>
                 <Col span={24}>
-                  <Form.Input
+                  <FormPasswordInput
                     field="cosSecretKey"
                     label="SecretKey"
                     placeholder={modal.isEdit ? '留空表示不修改' : '请输入 SecretKey'}
-                    type="password"
                     rules={modal.isEdit ? [] : [{ required: true, message: '请输入 SecretKey' }]}
                   />
                 </Col>
@@ -663,7 +661,7 @@ export default function FileStorageConfigsPage() {
               </Row>
               <Row gutter={16}>
                 <Col span={24}>
-                  <Form.Input field="obsSecretAccessKey" label="Secret Access Key" placeholder={modal.isEdit ? '留空表示不修改' : '请输入 Secret Access Key'} type="password" rules={modal.isEdit ? [] : [{ required: true, message: '请输入 Secret Access Key' }]} />
+                  <FormPasswordInput field="obsSecretAccessKey" label="Secret Access Key" placeholder={modal.isEdit ? '留空表示不修改' : '请输入 Secret Access Key'} rules={modal.isEdit ? [] : [{ required: true, message: '请输入 Secret Access Key' }]} />
                 </Col>
               </Row>
             </>
@@ -691,7 +689,7 @@ export default function FileStorageConfigsPage() {
               </Row>
               <Row gutter={16}>
                 <Col span={24}>
-                  <Form.Input field="kodoSecretKey" label="Secret Key" placeholder={modal.isEdit ? '留空表示不修改' : '请输入 Secret Key'} type="password" rules={modal.isEdit ? [] : [{ required: true, message: '请输入 Secret Key' }]} />
+                  <FormPasswordInput field="kodoSecretKey" label="Secret Key" placeholder={modal.isEdit ? '留空表示不修改' : '请输入 Secret Key'} rules={modal.isEdit ? [] : [{ required: true, message: '请输入 Secret Key' }]} />
                 </Col>
               </Row>
             </>
@@ -716,7 +714,7 @@ export default function FileStorageConfigsPage() {
               </Row>
               <Row gutter={16}>
                 <Col span={24}>
-                  <Form.Input field="bosSecretAccessKey" label="Secret Access Key" placeholder={modal.isEdit ? '留空表示不修改' : '请输入 Secret Key'} type="password" rules={modal.isEdit ? [] : [{ required: true, message: '请输入 Secret Access Key' }]} />
+                  <FormPasswordInput field="bosSecretAccessKey" label="Secret Access Key" placeholder={modal.isEdit ? '留空表示不修改' : '请输入 Secret Key'} rules={modal.isEdit ? [] : [{ required: true, message: '请输入 Secret Access Key' }]} />
                 </Col>
               </Row>
             </>
@@ -734,7 +732,7 @@ export default function FileStorageConfigsPage() {
               </Row>
               <Row gutter={16}>
                 <Col span={24}>
-                  <Form.Input field="azureAccountKey" label="Account Key" placeholder={modal.isEdit ? '留空表示不修改' : '存储账户密钥'} type="password" rules={modal.isEdit ? [] : [{ required: true, message: '请输入 Account Key' }]} />
+                  <FormPasswordInput field="azureAccountKey" label="Account Key" placeholder={modal.isEdit ? '留空表示不修改' : '存储账户密钥'} rules={modal.isEdit ? [] : [{ required: true, message: '请输入 Account Key' }]} />
                 </Col>
               </Row>
               <Row gutter={16}>
@@ -760,7 +758,7 @@ export default function FileStorageConfigsPage() {
                   <Form.Input field="sftpUsername" label="用户名" placeholder="登录用户名" rules={[{ required: true, message: '请输入用户名' }]} />
                 </Col>
                 <Col span={12}>
-                  <Form.Input field="sftpPassword" label="密码" placeholder={modal.isEdit ? '留空表示不修改' : '密码或私钥二选一'} type="password" />
+                  <FormPasswordInput field="sftpPassword" label="密码" placeholder={modal.isEdit ? '留空表示不修改' : '密码或私钥二选一'} />
                 </Col>
               </Row>
               <Row gutter={16}>

@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useState } from 'react';
 import { ArrayField, Button, Col, Form, Row, SideSheet, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -188,7 +189,7 @@ export default function FormsPage() {
               <Form.Input field="turnstileSiteKey" label="Turnstile Site Key" maxLength={200} />
             </Col>
             <Col span={12}>
-              <Form.Input field="turnstileSecret" type="password" label="Turnstile Secret" maxLength={500} placeholder="留空或保留掩码表示不修改" />
+              <FormPasswordInput field="turnstileSecret" label="Turnstile Secret" maxLength={500} placeholder="留空或保留掩码表示不修改" />
             </Col>
           </Row>
           {modal.isEdit ? <Form.Checkbox field="clearTurnstileSecret" noLabel>清除已配置的 Turnstile Secret</Form.Checkbox> : null}

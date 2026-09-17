@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useMemo, useState } from 'react';
 import { Divider, Form, Modal, Tag, Toast, Typography, Row, Col } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -297,7 +298,7 @@ export default function DirectorySyncSourcesPage() {
                       Corp ID 复用「OAuth 配置」页；通讯录同步使用独立的通讯录 Secret（≠ 应用 Secret），在下方填写
                     </div>
                   </Form.Slot>
-                  <Form.Input field="contactSecret" label="通讯录 Secret" type="password"
+                  <FormPasswordInput field="contactSecret" label="通讯录 Secret"
                     placeholder={modal.isEdit && modal.editing?.contactSecretSet ? '已配置；留空保持不变' : '企业微信管理后台 → 通讯录同步 → Secret'}
                     rules={modal.isEdit && modal.editing?.contactSecretSet ? [] : [{ required: true, message: '企业微信源必须填写通讯录 Secret' }]} />
                 </>
@@ -321,7 +322,7 @@ export default function DirectorySyncSourcesPage() {
                       <Typography.Text type="tertiary">保存后自动生成，配置到 Azure AD / Okta 的租户 URL</Typography.Text>
                     )}
                   </Form.Slot>
-                  <Form.Input field="callbackToken" label="Bearer Token" type="password"
+                  <FormPasswordInput field="callbackToken" label="Bearer Token"
                     placeholder={modal.isEdit && modal.editing?.callbackTokenSet ? '已配置；留空保持不变' : 'IdP 侧 Secret Token，建议 32 位以上随机串'}
                     rules={modal.isEdit && modal.editing?.callbackTokenSet ? [] : [{ required: true, message: 'SCIM 源必须设置 Bearer Token' }]}
                     helpText="IdP 以 Authorization: Bearer <token> 调用本端 SCIM 接口" />
@@ -393,10 +394,10 @@ export default function DirectorySyncSourcesPage() {
                       <Typography.Text type="tertiary">保存后自动生成，配置到平台的事件订阅地址</Typography.Text>
                     )}
                   </Form.Slot>
-                  <Form.Input field="callbackToken" label="回调 Token" type="password"
+                  <FormPasswordInput field="callbackToken" label="回调 Token"
                     placeholder={modal.isEdit && modal.editing?.callbackTokenSet ? '已配置；留空保持不变' : type === 'feishu' ? 'Verification Token（可空）' : '与平台回调配置一致的 Token'}
                     helpText="收到事件后置位标记，由系统调度在一分钟内触发一次幂等同步" />
-                  <Form.Input field="callbackAesKey" label="回调 AES Key" type="password"
+                  <FormPasswordInput field="callbackAesKey" label="回调 AES Key"
                     placeholder={modal.isEdit && modal.editing?.callbackAesKeySet ? '已配置；留空保持不变' : type === 'feishu' ? 'Encrypt Key（明文模式可空）' : '43 位 EncodingAESKey'} />
                 </>
               )}

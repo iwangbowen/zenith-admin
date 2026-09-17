@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useState } from 'react';
 import { Form, Button, Toast, Space, Typography, Divider, Tabs, TabPane } from '@douyinfe/semi-ui';
 import PageLoading from '@/components/PageLoading';
@@ -86,10 +87,9 @@ export default function OAuthConfigPage() {
                   }}
                 >
                   <Form.Input field="clientId" label="Client ID" placeholder="请输入 Client ID" />
-                  <Form.Input
+                  <FormPasswordInput
                     field="clientSecret"
                     label="Client Secret"
-                    type="password"
                     placeholder="请输入 Client Secret"
                   />
                   {extra?.agentId && (

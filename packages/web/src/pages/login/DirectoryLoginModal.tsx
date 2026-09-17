@@ -82,7 +82,7 @@ function DirectoryLoginForm({ loading, onCancel, onSubmit }: Readonly<Omit<Direc
         id="directory-login-password"
         label="密码"
         labelPosition="left"
-        type="password"
+        mode="password"
         placeholder="目录密码"
         prefix={<Lock />}
         size="large"

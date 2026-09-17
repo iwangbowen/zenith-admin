@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useNavigate } from 'react-router-dom';
 import { Button, Col, Form, Row, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -339,10 +340,9 @@ export default function DataSourcesPage() {
                 </Row>
                 <Row gutter={16}>
                   <Col span={12}>
-                    <Form.Input
+                    <FormPasswordInput
                       field="password"
                       label="密码"
-                      mode="password"
                       placeholder={editing ? '留空表示不修改' : '请输入密码'}
                       helpText={editing && externalConfig.hasPassword ? '已保存密码，留空表示继续使用原密码' : undefined}
                     />

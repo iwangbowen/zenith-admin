@@ -1,4 +1,5 @@
-import { Input, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
+import { PasswordInput } from '@/components/PasswordInput';
+import { TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import { AppModal } from '@/components/AppModal';
 import type { InAppMessage } from '@zenith/shared/messaging';
 import type { UserPreferences } from '@/hooks/usePreferences';
@@ -102,14 +103,12 @@ export function LockPasswordModal({
       closeOnEsc
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <Input
-          type="password"
+        <PasswordInput
           placeholder="请输入密码（至少 4 位）"
           value={newLockPassword}
           onChange={(v) => setNewLockPassword(v)}
         />
-        <Input
-          type="password"
+        <PasswordInput
           placeholder="请再次输入密码"
           value={confirmLockPassword}
           onChange={(v) => setConfirmLockPassword(v)}

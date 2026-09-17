@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useMemo } from 'react';
 import { Banner, Descriptions, Form, Tag, Typography } from '@douyinfe/semi-ui';
 import { IMPERSONATION_DURATION_OPTIONS, type User } from '@zenith/shared/identity';
@@ -67,10 +68,9 @@ export function ImpersonateModal({ modal }: Readonly<{ modal: UseEditModalReturn
         <Form.Radio value="write" disabled={!allowWrite}>可操作</Form.Radio>
       </Form.RadioGroup>
       <Form.Select field="durationMinutes" label="时长" optionList={durationOptions} style={{ width: 200 }} />
-      <Form.Input
+      <FormPasswordInput
         field="password"
         label="当前密码"
-        mode="password"
         placeholder="输入你自己的登录密码以确认"
         autoComplete="current-password"
         rules={[{ required: true, message: '请输入当前账号密码' }]}

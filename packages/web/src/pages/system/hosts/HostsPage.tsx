@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useState } from 'react';
 import { Button, Col, Descriptions, Dropdown, Form, Row, SideSheet, Space, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -310,10 +311,10 @@ export default function HostsPage() {
               rows={8}
               placeholder={modal.isEdit ? '留空表示不修改' : '-----BEGIN OPENSSH PRIVATE KEY-----'}
             />
-            <Form.Input mode="password" field="keyPassphrase" label="私钥口令" placeholder="可选，留空表示不修改" />
+            <FormPasswordInput field="keyPassphrase" label="私钥口令" placeholder="可选，留空表示不修改" />
           </>
         ) : (
-          <Form.Input mode="password" field="password" label="SSH 密码" placeholder={modal.isEdit ? '留空表示不修改' : ''} />
+          <FormPasswordInput field="password" label="SSH 密码" placeholder={modal.isEdit ? '留空表示不修改' : ''} />
         )}
         <Form.TextArea field="remark" label="备注" rows={2} />
       </EditFormModal>

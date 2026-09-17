@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useState } from 'react';
 import { Form, Button, Typography, Toast, Tag, Space, Spin, Avatar, Modal, Tabs, List as SemiList, Descriptions, Divider, PinCode, Banner } from '@douyinfe/semi-ui';
 import { UserRound, Shield, Monitor, List, Key, LogOut, Plus, Copy, CheckCircle, Smartphone, ShieldCheck, BellRing, PenTool } from 'lucide-react';
@@ -509,19 +510,17 @@ export default function ProfilePage({ user }: ProfilePageProps) {
               <div className="profile-section">
                   <div className="section-title">修改密码</div>
                   <Form onSubmit={handleChangePassword} labelPosition="left" labelWidth={100}>
-                    <Form.Input
+                    <FormPasswordInput
                       field="oldPassword"
                       label="原密码"
                       placeholder="请输入原密码"
-                      mode="password"
                       rules={[{ required: true, message: '请输入原密码' }]}
                       style={{ width: 320 }}
                     />
-                    <Form.Input
+                    <FormPasswordInput
                       field="newPassword"
                       label="新密码"
                       placeholder="请输入新密码"
-                      mode="password"
                       rules={[
                         { required: true, message: '请输入新密码' },
                         ...(passwordPolicy?.minLength ? [{ min: passwordPolicy.minLength, message: `密码至少${passwordPolicy.minLength}个字符` }] : []),
@@ -530,11 +529,10 @@ export default function ProfilePage({ user }: ProfilePageProps) {
                       onChange={(v) => setChangePwdVal(String(v ?? ''))}
                       helpText={<PasswordStrengthMeter password={changePwdVal} policy={passwordPolicy} />}
                     />
-                    <Form.Input
+                    <FormPasswordInput
                       field="confirmPassword"
                       label="确认密码"
                       placeholder="请再次输入新密码"
-                      mode="password"
                       rules={[{ required: true, message: '请确认新密码' }]}
                       style={{ width: 320 }}
                     />

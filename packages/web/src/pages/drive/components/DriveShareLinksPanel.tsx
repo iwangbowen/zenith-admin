@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useState } from 'react';
 import { Button, Empty, Form, Popover, Spin, Table, Toast, Tooltip, Typography, useFormState } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -125,7 +126,7 @@ function ShareLinkFormFields({ node, editing }: { readonly node: DriveNode; read
           <Form.Checkbox field="collectRequireSubmitter" noLabel>要求提交人填写姓名</Form.Checkbox>
         </>
       )}
-      <Form.Input field="password" label="访问密码" placeholder={!isNew && editing.hasPassword ? '留空保持原密码' : '留空则无需密码'} mode="password" rules={[{ min: 4, message: '密码至少 4 位' }]} />
+      <FormPasswordInput field="password" label="访问密码" placeholder={!isNew && editing.hasPassword ? '留空保持原密码' : '留空则无需密码'} rules={[{ min: 4, message: '密码至少 4 位' }]} />
       {!isNew && editing.hasPassword && (
         <Form.Checkbox field="clearPassword" noLabel>移除访问密码（改为无需密码即可访问）</Form.Checkbox>
       )}

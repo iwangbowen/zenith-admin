@@ -340,7 +340,7 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
       <LoginField
         {...loginForm.field('password')}
         id="login-password"
-        type="password"
+        mode="password"
         placeholder="请输入密码"
         prefix={<Lock />}
         size="large"
@@ -429,7 +429,7 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
       <LoginField
         {...registerForm.field('password')}
         id="register-password"
-        type="password"
+        mode="password"
         placeholder="密码（至少6个字符）"
         prefix={<Lock />}
         size="large"

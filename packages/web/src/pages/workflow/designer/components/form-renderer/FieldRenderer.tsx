@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 /**
  * 单个字段的渲染分派：按字段类型映射到 Semi Form 字段或自定义控件，叠加条件必填 / 只读、
  * 字段级标签覆盖与帮助文案；布局容器（row / group / tabs / steps）交给 layout-fields 递归。
@@ -131,9 +132,8 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
 
     case 'password':
       return (
-        <Form.Input
+        <FormPasswordInput
           field={field.key} label={field.label}
-          mode="password"
           placeholder={field.placeholder ?? `请输入${field.label}`}
           initValue={field.defaultValue} rules={rules} disabled={disabled}
           {...extraProps}

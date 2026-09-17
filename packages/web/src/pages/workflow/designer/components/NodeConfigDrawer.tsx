@@ -1,3 +1,4 @@
+import { PasswordInput } from '@/components/PasswordInput';
 /**
  * 节点配置抽屉面板 — 右侧滑出，根据节点类型渲染不同的 Tab 页
  *
@@ -455,8 +456,7 @@ export default function NodeConfigDrawer({
                             />
                           </Form.Slot>
                           <Form.Slot label="签名密钥 secret">
-                            <Input
-                              mode="password"
+                            <PasswordInput
                               value={typeof ext.secret === 'string' ? ext.secret : ''}
                               onChange={(v) => updateExt({ secret: v })}
                               placeholder="用于 HMAC-SHA256 签名"
@@ -741,11 +741,10 @@ export default function NodeConfigDrawer({
                 </Form.Slot>
                 {((props.callbackSignMode as string) ?? 'hmacSha256') === 'hmacSha256' && (
                   <Form.Slot label="回调密钥（HMAC Secret）">
-                    <Input
+                    <PasswordInput
                       value={typeof props.callbackSecret === 'string' ? props.callbackSecret : ''}
                       onChange={(v) => handlePropsChange({ callbackSecret: v })}
                       placeholder="用于校验外部 POST 回调的 HMAC 密钥"
-                      mode="password"
                     />
                   </Form.Slot>
                 )}

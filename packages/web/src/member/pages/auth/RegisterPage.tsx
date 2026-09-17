@@ -1,3 +1,4 @@
+import { PasswordInput } from '@/components/PasswordInput';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Input, Button, Toast } from '@douyinfe/semi-ui';
@@ -74,9 +75,8 @@ export default function RegisterPage() {
           onChange={setNickname}
           style={{ marginBottom: 12 }}
         />
-        <Input
+        <PasswordInput
           size="large"
-          mode="password"
           placeholder="设置登录密码（选填，至少 6 位）"
           value={password}
           onChange={setPassword}

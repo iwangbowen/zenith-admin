@@ -1,3 +1,4 @@
+import { PasswordInput } from '@/components/PasswordInput';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Modal, Input, Button, PinCode, Toast } from '@douyinfe/semi-ui';
@@ -122,7 +123,7 @@ export function AuthModal({ visible, onClose, defaultTab = 'login' }: Readonly<A
             {loginType === 'password' ? (
               <>
                 <Input size="large" placeholder="手机号 / 邮箱 / 用户名" value={account} onChange={setAccount} style={{ marginBottom: 12 }} />
-                <Input size="large" mode="password" placeholder="登录密码" value={password} onChange={setPassword} onEnterPress={handleLogin} />
+                <PasswordInput size="large" placeholder="登录密码" value={password} onChange={setPassword} onEnterPress={handleLogin} />
               </>
             ) : (
               <>
@@ -159,7 +160,7 @@ export function AuthModal({ visible, onClose, defaultTab = 'login' }: Readonly<A
               </div>
             </div>
             <Input size="large" placeholder="昵称（选填）" value={nickname} onChange={setNickname} style={{ marginBottom: 12 }} />
-            <Input size="large" mode="password" placeholder="设置密码（选填，至少 6 位）" value={regPassword} onChange={setRegPassword} style={{ marginBottom: 12 }} />
+            <PasswordInput size="large" placeholder="设置密码（选填，至少 6 位）" value={regPassword} onChange={setRegPassword} style={{ marginBottom: 12 }} />
             <Input size="large" placeholder="邀请码（选填）" value={inviteCode} onChange={setInviteCode} onEnterPress={handleRegister} style={{ marginBottom: 20 }} />
             <Button size="large" theme="solid" block loading={loading} onClick={handleRegister} style={{ background: 'var(--m-primary)' }}>
               注册并登录

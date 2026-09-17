@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useState } from 'react';
 import { Col, Collapse, Form, Modal, Row, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -265,7 +266,7 @@ export default function ShortLinksPage() {
         </Row>
         <Row gutter={16}>
           <Col span={12}>
-            <Form.Input field="password" label="访问密码" placeholder="留空无需密码，至少 4 位" />
+            <FormPasswordInput field="password" label="访问密码" placeholder="留空无需密码，至少 4 位" />
           </Col>
         </Row>
         {/* UTM 低频选填：默认折叠压缩弹窗高度；编辑已填 UTM 的记录时自动展开。

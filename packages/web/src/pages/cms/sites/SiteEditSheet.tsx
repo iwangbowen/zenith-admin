@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 /**
  * 站点编辑 SideSheet（8 个 Tab：基础信息 / SEO 与推送 / 审核与 Webhook / 扩展模型 /
  * 内容策略 / 主题与图片 / 模板与主题 / 备案与备注）。
@@ -509,9 +510,9 @@ export default function SiteEditSheet({ open, site, onClose }: Readonly<SiteEdit
               <Form.TextArea field="description" label="SEO 描述" labelWidth={140} rows={2} />
               <Form.TextArea field="robots" label="robots.txt" labelWidth={140} rows={3} placeholder="留空使用默认规则（Allow all + Sitemap）" />
               <Form.Section text="搜索推送（配置后发布内容自动推送搜索引擎）">
-                <Form.Input field="baiduPushToken" type="password" label="百度推送 Token" labelWidth={140} placeholder="留空或保留掩码表示不修改" />
+                <FormPasswordInput field="baiduPushToken" label="百度推送 Token" labelWidth={140} placeholder="留空或保留掩码表示不修改" />
                 {site && <Form.Checkbox field="clearBaiduPushToken" noLabel>清除已配置的百度推送 Token</Form.Checkbox>}
-                <Form.Input field="indexNowKey" type="password" label="IndexNow Key" labelWidth={140} placeholder="留空或保留掩码表示不修改" />
+                <FormPasswordInput field="indexNowKey" label="IndexNow Key" labelWidth={140} placeholder="留空或保留掩码表示不修改" />
                 {site && <Form.Checkbox field="clearIndexNowKey" noLabel>清除已配置的 IndexNow Key</Form.Checkbox>}
               </Form.Section>
               <Form.Section text="Social SEO">
@@ -536,7 +537,7 @@ export default function SiteEditSheet({ open, site, onClose }: Readonly<SiteEdit
               </Form.Section>
               <Form.Section text="Webhook（内容发布/下线/回收时向外部系统推送事件）">
                 <Form.Input field="webhookUrl" label="回调地址" labelWidth={140} placeholder="https://... 留空不推送" />
-                <Form.Input field="webhookSecret" type="password" label="签名密钥" labelWidth={140} placeholder="留空或保留掩码表示不修改" />
+                <FormPasswordInput field="webhookSecret" label="签名密钥" labelWidth={140} placeholder="留空或保留掩码表示不修改" />
                 {site && <Form.Checkbox field="clearWebhookSecret" noLabel>清除已配置的 Webhook 签名密钥</Form.Checkbox>}
               </Form.Section>
               <Form.Section text="前台防护">

@@ -1,3 +1,4 @@
+import { PasswordInput } from '@/components/PasswordInput';
 import { useState, useMemo } from 'react';
 import { Tabs, TabPane, Select, Input, Typography, Banner, Button, Space, Card } from '@douyinfe/semi-ui';
 import { Copy } from 'lucide-react';
@@ -73,7 +74,7 @@ export default function SdkExamplesPage() {
           </div>
           <div>
             <div style={{ marginBottom: 4 }}><Text type="tertiary" size="small">AppSecret</Text></div>
-            <Input value={secret} onChange={setSecret} mode="password" style={{ width: 300 }} />
+            <PasswordInput value={secret} onChange={setSecret} style={{ width: 300 }} />
           </div>
         </Space>
         <div style={{ marginTop: 12 }}>

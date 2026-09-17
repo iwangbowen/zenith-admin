@@ -1,7 +1,8 @@
+import { PasswordInput } from '@/components/PasswordInput';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useDebouncedValue } from '@tanstack/react-pacer';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { Button, Input, Spin, Empty, Toast } from '@douyinfe/semi-ui';
+import { Button, Spin, Empty, Toast } from '@douyinfe/semi-ui';
 import { Lock } from 'lucide-react';
 import './report-grid.css';
 import './report-screen.css';
@@ -213,7 +214,7 @@ export default function PublicDashboardPage() {
       <div style={{ maxWidth: 320, margin: '120px auto', textAlign: 'center' }}>
         <Lock size={32} style={{ color: 'var(--semi-color-text-2)' }} />
         <div style={{ margin: '12px 0', color: 'var(--semi-color-text-1)' }}>该报表需要访问密码</div>
-        <Input mode="password" placeholder="请输入密码" value={pwdInput} onChange={setPwdInput} onEnterPress={() => load(pwdInput)} style={{ marginBottom: 12 }} />
+        <PasswordInput placeholder="请输入密码" value={pwdInput} onChange={setPwdInput} onEnterPress={() => load(pwdInput)} style={{ marginBottom: 12 }} />
         <Button type="primary" block onClick={() => load(pwdInput)}>访问</Button>
       </div>
     );

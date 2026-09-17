@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useRef, useState } from 'react';
 import { Modal, Form, Notification } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -66,16 +67,14 @@ export default function ForceChangePasswordModal({ user, onLogout }: Props) {
       footer={<ModalFooter onCancel={onLogout} onOk={handleOk} cancelText="退出登录" okText="确认修改" loading={loading} />}
     >
       <Form getFormApi={(api) => { formApi.current = api; }} labelPosition="left" labelWidth={80}>
-        <Form.Input
+        <FormPasswordInput
           field="oldPassword"
           label="原密码"
-          type="password"
           rules={[{ required: true, message: '请输入原密码' }]}
         />
-        <Form.Input
+        <FormPasswordInput
           field="newPassword"
           label="新密码"
-          type="password"
           rules={[
             { required: true, message: '请输入新密码' },
             { min: 6, message: '密码至少6个字符' },
@@ -83,10 +82,9 @@ export default function ForceChangePasswordModal({ user, onLogout }: Props) {
           onChange={(v) => setNewPwdVal(String(v ?? ''))}
           helpText={<PasswordStrengthMeter password={newPwdVal} />}
         />
-        <Form.Input
+        <FormPasswordInput
           field="confirmPassword"
           label="确认新密码"
-          type="password"
           rules={[{ required: true, message: '请确认新密码' }]}
         />
       </Form>

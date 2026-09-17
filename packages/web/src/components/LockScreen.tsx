@@ -1,5 +1,6 @@
+import { PasswordInput } from '@/components/PasswordInput';
 import { useEffect, useRef, useState } from 'react';
-import { Button, Input } from '@douyinfe/semi-ui';
+import { Button } from '@douyinfe/semi-ui';
 import { Lock } from 'lucide-react';
 import { Lunar } from 'lunar-typescript';
 import { UserAvatar } from './UserAvatar';
@@ -93,9 +94,8 @@ export function LockScreen({ user, onVerify, onUnlocked, onReLogin }: Readonly<L
           className={`lock-screen__form${shaking ? ' lock-screen__form--shake' : ''}`}
           onSubmit={(e) => { e.preventDefault(); handleUnlock(); }}
         >
-          <Input
+          <PasswordInput
             ref={inputRef}
-            mode="password"
             size="large"
             prefix={<Lock size={15} />}
             placeholder="请输入锁屏密码"

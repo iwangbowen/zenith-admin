@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 /**
  * App 推送配置页。
  *
@@ -198,10 +199,9 @@ export default function PushConfigsPage() {
               rules={[{ required: true, message: 'AppKey 不能为空' }]} />
           </Col>
           <Col span={12}>
-            <Form.Input
+            <FormPasswordInput
               field="masterSecret"
               label="MasterSecret"
-              mode="password"
               placeholder={modal.isEdit ? '留空表示不修改' : '供应商后台的 Master Secret'}
               rules={modal.isEdit ? [] : [{ required: true, message: 'MasterSecret 不能为空' }]}
             />

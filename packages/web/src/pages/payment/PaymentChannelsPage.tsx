@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useEffect, useState } from 'react';
 import { Button, Form, Toast, Tag, Row, Col } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -219,7 +220,7 @@ export default function PaymentChannelsPage() {
               <Col span={12}><Form.Input field="wechatMchId" label="商户号" placeholder="mchid" /></Col>
             </Row>
             <Form.Input field="wechatSerialNo" label="证书序列号" placeholder="商户 API 证书序列号" />
-            <Form.Input field="wechatApiV3Key" label="APIv3 Key" mode="password" placeholder={secretPlaceholder(editingDetail?.hasWechatApiV3Key)} />
+            <FormPasswordInput field="wechatApiV3Key" label="APIv3 Key" placeholder={secretPlaceholder(editingDetail?.hasWechatApiV3Key)} />
             <Form.TextArea field="wechatPrivateKey" label="商户私钥" autosize rows={3} placeholder={secretPlaceholder(editingDetail?.hasWechatPrivateKey)} />
             <Form.TextArea field="wechatPlatformCert" label="平台证书" autosize rows={3} placeholder="微信支付平台证书（PEM，验签用）" />
           </>

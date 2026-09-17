@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useState, useMemo } from 'react';
 import { Button, Form, Toast, Typography, Tag, Space, Popconfirm, Select, Row, Col, Collapse, Input, Tooltip } from '@douyinfe/semi-ui';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -353,17 +354,16 @@ export default function SshProfilesManager({ onConnect, onBrowseSftp }: Readonly
         </Row>
 
         {formAuthType === 'password' && (
-          <Form.Input
+          <FormPasswordInput
             field="password"
             label="密码"
-            type="password"
             placeholder={profileModal.editing?.hasPassword ? '（已设置，留空保持不变）' : '输入 SSH 密码'}
           />
         )}
         {formAuthType === 'key_path' && (
           <Row gutter={16}>
             <Col span={12}><Form.Input field="keyPath" label="私钥路径" placeholder="~/.ssh/id_rsa" /></Col>
-            <Col span={12}><Form.Input field="keyPassphrase" label="私钥口令" type="password" placeholder={profileModal.editing?.hasKeyPassphrase ? '（已设置）' : '无口令则留空'} /></Col>
+            <Col span={12}><FormPasswordInput field="keyPassphrase" label="私钥口令" placeholder={profileModal.editing?.hasKeyPassphrase ? '（已设置）' : '无口令则留空'} /></Col>
           </Row>
         )}
         {formAuthType === 'key_content' && (
@@ -374,7 +374,7 @@ export default function SshProfilesManager({ onConnect, onBrowseSftp }: Readonly
               placeholder={profileModal.editing?.hasKeyContent ? '（已设置，留空保持不变）' : '粘贴 PEM 格式私钥'}
               rows={5}
             />
-            <Form.Input field="keyPassphrase" label="私钥口令" type="password" placeholder={profileModal.editing?.hasKeyPassphrase ? '（已设置）' : '无口令则留空'} />
+            <FormPasswordInput field="keyPassphrase" label="私钥口令" placeholder={profileModal.editing?.hasKeyPassphrase ? '（已设置）' : '无口令则留空'} />
           </>
         )}
         {formAuthType === 'agent' && (

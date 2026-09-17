@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Form, Toast, Typography } from '@douyinfe/semi-ui';
@@ -58,11 +59,10 @@ export default function LoginPage() {
           placeholder="用户名"
           rules={[{ required: true, message: '请输入用户名' }]}
         />
-        <Form.Input
+        <FormPasswordInput
           field="password"
           noLabel
           size="large"
-          mode="password"
           placeholder="密码"
           rules={[{ required: true, message: '请输入密码' }]}
         />

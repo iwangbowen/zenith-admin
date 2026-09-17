@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useRef, useState } from 'react';
 import { Button, Modal, Form, Row, Col, Spin, SideSheet, Descriptions, Tag, Divider } from '@douyinfe/semi-ui';
 import { tenantContract, type CreateTenantInput, type Tenant } from '@zenith/shared/identity';
@@ -252,7 +253,7 @@ export default function TenantsPage() {
                 <Form.Input field="adminUsername" label="管理员账号" placeholder="不填则跳过初始化" />
               </Col>
               <Col span={12}>
-                <Form.Input field="adminPassword" label="初始密码" mode="password" placeholder="不填则自动生成" />
+                <FormPasswordInput field="adminPassword" label="初始密码" placeholder="不填则自动生成" />
               </Col>
             </Row>
             <Row gutter={16}>

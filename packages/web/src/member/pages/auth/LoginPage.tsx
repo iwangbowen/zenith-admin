@@ -1,3 +1,4 @@
+import { PasswordInput } from '@/components/PasswordInput';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Input, Button, PinCode, Toast } from '@douyinfe/semi-ui';
@@ -78,9 +79,8 @@ export default function LoginPage() {
               onChange={setAccount}
               style={{ marginBottom: 12 }}
             />
-            <Input
+            <PasswordInput
               size="large"
-              mode="password"
               placeholder="登录密码"
               value={password}
               onChange={setPassword}

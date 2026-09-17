@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Col, Form, Modal, Row, SideSheet, Table, Tag, Toast } from '@douyinfe/semi-ui';
@@ -383,7 +384,7 @@ export default function IdentityProvidersPage() {
               <Form.Input field="jwksUri" label="JWKS URI" placeholder="https://.../jwks" />
               <Row gutter={16}>
                 <Col span={12}><Form.Input field="clientId" label="Client ID" /></Col>
-                <Col span={12}><Form.Input field="clientSecret" label="Client Secret" type="password" /></Col>
+                <Col span={12}><FormPasswordInput field="clientSecret" label="Client Secret" /></Col>
               </Row>
               <Form.Input field="scopes" label="Scopes" placeholder="openid profile email" />
             </>
@@ -408,7 +409,7 @@ export default function IdentityProvidersPage() {
               <Form.Input field="ldapBaseDn" label="Base DN" placeholder="dc=example,dc=com" rules={[{ required: true, message: '请输入 Base DN' }]} />
               <Row gutter={16}>
                 <Col span={12}><Form.Input field="ldapBindDn" label="绑定 DN" placeholder="cn=readonly,dc=example,dc=com" /></Col>
-                <Col span={12}><Form.Input field="ldapBindPassword" label="绑定密码" type="password" /></Col>
+                <Col span={12}><FormPasswordInput field="ldapBindPassword" label="绑定密码" /></Col>
               </Row>
               <Form.InputNumber field="ldapTimeoutMs" label="超时(ms)" min={1000} max={60000} step={1000} style={{ width: '100%' }} />
               <Form.TextArea field="ldapUserFilter" label="登录过滤器" rows={2} />

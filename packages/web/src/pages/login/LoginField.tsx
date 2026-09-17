@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Input } from '@douyinfe/semi-ui';
 import type { InputProps } from '@douyinfe/semi-ui/lib/es/input';
+import { PasswordInput } from '@/components/PasswordInput';
 
 /** 登录页受控字段：Input + 绝对定位的错误提示（样式见 LoginPage.css .login-field*） */
 export interface LoginFieldProps extends Omit<InputProps, 'value' | 'onChange' | 'validateStatus' | 'defaultValue'> {
@@ -18,7 +19,11 @@ export function LoginField({ error, label, labelPosition = 'top', id, className,
     <div className={classes}>
       {label ? <label className="login-field-label" htmlFor={id}>{label}</label> : null}
       <div className="login-field-main">
-        <Input {...inputProps} id={id} validateStatus={error ? 'error' : 'default'} aria-invalid={!!error} />
+        {inputProps.mode === 'password' ? (
+          <PasswordInput {...inputProps} id={id} validateStatus={error ? 'error' : 'default'} aria-invalid={!!error} />
+        ) : (
+          <Input {...inputProps} id={id} validateStatus={error ? 'error' : 'default'} aria-invalid={!!error} />
+        )}
         {error ? <div className="login-field-error" role="alert">{error}</div> : null}
       </div>
     </div>

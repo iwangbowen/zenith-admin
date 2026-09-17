@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { Col, Form, Row, Tag, Toast } from '@douyinfe/semi-ui';
 import { SMS_PROVIDER_OPTIONS, smsConfigContract } from '@zenith/shared/messaging';
 import type { CreateSmsConfigInput, SmsConfig } from '@zenith/shared/messaging';
@@ -142,7 +143,7 @@ export default function SmsConfigsPage() {
               rules={[{ required: true, message: '请输入 AccessKeyId' }]} />
           </Col>
           <Col span={12}>
-            <Form.Input field="accessKeySecret" label="AccessKeySecret" mode="password"
+            <FormPasswordInput field="accessKeySecret" label="AccessKeySecret"
               placeholder={configModal.isEdit ? '不修改请留空' : '请输入 AccessKeySecret'}
               rules={configModal.isEdit ? [] : [{ required: true, message: '请输入 AccessKeySecret' }]} />
           </Col>

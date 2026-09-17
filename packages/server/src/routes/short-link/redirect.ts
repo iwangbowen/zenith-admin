@@ -32,6 +32,12 @@ function pageShell(title: string, body: string): string {
   input:focus{border-color:#3370ff}
   button{margin-top:14px;width:100%;padding:10px 0;font-size:14px;border:0;border-radius:8px;background:#3370ff;color:#fff;cursor:pointer}
   button:hover{background:#2b5fd9}
+  .password-field{position:relative}
+  .password-field input{padding-right:44px}
+  .password-toggle{position:absolute;right:2px;top:2px;bottom:2px;width:40px;margin:0;padding:0;display:grid;place-items:center;background:transparent;color:#646a73}
+  .password-toggle:hover{background:#f2f3f5}
+  .password-toggle:focus-visible{outline:2px solid #3370ff;outline-offset:2px}
+  .password-toggle[aria-pressed="true"] .eye-slash{display:none}
   .err{color:#d83931;font-size:13px;margin-top:10px}
 </style>
 </head>
@@ -48,10 +54,30 @@ function passwordPage(code: string, hasError: boolean): string {
 <h1>此链接需要访问密码</h1>
 <p>请输入分享者提供的访问密码</p>
 <form method="get" action="/s/${escapeHtml(code)}">
-  <input type="password" name="pwd" placeholder="访问密码" autofocus autocomplete="off" maxlength="32">
+  <div class="password-field">
+    <input id="access-password" type="password" name="pwd" placeholder="访问密码" aria-label="访问密码" autofocus autocomplete="off" maxlength="32">
+    <button class="password-toggle" type="button" aria-label="显示密码" title="显示密码" aria-controls="access-password" aria-pressed="false">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/>
+        <circle cx="12" cy="12" r="3"/><path class="eye-slash" d="m3 3 18 18"/>
+      </svg>
+    </button>
+  </div>
   ${hasError ? '<div class="err">密码不正确，请重试</div>' : ''}
   <button type="submit">访问</button>
-</form>`);
+</form>
+<script>
+  const passwordInput = document.getElementById('access-password');
+  const passwordToggle = document.querySelector('.password-toggle');
+  passwordToggle.addEventListener('click', () => {
+    const visible = passwordInput.type === 'password';
+    passwordInput.type = visible ? 'text' : 'password';
+    passwordToggle.setAttribute('aria-pressed', String(visible));
+    const label = visible ? '隐藏密码' : '显示密码';
+    passwordToggle.setAttribute('aria-label', label);
+    passwordToggle.title = label;
+  });
+</script>`);
 }
 
 const redirectRouter = new Hono();

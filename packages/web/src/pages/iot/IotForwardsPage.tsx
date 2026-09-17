@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useMemo, useState } from 'react';
 import { Button, Form, SideSheet, TabPane, Tabs, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -223,7 +224,7 @@ function ForwardFormBody({ isEdit }: Readonly<{ isEdit: boolean }>) {
       <Form.Input field="url" label="目的地 URL" placeholder="https://example.com/hooks/iot"
         rules={[{ required: true, message: '目的地不能为空' }]}
         extraText="HTTP POST 推送；不允许本机或内网地址" />
-      <Form.Input field="secret" label="签名密钥" mode="password"
+      <FormPasswordInput field="secret" label="签名密钥"
         placeholder={isEdit ? '留空保持不变' : '可选；至少 8 位'}
         extraText="配置后携带 X-Iot-Signature = hex(HMAC-SHA256(secret, body))" />
       <Form.Input field="headersText" label="自定义请求头" placeholder='JSON 对象（可空），如 {"X-Token":"..."}' />

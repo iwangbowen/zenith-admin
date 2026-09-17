@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Form, Button, Toast, Typography, Spin } from '@douyinfe/semi-ui';
@@ -87,10 +88,9 @@ export default function ResetPasswordPage() {
     }
     return (
       <Form<{ newPassword: string; confirmPassword: string }> onSubmit={handleSubmit}>
-        <Form.Input
+        <FormPasswordInput
           field="newPassword"
           label="新密码"
-          type="password"
           placeholder="至少 6 个字符"
           prefix={<Lock size={14} />}
           size="large"
@@ -101,10 +101,9 @@ export default function ResetPasswordPage() {
           onChange={(v) => setNewPwdVal(String(v ?? ''))}
           helpText={<PasswordStrengthMeter password={newPwdVal} />}
         />
-        <Form.Input
+        <FormPasswordInput
           field="confirmPassword"
           label="确认新密码"
-          type="password"
           placeholder="再次输入新密码"
           prefix={<Lock size={14} />}
           size="large"

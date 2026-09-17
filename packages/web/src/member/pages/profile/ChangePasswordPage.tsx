@@ -1,6 +1,7 @@
+import { PasswordInput } from '@/components/PasswordInput';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Input, Button, Toast, Card } from '@douyinfe/semi-ui';
+import { Button, Toast, Card } from '@douyinfe/semi-ui';
 import { useMemberAuth } from '../../hooks/useMemberAuth';
 import { MemberPage } from '../../components/MemberPage';
 import { FieldRow } from '../../components/FieldRow';
@@ -43,14 +44,14 @@ export default function ChangePasswordPage() {
       <Card style={{ maxWidth: 520, marginBottom: 16, marginLeft: 'auto', marginRight: 'auto' }}>
         {needOld && (
           <FieldRow label="原密码">
-            <Input mode="password" value={oldPassword} onChange={setOldPassword} placeholder="请输入原密码" borderless />
+            <PasswordInput value={oldPassword} onChange={setOldPassword} placeholder="请输入原密码" borderless />
           </FieldRow>
         )}
         <FieldRow label="新密码">
-          <Input mode="password" value={newPassword} onChange={setNewPassword} placeholder="至少 6 位" borderless />
+          <PasswordInput value={newPassword} onChange={setNewPassword} placeholder="至少 6 位" borderless />
         </FieldRow>
         <FieldRow label="确认密码">
-          <Input mode="password" value={confirm} onChange={setConfirm} placeholder="再次输入新密码" borderless />
+          <PasswordInput value={confirm} onChange={setConfirm} placeholder="再次输入新密码" borderless />
         </FieldRow>
       </Card>
       <div style={{ maxWidth: 520, margin: '0 auto' }}>

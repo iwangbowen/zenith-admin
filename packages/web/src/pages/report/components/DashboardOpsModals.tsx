@@ -1,3 +1,4 @@
+import { PasswordInput } from '@/components/PasswordInput';
 import { useState } from 'react';
 import { Button, Input, Select, Switch, Toast, Space, Typography, Empty, Tag, List } from '@douyinfe/semi-ui';
 import { Copy, Plus, Trash2, RotateCcw } from 'lucide-react';
@@ -78,7 +79,7 @@ export function ShareModal({ visible, dashboardId, onClose }: Readonly<{ visible
   return (
     <AppModal title="公开分享" visible={visible} onCancel={onClose} onOk={onClose} okText="完成" width={640} fullscreenable={false}>
       <Space style={{ marginBottom: 12 }}>
-        <Input prefix="访问密码" placeholder="可选，至少 8 位" value={password} onChange={setPassword} style={{ width: 220 }} mode="password" />
+        <PasswordInput prefix="访问密码" placeholder="可选，至少 8 位" value={password} onChange={setPassword} style={{ width: 220 }} />
         <Select value={expireDays} onChange={(v) => setExpireDays(Number(v ?? 30))} optionList={EXPIRE_OPTIONS} style={{ width: 130 }} />
         <Input placeholder="最大访问次数（选填）" value={maxAccessCount} onChange={setMaxAccessCount} style={{ width: 160 }} />
         <Button type="primary" icon={<Plus size={14} />} loading={createMutation.isPending} onClick={create}>生成链接</Button>

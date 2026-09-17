@@ -1,3 +1,4 @@
+import { PasswordInput } from '@/components/PasswordInput';
 /**
  * 画布字段控件预览（F01 所见即所得）
  * 用非 Form 版 Semi 组件按字段配置渲染真实控件外观（禁用态、pointer-events 由外层关闭），
@@ -127,7 +128,7 @@ function CanvasFieldPreview({ field }: Readonly<{ field: WorkflowFormField }>) {
     case 'colorPicker':
       return <div className="fd-canvas-preview__color" style={{ background: typeof field.defaultValue === 'string' ? field.defaultValue : '#1677ff' }} />;
     case 'password':
-      return <Input style={w} disabled mode="password" placeholder={placeholder} />;
+      return <PasswordInput style={w} disabled placeholder={placeholder} />;
     case 'pinCode':
       return <PinCode disabled count={field.maxCount ?? 6} />;
     case 'formula':

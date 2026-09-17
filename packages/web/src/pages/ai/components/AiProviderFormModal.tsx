@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useEffect, useState } from 'react';
 import { Button, Col, Form, Row, SideSheet, Spin, Toast, useFormState } from '@douyinfe/semi-ui';
 import type { AiModelFallbackRef, AiModelSettings, AiProviderConfig, AiReasoningLevel, SaveUserAiConfigInput, UserAiConfig } from '@zenith/shared/ai';
@@ -414,11 +415,10 @@ export default function AiProviderFormModal(props: AiProviderFormModalProps) {
               rules={isCustom ? [{ required: true, message: '请输入 API 地址' }] : undefined}
               placeholder={isCustom ? 'https://your-gateway.example.com/v1' : '留空使用官方端点,填写则覆盖'}
             />
-            <Form.Input
+            <FormPasswordInput
               field="apiKey"
               label="API Key"
               rules={isEditing ? undefined : [{ required: true, message: '请输入 API Key' }]}
-              mode="password"
               placeholder={isEditing ? '留空保留原值' : ''}
             />
           </Form.Section>

@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Select, Form, Toast, Tag, Spin, Row, Col, Dropdown, Modal } from '@douyinfe/semi-ui';
@@ -338,7 +339,7 @@ export default function MembersPage() {
           <Col span={12}><Form.Input field="username" label="用户名" placeholder="用户名/手机号/邮箱至少填一个" disabled={!!editing} /></Col>
           <Col span={12}><SensitiveFormInput control={sensitiveFields} field="phone" label="手机号" placeholder="用户名/手机号/邮箱至少填一个" /></Col>
           <Col span={12}><SensitiveFormInput control={sensitiveFields} field="email" label="邮箱" placeholder="用户名/手机号/邮箱至少填一个" /></Col>
-          {!editing && <Col span={12}><Form.Input field="password" label="密码" type="password" placeholder="选填，留空则无密码" /></Col>}
+          {!editing && <Col span={12}><FormPasswordInput field="password" label="密码" placeholder="选填，留空则无密码" /></Col>}
           <Col span={12}>
             <Form.Select field="levelId" label="会员等级" placeholder="请选择" style={{ width: '100%' }} showClear
               optionList={levels.map((l) => ({ value: l.id, label: l.name }))} />
@@ -359,7 +360,7 @@ export default function MembersPage() {
         onCancel={() => { setPwdVisible(false); setPwdMember(null); }} onOk={handleResetPwd}>
         <Spin spinning={false}>
           <Form getFormApi={(api) => { pwdFormApi.current = api; }} labelPosition="left" labelWidth={90}>
-            <Form.Input field="newPassword" label="新密码" type="password" prefix={<KeyRound size={14} />}
+            <FormPasswordInput field="newPassword" label="新密码" prefix={<KeyRound size={14} />}
               placeholder="请输入新密码（至少6位）" rules={[{ required: true, message: '请输入新密码' }, { min: 6, message: '至少6位' }]} />
           </Form>
         </Spin>

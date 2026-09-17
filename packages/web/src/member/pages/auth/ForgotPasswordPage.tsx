@@ -1,6 +1,7 @@
+import { PasswordInput } from '@/components/PasswordInput';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Input, Button, Toast } from '@douyinfe/semi-ui';
+import { Button, Toast } from '@douyinfe/semi-ui';
 import { useSmsCode } from '../../hooks/useSmsCode';
 import { useResetMemberPassword } from '../../hooks/queries';
 import { MemberAuthCard, SmsCodeField } from '../../components/MemberAuthCard';
@@ -58,9 +59,8 @@ export default function ForgotPasswordPage() {
           counting={counting}
           onSend={() => send(phone)}
         />
-        <Input
+        <PasswordInput
           size="large"
-          mode="password"
           placeholder="新密码（至少 6 位）"
           value={newPassword}
           onChange={setNewPassword}

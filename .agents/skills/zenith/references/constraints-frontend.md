@@ -247,6 +247,10 @@
 
 ## 表单与展示组件
 
+- **密码 / 密钥输入统一组件**：普通输入用 `components/PasswordInput.tsx` 的 `PasswordInput`，
+  Semi 表单用同文件的 `FormPasswordInput`；默认掩码，点击小眼睛切换显隐。
+  登录页的 `LoginField mode="password"` 已委托给此组件；禁止在业务页面直接写
+  `Input` / `Form.Input` 的 `type="password"` 或 `mode="password"`，也不要逐页维护显隐状态。
 - **弹窗表单**：`Form` 必须 `labelPosition="left"`，所有 `Modal` 必须 `closeOnEsc`
   （经 `useEditModal` + `EditFormModal` / `EditFormSheet` 时已由 `formProps` / `modalProps` 提供，页面不再手写 `Spin` / `Form key`）；
   `labelWidth` 与单列 / 双列的选取规则见 [crud-frontend.md](./crud-frontend.md)

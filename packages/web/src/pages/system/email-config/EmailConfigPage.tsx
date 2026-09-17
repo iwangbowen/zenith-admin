@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useRef, useState } from 'react';
 import { Form, Button, Toast, Space, Typography, Divider, Input } from '@douyinfe/semi-ui';
 import AppModal from '@/components/AppModal';
@@ -111,7 +112,7 @@ export default function EmailConfigPage() {
           placeholder="例如: noreply@example.com"
           rules={[{ required: true, message: '请输入发件邮箱' }]}
         />
-        <Form.Input field="smtpPassword" label="授权密码" type="password" placeholder="请输入邮箱授权码或密码" />
+        <FormPasswordInput field="smtpPassword" label="授权密码" placeholder="请输入邮箱授权码或密码" />
         <Divider margin="16px 0" />
         <Form.Input field="fromName" label="发件人名称" placeholder="例如: Zenith Admin" />
         <Form.Input field="fromEmail" label="发件人邮箱" placeholder="留空则使用发件邮箱" />

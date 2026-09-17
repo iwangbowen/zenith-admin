@@ -1,3 +1,4 @@
+import { FormPasswordInput } from '@/components/PasswordInput';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Banner, Button, Collapse, Form, Modal, Space, Spin, Steps, Toast, Typography } from '@douyinfe/semi-ui';
@@ -407,10 +408,9 @@ export default function InteractionEditPage() {
                         rules={isTurnstile ? [{ required: true, message: '请配置 Turnstile Site Key' }] : []}
                         extraText="仅验证码策略为 Cloudflare Turnstile 时生效"
                       />
-                      <Form.Input
+                      <FormPasswordInput
                         field="turnstileSecret"
                         label="Turnstile Secret Key"
-                        mode="password"
                         disabled={!isTurnstile}
                         rules={isTurnstile && !editingDetail?.turnstileSecretConfigured
                           ? [{ required: true, message: '请配置 Turnstile Secret Key' }]

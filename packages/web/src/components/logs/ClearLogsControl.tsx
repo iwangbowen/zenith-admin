@@ -1,5 +1,6 @@
+import { PasswordInput } from '@/components/PasswordInput';
 import { useContext } from 'react';
-import { Button, Dropdown, Input, SplitButtonGroup } from '@douyinfe/semi-ui';
+import { Button, Dropdown, SplitButtonGroup } from '@douyinfe/semi-ui';
 import { ChevronDown, Trash2 } from 'lucide-react';
 import AppModal from '@/components/AppModal';
 import { ToolbarSlotContext } from '@/components/toolbar-slot-context';
@@ -73,8 +74,7 @@ export function ClearLogsModal({ logName, control }: Readonly<ClearLogsModalProp
         此操作将永久删除{CLEAR_LOGS_LABELS[control.days] ?? `${control.days} 天前`}的{logName}，不可恢复。
         <br />请输入您的管理员密码以确认：
       </p>
-      <Input
-        type="password"
+      <PasswordInput
         placeholder="请输入密码"
         value={control.password}
         onChange={control.changePassword}
