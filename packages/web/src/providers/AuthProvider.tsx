@@ -39,6 +39,7 @@ import {
   type ImpersonationMarker,
 } from '@/lib/impersonation-store';
 import { ADMIN_AUTH_INVALIDATED_EVENT } from '@/utils/request';
+import { getPreciseOs } from '@/utils/client-os';
 import { AUTH_INVALIDATED_REASON_KEY } from '@/utils/http-client';
 import { scopedStorageKey } from '@/utils/storage';
 import { LOCK_SCREEN_STORAGE_KEYS } from '@/hooks/useLockScreen';
@@ -425,6 +426,8 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
         deviceInfo: collectDeviceInfo(),
         deviceId: getDeviceId(),
         rememberDevice: true,
+        // 精确 OS 自报（Win11 等 UA 冻结的系统）；拿不到时服务端回退 UA 解析
+        os: await getPreciseOs(),
       },
     }, { silent: true });
     if (res.code === 0 && isLoginResponse(res.data)) {

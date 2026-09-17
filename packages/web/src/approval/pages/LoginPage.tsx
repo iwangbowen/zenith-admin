@@ -7,6 +7,7 @@ import { TOKEN_KEY, REFRESH_TOKEN_KEY } from '@zenith/shared/core';
 import { authContract } from '@zenith/shared/identity';
 import { api } from '@/lib/contract-query';
 import { ApiError } from '@/lib/query';
+import { getPreciseOs } from '@/utils/client-os';
 import { approvalRequest } from '../lib/approval-request';
 
 export default function LoginPage() {
@@ -29,7 +30,8 @@ export default function LoginPage() {
     }
     setSubmitting(true);
     try {
-      const result = await api(authContract.login, { body: values }, { client: approvalRequest, skipAuth: true, silent: true });
+      // 精确 OS 自报（Win11 等 UA 冻结的系统）；拿不到时服务端回退 UA 解析
+      const result = await api(authContract.login, { body: { ...values, os: await getPreciseOs() } }, { client: approvalRequest, skipAuth: true, silent: true });
       // MFA 等增强流程不在轻页覆盖范围
       if (!('token' in result)) {
         Toast.info('该账号需要在桌面端完成登录（MFA 或修改密码）');

@@ -49,6 +49,7 @@ import {
 import { BatchDeleteButton, BatchStatusButtons, CreateButton } from '@/components/toolbar-controls';
 import { DateRangeFilter, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
+import { getPreciseOs } from '@/utils/client-os';
 import { batchStatusHandler, confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useStatusToggle } from '@/components/list-page';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useSensitiveFormFields } from '@/hooks/useSensitiveFormFields';
@@ -237,6 +238,8 @@ export default function UsersPage() {
             readOnly: values.mode !== 'write',
             durationMinutes: values.durationMinutes,
             password: values.password,
+            // 精确 OS 自报（Win11 等 UA 冻结的系统）；拿不到时服务端回退 UA 解析
+            os: await getPreciseOs(),
           },
         });
         startImpersonation(result);

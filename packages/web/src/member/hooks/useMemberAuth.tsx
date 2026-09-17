@@ -3,6 +3,7 @@ import { MEMBER_TOKEN_KEY, MEMBER_REFRESH_TOKEN_KEY } from '@zenith/shared/core'
 import type { ApiResponse, BodyOf } from '@zenith/shared/core';
 import { memberAuthContract, type Member, type MemberLoginResult } from '@zenith/shared/member';
 import { apiRaw } from '@/lib/contract-query';
+import { getPreciseOs } from '@/utils/client-os';
 import { prepareTrackerLogout } from '@/utils/tracker';
 import { memberRequest } from '../utils/member-request';
 import { memberQueryClient } from '../lib/member-query';
@@ -65,7 +66,9 @@ export function MemberAuthProvider({ children }: Readonly<{ children: ReactNode 
 
   const login = useCallback(async (params: MemberLoginParams) => {
     // 直接消费响应包络：code / message 决定登录页的错误提示分支，不走 api() 解包
-    const res = await apiRaw(memberAuthContract.login, { body: params }, { client: memberRequest, silent: true });
+    // 精确 OS 自报（Win11 等 UA 冻结的系统）；拿不到时服务端回退 UA 解析
+    const os = await getPreciseOs();
+    const res = await apiRaw(memberAuthContract.login, { body: { ...params, ...(os === undefined ? {} : { os }) } }, { client: memberRequest, silent: true });
     if (res.code === 0) applyLoginResult(res.data);
     return res;
   }, [applyLoginResult]);
