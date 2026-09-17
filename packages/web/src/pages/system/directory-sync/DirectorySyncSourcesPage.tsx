@@ -404,31 +404,19 @@ export default function DirectorySyncSourcesPage() {
               {type !== 'scim' && (
                 <>
                   <Divider align="left">字段映射</Divider>
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.Select field="fieldMapping.username" label="登录名来源" style={{ width: '100%' }}
-                        placeholder="默认：登录名（username）" showClear
-                        optionList={MAPPING_SOURCE_OPTIONS}
-                        helpText="仅建号时使用" />
-                    </Col>
-                    <Col span={12}>
-                      <Form.Select field="fieldMapping.nickname" label="姓名来源" style={{ width: '100%' }}
-                        placeholder="默认：姓名（nickname）" showClear
-                        optionList={[...MAPPING_SOURCE_OPTIONS, { value: DIRECTORY_SYNC_FIELD_IGNORE, label: '不同步' }]} />
-                    </Col>
-                  </Row>
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.Select field="fieldMapping.email" label="邮箱来源" style={{ width: '100%' }}
-                        placeholder="默认：邮箱（email）" showClear
-                        optionList={[...MAPPING_SOURCE_OPTIONS, { value: DIRECTORY_SYNC_FIELD_IGNORE, label: '不同步' }]} />
-                    </Col>
-                    <Col span={12}>
-                      <Form.Select field="fieldMapping.phone" label="手机号来源" style={{ width: '100%' }}
-                        placeholder="默认：手机号（phone）" showClear
-                        optionList={[...MAPPING_SOURCE_OPTIONS, { value: DIRECTORY_SYNC_FIELD_IGNORE, label: '不同步' }]} />
-                    </Col>
-                  </Row>
+                  <Form.Select field="fieldMapping.username" label="登录名来源" style={{ width: '100%' }}
+                    placeholder="默认：登录名（username）" showClear
+                    optionList={MAPPING_SOURCE_OPTIONS}
+                    helpText="仅建号时使用" />
+                  <Form.Select field="fieldMapping.nickname" label="姓名来源" style={{ width: '100%' }}
+                    placeholder="默认：姓名（nickname）" showClear
+                    optionList={[...MAPPING_SOURCE_OPTIONS, { value: DIRECTORY_SYNC_FIELD_IGNORE, label: '不同步' }]} />
+                  <Form.Select field="fieldMapping.email" label="邮箱来源" style={{ width: '100%' }}
+                    placeholder="默认：邮箱（email）" showClear
+                    optionList={[...MAPPING_SOURCE_OPTIONS, { value: DIRECTORY_SYNC_FIELD_IGNORE, label: '不同步' }]} />
+                  <Form.Select field="fieldMapping.phone" label="手机号来源" style={{ width: '100%' }}
+                    placeholder="默认：手机号（phone）" showClear
+                    optionList={[...MAPPING_SOURCE_OPTIONS, { value: DIRECTORY_SYNC_FIELD_IGNORE, label: '不同步' }]} />
                 </>
               )}
               <Form.TextArea field="remark" label="备注" placeholder="选填" rows={2} />
