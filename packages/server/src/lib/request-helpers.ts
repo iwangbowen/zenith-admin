@@ -2,6 +2,7 @@ import type { Context } from 'hono';
 import { getConnInfo } from '@hono/node-server/conninfo';
 import { UAParser } from 'ua-parser-js';
 import ipRangeCheck from 'ip-range-check';
+import { REPORTED_CLIENT_LABEL_MAX_LENGTH } from '@zenith/shared/core';
 import { SESSION_CLIENT_HEADER, SESSION_CLIENT_KINDS, type SessionClientKind } from '@zenith/shared/identity';
 import { config } from '../config';
 
@@ -69,21 +70,35 @@ export function getPlatformVersion(c: Context): string | null {
 }
 
 /**
- * 自报优先、缺项回退 UA 解析：登录 / 模拟登录的浏览器·OS 落库统一走这里。
+ * 自报优先、缺项回退 UA 解析：登录 / 模拟登录 / 操作日志的浏览器·OS 展示值统一走这里。
  * 自报是逐字段的——只报 os 时 browser 仍从 UA 解析（反之亦然），不能因一侧自报把另一侧置 Unknown。
+ * 自报值不可信（登录体经契约校验，`X-Zenith-Os` 请求头则完全没有 schema），
+ * 这里按 varchar 列宽统一截断兜底：值会进 Redis 会话对象与在线列表，不只是落库列。
  */
 export function resolveReportedClient(
   reported: { browser?: string; os?: string },
   ua: string,
   platformVersion?: string | null,
 ): { browser: string; os: string } {
-  const parsed = reported.browser === undefined || reported.os === undefined
+  const reportedBrowser = clampReportedLabel(reported.browser);
+  const reportedOs = clampReportedLabel(reported.os);
+  const parsed = reportedBrowser === undefined || reportedOs === undefined
     ? parseUserAgent(ua, platformVersion)
     : null;
   return {
-    browser: reported.browser ?? parsed?.browser ?? 'Unknown',
-    os: reported.os ?? parsed?.os ?? 'Unknown',
+    browser: reportedBrowser ?? parsed?.browser ?? 'Unknown',
+    os: reportedOs ?? parsed?.os ?? 'Unknown',
   };
+}
+
+/**
+ * 自报展示值收紧：去两端空白 → 截断到列宽。
+ * 空串 / 纯空白视为未自报（回退解析），避免用空值把展示列清空；超长值直接截断而非报错，
+ * 保证审计日志与会话注册不被攻击者构造的超长头搞坏。
+ */
+function clampReportedLabel(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed.slice(0, REPORTED_CLIENT_LABEL_MAX_LENGTH) : undefined;
 }
 
 const CLIENT_KIND_SET: ReadonlySet<string> = new Set(SESSION_CLIENT_KINDS);

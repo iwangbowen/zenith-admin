@@ -7,6 +7,7 @@
  */
 import { afterEach, beforeEach, describe, it, expect } from 'vitest';
 import { Hono } from 'hono';
+import { REPORTED_CLIENT_LABEL_MAX_LENGTH } from '@zenith/shared/core';
 import { getClientInfo, getClientIp, parseUserAgent, resolveReportedClient } from './request-helpers';
 import { config } from '../config';
 
@@ -165,5 +166,24 @@ describe('resolveReportedClient', () => {
     const { browser, os } = resolveReportedClient({ browser: 'X', os: 'Y' }, 'garbage');
     expect(browser).toBe('X');
     expect(os).toBe('Y');
+  });
+
+  it('超长自报值截断到列宽（登录体有契约把关，X-Zenith-Os 头没有）', () => {
+    const long = 'W'.repeat(5000);
+    // 自报头与登录体最终都汇到这里，构造超长值不能把会话事实撑坏
+    const { browser, os } = resolveReportedClient({ browser: long, os: long }, CHROME_WIN_UA);
+    expect(browser).toBe('W'.repeat(REPORTED_CLIENT_LABEL_MAX_LENGTH));
+    expect(os).toHaveLength(REPORTED_CLIENT_LABEL_MAX_LENGTH);
+  });
+
+  it('自报值去两端空白；空串 / 纯空白视为未自报并回退 UA 解析', () => {
+    expect(resolveReportedClient({ os: '  Windows 11  ' }, CHROME_WIN_UA).os).toBe('Windows 11');
+    const { browser, os } = resolveReportedClient({ browser: '   ', os: '' }, CHROME_WIN_UA);
+    expect(browser).toContain('Chrome');
+    expect(os).toBe('Windows 10');
+  });
+
+  it('截断上限与日志列宽（varchar 64）绑定，不各自漂移', () => {
+    expect(REPORTED_CLIENT_LABEL_MAX_LENGTH).toBe(64);
   });
 });

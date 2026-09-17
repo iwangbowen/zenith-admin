@@ -220,11 +220,20 @@ export function validateTypedAlertDelivery(
 }
 
 /**
+ * 自报浏览器 / OS 的长度上限：与登录日志 / 操作日志的 varchar(64) 列宽一致。
+ * 契约层（reportedClientSchema）与服务端解析入口（resolveReportedClient）共用此值，
+ * 防止「契约放宽、落库截断」两边各自漂移。
+ */
+export const REPORTED_CLIENT_LABEL_MAX_LENGTH = 64;
+
+/**
  * 客户端自报的展示用浏览器 / OS（登录、模拟登录等入口复用）。
  * 仅用于日志与会话展示，不参与鉴权——客户端可伪造，审计口径（操作日志）
  * 仍以服务端 UA + Client Hints 解析为准。长度与落库截断（varchar 64）对齐。
+ * 注意：这里只约束 JSON 请求体；同样来源不可信的 `X-Zenith-Os` 请求头无 schema，
+ * 由服务端 resolveReportedClient 统一截断兜底。
  */
 export const reportedClientSchema = z.object({
-  browser: z.string().trim().max(64).optional(),
-  os: z.string().trim().max(64).optional(),
+  browser: z.string().trim().max(REPORTED_CLIENT_LABEL_MAX_LENGTH).optional(),
+  os: z.string().trim().max(REPORTED_CLIENT_LABEL_MAX_LENGTH).optional(),
 });
