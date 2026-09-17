@@ -39,6 +39,7 @@
 		"./iot": "./src/iot/index.ts",
 		"./drive": "./src/drive/index.ts",
 		"./settings": "./src/settings/index.ts",
+		"./preferences": "./src/preferences/index.ts",
 		"./licensing": "./src/licensing/index.ts",
 		"./seed": "./src/seed/index.ts",
 		"./seed/*": "./src/seed/*.ts",
