@@ -9,7 +9,7 @@
   --sidebar-width: 216px;
   --sidebar-collapsed-width: 40px;
   --sidebar-double-width: 260px;
-  --header-height: 48px;
+  --header-height: 40px;
   --radius: 6px;
   /* 自定义滚动条：全站唯一来源（表格横向条、分栏侧栏、侧边菜单、日志查看器…），局部不得另写像素值。
      --scrollbar-size 是命中区（实际占位宽度），拇指再按 --scrollbar-thumb-inset 向内收：看着细、鼠标仍好抓 */
