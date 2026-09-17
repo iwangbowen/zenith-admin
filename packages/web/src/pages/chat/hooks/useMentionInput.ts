@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import type { ChatConversation, ChatGroupMember } from '@zenith/shared/chat';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
+import { textMatches } from '@/utils/pinyin';
 
 /** 群聊 @全体成员 的虚拟成员项 */
 const ALL_MEMBERS_VIRTUAL: ChatGroupMember = { id: -1, nickname: '全体成员', username: 'all', role: 'member' };
@@ -21,6 +23,8 @@ export function useMentionInput({
   const [mentionClosed, setMentionClosed] = useState(false);
   const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
   const mentionListRef = useRef<HTMLDivElement>(null);
+  // 拼音词典就绪后重算候选，已输入的 @query 自动补上拼音命中
+  const pinyinReady = usePinyinReady();
 
   const mentionState = useMemo(() => {
     if (activeConv?.type !== 'group') return null;
@@ -36,19 +40,21 @@ export function useMentionInput({
 
   const mentionCandidates = useMemo(() => {
     if (!mentionState) return [];
-    const kw = mentionState.query.trim().toLowerCase();
+    const query = mentionState.query;
+    const kw = query.trim();
     const members = activeGroupMembers.filter((member) => {
       if (member.id === currentUserId) return false;
       if (!kw) return true;
-      return member.nickname.toLowerCase().includes(kw) || member.username.toLowerCase().includes(kw);
+      return textMatches(member.nickname, kw) || textMatches(member.username, kw);
     }).slice(0, 7);
     // 在群聊中支持 @全体成员
     if (activeConv?.type === 'group') {
-      const allMatches = !kw || '全体成员'.includes(kw) || 'all'.includes(kw);
+      const allMatches = !kw || textMatches('全体成员', kw) || textMatches('all', kw);
       if (allMatches) return [ALL_MEMBERS_VIRTUAL, ...members];
     }
     return members;
-  }, [activeConv?.type, activeGroupMembers, currentUserId, mentionState]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConv?.type, activeGroupMembers, currentUserId, mentionState, pinyinReady]);
 
   // mentionCandidates 变化时重置高亮到第一项
   useEffect(() => {

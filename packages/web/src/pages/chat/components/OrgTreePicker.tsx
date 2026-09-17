@@ -4,6 +4,8 @@ import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { Building2 } from 'lucide-react';
 import { UserAvatar } from '@/components/UserAvatar';
 import { useChatOrgData } from '@/hooks/queries/chat';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
+import { textMatches } from '@/utils/pinyin';
 import type { ChatOrgUser } from '@zenith/shared/chat';
 import type { ChatUser } from '../types';
 
@@ -121,6 +123,9 @@ export function OrgTreePicker({
   }, [orgQuery.data, excludeIds]);
 
   const toChatUser = (u: ChatOrgUser): ChatUser => ({ id: u.id, nickname: u.nickname, username: u.username, avatar: u.avatar });
+  // 拼音词典就绪后重渲染，补上已输入关键字的拼音命中
+  usePinyinReady();
+  // 部门 / 成员搜索：子串 + 拼音首字母 / 全拼
 
   if (orgQuery.isLoading) {
     return (
@@ -141,7 +146,7 @@ export function OrgTreePicker({
         multiple
         filterTreeNode={(input, _node, data) => {
           const fl = (data as { filterLabel?: string } | undefined)?.filterLabel ?? '';
-          return fl.toLowerCase().includes(String(input).toLowerCase());
+          return textMatches(fl, String(input));
         }}
         showFilteredOnly
         searchPlaceholder="搜索部门 / 成员"
@@ -169,7 +174,7 @@ export function OrgTreePicker({
       treeData={treeData}
       filterTreeNode={(input, _node, data) => {
         const fl = (data as { filterLabel?: string } | undefined)?.filterLabel ?? '';
-        return fl.toLowerCase().includes(String(input).toLowerCase());
+        return textMatches(fl, String(input));
       }}
       showFilteredOnly
       searchPlaceholder="搜索部门 / 成员"

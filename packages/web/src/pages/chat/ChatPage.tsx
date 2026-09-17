@@ -50,6 +50,7 @@ import { useChatWebSocket } from './hooks/useChatWebSocket';
 import { useGroupAvatars } from './hooks/useGroupAvatars';
 import { useMuteState } from './hooks/useMuteState';
 import { useMentionInput } from './hooks/useMentionInput';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
 import { useNotifyPrefs } from './hooks/useNotifyPrefs';
 import { useFilePreview } from './hooks/useFilePreview';
 import { ChatLeftPane } from './components/ChatLeftPane';
@@ -406,9 +407,12 @@ export default function ChatPage({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedDraftInput]);
 
+  // 拼音词典就绪后重算左栏过滤，补上已输入关键字的拼音命中
+  const pinyinReady = usePinyinReady();
   const { archivedConvs, archivedUnread, showArchiveToggle, leftListItems, totalUnread } = useMemo(
     () => computeLeftListModel({ conversations, channels, convSearch, showArchived }),
-    [conversations, channels, convSearch, showArchived],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [conversations, channels, convSearch, showArchived, pinyinReady],
   );
   // 列表行 memo 依赖稳定回调：handleSelectConv 闭包含 input（保存草稿用），每次击键都会换引用
   const selectConvFromList = useEventCallback(handleSelectConv);

@@ -1,6 +1,7 @@
 import type { ChatConversation, ChatGroupMember, ChatMessage, ChatPresence, ChatVoteData } from '@zenith/shared/chat';
 import type { Channel } from '@zenith/shared/messaging';
 import type { FailedMessage, LeftListItem } from './types';
+import { textMatches } from '@/utils/pinyin';
 import { getAssetMeta } from './utils';
 
 // Virtuoso 中支持 prepend（向前加载历史消息）需要预留的虚拟 index 起点
@@ -95,7 +96,7 @@ export const applyPresenceToLastSeen = (changes: ChatPresence[]) => (prev: Recor
   return next;
 };
 
-/** 左栏列表派生数据（纯函数）：搜索过滤 + 归档分组 + 频道/会话混排 */
+/** 左栏列表派生数据（纯函数）：搜索过滤（子串 + 拼音）+ 归档分组 + 频道/会话混排 */
 export function computeLeftListModel({ conversations, channels, convSearch, showArchived }: {
   conversations: ChatConversation[];
   channels: Channel[];
@@ -105,7 +106,7 @@ export function computeLeftListModel({ conversations, channels, convSearch, show
   const filteredConvs = conversations.filter((c) => {
     if (!convSearch) return true;
     const name = c.type === 'direct' ? (c.targetUser?.nickname ?? '') : (c.name ?? '');
-    return name.toLowerCase().includes(convSearch.toLowerCase());
+    return textMatches(name, convSearch);
   });
 
   // 归档分组：搜索时跨归档全量匹配；平时归档会话收进折叠组
@@ -118,7 +119,7 @@ export function computeLeftListModel({ conversations, channels, convSearch, show
 
   // 仿微信：频道与会话合并为同一个列表，按最后消息时间倒序排列（置顶会话优先），不再将频道单独置顶
   const filteredChannels = convSearch
-    ? channels.filter((ch) => ch.name.toLowerCase().includes(convSearch.toLowerCase()))
+    ? channels.filter((ch) => textMatches(ch.name, convSearch))
     : (showArchived ? [] : channels);
   const parseMsgTime = (s?: string | null) => (s ? new Date(s.replace(' ', 'T')).getTime() : 0);
   const leftListItems: LeftListItem[] = [

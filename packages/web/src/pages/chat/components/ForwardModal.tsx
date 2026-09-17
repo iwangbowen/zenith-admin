@@ -6,6 +6,8 @@ import { chatContract } from '@zenith/shared/chat';
 import { api } from '@/lib/contract-query';
 import { UserAvatar } from '@/components/UserAvatar';
 import { useChatUsers } from '@/hooks/queries/chat';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
+import { textMatches } from '@/utils/pinyin';
 import { useDebouncedValue } from '@tanstack/react-pacer';
 import type { ChatConversation } from '@zenith/shared/chat';
 import type { ChatUser } from '../types';
@@ -31,11 +33,13 @@ export function ForwardModal({
   const [keyword, setKeyword] = useState('');
   const [debouncedKeyword] = useDebouncedValue(keyword.trim(), { wait: 300 });
   const [submitting, setSubmitting] = useState(false);
+  // 拼音词典就绪后重渲染，补上已输入关键字的拼音命中（仅本地会话区；用户区走服务端搜索）
+  usePinyinReady();
 
   const filtered = conversations.filter((c) => {
     if (c.id === currentConvId) return false;
     const name = c.type === 'direct' ? (c.targetUser?.nickname ?? '') : (c.name ?? '');
-    return !keyword || name.toLowerCase().includes(keyword.toLowerCase());
+    return textMatches(name, keyword);
   });
 
   // 已有单聊会话的用户从「用户」区排除：他们通过上方会话行选择
