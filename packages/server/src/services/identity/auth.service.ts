@@ -173,14 +173,20 @@ export interface LoginInput {
   deviceInfo?: DeviceInfo;
   deviceId?: string;
   rememberDevice?: boolean;
+  /** 客户端自报的展示用浏览器 / OS（登录请求体），仅展示，不参与鉴权 */
+  browser?: string;
+  os?: string;
 }
 
-/** 登录来源的客户端信息：IP / UA 必有，终端类型缺省 web（注册、旧调用方） */
+/** 登录来源的客户端信息：IP / UA 必有，终端类型缺省 web（注册、旧调用方）；
+ * os / browser 为客户端自报的展示值（精确到 Win11 等 UA 冻结的系统），仅展示，不参与鉴权 */
 export interface LoginClient {
   ip: string;
   ua: string;
   client?: SessionClientKind;
   deviceInfo?: DeviceInfo;
+  browser?: string;
+  os?: string;
 }
 
 export async function finalizeLogin(
@@ -191,7 +197,9 @@ export async function finalizeLogin(
   const userRoleList = await getUserRoles(user.id);
   const { accessToken, refreshToken, tokenId } = await issueTokens(user, userRoleList.map((r) => r.code));
 
-  const { browser, os } = parseUserAgent(input.ua);
+  const parsed = input.browser === undefined && input.os === undefined ? parseUserAgent(input.ua) : null;
+  const browser = input.browser ?? parsed?.browser ?? 'Unknown';
+  const os = input.os ?? parsed?.os ?? 'Unknown';
   const client = input.client ?? 'web';
   const location = lookupIpLocation(input.ip);
   const loginAt = new Date();
@@ -222,6 +230,8 @@ export async function finalizeLogin(
     recordLoginLog({
       ip: input.ip,
       ua: input.ua,
+      browser: input.browser,
+      os: input.os,
       username: user.username,
       status: 'success',
       message: `${options.logMessage}${kickedNote}`,
@@ -264,6 +274,9 @@ export interface AuthenticatedLoginClient {
   deviceInfo?: DeviceInfo;
   deviceId?: string;
   rememberDevice?: boolean;
+  /** 客户端自报的展示用浏览器 / OS，仅展示，不参与鉴权 */
+  browser?: string;
+  os?: string;
 }
 
 /**
@@ -304,6 +317,8 @@ export async function completeLoginWithMfa(
       deviceInfo: client.deviceInfo,
       deviceId: client.deviceId,
       rememberDevice: client.rememberDevice ?? false,
+      browser: client.browser,
+      os: client.os,
       evictOthers: options.evictOthers,
       logMessage,
     });
@@ -327,7 +342,7 @@ export async function resolveSessionConflict(ticket: string) {
   if (user.status === 'disabled') throw new HTTPException(403, { message: '账号已被禁用' });
   return completeLoginWithMfa(
     user,
-    { ip: payload.ip, ua: payload.ua, client: payload.client, deviceInfo: payload.deviceInfo, deviceId: payload.deviceId, rememberDevice: payload.rememberDevice },
+    { ip: payload.ip, ua: payload.ua, client: payload.client, deviceInfo: payload.deviceInfo, deviceId: payload.deviceId, rememberDevice: payload.rememberDevice, browser: payload.browser, os: payload.os },
     `${payload.logMessage}（已下线其它设备）`,
     { evictOthers: true },
   );
@@ -371,19 +386,19 @@ export async function login(input: LoginInput) {
   const [user] = await db.select().from(users).where(userWhere).limit(1);
   if (!user) {
     await Promise.all([
-      recordLoginLog({ ip: input.ip, ua: input.ua, username: input.username, status: 'fail', message: '用户名或密码错误', tenantId }),
+      recordLoginLog({ ip: input.ip, ua: input.ua, browser: input.browser, os: input.os, username: input.username, status: 'fail', message: '用户名或密码错误', tenantId }),
       recordLoginFailure(input.username, loginMaxAttempts, lockDurationSeconds),
     ]);
     throw new HTTPException(400, { message: '用户名或密码错误' });
   }
   if (user.status === 'disabled') {
-    await recordLoginLog({ ip: input.ip, ua: input.ua, username: input.username, status: 'fail', message: '账号已被禁用', userId: user.id, tenantId });
+    await recordLoginLog({ ip: input.ip, ua: input.ua, browser: input.browser, os: input.os, username: input.username, status: 'fail', message: '账号已被禁用', userId: user.id, tenantId });
     throw new HTTPException(403, { message: '账号已被禁用' });
   }
   const valid = await verifyPassword(input.password, user.password);
   if (!valid) {
     await Promise.all([
-      recordLoginLog({ ip: input.ip, ua: input.ua, username: input.username, status: 'fail', message: '用户名或密码错误', userId: user.id, tenantId }),
+      recordLoginLog({ ip: input.ip, ua: input.ua, browser: input.browser, os: input.os, username: input.username, status: 'fail', message: '用户名或密码错误', userId: user.id, tenantId }),
       recordLoginFailure(input.username, loginMaxAttempts, lockDurationSeconds),
     ]);
     throw new HTTPException(400, { message: '用户名或密码错误' });
@@ -440,7 +455,7 @@ export async function verifyMfaLogin(challengeId: string, code: string, remember
   await clearMfaChallenge(challengeId);
   return finalizeLogin(
     user,
-    { ip: challenge.ip, ua: challenge.ua, client: challenge.client, deviceInfo: challenge.deviceInfo as DeviceInfo | undefined },
+    { ip: challenge.ip, ua: challenge.ua, client: challenge.client, deviceInfo: challenge.deviceInfo as DeviceInfo | undefined, browser: challenge.browser, os: challenge.os },
     // 冲突票据兑换后转入 MFA 的挑战带着「已确认下线其它设备」，签发后照约挤掉
     { logMessage: challenge.logMessage ? `${challenge.logMessage}（MFA 验证）` : 'MFA 验证后登录成功', requirePasswordChange, evictOthers: challenge.evictOthers },
   );
@@ -798,7 +813,7 @@ export async function switchTenantView(targetTenantId: number | null, ip: string
     '30d',
   );
   const { browser, os } = parseUserAgent(ua);
-  // 会话迁移（非新登录）：沿用原会话的终端类型与登录时间，不触发并发限制；旧 jti 立即吊销（access / refresh 一并作废）
+  // 会话迁移（非新登录）：沿用原会话的终端信息与登录时间（与 refresh 轮换一致），不触发并发限制；旧 jti 立即吊销（access / refresh 一并作废）
   const existing = payload.jti ? await getSession(payload.jti) : null;
   if (payload.jti) await removeSession(payload.jti, 'rotated');
   await Promise.all([
@@ -811,8 +826,8 @@ export async function switchTenantView(targetTenantId: number | null, ip: string
       client: existing?.client ?? 'web',
       ip,
       location: lookupIpLocation(ip),
-      browser,
-      os,
+      browser: existing?.browser ?? browser,
+      os: existing?.os ?? os,
       loginAt: existing?.loginAt ?? new Date(),
     }),
     grantRefresh(tokenId),

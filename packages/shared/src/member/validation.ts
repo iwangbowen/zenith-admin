@@ -1,6 +1,6 @@
 import * as z from 'zod';
 import { batchIdsBody, entityStatusSchema } from '../core/api-schemas';
-import { partialForUpdate } from '../core/validation';
+import { partialForUpdate, reportedClientSchema } from '../core/validation';
 import { PAYMENT_CASHIER_METHODS, PAYMENT_DEDUCT_METHODS } from '../payment/constants';
 import {
   CHECKIN_MILESTONE_REWARD_TYPES,
@@ -62,6 +62,8 @@ export const memberLoginSchema = z
     password: z.string().min(1).max(64).optional(),
     phone: memberPhoneSchema.optional(),
     smsCode: z.string().length(6).optional(),
+    // 客户端自报的展示用浏览器 / OS（精确到 Win11 等 UA 冻结的系统），仅展示，不参与鉴权
+    ...reportedClientSchema.shape,
   })
   .refine((d) => (d.loginType === 'password' ? !!d.account && !!d.password : !!d.phone && !!d.smsCode), {
     message: '登录参数不完整',

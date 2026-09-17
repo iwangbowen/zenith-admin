@@ -139,10 +139,15 @@ interface MemberLoginLogParams {
   ua: string;
   status: 'success' | 'fail';
   message?: string;
+  /** 客户端自报的展示值（登录请求体）；缺省回退 UA 解析，仅展示，不参与鉴权 */
+  browser?: string;
+  os?: string;
 }
 
 export function recordMemberLoginLog(params: MemberLoginLogParams): void {
-  const { browser, os } = parseUserAgent(params.ua);
+  const parsed = params.browser === undefined && params.os === undefined ? parseUserAgent(params.ua) : null;
+  const browser = params.browser ?? parsed?.browser ?? 'Unknown';
+  const os = params.os ?? parsed?.os ?? 'Unknown';
   // 各列按 schema 长度截断兜底；写入失败只告警，不影响调用方（fire-and-forget 不产生 unhandledRejection）
   db.insert(memberLoginLogs).values({
     memberId: params.memberId ?? null,
@@ -271,7 +276,7 @@ export async function registerMember(input: MemberRegisterServiceInput): Promise
     await applyInviteOnRegister(member.id, input.inviteCode, member.nickname);
   }
 
-  return finalizeAuth(member, input.ip, input.ua);
+  return finalizeAuth(member, input);
 }
 
 // ─── 登录 ─────────────────────────────────────────────────────────────────────
@@ -289,13 +294,13 @@ export async function loginMember(input: MemberLoginServiceInput): Promise<Membe
     if (!input.phone || !input.smsCode) throw new HTTPException(400, { message: '请输入手机号和验证码' });
     const ok = await verifyMemberSmsCode(input.phone, 'login', input.smsCode);
     if (!ok) {
-      recordMemberLoginLog({ ip: input.ip, ua: input.ua, status: 'fail', message: '验证码错误或已过期' });
+      recordMemberLoginLog({ ip: input.ip, ua: input.ua, browser: input.browser, os: input.os, status: 'fail', message: '验证码错误或已过期' });
       throw new HTTPException(400, { message: '验证码错误或已过期' });
     }
     [member] = await db.select().from(members)
       .where(and(eq(members.phone, input.phone), isNull(members.deletedAt))).limit(1);
     if (!member) {
-      recordMemberLoginLog({ ip: input.ip, ua: input.ua, status: 'fail', message: '该手机号未注册' });
+      recordMemberLoginLog({ ip: input.ip, ua: input.ua, browser: input.browser, os: input.os, status: 'fail', message: '该手机号未注册' });
       throw new HTTPException(400, { message: '该手机号未注册' });
     }
   } else {
@@ -306,19 +311,19 @@ export async function loginMember(input: MemberLoginServiceInput): Promise<Membe
     const remainingLockSeconds = await checkMemberLoginLock(account);
     if (remainingLockSeconds > 0) {
       const remainingMinutes = Math.ceil(remainingLockSeconds / 60);
-      recordMemberLoginLog({ ip: input.ip, ua: input.ua, status: 'fail', message: '账号已被锁定' });
+      recordMemberLoginLog({ ip: input.ip, ua: input.ua, browser: input.browser, os: input.os, status: 'fail', message: '账号已被锁定' });
       throw new HTTPException(423, { message: `账号已被锁定，请 ${remainingMinutes} 分钟后重试` });
     }
 
     member = await findMemberByAccount(input.account);
     if (!member?.password) {
-      recordMemberLoginLog({ ip: input.ip, ua: input.ua, status: 'fail', message: '账号或密码错误' });
+      recordMemberLoginLog({ ip: input.ip, ua: input.ua, browser: input.browser, os: input.os, status: 'fail', message: '账号或密码错误' });
       await recordMemberLoginFailure(account);
       throw new HTTPException(400, { message: '账号或密码错误' });
     }
     const valid = await verifyPassword(input.password, member.password);
     if (!valid) {
-      recordMemberLoginLog({ memberId: member.id, ip: input.ip, ua: input.ua, status: 'fail', message: '账号或密码错误' });
+      recordMemberLoginLog({ memberId: member.id, ip: input.ip, ua: input.ua, browser: input.browser, os: input.os, status: 'fail', message: '账号或密码错误' });
       await recordMemberLoginFailure(account, member.tenantId ?? null);
       throw new HTTPException(400, { message: '账号或密码错误' });
     }
@@ -326,26 +331,28 @@ export async function loginMember(input: MemberLoginServiceInput): Promise<Membe
   }
 
   if (member.status === 'banned') {
-    recordMemberLoginLog({ memberId: member.id, ip: input.ip, ua: input.ua, status: 'fail', message: '账号已被封禁' });
+    recordMemberLoginLog({ memberId: member.id, ip: input.ip, ua: input.ua, browser: input.browser, os: input.os, status: 'fail', message: '账号已被封禁' });
     throw new HTTPException(403, { message: '账号已被封禁' });
   }
   if (member.status === 'inactive') {
-    recordMemberLoginLog({ memberId: member.id, ip: input.ip, ua: input.ua, status: 'fail', message: '账号未激活' });
+    recordMemberLoginLog({ memberId: member.id, ip: input.ip, ua: input.ua, browser: input.browser, os: input.os, status: 'fail', message: '账号未激活' });
     throw new HTTPException(403, { message: '账号未激活，请联系客服' });
   }
 
-  return finalizeAuth(member, input.ip, input.ua);
+  return finalizeAuth(member, input);
 }
 
 /** 登录/注册成功后：签发 token、注册会话、更新最后登录信息、记录日志 */
-async function finalizeAuth(member: MemberRow, ip: string, ua: string): Promise<MemberLoginResult> {
+async function finalizeAuth(member: MemberRow, client: { ip: string; ua: string; browser?: string; os?: string }): Promise<MemberLoginResult> {
   const identifier = memberIdentifier(member);
   const { accessToken, refreshToken, tokenId } = await issueMemberTokens({
     id: member.id,
     identifier,
     tenantId: member.tenantId,
   });
-  const { browser, os } = parseUserAgent(ua);
+  const parsed = client.browser === undefined && client.os === undefined ? parseUserAgent(client.ua) : null;
+  const browser = client.browser ?? parsed?.browser ?? 'Unknown';
+  const os = client.os ?? parsed?.os ?? 'Unknown';
   await Promise.all([
     registerMemberSession({
       tokenId,
@@ -353,16 +360,16 @@ async function finalizeAuth(member: MemberRow, ip: string, ua: string): Promise<
       identifier,
       nickname: member.nickname,
       tenantId: member.tenantId ?? null,
-      ip,
+      ip: client.ip,
       browser,
       os,
       location: null,
       loginAt: new Date(),
     }),
     grantMemberRefresh(tokenId),
-    db.update(members).set({ lastLoginAt: new Date(), lastLoginIp: truncateVarchar(ip, 64) }).where(eq(members.id, member.id)),
+    db.update(members).set({ lastLoginAt: new Date(), lastLoginIp: truncateVarchar(client.ip, 64) }).where(eq(members.id, member.id)),
   ]);
-  recordMemberLoginLog({ memberId: member.id, ip, ua, status: 'success', message: '登录成功' });
+  recordMemberLoginLog({ memberId: member.id, ip: client.ip, ua: client.ua, browser: client.browser, os: client.os, status: 'success', message: '登录成功' });
   return { member: mapMember(member), token: { accessToken, refreshToken } };
 }
 

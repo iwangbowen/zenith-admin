@@ -130,6 +130,9 @@ export interface SessionConflictTicketPayload {
   deviceInfo?: DeviceInfo;
   deviceId?: string;
   rememberDevice?: boolean;
+  /** 客户端自报的展示用浏览器 / OS，仅展示，不参与鉴权 */
+  browser?: string;
+  os?: string;
   logMessage: string;
   expiresAt: number;
 }

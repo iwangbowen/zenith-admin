@@ -218,3 +218,13 @@ export function validateTypedAlertDelivery(
     ctx.addIssue({ code: 'custom', path: ['recipientEmails'], message: '邮件渠道必须选择接收用户或填写额外邮箱' });
   }
 }
+
+/**
+ * 客户端自报的展示用浏览器 / OS（登录、模拟登录等入口复用）。
+ * 仅用于日志与会话展示，不参与鉴权——客户端可伪造，审计口径（操作日志）
+ * 仍以服务端 UA + Client Hints 解析为准。长度与落库截断（varchar 64）对齐。
+ */
+export const reportedClientSchema = z.object({
+  browser: z.string().trim().max(64).optional(),
+  os: z.string().trim().max(64).optional(),
+});

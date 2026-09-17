@@ -98,7 +98,10 @@ export async function startImpersonation(input: StartImpersonationInput, client:
   const now = new Date();
   const expiresAt = new Date(now.getTime() + minutes * 60_000);
   const tokenId = generateTokenId();
-  const { browser, os } = parseUserAgent(client.ua);
+  // 发起端自报优先（精确到 Win11 等 UA 冻结的系统），缺省回退 UA 解析；仅展示，不参与鉴权
+  const parsed = input.browser === undefined && input.os === undefined ? parseUserAgent(client.ua) : null;
+  const browser = input.browser ?? parsed?.browser ?? 'Unknown';
+  const os = input.os ?? parsed?.os ?? 'Unknown';
   const location = lookupIpLocation(client.ip);
 
   const [record] = await db.insert(impersonationSessions).values({

@@ -30,6 +30,9 @@ export interface MfaChallengePayload {
   deviceInfo?: unknown;
   deviceId?: string;
   rememberDevice?: boolean;
+  /** 客户端自报的展示用浏览器 / OS，仅展示，不参与鉴权 */
+  browser?: string;
+  os?: string;
   /** 冲突票据兑换后转入 MFA：用户已确认下线其它设备，验证通过签发后全部挤掉 */
   evictOthers?: boolean;
   /** 原登录路径的日志文案（密码 / SSO / OAuth），验证通过后写登录日志沿用 */

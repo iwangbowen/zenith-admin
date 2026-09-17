@@ -1,6 +1,6 @@
 import { signatureDataUrlSchema } from '../core/signatures';
 import * as z from 'zod';
-import { dateTimeStringSchema, httpUrl, partialForUpdate } from '../core/validation';
+import { dateTimeStringSchema, httpUrl, partialForUpdate, reportedClientSchema } from '../core/validation';
 import { tenantPackageQuotasSchema } from '../licensing/validation';
 import { MP_OAUTH_SCOPES } from '../mp/constants';
 import {
@@ -32,6 +32,8 @@ export const loginSchema = z.object({
   deviceInfo: loginDeviceInfoSchema.optional(),
   deviceId: z.string().max(128).optional(),
   rememberDevice: z.boolean().optional(),
+  // 客户端自报的展示用浏览器 / OS（精确到 Win11 等 UA 冻结的系统），仅展示，不参与鉴权
+  ...reportedClientSchema.shape,
 });
 
 
@@ -564,6 +566,8 @@ export const startImpersonationSchema = z.object({
   readOnly: z.boolean().default(true),
   durationMinutes: z.number().int().min(1).max(120).optional(),
   password: z.string().min(1, '请输入当前账号密码'),
+  // 发起端自报的展示用浏览器 / OS，仅展示，不参与鉴权
+  ...reportedClientSchema.shape,
 });
 
 export type StartImpersonationInput = z.infer<typeof startImpersonationSchema>;
