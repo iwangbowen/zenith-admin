@@ -1,9 +1,10 @@
 import * as z from 'zod';
 import { signatureDataUrlSchema } from '../../core/signatures';
-import { dateRangeQuery, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, idParam, keywordQuery, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { userPreferencesDocumentSchema } from '../../preferences';
 import { operationLogSchema } from '../../platform/contracts/operation-logs';
+import { OPERATION_LOG_RESULTS } from '../../platform/constants';
 import { LOGIN_EVENT_TYPES, LOGIN_STATUSES, MFA_FACTOR_STATUSES, MFA_FACTOR_TYPES, MFA_METHODS, SESSION_CLIENT_KINDS } from '../constants';
 import {
   changePasswordSchema,
@@ -187,6 +188,13 @@ export const myLoginLogsQuery = paginationQuery.extend({
 
 export const myOperationLogsQuery = paginationQuery.extend({
   module: z.string().optional(),
+  description: keywordQuery('操作描述'),
+  method: keywordQuery('请求方法'),
+  path: keywordQuery('请求路径'),
+  ip: keywordQuery('IP'),
+  status: queryEnum(OPERATION_LOG_RESULTS),
+  content: keywordQuery('内容', { description: '内容关键字（匹配请求体与操作前后快照）' }),
+  impersonated: queryBool('仅模拟登录期间的操作', { labels: ['仅模拟操作', '仅本人操作'] }),
   ...dateRangeQuery(),
 });
 

@@ -1,6 +1,6 @@
 import { listRows } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
-import { and, desc, eq, gt, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, isNotNull, isNull, lte, or } from 'drizzle-orm';
 import { db } from '../../db';
 import { users, loginLogs, tenants, operationLogs, passwordResetTokens, type UserRow } from '../../db/schema';
 import { reserveTenantSeats } from '../../lib/tenant-quota';
@@ -724,10 +724,19 @@ export async function listMyLoginLogs(query: QueryOutputOf<typeof authContract.m
 
 export async function listMyOperationLogs(query: QueryOutputOf<typeof authContract.myOperationLogs>) {
   const userId = currentUser().userId;
-  const { page, pageSize, module, startTime, endTime } = query;
+  const { page, pageSize, module, description, method, path, ip, status, content, impersonated, startTime, endTime } = query;
   const where = buildWhere(
     eq(operationLogs.userId, userId),
     keywordCondition(module, [operationLogs.module]),
+    keywordCondition(description, [operationLogs.description]),
+    method ? eq(operationLogs.method, method) : undefined,
+    keywordCondition(path, [operationLogs.path]),
+    keywordCondition(ip, [operationLogs.ip]),
+    keywordCondition(content, [operationLogs.beforeData, operationLogs.afterData, operationLogs.requestBody], 'ilike'),
+    status === 'success' ? and(gte(operationLogs.responseCode, 200), lte(operationLogs.responseCode, 399)) : undefined,
+    status === 'fail' ? gte(operationLogs.responseCode, 400) : undefined,
+    impersonated === true ? isNotNull(operationLogs.impersonatorId) : undefined,
+    impersonated === false ? isNull(operationLogs.impersonatorId) : undefined,
     ...dateRangeConditions(operationLogs.createdAt, startTime, endTime),
   );
   return listRows({

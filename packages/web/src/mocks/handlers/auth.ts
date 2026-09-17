@@ -8,7 +8,7 @@ import { mockMenus } from '@/mocks/data/menus';
 import { mockLoginLogs, mockOperationLogs } from '@/mocks/data/logs';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 import { currentMockSession, isMockPlatformAdmin, mockAccessToken, mockRefreshToken, mockUserPermissions, resolveMockSession, MOCK_REFRESH_TOKEN_PREFIX } from '@/mocks/utils/auth';
-import { matchesFilter } from '@/mocks/utils/filter';
+import { includesKeyword, matchesFilter, withinDateRange } from '@/mocks/utils/filter';
 import { getMockSettings } from '@/mocks/data/settings';
 import { deleteMockMySignature, getMockMySignature, saveMockMySignature } from '@/mocks/utils/personal-signature';
 
@@ -211,14 +211,31 @@ export const authHandlers = [
     const list = mockLoginLogs.filter((l) =>
       l.userId === userId
       && matchesFilter(l.eventType ?? 'login', query.eventType)
-      && matchesFilter(l.status, query.status));
+      && matchesFilter(l.status, query.status)
+      && withinDateRange(l.createdAt, query.startTime, query.endTime));
     return ok(paginate(list));
   }),
 
-  // 我的操作记录（仅返回当前 mock 用户的记录）
+  // 我的操作记录（仅返回当前 mock 用户的记录；模块/描述/路径/IP/内容为模糊匹配，结果由 responseCode 派生，与服务端一致）
   mock(authContract.myOperationLogs, ({ query, ok, paginate }) => {
     const userId = mockUsers[0].id;
-    const list = mockOperationLogs.filter((l) => l.userId === userId && matchesFilter(l.module, query.module));
+    const content = (query.content ?? '').toLowerCase();
+    const list = mockOperationLogs.filter((l) =>
+      l.userId === userId
+      && includesKeyword(query.module, l.module)
+      && includesKeyword(query.description, l.description)
+      && matchesFilter(l.method, query.method)
+      && includesKeyword(query.path, l.path)
+      && includesKeyword(query.ip, l.ip)
+      && (!content || l.beforeData?.toLowerCase().includes(content)
+        || l.afterData?.toLowerCase().includes(content)
+        || l.requestBody?.toLowerCase().includes(content))
+      && (query.status === 'success'
+        ? (l.responseCode ?? 0) >= 200 && (l.responseCode ?? 0) < 400
+        : query.status === 'fail' ? (l.responseCode ?? 0) >= 400 : true)
+      && (query.impersonated === true ? l.impersonatorId != null
+        : query.impersonated === false ? l.impersonatorId == null : true)
+      && withinDateRange(l.createdAt, query.startTime, query.endTime));
     return ok(paginate(list));
   }),
 
