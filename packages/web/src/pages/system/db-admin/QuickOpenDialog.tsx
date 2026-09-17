@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Input, Modal, Tag, Typography } from '@douyinfe/semi-ui';
 import { Search, Table as TableIcon, Eye } from 'lucide-react';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
 import { quickOpenScore, type QuickOpenTable } from './quick-open-score';
 
 const { Text } = Typography;
@@ -19,6 +20,8 @@ export function QuickOpenDialog({ visible, tables, onClose, onSelect }: Readonly
   const [query, setQuery] = useState('');
   const [activeIdx, setActiveIdx] = useState(0);
   const listRef = useRef<HTMLDivElement | null>(null);
+  // 拼音词典就绪后重算匹配，补上已输入关键字的拼音命中
+  const pinyinReady = usePinyinReady();
 
   useEffect(() => {
     if (visible) {
@@ -35,7 +38,9 @@ export function QuickOpenDialog({ visible, tables, onClose, onSelect }: Readonly
     }
     scored.sort((a, b) => b.score - a.score || a.table.name.localeCompare(b.table.name));
     return scored.slice(0, 50).map((x) => x.table);
-  }, [tables, query]);
+  // 拼音词典就绪后重算打分，补上已输入关键字的拼音命中；pinyinReady 仅作为重算信号
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tables, query, pinyinReady]);
 
   useEffect(() => {
     setActiveIdx(0);

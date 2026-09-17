@@ -12,6 +12,8 @@ import {
   useUpdateSshProfileOrder,
 } from '@/hooks/queries/terminal';
 import { EditFormModal } from '@/components/EditFormModal';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
+import { textMatches } from '@/utils/pinyin';
 
 export type { SshAuthType, SshProfile };
 
@@ -131,21 +133,24 @@ export default function SshProfilesManager({ onConnect, onBrowseSftp }: Readonly
     [profiles],
   );
 
-  // 搜索 + 标签筛选
+  // 搜索 + 标签筛选（名称 / 分组 / 标签支持拼音首字母 / 全拼）
+  // 拼音词典就绪后重算过滤；pinyinReady 仅作为重算信号
+  const pinyinReady = usePinyinReady();
   const filtered = useMemo(() => {
-    const kw = keyword.trim().toLowerCase();
+    const kw = keyword.trim();
     return profiles.filter((p) => {
       if (activeTag && !(p.tags ?? []).includes(activeTag)) return false;
       if (!kw) return true;
       return (
-        p.name.toLowerCase().includes(kw) ||
-        p.host.toLowerCase().includes(kw) ||
-        p.username.toLowerCase().includes(kw) ||
-        (p.groupName ?? '').toLowerCase().includes(kw) ||
-        (p.tags ?? []).some((t) => t.toLowerCase().includes(kw))
+        textMatches(p.name, kw) ||
+        textMatches(p.host, kw) ||
+        textMatches(p.username, kw) ||
+        textMatches(p.groupName ?? '', kw) ||
+        (p.tags ?? []).some((t) => textMatches(t, kw))
       );
     });
-  }, [profiles, keyword, activeTag]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profiles, keyword, activeTag, pinyinReady]);
 
   // 按分组聚合（未分组归入 UNGROUPED_KEY）
   const grouped = useMemo(() => {

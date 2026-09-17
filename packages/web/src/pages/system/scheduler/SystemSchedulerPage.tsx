@@ -16,6 +16,8 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { usePagination } from '@/hooks/usePagination';
 import { useListSearch } from '@/hooks/useListSearch';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
+import { textMatches } from '@/utils/pinyin';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { formatDateTimeRangeForApi } from '@/utils/date';
@@ -230,19 +232,22 @@ export default function SystemSchedulerPage() {
     [tasks],
   );
 
+  // 任务标题 / 标识 / 说明支持拼音首字母 / 全拼；pinyinReady 仅作为重算信号
+  const pinyinReady = usePinyinReady();
   const filteredTasks = useMemo(() => {
-    const keyword = taskSearch.keyword.trim().toLowerCase();
+    const keyword = taskSearch.keyword.trim();
     return tasks.filter((item) => {
       const matchedKeyword = !keyword
-        || item.title.toLowerCase().includes(keyword)
-        || item.name.toLowerCase().includes(keyword)
-        || (item.description ?? '').toLowerCase().includes(keyword);
+        || textMatches(item.title, keyword)
+        || textMatches(item.name, keyword)
+        || textMatches(item.description ?? '', keyword);
       const matchedModule = !taskSearch.module || item.module === taskSearch.module;
       const matchedType = !taskSearch.taskType || item.taskType === taskSearch.taskType;
       const matchedStatus = !taskSearch.status || item.lastRunStatus === taskSearch.status;
       return matchedKeyword && matchedModule && matchedType && matchedStatus;
     });
-  }, [taskSearch, tasks]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskSearch, tasks, pinyinReady]);
 
   const handleRunTask = (record: SystemSchedulerTask) => {
     Modal.confirm({

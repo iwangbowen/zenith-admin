@@ -1,3 +1,5 @@
+import { textMatches } from '@/utils/pinyin';
+
 export interface QuickOpenTable {
   schema: string;
   name: string;
@@ -22,6 +24,8 @@ export function quickOpenScore(query: string, table: QuickOpenTable): number | n
   const words = q.split(/\s+/).filter(Boolean);
   if (words.length > 1 && words.every((w) => full.includes(w) || comment.includes(w))) return 300;
   if (comment.includes(q)) return 200;
+  // 中文注释拼音（首字母 / 全拼）：排在子串命中之后
+  if (comment && textMatches(comment, query)) return 150;
   // 稀疏子序列（ucl → user_cron_logs）
   let i = 0;
   for (const ch of name) {

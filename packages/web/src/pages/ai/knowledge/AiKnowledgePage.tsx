@@ -23,6 +23,8 @@ import {
 } from '@/hooks/queries/ai-extras';
 import { CreateButton, ResetButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
+import { textMatches } from '@/utils/pinyin';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
 import { EditFormModal } from '@/components/EditFormModal';
@@ -46,8 +48,10 @@ export default function AiKnowledgePage() {
   const urlFormApi = useRef<FormApi | null>(null);
 
   const listQuery = useAiKnowledgeBases();
+  // 拼音词典就绪后重渲染，补上已输入关键字的拼音命中
+  usePinyinReady();
   const list = (listQuery.data ?? []).filter(
-    (kb) => !search || kb.name.toLowerCase().includes(search.toLowerCase()),
+    (kb) => textMatches(kb.name, search),
   );
   const saveMutation = useSaveAiKnowledgeBase();
   const deleteMutation = useDeleteAiKnowledgeBase();

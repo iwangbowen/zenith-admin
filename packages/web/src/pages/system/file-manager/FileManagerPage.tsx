@@ -49,6 +49,8 @@ import FolderPickerModal from './components/FolderPickerModal';
 import './FileManagerPage.css';
 import { HostSelector } from '@/components/HostSelector';
 import { useOpsHostSelection } from '@/hooks/useOpsHostSelection';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
+import { textMatches } from '@/utils/pinyin';
 import { RemoteHostFiles } from './RemoteHostFiles';
 
 function LocalFileManagerPage() {
@@ -85,11 +87,13 @@ function LocalFileManagerPage() {
   const fileOperationMutation = useTerminalFileOperation();
   const extractTask = useTerminalExtract();
 
-  // ── 过滤 + 排序 + 侧栏 ────────────────────────────────────────────────────
+  // ── 过滤 + 排序 + 侧栏（当前目录文件名支持拼音首字母 / 全拼） ──────────────
+  // 拼音词典就绪后重算过滤；pinyinReady 仅作为重算信号
+  const pinyinReady = usePinyinReady();
   const filteredEntries = useMemo(() => {
     const base = entries
       .filter((e) => showHidden || !e.name.startsWith('.'))
-      .filter((e) => !keyword || e.name.toLowerCase().includes(keyword.toLowerCase()));
+      .filter((e) => textMatches(e.name, keyword));
     // 始终文件夹优先；组内按排序状态（默认名称升序）
     const dirWeight = (e: FsEntry) => (e.type === 'dir' ? 0 : 1);
     const collator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' });
@@ -103,7 +107,8 @@ function LocalFileManagerPage() {
       return collator.compare(a.name, b.name) * dir;
     };
     return [...base].sort(cmp);
-  }, [entries, showHidden, keyword, sortState]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entries, showHidden, keyword, sortState, pinyinReady]);
 
   const sidebarDirs = entries.filter((e) => e.type === 'dir');
 

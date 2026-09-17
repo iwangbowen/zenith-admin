@@ -4,6 +4,8 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ChevronsUpDown, ChevronsDownUp } from 'lucide-react';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { useListSearch } from '@/hooks/useListSearch';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
+import { textMatches } from '@/utils/pinyin';
 import { usePermission } from '@/hooks/usePermission';
 import { useTreeExpansion, type TreeRowKey } from '@/hooks/useTreeExpansion';
 import type { AiProviderConfig } from '@zenith/shared/ai';
@@ -75,19 +77,21 @@ export default function AIProvidersPage() {
   };
 
   // 扁平数据 + 组间排序（常用服务商排前），分组由表格 groupBy 完成
+  // 配置名称支持拼音首字母 / 全拼；拼音词典就绪后重算，pinyinReady 仅作为重算信号
+  const pinyinReady = usePinyinReady();
   const flatData = useMemo<AiProviderConfig[]>(() => {
     const filtered = list.filter(
       (item) =>
-        !search ||
-        item.name.toLowerCase().includes(search.toLowerCase()) ||
-        (item.models ?? []).some((m) => m.toLowerCase().includes(search.toLowerCase())),
+        textMatches(item.name, search) ||
+        (item.models ?? []).some((m) => textMatches(m, search)),
     );
     return [...filtered].sort(
       (a, b) =>
         (COMMON_ORDER.get(a.providerId) ?? 999) - (COMMON_ORDER.get(b.providerId) ?? 999)
         || a.providerId.localeCompare(b.providerId),
     );
-  }, [list, search]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list, search, pinyinReady]);
 
   // providerId → 配置数（组头计数）
   const groupCounts = useMemo(() => {
