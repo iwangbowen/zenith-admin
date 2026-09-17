@@ -126,6 +126,7 @@ export async function startImpersonation(input: StartImpersonationInput, client:
     roles: roleCodes,
     tenantId: target.tenantId ?? null,
     impersonation: { id: record.id, byUserId: operator.userId, byUsername: operator.username, readOnly },
+    ...(os !== 'Unknown' ? { os } : {}),
     jti: tokenId,
   }, minutes * 60);
 

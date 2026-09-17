@@ -101,6 +101,21 @@ function clampReportedLabel(value: string | undefined): string | undefined {
   return trimmed ? trimmed.slice(0, REPORTED_CLIENT_LABEL_MAX_LENGTH) : undefined;
 }
 
+/**
+ * 逐请求展示值：CH 实时解析优先（新鲜且浏览器断言，不可被页面 JS 伪造）；
+ * 仅当 UA 冻结在 Win10 歧义时，回退服务端签发的 token OS 断言（登录时写入，随轮换更新）；
+ * 断言缺失或为 Unknown 时保持 UA 口径，不降级展示。
+ */
+export function resolveRequestClient(
+  ua: string,
+  platformVersion: string | null,
+  tokenOs?: string | null,
+): { browser: string; os: string } {
+  const { browser, os } = parseUserAgent(ua, platformVersion);
+  if (os !== 'Windows 10') return { browser, os };
+  return { browser, os: tokenOs && tokenOs !== 'Unknown' ? tokenOs : os };
+}
+
 const CLIENT_KIND_SET: ReadonlySet<string> = new Set(SESSION_CLIENT_KINDS);
 
 /**

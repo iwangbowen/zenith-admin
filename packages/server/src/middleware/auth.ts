@@ -30,6 +30,11 @@ export interface JwtPayload {
    */
   impersonation?: ImpersonationClaim;
   jti?: string;
+  /**
+   * 登录时服务端断言的 OS 展示值（自报优先、缺项回退 UA 解析，仅展示）。
+   * 操作日志等逐请求展示在 UA 冻结歧义（Win10）时回退到它；签名防伪造，随令牌轮换更新。
+   */
+  os?: string;
   authType?: 'jwt' | 'apiToken';
   apiTokenId?: number;
 }
@@ -336,7 +341,7 @@ export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
               username: subject.payload.username,
               nickname: u.nickname,
               tenantId: subject.payload.tenantId ?? null,
-              ...clientFingerprint(c),
+              ...clientFingerprint(c, subject.payload.os),
               location: null,
               loginAt: new Date(),
               impersonatorId: subject.payload.impersonation?.byUserId ?? null,

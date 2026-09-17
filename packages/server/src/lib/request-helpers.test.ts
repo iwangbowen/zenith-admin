@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, it, expect } from 'vitest';
 import { Hono } from 'hono';
 import { REPORTED_CLIENT_LABEL_MAX_LENGTH } from '@zenith/shared/core';
-import { getClientInfo, getClientIp, parseUserAgent, resolveReportedClient } from './request-helpers';
+import { getClientInfo, getClientIp, parseUserAgent, resolveReportedClient, resolveRequestClient } from './request-helpers';
 import { config } from '../config';
 
 async function ipFor(headers: Record<string, string>): Promise<string> {
@@ -185,5 +185,29 @@ describe('resolveReportedClient', () => {
 
   it('截断上限与日志列宽（varchar 64）绑定，不各自漂移', () => {
     expect(REPORTED_CLIENT_LABEL_MAX_LENGTH).toBe(64);
+  });
+});
+
+describe('resolveRequestClient', () => {
+  const CHROME_WIN_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+  it('CH 已判出 Win11 → 实时解析优先，令牌不断言覆盖', () => {
+    const { browser, os } = resolveRequestClient(CHROME_WIN_UA, '"15.0.0"', 'Windows 10');
+    expect(browser).toContain('Chrome');
+    expect(os).toBe('Windows 11');
+  });
+
+  it('UA 冻结歧义（Win10）→ 回退令牌 OS 断言', () => {
+    expect(resolveRequestClient(CHROME_WIN_UA, null, 'Windows 11').os).toBe('Windows 11');
+  });
+
+  it('断言缺失或 Unknown → 保持 UA 口径，不降级展示', () => {
+    expect(resolveRequestClient(CHROME_WIN_UA, null, undefined).os).toBe('Windows 10');
+    expect(resolveRequestClient(CHROME_WIN_UA, null, 'Unknown').os).toBe('Windows 10');
+  });
+
+  it('非冻结系统不受断言影响', () => {
+    const mac = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+    expect(resolveRequestClient(mac, null, 'Windows 11').os).not.toBe('Windows 11');
   });
 });

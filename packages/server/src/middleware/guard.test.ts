@@ -37,14 +37,25 @@ vi.mock('../lib/ip-location', () => ({
   lookupIpLocation: vi.fn().mockReturnValue('内网地址'),
 }));
 
-vi.mock('../lib/request-helpers', () => ({
-  getClientIp: vi.fn().mockReturnValue('127.0.0.1'),
-  getPlatformVersion: vi.fn().mockReturnValue(null),
-  parseUserAgent: vi.fn().mockReturnValue({ browser: 'Chrome 120', os: 'Windows 11' }),
-}));
+vi.mock('../lib/request-helpers', () => {
+  const parseUserAgent = vi.fn().mockReturnValue({ browser: 'Chrome 120', os: 'Windows 11' });
+  return {
+    getClientIp: vi.fn().mockReturnValue('127.0.0.1'),
+    getPlatformVersion: vi.fn().mockReturnValue(null),
+    parseUserAgent,
+    // 与真实 resolveRequestClient 同语义（真实逻辑见 request-helpers.test.ts）：
+    // 非 Win10 直接返回解析值，仅 Win10 歧义时回退令牌断言
+    resolveRequestClient: vi.fn((ua: string, pv: string | null, tokenOs?: string | null) => {
+      const parsed = parseUserAgent(ua, pv) as { browser: string; os: string };
+      if (parsed.os !== 'Windows 10') return parsed;
+      return { browser: parsed.browser, os: tokenOs && tokenOs !== 'Unknown' ? tokenOs : parsed.os };
+    }),
+  };
+});
 
 import { db } from '../db';
 import { isSuperAdmin, getUserPermissions } from '../lib/permissions';
+import { parseUserAgent } from '../lib/request-helpers';
 import { guard } from './guard';
 
 const dbMock = vi.mocked(db);
@@ -53,11 +64,11 @@ const getUserPermissionsMock = vi.mocked(getUserPermissions);
 
 const insertValues = vi.fn().mockResolvedValue(undefined);
 
-function buildApp(guardOpts: Parameters<typeof guard>[0]) {
+function buildApp(guardOpts: Parameters<typeof guard>[0], userOs?: string) {
   const app = new Hono();
   app.use('*', contextStorage());
   app.use('*', async (c, next) => {
-    c.set('user', { userId: 1, username: 'alice', roles: ['user'], tenantId: null, jti: 'j1' });
+    c.set('user', { userId: 1, username: 'alice', roles: ['user'], tenantId: null, jti: 'j1', ...(userOs === undefined ? {} : { os: userOs }) });
     await next();
   });
   app.post('/target', guard(guardOpts), (c) => c.json({ code: 0, message: 'success', data: { ok: true } }));
@@ -197,5 +208,25 @@ describe('guard - 审计日志', () => {
 
     await flushAudit();
     expect(insertValues.mock.calls[0][0].requestBody).toBeNull();
+  });
+
+  it('UA 冻结歧义（Win10）时回退令牌 OS 断言', async () => {
+    vi.mocked(parseUserAgent).mockReturnValueOnce({ browser: 'Chrome 120', os: 'Windows 10' });
+    const res = await buildApp({ audit: { description: '创建用户' } }, 'Windows 11').request('/target', { method: 'POST' });
+    expect(res.status).toBe(200);
+
+    await flushAudit();
+    const logged = insertValues.mock.calls[0][0];
+    expect(logged.browser).toBe('Chrome 120');
+    expect(logged.os).toBe('Windows 11');
+  });
+
+  it('CH 已判出 Win11 时不断言覆盖（令牌 stale 也不回退）', async () => {
+    const res = await buildApp({ audit: { description: '创建用户' } }, 'Windows 10').request('/target', { method: 'POST' });
+    expect(res.status).toBe(200);
+
+    await flushAudit();
+    // 默认 mock 解析为 Windows 11：实时解析优先，令牌里的旧值不覆盖
+    expect(insertValues.mock.calls[0][0].os).toBe('Windows 11');
   });
 });

@@ -54,14 +54,17 @@ export async function getUserRoles(userId: number) {
 export async function issueTokens(
   user: { id: number; username: string; tenantId?: number | null; viewingTenantId?: number | null },
   roleCodes: string[],
+  extra?: { os?: string },
 ) {
   const tokenId = generateTokenId();
   const tenantId = user.tenantId ?? null;
   const viewingTenantClaim = user.viewingTenantId !== undefined
     ? { viewingTenantId: user.viewingTenantId }
     : {};
+  // OS 断言只进 access token（逐请求展示用）：Unknown / 缺省不写，避免把"未知"固化进令牌
+  const osClaim = extra?.os && extra.os !== 'Unknown' ? { os: extra.os } : {};
   const accessToken = await signToken<JwtPayload>(
-    { userId: user.id, username: user.username, roles: roleCodes, tenantId, ...viewingTenantClaim, jti: tokenId },
+    { userId: user.id, username: user.username, roles: roleCodes, tenantId, ...viewingTenantClaim, ...osClaim, jti: tokenId },
     '2h',
   );
   const refreshToken = await signToken(
@@ -193,9 +196,9 @@ export async function finalizeLogin(
   options: { logMessage: string; requirePasswordChange?: boolean; sessionPolicy?: SessionConcurrencyPolicy; evictOthers?: boolean },
 ) {
   const userRoleList = await getUserRoles(user.id);
-  const { accessToken, refreshToken, tokenId } = await issueTokens(user, userRoleList.map((r) => r.code));
-
   const { browser, os } = resolveReportedClient(input, input.ua);
+  const { accessToken, refreshToken, tokenId } = await issueTokens(user, userRoleList.map((r) => r.code), { os });
+
   const client = input.client ?? 'web';
   const location = lookupIpLocation(input.ip);
   const loginAt = new Date();
@@ -521,9 +524,13 @@ export async function refreshAccessToken(token: string, clientInfo?: { ip: strin
   }
   const tokenId = generateTokenId();
   const viewingTenantClaim = payload.viewingTenantId !== undefined ? { viewingTenantId: payload.viewingTenantId } : {};
+  // 在线会话迁移到新 jti：沿用原登录时间与设备信息；Redis 中无原会话（重启 / 长期未活跃）时按本次请求重建
+  const existing = await getSession(previousTokenId);
+  // 断言沿用会话已存 OS（Unknown 不进令牌，避免把"未知"固化）
+  const migratedOsClaim = existing?.os && existing.os !== 'Unknown' ? { os: existing.os } : {};
   const [accessToken, refreshToken] = await Promise.all([
     signToken<JwtPayload>(
-      { userId: payload.userId, username: u.username, roles: userRoleList.map((r) => r.code), tenantId: dbTenantId, ...viewingTenantClaim, jti: tokenId },
+      { userId: payload.userId, username: u.username, roles: userRoleList.map((r) => r.code), tenantId: dbTenantId, ...viewingTenantClaim, ...migratedOsClaim, jti: tokenId },
       '2h',
     ),
     signToken(
@@ -531,8 +538,6 @@ export async function refreshAccessToken(token: string, clientInfo?: { ip: strin
       '30d',
     ),
   ]);
-  // 在线会话迁移到新 jti：沿用原登录时间与设备信息；Redis 中无原会话（重启 / 长期未活跃）时按本次请求重建
-  const existing = await getSession(previousTokenId);
   const { browser, os } = parseUserAgent(clientInfo?.ua ?? '');
   await Promise.all([
     registerSession({
@@ -799,19 +804,21 @@ export async function switchTenantView(targetTenantId: number | null, ip: string
     if (tenant.status !== 'enabled') throw new HTTPException(403, { message: '租户已被禁用' });
     if (isTenantExpired(tenant)) throw new HTTPException(403, { message: '租户已过期' });
   }
+  const { browser, os } = parseUserAgent(ua);
+  // 会话迁移（非新登录）：沿用原会话的终端信息与登录时间（与 refresh 轮换一致），不触发并发限制；旧 jti 立即吊销（access / refresh 一并作废）
+  const existing = payload.jti ? await getSession(payload.jti) : null;
+  if (payload.jti) await removeSession(payload.jti, 'rotated');
+  // 断言沿用会话已存 OS（Unknown 不进令牌）
+  const migratedOs = existing?.os && existing.os !== 'Unknown' ? existing.os : undefined;
   const tokenId = generateTokenId();
   const newAccessToken = await signToken<JwtPayload>(
-    { userId: payload.userId, username: payload.username, roles: payload.roles, tenantId: payload.tenantId, viewingTenantId: targetTenantId, jti: tokenId },
+    { userId: payload.userId, username: payload.username, roles: payload.roles, tenantId: payload.tenantId, viewingTenantId: targetTenantId, ...(migratedOs ? { os: migratedOs } : {}), jti: tokenId },
     '2h',
   );
   const newRefreshToken = await signToken(
     { userId: payload.userId, username: payload.username, type: 'refresh', tenantId: payload.tenantId, viewingTenantId: targetTenantId, jti: tokenId },
     '30d',
   );
-  const { browser, os } = parseUserAgent(ua);
-  // 会话迁移（非新登录）：沿用原会话的终端信息与登录时间（与 refresh 轮换一致），不触发并发限制；旧 jti 立即吊销（access / refresh 一并作废）
-  const existing = payload.jti ? await getSession(payload.jti) : null;
-  if (payload.jti) await removeSession(payload.jti, 'rotated');
   await Promise.all([
     registerSession({
       tokenId,

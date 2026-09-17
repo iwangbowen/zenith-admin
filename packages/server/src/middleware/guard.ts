@@ -8,7 +8,7 @@ import { redactBody, truncateVarchar } from '../lib/sanitize';
 import { db } from '../db';
 import { operationLogs } from '../db/schema';
 import { errBody } from '../lib/openapi-schemas';
-import { getClientIp, getPlatformVersion, parseUserAgent } from '../lib/request-helpers';
+import { getClientIp, getPlatformVersion, resolveRequestClient } from '../lib/request-helpers';
 import { lookupIpLocation } from '../lib/ip-location';
 import { getEffectiveTenantId } from '../lib/tenant';
 import { assertFeatureEnabled } from '../lib/licensing';
@@ -57,8 +57,9 @@ async function writeOperationLog(
     const user = c.get('user') as JwtPayload | undefined;
     const ip = getClientIp(c);
     const ua = c.req.header('user-agent') ?? '';
-    // 审计口径：只信服务端请求头 + Client Hints，不采纳客户端自报的展示值
-    const { browser: browserName, os: osName } = parseUserAgent(ua, getPlatformVersion(c));
+    // 展示列口径：CH 实时解析优先，仅 UA 冻结歧义（Win10）时回退令牌 OS 断言；
+    // 原始 UA 另存 userAgent 列，断言随登录签发、不可被页面 JS 伪造
+    const { browser: browserName, os: osName } = resolveRequestClient(ua, getPlatformVersion(c), user?.os);
 
     const responseCode = c.res?.status ?? 200;
     // 脱敏 → 结构化裁剪：合法 JSON 且 UTF-8 字节 ≤ 4KB（不再用字符串 slice 切坏 JSON）

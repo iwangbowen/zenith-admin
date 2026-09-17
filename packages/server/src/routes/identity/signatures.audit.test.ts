@@ -18,6 +18,7 @@ vi.mock('../../lib/request-helpers', () => ({
   getPlatformVersion: () => null,
   parseUserAgent: () => ({ browser: 'Test', os: 'Test' }),
   resolveReportedClient: (reported: { browser?: string; os?: string }) => ({ browser: reported.browser ?? 'Test', os: reported.os ?? 'Test' }),
+  resolveRequestClient: () => ({ browser: 'Test', os: 'Test' }),
 }));
 vi.mock('../../lib/data-mask/boundary', () => ({ withDataMasking: (_op: unknown, handler: unknown) => handler }));
 vi.mock('../../services/identity/user-signatures.service', () => ({
