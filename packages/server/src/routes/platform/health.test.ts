@@ -12,7 +12,10 @@ vi.mock('../../lib/invalidation-bus', async (original) => ({
   ...await original<typeof import('../../lib/invalidation-bus')>(),
   invalidationBusState: () => mocks.bus,
 }));
-vi.mock('../../lib/ws-fanout', () => ({ wsFanoutState: () => mocks.fanout }));
+vi.mock('../../lib/ws-fanout', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../lib/ws-fanout')>(),
+  wsFanoutState: () => mocks.fanout,
+}));
 vi.mock('../../lib/logger', () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: vi.fn() } }));
 
 type HealthApp = typeof import('./health').default;

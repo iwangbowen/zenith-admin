@@ -19,8 +19,14 @@ vi.mock('../lib/pg-boss-scheduler', () => ({
 }));
 vi.mock('../lib/storage-topology', () => ({ assertWorkerStorageTopology: async () => { if (mocks.topologyError) throw mocks.topologyError; } }));
 vi.mock('../lib/metrics-sampler', () => ({ metricsSampler: { getLatest: () => null, http: { totals: () => ({ total: 0, total4xx: 0, total5xx: 0 }) } } }));
-vi.mock('../lib/ws-manager', () => ({ getWsSnapshot: () => ({ currentConnections: 0, currentUsers: 0 }) }));
-vi.mock('../lib/ws-fanout', () => ({ getWsFanoutCounters: () => ({ published: 0, publishFailed: 0, delivered: 0, dropped: 0 }) }));
+vi.mock('../lib/ws-manager', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../lib/ws-manager')>(),
+  getWsSnapshot: () => ({ currentConnections: 0, currentUsers: 0 }),
+}));
+vi.mock('../lib/ws-fanout', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../lib/ws-fanout')>(),
+  getWsFanoutCounters: () => ({ published: 0, publishFailed: 0, delivered: 0, dropped: 0 }),
+}));
 vi.mock('@hono/node-server', () => ({ serve: vi.fn(() => ({ close: (cb: () => void) => cb() })) }));
 
 type RunWorker = typeof import('./run-worker');
