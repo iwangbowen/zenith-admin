@@ -35,15 +35,37 @@ export function getClientIp(c: Context): string {
 
 /**
  * 解析 User-Agent 字符串，返回浏览器和操作系统信息。
+ *
+ * Win11 的 UA 被浏览器冻结为 `Windows NT 10.0`（与 Win10 不可区分），仅靠 UA
+ * 只能判到 Windows 10；Chromium 在 `Accept-CH` 选择后会发送
+ * `Sec-CH-UA-Platform-Version`（Win11 起 major ≥ 13），此时可精确到 Windows 11。
+ * 自报值（登录请求体 `os`）与审计口径（操作日志）分别见调用方注释。
  */
-export function parseUserAgent(ua: string): { browser: string; os: string } {
+export function parseUserAgent(ua: string, platformVersion?: string | null): { browser: string; os: string } {
   const parser = new UAParser(ua);
   const b = parser.getBrowser();
   const o = parser.getOS();
-  return {
-    browser: b.name ? `${b.name} ${b.version ?? ''}`.trim() : 'Unknown',
-    os: o.name ? `${o.name} ${o.version ?? ''}`.trim() : 'Unknown',
-  };
+  const browser = b.name ? `${b.name} ${b.version ?? ''}`.trim() : 'Unknown';
+  let os = o.name ? `${o.name} ${o.version ?? ''}`.trim() : 'Unknown';
+  if (isFrozenWindows10(o.name, o.version) && isWindows11ByHints(platformVersion)) os = 'Windows 11';
+  return { browser, os };
+}
+
+/** ua-parser-js 把 NT 10.0 映射为 Windows/10：Win10 与 Win11 在 UA 里长这样 */
+function isFrozenWindows10(name: string | undefined, version: string | undefined): boolean {
+  return name === 'Windows' && (version === '10' || version?.startsWith('10.') === true);
+}
+
+/** Client Hints 平台版本 major ≥ 13 即 Win11（Chromium 约定）；头值带引号如 `"15.0.0"` */
+function isWindows11ByHints(platformVersion: string | null | undefined): boolean {
+  if (!platformVersion) return false;
+  const major = Number.parseInt(platformVersion.replace(/"/g, '').split('.')[0] ?? '', 10);
+  return Number.isFinite(major) && major >= 13;
+}
+
+/** 从请求读 Client Hints 平台版本头（无头 / 非 Chromium 返回 null，调用方回退纯 UA 解析） */
+export function getPlatformVersion(c: Context): string | null {
+  return c.req.header('sec-ch-ua-platform-version') ?? null;
 }
 
 const CLIENT_KIND_SET: ReadonlySet<string> = new Set(SESSION_CLIENT_KINDS);

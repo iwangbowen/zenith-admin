@@ -88,6 +88,13 @@ export function createApp() {
     // CMS 前台 SSR、短链 / 退订 / 表单提示页等 HTML 由本进程直出：默认禁止跨站嵌入（点击劫持）
     xFrameOptions: 'SAMEORIGIN',
   }));
+  // Client Hints 选择：Chromium 后续请求携带 Sec-CH-UA-Platform-Version，
+  // 供 UA 解析区分 Win10 / Win11（UA 本身在 Win11 上冻结为 NT 10.0）。
+  // 不支持的浏览器（Firefox / Safari）直接忽略，无副作用。
+  app.use('*', async (c, next) => {
+    c.header('Accept-CH', 'Sec-CH-UA-Platform-Version');
+    await next();
+  });
   // 流式/二进制路由排除压缩：SSE 实时推送 + 文件下载不能被缓冲压缩
   const COMPRESS_EXCLUDE_PREFIXES = ['/api/ws', '/api/files', '/api/db-admin', '/api/log-files', '/api/log-viewer', '/api/monitor/stream', '/api/ai/conversations', '/api/ai/arena', '/api/ai/generations', '/api/public/app-releases'];
   app.use('*', except(

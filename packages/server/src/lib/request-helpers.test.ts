@@ -114,4 +114,28 @@ describe('parseUserAgent', () => {
     expect(parseUserAgent('')).toEqual({ browser: 'Unknown', os: 'Unknown' });
     expect(parseUserAgent('curl/8.4.0').os).toBe('Unknown');
   });
+
+  it('Win11 的 UA 冻结为 NT 10.0：无 hints 时只能判 Windows 10', () => {
+    const { os } = parseUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    );
+    expect(os).toBe('Windows 10');
+  });
+
+  it('Win11 + Sec-CH-UA-Platform-Version ≥ 13 → Windows 11（头值带引号）', () => {
+    const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+    expect(parseUserAgent(ua, '"15.0.0"').os).toBe('Windows 11');
+    expect(parseUserAgent(ua, '"13.0.0"').os).toBe('Windows 11');
+    expect(parseUserAgent(ua, '"10.0.0"').os).toBe('Windows 10');
+    expect(parseUserAgent(ua, null).os).toBe('Windows 10');
+    expect(parseUserAgent(ua, 'not-a-version').os).toBe('Windows 10');
+  });
+
+  it('hints 只修正冻结的 Win10：macOS 等不受影响', () => {
+    const { os } = parseUserAgent(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      '"15.0.0"',
+    );
+    expect(os).not.toBe('Windows 11');
+  });
 });
