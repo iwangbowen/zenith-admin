@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { Select } from '@douyinfe/semi-ui';
 import type { CSSProperties } from 'react';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
+import { textMatches } from '@/utils/pinyin';
 import { useAllUsers } from '@/hooks/queries/users';
 
 export interface UserSelectProps {
@@ -47,13 +49,15 @@ export function UserSelectBase({
     })),
     [users],
   );
+  // 拼音词典就绪后重渲染，补上已输入关键字的拼音命中
+  usePinyinReady();
 
   return (
     <Select
       value={value as never}
       onChange={(v) => onChange?.(v as number | number[] | undefined)}
       multiple={multiple}
-      filter
+      filter={(inputValue, option) => textMatches(String(option?.label ?? ''), inputValue)}
       placeholder={loading ? '加载中...' : placeholder}
       disabled={disabled || loading}
       showClear={showClear}

@@ -11,6 +11,8 @@ import { useDebouncedValue } from '@tanstack/react-pacer';
 import { Check, ChevronRight, Search } from 'lucide-react';
 import { UserAvatar } from '@/components/UserAvatar';
 import { useEventCallback } from '@/hooks/useEventCallback';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
+import { textMatches } from '@/utils/pinyin';
 
 export interface ApproverCandidate {
   id: number;
@@ -65,12 +67,13 @@ export default function ApproverPickerField({
 
   const candidateNames = useMemo(() => new Map(candidates.map((c) => [c.id, c.name])), [candidates]);
   const nameOf = (id: number) => candidateNames.get(id) ?? pickedNames.get(id) ?? `用户#${id}`;
+  // 拼音词典就绪后重渲染，补上已输入关键字的拼音命中（仅本地过滤模式）
+  usePinyinReady();
 
   const filtered = useMemo(() => {
     if (remote) return candidates;
-    const kw = keyword.trim().toLowerCase();
-    if (!kw) return candidates;
-    return candidates.filter((c) => c.name.toLowerCase().includes(kw));
+    if (!keyword.trim()) return candidates;
+    return candidates.filter((c) => textMatches(c.name, keyword));
   }, [candidates, keyword, remote]);
 
   const open = () => {

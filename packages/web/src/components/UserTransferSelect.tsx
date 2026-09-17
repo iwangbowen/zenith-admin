@@ -2,6 +2,8 @@ import { useCallback, useMemo, useState } from 'react';
 import { Checkbox, Radio, RadioGroup, Transfer } from '@douyinfe/semi-ui';
 import { X } from 'lucide-react';
 import type { Department } from '@zenith/shared/identity';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
+import { textMatches } from '@/utils/pinyin';
 import { UserAvatar } from './UserAvatar';
 
 export interface UserTransferUser {
@@ -141,6 +143,8 @@ export function UserTransferSelect({
   departments,
 }: Readonly<UserTransferSelectProps>) {
   const [viewMode, setViewMode] = useState<ViewMode>('flat');
+  // 拼音词典就绪后重渲染，补上已输入关键字的拼音命中
+  usePinyinReady();
 
   const transferData = useMemo<TransferDataItem[]>(
     () =>
@@ -157,13 +161,12 @@ export function UserTransferSelect({
     [dataSource],
   );
 
-  // ─── 扁平模式过滤 ─────────────────────────────────────────────
+  // ─── 扁平模式过滤（子串 + 拼音首字母 / 全拼） ─────────────────────────────
   const filter = (input: string, item: { _username?: string; label?: string; _departmentName?: string | null; [key: string]: unknown }) => {
-    const q = input.toLowerCase();
     return (
-      (item._username ?? '').toLowerCase().includes(q) ||
-      (item.label ?? '').toLowerCase().includes(q) ||
-      (item._departmentName ?? '').toLowerCase().includes(q)
+      textMatches(item._username ?? '', input) ||
+      textMatches(item.label ?? '', input) ||
+      textMatches(item._departmentName ?? '', input)
     );
   };
 
@@ -231,16 +234,15 @@ export function UserTransferSelect({
     [departments, transferData],
   );
 
-  // ─── 树形模式 - 搜索过滤（仅叶节点） ─────────────────────────
+  // ─── 树形模式 - 搜索过滤（仅叶节点，子串 + 拼音） ─────────────────────────
   const filterTreeNode = useCallback(
     (inputValue: string, treeNode: Record<string, unknown>) => {
       const item = treeNode as Partial<TransferDataItem>;
       if (!item._username) return false; // 部门节点不直接匹配
-      const q = inputValue.toLowerCase();
       return (
-        item._username.toLowerCase().includes(q) ||
-        (item.label ?? '').toLowerCase().includes(q) ||
-        (item._departmentName ?? '').toLowerCase().includes(q)
+        textMatches(item._username, inputValue) ||
+        textMatches(item.label ?? '', inputValue) ||
+        textMatches(item._departmentName ?? '', inputValue)
       );
     },
     [],
