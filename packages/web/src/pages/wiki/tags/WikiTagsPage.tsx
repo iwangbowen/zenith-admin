@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { Form, Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { wikiTagContract, type CreateWikiTagInput, type WikiTag } from '@zenith/shared/wiki';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { SwatchColorPicker } from '@/components/SwatchColorPicker';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, ListSearchToolbar } from '@/components/list-page';
 import { CreateButton } from '@/components/toolbar-controls';
@@ -14,6 +16,9 @@ import { EditFormModal } from '@/components/EditFormModal';
 
 const TAG_COLOR_PRESETS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#64748b'];
 
+/** 知识标签色板：8 个固定预设打头，存档值为 hex；其余经自定义取色器选择 */
+const TAG_COLOR_OPTIONS = TAG_COLOR_PRESETS.map((color) => ({ key: color, label: color, color }));
+
 export default function WikiTagsPage() {
   const { hasPermission } = usePermission();
 
@@ -23,14 +28,27 @@ export default function WikiTagsPage() {
   });
   const { tableProps } = page;
 
+  const [colorValue, setColorValue] = useState('');
+
   const modal = useEditModal<WikiTag, Partial<CreateWikiTagInput>>({
     entityName: '标签',
     save: useSaveWikiTag(),
     defaults: {},
     // 记录里的 null 在表单中归一为未填
-    toValues: (r) => ({ name: r.name, color: r.color ?? undefined }),
+    toValues: (r) => ({ name: r.name }),
+    beforeSave: (values) => ({ ...values, color: colorValue || undefined }),
     labelWidth: 72,
   });
+
+  const openCreate = () => {
+    setColorValue('');
+    modal.openCreate();
+  };
+
+  const openEdit = (record: WikiTag) => {
+    setColorValue(record.color ?? '');
+    modal.openEdit(record);
+  };
 
   const deleteMutation = useDeleteWikiTags();
 
@@ -48,7 +66,7 @@ export default function WikiTagsPage() {
       desktopInlineKeys: ['edit', 'delete'],
       actions: (record) => [
         ...(hasPermission('wiki:tag:edit') ? [{
-          key: 'edit', label: '编辑', onClick: () => modal.openEdit(record),
+          key: 'edit', label: '编辑', onClick: () => openEdit(record),
         }] : []),
         deleteAction({
           hidden: !hasPermission('wiki:tag:delete'),
@@ -65,7 +83,7 @@ export default function WikiTagsPage() {
       <ListSearchToolbar
         page={page}
         filters={['keyword']}
-        create={<CreateButton permission="wiki:tag:create" onClick={modal.openCreate} />}
+        create={<CreateButton permission="wiki:tag:create" onClick={openCreate} />}
       />
 
       <ConfigurableTable<WikiTag>
@@ -74,16 +92,18 @@ export default function WikiTagsPage() {
         {...tableProps}
       />
 
-      <EditFormModal modal={modal} width={480}>
+      <EditFormModal modal={modal} afterClose={() => { setColorValue(''); }} width={480}>
         <Form.Input field="name" label="名称" placeholder="请输入标签名称"
           rules={[{ required: true, message: '标签名称不能为空' }]} />
-        <Form.RadioGroup field="color" label="颜色" type="pureCard" direction="horizontal">
-          {TAG_COLOR_PRESETS.map((c) => (
-            <Form.Radio key={c} value={c} style={{ padding: 4 }}>
-              <span style={{ display: 'inline-block', width: 22, height: 22, borderRadius: 'var(--semi-border-radius-small)', backgroundColor: c }} />
-            </Form.Radio>
-          ))}
-        </Form.RadioGroup>
+        <Form.Slot label="颜色">
+          <SwatchColorPicker
+            value={colorValue}
+            onChange={setColorValue}
+            options={TAG_COLOR_OPTIONS}
+            allowClear
+            clearTitle="无颜色"
+          />
+        </Form.Slot>
       </EditFormModal>
     </div>
   );
