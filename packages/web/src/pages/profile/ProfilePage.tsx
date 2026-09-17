@@ -469,11 +469,8 @@ export default function ProfilePage({ user }: ProfilePageProps) {
                     <Form.Input
                       field="email"
                       label="邮箱"
-                      placeholder="请输入邮箱"
-                      rules={[
-                        { required: true, message: '邮箱不能为空' },
-                        { type: 'email', message: '邮箱格式不正确' },
-                      ]}
+                      placeholder="请输入邮箱（选填）"
+                      rules={[{ type: 'email', message: '邮箱格式不正确' }]}
                       style={{ width: 320 }}
                     />
                     <Form.Input

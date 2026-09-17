@@ -21,7 +21,7 @@ import logger from '../../lib/logger';
 import { getSettings } from '../../lib/settings';
 import { validatePassword, type IdentitySecuritySettings, type SessionConcurrencyPolicy } from '@zenith/shared/settings';
 import type { QueryOutputOf } from '@zenith/shared/core';
-import { SESSION_CLIENT_KIND_LABELS, type authContract, type LoginEventType as SharedLoginEventType, type SessionClientKind } from '@zenith/shared/identity';
+import { SESSION_CLIENT_KIND_LABELS, type authContract, type LoginEventType as SharedLoginEventType, type SessionClientKind, type UpdateProfileInput } from '@zenith/shared/identity';
 import {
   clearMfaChallenge,
   createMfaChallenge,
@@ -679,7 +679,7 @@ export async function getMyProfile() {
   };
 }
 
-export async function updateMyProfile(data: { nickname?: string; email?: string; phone?: string | null; gender?: string | null; avatar?: string | null }) {
+export async function updateMyProfile(data: UpdateProfileInput) {
   const userId = currentUser().userId;
   const [emailDup, phoneDup] = await Promise.all([
     data.email

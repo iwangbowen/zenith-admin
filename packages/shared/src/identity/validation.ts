@@ -97,7 +97,7 @@ export const resetUserPasswordSchema = z.object({
 
 export const updateProfileSchema = z.object({
   nickname: z.string().min(1, '昵称不能为空').max(32).optional(),
-  email: z.email('邮箱格式不正确').optional(),
+  email: createUserSchema.shape.email,
   phone: z.preprocess(
     (value) => (value === '' ? null : value),
     z.string().regex(/^1[3-9]\d{9}$/, '请输入正确的手机号码').nullable().optional()
