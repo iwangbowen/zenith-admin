@@ -10,6 +10,8 @@ import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useElementSize } from '@/hooks/useElementSize';
 import { useListSearch } from '@/hooks/useListSearch';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
+import { textMatches } from '@/utils/pinyin';
 import { useTreeExpansion } from '@/hooks/useTreeExpansion';
 import DictTag from '@/components/DictTag';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
@@ -93,11 +95,11 @@ export default function MenusPage() {
     setIsExternalVal(detail.isExternal ?? false);
   }, [menuModal.editing, menuModal.visible]);
 
-  // 递归过滤树节点
+  // 递归过滤树节点（标题子串 + 拼音首字母 / 全拼）
   const filterTree = useCallback((items: Menu[], kw: string, st: string): Menu[] => {
     return items.reduce<Menu[]>((acc, item) => {
       const filteredChildren = item.children?.length ? filterTree(item.children, kw, st) : [];
-      const titleMatch = !kw || item.title.toLowerCase().includes(kw.toLowerCase());
+      const titleMatch = !kw || textMatches(item.title, kw);
       const statusMatch = !st || item.status === st;
       let mergedChildren: Menu[] | undefined;
       if (filteredChildren.length > 0) {
@@ -113,9 +115,12 @@ export default function MenusPage() {
   }, []);
 
   const { keyword, status: statusFilter = '' } = submittedParams;
+  // 拼音词典就绪后重算过滤，补上已提交关键字的拼音命中
+  const pinyinReady = usePinyinReady();
   const filteredData = useMemo(
     () => (keyword || statusFilter ? filterTree(data, keyword, statusFilter) : data),
-    [data, keyword, statusFilter, filterTree]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data, keyword, statusFilter, filterTree, pinyinReady]
   );
 
   // 展开态跟随**表格实际渲染的** filteredData：跟未筛选的全量树比较会让筛选后

@@ -14,6 +14,8 @@ import FileAttachment from '@/components/FileAttachment';
 import AppModal from '@/components/AppModal';
 import { KeywordInput } from '@/components/search-filters';
 import { usePermission } from '@/hooks/usePermission';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
+import { textMatches } from '@/utils/pinyin';
 import { usePreferences } from '@/hooks/usePreferences';
 import { useAuth } from '@/hooks/useAuth';
 import { EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
@@ -478,6 +480,8 @@ export default function WikiDocCenterPage() {
   const canDragTree = canWrite && hasPermission('wiki:doc:move');
   // 搜索过滤态下渲染序与完整树不一致，拖拽定位会错位，暂停拖拽
   const [treeSearching, setTreeSearching] = useState(false);
+  // 拼音词典就绪后重渲染，补上已输入关键字的拼音命中
+  usePinyinReady();
 
   function handleTreeDrop({ node, dragNode, dropToGap, dropPosition }: OnDragProps) {
     const dragId = Number(dragNode.key);
@@ -962,8 +966,10 @@ export default function WikiDocCenterPage() {
                       treeData={treeData}
                       value={selectedDocId !== undefined ? String(selectedDocId) : undefined}
                       onChange={(v) => selectDoc(Number(v))}
-                      filterTreeNode
-                      treeNodeFilterProp="titleText"
+                      filterTreeNode={(input, _node, data) => textMatches(
+                        String((data as { titleText?: unknown } | undefined)?.titleText ?? ''),
+                        String(input),
+                      )}
                       showFilteredOnly
                       searchPlaceholder="搜索文档标题..."
                       onSearch={(input) => setTreeSearching(!!input)}

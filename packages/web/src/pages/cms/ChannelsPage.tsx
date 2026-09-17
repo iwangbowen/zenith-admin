@@ -8,6 +8,8 @@ import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import AppModal from '@/components/AppModal';
 import { emptyIllustration } from '@/components/EmptyIllustration';
 import { usePermission } from '@/hooks/usePermission';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
+import { textMatches } from '@/utils/pinyin';
 import { useUrlSelectionParams } from '@/hooks/useUrlSelectionState';
 import {
   useCmsChannelTree, useAllCmsModels, useAllCmsSites, useSaveCmsChannel, useDeleteCmsChannel,
@@ -57,6 +59,8 @@ function toTreeSelectData(nodes: CmsChannel[], excludeId?: number): TreeNodeData
 /** 栏目树拍平为一维数组，用于按 id 反查最新栏目对象 */
 export default function ChannelsPage() {
   const { hasPermission } = usePermission();
+  // 拼音词典就绪后重渲染，补上已输入关键字的拼音命中
+  usePinyinReady();
   // useEditModal 例外：右栏是保存后不关闭的栏目编辑工作区（新建成功后停留在编辑态继续补模板 / SEO），
   // 编辑对象由 URL 选中态从栏目树派生而非详情查询
   const formApi = useRef<FormApi | null>(null);
@@ -609,7 +613,10 @@ export default function ChannelsPage() {
           <Tree
             treeData={channelTreeData}
             value={selectedId === null ? '' : String(selectedId)}
-            filterTreeNode
+            filterTreeNode={(input, _node, data) => textMatches(
+              String((data as { label?: unknown } | undefined)?.label ?? ''),
+              String(input),
+            )}
             showFilteredOnly
             searchPlaceholder="搜索栏目名称"
             defaultExpandAll

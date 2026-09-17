@@ -13,6 +13,8 @@ import { useListSearch } from '@/hooks/useListSearch';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
 import { dateTimeColumn } from '@/utils/table-columns';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
+import { textMatches } from '@/utils/pinyin';
 import { channelsToTree } from './channel-tree';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
 
@@ -152,12 +154,17 @@ function ChannelPickerModal({ siteId, visible, onCancel, onSelect, excludeId }: 
     walk(treeQuery.data ?? []);
     return map;
   }, [treeQuery.data]);
+  // 拼音词典就绪后重渲染，补上已输入关键字的拼音命中
+  usePinyinReady();
 
   return (
     <Modal title="选择栏目" visible={visible} onCancel={onCancel} footer={null} width={480} closeOnEsc>
       <Tree
         treeData={treeData}
-        filterTreeNode
+        filterTreeNode={(input, _node, data) => textMatches(
+          String((data as { label?: unknown } | undefined)?.label ?? ''),
+          String(input),
+        )}
         searchPlaceholder="搜索栏目"
         style={{ maxHeight: 420, overflow: 'auto' }}
         onSelect={(key) => {

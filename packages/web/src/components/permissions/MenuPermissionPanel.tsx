@@ -12,6 +12,8 @@
 import { useMemo, useState } from 'react';
 import { Banner, Button, Space, Spin, Tree } from '@douyinfe/semi-ui';
 import type { Menu } from '@zenith/shared/identity';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
+import { textMatches } from '@/utils/pinyin';
 
 type MenuPermissionPanelProps = Readonly<{
   allMenus: Menu[];
@@ -75,6 +77,8 @@ export function MenuPermissionPanel({
   // 默认折叠（菜单树节点较多，全展开列表过长）；可用「展开全部」按钮展开
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
   const menuIndex = useMemo(() => flattenMenus(allMenus), [allMenus]);
+  // 拼音词典就绪后重渲染，补上已输入关键字的拼音命中
+  usePinyinReady();
 
   if (loading) {
     return (
@@ -130,8 +134,10 @@ export function MenuPermissionPanel({
         value={checkedMenuIds.map(String)}
         onChange={readonly ? undefined : (keys) => handleChange(keys as string[])}
         disableStrictly={readonly}
-        filterTreeNode
-        treeNodeFilterProp="filterLabel"
+        filterTreeNode={(input, _node, data) => textMatches(
+          String((data as { filterLabel?: unknown } | undefined)?.filterLabel ?? ''),
+          String(input),
+        )}
         showFilteredOnly
         searchPlaceholder="搜索菜单名称"
         // 唯一的滚动容器：虚拟列表内部滚动；外层不定高（搜索框 + 400 列表自适应），
