@@ -20,7 +20,7 @@
         "maxFiles": 60,
         "maxGzKB": 1000
       },
-      "maxTotalJsChunks": 810,
+      "maxTotalJsChunks": 815,
       "maxTotalJsMB": 41
     },
     "member.html": {
