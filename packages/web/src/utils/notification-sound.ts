@@ -30,6 +30,27 @@ const RECIPES: Record<NotificationSoundStyle, readonly Tone[]> = {
   pop: [
     { freq: 520, freqEnd: 390, start: 0, duration: 0.12, peak: 0.12 },
   ],
+  // C5 → E5 → G5 上扬三连音
+  arpeggio: [
+    { freq: 523.25, start: 0, duration: 0.12, peak: 0.16 },
+    { freq: 659.25, start: 0.1, duration: 0.12, peak: 0.16 },
+    { freq: 783.99, start: 0.2, duration: 0.2, peak: 0.16 },
+  ],
+  // 木鱼敲击：短促方波两下，音量压低避免刺耳
+  woodblock: [
+    { freq: 800, start: 0, duration: 0.06, type: 'square', peak: 0.07 },
+    { freq: 800, start: 0.12, duration: 0.06, type: 'square', peak: 0.07 },
+  ],
+  // 风铃余韵：高频三角波长衰减
+  windchime: [
+    { freq: 1567.98, start: 0, duration: 0.8, type: 'triangle', peak: 0.12 },
+    { freq: 2093, start: 0.15, duration: 0.6, type: 'triangle', peak: 0.06 },
+  ],
+  // 低沉提示：220Hz 正弦两声，夜间不刺耳
+  lowtone: [
+    { freq: 220, start: 0, duration: 0.18, peak: 0.2 },
+    { freq: 220, start: 0.22, duration: 0.24, peak: 0.2 },
+  ],
 };
 
 let sharedCtx: AudioContext | null = null;

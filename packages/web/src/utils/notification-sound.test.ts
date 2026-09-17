@@ -58,4 +58,18 @@ describe('notification sound', () => {
       expect(osc.stop).toHaveBeenCalledTimes(1);
     }
   });
+
+  it('has a non-empty recipe for every declared style', async () => {
+    // 模块缓存共享 AudioContext，重新导入拿到干净实例，单 ctx 累计断言每种音色都有发声
+    vi.resetModules();
+    const mod = await import('./notification-sound');
+    const { ctx, oscillators } = createFakeAudioContext();
+    // 必须是可 new 的构造器：箭头函数 mock 无法被 new，模块内会静默失败
+    vi.stubGlobal('AudioContext', class FakeAudioContext { constructor() { return ctx; } });
+    for (const style of mod.NOTIFICATION_SOUND_STYLES) {
+      const before = oscillators.length;
+      mod.playNotificationSound(style);
+      expect(oscillators.length).toBeGreaterThan(before);
+    }
+  });
 });

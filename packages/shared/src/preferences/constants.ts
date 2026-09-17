@@ -82,10 +82,11 @@ export const DARK_SURFACE_TONE_OPTIONS = [
 ] as const;
 export const DESKTOP_NOTIFICATION_CONTENTS = ['summary', 'type'] as const;
 export type DesktopNotificationContent = (typeof DESKTOP_NOTIFICATION_CONTENTS)[number];
-export const NOTIFICATION_SOUND_STYLES = ['chime', 'ding', 'pop'] as const;
+export const NOTIFICATION_SOUND_STYLES = ['chime', 'ding', 'pop', 'arpeggio', 'woodblock', 'windchime', 'lowtone'] as const;
 export type NotificationSoundStyle = (typeof NOTIFICATION_SOUND_STYLES)[number];
 export const NOTIFICATION_SOUND_STYLE_LABELS: Record<NotificationSoundStyle, string> = {
   chime: '清脆双音', ding: '单音提示', pop: '轻柔气泡',
+  arpeggio: '上扬三连音', woodblock: '木鱼敲击', windchime: '风铃余韵', lowtone: '低沉提示',
 };
 export const NOTIFICATION_SOUND_STYLE_OPTIONS = NOTIFICATION_SOUND_STYLES.map((value) => ({ value, label: NOTIFICATION_SOUND_STYLE_LABELS[value] }));
 export const DEFAULT_NOTIFICATION_SOUND_STYLE: NotificationSoundStyle = 'chime';
