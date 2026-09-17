@@ -26,6 +26,7 @@ export const userSchema = z.object({
   email: sensitive(z.string().nullable().meta({ example: 'admin@example.com' }), 'email'),
   phone: sensitive(z.string().nullable(), 'phone').optional(),
   gender: z.string().nullable().optional(),
+  birthDate: z.string().nullable().optional(),
   avatar: z.string().nullable().optional(),
   departmentId: z.int().nullable().optional(),
   departmentName: z.string().nullable().optional(),

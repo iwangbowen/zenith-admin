@@ -7,7 +7,7 @@ import type { CreateUserInput, User, Role, Department, Position } from '@zenith/
 import { USER_STATUSES, enumValueOf, type BodyOf } from '@zenith/shared/core';
 import { userContract } from '@zenith/shared/identity';
 import { UserAvatar } from '@/components/UserAvatar';
-import { formatDateTimeRangeForApi } from '@/utils/date';
+import { formatDateForApi, formatDateTimeRangeForApi } from '@/utils/date';
 import { formatPasswordPolicyHint, type PasswordRules as PasswordPolicy } from '@zenith/shared/settings';
 import { PasswordStrengthMeter } from '@/components/PasswordStrengthMeter';
 import DictTag from '@/components/DictTag';
@@ -71,10 +71,11 @@ interface SearchParams {
 }
 
 /** 用户表单值：记录里的 null 在提交时归一为未填 / null，与创建入参对齐 */
-interface UserFormValues extends Partial<Omit<CreateUserInput, 'email' | 'phone' | 'gender'>> {
+interface UserFormValues extends Partial<Omit<CreateUserInput, 'email' | 'phone' | 'gender' | 'birthDate'>> {
   email?: string | null;
   phone?: string | null;
   gender?: string | null;
+  birthDate?: Date | string | null;
 }
 
 type UserSavePayload = Partial<BodyOf<typeof userContract.create>>;
@@ -173,6 +174,7 @@ export default function UsersPage() {
       email: user.email ?? undefined,
       phone: user.phone ?? undefined,
       gender: user.gender ?? undefined,
+      birthDate: user.birthDate ?? undefined,
       departmentId: user.departmentId ?? undefined,
       positionIds: user.positionIds ?? user.positions?.map((item) => item.id) ?? [],
       roleIds: user.roles.map((r) => r.id),
@@ -187,6 +189,7 @@ export default function UsersPage() {
         phone: values.phone ?? undefined,
         departmentId: values.departmentId ?? null,
         gender: values.gender ?? null,
+        birthDate: values.birthDate ? formatDateForApi(values.birthDate) : null,
         positionIds: values.positionIds ?? [],
         roleIds: values.roleIds ?? [],
       };
@@ -769,6 +772,16 @@ export default function UsersPage() {
               treeData={departmentTreeData}
               placeholder="请选择所属部门"
               filterTreeNode
+              showClear
+            />
+          </Col>
+          <Col span={12}>
+            <Form.DatePicker
+              field="birthDate"
+              label="出生日期"
+              type="date"
+              style={{ width: '100%' }}
+              placeholder="请选择出生日期"
               showClear
             />
           </Col>

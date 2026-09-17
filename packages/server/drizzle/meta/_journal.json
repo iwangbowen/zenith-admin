@@ -29,6 +29,13 @@
       "when": 1789567000000,
       "tag": "0003_add_resolved_in_app_message_type",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789670924321,
+      "tag": "0004_condemned_husk",
+      "breakpoints": true
     }
   ]
 }

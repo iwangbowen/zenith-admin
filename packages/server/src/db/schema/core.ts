@@ -120,6 +120,8 @@ export const users = pgTable('users', {
   departmentId: integer().references((): AnyPgColumn => departments.id, { onDelete: 'set null' }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   gender: varchar({ length: 20 }),
+  /** 出生日期（YYYY-MM-DD 字符串，与会员 birthday 同口径） */
+  birthDate: varchar({ length: 20 }),
   status: statusColumn(),
   preferences: jsonb(),
   /** 用户收藏的菜单 ID 列表（有序） */

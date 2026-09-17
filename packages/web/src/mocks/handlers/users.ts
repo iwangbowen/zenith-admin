@@ -93,6 +93,7 @@ export const usersHandlers = [
       email: body.email ?? null,
       phone: body.phone,
       gender: body.gender,
+      birthDate: body.birthDate ?? null,
       password: DEMO_INITIAL_CREDENTIAL,
       departmentId: body.departmentId ?? null,
       departmentName: null,

@@ -58,6 +58,7 @@ export const createUserSchema = z.object({
     z.string().regex(/^1[3-9]\d{9}$/, '请输入正确的手机号码').optional()
   ),
   gender: z.string().max(20).nullable().optional(),
+  birthDate: z.string().max(20).nullable().optional(),
   departmentId: z.number().int().positive().nullable().optional(),
   positionIds: z.array(z.number().int().positive()).default([]),
   roleIds: z.array(z.number().int()).default([]),
@@ -106,6 +107,7 @@ export const updateProfileSchema = z.object({
     z.string().regex(/^1[3-9]\d{9}$/, '请输入正确的手机号码').nullable().optional()
   ),
   gender: z.string().max(20).nullable().optional(),
+  birthDate: z.string().max(20).nullable().optional(),
   avatar: z.string().max(256).nullish(),
 });
 

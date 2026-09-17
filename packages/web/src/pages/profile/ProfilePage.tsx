@@ -13,7 +13,7 @@ import { PresetAvatarPickerModal } from '@/components/PresetAvatarPickerModal';
 import { UserAvatar } from '@/components/UserAvatar';
 import { OAuthProviderIcon } from '@/components/OAuthProviderIcon';
 import { SessionClientIcon } from '@/components/SessionClientTag';
-import { formatDateTime, formatDateTimeForApi, formatDateTimeRangeForApi } from '@/utils/date';
+import { formatDateForApi, formatDateTime, formatDateTimeForApi, formatDateTimeRangeForApi } from '@/utils/date';
 import DateTimeText from '@/components/DateTimeText';
 import type { PasswordRules as PasswordPolicy, SessionConcurrencyPolicy } from '@zenith/shared/settings';
 import { formatSessionPolicyHint } from '@zenith/shared/settings';
@@ -334,8 +334,8 @@ export default function ProfilePage({ user }: ProfilePageProps) {
 
   // ─── 事件处理 ────────────────────────────────────────────────────────────────
 
-  async function handleUpdateProfile(values: { nickname: string; email: string; phone?: string; gender?: string | null }) {
-    await updateProfileMutation.mutateAsync({ body: { ...values, gender: values.gender ?? null } });
+  async function handleUpdateProfile(values: { nickname: string; email: string; phone?: string; gender?: string | null; birthDate?: Date | string | null }) {
+    await updateProfileMutation.mutateAsync({ body: { ...values, gender: values.gender ?? null, birthDate: values.birthDate ? formatDateForApi(values.birthDate) : null } });
     Toast.success('资料已更新');
   }
 
@@ -492,6 +492,7 @@ export default function ProfilePage({ user }: ProfilePageProps) {
                               value: <DictTag dictCode="user_gender" value={user.gender} />,
                               hidden: !user.gender,
                             },
+                            { key: '出生日期', value: user.birthDate, hidden: !user.birthDate },
                             { key: '部门', value: user.departmentName, hidden: !user.departmentName },
                             {
                               key: '岗位',
@@ -520,7 +521,7 @@ export default function ProfilePage({ user }: ProfilePageProps) {
 
                     <div className="section-title">资料编辑</div>
                   <Form
-                    initValues={{ nickname: user.nickname, email: user.email ?? '', phone: user.phone ?? '', gender: user.gender ?? undefined }}
+                    initValues={{ nickname: user.nickname, email: user.email ?? '', phone: user.phone ?? '', gender: user.gender ?? undefined, birthDate: user.birthDate ?? undefined }}
                     onSubmit={handleUpdateProfile}
                     allowEmpty
                     labelPosition="left"
@@ -556,6 +557,14 @@ export default function ProfilePage({ user }: ProfilePageProps) {
                       showClear
                       optionList={genderOptions}
                       placeholder="请选择性别（选填）"
+                    />
+                    <Form.DatePicker
+                      field="birthDate"
+                      label="出生日期"
+                      type="date"
+                      style={{ width: 320 }}
+                      placeholder="请选择出生日期（选填）"
+                      showClear
                     />
                     <Form.Slot>
                       <Button htmlType="submit" type="primary" loading={profileLoading}>保存修改</Button>

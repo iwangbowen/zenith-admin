@@ -146,6 +146,7 @@ export function mapUser(row: UserWithRelations): User {
     email: row.email,
     phone: row.phone ?? undefined,
     gender: row.gender ?? null,
+    birthDate: row.birthDate ?? null,
     avatar: row.avatar ?? undefined,
     departmentId: row.departmentId,
     departmentName: row.department?.name ?? null,
@@ -431,6 +432,7 @@ export async function getUserRoleAssignmentAudit(id: number) {
 
 export interface UpdateUserInput {
   username?: string; nickname?: string; email?: string | null; phone?: string; gender?: string | null;
+  birthDate?: string | null;
   departmentId?: number | null;
   positionIds?: number[]; roleIds?: number[];
   status?: 'enabled' | 'disabled';
