@@ -134,6 +134,28 @@
   color: var(--semi-color-primary);
 }
 
+/* 统计项可点击跳转（与告警指标同语言）：button 重置，仅保留竖线分隔与内边距 */
+.dashboard-stat-item--link {
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.dashboard-stat-item--link:hover .dashboard-stat-item__value {
+  color: var(--semi-color-primary);
+}
+
+.dashboard-stat-item--link:focus-visible {
+  outline: 2px solid var(--semi-color-focus-border);
+  outline-offset: 2px;
+  border-radius: var(--semi-border-radius-small);
+}
+
 .dashboard-stat-skeleton {
   display: flex;
   align-items: flex-start;

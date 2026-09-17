@@ -36,11 +36,13 @@ const STAT_ITEMS: Array<{
   key: keyof DashboardStats;
   label: string;
   icon: React.ReactNode;
+  /** 点击跳转的目标页面（与告警指标同模式：看到数字能直接去查） */
+  to: string;
 }> = [
-  { key: 'totalUsers',      label: '系统用户总数', icon: <Users size={16} /> },
-  { key: 'onlineUsers',     label: '当前在线',     icon: <Wifi size={16} /> },
-  { key: 'todayLogins',     label: '今日登录',     icon: <LogIn size={16} /> },
-  { key: 'todayOperations', label: '今日操作',     icon: <Activity size={16} /> },
+  { key: 'totalUsers',      label: '系统用户总数', icon: <Users size={16} />,    to: '/system/users' },
+  { key: 'onlineUsers',     label: '当前在线',     icon: <Wifi size={16} />,     to: '/system/sessions' },
+  { key: 'todayLogins',     label: '今日登录',     icon: <LogIn size={16} />,    to: '/system/login-logs' },
+  { key: 'todayOperations', label: '今日操作',     icon: <Activity size={16} />, to: '/system/operation-logs' },
 ];
 
 /** 告警指标：点击直达告警事件页对应筛选，避免「看到数字却不知道去哪查」 */
@@ -248,7 +250,13 @@ export default function DashboardPage() {
               </div>
             ))
             : STAT_ITEMS.map((item) => (
-              <div key={item.key} className="dashboard-stat-item">
+              // 统计行仅超管可见（isAdmin 即权限 ['*']），四个目标页都有权限，无需再按权限门控
+              <button
+                key={item.key}
+                type="button"
+                className="dashboard-stat-item dashboard-stat-item--link"
+                onClick={() => navigate(item.to)}
+              >
                 <div className="dashboard-stat-item__value">
                   {stats?.[item.key] ?? EMPTY_PLACEHOLDER}
                 </div>
@@ -256,7 +264,7 @@ export default function DashboardPage() {
                   <span className="dashboard-stat-item__icon">{item.icon}</span>
                   {item.label}
                 </div>
-              </div>
+              </button>
             ))
           }
         </section>
