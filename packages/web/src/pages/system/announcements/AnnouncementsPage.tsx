@@ -135,6 +135,8 @@ export default function AnnouncementsPage() {
   const saveMutation = useSaveAnnouncement();
   const modal = useEditModal<Announcement, AnnouncementFormValues, Partial<CreateAnnouncementInput>>({
     save: saveMutation,
+    // 顶部标签布局下 labelWidth 只决定标签换行上限；hook 默认 90 会把「定时发布时间」这类 6 字标签折行
+    labelWidth: 120,
     useDetail: useAnnouncementDetail,
     defaults: { type: 'notice', publishStatus: 'draft', priority: 'medium' },
     toValues: (notice) => ({
