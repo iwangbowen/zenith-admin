@@ -9,7 +9,7 @@ import { FormPasswordInput } from '@/components/PasswordInput';
  */
 import React, { useEffect, useRef, useState } from 'react';
 import ModalFooter from '@/components/ModalFooter';
-import { Banner, Button, Col, Form, Input, InputNumber, Modal, Row, Select, SideSheet, Switch, Tabs, TabPane, TextArea, Toast, Typography, Upload } from '@douyinfe/semi-ui';
+import { Banner, Button, Col, ColorPicker, Form, Input, InputNumber, Modal, Row, Select, SideSheet, Switch, Tabs, TabPane, TextArea, Toast, Typography, Upload } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { ImageUp } from 'lucide-react';
 import { usePermission } from '@/hooks/usePermission';
@@ -281,7 +281,6 @@ export default function SiteEditSheet({ open, site, onClose }: Readonly<SiteEdit
         );
       case 'color': {
         const text = typeof value === 'string' ? value : '';
-        const swatch = /^#[0-9a-fA-F]{3,8}$/.test(text) ? text : '#1f6feb';
         return (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Input
@@ -291,13 +290,18 @@ export default function SiteEditSheet({ open, site, onClose }: Readonly<SiteEdit
               onChange={(v) => themeConfigPatch(field.name, v)}
               style={{ width: 240 }}
             />
-            <input
-              type="color"
-              value={swatch}
-              onChange={(e) => themeConfigPatch(field.name, e.target.value)}
-              style={{ width: 32, height: 32, padding: 0, border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', cursor: 'pointer', background: 'transparent' }}
-              aria-label={`${field.label}取色`}
-            />
+            <ColorPicker
+              alpha={false}
+              usePopover
+              value={text ? ColorPicker.colorStringToValue(text) : undefined}
+              onChange={(v) => themeConfigPatch(field.name, v.hex)}
+            >
+              <button
+                type="button"
+                aria-label={`${field.label}取色`}
+                style={{ width: 32, height: 32, padding: 0, border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', cursor: 'pointer', background: text || 'transparent' }}
+              />
+            </ColorPicker>
           </div>
         );
       }
