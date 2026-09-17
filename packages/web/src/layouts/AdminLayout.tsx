@@ -1021,7 +1021,7 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
             width={380}
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24, paddingBottom: 24 }}>
-              <KeywordInput placeholder="搜索设置项…" value={prefsSearch} onChange={(v) => setPrefsSearch(v)} />
+              <KeywordInput placeholder="搜索设置项…" value={prefsSearch} onChange={(v) => setPrefsSearch(v)} width="100%" />
 
               <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}><Spin /></div>}>
                 <PreferencesSheetBody
