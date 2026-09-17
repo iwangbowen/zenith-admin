@@ -3,7 +3,7 @@ import type { AnyOperation } from '@zenith/shared/core';
 import { bizLeaveContract } from '@zenith/shared/biz';
 import { cmsContentContract } from '@zenith/shared/cms';
 import { SEED_WORKFLOW_DEFINITIONS } from '@zenith/shared/seed';
-import { workflowBusinessContextSchema, workflowBusinessPreviewSchema, workflowInstanceContract, workflowTaskContract } from '@zenith/shared/workflow';
+import { workflowBusinessContextSchema, workflowBusinessPreviewSchema, workflowDefinitionContract, workflowDefinitionOptionSchema, workflowInstanceContract, workflowTaskContract } from '@zenith/shared/workflow';
 import { mockBizLeaves } from './data/biz-leave';
 import { mockCmsContents, mockCmsSites } from './data/cms';
 import { mockWorkflowDefinitions, mockWorkflowInstances, mockWorkflowTasks } from './data/workflow';
@@ -37,6 +37,44 @@ async function call(operation: AnyOperation, options: { params?: Record<string, 
 }
 
 describe('business workflow integration in Demo', () => {
+  it('includes external and disabled definitions in lookup without exposing full designs or enabling direct launch', async () => {
+    const external = mockWorkflowDefinitions.find((definition) => definition.formType === 'external')!;
+    external.status = 'disabled';
+    const options = await call(workflowDefinitionContract.all);
+    expect(options.status).toBe(200);
+    expect(options.body.data).toContainEqual({ id: external.id, name: external.name, status: 'disabled', formType: 'external' });
+    for (const option of options.body.data) {
+      expect(workflowDefinitionOptionSchema.parse(option)).toEqual(option);
+      expect(Object.keys(option).sort()).toEqual(['formType', 'id', 'name', 'status']);
+    }
+    external.status = 'published';
+    const published = await call(workflowDefinitionContract.published);
+    expect(published.body.data.some((definition: { id: number }) => definition.id === external.id)).toBe(false);
+    const refreshed = await call(workflowDefinitionContract.all);
+    expect(refreshed.body.data.filter((definition: { status: string; formType: string }) => definition.status === 'published' && definition.formType === 'external'))
+      .toContainEqual({ id: external.id, name: external.name, status: 'published', formType: 'external' });
+  });
+
+  it('derives pending definition options from my running tasks, including disabled external definitions and deduplicating tasks', async () => {
+    const definition = mockWorkflowDefinitions.find((item) => item.formType === 'external')!;
+    definition.status = 'disabled';
+    const instance = mockWorkflowInstances[0];
+    instance.status = 'running';
+    instance.definitionId = definition.id;
+    const task = { ...mockWorkflowTasks[0], instanceId: instance.id, assigneeId: 1, status: 'pending' as const };
+    mockWorkflowTasks.splice(0, mockWorkflowTasks.length, task, { ...task, id: task.id + 10000 });
+    const options = await call(workflowInstanceContract.pendingDefinitionOptions);
+    expect(options.body.data).toEqual([{ id: definition.id, name: definition.name, status: 'disabled', formType: 'external' }]);
+    mockWorkflowTasks.forEach((item) => { item.assigneeId = 2; });
+    expect((await call(workflowInstanceContract.pendingDefinitionOptions)).body.data).toEqual([]);
+    mockWorkflowTasks.forEach((item) => { item.assigneeId = 1; });
+    instance.status = 'approved';
+    expect((await call(workflowInstanceContract.pendingDefinitionOptions)).body.data).toEqual([]);
+    instance.status = 'running';
+    mockWorkflowTasks.forEach((item) => { item.status = 'approved'; });
+    expect((await call(workflowInstanceContract.pendingDefinitionOptions)).body.data).toEqual([]);
+  });
+
   it('derives both external definitions from shared seed and previews without saving', async () => {
     for (const seed of SEED_WORKFLOW_DEFINITIONS) {
       const definition = mockWorkflowDefinitions.find((item) => item.name === seed.name && item.formType === 'external');

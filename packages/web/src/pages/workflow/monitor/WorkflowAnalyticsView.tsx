@@ -14,7 +14,7 @@ import {
   StatCard,
   StatGrid,
 } from '@/components/charts';
-import type { WorkflowDefinition } from '@zenith/shared/workflow';
+import type { WorkflowDefinitionOption } from '@zenith/shared/workflow';
 import { useWorkflowAnalytics, useWorkflowOverdueTasks } from '@/hooks/queries/workflow-monitor';
 import { WORKFLOW_INSTANCE_STATUS_LABELS } from '@zenith/shared/workflow';
 import { FilterSelect } from '@/components/search-filters';
@@ -62,7 +62,7 @@ function ChartCard({ title, children }: Readonly<{ title: string; children: Reac
   );
 }
 
-export default function WorkflowAnalyticsView({ definitions }: Readonly<{ definitions: WorkflowDefinition[] }>) {
+export default function WorkflowAnalyticsView({ definitions }: Readonly<{ definitions: WorkflowDefinitionOption[] }>) {
   const palette = useChartPalette();
   const [definitionId, setDefinitionId] = useState<number | undefined>();
   const analyticsQuery = useWorkflowAnalytics(definitionId);

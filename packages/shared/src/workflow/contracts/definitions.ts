@@ -46,6 +46,13 @@ export const workflowDefinitionSchema = z.object({
 
 export type WorkflowDefinition = z.infer<typeof workflowDefinitionSchema>;
 
+/** 筛选 / 关联 / 业务绑定使用的最小读模型，不承载可发起性判断。 */
+export const workflowDefinitionOptionSchema = workflowDefinitionSchema.pick({
+  id: true, name: true, status: true, formType: true,
+}).meta({ id: 'WorkflowDefinitionOption' });
+
+export type WorkflowDefinitionOption = z.infer<typeof workflowDefinitionOptionSchema>;
+
 export const workflowDefinitionVersionSchema = z.object({
   id: z.int(),
   definitionId: z.int(),
@@ -310,7 +317,8 @@ export const workflowVersionDiffQuery = z.object({
 
 export const workflowDefinitionContract = defineContract('/api/workflows/definitions', {
   list: op.get('/', { access: { permission: 'workflow:definition:list' }, query: workflowDefinitionListQuery, response: paginated(workflowDefinitionSchema), summary: '流程定义列表' }),
-  published: op.get('/published', { access: { permission: 'workflow:instance:create' }, response: z.array(workflowDefinitionSchema), summary: '已发布列表' }),
+  all: op.get('/all', { access: { permission: ['workflow:definition:list', 'workflow:form:list', 'workflow:instance:monitor', 'report:fill:template:list'] }, response: z.array(workflowDefinitionOptionSchema), summary: '流程定义选项（含业务系统主导及历史状态）' }),
+  published: op.get('/published', { access: { permission: 'workflow:instance:create' }, response: z.array(workflowDefinitionSchema), summary: '当前用户可发起的已发布流程（不含业务系统主导）' }),
   import: op.post('/import', { access: { permission: 'workflow:definition:create' }, audit: '导入流程', body: importWorkflowDefinitionSchema, response: workflowDefinitionSchema, summary: '导入流程定义' }),
   detail: op.get('/{id}', { access: { permission: 'workflow:definition:list' }, params: idParam, response: workflowDefinitionSchema, summary: '流程定义详情' }),
   create: op.post('/', { access: { permission: 'workflow:definition:create' }, audit: '创建流程定义', body: createWorkflowDefinitionSchema, response: workflowDefinitionSchema, summary: '创建流程定义' }),

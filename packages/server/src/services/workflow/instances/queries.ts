@@ -158,6 +158,20 @@ function pendingMineWhere(user: ReturnType<typeof currentUser>) {
   );
 }
 
+/** 与待办列表共用归属 / 状态条件，跨全部分页取选项，包含 external 和已停用定义。 */
+export async function listPendingDefinitionOptions() {
+  return db.selectDistinct({
+    id: workflowDefinitions.id,
+    name: workflowDefinitions.name,
+    status: workflowDefinitions.status,
+    formType: workflowDefinitions.formType,
+  }).from(workflowTasks)
+    .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
+    .innerJoin(workflowDefinitions, eq(workflowInstances.definitionId, workflowDefinitions.id))
+    .where(pendingMineWhere(currentUser()))
+    .orderBy(desc(workflowDefinitions.id));
+}
+
 export async function listPendingMine(query: QueryOutputOf<typeof workflowInstanceContract.pendingMine>) {
   const user = currentUser();
   const { page, pageSize, keyword, definitionId } = query;

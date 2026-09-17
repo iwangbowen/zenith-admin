@@ -11,6 +11,7 @@ export type PendingWorkflowItem = WorkflowPendingInstanceItem;
 export type PendingWorkflowListParams = QueryOf<typeof workflowInstanceContract.pendingMine>;
 
 export const workflowTaskKeys = {
+  pendingDefinitionOptions: contractKey(workflowInstanceContract.pendingDefinitionOptions),
   /** 待办列表全部分页 / 筛选条件的公共前缀 */
   pendingLists: contractKey(workflowInstanceContract.pendingMine),
   pendingList: (params: PendingWorkflowListParams) => contractKey(workflowInstanceContract.pendingMine, { query: params }),
@@ -26,6 +27,10 @@ export function usePendingWorkflowTasks(params: PendingWorkflowListParams) {
   return useApiQuery(workflowInstanceContract.pendingMine, { query: params }, { placeholderData: keepPreviousData });
 }
 
+export function usePendingWorkflowDefinitionOptions() {
+  return useApiQuery(workflowInstanceContract.pendingDefinitionOptions);
+}
+
 export function useMyWorkflowConsults(enabled = true) {
   return useApiQuery(workflowTaskContract.myConsults, { query: { pageSize: 50 } }, { enabled });
 }
@@ -35,6 +40,7 @@ export function useMyWorkflowConsults(enabled = true) {
  * 不碰实例列表与监控，那些由 invalidateAfterTaskAction 在动作成功后处理。
  */
 export function invalidateWorkflowPendingViews(qc: QueryClient): void {
+  void qc.invalidateQueries({ queryKey: workflowTaskKeys.pendingDefinitionOptions });
   void qc.invalidateQueries({ queryKey: workflowTaskKeys.pendingLists });
   void qc.invalidateQueries({ queryKey: workflowTaskKeys.pendingCount });
   void qc.invalidateQueries({ queryKey: workflowTaskKeys.consultsMine });

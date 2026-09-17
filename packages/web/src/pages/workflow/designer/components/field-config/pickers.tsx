@@ -1,8 +1,7 @@
 // ─── 数据字典 / 关联审批单绑定选择器（拆分自 FieldConfigPanel.tsx）───
 import { Select } from '@douyinfe/semi-ui';
 import { useWorkflowDesignerDictOptions } from '@/hooks/queries/workflow-designer';
-import { usePublishedWorkflowDefinitions } from '@/hooks/queries/workflow-definitions';
-import { LOOKUP_STALE_TIME } from '@/lib/query';
+import { useWorkflowDefinitionOptions } from '@/hooks/queries/workflow-definitions';
 
 // ─── 关联流程选择器（设计态：限制可关联哪个审批流） ──────────────────
 
@@ -10,8 +9,8 @@ export function RelationDefinitionPicker({
   value,
   onChange,
 }: Readonly<{ value?: number; onChange: (id: number | undefined) => void }>) {
-  // 与启动列表共用一份缓存：曾自建 key，导致新发布的流程在此下拉里最长 5 分钟不出现
-  const definitionsQuery = usePublishedWorkflowDefinitions({ staleTime: LOOKUP_STALE_TIME });
+  // 关联已有审批单不要求可发起；选项包含 external 与历史状态，并由定义域统一失效。
+  const definitionsQuery = useWorkflowDefinitionOptions();
   const definitions = definitionsQuery.data ?? [];
   const loading = definitionsQuery.isFetching;
 

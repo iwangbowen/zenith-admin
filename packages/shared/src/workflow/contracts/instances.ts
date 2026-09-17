@@ -18,6 +18,7 @@ import {
   workflowActionButtonKeySchema,
 } from '../validation';
 import { workflowDefinitionSnapshotSchema, workflowInstanceFormSnapshotSchema } from './flow-data';
+import { workflowDefinitionOptionSchema } from './definitions';
 
 // ─── 任务 ────────────────────────────────────────────────────────────────────
 
@@ -487,6 +488,7 @@ export const workflowInstanceContract = defineContract('/api/workflows', {
   list: op.get('/instances', { access: { permission: 'workflow:instance:list' }, query: workflowMyInstanceListQuery, response: paginated(workflowInstanceSchema), summary: '我的申请列表' }),
   pendingMine: op.get('/instances/pending-mine', { access: { permission: 'workflow:task:handle' }, query: workflowPendingMineQuery, response: paginated(workflowPendingInstanceItemSchema), summary: '待我审批列表' }),
   pendingMineCount: op.get('/instances/pending-mine/count', { access: { permission: 'workflow:task:handle' }, response: workflowCountSchema, summary: '待我审批总数' }),
+  pendingDefinitionOptions: op.get('/instances/pending-mine/definitions', { access: { permission: 'workflow:task:handle' }, response: z.array(workflowDefinitionOptionSchema), summary: '待我审批的流程筛选选项' }),
   monitor: op.get('/instances/all', { access: { permission: 'workflow:instance:monitor' }, query: workflowInstanceMonitorQuery, response: workflowInstanceMonitorPageSchema, summary: '全局流程实例列表' }),
   ccMine: op.get('/instances/cc-mine', { access: { permission: 'workflow:instance:list' }, query: workflowKeywordPageQuery, response: paginated(workflowInstanceSchema), summary: '抄送我的列表' }),
   handledMine: op.get('/instances/handled-mine', { access: { permission: 'workflow:task:handle' }, query: workflowKeywordPageQuery, response: paginated(workflowInstanceSchema), summary: '我已办列表' }),

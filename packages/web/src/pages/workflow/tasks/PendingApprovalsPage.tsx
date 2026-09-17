@@ -28,10 +28,10 @@ import {
   useConsultWorkflowTask,
   useMyWorkflowConsults,
   usePendingWorkflowTasks,
+  usePendingWorkflowDefinitionOptions,
   useReplyWorkflowConsult,
   workflowTaskKeys,
 } from '@/hooks/queries/workflow-tasks';
-import { usePublishedWorkflowDefinitions } from '@/hooks/queries/workflow-definitions';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
@@ -89,7 +89,7 @@ export default function PendingApprovalsPage() {
 
   const listParams = { page, pageSize, ...filterQuery };
   const listQuery = usePendingWorkflowTasks(listParams);
-  const definitionsQuery = usePublishedWorkflowDefinitions();
+  const definitionsQuery = usePendingWorkflowDefinitionOptions();
   const usersQuery = useWorkflowSelectableUsers({ enabled: consult !== null });
   const myConsultsQuery = useMyWorkflowConsults(myConsultsVisible);
   const batchApproveMutation = useBatchApproveWorkflowTasks();

@@ -1401,6 +1401,9 @@ export const workflowHandlers = [
     return ok({ ...page, list: page.list.map(resolveWorkflowDefinition) });
   }),
 
+  // 筛选 / 关联 / 业务绑定：不限制表单类型、发布状态和发起人范围，仅返回最小字段。
+  mock(workflowDefinitionContract.all, ({ ok }) => ok(mockWorkflowDefinitions.map(({ id, name, status, formType }) => ({ id, name, status, formType })))),
+
   // 获取已发布的流程定义列表（发起申请时使用，返回数组而非分页对象）
   mock(workflowDefinitionContract.published, ({ ok }) => {
     const list = mockWorkflowDefinitions.filter(d => d.status === 'published' && d.formType !== 'external').map(resolveWorkflowDefinition);
@@ -1774,6 +1777,16 @@ export const workflowHandlers = [
       return inst?.status === 'running';
     }).length;
     return ok({ count });
+  }),
+
+  mock(workflowInstanceContract.pendingDefinitionOptions, ({ ok }) => {
+    const definitionIds = new Set(mockWorkflowTasks.flatMap((task) => {
+      if (task.assigneeId !== 1 || task.status !== 'pending') return [];
+      const instance = mockWorkflowInstances.find((item) => item.id === task.instanceId);
+      return instance?.status === 'running' ? [instance.definitionId] : [];
+    }));
+    return ok(mockWorkflowDefinitions.filter((definition) => definitionIds.has(definition.id))
+      .map(({ id, name, status, formType }) => ({ id, name, status, formType })));
   }),
 
   // 待我审批列表

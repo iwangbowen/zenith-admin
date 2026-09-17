@@ -16,7 +16,7 @@ import { api, contractKey, useApiMutation, useApiQuery, useSaveMutation } from '
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 import { positionKeys, useAllPositions } from './positions';
 import { useAllUserGroups, userGroupKeys } from './user-groups';
-import { invalidateAfterWorkflowDefinitionVersionChange, workflowDefinitionKeys } from './workflow-definitions';
+import { invalidateWorkflowDefinitionOptions, invalidateAfterWorkflowDefinitionVersionChange, workflowDefinitionKeys } from './workflow-definitions';
 import { workflowFormKeys } from './workflow-forms';
 
 export type WorkflowDecisionRefKind = 'table' | 'scorecard' | 'flow';
@@ -197,7 +197,7 @@ export function useWorkflowDesignerFormOptions(formId: number | null | undefined
 
 /**
  * 设计器保存：无 id 走创建、有 id 走更新。结构化 flowData 直接作为 JSON 记录提交（序列化结果与记录形态一致）。
- * 保存只改定义本身：详情、列表（名称 / 更新时间列）与版本历史回源；published 只在发布后变化，
+ * 保存只改定义本身：详情、列表（名称 / 更新时间列）、轻量选项与版本历史回源；published 只在发布后变化，
  * 设计器的表单 / 连接器 / 数据源下拉不受影响。
  */
 export function useSaveWorkflowDesignerDefinition() {
@@ -208,6 +208,7 @@ export function useSaveWorkflowDesignerDefinition() {
       invalidate: (qc, saved) => {
         void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.detail(saved.id) });
         void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.lists });
+        invalidateWorkflowDefinitionOptions(qc);
         void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.versions(saved.id) });
       },
     },

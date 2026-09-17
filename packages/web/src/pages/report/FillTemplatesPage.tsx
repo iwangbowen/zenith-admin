@@ -12,7 +12,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { ReportFolderFilter, ReportOwnerFilter } from './report-filters';
 import { useReportOwnerFolderOptions } from './report-lookups';
-import { usePublishedWorkflowDefinitions } from '@/hooks/queries/workflow-definitions';
+import { useWorkflowDefinitionOptions } from '@/hooks/queries/workflow-definitions';
 import {
   reportFillKeys,
   useChangeReportFillTemplateLifecycle,
@@ -76,7 +76,7 @@ export default function FillTemplatesPage() {
   const [conflictMessage, setConflictMessage] = useState<string | null>(null);
 
   const { userOptions, folderOptions } = useReportOwnerFolderOptions('fill_template');
-  const definitions = (usePublishedWorkflowDefinitions().data ?? []).filter((definition) => definition.formType === 'external');
+  const definitions = (useWorkflowDefinitionOptions().data ?? []).filter((definition) => definition.status === 'published' && definition.formType === 'external');
   const createMutation = useCreateReportFillTemplate();
   const updateMutation = useUpdateReportFillTemplate();
   const lifecycleMutation = useChangeReportFillTemplateLifecycle();

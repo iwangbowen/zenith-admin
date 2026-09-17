@@ -20,6 +20,7 @@ export {
 export {
   listMyInstances,
   listPendingMine,
+  listPendingDefinitionOptions,
   listMyCc,
   countMyCcUnread,
   countPendingMine,

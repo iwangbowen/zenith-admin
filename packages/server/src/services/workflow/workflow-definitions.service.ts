@@ -187,6 +187,15 @@ export async function listPublishedDefinitions() {
   return filtered.map((r) => mapDefinition(r));
 }
 
+/** 管理与设计使用的定义选项；不按发起权限、发布状态或表单类型排除。 */
+export async function listDefinitionOptions() {
+  return db.query.workflowDefinitions.findMany({
+    columns: { id: true, name: true, status: true, formType: true },
+    where: tenantCondition(workflowDefinitions, currentUser()),
+    orderBy: desc(workflowDefinitions.id),
+  });
+}
+
 function findDefinition(id: number) {
   return buildWhere(eq(workflowDefinitions.id, id), tenantCondition(workflowDefinitions, currentUser()));
 }

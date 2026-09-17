@@ -17,6 +17,7 @@ import {
 import { api, apiQueryOptions, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { invalidateAfterInstanceChange, workflowInstanceKeys } from './workflow-instances';
 import { workflowDelegationKeys } from './workflow-delegations';
+import { useWorkflowDefinitionOptions, workflowDefinitionKeys } from './workflow-definitions';
 
 export type WorkflowMonitorListParams = QueryOf<typeof workflowInstanceContract.monitor>;
 
@@ -47,8 +48,8 @@ export const workflowMonitorKeys = {
   taskMonitorList: (params: WorkflowTaskMonitorParams) => contractKey(workflowTaskContract.taskMonitor, { query: params }),
   /** 监控视角的实例详情与「我的申请」等处的详情是同一份缓存（同一契约操作） */
   monitorDetail: (id: number) => workflowInstanceKeys.detail(id),
-  /** 已发布定义下拉：与 workflowDefinitionKeys.published 同一份缓存，发布后由定义域失效 */
-  definitionsOptions: contractKey(workflowDefinitionContract.published),
+  /** 监控筛选含业务系统主导及历史状态，由定义域统一失效。 */
+  definitionsOptions: workflowDefinitionKeys.lookup,
   definitionDetail: (id: number) => contractKey(workflowDefinitionContract.detail, { params: { id } }),
   diagnostics: (id: number) => contractKey(workflowInstanceOpsContract.diagnostics, { params: { id } }),
   trace: (id: number) => contractKey(workflowInstanceOpsContract.trace, { params: { id } }),
@@ -104,9 +105,9 @@ export function useWorkflowDefinitionDetail(id: number | undefined, enabled = tr
   });
 }
 
-/** 已发布定义下拉（数据分析筛选 / 强制跳转节点选择 / 批量恢复） */
+/** 全部定义选项（监控 / 数据分析 / 批量恢复），不以当前用户能否发起为条件。 */
 export function useWorkflowMonitorDefinitionOptions(enabled = true) {
-  return useApiQuery(workflowDefinitionContract.published, { enabled });
+  return useWorkflowDefinitionOptions(enabled);
 }
 
 export function useWorkflowRuntimeDiagnostics(id: number | undefined, enabled = true) {

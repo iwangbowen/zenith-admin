@@ -5,6 +5,7 @@ import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   listDefinitions,
+  listDefinitionOptions,
   listPublishedDefinitions,
   getDefinition,
   createDefinition,
@@ -30,6 +31,10 @@ import { simulateWorkflow, checkDefinitionHealth } from '../../services/workflow
 import { mountCrud } from '../_crud';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
+
+const optionsRoute = defineContractRoute(workflowDefinitionContract.all, {
+  handler: async (c) => c.json(okBody(await listDefinitionOptions()), 200),
+});
 
 const publishedRoute = defineContractRoute(workflowDefinitionContract.published, {
   handler: async (c) => c.json(okBody(await listPublishedDefinitions()), 200),
@@ -156,6 +161,7 @@ mountCrud(router, workflowDefinitionContract,
   },
   {},
   [
+    optionsRoute,
     publishedRoute,
     importRoute,
     publishRoute,

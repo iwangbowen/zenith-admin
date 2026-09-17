@@ -1,6 +1,6 @@
 import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
-import { workflowDefinitionContract, workflowTemplateContract } from '@zenith/shared/workflow';
+import { workflowDefinitionContract, workflowInstanceContract, workflowTemplateContract } from '@zenith/shared/workflow';
 import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type WorkflowDefinitionListParams = QueryOf<typeof workflowDefinitionContract.list>;
@@ -11,7 +11,7 @@ export interface WorkflowVersionDiffParams {
   right: number;
 }
 
-/** 只用工厂的列表与 keys：保存在设计器（带 flowData 转换），删除 / 发布等是非标准动作 */
+/** 复用工厂的列表、lookup 与 keys：保存在设计器（带 flowData 转换），删除 / 发布等是非标准动作 */
 const resource = createResourceQueries(workflowDefinitionContract);
 
 export const workflowDefinitionKeys = {
@@ -30,11 +30,14 @@ export const workflowDefinitionKeys = {
 };
 
 export const useWorkflowDefinitionList = resource.useList;
+/** 租户内全部定义的轻量选项，供筛选、关联和业务绑定；包含 external 与历史状态。 */
+export const useWorkflowDefinitionOptions = resource.useLookup;
 
 /**
- * 已发布流程定义（启动列表、日程绑定、关联流程选择器、监控筛选等共用）。
+ * 当前用户可发起的已发布流程（启动列表、定时发起、子流程目标）。
+ * 排除 external 并检查发起人范围，禁止用于记录筛选、关联或业务绑定。
  *
- * 这是该端点的唯一入口：发布 / 启停 / 删除只失效 `workflowDefinitionKeys.published`，各调用方必须共用这一份缓存，
+ * 这是该端点的唯一入口：发布 / 启停 / 删除统一失效 `workflowDefinitionKeys.published`，各调用方必须共用这一份缓存，
  * 否则新发布的定义在其它 key 的下拉里最长 5 分钟不出现。
  *
  * `staleTime` 是 observer 级选项，不同调用方可各自指定；但 `silent` 之类会进入
@@ -47,6 +50,12 @@ export function usePublishedWorkflowDefinitions(options?: { enabled?: boolean; s
     // 显式传 undefined 会覆盖 QueryClient 的默认 staleTime（视为 0），未指定时不写入该字段
     ...(options?.staleTime === undefined ? {} : { staleTime: options.staleTime }),
   });
+}
+
+/** 定义名称 / 状态变化同时影响管理选项与当前用户的待办筛选。 */
+export function invalidateWorkflowDefinitionOptions(qc: QueryClient): void {
+  void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.lookup });
+  void qc.invalidateQueries({ queryKey: contractKey(workflowInstanceContract.pendingDefinitionOptions) });
 }
 
 export function useWorkflowDefinitionDetail(id: number | null | undefined, enabled = true) {
@@ -80,6 +89,7 @@ export function useWorkflowDefinitionDiff(params: WorkflowVersionDiffParams, ena
  */
 export function invalidateWorkflowDefinitionState(qc: QueryClient, id?: number): void {
   void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.lists });
+  invalidateWorkflowDefinitionOptions(qc);
   void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.published });
   void qc.invalidateQueries({ queryKey: id === undefined ? workflowDefinitionKeys.details : workflowDefinitionKeys.detail(id) });
 }
@@ -128,6 +138,7 @@ export function useBatchDisableWorkflowDefinitions() {
     invalidate: (qc, _output, { body }) => {
       for (const id of body.ids) void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.detail(id) });
       void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.lists });
+      invalidateWorkflowDefinitionOptions(qc);
       void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.published });
     },
   });
@@ -138,6 +149,7 @@ export function useBatchEnableWorkflowDefinitions() {
     invalidate: (qc, _output, { body }) => {
       for (const id of body.ids) void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.detail(id) });
       void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.lists });
+      invalidateWorkflowDefinitionOptions(qc);
       void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.published });
     },
   });
@@ -148,6 +160,7 @@ export function useBatchDeleteWorkflowDefinitions() {
     invalidate: (qc, _output, { body }) => {
       for (const id of body.ids) removeWorkflowDefinition(qc, id);
       void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.lists });
+      invalidateWorkflowDefinitionOptions(qc);
       void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.published });
     },
   });
@@ -156,13 +169,19 @@ export function useBatchDeleteWorkflowDefinitions() {
 /** 复制 / 导入都只新增一条草稿定义：列表多一行，已发布下拉与既有定义不变 */
 export function useDuplicateWorkflowDefinition() {
   return useApiMutation(workflowDefinitionContract.duplicate, {
-    invalidate: (qc) => void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.lists }),
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.lists });
+      invalidateWorkflowDefinitionOptions(qc);
+    },
   });
 }
 
 export function useImportWorkflowDefinition() {
   return useApiMutation(workflowDefinitionContract.import, {
-    invalidate: (qc) => void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.lists }),
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: workflowDefinitionKeys.lists });
+      invalidateWorkflowDefinitionOptions(qc);
+    },
   });
 }
 

@@ -78,6 +78,7 @@ export function invalidateAfterInstanceChange(qc: QueryClient, instanceId?: numb
   invalidate(workflowInstanceKeys.handledLists);
   invalidate(workflowInstanceKeys.ccLists);
   invalidate(contractKey(workflowInstanceContract.pendingMine));
+  invalidate(contractKey(workflowInstanceContract.pendingDefinitionOptions));
   invalidate(contractKey(workflowInstanceContract.pendingMineCount));
   invalidate(contractKey(workflowInstanceContract.ccUnreadCount));
   invalidate(workflowInstanceKeys.workbenchSummary);

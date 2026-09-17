@@ -9,6 +9,11 @@
 新增规则的「所属流程」可选择所有已发布流程，包括业务系统主导（`external`）流程。
 「发起流程」动作的目标仅可选择已发布且非 `external` 的流程；业务系统主导流程必须由对应业务模块发起。
 
+流程定义的查询按用途区分：`GET /api/workflows/definitions/published` 只返回当前用户可发起的普通流程；
+`GET /api/workflows/definitions/all` 返回租户范围内的轻量选项（ID、名称、状态、表单类型），供监控筛选、关联审批单和业务绑定使用，包含业务系统主导和历史状态。
+填报模板绑定在轻量选项中选择已发布的 `external` 流程。待我审批使用 `GET /api/workflows/instances/pending-mine/definitions`，
+按当前用户的运行中待办生成去重选项，与待办列表共用归属和租户条件，不要求发起或流程定义管理权限。
+
 ### 触发时机
 
 | 触发器 | 说明 |
