@@ -663,6 +663,14 @@ export default function ProfilePage({ user }: ProfilePageProps) {
               </div>
             </Tabs.TabPane>
 
+            {/* ── 通知设置 ──────────────────────────────────────── */}
+            <Tabs.TabPane
+              itemKey="notifications"
+              tab={<span className="profile-tab-label"><BellRing size={14} /><span>通知设置</span></span>}
+            >
+              {activeSection === 'notifications' && <NotificationSettingsTab />}
+            </Tabs.TabPane>
+
             {/* ── 我的设备 ──────────────────────────────────────── */}
             <Tabs.TabPane
               itemKey="devices"
@@ -700,14 +708,6 @@ export default function ProfilePage({ user }: ProfilePageProps) {
                   pagination={buildLoginLogsPagination(loginLogsTotal)}
                 />
               </div>
-            </Tabs.TabPane>
-
-            {/* ── 通知设置 ──────────────────────────────────────── */}
-            <Tabs.TabPane
-              itemKey="notifications"
-              tab={<span className="profile-tab-label"><BellRing size={14} /><span>通知设置</span></span>}
-            >
-              {activeSection === 'notifications' && <NotificationSettingsTab />}
             </Tabs.TabPane>
 
             {/* ── 操作记录 ──────────────────────────────────────── */}
