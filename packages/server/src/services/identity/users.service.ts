@@ -272,8 +272,17 @@ export async function listUsers(q: QueryOutputOf<typeof userContract.list>) {
       const lockMap = await batchCheckLoginLock(rawList.map((u) => u.username));
       const onlineSessions = await getOnlineSessions();
       const onlineUserIds = new Set(onlineSessions.map((s) => s.userId));
+      // 同一用户多会话取最新活跃时间；离线用户为 null，前端显示占位符
+      const lastActiveMap = new Map<number, Date>();
+      for (const s of onlineSessions) {
+        const prev = lastActiveMap.get(s.userId);
+        if (!prev || s.lastActiveAt.getTime() > prev.getTime()) lastActiveMap.set(s.userId, s.lastActiveAt);
+      }
       const mapped = mapUsers(rawList);
-      return mapped.map((u) => ({ ...u, isLocked: (lockMap.get(u.username) ?? 0) > 0, isOnline: onlineUserIds.has(u.id) }));
+      return mapped.map((u) => {
+        const lastActive = lastActiveMap.get(u.id);
+        return { ...u, isLocked: (lockMap.get(u.username) ?? 0) > 0, isOnline: onlineUserIds.has(u.id), lastActiveAt: lastActive ? formatDateTime(lastActive) : null };
+      });
     },
   });
 }

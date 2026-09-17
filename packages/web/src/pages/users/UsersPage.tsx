@@ -430,6 +430,7 @@ export default function UsersPage() {
       ),
     },
     dateTimeColumn('最近登录', 'lastLoginAt'),
+    dateTimeColumn('最近活跃', 'lastActiveAt'),
     createdAtColumn,
     status.column(),
     createOperationColumn<User>({

@@ -87,6 +87,7 @@ export default function OnlineSessionsPage() {
     { title: '浏览器', dataIndex: 'browser', width: 160, render: renderEllipsis },
     { title: '操作系统', dataIndex: 'os', width: 160, render: renderEllipsis },
     dateTimeColumn('登录时间', 'loginAt'),
+    dateTimeColumn('最近活跃', 'lastActiveAt'),
     createOperationColumn<OnlineSession>({
       width: 120,
       actions: (record) => [

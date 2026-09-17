@@ -42,6 +42,7 @@ export const userSchema = z.object({
   isLocked: z.boolean().optional().meta({ description: '账号是否被锁定（登录失败次数过多，列表返回）' }),
   isOnline: z.boolean().optional().meta({ description: '用户是否在线（列表返回）' }),
   lastLoginAt: z.string().nullable().optional(),
+  lastActiveAt: z.string().nullable().optional().meta({ description: '用户最新会话活跃时间（列表返回；离线为 null）' }),
   lastLoginIp: z.string().nullable().optional(),
   lastLoginLocation: z.string().nullable().optional(),
   ...auditFieldsSchema,

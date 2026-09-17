@@ -105,6 +105,7 @@ export const mockOnlineSessions: OnlineSession[] = [
     browser: 'Chrome 120',
     os: 'Windows 11',
     loginAt: mockDateTimeOffset(-3600 * 1000),
+    lastActiveAt: mockDateTimeOffset(-300 * 1000),
   },
   {
     tokenId: 'mock-token-id-002',
@@ -117,6 +118,7 @@ export const mockOnlineSessions: OnlineSession[] = [
     browser: 'Safari 17',
     os: 'iOS 18',
     loginAt: mockDateTimeOffset(-1800 * 1000),
+    lastActiveAt: mockDateTimeOffset(-60 * 1000),
   },
   {
     tokenId: 'mock-token-id-003',
@@ -129,5 +131,6 @@ export const mockOnlineSessions: OnlineSession[] = [
     browser: 'Electron 33',
     os: 'macOS Sonoma',
     loginAt: mockDateTimeOffset(-7200 * 1000),
+    lastActiveAt: mockDateTimeOffset(-3600 * 1000),
   },
 ];

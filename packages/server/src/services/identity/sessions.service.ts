@@ -41,6 +41,7 @@ function toSessionDto(s: SessionInfo) {
     browser: s.browser,
     os: s.os,
     loginAt: formatDateTime(s.loginAt),
+    lastActiveAt: formatDateTime(s.lastActiveAt),
     impersonatorName: s.impersonatorName ?? null,
   };
 }

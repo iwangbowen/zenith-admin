@@ -7,6 +7,7 @@ import { mockUsers, getNextUserId, type MockUser } from '@/mocks/data/users';
 import { mockRoles } from '@/mocks/data/roles';
 import { mockPositions } from '@/mocks/data/positions';
 import { mockDepartments } from '@/mocks/data/departments';
+import { mockOnlineSessions } from '@/mocks/data/system';
 import { mockDriveSpaces } from '@/mocks/data/drive';
 import { mockDateTime } from '@/mocks/utils/date';
 import { includesKeyword } from '@/mocks/utils/filter';
@@ -73,7 +74,14 @@ export const usersHandlers = [
       return true;
     });
     const paged = paginate(list);
-    return ok({ ...paged, list: paged.list.map(toUserResponse) });
+    // 与服务端 listUsers 同口径：在线状态 + 多会话最新活跃时间，离线为 null
+    const lastActiveMap = new Map<number, string>();
+    for (const s of mockOnlineSessions) {
+      const prev = lastActiveMap.get(s.userId);
+      if (!prev || s.lastActiveAt > prev) lastActiveMap.set(s.userId, s.lastActiveAt);
+    }
+    const onlineUserIds = new Set(mockOnlineSessions.map((s) => s.userId));
+    return ok({ ...paged, list: paged.list.map((u) => ({ ...toUserResponse(u), isOnline: onlineUserIds.has(u.id), lastActiveAt: lastActiveMap.get(u.id) ?? null })) });
   }),
 
   // 新增用户
