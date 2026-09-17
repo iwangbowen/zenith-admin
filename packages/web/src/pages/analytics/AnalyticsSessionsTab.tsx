@@ -116,12 +116,11 @@ export default function AnalyticsSessionsTab() {
     {
       title: '设备 / 浏览器 / 系统',
       dataIndex: 'deviceType',
-      width: 230,
+      width: 280,
       render: (_value, record) => (
-        <div>
-          <Tag color="blue">{record.deviceType || 'unknown'}</Tag>
-          <Typography.Text size="small" type="tertiary"> {record.browser || EMPTY_PLACEHOLDER} / {record.os || EMPTY_PLACEHOLDER}</Typography.Text>
-        </div>
+        <Typography.Text size="small" type="tertiary" ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>
+          {record.deviceType || 'unknown'} / {record.browser || EMPTY_PLACEHOLDER} / {record.os || EMPTY_PLACEHOLDER}
+        </Typography.Text>
       ),
     },
     { title: '地域', dataIndex: 'region', width: 120, render: (_value, record) => record.region || EMPTY_PLACEHOLDER },
