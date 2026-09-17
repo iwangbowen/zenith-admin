@@ -110,12 +110,13 @@ export default function RetentionPage() {
         dataSource={policies.map((item) => ({ ...item, _rowId: item.key }))}
         pagination={false}
         columns={[
-          { key: 'module', title: '模块', dataIndex: 'module', width: 110 },
+          { key: 'module', title: '模块', dataIndex: 'module', width: 140, ellipsis: { showTooltip: true } },
           {
             key: 'title',
             title: '名称',
             dataIndex: 'title',
-            width: 150,
+            width: 180,
+            ellipsis: { showTooltip: true },
           },
           {
             key: 'tableName',
