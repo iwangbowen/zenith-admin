@@ -215,6 +215,8 @@ export interface UserPreferences {
   reduceMotion: boolean;
   /** 退出登录前弹出二次确认框 */
   confirmLogout: boolean;
+  /** 弹窗是否支持点击遮罩关闭（maskClosable）；默认关闭，避免误触丢失表单内容 */
+  modalClickMaskToClose: boolean;
   /** 标签栏右侧显示标签切换器（chevron 下拉列表） */
   showTabSwitcher: boolean;
   /** 站内信 / 公告实时到达时播放提示音，默认关闭（聊天新消息提示音沿用聊天页自己的开关，音色共用） */
@@ -300,6 +302,7 @@ export const defaultPreferences: UserPreferences = {
   autoLockMinutes: 0,
   reduceMotion: false,
   confirmLogout: true,
+  modalClickMaskToClose: false,
   showTabSwitcher: true,
   notificationSound: false,
   notificationSoundStyle: DEFAULT_NOTIFICATION_SOUND_STYLE,

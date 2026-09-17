@@ -795,6 +795,19 @@ export function PrefsGeneralSection({
       </div>
       )}
 
+      {/* ── 弹窗点击遮罩关闭 ── */}
+      {matchesPref(['弹窗', '模态框', '遮罩', '蒙层', '点击关闭', 'maskClosable', '误触']) && (
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          弹窗点击遮罩关闭
+          <Tooltip content="开启后，点击弹窗外的遮罩区域可直接关闭弹窗（按 Esc 关闭不受影响）；关闭时需点击右上角或底部按钮，可防止误触丢失表单内容" position="right">
+            <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+          </Tooltip>
+        </span>
+        <Switch checked={preferences.modalClickMaskToClose ?? false} onChange={(v) => setPreferences({ modalClickMaskToClose: v })} />
+      </div>
+      )}
+
       {/* ── 文件默认视图 ── */}
       {matchesPref(['文件视图', '文件列表', '文件管理', '列表', '网格', '文件']) && (
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Modal } from '@douyinfe/semi-ui';
 import type { ModalReactProps } from '@douyinfe/semi-ui/lib/es/modal';
 import { Maximize, Minimize, X } from 'lucide-react';
+import { useOptionalPreferences } from '@/hooks/usePreferences';
 import './AppModal.css';
 
 export interface AppModalProps extends Omit<ModalReactProps, 'header' | 'closable' | 'closeIcon' | 'fullScreen'> {
@@ -31,10 +32,14 @@ export function AppModal({
   fullscreenable = true,
   fullscreen: controlledFullscreen,
   onToggleFullscreen,
+  maskClosable: maskClosableProp,
   children,
   ...rest
 }: Readonly<AppModalProps>) {
   const [internalFullscreen, setInternalFullscreen] = useState(false);
+  // 弹窗点击遮罩关闭偏好：调用方显式传入时优先（如必填确认框强制 maskClosable=false）
+  const modalClickMaskToClose = useOptionalPreferences()?.preferences.modalClickMaskToClose ?? false;
+  const maskClosable = maskClosableProp ?? modalClickMaskToClose;
 
   // 受控模式：外部传入 fullscreen；非受控模式：使用内部 state
   const isControlled = controlledFullscreen !== undefined;
@@ -80,6 +85,7 @@ export function AppModal({
       header={header}
       closable={false}
       fullScreen={fullscreen}
+      maskClosable={maskClosable}
       onCancel={onCancel}
       {...rest}
     >
