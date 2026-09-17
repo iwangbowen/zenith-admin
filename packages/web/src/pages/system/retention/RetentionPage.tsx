@@ -110,19 +110,25 @@ export default function RetentionPage() {
         dataSource={policies.map((item) => ({ ...item, _rowId: item.key }))}
         pagination={false}
         columns={[
-          { key: 'module', title: '模块', dataIndex: 'module', width: 140, ellipsis: { showTooltip: true } },
+          { key: 'module', title: '模块', dataIndex: 'module', width: 140, ellipsis: { showTitle: false }, render: (module: string) => (
+            <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{module}</Text>
+          ) },
           {
             key: 'title',
             title: '名称',
             dataIndex: 'title',
             width: 180,
-            ellipsis: { showTooltip: true },
+            ellipsis: { showTitle: false },
+            render: (title: string) => (
+              <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{title}</Text>
+            ),
           },
           {
             key: 'tableName',
             title: '数据表',
             dataIndex: 'tableName',
             width: 240,
+            ellipsis: { showTitle: false },
             render: (tableName: string) => (
               <Text type="tertiary" size="small" code ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{tableName}</Text>
             ),
