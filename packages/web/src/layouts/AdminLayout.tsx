@@ -207,7 +207,7 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
   const {
     prefsVisible, setPrefsVisible,
     prefsSearch, setPrefsSearch,
-    matchesPref, prefSection, handleCopyPreferences,
+    matchesPref, prefSection, handleCopyPreferences, handleExportPreferences,
     importPrefsVisible, setImportPrefsVisible,
     importPrefsText, setImportPrefsText,
     handleImportPreferences,
@@ -1049,6 +1049,7 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
                   }}
                   handleCopyPreferences={handleCopyPreferences}
                   onOpenImport={() => setImportPrefsVisible(true)}
+                  onExportPreferences={handleExportPreferences}
                   resetPreferences={resetPreferences}
                 />
               </Suspense>

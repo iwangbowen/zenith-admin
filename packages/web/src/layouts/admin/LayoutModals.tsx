@@ -34,7 +34,7 @@ export function ImportPreferencesModal({
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <Typography.Text type="secondary" size="small">
-          粘贴通过「复制偏好」导出的 JSON 配置。未知字段、非法值与系统管理项会被跳过，导入后立即生效并同步到服务器。
+          粘贴通过「复制偏好」复制或「导出配置文件」下载的 JSON 配置。未知字段、非法值与系统管理项会被跳过，导入后立即生效并同步到服务器。
         </Typography.Text>
         <TextArea
           rows={10}

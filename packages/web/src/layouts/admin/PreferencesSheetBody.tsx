@@ -32,6 +32,7 @@ export interface PreferencesSheetBodyProps {
   readonly openLockPasswordModal: (mode: 'set' | 'change') => void;
   readonly handleCopyPreferences: () => void;
   readonly onOpenImport: () => void;
+  readonly onExportPreferences: () => void;
   readonly resetPreferences: () => void;
 }
 
@@ -73,6 +74,7 @@ export default function PreferencesSheetBody(props: PreferencesSheetBodyProps) {
       {hasEditablePreferences ? <PrefsActionsSection
         handleCopyPreferences={props.handleCopyPreferences}
         onOpenImport={props.onOpenImport}
+        onExportPreferences={props.onExportPreferences}
         resetPreferences={props.resetPreferences}
       /> : null}
     </>

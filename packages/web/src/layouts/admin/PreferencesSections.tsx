@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Button, InputNumber, Popover, Radio, RadioGroup, Select, Switch, Tooltip } from '@douyinfe/semi-ui';
-import { ChevronLeft, ChevronRight, ClipboardPaste, Copy, Info } from 'lucide-react';
+import { Button, Dropdown, InputNumber, Popover, Radio, RadioGroup, Select, SplitButtonGroup, Switch, Tooltip } from '@douyinfe/semi-ui';
+import { ChevronDown, ChevronLeft, ChevronRight, ClipboardPaste, Copy, Download, Info } from 'lucide-react';
 import { LOADING_STYLE_OPTIONS, DARK_SURFACE_TONE_OPTIONS, UI_SCALE_OPTIONS, FONT_FAMILY_OPTIONS } from '@/hooks/usePreferences';
 import { clearAllListFilterSnapshots } from '@/lib/list-filter-memory';
 import type { NavLayout, TableSizePreference, RouteAnimation, BorderRadiusPreference, TabStyle, TabSize, TabType, DarkSurfaceTone, UserPreferences, UiScale, FontFamilyPreference, WeekStart, TimeDisplay } from '@/hooks/usePreferences';
@@ -1297,36 +1297,47 @@ export function PrefsTabsSection({
   );
 }
 
-// ── 复制 / 导入 / 重置 ──
+// ── 复制 / 导入 / 导出 / 重置 ──
 export function PrefsActionsSection({
   handleCopyPreferences,
   onOpenImport,
+  onExportPreferences,
   resetPreferences,
 }: Readonly<{
   handleCopyPreferences: () => void;
   onOpenImport: () => void;
+  onExportPreferences: () => void;
   resetPreferences: () => void;
 }>) {
   return (
     <div className="prefs-reset-btn" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'flex', gap: 12 }}>
+      <SplitButtonGroup style={{ display: 'flex' }}>
         <Button
           theme="light"
-          block
           icon={<Copy size={14} />}
           onClick={handleCopyPreferences}
+          style={{ flex: 1 }}
         >
           复制偏好
         </Button>
-        <Button
-          theme="light"
-          block
-          icon={<ClipboardPaste size={14} />}
-          onClick={onOpenImport}
+        <Dropdown
+          trigger="click"
+          position="bottomRight"
+          clickToHide
+          render={(
+            <Dropdown.Menu>
+              <Dropdown.Item icon={<ClipboardPaste size={14} />} onClick={onOpenImport}>
+                导入偏好
+              </Dropdown.Item>
+              <Dropdown.Item icon={<Download size={14} />} onClick={onExportPreferences}>
+                导出配置文件
+              </Dropdown.Item>
+            </Dropdown.Menu>
+          )}
         >
-          导入偏好
-        </Button>
-      </div>
+          <Button theme="light" icon={<ChevronDown size={14} />} aria-label="更多偏好操作" />
+        </Dropdown>
+      </SplitButtonGroup>
       <Button
         type="danger"
         theme="light"

@@ -2,9 +2,10 @@ import { useCallback, useState } from 'react';
 import { Toast } from '@douyinfe/semi-ui';
 import { textMatches } from '@/utils/pinyin';
 import { copyTextWithToast } from '@/utils/clipboard';
+import { downloadBlob } from '@/utils/download';
 import { sanitizeImportedPreferences, usePreferences } from '@/hooks/usePreferences';
 
-// 偏好设置面板：搜索过滤、分区标题、复制 / 导入偏好
+// 偏好设置面板：搜索过滤、分区标题、复制 / 导入 / 导出偏好
 export function usePreferencesPanel() {
   const { overrides, setPreferences } = usePreferences();
   const [prefsVisible, setPrefsVisible] = useState(false);
@@ -22,6 +23,11 @@ export function usePreferencesPanel() {
 
   const handleCopyPreferences = useCallback(() => {
     void copyTextWithToast(JSON.stringify({ overrides }, null, 2), { success: '偏好设置已复制到剪贴板', error: '复制失败，请重试' });
+  }, [overrides]);
+
+  const handleExportPreferences = useCallback(() => {
+    downloadBlob(new Blob([JSON.stringify({ overrides }, null, 2)], { type: 'application/json' }), 'zenith-preferences.json');
+    Toast.success('偏好配置已导出为文件');
   }, [overrides]);
 
   // ─── 导入偏好 ─────────────────────────────────────────────────────────────
@@ -50,7 +56,7 @@ export function usePreferencesPanel() {
   return {
     prefsVisible, setPrefsVisible,
     prefsSearch, setPrefsSearch,
-    matchesPref, prefSection, handleCopyPreferences,
+    matchesPref, prefSection, handleCopyPreferences, handleExportPreferences,
     importPrefsVisible, setImportPrefsVisible,
     importPrefsText, setImportPrefsText,
     handleImportPreferences,
