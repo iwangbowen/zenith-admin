@@ -5,6 +5,7 @@ import type { NavigateFunction } from 'react-router-dom';
 import type { User } from '@zenith/shared/identity';
 import { UserAvatar } from '@/components/UserAvatar';
 import { useAuth } from '@/hooks/useAuth';
+import { usePermission } from '@/hooks/usePermission';
 import { AccountSwitcherModal } from './AccountSwitcher';
 import { confirmDanger } from '@/utils/confirm';
 import './AccountSwitcher.css';
@@ -44,6 +45,10 @@ export function UserDropdown({
   onLogout: () => void;
 }>) {
   const { parkedAccounts, impersonation, endImpersonation } = useAuth();
+  const { hasAnyPermission } = usePermission();
+  // 移动审批轻页首屏即查待办 / 角标 / 可发起流程，无任一审批相关权限必 403；
+  // 与意见反馈入口同模式：无权限直接隐藏入口，而不是点进去再报错
+  const canUseApproval = hasAnyPermission('workflow:task:handle', 'workflow:instance:list', 'workflow:instance:create');
   const [switcherVisible, setSwitcherVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const impersonating = impersonation !== null;
@@ -90,7 +95,9 @@ export function UserDropdown({
             我的消息{unreadCount > 0 && <Badge count={unreadCount} overflowCount={99} style={{ marginLeft: 6 }} />}
           </Dropdown.Item>
           <Dropdown.Item icon={<Megaphone size={14} strokeWidth={1.5} />} onClick={() => navigate('/announcements')}>公告中心{announcementUnreadCount > 0 && <Badge count={announcementUnreadCount} overflowCount={99} style={{ marginLeft: 6 }} />}</Dropdown.Item>
-          <Dropdown.Item icon={<Smartphone size={14} strokeWidth={1.5} />} onClick={() => window.open(`${import.meta.env.BASE_URL.replace(/\/$/, '')}/approval.html`, '_blank')}>移动审批</Dropdown.Item>
+          {canUseApproval && (
+            <Dropdown.Item icon={<Smartphone size={14} strokeWidth={1.5} />} onClick={() => window.open(`${import.meta.env.BASE_URL.replace(/\/$/, '')}/approval.html`, '_blank')}>移动审批</Dropdown.Item>
+          )}
           {feedbackEntryEnabled && (
             <Dropdown.Item icon={<MessageSquareHeart size={14} strokeWidth={1.5} />} onClick={() => setFeedbackVisible(true)}>意见反馈</Dropdown.Item>
           )}
