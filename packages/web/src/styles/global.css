@@ -440,12 +440,28 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
   border-top: 1px solid var(--semi-color-border);
 }
 
+/* 斑马纹：fill 色为半透明 rgba，不能直接作 background-color，
+   否则 sticky 固定列会透出下方滚动经过的列内容。
+   采用与 Semi hover/选中态相同的做法：不透明底色 + background-image 叠加 fill；
+   固定列单元格底色沿用 Semi 的 bg-1（与 bg-0 视觉一致但保证不透明）。 */
 .configurable-table .semi-table-tbody > .semi-table-row.configurable-table-row--striped:not(.semi-table-row-selected) > .semi-table-row-cell {
-  background-color: var(--semi-color-fill-0);
+  background-image: linear-gradient(0deg, var(--semi-color-fill-0), var(--semi-color-fill-0));
+  background-color: var(--semi-color-bg-0);
+}
+
+.configurable-table .semi-table-tbody > .semi-table-row.configurable-table-row--striped:not(.semi-table-row-selected) > .semi-table-row-cell.semi-table-cell-fixed-left,
+.configurable-table .semi-table-tbody > .semi-table-row.configurable-table-row--striped:not(.semi-table-row-selected) > .semi-table-row-cell.semi-table-cell-fixed-right {
+  background-color: var(--semi-color-bg-1);
 }
 
 .configurable-table .semi-table-tbody > .semi-table-row.configurable-table-row--striped:not(.semi-table-row-selected):hover > .semi-table-row-cell {
-  background-color: var(--semi-color-fill-1);
+  background-image: linear-gradient(0deg, var(--semi-color-fill-1), var(--semi-color-fill-1));
+  background-color: var(--semi-color-bg-0);
+}
+
+.configurable-table .semi-table-tbody > .semi-table-row.configurable-table-row--striped:not(.semi-table-row-selected):hover > .semi-table-row-cell.semi-table-cell-fixed-left,
+.configurable-table .semi-table-tbody > .semi-table-row.configurable-table-row--striped:not(.semi-table-row-selected):hover > .semi-table-row-cell.semi-table-cell-fixed-right {
+  background-color: var(--semi-color-bg-1);
 }
 
 /* ConfigurableTable 由各列宽度之和推导 scroll.x，Semi 会把它写成内层 table 的 `style="width: Npx"`。
