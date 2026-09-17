@@ -1,11 +1,12 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { AppModal } from '@/components/AppModal';
 import {
   Button, Tag, Space, Tabs, TabPane, Toast, Empty, Badge, Spin, Typography, List, Checkbox,
 } from '@douyinfe/semi-ui';
 import { usePagination } from '@/hooks/usePagination';
-import { CheckCheck, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CheckCheck, ChevronLeft, ChevronRight, ArrowUpRight } from 'lucide-react';
 import { IN_APP_MESSAGE_TYPE_LABELS, type InAppMessage } from '@zenith/shared/messaging';
 import DateTimeText from '@/components/DateTimeText';
 import { BatchDeleteButton, RefreshButton } from '@/components/toolbar-controls';
@@ -31,6 +32,7 @@ import { IN_APP_MESSAGE_TYPE_COLORS } from '@/pages/system/in-app-message-consta
 const { Text } = Typography;
 
 export default function InboxPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { page, pageSize, setPage, buildPagination } = usePagination();
   const [activeTab, setActiveTab] = useUrlTabState(['all', 'unread', 'read'] as const, 'all');
@@ -66,6 +68,7 @@ export default function InboxPage() {
         old ? { ...old, list: old.list.map((n) => (n.id === item.id ? { ...n, isRead: true } : n)) } : old,
       );
     }
+    // 有深链的消息也在弹窗里读正文，跳转走详情弹窗里的按钮（顶栏弹窗才是直接跳转）
     setSelectedIndex(index ?? list.findIndex((n) => n.id === item.id));
     setSelected({ ...item, isRead: true });
   };
@@ -116,6 +119,8 @@ export default function InboxPage() {
 
   const unreadCount = useMyInAppMessageUnreadCount().data ?? 0;
   const allSelected = list.length > 0 && list.every((n) => selectedIds.includes(n.id));
+  // 详情弹窗的跳转目标：有深链（如待办提醒、空间接管）才出现「前往处理」按钮
+  const selectedLink = selectedMessage?.link ?? null;
 
   const toggleSelect = (id: number, checked: boolean) => {
     setSelectedIds((prev) => (checked ? [...prev, id] : prev.filter((x) => x !== id)));
@@ -194,6 +199,11 @@ export default function InboxPage() {
                       <Tag color={IN_APP_MESSAGE_TYPE_COLORS[item.type] ?? 'blue'} size="small" style={{ flexShrink: 0 }}>
                         {IN_APP_MESSAGE_TYPE_LABELS[item.type] ?? item.type}
                       </Tag>
+                      {item.link && (
+                        <span title="该消息关联业务页面，可在详情中跳转" style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--semi-color-primary)' }}>
+                          <ArrowUpRight size={13} />
+                        </span>
+                      )}
                       <Text style={{ fontSize: 12, color: 'var(--semi-color-text-3)', marginLeft: 'auto', flexShrink: 0 }}>
                         {item.senderName ?? '系统'} · <DateTimeText value={item.createdAt} />
                       </Text>
@@ -283,6 +293,9 @@ export default function InboxPage() {
             </Space>
             <Space>
               {selectedIndex >= 0 && <Text type="tertiary" size="small">{`${selectedIndex + 1} / ${list.length}`}</Text>}
+              {selectedLink && (
+                <Button type="primary" onClick={() => navigate(selectedLink)}>前往处理</Button>
+              )}
               <Button onClick={() => setSelected(null)}>关闭</Button>
             </Space>
           </div>
