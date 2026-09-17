@@ -954,7 +954,7 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
   width: 3px;
   height: 8px;
   margin: -4px 0 0 -1.5px;
-  border-radius: 2px;
+  border-radius: 50%;
   background: currentColor;
   opacity: 0.15;
   animation: page-loading-spinner-fade 1s linear infinite;
