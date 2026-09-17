@@ -3,13 +3,14 @@ import type { PreferenceOverrides, PreferencePath, PreferencePolicy, UserPrefere
 export {
   defaultPreferences, LOADING_STYLES, LOADING_STYLE_OPTIONS, isLoadingStyle,
   UI_SCALES, UI_SCALE_OPTIONS, FONT_FAMILIES, FONT_FAMILY_OPTIONS, TIME_DISPLAYS, WEEK_STARTS,
-  DARK_SURFACE_TONES, DARK_SURFACE_TONE_OPTIONS,
+  DARK_SURFACE_TONES, DARK_SURFACE_TONE_OPTIONS, TOPBAR_CLOCK_MODES, SCHEDULED_DARK_MODES,
+  isScheduleTime, isScheduledDarkNow, msUntilScheduleBoundary,
 } from '@zenith/shared/preferences';
 export type {
   NavLayout, TabAnimation, TabStyle, TabSize, TabType, TableSizePreference, RouteAnimation,
   SidebarToggleIconPosition, BorderRadiusPreference, LoadingStyle, UiScale, FontFamilyPreference,
-  TimeDisplay, DesktopNotificationContent, WeekStart, DarkSurfaceTone,
-  TerminalFavorite, TerminalTabPosition, TerminalPreferences, UserPreferences,
+  TimeDisplay, DesktopNotificationContent, WeekStart, DarkSurfaceTone, TopbarClockMode,
+  ScheduledDarkMode, TerminalFavorite, TerminalTabPosition, TerminalPreferences, UserPreferences,
 } from '@zenith/shared/preferences';
 export { sanitizePreferenceOverrides as sanitizeImportedPreferences } from '@zenith/shared/preferences';
 

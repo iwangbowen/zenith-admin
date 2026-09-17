@@ -6,6 +6,7 @@ import { Expand, Shrink } from 'lucide-react';
 import { ensurePinyin } from '@/utils/pinyin';
 import { copyText } from '@/utils/clipboard';
 import MenuSearchInput, { type FlatMenuItem } from '@/components/MenuSearchInput';
+import { TopbarClock } from '@/components/TopbarClock';
 import type { User, Menu } from '@zenith/shared/identity';
 import type { ThemeMode } from '@/hooks/useTheme';
 import { usePreferences, useRouteAnimation, type NavLayout } from '@/hooks/usePreferences';
@@ -680,6 +681,9 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
           viewingTenantId={viewingTenantId}
           handleSwitchTenant={handleSwitchTenant}
         />
+      )}
+      {preferences.topbarClock !== 'off' && (
+        <TopbarClock mode={preferences.topbarClock} showDate={preferences.topbarClockShowDate ?? true} />
       )}
       <TaskTray />
       <AnnouncementPopover

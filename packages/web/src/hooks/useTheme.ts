@@ -4,8 +4,8 @@ import { usePrefersDark } from '@/hooks/useMediaQuery';
 export type ThemeMode = 'light' | 'dark' | 'system';
 
 /** 将主题模式直接应用到 DOM（Semi Design 通过 body[theme-mode="dark"] 切换深色） */
-export function applyThemeToDom(mode: ThemeMode, systemDark: boolean) {
-  const isDark = mode === 'dark' || (mode === 'system' && systemDark);
+export function applyThemeToDom(mode: ThemeMode, systemDark: boolean, forceDark = false) {
+  const isDark = forceDark || mode === 'dark' || (mode === 'system' && systemDark);
   if (isDark) {
     document.body.setAttribute('theme-mode', 'dark');
     document.body.style.colorScheme = 'dark';

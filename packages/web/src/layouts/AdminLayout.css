@@ -567,6 +567,13 @@
   gap: 8px;
 }
 
+.admin-topbar-clock {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .admin-theme-btn {
   display: flex;
   align-items: center;

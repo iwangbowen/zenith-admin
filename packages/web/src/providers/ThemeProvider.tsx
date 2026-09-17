@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
-import { canOverridePreference } from '@zenith/shared/preferences';
+import { canOverridePreference, isScheduledDarkNow, msUntilScheduleBoundary } from '@zenith/shared/preferences';
 import { readPreferenceCache, readCachedPreferences, writePreferenceCache } from '@/lib/preference-cache';
 import { useTheme, applyThemeToDom, type ThemeMode } from '@/hooks/useTheme';
 import { usePrefersDark } from '@/hooks/useMediaQuery';
@@ -38,12 +38,46 @@ export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
   const syncPreferences = preferencesContext?.setPreferences;
   const canChangePreference = preferencesContext?.canEditPreference;
   const initial = useMemo(() => loadThemePrefs(), []);
+  const initialSchedule = useMemo(() => {
+    const prefs = readCachedPreferences();
+    return {
+      scheduledDarkMode: prefs.scheduledDarkMode,
+      scheduledDarkStart: prefs.scheduledDarkStart,
+      scheduledDarkEnd: prefs.scheduledDarkEnd,
+    };
+  }, []);
   const [localThemeColor, setLocalThemeColor] = useState<string>(initial.themeColor);
   const themeColor = serverSyncedPreferences?.themeColor ?? localThemeColor;
   const { mode, setThemeMode: setThemeModeInternal } = useTheme(serverSyncedPreferences?.colorMode ?? initial.colorMode);
 
   const prefersDark = usePrefersDark();
-  const isDark = mode === 'dark' || (mode === 'system' && prefersDark);
+  const scheduleConfig = useMemo(() => ({
+    scheduledDarkMode: serverSyncedPreferences?.scheduledDarkMode ?? initialSchedule.scheduledDarkMode,
+    scheduledDarkStart: serverSyncedPreferences?.scheduledDarkStart ?? initialSchedule.scheduledDarkStart,
+    scheduledDarkEnd: serverSyncedPreferences?.scheduledDarkEnd ?? initialSchedule.scheduledDarkEnd,
+  }), [serverSyncedPreferences?.scheduledDarkMode, serverSyncedPreferences?.scheduledDarkStart, serverSyncedPreferences?.scheduledDarkEnd, initialSchedule]);
+  // 定时器一次打到下一个窗口边界；触发后重渲染，解析与下一次调度随之更新
+  const [scheduleTick, setScheduleTick] = useState(0);
+  useEffect(() => {
+    const wait = msUntilScheduleBoundary(scheduleConfig);
+    if (wait === null) return;
+    const timer = setTimeout(() => setScheduleTick((tick) => tick + 1), wait);
+    return () => clearTimeout(timer);
+  }, [scheduleConfig, scheduleTick]);
+  const scheduleDark = useMemo(
+    () => {
+      // 仅为订阅定时 tick 而读取，解析只依赖配置与当前时刻
+      void scheduleTick;
+      return isScheduledDarkNow(scheduleConfig);
+    },
+    [scheduleConfig, scheduleTick],
+  );
+  const isDark = scheduleDark || mode === 'dark' || (mode === 'system' && prefersDark);
+
+  useEffect(() => {
+    // 定时深色叠加在颜色模式之上：useTheme 内部先按模式应用，本 effect 随后以解析结果为准
+    applyThemeToDom(mode, prefersDark, scheduleDark);
+  }, [mode, prefersDark, scheduleDark]);
 
   useEffect(() => {
     applyThemeColor(themeColor, isDark);
@@ -53,7 +87,7 @@ export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
 
   const setThemeMode = useCallback((nextMode: ThemeMode) => {
     if (canChangePreference && !canChangePreference('colorMode')) return;
-    const nextIsDark = nextMode === 'dark' || (nextMode === 'system' && prefersDark);
+    const nextIsDark = scheduleDark || nextMode === 'dark' || (nextMode === 'system' && prefersDark);
     const reduceMotion = serverSyncedPreferences?.reduceMotion ?? false;
     if (nextIsDark === isDark || reduceMotion) {
       // 明暗不变（如 dark → system 且系统为深色）或用户偏好减弱动效时不做过渡动画
@@ -71,7 +105,7 @@ export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
       return;
     }
     persistThemePrefs({ colorMode: nextMode });
-  }, [setThemeModeInternal, syncPreferences, prefersDark, isDark, themeColor, serverSyncedPreferences?.reduceMotion, canChangePreference]);
+  }, [setThemeModeInternal, syncPreferences, prefersDark, isDark, scheduleDark, themeColor, serverSyncedPreferences?.reduceMotion, canChangePreference]);
 
   const updateThemeColor = useCallback((nextColor: string) => {
     if (canChangePreference && !canChangePreference('themeColor')) return;

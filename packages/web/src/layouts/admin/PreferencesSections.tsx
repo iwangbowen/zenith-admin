@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Button, Dropdown, InputNumber, Popover, Radio, RadioGroup, Select, SplitButtonGroup, Switch, Tooltip } from '@douyinfe/semi-ui';
+import { Button, Dropdown, Input, InputNumber, Popover, Radio, RadioGroup, Select, SplitButtonGroup, Switch, Tooltip } from '@douyinfe/semi-ui';
 import { ChevronDown, ChevronLeft, ChevronRight, ClipboardPaste, Copy, Download, Info } from 'lucide-react';
 import { LOADING_STYLE_OPTIONS, DARK_SURFACE_TONE_OPTIONS, UI_SCALE_OPTIONS, FONT_FAMILY_OPTIONS } from '@/hooks/usePreferences';
 import { clearAllListFilterSnapshots } from '@/lib/list-filter-memory';
-import type { NavLayout, TableSizePreference, RouteAnimation, BorderRadiusPreference, TabStyle, TabSize, TabType, DarkSurfaceTone, UserPreferences, UiScale, FontFamilyPreference, WeekStart, TimeDisplay } from '@/hooks/usePreferences';
+import type { NavLayout, TableSizePreference, RouteAnimation, BorderRadiusPreference, ScheduledDarkMode, TabStyle, TabSize, TabType, DarkSurfaceTone, TopbarClockMode, UserPreferences, UiScale, FontFamilyPreference, WeekStart, TimeDisplay } from '@/hooks/usePreferences';
+import { isScheduleTime } from '@/hooks/usePreferences';
 import type { ThemeMode } from '@/hooks/useTheme';
 import { THEME_COLOR_PRESETS } from '@/lib/theme-color';
 import { SwatchColorPicker } from '@/components/SwatchColorPicker';
@@ -112,6 +113,33 @@ function PrefDarkToneRow({
         ))}
       </RadioGroup>
     </div>
+  );
+}
+
+/**
+ * 定时深色的 HH:mm 输入：非受控输入 + 合法才提交，键入过程中的非法中间态不回写，
+ * 外部值变化（跟随系统 / 重置）时 key 强制重挂载回填。
+ */
+function ScheduleTimeInput({ path, label, value, onCommit }: Readonly<{
+  path: 'scheduledDarkStart' | 'scheduledDarkEnd';
+  label: string;
+  value: string;
+  onCommit: (value: string) => void;
+}>) {
+  return (
+    <PreferenceControl path={path}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>{label}</span>
+        <Input
+          key={value}
+          defaultValue={value}
+          placeholder="18:00"
+          aria-label={label}
+          style={{ width: 96 }}
+          onChange={(text) => { if (isScheduleTime(text)) onCommit(text); }}
+        />
+      </div>
+    </PreferenceControl>
   );
 }
 
@@ -232,6 +260,38 @@ export function PrefsAppearanceSection({
       </div>
       </PreferenceControl>
       )}
+      {/* ── 定时深色 ── */}
+      {matchesPref(['定时深色', '夜间深色', '自动深色', '深色定时', '深色时段']) && (
+      <PreferenceControl path="scheduledDarkMode">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          定时深色
+          <Tooltip content="时段内无条件使用深色；时段外跟随颜色模式" position="right">
+            <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+          </Tooltip>
+        </span>
+        <RadioGroup
+          type="button"
+          value={preferences.scheduledDarkMode ?? 'off'}
+          onChange={(e) => setPreferences({ scheduledDarkMode: e.target.value as ScheduledDarkMode })}
+        >
+          <Radio value="off">关闭</Radio>
+          <Radio value="custom">自定义时段</Radio>
+        </RadioGroup>
+      </div>
+      </PreferenceControl>
+      )}
+      {matchesPref(['深色开始时间', '开始时间', '定时深色', '夜间开始']) && (
+        <ScheduleTimeInput path="scheduledDarkStart" label="深色开始时间"
+          value={preferences.scheduledDarkStart ?? '18:00'}
+          onCommit={(value) => setPreferences({ scheduledDarkStart: value })} />
+      )}
+      {matchesPref(['深色结束时间', '结束时间', '定时深色', '夜间结束']) && (
+        <ScheduleTimeInput path="scheduledDarkEnd" label="深色结束时间"
+          value={preferences.scheduledDarkEnd ?? '06:00'}
+          onCommit={(value) => setPreferences({ scheduledDarkEnd: value })} />
+      )}
+
       {!isDark && matchesPref(['顶部栏深色', '深色', '深色模式', '顶部栏', '顶部导航']) && (
       <PreferenceControl path="headerDarkMode">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -622,6 +682,32 @@ export function PrefsNavToolbarSection({
         </div>
       </PreferenceControl>
       )}
+      {/* ── 顶栏时钟 ── */}
+      {matchesPref(['顶栏时钟', '时钟', '时钟显示', '12小时', '24小时']) && (
+      <PreferenceControl path="topbarClock">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>顶栏时钟</span>
+        <RadioGroup
+          type="button"
+          value={preferences.topbarClock ?? 'off'}
+          onChange={(e) => setPreferences({ topbarClock: e.target.value as TopbarClockMode })}
+        >
+          <Radio value="off">关闭</Radio>
+          <Radio value="12h">12小时制</Radio>
+          <Radio value="24h">24小时制</Radio>
+        </RadioGroup>
+      </div>
+      </PreferenceControl>
+      )}
+      {matchesPref(['时钟显示日期', '日期', '时钟日期', '星期']) && (
+      <PreferenceControl path="topbarClockShowDate">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>时钟显示日期</span>
+        <Switch checked={preferences.topbarClockShowDate ?? true} onChange={(v) => setPreferences({ topbarClockShowDate: v })} />
+      </div>
+      </PreferenceControl>
+      )}
+
     </PreferenceSection>
   );
 }

@@ -19,6 +19,31 @@ export const BORDER_RADII = ['none', 'small', 'medium', 'large'] as const;
 export type BorderRadiusPreference = (typeof BORDER_RADII)[number];
 export const THEME_MODES = ['light', 'dark', 'system'] as const;
 export type ThemeMode = (typeof THEME_MODES)[number];
+export const TOPBAR_CLOCK_MODES = ['off', '12h', '24h'] as const;
+export type TopbarClockMode = (typeof TOPBAR_CLOCK_MODES)[number];
+export const TOPBAR_CLOCK_MODE_OPTIONS = [
+  { value: 'off', label: '关闭', isDefault: true },
+  { value: '12h', label: '12小时制', isDefault: false },
+  { value: '24h', label: '24小时制', isDefault: false },
+] as const;
+export const SCHEDULED_DARK_MODES = ['off', 'custom'] as const;
+export type ScheduledDarkMode = (typeof SCHEDULED_DARK_MODES)[number];
+export const SCHEDULED_DARK_MODE_OPTIONS = [
+  { value: 'off', label: '关闭', isDefault: true },
+  { value: 'custom', label: '自定义时段', isDefault: false },
+] as const;
+/**
+ * HH:mm 24 小时制时刻（定时深色起止用）；起止相同视为空窗口，不触发深色。
+ * 个人面板输入框与服务端导入校验共用，非法值会被偏好清洗丢弃。
+ */
+export const SCHEDULE_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+export function isScheduleTime(value: unknown): value is string {
+  return typeof value === 'string' && SCHEDULE_TIME_PATTERN.test(value);
+}
+export function scheduleTimeToMinutes(value: string): number {
+  const [hours, minutes] = value.split(':').map(Number);
+  return hours * 60 + minutes;
+}
 export const LOADING_STYLES = ['flip', 'dots', 'ring', 'bars', 'spinner', 'bounce', 'ripple', 'progress'] as const;
 export type LoadingStyle = (typeof LOADING_STYLES)[number];
 export const LOADING_STYLE_OPTIONS = [

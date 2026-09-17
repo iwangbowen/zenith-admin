@@ -18,9 +18,14 @@ import {
 } from './index';
 
 describe('偏好策略与个人覆盖', () => {
-  it('保留全部现有默认值，90 项策略排除个人收藏', () => {
+  it('保留全部现有默认值，95 项策略排除个人收藏', () => {
     const policy = preferencePolicySchema.parse({});
-    expect(preferenceDefinitions).toHaveLength(90);
+    expect(preferenceDefinitions).toHaveLength(95);
+    expect(defaultPreferences.topbarClock).toBe('off');
+    expect(defaultPreferences.topbarClockShowDate).toBe(true);
+    expect(defaultPreferences.scheduledDarkMode).toBe('off');
+    expect(defaultPreferences.scheduledDarkStart).toBe('18:00');
+    expect(defaultPreferences.scheduledDarkEnd).toBe('06:00');
     expect(resolvePreferences(policy, {})).toEqual(defaultPreferences);
     expect(defaultPreferences.themeColor).toBe('blue');
     expect(defaultPreferences.terminal.copyOnSelect).toBe(true);

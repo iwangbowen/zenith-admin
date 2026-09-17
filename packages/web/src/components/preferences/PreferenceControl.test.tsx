@@ -11,7 +11,7 @@ import {
   type PreferencePolicy,
 } from '@zenith/shared/preferences';
 import type { PreferencesContextValue } from '@/hooks/usePreferences';
-import { PrefsGeneralSection, PrefsTableSection, PrefsTabsSection, PrefsAppearanceSection } from '@/layouts/admin/PreferencesSections';
+import { PrefsAppearanceSection, PrefsGeneralSection, PrefsNavToolbarSection, PrefsTableSection, PrefsTabsSection } from '@/layouts/admin/PreferencesSections';
 import { PreferenceControl, PreferenceSection } from '@/components/settings/SettingRow';
 
 let context: PreferencesContextValue;
@@ -177,5 +177,48 @@ describe('加载动画选择行', () => {
       mode="light" handleThemeModeChange={vi.fn()} isDark={false}
       themeColor="blue" setThemeColor={vi.fn()} />);
     expect(scrollIntoView).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('顶栏时钟与定时深色', () => {
+  function renderAppearance(policy = defaultPreferencePolicy, overrides: PreferenceOverrides = {}) {
+    setContext(policy, overrides);
+    return render(<PrefsAppearanceSection preferences={context.preferences} setPreferences={context.setPreferences}
+      matchesPref={() => true} prefSection={(label) => <h2>{label}</h2>}
+      mode="light" handleThemeModeChange={vi.fn()} isDark={false}
+      themeColor="blue" setThemeColor={vi.fn()} />);
+  }
+
+  function renderNavToolbar(policy = defaultPreferencePolicy, overrides: PreferenceOverrides = {}) {
+    setContext(policy, overrides);
+    return render(<PrefsNavToolbarSection preferences={context.preferences} setPreferences={context.setPreferences}
+      matchesPref={() => true} prefSection={(label) => <h2>{label}</h2>}
+      prefsSearch="" quickChatEnabled />);
+  }
+
+  it('定时关闭时起止时间隐藏，自定义时段时显示', () => {
+    const closed = renderAppearance();
+    expect(closed.queryByText('深色开始时间')).not.toBeInTheDocument();
+    expect(closed.queryByText('深色结束时间')).not.toBeInTheDocument();
+    closed.unmount();
+    const custom = renderAppearance(defaultPreferencePolicy, { scheduledDarkMode: 'custom' });
+    expect(custom.getByText('深色开始时间')).toBeVisible();
+    expect(custom.getByText('深色结束时间')).toBeVisible();
+  });
+
+  it('时钟关闭时日期开关隐藏，开启后显示', () => {
+    const closed = renderNavToolbar();
+    expect(closed.queryByText('时钟显示日期')).not.toBeInTheDocument();
+    closed.unmount();
+    const opened = renderNavToolbar(defaultPreferencePolicy, { topbarClock: '24h' });
+    expect(opened.getByText('时钟显示日期')).toBeVisible();
+    expect(opened.getByText('顶栏时钟')).toBeVisible();
+  });
+
+  it('锁定时钟后两项一起隐藏', () => {
+    const policy = structuredClone(defaultPreferencePolicy);
+    policy.allowUserOverride.topbarClock = false;
+    const view = renderNavToolbar(policy);
+    expect(view.queryByText('顶栏时钟')).not.toBeInTheDocument();
   });
 });
