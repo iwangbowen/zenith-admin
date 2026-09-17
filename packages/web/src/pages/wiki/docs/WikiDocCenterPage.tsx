@@ -167,7 +167,9 @@ export default function WikiDocCenterPage() {
   const canWriteDoc = docSpaceRole === 'owner' || docSpaceRole === 'admin' || docSpaceRole === 'editor';
   const canManageDoc = docSpaceRole === 'owner' || docSpaceRole === 'admin';
   const commentsEnabled = doc?.commentsEnabled !== false;
-  const usersQuery = useAllUsers({ enabled: !!doc && doc.status === 'published' && commentsEnabled });
+  // @选人下拉复用全量用户源（要求 system:user:list）：无权限时不发起请求，避免 403 toast；
+  // 普通用户仍可正常发表评论（评论创建仅要求 wiki:doc:list），只是选不到 @对象
+  const usersQuery = useAllUsers({ enabled: hasPermission('system:user:list') && !!doc && doc.status === 'published' && commentsEnabled });
   const receiptsQuery = useWikiDocReadReceipts(selectedDocId, receiptsVisible);
 
   // ─── 变更 ─────────────────────────────────────────────────────────────────
