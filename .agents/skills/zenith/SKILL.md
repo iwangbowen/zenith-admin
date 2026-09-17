@@ -30,6 +30,7 @@ Zenith Admin 是基于 **Hono + React + Drizzle ORM** 的全栈后台管理系�
 | 运行时设置 / 系统开关 | 加一个开关、可配置阈值、系统设置项、新增设置模块、读取系统设置 | [settings.md](./references/settings.md)：加字段 / 新模块 / 服务端读取 / 前端读取 / Mock |
 | 发布新版本 | 发布 vX.Y.Z、准备发布、release X.Y.Z | [release.md](./references/release.md) |
 | 报错排查 | 构建失败、迁移失败、类型不匹配、缓存不刷新、启动缓慢 | [troubleshooting.md](./references/troubleshooting.md) |
+| 同域子路径部署 / 浏览器存储隔离 | 增加 `VITE_DEPLOYMENT_ID`、多个派生项目共用 Origin、PWA / storage 串数据 | [browser-storage-isolation.md](../../../docs/guide/browser-storage-isolation.md) 与 [constraints-frontend.md](./references/constraints-frontend.md) |
 
 > 规则只在归属文件里写一遍：约束正文在两个 `constraints*.md`，代码写法与展开说明在对应主题文件。
 > 需要引用时给指针，**不要把内容抄到第二处**。

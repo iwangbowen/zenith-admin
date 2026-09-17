@@ -60,9 +60,10 @@ VITE_API_PROXY_TARGET=http://localhost:3300
 VITE_PORT=5373
 VITE_APP_TITLE=Zenith Admin
 VITE_BASE_URL=
+VITE_DEPLOYMENT_ID=local
 ```
 
-`VITE_API_PROXY_TARGET` 只作用于 Vite Dev Server，不会写入浏览器 bundle。生产跨域部署时才需要设置 `VITE_API_BASE_URL` / `VITE_WS_BASE_URL`。
+`VITE_API_PROXY_TARGET` 只作用于 Vite Dev Server，不会写入浏览器 bundle。生产构建必须设置唯一的 `VITE_DEPLOYMENT_ID`；生产跨域部署时才需要设置 `VITE_API_BASE_URL` / `VITE_WS_BASE_URL`。
 
 ## 初始化数据库
 

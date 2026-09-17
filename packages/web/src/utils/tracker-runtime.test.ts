@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { analyticsStorageKey } from '@zenith/analytics-sdk/runtime-config';
+import { config } from '@/config';
 
 /**
  * 行为中心阶段 1：tracker 运行时参数化（configureTracker）测试。
@@ -101,10 +103,10 @@ describe('tracker runtime 参数化（configureTracker）', () => {
     expect(body.events[0].appId).toBe('member');
     expect(body.events[0].sdkVersion).toBe('9.9.9');
     expect(((ingestCall?.[1] as RequestInit).headers as Record<string, string>).Authorization).toContain('member-token-abc');
-    expect(sessionStorage.getItem('zenith_tracker_sid:member')).toBeTruthy();
-    expect(sessionStorage.getItem('zenith_tracker_sid')).toBeNull();
-    expect(localStorage.getItem('zenith_anon_id:member')).toBeTruthy();
-    expect(localStorage.getItem('zenith_anon_id')).toBeNull();
+    expect(sessionStorage.getItem(analyticsStorageKey(config.deploymentId, 'zenith_tracker_sid', 'member'))).toBeTruthy();
+    expect(sessionStorage.getItem(analyticsStorageKey(config.deploymentId, 'zenith_tracker_sid', 'admin'))).toBeNull();
+    expect(localStorage.getItem(analyticsStorageKey(config.deploymentId, 'zenith_anon_id', 'member'))).toBeTruthy();
+    expect(localStorage.getItem(analyticsStorageKey(config.deploymentId, 'zenith_anon_id', 'admin'))).toBeNull();
   });
 
   it('调用方无法伪造 source=server：doTrack 强制覆盖', async () => {

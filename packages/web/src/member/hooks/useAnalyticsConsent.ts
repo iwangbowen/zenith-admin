@@ -11,6 +11,7 @@ import { useCallback, useSyncExternalStore } from 'react';
 import { MEMBER_ANALYTICS_CONSENT_KEY, MEMBER_ANALYTICS_CONSENT_VERSION } from '@zenith/shared/member';
 import { reloadTrackerConfig } from '@/utils/tracker';
 import { formatDateTimeForApi } from '@/utils/date';
+import { scopedStorageKey } from '@/utils/storage';
 
 export type MemberAnalyticsConsentStatus = 'unknown' | 'accepted' | 'rejected';
 
@@ -50,7 +51,7 @@ function emitChange(): void {
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   const onStorage = (e: StorageEvent) => {
-    if (e.key === MEMBER_ANALYTICS_CONSENT_KEY) listener();
+    if (e.key === scopedStorageKey(MEMBER_ANALYTICS_CONSENT_KEY)) listener();
   };
   window.addEventListener('storage', onStorage);
   return () => {

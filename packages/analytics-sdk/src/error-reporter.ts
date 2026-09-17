@@ -7,6 +7,7 @@ import type { FrontendErrorType, ErrorLevel } from '@zenith/shared/analytics';
 import { getBreadcrumbs } from './breadcrumbs';
 import { analyticsRequestHeaders } from './http';
 import { getActiveReplayId, notifyReplayTrigger } from './replay';
+import { analyticsStorageKey } from './runtime-config';
 import type { AnalyticsRuntimeBaseConfig } from './runtime-config';
 
 const SESSION_KEY = 'zenith_tracker_sid';
@@ -23,6 +24,7 @@ let runtime: ErrorReporterRuntimeConfig = {
   tokenKey: TOKEN_KEY,
   source: 'web_admin',
   appId: 'admin',
+  deploymentId: 'default',
   environment: 'development',
   sdkVersion: undefined,
   consentProvider: () => true,
@@ -30,7 +32,7 @@ let runtime: ErrorReporterRuntimeConfig = {
 };
 
 function runtimeSessionKey(): string {
-  return runtime.appId === 'admin' ? SESSION_KEY : `${SESSION_KEY}:${runtime.appId}`;
+  return analyticsStorageKey(runtime.deploymentId, SESSION_KEY, runtime.appId);
 }
 
 /**

@@ -37,6 +37,8 @@ jobs:
         run: npm ci
 
       - name: Build all packages
+        env:
+          VITE_DEPLOYMENT_ID: release-artifact
         run: npm run build
 
       - name: Determine tag name

@@ -60,6 +60,7 @@ jobs:
       - name: Build demo site
         env:
           VITE_BASE_URL: /${{ github.event.repository.name }}/demo/
+          VITE_DEPLOYMENT_ID: github-pages-demo
         run: npm run build:demo
 
       - name: Merge demo into docs output

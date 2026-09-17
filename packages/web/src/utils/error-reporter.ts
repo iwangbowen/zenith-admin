@@ -1,6 +1,7 @@
 import { configureErrorReporterRuntime as configureSdkErrorReporterRuntime } from '@zenith/analytics-sdk/error-reporter';
 import type { AnalyticsEnvironment } from '@zenith/shared/analytics';
 import type { ErrorReporterRuntimeConfig } from '@zenith/analytics-sdk/error-reporter';
+import { config } from '@/config';
 
 function resolveDefaultEnvironment(): AnalyticsEnvironment {
   const declared = (import.meta.env.VITE_ANALYTICS_ENVIRONMENT as string | undefined)?.trim();
@@ -8,11 +9,12 @@ function resolveDefaultEnvironment(): AnalyticsEnvironment {
   return import.meta.env.MODE === 'production' ? 'production' : 'development';
 }
 
-function webRuntimeDefaults(): Pick<ErrorReporterRuntimeConfig, 'apiBase' | 'environment' | 'sdkVersion'> {
+function webRuntimeDefaults(): Pick<ErrorReporterRuntimeConfig, 'apiBase' | 'environment' | 'sdkVersion' | 'deploymentId'> {
   return {
     apiBase: (import.meta.env.VITE_API_BASE_URL as string) || '/api',
     environment: resolveDefaultEnvironment(),
     sdkVersion: (import.meta.env.VITE_APP_VERSION as string) || undefined,
+    deploymentId: config.deploymentId,
   };
 }
 

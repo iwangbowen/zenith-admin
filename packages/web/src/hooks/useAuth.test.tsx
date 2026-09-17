@@ -18,6 +18,7 @@ import {
   parkAccount,
   reloadForExternalAccountSwitch,
 } from '@/lib/account-store';
+import { scopedStorageKey } from '@/utils/storage';
 import { useAuth } from './useAuth';
 
 vi.mock('@/utils/request', () => ({
@@ -277,7 +278,7 @@ describe('AuthProvider invalidation synchronization', () => {
 
     act(() => {
       globalThis.dispatchEvent(new StorageEvent('storage', {
-        key: TOKEN_KEY,
+        key: scopedStorageKey(TOKEN_KEY),
         oldValue: 'valid-token',
         newValue: null,
       }));
@@ -479,7 +480,7 @@ describe('AuthProvider account switching', () => {
 
     act(() => {
       globalThis.dispatchEvent(new StorageEvent('storage', {
-        key: ACCOUNT_SWITCH_BROADCAST_KEY,
+        key: scopedStorageKey(ACCOUNT_SWITCH_BROADCAST_KEY),
         oldValue: null,
         newValue: String(Date.now()),
       }));

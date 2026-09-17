@@ -15,6 +15,7 @@
 import { TOKEN_KEY, randomUUID } from '@zenith/shared/core';
 import type { AnalyticsPublicConfig, ReplayTrigger, ReplayTriggerType } from '@zenith/shared/analytics';
 import { analyticsRequestHeaders } from './http';
+import { analyticsStorageKey } from './runtime-config';
 import type { AnalyticsRuntimeBaseConfig } from './runtime-config';
 
 // ─── 运行时参数（tracker.configureTracker 单向同步）──────────────────────────
@@ -27,6 +28,7 @@ let runtime: ReplayRuntimeConfig = {
   tokenKey: TOKEN_KEY,
   source: 'web_admin',
   appId: 'admin',
+  deploymentId: 'default',
   environment: 'development',
   sdkVersion: undefined,
   consentProvider: () => true,
@@ -118,7 +120,7 @@ export function applyReplayConfig(config: AnalyticsPublicConfig, sessionId: stri
 function isReplaySampled(rate: number): boolean {
   if (rate <= 0) return false;
   try {
-    const key = runtime.appId === 'admin' ? SAMPLED_KEY : `${SAMPLED_KEY}:${runtime.appId}`;
+    const key = analyticsStorageKey(runtime.deploymentId, SAMPLED_KEY, runtime.appId);
     const cached = sessionStorage.getItem(key);
     if (cached != null) return cached === '1';
     const sampled = Math.random() < rate;

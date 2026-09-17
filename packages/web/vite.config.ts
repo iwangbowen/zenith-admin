@@ -107,12 +107,22 @@ export default defineConfig(({ mode }) => {
   // 仅用于 Vite dev server 代理目标，不会暴露到客户端
   const apiTarget = env.VITE_API_PROXY_TARGET || 'http://localhost:3300';
   const port = Number(env.VITE_PORT) || 5373;
+  const deploymentId = (env.VITE_DEPLOYMENT_ID || (mode === 'development' ? 'local' : '')).trim();
+  if (!deploymentId) {
+    throw new Error('生产构建必须设置唯一的 VITE_DEPLOYMENT_ID');
+  }
+  if (!/^[a-z][a-z0-9_-]*$/.test(deploymentId)) {
+    throw new Error(`VITE_DEPLOYMENT_ID 格式无效：${deploymentId}`);
+  }
   // GitHub Pages 部署时通过环境变量注入 base 路径（如 /zenith-admin/）
   // Electron 模式下使用相对路径（./ 针对 file:// 协议）
   const isElectron = env.VITE_ELECTRON === 'true';
   const rawBase = isElectron ? './' : (env.VITE_BASE_URL || '/');
   // 统一保证尾斜杠，供 manifest 等手动拼接场景使用（Vite 内部也会做同样的规范化）
   const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
+  const swBasePath = base.startsWith('/') ? base : '/';
+  const swApiPrefix = `${swBasePath}api/`;
+  const swApiPattern = new RegExp(`^${swApiPrefix.replaceAll('/', '\\/')}`);
   // 使用 esnext 目标（React 19 要求现代浏览器）
   const buildTarget = 'esnext';
 
@@ -140,6 +150,8 @@ export default defineConfig(({ mode }) => {
       ...(isElectron ? [] : [cspMetaPlugin()]),
       ...(pwaEnabled ? [VitePWA({
         registerType: 'autoUpdate',
+        scope: base,
+        cacheId: `zenith-${deploymentId}`,
         // 预缓存 Vite 构建产物中的静态资源
         includeAssets: ['favicon.svg', 'icons/*.png'],
         manifest: {
@@ -165,14 +177,14 @@ export default defineConfig(({ mode }) => {
           globPatterns: ['**/*.{js,css,woff2,png,svg,ico}'],
           // 超大懒加载文档引擎（univerjs/rtf 等）超过 workbox 2MiB 上限，排除出预缓存，按需经网络加载
           globIgnores: ['**/vendor-univerjs-*.js', '**/vendor-rtf.js-*.js'],
-          maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
+          maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
           // API 请求不缓存，保证数据实时性
           navigateFallback: 'index.html',
-          navigateFallbackDenylist: [/^\/api\//],
+          navigateFallbackDenylist: [swApiPattern],
           runtimeCaching: [
             {
               // API 请求：Network Only（不缓存）
-              urlPattern: /^\/api\//,
+              urlPattern: swApiPattern,
               handler: 'NetworkOnly',
             },
           ],

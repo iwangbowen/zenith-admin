@@ -40,6 +40,7 @@ import {
 } from '@/lib/impersonation-store';
 import { ADMIN_AUTH_INVALIDATED_EVENT } from '@/utils/request';
 import { AUTH_INVALIDATED_REASON_KEY } from '@/utils/http-client';
+import { scopedStorageKey } from '@/utils/storage';
 import { LOCK_SCREEN_STORAGE_KEYS } from '@/hooks/useLockScreen';
 
 const DEVICE_ID_KEY = 'zenith_device_id';
@@ -372,19 +373,19 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   useEffect(() => {
     const handleStorage = (event: StorageEvent) => {
       // 其他标签页切换了账号：整页重载为新账号，避免旧界面发新账号请求
-      if (event.key === ACCOUNT_SWITCH_BROADCAST_KEY && event.newValue) {
+      if (event.key === scopedStorageKey(ACCOUNT_SWITCH_BROADCAST_KEY) && event.newValue) {
         reloadForExternalAccountSwitch();
         return;
       }
-      if (event.key === ACCOUNTS_STORE_KEY) {
+      if (event.key === scopedStorageKey(ACCOUNTS_STORE_KEY)) {
         syncParkedAccounts();
         return;
       }
-      if (event.key === IMPERSONATION_STORE_KEY) {
+      if (event.key === scopedStorageKey(IMPERSONATION_STORE_KEY)) {
         setImpersonationMarker(readImpersonationMarker());
         return;
       }
-      if (event.key !== TOKEN_KEY) return;
+      if (event.key !== scopedStorageKey(TOKEN_KEY)) return;
       if (!event.newValue) {
         transitionToAnonymous();
         return;

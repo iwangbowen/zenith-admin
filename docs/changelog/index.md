@@ -6,6 +6,10 @@
 
 ## Next
 
+### Changed
+
+- 同域子路径派生项目新增 `VITE_DEPLOYMENT_ID` 部署标识，隔离浏览器认证状态、本地偏好、草稿、埋点缓存与 PWA Cache Storage；旧的无 namespace 浏览器 key 不再读取。
+
 ## v2.42.0 - 2026-09-17
 
 ### Added

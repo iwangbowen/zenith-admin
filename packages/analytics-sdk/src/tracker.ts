@@ -13,6 +13,7 @@ import { addBreadcrumb } from './breadcrumbs';
 import { configureErrorReporting, configureErrorReporterRuntime, reportError } from './error-reporter';
 import { analyticsRequestHeaders } from './http';
 import { applyReplayConfig, configureReplayRuntime, notifyReplayTrigger, stopReplay } from './replay';
+import { analyticsStorageKey } from './runtime-config';
 import type { AnalyticsRuntimeBaseConfig } from './runtime-config';
 
 const FLUSH_INTERVAL_MS = 15_000;
@@ -88,6 +89,7 @@ let runtime: TrackerRuntimeConfig = {
   tokenKey: TOKEN_KEY,
   source: 'web_admin',
   appId: 'admin',
+  deploymentId: 'default',
   environment: 'development',
   sdkVersion: '0.0.0',
   rootSelector: '#root',
@@ -96,7 +98,7 @@ let runtime: TrackerRuntimeConfig = {
 };
 
 function runtimeStorageKey(baseKey: string): string {
-  return runtime.appId === 'admin' ? baseKey : `${baseKey}:${runtime.appId}`;
+  return analyticsStorageKey(runtime.deploymentId, baseKey, runtime.appId);
 }
 
 /**
@@ -114,6 +116,7 @@ export function configureTracker(next: Partial<TrackerRuntimeConfig>): void {
     tokenKey: runtime.tokenKey,
     source: runtime.source,
     appId: runtime.appId,
+    deploymentId: runtime.deploymentId,
     environment: runtime.environment,
     sdkVersion: runtime.sdkVersion,
     consentProvider: runtime.consentProvider,
@@ -124,6 +127,7 @@ export function configureTracker(next: Partial<TrackerRuntimeConfig>): void {
     tokenKey: runtime.tokenKey,
     source: runtime.source,
     appId: runtime.appId,
+    deploymentId: runtime.deploymentId,
     environment: runtime.environment,
     sdkVersion: runtime.sdkVersion,
     consentProvider: runtime.consentProvider,
@@ -359,7 +363,7 @@ class Tracker {
     this.configReloadTimer = setInterval(() => { void this.loadConfig(); }, CONFIG_RELOAD_INTERVAL_MS);
     try {
       globalThis.addEventListener?.('storage', (e: StorageEvent) => {
-        if (e.key === ANALYTICS_CONFIG_VERSION_KEY) void this.loadConfig();
+        if (e.key === runtimeStorageKey(ANALYTICS_CONFIG_VERSION_KEY)) void this.loadConfig();
       });
     } catch { /* 非浏览器环境（SSR/测试）忽略 */ }
   }
@@ -763,7 +767,7 @@ export function initTracker(): void { tracker.init(); }
 /**
  * 设置热更新：立即重拉采集配置（远程 /analytics/config），不下发配置内容本身。
  * 供采集设置页保存成功后调用，使当前标签页无需刷新即可生效；跨标签页请配合
- * `localStorage.setItem(ANALYTICS_CONFIG_VERSION_KEY, ...)` 触发 storage 事件。
+ * `localStorage.setItem(ANALYTICS_CONFIG_VERSION_KEY, ...)`（经部署 namespace）触发 storage 事件。
  */
 export function reloadTrackerConfig(): void { tracker.reloadConfig(); }
 

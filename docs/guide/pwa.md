@@ -9,6 +9,7 @@
 ```ini
 VITE_PWA_ENABLED=true
 VITE_APP_TITLE=Zenith Admin
+VITE_DEPLOYMENT_ID=project-a
 VITE_APP_SHORT_NAME=Zenith
 VITE_APP_DESCRIPTION=企业级后台管理系统
 VITE_APP_THEME_COLOR=#3370ff
@@ -31,7 +32,7 @@ npm run build -w @zenith/web
 | Manifest 短名称 | `VITE_APP_SHORT_NAME`，默认 `Zenith` |
 | 主题色 | `VITE_APP_THEME_COLOR`，默认 `#3370ff`（与后台默认主题色「飞书蓝」一致） |
 | `display` | `standalone` |
-| `start_url` / `scope` | `/` |
+| `start_url` / `scope` | 由 `VITE_BASE_URL` 生成；必须只覆盖当前派生项目子路径 |
 | 预缓存 | `**/*.{js,css,woff2,png,svg,ico}` |
 | API 请求 | `/api/*` 使用 `NetworkOnly`，不缓存业务数据 |
 | SPA fallback | `index.html`，排除 `/api/` |
@@ -52,5 +53,7 @@ packages/web/public/icons/icon-512.png
 
 - Service Worker 在 HTTPS 或 `localhost` 下工作。
 - API 不缓存，后台数据实时性由网络请求保证。
+- `VITE_DEPLOYMENT_ID` 同时作为 Workbox cache ID；同域多个子路径项目必须使用不同值，避免 Cache Storage 互相清理或覆盖。
+- Service Worker 的注册 URL 与 scope 必须落在当前 `VITE_BASE_URL` 下，不得注册到根路径。
 - Electron 构建不依赖 PWA；桌面客户端使用 Electron 自身的更新机制。
 - GitHub Pages Demo 站由 `npm run build:demo` 构建，是否启用 PWA 取决于 Demo 构建时注入的环境变量。

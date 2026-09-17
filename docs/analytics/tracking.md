@@ -6,7 +6,7 @@
 
 `@zenith/analytics-sdk` 承载框架无关的 tracker、error-reporter 与 breadcrumbs 核心逻辑；`packages/web/src/utils/tracker.ts`、`error-reporter.ts`、`breadcrumbs.ts` 保留 Web 运行时默认值注入与 re-export，业务侧统一从 `@/utils/tracker`、`@/utils/error-reporter`、`@/utils/breadcrumbs` 导入。
 
-SDK 不直接读取 Vite 环境变量。Web 适配层在初始化时注入 `apiBase`（默认 `VITE_API_BASE_URL || '/api'`）、`sdkVersion`（`VITE_APP_VERSION || '0.0.0'`）与 `environment`；会员端通过 `configureTracker()` 覆盖 `tokenKey/source/appId/rootSelector/consentProvider` 等运行时参数。切换 `appId` / `siteKey` / `tokenKey` 时 SDK 自动清空实验分流缓存，防止跨应用/跨身份复用过期分组；非 `admin` 应用的所有 localStorage/sessionStorage key 自动追加 `:{appId}` 后缀，避免同域多应用互相覆盖。
+SDK 不直接读取 Vite 环境变量。Web 适配层在初始化时注入 `apiBase`（默认 `VITE_API_BASE_URL || '/api'`）、`sdkVersion`（`VITE_APP_VERSION || '0.0.0'`）、`environment` 与构建级 `deploymentId`（来自 `VITE_DEPLOYMENT_ID`）；会员端通过 `configureTracker()` 覆盖 `tokenKey/source/appId/rootSelector/consentProvider` 等运行时参数。SDK 的 localStorage/sessionStorage key 均按 `zenith:{deploymentId}:analytics:{key}:{appId}` 隔离，`appId` 继续表示 admin/member 入口，不替代 deployment ID。
 
 ## 自动采集（零代码）
 
@@ -132,7 +132,7 @@ SDK 启动时拉取 `GET /api/analytics/config`（匿名可带 `X-Analytics-Site
 **配置热更新**（保存设置后无需刷新页面）通过三条通道生效：
 
 1. **WebSocket 广播**：设置保存后服务端广播 `analytics:config-updated`（仅携带 `tenantId`，不下发配置内容），`AdminLayout` 匹配当前租户视角后调用 `reloadTrackerConfig()` 重拉配置。
-2. **兜底轮询 + 跨标签同步**：SDK 每 60 秒周期性重拉配置；重拉发现版本变化时写 localStorage 配置版本号（`ANALYTICS_CONFIG_VERSION_KEY`），其他标签页通过 storage 事件同步重拉。
+2. **兜底轮询 + 跨标签同步**：SDK 每 60 秒周期性重拉配置；重拉发现版本变化时写当前 deployment namespace 下的 localStorage 配置版本号（`ANALYTICS_CONFIG_VERSION_KEY`），其他同项目标签页通过 storage 事件同步重拉，不同派生项目不会互相触发。
 3. **宿主直推**：宿主应用可调用 `applyRemoteConfig(config)` 通过自有实时通道直接下发配置对象。
 
 **Pre-buffer**：远程配置返回前产生的事件先暂存（最多 100 条），配置就绪后按最终配置（开关/采样/黑名单）过滤重放；若页面在配置就绪前卸载，按默认全开配置放行发送，避免冷启动丢事件。

@@ -278,12 +278,15 @@ server {
 
 同域部署使用默认相对路径：浏览器访问 `https://admin.example.com`，前端请求 `/api/*`，Nginx 代理到后端。
 
+每个同域子路径派生项目都必须设置唯一的 `VITE_DEPLOYMENT_ID`（例如 `project-a` / `project-b`）。它与 `VITE_BASE_URL` 分离，专门用于隔离 localStorage、sessionStorage、埋点队列、OAuth 临时状态以及 PWA 缓存；同一派生项目的 admin、member、approval 入口共用该值。
+
 跨域部署需创建 `packages/web/.env.production` 后重新构建：
 
 ```ini
 VITE_API_BASE_URL=https://api.example.com
 VITE_WS_BASE_URL=wss://api.example.com
 VITE_APP_TITLE=Zenith Admin
+VITE_DEPLOYMENT_ID=project-a
 ```
 
 ```bash
