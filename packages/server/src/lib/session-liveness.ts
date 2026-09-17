@@ -1,9 +1,10 @@
 import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { SessionClientKind, SessionRevokeReason } from '@zenith/shared/identity';
+import { CLIENT_OS_HEADER } from '@zenith/shared/identity';
 import logger from './logger';
 import { errBody } from './openapi-schemas';
-import { getClientIp, getClientKind, getPlatformVersion, parseUserAgent } from './request-helpers';
+import { getClientIp, getClientKind, getPlatformVersion, resolveReportedClient } from './request-helpers';
 
 export interface SessionLivenessDeps {
   /** 令牌的吊销原因（登出 / 强制下线 / 被挤下线 / 改密 / 轮换）；未吊销为 null */
@@ -54,9 +55,13 @@ export async function checkSessionLiveness(jti: string, deps: SessionLivenessDep
   return { revoked, touched };
 }
 
-/** 会话注册所需的客户端指纹：IP、终端类型 + User-Agent 解析出的浏览器 / 操作系统
- *（审计口径：只信服务端请求头与 Client Hints，不采纳客户端自报的展示值） */
+/** 会话注册所需的客户端指纹：IP、终端类型 + 浏览器 / 操作系统展示值
+ *（前端自报头优先，缺省回退服务端 UA + CH 解析；原始 UA 由调用方另存） */
 export function clientFingerprint(c: Context): { ip: string; client: SessionClientKind; browser: string; os: string } {
-  const { browser, os } = parseUserAgent(c.req.header('user-agent') ?? '', getPlatformVersion(c));
+  const { browser, os } = resolveReportedClient(
+    { os: c.req.header(CLIENT_OS_HEADER)?.trim() || undefined },
+    c.req.header('user-agent') ?? '',
+    getPlatformVersion(c),
+  );
   return { ip: getClientIp(c), client: getClientKind(c), browser, os };
 }

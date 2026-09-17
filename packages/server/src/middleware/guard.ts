@@ -8,11 +8,12 @@ import { redactBody, truncateVarchar } from '../lib/sanitize';
 import { db } from '../db';
 import { operationLogs } from '../db/schema';
 import { errBody } from '../lib/openapi-schemas';
-import { getClientIp, getPlatformVersion, parseUserAgent } from '../lib/request-helpers';
+import { getClientIp, getPlatformVersion, resolveReportedClient } from '../lib/request-helpers';
 import { lookupIpLocation } from '../lib/ip-location';
 import { getEffectiveTenantId } from '../lib/tenant';
 import { assertFeatureEnabled } from '../lib/licensing';
 import type { LicenseFeatureKey } from '@zenith/shared/licensing';
+import { CLIENT_OS_HEADER } from '@zenith/shared/identity';
 import { permissionList, type Permission } from '@zenith/shared/core';
 import { tagMiddleware } from '../lib/route-facts';
 
@@ -57,8 +58,13 @@ async function writeOperationLog(
     const user = c.get('user') as JwtPayload | undefined;
     const ip = getClientIp(c);
     const ua = c.req.header('user-agent') ?? '';
-    // 审计口径：只信服务端请求头 + Client Hints，不采纳客户端自报的展示值
-    const { browser: browserName, os: osName } = parseUserAgent(ua, getPlatformVersion(c));
+    // 展示列口径：前端自报头（Client Hints 精确值）优先，缺省回退服务端 UA + CH 解析；
+    // 原始 UA 另存 userAgent 列，自报值仅展示、不做风控依据
+    const { browser: browserName, os: osName } = resolveReportedClient(
+      { os: c.req.header(CLIENT_OS_HEADER)?.trim() || undefined },
+      ua,
+      getPlatformVersion(c),
+    );
 
     const responseCode = c.res?.status ?? 200;
     // 脱敏 → 结构化裁剪：合法 JSON 且 UTF-8 字节 ≤ 4KB（不再用字符串 slice 切坏 JSON）

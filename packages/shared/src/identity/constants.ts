@@ -65,6 +65,9 @@ export const SESSION_CLIENT_KIND_OPTIONS: Array<{ value: SessionClientKind; labe
 /** 请求头：前端各入口自报终端类型，服务端只接受 SESSION_CLIENT_KINDS 内的值，其余按 web */
 export const SESSION_CLIENT_HEADER = 'x-zenith-client';
 
+/** 请求头：前端自报的精确 OS（Client Hints 缓存值，仅展示用）；缺省服务端回退 UA + CH 解析 */
+export const CLIENT_OS_HEADER = 'x-zenith-os';
+
 /** 并发统计范围：global 全部终端合计 / per-client 按终端类型分别计算 */
 export const SESSION_CONCURRENCY_SCOPES = ['global', 'per-client'] as const;
 

@@ -24,3 +24,19 @@ export async function getPreciseOs(timeoutMs = 500): Promise<string | undefined>
     return undefined;
   }
 }
+
+let warmed = false;
+let cachedOs: string | undefined;
+
+/**
+ * 同步读缓存的精确 OS（供请求层逐请求携带）。
+ * 首次调用时后台触发一次计算（不等待），就绪后后续请求自动带上；算不出时保持缺省，
+ * 服务端回退 UA + CH 解析。各端（管理/会员/审批）共用同一份缓存。
+ */
+export function getCachedPreciseOs(): string | undefined {
+  if (!warmed) {
+    warmed = true;
+    void getPreciseOs().then((os) => { cachedOs = os; });
+  }
+  return cachedOs;
+}
