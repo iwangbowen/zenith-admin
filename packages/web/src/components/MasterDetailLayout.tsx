@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { Button, Tooltip } from '@douyinfe/semi-ui';
-import { PanelLeft, PanelRight } from 'lucide-react';
+import { ArrowLeftRight } from 'lucide-react';
 import { clamp } from '@zenith/shared/core';
 
 type Side = 'left' | 'right';
@@ -569,13 +569,14 @@ function SideToggle() {
   if (!context || context.pane !== 'master' || !context.sideSwitchable || context.isResponsive) return null;
   const target = context.side === 'left' ? '右侧' : '左侧';
   const label = `将侧栏移到${target}`;
+  // 双向箭头：明确表达“左右换边”，避免 Panel 风格图标被误读为“折叠/收起侧栏”
   return (
     <Tooltip content={label} position="bottom">
       <Button
         size="small"
         theme="borderless"
         type="tertiary"
-        icon={context.side === 'left' ? <PanelRight size={14} /> : <PanelLeft size={14} />}
+        icon={<ArrowLeftRight size={14} />}
         aria-label={label}
         onClick={context.toggleSide}
       />
