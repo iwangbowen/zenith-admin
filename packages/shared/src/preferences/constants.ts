@@ -19,13 +19,17 @@ export const BORDER_RADII = ['none', 'small', 'medium', 'large'] as const;
 export type BorderRadiusPreference = (typeof BORDER_RADII)[number];
 export const THEME_MODES = ['light', 'dark', 'system'] as const;
 export type ThemeMode = (typeof THEME_MODES)[number];
-export const LOADING_STYLES = ['flip', 'dots', 'ring', 'bars'] as const;
+export const LOADING_STYLES = ['flip', 'dots', 'ring', 'bars', 'spinner', 'bounce', 'ripple', 'progress'] as const;
 export type LoadingStyle = (typeof LOADING_STYLES)[number];
 export const LOADING_STYLE_OPTIONS = [
   { value: 'flip', label: '翻转方块', isDefault: true },
   { value: 'dots', label: '跳动圆点', isDefault: false },
   { value: 'ring', label: '旋转圆环', isDefault: false },
   { value: 'bars', label: '律动条', isDefault: false },
+  { value: 'spinner', label: '菊花转', isDefault: false },
+  { value: 'bounce', label: '双弹跳', isDefault: false },
+  { value: 'ripple', label: '水波纹', isDefault: false },
+  { value: 'progress', label: '进度条', isDefault: false },
 ] as const;
 export function isLoadingStyle(value: unknown): value is LoadingStyle {
   return typeof value === 'string' && LOADING_STYLES.includes(value as LoadingStyle);

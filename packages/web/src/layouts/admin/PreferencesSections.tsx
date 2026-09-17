@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button, InputNumber, Popover, Radio, RadioGroup, Select, Switch, Tooltip } from '@douyinfe/semi-ui';
-import { ClipboardPaste, Copy, Info } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ClipboardPaste, Copy, Info } from 'lucide-react';
 import { LOADING_STYLE_OPTIONS, DARK_SURFACE_TONE_OPTIONS, UI_SCALE_OPTIONS, FONT_FAMILY_OPTIONS } from '@/hooks/usePreferences';
 import { clearAllListFilterSnapshots } from '@/lib/list-filter-memory';
 import type { NavLayout, TableSizePreference, RouteAnimation, BorderRadiusPreference, TabStyle, TabSize, TabType, DarkSurfaceTone, UserPreferences, UiScale, FontFamilyPreference, WeekStart, TimeDisplay } from '@/hooks/usePreferences';
@@ -132,6 +132,35 @@ export function PrefsAppearanceSection({
   themeColor: string;
   setThemeColor: (color: string) => void;
 }>) {
+  const loadingPickerRef = useRef<HTMLDivElement>(null);
+  const activeLoadingOptionRef = useRef<HTMLButtonElement>(null);
+  const [loadingPickerNav, setLoadingPickerNav] = useState({ canPrev: false, canNext: false });
+  const updateLoadingPickerNav = useCallback(() => {
+    const el = loadingPickerRef.current;
+    if (!el) return;
+    setLoadingPickerNav({
+      canPrev: el.scrollLeft > 1,
+      canNext: el.scrollLeft + el.clientWidth < el.scrollWidth - 1,
+    });
+  }, []);
+  useEffect(() => {
+    updateLoadingPickerNav();
+    const el = loadingPickerRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', updateLoadingPickerNav, { passive: true });
+    return () => el.removeEventListener('scroll', updateLoadingPickerNav);
+  }, [updateLoadingPickerNav]);
+  // 当前选中的动画始终滚入可见区（初次打开即定位，不做平滑滚动避免与抽屉动效打架）
+  useEffect(() => {
+    const active = activeLoadingOptionRef.current;
+    if (active && typeof active.scrollIntoView === 'function') {
+      active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }, [preferences.loadingStyle]);
+  const scrollLoadingPicker = useCallback((direction: 1 | -1) => {
+    const el = loadingPickerRef.current;
+    if (el) el.scrollBy({ left: direction * el.clientWidth, behavior: 'smooth' });
+  }, []);
   return (
     <PreferenceSection title={prefSection('外观')}>
 
@@ -335,7 +364,7 @@ export function PrefsAppearanceSection({
       )}
 
       {/* ── 加载动画 ── */}
-      {matchesPref(['加载动画', '加载效果', 'Loading', '圆点', '圆环', '方块', '律动条']) && (
+      {matchesPref(['加载动画', '加载效果', 'Loading', '圆点', '圆环', '方块', '律动条', '菊花转', '双弹跳', '水波纹', '进度条']) && (
       <PreferenceControl path="loadingStyle">
       <div>
         <div className="loading-style-picker__heading">
@@ -344,13 +373,25 @@ export function PrefsAppearanceSection({
             <Info size={13} />
           </Tooltip>
         </div>
-        <div className="loading-style-picker">
+        <div className="loading-style-picker__nav">
+          <Button
+            theme="borderless"
+            size="small"
+            className="loading-style-picker__nav-button"
+            icon={<ChevronLeft size={14} />}
+            aria-label="上一个加载动画"
+            title="上一个"
+            disabled={!loadingPickerNav.canPrev}
+            onClick={() => scrollLoadingPicker(-1)}
+          />
+          <div className="loading-style-picker" ref={loadingPickerRef}>
           {LOADING_STYLE_OPTIONS.map((option) => {
             const isActive = preferences.loadingStyle === option.value;
             return (
               <button
                 type="button"
                 key={option.value}
+                ref={isActive ? activeLoadingOptionRef : undefined}
                 className={`loading-style-picker__option${isActive ? ' loading-style-picker__option--active' : ''}`}
                 aria-pressed={isActive}
                 title={option.isDefault ? `${option.label}（默认）` : option.label}
@@ -365,6 +406,17 @@ export function PrefsAppearanceSection({
               </button>
             );
           })}
+          </div>
+          <Button
+            theme="borderless"
+            size="small"
+            className="loading-style-picker__nav-button"
+            icon={<ChevronRight size={14} />}
+            aria-label="下一个加载动画"
+            title="下一个"
+            disabled={!loadingPickerNav.canNext}
+            onClick={() => scrollLoadingPicker(1)}
+          />
         </div>
       </div>
       </PreferenceControl>

@@ -1037,13 +1037,33 @@
   cursor: help;
 }
 
+.loading-style-picker__nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.loading-style-picker__nav-button {
+  flex-shrink: 0;
+}
+
 .loading-style-picker {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  flex: 1;
+  min-width: 0;
+  display: flex;
   gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.loading-style-picker::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .loading-style-picker__option {
+  flex: 0 0 80px;
   min-width: 0;
   padding: 8px 2px 6px;
   color: inherit;

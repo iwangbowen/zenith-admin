@@ -851,7 +851,11 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
 .page-loading__dot,
 .page-loading__ring,
 .page-loading__flip,
-.page-loading__bar {
+.page-loading__bar,
+.page-loading__spinner i,
+.page-loading__bounce-dot,
+.page-loading__ripple i,
+.page-loading__thumb {
   will-change: transform, opacity;
 }
 
@@ -925,6 +929,94 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
 .page-loading__bar:nth-child(3) { animation-delay: -0.12s; }
 .page-loading__bar:nth-child(4) { animation-delay: 0s; }
 
+.page-loading-indicator--spinner,
+.page-loading-indicator--bounce,
+.page-loading-indicator--ripple,
+.page-loading-indicator--progress {
+  align-items: center;
+}
+
+.page-loading-indicator--bounce {
+  gap: 8px;
+}
+
+/* 菊花转：8 根辐条只做透明度轮转（位移由静态 rotate/translate 落位），合成器线程直跑 */
+.page-loading__spinner {
+  position: relative;
+  width: 30px;
+  height: 30px;
+}
+
+.page-loading__spinner i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 8px;
+  margin: -4px 0 0 -1.5px;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.15;
+  animation: page-loading-spinner-fade 1s linear infinite;
+}
+
+.page-loading__spinner i:nth-child(1) { transform: rotate(0deg) translateY(-11px); animation-delay: 0s; }
+.page-loading__spinner i:nth-child(2) { transform: rotate(45deg) translateY(-11px); animation-delay: -0.875s; }
+.page-loading__spinner i:nth-child(3) { transform: rotate(90deg) translateY(-11px); animation-delay: -0.75s; }
+.page-loading__spinner i:nth-child(4) { transform: rotate(135deg) translateY(-11px); animation-delay: -0.625s; }
+.page-loading__spinner i:nth-child(5) { transform: rotate(180deg) translateY(-11px); animation-delay: -0.5s; }
+.page-loading__spinner i:nth-child(6) { transform: rotate(225deg) translateY(-11px); animation-delay: -0.375s; }
+.page-loading__spinner i:nth-child(7) { transform: rotate(270deg) translateY(-11px); animation-delay: -0.25s; }
+.page-loading__spinner i:nth-child(8) { transform: rotate(315deg) translateY(-11px); animation-delay: -0.125s; }
+
+/* 双弹跳：两点原地缩放交替，与跳动圆点的位移波动区分 */
+.page-loading__bounce-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: page-loading-bounce-scale 1s ease-in-out infinite;
+}
+
+.page-loading__bounce-dot:nth-child(2) { animation-delay: -0.5s; }
+
+/* 水波纹：双环由内向外扩散淡出，位移只走 scale */
+.page-loading__ripple {
+  position: relative;
+  width: 30px;
+  height: 30px;
+}
+
+.page-loading__ripple i {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid currentColor;
+  opacity: 0;
+  animation: page-loading-ripple 1.6s cubic-bezier(0.2, 0.6, 0.35, 1) infinite;
+}
+
+.page-loading__ripple i:nth-child(2) { animation-delay: -0.8s; }
+
+/* 进度条：轨道静止、滑块只走 translateX */
+.page-loading__track {
+  display: block;
+  width: 40px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--semi-color-primary-light-default);
+  overflow: hidden;
+}
+
+.page-loading__thumb {
+  display: block;
+  width: 16px;
+  height: 100%;
+  border-radius: inherit;
+  background: currentColor;
+  animation: page-loading-progress-slide 1.2s ease-in-out infinite;
+}
+
 /* XYFlow follows the active Semi theme instead of its standalone palette. */
 .zenith-react-flow {
   --xy-attribution-background-color: var(--surface-card);
@@ -984,6 +1076,47 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
   }
 }
 
+/* 辐条 0s 时最亮，随后渐隐；负延迟让首帧即处于轮转中 */
+@keyframes page-loading-spinner-fade {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.15;
+  }
+}
+
+@keyframes page-loading-bounce-scale {
+  0%, 100% {
+    transform: scale(0.35);
+    opacity: 0.45;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes page-loading-ripple {
+  0% {
+    transform: scale(0.4);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+@keyframes page-loading-progress-slide {
+  0% {
+    transform: translateX(-20px);
+  }
+  100% {
+    transform: translateX(44px);
+  }
+}
+
 @keyframes page-loading-soft-pulse {
   0%, 100% {
     opacity: 0.45;
@@ -997,7 +1130,11 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
   .page-loading__dot,
   .page-loading__ring,
   .page-loading__flip,
-  .page-loading__bar {
+  .page-loading__bar,
+  .page-loading__spinner i,
+  .page-loading__bounce-dot,
+  .page-loading__ripple i,
+  .page-loading__thumb {
     transform: none;
     animation-name: page-loading-soft-pulse;
     animation-duration: 2s;

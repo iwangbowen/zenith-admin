@@ -4,7 +4,7 @@ import { PREFERENCES_KEY } from '@zenith/shared/core';
 import { preferencePolicySchema } from '@zenith/shared/preferences';
 import { writePreferenceCache } from '@/lib/preference-cache';
 import { createPreferencesContext } from '@/test-utils/preferences';
-import PageLoading from './PageLoading';
+import PageLoading, { LoadingIndicator } from './PageLoading';
 import {
   PreferencesContext,
 } from '@/hooks/usePreferences';
@@ -56,5 +56,17 @@ describe('PageLoading', () => {
     }), { loadingStyle: 'ring' });
     render(<PageLoading />);
     expect(screen.getByRole('status')).toHaveAttribute('data-loading-style', 'dots');
+  });
+
+  it.each([
+    ['spinner', 'page-loading__spinner'],
+    ['bounce', 'page-loading__bounce-dot'],
+    ['ripple', 'page-loading__ripple'],
+    ['progress', 'page-loading__track'],
+  ] as const)('renders the %s indicator', (variant, contentClass) => {
+    const { container } = render(<LoadingIndicator variant={variant} />);
+    const indicator = container.firstElementChild;
+    expect(indicator).toHaveAttribute('data-loading-style', variant);
+    expect(indicator?.querySelector(`.${contentClass}`)).not.toBeNull();
   });
 });

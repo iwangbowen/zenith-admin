@@ -34,6 +34,28 @@ export function LoadingIndicator({ variant }: Readonly<{ variant: LoadingStyle }
           <span className="page-loading__bar" />
         </>
       )}
+      {variant === 'spinner' && (
+        <span className="page-loading__spinner">
+          {Array.from({ length: 8 }, (_, index) => <i key={index} />)}
+        </span>
+      )}
+      {variant === 'bounce' && (
+        <>
+          <span className="page-loading__bounce-dot" />
+          <span className="page-loading__bounce-dot" />
+        </>
+      )}
+      {variant === 'ripple' && (
+        <span className="page-loading__ripple">
+          <i />
+          <i />
+        </span>
+      )}
+      {variant === 'progress' && (
+        <span className="page-loading__track">
+          <i className="page-loading__thumb" />
+        </span>
+      )}
     </span>
   );
 }

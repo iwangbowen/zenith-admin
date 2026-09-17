@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   canOverridePreference,
   defaultPreferencePolicy,
@@ -11,7 +11,7 @@ import {
   type PreferencePolicy,
 } from '@zenith/shared/preferences';
 import type { PreferencesContextValue } from '@/hooks/usePreferences';
-import { PrefsGeneralSection, PrefsTableSection, PrefsTabsSection } from '@/layouts/admin/PreferencesSections';
+import { PrefsGeneralSection, PrefsTableSection, PrefsTabsSection, PrefsAppearanceSection } from '@/layouts/admin/PreferencesSections';
 import { PreferenceControl, PreferenceSection } from '@/components/settings/SettingRow';
 
 let context: PreferencesContextValue;
@@ -112,5 +112,70 @@ describe('个人偏好策略控件', () => {
     expect(container.querySelector('[data-preference-path="enableLockScreen"]')).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: '设置密码' }));
     expect(openLockPasswordModal).toHaveBeenCalledExactlyOnceWith('set');
+  });
+});
+
+describe('加载动画选择行', () => {
+  const originalScrollIntoView = window.HTMLElement.prototype.scrollIntoView;
+  const scrollIntoView = vi.fn();
+  beforeEach(() => {
+    scrollIntoView.mockClear();
+    Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
+      value: scrollIntoView, configurable: true, writable: true,
+    });
+    setContext();
+  });
+  afterEach(() => {
+    Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
+      value: originalScrollIntoView, configurable: true, writable: true,
+    });
+  });
+
+  function renderAppearance() {
+    return render(<PrefsAppearanceSection preferences={context.preferences} setPreferences={context.setPreferences}
+      matchesPref={() => true} prefSection={(label) => <h2>{label}</h2>}
+      mode="light" handleThemeModeChange={vi.fn()} isDark={false}
+      themeColor="blue" setThemeColor={vi.fn()} />);
+  }
+
+  it('无溢出时两箭头禁用，选中项挂载即滚入可见区', () => {
+    const { container } = renderAppearance();
+    expect(screen.getByRole('button', { name: '上一个加载动画' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '下一个加载动画' })).toBeDisabled();
+    expect(container.querySelectorAll('.loading-style-picker__option')).toHaveLength(8);
+    expect(scrollIntoView).toHaveBeenCalledExactlyOnceWith({ block: 'nearest', inline: 'nearest' });
+  });
+
+  it('溢出时箭头按滚动位置启用，点击滚动一屏', () => {
+    const { container, rerender } = renderAppearance();
+    const scroller = container.querySelector('.loading-style-picker') as HTMLElement;
+    Object.defineProperties(scroller, {
+      scrollWidth: { value: 640, configurable: true },
+      clientWidth: { value: 280, configurable: true },
+    });
+    const scrollBy = vi.fn();
+    Object.defineProperty(scroller, 'scrollBy', { value: scrollBy, configurable: true });
+    const prev = screen.getByRole('button', { name: '上一个加载动画' });
+    const next = screen.getByRole('button', { name: '下一个加载动画' });
+
+    scroller.scrollLeft = 100;
+    fireEvent.scroll(scroller);
+    expect(prev).toBeEnabled();
+    expect(next).toBeEnabled();
+    fireEvent.click(next);
+    expect(scrollBy).toHaveBeenCalledExactlyOnceWith({ left: 280, behavior: 'smooth' });
+
+    scroller.scrollLeft = 360;
+    fireEvent.scroll(scroller);
+    expect(prev).toBeEnabled();
+    expect(next).toBeDisabled();
+
+    // 选中项变化后重新定位
+    setContext(defaultPreferencePolicy, { loadingStyle: 'progress' });
+    rerender(<PrefsAppearanceSection preferences={context.preferences} setPreferences={context.setPreferences}
+      matchesPref={() => true} prefSection={(label) => <h2>{label}</h2>}
+      mode="light" handleThemeModeChange={vi.fn()} isDark={false}
+      themeColor="blue" setThemeColor={vi.fn()} />);
+    expect(scrollIntoView).toHaveBeenCalledTimes(2);
   });
 });
