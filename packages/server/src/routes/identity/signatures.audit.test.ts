@@ -12,7 +12,13 @@ vi.mock('../../middleware/auth', () => ({ authMiddleware: async (c: Context, nex
 } }));
 vi.mock('../../lib/permissions', () => ({ isSuperAdmin: () => false, getUserPermissions: async () => [] }));
 vi.mock('../../lib/ip-location', () => ({ lookupIpLocation: () => null }));
-vi.mock('../../lib/request-helpers', () => ({ getClientIp: () => '127.0.0.1', getPlatformVersion: () => null, parseUserAgent: () => ({ browser: 'Test', os: 'Test' }) }));
+// 真实 resolveReportedClient 的语义：自报优先、缺项回退解析（guard 的展示列逐请求调用它）
+vi.mock('../../lib/request-helpers', () => ({
+  getClientIp: () => '127.0.0.1',
+  getPlatformVersion: () => null,
+  parseUserAgent: () => ({ browser: 'Test', os: 'Test' }),
+  resolveReportedClient: (reported: { browser?: string; os?: string }) => ({ browser: reported.browser ?? 'Test', os: reported.os ?? 'Test' }),
+}));
 vi.mock('../../lib/data-mask/boundary', () => ({ withDataMasking: (_op: unknown, handler: unknown) => handler }));
 vi.mock('../../services/identity/user-signatures.service', () => ({
   getMySignature: mocks.get, getMySignatureAuditMetadata: mocks.before,
