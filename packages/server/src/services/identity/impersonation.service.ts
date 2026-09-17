@@ -21,7 +21,7 @@ import { signToken } from '../../lib/jwt';
 import { buildListResult } from '../../lib/list-query';
 import logger from '../../lib/logger';
 import { verifyPassword } from '../../lib/password';
-import { parseUserAgent } from '../../lib/request-helpers';
+import { resolveReportedClient } from '../../lib/request-helpers';
 import { forceLogout, generateTokenId, registerSession, removeSession } from '../../lib/session-manager';
 import { getSettings } from '../../lib/settings';
 import { checkSubjectLiveness, loadSubjectRow } from '../../lib/subject-liveness';
@@ -98,10 +98,8 @@ export async function startImpersonation(input: StartImpersonationInput, client:
   const now = new Date();
   const expiresAt = new Date(now.getTime() + minutes * 60_000);
   const tokenId = generateTokenId();
-  // 发起端自报优先（精确到 Win11 等 UA 冻结的系统），缺省回退 UA 解析；仅展示，不参与鉴权
-  const parsed = input.browser === undefined && input.os === undefined ? parseUserAgent(client.ua) : null;
-  const browser = input.browser ?? parsed?.browser ?? 'Unknown';
-  const os = input.os ?? parsed?.os ?? 'Unknown';
+  // 发起端自报优先（精确到 Win11 等 UA 冻结的系统），缺项回退 UA 解析；仅展示，不参与鉴权
+  const { browser, os } = resolveReportedClient(input, client.ua);
   const location = lookupIpLocation(client.ip);
 
   const [record] = await db.insert(impersonationSessions).values({

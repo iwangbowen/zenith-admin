@@ -68,6 +68,24 @@ export function getPlatformVersion(c: Context): string | null {
   return c.req.header('sec-ch-ua-platform-version') ?? null;
 }
 
+/**
+ * 自报优先、缺项回退 UA 解析：登录 / 模拟登录的浏览器·OS 落库统一走这里。
+ * 自报是逐字段的——只报 os 时 browser 仍从 UA 解析（反之亦然），不能因一侧自报把另一侧置 Unknown。
+ */
+export function resolveReportedClient(
+  reported: { browser?: string; os?: string },
+  ua: string,
+  platformVersion?: string | null,
+): { browser: string; os: string } {
+  const parsed = reported.browser === undefined || reported.os === undefined
+    ? parseUserAgent(ua, platformVersion)
+    : null;
+  return {
+    browser: reported.browser ?? parsed?.browser ?? 'Unknown',
+    os: reported.os ?? parsed?.os ?? 'Unknown',
+  };
+}
+
 const CLIENT_KIND_SET: ReadonlySet<string> = new Set(SESSION_CLIENT_KINDS);
 
 /**

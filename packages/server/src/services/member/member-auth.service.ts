@@ -30,7 +30,7 @@ import {
 import type { MemberJwtPayload } from '../../middleware/member-auth';
 import { currentMember } from '../../lib/member-context';
 import { formatDateTime } from '../../lib/datetime';
-import { parseUserAgent } from '../../lib/request-helpers';
+import { resolveReportedClient } from '../../lib/request-helpers';
 import { lookupIpLocation } from '../../lib/ip-location';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { truncateVarchar } from '../../lib/sanitize';
@@ -145,9 +145,7 @@ interface MemberLoginLogParams {
 }
 
 export function recordMemberLoginLog(params: MemberLoginLogParams): void {
-  const parsed = params.browser === undefined && params.os === undefined ? parseUserAgent(params.ua) : null;
-  const browser = params.browser ?? parsed?.browser ?? 'Unknown';
-  const os = params.os ?? parsed?.os ?? 'Unknown';
+  const { browser, os } = resolveReportedClient(params, params.ua);
   // 各列按 schema 长度截断兜底；写入失败只告警，不影响调用方（fire-and-forget 不产生 unhandledRejection）
   db.insert(memberLoginLogs).values({
     memberId: params.memberId ?? null,
@@ -350,9 +348,7 @@ async function finalizeAuth(member: MemberRow, client: { ip: string; ua: string;
     identifier,
     tenantId: member.tenantId,
   });
-  const parsed = client.browser === undefined && client.os === undefined ? parseUserAgent(client.ua) : null;
-  const browser = client.browser ?? parsed?.browser ?? 'Unknown';
-  const os = client.os ?? parsed?.os ?? 'Unknown';
+  const { browser, os } = resolveReportedClient(client, client.ua);
   await Promise.all([
     registerMemberSession({
       tokenId,

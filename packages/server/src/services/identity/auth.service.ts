@@ -13,7 +13,7 @@ import {
 import { SessionRevokedException } from '../../lib/session-liveness';
 import type { JwtPayload } from '../../middleware/auth';
 import { formatDateTime, formatTimestamps } from '../../lib/datetime';
-import { parseUserAgent } from '../../lib/request-helpers';
+import { parseUserAgent, resolveReportedClient } from '../../lib/request-helpers';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import { lookupIpLocation } from '../../lib/ip-location';
 import { clampSmallint, truncateVarchar } from '../../lib/sanitize';
@@ -101,9 +101,7 @@ export interface LoginLogParams {
 
 export async function recordLoginLog(params: LoginLogParams) {
   const { username, eventType = 'login', status, message, userId, tenantId, ip, ua, deviceInfo } = params;
-  const parsed = params.browser === undefined && params.os === undefined ? parseUserAgent(ua) : null;
-  const browser = params.browser ?? parsed?.browser ?? 'Unknown';
-  const os = params.os ?? parsed?.os ?? 'Unknown';
+  const { browser, os } = resolveReportedClient(params, ua);
   try {
     // 各列按 schema 长度截断兜底：ip / ua / browser / os 等源自不可信请求头
     await db.insert(loginLogs).values({
@@ -197,9 +195,7 @@ export async function finalizeLogin(
   const userRoleList = await getUserRoles(user.id);
   const { accessToken, refreshToken, tokenId } = await issueTokens(user, userRoleList.map((r) => r.code));
 
-  const parsed = input.browser === undefined && input.os === undefined ? parseUserAgent(input.ua) : null;
-  const browser = input.browser ?? parsed?.browser ?? 'Unknown';
-  const os = input.os ?? parsed?.os ?? 'Unknown';
+  const { browser, os } = resolveReportedClient(input, input.ua);
   const client = input.client ?? 'web';
   const location = lookupIpLocation(input.ip);
   const loginAt = new Date();

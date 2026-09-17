@@ -7,7 +7,7 @@
  */
 import { afterEach, beforeEach, describe, it, expect } from 'vitest';
 import { Hono } from 'hono';
-import { getClientInfo, getClientIp, parseUserAgent } from './request-helpers';
+import { getClientInfo, getClientIp, parseUserAgent, resolveReportedClient } from './request-helpers';
 import { config } from '../config';
 
 async function ipFor(headers: Record<string, string>): Promise<string> {
@@ -137,5 +137,33 @@ describe('parseUserAgent', () => {
       '"15.0.0"',
     );
     expect(os).not.toBe('Windows 11');
+  });
+});
+
+describe('resolveReportedClient', () => {
+  const CHROME_WIN_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+  it('都不自报 → 全部 UA 解析', () => {
+    const { browser, os } = resolveReportedClient({}, CHROME_WIN_UA);
+    expect(browser).toContain('Chrome');
+    expect(os).toBe('Windows 10');
+  });
+
+  it('只报 os → browser 仍从 UA 解析（不能置 Unknown）', () => {
+    const { browser, os } = resolveReportedClient({ os: 'Windows 11' }, CHROME_WIN_UA);
+    expect(browser).toContain('Chrome');
+    expect(os).toBe('Windows 11');
+  });
+
+  it('只报 browser → os 仍从 UA 解析', () => {
+    const { browser, os } = resolveReportedClient({ browser: 'MyBrowser' }, CHROME_WIN_UA);
+    expect(browser).toBe('MyBrowser');
+    expect(os).toBe('Windows 10');
+  });
+
+  it('都报 → 直接采用，不解析 UA', () => {
+    const { browser, os } = resolveReportedClient({ browser: 'X', os: 'Y' }, 'garbage');
+    expect(browser).toBe('X');
+    expect(os).toBe('Y');
   });
 });
