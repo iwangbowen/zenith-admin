@@ -210,7 +210,7 @@ export default function AdvancedSettingsPanel({ settings, onChange, readOnly = f
                 <Divider margin="8px 0" />
               </Form.Slot>
               <Form.Slot label="打印模板">
-                <Space style={{ width: '100%' }} align="start">
+                <Space wrap style={{ width: '100%' }} align="start">
                   <Select
                     value={print.templateId ?? undefined}
                     onChange={(value) => print.onTemplateChange(value ? Number(value) : null)}
@@ -220,7 +220,7 @@ export default function AdvancedSettingsPanel({ settings, onChange, readOnly = f
                     showClear
                     filter
                     disabled={readOnly}
-                    style={{ width: 280 }}
+                    style={{ width: '100%' }}
                   />
                   {canManagePrintTemplates && (
                     <Tooltip content={print.definitionId ? '按当前表单生成一份审批单模板并打开打印设计器调整版式' : '请先保存流程'}>
