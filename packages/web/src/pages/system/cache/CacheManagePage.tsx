@@ -89,9 +89,9 @@ function TtlBadge({ ttl }: Readonly<{ ttl: number }>) {
   const minutes = Math.floor((ttl % 3600) / 60);
   const seconds = ttl % 60;
   let text: string;
-  if (hours > 0) text = `${hours}h ${minutes}m`;
-  else if (minutes > 0) text = `${minutes}m ${seconds}s`;
-  else text = `${seconds}s`;
+  if (hours > 0) text = `${hours}小时${minutes}分`;
+  else if (minutes > 0) text = `${minutes}分${seconds}秒`;
+  else text = `${seconds}秒`;
   let color: 'orange' | 'yellow' | 'green';
   if (ttl < 300) color = 'orange';
   else if (ttl < 3600) color = 'yellow';
