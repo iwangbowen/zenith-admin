@@ -516,7 +516,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  /* 右侧贴边：头像胶囊自带 8px 右内边距，caret 中心落在 X-15，
+     与下方标签栏 TabSwitcher（28px 宽贴边，箭头中心 X-14）对齐 */
+  padding: 0 0 0 20px;
   gap: 12px;
   flex-shrink: 0;
 }
