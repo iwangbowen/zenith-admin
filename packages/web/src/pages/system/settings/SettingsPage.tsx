@@ -82,6 +82,7 @@ export default function SettingsPage() {
                 meta={(
                   <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
                     <Tag size="small" color={item.scope === 'tenant' ? 'blue' : 'grey'}>{SCOPE_LABELS[item.scope]}</Tag>
+                    {item.version > 0 ? <Tag size="small">版本 {item.version}</Tag> : null}
                     {item.overriddenCount > 0 ? <Tag size="small" color="orange">{item.overriddenCount} 项覆盖</Tag> : null}
                     {item.page ? <Tag size="small">专用页面</Tag> : null}
                   </span>
