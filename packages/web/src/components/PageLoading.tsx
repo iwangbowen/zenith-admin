@@ -1,4 +1,4 @@
-import { PREFERENCES_KEY } from '@zenith/shared/core';
+import { readCachedPreferences } from '@/lib/preference-cache';
 import {
   defaultPreferences,
   isLoadingStyle,
@@ -7,19 +7,7 @@ import {
 import type { LoadingStyle } from '@/hooks/usePreferences';
 
 function readCachedLoadingStyle(): LoadingStyle {
-  if (typeof window === 'undefined') return defaultPreferences.loadingStyle;
-  try {
-    const raw = localStorage.getItem(PREFERENCES_KEY);
-    if (!raw) return defaultPreferences.loadingStyle;
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return defaultPreferences.loadingStyle;
-    }
-    const value = (parsed as Record<string, unknown>).loadingStyle;
-    return isLoadingStyle(value) ? value : defaultPreferences.loadingStyle;
-  } catch {
-    return defaultPreferences.loadingStyle;
-  }
+  return readCachedPreferences().loadingStyle;
 }
 
 export function LoadingIndicator({ variant }: Readonly<{ variant: LoadingStyle }>) {

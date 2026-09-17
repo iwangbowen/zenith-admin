@@ -1,13 +1,12 @@
+import { createPreferencesContext } from '@/test-utils/preferences';
 import { useEffect, useState } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import { act, render, renderHook, waitFor } from '@testing-library/react';
 import { MemoryRouter, RouterProvider, createMemoryRouter, useLocation, useNavigate } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
-  defaultPreferences,
   PreferencesContext,
 } from './usePreferences';
-import type { PreferencesContextValue } from './usePreferences';
 import { useUrlSelectionState } from './useUrlSelectionState';
 import { useUrlTabState } from './useUrlTabState';
 
@@ -17,15 +16,7 @@ function createWrapper(initialEntry: string, initialSync: boolean) {
   function Wrapper({ children }: Readonly<{ children: ReactNode }>) {
     const [syncToUrl, setSyncToUrl] = useState(initialSync);
     setSyncPreference = setSyncToUrl;
-    const context: PreferencesContextValue = {
-      preferences: {
-        ...defaultPreferences,
-        syncPageStateToUrl: syncToUrl,
-      },
-      setPreferences: vi.fn(),
-      resetPreferences: vi.fn(),
-      ready: true,
-    };
+    const context = createPreferencesContext({ syncPageStateToUrl: syncToUrl });
 
     return (
       <PreferencesContext.Provider value={context}>
@@ -111,12 +102,7 @@ describe('useUrlSelectionState', () => {
       }, [selection, setSelection]);
       return null;
     }
-    const context: PreferencesContextValue = {
-      preferences: { ...defaultPreferences, syncPageStateToUrl: false },
-      setPreferences: vi.fn(),
-      resetPreferences: vi.fn(),
-      ready: true,
-    };
+    const context = createPreferencesContext({ syncPageStateToUrl: false });
     const router = createMemoryRouter(
       [{ path: '*', element: <Probe /> }],
       { initialEntries: ['/system/dicts?dict=abc&view=compact'] },

@@ -22,7 +22,7 @@ interface ThemeColorPreset {
 }
 
 /** 默认主题色预设 key（列表首项），与 `defaultPreferences.themeColor` 保持一致 */
-export const DEFAULT_THEME_COLOR = 'blue';
+export { DEFAULT_THEME_COLOR } from '@zenith/shared/preferences';
 
 export const THEME_COLOR_PRESETS: ThemeColorPreset[] = [
   {

@@ -1,3 +1,4 @@
+import { createPreferencesContext } from '@/test-utils/preferences';
 /**
  * AnalyticsSegmentsTab 单元测试（行为中心阶段 1：用户分群 CRUD + 物化 + 成员）
  *
@@ -12,7 +13,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { AnalyticsSegmentMember, AnalyticsUserSegment } from '@zenith/shared/analytics';
-import { PreferencesContext, defaultPreferences } from '@/hooks/usePreferences';
+import { PreferencesContext } from '@/hooks/usePreferences';
 
 const useAnalyticsSegmentsMock = vi.fn();
 const useAnalyticsSegmentMembersMock = vi.fn();
@@ -66,7 +67,7 @@ import AnalyticsSegmentsTab from './AnalyticsSegmentsTab';
 
 function renderWithPreferences(ui: React.ReactElement) {
   return render(
-    <PreferencesContext.Provider value={{ preferences: defaultPreferences, setPreferences: vi.fn(), resetPreferences: vi.fn(), ready: true }}>
+    <PreferencesContext.Provider value={createPreferencesContext()}>
       {ui}
     </PreferencesContext.Provider>,
   );

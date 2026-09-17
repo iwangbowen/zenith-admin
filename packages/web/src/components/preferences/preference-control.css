@@ -1,0 +1,20 @@
+.preference-control {
+  min-width: 0;
+}
+
+.preference-control__reset {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.preference-control--inline {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.preference-control--inline .preference-control__reset {
+  margin-top: 0;
+}

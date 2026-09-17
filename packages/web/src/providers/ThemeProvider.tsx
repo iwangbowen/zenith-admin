@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
-import { PREFERENCES_KEY } from '@zenith/shared/core';
+import { canOverridePreference } from '@zenith/shared/preferences';
+import { readPreferenceCache, readCachedPreferences, writePreferenceCache } from '@/lib/preference-cache';
 import { useTheme, applyThemeToDom, type ThemeMode } from '@/hooks/useTheme';
 import { usePrefersDark } from '@/hooks/useMediaQuery';
 import { applyThemeColor, getThemeColorVars } from '@/lib/theme-color';
@@ -20,38 +21,22 @@ const THEME_DEFAULTS: ThemePrefs = {
 };
 
 function loadThemePrefs(): ThemePrefs {
-  try {
-    const raw = localStorage.getItem(PREFERENCES_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<ThemePrefs>;
-      return {
-        colorMode: parsed.colorMode ?? THEME_DEFAULTS.colorMode,
-        themeColor: parsed.themeColor ?? THEME_DEFAULTS.themeColor,
-      };
-    }
-  } catch {
-    // ignore
-  }
-  return {
-    colorMode: THEME_DEFAULTS.colorMode,
-    themeColor: THEME_DEFAULTS.themeColor,
-  };
+  const prefs = readCachedPreferences();
+  return { colorMode: prefs.colorMode, themeColor: prefs.themeColor };
 }
 
 function persistThemePrefs(partial: Partial<ThemePrefs>) {
-  try {
-    const raw = localStorage.getItem(PREFERENCES_KEY);
-    const base = raw ? { ...defaultPreferences, ...JSON.parse(raw) } : { ...defaultPreferences };
-    localStorage.setItem(PREFERENCES_KEY, JSON.stringify({ ...base, ...partial }));
-  } catch {
-    // ignore
-  }
+  const cached = readPreferenceCache();
+  const permitted = Object.fromEntries(Object.entries(partial).filter(([key]) =>
+    canOverridePreference(key as keyof ThemePrefs, cached.policy)));
+  writePreferenceCache(cached.policy, { ...cached.overrides, ...permitted });
 }
 
 export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
   const preferencesContext = useOptionalPreferences();
   const serverSyncedPreferences = preferencesContext?.preferences;
   const syncPreferences = preferencesContext?.setPreferences;
+  const canChangePreference = preferencesContext?.canEditPreference;
   const initial = useMemo(() => loadThemePrefs(), []);
   const [localThemeColor, setLocalThemeColor] = useState<string>(initial.themeColor);
   const themeColor = serverSyncedPreferences?.themeColor ?? localThemeColor;
@@ -67,6 +52,7 @@ export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
   }, [themeColor, isDark]);
 
   const setThemeMode = useCallback((nextMode: ThemeMode) => {
+    if (canChangePreference && !canChangePreference('colorMode')) return;
     const nextIsDark = nextMode === 'dark' || (nextMode === 'system' && prefersDark);
     const reduceMotion = serverSyncedPreferences?.reduceMotion ?? false;
     if (nextIsDark === isDark || reduceMotion) {
@@ -85,16 +71,17 @@ export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
       return;
     }
     persistThemePrefs({ colorMode: nextMode });
-  }, [setThemeModeInternal, syncPreferences, prefersDark, isDark, themeColor, serverSyncedPreferences?.reduceMotion]);
+  }, [setThemeModeInternal, syncPreferences, prefersDark, isDark, themeColor, serverSyncedPreferences?.reduceMotion, canChangePreference]);
 
   const updateThemeColor = useCallback((nextColor: string) => {
+    if (canChangePreference && !canChangePreference('themeColor')) return;
     setLocalThemeColor(nextColor);
     if (syncPreferences) {
       syncPreferences({ themeColor: nextColor });
       return;
     }
     persistThemePrefs({ themeColor: nextColor });
-  }, [syncPreferences]);
+  }, [syncPreferences, canChangePreference]);
 
   const cycleTheme = useCallback(() => {
     const order: ThemeMode[] = ['light', 'dark', 'system'];
@@ -103,16 +90,14 @@ export function ThemeProvider({ children }: Readonly<{ children: ReactNode }>) {
   }, [mode, setThemeMode]);
 
   const resetTheme = useCallback(() => {
-    const defaultMode = THEME_DEFAULTS.colorMode;
-    const defaultColor = THEME_DEFAULTS.themeColor;
-    setThemeModeInternal(defaultMode);
-    setLocalThemeColor(defaultColor);
-    if (syncPreferences) {
-      syncPreferences({ colorMode: defaultMode, themeColor: defaultColor });
+    if (preferencesContext) {
+      preferencesContext.resetPreference(['colorMode', 'themeColor']);
       return;
     }
-    persistThemePrefs({ colorMode: defaultMode, themeColor: defaultColor });
-  }, [setThemeModeInternal, syncPreferences]);
+    setThemeModeInternal(THEME_DEFAULTS.colorMode);
+    setLocalThemeColor(THEME_DEFAULTS.themeColor);
+    persistThemePrefs(THEME_DEFAULTS);
+  }, [setThemeModeInternal, preferencesContext]);
 
   const value = useMemo<ThemeControllerValue>(() => ({
     mode,

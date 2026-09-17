@@ -34,13 +34,13 @@ export function ImportPreferencesModal({
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <Typography.Text type="secondary" size="small">
-          粘贴通过「复制偏好」导出的 JSON 配置。未知字段与非法值会被自动忽略，导入后立即生效并同步到服务器。
+          粘贴通过「复制偏好」导出的 JSON 配置。未知字段、非法值与系统管理项会被跳过，导入后立即生效并同步到服务器。
         </Typography.Text>
         <TextArea
           rows={10}
           value={importPrefsText}
           onChange={(v) => setImportPrefsText(v)}
-          placeholder={'{\n  "navLayout": "vertical",\n  "themeColor": "blue",\n  ...\n}'}
+          placeholder={'{\n  "overrides": {\n    "navLayout": "vertical",\n    "themeColor": "blue"\n  }\n}'}
         />
       </div>
     </AppModal>

@@ -1,11 +1,12 @@
+import { createPreferencesContext } from '@/test-utils/preferences';
 import { act, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PreferencesContext, defaultPreferences, type PreferencesContextValue } from '@/hooks/usePreferences';
+import { PreferencesContext } from '@/hooks/usePreferences';
 import DateTimeText from './DateTimeText';
 
 function withPrefs(timeDisplay: 'absolute' | 'relative') {
-  const value = { preferences: { ...defaultPreferences, timeDisplay } } as unknown as PreferencesContextValue;
+  const value = createPreferencesContext({ timeDisplay });
   return function Wrapper({ children }: { children: ReactNode }) {
     return <PreferencesContext.Provider value={value}>{children}</PreferencesContext.Provider>;
   };

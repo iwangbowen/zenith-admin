@@ -86,7 +86,7 @@ interface AdminLayoutProps {
 }
 
 export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLayoutProps) {
-  const { preferences, setPreferences, resetPreferences } = usePreferences();
+  const { preferences, setPreferences, resetPreferences, canEditPreference } = usePreferences();
   // hover 模式下侧边栏应保持收起：刷新页面后依据偏好恢复收起状态
   const [collapsed, setCollapsed] = useState(() => preferences.sidebarHoverTrigger ?? false);
   const autoCollapsedRef = useRef(false);
@@ -211,7 +211,7 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
     importPrefsVisible, setImportPrefsVisible,
     importPrefsText, setImportPrefsText,
     handleImportPreferences,
-  } = usePreferencesPanel(preferences, setPreferences);
+  } = usePreferencesPanel();
 
   // 默认首页候选：当前用户可见的菜单页面
   const homePathOptions = useMemo(() => [
@@ -1097,7 +1097,7 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
       {/* ===== 快捷聊天浮动按钮 ===== */}
       {quickChatEnabled && (preferences.showQuickChat ?? true) && (
         <Suspense fallback={null}>
-          <QuickChatButton onHide={() => setPreferences({ showQuickChat: false })} />
+          <QuickChatButton onHide={canEditPreference('showQuickChat') ? () => { setPreferences({ showQuickChat: false }); } : undefined} />
         </Suspense>
       )}
 

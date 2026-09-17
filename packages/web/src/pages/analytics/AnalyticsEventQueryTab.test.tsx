@@ -1,3 +1,4 @@
+import { createPreferencesContext } from '@/test-utils/preferences';
 /**
  * AnalyticsEventQueryTab 单元测试（行为中心阶段 1：通用事件分析工作台）
  *
@@ -13,7 +14,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import type { AnalyticsEventQueryResult } from '@zenith/shared/analytics';
-import { PreferencesContext, defaultPreferences } from '@/hooks/usePreferences';
+import { PreferencesContext } from '@/hooks/usePreferences';
 import { createTestQueryClient } from '@/test-utils/query-harness';
 
 const useAnalyticsEventQueryMock = vi.fn();
@@ -41,7 +42,7 @@ function renderWithPreferences(ui: React.ReactElement) {
   // 搜索状态经 useListSearch 在「查询 / 重置」时强制失效，需要 QueryClient
   return render(
     <QueryClientProvider client={createTestQueryClient()}>
-      <PreferencesContext.Provider value={{ preferences: defaultPreferences, setPreferences: vi.fn(), resetPreferences: vi.fn(), ready: true }}>
+      <PreferencesContext.Provider value={createPreferencesContext()}>
         {ui}
       </PreferencesContext.Provider>
     </QueryClientProvider>,

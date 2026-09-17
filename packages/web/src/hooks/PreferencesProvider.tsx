@@ -1,136 +1,130 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import type { ReactNode } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useDebouncer } from '@tanstack/react-pacer';
-import { PREFERENCES_KEY } from '@zenith/shared/core';
-import { authContract } from '@zenith/shared/identity';
-import { api } from '@/lib/contract-query';
+import {
+  canOverridePreference, getPreferenceValue, isPreferenceApplicable, preferenceDefinitions,
+  removePreferenceOverride, resolvePreferences, sanitizePreferenceOverrides, setPreferenceValue,
+  type PreferenceOverrides, type PreferencePath,
+} from '@zenith/shared/preferences';
 import { applyWeekStart } from '@/lib/week-start';
-import { defaultPreferences, isLoadingStyle, PreferencesContext } from './usePreferences';
-import type { UserPreferences } from './usePreferences';
-
-/**
- * 必须先于子树渲染生效的偏好（React 在 createElement 时解析 class defaultProps，
- * 放进 useEffect 会让本轮已渲染的选择器停在旧值）。写状态之前同步调用；
- * DatePicker 模块尚未加载时由 applyWeekStart 在其加载完成、任何选择器渲染之前写入。
- */
-function applyPreRenderPreferences(prefs: UserPreferences) {
-  void applyWeekStart(prefs.weekStart);
-}
-
-function mergePreferences(raw: unknown): UserPreferences {
-  const source = raw && typeof raw === 'object' && !Array.isArray(raw)
-    ? raw as Partial<UserPreferences>
-    : {};
-  const merged = { ...defaultPreferences, ...source };
-  if (!isLoadingStyle(merged.loadingStyle)) {
-    merged.loadingStyle = defaultPreferences.loadingStyle;
-  }
-  return merged;
-}
-
-function loadPreferences(): UserPreferences {
-  try {
-    const raw = localStorage.getItem(PREFERENCES_KEY);
-    if (raw) {
-      return mergePreferences(JSON.parse(raw));
-    }
-  } catch { /* ignore */ }
-  return { ...defaultPreferences };
-}
-
-function savePreferences(prefs: UserPreferences) {
-  try {
-    const raw = localStorage.getItem(PREFERENCES_KEY);
-    const base = raw ? JSON.parse(raw) : {};
-    localStorage.setItem(PREFERENCES_KEY, JSON.stringify({ ...base, ...prefs }));
-  } catch {
-    localStorage.setItem(PREFERENCES_KEY, JSON.stringify(prefs));
-  }
-}
+import { readPreferenceCache, writePreferenceCache } from '@/lib/preference-cache';
+import { settingsKeys, useMySettings } from './queries/settings';
+import { preferencesKey, usePersonalPreferences, useSavePersonalPreferences } from './queries/preferences';
+import { subscribeWsStatus, useWebSocket } from './useWebSocket';
+import { PreferencesContext, type PreferenceChangeResult } from './usePreferences';
 
 export function PreferencesProvider({ children }: Readonly<{ children: ReactNode }>) {
-  const [prefs, setPrefs] = useState<UserPreferences>(() => {
-    const initial = loadPreferences();
-    applyPreRenderPreferences(initial);
-    return initial;
-  });
-  const [ready, setReady] = useState(false);
-  const prefsRef = useRef(prefs);
+  const [cached] = useState(readPreferenceCache);
   const queryClient = useQueryClient();
+  const personal = usePersonalPreferences();
+  const settings = useMySettings();
+  const { mutateAsync } = useSavePersonalPreferences();
+  const [draft, setDraft] = useState<PreferenceOverrides | null>(null);
+  const revision = useRef(0);
+  const policy = settings.data?.ui.preferences ?? cached.policy;
+  const overrides = draft ?? personal.data?.overrides ?? cached.overrides;
+  const preferences = useMemo(() => resolvePreferences(policy, overrides), [policy, overrides]);
+  const ready = personal.isFetched && settings.isFetched;
+  // 缓存只用于渲染，策略和个人数据未成功读取时不允许写入。
+  const writable = Boolean(personal.data && settings.data);
+  const current = useRef({ policy, overrides, writable });
+  current.current = { policy, overrides, writable };
 
-  // 切回窗口 / 页签时是否重取过期数据：改 QueryClient 默认项，对后续挂载的 query 生效；
-  // 显式声明了 refetchOnWindowFocus 的 query（如登录态）不受影响
+  // DatePicker 的 defaultProps 必须在子树构造前更新，动态加载也由 applyWeekStart 同步。
+  void applyWeekStart(preferences.weekStart);
+  useEffect(() => { writePreferenceCache(policy, overrides); }, [policy, overrides]);
   useEffect(() => {
-    const current = queryClient.getDefaultOptions();
+    const options = queryClient.getDefaultOptions();
     queryClient.setDefaultOptions({
-      ...current,
-      queries: { ...current.queries, refetchOnWindowFocus: prefs.refetchOnFocus },
+      ...options, queries: { ...options.queries, refetchOnWindowFocus: preferences.refetchOnFocus },
     });
-  }, [queryClient, prefs.refetchOnFocus]);
+  }, [queryClient, preferences.refetchOnFocus]);
 
-  const applyLocalPreferences = useCallback((next: UserPreferences, persist = true) => {
-    prefsRef.current = next;
-    applyPreRenderPreferences(next);
-    setPrefs(next);
-    if (persist) savePreferences(next);
-  }, []);
+  const refreshPolicy = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: settingsKeys.me });
+  }, [queryClient]);
+  useWebSocket((message) => { if (message.type === 'preferences:policy-updated') refreshPolicy(); });
+  useEffect(() => subscribeWsStatus((connected) => { if (connected) refreshPolicy(); }), [refreshPolicy]);
 
-  const putPreferences = useCallback((next: UserPreferences) => {
-    api(authContract.savePreferences, { body: { ...next } }, { silent: true }).catch(() => { /* ignore */ });
-  }, []);
+  const persist = useCallback(async (next: PreferenceOverrides, version: number) => {
+    try {
+      await mutateAsync({ body: { overrides: next } });
+      if (revision.current === version) setDraft(null);
+    } catch {
+      // 请求层展示错误；回源策略与个人值，撤销仍属于本次失败写入的乐观状态。
+      refreshPolicy();
+      await queryClient.invalidateQueries({ queryKey: preferencesKey });
+      if (revision.current === version) setDraft(null);
+    }
+  }, [mutateAsync, queryClient, refreshPolicy]);
+  const sync = useDebouncer(persist, { wait: 500 });
+  const update = useCallback((next: PreferenceOverrides, immediate = false) => {
+    current.current.overrides = next;
+    setDraft(next);
+    const version = ++revision.current;
+    if (immediate) { sync.cancel(); void persist(next, version); }
+    else sync.maybeExecute(next, version);
+  }, [persist, sync]);
 
-  const syncDebouncer = useDebouncer(putPreferences, { wait: 500 });
-
-  const scheduleSync = useCallback((next: UserPreferences) => {
-    syncDebouncer.maybeExecute(next);
-  }, [syncDebouncer]);
-
-  const syncNow = useCallback((next: UserPreferences) => {
-    syncDebouncer.cancel();
-    putPreferences(next);
-  }, [syncDebouncer, putPreferences]);
-
-  // 组件挂载时（用户已登录）从服务器拉取偏好，覆盖本地缓存
-  useEffect(() => {
-    let cancelled = false;
-    api(authContract.preferences, { silent: true })
-      .then((data) => {
-        if (cancelled) return;
-        if (data) {
-          const merged = mergePreferences(data);
-          applyLocalPreferences(merged);
-          return;
-        }
-        // 老用户服务器端暂无偏好时，把本地缓存迁移到服务器。
-        scheduleSync(prefsRef.current);
-      })
-      .catch(() => { /* ignore */ })
-      .finally(() => { if (!cancelled) setReady(true); });
-    return () => { cancelled = true; };
-  }, [applyLocalPreferences, scheduleSync]);
-
-  const setPreferences = useCallback((partial: Partial<UserPreferences>) => {
-    const next = { ...prefsRef.current, ...partial };
-    applyLocalPreferences(next);
-    scheduleSync(next);
-  }, [applyLocalPreferences, scheduleSync]);
-
+  const setPreferences = useCallback((partial: PreferenceOverrides): PreferenceChangeResult => {
+    const valid = sanitizePreferenceOverrides(partial);
+    if (!valid || !current.current.writable) return { applied: 0, skipped: 0 };
+    let next = current.current.overrides;
+    let applied = 0;
+    let skipped = 0;
+    for (const { path } of preferenceDefinitions) {
+      const value = getPreferenceValue(valid, path);
+      if (value === undefined) continue;
+      if (!canOverridePreference(path, current.current.policy)) { skipped++; continue; }
+      const otherMode = path === 'grayscale' ? 'colorBlind' : path === 'colorBlind' ? 'grayscale' : null;
+      if (value === true && otherMode && !current.current.policy.allowUserOverride[otherMode] && current.current.policy.defaults[otherMode]) {
+        skipped++;
+        continue;
+      }
+      next = setPreferenceValue(next, path, value);
+      applied++;
+    }
+    // 明确开启某种显示模式时，关闭另一项可编辑模式；受系统锁定的旧覆盖仍保留。
+    if (valid.grayscale === true && current.current.policy.allowUserOverride.grayscale && current.current.policy.allowUserOverride.colorBlind) {
+      next = { ...next, colorBlind: false };
+    } else if (valid.colorBlind === true && current.current.policy.allowUserOverride.colorBlind && current.current.policy.allowUserOverride.grayscale) {
+      next = { ...next, grayscale: false };
+    }
+    if (valid.terminal?.favorites !== undefined) {
+      next = { ...next, terminal: { ...next.terminal, favorites: valid.terminal.favorites } };
+      applied++;
+    }
+    if (applied > 0) update(next);
+    return { applied, skipped };
+  }, [update]);
+  const resetPreference = useCallback((path: PreferencePath | readonly PreferencePath[]) => {
+    if (!current.current.writable) return;
+    const paths: readonly PreferencePath[] = typeof path === 'string' ? [path] : path;
+    const next = paths.reduce((value, field) => removePreferenceOverride(value, field), current.current.overrides);
+    update(next, true);
+  }, [update]);
   const resetPreferences = useCallback(() => {
-    const next = { ...defaultPreferences };
-    localStorage.removeItem(PREFERENCES_KEY);
-    applyLocalPreferences(next, false);
-    syncNow(next);
-  }, [applyLocalPreferences, syncNow]);
+    if (!current.current.writable) return;
+    // 收藏目录是个人数据，不随“恢复系统默认”清空。
+    const favorites = current.current.overrides.terminal?.favorites;
+    update(favorites === undefined ? {} : { terminal: { favorites } }, true);
+  }, [update]);
 
-  const value = useMemo(
-    () => ({ preferences: prefs, setPreferences, resetPreferences, ready }),
-    [prefs, setPreferences, resetPreferences, ready],
-  );
-
-  return (
-    <PreferencesContext.Provider value={value}>
-      {children}
-    </PreferencesContext.Provider>
-  );
+  const canOverride = useCallback((path: PreferencePath) => writable && canOverridePreference(path, policy), [writable, policy]);
+  const canEdit = useCallback((path: PreferencePath) => {
+    if (!canOverride(path) || !isPreferenceApplicable(path, preferences)) return false;
+    if (path === 'showQuickChat' && !settings.data?.ui.quickChatEnabled) return false;
+    if (path === 'grayscale' && !policy.allowUserOverride.colorBlind && preferences.colorBlind) return false;
+    if (path === 'colorBlind' && !policy.allowUserOverride.grayscale && preferences.grayscale) return false;
+    return true;
+  }, [canOverride, preferences, policy, settings.data?.ui.quickChatEnabled]);
+  const isOverridden = useCallback((path: PreferencePath) => getPreferenceValue(overrides, path) !== undefined, [overrides]);
+  const hasEditablePreferences = preferenceDefinitions.some(({ path, group }) => group !== 'terminal' && group !== 'notifications' && canEdit(path));
+  const hasManagedPreferences = preferenceDefinitions.some(({ path }) => !canOverridePreference(path, policy));
+  const value = useMemo(() => ({
+    preferences, overrides, policy, setPreferences, resetPreferences, resetPreference,
+    canEditPreference: canEdit, canOverridePreference: canOverride, isPreferenceOverridden: isOverridden,
+    hasEditablePreferences, hasManagedPreferences, ready,
+  }), [preferences, overrides, policy, setPreferences, resetPreferences, resetPreference, canEdit, canOverride, isOverridden, hasEditablePreferences, hasManagedPreferences, ready]);
+  return <PreferencesContext.Provider value={value}>{children}</PreferencesContext.Provider>;
 }

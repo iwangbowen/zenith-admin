@@ -1,6 +1,7 @@
+import { createPreferencesContext } from '@/test-utils/preferences';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { PreferencesContext, defaultPreferences } from '@/hooks/usePreferences';
+import { PreferencesContext } from '@/hooks/usePreferences';
 import { OpenPlatformPaginatedTab } from './OpenPlatformPaginatedTab';
 
 vi.mock('@/components/ConfigurableTable', () => ({
@@ -16,7 +17,7 @@ describe('OpenPlatformPaginatedTab', () => {
   it('connects paginated query data to the shared table props', () => {
     const refetch = vi.fn();
     render(
-      <PreferencesContext.Provider value={{ preferences: defaultPreferences, setPreferences: vi.fn(), resetPreferences: vi.fn(), ready: true }}>
+      <PreferencesContext.Provider value={createPreferencesContext()}>
         <OpenPlatformPaginatedTab
           useList={() => ({ data: { list: [{ id: 1, name: '授权记录' }], total: 7 }, isFetching: false, refetch }) as never}
           columns={[]}

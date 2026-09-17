@@ -1,9 +1,10 @@
+import { createPreferencesContext } from '@/test-utils/preferences';
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { desktopToolbar } from '@/test-utils/toolbar';
 import type { AnalyticsSite } from '@zenith/shared/analytics';
-import { PreferencesContext, defaultPreferences } from '@/hooks/usePreferences';
+import { PreferencesContext } from '@/hooks/usePreferences';
 
 
 const mockSite = vi.hoisted<AnalyticsSite>(() => ({
@@ -48,7 +49,7 @@ import AnalyticsSitesTab from './AnalyticsSitesTab';
 
 function renderWithPreferences() {
   return render(
-    <PreferencesContext.Provider value={{ preferences: defaultPreferences, setPreferences: vi.fn(), resetPreferences: vi.fn(), ready: true }}>
+    <PreferencesContext.Provider value={createPreferencesContext()}>
       <AnalyticsSitesTab />
     </PreferencesContext.Provider>,
   );

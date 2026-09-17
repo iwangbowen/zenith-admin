@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
-import { SideSheet, Select, InputNumber, Button, Typography, Divider, Switch } from '@douyinfe/semi-ui';
+import { SideSheet, Select, InputNumber, Button, Typography, Switch } from '@douyinfe/semi-ui';
 import { RotateCcw } from 'lucide-react';
-import { useTerminalPreferences, defaultTerminalPreferences } from './useTerminalPreferences';
+import { useTerminalPreferences } from './useTerminalPreferences';
+import { usePreferences, type TerminalPreferences } from '@/hooks/usePreferences';
+import { PreferenceResetButton } from '@/components/settings/SettingRow';
 import { DARK_THEMES, LIGHT_THEMES, FONT_FAMILY_PRESETS } from './themes';
 import ThemePicker from './ThemePicker';
 
@@ -16,24 +18,29 @@ interface TerminalSettingsProps {
   readonly shells: ShellOption[];
 }
 
-function Field({ label, children }: { readonly label: string; readonly children: ReactNode }) {
+function Field({ field, label, children }: { readonly field: Exclude<keyof TerminalPreferences, 'favorites'>; readonly label: string; readonly children: ReactNode }) {
+  const { canEditPreference } = usePreferences();
+  const path = `terminal.${field}` as const;
+  if (!canEditPreference(path)) return null;
   return (
     <div style={{ marginBottom: 16 }}>
-      <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginBottom: 6 }}>
-        {label}
-      </Typography.Text>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+        <Typography.Text size="small" type="tertiary">{label}</Typography.Text>
+        <PreferenceResetButton path={path} />
+      </div>
       {children}
     </div>
   );
 }
 
 export default function TerminalSettings({ visible, onClose, shells }: TerminalSettingsProps) {
-  const { terminal, setTerminalPref } = useTerminalPreferences();
+  const { terminal, setTerminalPref, resetTerminalPreferences, canEditTerminalPreferences, hasTerminalOverrides } = useTerminalPreferences();
+  const { canEditPreference } = usePreferences();
 
   return (
-    <SideSheet title="终端设置" visible={visible} onCancel={onClose} width={400} placement="right">
+    <SideSheet title="终端设置" visible={visible && canEditTerminalPreferences} onCancel={onClose} width={400} placement="right">
       <div style={{ paddingBottom: 24 }}>
-        <Field label="默认 Shell">
+        <Field field="defaultShell" label="默认 Shell">
           <Select
             value={shells.some((s) => s.id === terminal.defaultShell) ? terminal.defaultShell : ''}
             onChange={(v) => setTerminalPref({ defaultShell: typeof v === 'string' ? v : '' })}
@@ -48,15 +55,13 @@ export default function TerminalSettings({ visible, onClose, shells }: TerminalS
           </Select>
         </Field>
 
-        <Divider margin="12px" />
-
-        <Field label="标签栏位置">
+        <Field field="tabPosition" label="标签栏位置">
           <Select
-            value={terminal.tabPosition ?? 'top'}
-            onChange={(v) => setTerminalPref({ tabPosition: (v as 'top' | 'right' | 'bottom') ?? 'top' })}
+            value={terminal.tabPosition}
+            onChange={(v) => setTerminalPref({ tabPosition: v as TerminalPreferences['tabPosition'] })}
             style={{ width: '100%' }}
           >
-            <Select.Option value="top">顶部（默认）</Select.Option>
+            <Select.Option value="top">顶部</Select.Option>
             <Select.Option value="left">左侧</Select.Option>
             <Select.Option value="right">右侧（VS Code 风格）</Select.Option>
             <Select.Option value="bottom">底部</Select.Option>
@@ -64,7 +69,7 @@ export default function TerminalSettings({ visible, onClose, shells }: TerminalS
         </Field>
 
         {(terminal.tabPosition === 'right' || terminal.tabPosition === 'left') && (
-          <Field label="右侧标签栏折叠为图标">
+          <Field field="tabCollapsed" label="侧边标签栏折叠为图标">
             <Switch
               checked={terminal.tabCollapsed ?? false}
               onChange={(v) => setTerminalPref({ tabCollapsed: v })}
@@ -72,7 +77,7 @@ export default function TerminalSettings({ visible, onClose, shells }: TerminalS
           </Field>
         )}
 
-        <Field label="显示终端状态栏">
+        <Field field="showStatusBar" label="显示终端状态栏">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Switch
               checked={terminal.showStatusBar ?? true}
@@ -82,31 +87,29 @@ export default function TerminalSettings({ visible, onClose, shells }: TerminalS
           </div>
         </Field>
 
-        <Divider margin="12px" />
-
-        <Field label="暗色模式主题">
+        <Field field="themeDark" label="暗色模式主题">
           <ThemePicker
             themes={DARK_THEMES}
             value={terminal.themeDark}
-            onChange={(id) => setTerminalPref({ themeDark: id })}
+            onChange={(id) => setTerminalPref({ themeDark: id as TerminalPreferences['themeDark'] })}
           />
         </Field>
 
-        <Field label="亮色模式主题">
+        <Field field="themeLight" label="亮色模式主题">
           <ThemePicker
             themes={LIGHT_THEMES}
             value={terminal.themeLight}
-            onChange={(id) => setTerminalPref({ themeLight: id })}
+            onChange={(id) => setTerminalPref({ themeLight: id as TerminalPreferences['themeLight'] })}
           />
         </Field>
 
-        <Typography.Text size="small" type="quaternary" style={{ display: 'block', marginTop: -8, marginBottom: 12 }}>
-          主题随应用明暗模式自动切换，可分别为亮 / 暗模式指定配色。
-        </Typography.Text>
+        {(canEditPreference('terminal.themeDark') || canEditPreference('terminal.themeLight')) && (
+          <Typography.Text size="small" type="quaternary" style={{ display: 'block', marginTop: -8, marginBottom: 12 }}>
+            主题随应用明暗模式自动切换，可分别为亮 / 暗模式指定配色。
+          </Typography.Text>
+        )}
 
-        <Divider margin="12px" />
-
-        <Field label="字体">
+        <Field field="fontFamily" label="字体">
           <Select
             value={terminal.fontFamily}
             onChange={(v) => setTerminalPref({ fontFamily: typeof v === 'string' ? v : terminal.fontFamily })}
@@ -122,7 +125,7 @@ export default function TerminalSettings({ visible, onClose, shells }: TerminalS
           </Select>
         </Field>
 
-        <Field label="字号">
+        <Field field="fontSize" label="字号">
           <InputNumber
             value={terminal.fontSize}
             min={10}
@@ -133,7 +136,7 @@ export default function TerminalSettings({ visible, onClose, shells }: TerminalS
           />
         </Field>
 
-        <Field label="行高">
+        <Field field="lineHeight" label="行高">
           <InputNumber
             value={terminal.lineHeight}
             min={1}
@@ -144,7 +147,7 @@ export default function TerminalSettings({ visible, onClose, shells }: TerminalS
           />
         </Field>
 
-        <Field label="滚回行数">
+        <Field field="scrollback" label="滚回行数">
           <InputNumber
             value={terminal.scrollback ?? 5000}
             min={100}
@@ -157,30 +160,26 @@ export default function TerminalSettings({ visible, onClose, shells }: TerminalS
           />
         </Field>
 
-        <Divider margin="12px" />
-
-        <Field label="光标样式">
+        <Field field="cursorStyle" label="光标样式">
           <Select
             value={terminal.cursorStyle ?? 'block'}
             onChange={(v) => setTerminalPref({ cursorStyle: (v as 'block' | 'underline' | 'bar') ?? 'block' })}
             style={{ width: '100%' }}
           >
-            <Select.Option value="block">块状（默认）</Select.Option>
+            <Select.Option value="block">块状</Select.Option>
             <Select.Option value="underline">下划线</Select.Option>
             <Select.Option value="bar">竖线（VS Code 风格）</Select.Option>
           </Select>
         </Field>
 
-        <Field label="光标闪烁">
+        <Field field="cursorBlink" label="光标闪烁">
           <Switch
             checked={terminal.cursorBlink ?? true}
             onChange={(v) => setTerminalPref({ cursorBlink: v })}
           />
         </Field>
 
-        <Divider margin="12px" />
-
-        <Field label="选中文字自动复制">
+        <Field field="copyOnSelect" label="选中文字自动复制">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Switch
               checked={terminal.copyOnSelect ?? false}
@@ -190,13 +189,13 @@ export default function TerminalSettings({ visible, onClose, shells }: TerminalS
           </div>
         </Field>
 
-        <Field label="渲染模式">
+        <Field field="rendererType" label="渲染模式">
           <Select
             value={terminal.rendererType ?? 'canvas'}
             onChange={(v) => setTerminalPref({ rendererType: (v as 'canvas' | 'webgl') ?? 'canvas' })}
             style={{ width: '100%' }}
           >
-            <Select.Option value="canvas">Canvas（默认，兼容性好）</Select.Option>
+            <Select.Option value="canvas">Canvas（兼容性好）</Select.Option>
             <Select.Option value="webgl">WebGL（高性能，GPU 加速）</Select.Option>
           </Select>
           <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginTop: 4 }}>
@@ -204,7 +203,7 @@ export default function TerminalSettings({ visible, onClose, shells }: TerminalS
           </Typography.Text>
         </Field>
 
-        <Field label="快速滚动倍率（Alt+滚轮）">
+        <Field field="fastScrollSensitivity" label="快速滚动倍率（Alt+滚轮）">
           <InputNumber
             value={terminal.fastScrollSensitivity ?? 5}
             min={1}
@@ -217,9 +216,7 @@ export default function TerminalSettings({ visible, onClose, shells }: TerminalS
           />
         </Field>
 
-        <Divider margin="12px" />
-
-        <Field label="字母间距">
+        <Field field="letterSpacing" label="字母间距">
           <InputNumber
             value={terminal.letterSpacing ?? 0}
             min={0}
@@ -232,10 +229,10 @@ export default function TerminalSettings({ visible, onClose, shells }: TerminalS
           />
         </Field>
 
-        <Field label="字体粗细">
+        <Field field="fontWeight" label="字体粗细">
           <Select
             value={terminal.fontWeight ?? 'normal'}
-            onChange={(v) => setTerminalPref({ fontWeight: typeof v === 'string' ? v : 'normal' })}
+            onChange={(v) => setTerminalPref({ fontWeight: v as TerminalPreferences['fontWeight'] })}
             style={{ width: '100%' }}
           >
             <Select.Option value="normal">正常</Select.Option>
@@ -245,7 +242,7 @@ export default function TerminalSettings({ visible, onClose, shells }: TerminalS
           </Select>
         </Field>
 
-        <Field label="右键选词">
+        <Field field="rightClickSelectsWord" label="右键选词">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Switch
               checked={terminal.rightClickSelectsWord ?? false}
@@ -255,7 +252,7 @@ export default function TerminalSettings({ visible, onClose, shells }: TerminalS
           </div>
         </Field>
 
-        <Field label="最小对比度">
+        <Field field="minimumContrastRatio" label="最小对比度">
           <InputNumber
             value={terminal.minimumContrastRatio ?? 1}
             min={1}
@@ -271,10 +268,8 @@ export default function TerminalSettings({ visible, onClose, shells }: TerminalS
           </Typography.Text>
         </Field>
 
-        <Divider margin="12px" />
-
-        <Button icon={<RotateCcw size={14} />} onClick={() => setTerminalPref({ ...defaultTerminalPreferences, favorites: terminal.favorites })} block>
-          恢复默认（保留收藏）
+        <Button icon={<RotateCcw size={14} />} onClick={resetTerminalPreferences} disabled={!hasTerminalOverrides} block>
+          跟随系统默认（保留收藏）
         </Button>
       </div>
     </SideSheet>

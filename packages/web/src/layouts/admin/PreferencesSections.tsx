@@ -8,6 +8,7 @@ import type { ThemeMode } from '@/hooks/useTheme';
 import { THEME_COLOR_PRESETS } from '@/lib/theme-color';
 import { confirmDanger } from '@/utils/confirm';
 import { LoadingIndicator } from '@/components/PageLoading';
+import { PreferenceControl, PreferenceSection } from '@/components/settings/SettingRow';
 
 // 偏好设置面板各分区。所有分区组件都返回 Fragment，
 // 使设置块保持为外层 flex 容器的直接子节点（gap 布局不变）。
@@ -27,11 +28,11 @@ export function PrefsLayoutSection({
   navLayout,
 }: PrefsSectionBaseProps & Readonly<{ navLayout: NavLayout }>) {
   return (
-    <>
-      {prefSection('布局')}
+    <PreferenceSection title={prefSection('布局')}>
 
       {/* ── 导航布局 ── */}
       {matchesPref(['导航布局', '布局', '左侧菜单', '顶部菜单', '混合菜单', '双列菜单']) && (
+      <PreferenceControl path="navLayout">
       <div>
         <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 500, color: 'var(--semi-color-text-0)' }}>导航布局</div>
         <div className="auto-grid" style={{ ['--auto-grid-min' as string]: '150px', ['--auto-grid-cols' as string]: 3, ['--auto-grid-gap' as string]: '10px' }}>
@@ -53,10 +54,12 @@ export function PrefsLayoutSection({
           ))}
         </div>
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 内容宽度 ── */}
       {matchesPref(['内容宽度', '固定宽度', '居中', '内容区']) && (
+      <PreferenceControl path="contentWidth">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           固定内容宽度
@@ -66,16 +69,19 @@ export function PrefsLayoutSection({
         </span>
         <Switch checked={(preferences.contentWidth ?? 'fluid') === 'fixed'} onChange={(v) => setPreferences({ contentWidth: v ? 'fixed' : 'fluid' })} />
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── Logo 图标 ── */}
       {matchesPref(['Logo', 'Logo图标', '图标', '显示Logo']) && (
+      <PreferenceControl path="showLogo">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>显示 Logo 图标</span>
         <Switch checked={preferences.showLogo ?? true} onChange={(v) => setPreferences({ showLogo: v })} />
       </div>
+      </PreferenceControl>
       )}
-    </>
+    </PreferenceSection>
   );
 }
 
@@ -126,11 +132,11 @@ export function PrefsAppearanceSection({
   setThemeColor: (color: string) => void;
 }>) {
   return (
-    <>
-      {prefSection('外观')}
+    <PreferenceSection title={prefSection('外观')}>
 
       {/* ── 标签栏尺寸 ── */}
       {matchesPref(['标签栏尺寸', 'Tabs尺寸', 'Tabs 大小', '标签控件尺寸', 'small', 'medium', 'large', '外观']) && (
+      <PreferenceControl path="tabsSize">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           标签栏尺寸
@@ -148,10 +154,12 @@ export function PrefsAppearanceSection({
           <Radio value="large">大</Radio>
         </RadioGroup>
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 标签栏样式 ── */}
       {matchesPref(['标签栏样式', 'Tabs样式', 'Tabs 类型', 'line', 'button', 'card', 'slash', '外观']) && (
+      <PreferenceControl path="tabsType">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           标签栏样式
@@ -171,10 +179,12 @@ export function PrefsAppearanceSection({
           style={{ width: 120 }}
         />
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 颜色模式 ── */}
       {matchesPref(['颜色模式', '深色', '浅色', '系统', '主题模式']) && (
+      <PreferenceControl path="colorMode">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>颜色模式</span>
         <RadioGroup
@@ -190,48 +200,60 @@ export function PrefsAppearanceSection({
           <Radio value="system">系统</Radio>
         </RadioGroup>
       </div>
+      </PreferenceControl>
       )}
       {!isDark && matchesPref(['顶部栏深色', '深色', '深色模式', '顶部栏', '顶部导航']) && (
+      <PreferenceControl path="headerDarkMode">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>顶部栏深色模式</span>
         <Switch checked={preferences.headerDarkMode ?? false} onChange={(v) => setPreferences({ headerDarkMode: v })} />
       </div>
+      </PreferenceControl>
       )}
       {!isDark && matchesPref(['侧边栏深色', '深色', '深色模式', '侧边栏']) && (
+      <PreferenceControl path="sidebarDarkMode">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>侧边栏深色模式</span>
         <Switch checked={preferences.sidebarDarkMode ?? false} onChange={(v) => setPreferences({ sidebarDarkMode: v })} />
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 深色底色档位（仅深色模式下可调；分区深色区域同样跟随） ── */}
-      {isDark && matchesPref(['侧边栏底色', '底色', '色调', '深浅', '侧边栏']) && (
+      {(isDark || preferences.sidebarDarkMode) && matchesPref(['侧边栏底色', '底色', '色调', '深浅', '侧边栏']) && (
+      <PreferenceControl path="darkSidebarTone">
       <PrefDarkToneRow
         label="侧边栏底色"
         hint="标准与卡片、表格同色；更深会比标准再暗一档，让侧边栏从内容中分离出来"
         value={preferences.darkSidebarTone ?? 'bg-1'}
         onChange={(tone) => setPreferences({ darkSidebarTone: tone })}
       />
+      </PreferenceControl>
       )}
-      {isDark && matchesPref(['顶部底色', '底色', '色调', '深浅', '顶部', '顶栏', '标签栏', '面包屑']) && (
+      {(isDark || preferences.headerDarkMode) && matchesPref(['顶部底色', '底色', '色调', '深浅', '顶部', '顶栏', '标签栏', '面包屑']) && (
+      <PreferenceControl path="darkHeaderTone">
       <PrefDarkToneRow
         label="顶部底色"
         hint="作用于顶栏、头部、面包屑栏与标签栏；更深会让整条顶部区域比内容更暗"
         value={preferences.darkHeaderTone ?? 'bg-1'}
         onChange={(tone) => setPreferences({ darkHeaderTone: tone })}
       />
+      </PreferenceControl>
       )}
       {isDark && matchesPref(['主区域底色', '底色', '色调', '深浅', '主区域', '内容区', '画布']) && (
+      <PreferenceControl path="darkContentTone">
       <PrefDarkToneRow
         label="主区域底色"
         hint="作用于内容画布；更深时卡片与表格会从画布中浮起，形成明度层次"
         value={preferences.darkContentTone ?? 'bg-1'}
         onChange={(tone) => setPreferences({ darkContentTone: tone })}
       />
+      </PreferenceControl>
       )}
 
       {/* ── 主题色 ── */}
       {matchesPref(['主题颜色', '主题色', '颜色', '品牌色', '自定义颜色']) && (
+      <PreferenceControl path="themeColor">
       <div>
         <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 500, color: 'var(--semi-color-text-0)' }}>主题颜色</div>
         <div className="theme-color-picker">
@@ -278,10 +300,12 @@ export function PrefsAppearanceSection({
           </ColorPicker>
         </div>
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 圆角大小 ── */}
       {matchesPref(['圆角', '圆角大小', '直角', '边框圆角', 'radius', '外观']) && (
+      <PreferenceControl path="borderRadius">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           圆角大小
@@ -300,10 +324,12 @@ export function PrefsAppearanceSection({
           <Radio value="large">大</Radio>
         </RadioGroup>
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 界面缩放 ── */}
       {matchesPref(['界面缩放', '缩放', '字号', '字体大小', '放大', '缩小', '外观', '无障碍']) && (
+      <PreferenceControl path="uiScale">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
           界面缩放
@@ -318,10 +344,12 @@ export function PrefsAppearanceSection({
           style={{ width: 100 }}
         />
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 界面字体 ── */}
       {matchesPref(['字体', '界面字体', 'Inter', '思源', '等宽', '外观']) && (
+      <PreferenceControl path="fontFamily">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
           界面字体
@@ -336,10 +364,12 @@ export function PrefsAppearanceSection({
           style={{ width: 140 }}
         />
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 加载动画 ── */}
       {matchesPref(['加载动画', '加载效果', 'Loading', '圆点', '圆环', '方块', '律动条']) && (
+      <PreferenceControl path="loadingStyle">
       <div>
         <div className="loading-style-picker__heading">
           <span>加载动画</span>
@@ -370,10 +400,12 @@ export function PrefsAppearanceSection({
           })}
         </div>
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 无障碍 ── */}
       {matchesPref(['灰色', '灰色模式', '无障碍', '公祭日', '去色']) && (
+      <PreferenceControl path="grayscale">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           灰色模式
@@ -386,8 +418,10 @@ export function PrefsAppearanceSection({
           onChange={(v) => setPreferences({ grayscale: v, ...(v ? { colorBlind: false } : {}) })}
         />
       </div>
+      </PreferenceControl>
       )}
       {matchesPref(['色弱', '色弱模式', '无障碍', '对比度', '色觉']) && (
+      <PreferenceControl path="colorBlind">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           色弱模式
@@ -400,10 +434,12 @@ export function PrefsAppearanceSection({
           onChange={(v) => setPreferences({ colorBlind: v, ...(v ? { grayscale: false } : {}) })}
         />
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 减弱动效 ── */}
       {matchesPref(['动效', '动画', '减弱动效', '性能', '晕动', '过渡']) && (
+      <PreferenceControl path="reduceMotion">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           减弱动效
@@ -413,8 +449,9 @@ export function PrefsAppearanceSection({
         </span>
         <Switch checked={preferences.reduceMotion ?? false} onChange={(v) => setPreferences({ reduceMotion: v })} />
       </div>
+      </PreferenceControl>
       )}
-    </>
+    </PreferenceSection>
   );
 }
 
@@ -428,11 +465,11 @@ export function PrefsNavToolbarSection({
   quickChatEnabled,
 }: PrefsSectionBaseProps & Readonly<{ prefsSearch: string; quickChatEnabled: boolean }>) {
   return (
-    <>
-      {prefSection('导航与工具栏')}
+    <PreferenceSection title={prefSection('导航与工具栏')}>
 
       {/* ── 动态标题 ── */}
       {matchesPref(['动态标题', '浏览器标题', '页面标题', '标题']) && (
+      <PreferenceControl path="dynamicTitle">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           动态浏览器标题
@@ -442,10 +479,12 @@ export function PrefsNavToolbarSection({
         </span>
         <Switch checked={preferences.dynamicTitle ?? true} onChange={(v) => setPreferences({ dynamicTitle: v })} />
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 面包屑 ── */}
       {matchesPref(['面包屑', '面包屑导航', '导航栏', '路径导航']) && (
+      <PreferenceControl path="showBreadcrumb">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           显示面包屑导航
@@ -455,14 +494,18 @@ export function PrefsNavToolbarSection({
         </span>
         <Switch checked={preferences.showBreadcrumb} onChange={(v) => setPreferences({ showBreadcrumb: v })} />
       </div>
+      </PreferenceControl>
       )}
       {(preferences.showBreadcrumb || !!prefsSearch.trim()) && matchesPref(['面包屑图标', '图标', '面包屑']) && (
+      <PreferenceControl path="breadcrumbIcon">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>面包屑显示图标</span>
         <Switch checked={preferences.breadcrumbIcon ?? false} onChange={(v) => setPreferences({ breadcrumbIcon: v })} />
       </div>
+      </PreferenceControl>
       )}
       {(preferences.showBreadcrumb || !!prefsSearch.trim()) && matchesPref(['面包屑首页', '首页', '面包屑']) && (
+      <PreferenceControl path="breadcrumbShowHome">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           面包屑从首页开始
@@ -472,8 +515,10 @@ export function PrefsNavToolbarSection({
         </span>
         <Switch checked={preferences.breadcrumbShowHome ?? true} onChange={(v) => setPreferences({ breadcrumbShowHome: v })} />
       </div>
+      </PreferenceControl>
       )}
       {(preferences.showBreadcrumb || !!prefsSearch.trim()) && matchesPref(['面包屑可点击', '点击', '面包屑跳转', '面包屑']) && (
+      <PreferenceControl path="breadcrumbClickable">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           面包屑可点击
@@ -483,8 +528,10 @@ export function PrefsNavToolbarSection({
         </span>
         <Switch checked={preferences.breadcrumbClickable ?? true} onChange={(v) => setPreferences({ breadcrumbClickable: v })} />
       </div>
+      </PreferenceControl>
       )}
       {(preferences.showBreadcrumb || !!prefsSearch.trim()) && matchesPref(['面包屑子菜单', '子菜单', '面包屑悬浮', '面包屑展开']) && (
+      <PreferenceControl path="breadcrumbSubMenu">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           面包屑子菜单
@@ -494,34 +541,42 @@ export function PrefsNavToolbarSection({
         </span>
         <Switch checked={preferences.breadcrumbSubMenu ?? false} onChange={(v) => setPreferences({ breadcrumbSubMenu: v })} />
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 菜单搜索 ── */}
       {matchesPref(['菜单搜索', '搜索框', '搜索', '搜索菜单']) && (
+      <PreferenceControl path="showMenuSearch">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>显示菜单搜索框</span>
         <Switch checked={preferences.showMenuSearch ?? true} onChange={(v) => setPreferences({ showMenuSearch: v })} />
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 收藏 ── */}
       {matchesPref(['收藏', '收藏菜单', '收藏按钮', '显示收藏', '收藏入口', '快捷收藏']) && (
+      <PreferenceControl path="showFavorites">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>显示收藏入口</span>
         <Switch checked={preferences.showFavorites ?? false} onChange={(v) => setPreferences({ showFavorites: v })} />
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 全屏按钮 ── */}
       {matchesPref(['全屏', '全屏按钮', '显示全屏']) && (
+      <PreferenceControl path="showFullscreen">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>显示全屏按钮</span>
         <Switch checked={preferences.showFullscreen ?? true} onChange={(v) => setPreferences({ showFullscreen: v })} />
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 回到顶部按钮 ── */}
       {matchesPref(['回到顶部', 'BackTop', '返回顶部', '回到顶', '顶部按钮']) && (
+      <PreferenceControl path="showBackTop">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           显示回到顶部按钮
@@ -531,11 +586,13 @@ export function PrefsNavToolbarSection({
         </span>
         <Switch checked={preferences.showBackTop ?? true} onChange={(v) => setPreferences({ showBackTop: v })} />
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 快捷聊天 ── */}
       {quickChatEnabled && matchesPref(['快捷聊天', '聊天', 'AI助手', '聊天按钮', '快捷聊天按钮']) && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <PreferenceControl path="showQuickChat">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             显示快捷聊天按钮
             <Tooltip content="在页面右下角显示浮动聊天按钮，可快速唤起 AI 助手" position="right">
@@ -544,8 +601,9 @@ export function PrefsNavToolbarSection({
           </span>
           <Switch checked={preferences.showQuickChat ?? true} onChange={(v) => setPreferences({ showQuickChat: v })} />
         </div>
+      </PreferenceControl>
       )}
-    </>
+    </PreferenceSection>
   );
 }
 
@@ -558,11 +616,11 @@ export function PrefsSidebarSection({
   navLayout,
 }: PrefsSectionBaseProps & Readonly<{ navLayout: NavLayout }>) {
   return (
-    <>
-      {prefSection('侧边栏')}
+    <PreferenceSection title={prefSection('侧边栏')}>
 
       {/* ── 侧边栏宽度 ── */}
       {matchesPref(['侧边栏宽度', '侧边栏', '菜单宽度', '展开宽度']) && navLayout !== 'horizontal' && (
+      <PreferenceControl path="sidebarWidth">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
         <span style={{ flexShrink: 0 }}>侧边栏宽度</span>
         <InputNumber
@@ -576,10 +634,12 @@ export function PrefsSidebarSection({
           onChange={(v) => setPreferences({ sidebarWidth: Number(v) || 216 })}
         />
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 子菜单箭头位置 ── */}
       {matchesPref(['箭头', '展开箭头', '箭头位置', '展开收起', '子菜单箭头', '侧边栏']) && (
+      <PreferenceControl path="sidebarToggleIconPosition">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           子菜单箭头位置
@@ -596,10 +656,12 @@ export function PrefsSidebarSection({
           <Radio value="right">右侧</Radio>
         </RadioGroup>
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 侧边栏分组标题 sticky ── */}
       {matchesPref(['侧边栏', '分组标题', '滚动固定', '侧边栏分组']) && (
+      <PreferenceControl path="sidebarStickyScroll">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           侧边栏分组标题滚动固定
@@ -609,10 +671,12 @@ export function PrefsSidebarSection({
         </span>
         <Switch checked={preferences.sidebarStickyScroll ?? true} onChange={(v) => setPreferences({ sidebarStickyScroll: v })} />
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 侧栏手风琴展开 ── */}
       {matchesPref(['侧边栏', '手风琴', '排他展开', '侧栏排他']) && (
+      <PreferenceControl path="sidebarAccordion">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           侧栏排他展开
@@ -622,8 +686,10 @@ export function PrefsSidebarSection({
         </span>
         <Switch checked={preferences.sidebarAccordion ?? false} onChange={(v) => setPreferences({ sidebarAccordion: v })} />
       </div>
+      </PreferenceControl>
       )}
       {matchesPref(['悬浮展开', '侧边栏悬浮', '侧边栏', 'hover']) && (
+      <PreferenceControl path="sidebarHoverTrigger">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           悬浮展开侧边栏
@@ -633,8 +699,10 @@ export function PrefsSidebarSection({
         </span>
         <Switch checked={preferences.sidebarHoverTrigger ?? false} onChange={(v) => setPreferences({ sidebarHoverTrigger: v })} />
       </div>
+      </PreferenceControl>
       )}
       {matchesPref(['菜单滚动', '自动定位', '菜单', '滚动定位']) && (
+      <PreferenceControl path="scrollMenuIntoView">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           菜单自动滚动定位
@@ -644,8 +712,9 @@ export function PrefsSidebarSection({
         </span>
         <Switch checked={preferences.scrollMenuIntoView ?? true} onChange={(v) => setPreferences({ scrollMenuIntoView: v })} />
       </div>
+      </PreferenceControl>
       )}
-    </>
+    </PreferenceSection>
   );
 }
 
@@ -668,11 +737,11 @@ export function PrefsGeneralSection({
   openLockPasswordModal: (mode: 'set' | 'change') => void;
 }>) {
   return (
-    <>
-      {prefSection('通用')}
+    <PreferenceSection title={prefSection('通用')}>
 
       {/* ── 默认首页 ── */}
       {matchesPref(['默认首页', '首页', '登录跳转', '落地页', '默认页面', '登录页面']) && (
+      <PreferenceControl path="homePath">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
           登录默认页面
@@ -688,10 +757,12 @@ export function PrefsGeneralSection({
           optionList={homePathOptions}
         />
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 时间显示方式 ── */}
       {matchesPref(['时间显示', '相对时间', '绝对时间', '分钟前', '时间格式', '时间戳']) && (
+      <PreferenceControl path="timeDisplay">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           时间显示方式
@@ -708,10 +779,12 @@ export function PrefsGeneralSection({
           <Radio value="relative">相对</Radio>
         </RadioGroup>
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 一周起始日 ── */}
       {matchesPref(['一周起始日', '周一', '周日', '星期', '日历', '日期选择器', '起始日']) && (
+      <PreferenceControl path="weekStart">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           一周起始日
@@ -728,10 +801,12 @@ export function PrefsGeneralSection({
           <Radio value="sunday">周日</Radio>
         </RadioGroup>
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 聚焦时自动刷新 ── */}
       {matchesPref(['自动刷新', '聚焦', '切回', '窗口', '页签', '重新获取', '过期数据', 'refetch']) && (
+      <PreferenceControl path="refetchOnFocus">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           切回窗口时自动刷新数据
@@ -741,10 +816,12 @@ export function PrefsGeneralSection({
         </span>
         <Switch checked={preferences.refetchOnFocus ?? false} onChange={(v) => setPreferences({ refetchOnFocus: v })} />
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 页面加载进度条 ── */}
       {matchesPref(['进度条', '加载进度', '页面加载', '顶部进度', 'NProgress']) && (
+      <PreferenceControl path="showProgressBar">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           页面加载进度条
@@ -754,10 +831,12 @@ export function PrefsGeneralSection({
         </span>
         <Switch checked={preferences.showProgressBar ?? true} onChange={(v) => setPreferences({ showProgressBar: v })} />
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 全局快捷键 ── */}
       {matchesPref(['快捷键', '键盘', '热键', 'Alt', 'Ctrl', '组合键']) && (
+      <PreferenceControl path="enableShortcuts">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           启用全局快捷键
@@ -767,10 +846,12 @@ export function PrefsGeneralSection({
         </span>
         <Switch checked={preferences.enableShortcuts ?? true} onChange={(v) => setPreferences({ enableShortcuts: v })} />
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 页面状态同步到地址栏 ── */}
       {matchesPref(['地址栏', 'URL', '深链', '页面状态', '查询参数', '分享', '书签', '标签参数', 'tab参数', '选中项']) && (
+      <PreferenceControl path="syncPageStateToUrl">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           页面状态同步到地址栏
@@ -780,10 +861,12 @@ export function PrefsGeneralSection({
         </span>
         <Switch checked={preferences.syncPageStateToUrl ?? false} onChange={(v) => setPreferences({ syncPageStateToUrl: v })} />
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 退出登录确认 ── */}
       {matchesPref(['退出确认', '退出登录', '二次确认', '注销', '登出']) && (
+      <PreferenceControl path="confirmLogout">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           退出登录二次确认
@@ -793,10 +876,12 @@ export function PrefsGeneralSection({
         </span>
         <Switch checked={preferences.confirmLogout ?? true} onChange={(v) => setPreferences({ confirmLogout: v })} />
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 弹窗点击遮罩关闭 ── */}
       {matchesPref(['弹窗', '模态框', '遮罩', '蒙层', '点击关闭', 'maskClosable', '误触']) && (
+      <PreferenceControl path="modalClickMaskToClose">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           弹窗点击遮罩关闭
@@ -806,10 +891,12 @@ export function PrefsGeneralSection({
         </span>
         <Switch checked={preferences.modalClickMaskToClose ?? false} onChange={(v) => setPreferences({ modalClickMaskToClose: v })} />
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 文件默认视图 ── */}
       {matchesPref(['文件视图', '文件列表', '文件管理', '列表', '网格', '文件']) && (
+      <PreferenceControl path="filesViewMode">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>文件列表默认视图</span>
         <RadioGroup
@@ -821,10 +908,12 @@ export function PrefsGeneralSection({
           <Radio value="grid">网格</Radio>
         </RadioGroup>
       </div>
+      </PreferenceControl>
       )}
 
       {/* ── 锁屏 ── */}
       {matchesPref(['锁屏', '屏幕锁', '密码', '锁定']) && (
+      <PreferenceControl path="enableLockScreen">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           开启屏幕锁
@@ -844,23 +933,25 @@ export function PrefsGeneralSection({
           }}
         />
       </div>
+      </PreferenceControl>
       )}
-      {(preferences.enableLockScreen ?? false) && hasPassword() && matchesPref(['锁屏', '密码', '锁屏密码']) && (
+      {(preferences.enableLockScreen ?? false) && matchesPref(['锁屏', '密码', '锁屏密码']) && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>锁屏密码</span>
           <Button
             size="small"
             theme="light"
             onClick={() => {
-              openLockPasswordModal('change');
+              openLockPasswordModal(hasPassword() ? 'change' : 'set');
             }}
           >
-            修改密码
+            {hasPassword() ? '修改密码' : '设置密码'}
           </Button>
         </div>
       )}
       {(preferences.enableLockScreen ?? false) && hasPassword() && matchesPref(['自动锁屏', '锁屏', '无操作', '空闲', '闲置']) && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <PreferenceControl path="autoLockMinutes">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             无操作自动锁屏
             <Tooltip content="超过设定时长没有任何鼠标/键盘操作时自动锁定屏幕" position="right">
@@ -870,7 +961,7 @@ export function PrefsGeneralSection({
           <Select
             style={{ width: 110 }}
             value={autoLockMinutes}
-            onChange={(v) => setPreferences({ autoLockMinutes: v as number })}
+            onChange={(v) => setPreferences({ autoLockMinutes: v as UserPreferences['autoLockMinutes'] })}
             optionList={[
               { value: 0, label: '关闭' },
               { value: 5, label: '5 分钟' },
@@ -879,8 +970,9 @@ export function PrefsGeneralSection({
             ]}
           />
         </div>
+      </PreferenceControl>
       )}
-    </>
+    </PreferenceSection>
   );
 }
 
@@ -892,21 +984,24 @@ export function PrefsTableSection({
   setPreferences,
 }: PrefsSectionBaseProps) {
   return (
-    <>
-      {prefSection('表格')}
+    <PreferenceSection title={prefSection('表格')}>
 
       {/* ── 表格设置 ── */}
       {matchesPref(['表格', '边框', '斦马纹', '尺寸', '分页', '列设置', '显示表格', '启用斦马纹']) && (
-      <div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <>
+        <PreferenceControl path="tableBordered">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>显示表格边框</span>
             <Switch checked={preferences.tableBordered ?? true} onChange={(v) => setPreferences({ tableBordered: v })} />
           </div>
+        </PreferenceControl>
+        <PreferenceControl path="tableStriped">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>启用斑马纹</span>
             <Switch checked={preferences.tableStriped ?? false} onChange={(v) => setPreferences({ tableStriped: v })} />
           </div>
+        </PreferenceControl>
+        <PreferenceControl path="tableSize">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>表格尺寸</span>
             <RadioGroup
@@ -919,25 +1014,30 @@ export function PrefsTableSection({
               <Radio value="default">宽松</Radio>
             </RadioGroup>
           </div>
+        </PreferenceControl>
+        <PreferenceControl path="tablePageSize">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>默认分页大小</span>
             <Select
               value={preferences.tablePageSize ?? 10}
-              onChange={(v) => setPreferences({ tablePageSize: v as number })}
+              onChange={(v) => setPreferences({ tablePageSize: v as UserPreferences['tablePageSize'] })}
               style={{ width: 100 }}
               optionList={[10, 20, 50, 100].map((v) => ({ value: v, label: `${v} 条` }))}
             />
           </div>
+        </PreferenceControl>
+        <PreferenceControl path="showTableColumnSettings">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>显示表格列设置按钮</span>
             <Switch checked={preferences.showTableColumnSettings ?? true} onChange={(v) => setPreferences({ showTableColumnSettings: v })} />
           </div>
-        </div>
-      </div>
+        </PreferenceControl>
+      </>
       )}
 
       {/* ── 记住筛选条件 ── */}
       {matchesPref(['筛选', '筛选条件', '记住', '搜索条件', '恢复', '查询条件', '表格']) && (
+      <PreferenceControl path="rememberListFilters">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           记住列表筛选条件
@@ -953,8 +1053,9 @@ export function PrefsTableSection({
           }}
         />
       </div>
+      </PreferenceControl>
       )}
-    </>
+    </PreferenceSection>
   );
 }
 
@@ -967,17 +1068,19 @@ export function PrefsTabsSection({
   prefsSearch,
 }: PrefsSectionBaseProps & Readonly<{ prefsSearch: string }>) {
   return (
-    <>
-      {prefSection('标签页')}
+    <PreferenceSection title={prefSection('标签页')}>
 
       {/* ── 多标签页 ── */}
       {matchesPref(['多标签页', '标签页', '标签', '启用标签']) && (
+      <PreferenceControl path="enableTabs">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>启用多标签页</span>
         <Switch checked={preferences.enableTabs} onChange={(v) => setPreferences({ enableTabs: v })} />
       </div>
+      </PreferenceControl>
       )}
       {(preferences.enableTabs || !!prefsSearch.trim()) && matchesPref(['保存标签', '恢复标签', '标签页', '标签']) && (
+      <PreferenceControl path="keepTabs">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           保存标签页
@@ -987,8 +1090,10 @@ export function PrefsTabsSection({
         </span>
         <Switch checked={preferences.keepTabs ?? true} onChange={(v) => setPreferences({ keepTabs: v })} />
       </div>
+      </PreferenceControl>
       )}
       {(preferences.enableTabs || !!prefsSearch.trim()) && matchesPref(['页面缓存', 'keepalive', 'keep-alive', '缓存', '标签页', '标签']) && (
+      <PreferenceControl path="enablePageCache">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           页面缓存
@@ -998,14 +1103,18 @@ export function PrefsTabsSection({
         </span>
         <Switch checked={preferences.enablePageCache ?? true} onChange={(v) => setPreferences({ enablePageCache: v })} />
       </div>
+      </PreferenceControl>
       )}
       {(preferences.enableTabs || !!prefsSearch.trim()) && matchesPref(['标签图标', '图标', '标签页', '标签']) && (
+      <PreferenceControl path="showTabIcon">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>标签页显示图标</span>
         <Switch checked={preferences.showTabIcon} onChange={(v) => setPreferences({ showTabIcon: v })} />
       </div>
+      </PreferenceControl>
       )}
       {(preferences.enableTabs || !!prefsSearch.trim()) && matchesPref(['紧凑标签', '紧凑模式', '页签密度', '标签页', '标签']) && (
+      <PreferenceControl path="compactTabs">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           紧凑标签页
@@ -1015,14 +1124,18 @@ export function PrefsTabsSection({
         </span>
         <Switch checked={preferences.compactTabs ?? true} onChange={(v) => setPreferences({ compactTabs: v })} />
       </div>
+      </PreferenceControl>
       )}
       {(preferences.enableTabs || !!prefsSearch.trim()) && matchesPref(['标签切换器', '切换器', 'chevron', '标签页', '标签']) && (
+      <PreferenceControl path="showTabSwitcher">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>显示标签切换器</span>
         <Switch checked={preferences.showTabSwitcher ?? true} onChange={(v) => setPreferences({ showTabSwitcher: v })} />
       </div>
+      </PreferenceControl>
       )}
       {(preferences.enableTabs || !!prefsSearch.trim()) && matchesPref(['最大标签', '标签数量', '标签页', '标签']) && (
+      <PreferenceControl path="tabsMaxCount">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>最大标签数</span>
         <InputNumber
@@ -1033,8 +1146,10 @@ export function PrefsTabsSection({
           style={{ width: 100 }}
         />
       </div>
+      </PreferenceControl>
       )}
       {(preferences.enableTabs || !!prefsSearch.trim()) && matchesPref(['超限策略', 'FIFO', 'LRU', '关闭策略', '标签页', '标签']) && (
+      <PreferenceControl path="tabEvictPolicy">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           超限关闭策略
@@ -1051,8 +1166,10 @@ export function PrefsTabsSection({
           <Radio value="lru">LRU</Radio>
         </RadioGroup>
       </div>
+      </PreferenceControl>
       )}
       {(preferences.enableTabs || !!prefsSearch.trim()) && matchesPref(['插入位置', '新标签位置', '标签插入', '标签页', '标签']) && (
+      <PreferenceControl path="openTabBehavior">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           新标签插入位置
@@ -1069,8 +1186,10 @@ export function PrefsTabsSection({
           <Radio value="insert-next">当前后方</Radio>
         </RadioGroup>
       </div>
+      </PreferenceControl>
       )}
       {(preferences.enableTabs || !!prefsSearch.trim()) && matchesPref(['双击标签', '双击', '标签行为', '标签页', '标签']) && (
+      <PreferenceControl path="tabDoubleClickAction">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>双击标签行为</span>
         <RadioGroup
@@ -1083,8 +1202,10 @@ export function PrefsTabsSection({
           <Radio value="none">无</Radio>
         </RadioGroup>
       </div>
+      </PreferenceControl>
       )}
       {(preferences.enableTabs || !!prefsSearch.trim()) && matchesPref(['标签风格', '风格', '线条', '胶囊', '卡片', 'chrome', '谷歌', '标签页', '标签']) && (
+      <PreferenceControl path="tabStyle">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>标签页风格</span>
         <RadioGroup
@@ -1098,8 +1219,10 @@ export function PrefsTabsSection({
           <Radio value="chrome">谷歌</Radio>
         </RadioGroup>
       </div>
+      </PreferenceControl>
       )}
       {(preferences.enableTabs || !!prefsSearch.trim()) && matchesPref(['标签动画', '动画', '淡入', '滑入', '缩放', '标签页', '标签']) && (
+      <PreferenceControl path="tabAnimation">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>标签页动画</span>
         <RadioGroup
@@ -1132,8 +1255,10 @@ export function PrefsTabsSection({
           })}
         </RadioGroup>
       </div>
+      </PreferenceControl>
       )}
-      {(preferences.enableTabs || !!prefsSearch.trim()) && matchesPref(['路由动画', '切换动画', '动画', '淡入', '上滑', '左滑']) && (
+      {matchesPref(['路由动画', '切换动画', '动画', '淡入', '上滑', '左滑']) && (
+      <PreferenceControl path="routeAnimation">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>路由切换动画</span>
         <RadioGroup
@@ -1147,8 +1272,9 @@ export function PrefsTabsSection({
           <Radio value="slide-left">左滑</Radio>
         </RadioGroup>
       </div>
+      </PreferenceControl>
       )}
-    </>
+    </PreferenceSection>
   );
 }
 
@@ -1188,8 +1314,8 @@ export function PrefsActionsSection({
         block
         onClick={() => {
           confirmDanger({
-            title: '重置偏好设置',
-            content: '确定要将所有偏好设置恢复为默认值吗？',
+            title: '恢复系统默认',
+            content: '清除个人偏好覆盖，重新跟随系统当前默认值。确定恢复吗？',
             okText: '重置',
             cancelText: '取消',
             onOk: () => {
@@ -1198,7 +1324,7 @@ export function PrefsActionsSection({
           });
         }}
       >
-        重置所有设置
+        恢复系统默认
       </Button>
     </div>
   );

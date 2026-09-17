@@ -18,6 +18,7 @@ import {
   type SaveNotificationSettingsInput,
 } from '@zenith/shared/messaging';
 import { FormTimezoneSelect } from '@/components/FormTimezoneSelect';
+import { PreferenceControl } from '@/components/settings/SettingRow';
 import {
   useNotificationMatrix,
   useNotificationSettings,
@@ -53,20 +54,18 @@ function DesktopNotificationControls({ enabled, content, onChange, onContentChan
   const [permission, setPermission] = useState<DesktopNotificationPermission>(desktopNotificationPermission);
   const [requesting, setRequesting] = useState(false);
 
-  const handleToggle = async (checked: boolean) => {
-    if (!checked) {
-      onChange(false);
-      return;
-    }
+  const requestPermission = async () => {
     setRequesting(true);
     const result = await requestDesktopNotificationPermission();
     setRequesting(false);
     setPermission(result);
-    if (result === 'granted') {
-      onChange(true);
-      return;
-    }
-    Toast.warning(result === 'unsupported' ? '当前浏览器不支持桌面通知' : '浏览器已拒绝通知权限，请在地址栏站点设置中允许通知后再开启');
+    if (result !== 'granted') Toast.warning(result === 'unsupported' ? '当前浏览器不支持桌面通知' : '浏览器已拒绝通知权限，请在地址栏站点设置中允许通知后再开启');
+    return result;
+  };
+
+  const handleToggle = async (checked: boolean) => {
+    if (!checked) { onChange(false); return; }
+    if (await requestPermission() === 'granted') onChange(true);
   };
 
   const handleTest = () => {
@@ -77,8 +76,10 @@ function DesktopNotificationControls({ enabled, content, onChange, onContentChan
   const blocked = permission === 'denied' || permission === 'unsupported';
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-      <Switch checked={enabled && permission === 'granted'} loading={requesting} onChange={(v) => void handleToggle(v)} aria-label="桌面通知" />
-      <Text>桌面通知</Text>
+      <PreferenceControl path="desktopNotification" inline>
+        <Switch checked={enabled && permission === 'granted'} loading={requesting} onChange={(v) => void handleToggle(v)} aria-label="桌面通知" />
+        <Text>桌面通知</Text>
+      </PreferenceControl>
       {blocked && (
         <Text type="tertiary" size="small">
           {permission === 'unsupported' ? '当前浏览器不支持' : '浏览器已拒绝授权，需在站点设置中允许通知'}
@@ -87,6 +88,10 @@ function DesktopNotificationControls({ enabled, content, onChange, onContentChan
       {enabled && permission === 'granted' && (
         <Button theme="light" icon={<BellRing size={14} />} onClick={handleTest}>发送测试通知</Button>
       )}
+      {permission !== 'granted' && permission !== 'unsupported' ? (
+        <Button theme="light" loading={requesting} onClick={() => void requestPermission()}>授权浏览器通知</Button>
+      ) : null}
+      <PreferenceControl path="desktopNotificationContent" inline>
       <Select
         value={content}
         onChange={(value) => onContentChange(value as 'summary' | 'type')}
@@ -94,6 +99,7 @@ function DesktopNotificationControls({ enabled, content, onChange, onContentChan
         style={{ width: 160 }}
         aria-label="桌面通知内容预览"
       />
+      </PreferenceControl>
     </div>
   );
 }
@@ -161,7 +167,7 @@ export default function NotificationSettingsTab() {
   const saveSettings = useSaveNotificationSettings();
   const [digestMode, setDigestMode] = useState<string>('realtime');
   // 提示音是客户端播放偏好：存用户偏好（跟随账号，无需服务端字段），即改即存
-  const { preferences, setPreferences } = usePreferences();
+  const { preferences, setPreferences, canEditPreference, hasManagedPreferences } = usePreferences();
 
   useEffect(() => {
     if (settingsQuery.data) setDigestMode(settingsQuery.data.digestMode);
@@ -199,6 +205,7 @@ export default function NotificationSettingsTab() {
 
   return (
     <div className="profile-section">
+      {hasManagedPreferences ? <Banner type="info" closeIcon={null} description="部分偏好由管理员统一管理；浏览器通知授权仍需在当前设备完成。" style={{ marginBottom: 16 }} /> : null}
       <div className="section-title">全局设置</div>
       {settings?.globalMuted && (
         <Banner type="warning" description="全局静音已开启：除必达通知外，所有渠道都不会向你发送通知。" style={{ marginBottom: 12 }} />
@@ -236,17 +243,21 @@ export default function NotificationSettingsTab() {
         </div>
       </Form>
 
+      {preferences.notificationSound || canEditPreference('notificationSound') || canEditPreference('notificationSoundStyle') ? <>
       <div className="section-title" style={{ marginTop: 32 }}>提醒音效</div>
       <Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 8 }}>
         站内信与公告实时到达时播放提示音，跟随账号生效，即改即存；浏览器要求页面有过交互后才能出声，可先点「试听」。
       </Text>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <PreferenceControl path="notificationSound" inline>
         <Switch
           checked={preferences.notificationSound}
           onChange={(checked) => setPreferences({ notificationSound: checked })}
           aria-label="播放提示音"
         />
         <Text>播放提示音</Text>
+        </PreferenceControl>
+        <PreferenceControl path="notificationSoundStyle" inline>
         <Select
           value={preferences.notificationSoundStyle}
           optionList={NOTIFICATION_SOUND_STYLE_OPTIONS}
@@ -256,14 +267,16 @@ export default function NotificationSettingsTab() {
           }}
           style={{ width: 140 }}
         />
-        <Button
+        </PreferenceControl>
+        {preferences.notificationSound ? <Button
           theme="light"
           icon={<Volume2 size={14} />}
           onClick={() => playNotificationSound(preferences.notificationSoundStyle)}
         >
           试听
-        </Button>
+        </Button> : null}
       </div>
+      </> : null}
 
       <div className="section-title" style={{ marginTop: 32 }}>桌面通知</div>
       <Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 8 }}>

@@ -9,13 +9,16 @@ import {
   isSettingsModuleKey,
   type SettingsModuleKey,
   type SettingsModuleMeta,
+  type UiSettings,
 } from '@zenith/shared/settings';
+import { getPreferenceValue, preferenceDefinitions } from '@zenith/shared/preferences';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { NavListItem, NavListPanel } from '@/components/NavListPanel';
 import { SchemaForm } from '@/components/settings/SchemaForm';
 import { useUrlSelectionState } from '@/hooks/useUrlSelectionState';
 import { useSaveSettings, useSettings, useSettingsModules } from '@/hooks/queries/settings';
 import { ApiError } from '@/lib/query';
+import { PreferencePolicyEditor } from './PreferencePolicyEditor';
 
 const { Text, Title } = Typography;
 
@@ -106,6 +109,12 @@ function ModuleDetail({ module, meta }: { readonly module: SettingsModuleKey; re
   useEffect(() => { setDraft(null); }, [envelope?.version]);
   const value = useMemo(() => (draft ?? (envelope?.effective as Record<string, unknown> | undefined) ?? null), [draft, envelope]);
   const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(envelope?.effective);
+  const uiValue = module === 'ui' && value ? value as UiSettings : null;
+  const savedUi = module === 'ui' && envelope ? envelope.effective as UiSettings : null;
+  const changedPreferences = uiValue && savedUi ? preferenceDefinitions.filter(({ path }) =>
+    getPreferenceValue(uiValue.preferences.defaults, path) !== getPreferenceValue(savedUi.preferences.defaults, path)
+    || getPreferenceValue(uiValue.preferences.allowUserOverride, path) !== getPreferenceValue(savedUi.preferences.allowUserOverride, path)) : [];
+  const forcedChanges = changedPreferences.filter(({ path }) => uiValue && !getPreferenceValue(uiValue.preferences.allowUserOverride, path)).length;
 
   async function handleSave() {
     if (!envelope || !value) return;
@@ -130,7 +139,7 @@ function ModuleDetail({ module, meta }: { readonly module: SettingsModuleKey; re
 
   return (
     <MasterDetailLayout.Body padding={24}>
-      <div style={{ maxWidth: 760 }}>
+      <div style={{ maxWidth: module === 'ui' ? 1040 : 760 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 8 }}>
           <div>
             <Title heading={5} style={{ margin: 0 }}>{def.title}</Title>
@@ -163,17 +172,25 @@ function ModuleDetail({ module, meta }: { readonly module: SettingsModuleKey; re
         {!meta.page && !meta.canWrite ? (
           <Banner type="warning" closeIcon={null} description={meta.scope === 'platform' ? '平台级设置仅平台管理员可修改，当前为只读。' : '当前账号没有修改权限，当前为只读。'} />
         ) : null}
+        {changedPreferences.length > 0 ? <Banner type="info" closeIcon={null} description={`待保存 ${changedPreferences.length} 项偏好策略，其中 ${forcedChanges} 项将统一使用系统值；允许修改的项目保留用户已有选择。`} /> : null}
 
         <Spin spinning={query.isLoading}>
           {envelope && value ? (
+            <>
             <SchemaForm
-              schema={def.schema}
+              schema={module === 'ui' ? SETTINGS_MODULES.ui.schema.omit({ preferences: true }) : def.schema}
               value={value}
               inheritedValue={envelope.inherited as Record<string, unknown>}
-              onChange={setDraft}
+              onChange={(next) => setDraft({ ...value, ...next })}
               disabled={Boolean(meta.page) || !meta.canWrite}
               enumLabels={ENUM_LABELS}
             />
+            {uiValue ? <PreferencePolicyEditor
+              value={uiValue.preferences}
+              onChange={(preferences) => setDraft({ ...value, preferences })}
+              disabled={!meta.canWrite}
+            /> : null}
+            </>
           ) : null}
         </Spin>
       </div>

@@ -1,3 +1,4 @@
+import { createPreferencesContext } from '@/test-utils/preferences';
 /**
  * useListSearch 契约测试。
  *
@@ -12,7 +13,6 @@ import { act, renderHook } from '@testing-library/react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { createTestQueryClient, isInvalidated } from '@/test-utils/query-harness';
 import { PreferencesContext, defaultPreferences } from '@/hooks/usePreferences';
-import type { PreferencesContextValue } from '@/hooks/usePreferences';
 import { readListFilterSnapshot, writeListFilterSnapshot } from '@/lib/list-filter-memory';
 import { useListSearch } from './useListSearch';
 
@@ -30,11 +30,7 @@ function setup(options?: Partial<Parameters<typeof useListSearch<SearchParams>>[
   client.setQueryData([...listKey, { page: 1 }], { list: [], total: 0 });
   client.setQueryData([...otherKey, { page: 1 }], { list: [], total: 0 });
 
-  const preferences = {
-    preferences: { ...defaultPreferences, ...prefOverrides },
-    updatePreferences: vi.fn(),
-    resetPreferences: vi.fn(),
-  } as unknown as PreferencesContextValue;
+  const preferences = createPreferencesContext(prefOverrides);
 
   function Wrapper({ children }: { readonly children: ReactNode }) {
     return (
@@ -184,7 +180,7 @@ describe('页码联动', () => {
 
   it('resetKey 变化时回到第 1 页、条件保留；重渲染但键不变则页码不动', () => {
     const client = createTestQueryClient();
-    const preferences = { preferences: defaultPreferences, updatePreferences: vi.fn(), resetPreferences: vi.fn() } as unknown as PreferencesContextValue;
+    const preferences = createPreferencesContext();
     const view = renderHook(
       ({ scope }: { scope: number }) => useListSearch<SearchParams>({ defaults, listKey, resetKey: scope }),
       {
@@ -211,7 +207,7 @@ describe('页码联动', () => {
 
   it('resetKey 为数组时按元素比较：同值新数组不重置，任一元素变化才重置', () => {
     const client = createTestQueryClient();
-    const preferences = { preferences: defaultPreferences, updatePreferences: vi.fn(), resetPreferences: vi.fn() } as unknown as PreferencesContextValue;
+    const preferences = createPreferencesContext();
     const view = renderHook(
       ({ spaceId, folderId }: { spaceId: number; folderId: number | null }) => useListSearch<SearchParams>({ defaults, listKey, resetKey: [spaceId, folderId] }),
       {

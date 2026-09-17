@@ -67,7 +67,14 @@ export function usePagination(options?: number | UsePaginationOptions): UsePagin
   const { preferences } = usePreferences();
   const defaultPageSize = overrideDefaultPageSize ?? preferences.tablePageSize ?? 10;
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(defaultPageSize);
+  // 未在本页选择过条数时持续继承默认值，覆盖策略冷加载及在线变更；临时选择后保持本页选择。
+  const [selectedPageSize, setPageSize] = useState<number | null>(null);
+  const pageSize = selectedPageSize ?? defaultPageSize;
+  const [previousDefaultPageSize, setPreviousDefaultPageSize] = useState(defaultPageSize);
+  if (previousDefaultPageSize !== defaultPageSize) {
+    setPreviousDefaultPageSize(defaultPageSize);
+    if (selectedPageSize === null) setPage(1);
+  }
 
   // 作用域切换回第 1 页：按 React「根据 prop 变化调整状态」的约定在渲染期派生，
   // 新作用域的首个请求就带 page=1，而不是先用旧页码请求一次再由 effect 纠正

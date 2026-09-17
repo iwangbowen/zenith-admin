@@ -1,3 +1,4 @@
+import { createPreferencesContext } from '@/test-utils/preferences';
 /**
  * useListPage 契约测试：搜索状态 → 筛选映射 → 列表查询 → 表格 props 一次接好，
  * 锁住「查询参数只含 page / pageSize + compact 后的 toQuery 结果」「查询 / 重置回源」「表格接线含分页与多选」。
@@ -7,7 +8,7 @@ import type { ReactNode } from 'react';
 import { act, renderHook } from '@testing-library/react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { createTestQueryClient, isInvalidated } from '@/test-utils/query-harness';
-import { PreferencesContext, defaultPreferences, type PreferencesContextValue } from '@/hooks/usePreferences';
+import { PreferencesContext } from '@/hooks/usePreferences';
 import * as z from 'zod';
 import { contractKey } from '@/lib/contract-query';
 import { dateRangeQuery, defineContract, entityStatusQuery, idParam, keywordQuery, op, paginated, paginationQuery } from '@zenith/shared/core';
@@ -26,7 +27,7 @@ const useListMock = vi.fn((params: { page: number; pageSize: number; keyword?: s
 }));
 
 function createWrapper(client: ReturnType<typeof createTestQueryClient>) {
-  const preferences = { preferences: defaultPreferences, updatePreferences: vi.fn(), resetPreferences: vi.fn() } as unknown as PreferencesContextValue;
+  const preferences = createPreferencesContext();
   return function Wrapper({ children }: { readonly children: ReactNode }) {
     return (
       <QueryClientProvider client={client}>

@@ -226,7 +226,7 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
   refreshLoading = false,
   ...tableProps
 }: Readonly<ConfigurableTableProps<RecordType>>) {
-  const { preferences } = usePreferences();
+  const { preferences, canOverridePreference, canEditPreference } = usePreferences();
   const isMobile = useIsMobile();
   const {
     bordered, className, onRow, size, pagination,
@@ -333,9 +333,9 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
     setTableSettings(readTableDisplaySettings(tableDisplayKey));
   }, [tableDisplayKey]);
 
-  const effectiveBordered = tableSettings.bordered ?? preferences.tableBordered ?? bordered;
-  const effectiveStriped = tableSettings.striped ?? preferences.tableStriped ?? false;
-  const effectiveSize = tableSettings.size ?? preferences.tableSize ?? size;
+  const effectiveBordered = canOverridePreference('tableBordered') ? tableSettings.bordered ?? preferences.tableBordered ?? bordered : preferences.tableBordered;
+  const effectiveStriped = canOverridePreference('tableStriped') ? tableSettings.striped ?? preferences.tableStriped ?? false : preferences.tableStriped;
+  const effectiveSize = canOverridePreference('tableSize') ? tableSettings.size ?? preferences.tableSize ?? size : preferences.tableSize;
 
   const updateHiddenKeys = useCallback((updater: (prev: string[]) => string[]) => {
     setHiddenKeys((prev) => {
@@ -486,14 +486,14 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
     <div className="table-display-settings-panel">
       <div className="table-display-settings-title">表格显示</div>
       <div className="table-display-settings-list">
-        <div className="table-display-settings-item">
+        {canEditPreference('tableBordered') && <div className="table-display-settings-item">
           <span>显示表格边框</span>
           <Switch size="small" checked={!!effectiveBordered} onChange={(checked) => updateTableSettings({ bordered: checked })} />
-        </div>
-        <div className="table-display-settings-item">
+        </div>}
+        {canEditPreference('tableStriped') && <div className="table-display-settings-item">
           <span>启用斑马纹</span>
           <Switch size="small" checked={!!effectiveStriped} onChange={(checked) => updateTableSettings({ striped: checked })} />
-        </div>
+        </div>}
       </div>
       <div className="table-display-settings-footer">
         <Button
@@ -533,7 +533,7 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
             />
           </Dropdown>
         )}
-        <Dropdown trigger="click" render={sizePanelContent}>
+        {canEditPreference('tableSize') && <Dropdown trigger="click" render={sizePanelContent}>
           <Button
             type="tertiary"
             theme="borderless"
@@ -541,8 +541,8 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
             aria-label="表格尺寸"
             title="表格尺寸"
           />
-        </Dropdown>
-        <Dropdown trigger="click" render={displaySettingsPanelContent}>
+        </Dropdown>}
+        {(canEditPreference('tableBordered') || canEditPreference('tableStriped')) && <Dropdown trigger="click" render={displaySettingsPanelContent}>
           <Button
             type="tertiary"
             theme="borderless"
@@ -550,7 +550,7 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
             aria-label="表格显示设置"
             title="表格显示设置"
           />
-        </Dropdown>
+        </Dropdown>}
         <Button
           type="tertiary"
           theme="borderless"

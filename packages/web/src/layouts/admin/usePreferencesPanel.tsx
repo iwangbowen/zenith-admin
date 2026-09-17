@@ -2,13 +2,11 @@ import { useCallback, useState } from 'react';
 import { Toast } from '@douyinfe/semi-ui';
 import { textMatches } from '@/utils/pinyin';
 import { copyTextWithToast } from '@/utils/clipboard';
-import { sanitizeImportedPreferences, type UserPreferences } from '@/hooks/usePreferences';
+import { sanitizeImportedPreferences, usePreferences } from '@/hooks/usePreferences';
 
 // 偏好设置面板：搜索过滤、分区标题、复制 / 导入偏好
-export function usePreferencesPanel(
-  preferences: UserPreferences,
-  setPreferences: (prefs: Partial<UserPreferences>) => void,
-) {
+export function usePreferencesPanel() {
+  const { overrides, setPreferences } = usePreferences();
   const [prefsVisible, setPrefsVisible] = useState(false);
   const [prefsSearch, setPrefsSearch] = useState('');
 
@@ -23,8 +21,8 @@ export function usePreferencesPanel(
   ), [prefsSearch]);
 
   const handleCopyPreferences = useCallback(() => {
-    void copyTextWithToast(JSON.stringify(preferences, null, 2), { success: '偏好设置已复制到剪贴板', error: '复制失败，请重试' });
-  }, [preferences]);
+    void copyTextWithToast(JSON.stringify({ overrides }, null, 2), { success: '偏好设置已复制到剪贴板', error: '复制失败，请重试' });
+  }, [overrides]);
 
   // ─── 导入偏好 ─────────────────────────────────────────────────────────────
   const [importPrefsVisible, setImportPrefsVisible] = useState(false);
@@ -37,15 +35,16 @@ export function usePreferencesPanel(
       Toast.error('JSON 解析失败，请检查格式');
       return;
     }
-    const sanitized = sanitizeImportedPreferences(parsed);
+    const sanitized = sanitizeImportedPreferences(parsed && typeof parsed === 'object' && 'overrides' in parsed ? parsed.overrides : null);
     if (!sanitized) {
       Toast.error('未识别到有效的偏好设置字段');
       return;
     }
-    setPreferences(sanitized);
+    const result = setPreferences(sanitized);
     setImportPrefsVisible(false);
     setImportPrefsText('');
-    Toast.success(`已导入 ${Object.keys(sanitized).length} 项设置`);
+    if (result.applied > 0) Toast.success(`已导入 ${result.applied} 项设置${result.skipped ? `，跳过 ${result.skipped} 项系统管理设置` : ''}`);
+    else Toast.info('所选设置由系统管理，未导入任何修改');
   }, [importPrefsText, setPreferences]);
 
   return {

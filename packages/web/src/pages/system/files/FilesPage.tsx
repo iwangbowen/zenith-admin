@@ -113,7 +113,7 @@ export default function FilesPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['list', 'stats'] as const, 'list');
   const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
-  const { preferences, setPreferences } = usePreferences();
+  const { preferences, setPreferences, canEditPreference } = usePreferences();
   interface SearchParams {
     keyword: string;
     provider?: string;
@@ -164,6 +164,7 @@ export default function FilesPage() {
   const detailFileLoading = detailQuery.isFetching;
 
   const toggleViewMode = (mode: 'list' | 'grid') => {
+    if (!canEditPreference('filesViewMode')) return;
     isInternalToggleRef.current = true;
     setPreferences({ filesViewMode: mode });
     const newPageSize = mode === 'grid' ? FILE_GRID_PAGE_SIZE : FILE_LIST_PAGE_SIZE;
@@ -422,7 +423,7 @@ export default function FilesPage() {
             <Text type="danger">未配置默认文件服务，请先前往"文件配置"设置。</Text>
           )}
         </Space>
-        <Space spacing={0}>
+        {canEditPreference('filesViewMode') && <Space spacing={0}>
           <Button
             size="small"
             theme={viewMode === 'list' ? 'solid' : 'light'}
@@ -439,7 +440,7 @@ export default function FilesPage() {
             style={{ borderRadius: '0 4px 4px 0' }}
             onClick={() => toggleViewMode('grid')}
           />
-        </Space>
+        </Space>}
       </div>
 
       <AppModal

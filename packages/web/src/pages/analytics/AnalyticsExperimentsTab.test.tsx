@@ -1,9 +1,10 @@
+import { createPreferencesContext } from '@/test-utils/preferences';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { desktopToolbar } from '@/test-utils/toolbar';
 import type { AnalyticsExperiment } from '@zenith/shared/analytics';
-import { PreferencesContext, defaultPreferences } from '@/hooks/usePreferences';
+import { PreferencesContext } from '@/hooks/usePreferences';
 
 const mockExperiment = vi.hoisted<AnalyticsExperiment>(() => ({
   id: 1,
@@ -47,7 +48,7 @@ import AnalyticsExperimentsTab, { toApiDateTime } from './AnalyticsExperimentsTa
 
 function renderWithPreferences() {
   return render(
-    <PreferencesContext.Provider value={{ preferences: defaultPreferences, setPreferences: vi.fn(), resetPreferences: vi.fn(), ready: true }}>
+    <PreferencesContext.Provider value={createPreferencesContext()}>
       <AnalyticsExperimentsTab />
     </PreferencesContext.Provider>,
   );

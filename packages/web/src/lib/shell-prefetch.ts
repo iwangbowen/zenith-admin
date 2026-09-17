@@ -4,6 +4,7 @@ import { settingsContract } from '@zenith/shared/settings';
 import { apiQueryOptions } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 import { userMenuTreeQueryOptions } from '@/hooks/queries/menus';
+import { preferencesQueryOptions } from '@/hooks/queries/preferences';
 import { prewarmLucideIcons } from '@/utils/icons';
 
 /**
@@ -23,5 +24,6 @@ export function prefetchAdminShell(queryClient: QueryClient): void {
   void import('@/layouts/AdminLayout').catch(() => {});
   void import('@/pages/dashboard/DashboardPage').catch(() => {});
   void queryClient.prefetchQuery(userMenuTreeQueryOptions());
+  void queryClient.prefetchQuery(preferencesQueryOptions());
   void queryClient.prefetchQuery(apiQueryOptions(settingsContract.me, { staleTime: LOOKUP_STALE_TIME, requestOptions: { silent: true } }));
 }

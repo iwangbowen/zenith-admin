@@ -3,6 +3,7 @@ import { Badge, Dropdown } from '@douyinfe/semi-ui';
 import { Bell, Files, Megaphone, MoreHorizontal } from 'lucide-react';
 import type { NavigateFunction } from 'react-router-dom';
 import type { ThemeMode } from '@/hooks/useTheme';
+import { usePreferences } from '@/hooks/usePreferences';
 import { themeLabelMap } from './constants';
 
 // 颜色模式切换下拉
@@ -13,6 +14,8 @@ export function ThemeModeDropdown({
   mode: ThemeMode;
   handleThemeModeChange: (newMode: ThemeMode) => void;
 }>) {
+  const { canEditPreference } = usePreferences();
+  if (!canEditPreference('colorMode')) return null;
   return (
     <Dropdown
       position="bottomRight"
@@ -76,6 +79,7 @@ export function MoreDropdown({
   mode: ThemeMode;
   handleThemeModeChange: (newMode: ThemeMode) => void;
 }>) {
+  const { canEditPreference } = usePreferences();
   return (
     <div className="admin-header-action admin-header-action--more">
       <Dropdown
@@ -95,13 +99,15 @@ export function MoreDropdown({
             >
               我的消息{unreadCount > 0 && <Badge count={unreadCount} overflowCount={99} style={{ marginLeft: 6 }} />}
             </Dropdown.Item>
-            <Dropdown.Divider />
-            <Dropdown.Title>颜色模式</Dropdown.Title>
-            {(['light', 'dark', 'system'] as ThemeMode[]).map((m) => (
+            {canEditPreference('colorMode') ? <>
+              <Dropdown.Divider />
+              <Dropdown.Title>颜色模式</Dropdown.Title>
+              {(['light', 'dark', 'system'] as ThemeMode[]).map((m) => (
               <Dropdown.Item key={m} icon={themeLabelMap[m].icon} active={mode === m} onClick={() => handleThemeModeChange(m)}>
                 {themeLabelMap[m].label}
               </Dropdown.Item>
-            ))}
+              ))}
+            </> : null}
           </Dropdown.Menu>
         }
       >

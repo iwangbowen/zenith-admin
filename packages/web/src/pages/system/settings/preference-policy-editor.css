@@ -1,0 +1,118 @@
+.preference-policy-editor {
+  container-type: inline-size;
+}
+
+.preference-policy-editor__intro {
+  margin: 12px 0;
+}
+
+.preference-policy-editor__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0 4px;
+  color: var(--semi-color-text-2);
+  font-size: 12px;
+}
+
+.preference-policy-editor__controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px 32px;
+  align-items: center;
+  gap: 12px;
+  width: 340px;
+  max-width: 100%;
+}
+
+.preference-policy-editor__head .preference-policy-editor__controls > :nth-child(2) {
+  text-align: center;
+}
+
+.preference-policy-editor__row > div > :first-child {
+  flex: 1 1 200px;
+}
+
+.preference-policy-editor__row > div > :last-child {
+  max-width: 100%;
+}
+
+.preference-policy-editor__description {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.preference-policy-editor__hint {
+  color: var(--semi-color-text-2);
+}
+
+.preference-policy-editor__value,
+.preference-policy-editor__color {
+  min-width: 0;
+}
+
+.preference-policy-editor__value > .semi-select,
+.preference-policy-editor__value > .semi-input-number,
+.preference-policy-editor__value > .semi-input-wrapper {
+  width: 100%;
+}
+
+.preference-policy-editor__override {
+  text-align: center;
+}
+
+.preference-policy-editor__color {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preference-policy-editor__color > .semi-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.preference-policy-editor__swatch {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--semi-color-border);
+  border-radius: var(--semi-border-radius-small);
+  cursor: pointer;
+}
+
+.preference-policy-editor__swatch:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.preference-policy-editor__mobile-label {
+  display: none;
+  margin-bottom: 6px;
+  color: var(--semi-color-text-2);
+  font-size: 12px;
+}
+
+@container (width < 600px) {
+  .preference-policy-editor__head {
+    display: none;
+  }
+
+  .preference-policy-editor__row > div > :first-child,
+  .preference-policy-editor__row > div > :last-child {
+    flex-basis: 100%;
+  }
+
+  .preference-policy-editor__controls {
+    align-items: end;
+    width: 100%;
+  }
+
+  .preference-policy-editor__mobile-label {
+    display: block;
+  }
+}

@@ -1,4 +1,5 @@
 import { authContract, type MfaFactor, type TotpSetupResult, type UserSession } from '@zenith/shared/identity';
+import { canOverridePreference, getPreferenceValue, preferenceDefinitions, type UserPreferencesDocument } from '@zenith/shared/preferences';
 import { mock } from '@/mocks/utils/contract';
 import { removeByIds, requireItem } from '@/mocks/utils/crud';
 import { badRequest, unauthorized, forbidden, notFound, nextIdFrom } from '@/mocks/utils/handlers';
@@ -12,7 +13,7 @@ import { getMockSettings } from '@/mocks/data/settings';
 import { deleteMockMySignature, getMockMySignature, saveMockMySignature } from '@/mocks/utils/personal-signature';
 
 // 偏好设置 & 收藏菜单 mock 状态（模块级可变，模拟服务端持久化）
-let mockPreferencesStore: Record<string, unknown> | null = null;
+let mockPreferencesStore: UserPreferencesDocument = { overrides: {} };
 let mockFavoriteMenusStore: number[] = [];
 const mockMfaFactors: MfaFactor[] = [];
 /** 会话并发拒绝模式的冲突票据 → 用户名（Demo 内存态） */
@@ -329,6 +330,14 @@ export const authHandlers = [
 
   // 保存偏好设置（整体替换，与服务端行为一致）
   mock(authContract.savePreferences, ({ body, ok }) => {
+    const policy = getMockSettings('ui').preferences;
+    for (const { path, label } of preferenceDefinitions) {
+      if (canOverridePreference(path, policy)) continue;
+      const next = getPreferenceValue(body.overrides, path);
+      if (next !== undefined && !Object.is(next, getPreferenceValue(mockPreferencesStore.overrides, path))) {
+        return forbidden(`「${label}」由系统统一设置，无法修改`);
+      }
+    }
     mockPreferencesStore = body;
     return ok(mockPreferencesStore, '已保存');
   }),

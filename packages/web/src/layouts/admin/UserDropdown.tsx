@@ -6,6 +6,7 @@ import type { User } from '@zenith/shared/identity';
 import { UserAvatar } from '@/components/UserAvatar';
 import { useAuth } from '@/hooks/useAuth';
 import { usePermission } from '@/hooks/usePermission';
+import { usePreferences } from '@/hooks/usePreferences';
 import { AccountSwitcherModal } from './AccountSwitcher';
 import { confirmDanger } from '@/utils/confirm';
 import './AccountSwitcher.css';
@@ -44,6 +45,7 @@ export function UserDropdown({
   clearLockPassword: () => void;
   onLogout: () => void;
 }>) {
+  const { hasEditablePreferences } = usePreferences();
   const { parkedAccounts, impersonation, endImpersonation } = useAuth();
   const { hasAnyPermission } = usePermission();
   // 移动审批轻页首屏即查待办 / 角标 / 可发起流程，无任一审批相关权限必 403；
@@ -101,7 +103,7 @@ export function UserDropdown({
           {feedbackEntryEnabled && (
             <Dropdown.Item icon={<MessageSquareHeart size={14} strokeWidth={1.5} />} onClick={() => setFeedbackVisible(true)}>意见反馈</Dropdown.Item>
           )}
-          <Dropdown.Item icon={<Settings size={14} strokeWidth={1.5} />} onClick={() => setPrefsVisible(true)}>偏好设置</Dropdown.Item>
+          {(hasEditablePreferences || enableLockScreen) && <Dropdown.Item icon={<Settings size={14} strokeWidth={1.5} />} onClick={() => setPrefsVisible(true)}>偏好设置</Dropdown.Item>}
           <Dropdown.Item icon={<Keyboard size={14} strokeWidth={1.5} />} onClick={() => setShortcutsVisible(true)}>快捷键</Dropdown.Item>
           {(enableLockScreen ?? false) && hasPassword() && (
             <Dropdown.Item icon={<Lock size={14} strokeWidth={1.5} />} onClick={() => lock()}>锁屏</Dropdown.Item>

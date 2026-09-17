@@ -1,3 +1,4 @@
+import { createPreferencesContext } from '@/test-utils/preferences';
 /**
  * AnalyticsQualityTab 单元测试
  *
@@ -11,7 +12,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { AnalyticsEventOverride, AnalyticsQualityDaily } from '@zenith/shared/analytics';
-import { PreferencesContext, defaultPreferences } from '@/hooks/usePreferences';
+import { PreferencesContext } from '@/hooks/usePreferences';
 
 const useAnalyticsQualityMock = vi.fn();
 const useAnalyticsEventOverridesMock = vi.fn();
@@ -51,7 +52,7 @@ import AnalyticsQualityTab from './AnalyticsQualityTab';
 
 function renderWithPreferences(ui: React.ReactElement) {
   return render(
-    <PreferencesContext.Provider value={{ preferences: defaultPreferences, setPreferences: vi.fn(), resetPreferences: vi.fn(), ready: true }}>
+    <PreferencesContext.Provider value={createPreferencesContext()}>
       {ui}
     </PreferencesContext.Provider>,
   );

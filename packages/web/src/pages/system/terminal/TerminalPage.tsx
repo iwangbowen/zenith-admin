@@ -10,6 +10,7 @@ import SshProfilesManager, { type SshProfile } from './SshProfilesManager';
 import SftpExplorer from './SftpExplorer';
 import DockerExplorer from './DockerExplorer';
 import { useTerminalPreferences } from './useTerminalPreferences';
+import { usePreferences } from '@/hooks/usePreferences';
 import { terminalFileContract, type TerminalShellInfo } from '@zenith/shared/ops';
 import { api } from '@/lib/contract-query';
 import { TOKEN_KEY } from '@zenith/shared/core';
@@ -130,7 +131,8 @@ function DemoNotice() {
 }
 
 export default function TerminalPage() {
-  const { terminal, setTerminalPref } = useTerminalPreferences();
+  const { terminal, setTerminalPref, canEditTerminalPreferences } = useTerminalPreferences();
+  const { canEditPreference } = usePreferences();
   const { hasPermission } = usePermission();
   const canUseRemoteHosts = hasPermission('system:host:use');
   const opsHostsQuery = useOpsHosts(canUseRemoteHosts);
@@ -655,9 +657,9 @@ export default function TerminalPage() {
         <Dropdown trigger="click" position="bottomRight" render={shellMenu}>
           <Button icon={<ChevronDown size={13} />} size="small" theme="borderless" type="tertiary" title="选择 Shell 类型" />
         </Dropdown>
-        <Tooltip content="终端设置">
+        {canEditTerminalPreferences && <Tooltip content="终端设置">
           <Button icon={<Settings size={13} />} size="small" theme="borderless" type="tertiary" onClick={() => setShowSettings(true)} />
-        </Tooltip>
+        </Tooltip>}
       </Space>
     </div>
   );
@@ -673,7 +675,7 @@ export default function TerminalPage() {
       <div className="terminal-sidebar__tools">
         {tabCollapsed ? (
           /* 折叠态：折叠按鈕 */
-          <Tooltip content="展开标签栏" position={isLeft ? 'right' : 'left'}>
+          canEditPreference('terminal.tabCollapsed') && <Tooltip content="展开标签栏" position={isLeft ? 'right' : 'left'}>
             <Button
               icon={isLeft ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
               size="small"
@@ -693,10 +695,10 @@ export default function TerminalPage() {
             <Dropdown trigger="click" position="bottomLeft" render={shellMenu}>
               <Button icon={<ChevronDown size={13} />} size="small" theme="borderless" type="tertiary" title="选择 Shell 类型" />
             </Dropdown>
-            <Tooltip content="终端设置">
+            {canEditTerminalPreferences && <Tooltip content="终端设置">
               <Button icon={<Settings size={13} />} size="small" theme="borderless" type="tertiary" onClick={() => setShowSettings(true)} />
-            </Tooltip>
-            <Tooltip content="折叠标签栏">
+            </Tooltip>}
+            {canEditPreference('terminal.tabCollapsed') && <Tooltip content="折叠标签栏">
               <Button
                 icon={isLeft ? <ChevronLeft size={13} /> : <ChevronRight size={13} />}
                 size="small"
@@ -704,7 +706,7 @@ export default function TerminalPage() {
                 type="tertiary"
                 onClick={() => setTerminalPref({ tabCollapsed: true })}
               />
-            </Tooltip>
+            </Tooltip>}
           </>
         )}
       </div>
@@ -753,9 +755,9 @@ export default function TerminalPage() {
             <Tooltip content="新建终端" position="left">
               <Button icon={<Plus size={13} />} size="small" theme="borderless" type="tertiary" onClick={() => addTerminal()} />
             </Tooltip>
-            <Tooltip content="终端设置" position="left">
+            {canEditTerminalPreferences && <Tooltip content="终端设置" position="left">
               <Button icon={<Settings size={13} />} size="small" theme="borderless" type="tertiary" onClick={() => setShowSettings(true)} />
-            </Tooltip>
+            </Tooltip>}
           </div>
         )}
         {(tabCollapsed && isLeft) && (
@@ -764,9 +766,9 @@ export default function TerminalPage() {
             <Tooltip content="新建终端" position="right">
               <Button icon={<Plus size={13} />} size="small" theme="borderless" type="tertiary" onClick={() => addTerminal()} />
             </Tooltip>
-            <Tooltip content="终端设置" position="right">
+            {canEditTerminalPreferences && <Tooltip content="终端设置" position="right">
               <Button icon={<Settings size={13} />} size="small" theme="borderless" type="tertiary" onClick={() => setShowSettings(true)} />
-            </Tooltip>
+            </Tooltip>}
           </div>
         )}
     </div>

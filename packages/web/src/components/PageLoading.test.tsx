@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { PREFERENCES_KEY } from '@zenith/shared/core';
+import { preferencePolicySchema } from '@zenith/shared/preferences';
+import { writePreferenceCache } from '@/lib/preference-cache';
+import { createPreferencesContext } from '@/test-utils/preferences';
 import PageLoading from './PageLoading';
 import {
-  defaultPreferences,
   PreferencesContext,
 } from '@/hooks/usePreferences';
 
@@ -19,7 +21,7 @@ describe('PageLoading', () => {
   });
 
   it('uses the cached preference before the preferences provider mounts', () => {
-    localStorage.setItem(PREFERENCES_KEY, JSON.stringify({ loadingStyle: 'ring' }));
+    writePreferenceCache(preferencePolicySchema.parse({}), { loadingStyle: 'ring' });
 
     render(<PageLoading />);
 
@@ -29,12 +31,7 @@ describe('PageLoading', () => {
   it('uses the live provider preference for route loading', () => {
     render(
       <PreferencesContext.Provider
-        value={{
-          preferences: { ...defaultPreferences, loadingStyle: 'bars' },
-          setPreferences: () => undefined,
-          resetPreferences: () => undefined,
-          ready: true,
-        }}
+        value={createPreferencesContext({ loadingStyle: 'bars' })}
       >
         <PageLoading inline />
       </PreferencesContext.Provider>,
@@ -50,5 +47,14 @@ describe('PageLoading', () => {
     render(<PageLoading />);
 
     expect(screen.getByRole('status')).toHaveAttribute('data-loading-style', 'flip');
+  });
+
+  it('uses a cached forced system loading style before the provider mounts', () => {
+    writePreferenceCache(preferencePolicySchema.parse({
+      defaults: { loadingStyle: 'dots' },
+      allowUserOverride: { loadingStyle: false },
+    }), { loadingStyle: 'ring' });
+    render(<PageLoading />);
+    expect(screen.getByRole('status')).toHaveAttribute('data-loading-style', 'dots');
   });
 });

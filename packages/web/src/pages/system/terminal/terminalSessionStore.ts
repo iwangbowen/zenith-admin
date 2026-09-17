@@ -609,6 +609,7 @@ class TerminalSessionStore {
       fontSize?: number;
       fontFamily?: string;
       lineHeight?: number;
+      scrollback?: number;
       cursorStyle?: 'block' | 'underline' | 'bar';
       cursorBlink?: boolean;
       copyOnSelect?: boolean;
@@ -625,6 +626,7 @@ class TerminalSessionStore {
     if (opts.fontSize !== undefined) session.term.options.fontSize = opts.fontSize;
     if (opts.fontFamily !== undefined) session.term.options.fontFamily = opts.fontFamily;
     if (opts.lineHeight !== undefined) session.term.options.lineHeight = opts.lineHeight;
+    if (opts.scrollback !== undefined) session.term.options.scrollback = opts.scrollback;
     if (opts.cursorStyle !== undefined) session.term.options.cursorStyle = opts.cursorStyle;
     if (opts.cursorBlink !== undefined) session.term.options.cursorBlink = opts.cursorBlink;
     if (opts.copyOnSelect !== undefined) session.copyOnSelect = opts.copyOnSelect;

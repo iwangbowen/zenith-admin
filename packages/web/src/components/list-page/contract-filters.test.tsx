@@ -1,3 +1,4 @@
+import { createPreferencesContext } from '@/test-utils/preferences';
 /**
  * 契约派生筛选控件 + 标准操作列：锁住「x-filter 语义 → 控件」的映射、关键字进主区其余进筛选区、
  * override / 范围端点 / 未声明语义的处理，以及操作列的权限门控与删除确认接线。
@@ -10,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as z from 'zod';
 import { dateRangeQuery, defineContract, entityStatusQuery, idParam, idQuery, keywordQuery, op, paginated, paginationQuery, queryBool, queryEnum } from '@zenith/shared/core';
 import { PermissionContext } from '@/hooks/usePermission';
-import { PreferencesContext, defaultPreferences, type PreferencesContextValue } from '@/hooks/usePreferences';
+import { PreferencesContext } from '@/hooks/usePreferences';
 import { useListPage } from '@/hooks/useListPage';
 import { createTestQueryClient } from '@/test-utils/query-harness';
 import { ListSearchToolbar } from './ListSearchToolbar';
@@ -55,7 +56,7 @@ const useListMock = vi.fn(() => ({ data: { list: [] as Array<{ id: number; name:
 
 function wrapper(permissions: string[] = []) {
   const client = createTestQueryClient();
-  const preferences = { preferences: defaultPreferences, updatePreferences: vi.fn(), resetPreferences: vi.fn() } as unknown as PreferencesContextValue;
+  const preferences = createPreferencesContext();
   return function Wrapper({ children }: { readonly children: ReactNode }) {
     return (
       <QueryClientProvider client={client}>

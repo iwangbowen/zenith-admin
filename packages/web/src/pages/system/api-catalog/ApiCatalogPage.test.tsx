@@ -1,10 +1,11 @@
+import { createPreferencesContext } from '@/test-utils/preferences';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { apiCatalogContract, permissionMatrixContract, type ApiCatalog, type ApiCatalogItem } from '@zenith/shared/identity';
-import { PreferencesContext, defaultPreferences, type PreferencesContextValue } from '@/hooks/usePreferences';
+import { PreferencesContext } from '@/hooks/usePreferences';
 import { ApiRecorder, createRequestMock, createTestQueryClient } from '@/test-utils/query-harness';
 import { desktopToolbar } from '@/test-utils/toolbar';
 import { EMPTY_FILTERS, matchesCatalogFilters, summarizeCatalog, toCatalogRows } from './catalog-model';
@@ -16,7 +17,7 @@ vi.mock('@/hooks/usePermission', () => ({ usePermission: () => ({ hasPermission:
 import { apiCatalogKeys } from '@/hooks/queries/permission-matrix';
 import ApiCatalogPage from './ApiCatalogPage';
 
-const prefs = { preferences: defaultPreferences } as unknown as PreferencesContextValue;
+const prefs = createPreferencesContext();
 
 function item(partial: Partial<ApiCatalogItem> & Pick<ApiCatalogItem, 'method' | 'fullPath' | 'summary'>): ApiCatalogItem {
   return {

@@ -139,7 +139,7 @@ export default function QuickChatButton({ onHide }: Readonly<{ onHide?: () => vo
           onClick={handleToggle}
           shape="round"
         />
-        <button
+        {onHide && <button
           title="隐藏快捷聊天"
           className="qc-hide-btn"
           onClick={(e) => {
@@ -151,7 +151,7 @@ export default function QuickChatButton({ onHide }: Readonly<{ onHide?: () => vo
           }}
         >
           <X size={12} />
-        </button>
+        </button>}
       </div>
 
       {everOpened && (

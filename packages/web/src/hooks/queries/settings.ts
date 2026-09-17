@@ -66,7 +66,7 @@ export function useSaveSettings<M extends SettingsModuleKey>(
 
 /** 登录用户可见的设置投影：布局（水印 / 快捷聊天 / 反馈入口）、密码规则、终端录屏、规则审批开关 */
 export function useMySettings(enabled = true) {
-  return useApiQuery(settingsContract.me, { enabled, staleTime: LOOKUP_STALE_TIME, requestOptions: { silent: true } });
+  return useApiQuery(settingsContract.me, { enabled, staleTime: LOOKUP_STALE_TIME, refetchOnWindowFocus: 'always', refetchOnReconnect: 'always', requestOptions: { silent: true } });
 }
 
 /** 匿名投影（登录 / 注册页）；多租户模式下随租户编码变化 */

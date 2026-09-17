@@ -1,3 +1,4 @@
+import { createPreferencesContext } from '@/test-utils/preferences';
 /**
  * AnalyticsDebugTab 单元测试
  *
@@ -11,7 +12,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import type { AnalyticsDebugEvent } from '@zenith/shared/analytics';
-import { PreferencesContext, defaultPreferences } from '@/hooks/usePreferences';
+import { PreferencesContext } from '@/hooks/usePreferences';
 import { createTestQueryClient } from '@/test-utils/query-harness';
 import { desktopToolbar } from '@/test-utils/toolbar';
 
@@ -32,7 +33,7 @@ function renderWithPreferences(ui: React.ReactElement) {
   // 组件用 useQueryClient 在「查询 / 重置」时强制失效，保证点击必定回源
   return render(
     <QueryClientProvider client={createTestQueryClient()}>
-      <PreferencesContext.Provider value={{ preferences: defaultPreferences, setPreferences: vi.fn(), resetPreferences: vi.fn(), ready: true }}>
+      <PreferencesContext.Provider value={createPreferencesContext()}>
         {ui}
       </PreferencesContext.Provider>
     </QueryClientProvider>,

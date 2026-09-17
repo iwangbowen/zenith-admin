@@ -1,49 +1,21 @@
-import { usePreferences, type TerminalPreferences } from '@/hooks/usePreferences';
-import { DEFAULT_DARK_THEME_ID, DEFAULT_LIGHT_THEME_ID, DEFAULT_FONT_FAMILY } from './themes';
+import { defaultPreferences, preferenceDefinitions, type TerminalPreferences } from '@zenith/shared/preferences';
+import { usePreferences } from '@/hooks/usePreferences';
 
-/** 终端偏好默认值（与 usePreferences.defaultPreferences.terminal 保持一致） */
-export const defaultTerminalPreferences: TerminalPreferences = {
-  defaultShell: '',
-  themeDark: DEFAULT_DARK_THEME_ID,
-  themeLight: DEFAULT_LIGHT_THEME_ID,
-  fontSize: 14,
-  fontFamily: DEFAULT_FONT_FAMILY,
-  lineHeight: 1.2,
-  favorites: [],
-  tabPosition: 'top',
-  tabCollapsed: false,
-  scrollback: 5000,
-  cursorStyle: 'block',
-  cursorBlink: true,
-  copyOnSelect: true,
-  rendererType: 'canvas',
-  fastScrollSensitivity: 5,
-  letterSpacing: 0,
-  fontWeight: 'normal',
-  rightClickSelectsWord: false,
-  minimumContrastRatio: 1,
-  showStatusBar: true,
-};
+export const defaultTerminalPreferences: TerminalPreferences = defaultPreferences.terminal;
+const terminalPaths = preferenceDefinitions.filter(({ path }) => path.startsWith('terminal.')).map(({ path }) => path);
 
-/**
- * 终端偏好派生 hook。
- *
- * 对 `preferences.terminal` 做默认值兜底——规避 PreferencesProvider 从服务器拉取时
- * `{ ...defaultPreferences, ...res.data }` 浅合并会整体覆盖 terminal 子对象、导致新增字段丢失的问题。
- */
+/** 只写本次变化的叶子，其他终端字段继续继承系统默认值。 */
 export function useTerminalPreferences() {
-  const { preferences, setPreferences } = usePreferences();
-
-  const stored = preferences.terminal;
-  const terminal: TerminalPreferences = {
-    ...defaultTerminalPreferences,
-    ...stored,
-    favorites: stored?.favorites ?? defaultTerminalPreferences.favorites,
+  const { preferences, setPreferences, resetPreference, canEditPreference, isPreferenceOverridden } = usePreferences();
+  const setTerminalPref = (partial: Partial<TerminalPreferences>) => setPreferences({ terminal: partial });
+  const resetTerminalPreferences = () => {
+    resetPreference(terminalPaths);
   };
-
-  const setTerminalPref = (partial: Partial<TerminalPreferences>) => {
-    setPreferences({ terminal: { ...terminal, ...partial } });
+  return {
+    terminal: preferences.terminal,
+    setTerminalPref,
+    resetTerminalPreferences,
+    canEditTerminalPreferences: terminalPaths.some(canEditPreference),
+    hasTerminalOverrides: terminalPaths.some(isPreferenceOverridden),
   };
-
-  return { terminal, setTerminalPref };
 }

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { NavLayout, UserPreferences } from '@/hooks/usePreferences';
+import { usePreferences, type NavLayout, type UserPreferences } from '@/hooks/usePreferences';
 import type { ThemeMode } from '@/hooks/useTheme';
 import {
   PrefsActionsSection,
@@ -40,6 +40,7 @@ export interface PreferencesSheetBodyProps {
  * 作为 AdminLayout 的懒加载边界，首次打开抽屉时才下载，不进入布局首屏。
  */
 export default function PreferencesSheetBody(props: PreferencesSheetBodyProps) {
+  const { hasEditablePreferences } = usePreferences();
   const base = {
     prefSection: props.prefSection,
     matchesPref: props.matchesPref,
@@ -69,11 +70,11 @@ export default function PreferencesSheetBody(props: PreferencesSheetBodyProps) {
       />
       <PrefsTableSection {...base} />
       <PrefsTabsSection {...base} prefsSearch={props.prefsSearch} />
-      <PrefsActionsSection
+      {hasEditablePreferences ? <PrefsActionsSection
         handleCopyPreferences={props.handleCopyPreferences}
         onOpenImport={props.onOpenImport}
         resetPreferences={props.resetPreferences}
-      />
+      /> : null}
     </>
   );
 }
