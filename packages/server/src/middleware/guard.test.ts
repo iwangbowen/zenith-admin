@@ -41,11 +41,6 @@ vi.mock('../lib/request-helpers', () => ({
   getClientIp: vi.fn().mockReturnValue('127.0.0.1'),
   getPlatformVersion: vi.fn().mockReturnValue(null),
   parseUserAgent: vi.fn().mockReturnValue({ browser: 'Chrome 120', os: 'Windows 11' }),
-  // 与真实 resolveReportedClient 同语义：自报优先、缺项回退（真实逻辑见 request-helpers.test.ts）
-  resolveReportedClient: vi.fn((reported: { browser?: string; os?: string }) => ({
-    browser: reported.browser ?? 'Chrome 120',
-    os: reported.os ?? 'Windows 11',
-  })),
 }));
 
 import { db } from '../db';
@@ -202,17 +197,5 @@ describe('guard - 审计日志', () => {
 
     await flushAudit();
     expect(insertValues.mock.calls[0][0].requestBody).toBeNull();
-  });
-
-  it('X-Zenith-Os 自报头优先作为 OS 展示列', async () => {
-    const res = await buildApp({ audit: { description: '创建用户' } }).request('/target', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Zenith-Os': 'HeaderOS-11' },
-      body: JSON.stringify({ username: 'bob' }),
-    });
-    expect(res.status).toBe(200);
-
-    await flushAudit();
-    expect(insertValues.mock.calls[0][0].os).toBe('HeaderOS-11');
   });
 });

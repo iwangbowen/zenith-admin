@@ -154,23 +154,6 @@ describe.each(['request', 'fetchRaw'] as const)('HttpClient.%s headers', (method
     expect(fetchMock.mock.calls.map(([, options]) => new Headers(options?.headers).get('x-zenith-client'))).toEqual(['desktop', 'desktop', 'desktop']);
   });
 
-  it('sends the reported OS header when the getter resolves one, omits it otherwise', async () => {
-    const withOs = new HttpClient({
-      baseUrl: '', tokenKey: 'access-token', refreshTokenKey: 'refresh-token', refreshPath: '/refresh', loginUrl: () => '/login',
-      clientOs: () => 'Windows 11',
-    });
-    await withOs[method]('/resource');
-    expect(new Headers(sentOptions().headers).get('x-zenith-os')).toBe('Windows 11');
-
-    fetchMock.mockClear();
-    const withoutOs = new HttpClient({
-      baseUrl: '', tokenKey: 'access-token', refreshTokenKey: 'refresh-token', refreshPath: '/refresh', loginUrl: () => '/login',
-      clientOs: () => undefined,
-    });
-    await withoutOs[method]('/resource');
-    expect(new Headers(sentOptions().headers).has('x-zenith-os')).toBe(false);
-  });
-
   it('keeps the first 401 revocation reason and the kicked username for the login page when refresh is rejected', async () => {
     localStorage.setItem('access-token', `h.${btoa(JSON.stringify({ username: 'alice', jti: 'j1' })).replace(/=+$/, '')}.s`);
     localStorage.setItem('refresh-token', 'old-refresh');

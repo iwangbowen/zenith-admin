@@ -1,6 +1,5 @@
 import type { ApiResponse } from '@zenith/shared/core';
-import { CLIENT_OS_HEADER, SESSION_CLIENT_HEADER, type SessionClientKind, type SessionRevokeReason } from '@zenith/shared/identity';
-import { getCachedPreciseOs } from './client-os';
+import { SESSION_CLIENT_HEADER, type SessionClientKind, type SessionRevokeReason } from '@zenith/shared/identity';
 import { showRequestErrorToast, showRequestWarningToast } from './request-toast';
 import { abortSubmit } from '@/lib/abort-submit';
 
@@ -90,8 +89,6 @@ export interface HttpClientConfig {
   handleMaintenance?: boolean;
   /** 本端的登录终端类型（网页 / 移动审批 / 桌面端），随每个请求以 X-Zenith-Client 上报；服务端据此展示会话终端并按终端分别计算并发 */
   clientKind?: SessionClientKind | (() => SessionClientKind);
-  /** 精确 OS 自报 getter（缺省读 client-os 缓存），有值时随每个请求上报；服务端展示列优先采用，缺省回退 UA + CH 解析 */
-  clientOs?: () => string | undefined;
 }
 
 /**
@@ -112,7 +109,6 @@ export class HttpClient {
   private readonly unauthorizedFallbackMessage: string;
   private readonly handleMaintenance: boolean;
   private readonly clientKind?: SessionClientKind | (() => SessionClientKind);
-  private readonly clientOs?: () => string | undefined;
   private refreshing: Promise<RefreshOutcome> | null = null;
 
   constructor(config: HttpClientConfig) {
@@ -126,7 +122,6 @@ export class HttpClient {
     this.unauthorizedFallbackMessage = config.unauthorizedFallbackMessage ?? '未授权';
     this.handleMaintenance = config.handleMaintenance ?? false;
     this.clientKind = config.clientKind;
-    this.clientOs = config.clientOs;
   }
 
   protected getHeaders(body?: BodyInit | null, overrides?: HeadersInit): Headers {
@@ -142,8 +137,6 @@ export class HttpClient {
     for (const [name, value] of Object.entries(this.authHeaders())) headers.set(name, value);
     const client = typeof this.clientKind === 'function' ? this.clientKind() : this.clientKind;
     if (client) headers.set(SESSION_CLIENT_HEADER, client);
-    const os = this.clientOs?.() ?? getCachedPreciseOs();
-    if (os) headers.set(CLIENT_OS_HEADER, os);
     return headers;
   }
 
