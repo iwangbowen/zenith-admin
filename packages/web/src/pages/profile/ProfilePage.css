@@ -31,14 +31,11 @@
   box-shadow: 0 1px 4px rgb(0 0 0 / 12%);
 }
 
+/* 基本信息概览：无外框裸布局，只靠间距分隔（与会话列表一致，不再是带边框的卡片） */
 .profile-basic-overview {
   display: flex;
   align-items: flex-start;
   gap: 20px;
-  padding: 20px;
-  border: 1px solid var(--semi-color-border);
-  border-radius: var(--semi-border-radius-large);
-  background: var(--semi-color-fill-0);
 }
 
 .avatar-column {
