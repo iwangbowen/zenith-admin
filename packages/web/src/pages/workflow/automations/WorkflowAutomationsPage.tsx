@@ -376,13 +376,20 @@ export default function WorkflowAutomationsPage() {
     automationModal.openEdit(row);
   };
 
-  const defOptions = useMemo(
+  // 所属流程只用于监听实例事件，业务系统主导流程同样可以配置自动化规则。
+  const sourceDefOptions = useMemo(
+    () => defs
+      .filter((d) => d.status === 'published')
+      .map((d) => ({ value: d.id, label: d.name })),
+    [defs],
+  );
+  // 动作直接发起新实例时，业务系统主导流程仍须通过业务模块发起。
+  const startWorkflowDefOptions = useMemo(
     () => defs
       .filter((d) => d.status === 'published' && d.formType !== 'external')
       .map((d) => ({ value: d.id, label: d.name })),
     [defs],
   );
-  // 「发起流程」动作目标下拉与所属流程同源（defOptions：published 且非 external），无需单独变量
   // 筛选器保留全量定义（含已停用/历史），保证老规则可以被筛出来
   const filterDefOptions = useMemo(
     () => defs.map((d) => ({ value: d.id, label: d.name })),
@@ -479,7 +486,7 @@ export default function WorkflowAutomationsPage() {
                 field="definitionId" label="所属流程" filter
                 style={{ width: '100%' }}
                 rules={[{ required: true, message: '请选择所属流程' }]}
-                optionList={defOptions}
+                optionList={sourceDefOptions}
               />
             </Col>
           </Row>
@@ -528,7 +535,7 @@ export default function WorkflowAutomationsPage() {
                     placeholder="目标流程"
                     value={a.definitionId}
                     onChange={(v) => patchAction(idx, { definitionId: v as number })}
-                    optionList={defOptions}
+                    optionList={startWorkflowDefOptions}
                     filter style={{ width: '100%' }}
                   />
                   <Input
