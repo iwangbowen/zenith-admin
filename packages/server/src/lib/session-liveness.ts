@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import type { SessionClientKind, SessionRevokeReason } from '@zenith/shared/identity';
 import logger from './logger';
 import { errBody } from './openapi-schemas';
-import { getClientIp, getClientKind, parseUserAgent } from './request-helpers';
+import { getClientIp, getClientKind, getPlatformVersion, parseUserAgent } from './request-helpers';
 
 export interface SessionLivenessDeps {
   /** 令牌的吊销原因（登出 / 强制下线 / 被挤下线 / 改密 / 轮换）；未吊销为 null */
@@ -54,8 +54,9 @@ export async function checkSessionLiveness(jti: string, deps: SessionLivenessDep
   return { revoked, touched };
 }
 
-/** 会话注册所需的客户端指纹：IP、终端类型 + User-Agent 解析出的浏览器 / 操作系统 */
+/** 会话注册所需的客户端指纹：IP、终端类型 + User-Agent 解析出的浏览器 / 操作系统
+ *（审计口径：只信服务端请求头与 Client Hints，不采纳客户端自报的展示值） */
 export function clientFingerprint(c: Context): { ip: string; client: SessionClientKind; browser: string; os: string } {
-  const { browser, os } = parseUserAgent(c.req.header('user-agent') ?? '');
+  const { browser, os } = parseUserAgent(c.req.header('user-agent') ?? '', getPlatformVersion(c));
   return { ip: getClientIp(c), client: getClientKind(c), browser, os };
 }

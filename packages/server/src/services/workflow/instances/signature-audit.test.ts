@@ -9,7 +9,7 @@ vi.mock('../../../db', () => ({ db: { insert: () => ({ values: insertLog }) } })
 vi.mock('../../../lib/permissions', () => ({ isSuperAdmin: vi.fn(), getUserPermissions: vi.fn() }));
 vi.mock('../../../lib/licensing', () => ({ assertFeatureEnabled: vi.fn() }));
 vi.mock('../../../lib/ip-location', () => ({ lookupIpLocation: () => '内网' }));
-vi.mock('../../../lib/request-helpers', () => ({ getClientIp: () => '127.0.0.1', parseUserAgent: () => ({ browser: 'test', os: 'test' }) }));
+vi.mock('../../../lib/request-helpers', () => ({ getClientIp: () => '127.0.0.1', getPlatformVersion: () => null, parseUserAgent: () => ({ browser: 'test', os: 'test' }) }));
 import { workflowInstanceContract, workflowInstanceOpsContract, workflowTaskContract } from '@zenith/shared/workflow';
 import { guard, setAuditAfterData } from '../../../middleware/guard';
 import { redactWorkflowSignatureImages } from './signature-audit';

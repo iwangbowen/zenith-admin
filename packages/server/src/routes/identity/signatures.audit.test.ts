@@ -12,7 +12,7 @@ vi.mock('../../middleware/auth', () => ({ authMiddleware: async (c: Context, nex
 } }));
 vi.mock('../../lib/permissions', () => ({ isSuperAdmin: () => false, getUserPermissions: async () => [] }));
 vi.mock('../../lib/ip-location', () => ({ lookupIpLocation: () => null }));
-vi.mock('../../lib/request-helpers', () => ({ getClientIp: () => '127.0.0.1', parseUserAgent: () => ({ browser: 'Test', os: 'Test' }) }));
+vi.mock('../../lib/request-helpers', () => ({ getClientIp: () => '127.0.0.1', getPlatformVersion: () => null, parseUserAgent: () => ({ browser: 'Test', os: 'Test' }) }));
 vi.mock('../../lib/data-mask/boundary', () => ({ withDataMasking: (_op: unknown, handler: unknown) => handler }));
 vi.mock('../../services/identity/user-signatures.service', () => ({
   getMySignature: mocks.get, getMySignatureAuditMetadata: mocks.before,

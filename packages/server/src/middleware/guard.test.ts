@@ -39,6 +39,7 @@ vi.mock('../lib/ip-location', () => ({
 
 vi.mock('../lib/request-helpers', () => ({
   getClientIp: vi.fn().mockReturnValue('127.0.0.1'),
+  getPlatformVersion: vi.fn().mockReturnValue(null),
   parseUserAgent: vi.fn().mockReturnValue({ browser: 'Chrome 120', os: 'Windows 11' }),
 }));
 
