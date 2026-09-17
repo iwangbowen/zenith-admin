@@ -217,6 +217,27 @@ describe('跨进程 fan-out', () => {
     return redis.publish.mock.calls.map(([, raw]) => JSON.parse(raw as string) as PublishedEnvelope);
   }
 
+  it('远端偏好策略变更先失效本进程设置副本，再通知浏览器重拉', async () => {
+    const { dispatchWsFanout } = await import('./ws-fanout');
+    const order: string[] = [];
+    const off = m.onBroadcastMessage((message) => {
+      if (message.type === 'preferences:policy-updated') order.push('invalidate:ui');
+    });
+    const client = fakeWs();
+    client.send.mockImplementation(() => { order.push('send'); });
+    m.registerConnection(7, 'preferences-session', client.ws);
+
+    await dispatchWsFanout(JSON.stringify({
+      v: 1, from: 'another-api-process', kind: 'broadcast',
+      message: { type: 'preferences:policy-updated', payload: { version: 4 } },
+    }));
+
+    expect(order).toEqual(['invalidate:ui', 'send']);
+    expect(framesOf(client.send, 'preferences:policy-updated')).toEqual([{ version: 4 }]);
+    expect(await publishedEnvelopes()).toEqual([]);
+    off();
+  });
+
   it('每个公开的发送 / 关闭函数都在本地投递之外恰好发布一封信封', async () => {
     const a = fakeWs();
     m.registerConnection(1, 'jti-1', a.ws);

@@ -11,6 +11,7 @@ import {
   OAUTH_PROVIDERS,
 } from './constants';
 import { entityStatusSchema } from '../core/api-schemas';
+import { preferenceOverridesSchema } from '../preferences';
 
 export const loginDeviceInfoSchema = z.object({
   screenWidth: z.number().int().min(0).max(32767).optional(),
@@ -572,7 +573,8 @@ export const saveFavoriteMenusSchema = z.object({
 });
 
 /** 偏好设置为自由结构的键值对，整体替换保存 */
-export const userPreferencesInputSchema = z.record(z.string(), z.unknown());
+/** 完整替换个人覆盖文档；空覆盖需显式提交 {}，省略字段不能清空偏好。 */
+export const userPreferencesInputSchema = z.strictObject({ overrides: preferenceOverridesSchema });
 
 export const createApiTokenSchema = z.object({
   name: z.string(),

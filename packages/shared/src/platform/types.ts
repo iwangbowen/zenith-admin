@@ -46,6 +46,7 @@ export interface DeployLogBatchPayload {
 }
 
 export type WsMessage =
+  | { type: 'preferences:policy-updated'; payload: { version: number } }
   | { type: 'announcement:new'; payload: Announcement }
   | { type: 'announcement:updated'; payload: Announcement }
   | { type: 'announcement:deleted'; payload: { id: number } }

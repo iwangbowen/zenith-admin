@@ -43,7 +43,7 @@ export type PublicSettings = z.output<typeof publicSettingsSchema>;
 export const mySettingsSchema = z.object({
   auth: authSettingsSchema.pick({ captchaEnabled: true, captchaComplexity: true, allowRegistration: true, forgotPasswordEnabled: true }),
   identitySecurity: identitySecuritySettingsSchema.pick({ password: true, impersonation: true, session: true }),
-  ui: uiSettingsSchema.pick({ watermark: true, quickChatEnabled: true, feedbackEntryEnabled: true }),
+  ui: uiSettingsSchema.pick({ watermark: true, quickChatEnabled: true, feedbackEntryEnabled: true, preferences: true }),
   files: filesSettingsSchema.pick({ chunkThresholdMb: true, chunkSizeMb: true }),
   // 带 License 门控的模块：租户套餐未含该特性时不返回
   terminal: terminalSettingsSchema.pick({ recordingEnabled: true }).optional(),
@@ -67,7 +67,7 @@ function pascal(key: string): string {
  * 单个模块的读取信封：`effective` 为解析后的生效文档，`inherited` 为上级生效文档
  * （租户作用域 = 平台生效值；平台作用域 = schema 默认值），两者叶级比较即得「已覆盖」标记。
  */
-function settingsEnvelopeSchema<M extends SettingsModuleKey>(module: M) {
+function settingsEnvelopeSchema<M extends SettingsModuleKey>(module: M): z.ZodType<SettingsEnvelope<M>> {
   const schema = SETTINGS_MODULES[module].schema;
   return z.object({
     module: z.literal(module),
@@ -78,18 +78,19 @@ function settingsEnvelopeSchema<M extends SettingsModuleKey>(module: M) {
     inherited: schema,
     overriddenPaths: z.array(z.string()).meta({ description: '当前作用域显式覆盖的叶子路径（a.b.c）' }),
     updatedAt: z.string().nullable(),
-  }).meta({ id: `Settings${pascal(module)}Envelope` });
+  // 信封结构是固定的；显式类型避免每个 get / update 都重复展开整套设置的 Zod 节点类型。
+  }).meta({ id: `Settings${pascal(module)}Envelope` }) as unknown as z.ZodType<SettingsEnvelope<M>>;
 }
 
 /**
  * 整体替换请求体：`data` 由读取 schema 深度剥离默认值派生——全字段必填、未知键 400，
  * 客户端必须回传完整文档；`version` 与当前行版本不一致时服务端返回 409。
  */
-function settingsWriteSchema<M extends SettingsModuleKey>(module: M) {
+function settingsWriteSchema<M extends SettingsModuleKey>(module: M): z.ZodType<SettingsWriteBody<M>, SettingsWriteBody<M>> {
   return z.object({
     version: z.int().min(0),
     data: stripDefaultsDeep(SETTINGS_MODULES[module].schema, { strictObjects: true }),
-  }).meta({ id: `Settings${pascal(module)}Write` });
+  }).meta({ id: `Settings${pascal(module)}Write` }) as unknown as z.ZodType<SettingsWriteBody<M>, SettingsWriteBody<M>>;
 }
 
 function moduleOps<M extends SettingsModuleKey>(module: M) {

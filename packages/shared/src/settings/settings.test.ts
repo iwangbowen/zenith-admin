@@ -170,7 +170,8 @@ describe('settingsContract', () => {
     for (const key of SETTINGS_MODULE_KEYS) {
       const body = settingsUpdateOp(key).body;
       const json = JSON.stringify(z.toJSONSchema(body, { unrepresentable: 'any' }));
-      expect(json, key).not.toContain('"default"');
+      // 枚举值可以叫 default（例如表格密度），这里只禁止 JSON Schema 的默认值关键字。
+      expect(json, key).not.toContain('"default":');
       expect(body.safeParse({ version: 0, data: SETTINGS_MODULES[key].schema.parse({}) }).success, key).toBe(true);
       expect(body.safeParse({ version: 0, data: {} }).success, key).toBe(false);
     }

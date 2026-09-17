@@ -142,7 +142,16 @@ function deliverToUser(userId: number, message: WsMessage) {
   sendToSockets(userSockets.get(userId), message);
 }
 
+const broadcastListeners = new Set<(message: WsMessage) => void>();
+
+/** 在向浏览器投递前应用本进程副作用；本地广播与跨进程广播走同一路径。 */
+export function onBroadcastMessage(listener: (message: WsMessage) => void): () => void {
+  broadcastListeners.add(listener);
+  return () => { broadcastListeners.delete(listener); };
+}
+
 function deliverBroadcast(message: WsMessage) {
+  for (const listener of broadcastListeners) listener(message);
   if (connections.size === 0) return;
   sendToSockets(connections.keys(), message);
 }

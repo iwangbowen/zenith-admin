@@ -31,6 +31,7 @@ import { getUserPermissions, isSuperAdmin } from '../permissions';
 import { exactTenantCondition, getEffectiveTenantId, getTenantScopeId, inheritedTenantCondition, isPlatformAdmin } from '../tenant';
 import { getTenantPackageFeatureSet } from '../tenant-package';
 import { TtlCache } from '../ttl-cache';
+import { onBroadcastMessage, scheduleBroadcast } from '../ws-manager';
 import type { JwtPayload } from '../../middleware/auth';
 
 /**
@@ -95,6 +96,10 @@ onInvalidate('system_settings', (message) => {
   else resetSettingsCache();
 });
 onInvalidationReset(resetSettingsCache);
+// Redis 推送可能早于 PG NOTIFY 抵达；在浏览器重拉前先清掉本进程的旧策略。
+onBroadcastMessage((message) => {
+  if (message.type === 'preferences:policy-updated') invalidateSettings('ui');
+});
 
 // ─── 加载与解析 ──────────────────────────────────────────────────────────────
 
@@ -270,7 +275,9 @@ export async function saveSettings<M extends SettingsModuleKey>(module: M, user:
 
   // 触发器会广播失效；本实例同步清一次，保证保存后立即回显新值
   invalidateSettings(module);
-  return toEnvelope(await loadEntry(module, tenantId));
+  const saved = toEnvelope(await loadEntry(module, tenantId));
+  if (module === 'ui') scheduleBroadcast({ type: 'preferences:policy-updated', payload: { version: saved.version } });
+  return saved;
 }
 
 // ─── 投影：匿名 / 登录用户 ─────────────────────────────────────────────────────

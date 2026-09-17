@@ -2,6 +2,7 @@ import * as z from 'zod';
 import { signatureDataUrlSchema } from '../../core/signatures';
 import { dateRangeQuery, idParam, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
+import { userPreferencesDocumentSchema } from '../../preferences';
 import { operationLogSchema } from '../../platform/contracts/operation-logs';
 import { LOGIN_EVENT_TYPES, LOGIN_STATUSES, MFA_FACTOR_STATUSES, MFA_FACTOR_TYPES, MFA_METHODS, SESSION_CLIENT_KINDS } from '../constants';
 import {
@@ -136,7 +137,7 @@ export const mySignatureSchema = z.object({
 }).meta({ id: 'MySignature' });
 export type MySignature = z.infer<typeof mySignatureSchema>;
 
-export const userPreferencesSchema = z.record(z.string(), z.unknown()).meta({ id: 'UserPreferences' });
+export const userPreferencesSchema = userPreferencesDocumentSchema.meta({ id: 'UserPreferences' });
 
 export type UserPreferences = z.infer<typeof userPreferencesSchema>;
 
@@ -213,8 +214,8 @@ export const authContract = defineContract('/api/auth', {
   tenants: op.get('/tenants', { access: 'authenticated', response: z.array(tenantOptionSchema), summary: '可切换租户列表' }),
   forgotPassword: op.post('/forgot-password', { body: forgotPasswordSchema, summary: '忘记密码', public: true }),
   resetPassword: op.post('/reset-password', { body: resetPasswordSchema, summary: '重置密码', public: true }),
-  preferences: op.get('/preferences', { access: 'authenticated', response: userPreferencesSchema.nullable(), summary: '获取偏好设置' }),
-  savePreferences: op.put('/preferences', { access: 'authenticated', body: userPreferencesInputSchema, response: userPreferencesSchema.nullable(), summary: '保存偏好设置' }),
+  preferences: op.get('/preferences', { access: 'authenticated', response: userPreferencesSchema, summary: '获取个人偏好覆盖' }),
+  savePreferences: op.put('/preferences', { access: 'authenticated', body: userPreferencesInputSchema, response: userPreferencesSchema, summary: '保存个人偏好覆盖' }),
   favoriteMenus: op.get('/favorite-menus', { access: 'authenticated', response: z.array(z.int()), summary: '获取收藏菜单' }),
   saveFavoriteMenus: op.put('/favorite-menus', { access: 'authenticated', body: saveFavoriteMenusSchema, response: z.array(z.int()), summary: '更新收藏菜单' }),
   verifyPassword: op.post('/verify-password', { access: 'authenticated', body: verifyPasswordSchema, summary: '验证当前用户密码' }),

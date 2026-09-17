@@ -15,6 +15,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HTTPException } from 'hono/http-exception';
 import type { JwtPayload } from '../../middleware/auth';
+import { SETTINGS_MODULES } from '@zenith/shared/settings';
 
 // vi.mock 工厂会被提升到文件顶部，工厂内引用的状态必须经 vi.hoisted 声明
 const { dbState, configState, ctx, logger } = vi.hoisted(() => ({
@@ -71,10 +72,14 @@ vi.mock('../permissions', () => ({
   isSuperAdmin: (user: { roles: string[]; tenantId?: number | null }) => user.roles.includes('super_admin') && (user.tenantId ?? null) === null,
 }));
 vi.mock('../logger', () => ({ default: logger }));
+vi.mock('../ws-manager', () => ({ scheduleBroadcast: vi.fn(), onBroadcastMessage: vi.fn() }));
 
 import { db } from '../../db';
 import { dispatchInvalidation, resetInvalidationBusForTest } from '../invalidation-bus';
 import { getPublicSettings, getSettings, getSettingsEnvelope, invalidateSettings, resetSettingsCache, saveSettings } from './index';
+import { scheduleBroadcast, onBroadcastMessage } from '../ws-manager';
+
+const handleBroadcast = vi.mocked(onBroadcastMessage).mock.calls[0][0];
 
 const selectMock = vi.mocked(db.select);
 
@@ -168,21 +173,23 @@ describe('getSettingsEnvelope', () => {
 describe('saveSettings', () => {
   it('version 不一致 → 409，不写库', async () => {
     dbState.selectResults.push([{ id: 100, version: 3 }]);
-    await expect(saveSettings('ui', platformAdmin, { version: 2, data: { watermark: { enabled: true, content: '', fontSize: 14, opacity: 15 }, quickChatEnabled: false, feedbackEntryEnabled: false } }))
+    await expect(saveSettings('ui', platformAdmin, { version: 2, data: SETTINGS_MODULES.ui.schema.parse({ watermark: { enabled: true } }) }))
       .rejects.toMatchObject({ status: 409 });
     expect(dbState.inserts).toEqual([]);
     expect(dbState.updates).toEqual([]);
+    expect(scheduleBroadcast).not.toHaveBeenCalled();
   });
 
   it('首次保存（无行，version 0）：插入稀疏覆盖，等于默认值的字段不落库', async () => {
     dbState.selectResults.push([]); // for update：无行
-    dbState.selectResults.push([]); // 保存后重载
+    dbState.selectResults.push([row('ui', null, { watermark: { enabled: true }, feedbackEntryEnabled: true }, 1)]); // 保存后重载
     const saved = await saveSettings('ui', platformAdmin, {
       version: 0,
-      data: { watermark: { enabled: true, content: '', fontSize: 14, opacity: 15 }, quickChatEnabled: false, feedbackEntryEnabled: true },
+      data: SETTINGS_MODULES.ui.schema.parse({ watermark: { enabled: true }, feedbackEntryEnabled: true }),
     });
     expect(dbState.inserts).toEqual([{ module: 'ui', tenantId: null, data: { watermark: { enabled: true }, feedbackEntryEnabled: true }, version: 1 }]);
     expect(saved.module).toBe('ui');
+    expect(scheduleBroadcast).toHaveBeenCalledWith({ type: 'preferences:policy-updated', payload: { version: 1 } });
   });
 
   it('已有行：版本 +1 并整体替换稀疏文档；租户行只存与平台生效值不同的叶子', async () => {
@@ -198,13 +205,21 @@ describe('saveSettings', () => {
 
   it('多租户下租户管理员写平台级模块 → 403', async () => {
     configState.multiTenantMode = true;
-    await expect(saveSettings('ui', tenantAdmin, { version: 0, data: { watermark: { enabled: false, content: '', fontSize: 14, opacity: 15 }, quickChatEnabled: false, feedbackEntryEnabled: false } }))
+    await expect(saveSettings('ui', tenantAdmin, { version: 0, data: SETTINGS_MODULES.ui.schema.parse({}) }))
       .rejects.toBeInstanceOf(HTTPException);
     expect(selectMock).not.toHaveBeenCalled();
   });
 });
 
 describe('投影与失效总线', () => {
+  it('收到策略广播即清掉 ui 副本，无需等待数据库失效通知', async () => {
+    dbState.selectResults.push([]);
+    await getSettings('ui');
+    handleBroadcast({ type: 'preferences:policy-updated', payload: { version: 2 } });
+    dbState.selectResults.push([row('ui', null, { preferences: { defaults: { colorMode: 'dark' } } }, 2)]);
+    expect((await getSettings('ui')).preferences.defaults.colorMode).toBe('dark');
+    expect(selectMock).toHaveBeenCalledTimes(2);
+  });
   it('getPublicSettings 只含 public 字段', async () => {
     dbState.selectResults.push([]); // auth
     dbState.selectResults.push([]); // identitySecurity

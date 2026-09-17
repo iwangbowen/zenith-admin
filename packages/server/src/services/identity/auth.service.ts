@@ -598,17 +598,7 @@ export async function logoutByRefreshToken(token: string, clientInfo?: { ip: str
   ]);
 }
 
-export async function getMyPreferences() {
-  const userId = currentUser().userId;
-  const [row] = await db.select({ preferences: users.preferences }).from(users).where(eq(users.id, userId)).limit(1);
-  return (row?.preferences as Record<string, unknown> | null) ?? null;
-}
-
-export async function saveMyPreferences(prefs: Record<string, unknown>) {
-  const userId = currentUser().userId;
-  await db.update(users).set({ preferences: prefs }).where(eq(users.id, userId));
-  return prefs;
-}
+export { getMyPreferences, saveMyPreferences } from './auth-preferences.service';
 
 export async function getMyFavoriteMenus(): Promise<number[]> {
   const userId = currentUser().userId;

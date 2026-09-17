@@ -138,4 +138,16 @@ describe('settings routes', () => {
     expect(settingsGetOp('drive').access).toEqual({ permission: 'drive:setting:view' });
     expect(settingsUpdateOp('drive')).toMatchObject({ access: { permission: 'drive:setting:edit' }, feature: 'drive', audit: { description: '更新「企业网盘」设置', module: '系统设置' } });
   });
+
+  it('偏好策略值经过真实写入契约校验，非法枚举与范围不能入库', async () => {
+    const app = buildApp();
+    const headers = { Authorization: `Bearer ${await token()}`, 'Content-Type': 'application/json' };
+    for (const overrides of [ { colorMode: 'invalid' }, { tablePageSize: -1 }, { grayscale: true, colorBlind: true } ]) {
+      const full = SETTINGS_MODULES.ui.schema.parse({});
+      const data = { ...full, preferences: { ...full.preferences, defaults: { ...full.preferences.defaults, ...overrides } } };
+      const response = await app.request('/api/settings/ui', { method: 'PUT', headers, body: JSON.stringify({ version: 2, data }) });
+      expect(response.status).toBe(400);
+    }
+    expect(saveSettings).not.toHaveBeenCalled();
+  });
 });
