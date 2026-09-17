@@ -881,7 +881,7 @@ export default function ProfilePage({ user }: ProfilePageProps) {
       <EditFormModal modal={tokenModal} title="新建 API Token" okText="创建" cancelText="取消" width={480} centered>
         <Form.Input
           field="name"
-          label="Token 名称"
+          label="名称"
           placeholder="如：本地开发、CI/CD 环境"
           rules={[{ required: true, message: '请填写 Token 名称' }]}
           style={{ width: '100%' }}
