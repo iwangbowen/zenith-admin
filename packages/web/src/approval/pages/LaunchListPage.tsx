@@ -7,6 +7,8 @@ import { canLaunchOnMobile } from '../lib/launch';
 import { getRecentDefinitionIds } from '../lib/recent';
 import { usePublishedDefinitions } from '../lib/queries';
 import { KeywordInput } from '@/components/search-filters';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
+import { textMatches } from '@/utils/pinyin';
 
 function DefCard({ def, onOpen }: Readonly<{ def: WorkflowDefinition; onOpen: () => void }>) {
   const mobileOk = canLaunchOnMobile(def);
@@ -35,13 +37,16 @@ export default function LaunchListPage() {
   const defsQuery = usePublishedDefinitions();
   const [keyword, setKeyword] = useState('');
   const defs = useMemo(() => defsQuery.data ?? [], [defsQuery.data]);
+  // 拼音词典就绪后重算过滤，补上已输入关键字的拼音命中；pinyinReady 仅作为重算信号
+  const pinyinReady = usePinyinReady();
 
   const filtered = useMemo(() => {
-    const kw = keyword.trim().toLowerCase();
+    const kw = keyword.trim();
     if (!kw) return defs;
     return defs.filter((d) =>
-      d.name.toLowerCase().includes(kw) || (d.description ?? '').toLowerCase().includes(kw));
-  }, [defs, keyword]);
+      textMatches(d.name, kw) || textMatches(d.description ?? '', kw));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defs, keyword, pinyinReady]);
 
   // 最近使用：仅在未搜索时展示，按 localStorage 顺序取仍已发布的定义
   const recent = useMemo(() => {

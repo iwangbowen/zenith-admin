@@ -7,6 +7,8 @@ import type { WorkflowTemplate } from '@zenith/shared/workflow';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
+import { textMatches } from '@/utils/pinyin';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { ListSearchToolbar, listTableProps, useCrudOperationColumn } from '@/components/list-page';
 import { KeywordInput } from '@/components/search-filters';
@@ -41,14 +43,17 @@ export default function WorkflowTemplatesPage() {
   const saving = updateMutation.isPending;
   const cloningId = cloneMutation.isPending ? (cloneMutation.variables?.params.id ?? null) : null;
 
+  // 拼音词典就绪后重算过滤，补上已提交关键字的拼音命中；pinyinReady 仅作为重算信号
+  const pinyinReady = usePinyinReady();
   const filtered = useMemo(() => {
-    const kw = submittedParams.keyword.trim().toLowerCase();
+    const kw = submittedParams.keyword.trim();
     if (!kw) return templates;
     return templates.filter((t) =>
       [t.name, t.code, t.description, t.categoryName]
-        .some((v) => (v ?? '').toLowerCase().includes(kw)),
+        .some((v) => textMatches(v ?? '', kw)),
     );
-  }, [templates, submittedParams.keyword]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templates, submittedParams.keyword, pinyinReady]);
 
   const openEdit = (record: WorkflowTemplate) => {
     setEditing(record);

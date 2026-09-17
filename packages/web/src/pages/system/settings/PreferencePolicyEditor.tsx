@@ -23,6 +23,8 @@ import { SettingDivider, SettingRow, SettingSection } from '@/components/setting
 import { useCurrentUserMenuTree, useMenuTree } from '@/hooks/queries/menus';
 import { settingsKeys } from '@/hooks/queries/settings';
 import { useListSearch } from '@/hooks/useListSearch';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
+import { textMatches } from '@/utils/pinyin';
 import { usePermission } from '@/hooks/usePermission';
 import { useFlatMenus } from '@/layouts/admin/useMenuDerived';
 import { useApiQuery } from '@/lib/contract-query';
@@ -118,19 +120,25 @@ export function PreferencePolicyEditor({ value, onChange, disabled }: Preference
     }
     return options;
   }, [shells.data, value.defaults.terminal.defaultShell]);
+  // 拼音词典就绪后重算 rows 过滤，补上已输入关键字的拼音命中
+  const pinyinReady = usePinyinReady();
   const rows = useMemo(() => {
-    const keyword = draftParams.keyword.trim().toLocaleLowerCase();
+    const keyword = draftParams.keyword.trim();
     return preferenceDefinitions.filter((definition) => {
       if (draftParams.group && definition.group !== draftParams.group) return false;
       if (draftParams.changedOnly && !isAdjusted(value, definition.path)) return false;
       if (draftParams.lockedOnly && canOverridePreference(definition.path, value)) return false;
       if (!keyword) return true;
-      return [definition.label, definition.path, definition.description,
+      // 名称 / 路径 / 说明 / 分组 / 适用条件：子串 + 拼音首字母 / 全拼
+      return [
+        definition.label, definition.path, definition.description,
         preferenceGroups.find((group) => group.id === definition.group)?.label,
         definition.applicableWhen && describePreferenceCondition(definition.applicableWhen),
-      ].filter(Boolean).join(' ').toLocaleLowerCase().includes(keyword);
+      ].filter(Boolean).some((field) => textMatches(String(field), keyword));
     });
-  }, [draftParams, value]);
+  // 拼音词典就绪后重算过滤，补上已输入关键字的拼音命中；pinyinReady 仅作为重算信号
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftParams, value, pinyinReady]);
   const adjustedCount = preferenceDefinitions.filter((definition) => isAdjusted(value, definition.path)).length;
   const lockedCount = preferenceDefinitions.filter((definition) => !canOverridePreference(definition.path, value)).length;
   const defaultValues = resolvePreferences(value, {});

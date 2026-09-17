@@ -10,6 +10,8 @@ import WorkflowSideSheet from '@/components/workflow/WorkflowSideSheet';
 import WorkbenchSummary from './WorkbenchSummary';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
 import { useListSearch } from '@/hooks/useListSearch';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
+import { textMatches } from '@/utils/pinyin';
 import { usePermission } from '@/hooks/usePermission';
 import { useLaunchWorkflowInstance } from '@/hooks/queries/workflow-launch';
 import { usePublishedWorkflowDefinitions } from '@/hooks/queries/workflow-definitions';
@@ -51,10 +53,12 @@ export default function WorkflowLaunchpadPage() {
     return map;
   }, [categories]);
 
+  // 拼音词典就绪后重算分组过滤，补上已提交关键字的拼音命中；pinyinReady 仅作为重算信号
+  const pinyinReady = usePinyinReady();
   const grouped = useMemo(() => {
-    const kw = activeKeyword.trim().toLowerCase();
+    const kw = activeKeyword.trim();
     const filtered = kw
-      ? definitions.filter((d) => d.name.toLowerCase().includes(kw) || (d.description ?? '').toLowerCase().includes(kw))
+      ? definitions.filter((d) => textMatches(d.name, kw) || textMatches(d.description ?? '', kw))
       : definitions;
     const groups = new Map<number, WorkflowDefinition[]>();
     for (const d of filtered) {
@@ -67,7 +71,8 @@ export default function WorkflowLaunchpadPage() {
       categoryName: cid === UNCATEGORIZED ? '未分类' : (categoryName.get(cid) ?? '未分类'),
       defs,
     }));
-  }, [definitions, activeKeyword, categoryName]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [definitions, activeKeyword, categoryName, pinyinReady]);
 
   const openApply = (def: WorkflowDefinition) => {
     if (def.formType === 'external') {

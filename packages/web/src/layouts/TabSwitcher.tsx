@@ -7,7 +7,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Button, Input, List, Popover, Typography } from '@douyinfe/semi-ui';
 import { ChevronDown, Search, X } from 'lucide-react';
-import { pinyinMatch } from '@/utils/pinyin';
+import { textMatches } from '@/utils/pinyin';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
 import { renderLucideIcon, useLucideIconsReady } from '@/utils/icons';
 import type { TabItem } from '@/hooks/useTabsStore';
 
@@ -26,11 +27,10 @@ export function TabSwitcher({ tabs, activeKey, onNavigate, onClose, resolveIcon 
   const [focusedIdx, setFocusedIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  // 拼音词典就绪后重渲染，补上已输入关键字的拼音命中（与其他搜索同口径）
+  usePinyinReady();
 
-  const filtered = tabs.filter((t) => {
-    if (!search.trim()) return true;
-    return t.title.toLowerCase().includes(search.toLowerCase()) || pinyinMatch(t.title, search);
-  });
+  const filtered = tabs.filter((t) => textMatches(t.title, search));
 
   // 打开时自动 focus 搜索框 + 选中当前标签
   useEffect(() => {

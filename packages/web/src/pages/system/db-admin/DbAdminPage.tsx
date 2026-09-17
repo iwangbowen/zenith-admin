@@ -45,6 +45,8 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { downloadBlob } from '@/utils/download';
 import { useThemeController } from '@/providers/theme-controller';
 import { usePermission } from '@/hooks/usePermission';
+import { usePinyinReady } from '@/hooks/usePinyinReady';
+import { textMatches } from '@/utils/pinyin';
 import { usePreferences } from '@/hooks/usePreferences';
 import { usePagination } from '@/hooks/usePagination';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -302,16 +304,21 @@ export default function DbAdminPage() {
   const batchMutateRowsMutation = useDbAdminBatchMutateRows();
   const pendingSaving = batchMutateRowsMutation.isPending;
 
+  // 拼音词典就绪后重算表过滤，补上已输入关键字的拼音命中
+  const pinyinReady = usePinyinReady();
   const filteredTables = useMemo(() => {
-    const kw = tableFilter.trim().toLowerCase();
+    const kw = tableFilter.trim();
     return tables.filter((t) => {
       if (kindFilter === 'table' && t.kind !== 'table') return false;
       if (kindFilter === 'view' && t.kind === 'table') return false;
       if (!kw) return true;
-      return `${t.schema}.${t.name}`.toLowerCase().includes(kw)
-        || (t.comment ?? '').toLowerCase().includes(kw);
+      // 表名 / schema.表名子串 + 中文注释拼音（首字母 / 全拼）
+      return textMatches(`${t.schema}.${t.name}`, kw)
+        || textMatches(t.comment ?? '', kw);
     });
-  }, [tables, tableFilter, kindFilter]);
+  // 拼音词典就绪后重算过滤，补上已输入关键字的拼音命中；pinyinReady 仅作为重算信号
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tables, tableFilter, kindFilter, pinyinReady]);
 
   // 最近打开的表（按 key 还原为最新的表信息，已删除的表自动消失）
   const recentTables = useMemo(() => {
