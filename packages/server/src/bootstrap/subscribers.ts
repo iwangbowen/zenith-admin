@@ -18,6 +18,7 @@ import { registerBizPayDemoSubscribers } from '../services/payment/biz-pay-demo-
 import { registerContractSubscribers } from '../services/payment/payment-contract.service';
 import { registerCouponPaymentSubscribers } from '../services/payment/payment-coupon.service';
 import { registerFeeSubscribers } from '../services/payment/payment-fee.service';
+import { registerReconAdjustmentSubscribers } from '../services/payment/payment-recon-adjustment.service';
 import { registerPaymentJournalSubscribers } from '../services/payment/payment-journal-subscribers.service';
 import { registerSharingSubscribers } from '../services/payment/payment-sharing.service';
 import { registerPaymentSubscribers } from '../services/payment/payment-subscribers';
@@ -43,6 +44,7 @@ export function registerEventSubscribers(): void {
   registerBizPayDemoSubscribers();
   registerCmsWorkflowSubscribers(); // CMS 内容工作流审核（通过→发布+静态化，驳回/撤回→回写状态）
   registerPaymentJournalSubscribers();
+  registerReconAdjustmentSubscribers();
   registerFeeSubscribers();
   registerSharingSubscribers();
   registerAnalyticsServerEventSubscribers();

@@ -510,6 +510,8 @@ export async function ensureSystemLedgerAccount(
 }
 
 export interface PostSystemPaymentJournalInput extends SystemPaymentJournalInput {
+  /** Business-approved reversal; original scope and every opposite entry are validated before posting. */
+  reversalOfJournalId?: number;
   tenantId: number | null;
   operatorId: number | null;
 }
@@ -544,9 +546,19 @@ async function postSystemJournalWithExecutor(
     })),
   };
   const normalized = normalizeBalancedLines(journalInput.lines);
-  const requestHash = journalRequestHash(journalInput, null, scope.channelAccountId!);
+  const reversalOfJournalId = input.reversalOfJournalId ?? null;
+  const requestHash = journalRequestHash(journalInput, reversalOfJournalId, scope.channelAccountId!);
   const posted = await findPostedJournalId(executor, scope, input, requestHash);
   if (posted !== undefined) return posted;
+  if (reversalOfJournalId != null) {
+    const [original] = await executor.select().from(paymentJournals).where(and(eq(paymentJournals.id, reversalOfJournalId), exactTenantCondition(paymentJournals.tenantId, scope.tenantId))).for('update').limit(1);
+    requireRow(original, '原资金凭证不存在', 400);
+    if (original.reversalOfJournalId != null || original.appId !== scope.appId || original.channelAccountId !== scope.channelAccountId || original.currency !== scope.currency) throw new HTTPException(400, { message: '冲正凭证作用域与原凭证不一致或原凭证已是冲正' });
+    const originalLines = await executor.select().from(paymentJournalLines).where(eq(paymentJournalLines.journalId, original.id)).orderBy(paymentJournalLines.lineNo);
+    if (originalLines.length !== normalized.length || originalLines.some((line, i) => line.accountId !== normalized[i]?.accountId || line.debitAmount !== normalized[i]?.creditAmount || line.creditAmount !== normalized[i]?.debitAmount)) throw new HTTPException(400, { message: '冲正必须完整反转原凭证逐行借贷金额' });
+    const [reversed] = await executor.select({ id: paymentJournals.id }).from(paymentJournals).where(eq(paymentJournals.reversalOfJournalId, original.id)).limit(1);
+    if (reversed) throw new HTTPException(409, { message: '原资金凭证已被冲正' });
+  }
   // Idempotency must win before any balance check. A retry after a crash may
   // legitimately see the already-posted journal while the current balance has
   // since changed; re-running the debit guard would incorrectly reject it.
@@ -570,7 +582,7 @@ async function postSystemJournalWithExecutor(
       appId: input.appId,
       channelConfigId: input.channelConfigId,
       currency: input.currency,
-      reversalOfJournalId: null,
+      reversalOfJournalId,
       channelAccountId: scope.channelAccountId!,
       credentialVersion: scope.credentialVersion!,
       operatorId: input.operatorId,

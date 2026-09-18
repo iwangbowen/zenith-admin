@@ -502,6 +502,27 @@ export const SEED_WORKFLOW_DEFINITIONS: SeedWorkflowDefinition[] = [
     version: 1,
     tenantId: null,
   },
+  {
+    id: 3,
+    name: '支付对账调整审批',
+    description: '对账业务页冻结原始渠道证据与调整金额，独立人工复核后才能过账；管理员本人申请时须配置其他财务审批人。',
+    initiatorScopeType: 'all',
+    flowData: buildLinearFlow([
+      { key: 'approve_finance', name: '财务独立复核', props: { assigneeType: 'user', assigneeIds: [1], approvalType: 'manual', approveMethod: 'and', emptyStrategy: 'reject', sameInitiatorStrategy: 'selfApprove', operations: ['opinionRequired'], signaturePolicy: 'none' } },
+    ], { ...TEMPLATE_SETTINGS, allowResubmit: false, notifyInitiator: true, summaryFields: ['amount', 'direction', 'caseId'] }),
+    formType: 'external',
+    customForm: {
+      createComponent: '', viewComponent: 'payment/PaymentReconAdjustmentApprovalView', icon: 'Scale',
+      variables: [
+        { key: 'amount', label: '调整金额（整数分）', type: 'string' },
+        { key: 'direction', label: '资金方向', type: 'string' },
+        { key: 'caseId', label: '差异案件', type: 'number' },
+        { key: 'applicationId', label: '支付应用', type: 'number' },
+        { key: 'isReversal', label: '是否冲正', type: 'boolean' },
+      ],
+    },
+    status: 'published', version: 1, tenantId: null,
+  },
 ];
 
 // ─── 工作流分类 ─────────────────────────────────────────────────────────────────

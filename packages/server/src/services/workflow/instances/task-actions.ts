@@ -1,3 +1,4 @@
+import { assertIndependentReconApproval } from '../../payment/payment-recon-adjustment-policy';
 import { assertWorkflowFormUpdatesCurrent } from './signature-concurrency';
 import { nullableEq } from '../../../lib/where-helpers';
 import type { SignatureInput, SignatureSnapshot } from '@zenith/shared/core';
@@ -146,6 +147,7 @@ export async function approveTaskInBatch(taskId: number, comment?: string, signa
 
 async function approveUserTask(taskId: number, comment: string | undefined, attachments: WorkflowTaskAttachment[] | undefined, selectedNextApprovers: Record<string, number[]> | undefined, signature: SignatureInput | undefined, formUpdates: Record<string, unknown> | undefined, batch: boolean): Promise<ApproveResult> {
   const { task, inst, actor } = await getOwnPendingTask(taskId);
+  assertIndependentReconApproval(inst.bizType, inst.initiatorId, actor.userId);
   // 校验"操作按钮设置"：通过按钮须启用 + 附件必填（uploadMode === 'required'）
   const flowData = inst.definitionSnapshot?.flowData;
   const nodeCfg = flowData?.nodes.find((n) => n.data.key === task.nodeKey)?.data;
@@ -263,6 +265,7 @@ export async function approveTaskCore(
   actor: WorkflowEventActor,
   options?: { selectedNextApprovers?: Record<string, number[]>; signature?: SignatureSnapshot; attachments?: Array<{ name: string; url: string; size?: number }>; formUpdates?: Record<string, unknown> },
 ): Promise<ApproveResult> {
+  assertIndependentReconApproval(inst.bizType, inst.initiatorId, actor.userId);
   const taskId = task.id;
   const snapshot = inst.definitionSnapshot;
   const flowData = snapshot?.flowData;

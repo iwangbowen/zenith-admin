@@ -98,6 +98,12 @@ export const NOTIFICATION_EVENTS = defineNotificationEvents({
     vars: eventVars<{ adjustmentId: number; amount: string; currency: string }>(),
     title: '支付调整已执行', content: '调整单 #{{adjustmentId}} 已入账 {{amount}}（最小货币单位）{{currency}}。',
   },
+  'payment.recon.adjustment_failed': {
+    group: 'ops', label: '支付调整执行失败', severity: 'important', defaultChannels: ['inapp'],
+    availableChannels: ['inapp', 'email', 'chat'],
+    vars: eventVars<{ adjustmentId: number; caseId: number; message: string }>(),
+    title: '支付调整 #{{adjustmentId}} 执行失败', content: '差异案件 #{{caseId}}：{{message}}',
+  },
   // ─── 知识中心 ───────────────────────────────────────────────────────────────
   'wiki.doc.published': {
     group: 'wiki',

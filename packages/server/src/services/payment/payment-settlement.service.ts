@@ -34,6 +34,7 @@ const SETTLEMENT_ELIGIBLE_SOURCE_TYPES = [
   'payment.sharing',
   'payment.sharing_reversal',
   'recon.adjust',
+  'recon.adjust.reversal',
 ] as const;
 
 /** 待结算分录的公共过滤：商户可用账户、可结算来源类型、尚未被任何结算批次认领 */
