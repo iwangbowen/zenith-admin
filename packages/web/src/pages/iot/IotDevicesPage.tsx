@@ -29,6 +29,7 @@ import {
 import { useAllIotGroups, useDeleteIotGroups, useSaveIotGroup } from '@/hooks/queries/iot-groups';
 import IotDeviceDetailDrawer from './IotDeviceDetailDrawer';
 import { useListPage } from '@/hooks/useListPage';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { EditFormModal, EditFormSheet } from '@/components/EditFormModal';
 
 const { Text } = Typography;
@@ -270,6 +271,7 @@ export default function IotDevicesPage() {
     useList: useIotDeviceList,
     table: { empty: '暂无设备，点击「注册设备」接入第一台设备', rowSelection: canBatch ? rowSelection : undefined },
   });
+  useListDeepLink(['keyword'], (params) => page.applySearch({ keyword: params.keyword ?? '' }));
   const { tableProps, filterQuery, listQuery } = page;
 
   return (

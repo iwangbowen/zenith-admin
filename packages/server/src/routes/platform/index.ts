@@ -17,6 +17,7 @@ import {
   tagContract,
   traceContract,
   userFeedbackContract,
+  globalSearchContract,
 } from '@zenith/shared/platform';
 import {
   decisionFlowContract,
@@ -48,6 +49,7 @@ import licensingRoutes from './licensing';
 import tagsRoutes from './tags';
 import traceRoutes from './trace';
 import userFeedbacksRoutes from './user-feedbacks';
+import globalSearchRoutes from './global-search';
 import { createWsRoute } from './ws';
 
 export default defineRouteDomain({
@@ -64,6 +66,7 @@ export default defineRouteDomain({
     // License 管理面永不打 feature 标（受限模式下也必须可达，否则无法自救）
     [licensingContract.basePath, licensingRoutes],
     [userFeedbackContract.basePath, userFeedbacksRoutes],
+    [globalSearchContract.basePath, globalSearchRoutes],
     [dataMaskContract.basePath, dataMaskRoutes],
     [regionContract.basePath, regionsRoutes],
     [cacheContract.basePath, cacheRoutes],

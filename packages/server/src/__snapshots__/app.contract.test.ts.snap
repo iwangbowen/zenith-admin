@@ -985,6 +985,7 @@ exports[`路由表快照 > 完整路由表保持不变 1`] = `
   "GET /api/payment/webhooks/events",
   "GET /api/permission-matrix/roles",
   "GET /api/permission-matrix/users/:id",
+  "GET /api/platform/search",
   "GET /api/ports",
   "GET /api/positions",
   "GET /api/positions/:id",

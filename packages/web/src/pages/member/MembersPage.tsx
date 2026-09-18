@@ -64,7 +64,7 @@ export default function MembersPage() {
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: memberAdminKeys.memberLists });
   // 等级列表"会员数"等入口的深链筛选（?levelId=，消费后即从 URL 移除）
-  useListDeepLink(['levelId'], (p) => applySearch({ ...defaultSearch, levelId: Number(p.levelId) || undefined }));
+  useListDeepLink(['levelId', 'keyword'], (p) => applySearch({ ...defaultSearch, levelId: Number(p.levelId) || undefined, keyword: p.keyword ?? '' }));
   const [pwdVisible, setPwdVisible] = useState(false);
   const [pwdMember, setPwdMember] = useState<Member | null>(null);
   const [growthVisible, setGrowthVisible] = useState(false);

@@ -33,6 +33,7 @@ import {
 } from '@/hooks/queries/payment-orders';
 import { usePaymentStats } from '@/hooks/queries/payment-stats';
 import { useListSearch } from '@/hooks/useListSearch';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { DateRangeFilter, FilterSelect, KeywordInput, NumberFilter, StatusSelect } from '@/components/search-filters';
 import { useEditModal } from '@/hooks/useEditModal';
@@ -90,8 +91,9 @@ export default function PaymentOrdersPage() {
   const {
     page, pageSize, buildPagination,
     bind, bindKeyword, submittedParams,
-    handleSearch, handleReset,
+    handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentOrderKeys.lists });
+  useListDeepLink(['keyword'], (params) => applySearch({ ...defaultSearch, keyword: params.keyword ?? '' }));
 
   const [detail, setDetail] = useState<PaymentOrder | null>(null);
   const [refundCheckTarget, setRefundCheckTarget] = useState<PaymentOrder | null>(null);

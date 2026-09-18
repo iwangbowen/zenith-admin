@@ -33,6 +33,7 @@ import { departmentsToTreeData, useFlatDepartments } from '@/hooks/queries/depar
 import { useAllPositions } from '@/hooks/queries/positions';
 import { useMySettings } from '@/hooks/queries/settings';
 import { useListSearch } from '@/hooks/useListSearch';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
 import {
   useAssignUserRoles,
   useBatchUserPassword,
@@ -108,6 +109,7 @@ export default function UsersPage() {
     draftParams, bind, bindKeyword, submittedParams,
     handleSearch, applySearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: userKeys.lists });
+  useListDeepLink(['keyword'], (params) => applySearch({ ...defaultSearchParams, keyword: params.keyword ?? '' }));
   const [batchPasswordModalVisible, setBatchPasswordModalVisible] = useState(false);
   // useEditModal 例外：批量重置密码对话框（针对选中用户的动作表单，非新增 / 编辑）
   const batchPasswordFormApi = useRef<FormApi | null>(null);
