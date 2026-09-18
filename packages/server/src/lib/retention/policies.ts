@@ -41,6 +41,14 @@ async function analyticsReplayRetention(): Promise<TenantRetentionDays> {
  * 之后管理员在后台调整的值不会被重启覆盖。
  */
 export const RETENTION_POLICIES: readonly RetentionPolicyDefinition[] = [
+  {
+    key: 'payment_recon_runs', title: '支付对账运行历史', module: '支付中心', tableName: 'payment_recon_runs',
+    timeColumn: 'created_at', defaultDays: 3650, description: '对账运行输入快照、规则版本和结果，用于财务追溯。',
+  },
+  {
+    key: 'payment_recon_case_events', title: '支付差异案件事件', module: '支付中心', tableName: 'payment_recon_case_events',
+    timeColumn: 'created_at', defaultDays: 3650, description: '差异案件追加式调查、审批与处置历史。',
+  },
   // ── 系统管理 ───────────────────────────────────────────────────────────────
   {
     key: 'operation_logs',
