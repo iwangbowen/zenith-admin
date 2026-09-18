@@ -417,13 +417,18 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
       // 整页路由（非菜单页面）可通过导航 state 携带标题/图标，避免标签页闪现原始路径；
       // 优先级：导航 state > 页面 setTabMeta 暂存 > resolveTitle 兜底
       const navState = location.state as { tabTitle?: string; tabIcon?: string } | null;
-      addTab(location.pathname, navState?.tabTitle, navState?.tabIcon, resolveTitle(location.pathname));
-      // addTab 对已存在的页签只激活不改标题；带 state 再次进入时刷新标题/图标
-      if (navState?.tabTitle || navState?.tabIcon) {
-        setTabMeta(location.pathname, { title: navState.tabTitle, icon: navState.tabIcon });
+      const fallbackTitle = resolveTitle(location.pathname);
+      const fallbackIcon = resolveIcon(location.pathname);
+      addTab(location.pathname, navState?.tabTitle, navState?.tabIcon, fallbackTitle);
+      // addTab 对已存在的页签只激活不改元信息；菜单 / 固定路由元数据就绪后同步纠正持久化旧标题。
+      if (navState?.tabTitle || navState?.tabIcon || fallbackTitle !== location.pathname || fallbackIcon) {
+        setTabMeta(location.pathname, {
+          title: navState?.tabTitle ?? (fallbackTitle !== location.pathname ? fallbackTitle : undefined),
+          icon: navState?.tabIcon ?? fallbackIcon,
+        });
       }
     }
-  }, [location.pathname, location.state, preferences.enableTabs, resolveTitle, addTab, setTabMeta]);
+  }, [location.pathname, location.state, preferences.enableTabs, resolveTitle, resolveIcon, addTab, setTabMeta]);
 
   const tabsMetaValue = useMemo(
     () => ({ enabled: !!preferences.enableTabs, setTabMeta, closeTab: removeTab }),

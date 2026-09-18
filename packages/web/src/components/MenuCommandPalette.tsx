@@ -144,6 +144,12 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
     navigate(route);
   }, [navigate, onClose]);
 
+  const openSearchCenter = useCallback(() => {
+    const value = query.trim();
+    onClose();
+    navigate(value ? `/search?q=${encodeURIComponent(value)}` : '/search');
+  }, [navigate, onClose, query]);
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       onClose();
@@ -160,10 +166,15 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
       return;
     }
     if (e.key === 'Enter') {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        openSearchCenter();
+        return;
+      }
       const item = displayItems[selectedIndex];
       if (item) handleSelect(item);
     }
-  }, [displayItems, handleSelect, onClose, selectedIndex]);
+  }, [displayItems, handleSelect, onClose, openSearchCenter, selectedIndex]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -253,6 +264,7 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
           {!isShowingRecent && remoteResults.map((item, index) => renderItem({ kind: 'business', value: item }, menuResults.length + index, false))}
           {!isShowingRecent && displayItems.length === 0 && !remoteSearch.isFetching && <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--semi-color-text-2)', fontSize: 13 }}>未找到匹配的菜单或业务数据</div>}
           {!isShowingRecent && remoteSearch.data?.partial && displayItems.length > 0 && <div style={{ padding: '8px 16px', color: 'var(--semi-color-text-2)', fontSize: 11 }}>部分业务数据暂时不可用</div>}
+          {!isShowingRecent && query.trim().length >= 2 && <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 16px 8px' }}><button type="button" onClick={openSearchCenter} style={{ border: 'none', background: 'transparent', color: 'var(--semi-color-primary)', cursor: 'pointer', fontSize: 12 }}>进入统一搜索中心 →</button></div>}
         </div>
 
         {!isMobile && <div className="cmd-palette-footer" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 16px', borderTop: '1px solid var(--semi-color-border)', fontSize: 11, color: 'var(--semi-color-text-2)' }}><span><kbd style={{ fontFamily: 'monospace', fontSize: 10, padding: '0 3px', border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-small)' }}>↑↓</kbd> 导航</span><span><kbd style={{ fontFamily: 'monospace', fontSize: 10, padding: '0 3px', border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-small)' }}>↵</kbd> 跳转</span><span><kbd style={{ fontFamily: 'monospace', fontSize: 10, padding: '0 3px', border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-small)' }}>ESC</kbd> 关闭</span><span style={{ marginLeft: 'auto' }}><kbd style={{ fontFamily: 'monospace', fontSize: 10, padding: '0 3px', border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-small)' }}>Ctrl K</kbd> 快速打开</span></div>}
