@@ -1,6 +1,7 @@
 import type { GlobalSearchType } from '@zenith/shared/platform';
 import { hasPermission } from '../../../lib/context';
 import logger from '../../../lib/logger';
+import { createConcurrencyLimiter } from '../../../lib/concurrency';
 import { memberSearchAdapter } from './adapters/member.adapter';
 import { orderSearchAdapter } from './adapters/order.adapter';
 import { userSearchAdapter } from './adapters/user.adapter';
@@ -16,6 +17,7 @@ import { reportDashboardSearchAdapter, reportDatasetSearchAdapter } from './adap
 import { aiKnowledgeBaseSearchAdapter, asyncTaskSearchAdapter } from './adapters/ai-task.adapter';
 import { exceptionLogSearchAdapter, operationLogSearchAdapter } from './adapters/log.adapter';
 import type { GlobalSearchAdapter, GlobalSearchInput } from './types';
+import { recordGlobalSearchMetric } from './metrics';
 
 /**
  * 统一搜索注册表：新增领域只需实现一个适配器并在这里注册，编排层和顶部搜索无需改动。
@@ -45,6 +47,7 @@ export const globalSearchAdapters: readonly GlobalSearchAdapter[] = [
 const ADAPTER_TIMEOUT_MS = 1200;
 const SLOW_ADAPTER_LOG_MS = 400;
 const MAX_MERGED_RESULTS = 30;
+const globalSearchQueryLimiter = createConcurrencyLimiter(6);
 
 function selectedAdapters(types: string | undefined, adapters: readonly GlobalSearchAdapter[]): GlobalSearchAdapter[] {
   if (!types?.trim()) return [...adapters];
@@ -52,7 +55,8 @@ function selectedAdapters(types: string | undefined, adapters: readonly GlobalSe
   return adapters.filter((adapter) => requested.has(adapter.type));
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+function withTimeout<T>(task: () => Promise<T>, timeoutMs: number): Promise<T> {
+  const promise = globalSearchQueryLimiter.run(task);
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('search adapter timeout')), timeoutMs);
     promise.then(
@@ -104,16 +108,18 @@ export async function runGlobalSearch(
 ): Promise<GlobalSearchRunResult> {
   const selected = selectedAdapters(types, adapters);
   const settled = await Promise.all(selected.map(async (adapter) => {
+    const startedAt = Date.now();
     try {
       if (adapter.permissions !== 'authenticated' && !(await hasPermission(...adapter.permissions))) {
         return { type: adapter.type, results: [], failed: false } as const;
       }
-      const startedAt = Date.now();
-      const results = await withTimeout(adapter.search(input), adapter.timeoutMs ?? timeoutMs);
+      const results = await withTimeout(() => adapter.search(input), adapter.timeoutMs ?? timeoutMs);
       const durationMs = Date.now() - startedAt;
+      recordGlobalSearchMetric(adapter.type, 'success', durationMs);
       if (durationMs >= SLOW_ADAPTER_LOG_MS) logger.debug('[global-search] slow adapter', { type: adapter.type, durationMs });
       return { type: adapter.type, results, failed: false } as const;
     } catch (error) {
+      recordGlobalSearchMetric(adapter.type, error instanceof Error && error.message.includes('timeout') ? 'timeout' : 'failure', Date.now() - startedAt);
       logger.warn('[global-search] adapter failed', {
         type: adapter.type,
         error: error instanceof Error ? error.message : String(error),
