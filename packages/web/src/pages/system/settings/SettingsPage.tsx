@@ -159,6 +159,7 @@ function ModuleDetail({ module, meta }: { readonly module: SettingsModuleKey; re
           <Tag color={meta.scope === 'tenant' ? 'blue' : 'grey'}>{SCOPE_LABELS[meta.scope]}</Tag>
           {meta.feature ? <Tag>License 特性：{meta.feature}</Tag> : null}
           {envelope ? <Tag>版本 {envelope.version}</Tag> : null}
+          {meta.overriddenCount > 0 ? <Tag color="orange">{meta.overriddenCount} 项覆盖</Tag> : null}
           {envelope?.updatedAt ? <Text type="tertiary" size="small">最后修改 {envelope.updatedAt}</Text> : null}
         </div>
 
