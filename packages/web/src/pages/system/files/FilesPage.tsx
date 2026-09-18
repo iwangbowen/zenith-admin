@@ -10,7 +10,7 @@ import { enumValueOf } from '@zenith/shared/core';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { downloadBlob } from '@/utils/download';
-import { getFileTypeIcon, fetchManagedFileBlob, getFileFullUrl } from '@/utils/file-utils';
+import { getFileTypeIcon, fetchManagedFileBlob, getFileFullUrl, canPreviewFile } from '@/utils/file-utils';
 import { buildManagedFileActions } from '@/utils/managed-file-actions';
 import { chunkedUpload, CHUNKED_UPLOAD_CANCELLED } from '@/utils/chunked-upload';
 import { FilePreviewLayer } from '@/components/FilePreviewLayer';
@@ -304,9 +304,13 @@ export default function FilesPage() {
       dataIndex: 'originalName',
       minWidth: 220,
       ellipsis: { showTitle: false },
-      render: (name: string, record: ManagedFile) => (
-        <FileNameCell name={name} mimeType={record.mimeType} />
-      ),
+      render: (name: string, record: ManagedFile) => {
+        // 与操作列“预览”一致：仅可预览类型渲染为可点击
+        const previewable = canPreviewFile(record.mimeType, name);
+        return (
+          <FileNameCell name={name} mimeType={record.mimeType} onClick={previewable ? () => void preview.handlePreview(record) : undefined} />
+        );
+      },
     },
     {
       title: '来源服务',
