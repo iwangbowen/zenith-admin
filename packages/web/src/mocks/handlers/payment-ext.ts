@@ -2,161 +2,66 @@ import {
   paymentOpsContract,
   paymentReconContract,
   paymentRefundContract,
-  type PaymentChannel,
   type PaymentOpsHealth,
   type PaymentOutboxEvent,
-  type PaymentReconBatch,
-  type PaymentReconItem,
-  type PaymentReconResult,
-  type PaymentReconSource,
+  type PaymentReconAdjustment,
+  type PaymentReconCase,
+  type PaymentReconCaseEvent,
+  type PaymentReconSummary,
+  type PaymentReconRun,
+  type PaymentStatement,
+  type PaymentStatementEntry,
+  type PaymentStatementPeriod,
 } from '@zenith/shared/payment';
 import { PAYMENT_MOCK_SEED_TIME, mockPaymentChannels, mockPaymentOrders, mockPaymentRefunds } from '@/mocks/data/payment';
 import { mock } from '@/mocks/utils/contract';
-import { requireItem, removeByIds } from '@/mocks/utils/crud';
+import { requireItem } from '@/mocks/utils/crud';
 import { mockDateTime } from '@/mocks/utils/date';
-import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
+import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { recordMockSystemJournal } from './payment-journals';
 import { filterByKeyword, matchesFilter } from '@/mocks/utils/filter';
 
 const SEED = PAYMENT_MOCK_SEED_TIME;
-
-const yuanToCent = (n: number) => Math.round(n);
-
-// ─── 对账中心 ───────────────────────────────────────────────────────────────
-const reconBatches: PaymentReconBatch[] = [
-  { id: 1, batchNo: 'RECON1700000000001', channel: 'wechat', appId: 1, channelConfigId: 1, currency: 'CNY', billDate: '2024-01-01', source: 'manual_upload', status: 'done', localCount: 3, localAmount: 16800, channelCount: 3, channelAmount: 16700, matchedCount: 2, diffCount: 1, remark: '演示批次', createdAt: SEED, updatedAt: SEED },
-];
-const reconItemsByBatch: Record<number, PaymentReconItem[]> = {
-  1: [
-    { id: 1, batchId: 1, orderNo: 'PAY1700000000001', channelTradeNo: '4200001234567890', localAmount: 9900, channelAmount: 9900, localStatus: 'success', channelStatus: 'SUCCESS', result: 'matched', handleStatus: null, handleRemark: null, handledAt: null, remark: null, createdAt: SEED },
-    { id: 2, batchId: 1, orderNo: 'PAY1700000000003', channelTradeNo: '4200009876543210', localAmount: 1900, channelAmount: 1900, localStatus: 'refunded', channelStatus: 'SUCCESS', result: 'matched', handleStatus: null, handleRemark: null, handledAt: null, remark: null, createdAt: SEED },
-    { id: 3, batchId: 1, orderNo: 'PAY1700000000004', channelTradeNo: '4200005555666677', localAmount: 5000, channelAmount: 4900, localStatus: 'success', channelStatus: 'SUCCESS', result: 'amount_diff', handleStatus: 'pending', handleRemark: null, handledAt: null, remark: null, createdAt: SEED },
-  ],
-};
-let nextBatchId = 2;
-let nextItemId = 4;
-
-function sampleBill(channel: PaymentChannel): string {
-  const lines = ['订单号,渠道交易号,金额(分),状态'];
-  for (const o of mockPaymentOrders) {
-    if (o.channel === channel && (o.status === 'success' || o.status === 'refunding' || o.status === 'refunded')) {
-      lines.push(`${o.orderNo},${o.channelTradeNo ?? ''},${o.paidAmount ?? o.amount},SUCCESS`);
-    }
-  }
-  return lines.join('\n');
-}
-
-/** 解析账单并与本地订单比对，生成批次 + 明细（供手动上传与自动拉取两个入口复用）。 */
-function createBatchFromBill(applicationId: number, channel: PaymentChannel, channelConfigId: number, currency: string, billDate: string, billText: string, remark: string | null, source: PaymentReconSource): PaymentReconBatch {
-  const channelRecords = new Map<string, { amount: number; tradeNo?: string }>();
-  for (const raw of billText.split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line) continue;
-    const cols = line.split(',').map((c) => c.trim());
-    if (cols.length < 3 || /^(订单号|order)/i.test(cols[0])) continue;
-    const amt = Number(cols[2]);
-    if (Number.isFinite(amt)) channelRecords.set(cols[0], { amount: yuanToCent(amt), tradeNo: cols[1] });
-  }
-  const localMap = new Map(
-    mockPaymentOrders
-      .filter((o) => o.appId === applicationId && o.channel === channel && o.channelConfigId === channelConfigId && o.currency === currency && (o.status === 'success' || o.status === 'refunding' || o.status === 'refunded'))
-      .map((o) => [o.orderNo, { amount: o.paidAmount ?? o.amount, status: o.status, tradeNo: o.channelTradeNo }]),
-  );
-  const items: PaymentReconItem[] = [];
-  let matched = 0;
-  let localAmount = 0;
-  let channelAmount = 0;
-  for (const orderNo of new Set([...localMap.keys(), ...channelRecords.keys()])) {
-    const local = localMap.get(orderNo);
-    const ch = channelRecords.get(orderNo);
-    if (local) localAmount += local.amount;
-    if (ch) channelAmount += ch.amount;
-    let result: PaymentReconResult;
-    if (local && ch) result = local.amount === ch.amount ? 'matched' : 'amount_diff';
-    else if (local) result = 'local_only';
-    else result = 'channel_only';
-    if (result === 'matched') matched++;
-    items.push({ id: nextItemId++, batchId: nextBatchId, orderNo, channelTradeNo: ch?.tradeNo ?? local?.tradeNo ?? null, localAmount: local?.amount ?? null, channelAmount: ch?.amount ?? null, localStatus: local?.status ?? null, channelStatus: ch ? 'SUCCESS' : null, result, handleStatus: result === 'matched' ? null : 'pending', handleRemark: null, handledAt: null, remark: null, createdAt: mockDateTime() });
-  }
-  const batch: PaymentReconBatch = {
-    id: nextBatchId, batchNo: `RECON${Date.now()}`, channel,
-    appId: applicationId,
-    channelConfigId, currency, billDate, source, status: 'done',
-    localCount: localMap.size, localAmount, channelCount: channelRecords.size, channelAmount,
-    matchedCount: matched, diffCount: items.length - matched, remark, createdAt: mockDateTime(), updatedAt: mockDateTime(),
-  };
-  reconBatches.push(batch);
-  reconItemsByBatch[nextBatchId] = items;
-  nextBatchId++;
-  return batch;
-}
-
+const now = () => mockDateTime();
+const period = (id: number, status: PaymentStatementPeriod['status'] = 'ready'): PaymentStatementPeriod => ({ id, accountId: 1, billDate: '2026-09-17', type: 'trade', currency: 'CNY', status, nextAttemptAt: null, deadlineAt: '2026-09-19 00:00:00', lastError: null, currentStatementId: id, taskId: null, generation: 0, completedAt: now(), tenantId: null, createdBy: 1, updatedBy: 1, createdAt: SEED, updatedAt: SEED });
+const periods: PaymentStatementPeriod[] = [period(1), period(2, 'failed')];
+const statements: PaymentStatement[] = [{ id: 1, periodId: 1, version: 1, source: 'provider_download', contentHash: 'a'.repeat(64), parserVersion: 'mock/1', status: 'validated', summary: { count: 2 }, verification: { verified: true }, tenantId: null, createdBy: 1, updatedBy: 1, createdAt: SEED, updatedAt: SEED }];
+const entries: PaymentStatementEntry[] = [{ id: 1, statementId: 1, entryKey: 'PAY1700000000001', type: 'payment', merchantOrderNo: 'PAY1700000000001', merchantRefundNo: null, providerTransactionId: '4200001234567890', providerRefundId: null, reference: null, currency: 'CNY', amount: '9900', direction: 'in', status: 'success', occurredAt: SEED, applicationId: 1, raw: {}, lineNo: 2, feeAmount: '0', netAmount: '9900', balance: null, createdAt: SEED, tenantId: null }];
+const runs: PaymentReconRun[] = [];
+const cases: PaymentReconCase[] = [{ id: 1, accountId: 1, periodId: 1, caseKey: 'payment:merchant:PAY1700000000004', entryKey: 'PAY1700000000004', type: 'amount_diff', stage: 'trade', status: 'open', version: 1, lastRunId: 0, applicationId: 1, orderId: 4, refundId: null, localAmount: '5000', channelAmount: '4900', currency: 'CNY', evidence: { source: 'provider_download' }, assignedTo: null, dueAt: '2026-09-20 00:00:00', resolution: null, tenantId: null, createdBy: 1, updatedBy: 1, createdAt: SEED, updatedAt: SEED }];
+const caseEvents: PaymentReconCaseEvent[] = [];
+const adjustments: PaymentReconAdjustment[] = [];
+const summary: PaymentReconSummary = { expectedPeriods: 0, waitingPeriods: 0, readyPeriods: 1, failedPeriods: 1, openCases: 1, suspendedCases: 0, overdueCases: 0, pendingAdjustments: 0, unmatchedBankEntries: 0, unmatchedSettlementEntries: 0, differenceAmounts: [{ currency: 'CNY', amount: '100' }] };
+const tasks: Array<{ id: number; title: string; taskType: string; status: 'pending' | 'running' | 'completed' | 'failed' }> = [];
+let nextId = 20;
+const asyncTask = (taskType: string, title: string) => { const task = { id: nextId++, title, taskType, status: 'completed' as const }; tasks.unshift(task); return { id: task.id, taskType, title, module: '支付中心', status: task.status, payload: {}, totalCount: 1, processedCount: 1, failedCount: 0, progressNote: null, result: {}, errorMessage: null, cancelRequested: false, attempts: 1, maxAttempts: 3, retryDelayMs: 5000, nextRunAt: null, createdBy: 1, createdByName: 'admin', tenantId: null, traceId: null, startedAt: now(), completedAt: now(), createdAt: now(), updatedAt: now() }; };
+const paginate = <T,>(list: T[], page: number, pageSize: number) => ({ list: list.slice((page - 1) * pageSize, page * pageSize), total: list.length, page, pageSize });
 const reconHandlers = [
-  mock(paymentReconContract.list, ({ query, ok, paginate }) => {
-    const filtered = reconBatches.filter((b) => matchesFilter(b.channel, query.channel) && matchesFilter(b.status, query.status));
-    return ok(paginate([...filtered].reverse()));
-  }),
-  mock(paymentReconContract.sampleBill, ({ query, ok }) => ok({ billText: sampleBill(query.channel) })),
-  mock(paymentReconContract.create, ({ body, ok }) => {
-    const config = mockPaymentChannels.find((item) => item.id === body.channelConfigId && item.channel === body.channel && item.status === 'enabled');
-    if (!config) return badRequest('所选商户配置不存在或未启用');
-    const appHasConfig = mockPaymentOrders.some((order) => order.appId === body.applicationId && order.channelConfigId === body.channelConfigId);
-    if (!appHasConfig) return badRequest('支付应用未绑定所选商户配置');
-    const batch = createBatchFromBill(body.applicationId, body.channel, body.channelConfigId, body.currency, body.billDate, body.billText, body.remark ?? null, 'manual_upload');
-    return ok(batch, '对账完成');
-  }),
-  mock(paymentReconContract.auto, ({ body, ok }) => {
-    const config = mockPaymentChannels.find((item) => item.channel === body.channel && item.status === 'enabled' && item.isDefault)
-      ?? mockPaymentChannels.find((item) => item.channel === body.channel && item.status === 'enabled');
-    if (!config) return badRequest('该渠道没有启用的商户配置');
-    const applicationId = mockPaymentOrders.find((order) => order.channelConfigId === config.id)?.appId;
-    if (!applicationId) return badRequest('该商户配置没有可用支付应用');
-    const batch = createBatchFromBill(applicationId, body.channel, config.id, body.currency, body.billDate, sampleBill(body.channel), '自动对账（沙箱模拟账单）', 'sandbox_generated');
-    return ok(batch, '对账完成');
-  }),
-  mock(paymentReconContract.detail, ({ params, ok }) => {
-    const b = requireItem(reconBatches, params.id, '对账批次不存在');
-    return ok(b);
-  }),
-  mock(paymentReconContract.items, ({ params, query, ok, paginate }) => {
-    const items = (reconItemsByBatch[params.id] ?? []).filter((i) => matchesFilter(i.result, query.result) && matchesFilter(i.handleStatus, query.handleStatus));
-    return ok(paginate(items));
-  }),
-  mock(paymentReconContract.handleItem, ({ params, body, ok }) => {
-    const remark = body.remark.trim();
-    if (!remark) return badRequest('处理备注不能为空');
-    for (const items of Object.values(reconItemsByBatch)) {
-      const item = items.find((i) => i.id === params.id);
-      if (item) {
-        if (item.handleStatus !== 'pending') return badRequest('该差异已被处理，请刷新后查看');
-        const batch = reconBatches.find((candidate) => candidate.id === item.batchId);
-        if (body.action === 'adjusted' && batch?.source !== 'provider_download') {
-          return conflict('仅渠道下载账单可直接调账；人工上传和沙箱模拟账单只能挂账或忽略', { status: 409 });
-        }
-        const hasAdjustmentAmount = item.result === 'channel_only'
-          ? item.channelAmount != null && item.channelAmount > 0
-          : item.result === 'local_only'
-            ? item.localAmount != null && item.localAmount > 0
-            : item.result === 'amount_diff' && item.localAmount != null && item.channelAmount != null && item.localAmount !== item.channelAmount;
-        if (body.action === 'adjusted' && !hasAdjustmentAmount) {
-          return badRequest('该差异无法计算明确调账金额，请选择挂账或忽略');
-        }
-        item.handleStatus = body.action;
-        item.handleRemark = remark;
-        item.handledAt = mockDateTime();
-        return ok(item, '处理成功');
-      }
-    }
-    return notFound('对账明细不存在');
-  }),
-  mock(paymentReconContract.remove, ({ params, ok }) => {
-    requireItem(reconBatches, params.id, '对账批次不存在');
-    removeByIds(reconBatches, [params.id]);
-    delete reconItemsByBatch[params.id];
-    return ok(null, '删除成功');
-  }),
+  mock(paymentReconContract.list, ({ query, ok }) => ok(paginate(periods.filter((p) => (!query.accountId || p.accountId === query.accountId) && (!query.status || p.status === query.status) && (!query.type || p.type === query.type)), query.page, query.pageSize))),
+  mock(paymentReconContract.detail, ({ params, ok }) => ok(requireItem(periods, params.id, '账期不存在'))),
+  mock(paymentReconContract.submit, ({ body, ok }) => ok(asyncTask('payment-statement-download', `获取 ${body.billDate} 渠道账单`))),
+  mock(paymentReconContract.retry, ({ params, ok }) => ok(asyncTask('payment-statement-download', `重试账期 #${params.id}`))),
+  mock(paymentReconContract.importBill, ({ body, ok }) => ok(asyncTask('payment-statement-import', `导入 ${body.filename}`))),
+  mock(paymentReconContract.statements, ({ params, ok }) => ok(statements.filter((s) => s.periodId === params.id))),
+  mock(paymentReconContract.statement, ({ params, ok }) => { const s = requireItem(statements, params.id, '账单不存在'); return ok({ ...s, files: [{ id: 1, statementId: s.id, filename: 'statement.csv', mimeType: 'text/csv', sha256: s.contentHash, providerHash: null, byteLength: 640, createdAt: SEED }] }); }),
+  mock(paymentReconContract.entries, ({ params, query, ok }) => ok(paginate(entries.filter((e) => e.statementId === params.id && (!query.type || e.type === query.type)), query.page, query.pageSize))),
+  mock(paymentReconContract.reconcile, ({ params, ok }) => ok(asyncTask('payment-reconcile', `核对账单 #${params.id}`))),
+  mock(paymentReconContract.runs, ({ query, ok }) => ok(paginate(runs.filter((r) => !query.status || r.status === query.status), query.page, query.pageSize))),
+  mock(paymentReconContract.cases, ({ query, ok }) => ok(paginate(cases.filter((item) => (!query.accountId || item.accountId === query.accountId) && (!query.status || item.status === query.status) && (!query.type || item.type === query.type)), query.page, query.pageSize))),
+  mock(paymentReconContract.caseDetail, ({ params, ok }) => { const item = requireItem(cases, params.id, '差异案件不存在'); return ok({ ...item, events: caseEvents.filter((event) => event.caseId === item.id), adjustments: adjustments.filter((a) => a.caseId === item.id) }); }),
+  mock(paymentReconContract.handleCase, ({ params, body, ok }) => { const item = requireItem(cases, params.id, '差异案件不存在'); if (item.version !== body.expectedVersion) return badRequest('案件已经变化，请刷新后操作'); item.status = body.action === 'investigate' ? 'investigating' : body.action === 'suspend' ? 'suspended' : body.action === 'ignore' ? 'ignored' : 'open'; item.version += 1; item.resolution = body.remark; caseEvents.push({ id: nextId++, caseId: item.id, action: body.action, actorId: 1, remark: body.remark, before: {}, after: { status: item.status }, createdAt: now(), tenantId: null }); return ok(item); }),
+  mock(paymentReconContract.compensate, ({ params, ok }) => ok(asyncTask('payment-recon-compensate', `补偿案件 #${params.id}`))),
+  mock(paymentReconContract.adjustments, ({ query, ok }) => ok(paginate(adjustments.filter((item) => !query.caseId || item.caseId === query.caseId), query.page, query.pageSize))),
+  mock(paymentReconContract.createAdjustment, ({ params, body, ok }) => { const item: PaymentReconAdjustment = { id: nextId++, caseId: params.id, caseVersion: 1, applicationId: body.applicationId, channelConfigId: body.channelConfigId, amount: body.amount, direction: body.direction, reason: body.reason, evidence: {}, status: 'draft', workflowInstanceId: null, journalId: null, reversalOfId: null, applicantId: 1, approverId: null, approvedAt: null, executedAt: null, tenantId: null, createdBy: 1, updatedBy: 1, createdAt: now(), updatedAt: now() }; adjustments.unshift(item); return ok(item); }),
+  mock(paymentReconContract.submitAdjustment, ({ params, ok }) => { const item = requireItem(adjustments, params.id, '调整单不存在'); item.status = 'pending'; return ok(item); }),
+  mock(paymentReconContract.executeAdjustment, ({ params, ok }) => { const item = requireItem(adjustments, params.id, '调整单不存在'); item.status = 'executed'; item.journalId = nextId++; item.executedAt = now(); return ok(item); }),
+  mock(paymentReconContract.reverseAdjustment, ({ params, body, ok }) => { const item = requireItem(adjustments, params.id, '调整单不存在'); const reversal: PaymentReconAdjustment = { ...item, id: nextId++, status: 'draft', reason: body.reason, reversalOfId: item.id, journalId: null, executedAt: null, createdAt: now(), updatedAt: now() }; adjustments.unshift(reversal); return ok(reversal); }),
+  mock(paymentReconContract.workflowPreview, ({ ok }) => ok({ definition: null, nodes: [] })),
+  mock(paymentReconContract.workflowContext, ({ ok }) => ok({ instance: null, previousInstances: [] })),
+  mock(paymentReconContract.approvalDetail, ({ params, ok }) => ok(requireItem(adjustments, params.id, '调整单不存在'))),
+  mock(paymentReconContract.matchBank, ({ body, ok }) => ok(body.allocations.map((item) => ({ id: nextId++, ...item, accountId: body.accountId, tenantId: null, createdBy: 1, updatedBy: 1, createdAt: now(), updatedAt: now() }))),
+  mock(paymentReconContract.summary, ({ ok }) => ok(summary)),
 ];
-
 // ─── 支付事件（Outbox / 运营排障）────────────────────────────────────────────
 const outboxEvents: PaymentOutboxEvent[] = [
   { id: 1, type: 'payment.succeeded', orderNo: 'PAY1700000000001', status: 'done', attempts: 1, lastError: null, createdAt: SEED, processedAt: SEED },
@@ -311,3 +216,4 @@ export const paymentExtHandlers = [
   ...opsHandlers,
   ...refundApprovalHandlers,
 ];
+

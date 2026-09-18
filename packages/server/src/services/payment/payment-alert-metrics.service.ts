@@ -12,8 +12,7 @@ import {
   paymentApps,
   paymentEvents,
   paymentOrders,
-  paymentReconBatches,
-  paymentReconItems,
+  paymentReconCases,
 } from '../../db/schema';
 import { buildWhere } from '../../lib/where-helpers';
 import { metricTenantFilter, ratePercent } from '../../lib/alert-metrics';
@@ -63,13 +62,7 @@ export async function getPaymentAlertMetrics(tenantId: number | null): Promise<P
     inArray(appWebhookDeliveries.clientId, paymentClientIds),
     or(like(appWebhookDeliveries.eventType, 'payment.%'), like(appWebhookDeliveries.eventType, 'refund.%')),
   );
-  // 对账明细表不带 tenantId，租户归属在批次上，用子查询收敛到该租户的批次
-  const reconBatchTenant = tenantId == null
-    ? undefined
-    : inArray(
-      paymentReconItems.batchId,
-      db.select({ id: paymentReconBatches.id }).from(paymentReconBatches).where(eq(paymentReconBatches.tenantId, tenantId)),
-    );
+  const reconTenant = metricTenantFilter(paymentReconCases.tenantId, tenantId);
 
   const [
     paidCount, failedCount, stuckPaying, reconDiff,
@@ -78,7 +71,7 @@ export async function getPaymentAlertMetrics(tenantId: number | null): Promise<P
     db.$count(paymentOrders, buildWhere(eq(paymentOrders.status, 'success'), gte(paymentOrders.updatedAt, recentCutoff), orderTenant)),
     db.$count(paymentOrders, buildWhere(eq(paymentOrders.status, 'failed'), gte(paymentOrders.updatedAt, recentCutoff), orderTenant)),
     db.$count(paymentOrders, buildWhere(eq(paymentOrders.status, 'paying'), lte(paymentOrders.updatedAt, stuckCutoff), orderTenant)),
-    db.$count(paymentReconItems, buildWhere(eq(paymentReconItems.handleStatus, 'pending'), reconBatchTenant)),
+    db.$count(paymentReconCases, buildWhere(inArray(paymentReconCases.status, ['open', 'investigating', 'suspended']), reconTenant)),
     // 待派发超过宽限期：派发链路阻塞
     db.$count(paymentEvents, buildWhere(eq(paymentEvents.status, 'pending'), lte(paymentEvents.createdAt, backlogCutoff), eventTenant)),
     // 重试耗尽置 failed：已彻底未送达，必须人工介入

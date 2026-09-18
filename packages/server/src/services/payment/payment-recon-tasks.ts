@@ -18,7 +18,7 @@ import { ProviderBillError, type ProviderBillResult } from '../../lib/payment/bi
 import { parseProviderBill } from '../../lib/payment/bill-parsers';
 import { assertPaymentEngineConfig } from './payment-channel-config-resolver';
 import { assertEffectivePaymentOperation } from './payment-capability-evaluator';
-import { buildAdapterContext, syncOrderStatus, syncRefundStatus } from './payment.service';
+import { buildAdapterContext, syncOrderStatus, syncRefundStatus, loadOrderConfig } from './payment.service';
 import { getSettings } from '../../lib/settings';
 import { notifyWithin } from '../messaging/notification-outbox.service';
 import logger from '../../lib/logger';
@@ -62,7 +62,7 @@ async function persistPeriodTask(tx: DbTransaction, period: PaymentStatementPeri
   }
   const generation = locked.generation + 1;
   const input = { taskType, title: `对账 ${period.billDate} · ${period.type} · 账户 #${period.accountId}`,
-    payload: { ...payload, periodId: period.id, tenantId: period.tenantId, generation }, idempotencyKey: `payment-period:${period.id}:${generation}` };
+    payload: { ...payload, periodId: period.id, tenantId: period.tenantId, generation, previousError: locked.lastError }, idempotencyKey: `payment-period:${period.id}:${generation}` };
   const task = system ? await persistSystemAsyncTask(tx, input, period.tenantId) : await persistAsyncTask(tx, input);
   await tx.update(paymentStatementPeriods).set({ taskId: task.id, generation, nextAttemptAt: null, lastError: null }).where(eq(paymentStatementPeriods.id, period.id));
   return task;
@@ -178,6 +178,10 @@ async function publishStatement(statementId: number, period: PaymentStatementPer
   if ((await ctx.progress({ note: '校验账单并发布标准明细', total: entries.length, processed: 0 })).cancelRequested) return null;
   const task = await db.transaction(async (tx) => {
     const [lockedPeriod] = await tx.select().from(paymentStatementPeriods).where(eq(paymentStatementPeriods.id, period.id)).for('update');
+    const [ownedTask] = await tx.select({ status: asyncTasks.status, cancelRequested: asyncTasks.cancelRequested, attempts: asyncTasks.attempts }).from(asyncTasks).where(eq(asyncTasks.id, ctx.taskId)).for('share');
+    if (lockedPeriod.generation !== Number(ctx.payload.generation) || lockedPeriod.taskId !== ctx.taskId || !ownedTask || ownedTask.status !== 'running' || ownedTask.cancelRequested || ownedTask.attempts !== ctx.attempt) {
+      throw new TaskCancelledError('任务已取消或账期已由新任务接管');
+    }
     const [statement] = await tx.select().from(paymentStatements).where(eq(paymentStatements.id, statementId)).for('update');
     requireRow(statement, '账单不存在');
     if (statement.status === 'rejected') throw new ProviderBillError('permanent', '原件已被拒绝，请上传更正后的账单');
@@ -265,11 +269,12 @@ async function runStatementTask(ctx: TaskRunContext, mode: 'download' | 'import'
       }
     }
     const id = await publishStatement(requireRow(archivedId, '原件尚未归档'), period, entries, parserVersion, summary, ctx);
-    if (id && period.lastError) await db.transaction((tx) => notifyWithin(tx, 'payment.recon.recovered', {
+    if (id && ctx.payload.previousError) await db.transaction((tx) => notifyWithin(tx, 'payment.recon.recovered', {
       tenantId, recipients: policy.recipients, vars: { accountName: account.name, billDate: period.billDate },
       dedupeKey: `payment-recon-recovered:${period.id}:${period.generation}`, link: `/payment/recon?periodId=${period.id}` }));
     return { statementId: id, entryCount: entries.length };
   } catch (error) {
+    if (error instanceof TaskCancelledError) throw error;
     const waiting = error instanceof ProviderBillError && (error.code === 'waiting' || error.code === 'no_bill');
     const message = error instanceof Error ? error.message : String(error);
     if (!archivedId && error instanceof ProviderBillError && error.artifacts?.length) {
@@ -300,7 +305,7 @@ export function registerPaymentReconTaskHandlers() {
       try { return await executeReconRun(runId, tenantId, ctx); }
       catch (error) {
         const [task] = await db.select({ maxAttempts: asyncTasks.maxAttempts }).from(asyncTasks).where(eq(asyncTasks.id, ctx.taskId)).limit(1);
-        await db.update(paymentReconRuns).set({ status: ctx.attempt >= (task?.maxAttempts ?? ctx.attempt) ? 'failed' : 'running', error: error instanceof Error ? error.message : String(error) })
+        await db.update(paymentReconRuns).set({ status: error instanceof TaskCancelledError || ctx.attempt >= (task?.maxAttempts ?? ctx.attempt) ? 'failed' : 'running', error: error instanceof Error ? error.message : String(error) })
           .where(and(eq(paymentReconRuns.id, runId), exactTenantCondition(paymentReconRuns.tenantId, tenantId)));
         throw error;
       }
@@ -318,7 +323,7 @@ export function registerPaymentReconTaskHandlers() {
       if ((await ctx.progress({ note: '渠道查单，使用原交易确认链路补齐状态' })).cancelRequested) return { cancelled: true };
       if (item.refundId) {
         const [refund] = await db.select().from(paymentRefunds).where(and(eq(paymentRefunds.id, item.refundId), eq(paymentRefunds.orderId, order.id), exactTenantCondition(paymentRefunds.tenantId, tenantId))).limit(1);
-        const [config] = await db.select().from(paymentChannelConfigs).where(and(eq(paymentChannelConfigs.id, order.channelConfigId), exactTenantCondition(paymentChannelConfigs.tenantId, tenantId))).limit(1);
+        const config = await loadOrderConfig(order);
         await syncRefundStatus(requireRow(refund, '退款单不存在'), order, requireRow(config, '渠道配置不存在'));
       } else await syncOrderStatus(order);
       const [period] = await db.select().from(paymentStatementPeriods).where(and(eq(paymentStatementPeriods.id, item.periodId), exactTenantCondition(paymentStatementPeriods.tenantId, tenantId))).limit(1);
@@ -339,13 +344,16 @@ export async function planPaymentReconciliation() {
     const supported = getAdapter(account.channel).manifest.capabilities.find((c) => c.operation === 'bill.download')?.billKinds ?? [];
     const yesterday = dayjs().tz(account.billTimezone).subtract(1, 'day').format('YYYY-MM-DD');
     for (const kind of supported) {
-      const [last] = await db.select({ date: paymentStatementPeriods.billDate }).from(paymentStatementPeriods).where(and(
-        eq(paymentStatementPeriods.accountId, account.id), eq(paymentStatementPeriods.type, kind), eq(paymentStatementPeriods.currency, 'CNY'),
-      )).orderBy(desc(paymentStatementPeriods.billDate)).limit(1);
-      let date = last ? dayjs(last.date).add(1, 'day').format('YYYY-MM-DD') : dayjs(account.createdAt).tz(account.billTimezone).format('YYYY-MM-DD');
-      // Bounded catch-up per account; the next scanner resumes at the durable last-created period.
-      for (let n = 0; date <= yesterday && n < 31; n++, date = dayjs(date).add(1, 'day').format('YYYY-MM-DD')) {
-        await ensurePeriod(account, date, kind, 'CNY'); planned++;
+      const firstDate = dayjs(account.createdAt).tz(account.billTimezone).format('YYYY-MM-DD');
+      // Enumerate holes, not max(date): a manually submitted recent date cannot hide older gaps.
+      const missing = await db.execute<{ bill_date: string }>(sql`
+        select to_char(d, 'YYYY-MM-DD') as bill_date
+        from generate_series(${firstDate}::date, ${yesterday}::date, interval '1 day') d
+        where not exists(select 1 from ${paymentStatementPeriods} p
+          where p.account_id = ${account.id} and p.bill_date = d::date and p.type = ${kind} and p.currency = 'CNY')
+        order by d limit 31`);
+      for (const item of missing) {
+        await ensurePeriod(account, item.bill_date, kind, 'CNY'); planned++;
       }
     }
   }

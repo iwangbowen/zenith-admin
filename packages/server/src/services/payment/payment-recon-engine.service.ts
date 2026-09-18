@@ -6,12 +6,12 @@ import { PAYMENT_RECON_RULE_VERSION, reconcileEntries, type ReconciliationEntry 
 import { db, readSnapshot } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import { paymentChannelAccounts, paymentStatementPeriods, paymentStatements, paymentStatementEntries, paymentReconRuns,
-  paymentReconCases, paymentReconCaseEvents, paymentReconAdjustments, paymentOrders, paymentRefunds, type PaymentStatementPeriodRow } from '../../db/schema';
+  paymentReconCases, paymentReconCaseEvents, paymentReconAdjustments, paymentOrders, paymentRefunds, asyncTasks, type PaymentStatementPeriodRow } from '../../db/schema';
 import { exactTenantCondition } from '../../lib/tenant';
 import { requireRow } from '../../lib/db-assert';
 import { currentUserOrNull } from '../../lib/context';
 import { notifyWithin } from '../messaging/notification-outbox.service';
-import type { TaskRunContext } from '../../lib/task-center';
+import { TaskCancelledError, type TaskRunContext } from '../../lib/task-center';
 import { reconJson, reconNotificationPolicy } from './payment-recon-common';
 import { loadFundFacts, loadBankFacts, loadFundBalanceSnapshot, balanceDifference } from './payment-recon-funds.service';
 import '../../lib/datetime';
@@ -77,7 +77,7 @@ export async function executeReconRun(runId: number, tenantId: number | null, ct
   const [account] = await db.select().from(paymentChannelAccounts).where(and(eq(paymentChannelAccounts.id, period.accountId), exactTenantCondition(paymentChannelAccounts.tenantId, tenantId))).limit(1);
   requireRow(account, '渠道账户不存在');
   const policy = await reconNotificationPolicy(tenantId, run.createdBy ?? account.createdBy);
-  if ((await ctx.progress({ note: '冻结本地事实快照', total: null })).cancelRequested) return { cancelled: true };
+  if ((await ctx.progress({ note: '冻结本地事实快照', total: null })).cancelRequested) throw new TaskCancelledError('核对任务已取消');
   let local: ReconciliationEntry[];
   let snapshotContext = run.snapshotContext;
   if (run.startedAt) {
@@ -108,13 +108,15 @@ export async function executeReconRun(runId: number, tenantId: number | null, ct
     compared.differences.push(...differences);
     compared.totalCount += differences.length;
   }
-  if ((await ctx.progress({ note: '保存核对结果和案件历史', total: compared.totalCount, processed: compared.totalCount })).cancelRequested) return { cancelled: true };
+  if ((await ctx.progress({ note: '保存核对结果和案件历史', total: compared.totalCount, processed: compared.totalCount })).cancelRequested) throw new TaskCancelledError('核对任务已取消');
   const result = await db.transaction(async (tx) => {
     // Serializes publication across revised bills, manual rechecks, and adjustment execution.
     const [lockedPeriod] = await tx.select().from(paymentStatementPeriods).where(and(eq(paymentStatementPeriods.id, period.id), exactTenantCondition(paymentStatementPeriods.tenantId, tenantId))).for('update');
     if (lockedPeriod.currentStatementId !== statement.id) throw new HTTPException(409, { message: '核对期间账单版本发生变化，请核对新版账单' });
     const [lockedRun] = await tx.select().from(paymentReconRuns).where(eq(paymentReconRuns.id, runId)).for('update');
     if (lockedRun.status === 'completed') return { runId, matchedCount: lockedRun.matchedCount, diffCount: lockedRun.diffCount };
+    const [ownedTask] = await tx.select({ status: asyncTasks.status, cancelRequested: asyncTasks.cancelRequested, attempts: asyncTasks.attempts }).from(asyncTasks).where(eq(asyncTasks.id, ctx.taskId)).for('share');
+    if (lockedRun.taskId !== ctx.taskId || !ownedTask || ownedTask.status !== 'running' || ownedTask.cancelRequested || ownedTask.attempts !== ctx.attempt) throw new TaskCancelledError('核对任务已取消或由新执行器接管');
     const prior = await tx.select().from(paymentReconCases).where(and(eq(paymentReconCases.periodId, period.id), exactTenantCondition(paymentReconCases.tenantId, tenantId))).for('update');
     const frozenVersions = new Map(((snapshotContext.cases ?? []) as Array<{ id: number; version: number }>).map((item) => [item.id, item.version]));
     if (prior.some((item) => frozenVersions.has(item.id) && frozenVersions.get(item.id) !== item.version)) {
@@ -124,8 +126,8 @@ export async function executeReconRun(runId: number, tenantId: number | null, ct
     const seen = new Set<string>();
     for (const difference of compared.differences) {
       const old = byKey.get(difference.caseKey);
-      const evidence = { ...difference.evidence, statementId: statement.id, statementVersion: statement.version,
-        source: statement.source, ruleVersion: PAYMENT_RECON_RULE_VERSION };
+      const evidence = reconJson({ ...difference.evidence, statementId: statement.id, statementVersion: statement.version,
+        source: statement.source, ruleVersion: PAYMENT_RECON_RULE_VERSION });
       seen.add(difference.caseKey);
       const changed = !old || old.type !== difference.type || !isDeepStrictEqual(old.evidence, evidence);
       const posted = (snapshotContext.adjustments ?? []) as Array<{ caseId: number; amount: string; direction: string; evidence: { case?: { evidence?: Record<string, unknown> } }; journalId: number }>;
@@ -133,7 +135,7 @@ export async function executeReconRun(runId: number, tenantId: number | null, ct
         const original = adjustment.evidence.case?.evidence;
         const delta = BigInt(difference.channelAmount ?? '0') - BigInt(difference.localAmount ?? '0');
         return adjustment.caseId === old.id && adjustment.journalId && original?.statementId === statement.id
-          && isDeepStrictEqual(original.local, difference.local) && isDeepStrictEqual(original.provider, difference.provider)
+          && isDeepStrictEqual(original.local, evidence.local) && isDeepStrictEqual(original.provider, evidence.provider)
           && (adjustment.direction === 'in' ? BigInt(adjustment.amount) : -BigInt(adjustment.amount)) === delta;
       });
       const status = covered ? 'resolved' as const : old?.status === 'ignored' && !changed ? 'ignored' as const

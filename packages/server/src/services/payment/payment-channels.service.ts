@@ -10,7 +10,7 @@ import { HTTPException } from 'hono/http-exception';
 import { randomBytes } from 'node:crypto';
 import { db } from '../../db';
 import { listRows } from '../../lib/list-query';
-import { paymentApps, paymentChannelConfigs, paymentChannelCredentialVersions, paymentContracts, paymentJournals, paymentLedgerAccounts, paymentOrders, paymentPreauths, paymentReconBatches, paymentSettlementBatches, paymentTransfers, type NewPaymentChannelConfig, type PaymentChannelConfigRow } from '../../db/schema';
+import { paymentApps, paymentChannelConfigs, paymentChannelCredentialVersions, paymentContracts, paymentJournals, paymentLedgerAccounts, paymentOrders, paymentPreauths, paymentReconAdjustments, paymentSettlementBatches, paymentTransfers, type NewPaymentChannelConfig, type PaymentChannelConfigRow } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { tenantCondition, requireTenantScopeId } from '../../lib/tenant';
@@ -149,7 +149,7 @@ async function countChannelConfigReferences(id: number): Promise<number> {
     db.$count(paymentTransfers, eq(paymentTransfers.channelConfigId, id)),
     db.$count(paymentJournals, eq(paymentJournals.channelConfigId, id)),
     db.$count(paymentLedgerAccounts, eq(paymentLedgerAccounts.channelConfigId, id)),
-    db.$count(paymentReconBatches, eq(paymentReconBatches.channelConfigId, id)),
+    db.$count(paymentReconAdjustments, eq(paymentReconAdjustments.channelConfigId, id)),
     db.$count(paymentSettlementBatches, eq(paymentSettlementBatches.channelConfigId, id)),
   ]);
   return counts.reduce((total, count) => total + count, 0);

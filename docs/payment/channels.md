@@ -42,7 +42,7 @@ export interface PaymentChannelAdapter {
   preauthFreeze?(ctx, input): Promise<PreauthFreezeResult>;
   preauthCapture?(ctx, input): Promise<PreauthCaptureResult>;
   preauthRelease?(ctx, input): Promise<void>;
-  downloadBill?(ctx, billDate): Promise<string>;
+  downloadBill?(ctx, billDate, kind?: 'trade' | 'fund'): Promise<ProviderBillResult>;
 }
 ```
 
@@ -61,9 +61,9 @@ export interface PaymentChannelAdapter {
 | 转账/代付 | 商家转账到零钱 | `alipay.fund.trans.uni.transfer` | — |
 | 签约代扣 | `wechat_papay` | `alipay_cycle` | — |
 | 预授权 | `wechat_preauth` | `alipay_preauth` | — |
-| 自动下载对账单 | 交易账单 `tradebill` | — | — |
+| 自动下载对账单 | `trade` + `fund`（交易/资金账单） | `trade` + `fund`（交易/资金账单） | `trade`（全渠道 ZM/ZME 文件；不提供独立余额资金账单） |
 
-三渠道均支持 `sandbox`：沙箱配置不外呼真实渠道，返回模拟凭据、模拟渠道单号或模拟成功结果，用于演示闭环。
+沙箱配置不外呼真实渠道，账单任务不会把本地模拟事实伪装成渠道原件；需要演示时使用 `sandbox_generated` 独立来源。支付宝账单下载地址仅接受官方 HTTPS 主机；银联文件下载使用 `filedownload.95516.com` 的交易类型 76。
 
 ## 渠道配置管理
 

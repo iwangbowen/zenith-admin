@@ -1,78 +1,75 @@
 import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
-import type { QueryOf } from '@zenith/shared/core';
-import { paymentReconContract } from '@zenith/shared/payment';
+import { resourceKeyOf, type QueryOf } from '@zenith/shared/core';
+import { paymentChannelAccountContract, paymentReconContract } from '@zenith/shared/payment';
 import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { paymentJournalKeys, paymentLedgerAccountKeys } from './payment-journals';
 
-export type PaymentReconBatchListParams = NonNullable<QueryOf<typeof paymentReconContract.list>>;
-export type PaymentReconItemListParams = NonNullable<QueryOf<typeof paymentReconContract.items>>;
-export type PaymentReconSampleBillParams = NonNullable<QueryOf<typeof paymentReconContract.sampleBill>>;
-
-const resource = createResourceQueries(paymentReconContract);
-
+const periods = createResourceQueries(paymentReconContract);
+const accounts = createResourceQueries(paymentChannelAccountContract);
+export const usePaymentChannelAccounts = accounts.useLookup;
+export const usePaymentStatementPeriods = periods.useList;
+export const usePaymentStatementPeriod = periods.useDetail;
 export const paymentReconKeys = {
-  ...resource.keys,
-  items: contractKey(paymentReconContract.items),
-  /** 某个批次的全部明细分页 / 筛选变体 */
-  itemsOf: (batchId: number) => [...contractKey(paymentReconContract.items), { params: { id: batchId } }] as const,
-  itemList: (batchId: number | undefined, params: PaymentReconItemListParams) =>
-    contractKey(paymentReconContract.items, { params: { id: batchId ?? 0 }, query: params }),
+  ...periods.keys,
+  all: [resourceKeyOf(paymentReconContract.basePath)] as const,
+  statements: contractKey(paymentReconContract.statements),
+  entries: contractKey(paymentReconContract.entries),
+  runs: contractKey(paymentReconContract.runs),
+  cases: contractKey(paymentReconContract.cases),
+  adjustments: contractKey(paymentReconContract.adjustments),
+  summary: contractKey(paymentReconContract.summary),
 };
 
-/** 新批次（手动上传 / 自动拉取）只是列表多一行；批次详情与明细尚未被任何页面缓存 */
-function invalidateBatchLists(qc: QueryClient) {
-  void qc.invalidateQueries({ queryKey: paymentReconKeys.lists });
+/** 核对、案件与审批均互相影响；任务完成和所有变更复用同一失效边界。 */
+export function invalidatePaymentReconciliation(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: paymentReconKeys.all });
+  void qc.invalidateQueries({ queryKey: ['async-tasks'] });
+  void qc.invalidateQueries({ queryKey: paymentJournalKeys.lists });
+  void qc.invalidateQueries({ queryKey: paymentLedgerAccountKeys.lists });
 }
 
-export const usePaymentReconBatchList = resource.useList;
-export const usePaymentReconBatchDetail = resource.useDetail;
-
-export function usePaymentReconItems(batchId: number | undefined, params: PaymentReconItemListParams, enabled = true) {
-  return useApiQuery(
-    paymentReconContract.items,
-    { params: { id: batchId ?? 0 }, query: params },
-    { placeholderData: keepPreviousData, enabled: enabled && batchId !== undefined },
-  );
+export function usePaymentStatements(periodId?: number) {
+  return useApiQuery(paymentReconContract.statements, { params: { id: periodId ?? 0 } }, { enabled: periodId !== undefined });
+}
+export function usePaymentStatement(id?: number) {
+  return useApiQuery(paymentReconContract.statement, { params: { id: id ?? 0 } }, { enabled: id !== undefined });
+}
+export function usePaymentStatementEntries(id: number | undefined, query: QueryOf<typeof paymentReconContract.entries>) {
+  return useApiQuery(paymentReconContract.entries, { params: { id: id ?? 0 }, query }, { enabled: id !== undefined, placeholderData: keepPreviousData });
+}
+export function usePaymentReconRuns(query: QueryOf<typeof paymentReconContract.runs>, enabled = true) {
+  return useApiQuery(paymentReconContract.runs, { query }, { enabled, placeholderData: keepPreviousData });
+}
+export function usePaymentReconCases(query: QueryOf<typeof paymentReconContract.cases>, enabled = true) {
+  return useApiQuery(paymentReconContract.cases, { query }, { enabled, placeholderData: keepPreviousData });
+}
+export function usePaymentReconCase(id?: number) {
+  return useApiQuery(paymentReconContract.caseDetail, { params: { id: id ?? 0 } }, { enabled: id !== undefined });
+}
+export function usePaymentReconAdjustments(query: QueryOf<typeof paymentReconContract.adjustments>, enabled = true) {
+  return useApiQuery(paymentReconContract.adjustments, { query }, { enabled, placeholderData: keepPreviousData });
+}
+export function usePaymentReconSummary(accountId?: number) {
+  return useApiQuery(paymentReconContract.summary, { query: { accountId } });
+}
+export function usePaymentReconWorkflowContext(id?: number, instanceId?: number) {
+  return useApiQuery(paymentReconContract.workflowContext, { params: { id: id ?? 0 }, query: { instanceId } }, { enabled: id !== undefined });
+}
+export function usePaymentReconWorkflowPreview(id?: number, definitionId?: number) {
+  return useApiQuery(paymentReconContract.workflowPreview, { params: { id: id ?? 0 }, body: { definitionId: definitionId ?? 0 } }, { enabled: id !== undefined && definitionId !== undefined });
+}
+export function usePaymentReconApprovalDetail(id?: number, instanceId?: number) {
+  return useApiQuery(paymentReconContract.approvalDetail, { params: { id: id ?? 0 }, query: { instanceId: instanceId ?? 0 } }, { enabled: id !== undefined && instanceId !== undefined });
 }
 
-/** 模拟账单是按需生成的文本，不进入缓存；变量即契约输入 `{ query }` */
-export function usePaymentReconSampleBill() {
-  return useApiMutation(paymentReconContract.sampleBill);
-}
-
-export function useCreatePaymentReconBatch() {
-  return useApiMutation(paymentReconContract.create, { invalidate: invalidateBatchLists });
-}
-
-export function useAutoPaymentRecon() {
-  return useApiMutation(paymentReconContract.auto, { invalidate: invalidateBatchLists });
-}
-
-/** 批次已删除：详情与明细缓存移除而非失效，列表回源 */
-export function useDeletePaymentReconBatch() {
-  return useApiMutation(paymentReconContract.remove, {
-    invalidate: (qc, _output, { params }) => {
-      qc.removeQueries({ queryKey: paymentReconKeys.detail(params.id) });
-      qc.removeQueries({ queryKey: paymentReconKeys.itemsOf(params.id) });
-      invalidateBatchLists(qc);
-    },
-  });
-}
-
-/**
- * 处理差异改写该明细的 handleStatus，并改变所属批次的已处理 / 待处理计数（列表与详情都渲染）；
- * 「已调账」还会原子写入一笔双分录凭证，资金凭证列表与账户余额一并回源。
- */
-export function useHandlePaymentReconItem() {
-  return useApiMutation(paymentReconContract.handleItem, {
-    invalidate: (qc, item) => {
-      void qc.invalidateQueries({ queryKey: paymentReconKeys.itemsOf(item.batchId) });
-      void qc.invalidateQueries({ queryKey: paymentReconKeys.detail(item.batchId) });
-      void qc.invalidateQueries({ queryKey: paymentReconKeys.lists });
-      if (item.handleStatus === 'adjusted') {
-        void qc.invalidateQueries({ queryKey: paymentJournalKeys.lists });
-        void qc.invalidateQueries({ queryKey: paymentLedgerAccountKeys.lists });
-      }
-    },
-  });
-}
+export const useSubmitPaymentStatement = () => useApiMutation(paymentReconContract.submit, { invalidate: invalidatePaymentReconciliation });
+export const useRetryPaymentStatement = () => useApiMutation(paymentReconContract.retry, { invalidate: invalidatePaymentReconciliation });
+export const useImportPaymentStatement = () => useApiMutation(paymentReconContract.importBill, { invalidate: invalidatePaymentReconciliation });
+export const useRunPaymentRecon = () => useApiMutation(paymentReconContract.reconcile, { invalidate: invalidatePaymentReconciliation });
+export const useHandlePaymentReconCase = () => useApiMutation(paymentReconContract.handleCase, { invalidate: invalidatePaymentReconciliation });
+export const useCompensatePaymentReconCase = () => useApiMutation(paymentReconContract.compensate, { invalidate: invalidatePaymentReconciliation });
+export const useCreatePaymentReconAdjustment = () => useApiMutation(paymentReconContract.createAdjustment, { invalidate: invalidatePaymentReconciliation });
+export const useSubmitPaymentReconAdjustment = () => useApiMutation(paymentReconContract.submitAdjustment, { invalidate: invalidatePaymentReconciliation });
+export const useExecutePaymentReconAdjustment = () => useApiMutation(paymentReconContract.executeAdjustment, { invalidate: invalidatePaymentReconciliation });
+export const useReversePaymentReconAdjustment = () => useApiMutation(paymentReconContract.reverseAdjustment, { invalidate: invalidatePaymentReconciliation });
+export const useMatchPaymentBankEntries = () => useApiMutation(paymentReconContract.matchBank, { invalidate: invalidatePaymentReconciliation });

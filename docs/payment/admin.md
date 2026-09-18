@@ -109,9 +109,9 @@
 
 ### 对账中心
 
-- 手动上传 CSV 创建批次；
-- 自动拉取调用 `POST /api/payment/recon/auto`，微信支持账单下载，沙箱生成模拟账单；
-- 示例账单接口为 `GET /api/payment/recon/sample-bill`；
+- 账期页提交交易/资金账单下载或受控导入；
+- 微信、支付宝支持 `trade` / `fund`；云闪付支持 `trade`（ZM/ZME），资金余额需其他资金来源；
+- 原件、版本、摘要、标准明细和解析错误均可追溯；沙箱账单与人工导入独立标识。
 - 批次记录 `manual_upload`、`sandbox_generated`、`provider_download` 三种服务端派生来源；
 - 人工上传和沙箱模拟账单只能挂账归档或忽略，只有渠道适配器下载的账单可在人工核验后直接调账并写双分录凭证。
 

@@ -9,7 +9,8 @@
 | [渠道适配与配置](./channels.md) | 适配器接口、三渠道能力矩阵、渠道配置、应用路由与新增渠道步骤 |
 | [业务接入](./integration.md) | 统一门面、HTTP API、事件订阅、幂等、金额与进阶交易接入 |
 | [业务接入实战示例](./integration-example.md) | 以 `biz_pay_demo` 为例走读下单、支付成功履约与演示接口 |
-| [异步通知与对账](./callback.md) | 渠道回调、Outbox、查单补偿、定时任务、Open Platform Webhook、对账中心 |
+| [异步通知与对账](./callback.md) | 渠道回调、Outbox、查单补偿、定时任务、Open Platform Webhook、账单获取与对账入口 |
+| [生产对账操作](./reconciliation.md) | 交易/资金/银行到账对账、证据、重试、差异案件与银行分配 |
 | [安全设计](./security.md) | 验签、密钥、幂等、资金一致性、规则中心风控、投诉分流、权限与审计 |
 | [后台管理页面](./admin.md) | `/payment/*` 下 19 个后台页面的功能清单与操作说明 |
 
@@ -49,7 +50,7 @@
 | 基础交易 | 统一下单、查单、关单、退款；7 种收银台方式；退款审批阈值；超时关单 |
 | 渠道适配 | 微信支付 v3、支付宝开放平台、云闪付/银联全渠道；统一适配器接口与沙箱模式 |
 | 资金运营 | 资金台账、手续费费率、退款手续费按比例冲销、渠道账户快照、结算、分账、转账 |
-| 对账 | 手动 CSV 对账、微信账单自动拉取、沙箱模拟账单、差异处理与调账留痕 |
+| 对账 | 三渠道账单获取、资金与银行到账核验、可恢复任务、差异案件、审批调账与审计 |
 | 风控 | 规则中心 `payment_risk` 决策表优先裁决；原生规则提供名单、单笔、单日金额、单日笔数校验 |
 | 投诉 | `dispute_triage` 决策表分流，投诉回复/完结/退款，SLA 收紧与时间线留痕 |
 | 进阶交易 | 签约代扣、预授权、支付链接公开收银台、应用维度渠道路由 |
@@ -101,7 +102,9 @@
 
 | 表 | 职责 |
 | --- | --- |
-| `payment_recon_batches` / `payment_recon_items` | 对账批次与逐笔比对结果，差异项支持 adjusted / suspended / ignored |
+| `payment_statement_periods` / `payment_statements` / `payment_statement_files` / `payment_statement_entries` | 账期、账单版本、私有原件、标准明细和摘要/校验结果 |
+| `payment_recon_runs` / `payment_recon_cases` / `payment_recon_case_events` | 可恢复核对运行、差异案件与追加处置历史 |
+| `payment_bank_matches` | 银行到账与渠道结算多对多分配及审计 |
 | `payment_risk_rules` | 原生风控规则；黑白名单字段引用规则中心名单库 key |
 | `payment_risk_hits` | 风控命中留痕；决策表命中使用 `dimension=decision` |
 | `payment_risk_reviews` | 人工审核队列；同一订单最多一条待审记录 |

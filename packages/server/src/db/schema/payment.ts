@@ -271,69 +271,6 @@ export type PaymentEventRow = typeof paymentEvents.$inferSelect;
 
 export type NewPaymentEvent = typeof paymentEvents.$inferInsert;
 
-// ─── 对账中心 ─────────────────────────────────────────────────────────────────
-export const paymentReconStatusEnum = pgEnum('payment_recon_status', ['pending', 'comparing', 'done', 'failed']);
-
-export const paymentReconResultEnum = pgEnum('payment_recon_result', ['matched', 'local_only', 'channel_only', 'amount_diff', 'status_diff']);
-
-export const paymentReconHandleStatusEnum = pgEnum('payment_recon_handle_status', ['pending', 'adjusted', 'suspended', 'ignored']);
-
-export const paymentReconSourceEnum = pgEnum('payment_recon_source', ['manual_upload', 'sandbox_generated', 'provider_download']);
-
-export const paymentReconBatches = pgTable('payment_recon_batches', {
-  id: idColumn(),
-  batchNo: varchar({ length: 64 }).notNull().unique('payment_recon_batches_batch_no_unique'),
-  channel: paymentChannelEnum().notNull(),
-  appId: integer().notNull().references(() => paymentApps.id, { onDelete: 'restrict' }),
-  channelConfigId: integer().notNull().references(() => paymentChannelConfigs.id, { onDelete: 'restrict' }),
-  currency: varchar({ length: 8 }).notNull().default('CNY'),
-  billDate: varchar({ length: 10 }).notNull(),
-  source: paymentReconSourceEnum().notNull().default('manual_upload'),
-  status: paymentReconStatusEnum().notNull().default('pending'),
-  localCount: integer().notNull().default(0),
-  localAmount: integer().notNull().default(0),
-  channelCount: integer().notNull().default(0),
-  channelAmount: integer().notNull().default(0),
-  matchedCount: integer().notNull().default(0),
-  diffCount: integer().notNull().default(0),
-  remark: remarkColumn(),
-  tenantId: tenantIdColumn(),
-  ...auditColumns(),
-  ...timestampColumns(),
-}, (t) => [
-  index('payment_recon_batches_tenant_idx').on(t.tenantId),
-  index('payment_recon_batches_date_idx').on(t.billDate),
-  index('payment_recon_batches_app_idx').on(t.appId),
-  uniqueIndex('payment_recon_scope_date_uq').on(sql`coalesce(${t.tenantId}, 0)`, t.appId, t.channelConfigId, t.currency, t.billDate),
-]);
-
-export type PaymentReconBatchRow = typeof paymentReconBatches.$inferSelect;
-
-export type NewPaymentReconBatch = typeof paymentReconBatches.$inferInsert;
-
-export const paymentReconItems = pgTable('payment_recon_items', {
-  id: idColumn(),
-  batchId: integer().notNull().references(() => paymentReconBatches.id, { onDelete: 'cascade' }),
-  orderNo: varchar({ length: 64 }),
-  channelTradeNo: varchar({ length: 128 }),
-  localAmount: integer(),
-  channelAmount: integer(),
-  localStatus: varchar({ length: 32 }),
-  channelStatus: varchar({ length: 32 }),
-  result: paymentReconResultEnum().notNull(),
-  /** 差异处理状态：NULL=无需处理（比对一致）；差异项默认 pending，人工处理后流转为 adjusted/suspended/ignored */
-  handleStatus: paymentReconHandleStatusEnum(),
-  handleRemark: varchar({ length: 256 }),
-  handledAt: timestamp({ withTimezone: true }),
-  handledById: integer().references(() => users.id, { onDelete: 'set null' }),
-  remark: remarkColumn(),
-  createdAt: timestamp().defaultNow().notNull(),
-}, (t) => [index('payment_recon_items_batch_idx').on(t.batchId)]);
-
-export type PaymentReconItemRow = typeof paymentReconItems.$inferSelect;
-
-export type NewPaymentReconItem = typeof paymentReconItems.$inferInsert;
-
 // ─── 手续费/费率规则 ─────────────────────────────────────────────────────────
 export const paymentFeeRules = pgTable('payment_fee_rules', {
   id: idColumn(),

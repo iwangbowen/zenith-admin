@@ -91,7 +91,7 @@ POST /api/public/payment/notify/{channel}    # channel: wechat | alipay | unionp
 | `retryFailedSharing` | 每 10 分钟 | 分账失败重试与处理中分账同步 |
 | `generateDailySettlements` | 每日 01:10 | T+1 生成昨日渠道 × 租户结算批次 |
 | `syncPaymentTransfers` | 每 5 分钟 | 同步处理中转账单 |
-| `autoPaymentRecon` | 每日 02:00 | 拉取昨日渠道账单自动对账 |
+| `autoPaymentRecon` | 每日调度 | 按渠道出账窗口与持久账期覆盖补齐缺失日期、下载交易/资金账单并提交可恢复核对任务 |
 | `executeDueDeductions` | 每分钟 | 执行到期签约代扣 |
 | `syncPaymentDisputes` | 每 5 分钟 | 拉取/生成交易投诉工单 |
 
@@ -104,15 +104,15 @@ POST /api/public/payment/notify/{channel}    # channel: wechat | alipay | unionp
 | 方式 | 接口 | 说明 |
 | --- | --- | --- |
 | 手动上传 | `POST /api/payment/recon/batches` | 上传 CSV，与本地成功/退款订单逐笔比对 |
-| 自动拉取 | `POST /api/payment/recon/auto` | 调用适配器 `downloadBill`；微信支持交易账单，沙箱使用本地订单生成模拟账单 |
-| 示例账单 | `GET /api/payment/recon/sample-bill` | 生成示例 CSV 便于联调 |
+| 自动拉取 | `POST /api/payment/recon/periods` | 调用适配器 `downloadBill(ctx, billDate, kind)`；微信/支付宝支持交易与资金账单，银联支持交易文件 |
+| 账单原件 | `GET /api/payment/recon/files/{id}` | 归档原件必须通过私有存储访问并写下载审计 |
 
-支付宝与云闪付适配器未实现 `downloadBill`，对账以手动上传或沙箱模拟账单为准。
+支付宝和云闪付已接入生产账单下载；沙箱与人工导入仍标记为非生产资金证据。云闪付全渠道文件接口只提供交易/差错清算文件，不代表账户余额资金账单。
 批次来源由服务端固定为 `manual_upload`、`sandbox_generated` 或 `provider_download`，客户端不能指定或覆盖。
 
 ### 比对结果与差异处理
 
-逐笔结果枚举：`matched`、`local_only`、`channel_only`、`amount_diff`、`status_diff`。
+逐笔结果枚举：`matched`、`local_only`、`channel_only`、`amount_diff`、`status_diff`、`identity_diff`、`summary_diff`、`balance_diff`。
 
 差异处理状态：
 

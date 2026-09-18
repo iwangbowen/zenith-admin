@@ -16,7 +16,7 @@ import { dbBackups } from './db-admin';
 import { ruleDecisionTables, ruleDecisionTableVersions, ruleTestCases } from './rules';
 import { chatConversationMembers, chatConversations, chatMessageReactions, chatMessages, chatWebhooks, chatQuickReplies, chatScheduledMessages, chatCustomEmojis, chatGroupInvites, chatGroupJoinRequests } from './chat';
 import { channelAutoReplies, channelConversations, channelMenus, channelMessages, channelMessageTargets, channelQuickReplies, channels, channelSubscriptions } from './channels';
-import { paymentApps, paymentCashierSessions, paymentChannelAccounts, paymentChannelCredentialVersions, paymentChannelConfigs, paymentContracts, paymentDeductPlans, paymentDisputeReplies, paymentDisputes, paymentFundReservations, paymentJournalLines, paymentJournals, paymentLedgerAccounts, paymentLinkRedemptions, paymentLinks, paymentOrders, paymentPreauths, paymentReconBatches, paymentReconItems, paymentRefunds, paymentRiskHits, paymentRiskReviews, paymentRiskRules, paymentSettlementBatches, paymentSettlementItems, paymentSharingOrders, paymentSharingReceivers, paymentSharingReversals, paymentTransfers } from './payment';
+import { paymentApps, paymentCashierSessions, paymentChannelAccounts, paymentChannelCredentialVersions, paymentChannelConfigs, paymentContracts, paymentDeductPlans, paymentDisputeReplies, paymentDisputes, paymentFundReservations, paymentJournalLines, paymentJournals, paymentLedgerAccounts, paymentLinkRedemptions, paymentLinks, paymentOrders, paymentPreauths, paymentRefunds, paymentRiskHits, paymentRiskReviews, paymentRiskRules, paymentSettlementBatches, paymentSettlementItems, paymentSharingOrders, paymentSharingReceivers, paymentSharingReversals, paymentTransfers } from './payment';
 import { aiConversations, aiMessages, aiPromptTemplates, aiProviderConfigs, userAiConfigs, aiKnowledgeBases, aiKbDocuments, aiKbChunks } from './ai';
 import { appWebhookDeliveries, appWebhookSubscriptions, oauth2AuthorizationCodes, oauth2Clients, oauth2TokenFamilies, oauth2Tokens, oauth2UserGrants, ratePlans } from './open-platform';
 import { checkinMilestones, coupons, memberCheckinMilestoneAwards, memberCheckins, memberCoupons, memberLevels, memberNotifications, memberPointAccounts, memberPointTransactions, members, memberTagBindings, memberTags, memberVipRenewals, memberWallets, memberWalletTransactions } from './member';
@@ -177,6 +177,45 @@ export const paymentChannelAccountsRelations = relations(paymentChannelAccounts,
   settlements: many(paymentSettlementBatches),
 }));
 
+export const paymentStatementPeriodsRelations = relations(paymentStatementPeriods, ({ one, many }) => ({
+  account: one(paymentChannelAccounts, { fields: [paymentStatementPeriods.accountId], references: [paymentChannelAccounts.id] }),
+  task: one(asyncTasks, { fields: [paymentStatementPeriods.taskId], references: [asyncTasks.id] }),
+  statements: many(paymentStatements), cases: many(paymentReconCases),
+}));
+export const paymentStatementsRelations = relations(paymentStatements, ({ one, many }) => ({
+  period: one(paymentStatementPeriods, { fields: [paymentStatements.periodId], references: [paymentStatementPeriods.id] }),
+  files: many(paymentStatementFiles), entries: many(paymentStatementEntries), runs: many(paymentReconRuns),
+}));
+export const paymentStatementFilesRelations = relations(paymentStatementFiles, ({ one }) => ({
+  statement: one(paymentStatements, { fields: [paymentStatementFiles.statementId], references: [paymentStatements.id] }),
+  storageConfig: one(fileStorageConfigs, { fields: [paymentStatementFiles.storageConfigId], references: [fileStorageConfigs.id] }),
+}));
+export const paymentStatementEntriesRelations = relations(paymentStatementEntries, ({ one, many }) => ({
+  statement: one(paymentStatements, { fields: [paymentStatementEntries.statementId], references: [paymentStatements.id] }),
+  application: one(paymentApps, { fields: [paymentStatementEntries.applicationId], references: [paymentApps.id] }),
+  bankMatches: many(paymentBankMatches, { relationName: 'reconBankEntry' }), settlementMatches: many(paymentBankMatches, { relationName: 'reconSettlementEntry' }),
+}));
+export const paymentReconRunsRelations = relations(paymentReconRuns, ({ one, many }) => ({
+  statement: one(paymentStatements, { fields: [paymentReconRuns.statementId], references: [paymentStatements.id] }),
+  task: one(asyncTasks, { fields: [paymentReconRuns.taskId], references: [asyncTasks.id] }), cases: many(paymentReconCases),
+}));
+export const paymentReconCasesRelations = relations(paymentReconCases, ({ one, many }) => ({
+  account: one(paymentChannelAccounts, { fields: [paymentReconCases.accountId], references: [paymentChannelAccounts.id] }),
+  period: one(paymentStatementPeriods, { fields: [paymentReconCases.periodId], references: [paymentStatementPeriods.id] }),
+  lastRun: one(paymentReconRuns, { fields: [paymentReconCases.lastRunId], references: [paymentReconRuns.id] }),
+  application: one(paymentApps, { fields: [paymentReconCases.applicationId], references: [paymentApps.id] }), order: one(paymentOrders, { fields: [paymentReconCases.orderId], references: [paymentOrders.id] }), refund: one(paymentRefunds, { fields: [paymentReconCases.refundId], references: [paymentRefunds.id] }), assignee: one(users, { fields: [paymentReconCases.assignedTo], references: [users.id] }),
+  events: many(paymentReconCaseEvents), adjustments: many(paymentReconAdjustments),
+}));
+export const paymentReconCaseEventsRelations = relations(paymentReconCaseEvents, ({ one }) => ({
+  case: one(paymentReconCases, { fields: [paymentReconCaseEvents.caseId], references: [paymentReconCases.id] }), actor: one(users, { fields: [paymentReconCaseEvents.actorId], references: [users.id] }),
+}));
+export const paymentReconAdjustmentsRelations = relations(paymentReconAdjustments, ({ one, many }) => ({
+  case: one(paymentReconCases, { fields: [paymentReconAdjustments.caseId], references: [paymentReconCases.id] }), application: one(paymentApps, { fields: [paymentReconAdjustments.applicationId], references: [paymentApps.id] }), channelConfig: one(paymentChannelConfigs, { fields: [paymentReconAdjustments.channelConfigId], references: [paymentChannelConfigs.id] }), workflowInstance: one(workflowInstances, { fields: [paymentReconAdjustments.workflowInstanceId], references: [workflowInstances.id] }), journal: one(paymentJournals, { fields: [paymentReconAdjustments.journalId], references: [paymentJournals.id] }), applicant: one(users, { fields: [paymentReconAdjustments.applicantId], references: [users.id], relationName: 'reconAdjustmentApplicant' }), approver: one(users, { fields: [paymentReconAdjustments.approverId], references: [users.id], relationName: 'reconAdjustmentApprover' }), reversalOf: one(paymentReconAdjustments, { fields: [paymentReconAdjustments.reversalOfId], references: [paymentReconAdjustments.id], relationName: 'reconAdjustmentReversal' }), reversals: many(paymentReconAdjustments, { relationName: 'reconAdjustmentReversal' }),
+}));
+export const paymentBankMatchesRelations = relations(paymentBankMatches, ({ one }) => ({
+  account: one(paymentChannelAccounts, { fields: [paymentBankMatches.accountId], references: [paymentChannelAccounts.id] }), bankEntry: one(paymentStatementEntries, { fields: [paymentBankMatches.bankEntryId], references: [paymentStatementEntries.id], relationName: 'reconBankEntry' }), settlementEntry: one(paymentStatementEntries, { fields: [paymentBankMatches.settlementEntryId], references: [paymentStatementEntries.id], relationName: 'reconSettlementEntry' }),
+}));
+
 export const paymentChannelCredentialVersionsRelations = relations(paymentChannelCredentialVersions, ({ one }) => ({
   config: one(paymentChannelConfigs, { fields: [paymentChannelCredentialVersions.channelConfigId], references: [paymentChannelConfigs.id] }),
   channelAccount: one(paymentChannelAccounts, { fields: [paymentChannelCredentialVersions.channelAccountId], references: [paymentChannelAccounts.id] }),
@@ -206,83 +245,6 @@ export const paymentRefundsRelations = relations(paymentRefunds, ({ one }) => ({
 // ═══════════════════════════════════════════════════════════════════════════
 // 支付中心扩展 · 对账
 // ═══════════════════════════════════════════════════════════════════════════
-
-export const paymentReconBatchesRelations = relations(paymentReconBatches, ({ one, many }) => ({
-  app: one(paymentApps, { fields: [paymentReconBatches.appId], references: [paymentApps.id] }),
-  channelConfig: one(paymentChannelConfigs, { fields: [paymentReconBatches.channelConfigId], references: [paymentChannelConfigs.id] }),
-  items: many(paymentReconItems),
-}));
-
-export const paymentReconItemsRelations = relations(paymentReconItems, ({ one }) => ({
-  batch: one(paymentReconBatches, { fields: [paymentReconItems.batchId], references: [paymentReconBatches.id] }),
-}));
-
-export const paymentStatementPeriodsRelations = relations(paymentStatementPeriods, ({ one, many }) => ({
-  account: one(paymentChannelAccounts, { fields: [paymentStatementPeriods.accountId], references: [paymentChannelAccounts.id] }),
-  task: one(asyncTasks, { fields: [paymentStatementPeriods.taskId], references: [asyncTasks.id] }),
-  statements: many(paymentStatements),
-  cases: many(paymentReconCases),
-}));
-
-export const paymentStatementsRelations = relations(paymentStatements, ({ one, many }) => ({
-  period: one(paymentStatementPeriods, { fields: [paymentStatements.periodId], references: [paymentStatementPeriods.id] }),
-  files: many(paymentStatementFiles),
-  entries: many(paymentStatementEntries),
-  runs: many(paymentReconRuns),
-}));
-
-export const paymentStatementFilesRelations = relations(paymentStatementFiles, ({ one }) => ({
-  statement: one(paymentStatements, { fields: [paymentStatementFiles.statementId], references: [paymentStatements.id] }),
-  storageConfig: one(fileStorageConfigs, { fields: [paymentStatementFiles.storageConfigId], references: [fileStorageConfigs.id] }),
-}));
-
-export const paymentStatementEntriesRelations = relations(paymentStatementEntries, ({ one, many }) => ({
-  statement: one(paymentStatements, { fields: [paymentStatementEntries.statementId], references: [paymentStatements.id] }),
-  application: one(paymentApps, { fields: [paymentStatementEntries.applicationId], references: [paymentApps.id] }),
-  bankMatches: many(paymentBankMatches, { relationName: 'reconBankEntry' }),
-  settlementMatches: many(paymentBankMatches, { relationName: 'reconSettlementEntry' }),
-}));
-
-export const paymentReconRunsRelations = relations(paymentReconRuns, ({ one, many }) => ({
-  statement: one(paymentStatements, { fields: [paymentReconRuns.statementId], references: [paymentStatements.id] }),
-  task: one(asyncTasks, { fields: [paymentReconRuns.taskId], references: [asyncTasks.id] }),
-  cases: many(paymentReconCases),
-}));
-
-export const paymentReconCasesRelations = relations(paymentReconCases, ({ one, many }) => ({
-  account: one(paymentChannelAccounts, { fields: [paymentReconCases.accountId], references: [paymentChannelAccounts.id] }),
-  period: one(paymentStatementPeriods, { fields: [paymentReconCases.periodId], references: [paymentStatementPeriods.id] }),
-  lastRun: one(paymentReconRuns, { fields: [paymentReconCases.lastRunId], references: [paymentReconRuns.id] }),
-  application: one(paymentApps, { fields: [paymentReconCases.applicationId], references: [paymentApps.id] }),
-  order: one(paymentOrders, { fields: [paymentReconCases.orderId], references: [paymentOrders.id] }),
-  refund: one(paymentRefunds, { fields: [paymentReconCases.refundId], references: [paymentRefunds.id] }),
-  assignee: one(users, { fields: [paymentReconCases.assignedTo], references: [users.id] }),
-  events: many(paymentReconCaseEvents),
-  adjustments: many(paymentReconAdjustments),
-}));
-
-export const paymentReconCaseEventsRelations = relations(paymentReconCaseEvents, ({ one }) => ({
-  case: one(paymentReconCases, { fields: [paymentReconCaseEvents.caseId], references: [paymentReconCases.id] }),
-  actor: one(users, { fields: [paymentReconCaseEvents.actorId], references: [users.id] }),
-}));
-
-export const paymentReconAdjustmentsRelations = relations(paymentReconAdjustments, ({ one, many }) => ({
-  case: one(paymentReconCases, { fields: [paymentReconAdjustments.caseId], references: [paymentReconCases.id] }),
-  application: one(paymentApps, { fields: [paymentReconAdjustments.applicationId], references: [paymentApps.id] }),
-  channelConfig: one(paymentChannelConfigs, { fields: [paymentReconAdjustments.channelConfigId], references: [paymentChannelConfigs.id] }),
-  workflowInstance: one(workflowInstances, { fields: [paymentReconAdjustments.workflowInstanceId], references: [workflowInstances.id] }),
-  journal: one(paymentJournals, { fields: [paymentReconAdjustments.journalId], references: [paymentJournals.id] }),
-  applicant: one(users, { fields: [paymentReconAdjustments.applicantId], references: [users.id], relationName: 'reconAdjustmentApplicant' }),
-  approver: one(users, { fields: [paymentReconAdjustments.approverId], references: [users.id], relationName: 'reconAdjustmentApprover' }),
-  reversalOf: one(paymentReconAdjustments, { fields: [paymentReconAdjustments.reversalOfId], references: [paymentReconAdjustments.id], relationName: 'reconAdjustmentReversal' }),
-  reversals: many(paymentReconAdjustments, { relationName: 'reconAdjustmentReversal' }),
-}));
-
-export const paymentBankMatchesRelations = relations(paymentBankMatches, ({ one }) => ({
-  account: one(paymentChannelAccounts, { fields: [paymentBankMatches.accountId], references: [paymentChannelAccounts.id] }),
-  bankEntry: one(paymentStatementEntries, { fields: [paymentBankMatches.bankEntryId], references: [paymentStatementEntries.id], relationName: 'reconBankEntry' }),
-  settlementEntry: one(paymentStatementEntries, { fields: [paymentBankMatches.settlementEntryId], references: [paymentStatementEntries.id], relationName: 'reconSettlementEntry' }),
-}));
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 支付中心扩展 · B 档（费率 / 结算 / 分账 / 支付链接 / 风控 / 支付方式 / 报表）

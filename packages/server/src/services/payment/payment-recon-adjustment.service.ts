@@ -38,6 +38,9 @@ async function requireAdjustment(id: number) {
 }
 
 async function lockCase(tx: DbExecutor, id: number, tenantId: number | null) {
+  const [candidate] = await tx.select({ periodId: paymentReconCases.periodId }).from(paymentReconCases).where(and(eq(paymentReconCases.id, id), exactTenantCondition(paymentReconCases.tenantId, tenantId))).limit(1);
+  requireRow(candidate, '差异案件不存在');
+  await tx.select({ id: paymentStatementPeriods.id }).from(paymentStatementPeriods).where(and(eq(paymentStatementPeriods.id, candidate.periodId), exactTenantCondition(paymentStatementPeriods.tenantId, tenantId))).for('update').limit(1);
   const [row] = await tx.select().from(paymentReconCases).where(and(eq(paymentReconCases.id, id), exactTenantCondition(paymentReconCases.tenantId, tenantId))).for('update').limit(1);
   return requireRow(row, '差异案件不存在');
 }

@@ -37,7 +37,7 @@ beforeEach(() => {
 describe('payment adjustment service mutation boundaries', () => {
   it('never creates money records from an unallocated channel-only case', async () => {
     const record = { id: 4, tenantId: null, applicationId: null, status: 'open', type: 'channel_only', localAmount: null, channelAmount: 25n };
-    mocks.requireCase.mockResolvedValue(record); mocks.rows = [[record]];
+    mocks.requireCase.mockResolvedValue(record); mocks.rows = [[{ periodId: 2 }], [{ id: 2 }], [record]];
     await expect(createReconAdjustment(4, { applicationId: 3, channelConfigId: 2, amount: '25', direction: 'in', reason: 'test' })).rejects.toThrow('明确本地归属');
     expect(mocks.insert).not.toHaveBeenCalled(); expect(mocks.postJournal).not.toHaveBeenCalled();
   });
@@ -55,7 +55,7 @@ describe('payment adjustment service mutation boundaries', () => {
   });
   it('cannot reverse an unexecuted adjustment or create a direct money reversal', async () => {
     const draft = adjustment();
-    mocks.rows = [[draft], [{ id: 4, tenantId: null }], [draft]];
+    mocks.rows = [[draft], [{ periodId: 2 }], [{ id: 2 }], [{ id: 4, tenantId: null }], [draft]];
     await expect(reverseReconAdjustment(9, { reason: 'test reversal' })).rejects.toThrow('已执行的原始调整');
     expect(mocks.insert).not.toHaveBeenCalled(); expect(mocks.postJournal).not.toHaveBeenCalled();
   });

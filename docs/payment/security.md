@@ -17,7 +17,8 @@
 | 欺诈交易 | `payment_risk` 决策表 + 原生名单/限额规则双层裁决 |
 | 投诉处理不一致 | `dispute_triage` 分流建议、SLA 收紧、时间线留痕；资金动作仍需人工确认 |
 | 越权操作 | 19 个支付页面权限码、服务端 `guard()`、数据权限与租户隔离 |
-| 争议无凭据 | 回调日志、风控命中、规则执行记录、投诉时间线、Open Platform Webhook 投递日志 |
+| 争议无凭据 | 回调日志、渠道账单原件及摘要、解析器版本、标准明细行号、核对快照、案件历史、银行分配审计 |
+| 伪造账单/重放账单 | 官方下载地址白名单、渠道响应验签或摘要校验、文件大小/ZIP CRC/路径校验、商户身份和账期校验、版本幂等 |
 
 ## 密钥与证书存储
 
@@ -69,6 +70,8 @@ POST /api/public/payment/notify/{channel}
 - `refund.succeeded` 订阅者写退款双分录凭证，并按退款比例冲销手续费；全额退款末笔补差以消除舍入残差。
 - 订单 `feeAmount` 保持下单/成功时手续费快照；资金事实以台账流水为准。
 - Journal 是资金唯一事实来源；账户、凭证和 reservation 按应用/商户配置/币种隔离，所有资金流出通过版本化 reservation 防并发超支。
+- 银行到账必须通过显式多对多分配关联渠道结算；相同参考号或金额不会自动证明到账，分配使用 BigInt 累计限额与幂等校验。
+- 已被银行分配的账单版本禁止静默替换；更正版需经过独立更正处置。
 - 结算确认写 `type=settlement` 台账，将待结算划转到可用余额。
 - 投诉退款复用统一退款链路与审批阈值，不由分流规则直接执行资金动作。
 
@@ -137,7 +140,7 @@ decide({ kind: 'table', key: 'dispute_triage' }, facts, { caller: 'payment.dispu
 | 支付订单 | `payment:order:list / create / close / refund` |
 | 退款记录 | `payment:refund:list / approve` |
 | 回调日志 | `payment:log:list` |
-| 对账中心 | `payment:recon:list / create / delete / handle` |
+| 对账中心 | `payment:recon:list / create / import / download / handle / compensate / adjust / execute / bank-match` |
 | 资金凭证与预占 | `payment:ledger:list`、`payment:ledger:post`、`payment:ledger:reverse`、`payment:ledger:reserve` |
 | Open Platform Webhook | `open-platform:webhook:list / manage` |
 | 支付 Webhook 视图 | `payment:webhook:list / manage` |
