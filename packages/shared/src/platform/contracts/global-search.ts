@@ -10,6 +10,9 @@ export const globalSearchTypes = [
   'file',
   'iot-device',
   'iot-alarm',
+  'cms-content',
+  'wiki-document',
+  'announcement',
 ] as const;
 
 /** 业务结果跳转的后台内部路由前缀；新增领域适配器时同步追加一项。 */
@@ -21,6 +24,9 @@ export const globalSearchRoutePrefixes = [
   '/drive/',
   '/iot/',
   '/alerts/',
+  '/cms/',
+  '/wiki/',
+  '/system/announcements',
 ] as const;
 
 export const globalSearchTypeSchema = z.enum(globalSearchTypes).meta({ id: 'GlobalSearchType' });

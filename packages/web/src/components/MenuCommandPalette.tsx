@@ -29,6 +29,9 @@ const BUSINESS_TYPE_LABELS: Record<GlobalSearchResult['type'], string> = {
   file: '文件',
   'iot-device': '设备',
   'iot-alarm': '告警',
+  'cms-content': 'CMS 内容',
+  'wiki-document': 'Wiki 文档',
+  announcement: '公告',
 };
 
 function getMenuIcon(item: FlatMenuItem, isRecent: boolean) {

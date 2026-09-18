@@ -7,6 +7,9 @@ import { userSearchAdapter } from './adapters/user.adapter';
 import { workflowSearchAdapter } from './adapters/workflow.adapter';
 import { iotAlarmSearchAdapter, iotDeviceSearchAdapter } from './adapters/iot.adapter';
 import { driveSearchAdapter } from './adapters/drive.adapter';
+import { announcementSearchAdapter } from './adapters/announcement.adapter';
+import { cmsContentSearchAdapter } from './adapters/cms.adapter';
+import { wikiDocumentSearchAdapter } from './adapters/wiki.adapter';
 import type { GlobalSearchAdapter, GlobalSearchInput } from './types';
 
 /**
@@ -21,6 +24,9 @@ export const globalSearchAdapters: readonly GlobalSearchAdapter[] = [
   iotDeviceSearchAdapter,
   iotAlarmSearchAdapter,
   driveSearchAdapter,
+  cmsContentSearchAdapter,
+  wikiDocumentSearchAdapter,
+  announcementSearchAdapter,
 ];
 
 const ADAPTER_TIMEOUT_MS = 800;

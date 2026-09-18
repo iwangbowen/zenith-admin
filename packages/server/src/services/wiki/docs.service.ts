@@ -797,7 +797,14 @@ function extractSnippet(content: string, keyword: string): string {
 }
 
 /** 全文检索：标题 > 摘要 > 正文加权排序，返回命中片段；首页时写入搜索日志 */
-export async function searchWikiDocs(q: QueryOutputOf<typeof wikiDocContract.search>) {
+export interface WikiSearchOptions {
+  /** 顶部统一搜索等联想查询不应污染用户搜索统计。 */
+  readonly recordSearchLog?: boolean;
+  /** 正文只用于召回时关闭命中片段，避免摘要通道泄露正文。 */
+  readonly includeSnippet?: boolean;
+}
+
+export async function searchWikiDocs(q: QueryOutputOf<typeof wikiDocContract.search>, options: WikiSearchOptions = {}) {
   const { page, pageSize } = q;
   const kw = q.keyword.trim();
   let where = buildWikiDocWhere({ keyword: kw, spaceId: q.spaceId, status: q.status });
@@ -829,12 +836,12 @@ export async function searchWikiDocs(q: QueryOutputOf<typeof wikiDocContract.sea
       pageSize,
       );
       const docs = await attachDocExtras(rows, { spaceName: true });
-      return docs.map((doc, i) => ({ ...doc, snippet: extractSnippet(rows[i].content, kw) }));
+      return docs.map((doc, i) => ({ ...doc, snippet: options.includeSnippet === false ? null : extractSnippet(rows[i].content, kw) }));
     },
   });
 
   // 仅首页记录搜索日志，翻页不重复计数
-  if (page === 1) {
+  if (page === 1 && options.recordSearchLog !== false) {
     await db.insert(wikiSearchLogs).values({
       keyword: kw.slice(0, 200),
       resultCount: result.total,

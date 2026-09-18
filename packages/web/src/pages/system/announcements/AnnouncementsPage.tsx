@@ -20,6 +20,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePagination } from '@/hooks/usePagination';
 import { useListSearch } from '@/hooks/useListSearch';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { createdAtColumn, dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
 import {
   announcementKeys,
@@ -86,8 +87,9 @@ export default function AnnouncementsPage() {
   const {
     page, pageSize, buildPagination,
     bind, bindKeyword, submittedParams,
-    handleSearch, handleReset,
+    handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: announcementKeys.lists });
+  useListDeepLink(['title'], (params) => applySearch({ ...defaultSearchParams, title: params.title ?? '' }));
 
   const { selectedRowKeys, setSelectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
   const [contentHtml, setContentHtml] = useState('');
