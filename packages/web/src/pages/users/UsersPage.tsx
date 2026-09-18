@@ -722,14 +722,6 @@ export default function UsersPage() {
             </Row>
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Input
-                  field="phone"
-                  label="手机号码"
-                  placeholder="请输入手机号码"
-                  rules={[{ pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号码' }]}
-                />
-              </Col>
-              <Col span={12}>
                 <FormPasswordInput
                   field="password"
                   label="密码"
@@ -737,6 +729,14 @@ export default function UsersPage() {
                   rules={[{ required: true, message: '请输入密码' }]}
                   onChange={(v) => setCreatePwdVal(String(v ?? ''))}
                   helpText={<PasswordStrengthMeter password={createPwdVal} policy={passwordPolicy} />}
+                />
+              </Col>
+              <Col span={12}>
+                <Form.Input
+                  field="phone"
+                  label="手机号码"
+                  placeholder="请输入手机号码"
+                  rules={[{ pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号码' }]}
                 />
               </Col>
             </Row>

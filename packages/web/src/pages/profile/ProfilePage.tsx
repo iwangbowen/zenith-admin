@@ -472,8 +472,8 @@ export default function ProfilePage({ user }: ProfilePageProps) {
                           column={2}
                           style={{ width: '100%' }}
                           data={[
-                            { key: '邮箱', value: user.email },
                             { key: '手机号', value: user.phone, hidden: !user.phone },
+                            { key: '邮箱', value: user.email },
                             {
                               key: '性别',
                               value: <DictTag dictCode="user_gender" value={user.gender} />,
@@ -522,19 +522,19 @@ export default function ProfilePage({ user }: ProfilePageProps) {
                       style={{ width: 320 }}
                     />
                     <Form.Input
-                      field="email"
-                      label="邮箱"
-                      placeholder="请输入邮箱（选填）"
-                      rules={[{ type: 'email', message: '邮箱格式不正确' }]}
-                      style={{ width: 320 }}
-                    />
-                    <Form.Input
                       field="phone"
                       label="手机号"
                       placeholder="请输入手机号（选填）"
                       rules={[
                         { pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号码' },
                       ]}
+                      style={{ width: 320 }}
+                    />
+                    <Form.Input
+                      field="email"
+                      label="邮箱"
+                      placeholder="请输入邮箱（选填）"
+                      rules={[{ type: 'email', message: '邮箱格式不正确' }]}
                       style={{ width: 320 }}
                     />
                     <Form.Select
