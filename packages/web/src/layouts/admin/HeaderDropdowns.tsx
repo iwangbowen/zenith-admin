@@ -91,13 +91,13 @@ export function MoreDropdown({
               icon={<Megaphone size={14} strokeWidth={1.5} />}
               onClick={() => navigate('/announcements')}
             >
-              公告中心{announcementUnreadCount > 0 && <Badge count={announcementUnreadCount} overflowCount={99} style={{ marginLeft: 6 }} />}
+              公告中心{announcementUnreadCount > 0 && <Badge count={announcementUnreadCount} overflowCount={99} type="danger" style={{ marginLeft: 6 }} />}
             </Dropdown.Item>
             <Dropdown.Item
               icon={<Bell size={14} strokeWidth={1.5} />}
               onClick={() => navigate('/inbox')}
             >
-              我的消息{unreadCount > 0 && <Badge count={unreadCount} overflowCount={99} style={{ marginLeft: 6 }} />}
+              我的消息{unreadCount > 0 && <Badge count={unreadCount} overflowCount={99} type="danger" style={{ marginLeft: 6 }} />}
             </Dropdown.Item>
             {canEditPreference('colorMode') ? <>
               <Dropdown.Divider />

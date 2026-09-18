@@ -102,9 +102,9 @@ export function UserDropdown({
             icon={<Bell size={14} strokeWidth={1.5} />}
             onClick={closeAndRun(() => navigate('/inbox'))}
           >
-            我的消息{unreadCount > 0 && <Badge count={unreadCount} overflowCount={99} style={{ marginLeft: 6 }} />}
+            我的消息{unreadCount > 0 && <Badge count={unreadCount} overflowCount={99} type="danger" style={{ marginLeft: 6 }} />}
           </Dropdown.Item>
-          <Dropdown.Item icon={<Megaphone size={14} strokeWidth={1.5} />} onClick={closeAndRun(() => navigate('/announcements'))}>公告中心{announcementUnreadCount > 0 && <Badge count={announcementUnreadCount} overflowCount={99} style={{ marginLeft: 6 }} />}</Dropdown.Item>
+          <Dropdown.Item icon={<Megaphone size={14} strokeWidth={1.5} />} onClick={closeAndRun(() => navigate('/announcements'))}>公告中心{announcementUnreadCount > 0 && <Badge count={announcementUnreadCount} overflowCount={99} type="danger" style={{ marginLeft: 6 }} />}</Dropdown.Item>
           {canUseApproval && (
             <Dropdown.Item icon={<Smartphone size={14} strokeWidth={1.5} />} onClick={closeAndRun(() => window.open(`${import.meta.env.BASE_URL.replace(/\/$/, '')}/approval.html`, '_blank'))}>移动审批</Dropdown.Item>
           )}

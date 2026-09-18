@@ -135,6 +135,13 @@ body {
   border-radius: var(--semi-border-radius-medium);
   background: var(--surface-card);
 }
+/* 行内数字徽标（无 children 的 block 形态，如下拉菜单 / 导航文字旁的未读数）：
+   Semi 默认带 1px bg-1 描边是为叠加在图标上时衬出层次，行内使用时会呈现一圈黑边，去掉。
+   带 children 的叠加形态（图标右上角红点 / 数字）保留描边，不受影响。 */
+.semi-badge-block.semi-badge-count,
+.semi-badge-block.semi-badge-dot {
+  border: none;
+}
 .semi-modal-content {
   background: var(--color-layout-bg);
   border: 1px solid var(--color-border);
