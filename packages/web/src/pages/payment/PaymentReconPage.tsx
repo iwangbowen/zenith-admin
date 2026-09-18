@@ -149,7 +149,7 @@ export default function PaymentReconPage() {
     { title: '阶段', dataIndex: 'stage', width: 100, render: (value: PaymentReconCase['stage']) => PAYMENT_STATEMENT_TYPE_LABELS[value] },
     { title: '本地金额', dataIndex: 'localAmount', width: 120, render: renderAmount }, { title: '渠道金额', dataIndex: 'channelAmount', width: 120, render: renderAmount },
     { title: '状态', dataIndex: 'status', width: 100, render: (value: PaymentReconCase['status']) => PAYMENT_RECON_CASE_STATUS_LABELS[value] },
-    dateTimeColumn('处理期限', 'dueAt'), createOperationColumn<PaymentReconCase>({ width: 90, actions: (item) => [{ key: 'detail', label: '调查处理', onClick: () => openCase(item.id) }] }),
+    dateTimeColumn('处理期限', 'dueAt'), createOperationColumn<PaymentReconCase>({ width: 140, actions: (item) => [{ key: 'detail', label: '调查处理', onClick: () => openCase(item.id) }] }),
   ];
   const runColumns: ColumnProps<PaymentReconRun>[] = [
     { title: '运行', dataIndex: 'id', width: 80 }, { title: '账单', dataIndex: 'statementId', width: 80 }, { title: '规则版本', dataIndex: 'ruleVersion', width: 110 },
