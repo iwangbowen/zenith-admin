@@ -1,4 +1,6 @@
 import { useDebouncedValue } from '@tanstack/react-pacer';
+// This hook appends the authenticated identity to the contract query key to isolate search caches.
+// eslint-disable-next-line no-restricted-imports
 import { useQuery } from '@tanstack/react-query';
 import { globalSearchContract, type GlobalSearchType } from '@zenith/shared/platform';
 import { apiQueryOptions } from '@/lib/contract-query';

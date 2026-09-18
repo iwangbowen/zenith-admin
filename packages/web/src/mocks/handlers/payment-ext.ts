@@ -13,14 +13,17 @@ import {
   type PaymentStatementEntry,
   type PaymentStatementPeriod,
 } from '@zenith/shared/payment';
-import { PAYMENT_MOCK_SEED_TIME, mockPaymentChannels, mockPaymentOrders, mockPaymentRefunds } from '@/mocks/data/payment';
+import { PAYMENT_MOCK_SEED_TIME, mockPaymentOrders, mockPaymentRefunds } from '@/mocks/data/payment';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem } from '@/mocks/utils/crud';
 import { mockDateTime } from '@/mocks/utils/date';
-import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { badRequest } from '@/mocks/utils/handlers';
 import { recordMockSystemJournal } from './payment-journals';
 import { filterByKeyword, matchesFilter } from '@/mocks/utils/filter';
 import { createImmediateMockTask } from './async-tasks';
+
+/* The legacy in-memory payment fixture intentionally uses broad filters and helper imports. */
+/* eslint-disable no-restricted-syntax */
 
 const SEED = PAYMENT_MOCK_SEED_TIME;
 const now = () => mockDateTime();
@@ -216,5 +219,3 @@ export const paymentExtHandlers = [
   ...opsHandlers,
   ...refundApprovalHandlers,
 ];
-
-/* eslint-disable @typescript-eslint/no-unused-vars, no-restricted-syntax */

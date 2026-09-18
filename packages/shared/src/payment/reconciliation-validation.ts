@@ -15,6 +15,7 @@ export const submitPaymentStatementSchema = z.object({
 export const importPaymentStatementSchema = z.object({
   accountId: z.int().positive(), billDate: reconciliationBillDateSchema,
   type: z.enum(PAYMENT_STATEMENT_TYPES), currency: reconciliationCurrencySchema.default('CNY'),
+  // eslint-disable-next-line no-control-regex
   filename: z.string().min(1).max(255).refine((value) => !/[\\/\u0000-\u001f]/.test(value), '文件名不能包含路径或控制字符'),
   content: z.string().min(1).max(Math.ceil(PAYMENT_RECON_MAX_FILE_BYTES / 3) * 4).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/, '文件内容须为 Base64'),
   format: z.enum(PAYMENT_STATEMENT_IMPORT_FORMATS),
