@@ -9,8 +9,8 @@ import { HostSelector } from '@/components/HostSelector';
 import { deriveInitialHostSelection, useOpsHostSelection } from '@/hooks/useOpsHostSelection';
 import { LogWorkbench } from '@/components/log-workbench/LogWorkbench';
 
-/** 常用日志路径 */
-const COMMON_LOG_PATHS = [
+/** 常用日志路径（POSIX）：远端执行限定 POSIX（tail / grep / sh），Linux 本机同样适用 */
+const POSIX_COMMON_LOG_PATHS = [
   '/var/log/syslog',
   '/var/log/messages',
   '/var/log/auth.log',
@@ -22,6 +22,12 @@ const COMMON_LOG_PATHS = [
   '/var/log/mysql/error.log',
   '/var/log/postgresql/postgresql.log',
   '/var/log/redis/redis-server.log',
+];
+
+/** 常用日志路径（Windows）：本机为 Windows 时的快捷项 */
+const WINDOWS_COMMON_LOG_PATHS = [
+  'C:\\Windows\\Logs\\CBS\\CBS.log',
+  'C:\\Windows\\Logs\\DISM\\dism.log',
 ];
 
 interface SubmittedLog {
@@ -65,6 +71,9 @@ export default function LogViewerPage() {
   }, []);
 
   const source: LogSource | null = submitted ? { kind: 'path', path: submitted.path, hostId: submitted.hostId } : null;
+  // 远端执行限定 POSIX，只给 Linux 快捷项；本机 OS 前端无法事先知道，给双份
+  const isRemote = hostId != null;
+  const commonPaths = isRemote ? POSIX_COMMON_LOG_PATHS : [...WINDOWS_COMMON_LOG_PATHS, ...POSIX_COMMON_LOG_PATHS];
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '12px 16px', gap: 12 }}>
@@ -89,7 +98,7 @@ export default function LogViewerPage() {
           </Typography.Text>
           <Input
             prefix={<FolderOpen size={13} />}
-            placeholder="/var/log/syslog"
+            placeholder={isRemote ? '/var/log/syslog' : '输入日志文件的绝对路径'}
             value={filePath}
             onChange={setFilePath}
             showClear
@@ -102,7 +111,7 @@ export default function LogViewerPage() {
             placeholder="选择常用路径"
             onChange={(v) => setFilePath(v as string)}
             style={{ width: '100%' }}
-            optionList={COMMON_LOG_PATHS.map((p) => ({ value: p, label: p.split('/').pop() ?? p }))}
+            optionList={commonPaths.map((p) => ({ value: p, label: p.split(/[\\/]/).pop() ?? p }))}
           />
         </div>
         <Button type="primary" icon={<FolderOpen size={13} />} onClick={loadContent} disabled={!filePath.trim()}>
