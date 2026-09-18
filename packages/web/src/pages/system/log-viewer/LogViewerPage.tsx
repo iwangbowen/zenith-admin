@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Breadcrumb, Button, Dropdown, Input, Select, Spin, Typography } from '@douyinfe/semi-ui';
-import { ArrowLeft, Download, File, FileText, Folder, FolderOpen, History } from 'lucide-react';
+import { Breadcrumb, Button, Checkbox, Dropdown, Input, Select, Spin, Typography } from '@douyinfe/semi-ui';
+import { ArrowLeft, Check, Download, File, FileText, Folder, FolderOpen, History, Search } from 'lucide-react';
 import { request } from '@/utils/request';
 import { logSourceDownloadUrl } from '@/hooks/queries/log-source';
 import { logSourceKey, type LogSource } from '@/hooks/queries/log-source';
@@ -49,6 +49,10 @@ interface PickerEntry {
   type: 'dir' | 'file';
 }
 
+function isLogFile(name: string): boolean {
+  return /(?:\.log|\.txt|\.out|\.err|\.trace)(?:\.gz)?$/i.test(name);
+}
+
 function LogPathPicker({
   visible,
   hostId,
@@ -63,6 +67,9 @@ function LogPathPicker({
   const rootInfoQuery = useTerminalRootInfo();
   const hostHomeQuery = useHostFileHome(hostId ?? 0, visible && hostId != null);
   const [currentPath, setCurrentPath] = useState('');
+  const [pickerKeyword, setPickerKeyword] = useState('');
+  const [showAllFiles, setShowAllFiles] = useState(false);
+  const [selectedPath, setSelectedPath] = useState('');
 
   useEffect(() => {
     if (!visible) return;
@@ -78,6 +85,10 @@ function LogPathPicker({
     path: entry.path,
     type: entry.type === 'dir' ? 'dir' as const : 'file' as const,
   })).sort((a, b) => Number(b.type === 'dir') - Number(a.type === 'dir') || a.name.localeCompare(b.name));
+  const visibleEntries = entries.filter((entry) => {
+    if (entry.type === 'file' && !showAllFiles && !isLogFile(entry.name)) return false;
+    return !pickerKeyword.trim() || entry.name.toLowerCase().includes(pickerKeyword.trim().toLowerCase());
+  });
   const loading = rootInfoQuery.isFetching || hostHomeQuery.isFetching || localListQuery.isFetching || hostListQuery.isFetching;
   const windowsDrives = hostId == null && rootInfoQuery.data?.isWindows ? rootInfoQuery.data.drives : [];
   const currentDrive = currentPath.match(/^([A-Za-z]:)/)?.[1] ?? windowsDrives[0] ?? '';
@@ -85,23 +96,46 @@ function LogPathPicker({
 
   const close = () => {
     setCurrentPath('');
+    setPickerKeyword('');
+    setSelectedPath('');
     onCancel();
   };
 
+  const navigateTo = (path: string) => {
+    setCurrentPath(path);
+    setPickerKeyword('');
+    setSelectedPath('');
+  };
+
+  const confirmSelection = () => {
+    if (!selectedPath) return;
+    onSelect(selectedPath);
+    close();
+  };
+
   return (
-    <AppModal title="选择日志文件" visible={visible} onCancel={close} footer={null} width={620}>
+    <AppModal
+      title="选择日志文件"
+      visible={visible}
+      onCancel={close}
+      onOk={confirmSelection}
+      okText="选择此文件"
+      cancelText="取消"
+      okButtonProps={{ disabled: !selectedPath }}
+      width={620}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         {windowsDrives.length > 0 && (
           <Select
             size="small"
             value={currentDrive}
             optionList={windowsDrives.map((drive) => ({ value: drive.replace(/[\\/]+$/, ''), label: `${drive.replace(/[\\/]+$/, '')} 盘` }))}
-            onChange={(value) => setCurrentPath(`${String(value).replace(/[\\/]+$/, '')}\\`)}
+            onChange={(value) => navigateTo(`${String(value).replace(/[\\/]+$/, '')}\\`)}
             style={{ width: 92 }}
             aria-label="选择磁盘"
           />
         )}
-        <Button size="small" icon={<ArrowLeft size={13} />} disabled={!listing?.parent} onClick={() => listing?.parent && setCurrentPath(listing.parent)}>
+        <Button size="small" icon={<ArrowLeft size={13} />} disabled={!listing?.parent} onClick={() => listing?.parent && navigateTo(listing.parent)}>
           上级
         </Button>
         <Breadcrumb compact style={{ flex: 1, minWidth: 0 }} showTooltip={{ width: 320 }}>
@@ -110,7 +144,7 @@ function LogPathPicker({
             return (
               <Breadcrumb.Item
                 key={crumb.path}
-                onClick={clickable ? () => setCurrentPath(crumb.path) : undefined}
+                onClick={clickable ? () => navigateTo(crumb.path) : undefined}
                 style={{
                   cursor: clickable ? 'pointer' : 'default',
                   color: clickable ? 'var(--semi-color-primary)' : undefined,
@@ -124,24 +158,47 @@ function LogPathPicker({
           })}
         </Breadcrumb>
       </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <Input
+          size="small"
+          prefix={<Search size={13} />}
+          value={pickerKeyword}
+          onChange={setPickerKeyword}
+          showClear
+          placeholder="搜索当前目录"
+          style={{ flex: 1 }}
+        />
+        <Checkbox checked={showAllFiles} onChange={(event) => setShowAllFiles(!!event.target.checked)}>
+          显示全部文件
+        </Checkbox>
+      </div>
       <div style={{ minHeight: 300, maxHeight: 420, overflowY: 'auto', borderTop: '1px solid var(--semi-color-border)' }}>
         {loading && !listing ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><Spin /></div>
-        ) : entries.length === 0 ? (
-          <Typography.Text type="tertiary" style={{ display: 'block', padding: 32, textAlign: 'center' }}>此目录没有可选文件</Typography.Text>
-        ) : entries.map((entry) => (
-          <Button
-            key={entry.path}
-            theme="borderless"
-            block
-            style={{ justifyContent: 'flex-start', height: 36, padding: '0 10px' }}
-            icon={entry.type === 'dir' ? <Folder size={14} /> : <File size={14} />}
-            onClick={() => entry.type === 'dir' ? setCurrentPath(entry.path) : (onSelect(entry.path), close())}
-          >
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.name}</span>
-          </Button>
-        ))}
+        ) : visibleEntries.length === 0 ? (
+          <Typography.Text type="tertiary" style={{ display: 'block', padding: 32, textAlign: 'center' }}>
+            {entries.length === 0 ? '此目录没有可选文件' : '没有匹配的日志文件'}
+          </Typography.Text>
+        ) : visibleEntries.map((entry) => {
+          const selected = selectedPath === entry.path;
+          return (
+            <Button
+              key={entry.path}
+              theme={selected ? 'light' : 'borderless'}
+              type={selected ? 'primary' : 'tertiary'}
+              block
+              style={{ justifyContent: 'flex-start', height: 36, padding: '0 10px', color: selected ? undefined : 'var(--semi-color-text-0)' }}
+              icon={entry.type === 'dir' ? <Folder size={14} /> : selected ? <Check size={14} /> : <File size={14} />}
+              onClick={() => entry.type === 'dir' ? navigateTo(entry.path) : setSelectedPath(entry.path)}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.name}</span>
+            </Button>
+          );
+        })}
       </div>
+      <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginTop: 8, minHeight: 18 }}>
+        {selectedPath ? `已选择：${selectedPath}` : '点击日志文件后，再点击“选择此文件”确认'}
+      </Typography.Text>
     </AppModal>
   );
 }
@@ -191,7 +248,11 @@ export default function LogViewerPage() {
   }, [recentPaths]);
 
   const loadSource = useCallback((source: LogSource, remember = false) => {
-    if (source.kind === 'path') setProjectFile('');
+    if (source.kind === 'path') {
+      setProjectFile('');
+    } else {
+      setFilePath('');
+    }
     if (remember && source.kind === 'path') rememberPath(source.path);
     setSubmitted((prev) => ({ source, seq: (prev?.seq ?? 0) + 1 }));
   }, [rememberPath]);
@@ -221,7 +282,7 @@ export default function LogViewerPage() {
   }, [setHostId]);
 
   const source = submitted?.source ?? null;
-  const currentProjectFile = source?.kind === 'file' ? source.filename : projectFile;
+  const currentProjectFile = projectFile;
   const pathPlaceholder = hostId == null ? '输入当前服务端上的绝对路径' : '输入远端主机上的绝对路径';
   const commonPathOptions = useMemo(() => {
     if (hostId != null || rootInfoQuery.data?.isWindows === false) {
@@ -267,7 +328,10 @@ export default function LogViewerPage() {
           prefix={<FolderOpen size={13} />}
           placeholder={pathPlaceholder}
           value={filePath}
-          onChange={setFilePath}
+          onChange={(value) => {
+            setFilePath(value);
+            if (value) setProjectFile('');
+          }}
           showClear
           onEnterPress={loadExternalPath}
           style={{ flex: '1 1 280px', minWidth: 220 }}
@@ -280,14 +344,14 @@ export default function LogViewerPage() {
             <Dropdown.Menu>
               <Dropdown.Item disabled>常用路径{rootInfoQuery.isFetching ? '（识别中…）' : ''}</Dropdown.Item>
               {commonPathOptions.map((option) => (
-                <Dropdown.Item key={option.value} onClick={() => setFilePath(option.value)}>{option.label}</Dropdown.Item>
+                <Dropdown.Item key={option.value} onClick={() => { setFilePath(option.value); setProjectFile(''); }}>{option.label}</Dropdown.Item>
               ))}
               {recentPaths.length > 0 && (
                 <>
                   <Dropdown.Divider />
                   <Dropdown.Item disabled>最近使用</Dropdown.Item>
                   {recentPaths.map((path) => (
-                    <Dropdown.Item key={path} onClick={() => setFilePath(path)}>
+                    <Dropdown.Item key={path} onClick={() => { setFilePath(path); setProjectFile(''); }}>
                       <span style={{ display: 'block', maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{path}</span>
                     </Dropdown.Item>
                   ))}
