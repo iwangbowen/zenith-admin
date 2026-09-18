@@ -12,8 +12,9 @@ describe('payment reconciliation queries', () => {
     api.reset();
     api.on('GET', /\/summary/, { expectedPeriods: 0, waitingPeriods: 1, readyPeriods: 2, failedPeriods: 0, openCases: 1, suspendedCases: 0, overdueCases: 0, pendingAdjustments: 0, unmatchedBankEntries: 0, unmatchedSettlementEntries: 0, differenceAmounts: [] });
     api.on('GET', /\/cases\/7$/, { id: 7, version: 1, status: 'open', events: [], adjustments: [] });
-    api.on('GET', '*', { list: [], total: 0, page: 1, pageSize: 10 });
-    api.on('POST', '*', { id: 11, taskType: 'payment-statement-download', title: '账单下载', status: 'pending' });
+    api.on('GET', /\/cases(?:\?|$)/, { list: [], total: 0, page: 1, pageSize: 10 });
+    api.on('POST', /\/periods$/, { id: 11, taskType: 'payment-statement-download', title: '账单下载', status: 'pending' });
+    api.on('PATCH', /\/cases\/7$/, { id: 7, version: 2, status: 'suspended' });
   });
   it('uses account scoped case and summary contract paths', async () => {
     const queryClient = createTestQueryClient();
