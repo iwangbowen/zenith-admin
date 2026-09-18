@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrayField, Banner, Button, Descriptions, Empty, Form, Select, SideSheet, Space, Spin, Tabs, Tag, Toast, Typography, Upload } from '@douyinfe/semi-ui';
+import { ArrayField, Banner, Button, DatePicker, Descriptions, Empty, Form, Select, SideSheet, Space, Spin, Tabs, Tag, Toast, Typography, Upload } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { BodyOf } from '@zenith/shared/core';
 import {
@@ -40,7 +40,7 @@ import { abortSubmit } from '@/lib/abort-submit';
 import { request } from '@/utils/request';
 import { downloadBlob } from '@/utils/download';
 import { formatDateForApi } from '@/utils/date';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { dateColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { PaymentAppField, PaymentCurrencyField, PaymentMerchantConfigField } from './payment-form-fields';
 import { useAppMerchantConfigLookup } from './payment-app-options';
 import { ReconAdjustmentDetails } from './PaymentReconAdjustmentApprovalView';
@@ -130,10 +130,10 @@ export default function PaymentReconPage() {
   const accountField = <Form.Select field="accountId" label="渠道账户" optionList={accountOptions} filter loading={accounts.isFetching} rules={required} style={fullWidth} />;
   const periodFields = <>{accountField}<Form.DatePicker field="billDate" label="账单日期" rules={required} style={fullWidth} /><PaymentCurrencyField /></>;
   const periodColumns: ColumnProps<PaymentStatementPeriod>[] = [
-    { title: '账期', dataIndex: 'billDate', width: 110 }, { title: '账户', dataIndex: 'accountId', width: 210, render: (id: number) => accounts.data?.find((item) => item.id === id)?.name ?? `#${id}` },
+    dateColumn('账期', 'billDate'), { title: '账户', dataIndex: 'accountId', width: 320, render: (id: number) => renderEllipsis(accounts.data?.find((item) => item.id === id)?.name ?? `#${id}`) },
     { title: '类型', dataIndex: 'type', width: 110, render: (value: PaymentStatementPeriod['type']) => PAYMENT_STATEMENT_TYPE_LABELS[value] },
     { title: '状态', dataIndex: 'status', width: 110, render: (value: PaymentStatementPeriod['status']) => <Tag color={value === 'failed' ? 'red' : value === 'ready' ? 'green' : 'blue'}>{PAYMENT_STATEMENT_PERIOD_STATUS_LABELS[value]}</Tag> },
-    { title: '币种', dataIndex: 'currency', width: 80 }, dateTimeColumn('下次获取', 'nextAttemptAt'), { title: '错误原因', dataIndex: 'lastError', width: 260 },
+    { title: '币种', dataIndex: 'currency', width: 80 }, dateTimeColumn('下次获取', 'nextAttemptAt'), { title: '错误原因', dataIndex: 'lastError', width: 300, render: renderEllipsis },
     createOperationColumn<PaymentStatementPeriod>({ width: 170, actions: (item) => [
       { key: 'detail', label: '账单与原件', onClick: () => { setPeriodId(item.id); setStatementId(undefined); } },
       { key: 'retry', label: '补跑', hidden: !hasPermission('payment:recon:create') || item.type === 'bank', onClick: async () => afterTask(await retry.mutateAsync({ params: { id: item.id } })) },
@@ -160,9 +160,9 @@ export default function PaymentReconPage() {
     createOperationColumn<PaymentReconAdjustment>({ width: 140, actions: (item) => [{ key: 'workflow', label: '资料与审批', onClick: () => openAdjustment(item) }] }),
   ];
   const entryColumns: ColumnProps<PaymentStatementEntry>[] = [
-    { title: '明细 ID', dataIndex: 'id', width: 90 }, { title: '业务标识', dataIndex: 'entryKey', width: 210 },
-    { title: '类型', dataIndex: 'type', width: 100, render: (value: PaymentStatementEntry['type']) => PAYMENT_STATEMENT_ENTRY_TYPE_LABELS[value] },
-    { title: '订单 / 退款号', key: 'businessNo', width: 230, render: (_: unknown, item) => item.merchantRefundNo ?? item.merchantOrderNo ?? item.reference ?? '—' },
+    { title: '明细 ID', dataIndex: 'id', width: 90 }, { title: '业务标识', dataIndex: 'entryKey', width: 250, render: renderEllipsis },
+    { title: '类型', dataIndex: 'type', width: 110, render: (value: PaymentStatementEntry['type']) => PAYMENT_STATEMENT_ENTRY_TYPE_LABELS[value] },
+    { title: '订单 / 退款号', key: 'businessNo', width: 260, render: (_: unknown, item) => renderEllipsis(item.merchantRefundNo ?? item.merchantOrderNo ?? item.reference ?? '—') },
     { title: '金额', dataIndex: 'amount', width: 120, render: renderAmount }, { title: '方向', dataIndex: 'direction', width: 80, render: (value: string) => value === 'in' ? '收入' : '支出' },
     { title: '币种', dataIndex: 'currency', width: 75 }, { title: '来源行', dataIndex: 'lineNo', width: 80 }, dateTimeColumn('发生时间', 'occurredAt'),
   ];
@@ -194,7 +194,7 @@ export default function PaymentReconPage() {
     </StatGrid>
     {(summary.data?.differenceAmounts ?? []).map((item) => <Typography.Text key={item.currency} type="warning">{item.currency} 未解决差异金额：{formatReconciliationAmount(item.amount)} </Typography.Text>)}
     <Tabs activeKey={tab} onChange={setTab} keepDOM={false}>
-      <Tabs.TabPane tab="账期与原件" itemKey="periods"><ListSearchToolbar page={periods} filters={['type', 'status', 'billDate']} /><ConfigurableTable columns={periodColumns} columnSettingsKey="payment-recon-periods" {...periods.tableProps} /></Tabs.TabPane>
+      <Tabs.TabPane tab="账期与原件" itemKey="periods"><ListSearchToolbar page={periods} filters={['type', 'status', 'billDate']} overrides={{ billDate: (page) => <DatePicker aria-label="账单日期" placeholder="账单日期" type="date" value={page.bind('billDate').value} onChange={(value) => page.bind('billDate').onChange(value ? formatDateForApi(value as Date) : undefined)} /> }} /><ConfigurableTable columns={periodColumns} columnSettingsKey="payment-recon-periods" {...periods.tableProps} /></Tabs.TabPane>
       <Tabs.TabPane tab="差异案件" itemKey="cases"><ListSearchToolbar page={cases} filters={['type', 'stage', 'status']} /><ConfigurableTable columns={caseColumns} columnSettingsKey="payment-recon-cases" {...cases.tableProps} /></Tabs.TabPane>
       <Tabs.TabPane tab="核对历史" itemKey="runs"><ListSearchToolbar page={runs} filters={['status', 'statementId']} /><ConfigurableTable columns={runColumns} columnSettingsKey="payment-recon-runs" {...runs.tableProps} /></Tabs.TabPane>
       <Tabs.TabPane tab="调整审批" itemKey="adjustments"><ListSearchToolbar page={adjustments} filters={['status', 'caseId']} /><ConfigurableTable columns={adjustmentColumns} columnSettingsKey="payment-recon-adjustments" {...adjustments.tableProps} /></Tabs.TabPane>
@@ -206,7 +206,9 @@ export default function PaymentReconPage() {
       {periodFields}<Form.Select field="type" label="账单类型" optionList={PAYMENT_STATEMENT_TYPE_OPTIONS} rules={required} style={fullWidth} />
       <Form.Select field="format" label="文件格式" optionList={PAYMENT_STATEMENT_IMPORT_FORMAT_OPTIONS} rules={required} style={fullWidth} />
       <Space wrap><Button onClick={() => downloadBlob(new Blob([serializeReconciliationCsv([])], { type: 'text/csv;charset=utf-8' }), 'payment-statement-template.csv')}>下载标准模板</Button>
-        <Upload action="" uploadTrigger="custom" limit={1} accept=".csv,.json,.txt,.zip,.gz" beforeUpload={({ file }) => { const selected = file.fileInstance; if (!selected) return false; if (selected.size > PAYMENT_RECON_MAX_FILE_BYTES) { Toast.error('账单文件不能超过 32 MiB'); return false; } setUploadFile(selected); return false; }} onRemove={() => setUploadFile(undefined)}><Button>选择原始文件</Button></Upload>
+        <Upload action="" uploadTrigger="custom" limit={1} accept=".csv,.json,.txt,.zip,.gz" maxSize={PAYMENT_RECON_MAX_FILE_BYTES / 1024}
+          onSizeError={() => Toast.error('账单文件不能超过 32 MiB')}
+          onChange={({ fileList }) => { const selected = fileList[0]?.fileInstance; setUploadFile(selected && selected.size <= PAYMENT_RECON_MAX_FILE_BYTES ? selected : undefined); }}><Button>选择原始文件</Button></Upload>
       </Space><Typography.Paragraph>{uploadFile?.name ?? '尚未选择文件'}</Typography.Paragraph>
     </EditFormModal>
 
