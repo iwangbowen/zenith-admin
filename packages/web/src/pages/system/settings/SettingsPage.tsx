@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Banner, Button, Empty, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Empty, Spin, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import { ExternalLink, Save, Settings2 } from 'lucide-react';
 import { emptyIllustration } from '@/components/EmptyIllustration';
 import {
@@ -82,11 +82,15 @@ export default function SettingsPage() {
                 meta={(
                   <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
                     <Tag size="small" color={item.scope === 'tenant' ? 'blue' : 'grey'}>{SCOPE_LABELS[item.scope]}</Tag>
-                    {item.version > 0 ? <Tag size="small">版本 {item.version}</Tag> : null}
                     {item.overriddenCount > 0 ? <Tag size="small" color="orange">{item.overriddenCount} 项覆盖</Tag> : null}
-                    {item.page ? <Tag size="small">专用页面</Tag> : null}
                   </span>
                 )}
+                extra={item.page ? (
+                  <Tooltip content="有专用设置页面">
+                    <ExternalLink size={14} style={{ display: 'block', color: 'var(--semi-color-text-2)' }} />
+                  </Tooltip>
+                ) : undefined}
+                extraAlwaysVisible={Boolean(item.page)}
               />
             )}
           />
