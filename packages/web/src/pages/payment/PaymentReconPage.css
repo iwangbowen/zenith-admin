@@ -285,6 +285,11 @@
   overflow-wrap: anywhere;
 }
 
+.payment-recon-page .semi-table-row-expand > .semi-table-row-cell,
+.payment-recon-page .semi-table-row-expand .semi-table-row-cell {
+  background: transparent;
+}
+
 .payment-recon-expand-detail {
   display: grid;
   grid-template-columns: 88px minmax(0, 1fr);
