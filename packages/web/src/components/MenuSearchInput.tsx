@@ -44,13 +44,13 @@ export default function MenuSearchInput({ menus, recentMenus, onClearRecents, on
         type="button"
         className="menu-search-trigger"
         onClick={() => setOpen(true)}
-        title="统一搜索 (Ctrl+K)"
-        aria-label="统一搜索"
+        title="全局搜索 (Ctrl+K)"
+        aria-label="全局搜索"
       >
         <span className="menu-search-trigger__icon">
           <Search size={16} strokeWidth={1.8} />
         </span>
-        <span className="menu-search-trigger__label">统一搜索</span>
+        <span className="menu-search-trigger__label">全局搜索</span>
         <kbd className="menu-search-trigger__kbd">Ctrl K</kbd>
       </button>
       <MenuCommandPalette menus={menus} recentMenus={recentMenus} onClearRecents={onClearRecents} onRemoveRecent={onRemoveRecent} open={open} onClose={handleClose} />
