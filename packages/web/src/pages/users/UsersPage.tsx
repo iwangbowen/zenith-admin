@@ -397,12 +397,6 @@ export default function UsersPage() {
       render: (v: string | null | undefined, record: User) => <SensitiveText entity="User" id={record.id} field="email" value={v} />,
     },
     {
-      title: '性别',
-      dataIndex: 'gender',
-      width: 80,
-      render: (gender: string | null | undefined) => gender ? <DictTag dictCode="user_gender" value={gender} /> : null,
-    },
-    {
       title: '部门',
       dataIndex: 'departmentName',
       width: 160,
@@ -434,6 +428,12 @@ export default function UsersPage() {
           ))}
         </Space>
       ),
+    },
+    {
+      title: '性别',
+      dataIndex: 'gender',
+      width: 80,
+      render: (gender: string | null | undefined) => gender ? <DictTag dictCode="user_gender" value={gender} /> : null,
     },
     dateTimeColumn('最近登录', 'lastLoginAt'),
     dateTimeColumn('最近活跃', 'lastActiveAt'),
@@ -753,18 +753,6 @@ export default function UsersPage() {
             />
           </Col>
           <Col span={12}>
-            <Form.Select
-              field="gender"
-              label="性别"
-              style={{ width: '100%' }}
-              showClear
-              optionList={genderOptions}
-              placeholder="请选择性别"
-            />
-          </Col>
-        </Row>
-        <Row gutter={16}>
-          <Col span={12}>
             <Form.TreeSelect
               field="departmentId"
               label="所属部门"
@@ -772,16 +760,6 @@ export default function UsersPage() {
               treeData={departmentTreeData}
               placeholder="请选择所属部门"
               filterTreeNode
-              showClear
-            />
-          </Col>
-          <Col span={12}>
-            <Form.DatePicker
-              field="birthDate"
-              label="出生日期"
-              type="date"
-              style={{ width: '100%' }}
-              placeholder="请选择出生日期"
               showClear
             />
           </Col>
@@ -808,6 +786,28 @@ export default function UsersPage() {
               filter
               optionList={allRoles.map((r) => ({ value: r.id, label: r.name }))}
               placeholder="请选择角色"
+            />
+          </Col>
+        </Row>
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Select
+              field="gender"
+              label="性别"
+              style={{ width: '100%' }}
+              showClear
+              optionList={genderOptions}
+              placeholder="请选择性别"
+            />
+          </Col>
+          <Col span={12}>
+            <Form.DatePicker
+              field="birthDate"
+              label="出生日期"
+              type="date"
+              style={{ width: '100%' }}
+              placeholder="请选择出生日期"
+              showClear
             />
           </Col>
         </Row>
