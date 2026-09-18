@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Button, Empty, Input, Select, Space, Spin, Tag, Typography } from '@douyinfe/semi-ui';
+import { Button, Empty, Input, List, Select, Space, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import { Search, Bookmark } from 'lucide-react';
 import { useDebouncedValue } from '@tanstack/react-pacer';
 import { globalSearchTypes, type GlobalSearchResult, type GlobalSearchType } from '@zenith/shared/platform';
@@ -90,18 +90,27 @@ export default function GlobalSearchPage() {
       {!search.isFetching && debouncedDraft.length >= 2 && results.length === 0 && <Empty description="没有找到匹配结果" />}
       {!search.isFetching && debouncedDraft.length < 2 && <Empty description="输入至少 2 个字符开始搜索" />}
 
-      {!search.isFetching && results.length > 0 && <div style={{ display: 'grid', gap: 8 }}>
-        {results.map((item) => (
-          <button key={`${item.type}-${item.id}`} type="button" onClick={() => { window.location.assign(item.route); }} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', border: '1px solid var(--semi-color-border)', borderRadius: 8, background: 'var(--surface-card)', textAlign: 'left', cursor: 'pointer' }}>
-            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 8, background: 'var(--semi-color-fill-1)', color: 'var(--semi-color-primary)' }}>{item.icon ? renderLucideIcon(item.icon, 16) : <Search size={16} />}</span>
-            <span style={{ flex: 1, minWidth: 0 }}>
-              <Typography.Text strong ellipsis>{item.title}</Typography.Text>
-              <div style={{ color: 'var(--semi-color-text-2)', fontSize: 12 }}>{[TYPE_LABELS[item.type], item.subtitle, item.description].filter(Boolean).join(' · ')}</div>
-              {item.highlights[0] && <div style={{ color: 'var(--semi-color-text-2)', fontSize: 12 }}>命中：{item.highlights[0].text}</div>}
-            </span>
-          </button>
-        ))}
-      </div>}
+      {!search.isFetching && results.length > 0 && <List
+        size="default"
+        split
+        dataSource={results}
+        renderItem={(item) => (
+          <List.Item
+            key={`${item.type}-${item.id}`}
+            onClick={() => { window.location.assign(item.route); }}
+            style={{ cursor: 'pointer', padding: '12px 8px' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', minWidth: 0 }}>
+              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 8, background: 'var(--semi-color-fill-1)', color: 'var(--semi-color-primary)', flexShrink: 0 }}>{item.icon ? renderLucideIcon(item.icon, 16) : <Search size={16} />}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <Typography.Text strong ellipsis>{item.title}</Typography.Text>
+                <div style={{ color: 'var(--semi-color-text-2)', fontSize: 12 }}>{[TYPE_LABELS[item.type], item.subtitle, item.description].filter(Boolean).join(' · ')}</div>
+                {item.highlights[0] && <div style={{ color: 'var(--semi-color-text-2)', fontSize: 12 }}>命中：{item.highlights[0].text}</div>}
+              </span>
+            </div>
+          </List.Item>
+        )}
+      />}
 
       {!search.isFetching && results.length >= limit && limit < 50 && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}><Button onClick={() => setLimit((value) => Math.min(value + 10, 50))}>加载更多</Button></div>}
       {search.data?.partial && <Typography.Text type="tertiary" style={{ display: 'block', marginTop: 12 }}>部分结果暂时不可用</Typography.Text>}
