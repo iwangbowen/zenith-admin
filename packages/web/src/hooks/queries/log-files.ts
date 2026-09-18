@@ -12,8 +12,8 @@ export const logFileKeys = {
     contractKey(logFileContract.content, { params: { filename: filename ?? '' }, query: params }),
 };
 
-export function useLogFiles() {
-  return useApiQuery(logFileContract.list);
+export function useLogFiles(enabled = true) {
+  return useApiQuery(logFileContract.list, undefined, { enabled });
 }
 
 /** 日志内容随时在变，不复用 30s 内的缓存：每次挂载 / 切换都回源 */

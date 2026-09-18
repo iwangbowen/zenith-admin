@@ -1,16 +1,21 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Button, Dropdown, Input, Select, Typography } from '@douyinfe/semi-ui';
-import { Download, FolderOpen, FileText } from 'lucide-react';
+import { Button, Dropdown, Input, Modal, Select, Spin, Typography } from '@douyinfe/semi-ui';
+import { ArrowLeft, Download, File, FileText, Folder, FolderOpen, History } from 'lucide-react';
 import { request } from '@/utils/request';
-import { logViewerDownloadUrl } from '@/hooks/queries/log-viewer';
+import { logSourceDownloadUrl } from '@/hooks/queries/log-source';
 import { logSourceKey, type LogSource } from '@/hooks/queries/log-source';
+import { useLogFiles } from '@/hooks/queries/log-files';
 import { HostSelector } from '@/components/HostSelector';
 import { deriveInitialHostSelection, useOpsHostSelection } from '@/hooks/useOpsHostSelection';
+import { usePermission } from '@/hooks/usePermission';
+import { useHostFileHome, useHostFileList, useTerminalFileList, useTerminalRootInfo } from '@/hooks/queries/terminal-files';
 import { LogWorkbench } from '@/components/log-workbench/LogWorkbench';
 
-/** 常用日志路径（POSIX）：远端执行限定 POSIX（tail / grep / sh），Linux 本机同样适用 */
-const POSIX_COMMON_LOG_PATHS = [
+const RECENT_PATHS_KEY = 'logViewer.recentPaths';
+const MAX_RECENT_PATHS = 8;
+
+const LINUX_COMMON_PATHS = [
   '/var/log/syslog',
   '/var/log/messages',
   '/var/log/auth.log',
@@ -20,115 +25,267 @@ const POSIX_COMMON_LOG_PATHS = [
   '/var/log/apache2/access.log',
   '/var/log/apache2/error.log',
   '/var/log/mysql/error.log',
-  '/var/log/postgresql/postgresql.log',
   '/var/log/redis/redis-server.log',
 ];
 
-/** 常用日志路径（Windows）：本机为 Windows 时的快捷项 */
-const WINDOWS_COMMON_LOG_PATHS = [
-  'C:\\Windows\\Logs\\CBS\\CBS.log',
-  'C:\\Windows\\Logs\\DISM\\dism.log',
-];
+const WINDOWS_COMMON_SUFFIXES = [
+  ['Windows\\Logs\\CBS\\CBS.log', 'CBS 系统组件日志'],
+  ['Windows\\Logs\\DISM\\dism.log', 'DISM 部署日志'],
+  ['Windows\\Panther\\setupact.log', '系统安装日志'],
+  ['Windows\\Panther\\setuperr.log', '系统安装错误日志'],
+] as const;
 
 interface SubmittedLog {
-  path: string;
-  hostId: number | null;
-  /** 每次点「加载」递增：同一路径重复加载时重挂载工作台（停掉追踪、重新回源） */
+  source: LogSource;
+  /** 每次点「加载」递增：同一路径重复加载时重挂载工作台 */
   seq: number;
 }
 
-export default function LogViewerPage() {
-  const [filePath, setFilePath] = useState('');
-  const [submitted, setSubmitted] = useState<SubmittedLog | null>(null);
-  // 深链:?path= 直接加载指定日志(Nginx 站点页等跳入),消费后清空参数
-  const [searchParams, setSearchParams] = useSearchParams();
-  // 显式 ?path= 且无 hostId 的站内深链（如本机 Nginx 日志）必须落本机，
-  // 不能被上一次持久化的远端主机选择污染。
-  const [hostId, setHostId] = useOpsHostSelection(deriveInitialHostSelection(searchParams, 'path'));
+interface PickerEntry {
+  name: string;
+  path: string;
+  type: 'dir' | 'file';
+}
+
+function LogPathPicker({
+  visible,
+  hostId,
+  onCancel,
+  onSelect,
+}: Readonly<{
+  visible: boolean;
+  hostId: number | null;
+  onCancel: () => void;
+  onSelect: (path: string) => void;
+}>) {
+  const rootInfoQuery = useTerminalRootInfo();
+  const hostHomeQuery = useHostFileHome(hostId ?? 0, visible && hostId != null);
+  const [currentPath, setCurrentPath] = useState('');
+
   useEffect(() => {
-    const p = searchParams.get('path');
-    if (!p) return;
-    setFilePath(p);
-    setSubmitted((prev) => ({ path: p, hostId, seq: (prev?.seq ?? 0) + 1 }));
+    if (!visible) return;
+    const initial = hostId == null ? rootInfoQuery.data?.home : hostHomeQuery.data?.home;
+    if (initial && !currentPath) setCurrentPath(initial);
+  }, [currentPath, hostHomeQuery.data?.home, hostId, rootInfoQuery.data?.home, visible]);
+
+  const localListQuery = useTerminalFileList(currentPath, visible && hostId == null && currentPath !== '');
+  const hostListQuery = useHostFileList(hostId ?? 0, currentPath, visible && hostId != null && currentPath !== '');
+  const listing = hostId == null ? localListQuery.data : hostListQuery.data;
+  const entries: PickerEntry[] = (listing?.entries ?? []).map((entry) => ({
+    name: entry.name,
+    path: entry.path,
+    type: entry.type === 'dir' ? 'dir' as const : 'file' as const,
+  })).sort((a, b) => Number(b.type === 'dir') - Number(a.type === 'dir') || a.name.localeCompare(b.name));
+  const loading = rootInfoQuery.isFetching || hostHomeQuery.isFetching || localListQuery.isFetching || hostListQuery.isFetching;
+
+  const close = () => {
+    setCurrentPath('');
+    onCancel();
+  };
+
+  return (
+    <Modal title="选择日志文件" visible={visible} onCancel={close} footer={null} width={620}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <Button size="small" icon={<ArrowLeft size={13} />} disabled={!listing?.parent} onClick={() => listing?.parent && setCurrentPath(listing.parent)}>
+          上级
+        </Button>
+        <Typography.Text ellipsis style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }}>{currentPath || '正在定位…'}</Typography.Text>
+      </div>
+      <div style={{ minHeight: 300, maxHeight: 420, overflowY: 'auto', borderTop: '1px solid var(--semi-color-border)' }}>
+        {loading && !listing ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><Spin /></div>
+        ) : entries.length === 0 ? (
+          <Typography.Text type="tertiary" style={{ display: 'block', padding: 32, textAlign: 'center' }}>此目录没有可选文件</Typography.Text>
+        ) : entries.map((entry) => (
+          <Button
+            key={entry.path}
+            theme="borderless"
+            block
+            style={{ justifyContent: 'flex-start', height: 36, padding: '0 10px' }}
+            icon={entry.type === 'dir' ? <Folder size={14} /> : <File size={14} />}
+            onClick={() => entry.type === 'dir' ? setCurrentPath(entry.path) : (onSelect(entry.path), close())}
+          >
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.name}</span>
+          </Button>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+function readRecentPaths(): string[] {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(RECENT_PATHS_KEY) ?? '[]');
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string').slice(0, MAX_RECENT_PATHS) : [];
+  } catch {
+    return [];
+  }
+}
+
+export default function LogViewerPage() {
+  const { hasPermission } = usePermission();
+  const [filePath, setFilePath] = useState('');
+  const [projectFile, setProjectFile] = useState('');
+  const [recentPaths, setRecentPaths] = useState<string[]>(readRecentPaths);
+  const [submitted, setSubmitted] = useState<SubmittedLog | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // 显式 ?path= 且无 hostId 的站内深链必须落本机，不能被上一次远端主机选择污染。
+  const [hostId, setHostId] = useOpsHostSelection(deriveInitialHostSelection(searchParams, 'path'));
+  const [downloading, setDownloading] = useState(false);
+  const [pathPickerVisible, setPathPickerVisible] = useState(false);
+  const canUseProjectLogs = hostId == null && hasPermission('system:log:files');
+  const canBrowseFiles = hasPermission('system:file:use') || hasPermission('system:terminal:execute');
+  const rootInfoQuery = useTerminalRootInfo(canBrowseFiles);
+  const projectLogsQuery = useLogFiles(canUseProjectLogs);
+  const projectLogs = projectLogsQuery.data ?? [];
+
+  // 深链：?path= 直接加载指定日志，消费后清空参数。
+  useEffect(() => {
+    const path = searchParams.get('path');
+    if (!path) return;
+    const source: LogSource = { kind: 'path', path, hostId };
+    setFilePath(path);
+    setSubmitted((prev) => ({ source, seq: (prev?.seq ?? 0) + 1 }));
     setSearchParams(hostId == null ? {} : { hostId: String(hostId) }, { replace: true });
   }, [searchParams, setSearchParams, hostId]);
-  const [downloading, setDownloading] = useState(false);
 
-  const loadContent = useCallback(() => {
+  const rememberPath = useCallback((path: string) => {
+    const next = [path, ...recentPaths.filter((item) => item !== path)].slice(0, MAX_RECENT_PATHS);
+    setRecentPaths(next);
+    try {
+      localStorage.setItem(RECENT_PATHS_KEY, JSON.stringify(next));
+    } catch { /* ignore */ }
+  }, [recentPaths]);
+
+  const loadSource = useCallback((source: LogSource, remember = false) => {
+    if (remember && source.kind === 'path') rememberPath(source.path);
+    setSubmitted((prev) => ({ source, seq: (prev?.seq ?? 0) + 1 }));
+  }, [rememberPath]);
+
+  const loadProjectFile = useCallback(() => {
+    if (!projectFile || hostId != null) return;
+    loadSource({ kind: 'file', filename: projectFile });
+  }, [hostId, loadSource, projectFile]);
+
+  const loadExternalPath = useCallback(() => {
     const path = filePath.trim();
     if (!path) return;
-    setSubmitted((prev) => ({ path, hostId, seq: (prev?.seq ?? 0) + 1 }));
-  }, [filePath, hostId]);
+    loadSource({ kind: 'path', path, hostId }, true);
+  }, [filePath, hostId, loadSource]);
 
   const handleDownload = useCallback(async (target: SubmittedLog) => {
     setDownloading(true);
     try {
-      const name = target.path.split(/[\\/]/).pop() || 'log.txt';
-      await request.download(logViewerDownloadUrl(target.path, target.hostId), name);
+      const name = target.source.kind === 'file'
+        ? target.source.filename
+        : target.source.path.split(/[\\/]/).pop() || 'log.txt';
+      await request.download(logSourceDownloadUrl(target.source), name);
     } finally {
       setDownloading(false);
     }
   }, []);
 
-  const source: LogSource | null = submitted ? { kind: 'path', path: submitted.path, hostId: submitted.hostId } : null;
-  // 远端执行限定 POSIX，只给 Linux 快捷项；本机 OS 前端无法事先知道，给双份
-  const isRemote = hostId != null;
-  const commonPaths = isRemote ? POSIX_COMMON_LOG_PATHS : [...WINDOWS_COMMON_LOG_PATHS, ...POSIX_COMMON_LOG_PATHS];
+  const handleHostChange = useCallback((next: number | null) => {
+    setHostId(next);
+    setSubmitted(null);
+    setProjectFile('');
+  }, [setHostId]);
+
+  const source = submitted?.source ?? null;
+  const currentProjectFile = source?.kind === 'file' ? source.filename : projectFile;
+  const pathPlaceholder = hostId == null ? '输入当前服务端上的绝对路径' : '输入远端主机上的绝对路径';
+  const commonPathOptions = useMemo(() => {
+    if (hostId != null || rootInfoQuery.data?.isWindows === false) {
+      return LINUX_COMMON_PATHS.map((path) => ({ value: path, label: path }));
+    }
+    const drives = rootInfoQuery.data?.drives ?? ['C:'];
+    return drives.flatMap((drive) => WINDOWS_COMMON_SUFFIXES.map(([suffix, label]) => ({
+      value: `${drive.replace(/[\\/]+$/, '')}\\${suffix}`,
+      label: `${drive} · ${label}`,
+    })));
+  }, [hostId, rootInfoQuery.data]);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '12px 16px', gap: 12 }}>
-      {/* 标题 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <FileText size={18} style={{ color: 'var(--semi-color-primary)' }} />
         <Typography.Title heading={6} style={{ margin: 0 }}>日志查看器</Typography.Title>
-        <HostSelector
-          value={hostId}
-          onChange={(next) => {
-            setHostId(next);
-            setSubmitted(null);
-          }}
-        />
+        <HostSelector value={hostId} onChange={handleHostChange} />
       </div>
 
-      {/* 文件路径区 */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: 260 }}>
+        <div style={{ flex: '1 1 240px', minWidth: 220 }}>
           <Typography.Text size="small" type="secondary" style={{ display: 'block', marginBottom: 4 }}>
-            日志文件绝对路径
+            当前项目日志
+          </Typography.Text>
+          <Select
+            value={currentProjectFile || undefined}
+            placeholder={hostId != null ? '切换到本机后可选择项目日志' : projectLogsQuery.isFetching ? '正在读取项目日志…' : '选择项目日志文件'}
+            loading={projectLogsQuery.isFetching}
+            disabled={!canUseProjectLogs || projectLogs.length === 0}
+            onChange={(value) => setProjectFile(value as string)}
+            optionList={projectLogs.map((file) => ({ value: file.name, label: `${file.name}${file.isGzip ? ' · 压缩归档' : ''}` }))}
+            style={{ width: '100%' }}
+          />
+        </div>
+        <Button type="primary" icon={<FileText size={13} />} onClick={loadProjectFile} disabled={!projectFile || hostId != null}>
+          查看项目日志
+        </Button>
+        <div style={{ width: 1, height: 26, margin: '0 4px', background: 'var(--semi-color-border)' }} />
+        <div style={{ flex: '1.5 1 300px', minWidth: 260 }}>
+          <Typography.Text size="small" type="secondary" style={{ display: 'block', marginBottom: 4 }}>
+            其他日志路径
           </Typography.Text>
           <Input
             prefix={<FolderOpen size={13} />}
-            placeholder={isRemote ? '/var/log/syslog' : '输入日志文件的绝对路径'}
+            placeholder={pathPlaceholder}
             value={filePath}
             onChange={setFilePath}
             showClear
-            onEnterPress={loadContent}
+            onEnterPress={loadExternalPath}
           />
         </div>
-        <div style={{ minWidth: 200 }}>
+        <div style={{ flex: '0 1 220px', minWidth: 180 }}>
           <Typography.Text size="small" type="secondary" style={{ display: 'block', marginBottom: 4 }}>常用路径</Typography.Text>
           <Select
-            placeholder="选择常用路径"
-            onChange={(v) => setFilePath(v as string)}
+            placeholder={rootInfoQuery.isFetching ? '正在识别操作系统…' : '选择常用路径'}
+            onChange={(value) => setFilePath(value as string)}
+            optionList={commonPathOptions}
             style={{ width: '100%' }}
-            optionList={commonPaths.map((p) => ({ value: p, label: p.split(/[\\/]/).pop() ?? p }))}
           />
         </div>
-        <Button type="primary" icon={<FolderOpen size={13} />} onClick={loadContent} disabled={!filePath.trim()}>
-          加载
-        </Button>
-      </div>
+        {recentPaths.length > 0 && (
+          <div style={{ flex: '0 1 220px', minWidth: 180 }}>
+            <Typography.Text size="small" type="secondary" style={{ display: 'block', marginBottom: 4 }}>最近使用</Typography.Text>
+            <Select
+              placeholder="选择最近路径"
+              onChange={(value) => setFilePath(value as string)}
+              optionList={recentPaths.map((path) => ({ value: path, label: path }))}
+              prefix={<History size={13} />}
+              style={{ width: '100%' }}
+            />
+          </div>
+        )}          <Button icon={<FolderOpen size={13} />} onClick={() => setPathPickerVisible(true)} disabled={!canBrowseFiles}>
+            浏览选择
+          </Button>
+          <Button icon={<FolderOpen size={13} />} onClick={loadExternalPath} disabled={!filePath.trim()}>
+            加载路径
+          </Button>
+        </div>
+      {canBrowseFiles && <LogPathPicker
+        visible={pathPickerVisible}
+        hostId={hostId}
+        onCancel={() => setPathPickerVisible(false)}
+        onSelect={(path) => {
+          setFilePath(path);
+          loadSource({ kind: 'path', path, hostId }, true);
+        }}
+      />}
 
-      {/* 日志工作台：与「日志文件」页面共用同一查看器（搜索 / 级别 / 实时追踪 / 复制导出） */}
       <div style={{
-        flex: 1,
-        minHeight: 0,
-        display: 'flex',
-        flexDirection: 'column',
-        border: '1px solid var(--semi-color-border)',
-        borderRadius: 'var(--semi-border-radius-medium)',
-        overflow: 'hidden',
-        background: 'var(--surface-card)',
+        flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
+        border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)',
+        overflow: 'hidden', background: 'var(--surface-card)',
       }}>
         {submitted && source ? (
           <LogWorkbench
@@ -138,22 +295,20 @@ export default function LogViewerPage() {
               <>
                 <FileText size={14} style={{ flexShrink: 0, color: 'var(--semi-color-primary)' }} />
                 <Typography.Text style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600 }}>
-                  {submitted.path}
+                  {source.kind === 'file' ? source.filename : source.path}
                 </Typography.Text>
               </>
             )}
             menuExtra={(
               <Dropdown.Item disabled={downloading} onClick={() => void handleDownload(submitted)}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Download size={14} /> 下载
-                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Download size={14} /> 下载</span>
               </Dropdown.Item>
             )}
           />
         ) : (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
             <FileText size={40} style={{ color: 'var(--semi-color-text-3)' }} />
-            <Typography.Text type="tertiary">请输入日志文件路径并点击「加载」</Typography.Text>
+            <Typography.Text type="tertiary">从上方选择当前项目日志，或输入其他日志的完整路径</Typography.Text>
           </div>
         )}
       </div>

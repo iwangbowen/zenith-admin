@@ -101,8 +101,8 @@ export async function fetchDockerDir(qc: QueryClient, containerId: string, path:
 
 // ─── 远程主机文件（平台运维主机） ─────────────────────────────────────────────
 
-export function useHostFileHome(hostId: number) {
-  return useApiQuery(hostFileContract.home, { params: { hostId } });
+export function useHostFileHome(hostId: number, enabled = true) {
+  return useApiQuery(hostFileContract.home, { params: { hostId } }, { enabled });
 }
 
 export function useHostFileList(hostId: number, path: string, enabled = true) {
@@ -211,8 +211,8 @@ export function editableFileDownloadUrl(ref: EditableFileRef): string {
 
 // ─── 文件管理器页专用查询（宿主机） ────────────────────────────────────────────
 
-export function useTerminalRootInfo() {
-  return useApiQuery(terminalFileContract.rootInfo);
+export function useTerminalRootInfo(enabled = true) {
+  return useApiQuery(terminalFileContract.rootInfo, undefined, { enabled });
 }
 
 /** 目录浏览（keepPreviousData：目录切换保留旧列表避免闪白） */
