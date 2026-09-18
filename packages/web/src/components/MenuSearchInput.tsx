@@ -31,11 +31,24 @@ export default function MenuSearchInput({ menus, recentMenus, onClearRecents, on
 
   const handleClose = () => {
     setOpen(false);
-    // Blur the button to remove focus outline after closing the palette
+    // 关闭弹窗后清理当前焦点，避免触发器在跳转后仍显示 focus-visible 状态。
     setTimeout(() => {
+      const activeElement = document.activeElement;
+      if (activeElement instanceof HTMLElement) activeElement.blur();
       buttonRef.current?.blur();
     }, 0);
   };
+
+  useEffect(() => {
+    if (open) return;
+    // 处理路由跳转或 Modal 外部关闭导致未经过 handleClose 的情况。
+    const timer = setTimeout(() => {
+      const activeElement = document.activeElement;
+      if (activeElement instanceof HTMLElement) activeElement.blur();
+      buttonRef.current?.blur();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [open]);
 
   return (
     <>
