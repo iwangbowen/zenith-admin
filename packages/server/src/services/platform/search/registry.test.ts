@@ -63,4 +63,15 @@ describe('global search adapter registry', () => {
     expect(result.results).toEqual([]);
     expect(result.failedTypes).toEqual([]);
   });
+
+  it('keeps other results when permission lookup itself fails', async () => {
+    vi.mocked(hasPermission).mockRejectedValueOnce(new Error('permission store unavailable'));
+    const result = await runGlobalSearch({ q: 'QA', limit: 5 }, undefined, [
+      adapter('user', async () => [item('user', '1')]),
+      adapter('member', async () => [item('member', '2')]),
+    ], 50);
+
+    expect(result.results.map((row) => row.id)).toEqual(['2']);
+    expect(result.failedTypes).toEqual(['user']);
+  });
 });
