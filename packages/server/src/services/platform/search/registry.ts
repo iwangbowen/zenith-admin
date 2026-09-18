@@ -14,6 +14,7 @@ import { chatMessageSearchAdapter } from './adapters/chat.adapter';
 import { bizLeaveSearchAdapter } from './adapters/biz-leave.adapter';
 import { reportDashboardSearchAdapter, reportDatasetSearchAdapter } from './adapters/report.adapter';
 import { aiKnowledgeBaseSearchAdapter, asyncTaskSearchAdapter } from './adapters/ai-task.adapter';
+import { exceptionLogSearchAdapter, operationLogSearchAdapter } from './adapters/log.adapter';
 import type { GlobalSearchAdapter, GlobalSearchInput } from './types';
 
 /**
@@ -37,6 +38,8 @@ export const globalSearchAdapters: readonly GlobalSearchAdapter[] = [
   reportDatasetSearchAdapter,
   aiKnowledgeBaseSearchAdapter,
   asyncTaskSearchAdapter,
+  operationLogSearchAdapter,
+  exceptionLogSearchAdapter,
 ];
 
 const ADAPTER_TIMEOUT_MS = 800;

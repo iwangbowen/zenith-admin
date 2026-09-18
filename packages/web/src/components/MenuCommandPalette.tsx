@@ -38,6 +38,8 @@ const BUSINESS_TYPE_LABELS: Record<GlobalSearchResult['type'], string> = {
   'report-dataset': '数据集',
   'ai-knowledge-base': 'AI 知识库',
   'async-task': '异步任务',
+  'operation-log': '操作日志',
+  'exception-log': '异常日志',
 };
 
 function getMenuIcon(item: FlatMenuItem, isRecent: boolean) {

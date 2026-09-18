@@ -19,6 +19,8 @@ export const globalSearchTypes = [
   'report-dataset',
   'ai-knowledge-base',
   'async-task',
+  'operation-log',
+  'exception-log',
 ] as const;
 
 /** 业务结果跳转的后台内部路由前缀；新增领域适配器时同步追加一项。 */
@@ -38,6 +40,8 @@ export const globalSearchRoutePrefixes = [
   '/report/',
   '/ai/',
   '/system/task-center',
+  '/system/operation-logs',
+  '/system/exception-logs',
 ] as const;
 
 export const globalSearchTypeSchema = z.enum(globalSearchTypes).meta({ id: 'GlobalSearchType' });
