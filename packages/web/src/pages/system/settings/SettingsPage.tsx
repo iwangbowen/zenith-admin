@@ -79,6 +79,7 @@ export default function SettingsPage() {
                 onClick={() => setSelectedKey(item.module)}
                 icon={<Settings2 size={16} />}
                 primary={item.title}
+                secondary={item.version > 0 ? `v${item.version}` : undefined}
                 meta={(
                   <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
                     <Tag size="small" color={item.scope === 'tenant' ? 'blue' : 'grey'}>{SCOPE_LABELS[item.scope]}</Tag>
