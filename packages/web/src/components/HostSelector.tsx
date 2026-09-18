@@ -9,6 +9,7 @@ interface HostSelectorProps {
   readonly value: number | null;
   readonly onChange: (hostId: number | null) => void;
   readonly disabled?: boolean;
+  readonly size?: 'small' | 'default' | 'large';
   readonly style?: React.CSSProperties;
 }
 
@@ -18,7 +19,7 @@ interface HostSelectorProps {
  * 本机始终可选；远端仅展示已启用主机，离线主机仍保留在下拉中供排障。
  * query key / API 参数由调用页按 hostId 维度接入。
  */
-export function HostSelector({ value, onChange, disabled, style }: HostSelectorProps) {
+export function HostSelector({ value, onChange, disabled, size, style }: HostSelectorProps) {
   const { hasPermission } = usePermission();
   const canUseRemote = hasPermission('system:host:use');
   const hostsQuery = useOpsHosts(canUseRemote);
@@ -36,6 +37,7 @@ export function HostSelector({ value, onChange, disabled, style }: HostSelectorP
 
   return (
     <Select
+      size={size}
       value={value == null ? 'local' : String(value)}
       onChange={(next) => onChange(next === 'local' ? null : Number(next))}
       loading={hostsQuery.isFetching}

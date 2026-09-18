@@ -89,7 +89,7 @@ function LogPathPicker({
   };
 
   return (
-    <AppModal title="选择日志文件" visible={visible} onCancel={close} footer={null} width={620} fullscreenable={false}>
+    <AppModal title="选择日志文件" visible={visible} onCancel={close} footer={null} width={620}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         {windowsDrives.length > 0 && (
           <Select
@@ -235,16 +235,11 @@ export default function LogViewerPage() {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '12px 16px', gap: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <FileText size={18} style={{ color: 'var(--semi-color-primary)' }} />
-        <Typography.Title heading={6} style={{ margin: 0 }}>日志查看器</Typography.Title>
-        <HostSelector value={hostId} onChange={handleHostChange} />
-      </div>
-
       <div style={{
         display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
         minHeight: 32,
       }}>
+        <HostSelector value={hostId} onChange={handleHostChange} size="small" style={{ width: 180 }} />
         <Select
           size="small"
           value={currentProjectFile || undefined}
