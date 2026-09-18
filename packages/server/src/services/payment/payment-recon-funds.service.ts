@@ -207,7 +207,8 @@ export function bankFactsFromAllocations(bankEntries: readonly BankFactRow[], se
 export async function loadBankFacts(executor: DbExecutor, period: PaymentStatementPeriodRow): Promise<ReconciliationEntry[]> {
   if (!period.currentStatementId) return [];
   const bankEntries = await executor.select(bankEntryColumns).from(paymentStatementEntries)
-    .where(buildWhere(eq(paymentStatementEntries.statementId, period.currentStatementId), exactTenantCondition(paymentStatementEntries.tenantId, period.tenantId)));
+    .where(buildWhere(eq(paymentStatementEntries.statementId, period.currentStatementId), exactTenantCondition(paymentStatementEntries.tenantId, period.tenantId),
+      eq(paymentStatementEntries.type, 'settlement'), eq(paymentStatementEntries.direction, 'in'), eq(paymentStatementEntries.status, 'success')));
   const settlements = await executor.select(bankEntryColumns).from(paymentStatementEntries)
     .innerJoin(paymentStatements, eq(paymentStatements.id, paymentStatementEntries.statementId))
     .innerJoin(paymentStatementPeriods, eq(paymentStatementPeriods.id, paymentStatements.periodId))

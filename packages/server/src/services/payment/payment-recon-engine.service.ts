@@ -79,7 +79,7 @@ export async function executeReconRun(runId: number, tenantId: number | null, ct
   const policy = await reconNotificationPolicy(tenantId, run.createdBy ?? account.createdBy);
   if ((await ctx.progress({ note: '冻结本地事实快照', total: null })).cancelRequested) throw new TaskCancelledError('核对任务已取消');
   let local: ReconciliationEntry[];
-  let snapshotContext = run.snapshotContext;
+  let snapshotContext: Record<string, any> = run.snapshotContext && typeof run.snapshotContext === 'object' ? run.snapshotContext : {};
   if (run.startedAt) {
     local = run.localSnapshot as ReconciliationEntry[];
   } else {
