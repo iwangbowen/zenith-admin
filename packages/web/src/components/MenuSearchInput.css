@@ -23,6 +23,11 @@
 }
 
 .menu-search-trigger:focus-visible {
+  /* 关闭弹窗后的焦点不应让搜索入口看起来像已选中；打开态仍保留键盘焦点提示。 */
+  border-color: transparent;
+}
+
+.menu-search-trigger[aria-expanded="true"]:focus-visible {
   border-color: var(--semi-color-primary);
 }
 

@@ -59,6 +59,7 @@ export default function MenuSearchInput({ menus, recentMenus, onClearRecents, on
         onClick={() => setOpen(true)}
         title="全局搜索 (Ctrl+K)"
         aria-label="全局搜索"
+        aria-expanded={open}
       >
         <span className="menu-search-trigger__icon">
           <Search size={16} strokeWidth={1.8} />
