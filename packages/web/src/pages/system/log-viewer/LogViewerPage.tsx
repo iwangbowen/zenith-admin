@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Button, Dropdown, Input, Modal, Select, Spin, Typography } from '@douyinfe/semi-ui';
+import { Button, Dropdown, Input, Select, Spin, Typography } from '@douyinfe/semi-ui';
 import { ArrowLeft, Download, File, FileText, Folder, FolderOpen, History } from 'lucide-react';
 import { request } from '@/utils/request';
 import { logSourceDownloadUrl } from '@/hooks/queries/log-source';
@@ -10,6 +10,7 @@ import { HostSelector } from '@/components/HostSelector';
 import { deriveInitialHostSelection, useOpsHostSelection } from '@/hooks/useOpsHostSelection';
 import { usePermission } from '@/hooks/usePermission';
 import { useHostFileHome, useHostFileList, useTerminalFileList, useTerminalRootInfo } from '@/hooks/queries/terminal-files';
+import AppModal from '@/components/AppModal';
 import { LogWorkbench } from '@/components/log-workbench/LogWorkbench';
 
 const RECENT_PATHS_KEY = 'logViewer.recentPaths';
@@ -77,6 +78,8 @@ function LogPathPicker({
     type: entry.type === 'dir' ? 'dir' as const : 'file' as const,
   })).sort((a, b) => Number(b.type === 'dir') - Number(a.type === 'dir') || a.name.localeCompare(b.name));
   const loading = rootInfoQuery.isFetching || hostHomeQuery.isFetching || localListQuery.isFetching || hostListQuery.isFetching;
+  const windowsDrives = hostId == null && rootInfoQuery.data?.isWindows ? rootInfoQuery.data.drives : [];
+  const currentDrive = currentPath.match(/^([A-Za-z]:)/)?.[1] ?? windowsDrives[0] ?? '';
 
   const close = () => {
     setCurrentPath('');
@@ -84,8 +87,18 @@ function LogPathPicker({
   };
 
   return (
-    <Modal title="选择日志文件" visible={visible} onCancel={close} footer={null} width={620}>
+    <AppModal title="选择日志文件" visible={visible} onCancel={close} footer={null} width={620} fullscreenable={false}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        {windowsDrives.length > 0 && (
+          <Select
+            size="small"
+            value={currentDrive}
+            optionList={windowsDrives.map((drive) => ({ value: drive.replace(/[\\/]+$/, ''), label: `${drive.replace(/[\\/]+$/, '')} 盘` }))}
+            onChange={(value) => setCurrentPath(`${String(value).replace(/[\\/]+$/, '')}\\`)}
+            style={{ width: 92 }}
+            aria-label="选择磁盘"
+          />
+        )}
         <Button size="small" icon={<ArrowLeft size={13} />} disabled={!listing?.parent} onClick={() => listing?.parent && setCurrentPath(listing.parent)}>
           上级
         </Button>
@@ -109,7 +122,7 @@ function LogPathPicker({
           </Button>
         ))}
       </div>
-    </Modal>
+    </AppModal>
   );
 }
 
@@ -162,11 +175,6 @@ export default function LogViewerPage() {
     setSubmitted((prev) => ({ source, seq: (prev?.seq ?? 0) + 1 }));
   }, [rememberPath]);
 
-  const loadProjectFile = useCallback(() => {
-    if (!projectFile || hostId != null) return;
-    loadSource({ kind: 'file', filename: projectFile });
-  }, [hostId, loadSource, projectFile]);
-
   const loadExternalPath = useCallback(() => {
     const path = filePath.trim();
     if (!path) return;
@@ -213,65 +221,69 @@ export default function LogViewerPage() {
         <HostSelector value={hostId} onChange={handleHostChange} />
       </div>
 
-      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-        <div style={{ flex: '1 1 240px', minWidth: 220 }}>
-          <Typography.Text size="small" type="secondary" style={{ display: 'block', marginBottom: 4 }}>
-            当前项目日志
-          </Typography.Text>
-          <Select
-            value={currentProjectFile || undefined}
-            placeholder={hostId != null ? '切换到本机后可选择项目日志' : projectLogsQuery.isFetching ? '正在读取项目日志…' : '选择项目日志文件'}
-            loading={projectLogsQuery.isFetching}
-            disabled={!canUseProjectLogs || projectLogs.length === 0}
-            onChange={(value) => setProjectFile(value as string)}
-            optionList={projectLogs.map((file) => ({ value: file.name, label: `${file.name}${file.isGzip ? ' · 压缩归档' : ''}` }))}
-            style={{ width: '100%' }}
-          />
-        </div>
-        <Button type="primary" icon={<FileText size={13} />} onClick={loadProjectFile} disabled={!projectFile || hostId != null}>
-          查看项目日志
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+        minHeight: 32,
+      }}>
+        <Select
+          size="small"
+          value={currentProjectFile || undefined}
+          placeholder={hostId != null ? '本机项目日志' : projectLogsQuery.isFetching ? '读取项目日志…' : '项目日志'}
+          loading={projectLogsQuery.isFetching}
+          disabled={!canUseProjectLogs || projectLogs.length === 0}
+          onChange={(value) => {
+            const filename = value as string;
+            setProjectFile(filename);
+            loadSource({ kind: 'file', filename });
+          }}
+          optionList={projectLogs.map((file) => ({ value: file.name, label: `${file.name}${file.isGzip ? ' · 压缩归档' : ''}` }))}
+          style={{ width: 220 }}
+          aria-label="选择项目日志"
+        />
+        <span style={{ width: 1, height: 20, margin: '0 2px', background: 'var(--semi-color-border)' }} />
+        <Input
+          size="small"
+          prefix={<FolderOpen size={13} />}
+          placeholder={pathPlaceholder}
+          value={filePath}
+          onChange={setFilePath}
+          showClear
+          onEnterPress={loadExternalPath}
+          style={{ flex: '1 1 280px', minWidth: 220 }}
+          aria-label="输入日志路径"
+        />
+        <Dropdown
+          trigger="click"
+          position="bottomRight"
+          render={(
+            <Dropdown.Menu>
+              <Dropdown.Item disabled>常用路径{rootInfoQuery.isFetching ? '（识别中…）' : ''}</Dropdown.Item>
+              {commonPathOptions.map((option) => (
+                <Dropdown.Item key={option.value} onClick={() => setFilePath(option.value)}>{option.label}</Dropdown.Item>
+              ))}
+              {recentPaths.length > 0 && (
+                <>
+                  <Dropdown.Divider />
+                  <Dropdown.Item disabled>最近使用</Dropdown.Item>
+                  {recentPaths.map((path) => (
+                    <Dropdown.Item key={path} onClick={() => setFilePath(path)}>
+                      <span style={{ display: 'block', maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{path}</span>
+                    </Dropdown.Item>
+                  ))}
+                </>
+              )}
+            </Dropdown.Menu>
+          )}
+        >
+          <Button size="small" icon={<History size={13} />} aria-label="常用和最近路径">路径预设</Button>
+        </Dropdown>
+        <Button size="small" icon={<FolderOpen size={13} />} onClick={() => setPathPickerVisible(true)} disabled={!canBrowseFiles}>
+          浏览
         </Button>
-        <div style={{ width: 1, height: 26, margin: '0 4px', background: 'var(--semi-color-border)' }} />
-        <div style={{ flex: '1.5 1 300px', minWidth: 260 }}>
-          <Typography.Text size="small" type="secondary" style={{ display: 'block', marginBottom: 4 }}>
-            其他日志路径
-          </Typography.Text>
-          <Input
-            prefix={<FolderOpen size={13} />}
-            placeholder={pathPlaceholder}
-            value={filePath}
-            onChange={setFilePath}
-            showClear
-            onEnterPress={loadExternalPath}
-          />
-        </div>
-        <div style={{ flex: '0 1 220px', minWidth: 180 }}>
-          <Typography.Text size="small" type="secondary" style={{ display: 'block', marginBottom: 4 }}>常用路径</Typography.Text>
-          <Select
-            placeholder={rootInfoQuery.isFetching ? '正在识别操作系统…' : '选择常用路径'}
-            onChange={(value) => setFilePath(value as string)}
-            optionList={commonPathOptions}
-            style={{ width: '100%' }}
-          />
-        </div>
-        {recentPaths.length > 0 && (
-          <div style={{ flex: '0 1 220px', minWidth: 180 }}>
-            <Typography.Text size="small" type="secondary" style={{ display: 'block', marginBottom: 4 }}>最近使用</Typography.Text>
-            <Select
-              placeholder="选择最近路径"
-              onChange={(value) => setFilePath(value as string)}
-              optionList={recentPaths.map((path) => ({ value: path, label: path }))}
-              prefix={<History size={13} />}
-              style={{ width: '100%' }}
-            />
-          </div>
-        )}          <Button icon={<FolderOpen size={13} />} onClick={() => setPathPickerVisible(true)} disabled={!canBrowseFiles}>
-            浏览选择
-          </Button>
-          <Button icon={<FolderOpen size={13} />} onClick={loadExternalPath} disabled={!filePath.trim()}>
-            加载路径
-          </Button>
-        </div>
+        <Button size="small" type="primary" onClick={loadExternalPath} disabled={!filePath.trim()}>
+          加载
+        </Button>
+      </div>
       {canBrowseFiles && <LogPathPicker
         visible={pathPickerVisible}
         hostId={hostId}
