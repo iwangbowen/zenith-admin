@@ -120,6 +120,47 @@
   white-space: nowrap;
 }
 
+.payment-bank-allocations {
+  width: 100%;
+}
+
+.payment-bank-allocations__header,
+.payment-bank-allocations__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 36px;
+  gap: 8px;
+  align-items: start;
+}
+
+.payment-bank-allocations__header {
+  padding: 0 0 8px;
+  color: var(--semi-color-text-2);
+  font-size: 12px;
+}
+
+.payment-bank-allocations__row {
+  padding: 8px 0;
+  border-top: 1px solid var(--semi-color-border);
+}
+
+.payment-bank-allocations__add {
+  margin-top: 8px;
+}
+
+@media (max-width: 760px) {
+  .payment-bank-allocations__header {
+    display: none;
+  }
+
+  .payment-bank-allocations__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .payment-bank-allocations__row > :last-child {
+    justify-self: end;
+  }
+}
+
 .payment-recon-adjustment-form .semi-form-field-label {
   flex: 0 0 240px !important;
   width: 240px !important;

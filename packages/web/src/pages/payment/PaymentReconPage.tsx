@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrayField, Banner, Button, DatePicker, Empty, Form, Select, SideSheet, Space, Spin, Tabs, Tag, Timeline, Toast, Typography, Upload } from '@douyinfe/semi-ui';
+import { Plus, Trash2 } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { BodyOf } from '@zenith/shared/core';
 import {
@@ -61,6 +62,33 @@ type DownloadValues = Omit<BodyOf<typeof paymentReconContract.submit>, 'billDate
 type ImportValues = Omit<BodyOf<typeof paymentReconContract.importBill>, 'billDate' | 'content' | 'filename'> & { billDate: Date | string };
 type HandleValues = Omit<BodyOf<typeof paymentReconContract.handleCase>, 'expectedVersion'>;
 type BankValues = { accountId: number; allocations: BodyOf<typeof paymentReconContract.matchBank>['allocations'] };
+
+/** 银行到账分配行：表头 + 网格行布局，避免长 label 在左侧挤压换行、操作按钮被 Space 换行甩到下一行。 */
+function BankAllocationsField() {
+  return (
+    <ArrayField field="allocations">
+      {({ add, arrayFields }) => (
+        <div className="payment-bank-allocations">
+          <div className="payment-bank-allocations__header" aria-hidden="true">
+            <span>银行明细 ID *</span>
+            <span>渠道结算明细 ID *</span>
+            <span>金额（整数分） *</span>
+            <span />
+          </div>
+          {arrayFields.map(({ field, key, remove }, index) => (
+            <div key={key} className="payment-bank-allocations__row">
+              <Form.InputNumber field={`${field}.bankEntryId`} noLabel placeholder={`第 ${index + 1} 行银行明细 ID`} min={1} rules={required} style={{ width: '100%' }} />
+              <Form.InputNumber field={`${field}.settlementEntryId`} noLabel placeholder={`第 ${index + 1} 行渠道结算明细 ID`} min={1} rules={required} style={{ width: '100%' }} />
+              <Form.Input field={`${field}.amount`} noLabel placeholder="例如 100 表示 1.00 元" rules={required} style={{ width: '100%' }} />
+              <Button type="danger" theme="borderless" icon={<Trash2 size={15} />} aria-label={`移除第 ${index + 1} 行分配`} disabled={arrayFields.length <= 1} onClick={() => remove()} />
+            </div>
+          ))}
+          <Button theme="light" icon={<Plus size={15} />} onClick={() => add()} className="payment-bank-allocations__add">增加分配</Button>
+        </div>
+      )}
+    </ArrayField>
+  );
+}
 
 function encodeFile(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -306,7 +334,7 @@ export default function PaymentReconPage() {
     </EditFormModal>
     <EditFormModal modal={reverseModal} title="创建冲正审批草稿"><Form.TextArea field="reason" label="冲正依据" rules={required} maxCount={2000} /></EditFormModal>
     <EditFormModal modal={bankModal} title="分配银行到账" width={820} header={<Banner type="info" closeIcon={null} description="在账单明细中查看银行到账和渠道结算的明细 ID，可添加多行完成拆分或合并。累计分配金额不能超过任一方流水金额。" />}>
-      {accountField}<ArrayField field="allocations">{({ arrayFields, add }) => <><Button onClick={() => add()}>增加分配</Button>{arrayFields.map(({ field, key, remove }) => <Space key={key} wrap align="end"><Form.InputNumber field={`${field}.bankEntryId`} label="银行明细 ID" min={1} rules={required} /><Form.InputNumber field={`${field}.settlementEntryId`} label="渠道结算明细 ID" min={1} rules={required} /><Form.Input field={`${field}.amount`} label="金额（整数分）" rules={required} /><Button onClick={remove}>移除</Button></Space>)}</>}</ArrayField>
+      {accountField}<BankAllocationsField />
     </EditFormModal>
     <WorkflowSideSheet visible={!!adjustment} title="调整资料与审批" variant="split" onCancel={() => setAdjustment(undefined)} footerRight={<Space wrap>
       {currentAdjustment?.status === 'draft' && hasPermission('payment:recon:adjust') && <Button theme="solid" disabled={!definitionId || !preview.data?.definition || preview.isError} loading={submitAdjustment.isPending} onClick={async () => { if (!currentAdjustment || !definitionId) return; setAdjustment(await submitAdjustment.mutateAsync({ params: { id: currentAdjustment.id }, body: { definitionId } })); Toast.success('已提交独立审批'); }}>提交审批</Button>}
