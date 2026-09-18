@@ -18,6 +18,7 @@ export function UserDropdown({
   unreadCount,
   announcementUnreadCount,
   feedbackEntryEnabled,
+  preferencesEntryEnabled,
   setFeedbackVisible,
   setPrefsVisible,
   setShortcutsVisible,
@@ -34,6 +35,7 @@ export function UserDropdown({
   unreadCount: number;
   announcementUnreadCount: number;
   feedbackEntryEnabled: boolean;
+  preferencesEntryEnabled: boolean;
   setFeedbackVisible: Dispatch<SetStateAction<boolean>>;
   setPrefsVisible: Dispatch<SetStateAction<boolean>>;
   setShortcutsVisible: Dispatch<SetStateAction<boolean>>;
@@ -109,7 +111,7 @@ export function UserDropdown({
           {feedbackEntryEnabled && (
             <Dropdown.Item icon={<MessageSquareHeart size={14} strokeWidth={1.5} />} onClick={closeAndRun(() => setFeedbackVisible(true))}>意见反馈</Dropdown.Item>
           )}
-          {(hasEditablePreferences || enableLockScreen) && <Dropdown.Item icon={<Settings size={14} strokeWidth={1.5} />} onClick={closeAndRun(() => setPrefsVisible(true))}>偏好设置</Dropdown.Item>}
+          {preferencesEntryEnabled && (hasEditablePreferences || enableLockScreen) && <Dropdown.Item icon={<Settings size={14} strokeWidth={1.5} />} onClick={closeAndRun(() => setPrefsVisible(true))}>偏好设置</Dropdown.Item>}
           <Dropdown.Item icon={<Keyboard size={14} strokeWidth={1.5} />} onClick={closeAndRun(() => setShortcutsVisible(true))}>快捷键</Dropdown.Item>
           {(enableLockScreen ?? false) && hasPassword() && (
             <Dropdown.Item icon={<Lock size={14} strokeWidth={1.5} />} onClick={closeAndRun(() => lock())}>锁屏</Dropdown.Item>

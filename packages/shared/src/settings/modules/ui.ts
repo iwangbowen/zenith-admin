@@ -14,6 +14,8 @@ export const uiSettingsSchema = z.object({
     .meta({ title: '快捷聊天按钮', description: '全局开关，关闭后偏好设置中的相关选项同步隐藏' }),
   feedbackEntryEnabled: z.boolean().default(false)
     .meta({ title: '意见反馈入口', description: '显示在用户头像下拉菜单，关闭后用户无法提交反馈' }),
+  preferencesEntryEnabled: z.boolean().default(true)
+    .meta({ title: '偏好设置入口', description: '显示在用户头像下拉菜单，关闭后隐藏“偏好设置”（含锁屏密码设置）' }),
   preferences: preferencePolicySchema.prefault({}).meta({ title: '偏好默认值与用户权限', description: '设置所有用户的默认偏好，并控制每项是否允许个人覆盖' }),
 }).meta({ id: 'Settings.Ui' });
 
@@ -22,10 +24,10 @@ export type UiSettings = z.output<typeof uiSettingsSchema>;
 export const uiSettingsModule = defineSettingsModule({
   schema: uiSettingsSchema,
   title: '界面与体验',
-  description: '页面水印、快捷聊天、意见反馈入口与偏好策略',
+  description: '页面水印、快捷聊天、意见反馈与偏好设置入口、偏好策略',
   scope: 'platform',
   readPermission: 'system:setting:view',
   writePermission: 'system:setting:update',
-  visibility: { watermark: 'authenticated', quickChatEnabled: 'authenticated', feedbackEntryEnabled: 'authenticated', preferences: 'authenticated' },
+  visibility: { watermark: 'authenticated', quickChatEnabled: 'authenticated', feedbackEntryEnabled: 'authenticated', preferencesEntryEnabled: 'authenticated', preferences: 'authenticated' },
   sort: 30,
 });

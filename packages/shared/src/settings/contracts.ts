@@ -43,7 +43,7 @@ export type PublicSettings = z.output<typeof publicSettingsSchema>;
 export const mySettingsSchema = z.object({
   auth: authSettingsSchema.pick({ captchaEnabled: true, captchaComplexity: true, allowRegistration: true, forgotPasswordEnabled: true }),
   identitySecurity: identitySecuritySettingsSchema.pick({ password: true, impersonation: true, session: true }),
-  ui: uiSettingsSchema.pick({ watermark: true, quickChatEnabled: true, feedbackEntryEnabled: true, preferences: true }),
+  ui: uiSettingsSchema.pick({ watermark: true, quickChatEnabled: true, feedbackEntryEnabled: true, preferencesEntryEnabled: true, preferences: true }),
   files: filesSettingsSchema.pick({ chunkThresholdMb: true, chunkSizeMb: true }),
   // 带 License 门控的模块：租户套餐未含该特性时不返回
   terminal: terminalSettingsSchema.pick({ recordingEnabled: true }).optional(),

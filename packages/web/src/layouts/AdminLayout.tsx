@@ -183,6 +183,7 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
     : { enabled: watermark?.enabled ?? false, content: watermark?.content ?? '', fontSize: watermark?.fontSize ?? 14, opacity: (watermark?.opacity ?? 15) / 100 };
   const quickChatEnabled = mySettings?.ui.quickChatEnabled ?? false;
   const feedbackEntryEnabled = mySettings?.ui.feedbackEntryEnabled ?? false;
+  const preferencesEntryEnabled = mySettings?.ui.preferencesEntryEnabled ?? true;
   const [feedbackVisible, setFeedbackVisible] = useState(false);
 
   // Fullscreen
@@ -733,6 +734,7 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
         unreadCount={unreadCount}
         announcementUnreadCount={announcementUnreadCount}
         feedbackEntryEnabled={feedbackEntryEnabled}
+        preferencesEntryEnabled={preferencesEntryEnabled}
         setFeedbackVisible={setFeedbackVisible}
         setPrefsVisible={setPrefsVisible}
         setShortcutsVisible={setShortcutsVisible}
