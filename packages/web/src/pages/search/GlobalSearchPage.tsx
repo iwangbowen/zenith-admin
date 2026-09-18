@@ -6,6 +6,7 @@ import { globalSearchTypes, type GlobalSearchType } from '@zenith/shared/platfor
 import { useGlobalSearch } from '@/hooks/queries/global-search';
 import { renderLucideIcon } from '@/utils/icons';
 import { GLOBAL_SEARCH_TYPE_LABELS, GLOBAL_SEARCH_TYPE_OPTIONS, isSafeInternalSearchRoute } from '@/utils/global-search';
+import { trackEvent } from '@/utils/tracker';
 
 const TYPE_LABELS = GLOBAL_SEARCH_TYPE_LABELS;
 const TYPE_OPTIONS = GLOBAL_SEARCH_TYPE_OPTIONS;
@@ -120,7 +121,11 @@ export default function GlobalSearchPage() {
         renderItem={(item, index) => (
           <List.Item
             key={`${item.type}-${item.id}`}
-            onClick={() => { if (isSafeInternalSearchRoute(item.route)) navigate(item.route); }}
+            onClick={() => {
+              if (!isSafeInternalSearchRoute(item.route)) return;
+              trackEvent('global_search_result_click', { source: 'search-center', type: item.type });
+              navigate(item.route);
+            }}
             style={{ cursor: 'pointer', padding: '12px 8px' }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', minWidth: 0 }}>
@@ -137,7 +142,8 @@ export default function GlobalSearchPage() {
       />}
 
       {!search.isFetching && results.length >= limit && limit < 50 && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}><Button onClick={() => setLimit((value) => Math.min(value + 10, 50))}>加载更多</Button></div>}
-      {search.data?.partial && <Typography.Text type="tertiary" style={{ display: 'block', marginTop: 12 }}>部分结果暂时不可用</Typography.Text>}
+      {search.data?.partial && <Typography.Text type="tertiary" style={{ display: 'block', marginTop: 12 }}>部分结果暂时不可用：{search.data.failedTypes.map((failedType) => TYPE_LABELS[failedType]).join('、')}</Typography.Text>}
+      {search.error && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}><Button theme="borderless" onClick={() => { void search.refetch(); }}>重新搜索</Button></div>}
     </div>
   );
 }

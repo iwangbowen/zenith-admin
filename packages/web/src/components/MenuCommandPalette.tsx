@@ -10,6 +10,7 @@ import { usePinyinReady } from '@/hooks/usePinyinReady';
 import { useGlobalSearch } from '@/hooks/queries/global-search';
 import type { GlobalSearchResult, GlobalSearchType } from '@zenith/shared/platform';
 import { GLOBAL_SEARCH_TYPE_LABELS, GLOBAL_SEARCH_TYPE_OPTIONS, isSafeInternalSearchRoute } from '@/utils/global-search';
+import { trackEvent } from '@/utils/tracker';
 import type { FlatMenuItem } from './MenuSearchInput';
 
 interface Props {
@@ -101,6 +102,7 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
     const route = item.kind === 'menu' ? item.value.path : item.value.route;
     if (item.kind === 'business') {
       if (!isSafeInternalSearchRoute(item.value.route)) return;
+      trackEvent('global_search_result_click', { source: 'palette', type: item.value.type });
       onClose();
       navigate(item.value.route);
       return;
@@ -233,8 +235,8 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
           {!isShowingRecent && remoteResults.length > 0 && <div style={{ padding: '8px 16px 3px', fontSize: 11, fontWeight: 600, color: 'var(--semi-color-text-2)' }}>业务数据</div>}
           {!isShowingRecent && remoteResults.map((item, index) => renderItem({ kind: 'business', value: item }, menuResults.length + index, false))}
           {!isShowingRecent && displayItems.length === 0 && !remoteSearch.isFetching && <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--semi-color-text-2)', fontSize: 13 }}>未找到匹配的菜单或业务数据</div>}
-          {!isShowingRecent && remoteSearch.error && <div style={{ padding: '12px 16px', color: 'var(--semi-color-danger)' }}>搜索暂时不可用，请稍后重试</div>}
-          {!isShowingRecent && remoteSearch.data?.partial && displayItems.length > 0 && <div style={{ padding: '8px 16px', color: 'var(--semi-color-text-2)', fontSize: 11 }}>部分业务数据暂时不可用</div>}
+          {!isShowingRecent && remoteSearch.error && <div style={{ padding: '12px 16px', color: 'var(--semi-color-danger)' }}>搜索暂时不可用，请稍后重试 <button type="button" onClick={() => { void remoteSearch.refetch(); }} style={{ border: 'none', background: 'transparent', color: 'var(--semi-color-primary)', cursor: 'pointer', padding: 0 }}>重试</button></div>}
+          {!isShowingRecent && remoteSearch.data?.partial && displayItems.length > 0 && <div style={{ padding: '8px 16px', color: 'var(--semi-color-text-2)', fontSize: 11 }}>部分业务数据暂时不可用：{remoteSearch.data.failedTypes.map((type) => GLOBAL_SEARCH_TYPE_LABELS[type]).join('、')}</div>}
         </div>
 
         {!isMobile && <div className="cmd-palette-footer" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 16px', borderTop: '1px solid var(--semi-color-border)', fontSize: 11, color: 'var(--semi-color-text-2)' }}><span><kbd style={{ fontFamily: 'monospace', fontSize: 10, padding: '0 3px', border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-small)' }}>↑↓</kbd> 导航</span><span><kbd style={{ fontFamily: 'monospace', fontSize: 10, padding: '0 3px', border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-small)' }}>↵</kbd> 跳转</span><span><kbd style={{ fontFamily: 'monospace', fontSize: 10, padding: '0 3px', border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-small)' }}>ESC</kbd> 关闭</span><span style={{ marginLeft: 'auto' }}><kbd style={{ fontFamily: 'monospace', fontSize: 10, padding: '0 3px', border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-small)' }}>Ctrl K</kbd> 快速打开</span></div>}
