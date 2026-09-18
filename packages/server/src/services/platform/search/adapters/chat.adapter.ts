@@ -13,7 +13,7 @@ export const chatMessageSearchAdapter: GlobalSearchAdapter = {
     const page = await searchGlobalMessages({ keyword: q, page: 1, pageSize: limit } satisfies ChatSearchQuery);
     return page.list.map((item) => {
       const message = item.message;
-      const conversationName = page.conversationNames[String(message.conversationId)] ?? '会话';
+      const conversationName = page.conversationNames[message.conversationId] ?? '会话';
       return result({
         type: 'chat-message',
         id: String(message.id),
@@ -27,4 +27,3 @@ export const chatMessageSearchAdapter: GlobalSearchAdapter = {
     });
   },
 };
-

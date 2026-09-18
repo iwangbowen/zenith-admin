@@ -836,7 +836,7 @@ export async function searchWikiDocs(q: QueryOutputOf<typeof wikiDocContract.sea
       pageSize,
       );
       const docs = await attachDocExtras(rows, { spaceName: true });
-      return docs.map((doc, i) => ({ ...doc, snippet: options.includeSnippet === false ? null : extractSnippet(rows[i].content, kw) }));
+      return docs.map((doc, i) => ({ ...doc, snippet: options.includeSnippet === false ? undefined : extractSnippet(rows[i].content, kw) }));
     },
   });
 

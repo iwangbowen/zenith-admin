@@ -17,7 +17,7 @@ export const cmsContentSearchAdapter: GlobalSearchAdapter = {
     const siteIds = accessible ?? (await db.select({ id: cmsSites.id }).from(cmsSites).where(eq(cmsSites.status, 'enabled'))).map((row) => row.id);
     if (siteIds.length === 0) return [];
     const pages = await Promise.all(siteIds.map(async (siteId) => {
-      const where = await buildCmsContentListWhere({ siteId, keyword: q, page: 1, pageSize: limit, deleted: false, archived: false });
+      const where = await buildCmsContentListWhere({ siteId, keyword: q, deleted: false, archived: false });
       return db.select({
         id: cmsContents.id,
         siteId: cmsContents.siteId,
