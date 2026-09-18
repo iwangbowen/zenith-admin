@@ -99,6 +99,7 @@ export const paymentBankMatchSchema = z.object({
 export type PaymentBankMatch = z.infer<typeof paymentBankMatchSchema>;
 
 export const paymentReconSummarySchema = z.object({
+  activeRuns: z.int(), runRevision: z.string(),
   expectedPeriods: z.int(), waitingPeriods: z.int(), readyPeriods: z.int(), failedPeriods: z.int(),
   openCases: z.int(), suspendedCases: z.int(), overdueCases: z.int(), pendingAdjustments: z.int(),
   unmatchedBankEntries: z.int(), unmatchedSettlementEntries: z.int(),

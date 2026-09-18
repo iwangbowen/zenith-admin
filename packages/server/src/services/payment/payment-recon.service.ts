@@ -133,9 +133,17 @@ export async function getReconSummary(q: QueryOutputOf<typeof paymentReconContra
   const unmatchedBankEntries = await unmatched(true);
   const unmatchedSettlementEntries = await unmatched(false);
   const differences = await tx.select({ currency: paymentReconCases.currency, amount: sql<string>`coalesce(sum(abs(coalesce(${paymentReconCases.channelAmount}, 0) - coalesce(${paymentReconCases.localAmount}, 0))), 0)::text` }).from(paymentReconCases).where(buildWhere(caseWhere, inArray(paymentReconCases.status, ['open', 'investigating', 'suspended']))).groupBy(paymentReconCases.currency);
+  // Include system-owned runs and every page/status; UI list filters must not hide completion.
+  const runs = await tx.select({ status: paymentReconRuns.status, count: sql<number>`count(*)::int`, changedAt: sql<string>`max(${paymentReconRuns.updatedAt})::text` })
+    .from(paymentReconRuns).innerJoin(paymentStatements, eq(paymentStatements.id, paymentReconRuns.statementId))
+    .innerJoin(paymentStatementPeriods, eq(paymentStatementPeriods.id, paymentStatements.periodId))
+    .where(buildWhere(periodWhere, tenantCondition(paymentReconRuns, user)))
+    .groupBy(paymentReconRuns.status).orderBy(asc(paymentReconRuns.status));
+  const activeRuns = runs.filter((row) => row.status === 'pending' || row.status === 'running').reduce((total, row) => total + row.count, 0);
+  const runRevision = runs.map((row) => `${row.status}:${row.count}:${row.changedAt}`).join('|');
   const periodCount = (status: string) => periods.find((row) => row.status === status)?.count ?? 0;
   const caseCount = (status: string) => cases.find((row) => row.status === status)?.count ?? 0;
-  return { expectedPeriods: periodCount('expected'), waitingPeriods: periodCount('waiting'), readyPeriods: periodCount('ready'), failedPeriods: periodCount('failed'),
+  return { activeRuns, runRevision, expectedPeriods: periodCount('expected'), waitingPeriods: periodCount('waiting'), readyPeriods: periodCount('ready'), failedPeriods: periodCount('failed'),
     openCases: caseCount('open') + caseCount('investigating'), suspendedCases: caseCount('suspended'),
     overdueCases: cases.filter((row) => ['open', 'investigating', 'suspended'].includes(row.status)).reduce((total, row) => total + row.overdue, 0),
     pendingAdjustments, unmatchedBankEntries, unmatchedSettlementEntries, differenceAmounts: differences };

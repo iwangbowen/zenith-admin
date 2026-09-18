@@ -32,7 +32,7 @@ const runs: PaymentReconRun[] = [];
 const cases: PaymentReconCase[] = [{ id: 1, accountId: 1, periodId: 1, caseKey: 'payment:merchant:PAY1700000000004', entryKey: 'PAY1700000000004', type: 'amount_diff', stage: 'trade', status: 'open', version: 1, lastRunId: 0, applicationId: 1, orderId: 4, refundId: null, localAmount: '5000', channelAmount: '4900', currency: 'CNY', evidence: { source: 'provider_download' }, assignedTo: null, dueAt: '2026-09-20 00:00:00', resolution: null, tenantId: null, createdBy: 1, updatedBy: 1, createdAt: SEED, updatedAt: SEED }];
 const caseEvents: PaymentReconCaseEvent[] = [];
 const adjustments: PaymentReconAdjustment[] = [];
-const summary: PaymentReconSummary = { expectedPeriods: 0, waitingPeriods: 0, readyPeriods: 1, failedPeriods: 1, openCases: 1, suspendedCases: 0, overdueCases: 0, pendingAdjustments: 0, unmatchedBankEntries: 0, unmatchedSettlementEntries: 0, differenceAmounts: [{ currency: 'CNY', amount: '100' }] };
+const summary: PaymentReconSummary = { activeRuns: 0, runRevision: '', expectedPeriods: 0, waitingPeriods: 0, readyPeriods: 1, failedPeriods: 1, openCases: 1, suspendedCases: 0, overdueCases: 0, pendingAdjustments: 0, unmatchedBankEntries: 0, unmatchedSettlementEntries: 0, differenceAmounts: [{ currency: 'CNY', amount: '100' }] };
 let nextId = 20;
 const asyncTask = (taskType: string, title: string) => createImmediateMockTask({ taskType, title, module: '支付中心' });
 const paginate = <T,>(list: T[], page: number, pageSize: number) => ({ list: list.slice((page - 1) * pageSize, page * pageSize), total: list.length, page, pageSize });

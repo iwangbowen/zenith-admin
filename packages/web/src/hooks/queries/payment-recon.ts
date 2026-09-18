@@ -1,4 +1,5 @@
-import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
+import { keepPreviousData, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { resourceKeyOf, type QueryOf } from '@zenith/shared/core';
 import { paymentChannelAccountContract, paymentReconContract } from '@zenith/shared/payment';
 import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
@@ -50,7 +51,29 @@ export function usePaymentReconAdjustments(query: QueryOf<typeof paymentReconCon
   return useApiQuery(paymentReconContract.adjustments, { query }, { enabled, placeholderData: keepPreviousData });
 }
 export function usePaymentReconSummary(accountId?: number) {
-  return useApiQuery(paymentReconContract.summary, { query: { accountId } });
+  const qc = useQueryClient();
+  const observed = useRef<{ accountId?: number; revision: string } | undefined>(undefined);
+  const summary = useApiQuery(paymentReconContract.summary, { query: { accountId } }, {
+    staleTime: 0,
+    // Automatic reconciliation has no owner and sends no "my task" event. Keep a
+    // slow idle probe for scheduled runs, and poll faster while any run is active.
+    refetchInterval: (query) => query.state.data?.activeRuns ? 3000 : 15_000,
+  });
+  const revision = summary.data?.runRevision;
+  useEffect(() => {
+    if (revision === undefined) return;
+    const previous = observed.current;
+    observed.current = { accountId, revision };
+    if (!previous || previous.accountId !== accountId || previous.revision === revision) return;
+    // Published versions and completed/failed runs affect these views, including
+    // open detail sheets. Do not invalidate this polling query or unrelated lookups.
+    for (const op of [paymentReconContract.list, paymentReconContract.detail, paymentReconContract.statements,
+      paymentReconContract.statement, paymentReconContract.entries, paymentReconContract.runs,
+      paymentReconContract.cases, paymentReconContract.caseDetail]) {
+      void qc.invalidateQueries({ queryKey: contractKey(op) });
+    }
+  }, [accountId, qc, revision]);
+  return summary;
 }
 export function usePaymentReconWorkflowContext(id?: number, instanceId?: number) {
   return useApiQuery(paymentReconContract.workflowContext, { params: { id: id ?? 0 }, query: { instanceId } }, { enabled: id !== undefined });

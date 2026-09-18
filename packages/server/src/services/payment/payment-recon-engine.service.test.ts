@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PAYMENT_RECON_RULE_VERSION } from '@zenith/shared/payment';
 import type { DbExecutor } from '../../db/types';
-import type { PaymentStatementPeriodRow } from '../../db/schema';
+import { paymentReconCases, type PaymentStatementPeriodRow } from '../../db/schema';
 import type { TaskRunContext } from '../../lib/task-center';
 
 const mocks = vi.hoisted(() => ({ select: vi.fn(), update: vi.fn(), insert: vi.fn(), transaction: vi.fn(), readSnapshot: vi.fn(), notify: vi.fn(),
-  fundFacts: vi.fn(), bankFacts: vi.fn(), balances: vi.fn(), rows: [] as unknown[][], sets: [] as Record<string, unknown>[] }));
+  fundFacts: vi.fn(), bankFacts: vi.fn(), balances: vi.fn(), rows: [] as unknown[][], sets: [] as Record<string, unknown>[], values: [] as Record<string, unknown>[] }));
 vi.mock('../../db', () => ({ db: { select: mocks.select, update: mocks.update, insert: mocks.insert, transaction: mocks.transaction }, readSnapshot: mocks.readSnapshot }));
 vi.mock('../../lib/context', () => ({ currentUserOrNull: () => ({ userId: 7, tenantId: null }) }));
 vi.mock('../messaging/notification-outbox.service', () => ({ notifyWithin: mocks.notify }));
@@ -14,11 +15,12 @@ vi.mock('./payment-recon-funds.service', () => ({ loadFundFacts: mocks.fundFacts
 
 import { executeReconRun, loadTradeFacts, statementDateBounds } from './payment-recon-engine.service';
 
-function chain(result?: unknown[]) {
+function chain(result?: unknown[] | (() => unknown[])) {
   const q: Record<string, unknown> = {};
   for (const method of ['from', 'where', 'innerJoin', 'limit', 'for', 'returning', 'orderBy']) q[method] = vi.fn(() => q);
   q.set = vi.fn((value: Record<string, unknown>) => { mocks.sets.push(value); return q; });
-  q.then = (resolve: (value: unknown[]) => unknown, reject: (error: unknown) => unknown) => Promise.resolve(result ?? mocks.rows.shift() ?? []).then(resolve, reject);
+  q.values = vi.fn((value: Record<string, unknown>) => { mocks.values.push(value); return q; });
+  q.then = (resolve: (value: unknown[]) => unknown, reject: (error: unknown) => unknown) => Promise.resolve(typeof result === 'function' ? result() : result ?? mocks.rows.shift() ?? []).then(resolve, reject);
   return q;
 }
 const period = { id: 3, accountId: 5, type: 'trade', billDate: '2026-09-17', currency: 'CNY', tenantId: null, currentStatementId: 4 } as PaymentStatementPeriodRow;
@@ -26,10 +28,27 @@ const context = () => ({ taskId: 42, attempt: 1, progress: vi.fn().mockResolvedV
 const stamp = new Date('2026-09-17T10:00:00+08:00');
 
 beforeEach(() => {
-  vi.clearAllMocks(); mocks.rows = []; mocks.sets = [];
-  mocks.select.mockImplementation(() => chain()); mocks.update.mockImplementation(() => chain([]));
+  vi.clearAllMocks(); mocks.rows = []; mocks.sets = []; mocks.values = [];
+  mocks.select.mockImplementation(() => chain()); mocks.update.mockImplementation(() => chain([])); mocks.insert.mockImplementation(() => chain([]));
   mocks.transaction.mockImplementation(async (work: (executor: unknown) => unknown) => work({ select: mocks.select, update: mocks.update, insert: mocks.insert }));
 });
+
+const channelEntry = { id: 9, entryKey: 'payment:ORDER1', type: 'payment', merchantOrderNo: 'ORDER1', providerTransactionId: 'WX1',
+  currency: 'CNY', amount: '10000', direction: 'in', status: 'success', occurredAt: '2026-09-17 10:00:00', accountId: 5 };
+const channelEvidence = { local: null, provider: channelEntry, statementId: 4, statementVersion: 1, source: 'manual_upload', ruleVersion: PAYMENT_RECON_RULE_VERSION };
+const ignoredCase = { id: 8, caseKey: 'payment:merchant:ORDER1', type: 'channel_only', status: 'ignored', version: 2,
+  channelAmount: 10000n, evidence: channelEvidence, resolution: '已核实旧账单差异' };
+
+function queueCaseRecheck(prior = ignoredCase, provider = channelEntry, statementVersion = 1, adjustments: unknown[] = []) {
+  const statementId = statementVersion === 1 ? 4 : 6;
+  const currentPeriod = { ...period, currentStatementId: statementId };
+  const run = { id: 2, statementId, taskId: 42, status: 'running', startedAt: stamp, localSnapshot: [],
+    snapshotContext: { cases: [{ id: prior.id, version: prior.version }], adjustments }, createdBy: 7 };
+  mocks.rows = [[run], [{ id: statementId, periodId: 3, version: statementVersion, status: 'validated', source: 'manual_upload' }],
+    [currentPeriod], [{ id: 5, name: '商户账户', billTimezone: 'Asia/Shanghai' }], [{ ...provider, amount: BigInt(provider.amount), occurredAt: stamp }],
+    [currentPeriod], [run], [{ id: 42, status: 'running', cancelRequested: false, attempts: 1 }], [prior]];
+  mocks.update.mockImplementation((table: unknown) => chain(table === paymentReconCases ? () => [{ ...prior, ...mocks.sets.at(-1) }] : []));
+}
 
 describe('reconciliation execution evidence', () => {
   it('uses timezone midnight boundaries even across DST transitions', () => {
@@ -73,5 +92,41 @@ describe('reconciliation execution evidence', () => {
     mocks.rows = [[run], [{ id: 4, periodId: 3, status: 'validated' }], [period], [{ id: 5, billTimezone: 'Asia/Shanghai' }], [], [{ ...period, currentStatementId: 8 }]];
     await expect(executeReconRun(1, null, context())).rejects.toThrow('版本发生变化');
     expect(mocks.insert).not.toHaveBeenCalled(); expect(mocks.notify).not.toHaveBeenCalled();
+  });
+
+  it('keeps an ignored case and its version when the same evidence is checked again', async () => {
+    queueCaseRecheck();
+    expect(await executeReconRun(2, null, context())).toEqual({ runId: 2, matchedCount: 0, diffCount: 1 });
+    expect(mocks.sets[0]).toMatchObject({ status: 'ignored', version: 2, lastRunId: 2, channelAmount: 10000n });
+    expect(mocks.insert).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { name: 'the channel amount changes from 100 to 120', provider: { ...channelEntry, amount: '12000' }, statementVersion: 1 },
+    { name: 'a new bill version replaces the ignored evidence', provider: channelEntry, statementVersion: 2 },
+    { name: 'non-amount channel evidence changes', provider: { ...channelEntry, status: 'failed' }, statementVersion: 1 },
+  ])('reopens the ignored case when $name and records both evidence versions', async ({ provider, statementVersion }) => {
+    queueCaseRecheck(ignoredCase, provider, statementVersion);
+    expect(await executeReconRun(2, null, context())).toEqual({ runId: 2, matchedCount: 0, diffCount: 1 });
+    expect(mocks.sets[0]).toMatchObject({ status: 'open', version: 3, channelAmount: BigInt(provider.amount) });
+    expect(mocks.values).toEqual([expect.objectContaining({
+      caseId: 8, action: 'reconciled', actorId: 7,
+      before: expect.objectContaining({ status: 'ignored', version: 2, evidence: channelEvidence }),
+      after: expect.objectContaining({ status: 'open', version: 3, evidence: expect.objectContaining({ provider, statementVersion }) }),
+    })]);
+    expect(mocks.notify).toHaveBeenCalledWith(expect.anything(), 'payment.recon.difference', expect.objectContaining({
+      dedupeKey: 'payment-recon-difference:2', vars: { accountName: '商户账户', billDate: '2026-09-17', count: 1 },
+    }));
+  });
+
+  it('keeps a posted adjustment covering the current evidence resolved when an old ignored case changes', async () => {
+    const provider = { ...channelEntry, amount: '12000' };
+    queueCaseRecheck(ignoredCase, provider, 1, [{ caseId: 8, journalId: 99, amount: '12000', direction: 'in',
+      evidence: { case: { evidence: { ...channelEvidence, provider } } } }]);
+    expect(await executeReconRun(2, null, context())).toEqual({ runId: 2, matchedCount: 0, diffCount: 1 });
+    expect(mocks.sets[0]).toMatchObject({ status: 'resolved', version: 3, channelAmount: 12000n });
+    expect(mocks.values).toEqual([expect.objectContaining({ action: 'reconciled',
+      before: expect.objectContaining({ status: 'ignored' }), after: expect.objectContaining({ status: 'resolved', version: 3 }),
+    })]);
   });
 });

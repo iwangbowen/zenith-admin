@@ -1,0 +1,148 @@
+.payment-recon-page {
+  --payment-recon-section-gap: 24px;
+}
+
+.payment-recon-page .payment-recon-difference {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  margin: 8px 0 16px;
+  padding: 0 12px;
+  border-left: 3px solid var(--semi-color-warning);
+  color: var(--semi-color-warning);
+  background: var(--semi-color-warning-light-default);
+  border-radius: var(--semi-border-radius-small);
+}
+
+.payment-recon-page .payment-recon-tabs {
+  margin-top: var(--payment-recon-section-gap);
+}
+
+.payment-recon-sheet__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.payment-recon-sheet__section {
+  margin-top: 20px;
+}
+
+.payment-recon-sheet__section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  color: var(--semi-color-text-0);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.payment-recon-sheet__meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 24px;
+  margin: 0;
+}
+
+.payment-recon-sheet__meta-item {
+  min-width: 0;
+  margin: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.payment-recon-sheet__meta-item--wide {
+  grid-column: 1 / -1;
+}
+
+.payment-recon-sheet__meta-label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--semi-color-text-2);
+  font-size: 12px;
+}
+
+.payment-recon-sheet__meta-value {
+  display: block;
+  min-width: 0;
+  color: var(--semi-color-text-0);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.payment-recon-sheet__meta-value--mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.payment-recon-sheet__json {
+  max-height: 120px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  color: var(--semi-color-text-1);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.payment-recon-sheet__files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.payment-recon-sheet__table-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.payment-recon-sheet__table-title .semi-typography {
+  margin: 0;
+}
+
+.payment-recon-page .payment-recon-single-line {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.payment-recon-adjustment-form .semi-form-field-label {
+  flex: 0 0 240px !important;
+  width: 240px !important;
+  max-width: 240px !important;
+  min-width: 240px !important;
+  white-space: nowrap !important;
+}
+
+.payment-recon-adjustment-form .semi-form-field-label-text,
+.payment-recon-nowrap-label {
+  white-space: nowrap !important;
+}
+
+.payment-recon-nowrap-label {
+  display: inline-block;
+}
+
+@media (--md-down) {
+  .payment-recon-sheet__meta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .payment-recon-sheet__meta-item--wide {
+    grid-column: auto;
+  }
+}

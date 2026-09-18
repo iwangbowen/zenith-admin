@@ -138,8 +138,9 @@ export async function executeReconRun(runId: number, tenantId: number | null, ct
           && isDeepStrictEqual(original.local, evidence.local) && isDeepStrictEqual(original.provider, evidence.provider)
           && (adjustment.direction === 'in' ? BigInt(adjustment.amount) : -BigInt(adjustment.amount)) === delta;
       });
+      // An ignore decision only applies to its reviewed evidence; changed evidence needs a new decision.
       const status = covered ? 'resolved' as const : old?.status === 'ignored' && !changed ? 'ignored' as const
-        : old?.status === 'resolved' || !old ? 'open' as const : old.status;
+        : old?.status === 'resolved' || old?.status === 'ignored' || !old ? 'open' as const : old.status;
       const values = { type: difference.type, stage: period.type, status, lastRunId: runId,
         localAmount: difference.localAmount == null ? null : BigInt(difference.localAmount),
         channelAmount: difference.channelAmount == null ? null : BigInt(difference.channelAmount),
