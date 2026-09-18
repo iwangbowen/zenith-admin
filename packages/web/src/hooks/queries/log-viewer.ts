@@ -17,17 +17,11 @@ function toContentQuery({ hostId, ...rest }: LogViewerContentParams): LogViewerC
 export const logViewerKeys = {
   all: ['log-viewer'] as const,
   content: (params: LogViewerContentParams) => contractKey(logViewerContract.content, { query: toContentQuery(params) }),
-  roots: (hostId?: number) => contractKey(logViewerContract.roots, { query: hostQueryOf(hostId) }),
 };
 
 /** 日志内容随时在变，不复用 30s 内的缓存：每次挂载 / 切换都回源 */
 export function useLogViewerContent(params: LogViewerContentParams, enabled = true) {
   return useApiQuery(logViewerContract.content, { query: toContentQuery(params) }, { enabled: enabled && !!params.path, staleTime: 0 });
-}
-
-/** 服务端允许读取的日志目录白名单（本机为应用日志目录 + LOG_VIEWER_ROOTS，远端为 LOG_VIEWER_ROOTS） */
-export function useLogViewerRoots(hostId?: number) {
-  return useApiQuery(logViewerContract.roots, { query: hostQueryOf(hostId) }, { staleTime: 5 * 60_000 });
 }
 
 /** SSE 实时跟踪地址（event: log；`request.fetchRaw` + `readSseStream` 消费） */

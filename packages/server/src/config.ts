@@ -129,11 +129,6 @@ const envSchema = z.object({
   PAYMENT_PROVIDER_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60_000).default(10_000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   LOG_DIR: z.string().default('logs'),
-  /**
-   * 日志查看器允许读取的目录白名单（逗号分隔绝对路径）。应用自身日志目录（LOG_DIR）始终允许；
-   * 非 Windows 默认额外允许 /var/log。目录外的路径一律拒绝——避免持有 system:log:view 的用户读取服务器任意文件。
-   */
-  LOG_VIEWER_ROOTS: z.string().default(process.platform === 'win32' ? '' : '/var/log'),
   /** 轮转日志文件保留份数（按天轮转，1 份 = 1 天） */
   LOG_MAX_FILES: z.coerce.number().int().min(1).default(30),
   /** 控制台输出 pino-pretty 彩色单行（本地开发用）；默认 NDJSON。日志文件不受影响，始终 NDJSON */
@@ -415,8 +410,6 @@ export const config = {
     dir: env.LOG_DIR,
     maxFiles: env.LOG_MAX_FILES,
     pretty: env.LOG_CONSOLE_PRETTY,
-    /** 日志查看器目录白名单（不含 LOG_DIR，由服务层合并） */
-    viewerRoots: env.LOG_VIEWER_ROOTS.split(',').map((s) => s.trim()).filter(Boolean),
   },
   httpLog: {
     incoming: {

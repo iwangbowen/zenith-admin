@@ -5,7 +5,7 @@ import { logViewerContract } from '@zenith/shared/ops';
 import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
-  readLastLines, followLogLines, openLogForDownload, resolveAllowedLogPath, assertTailable, getLocalLogRoots, getRemoteLogRoots,
+  readLastLines, followLogLines, openLogForDownload, resolveLogPath, assertTailable,
 } from '../../services/ops/log-viewer.service';
 import { TAIL_REPLAY_LINES } from '../../services/ops/log-reader';
 import { assertRemoteHostAccess } from '../../lib/host-access';
@@ -19,8 +19,8 @@ const tailRoute = defineContractRoute(logViewerContract.tail, {
   handler: async (c) => {
     const { path: filePath, hostId } = c.req.valid('query');
     await assertRemoteHostAccess(c, hostId);
-    // 白名单 / 存在性校验放在开流之前，错误以 JSON 状态码返回而不是流式正文
-    assertTailable(await resolveAllowedLogPath(filePath, hostId));
+    // 路径形态 / 存在性校验放在开流之前，错误以 JSON 状态码返回而不是流式正文
+    assertTailable(await resolveLogPath(filePath, hostId));
     return streamLogTail(c, {
       replay: () => readLastLines(filePath, TAIL_REPLAY_LINES, hostId),
       follow: (signal, emit) => followLogLines(filePath, hostId, signal, emit),
@@ -64,14 +64,6 @@ const contentRoute = defineContractRoute(logViewerContract.content, {
   },
 });
 
-const rootsRoute = defineContractRoute(logViewerContract.roots, {
-  handler: async (c) => {
-    const { hostId } = c.req.valid('query');
-    await assertRemoteHostAccess(c, hostId);
-    return c.json(okBody({ roots: hostId == null ? getLocalLogRoots() : getRemoteLogRoots() }), 200);
-  },
-});
-
-router.openapiRoutes([tailRoute, downloadRoute, contentRoute, rootsRoute] as const);
+router.openapiRoutes([tailRoute, downloadRoute, contentRoute] as const);
 
 export default router;

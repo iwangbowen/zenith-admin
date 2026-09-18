@@ -99,7 +99,5 @@ export const terminalFilesHandlers = [
   mock(logFileContract.remove, () => forbidden('演示模式下不支持删除日志', { status: 403 })),
 
   // ── 日志查看器（与日志文件同一行数组形状）─────────────────────────────────
-  mock(logViewerContract.roots, ({ ok }) => ok({ roots: ['/var/log'] })),
-
   mock(logViewerContract.content, ({ ok }) => ok({ lines: ['[INFO] 演示模式：日志内容不可访问'] })),
 ];

@@ -128,11 +128,10 @@
 
 ### 日志查看器
 
-「日志查看器」（`/system/log-viewer`）只允许读取**目录白名单**内的常规日志文件，接口前缀为 `/api/log-viewer`，权限码 `system:log:view`。白名单 = 应用日志目录（`LOG_DIR`）+ 环境变量 `LOG_VIEWER_ROOTS`（逗号分隔绝对路径，非 Windows 默认 `/var/log`）；本机路径先解析符号链接再判定归属，并拒绝目录、设备与 FIFO，白名单外一律 403（不区分文件是否存在），因此该权限不能用来读取 `.env`、密钥等任意文件。传 `hostId` 时读取远端日志：路径按 POSIX 规范化后同样必须落在 `LOG_VIEWER_ROOTS` 内，末尾内容用 SSH `tail -n`（带关键词时为 `grep -i -F -C` 管道，`.gz` 归档先 `gzip -dc`，参数经 `sh` 位置参数传递不拼接命令串），实时追踪用 SSH `tail -f` 流式通道并在服务端切分成整行，下载用 SFTP 可读流（100 MB 上限，不把完整文件读入内存）。支持 `?path=` / `?hostId=` 深链。
+「日志查看器」（`/system/log-viewer`）是运维通用工具，可读取本机 / 远端主机的任意绝对路径常规日志文件，接口前缀为 `/api/log-viewer`，权限码 `system:log:view`。门禁在权限层（与终端、SFTP 文件管理器一致，不做目录白名单限制）：本机路径解析符号链接后必须存在且为常规文件（拒绝目录、设备与 FIFO）；传 `hostId` 时读取远端日志，路径按 POSIX 规范化，末尾内容用 SSH `tail -n`（带关键词时为 `grep -i -F -C` 管道，`.gz` 归档先 `gzip -dc`，参数经 `sh` 位置参数传递不拼接命令串），实时追踪用 SSH `tail -f` 流式通道并在服务端切分成整行，下载用 SFTP 可读流（100 MB 上限，不把完整文件读入内存）。支持 `?path=` / `?hostId=` 深链。
 
 | 接口 | 说明 |
 | --- | --- |
-| `GET /api/log-viewer/roots` | 当前允许读取的目录白名单（页面据此提示） |
 | `GET /api/log-viewer/content?path=...&lines=500` | 读取日志末尾 N 行，最多 5000 行；支持 `keyword` / `context` 全文过滤 |
 | `GET /api/log-viewer/tail?path=...` | SSE 实时追踪（`event: log`），`.gz` 文件不支持 |
 | `GET /api/log-viewer/download?path=...` | 下载日志文件，默认最大 100 MB |

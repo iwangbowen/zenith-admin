@@ -1,9 +1,9 @@
 /**
- * 日志查看器：只允许读取白名单目录内的常规文件。
+ * 日志查看器：运维通用工具，可读取本机 / 远端主机的任意绝对路径日志文件。
  *
- * 白名单 = 应用日志目录（LOG_DIR）+ LOG_VIEWER_ROOTS（默认非 Windows 为 /var/log）。
- * 本机路径先 realpath 再做目录包含判定（防符号链接逃逸），且必须是常规文件（拒绝 /dev/*、FIFO）；
- * 远端主机无法 realpath，按 POSIX 规范化后做字符串包含判定（远端符号链接逃逸需要远端 root，不在本模型内）。
+ * 与终端、SFTP 文件管理器一致，不做目录白名单限制——门禁在权限层：
+ * `system:log:view`（远端还需主机访问权 `assertRemoteHostAccess`）。
+ * 仅保留形态校验：必须为绝对路径、必须存在、必须为常规文件（拒绝目录、设备与 FIFO）。
  *
  * 读取内核与「日志文件」模块共用（`log-reader.ts`）：本机走 readline 环形缓冲 + 文件增长轮询，
  * 远端走 SSH `tail` / `grep` 管道与 `tail -f` 流式通道，两端输出同样的行数组 / SSE 逐行事件。
@@ -11,64 +11,30 @@
 import * as fs from 'node:fs';
 import * as nodePath from 'node:path';
 import { HTTPException } from 'hono/http-exception';
-import { config } from '../../config';
 import { getRemoteExecutor, resolveExecutor, type StreamHandle } from '../../lib/host-exec';
 import {
   collectTailLines, createLineSplitter, readTailLinesStream, splitLogLines, watchTail, type TailReadOptions,
 } from './log-reader';
 
-/** 本机允许目录（绝对路径，已 resolve）：应用日志目录 + 配置白名单 */
-export function getLocalLogRoots(): string[] {
-  const roots = [nodePath.resolve(config.log.dir), ...config.log.viewerRoots.map((r) => nodePath.resolve(r))];
-  return Array.from(new Set(roots));
-}
-
-/** 远端允许目录（POSIX 绝对路径）：仅配置白名单中的 POSIX 路径 */
-export function getRemoteLogRoots(): string[] {
-  return Array.from(new Set(config.log.viewerRoots
-    .filter((r) => r.startsWith('/'))
-    .map((r) => nodePath.posix.normalize(r).replace(/\/+$/, '') || '/')));
-}
-
-function isWithin(target: string, root: string, sep: string): boolean {
-  return target === root || target.startsWith(root.endsWith(sep) ? root : root + sep);
-}
-
 /**
- * 校验并规范化日志路径。通过则返回应实际读取的路径（本机为 realpath），否则抛 HTTPException：
- * 400 非绝对路径 / 403 目录白名单外 / 404 文件不存在 / 400 非常规文件。
+ * 校验并规范化日志路径。通过则返回应实际读取的路径（本机为 realpath，远端为 POSIX 规范化结果），
+ * 否则抛 HTTPException：400 空路径 / 非绝对路径 / 非常规文件，404 文件不存在。
  */
-export async function resolveAllowedLogPath(filePath: string, hostId?: number | null): Promise<string> {
+export async function resolveLogPath(filePath: string, hostId?: number | null): Promise<string> {
   const input = filePath.trim();
   if (!input) throw new HTTPException(400, { message: '参数 path 不能为空' });
 
   if (hostId != null) {
     if (!input.startsWith('/')) throw new HTTPException(400, { message: '路径必须为绝对路径' });
-    const normalized = nodePath.posix.normalize(input);
-    if (normalized.split('/').includes('..')) throw new HTTPException(400, { message: '路径不合法' });
-    const roots = getRemoteLogRoots();
-    if (!roots.some((root) => isWithin(normalized, root, '/'))) {
-      throw new HTTPException(403, { message: `仅允许读取以下目录内的日志：${roots.join('、') || '（未配置 LOG_VIEWER_ROOTS）'}` });
-    }
-    return normalized;
+    return nodePath.posix.normalize(input);
   }
 
   if (!nodePath.isAbsolute(input)) throw new HTTPException(400, { message: '路径必须为绝对路径' });
-  const roots = getLocalLogRoots();
   let real: string;
   try {
     real = await fs.promises.realpath(input);
   } catch {
-    // 不存在的文件也先做白名单判定，避免用 404 / 403 差异探测目录外文件是否存在
-    const resolved = nodePath.resolve(input);
-    if (!roots.some((root) => isWithin(resolved, root, nodePath.sep))) {
-      throw new HTTPException(403, { message: `仅允许读取以下目录内的日志：${roots.join('、')}` });
-    }
     throw new HTTPException(404, { message: '日志文件不存在' });
-  }
-  const realRoots = await Promise.all(roots.map((root) => fs.promises.realpath(root).catch(() => root)));
-  if (!realRoots.some((root) => isWithin(real, root, nodePath.sep))) {
-    throw new HTTPException(403, { message: `仅允许读取以下目录内的日志：${roots.join('、')}` });
   }
   const stat = await fs.promises.stat(real);
   if (!stat.isFile()) throw new HTTPException(400, { message: '目标不是常规文件' });
@@ -114,7 +80,7 @@ export async function readLastLines(
   hostId?: number | null,
   opts: TailReadOptions = {},
 ): Promise<string[]> {
-  const target = await resolveAllowedLogPath(filePath, hostId);
+  const target = await resolveLogPath(filePath, hostId);
   if (hostId != null) return readRemoteTailLines(hostId, target, lines, opts);
   return readTailLinesStream(target, lines, opts);
 }
@@ -154,7 +120,7 @@ async function followRemoteLines(
 
 /**
  * 实时追踪：持续推送新增行直到 signal 中止。本机按文件增长轮询（无需 tail 二进制，Windows 可用），
- * 远端走 SSH `tail -f`。返回前已完成路径白名单校验，调用方应先用 `resolveAllowedLogPath` 把错误以 JSON 返回。
+  * 远端走 SSH `tail -f`。返回前已完成路径形态校验，调用方应先用 `resolveLogPath` 把错误以 JSON 返回。
  */
 export async function followLogLines(
   filePath: string,
@@ -162,7 +128,7 @@ export async function followLogLines(
   signal: AbortSignal,
   emit: (lines: string[]) => Promise<void>,
 ): Promise<void> {
-  const target = await resolveAllowedLogPath(filePath, hostId);
+  const target = await resolveLogPath(filePath, hostId);
   if (hostId != null) {
     await followRemoteLines(hostId, target, signal, emit);
     return;
@@ -177,7 +143,7 @@ export async function openLogForDownload(
   maxBytes = 100 * 1024 * 1024,
   hostId?: number | null,
 ): Promise<{ filename: string; size: number; stream: NodeJS.ReadableStream & { destroy(): void } }> {
-  const target = await resolveAllowedLogPath(filePath, hostId);
+  const target = await resolveLogPath(filePath, hostId);
   if (hostId != null) {
     const lease = await (await getRemoteExecutor(hostId)).acquireSftp();
     const sftp = lease.sftp;

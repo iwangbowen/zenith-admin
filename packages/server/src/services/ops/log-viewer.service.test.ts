@@ -9,7 +9,7 @@ const extraRoot = path.join(tmpRoot, 'var-log');
 const outside = path.join(tmpRoot, 'secret.env');
 
 vi.mock('../../config', () => ({
-  config: { log: { dir: logDir, viewerRoots: [extraRoot, '/var/log'] } },
+  config: { log: { dir: logDir } },
 }));
 const remoteExec = vi.fn();
 const remoteExecStream = vi.fn();
@@ -19,7 +19,7 @@ vi.mock('../../lib/host-exec', () => ({
 }));
 
 const {
-  resolveAllowedLogPath, getLocalLogRoots, getRemoteLogRoots, readLastLines, followLogLines, assertTailable,
+  resolveLogPath, readLastLines, followLogLines, assertTailable,
 } = await import('./log-viewer.service');
 
 beforeAll(() => {
@@ -34,42 +34,35 @@ beforeAll(() => {
 });
 afterAll(() => fs.rmSync(tmpRoot, { recursive: true, force: true }));
 
-describe('日志查看器目录白名单（M4）', () => {
-  it('白名单包含应用日志目录与配置目录', () => {
-    expect(getLocalLogRoots()).toEqual(expect.arrayContaining([path.resolve(logDir), path.resolve(extraRoot)]));
-    // 远端白名单只取 POSIX 绝对路径（Linux 下临时目录也以 / 开头，因此这里用包含判断）
-    expect(getRemoteLogRoots()).toContain('/var/log');
-    expect(getRemoteLogRoots().every((r) => r.startsWith('/'))).toBe(true);
+describe('日志查看器路径校验（任意绝对路径）', () => {
+  it('应用日志目录内外的常规文件均可读取，返回真实路径', async () => {
+    await expect(resolveLogPath(path.join(logDir, 'app.log'))).resolves.toBe(fs.realpathSync(path.join(logDir, 'app.log')));
+    await expect(resolveLogPath(path.join(extraRoot, 'syslog'))).resolves.toBe(fs.realpathSync(path.join(extraRoot, 'syslog')));
+    await expect(resolveLogPath(outside)).resolves.toBe(fs.realpathSync(outside));
   });
 
-  it('允许白名单内的常规文件，返回真实路径', async () => {
-    await expect(resolveAllowedLogPath(path.join(logDir, 'app.log'))).resolves.toBe(fs.realpathSync(path.join(logDir, 'app.log')));
-    await expect(resolveAllowedLogPath(path.join(extraRoot, 'syslog'))).resolves.toBe(fs.realpathSync(path.join(extraRoot, 'syslog')));
+  it('拒绝空路径与相对路径，含 .. 的绝对路径按解析结果判定', async () => {
+    await expect(resolveLogPath('')).rejects.toMatchObject({ status: 400 });
+    await expect(resolveLogPath('logs/app.log')).rejects.toMatchObject({ status: 400 });
+    await expect(resolveLogPath(path.join(logDir, '..', 'secret.env'))).resolves.toBe(fs.realpathSync(outside));
   });
 
-  it('拒绝白名单外的文件、路径穿越与相对路径', async () => {
-    await expect(resolveAllowedLogPath(outside)).rejects.toMatchObject({ status: 403 });
-    await expect(resolveAllowedLogPath(path.join(logDir, '..', 'secret.env'))).rejects.toMatchObject({ status: 403 });
-    await expect(resolveAllowedLogPath('logs/app.log')).rejects.toMatchObject({ status: 400 });
-    await expect(resolveAllowedLogPath(path.join(tmpRoot, 'nope', 'x.log'))).rejects.toMatchObject({ status: 403 });
+  it('不存在的文件返回 404，目录返回 400', async () => {
+    await expect(resolveLogPath(path.join(logDir, 'missing.log'))).rejects.toMatchObject({ status: 404 });
+    await expect(resolveLogPath(path.join(tmpRoot, 'nope', 'x.log'))).rejects.toMatchObject({ status: 404 });
+    await expect(resolveLogPath(logDir)).rejects.toMatchObject({ status: 400 });
   });
 
-  it('白名单内不存在的文件返回 404，目录返回 400', async () => {
-    await expect(resolveAllowedLogPath(path.join(logDir, 'missing.log'))).rejects.toMatchObject({ status: 404 });
-    await expect(resolveAllowedLogPath(logDir)).rejects.toMatchObject({ status: 400 });
-  });
-
-  it('符号链接指向白名单外时被拒绝（按 realpath 判定）', async () => {
+  it('符号链接按 realpath 解析到目标文件', async () => {
     if (!fs.existsSync(path.join(logDir, 'escape.log'))) return;
-    await expect(resolveAllowedLogPath(path.join(logDir, 'escape.log'))).rejects.toMatchObject({ status: 403 });
+    await expect(resolveLogPath(path.join(logDir, 'escape.log'))).resolves.toBe(fs.realpathSync(outside));
   });
 
-  it('远端路径按 POSIX 规范化后必须落在 LOG_VIEWER_ROOTS 内', async () => {
-    await expect(resolveAllowedLogPath('/var/log/nginx/access.log', 7)).resolves.toBe('/var/log/nginx/access.log');
-    await expect(resolveAllowedLogPath('/var/log/../../etc/shadow', 7)).rejects.toMatchObject({ status: 403 });
-    await expect(resolveAllowedLogPath('/etc/shadow', 7)).rejects.toMatchObject({ status: 403 });
-    await expect(resolveAllowedLogPath('/var/logs/x', 7)).rejects.toMatchObject({ status: 403 });
-    await expect(resolveAllowedLogPath('var/log/syslog', 7)).rejects.toMatchObject({ status: 400 });
+  it('远端路径按 POSIX 规范化后返回，相对路径拒绝', async () => {
+    await expect(resolveLogPath('/var/log/nginx/access.log', 7)).resolves.toBe('/var/log/nginx/access.log');
+    await expect(resolveLogPath('/var/log/../../etc/shadow', 7)).resolves.toBe('/etc/shadow');
+    await expect(resolveLogPath('/etc/shadow', 7)).resolves.toBe('/etc/shadow');
+    await expect(resolveLogPath('var/log/syslog', 7)).rejects.toMatchObject({ status: 400 });
   });
 });
 

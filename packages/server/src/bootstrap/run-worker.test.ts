@@ -38,7 +38,7 @@ async function load(roles: { api: boolean; worker: boolean }): Promise<RunWorker
       roles: { ...roles, explicit: true, list: roles.api ? ['api', 'worker'] : ['worker'], label: roles.api ? 'all' : 'worker' },
       workerHealthPort: 3301,
       redis: { keyPrefix: 'test:' },
-      log: { level: 'info', dir: 'logs', maxFiles: 1, pretty: false, viewerRoots: [] },
+      log: { level: 'info', dir: 'logs', maxFiles: 1, pretty: false },
       otel: { enabled: false, serviceName: 'test', serviceVersion: 'test' },
     },
   }));

@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Button, Dropdown, Input, Select, Typography } from '@douyinfe/semi-ui';
 import { Download, FolderOpen, FileText } from 'lucide-react';
 import { request } from '@/utils/request';
-import { logViewerDownloadUrl, useLogViewerRoots } from '@/hooks/queries/log-viewer';
+import { logViewerDownloadUrl } from '@/hooks/queries/log-viewer';
 import { logSourceKey, type LogSource } from '@/hooks/queries/log-source';
 import { HostSelector } from '@/components/HostSelector';
 import { deriveInitialHostSelection, useOpsHostSelection } from '@/hooks/useOpsHostSelection';
@@ -46,7 +46,6 @@ export default function LogViewerPage() {
     setSubmitted((prev) => ({ path: p, hostId, seq: (prev?.seq ?? 0) + 1 }));
     setSearchParams(hostId == null ? {} : { hostId: String(hostId) }, { replace: true });
   }, [searchParams, setSearchParams, hostId]);
-  const rootsQuery = useLogViewerRoots(hostId ?? undefined);
   const [downloading, setDownloading] = useState(false);
 
   const loadContent = useCallback(() => {
@@ -58,7 +57,7 @@ export default function LogViewerPage() {
   const handleDownload = useCallback(async (target: SubmittedLog) => {
     setDownloading(true);
     try {
-      const name = target.path.split('/').pop() || 'log.txt';
+      const name = target.path.split(/[\\/]/).pop() || 'log.txt';
       await request.download(logViewerDownloadUrl(target.path, target.hostId), name);
     } finally {
       setDownloading(false);
@@ -86,12 +85,7 @@ export default function LogViewerPage() {
       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 260 }}>
           <Typography.Text size="small" type="secondary" style={{ display: 'block', marginBottom: 4 }}>
-            日志文件路径
-            {rootsQuery.data && (
-              <span style={{ marginLeft: 8 }}>
-                （仅允许：{rootsQuery.data.roots.length > 0 ? rootsQuery.data.roots.join('、') : '未配置 LOG_VIEWER_ROOTS'}）
-              </span>
-            )}
+            日志文件绝对路径
           </Typography.Text>
           <Input
             prefix={<FolderOpen size={13} />}
