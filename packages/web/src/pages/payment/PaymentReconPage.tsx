@@ -299,7 +299,7 @@ export default function PaymentReconPage() {
       ) : <Spin />}
     </SideSheet>
     <EditFormModal modal={handleModal} title="追加案件处理记录"><Form.Select field="action" label="处理动作" optionList={PAYMENT_RECON_CASE_ACTION_OPTIONS} rules={required} style={fullWidth} /><Form.Select field="assignedTo" label="责任人" optionList={toUserOptions(users.data ?? [])} filter showClear style={fullWidth} /><Form.TextArea field="remark" label="处理依据" rules={required} maxCount={2000} /></EditFormModal>
-    <EditFormModal modal={adjustmentModal} title="创建审批调整单" width={680} formProps={{ labelWidth: 320, className: 'payment-recon-adjustment-form' }} header={<Banner type="warning" closeIcon={null} description="调整需要真实渠道已验证账单、明确的本地归属和金额依据；人工上传、沙箱及渠道单边差异先调查，不可直接过账。" />}>
+    <EditFormModal modal={adjustmentModal} title="创建审批调整单" width={680} formProps={{ labelPosition: 'top', className: 'payment-recon-adjustment-form' }} header={<Banner type="warning" closeIcon={null} description="调整需要真实渠道已验证账单、明确的本地归属和金额依据；人工上传、沙箱及渠道单边差异先调查，不可直接过账。" />}>
       <PaymentAppField optionList={merchantLookup.appOptions} loading={merchantLookup.appsFetching} onChange={(value) => { setSelectedAppId(value); adjustmentModal.formApi.current?.setValue('channelConfigId', undefined); }} />
       <PaymentMerchantConfigField optionList={merchantLookup.merchantConfigOptions} loading={merchantLookup.channelConfigsQuery.isFetching} />
       <Form.Input field="amount" label={<span style={{ whiteSpace: 'nowrap' }}>金额（整数分）</span>} rules={required} placeholder="例如 100 表示 1.00 元" /><Form.Select field="direction" label="调整方向" optionList={PAYMENT_RECON_DIRECTION_OPTIONS} rules={required} style={fullWidth} /><Form.TextArea field="reason" label="调整依据" rules={required} maxCount={2000} />
