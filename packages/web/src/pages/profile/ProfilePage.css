@@ -67,6 +67,21 @@
   margin-bottom: 20px;
 }
 
+/* MFA 因子：无外框裸列表，避免单条因子呈现为卡片 */
+.mfa-list {
+  overflow: hidden;
+}
+
+.mfa-list .semi-list-item {
+  padding-left: 0;
+  padding-right: 0;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.mfa-list .semi-list-item:last-child {
+  border-bottom: 0;
+}
+
 /* OAuth 绑定列表 */
 .oauth-list {
   overflow: hidden;

@@ -608,8 +608,7 @@ export default function ProfilePage({ user }: ProfilePageProps) {
 
                   <div className="section-title">多因素认证</div>
                   <SemiList
-                    bordered
-                    className="oauth-list"
+                    className="mfa-list"
                     dataSource={mfaFactors}
                     loading={mfaLoading}
                     emptyContent={<div style={{ padding: 24, textAlign: 'center', color: 'var(--semi-color-text-2)' }}>暂未绑定 MFA 因子</div>}
