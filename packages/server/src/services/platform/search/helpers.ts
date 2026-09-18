@@ -14,7 +14,10 @@ export function result(input: GlobalSearchResult): GlobalSearchResult {
 
 /** 适配器只能返回后台内部路由，禁止把外部 URL 或协议注入搜索结果。 */
 export function safeRoute(route: string): string {
-  if (!route.startsWith('/') || route.startsWith('//') || !globalSearchRoutePrefixes.some((prefix) => route.startsWith(prefix))) {
+  if (!route.startsWith('/') || route.startsWith('//') || !globalSearchRoutePrefixes.some((prefix) => {
+    const root = prefix.endsWith('/') ? prefix.slice(0, -1) : prefix;
+    return route === root || route.startsWith(prefix);
+  })) {
     throw new Error(`invalid global search route: ${route}`);
   }
   return route;

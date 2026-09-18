@@ -45,7 +45,10 @@ function getBusinessIcon(item: GlobalSearchResult) {
 }
 
 function isSafeInternalRoute(route: string) {
-  return route.startsWith('/') && !route.startsWith('//') && globalSearchRoutePrefixes.some((prefix) => route.startsWith(prefix));
+  return route.startsWith('/') && !route.startsWith('//') && globalSearchRoutePrefixes.some((prefix) => {
+    const root = prefix.endsWith('/') ? prefix.slice(0, -1) : prefix;
+    return route === root || route.startsWith(prefix);
+  });
 }
 
 export default function MenuCommandPalette({ menus, recentMenus, onClearRecents, open, onClose }: Props) {
