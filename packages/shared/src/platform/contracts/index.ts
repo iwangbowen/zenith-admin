@@ -7,6 +7,7 @@ export * from './exception-logs';
 export * from './file-storage-configs';
 export * from './files';
 export * from './health';
+export * from './global-search';
 export * from './ip-access-logs';
 export * from './monitor';
 export * from './monitor-alerts';
