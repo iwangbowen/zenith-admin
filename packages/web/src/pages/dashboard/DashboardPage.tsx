@@ -4,14 +4,14 @@ import { Button, Typography, Tag, Skeleton, Empty, List } from '@douyinfe/semi-u
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
 import type { Announcement } from '@zenith/shared/messaging';
 import type { MonitorAlertOverview } from '@zenith/shared/platform';
-import { Bell, Siren, Users, Wifi, LogIn, Activity, MapPin, Clock } from 'lucide-react';
+import { Bell, Siren, Users, Wifi, LogIn, Activity, MapPin, Clock, CalendarDays } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
 // 图表区懒加载：'@/components/charts' 拖 ~1.9MB 的 @visactor 依赖树，
 // 首页主体（欢迎区/统计概览/公告）先渲染，图表 chunk 就绪后补齐
 const DashboardChartsRow = lazy(() => import('./DashboardCharts'));
 
-import { stripHtml } from '@/utils/date';
+import { formatDate, stripHtml } from '@/utils/date';
 import DateTimeText from '@/components/DateTimeText';
 import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
@@ -31,6 +31,9 @@ import './DashboardPage.css';
 const { Text } = Typography;
 
 type AnnouncementWithRead = Announcement & { isRead: boolean };
+
+/** 欢迎区当前日期的星期文案（本地时区，`getDay()` 下标对应） */
+const WELCOME_WEEKDAYS = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'] as const;
 
 const STAT_ITEMS: Array<{
   key: keyof DashboardStats;
@@ -103,6 +106,8 @@ export default function DashboardPage() {
   const statsLoading = statsQuery.isFetching;
   const chartsLoading = chartsQuery.isFetching;
   const noticeDetailLoading = detailQuery.isFetching;
+  const now = new Date();
+  const todayLabel = `${formatDate(now)} ${WELCOME_WEEKDAYS[now.getDay()]}`;
 
   function markAsRead(id: number) {
     markReadMutation.mutate({ params: { id } });
@@ -210,11 +215,15 @@ export default function DashboardPage() {
                   </button>
                 </div>
                 <div className="dashboard-welcome__meta">
+                  <span className="dashboard-welcome__meta-item">
+                    <CalendarDays size={12} />
+                    {todayLabel}
+                  </span>
                   {user?.lastLoginAt ? (
                     <>
                       <span className="dashboard-welcome__meta-item">
                         <Clock size={12} />
-                        上次登录：{user.lastLoginAt}
+                        本次登录：{user.lastLoginAt}
                       </span>
                       {user.lastLoginIp && (
                         <span className="dashboard-welcome__meta-item">

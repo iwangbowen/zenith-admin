@@ -654,20 +654,20 @@ export async function getMyProfile() {
   const tenantName = tenantRows[0]?.name ?? null;
   const { password: _pw, preferences: _prefs, department, userPositions: _up, userRoles: _ur, ...userInfo } = user;
 
-  // 查询上次登录记录（最近 2 条成功登录，取第 2 条作为"上次"）
+  // 首页展示本次登录：取最近 1 条成功登录（登录时已先写 loginLogs，本次请求能查到自己这次）
   const recentLogins = await db
     .select({ createdAt: loginLogs.createdAt, ip: loginLogs.ip })
     .from(loginLogs)
     .where(and(eq(loginLogs.userId, userId), eq(loginLogs.eventType, 'login'), eq(loginLogs.status, 'success')))
     .orderBy(desc(loginLogs.createdAt))
-    .limit(2);
-  const prevLogin = recentLogins[1] ?? null;
+    .limit(1);
+  const latestLogin = recentLogins[0] ?? null;
 
   return {
     ...userInfo,
-    lastLoginAt: prevLogin ? formatDateTime(prevLogin.createdAt) : null,
-    lastLoginIp: prevLogin?.ip ?? null,
-    lastLoginLocation: prevLogin?.ip ? lookupIpLocation(prevLogin.ip) : null,
+    lastLoginAt: latestLogin ? formatDateTime(latestLogin.createdAt) : null,
+    lastLoginIp: latestLogin?.ip ?? null,
+    lastLoginLocation: latestLogin?.ip ? lookupIpLocation(latestLogin.ip) : null,
     departmentId: user.departmentId,
     departmentName: department?.name ?? null,
     positions: user.userPositions.map(({ position: p }) => ({

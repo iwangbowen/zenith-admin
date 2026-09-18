@@ -368,7 +368,7 @@ describe('GET /api/auth/me - 认证中间件', () => {
       userPositions: [],
       department: null,
     });
-    // getMyProfile 末尾查询最近登录日志（db.select），返回空数组即可（prevLogin = null）
+    // getMyProfile 末尾查询最近登录日志（db.select），返回空数组即可（latestLogin = null）
     dbMock.select
       .mockReturnValueOnce(createChain([activeAdminSubject()]))
       .mockReturnValueOnce(createChain([]));

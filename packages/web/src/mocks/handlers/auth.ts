@@ -127,16 +127,16 @@ export const authHandlers = [
     const { password: _, ...userWithoutPassword } = current;
     const granted = mockUserPermissions(current);
     const permissions = granted.includes('*') ? getAllPermissions() : granted;
-    // 取最近第 2 条成功登录记录模拟上次登录
+    // 取最近第 1 条成功登录记录模拟本次登录（mockLoginLogs 按 newest-first 维护）
     const myLogs = mockLoginLogs.filter((l) => l.userId === current.id && (l.eventType ?? 'login') === 'login' && l.status === 'success');
-    const prevLogin = myLogs[1] ?? null;
+    const latestLogin = myLogs[0] ?? null;
     const imp = session?.impersonation;
     return ok({
       ...userWithoutPassword,
       permissions,
-      lastLoginAt: prevLogin?.createdAt ?? null,
-      lastLoginIp: prevLogin?.ip ?? null,
-      lastLoginLocation: prevLogin ? '广东省 深圳市 电信（Mock）' : null,
+      lastLoginAt: latestLogin?.createdAt ?? null,
+      lastLoginIp: latestLogin?.ip ?? null,
+      lastLoginLocation: latestLogin ? '广东省 深圳市 电信（Mock）' : null,
       impersonation: imp
         ? { id: imp.id, impersonatorId: imp.byUserId, impersonatorName: imp.byUsername, readOnly: imp.readOnly, reason: imp.reason, startedAt: imp.startedAt, expiresAt: imp.expiresAt }
         : null,
