@@ -14,7 +14,7 @@ import { Folder, ChevronLeft, ChevronRight, LayoutGrid, List as ListIcon } from 
 import type { FileStorageConfig, FolderEntry, ManagedFile } from '@zenith/shared/platform';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import DateTimeText from '@/components/DateTimeText';
-import { getFileFullUrl } from '@/utils/file-utils';
+import { getFileFullUrl, canPreviewFile } from '@/utils/file-utils';
 import { buildManagedFileActions } from '@/utils/managed-file-actions';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { usePermission } from '@/hooks/usePermission';
@@ -142,7 +142,9 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
             />
           );
         }
-        return <FileNameCell name={record.originalName} mimeType={record.mimeType} />;
+        // 与操作列“预览”一致：仅可预览类型渲染为可点击
+        const previewable = canPreviewFile(record.mimeType, record.originalName);
+        return <FileNameCell name={record.originalName} mimeType={record.mimeType} onClick={previewable ? () => void preview.handlePreview(record) : undefined} />;
       },
     },
     {
