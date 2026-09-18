@@ -18,6 +18,14 @@ export class TaskCancelledError extends Error {
   }
 }
 
+/** A permanent business failure is visible as failed, but must not consume pointless retries. */
+export class TaskNonRetryableError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'TaskNonRetryableError';
+  }
+}
+
 export interface TaskProgressUpdate {
   /** 已处理数 */
   processed?: number;

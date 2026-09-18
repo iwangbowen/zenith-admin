@@ -28,6 +28,8 @@ export async function declareBackgroundJobs(): Promise<boolean> {
     const { registerExportJobWorker } = await import('../services/tasks/export-jobs.service');
     const { registerSystemTasks } = await import('../lib/system-tasks.registry');
     registerTaskDemoHandlers(); // 演示任务类型需在任务中心 Worker 启动前注册
+    const { registerPaymentReconTaskHandlers } = await import('../services/payment/payment-recon-tasks');
+    registerPaymentReconTaskHandlers();
     const { registerDirectorySyncTaskHandlers } = await import('../services/identity/directory-sync-engine');
     registerDirectorySyncTaskHandlers(); // 通讯录同步 / 差异预览
     const { registerTerminalFileTaskHandlers } = await import('../services/ops/terminal-file-tasks');

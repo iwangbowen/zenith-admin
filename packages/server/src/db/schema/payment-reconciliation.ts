@@ -132,6 +132,7 @@ export const paymentReconRuns = pgTable('payment_recon_runs', {
   ruleVersion: varchar({ length: 64 }).notNull(),
   status: paymentReconRunStatusEnum().notNull().default('pending'),
   localSnapshot: jsonb().$type<Record<string, unknown>[]>().notNull().default(sql`'[]'::jsonb`),
+  snapshotContext: jsonb().$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
   matchedCount: integer().notNull().default(0),
   diffCount: integer().notNull().default(0),
   totalCount: integer().notNull().default(0),

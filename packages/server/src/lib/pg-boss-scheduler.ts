@@ -768,9 +768,9 @@ handlerRegistry.set('syncPaymentTransfers', async () => {
 });
 
 handlerRegistry.set('autoPaymentRecon', async () => {
-  const { autoReconcileYesterday } = await import('../services/payment/payment-recon.service');
-  const r = await autoReconcileYesterday();
-  return `自动对账：生成 ${r.generated} 个批次，跳过 ${r.skipped} 个`;
+  const { planPaymentReconciliation } = await import('../services/payment/payment-recon-tasks');
+  const r = await planPaymentReconciliation();
+  return `自动对账：新建 ${r.planned} 个账期，提交 ${r.submitted} 项任务`;
 });
 
 handlerRegistry.set('analyticsRollupDaily', async (params) => {

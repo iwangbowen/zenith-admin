@@ -24,6 +24,7 @@ import {
   PENDING_REDISPATCH_MS,
   RETRY_BACKOFF_MAX_MS,
   TaskCancelledError,
+  TaskNonRetryableError,
   type TaskItemReport,
   type TaskProgressResult,
   type TaskProgressUpdate,
@@ -339,7 +340,7 @@ export async function runAsyncTask(taskId: number): Promise<string> {
     // 自动重试：未用尽 maxAttempts 且未请求取消 → 回到 pending，按退避延迟重投（保留 checkpoint 断点续跑）
     const [currentRow] = await db.select({ cancelRequested: asyncTasks.cancelRequested })
       .from(asyncTasks).where(eq(asyncTasks.id, taskId)).limit(1);
-    const canRetry = claimed.attempts < claimed.maxAttempts && !(currentRow?.cancelRequested ?? false);
+    const canRetry = !(err instanceof TaskNonRetryableError) && claimed.attempts < claimed.maxAttempts && !(currentRow?.cancelRequested ?? false);
     // 每次尝试都进异常日志：可重试失败记 warning，终态失败记 error；catch 已在 handler 的链路 / 身份作用域之外，显式补上
     captureException(err, {
       kind: 'job_failure',

@@ -9,6 +9,16 @@ import { registerSystemRecurringJob } from './pg-boss-scheduler';
  * 不要为单张日志表新增独立清理任务。
  */
 export async function registerSystemTasks(): Promise<void> {
+  const { planPaymentReconciliation } = await import('../services/payment/payment-recon-tasks');
+  await registerSystemRecurringJob({
+    name: 'payment-reconciliation-coverage', title: '支付账单覆盖与补跑', module: '支付中心',
+    cronExpression: '*/15 * * * *', allowManualRun: true,
+    description: '按渠道账户和出账时间补齐账期、重新获取未出账文件并通知逾期事项。',
+    run: async () => {
+      const result = await planPaymentReconciliation();
+      return `新增账期 ${result.planned}，提交账单任务 ${result.submitted}`;
+    },
+  });
   const { registerRetentionPolicies, runAllPolicies } = await import('./retention');
   await registerRetentionPolicies();
   await registerSystemRecurringJob({

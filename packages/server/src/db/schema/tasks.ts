@@ -124,10 +124,10 @@ export const asyncTasks = pgTable('async_tasks', {
   // 视 NULL 互不相等，直接建复合约束会让平台级任务的幂等彻底失效；故拆成互补的两个
   // 部分索引（与 analytics_user_segments_{tenant,global}_name_uq 同一手法）。
   uniqueIndex('async_tasks_idem_tenant_uq')
-    .on(t.tenantId, t.createdBy, t.taskType, t.idempotencyKey)
+    .on(t.tenantId, sql`coalesce(${t.createdBy}, 0)`, t.taskType, t.idempotencyKey)
     .where(sql`${t.idempotencyKey} is not null and ${t.tenantId} is not null`),
   uniqueIndex('async_tasks_idem_platform_uq')
-    .on(t.createdBy, t.taskType, t.idempotencyKey)
+    .on(sql`coalesce(${t.createdBy}, 0)`, t.taskType, t.idempotencyKey)
     .where(sql`${t.idempotencyKey} is not null and ${t.tenantId} is null`),
 ]);
 
