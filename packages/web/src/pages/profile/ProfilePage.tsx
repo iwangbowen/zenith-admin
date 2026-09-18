@@ -6,10 +6,8 @@ import { QRCodeSVG } from 'qrcode.react';
 
 import { OAUTH_PROVIDERS, OAUTH_PROVIDER_LABELS, SESSION_CLIENT_KIND_LABELS } from '@zenith/shared/identity';
 import type { User as UserType, OAuthProviderType, UserSession, UserApiTokenCreated, MfaFactor, TotpSetupResult } from '@zenith/shared/identity';
-import { useAvatarCropUpload } from '@/hooks/useAvatarCropUpload';
 import { AppModal } from '@/components/AppModal';
-import { AvatarCropperModal } from '@/components/AvatarCropperModal';
-import { PresetAvatarPickerModal } from '@/components/PresetAvatarPickerModal';
+import { AvatarSelectModal } from '@/components/AvatarSelectModal';
 import { UserAvatar } from '@/components/UserAvatar';
 import { OAuthProviderIcon } from '@/components/OAuthProviderIcon';
 import { SessionClientIcon } from '@/components/SessionClientTag';
@@ -159,7 +157,7 @@ export default function ProfilePage({ user }: ProfilePageProps) {
   const { options: genderOptions } = useDictItems('user_gender');
 
   // ─── 头像裁剪 ────────────────────────────────────────────────────────────────
-  const [presetModalVisible, setPresetModalVisible] = useState(false);
+  const [avatarSelectVisible, setAvatarSelectVisible] = useState(false);
   // ─── 账号安全 ────────────────────────────────────────────────────────────────
   const [changePwdVal, setChangePwdVal] = useState('');
   const [totpSetup, setTotpSetup] = useState<TotpSetupResult | null>(null);
@@ -285,12 +283,6 @@ export default function ProfilePage({ user }: ProfilePageProps) {
 
   const updateProfileMutation = useUpdateProfile();
   const updateAvatarMutation = useUpdateProfile();
-  const avatarUpload = useAvatarCropUpload({
-    onUploaded: async (url) => {
-      await updateAvatarMutation.mutateAsync({ body: { avatar: url } });
-      Toast.success('头像已更新');
-    },
-  });
   const changePasswordMutation = useChangeProfilePassword();
   const oauthBindUrlMutation = useProfileOAuthBindUrl();
   const oauthUnbindMutation = useUnbindProfileOAuth();
@@ -330,7 +322,7 @@ export default function ProfilePage({ user }: ProfilePageProps) {
   const operationLogsLoading = operationLogsQuery.isFetching;
   const apiTokensLoading = apiTokensQuery.isFetching;
   const totpSubmitting = beginTotpSetupMutation.isPending || verifyTotpSetupMutation.isPending;
-  const avatarLoading = avatarUpload.uploading || updateAvatarMutation.isPending;
+  const avatarLoading = updateAvatarMutation.isPending;
 
   // ─── 事件处理 ────────────────────────────────────────────────────────────────
 
@@ -417,11 +409,11 @@ export default function ProfilePage({ user }: ProfilePageProps) {
   }
 
   function openAvatarPicker() {
-    avatarUpload.openFilePicker();
+    setAvatarSelectVisible(true);
   }
 
   async function handleApplyPreset(url: string) {
-    setPresetModalVisible(false);
+    setAvatarSelectVisible(false);
     await updateAvatarMutation.mutateAsync({ body: { avatar: url } });
     Toast.success('头像已更新');
   }
@@ -468,11 +460,6 @@ export default function ProfilePage({ user }: ProfilePageProps) {
                           )}
                         </button>
                         <Button size="small" theme="light" loading={avatarLoading} onClick={openAvatarPicker} style={{ width: '100%' }}>更换头像</Button>
-                        <Button size="small" theme="borderless" onClick={() => setPresetModalVisible(true)} style={{ width: '100%' }}>选择预设头像</Button>
-                        {user.avatar && (
-                          <Button size="small" theme="borderless" type="danger" loading={avatarLoading} onClick={handleRemoveAvatar} style={{ width: '100%' }}>移除头像</Button>
-                        )}
-                        <input {...avatarUpload.fileInputProps} id="avatar-file-input" />
                       </div>
                       <div className="profile-basic-summary">
                         <div className="profile-basic-heading">
@@ -963,12 +950,14 @@ export default function ProfilePage({ user }: ProfilePageProps) {
           </Tabs>
       </div>
 
-      {/* ── 预设头像选择 Modal ─────────────────────────────────────────────── */}
-      <PresetAvatarPickerModal
-        visible={presetModalVisible}
+      {/* ── 头像选择 Modal（预设 + 本地上传裁剪 + 移除） ─────────────────────────────── */}
+      <AvatarSelectModal
+        visible={avatarSelectVisible}
         currentAvatar={user.avatar}
-        onCancel={() => setPresetModalVisible(false)}
+        confirmLoading={updateAvatarMutation.isPending}
+        onCancel={() => setAvatarSelectVisible(false)}
         onSelect={(url) => void handleApplyPreset(url)}
+        onRemove={user.avatar ? handleRemoveAvatar : undefined}
       />
 
       <AppModal
@@ -998,9 +987,6 @@ export default function ProfilePage({ user }: ProfilePageProps) {
           </div>
         )}
       </AppModal>
-
-      {/* ── 头像裁剪 Modal ────────────────────────────────────────────────────────────────── */}
-      <AvatarCropperModal {...avatarUpload.cropperProps} confirmLoading={avatarLoading} />
 
       {/* ── 新建 Token Modal ──────────────────────────────────────────────────────────────── */}
       <EditFormModal modal={tokenModal} title="新建 API Token" okText="创建" cancelText="取消" width={480} centered>
