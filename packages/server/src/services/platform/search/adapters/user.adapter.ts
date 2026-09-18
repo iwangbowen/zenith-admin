@@ -26,7 +26,7 @@ export const userSearchAdapter: GlobalSearchAdapter = {
       .from(users)
       .leftJoin(departments, eq(users.departmentId, departments.id))
       .where(buildWhere(
-        or(ilike(users.username, pattern), ilike(users.nickname, pattern))!,
+        or(ilike(users.username, pattern), ilike(users.nickname, pattern), ilike(users.email, pattern), ilike(users.phone, pattern))!,
         scope,
         tenantCondition(users, user),
       ))

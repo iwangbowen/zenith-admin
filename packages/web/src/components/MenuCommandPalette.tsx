@@ -8,7 +8,7 @@ import { useOptionalPreferences } from '@/hooks/usePreferences';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import { usePinyinReady } from '@/hooks/usePinyinReady';
 import { useGlobalSearch } from '@/hooks/queries/global-search';
-import type { GlobalSearchResult } from '@zenith/shared/platform';
+import { globalSearchRoutePrefixes, type GlobalSearchResult } from '@zenith/shared/platform';
 import type { FlatMenuItem } from './MenuSearchInput';
 
 interface Props {
@@ -31,8 +31,6 @@ const BUSINESS_TYPE_LABELS: Record<GlobalSearchResult['type'], string> = {
   'iot-alarm': '告警',
 };
 
-const INTERNAL_ROUTE_PREFIXES = ['/system/', '/member/', '/payment/', '/workflow/', '/drive/', '/iot/', '/alerts/'];
-
 function getMenuIcon(item: FlatMenuItem, isRecent: boolean) {
   if (item.icon) {
     const icon = renderLucideIcon(item.icon, 13);
@@ -47,7 +45,7 @@ function getBusinessIcon(item: GlobalSearchResult) {
 }
 
 function isSafeInternalRoute(route: string) {
-  return route.startsWith('/') && !route.startsWith('//') && INTERNAL_ROUTE_PREFIXES.some((prefix) => route.startsWith(prefix));
+  return route.startsWith('/') && !route.startsWith('//') && globalSearchRoutePrefixes.some((prefix) => route.startsWith(prefix));
 }
 
 export default function MenuCommandPalette({ menus, recentMenus, onClearRecents, open, onClose }: Props) {

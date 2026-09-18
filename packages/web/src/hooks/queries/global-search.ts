@@ -14,8 +14,7 @@ export function useGlobalSearch(query: string, enabled: boolean) {
       enabled: canSearch,
       staleTime: GLOBAL_SEARCH_STALE_TIME,
       retry: false,
-      placeholderData: (previous) => previous,
+      requestOptions: { silent: true },
     },
   );
 }
-

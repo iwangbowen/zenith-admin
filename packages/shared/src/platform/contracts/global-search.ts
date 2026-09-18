@@ -12,6 +12,17 @@ export const globalSearchTypes = [
   'iot-alarm',
 ] as const;
 
+/** 业务结果跳转的后台内部路由前缀；新增领域适配器时同步追加一项。 */
+export const globalSearchRoutePrefixes = [
+  '/system/',
+  '/member/',
+  '/payment/',
+  '/workflow/',
+  '/drive/',
+  '/iot/',
+  '/alerts/',
+] as const;
+
 export const globalSearchTypeSchema = z.enum(globalSearchTypes).meta({ id: 'GlobalSearchType' });
 export type GlobalSearchType = z.infer<typeof globalSearchTypeSchema>;
 
@@ -61,4 +72,3 @@ export const globalSearchContract = defineContract('/api/platform/search', {
     summary: '顶部统一搜索',
   }),
 }, { tags: ['GlobalSearch'] });
-

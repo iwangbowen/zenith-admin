@@ -10,9 +10,9 @@ import { likePattern, result } from '../helpers';
 
 export const workflowSearchAdapter: GlobalSearchAdapter = {
   type: 'workflow',
-  permissions: ['workflow:instance:list'],
+  permissions: ['workflow:instance:list', 'workflow:instance:monitor'],
   async search({ q, limit }) {
-    if (!(await hasPermission('workflow:instance:list'))) return [];
+    if (!(await hasPermission('workflow:instance:list', 'workflow:instance:monitor'))) return [];
     const user = currentUser();
     const pattern = likePattern(q);
     const monitor = await hasPermission('workflow:instance:monitor');
@@ -43,7 +43,7 @@ export const workflowSearchAdapter: GlobalSearchAdapter = {
       subtitle: [row.serialNo, row.definitionName].filter(Boolean).join(' · '),
       description: row.status,
       icon: 'Workflow',
-      route: `/workflow/applications?keyword=${encodeURIComponent(row.title)}`,
+      route: `/workflow/applications?instanceId=${row.id}`,
       highlights: [{ field: 'title', text: row.title }],
     }));
   },

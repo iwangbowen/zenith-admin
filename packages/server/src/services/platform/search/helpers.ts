@@ -1,4 +1,4 @@
-import type { GlobalSearchResult } from '@zenith/shared/platform';
+import { globalSearchRoutePrefixes, type GlobalSearchResult } from '@zenith/shared/platform';
 
 export function result(input: GlobalSearchResult): GlobalSearchResult {
   return {
@@ -12,11 +12,9 @@ export function result(input: GlobalSearchResult): GlobalSearchResult {
 
 }
 
-const INTERNAL_ROUTE_PREFIXES = ['/system/', '/member/', '/payment/', '/workflow/', '/drive/', '/iot/', '/alerts/'] as const;
-
 /** 适配器只能返回后台内部路由，禁止把外部 URL 或协议注入搜索结果。 */
 export function safeRoute(route: string): string {
-  if (!route.startsWith('/') || route.startsWith('//') || !INTERNAL_ROUTE_PREFIXES.some((prefix) => route.startsWith(prefix))) {
+  if (!route.startsWith('/') || route.startsWith('//') || !globalSearchRoutePrefixes.some((prefix) => route.startsWith(prefix))) {
     throw new Error(`invalid global search route: ${route}`);
   }
   return route;
