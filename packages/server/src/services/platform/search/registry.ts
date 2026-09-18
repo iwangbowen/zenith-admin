@@ -1,6 +1,8 @@
 import type { GlobalSearchType } from '@zenith/shared/platform';
 import { hasPermission } from '../../../lib/context';
 import logger from '../../../lib/logger';
+import { memberSearchAdapter } from './adapters/member.adapter';
+import { userSearchAdapter } from './adapters/user.adapter';
 import type { GlobalSearchAdapter, GlobalSearchInput } from './types';
 
 /**
@@ -8,6 +10,8 @@ import type { GlobalSearchAdapter, GlobalSearchInput } from './types';
  * 适配器自己仍保留权限与查询边界检查，注册表权限元数据用于快速跳过无权领域。
  */
 export const globalSearchAdapters: readonly GlobalSearchAdapter[] = [
+  userSearchAdapter,
+  memberSearchAdapter,
 ];
 
 const ADAPTER_TIMEOUT_MS = 800;
