@@ -8,6 +8,6 @@ export interface GlobalSearchInput {
 
 export interface GlobalSearchAdapter {
   readonly type: GlobalSearchType;
-  readonly permissions: readonly Permission[];
+  readonly permissions: readonly [Permission, ...Permission[]];
   readonly search: (input: GlobalSearchInput) => Promise<GlobalSearchResult[]>;
 }

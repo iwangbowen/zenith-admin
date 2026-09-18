@@ -104,6 +104,7 @@ export default function AlertEventsPage() {
   // URL 携带的筛选作为初始条件，保证跳转过来时表单控件与列表结果一致
   const searchDefaults: () => (SearchParams) = () => ({
     ...defaultSearchParams,
+    keyword: urlParams.get('keyword') ?? '',
     level: urlParams.get('level') ?? '',
     status: urlParams.get('status') ?? '',
     notifyStatus: urlParams.get('notifyStatus') ?? '',

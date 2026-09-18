@@ -75,7 +75,10 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
       .map(({ menu }) => menu);
   }, [menus, pinyinReady, query]);
 
-  const remoteResults = query.trim().length >= 2 ? (remoteSearch.data?.results ?? []) : [];
+  const remoteResults = useMemo(
+    () => (query.trim().length >= 2 ? (remoteSearch.data?.results ?? []) : []),
+    [query, remoteSearch.data?.results],
+  );
   const paletteItems = useMemo<PaletteItem[]>(() => [
     ...menuResults.map((value) => ({ kind: 'menu' as const, value })),
     ...remoteResults.map((value) => ({ kind: 'business' as const, value })),

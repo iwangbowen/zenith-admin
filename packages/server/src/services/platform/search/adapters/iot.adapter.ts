@@ -36,7 +36,7 @@ export const iotDeviceSearchAdapter: GlobalSearchAdapter = {
       subtitle: [row.sn, row.productName].filter(Boolean).join(' · '),
       description: row.status === 'enabled' ? '启用' : '停用',
       icon: 'HardDrive',
-      route: `/iot/devices?deviceId=${row.id}`,
+      route: `/iot/devices?keyword=${encodeURIComponent(row.name)}`,
       highlights: [{ field: 'title', text: row.name }],
     }));
   },
@@ -73,9 +73,8 @@ export const iotAlarmSearchAdapter: GlobalSearchAdapter = {
       subtitle: [row.deviceName, row.deviceSn].filter(Boolean).join(' · '),
       description: `${row.level} · ${row.status}`,
       icon: 'BellRing',
-      route: `/alerts/events?alarmId=${row.id}`,
+      route: `/alerts/events?keyword=${encodeURIComponent(row.ruleName)}`,
       highlights: [{ field: 'title', text: row.ruleName }],
     }));
   },
 };
-

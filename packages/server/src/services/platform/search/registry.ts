@@ -25,10 +25,10 @@ export const globalSearchAdapters: readonly GlobalSearchAdapter[] = [
 
 const ADAPTER_TIMEOUT_MS = 800;
 
-function selectedAdapters(types?: string): GlobalSearchAdapter[] {
-  if (!types?.trim()) return [...globalSearchAdapters];
+function selectedAdapters(types: string | undefined, adapters: readonly GlobalSearchAdapter[]): GlobalSearchAdapter[] {
+  if (!types?.trim()) return [...adapters];
   const requested = new Set(types.split(',').map((value) => value.trim()).filter(Boolean));
-  return globalSearchAdapters.filter((adapter) => requested.has(adapter.type));
+  return adapters.filter((adapter) => requested.has(adapter.type));
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -46,14 +46,19 @@ export interface GlobalSearchRunResult {
   readonly failedTypes: GlobalSearchType[];
 }
 
-export async function runGlobalSearch(input: GlobalSearchInput, types?: string): Promise<GlobalSearchRunResult> {
-  const adapters = selectedAdapters(types);
-  const settled = await Promise.all(adapters.map(async (adapter) => {
+export async function runGlobalSearch(
+  input: GlobalSearchInput,
+  types?: string,
+  adapters: readonly GlobalSearchAdapter[] = globalSearchAdapters,
+  timeoutMs = ADAPTER_TIMEOUT_MS,
+): Promise<GlobalSearchRunResult> {
+  const selected = selectedAdapters(types, adapters);
+  const settled = await Promise.all(selected.map(async (adapter) => {
     try {
       if (!(await hasPermission(...adapter.permissions))) {
         return { type: adapter.type, results: [], failed: false } as const;
       }
-      return { type: adapter.type, results: await withTimeout(adapter.search(input), ADAPTER_TIMEOUT_MS), failed: false } as const;
+      return { type: adapter.type, results: await withTimeout(adapter.search(input), timeoutMs), failed: false } as const;
     } catch (error) {
       logger.warn('[global-search] adapter failed', {
         type: adapter.type,
