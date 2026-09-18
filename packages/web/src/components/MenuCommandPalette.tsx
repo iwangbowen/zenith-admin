@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Modal, Spin } from '@douyinfe/semi-ui';
 import { textMatches } from '@/utils/pinyin';
-import { Search, Clock, Hash } from 'lucide-react';
+import { Search, Clock, Hash, X } from 'lucide-react';
 import { renderLucideIcon } from '@/utils/icons';
 import { useOptionalPreferences } from '@/hooks/usePreferences';
 import { useIsMobile } from '@/hooks/useMediaQuery';
@@ -15,6 +15,7 @@ interface Props {
   readonly menus: FlatMenuItem[];
   readonly recentMenus: FlatMenuItem[];
   readonly onClearRecents: () => void;
+  readonly onRemoveRecent: (menuId: number) => void;
   readonly open: boolean;
   readonly onClose: () => void;
 }
@@ -62,7 +63,7 @@ function isSafeInternalRoute(route: string) {
   });
 }
 
-export default function MenuCommandPalette({ menus, recentMenus, onClearRecents, open, onClose }: Props) {
+export default function MenuCommandPalette({ menus, recentMenus, onClearRecents, onRemoveRecent, open, onClose }: Props) {
   const navigate = useNavigate();
   const shortcutsEnabled = useOptionalPreferences()?.preferences.enableShortcuts ?? true;
   const isMobile = useIsMobile();
@@ -170,14 +171,14 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
     const subtitle = isMenu
       ? item.value.breadcrumb.join(' › ')
       : [BUSINESS_TYPE_LABELS[item.value.type], item.value.subtitle, item.value.description].filter(Boolean).join(' · ');
-    return (
+    const row = (
       <button
         key={isMenu ? `menu-${item.value.id}` : `${item.value.type}-${item.value.id}`}
         type="button"
         data-search-index={index}
         onClick={() => handleSelect(item)}
         onMouseEnter={() => setSelectedIndex(index)}
-        style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 16px', border: 'none', background: isSelected ? 'var(--semi-color-primary-light-default)' : 'transparent', cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s' }}
+        style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: isRecent ? '8px 44px 8px 16px' : '8px 16px', border: 'none', background: isSelected ? 'var(--semi-color-primary-light-default)' : 'transparent', cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s' }}
       >
         <span style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, borderRadius: 'var(--semi-border-radius-medium)', background: isSelected ? 'var(--semi-color-primary)' : 'var(--semi-color-fill-1)', color: isSelected ? '#fff' : 'var(--semi-color-primary)' }}>
           {isMenu ? getMenuIcon(item.value, isRecent) : getBusinessIcon(item.value)}
@@ -189,6 +190,24 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
         {isSelected && <kbd style={{ fontSize: 10, color: 'var(--semi-color-primary)', background: 'var(--semi-color-primary-light-default)', border: '1px solid var(--semi-color-primary-light-hover)', borderRadius: 'var(--semi-border-radius-small)', padding: '1px 5px', fontFamily: 'monospace', flexShrink: 0 }}>↵</kbd>}
       </button>
     );
+    if (!isRecent || !isMenu) return row;
+    return (
+      <div key={`recent-${item.value.id}`} style={{ position: 'relative' }}>
+        {row}
+        <button
+          type="button"
+          aria-label={`移除${item.value.title}`}
+          title="移除最近访问"
+          onClick={(event) => {
+            event.stopPropagation();
+            onRemoveRecent(item.value.id);
+          }}
+          style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, padding: 0, border: 'none', borderRadius: 'var(--semi-border-radius-small)', background: 'transparent', color: 'var(--semi-color-text-2)', cursor: 'pointer' }}
+        >
+          <X size={14} />
+        </button>
+      </div>
+    );
   };
 
   return (
@@ -196,7 +215,7 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
       <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '60vh' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--semi-color-border)' }}>
           <Search size={17} style={{ color: 'var(--semi-color-text-2)', flexShrink: 0 }} />
-          <input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={handleKeyDown} placeholder="搜索菜单、用户、订单、流程..." style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, color: 'var(--semi-color-text-0)', lineHeight: '22px' }} />
+          <input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={handleKeyDown} placeholder="搜索菜单、用户、会员、订单等业务数据..." style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, color: 'var(--semi-color-text-0)', lineHeight: '22px' }} />
           {remoteSearch.isFetching && query.trim().length >= 2 && <Spin size="small" />}
           {query && <button type="button" onClick={() => setQuery('')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, border: 'none', borderRadius: 'var(--semi-border-radius-small)', background: 'var(--semi-color-fill-1)', color: 'var(--semi-color-text-2)', cursor: 'pointer', padding: 0, flexShrink: 0 }}><span style={{ fontSize: 12, lineHeight: 1 }}>✕</span></button>}
           {!isMobile && <kbd className="cmd-palette-esc" style={{ fontSize: 11, color: 'var(--semi-color-text-2)', background: 'var(--semi-color-fill-0)', border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-small)', padding: '1px 5px', fontFamily: 'monospace', flexShrink: 0 }}>ESC</kbd>}

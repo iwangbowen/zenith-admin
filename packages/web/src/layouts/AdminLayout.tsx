@@ -666,7 +666,7 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
   // ─── Header actions (reused in both topbar and vertical header) ────────────
   const headerActions = (
     <div className="admin-header__actions">
-      {(preferences.showMenuSearch ?? true) && <div className="admin-menu-search"><MenuSearchInput menus={flatMenus} recentMenus={recentMenus} onClearRecents={clearRecents} /></div>}
+      {(preferences.showMenuSearch ?? true) && <div className="admin-menu-search"><MenuSearchInput menus={flatMenus} recentMenus={recentMenus} onClearRecents={clearRecents} onRemoveRecent={removeRecent} /></div>}
       {/* 收藏菜单快捷入口 */}
       {(preferences.showFavorites ?? false) && (
         <FavoritesPopover

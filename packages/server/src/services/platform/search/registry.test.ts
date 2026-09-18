@@ -22,7 +22,7 @@ function adapter(type: GlobalSearchAdapter['type'], search: GlobalSearchAdapter[
 
 describe('global search adapter registry', () => {
   it('requires every registered adapter to declare a discovery permission', () => {
-    expect(globalSearchAdapters.every((adapter) => adapter.permissions.length > 0)).toBe(true);
+    expect(globalSearchAdapters.every((adapter) => adapter.permissions === 'authenticated' || adapter.permissions.length > 0)).toBe(true);
   });
 
   it('keeps successful results when one authorized adapter fails', async () => {
