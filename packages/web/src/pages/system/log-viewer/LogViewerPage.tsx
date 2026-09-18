@@ -191,6 +191,7 @@ export default function LogViewerPage() {
   }, [recentPaths]);
 
   const loadSource = useCallback((source: LogSource, remember = false) => {
+    if (source.kind === 'path') setProjectFile('');
     if (remember && source.kind === 'path') rememberPath(source.path);
     setSubmitted((prev) => ({ source, seq: (prev?.seq ?? 0) + 1 }));
   }, [rememberPath]);
@@ -246,10 +247,15 @@ export default function LogViewerPage() {
           placeholder={hostId != null ? '本机项目日志' : projectLogsQuery.isFetching ? '读取项目日志…' : '项目日志'}
           loading={projectLogsQuery.isFetching}
           disabled={!canUseProjectLogs || projectLogs.length === 0}
+          showClear
           onChange={(value) => {
             const filename = value as string;
             setProjectFile(filename);
-            loadSource({ kind: 'file', filename });
+            if (filename) loadSource({ kind: 'file', filename });
+            else {
+              setProjectFile('');
+              setSubmitted(null);
+            }
           }}
           optionList={projectLogs.map((file) => ({ value: file.name, label: `${file.name}${file.isGzip ? ' · 压缩归档' : ''}` }))}
           style={{ width: 220 }}
