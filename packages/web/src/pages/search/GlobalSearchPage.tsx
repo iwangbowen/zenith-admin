@@ -1,21 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Empty, Input, List, Select, Space, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import { Search, Bookmark } from 'lucide-react';
-import { useDebouncedValue } from '@tanstack/react-pacer';
-import { globalSearchTypes, type GlobalSearchResult, type GlobalSearchType } from '@zenith/shared/platform';
+import { globalSearchTypes, type GlobalSearchType } from '@zenith/shared/platform';
 import { useGlobalSearch } from '@/hooks/queries/global-search';
 import { renderLucideIcon } from '@/utils/icons';
+import { GLOBAL_SEARCH_TYPE_LABELS, GLOBAL_SEARCH_TYPE_OPTIONS, isSafeInternalSearchRoute } from '@/utils/global-search';
 
-const TYPE_LABELS: Record<GlobalSearchType, string> = {
-  user: '用户', member: '会员', order: '订单', workflow: '流程', file: '文件',
-  'iot-device': '设备', 'iot-alarm': '告警', 'cms-content': 'CMS 内容', 'wiki-document': 'Wiki 文档',
-  announcement: '公告', 'chat-message': '聊天消息', 'biz-leave': '请假单', 'report-dashboard': '仪表盘',
-  'report-dataset': '数据集', 'ai-knowledge-base': 'AI 知识库', 'async-task': '异步任务',
-  'operation-log': '操作日志', 'exception-log': '异常日志',
-};
-
-const TYPE_OPTIONS = globalSearchTypes.map((value) => ({ value, label: TYPE_LABELS[value] }));
+const TYPE_LABELS = GLOBAL_SEARCH_TYPE_LABELS;
+const TYPE_OPTIONS = GLOBAL_SEARCH_TYPE_OPTIONS;
 const SAVED_KEY = 'zenith:global-search:saved';
 type SavedSearch = { q: string; type?: GlobalSearchType; label: string };
 
@@ -27,6 +20,7 @@ function loadSaved(): SavedSearch[] {
 }
 
 export default function GlobalSearchPage() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [draft, setDraft] = useState(searchParams.get('q') ?? '');
   const [type, setType] = useState<GlobalSearchType | undefined>(() => {
@@ -36,17 +30,27 @@ export default function GlobalSearchPage() {
   const [limit, setLimit] = useState(10);
   const [sort, setSort] = useState<'relevance' | 'type'>('relevance');
   const [saved, setSaved] = useState<SavedSearch[]>(loadSaved);
-  const [debouncedDraft] = useDebouncedValue(draft.trim(), { wait: 250 });
-  const search = useGlobalSearch(debouncedDraft, true, type ? [type] : undefined, limit);
+  const search = useGlobalSearch(draft, true, type ? [type] : undefined, limit);
+  const query = draft.trim();
+  const urlType = searchParams.get('type');
+  const urlQuery = searchParams.get('q') ?? '';
 
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
-    if (draft.trim()) next.set('q', draft.trim()); else next.delete('q');
+    if (query) next.set('q', query); else next.delete('q');
     if (type) next.set('type', type); else next.delete('type');
-    setSearchParams(next, { replace: true });
-  }, [draft, type]);
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [query, type, searchParams, setSearchParams]);
 
-  useEffect(() => { setLimit(10); }, [debouncedDraft, type]);
+  useEffect(() => {
+    const normalizedType = urlType && globalSearchTypes.includes(urlType as GlobalSearchType)
+      ? urlType as GlobalSearchType
+      : undefined;
+    if (urlQuery !== query) setDraft(urlQuery);
+    if (normalizedType !== type) setType(normalizedType);
+  }, [urlQuery, urlType]);
+
+  useEffect(() => { setLimit(10); }, [query, type]);
 
   const results = useMemo(() => {
     const list = [...(search.data?.results ?? [])];
@@ -72,14 +76,14 @@ export default function GlobalSearchPage() {
     <div className="page-container">
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
         <Search size={20} />
-        <Typography.Title heading={4} style={{ margin: 0 }}>统一搜索</Typography.Title>
+        <Typography.Title heading={4} style={{ margin: 0 }}>搜索中心</Typography.Title>
       </div>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-        <Input prefix={<Search size={16} />} value={draft} onChange={setDraft} onEnterPress={() => setDraft(draft.trim())} placeholder="搜索用户、订单、流程、内容、文件等业务数据" showClear style={{ width: 420 }} />
+        <Input prefix={<Search size={16} />} value={draft} onChange={setDraft} onEnterPress={() => setDraft(draft.trim())} placeholder="全局搜索" showClear style={{ width: 420 }} />
         <Select placeholder="全部类型" value={type} onChange={(value) => setType(value as GlobalSearchType | undefined)} optionList={TYPE_OPTIONS} showClear style={{ width: 160 }} />
         <Select value={sort} onChange={(value) => setSort(value as 'relevance' | 'type')} optionList={[{ value: 'relevance', label: '按相关性' }, { value: 'type', label: '按类型' }]} style={{ width: 130 }} />
-        <Button icon={<Bookmark size={14} />} onClick={saveCurrent} disabled={!draft.trim()}>保存条件</Button>
+        <Button icon={<Bookmark size={14} />} onClick={saveCurrent} disabled={!query}>保存条件</Button>
       </div>
 
       {saved.length > 0 && <Space wrap spacing={8} style={{ marginBottom: 16 }}>
@@ -87,8 +91,9 @@ export default function GlobalSearchPage() {
       </Space>}
 
       {search.isFetching && <div style={{ display: 'flex', justifyContent: 'center', padding: 30 }}><Spin /></div>}
-      {!search.isFetching && debouncedDraft.length >= 2 && results.length === 0 && <Empty description="没有找到匹配结果" />}
-      {!search.isFetching && debouncedDraft.length < 2 && <Empty description="输入至少 2 个字符开始搜索" />}
+      {!search.isFetching && search.error && <Empty description="搜索暂时不可用，请稍后重试" />}
+      {!search.isFetching && !search.error && query.length >= 2 && results.length === 0 && <Empty description="没有找到匹配结果" />}
+      {!search.isFetching && !search.error && query.length < 2 && <Empty description="输入至少 2 个字符开始搜索" />}
 
       {!search.isFetching && results.length > 0 && <List
         size="default"
@@ -97,7 +102,7 @@ export default function GlobalSearchPage() {
         renderItem={(item) => (
           <List.Item
             key={`${item.type}-${item.id}`}
-            onClick={() => { window.location.assign(item.route); }}
+            onClick={() => { if (isSafeInternalSearchRoute(item.route)) navigate(item.route); }}
             style={{ cursor: 'pointer', padding: '12px 8px' }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', minWidth: 0 }}>

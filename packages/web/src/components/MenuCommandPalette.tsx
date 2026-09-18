@@ -8,7 +8,8 @@ import { useOptionalPreferences } from '@/hooks/usePreferences';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import { usePinyinReady } from '@/hooks/usePinyinReady';
 import { useGlobalSearch } from '@/hooks/queries/global-search';
-import { globalSearchRoutePrefixes, type GlobalSearchResult, type GlobalSearchType } from '@zenith/shared/platform';
+import type { GlobalSearchResult, GlobalSearchType } from '@zenith/shared/platform';
+import { GLOBAL_SEARCH_TYPE_LABELS, GLOBAL_SEARCH_TYPE_OPTIONS, isSafeInternalSearchRoute } from '@/utils/global-search';
 import type { FlatMenuItem } from './MenuSearchInput';
 
 interface Props {
@@ -24,37 +25,8 @@ type PaletteItem = { kind: 'menu'; value: FlatMenuItem } | { kind: 'business'; v
 
 const SEARCH_FILTERS: Array<{ value: 'all' | GlobalSearchType; label: string }> = [
   { value: 'all', label: '全部' },
-  { value: 'user', label: '用户' },
-  { value: 'member', label: '会员' },
-  { value: 'order', label: '订单' },
-  { value: 'workflow', label: '流程' },
-  { value: 'file', label: '文件' },
-  { value: 'cms-content', label: 'CMS' },
-  { value: 'wiki-document', label: 'Wiki' },
-  { value: 'chat-message', label: '聊天' },
+  ...GLOBAL_SEARCH_TYPE_OPTIONS,
 ];
-
-const BUSINESS_TYPE_LABELS: Record<GlobalSearchResult['type'], string> = {
-  user: '用户',
-  member: '会员',
-  order: '订单',
-  workflow: '流程',
-  file: '文件',
-  'iot-device': '设备',
-  'iot-alarm': '告警',
-  'cms-content': 'CMS 内容',
-  'wiki-document': 'Wiki 文档',
-  announcement: '公告',
-  'chat-message': '聊天消息',
-  'biz-leave': '请假单',
-  'report-dashboard': '仪表盘',
-  'report-dataset': '数据集',
-  'ai-knowledge-base': 'AI 知识库',
-  'async-task': '异步任务',
-  'operation-log': '操作日志',
-  'exception-log': '异常日志',
-};
-
 function getMenuIcon(item: FlatMenuItem, isRecent: boolean) {
   if (item.icon) {
     const icon = renderLucideIcon(item.icon, 13);
@@ -66,13 +38,6 @@ function getMenuIcon(item: FlatMenuItem, isRecent: boolean) {
 function getBusinessIcon(item: GlobalSearchResult) {
   const icon = item.icon ? renderLucideIcon(item.icon, 13) : null;
   return icon ?? <Hash size={13} />;
-}
-
-function isSafeInternalRoute(route: string) {
-  return route.startsWith('/') && !route.startsWith('//') && globalSearchRoutePrefixes.some((prefix) => {
-    const root = prefix.endsWith('/') ? prefix.slice(0, -1) : prefix;
-    return route === root || route.startsWith(`${root}?`) || route.startsWith(prefix);
-  });
 }
 
 export default function MenuCommandPalette({ menus, recentMenus, onClearRecents, onRemoveRecent, open, onClose }: Props) {
@@ -135,7 +100,7 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
   const handleSelect = useCallback((item: PaletteItem) => {
     const route = item.kind === 'menu' ? item.value.path : item.value.route;
     if (item.kind === 'business') {
-      if (!isSafeInternalRoute(item.value.route)) return;
+      if (!isSafeInternalSearchRoute(item.value.route)) return;
       onClose();
       navigate(item.value.route);
       return;
@@ -195,7 +160,7 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
     const isMenu = item.kind === 'menu';
     const subtitle = isMenu
       ? item.value.breadcrumb.join(' › ')
-      : [BUSINESS_TYPE_LABELS[item.value.type], item.value.subtitle, item.value.description].filter(Boolean).join(' · ');
+      : [GLOBAL_SEARCH_TYPE_LABELS[item.value.type], item.value.subtitle, item.value.description].filter(Boolean).join(' · ');
     const highlight = !isMenu ? item.value.highlights[0]?.text : undefined;
     const row = (
       <button
@@ -242,7 +207,7 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
       <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '60vh' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--semi-color-border)' }}>
           <Search size={17} style={{ color: 'var(--semi-color-text-2)', flexShrink: 0 }} />
-          <input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={handleKeyDown} placeholder="搜索菜单、用户、会员、订单等业务数据..." style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, color: 'var(--semi-color-text-0)', lineHeight: '22px' }} />
+          <input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={handleKeyDown} placeholder="全局搜索" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, color: 'var(--semi-color-text-0)', lineHeight: '22px' }} />
           {remoteSearch.isFetching && query.trim().length >= 2 && <Spin size="small" />}
           {query && <button type="button" onClick={() => setQuery('')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, border: 'none', borderRadius: 'var(--semi-border-radius-small)', background: 'var(--semi-color-fill-1)', color: 'var(--semi-color-text-2)', cursor: 'pointer', padding: 0, flexShrink: 0 }}><span style={{ fontSize: 12, lineHeight: 1 }}>✕</span></button>}
           <button type="button" onClick={openSearchCenter} style={{ border: 'none', background: 'transparent', color: 'var(--semi-color-primary)', cursor: 'pointer', padding: '2px 4px', fontSize: 12, whiteSpace: 'nowrap', flexShrink: 0 }}>搜索中心</button>
@@ -264,6 +229,7 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
           {!isShowingRecent && remoteResults.length > 0 && <div style={{ padding: '8px 16px 3px', fontSize: 11, fontWeight: 600, color: 'var(--semi-color-text-2)' }}>业务数据</div>}
           {!isShowingRecent && remoteResults.map((item, index) => renderItem({ kind: 'business', value: item }, menuResults.length + index, false))}
           {!isShowingRecent && displayItems.length === 0 && !remoteSearch.isFetching && <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--semi-color-text-2)', fontSize: 13 }}>未找到匹配的菜单或业务数据</div>}
+          {!isShowingRecent && remoteSearch.error && <div style={{ padding: '12px 16px', color: 'var(--semi-color-danger)' }}>搜索暂时不可用，请稍后重试</div>}
           {!isShowingRecent && remoteSearch.data?.partial && displayItems.length > 0 && <div style={{ padding: '8px 16px', color: 'var(--semi-color-text-2)', fontSize: 11 }}>部分业务数据暂时不可用</div>}
         </div>
 

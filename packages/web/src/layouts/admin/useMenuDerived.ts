@@ -85,7 +85,7 @@ export function useNavItems(menuTree: Menu[], chatUnreadCount: number) {
 export function useMenuMaps(menuTree: Menu[]) {
   const pathMetaMap = useMemo(() => {
     const map = new Map<string, { title: string; icon?: string }>([
-      ['/search', { title: '统一搜索', icon: 'Search' }],
+      ['/search', { title: '搜索中心', icon: 'Search' }],
     ]);
     function traverse(nodes: Menu[]) {
       for (const node of nodes) {
