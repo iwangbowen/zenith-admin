@@ -2,6 +2,7 @@ import type { GlobalSearchType } from '@zenith/shared/platform';
 import { hasPermission } from '../../../lib/context';
 import logger from '../../../lib/logger';
 import { memberSearchAdapter } from './adapters/member.adapter';
+import { orderSearchAdapter } from './adapters/order.adapter';
 import { userSearchAdapter } from './adapters/user.adapter';
 import type { GlobalSearchAdapter, GlobalSearchInput } from './types';
 
@@ -12,6 +13,7 @@ import type { GlobalSearchAdapter, GlobalSearchInput } from './types';
 export const globalSearchAdapters: readonly GlobalSearchAdapter[] = [
   userSearchAdapter,
   memberSearchAdapter,
+  orderSearchAdapter,
 ];
 
 const ADAPTER_TIMEOUT_MS = 800;
