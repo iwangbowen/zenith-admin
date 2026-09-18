@@ -164,7 +164,7 @@ async function aggregateFromJournals(
     .innerJoin(paymentLedgerAccounts, and(
       eq(paymentLedgerAccounts.id, paymentJournalLines.accountId),
       eq(paymentLedgerAccounts.appId, paymentJournals.appId),
-      eq(paymentLedgerAccounts.channelConfigId, paymentJournals.channelConfigId),
+      eq(paymentLedgerAccounts.channelAccountId, paymentJournals.channelAccountId),
       eq(paymentLedgerAccounts.currency, paymentJournals.currency),
       optionalExactTenantCondition(paymentLedgerAccounts.tenantId, tenantId),
     ))

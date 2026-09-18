@@ -13,6 +13,8 @@ export const paymentTransferSchema = z.object({
   channel: z.enum(PAYMENT_CHANNELS),
   appId: z.int(),
   channelConfigId: z.int(),
+  channelAccountId: z.int(),
+  credentialVersion: z.int(),
   currency: z.string(),
   receiverAccount: z.string(),
   receiverName: z.string().nullable().optional(),

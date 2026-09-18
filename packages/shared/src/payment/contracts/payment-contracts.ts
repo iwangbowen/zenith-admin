@@ -19,6 +19,8 @@ export const paymentContractSchema = z.object({
   contractNo: z.string(),
   channel: z.enum(PAYMENT_CHANNELS),
   channelConfigId: z.int(),
+  channelAccountId: z.int(),
+  credentialVersion: z.int(),
   appId: z.int(),
   currency: z.string(),
   planId: z.int(),

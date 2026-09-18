@@ -183,6 +183,7 @@ export async function createPreauth(input: CreatePaymentPreauthInput): Promise<P
 
   const preauthNo = genPaymentNo('PRE');
   const [row] = await db.insert(paymentPreauths).values({
+    channelAccountId: config.channelAccountId, credentialVersion: config.credentialVersion,
     preauthNo, channel, channelConfigId: config.id, appId: application.appId, currency: input.currency,
     bizType: input.bizType?.trim() || 'admin_preauth', bizId: input.bizId, subject: input.subject,
     payerAccount: input.payerAccount, frozenAmount: input.frozenAmount, status: 'pending', unknownOperation: 'freeze',
@@ -250,6 +251,7 @@ export async function capturePreauth(id: number, applicationId: number, input: C
   let order: PaymentOrderRow;
   try {
     [order] = await db.insert(paymentOrders).values({
+      channelAccountId: row.channelAccountId, credentialVersion: config.credentialVersion,
       orderNo, outTradeNo: orderNo, bizType: row.bizType, bizId: row.bizId,
       subject: `${row.subject}（预授权转支付）`, body: `预授权单 ${row.preauthNo}`,
       amount: captureAmount, currency: row.currency, channel: row.channel, channelConfigId: row.channelConfigId,

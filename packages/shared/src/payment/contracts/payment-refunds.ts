@@ -12,6 +12,8 @@ export const paymentRefundSchema = z.object({
   outRefundNo: z.string(),
   orderNo: z.string(),
   orderId: z.int(),
+  channelAccountId: z.int(),
+  credentialVersion: z.int(),
   channelRefundNo: z.string().nullable().optional(),
   channel: z.enum(PAYMENT_CHANNELS),
   refundAmount: z.int().meta({ description: '退款金额（分）' }),

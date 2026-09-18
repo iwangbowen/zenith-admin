@@ -1,4 +1,5 @@
 import { relations } from 'drizzle-orm';
+import { paymentBankMatches, paymentReconAdjustments, paymentReconCaseEvents, paymentReconCases, paymentReconRuns, paymentStatementEntries, paymentStatementFiles, paymentStatementPeriods, paymentStatements } from './payment-reconciliation';
 import { departments, menus, positions, roleDeptScopes, roleMenus, roles, tenantPackageFeatures, tenantPackages, tenants, userDeptScopes, userGroupMembers, userGroupRoles, userGroups, userMenus, userPositions, userRoles, users } from './core';
 import { businessFiles, fileStorageConfigs, managedFiles, uploadChunks, uploadSessions } from './files';
 import { asyncTaskItems, asyncTasks, exportJobDownloads, exportJobs } from './tasks';
@@ -15,7 +16,7 @@ import { dbBackups } from './db-admin';
 import { ruleDecisionTables, ruleDecisionTableVersions, ruleTestCases } from './rules';
 import { chatConversationMembers, chatConversations, chatMessageReactions, chatMessages, chatWebhooks, chatQuickReplies, chatScheduledMessages, chatCustomEmojis, chatGroupInvites, chatGroupJoinRequests } from './chat';
 import { channelAutoReplies, channelConversations, channelMenus, channelMessages, channelMessageTargets, channelQuickReplies, channels, channelSubscriptions } from './channels';
-import { paymentApps, paymentCashierSessions, paymentChannelConfigs, paymentContracts, paymentDeductPlans, paymentDisputeReplies, paymentDisputes, paymentFundReservations, paymentJournalLines, paymentJournals, paymentLedgerAccounts, paymentLinkRedemptions, paymentLinks, paymentOrders, paymentPreauths, paymentReconBatches, paymentReconItems, paymentRefunds, paymentRiskHits, paymentRiskReviews, paymentRiskRules, paymentSettlementBatches, paymentSettlementItems, paymentSharingOrders, paymentSharingReceivers, paymentSharingReversals, paymentTransfers } from './payment';
+import { paymentApps, paymentCashierSessions, paymentChannelAccounts, paymentChannelCredentialVersions, paymentChannelConfigs, paymentContracts, paymentDeductPlans, paymentDisputeReplies, paymentDisputes, paymentFundReservations, paymentJournalLines, paymentJournals, paymentLedgerAccounts, paymentLinkRedemptions, paymentLinks, paymentOrders, paymentPreauths, paymentReconBatches, paymentReconItems, paymentRefunds, paymentRiskHits, paymentRiskReviews, paymentRiskRules, paymentSettlementBatches, paymentSettlementItems, paymentSharingOrders, paymentSharingReceivers, paymentSharingReversals, paymentTransfers } from './payment';
 import { aiConversations, aiMessages, aiPromptTemplates, aiProviderConfigs, userAiConfigs, aiKnowledgeBases, aiKbDocuments, aiKbChunks } from './ai';
 import { appWebhookDeliveries, appWebhookSubscriptions, oauth2AuthorizationCodes, oauth2Clients, oauth2TokenFamilies, oauth2Tokens, oauth2UserGrants, ratePlans } from './open-platform';
 import { checkinMilestones, coupons, memberCheckinMilestoneAwards, memberCheckins, memberCoupons, memberLevels, memberNotifications, memberPointAccounts, memberPointTransactions, members, memberTagBindings, memberTags, memberVipRenewals, memberWallets, memberWalletTransactions } from './member';
@@ -167,7 +168,23 @@ export const channelConversationsRelations = relations(channelConversations, ({ 
 }));
 
 // ─── 支付中心关系声明 ─────────────────────────────────────────────────────────
-export const paymentChannelConfigsRelations = relations(paymentChannelConfigs, ({ many }) => ({
+export const paymentChannelAccountsRelations = relations(paymentChannelAccounts, ({ many }) => ({
+  configs: many(paymentChannelConfigs),
+  orders: many(paymentOrders),
+  refunds: many(paymentRefunds),
+  journals: many(paymentJournals),
+  ledgerAccounts: many(paymentLedgerAccounts),
+  settlements: many(paymentSettlementBatches),
+}));
+
+export const paymentChannelCredentialVersionsRelations = relations(paymentChannelCredentialVersions, ({ one }) => ({
+  config: one(paymentChannelConfigs, { fields: [paymentChannelCredentialVersions.channelConfigId], references: [paymentChannelConfigs.id] }),
+  channelAccount: one(paymentChannelAccounts, { fields: [paymentChannelCredentialVersions.channelAccountId], references: [paymentChannelAccounts.id] }),
+}));
+
+export const paymentChannelConfigsRelations = relations(paymentChannelConfigs, ({ one, many }) => ({
+  channelAccount: one(paymentChannelAccounts, { fields: [paymentChannelConfigs.channelAccountId], references: [paymentChannelAccounts.id] }),
+  credentialVersions: many(paymentChannelCredentialVersions),
   orders: many(paymentOrders),
   ledgerAccounts: many(paymentLedgerAccounts),
   journals: many(paymentJournals),
@@ -175,12 +192,14 @@ export const paymentChannelConfigsRelations = relations(paymentChannelConfigs, (
 }));
 
 export const paymentOrdersRelations = relations(paymentOrders, ({ one, many }) => ({
+  channelAccount: one(paymentChannelAccounts, { fields: [paymentOrders.channelAccountId], references: [paymentChannelAccounts.id] }),
   channelConfig: one(paymentChannelConfigs, { fields: [paymentOrders.channelConfigId], references: [paymentChannelConfigs.id] }),
   user: one(users, { fields: [paymentOrders.userId], references: [users.id] }),
   refunds: many(paymentRefunds),
 }));
 
 export const paymentRefundsRelations = relations(paymentRefunds, ({ one }) => ({
+  channelAccount: one(paymentChannelAccounts, { fields: [paymentRefunds.channelAccountId], references: [paymentChannelAccounts.id] }),
   order: one(paymentOrders, { fields: [paymentRefunds.orderId], references: [paymentOrders.id] }),
 }));
 
@@ -196,6 +215,73 @@ export const paymentReconBatchesRelations = relations(paymentReconBatches, ({ on
 
 export const paymentReconItemsRelations = relations(paymentReconItems, ({ one }) => ({
   batch: one(paymentReconBatches, { fields: [paymentReconItems.batchId], references: [paymentReconBatches.id] }),
+}));
+
+export const paymentStatementPeriodsRelations = relations(paymentStatementPeriods, ({ one, many }) => ({
+  account: one(paymentChannelAccounts, { fields: [paymentStatementPeriods.accountId], references: [paymentChannelAccounts.id] }),
+  task: one(asyncTasks, { fields: [paymentStatementPeriods.taskId], references: [asyncTasks.id] }),
+  statements: many(paymentStatements),
+  cases: many(paymentReconCases),
+}));
+
+export const paymentStatementsRelations = relations(paymentStatements, ({ one, many }) => ({
+  period: one(paymentStatementPeriods, { fields: [paymentStatements.periodId], references: [paymentStatementPeriods.id] }),
+  files: many(paymentStatementFiles),
+  entries: many(paymentStatementEntries),
+  runs: many(paymentReconRuns),
+}));
+
+export const paymentStatementFilesRelations = relations(paymentStatementFiles, ({ one }) => ({
+  statement: one(paymentStatements, { fields: [paymentStatementFiles.statementId], references: [paymentStatements.id] }),
+  storageConfig: one(fileStorageConfigs, { fields: [paymentStatementFiles.storageConfigId], references: [fileStorageConfigs.id] }),
+}));
+
+export const paymentStatementEntriesRelations = relations(paymentStatementEntries, ({ one, many }) => ({
+  statement: one(paymentStatements, { fields: [paymentStatementEntries.statementId], references: [paymentStatements.id] }),
+  application: one(paymentApps, { fields: [paymentStatementEntries.applicationId], references: [paymentApps.id] }),
+  bankMatches: many(paymentBankMatches, { relationName: 'reconBankEntry' }),
+  settlementMatches: many(paymentBankMatches, { relationName: 'reconSettlementEntry' }),
+}));
+
+export const paymentReconRunsRelations = relations(paymentReconRuns, ({ one, many }) => ({
+  statement: one(paymentStatements, { fields: [paymentReconRuns.statementId], references: [paymentStatements.id] }),
+  task: one(asyncTasks, { fields: [paymentReconRuns.taskId], references: [asyncTasks.id] }),
+  cases: many(paymentReconCases),
+}));
+
+export const paymentReconCasesRelations = relations(paymentReconCases, ({ one, many }) => ({
+  account: one(paymentChannelAccounts, { fields: [paymentReconCases.accountId], references: [paymentChannelAccounts.id] }),
+  period: one(paymentStatementPeriods, { fields: [paymentReconCases.periodId], references: [paymentStatementPeriods.id] }),
+  lastRun: one(paymentReconRuns, { fields: [paymentReconCases.lastRunId], references: [paymentReconRuns.id] }),
+  application: one(paymentApps, { fields: [paymentReconCases.applicationId], references: [paymentApps.id] }),
+  order: one(paymentOrders, { fields: [paymentReconCases.orderId], references: [paymentOrders.id] }),
+  refund: one(paymentRefunds, { fields: [paymentReconCases.refundId], references: [paymentRefunds.id] }),
+  assignee: one(users, { fields: [paymentReconCases.assignedTo], references: [users.id] }),
+  events: many(paymentReconCaseEvents),
+  adjustments: many(paymentReconAdjustments),
+}));
+
+export const paymentReconCaseEventsRelations = relations(paymentReconCaseEvents, ({ one }) => ({
+  case: one(paymentReconCases, { fields: [paymentReconCaseEvents.caseId], references: [paymentReconCases.id] }),
+  actor: one(users, { fields: [paymentReconCaseEvents.actorId], references: [users.id] }),
+}));
+
+export const paymentReconAdjustmentsRelations = relations(paymentReconAdjustments, ({ one, many }) => ({
+  case: one(paymentReconCases, { fields: [paymentReconAdjustments.caseId], references: [paymentReconCases.id] }),
+  application: one(paymentApps, { fields: [paymentReconAdjustments.applicationId], references: [paymentApps.id] }),
+  channelConfig: one(paymentChannelConfigs, { fields: [paymentReconAdjustments.channelConfigId], references: [paymentChannelConfigs.id] }),
+  workflowInstance: one(workflowInstances, { fields: [paymentReconAdjustments.workflowInstanceId], references: [workflowInstances.id] }),
+  journal: one(paymentJournals, { fields: [paymentReconAdjustments.journalId], references: [paymentJournals.id] }),
+  applicant: one(users, { fields: [paymentReconAdjustments.applicantId], references: [users.id], relationName: 'reconAdjustmentApplicant' }),
+  approver: one(users, { fields: [paymentReconAdjustments.approverId], references: [users.id], relationName: 'reconAdjustmentApprover' }),
+  reversalOf: one(paymentReconAdjustments, { fields: [paymentReconAdjustments.reversalOfId], references: [paymentReconAdjustments.id], relationName: 'reconAdjustmentReversal' }),
+  reversals: many(paymentReconAdjustments, { relationName: 'reconAdjustmentReversal' }),
+}));
+
+export const paymentBankMatchesRelations = relations(paymentBankMatches, ({ one }) => ({
+  account: one(paymentChannelAccounts, { fields: [paymentBankMatches.accountId], references: [paymentChannelAccounts.id] }),
+  bankEntry: one(paymentStatementEntries, { fields: [paymentBankMatches.bankEntryId], references: [paymentStatementEntries.id], relationName: 'reconBankEntry' }),
+  settlementEntry: one(paymentStatementEntries, { fields: [paymentBankMatches.settlementEntryId], references: [paymentStatementEntries.id], relationName: 'reconSettlementEntry' }),
 }));
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -216,6 +302,7 @@ export const paymentSharingReversalsRelations = relations(paymentSharingReversal
 }));
 
 export const paymentTransfersRelations = relations(paymentTransfers, ({ one }) => ({
+  channelAccount: one(paymentChannelAccounts, { fields: [paymentTransfers.channelAccountId], references: [paymentChannelAccounts.id] }),
   app: one(paymentApps, { fields: [paymentTransfers.appId], references: [paymentApps.id] }),
   channelConfig: one(paymentChannelConfigs, { fields: [paymentTransfers.channelConfigId], references: [paymentChannelConfigs.id] }),
   fundReservation: one(paymentFundReservations, { fields: [paymentTransfers.fundReservationId], references: [paymentFundReservations.id] }),
@@ -237,6 +324,7 @@ export const paymentAppsRelations = relations(paymentApps, ({ one, many }) => ({
 }));
 
 export const paymentLedgerAccountsRelations = relations(paymentLedgerAccounts, ({ one, many }) => ({
+  channelAccount: one(paymentChannelAccounts, { fields: [paymentLedgerAccounts.channelAccountId], references: [paymentChannelAccounts.id] }),
   app: one(paymentApps, { fields: [paymentLedgerAccounts.appId], references: [paymentApps.id] }),
   channelConfig: one(paymentChannelConfigs, { fields: [paymentLedgerAccounts.channelConfigId], references: [paymentChannelConfigs.id] }),
   lines: many(paymentJournalLines),
@@ -244,6 +332,7 @@ export const paymentLedgerAccountsRelations = relations(paymentLedgerAccounts, (
 }));
 
 export const paymentJournalsRelations = relations(paymentJournals, ({ one, many }) => ({
+  channelAccount: one(paymentChannelAccounts, { fields: [paymentJournals.channelAccountId], references: [paymentChannelAccounts.id] }),
   app: one(paymentApps, { fields: [paymentJournals.appId], references: [paymentApps.id] }),
   channelConfig: one(paymentChannelConfigs, { fields: [paymentJournals.channelConfigId], references: [paymentChannelConfigs.id] }),
   reversalOf: one(paymentJournals, {
@@ -262,18 +351,21 @@ export const paymentJournalLinesRelations = relations(paymentJournalLines, ({ on
 }));
 
 export const paymentFundReservationsRelations = relations(paymentFundReservations, ({ one }) => ({
+  channelAccount: one(paymentChannelAccounts, { fields: [paymentFundReservations.channelAccountId], references: [paymentChannelAccounts.id] }),
   account: one(paymentLedgerAccounts, { fields: [paymentFundReservations.accountId], references: [paymentLedgerAccounts.id] }),
   app: one(paymentApps, { fields: [paymentFundReservations.appId], references: [paymentApps.id] }),
   channelConfig: one(paymentChannelConfigs, { fields: [paymentFundReservations.channelConfigId], references: [paymentChannelConfigs.id] }),
 }));
 
 export const paymentSettlementBatchesRelations = relations(paymentSettlementBatches, ({ one, many }) => ({
+  channelAccount: one(paymentChannelAccounts, { fields: [paymentSettlementBatches.channelAccountId], references: [paymentChannelAccounts.id] }),
   app: one(paymentApps, { fields: [paymentSettlementBatches.appId], references: [paymentApps.id] }),
   channelConfig: one(paymentChannelConfigs, { fields: [paymentSettlementBatches.channelConfigId], references: [paymentChannelConfigs.id] }),
   items: many(paymentSettlementItems),
 }));
 
 export const paymentSettlementItemsRelations = relations(paymentSettlementItems, ({ one }) => ({
+  channelAccount: one(paymentChannelAccounts, { fields: [paymentSettlementItems.channelAccountId], references: [paymentChannelAccounts.id] }),
   batch: one(paymentSettlementBatches, { fields: [paymentSettlementItems.batchId], references: [paymentSettlementBatches.id] }),
   journalLine: one(paymentJournalLines, { fields: [paymentSettlementItems.journalLineId], references: [paymentJournalLines.id] }),
   app: one(paymentApps, { fields: [paymentSettlementItems.appId], references: [paymentApps.id] }),
@@ -301,6 +393,7 @@ export const paymentDeductPlansRelations = relations(paymentDeductPlans, ({ many
 }));
 
 export const paymentContractsRelations = relations(paymentContracts, ({ one }) => ({
+  channelAccount: one(paymentChannelAccounts, { fields: [paymentContracts.channelAccountId], references: [paymentChannelAccounts.id] }),
   plan: one(paymentDeductPlans, { fields: [paymentContracts.planId], references: [paymentDeductPlans.id] }),
   channelConfig: one(paymentChannelConfigs, { fields: [paymentContracts.channelConfigId], references: [paymentChannelConfigs.id] }),
   app: one(paymentApps, { fields: [paymentContracts.appId], references: [paymentApps.id] }),
@@ -311,6 +404,7 @@ export const memberVipRenewalsRelations = relations(memberVipRenewals, ({ one })
 }));
 
 export const paymentPreauthsRelations = relations(paymentPreauths, ({ one }) => ({
+  channelAccount: one(paymentChannelAccounts, { fields: [paymentPreauths.channelAccountId], references: [paymentChannelAccounts.id] }),
   channelConfig: one(paymentChannelConfigs, { fields: [paymentPreauths.channelConfigId], references: [paymentChannelConfigs.id] }),
   app: one(paymentApps, { fields: [paymentPreauths.appId], references: [paymentApps.id] }),
   operator: one(users, { fields: [paymentPreauths.operatorId], references: [users.id] }),

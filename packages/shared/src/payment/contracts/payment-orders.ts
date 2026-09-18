@@ -19,6 +19,8 @@ export const paymentOrderSchema = z.object({
   currency: z.string(),
   channel: z.enum(PAYMENT_CHANNELS),
   channelConfigId: z.int(),
+  channelAccountId: z.int(),
+  credentialVersion: z.int(),
   appId: z.int(),
   payMethod: z.enum(PAYMENT_METHODS),
   status: z.enum(PAYMENT_ORDER_STATUSES),

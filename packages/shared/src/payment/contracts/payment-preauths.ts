@@ -13,6 +13,8 @@ export const paymentPreauthSchema = z.object({
   preauthNo: z.string(),
   channel: z.enum(PAYMENT_CHANNELS),
   channelConfigId: z.int(),
+  channelAccountId: z.int(),
+  credentialVersion: z.int(),
   appId: z.int(),
   currency: z.string(),
   channelPreauthNo: z.string().nullable().optional(),

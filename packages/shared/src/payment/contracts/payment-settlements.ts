@@ -9,9 +9,11 @@ import { createPaymentSettlementSchema, transitionPaymentSettlementSchema } from
 export const paymentSettlementBatchSchema = z.object({
   id: z.int(),
   batchNo: z.string(),
+  credentialVersion: z.int(),
   channel: z.enum(PAYMENT_CHANNELS),
   appId: z.int(),
   channelConfigId: z.int(),
+  channelAccountId: z.int(),
   currency: z.string(),
   periodStart: z.string().meta({ description: '账期起 YYYY-MM-DD' }),
   periodEnd: z.string().meta({ description: '账期止 YYYY-MM-DD' }),
@@ -41,6 +43,7 @@ export const paymentSettlementItemSchema = z.object({
   amount: z.string().meta({ description: '最小货币单位的十进制字符串，可为负', example: '-1200' }),
   appId: z.int(),
   channelConfigId: z.int(),
+  channelAccountId: z.int(),
   currency: z.string(),
   createdAt: z.string(),
 }).meta({ id: 'PaymentSettlementItem' });

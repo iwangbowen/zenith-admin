@@ -20,6 +20,9 @@ export interface PaymentMoneyScope {
   tenantId: number | null;
   appId: number;
   channelConfigId: number;
+  /** 内部归一后的稳定商户账户，不由客户端指定。 */
+  channelAccountId?: number;
+  credentialVersion?: number;
   currency: string;
 }
 
@@ -37,6 +40,7 @@ function mapLedgerAccount(row: PaymentLedgerAccountRow): PaymentLedgerAccount {
     normalBalance: row.normalBalance,
     appId: row.appId,
     channelConfigId: row.channelConfigId,
+    channelAccountId: row.channelAccountId,
     currency: row.currency,
     status: row.status,
     ...formatTimestamps(row),
@@ -57,6 +61,7 @@ function mapFundReservation(row: PaymentFundReservationRow): PaymentFundReservat
     finalizationReason: row.finalizationReason ?? null,
     appId: row.appId,
     channelConfigId: row.channelConfigId,
+    channelAccountId: row.channelAccountId,
     currency: row.currency,
     expiresAt: formatNullableDateTime(row.expiresAt),
     finalizedAt: formatNullableDateTime(row.finalizedAt),
@@ -78,7 +83,7 @@ async function assertScopeOwnership(executor: DbExecutor, scope: PaymentMoneySco
     .where(and(eq(paymentApps.id, scope.appId), tenantScopeForApp))
     .limit(1);
   const [maybeChannelConfig] = await executor
-    .select({ id: paymentChannelConfigs.id, channel: paymentChannelConfigs.channel })
+    .select({ id: paymentChannelConfigs.id, channel: paymentChannelConfigs.channel, channelAccountId: paymentChannelConfigs.channelAccountId, credentialVersion: paymentChannelConfigs.credentialVersion })
     .from(paymentChannelConfigs)
     .where(and(eq(paymentChannelConfigs.id, scope.channelConfigId), tenantScopeForConfig))
     .limit(1);
@@ -90,14 +95,18 @@ async function assertScopeOwnership(executor: DbExecutor, scope: PaymentMoneySco
       ? app.alipayConfigId
       : app.unionpayConfigId;
   if (boundConfigId !== channelConfig.id) {
-    throw new HTTPException(400, { message: '账务作用域中的商户配置未绑定到所选支付应用' });
+    const [bound] = boundConfigId ? await executor.select({ channelAccountId: paymentChannelConfigs.channelAccountId }).from(paymentChannelConfigs).where(and(eq(paymentChannelConfigs.id, boundConfigId), tenantScopeForConfig)).limit(1) : [];
+    if (bound?.channelAccountId !== channelConfig.channelAccountId) throw new HTTPException(400, { message: '账务作用域中的渠道账户未绑定到所选支付应用' });
   }
+  if (scope.channelAccountId !== undefined && scope.channelAccountId !== channelConfig.channelAccountId) throw new HTTPException(400, { message: '资金事实中的渠道账户与配置不一致' });
+  scope.channelAccountId = channelConfig.channelAccountId;
+  scope.credentialVersion = channelConfig.credentialVersion;
 }
 
 function accountScopeMatches(account: PaymentLedgerAccountRow, scope: PaymentMoneyScope): boolean {
   return (account.tenantId ?? null) === scope.tenantId
     && account.appId === scope.appId
-    && account.channelConfigId === scope.channelConfigId
+    && account.channelAccountId === scope.channelAccountId
     && account.currency === scope.currency;
 }
 
@@ -138,6 +147,7 @@ export async function createLedgerAccount(input: CreatePaymentLedgerAccountInput
       normalBalance: PAYMENT_LEDGER_STANDARD_ACCOUNTS[input.code].normalBalance,
       appId: scope.appId,
       channelConfigId: scope.channelConfigId,
+      channelAccountId: scope.channelAccountId!,
       currency: scope.currency,
       status: 'enabled',
       tenantId: scope.tenantId,
@@ -217,11 +227,13 @@ function mapJournal(row: PaymentJournalRow, lines: PaymentJournalLine[], reverse
   return {
     id: row.id,
     journalNo: row.journalNo,
+    credentialVersion: row.credentialVersion,
     sourceType: row.sourceType,
     sourceId: row.sourceId,
     description: row.description,
     appId: row.appId,
     channelConfigId: row.channelConfigId,
+    channelAccountId: row.channelAccountId,
     currency: row.currency,
     reversalOfJournalId: row.reversalOfJournalId ?? null,
     reversedByJournalId: reversedByJournalId ?? null,
@@ -280,13 +292,13 @@ export async function listJournals(q: QueryOutputOf<typeof paymentJournalContrac
   });
 }
 
-function journalRequestHash(input: PostPaymentJournalInput, reversalOfJournalId: number | null): string {
+function journalRequestHash(input: PostPaymentJournalInput, reversalOfJournalId: number | null, channelAccountId: number): string {
   return createHash('sha256').update(JSON.stringify({
     sourceType: input.sourceType,
     sourceId: input.sourceId,
     description: input.description,
     appId: input.appId,
-    channelConfigId: input.channelConfigId,
+    channelAccountId,
     currency: input.currency,
     reversalOfJournalId,
     lines: input.lines.map((line) => ({
@@ -302,7 +314,7 @@ function journalSourceWhere(scope: PaymentMoneyScope, sourceType: string, source
   return and(
     exactTenantCondition(paymentJournals.tenantId, scope.tenantId),
     eq(paymentJournals.appId, scope.appId),
-    eq(paymentJournals.channelConfigId, scope.channelConfigId),
+    eq(paymentJournals.channelAccountId, scope.channelAccountId!),
     eq(paymentJournals.currency, scope.currency),
     eq(paymentJournals.sourceType, sourceType),
     eq(paymentJournals.sourceId, sourceId),
@@ -372,8 +384,9 @@ async function postJournalInternal(
     channelConfigId: input.channelConfigId,
     currency: input.currency,
   };
+  await assertScopeOwnership(db, scope);
   const normalized = normalizeBalancedLines(input.lines);
-  const requestHash = journalRequestHash(input, reversalOfJournalId);
+  const requestHash = journalRequestHash(input, reversalOfJournalId, scope.channelAccountId!);
 
   let journalId: number;
   try {
@@ -398,8 +411,10 @@ async function postJournalInternal(
         description: input.description,
         appId: scope.appId,
         channelConfigId: scope.channelConfigId,
+        channelAccountId: scope.channelAccountId!,
         currency: scope.currency,
         reversalOfJournalId,
+        credentialVersion: scope.credentialVersion!,
         operatorId: actor.operatorId,
         tenantId: scope.tenantId,
       }).returning({ id: paymentJournals.id });
@@ -434,7 +449,7 @@ export function postJournal(input: PostPaymentJournalInput): Promise<PaymentJour
 
 function standardAccountNo(scope: PaymentMoneyScope, code: PaymentLedgerAccountCode): string {
   const digest = createHash('sha256')
-    .update(`${scope.tenantId ?? 0}:${scope.appId}:${scope.channelConfigId}:${scope.currency}:${code}`)
+    .update(`${scope.tenantId ?? 0}:${scope.appId}:${scope.channelAccountId}:${scope.currency}:${code}`)
     .digest('hex')
     .slice(0, 32)
     .toUpperCase();
@@ -458,6 +473,7 @@ async function ensureStandardLedgerAccountsInternal(
       normalBalance: PAYMENT_LEDGER_STANDARD_ACCOUNTS[code].normalBalance,
       appId: scope.appId,
       channelConfigId: scope.channelConfigId,
+      channelAccountId: scope.channelAccountId!,
       currency: scope.currency,
       status: 'enabled' as const,
       tenantId: scope.tenantId,
@@ -469,7 +485,7 @@ async function ensureStandardLedgerAccountsInternal(
     .where(and(
       exactTenantCondition(paymentLedgerAccounts.tenantId, scope.tenantId),
       eq(paymentLedgerAccounts.appId, scope.appId),
-      eq(paymentLedgerAccounts.channelConfigId, scope.channelConfigId),
+      eq(paymentLedgerAccounts.channelAccountId, scope.channelAccountId!),
       eq(paymentLedgerAccounts.currency, scope.currency),
       inArray(paymentLedgerAccounts.code, uniqueCodes),
     ));
@@ -528,7 +544,7 @@ async function postSystemJournalWithExecutor(
     })),
   };
   const normalized = normalizeBalancedLines(journalInput.lines);
-  const requestHash = journalRequestHash(journalInput, null);
+  const requestHash = journalRequestHash(journalInput, null, scope.channelAccountId!);
   const posted = await findPostedJournalId(executor, scope, input, requestHash);
   if (posted !== undefined) return posted;
   // Idempotency must win before any balance check. A retry after a crash may
@@ -555,6 +571,8 @@ async function postSystemJournalWithExecutor(
       channelConfigId: input.channelConfigId,
       currency: input.currency,
       reversalOfJournalId: null,
+      channelAccountId: scope.channelAccountId!,
+      credentialVersion: scope.credentialVersion!,
       operatorId: input.operatorId,
       tenantId: input.tenantId,
     })
@@ -761,7 +779,7 @@ export async function createFundReservation(input: CreatePaymentFundReservationI
     const sourceWhere = and(
       exactTenantCondition(paymentFundReservations.tenantId, scope.tenantId),
       eq(paymentFundReservations.appId, scope.appId),
-      eq(paymentFundReservations.channelConfigId, scope.channelConfigId),
+      eq(paymentFundReservations.channelAccountId, scope.channelAccountId!),
       eq(paymentFundReservations.currency, scope.currency),
       eq(paymentFundReservations.sourceType, input.sourceType),
       eq(paymentFundReservations.sourceId, input.sourceId),
@@ -794,6 +812,7 @@ export async function createFundReservation(input: CreatePaymentFundReservationI
       reason: input.reason ?? null,
       appId: scope.appId,
       channelConfigId: scope.channelConfigId,
+      channelAccountId: scope.channelAccountId!,
       currency: scope.currency,
       tenantId: scope.tenantId,
       expiresAt,

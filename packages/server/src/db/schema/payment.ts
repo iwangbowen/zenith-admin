@@ -32,9 +32,31 @@ export const paymentRefundApprovalStatusEnum = pgEnum('payment_refund_approval_s
   'none', 'pending', 'approved', 'rejected',
 ]);
 
+// 渠道账户承载资金归属；认证配置可轮换，同一商户的多个应用共享账户。
+export const paymentChannelEnvironmentEnum = pgEnum('payment_channel_environment', ['sandbox', 'production']);
+export const paymentChannelAccounts = pgTable('payment_channel_accounts', {
+  id: idColumn(),
+  name: varchar({ length: 128 }).notNull(),
+  channel: paymentChannelEnum().notNull(),
+  environment: paymentChannelEnvironmentEnum().notNull(),
+  merchantId: varchar({ length: 128 }).notNull(),
+  subMerchantId: varchar({ length: 128 }).notNull().default(''),
+  billTimezone: varchar({ length: 64 }).notNull().default('Asia/Shanghai'),
+  status: statusColumn(),
+  tenantId: tenantIdColumn('restrict'),
+  ...auditColumns(),
+  ...timestampColumns(),
+}, (t) => [
+  uniqueIndex('payment_channel_accounts_identity_uq').on(sql`coalesce(${t.tenantId}, 0)`, t.channel, t.environment, t.merchantId, t.subMerchantId),
+  index('payment_channel_accounts_tenant_idx').on(t.tenantId),
+]);
+export type PaymentChannelAccountRow = typeof paymentChannelAccounts.$inferSelect;
+
 // ─── 支付渠道配置表（密钥字段以 encryptField 加密存储）─────────────────────────
 export const paymentChannelConfigs = pgTable('payment_channel_configs', {
   id: idColumn(),
+  channelAccountId: integer().notNull().references(() => paymentChannelAccounts.id, { onDelete: 'restrict' }),
+  credentialVersion: integer().notNull().default(1),
   name: varchar({ length: 64 }).notNull(),
   channel: paymentChannelEnum().notNull(),
   status: statusColumn(),
@@ -81,9 +103,23 @@ export type PaymentChannelConfigRow = typeof paymentChannelConfigs.$inferSelect;
 
 export type NewPaymentChannelConfig = typeof paymentChannelConfigs.$inferInsert;
 
+/** 凭证版本只追加，密钥仍为密文，不通过公共 API 暴露。 */
+export const paymentChannelCredentialVersions = pgTable('payment_channel_credential_versions', {
+  id: idColumn(),
+  channelConfigId: integer().notNull().references(() => paymentChannelConfigs.id, { onDelete: 'restrict' }),
+  channelAccountId: integer().notNull().references(() => paymentChannelAccounts.id, { onDelete: 'restrict' }),
+  version: integer().notNull(),
+  encryptedSnapshot: text().notNull(),
+  operatorId: integer().references(() => users.id, { onDelete: 'set null' }),
+  tenantId: tenantIdColumn('restrict'),
+  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+}, (t) => [unique('payment_channel_credential_versions_config_version_uq').on(t.channelConfigId, t.version)]);
+
 // ─── 支付订单表（核心交易表）──────────────────────────────────────────────────
 export const paymentOrders = pgTable('payment_orders', {
   id: idColumn(),
+  credentialVersion: integer().notNull().default(1),
+  channelAccountId: integer().notNull().references(() => paymentChannelAccounts.id, { onDelete: 'restrict' }),
   orderNo: varchar({ length: 64 }).notNull().unique('payment_orders_order_no_unique'),
   outTradeNo: varchar({ length: 64 }).notNull(),
   channelTradeNo: varchar({ length: 128 }),
@@ -124,7 +160,7 @@ export const paymentOrders = pgTable('payment_orders', {
   ...auditColumns(),
   ...timestampColumns(),
 }, (t) => [index('payment_orders_user_idx').on(t.userId), index('payment_orders_tenant_idx').on(t.tenantId), 
-  unique('payment_orders_config_out_trade_no_uq').on(t.channelConfigId, t.outTradeNo),
+  unique('payment_orders_account_out_trade_no_uq').on(t.channelAccountId, t.outTradeNo),
   // 业务幂等：同一业务单（bizType+bizId）最多存在一笔进行中订单（pending/paying），
   // 并发下单时唯一冲突由 createPayment 捕获后复用已有活跃单
   uniqueIndex('payment_orders_active_biz_uq')
@@ -145,6 +181,8 @@ export type NewPaymentOrder = typeof paymentOrders.$inferInsert;
 // ─── 支付退款表 ───────────────────────────────────────────────────────────────
 export const paymentRefunds = pgTable('payment_refunds', {
   id: idColumn(),
+  credentialVersion: integer().notNull().default(1),
+  channelAccountId: integer().notNull().references(() => paymentChannelAccounts.id, { onDelete: 'restrict' }),
   refundNo: varchar({ length: 64 }).notNull().unique('payment_refunds_refund_no_unique'),
   outRefundNo: varchar({ length: 64 }).notNull(),
   orderNo: varchar({ length: 64 }).notNull(),
@@ -323,6 +361,8 @@ export const paymentSettlementStatusEnum = pgEnum('payment_settlement_status', [
 
 export const paymentSettlementBatches = pgTable('payment_settlement_batches', {
   id: idColumn(),
+  credentialVersion: integer().notNull().default(1),
+  channelAccountId: integer().notNull().references(() => paymentChannelAccounts.id, { onDelete: 'restrict' }),
   batchNo: varchar({ length: 64 }).notNull().unique('payment_settlement_batches_batch_no_unique'),
   channel: paymentChannelEnum().notNull(),
   appId: integer().notNull().references(() => paymentApps.id, { onDelete: 'restrict' }),
@@ -635,6 +675,8 @@ export const paymentPreauthOperationEnum = pgEnum('payment_preauth_operation', [
 
 export const paymentPreauths = pgTable('payment_preauths', {
   id: idColumn(),
+  credentialVersion: integer().notNull().default(1),
+  channelAccountId: integer().notNull().references(() => paymentChannelAccounts.id, { onDelete: 'restrict' }),
   preauthNo: varchar({ length: 64 }).notNull().unique('payment_preauths_preauth_no_unique'),
   channel: paymentChannelEnum().notNull(),
   channelConfigId: integer().notNull().references(() => paymentChannelConfigs.id, { onDelete: 'restrict' }),
@@ -684,6 +726,8 @@ export const paymentTransferApprovalStatusEnum = pgEnum('payment_transfer_approv
 
 export const paymentTransfers = pgTable('payment_transfers', {
   id: idColumn(),
+  credentialVersion: integer().notNull().default(1),
+  channelAccountId: integer().notNull().references(() => paymentChannelAccounts.id, { onDelete: 'restrict' }),
   transferNo: varchar({ length: 64 }).notNull().unique('payment_transfers_transfer_no_unique'),
   /** 商户转账单号（渠道幂等键，与 transferNo 相同值单独存列便于对账） */
   outTransferNo: varchar({ length: 64 }).notNull(),
@@ -801,6 +845,8 @@ export const paymentContractOperationEnum = pgEnum('payment_contract_operation',
 
 export const paymentContracts = pgTable('payment_contracts', {
   id: idColumn(),
+  credentialVersion: integer().notNull().default(1),
+  channelAccountId: integer().notNull().references(() => paymentChannelAccounts.id, { onDelete: 'restrict' }),
   contractNo: varchar({ length: 64 }).notNull().unique('payment_contracts_contract_no_unique'),
   channel: paymentChannelEnum().notNull(),
   channelConfigId: integer().notNull().references(() => paymentChannelConfigs.id, { onDelete: 'restrict' }),
@@ -933,6 +979,7 @@ export const paymentLedgerNormalBalanceEnum = pgEnum('payment_ledger_normal_bala
 
 export const paymentLedgerAccounts = pgTable('payment_ledger_accounts', {
   id: idColumn(),
+  channelAccountId: integer().notNull().references(() => paymentChannelAccounts.id, { onDelete: 'restrict' }),
   accountNo: varchar({ length: 64 }).notNull().unique('payment_ledger_accounts_account_no_unique'),
   name: varchar({ length: 128 }).notNull(),
   code: paymentLedgerAccountCodeEnum().notNull(),
@@ -946,8 +993,8 @@ export const paymentLedgerAccounts = pgTable('payment_ledger_accounts', {
   ...timestampColumns(),
 }, (t) => [
   uniqueIndex('payment_ledger_accounts_scope_code_uq')
-    .on(sql`coalesce(${t.tenantId}, 0)`, t.appId, t.channelConfigId, t.currency, t.code),
-  index('payment_ledger_accounts_scope_idx').on(t.tenantId, t.appId, t.channelConfigId, t.currency),
+    .on(sql`coalesce(${t.tenantId}, 0)`, t.appId, t.channelAccountId, t.currency, t.code),
+  index('payment_ledger_accounts_scope_idx').on(t.tenantId, t.appId, t.channelAccountId, t.currency),
 ]);
 
 export type PaymentLedgerAccountRow = typeof paymentLedgerAccounts.$inferSelect;
@@ -957,6 +1004,8 @@ export type NewPaymentLedgerAccount = typeof paymentLedgerAccounts.$inferInsert;
 /** 已过账凭证只追加不修改；冲正通过 reversalOfJournalId 指向原凭证。 */
 export const paymentJournals = pgTable('payment_journals', {
   id: idColumn(),
+  credentialVersion: integer().notNull().default(1),
+  channelAccountId: integer().notNull().references(() => paymentChannelAccounts.id, { onDelete: 'restrict' }),
   journalNo: varchar({ length: 64 }).notNull().unique('payment_journals_journal_no_unique'),
   sourceType: varchar({ length: 64 }).notNull(),
   sourceId: varchar({ length: 128 }).notNull(),
@@ -972,11 +1021,11 @@ export const paymentJournals = pgTable('payment_journals', {
   createdAt: timestamp().defaultNow().notNull(),
 }, (t) => [
   uniqueIndex('payment_journals_source_scope_uq')
-    .on(sql`coalesce(${t.tenantId}, 0)`, t.appId, t.channelConfigId, t.currency, t.sourceType, t.sourceId),
+    .on(sql`coalesce(${t.tenantId}, 0)`, t.appId, t.channelAccountId, t.currency, t.sourceType, t.sourceId),
   uniqueIndex('payment_journals_reversal_once_uq')
     .on(t.reversalOfJournalId)
     .where(sql`${t.reversalOfJournalId} is not null`),
-  index('payment_journals_scope_posted_idx').on(t.tenantId, t.appId, t.channelConfigId, t.currency, t.postedAt),
+  index('payment_journals_scope_posted_idx').on(t.tenantId, t.appId, t.channelAccountId, t.currency, t.postedAt),
 ]);
 
 export type PaymentJournalRow = typeof paymentJournals.$inferSelect;
@@ -1014,6 +1063,7 @@ export const paymentFundReservationStatusEnum = pgEnum('payment_fund_reservation
 
 export const paymentFundReservations = pgTable('payment_fund_reservations', {
   id: idColumn(),
+  channelAccountId: integer().notNull().references(() => paymentChannelAccounts.id, { onDelete: 'restrict' }),
   reservationNo: varchar({ length: 64 }).notNull().unique('payment_fund_reservations_reservation_no_unique'),
   accountId: integer().notNull().references(() => paymentLedgerAccounts.id, { onDelete: 'restrict' }),
   sourceType: varchar({ length: 64 }).notNull(),
@@ -1033,9 +1083,9 @@ export const paymentFundReservations = pgTable('payment_fund_reservations', {
   ...timestampColumns(),
 }, (t) => [
   uniqueIndex('payment_fund_reservations_source_scope_uq')
-    .on(sql`coalesce(${t.tenantId}, 0)`, t.appId, t.channelConfigId, t.currency, t.sourceType, t.sourceId),
+    .on(sql`coalesce(${t.tenantId}, 0)`, t.appId, t.channelAccountId, t.currency, t.sourceType, t.sourceId),
   index('payment_fund_reservations_active_account_idx').on(t.accountId, t.status, t.expiresAt),
-  index('payment_fund_reservations_scope_idx').on(t.tenantId, t.appId, t.channelConfigId, t.currency),
+  index('payment_fund_reservations_scope_idx').on(t.tenantId, t.appId, t.channelAccountId, t.currency),
   check('payment_fund_reservations_amount_positive_check', sql`${t.amount} > 0`),
 ]);
 
@@ -1046,6 +1096,7 @@ export type NewPaymentFundReservation = typeof paymentFundReservations.$inferIns
 /** 结算批次逐笔认领 Journal Line；amount 为该行对可结算净额的带符号贡献。 */
 export const paymentSettlementItems = pgTable('payment_settlement_items', {
   id: idColumn(),
+  channelAccountId: integer().notNull().references(() => paymentChannelAccounts.id, { onDelete: 'restrict' }),
   batchId: integer().notNull().references(() => paymentSettlementBatches.id, { onDelete: 'restrict' }),
   journalLineId: integer().notNull().references(() => paymentJournalLines.id, { onDelete: 'restrict' }),
   amount: bigint({ mode: 'bigint' }).notNull(),
@@ -1058,7 +1109,7 @@ export const paymentSettlementItems = pgTable('payment_settlement_items', {
   unique('payment_settlement_items_journal_line_unique').on(t.journalLineId),
   unique('payment_settlement_items_batch_line_unique').on(t.batchId, t.journalLineId),
   index('payment_settlement_items_batch_idx').on(t.batchId),
-  index('payment_settlement_items_scope_idx').on(t.tenantId, t.appId, t.channelConfigId, t.currency),
+  index('payment_settlement_items_scope_idx').on(t.tenantId, t.appId, t.channelAccountId, t.currency),
   check('payment_settlement_items_amount_nonzero_check', sql`${t.amount} <> 0`),
 ]);
 

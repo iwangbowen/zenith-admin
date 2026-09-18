@@ -101,6 +101,7 @@ async function reserveTransferFunds(input: {
     const [reservation] = await tx.insert(paymentFundReservations).values({
       reservationNo: `RSV${randomUUID().replaceAll('-', '')}`,
       accountId: account.id,
+      channelAccountId: account.channelAccountId,
       sourceType: 'payment.transfer',
       sourceId: input.transferNo,
       amount: BigInt(input.amount),
@@ -294,6 +295,8 @@ export async function createTransfer(input: CreatePaymentTransferInput & { idemp
         channel: input.channel,
         appId: applicationRoute.appId,
         channelConfigId: config.id,
+        channelAccountId: config.channelAccountId,
+        credentialVersion: config.credentialVersion,
         currency: input.currency,
         receiverAccount: input.receiverAccount,
         receiverName: input.receiverName ?? null,

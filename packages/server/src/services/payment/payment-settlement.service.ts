@@ -104,6 +104,7 @@ export async function listSettlementItems(id: number): Promise<PaymentSettlement
     amount: row.amount.toString(),
     appId: row.appId,
     channelConfigId: row.channelConfigId,
+    channelAccountId: row.channelAccountId,
     currency: row.currency,
     createdAt: formatDateTime(row.createdAt),
   }));
@@ -129,6 +130,8 @@ export async function generateSettlement(input: GenerateSettlementInput, tenantI
       alipayConfigId: paymentApps.alipayConfigId,
       unionpayConfigId: paymentApps.unionpayConfigId,
       channel: paymentChannelConfigs.channel,
+      channelAccountId: paymentChannelConfigs.channelAccountId,
+      credentialVersion: paymentChannelConfigs.credentialVersion,
     })
     .from(paymentApps)
     .innerJoin(paymentChannelConfigs, eq(paymentChannelConfigs.id, input.channelConfigId))
@@ -146,7 +149,10 @@ export async function generateSettlement(input: GenerateSettlementInput, tenantI
     : scope.channel === 'alipay'
       ? scope.alipayConfigId
       : scope.unionpayConfigId;
-  if (boundConfigId !== input.channelConfigId) throw new HTTPException(400, { message: '商户配置未绑定到所选支付应用' });
+  if (boundConfigId !== input.channelConfigId) {
+    const [bound] = boundConfigId ? await db.select({ channelAccountId: paymentChannelConfigs.channelAccountId }).from(paymentChannelConfigs).where(and(eq(paymentChannelConfigs.id, boundConfigId), configTenant)).limit(1) : [];
+    if (bound?.channelAccountId !== scope.channelAccountId) throw new HTTPException(400, { message: '渠道账户未绑定到所选支付应用' });
+  }
 
   const start = parseDateRangeStart(input.periodStart);
   const end = parseDateRangeEnd(input.periodEnd);
@@ -158,7 +164,7 @@ export async function generateSettlement(input: GenerateSettlementInput, tenantI
   const scopeConditions = [
     ...unsettledEligibleLineConditions(),
     eq(paymentJournals.appId, input.applicationId),
-    eq(paymentJournals.channelConfigId, input.channelConfigId),
+    eq(paymentJournals.channelAccountId, scope.channelAccountId),
     eq(paymentJournals.currency, currency),
     tenantScope,
   ];
@@ -210,9 +216,11 @@ export async function generateSettlement(input: GenerateSettlementInput, tenantI
     const row = await db.transaction(async (tx) => {
       const [batch] = await tx.insert(paymentSettlementBatches).values({
         batchNo: genPaymentNo('SETTLE'),
+        credentialVersion: scope.credentialVersion,
         channel: scope.channel,
         appId: input.applicationId,
         channelConfigId: input.channelConfigId,
+        channelAccountId: scope.channelAccountId,
         currency,
         periodStart: input.periodStart,
         periodEnd: input.periodEnd,
@@ -232,6 +240,7 @@ export async function generateSettlement(input: GenerateSettlementInput, tenantI
         amount: signedAmounts[index],
         appId: input.applicationId,
         channelConfigId: input.channelConfigId,
+        channelAccountId: scope.channelAccountId,
         currency,
         tenantId,
       })));
@@ -252,7 +261,8 @@ export async function generateDailySettlements(): Promise<{ generated: number; s
   const scopes = await db
     .select({
       applicationId: paymentJournals.appId,
-      channelConfigId: paymentJournals.channelConfigId,
+      channelConfigId: sql<number>`min(${paymentChannelConfigs.id})`,
+      channelAccountId: paymentJournals.channelAccountId,
       currency: paymentJournals.currency,
       tenantId: paymentJournals.tenantId,
       firstPostedAt: sql<Date>`min(${paymentJournals.postedAt})`,
@@ -260,6 +270,7 @@ export async function generateDailySettlements(): Promise<{ generated: number; s
     .from(paymentJournalLines)
     .innerJoin(paymentJournals, eq(paymentJournals.id, paymentJournalLines.journalId))
     .innerJoin(paymentLedgerAccounts, eq(paymentLedgerAccounts.id, paymentJournalLines.accountId))
+    .innerJoin(paymentChannelConfigs, and(eq(paymentChannelConfigs.channelAccountId, paymentJournals.channelAccountId), eq(paymentChannelConfigs.status, 'enabled')))
     .leftJoin(paymentSettlementItems, eq(paymentSettlementItems.journalLineId, paymentJournalLines.id))
     .where(and(
       ...unsettledEligibleLineConditions(),
@@ -267,7 +278,7 @@ export async function generateDailySettlements(): Promise<{ generated: number; s
     ))
     .groupBy(
       paymentJournals.appId,
-      paymentJournals.channelConfigId,
+      paymentJournals.channelAccountId,
       paymentJournals.currency,
       paymentJournals.tenantId,
     );

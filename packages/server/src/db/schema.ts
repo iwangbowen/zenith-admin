@@ -26,6 +26,7 @@ export * from './schema/biz';
 export * from './schema/chat';
 export * from './schema/channels';
 export * from './schema/payment';
+export * from './schema/payment-reconciliation';
 export * from './schema/ai';
 export * from './schema/open-platform';
 export * from './schema/terminal';

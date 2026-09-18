@@ -21,3 +21,4 @@ export * from './payment-settlements';
 export * from './payment-sharing';
 export * from './payment-stats';
 export * from './payment-transfers';
+export * from './payment-channel-accounts';

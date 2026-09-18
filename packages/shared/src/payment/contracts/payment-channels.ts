@@ -9,6 +9,8 @@ import { createPaymentChannelConfigSchema, updatePaymentChannelConfigSchema } fr
 /** 商户配置（密钥字段以 hasXxx 布尔位返回，绝不暴露明文） */
 export const paymentChannelConfigSchema = z.object({
   id: z.int(),
+  channelAccountId: z.int(),
+  credentialVersion: z.int(),
   name: z.string(),
   channel: z.enum(PAYMENT_CHANNELS),
   status: entityStatusSchema,
@@ -45,6 +47,7 @@ export const paymentChannelConfigLookupSchema = paymentChannelConfigSchema.pick(
   name: true,
   channel: true,
   sandbox: true,
+  channelAccountId: true,
 }).meta({ id: 'PaymentChannelConfigLookup' });
 
 export type PaymentChannelConfigLookup = z.infer<typeof paymentChannelConfigLookupSchema>;

@@ -10,7 +10,7 @@ import { HTTPException } from 'hono/http-exception';
 import { randomBytes } from 'node:crypto';
 import { db } from '../../db';
 import { listRows } from '../../lib/list-query';
-import { paymentApps, paymentChannelConfigs, paymentContracts, paymentJournals, paymentLedgerAccounts, paymentOrders, paymentPreauths, paymentReconBatches, paymentSettlementBatches, paymentTransfers, type NewPaymentChannelConfig, type PaymentChannelConfigRow } from '../../db/schema';
+import { paymentApps, paymentChannelConfigs, paymentChannelCredentialVersions, paymentContracts, paymentJournals, paymentLedgerAccounts, paymentOrders, paymentPreauths, paymentReconBatches, paymentSettlementBatches, paymentTransfers, type NewPaymentChannelConfig, type PaymentChannelConfigRow } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { tenantCondition, requireTenantScopeId } from '../../lib/tenant';
@@ -18,7 +18,19 @@ import { buildWhere, keywordCondition } from '../../lib/where-helpers';
 import { encryptField } from '../../lib/encryption';
 import { clearDefaultFlag } from '../../lib/default-flag';
 import type { CreatePaymentChannelConfigInput, PaymentChannel, PaymentChannelConfig, PaymentChannelConfigLookup, UpdatePaymentChannelConfigInput } from '@zenith/shared/payment';
+import { ensureChannelAccountForConfig } from './payment-channel-account.service';
 import { pickEntity } from '../../lib/entity-map';
+
+const CREDENTIAL_FIELDS = ['wechatAppId', 'wechatMchId', 'wechatApiV3KeyEncrypted', 'wechatPrivateKeyEncrypted', 'wechatSerialNo', 'wechatPlatformCert', 'alipayAppId', 'alipaySellerId', 'alipayPrivateKeyEncrypted', 'alipayPublicKey', 'alipaySignType', 'alipayGateway', 'unionpayMerId', 'unionpayPrivateKeyEncrypted', 'unionpayCertId', 'unionpayPublicKey', 'unionpayGateway'] as const;
+
+async function archiveCredentialVersion(executor: import('../../db/types').DbExecutor, row: PaymentChannelConfigRow, operatorId: number) {
+  const snapshot = Object.fromEntries(CREDENTIAL_FIELDS.map((key) => [key, row[key]]));
+  await executor.insert(paymentChannelCredentialVersions).values({
+    channelConfigId: row.id, channelAccountId: row.channelAccountId,
+    version: row.credentialVersion, encryptedSnapshot: encryptField(JSON.stringify(snapshot))!,
+    operatorId, tenantId: row.tenantId,
+  });
+}
 
 /** 默认标记的归属范围：同租户同渠道内互斥（不筛 is_default，范围内所有配置都会被刷新） */
 function channelDefaultScope(channel: PaymentChannel, user: ReturnType<typeof currentUser>) {
@@ -48,6 +60,7 @@ export async function listChannelConfigLookup(): Promise<PaymentChannelConfigLoo
       name: paymentChannelConfigs.name,
       channel: paymentChannelConfigs.channel,
       sandbox: paymentChannelConfigs.sandbox,
+      channelAccountId: paymentChannelConfigs.channelAccountId,
     })
     .from(paymentChannelConfigs)
     .where(and(
@@ -90,7 +103,7 @@ export async function getChannelConfig(id: number): Promise<PaymentChannelConfig
 export async function createChannelConfig(input: CreatePaymentChannelConfigInput): Promise<PaymentChannelConfig> {
   const user = currentUser();
   const tenantId = requireTenantScopeId(user);
-  const values: NewPaymentChannelConfig = {
+  const values: Omit<NewPaymentChannelConfig, 'channelAccountId'> = {
     name: input.name,
     channel: input.channel,
     status: input.status ?? 'enabled',
@@ -121,7 +134,9 @@ export async function createChannelConfig(input: CreatePaymentChannelConfigInput
   };
   return db.transaction(async (tx) => {
     if (values.isDefault) await clearDefaultFlag(tx, paymentChannelConfigs, channelDefaultScope(input.channel, user));
-    const [row] = await tx.insert(paymentChannelConfigs).values(values).returning();
+    const account = await ensureChannelAccountForConfig({ ...values, tenantId, wechatMchId: values.wechatMchId ?? null, alipaySellerId: values.alipaySellerId ?? null, unionpayMerId: values.unionpayMerId ?? null, sandbox: values.sandbox ?? false }, tx);
+    const [row] = await tx.insert(paymentChannelConfigs).values({ ...values, channelAccountId: account.id }).returning();
+    await archiveCredentialVersion(tx, row, user.userId);
     return mapChannelConfig(row);
   });
 }
@@ -144,33 +159,16 @@ export async function updateChannelConfig(id: number, input: UpdatePaymentChanne
   const user = currentUser();
   requireTenantScopeId(user);
   const existing = await ensureChannelConfigExists(id);
-  const referenceCount = await countChannelConfigReferences(id);
-  const immutableIdentityChanged = referenceCount > 0 && (
+  const immutableIdentityChanged = (
     (input.channel !== undefined && input.channel !== existing.channel)
     || (input.sandbox !== undefined && input.sandbox !== existing.sandbox)
     || (input.wechatAppId !== undefined && input.wechatAppId !== existing.wechatAppId)
-    || (input.wechatMchId !== undefined && input.wechatMchId !== existing.wechatMchId)
-    || input.wechatApiV3Key !== undefined
-    || input.wechatPrivateKey !== undefined
-    || (input.wechatSerialNo !== undefined && input.wechatSerialNo !== existing.wechatSerialNo)
-    || (input.wechatPlatformCert !== undefined && input.wechatPlatformCert !== existing.wechatPlatformCert)
     || (input.alipayAppId !== undefined && input.alipayAppId !== existing.alipayAppId)
+    || (input.wechatMchId !== undefined && input.wechatMchId !== existing.wechatMchId)
     || (input.alipaySellerId !== undefined && input.alipaySellerId !== existing.alipaySellerId)
-    || input.alipayPrivateKey !== undefined
-    || (input.alipayPublicKey !== undefined && input.alipayPublicKey !== existing.alipayPublicKey)
-    || (input.alipaySignType !== undefined && input.alipaySignType !== existing.alipaySignType)
-    || (input.alipayGateway !== undefined && input.alipayGateway !== existing.alipayGateway)
     || (input.unionpayMerId !== undefined && input.unionpayMerId !== existing.unionpayMerId)
-    || input.unionpayPrivateKey !== undefined
-    || (input.unionpayCertId !== undefined && input.unionpayCertId !== existing.unionpayCertId)
-    || (input.unionpayPublicKey !== undefined && input.unionpayPublicKey !== existing.unionpayPublicKey)
-    || (input.unionpayGateway !== undefined && input.unionpayGateway !== existing.unionpayGateway)
   );
-  if (immutableIdentityChanged) {
-    throw new HTTPException(400, {
-      message: `该商户配置已被 ${referenceCount} 条交易或账务记录引用，身份或凭证不可原地修改；请新建配置并切换应用路由`,
-    });
-  }
+  if (immutableIdentityChanged) throw new HTTPException(400, { message: '商户配置的渠道、环境和身份不可更换；请新建配置。密钥可通过更新配置正常轮换。' });
   const set: Partial<NewPaymentChannelConfig> = {};
   if (input.name !== undefined) set.name = input.name;
   if (input.channel !== undefined) set.channel = input.channel;
@@ -202,15 +200,18 @@ export async function updateChannelConfig(id: number, input: UpdatePaymentChanne
   const targetChannel = input.channel ?? existing.channel;
   return db.transaction(async (tx) => {
     if (set.isDefault) await clearDefaultFlag(tx, paymentChannelConfigs, channelDefaultScope(targetChannel, user));
-    const [row] = await tx
-      .update(paymentChannelConfigs)
-      .set(set)
-      .where(and(eq(paymentChannelConfigs.id, id), tenantCondition(paymentChannelConfigs, user)))
-      .returning();
-    requireRow(row, '支付渠道配置不存在');
+    const account = await ensureChannelAccountForConfig({ ...existing, ...set }, tx);
+    const credentialsChanged = CREDENTIAL_FIELDS.some((key) => set[key] !== undefined && set[key] !== existing[key]);
+    const [row] = await tx.update(paymentChannelConfigs).set({
+      ...set, channelAccountId: account.id,
+      credentialVersion: existing.credentialVersion + (credentialsChanged ? 1 : 0),
+    }).where(and(eq(paymentChannelConfigs.id, id), eq(paymentChannelConfigs.credentialVersion, existing.credentialVersion), tenantCondition(paymentChannelConfigs, user))).returning();
+    requireRow(row, '配置已被其他操作修改，请刷新重试', 409);
+    if (credentialsChanged) await archiveCredentialVersion(tx, row, user.userId);
     return mapChannelConfig(row);
   });
 }
+
 
 export async function deleteChannelConfig(id: number): Promise<void> {
   requireTenantScopeId(currentUser());
@@ -234,7 +235,10 @@ export async function deleteChannelConfig(id: number): Promise<void> {
   if (boundApp) {
     throw new HTTPException(400, { message: `该配置已被支付应用「${boundApp.name}」绑定，请先解除绑定后再删除` });
   }
-  await db.delete(paymentChannelConfigs).where(eq(paymentChannelConfigs.id, id));
+  await db.transaction(async (tx) => {
+    await tx.delete(paymentChannelCredentialVersions).where(eq(paymentChannelCredentialVersions.channelConfigId, id));
+    await tx.delete(paymentChannelConfigs).where(eq(paymentChannelConfigs.id, id));
+  });
 }
 
 /** 将指定渠道配置设为该渠道的默认（同租户同渠道内互斥），并自动启用 */

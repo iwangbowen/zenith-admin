@@ -2,6 +2,7 @@ import { bizPayDemoContract } from '@zenith/shared/biz';
 import { paymentWebhookContract } from '@zenith/shared/open-platform';
 import {
   paymentAppContract,
+  paymentChannelAccountContract,
   paymentCapabilityContract,
   paymentDisputeContract,
   paymentFeeRuleContract,
@@ -23,6 +24,7 @@ import {
 } from '@zenith/shared/payment';
 import { defineRouteDomain } from '../_kit';
 import bizPayDemoRoutes from './biz-pay-demo';
+import paymentChannelAccountRoutes from './payment-channel-accounts';
 import paymentAppRoutes from './payment-apps';
 import paymentContractRoutes from './payment-contracts';
 import paymentCapabilityRoutes from './payment-capabilities';
@@ -48,6 +50,7 @@ import paymentWebhookRoutes from './payment-webhooks';
 export default defineRouteDomain({
   name: 'payment',
   mounts: () => [
+    [paymentChannelAccountContract.basePath, paymentChannelAccountRoutes, { feature: 'payment' }],
     [paymentCapabilityContract.basePath, paymentCapabilityRoutes, { feature: 'payment' }],
     // 商户配置 / 订单 / 退款 / 回调日志 / 统计与签约代扣共用同一资源根：两个路由器先后挂载，顺序不可调换
     [paymentOrderContract.basePath, paymentRoutes, { feature: 'payment' }],

@@ -582,3 +582,71 @@ export const PAYMENT_CAPABILITY_REASON_CODES = [
 ] as const;
 
 export type PaymentCapabilityReasonCode = typeof PAYMENT_CAPABILITY_REASON_CODES[number];
+
+// ─── 对账证据、案件与审批调整 ───────────────────────────────────────────────
+export const PAYMENT_STATEMENT_TYPES = ['trade', 'fund', 'bank'] as const;
+export type PaymentStatementType = typeof PAYMENT_STATEMENT_TYPES[number];
+export const PAYMENT_STATEMENT_TYPE_LABELS: Record<PaymentStatementType, string> = { trade: '交易账单', fund: '资金账单', bank: '银行流水' };
+export const PAYMENT_STATEMENT_TYPE_OPTIONS = createLabelOptions(PAYMENT_STATEMENT_TYPES, PAYMENT_STATEMENT_TYPE_LABELS);
+
+export const PAYMENT_STATEMENT_PERIOD_STATUSES = ['expected', 'waiting', 'ready', 'failed'] as const;
+export type PaymentStatementPeriodStatus = typeof PAYMENT_STATEMENT_PERIOD_STATUSES[number];
+export const PAYMENT_STATEMENT_PERIOD_STATUS_LABELS: Record<PaymentStatementPeriodStatus, string> = { expected: '待获取', waiting: '等待出账', ready: '账单就绪', failed: '获取失败' };
+export const PAYMENT_STATEMENT_PERIOD_STATUS_OPTIONS = createLabelOptions(PAYMENT_STATEMENT_PERIOD_STATUSES, PAYMENT_STATEMENT_PERIOD_STATUS_LABELS);
+
+export const PAYMENT_STATEMENT_SOURCES = ['provider_download', 'manual_upload', 'sandbox_generated'] as const;
+export type PaymentStatementSource = typeof PAYMENT_STATEMENT_SOURCES[number];
+export const PAYMENT_STATEMENT_SOURCE_LABELS: Record<PaymentStatementSource, string> = { provider_download: '渠道下载', manual_upload: '人工导入', sandbox_generated: '沙箱模拟' };
+export const PAYMENT_STATEMENT_SOURCE_OPTIONS = createLabelOptions(PAYMENT_STATEMENT_SOURCES, PAYMENT_STATEMENT_SOURCE_LABELS);
+
+export const PAYMENT_STATEMENT_STATUSES = ['archived', 'validated', 'rejected', 'superseded'] as const;
+export type PaymentStatementStatus = typeof PAYMENT_STATEMENT_STATUSES[number];
+export const PAYMENT_STATEMENT_STATUS_LABELS: Record<PaymentStatementStatus, string> = { archived: '已归档', validated: '校验通过', rejected: '校验失败', superseded: '已有更正版' };
+export const PAYMENT_STATEMENT_STATUS_OPTIONS = createLabelOptions(PAYMENT_STATEMENT_STATUSES, PAYMENT_STATEMENT_STATUS_LABELS);
+
+export const PAYMENT_STATEMENT_ENTRY_TYPES = ['payment', 'refund', 'fee', 'settlement', 'transfer', 'adjustment'] as const;
+export type PaymentStatementEntryType = typeof PAYMENT_STATEMENT_ENTRY_TYPES[number];
+export const PAYMENT_STATEMENT_ENTRY_TYPE_LABELS: Record<PaymentStatementEntryType, string> = { payment: '支付', refund: '退款', fee: '手续费', settlement: '结算', transfer: '划拨', adjustment: '调整' };
+export const PAYMENT_STATEMENT_ENTRY_TYPE_OPTIONS = createLabelOptions(PAYMENT_STATEMENT_ENTRY_TYPES, PAYMENT_STATEMENT_ENTRY_TYPE_LABELS);
+
+export const PAYMENT_RECON_DIRECTIONS = ['in', 'out'] as const;
+export type PaymentReconDirection = typeof PAYMENT_RECON_DIRECTIONS[number];
+export const PAYMENT_RECON_DIRECTION_LABELS: Record<PaymentReconDirection, string> = { in: '收入', out: '支出' };
+export const PAYMENT_RECON_DIRECTION_OPTIONS = createLabelOptions(PAYMENT_RECON_DIRECTIONS, PAYMENT_RECON_DIRECTION_LABELS);
+
+export const PAYMENT_RECON_RUN_STATUSES = ['pending', 'running', 'completed', 'failed'] as const;
+export type PaymentReconRunStatus = typeof PAYMENT_RECON_RUN_STATUSES[number];
+export const PAYMENT_RECON_RUN_STATUS_LABELS: Record<PaymentReconRunStatus, string> = { pending: '待执行', running: '核对中', completed: '核对完成', failed: '核对失败' };
+export const PAYMENT_RECON_RUN_STATUS_OPTIONS = createLabelOptions(PAYMENT_RECON_RUN_STATUSES, PAYMENT_RECON_RUN_STATUS_LABELS);
+
+export const PAYMENT_RECON_CASE_TYPES = ['local_only', 'channel_only', 'amount_diff', 'status_diff', 'identity_diff', 'summary_diff', 'balance_diff'] as const;
+export type PaymentReconCaseType = typeof PAYMENT_RECON_CASE_TYPES[number];
+export const PAYMENT_RECON_CASE_TYPE_LABELS: Record<PaymentReconCaseType, string> = { local_only: '本地单边', channel_only: '渠道单边', amount_diff: '金额差异', status_diff: '状态差异', identity_diff: '归属差异', summary_diff: '汇总差异', balance_diff: '余额差异' };
+export const PAYMENT_RECON_CASE_TYPE_OPTIONS = createLabelOptions(PAYMENT_RECON_CASE_TYPES, PAYMENT_RECON_CASE_TYPE_LABELS);
+
+export const PAYMENT_RECON_CASE_STATUSES = ['open', 'investigating', 'suspended', 'resolved', 'ignored'] as const;
+export type PaymentReconCaseStatus = typeof PAYMENT_RECON_CASE_STATUSES[number];
+export const PAYMENT_RECON_CASE_STATUS_LABELS: Record<PaymentReconCaseStatus, string> = { open: '待处理', investigating: '调查中', suspended: '挂账', resolved: '已解决', ignored: '已忽略' };
+export const PAYMENT_RECON_CASE_STATUS_OPTIONS = createLabelOptions(PAYMENT_RECON_CASE_STATUSES, PAYMENT_RECON_CASE_STATUS_LABELS);
+
+export const PAYMENT_RECON_CASE_ACTIONS = ['investigate', 'suspend', 'ignore', 'reopen'] as const;
+export type PaymentReconCaseAction = typeof PAYMENT_RECON_CASE_ACTIONS[number];
+export const PAYMENT_RECON_CASE_ACTION_LABELS: Record<PaymentReconCaseAction, string> = { investigate: '开始调查', suspend: '挂账', ignore: '忽略', reopen: '重新打开' };
+export const PAYMENT_RECON_CASE_ACTION_OPTIONS = createLabelOptions(PAYMENT_RECON_CASE_ACTIONS, PAYMENT_RECON_CASE_ACTION_LABELS);
+
+export const PAYMENT_RECON_ADJUSTMENT_STATUSES = ['draft', 'pending', 'approved', 'rejected', 'executed', 'reversed'] as const;
+export type PaymentReconAdjustmentStatus = typeof PAYMENT_RECON_ADJUSTMENT_STATUSES[number];
+export const PAYMENT_RECON_ADJUSTMENT_STATUS_LABELS: Record<PaymentReconAdjustmentStatus, string> = { draft: '草稿', pending: '审批中', approved: '已批准', rejected: '已驳回', executed: '已执行', reversed: '已冲正' };
+export const PAYMENT_RECON_ADJUSTMENT_STATUS_OPTIONS = createLabelOptions(PAYMENT_RECON_ADJUSTMENT_STATUSES, PAYMENT_RECON_ADJUSTMENT_STATUS_LABELS);
+
+export const PAYMENT_STATEMENT_IMPORT_FORMATS = ['internal', 'provider'] as const;
+export type PaymentStatementImportFormat = typeof PAYMENT_STATEMENT_IMPORT_FORMATS[number];
+export const PAYMENT_STATEMENT_IMPORT_FORMAT_LABELS: Record<PaymentStatementImportFormat, string> = { internal: '标准账单 JSON', provider: '渠道原始账单' };
+export const PAYMENT_STATEMENT_IMPORT_FORMAT_OPTIONS = createLabelOptions(PAYMENT_STATEMENT_IMPORT_FORMATS, PAYMENT_STATEMENT_IMPORT_FORMAT_LABELS);
+export const PAYMENT_RECON_MAX_FILE_BYTES = 32 * 1024 * 1024;
+export const PAYMENT_RECON_MAX_AMOUNT = '9223372036854775807';
+
+export const PAYMENT_CHANNEL_ENVIRONMENTS = ['sandbox', 'production'] as const;
+export type PaymentChannelEnvironment = typeof PAYMENT_CHANNEL_ENVIRONMENTS[number];
+export const PAYMENT_CHANNEL_ENVIRONMENT_LABELS: Record<PaymentChannelEnvironment, string> = { sandbox: '沙箱', production: '生产' };
+export const PAYMENT_CHANNEL_ENVIRONMENT_OPTIONS = PAYMENT_CHANNEL_ENVIRONMENTS.map((value) => ({ value, label: PAYMENT_CHANNEL_ENVIRONMENT_LABELS[value] }));
