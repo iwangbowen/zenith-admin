@@ -269,7 +269,7 @@ export default function PaymentReconPage() {
     <EditFormModal modal={adjustmentModal} title="创建审批调整单" width={680} formProps={{ labelWidth: 240, className: 'payment-recon-adjustment-form' }} header={<Banner type="warning" closeIcon={null} description="调整需要真实渠道已验证账单、明确的本地归属和金额依据；人工上传、沙箱及渠道单边差异先调查，不可直接过账。" />}>
       <PaymentAppField optionList={merchantLookup.appOptions} loading={merchantLookup.appsFetching} onChange={(value) => { setSelectedAppId(value); adjustmentModal.formApi.current?.setValue('channelConfigId', undefined); }} />
       <PaymentMerchantConfigField optionList={merchantLookup.merchantConfigOptions} loading={merchantLookup.channelConfigsQuery.isFetching} />
-      <Form.Input field="amount" label={<span className="payment-recon-nowrap-label">金额（整数分）</span>} rules={required} placeholder="例如 100 表示 1.00 元" /><Form.Select field="direction" label="调整方向" optionList={PAYMENT_RECON_DIRECTION_OPTIONS} rules={required} style={fullWidth} /><Form.TextArea field="reason" label="调整依据" rules={required} maxCount={2000} />
+      <Form.Input field="amount" label={<span style={{ whiteSpace: 'nowrap' }}>金额（整数分）</span>} rules={required} placeholder="例如 100 表示 1.00 元" /><Form.Select field="direction" label="调整方向" optionList={PAYMENT_RECON_DIRECTION_OPTIONS} rules={required} style={fullWidth} /><Form.TextArea field="reason" label="调整依据" rules={required} maxCount={2000} />
     </EditFormModal>
     <EditFormModal modal={reverseModal} title="创建冲正审批草稿"><Form.TextArea field="reason" label="冲正依据" rules={required} maxCount={2000} /></EditFormModal>
     <EditFormModal modal={bankModal} title="分配银行到账" width={820} header={<Banner type="info" closeIcon={null} description="在账单明细中查看银行到账和渠道结算的明细 ID，可添加多行完成拆分或合并。累计分配金额不能超过任一方流水金额。" />}>
