@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Button, Dropdown, Input, Select, Spin, Typography } from '@douyinfe/semi-ui';
+import { Breadcrumb, Button, Dropdown, Input, Select, Spin, Typography } from '@douyinfe/semi-ui';
 import { ArrowLeft, Download, File, FileText, Folder, FolderOpen, History } from 'lucide-react';
 import { request } from '@/utils/request';
 import { logSourceDownloadUrl } from '@/hooks/queries/log-source';
@@ -11,6 +11,7 @@ import { deriveInitialHostSelection, useOpsHostSelection } from '@/hooks/useOpsH
 import { usePermission } from '@/hooks/usePermission';
 import { useHostFileHome, useHostFileList, useTerminalFileList, useTerminalRootInfo } from '@/hooks/queries/terminal-files';
 import AppModal from '@/components/AppModal';
+import { buildBreadcrumbs } from '@/pages/system/file-manager/fs-utils';
 import { LogWorkbench } from '@/components/log-workbench/LogWorkbench';
 
 const RECENT_PATHS_KEY = 'logViewer.recentPaths';
@@ -80,6 +81,7 @@ function LogPathPicker({
   const loading = rootInfoQuery.isFetching || hostHomeQuery.isFetching || localListQuery.isFetching || hostListQuery.isFetching;
   const windowsDrives = hostId == null && rootInfoQuery.data?.isWindows ? rootInfoQuery.data.drives : [];
   const currentDrive = currentPath.match(/^([A-Za-z]:)/)?.[1] ?? windowsDrives[0] ?? '';
+  const breadcrumbs = currentPath ? buildBreadcrumbs(currentPath) : [];
 
   const close = () => {
     setCurrentPath('');
@@ -102,7 +104,25 @@ function LogPathPicker({
         <Button size="small" icon={<ArrowLeft size={13} />} disabled={!listing?.parent} onClick={() => listing?.parent && setCurrentPath(listing.parent)}>
           上级
         </Button>
-        <Typography.Text ellipsis style={{ flex: 1, fontFamily: 'monospace', fontSize: 12 }}>{currentPath || '正在定位…'}</Typography.Text>
+        <Breadcrumb compact style={{ flex: 1, minWidth: 0 }} showTooltip={{ width: 320 }}>
+          {breadcrumbs.map((crumb, index) => {
+            const clickable = index < breadcrumbs.length - 1;
+            return (
+              <Breadcrumb.Item
+                key={crumb.path}
+                onClick={clickable ? () => setCurrentPath(crumb.path) : undefined}
+                style={{
+                  cursor: clickable ? 'pointer' : 'default',
+                  color: clickable ? 'var(--semi-color-primary)' : undefined,
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                }}
+              >
+                {crumb.label}
+              </Breadcrumb.Item>
+            );
+          })}
+        </Breadcrumb>
       </div>
       <div style={{ minHeight: 300, maxHeight: 420, overflowY: 'auto', borderTop: '1px solid var(--semi-color-border)' }}>
         {loading && !listing ? (
