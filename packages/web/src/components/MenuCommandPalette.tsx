@@ -47,7 +47,7 @@ function getBusinessIcon(item: GlobalSearchResult) {
 function isSafeInternalRoute(route: string) {
   return route.startsWith('/') && !route.startsWith('//') && globalSearchRoutePrefixes.some((prefix) => {
     const root = prefix.endsWith('/') ? prefix.slice(0, -1) : prefix;
-    return route === root || route.startsWith(prefix);
+    return route === root || route.startsWith(`${root}?`) || route.startsWith(prefix);
   });
 }
 

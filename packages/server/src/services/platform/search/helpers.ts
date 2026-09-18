@@ -16,7 +16,7 @@ export function result(input: GlobalSearchResult): GlobalSearchResult {
 export function safeRoute(route: string): string {
   if (!route.startsWith('/') || route.startsWith('//') || !globalSearchRoutePrefixes.some((prefix) => {
     const root = prefix.endsWith('/') ? prefix.slice(0, -1) : prefix;
-    return route === root || route.startsWith(prefix);
+    return route === root || route.startsWith(`${root}?`) || route.startsWith(prefix);
   })) {
     throw new Error(`invalid global search route: ${route}`);
   }
