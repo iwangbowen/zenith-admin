@@ -49,20 +49,24 @@ export default function GlobalSearchPage() {
     if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
   }, [query, type, searchParams, setSearchParams]);
 
+  // URL 变化时才反向同步；query/type 刻意不放入依赖，避免用户输入时被旧 URL 覆盖。
   useEffect(() => {
     const normalizedType = urlType && globalSearchTypes.includes(urlType as GlobalSearchType)
       ? urlType as GlobalSearchType
       : undefined;
     if (urlQuery !== query) setDraft(urlQuery);
     if (normalizedType !== type) setType(normalizedType);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlQuery, urlType]);
 
+  // recent 是本地历史快照，刻意不作为依赖，避免写入历史后重复触发当前查询。
   useEffect(() => {
     setLimit(10);
     if (query.length < 2 || !search.data) return;
     const next = [{ q: query, type, label: `${query}${type ? ` · ${TYPE_LABELS[type]}` : ''}` }, ...recent.filter((item) => item.q !== query || item.type !== type)].slice(0, 10);
     setRecent(next);
     persistStored(RECENT_KEY, next);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, type, search.data]);
 
   const results = useMemo(() => {
@@ -129,7 +133,7 @@ export default function GlobalSearchPage() {
             style={{ cursor: 'pointer', padding: '12px 8px' }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', minWidth: 0 }}>
-              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 8, background: 'var(--semi-color-fill-1)', color: 'var(--semi-color-primary)', flexShrink: 0 }}>{item.icon ? renderLucideIcon(item.icon, 16) : <Search size={16} />}</span>
+              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 'var(--semi-border-radius-medium)', background: 'var(--semi-color-fill-1)', color: 'var(--semi-color-primary)', flexShrink: 0 }}>{item.icon ? renderLucideIcon(item.icon, 16) : <Search size={16} />}</span>
               <span style={{ flex: 1, minWidth: 0 }}>
                 {sort === 'type' && (index === 0 || results[index - 1]?.type !== item.type) && <div style={{ fontSize: 11, color: 'var(--semi-color-primary)', marginBottom: 3 }}>{TYPE_LABELS[item.type]}</div>}
                 <Typography.Text strong ellipsis>{item.title}</Typography.Text>

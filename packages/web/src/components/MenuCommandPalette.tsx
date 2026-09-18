@@ -223,7 +223,7 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
         {query.trim().length >= 2 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 16px 2px', borderBottom: '1px solid var(--semi-color-border)' }}>
           {SEARCH_FILTERS.map((filter) => {
             const active = selectedType === filter.value;
-            return <button key={filter.value} type="button" onClick={() => setSelectedType(filter.value)} style={{ border: `1px solid ${active ? 'var(--semi-color-primary)' : 'var(--semi-color-border)'}`, borderRadius: 12, padding: '2px 9px', background: active ? 'var(--semi-color-primary-light-default)' : 'transparent', color: active ? 'var(--semi-color-primary)' : 'var(--semi-color-text-2)', cursor: 'pointer', fontSize: 11 }}>{filter.label}</button>;
+            return <button key={filter.value} type="button" onClick={() => setSelectedType(filter.value)} style={{ border: `1px solid ${active ? 'var(--semi-color-primary)' : 'var(--semi-color-border)'}`, borderRadius: 'var(--semi-border-radius-large)', padding: '2px 9px', background: active ? 'var(--semi-color-primary-light-default)' : 'transparent', color: active ? 'var(--semi-color-primary)' : 'var(--semi-color-text-2)', cursor: 'pointer', fontSize: 11 }}>{filter.label}</button>;
           })}
         </div>}
 
