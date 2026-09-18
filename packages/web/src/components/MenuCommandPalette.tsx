@@ -32,6 +32,12 @@ const BUSINESS_TYPE_LABELS: Record<GlobalSearchResult['type'], string> = {
   'cms-content': 'CMS 内容',
   'wiki-document': 'Wiki 文档',
   announcement: '公告',
+  'chat-message': '聊天消息',
+  'biz-leave': '请假单',
+  'report-dashboard': '仪表盘',
+  'report-dataset': '数据集',
+  'ai-knowledge-base': 'AI 知识库',
+  'async-task': '异步任务',
 };
 
 function getMenuIcon(item: FlatMenuItem, isRecent: boolean) {

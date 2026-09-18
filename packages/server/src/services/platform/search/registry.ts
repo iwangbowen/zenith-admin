@@ -10,6 +10,10 @@ import { driveSearchAdapter } from './adapters/drive.adapter';
 import { announcementSearchAdapter } from './adapters/announcement.adapter';
 import { cmsContentSearchAdapter } from './adapters/cms.adapter';
 import { wikiDocumentSearchAdapter } from './adapters/wiki.adapter';
+import { chatMessageSearchAdapter } from './adapters/chat.adapter';
+import { bizLeaveSearchAdapter } from './adapters/biz-leave.adapter';
+import { reportDashboardSearchAdapter, reportDatasetSearchAdapter } from './adapters/report.adapter';
+import { aiKnowledgeBaseSearchAdapter, asyncTaskSearchAdapter } from './adapters/ai-task.adapter';
 import type { GlobalSearchAdapter, GlobalSearchInput } from './types';
 
 /**
@@ -27,6 +31,12 @@ export const globalSearchAdapters: readonly GlobalSearchAdapter[] = [
   cmsContentSearchAdapter,
   wikiDocumentSearchAdapter,
   announcementSearchAdapter,
+  chatMessageSearchAdapter,
+  bizLeaveSearchAdapter,
+  reportDashboardSearchAdapter,
+  reportDatasetSearchAdapter,
+  aiKnowledgeBaseSearchAdapter,
+  asyncTaskSearchAdapter,
 ];
 
 const ADAPTER_TIMEOUT_MS = 800;
@@ -61,7 +71,7 @@ export async function runGlobalSearch(
   const selected = selectedAdapters(types, adapters);
   const settled = await Promise.all(selected.map(async (adapter) => {
     try {
-      if (!(await hasPermission(...adapter.permissions))) {
+      if (adapter.permissions !== 'authenticated' && !(await hasPermission(...adapter.permissions))) {
         return { type: adapter.type, results: [], failed: false } as const;
       }
       return { type: adapter.type, results: await withTimeout(adapter.search(input), timeoutMs), failed: false } as const;

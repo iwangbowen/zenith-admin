@@ -13,6 +13,12 @@ export const globalSearchTypes = [
   'cms-content',
   'wiki-document',
   'announcement',
+  'chat-message',
+  'biz-leave',
+  'report-dashboard',
+  'report-dataset',
+  'ai-knowledge-base',
+  'async-task',
 ] as const;
 
 /** 业务结果跳转的后台内部路由前缀；新增领域适配器时同步追加一项。 */
@@ -27,6 +33,11 @@ export const globalSearchRoutePrefixes = [
   '/cms/',
   '/wiki/',
   '/system/announcements',
+  '/chat',
+  '/biz/',
+  '/report/',
+  '/ai/',
+  '/system/task-center',
 ] as const;
 
 export const globalSearchTypeSchema = z.enum(globalSearchTypes).meta({ id: 'GlobalSearchType' });
