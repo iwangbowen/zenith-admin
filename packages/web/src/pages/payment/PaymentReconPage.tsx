@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrayField, Banner, Button, DatePicker, Descriptions, Empty, Form, Select, SideSheet, Space, Spin, Tabs, Tag, Toast, Typography, Upload } from '@douyinfe/semi-ui';
+import { ArrayField, Banner, Button, DatePicker, Empty, Form, Select, SideSheet, Space, Spin, Tabs, Tag, Toast, Typography, Upload } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { BodyOf } from '@zenith/shared/core';
 import {
@@ -51,7 +51,6 @@ const BusinessWorkflowPanel = lazy(() => import('@/components/workflow/BusinessW
 const TASK_TYPES = ['payment-statement-download', 'payment-statement-import', 'payment-reconcile', 'payment-recon-compensate'];
 const required = [{ required: true, message: '请填写此项' }];
 const fullWidth = { width: '100%' };
-const textJsonStyle = { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 12 } as const;
 const renderAmount = (value: string | null) => formatReconciliationAmount(value);
 const renderSingleLine = (value: string | null | undefined) => (
   <Typography.Text ellipsis={{ showTooltip: true }} className="payment-recon-single-line">
@@ -155,8 +154,14 @@ export default function PaymentReconPage() {
     { title: '运行', dataIndex: 'id', width: 80 }, { title: '账单', dataIndex: 'statementId', width: 80 }, { title: '规则版本', dataIndex: 'ruleVersion', width: 110 },
     { title: '匹配 / 差异', key: 'counts', width: 140, render: (_: unknown, item) => `${item.matchedCount} / ${item.diffCount}` },
     { title: '状态', dataIndex: 'status', width: 110, render: (value: PaymentReconRun['status']) => PAYMENT_RECON_RUN_STATUS_LABELS[value] },
-    dateTimeColumn('完成时间', 'finishedAt'), { title: '错误', dataIndex: 'error', width: 280 },
+    dateTimeColumn('完成时间', 'finishedAt'),
   ];
+  const renderRunExpanded = (runItem?: PaymentReconRun) => runItem ? (
+    <div className="payment-recon-expand-detail">
+      <div className="payment-recon-expand-detail__label">错误信息</div>
+      <div className="payment-recon-expand-detail__content">{runItem.error || '无错误信息'}</div>
+    </div>
+  ) : null;
   const adjustmentColumns: ColumnProps<PaymentReconAdjustment>[] = [
     { title: '调整单', dataIndex: 'id', width: 90 }, { title: '案件', dataIndex: 'caseId', width: 90 },
     { title: '金额', dataIndex: 'amount', width: 130, render: renderAmount }, { title: '状态', dataIndex: 'status', width: 110, render: (value: PaymentReconAdjustment['status']) => PAYMENT_RECON_ADJUSTMENT_STATUS_LABELS[value] },
@@ -174,7 +179,7 @@ export default function PaymentReconPage() {
     { title: '任务', dataIndex: 'title', width: 250 }, asyncTaskStatusColumn<AsyncTask>(),
     { title: '进度', key: 'progress', width: 210, render: (_: unknown, item) => <AsyncTaskProgress task={item} /> },
     { title: '执行次数', key: 'attempts', width: 90, render: (_: unknown, item) => `${item.attempts}/${item.maxAttempts}` },
-    { title: '错误', dataIndex: 'errorMessage', width: 250 }, createOperationColumn<AsyncTask>({ width: 140, actions: (item) => [
+    createOperationColumn<AsyncTask>({ width: 140, actions: (item) => [
       { key: 'cancel', label: '取消', hidden: !['pending', 'running'].includes(item.status), onClick: async () => { await cancelTask.mutateAsync({ params: { id: item.id } }); void refreshTasks(); } },
       { key: 'resume', label: '恢复', hidden: !['failed', 'cancelled'].includes(item.status), onClick: async () => { await resumeTask.mutateAsync({ params: { id: item.id } }); void refreshTasks(); } },
     ] }),
@@ -205,9 +210,9 @@ export default function PaymentReconPage() {
     <Tabs activeKey={tab} onChange={setTab} keepDOM={false} collapsible="auto">
       <Tabs.TabPane tab="账期与原件" itemKey="periods"><ListSearchToolbar page={periods} filters={['type', 'status', 'billDate']} overrides={{ billDate: (page) => <DatePicker aria-label="账单日期" placeholder="账单日期" type="date" value={page.bind('billDate').value} onChange={(value) => page.bind('billDate').onChange(value ? formatDateForApi(value as Date) : undefined)} /> }} /><ConfigurableTable columns={periodColumns} columnSettingsKey="payment-recon-periods" {...periods.tableProps} /></Tabs.TabPane>
       <Tabs.TabPane tab="差异案件" itemKey="cases"><ListSearchToolbar page={cases} filters={['type', 'stage', 'status']} /><ConfigurableTable columns={caseColumns} columnSettingsKey="payment-recon-cases" {...cases.tableProps} /></Tabs.TabPane>
-      <Tabs.TabPane tab="核对历史" itemKey="runs"><ListSearchToolbar page={runs} filters={['status', 'statementId']} /><ConfigurableTable columns={runColumns} columnSettingsKey="payment-recon-runs" {...runs.tableProps} /></Tabs.TabPane>
+      <Tabs.TabPane tab="核对历史" itemKey="runs"><ListSearchToolbar page={runs} filters={['status', 'statementId']} /><ConfigurableTable columns={runColumns} columnSettingsKey="payment-recon-runs" {...runs.tableProps} expandedRowRender={renderRunExpanded} rowExpandable={(item) => Boolean(item?.error)} hideExpandedColumn={false} expandRowByClick /></Tabs.TabPane>
       <Tabs.TabPane tab="调整审批" itemKey="adjustments"><ListSearchToolbar page={adjustments} filters={['status', 'caseId']} /><ConfigurableTable columns={adjustmentColumns} columnSettingsKey="payment-recon-adjustments" {...adjustments.tableProps} /></Tabs.TabPane>
-      <Tabs.TabPane tab="执行任务" itemKey="tasks"><ConfigurableTable columns={taskColumns} columnSettingsKey="payment-recon-tasks" {...listTableProps({ data: tasks, isFetching: tasksLoading, refetch: refreshTasks })} /></Tabs.TabPane>
+      <Tabs.TabPane tab="执行任务" itemKey="tasks"><ConfigurableTable columns={taskColumns} columnSettingsKey="payment-recon-tasks" {...listTableProps({ data: tasks, isFetching: tasksLoading, refetch: refreshTasks })} expandedRowRender={(task) => task ? <div className="payment-recon-expand-detail"><div className="payment-recon-expand-detail__label">错误信息</div><div className="payment-recon-expand-detail__content">{task.errorMessage || '无错误信息'}</div></div> : null} rowExpandable={(task) => Boolean(task?.errorMessage)} hideExpandedColumn={false} expandRowByClick /></Tabs.TabPane>
       </Tabs>
     </div>
 
@@ -252,21 +257,49 @@ export default function PaymentReconPage() {
     </SideSheet>
 
     <SideSheet visible={caseId !== undefined} title="差异调查与处理" width={860} onCancel={closeCase}>
-      {caseDetail.data ? <><Descriptions row data={[
-        { key: '案件 / 版本', value: `#${caseDetail.data.id} / v${caseDetail.data.version}` }, { key: '差异类型', value: PAYMENT_RECON_CASE_TYPE_LABELS[caseDetail.data.type] },
-        { key: '状态', value: PAYMENT_RECON_CASE_STATUS_LABELS[caseDetail.data.status] }, { key: '本地 / 渠道金额', value: `${formatReconciliationAmount(caseDetail.data.localAmount)} / ${formatReconciliationAmount(caseDetail.data.channelAmount)} ${caseDetail.data.currency}` },
-        { key: '处理依据', value: caseDetail.data.resolution ?? '—' }, { key: '责任人 / 期限', value: `${caseDetail.data.assignedTo ?? '未分配'} / ${caseDetail.data.dueAt ?? '—'}` },
-      ]} /><Space wrap>
-        {hasPermission('payment:recon:handle') && <Button onClick={handleModal.openCreate}>追加处理记录</Button>}
-        {hasPermission('payment:recon:compensate') && isUnresolvedReconciliationCase(caseDetail.data.status) && <Button onClick={async () => afterTask(await compensate.mutateAsync({ params: { id: caseDetail.data.id } }))}>查单补偿</Button>}
-        {hasPermission('payment:recon:adjust') && isUnresolvedReconciliationCase(caseDetail.data.status) && <Button onClick={() => { setSelectedAppId(caseDetail.data.applicationId); adjustmentModal.openCreate(); }}>申请调整</Button>}
-      </Space><Typography.Title heading={6}>账单与本地证据</Typography.Title><pre style={textJsonStyle}>{JSON.stringify(caseDetail.data.evidence, null, 2)}</pre>
-        <Typography.Title heading={6}>处理历史</Typography.Title>{caseDetail.data.events.map((event) => <Typography.Paragraph key={event.id}>{event.createdAt} · {event.action} · {event.actorId ?? '系统'} · {event.remark}</Typography.Paragraph>)}
-        <Typography.Title heading={6}>关联调整</Typography.Title><Space wrap>{caseDetail.data.adjustments.map((item) => <Button key={item.id} onClick={() => openAdjustment(item)}>#{item.id} · {PAYMENT_RECON_ADJUSTMENT_STATUS_LABELS[item.status]}</Button>)}</Space>
-      </> : <Spin />}
+      {caseDetail.data ? (
+        <div className="payment-recon-case-sheet">
+          <section className="payment-recon-case-sheet__section">
+            <div className="payment-recon-case-sheet__section-title">案件概览</div>
+            <dl className="payment-recon-case-sheet__meta">
+              <div><dt>案件 / 版本</dt><dd>#{caseDetail.data.id} / v{caseDetail.data.version}</dd></div>
+              <div><dt>差异类型</dt><dd>{PAYMENT_RECON_CASE_TYPE_LABELS[caseDetail.data.type]}</dd></div>
+              <div><dt>状态</dt><dd>{PAYMENT_RECON_CASE_STATUS_LABELS[caseDetail.data.status]}</dd></div>
+              <div><dt>本地 / 渠道金额</dt><dd>{formatReconciliationAmount(caseDetail.data.localAmount)} / {formatReconciliationAmount(caseDetail.data.channelAmount)} {caseDetail.data.currency}</dd></div>
+              <div><dt>责任人 / 期限</dt><dd>{caseDetail.data.assignedTo ?? '未分配'} / {caseDetail.data.dueAt ?? '—'}</dd></div>
+              <div className="payment-recon-case-sheet__meta-wide"><dt>处理依据</dt><dd>{caseDetail.data.resolution ?? '—'}</dd></div>
+            </dl>
+          </section>
+
+          <div className="payment-recon-case-sheet__actions">
+            {hasPermission('payment:recon:handle') && <Button onClick={handleModal.openCreate}>追加处理记录</Button>}
+            {hasPermission('payment:recon:compensate') && isUnresolvedReconciliationCase(caseDetail.data.status) && <Button onClick={async () => afterTask(await compensate.mutateAsync({ params: { id: caseDetail.data.id } }))}>查单补偿</Button>}
+            {hasPermission('payment:recon:adjust') && isUnresolvedReconciliationCase(caseDetail.data.status) && <Button theme="solid" onClick={() => { setSelectedAppId(caseDetail.data.applicationId); adjustmentModal.openCreate(); }}>申请调整</Button>}
+          </div>
+
+          <section className="payment-recon-case-sheet__section">
+            <div className="payment-recon-case-sheet__section-title">账单与本地证据</div>
+            <pre className="payment-recon-case-sheet__json">{JSON.stringify(caseDetail.data.evidence, null, 2)}</pre>
+          </section>
+
+          <section className="payment-recon-case-sheet__section">
+            <div className="payment-recon-case-sheet__section-title">处理历史 <span>{caseDetail.data.events.length} 条</span></div>
+            {caseDetail.data.events.length > 0 ? <div className="payment-recon-case-sheet__timeline">{caseDetail.data.events.map((event) => <div className="payment-recon-case-sheet__event" key={event.id}>
+              <div className="payment-recon-case-sheet__event-head"><span>{event.action}</span><time>{event.createdAt}</time></div>
+              <div className="payment-recon-case-sheet__event-meta">{event.actorId ?? '系统'}</div>
+              {event.remark && <div className="payment-recon-case-sheet__event-remark">{event.remark}</div>}
+            </div>)}</div> : <Empty description="暂无处理记录" />}
+          </section>
+
+          <section className="payment-recon-case-sheet__section">
+            <div className="payment-recon-case-sheet__section-title">关联调整 <span>{caseDetail.data.adjustments.length} 项</span></div>
+            {caseDetail.data.adjustments.length > 0 ? <div className="payment-recon-case-sheet__adjustments">{caseDetail.data.adjustments.map((item) => <Button key={item.id} onClick={() => openAdjustment(item)}>#{item.id} · {PAYMENT_RECON_ADJUSTMENT_STATUS_LABELS[item.status]}</Button>)}</div> : <Empty description="暂无关联调整" />}
+          </section>
+        </div>
+      ) : <Spin />}
     </SideSheet>
     <EditFormModal modal={handleModal} title="追加案件处理记录"><Form.Select field="action" label="处理动作" optionList={PAYMENT_RECON_CASE_ACTION_OPTIONS} rules={required} style={fullWidth} /><Form.Select field="assignedTo" label="责任人" optionList={toUserOptions(users.data ?? [])} filter showClear style={fullWidth} /><Form.TextArea field="remark" label="处理依据" rules={required} maxCount={2000} /></EditFormModal>
-    <EditFormModal modal={adjustmentModal} title="创建审批调整单" width={680} formProps={{ labelWidth: 240, className: 'payment-recon-adjustment-form' }} header={<Banner type="warning" closeIcon={null} description="调整需要真实渠道已验证账单、明确的本地归属和金额依据；人工上传、沙箱及渠道单边差异先调查，不可直接过账。" />}>
+    <EditFormModal modal={adjustmentModal} title="创建审批调整单" width={680} formProps={{ labelWidth: 320, className: 'payment-recon-adjustment-form' }} header={<Banner type="warning" closeIcon={null} description="调整需要真实渠道已验证账单、明确的本地归属和金额依据；人工上传、沙箱及渠道单边差异先调查，不可直接过账。" />}>
       <PaymentAppField optionList={merchantLookup.appOptions} loading={merchantLookup.appsFetching} onChange={(value) => { setSelectedAppId(value); adjustmentModal.formApi.current?.setValue('channelConfigId', undefined); }} />
       <PaymentMerchantConfigField optionList={merchantLookup.merchantConfigOptions} loading={merchantLookup.channelConfigsQuery.isFetching} />
       <Form.Input field="amount" label={<span style={{ whiteSpace: 'nowrap' }}>金额（整数分）</span>} rules={required} placeholder="例如 100 表示 1.00 元" /><Form.Select field="direction" label="调整方向" optionList={PAYMENT_RECON_DIRECTION_OPTIONS} rules={required} style={fullWidth} /><Form.TextArea field="reason" label="调整依据" rules={required} maxCount={2000} />
