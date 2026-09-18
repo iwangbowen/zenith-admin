@@ -8,6 +8,7 @@ import { OAUTH_PROVIDERS, OAUTH_PROVIDER_LABELS, SESSION_CLIENT_KIND_LABELS } fr
 import type { User as UserType, OAuthProviderType, UserSession, UserApiTokenCreated, MfaFactor, TotpSetupResult } from '@zenith/shared/identity';
 import { AppModal } from '@/components/AppModal';
 import { AvatarSelectModal } from '@/components/AvatarSelectModal';
+import { uploadAvatarBlobToFileCenter } from '@/utils/avatar-upload';
 import { UserAvatar } from '@/components/UserAvatar';
 import { OAuthProviderIcon } from '@/components/OAuthProviderIcon';
 import { SessionClientIcon } from '@/components/SessionClientTag';
@@ -955,6 +956,7 @@ export default function ProfilePage({ user }: ProfilePageProps) {
         visible={avatarSelectVisible}
         currentAvatar={user.avatar}
         confirmLoading={updateAvatarMutation.isPending}
+        uploadBlob={uploadAvatarBlobToFileCenter}
         onCancel={() => setAvatarSelectVisible(false)}
         onSelect={(url) => void handleApplyPreset(url)}
         onRemove={user.avatar ? handleRemoveAvatar : undefined}

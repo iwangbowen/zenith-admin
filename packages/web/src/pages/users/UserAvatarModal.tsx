@@ -1,5 +1,6 @@
 import { Toast } from '@douyinfe/semi-ui';
 import { AvatarSelectModal } from '@/components/AvatarSelectModal';
+import { uploadAvatarBlobToFileCenter } from '@/utils/avatar-upload';
 import { userContract, type User } from '@zenith/shared/identity';
 import { useApiMutation } from '@/lib/contract-query';
 import { confirmDelete } from '@/utils/confirm';
@@ -48,6 +49,7 @@ export function UserAvatarModal({ visible, user, onClose, onUpdated }: UserAvata
       visible={visible}
       currentAvatar={user.avatar}
       confirmLoading={updateAvatarMutation.isPending}
+      uploadBlob={uploadAvatarBlobToFileCenter}
       onCancel={onClose}
       onSelect={(url) => void handleSelect(url)}
       onRemove={user.avatar ? handleRemoveAvatar : undefined}

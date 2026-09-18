@@ -14,10 +14,11 @@ export interface AvatarSelectModalProps {
   /** 调用方落库中的 loading（与上传 loading 合并后传给裁剪确认按钮） */
   readonly confirmLoading?: boolean;
   /**
-   * 裁剪 Blob 的上传实现；缺省走管理后台文件中心。
+   * 裁剪 Blob 的上传实现（必填）：管理后台传文件中心通道
+   *（`utils/avatar-upload.ts` 的 `uploadAvatarBlobToFileCenter`），
    * 会员前台传入自己的上传实现（如会员头像上传接口）。
    */
-  readonly uploadBlob?: (blob: Blob) => Promise<string>;
+  readonly uploadBlob: (blob: Blob) => Promise<string>;
   readonly onCancel: () => void;
   /** 选中预设或裁剪上传成功；落库与关闭弹窗由调用方负责 */
   readonly onSelect: (url: string) => void;
