@@ -4,7 +4,7 @@
  * 支持：Native 扫码 / JSAPI / H5；查单 / 关单 / 退款 / 退款查询 / 回调验签解密。
  * 文档：https://pay.weixin.qq.com/docs/merchant/apis/native-payment/
  */
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { HTTPException } from 'hono/http-exception';
 import { httpGet, httpPost } from '../http-client';
 import { formatDateTime } from '../datetime';
@@ -16,6 +16,9 @@ import { getPlatformCert } from './wechat-certs';
 import { WECHAT_PROVIDER_MANIFEST } from './capabilities';
 import { providerHttpExceptionStatus, providerHttpOptions, readProviderResponseText } from './provider-http';
 import { requireSandboxOperation, sandboxContractPreauthOps, sandboxProfitShareReverse } from './adapter-sandbox';
+import { approvedBillUrl, billArtifact, providerBillRequest, readBillBytes, withBillEvidence } from './bill-io';
+import { parseProviderBill } from './bill-parsers';
+import { ProviderBillError } from './bill-types';
 import type {
   AdapterContext,
   NotifyResult,
@@ -70,6 +73,24 @@ async function wechatRequest<T = Record<string, unknown>>(
   const requestOptions = { ...providerHttpOptions(), headers };
   const resp = method === 'GET' ? await httpGet(url, requestOptions) : await httpPost(url, bodyStr, requestOptions);
   const text = await readProviderResponseText(resp, '微信支付');
+  if (urlPath.startsWith('/v3/bill/')) {
+    if (!resp.ok) {
+      let code = '';
+      try { code = (JSON.parse(text) as { code?: string }).code ?? ''; } catch { /* Unstructured gateway rejection. */ }
+      if (code === 'NO_BILL_EXIST') throw new ProviderBillError('no_bill', '微信未提供该账期账单，需确认出账状态，不代表零交易');
+      if (code === 'STATEMENT_CREATING' || code === 'BILL_CREATING') throw new ProviderBillError('waiting', '微信账单正在生成');
+      throw new ProviderBillError(resp.status === 429 || resp.status >= 500 ? 'temporary' : 'permanent', `微信账单申请失败(${resp.status}/${code})`);
+    }
+    const timestamp = resp.headers.get('Wechatpay-Timestamp') ?? '';
+    const nonce = resp.headers.get('Wechatpay-Nonce') ?? '';
+    const signature = resp.headers.get('Wechatpay-Signature') ?? '';
+    const serial = resp.headers.get('Wechatpay-Serial') ?? '';
+    const platformCert = (await getPlatformCert(ctx, serial))
+      ?? (ctx.config.wechatPlatformCert ? ensurePem(ctx.config.wechatPlatformCert, 'CERTIFICATE') : null);
+    if (!signature || !nonce || !/^\d+$/.test(timestamp) || Math.abs(Date.now() / 1000 - Number(timestamp)) > 300 || !platformCert || !rsaVerify(`${timestamp}\n${nonce}\n${text}\n`, signature, platformCert, 'RSA-SHA256')) {
+      throw new ProviderBillError('integrity', '微信账单申请响应验签失败');
+    }
+  }
   if (!resp.ok) {
     logger.warn('[wechat-pay] api error', { urlPath, status: resp.status, body: text.slice(0, 500) });
     let msg = `微信支付接口错误(${resp.status})`;
@@ -569,22 +590,34 @@ export const wechatPayAdapter: PaymentChannelAdapter = {
     };
   },
 
-  async downloadBill(ctx: AdapterContext, billDate: string): Promise<string> {
-    // 1. 申请账单下载链接（SUCCESS 账单：仅成功支付订单）
-    const meta = await wechatRequest<{ download_url?: string }>(ctx, 'GET', `/v3/bill/tradebill?bill_date=${billDate}&bill_type=SUCCESS`);
-    const downloadUrl = meta.download_url;
-    if (!downloadUrl) throw new HTTPException(502, { message: '微信账单下载链接获取失败' });
-    // 2. 签名下载（download_url 域名可能不同，按其 path+query 重新签名）
-    const u = new URL(downloadUrl);
-    const urlPath = `${u.pathname}${u.search}`;
-    const authToken = buildAuthToken(ctx, 'GET', urlPath, '');
-    const resp = await httpGet(downloadUrl, {
-      ...providerHttpOptions(),
-      headers: { Authorization: authToken, Accept: '*/*', 'User-Agent': 'zenith-admin' },
+  async downloadBill(ctx, billDate, kind = 'trade') {
+    return providerBillRequest(async () => {
+      if (ctx.config.sandbox) throw new ProviderBillError('permanent', '沙箱账单必须由独立模拟来源生成');
+      const endpoint = kind === 'trade' ? 'tradebill' : 'fundflowbill';
+      const query = kind === 'trade' ? 'bill_type=ALL' : 'account_type=BASIC';
+      const meta = await wechatRequest<{ download_url?: string; hash_type?: string; hash_value?: string }>(ctx, 'GET', `/v3/bill/${endpoint}?bill_date=${encodeURIComponent(billDate)}&${query}`);
+      if (!meta.download_url || meta.hash_type !== 'SHA1' || !/^[a-fA-F0-9]{40}$/.test(meta.hash_value ?? '')) {
+        throw new ProviderBillError('integrity', '微信账单缺少有效下载地址或 SHA1 摘要');
+      }
+      const downloadUrl = approvedBillUrl(meta.download_url, 'wechat');
+      const url = new URL(downloadUrl);
+      const resp = await httpGet(downloadUrl, {
+        ...providerHttpOptions(),
+        headers: { Authorization: buildAuthToken(ctx, 'GET', `${url.pathname}${url.search}`, ''), Accept: 'text/csv', 'User-Agent': 'zenith-admin' },
+      });
+      const bytes = await readBillBytes(resp);
+      if (!resp.ok) throw new ProviderBillError(resp.status === 429 || resp.status >= 500 ? 'temporary' : 'permanent', `微信账单下载失败(${resp.status})`);
+      const filename = `wechat_${ctx.config.wechatMchId}_${billDate}_${kind}.csv`;
+      const artifact = billArtifact(bytes, filename);
+      const providerHash = meta.hash_value as string;
+      artifact.providerHash = { algorithm: 'SHA1', value: providerHash };
+      return withBillEvidence([artifact], () => {
+        if (createHash('sha1').update(bytes).digest('hex') !== providerHash.toLowerCase()) throw new ProviderBillError('integrity', '微信账单 SHA1 摘要不匹配');
+        const result = parseProviderBill('wechat', kind, bytes, filename, requireField(ctx.config.wechatMchId, '商户号'), billDate);
+        result.artifacts = [artifact];
+        return result;
+      });
     });
-    const text = await resp.text();
-    if (!resp.ok) throw new HTTPException(502, { message: `微信账单下载失败(${resp.status})` });
-    return convertWechatBillToInternalCsv(text);
   },
 
   // ── 签约代扣（委托代扣）/ 预授权：真实模式需商户开通对应产品权限，本期仅支持沙箱模拟 ──
@@ -603,29 +636,3 @@ export const wechatPayAdapter: PaymentChannelAdapter = {
     },
   }),
 };
-
-/** 将微信交易账单 CSV（字段以反引号 ` 前缀、金额单位元）转换为内部标准格式 `订单号,渠道交易号,金额(分),状态`。 */
-export function convertWechatBillToInternalCsv(billText: string): string {
-  const lines = billText.split(/\r?\n/).filter((l) => l.trim());
-  if (lines.length === 0) return '订单号,渠道交易号,金额(分),状态';
-  const header = lines[0].split(',').map((c) => c.replace(/^`/, '').trim());
-  const idxOrderNo = header.findIndex((h) => h === '商户订单号');
-  const idxTradeNo = header.findIndex((h) => h === '微信订单号');
-  const idxStatus = header.findIndex((h) => h === '交易状态');
-  let idxAmount = header.findIndex((h) => h === '订单金额');
-  if (idxAmount < 0) idxAmount = header.findIndex((h) => h === '应结订单金额');
-  if (idxOrderNo < 0 || idxAmount < 0) throw new HTTPException(400, { message: '微信账单格式无法识别（缺少商户订单号/订单金额列）' });
-  const out = ['订单号,渠道交易号,金额(分),状态'];
-  for (const line of lines.slice(1)) {
-    if (line.startsWith('总交易单数') || line.startsWith('`总交易单数') || line.startsWith('总')) break; // 汇总行
-    const cols = line.split(',').map((c) => c.replace(/^`/, '').trim());
-    if (cols.length <= idxAmount) continue;
-    const orderNo = cols[idxOrderNo];
-    if (!orderNo) continue;
-    const amountCents = Math.round(Number.parseFloat(cols[idxAmount] || '0') * 100);
-    if (!Number.isFinite(amountCents) || amountCents <= 0) continue;
-    const status = (idxStatus >= 0 ? cols[idxStatus] : 'SUCCESS') || 'SUCCESS';
-    out.push(`${orderNo},${idxTradeNo >= 0 ? cols[idxTradeNo] ?? '' : ''},${amountCents},${status}`);
-  }
-  return out.join('\n');
-}

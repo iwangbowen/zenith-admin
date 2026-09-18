@@ -29,7 +29,7 @@ export const WECHAT_PROVIDER_MANIFEST = {
     { operation: 'preauth.query', environments: SANDBOX_ONLY, paymentMethods: ['wechat_preauth'], currencies: CNY, execution: 'synchronous', requiredConfigFields: [] },
     { operation: 'preauth.capture', environments: SANDBOX_ONLY, paymentMethods: ['wechat_preauth'], currencies: CNY, execution: 'synchronous', requiredConfigFields: [] },
     { operation: 'preauth.release', environments: SANDBOX_ONLY, paymentMethods: ['wechat_preauth'], currencies: CNY, execution: 'synchronous', requiredConfigFields: [] },
-    { operation: 'bill.download', environments: LIVE_ONLY, currencies: CNY, execution: 'synchronous', requiredConfigFields: ['wechatMchId', 'wechatSerialNo', 'wechatPrivateKey'] },
+    { operation: 'bill.download', environments: LIVE_ONLY, billKinds: ['trade', 'fund'], currencies: CNY, execution: 'synchronous', requiredConfigFields: ['wechatMchId', 'wechatSerialNo', 'wechatPrivateKey', 'wechatApiV3Key'] },
   ],
 } as const satisfies PaymentProviderManifest;
 
@@ -38,6 +38,7 @@ export const ALIPAY_PROVIDER_MANIFEST = {
   displayName: '支付宝',
   sandboxRequiredConfigFields: ['sandboxNotifySecret'],
   capabilities: [
+    { operation: 'bill.download', environments: LIVE_ONLY, billKinds: ['trade', 'fund'], currencies: CNY, execution: 'synchronous', requiredConfigFields: ['alipayAppId', 'alipaySellerId', 'alipayPrivateKey', 'alipayPublicKey'] },
     { operation: 'payment.create', environments: SANDBOX_AND_LIVE, paymentMethods: ['alipay_page', 'alipay_wap', 'alipay_app'], currencies: CNY, execution: 'redirect', requiredConfigFields: ['alipayAppId', 'alipaySellerId', 'alipayPrivateKey', 'alipayPublicKey'] },
     { operation: 'payment.query', environments: SANDBOX_AND_LIVE, currencies: CNY, execution: 'synchronous', requiredConfigFields: ['alipayAppId', 'alipaySellerId', 'alipayPrivateKey', 'alipayPublicKey'] },
     { operation: 'payment.close', environments: SANDBOX_AND_LIVE, currencies: CNY, execution: 'synchronous', requiredConfigFields: ['alipayAppId', 'alipaySellerId', 'alipayPrivateKey', 'alipayPublicKey'] },
@@ -64,6 +65,7 @@ export const UNIONPAY_PROVIDER_MANIFEST = {
   displayName: '云闪付',
   sandboxRequiredConfigFields: ['sandboxNotifySecret'],
   capabilities: [
+    { operation: 'bill.download', environments: LIVE_ONLY, billKinds: ['trade'], currencies: CNY, execution: 'synchronous', requiredConfigFields: ['unionpayMerId', 'unionpayCertId', 'unionpayPrivateKey', 'unionpayPublicKey'] },
     { operation: 'payment.create', environments: SANDBOX_AND_LIVE, paymentMethods: ['unionpay_qr'], currencies: CNY, execution: 'redirect', requiredConfigFields: ['unionpayMerId', 'unionpayCertId', 'unionpayPrivateKey', 'unionpayPublicKey'] },
     { operation: 'payment.query', environments: SANDBOX_AND_LIVE, currencies: CNY, execution: 'synchronous', requiredConfigFields: ['unionpayMerId', 'unionpayCertId', 'unionpayPrivateKey', 'unionpayPublicKey'] },
     { operation: 'refund.create', environments: SANDBOX_AND_LIVE, currencies: CNY, execution: 'asynchronous', requiredConfigFields: ['unionpayMerId', 'unionpayCertId', 'unionpayPrivateKey', 'unionpayPublicKey'] },

@@ -7,6 +7,8 @@
  */
 import type { CreatePaymentResult, PaymentChannel, PaymentMethod } from '@zenith/shared/payment';
 import type { PaymentChannelConfigRow, PaymentOrderRow, PaymentRefundRow } from '../../db/schema';
+import type { ProviderBillKind, ProviderBillResult } from './bill-types';
+export type { ProviderBillArtifact, ProviderBillEntry, ProviderBillKind, ProviderBillResult } from './bill-types';
 
 /** 已解密的渠道敏感凭据（仅在内存中存在，绝不落库/出参） */
 export interface DecryptedSecrets {
@@ -306,6 +308,7 @@ export interface PaymentProviderCapability {
   operation: PaymentProviderOperation;
   environments: readonly PaymentProviderEnvironment[];
   paymentMethods?: readonly PaymentMethod[];
+  billKinds?: readonly ProviderBillKind[];
   currencies: readonly string[];
   execution: PaymentProviderExecution;
   /** 非沙箱环境执行该操作所需的配置字段。 */
@@ -380,10 +383,10 @@ export interface PaymentChannelAdapter {
   /** 预授权：解冻（可选）。 */
   preauthRelease?(ctx: AdapterContext, input: Pick<PreauthFreezeInput, 'outPreauthNo'> & { channelPreauthNo?: string }): Promise<void>;
   /**
-   * 下载渠道对账单（可选）：返回内部标准 CSV（`订单号,渠道交易号,金额(分),状态`）。
+   * 下载并校验渠道账单：返回原件、标准明细与核验后的汇总，保留可复现证据。
    * `sandbox=true` 时由调用方（recon service）用本地订单生成模拟账单，不会调用此方法。
    */
-  downloadBill?(ctx: AdapterContext, billDate: string): Promise<string>;
+  downloadBill?(ctx: AdapterContext, billDate: string, kind?: ProviderBillKind): Promise<ProviderBillResult>;
   /**
    * 连通性测试（可选）。
    * 向渠道发起一个轻量的探测请求（如查询一个不存在的订单号），

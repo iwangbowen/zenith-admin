@@ -5,7 +5,7 @@
  * 文档：https://opendocs.alipay.com/open/270/105898
  */
 import { HTTPException } from 'hono/http-exception';
-import { httpPost } from '../http-client';
+import { httpGet, httpPost } from '../http-client';
 import { formatDateTime } from '../datetime';
 import logger from '../logger';
 import type { CreatePaymentResult } from '@zenith/shared/payment';
@@ -19,6 +19,9 @@ import {
   readProviderResponseText,
 } from './provider-http';
 import { requireSandboxOperation, sandboxContractPreauthOps, sandboxProfitShareReverse } from './adapter-sandbox';
+import { approvedBillUrl, providerBillRequest, readBillBytes } from './bill-io';
+import { parseProviderBill } from './bill-parsers';
+import { ProviderBillError } from './bill-types';
 import type {
   AdapterContext,
   NotifyResult,
@@ -107,15 +110,31 @@ function buildSignedParams(
 function verifyAlipayResponse(rawText: string, method: string, publicKeyPem: string, algorithm: RsaAlgorithm): boolean {
   const nodeName = `${method.replaceAll('.', '_')}_response`;
   const nodeIdx = rawText.indexOf(`"${nodeName}"`);
-  const signIdx = rawText.indexOf('"sign"');
-  if (nodeIdx < 0 || signIdx < 0) return false;
+  if (nodeIdx < 0 || rawText.indexOf(`"${nodeName}"`, nodeIdx + nodeName.length + 2) !== -1) return false;
   const start = rawText.indexOf('{', nodeIdx);
-  const end = rawText.lastIndexOf('}', signIdx);
-  if (start < 0 || end < 0 || end < start) return false;
-  const signContent = rawText.slice(start, end + 1);
-  const signMatch = /"sign"\s*:\s*"([^"]+)"/.exec(rawText.slice(signIdx));
-  if (!signMatch) return false;
-  return rsaVerify(signContent, signMatch[1], publicKeyPem, algorithm);
+  if (start < 0) return false;
+  // The signature property may precede the response node. Preserve the exact signed node bytes.
+  let depth = 0;
+  let quoted = false;
+  let escaped = false;
+  for (let index = start; index < rawText.length; index++) {
+    const char = rawText[index];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '"') quoted = false;
+      continue;
+    }
+    if (char === '"') quoted = true;
+    else if (char === '{') depth++;
+    else if (char === '}' && --depth === 0) {
+      try {
+        const signature = (JSON.parse(rawText) as { sign?: unknown }).sign;
+        return typeof signature === 'string' && rsaVerify(rawText.slice(start, index + 1), signature, publicKeyPem, algorithm);
+      } catch { return false; }
+    }
+  }
+  return false;
 }
 
 async function alipayApiCall(
@@ -137,6 +156,7 @@ async function alipayApiCall(
     throw new HTTPException(providerHttpExceptionStatus(resp.status), { message: `支付宝接口错误(${resp.status})` });
   }
   if (!verifyAlipayResponse(text, method, respPubKey, rsaAlgo(ctx.config.alipaySignType))) {
+    if (method === 'alipay.data.dataservice.bill.downloadurl.query') throw new ProviderBillError('integrity', '支付宝账单申请响应验签失败');
     logger.warn('[alipay] response signature invalid', { method });
     throw new HTTPException(502, { message: '支付宝响应验签失败' });
   }
@@ -148,6 +168,12 @@ async function alipayApiCall(
   }
   const data = json[responseKey] as Record<string, any> | undefined;
   if (!data) throw new HTTPException(502, { message: '支付宝响应格式异常' });
+  if (method === 'alipay.data.dataservice.bill.downloadurl.query' && data.code !== '10000') {
+    const code = String(data.sub_code ?? data.code ?? '');
+    if (code === 'BILL_NOT_EXIST') throw new ProviderBillError('no_bill', '支付宝未提供该账期账单，需确认出账状态，不代表零交易');
+    if (code === 'BILL_CREATING') throw new ProviderBillError('waiting', '支付宝账单正在生成');
+    throw new ProviderBillError(data.code === '20000' || code === 'UNKNOWN_ERROR' ? 'temporary' : 'permanent', `支付宝账单申请失败：${code}`);
+  }
   const isQuery = method === 'alipay.trade.query' || method === 'alipay.trade.fastpay.refund.query';
   if (!isQuery && data.code && data.code !== '10000') {
     throw new HTTPException(400, { message: `支付宝错误：${data.sub_msg || data.msg || data.code}` });
@@ -198,6 +224,21 @@ function parseForm(raw: string): Record<string, string> {
 export const alipayAdapter: PaymentChannelAdapter = {
   channel: 'alipay',
   manifest: ALIPAY_PROVIDER_MANIFEST,
+
+  async downloadBill(ctx, billDate, kind = 'trade') {
+    return providerBillRequest(async () => {
+      if (ctx.config.sandbox) throw new ProviderBillError('permanent', '沙箱账单必须由独立模拟来源生成');
+      const result = await alipayApiCall(ctx, 'alipay.data.dataservice.bill.downloadurl.query', {
+        bill_type: kind === 'trade' ? 'trade' : 'signcustomer', bill_date: billDate,
+      }, 'alipay_data_dataservice_bill_downloadurl_query_response');
+      if (typeof result.bill_download_url !== 'string') throw new ProviderBillError('integrity', '支付宝未返回账单下载地址');
+      const response = await httpGet(approvedBillUrl(result.bill_download_url, 'alipay'), { ...providerHttpOptions(), headers: { Accept: 'application/zip' } });
+      const bytes = await readBillBytes(response);
+      if (!response.ok) throw new ProviderBillError(response.status === 429 || response.status >= 500 ? 'temporary' : 'permanent', `支付宝账单下载失败(${response.status})`);
+      const merchantId = requireField(ctx.config.alipaySellerId, '卖家ID');
+      return parseProviderBill('alipay', kind, bytes, `${merchantId}_${billDate}_${kind}.zip`, merchantId, billDate);
+    });
+  },
 
   async createPayment(ctx, order): Promise<CreatePaymentResult> {
     const expiredAt = order.expiredAt ? formatDateTime(order.expiredAt) : undefined;

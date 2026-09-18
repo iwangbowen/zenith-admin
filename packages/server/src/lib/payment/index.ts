@@ -44,9 +44,15 @@ export type {
   PaymentProviderEnvironment,
   PaymentProviderManifest,
   PaymentProviderOperation,
+  ProviderBillArtifact,
+  ProviderBillEntry,
+  ProviderBillKind,
+  ProviderBillResult,
   ProfitShareReverseInput,
   ProfitShareReverseQueryResult,
   ProfitShareReverseResult,
   RefundQueryResult,
   RefundResult,
 } from './types';
+export { ProviderBillError } from './bill-types';
+export { parseProviderBill } from './bill-parsers';

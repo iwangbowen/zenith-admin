@@ -15,6 +15,9 @@ import type { CreatePaymentResult } from '@zenith/shared/payment';
 import { rsaSign, rsaVerify, ensurePem } from './signing';
 import { trySandboxNotify } from './sandbox-notify';
 import { UNIONPAY_PROVIDER_MANIFEST } from './capabilities';
+import { billArtifact, decodeUnionpayFile, MAX_BILL_BYTES, providerBillRequest, readBillBytes, withBillEvidence } from './bill-io';
+import { parseProviderBill } from './bill-parsers';
+import { ProviderBillError } from './bill-types';
 import {
   assertApprovedProviderGateway,
   providerHttpExceptionStatus,
@@ -32,6 +35,7 @@ import type {
 
 const PROD_GATEWAY = 'https://gateway.95516.com/gateway/api/backTransReq.do';
 const QUERY_GATEWAY = 'https://gateway.95516.com/gateway/api/queryTrans.do';
+const BILL_GATEWAY = 'https://filedownload.95516.com/';
 
 function requireField<T>(v: T | null | undefined, name: string): T {
   if (v === null || v === undefined || v === '') throw new HTTPException(400, { message: `云闪付配置缺失：${name}` });
@@ -97,7 +101,7 @@ function encodeForm(params: Record<string, string>): string {
 async function unionpayRequest(ctx: AdapterContext, gateway: string, params: Record<string, string>): Promise<Record<string, string>> {
   requireField(ctx.config.unionpayPublicKey, '验签公钥');
   params.signature = signUnionpay(ctx, params);
-  const configuredUrl = ctx.config.unionpayGateway
+  const configuredUrl = gateway === BILL_GATEWAY ? BILL_GATEWAY : ctx.config.unionpayGateway
     ? ctx.config.unionpayGateway.replace(/backTransReq\.do$/, gateway.split('/').pop() ?? '')
     : gateway;
   const url = assertApprovedProviderGateway(configuredUrl, 'unionpay');
@@ -105,7 +109,9 @@ async function unionpayRequest(ctx: AdapterContext, gateway: string, params: Rec
     ...providerHttpOptions(),
     headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8' },
   });
-  const text = await readProviderResponseText(resp, '云闪付');
+  const text = gateway === BILL_GATEWAY
+    ? (await readBillBytes(resp, MAX_BILL_BYTES * 2)).toString('utf8')
+    : await readProviderResponseText(resp, '云闪付');
   if (!resp.ok) {
     logger.warn('[unionpay] api error', { status: resp.status, body: text.slice(0, 500) });
     throw new HTTPException(providerHttpExceptionStatus(resp.status), { message: `云闪付接口错误(${resp.status})` });
@@ -117,12 +123,19 @@ async function unionpayRequest(ctx: AdapterContext, gateway: string, params: Rec
     throw new HTTPException(502, { message: '云闪付同步响应解析失败' });
   }
   if (!verifyUnionpay(ctx, res)) {
+    if (gateway === BILL_GATEWAY) throw new ProviderBillError('integrity', '银联账单申请响应验签失败');
     logger.warn('[unionpay] response signature invalid', { url, respCode: res.respCode });
     throw new HTTPException(502, { message: '云闪付同步响应验签失败' });
   }
   const expectedMerchantId = requireField(ctx.config.unionpayMerId, '商户号(merId)');
   if (!res.merId || res.merId !== expectedMerchantId) {
+    if (gateway === BILL_GATEWAY) throw new ProviderBillError('integrity', '银联账单申请响应商户身份不匹配');
     throw new HTTPException(502, { message: '云闪付同步响应商户号不匹配' });
+  }
+  if (gateway === BILL_GATEWAY && res.respCode !== '00') {
+    if (res.respCode === '98') throw new ProviderBillError('no_bill', '银联未提供该账期文件，需确认出账状态，不代表零交易');
+    if (res.respCode === '03') throw new ProviderBillError('waiting', '银联账单文件正在处理');
+    throw new ProviderBillError(['01', '02', '05'].includes(res.respCode) ? 'temporary' : 'permanent', `银联账单申请失败(${res.respCode})`);
   }
   if (res.respCode && res.respCode !== '00' && res.respCode !== '03') {
     throw new HTTPException(400, { message: `云闪付错误(${res.respCode})：${res.respMsg ?? '未知错误'}` });
@@ -144,6 +157,30 @@ function mapUnionpayStatus(respCode: string | undefined, origRespCode: string | 
 export const unionpayAdapter: PaymentChannelAdapter = {
   channel: 'unionpay',
   manifest: UNIONPAY_PROVIDER_MANIFEST,
+
+  async downloadBill(ctx, billDate, kind = 'trade') {
+    return providerBillRequest(async () => {
+      if (ctx.config.sandbox) throw new ProviderBillError('permanent', '沙箱账单必须由独立模拟来源生成');
+      if (kind !== 'trade') throw new ProviderBillError('permanent', '银联全渠道文件接口不提供独立资金余额账单');
+      const merchantId = requireField(ctx.config.unionpayMerId, '商户号');
+      const response = await unionpayRequest(ctx, BILL_GATEWAY, {
+        ...baseParams(ctx), txnType: '76', txnSubType: '01', bizType: '000000',
+        settleDate: billDate.replaceAll('-', '').slice(4), txnTime: txnTime(), fileType: '00',
+      });
+      if (response.settleDate !== billDate.replaceAll('-', '').slice(4) || response.txnType !== '76' || response.txnSubType !== '01') {
+        throw new ProviderBillError('integrity', '银联文件响应账期或交易类型不匹配');
+      }
+      if (!response.fileContent) throw new ProviderBillError('integrity', '银联文件响应缺少账单内容');
+      // Archive the signed response as evidence even when its compressed payload cannot be decoded.
+      const envelope = billArtifact(Buffer.from(encodeForm(response)), `unionpay_${merchantId}_${billDate}_signed-response.txt`, 'text/plain');
+      return withBillEvidence([envelope], () => {
+        const bytes = decodeUnionpayFile(response.fileContent);
+        const result = parseProviderBill('unionpay', kind, bytes, response.fileName || `unionpay_${merchantId}_${billDate}.zip`, merchantId, billDate);
+        result.artifacts.unshift(envelope);
+        return result;
+      });
+    });
+  },
 
   async createPayment(ctx, order): Promise<CreatePaymentResult> {
     if (order.payMethod !== 'unionpay_qr') {

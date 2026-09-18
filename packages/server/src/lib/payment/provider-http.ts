@@ -4,7 +4,7 @@ import { HttpClientError, type HttpRequestOptions, type HttpResponse } from '../
 
 const OFFICIAL_GATEWAY_HOSTS: Readonly<Record<'alipay' | 'unionpay', ReadonlySet<string>>> = {
   alipay: new Set(['openapi.alipay.com', 'openapi.alipaydev.com']),
-  unionpay: new Set(['gateway.95516.com']),
+  unionpay: new Set(['gateway.95516.com', 'filedownload.95516.com']),
 };
 
 /** 自定义网关只允许渠道官方 HTTPS 主机，避免配置项成为任意出站代理。 */
