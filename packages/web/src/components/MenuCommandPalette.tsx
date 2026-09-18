@@ -111,9 +111,10 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
 
   const openSearchCenter = useCallback(() => {
     const value = query.trim();
+    const typeParam = selectedType === 'all' ? '' : `&type=${encodeURIComponent(selectedType)}`;
     onClose();
-    navigate(value ? `/search?q=${encodeURIComponent(value)}` : '/search');
-  }, [navigate, onClose, query]);
+    navigate(value ? `/search?q=${encodeURIComponent(value)}${typeParam}` : '/search');
+  }, [navigate, onClose, query, selectedType]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
@@ -166,6 +167,9 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
       <button
         key={isMenu ? `menu-${item.value.id}` : `${item.value.type}-${item.value.id}`}
         type="button"
+        id={`global-search-result-${index}`}
+        role="option"
+        aria-selected={isSelected}
         data-search-index={index}
         onClick={() => handleSelect(item)}
         onMouseEnter={() => setSelectedIndex(index)}
@@ -207,7 +211,7 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
       <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '60vh' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--semi-color-border)' }}>
           <Search size={17} style={{ color: 'var(--semi-color-text-2)', flexShrink: 0 }} />
-          <input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={handleKeyDown} placeholder="全局搜索" style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, color: 'var(--semi-color-text-0)', lineHeight: '22px' }} />
+          <input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={handleKeyDown} placeholder="全局搜索" aria-label="全局搜索" aria-controls="global-search-results" aria-activedescendant={displayItems[selectedIndex] ? `global-search-result-${selectedIndex}` : undefined} style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, color: 'var(--semi-color-text-0)', lineHeight: '22px' }} />
           {remoteSearch.isFetching && query.trim().length >= 2 && <Spin size="small" />}
           {query && <button type="button" onClick={() => setQuery('')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, border: 'none', borderRadius: 'var(--semi-border-radius-small)', background: 'var(--semi-color-fill-1)', color: 'var(--semi-color-text-2)', cursor: 'pointer', padding: 0, flexShrink: 0 }}><span style={{ fontSize: 12, lineHeight: 1 }}>✕</span></button>}
           <button type="button" onClick={openSearchCenter} style={{ border: 'none', background: 'transparent', color: 'var(--semi-color-primary)', cursor: 'pointer', padding: '2px 4px', fontSize: 12, whiteSpace: 'nowrap', flexShrink: 0 }}>搜索中心</button>
@@ -221,7 +225,7 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
           })}
         </div>}
 
-        <div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: '6px 0', minHeight: 0 }}>
+        <div ref={listRef} id="global-search-results" role="listbox" aria-label="搜索结果" style={{ flex: 1, overflowY: 'auto', padding: '6px 0', minHeight: 0 }}>
           {isShowingRecent && recentMenus.length > 0 && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 16px 6px', marginBottom: 2 }}><span style={{ fontSize: 11, fontWeight: 600, color: 'var(--semi-color-text-2)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>最近访问</span><button type="button" onClick={onClearRecents} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--semi-color-text-2)', padding: '0 2px' }}>清除</button></div>}
           {isShowingRecent && recentMenus.length === 0 && <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--semi-color-text-2)', fontSize: 13 }}><Hash size={28} style={{ margin: '0 auto 10px', opacity: 0.35, display: 'block' }} />输入关键词搜索菜单或业务数据</div>}
           {!isShowingRecent && menuResults.length > 0 && <div style={{ padding: '4px 16px 3px', fontSize: 11, fontWeight: 600, color: 'var(--semi-color-text-2)' }}>菜单</div>}

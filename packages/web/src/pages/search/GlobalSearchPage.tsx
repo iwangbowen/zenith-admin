@@ -10,13 +10,18 @@ import { GLOBAL_SEARCH_TYPE_LABELS, GLOBAL_SEARCH_TYPE_OPTIONS, isSafeInternalSe
 const TYPE_LABELS = GLOBAL_SEARCH_TYPE_LABELS;
 const TYPE_OPTIONS = GLOBAL_SEARCH_TYPE_OPTIONS;
 const SAVED_KEY = 'zenith:global-search:saved';
+const RECENT_KEY = 'zenith:global-search:recent';
 type SavedSearch = { q: string; type?: GlobalSearchType; label: string };
 
-function loadSaved(): SavedSearch[] {
+function loadStored(key: string): SavedSearch[] {
   try {
-    const value = JSON.parse(localStorage.getItem(SAVED_KEY) ?? '[]') as unknown;
+    const value = JSON.parse(localStorage.getItem(key) ?? '[]') as unknown;
     return Array.isArray(value) ? value.filter((item): item is SavedSearch => !!item && typeof item === 'object' && typeof (item as SavedSearch).q === 'string') : [];
   } catch { return []; }
+}
+
+function persistStored(key: string, value: SavedSearch[]) {
+  localStorage.setItem(key, JSON.stringify(value));
 }
 
 export default function GlobalSearchPage() {
@@ -29,7 +34,8 @@ export default function GlobalSearchPage() {
   });
   const [limit, setLimit] = useState(10);
   const [sort, setSort] = useState<'relevance' | 'type'>('relevance');
-  const [saved, setSaved] = useState<SavedSearch[]>(loadSaved);
+  const [saved, setSaved] = useState<SavedSearch[]>(() => loadStored(SAVED_KEY));
+  const [recent, setRecent] = useState<SavedSearch[]>(() => loadStored(RECENT_KEY));
   const search = useGlobalSearch(draft, true, type ? [type] : undefined, limit);
   const query = draft.trim();
   const urlType = searchParams.get('type');
@@ -50,7 +56,13 @@ export default function GlobalSearchPage() {
     if (normalizedType !== type) setType(normalizedType);
   }, [urlQuery, urlType]);
 
-  useEffect(() => { setLimit(10); }, [query, type]);
+  useEffect(() => {
+    setLimit(10);
+    if (query.length < 2 || !search.data) return;
+    const next = [{ q: query, type, label: `${query}${type ? ` · ${TYPE_LABELS[type]}` : ''}` }, ...recent.filter((item) => item.q !== query || item.type !== type)].slice(0, 10);
+    setRecent(next);
+    persistStored(RECENT_KEY, next);
+  }, [query, type, search.data]);
 
   const results = useMemo(() => {
     const list = [...(search.data?.results ?? [])];
@@ -63,13 +75,13 @@ export default function GlobalSearchPage() {
     if (!q) return;
     const next = [{ q, type, label: `${q}${type ? ` · ${TYPE_LABELS[type]}` : ''}` }, ...saved.filter((item) => item.q !== q || item.type !== type)].slice(0, 10);
     setSaved(next);
-    localStorage.setItem(SAVED_KEY, JSON.stringify(next));
+    persistStored(SAVED_KEY, next);
   }
 
   function removeSaved(item: SavedSearch) {
     const next = saved.filter((candidate) => candidate !== item);
     setSaved(next);
-    localStorage.setItem(SAVED_KEY, JSON.stringify(next));
+    persistStored(SAVED_KEY, next);
   }
 
   return (
@@ -86,6 +98,12 @@ export default function GlobalSearchPage() {
         <Button icon={<Bookmark size={14} />} onClick={saveCurrent} disabled={!query}>保存条件</Button>
       </div>
 
+      {recent.length > 0 && <div style={{ marginBottom: 8 }}>
+        <Typography.Text type="tertiary" size="small">最近搜索</Typography.Text>
+        <Space wrap spacing={8} style={{ marginTop: 6 }}>
+          {recent.map((item) => <Tag key={`recent-${item.q}-${item.type ?? 'all'}`} onClick={() => { setDraft(item.q); setType(item.type); }}>{item.label}</Tag>)}
+        </Space>
+      </div>}
       {saved.length > 0 && <Space wrap spacing={8} style={{ marginBottom: 16 }}>
         {saved.map((item) => <Tag key={`${item.q}-${item.type ?? 'all'}`} closable onClose={() => removeSaved(item)} onClick={() => { setDraft(item.q); setType(item.type); }}>{item.label}</Tag>)}
       </Space>}
@@ -99,7 +117,7 @@ export default function GlobalSearchPage() {
         size="default"
         split
         dataSource={results}
-        renderItem={(item) => (
+        renderItem={(item, index) => (
           <List.Item
             key={`${item.type}-${item.id}`}
             onClick={() => { if (isSafeInternalSearchRoute(item.route)) navigate(item.route); }}
@@ -108,6 +126,7 @@ export default function GlobalSearchPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', minWidth: 0 }}>
               <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 8, background: 'var(--semi-color-fill-1)', color: 'var(--semi-color-primary)', flexShrink: 0 }}>{item.icon ? renderLucideIcon(item.icon, 16) : <Search size={16} />}</span>
               <span style={{ flex: 1, minWidth: 0 }}>
+                {sort === 'type' && (index === 0 || results[index - 1]?.type !== item.type) && <div style={{ fontSize: 11, color: 'var(--semi-color-primary)', marginBottom: 3 }}>{TYPE_LABELS[item.type]}</div>}
                 <Typography.Text strong ellipsis>{item.title}</Typography.Text>
                 <div style={{ color: 'var(--semi-color-text-2)', fontSize: 12 }}>{[TYPE_LABELS[item.type], item.subtitle, item.description].filter(Boolean).join(' · ')}</div>
                 {item.highlights[0] && <div style={{ color: 'var(--semi-color-text-2)', fontSize: 12 }}>命中：{item.highlights[0].text}</div>}
