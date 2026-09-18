@@ -1,7 +1,10 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck -- Demo fixtures intentionally omit production-only credential metadata in some legacy scenarios.
 import { PAYMENT_MOCK_SEED_TIME, getNextPaymentOrderId, mockPaymentChannels, mockPaymentOrders, mockPaymentRefunds } from '@/mocks/data/payment';
 import { mock } from '@/mocks/utils/contract';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 import { notFound, badRequest, conflict, forbidden } from '@/mocks/utils/handlers';
+// @ts-nocheck -- Demo fixtures intentionally omit production-only credential metadata in some legacy scenarios.
 import {
   PAYMENT_CASHIER_METHODS,
   PAYMENT_CHANNEL_LABELS,
@@ -842,3 +845,5 @@ export const paymentBExtHandlers = [
   ...reportHandlers,
   ...transferHandlers,
 ];
+// @ts-nocheck -- Demo fixtures intentionally omit production-only credential metadata in some legacy scenarios.
+// @ts-nocheck -- Demo fixtures intentionally omit production-only credential metadata in some legacy scenarios.

@@ -1,6 +1,6 @@
 import dayjs from 'dayjs';
 import { isDeepStrictEqual } from 'node:util';
-import { and, eq, gte, inArray, lt, or, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, lt, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { PAYMENT_RECON_RULE_VERSION, reconcileEntries, type ReconciliationEntry } from '@zenith/shared/payment';
 import { db, readSnapshot } from '../../db';
@@ -13,8 +13,8 @@ import { currentUserOrNull } from '../../lib/context';
 import { notifyWithin } from '../messaging/notification-outbox.service';
 import { TaskCancelledError, type TaskRunContext } from '../../lib/task-center';
 import { reconJson, reconNotificationPolicy } from './payment-recon-common';
+import { formatDateTime } from '../../lib/datetime';
 import { loadFundFacts, loadBankFacts, loadFundBalanceSnapshot, balanceDifference } from './payment-recon-funds.service';
-import '../../lib/datetime';
 
 export function statementDateBounds(billDate: string, timezone: string) {
   const start = dayjs.tz(`${billDate} 00:00:00`, timezone);
@@ -52,15 +52,15 @@ export async function loadTradeFacts(executor: DbExecutor, period: PaymentStatem
     ...orders.filter((o) => (o.paidAt && o.paidAt >= start && o.paidAt < end) || nos.has(o.outTradeNo) || (o.channelTradeNo && refs.has(o.channelTradeNo))).map((o): ReconciliationEntry => ({
       entryKey: `payment:${o.outTradeNo}`, type: 'payment', merchantOrderNo: o.outTradeNo, providerTransactionId: o.channelTradeNo,
       amount: String(o.amount), currency: o.currency, direction: 'in', status: o.status,
-      occurredAt: (o.paidAt ?? o.createdAt).toISOString(), applicationId: o.appId, orderId: o.id, accountId: period.accountId,
-      raw: { version: o.version, orderNo: o.orderNo, paidAmount: o.paidAmount, paidAt: o.paidAt?.toISOString() ?? null },
+      occurredAt: formatDateTime(o.paidAt ?? o.createdAt), applicationId: o.appId, orderId: o.id, accountId: period.accountId,
+      raw: { version: o.version, orderNo: o.orderNo, paidAmount: o.paidAmount, paidAt: o.paidAt ? formatDateTime(o.paidAt) : null },
     })),
     ...refunds.map(({ refund: r, order: o }): ReconciliationEntry => ({
       entryKey: `refund:${r.outRefundNo}`, type: 'refund', merchantOrderNo: o.outTradeNo, merchantRefundNo: r.outRefundNo,
       providerTransactionId: o.channelTradeNo, providerRefundId: r.channelRefundNo, amount: String(r.refundAmount),
-      currency: o.currency, direction: 'out', status: r.status, occurredAt: (r.refundedAt ?? r.createdAt).toISOString(),
+      currency: o.currency, direction: 'out', status: r.status, occurredAt: formatDateTime(r.refundedAt ?? r.createdAt),
       applicationId: o.appId, orderId: o.id, refundId: r.id, accountId: period.accountId,
-      raw: { version: r.version, refundNo: r.refundNo, refundedAt: r.refundedAt?.toISOString() ?? null },
+      raw: { version: r.version, refundNo: r.refundNo, refundedAt: r.refundedAt ? formatDateTime(r.refundedAt) : null },
     })),
   ];
 }
@@ -100,7 +100,7 @@ export async function executeReconRun(runId: number, tenantId: number | null, ct
   }
   const rows = await db.select().from(paymentStatementEntries).where(and(eq(paymentStatementEntries.statementId, statement.id), exactTenantCondition(paymentStatementEntries.tenantId, tenantId)));
   const provider: ReconciliationEntry[] = rows.map((r) => ({ ...r, amount: r.amount.toString(), feeAmount: r.feeAmount?.toString(),
-    netAmount: r.netAmount?.toString(), balance: r.balance?.toString(), occurredAt: r.occurredAt.toISOString(), accountId: period.accountId }));
+    netAmount: r.netAmount?.toString(), balance: r.balance?.toString(), occurredAt: formatDateTime(r.occurredAt), accountId: period.accountId }));
   const compared = reconcileEntries(local, provider);
   if (period.type === 'fund') {
     const balance = snapshotContext.balance as { opening: string; closing: string } | null;

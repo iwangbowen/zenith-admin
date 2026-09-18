@@ -97,7 +97,7 @@ export default function PaymentReconPage() {
   const workflow = usePaymentReconWorkflowContext(adjustment?.id, selectedInstanceId);
   const preview = usePaymentReconWorkflowPreview(currentAdjustment?.status === 'draft' ? adjustment?.id : undefined, definitionId);
   const { tasks, loading: tasksLoading, refresh: refreshTasks } = useMyAsyncTasks({ taskTypes: TASK_TYPES });
-  const terminalTaskKey = tasks.filter((task) => task.status === 'completed' || task.status === 'failed').map((task) => `${task.id}:${task.status}:${task.updatedAt}`).join('|');
+  const terminalTaskKey = tasks.filter((task) => task.status === 'success' || task.status === 'failed' || task.status === 'cancelled').map((task) => `${task.id}:${task.status}:${task.updatedAt}`).join('|');
   useEffect(() => { if (terminalTaskKey) invalidatePaymentReconciliation(qc); }, [terminalTaskKey, qc]);
   const submit = useSubmitPaymentStatement(); const importBill = useImportPaymentStatement(); const retry = useRetryPaymentStatement();
   const run = useRunPaymentRecon(); const handle = useHandlePaymentReconCase(); const compensate = useCompensatePaymentReconCase();
@@ -192,7 +192,7 @@ export default function PaymentReconPage() {
       <StatCard title="待审批 / 执行" value={summary.data?.pendingAdjustments ?? 0} />
       <StatCard title="未核验银行 / 结算" value={`${summary.data?.unmatchedBankEntries ?? 0} / ${summary.data?.unmatchedSettlementEntries ?? 0}`} />
     </StatGrid>
-    {(summary.data?.differenceAmounts ?? []).map((item) => <Typography.Text key={item.currency} type="warning">{item.currency} 未解决差异金额：{formatReconciliationAmount(item.amount)}　</Typography.Text>)}
+    {(summary.data?.differenceAmounts ?? []).map((item) => <Typography.Text key={item.currency} type="warning">{item.currency} 未解决差异金额：{formatReconciliationAmount(item.amount)} </Typography.Text>)}
     <Tabs activeKey={tab} onChange={setTab} keepDOM={false}>
       <Tabs.TabPane tab="账期与原件" itemKey="periods"><ListSearchToolbar page={periods} filters={['type', 'status', 'billDate']} /><ConfigurableTable columns={periodColumns} columnSettingsKey="payment-recon-periods" {...periods.tableProps} /></Tabs.TabPane>
       <Tabs.TabPane tab="差异案件" itemKey="cases"><ListSearchToolbar page={cases} filters={['type', 'stage', 'status']} /><ConfigurableTable columns={caseColumns} columnSettingsKey="payment-recon-cases" {...cases.tableProps} /></Tabs.TabPane>
@@ -249,7 +249,7 @@ export default function PaymentReconPage() {
       {currentAdjustment?.status === 'executed' && hasPermission('payment:recon:adjust') && <Button onClick={reverseModal.openCreate}>申请冲正</Button>}<Button onClick={() => setAdjustment(undefined)}>关闭</Button>
     </Space>}>
       {currentAdjustment && <Suspense fallback={<Spin />}><BusinessWorkflowPanel context={workflow.data} preview={preview.data} loading={workflow.isLoading || preview.isLoading} error={workflow.error ?? preview.error} selectedInstanceId={selectedInstanceId} onSelectInstance={setSelectedInstanceId}
-        formContent={<>{currentAdjustment.status === 'draft' && <div style={{ padding: 16 }}><Typography.Paragraph>审批流程</Typography.Paragraph><Select aria-label="调整审批流程" placeholder="选择已发布的业务审批流程" optionList={definitionOptions} value={definitionId} filter style={fullWidth} onChange={(value) => setDefinitionId(Number(value))} /></div>}<ReconAdjustmentDetails adjustment={currentAdjustment} /></>} /></Suspense>}
+        formContent={<>{currentAdjustment.status === 'draft' && <div style={{ padding: 16 }}><Typography.Paragraph>审批流程</Typography.Paragraph><Select aria-label="调整审批流程" placeholder="选择已发布的业务审批流程" optionList={definitionOptions} value={definitionId} filter style={fullWidth} onChange={(value) => setDefinitionId(typeof value === 'number' ? value : undefined)} /></div>}<ReconAdjustmentDetails adjustment={currentAdjustment} /></>} /></Suspense>}
     </WorkflowSideSheet>
   </div>;
 }

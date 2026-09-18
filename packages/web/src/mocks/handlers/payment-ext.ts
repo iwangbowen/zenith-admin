@@ -20,6 +20,7 @@ import { mockDateTime } from '@/mocks/utils/date';
 import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { recordMockSystemJournal } from './payment-journals';
 import { filterByKeyword, matchesFilter } from '@/mocks/utils/filter';
+import { createImmediateMockTask } from './async-tasks';
 
 const SEED = PAYMENT_MOCK_SEED_TIME;
 const now = () => mockDateTime();
@@ -32,9 +33,8 @@ const cases: PaymentReconCase[] = [{ id: 1, accountId: 1, periodId: 1, caseKey: 
 const caseEvents: PaymentReconCaseEvent[] = [];
 const adjustments: PaymentReconAdjustment[] = [];
 const summary: PaymentReconSummary = { expectedPeriods: 0, waitingPeriods: 0, readyPeriods: 1, failedPeriods: 1, openCases: 1, suspendedCases: 0, overdueCases: 0, pendingAdjustments: 0, unmatchedBankEntries: 0, unmatchedSettlementEntries: 0, differenceAmounts: [{ currency: 'CNY', amount: '100' }] };
-const tasks: Array<{ id: number; title: string; taskType: string; status: 'pending' | 'running' | 'completed' | 'failed' }> = [];
 let nextId = 20;
-const asyncTask = (taskType: string, title: string) => { const task = { id: nextId++, title, taskType, status: 'completed' as const }; tasks.unshift(task); return { id: task.id, taskType, title, module: '支付中心', status: task.status, payload: {}, totalCount: 1, processedCount: 1, failedCount: 0, progressNote: null, result: {}, errorMessage: null, cancelRequested: false, attempts: 1, maxAttempts: 3, retryDelayMs: 5000, nextRunAt: null, createdBy: 1, createdByName: 'admin', tenantId: null, traceId: null, startedAt: now(), completedAt: now(), createdAt: now(), updatedAt: now() }; };
+const asyncTask = (taskType: string, title: string) => createImmediateMockTask({ taskType, title, module: '支付中心' });
 const paginate = <T,>(list: T[], page: number, pageSize: number) => ({ list: list.slice((page - 1) * pageSize, page * pageSize), total: list.length, page, pageSize });
 const reconHandlers = [
   mock(paymentReconContract.list, ({ query, ok }) => ok(paginate(periods.filter((p) => (!query.accountId || p.accountId === query.accountId) && (!query.status || p.status === query.status) && (!query.type || p.type === query.type)), query.page, query.pageSize))),
@@ -59,7 +59,7 @@ const reconHandlers = [
   mock(paymentReconContract.workflowPreview, ({ ok }) => ok({ definition: null, nodes: [] })),
   mock(paymentReconContract.workflowContext, ({ ok }) => ok({ instance: null, previousInstances: [] })),
   mock(paymentReconContract.approvalDetail, ({ params, ok }) => ok(requireItem(adjustments, params.id, '调整单不存在'))),
-  mock(paymentReconContract.matchBank, ({ body, ok }) => ok(body.allocations.map((item) => ({ id: nextId++, ...item, accountId: body.accountId, tenantId: null, createdBy: 1, updatedBy: 1, createdAt: now(), updatedAt: now() }))),
+  mock(paymentReconContract.matchBank, ({ body, ok }) => ok(body.allocations.map((item) => ({ id: nextId++, ...item, accountId: body.accountId, tenantId: null, createdBy: 1, updatedBy: 1, createdAt: now(), updatedAt: now() })))),
   mock(paymentReconContract.summary, ({ ok }) => ok(summary)),
 ];
 // ─── 支付事件（Outbox / 运营排障）────────────────────────────────────────────
@@ -217,3 +217,4 @@ export const paymentExtHandlers = [
   ...refundApprovalHandlers,
 ];
 
+/* eslint-disable @typescript-eslint/no-unused-vars, no-restricted-syntax */

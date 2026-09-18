@@ -1,14 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { createRequestMock, createTestQueryClient, createWrapper, type RecordedCall } from '@/test-utils/query-harness';
+import { ApiRecorder, createRequestMock, createTestQueryClient, createWrapper } from '@/test-utils/query-harness';
 import { paymentReconContract } from '@zenith/shared/payment';
 import { useHandlePaymentReconCase, usePaymentReconCase, usePaymentReconCases, usePaymentReconSummary, useSubmitPaymentStatement } from './payment-recon';
 
-const api = vi.hoisted(() => ({ calls: [] as RecordedCall[] }));
-vi.mock('@/utils/request', () => ({ request: createRequestMock((call: RecordedCall) => { api.calls.push(call); if (call.method === 'GET' && call.url.includes('/summary')) return { expectedPeriods: 0, waitingPeriods: 1, readyPeriods: 2, failedPeriods: 0, openCases: 1, suspendedCases: 0, overdueCases: 0, pendingAdjustments: 0, unmatchedBankEntries: 0, unmatchedSettlementEntries: 0, differenceAmounts: [] }; if (call.method === 'GET' && call.url.includes('/cases/')) return { id: 7, version: 1, status: 'open', events: [], adjustments: [] }; if (call.method === 'GET') return { list: [], total: 0, page: 1, pageSize: 10 }; return { id: 11, taskType: 'payment-statement-download', title: '账单下载', status: 'pending' }; }) }));
+const api = new ApiRecorder();
+vi.mock('@/utils/request', () => ({ request: createRequestMock(() => api) }));
 
 describe('payment reconciliation queries', () => {
-  beforeEach(() => { api.calls.length = 0; });
+  beforeEach(() => {
+    api.reset();
+    api.on('GET', /\/summary/, { expectedPeriods: 0, waitingPeriods: 1, readyPeriods: 2, failedPeriods: 0, openCases: 1, suspendedCases: 0, overdueCases: 0, pendingAdjustments: 0, unmatchedBankEntries: 0, unmatchedSettlementEntries: 0, differenceAmounts: [] });
+    api.on('GET', /\/cases\/7$/, { id: 7, version: 1, status: 'open', events: [], adjustments: [] });
+    api.on('GET', '*', { list: [], total: 0, page: 1, pageSize: 10 });
+    api.on('POST', '*', { id: 11, taskType: 'payment-statement-download', title: '账单下载', status: 'pending' });
+  });
   it('uses account scoped case and summary contract paths', async () => {
     const queryClient = createTestQueryClient();
     const { result } = renderHook(() => ({ cases: usePaymentReconCases({ page: 1, pageSize: 10, accountId: 3 }), detail: usePaymentReconCase(7), summary: usePaymentReconSummary(3) }), { wrapper: createWrapper(queryClient) });

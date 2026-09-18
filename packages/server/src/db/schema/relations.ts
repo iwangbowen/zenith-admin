@@ -175,6 +175,9 @@ export const paymentChannelAccountsRelations = relations(paymentChannelAccounts,
   journals: many(paymentJournals),
   ledgerAccounts: many(paymentLedgerAccounts),
   settlements: many(paymentSettlementBatches),
+  statementPeriods: many(paymentStatementPeriods),
+  reconCases: many(paymentReconCases),
+  bankMatches: many(paymentBankMatches),
 }));
 
 export const paymentStatementPeriodsRelations = relations(paymentStatementPeriods, ({ one, many }) => ({

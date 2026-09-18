@@ -24,7 +24,7 @@ const routes = [
     c.header('Content-Disposition', attachmentDisposition(file.filename));
     c.header('Cache-Control', 'private, no-store');
     c.header('X-Content-Type-Options', 'nosniff');
-    return c.body(new Uint8Array(bytes));
+    return c.body(new Uint8Array(bytes).buffer as ArrayBuffer, 200);
   } }),
   defineContractRoute(paymentReconContract.reconcile, { handler: async (c) => c.json(okBody(await submitReconRun(c.req.valid('param').id)), 200) }),
   defineContractRoute(paymentReconContract.runs, { handler: async (c) => c.json(okBody(await listReconRuns(c.req.valid('query'))), 200) }),

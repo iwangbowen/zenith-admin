@@ -119,7 +119,7 @@ export async function getReconSummary(q: QueryOutputOf<typeof paymentReconContra
   const user = currentUser();
   const periodWhere = buildWhere(tenantCondition(paymentStatementPeriods, user), q.accountId ? eq(paymentStatementPeriods.accountId, q.accountId) : undefined);
   const caseWhere = buildWhere(tenantCondition(paymentReconCases, user), q.accountId ? eq(paymentReconCases.accountId, q.accountId) : undefined);
-  const accountCases = q.accountId ? db.select({ id: paymentReconCases.id }).from(paymentReconCases).where(eq(paymentReconCases.accountId, q.accountId)) : undefined;
+  const accountCases = q.accountId ? db.select({ id: paymentReconCases.id }).from(paymentReconCases).where(buildWhere(eq(paymentReconCases.accountId, q.accountId), tenantCondition(paymentReconCases, user))) : undefined;
   return readSnapshot(async (tx) => {
   const unmatched = (bank: boolean) => tx.$count(paymentStatementEntries, buildWhere(
     tenantCondition(paymentStatementEntries, user), eq(paymentStatementEntries.type, 'settlement'), eq(paymentStatementEntries.status, 'success'), eq(paymentStatementEntries.direction, bank ? 'in' : 'out'),

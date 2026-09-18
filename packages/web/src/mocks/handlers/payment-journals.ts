@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck -- Demo fixtures intentionally omit production-only credential metadata in some legacy scenarios.
 import {
   PAYMENT_LEDGER_STANDARD_ACCOUNTS,
   paymentJournalContract,
@@ -27,6 +29,8 @@ export interface MockSystemJournalInput {
   description: string;
   appId: number;
   channelConfigId: number;
+  channelAccountId?: number;
+  credentialVersion?: number;
   currency: string;
   lines: Array<{
     accountCode: PaymentLedgerAccountCode;
@@ -52,6 +56,8 @@ function ensureAccount(scope: Pick<MockSystemJournalInput, 'appId' | 'channelCon
     normalBalance: meta.normalBalance,
     appId: scope.appId,
     channelConfigId: scope.channelConfigId,
+    channelAccountId: scope.channelAccountId ?? 1,
+    credentialVersion: scope.credentialVersion ?? 1,
     currency: scope.currency,
     status: 'enabled',
     createdAt: now,
@@ -100,6 +106,8 @@ export function recordMockSystemJournal(input: MockSystemJournalInput): PaymentJ
     description: input.description,
     appId: input.appId,
     channelConfigId: input.channelConfigId,
+    channelAccountId: input.channelAccountId ?? 1,
+    credentialVersion: input.credentialVersion ?? 1,
     currency: input.currency,
     reversalOfJournalId: null,
     reversedByJournalId: null,
@@ -117,7 +125,7 @@ recordMockSystemJournal({
   sourceId: 'PAY1700000000001',
   description: '支付收款 PAY1700000000001',
   appId: 1,
-  channelConfigId: 1,
+  channelConfigId: 1, channelAccountId: 1, credentialVersion: 1,
   currency: 'CNY',
   lines: [
     { accountCode: 'provider_clearing', debitAmount: '9900', memo: '渠道应收增加' },

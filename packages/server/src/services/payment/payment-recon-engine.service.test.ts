@@ -22,7 +22,7 @@ function chain(result?: unknown[]) {
   return q;
 }
 const period = { id: 3, accountId: 5, type: 'trade', billDate: '2026-09-17', currency: 'CNY', tenantId: null, currentStatementId: 4 } as PaymentStatementPeriodRow;
-const context = () => ({ progress: vi.fn().mockResolvedValue({ cancelRequested: false }) }) as unknown as TaskRunContext;
+const context = () => ({ taskId: 42, attempt: 1, progress: vi.fn().mockResolvedValue({ cancelRequested: false }), isCancelRequested: vi.fn().mockResolvedValue(false) }) as unknown as TaskRunContext;
 const stamp = new Date('2026-09-17T10:00:00+08:00');
 
 beforeEach(() => {
@@ -59,10 +59,10 @@ describe('reconciliation execution evidence', () => {
 
   it('replays a started run from its frozen snapshot even when current business data is unavailable', async () => {
     const local = { entryKey: 'payment:ORDER1', type: 'payment', merchantOrderNo: 'ORDER1', providerTransactionId: 'WX1', currency: 'CNY', amount: '10000', direction: 'in', status: 'success', occurredAt: '2026-09-17 10:00:00', accountId: 5 };
-    const run = { id: 1, statementId: 4, status: 'running', startedAt: stamp, localSnapshot: [local], snapshotContext: { cases: [], adjustments: [] }, createdBy: 7 };
+    const run = { id: 1, statementId: 4, taskId: 42, status: 'running', startedAt: stamp, localSnapshot: [local], snapshotContext: { cases: [], adjustments: [] }, createdBy: 7 };
     const statement = { id: 4, periodId: 3, version: 1, status: 'validated', source: 'provider_download' };
     mocks.rows = [[run], [statement], [period], [{ id: 5, name: '商户账户', billTimezone: 'Asia/Shanghai' }],
-      [{ ...local, id: 9, amount: 10000n, occurredAt: stamp }], [period], [run], []];
+      [{ ...local, id: 9, amount: 10000n, occurredAt: stamp }], [period], [run], [{ id: 42, status: 'running', cancelRequested: false, attempts: 1 }], []];
     expect(await executeReconRun(1, null, context())).toMatchObject({ matchedCount: 1, diffCount: 0 });
     expect(mocks.readSnapshot).not.toHaveBeenCalled(); expect(mocks.fundFacts).not.toHaveBeenCalled();
     expect(mocks.sets).toContainEqual(expect.objectContaining({ status: 'completed', matchedCount: 1 }));

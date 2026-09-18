@@ -4,7 +4,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { PAYMENT_RECON_MAX_FILE_BYTES } from '@zenith/shared/payment';
 import { db } from '../../db';
-import { fileStorageConfigs, paymentStatements, paymentStatementFiles, paymentStatementPeriods, type PaymentStatementPeriodRow, type PaymentStatementFileRow } from '../../db/schema';
+import { fileStorageConfigs, paymentStatements, paymentStatementFiles, paymentStatementPeriods, type PaymentStatementPeriodRow, type PaymentStatementFileRow, type FileStorageConfigRow } from '../../db/schema';
 import { uploadObjectByConfig, readStoredFile, extractBucketName } from '../../lib/file-storage';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
@@ -36,12 +36,12 @@ export async function archiveStatement(
   if (storage.objectAcl.startsWith('public') || storage.urlStrategy === 'public') {
     throw new HTTPException(409, { message: '财务账单必须使用私有存储，请修改默认存储访问策略' });
   }
-  const files = [];
+  const files: Array<Omit<typeof paymentStatementFiles.$inferInsert, 'id' | 'statementId' | 'createdAt'>> = [];
   for (const [i, artifact] of normalized.entries()) {
     const storageKey = `payment-statements/${period.tenantId ?? 'platform'}/${period.accountId}/${period.id}/${source}/${contentHash}/${i}-${artifact.sha256}`;
     await uploadObjectByConfig(storage, { objectKey: storageKey, stream: Readable.from(artifact.bytes), size: artifact.bytes.length, mimeType: artifact.mimeType });
     files.push({ storageKey, storageConfigId: storage.id, storageProvider: storage.provider, bucketName: extractBucketName(storage),
-      filename: artifact.filename.replace(/[\\/\u0000-\u001f]/g, '_').slice(0, 255), mimeType: artifact.mimeType,
+      filename: [...artifact.filename].map((char) => /[\\/]/.test(char) || (char.codePointAt(0) ?? 0) < 0x20 ? '_' : char).join('').slice(0, 255), mimeType: artifact.mimeType,
       sha256: artifact.sha256, providerHash: artifact.providerHash ? JSON.stringify(artifact.providerHash) : null,
       byteLength: artifact.bytes.length, tenantId: period.tenantId });
   }
@@ -65,7 +65,7 @@ export async function archiveStatement(
 export async function readStatementFileBytes(file: PaymentStatementFileRow): Promise<Buffer> {
   const [storage] = await db.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, requireRow(file.storageConfigId, '账单存储配置缺失', 409))).limit(1);
   requireRow(storage, '账单存储配置不存在', 409);
-  const { stream } = await readStoredFile({ objectKey: file.storageKey, provider: file.storageProvider,
+  const { stream } = await readStoredFile({ objectKey: file.storageKey, provider: file.storageProvider as FileStorageConfigRow['provider'],
     bucketName: file.bucketName, mimeType: file.mimeType, originalName: file.filename }, storage);
   const reader = stream.getReader();
   const chunks: Buffer[] = [];

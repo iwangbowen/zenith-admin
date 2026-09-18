@@ -26,7 +26,7 @@ import { requireReconAccount, requireStatementPeriod, requireStatement, requireR
   reconNotificationPolicy, notifyReconFailure, RECON_DOWNLOAD_TASK, RECON_IMPORT_TASK, RECON_COMPARE_TASK, RECON_COMPENSATE_TASK } from './payment-recon-common';
 import { archiveStatement, statementArtifact, readStatementFileBytes } from './payment-statement-storage.service';
 import { executeReconRun, loadTradeFacts, statementDateBounds } from './payment-recon-engine.service';
-import '../../lib/datetime';
+import { formatDateTime } from '../../lib/datetime';
 
 export async function enqueueCommitted(id: number) {
   await enqueueAsyncTask(id).catch((error: unknown) => logger.warn({ taskId: id, error }, '支付对账任务已持久化，等待任务中心补投'));
@@ -77,7 +77,7 @@ export async function submitStatementDownload(input: BodyOf<typeof paymentReconC
   const account = await requireReconAccount(input.accountId);
   assertReconWriteScope(account.tenantId);
   assertBillCapability(account, input.type);
-  const period = await ensurePeriod(account, input.billDate, input.type, input.currency);
+  const period = await ensurePeriod(account, input.billDate, input.type, input.currency ?? 'CNY');
   const task = await db.transaction((tx) => persistPeriodTask(tx, period, RECON_DOWNLOAD_TASK, {}, false));
   await enqueueCommitted(task.id);
   return mapAsyncTask(task);
@@ -95,7 +95,7 @@ export async function submitStatementImport(input: BodyOf<typeof paymentReconCon
   const account = await requireReconAccount(input.accountId);
   assertReconWriteScope(account.tenantId);
   if (input.type === 'bank' && input.format !== 'internal') throw new HTTPException(400, { message: '银行流水请转换为标准 CSV 或 JSON 格式' });
-  const period = await ensurePeriod(account, input.billDate, input.type, input.currency);
+  const period = await ensurePeriod(account, input.billDate, input.type, input.currency ?? 'CNY');
   const raw = statementArtifact(Buffer.from(input.content, 'base64'), input.filename);
   const statement = await archiveStatement(period, [raw], 'manual_upload', { format: input.format, accountId: account.id, merchantId: account.merchantId });
   const task = await db.transaction((tx) => persistPeriodTask(tx, period, RECON_IMPORT_TASK, { statementId: statement.id, format: input.format }, false));
@@ -234,7 +234,7 @@ async function runStatementTask(ctx: TaskRunContext, mode: 'download' | 'import'
       if (ctx.payload.format === 'provider') {
         if (period.type === 'bank') throw new ProviderBillError('format', '银行流水需使用标准格式');
         const parsed = parseProviderBill(account.channel, period.type, bytes, file.filename, account.merchantId, period.billDate);
-        entries = parsed.entries.map((entry) => ({ ...entry, occurredAt: entry.occurredAt ?? statementDateBounds(period.billDate, account.billTimezone).start.toISOString(), raw: { ...entry.raw, lineNo: entry.lineNo } }));
+        entries = parsed.entries.map((entry) => ({ ...entry, occurredAt: entry.occurredAt ?? formatDateTime(statementDateBounds(period.billDate, account.billTimezone).start), raw: { ...entry.raw, lineNo: entry.lineNo } }));
         summary = parsed.summary; parserVersion = parsed.parserVersion;
       } else {
         const text = bytes.toString('utf8').replace(/^\uFEFF/, '');
@@ -264,7 +264,7 @@ async function runStatementTask(ctx: TaskRunContext, mode: 'download' | 'import'
         if (parsed.merchantId !== account.merchantId || parsed.billDate !== period.billDate || parsed.kind !== period.type) throw new ProviderBillError('integrity', '渠道账单身份或账期不一致');
         archivedId = (await archiveStatement(period, parsed.artifacts, 'provider_download', { merchantId: parsed.merchantId, billDate: parsed.billDate,
           kind: parsed.kind, configId: config.id, credentialVersion: config.credentialVersion, authenticated: true })).id;
-        entries = parsed.entries.map((entry) => ({ ...entry, occurredAt: entry.occurredAt ?? statementDateBounds(period.billDate, account.billTimezone).start.toISOString(), raw: { ...entry.raw, lineNo: entry.lineNo } }));
+        entries = parsed.entries.map((entry) => ({ ...entry, occurredAt: entry.occurredAt ?? formatDateTime(statementDateBounds(period.billDate, account.billTimezone).start), raw: { ...entry.raw, lineNo: entry.lineNo } }));
         summary = parsed.summary; parserVersion = parsed.parserVersion;
       }
     }
