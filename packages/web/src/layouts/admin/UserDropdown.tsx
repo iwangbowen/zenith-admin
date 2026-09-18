@@ -54,6 +54,11 @@ export function UserDropdown({
   const [switcherVisible, setSwitcherVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const impersonating = impersonation !== null;
+  /** 菜单项动作统一先收起下拉菜单，避免面板/弹窗打开后菜单仍浮在上层 */
+  const closeAndRun = (fn: () => void) => () => {
+    setMenuVisible(false);
+    fn();
+  };
   return (
     <>
     <AccountSwitcherModal
@@ -64,6 +69,7 @@ export function UserDropdown({
     />
     <Dropdown
       position="bottomRight"
+      visible={menuVisible}
       onVisibleChange={setMenuVisible}
       render={
         <Dropdown.Menu>
@@ -83,43 +89,43 @@ export function UserDropdown({
                   type="tertiary"
                   size="small"
                   aria-label="账号切换"
-                  onClick={() => setSwitcherVisible(true)}
+                  onClick={closeAndRun(() => setSwitcherVisible(true))}
                 />
               </Tooltip>
             )}
           </div>
           <Dropdown.Divider />
-          <Dropdown.Item icon={<UserIcon size={14} strokeWidth={1.5} />} onClick={() => navigate('/profile')}>个人中心</Dropdown.Item>
+          <Dropdown.Item icon={<UserIcon size={14} strokeWidth={1.5} />} onClick={closeAndRun(() => navigate('/profile'))}>个人中心</Dropdown.Item>
           <Dropdown.Item
             icon={<Bell size={14} strokeWidth={1.5} />}
-            onClick={() => navigate('/inbox')}
+            onClick={closeAndRun(() => navigate('/inbox'))}
           >
             我的消息{unreadCount > 0 && <Badge count={unreadCount} overflowCount={99} style={{ marginLeft: 6 }} />}
           </Dropdown.Item>
-          <Dropdown.Item icon={<Megaphone size={14} strokeWidth={1.5} />} onClick={() => navigate('/announcements')}>公告中心{announcementUnreadCount > 0 && <Badge count={announcementUnreadCount} overflowCount={99} style={{ marginLeft: 6 }} />}</Dropdown.Item>
+          <Dropdown.Item icon={<Megaphone size={14} strokeWidth={1.5} />} onClick={closeAndRun(() => navigate('/announcements'))}>公告中心{announcementUnreadCount > 0 && <Badge count={announcementUnreadCount} overflowCount={99} style={{ marginLeft: 6 }} />}</Dropdown.Item>
           {canUseApproval && (
-            <Dropdown.Item icon={<Smartphone size={14} strokeWidth={1.5} />} onClick={() => window.open(`${import.meta.env.BASE_URL.replace(/\/$/, '')}/approval.html`, '_blank')}>移动审批</Dropdown.Item>
+            <Dropdown.Item icon={<Smartphone size={14} strokeWidth={1.5} />} onClick={closeAndRun(() => window.open(`${import.meta.env.BASE_URL.replace(/\/$/, '')}/approval.html`, '_blank'))}>移动审批</Dropdown.Item>
           )}
           {feedbackEntryEnabled && (
-            <Dropdown.Item icon={<MessageSquareHeart size={14} strokeWidth={1.5} />} onClick={() => setFeedbackVisible(true)}>意见反馈</Dropdown.Item>
+            <Dropdown.Item icon={<MessageSquareHeart size={14} strokeWidth={1.5} />} onClick={closeAndRun(() => setFeedbackVisible(true))}>意见反馈</Dropdown.Item>
           )}
-          {(hasEditablePreferences || enableLockScreen) && <Dropdown.Item icon={<Settings size={14} strokeWidth={1.5} />} onClick={() => setPrefsVisible(true)}>偏好设置</Dropdown.Item>}
-          <Dropdown.Item icon={<Keyboard size={14} strokeWidth={1.5} />} onClick={() => setShortcutsVisible(true)}>快捷键</Dropdown.Item>
+          {(hasEditablePreferences || enableLockScreen) && <Dropdown.Item icon={<Settings size={14} strokeWidth={1.5} />} onClick={closeAndRun(() => setPrefsVisible(true))}>偏好设置</Dropdown.Item>}
+          <Dropdown.Item icon={<Keyboard size={14} strokeWidth={1.5} />} onClick={closeAndRun(() => setShortcutsVisible(true))}>快捷键</Dropdown.Item>
           {(enableLockScreen ?? false) && hasPassword() && (
-            <Dropdown.Item icon={<Lock size={14} strokeWidth={1.5} />} onClick={() => lock()}>锁屏</Dropdown.Item>
+            <Dropdown.Item icon={<Lock size={14} strokeWidth={1.5} />} onClick={closeAndRun(() => lock())}>锁屏</Dropdown.Item>
           )}
           <Dropdown.Divider />
           {impersonating ? (
             <Dropdown.Item
               icon={<VenetianMask size={14} strokeWidth={1.5} />}
-              onClick={() => { disconnectWs(); clearLockPassword(); void endImpersonation(); }}
+              onClick={closeAndRun(() => { disconnectWs(); clearLockPassword(); void endImpersonation(); })}
             >
               结束模拟并返回 {impersonation.operatorUsername}
             </Dropdown.Item>
           ) : (
           <Dropdown.Item
             icon={<LogOut size={14} strokeWidth={1.5} />}
-            onClick={() => {
+            onClick={closeAndRun(() => {
               const doLogout = () => { disconnectWs(); clearLockPassword(); onLogout(); };
               const nextAccount = parkedAccounts[0];
               if (!(confirmLogout ?? true)) {
@@ -135,7 +141,7 @@ export function UserDropdown({
                 cancelText: '取消',
                 onOk: doLogout,
               });
-            }}
+            })}
           >
             退出登录
           </Dropdown.Item>
