@@ -42,7 +42,9 @@ export const globalSearchAdapters: readonly GlobalSearchAdapter[] = [
   exceptionLogSearchAdapter,
 ];
 
-const ADAPTER_TIMEOUT_MS = 800;
+const ADAPTER_TIMEOUT_MS = 1200;
+const SLOW_ADAPTER_LOG_MS = 400;
+const MAX_MERGED_RESULTS = 30;
 
 function selectedAdapters(types: string | undefined, adapters: readonly GlobalSearchAdapter[]): GlobalSearchAdapter[] {
   if (!types?.trim()) return [...adapters];
@@ -58,6 +60,35 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
       (error: unknown) => { clearTimeout(timer); reject(error); },
     );
   });
+}
+
+function scoreResult(item: Awaited<ReturnType<GlobalSearchAdapter['search']>>[number], query: string): number {
+  const q = query.trim().toLocaleLowerCase();
+  const title = item.title.toLocaleLowerCase();
+  if (title === q) return 100;
+  if (title.startsWith(q)) return 85;
+  if (title.includes(q)) return 70;
+  if (item.subtitle?.toLocaleLowerCase().includes(q)) return 50;
+  if (item.highlights.some((highlight) => highlight.text.toLocaleLowerCase().includes(q))) return 40;
+  if (item.description?.toLocaleLowerCase().includes(q)) return 25;
+  return 0;
+}
+
+function rankAndDedupe(
+  results: Awaited<ReturnType<GlobalSearchAdapter['search']>>,
+  query: string,
+): Awaited<ReturnType<GlobalSearchAdapter['search']>> {
+  const byIdentity = new Map<string, { item: Awaited<ReturnType<GlobalSearchAdapter['search']>>[number]; score: number; index: number }>();
+  results.forEach((item, index) => {
+    const score = scoreResult(item, query);
+    const key = `${item.type}:${item.id}`;
+    const existing = byIdentity.get(key);
+    if (!existing || score > existing.score) byIdentity.set(key, { item, score, index });
+  });
+  return [...byIdentity.values()]
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .slice(0, MAX_MERGED_RESULTS)
+    .map(({ item }) => item);
 }
 
 export interface GlobalSearchRunResult {
@@ -77,7 +108,11 @@ export async function runGlobalSearch(
       if (adapter.permissions !== 'authenticated' && !(await hasPermission(...adapter.permissions))) {
         return { type: adapter.type, results: [], failed: false } as const;
       }
-      return { type: adapter.type, results: await withTimeout(adapter.search(input), timeoutMs), failed: false } as const;
+      const startedAt = Date.now();
+      const results = await withTimeout(adapter.search(input), adapter.timeoutMs ?? timeoutMs);
+      const durationMs = Date.now() - startedAt;
+      if (durationMs >= SLOW_ADAPTER_LOG_MS) logger.debug('[global-search] slow adapter', { type: adapter.type, durationMs });
+      return { type: adapter.type, results, failed: false } as const;
     } catch (error) {
       logger.warn('[global-search] adapter failed', {
         type: adapter.type,
@@ -87,7 +122,7 @@ export async function runGlobalSearch(
     }
   }));
   return {
-    results: settled.flatMap((item) => item.results),
+    results: rankAndDedupe(settled.flatMap((item) => item.results), input.q),
     failedTypes: settled.filter((item) => item.failed).map((item) => item.type),
   };
 }

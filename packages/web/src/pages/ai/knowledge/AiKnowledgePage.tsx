@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { deleteAction, useCrudOperationColumn } from '@/components/list-page';
 import { Button, Form, SideSheet, Space, Tag, Toast, Typography, Upload } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -42,12 +43,23 @@ export default function AiKnowledgePage() {
   const { hasPermission } = usePermission();
   const [search, setSearch] = useState('');
   const [docsKb, setDocsKb] = useState<AiKnowledgeBase | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [viewingDoc, setViewingDoc] = useState<AiKbDocument | null>(null);
   const [urlModalVisible, setUrlModalVisible] = useState(false);
   // useEditModal 例外：网页导入对话框（抓取入库，非实体新增 / 编辑表单）
   const urlFormApi = useRef<FormApi | null>(null);
 
   const listQuery = useAiKnowledgeBases();
+  useEffect(() => {
+    const kbId = Number(searchParams.get('kbId'));
+    if (!Number.isFinite(kbId) || !listQuery.data) return;
+    const target = listQuery.data.find((kb) => kb.id === kbId);
+    if (!target) return;
+    setDocsKb(target);
+    const next = new URLSearchParams(searchParams);
+    next.delete('kbId');
+    setSearchParams(next, { replace: true });
+  }, [listQuery.data, searchParams, setSearchParams]);
   // 拼音词典就绪后重渲染，补上已输入关键字的拼音命中
   usePinyinReady();
   const list = (listQuery.data ?? []).filter(

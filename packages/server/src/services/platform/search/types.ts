@@ -9,5 +9,7 @@ export interface GlobalSearchInput {
 export interface GlobalSearchAdapter {
   readonly type: GlobalSearchType;
   readonly permissions: 'authenticated' | readonly [Permission, ...Permission[]];
+  /** 单个适配器的查询预算，未声明时使用编排器默认值。 */
+  readonly timeoutMs?: number;
   readonly search: (input: GlobalSearchInput) => Promise<GlobalSearchResult[]>;
 }

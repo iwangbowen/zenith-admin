@@ -36,6 +36,7 @@ import { BatchStatusButtons, CreateButton } from '@/components/toolbar-controls'
 import { abortSubmit } from '@/lib/abort-submit';
 import { batchStatusHandler, deleteAction, ListSearchToolbar, useRowSelection } from '@/components/list-page';
 import { useListPage } from '@/hooks/useListPage';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { EditFormSheet } from '@/components/EditFormModal';
 
 const DatasetRefsModal = lazy(() => import('./components/DatasetRefsModal').then((module) => ({
@@ -98,6 +99,7 @@ export default function DatasetsPage() {
     useList: useReportDatasetList,
     table: { empty: '暂无数据', rowSelection: hasPermission('report:dataset:update') ? rowSelection : undefined },
   });
+  useListDeepLink(['keyword'], (params) => page.applySearch({ keyword: params.keyword ?? '' }));
   const { tableProps } = page;
   const [selectedDsId, setSelectedDsId] = useState<number | null>(null);
   const [fields, setFields] = useState<ReportField[]>([]);

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Descriptions, InputNumber, Modal, Select, SideSheet, Spin, Switch, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -19,6 +19,7 @@ import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
 import { useTaskProgressEvents } from '@/hooks/useAsyncTasks';
 import { useListSearch } from '@/hooks/useListSearch';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { ASYNC_TASK_STATUS_TAG_MAP as statusTagMap, asyncTaskRateColor as rateColor } from '@/utils/async-task';
 import { formatDurationMs as formatDuration } from '@/utils/format';
 import { formatDateTime } from '@/utils/date';
@@ -95,6 +96,7 @@ export default function TaskCenterPage() {
   const queryClient = useQueryClient();
   const { hasPermission } = usePermission();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const canManage = hasPermission('system:async-task:manage');
   const canCleanup = hasPermission('system:async-task:cleanup');
   const canConfig = hasPermission('system:async-task:config');
@@ -106,7 +108,9 @@ export default function TaskCenterPage() {
     page, pageSize, buildPagination,
     bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
+    applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: asyncTaskKeys.lists });
+  useListDeepLink(['keyword'], (params) => applySearch({ ...defaultSearchParams, keyword: params.keyword ?? '' }));
   const [detailTask, setDetailTask] = useState<AsyncTask | null>(null);
   const { selectedRowKeys, setSelectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
 
@@ -137,6 +141,16 @@ export default function TaskCenterPage() {
     status: enumValueOf(ASYNC_TASK_ITEM_STATUSES, itemStatusFilter),
   }, detailTask != null);
   const data = listQuery.data?.list ?? EMPTY_TASKS;
+  useEffect(() => {
+    const taskId = Number(searchParams.get('taskId'));
+    if (!Number.isFinite(taskId) || !data.length) return;
+    const target = data.find((task) => task.id === taskId);
+    if (!target) return;
+    setDetailTask(target);
+    const next = new URLSearchParams(searchParams);
+    next.delete('taskId');
+    setSearchParams(next, { replace: true });
+  }, [data, searchParams, setSearchParams]);
   const total = listQuery.data?.total ?? 0;
   const stats = statsQuery.data ?? null;
   const types = typesQuery.data ?? EMPTY_TYPES;

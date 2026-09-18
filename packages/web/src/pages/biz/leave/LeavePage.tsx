@@ -22,6 +22,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
 import { useListPage } from '@/hooks/useListPage';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
 import LeaveDetails from './LeaveDetails';
 
 const BusinessWorkflowPanel = lazy(() => import('@/components/workflow/BusinessWorkflowPanel'));
@@ -58,6 +59,7 @@ export default function LeavePage() {
   const { hasPermission } = usePermission();
   const { options: leaveTypeOptions, getLabel: getLeaveTypeLabel } = useDictItems('leave_type');
   const page = useListPage({ contract: bizLeaveContract, useList: useBizLeaveList });
+  useListDeepLink(['keyword'], (params) => page.applySearch({ keyword: params.keyword ?? '', status: undefined }));
   const saveMutation = useSaveBizLeave();
   const submitMutation = useSubmitBizLeave();
   const deleteMutation = useDeleteBizLeave();

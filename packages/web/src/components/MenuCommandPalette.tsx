@@ -8,7 +8,7 @@ import { useOptionalPreferences } from '@/hooks/usePreferences';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import { usePinyinReady } from '@/hooks/usePinyinReady';
 import { useGlobalSearch } from '@/hooks/queries/global-search';
-import { globalSearchRoutePrefixes, type GlobalSearchResult } from '@zenith/shared/platform';
+import { globalSearchRoutePrefixes, type GlobalSearchResult, type GlobalSearchType } from '@zenith/shared/platform';
 import type { FlatMenuItem } from './MenuSearchInput';
 
 interface Props {
@@ -21,6 +21,18 @@ interface Props {
 }
 
 type PaletteItem = { kind: 'menu'; value: FlatMenuItem } | { kind: 'business'; value: GlobalSearchResult };
+
+const SEARCH_FILTERS: Array<{ value: 'all' | GlobalSearchType; label: string }> = [
+  { value: 'all', label: '全部' },
+  { value: 'user', label: '用户' },
+  { value: 'member', label: '会员' },
+  { value: 'order', label: '订单' },
+  { value: 'workflow', label: '流程' },
+  { value: 'file', label: '文件' },
+  { value: 'cms-content', label: 'CMS' },
+  { value: 'wiki-document', label: 'Wiki' },
+  { value: 'chat-message', label: '聊天' },
+];
 
 const BUSINESS_TYPE_LABELS: Record<GlobalSearchResult['type'], string> = {
   user: '用户',
@@ -69,10 +81,11 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
   const isMobile = useIsMobile();
   const pinyinReady = usePinyinReady();
   const [query, setQuery] = useState('');
+  const [selectedType, setSelectedType] = useState<'all' | GlobalSearchType>('all');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const remoteSearch = useGlobalSearch(query, open);
+  const remoteSearch = useGlobalSearch(query, open, selectedType === 'all' ? undefined : [selectedType]);
 
   const menuResults = useMemo(() => {
     if (!query.trim()) return [];
@@ -104,6 +117,7 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
   useEffect(() => {
     if (open) {
       setQuery('');
+      setSelectedType('all');
       setSelectedIndex(0);
       setTimeout(() => inputRef.current?.focus(), 30);
     }
@@ -171,6 +185,7 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
     const subtitle = isMenu
       ? item.value.breadcrumb.join(' › ')
       : [BUSINESS_TYPE_LABELS[item.value.type], item.value.subtitle, item.value.description].filter(Boolean).join(' · ');
+    const highlight = !isMenu ? item.value.highlights[0]?.text : undefined;
     const row = (
       <button
         key={isMenu ? `menu-${item.value.id}` : `${item.value.type}-${item.value.id}`}
@@ -186,6 +201,7 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 500, color: isSelected ? 'var(--semi-color-primary)' : 'var(--semi-color-text-0)', lineHeight: 1.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.value.title}</div>
           {subtitle && <div style={{ fontSize: 11, color: 'var(--semi-color-text-2)', lineHeight: 1.3, marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{subtitle}</div>}
+          {highlight && highlight !== item.value.title && <div style={{ fontSize: 11, color: 'var(--semi-color-text-2)', lineHeight: 1.3, marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>命中：{highlight}</div>}
         </div>
         {isSelected && <kbd style={{ fontSize: 10, color: 'var(--semi-color-primary)', background: 'var(--semi-color-primary-light-default)', border: '1px solid var(--semi-color-primary-light-hover)', borderRadius: 'var(--semi-border-radius-small)', padding: '1px 5px', fontFamily: 'monospace', flexShrink: 0 }}>↵</kbd>}
       </button>
@@ -220,6 +236,13 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
           {query && <button type="button" onClick={() => setQuery('')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, border: 'none', borderRadius: 'var(--semi-border-radius-small)', background: 'var(--semi-color-fill-1)', color: 'var(--semi-color-text-2)', cursor: 'pointer', padding: 0, flexShrink: 0 }}><span style={{ fontSize: 12, lineHeight: 1 }}>✕</span></button>}
           {!isMobile && <kbd className="cmd-palette-esc" style={{ fontSize: 11, color: 'var(--semi-color-text-2)', background: 'var(--semi-color-fill-0)', border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-small)', padding: '1px 5px', fontFamily: 'monospace', flexShrink: 0 }}>ESC</kbd>}
         </div>
+
+        {query.trim().length >= 2 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 16px 2px', borderBottom: '1px solid var(--semi-color-border)' }}>
+          {SEARCH_FILTERS.map((filter) => {
+            const active = selectedType === filter.value;
+            return <button key={filter.value} type="button" onClick={() => setSelectedType(filter.value)} style={{ border: `1px solid ${active ? 'var(--semi-color-primary)' : 'var(--semi-color-border)'}`, borderRadius: 12, padding: '2px 9px', background: active ? 'var(--semi-color-primary-light-default)' : 'transparent', color: active ? 'var(--semi-color-primary)' : 'var(--semi-color-text-2)', cursor: 'pointer', fontSize: 11 }}>{filter.label}</button>;
+          })}
+        </div>}
 
         <div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: '6px 0', minHeight: 0 }}>
           {isShowingRecent && recentMenus.length > 0 && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 16px 6px', marginBottom: 2 }}><span style={{ fontSize: 11, fontWeight: 600, color: 'var(--semi-color-text-2)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>最近访问</span><button type="button" onClick={onClearRecents} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--semi-color-text-2)', padding: '0 2px' }}>清除</button></div>}

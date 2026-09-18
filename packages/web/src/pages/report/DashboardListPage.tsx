@@ -35,6 +35,7 @@ import { BatchStatusButtons, CreateButton } from '@/components/toolbar-controls'
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { batchStatusHandler, confirmAndDelete, deleteAction, ListSearchToolbar, useRowSelection } from '@/components/list-page';
 import { useListPage } from '@/hooks/useListPage';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { EditFormModal } from '@/components/EditFormModal';
 
 interface SearchParams { keyword: string; status?: string; lifecycleStatus?: ReportDashboard['lifecycleStatus']; categoryId?: number; favorited: boolean; ownerId?: number; folderId?: number }
@@ -73,6 +74,7 @@ export default function DashboardListPage() {
     }),
     table: { empty: '暂无数据', rowSelection: hasPermission('report:dashboard:update') ? rowSelection : undefined },
   });
+  useListDeepLink(['keyword'], (params) => applySearch({ ...defaultSearchParams, keyword: params.keyword ?? '' }));
   const [categorySheetVisible, setCategorySheetVisible] = useState(false);
   const [shareTarget, setShareTarget] = useState<number | null>(null);
   const [versionTarget, setVersionTarget] = useState<number | null>(null);

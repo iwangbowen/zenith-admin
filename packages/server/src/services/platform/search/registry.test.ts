@@ -74,4 +74,17 @@ describe('global search adapter registry', () => {
     expect(result.results.map((row) => row.id)).toEqual(['2']);
     expect(result.failedTypes).toEqual(['user']);
   });
+
+  it('deduplicates by type and ranks exact title matches first', async () => {
+    const result = await runGlobalSearch({ q: 'QA', limit: 5 }, undefined, [
+      adapter('user', async () => [
+        { ...item('user', '1'), title: 'QA' },
+        { ...item('user', '1'), title: 'QA duplicate' },
+        { ...item('user', '2'), title: 'A QA result' },
+      ]),
+    ]);
+
+    expect(result.results.map((row) => row.id)).toEqual(['1', '2']);
+    expect(result.results[0].title).toBe('QA');
+  });
 });
