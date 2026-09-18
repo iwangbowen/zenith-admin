@@ -69,6 +69,35 @@ export function eventVars<V extends Record<string, unknown>>(): V {
 }
 
 export const NOTIFICATION_EVENTS = defineNotificationEvents({
+  'payment.recon.failed': {
+    group: 'ops', label: '支付账单获取或核对失败', severity: 'important',
+    defaultChannels: ['inapp'], availableChannels: ['inapp', 'email', 'chat'],
+    vars: eventVars<{ accountName: string; billDate: string; message: string }>(),
+    title: '支付对账异常：{{accountName}}', content: '{{billDate}}：{{message}}',
+  },
+  'payment.recon.difference': {
+    group: 'ops', label: '支付对账发现差异', severity: 'important',
+    defaultChannels: ['inapp'], availableChannels: ['inapp', 'email', 'chat'],
+    vars: eventVars<{ accountName: string; billDate: string; count: number }>(),
+    title: '支付对账发现差异', content: '{{accountName}} {{billDate}} 存在 {{count}} 项差异，请核验。',
+  },
+  'payment.recon.overdue': {
+    group: 'ops', label: '支付对账逾期', severity: 'important',
+    defaultChannels: ['inapp'], availableChannels: ['inapp', 'email', 'chat'],
+    vars: eventVars<{ accountName: string; billDate: string; message: string }>(),
+    title: '支付对账待办逾期', content: '{{accountName}} {{billDate}}：{{message}}',
+  },
+  'payment.recon.recovered': {
+    group: 'ops', label: '支付账单恢复', severity: 'normal', defaultChannels: ['inapp'],
+    vars: eventVars<{ accountName: string; billDate: string }>(),
+    title: '支付账单已恢复', content: '{{accountName}} {{billDate}} 已完成取账与校验。',
+  },
+  'payment.adjustment.executed': {
+    group: 'ops', label: '支付调整已执行', severity: 'important', defaultChannels: ['inapp'],
+    availableChannels: ['inapp', 'email', 'chat'],
+    vars: eventVars<{ adjustmentId: number; amount: string; currency: string }>(),
+    title: '支付调整已执行', content: '调整单 #{{adjustmentId}} 已入账 {{amount}}（最小货币单位）{{currency}}。',
+  },
   // ─── 知识中心 ───────────────────────────────────────────────────────────────
   'wiki.doc.published': {
     group: 'wiki',

@@ -54,15 +54,29 @@ export async function persistAsyncTask(
   executor: DbTransaction,
   input: SubmitAsyncTaskInput,
 ): Promise<AsyncTaskRow> {
+  const user = currentUser();
+  return persistTaskForPrincipal(executor, input, { userId: user.userId, tenantId: getCreateTenantId(user) });
+}
+
+/** Periodic business scanners submit jobs with an explicit tenant and system actor. */
+export async function persistSystemAsyncTask(
+  executor: DbTransaction, input: SubmitAsyncTaskInput, tenantId: number | null,
+): Promise<AsyncTaskRow> {
+  return persistTaskForPrincipal(executor, input, { userId: null, tenantId });
+}
+
+async function persistTaskForPrincipal(
+  executor: DbTransaction, input: SubmitAsyncTaskInput,
+  principal: { userId: number | null; tenantId: number | null },
+): Promise<AsyncTaskRow> {
   const handler = getTaskHandler(input.taskType);
   if (!handler) throw new HTTPException(400, { message: `任务类型 "${input.taskType}" 未注册` });
-  const user = currentUser();
-  const tenantId = getCreateTenantId(user);
+  const { userId, tenantId } = principal;
   const idempotencyKey = input.idempotencyKey?.slice(0, 128) || null;
-  await lockTaskAdmission(executor, input.taskType, user.userId, tenantId);
+  await lockTaskAdmission(executor, input.taskType, userId, tenantId);
   const scope = and(
     eq(asyncTasks.taskType, input.taskType),
-    eq(asyncTasks.createdBy, user.userId),
+    nullableEq(asyncTasks.createdBy, userId),
     exactTenantCondition(asyncTasks.tenantId, tenantId),
   );
   if (idempotencyKey) {
@@ -96,7 +110,7 @@ export async function persistAsyncTask(
     parentRef: currentParentRef() ?? null,
     // 显式写入而非依赖 db Proxy 的审计注入：createdBy 是幂等作用域的一部分，
     // 下面的冲突回查要按它过滤，作用域不能取决于别处的副作用。
-    createdBy: user.userId,
+    createdBy: userId,
     // 节点亲和任务只能由本进程执行（操作本机资源），投递到本进程独有的队列
     nodeId: handler.affinity === 'node' ? PROCESS_ID : null,
   };
@@ -113,7 +127,7 @@ export async function persistAsyncTask(
         .where(and(
           eq(asyncTasks.idempotencyKey, idempotencyKey),
           eq(asyncTasks.taskType, input.taskType),
-          eq(asyncTasks.createdBy, user.userId),
+          nullableEq(asyncTasks.createdBy, userId),
           exactTenantCondition(asyncTasks.tenantId, tenantId),
         ))
         .limit(1);

@@ -6,6 +6,7 @@ export { asyncTaskStatusCondition, type AsyncTaskStatusFilter } from './status-f
 export {
   submitAsyncTask,
   persistAsyncTask,
+  persistSystemAsyncTask,
   enqueueAsyncTask,
   runAsyncTask,
   requestCancelAsyncTask,
