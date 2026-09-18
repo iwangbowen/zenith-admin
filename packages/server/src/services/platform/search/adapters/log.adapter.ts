@@ -17,7 +17,7 @@ export const operationLogSearchAdapter: GlobalSearchAdapter = {
       subtitle: [log.module, log.method, log.path].filter(Boolean).join(' · '),
       description: `${log.responseCode} · ${log.createdAt}`,
       icon: 'ScrollText',
-      route: `/system/operation-logs?keyword=${encodeURIComponent(q)}`,
+      route: `/system/operation-logs?description=${encodeURIComponent(q)}`,
       highlights: [{ field: 'title', text: log.description }],
     }));
   },
@@ -36,9 +36,8 @@ export const exceptionLogSearchAdapter: GlobalSearchAdapter = {
       subtitle: [group.errorType, group.level].filter(Boolean).join(' · '),
       description: group.status,
       icon: 'TriangleAlert',
-      route: `/system/exception-logs?keyword=${encodeURIComponent(q)}`,
+      route: `/system/exception-logs?issue=${group.id}`,
       highlights: [{ field: 'title', text: group.message }],
     }));
   },
 };
-

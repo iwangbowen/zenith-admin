@@ -22,6 +22,7 @@ import {
 } from '@/hooks/queries/exception-logs';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
 import { useListSearch } from '@/hooks/useListSearch';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { usePermission } from '@/hooks/usePermission';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
@@ -79,6 +80,7 @@ export function ExceptionIssuesTab({ active }: Readonly<{ active: boolean }>) {
   // ?issue= 深链：通知 / 前端错误页跳转直达分组详情
   const issueParam = searchParams.get('issue');
   const detailGroupId = issueParam && /^\d+$/.test(issueParam) ? Number(issueParam) : undefined;
+  useListDeepLink(['keyword'], ({ keyword }) => applySearch({ ...DEFAULT_FILTERS, keyword }));
   const openDetail = (id: number) => setSearchParams((prev) => { prev.set('issue', String(id)); return prev; }, { replace: true });
   const closeDetail = () => setSearchParams((prev) => { prev.delete('issue'); return prev; }, { replace: true });
   const [eventDetail, setEventDetail] = useState<ErrorEvent | null>(null);

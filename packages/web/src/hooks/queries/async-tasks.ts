@@ -17,12 +17,20 @@ export const asyncTaskKeys = {
   types: contractKey(asyncTaskContract.types),
   items: contractKey(asyncTaskContract.items),
   itemList: ({ taskId, ...query }: AsyncTaskItemsParams) => contractKey(asyncTaskContract.items, { params: { id: taskId }, query }),
+  detail: (id: number) => contractKey(asyncTaskContract.detail, { params: { id } }),
 };
 
 export function useAsyncTaskList(params: AsyncTaskListParams, options?: { refetchInterval?: number | false }) {
   return useApiQuery(asyncTaskContract.list, { query: params }, {
     placeholderData: keepPreviousData,
     refetchInterval: options?.refetchInterval,
+  });
+}
+
+export function useAsyncTaskDetail(id: number | undefined, enabled = true) {
+  return useApiQuery(asyncTaskContract.detail, { params: { id: id ?? 0 } }, {
+    enabled: enabled && id !== undefined,
+    requestOptions: { silent: true },
   });
 }
 

@@ -6,14 +6,14 @@ import { useAuth } from '@/hooks/useAuth';
 
 const GLOBAL_SEARCH_STALE_TIME = 15_000;
 
-export function useGlobalSearch(query: string, enabled: boolean, types?: readonly GlobalSearchType[]) {
+export function useGlobalSearch(query: string, enabled: boolean, types?: readonly GlobalSearchType[], limit = 5) {
   const { user, impersonation } = useAuth();
   const [debouncedQuery] = useDebouncedValue(query.trim(), { wait: 250 });
   const canSearch = enabled && debouncedQuery.length >= 2;
   const typeFilter = types?.length ? types.join(',') : undefined;
   const queryOptions = apiQueryOptions(
     globalSearchContract.search,
-    { query: { q: debouncedQuery || '  ', limit: 5, ...(typeFilter ? { types: typeFilter } : {}) } },
+    { query: { q: debouncedQuery || '  ', limit, ...(typeFilter ? { types: typeFilter } : {}) } },
     {
       enabled: canSearch,
       staleTime: GLOBAL_SEARCH_STALE_TIME,

@@ -28,6 +28,7 @@ import {
   asyncTaskKeys,
   useAsyncTaskAction,
   useAsyncTaskItems,
+  useAsyncTaskDetail,
   useAsyncTaskList,
   useAsyncTaskStats,
   useAsyncTaskTypes,
@@ -141,16 +142,18 @@ export default function TaskCenterPage() {
     status: enumValueOf(ASYNC_TASK_ITEM_STATUSES, itemStatusFilter),
   }, detailTask != null);
   const data = listQuery.data?.list ?? EMPTY_TASKS;
+  const deepLinkedTaskId = Number(searchParams.get('taskId')) || undefined;
+  const deepLinkedTaskQuery = useAsyncTaskDetail(deepLinkedTaskId, deepLinkedTaskId !== undefined);
   useEffect(() => {
-    const taskId = Number(searchParams.get('taskId'));
-    if (!Number.isFinite(taskId) || !data.length) return;
-    const target = data.find((task) => task.id === taskId);
+    const taskId = deepLinkedTaskId;
+    if (!taskId) return;
+    const target = data.find((task) => task.id === taskId) ?? deepLinkedTaskQuery.data;
     if (!target) return;
     setDetailTask(target);
     const next = new URLSearchParams(searchParams);
     next.delete('taskId');
     setSearchParams(next, { replace: true });
-  }, [data, searchParams, setSearchParams]);
+  }, [data, deepLinkedTaskId, deepLinkedTaskQuery.data, searchParams, setSearchParams]);
   const total = listQuery.data?.total ?? 0;
   const stats = statsQuery.data ?? null;
   const types = typesQuery.data ?? EMPTY_TYPES;

@@ -74,7 +74,7 @@ export const globalSearchQuery = z.object({
   /** 逗号分隔的类型筛选；省略表示搜索已注册的全部适配器。 */
   types: z.string().optional(),
   /** 每个适配器最多返回的摘要条数。 */
-  limit: z.coerce.number().int().min(1).max(10).default(5),
+  limit: z.coerce.number().int().min(1).max(50).default(5),
 }).meta({ id: 'GlobalSearchQuery' });
 
 export const globalSearchResponseSchema = z.object({

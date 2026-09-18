@@ -8,6 +8,7 @@ import { formatDateTimeRangeForApi } from '@/utils/date';
 import OperationLogStatsPanel from './OperationLogStatsPanel';
 import { operationLogKeys, useCleanOperationLogs, useOperationLogList } from '@/hooks/queries/operation-logs';
 import { useListSearch } from '@/hooks/useListSearch';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { DateRangeFilter, FilterSelect, KeywordInput, NumberFilter, StatusSelect } from '@/components/search-filters';
 import { enumValueOf } from '@zenith/shared/core';
 import { OPERATION_LOG_RESULT_OPTIONS, OPERATION_LOG_RESULTS } from '@zenith/shared/platform';
@@ -45,7 +46,9 @@ export default function OperationLogsPage() {
     page, pageSize, setPage, buildPagination,
     bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
+    applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultParams, listKey: operationLogKeys.all });
+  useListDeepLink(['description'], (params) => applySearch({ ...defaultParams, description: params.description ?? '' }));
   // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
   const filterQuery = useFilterQuery({
     username: submittedParams.username,

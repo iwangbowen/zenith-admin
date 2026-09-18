@@ -37,6 +37,7 @@ import DashboardSkeleton from '@/pages/dashboard/DashboardSkeleton';
 const ProfilePage = React.lazy(() => import('@/pages/profile/ProfilePage'));
 const AnnouncementsPage = React.lazy(() => import('@/pages/announcements/AnnouncementsPage'));
 const InboxPage = React.lazy(() => import('@/pages/inbox/InboxPage'));
+const GlobalSearchPage = React.lazy(() => import('@/pages/search/GlobalSearchPage'));
 const NotFoundPage = React.lazy(() => import('@/pages/not-found/NotFoundPage'));
 const ForbiddenPage = React.lazy(() => import('@/pages/forbidden/ForbiddenPage'));
 const OAuthCallbackPage = React.lazy(() => import('@/pages/oauth/OAuthCallbackPage'));
@@ -61,7 +62,7 @@ const OAuth2AppDetailPage = React.lazy(() => import('@/pages/open-platform/apps/
 const routeFallback = <PageLoading inline />;
 
 /** 固定路由路径，不通过菜单动态加载（导出供路由策略回归测试使用） */
-export const FIXED_ROUTES = new Set(['/profile', '/announcements', '/inbox', '/system/firewall', '/system/nginx-sites']);
+export const FIXED_ROUTES = new Set(['/profile', '/announcements', '/inbox', '/search', '/system/firewall', '/system/nginx-sites']);
 
 /**
  * 首页入口：登录后一次性应用「默认首页」偏好。
@@ -254,6 +255,7 @@ function AdminRouteLoader({ user, logout }: Readonly<AdminRouteLoaderProps>) {
         <Route path="profile" element={<RouteSuspense><ProfilePage user={user} /></RouteSuspense>} />
         <Route path="announcements" element={<RouteSuspense><AnnouncementsPage /></RouteSuspense>} />
         <Route path="inbox" element={<RouteSuspense><InboxPage /></RouteSuspense>} />
+        <Route path="search" element={<RouteSuspense><GlobalSearchPage /></RouteSuspense>} />
         <Route path="workflow/designer/:id" element={<RouteSuspense><WorkflowDesignerPage /></RouteSuspense>} />
         <Route path="workflow/launch/:definitionId" element={<RouteSuspense><WorkflowLaunchPage /></RouteSuspense>} />
         <Route path="workflow/instance/:id" element={<RouteSuspense><WorkflowInstancePage /></RouteSuspense>} />
