@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrayField, Banner, Button, DatePicker, Empty, Form, Select, SideSheet, Space, Spin, Tabs, Tag, Toast, Typography, Upload } from '@douyinfe/semi-ui';
+import { ArrayField, Banner, Button, DatePicker, Empty, Form, Select, SideSheet, Space, Spin, Tabs, Tag, Timeline, Toast, Typography, Upload } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { BodyOf } from '@zenith/shared/core';
 import {
@@ -284,11 +284,11 @@ export default function PaymentReconPage() {
 
           <section className="payment-recon-case-sheet__section">
             <div className="payment-recon-case-sheet__section-title">处理历史 <span>{caseDetail.data.events.length} 条</span></div>
-            {caseDetail.data.events.length > 0 ? <div className="payment-recon-case-sheet__timeline">{caseDetail.data.events.map((event) => <div className="payment-recon-case-sheet__event" key={event.id}>
-              <div className="payment-recon-case-sheet__event-head"><span>{event.action}</span><time>{event.createdAt}</time></div>
+            {caseDetail.data.events.length > 0 ? <Timeline mode="left" className="payment-recon-case-sheet__timeline">{caseDetail.data.events.map((event) => <Timeline.Item key={event.id} time={event.createdAt}>
+              <div className="payment-recon-case-sheet__event-head">{event.action}</div>
               <div className="payment-recon-case-sheet__event-meta">{event.actorId ?? '系统'}</div>
               {event.remark && <div className="payment-recon-case-sheet__event-remark">{event.remark}</div>}
-            </div>)}</div> : <Empty description="暂无处理记录" />}
+            </Timeline.Item>)}</Timeline> : <Empty description="暂无处理记录" />}
           </section>
 
           <section className="payment-recon-case-sheet__section">
