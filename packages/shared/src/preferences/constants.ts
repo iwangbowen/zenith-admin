@@ -15,6 +15,9 @@ export const ROUTE_ANIMATIONS = ['none', 'fade', 'slide-up', 'slide-left'] as co
 export type RouteAnimation = (typeof ROUTE_ANIMATIONS)[number];
 export const SIDEBAR_TOGGLE_ICON_POSITIONS = ['left', 'right'] as const;
 export type SidebarToggleIconPosition = (typeof SIDEBAR_TOGGLE_ICON_POSITIONS)[number];
+/** 双列布局首列形态：仅图标 / 图标 + 文字 */
+export const DOUBLE_RAIL_STYLES = ['icon', 'icon-text'] as const;
+export type DoubleRailStyle = (typeof DOUBLE_RAIL_STYLES)[number];
 export const BORDER_RADII = ['none', 'small', 'medium', 'large'] as const;
 export type BorderRadiusPreference = (typeof BORDER_RADII)[number];
 export const THEME_MODES = ['light', 'dark', 'system'] as const;

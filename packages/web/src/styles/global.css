@@ -8,7 +8,9 @@
 :root {
   --sidebar-width: 216px;
   --sidebar-collapsed-width: 40px;
-  --sidebar-double-width: 260px;
+  /* 双列布局：首列（图标 + 文字）+ 右栏子导航；仅图标时首列改用 --sidebar-collapsed-width */
+  --sidebar-double-rail-width: 64px;
+  --sidebar-double-sub-width: 196px;
   --header-height: 40px;
   --radius: 6px;
   /* 自定义滚动条：全站唯一来源（表格横向条、分栏侧栏、侧边菜单、日志查看器…），局部不得另写像素值。

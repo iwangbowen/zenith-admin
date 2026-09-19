@@ -3,7 +3,7 @@ import { Button, Dropdown, Input, InputNumber, Popover, Radio, RadioGroup, Selec
 import { ChevronDown, ChevronLeft, ChevronRight, ClipboardPaste, Copy, Download, Info } from 'lucide-react';
 import { LOADING_STYLE_OPTIONS, DARK_SURFACE_TONE_OPTIONS, UI_SCALE_OPTIONS, FONT_FAMILY_OPTIONS } from '@/hooks/usePreferences';
 import { clearAllListFilterSnapshots } from '@/lib/list-filter-memory';
-import type { NavLayout, TableSizePreference, RouteAnimation, BorderRadiusPreference, ScheduledDarkMode, TabStyle, TabSize, TabType, DarkSurfaceTone, TopbarClockMode, UserPreferences, UiScale, FontFamilyPreference, WeekStart, TimeDisplay } from '@/hooks/usePreferences';
+import type { NavLayout, TableSizePreference, RouteAnimation, BorderRadiusPreference, ScheduledDarkMode, TabStyle, TabSize, TabType, DarkSurfaceTone, TopbarClockMode, UserPreferences, UiScale, FontFamilyPreference, WeekStart, TimeDisplay, DoubleRailStyle } from '@/hooks/usePreferences';
 import { isScheduleTime } from '@/hooks/usePreferences';
 import type { ThemeMode } from '@/hooks/useTheme';
 import { THEME_COLOR_PRESETS } from '@/lib/theme-color';
@@ -55,6 +55,28 @@ export function PrefsLayoutSection({
             </button>
           ))}
         </div>
+      </div>
+      </PreferenceControl>
+      )}
+
+      {/* ── 双列首列形式（仅双列布局适用，依赖 navLayout）── */}
+      {navLayout === 'double' && matchesPref(['双列', '双列菜单', '首列', '双列首列', '图标', '图标文字']) && (
+      <PreferenceControl path="doubleRailStyle">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          双列首列形式
+          <Tooltip content="仅图标：与左侧菜单收起时同宽，名称靠悬浮提示，可容纳更多一级模块；图标 + 文字：名称直接可读，但条目更高，矮窗口需要滚动" position="right">
+            <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+          </Tooltip>
+        </span>
+        <RadioGroup
+          type="button"
+          value={preferences.doubleRailStyle ?? 'icon'}
+          onChange={(e) => setPreferences({ doubleRailStyle: e.target.value as DoubleRailStyle })}
+        >
+          <Radio value="icon">仅图标</Radio>
+          <Radio value="icon-text">图标 + 文字</Radio>
+        </RadioGroup>
       </div>
       </PreferenceControl>
       )}

@@ -9,7 +9,7 @@ export {
 export type {
   NavLayout, TabAnimation, TabStyle, TabSize, TabType, TableSizePreference, RouteAnimation,
   SidebarToggleIconPosition, BorderRadiusPreference, LoadingStyle, UiScale, FontFamilyPreference,
-  TimeDisplay, DesktopNotificationContent, WeekStart, DarkSurfaceTone, TopbarClockMode,
+  TimeDisplay, DesktopNotificationContent, WeekStart, DarkSurfaceTone, TopbarClockMode, DoubleRailStyle,
   ScheduledDarkMode, TerminalFavorite, TerminalTabPosition, TerminalPreferences, UserPreferences,
 } from '@zenith/shared/preferences';
 export { sanitizePreferenceOverrides as sanitizeImportedPreferences } from '@zenith/shared/preferences';

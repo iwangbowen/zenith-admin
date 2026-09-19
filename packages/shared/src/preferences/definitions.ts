@@ -14,6 +14,7 @@ type Entry = Omit<PreferenceDefinition, 'path' | 'kind'> & { kind?: PreferenceDe
 /** 字段目录必须完整覆盖每个可配置叶子；收藏目录属于个人内容，不属于策略。 */
 const metadata: Record<PreferencePath, Entry> = {
   navLayout: { label: '导航布局', group: 'layout', options: options(C.NAV_LAYOUTS, ['左侧菜单', '顶部菜单', '混合菜单', '双列菜单']) },
+  doubleRailStyle: { label: '双列首列形式', group: 'layout', options: options(C.DOUBLE_RAIL_STYLES, ['仅图标', '图标 + 文字']), applicableWhen: { field: 'navLayout', equals: 'double' }, description: '仅图标与单列收起侧边栏同宽，名称靠悬浮提示；图标 + 文字直接显示名称，占用更多高度。' },
   contentWidth: { label: '内容宽度', group: 'layout', options: options(C.CONTENT_WIDTHS, ['流式充满', '固定宽度居中']) },
   showLogo: { label: '显示 Logo 图标', group: 'layout' },
   tabsSize: { label: '页面标签栏尺寸', group: 'appearance', options: options(C.TAB_SIZES, ['小', '中', '大']), description: '控制页面内部标签栏的尺寸，与多标签页开关无关。' },

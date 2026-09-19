@@ -905,6 +905,7 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
               darkClassName={sidebarDark ? ' semi-always-dark' : ''}
               getPopupContainer={getSidebarPopupContainer}
               toggleIconPosition={preferences.sidebarToggleIconPosition ?? 'right'}
+              railStyle={preferences.doubleRailStyle ?? 'icon'}
             />
           ) : (
             <SidebarNav

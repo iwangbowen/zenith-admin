@@ -1594,18 +1594,27 @@
   overflow: hidden;
 }
 
-/* ===== 双列侧边栏布局 ===== */
+/* ===== 双列侧边栏布局 =====
+   首列两种形态由偏好 doubleRailStyle 决定（见 DoubleSidebar.tsx）：
+   - .admin-sidebar--double-icon：仅图标，宽度与单列「收起侧边栏」一致（--sidebar-collapsed-width）；
+   - .admin-sidebar--double-icon-text：图标 + 文字，名称直接可读，但条目更高。 */
 
 .admin-sidebar--double {
-  width: var(--sidebar-double-width);
+  --double-rail-width: var(--sidebar-double-rail-width);
+
+  width: calc(var(--double-rail-width) + var(--sidebar-double-sub-width));
   display: flex;
   flex-direction: row;
   overflow: hidden;
   transition: width 0.2s;
 }
 
+.admin-sidebar--double.admin-sidebar--double-icon {
+  --double-rail-width: var(--sidebar-collapsed-width);
+}
+
 .double-sidebar__rail {
-  width: 64px;
+  width: var(--double-rail-width);
   flex-shrink: 0;
   height: 100%;
   display: flex;
@@ -1615,10 +1624,15 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding-bottom: 8px;
+}
+
+/* 仅图标形态与单列收起态一致：短导航不需要滚动提示，保持轨道干净；
+   图标 + 文字形态条目更高、矮窗口会溢出，因此保留全局细滚动条作为提示。 */
+.admin-sidebar--double-icon .double-sidebar__rail {
   scrollbar-width: none;
 }
 
-.double-sidebar__rail::-webkit-scrollbar {
+.admin-sidebar--double-icon .double-sidebar__rail::-webkit-scrollbar {
   display: none;
 }
 
@@ -1656,15 +1670,27 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  padding: 8px 4px;
+  gap: 2px;
+  padding: 6px 2px;
+  min-height: 46px;
   border-radius: var(--semi-border-radius-medium);
   background: transparent;
   border: none;
   cursor: pointer;
   color: var(--color-sidebar-text);
   transition: background 0.15s, color 0.15s;
-  min-height: 54px;
+}
+
+/* 仅图标：条目压到单列收起态的高度，20 个一级模块约 720px，常规窗口不再触发滚动 */
+.admin-sidebar--double-icon .double-sidebar__rail-item {
+  height: 34px;
+  min-height: 0;
+  gap: 0;
+  padding: 0;
+}
+
+.admin-sidebar--double-icon .double-sidebar__rail-icon {
+  font-size: 18px;
 }
 
 .double-sidebar__rail-item:hover {
@@ -1686,10 +1712,10 @@
 }
 
 .double-sidebar__rail-label {
-  font-size: 10px;
-  line-height: 1.3;
+  font-size: 11px;
+  line-height: 1.25;
   text-align: center;
-  max-width: 56px;
+  max-width: 60px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1726,7 +1752,7 @@
 
 /* When selected top-level item is a leaf, collapse right panel */
 .admin-sidebar--double-no-sub {
-  width: 64px;
+  width: var(--double-rail-width);
   transition: width 0.2s;
 }
 

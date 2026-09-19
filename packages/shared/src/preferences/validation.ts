@@ -41,6 +41,7 @@ export const preferenceValuesSchema = z.strictObject({
   tabsType: z.enum(C.TAB_TYPES).default('line'),
   tabStyle: z.enum(C.TAB_STYLES).default('line'),
   navLayout: z.enum(C.NAV_LAYOUTS).default('vertical'),
+  doubleRailStyle: z.enum(C.DOUBLE_RAIL_STYLES).default('icon'),
   showBreadcrumb: z.boolean().default(false),
   breadcrumbIcon: z.boolean().default(true),
   breadcrumbShowHome: z.boolean().default(true),

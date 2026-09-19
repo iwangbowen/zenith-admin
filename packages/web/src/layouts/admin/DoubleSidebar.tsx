@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
 import { Badge, ConfigProvider, Nav, Tooltip } from '@douyinfe/semi-ui';
 import AppLogo from '@/components/AppLogo';
+import type { DoubleRailStyle } from '@/hooks/usePreferences';
 import { decorateNavItemsWithBadges, type NavItem } from './utils';
 
-// 双列侧边栏（double 布局）：左侧图标栏 + 右侧子导航
+// 双列侧边栏（double 布局）：左侧首列（图标 / 图标 + 文字，见偏好 doubleRailStyle）+ 右侧子导航
 export function DoubleSidebar({
   doubleSubItems,
   stickyNavClass,
@@ -20,6 +21,7 @@ export function DoubleSidebar({
   darkClassName = '',
   getPopupContainer,
   toggleIconPosition = 'right',
+  railStyle = 'icon',
 }: Readonly<{
   doubleSubItems: NavItem[];
   stickyNavClass: string;
@@ -39,13 +41,16 @@ export function DoubleSidebar({
   getPopupContainer?: () => HTMLElement;
   /** 子菜单展开/收起箭头位置，默认右侧 */
   toggleIconPosition?: 'left' | 'right';
+  /** 首列形态：仅图标（默认，与单列收起同宽）/ 图标 + 文字 */
+  railStyle?: DoubleRailStyle;
 }>) {
   // 子导航未读徽标拼进文字（与垂直侧边栏一致）
   const decoratedSubItems = useMemo(() => decorateNavItemsWithBadges(doubleSubItems), [doubleSubItems]);
+  const showRailText = railStyle === 'icon-text';
   return (
-    <aside className={`admin-sidebar admin-sidebar--double${doubleSubItems.length === 0 ? ' admin-sidebar--double-no-sub' : ''}${stickyNavClass}${darkClassName}`}>
+    <aside className={`admin-sidebar admin-sidebar--double admin-sidebar--double-${railStyle}${doubleSubItems.length === 0 ? ' admin-sidebar--double-no-sub' : ''}${stickyNavClass}${darkClassName}`}>
       <ConfigProvider getPopupContainer={getPopupContainer}>
-        {/* Left icon rail */}
+        {/* Left rail：仅图标时名称只走 Tooltip / aria-label */}
         <div className="double-sidebar__rail">
           {showLogo && (
             <button
@@ -67,6 +72,7 @@ export function DoubleSidebar({
                     className={`double-sidebar__rail-item${isActive ? ' double-sidebar__rail-item--active' : ''}`}
                     onClick={() => handleDoubleRailClick(item)}
                     aria-current={isActive ? 'page' : undefined}
+                    aria-label={typeof item.text === 'string' ? item.text : undefined}
                   >
                     <span className="double-sidebar__rail-icon">
                       {item.badge && item.badge.count > 0 ? (
@@ -75,7 +81,7 @@ export function DoubleSidebar({
                         </Badge>
                       ) : item.icon}
                     </span>
-                    <span className="double-sidebar__rail-label">{item.text}</span>
+                    {showRailText && <span className="double-sidebar__rail-label">{item.text}</span>}
                   </button>
                 </Tooltip>
               );

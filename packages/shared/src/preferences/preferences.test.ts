@@ -18,9 +18,9 @@ import {
 } from './index';
 
 describe('偏好策略与个人覆盖', () => {
-  it('保留全部现有默认值，95 项策略排除个人收藏', () => {
+  it('保留全部现有默认值，96 项策略排除个人收藏', () => {
     const policy = preferencePolicySchema.parse({});
-    expect(preferenceDefinitions).toHaveLength(95);
+    expect(preferenceDefinitions).toHaveLength(96);
     expect(defaultPreferences.topbarClock).toBe('off');
     expect(defaultPreferences.topbarClockShowDate).toBe(true);
     expect(defaultPreferences.scheduledDarkMode).toBe('off');
@@ -108,6 +108,9 @@ describe('偏好依赖与互斥', () => {
     expect(isPreferenceApplicable('darkSidebarTone', resolvePreferences(policy, { sidebarDarkMode: true, navLayout: 'horizontal' }))).toBe(false);
     expect(isPreferenceApplicable('terminal.tabCollapsed', resolvePreferences(policy, { terminal: { tabPosition: 'right' } }))).toBe(true);
     expect(isPreferenceApplicable('terminal.tabCollapsed', resolvePreferences(policy, {}))).toBe(false);
+    expect(isPreferenceApplicable('doubleRailStyle', resolvePreferences(policy, { navLayout: 'double' }))).toBe(true);
+    expect(isPreferenceApplicable('doubleRailStyle', resolvePreferences(policy, { navLayout: 'vertical' }))).toBe(false);
+    expect(resolvePreferences(policy, {}).doubleRailStyle).toBe('icon');
   });
 
   it('减弱动效优先，加载动画和页面内部标签栏保持适用', () => {
