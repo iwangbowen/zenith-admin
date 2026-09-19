@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import {
   Background, Controls, Handle, MarkerType, Position, ReactFlowProvider,
+  useNodesInitialized, useReactFlow, useUpdateNodeInternals,
   type Edge as RFEdge, type Node as RFNode, type NodeProps,
 } from '@xyflow/react';
 import { Spin, Table, Tag, Typography } from '@douyinfe/semi-ui';
@@ -105,6 +106,9 @@ interface WsTopologyViewProps {
 function WsTopologyGraph({ metrics, nodeRates, onSelectUser, onInspectTopic, onSelectNode }: Omit<WsTopologyViewProps, 'reconnects'>) {
   const topology = useMemo(() => buildWsTopology(metrics), [metrics]);
   const [ready, setReady] = useState(false);
+  const { fitView } = useReactFlow();
+  const nodesInitialized = useNodesInitialized();
+  const updateNodeInternals = useUpdateNodeInternals();
   useEffect(() => {
     const timer = setTimeout(() => setReady(true), 320);
     return () => clearTimeout(timer);
@@ -142,6 +146,15 @@ function WsTopologyGraph({ metrics, nodeRates, onSelectUser, onInspectTopic, onS
     () => layoutWithDagre(baseNodes, baseEdges, { rankdir: 'TB', nodesep: 20, ranksep: 84, nodeSize: { width: TOPO_NODE_WIDTH, height: TOPO_NODE_HEIGHT } }),
     [baseNodes, baseEdges],
   );
+  useEffect(() => {
+    if (!ready || !nodesInitialized || laidOutNodes.length === 0) return;
+    const raf = requestAnimationFrame(() => {
+      updateNodeInternals(laidOutNodes.map((node) => node.id));
+      void fitView({ padding: 0.2, maxZoom: 1, duration: 200 });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [fitView, laidOutNodes, nodesInitialized, ready, updateNodeInternals]);
+
   const { nodes, edges, onNodesChange, onEdgesChange, handleNodeClick, handlePaneClick } = useGraphSelectionHighlight<WsTopoNodeData>(
     laidOutNodes,
     baseEdges,
@@ -172,6 +185,10 @@ function WsTopologyGraph({ metrics, nodeRates, onSelectUser, onInspectTopic, onS
           nodes={nodes}
           edges={edges}
           nodeTypes={topoNodeTypes}
+          onInit={(instance) => {
+            // React Flow 首次测量自定义节点后再 fit，避免只按初始 0 尺寸计算而放大到 2x+。
+            requestAnimationFrame(() => instance.fitView({ padding: 0.2, maxZoom: 1 }));
+          }}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeClick={(_, node) => {
@@ -182,9 +199,10 @@ function WsTopologyGraph({ metrics, nodeRates, onSelectUser, onInspectTopic, onS
           }}
           onPaneClick={handlePaneClick}
           fitView
-          fitViewOptions={{ padding: 0.2 }}
+          // 单层 / 小数据集 fitView 可能把缩放放大到节点占满画布；限制默认缩放，避免首次打开节点过大。
+          fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
           minZoom={0.2}
-          maxZoom={2}
+          maxZoom={1}
           proOptions={{ hideAttribution: true }}
         >
           <Background />
@@ -214,7 +232,7 @@ export default function WsTopologyView({ reconnects, clientStats, ...graphProps 
           <div>
             <Title heading={6}>关系拓扑</Title>
             <Text type="tertiary" size="small">
-              扇出总线 → 网关节点 → 用户 → Topic。投递边来自最近 200 条出站采样，不是订阅关系（/api/ws 无订阅原语）；
+              扇出总线 → 网关节点 → 用户；Topic → 用户表示最近 200 条出站采样中的投递，不是订阅关系（/api/ws 无订阅原语）；
               重连为同 Token 启发式推断。
             </Text>
           </div>
