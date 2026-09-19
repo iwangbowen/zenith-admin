@@ -1,4 +1,5 @@
 import type { WSContext } from 'hono/ws';
+import os from 'node:os';
 import type { ChatPresence } from '@zenith/shared/chat';
 import type { WsMessage } from '@zenith/shared/platform';
 import { formatDateTime } from './datetime';
@@ -10,6 +11,7 @@ import { onWsFanout, publishWsFanout } from './ws-fanout';
 // 因此下方每个公开的发送 / 关闭函数都是「本地投递 + 发布信封」，信封处理器只做本地那一半。
 interface ConnMeta {
   connId: string;
+  nodeId: string;
   tokenId: string;
   userId: number;
   connectedAt: number;
@@ -28,9 +30,72 @@ let connSeq = 0;
 
 // ─── 监控指标 ──────────────────────────────────────────────────────────
 const counters = { totalConnects: 0, totalDisconnects: 0, totalSent: 0, totalRecv: 0 };
+const nodeId = `${os.hostname()}:${process.pid}`;
+let messageSeq = 0;
+const recentMessages: WsMonitorMessage[] = [];
+const RECENT_MESSAGE_MAX = 200;
+
+export interface WsMonitorMessage {
+  id: string;
+  at: number;
+  direction: 'inbound' | 'outbound';
+  nodeId: string;
+  connId: string | null;
+  userId: number | null;
+  type: string;
+  topic: string | null;
+  bytes: number;
+  success: boolean;
+}
+
+function messageTopic(type: string): string | null {
+  const separator = type.indexOf(':');
+  return separator > 0 ? type.slice(0, separator) : type || null;
+}
+
+function recordWsMessage(
+  meta: ConnMeta | undefined,
+  direction: WsMonitorMessage['direction'],
+  type: string,
+  bytes: number,
+  success: boolean,
+): void {
+  messageSeq += 1;
+  recentMessages.unshift({
+    id: `${Date.now()}-${messageSeq}`,
+    at: Date.now(),
+    direction,
+    nodeId: meta?.nodeId ?? nodeId,
+    connId: meta?.connId ?? null,
+    userId: meta?.userId ?? null,
+    type,
+    topic: messageTopic(type),
+    bytes,
+    success,
+  });
+  if (recentMessages.length > RECENT_MESSAGE_MAX) recentMessages.length = RECENT_MESSAGE_MAX;
+}
+
+function messageTypeFromWire(data: unknown): string {
+  try {
+    const raw = typeof data === 'string' ? data : Buffer.from(data as ArrayBuffer).toString('utf8');
+    const parsed = JSON.parse(raw) as { type?: unknown };
+    return typeof parsed.type === 'string' ? parsed.type : 'unknown';
+  } catch {
+    return 'invalid';
+  }
+}
+
+function messageBytes(data: unknown): number {
+  if (typeof data === 'string') return Buffer.byteLength(data, 'utf8');
+  if (data instanceof ArrayBuffer) return data.byteLength;
+  if (ArrayBuffer.isView(data)) return data.byteLength;
+  return 0;
+}
 
 export interface RecentDisconnect {
   connId: string;
+  nodeId: string;
   tokenId: string;
   userId: number;
   at: number;
@@ -79,7 +144,7 @@ export function registerConnection(userId: number, tokenId: string, ws: WSContex
   if (connections.has(ws)) return;
   const now = Date.now();
   connSeq += 1;
-  connections.set(ws, { connId: String(connSeq), tokenId, userId, connectedAt: now, lastActivityAt: now, sent: 0, recv: 0 });
+  connections.set(ws, { connId: String(connSeq), nodeId, tokenId, userId, connectedAt: now, lastActivityAt: now, sent: 0, recv: 0 });
   addToIndex(tokenSockets, tokenId, ws);
   const wentOnline = addToIndex(userSockets, userId, ws);
   counters.totalConnects += 1;
@@ -100,6 +165,7 @@ export function removeConnection(ws: WSContext, reason = 'close') {
   const now = Date.now();
   recentDisconnects.unshift({
     connId: meta.connId,
+    nodeId: meta.nodeId,
     tokenId: meta.tokenId,
     userId: meta.userId,
     at: now,
@@ -118,19 +184,31 @@ export function removeConnection(ws: WSContext, reason = 'close') {
 }
 
 /** Increment recv counter for a socket (called from WS onMessage). */
-export function incWsRecv(ws: WSContext) {
+export function incWsRecv(ws: WSContext, data?: unknown) {
   counters.totalRecv += 1;
   const m = connections.get(ws);
   if (m) {
     m.recv += 1;
     m.lastActivityAt = Date.now();
   }
+  recordWsMessage(m, 'inbound', messageTypeFromWire(data), messageBytes(data), Boolean(m));
+}
+
+export function sendWsControl(ws: WSContext, message: { type: string }): void {
+  const data = JSON.stringify(message);
+  const meta = connections.get(ws);
+  recordWsMessage(meta, 'outbound', message.type, Buffer.byteLength(data, 'utf8'), Boolean(meta));
+  trySend(ws, data);
 }
 
 function sendToSockets(sockets: Iterable<WSContext> | undefined, message: WsMessage) {
   if (!sockets) return;
   const data = JSON.stringify(message);
-  for (const ws of sockets) trySend(ws, data);
+  for (const ws of sockets) {
+    const meta = connections.get(ws);
+    recordWsMessage(meta, 'outbound', message.type, Buffer.byteLength(data, 'utf8'), Boolean(meta));
+    trySend(ws, data);
+  }
 }
 
 // ─── 本地投递（本进程持有的 socket）─────────────────────────────────────
@@ -418,6 +496,7 @@ export function stopPresenceSync(): void {
 // ─── 监控查询 ──────────────────────────────────────────────────────────
 export interface WsConnectionSnapshot {
   connId: string;
+  nodeId: string;
   tokenId: string;
   userId: number;
   connectedAt: number;
@@ -431,6 +510,7 @@ export function getWsSnapshot() {
   for (const m of connections.values()) {
     snapshot.push({
       connId: m.connId,
+      nodeId: m.nodeId,
       tokenId: m.tokenId,
       userId: m.userId,
       connectedAt: m.connectedAt,
@@ -439,6 +519,23 @@ export function getWsSnapshot() {
       recv: m.recv,
     });
   }
+  const topicMap = new Map<string, { messages: number; bytes: number }>();
+  for (const message of recentMessages) {
+    if (!message.topic) continue;
+    const current = topicMap.get(message.topic) ?? { messages: 0, bytes: 0 };
+    current.messages += 1;
+    current.bytes += message.bytes;
+    topicMap.set(message.topic, current);
+  }
+  const nodeStats = new Map<string, { connections: number; users: Set<number>; sent: number; recv: number }>();
+  for (const m of connections.values()) {
+    const current = nodeStats.get(m.nodeId) ?? { connections: 0, users: new Set<number>(), sent: 0, recv: 0 };
+    current.connections += 1;
+    current.users.add(m.userId);
+    current.sent += m.sent;
+    current.recv += m.recv;
+    nodeStats.set(m.nodeId, current);
+  }
   return {
     currentConnections: connections.size,
     currentUsers: userSockets.size,
@@ -446,6 +543,9 @@ export function getWsSnapshot() {
     totalDisconnects: counters.totalDisconnects,
     totalSent: counters.totalSent,
     totalRecv: counters.totalRecv,
+    messages: [...recentMessages],
+    nodes: [...nodeStats.entries()].map(([id, value]) => ({ nodeId: id, connections: value.connections, users: value.users.size, sent: value.sent, recv: value.recv })),
+    topics: [...topicMap.entries()].map(([topic, value]) => ({ topic, ...value })),
     connections: snapshot,
     recentDisconnects: [...recentDisconnects],
   };

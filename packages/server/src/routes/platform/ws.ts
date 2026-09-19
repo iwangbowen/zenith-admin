@@ -14,7 +14,7 @@ import type { UpgradeWebSocket } from 'hono/ws';
 import { z } from 'zod';
 import type { JwtPayload } from '../../middleware/auth';
 import { authenticateAdminWs } from '../../lib/ws-auth';
-import { registerConnection, removeConnection, sendToUser, incWsRecv, isUserOnline } from '../../lib/ws-manager';
+import { registerConnection, removeConnection, sendToUser, sendWsControl, incWsRecv, isUserOnline } from '../../lib/ws-manager';
 import { getCallConversation, joinRoom, leaveAllRooms, leaveRoom } from '../../lib/rtc-manager';
 import { getConversationMemberIds } from '../../lib/chat-member-cache';
 import type { RtcPeerInfo } from '@zenith/shared/chat';
@@ -219,13 +219,13 @@ export function createWsRoute(upgradeWebSocket: UpgradeWebSocket) {
         },
         async onMessage(evt, ws) {
           if (!identity) return;
-          incWsRecv(ws);
+          incWsRecv(ws, evt.data);
           if (!bucket.take()) return;
           const frame = parseFrame(evt.data);
           if (!frame) return;
           try {
             if (frame.type === 'ping') {
-              ws.send(JSON.stringify({ type: 'pong' }));
+              sendWsControl(ws, { type: 'pong' });
               return;
             }
             if (frame.type === 'chat:typing') {

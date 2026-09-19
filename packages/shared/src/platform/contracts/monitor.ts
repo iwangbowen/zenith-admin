@@ -320,6 +320,7 @@ export type MonitorHistory = z.infer<typeof monitorHistorySchema>;
 
 export const monitorWsConnectionSchema = z.object({
   connId: z.string().meta({ description: '进程内唯一的连接标识；同一 token 多标签页各有一条' }),
+  nodeId: z.string(),
   tokenId: z.string(),
   userId: z.int(),
   username: z.string().nullable(),
@@ -334,6 +335,7 @@ export type MonitorWsConnection = z.infer<typeof monitorWsConnectionSchema>;
 
 export const monitorWsDisconnectSchema = z.object({
   connId: z.string(),
+  nodeId: z.string(),
   tokenId: z.string(),
   userId: z.int(),
   username: z.string().nullable(),
@@ -347,6 +349,39 @@ export const monitorWsDisconnectSchema = z.object({
 
 export type MonitorWsDisconnect = z.infer<typeof monitorWsDisconnectSchema>;
 
+export const monitorWsMessageSchema = z.object({
+  id: z.string(),
+  at: z.number(),
+  direction: z.enum(['inbound', 'outbound']),
+  nodeId: z.string(),
+  connId: z.string().nullable(),
+  userId: z.int().nullable(),
+  type: z.string(),
+  topic: z.string().nullable(),
+  bytes: z.int(),
+  success: z.boolean(),
+}).meta({ id: 'MonitorWsMessage' });
+
+export type MonitorWsMessage = z.infer<typeof monitorWsMessageSchema>;
+
+export const monitorWsNodeSchema = z.object({
+  nodeId: z.string(),
+  connections: z.int(),
+  users: z.int(),
+  sent: z.int(),
+  recv: z.int(),
+}).meta({ id: 'MonitorWsNode' });
+
+export type MonitorWsNode = z.infer<typeof monitorWsNodeSchema>;
+
+export const monitorWsTopicSchema = z.object({
+  topic: z.string(),
+  messages: z.int(),
+  bytes: z.int(),
+}).meta({ id: 'MonitorWsTopic' });
+
+export type MonitorWsTopic = z.infer<typeof monitorWsTopicSchema>;
+
 export const monitorWsMetricsSchema = z.object({
   currentConnections: z.int(),
   currentUsers: z.int(),
@@ -354,6 +389,9 @@ export const monitorWsMetricsSchema = z.object({
   totalDisconnects: z.int(),
   totalSent: z.int(),
   totalRecv: z.int(),
+  messages: z.array(monitorWsMessageSchema),
+  nodes: z.array(monitorWsNodeSchema),
+  topics: z.array(monitorWsTopicSchema),
   connections: z.array(monitorWsConnectionSchema),
   recentDisconnects: z.array(monitorWsDisconnectSchema),
 }).meta({ id: 'MonitorWsMetrics' });

@@ -296,14 +296,23 @@ function buildWsMetrics(): MonitorWsMetrics {
     totalDisconnects: 125,
     totalSent: 4521,
     totalRecv: 1023,
+    messages: [
+      { id: 'm-1', at: now - 1200, direction: 'outbound', nodeId: 'demo-node', connId: '101', userId: 1, type: 'in-app-message:new', topic: 'in-app-message', bytes: 482, success: true },
+      { id: 'm-2', at: now - 2600, direction: 'inbound', nodeId: 'demo-node', connId: '101', userId: 1, type: 'chat:typing', topic: 'chat', bytes: 96, success: true },
+    ],
+    nodes: [{ nodeId: 'demo-node', connections: 3, users: 2, sent: 4521, recv: 1023 }],
+    topics: [
+      { topic: 'in-app-message', messages: 1, bytes: 482 },
+      { topic: 'chat', messages: 1, bytes: 96 },
+    ],
     connections: [
-      { connId: '101', tokenId: 'a1b2c3d4e5f6', userId: 1, username: 'admin', nickname: '超级管理员', connectedAt: now - 1_200_000, lastActivityAt: now - 5_000, sent: 42, recv: 18 },
-      { connId: '102', tokenId: 'a1b2c3d4e5f6', userId: 1, username: 'admin', nickname: '超级管理员', connectedAt: now - 320_000, lastActivityAt: now - 1_200, sent: 11, recv: 3 },
-      { connId: '103', tokenId: '0123456789ab', userId: 2, username: 'demo', nickname: '演示账号', connectedAt: now - 60_000, lastActivityAt: now - 800, sent: 6, recv: 2 },
+      { connId: '101', nodeId: 'demo-node', tokenId: 'a1b2c3d4e5f6', userId: 1, username: 'admin', nickname: '超级管理员', connectedAt: now - 1_200_000, lastActivityAt: now - 5_000, sent: 42, recv: 18 },
+      { connId: '102', nodeId: 'demo-node', tokenId: 'a1b2c3d4e5f6', userId: 1, username: 'admin', nickname: '超级管理员', connectedAt: now - 320_000, lastActivityAt: now - 1_200, sent: 11, recv: 3 },
+      { connId: '103', nodeId: 'demo-node', tokenId: '0123456789ab', userId: 2, username: 'demo', nickname: '演示账号', connectedAt: now - 60_000, lastActivityAt: now - 800, sent: 6, recv: 2 },
     ],
     recentDisconnects: [
-      { connId: '99', tokenId: 'aaa11122233', userId: 2, username: 'demo', nickname: '演示账号', at: now - 30_000, reason: 'client-close', duration: 240_000, sent: 8, recv: 4 },
-      { connId: '87', tokenId: 'bbb44455566', userId: 1, username: 'admin', nickname: '超级管理员', at: now - 600_000, reason: 'force-logout', duration: 3_600_000, sent: 96, recv: 31 },
+      { connId: '99', nodeId: 'demo-node', tokenId: 'aaa11122233', userId: 2, username: 'demo', nickname: '演示账号', at: now - 30_000, reason: 'client-close', duration: 240_000, sent: 8, recv: 4 },
+      { connId: '87', nodeId: 'demo-node', tokenId: 'bbb44455566', userId: 1, username: 'admin', nickname: '超级管理员', at: now - 600_000, reason: 'force-logout', duration: 3_600_000, sent: 96, recv: 31 },
     ],
   };
 }

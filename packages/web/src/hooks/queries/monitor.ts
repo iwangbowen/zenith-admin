@@ -29,3 +29,11 @@ export function useMonitorSnapshot(refetchInterval: number | false, enabled = tr
 export function useMonitorHistory(range: MonitorHistoryRange, enabled = true) {
   return useApiQuery(monitorContract.history, { query: { range } }, { enabled, requestOptions: { silent: true } });
 }
+
+/** WebSocket 连接监控独立页面使用的轻量查询，不拉取整机监控快照。 */
+export function useMonitorWsMetrics(refetchInterval: number | false = 5000) {
+  return useApiQuery(monitorContract.ws, undefined, {
+    requestOptions: { silent: true },
+    refetchInterval,
+  });
+}

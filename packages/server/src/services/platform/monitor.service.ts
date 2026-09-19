@@ -649,6 +649,9 @@ export async function getWsMetrics() {
     totalDisconnects: snap.totalDisconnects,
     totalSent: snap.totalSent,
     totalRecv: snap.totalRecv,
+    messages: snap.messages,
+    nodes: snap.nodes,
+    topics: snap.topics,
     connections: snap.connections.map((c) => ({
       ...c,
       username: userMap.get(c.userId)?.username ?? null,
