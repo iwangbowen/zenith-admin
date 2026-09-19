@@ -293,48 +293,46 @@ export default function WsTopologyView({ reconnects, clientStats, ...graphProps 
 
       <section className="ws-monitor-section">
         <div className="ws-monitor-section__header"><Title heading={6}>客户端类型分布</Title></div>
-        <Table
-          size="small"
-          bordered
-          dataSource={(Object.keys(KIND_ROW_LABEL) as WsClientKind[]).map((kind) => {
+        <div className="ws-monitor-metrics ws-monitor-metrics--4">
+          {(Object.keys(KIND_ROW_LABEL) as WsClientKind[]).map((kind) => {
             const stat = clientStats.byKind.find((s) => s.kind === kind);
-            return { kind, label: KIND_ROW_LABEL[kind], connections: stat?.connections ?? 0, users: stat?.users ?? 0 };
+            return (
+              <div key={kind}>
+                <Text type="tertiary" size="small">{KIND_ROW_LABEL[kind]}</Text>
+                <strong>{formatNumber(stat?.connections ?? 0)}</strong>
+                <Text type="tertiary" size="small">连接 · {formatNumber(stat?.users ?? 0)} 用户</Text>
+              </div>
+            );
           })}
-          rowKey="kind"
-          pagination={false}
-          empty={<Text type="tertiary">暂无客户端数据</Text>}
-          columns={[
-            { title: '端', dataIndex: 'label', minWidth: 120 },
-            { title: '连接', dataIndex: 'connections', width: 100, align: 'right' as const, render: (v: number) => formatNumber(v) },
-            { title: '用户', dataIndex: 'users', width: 100, align: 'right' as const, render: (v: number) => formatNumber(v) },
-          ]}
-        />
-        <div className="ws-topo-tables">
-          <Table
-            size="small"
-            bordered
-            dataSource={clientStats.topBrowsers}
-            rowKey="name"
-            pagination={false}
-            empty={<Text type="tertiary">暂无数据</Text>}
-            columns={[
-              { title: '浏览器 Top', dataIndex: 'name', minWidth: 160 },
-              { title: '连接', dataIndex: 'connections', width: 100, align: 'right' as const, render: (v: number) => formatNumber(v) },
-            ]}
-          />
-          <Table
-            size="small"
-            bordered
-            dataSource={clientStats.topOSs}
-            rowKey="name"
-            pagination={false}
-            empty={<Text type="tertiary">暂无数据</Text>}
-            columns={[
-              { title: '操作系统 Top', dataIndex: 'name', minWidth: 160 },
-              { title: '连接', dataIndex: 'connections', width: 100, align: 'right' as const, render: (v: number) => formatNumber(v) },
-            ]}
-          />
         </div>
+        <Text type="tertiary" size="small" className="ws-topo-strip-label">浏览器 Top</Text>
+        {clientStats.topBrowsers.length > 0 ? (
+          <div className="ws-monitor-metrics ws-monitor-metrics--auto">
+            {clientStats.topBrowsers.map((b) => (
+              <div key={b.name}>
+                <Text type="tertiary" size="small" className="ws-topo-strip-name">{b.name}</Text>
+                <strong>{formatNumber(b.connections)}</strong>
+                <Text type="tertiary" size="small">连接</Text>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Text type="tertiary" size="small">{EMPTY_PLACEHOLDER}</Text>
+        )}
+        <Text type="tertiary" size="small" className="ws-topo-strip-label">操作系统 Top</Text>
+        {clientStats.topOSs.length > 0 ? (
+          <div className="ws-monitor-metrics ws-monitor-metrics--auto">
+            {clientStats.topOSs.map((b) => (
+              <div key={b.name}>
+                <Text type="tertiary" size="small" className="ws-topo-strip-name">{b.name}</Text>
+                <strong>{formatNumber(b.connections)}</strong>
+                <Text type="tertiary" size="small">连接</Text>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Text type="tertiary" size="small">{EMPTY_PLACEHOLDER}</Text>
+        )}
       </section>
 
       <section className="ws-monitor-section">
