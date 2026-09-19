@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Input, Select, SideSheet, Table, Tag, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Empty, Input, Select, SideSheet, Spin, Table, Tag, Typography } from '@douyinfe/semi-ui';
 import { Activity, Copy, RadioTower, RefreshCw, Search, X } from 'lucide-react';
 import { useMonitorWsMetrics } from '@/hooks/queries/monitor';
 import { TABLE_PAGE_SIZE_OPTIONS, usePagination } from '@/hooks/usePagination';
@@ -7,6 +7,7 @@ import DateTimeText from '@/components/DateTimeText';
 import { EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { formatSecondsHuman } from '@/utils/format';
+import { useNowTick } from '@/hooks/useNowTick';
 import {
   describeWsClient,
   groupWsDisconnectReasons,
@@ -30,8 +31,8 @@ const numberFormatter = new Intl.NumberFormat('zh-CN');
 const formatNumber = (value: number) => numberFormatter.format(value);
 const formatRate = (value: number) => (Number.isInteger(value) ? formatNumber(value) : value.toFixed(1));
 
-function toStatus(connection: MonitorWsConnection): ConnectionStatus {
-  return isWsConnectionActive(connection.lastActivityAt) ? 'active' : 'idle';
+function toStatus(connection: MonitorWsConnection, now: number): ConnectionStatus {
+  return isWsConnectionActive(connection.lastActivityAt, now) ? 'active' : 'idle';
 }
 
 function StatusTag({ status }: { status: ConnectionStatus }) {
@@ -55,25 +56,21 @@ export default function WebSocketMonitorPage() {
   const [messageResult, setMessageResult] = useState<'all' | 'success' | 'failed'>('all');
   const [reasonFilter, setReasonFilter] = useState<string>('all');
   const [disconnectNode, setDisconnectNode] = useState<string>('all');
-  const [selectedConnection, setSelectedConnection] = useState<MonitorWsConnection | null>(null);
+  /** 详情面板只存 connId：渲染时从最新快照取，轮询刷新后面板不会停在打开那一刻 */
+  const [selectedConnId, setSelectedConnId] = useState<string | null>(null);
+  /** 连接断开后仍可查看的最后一次快照（配合「已断开」提示） */
+  const [selectedSnapshot, setSelectedSnapshot] = useState<MonitorWsConnection | null>(null);
   const connectionsPagination = usePagination(20);
   const disconnectsPagination = usePagination(20);
-  /** 自刷新节拍：暂停轮询时「持续时间 / 平均时长」列仍能推进（与服务监控页 WS Tab 一致） */
-  const [durationTick, setDurationTick] = useState(0);
-  useEffect(() => {
-    const timer = setInterval(() => setDurationTick((n) => n + 1), 30_000);
-    return () => clearInterval(timer);
-  }, []);
-  void durationTick;
+  /** 共享节拍（30s）：暂停轮询时「持续时间 / 活跃判定 / 平均在线时长」仍能推进 */
+  const now = useNowTick();
 
   const messages = useMemo(() => metrics?.messages ?? [], [metrics]);
   const nodes = useMemo(() => metrics?.nodes ?? [], [metrics]);
-  const topics = useMemo(() => metrics?.topics ?? [], [metrics]);
 
   const health = useMemo(
-    () => (metrics ? summarizeWsHealth(metrics.connections, metrics.currentUsers, messages) : null),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 健康指标含“平均在线时长”，随自刷新节拍推进
-    [metrics, messages, durationTick],
+    () => (metrics ? summarizeWsHealth(metrics.connections, metrics.currentUsers, messages, now) : null),
+    [metrics, messages, now],
   );
   const reasonStats = useMemo(() => groupWsDisconnectReasons(metrics?.recentDisconnects ?? []), [metrics]);
   const topicStats = useMemo(() => statWsTopicDirections(messages), [messages]);
@@ -157,11 +154,11 @@ export default function WebSocketMonitorPage() {
       ].some((value) => value.toLowerCase().includes(normalized));
       return (
         matchesKeyword
-        && (status === 'all' || toStatus(connection) === status)
+        && (status === 'all' || toStatus(connection, now) === status)
         && (nodeFilter === 'all' || connection.nodeId === nodeFilter)
       );
     });
-  }, [keyword, metrics, status, nodeFilter]);
+  }, [keyword, metrics, now, status, nodeFilter]);
 
   const filteredMessages = useMemo(() => {
     const normalized = messageKeyword.trim().toLowerCase();
@@ -190,6 +187,27 @@ export default function WebSocketMonitorPage() {
         && (disconnectNode === 'all' || d.nodeId === disconnectNode),
     );
   }, [disconnectNode, metrics, reasonFilter]);
+
+  /** 仍在线的那条连接（断开后为 null），详情面板据此在「实时数据」与「已断开」两种形态间切换 */
+  const liveSelected = useMemo(
+    () => (selectedConnId === null ? null : metrics?.connections.find((c) => c.connId === selectedConnId) ?? null),
+    [metrics, selectedConnId],
+  );
+  useEffect(() => {
+    if (liveSelected) setSelectedSnapshot(liveSelected);
+  }, [liveSelected]);
+  /** 展示用记录：优先取在线快照，连接消失后退回断开前那一次 */
+  const selectedConnection = liveSelected ?? selectedSnapshot;
+  const selectedDisconnect = useMemo(
+    () => (liveSelected || selectedConnId === null
+      ? null
+      : metrics?.recentDisconnects.find((d) => d.connId === selectedConnId) ?? null),
+    [liveSelected, metrics, selectedConnId],
+  );
+  const openConnection = (record: MonitorWsConnection) => {
+    setSelectedConnId(record.connId);
+    setSelectedSnapshot(record);
+  };
 
   const selectedSiblings = useMemo(() => {
     if (!selectedConnection || !metrics) return { sameToken: [], sameUser: [] };
@@ -277,7 +295,7 @@ export default function WebSocketMonitorPage() {
         );
       },
     },
-    { title: '状态', dataIndex: 'connectionStatus', key: 'connectionStatus', width: 80, render: (_: unknown, record: MonitorWsConnection) => <StatusTag status={toStatus(record)} /> },
+    { title: '状态', dataIndex: 'connectionStatus', key: 'connectionStatus', width: 80, render: (_: unknown, record: MonitorWsConnection) => <StatusTag status={toStatus(record, now)} /> },
     dateTimeColumn('建立时间', 'connectedAt'),
     dateTimeColumn('最近活动', 'lastActivityAt'),
     {
@@ -287,7 +305,7 @@ export default function WebSocketMonitorPage() {
       width: 110,
       align: 'right' as const,
       sorter: (a?: MonitorWsConnection, b?: MonitorWsConnection) => (a?.connectedAt ?? 0) - (b?.connectedAt ?? 0),
-      render: (_: unknown, record: MonitorWsConnection) => formatSecondsHuman((Date.now() - record.connectedAt) / 1000),
+      render: (_: unknown, record: MonitorWsConnection) => formatSecondsHuman((now - record.connectedAt) / 1000),
     },
     {
       title: '发送',
@@ -394,7 +412,7 @@ export default function WebSocketMonitorPage() {
               loading={query.isFetching && !metrics}
               dataSource={filteredConnections}
               rowKey="connId"
-              onRow={(record) => ({ onClick: () => { if (record) setSelectedConnection(record); } })}
+              onRow={(record) => ({ onClick: () => { if (record) openConnection(record); } })}
               pagination={filteredConnections.length > 20 ? { ...connectionsPagination.buildPagination(filteredConnections.length), showSizeChanger: true, pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS } : false}
               empty={<Text type="tertiary">暂无符合条件的在线连接</Text>}
               columns={connectionColumns}
@@ -520,14 +538,6 @@ export default function WebSocketMonitorPage() {
                 </div>
                 <Table size="small" bordered dataSource={topicStats} rowKey="topic" pagination={false} empty={<Text type="tertiary">暂无 Topic 数据</Text>} columns={topicColumns} />
               </section>
-              <section className="ws-monitor-section">
-                <div className="ws-monitor-section__header"><Title heading={6}>采样 Topic 总量（服务端聚合）</Title></div>
-                <Table size="small" bordered dataSource={topics} rowKey="topic" pagination={false} empty={<Text type="tertiary">暂无 Topic 数据</Text>} columns={[
-                  { title: 'Topic / 类型', dataIndex: 'topic', width: 240 },
-                  { title: '采样消息数', dataIndex: 'messages', width: 130, align: 'right' as const, render: (value: number) => formatNumber(value) },
-                  { title: '采样字节数', dataIndex: 'bytes', width: 130, align: 'right' as const, render: (value: number) => `${formatNumber(value)} B` },
-                ]} />
-              </section>
             </div>
           )}
           {activeView === 'graph' && (
@@ -537,8 +547,8 @@ export default function WebSocketMonitorPage() {
               reconnects={reconnects}
               clientStats={clientStats}
               onSelectUser={(userId) => {
-                const target = metrics.connections.find((c) => c.userId === userId) ?? null;
-                setSelectedConnection(target);
+                const target = metrics.connections.find((c) => c.userId === userId);
+                if (target) openConnection(target);
               }}
               onInspectTopic={(topic) => {
                 setMessageKeyword(topic);
@@ -555,17 +565,45 @@ export default function WebSocketMonitorPage() {
             />
           )}
         </>
+      ) : query.isError ? (
+        <div className="ws-monitor-empty">
+          <Empty
+            title="WebSocket 监控数据加载失败"
+            description={query.error instanceof Error ? query.error.message : '请稍后重试'}
+          >
+            <Button icon={<RefreshCw size={14} />} loading={query.isFetching} onClick={() => void query.refetch()}>重试</Button>
+          </Empty>
+        </div>
+      ) : query.isFetching ? (
+        <div className="ws-monitor-empty"><Spin size="large" /></div>
       ) : (
-        <div className="ws-monitor-empty">{query.isFetching ? '正在加载 WebSocket 监控数据…' : 'WebSocket 监控数据不可用'}</div>
+        <div className="ws-monitor-empty"><Empty title="暂无 WebSocket 监控数据" /></div>
       )}
 
-      <SideSheet title="连接详情" visible={Boolean(selectedConnection)} onCancel={() => setSelectedConnection(null)} placement="right" width={440}>
+      <SideSheet title="连接详情" visible={selectedConnId !== null} onCancel={() => setSelectedConnId(null)} placement="right" width={440}>
         {selectedConnection && (
           <div className="ws-monitor-detail">
             <div className="ws-monitor-detail__status">
-              <StatusTag status={toStatus(selectedConnection)} />
-              <Text type="tertiary">实时数据{live ? '每 5 秒刷新' : '已暂停'}</Text>
+              {liveSelected
+                ? <StatusTag status={toStatus(selectedConnection, now)} />
+                : <Tag color="red" size="small">已断开</Tag>}
+              <Text type="tertiary">
+                {liveSelected ? `实时数据 · ${live ? '每 5 秒刷新' : '已暂停'}` : '以下为断开前最后一次采集到的数据'}
+              </Text>
             </div>
+            {!liveSelected && (
+              <Banner
+                type="warning"
+                className="ws-monitor-detail__closed"
+                description={(
+                  <>
+                    该连接已于
+                    {' '}<DateTimeText value={selectedDisconnect?.at ?? selectedConnection.lastActivityAt} mode="absolute" />{' '}
+                    断开{selectedDisconnect?.reason ? `（${selectedDisconnect.reason}）` : ''}
+                  </>
+                )}
+              />
+            )}
             <dl>
               <dt>连接 ID</dt>
               <dd className="ws-monitor-detail__copy">
@@ -613,7 +651,7 @@ export default function WebSocketMonitorPage() {
               </dd>
               <dt>建立时间</dt><dd><DateTimeText value={selectedConnection.connectedAt} /></dd>
               <dt>最近活动</dt><dd><DateTimeText value={selectedConnection.lastActivityAt} /></dd>
-              <dt>持续时间</dt><dd>{formatSecondsHuman((Date.now() - selectedConnection.connectedAt) / 1000)}</dd>
+              <dt>持续时间</dt><dd>{formatSecondsHuman((now - selectedConnection.connectedAt) / 1000)}</dd>
               <dt>发送消息</dt><dd>{formatNumber(selectedConnection.sent)}</dd>
               <dt>接收消息</dt><dd>{formatNumber(selectedConnection.recv)}</dd>
             </dl>
@@ -625,7 +663,7 @@ export default function WebSocketMonitorPage() {
                     <Text type="tertiary" size="small">同登录会话（{selectedSiblings.sameToken.length} 个标签页）</Text>
                     <div className="ws-monitor-detail__sibling-list">
                       {selectedSiblings.sameToken.map((c) => (
-                        <Button key={c.connId} size="small" theme="light" onClick={() => setSelectedConnection(c)}>{c.connId}</Button>
+                        <Button key={c.connId} size="small" theme="light" onClick={() => openConnection(c)}>{c.connId}</Button>
                       ))}
                     </div>
                   </div>
@@ -635,7 +673,7 @@ export default function WebSocketMonitorPage() {
                     <Text type="tertiary" size="small">同用户其他会话（{selectedSiblings.sameUser.length} 条）</Text>
                     <div className="ws-monitor-detail__sibling-list">
                       {selectedSiblings.sameUser.map((c) => (
-                        <Button key={c.connId} size="small" theme="light" onClick={() => setSelectedConnection(c)}>{c.connId}</Button>
+                        <Button key={c.connId} size="small" theme="light" onClick={() => openConnection(c)}>{c.connId}</Button>
                       ))}
                     </div>
                   </div>

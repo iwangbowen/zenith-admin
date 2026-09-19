@@ -254,6 +254,10 @@
   gap: 10px;
 }
 
+.ws-monitor-detail__closed {
+  margin-top: 12px;
+}
+
 .ws-monitor-detail__copy {
   display: flex;
   align-items: center;
