@@ -357,6 +357,71 @@ describe('跨进程 fan-out', () => {
   });
 });
 
+describe('跨进程 WS 监控集群合并', () => {
+  /** 加载第二份隔离的 ws-manager（模拟另一 api 进程），节点标识不同 */
+  async function loadPeer(nodeId: string): Promise<WsManager> {
+    vi.resetModules();
+    vi.doMock('./process-identity', () => ({ PROCESS_HOSTNAME: nodeId, PROCESS_PID: 1, PROCESS_ID: `${nodeId}:1` }));
+    const peer = await import('./ws-manager');
+    vi.doUnmock('./process-identity');
+    return peer;
+  }
+
+  it('远端快照合并为集群视图：连接相加、用户去重、计数求和；本进程快照不受影响', async () => {
+    await (await import('./ws-fanout')).startWsFanoutSubscriber();
+    const local = fakeWs();
+    m.registerConnection(1, 'jti-local', local.ws);
+
+    const b = await loadPeer('node-b');
+    b.registerConnection(1, 'jti-remote', fakeWs().ws);
+    b.registerConnection(2, 'jti-remote-2', fakeWs().ws);
+    b.publishWsStatsSnapshot();
+
+    await vi.waitFor(() => {
+      expect(m.getWsClusterSnapshot().currentConnections).toBe(3);
+    });
+    const cluster = m.getWsClusterSnapshot();
+    // user 1 在两边都有，去重后为 2 人
+    expect(cluster.currentUsers).toBe(2);
+    expect(cluster.totalConnects).toBe(3);
+    expect(cluster.nodes.map((n) => n.nodeId).sort()).toHaveLength(2);
+    // Prometheus 用的本进程快照不受合并影响
+    expect(m.getWsSnapshot().currentConnections).toBe(1);
+    expect(m.getWsSnapshot().nodes).toHaveLength(1);
+  });
+
+  it('远端镜像超 TTL 后被淘汰，集群视图回退为本进程', async () => {
+    await (await import('./ws-fanout')).startWsFanoutSubscriber();
+    const b = await loadPeer('node-b');
+    b.registerConnection(5, 'jti-5', fakeWs().ws);
+    b.publishWsStatsSnapshot();
+    await vi.waitFor(() => {
+      expect(m.getWsClusterSnapshot().currentConnections).toBe(1);
+    });
+
+    m.startPresenceSync();
+    vi.advanceTimersByTime(120_000);
+    expect(m.getWsClusterSnapshot().currentConnections).toBe(0);
+    m.stopPresenceSync();
+  });
+
+  it('退出时发布空快照，对端立即清零该节点镜像', async () => {
+    await (await import('./ws-fanout')).startWsFanoutSubscriber();
+    const b = await loadPeer('node-b');
+    b.registerConnection(8, 'jti-8', fakeWs().ws);
+    b.publishWsStatsSnapshot();
+    await vi.waitFor(() => {
+      expect(m.getWsClusterSnapshot().currentConnections).toBe(1);
+    });
+
+    b.startPresenceSync();
+    b.stopPresenceSync();
+    await vi.waitFor(() => {
+      expect(m.getWsClusterSnapshot().currentConnections).toBe(0);
+    });
+  });
+});
+
 describe('跨进程 presence 合并视图', () => {
   /** 加载第二份隔离的 ws-manager（模拟另一进程），进程标识不同；可选让它也订阅 fan-out */
   async function loadPeer(nodeId: string, subscribe = true): Promise<WsManager> {

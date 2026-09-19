@@ -468,7 +468,12 @@ export default function WebSocketMonitorPage() {
           {activeView === 'topology' && (
             <div className="ws-monitor-view-pane">
               <section className="ws-monitor-section">
-                <div className="ws-monitor-section__header"><Title heading={6}>服务节点</Title></div>
+                <div className="ws-monitor-section__header">
+                  <div>
+                    <Title heading={6}>服务节点 <Text type="tertiary">{nodes.length} 个</Text></Title>
+                    <Text type="tertiary" size="small">集群合并视图：各 api 节点快照按 30 秒节拍汇总，失联节点超过 90 秒自动移出</Text>
+                  </div>
+                </div>
                 <Table size="small" bordered dataSource={nodes} rowKey="nodeId" pagination={false} empty={<Text type="tertiary">暂无节点数据</Text>} columns={nodeColumns} />
               </section>
               <section className="ws-monitor-section">

@@ -15,6 +15,7 @@
  */
 import type Redis from 'ioredis';
 import type { WsMessage } from '@zenith/shared/platform';
+import type { WsNodeStats } from './ws-manager';
 import { config } from '../config';
 import logger from './logger';
 import { PROCESS_ID } from './process-identity';
@@ -40,7 +41,12 @@ export type WsFanoutEnvelope =
   /** 发送方节点的本地上下线增量（不是合并视图）：接收方据此更新对该节点的镜像 */
   | { kind: 'presence'; changes: Array<{ userId: number; online: boolean; lastSeen: number | null }> }
   /** 发送方节点的本地在线全量快照：周期发送，让镜像在丢包 / 重启后自愈 */
-  | { kind: 'presenceSnapshot'; online: number[]; lastSeen: Array<[userId: number, lastSeenMs: number]> };
+  | { kind: 'presenceSnapshot'; online: number[]; lastSeen: Array<[userId: number, lastSeenMs: number]> }
+  /**
+   * 发送方节点的 WS 监控本地快照：周期发送，接收方合并为集群视图后供监控页展示。
+   * 连接明细随快照全量同步（管理后台量级可接受）；计数器按节点求和，明细按时间截断。
+   */
+  | { kind: 'wsStats'; stats: WsNodeStats };
 
 export type WsFanoutKind = WsFanoutEnvelope['kind'];
 

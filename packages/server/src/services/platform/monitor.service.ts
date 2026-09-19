@@ -8,7 +8,7 @@ import { users } from '../../db/schema';
 import redis from '../../lib/redis';
 import logger from '../../lib/logger';
 import { metricsSampler } from '../../lib/metrics-sampler';
-import { getWsSnapshot } from '../../lib/ws-manager';
+import { getWsClusterSnapshot } from '../../lib/ws-manager';
 import { listProcesses } from '../ops/processes.service';
 
 const execFileAsync = promisify(execFile);
@@ -626,11 +626,12 @@ export function getMonitorTimeseries() {
 }
 
 /**
- * WebSocket 监控数据：返回当前所有 WS 连接、累计统计和最近断开记录。
+ * WebSocket 监控数据：集群合并视图（本进程 + 存活远端节点的快照镜像）。
+ * 单进程部署时退化为本进程快照；多 api 副本下各节点的连接、计数与采样按 TTL 镜像合并。
  * 自动关联 users 表查询用户昵称。
  */
 export async function getWsMetrics() {
-  const snap = getWsSnapshot();
+  const snap = getWsClusterSnapshot();
   const userIds = new Set<number>();
   for (const c of snap.connections) userIds.add(c.userId);
   for (const d of snap.recentDisconnects) userIds.add(d.userId);

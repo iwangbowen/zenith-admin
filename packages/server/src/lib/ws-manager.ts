@@ -1,8 +1,8 @@
 import type { WSContext } from 'hono/ws';
-import os from 'node:os';
 import type { ChatPresence } from '@zenith/shared/chat';
 import type { WsMessage } from '@zenith/shared/platform';
 import { formatDateTime } from './datetime';
+import { PROCESS_ID } from './process-identity';
 import { onWsFanout, publishWsFanout } from './ws-fanout';
 
 // ─── 连接登记 ──────────────────────────────────────────────────────────
@@ -38,7 +38,8 @@ let connSeq = 0;
 
 // ─── 监控指标 ──────────────────────────────────────────────────────────
 const counters = { totalConnects: 0, totalDisconnects: 0, totalSent: 0, totalRecv: 0 };
-const nodeId = `${os.hostname()}:${process.pid}`;
+// 节点标识与 fan-out `from` 同源（hostname:pid），跨进程镜像按发送方归档时口径一致
+const nodeId = PROCESS_ID;
 let messageSeq = 0;
 const recentMessages: WsMonitorMessage[] = [];
 const RECENT_MESSAGE_MAX = 200;
@@ -281,6 +282,21 @@ function closeSockets(sockets: Set<WSContext> | undefined, reason: string) {
   }
 }
 
+// ─── 跨进程监控快照镜像 ────────────────────────────────────────────────
+// presence 合并的是在线状态；监控页要看的是连接明细与计数，因此各节点周期
+// 发布本地快照（wsStats 信封），本进程按发送方归档成镜像后合并展示。
+// 镜像超过 TTL 未刷新（进程崩溃 / 网络分区）即丢弃，回退为本进程视图。
+interface RemoteWsNodeStats {
+  stats: WsNodeStats;
+  updatedAt: number;
+}
+const remoteWsNodes = new Map<string, RemoteWsNodeStats>();
+
+function liveRemoteWsNodes(): RemoteWsNodeStats[] {
+  const cutoff = Date.now() - REMOTE_PRESENCE_TTL_MS;
+  return [...remoteWsNodes.values()].filter((node) => node.updatedAt >= cutoff);
+}
+
 onWsFanout('user', (e) => deliverToUser(e.target, e.message));
 onWsFanout('users', (e) => { for (const userId of e.targets) deliverToUser(userId, e.message); });
 onWsFanout('perUser', (e) => { for (const entry of e.entries) deliverToUser(entry.target, entry.message); });
@@ -288,6 +304,9 @@ onWsFanout('token', (e) => deliverToToken(e.target, e.message));
 onWsFanout('broadcast', (e) => deliverBroadcast(e.message));
 onWsFanout('closeToken', (e) => closeSockets(tokenSockets.get(e.target), e.reason));
 onWsFanout('closeUser', (e) => closeSockets(userSockets.get(e.target), e.reason));
+onWsFanout('wsStats', (e) => {
+  remoteWsNodes.set(e.from, { stats: e.stats, updatedAt: Date.now() });
+});
 
 // ─── 公开发送 / 关闭（本地 + 跨进程）────────────────────────────────────
 /** Send a message to every socket of the login session identified by tokenId */
@@ -502,6 +521,11 @@ function pruneRemotePresence(): void {
       deliverBroadcast({ type: 'chat:presence', payload: [...node.online].map(getUserPresence) });
     }
   }
+  // WS 监控镜像同 TTL 淘汰：失联节点的连接明细不再计入集群视图
+  for (const [nodeId, entry] of remoteWsNodes) {
+    if (entry.updatedAt >= cutoff) continue;
+    remoteWsNodes.delete(nodeId);
+  }
 }
 
 /**
@@ -511,9 +535,11 @@ function pruneRemotePresence(): void {
 export function startPresenceSync(): void {
   if (presenceSnapshotTimer) return;
   publishPresenceSnapshot();
+  publishWsStatsSnapshot();
   presenceSnapshotTimer = setInterval(() => {
     pruneRemotePresence();
     publishPresenceSnapshot();
+    publishWsStatsSnapshot();
   }, PRESENCE_SNAPSHOT_INTERVAL_MS);
   presenceSnapshotTimer.unref?.();
 }
@@ -528,6 +554,8 @@ export function stopPresenceSync(): void {
     kind: 'presence',
     changes: [...userSockets.keys()].map((userId) => ({ userId, online: false, lastSeen: now })),
   });
+  // 监控镜像同样主动清零，避免其他节点的集群视图残留本进程的连接
+  publishWsFanout({ kind: 'wsStats', stats: emptyWsNodeStats() });
 }
 
 // ─── 监控查询 ──────────────────────────────────────────────────────────
@@ -566,23 +594,7 @@ export function getWsSnapshot() {
       recv: m.recv,
     });
   }
-  const topicMap = new Map<string, { messages: number; bytes: number }>();
-  for (const message of recentMessages) {
-    if (!message.topic) continue;
-    const current = topicMap.get(message.topic) ?? { messages: 0, bytes: 0 };
-    current.messages += 1;
-    current.bytes += message.bytes;
-    topicMap.set(message.topic, current);
-  }
-  const nodeStats = new Map<string, { connections: number; users: Set<number>; sent: number; recv: number }>();
-  for (const m of connections.values()) {
-    const current = nodeStats.get(m.nodeId) ?? { connections: 0, users: new Set<number>(), sent: 0, recv: 0 };
-    current.connections += 1;
-    current.users.add(m.userId);
-    current.sent += m.sent;
-    current.recv += m.recv;
-    nodeStats.set(m.nodeId, current);
-  }
+  const { nodes, topics } = buildWsAggregates(snapshot, recentMessages);
   return {
     currentConnections: connections.size,
     currentUsers: userSockets.size,
@@ -591,9 +603,159 @@ export function getWsSnapshot() {
     totalSent: counters.totalSent,
     totalRecv: counters.totalRecv,
     messages: [...recentMessages],
-    nodes: [...nodeStats.entries()].map(([id, value]) => ({ nodeId: id, connections: value.connections, users: value.users.size, sent: value.sent, recv: value.recv })),
-    topics: [...topicMap.entries()].map(([topic, value]) => ({ topic, ...value })),
+    nodes,
+    topics,
     connections: snapshot,
     recentDisconnects: [...recentDisconnects],
+  };
+}
+
+/** 由连接明细与消息采样现算节点 / Topic 聚合：本进程快照与集群合并共用同一口径 */
+function buildWsAggregates(
+  conns: WsConnectionSnapshot[],
+  sampled: WsMonitorMessage[],
+): {
+  nodes: Array<{ nodeId: string; connections: number; users: number; sent: number; recv: number }>;
+  topics: Array<{ topic: string; messages: number; bytes: number }>;
+} {
+  const topicMap = new Map<string, { messages: number; bytes: number }>();
+  for (const message of sampled) {
+    if (!message.topic) continue;
+    const current = topicMap.get(message.topic) ?? { messages: 0, bytes: 0 };
+    current.messages += 1;
+    current.bytes += message.bytes;
+    topicMap.set(message.topic, current);
+  }
+  const nodeStats = new Map<string, { connections: number; users: Set<number>; sent: number; recv: number }>();
+  for (const m of conns) {
+    const current = nodeStats.get(m.nodeId) ?? { connections: 0, users: new Set<number>(), sent: 0, recv: 0 };
+    current.connections += 1;
+    current.users.add(m.userId);
+    current.sent += m.sent;
+    current.recv += m.recv;
+    nodeStats.set(m.nodeId, current);
+  }
+  return {
+    nodes: [...nodeStats.entries()].map(([id, value]) => ({ nodeId: id, connections: value.connections, users: value.users.size, sent: value.sent, recv: value.recv })),
+    topics: [...topicMap.entries()].map(([topic, value]) => ({ topic, ...value })),
+  };
+}
+
+/** 跨进程 WS 监控快照的单节点载荷（本进程发布、远端镜像存储的都是它） */
+export interface WsNodeStats {
+  nodeId: string;
+  at: number;
+  currentConnections: number;
+  currentUsers: number;
+  totalConnects: number;
+  totalDisconnects: number;
+  totalSent: number;
+  totalRecv: number;
+  connections: WsConnectionSnapshot[];
+  recentDisconnects: RecentDisconnect[];
+  messages: WsMonitorMessage[];
+}
+
+function collectWsNodeStats(): WsNodeStats {
+  const snapshot: WsConnectionSnapshot[] = [];
+  for (const m of connections.values()) {
+    snapshot.push({
+      connId: m.connId,
+      nodeId: m.nodeId,
+      tokenId: m.tokenId,
+      userId: m.userId,
+      ip: m.ip,
+      userAgent: m.userAgent,
+      lastMessageType: m.lastMessageType,
+      lastMessageAt: m.lastMessageAt,
+      lastDirection: m.lastDirection,
+      connectedAt: m.connectedAt,
+      lastActivityAt: m.lastActivityAt,
+      sent: m.sent,
+      recv: m.recv,
+    });
+  }
+  return {
+    nodeId,
+    at: Date.now(),
+    currentConnections: connections.size,
+    currentUsers: userSockets.size,
+    totalConnects: counters.totalConnects,
+    totalDisconnects: counters.totalDisconnects,
+    totalSent: counters.totalSent,
+    totalRecv: counters.totalRecv,
+    connections: snapshot,
+    recentDisconnects: [...recentDisconnects],
+    messages: [...recentMessages],
+  };
+}
+
+function emptyWsNodeStats(): WsNodeStats {
+  return {
+    nodeId,
+    at: Date.now(),
+    currentConnections: 0,
+    currentUsers: 0,
+    totalConnects: counters.totalConnects,
+    totalDisconnects: counters.totalDisconnects,
+    totalSent: counters.totalSent,
+    totalRecv: counters.totalRecv,
+    connections: [],
+    recentDisconnects: [],
+    messages: [],
+  };
+}
+
+/** 发布本进程 WS 监控快照：presence 同步节拍顺带调用，退出时发空快照主动清零 */
+export function publishWsStatsSnapshot(): void {
+  publishWsFanout({ kind: 'wsStats', stats: collectWsNodeStats() });
+}
+
+/**
+ * 集群合并视图：本进程快照 + 存活远端镜像。
+ * 计数器按节点求和，在线用户按 userId 去重，明细（连接 / 断开 / 消息）按时间倒序截断
+ * （与单进程快照同样的 50 / 200 上限），节点 / Topic 聚合由合并后的明细重算。
+ * 单进程部署时退化为与 getWsSnapshot 等价的结果。
+ */
+export function getWsClusterSnapshot() {
+  const local = collectWsNodeStats();
+  const remotes = liveRemoteWsNodes().map((entry) => entry.stats);
+  const userIds = new Set<number>(local.connections.map((c) => c.userId));
+  let totalConnects = local.totalConnects;
+  let totalDisconnects = local.totalDisconnects;
+  let totalSent = local.totalSent;
+  let totalRecv = local.totalRecv;
+  const connections = [...local.connections];
+  const disconnects = [...local.recentDisconnects];
+  const sampled = [...local.messages];
+  for (const remote of remotes) {
+    totalConnects += remote.totalConnects;
+    totalDisconnects += remote.totalDisconnects;
+    totalSent += remote.totalSent;
+    totalRecv += remote.totalRecv;
+    for (const c of remote.connections) {
+      connections.push(c);
+      userIds.add(c.userId);
+    }
+    disconnects.push(...remote.recentDisconnects);
+    sampled.push(...remote.messages);
+  }
+  disconnects.sort((a, b) => b.at - a.at);
+  if (disconnects.length > RECENT_DISCONNECT_MAX) disconnects.length = RECENT_DISCONNECT_MAX;
+  sampled.sort((a, b) => b.at - a.at);
+  if (sampled.length > RECENT_MESSAGE_MAX) sampled.length = RECENT_MESSAGE_MAX;
+  const { nodes, topics } = buildWsAggregates(connections, sampled);
+  return {
+    currentConnections: connections.length,
+    currentUsers: userIds.size,
+    totalConnects,
+    totalDisconnects,
+    totalSent,
+    totalRecv,
+    messages: sampled,
+    nodes,
+    topics,
+    connections,
+    recentDisconnects: disconnects,
   };
 }
