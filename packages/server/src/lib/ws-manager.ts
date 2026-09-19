@@ -1,6 +1,6 @@
 import type { WSContext } from 'hono/ws';
 import type { ChatPresence } from '@zenith/shared/chat';
-import type { WsMessage } from '@zenith/shared/platform';
+import { isWsControlMessage, type WsMessage } from '@zenith/shared/platform';
 import { formatDateTime } from './datetime';
 import { PROCESS_ID } from './process-identity';
 import { onWsFanout, publishWsFanout } from './ws-fanout';
@@ -620,7 +620,7 @@ function buildWsAggregates(
 } {
   const topicMap = new Map<string, { messages: number; bytes: number }>();
   for (const message of sampled) {
-    if (!message.topic) continue;
+    if (!message.topic || isWsControlMessage(message)) continue;
     const current = topicMap.get(message.topic) ?? { messages: 0, bytes: 0 };
     current.messages += 1;
     current.bytes += message.bytes;

@@ -515,7 +515,7 @@ export default function WebSocketMonitorPage() {
                 <div className="ws-monitor-section__header">
                   <div>
                     <Title heading={6}>消息 Topic / 类型聚合</Title>
-                    <Text type="tertiary" size="small">由最近 200 条消息采样现算，含入站 / 出站拆分与失败计数</Text>
+                    <Text type="tertiary" size="small">由最近 200 条业务消息采样现算，已排除 ping / pong 心跳，含入站 / 出站拆分与失败计数</Text>
                   </div>
                 </div>
                 <Table size="small" bordered dataSource={topicStats} rowKey="topic" pagination={false} empty={<Text type="tertiary">暂无 Topic 数据</Text>} columns={topicColumns} />

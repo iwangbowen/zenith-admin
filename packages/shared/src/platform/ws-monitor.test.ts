@@ -105,7 +105,16 @@ describe('statWsTopicDirections', () => {
     ]);
     expect(out).toEqual([
       { topic: 'chat', inbound: 1, outbound: 2, failed: 1, bytes: 210 },
-      { topic: 'ping', inbound: 1, outbound: 0, failed: 0, bytes: 8 },
+    ]);
+  });
+
+  it('排除 ping / pong 控制帧，避免心跳污染业务 Topic 统计', () => {
+    expect(statWsTopicDirections([
+      message({ type: 'ping', topic: null, direction: 'inbound' }),
+      message({ type: 'pong', topic: null, direction: 'outbound' }),
+      message({ type: 'chat:message', topic: 'chat', direction: 'outbound' }),
+    ])).toEqual([
+      { topic: 'chat', inbound: 0, outbound: 1, failed: 0, bytes: 128 },
     ]);
   });
 });
@@ -191,6 +200,7 @@ describe('buildWsTopology', () => {
         message({ id: 'm1', direction: 'outbound', topic: 'chat', userId: 1, connId: 'c1' }),
         message({ id: 'm2', direction: 'outbound', topic: 'chat', userId: 1, connId: 'c1' }),
         message({ id: 'm3', direction: 'inbound', topic: 'chat', userId: 2, connId: 'c2' }),
+        message({ id: 'm4', type: 'pong', topic: null, direction: 'outbound', userId: 1, connId: 'c1' }),
       ],
     }), NOW);
     expect(topo.nodes.map((n) => n.id)).toEqual(['bus', 'node:n1', 'user:1', 'user:2', 'topic:chat']);

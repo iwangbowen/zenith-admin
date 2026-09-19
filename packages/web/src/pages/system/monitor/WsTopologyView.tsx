@@ -206,7 +206,7 @@ function WsTopologyGraph({ metrics, nodeRates, onSelectUser, onInspectTopic, onS
         <Tag size="small" color="blue">Topic {topology.topicCount}</Tag>
         <Tag size="small">网关 {metrics.nodes.length}</Tag>
         {topology.truncatedUsers > 0 && <Tag size="small" color="orange">另有 {topology.truncatedUsers} 用户未进图</Tag>}
-        <Text type="tertiary" size="small" className="ws-topo-bar__hint">绿线 = 归属，蓝线 = 投递（采样），灰虚线 = 扇出；点选节点高亮相邻，点击用户 / Topic 可下钻</Text>
+        <Text type="tertiary" size="small" className="ws-topo-bar__hint">绿线 = 归属，蓝线 = 业务投递（已排除 ping / pong），灰虚线 = 扇出；点选节点或连线可下钻</Text>
       </div>
       {ready ? (
         <ThemedReactFlow
@@ -278,7 +278,7 @@ export default function WsTopologyView({ reconnects, clientStats, ...graphProps 
           <div>
             <Title heading={6}>关系拓扑</Title>
             <Text type="tertiary" size="small">
-              扇出总线 → 网关节点 → 用户；Topic → 用户表示最近 200 条出站采样中的投递，不是订阅关系（/api/ws 无订阅原语）；
+              扇出总线 → 网关节点 → 用户；Topic → 用户表示最近 200 条业务出站采样中的投递（已排除 ping / pong 心跳），不是订阅关系（/api/ws 无订阅原语）；
               重连为同 Token 启发式推断。
             </Text>
           </div>

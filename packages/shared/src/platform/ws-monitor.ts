@@ -46,6 +46,7 @@ export interface WsTopicDirectionStat {
 export function statWsTopicDirections(messages: MonitorWsMessage[]): WsTopicDirectionStat[] {
   const stats = new Map<string, WsTopicDirectionStat>();
   for (const m of messages) {
+    if (isWsControlMessage(m)) continue;
     const topic = m.topic ?? m.type;
     const cur = stats.get(topic) ?? { topic, inbound: 0, outbound: 0, failed: 0, bytes: 0 };
     if (m.direction === 'inbound') cur.inbound += 1;
@@ -87,6 +88,13 @@ export function summarizeWsHealth(
       : null,
     avgDurationSec: connections.length > 0 ? Math.round(totalDurationSec / connections.length) : null,
   };
+}
+
+/** WebSocket 控制帧不代表业务投递，不进入 Topic / 拓扑关系统计。 */
+export const WS_CONTROL_MESSAGE_TYPES = ['ping', 'pong'] as const;
+
+export function isWsControlMessage(message: Pick<MonitorWsMessage, 'type'>): boolean {
+  return (WS_CONTROL_MESSAGE_TYPES as readonly string[]).includes(message.type);
 }
 
 export type WsClientKind = 'desktop' | 'mobile' | 'web' | 'unknown';
@@ -270,7 +278,7 @@ export function buildWsTopology(metrics: MonitorWsMetrics, now: number = Date.no
   const delivered = new Map<string, Map<number, number>>();
   const topicBytes = new Map<string, number>();
   for (const m of metrics.messages) {
-    if (m.direction !== 'outbound' || m.userId === null) continue;
+    if (m.direction !== 'outbound' || m.userId === null || isWsControlMessage(m)) continue;
     const topic = m.topic ?? m.type;
     const perUser = delivered.get(topic) ?? new Map<number, number>();
     perUser.set(m.userId, (perUser.get(m.userId) ?? 0) + 1);
