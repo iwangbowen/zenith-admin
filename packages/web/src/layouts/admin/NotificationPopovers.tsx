@@ -187,8 +187,8 @@ export function MessagePopover({
       visible={messagePopVisible}
       setVisible={setMessagePopVisible}
       onOpen={fetchInAppMessages}
-      title="最新消息"
-      emptyText="暂无消息"
+      title="最新站内信"
+      emptyText="暂无站内信"
       items={inAppMessages}
       summaryOf={(item) => item.content}
       timeOf={(item) => item.createdAt}
@@ -202,7 +202,7 @@ export function MessagePopover({
       unreadCount={unreadCount}
       navigate={navigate}
       icon={<Bell size={16} strokeWidth={1.5} />}
-      iconTitle="我的消息"
+      iconTitle="站内信"
       actionClassName="admin-header-action--message"
     />
   );

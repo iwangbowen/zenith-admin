@@ -153,7 +153,7 @@ const { hasPermission, hasAnyPermission } = usePermission();
 - `/`：首页入口 `HomeEntry`，登录落地时按默认首页偏好跳转，日常手动访问进入仪表盘
 - `/profile`：个人中心
 - `/announcements`：公告中心
-- `/inbox`：我的消息
+- `/inbox`：站内信
 - `/workflow/designer/:id`：工作流设计器
 - `/workflow/launch/:definitionId`：工作流发起页
 - `/workflow/instance/:id`：流程实例详情页

@@ -97,7 +97,7 @@ export function MoreDropdown({
               icon={<Bell size={14} strokeWidth={1.5} />}
               onClick={() => navigate('/inbox')}
             >
-              我的消息{unreadCount > 0 && <Badge count={unreadCount} overflowCount={99} type="danger" style={{ marginLeft: 6 }} />}
+              站内信{unreadCount > 0 && <Badge count={unreadCount} overflowCount={99} type="danger" style={{ marginLeft: 6 }} />}
             </Dropdown.Item>
             {canEditPreference('colorMode') ? <>
               <Dropdown.Divider />

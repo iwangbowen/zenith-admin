@@ -102,7 +102,7 @@ export function UserDropdown({
             icon={<Bell size={14} strokeWidth={1.5} />}
             onClick={closeAndRun(() => navigate('/inbox'))}
           >
-            我的消息{unreadCount > 0 && <Badge count={unreadCount} overflowCount={99} type="danger" style={{ marginLeft: 6 }} />}
+            站内信{unreadCount > 0 && <Badge count={unreadCount} overflowCount={99} type="danger" style={{ marginLeft: 6 }} />}
           </Dropdown.Item>
           <Dropdown.Item icon={<Megaphone size={14} strokeWidth={1.5} />} onClick={closeAndRun(() => navigate('/announcements'))}>公告中心{announcementUnreadCount > 0 && <Badge count={announcementUnreadCount} overflowCount={99} type="danger" style={{ marginLeft: 6 }} />}</Dropdown.Item>
           {canUseApproval && (

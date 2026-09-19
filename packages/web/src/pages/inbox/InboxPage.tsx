@@ -71,7 +71,7 @@ export default function InboxPage() {
         old ? { ...old, list: old.list.map((n) => (n.id === item.id ? { ...n, isRead: true } : n)) } : old,
       );
     }
-    // 有深链的消息也在弹窗里读正文，跳转走详情弹窗里的按钮（顶栏弹窗才是直接跳转）
+    // 有深链的站内信也在弹窗里读正文，跳转走详情弹窗里的按钮（顶栏弹窗才是直接跳转）
     setSelectedIndex(index ?? list.findIndex((n) => n.id === item.id));
     setSelected({ ...item, isRead: true });
   };
@@ -107,7 +107,7 @@ export default function InboxPage() {
 
   const handleBatchDelete = () => {
     confirmAndDelete({
-      title: `确定要删除选中的 ${selectedIds.length} 条消息吗？`,
+      title: `确定要删除选中的 ${selectedIds.length} 条站内信吗？`,
       run: () => batchDeleteMutation.mutateAsync({ body: { ids: selectedIds } }),
       successMessage: '已删除',
       onDeleted: () => setSelectedIds([]),
@@ -203,7 +203,7 @@ export default function InboxPage() {
                         {IN_APP_MESSAGE_TYPE_LABELS[item.type] ?? item.type}
                       </Tag>
                       {item.link && (
-                        <span title="该消息关联业务页面，可在详情中跳转" style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--semi-color-primary)' }}>
+                        <span title="该站内信关联业务页面，可在详情中跳转" style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--semi-color-primary)' }}>
                           <ArrowUpRight size={13} />
                         </span>
                       )}

@@ -55,7 +55,7 @@ export const SEED_ROLES: Role[] = [
     status: 'enabled',
     createdAt: SEED_DATE,
     updatedAt: SEED_DATE,
-    // 首页 / 个人中心 / 公告中心 / 我的消息 + 会话中心（页面与其按钮权限分离，按钮需显式分配：
+    // 首页 / 个人中心 / 公告中心 / 站内信 + 会话中心（页面与其按钮权限分离，按钮需显式分配：
     // 5001 = 导出聊天记录，由 chat 注册表经 expandPermissionButtons 生成，id 与历史一致）
     // + 知识中心只读（查询按钮 + 页面；写权限由管理员显式分配，空间角色仍是服务端兜底）
     // + 企业网盘个人使用（个人空间完整可用；外链 / 彻底删除 / 协作空间由管理员显式分配）
@@ -70,7 +70,7 @@ export const SEED_ROLES: Role[] = [
     status: 'enabled',
     createdAt: SEED_DATE,
     updatedAt: SEED_DATE,
-    // CMS 子树 + 个人中心（改密码）+ 公告中心 / 我的消息（收公告与审稿 / 退回通知）
+    // CMS 子树 + 个人中心（改密码）+ 公告中心 / 站内信（收公告与审稿 / 退回通知）
     menuIds: [11, 12, 13, ...collectMenuSubtreeIds(CMS_ROOT_MENU_ID)
       .filter((id) => !CMS_RAW_EXPORT_MENU_IDS.includes(id))],
   },

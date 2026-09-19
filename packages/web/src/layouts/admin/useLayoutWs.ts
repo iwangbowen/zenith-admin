@@ -95,7 +95,7 @@ export function useLayoutWs({
         fetchInAppMessages();
       }
 
-      notifyArrival('新消息', msg.payload.title, 'in-app-message', '/inbox');
+      notifyArrival('新站内信', msg.payload.title, 'in-app-message', '/inbox');
     } else if (msg.type === 'in-app-message:read') {
       setInAppMessages(updateMessageReadIfUnread(msg.payload.id));
       setUnreadCount((c) => Math.max(0, c - 1));
