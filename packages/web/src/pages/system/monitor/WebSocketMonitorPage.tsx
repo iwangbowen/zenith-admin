@@ -51,6 +51,33 @@ function StatusTag({ status }: { status: ConnectionStatus }) {
     : <Tag color="orange" size="small">空闲</Tag>;
 }
 
+/** 详情面板的数据来源说明：仍在线的连接是实时数据，已断开的是断开前最后一次采集 */
+function describeDetailSource(liveSelected: MonitorWsConnection | null, live: boolean): string {
+  if (!liveSelected) return '以下为断开前最后一次采集到的数据';
+  return `实时数据 · ${live ? '每 5 秒刷新' : '已暂停'}`;
+}
+
+/**
+ * 指标缺失时的兜底：加载失败 / 首次加载 / 空数据三态互斥。
+ * 用早返回表达，避免在 JSX 里串成嵌套三元（Sonar S3358）。
+ */
+function MonitorFallback({ query }: Readonly<{ query: ReturnType<typeof useMonitorWsMetrics> }>) {
+  if (query.isError) {
+    return (
+      <div className="ws-monitor-empty">
+        <Empty
+          title="WebSocket 监控数据加载失败"
+          description={query.error instanceof Error ? query.error.message : '请稍后重试'}
+        >
+          <Button icon={<RefreshCw size={14} />} loading={query.isFetching} onClick={() => void query.refetch()}>重试</Button>
+        </Empty>
+      </div>
+    );
+  }
+  if (query.isFetching) return <div className="ws-monitor-empty"><Spin size="large" /></div>;
+  return <div className="ws-monitor-empty"><Empty title="暂无 WebSocket 监控数据" /></div>;
+}
+
 export default function WebSocketMonitorPage() {
   const [live, setLive] = useState(true);
   const query = useMonitorWsMetrics(live ? 5000 : false);
@@ -139,7 +166,7 @@ export default function WebSocketMonitorPage() {
   }, [metrics]);
 
   const nodeOptions = useMemo(() => nodes.map((n) => ({ value: n.nodeId, label: n.nodeId })), [nodes]);
-  const messageTypes = useMemo(() => [...new Set(messages.map((m) => m.type))].sort(), [messages]);
+  const messageTypes = useMemo(() => [...new Set(messages.map((m) => m.type))].sort((a, b) => a.localeCompare(b)), [messages]);
   const siblingCounts = useMemo(() => {
     const byToken = new Map<string, number>();
     const byUser = new Map<number, number>();
@@ -617,19 +644,8 @@ export default function WebSocketMonitorPage() {
             />
           )}
         </>
-      ) : query.isError ? (
-        <div className="ws-monitor-empty">
-          <Empty
-            title="WebSocket 监控数据加载失败"
-            description={query.error instanceof Error ? query.error.message : '请稍后重试'}
-          >
-            <Button icon={<RefreshCw size={14} />} loading={query.isFetching} onClick={() => void query.refetch()}>重试</Button>
-          </Empty>
-        </div>
-      ) : query.isFetching ? (
-        <div className="ws-monitor-empty"><Spin size="large" /></div>
       ) : (
-        <div className="ws-monitor-empty"><Empty title="暂无 WebSocket 监控数据" /></div>
+        <MonitorFallback query={query} />
       )}
 
       <SideSheet title="连接详情" visible={selectedConnId !== null} onCancel={() => setSelectedConnId(null)} placement="right" width={440}>
@@ -639,9 +655,7 @@ export default function WebSocketMonitorPage() {
               {liveSelected
                 ? <StatusTag status={toStatus(selectedConnection, now)} />
                 : <Tag color="red" size="small">已断开</Tag>}
-              <Text type="tertiary">
-                {liveSelected ? `实时数据 · ${live ? '每 5 秒刷新' : '已暂停'}` : '以下为断开前最后一次采集到的数据'}
-              </Text>
+              <Text type="tertiary">{describeDetailSource(liveSelected, live)}</Text>
             </div>
             {!liveSelected && (
               <Banner
