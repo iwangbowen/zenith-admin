@@ -410,16 +410,11 @@
 .ws-topo-clients__tops {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: 32px;
+  max-width: 720px;
 }
 
-.ws-topo-top {
-  border: 1px solid var(--semi-color-border);
-  border-radius: var(--semi-border-radius-medium);
-  padding: 12px 16px;
-}
-
-.ws-topo-top ul {
+.ws-topo-clients__tops ul {
   list-style: none;
   margin: 4px 0 0;
   padding: 0;
@@ -427,32 +422,25 @@
   flex-direction: column;
 }
 
-.ws-topo-top li {
+.ws-topo-clients__tops li {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: baseline;
   gap: 8px;
   font-size: 12px;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--semi-color-fill-1);
+  padding: 3px 0;
 }
 
-.ws-topo-top li:last-child {
-  border-bottom: 0;
-  padding-bottom: 0;
-}
-
-.ws-topo-top li span {
+.ws-topo-clients__tops li span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.ws-topo-top li em {
+.ws-topo-clients__tops li em {
   font-style: normal;
   color: var(--semi-color-text-2);
   flex-shrink: 0;
-  width: 48px;
+  min-width: 32px;
   text-align: right;
 }
 

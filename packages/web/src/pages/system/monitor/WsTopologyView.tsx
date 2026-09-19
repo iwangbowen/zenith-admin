@@ -304,13 +304,13 @@ export default function WsTopologyView({ reconnects, clientStats, ...graphProps 
             })}
           </div>
           <div className="ws-topo-clients__tops">
-            <div className="ws-topo-top">
+            <div>
               <Text type="tertiary" size="small">浏览器 Top</Text>
               {clientStats.topBrowsers.length > 0 ? (
                 <ul>{clientStats.topBrowsers.map((b) => <li key={b.name}><span>{b.name}</span><em>{b.connections}</em></li>)}</ul>
               ) : <Text type="tertiary" size="small">{EMPTY_PLACEHOLDER}</Text>}
             </div>
-            <div className="ws-topo-top">
+            <div>
               <Text type="tertiary" size="small">操作系统 Top</Text>
               {clientStats.topOSs.length > 0 ? (
                 <ul>{clientStats.topOSs.map((b) => <li key={b.name}><span>{b.name}</span><em>{b.connections}</em></li>)}</ul>
