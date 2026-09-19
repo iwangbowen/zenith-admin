@@ -854,7 +854,7 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
   flex: 0 0 auto;
 }
 
-/* 四种指示器只动 transform / opacity，并提前提升为合成层：
+/* 全部指示器只动 transform / opacity，并提前提升为合成层：
    加载动画恰好出现在主线程最忙的时刻（下载、解析、执行懒加载 chunk），
    只有跑在合成器线程上的动画才不会跟着主线程一起卡顿。 */
 .page-loading__dot,
@@ -864,7 +864,12 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
 .page-loading__spinner i,
 .page-loading__bounce-dot,
 .page-loading__ripple i,
-.page-loading__thumb {
+.page-loading__thumb,
+.page-loading__orbit,
+.page-loading__orbit i,
+.page-loading__grid i,
+.page-loading__travel,
+.page-loading__ellipsis-dot {
   will-change: transform, opacity;
 }
 
@@ -941,7 +946,11 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
 .page-loading-indicator--spinner,
 .page-loading-indicator--bounce,
 .page-loading-indicator--ripple,
-.page-loading-indicator--progress {
+.page-loading-indicator--progress,
+.page-loading-indicator--orbit,
+.page-loading-indicator--grid,
+.page-loading-indicator--travel,
+.page-loading-indicator--ellipsis {
   align-items: center;
 }
 
@@ -1025,6 +1034,83 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
   background: currentColor;
   animation: page-loading-progress-slide 1.2s ease-in-out infinite;
 }
+
+/* 环绕圆点：容器自转带动上下两极的圆点绕圈，圆点只有静态落位（不参与逐帧重给），
+   因此圆周运动是纯 compositor 的 rotate；两极圆点一实一虚，转动时才有朝向感。 */
+.page-loading__orbit {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  animation: page-loading-orbit-spin 1.3s linear infinite;
+}
+
+.page-loading__orbit i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.page-loading__orbit i:nth-child(1) { transform: translateY(-11px); }
+.page-loading__orbit i:nth-child(2) { transform: translateY(11px); opacity: 0.4; }
+
+/* 九宫格：9 格按「行 + 列」递增负延迟错开，亮点沿对角线扫过；负延迟让首帧就在波中，
+   不等一整圈才亮起。格子只做 scale 与 opacity，26px 见方。 */
+.page-loading__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 7px);
+  grid-auto-rows: 7px;
+  gap: 3px;
+}
+
+.page-loading__grid i {
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.15;
+  animation: page-loading-grid-wave 1.3s ease-in-out infinite;
+}
+
+.page-loading__grid i:nth-child(1) { animation-delay: -0.4s; }
+.page-loading__grid i:nth-child(2) { animation-delay: -0.3s; }
+.page-loading__grid i:nth-child(3) { animation-delay: -0.2s; }
+.page-loading__grid i:nth-child(4) { animation-delay: -0.3s; }
+.page-loading__grid i:nth-child(5) { animation-delay: -0.2s; }
+.page-loading__grid i:nth-child(6) { animation-delay: -0.1s; }
+.page-loading__grid i:nth-child(7) { animation-delay: -0.2s; }
+.page-loading__grid i:nth-child(8) { animation-delay: -0.1s; }
+.page-loading__grid i:nth-child(9) { animation-delay: 0s; }
+
+/* 绕行方块：沿正方形轨迹逐角平移（30px 轨迹 = 11 + 8 + 11），
+   每段用 ease-in-out 在角点自然减速再起步，不做旋转以免与翻转方块混淆。 */
+.page-loading__travel {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: currentColor;
+  animation: page-loading-travel-orbit 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+/* 渐显省略号：三点原地依次亮起（首个 -0.52s 领先，正好是周期的两格相位），
+   只有透明度变化，是全部形态里唯一不位移的一种，适合放在紧凑容器里。 */
+.page-loading-indicator--ellipsis {
+  gap: 6px;
+}
+
+.page-loading__ellipsis-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: page-loading-ellipsis-fade 1.3s ease-in-out infinite;
+}
+
+.page-loading__ellipsis-dot:nth-child(1) { animation-delay: -0.52s; }
+.page-loading__ellipsis-dot:nth-child(2) { animation-delay: -0.26s; }
+.page-loading__ellipsis-dot:nth-child(3) { animation-delay: 0s; }
 
 /* XYFlow follows the active Semi theme instead of its standalone palette. */
 .zenith-react-flow {
@@ -1126,6 +1212,49 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
   }
 }
 
+@keyframes page-loading-orbit-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes page-loading-grid-wave {
+  0%, 100% {
+    opacity: 0.15;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 四角顺序即顺时针一圈；首尾同为左上角，回到起点时位移与速度都连续 */
+@keyframes page-loading-travel-orbit {
+  0%, 100% {
+    transform: translate(-11px, -11px);
+  }
+  25% {
+    transform: translate(11px, -11px);
+  }
+  50% {
+    transform: translate(11px, 11px);
+  }
+  75% {
+    transform: translate(-11px, 11px);
+  }
+}
+
+/* 亮起占三成、暗势占七成：三点依次点亮后有一段留白，读起来像「输入中」 */
+@keyframes page-loading-ellipsis-fade {
+  0%, 100% {
+    opacity: 0.18;
+  }
+  35% {
+    opacity: 1;
+  }
+}
+
 @keyframes page-loading-soft-pulse {
   0%, 100% {
     opacity: 0.45;
@@ -1136,6 +1265,8 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* 环绕圆点只清容器：清掉的话两颗圆点会叠在圆心 —— 只有容器在动，
+     圆点的 static translate 是落位而非动画，故这里不含 .page-loading__orbit i。 */
   .page-loading__dot,
   .page-loading__ring,
   .page-loading__flip,
@@ -1143,7 +1274,11 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
   .page-loading__spinner i,
   .page-loading__bounce-dot,
   .page-loading__ripple i,
-  .page-loading__thumb {
+  .page-loading__thumb,
+  .page-loading__orbit,
+  .page-loading__grid i,
+  .page-loading__travel,
+  .page-loading__ellipsis-dot {
     transform: none;
     animation-name: page-loading-soft-pulse;
     animation-duration: 2s;

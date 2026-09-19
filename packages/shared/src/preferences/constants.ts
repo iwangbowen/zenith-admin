@@ -47,7 +47,10 @@ export function scheduleTimeToMinutes(value: string): number {
   const [hours, minutes] = value.split(':').map(Number);
   return hours * 60 + minutes;
 }
-export const LOADING_STYLES = ['flip', 'dots', 'ring', 'bars', 'spinner', 'bounce', 'ripple', 'progress'] as const;
+export const LOADING_STYLES = [
+  'flip', 'dots', 'ring', 'bars', 'spinner', 'bounce', 'ripple', 'progress',
+  'orbit', 'grid', 'travel', 'ellipsis',
+] as const;
 export type LoadingStyle = (typeof LOADING_STYLES)[number];
 export const LOADING_STYLE_OPTIONS = [
   { value: 'flip', label: '翻转方块', isDefault: true },
@@ -58,6 +61,10 @@ export const LOADING_STYLE_OPTIONS = [
   { value: 'bounce', label: '双弹跳', isDefault: false },
   { value: 'ripple', label: '水波纹', isDefault: false },
   { value: 'progress', label: '进度条', isDefault: false },
+  { value: 'orbit', label: '环绕圆点', isDefault: false },
+  { value: 'grid', label: '九宫格', isDefault: false },
+  { value: 'travel', label: '绕行方块', isDefault: false },
+  { value: 'ellipsis', label: '渐显省略号', isDefault: false },
 ] as const;
 export function isLoadingStyle(value: unknown): value is LoadingStyle {
   return typeof value === 'string' && LOADING_STYLES.includes(value as LoadingStyle);

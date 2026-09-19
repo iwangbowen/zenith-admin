@@ -57,4 +57,17 @@
 嵌套终端字段按叶子管理，收藏等个人内容不登记为系统策略。后台编辑器由目录派生，个人专用控件使用
 `PreferenceControl` 包装以获得隐藏与单项恢复能力。不要在 Web、Server 或 Mock 再维护一份默认值。
 
+## 新增加载动画（`loadingStyle` 的可选值）
+
+加载动画是「项内的取值」而非新偏好项，扩展点与新增偏好不同，只有三处必须改：
+
+- `packages/shared/src/preferences/constants.ts` 的 `LOADING_STYLES` 与 `LOADING_STYLE_OPTIONS`（值 + 中文名，中文名同时是个人面板的搜索关键词来源）；
+- `packages/web/src/components/PageLoading.tsx` 的 `LoadingIndicator` 标记分支；
+- `packages/web/src/styles/global.css` 的样式与关键帧，注意 `will-change` 与 `@media (prefers-reduced-motion: reduce)` 两份元素清单要一并补上。
+
+无需再改：`z.enum(LOADING_STYLES)` 自动接受新值（历史个人覆盖不受影响），偏好面板的选择行、搜索关键词与后台策略编辑器的选项都从选项表派生。
+
+动画约束：只用 `transform` / `opacity`——加载态恰好出现在主线程最忙的时刻，只有跑在合成器线程上的动画才不会跟着卡顿；`prefers-reduced-motion` 下全部退化为
+`page-loading-soft-pulse` 呼吸，因此新形态的静态落位（如环绕圆点两极圆点的 `translateY`）不得被 `transform: none` 覆盖，否则形态会塌成一团。
+
 相关机制参见[运行时设置](../backend/settings.md)。

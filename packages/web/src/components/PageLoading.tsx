@@ -56,6 +56,26 @@ export function LoadingIndicator({ variant }: Readonly<{ variant: LoadingStyle }
           <i className="page-loading__thumb" />
         </span>
       )}
+      {variant === 'orbit' && (
+        // 两颗圆点固定在旋转容器的上下极：容器自转即两点绕圈，圆点自身无需再动
+        <span className="page-loading__orbit">
+          <i />
+          <i />
+        </span>
+      )}
+      {variant === 'grid' && (
+        <span className="page-loading__grid">
+          {Array.from({ length: 9 }, (_, index) => <i key={index} />)}
+        </span>
+      )}
+      {variant === 'travel' && <span className="page-loading__travel" />}
+      {variant === 'ellipsis' && (
+        <>
+          <span className="page-loading__ellipsis-dot" />
+          <span className="page-loading__ellipsis-dot" />
+          <span className="page-loading__ellipsis-dot" />
+        </>
+      )}
     </span>
   );
 }

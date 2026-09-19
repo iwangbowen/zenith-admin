@@ -451,7 +451,8 @@ export function PrefsAppearanceSection({
       )}
 
       {/* ── 加载动画 ── */}
-      {matchesPref(['加载动画', '加载效果', 'Loading', '圆点', '圆环', '方块', '律动条', '菊花转', '双弹跳', '水波纹', '进度条']) && (
+      {/* 形态名直接取自选项表：新增一种动画不必再来这里补关键词 */}
+      {matchesPref(['加载动画', '加载效果', 'Loading', ...LOADING_STYLE_OPTIONS.map((option) => option.label)]) && (
       <PreferenceControl path="loadingStyle">
       <div>
         <div className="loading-style-picker__heading">

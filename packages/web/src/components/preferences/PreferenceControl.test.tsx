@@ -6,6 +6,7 @@ import {
   defaultPreferencePolicy,
   getPreferenceValue,
   isPreferenceApplicable,
+  LOADING_STYLE_OPTIONS,
   resolvePreferences,
   type PreferenceOverrides,
   type PreferencePolicy,
@@ -142,7 +143,8 @@ describe('加载动画选择行', () => {
     const { container } = renderAppearance();
     expect(screen.getByRole('button', { name: '上一个加载动画' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '下一个加载动画' })).toBeDisabled();
-    expect(container.querySelectorAll('.loading-style-picker__option')).toHaveLength(8);
+    // 数量由选项表派生：再加动画不必回来改这个数字
+    expect(container.querySelectorAll('.loading-style-picker__option')).toHaveLength(LOADING_STYLE_OPTIONS.length);
     // 只用容器自身的 scrollLeft 定位：scrollIntoView 会连带滚动抽屉，一打开偏好设置就被拽到加载动画那一屏
     expect(scrollIntoView).not.toHaveBeenCalled();
   });
