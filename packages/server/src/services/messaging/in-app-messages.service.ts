@@ -137,6 +137,7 @@ export async function listAllInAppMessages(q: InAppMessageAdminListQuery) {
     buildInboxFilterWhere(q),
     q.recipientId ? eq(inAppMessages.userId, q.recipientId) : undefined,
     q.senderId ? eq(inAppMessages.senderId, q.senderId) : undefined,
+    q.source ? eq(inAppMessages.source, q.source) : undefined,
   );
 
   const sender = alias(users, 'sender');
@@ -303,6 +304,8 @@ export async function sendInApp(input: SendInAppInput) {
   const rows = recipients.map((r) => ({
     templateId,
     senderId: me.userId,
+    // 手工发送必须显式写 source：列默认值是 'system'，不写会让人工群发在收件记录里被记成系统自动投递
+    source: 'manual' as const,
     userId: r.id,
     title,
     content,

@@ -50,6 +50,7 @@ export const inAppMessageListQuery = paginationQuery.extend({
 export const inAppMessageAdminListQuery = inAppMessageListQuery.extend({
   recipientId: idQuery(),
   senderId: idQuery(),
+  source: queryEnum(SEND_SOURCES),
 });
 
 // ─── 契约 ────────────────────────────────────────────────────────────────────
