@@ -23,6 +23,7 @@ export async function buildLoginLogsWhere(q: LoginLogListFilter): Promise<SQL | 
     usernameCondition = byNickname.length > 0 ? or(usernameLike, inArray(loginLogs.username, byNickname)) : usernameLike;
   }
   return buildWhere(
+    q.userId ? eq(loginLogs.userId, q.userId) : undefined,
     usernameCondition,
     q.eventType ? eq(loginLogs.eventType, q.eventType) : undefined,
     q.status ? eq(loginLogs.status, q.status) : undefined,

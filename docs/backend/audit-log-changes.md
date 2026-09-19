@@ -70,6 +70,7 @@ setAuditAfterData(c, after)
 
 分页查询支持：
 
+- `userId`：按操作人精确筛选（`username` 是模糊关键字，用于「找某个人的记录」会串号）
 - `username`
 - `module`
 - `description`
@@ -84,6 +85,8 @@ setAuditAfterData(c, after)
 ## 登录日志关系
 
 登录与退出日志写入 `login_logs`，不写入 `operation_logs`。管理端普通登录、刷新失败、退出等认证事件应在登录日志中查询；业务操作审计在操作日志中查询。
+
+两个管理侧分页接口（`GET /api/login-logs`、`GET /api/operation-logs`）都接受 `userId` 精确筛选，供「某个人的记录」场景使用；用户管理行操作「登录与操作记录」即以此按人读取，无需为每个用户新增端点。（运营审计列表的模糊 `username` 与前者并存。）
 
 ## 使用建议
 

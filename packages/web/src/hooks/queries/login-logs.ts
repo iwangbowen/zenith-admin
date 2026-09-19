@@ -14,8 +14,9 @@ export const loginLogKeys = {
   statsDetail: (params: LoginLogStatsParams) => contractKey(loginLogContract.stats, { query: params }),
 };
 
-export function useLoginLogList(params: LoginLogListParams) {
-  return useApiQuery(loginLogContract.list, { query: params }, { placeholderData: keepPreviousData });
+/** `enabled = false` 时不发请求：用户管理页的「登录记录」抽屉只在对应 tab 激活时拉取 */
+export function useLoginLogList(params: LoginLogListParams, enabled = true) {
+  return useApiQuery(loginLogContract.list, { query: params }, { placeholderData: keepPreviousData, enabled });
 }
 
 export function useLoginLogStats(params: LoginLogStatsParams) {

@@ -26,6 +26,7 @@ import { createdAtColumn, dateTimeColumn, renderEllipsis } from '../../utils/tab
 import { UserMenuPermissionModal } from './UserMenuPermissionModal';
 import { UserDataScopeModal } from './UserDataScopeModal';
 import { UserAvatarModal } from './UserAvatarModal';
+import { UserLogsSheet } from './UserLogsSheet';
 import ExportButton from '@/components/ExportButton';
 import ImportButton from '@/components/ImportButton';
 import { useAllRoles } from '@/hooks/queries/roles';
@@ -122,6 +123,8 @@ export default function UsersPage() {
   const [roleAssignIds, setRoleAssignIds] = useState<number[]>([]);
   const [avatarUser, setAvatarUser] = useState<User | null>(null);
   const [avatarModalVisible, setAvatarModalVisible] = useState(false);
+  const [logsUser, setLogsUser] = useState<User | null>(null);
+  const [logsVisible, setLogsVisible] = useState(false);
   const [createPwdVal, setCreatePwdVal] = useState('');
   const [editPwdVal, setEditPwdVal] = useState('');
   const [batchPwdVal, setBatchPwdVal] = useState('');
@@ -256,6 +259,10 @@ export default function UsersPage() {
     successMessage: () => null,
   });
   const openImpersonate = impersonateModal.openEdit;
+  /** 记录抽屉的入口条件：登录日志 / 操作日志两个权限至少有一个 */
+  const canViewLoginLogs = hasPermission('system:log:login');
+  const canViewOperationLogs = hasPermission('system:log:operation');
+  const canViewUserLogs = canViewLoginLogs || canViewOperationLogs;
   const canImpersonate = useCallback((record: User) => (
     hasPermission('system:user:impersonate')
     && !impersonation
@@ -487,6 +494,16 @@ export default function UsersPage() {
             onClick: () => handleUnlock(record.id),
           },
           {
+            key: 'logs',
+            label: '登录与操作记录',
+            // 两个日志权限任一即可打开抽屉（只有权限的那个 tab 会渲染）
+            hidden: !canViewUserLogs,
+            onClick: () => {
+              setLogsUser(record);
+              setLogsVisible(true);
+            },
+          },
+          {
             key: 'menu-permission',
             label: '菜单权限',
             hidden: !hasPermission('system:user:assign'),
@@ -542,7 +559,7 @@ export default function UsersPage() {
         ];
       },
     }),
-  ], [hasPermission, status, deleteMutation, handleUnlock, kickUserSessions, refetchUserList, openEdit, openPassword, canImpersonate, openImpersonate]);
+  ], [hasPermission, status, deleteMutation, handleUnlock, kickUserSessions, refetchUserList, openEdit, openPassword, canImpersonate, openImpersonate, canViewUserLogs]);
 
   const [showDeptTree, setShowDeptTree] = useState(false);
   const [isLayoutNarrow, setIsLayoutNarrow] = useState(false);
@@ -910,6 +927,18 @@ export default function UsersPage() {
             setAvatarUser(updated);
             updateUser(updated);
           }}
+        />
+      )}
+
+      {/* 登录与操作记录 */}
+      {logsUser && (
+        <UserLogsSheet
+          visible={logsVisible}
+          userId={logsUser.id}
+          userName={`${logsUser.nickname || logsUser.username}（${logsUser.username}）`}
+          canViewLoginLogs={canViewLoginLogs}
+          canViewOperationLogs={canViewOperationLogs}
+          onClose={() => setLogsVisible(false)}
         />
       )}
 

@@ -79,8 +79,9 @@ function buildLoginLogStats(days: number) {
 
 export const loginLogsHandlers = [
   mock(loginLogContract.list, ({ query, ok, paginate }) => {
-    const { username, eventType, status } = query;
+    const { userId, username, eventType, status } = query;
     const list = mockLoginLogs.filter((log) => {
+      if (userId && log.userId !== userId) return false;
       if (username && !log.username.includes(username)) return false;
       if (eventType && log.eventType !== eventType) return false;
       if (status && log.status !== status) return false;

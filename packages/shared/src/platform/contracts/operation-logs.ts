@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeQuery, paginated, paginationQuery, queryBool, queryEnum, keywordQuery } from '../../core/api-schemas';
+import { dateRangeQuery, idQuery, paginated, paginationQuery, queryBool, queryEnum, keywordQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { OPERATION_LOG_RESULTS } from '../constants';
 
@@ -73,6 +73,8 @@ export type OperationLogStats = z.infer<typeof operationLogStatsSchema>;
 // ─── 入参 ────────────────────────────────────────────────────────────────────
 
 export const operationLogListQuery = paginationQuery.extend({
+  /** 精确按操作人筛选（用户管理 → 操作记录等「某个人的记录」场景）；`username` 是模糊关键字，不能用来定位到某个人 */
+  userId: idQuery(),
   username: keywordQuery('用户名 / 昵称', { description: '按用户名 / 昵称匹配' }),
   module: keywordQuery('模块'),
   description: keywordQuery('操作描述'),

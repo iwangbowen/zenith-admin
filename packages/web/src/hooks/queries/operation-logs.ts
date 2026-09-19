@@ -15,8 +15,9 @@ export const operationLogKeys = {
   statsDetail: (params: OperationLogStatsParams) => contractKey(operationLogContract.stats, { query: params }),
 };
 
-export function useOperationLogList(params: OperationLogListParams) {
-  return useApiQuery(operationLogContract.list, { query: params }, { placeholderData: keepPreviousData });
+/** `enabled = false` 时不发请求：用户管理页的「操作记录」抽屉只在对应 tab 激活时拉取 */
+export function useOperationLogList(params: OperationLogListParams, enabled = true) {
+  return useApiQuery(operationLogContract.list, { query: params }, { placeholderData: keepPreviousData, enabled });
 }
 
 export function useOperationLogStats(params: OperationLogStatsParams) {

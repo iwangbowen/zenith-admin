@@ -26,6 +26,7 @@ export async function buildOperationLogsWhere(q: OperationLogsListFilter) {
       })()
     : undefined;
   return buildWhere(
+    q.userId ? eq(operationLogs.userId, q.userId) : undefined,
     usernameCondition,
     keywordCondition(q.module, [operationLogs.module]),
     keywordCondition(q.description, [operationLogs.description]),

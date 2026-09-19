@@ -71,6 +71,7 @@ export const operationLogsHandlers = [
     const maxDurationMs = query.maxDurationMs ?? null;
 
     const list = mockOperationLogs.filter((log) => {
+      if (query.userId && log.userId !== query.userId) return false;
       if (username && log.username && !log.username.includes(username)) return false;
       if (module && log.module && !log.module.includes(module)) return false;
       if (ip && log.ip && !log.ip.includes(ip)) return false;

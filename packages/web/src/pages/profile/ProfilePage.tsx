@@ -12,7 +12,7 @@ import { uploadAvatarBlobToFileCenter } from '@/utils/avatar-upload';
 import { UserAvatar } from '@/components/UserAvatar';
 import { OAuthProviderIcon } from '@/components/OAuthProviderIcon';
 import { SessionClientIcon } from '@/components/SessionClientTag';
-import { formatDateForApi, formatDateTime, formatDateTimeForApi, formatDateTimeRangeForApi } from '@/utils/date';
+import { formatDateForApi, formatDateTime, formatDateTimeForApi } from '@/utils/date';
 import DateTimeText from '@/components/DateTimeText';
 import type { PasswordRules as PasswordPolicy, SessionConcurrencyPolicy } from '@zenith/shared/settings';
 import { formatSessionPolicyHint } from '@zenith/shared/settings';
@@ -21,16 +21,8 @@ import { PasswordStrengthMeter } from '@/components/PasswordStrengthMeter';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { useDictItems } from '@/hooks/useDictItems';
 import { usePagination } from '@/hooks/usePagination';
-import { useListSearch } from '@/hooks/useListSearch';
-import { useFilterQuery } from '@/hooks/useFilterQuery';
-import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
-import { enumValueOf } from '@zenith/shared/core';
-import { OPERATION_LOG_RESULT_OPTIONS, OPERATION_LOG_RESULTS } from '@zenith/shared/platform';
-import { LOGIN_EVENT_TYPE_OPTIONS, LOGIN_EVENT_TYPES, LOGIN_STATUS_OPTIONS, LOGIN_STATUSES } from '@zenith/shared/identity';
 import DictTag from '@/components/DictTag';
-import { LoginLogsTable } from '@/components/logs/LoginLogsTable';
-import { confirmAndDelete, listTableProps, ListSearchToolbar } from '@/components/list-page';
-import { OperationLogsTable } from '@/components/logs/OperationLogsTable';
+import { confirmAndDelete, listTableProps } from '@/components/list-page';
 import { confirmDanger } from '@/utils/confirm';
 import { copyText } from '@/utils/clipboard';
 import {
@@ -43,16 +35,13 @@ import {
   useKickOtherProfileSessions,
   useKickProfileSession,
   useProfileApiTokens,
-  useProfileLoginLogs,
   useProfileMfaFactors,
   useProfileOauthAccounts,
   useProfileOAuthBindUrl,
-  useProfileOperationLogs,
   useProfileSessions,
   useUnbindProfileOAuth,
   useUpdateProfile,
   useVerifyTotpSetup,
-  profileKeys,
 } from '@/hooks/queries/profile';
 import { useMyOAuth2Grants, useRevokeMyOAuth2Grant } from '@/hooks/queries/oauth2-apps';
 import { useOAuthProviders } from '@/hooks/queries/auth-public';
@@ -64,6 +53,7 @@ import { rememberOAuthPending } from '@/lib/oauth-pending';
 
 import { useEditModal } from '@/hooks/useEditModal';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
+import { UserLoginLogsPanel, UserOperationLogsPanel } from '@/components/logs/UserLogsPanels';
 import MySignatureTab from './MySignatureTab';
 import NotificationSettingsTab from './NotificationSettingsTab';
 import { EditFormModal } from '@/components/EditFormModal';
@@ -71,13 +61,8 @@ const { Title, Text } = Typography;
 
 type SectionKey = 'profile' | 'signature' | 'security' | 'notifications' | 'devices' | 'login' | 'operation' | 'api-tokens' | 'authorized-apps';
 
-/** 操作记录筛选选项：与管理侧操作日志页保持一致（操作人除外，个人视角恒为自己） */
-const OPERATION_METHOD_OPTIONS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((value) => ({ value, label: value }));
-/** 操作来源筛选：与契约 `impersonated` 的 queryBool 文案一致 */
-const OPERATION_IMPERSONATED_OPTIONS = [
-  { value: 'true', label: '仅模拟操作' },
-  { value: 'false', label: '仅本人操作' },
-];
+/** 个人视角的记录面板 scope：模块级常量，避免每次渲染换引用 */
+const SELF_LOGS_SCOPE = { kind: 'self' } as const;
 
 interface ProfilePageProps {
   readonly user: Omit<UserType, 'password'>;
@@ -166,70 +151,6 @@ export default function ProfilePage({ user }: ProfilePageProps) {
 
   // ─── 我的设备 ────────────────────────────────────────────────────────────────
 
-  // ─── 登录记录 / 操作记录：个人视角筛选与管理侧对齐（操作人恒为自己，耗时区间、导出、清理、统计不适用） ───
-  interface LoginLogSearchParams {
-    eventType?: string;
-    status?: string;
-    timeRange: [Date, Date] | null;
-  }
-  interface OperationLogSearchParams {
-    module: string;
-    description: string;
-    method?: string;
-    path: string;
-    ip: string;
-    status?: string;
-    content: string;
-    /** 'true' 仅模拟登录期间的操作 / 'false' 仅本人操作；未选为 undefined */
-    impersonated?: string;
-    timeRange: [Date, Date] | null;
-  }
-
-  const {
-    page: loginLogsPage,
-    pageSize: loginLogsPageSize,
-    buildPagination: buildLoginLogsPagination,
-    bind: bindLoginLog,
-    submittedParams: submittedLoginLogParams,
-    handleSearch: handleLoginLogSearch,
-    handleReset: handleLoginLogReset,
-  } = useListSearch<LoginLogSearchParams>({
-    defaults: { eventType: undefined, status: undefined, timeRange: null },
-    listKey: profileKeys.loginLogs,
-  });
-  const {
-    page: operationLogsPage,
-    pageSize: operationLogsPageSize,
-    buildPagination: buildOperationLogsPagination,
-    bind: bindOperationLog,
-    bindKeyword: bindOperationLogKeyword,
-    submittedParams: submittedOperationLogParams,
-    handleSearch: handleOperationLogSearch,
-    handleReset: handleOperationLogReset,
-  } = useListSearch<OperationLogSearchParams>({
-    defaults: {
-      module: '', description: '', method: undefined, path: '', ip: '',
-      status: undefined, content: '', impersonated: undefined, timeRange: null,
-    },
-    listKey: profileKeys.operationLogs,
-  });
-  const loginLogFilterQuery = useFilterQuery({
-    eventType: enumValueOf(LOGIN_EVENT_TYPES, submittedLoginLogParams.eventType),
-    status: enumValueOf(LOGIN_STATUSES, submittedLoginLogParams.status),
-    ...formatDateTimeRangeForApi(submittedLoginLogParams.timeRange),
-  });
-  const operationLogFilterQuery = useFilterQuery({
-    module: submittedOperationLogParams.module,
-    description: submittedOperationLogParams.description,
-    method: submittedOperationLogParams.method,
-    path: submittedOperationLogParams.path,
-    ip: submittedOperationLogParams.ip,
-    status: enumValueOf(OPERATION_LOG_RESULTS, submittedOperationLogParams.status),
-    content: submittedOperationLogParams.content,
-    impersonated: submittedOperationLogParams.impersonated === 'true' ? true : submittedOperationLogParams.impersonated === 'false' ? false : undefined,
-    ...formatDateTimeRangeForApi(submittedOperationLogParams.timeRange),
-  });
-
   // ─── API Token ───────────────────────────────────────────────────────────────
   const [createdToken, setCreatedToken] = useState<UserApiTokenCreated | null>(null);
   const [tokenCopied, setTokenCopied] = useState(false);
@@ -240,14 +161,6 @@ export default function ProfilePage({ user }: ProfilePageProps) {
   const oauthProvidersQuery = useOAuthProviders(activeSection === 'security');
   const mfaFactorsQuery = useProfileMfaFactors(activeSection === 'security');
   const sessionsQuery = useProfileSessions(activeSection === 'devices');
-  const loginLogsQuery = useProfileLoginLogs(
-    { page: loginLogsPage, pageSize: loginLogsPageSize, ...loginLogFilterQuery },
-    activeSection === 'login',
-  );
-  const operationLogsQuery = useProfileOperationLogs(
-    { page: operationLogsPage, pageSize: operationLogsPageSize, ...operationLogFilterQuery },
-    activeSection === 'operation',
-  );
   const apiTokensQuery = useProfileApiTokens(activeSection === 'api-tokens');
 
   // ─── 已授权应用 ──────────────────────────────────────────────────────────────
@@ -277,10 +190,6 @@ export default function ProfilePage({ user }: ProfilePageProps) {
   );
   const mfaFactors = mfaFactorsQuery.data ?? [];
   const sessions = sessionsQuery.data ?? [];
-  const loginLogs = loginLogsQuery.data?.list ?? [];
-  const loginLogsTotal = loginLogsQuery.data?.total ?? 0;
-  const operationLogs = operationLogsQuery.data?.list ?? [];
-  const operationLogsTotal = operationLogsQuery.data?.total ?? 0;
 
   const updateProfileMutation = useUpdateProfile();
   const updateAvatarMutation = useUpdateProfile();
@@ -319,8 +228,6 @@ export default function ProfilePage({ user }: ProfilePageProps) {
   const mfaLoading = mfaFactorsQuery.isFetching;
   const sessionsLoading = sessionsQuery.isFetching;
   const kickOthersLoading = kickOthersMutation.isPending;
-  const loginLogsLoading = loginLogsQuery.isFetching;
-  const operationLogsLoading = operationLogsQuery.isFetching;
   const apiTokensLoading = apiTokensQuery.isFetching;
   const totpSubmitting = beginTotpSetupMutation.isPending || verifyTotpSetupMutation.isPending;
   const avatarLoading = updateAvatarMutation.isPending;
@@ -762,31 +669,10 @@ export default function ProfilePage({ user }: ProfilePageProps) {
               tab={<span className="profile-tab-label"><List size={14} /><span>登录记录</span></span>}
             >
               <div className="profile-section">
-                <ListSearchToolbar
-                  filters={(
-                    <>
-                      <FilterSelect
-                        placeholder="全部事件"
-                        items={LOGIN_EVENT_TYPE_OPTIONS}
-                        {...bindLoginLog('eventType')}
-                      />
-                      <StatusSelect
-                        items={LOGIN_STATUS_OPTIONS}
-                        {...bindLoginLog('status')}
-                      />
-                      <DateRangeFilter {...bindLoginLog('timeRange')} />
-                    </>
-                  )}
-                  onSearch={handleLoginLogSearch}
-                  onReset={handleLoginLogReset}
-                  filterTitle="登录记录筛选"
-                />
-                <LoginLogsTable
-                  loading={loginLogsLoading}
-                  dataSource={loginLogs}
-                  onRefresh={() => void loginLogsQuery.refetch()}
+                <UserLoginLogsPanel
+                  scope={SELF_LOGS_SCOPE}
+                  enabled={activeSection === 'login'}
                   columnSettingsKey="profile-login-logs"
-                  pagination={buildLoginLogsPagination(loginLogsTotal)}
                 />
               </div>
             </Tabs.TabPane>
@@ -797,43 +683,10 @@ export default function ProfilePage({ user }: ProfilePageProps) {
               tab={<span className="profile-tab-label"><List size={14} /><span>操作记录</span></span>}
             >
               <div className="profile-section">
-                <ListSearchToolbar
-                  filters={(
-                    <>
-                      <KeywordInput placeholder="请输入功能模块" {...bindOperationLogKeyword('module')} width={160} />
-                      <KeywordInput placeholder="请输入操作描述" {...bindOperationLogKeyword('description')} width={160} />
-                      <FilterSelect
-                        placeholder="全部请求方法"
-                        items={OPERATION_METHOD_OPTIONS}
-                        {...bindOperationLog('method')}
-                        width={140}
-                      />
-                      <KeywordInput placeholder="请输入请求路径" {...bindOperationLogKeyword('path')} width={180} />
-                      <KeywordInput placeholder="请输入 IP 地址" {...bindOperationLogKeyword('ip')} width={160} />
-                      <KeywordInput placeholder="请求/变更内容包含…" {...bindOperationLogKeyword('content')} width={180} />
-                      <StatusSelect
-                        items={OPERATION_LOG_RESULT_OPTIONS}
-                        {...bindOperationLog('status')}
-                      />
-                      <FilterSelect
-                        placeholder="全部操作来源"
-                        items={OPERATION_IMPERSONATED_OPTIONS}
-                        {...bindOperationLog('impersonated')}
-                        width={140}
-                      />
-                      <DateRangeFilter {...bindOperationLog('timeRange')} />
-                    </>
-                  )}
-                  onSearch={handleOperationLogSearch}
-                  onReset={handleOperationLogReset}
-                  filterTitle="操作记录筛选"
-                />
-                <OperationLogsTable
-                  loading={operationLogsLoading}
-                  dataSource={operationLogs}
-                  onRefresh={() => void operationLogsQuery.refetch()}
+                <UserOperationLogsPanel
+                  scope={SELF_LOGS_SCOPE}
+                  enabled={activeSection === 'operation'}
                   columnSettingsKey="profile-operation-logs"
-                  pagination={buildOperationLogsPagination(operationLogsTotal)}
                 />
               </div>
             </Tabs.TabPane>

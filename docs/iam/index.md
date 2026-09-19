@@ -273,6 +273,8 @@ MFA 当前落库类型包括 `totp`、`passkey`、`recovery_code`，接口实现
 
 用户导出接入统一导出中心，导出权限为 `system:user:export`，导出敏感明文字段需额外具备 `system:user:export-raw`。
 
+行操作「登录与操作记录」以一个抽屉展示该用户的登录记录与操作记录两个 tab，内容与个人中心「登录记录 / 操作记录」是同一份面板，只把作用域从「本人」换成目标 `userId`（服务端按 `userId` 精确筛选，见[操作日志与变更记录](../backend/audit-log-changes.md)）。两个 tab 各自受 `system:log:login` / `system:log:operation` 门控，只渲染有权限的那个，未激活的 tab 不发请求。
+
 ## API 一览
 
 | 根路径 | 主要能力 |
