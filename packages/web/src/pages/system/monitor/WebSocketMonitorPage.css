@@ -220,10 +220,6 @@
   white-space: nowrap;
 }
 
-.ws-monitor-page .semi-table-row {
-  cursor: pointer;
-}
-
 .ws-monitor-empty {
   display: flex;
   justify-content: center;

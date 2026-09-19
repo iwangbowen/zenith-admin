@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Banner, Button, Empty, Input, Select, SideSheet, Spin, Table, Tag, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Empty, Input, Select, SideSheet, Spin, Tag, Typography } from '@douyinfe/semi-ui';
+import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Activity, Copy, RadioTower, RefreshCw, Search, X } from 'lucide-react';
 import { useMonitorWsMetrics } from '@/hooks/queries/monitor';
-import { TABLE_PAGE_SIZE_OPTIONS, usePagination } from '@/hooks/usePagination';
+import { usePagination } from '@/hooks/usePagination';
+import ConfigurableTable from '@/components/ConfigurableTable';
 import DateTimeText from '@/components/DateTimeText';
 import { EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
 import { copyTextWithToast } from '@/utils/clipboard';
@@ -19,6 +21,7 @@ import {
   type MonitorWsConnection,
   type MonitorWsDisconnect,
   type MonitorWsMessage,
+  type MonitorWsNode,
   type WsTopicDirectionStat,
 } from '@zenith/shared/platform';
 import WsTopologyView, { type WsNodeRate } from './WsTopologyView';
@@ -35,6 +38,13 @@ function toStatus(connection: MonitorWsConnection, now: number): ConnectionStatu
   return isWsConnectionActive(connection.lastActivityAt, now) ? 'active' : 'idle';
 }
 
+/**
+ * 连接活跃 / 空闲标签。
+ *
+ * 语义是「由最后活动时间派生的在线态」，与启用 / 禁用无关，因此不适用 `renderEnabledStatusTag`
+ * （该类两态标签的文案与配色由 `COMMON_STATUS_LABELS` 定义，这里两个分支的文案都不同）。
+ * 列与详情面板共用同一个组件，避免同一状态在两处漂移。
+ */
 function StatusTag({ status }: { status: ConnectionStatus }) {
   return status === 'active'
     ? <Tag color="green" size="small">活跃</Tag>
@@ -221,10 +231,11 @@ export default function WebSocketMonitorPage() {
     return messages.filter((m) => m.connId === selectedConnection.connId).slice(0, 5);
   }, [messages, selectedConnection]);
 
-  const messageColumns = [
-    { title: '时间', dataIndex: 'at', width: 180, render: (value: number) => <DateTimeText value={value} /> },
+  const messageColumns: ColumnProps<MonitorWsMessage>[] = [
+    dateTimeColumn('时间', 'at'),
     { title: '方向', dataIndex: 'direction', width: 90, render: (value: MonitorWsMessage['direction']) => <Tag color={value === 'inbound' ? 'blue' : 'green'} size="small">{value === 'inbound' ? '入站' : '出站'}</Tag> },
-    { title: '类型', dataIndex: 'type', width: 190 },
+    // 弹性主列：消息类型是这一行的主标识，吸收容器多余宽度
+    { title: '类型', dataIndex: 'type', minWidth: 190 },
     { title: 'Topic', dataIndex: 'topic', width: 130, render: (value: string | null) => value ?? EMPTY_PLACEHOLDER },
     { title: '节点', dataIndex: 'nodeId', width: 150, render: (value: string) => value ?? EMPTY_PLACEHOLDER },
     { title: '连接', dataIndex: 'connId', width: 100, render: (value: string | null) => value ?? EMPTY_PLACEHOLDER },
@@ -233,16 +244,18 @@ export default function WebSocketMonitorPage() {
     { title: '结果', dataIndex: 'success', width: 80, render: (value: boolean) => <Tag color={value ? 'green' : 'red'} size="small">{value ? '成功' : '失败'}</Tag> },
   ];
 
-  const nodeColumns = [
-    { title: '服务节点', dataIndex: 'nodeId', width: 240 },
+  const nodeColumns: ColumnProps<MonitorWsNode>[] = [
+    // 弹性主列：节点 ID 长度不定，容器更宽时由它吸收剩余空间
+    { title: '服务节点', dataIndex: 'nodeId', minWidth: 240 },
     { title: '连接数', dataIndex: 'connections', width: 100, align: 'right' as const, render: (value: number) => formatNumber(value) },
     { title: '在线用户', dataIndex: 'users', width: 100, align: 'right' as const, render: (value: number) => formatNumber(value) },
     { title: '发送', dataIndex: 'sent', width: 100, align: 'right' as const, render: (value: number) => formatNumber(value) },
     { title: '接收', dataIndex: 'recv', width: 100, align: 'right' as const, render: (value: number) => formatNumber(value) },
   ];
 
-  const topicColumns = [
-    { title: 'Topic / 类型', dataIndex: 'topic', width: 240 },
+  const topicColumns: ColumnProps<WsTopicDirectionStat>[] = [
+    // 弹性主列：Topic / 类型名长度差异最大
+    { title: 'Topic / 类型', dataIndex: 'topic', minWidth: 240 },
     { title: '入站', dataIndex: 'inbound', width: 90, align: 'right' as const, render: (value: number) => formatNumber(value) },
     { title: '出站', dataIndex: 'outbound', width: 90, align: 'right' as const, render: (value: number) => formatNumber(value) },
     {
@@ -258,10 +271,12 @@ export default function WebSocketMonitorPage() {
     { title: '采样字节数', dataIndex: 'bytes', width: 130, align: 'right' as const, render: (value: number) => `${formatNumber(value)} B` },
   ];
 
-  const connectionColumns = [
+  const connectionColumns: ColumnProps<MonitorWsConnection>[] = [
     {
       title: '连接',
       dataIndex: 'connId',
+      // 弹性主列：连接 ID 与 Token 都是定长技术标识，不换行，容器更宽时吸收剩余空间
+      minWidth: 220,
       render: (value: string, record: MonitorWsConnection) => (
         <span className="ws-monitor-connection-cell">
           <Text strong>{value}</Text>
@@ -325,8 +340,9 @@ export default function WebSocketMonitorPage() {
     },
   ];
 
-  const disconnectColumns = [
-    { title: '连接', dataIndex: 'connId', width: 120 },
+  const disconnectColumns: ColumnProps<MonitorWsDisconnect>[] = [
+    // 弹性主列：连接 ID 在断开记录里同样是最长且最重要的技术标识
+    { title: '连接', dataIndex: 'connId', minWidth: 140 },
     { title: '节点', dataIndex: 'nodeId', width: 180, render: (value: string | undefined) => value ?? EMPTY_PLACEHOLDER },
     {
       title: '用户',
@@ -406,16 +422,20 @@ export default function WebSocketMonitorPage() {
                 {hasConnectionFilter && <Button icon={<X size={14} />} theme="borderless" size="small" onClick={() => { setKeyword(''); setStatus('all'); setNodeFilter('all'); }}>清除</Button>}
               </div>
             </div>
-            <Table
-              size="small"
-              bordered
-              loading={query.isFetching && !metrics}
+            <ConfigurableTable<MonitorWsConnection>
+              columnSettingsKey="ws-monitor-connections"
+              columns={connectionColumns}
               dataSource={filteredConnections}
               rowKey="connId"
-              onRow={(record) => ({ onClick: () => { if (record) openConnection(record); } })}
-              pagination={filteredConnections.length > 20 ? { ...connectionsPagination.buildPagination(filteredConnections.length), showSizeChanger: true, pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS } : false}
-              empty={<Text type="tertiary">暂无符合条件的在线连接</Text>}
-              columns={connectionColumns}
+              size="small"
+              loading={query.isFetching && !metrics}
+              // 只有这张表支持点行开详情，手型光标只随它走，不用页面级 .semi-table-row 规则
+              onRow={(record) => ({ onClick: () => { if (record) openConnection(record); }, style: { cursor: 'pointer' } })}
+              // 每页条数与选项由 ConfigurableTable 按偏好补齐
+              pagination={filteredConnections.length > 20 ? connectionsPagination.buildPagination(filteredConnections.length) : false}
+              empty="暂无符合条件的在线连接"
+              onRefresh={() => void query.refetch()}
+              refreshLoading={query.isFetching}
             />
           </section>
 
@@ -455,14 +475,16 @@ export default function WebSocketMonitorPage() {
                 ))}
               </div>
             )}
-            <Table
-              size="small"
-              bordered
+            <ConfigurableTable<MonitorWsDisconnect>
+              columnSettingsKey="ws-monitor-disconnects"
+              columns={disconnectColumns}
               dataSource={filteredDisconnects}
               rowKey={(record) => (record ? `${record.connId}-${record.at}` : '')}
-              pagination={filteredDisconnects.length > 20 ? { ...disconnectsPagination.buildPagination(filteredDisconnects.length), showSizeChanger: true, pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS } : false}
-              empty={<Text type="tertiary">暂无断开记录</Text>}
-              columns={disconnectColumns}
+              size="small"
+              pagination={filteredDisconnects.length > 20 ? disconnectsPagination.buildPagination(filteredDisconnects.length) : false}
+              empty="暂无断开记录"
+              onRefresh={() => void query.refetch()}
+              refreshLoading={query.isFetching}
             />
           </section>
             </div>
@@ -514,7 +536,17 @@ export default function WebSocketMonitorPage() {
                     )}
                   </div>
                 </div>
-                <Table size="small" bordered dataSource={filteredMessages} rowKey="id" pagination={false} empty={<Text type="tertiary">暂无消息记录</Text>} columns={messageColumns} />
+                <ConfigurableTable<MonitorWsMessage>
+                  columnSettingsKey="ws-monitor-messages"
+                  columns={messageColumns}
+                  dataSource={filteredMessages}
+                  rowKey="id"
+                  size="small"
+                  pagination={false}
+                  empty="暂无消息记录"
+                  onRefresh={() => void query.refetch()}
+                  refreshLoading={query.isFetching}
+                />
               </section>
             </div>
           )}
@@ -527,7 +559,17 @@ export default function WebSocketMonitorPage() {
                     <Text type="tertiary" size="small">集群合并视图：各 api 节点快照按 30 秒节拍汇总，失联节点超过 90 秒自动移出</Text>
                   </div>
                 </div>
-                <Table size="small" bordered dataSource={nodes} rowKey="nodeId" pagination={false} empty={<Text type="tertiary">暂无节点数据</Text>} columns={nodeColumns} />
+                <ConfigurableTable<MonitorWsNode>
+                  columnSettingsKey="ws-monitor-nodes"
+                  columns={nodeColumns}
+                  dataSource={nodes}
+                  rowKey="nodeId"
+                  size="small"
+                  pagination={false}
+                  empty="暂无节点数据"
+                  onRefresh={() => void query.refetch()}
+                  refreshLoading={query.isFetching}
+                />
               </section>
               <section className="ws-monitor-section">
                 <div className="ws-monitor-section__header">
@@ -536,7 +578,17 @@ export default function WebSocketMonitorPage() {
                     <Text type="tertiary" size="small">由最近 200 条业务消息采样现算，已排除 ping / pong 心跳，含入站 / 出站拆分与失败计数</Text>
                   </div>
                 </div>
-                <Table size="small" bordered dataSource={topicStats} rowKey="topic" pagination={false} empty={<Text type="tertiary">暂无 Topic 数据</Text>} columns={topicColumns} />
+                <ConfigurableTable<WsTopicDirectionStat>
+                  columnSettingsKey="ws-monitor-topics"
+                  columns={topicColumns}
+                  dataSource={topicStats}
+                  rowKey="topic"
+                  size="small"
+                  pagination={false}
+                  empty="暂无 Topic 数据"
+                  onRefresh={() => void query.refetch()}
+                  refreshLoading={query.isFetching}
+                />
               </section>
             </div>
           )}
