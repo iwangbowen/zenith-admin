@@ -138,12 +138,34 @@ describe('加载动画选择行', () => {
       themeColor="blue" setThemeColor={vi.fn()} />);
   }
 
-  it('无溢出时两箭头禁用，选中项挂载即滚入可见区', () => {
+  it('无溢出时两箭头禁用，定位不滚动抽屉正文', () => {
     const { container } = renderAppearance();
     expect(screen.getByRole('button', { name: '上一个加载动画' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '下一个加载动画' })).toBeDisabled();
     expect(container.querySelectorAll('.loading-style-picker__option')).toHaveLength(8);
-    expect(scrollIntoView).toHaveBeenCalledExactlyOnceWith({ block: 'nearest', inline: 'nearest' });
+    // 只用容器自身的 scrollLeft 定位：scrollIntoView 会连带滚动抽屉，一打开偏好设置就被拽到加载动画那一屏
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it('选中项超出容器右边缘时只横向补足挑选项容器', () => {
+    const { container, rerender } = renderAppearance();
+    const scroller = container.querySelector('.loading-style-picker') as HTMLElement;
+    Object.defineProperty(scroller, 'getBoundingClientRect', {
+      value: () => ({ left: 100, right: 380 }) as DOMRect, configurable: true,
+    });
+    // 选项节点按 value 作 key 保持稳定，逐个贴上溢出到容器右侧的矩形
+    for (const option of container.querySelectorAll('.loading-style-picker__option')) {
+      Object.defineProperty(option, 'getBoundingClientRect', {
+        value: () => ({ left: 420, right: 480 }) as DOMRect, configurable: true,
+      });
+    }
+    setContext(defaultPreferencePolicy, { loadingStyle: 'progress' });
+    rerender(<PrefsAppearanceSection preferences={context.preferences} setPreferences={context.setPreferences}
+      matchesPref={() => true} prefSection={(label) => <h2>{label}</h2>}
+      mode="light" handleThemeModeChange={vi.fn()} isDark={false}
+      themeColor="blue" setThemeColor={vi.fn()} />);
+    expect(scroller.scrollLeft).toBe(100);
+    expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
   it('溢出时箭头按滚动位置启用，点击滚动一屏', () => {
@@ -170,13 +192,13 @@ describe('加载动画选择行', () => {
     expect(prev).toBeEnabled();
     expect(next).toBeDisabled();
 
-    // 选中项变化后重新定位
+    // 选中项变化后重新定位（几何在 jsdom 下全为零即不动）
     setContext(defaultPreferencePolicy, { loadingStyle: 'progress' });
     rerender(<PrefsAppearanceSection preferences={context.preferences} setPreferences={context.setPreferences}
       matchesPref={() => true} prefSection={(label) => <h2>{label}</h2>}
       mode="light" handleThemeModeChange={vi.fn()} isDark={false}
       themeColor="blue" setThemeColor={vi.fn()} />);
-    expect(scrollIntoView).toHaveBeenCalledTimes(2);
+    expect(scroller.scrollLeft).toBe(360);
   });
 });
 

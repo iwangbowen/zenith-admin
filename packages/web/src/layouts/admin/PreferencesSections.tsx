@@ -200,12 +200,17 @@ export function PrefsAppearanceSection({
     el.addEventListener('scroll', updateLoadingPickerNav, { passive: true });
     return () => el.removeEventListener('scroll', updateLoadingPickerNav);
   }, [updateLoadingPickerNav]);
-  // 当前选中的动画始终滚入可见区（初次打开即定位，不做平滑滚动避免与抽屉动效打架）
+  // 当前选中的动画始终滚入可见区（初次打开即定位，不做平滑滚动避免与抽屉动效打架）。
+  // 这里只改挑选项容器自身的 scrollLeft：scrollIntoView 会连带滚动每一个可滚动祖先，
+  // 并推抽屉正文一起动——导航布局排在“外观”之前，一打开偏好设置就被拽到加载动画那一屏。
   useEffect(() => {
+    const el = loadingPickerRef.current;
     const active = activeLoadingOptionRef.current;
-    if (active && typeof active.scrollIntoView === 'function') {
-      active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    }
+    if (!el || !active) return;
+    const elRect = el.getBoundingClientRect();
+    const activeRect = active.getBoundingClientRect();
+    if (activeRect.left < elRect.left) el.scrollLeft -= elRect.left - activeRect.left;
+    else if (activeRect.right > elRect.right) el.scrollLeft += activeRect.right - elRect.right;
   }, [preferences.loadingStyle]);
   const scrollLoadingPicker = useCallback((direction: 1 | -1) => {
     const el = loadingPickerRef.current;
