@@ -1077,7 +1077,7 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
 }
 
 .page-loading__grid i {
-  border-radius: 2px;
+  border-radius: var(--semi-border-radius-small);
   background: currentColor;
   opacity: 0.15;
   animation: page-loading-grid-wave 1.3s ease-in-out infinite;
@@ -1098,7 +1098,7 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
 .page-loading__travel {
   width: 8px;
   height: 8px;
-  border-radius: 2px;
+  border-radius: var(--semi-border-radius-small);
   background: currentColor;
   animation: page-loading-travel-orbit 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
