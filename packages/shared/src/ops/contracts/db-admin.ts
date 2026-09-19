@@ -467,6 +467,7 @@ export const dbAdminContract = defineContract('/api/db-admin', {
   schemaDrift: op.get('/schema-drift', { access: { permission: 'system:db-admin:view' }, response: dbAdminSchemaDriftSchema, summary: 'Drizzle Schema 漂移对照' }),
   terminalAvailability: op.get('/terminal-availability', { access: { permission: 'system:db-admin:terminal' }, response: dbAdminTerminalAvailabilitySchema, summary: '数据库终端（psql）可用性' }),
   backups: op.get('/backups', { access: { permission: 'system:db-admin:view' }, query: dbBackupListQuery, response: paginated(dbBackupSchema), summary: '数据库备份列表' }),
+  downloadBackup: op.get('/backups/{id}/download', { access: { permission: 'system:db-admin:view' }, params: idParam, kind: 'file', summary: '下载数据库备份文件' }),
   createBackup: op.post('/backups', { access: { permission: 'system:db-admin:maintain' }, audit: '创建数据库备份', body: createDbBackupSchema, response: dbBackupCreatedSchema, summary: '创建数据库备份' }),
   removeBackup: op.delete('/backups/{id}', { access: { permission: 'system:db-admin:maintain' }, audit: '删除数据库备份', params: idParam, summary: '删除数据库备份记录' }),
 }, { auditModule: '数据库管理', tags: ['DbAdmin'] });

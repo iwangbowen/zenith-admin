@@ -208,9 +208,10 @@ await runAsUser(adminId, async () => {
 
 - 立即备份：创建 `pg_dump` 完整 SQL 压缩备份或 Drizzle 逻辑 JSON 导出；接口立即返回 `pending` 回执，任务在后台执行，
   列表在有未完成记录时自动轮询直到落为 `success` / `failed`。
-- 删除备份：仅删除备份记录；已归档到文件存储的备份文件不会一并删除。
-- 文件归档：配置默认 `file_storage_configs` 后，备份文件保存到文件存储，并在 `db_backups.file_id` 记录 `managed_files.id`，
-  列表中的「下载」经文件接口取回。
+- 删除备份：删除备份记录，并把归档文件置为 `orphan`，交由文件 GC 在宽限期后回收对象（宽限期见 `FILE_GC_GRACE_HOURS`）。
+- 文件归档：配置默认 `file_storage_configs` 后，备份文件保存到文件存储，并在 `db_backups.file_id` 记录 `managed_files.id`。
+  归档文件以 `visibility = 'restricted'` 登记：备份是整库数据，通用 `GET /api/files/{id}/content`（无鉴权公开接口）
+  对它一律 404，列表中的「下载」走带 `system:db-admin:view` 校验的 `GET /api/db-admin/backups/{id}/download`。
 
 ### 前置条件
 

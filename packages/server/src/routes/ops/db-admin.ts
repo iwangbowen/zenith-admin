@@ -53,9 +53,11 @@ import {
   createDbBackup,
   deleteDbBackup,
   getDbBackupBeforeAudit,
+  getDbBackupFileForDownload,
   listDbBackups,
 } from '../../services/ops/db-admin-backups.service';
 import { attachmentDisposition } from '../../lib/content-disposition';
+import { readStoredFile } from '../../lib/file-storage';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -354,6 +356,23 @@ const createBackupRoute = defineContractRoute(dbAdminContract.createBackup, {
   handler: async (c) => c.json(okBody(await createDbBackup(c.req.valid('json')), '备份任务已创建'), 200),
 });
 
+// 备份产物是 restricted 托管文件：只能走这里（带 system:db-admin:view 校验），不能走通用的 /files/{id}/content
+const downloadBackupRoute = defineContractRoute(dbAdminContract.downloadBackup, {
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const { file, storageConfig } = await getDbBackupFileForDownload(id);
+    const stored = await readStoredFile(file, storageConfig);
+    return new Response(stored.stream, {
+      status: 200,
+      headers: {
+        'Content-Type': stored.contentType,
+        'Content-Length': String(file.size),
+        'Content-Disposition': attachmentDisposition(file.originalName ?? `backup-${id}`),
+      },
+    });
+  },
+});
+
 const deleteBackupRoute = defineContractRoute(dbAdminContract.removeBackup, {
   handler: async (c) => {
     const { id } = c.req.valid('param');
@@ -404,6 +423,7 @@ router.openapiRoutes([
   terminalAvailabilityRoute,
   listBackupsRoute,
   createBackupRoute,
+  downloadBackupRoute,
   deleteBackupRoute,
 ] as const);
 

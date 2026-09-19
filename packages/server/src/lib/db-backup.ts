@@ -44,6 +44,11 @@ async function uploadBackupToStorage(filePath: string, filename: string, mimeTyp
       mimeType: uploaded.mimeType,
       extension: uploaded.extension,
       objectAcl: resolveObjectAcl(storageCfg),
+      // 备份产物是整库数据，必须显式声明 restricted：列默认值 public 会让它在「无需登录」的
+      // /files/{id}/content 上按 id 就能整份下载。restricted 后只能经数据库管理的下载路由读取。
+      // gcState 显式 live：文件行还在、记录也在，GC 不得回收（回收只针对 orphan / deleting）。
+      visibility: 'restricted',
+      gcState: 'live',
     })
     .returning();
   return managedFile.id;

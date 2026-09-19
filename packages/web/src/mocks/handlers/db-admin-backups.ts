@@ -1,3 +1,4 @@
+import { HttpResponse } from 'msw';
 import { dbAdminContract, type DbBackup } from '@zenith/shared/ops';
 import { mock } from '@/mocks/utils/contract';
 import { nextIdFrom, notFound } from '@/mocks/utils/handlers';
@@ -88,6 +89,20 @@ export const dbAdminBackupsHandlers = [
     };
     mockBackups.unshift(backup);
     return ok({ id, name: backup.name, status: 'pending' }, '备份任务已创建（演示）');
+  }),
+
+  // 备份产物是 restricted 文件，真实环境只能经这条带权限的路由下载；Demo 模式给出同样的边界与占位内容
+  mock(dbAdminContract.downloadBackup, ({ params }) => {
+    const backup = mockBackups.find((b) => b.id === params.id);
+    if (!backup) return notFound('备份记录不存在');
+    if (!backup.fileId) return notFound('该备份没有关联文件（尚未完成或未配置默认存储）');
+    return new HttpResponse(`演示模式下「${backup.name}」的备份内容占位。`, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/gzip',
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(backup.name)}`,
+      },
+    });
   }),
 
   mock(dbAdminContract.removeBackup, ({ params, ok }) => {

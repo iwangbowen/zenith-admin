@@ -6,13 +6,13 @@ import {
   DB_BACKUP_STATUS_OPTIONS,
   DB_BACKUP_TYPE_LABELS,
   DB_BACKUP_TYPE_OPTIONS,
+  dbAdminContract,
   type CreateDbBackupInput,
   type DbBackup,
   type DbBackupCreated,
   type DbBackupStatus,
   type DbBackupType,
 } from '@zenith/shared/ops';
-import { fileContract } from '@zenith/shared/platform';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -76,7 +76,9 @@ export function BackupsPanel({ canMaintain, active }: Readonly<{ canMaintain: bo
       Toast.warning('该备份没有关联文件');
       return;
     }
-    await request.download(urlOf(fileContract.content, { params: { id: record.fileId } }), record.name || `backup-${record.id}`);
+    // 备份产物是 restricted 托管文件，通用 /files/{id}/content 对它返回 404，
+    // 只能走带 system:db-admin:view 的专用下载路由
+    await request.download(urlOf(dbAdminContract.downloadBackup, { params: { id: record.id } }), record.name || `backup-${record.id}`);
   };
 
   const columns = [

@@ -4,8 +4,10 @@ import type { QueryOutputOf } from '@zenith/shared/core';
 import type { CreateDbBackupInput } from '@zenith/shared/ops';
 import { dbAdminContract } from '@zenith/shared/ops';
 import { db } from '../../db';
-import { dbBackups } from '../../db/schema';
+import { dbBackups, managedFiles } from '../../db/schema';
 import { createDrizzleExportBackup, createPgDumpBackup } from '../../lib/db-backup';
+import { requireRow } from '../../lib/db-assert';
+import { getRestrictedFileForRead } from '../files/files.service';
 import { formatDateTime, formatFileTimestamp, formatNullableDateTime } from '../../lib/datetime';
 import { buildListResult } from '../../lib/list-query';
 import logger from '../../lib/logger';
@@ -59,8 +61,29 @@ export async function createDbBackup(input: CreateDbBackupInput) {
 }
 
 export async function deleteDbBackup(id: number) {
-  const result = await db.delete(dbBackups).where(eq(dbBackups.id, id)).returning({ id: dbBackups.id });
+  const result = await db.delete(dbBackups).where(eq(dbBackups.id, id)).returning({ id: dbBackups.id, fileId: dbBackups.fileId });
   if (result.length === 0) throw new HTTPException(404, { message: '备份记录不存在' });
+  // 记录没了，产物也就不再可下载：置 orphan 交给文件 GC 在宽限期后回收（GC 只回收 restricted + refCount 0 的文件）
+  const fileId = result[0].fileId;
+  if (fileId) {
+    await db.update(managedFiles)
+      .set({ gcState: 'orphan', orphanedAt: new Date() })
+      .where(eq(managedFiles.id, fileId));
+  }
+}
+
+/**
+ * 取备份产物用于下载。备份文件注册为 `restricted`，通用 `/files/{id}/content` 对它一律 404，
+ * 只有带 `system:db-admin:view` 权限的本路由能读到。
+ */
+export async function getDbBackupFileForDownload(id: number) {
+  const row = await db.query.dbBackups.findFirst({
+    where: eq(dbBackups.id, id),
+    columns: { id: true, fileId: true },
+  });
+  const backup = requireRow(row, '备份记录不存在');
+  const fileId = requireRow(backup.fileId, '该备份没有关联文件（尚未完成或未配置默认存储）');
+  return getRestrictedFileForRead(fileId);
 }
 
 export async function getDbBackupBeforeAudit(id: number) {
