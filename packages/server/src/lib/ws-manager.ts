@@ -759,3 +759,37 @@ export function getWsClusterSnapshot() {
     recentDisconnects: disconnects,
   };
 }
+
+/**
+ * 按可见用户裁剪集群快照（租户可见范围，见 monitor.service 的 resolveVisibleWsUserIds）。
+ *
+ * 连接 / 断开 / 消息明细只保留可见用户，派生项（当前连接数、在线用户数、节点与 Topic 聚合）
+ * 由裁剪后的明细重算，保证明细列表与统计卡片同口径；不带用户身份的消息（`userId` 为空，
+ * 实际只有 ping / pong 之类控制帧）对受限视角一并丢弃，避免「采样消息数」混入他租户流量。
+ *
+ * 累计计数器（totalConnects / totalDisconnects / totalSent / totalRecv）是进程级计数，
+ * 没有按用户的历史可回溯，保持平台级原值 —— 契约上已标注该口径。
+ * 裁剪结果必然是原子集，无需再套 50 / 200 上限。
+ */
+export function filterWsClusterSnapshot(
+  snap: ReturnType<typeof getWsClusterSnapshot>,
+  visibleUserIds: ReadonlySet<number>,
+): ReturnType<typeof getWsClusterSnapshot> {
+  const connections = snap.connections.filter((c) => visibleUserIds.has(c.userId));
+  const messages = snap.messages.filter((m) => m.userId !== null && visibleUserIds.has(m.userId));
+  const recentDisconnects = snap.recentDisconnects.filter((d) => visibleUserIds.has(d.userId));
+  const { nodes, topics } = buildWsAggregates(connections, messages);
+  return {
+    currentConnections: connections.length,
+    currentUsers: new Set(connections.map((c) => c.userId)).size,
+    totalConnects: snap.totalConnects,
+    totalDisconnects: snap.totalDisconnects,
+    totalSent: snap.totalSent,
+    totalRecv: snap.totalRecv,
+    messages,
+    nodes,
+    topics,
+    connections,
+    recentDisconnects,
+  };
+}

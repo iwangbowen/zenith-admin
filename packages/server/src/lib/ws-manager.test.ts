@@ -422,6 +422,71 @@ describe('跨进程 WS 监控集群合并', () => {
   });
 });
 
+describe('集群快照按可见用户裁剪', () => {
+  it('明细只保留可见用户，派生统计重算，累计计数器保持平台级', () => {
+    const a = fakeWs();
+    const b = fakeWs();
+    const c = fakeWs();
+    m.registerConnection(1, 't1', a.ws);
+    m.registerConnection(2, 't2', b.ws);
+    m.registerConnection(3, 't3', c.ws);
+    m.incWsRecv(a.ws, JSON.stringify({ type: 'chat:message' }));
+    m.incWsRecv(c.ws, JSON.stringify({ type: 'payment:paid' }));
+
+    const full = m.getWsClusterSnapshot();
+    expect(full.currentConnections).toBe(3);
+    expect(full.topics.map((t) => t.topic).sort()).toEqual(['chat', 'payment']);
+
+    const scoped = m.filterWsClusterSnapshot(full, new Set([1]));
+    expect(scoped.connections.map((x) => x.userId)).toEqual([1]);
+    expect(scoped.currentConnections).toBe(1);
+    expect(scoped.currentUsers).toBe(1);
+    expect(scoped.messages.every((x) => x.userId === 1)).toBe(true);
+    expect(scoped.topics.map((t) => t.topic)).toEqual(['chat']);
+    expect(scoped.nodes.map((n) => n.connections)).toEqual([1]);
+    // 累计计数器是进程级计数，没有按用户的历史可回溯 → 保持平台级原值
+    expect(scoped.totalConnects).toBe(full.totalConnects);
+    expect(scoped.totalDisconnects).toBe(full.totalDisconnects);
+    expect(scoped.totalSent).toBe(full.totalSent);
+    expect(scoped.totalRecv).toBe(full.totalRecv);
+  });
+
+  it('裁剪后的断开明细只保留可见用户，可见集合为空时各项归零', () => {
+    const visible = fakeWs();
+    const hidden = fakeWs();
+    m.registerConnection(9, 't9', visible.ws);
+    m.registerConnection(8, 't8', hidden.ws);
+    m.removeConnection(visible.ws, 'client-close');
+    m.removeConnection(hidden.ws, 'force-logout');
+
+    const full = m.getWsClusterSnapshot();
+    expect(full.recentDisconnects).toHaveLength(2);
+
+    const scoped = m.filterWsClusterSnapshot(full, new Set([9]));
+    expect(scoped.recentDisconnects.map((d) => d.reason)).toEqual(['client-close']);
+    expect(scoped.connections).toEqual([]);
+
+    const none = m.filterWsClusterSnapshot(full, new Set<number>());
+    expect(none.connections).toEqual([]);
+    expect(none.messages).toEqual([]);
+    expect(none.recentDisconnects).toEqual([]);
+    expect(none.nodes).toEqual([]);
+    expect(none.currentConnections).toBe(0);
+    expect(none.currentUsers).toBe(0);
+  });
+
+  it('不带用户身份的消息对受限视角一并丢弃（避免采样数混入他租户流量）', () => {
+    const ws = fakeWs();
+    m.registerConnection(1, 't1', ws.ws);
+    // 未登记 socket 的收包：userId 为空
+    m.incWsRecv(fakeWs().ws, JSON.stringify({ type: 'chat:message' }));
+
+    const full = m.getWsClusterSnapshot();
+    expect(full.messages.some((x) => x.userId === null)).toBe(true);
+    expect(m.filterWsClusterSnapshot(full, new Set([1])).messages).toEqual([]);
+  });
+});
+
 describe('跨进程 presence 合并视图', () => {
   /** 加载第二份隔离的 ws-manager（模拟另一进程），进程标识不同；可选让它也订阅 fan-out */
   async function loadPeer(nodeId: string, subscribe = true): Promise<WsManager> {

@@ -8,10 +8,16 @@ import { users } from '../../db/schema';
 import redis from '../../lib/redis';
 import logger from '../../lib/logger';
 import { metricsSampler } from '../../lib/metrics-sampler';
-import { getWsClusterSnapshot } from '../../lib/ws-manager';
+import { filterWsClusterSnapshot, getWsClusterSnapshot } from '../../lib/ws-manager';
 import { listProcesses } from '../ops/processes.service';
+import { listPlatformSuperUserIds } from '../identity/role-grant';
+import { currentUser } from '../../lib/context';
+import { getTenantScopeId, isPlatformAdmin } from '../../lib/tenant';
 
 const execFileAsync = promisify(execFile);
+
+/** 平台管理员视角 / 无候选用户时的空超管名单，避免为此额外查库 */
+const EMPTY_USER_IDS: ReadonlySet<number> = new Set<number>();
 
 // ─── 慢指标缓存（DB / Redis / 磁盘） ─────────────────────────────────
 const SLOW_TTL_MS = 10_000;
@@ -626,39 +632,87 @@ export function getMonitorTimeseries() {
 }
 
 /**
+ * WS 连接明细的可见用户集合，与「在线用户」页 `visibleSessions()` 同口径：
+ * - 平台管理员在平台视角看全部（返回 `null` 表示不过滤）；切到租户视角只看该租户；
+ * - 其它用户只看自身租户（`scope` 为 `null` 表示无租户范围）；
+ * - 非平台管理员看不到绑定平台超管角色用户的连接，避免租户侧看到 / 操作平台会话。
+ *
+ * 连接明细携带 userId / 昵称 / IP / UA，可见范围必须与在线会话一致，
+ * 否则租户管理员会经本接口看到其它租户与平台超管的连接画像。
+ */
+export function resolveVisibleWsUserIds(
+  candidates: ReadonlyArray<{ id: number; tenantId: number | null }>,
+  options: {
+    /** 当前视角租户：`undefined` = 全平台，`null` = 无租户范围，数字 = 该租户 */
+    scope: number | null | undefined;
+    platformAdmin: boolean;
+    platformSuperUserIds: ReadonlySet<number>;
+  },
+): Set<number> | null {
+  const { scope, platformAdmin, platformSuperUserIds } = options;
+  if (platformAdmin && scope === undefined) return null;
+  const inScope = scope === undefined
+    ? candidates
+    : candidates.filter((row) => (row.tenantId ?? null) === scope);
+  const visible = platformAdmin ? inScope : inScope.filter((row) => !platformSuperUserIds.has(row.id));
+  return new Set(visible.map((row) => row.id));
+}
+
+/**
  * WebSocket 监控数据：集群合并视图（本进程 + 存活远端节点的快照镜像）。
  * 单进程部署时退化为本进程快照；多 api 副本下各节点的连接、计数与采样按 TTL 镜像合并。
- * 自动关联 users 表查询用户昵称。
+ * 自动关联 users 表查询用户昵称，并按当前操作者的可见范围裁剪明细
+ * （范围判定与昵称解析共用同一次查询；累计计数器为平台级，见契约说明）。
  */
 export async function getWsMetrics() {
   const snap = getWsClusterSnapshot();
   const userIds = new Set<number>();
   for (const c of snap.connections) userIds.add(c.userId);
   for (const d of snap.recentDisconnects) userIds.add(d.userId);
+  // 消息明细也带 userId：当前无连接、无断开记录的用户仍可能出现在采样里，不纳入就无从判断其租户
+  for (const m of snap.messages) if (m.userId !== null) userIds.add(m.userId);
+
   const userMap = new Map<number, { username: string | null; nickname: string | null }>();
+  const userScopes: Array<{ id: number; tenantId: number | null }> = [];
   if (userIds.size > 0) {
     const rows = await db
-      .select({ id: users.id, username: users.username, nickname: users.nickname })
+      .select({ id: users.id, username: users.username, nickname: users.nickname, tenantId: users.tenantId })
       .from(users)
       .where(inArray(users.id, [...userIds]));
-    for (const r of rows) userMap.set(r.id, { username: r.username ?? null, nickname: r.nickname ?? null });
+    for (const r of rows) {
+      userMap.set(r.id, { username: r.username ?? null, nickname: r.nickname ?? null });
+      userScopes.push({ id: r.id, tenantId: r.tenantId ?? null });
+    }
   }
+
+  const operator = currentUser();
+  const platformAdmin = isPlatformAdmin(operator);
+  const visibleUserIds = resolveVisibleWsUserIds(userScopes, {
+    scope: getTenantScopeId(operator),
+    platformAdmin,
+    // 平台管理员不需要超管名单；无候选用户时也不必查
+    platformSuperUserIds: platformAdmin || userScopes.length === 0
+      ? EMPTY_USER_IDS
+      : await listPlatformSuperUserIds(),
+  });
+  const visible = visibleUserIds ? filterWsClusterSnapshot(snap, visibleUserIds) : snap;
+
   return {
-    currentConnections: snap.currentConnections,
-    currentUsers: snap.currentUsers,
-    totalConnects: snap.totalConnects,
-    totalDisconnects: snap.totalDisconnects,
-    totalSent: snap.totalSent,
-    totalRecv: snap.totalRecv,
-    messages: snap.messages,
-    nodes: snap.nodes,
-    topics: snap.topics,
-    connections: snap.connections.map((c) => ({
+    currentConnections: visible.currentConnections,
+    currentUsers: visible.currentUsers,
+    totalConnects: visible.totalConnects,
+    totalDisconnects: visible.totalDisconnects,
+    totalSent: visible.totalSent,
+    totalRecv: visible.totalRecv,
+    messages: visible.messages,
+    nodes: visible.nodes,
+    topics: visible.topics,
+    connections: visible.connections.map((c) => ({
       ...c,
       username: userMap.get(c.userId)?.username ?? null,
       nickname: userMap.get(c.userId)?.nickname ?? null,
     })),
-    recentDisconnects: snap.recentDisconnects.map((d) => ({
+    recentDisconnects: visible.recentDisconnects.map((d) => ({
       ...d,
       username: userMap.get(d.userId)?.username ?? null,
       nickname: userMap.get(d.userId)?.nickname ?? null,

@@ -390,17 +390,17 @@ export const monitorWsTopicSchema = z.object({
 export type MonitorWsTopic = z.infer<typeof monitorWsTopicSchema>;
 
 export const monitorWsMetricsSchema = z.object({
-  currentConnections: z.int(),
-  currentUsers: z.int(),
-  totalConnects: z.int(),
-  totalDisconnects: z.int(),
-  totalSent: z.int(),
-  totalRecv: z.int(),
-  messages: z.array(monitorWsMessageSchema),
-  nodes: z.array(monitorWsNodeSchema),
-  topics: z.array(monitorWsTopicSchema),
-  connections: z.array(monitorWsConnectionSchema),
-  recentDisconnects: z.array(monitorWsDisconnectSchema),
+  currentConnections: z.int().meta({ description: '当前连接数（受租户可见范围约束）' }),
+  currentUsers: z.int().meta({ description: '当前在线用户数（受租户可见范围约束）' }),
+  totalConnects: z.int().meta({ description: '平台级累计连接次数，跨进程求和；无按用户历史，不随可见范围过滤' }),
+  totalDisconnects: z.int().meta({ description: '平台级累计断开次数，跨进程求和；不随可见范围过滤' }),
+  totalSent: z.int().meta({ description: '平台级累计发送消息数，跨进程求和；不随可见范围过滤（节点重启后计数归零，该值会回退）' }),
+  totalRecv: z.int().meta({ description: '平台级累计接收消息数，跨进程求和；不随可见范围过滤（节点重启后计数归零，该值会回退）' }),
+  messages: z.array(monitorWsMessageSchema).meta({ description: '最近业务消息采样（含收发方向与失败标记，不含业务载荷），受限视角只含可见用户的消息' }),
+  nodes: z.array(monitorWsNodeSchema).meta({ description: '按网关节点聚合的连接 / 收发统计，由可见明细现算' }),
+  topics: z.array(monitorWsTopicSchema).meta({ description: '按 Topic 聚合的采样消息数与字节数，由可见明细现算' }),
+  connections: z.array(monitorWsConnectionSchema).meta({ description: '在线连接明细，受限视角只含可见用户的连接' }),
+  recentDisconnects: z.array(monitorWsDisconnectSchema).meta({ description: '最近断开记录，受限视角只含可见用户的记录' }),
 }).meta({ id: 'MonitorWsMetrics' });
 
 export type MonitorWsMetrics = z.infer<typeof monitorWsMetricsSchema>;
@@ -411,7 +411,12 @@ export const monitorContract = defineContract('/api/monitor', {
   snapshot: op.get('/', { access: { permission: 'system:monitor:view' }, response: monitorSnapshotSchema, summary: '获取服务器监控信息' }),
   timeseries: op.get('/timeseries', { access: { permission: 'system:monitor:view' }, response: monitorTimeseriesSchema, summary: '获取最近 1h 监控时序数据' }),
   history: op.get('/history', { access: { permission: 'system:monitor:view' }, query: monitorHistoryQuerySchema, response: monitorHistorySchema, summary: '获取持久化历史监控趋势（按时间范围分桶聚合）' }),
-  ws: op.get('/ws', { access: { permission: 'system:monitor:view' }, response: monitorWsMetricsSchema, summary: '获取 WebSocket 实时连接监控' }),
+  ws: op.get('/ws', {
+    access: { permission: 'system:monitor:view' },
+    response: monitorWsMetricsSchema,
+    summary: '获取 WebSocket 实时连接监控',
+    description: '可见范围与「在线用户」页一致：平台管理员在平台视角看全部，切到租户视角或非平台管理员只看本租户，且看不到绑定平台超管角色用户的连接；累计计数器为平台级，不受该范围约束。',
+  }),
   stream: op.get('/stream', {
     access: { permission: 'system:monitor:view' },
     kind: 'sse',

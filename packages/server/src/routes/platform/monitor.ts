@@ -6,6 +6,7 @@ import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { getMonitorStatus, getMonitorTimeseries, getWsMetrics } from '../../services/platform/monitor.service';
 import { getMonitorHistory } from '../../services/platform/monitor-history.service';
 import { metricsSampler } from '../../lib/metrics-sampler';
+import { currentUser, runWithCurrentUser } from '../../lib/context';
 
 const monitorRouter = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -73,69 +74,78 @@ function diff(prev: unknown, cur: unknown): unknown {
  * 首帧推送完整快照（metrics）+ 全量时序（series）+ WS 指标（ws）；
  * 后续每个采样 tick 推送差量 patch（metrics:diff）、最新时序点（series:point）
  * 与 WS 指标全量（ws，体量小无需 diff），客户端深合并/追加到本地状态。
+ *
+ * 采样回调在 metricsSampler 的定时器里执行，已脱离请求的 AsyncLocalStorage 上下文，
+ * 而 WS 指标按操作者可见范围裁剪（依赖 `currentUser()`）——因此订阅时捕获操作者，
+ * 首帧与每个 tick 都以该身份执行，否则整帧会在 `catch` 里被静默丢弃。
  */
 const streamRoute = defineContractRoute(monitorContract.stream, {
-  handler: (c) => streamSSE(c, async (stream) => {
-    let lastSnapshot: Awaited<ReturnType<typeof getMonitorStatus>> | null = null;
+  handler: (c) => {
+    const operator = currentUser();
+    return streamSSE(c, async (stream) => {
+      let lastSnapshot: Awaited<ReturnType<typeof getMonitorStatus>> | null = null;
 
-    // 首帧：完整 snapshot + 全量时序 + WS 指标
-    try {
-      const [initial, ws] = await Promise.all([getMonitorStatus(), getWsMetrics()]);
-      lastSnapshot = initial;
-      await stream.writeSSE({ data: JSON.stringify(initial), event: 'metrics' });
-      await stream.writeSSE({ data: JSON.stringify(getMonitorTimeseries()), event: 'series' });
-      await stream.writeSSE({ data: JSON.stringify(ws), event: 'ws' });
-    } catch {
-      // ignore
-    }
-
-    let pending = false;
-    const unsubscribe = metricsSampler.subscribe(async (sample) => {
-      if (pending) return;
-      pending = true;
+      // 首帧：完整 snapshot + 全量时序 + WS 指标
       try {
-        const [cur, ws] = await Promise.all([getMonitorStatus(), getWsMetrics()]);
-        if (lastSnapshot) {
-          const patch = diff(lastSnapshot, cur);
-          if (patch !== undefined) {
-            await stream.writeSSE({ data: JSON.stringify(patch), event: 'metrics:diff' });
-          }
-        } else {
-          await stream.writeSSE({ data: JSON.stringify(cur), event: 'metrics' });
-        }
-        lastSnapshot = cur;
-        await stream.writeSSE({ data: JSON.stringify(sample), event: 'series:point' });
+        const [initial, ws] = await runWithCurrentUser(operator, () => Promise.all([getMonitorStatus(), getWsMetrics()]));
+        lastSnapshot = initial;
+        await stream.writeSSE({ data: JSON.stringify(initial), event: 'metrics' });
+        await stream.writeSSE({ data: JSON.stringify(getMonitorTimeseries()), event: 'series' });
         await stream.writeSSE({ data: JSON.stringify(ws), event: 'ws' });
       } catch {
         // ignore
-      } finally {
-        pending = false;
       }
-    });
 
-    const heartbeat = setInterval(() => {
-      stream.writeSSE({ data: '', event: 'ping' }).catch(() => undefined);
-    }, 30_000);
+      let pending = false;
+      const unsubscribe = metricsSampler.subscribe((sample) => {
+        if (pending) return;
+        pending = true;
+        void runWithCurrentUser(operator, async () => {
+          try {
+            const [cur, ws] = await Promise.all([getMonitorStatus(), getWsMetrics()]);
+            if (lastSnapshot) {
+              const patch = diff(lastSnapshot, cur);
+              if (patch !== undefined) {
+                await stream.writeSSE({ data: JSON.stringify(patch), event: 'metrics:diff' });
+              }
+            } else {
+              await stream.writeSSE({ data: JSON.stringify(cur), event: 'metrics' });
+            }
+            lastSnapshot = cur;
+            await stream.writeSSE({ data: JSON.stringify(sample), event: 'series:point' });
+            await stream.writeSSE({ data: JSON.stringify(ws), event: 'ws' });
+          } catch {
+            // ignore
+          } finally {
+            pending = false;
+          }
+        });
+      });
 
-    const cleanup = () => {
-      unsubscribe();
-      clearInterval(heartbeat);
-    };
+      const heartbeat = setInterval(() => {
+        stream.writeSSE({ data: '', event: 'ping' }).catch(() => undefined);
+      }, 30_000);
 
-    c.req.raw.signal.addEventListener('abort', cleanup);
+      const cleanup = () => {
+        unsubscribe();
+        clearInterval(heartbeat);
+      };
 
-    await new Promise<void>((resolve) => {
-      if (c.req.raw.signal.aborted) {
-        cleanup();
-        resolve();
-        return;
-      }
-      c.req.raw.signal.addEventListener('abort', () => {
-        cleanup();
-        resolve();
+      c.req.raw.signal.addEventListener('abort', cleanup);
+
+      await new Promise<void>((resolve) => {
+        if (c.req.raw.signal.aborted) {
+          cleanup();
+          resolve();
+          return;
+        }
+        c.req.raw.signal.addEventListener('abort', () => {
+          cleanup();
+          resolve();
+        });
       });
     });
-  }),
+  },
 });
 
 monitorRouter.openapiRoutes([statusRoute, timeseriesRoute, historyRoute, wsRoute, streamRoute] as const);
