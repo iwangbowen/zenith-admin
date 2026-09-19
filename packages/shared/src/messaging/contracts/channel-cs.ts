@@ -104,4 +104,4 @@ export const channelCsContract = defineContract('/api/channels', {
   createQuickReply: op.post('/cs/quick-replies', { access: { permission: 'channel:cs' }, audit: '新建快捷回复', body: createChannelQuickReplySchema, response: channelQuickReplySchema, summary: '新建快捷回复' }),
   updateQuickReply: op.put('/cs/quick-replies/{id}', { access: { permission: 'channel:cs' }, audit: '编辑快捷回复', params: idParam, body: updateChannelQuickReplySchema, response: channelQuickReplySchema, summary: '编辑快捷回复' }),
   removeQuickReply: op.delete('/cs/quick-replies/{id}', { access: { permission: 'channel:cs' }, audit: '删除快捷回复', params: idParam, summary: '删除快捷回复' }),
-}, { auditModule: '消息中心', tags: ['Channels'] });
+}, { auditModule: '消息渠道', tags: ['Channels'] });

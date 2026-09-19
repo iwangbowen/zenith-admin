@@ -50,4 +50,4 @@ export const channelMessageContract = defineContract('/api/channels', {
   createTemplate: op.post('/templates', { access: { permission: 'channel:message:publish' }, audit: '新建群发模板', body: createChannelTemplateSchema, response: channelMessageTemplateSchema, summary: '新建群发模板' }),
   updateTemplate: op.put('/templates/{id}', { access: { permission: 'channel:message:publish' }, audit: '编辑群发模板', params: idParam, body: updateChannelTemplateSchema, response: channelMessageTemplateSchema, summary: '编辑群发模板' }),
   removeTemplate: op.delete('/templates/{id}', { access: { permission: 'channel:message:publish' }, audit: '删除群发模板', params: idParam, summary: '删除群发模板' }),
-}, { auditModule: '消息中心', tags: ['Channels'] });
+}, { auditModule: '消息渠道', tags: ['Channels'] });

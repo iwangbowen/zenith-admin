@@ -203,4 +203,4 @@ export const channelContract = defineContract('/api/channels', {
   subscribers: op.get('/admin/{id}/subscribers', { access: { permission: 'channel:channel:list' }, params: idParam, query: channelSubscriberListQuery, response: paginated(channelSubscriberSchema), summary: '频道订阅者列表' }),
   addSubscribers: op.post('/admin/{id}/subscribers', { access: { permission: 'channel:channel:update' }, audit: '添加订阅者', params: idParam, body: addChannelSubscribersSchema, summary: '添加订阅者' }),
   removeSubscriber: op.delete('/admin/{id}/subscribers/{userId}', { access: { permission: 'channel:channel:update' }, audit: '移除订阅者', params: channelUserParams, summary: '移除订阅者' }),
-}, { auditModule: '消息中心', tags: ['Channels'] });
+}, { auditModule: '消息渠道', tags: ['Channels'] });
