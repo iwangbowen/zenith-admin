@@ -296,6 +296,152 @@
   flex-wrap: wrap;
 }
 
+.ws-topo-wrap {
+  width: 100%;
+  height: 460px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: var(--semi-border-radius-medium);
+  background: var(--surface-card);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ws-topo-bar {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--semi-color-border);
+  background: var(--semi-color-fill-0);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ws-topo-bar__hint {
+  margin-left: auto;
+}
+
+.ws-topo-loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ws-topo-node {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 10px;
+  background: var(--semi-color-bg-2);
+  border: 1px solid var(--semi-color-border);
+  border-radius: var(--semi-border-radius-medium);
+}
+
+.ws-topo-node__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--semi-color-text-0);
+}
+
+.ws-topo-node__title i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ws-topo-node__title span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-topo-node__sub {
+  font-size: 11px;
+  color: var(--semi-color-text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-topo-node__meta {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.ws-topo-clients {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.ws-topo-clients__kinds {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-block: 1px solid var(--semi-color-border);
+}
+
+.ws-topo-clients__kinds > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
+  border-left: 1px solid var(--semi-color-border);
+}
+
+.ws-topo-clients__kinds > div:first-child {
+  border-left: 0;
+  padding-left: 0;
+}
+
+.ws-topo-clients__kinds strong {
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.ws-topo-clients__tops {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.ws-topo-clients__tops ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ws-topo-clients__tops li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.ws-topo-clients__tops li span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-topo-clients__tops li em {
+  font-style: normal;
+  color: var(--semi-color-text-2);
+  flex-shrink: 0;
+}
+
 @media (max-width: 900px) {
   .ws-monitor-metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));

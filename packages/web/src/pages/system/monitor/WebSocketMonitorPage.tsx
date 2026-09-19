@@ -10,7 +10,9 @@ import { formatSecondsHuman } from '@/utils/format';
 import {
   describeWsClient,
   groupWsDisconnectReasons,
+  inferWsReconnects,
   isWsConnectionActive,
+  statWsClients,
   statWsTopicDirections,
   summarizeWsHealth,
   type MonitorWsConnection,
@@ -18,6 +20,7 @@ import {
   type MonitorWsMessage,
   type WsTopicDirectionStat,
 } from '@zenith/shared/platform';
+import WsTopologyView, { type WsNodeRate } from './WsTopologyView';
 import './WebSocketMonitorPage.css';
 
 const { Title, Text } = Typography;
@@ -74,6 +77,11 @@ export default function WebSocketMonitorPage() {
   );
   const reasonStats = useMemo(() => groupWsDisconnectReasons(metrics?.recentDisconnects ?? []), [metrics]);
   const topicStats = useMemo(() => statWsTopicDirections(messages), [messages]);
+  const reconnects = useMemo(
+    () => (metrics ? inferWsReconnects(metrics.connections, metrics.recentDisconnects) : []),
+    [metrics],
+  );
+  const clientStats = useMemo(() => statWsClients(metrics?.connections ?? []), [metrics]);
 
   /** 累计收发差值换算实时速率；进程重启导致计数回退时丢弃本轮 */
   const [rates, setRates] = useState<{ sentPerSec: number; recvPerSec: number } | null>(null);
@@ -95,6 +103,32 @@ export default function WebSocketMonitorPage() {
       sentPerSec: Math.round((deltaSent / seconds) * 10) / 10,
       recvPerSec: Math.round((deltaRecv / seconds) * 10) / 10,
     });
+  }, [metrics]);
+
+  /** 各网关节点收发速率（轮询差值换算，进程重启回退时丢弃本轮） */
+  const [nodeRates, setNodeRates] = useState<Record<string, WsNodeRate>>({});
+  const prevNodesRef = useRef<{ at: number; byId: Map<string, { sent: number; recv: number }> } | null>(null);
+  useEffect(() => {
+    if (!metrics) return;
+    const now = Date.now();
+    const byId = new Map(metrics.nodes.map((n) => [n.nodeId, { sent: n.sent, recv: n.recv }]));
+    const prev = prevNodesRef.current;
+    prevNodesRef.current = { at: now, byId };
+    if (!prev || now <= prev.at) return;
+    const seconds = (now - prev.at) / 1000;
+    const next: Record<string, WsNodeRate> = {};
+    for (const [nodeId, cur] of byId) {
+      const p = prev.byId.get(nodeId);
+      if (!p) continue;
+      const deltaSent = cur.sent - p.sent;
+      const deltaRecv = cur.recv - p.recv;
+      if (deltaSent < 0 || deltaRecv < 0) continue;
+      next[nodeId] = {
+        sentPerSec: Math.round((deltaSent / seconds) * 10) / 10,
+        recvPerSec: Math.round((deltaRecv / seconds) * 10) / 10,
+      };
+    }
+    setNodeRates(next);
   }, [metrics]);
 
   const nodeOptions = useMemo(() => nodes.map((n) => ({ value: n.nodeId, label: n.nodeId })), [nodes]);
@@ -333,6 +367,7 @@ export default function WebSocketMonitorPage() {
             <button type="button" className={activeView === 'connections' ? 'is-active' : ''} onClick={() => setActiveView('connections')}>连接总览</button>
             <button type="button" className={activeView === 'messages' ? 'is-active' : ''} onClick={() => setActiveView('messages')}>消息流（{messages.length}）</button>
             <button type="button" className={activeView === 'topology' ? 'is-active' : ''} onClick={() => setActiveView('topology')}>节点与 Topic</button>
+            <button type="button" className={activeView === 'graph' ? 'is-active' : ''} onClick={() => setActiveView('graph')}>关系拓扑</button>
           </div>
           {activeView === 'connections' && (
             <div className="ws-monitor-view-pane">
@@ -494,6 +529,32 @@ export default function WebSocketMonitorPage() {
                 ]} />
               </section>
             </div>
+          )}
+          {activeView === 'graph' && (
+            <WsTopologyView
+              metrics={metrics}
+              nodeRates={nodeRates}
+              reconnects={reconnects}
+              clientStats={clientStats}
+              onSelectUser={(userId) => {
+                const target = metrics.connections.find((c) => c.userId === userId) ?? null;
+                setSelectedConnection(target);
+              }}
+              onInspectTopic={(topic) => {
+                setMessageKeyword(topic);
+                setMessageType('all');
+                setMessageNode('all');
+                setMessageResult('all');
+                setMessageDirection('all');
+                setActiveView('messages');
+              }}
+              onSelectNode={(nodeId) => {
+                setKeyword('');
+                setStatus('all');
+                setNodeFilter(nodeId);
+                setActiveView('connections');
+              }}
+            />
           )}
         </>
       ) : (
