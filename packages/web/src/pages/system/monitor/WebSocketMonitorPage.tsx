@@ -305,7 +305,7 @@ export default function WebSocketMonitorPage() {
         </div>
         <div className="ws-monitor-header__actions">
           <Button size="small" onClick={() => setLive((value) => !value)}>{live ? '暂停刷新' : '继续刷新'}</Button>
-          <Button icon={<RefreshCw size={14} />} loading={query.isFetching} onClick={() => void query.refetch()}>刷新</Button>
+          <Button icon={<RefreshCw size={14} />} size="small" loading={query.isFetching} onClick={() => void query.refetch()}>刷新</Button>
         </div>
       </div>
 
