@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Background, Controls, Handle, MarkerType, Position, ReactFlowProvider,
   useNodesInitialized, useReactFlow, useUpdateNodeInternals,
@@ -113,10 +113,12 @@ function WsTopologyGraph({ metrics, nodeRates, onSelectUser, onInspectTopic, onS
     return () => clearTimeout(timer);
   }, []);
 
+  const draggedPositionsRef = useRef<Record<string, { x: number; y: number }>>({});
+
   const baseNodes = useMemo<RFNode[]>(() => topology.nodes.map((t) => ({
     id: t.id,
     type: 'wsTopo',
-    position: { x: 0, y: 0 },
+    position: draggedPositionsRef.current[t.id] ?? { x: 0, y: 0 },
     width: TOPO_NODE_WIDTH,
     height: TOPO_NODE_HEIGHT,
     data: {
@@ -154,9 +156,16 @@ function WsTopologyGraph({ metrics, nodeRates, onSelectUser, onInspectTopic, onS
     gateways.forEach((node, index) => positionById.set(node.id, { x: index * columnGap, y: 156 }));
     users.forEach((node, index) => positionById.set(node.id, { x: index * columnGap, y: 288 }));
     topics.forEach((node, index) => positionById.set(node.id, { x: Math.max(users.length, 1) * columnGap + index * columnGap, y: 288 }));
-    return baseNodes.map((node) => ({ ...node, position: positionById.get(node.id) ?? { x: 0, y: 24 } }));
+    return baseNodes.map((node) => ({
+      ...node,
+      position: draggedPositionsRef.current[node.id] ?? positionById.get(node.id) ?? { x: 0, y: 24 },
+    }));
   }, [baseNodes]);
   const fitNodeTargets = useMemo(() => laidOutNodes.map(({ id }) => ({ id })), [laidOutNodes]);
+  const topologyStructureKey = useMemo(
+    () => `${topology.nodes.map(({ id }) => id).join('|')}::${topology.edges.map(({ id }) => id).join('|')}`,
+    [topology],
+  );
 
   useEffect(() => {
     if (!ready || !nodesInitialized || fitNodeTargets.length === 0) return;
@@ -165,7 +174,7 @@ function WsTopologyGraph({ metrics, nodeRates, onSelectUser, onInspectTopic, onS
       void fitView({ nodes: fitNodeTargets, padding: 0.2, maxZoom: 1, duration: 200 });
     });
     return () => cancelAnimationFrame(raf);
-  }, [fitNodeTargets, fitView, nodesInitialized, ready, updateNodeInternals]);
+  }, [fitView, nodesInitialized, ready, topologyStructureKey, updateNodeInternals]);
 
   const { nodes, edges, onNodesChange, onEdgesChange, handleNodeClick, handlePaneClick } = useGraphSelectionHighlight<WsTopoNodeData>(
     laidOutNodes,
@@ -174,6 +183,13 @@ function WsTopologyGraph({ metrics, nodeRates, onSelectUser, onInspectTopic, onS
       edgeStyle: (state) => (state === 'unrelated' ? { opacity: 0.15 } : state === 'related' ? { opacity: 1, strokeWidth: 2.2 } : {}),
     },
   );
+
+  const handleNodesChange = useCallback((changes: Parameters<typeof onNodesChange>[0]) => {
+    for (const change of changes) {
+      if (change.type === 'position' && change.position) draggedPositionsRef.current[change.id] = change.position;
+    }
+    onNodesChange(changes);
+  }, [onNodesChange]);
 
   if (topology.nodes.length > TOPO_GRAPH_MAX_NODES) {
     return (
@@ -201,7 +217,7 @@ function WsTopologyGraph({ metrics, nodeRates, onSelectUser, onInspectTopic, onS
             // React Flow 首次测量自定义节点后再 fit，避免只按初始 0 尺寸计算而放大到 2x+。
             requestAnimationFrame(() => instance.fitView({ nodes: fitNodeTargets, padding: 0.2, maxZoom: 1 }));
           }}
-          onNodesChange={onNodesChange}
+          onNodesChange={handleNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeClick={(_, node) => {
             handleNodeClick(_, node);
