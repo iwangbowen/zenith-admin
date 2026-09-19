@@ -31,6 +31,7 @@ export const inAppMessagesHandlers = [
     const filtered = filterMessages(mockInAppMessages, query).filter((m) => {
       if (query.recipientId && m.userId !== query.recipientId) return false;
       if (query.senderId && m.senderId !== query.senderId) return false;
+      if (query.source && m.source !== query.source) return false;
       return true;
     });
     return ok(paginate(filtered));
