@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   WS_ACTIVE_THRESHOLD_MS,
+  describeWsClient,
   groupWsDisconnectReasons,
   isWsConnectionActive,
   statWsTopicDirections,
@@ -20,6 +21,11 @@ const connection = (overrides: Partial<MonitorWsConnection> = {}): MonitorWsConn
   userId: 1,
   username: 'admin',
   nickname: null,
+  ip: null,
+  userAgent: null,
+  lastMessageType: null,
+  lastMessageAt: null,
+  lastDirection: null,
   connectedAt: NOW - 600_000,
   lastActivityAt: NOW,
   sent: 10,
@@ -34,6 +40,8 @@ const disconnect = (overrides: Partial<MonitorWsDisconnect> = {}): MonitorWsDisc
   userId: 2,
   username: null,
   nickname: null,
+  ip: null,
+  userAgent: null,
   at: NOW,
   reason: 'close',
   duration: 60_000,
@@ -127,5 +135,24 @@ describe('summarizeWsHealth', () => {
       avgConnsPerUser: null,
       avgDurationSec: null,
     });
+  });
+});
+
+describe('describeWsClient', () => {
+  it('空 UA 返回 unknown', () => {
+    expect(describeWsClient(null)).toEqual({ browser: 'Unknown', os: 'Unknown', kind: 'unknown' });
+    expect(describeWsClient('')).toEqual({ browser: 'Unknown', os: 'Unknown', kind: 'unknown' });
+  });
+
+  it('识别桌面浏览器与系统', () => {
+    expect(describeWsClient('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'))
+      .toEqual({ browser: 'Chrome 120.0.0.0', os: 'Windows', kind: 'web' });
+    expect(describeWsClient('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15'))
+      .toEqual({ browser: 'Safari 17.0', os: 'macOS', kind: 'web' });
+  });
+
+  it('Electron 判为桌面端，移动 UA 判为移动端', () => {
+    expect(describeWsClient('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36 Electron/28.0.0').kind).toBe('desktop');
+    expect(describeWsClient('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1').kind).toBe('mobile');
   });
 });

@@ -8,6 +8,7 @@ import { EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { formatSecondsHuman } from '@/utils/format';
 import {
+  describeWsClient,
   groupWsDisconnectReasons,
   isWsConnectionActive,
   statWsTopicDirections,
@@ -514,6 +515,38 @@ export default function WebSocketMonitorPage() {
                 <Button icon={<Copy size={12} />} theme="borderless" size="small" aria-label="复制 Token" onClick={() => { void copyTextWithToast(selectedConnection.tokenId); }} />
               </dd>
               <dt>节点</dt><dd>{selectedConnection.nodeId ?? EMPTY_PLACEHOLDER}</dd>
+              <dt>IP</dt>
+              <dd className="ws-monitor-detail__copy">
+                <span className="ws-monitor-detail__mono">{selectedConnection.ip ?? EMPTY_PLACEHOLDER}</span>
+                {selectedConnection.ip && (
+                  <Button icon={<Copy size={12} />} theme="borderless" size="small" aria-label="复制 IP" onClick={() => { void copyTextWithToast(selectedConnection.ip ?? ''); }} />
+                )}
+              </dd>
+              <dt>客户端</dt>
+              <dd>
+                {(() => {
+                  const client = describeWsClient(selectedConnection.userAgent);
+                  return client.browser === 'Unknown' && client.os === 'Unknown'
+                    ? EMPTY_PLACEHOLDER
+                    : `${client.browser} · ${client.os}`;
+                })()}
+              </dd>
+              <dt>最近消息</dt>
+              <dd>
+                {selectedConnection.lastMessageType ? (
+                  <span>
+                    <Tag color={selectedConnection.lastDirection === 'inbound' ? 'blue' : 'green'} size="small">
+                      {selectedConnection.lastDirection === 'inbound' ? '入站' : '出站'}
+                    </Tag>{' '}
+                    <span className="ws-monitor-detail__mono">{selectedConnection.lastMessageType}</span>{' '}
+                    {selectedConnection.lastMessageAt !== null && (
+                      <Text type="tertiary" size="small"><DateTimeText value={selectedConnection.lastMessageAt} /></Text>
+                    )}
+                  </span>
+                ) : (
+                  <Text type="tertiary" size="small">暂无收发</Text>
+                )}
+              </dd>
               <dt>建立时间</dt><dd><DateTimeText value={selectedConnection.connectedAt} /></dd>
               <dt>最近活动</dt><dd><DateTimeText value={selectedConnection.lastActivityAt} /></dd>
               <dt>持续时间</dt><dd>{formatSecondsHuman((Date.now() - selectedConnection.connectedAt) / 1000)}</dd>

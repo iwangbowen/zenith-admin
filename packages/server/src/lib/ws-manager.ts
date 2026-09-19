@@ -14,6 +14,14 @@ interface ConnMeta {
   nodeId: string;
   tokenId: string;
   userId: number;
+  /** 握手期采集：客户端 IP（经可信代理链判定） */
+  ip: string | null;
+  /** 握手期采集：User-Agent 原文（截断 512 字符），展示侧派生浏览器 / 系统 / 端形态 */
+  userAgent: string | null;
+  /** 最近一条消息画像：随每次收发更新，断开后不保留 */
+  lastMessageType: string | null;
+  lastMessageAt: number | null;
+  lastDirection: 'inbound' | 'outbound' | null;
   connectedAt: number;
   lastActivityAt: number;
   sent: number;
@@ -61,9 +69,10 @@ function recordWsMessage(
   success: boolean,
 ): void {
   messageSeq += 1;
+  const now = Date.now();
   recentMessages.unshift({
-    id: `${Date.now()}-${messageSeq}`,
-    at: Date.now(),
+    id: `${now}-${messageSeq}`,
+    at: now,
     direction,
     nodeId: meta?.nodeId ?? nodeId,
     connId: meta?.connId ?? null,
@@ -73,6 +82,11 @@ function recordWsMessage(
     bytes,
     success,
   });
+  if (meta) {
+    meta.lastMessageType = type;
+    meta.lastMessageAt = now;
+    meta.lastDirection = direction;
+  }
   if (recentMessages.length > RECENT_MESSAGE_MAX) recentMessages.length = RECENT_MESSAGE_MAX;
 }
 
@@ -98,6 +112,8 @@ export interface RecentDisconnect {
   nodeId: string;
   tokenId: string;
   userId: number;
+  ip: string | null;
+  userAgent: string | null;
   at: number;
   reason: string;
   duration: number;
@@ -140,11 +156,30 @@ function removeFromIndex<K>(index: Map<K, Set<WSContext>>, key: K, ws: WSContext
   return true;
 }
 
-export function registerConnection(userId: number, tokenId: string, ws: WSContext) {
+export interface WsConnectionMeta {
+  ip?: string | null;
+  userAgent?: string | null;
+}
+
+export function registerConnection(userId: number, tokenId: string, ws: WSContext, meta?: WsConnectionMeta) {
   if (connections.has(ws)) return;
   const now = Date.now();
   connSeq += 1;
-  connections.set(ws, { connId: String(connSeq), nodeId, tokenId, userId, connectedAt: now, lastActivityAt: now, sent: 0, recv: 0 });
+  connections.set(ws, {
+    connId: String(connSeq),
+    nodeId,
+    tokenId,
+    userId,
+    ip: meta?.ip ?? null,
+    userAgent: meta?.userAgent ? meta.userAgent.slice(0, 512) : null,
+    lastMessageType: null,
+    lastMessageAt: null,
+    lastDirection: null,
+    connectedAt: now,
+    lastActivityAt: now,
+    sent: 0,
+    recv: 0,
+  });
   addToIndex(tokenSockets, tokenId, ws);
   const wentOnline = addToIndex(userSockets, userId, ws);
   counters.totalConnects += 1;
@@ -168,6 +203,8 @@ export function removeConnection(ws: WSContext, reason = 'close') {
     nodeId: meta.nodeId,
     tokenId: meta.tokenId,
     userId: meta.userId,
+    ip: meta.ip,
+    userAgent: meta.userAgent,
     at: now,
     reason,
     duration: now - meta.connectedAt,
@@ -499,6 +536,11 @@ export interface WsConnectionSnapshot {
   nodeId: string;
   tokenId: string;
   userId: number;
+  ip: string | null;
+  userAgent: string | null;
+  lastMessageType: string | null;
+  lastMessageAt: number | null;
+  lastDirection: 'inbound' | 'outbound' | null;
   connectedAt: number;
   lastActivityAt: number;
   sent: number;
@@ -513,6 +555,11 @@ export function getWsSnapshot() {
       nodeId: m.nodeId,
       tokenId: m.tokenId,
       userId: m.userId,
+      ip: m.ip,
+      userAgent: m.userAgent,
+      lastMessageType: m.lastMessageType,
+      lastMessageAt: m.lastMessageAt,
+      lastDirection: m.lastDirection,
       connectedAt: m.connectedAt,
       lastActivityAt: m.lastActivityAt,
       sent: m.sent,

@@ -193,6 +193,45 @@ describe('同一 token 多条连接', () => {
   });
 });
 
+describe('连接元数据与最近消息画像', () => {
+  it('握手期采集的 IP / UA 进入快照；收发更新最近消息画像', () => {
+    const a = fakeWs();
+    m.registerConnection(1, 'jti-1', a.ws, { ip: '203.0.113.7', userAgent: 'test-ua' });
+
+    let snap = m.getWsSnapshot();
+    expect(snap.connections).toHaveLength(1);
+    expect(snap.connections[0]).toMatchObject({
+      ip: '203.0.113.7',
+      userAgent: 'test-ua',
+      lastMessageType: null,
+      lastMessageAt: null,
+      lastDirection: null,
+    });
+
+    m.incWsRecv(a.ws, JSON.stringify({ type: 'chat:typing' }));
+    m.sendToUser(1, PING);
+    snap = m.getWsSnapshot();
+    expect(snap.connections[0]).toMatchObject({ lastMessageType: 'announcement:read-all', lastDirection: 'outbound' });
+    expect(snap.connections[0].lastMessageAt).toEqual(expect.any(Number));
+  });
+
+  it('不传元数据时 IP / UA 为 null；断开记录保留来源', () => {
+    const a = fakeWs();
+    m.registerConnection(1, 'jti-1', a.ws);
+    expect(m.getWsSnapshot().connections[0]).toMatchObject({ ip: null, userAgent: null });
+
+    m.removeConnection(a.ws, 'close');
+    const [d] = m.getWsSnapshot().recentDisconnects;
+    expect(d).toMatchObject({ reason: 'close', ip: null, userAgent: null });
+  });
+
+  it('超长 UA 截断到 512 字符，避免连接表内存膨胀', () => {
+    const a = fakeWs();
+    m.registerConnection(1, 'jti-1', a.ws, { ip: '198.51.100.3', userAgent: `x${'y'.repeat(600)}` });
+    expect(m.getWsSnapshot().connections[0].userAgent).toHaveLength(512);
+  });
+});
+
 describe('scheduleBroadcast', () => {
   it('延后到下一个 I/O tick 才推送给全部连接', () => {
     const a = fakeWs();

@@ -14,6 +14,7 @@ import type { UpgradeWebSocket } from 'hono/ws';
 import { z } from 'zod';
 import type { JwtPayload } from '../../middleware/auth';
 import { authenticateAdminWs } from '../../lib/ws-auth';
+import { getClientIp } from '../../lib/request-helpers';
 import { registerConnection, removeConnection, sendToUser, sendWsControl, incWsRecv, isUserOnline } from '../../lib/ws-manager';
 import { getCallConversation, joinRoom, leaveAllRooms, leaveRoom } from '../../lib/rtc-manager';
 import { getConversationMemberIds } from '../../lib/chat-member-cache';
@@ -215,7 +216,11 @@ export function createWsRoute(upgradeWebSocket: UpgradeWebSocket) {
             ws.close(4001, 'Unauthorized');
             return;
           }
-          registerConnection(identity.payload.userId, identity.payload.jti ?? '', ws);
+          // 握手期一次采集：IP 经可信代理链判定，UA 原文供监控页派生端形态
+          registerConnection(identity.payload.userId, identity.payload.jti ?? '', ws, {
+            ip: getClientIp(c),
+            userAgent: c.req.header('user-agent') ?? null,
+          });
         },
         async onMessage(evt, ws) {
           if (!identity) return;

@@ -67,7 +67,6 @@ export interface WsHealthSummary {
   /** 平均在线时长（秒，无在线连接时为 null） */
   avgDurationSec: number | null;
 }
-
 /** 由连接快照与消息采样派生健康指标；分母为 0 的项返回 null */
 export function summarizeWsHealth(
   connections: MonitorWsConnection[],
@@ -87,4 +86,48 @@ export function summarizeWsHealth(
       : null,
     avgDurationSec: connections.length > 0 ? Math.round(totalDurationSec / connections.length) : null,
   };
+}
+
+export type WsClientKind = 'desktop' | 'mobile' | 'web' | 'unknown';
+
+export interface WsClientInfo {
+  browser: string;
+  os: string;
+  kind: WsClientKind;
+}
+
+const WS_CLIENT_LABEL_UNKNOWN = 'Unknown';
+
+/** 由握手期采集的 User-Agent 原文派生浏览器 / 系统 / 端形态（轻量正则，不引入解析依赖） */
+export function describeWsClient(userAgent: string | null | undefined): WsClientInfo {
+  if (!userAgent) return { browser: WS_CLIENT_LABEL_UNKNOWN, os: WS_CLIENT_LABEL_UNKNOWN, kind: 'unknown' };
+  const ua = userAgent;
+  const browser = /Edg\/([\d.]+)/.test(ua)
+    ? `Edge ${/Edg\/([\d.]+)/.exec(ua)?.[1] ?? ''}`.trim()
+    : /Electron\/([\d.]+)/.test(ua)
+      ? `Electron ${/Electron\/([\d.]+)/.exec(ua)?.[1] ?? ''}`.trim()
+      : /Chrome\/([\d.]+)/.test(ua)
+        ? `Chrome ${/Chrome\/([\d.]+)/.exec(ua)?.[1] ?? ''}`.trim()
+        : /Firefox\/([\d.]+)/.test(ua)
+          ? `Firefox ${/Firefox\/([\d.]+)/.exec(ua)?.[1] ?? ''}`.trim()
+          : /Version\/([\d.]+).*Safari\//.test(ua)
+            ? `Safari ${/Version\/([\d.]+)/.exec(ua)?.[1] ?? ''}`.trim()
+            : WS_CLIENT_LABEL_UNKNOWN;
+  const os = /Windows NT/.test(ua)
+    ? 'Windows'
+    : /Mac OS X/.test(ua)
+      ? 'macOS'
+      : /Android/.test(ua)
+        ? 'Android'
+        : /iPhone|iPad|iPod/.test(ua)
+          ? 'iOS'
+          : /Linux/.test(ua)
+            ? 'Linux'
+            : WS_CLIENT_LABEL_UNKNOWN;
+  const kind: WsClientKind = /Electron\//.test(ua)
+    ? 'desktop'
+    : /Mobile|Android|iPhone|iPad|iPod/.test(ua)
+      ? 'mobile'
+      : 'web';
+  return { browser, os, kind };
 }

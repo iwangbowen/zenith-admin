@@ -306,13 +306,13 @@ function buildWsMetrics(): MonitorWsMetrics {
       { topic: 'chat', messages: 1, bytes: 96 },
     ],
     connections: [
-      { connId: '101', nodeId: 'demo-node', tokenId: 'a1b2c3d4e5f6', userId: 1, username: 'admin', nickname: '超级管理员', connectedAt: now - 1_200_000, lastActivityAt: now - 5_000, sent: 42, recv: 18 },
-      { connId: '102', nodeId: 'demo-node', tokenId: 'a1b2c3d4e5f6', userId: 1, username: 'admin', nickname: '超级管理员', connectedAt: now - 320_000, lastActivityAt: now - 1_200, sent: 11, recv: 3 },
-      { connId: '103', nodeId: 'demo-node', tokenId: '0123456789ab', userId: 2, username: 'demo', nickname: '演示账号', connectedAt: now - 60_000, lastActivityAt: now - 800, sent: 6, recv: 2 },
+      { connId: '101', nodeId: 'demo-node', tokenId: 'a1b2c3d4e5f6', userId: 1, username: 'admin', nickname: '超级管理员', ip: '203.0.113.10', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', lastMessageType: 'in-app-message:new', lastMessageAt: now - 5_000, lastDirection: 'outbound', connectedAt: now - 1_200_000, lastActivityAt: now - 5_000, sent: 42, recv: 18 },
+      { connId: '102', nodeId: 'demo-node', tokenId: 'a1b2c3d4e5f6', userId: 1, username: 'admin', nickname: '超级管理员', ip: '203.0.113.10', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', lastMessageType: 'chat:typing', lastMessageAt: now - 1_200, lastDirection: 'inbound', connectedAt: now - 320_000, lastActivityAt: now - 1_200, sent: 11, recv: 3 },
+      { connId: '103', nodeId: 'demo-node', tokenId: '0123456789ab', userId: 2, username: 'demo', nickname: '演示账号', ip: '198.51.100.23', userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15', lastMessageType: 'chat:presence', lastMessageAt: now - 800, lastDirection: 'outbound', connectedAt: now - 60_000, lastActivityAt: now - 800, sent: 6, recv: 2 },
     ],
     recentDisconnects: [
-      { connId: '99', nodeId: 'demo-node', tokenId: 'aaa11122233', userId: 2, username: 'demo', nickname: '演示账号', at: now - 30_000, reason: 'client-close', duration: 240_000, sent: 8, recv: 4 },
-      { connId: '87', nodeId: 'demo-node', tokenId: 'bbb44455566', userId: 1, username: 'admin', nickname: '超级管理员', at: now - 600_000, reason: 'force-logout', duration: 3_600_000, sent: 96, recv: 31 },
+      { connId: '99', nodeId: 'demo-node', tokenId: 'aaa11122233', userId: 2, username: 'demo', nickname: '演示账号', ip: '198.51.100.23', userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/17.0 Safari/605.1.15', at: now - 30_000, reason: 'client-close', duration: 240_000, sent: 8, recv: 4 },
+      { connId: '87', nodeId: 'demo-node', tokenId: 'bbb44455566', userId: 1, username: 'admin', nickname: '超级管理员', ip: '203.0.113.10', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36', at: now - 600_000, reason: 'force-logout', duration: 3_600_000, sent: 96, recv: 31 },
     ],
   };
 }
