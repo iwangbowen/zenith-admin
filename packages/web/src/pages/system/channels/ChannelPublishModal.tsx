@@ -250,7 +250,7 @@ export function ChannelPublishModal({ channel, editing, visible, onClose, onSucc
     if (!body) return;
 
     await testSendMutation.mutateAsync({ params: { id: channel.id }, body });
-    Toast.success('测试消息已发送，请在消息中心查看');
+    Toast.success('测试消息已发送，请在会话中心查看');
   };
 
   /** 把当前表单内容抽取为模板内容（不含受众/发送方式） */

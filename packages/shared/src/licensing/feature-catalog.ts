@@ -33,7 +33,7 @@ export const LICENSE_FEATURE_CATALOG: Record<LicenseFeatureKey, LicenseFeatureDe
   chat: {
     label: LICENSE_FEATURE_LABELS.chat,
     description: '即时消息、群组、系统号与 Webhook 机器人',
-    // 5000 = 消息中心；2380 = 系统设置下的 Webhook 机器人页
+    // 5000 = 会话中心；2380 = 系统设置下的 Webhook 机器人页
     menuRoots: [5000, 2380],
   },
   rules: {

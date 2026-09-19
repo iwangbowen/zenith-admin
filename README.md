@@ -5,7 +5,7 @@
 [![Release](https://github.com/iwangbowen/zenith-admin/actions/workflows/release.yml/badge.svg)](https://github.com/iwangbowen/zenith-admin/actions/workflows/release.yml)
 [![License](https://img.shields.io/github/license/iwangbowen/zenith-admin)](./LICENSE)
 
-基于 **Hono v4 + React 19 + Semi Design v2 + Drizzle ORM** 的全栈后台管理系统。涵盖认证授权（OAuth / 企业 SSO）、组织架构（含通讯录同步）、权限控制、运行时设置、通知中心（事件驱动多渠道触达）、消息中心（IM / 音视频通话）、日志审计、告警中心、在线会话、定时任务、文件存储、企业网盘、缓存管理、低代码工作流、规则引擎、智能助手（Mastra 驱动的 AI 对话 / 智能体 / RAG 知识库）、全局搜索、数据分析、报表中心（BI）、支付中心（含对账）、会员体系（含 C 端门户）、公众号管理、增长运营（短链 / 营销）、开放平台、CMS 内容管理、知识中心（Wiki）、物联网（IoT）、服务器运维（Web 终端 / SSH / Docker）等完整业务场景，并内置可选的 **多租户（Multi-Tenant）** 与 **License 授权** 支持。
+基于 **Hono v4 + React 19 + Semi Design v2 + Drizzle ORM** 的全栈后台管理系统。涵盖认证授权（OAuth / 企业 SSO）、组织架构（含通讯录同步）、权限控制、运行时设置、通知中心（事件驱动多渠道触达）、会话中心（IM / 音视频通话）、日志审计、告警中心、在线会话、定时任务、文件存储、企业网盘、缓存管理、低代码工作流、规则引擎、智能助手（Mastra 驱动的 AI 对话 / 智能体 / RAG 知识库）、全局搜索、数据分析、报表中心（BI）、支付中心（含对账）、会员体系（含 C 端门户）、公众号管理、增长运营（短链 / 营销）、开放平台、CMS 内容管理、知识中心（Wiki）、物联网（IoT）、服务器运维（Web 终端 / SSH / Docker）等完整业务场景，并内置可选的 **多租户（Multi-Tenant）** 与 **License 授权** 支持。
 
 项目采用 **npm monorepo** 结构：后端使用 Hono + PostgreSQL 提供 RESTful API，前端使用 React 19 + Vite + Semi Design v2 构建界面，`shared` 包统一维护前后端共享类型、常量与 Zod 校验 schema。
 
@@ -66,7 +66,7 @@
 
 - **通知中心**：事件目录 + `notify()` 统一派发，站内信 / 邮件 / 短信 / 推送 / Webhook / 聊天卡片六通道，Outbox 可靠投递；订阅偏好、免打扰与定时摘要
 - **群发与推送**：公告与「我的消息」收件箱；系统号 / 运营号图文群发；面向全体用户 / 会员的运营群发；App 推送配置与送达回执
-- **消息中心（IM）**：单聊 / 群聊、音视频通话、投票、转发、@、表情回应、卡片消息、搜索收藏；Webhook 机器人；WebSocket 实时推送
+- **会话中心（IM）**：单聊 / 群聊、音视频通话、投票、转发、@、表情回应、卡片消息、搜索收藏；Webhook 机器人；WebSocket 实时推送
 
 ### 日志与审计
 

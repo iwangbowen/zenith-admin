@@ -390,7 +390,7 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
 
   const autoTopKey = useAutoTopKey(navLayout, navItems, location.pathname, setManualTopKey);
 
-  // 进入消息中心页面时重置聊天未读数
+  // 进入会话中心页面时重置聊天未读数
   useEffect(() => {
     if (location.pathname.startsWith('/chat')) {
       setChatUnreadCount(0);

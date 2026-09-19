@@ -153,7 +153,7 @@ open-platform、workflow、chat、mp、biz-demo、ai、short-link、marketing、
 | 健康巡检 | 积压、死信、失败率、卡死实例等检测并接入告警 |
 | 移动审批 | `approval.html` 独立轻页 |
 
-### 即时消息中心（Chat）
+### 会话中心（Chat）
 
 > 专题文档：[即时通讯](../chat/index.md)
 

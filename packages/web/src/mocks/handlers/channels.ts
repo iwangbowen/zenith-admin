@@ -270,7 +270,7 @@ export const channelsHandlers = [
     msg.scheduledAt = null;
     msg.convUserId = MOCK_CURRENT_USER_ID;
     mockChannelMessages.unshift(msg);
-    return ok(msg, '测试消息已发送，请在消息中心查看');
+    return ok(msg, '测试消息已发送，请在会话中心查看');
   }),
   mock(channelContract.rate, ({ params, body, ok }) => {
     setConvAttr(params.id, MOCK_CURRENT_USER_ID, { rating: body.rating, ratingComment: body.comment ?? null, ratedAt: mockDateTime() });

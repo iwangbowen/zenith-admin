@@ -214,7 +214,7 @@ export async function registerSystemTasks(): Promise<void> {
   await registerSystemRecurringJob({
     name: 'chat-scheduled-dispatch',
     title: '聊天定时消息派发',
-    module: '消息中心',
+    module: '会话中心',
     cronExpression: '* * * * *',
     description: '每分钟派发到期的聊天定时消息（以发送者身份复用发送链路）。',
     allowManualRun: true,

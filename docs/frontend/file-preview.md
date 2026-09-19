@@ -236,7 +236,7 @@ createDisplayableImageUrl(blob, mimeType?, fileName?): Promise<string>
 | 文件管理 `pages/system/files/FilesPage.tsx` | `useFilePreview` + `FilePreviewLayer` | 托管文件 URL |
 | 存储浏览 `pages/system/file-configs/StorageFileBrowser.tsx` | `useFilePreview` + `FilePreviewLayer` | 托管文件 URL |
 | 文件附件 `components/FileAttachment/index.tsx` | 直接渲染 `FilePreviewModal` | 附件 URL |
-| 消息中心 `pages/chat/ChatPage.tsx` | 直接渲染 `FilePreviewModal` | 消息附件 URL |
+| 会话中心 `pages/chat/ChatPage.tsx` | 直接渲染 `FilePreviewModal` | 消息附件 URL |
 | 服务器文件管理器 `pages/system/file-manager/FileManagerPage.tsx` | 直接渲染 `FilePreviewModal` | 宿主机文件下载 URL |
 
 ## 新页面接入

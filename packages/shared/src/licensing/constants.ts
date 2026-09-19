@@ -44,7 +44,7 @@ export const LICENSE_FEATURE_LABELS: Record<LicenseFeatureKey, string> = {
   payment: '支付中心',
   member: '会员中心',
   mp: '公众号管理',
-  chat: '消息中心',
+  chat: '会话中心',
   'open-platform': '开放平台',
   rules: '规则中心',
   ops: '系统运维',

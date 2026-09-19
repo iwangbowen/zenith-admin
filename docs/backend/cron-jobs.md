@@ -144,7 +144,7 @@
 | `directory-sync-tick` | 通讯录同步调度扫描 | 通讯录同步 | `* * * * *` |
 | `member-housekeeping` | 会员数据例行维护 | 会员中心 | `10 2 * * *` |
 | `channel-scheduled-publish` | 频道定时消息发布 | 消息渠道 | `* * * * *` |
-| `chat-scheduled-dispatch` | 聊天定时消息派发 | 消息中心 | `* * * * *` |
+| `chat-scheduled-dispatch` | 聊天定时消息派发 | 会话中心 | `* * * * *` |
 | `mp-kf-session-tick` | 公众号客服会话维护 | 公众号 | `* * * * *` |
 | `mp-broadcast-tick` | 公众号群发任务扫描 | 公众号 | `* * * * *` |
 | `wiki-governance-tick` | 知识中心治理扫描 | 知识中心 | `30 8 * * *` |

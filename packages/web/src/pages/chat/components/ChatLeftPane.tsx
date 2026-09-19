@@ -1,5 +1,5 @@
 import { useMemo, type ComponentProps } from 'react';
-import { Badge, Button, Empty, Input, Spin, Tooltip, Typography, List as SemiList } from '@douyinfe/semi-ui';
+import { Badge, Button, Empty, Input, Spin, Tooltip, List as SemiList } from '@douyinfe/semi-ui';
 import { Bookmark, Compass, ExternalLink, MessageSquarePlus, Search, X } from 'lucide-react';
 import type { ChatConversation, ChatMessage } from '@zenith/shared/chat';
 import { AppModal } from '@/components/AppModal';
@@ -12,8 +12,6 @@ import { toLeftListRowProps, type LeftListContext } from './left-list-row-props'
 import { FavoriteListRow } from './FavoriteListRow';
 import { GlobalSearchPane } from './GlobalSearchPane';
 import { LeftPaneContextMenu } from './LeftPaneContextMenu';
-
-const { Title } = Typography;
 
 /** 会话 / 频道行的列表级透传属性（每行入参由 toLeftListRowProps 裁出） */
 export type LeftListRowProps = LeftListContext;
@@ -115,15 +113,7 @@ export function ChatLeftPane({
             )}
           </div>
         }
-      >
-        {totalUnread > 0 ? (
-          <Badge count={totalUnread} overflowCount={99}>
-            <Title heading={6} style={{ margin: 0 }}>消息</Title>
-          </Badge>
-        ) : (
-          <Title heading={6} style={{ margin: 0 }}>消息</Title>
-        )}
-      </MasterDetailLayout.Header>
+      />
 
       {showNewChat && (
         <AppModal
@@ -146,14 +136,17 @@ export function ChatLeftPane({
       </div>
 
       <div style={{ padding: '0 12px 8px', display: 'flex', gap: 8 }}>
-        <Button
-          size="small"
-          theme={leftPaneMode === 'conversations' ? 'solid' : 'borderless'}
-          type={leftPaneMode === 'conversations' ? 'primary' : 'tertiary'}
-          onClick={() => setLeftPaneMode('conversations')}
-        >
-          消息
-        </Button>
+        {/* 未读总数原先挂在左栏标题上，标题去掉后落到「会话」页签，避免丢掉这处全局未读提示 */}
+        <Badge count={totalUnread} overflowCount={99}>
+          <Button
+            size="small"
+            theme={leftPaneMode === 'conversations' ? 'solid' : 'borderless'}
+            type={leftPaneMode === 'conversations' ? 'primary' : 'tertiary'}
+            onClick={() => setLeftPaneMode('conversations')}
+          >
+            会话
+          </Button>
+        </Badge>
         <Button
           size="small"
           theme={leftPaneMode === 'favorites' ? 'solid' : 'borderless'}

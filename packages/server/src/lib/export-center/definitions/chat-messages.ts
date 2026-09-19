@@ -50,7 +50,7 @@ async function assertMemberAndBuildWhere(query: ChatMessagesExportQuery, user: J
 
 export const chatMessagesExportDefinition = defineExport<ChatMessagesExportQuery, Record<string, unknown>>({
   entity: 'chat.messages',
-  moduleName: '消息中心',
+  moduleName: '会话中心',
   filenamePrefix: '聊天记录',
   sourcePath: '/chat',
   sheetName: '聊天记录',

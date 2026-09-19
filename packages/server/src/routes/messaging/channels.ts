@@ -314,7 +314,7 @@ const removeTemplate = defineContractRoute(channelMessageContract.removeTemplate
 const testSendRoute = defineContractRoute(channelMessageContract.testSend, {
   handler: async (c) => {
     const { id } = c.req.valid('param');
-    return c.json(okBody(await testSend(id, c.req.valid('json')), '已发送测试，请在消息中心查看'), 200);
+    return c.json(okBody(await testSend(id, c.req.valid('json')), '已发送测试，请在会话中心查看'), 200);
   },
 });
 

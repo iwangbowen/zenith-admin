@@ -1074,7 +1074,7 @@ export const analyticsHandlers = [
     return ok(task, '任务已提交，可在任务中心查看进度');
   }),
 
-  // ─── 分群触达（消息中心 + Webhook）─────────────────────────────────────────
+  // ─── 分群触达（站内信 + Webhook）─────────────────────────────────────────
   mock(analyticsCampaignContract.campaigns, ({ query, ok, paginate }) => {
     const list = mockCampaigns.filter((c) => matchesFilter(c.segmentId, query.segmentId) && matchesFilter(c.status, query.status));
     return ok(paginate(list));

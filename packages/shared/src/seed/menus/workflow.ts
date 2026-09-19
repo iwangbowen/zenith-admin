@@ -33,5 +33,5 @@ export const SEED_MENUS_WORKFLOW: Menu[] = [
   { id: 4180, parentId: 4400, title: '远程数据源', name: 'WorkflowDataSources', path: '/workflow/data-sources', component: 'workflow/data-sources/WorkflowDataSourcesPage', icon: 'DatabaseZap', type: 'menu', sort: 4, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 4190, parentId: 4400, title: '连接器', name: 'WorkflowConnectors', path: '/workflow/connectors', component: 'workflow/connectors/WorkflowConnectorsPage', icon: 'Cable', type: 'menu', sort: 5, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
 
-  // ─── 消息中心（5000 段）
+  // ─── 会话中心（5000 段）
 ];
