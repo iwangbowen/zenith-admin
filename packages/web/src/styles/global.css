@@ -869,7 +869,12 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
 .page-loading__orbit i,
 .page-loading__grid i,
 .page-loading__travel,
-.page-loading__ellipsis-dot {
+.page-loading__ellipsis-dot,
+.page-loading__carousel-bead,
+.page-loading__landing-ball,
+.page-loading__landing-shadow,
+.page-loading__pendulum-arm,
+.page-loading__marquee-track {
   will-change: transform, opacity;
 }
 
@@ -950,7 +955,11 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
 .page-loading-indicator--orbit,
 .page-loading-indicator--grid,
 .page-loading-indicator--travel,
-.page-loading-indicator--ellipsis {
+.page-loading-indicator--ellipsis,
+.page-loading-indicator--carousel,
+.page-loading-indicator--landing,
+.page-loading-indicator--pendulum,
+.page-loading-indicator--marquee {
   align-items: center;
 }
 
@@ -1112,6 +1121,140 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
 .page-loading__ellipsis-dot:nth-child(2) { animation-delay: -0.26s; }
 .page-loading__ellipsis-dot:nth-child(3) { animation-delay: 0s; }
 
+/* 游动圆点：三个静态栅位（淡）衬出一颗沿轨道左→右游走的光点，它在两端淡入淡出，
+   所以「从右端回到左端」这一步发生在不可见时，循环里看不到跳跃。 */
+.page-loading__carousel {
+  position: relative;
+  width: 40px;
+  height: 14px;
+}
+
+.page-loading__carousel-slot {
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.15;
+}
+
+.page-loading__carousel-slot:nth-child(1) { left: 0; }
+.page-loading__carousel-slot:nth-child(2) { left: 15px; }
+.page-loading__carousel-slot:nth-child(3) { left: 30px; }
+
+.page-loading__carousel-bead {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: page-loading-carousel-run 1.5s ease-in-out infinite;
+}
+
+/* 落地弹球：球与影子各自动画但同周期同相位 —— 影子在触地时最大最实，到顶点时最小最淡。
+   球用 transform-origin 定在底部，压扁时才贴着地面而不悬空。 */
+.page-loading__landing {
+  position: relative;
+  width: 30px;
+  height: 30px;
+}
+
+.page-loading__landing-ball {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  border-radius: 50%;
+  background: currentColor;
+  transform-origin: 50% 100%;
+  animation: page-loading-landing-ball 1.4s linear infinite;
+}
+
+.page-loading__landing-shadow {
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  width: 16px;
+  height: 3px;
+  margin-left: -8px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: page-loading-landing-shadow 1.4s linear infinite;
+}
+
+/* 钟摆：摆锤是摆杆的子元素，只靠结构保证刚性（两者各自旋转时需把两个 transform-origin
+   换算到同一世界点，锤的轴心还在自身负 y 方向，写错也看不出来）。
+   杆必须画得比「一根细线」粗：尺寸缩到选择行的 0.62 后，2px / 0.45 的杆只剩 ~1.2px
+   且融进背景，画面就退化成「两个不动感的点」——杆是这里唯一表达「绕轴摆动」的元素，
+   因此它满不透明，与摆锤的区分交给宽度而非透明度（子元素的 opacity 会与父相乘）。 */
+.page-loading__pendulum {
+  position: relative;
+  width: 30px;
+  height: 30px;
+}
+
+.page-loading__pendulum-pivot {
+  position: absolute;
+  left: 50%;
+  top: 7.5px;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.25;
+}
+
+.page-loading__pendulum-arm {
+  position: absolute;
+  left: 50%;
+  top: 9.5px;
+  width: 3px;
+  height: 15px;
+  margin-left: -1.5px;
+  border-radius: 999px;
+  transform-origin: 50% 0;
+  background: currentColor;
+  animation: page-loading-pendulum-swing 1.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+/* bottom: -5px 让摆锤圆心正好落在杆的末端，改杆长时无需同步改这里 */
+.page-loading__pendulum-bob {
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* 流动虚线：轨道 80px、可视区 40px，虚线周期 10px（7 实 + 3 虚），
+   位移 40px 恰为 4 个周期，因此循环接缝处看不到「跳一格」。 */
+.page-loading__marquee {
+  width: 40px;
+  height: 5px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.page-loading__marquee-track {
+  display: block;
+  width: 80px;
+  height: 100%;
+  background: repeating-linear-gradient(90deg, currentColor 0 7px, transparent 7px 10px);
+  opacity: 0.85;
+  animation: page-loading-marquee-run 1s linear infinite;
+}
+
 /* XYFlow follows the active Semi theme instead of its standalone palette. */
 .zenith-react-flow {
   --xy-attribution-background-color: var(--surface-card);
@@ -1255,6 +1398,79 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
   }
 }
 
+/* 中段最大、两端缩到最小，像一颗实体在轨道上滚过；首尾各留 8% 只改透明度，
+   让「回到起点」发生在完全透明时 */
+@keyframes page-loading-carousel-run {
+  0% {
+    transform: translateX(0) scale(0.45);
+    opacity: 0;
+  }
+  8% {
+    transform: translateX(0) scale(0.6);
+    opacity: 1;
+  }
+  50% {
+    transform: translateX(15px) scale(1);
+    opacity: 1;
+  }
+  92% {
+    transform: translateX(30px) scale(0.6);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(30px) scale(0.45);
+    opacity: 0;
+  }
+}
+
+/* 下落用 ease-in（加速）、触地与上升用 ease-out（减速），合起来才是重力；
+   触地瞬间横向拉宽、纵向压扁，是影子旁唯一的「实体感」来源 */
+@keyframes page-loading-landing-ball {
+  0% {
+    transform: translateY(-16px) scale(0.95, 1.06);
+    animation-timing-function: cubic-bezier(0.45, 0, 1, 1);
+  }
+  45% {
+    transform: translateY(0) scale(1.18, 0.82);
+    animation-timing-function: cubic-bezier(0, 0, 0.55, 1);
+  }
+  58% {
+    transform: translateY(0) scale(1, 1);
+    animation-timing-function: cubic-bezier(0, 0, 0.55, 1);
+  }
+  100% {
+    transform: translateY(-16px) scale(0.95, 1.06);
+  }
+}
+
+@keyframes page-loading-landing-shadow {
+  0%, 100% {
+    transform: scale(0.55);
+    opacity: 0.2;
+  }
+  45%, 58% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+}
+
+/* 两端角速度为零、过底点最快，是钟摆的真实节奏。±38deg 是能装进 30px 见方容器的上限：
+   半径 15px 时摆锤横向摆幅 ±9.2px、圆弧最低点下移 3.3px，再加 ±45deg 就会越出可视区。 */
+@keyframes page-loading-pendulum-swing {
+  0%, 100% {
+    transform: rotate(-38deg);
+  }
+  50% {
+    transform: rotate(38deg);
+  }
+}
+
+@keyframes page-loading-marquee-run {
+  to {
+    transform: translateX(-40px);
+  }
+}
+
 @keyframes page-loading-soft-pulse {
   0%, 100% {
     opacity: 0.45;
@@ -1274,11 +1490,15 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
   .page-loading__spinner i,
   .page-loading__bounce-dot,
   .page-loading__ripple i,
-  .page-loading__thumb,
-  .page-loading__orbit,
-  .page-loading__grid i,
-  .page-loading__travel,
-  .page-loading__ellipsis-dot {
+  .page-loading__thumb,    .page-loading__orbit,
+    .page-loading__grid i,
+    .page-loading__travel,
+    .page-loading__ellipsis-dot,
+    .page-loading__carousel-bead,
+    .page-loading__landing-ball,
+    .page-loading__landing-shadow,
+    .page-loading__pendulum-arm,
+    .page-loading__marquee-track {
     transform: none;
     animation-name: page-loading-soft-pulse;
     animation-duration: 2s;

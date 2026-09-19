@@ -74,6 +74,10 @@ describe('PageLoading', () => {
     ['grid', 'page-loading__grid'],
     ['travel', 'page-loading__travel'],
     ['ellipsis', 'page-loading__ellipsis-dot'],
+    ['carousel', 'page-loading__carousel-bead'],
+    ['landing', 'page-loading__landing-ball'],
+    ['pendulum', 'page-loading__pendulum-bob'],
+    ['marquee', 'page-loading__marquee-track'],
   ] as const)('renders the %s indicator', (variant, contentClass) => {
     const { container } = render(<LoadingIndicator variant={variant} />);
     const indicator = container.firstElementChild;

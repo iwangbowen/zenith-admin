@@ -76,6 +76,39 @@ export function LoadingIndicator({ variant }: Readonly<{ variant: LoadingStyle }
           <span className="page-loading__ellipsis-dot" />
         </>
       )}
+      {variant === 'carousel' && (
+        // 三个静态槽位 + 一颗游走的光点：单程从左到右，在首尾不可见时重置，故看不到回弹
+        <span className="page-loading__carousel">
+          <i className="page-loading__carousel-slot" />
+          <i className="page-loading__carousel-slot" />
+          <i className="page-loading__carousel-slot" />
+          <i className="page-loading__carousel-bead" />
+        </span>
+      )}
+      {variant === 'landing' && (
+        // 地面参照（影子）与球分开：球靠 transform-origin 落在底部做压扁，影子随高度缩放
+        <span className="page-loading__landing">
+          <i className="page-loading__landing-ball" />
+          <i className="page-loading__landing-shadow" />
+        </span>
+      )}
+      {variant === 'pendulum' && (
+        // 摆锤是摆杆的子元素：刚性由结构保证。曾把两者做成各自旋转的兄弟以避开透明度继承，
+        // 但那样要求两个 transform-origin 换算到同一世界点（锤的轴心在自身负 y 方向），
+        // 极易写错且错了看不出来 —— 两元素变换矩阵相同只代表角度相同，不代表轴心相同。
+        <span className="page-loading__pendulum">
+          <i className="page-loading__pendulum-pivot" />
+          <span className="page-loading__pendulum-arm">
+            <i className="page-loading__pendulum-bob" />
+          </span>
+        </span>
+      )}
+      {variant === 'marquee' && (
+        // 轨道比可视区宽一倍，位移恰好等于虚线一个周期的整数倍，循环无缝
+        <span className="page-loading__marquee">
+          <i className="page-loading__marquee-track" />
+        </span>
+      )}
     </span>
   );
 }
