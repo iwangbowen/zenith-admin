@@ -546,13 +546,11 @@ export default function WebSocketMonitorPage() {
                 setMessageNode('all');
                 setMessageResult('all');
                 setMessageDirection('all');
-                setActiveView('messages');
               }}
               onSelectNode={(nodeId) => {
                 setKeyword('');
                 setStatus('all');
                 setNodeFilter(nodeId);
-                setActiveView('connections');
               }}
             />
           )}
