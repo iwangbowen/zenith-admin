@@ -305,34 +305,6 @@ export default function WsTopologyView({ reconnects, clientStats, ...graphProps 
             );
           })}
         </div>
-        <Text type="tertiary" size="small" className="ws-topo-strip-label">浏览器 Top</Text>
-        {clientStats.topBrowsers.length > 0 ? (
-          <div className="ws-monitor-metrics ws-monitor-metrics--auto">
-            {clientStats.topBrowsers.map((b) => (
-              <div key={b.name}>
-                <Text type="tertiary" size="small" className="ws-topo-strip-name">{b.name}</Text>
-                <strong>{formatNumber(b.connections)}</strong>
-                <Text type="tertiary" size="small">连接</Text>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <Text type="tertiary" size="small">{EMPTY_PLACEHOLDER}</Text>
-        )}
-        <Text type="tertiary" size="small" className="ws-topo-strip-label">操作系统 Top</Text>
-        {clientStats.topOSs.length > 0 ? (
-          <div className="ws-monitor-metrics ws-monitor-metrics--auto">
-            {clientStats.topOSs.map((b) => (
-              <div key={b.name}>
-                <Text type="tertiary" size="small" className="ws-topo-strip-name">{b.name}</Text>
-                <strong>{formatNumber(b.connections)}</strong>
-                <Text type="tertiary" size="small">连接</Text>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <Text type="tertiary" size="small">{EMPTY_PLACEHOLDER}</Text>
-        )}
       </section>
 
       <section className="ws-monitor-section">

@@ -381,22 +381,6 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.ws-monitor-metrics--auto {
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-}
-
-.ws-topo-strip-label {
-  display: block;
-  margin: 4px 0 8px;
-}
-
-.ws-topo-strip-name {
-  display: block;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 @media (max-width: 900px) {
   .ws-monitor-metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
