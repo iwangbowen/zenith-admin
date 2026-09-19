@@ -93,5 +93,5 @@ Mastra Studio ──/api/mastra/*(标准 API)──▶ agents / datasets / exper
 ## 相关文档
 
 - [AI 辅助开发](../ai/index.md)（面向开发者的 AGENTS.md / Skill 说明，与本模块无关）
-- [即时通讯](../chat/index.md)（Webhook 机器人属于即时通讯模块）
+- [会话中心](../chat/index.md)（Webhook 机器人属于会话中心模块）
 - [功能模块](../product/features.md)

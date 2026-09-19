@@ -54,7 +54,7 @@ return (
 
 ## 左右分栏（MasterDetailLayout）
 
-适用于消息中心、智能对话、AI 侧边栏、数据库表浏览、日志文件等结构。
+适用于会话中心、智能对话、AI 侧边栏、数据库表浏览、日志文件等结构。
 组件路径 `components/MasterDetailLayout.tsx`。
 
 ### 标准模式：页面直接作为 Outlet 根节点

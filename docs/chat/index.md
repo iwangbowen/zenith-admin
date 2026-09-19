@@ -1,6 +1,6 @@
-# 即时通讯
+# 会话中心
 
-Zenith Admin 的即时通讯模块提供后台用户之间的单聊、群聊、消息搜索、媒体消息、表情回应、投票、卡片消息、定时消息、常用语、自定义表情、Webhook 机器人和 WebSocket 实时同步能力。后端路由挂载在 `/api/chat`、`/api/chat-bots`、`/api/public/chat/webhook` 与 `/api/ws`，前端页面菜单为「会话中心」（路径 `/chat`），浮动快捷入口由 `QuickChatButton` 提供。
+Zenith Admin 的会话中心（即时通讯）提供后台用户之间的单聊、群聊、消息搜索、媒体消息、表情回应、投票、卡片消息、定时消息、常用语、自定义表情、Webhook 机器人和 WebSocket 实时同步能力。后端路由挂载在 `/api/chat`、`/api/chat-bots`、`/api/public/chat/webhook` 与 `/api/ws`，前端页面菜单为「会话中心」（路径 `/chat`），浮动快捷入口由 `QuickChatButton` 提供。
 
 ---
 

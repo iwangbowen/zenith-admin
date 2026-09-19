@@ -155,7 +155,7 @@ open-platform、workflow、chat、mp、biz-demo、ai、short-link、marketing、
 
 ### 会话中心（Chat）
 
-> 专题文档：[即时通讯](../chat/index.md)
+> 专题文档：[会话中心](../chat/index.md)
 
 | 模块 | 当前能力 |
 | --- | --- |

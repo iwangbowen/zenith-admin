@@ -83,7 +83,7 @@ export const CONTRACT_DOMAIN_LABELS: Record<ContractDomain, string> = {
   licensing: 'License',
   settings: '系统设置',
   workflow: '工作流',
-  chat: '即时通讯',
+  chat: '会话中心',
   rules: '规则引擎',
   analytics: '行为分析',
   report: '报表',
