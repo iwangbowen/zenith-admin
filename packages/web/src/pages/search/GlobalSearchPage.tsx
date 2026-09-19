@@ -103,9 +103,10 @@ export default function GlobalSearchPage() {
         <Button icon={<Bookmark size={14} />} onClick={saveCurrent} disabled={!query}>保存条件</Button>
       </div>
 
-      {recent.length > 0 && <div style={{ marginBottom: 8 }}>
+      {/* 标题与标签同排：Space 自身是 inline-flex，紧贴在文本节点后不留间距，故外层用 flex + gap 分隔 */}
+      {recent.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <Typography.Text type="tertiary" size="small">最近搜索</Typography.Text>
-        <Space wrap spacing={8} style={{ marginTop: 6 }}>
+        <Space wrap spacing={8}>
           {recent.map((item) => <Tag key={`recent-${item.q}-${item.type ?? 'all'}`} onClick={() => { setDraft(item.q); setType(item.type); }}>{item.label}</Tag>)}
         </Space>
       </div>}
