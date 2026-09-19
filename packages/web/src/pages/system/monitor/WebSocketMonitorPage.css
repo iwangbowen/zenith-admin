@@ -377,71 +377,17 @@
   flex-wrap: wrap;
 }
 
-.ws-topo-clients {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.ws-topo-clients__kinds {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  border-block: 1px solid var(--semi-color-border);
-}
-
-.ws-topo-clients__kinds > div {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 12px 16px;
-  border-left: 1px solid var(--semi-color-border);
-}
-
-.ws-topo-clients__kinds > div:first-child {
-  border-left: 0;
-  padding-left: 0;
-}
-
-.ws-topo-clients__kinds strong {
-  font-size: 22px;
-  line-height: 1.2;
-}
-
-.ws-topo-clients__tops {
+.ws-topo-tables {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 32px;
-  max-width: 720px;
+  gap: 16px;
+  margin-top: 16px;
 }
 
-.ws-topo-clients__tops ul {
-  list-style: none;
-  margin: 4px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.ws-topo-clients__tops li {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 12px;
-  padding: 3px 0;
-}
-
-.ws-topo-clients__tops li span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ws-topo-clients__tops li em {
-  font-style: normal;
-  color: var(--semi-color-text-2);
-  flex-shrink: 0;
-  min-width: 32px;
-  text-align: right;
+@media (max-width: 640px) {
+  .ws-topo-tables {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 @media (max-width: 900px) {
