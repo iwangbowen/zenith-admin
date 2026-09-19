@@ -6,7 +6,6 @@ import {
 } from '@xyflow/react';
 import { Spin, Table, Tag, Typography } from '@douyinfe/semi-ui';
 import { ThemedReactFlow } from '@/components/ThemedReactFlow';
-import { layoutWithDagre } from '@/utils/graph-layout';
 import { useGraphSelectionHighlight } from '@/hooks/useGraphSelectionHighlight';
 import { EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
 import { formatSecondsHuman } from '@/utils/format';
@@ -142,18 +141,31 @@ function WsTopologyGraph({ metrics, nodeRates, onSelectUser, onInspectTopic, onS
     };
   }), [topology]);
 
-  const laidOutNodes = useMemo(
-    () => layoutWithDagre(baseNodes, baseEdges, { rankdir: 'TB', nodesep: 20, ranksep: 84, nodeSize: { width: TOPO_NODE_WIDTH, height: TOPO_NODE_HEIGHT } }),
-    [baseNodes, baseEdges],
-  );
+  // 使用固定语义分层而不是 dagre：基础设施关系向下，Topic 投递关系放在用户右侧，避免节点重叠和悬空箭头。
+  const laidOutNodes = useMemo(() => {
+    const gateways = baseNodes.filter((node) => (node.data as WsTopoNodeData).topo.kind === 'gateway');
+    const users = baseNodes.filter((node) => (node.data as WsTopoNodeData).topo.kind === 'user');
+    const topics = baseNodes.filter((node) => (node.data as WsTopoNodeData).topo.kind === 'topic');
+    const bus = baseNodes.find((node) => (node.data as WsTopoNodeData).topo.kind === 'bus');
+    const columnGap = TOPO_NODE_WIDTH + 36;
+    const centerX = Math.max(0, (users.length - 1) * columnGap / 2);
+    const positionById = new Map<string, { x: number; y: number }>();
+    if (bus) positionById.set(bus.id, { x: centerX, y: 24 });
+    gateways.forEach((node, index) => positionById.set(node.id, { x: index * columnGap, y: 156 }));
+    users.forEach((node, index) => positionById.set(node.id, { x: index * columnGap, y: 288 }));
+    topics.forEach((node, index) => positionById.set(node.id, { x: Math.max(users.length, 1) * columnGap + index * columnGap, y: 288 }));
+    return baseNodes.map((node) => ({ ...node, position: positionById.get(node.id) ?? { x: 0, y: 24 } }));
+  }, [baseNodes]);
+  const fitNodeTargets = useMemo(() => laidOutNodes.map(({ id }) => ({ id })), [laidOutNodes]);
+
   useEffect(() => {
-    if (!ready || !nodesInitialized || laidOutNodes.length === 0) return;
+    if (!ready || !nodesInitialized || fitNodeTargets.length === 0) return;
     const raf = requestAnimationFrame(() => {
-      updateNodeInternals(laidOutNodes.map((node) => node.id));
-      void fitView({ padding: 0.2, maxZoom: 1, duration: 200 });
+      updateNodeInternals(fitNodeTargets.map(({ id }) => id));
+      void fitView({ nodes: fitNodeTargets, padding: 0.2, maxZoom: 1, duration: 200 });
     });
     return () => cancelAnimationFrame(raf);
-  }, [fitView, laidOutNodes, nodesInitialized, ready, updateNodeInternals]);
+  }, [fitNodeTargets, fitView, nodesInitialized, ready, updateNodeInternals]);
 
   const { nodes, edges, onNodesChange, onEdgesChange, handleNodeClick, handlePaneClick } = useGraphSelectionHighlight<WsTopoNodeData>(
     laidOutNodes,
@@ -187,7 +199,7 @@ function WsTopologyGraph({ metrics, nodeRates, onSelectUser, onInspectTopic, onS
           nodeTypes={topoNodeTypes}
           onInit={(instance) => {
             // React Flow 首次测量自定义节点后再 fit，避免只按初始 0 尺寸计算而放大到 2x+。
-            requestAnimationFrame(() => instance.fitView({ padding: 0.2, maxZoom: 1 }));
+            requestAnimationFrame(() => instance.fitView({ nodes: fitNodeTargets, padding: 0.2, maxZoom: 1 }));
           }}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
@@ -200,7 +212,7 @@ function WsTopologyGraph({ metrics, nodeRates, onSelectUser, onInspectTopic, onS
           onPaneClick={handlePaneClick}
           fitView
           // 单层 / 小数据集 fitView 可能把缩放放大到节点占满画布；限制默认缩放，避免首次打开节点过大。
-          fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+          fitViewOptions={{ nodes: fitNodeTargets, padding: 0.2, maxZoom: 1 }}
           minZoom={0.2}
           maxZoom={1}
           proOptions={{ hideAttribution: true }}
