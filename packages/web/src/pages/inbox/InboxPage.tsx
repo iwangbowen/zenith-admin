@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { AppModal } from '@/components/AppModal';
@@ -39,8 +39,6 @@ export default function InboxPage() {
 
   const [selected, setSelected] = useState<InAppMessage | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
-  const selectedTriggerRef = useRef<HTMLElement | null>(null);
-  const selectedScrollTopRef = useRef(0);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
   let isRead: boolean | undefined;
@@ -73,25 +71,6 @@ export default function InboxPage() {
     // 有深链的消息也在弹窗里读正文，跳转走详情弹窗里的按钮（顶栏弹窗才是直接跳转）
     setSelectedIndex(index ?? list.findIndex((n) => n.id === item.id));
     setSelected({ ...item, isRead: true });
-  };
-
-  const restoreMessageViewport = () => {
-    const scrollContainer = document.querySelector<HTMLElement>('.admin-content');
-    const trigger = selectedTriggerRef.current;
-    const scrollTop = selectedScrollTopRef.current;
-
-    // 关闭动画完成后再恢复：Semi 的焦点恢复发生在 Modal 关闭流程末尾，
-    // 过早设置 scrollTop 会再次被焦点恢复覆盖。
-    if (trigger) {
-      trigger.setAttribute('tabindex', '-1');
-      trigger.focus({ preventScroll: true });
-      trigger.removeAttribute('tabindex');
-    }
-    if (scrollContainer) scrollContainer.scrollTop = scrollTop;
-  };
-
-  const closeMessage = () => {
-    setSelected(null);
   };
 
   const handlePrev = () => {
@@ -202,11 +181,7 @@ export default function InboxPage() {
               <List.Item
                 key={item.id}
                 style={{ cursor: 'pointer', opacity: item.isRead ? 0.7 : 1 }}
-                onClick={(event) => {
-                  selectedTriggerRef.current = event.currentTarget as HTMLElement;
-                  selectedScrollTopRef.current = document.querySelector<HTMLElement>('.admin-content')?.scrollTop ?? 0;
-                  void openMessage(item, index);
-                }}
+                onClick={() => void openMessage(item, index)}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', minWidth: 0 }}>
                   <span role="none" style={{ display: 'inline-flex', flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
@@ -300,8 +275,7 @@ export default function InboxPage() {
       <AppModal
         title={selectedMessage?.title ?? ''}
         visible={selectedMessage !== null}
-        onCancel={closeMessage}
-        afterClose={restoreMessageViewport}
+        onCancel={() => setSelected(null)}
         footer={
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Space>
@@ -322,7 +296,7 @@ export default function InboxPage() {
               {selectedLink && (
                 <Button type="primary" onClick={() => navigate(selectedLink)}>前往处理</Button>
               )}
-              <Button onClick={closeMessage}>关闭</Button>
+              <Button onClick={() => setSelected(null)}>关闭</Button>
             </Space>
           </div>
         }

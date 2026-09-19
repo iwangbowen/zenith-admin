@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Modal } from '@douyinfe/semi-ui';
 import type { ModalReactProps } from '@douyinfe/semi-ui/lib/es/modal';
 import { Maximize, Minimize, X } from 'lucide-react';
@@ -8,6 +8,8 @@ import './AppModal.css';
 export interface AppModalProps extends Omit<ModalReactProps, 'header' | 'closable' | 'closeIcon' | 'fullScreen'> {
   /** 是否显示全屏切换按钮，默认 true */
   fullscreenable?: boolean;
+  /** 关闭后恢复后台共享内容区滚动位置，默认 true */
+  restoreViewport?: boolean;
   /**
    * 受控全屏状态。传入时 AppModal 进入受控模式，全屏由外部管理。
    * 必须与 onToggleFullscreen 配合使用。
@@ -30,13 +32,39 @@ export function AppModal({
   title,
   onCancel,
   fullscreenable = true,
+  restoreViewport = true,
   fullscreen: controlledFullscreen,
   onToggleFullscreen,
   maskClosable: maskClosableProp,
   children,
+  afterClose,
+  visible,
   ...rest
 }: Readonly<AppModalProps>) {
   const [internalFullscreen, setInternalFullscreen] = useState(false);
+  const previousVisibleRef = useRef(false);
+  const viewportSnapshotRef = useRef<{ container: HTMLElement; scrollTop: number } | null>(null);
+
+  useEffect(() => {
+    if (restoreViewport && visible && !previousVisibleRef.current) {
+      const container = document.querySelector<HTMLElement>('.admin-content');
+      if (container) {
+        viewportSnapshotRef.current = { container, scrollTop: container.scrollTop };
+      }
+    }
+    previousVisibleRef.current = Boolean(visible);
+  }, [restoreViewport, visible]);
+
+  const handleAfterClose = () => {
+    afterClose?.();
+    const snapshot = viewportSnapshotRef.current;
+    viewportSnapshotRef.current = null;
+    if (!restoreViewport || !snapshot || !snapshot.container.isConnected) return;
+    if (snapshot.container.scrollTop !== snapshot.scrollTop) {
+      snapshot.container.scrollTop = snapshot.scrollTop;
+    }
+  };
+
   // 弹窗点击遮罩关闭偏好：调用方显式传入时优先（如必填确认框强制 maskClosable=false）
   const modalClickMaskToClose = useOptionalPreferences()?.preferences.modalClickMaskToClose ?? false;
   const maskClosable = maskClosableProp ?? modalClickMaskToClose;
@@ -87,6 +115,8 @@ export function AppModal({
       fullScreen={fullscreen}
       maskClosable={maskClosable}
       onCancel={onCancel}
+      afterClose={handleAfterClose}
+      visible={visible}
       {...rest}
     >
       {children}
