@@ -226,6 +226,24 @@ function WsTopologyGraph({ metrics, nodeRates, onSelectUser, onInspectTopic, onS
             else if (node.id.startsWith('node:')) onSelectNode(node.id.slice(5));
           }}
           onPaneClick={handlePaneClick}
+          onEdgeClick={(_, edge) => {
+            if (edge.id.startsWith('fanout:')) {
+              onSelectNode(edge.id.slice('fanout:'.length));
+              return;
+            }
+            const separator = edge.id.lastIndexOf(':');
+            const targetUserId = separator >= 0 ? Number(edge.id.slice(separator + 1)) : NaN;
+            if (!Number.isInteger(targetUserId)) return;
+            if (edge.id.startsWith('attach:')) {
+              onSelectUser(targetUserId);
+              return;
+            }
+            if (edge.id.startsWith('deliver:')) {
+              const topic = edge.id.slice('deliver:'.length, separator);
+              onInspectTopic(topic);
+              onSelectUser(targetUserId);
+            }
+          }}
           fitView
           // 单层 / 小数据集 fitView 可能把缩放放大到节点占满画布；限制默认缩放，避免首次打开节点过大。
           fitViewOptions={{ nodes: fitNodeTargets, padding: 0.2, maxZoom: 1 }}
