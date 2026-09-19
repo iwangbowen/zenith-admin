@@ -51,7 +51,10 @@ export default function InboxPage() {
   const total = listQuery.data?.total ?? 0;
   const pagination = buildPagination(total);
   const detailQuery = useInboxMessageDetail(selected?.id, selected !== null);
-  const selectedMessage = selected ? (detailQuery.data ? { ...detailQuery.data, isRead: true } : selected) : null;
+  let selectedMessage = selected;
+  if (selected && detailQuery.data) {
+    selectedMessage = { ...detailQuery.data, isRead: true };
+  }
   const markReadMutation = useMarkInboxMessageRead();
   const markAllReadMutation = useMarkAllInboxMessagesRead();
   const deleteMutation = useDeleteInboxMessage();

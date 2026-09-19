@@ -59,9 +59,10 @@ export function AppModal({
     afterClose?.();
     const snapshot = viewportSnapshotRef.current;
     viewportSnapshotRef.current = null;
-    if (!restoreViewport || !snapshot || !snapshot.container.isConnected) return;
-    if (snapshot.container.scrollTop !== snapshot.scrollTop) {
-      snapshot.container.scrollTop = snapshot.scrollTop;
+    if (!restoreViewport || !snapshot?.container.isConnected) return;
+    const { container } = snapshot;
+    if (container.scrollTop !== snapshot.scrollTop) {
+      container.scrollTop = snapshot.scrollTop;
     }
   };
 
