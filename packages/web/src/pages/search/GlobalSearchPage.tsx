@@ -89,6 +89,17 @@ export default function GlobalSearchPage() {
     persistStored(SAVED_KEY, next);
   }
 
+  function removeRecent(item: SavedSearch) {
+    const next = recent.filter((candidate) => candidate !== item);
+    setRecent(next);
+    persistStored(RECENT_KEY, next);
+  }
+
+  function clearRecent() {
+    setRecent([]);
+    persistStored(RECENT_KEY, []);
+  }
+
   return (
     <div className="page-container">
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
@@ -107,8 +118,18 @@ export default function GlobalSearchPage() {
       {recent.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <Typography.Text type="tertiary" size="small">最近搜索</Typography.Text>
         <Space wrap spacing={8}>
-          {recent.map((item) => <Tag key={`recent-${item.q}-${item.type ?? 'all'}`} onClick={() => { setDraft(item.q); setType(item.type); }}>{item.label}</Tag>)}
+          {recent.map((item) => (
+            <Tag
+              key={`recent-${item.q}-${item.type ?? 'all'}`}
+              closable
+              onClose={() => removeRecent(item)}
+              onClick={() => { setDraft(item.q); setType(item.type); }}
+            >
+              {item.label}
+            </Tag>
+          ))}
         </Space>
+        <Button size="small" theme="borderless" type="tertiary" onClick={clearRecent}>清空</Button>
       </div>}
       {saved.length > 0 && <Space wrap spacing={8} style={{ marginBottom: 16 }}>
         {saved.map((item) => <Tag key={`${item.q}-${item.type ?? 'all'}`} closable onClose={() => removeSaved(item)} onClick={() => { setDraft(item.q); setType(item.type); }}>{item.label}</Tag>)}
