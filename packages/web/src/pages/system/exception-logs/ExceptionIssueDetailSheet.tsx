@@ -8,9 +8,9 @@ import UserSelect from '@/components/UserSelect';
 import { useExceptionGroupDetail, useUpdateExceptionGroup } from '@/hooks/queries/exception-logs';
 import { usePermission } from '@/hooks/usePermission';
 import { formatDateTime } from '@/utils/date';
-import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, renderCodeEllipsis, renderEllipsis } from '@/utils/table-columns';
 
-const { Text, Title } = Typography;
+const { Paragraph, Text, Title } = Typography;
 
 interface HandleForm {
   status: ErrorStatus;
@@ -76,14 +76,15 @@ export function ExceptionIssueDetailSheet({ groupId, onClose, onOpenEvent }: Exc
     {
       title: '路由 / 作业',
       dataIndex: 'route',
-      minWidth: 200,
-      render: (_v, record) => {
-        const text = record.route ? `${record.httpMethod ?? ''} ${record.route}`.trim() : record.jobType ? `${record.jobType}${record.jobId ? ` #${record.jobId}` : ''}` : EMPTY_PLACEHOLDER;
-        return <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 260 }} code>{text}</Text>;
-      },
+      minWidth: 180,
+      render: (_v, record) => renderCodeEllipsis(
+        record.route
+          ? `${record.httpMethod ?? ''} ${record.route}`.trim()
+          : record.jobType ? `${record.jobType}${record.jobId ? ` #${record.jobId}` : ''}` : null,
+      ),
     },
-    { title: '主机', dataIndex: 'hostname', width: 200, render: (v: string | null, record) => renderEllipsis(v ? `${v}${record.processRole ? ` · ${record.processRole}` : ''}` : null) },
-    { title: '用户', dataIndex: 'username', width: 120, render: (v: string | null, record) => renderEllipsis(v ?? (record.userId ? `#${record.userId}` : null)) },
+    { title: '主机', dataIndex: 'hostname', width: 190, render: (v: string | null, record) => renderEllipsis(v ? `${v}${record.processRole ? ` · ${record.processRole}` : ''}` : null) },
+    { title: '用户', dataIndex: 'username', width: 90, render: (v: string | null, record) => renderEllipsis(v ?? (record.userId ? `#${record.userId}` : null)) },
     {
       title: '操作',
       dataIndex: 'id',
@@ -102,8 +103,9 @@ export function ExceptionIssueDetailSheet({ groupId, onClose, onOpenEvent }: Exc
       closeOnEsc
     >
       <Spin spinning={detailQuery.isLoading}>
+        {/* paddingBottom：抽屉底部无内边距，内容以表格结尾时最后一行会贴着边缘（与 global.css 给 Modal 补的同类间距一致） */}
         {detail ? (
-          <Space vertical align="start" spacing={16} style={{ width: '100%' }}>
+          <Space vertical align="start" spacing={16} style={{ width: '100%', paddingBottom: 16 }}>
             <Space spacing={8} wrap>
               <ErrorTypeTag type={detail.group.errorType} />
               <ErrorLevelTag level={detail.group.level} />
@@ -111,7 +113,7 @@ export function ExceptionIssueDetailSheet({ groupId, onClose, onOpenEvent }: Exc
               <Text type="tertiary" size="small">{ANALYTICS_ENVIRONMENT_LABELS[detail.group.environment] ?? detail.group.environment}</Text>
               {detail.group.release && <Text type="tertiary" size="small">v{detail.group.release}</Text>}
             </Space>
-            <CodeBlock maxHeight={120}>{detail.group.message}</CodeBlock>
+            <Paragraph style={{ margin: 0, wordBreak: 'break-word' }}>{detail.group.message}</Paragraph>
 
             <Descriptions
               row

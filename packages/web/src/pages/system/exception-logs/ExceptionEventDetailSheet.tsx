@@ -7,7 +7,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { formatDateTime } from '@/utils/date';
 import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 
-const { Text, Title } = Typography;
+const { Paragraph, Text, Title } = Typography;
 
 interface EventContext {
   request?: Record<string, unknown>;
@@ -58,14 +58,15 @@ export function ExceptionEventDetailSheet({ event, onClose }: ExceptionEventDeta
       width={760}
       closeOnEsc
     >
+      {/* paddingBottom：抽屉底部无内边距，内容以文本块结尾时会贴着边缘（与 global.css 给 Modal 补的同类间距一致） */}
       {event && (
-        <Space vertical align="start" spacing={16} style={{ width: '100%' }}>
+        <Space vertical align="start" spacing={16} style={{ width: '100%', paddingBottom: 16 }}>
           <Space spacing={8} wrap>
             <ErrorTypeTag type={event.errorType} />
             <ErrorLevelTag level={event.level} />
             {event.errorName && <Text code>{event.errorName}{event.errorCode ? ` · ${event.errorCode}` : ''}</Text>}
           </Space>
-          <CodeBlock maxHeight={120}>{event.message}</CodeBlock>
+          <Paragraph style={{ margin: 0, wordBreak: 'break-word' }}>{event.message}</Paragraph>
 
           <Descriptions
             size="small"
