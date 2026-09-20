@@ -711,6 +711,7 @@ export default function MyApplicationsPage() {
         <div style={{ flex: 1, minHeight: 0 }}>
           {selectedDef ? (
             <WorkflowLaunchForm
+              instanceId={editingDraft?.id}
               key={`launch-${selectedDef.id}-${formKey}`}
               ref={launchFormRef}
               def={selectedDef}

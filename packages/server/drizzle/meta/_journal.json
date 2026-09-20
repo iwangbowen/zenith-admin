@@ -57,6 +57,13 @@
       "when": 1789869971739,
       "tag": "0007_lame_golden_guardian",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789890518275,
+      "tag": "0008_funny_paibok",
+      "breakpoints": true
     }
   ]
 }

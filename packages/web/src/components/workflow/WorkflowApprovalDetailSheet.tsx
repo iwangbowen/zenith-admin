@@ -1,3 +1,5 @@
+import { workflowAttachmentContract } from '@zenith/shared/workflow';
+import { urlOf } from '@/lib/contract-query';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useDebouncedValue } from '@tanstack/react-pacer';
@@ -23,7 +25,7 @@ import { resolveWorkflowDetailDefinition } from '@/utils/workflow-snapshot';
 import { useQuickPhrases } from '@/hooks/useQuickPhrases';
 import type { SignatureInput } from '@zenith/shared/core';
 import FileAttachment from '@/components/FileAttachment';
-import { uploadedFileToAttachment } from '@/components/FileAttachment/utils';
+import { workflowFileToAttachment, type WorkflowUploadedFile } from '@/components/FileAttachment/utils';
 import WorkflowInstanceDetailPanel, { WorkflowDetailSkeleton } from '@/components/workflow/WorkflowInstanceDetailPanel';
 import type { WorkflowBusinessFormApi } from '@/components/workflow/BusinessFormHost';
 import WorkflowSideSheet from '@/components/workflow/WorkflowSideSheet';
@@ -41,7 +43,7 @@ const SignatureField = lazy(() => import('@/components/signature/SignatureField'
 type AddSignPosition = 'before' | 'after' | 'parallel';
 type AddSignMode = 'and' | 'or';
 
-interface UploadedFile { name: string; url: string; size?: number }
+type UploadedFile = WorkflowUploadedFile;
 
 type ActionAttachmentKey = 'approve' | 'reject' | 'transfer' | 'delegate' | 'addSign' | 'return';
 const EMPTY_ACTION_ATTACHMENTS: Record<ActionAttachmentKey, UploadedFile[]> = {
@@ -165,8 +167,8 @@ export default function WorkflowApprovalDetailSheet({
     }
     return true;
   };
-  const attachmentsPayload = (key: ActionAttachmentKey): UploadedFile[] | undefined =>
-    (actionAttachments[key].length > 0 ? actionAttachments[key] : undefined);
+  const attachmentsPayload = (key: ActionAttachmentKey): Array<{ fileId: string }> | undefined =>
+    (actionAttachments[key].length > 0 ? actionAttachments[key].map(({ fileId }) => ({ fileId })) : undefined);
   const renderAttachmentField = (btn: WorkflowActionButtonConfig, key: ActionAttachmentKey) => {
     const mode = btn.uploadMode ?? 'hidden';
     if (mode === 'hidden') return null;
@@ -178,10 +180,12 @@ export default function WorkflowApprovalDetailSheet({
         <div style={{ marginTop: 6 }}>
           <FileAttachment
             mode="edit"
+            uploadPath={urlOf(workflowAttachmentContract.upload)}
+            uploadData={viewId ? { instanceId: viewId } : undefined}
             showTitle={false}
             limit={5}
-            value={actionAttachments[key].map((a, i) => uploadedFileToAttachment(a, i))}
-            onChange={(items) => setAttachmentsFor(key, items.map((a) => ({ name: a.file.originalName, url: a.file.url, size: a.file.size })))}
+            value={actionAttachments[key].map((a, i) => workflowFileToAttachment(a, i))}
+            onChange={(items) => setAttachmentsFor(key, items.map((a) => ({ fileId: a.fileId, name: a.file.originalName, url: a.file.url, size: a.file.size, mimeType: a.file.mimeType })))}
           />
         </div>
       </div>

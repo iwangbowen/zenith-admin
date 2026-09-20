@@ -1,3 +1,4 @@
+import { bindWorkflowAttachments, bindWorkflowFormAttachments, type WorkflowAttachmentInput } from '../workflow-attachments.service';
 import { assertIndependentReconApproval } from '../../payment/payment-recon-adjustment-policy';
 import { assertWorkflowFormUpdatesCurrent } from './signature-concurrency';
 import { nullableEq } from '../../../lib/where-helpers';
@@ -31,7 +32,7 @@ import { submitReportFillSyncForWorkflowInstance } from '../../report/report-fil
 import type { DbExecutor } from '../../../db/types';
 import { requireRow } from '../../../lib/db-assert';
 
-export type WorkflowTaskAttachment = { name: string; url: string; size?: number };
+export type WorkflowTaskAttachment = WorkflowAttachmentInput;
 
 /** 委托人显示名（full 代批留痕用）：昵称优先，查不到退化为 user#id */
 async function findUserDisplayName(userId: number): Promise<string> {
@@ -263,7 +264,7 @@ export async function approveTaskCore(
   inst: typeof workflowInstances.$inferSelect,
   comment: string | undefined,
   actor: WorkflowEventActor,
-  options?: { selectedNextApprovers?: Record<string, number[]>; signature?: SignatureSnapshot; attachments?: Array<{ name: string; url: string; size?: number }>; formUpdates?: Record<string, unknown> },
+  options?: { selectedNextApprovers?: Record<string, number[]>; signature?: SignatureSnapshot; attachments?: WorkflowTaskAttachment[]; formUpdates?: Record<string, unknown> },
 ): Promise<ApproveResult> {
   assertIndependentReconApproval(inst.bizType, inst.initiatorId, actor.userId);
   const taskId = task.id;
@@ -285,7 +286,7 @@ export async function approveTaskCore(
       status: 'approved',
       comment: comment ?? null,
       ...signatureTaskValues(options?.signature),
-      attachments: options?.attachments ?? null,
+      attachments: await bindWorkflowAttachments(tx, inst, { source: 'task', taskId }, options?.attachments, actor.userId ?? undefined),
       actionAt: new Date(),
     }).where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.status, task.status), nullableEq(workflowTasks.assigneeId, task.assigneeId))).returning();
     requireRow(approvedTask, '任务已被处理，请刷新后重试', 409);
@@ -298,7 +299,9 @@ export async function approveTaskCore(
       options?.formUpdates,
     );
     const hasFormUpdates = Object.keys(sanitizedUpdates).length > 0;
-    const mergedFormData = hasFormUpdates ? { ...baseFormData, ...sanitizedUpdates } : baseFormData;
+    const mergedFormData = hasFormUpdates
+      ? await bindWorkflowFormAttachments(tx, inst, inst.formSnapshot, { ...baseFormData, ...sanitizedUpdates }, actor.userId ?? undefined)
+      : baseFormData;
     if (hasFormUpdates) {
       await tx.update(workflowInstances).set({ formData: mergedFormData }).where(eq(workflowInstances.id, inst.id));
     }
@@ -512,7 +515,7 @@ export async function rejectTaskCore(
     await lockInstanceExpecting(tx, inst.id, 'running', '流程实例状态已变化，请刷新后重试');
     // 当前任务 → rejected（乐观并发保护：状态变更则中止，防止并发重复驳回）
     const [rejectedTask] = await tx.update(workflowTasks)
-      .set({ status: 'rejected', comment, attachments: attachments ?? null, actionAt: new Date() })
+      .set({ status: 'rejected', comment, attachments: await bindWorkflowAttachments(tx, inst, { source: 'task', taskId: task.id }, attachments, actor.userId ?? undefined), actionAt: new Date() })
       .where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.status, task.status)))
       .returning();
     requireRow(rejectedTask, '任务已被处理，请刷新后重试', 409);
@@ -687,7 +690,7 @@ async function processDelegatedReceipt(
   action: 'approved' | 'rejected',
   comment: string | undefined,
   actor: WorkflowEventActor,
-  attachments?: Array<{ name: string; url: string; size?: number }>,
+  attachments?: WorkflowTaskAttachment[],
   formUpdates?: Record<string, unknown>,
   signature?: SignatureSnapshot,
 ): Promise<ApproveResult> {
@@ -702,7 +705,7 @@ async function processDelegatedReceipt(
       status: action,
       comment: receiptComment,
       ...signatureTaskValues(signature),
-      attachments: attachments ?? null,
+      attachments: await bindWorkflowAttachments(tx, inst, { source: 'task', taskId: task.id }, attachments, actor.userId ?? undefined),
       actionAt: new Date(),
     }).where(and(eq(workflowTasks.id, task.id), eq(workflowTasks.status, task.status), nullableEq(workflowTasks.assigneeId, task.assigneeId))).returning();
     requireRow(closedTask, '任务已被处理，请刷新后重试', 409);
@@ -717,7 +720,7 @@ async function processDelegatedReceipt(
         .from(workflowInstances).where(eq(workflowInstances.id, inst.id)).for('update').limit(1);
       const base = (locked?.formData ?? inst.formData ?? {}) as Record<string, unknown>;
       assertWorkflowFormUpdatesCurrent((inst.formData ?? {}) as Record<string, unknown>, base, sanitizedUpdates);
-      await tx.update(workflowInstances).set({ formData: { ...base, ...sanitizedUpdates } }).where(eq(workflowInstances.id, inst.id));
+      await tx.update(workflowInstances).set({ formData: await bindWorkflowFormAttachments(tx, inst, inst.formSnapshot, { ...base, ...sanitizedUpdates }, actor.userId ?? undefined) }).where(eq(workflowInstances.id, inst.id));
     }
     // 委派人已在本节点同轮持有其它活动任务（如同时被加签/会签同节点）时不再重建回执任务，
     // 其既有任务即可承接后续确认——重复建行会撞 wf_tasks_active_uniq 唯一索引

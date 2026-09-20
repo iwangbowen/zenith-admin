@@ -1,3 +1,4 @@
+import { workflowAttachmentHandlers } from './workflow-attachments';
 import { authHandlers } from './auth';
 import { usersHandlers } from './users';
 import { rolesHandlers } from './roles';
@@ -199,6 +200,7 @@ export const handlers = [
   ...workflowDataSourcesHandlers,
   ...workflowConnectorsHandlers,
   ...workflowHandlers,
+  ...workflowAttachmentHandlers,
   ...workflowFormsHandlers,
   ...workflowAutomationsHandlers,
   ...workflowEventSubscriptionsHandlers,

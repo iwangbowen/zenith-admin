@@ -1,7 +1,7 @@
 import type { SignatureSnapshot } from '@zenith/shared/core';
-import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, unique, text, uniqueIndex, index, jsonb, smallint, real, foreignKey, uuid as pgUuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, unique, text, uniqueIndex, index, jsonb, smallint, real, foreignKey, check, uuid as pgUuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import type { WorkflowAutomationAction, WorkflowDefinitionSnapshot, WorkflowInstanceFormSnapshot } from '@zenith/shared/workflow';
+import type { WorkflowAutomationAction, WorkflowDefinitionSnapshot, WorkflowInstanceFormSnapshot, WorkflowAttachment } from '@zenith/shared/workflow';
 import { timestampColumns, idColumn, statusColumn, sortColumn, remarkColumn } from './common';
 import { auditColumns, users, tenantIdColumn } from './core';
 import { managedFiles } from './files';
@@ -494,8 +494,8 @@ export const workflowTasks = pgTable('workflow_tasks', {
   /** 手写签名（data URL / 图片地址，审批通过时若节点要求签名则写入） */
   signature: text(),
   signatureEvidence: jsonb().$type<Omit<SignatureSnapshot, 'dataUrl'>>(),
-  /** 审批附件（[{name,url,size}]，审批通过时上传） */
-  attachments: jsonb().$type<Array<{ name: string; url: string; size?: number }>>(),
+  /** 审批附件元数据快照；身份与授权来源由 workflowAttachmentLinks 持有。 */
+  attachments: jsonb().$type<WorkflowAttachment[]>(),
   actionAt: timestamp({ withTimezone: true }),
   /** 顺序会签中的顺序（0-based），非顺序场景为 null */
   taskOrder: integer(),
@@ -525,6 +525,7 @@ export const workflowTasks = pgTable('workflow_tasks', {
   ccReadAt: timestamp({ withTimezone: true }),
   createdAt: timestamp().defaultNow().notNull(),
 }, (t) => [
+  unique('workflow_tasks_id_instance_unique').on(t.id, t.instanceId),
   // 会签完成检查 / 详情任务加载 / 待办扫描的高频组合条件
   index('workflow_tasks_instance_status_idx').on(t.instanceId, t.status),
   // 待我审批 / 我已办按处理人过滤的高频组合条件
@@ -751,11 +752,11 @@ export const workflowComments = pgTable('workflow_comments', {
   content: text().notNull(),
   /** @ 提及的用户 ID 列表 */
   mentions: jsonb().$type<number[]>().default([]).notNull(),
-  /** 附件列表（{ name, url, size? }[]） */
-  attachments: jsonb().$type<Array<{ name: string; url: string; size?: number }>>().default([]).notNull(),
+  /** 附件元数据快照；输入只接收 fileId。 */
+  attachments: jsonb().$type<WorkflowAttachment[]>().default([]).notNull(),
   tenantId: tenantIdColumn(),
   createdAt: timestamp().defaultNow().notNull(),
-}, (t) => [index('workflow_comments_task_idx').on(t.taskId), index('workflow_comments_parent_idx').on(t.parentId), index('workflow_comments_instance_idx').on(t.instanceId), index('workflow_comments_user_idx').on(t.userId), index('workflow_comments_tenant_idx').on(t.tenantId)]);
+}, (t) => [unique('workflow_comments_id_instance_unique').on(t.id, t.instanceId), index('workflow_comments_task_idx').on(t.taskId), index('workflow_comments_parent_idx').on(t.parentId), index('workflow_comments_instance_idx').on(t.instanceId), index('workflow_comments_user_idx').on(t.userId), index('workflow_comments_tenant_idx').on(t.tenantId)]);
 
 export type WorkflowCommentRow = typeof workflowComments.$inferSelect;
 
@@ -863,3 +864,34 @@ export const workflowTaskConsults = pgTable('workflow_task_consults', {
 export type WorkflowTaskConsultRow = typeof workflowTaskConsults.$inferSelect;
 
 export type NewWorkflowTaskConsult = typeof workflowTaskConsults.$inferInsert;
+
+/** Upload provenance: restricted objects created only by the workflow upload boundary. */
+export const workflowAttachmentUploads = pgTable('workflow_attachment_uploads', {
+  fileId: pgUuid().primaryKey().references(() => managedFiles.id, { onDelete: 'cascade' }),
+  userId: integer().notNull().references(() => users.id, { onDelete: 'restrict' }),
+  tenantId: tenantIdColumn(),
+  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index('workflow_attachment_uploads_tenant_idx').on(t.tenantId)]);
+
+/** Files are retained once per concrete source; the source is never inferred from a URL. */
+export const workflowAttachmentLinks = pgTable('workflow_attachment_links', {
+  id: idColumn(),
+  instanceId: integer().notNull().references(() => workflowInstances.id, { onDelete: 'cascade' }),
+  taskId: integer(),
+  commentId: integer(),
+  fileId: pgUuid().notNull().references(() => managedFiles.id, { onDelete: 'restrict' }),
+  source: varchar({ length: 16 }).$type<'form' | 'task' | 'comment'>().notNull(),
+  sourceKey: varchar({ length: 512 }).notNull(),
+  fieldKeys: text().array().notNull().default(sql`'{}'::text[]`),
+  tenantId: tenantIdColumn(),
+  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  foreignKey({ name: 'workflow_attachment_links_task_instance_fk', columns: [t.taskId, t.instanceId], foreignColumns: [workflowTasks.id, workflowTasks.instanceId] }).onDelete('restrict'),
+  foreignKey({ name: 'workflow_attachment_links_comment_instance_fk', columns: [t.commentId, t.instanceId], foreignColumns: [workflowComments.id, workflowComments.instanceId] }).onDelete('restrict'),
+  unique('workflow_attachment_links_source_file_unique').on(t.instanceId, t.source, t.sourceKey, t.fileId),
+  index('workflow_attachment_links_instance_id_idx').on(t.instanceId, t.id),
+  index('workflow_attachment_links_task_id_idx').on(t.taskId, t.id),
+  index('workflow_attachment_links_file_id_idx').on(t.fileId),
+  index('workflow_attachment_links_tenant_idx').on(t.tenantId),
+  check('workflow_attachment_links_source_check', sql`(${t.source} = 'form' and ${t.taskId} is null and ${t.commentId} is null and cardinality(${t.fieldKeys}) > 0) or (${t.source} = 'task' and ${t.taskId} is not null and ${t.commentId} is null and ${t.sourceKey} = ${t.taskId}::text and cardinality(${t.fieldKeys}) = 0) or (${t.source} = 'comment' and ${t.commentId} is not null and ${t.taskId} is null and ${t.sourceKey} = ${t.commentId}::text and cardinality(${t.fieldKeys}) = 0)`),
+]);

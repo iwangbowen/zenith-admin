@@ -6,3 +6,8 @@ export const ValuesContext = createContext<Record<string, unknown>>({});
 export const ReadOnlyTextContext = createContext(false);
 /** 工作流使用带证据的签名协议；报表填报使用其领域约定的 PNG 图片字符串。 */
 export const SignatureModeContext = createContext<'workflow' | 'image'>('workflow');
+
+/** Existing workflow uploads inherit the authorized instance tenant. */
+export const AttachmentInstanceContext = createContext<number | undefined>(undefined);
+
+export const AttachmentModeContext = createContext<'workflow' | 'public'>('workflow');

@@ -1,3 +1,4 @@
+import { bindWorkflowAttachments } from '../workflow-attachments.service';
 import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
 // ─── 任务流转：转办/委派/加签/减签/退回（拆分自 workflow-instances.service.ts）───
 import { eq, and, inArray } from 'drizzle-orm';
@@ -49,7 +50,7 @@ export async function transferTask(taskId: number, targetUserId: number, comment
       .set({
         assigneeId: targetUserId,
         comment: transferComment,
-        attachments: attachments ?? null,
+        attachments: await bindWorkflowAttachments(tx, inst, { source: 'task', taskId: task.id }, attachments, actor.userId ?? undefined),
         originalAssigneeId: task.originalAssigneeId ?? task.assigneeId ?? null,
       })
       .where(and(eq(workflowTasks.id, task.id), eq(workflowTasks.status, 'pending')))
@@ -145,7 +146,7 @@ export async function delegateTask(taskId: number, targetUserId: number, comment
       .set({
         assigneeId: targetUserId,
         comment: delegateComment,
-        attachments: attachments ?? null,
+        attachments: await bindWorkflowAttachments(tx, inst, { source: 'task', taskId: task.id }, attachments, actor.userId ?? undefined),
         originalAssigneeId: task.originalAssigneeId ?? task.assigneeId ?? null,
         delegatedFromId,
         // 手动委派保持建议制语义：受托人意见回执给原审批人确认（区别于规则委托的 full 直接代批）
@@ -227,7 +228,7 @@ export async function addSignTask(
         assigneeId: uid,
         status: 'pending' as const,
         comment: addSignComment,
-        attachments: attachments ?? null,
+        attachments: [],
         approveMethod,
         // 加签类型专用列：before 挂起原任务的恢复判定依赖它（comment 会被审批/委派回执覆盖，不能作为判定依据）
         signType: position,
@@ -235,6 +236,10 @@ export async function addSignTask(
         activationId: task.activationId,
       })),
     ).returning();
+    for (const row of newRows) {
+      row.attachments = await bindWorkflowAttachments(tx, inst, { source: 'task', taskId: row.id }, attachments, actor.userId ?? undefined);
+      if (row.attachments.length) await tx.update(workflowTasks).set({ attachments: row.attachments }).where(eq(workflowTasks.id, row.id));
+    }
     return newRows;
   });
 

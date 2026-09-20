@@ -78,6 +78,8 @@ interface FileAttachmentProps {
   disabled?: boolean;
   /** 上传接口路径（相对 apiBaseUrl），默认通用单文件上传 `fileContract.uploadOne`；审批表单等场景可指向按业务权限放行的专用端点 */
   uploadPath?: string;
+  /** Owning business context sent together with the file. */
+  uploadData?: Record<string, string | number>;
 }
 
 /** 将 AttachmentItem 转换为 Semi Upload FileItem */
@@ -146,6 +148,7 @@ export default function FileAttachment({
   style,
   disabled = false,
   uploadPath = urlOf(fileContract.uploadOne),
+  uploadData,
 }: FileAttachmentProps = {}) {
   const isEditMode = mode === 'edit' && !disabled;
 
@@ -556,6 +559,7 @@ export default function FileAttachment({
       {/* 使用 Semi Upload 组件，listType="list" */}
       <Upload
         action={uploadAction}
+        data={uploadData}
         headers={() => request.authHeaders()}
         name="file"
         fileList={fileList}

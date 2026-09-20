@@ -9,6 +9,7 @@ import { downloadStatementFile } from '../../services/payment/payment-statement-
 import { matchBankEntries } from '../../services/payment/payment-recon-funds.service';
 import { createReconAdjustment, executeReconAdjustment, getReconAdjustmentApprovalDetail, getReconAdjustmentWorkflowContext, previewReconAdjustmentWorkflow, reverseReconAdjustment, submitReconAdjustment } from '../../services/payment/payment-recon-adjustment.service';
 import { mountCrud } from '../_crud';
+import { getReconAdjustment } from '../../services/payment/payment-recon-adjustment.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 const routes = [
@@ -33,6 +34,7 @@ const routes = [
   defineContractRoute(paymentReconContract.handleCase, { handler: async (c) => c.json(okBody(await handleReconCase(c.req.valid('param').id, c.req.valid('json'))), 200) }),
   defineContractRoute(paymentReconContract.compensate, { handler: async (c) => c.json(okBody(await submitCompensation(c.req.valid('param').id)), 200) }),
   defineContractRoute(paymentReconContract.adjustments, { handler: async (c) => c.json(okBody(await listReconAdjustments(c.req.valid('query'))), 200) }),
+  defineContractRoute(paymentReconContract.adjustmentDetail, { handler: async (c) => c.json(okBody(await getReconAdjustment(c.req.valid('param').id)), 200) }),
   defineContractRoute(paymentReconContract.createAdjustment, { handler: async (c) => c.json(okBody(await createReconAdjustment(c.req.valid('param').id, c.req.valid('json'))), 200) }),
   defineContractRoute(paymentReconContract.submitAdjustment, { handler: async (c) => c.json(okBody(await submitReconAdjustment(c.req.valid('param').id, c.req.valid('json'))), 200) }),
   defineContractRoute(paymentReconContract.executeAdjustment, { handler: async (c) => c.json(okBody(await executeReconAdjustment(c.req.valid('param').id)), 200) }),

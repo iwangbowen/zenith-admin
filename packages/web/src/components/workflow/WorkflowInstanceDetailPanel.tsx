@@ -1,3 +1,5 @@
+import { workflowAttachmentContract } from '@zenith/shared/workflow';
+import { urlOf } from '@/lib/contract-query';
 /**
  * 通用流程实例详情面板
  * 在 MyApplications / WorkflowMonitor / PendingApprovals 中复用
@@ -24,7 +26,7 @@ import DateTimeText from '@/components/DateTimeText';
 import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import ApprovalTimeline from '@/components/ApprovalTimeline';
 import FileAttachment from '@/components/FileAttachment';
-import { uploadedFileToAttachment } from '@/components/FileAttachment/utils';
+import { workflowFileToAttachment, type WorkflowUploadedFile } from '@/components/FileAttachment/utils';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
 import BusinessFormHost, { type WorkflowBusinessFormApi } from '@/components/workflow/BusinessFormHost';
 import WorkflowGraphView from './WorkflowGraphView';
@@ -149,7 +151,7 @@ function InstanceComments({ instance, readOnly = false }: Readonly<{ instance: W
   const [comments, setComments] = useState<WorkflowComment[]>(instance.comments ?? []);
   const [content, setContent] = useState('');
   const [mentions, setMentions] = useState<number[]>([]);
-  const [attachments, setAttachments] = useState<Array<{ name: string; url: string; size?: number }>>([]);
+  const [attachments, setAttachments] = useState<WorkflowUploadedFile[]>([]);
   const [replyTo, setReplyTo] = useState<WorkflowComment | null>(null);
   const commentMutation = useApiMutation(workflowInstanceContract.addComment);
   const submitting = commentMutation.isPending;
@@ -173,7 +175,7 @@ function InstanceComments({ instance, readOnly = false }: Readonly<{ instance: W
     try {
       const created = await commentMutation.mutateAsync({
         params: { id: instance.id },
-        body: { content: text, mentions, attachments, parentId: replyTo?.id ?? null },
+        body: { content: text, mentions, attachments: attachments.map(({ fileId }) => ({ fileId })), parentId: replyTo?.id ?? null },
       });
       if (!created) {
         Toast.error('评论失败');
@@ -221,7 +223,7 @@ function InstanceComments({ instance, readOnly = false }: Readonly<{ instance: W
                 <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', marginTop: 2 }}>{c.content}</div>
                 {c.attachments && c.attachments.length > 0 && (
                   <div style={{ marginTop: 4 }}>
-                    <FileAttachment mode="view" showTitle={false} value={c.attachments.map((a, i) => uploadedFileToAttachment(a, i))} />
+                    <FileAttachment mode="view" showTitle={false} value={c.attachments.map((a, i) => workflowFileToAttachment(a, i))} />
                   </div>
                 )}
                 {c.mentionNames && c.mentionNames.length > 0 && (
@@ -260,10 +262,12 @@ function InstanceComments({ instance, readOnly = false }: Readonly<{ instance: W
           />
           <FileAttachment
             mode="edit"
+            uploadPath={urlOf(workflowAttachmentContract.upload)}
+            uploadData={{ instanceId: instance.id }}
             showTitle={false}
             limit={5}
-            value={attachments.map((a, i) => uploadedFileToAttachment(a, i))}
-            onChange={(items) => setAttachments(items.map((a) => ({ name: a.file.originalName, url: a.file.url, size: a.file.size })))}
+            value={attachments.map((a, i) => workflowFileToAttachment(a, i))}
+            onChange={(items) => setAttachments(items.map((a) => ({ fileId: a.fileId, name: a.file.originalName, url: a.file.url, size: a.file.size, mimeType: a.file.mimeType })))}
           />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
             <Select
@@ -375,6 +379,7 @@ export default function WorkflowInstanceDetailPanel({
     if (hasFormFields) {
       return (
         <WorkflowFormRenderer
+          attachmentInstanceId={instance.id}
           key={formEditable ? `edit-${instance.id}` : `view-${instance.id}`}
           fields={visibleFormFields}
           initValues={(instance.formData as Record<string, unknown>) ?? {}}

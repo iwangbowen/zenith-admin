@@ -1,3 +1,4 @@
+import { bindWorkflowFormAttachments } from './workflow-attachments.service';
 import { eq } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowTasks, workflowInstances } from '../../db/schema';
@@ -31,7 +32,7 @@ export async function resumeTriggerTask(
           .limit(1);
         const nextFormData = { ...((locked?.formData ?? inst.formData ?? {}) as Record<string, unknown>), ...payload };
         return tx.update(workflowInstances)
-          .set({ formData: nextFormData })
+          .set({ formData: await bindWorkflowFormAttachments(tx, inst, inst.formSnapshot, nextFormData, 0) })
           .where(eq(workflowInstances.id, inst.id))
           .returning();
       });

@@ -260,6 +260,11 @@ export async function executeReconAdjustment(id: number) {
   }
 }
 
+export async function getReconAdjustment(id: number) {
+  if (!(await hasPermission('payment:recon:list'))) throw new HTTPException(404, { message: '对账调整单不存在' });
+  return mapAdjustment(await requireAdjustment(id));
+}
+
 async function executeAdjustmentInternal(id: number, policy: Awaited<ReturnType<typeof reconNotificationPolicy>>) {
   let visible = await requireAdjustment(id);
   assertReconWriteScope(visible.tenantId);

@@ -1,3 +1,4 @@
+import { bindWorkflowAttachments } from './workflow-attachments.service';
 import { and, asc, eq } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowComments, workflowInstances, workflowTasks } from '../../db/schema';
@@ -92,16 +93,22 @@ export async function addInstanceComment(instanceId: number, input: CreateWorkfl
       .limit(1);
     parentRow = requireRow(parent, '被回复的评论不存在', 400);
   }
-  const [row] = await db.insert(workflowComments).values({
+  const row = await db.transaction(async (tx) => {
+    if (input.taskId) requireRow((await tx.select({ id: workflowTasks.id }).from(workflowTasks).where(and(eq(workflowTasks.id, input.taskId), eq(workflowTasks.instanceId, instanceId))).limit(1))[0], '评论任务不属于当前流程', 400);
+    const [created] = await tx.insert(workflowComments).values({
     instanceId,
     taskId: input.taskId ?? null,
     parentId: parentRow?.id ?? null,
     userId: user.userId,
     content: input.content,
     mentions,
-    attachments: input.attachments ?? [],
+    attachments: [],
     tenantId: inst.tenantId,
-  }).returning();
+    }).returning();
+    const attachments = await bindWorkflowAttachments(tx, inst, { source: 'comment', commentId: created.id }, input.attachments, user.userId);
+    const [bound] = await tx.update(workflowComments).set({ attachments }).where(eq(workflowComments.id, created.id)).returning();
+    return bound;
+  });
 
   // @ 提及：统一走通知中心（站内信适配器自带 WS 实时推送与角标刷新），排除评论人自己
   const mentionTargets = mentions.filter((uid) => uid !== user.userId);

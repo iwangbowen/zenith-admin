@@ -17,3 +17,4 @@ export * from './serial';
 export * from './permissions';
 
 export * from './form-signatures';
+export * from './form-attachments';

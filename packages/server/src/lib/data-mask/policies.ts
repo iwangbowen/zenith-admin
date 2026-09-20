@@ -7,6 +7,7 @@ import {
   type SensitiveFieldRef,
 } from '@zenith/shared/core';
 import { db } from '../../db';
+import type { DbExecutor } from '../../db/types';
 import { dataMaskPolicies, type DataMaskPolicyRow } from '../../db/schema';
 import { currentUserOrNull, hasPermission, currentCmsOpenApiAccess } from '../context';
 import { onInvalidate, onInvalidationReset } from '../invalidation-bus';
@@ -35,7 +36,12 @@ async function loadPolicyMap(): Promise<Map<string, DataMaskPolicyRow>> {
 }
 
 /** 全部策略覆盖记录，键 `entity.field` */
-export async function getPolicyMap(): Promise<Map<string, DataMaskPolicyRow>> {
+export async function getPolicyMap(executor?: DbExecutor): Promise<Map<string, DataMaskPolicyRow>> {
+  // Relation reads stay on their bounded transaction and never warm a process cache from a transaction snapshot.
+  if (executor) {
+    const rows = await executor.select().from(dataMaskPolicies);
+    return new Map(rows.map((row) => [`${row.entity}.${row.field}`, row]));
+  }
   if (cache && Date.now() < cache.expiresAt) return cache.map;
   if (!inflight) {
     inflight = loadPolicyMap().finally(() => {
@@ -122,9 +128,9 @@ export interface FieldMaskDecision {
  * 为当前查看者计算一组敏感字段的打码决策；返回的字段都需要打码，其余（停用 / 豁免 / 超管）已过滤。
  * 同一权限集合在一次调用内只判定一次。
  */
-export async function resolveMaskDecisions(refs: readonly SensitiveFieldRef[]): Promise<FieldMaskDecision[]> {
+export async function resolveMaskDecisions(refs: readonly SensitiveFieldRef[], executor?: DbExecutor): Promise<FieldMaskDecision[]> {
   if (refs.length === 0 || viewerBypassesAll()) return [];
-  const map = await getPolicyMap();
+  const map = await getPolicyMap(executor);
   const exemptionCache = new Map<string, Promise<boolean>>();
   const decisions: FieldMaskDecision[] = [];
   for (const ref of refs) {

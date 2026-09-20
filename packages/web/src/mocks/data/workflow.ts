@@ -1,3 +1,5 @@
+import { fillPath } from '@zenith/shared/core';
+import { workflowAttachmentContract } from '@zenith/shared/workflow';
 import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowInstance, WorkflowTask, WorkflowFormField, WorkflowInstanceFormSnapshot } from '@zenith/shared/workflow';
 import { SEED_WORKFLOW_DEFINITIONS, SEED_DATE } from '@zenith/shared/seed';
 import { nextIdFrom } from '@/mocks/utils/handlers';
@@ -297,7 +299,7 @@ export const mockWorkflowTasks: WorkflowTask[] = [
     assigneeAvatar: null,
     status: 'approved',
     comment: '同意，注意按时归来。',
-    attachments: [{ name: '请假佐证材料.pdf', url: '/api/files/demo/leave-proof.pdf', size: 102400 }],
+    attachments: [{ id: 1, fileId: '018f6f8a-0900-7000-8000-000000000001', name: '请假佐证材料.pdf', url: fillPath(workflowAttachmentContract.content.fullPath, { id: 1 }), size: 102400, mimeType: 'application/pdf' }],
     actionAt: '2026-03-15 10:30:00',
     createdAt: '2026-03-14 09:00:00',
   },

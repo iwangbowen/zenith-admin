@@ -19,6 +19,7 @@ import {
 } from '../validation';
 import { workflowDefinitionSnapshotSchema, workflowInstanceFormSnapshotSchema } from './flow-data';
 import { workflowDefinitionOptionSchema } from './definitions';
+import { workflowAttachmentSchema } from './attachments';
 
 // ─── 任务 ────────────────────────────────────────────────────────────────────
 
@@ -26,11 +27,7 @@ export const workflowSignatureEvidenceSchema = signatureSnapshotSchema.omit({ da
 export type WorkflowSignatureEvidence = z.infer<typeof workflowSignatureEvidenceSchema>;
 
 /** 审批动作附件 */
-export const workflowTaskAttachmentRefSchema = z.object({
-  name: z.string(),
-  url: z.string(),
-  size: z.number().optional(),
-}).meta({ id: 'WorkflowTaskAttachmentRef' });
+export const workflowTaskAttachmentRefSchema = workflowAttachmentSchema;
 
 export type WorkflowTaskAttachmentRef = z.infer<typeof workflowTaskAttachmentRefSchema>;
 
@@ -104,7 +101,7 @@ export const workflowCommentSchema = z.object({
   content: z.string(),
   mentions: z.array(z.int()).meta({ description: '@ 提及的用户 ID' }),
   mentionNames: z.array(z.string()).nullable().optional(),
-  attachments: z.array(z.object({ name: z.string(), url: z.string(), size: z.int().optional() })),
+  attachments: z.array(workflowAttachmentSchema),
   createdAt: z.string(),
 }).meta({ id: 'WorkflowComment' });
 

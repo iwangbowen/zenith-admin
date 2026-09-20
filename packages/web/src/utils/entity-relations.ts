@@ -8,6 +8,7 @@ const ENTITY_LABELS: Record<CanonicalEntityType, string> = {
   'payment.sharing-order': '分账单', 'payment.sharing-receiver': '分账接收方', 'payment.sharing-reversal': '分账冲正',
   'payment.settlement-batch': '结算批次', 'payment.notify-log': '渠道回调',
   'workflow.definition': '流程定义', 'workflow.instance': '流程实例', 'workflow.task': '审批任务',
+  'workflow.attachment': '审批附件', 'workflow.archive': '审批归档件',
   'drive.file': '文件', 'iot.device': '设备', 'iot.alarm': '设备告警', 'cms.content': '内容',
   'wiki.document': '知识文档', 'messaging.announcement': '公告', 'chat.message': '聊天消息',
   'biz.leave': '请假申请', 'report.dashboard': '仪表盘', 'report.dataset': '数据集',
@@ -26,6 +27,9 @@ const RELATION_LABELS: Record<string, string> = {
   'sharing-orders': '分账单', receiver: '分账接收方', reversals: '分账冲正', 'sharing-reversals': '分账冲正',
   'settlement-batches': '结算批次', 'notify-logs': '渠道回调', orders: '支付订单',
   case: '对账差异', 'sharing-order': '分账单',
+  'workflow-instances': '历次审批', 'business-history': '同一业务的其他审批',
+  'business-leave': '原请假单', 'business-content': '原内容', 'business-recon-adjustment': '原对账调整单',
+  attachments: '审批附件', archives: '审批归档件',
 };
 
 export function entityTypeLabel(type: CanonicalEntityType): string { return ENTITY_LABELS[type]; }
@@ -39,6 +43,9 @@ export function entityRelationLabel(labelKey: string, targetTypes?: readonly Can
 
 /** Register only routes that resolve the exact entity independently of list pagination. */
 const ENTITY_DETAIL_ROUTES: Partial<Record<CanonicalEntityType, (key: string) => string>> = {
+  'biz.leave': (key) => `/biz/leave?leaveId=${encodeURIComponent(key)}`,
+  'cms.content': (key) => `/cms/contents/edit?id=${encodeURIComponent(key)}`,
+  'payment.recon-adjustment': (key) => `/payment/recon?adjustmentId=${encodeURIComponent(key)}`,
   'payment.order': (key) => `/payment/orders?orderId=${encodeURIComponent(key)}`,
   'member.member': (key) => `/member/members?memberId=${encodeURIComponent(key)}`,
   'drive.file': (key) => `/drive?node=${encodeURIComponent(key)}`,

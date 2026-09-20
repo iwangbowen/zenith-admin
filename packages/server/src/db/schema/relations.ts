@@ -11,7 +11,7 @@ import { directorySyncConflicts, directorySyncDeptLinks, directorySyncRunItems, 
 import { dictItems, dicts } from './dicts';
 import { analyticsEventMeta, analyticsEventOverrides, analyticsExperiments, analyticsSegmentCampaigns, analyticsSites, analyticsSegmentMembers, analyticsUserProfiles, analyticsUserSegments, errorEvents, errorGroups } from './analytics';
 import { announcementReads, announcementRecipients, announcements } from './announcements';
-import { workflowAutomations, workflowCategories, workflowComments, workflowDefinitions, workflowDefinitionVersions, workflowDelegations, workflowForms, workflowInstances, workflowJobExecutions, workflowJobs, workflowQuickPhrases, workflowTaskConsults, workflowTasks, workflowTaskUrges, workflowTokens } from './workflow';
+import { workflowAttachmentLinks, workflowAttachmentUploads, workflowAutomations, workflowCategories, workflowComments, workflowDefinitions, workflowDefinitionVersions, workflowDelegations, workflowForms, workflowInstances, workflowJobExecutions, workflowJobs, workflowQuickPhrases, workflowTaskConsults, workflowTasks, workflowTaskUrges, workflowTokens } from './workflow';
 import { broadcastCampaigns, emailSendLogs, emailTemplates, inAppMessages, inAppTemplates, notificationOutbox, notificationOutboxSubjects, pushConfigs, pushSendLogs, smsConfigs, smsSendLogs, smsTemplates } from './messaging';
 import { dbBackups } from './db-admin';
 import { ruleDecisionTables, ruleDecisionTableVersions, ruleTestCases } from './rules';
@@ -2133,4 +2133,18 @@ export const driveNodeTextsRelations = relations(driveNodeTexts, ({ one }) => ({
 export const userSignaturesRelations = relations(userSignatures, ({ one }) => ({
   user: one(users, { fields: [userSignatures.userId], references: [users.id] }),
   file: one(managedFiles, { fields: [userSignatures.fileId], references: [managedFiles.id] }),
+}));
+
+export const workflowAttachmentUploadsRelations = relations(workflowAttachmentUploads, ({ one }) => ({
+  file: one(managedFiles, { fields: [workflowAttachmentUploads.fileId], references: [managedFiles.id] }),
+  uploader: one(users, { fields: [workflowAttachmentUploads.userId], references: [users.id] }),
+  tenant: one(tenants, { fields: [workflowAttachmentUploads.tenantId], references: [tenants.id] }),
+}));
+
+export const workflowAttachmentLinksRelations = relations(workflowAttachmentLinks, ({ one }) => ({
+  file: one(managedFiles, { fields: [workflowAttachmentLinks.fileId], references: [managedFiles.id] }),
+  instance: one(workflowInstances, { fields: [workflowAttachmentLinks.instanceId], references: [workflowInstances.id] }),
+  task: one(workflowTasks, { fields: [workflowAttachmentLinks.taskId, workflowAttachmentLinks.instanceId], references: [workflowTasks.id, workflowTasks.instanceId] }),
+  comment: one(workflowComments, { fields: [workflowAttachmentLinks.commentId, workflowAttachmentLinks.instanceId], references: [workflowComments.id, workflowComments.instanceId] }),
+  tenant: one(tenants, { fields: [workflowAttachmentLinks.tenantId], references: [tenants.id] }),
 }));

@@ -29,6 +29,8 @@ export interface RelationProvider {
   readonly key: RelationKey;
   readonly permissions: 'authenticated' | readonly [Permission, ...Permission[]];
   readonly allPermissions?: readonly Permission[];
+  /** Pure domain applicability over an already authorized anchor; performs no I/O. */
+  readonly appliesTo?: (anchor: VisibleEntityAnchor) => boolean;
   readonly descriptor: EntityRelationSection;
   readonly list: (
     anchor: VisibleEntityAnchor,

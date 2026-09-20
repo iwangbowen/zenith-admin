@@ -11,7 +11,7 @@ import { formatDateTime } from '@/utils/date';
 import { downloadBlob } from '@/utils/download';
 import ApprovalTimeline from '@/components/ApprovalTimeline';
 import FileAttachment from '@/components/FileAttachment';
-import { uploadedFileToAttachment } from '@/components/FileAttachment/utils';
+import { workflowFileToAttachment } from '@/components/FileAttachment/utils';
 import type { SignatureInput } from '@zenith/shared/core';
 import { SignatureClientProvider } from '@/components/signature/SignatureClientContext';
 import { approvalRequest } from '../lib/approval-request';
@@ -334,6 +334,7 @@ function TaskDetailContent() {
     }
     return (
       <WorkflowFormRenderer
+        attachmentInstanceId={instanceId}
         key={`form-${instanceId}-${formEditable ? 'edit' : 'read'}`}
         fields={visibleFields}
         initValues={(detail?.formData ?? {}) as Record<string, unknown>}
@@ -441,7 +442,7 @@ function TaskDetailContent() {
                 )}
                 <div className="ap-comment__content">{c.content}</div>
                 {c.attachments && c.attachments.length > 0 && (
-                  <FileAttachment mode="view" showTitle={false} value={c.attachments.map((a, i) => uploadedFileToAttachment(a, i))} />
+                  <FileAttachment mode="view" showTitle={false} value={c.attachments.map((a, i) => workflowFileToAttachment(a, i))} />
                 )}
               </div>
             </div>

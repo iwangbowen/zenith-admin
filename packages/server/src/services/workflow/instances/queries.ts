@@ -1,3 +1,4 @@
+import { sanitizeDetailFormDataForViewer } from '../workflow-form-access';
 import { workflowInstanceContract, workflowTaskContract, WORKFLOW_INSTANCE_STATUSES, type WorkflowWorkbenchSummary } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
 // ─── 实例/待办/已办/抄送列表查询与详情（拆分自 workflow-instances.service.ts）───
@@ -10,8 +11,8 @@ import { pageOffset } from '../../../lib/pagination';
 import { workflowInstances, workflowTasks, workflowTaskConsults, workflowDefinitions, workflowCategories, users } from '../../../db/schema';
 import { tenantCondition } from '../../../lib/tenant';
 import { getDataScopeCondition } from '../../../lib/data-scope';
-import type { WorkflowFieldPermission, WorkflowFlowData, WorkflowFormField } from '@zenith/shared/workflow';
-import { buildWorkflowSummaryItems, findNextApproverSelectNodes, resolveNodeFieldPermissions } from '@zenith/shared/workflow';
+import type { WorkflowFlowData, WorkflowFormField } from '@zenith/shared/workflow';
+import { buildWorkflowSummaryItems, findNextApproverSelectNodes } from '@zenith/shared/workflow';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser, hasPermission } from '../../../lib/context';
 import { isSuperAdmin, getUserPermissions } from '../../../lib/permissions';
@@ -467,41 +468,7 @@ export async function listAllInstances(query: QueryOutputOf<typeof workflowInsta
  * - 查看者与任何节点无关（如子流程祖先发起人）→ 返回全量；
  * - 监控管理员/超管在调用方短路，不进入本函数。
  */
-export function sanitizeDetailFormDataForViewer(
-  row: {
-    formData: unknown;
-    initiatorId: number;
-    definitionSnapshot: { flowData?: WorkflowFlowData | null } | null;
-    tasks: Array<{ assigneeId: number | null; nodeKey: string }>;
-  },
-  userId: number,
-): typeof row.formData {
-  const formData = row.formData;
-  if (!formData || typeof formData !== 'object' || Array.isArray(formData)) return formData;
-  const flowData = row.definitionSnapshot?.flowData;
-  if (!flowData?.nodes?.length) return formData;
-
-  const permMaps: Array<Record<string, WorkflowFieldPermission>> = [];
-  if (row.initiatorId === userId) {
-    const startPerms = flowData.nodes.find((n) => n.data.type === 'start')?.data.fieldPermissions;
-    if (!startPerms) return formData;
-    permMaps.push(startPerms);
-  }
-  const myNodeKeys = new Set(row.tasks.filter((t) => t.assigneeId === userId).map((t) => t.nodeKey));
-  for (const nodeKey of myNodeKeys) {
-    const perms = resolveNodeFieldPermissions(flowData, nodeKey);
-    if (!perms) return formData;
-    permMaps.push(perms);
-  }
-  if (permMaps.length === 0) return formData;
-
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(formData as Record<string, unknown>)) {
-    const hiddenEverywhere = permMaps.every((m) => m[key] === 'hidden');
-    if (!hiddenEverywhere) out[key] = value;
-  }
-  return out;
-}
+export { sanitizeDetailFormDataForViewer } from '../workflow-form-access';
 
 export async function getInstanceDetail(id: number) {
   return loadInstanceDetail(id);

@@ -1,3 +1,4 @@
+import { bindMockWorkflowAttachments, bindMockWorkflowFormAttachments } from '@/mocks/utils/workflow-attachments';
 import { mock, MockHttpError } from '@/mocks/utils/contract';
 import { mockTaskWorkflowContext, resolveMockTaskSignature, resolveMockWorkflowFormSignatures } from '@/mocks/utils/workflow-signature';
 import { syncMockWorkflowBusinessResult } from '@/mocks/utils/workflow-business';
@@ -611,14 +612,15 @@ export const workflowExtraHandlers = [
 
   // ── 流程评论 ──
   mock(workflowInstanceContract.comments, ({ params, ok }) => ok(mockComments.filter((c) => c.instanceId === params.id))),
-  mock(workflowInstanceContract.addComment, ({ params, body, ok }) => {
+  mock(workflowInstanceContract.addComment, ({ params, body, ok, request }) => {
     // 回复引用：父评论须属于同一实例
     const parent = body.parentId
       ? mockComments.find((c) => c.id === body.parentId && c.instanceId === params.id) ?? null
       : null;
     if (body.parentId && !parent) return badRequest('被回复的评论不存在');
+    const commentId = nextCommentId++;
     const comment: WorkflowComment = {
-      id: nextCommentId++,
+      id: commentId,
       instanceId: params.id,
       taskId: body.taskId ?? null,
       parentId: parent?.id ?? null,
@@ -631,7 +633,7 @@ export const workflowExtraHandlers = [
       content: body.content,
       mentions: body.mentions ?? [],
       mentionNames: (body.mentions ?? []).map((m) => `用户#${m}`),
-      attachments: body.attachments ?? [],
+      attachments: bindMockWorkflowAttachments(request, params.id, { commentId }, body.attachments),
       createdAt: mockDateTime(),
     };
     mockComments.push(comment);
@@ -644,7 +646,7 @@ export const workflowExtraHandlers = [
     if (inst.status !== 'draft') return badRequest('仅草稿可编辑');
     const formData = body.formData === undefined ? undefined : await resolveMockWorkflowFormSignatures(request, inst.formSnapshot?.fields ?? [], body.formData ?? {}, inst.formData ?? {});
     if (body.title !== undefined) inst.title = body.title;
-    if (formData !== undefined) inst.formData = formData;
+    if (formData !== undefined) inst.formData = await bindMockWorkflowFormAttachments(request, inst.id, inst.formSnapshot?.fields ?? [], formData);
     inst.updatedAt = mockDateTime();
     return ok(inst, '草稿已保存');
   }),

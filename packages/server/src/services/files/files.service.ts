@@ -26,6 +26,8 @@ export interface ManagedFileUploadOptions {
    * 仅供自带内容策略的归属模块（企业网盘：扩展名黑名单 + 可执行文件魔数拦截）使用。
    */
   skipTypeCheck?: boolean;
+  /** Only trusted owning services may select a tenant after authorizing the business object. */
+  tenantId?: number | null;
 }
 
 // ─── 业务逻辑 ─────────────────────────────────────────────────────────────────
@@ -195,8 +197,8 @@ function normalizeUploadFile(value: unknown): File {
   return rawFile as File;
 }
 
-export async function uploadManagedFileFromBody(fileValue: unknown) {
-  return uploadManagedFile(normalizeUploadFile(fileValue));
+export async function uploadManagedFileFromBody(fileValue: unknown, options: ManagedFileUploadOptions = {}) {
+  return uploadManagedFile(normalizeUploadFile(fileValue), options);
 }
 
 export async function uploadManagedFile(file: File, options: ManagedFileUploadOptions = {}) {
@@ -213,7 +215,8 @@ export async function uploadManagedFile(file: File, options: ManagedFileUploadOp
     .where(and(eq(fileStorageConfigs.isDefault, true), eq(fileStorageConfigs.status, 'enabled')))
     .limit(1);
   const defaultConfig = requireRow(maybeDefaultConfig, '当前没有可用的默认文件服务，请先在文件配置中启用并设置默认服务', 400);
-  const uploaded = await uploadFileByConfig(defaultConfig, file);
+  const uploadConfig = options.visibility === 'restricted' ? { ...defaultConfig, objectAcl: 'private' as const, urlStrategy: 'proxy' as const } : defaultConfig;
+  const uploaded = await uploadFileByConfig(uploadConfig, file);
   const [created] = await db
     .insert(managedFiles)
     .values({
@@ -226,15 +229,15 @@ export async function uploadManagedFile(file: File, options: ManagedFileUploadOp
       size: uploaded.size,
       mimeType: uploaded.mimeType,
       extension: uploaded.extension,
-      objectAcl: resolveObjectAcl(defaultConfig),
+      objectAcl: resolveObjectAcl(uploadConfig),
       visibility: options.visibility ?? 'public',
       gcState: options.visibility === 'restricted' ? 'orphan' : 'live',
       orphanedAt: options.visibility === 'restricted' ? new Date() : null,
       contentHash: options.contentHash ?? null,
-      tenantId: getCreateTenantId(user),
+      tenantId: options.tenantId !== undefined ? options.tenantId : getCreateTenantId(user),
     })
     .returning();
-  return mapManagedFile(created, defaultConfig);
+  return mapManagedFile(created, uploadConfig);
 }
 
 export async function saveGeneratedManagedFile(input: {
@@ -254,7 +257,8 @@ export async function saveGeneratedManagedFile(input: {
     .where(and(eq(fileStorageConfigs.isDefault, true), eq(fileStorageConfigs.status, 'enabled')))
     .limit(1);
   const defaultConfig = requireRow(maybeDefaultConfig, '当前没有可用的默认文件服务，请先在文件配置中启用并设置默认服务', 400);
-  const uploaded = await uploadFileByConfig(defaultConfig, file);
+  const uploadConfig = input.visibility === 'restricted' ? { ...defaultConfig, objectAcl: 'private' as const, urlStrategy: 'proxy' as const } : defaultConfig;
+  const uploaded = await uploadFileByConfig(uploadConfig, file);
   const [created] = await runAsUser(input.createdBy, () =>
     db
       .insert(managedFiles)
@@ -268,7 +272,7 @@ export async function saveGeneratedManagedFile(input: {
         size: uploaded.size,
         mimeType: uploaded.mimeType,
         extension: uploaded.extension,
-        objectAcl: resolveObjectAcl(defaultConfig),
+        objectAcl: resolveObjectAcl(uploadConfig),
         visibility: input.visibility ?? 'public',
         gcState: input.visibility === 'restricted' ? 'orphan' : 'live',
         orphanedAt: input.visibility === 'restricted' ? new Date() : null,
@@ -284,7 +288,7 @@ export async function batchDeleteFiles(ids: string[]) {
   const user = currentUser();
   const tc = tenantCondition(managedFiles, user);
   const idCondition = inArray(managedFiles.id, ids);
-  const where = buildWhere(idCondition, tc);
+  const where = buildWhere(idCondition, tc, eq(managedFiles.visibility, 'public'));
   const files = await db.select().from(managedFiles).where(where);
   const configIds = [...new Set(files.map((f) => f.storageConfigId))];
   const configs = await db.select().from(fileStorageConfigs).where(inArray(fileStorageConfigs.id, configIds));
@@ -302,7 +306,7 @@ export async function batchDeleteFiles(ids: string[]) {
 export async function deleteManagedFile(id: string) {
   const user = currentUser();
   const tc = tenantCondition(managedFiles, user);
-  const where = buildWhere(eq(managedFiles.id, id), tc);
+  const where = buildWhere(eq(managedFiles.id, id), tc, eq(managedFiles.visibility, 'public'));
   const [file] = await db.select().from(managedFiles).where(where).limit(1);
   requireRow(file, '文件不存在');
   const [storageConfig] = await db
@@ -331,7 +335,7 @@ export async function deleteGeneratedManagedFile(id: string, tenantId: number | 
 export async function getManagedFile(id: string) {
   const user = currentUser();
   const tc = tenantCondition(managedFiles, user);
-  const where = buildWhere(eq(managedFiles.id, id), tc);
+  const where = buildWhere(eq(managedFiles.id, id), tc, eq(managedFiles.visibility, 'public'));
   const file = requireRow(await db.query.managedFiles.findFirst({
     where,
     with: { createdByUser: { columns: { nickname: true, username: true } } },
@@ -346,7 +350,7 @@ export async function getManagedFile(id: string) {
 export async function getManagedFileBeforeAudit(id: string) {
   const user = currentUser();
   const tc = tenantCondition(managedFiles, user);
-  const where = buildWhere(eq(managedFiles.id, id), tc);
+  const where = buildWhere(eq(managedFiles.id, id), tc, eq(managedFiles.visibility, 'public'));
   const [file] = await db.select().from(managedFiles).where(where).limit(1);
   if (!file) return null;
   return mapManagedFile(file);
@@ -356,7 +360,7 @@ export async function getManagedFilesBeforeAudit(ids: string[]) {
   const user = currentUser();
   const tc = tenantCondition(managedFiles, user);
   const idCondition = inArray(managedFiles.id, ids);
-  const where = buildWhere(idCondition, tc);
+  const where = buildWhere(idCondition, tc, eq(managedFiles.visibility, 'public'));
   const rows = await db.select().from(managedFiles).where(where);
   return rows.map((row) => mapManagedFile(row));
 }
@@ -372,7 +376,7 @@ export async function batchDownloadFilesAsZip(ids: string[]): Promise<{ stream: 
   const user = currentUser();
   const tc = tenantCondition(managedFiles, user);
   const idCondition = inArray(managedFiles.id, ids);
-  const where = buildWhere(idCondition, tc);
+  const where = buildWhere(idCondition, tc, eq(managedFiles.visibility, 'public'));
   const files = await db.select().from(managedFiles).where(where);
   if (files.length === 0) throw new HTTPException(400, { message: '未找到可下载的文件' });
 

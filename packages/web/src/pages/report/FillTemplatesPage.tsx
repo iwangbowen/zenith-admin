@@ -444,6 +444,7 @@ export default function FillTemplatesPage() {
               <TabPane tab={<Space><Eye size={14} />预览</Space>} itemKey="preview" style={{ height: '100%', overflow: 'auto' }}>
                 {fields.length ? (
                   <WorkflowFormRenderer
+                attachmentMode="public"
                     signatureMode="image"
                     fields={fields}
                     labelPosition={settings.labelPosition}

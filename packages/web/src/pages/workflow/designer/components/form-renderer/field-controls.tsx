@@ -1,14 +1,16 @@
+import { fileContract } from '@zenith/shared/platform';
+import { AttachmentInstanceContext, AttachmentModeContext } from './contexts';
 /**
  * 接入 Semi Form 的自定义控件：关联审批单 / 远程数据源 / 手写签名 / 人员 / 富文本 / 附件上传，
  * 以及现成组件（地区 / 部门 / 字典 / 颜色 / 评分）的 withField 包装。
  */
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useContext, useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Rating, Select, Spin, Typography, withField } from '@douyinfe/semi-ui';
 import type { WorkflowRelationOption } from '@zenith/shared/workflow';
 import { workflowAttachmentContract } from '@zenith/shared/workflow';
 import FileAttachment from '@/components/FileAttachment';
-import { uploadedFileToAttachment } from '@/components/FileAttachment/utils';
+import { workflowFileToAttachment, uploadedFileToAttachment, type WorkflowUploadedFile } from '@/components/FileAttachment/utils';
 import RegionSelect from '@/components/RegionSelect';
 import DepartmentSelect from '@/components/DepartmentSelect';
 import DictSelect from '@/components/DictSelect';
@@ -193,7 +195,7 @@ function WorkflowUserSelect(props: Readonly<UserSelectProps>) {
 }
 
 // ─── 附件 / 图片上传（接入 Form，存 {name,url,size} 数组） ──────────────
-interface UploadedFileValue { name: string; url: string; size?: number }
+type UploadedFileValue = WorkflowUploadedFile;
 
 interface FileUploadInputProps {
   value?: UploadedFileValue[];
@@ -206,8 +208,10 @@ interface FileUploadInputProps {
 }
 
 function FileUploadInput({ value, onChange, disabled, isImage, limit, accept, maxSizeMb }: Readonly<FileUploadInputProps>) {
+  const instanceId = useContext(AttachmentInstanceContext);
+  const attachmentMode = useContext(AttachmentModeContext);
   const files = Array.isArray(value) ? value : [];
-  const attachments = files.map((f, i) => uploadedFileToAttachment(f, i));
+  const attachments = files.map((f, i) => attachmentMode === 'workflow' ? workflowFileToAttachment(f, i) : uploadedFileToAttachment(f, i));
 
   if (disabled) {
     if (files.length === 0) return <Typography.Text type="tertiary">（无附件）</Typography.Text>;
@@ -224,8 +228,10 @@ function FileUploadInput({ value, onChange, disabled, isImage, limit, accept, ma
       accept={accept || (isImage ? 'image/*' : undefined)}
       maxSizeMB={maxSizeMb && maxSizeMb > 0 ? maxSizeMb : undefined}
       uploadTip={isImage ? '上传图片' : '上传文件'}
-      uploadPath={urlOf(workflowAttachmentContract.upload)}
+      uploadPath={urlOf(attachmentMode === 'workflow' ? workflowAttachmentContract.upload : fileContract.uploadOne)}
+      uploadData={attachmentMode === 'workflow' && instanceId ? { instanceId } : undefined}
       onChange={(items) => onChange?.(items.map((a) => ({
+        fileId: a.fileId,
         name: a.file.originalName,
         url: a.file.url,
         size: a.file.size,

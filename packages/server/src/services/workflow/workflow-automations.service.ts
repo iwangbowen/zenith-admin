@@ -1,3 +1,4 @@
+import { bindWorkflowFormAttachments } from './workflow-attachments.service';
 import { workflowAutomationContract } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
 /**
@@ -351,11 +352,13 @@ async function runUpdateFieldAction(
   for (const [key, expr] of entries) {
     patch[key] = renderTemplate(expr, vars);
   }
-  const nextFormData = { ...ctx.formData, ...patch };
-  ctx.formData = nextFormData;
-  await db.update(workflowInstances)
-    .set({ formData: nextFormData })
-    .where(eq(workflowInstances.id, ctx.instance.id));
+  ctx.formData = await db.transaction(async (tx) => {
+    const [instance] = await tx.select().from(workflowInstances).where(eq(workflowInstances.id, ctx.instance.id)).for('update').limit(1);
+    requireRow(instance, '流程实例不存在');
+    const next = await bindWorkflowFormAttachments(tx, instance, instance.formSnapshot, { ...(instance.formData as Record<string, unknown>), ...patch }, 0);
+    await tx.update(workflowInstances).set({ formData: next }).where(eq(workflowInstances.id, instance.id));
+    return next;
+  });
 }
 
 async function loadAutomationContext(instance: WorkflowInstance): Promise<AutomationContext> {

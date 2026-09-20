@@ -1,3 +1,4 @@
+import { bindWorkflowFormAttachments } from '../workflow-attachments.service';
 import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
 // ─── 子流程派生、多实例扇出与父流程回填（拆分自 workflow-instances.service.ts）───
 import { eq, and, inArray } from 'drizzle-orm';
@@ -151,6 +152,8 @@ async function createChildInstanceAndMaterialize(
       parentTaskItemKey: opts?.itemKey ?? null,
       parentTaskItemIndex: opts?.itemIndex ?? null,
     }).returning();
+    childFormData = await bindWorkflowFormAttachments(tx, created, childFormSnapshot, childFormData, 0, [parentInst.id]);
+    await tx.update(workflowInstances).set({ formData: childFormData }).where(eq(workflowInstances.id, created.id));
     const materialized = await advanceAndMaterialize({ kind: 'seed' }, {
       instanceId: created.id,
       initiatorId: childInitiatorId,
@@ -455,7 +458,7 @@ export async function reconcileMultiSubProcess(
           .map((c) => (c.formData as Record<string, unknown> | null)?.[childKey])
           .filter((v) => v !== undefined);
       }
-      await tx.update(workflowInstances).set({ formData: parentFormData }).where(eq(workflowInstances.id, pi.id));
+      await tx.update(workflowInstances).set({ formData: await bindWorkflowFormAttachments(tx, pi, pi.formSnapshot, parentFormData, 0, settledChildren.map((child) => child.id)) }).where(eq(workflowInstances.id, pi.id));
     }
 
     const ignoreReject = nodeCfg?.subProcessIgnoreReject === true;
@@ -591,8 +594,9 @@ export async function applySubProcessOutputAndResume(
         for (const [parentKey, childKey] of Object.entries(outputMapping)) {
           if (childKey in childFormData) next[parentKey] = childFormData[childKey];
         }
-        await tx.update(workflowInstances).set({ formData: next }).where(eq(workflowInstances.id, latestParent.id));
-        return next;
+        const bound = await bindWorkflowFormAttachments(tx, latestParent, latestParent.formSnapshot, next, 0, [childInst.id]);
+        await tx.update(workflowInstances).set({ formData: bound }).where(eq(workflowInstances.id, latestParent.id));
+        return bound;
       });
       latestParent.formData = parentFormData;
     }

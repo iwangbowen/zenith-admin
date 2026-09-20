@@ -29,6 +29,8 @@ export const ENTITY_TYPES = [
   'workflow.definition',
   'workflow.instance',
   'workflow.task',
+  'workflow.attachment',
+  'workflow.archive',
   'drive.file',
   'iot.device',
   'iot.alarm',
@@ -55,6 +57,7 @@ export const ENTITY_RELATION_TYPES = [
   'payment.journal', 'payment.recon-case', 'payment.recon-adjustment',
   'payment.sharing-order', 'payment.sharing-receiver', 'payment.sharing-reversal',
   'payment.settlement-batch', 'payment.notify-log',
+  'biz.leave', 'workflow.attachment', 'workflow.archive',
   'drive.file', 'iot.device', 'iot.alarm', 'cms.content', 'wiki.document', 'tasks.async',
   'notification.outbox', 'platform.operation-log',
 ] as const satisfies readonly CanonicalEntityType[];
@@ -71,6 +74,8 @@ export interface EntityDefinition {
 
 /** 实体注册表是跨域对象发现、详情能力和关系能力的唯一清单。 */
 export const ENTITY_REGISTRY: Readonly<Record<CanonicalEntityType, EntityDefinition>> = {
+  'workflow.attachment': { type: 'workflow.attachment', labelKey: 'entity.workflow.attachment', searchable: false, capabilities: ['detail', 'relations'] },
+  'workflow.archive': { type: 'workflow.archive', labelKey: 'entity.workflow.archive', searchable: false, capabilities: ['detail', 'relations'] },
   'identity.user': { type: 'identity.user', labelKey: 'entity.identity.user', searchable: true, capabilities: ['detail', 'relations', 'timeline'] },
   'member.member': { type: 'member.member', labelKey: 'entity.member.member', searchable: true, capabilities: ['detail', 'relations', 'timeline'] },
   'payment.order': { type: 'payment.order', labelKey: 'entity.payment.order', searchable: true, capabilities: ['detail', 'relations', 'timeline'] },
@@ -96,7 +101,7 @@ export const ENTITY_REGISTRY: Readonly<Record<CanonicalEntityType, EntityDefinit
   'wiki.document': { type: 'wiki.document', labelKey: 'entity.wiki.document', searchable: true, capabilities: ['detail', 'relations', 'timeline'] },
   'messaging.announcement': { type: 'messaging.announcement', labelKey: 'entity.messaging.announcement', searchable: true, capabilities: ['detail'] },
   'chat.message': { type: 'chat.message', labelKey: 'entity.chat.message', searchable: true, capabilities: ['detail'] },
-  'biz.leave': { type: 'biz.leave', labelKey: 'entity.biz.leave', searchable: true, capabilities: ['detail'] },
+  'biz.leave': { type: 'biz.leave', labelKey: 'entity.biz.leave', searchable: true, capabilities: ['detail', 'relations'] },
   'report.dashboard': { type: 'report.dashboard', labelKey: 'entity.report.dashboard', searchable: true, capabilities: ['detail'] },
   'report.dataset': { type: 'report.dataset', labelKey: 'entity.report.dataset', searchable: true, capabilities: ['detail'] },
   'ai.knowledge-base': { type: 'ai.knowledge-base', labelKey: 'entity.ai.knowledge-base', searchable: true, capabilities: ['detail'] },

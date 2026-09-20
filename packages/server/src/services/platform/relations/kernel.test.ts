@@ -48,6 +48,9 @@ vi.mock('./providers/workflow-file.provider', () => ({ workflowFileAnchorResolve
 vi.mock('./providers/subjects.provider', () => ({ subjectAnchorResolvers: [], subjectProviders: () => [] }));
 vi.mock('../../payment/payment-financial-relations.service', () => ({ paymentFinancialAnchorResolvers: [], paymentFinancialRelationProviders: [] }));
 vi.mock('./providers/reverse-subjects.provider', () => ({ reverseSubjectProviders: () => [] }));
+vi.mock('../../workflow/workflow-business-relations.service', () => ({ workflowBusinessAnchorResolvers: [], createWorkflowBusinessRelationProviders: () => [] }));
+vi.mock('../../workflow/workflow-archive-relations.service', () => ({ workflowArchiveAnchorResolvers: [], workflowArchiveRelationProviders: [] }));
+vi.mock('../../workflow/workflow-attachment-relations.service', () => ({ workflowAttachmentAnchorResolvers: [], workflowAttachmentRelationProviders: [] }));
 
 // Import edges first: its registry import and the registry's manual-provider
 // import must assemble through the real circular module graph.
@@ -129,6 +132,15 @@ beforeEach(() => {
 });
 
 describe('real registry assembly and authorization control flow', () => {
+  it('omits inapplicable groups and denies direct access before executing a provider', async () => {
+    const provider = entityRelationRegistry.relations.get(query.sectionKey)!;
+    Object.defineProperty(provider, 'appliesTo', { value: () => false, configurable: true });
+    try {
+      expect((await describeEntityRelations(source, caller())).sections.some((section) => section.key === query.sectionKey)).toBe(false);
+      await expect(listEntityRelation(query, caller())).rejects.toMatchObject({ status: 404 });
+      expect(state.list).not.toHaveBeenCalled();
+    } finally { Reflect.deleteProperty(provider, 'appliesTo'); }
+  });
   it('assembles manual-link providers through the registry/edges circular import', () => {
     expect(entityRelationRegistry.anchors.has('payment.order')).toBe(true);
     expect(entityRelationRegistry.relations.get('payment.order.links')?.descriptor.targetTypes).toEqual(['payment.order', 'payment.refund', 'identity.user']);

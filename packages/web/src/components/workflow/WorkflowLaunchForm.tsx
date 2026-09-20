@@ -50,6 +50,7 @@ export interface WorkflowLaunchFormHandle {
 
 interface WorkflowLaunchFormProps {
   def: WorkflowDefinition;
+  instanceId?: number;
   /** 业务自定义表单的承载容器，影响 BusinessFormHost 布局 */
   container: 'tab' | 'sheet';
   /** 动态表单初始值（草稿/编辑回填） */
@@ -63,7 +64,7 @@ interface WorkflowLaunchFormProps {
 }
 
 const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFormProps>(
-  function WorkflowLaunchForm({ def, container, initialFormData, initialTitle, initialPriority, showCc = true }, ref) {
+  function WorkflowLaunchForm({ def, instanceId, container, initialFormData, initialTitle, initialPriority, showCc = true }, ref) {
     const { user } = useAuth();
     const formApi = useRef<FormApi | null>(null);
     const dynamicFormApi = useRef<FormApi | null>(null);
@@ -206,6 +207,7 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
       if (def.formFields && def.formFields.length > 0) {
         return (
           <WorkflowFormRenderer
+            attachmentInstanceId={instanceId}
             key={`form-${def.id}`}
             fields={launchFields}
             initValues={{ ...dynamicDefaults, ...(initialFormData ?? {}) }}

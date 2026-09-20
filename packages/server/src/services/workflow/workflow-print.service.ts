@@ -26,14 +26,13 @@ import type { WorkflowFormField, WorkflowInstance, WorkflowPrintLookups, Workflo
 import { renderPrintContent } from '@zenith/shared/report';
 import type { ReportPrintContent, ReportPrintPageConfig, ReportPrintRenderResult } from '@zenith/shared/report';
 import { applyMask } from '@zenith/shared/core';
-import type { MaskType, SensitiveFieldRef } from '@zenith/shared/core';
 import { config } from '../../config';
 import { db } from '../../db';
 import { departments, users, workflowInstances } from '../../db/schema';
 import { currentUser, runWithCurrentUser } from '../../lib/context';
 import { currentDateTime, formatDateTime } from '../../lib/datetime';
 import { resolveMaskDecisions } from '../../lib/data-mask/policies';
-import { registerSensitiveSource } from '../../lib/data-mask/registry';
+import { FORM_FIELD_MASK_KINDS, WORKFLOW_FORM_SENSITIVE_REFS, workflowArchiveNeedsRedaction } from './workflow-print-access';
 import { readStoredFile } from '../../lib/file-storage';
 import logger from '../../lib/logger';
 import { SUPER_ADMIN_CODE } from '@zenith/shared/identity';
@@ -52,48 +51,6 @@ export interface WorkflowInstancePdf {
   filename: string;
   /** archive = 直接返回归档原件；live = 本次实时渲染 */
   source: 'archive' | 'live';
-}
-
-/**
- * 审批表单中的 PII 字段类型 → 脱敏策略字段。表单字段是动态的，按字段类型归并到固定实体 `WorkflowForm`，
- * 登记进敏感字段注册表后可在「数据脱敏」页配置停用 / 豁免权限，与契约字段共用同一套策略与决策。
- */
-const FORM_FIELD_MASK_KINDS: Record<string, { field: string; kind: MaskType; label: string }> = {
-  phone: { field: 'phone', kind: 'phone', label: '审批表单·手机号' },
-  email: { field: 'email', kind: 'email', label: '审批表单·邮箱' },
-  idCard: { field: 'idCard', kind: 'id_card', label: '审批表单·证件号' },
-};
-
-const WORKFLOW_FORM_SENSITIVE_REFS: readonly SensitiveFieldRef[] = Object.values(FORM_FIELD_MASK_KINDS).map((entry) => ({
-  path: ['formData', entry.field],
-  entity: 'WorkflowForm',
-  field: entry.field,
-  kind: entry.kind,
-  label: entry.label,
-}));
-
-registerSensitiveSource('PRINT workflow_instance', WORKFLOW_FORM_SENSITIVE_REFS);
-
-/** 表单里实际出现的 PII 字段类别（含明细子字段） */
-function collectFormMaskKinds(fields: WorkflowFormField[]): Set<string> {
-  const kinds = new Set<string>();
-  const add = (type: string) => {
-    const entry = FORM_FIELD_MASK_KINDS[type];
-    if (entry) kinds.add(entry.field);
-  };
-  for (const field of flattenWorkflowPrintLeafFields(fields)) {
-    if (field.type === 'detail') for (const child of field.children ?? []) add(child.type);
-    else add(field.type);
-  }
-  return kinds;
-}
-
-/** 查看者对这张表单是否存在需要打码的字段（归档件是未脱敏原件，命中时不得直接下发） */
-async function viewerNeedsMasking(fields: WorkflowFormField[]): Promise<boolean> {
-  const kinds = collectFormMaskKinds(fields);
-  if (kinds.size === 0) return false;
-  const decisions = await resolveMaskDecisions(WORKFLOW_FORM_SENSITIVE_REFS);
-  return decisions.some((d) => kinds.has(d.ref.field));
 }
 
 /** 按查看者的脱敏决策打码表单值（含明细子字段）；超管 / 豁免权限持有者原样返回 */
@@ -320,7 +277,7 @@ export async function renderWorkflowInstancePdf(id: number, query: QueryOutputOf
   if (source !== 'live' && !query.templateId) {
     if (!instance.archive) {
       if (source === 'archive') throw new HTTPException(404, { message: '该审批单尚未生成归档件' });
-    } else if (await viewerNeedsMasking(normalizeWorkflowFormSnapshot(instance.formSnapshot)?.fields ?? [])) {
+    } else if (await workflowArchiveNeedsRedaction({ ...instance, tasks: instance.tasks ?? [] })) {
       if (source === 'archive') throw new HTTPException(403, { message: '当前账号对该单据存在脱敏字段，不能下载归档原件' });
     } else {
       const buffer = await readArchivePdf(instance.archive);

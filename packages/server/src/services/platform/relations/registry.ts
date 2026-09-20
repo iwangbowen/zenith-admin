@@ -14,6 +14,9 @@ import { assertRelationBudget, isStatementTimeout, withRelationRead } from './ru
 import { manualLinksProvider } from './edges.service';
 import { paymentFinancialAnchorResolvers, paymentFinancialRelationProviders } from '../../payment/payment-financial-relations.service';
 import { reverseSubjectProviders } from './providers/reverse-subjects.provider';
+import { workflowBusinessAnchorResolvers, createWorkflowBusinessRelationProviders } from '../../workflow/workflow-business-relations.service';
+import { workflowArchiveAnchorResolvers, workflowArchiveRelationProviders } from '../../workflow/workflow-archive-relations.service';
+import { workflowAttachmentAnchorResolvers, workflowAttachmentRelationProviders } from '../../workflow/workflow-attachment-relations.service';
 
 /** Each module contributes a manifest; registration validates it once at assembly. */
 export interface EntityRelationManifest {
@@ -49,6 +52,9 @@ const manifests: EntityRelationManifest[] = [
   { anchors: iotContentAnchorResolvers, relations: iotContentRelationProviders },
   { anchors: workflowFileAnchorResolvers, relations: workflowFileRelationProviders },
   { anchors: subjectAnchorResolvers, relations: [] },
+  { anchors: workflowBusinessAnchorResolvers, relations: createWorkflowBusinessRelationProviders(resolveVisibleEntityAnchor) },
+  { anchors: workflowArchiveAnchorResolvers, relations: workflowArchiveRelationProviders },
+  { anchors: workflowAttachmentAnchorResolvers, relations: workflowAttachmentRelationProviders },
 ];
 const supportedTypes = manifests.flatMap((manifest) => manifest.anchors.map((anchor) => anchor.type));
 manifests.push({ anchors: [], relations: supportedTypes.flatMap(subjectProviders) });
@@ -86,7 +92,7 @@ export async function describeEntityRelations(input: { type: CanonicalEntityType
   return withRelationRead('describe', caller, async (access) => {
     const anchor = await resolveVisibleEntityAnchor(input.type, input.key, access);
     const sections = [];
-    for (const provider of relationProviders) if (provider.sourceType === input.type && await canDiscover(provider)) sections.push(provider.descriptor);
+    for (const provider of relationProviders) if (provider.sourceType === input.type && (!provider.appliesTo || provider.appliesTo(anchor)) && await canDiscover(provider)) sections.push(provider.descriptor);
     return entityRelationsResponseSchema.parse({ anchor: { ref: anchor.ref, title: anchor.title }, sections, canManageLinks: await hasPermission('system:relation:manage') });
   }).catch((error: unknown) => {
     if (isStatementTimeout(error)) throw new HTTPException(503, { message: '对象查询超时，请稍后重试' });
@@ -99,7 +105,7 @@ export async function listEntityRelation(input: { type: CanonicalEntityType; key
     return await withRelationRead('section', caller, async (access) => {
       const anchor = await resolveVisibleEntityAnchor(input.type, input.key, access);
       const provider = entityRelationRegistry.relations.get(input.sectionKey);
-      if (!provider || provider.sourceType !== anchor.ref.type || !(await canDiscover(provider))) throw new HTTPException(404, { message: '关联分组不存在或无权查看' });
+      if (!provider || provider.sourceType !== anchor.ref.type || (provider.appliesTo && !provider.appliesTo(anchor)) || !(await canDiscover(provider))) throw new HTTPException(404, { message: '关联分组不存在或无权查看' });
       const scope = relationCursorScope(anchor, provider.key, access);
       const cursor = readRelationCursor(input.cursor, scope);
       authorized = true;

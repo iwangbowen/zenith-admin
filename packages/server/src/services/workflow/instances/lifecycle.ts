@@ -1,3 +1,4 @@
+import { bindWorkflowFormAttachments, releaseWorkflowAttachments } from '../workflow-attachments.service';
 import { lockUnchangedWorkflowDraft } from './signature-concurrency';
 import { clearWorkflowFormSignatures, resolveWorkflowFormSignatures } from './signatures';
 // ─── 实例生命周期：创建/撤回/取消/删除/草稿/重新提交（拆分自 workflow-instances.service.ts）───
@@ -58,7 +59,7 @@ function assertRequiredFormFields(
   throw new HTTPException(400, { message: `${errors[0].message}${rest}` });
 }
 
-export async function createInstance(data: { definitionId: number; title: string; formData?: Record<string, unknown> | null; asDraft?: boolean; priority?: import('@zenith/shared').WorkflowInstancePriority; ccUserIds?: number[]; selectedInitiatorApprovers?: SelectedApproverMap; bizType?: string | null; bizId?: string | null }, callerOverride?: { userId: number; username: string; tenantId: number | null; roles?: string[] }) {
+export async function createInstance(data: { definitionId: number; title: string; formData?: Record<string, unknown> | null; asDraft?: boolean; priority?: import('@zenith/shared').WorkflowInstancePriority; ccUserIds?: number[]; selectedInitiatorApprovers?: SelectedApproverMap; bizType?: string | null; bizId?: string | null }, callerOverride?: { userId: number; username: string; tenantId: number | null; roles?: string[] }, copyAttachmentSourceIds: readonly number[] = []) {
   const user = callerOverride
     ? { userId: callerOverride.userId, username: callerOverride.username, roles: callerOverride.roles ?? [], tenantId: callerOverride.tenantId }
     : currentUser();
@@ -94,20 +95,25 @@ export async function createInstance(data: { definitionId: number; title: string
 
   // 草稿：仅保存表单，不进入流转、不生成业务编号、不触发事件
   if (data.asDraft) {
-      const [draft] = await db.insert(workflowInstances).values({
+    const draft = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(workflowInstances).values({
         definitionId: def.id,
         definitionSnapshot,
-      title: data.title,
-      formData,
-      formSnapshot,
-      status: 'draft',
-      priority: data.priority ?? 'normal',
-      currentNodeKey: null,
-      initiatorId: user.userId,
-      tenantId: getCreateTenantId(user),
-      bizType: normalizedBizType,
-      bizId: normalizedBizId,
-    }).returning();
+        title: data.title,
+        formData,
+        formSnapshot,
+        status: 'draft',
+        priority: data.priority ?? 'normal',
+        currentNodeKey: null,
+        initiatorId: user.userId,
+        tenantId: getCreateTenantId(user),
+        bizType: normalizedBizType,
+        bizId: normalizedBizId,
+      }).returning();
+      const bound = await bindWorkflowFormAttachments(tx, created, formSnapshot, formData, user.userId, copyAttachmentSourceIds);
+      const [draft] = await tx.update(workflowInstances).set({ formData: bound }).where(eq(workflowInstances.id, created.id)).returning();
+      return draft;
+    });
     return mapInstance(draft);
   }
 
@@ -138,6 +144,8 @@ export async function createInstance(data: { definitionId: number; title: string
         bizType: normalizedBizType,
         bizId: normalizedBizId,
       }).returning();
+      formData = await bindWorkflowFormAttachments(tx, createdInstance, formSnapshot, formData, user.userId, copyAttachmentSourceIds);
+      await tx.update(workflowInstances).set({ formData }).where(eq(workflowInstances.id, createdInstance.id));
       const materialized = await advanceAndMaterialize({ kind: 'seed' }, {
         instanceId: createdInstance.id,
         initiatorId: user.userId,
@@ -324,6 +332,7 @@ export async function deleteInstance(id: number) {
     throw new HTTPException(400, { message: '请先取消进行中的流程再删除' });
   }
   await db.transaction(async (tx) => {
+    await releaseWorkflowAttachments(tx, inst);
     await tx.delete(workflowInstances).where(buildWhere(eq(workflowInstances.id, id), tenantCondition(workflowInstances, user)));
     // 归档件随实例生命周期：解除引用后由托管文件 GC 延迟回收
     if (inst.archiveFileId) await releaseManagedFiles(tx, [inst.archiveFileId]);
@@ -344,10 +353,22 @@ export async function updateInstanceDraft(id: number, input: { title?: string; f
   if (inst.status !== 'draft' && inst.status !== 'returned') throw new HTTPException(400, { message: '仅草稿或已退回的申请可编辑' });
   const patch: Partial<typeof workflowInstances.$inferInsert> = {};
   if (input.title !== undefined) patch.title = input.title;
-  if (input.formData !== undefined) patch.formData = await resolveWorkflowFormSignatures(inst.formSnapshot, input.formData ?? {}, recordFormData(inst.formData));
+  if (input.formData !== undefined) {
+    const values = { ...(input.formData ?? {}) };
+    const permissions = inst.definitionSnapshot?.flowData?.nodes.find((node) => node.data.type === 'start')?.data.fieldPermissions;
+    const previous = recordFormData(inst.formData);
+    for (const [key, permission] of Object.entries(permissions ?? {})) {
+      if (permission === 'hidden' || permission === 'read') {
+        if (Object.hasOwn(previous, key)) values[key] = previous[key];
+        else delete values[key];
+      }
+    }
+    patch.formData = await resolveWorkflowFormSignatures(inst.formSnapshot, values, previous);
+  }
   if (input.priority !== undefined) patch.priority = input.priority;
   const row = await db.transaction(async (tx) => {
     await lockUnchangedWorkflowDraft(tx, inst);
+    if (patch.formData !== undefined) patch.formData = await bindWorkflowFormAttachments(tx, inst, inst.formSnapshot, patch.formData as Record<string, unknown>);
     const [updated] = await tx.update(workflowInstances).set(patch).where(eq(workflowInstances.id, id)).returning();
     return requireRow(updated, '草稿状态已变化，请刷新后重试', 409);
   });
@@ -383,6 +404,7 @@ export async function submitDraftInstance(id: number, input: { selectedInitiator
   const serialCtx = await buildSerialNoContext(serialConfig, formData);
   const instance = await workflowTransaction(async (tx) => {
     await lockUnchangedWorkflowDraft(tx, inst);
+    formData = await bindWorkflowFormAttachments(tx, inst, formSnapshot, formData, user.userId);
     // returned 重提保留首次提交生成的业务编号，避免同一申请出现两个流水号
     const serialNo = inst.serialNo ?? await generateSerialNo(tx, def.id, serialConfig, serialCtx);
     await tx.update(workflowInstances).set({
@@ -449,5 +471,5 @@ export async function resubmitInstance(id: number) {
     formData: clearWorkflowFormSignatures(inst.formSnapshot, recordFormData(inst.formData)),
     priority: inst.priority as import('@zenith/shared').WorkflowInstancePriority,
     asDraft: true,
-  });
+  }, undefined, [inst.id]);
 }

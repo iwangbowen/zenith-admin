@@ -1,3 +1,4 @@
+import { bindMockWorkflowAttachments, bindMockWorkflowFormAttachments } from '@/mocks/utils/workflow-attachments';
 import { syncMockWorkflowBusinessResult } from '@/mocks/utils/workflow-business';
 import { mockTaskSignaturePolicy, resolveMockTaskSignature, resolveMockWorkflowFormSignatures } from '@/mocks/utils/workflow-signature';
 import { currentMockSession } from '@/mocks/utils/auth';
@@ -1330,7 +1331,7 @@ function createDelegationReceiptTask(current: WorkflowTask, receiptComment: stri
 async function settleTask(
   ctx: {
     taskId: number;
-    body: { comment?: string | null; attachments?: WorkflowTask['attachments'] };
+    body: { comment?: string | null; attachments?: Array<{ fileId: string }> };
     request: Request;
     ok: (data: WorkflowInstance, message?: string) => Response;
   },
@@ -1351,8 +1352,8 @@ async function settleTask(
   if (mockWorkflowTasks[taskIdx].status !== 'pending') return badRequest('该任务已处理');
 
   const now = mockDateTime();
-  const attachments = body.attachments && body.attachments.length > 0 ? body.attachments : undefined;
   const current = mockWorkflowTasks[taskIdx];
+  const attachments = bindMockWorkflowAttachments(request, current.instanceId, { taskId: current.id }, body.attachments);
   const taskPatch = hooks.taskPatch?.(current);
   await hooks.beforeSettle?.(current, now);
 
@@ -2228,7 +2229,8 @@ export const workflowHandlers = [
     const initiator = currentMockSession(request)?.user ?? mockUsers.find((user) => user.id === 1)!;
     const isDraft = body.asDraft === true;
     const formSnapshot = resolveDefinitionFormSnapshot(def);
-    const formData = body.formData == null ? null : await resolveMockWorkflowFormSignatures(request, formSnapshot?.fields ?? [], body.formData);
+    const signed = body.formData == null ? null : await resolveMockWorkflowFormSignatures(request, formSnapshot?.fields ?? [], body.formData);
+    const formData = signed == null ? null : await bindMockWorkflowFormAttachments(request, instanceId, formSnapshot?.fields ?? [], signed);
 
     // 业务编号：仅正式发起时生成（用内存计数器模拟按定义+周期自增）
     const serialCfg = (def.flowData?.settings as { serialNo?: WorkflowSerialNoConfig } | undefined)?.serialNo;
@@ -2265,7 +2267,7 @@ export const workflowHandlers = [
       initiatorId: initiator.id,
       initiatorName: initiator.nickname ?? initiator.username,
       initiatorAvatar: null,
-      tenantId: 1,
+      tenantId: currentMockSession(request)?.viewingTenantId ?? initiator.tenantId ?? null,
       tasks: newTasks,
       createdAt: now,
       updatedAt: now,
@@ -2520,7 +2522,7 @@ export const workflowHandlers = [
         const permitted = sanitizeFormUpdatesByNodePerms(resolveNodeFieldPermissions(flow, current.nodeKey), body.formUpdates);
         const sanitized = await resolveMockWorkflowFormSignatures(request, instForUpdate.formSnapshot?.fields ?? [], permitted, instForUpdate.formData ?? {});
         if (Object.keys(sanitized).length > 0) {
-          instForUpdate.formData = { ...(instForUpdate.formData ?? {}), ...sanitized };
+          instForUpdate.formData = await bindMockWorkflowFormAttachments(request, instForUpdate.id, instForUpdate.formSnapshot?.fields ?? [], { ...(instForUpdate.formData ?? {}), ...sanitized });
           instForUpdate.updatedAt = now;
         }
       },
@@ -2570,7 +2572,7 @@ export const workflowHandlers = [
   )),
 
   // 转办
-  mock(workflowTaskContract.transfer, ({ params, body, ok }) => {
+  mock(workflowTaskContract.transfer, ({ params, body, ok, request }) => {
     const taskIdx = mockWorkflowTasks.findIndex(t => t.id === params.taskId);
     if (taskIdx === -1) return notFound('任务不存在');
     const current = mockWorkflowTasks[taskIdx];
@@ -2586,7 +2588,7 @@ export const workflowHandlers = [
       assigneeId: body.targetUserId,
       assigneeName: `用户${body.targetUserId}`,
       comment: `[转办] ${body.comment ?? ''}`,
-      attachments: body.attachments && body.attachments.length > 0 ? body.attachments : undefined,
+      attachments: bindMockWorkflowAttachments(request, current.instanceId, { taskId: current.id }, body.attachments),
       originalAssigneeId: current.originalAssigneeId ?? current.assigneeId,
       transfers: [...(current.transfers ?? []), {
         id: Date.now(),
@@ -2604,7 +2606,7 @@ export const workflowHandlers = [
   }),
 
   // 委派
-  mock(workflowTaskContract.delegate, ({ params, body, ok }) => {
+  mock(workflowTaskContract.delegate, ({ params, body, ok, request }) => {
     const taskIdx = mockWorkflowTasks.findIndex(t => t.id === params.taskId);
     if (taskIdx === -1) return notFound('任务不存在');
     const current = mockWorkflowTasks[taskIdx];
@@ -2620,7 +2622,7 @@ export const workflowHandlers = [
       assigneeId: body.targetUserId,
       assigneeName: `用户${body.targetUserId}`,
       comment: `[委派] ${body.comment ?? ''}`,
-      attachments: body.attachments && body.attachments.length > 0 ? body.attachments : undefined,
+      attachments: bindMockWorkflowAttachments(request, current.instanceId, { taskId: current.id }, body.attachments),
       originalAssigneeId: current.originalAssigneeId ?? current.assigneeId,
       transfers: [...(current.transfers ?? []), {
         id: Date.now(),
@@ -2639,19 +2641,20 @@ export const workflowHandlers = [
   }),
 
   // 加签
-  mock(workflowTaskContract.addSign, ({ params, body, ok }) => {
+  mock(workflowTaskContract.addSign, ({ params, body, ok, request }) => {
     const taskIdx = mockWorkflowTasks.findIndex(t => t.id === params.taskId);
     if (taskIdx === -1) return notFound('任务不存在');
     const current = mockWorkflowTasks[taskIdx];
     if (current.status !== 'pending') return badRequest('该任务已处理');
     const now = mockDateTime();
-    const attachments = body.attachments && body.attachments.length > 0 ? body.attachments : undefined;
     if (body.position === 'before') {
       mockWorkflowTasks[taskIdx] = { ...current, status: 'waiting' };
     }
     body.targetUserIds.forEach(uid => {
+      const taskId = getNextTaskId();
+      const attachments = bindMockWorkflowAttachments(request, current.instanceId, { taskId }, body.attachments);
       mockWorkflowTasks.push({
-        id: getNextTaskId(),
+        id: taskId,
         instanceId: current.instanceId,
         nodeKey: current.nodeKey,
         nodeName: current.nodeName,
@@ -2806,7 +2809,7 @@ export const workflowHandlers = [
   }),
 
   // 退回
-  mock(workflowTaskContract.returnTask, ({ params, body, ok }) => {
+  mock(workflowTaskContract.returnTask, ({ params, body, ok, request }) => {
     const taskIdx = mockWorkflowTasks.findIndex(t => t.id === params.taskId);
     if (taskIdx === -1) return notFound('任务不存在');
     if (mockWorkflowTasks[taskIdx].status !== 'pending') return badRequest('该任务已处理');
@@ -2820,7 +2823,7 @@ export const workflowHandlers = [
       ...current,
       status: 'rejected',
       comment: `${tag} ${body.comment}`,
-      attachments: body.attachments && body.attachments.length > 0 ? body.attachments : undefined,
+      attachments: bindMockWorkflowAttachments(request, current.instanceId, { taskId: current.id }, body.attachments),
       actionAt: now,
     };
     const instIdx = mockWorkflowInstances.findIndex(i => i.id === current.instanceId);

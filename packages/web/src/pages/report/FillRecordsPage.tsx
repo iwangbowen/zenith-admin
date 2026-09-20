@@ -425,6 +425,7 @@ export default function FillRecordsPage() {
             <div style={{ width: '100%' }}>
               <Typography.Title heading={6}>冻结表单快照</Typography.Title>
               <WorkflowFormRenderer
+                attachmentMode="public"
                 signatureMode="image"
                 fields={detail.templateSchemaSnapshot.fields}
                 initValues={detail.data}

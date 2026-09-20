@@ -1,3 +1,4 @@
+import type { DbExecutor } from '../../../../db/types';
 import { and, desc, eq, exists, isNull, lt, or, sql } from 'drizzle-orm';
 import type { EntityRef } from '@zenith/shared/core';
 import type { EntityRelationPage } from '@zenith/shared/platform';
@@ -22,7 +23,7 @@ function parseId(key: string): number | null {
 }
 
 /** Match instance-detail participant rules without fetching form snapshots; ancestors remain tenant-bound. */
-export async function workflowVisibility(access: RelationAccessContext) {
+export async function workflowVisibility(access: { user: RelationAccessContext['user']; db: DbExecutor }) {
   if (await hasPermission('workflow:instance:monitor')) return undefined;
   return or(
     eq(workflowInstances.initiatorId, access.user.userId),
@@ -50,9 +51,9 @@ async function resolveWorkflowInstance(ref: EntityRef, access: RelationAccessCon
     if (ref.type !== 'workflow.instance' || !(await hasPermission(...WORKFLOW_PERMISSIONS))) return null;
     const id = parseId(ref.key);
     if (id == null) return null;
-    const [row] = await access.db.select({ id: workflowInstances.id, title: workflowInstances.title, tenantId: workflowInstances.tenantId })
+    const [row] = await access.db.select({ id: workflowInstances.id, title: workflowInstances.title, tenantId: workflowInstances.tenantId, bizType: workflowInstances.bizType, bizId: workflowInstances.bizId })
       .from(workflowInstances).where(buildWhere(eq(workflowInstances.id, id), tenantCondition(workflowInstances, access.user), await workflowVisibility(access))).limit(1);
-    return row ? { ref: { type: 'workflow.instance', key: String(row.id) }, title: row.title, tenantId: row.tenantId } : null;
+    return row ? { ref: { type: 'workflow.instance', key: String(row.id) }, title: row.title, tenantId: row.tenantId, metadata: { bizType: row.bizType, bizId: row.bizId } } : null;
   });
 }
 

@@ -25,3 +25,12 @@ export function uploadedFileToAttachment(f: { name: string; url: string; size?: 
     createdAt: '',
   };
 }
+
+/** Workflow identities are explicit; never infer a trusted file identity from a URL. */
+export interface WorkflowUploadedFile { fileId: string; name: string; url: string; size?: number; mimeType?: string | null }
+export function workflowFileToAttachment(file: WorkflowUploadedFile, index = 0): AttachmentItem {
+  const dot = file.name.lastIndexOf('.');
+  return { id: index + 1, fileId: file.fileId, sortOrder: index, createdAt: '',
+    file: { id: file.fileId, originalName: file.name, size: file.size ?? 0,
+      mimeType: file.mimeType ?? guessMimeTypeFromName(file.name), extension: dot >= 0 ? file.name.slice(dot + 1) : null, url: file.url } };
+}

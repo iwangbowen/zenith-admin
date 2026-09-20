@@ -660,14 +660,12 @@ export const createWorkflowInstanceSchema = z.object({
   selectedInitiatorApprovers: workflowSelectedApproversSchema.optional(),
 });
 
-/** 审批动作附件（[{name,url,size}]）—— 各动作通用 */
+/** 审批附件只接受已上传文件的身份，名称、大小和访问地址由服务端确定。 */
 export const workflowTaskAttachmentSchema = z.object({
-  name: z.string().max(255),
-  url: linkUrl().max(1024),
-  size: z.number().int().nonnegative().optional(),
+  fileId: z.uuid(),
 });
 
-export const workflowTaskAttachmentsSchema = z.array(workflowTaskAttachmentSchema);
+export const workflowTaskAttachmentsSchema = z.array(workflowTaskAttachmentSchema).max(20);
 
 export const approveWorkflowTaskSchema = z.object({
   comment: z.string().max(500).optional(),
@@ -789,11 +787,7 @@ export const createWorkflowCommentSchema = z.object({
   /** 回复引用的父评论 ID（须属于同一实例） */
   parentId: z.number().int().positive().nullable().optional(),
   mentions: z.array(z.number().int().positive()).max(50).optional(),
-  attachments: z.array(z.object({
-    name: z.string().max(255),
-    url: linkUrl().max(1024),
-    size: z.number().int().nonnegative().optional(),
-  })).max(20).optional(),
+  attachments: workflowTaskAttachmentsSchema.optional(),
 });
 
 // ── 审批意见常用语 ──
