@@ -62,6 +62,7 @@ async function persistPeriodTask(tx: DbTransaction, period: PaymentStatementPeri
   }
   const generation = locked.generation + 1;
   const input = { taskType, title: `对账 ${period.billDate} · ${period.type} · 账户 #${period.accountId}`,
+    tenantId: period.tenantId,
     payload: { ...payload, periodId: period.id, tenantId: period.tenantId, generation, previousError: locked.lastError }, idempotencyKey: `payment-period:${period.id}:${generation}` };
   const task = system ? await persistSystemAsyncTask(tx, input, period.tenantId) : await persistAsyncTask(tx, input);
   await tx.update(paymentStatementPeriods).set({ taskId: task.id, generation, nextAttemptAt: null, lastError: null }).where(eq(paymentStatementPeriods.id, period.id));
@@ -117,6 +118,7 @@ export async function persistReconTask(tx: DbTransaction, statementId: number, t
   }
   const [run] = await tx.insert(paymentReconRuns).values({ statementId, ruleVersion: PAYMENT_RECON_RULE_VERSION, tenantId }).returning();
   const input = { taskType: RECON_COMPARE_TASK, title: `核对账单 #${statementId} · 运行 #${run.id}`,
+    tenantId,
     payload: { runId: run.id, tenantId, periodId: period.id }, idempotencyKey: `payment-recon-run:${run.id}` };
   const task = system ? await persistSystemAsyncTask(tx, input, tenantId) : await persistAsyncTask(tx, input);
   await tx.update(paymentReconRuns).set({ taskId: task.id }).where(eq(paymentReconRuns.id, run.id));
@@ -141,6 +143,11 @@ export async function submitCompensation(id: number) {
     throw new HTTPException(409, { message: '仅关联本地交易且未结案的交易差异可查单补偿' });
   }
   const task = await db.transaction((tx) => persistAsyncTask(tx, { taskType: RECON_COMPENSATE_TASK,
+    tenantId: item.tenantId,
+    subjectRefs: [
+      { type: 'payment.order', key: String(item.orderId), role: 'primary' },
+      ...(item.refundId ? [{ type: 'payment.refund', key: String(item.refundId), role: 'related' as const }] : []),
+    ],
     title: `核查差异案件 #${id}`, payload: { caseId: id, caseVersion: item.version, tenantId: item.tenantId },
     idempotencyKey: `payment-compensate:${id}:${item.version}` }));
   await enqueueCommitted(task.id);

@@ -25,7 +25,7 @@ vi.mock('../config', () => ({
 }));
 
 vi.mock('../db', () => ({
-  db: { insert: vi.fn() },
+  db: { insert: vi.fn(), transaction: vi.fn() },
 }));
 
 vi.mock('../lib/permissions', () => ({
@@ -36,6 +36,8 @@ vi.mock('../lib/permissions', () => ({
 vi.mock('../lib/ip-location', () => ({
   lookupIpLocation: vi.fn().mockReturnValue('内网地址'),
 }));
+
+vi.mock('../lib/logger', () => ({ default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() } }));
 
 vi.mock('../lib/request-helpers', () => {
   const parseUserAgent = vi.fn().mockReturnValue({ browser: 'Chrome 120', os: 'Windows 11' });
@@ -57,12 +59,14 @@ import { db } from '../db';
 import { isSuperAdmin, getUserPermissions } from '../lib/permissions';
 import { parseUserAgent } from '../lib/request-helpers';
 import { guard } from './guard';
+import { setAuditSubjects } from '../lib/context';
+import logger from '../lib/logger';
 
 const dbMock = vi.mocked(db);
 const isSuperAdminMock = vi.mocked(isSuperAdmin);
 const getUserPermissionsMock = vi.mocked(getUserPermissions);
 
-const insertValues = vi.fn().mockResolvedValue(undefined);
+const insertValues = vi.fn();
 
 function buildApp(guardOpts: Parameters<typeof guard>[0], userOs?: string) {
   const app = new Hono();
@@ -83,7 +87,8 @@ async function flushAudit() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  insertValues.mockResolvedValue(undefined);
+  insertValues.mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 1 }]) });
+  dbMock.transaction.mockImplementation(async (work) => work(db as never));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (dbMock.insert as any).mockReturnValue({ values: insertValues });
   isSuperAdminMock.mockReturnValue(false);
@@ -149,6 +154,30 @@ describe('guard - 权限校验', () => {
 });
 
 describe('guard - 审计日志', () => {
+  it('persists the operation and subjects in one transaction using business ownership', async () => {
+    const app = new Hono();
+    app.use('*', contextStorage());
+    app.use('*', async (c, next) => {
+      c.set('user', { userId: 1, username: 'platform-admin', roles: ['super_admin'], tenantId: null });
+      await next();
+    });
+    app.post('/order', guard({ audit: { description: '退款' } }), (c) => {
+      setAuditSubjects([
+        { type: 'payment.order', key: '41', role: 'related' },
+        { type: 'payment.refund', key: '9', role: 'primary' },
+      ], 7);
+      return c.json({ code: 0, data: null });
+    });
+    await app.request('/order', { method: 'POST' });
+    await vi.waitFor(() => expect(insertValues).toHaveBeenCalledTimes(2));
+    expect(dbMock.transaction).toHaveBeenCalledOnce();
+    expect(insertValues.mock.calls[0][0]).toMatchObject({ tenantId: 7 });
+    expect(insertValues.mock.calls[1][0]).toEqual([
+      { operationLogId: 1, tenantId: 7, entityType: 'payment.order', entityKey: '41', role: 'related' },
+      { operationLogId: 1, tenantId: 7, entityType: 'payment.refund', entityKey: '9', role: 'primary' },
+    ]);
+  });
+
   it('响应正常返回，并异步写入操作日志（含用户/方法/路径/响应码）', async () => {
     const res = await buildApp({ audit: { description: '创建用户', module: '用户管理' } }).request('/target', {
       method: 'POST',
@@ -194,12 +223,12 @@ describe('guard - 审计日志', () => {
     expect(logged.afterData).toBe(JSON.stringify({ ok: true }));
   });
 
-  it('审计写库失败不影响主响应（静默吞错）', async () => {
-    insertValues.mockRejectedValue(new Error('db down'));
+  it('审计写库失败不影响主响应并产生可观测错误', async () => {
+    insertValues.mockReturnValue({ returning: vi.fn().mockRejectedValue(new Error('db down')) });
     const res = await buildApp({ audit: { description: '创建用户' } }).request('/target', { method: 'POST' });
     expect(res.status).toBe(200);
     expect((await res.json()).code).toBe(0);
-    await vi.waitFor(() => expect(insertValues).toHaveBeenCalled());
+    await vi.waitFor(() => expect(logger.error).toHaveBeenCalledWith('[audit] operation and subjects were not persisted', expect.objectContaining({ err: expect.any(Error) })));
   });
 
   it('GET 请求（无 JSON body）审计不记录请求体且不报错', async () => {

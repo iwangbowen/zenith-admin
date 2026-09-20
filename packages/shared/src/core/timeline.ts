@@ -16,7 +16,7 @@ export type TimelineEventVisibility = z.infer<typeof timelineEventVisibilitySche
 export const timelineEventSchema = z.object({
   id: z.string().min(1).max(128).meta({ description: '事件稳定标识' }),
   eventType: z.string().min(1).max(128).meta({ description: '领域事件类型', example: 'payment.order.refunded' }),
-  occurredAt: z.string().min(1).meta({ description: '事件发生时间', example: '2026-09-20T08:30:00.000Z' }),
+  occurredAt: z.iso.datetime().meta({ description: '事件发生时间', example: '2026-09-20T08:30:00.000Z' }),
   actorRef: entityRefSchema.nullable().optional(),
   sourceRef: entityRefSchema.nullable().optional(),
   subjectRefs: z.array(subjectRefSchema).min(1),
@@ -27,4 +27,3 @@ export const timelineEventSchema = z.object({
 }).meta({ id: 'TimelineEvent' });
 
 export type TimelineEvent = z.infer<typeof timelineEventSchema>;
-

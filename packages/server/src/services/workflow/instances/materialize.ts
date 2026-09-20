@@ -123,6 +123,7 @@ async function expandTasksToRows(
         recipients: recipients.map((id) => ({ type: 'user' as const, id })),
         vars: { instanceId: ctx.instanceId, node: nodeName, detail },
         tenantId: cachedTenantId,
+        subjectRefs: [{ type: 'workflow.instance', key: String(ctx.instanceId), role: 'primary' }],
         link: `/workflow/applications?instanceId=${ctx.instanceId}`,
       });
     } catch { /* 通知失败不影响流转 */ }

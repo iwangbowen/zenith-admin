@@ -7,10 +7,11 @@
  * Mock 策略：db / 派发引擎 deliverOutboxRow / logger mock；UPDATE 链按 set() 的内容区分「认领」与「落状态」。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { NotificationOutboxRow } from '../../db/schema';
+import { domainEvents, notificationOutboxSubjects, type NotificationOutboxRow } from '../../db/schema';
+import type { DbTransaction } from '../../db/types';
 
 vi.mock('../../db', () => {
-  const db = { select: vi.fn(), insert: vi.fn(), update: vi.fn() };
+  const db = { select: vi.fn(), insert: vi.fn(), update: vi.fn(), transaction: vi.fn() };
   return { db };
 });
 
@@ -24,7 +25,7 @@ vi.mock('../../lib/logger', () => ({
 
 import { db } from '../../db';
 import { deliverOutboxRow } from '../../lib/notification/dispatch';
-import { dispatchPendingNotifications, processNotificationOutbox } from './notification-outbox.service';
+import { dispatchPendingNotifications, processNotificationOutbox, notify } from './notification-outbox.service';
 
 const dbMock = vi.mocked(db);
 const deliverMock = vi.mocked(deliverOutboxRow);
@@ -184,6 +185,49 @@ describe('processNotificationOutbox', () => {
   it('认领未命中（已被他人占用 / 非 pending）时不派发', async () => {
     installUpdateMock([[]]);
     await processNotificationOutbox(9);
+    expect(deliverMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('notification subject transaction', () => {
+  function fixture(failSubjects = false) {
+    const committed: Array<{ table: unknown; values: unknown }> = [];
+    const staged: Array<{ table: unknown; values: unknown }> = [];
+    const tx = { insert: vi.fn((table: unknown) => ({ values: (values: unknown) => {
+      if (failSubjects && table === notificationOutboxSubjects) return Promise.reject(new Error('subject insert failed'));
+      staged.push({ table, values });
+      const result = [{ id: 71 }];
+      return { onConflictDoNothing: () => ({ returning: async () => result }) };
+    } })) } as unknown as DbTransaction;
+    dbMock.transaction.mockImplementation(async (work) => {
+      const result = await work(tx);
+      committed.push(...staged);
+      return result;
+    });
+    return { committed, tx };
+  }
+
+  const input = {
+    recipients: [{ type: 'user' as const, id: 7 }], vars: {}, tenantId: 12,
+    scheduledAt: new Date('2099-01-01T00:00:00Z'),
+    subjectRefs: [{ type: 'payment.order', key: '41', role: 'primary' as const }],
+  };
+
+  it('commits outbox, subjects and a safe timeline event together', async () => {
+    const f = fixture();
+    await expect(notify('ops.monitor.alert_test', input)).resolves.toBe(71);
+    expect(dbMock.transaction).toHaveBeenCalledOnce();
+    expect(f.committed).toHaveLength(4);
+    expect(f.committed.find((write) => write.table === domainEvents)?.values).toMatchObject({
+      tenantId: 12, sourceType: 'notification.outbox', sourceKey: '71', payload: { eventKey: 'ops.monitor.alert_test' },
+    });
+    expect(deliverMock).not.toHaveBeenCalled();
+  });
+
+  it('does not commit an orphan outbox row when subject persistence fails', async () => {
+    const f = fixture(true);
+    await expect(notify('ops.monitor.alert_test', input)).rejects.toThrow('subject insert failed');
+    expect(f.committed).toEqual([]);
     expect(deliverMock).not.toHaveBeenCalled();
   });
 });

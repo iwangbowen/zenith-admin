@@ -44,6 +44,16 @@ export const canonicalEntityTypeSchema = z.enum(ENTITY_TYPES).meta({
   description: '已注册的跨对象实体类型',
 });
 
+/** Types with a server resolver and a shipped relation view. Searchability is independent. */
+export const ENTITY_RELATION_TYPES = [
+  'identity.user', 'member.member', 'payment.order', 'payment.refund', 'payment.dispute',
+  'payment.risk-hit', 'payment.risk-review', 'workflow.instance', 'workflow.task',
+  'drive.file', 'iot.device', 'iot.alarm', 'cms.content', 'wiki.document', 'tasks.async',
+  'notification.outbox', 'platform.operation-log',
+] as const satisfies readonly CanonicalEntityType[];
+export function supportsEntityRelations(type: string): type is (typeof ENTITY_RELATION_TYPES)[number] {
+  return (ENTITY_RELATION_TYPES as readonly string[]).includes(type);
+}
 export interface EntityDefinition {
   readonly type: CanonicalEntityType;
   /** 前端本地化键；服务端不把中文 label 固化在关系响应里。 */
@@ -61,7 +71,7 @@ export const ENTITY_REGISTRY: Readonly<Record<CanonicalEntityType, EntityDefinit
   'payment.dispute': { type: 'payment.dispute', labelKey: 'entity.payment.dispute', searchable: false, capabilities: ['detail', 'relations', 'timeline'] },
   'payment.risk-hit': { type: 'payment.risk-hit', labelKey: 'entity.payment.risk-hit', searchable: false, capabilities: ['detail', 'relations', 'timeline'] },
   'payment.risk-review': { type: 'payment.risk-review', labelKey: 'entity.payment.risk-review', searchable: false, capabilities: ['detail', 'relations', 'timeline'] },
-  'workflow.definition': { type: 'workflow.definition', labelKey: 'entity.workflow.definition', searchable: false, capabilities: ['detail', 'relations'] },
+  'workflow.definition': { type: 'workflow.definition', labelKey: 'entity.workflow.definition', searchable: false, capabilities: ['detail'] },
   'workflow.instance': { type: 'workflow.instance', labelKey: 'entity.workflow.instance', searchable: true, capabilities: ['detail', 'relations', 'timeline'] },
   'workflow.task': { type: 'workflow.task', labelKey: 'entity.workflow.task', searchable: false, capabilities: ['detail', 'relations', 'timeline'] },
   'drive.file': { type: 'drive.file', labelKey: 'entity.drive.file', searchable: true, capabilities: ['detail', 'relations', 'timeline'] },
@@ -69,16 +79,16 @@ export const ENTITY_REGISTRY: Readonly<Record<CanonicalEntityType, EntityDefinit
   'iot.alarm': { type: 'iot.alarm', labelKey: 'entity.iot.alarm', searchable: true, capabilities: ['detail', 'relations', 'timeline'] },
   'cms.content': { type: 'cms.content', labelKey: 'entity.cms.content', searchable: true, capabilities: ['detail', 'relations', 'timeline'] },
   'wiki.document': { type: 'wiki.document', labelKey: 'entity.wiki.document', searchable: true, capabilities: ['detail', 'relations', 'timeline'] },
-  'messaging.announcement': { type: 'messaging.announcement', labelKey: 'entity.messaging.announcement', searchable: true, capabilities: ['detail', 'relations', 'timeline'] },
-  'chat.message': { type: 'chat.message', labelKey: 'entity.chat.message', searchable: true, capabilities: ['detail', 'relations', 'timeline'] },
-  'biz.leave': { type: 'biz.leave', labelKey: 'entity.biz.leave', searchable: true, capabilities: ['detail', 'relations', 'timeline'] },
-  'report.dashboard': { type: 'report.dashboard', labelKey: 'entity.report.dashboard', searchable: true, capabilities: ['detail', 'relations'] },
-  'report.dataset': { type: 'report.dataset', labelKey: 'entity.report.dataset', searchable: true, capabilities: ['detail', 'relations'] },
-  'ai.knowledge-base': { type: 'ai.knowledge-base', labelKey: 'entity.ai.knowledge-base', searchable: true, capabilities: ['detail', 'relations', 'timeline'] },
+  'messaging.announcement': { type: 'messaging.announcement', labelKey: 'entity.messaging.announcement', searchable: true, capabilities: ['detail'] },
+  'chat.message': { type: 'chat.message', labelKey: 'entity.chat.message', searchable: true, capabilities: ['detail'] },
+  'biz.leave': { type: 'biz.leave', labelKey: 'entity.biz.leave', searchable: true, capabilities: ['detail'] },
+  'report.dashboard': { type: 'report.dashboard', labelKey: 'entity.report.dashboard', searchable: true, capabilities: ['detail'] },
+  'report.dataset': { type: 'report.dataset', labelKey: 'entity.report.dataset', searchable: true, capabilities: ['detail'] },
+  'ai.knowledge-base': { type: 'ai.knowledge-base', labelKey: 'entity.ai.knowledge-base', searchable: true, capabilities: ['detail'] },
   'tasks.async': { type: 'tasks.async', labelKey: 'entity.tasks.async', searchable: true, capabilities: ['detail', 'relations', 'timeline'] },
   'notification.outbox': { type: 'notification.outbox', labelKey: 'entity.notification.outbox', searchable: false, capabilities: ['detail', 'relations', 'timeline'] },
   'platform.operation-log': { type: 'platform.operation-log', labelKey: 'entity.platform.operation-log', searchable: true, capabilities: ['detail', 'relations', 'timeline'] },
-  'platform.exception-log': { type: 'platform.exception-log', labelKey: 'entity.platform.exception-log', searchable: true, capabilities: ['detail', 'relations', 'timeline'] },
+  'platform.exception-log': { type: 'platform.exception-log', labelKey: 'entity.platform.exception-log', searchable: true, capabilities: ['detail'] },
 };
 
 /** 统一搜索返回的旧词表到 canonical EntityType 的明确映射。 */

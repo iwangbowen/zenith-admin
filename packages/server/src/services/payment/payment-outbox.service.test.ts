@@ -36,7 +36,7 @@ const dispatchMock = vi.mocked(paymentEventBus.dispatch);
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createChain(result: unknown[]): any {
   const chain: Record<string, unknown> = {};
-  for (const m of ['from', 'where', 'limit', 'set', 'values', 'returning']) {
+  for (const m of ['from', 'where', 'limit', 'set', 'values', 'returning', 'onConflictDoNothing']) {
     chain[m] = vi.fn(() => chain);
   }
   chain.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
@@ -75,8 +75,8 @@ describe('recordEvent', () => {
     const id = await recordEvent(tx as any, {
       type: 'payment.succeeded',
       orderNo: 'PO-9',
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      payload: { type: 'payment.succeeded', orderNo: 'PO-9', bizType: 'demo' } as any,
+      payload: { type: 'payment.succeeded', orderNo: 'PO-9', bizType: 'demo', amount: 100, currency: 'CNY', tenantId: null,
+        subjectRefs: [{ type: 'payment.order', key: '9', role: 'primary' }] } as Parameters<typeof recordEvent>[1]['payload'],
       tenantId: null,
     });
 

@@ -10,6 +10,7 @@ export * from './cron-expression';
 export * from './cron-health';
 export * from './data-mask';
 export * from './entity-registry';
+export * from './domain-events';
 export * from './regions';
 export * from './types';
 export * from './upload';

@@ -1,53 +1,79 @@
 # 跨对象关联视图
 
-跨对象关联能力由平台编排、领域查询和结构化主体引用组成。统一搜索仍然只负责“找到对象”；关联接口负责“查看该对象关联了什么”。
+关联能力是平台的对象上下文读模型，与统一搜索并列。搜索负责找到对象；关联面板展示经过授权的相关记录，时间线展示结构化业务事件。详情、SideSheet 与搜索结果复用同一套组件，没有独立菜单。
 
-## 核心协议
+## 对象与模块接入
 
-- `EntityType` 是对象的规范化类型，例如 `payment.order`、`payment.refund`、`workflow.instance`。
-- `EntityRef` 只有 `type` 和不透明的 `key`。租户由服务端上下文决定，客户端不能传入租户范围。
-- `RelationKey` 使用命名空间，例如 `payment.order.refunds`。
-- `SubjectRef` 用于审计、通知、异步任务和领域事件；`traceId` / `parentRef` 只表示因果链，不能代替对象引用。
+`shared/core/entity-ref.ts` 定义 `EntityRef { type, key }` 和带角色的 `SubjectRef`。对象 key 是最长 128 字符的 URL 安全不透明字符串；数字主键使用标准十进制，复合键由所属模块编码。引用不携带客户端可选的租户。`shared/platform/entity-registry.ts` 是类型清单，`ENTITY_RELATION_TYPES` 仅标记当前实际具备服务端解析器的对象；搜索类型通过显式映射引用实体类型。
 
-共享实体原语位于 `packages/shared/src/core/entity-ref.ts`，平台实体注册表位于 `packages/shared/src/platform/entity-registry.ts`。
+每个业务模块贡献独立的 `EntityAnchorResolver[]` 与 `RelationProvider[]`。平台装配时拒绝重复 key、缺少来源/目标解析器、描述 key 不一致。解析器负责锚点权限及真实租户，Provider 负责本域关系语义和目标可见性 SQL。平台不接受表名、SQL、归属列等客户端输入。
 
-## 服务端接口
+当前覆盖：
+
+| 锚点 | 领域关系 |
+| --- | --- |
+| 支付订单 | 退款、投诉、落单后风控命中、审核、对账调整审批 |
+| 退款、投诉、风控记录 | 反向支付订单 |
+| 用户 | 本人归属的后台支付订单 |
+| 会员 | 有钱包充值或 VIP 续费明确履约记录的支付订单 |
+| 流程实例 / 审批任务 | 审批任务、子流程、所属实例 |
+| 设备 / 告警 | 设备告警、所属设备 |
+| CMS 内容 | 同站点已定义的相关文章 |
+| 网盘文件 / 文件夹 | 上级目录、子项，复用节点 ACL |
+| Wiki 文档 | 上级文档、子文档，复用空间与草稿权限 |
+| 异步任务、通知、操作审计 | 作为可授权锚点接受结构化关联 |
+
+所有已接入锚点另有通用操作审计、通知、异步任务和人工关联分组，按目标领域权限发现。用户与会员是不同身份；不根据整数 ID 相等推断绑定。支付风控在订单创建前发生且尚无订单身份的记录，不会归入后来恰好使用同一业务编号的订单。会员尚未产生明确履约映射的支付记录也不会被猜测归属。
+
+## 契约、分页与授权
+
+契约在 `shared/platform/contracts/entity-relations.ts` 与 `entity-timeline.ts`。
 
 ```text
-GET /api/platform/entities/{type}/{key}/relations
-GET /api/platform/entities/{type}/{key}/relations/{sectionKey}
-GET /api/platform/entities/{type}/{key}/timeline
+GET    /api/platform/entities/{type}/{key}/relations
+GET    /api/platform/entities/{type}/{key}/relations/{sectionKey}
+GET    /api/platform/entities/{type}/{key}/timeline
+POST   /api/platform/entities/{type}/{key}/links
+DELETE /api/platform/entities/{type}/{key}/links
 ```
 
-第一条接口只返回锚点和当前用户可发现的分组。分组内容按第二条接口独立加载，使用 cursor 分页。时间线使用 typed event，不把普通关联条目按时间直接拼接。
+描述接口只返回可见锚点和分组，不提前查询每组计数。组内按主键倒序在 SQL 中取 `limit + 1`；时间线按事件发生时间、来源类别和 ID 稳定倒序。公开游标签名并绑定用户、模拟登录、当前租户视角、真实锚点租户、对象和分组；每次请求仍重新授权。禁止把分页游标当成授权凭据。
 
-领域 Provider 位于 `packages/server/src/services/platform/relations/providers/`，只接收已解析的可见锚点和访问上下文，不能向平台层暴露 Drizzle `SQL`、表列或通用 `scopeWhere`。
+锚点不存在、不可见、未接入或功能授权不可用时统一 404。无发现权限的分组不返回。领域表的租户条件还要叠加锚点真实租户，平台管理员全租户视角也不能混入另一个租户的业务键。受限数据范围缺失归属列会报错，不能回退成全量。
 
-接入新领域时按以下顺序完成：
+关系列表只选择摘要字段，完整表单、投诉正文、通知收件地址、请求体、任务 payload 等不进入关联 DTO。目标详情再次鉴权。未知事件类型不进入时间线；领域事件的来源对象还会重新解析授权。
 
-1. 在实体注册表增加实体类型和能力。
-2. 在领域 Service 实现锚点可见性和关联查询。
-3. 注册命名空间化 Relation Provider。
-4. 在通知、任务、审计或领域事件写入入口传递 `SubjectRef`。
-5. 为租户、数据范围、模拟登录、目标对象权限和分页增加测试。
-6. 在详情页挂载通用关联组件；保留领域自己的业务概览。
+每个进程最多同时处理 8 个关联读请求，不建立无界队列；查询使用只读事务，PostgreSQL statement timeout 为 1500ms、lock timeout 为 750ms，多次查询还有总时间/扫描预算。已完成锚点和分组授权后的单组 SQL 超时返回可重试的降级状态；系统性故障返回 503。Prometheus 记录关联查询耗时与成功/失败/超时结果。
 
-## 数据存储
+## 关系事实与写入
 
-- 已有 FK 和 `bizType + bizId` 是关系事实，由领域表和领域 Service 负责。
-- `entity_relation_edges` 只用于真实的跨域 N:M 关系。
-- `operation_log_subjects` 支持一条审计记录关联多个对象。
-- `notification_outbox_subjects`、`async_task_subjects` 和 `domain_event_subjects` 保存异步副作用的业务主体。
+已有外键和经领域确认的业务键继续作为权威事实，不复制为通用图。支付订单的审批关联沿订单→对账案件→调整单→流程业务键查询，不能简单匹配不含应用作用域的 `bizType/bizId`。
 
-所有主体表都按 `tenantId + entityType + entityKey` 建反向查询索引。写入必须在业务事务内完成，目标对象和租户归属由领域 Service 校验。
+`entity_relation_edges` 仅存人工 N:M 关系。当前关系目录开放对称 `platform.related`，双向使用相同规范排序与唯一约束；服务端校验双方存在、可见、同租户并禁止自关联。读时再次授权两端，不返回不可见目标的计数。`system:relation:manage` 控制维护，权限挂在已有搜索中心；添加和解除都记审计。被删或不可见的目标不再展示，管理者可幂等解除其旧引用。
 
-## 权限规则
+`operation_log_subjects`、`notification_outbox_subjects`、`async_task_subjects` 和 `domain_event_subjects` 将副作用与业务对象结构化关联，`traceId` / `parentRef` 只描述请求因果。父行与 subjects 一起提交；事务 API 要求传入真实业务租户，不能在平台全租户视角下自动写 null。
 
-1. 锚点不可见时统一返回 404。
-2. 没有分组发现权限时不返回该分组。
-3. 目标对象必须再次执行自身权限检查。
-4. `items` 和 `total` 必须使用相同的可见性谓词。
-5. 模拟登录按被模拟用户的权限和数据范围执行。
-6. 单组预期超时可以局部降级；系统性数据库故障返回 503 并告警。
+两类记录的耐久性不同：
 
-第一条生产级接入是支付订单，当前已覆盖退款、工作流和操作审计，并在支付订单详情 SideSheet 中按组懒加载展示。
+- 请求操作日志保留现有 `setImmediate` 尽力记录模式。日志和 subjects 原子写入，失败记录服务端错误；进程在异步任务运行前退出仍可能缺失请求快照。
+- 用于业务生命周期的领域事件与支付 outbox、流程 outbox、通知或异步任务同事务写入，重放按幂等键校验业务事实和主体集合。摘要只允许 `domain-events.ts` 目录声明的字段，不能透传业务 payload。
+
+`domain_events` 默认保留 365 天，可使用既有保留策略管理；subjects 随父记录级联清理。操作日志、通知和任务继续沿用各自生命周期。
+
+## 前端与缓存
+
+`EntityContextView` 组合关联区与独立时间线，保留领域自身概览。分组首次展开才请求，支持刷新、重试和继续加载；关联对象在同一 SideSheet 内导航并可返回，不堆叠抽屉。原详情入口只注册已支持精确 ID 加载的路由，不能使用关键词模糊定位。
+
+query key 从契约派生，再加入有效用户、租户视角和模拟登录身份。跨域变更使关系缓存失效；人工关联操作刷新两端。Demo handlers 绑定同一契约并使用真实 Demo 数据。
+
+## 新模块清单
+
+1. 注册规范实体类型；只有解析器和页面都完成才加入实际支持清单。
+2. 提供轻量的可见锚点解析器，返回真实租户，不取完整详情中的敏感字段。
+3. 以命名空间 key 声明关系，复用所属领域 ACL/数据范围；SQL 内完成过滤和分页。
+4. 在业务 Service 已持有授权后的行时登记审计 subjects；创建通知和任务时显式传主体与租户。
+5. 需要时间线时向事件目录增加安全摘要与权限，在业务事务内写事件。
+6. 页面挂载公共组件，变更 hooks 声明关系缓存失效，Demo 使用同一契约。
+7. 覆盖无权限、跨租户、模拟登录、重复时间戳分页、删除及幂等重放测试。
+
+基础入口不会自动补全所有领域的通知/任务历史或推断关系。未接入的写入点按上述清单逐模块登记，不做字符串解析、历史回填或双读兼容。

@@ -3,9 +3,12 @@ import { Hono } from 'hono';
 import { contextStorage } from 'hono/context-storage';
 import type { JwtPayload } from '../../../middleware/auth';
 
-const { insertLog } = vi.hoisted(() => ({ insertLog: vi.fn().mockResolvedValue(undefined) }));
+const { insertLog } = vi.hoisted(() => ({ insertLog: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 1 }]) }) }));
 vi.mock('../../../config', () => ({ config: { multiTenantMode: false, redis: { keyPrefix: 'test:' }, log: { level: 'silent', dir: 'logs', maxFiles: '30d' } } }));
-vi.mock('../../../db', () => ({ db: { insert: () => ({ values: insertLog }) } }));
+vi.mock('../../../db', () => {
+  const executor = { insert: () => ({ values: insertLog }) };
+  return { db: { ...executor, transaction: async (write: (tx: typeof executor) => Promise<unknown>) => write(executor) } };
+});
 vi.mock('../../../lib/permissions', () => ({ isSuperAdmin: vi.fn(), getUserPermissions: vi.fn() }));
 vi.mock('../../../lib/licensing', () => ({ assertFeatureEnabled: vi.fn() }));
 vi.mock('../../../lib/ip-location', () => ({ lookupIpLocation: () => '内网' }));

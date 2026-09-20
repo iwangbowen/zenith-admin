@@ -5,13 +5,13 @@ import { timelineEventSchema } from '../../core/timeline';
 import { canonicalEntityTypeSchema } from '../entity-registry';
 
 export const entityTimelineQuerySchema = z.object({
-  cursor: z.string().max(512).optional().meta({ description: '下一页游标' }),
+  cursor: z.string().min(1).max(4096).optional().meta({ description: '下一页游标' }),
   limit: z.coerce.number().int().min(1).max(100).default(20).meta({ description: '时间线条数', example: 20 }),
 });
 
 export const entityTimelineResponseSchema = z.object({
   items: z.array(timelineEventSchema),
-  nextCursor: z.string().max(512).nullable(),
+  nextCursor: z.string().max(4096).nullable(),
   hasMore: z.boolean(),
 }).meta({ id: 'EntityTimelineResponse' });
 export type EntityTimelineResponse = z.infer<typeof entityTimelineResponseSchema>;
@@ -22,7 +22,7 @@ export const entityTimelineParamsSchema = z.object({
 });
 
 export const entityTimelineContract = defineContract('/api/platform/entities', {
-  list: op.get('/{type}/{key}/timeline', {
+  timeline: op.get('/{type}/{key}/timeline', {
     access: 'authenticated',
     params: entityTimelineParamsSchema,
     query: entityTimelineQuerySchema,

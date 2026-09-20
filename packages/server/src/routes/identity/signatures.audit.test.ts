@@ -5,7 +5,10 @@ import type { Context, Next } from 'hono';
 import type { AppEnv } from '../../lib/context';
 
 const mocks = vi.hoisted(() => ({ log: vi.fn(), get: vi.fn(), before: vi.fn(), save: vi.fn(), remove: vi.fn() }));
-vi.mock('../../db', () => ({ db: { insert: () => ({ values: mocks.log }) } }));
+vi.mock('../../db', () => {
+  const executor = { insert: () => ({ values: mocks.log }) };
+  return { db: { ...executor, transaction: async (write: (tx: typeof executor) => Promise<unknown>) => write(executor) } };
+});
 vi.mock('../../middleware/auth', () => ({ authMiddleware: async (c: Context, next: Next) => {
   c.set('user', { userId: 7, username: 'owner', tenantId: null, roles: [] });
   await next();
@@ -39,7 +42,7 @@ function app() {
 }
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.log.mockResolvedValue(undefined);
+  mocks.log.mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 1 }]) });
   mocks.before.mockResolvedValue({ ...metadata, version: 1 });
   mocks.save.mockResolvedValue({ ...metadata, dataUrl });
   mocks.get.mockResolvedValue({ ...metadata, dataUrl });

@@ -2,7 +2,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowComments, workflowInstances, workflowTasks } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
-import { currentUser } from '../../lib/context';
+import { currentUser, setAuditSubjects } from '../../lib/context';
 import { isSuperAdmin } from '../../lib/permissions';
 import logger from '../../lib/logger';
 import { workflowCommentSchema, type WorkflowComment, type CreateWorkflowCommentInput } from '@zenith/shared/workflow';
@@ -77,6 +77,7 @@ export async function listInstanceComments(instanceId: number): Promise<Workflow
 
 export async function addInstanceComment(instanceId: number, input: CreateWorkflowCommentInput): Promise<WorkflowComment> {
   const inst = await assertParticipant(instanceId);
+  setAuditSubjects([{ type: 'workflow.instance', key: String(inst.id), role: 'primary' }], inst.tenantId);
   const allowComment = inst.definitionSnapshot?.flowData?.settings?.allowComment;
   if (allowComment === false) {
     throw new HTTPException(403, { message: '该流程已关闭评论' });
@@ -116,6 +117,7 @@ export async function addInstanceComment(instanceId: number, input: CreateWorkfl
           summary: input.content.slice(0, 80),
         },
         tenantId: inst.tenantId,
+        subjectRefs: [{ type: 'workflow.instance', key: String(inst.id), role: 'primary' }],
         link: `/workflow/applications?instanceId=${instanceId}`,
       });
     } catch (err) {

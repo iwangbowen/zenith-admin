@@ -128,18 +128,23 @@ export function setAuditAfter(data: unknown): void {
  * after the operation log row is written. Calling this outside an HTTP request
  * is a no-op, matching setAuditBefore/setAuditAfter semantics.
  */
-export function setAuditSubjects(subjects: readonly AuditSubjectRef[]): void {
+export function setAuditSubjects(subjects: readonly AuditSubjectRef[], tenantId: number | null): void {
   const ctx = tryGetContext<AppEnv>();
   if (!ctx) return;
   ctx.set('auditSubjects', normalizeAuditSubjects(subjects));
+  ctx.set('auditTenantId', tenantId);
 }
 
 /** Add one structured entity reference to the current operation audit record. */
-export function addAuditSubject(subject: AuditSubjectRef): void {
+export function addAuditSubject(subject: AuditSubjectRef, tenantId: number | null): void {
   const ctx = tryGetContext<AppEnv>();
   if (!ctx) return;
   const current = ctx.get('auditSubjects') ?? [];
+  if (current.length > 0 && ctx.get('auditTenantId') !== tenantId) {
+    throw new Error('One operation audit cannot attach subjects from different tenants');
+  }
   ctx.set('auditSubjects', normalizeAuditSubjects([...current, subject]));
+  ctx.set('auditTenantId', tenantId);
 }
 
 /** Read the normalized refs attached to the current request, if any. */

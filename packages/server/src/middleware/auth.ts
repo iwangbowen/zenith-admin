@@ -376,5 +376,6 @@ declare module 'hono' {
     auditBeforeData: string | undefined;
     auditAfterData: string | undefined;
     auditSubjects: NormalizedAuditSubjectRef[] | undefined;
+    auditTenantId: number | null | undefined;
   }
 }

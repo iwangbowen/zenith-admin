@@ -122,14 +122,10 @@ describe('全量访问（返回 undefined）', () => {
     expect(result).toBeUndefined();
   });
 
-  it('用户无角色且未传 ownerColumn → 返回 undefined', async () => {
+  it('用户无角色且未传 ownerColumn → 拒绝放行', async () => {
     dbMock.query.users.findFirst.mockResolvedValueOnce(mockUser(null, []));
 
-    const result = await getDataScopeCondition({
-      currentUserId: 3,
-    });
-
-    expect(result).toBeUndefined();
+    await expect(getDataScopeCondition({ currentUserId: 3 })).rejects.toThrow('requires an owner column');
   });
 
   it('用户无角色但传了 ownerColumn → 返回 eq 条件（self 兜底）', async () => {
@@ -222,17 +218,12 @@ describe('dataScope = self', () => {
     expect(dbMock.query.users.findFirst).toHaveBeenCalledTimes(1);
   });
 
-  it('未传 ownerColumn 时返回 undefined', async () => {
+  it('受限范围未传 ownerColumn 时拒绝放行', async () => {
     dbMock.query.users.findFirst.mockResolvedValueOnce(
       mockUser(null, [{ dataScope: 'self', code: 'operator' }]),
     );
 
-    const result = await getDataScopeCondition({
-      currentUserId: 21,
-      // 不传 ownerColumn
-    });
-
-    expect(result).toBeUndefined();
+    await expect(getDataScopeCondition({ currentUserId: 21 })).rejects.toThrow('requires an owner column');
   });
 });
 

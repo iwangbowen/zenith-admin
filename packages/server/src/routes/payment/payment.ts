@@ -7,7 +7,6 @@ import {
   paymentStatsContract,
 } from '@zenith/shared/payment';
 import { setAuditAfterData, setAuditBeforeData } from '../../middleware/guard';
-import { setAuditSubjects } from '../../lib/context';
 import { idempotencyGuard } from '../../middleware/idempotency';
 import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
@@ -33,7 +32,6 @@ import {
   refund,
   listRefunds,
   getRefundDetail,
-  getRefundDetailByNo,
   refreshRefundById,
   approveRefund,
   rejectRefund,
@@ -120,8 +118,6 @@ const orderCreateRoute = defineContractRoute(paymentOrderContract.createOrder, {
       clientIp: getClientIp(c),
       idempotencyKey: c.req.header('x-idempotency-key'),
     });
-    const order = await getOrderDetailByNo(result.orderNo);
-    setAuditSubjects([{ type: 'payment.order', key: String(order.id), role: 'primary' }]);
     return c.json(okBody(result, '下单成功'), 200);
   },
 });
@@ -142,7 +138,6 @@ const orderQueryRoute = defineContractRoute(paymentOrderContract.queryOrder, {
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getOrderDetail(id));
-    setAuditSubjects([{ type: 'payment.order', key: String(id), role: 'primary' }]);
     return c.json(okBody(await refreshOrderById(id), '已同步'), 200);
   },
 });
@@ -151,7 +146,6 @@ const orderCloseRoute = defineContractRoute(paymentOrderContract.closeOrder, {
   handler: async (c) => {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, await getOrderDetail(id));
-    setAuditSubjects([{ type: 'payment.order', key: String(id), role: 'primary' }]);
     await closeOrderById(id);
     setAuditAfterData(c, await getOrderDetail(id));
     return c.json(okBody(null, '订单已关闭'), 200);
@@ -166,12 +160,6 @@ const refundCreateRoute = defineContractRoute(paymentRefundContract.createRefund
       ...c.req.valid('json'),
       idempotencyKey: c.req.valid('header')['x-idempotency-key'],
     });
-    const refundRow = await getRefundDetailByNo(result.refundNo);
-    const order = await getOrderDetailByNo(refundRow.orderNo);
-    setAuditSubjects([
-      { type: 'payment.refund', key: String(refundRow.id), role: 'primary' },
-      { type: 'payment.order', key: String(order.id), role: 'related' },
-    ]);
     return c.json(okBody(result, '退款已发起'), 200);
   },
 });
@@ -189,7 +177,6 @@ const refundQueryRoute = defineContractRoute(paymentRefundContract.queryRefund, 
     const { id } = c.req.valid('param');
     const refundRow = await getRefundDetail(id);
     setAuditBeforeData(c, refundRow);
-    setAuditSubjects([{ type: 'payment.refund', key: String(id), role: 'primary' }, { type: 'payment.order', key: String(refundRow.orderId), role: 'related' }]);
     return c.json(okBody(await refreshRefundById(id), '已同步'), 200);
   },
 });
@@ -199,7 +186,6 @@ const refundApproveRoute = defineContractRoute(paymentRefundContract.approveRefu
     const { id } = c.req.valid('param');
     const refundRow = await getRefundDetail(id);
     setAuditBeforeData(c, refundRow);
-    setAuditSubjects([{ type: 'payment.refund', key: String(id), role: 'primary' }, { type: 'payment.order', key: String(refundRow.orderId), role: 'related' }]);
     const result = await approveRefund(id, c.req.valid('json').remark);
     setAuditAfterData(c, await getRefundDetail(id));
     return c.json(okBody(result, '已审批通过'), 200);
@@ -211,7 +197,6 @@ const refundRejectRoute = defineContractRoute(paymentRefundContract.rejectRefund
     const { id } = c.req.valid('param');
     const refundRow = await getRefundDetail(id);
     setAuditBeforeData(c, refundRow);
-    setAuditSubjects([{ type: 'payment.refund', key: String(id), role: 'primary' }, { type: 'payment.order', key: String(refundRow.orderId), role: 'related' }]);
     await rejectRefund(id, c.req.valid('json').remark);
     setAuditAfterData(c, await getRefundDetail(id));
     return c.json(okBody(null, '已驳回'), 200);

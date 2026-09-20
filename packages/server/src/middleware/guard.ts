@@ -16,6 +16,7 @@ import type { LicenseFeatureKey } from '@zenith/shared/licensing';
 import { permissionList, type Permission } from '@zenith/shared/core';
 import { tagMiddleware } from '../lib/route-facts';
 import type { NormalizedAuditSubjectRef } from '../lib/audit-subject';
+import logger from '../lib/logger';
 
 export interface AuditLogOptions {
   description: string;
@@ -54,9 +55,12 @@ async function writeOperationLog(
   afterData: string | undefined,
   responseBody: string | undefined,
   subjects: readonly NormalizedAuditSubjectRef[],
+  subjectTenantId: number | null | undefined,
 ) {
   try {
     const user = c.get('user') as JwtPayload | undefined;
+    if (subjects.length > 0 && subjectTenantId === undefined) throw new Error('Audit subjects require their business tenant');
+    const tenantId = subjectTenantId !== undefined ? subjectTenantId : user ? getEffectiveTenantId(user) : null;
     const ip = getClientIp(c);
     const ua = c.req.header('user-agent') ?? '';
     // 展示列口径：CH 实时解析优先，仅 UA 冻结歧义（Win10）时回退令牌 OS 断言；
@@ -93,39 +97,23 @@ async function writeOperationLog(
       os: osName === 'Unknown' ? null : truncateVarchar(osName, 64),
       browser: browserName === 'Unknown' ? null : truncateVarchar(browserName, 64),
       // 归属租户：租户用户记自身租户；平台超管在租户视角下记该租户，平台视角记 null
-      tenantId: user ? getEffectiveTenantId(user) : null,
+      tenantId,
     };
 
-    // Preserve the existing single insert path when no subjects were attached.
-    // For subject-aware operations request the generated operation id and then
-    // persist all refs in one child insert. The fallback keeps lightweight test
-    // doubles and non-Drizzle adapters compatible with the legacy writer.
-    const insertBuilder = db.insert(operationLogs).values(operationLogValues);
-    if (subjects.length === 0) {
-      await insertBuilder;
-      return;
-    }
-
-    type ReturningBuilder = {
-      returning?: (fields: { id: typeof operationLogs.id }) => Promise<Array<{ id: number }>>;
-    };
-    const returningBuilder = insertBuilder as unknown as ReturningBuilder;
-    if (typeof returningBuilder.returning !== 'function') {
-      await insertBuilder;
-      return;
-    }
-
-    const [operationLog] = await returningBuilder.returning({ id: operationLogs.id });
-    if (!operationLog) return;
-    await db.insert(operationLogSubjects).values(subjects.map((subject) => ({
-      operationLogId: operationLog.id,
-      tenantId: user ? getEffectiveTenantId(user) : null,
-      entityType: subject.type,
-      entityKey: subject.key,
-      role: subject.role,
-    })));
-  } catch {
-    // 日志写入失败不影响主流程
+    await db.transaction(async (tx) => {
+      const [operationLog] = await tx.insert(operationLogs).values(operationLogValues).returning({ id: operationLogs.id });
+      if (!operationLog) throw new Error('Operation audit insert returned no row');
+      if (subjects.length === 0) return;
+      await tx.insert(operationLogSubjects).values(subjects.map((subject) => ({
+        operationLogId: operationLog.id,
+        tenantId,
+        entityType: subject.type,
+        entityKey: subject.key,
+        role: subject.role,
+      })));
+    });
+  } catch (err) {
+    logger.error('[audit] operation and subjects were not persisted', { err, requestId: c.get('requestId'), path: c.req.path });
   }
 }
 
@@ -185,6 +173,7 @@ export function guard(opts: GuardOptions) {
       const beforeData = c.get('auditBeforeData') as string | undefined;
       const manualAfterData = c.get('auditAfterData') as string | undefined;
       const auditSubjects = c.get('auditSubjects') ?? [];
+      const auditTenantId = c.get('auditTenantId');
       const durationMs = Date.now() - start;
       const auditOpts = opts.audit;
       // clone 必须在响应流被消费前同步执行；body 读取与 JSON 解析延后到响应发出之后，
@@ -220,8 +209,8 @@ export function guard(opts: GuardOptions) {
           } catch {
             // 响应体读取失败，忽略
           }
-          await writeOperationLog(c, auditOpts, durationMs, body, beforeData, afterData, responseBodyStr, auditSubjects);
-        })().catch(() => {});
+          await writeOperationLog(c, auditOpts, durationMs, body, beforeData, afterData, responseBodyStr, auditSubjects, auditTenantId);
+        })().catch((err) => logger.error('[audit] operation audit failed', { err, path: c.req.path }));
       });
       return;
     }

@@ -42,7 +42,7 @@ export type EntityRelationItem = z.infer<typeof entityRelationItemSchema>;
 
 export const entityRelationPageSchema = z.object({
   items: z.array(entityRelationItemSchema),
-  nextCursor: z.string().max(512).nullable(),
+  nextCursor: z.string().max(4096).nullable(),
   hasMore: z.boolean(),
   /** 只有在与 items 使用同一可见性谓词时才填写。 */
   total: z.int().nonnegative().optional(),
@@ -58,6 +58,7 @@ export const entityRelationAnchorSchema = z.object({
 export const entityRelationsResponseSchema = z.object({
   anchor: entityRelationAnchorSchema,
   sections: z.array(entityRelationSectionSchema),
+  canManageLinks: z.boolean().default(false),
 }).meta({ id: 'EntityRelationsResponse' });
 export type EntityRelationsResponse = z.infer<typeof entityRelationsResponseSchema>;
 
@@ -71,19 +72,30 @@ export const entityRelationSectionParamsSchema = entityRelationParamsSchema.exte
 });
 
 export const entityRelationsQuerySchema = z.object({
-  cursor: z.string().max(512).optional().meta({ description: '下一页游标' }),
+  cursor: z.string().min(1).max(4096).optional().meta({ description: '下一页游标' }),
   limit: z.coerce.number().int().min(1).max(50).default(5).meta({ description: '单组预览 / 分页条数', example: 5 }),
 });
 
 export const entityRelationsContract = defineContract('/api/platform/entities', {
+  link: op.post('/{type}/{key}/links', {
+    access: { permission: 'system:relation:manage' }, audit: '关联业务对象',
+    params: entityRelationParamsSchema,
+    body: z.object({ target: canonicalEntityRefSchema }),
+    summary: '建立人工对象关联',
+  }),
+  unlink: op.delete('/{type}/{key}/links', {
+    access: { permission: 'system:relation:manage' }, audit: '解除业务对象关联',
+    params: entityRelationParamsSchema,
+    body: z.object({ target: canonicalEntityRefSchema }),
+    summary: '解除人工对象关联',
+  }),
   describe: op.get('/{type}/{key}/relations', {
     access: 'authenticated',
     params: entityRelationParamsSchema,
-    query: entityRelationsQuerySchema,
     response: entityRelationsResponseSchema,
     summary: '获取对象可见的关联分组',
   }),
-  list: op.get('/{type}/{key}/relations/{sectionKey}', {
+  section: op.get('/{type}/{key}/relations/{sectionKey}', {
     access: 'authenticated',
     params: entityRelationSectionParamsSchema,
     query: entityRelationsQuerySchema,
@@ -91,4 +103,3 @@ export const entityRelationsContract = defineContract('/api/platform/entities', 
     summary: '分页获取对象关联分组',
   }),
 }, { tags: ['EntityRelations'] });
-

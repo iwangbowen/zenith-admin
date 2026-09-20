@@ -1,5 +1,5 @@
 import { paymentRiskRuleContract, paymentRiskOpsContract } from '@zenith/shared/payment';
-import type { QueryOutputOf } from '@zenith/shared/core';
+import type { QueryOutputOf, SubjectRef } from '@zenith/shared/core';
 /**
  * 支付风控 Service。
  * 两层裁决：规则中心 payment_risk 决策表（发布即优先接管，输出 block/review/pass）；
@@ -16,7 +16,9 @@ import { db } from '../../db';
 import { buildListResult, listRows } from '../../lib/list-query';
 import { paymentOrders, paymentRiskHits, paymentRiskReviews, paymentRiskRules, type PaymentOrderRow, type PaymentRiskHitRow, type PaymentRiskReviewRow, type PaymentRiskRuleRow } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
-import { currentUser } from '../../lib/context';
+import { currentUser, setAuditSubjects } from '../../lib/context';
+import type { DbTransaction } from '../../db/types';
+import { recordDomainEvent } from '../platform/relations/events.service';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition, inheritedTenantCondition } from '../../lib/tenant';
 import { buildWhere, dateRangeConditions, keywordCondition, nullableEq } from '../../lib/where-helpers';
 import logger from '../../lib/logger';
@@ -328,7 +330,12 @@ function mapRiskHit(row: PaymentRiskHitRow): PaymentRiskHit {
 
 /** 记录一次风控命中（block 无订单号；review 关联挂起订单号）。返回留痕 id。 */
 export async function recordRiskHit(decision: Exclude<RiskDecision, { action: 'pass' }>, input: RiskCheckInput, orderNo?: string): Promise<number> {
-  const [row] = await db
+  return db.transaction((tx) => recordRiskHitWithin(tx, decision, input, orderNo));
+}
+
+async function recordRiskHitWithin(tx: DbTransaction, decision: Exclude<RiskDecision, { action: 'pass' }>, input: RiskCheckInput, orderNo?: string, orderId?: number): Promise<number> {
+  if (input.tenantId === undefined) throw new Error('Risk hit requires its business tenant');
+  const [row] = await tx
     .insert(paymentRiskHits)
     .values({
       ruleId: decision.ruleId,
@@ -347,6 +354,12 @@ export async function recordRiskHit(decision: Exclude<RiskDecision, { action: 'p
       tenantId: input.tenantId ?? null,
     })
     .returning({ id: paymentRiskHits.id });
+  const source = { type: 'payment.risk-hit', key: String(row.id) };
+  const subjects: SubjectRef[] = [{ ...source, role: 'primary' }];
+  if (orderId !== undefined) subjects.push({ type: 'payment.order', key: String(orderId), role: 'related' });
+  setAuditSubjects(subjects, input.tenantId);
+  await recordDomainEvent(tx, { eventType: 'payment.risk.hit', payload: { action: decision.action },
+    subjects, source, tenantId: input.tenantId, dedupeKey: `risk-hit:${row.id}` });
   return row.id;
 }
 
@@ -418,26 +431,39 @@ export async function assertNoPendingRiskReview(input: {
 
 /** review 动作：为已落库的挂起订单创建审核单（订单不调渠道，支付窗口延长至 24h 等待审核） */
 export async function suspendOrderForReview(order: PaymentOrderRow, decision: Exclude<RiskDecision, { action: 'pass' }>, input: RiskCheckInput): Promise<PaymentRiskReviewRow> {
-  const hitId = await recordRiskHit(decision, input, order.orderNo);
-  const [review] = await db
-    .insert(paymentRiskReviews)
-    .values({
-      reviewNo: genPaymentNo('RSK'),
-      hitId,
-      orderNo: order.orderNo,
-      channel: order.channel,
-      bizType: order.bizType,
-      bizId: order.bizId,
-      amount: order.amount,
-      appId: order.appId,
-      currency: order.currency,
-      reason: `${decision.message}；${decision.dimensionValue}`.slice(0, 256),
-      status: 'pending',
-      tenantId: order.tenantId,
-    })
-    .returning();
-  await db.update(paymentOrders).set({ expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000) }).where(eq(paymentOrders.id, order.id));
-  return review;
+  return db.transaction(async (tx) => {
+    const hitId = await recordRiskHitWithin(tx, decision, { ...input, tenantId: order.tenantId }, order.orderNo, order.id);
+    const [review] = await tx
+      .insert(paymentRiskReviews)
+      .values({
+        reviewNo: genPaymentNo('RSK'),
+        hitId,
+        orderNo: order.orderNo,
+        channel: order.channel,
+        bizType: order.bizType,
+        bizId: order.bizId,
+        amount: order.amount,
+        appId: order.appId,
+        currency: order.currency,
+        reason: `${decision.message}；${decision.dimensionValue}`.slice(0, 256),
+        status: 'pending',
+        tenantId: order.tenantId,
+      })
+      .returning();
+    await tx.update(paymentOrders).set({ expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000) }).where(and(eq(paymentOrders.id, order.id), exactTenantCondition(paymentOrders.tenantId, order.tenantId)));
+    await recordRiskReviewEvent(tx, 'payment.risk.review.created', review, order.id);
+    return review;
+  });
+}
+
+async function recordRiskReviewEvent(tx: DbTransaction, eventType: 'payment.risk.review.created' | 'payment.risk.review.decided', row: PaymentRiskReviewRow, orderId?: number): Promise<void> {
+  const source = { type: 'payment.risk-review', key: String(row.id) };
+  const subjects: SubjectRef[] = [{ ...source, role: 'primary' }];
+  if (row.hitId !== null) subjects.push({ type: 'payment.risk-hit', key: String(row.hitId), role: 'related' });
+  if (orderId !== undefined) subjects.push({ type: 'payment.order', key: String(orderId), role: 'related' });
+  setAuditSubjects(subjects, row.tenantId);
+  await recordDomainEvent(tx, { eventType, payload: { reviewNo: row.reviewNo, status: row.status },
+    subjects, source, tenantId: row.tenantId, dedupeKey: `risk-review:${row.id}:${row.status}` });
 }
 
 export async function listRiskReviews(q: QueryOutputOf<typeof paymentRiskOpsContract.reviews>) {
@@ -489,20 +515,27 @@ export async function approveRiskReview(id: number, remark?: string): Promise<Pa
   if (!remark?.trim()) throw new HTTPException(400, { message: '审核意见不能为空' });
   const row = await ensureRiskReview(id);
   if (row.status !== 'pending') throw new HTTPException(400, { message: '该审核单已处理' });
-  const [maybeUpdated] = await db
-    .update(paymentRiskReviews)
-    .set({ status: 'approved', reviewerId: currentUser().userId, reviewedAt: new Date(), reviewRemark: remark.trim() })
-    .where(and(eq(paymentRiskReviews.id, id), eq(paymentRiskReviews.status, 'pending')))
-    .returning();
-  const updated = requireRow(maybeUpdated, '该审核单已被并发处理', 400);
-  await db
-    .update(paymentOrders)
-    .set({ expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000) })
-    .where(and(
-      eq(paymentOrders.orderNo, row.orderNo),
-      exactTenantCondition(paymentOrders.tenantId, row.tenantId),
-      inArray(paymentOrders.status, ['pending', 'paying']),
-    ));
+  const updated = await db.transaction(async (tx) => {
+    const [maybeUpdated] = await tx
+      .update(paymentRiskReviews)
+      .set({ status: 'approved', reviewerId: currentUser().userId, reviewedAt: new Date(), reviewRemark: remark.trim() })
+      .where(and(eq(paymentRiskReviews.id, id), eq(paymentRiskReviews.status, 'pending')))
+      .returning();
+    const updated = requireRow(maybeUpdated, '该审核单已被并发处理', 400);
+    await tx
+      .update(paymentOrders)
+      .set({ expiredAt: new Date(Date.now() + 24 * 60 * 60 * 1000) })
+      .where(and(
+        eq(paymentOrders.orderNo, row.orderNo),
+        exactTenantCondition(paymentOrders.tenantId, row.tenantId),
+        inArray(paymentOrders.status, ['pending', 'paying']),
+      ));
+    const [order] = await tx.select({ id: paymentOrders.id }).from(paymentOrders).where(and(
+      eq(paymentOrders.orderNo, row.orderNo), exactTenantCondition(paymentOrders.tenantId, row.tenantId),
+    )).limit(1);
+    await recordRiskReviewEvent(tx, 'payment.risk.review.decided', updated, order?.id);
+    return updated;
+  });
   return mapRiskReview(updated);
 }
 
@@ -543,6 +576,7 @@ export async function rejectRiskReview(id: number, remark?: string): Promise<Pay
         });
       }
     }
+    await recordRiskReviewEvent(tx, 'payment.risk.review.decided', updated, order?.id);
     return { updated, eventId };
   });
   if (result.eventId != null) {

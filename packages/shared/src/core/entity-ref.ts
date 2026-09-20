@@ -20,7 +20,8 @@ export type EntityType = z.infer<typeof entityTypeSchema>;
 /** 对象主键是不透明字符串，可表达数字 ID、UUID 或复合业务键。 */
 export const entityKeySchema = z.string()
   .min(1)
-  .max(512)
+  .max(128)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._~-]*$/)
   .meta({ id: 'EntityKey', description: '对象主键或复合业务键', example: 'ord_01J8Q7W3' });
 
 export type EntityKey = z.infer<typeof entityKeySchema>;
@@ -53,3 +54,16 @@ export const subjectRefSchema = entityRefSchema.extend({
 
 export type SubjectRef = z.infer<typeof subjectRefSchema>;
 
+export type SubjectRefInput = z.input<typeof subjectRefSchema>;
+export const SUBJECT_REF_LIMIT = 128;
+
+/** Validate and deduplicate structured refs; never silently discard audit subjects. */
+export function normalizeSubjectRefs(refs: readonly SubjectRefInput[]): SubjectRef[] {
+  const unique = new Map<string, SubjectRef>();
+  for (const input of refs) {
+    const ref = subjectRefSchema.parse({ ...input, type: input.type.trim(), key: input.key.trim() });
+    unique.set(JSON.stringify([ref.type, ref.key, ref.role]), ref);
+    if (unique.size > SUBJECT_REF_LIMIT) throw new Error(`Too many subject references (maximum ${SUBJECT_REF_LIMIT})`);
+  }
+  return [...unique.values()];
+}

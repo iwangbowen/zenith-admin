@@ -35,6 +35,8 @@ import { getTaskHandler } from './registry';
 import { ensureTaskTypeConfig, getTaskTypePolicy } from './config';
 import { pushTaskProgress } from './map';
 import { normalizeAuditSubjects } from '../audit-subject';
+import { isCanonicalEntityType } from '@zenith/shared/platform';
+import { recordDomainEvent } from '../../services/platform/relations/events.service';
 
 export interface SubmitAsyncTaskInput {
   taskType: string;
@@ -45,6 +47,8 @@ export interface SubmitAsyncTaskInput {
   idempotencyKey?: string | null;
   /** Structured business objects that caused this task. */
   subjectRefs?: readonly SubjectRef[];
+  /** Internal ownership taken from an already authorized business row. */
+  tenantId?: number | null;
 }
 
 /** 完整提交：业务记录提交后才投递，投递失败由 pending 扫描补投。 */
@@ -60,7 +64,8 @@ export async function persistAsyncTask(
   input: SubmitAsyncTaskInput,
 ): Promise<AsyncTaskRow> {
   const user = currentUser();
-  return persistTaskForPrincipal(executor, input, { userId: user.userId, tenantId: getCreateTenantId(user) });
+  if (input.subjectRefs?.length && input.tenantId === undefined) throw new Error('Task subjects require their business tenant');
+  return persistTaskForPrincipal(executor, input, { userId: user.userId, tenantId: input.tenantId !== undefined ? input.tenantId : getCreateTenantId(user) });
 }
 
 /** Periodic business scanners submit jobs with an explicit tenant and system actor. */
@@ -74,6 +79,8 @@ async function persistTaskForPrincipal(
   executor: DbTransaction, input: SubmitAsyncTaskInput,
   principal: { userId: number | null; tenantId: number | null },
 ): Promise<AsyncTaskRow> {
+  const subjects = normalizeAuditSubjects(input.subjectRefs ?? []);
+  if (subjects.some((subject) => !isCanonicalEntityType(subject.type))) throw new Error('Task has an unregistered subject type');
   const handler = getTaskHandler(input.taskType);
   if (!handler) throw new HTTPException(400, { message: `任务类型 "${input.taskType}" 未注册` });
   const { userId, tenantId } = principal;
@@ -142,7 +149,6 @@ async function persistTaskForPrincipal(
   } else {
     [row] = await executor.insert(asyncTasks).values(values).returning();
   }
-  const subjects = normalizeAuditSubjects(input.subjectRefs ?? []);
   if (subjects.length > 0) {
     await executor.insert(asyncTaskSubjects).values(subjects.map((subject) => ({
       taskId: row.id,
@@ -151,6 +157,16 @@ async function persistTaskForPrincipal(
       entityKey: subject.key,
       role: subject.role,
     })));
+    await recordDomainEvent(executor, {
+      eventType: 'tasks.async-task.created',
+      payload: { taskType: input.taskType },
+      subjects,
+      tenantId,
+      source: { type: 'tasks.async', key: String(row.id) },
+      traceId: currentTraceId(),
+      parentRef: currentParentRef(),
+      dedupeKey: `async-task:${row.id}:created`,
+    });
   }
   return row;
 }

@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type * as z from 'zod';
-import { isPlainObject } from '@zenith/shared/core';
+import { isPlainObject, type SubjectRef } from '@zenith/shared/core';
 import {
   PAYMENT_RECON_ADJUSTMENT_BIZ_TYPE, createPaymentReconAdjustmentSchema, paymentReconAdjustmentSchema,
   reversePaymentReconAdjustmentSchema, submitPaymentReconAdjustmentSchema,
@@ -31,6 +31,13 @@ import { assertIndependentReconApproval, assertReconAdjustmentAmount, reconEvide
 
 const mapAdjustment = (row: PaymentReconAdjustmentRow) => pickEntity(paymentReconAdjustmentSchema, row, { amount: row.amount.toString() });
 const adjustmentWhere = (id: number, tenantId: number | null) => and(eq(paymentReconAdjustments.id, id), exactTenantCondition(paymentReconAdjustments.tenantId, tenantId));
+
+function reconCaseSubjectRefs(record: Pick<PaymentReconCaseRow, 'orderId' | 'refundId'>): SubjectRef[] {
+  return [
+    ...(record.orderId == null ? [] : [{ type: 'payment.order', key: String(record.orderId), role: 'primary' as const }]),
+    ...(record.refundId == null ? [] : [{ type: 'payment.refund', key: String(record.refundId), role: 'related' as const }]),
+  ];
+}
 
 async function requireAdjustment(id: number) {
   const [row] = await db.select().from(paymentReconAdjustments).where(and(eq(paymentReconAdjustments.id, id), tenantCondition(paymentReconAdjustments, currentUser()))).limit(1);
@@ -241,8 +248,12 @@ export async function executeReconAdjustment(id: number) {
     const message = error instanceof HTTPException ? error.message : '调整执行失败，请查看异常日志';
     try {
       await db.transaction(async (tx) => {
+        const [record] = await tx.select({ orderId: paymentReconCases.orderId, refundId: paymentReconCases.refundId })
+          .from(paymentReconCases).where(and(eq(paymentReconCases.id, row.caseId), exactTenantCondition(paymentReconCases.tenantId, row.tenantId))).limit(1);
         await tx.insert(paymentReconCaseEvents).values({ caseId: row.caseId, action: 'adjustment.execution_failed', actorId: currentUser().userId, remark: message, after: { adjustmentId: id }, tenantId: row.tenantId });
-        await notifyWithin(tx, 'payment.recon.adjustment_failed', { tenantId: row.tenantId, recipients: policy.recipients, vars: { adjustmentId: id, caseId: row.caseId, message }, dedupeKey: `recon-adjustment-failed:${id}:${reconEvidenceHash(message).slice(0, 24)}`, link: `/payment/recon?caseId=${row.caseId}` });
+        await notifyWithin(tx, 'payment.recon.adjustment_failed', { tenantId: row.tenantId, recipients: policy.recipients,
+          subjectRefs: record ? reconCaseSubjectRefs(record) : [],
+          vars: { adjustmentId: id, caseId: row.caseId, message }, dedupeKey: `recon-adjustment-failed:${id}:${reconEvidenceHash(message).slice(0, 24)}`, link: `/payment/recon?caseId=${row.caseId}` });
       });
     } catch (notificationError) { logger.error('[payment-recon-adjustment] failed to record execution failure', { adjustmentId: id, notificationError }); }
     throw error;
@@ -282,7 +293,9 @@ async function executeAdjustmentInternal(id: number, policy: Awaited<ReturnType<
     if (row.reversalOfId) await tx.update(paymentReconAdjustments).set({ status: 'reversed' }).where(adjustmentWhere(row.reversalOfId, row.tenantId));
     const [updatedCase] = await tx.update(paymentReconCases).set({ status: row.reversalOfId ? 'open' : 'resolved', resolution: row.reversalOfId ? `调整 #${row.reversalOfId} 已冲正，需重新核对` : `调整 #${row.id} 已经独立审批并过账凭证 #${journalId}`, version: sql`${paymentReconCases.version} + 1` }).where(eq(paymentReconCases.id, record.id)).returning();
     await tx.insert(paymentReconCaseEvents).values({ caseId: row.caseId, action: row.reversalOfId ? 'adjustment.reversed' : 'adjustment.executed', actorId: currentUser().userId, remark: row.reason, before: reconJson(record), after: reconJson({ adjustment: mapAdjustment(updated), case: updatedCase, journalId }), tenantId: row.tenantId });
-    await notifyWithin(tx, 'payment.adjustment.executed', { tenantId: row.tenantId, recipients: policy.recipients, vars: { adjustmentId: row.id, amount, currency: record.currency }, dedupeKey: `recon-adjustment-executed:${row.id}`, link: `/payment/recon?caseId=${row.caseId}` });
+    await notifyWithin(tx, 'payment.adjustment.executed', { tenantId: row.tenantId, recipients: policy.recipients,
+      subjectRefs: reconCaseSubjectRefs(record),
+      vars: { adjustmentId: row.id, amount, currency: record.currency }, dedupeKey: `recon-adjustment-executed:${row.id}`, link: `/payment/recon?caseId=${row.caseId}` });
     return updated;
   });
   return mapAdjustment(result);

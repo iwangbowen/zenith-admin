@@ -94,6 +94,7 @@ export function registerNotificationWorkflowSubscriber(): void {
           recipients: [{ type: 'user', id: task.assigneeId }],
           vars,
           tenantId: event.tenantId,
+        subjectRefs: [{ type: 'workflow.instance', key: String(event.instanceId), role: 'primary' }],
           dedupeKey: `workflow-event:${event.eventId}`,
           link: `/workflow/cc?instanceId=${event.instanceId}`,
         });
@@ -103,6 +104,7 @@ export function registerNotificationWorkflowSubscriber(): void {
         recipients: [{ type: 'user', id: task.assigneeId }],
         vars,
         tenantId: event.tenantId,
+        subjectRefs: [{ type: 'workflow.instance', key: String(event.instanceId), role: 'primary' }],
         dedupeKey: `workflow-event:${event.eventId}`,
         link: pendingLink(event.instanceId, task.id),
         channelPolicy: toChannelPolicy(channels),
@@ -133,6 +135,7 @@ export function registerNotificationWorkflowSubscriber(): void {
           extra: event.comment ? `：${event.comment}` : '',
         },
         tenantId: event.tenantId,
+        subjectRefs: [{ type: 'workflow.instance', key: String(event.instanceId), role: 'primary' }],
         dedupeKey: `workflow-event:${event.eventId}`,
         link: pendingLink(event.instanceId, task.id),
       });
@@ -150,6 +153,7 @@ export function registerNotificationWorkflowSubscriber(): void {
         recipients: [{ type: 'user', id: task.assigneeId }],
         vars: { instanceId: event.instanceId, taskId: task.id, title: label, node: task.nodeName },
         tenantId: event.tenantId,
+        subjectRefs: [{ type: 'workflow.instance', key: String(event.instanceId), role: 'primary' }],
         dedupeKey: `workflow-event:${event.eventId}`,
         link: pendingLink(event.instanceId, task.id),
       });
@@ -184,6 +188,7 @@ export function registerNotificationWorkflowSubscriber(): void {
         recipients: [{ type: 'user', id: inst.initiatorId }],
         vars: { instanceId: event.instanceId, title: label, status: meta.status },
         tenantId: event.tenantId,
+        subjectRefs: [{ type: 'workflow.instance', key: String(event.instanceId), role: 'primary' }],
         dedupeKey: `workflow-event:${event.eventId}`,
         link: instanceLink(event.instanceId),
         channelPolicy: toChannelPolicy(channels),

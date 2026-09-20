@@ -1,60 +1,110 @@
 import { HTTPException } from 'hono/http-exception';
-import { hasPermission } from '../../../lib/context';
-import { canonicalEntityTypeSchema, type CanonicalEntityType, type EntityRelationsResponse, type EntityRelationPage } from '@zenith/shared/platform';
-import type { RelationAccessContext, RelationProvider, VisibleEntityAnchor } from './types';
-import { paymentOrderAuditProvider, paymentOrderRefundsProvider, paymentOrderWorkflowProvider } from './providers/payment-order.provider';
-import { identityRelationProviders } from './providers/identity.provider';
-import { cmsContentRelatedProvider, iotDeviceAlarmsProvider } from './providers/iot-content.provider';
+import { entityRelationPageSchema, entityRelationsResponseSchema, type CanonicalEntityType, type EntityRelationsResponse, type EntityRelationPage } from '@zenith/shared/platform';
+import { isLicenseFeatureKey } from '@zenith/shared/licensing';
+import { hasPermission, runWithCurrentUser } from '../../../lib/context';
+import { isFeatureEnabled } from '../../../lib/licensing';
+import type { EntityAnchorResolver, RelationAccessContext, RelationProvider, VisibleEntityAnchor } from './types';
+import { paymentAnchorResolvers, paymentRelationProviders } from './providers/payment-order.provider';
+import { identityAnchorResolvers, identityRelationProviders } from './providers/identity.provider';
+import { iotContentAnchorResolvers, iotContentRelationProviders } from './providers/iot-content.provider';
+import { workflowFileAnchorResolvers, workflowFileRelationProviders } from './providers/workflow-file.provider';
+import { subjectAnchorResolvers, subjectProviders } from './providers/subjects.provider';
+import { readRelationCursor, signRelationCursor } from './cursor';
+import { assertRelationBudget, isStatementTimeout, withRelationRead } from './runtime';
+import { manualLinksProvider } from './edges.service';
 
-export const relationProviders: readonly RelationProvider[] = [
-  paymentOrderRefundsProvider,
-  paymentOrderWorkflowProvider,
-  paymentOrderAuditProvider,
-  ...identityRelationProviders,
-  iotDeviceAlarmsProvider,
-  cmsContentRelatedProvider,
+/** Each module contributes a manifest; registration validates it once at assembly. */
+export interface EntityRelationManifest {
+  readonly anchors: readonly EntityAnchorResolver[];
+  readonly relations: readonly RelationProvider[];
+}
+export function createEntityRelationRegistry(manifests: readonly EntityRelationManifest[]) {
+  const anchors = new Map<CanonicalEntityType, EntityAnchorResolver>();
+  const relations = new Map<string, RelationProvider>();
+  for (const manifest of manifests) {
+    for (const anchor of manifest.anchors) {
+      if (anchors.has(anchor.type)) throw new Error(`Duplicate entity resolver: ${anchor.type}`);
+      anchors.set(anchor.type, anchor);
+    }
+    for (const relation of manifest.relations) {
+      if (relations.has(relation.key)) throw new Error(`Duplicate relation: ${relation.key}`);
+      if (relation.key !== relation.descriptor.key) throw new Error(`Mismatched relation descriptor: ${relation.key}`);
+      relations.set(relation.key, relation);
+    }
+  }
+  for (const relation of relations.values()) {
+    if (!anchors.has(relation.sourceType)) throw new Error(`Missing anchor resolver: ${relation.sourceType}`);
+    for (const type of relation.descriptor.targetTypes) {
+      if (!anchors.has(type)) throw new Error(`Missing target resolver: ${type}`);
+    }
+  }
+  return { anchors, relations };
+}
+const manifests: EntityRelationManifest[] = [
+  { anchors: paymentAnchorResolvers, relations: paymentRelationProviders },
+  { anchors: identityAnchorResolvers, relations: identityRelationProviders.filter((item) => !item.key.endsWith('.audit')) },
+  { anchors: iotContentAnchorResolvers, relations: iotContentRelationProviders },
+  { anchors: workflowFileAnchorResolvers, relations: workflowFileRelationProviders },
+  { anchors: subjectAnchorResolvers, relations: [] },
 ];
+const supportedTypes = manifests.flatMap((manifest) => manifest.anchors.map((anchor) => anchor.type));
+manifests.push({ anchors: [], relations: supportedTypes.flatMap(subjectProviders) });
+manifests.push({ anchors: [], relations: supportedTypes.map((type) => manualLinksProvider(type, supportedTypes)) });
+export const entityRelationRegistry = createEntityRelationRegistry(manifests);
+export const relationProviders = [...entityRelationRegistry.relations.values()];
 
-function providersFor(type: CanonicalEntityType): RelationProvider[] {
-  return relationProviders.filter((provider) => provider.sourceType === type);
+export async function canUseEntityType(type: CanonicalEntityType): Promise<boolean> {
+  const domain = type.split('.')[0];
+  return !isLicenseFeatureKey(domain) || isFeatureEnabled(domain);
 }
-
 export async function resolveVisibleEntityAnchor(type: CanonicalEntityType, key: string, access: RelationAccessContext): Promise<VisibleEntityAnchor> {
-  const providers = providersFor(type);
-  for (const provider of providers) {
-    const anchor = await provider.resolveAnchor({ type, key }, access);
-    if (anchor) return anchor;
+  assertRelationBudget(access);
+  const resolver = entityRelationRegistry.anchors.get(type);
+  if (!resolver || !(await canUseEntityType(type))) throw new HTTPException(404, { message: '对象不存在或无权查看' });
+  const anchor = await runWithCurrentUser(access.user, () => resolver.resolve({ type, key }, access));
+  if (!anchor) throw new HTTPException(404, { message: '对象不存在或无权查看' });
+  return { ...anchor, title: anchor.title.slice(0, 160) };
+}
+export async function canDiscover(provider: RelationProvider): Promise<boolean> {
+  if (provider.permissions !== 'authenticated' && !(await hasPermission(...provider.permissions))) return false;
+  for (const permission of provider.allPermissions ?? []) if (!(await hasPermission(permission))) return false;
+  if (!provider.key.endsWith('.links')) {
+    for (const type of provider.descriptor.targetTypes) if (!(await canUseEntityType(type))) return false;
   }
-  throw new HTTPException(404, { message: '对象不存在或无权查看' });
+  return true;
 }
-
-async function canDiscover(provider: RelationProvider): Promise<boolean> {
-  if (provider.permissions === 'authenticated') return true;
-  return hasPermission(...provider.permissions);
+export function relationCursorScope(anchor: VisibleEntityAnchor, operation: string, access: RelationAccessContext): string {
+  return JSON.stringify([anchor.ref.type, anchor.ref.key, anchor.tenantId, operation, access.user.userId, access.user.tenantId,
+    access.user.viewingTenantId, access.user.impersonation]);
 }
-
-export async function describeEntityRelations(
-  input: { readonly type: CanonicalEntityType; readonly key: string },
-  access: RelationAccessContext,
-): Promise<EntityRelationsResponse> {
-  const anchor = await resolveVisibleEntityAnchor(input.type, input.key, access);
-  const sections = [];
-  for (const provider of providersFor(input.type)) {
-    if (await canDiscover(provider)) sections.push(provider.descriptor);
+export async function describeEntityRelations(input: { type: CanonicalEntityType; key: string }, caller: Pick<RelationAccessContext, 'user'>): Promise<EntityRelationsResponse> {
+  return withRelationRead('describe', caller, async (access) => {
+    const anchor = await resolveVisibleEntityAnchor(input.type, input.key, access);
+    const sections = [];
+    for (const provider of relationProviders) if (provider.sourceType === input.type && await canDiscover(provider)) sections.push(provider.descriptor);
+    return entityRelationsResponseSchema.parse({ anchor: { ref: anchor.ref, title: anchor.title }, sections, canManageLinks: await hasPermission('system:relation:manage') });
+  }).catch((error: unknown) => {
+    if (isStatementTimeout(error)) throw new HTTPException(503, { message: '对象查询超时，请稍后重试' });
+    throw error;
+  });
+}
+export async function listEntityRelation(input: { type: CanonicalEntityType; key: string; sectionKey: string; cursor?: string; limit: number }, caller: Pick<RelationAccessContext, 'user'>): Promise<EntityRelationPage> {
+  let authorized = false;
+  try {
+    return await withRelationRead('section', caller, async (access) => {
+      const anchor = await resolveVisibleEntityAnchor(input.type, input.key, access);
+      const provider = entityRelationRegistry.relations.get(input.sectionKey);
+      if (!provider || provider.sourceType !== anchor.ref.type || !(await canDiscover(provider))) throw new HTTPException(404, { message: '关联分组不存在或无权查看' });
+      const scope = relationCursorScope(anchor, provider.key, access);
+      const cursor = readRelationCursor(input.cursor, scope);
+      authorized = true;
+      const result = await provider.list(anchor, { cursor, limit: input.limit, access });
+      return entityRelationPageSchema.parse({ ...result, items: result.items.map((item) => ({ ...item, title: item.title.slice(0, 160), subtitle: item.subtitle?.slice(0, 240), description: item.description?.slice(0, 500) })),
+        nextCursor: result.nextCursor ? signRelationCursor(result.nextCursor, scope) : null });
+    });
+  } catch (error) {
+    if (authorized && isStatementTimeout(error)) return { items: [], nextCursor: null, hasMore: false, degraded: 'timeout' };
+    if (isStatementTimeout(error)) throw new HTTPException(503, { message: '对象查询超时，请稍后重试' });
+    throw error;
   }
-  return { anchor: { ref: anchor.ref, title: anchor.title }, sections };
-}
-
-export async function listEntityRelation(
-  input: { readonly type: CanonicalEntityType; readonly key: string; readonly sectionKey: string; readonly cursor?: string; readonly limit: number },
-  access: RelationAccessContext,
-): Promise<EntityRelationPage> {
-  const anchor = await resolveVisibleEntityAnchor(input.type, input.key, access);
-  const provider = providersFor(input.type).find((candidate) => candidate.key === input.sectionKey);
-  if (!provider || !(await canDiscover(provider))) throw new HTTPException(404, { message: '关联分组不存在或无权查看' });
-  return provider.list(anchor, { cursor: input.cursor, limit: input.limit, access });
-}
-
-export function isCanonicalRelationType(value: string): value is CanonicalEntityType {
-  return canonicalEntityTypeSchema.safeParse(value).success;
 }

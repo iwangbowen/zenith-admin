@@ -18,7 +18,7 @@ import { isNotificationEventKey, getNotificationEvent } from '@zenith/shared/mes
 import { db } from '../../db';
 import { notificationOutbox, notificationOutboxSubjects } from '../../db/schema';
 import type { NotificationOutboxRow } from '../../db/schema';
-import type { DbExecutor } from '../../db/types';
+import type { DbExecutor, DbTransaction } from '../../db/types';
 import { mapWithConcurrency } from '../../lib/concurrency';
 import { currentTraceId, currentParentRef } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
@@ -29,6 +29,8 @@ import logger from '../../lib/logger';
 import { renderTemplate } from '../../lib/sms-sender';
 import { buildWhere } from '../../lib/where-helpers';
 import { normalizeAuditSubjects } from '../../lib/audit-subject';
+import { isCanonicalEntityType } from '@zenith/shared/platform';
+import { recordDomainEvent } from '../platform/relations/events.service';
 
 const MAX_ATTEMPTS = 5;
 /**
@@ -91,11 +93,22 @@ export async function notifyWithin<K extends NotificationEventKey>(
   eventKey: K,
   input: NotifyInput<K>,
 ): Promise<number | null> {
+  // A savepoint also protects callers that intentionally catch notification failures.
+  return executor.transaction((tx) => persistNotification(tx, eventKey, input));
+}
+
+async function persistNotification<K extends NotificationEventKey>(
+  executor: DbTransaction,
+  eventKey: K,
+  input: NotifyInput<K>,
+): Promise<number | null> {
   if (input.recipients.length === 0) return null;
   if (!isNotificationEventKey(eventKey)) {
     throw new Error(`未注册的通知事件：${String(eventKey)}`);
   }
   const subjects = normalizeAuditSubjects(input.subjectRefs ?? []);
+  if (subjects.some((subject) => !isCanonicalEntityType(subject.type))) throw new Error('Notification has an unregistered subject type');
+  if (subjects.length > 0 && input.tenantId === undefined) throw new Error('Notification subjects require their business tenant');
   const [row] = await executor.insert(notificationOutbox)
     .values(buildValues(eventKey, input))
     // 幂等键是部分唯一索引（仅 dedupe_key 非空时生效），
@@ -114,6 +127,16 @@ export async function notifyWithin<K extends NotificationEventKey>(
       entityKey: subject.key,
       role: subject.role,
     })));
+    await recordDomainEvent(executor, {
+      eventType: 'messaging.notification.queued',
+      payload: { eventKey },
+      subjects,
+      tenantId: input.tenantId ?? null,
+      source: { type: 'notification.outbox', key: String(row.id) },
+      traceId: currentTraceId(),
+      parentRef: currentParentRef(),
+      dedupeKey: `notification-outbox:${row.id}`,
+    });
   }
   return row.id;
 }
@@ -128,7 +151,7 @@ export async function notify<K extends NotificationEventKey>(
   eventKey: K,
   input: NotifyInput<K>,
 ): Promise<number | null> {
-  const id = await notifyWithin(db, eventKey, input);
+  const id = await db.transaction((tx) => persistNotification(tx, eventKey, input));
   if (id === null) return null;
   // 定时投递的事件交给 cron 在到点后取走，这里不抢跑
   if (!input.scheduledAt) flushNotification(id);

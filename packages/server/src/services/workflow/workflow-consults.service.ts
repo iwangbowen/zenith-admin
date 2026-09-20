@@ -83,6 +83,10 @@ export async function createConsult(taskId: number, input: CreateWorkflowConsult
         question: input.question ? `：${input.question}` : '',
       },
       tenantId: inst.tenantId,
+      subjectRefs: [
+        { type: 'workflow.instance', key: String(task.instanceId), role: 'primary' },
+        { type: 'workflow.task', key: String(task.id), role: 'related' },
+      ],
       link: '/workflow/pending',
     });
   } catch (err) {
@@ -122,7 +126,11 @@ export async function replyConsult(consultId: number, input: ReplyWorkflowConsul
         replier: user.username,
         summary: input.opinion.slice(0, 80),
       },
-      tenantId: inst?.tenantId ?? null,
+      tenantId: row.tenantId,
+      subjectRefs: [
+        { type: 'workflow.instance', key: String(row.instanceId), role: 'primary' },
+        { type: 'workflow.task', key: String(row.taskId), role: 'related' },
+      ],
       link: `/workflow/pending?instanceId=${row.instanceId}&taskId=${row.taskId}`,
     });
   } catch (err) {

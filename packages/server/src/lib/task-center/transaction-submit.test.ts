@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../db', () => ({ db: { select: mocks.select, transaction: mocks.transaction } }));
 vi.mock('../context', () => ({
   currentUser: () => ({ userId: 7, username: 'editor', roles: [], tenantId: null }),
+  currentUserOrNull: () => ({ userId: 7, username: 'editor', roles: [], tenantId: null }),
   currentTraceId: () => undefined, currentParentRef: () => undefined,
 }));
 vi.mock('../pg-boss-scheduler', () => ({
@@ -79,6 +80,16 @@ describe('task-center transaction ownership and policy snapshots', () => {
     expect(mocks.select).not.toHaveBeenCalled();
     expect(mocks.send).not.toHaveBeenCalled();
     expect(mocks.push).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed subjects before task admission or persistence', async () => {
+    const f = fixture();
+    await expect(persistAsyncTask(f.tx, {
+      taskType: 'cms-publish-build', tenantId: 7,
+      subjectRefs: [{ type: 'unknown.type', key: '1', role: 'primary' }],
+    })).rejects.toThrow('unregistered subject type');
+    expect(f.events).toEqual([]);
+    expect(f.insert).not.toHaveBeenCalled();
   });
 
   it('propagates policy read failures before any insert', async () => {

@@ -9,10 +9,12 @@
 import { and, eq, isNull, lt, or } from 'drizzle-orm';
 import { db } from '../../db';
 import { paymentEvents, type PaymentEventRow } from '../../db/schema';
-import type { DbExecutor } from '../../db/types';
+import type { DbTransaction } from '../../db/types';
 import { paymentEventBus, type PaymentEvent, type PaymentEventType } from '../../lib/payment-event-bus';
 import logger from '../../lib/logger';
 import { formatDateTime } from '../../lib/datetime';
+import { currentTraceId, currentParentRef } from '../../lib/context';
+import { recordDomainEvent } from '../platform/relations/events.service';
 
 const MAX_ATTEMPTS = 5;
 const CLAIM_TIMEOUT_MS = 5 * 60_000;
@@ -21,11 +23,13 @@ export interface OutboxEventInput {
   type: PaymentEventType;
   orderNo: string;
   payload: Omit<PaymentEvent, 'eventId' | 'occurredAt'>;
-  tenantId?: number | null;
+  tenantId: number | null;
 }
 
 /** 在事务内插入 outbox 事件（与订单/退款状态更新同事务，保证原子持久化）。返回事件 id。 */
-export async function recordEvent(tx: DbExecutor, input: OutboxEventInput): Promise<number> {
+export async function recordEvent(tx: DbTransaction, input: OutboxEventInput): Promise<number> {
+  if (!input.payload.subjectRefs?.length) throw new Error('Payment event requires explicit business subjects');
+  if (input.tenantId === undefined || input.payload.tenantId !== input.tenantId) throw new Error('Payment event tenant must match its order');
   const [row] = await tx
     .insert(paymentEvents)
     .values({
@@ -36,6 +40,16 @@ export async function recordEvent(tx: DbExecutor, input: OutboxEventInput): Prom
       tenantId: input.tenantId ?? null,
     })
     .returning({ id: paymentEvents.id });
+  await recordDomainEvent(tx, {
+    eventType: input.type,
+    payload: input.payload,
+    subjects: input.payload.subjectRefs,
+    tenantId: input.tenantId,
+    source: input.payload.subjectRefs.find((subject) => subject.role === 'primary') ?? input.payload.subjectRefs[0],
+    traceId: currentTraceId(),
+    parentRef: currentParentRef(),
+    dedupeKey: `payment-outbox:${row.id}`,
+  });
   return row.id;
 }
 

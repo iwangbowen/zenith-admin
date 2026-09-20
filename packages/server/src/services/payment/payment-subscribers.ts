@@ -59,7 +59,8 @@ export function registerPaymentSubscribers(): void {
     const userId = e.userId;
     const refundNo = e.refundNo;
     if (!refundNo) return;
-    await completeDisputeRefund(refundNo);
+    if (e.tenantId === undefined) throw new Error('Refund event is missing its business tenant');
+    await completeDisputeRefund(refundNo, e.tenantId);
     if (!userId) return;
     const refundAmount = e.refundAmount ?? 0;
     setImmediate(() => {
@@ -72,7 +73,8 @@ export function registerPaymentSubscribers(): void {
     const userId = e.userId;
     const refundNo = e.refundNo;
     if (!refundNo) return;
-    await recordDisputeRefundFailure(refundNo);
+    if (e.tenantId === undefined) throw new Error('Refund event is missing its business tenant');
+    await recordDisputeRefundFailure(refundNo, e.tenantId);
     if (!userId) return;
     const refundAmount = e.refundAmount ?? 0;
     setImmediate(() => {

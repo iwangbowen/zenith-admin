@@ -15,9 +15,13 @@ import type { WorkflowEvent, WorkflowEventType, WorkflowInstanceEventPayload, Wo
 import logger from './logger';
 import { captureException } from './error-tracking/reporter';
 import { formatDateTime } from './datetime';
-import { enqueueJob } from './workflow-jobs/engine';
+import { enqueueJob, scheduleJobPickup } from './workflow-jobs/engine';
 import { currentTraceId } from './context';
-import type { DbExecutor } from '../db/types';
+import type { DbExecutor, DbTransaction } from '../db/types';
+import { db } from '../db';
+import { recordDomainEvent } from '../services/platform/relations/events.service';
+import { getDomainEventDefinition, type DomainEventType } from '@zenith/shared/platform';
+import type { SubjectRef } from '@zenith/shared/core';
 import { currentWorkflowJobContext, deferWorkflowJobEffect } from './workflow-jobs/execution-context';
 
 type EventHandler<E extends WorkflowEvent = WorkflowEvent> = (event: E) => void | Promise<void>;
@@ -82,6 +86,48 @@ class WorkflowEventBus {
     return this.normalize(event);
   }
 
+  /** Persist the dispatch job and safe timeline fact atomically, including worker-originated events. */
+  private async persist(full: WorkflowEvent, executor: DbExecutor = db): Promise<void> {
+    if (full.tenantId === undefined) throw new Error('Workflow event requires its business tenant');
+    const write = async (tx: DbTransaction) => {
+      const job = await enqueueJob({
+        jobType: 'event_dispatch',
+        instanceId: full.instanceId ?? null,
+        taskId: 'task' in full ? full.task.id : null,
+        payload: { event: full },
+        tenantId: full.tenantId ?? null,
+        maxAttempts: 3,
+        idempotencyKey: `event:${full.eventId}`,
+        traceId: currentTraceId() ?? full.eventId,
+      }, tx);
+      const eventType = 'task' in full ? 'workflow.task.changed' : `workflow.${full.type}`;
+      if (!getDomainEventDefinition(eventType)) return job;
+      const source = { type: 'workflow.instance', key: String(full.instanceId) };
+      const subjects: SubjectRef[] = [{ ...source, role: 'primary' }];
+      if ('task' in full) subjects.push({ type: 'workflow.task', key: String(full.task.id), role: 'related' });
+      await recordDomainEvent(tx, {
+        eventType: eventType as DomainEventType,
+        payload: 'task' in full ? { action: full.type, status: full.task.status } : {
+          instanceId: full.instanceId, status: 'instance' in full ? full.instance.status : '',
+        },
+        subjects,
+        tenantId: full.tenantId ?? null,
+        source,
+        actor: full.actor ? { type: 'identity.user', key: String(full.actor.userId) } : undefined,
+        traceId: currentTraceId() ?? full.eventId,
+        dedupeKey: `workflow:${full.eventId}`,
+      });
+      return job;
+    };
+    if (executor === db) {
+      const job = await db.transaction(write);
+      if (job) scheduleJobPickup(job.id, job.runAt);
+    } else {
+      // Preserve the caller's transaction identity so post-commit job publication stays attached to it.
+      await write(executor as DbTransaction);
+    }
+  }
+
   /**
    * 派发到进程内订阅者（ws / 通知 / 会话 / 自动化 / 业务桥接 / 节点监听）。
    * best-effort：单个 handler 抛错只记录、不影响其它 handler，也不抛出
@@ -114,24 +160,14 @@ class WorkflowEventBus {
     executor?: DbExecutor,
   ): WorkflowEvent {
     const full = this.normalize(event);
-    const input = {
-      jobType: 'event_dispatch',
-      instanceId: 'instanceId' in full ? full.instanceId ?? null : null,
-      taskId: 'task' in full ? full.task.id : null,
-      payload: { event: full },
-      tenantId: full.tenantId ?? null,
-      maxAttempts: 3,
-      idempotencyKey: `event:${full.eventId}`,
-      traceId: currentTraceId() ?? full.eventId,
-    } as const;
     const context = currentWorkflowJobContext();
     if (!executor && context) {
       const deferred = import('./workflow-jobs/lease')
-        .then(({ workflowTransaction }) => workflowTransaction((tx) => enqueueJob(input, tx)));
+        .then(({ workflowTransaction }) => workflowTransaction((tx) => this.persist(full, tx)));
       deferWorkflowJobEffect(context, deferred);
       return full;
     }
-    const enqueue = enqueueJob(input, executor);
+    const enqueue = this.persist(full, executor);
     // 事务内入队需等待，确保与状态变更原子提交；非事务则 best-effort
     if (executor) {
       // 调用方应 await emitInTx；此处返回 promise 供其等待
@@ -148,16 +184,7 @@ class WorkflowEventBus {
     executor: DbExecutor,
   ): Promise<WorkflowEvent> {
     const full = this.normalize(event);
-    await enqueueJob({
-      jobType: 'event_dispatch',
-      instanceId: 'instanceId' in full ? full.instanceId ?? null : null,
-      taskId: 'task' in full ? full.task.id : null,
-      payload: { event: full },
-      tenantId: full.tenantId ?? null,
-      maxAttempts: 3,
-      idempotencyKey: `event:${full.eventId}`,
-      traceId: currentTraceId() ?? full.eventId,
-    }, executor);
+    await this.persist(full, executor);
     return full;
   }
 }

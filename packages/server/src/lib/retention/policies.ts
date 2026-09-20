@@ -60,6 +60,15 @@ export const RETENTION_POLICIES: readonly RetentionPolicyDefinition[] = [
     description: '后台写操作的审计留痕，含变更前后快照与响应体，单行体积较大。',
   },
   {
+    key: 'domain_events',
+    title: '对象领域事件',
+    module: '系统管理',
+    tableName: 'domain_events',
+    timeColumn: 'occurred_at',
+    defaultDays: 365,
+    description: '跨对象时间线的结构化业务事件；主体引用随事件级联清理。',
+  },
+  {
     key: 'login_logs',
     title: '登录日志',
     module: '系统管理',

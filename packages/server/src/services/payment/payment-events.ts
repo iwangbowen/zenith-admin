@@ -8,7 +8,7 @@ import type { PaymentEvent, PaymentEventType } from '../../lib/payment-event-bus
 export function buildPaymentEventPayload(
   type: PaymentEventType,
   order: PaymentOrderRow,
-  extra?: { refundNo?: string; refundAmount?: number },
+  extra?: { refundId?: number; refundNo?: string; refundAmount?: number },
 ): Omit<PaymentEvent, 'eventId' | 'occurredAt'> {
   return {
     type,
@@ -25,6 +25,10 @@ export function buildPaymentEventPayload(
     originalAmount: order.originalAmount ?? null,
     userId: order.userId,
     tenantId: order.tenantId,
+    subjectRefs: [
+      { type: 'payment.order', key: String(order.id), role: extra?.refundId === undefined ? 'primary' : 'related' },
+      ...(extra?.refundId === undefined ? [] : [{ type: 'payment.refund', key: String(extra.refundId), role: 'primary' as const }]),
+    ],
     refundNo: extra?.refundNo,
     refundAmount: extra?.refundAmount,
   };

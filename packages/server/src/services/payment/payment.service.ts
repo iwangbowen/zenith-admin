@@ -15,7 +15,7 @@ import { listRows } from '../../lib/list-query';
 import { paymentChannelConfigs, paymentApps, paymentNotifyLogs, paymentOrders, paymentRefunds, paymentSharingOrders, users, type PaymentChannelConfigRow, type PaymentNotifyLogRow, type PaymentOrderRow, type PaymentRefundRow } from '../../db/schema';
 import { config } from '../../config';
 import { requireRow } from '../../lib/db-assert';
-import { currentUser, currentUserOrNull } from '../../lib/context';
+import { currentUser, currentUserOrNull, setAuditSubjects } from '../../lib/context';
 import { requireTenantScopeId, tenantCondition, exactTenantCondition } from '../../lib/tenant';
 import { getDataScopeCondition } from '../../lib/data-scope';
 import { buildWhere, dateRangeConditions, keywordCondition, nullableEq } from '../../lib/where-helpers';
@@ -34,7 +34,7 @@ import { assertNoPendingRiskReview, evaluateRisk, recordRiskHit, suspendOrderFor
 import { lockCouponForPayment, releaseCouponForPayment, type CouponLockResult } from './payment-coupon.service';
 import { resolveApplicationChannelConfig } from './payment-apps.service';
 import { assertPaymentEngineConfig, resolvePaymentChannelConfig } from './payment-channel-config-resolver';
-import type { DbExecutor } from '../../db/types';
+import type { DbExecutor, DbTransaction } from '../../db/types';
 import { assertEffectivePaymentOperation } from './payment-capability-evaluator';
 import { pickEntity } from '../../lib/entity-map';
 
@@ -228,7 +228,7 @@ async function markRefundFailed(order: PaymentOrderRow, refund: Pick<PaymentRefu
       type: 'refund.failed',
       orderNo: order.orderNo,
       tenantId: order.tenantId,
-      payload: buildPaymentEventPayload('refund.failed', order, { refundNo: refund.refundNo, refundAmount: refund.refundAmount }),
+      payload: buildPaymentEventPayload('refund.failed', order, { refundId: refund.id, refundNo: refund.refundNo, refundAmount: refund.refundAmount }),
     });
   });
   enqueuePaymentEvent(eventId);
@@ -344,6 +344,7 @@ async function markOrderUnknown(order: PaymentOrderRow, error: unknown): Promise
 async function reuseActiveBizOrder(input: InternalCreatePaymentInput, scope: PaymentOrderScope): Promise<{ orderNo: string; payParams: CreatePaymentResult } | null> {
   let existing = await findActiveBizOrder(input, scope);
   if (!existing) return null;
+  setAuditSubjects([{ type: 'payment.order', key: String(existing.id), role: 'primary' }], existing.tenantId);
 
   if (existing.status === 'unknown') {
     existing = await syncOrderStatus(existing);
@@ -566,6 +567,8 @@ export async function createPayment(input: InternalCreatePaymentInput): Promise<
     }
     throw err;
   }
+
+  setAuditSubjects([{ type: 'payment.order', key: String(orderRow.id), role: 'primary' }], orderRow.tenantId);
 
   // ── review 动作：订单落库后挂起（不调渠道），生成人工审核单等待处理 ─────────────
   if (riskDecision.action === 'review') {
@@ -826,7 +829,7 @@ async function settleRefundSuccess(
     if (claimed.length === 0) return null; // 已被并发处理，幂等跳过
 
     await recomputeOrderRefundState(tx, order.id);
-    return recordEvent(tx, { type: 'refund.succeeded', orderNo: order.orderNo, tenantId: order.tenantId, payload: buildPaymentEventPayload('refund.succeeded', order, { refundNo: refund.refundNo, refundAmount: refund.refundAmount }) });
+    return recordEvent(tx, { type: 'refund.succeeded', orderNo: order.orderNo, tenantId: order.tenantId, payload: buildPaymentEventPayload('refund.succeeded', order, { refundId: refund.id, refundNo: refund.refundNo, refundAmount: refund.refundAmount }) });
   });
   if (eventId == null) return false;
   enqueuePaymentEvent(eventId);
@@ -911,8 +914,14 @@ async function findIdempotentRefund(order: PaymentOrderRow, idempotencyKey: stri
   return row ?? null;
 }
 
-export async function refund(input: CreateRefundInput & { idempotencyKey: string; operatorId?: number }): Promise<{ refundNo: string; status: string }> {
+export async function refund(input: CreateRefundInput & {
+  idempotencyKey: string;
+  operatorId?: number;
+  /** Internal domain linkage, committed with the refund before calling the payment provider. */
+  onPersisted?: (tx: DbTransaction, row: PaymentRefundRow) => Promise<void>;
+}): Promise<{ refundNo: string; status: string }> {
   const order = await getOrderRowByNo(input.orderNo);
+  setAuditSubjects([{ type: 'payment.order', key: String(order.id), role: 'primary' }], order.tenantId);
   if (order.status !== 'success' && order.status !== 'refunding') {
     throw new HTTPException(400, { message: '订单未支付成功，无法退款' });
   }
@@ -935,9 +944,11 @@ export async function refund(input: CreateRefundInput & { idempotencyKey: string
   const requestHash = hashRefundRequest(input);
   const existingIdempotent = await findIdempotentRefund(order, idempotencyKey);
   if (existingIdempotent) {
+    auditRefundSubjects(existingIdempotent);
     if (existingIdempotent.requestHash !== requestHash) {
       throw new HTTPException(409, { message: '同一 Idempotency-Key 不可用于不同退款请求' });
     }
+    if (input.onPersisted) await db.transaction((tx) => input.onPersisted!(tx, existingIdempotent));
     return { refundNo: existingIdempotent.refundNo, status: existingIdempotent.status };
   }
 
@@ -970,6 +981,7 @@ export async function refund(input: CreateRefundInput & { idempotencyKey: string
       if (raced.requestHash !== requestHash) {
         throw new HTTPException(409, { message: '同一 Idempotency-Key 不可用于不同退款请求' });
       }
+      await input.onPersisted?.(tx, raced);
       return { row: raced, reused: true };
     }
     const existing = await tx
@@ -1004,14 +1016,23 @@ export async function refund(input: CreateRefundInput & { idempotencyKey: string
       .returning();
     // 退款申请一经落库即占用可退额度，订单状态统一由全部退款操作重算。
     await recomputeOrderRefundState(tx, order.id);
+    await input.onPersisted?.(tx, row);
     return { row, reused: false };
   });
 
   const refundRow = refundResult.row;
+  auditRefundSubjects(refundRow);
   if (refundResult.reused) return { refundNo: refundRow.refundNo, status: refundRow.status };
 
   if (needApproval) return { refundNo, status: 'pending' };
   return executeChannelRefund(order, refundRow, config);
+}
+
+function auditRefundSubjects(row: Pick<PaymentRefundRow, 'id' | 'orderId' | 'tenantId'>): void {
+  setAuditSubjects([
+    { type: 'payment.refund', key: String(row.id), role: 'primary' },
+    { type: 'payment.order', key: String(row.orderId), role: 'related' },
+  ], row.tenantId);
 }
 
 /** 审批 / 驳回共用的前置：租户可见的待审批退款单 + 原订单 */
@@ -1020,6 +1041,7 @@ async function loadPendingRefundForApproval(id: number) {
   const [refundRow] = await db.select().from(paymentRefunds)
     .where(buildWhere(eq(paymentRefunds.id, id), tenantCondition(paymentRefunds, user))).limit(1);
   requireRow(refundRow, '退款记录不存在');
+  auditRefundSubjects(refundRow);
   if (refundRow.approvalStatus !== 'pending') throw new HTTPException(400, { message: '该退款单无需审批或已处理' });
   const [order] = await db.select().from(paymentOrders).where(eq(paymentOrders.orderNo, refundRow.orderNo)).limit(1);
   requireRow(order, '原支付订单不存在');
@@ -1067,7 +1089,7 @@ export async function rejectRefund(id: number, remark: string): Promise<void> {
       type: 'refund.failed',
       orderNo: order.orderNo,
       tenantId: order.tenantId,
-      payload: buildPaymentEventPayload('refund.failed', order, { refundNo: refundRow.refundNo, refundAmount: refundRow.refundAmount }),
+      payload: buildPaymentEventPayload('refund.failed', order, { refundId: refundRow.id, refundNo: refundRow.refundNo, refundAmount: refundRow.refundAmount }),
     });
   });
   enqueuePaymentEvent(eventId);
@@ -1303,12 +1325,14 @@ export async function getOrderDetailByNo(orderNo: string): Promise<PaymentOrder>
 export async function refreshOrderById(id: number): Promise<PaymentOrder> {
   const [row] = await db.select().from(paymentOrders).where(await buildOrderIdWhere(id)).limit(1);
   requireRow(row, '支付订单不存在');
+  setAuditSubjects([{ type: 'payment.order', key: String(row.id), role: 'primary' }], row.tenantId);
   return mapOrder(await syncOrderStatus(row));
 }
 
 export async function closeOrderById(id: number): Promise<void> {
-  const [row] = await db.select({ orderNo: paymentOrders.orderNo }).from(paymentOrders).where(await buildOrderIdWhere(id)).limit(1);
+  const [row] = await db.select({ id: paymentOrders.id, orderNo: paymentOrders.orderNo, tenantId: paymentOrders.tenantId }).from(paymentOrders).where(await buildOrderIdWhere(id)).limit(1);
   requireRow(row, '支付订单不存在');
+  setAuditSubjects([{ type: 'payment.order', key: String(row.id), role: 'primary' }], row.tenantId);
   await closePayment(row.orderNo);
 }
 
@@ -1357,14 +1381,6 @@ export async function getRefundDetail(id: number): Promise<PaymentRefund> {
   return mapRefund(row);
 }
 
-/** 供审计主体和关联视图按稳定业务编号解析退款单。 */
-export async function getRefundDetailByNo(refundNo: string): Promise<PaymentRefund> {
-  const tc = tenantCondition(paymentRefunds, currentUser());
-  const [row] = await db.select().from(paymentRefunds).where(and(eq(paymentRefunds.refundNo, refundNo), tc)).limit(1);
-  requireRow(row, '退款记录不存在');
-  return mapRefund(row);
-}
-
 /** 已持久化退款单的查单收敛入口，供人工查询与后台 unknown 扫描复用。 */
 export async function syncRefundStatus(
   refundRow: PaymentRefundRow,
@@ -1406,6 +1422,7 @@ export async function refreshRefundById(id: number): Promise<PaymentRefund> {
   const tc = tenantCondition(paymentRefunds, currentUser());
   const [refundRow] = await db.select().from(paymentRefunds).where(and(eq(paymentRefunds.id, id), tc)).limit(1);
   requireRow(refundRow, '退款记录不存在');
+  auditRefundSubjects(refundRow);
   if (refundRow.status === 'success' || refundRow.status === 'failed') return mapRefund(refundRow);
 
   const exactTenant = exactTenantCondition(paymentOrders.tenantId, refundRow.tenantId);

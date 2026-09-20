@@ -15,7 +15,7 @@ export interface DataScopeOptions {
   /**
    * 目标业务表中标识数据归属人的列（如 orders.createdBy 或 users.id）。
    * self 权限生效时用于过滤。
-   * 若不传，则对 self 权限不做过滤（不推荐）。
+   * 受限数据范围无法构造条件时抛错，禁止省略条件后放行。
    */
   ownerColumn?: AnyColumn;
 }
@@ -119,8 +119,7 @@ export async function getDataScopeCondition(options: DataScopeOptions): Promise<
     return eq(ownerColumn, currentUserId);
   }
 
-  // ownerColumn 未传且无部门：返回 undefined（不过滤，降级为全量，需调用方自行决策）
-  return undefined;
+  throw new Error('Restricted data scope requires an owner column');
 }
 
 /**

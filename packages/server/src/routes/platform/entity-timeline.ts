@@ -7,7 +7,7 @@ import { listEntityTimeline } from '../../services/platform/relations/timeline';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
-const listRoute = defineContractRoute(entityTimelineContract.list, {
+const listRoute = defineContractRoute(entityTimelineContract.timeline, {
   handler: async (c) => {
     const params = c.req.valid('param');
     const query = c.req.valid('query');
