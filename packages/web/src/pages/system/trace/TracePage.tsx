@@ -14,9 +14,9 @@ import { usePermission } from '@/hooks/usePermission';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useRecentTraceFailures, useTraceTimeline } from '@/hooks/queries/trace';
 import { useLogFiles, useLogFileContent } from '@/hooks/queries/log-files';
-import { renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { FilterSelect } from '@/components/search-filters';
-import { SearchButton } from '@/components/toolbar-controls';
+import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 
 const { Text, Paragraph } = Typography;
 
@@ -100,7 +100,7 @@ function RecentFailuresPanel({ onView }: { onView: (traceId: string) => void }) 
     },
     { title: '标题', dataIndex: 'title', width: 240, render: (v: string) => renderEllipsis(v) },
     { title: '失败原因', dataIndex: 'error', minWidth: 320, render: (v: string) => renderEllipsis(v) },
-    { title: '发生时间', dataIndex: 'ts', width: 160 },
+    dateTimeColumn('发生时间', 'ts'),
     createOperationColumn<TraceFailureEntry>({
       width: 120,
       actions: (r) => [{ key: 'view', label: '查看链路', onClick: () => onView(r.traceId) }],
@@ -157,6 +157,19 @@ export default function TracePage() {
     setSearchParams(next === traceId ? searchParams : { traceId: next });
   }
 
+  /**
+   * 清空查询：输入框叉号与「重置」共用。
+   * 叉号只把受控值置空，若不摘掉 URL 上的 traceId，已查出的时间线会留在页面上（且「查询」按钮此时已禁用，无路可退）。
+   */
+  function handleReset() {
+    setDraft('');
+    setDetailNode(null);
+    if (!traceId) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('traceId');
+    setSearchParams(next);
+  }
+
   /** 失败列表行点击：回填 ID、切换到查询 Tab 并触发查询 */
   function handleViewFailure(id: string) {
     setDraft(id);
@@ -205,16 +218,18 @@ export default function TracePage() {
 
       <Tabs type="line" collapsible="auto" activeKey={activeTab} onChange={(k) => setActiveTab(k as 'query' | 'failures')}>
         <TabPane tab="按 ID 查询" itemKey="query">
-          <div style={{ display: 'flex', gap: 8, margin: '12px 0 16px', maxWidth: 560 }}>
+          <div style={{ display: 'flex', gap: 8, margin: '12px 0 16px', maxWidth: 680 }}>
             <Input
               prefix={<Search size={14} />}
               placeholder="链路 ID，如 b9c67477-1433-4815-bbf3-51419c322770"
               value={draft}
               onChange={setDraft}
               onEnterPress={handleSearch}
+              onClear={handleReset}
               showClear
             />
             <SearchButton onClick={handleSearch} disabled={!TRACE_ID_RE.test(draft.trim())} />
+            <ResetButton onClick={handleReset} disabled={!traceId && draft === ''} />
           </div>
 
           {!traceId ? (
