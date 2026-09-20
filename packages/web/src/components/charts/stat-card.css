@@ -174,56 +174,13 @@
 }
 
 
-/* ── 无卡片面板 ──────────────────────────────────────────────────
-   与首页 .dashboard-section 同一套语言：顶部一条细线起头 + 标题，
-   不画背景、边框、圆角和阴影。统计页的图表/列表区统一用它，
-   替代各页自定义的 sectionStyle 卡片盒子。 */
-.zx-panel {
-  min-width: 0;
-  padding-top: 16px;
-  border-top: 1px solid var(--semi-color-border);
-}
-
-/* Semi Card 扁平化：保留 Card 的 title / extra 结构能力，只脱掉外壳。
-   给页面根容器加 .zx-flat-panels 即可整页生效，无需逐个 Card 改。
-   弹窗、抽屉走 portal 渲染在容器之外，因此不受影响。 */
-.zx-flat-panels .semi-card {
-  border: 0;
-  border-top: 1px solid var(--semi-color-border);
-  border-radius: 0;
-  background: none;
-  box-shadow: none;
-}
-
-.zx-flat-panels .semi-card .semi-card-header {
-  padding: 16px 0 0;
-  border-bottom: 0;
-}
+/* 无卡片面板的基座（.zx-panel / .zx-flat-panels .semi-card 系列）已上移到 global.css：
+   它们是全站设计语言、被大量非图表页面引用，而本文件只在渲染图表的页面被加载，
+   留在此时那些页面拿到的是空类名（面板照旧是卡片）。此处只保留与栅格耦合的覆写。 */
 
 /* 面板行内的 Card 由行统一起头，自身不再留上内边距（否则标题被推低一截） */
 .zx-flat-panels .chart-grid > .semi-card .semi-card-header {
   padding-top: 0;
-}
-
-/* 标题行里的状态/计数标签不参与压缩：Semi Tag 默认 flex-shrink 为 1，
-   窄卡片里会被压出省略号（实测「启用中」被截成「启...」），标签本身没有可截的冗余。 */
-.zx-flat-panels .semi-card-header .semi-tag {
-  flex-shrink: 0;
-}
-
-/* Semi 的 card-body 内边距来自组件自带样式表，加载顺序在本文件之后，
-   提高特异性无效（实测 0,4,0 仍被覆盖），只能用 !important。
-   与 global.css 覆盖 .semi-sidesheet-inner 的做法一致。
-   不去掉左右 16px 的话，图表内容会比上方统计栏缩进一截，对不齐。 */
-.zx-flat-panels .semi-card > .semi-card-body {
-  padding: 12px 0 0 !important;
-}
-
-/* 卡片区之间靠留白拉开，不再依赖卡片边框形成分组。
-   限定为相邻的普通兄弟：在栅格里 margin 会让同一行的卡片错位
-   （实测 chart-grid 内第 1、2 项 y 差 20px），栅格靠 padding 撑距即可。 */
-.zx-flat-panels .semi-card + .semi-card {
-  margin-top: 20px;
 }
 
 .zx-flat-panels .chart-grid > .semi-card + .semi-card,

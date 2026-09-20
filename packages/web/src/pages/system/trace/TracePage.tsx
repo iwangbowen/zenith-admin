@@ -19,7 +19,7 @@ import { FilterSelect } from '@/components/search-filters';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
 import { TextBlock } from '@/components/TextBlock';
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 
 type TimelineType = 'default' | 'ongoing' | 'success' | 'error';
 
@@ -316,11 +316,10 @@ export default function TracePage() {
               </div>
             </Card>
             <Card title="明细" style={{ marginTop: 12 }}>
-              <Paragraph>
-                <TextBlock maxHeight={480}>
-                  {JSON.stringify(detailNode.detail, null, 2)}
-                </TextBlock>
-              </Paragraph>
+              {/* 不再套 Typography.Paragraph：它渲染成 <p>，而 <pre> 不能是 <p> 的后代（React 报 hydration 级错误） */}
+              <TextBlock maxHeight={480}>
+                {JSON.stringify(detailNode.detail, null, 2)}
+              </TextBlock>
             </Card>
           </div>
         )}
