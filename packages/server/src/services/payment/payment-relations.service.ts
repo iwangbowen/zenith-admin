@@ -23,7 +23,7 @@ export async function resolvePaymentOrderAnchor(ref: EntityRef, access: Relation
   if (id == null) return null;
   const [row] = await access.db.select({ id: paymentOrders.id, title: paymentOrders.subject, orderNo: paymentOrders.orderNo,
     tenantId: paymentOrders.tenantId, appId: paymentOrders.appId, bizType: paymentOrders.bizType, bizId: paymentOrders.bizId })
-    .from(paymentOrders).where(buildWhere(eq(paymentOrders.id, id), await buildOrdersWhere({}))).limit(1);
+    .from(paymentOrders).where(buildWhere(eq(paymentOrders.id, id), await buildOrdersWhere({}, access.db))).limit(1);
   return row ? { ref: { type: 'payment.order', key: String(row.id) }, title: row.title || row.orderNo,
     tenantId: row.tenantId, metadata: { orderNo: row.orderNo, appId: row.appId, bizType: row.bizType, bizId: row.bizId } } : null;
 }
@@ -132,7 +132,7 @@ export const paymentRelationProviders: readonly RelationProvider[] = [paymentOrd
       if (!anchor.metadata?.orderId && !anchor.metadata?.orderNo) return { items: [], hasMore: false, nextCursor: null };
       const [row] = await access.db.select({ id: paymentOrders.id, title: paymentOrders.subject, orderNo: paymentOrders.orderNo, status: paymentOrders.status })
         .from(paymentOrders).where(buildWhere(anchor.metadata.orderId ? eq(paymentOrders.id, Number(anchor.metadata.orderId)) : eq(paymentOrders.orderNo, String(anchor.metadata.orderNo)),
-          exactTenantCondition(paymentOrders.tenantId, anchor.tenantId), await buildOrdersWhere({}))).limit(1);
+          exactTenantCondition(paymentOrders.tenantId, anchor.tenantId), await buildOrdersWhere({}, access.db))).limit(1);
       return { items: row ? [{ ref: { type: 'payment.order', key: String(row.id) }, relationKey: `${sourceType}.order`, title: row.title.slice(0, 160), subtitle: row.orderNo, status: row.status, capabilities }] : [], hasMore: false, nextCursor: null };
     },
   })),

@@ -46,6 +46,8 @@ vi.mock('./providers/identity.provider', () => ({
 vi.mock('./providers/iot-content.provider', () => ({ iotContentAnchorResolvers: [], iotContentRelationProviders: [] }));
 vi.mock('./providers/workflow-file.provider', () => ({ workflowFileAnchorResolvers: [], workflowFileRelationProviders: [] }));
 vi.mock('./providers/subjects.provider', () => ({ subjectAnchorResolvers: [], subjectProviders: () => [] }));
+vi.mock('../../payment/payment-financial-relations.service', () => ({ paymentFinancialAnchorResolvers: [], paymentFinancialRelationProviders: [] }));
+vi.mock('./providers/reverse-subjects.provider', () => ({ reverseSubjectProviders: () => [] }));
 
 // Import edges first: its registry import and the registry's manual-provider
 // import must assemble through the real circular module graph.

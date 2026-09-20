@@ -1279,10 +1279,10 @@ export async function handleNotify(
 export type ListOrdersQuery = QueryOutputOf<typeof paymentOrderContract.orders>;
 export type PaymentOrderListFilter = Omit<ListOrdersQuery, 'page' | 'pageSize'>;
 
-export async function buildOrdersWhere(q: PaymentOrderListFilter) {
+export async function buildOrdersWhere(q: PaymentOrderListFilter, executor: DbExecutor = db) {
   const user = currentUser();
   const tc = tenantCondition(paymentOrders, user);
-  const scope = await getDataScopeCondition({ currentUserId: user.userId, deptColumn: paymentOrders.departmentId, ownerColumn: paymentOrders.createdBy });
+  const scope = await getDataScopeCondition({ currentUserId: user.userId, deptColumn: paymentOrders.departmentId, ownerColumn: paymentOrders.createdBy, executor });
   return buildWhere(
     keywordCondition(q.keyword, [paymentOrders.orderNo, paymentOrders.outTradeNo, paymentOrders.subject]),
     q.status ? eq(paymentOrders.status, q.status) : undefined,

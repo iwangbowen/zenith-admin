@@ -12,6 +12,8 @@ import { subjectAnchorResolvers, subjectProviders } from './providers/subjects.p
 import { readRelationCursor, signRelationCursor } from './cursor';
 import { assertRelationBudget, isStatementTimeout, withRelationRead } from './runtime';
 import { manualLinksProvider } from './edges.service';
+import { paymentFinancialAnchorResolvers, paymentFinancialRelationProviders } from '../../payment/payment-financial-relations.service';
+import { reverseSubjectProviders } from './providers/reverse-subjects.provider';
 
 /** Each module contributes a manifest; registration validates it once at assembly. */
 export interface EntityRelationManifest {
@@ -42,6 +44,7 @@ export function createEntityRelationRegistry(manifests: readonly EntityRelationM
 }
 const manifests: EntityRelationManifest[] = [
   { anchors: paymentAnchorResolvers, relations: paymentRelationProviders },
+  { anchors: paymentFinancialAnchorResolvers, relations: paymentFinancialRelationProviders },
   { anchors: identityAnchorResolvers, relations: identityRelationProviders.filter((item) => !item.key.endsWith('.audit')) },
   { anchors: iotContentAnchorResolvers, relations: iotContentRelationProviders },
   { anchors: workflowFileAnchorResolvers, relations: workflowFileRelationProviders },
@@ -49,6 +52,7 @@ const manifests: EntityRelationManifest[] = [
 ];
 const supportedTypes = manifests.flatMap((manifest) => manifest.anchors.map((anchor) => anchor.type));
 manifests.push({ anchors: [], relations: supportedTypes.flatMap(subjectProviders) });
+manifests.push({ anchors: [], relations: reverseSubjectProviders(supportedTypes, resolveVisibleEntityAnchor) });
 manifests.push({ anchors: [], relations: supportedTypes.map((type) => manualLinksProvider(type, supportedTypes)) });
 export const entityRelationRegistry = createEntityRelationRegistry(manifests);
 export const relationProviders = [...entityRelationRegistry.relations.values()];
@@ -68,7 +72,8 @@ export async function resolveVisibleEntityAnchor(type: CanonicalEntityType, key:
 export async function canDiscover(provider: RelationProvider): Promise<boolean> {
   if (provider.permissions !== 'authenticated' && !(await hasPermission(...provider.permissions))) return false;
   for (const permission of provider.allPermissions ?? []) if (!(await hasPermission(permission))) return false;
-  if (!provider.key.endsWith('.links')) {
+  // Polymorphic groups authorize each returned target; an unrelated disabled domain must not hide the whole group.
+  if (!provider.key.endsWith('.links') && !provider.key.endsWith('.subjects')) {
     for (const type of provider.descriptor.targetTypes) if (!(await canUseEntityType(type))) return false;
   }
   return true;

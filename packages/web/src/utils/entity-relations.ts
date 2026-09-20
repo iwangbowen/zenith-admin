@@ -4,6 +4,9 @@ import type { TimelineEvent } from '@zenith/shared/core';
 const ENTITY_LABELS: Record<CanonicalEntityType, string> = {
   'identity.user': '用户', 'member.member': '会员', 'payment.order': '支付订单', 'payment.refund': '退款',
   'payment.dispute': '支付投诉', 'payment.risk-hit': '风控命中', 'payment.risk-review': '风控审核',
+  'payment.journal': '账务凭证', 'payment.recon-case': '对账差异', 'payment.recon-adjustment': '对账调整',
+  'payment.sharing-order': '分账单', 'payment.sharing-receiver': '分账接收方', 'payment.sharing-reversal': '分账冲正',
+  'payment.settlement-batch': '结算批次', 'payment.notify-log': '渠道回调',
   'workflow.definition': '流程定义', 'workflow.instance': '流程实例', 'workflow.task': '审批任务',
   'drive.file': '文件', 'iot.device': '设备', 'iot.alarm': '设备告警', 'cms.content': '内容',
   'wiki.document': '知识文档', 'messaging.announcement': '公告', 'chat.message': '聊天消息',
@@ -19,12 +22,17 @@ const RELATION_LABELS: Record<string, string> = {
   incoming: '被关联对象', outgoing: '关联对象', subjects: '关联对象', order: '支付订单',
   definition: '流程定义', instance: '流程实例', device: '所属设备', user: '关联用户', member: '关联会员',
   'approval-tasks': '审批任务',
+  journals: '账务凭证', 'recon-cases': '对账差异', 'recon-adjustments': '对账调整',
+  'sharing-orders': '分账单', receiver: '分账接收方', reversals: '分账冲正', 'sharing-reversals': '分账冲正',
+  'settlement-batches': '结算批次', 'notify-logs': '渠道回调', orders: '支付订单',
+  case: '对账差异', 'sharing-order': '分账单',
 };
 
 export function entityTypeLabel(type: CanonicalEntityType): string { return ENTITY_LABELS[type]; }
 
 export function entityRelationLabel(labelKey: string, targetTypes?: readonly CanonicalEntityType[]): string {
   if (labelKey === 'relation.common.related') return '人工关联';
+  if (labelKey === 'relation.common.subjects') return '来源业务对象';
   const name = labelKey.split('.').at(-1) ?? '';
   return RELATION_LABELS[name] ?? (targetTypes?.length ? targetTypes.map(entityTypeLabel).join('、') : '关联记录');
 }
@@ -36,6 +44,7 @@ const ENTITY_DETAIL_ROUTES: Partial<Record<CanonicalEntityType, (key: string) =>
   'drive.file': (key) => `/drive?node=${encodeURIComponent(key)}`,
   'workflow.instance': (key) => `/workflow/instance/${encodeURIComponent(key)}`,
   'wiki.document': (key) => `/wiki/docs?docId=${encodeURIComponent(key)}`,
+  'tasks.async': (key) => `/system/task-center?taskId=${encodeURIComponent(key)}`,
 };
 
 export function entityDetailRoute(ref: CanonicalEntityRef): string | undefined {
@@ -61,6 +70,7 @@ const STATUS_LABELS: Record<string, string> = {
   paying: '支付中', closed: '已关闭', enabled: '启用', disabled: '停用', approved: '已通过', rejected: '已驳回',
   running: '执行中', completed: '已完成', cancelled: '已取消', open: '未处理', resolved: '已解决', acknowledged: '已认领',
   published: '已发布', draft: '草稿', active: '有效', withdrawn: '已撤回', returned: '已退回',
+  reversed: '已冲正', settled: '已结算', settling: '结算中', done: '已完成',
 };
 
 export function timelineEventLabel(eventType: string): string {

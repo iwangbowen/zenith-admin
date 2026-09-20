@@ -30,7 +30,7 @@ async function resolveUser(ref: EntityRef, access: RelationAccessContext): Promi
     if (ref.type !== 'identity.user' || !(await hasPermission('system:user:list'))) return null;
     const id = parseId(ref.key);
     if (id == null) return null;
-    const scope = await getDataScopeCondition({ currentUserId: access.user.userId, deptColumn: users.departmentId, ownerColumn: users.id });
+    const scope = await getDataScopeCondition({ currentUserId: access.user.userId, executor: access.db, deptColumn: users.departmentId, ownerColumn: users.id });
     const [row] = await access.db.select({ id: users.id, nickname: users.nickname, username: users.username, tenantId: users.tenantId })
       .from(users).where(buildWhere(eq(users.id, id), tenantCondition(users, access.user), scope)).limit(1);
     return row ? { ref: { type: 'identity.user', key: String(row.id) }, title: row.nickname || row.username, tenantId: row.tenantId } : null;
@@ -42,7 +42,7 @@ async function resolveMember(ref: EntityRef, access: RelationAccessContext): Pro
     if (ref.type !== 'member.member' || !(await hasPermission('member:member:list'))) return null;
     const id = parseId(ref.key);
     if (id == null) return null;
-    const scope = await getDataScopeCondition({ currentUserId: access.user.userId, ownerColumn: members.createdBy });
+    const scope = await getDataScopeCondition({ currentUserId: access.user.userId, executor: access.db, ownerColumn: members.createdBy });
     const [row] = await access.db.select({ id: members.id, nickname: members.nickname, tenantId: members.tenantId })
       .from(members).where(buildWhere(eq(members.id, id), isNull(members.deletedAt), tenantCondition(members, access.user), scope)).limit(1);
     return row ? { ref: { type: 'member.member', key: String(row.id) }, title: row.nickname || `会员 #${row.id}`, tenantId: row.tenantId } : null;
@@ -75,7 +75,7 @@ async function listPayments(anchor: VisibleEntityAnchor, { cursor, limit, access
       .from(paymentOrders).where(buildWhere(
         ownership,
         exactTenantCondition(paymentOrders.tenantId, anchor.tenantId),
-        await buildOrdersWhere({}),
+        await buildOrdersWhere({}, access.db),
         beforeId ? lt(paymentOrders.id, beforeId) : undefined,
       )).orderBy(desc(paymentOrders.id)).limit(limit + 1);
     return page(rows, limit, (order) => ({

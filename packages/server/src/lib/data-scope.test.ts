@@ -20,6 +20,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { pgTable, integer } from 'drizzle-orm/pg-core';
 import { db } from '../db';
 import { getDataScopeCondition } from './data-scope';
+import type { DbExecutor } from '../db/types';
 
 // ─── 工具：构造 findFirst 返回值 ─────────────────────────────────────────────
 interface MockRole {
@@ -74,6 +75,20 @@ const dbMock = vi.mocked(db) as unknown as {
 // ─── Setup ───────────────────────────────────────────────────────────────────
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+it('reads user scope and department descendants through the supplied transaction only', async () => {
+  const executor = {
+    query: { users: { findFirst: vi.fn().mockResolvedValue(mockUser(10, [{ dataScope: 'dept', code: 'reader' }])) } },
+    select: vi.fn().mockReturnValue(createChain([{ id: 10, parentId: 0 }, { id: 11, parentId: 10 }])),
+  };
+  const where = await getDataScopeCondition({ currentUserId: 7, deptColumn: mockOrderTable.departmentId,
+    ownerColumn: mockOrderTable.createdBy, executor: executor as unknown as DbExecutor });
+  expect(where).toBeDefined();
+  expect(executor.query.users.findFirst).toHaveBeenCalledOnce();
+  expect(executor.select).toHaveBeenCalledOnce();
+  expect(dbMock.query.users.findFirst).not.toHaveBeenCalled();
+  expect(dbMock.select).not.toHaveBeenCalled();
 });
 
 // ─── 全量访问分支 ──────────────────────────────────────────────────────────────

@@ -1,9 +1,12 @@
 import { eq, inArray, type SQL, type AnyColumn } from 'drizzle-orm';
 import { db } from '../db';
+import type { DbExecutor } from '../db/types';
 import { users, departments } from '../db/schema';
 import { enabledGroupRolesWith, extractEnabledGroupRoles } from './user-group-access';
 
 export interface DataScopeOptions {
+  /** Reuse the caller's transaction instead of acquiring another pool connection. */
+  executor?: DbExecutor;
   /** 当前登录用户 ID */
   currentUserId: number;
   /**
@@ -37,10 +40,10 @@ export interface DataScopeOptions {
  * - 返回 SQL 条件：需要追加到 WHERE 子句。
  */
 export async function getDataScopeCondition(options: DataScopeOptions): Promise<SQL | undefined> {
-  const { currentUserId, deptColumn, ownerColumn } = options;
+  const { currentUserId, deptColumn, ownerColumn, executor = db } = options;
 
   // ── 1. 查询用户的角色（含 dataScope 和 deptScopes）及部门，合并为单次 RQB 请求 ──────────────
-  const userData = await db.query.users.findFirst({
+  const userData = await executor.query.users.findFirst({
     where: eq(users.id, currentUserId),
     columns: { departmentId: true, userDataScope: true },
     with: {
@@ -81,7 +84,7 @@ export async function getDataScopeCondition(options: DataScopeOptions): Promise<
   if (scopeSet.has('dept') && deptColumn) {
     if (userData?.departmentId) {
       // 递归获取当前部门及全部子部门 ID（内存中遍历，避免复杂 CTE）
-      const allDepts = await db
+      const allDepts = await executor
         .select({ id: departments.id, parentId: departments.parentId })
         .from(departments);
       const deptIds = collectDescendants(allDepts, userData.departmentId);

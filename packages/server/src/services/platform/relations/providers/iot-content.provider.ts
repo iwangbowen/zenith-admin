@@ -45,7 +45,7 @@ async function resolveIotAlarm(ref: EntityRef, access: RelationAccessContext): P
 async function cmsVisibility(access: RelationAccessContext) {
   const [siteIds, channelIds, scope] = await Promise.all([
     getAccessibleSiteIds(), getAccessibleChannelIds(),
-    getDataScopeCondition({ currentUserId: access.user.userId, deptColumn: cmsContents.deptId, ownerColumn: cmsContents.createdBy }),
+    getDataScopeCondition({ currentUserId: access.user.userId, executor: access.db, deptColumn: cmsContents.deptId, ownerColumn: cmsContents.createdBy }),
   ]);
   return buildWhere(
     isNull(cmsContents.deletedAt),
