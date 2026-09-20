@@ -45,6 +45,7 @@ import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { PaymentChannelTag, paymentMoneyColumn } from './payment-display';
 import { useAppPaymentMethodOptions } from './payment-app-options';
 import { EditFormModal } from '@/components/EditFormModal';
+import RelationPanel from '@/components/entity-relations/RelationPanel';
 const yuan = formatYuan;
 const PAYMENT_CREATE_METHODS = createPaymentSchema.shape.payMethod.options;
 
@@ -457,6 +458,11 @@ export default function PaymentOrdersPage() {
                   ...(detailOrder.paidAt ? [{ key: '支付时间', value: formatDateTime(detailOrder.paidAt) }] : []),
                 ]}
               />
+            </div>
+
+            <div>
+              <Divider align="left" style={{ margin: '4px 0 10px' }}>关联对象</Divider>
+              <RelationPanel entityType="payment.order" entityKey={String(detailOrder.id)} />
             </div>
 
             <div>
