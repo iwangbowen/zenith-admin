@@ -1,7 +1,8 @@
 import * as z from 'zod';
 import { defineContract, op } from '../../core/contract';
+import { SEARCH_TYPE_ENTITY_TYPES, type CanonicalEntityType, type SearchType } from '../entity-registry';
 
-/** 顶部统一搜索支持的业务对象类型。菜单结果由 Web 本地菜单树提供。 */
+/** 顶部统一搜索支持的适配器类型（SearchType）；菜单结果由 Web 本地菜单树提供。 */
 export const globalSearchTypes = [
   'user',
   'member',
@@ -21,7 +22,18 @@ export const globalSearchTypes = [
   'async-task',
   'operation-log',
   'exception-log',
-] as const;
+] as const satisfies readonly SearchType[];
+
+/**
+ * 搜索词到 canonical EntityType 的映射。搜索接口继续返回原有 SearchType，
+ * 关系接口和事件协议一律使用 canonical 类型；新增搜索适配器时必须在平台
+ * 实体注册表登记对应映射，避免产生第二套对象词典。
+ */
+export const globalSearchEntityTypes: Readonly<Record<GlobalSearchType, CanonicalEntityType>> = SEARCH_TYPE_ENTITY_TYPES;
+
+export function canonicalEntityTypeForSearchType(type: GlobalSearchType): CanonicalEntityType {
+  return globalSearchEntityTypes[type];
+}
 
 /** 业务结果跳转的后台内部路由前缀；新增领域适配器时同步追加一项。 */
 export const globalSearchRoutePrefixes = [

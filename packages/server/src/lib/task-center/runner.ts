@@ -4,9 +4,10 @@ import {
   ASYNC_TASK_ACTIVE_STATUSES as UNFINISHED_STATUSES,
   ASYNC_TASK_TERMINAL_STATUSES as TERMINAL_STATUSES,
 } from '@zenith/shared/tasks';
+import type { SubjectRef } from '@zenith/shared/core';
 import { requireRow } from '../db-assert';
 import { db } from '../../db';
-import { asyncTaskItems, asyncTasks, asyncTaskTypeConfigs, users } from '../../db/schema';
+import { asyncTaskItems, asyncTaskSubjects, asyncTasks, asyncTaskTypeConfigs, users } from '../../db/schema';
 import type { AsyncTaskRow } from '../../db/schema';
 import type { DbTransaction } from '../../db/types';
 import { ensureLocalNodeQueue, isQueueNotFoundError, registerLocalNodeQueueWorker, registerSystemQueueWorker, isSchedulerNodeAlive, nodeQueueName, sendSystemJob, sendSystemJobAfter } from '../pg-boss-scheduler';
@@ -33,6 +34,7 @@ import {
 import { getTaskHandler } from './registry';
 import { ensureTaskTypeConfig, getTaskTypePolicy } from './config';
 import { pushTaskProgress } from './map';
+import { normalizeAuditSubjects } from '../audit-subject';
 
 export interface SubmitAsyncTaskInput {
   taskType: string;
@@ -41,6 +43,8 @@ export interface SubmitAsyncTaskInput {
   payload?: Record<string, unknown>;
   /** 幂等键：相同 key 重复提交时直接返回已存在的任务（不新建） */
   idempotencyKey?: string | null;
+  /** Structured business objects that caused this task. */
+  subjectRefs?: readonly SubjectRef[];
 }
 
 /** 完整提交：业务记录提交后才投递，投递失败由 pending 扫描补投。 */
@@ -137,6 +141,16 @@ async function persistTaskForPrincipal(
     }
   } else {
     [row] = await executor.insert(asyncTasks).values(values).returning();
+  }
+  const subjects = normalizeAuditSubjects(input.subjectRefs ?? []);
+  if (subjects.length > 0) {
+    await executor.insert(asyncTaskSubjects).values(subjects.map((subject) => ({
+      taskId: row.id,
+      tenantId,
+      entityType: subject.type,
+      entityKey: subject.key,
+      role: subject.role,
+    })));
   }
   return row;
 }

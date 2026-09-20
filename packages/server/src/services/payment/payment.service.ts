@@ -1357,6 +1357,14 @@ export async function getRefundDetail(id: number): Promise<PaymentRefund> {
   return mapRefund(row);
 }
 
+/** 供审计主体和关联视图按稳定业务编号解析退款单。 */
+export async function getRefundDetailByNo(refundNo: string): Promise<PaymentRefund> {
+  const tc = tenantCondition(paymentRefunds, currentUser());
+  const [row] = await db.select().from(paymentRefunds).where(and(eq(paymentRefunds.refundNo, refundNo), tc)).limit(1);
+  requireRow(row, '退款记录不存在');
+  return mapRefund(row);
+}
+
 /** 已持久化退款单的查单收敛入口，供人工查询与后台 unknown 扫描复用。 */
 export async function syncRefundStatus(
   refundRow: PaymentRefundRow,

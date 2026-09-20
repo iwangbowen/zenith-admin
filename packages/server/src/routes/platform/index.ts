@@ -18,6 +18,8 @@ import {
   traceContract,
   userFeedbackContract,
   globalSearchContract,
+  entityRelationsContract,
+  entityTimelineContract,
 } from '@zenith/shared/platform';
 import {
   decisionFlowContract,
@@ -50,6 +52,8 @@ import tagsRoutes from './tags';
 import traceRoutes from './trace';
 import userFeedbacksRoutes from './user-feedbacks';
 import globalSearchRoutes from './global-search';
+import entityRelationsRoutes from './entity-relations';
+import entityTimelineRoutes from './entity-timeline';
 import { createWsRoute } from './ws';
 
 export default defineRouteDomain({
@@ -67,6 +71,8 @@ export default defineRouteDomain({
     [licensingContract.basePath, licensingRoutes],
     [userFeedbackContract.basePath, userFeedbacksRoutes],
     [globalSearchContract.basePath, globalSearchRoutes],
+    [entityRelationsContract.basePath, entityRelationsRoutes],
+    [entityTimelineContract.basePath, entityTimelineRoutes],
     [dataMaskContract.basePath, dataMaskRoutes],
     [regionContract.basePath, regionsRoutes],
     [cacheContract.basePath, cacheRoutes],

@@ -1,8 +1,9 @@
 import { relations } from 'drizzle-orm';
 import { paymentBankMatches, paymentReconAdjustments, paymentReconCaseEvents, paymentReconCases, paymentReconRuns, paymentStatementEntries, paymentStatementFiles, paymentStatementPeriods, paymentStatements } from './payment-reconciliation';
 import { departments, menus, positions, roleDeptScopes, roleMenus, roles, tenantPackageFeatures, tenantPackages, tenants, userDeptScopes, userGroupMembers, userGroupRoles, userGroups, userMenus, userPositions, userRoles, users } from './core';
+import { domainEventSubjects, domainEvents, entityRelationEdges } from './entity-relations';
 import { businessFiles, fileStorageConfigs, managedFiles, uploadChunks, uploadSessions } from './files';
-import { asyncTaskItems, asyncTasks, exportJobDownloads, exportJobs } from './tasks';
+import { asyncTaskItems, asyncTaskSubjects, asyncTasks, exportJobDownloads, exportJobs } from './tasks';
 import { cronJobLogs, cronJobs, userFeedbacks } from './system';
 import { loginRiskEvents, passwordResetTokens, userApiTokens, userSignatures, userMfaFactors, userOauthAccounts, userTrustedDevices } from './auth';
 import { identityProviderSyncLogs, tenantIdentityProviders, userIdentityAccounts } from './identity-providers';
@@ -11,7 +12,7 @@ import { dictItems, dicts } from './dicts';
 import { analyticsEventMeta, analyticsEventOverrides, analyticsExperiments, analyticsSegmentCampaigns, analyticsSites, analyticsSegmentMembers, analyticsUserProfiles, analyticsUserSegments, errorEvents, errorGroups } from './analytics';
 import { announcementReads, announcementRecipients, announcements } from './announcements';
 import { workflowAutomations, workflowCategories, workflowComments, workflowDefinitions, workflowDefinitionVersions, workflowDelegations, workflowForms, workflowInstances, workflowJobExecutions, workflowJobs, workflowQuickPhrases, workflowTaskConsults, workflowTasks, workflowTaskUrges, workflowTokens } from './workflow';
-import { broadcastCampaigns, emailSendLogs, emailTemplates, inAppMessages, inAppTemplates, pushConfigs, pushSendLogs, smsConfigs, smsSendLogs, smsTemplates } from './messaging';
+import { broadcastCampaigns, emailSendLogs, emailTemplates, inAppMessages, inAppTemplates, notificationOutbox, notificationOutboxSubjects, pushConfigs, pushSendLogs, smsConfigs, smsSendLogs, smsTemplates } from './messaging';
 import { dbBackups } from './db-admin';
 import { ruleDecisionTables, ruleDecisionTableVersions, ruleTestCases } from './rules';
 import { chatConversationMembers, chatConversations, chatMessageReactions, chatMessages, chatWebhooks, chatQuickReplies, chatScheduledMessages, chatCustomEmojis, chatGroupInvites, chatGroupJoinRequests } from './chat';
@@ -72,8 +73,37 @@ import {
   driveActivities, driveFileVersions, driveNodeComments, driveNodePermissions, driveNodeProfiles, driveNodeRenditions, driveNodes, driveNodeStars, driveNodeSubscriptions, driveNodeTags,
   driveNodeTexts, driveRecentAccess, driveShareAccessLogs, driveShareLinks, driveSpaceMembers, driveSpaces, driveTags, driveUploadBindings,
 } from './drive';
+import { operationLogSubjects, operationLogs } from './logs';
 
 // ─── 关联关系 ────────────────────────────────────────────────────────────────
+export const operationLogsRelations = relations(operationLogs, ({ many }) => ({
+  subjects: many(operationLogSubjects),
+}));
+
+export const operationLogSubjectsRelations = relations(operationLogSubjects, ({ one }) => ({
+  operationLog: one(operationLogs, { fields: [operationLogSubjects.operationLogId], references: [operationLogs.id] }),
+}));
+
+export const domainEventsRelations = relations(domainEvents, ({ many }) => ({
+  subjects: many(domainEventSubjects),
+}));
+
+export const domainEventSubjectsRelations = relations(domainEventSubjects, ({ one }) => ({
+  event: one(domainEvents, { fields: [domainEventSubjects.eventId], references: [domainEvents.id] }),
+}));
+
+// Entity relation edges intentionally have no `one()` relations for source or
+// target: those columns are polymorphic references resolved by domain services.
+export const entityRelationEdgesRelations = relations(entityRelationEdges, () => ({}));
+
+export const notificationOutboxRelations = relations(notificationOutbox, ({ many }) => ({
+  subjects: many(notificationOutboxSubjects),
+}));
+
+export const notificationOutboxSubjectsRelations = relations(notificationOutboxSubjects, ({ one }) => ({
+  outbox: one(notificationOutbox, { fields: [notificationOutboxSubjects.outboxId], references: [notificationOutbox.id] }),
+}));
+
 export const errorGroupsRelations = relations(errorGroups, ({ many, one }) => ({
   events: many(errorEvents),
   assignee: one(users, { fields: [errorGroups.assigneeId], references: [users.id] }),
@@ -568,11 +598,16 @@ export const asyncTasksRelations = relations(asyncTasks, ({ one, many }) => ({
   tenant: one(tenants, { fields: [asyncTasks.tenantId], references: [tenants.id] }),
   createdByUser: one(users, { fields: [asyncTasks.createdBy], references: [users.id] }),
   items: many(asyncTaskItems),
+  subjects: many(asyncTaskSubjects),
   cmsPublishArtifacts: many(cmsPublishArtifacts),
 }));
 
 export const asyncTaskItemsRelations = relations(asyncTaskItems, ({ one }) => ({
   task: one(asyncTasks, { fields: [asyncTaskItems.taskId], references: [asyncTasks.id] }),
+}));
+
+export const asyncTaskSubjectsRelations = relations(asyncTaskSubjects, ({ one }) => ({
+  task: one(asyncTasks, { fields: [asyncTaskSubjects.taskId], references: [asyncTasks.id] }),
 }));
 
 export const cronJobsRelations = relations(cronJobs, ({ many }) => ({

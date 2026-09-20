@@ -14,6 +14,7 @@ export * from './schema/identity-providers';
 export * from './schema/directory-sync';
 export * from './schema/dicts';
 export * from './schema/logs';
+export * from './schema/entity-relations';
 export * from './schema/analytics';
 export * from './schema/announcements';
 export * from './schema/workflow';

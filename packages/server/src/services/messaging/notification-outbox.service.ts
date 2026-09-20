@@ -13,9 +13,10 @@ import type {
   NotificationEventVars,
   NotificationRecipient,
 } from '@zenith/shared/messaging';
+import type { SubjectRef } from '@zenith/shared/core';
 import { isNotificationEventKey, getNotificationEvent } from '@zenith/shared/messaging';
 import { db } from '../../db';
-import { notificationOutbox } from '../../db/schema';
+import { notificationOutbox, notificationOutboxSubjects } from '../../db/schema';
 import type { NotificationOutboxRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import { mapWithConcurrency } from '../../lib/concurrency';
@@ -27,6 +28,7 @@ import { normalizeTemplateVars } from '../../lib/notification/template-vars';
 import logger from '../../lib/logger';
 import { renderTemplate } from '../../lib/sms-sender';
 import { buildWhere } from '../../lib/where-helpers';
+import { normalizeAuditSubjects } from '../../lib/audit-subject';
 
 const MAX_ATTEMPTS = 5;
 /**
@@ -58,6 +60,8 @@ export interface NotifyInput<K extends NotificationEventKey> {
   channelOptions?: NotificationChannelOptions | null;
   /** 指定投递时间，用于定时提醒 */
   scheduledAt?: Date | null;
+  /** Structured business objects that caused this notification. */
+  subjectRefs?: readonly SubjectRef[];
 }
 
 function buildValues<K extends NotificationEventKey>(eventKey: K, input: NotifyInput<K>) {
@@ -91,6 +95,7 @@ export async function notifyWithin<K extends NotificationEventKey>(
   if (!isNotificationEventKey(eventKey)) {
     throw new Error(`未注册的通知事件：${String(eventKey)}`);
   }
+  const subjects = normalizeAuditSubjects(input.subjectRefs ?? []);
   const [row] = await executor.insert(notificationOutbox)
     .values(buildValues(eventKey, input))
     // 幂等键是部分唯一索引（仅 dedupe_key 非空时生效），
@@ -100,7 +105,17 @@ export async function notifyWithin<K extends NotificationEventKey>(
       where: sql`${notificationOutbox.dedupeKey} is not null`,
     })
     .returning({ id: notificationOutbox.id });
-  return row?.id ?? null;
+  if (!row) return null;
+  if (subjects.length > 0) {
+    await executor.insert(notificationOutboxSubjects).values(subjects.map((subject) => ({
+      outboxId: row.id,
+      tenantId: input.tenantId ?? null,
+      entityType: subject.type,
+      entityKey: subject.key,
+      role: subject.role,
+    })));
+  }
+  return row.id;
 }
 
 /**

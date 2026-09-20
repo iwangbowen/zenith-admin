@@ -43,6 +43,20 @@
       "when": 1789731553051,
       "tag": "0005_noisy_echo",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789869459451,
+      "tag": "0006_chilly_stardust",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789869971739,
+      "tag": "0007_lame_golden_guardian",
+      "breakpoints": true
     }
   ]
 }

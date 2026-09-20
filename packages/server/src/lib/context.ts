@@ -17,6 +17,7 @@ import { db } from '../db';
 import { users, departments } from '../db/schema';
 import { getUserPermissions } from './permissions';
 import { clampAuditJson } from './audit-clamp';
+import { normalizeAuditSubjects, type AuditSubjectRef, type NormalizedAuditSubjectRef } from './audit-subject';
 
 /** 从 DB 加载的完整用户详情（部门 + 岗位 + 角色），仅在需要时懒查询。 */
 export interface CurrentUserDetail {
@@ -119,6 +120,31 @@ export function setAuditAfter(data: unknown): void {
   const ctx = tryGetContext<AppEnv>();
   if (!ctx) return;
   ctx.set('auditAfterData', clampAuditJson(data));
+}
+
+/**
+ * Attach one or more structured entity references to the current operation
+ * audit record. The guard persists these refs in `operation_log_subjects`
+ * after the operation log row is written. Calling this outside an HTTP request
+ * is a no-op, matching setAuditBefore/setAuditAfter semantics.
+ */
+export function setAuditSubjects(subjects: readonly AuditSubjectRef[]): void {
+  const ctx = tryGetContext<AppEnv>();
+  if (!ctx) return;
+  ctx.set('auditSubjects', normalizeAuditSubjects(subjects));
+}
+
+/** Add one structured entity reference to the current operation audit record. */
+export function addAuditSubject(subject: AuditSubjectRef): void {
+  const ctx = tryGetContext<AppEnv>();
+  if (!ctx) return;
+  const current = ctx.get('auditSubjects') ?? [];
+  ctx.set('auditSubjects', normalizeAuditSubjects([...current, subject]));
+}
+
+/** Read the normalized refs attached to the current request, if any. */
+export function currentAuditSubjects(): readonly NormalizedAuditSubjectRef[] {
+  return tryGetContext<AppEnv>()?.get('auditSubjects') ?? [];
 }
 
 // ─── 快捷工具：无需 DB，直接从 JWT Payload 取 ─────────────────────────────────
