@@ -14,6 +14,8 @@ import { notificationPoliciesHandlers } from './handlers/notification-policies';
 import { mockOperationLogs } from './data/logs';
 import { mockAsyncTasks } from './handlers/async-tasks';
 import { mockEntitySubjects } from './data/entity-subjects';
+import { mockWorkflowInstances } from './data/workflow';
+import { mockWorkflowAttachmentLinks } from './utils/workflow-attachments';
 
 async function call(path: string, { method = 'GET', body, token = mockAccessToken('admin') }: { method?: string; body?: unknown; token?: string | null } = {}) {
   const request = new Request(`${window.location.origin}${path}`, {
@@ -32,6 +34,27 @@ describe('Demo entity relations follow the real domain data', () => {
   const section = async (type: CanonicalEntityType, key: string, suffix: string) => entityRelationPageSchema.parse((await (await call(urlOf(entityRelationsContract.section, {
     params: { type, key, sectionKey: `${type}.${suffix}` }, query: { limit: 50 },
   }))).json()).data);
+
+  it('links all rounds by exact business identity while excluding the same key in another tenant', async () => {
+    const original = mockWorkflowInstances.find((row) => row.id === 9001)!;
+    const older = { ...original, id: 99991, title: 'Earlier round', status: 'rejected' as const };
+    const otherTenant = { ...older, id: 99992, tenantId: 77 };
+    mockWorkflowInstances.push(older, otherTenant);
+    try {
+      const rounds = (await section('biz.leave','1','workflow-instances')).items.map((item)=>item.ref.key);
+      expect(rounds).toContain('9001'); expect(rounds).toContain('99991'); expect(rounds).not.toContain('99992');
+      expect((await section('workflow.instance','9001','business-leave')).items.map((item)=>item.ref)).toEqual([{type:'biz.leave',key:'1'}]);
+      const history = (await section('workflow.instance','9001','business-history')).items.map((item)=>item.ref.key);
+      expect(history).toContain('99991'); expect(history).not.toContain('9001'); expect(history).not.toContain('99992');
+    } finally { for (const item of [older,otherTenant]) mockWorkflowInstances.splice(mockWorkflowInstances.indexOf(item),1); }
+  });
+
+  it('uses persisted attachment link identities in both directions', async () => {
+    const attachment = mockWorkflowAttachmentLinks[0];
+    expect(attachment).toBeDefined();
+    expect((await section('workflow.instance',String(attachment.instanceId),'attachments')).items.some((item)=>item.ref.key===String(attachment.id))).toBe(true);
+    expect((await section('workflow.attachment',String(attachment.id),'instance')).items.map((item)=>item.ref.key)).toEqual([String(attachment.instanceId)]);
+  });
 
   it('resolves real ledger identities in both directions and excludes a different money scope', async () => {
     const journal = mockPaymentJournals.find((row) => row.sourceType === 'payment.capture' && row.sourceId === 'PAY1700000000001')!;

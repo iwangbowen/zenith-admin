@@ -42,16 +42,18 @@ interface WorkflowPrintButtonProps {
   readonly size?: 'small' | 'default';
   readonly theme?: 'borderless' | 'light' | 'solid';
   readonly children?: ReactNode;
+  /** 归档对象入口必须明确读取固化原件，不能自动回退成实时生成。 */
+  readonly source?: 'auto' | 'archive' | 'live';
 }
 
-export default function WorkflowPrintButton({ instanceId, templateId, size = 'small', theme = 'borderless', children }: WorkflowPrintButtonProps) {
+export default function WorkflowPrintButton({ instanceId, templateId, size = 'small', theme = 'borderless', children, source: initialSource }: WorkflowPrintButtonProps) {
   const [loading, setLoading] = useState(false);
   const [pdf, setPdf] = useState<WorkflowInstancePrintPdf | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   // embedpdf 按 file 引用重新加载文档：同一份 PDF 只构造一次 File，避免每次渲染重开文档
   const file = useMemo(() => (pdf ? new File([pdf.blob], pdf.filename, { type: 'application/pdf' }) : null), [pdf]);
 
-  const open = useCallback(async (source?: 'live') => {
+  const open = useCallback(async (source: 'auto' | 'archive' | 'live' | undefined = initialSource) => {
     setLoading(true);
     try {
       setPdf(await fetchWorkflowInstancePrintPdf(instanceId, { templateId, source }));
@@ -60,7 +62,7 @@ export default function WorkflowPrintButton({ instanceId, templateId, size = 'sm
     } finally {
       setLoading(false);
     }
-  }, [instanceId, templateId]);
+  }, [instanceId, templateId, initialSource]);
 
   const close = useCallback(() => {
     setPdf(null);

@@ -70,6 +70,7 @@ const reconHandlers = [
   mock(paymentReconContract.workflowPreview, ({ ok }) => ok({ definition: null, nodes: [] })),
   mock(paymentReconContract.workflowContext, ({ ok }) => ok({ instance: null, previousInstances: [] })),
   mock(paymentReconContract.approvalDetail, ({ params, ok }) => ok(requireItem(adjustments, params.id, '调整单不存在'))),
+  mock(paymentReconContract.adjustmentDetail, ({ params, ok }) => ok(requireItem(adjustments, params.id, '调整单不存在', { status: 404 }))),
   mock(paymentReconContract.matchBank, ({ body, ok }) => ok(body.allocations.map((item) => ({ id: nextId++, ...item, accountId: body.accountId, tenantId: null, createdBy: 1, updatedBy: 1, createdAt: now(), updatedAt: now() })))),
   mock(paymentReconContract.summary, ({ ok }) => ok(summary)),
 ];

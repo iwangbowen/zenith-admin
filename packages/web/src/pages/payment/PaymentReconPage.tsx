@@ -1,4 +1,7 @@
 import { entityRelationColumn } from '@/components/entity-relations/entity-relation-columns';
+import { useSearchParams } from 'react-router-dom';
+import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
+import { usePaymentReconAdjustment } from '@/hooks/queries/payment-recon';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrayField, Banner, Button, DatePicker, Empty, Form, Select, SideSheet, Space, Spin, Tabs, Tag, Timeline, Toast, Typography, Upload } from '@douyinfe/semi-ui';
@@ -106,8 +109,19 @@ export default function PaymentReconPage() {
   const [accountId, setAccountId] = useState<number>();
   const { tab, setTab, periodId, statementId, setStatementId, caseId, openPeriod, closePeriod, openCase, closeCase } = usePaymentReconNavigation();
   const [adjustment, setAdjustment] = useState<PaymentReconAdjustment>();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const adjustmentKey = searchParams.get('adjustmentId');
+  const linkedAdjustmentId = adjustmentKey && /^[1-9]\d*$/.test(adjustmentKey) && Number.isSafeInteger(Number(adjustmentKey)) ? Number(adjustmentKey) : undefined;
+  const linkedAdjustment = usePaymentReconAdjustment(linkedAdjustmentId);
   const [definitionId, setDefinitionId] = useState<number>();
   const [selectedInstanceId, setSelectedInstanceId] = useState<number>();
+  useEffect(() => {
+    if (!linkedAdjustmentId || !linkedAdjustment.data) return;
+    setAdjustment(linkedAdjustment.data); setDefinitionId(undefined); setSelectedInstanceId(undefined);
+    const next = new URLSearchParams(searchParams);
+    next.delete('adjustmentId'); next.set('tab', 'adjustments');
+    setSearchParams(next, { replace: true });
+  }, [linkedAdjustmentId, linkedAdjustment.data, searchParams, setSearchParams]);
   const [uploadFile, setUploadFile] = useState<File>();
   const [selectedAppId, setSelectedAppId] = useState<number | null>(null);
   const accounts = usePaymentChannelAccounts();
@@ -340,6 +354,7 @@ export default function PaymentReconPage() {
       {accountField}<BankAllocationsField />
     </EditFormModal>
     <WorkflowSideSheet visible={!!adjustment} title="调整资料与审批" variant="split" onCancel={() => setAdjustment(undefined)} footerRight={<Space wrap>
+      {currentAdjustment && <EntityRelationButton entityRef={{ type: 'payment.recon-adjustment', key: String(currentAdjustment.id) }} />}
       {currentAdjustment?.status === 'draft' && hasPermission('payment:recon:adjust') && <Button theme="solid" disabled={!definitionId || !preview.data?.definition || preview.isError} loading={submitAdjustment.isPending} onClick={async () => { if (!currentAdjustment || !definitionId) return; setAdjustment(await submitAdjustment.mutateAsync({ params: { id: currentAdjustment.id }, body: { definitionId } })); Toast.success('已提交独立审批'); }}>提交审批</Button>}
       {currentAdjustment?.status === 'approved' && hasPermission('payment:recon:execute') && <Button theme="solid" loading={executeAdjustment.isPending} onClick={async () => { if (!currentAdjustment) return; setAdjustment(await executeAdjustment.mutateAsync({ params: { id: currentAdjustment.id } })); Toast.success('调整已执行'); }}>执行已批准调整</Button>}
       {currentAdjustment?.status === 'executed' && hasPermission('payment:recon:adjust') && <Button onClick={reverseModal.openCreate}>申请冲正</Button>}<Button onClick={() => setAdjustment(undefined)}>关闭</Button>

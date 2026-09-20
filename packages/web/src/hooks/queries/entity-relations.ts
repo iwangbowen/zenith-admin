@@ -5,6 +5,7 @@ import { entityRelationsContract, entityTimelineContract, type CanonicalEntityTy
 import { api, apiQueryOptions, contractKey, useApiMutation } from '@/lib/contract-query';
 import { useAuth } from '@/hooks/useAuth';
 import { ENTITY_RELATION_QUERY_META, invalidateEntityRelations } from '@/lib/entity-relation-cache';
+import { workflowAttachmentContract } from '@zenith/shared/workflow';
 
 export { invalidateEntityRelations } from '@/lib/entity-relation-cache';
 
@@ -13,6 +14,14 @@ const RELATION_STALE_TIME = 15_000;
 export function useEntityAccessKey() {
   const { user, impersonation } = useAuth();
   return [user?.id ?? null, user?.tenantId ?? null, user?.viewingTenantId ?? null, impersonation?.impersonationId ?? null] as const;
+}
+
+export function useEntityWorkflowAttachment(id: number) {
+  const access = useEntityAccessKey();
+  const options = apiQueryOptions(workflowAttachmentContract.detail, { params: { id } }, {
+    enabled: access[0] !== null, meta: ENTITY_RELATION_QUERY_META, staleTime: RELATION_STALE_TIME, retry: false, requestOptions: { silent: true },
+  });
+  return useQuery({ ...options, queryKey: [...options.queryKey, access] });
 }
 
 export function useLinkEntity() {

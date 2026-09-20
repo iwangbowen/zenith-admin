@@ -68,6 +68,13 @@ describe('fetchWorkflowInstancePrintPdf', () => {
 });
 
 describe('WorkflowPrintButton', () => {
+  it('归档关联入口明确请求原件，不回退为实时生成', async () => {
+    mocks.fetchRaw.mockResolvedValue(pdfResponse('归档.pdf', 'archive'));
+    render(<WorkflowPrintButton instanceId={7} source="archive">查看归档原件</WorkflowPrintButton>);
+    fireEvent.click(screen.getByRole('button', { name: '查看归档原件' }));
+    await waitFor(() => expect(mocks.fetchRaw).toHaveBeenCalledWith('/api/workflows/instances/7/print?source=archive'));
+    await waitFor(() => expect(screen.getByTestId('pdf-panel')).toBeInTheDocument());
+  });
   it('点击后拉取 PDF 并打开预览，下载动作把同一份文件交给 downloadBlob', async () => {
     mocks.fetchRaw.mockResolvedValue(pdfResponse('审批单-7.pdf'));
     render(<WorkflowPrintButton instanceId={7} />);

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { Button, Collapse, Empty, List, Space, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import type { EntityRelationSection, CanonicalEntityType } from '@zenith/shared/platform';
 import { useEntityAccessKey, useEntityRelationSection, useEntityRelations, useUnlinkEntity } from '@/hooks/queries/entity-relations';
@@ -7,6 +7,8 @@ import DateTimeText from '@/components/DateTimeText';
 import EntityRefBadge from './EntityRefBadge';
 import EntityLinkManager from './EntityLinkManager';
 import { confirmAndDelete } from '@/components/list-page';
+const WorkflowPrintButton = lazy(() => import('@/components/workflow/WorkflowPrintButton'));
+const WorkflowAttachmentView = lazy(() => import('./WorkflowAttachmentView'));
 
 interface RelationPanelProps {
   readonly entityType: CanonicalEntityType;
@@ -72,6 +74,12 @@ export default function RelationPanel({ entityType, entityKey, enabled = true, s
   const sections = query.data?.sections ?? [];
   return <div style={{ paddingTop: 12 }}>
     {showAnchor && query.data && <Typography.Title heading={6}>{query.data.anchor.title}</Typography.Title>}
+    {entityType === 'workflow.archive' && query.data && <Suspense fallback={<Spin size="small" />}>
+      <WorkflowPrintButton instanceId={Number(entityKey)} source="archive">查看归档原件</WorkflowPrintButton>
+    </Suspense>}
+    {entityType === 'workflow.attachment' && query.data && <Suspense fallback={<Spin size="small" />}>
+      <WorkflowAttachmentView id={Number(entityKey)} />
+    </Suspense>}
     {query.data?.canManageLinks && <EntityLinkManager key={`manager:${entityType}:${entityKey}:${JSON.stringify(access)}`} anchor={{ type: entityType, key: entityKey }} />}
     {sections.length === 0 ? <Empty description="暂无可见关联信息" /> : <RelationGroups key={`groups:${entityType}:${entityKey}:${JSON.stringify(access)}`} entityType={entityType} entityKey={entityKey} sections={sections} canManageLinks={query.data?.canManageLinks ?? false} />}
   </div>;

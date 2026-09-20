@@ -3,9 +3,11 @@ import { bizLeaveContract, type BizLeave } from '@zenith/shared/biz';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
 import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { invalidateAfterInstanceChange } from './workflow-instances';
+import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
 
 const resource = createResourceQueries(bizLeaveContract, {
   onSaved: (qc, saved) => invalidateLeaveWorkflowViews(qc, saved.id),
+  onDeleted: (qc) => { void invalidateEntityRelations(qc); },
 });
 
 export const bizLeaveKeys = {
@@ -63,6 +65,7 @@ function invalidateLeaveStatus(qc: QueryClient, saved: BizLeave) {
 }
 
 function invalidateLeaveWorkflowViews(qc: QueryClient, id: number) {
+  void invalidateEntityRelations(qc);
   void qc.invalidateQueries({ queryKey: bizLeaveKeys.approvalDetail(id) });
   void qc.invalidateQueries({ queryKey: bizLeaveKeys.workflowContext(id) });
 }

@@ -3,9 +3,10 @@ import { OpenAPIHono } from '@hono/zod-openapi';
 import { workflowAttachmentContract, workflowAttachmentUploadBody } from '@zenith/shared/workflow';
 import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
-import { getWorkflowAttachmentSummary, readWorkflowAttachment, readWorkflowAttachmentUpload, uploadWorkflowAttachment } from '../../services/workflow/workflow-attachments.service';
+import { getWorkflowAttachmentDetail, readWorkflowAttachment, readWorkflowAttachmentUpload, uploadWorkflowAttachment } from '../../services/workflow/workflow-attachments.service';
 import { readStoredFile } from '../../lib/file-storage';
 import { inlineOrAttachmentDisposition } from '../../lib/content-disposition';
+import { mountCrud } from '../_crud';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -34,17 +35,10 @@ async function contentResponse(source: Awaited<ReturnType<typeof readWorkflowAtt
 const contentRoute = defineContractRoute(workflowAttachmentContract.content, {
   handler: async (c) => contentResponse(await readWorkflowAttachment(c.req.valid('param').id)),
 });
-const detailRoute = defineContractRoute(workflowAttachmentContract.detail, {
-  handler: async (c) => {
-    const row = await getWorkflowAttachmentSummary(c.req.valid('param').id);
-    return c.json(okBody({ id: row.id, fileId: row.fileId, name: row.name, size: row.size, mimeType: row.mimeType,
-      url: workflowAttachmentContract.content.fullPath.replace('{id}', String(row.id)) }), 200);
-  },
-});
 const uploadContentRoute = defineContractRoute(workflowAttachmentContract.uploadContent, {
   handler: async (c) => contentResponse(await readWorkflowAttachmentUpload(c.req.valid('param').fileId)),
 });
 
-router.openapiRoutes([uploadRoute, contentRoute, uploadContentRoute, detailRoute] as const);
+mountCrud(router, workflowAttachmentContract, { get: getWorkflowAttachmentDetail }, {}, [uploadRoute, contentRoute, uploadContentRoute]);
 
 export default router;

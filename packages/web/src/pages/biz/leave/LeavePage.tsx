@@ -1,6 +1,8 @@
 /** 业务表单直接承载流程预览、当前审批与往次记录。 */
-import { lazy, Suspense, useCallback, useLayoutEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
+import { entityRelationColumn } from '@/components/entity-relations/entity-relation-columns';
 import { useDebouncedValue } from '@tanstack/react-pacer';
 import { Button, Form, Modal, Space, Spin, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -56,6 +58,10 @@ function LeaveFormReady({ onReady }: Readonly<{ onReady: () => void }>) {
 
 export default function LeavePage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const leaveKey = searchParams.get('leaveId');
+  const deepLinkedId = leaveKey && /^[1-9]\d*$/.test(leaveKey) && Number.isSafeInteger(Number(leaveKey)) ? Number(leaveKey) : undefined;
+  const deepLinked = useBizLeaveRecord(deepLinkedId);
   const { hasPermission } = usePermission();
   const { options: leaveTypeOptions, getLabel: getLeaveTypeLabel } = useDictItems('leave_type');
   const page = useListPage({ contract: bizLeaveContract, useList: useBizLeaveList });
@@ -75,6 +81,15 @@ export default function LeavePage() {
     toValues: leaveValues, beforeSave: payloadFromValues,
   });
   const editing = modal.editing;
+  const openLinkedRecord = modal.openEdit;
+  useEffect(() => {
+    if (!deepLinkedId || !deepLinked.data) return;
+    setMode('view'); setSelectedInstanceId(undefined); setFormValues(null);
+    openLinkedRecord(deepLinked.data);
+    const next = new URLSearchParams(searchParams);
+    next.delete('leaveId');
+    setSearchParams(next, { replace: true });
+  }, [deepLinkedId, deepLinked.data, openLinkedRecord, searchParams, setSearchParams]);
   const canEdit = mode === 'edit' && (!editing || editing.status === 'draft') && selectedInstanceId === undefined;
   const showPreview = (!editing || editing.status === 'draft') && selectedInstanceId === undefined;
   const previewBody = useMemo(() => {
@@ -136,6 +151,7 @@ export default function LeavePage() {
     width: 200, desktopInlineKeys: ['edit', 'workflow'],
   });
   const columns: ColumnProps<BizLeave>[] = [
+    entityRelationColumn<BizLeave>('biz.leave'),
     { title: '请假类型', dataIndex: 'leaveType', width: 110, render: (v: string) => getLeaveTypeLabel(v) },
     { title: '日期', key: 'dateRange', width: DATE_RANGE_COLUMN_WIDTH,
       render: (_: unknown, record: BizLeave) => <span style={{ whiteSpace: 'nowrap' }}>{record.startDate} ~ {record.endDate}</span> },
@@ -161,7 +177,7 @@ export default function LeavePage() {
       <Form.InputNumber field="days" label="天数" min={0.5} step={0.5} style={{ width: '100%' }} rules={[{ required: true, message: '请输入天数' }]} />
       <Form.TextArea field="reason" label="事由" autosize rows={2} maxCount={500} />
     </Form>
-  ) : <LeaveDetails data={editing} />;
+  ) : <><LeaveDetails data={editing} />{editing && <EntityRelationButton entityRef={{ type: 'biz.leave', key: String(editing.id) }} />}</>;
   const instanceId = context.data?.instance?.id;
   const canOpenWorkflow = hasPermission('workflow:instance:list') || hasPermission('workflow:task:handle') || hasPermission('workflow:instance:monitor');
 

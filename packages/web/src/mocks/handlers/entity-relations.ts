@@ -17,6 +17,10 @@ import dayjs from 'dayjs';
 import { mockAsyncTasks } from './async-tasks';
 import { mockEntitySubjects, mockNotificationOutboxes } from '@/mocks/data/entity-subjects';
 import { mockFinancialItem, mockFinancialRelationRefs, mockFinancialSections } from './entity-financial-relations';
+import { WORKFLOW_BUSINESS_ENTITY_TYPES } from '@zenith/shared/platform/workflow-business-catalog';
+import { mockBizLeaves } from '@/mocks/data/biz-leave';
+import { mockPaymentReconAdjustments } from './payment-ext';
+import { mockWorkflowAttachmentLinks, canReadMockWorkflowAttachmentForSession } from '@/mocks/utils/workflow-attachments';
 
 const manualLinks = new Map<string, readonly [CanonicalEntityRef, CanonicalEntityRef]>();
 function refId(ref: CanonicalEntityRef) { return `${ref.type}:${ref.key}`; }
@@ -39,12 +43,29 @@ const READ_PERMISSIONS: Partial<Record<CanonicalEntityType, string>> = {
 
 function canReadType(session: MockSession, type: CanonicalEntityType) {
   const permissions = mockUserPermissions(session.user);
+  if (type === 'biz.leave') return true;
+  if (type === 'workflow.archive') return isMockPlatformAdmin(session.user);
+  if (type === 'workflow.attachment') return permissions.includes('*') || ['workflow:instance:list', 'workflow:task:handle', 'workflow:instance:monitor'].some((permission) => permissions.includes(permission));
   return permissions.includes('*') || Boolean(READ_PERMISSIONS[type] && permissions.includes(READ_PERMISSIONS[type]!));
 }
 
 function resolveAnchor(ref: CanonicalEntityRef, session: MockSession): { ref: CanonicalEntityRef; title: string } | undefined {
   if (!canReadType(session, ref.type) || !/^[1-9]\d*$/.test(ref.key)) return undefined;
   const id = Number(ref.key);
+  if (ref.type === 'workflow.attachment') {
+    const row = mockWorkflowAttachmentLinks.find((item) => item.id === id);
+    return row && canReadMockWorkflowAttachmentForSession(session, row) ? { ref, title: row.name } : undefined;
+  }
+  if (ref.type === 'biz.leave') {
+    const row = mockBizLeaves.find((item) => item.id === id && item.applicantId === session.user.id);
+    const tenantId = session.viewingTenantId ?? session.user.tenantId;
+    return row && (tenantId == null ? isMockPlatformAdmin(session.user) || row.tenantId == null : row.tenantId === tenantId)
+      ? { ref, title: `请假申请 #${id}` } : undefined;
+  }
+  if (ref.type === 'workflow.archive') {
+    const row = mockWorkflowInstances.find((item) => item.id === id);
+    return row?.archive && resolveAnchor({ type: 'workflow.instance', key: ref.key }, session) ? { ref, title: `${row.title} · 审批归档件` } : undefined;
+  }
   // Demo rows without tenant ownership represent the platform fixture set; never reuse them in a viewed tenant.
   if (session.viewingTenantId != null) return undefined;
   if (!isMockPlatformAdmin(session.user) && ref.type !== 'identity.user' && ref.type !== 'workflow.instance') return undefined;
@@ -74,7 +95,7 @@ function resolveAnchor(ref: CanonicalEntityRef, session: MockSession): { ref: Ca
   }
 }
 
-function sectionsFor(type: CanonicalEntityType, session: MockSession): EntityRelationSection[] {
+function sectionsFor(type: CanonicalEntityType, session: MockSession, key: string): EntityRelationSection[] {
   const definitions: Partial<Record<CanonicalEntityType, Array<[string, CanonicalEntityType]>>> = {
     'payment.order': [['payment.order.refunds', 'payment.refund']],
     'payment.refund': [['payment.refund.order', 'payment.order']],
@@ -89,6 +110,21 @@ function sectionsFor(type: CanonicalEntityType, session: MockSession): EntityRel
     key, labelKey: `relation.${key}`, targetTypes: [target], kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true },
   }));
   sections.push(...mockFinancialSections(type).filter((section) => section.targetTypes.some((target) => canReadType(session, target))));
+  const addWorkflowSection = (suffix: string, target: CanonicalEntityType) => {
+    if (canReadType(session, target)) sections.push({ key: `${type}.${suffix}`, labelKey: `relation.${type}.${suffix}`, targetTypes: [target], kind: 'derived', cardinality: 'many', capabilities: { view: true, open: true } });
+  };
+  if (WORKFLOW_BUSINESS_ENTITY_TYPES.some((item) => item.entityType === type)) {
+    addWorkflowSection('workflow-instances', 'workflow.instance'); addWorkflowSection('archives', 'workflow.archive'); addWorkflowSection('attachments', 'workflow.attachment');
+  }
+  if (type === 'workflow.instance') {
+    const source = mockWorkflowInstances.find((item) => item.id === Number(key));
+    const business = WORKFLOW_BUSINESS_ENTITY_TYPES.find((item) => item.bizType === source?.bizType);
+    if (business && source?.bizId) { addWorkflowSection(business.reverseRelation, business.entityType); addWorkflowSection('business-history', 'workflow.instance'); }
+    addWorkflowSection('archives', 'workflow.archive'); addWorkflowSection('attachments', 'workflow.attachment');
+  }
+  if (type === 'workflow.task') addWorkflowSection('attachments', 'workflow.attachment');
+  if (type === 'workflow.attachment') { addWorkflowSection('instance', 'workflow.instance'); addWorkflowSection('approval-tasks', 'workflow.task'); }
+  if (type === 'workflow.archive') addWorkflowSection('instance', 'workflow.instance');
   if (['platform.operation-log', 'tasks.async', 'notification.outbox'].includes(type)) {
     sections.push({ key: `${type}.subjects`, labelKey: 'relation.common.subjects', targetTypes: [...ENTITY_RELATION_TYPES], kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true } });
   }
@@ -107,6 +143,34 @@ function relationItems(ref: CanonicalEntityRef, sectionKey: string, session: Moc
     return anchor ? [mockFinancialItem(target, sectionKey) ?? { ref: target, title: anchor.title, relationKey: sectionKey, capabilities: { view: true, open: true } }] : [];
   });
   if (sectionKey === `${ref.type}.subjects`) return fromRefs(mockEntitySubjects.get(refId(ref)) ?? []);
+  if (ref.type === 'workflow.attachment') {
+    const link = mockWorkflowAttachmentLinks.find((item) => item.id === id);
+    if (!link || !canReadMockWorkflowAttachmentForSession(session, link)) return [];
+    if (sectionKey === 'workflow.attachment.instance') return fromRefs([{ type: 'workflow.instance', key: String(link.instanceId) }]);
+    if (sectionKey === 'workflow.attachment.approval-tasks') return link.taskId ? fromRefs([{type:'workflow.task',key:String(link.taskId)}]) : [];
+  }
+  const business = WORKFLOW_BUSINESS_ENTITY_TYPES.find((item) => item.entityType === ref.type);
+  const sourceInstance = mockWorkflowInstances.find((item) => item.id === id);
+  const businessTenant = ref.type === 'biz.leave' ? mockBizLeaves.find((item) => item.id === id)?.tenantId
+    : ref.type === 'cms.content' ? null : mockPaymentReconAdjustments.find((item) => item.id === id)?.tenantId;
+  if (sectionKey === `${ref.type}.attachments`) {
+    const rounds = business ? mockWorkflowInstances.filter((item) => item.bizType === business.bizType && item.bizId === ref.key && (item.tenantId ?? null) === (businessTenant ?? null)).map((item)=>item.id) : [];
+    return fromRefs(mockWorkflowAttachmentLinks.filter((link) => ref.type === 'workflow.instance' ? link.instanceId === id : ref.type === 'workflow.task' ? link.taskId === id : rounds.includes(link.instanceId))
+      .toSorted((a,b)=>b.instanceId-a.instanceId||b.id-a.id).map((link)=>({type:'workflow.attachment',key:String(link.id)})));
+  }
+  if (business && ["workflow-instances", "archives"].some((suffix) => sectionKey === `${ref.type}.${suffix}`)) {
+    const archives = sectionKey.endsWith('.archives');
+    return fromRefs(mockWorkflowInstances.filter((item) => item.bizType === business.bizType && item.bizId === ref.key && (item.tenantId ?? null) === (businessTenant ?? null) && (!archives || item.archive))
+      .toSorted((a, b) => b.id - a.id).map((item) => ({ type: archives ? 'workflow.archive' : 'workflow.instance', key: String(item.id) })));
+  }
+  if (ref.type === 'workflow.instance' && sourceInstance) {
+    const target = WORKFLOW_BUSINESS_ENTITY_TYPES.find((item) => sectionKey === `workflow.instance.${item.reverseRelation}` && item.bizType === sourceInstance.bizType);
+    if (target && sourceInstance.bizId) return fromRefs([{ type: target.entityType, key: sourceInstance.bizId }]);
+    if (sectionKey === 'workflow.instance.business-history') return fromRefs(mockWorkflowInstances.filter((item) => sourceInstance.bizType && sourceInstance.bizId && item.id !== id && item.bizType === sourceInstance.bizType && item.bizId === sourceInstance.bizId && item.tenantId === sourceInstance.tenantId)
+      .toSorted((a,b) => b.id-a.id).map((item) => ({type:'workflow.instance',key:String(item.id)})));
+    if (sectionKey === 'workflow.instance.archives' && sourceInstance.archive) return fromRefs([{type:'workflow.archive',key:ref.key}]);
+  }
+  if (ref.type === 'workflow.archive' && sectionKey === 'workflow.archive.instance') return fromRefs([{type:'workflow.instance',key:ref.key}]);
   const commonTarget = ({ audit: 'platform.operation-log', tasks: 'tasks.async', notifications: 'notification.outbox' } as const)[sectionKey.slice(`${ref.type}.`.length) as 'audit' | 'tasks' | 'notifications'];
   if (commonTarget) return fromRefs([...mockEntitySubjects.entries()].flatMap(([source, subjects]) => {
     if (!source.startsWith(`${commonTarget}:`) || !subjects.some((subject) => refId(subject) === refId(ref))) return [];
@@ -200,12 +264,12 @@ export const entityRelationsHandlers = [
     const session = currentMockSession(request);
     if (!session) return unauthorized('请先登录', { status: 401 });
     const anchor = resolveAnchor(params, session);
-    return anchor ? ok({ anchor, sections: sectionsFor(params.type, session), canManageLinks: canManageLinks(session) }) : notFound('对象不存在', { status: 404 });
+    return anchor ? ok({ anchor, sections: sectionsFor(params.type, session, params.key), canManageLinks: canManageLinks(session) }) : notFound('对象不存在', { status: 404 });
   }),
   mock(entityRelationsContract.section, ({ params, query, request, ok }) => {
     const session = currentMockSession(request);
     if (!session) return unauthorized('请先登录', { status: 401 });
-    if (!resolveAnchor(params, session) || !sectionsFor(params.type, session).some((section) => section.key === params.sectionKey)) return notFound('对象或分组不存在', { status: 404 });
+    if (!resolveAnchor(params, session) || !sectionsFor(params.type, session, params.key).some((section) => section.key === params.sectionKey)) return notFound('对象或分组不存在', { status: 404 });
     const items = relationItems(params, params.sectionKey, session);
     return ok({ ...pageOf(items, query.cursor, query.limit), total: items.length });
   }),

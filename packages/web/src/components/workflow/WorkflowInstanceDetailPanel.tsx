@@ -16,7 +16,8 @@ import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { WorkflowDefinition, WorkflowFieldPermission, WorkflowInstance, WorkflowComment, WorkflowTask, WorkflowTaskConsult } from '@zenith/shared/workflow';
 import { applyFieldPermissionsToFields, WORKFLOW_TASK_STATUS_LABELS, workflowInstanceContract, workflowTaskContract } from '@zenith/shared/workflow';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { useApiMutation } from '@/lib/contract-query';
+import { contractKey, useApiMutation } from '@/lib/contract-query';
+import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
 import { invalidateAfterTaskAction } from '@/hooks/queries/workflow-tasks';
 import { ApiError } from '@/lib/query';
 import { useAuth } from '@/hooks/useAuth';
@@ -153,7 +154,10 @@ function InstanceComments({ instance, readOnly = false }: Readonly<{ instance: W
   const [mentions, setMentions] = useState<number[]>([]);
   const [attachments, setAttachments] = useState<WorkflowUploadedFile[]>([]);
   const [replyTo, setReplyTo] = useState<WorkflowComment | null>(null);
-  const commentMutation = useApiMutation(workflowInstanceContract.addComment);
+  const commentMutation = useApiMutation(workflowInstanceContract.addComment, { invalidate: (qc, _comment, { params }) => {
+    void qc.invalidateQueries({ queryKey: contractKey(workflowInstanceContract.detail, { params: { id: params.id } }) });
+    void invalidateEntityRelations(qc);
+  } });
   const submitting = commentMutation.isPending;
 
   useEffect(() => { setComments(instance.comments ?? []); }, [instance.id, instance.comments]);
@@ -314,7 +318,7 @@ export default function WorkflowInstanceDetailPanel({
   const recallMutation = useApiMutation(workflowTaskContract.recall, {
     invalidate: (qc, recalled) => invalidateAfterTaskAction(qc, recalled.id),
   });
-  if (loading) {
+  if (loading && !instance) {
     return <WorkflowDetailSkeleton />;
   }
   if (!instance) {

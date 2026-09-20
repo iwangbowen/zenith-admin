@@ -49,6 +49,9 @@ export function usePaymentReconCases(query: QueryOf<typeof paymentReconContract.
 export function usePaymentReconCase(id?: number) {
   return useApiQuery(paymentReconContract.caseDetail, { params: { id: id ?? 0 } }, { enabled: id !== undefined });
 }
+export function usePaymentReconAdjustment(id?: number) {
+  return useApiQuery(paymentReconContract.adjustmentDetail, { params: { id: id ?? 0 } }, { enabled: id !== undefined });
+}
 export function usePaymentReconAdjustments(query: QueryOf<typeof paymentReconContract.adjustments>, enabled = true) {
   return useApiQuery(paymentReconContract.adjustments, { query }, { enabled, placeholderData: keepPreviousData });
 }

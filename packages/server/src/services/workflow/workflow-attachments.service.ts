@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, lt, ne, not, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { workflowAttachmentContract, workflowTaskAttachmentsSchema, mapWorkflowFormAttachments, type WorkflowAttachment, type WorkflowInstanceFormSnapshot } from '@zenith/shared/workflow';
+import { workflowAttachmentContract, workflowAttachmentSchema, workflowTaskAttachmentsSchema, mapWorkflowFormAttachments, type WorkflowAttachment, type WorkflowInstanceFormSnapshot } from '@zenith/shared/workflow';
 import { db } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import { managedFiles, workflowAttachmentLinks, workflowAttachmentUploads, workflowComments, workflowInstances, workflowTasks } from '../../db/schema';
@@ -12,6 +12,7 @@ import { getRestrictedFileForRead, uploadManagedFileFromBody } from '../files/fi
 import { releaseManagedFiles, retainManagedFiles } from '../files/file-gc.service';
 import { workflowVisibility } from '../platform/relations/providers/workflow-file.provider';
 import { hiddenWorkflowFieldKeys } from './workflow-form-access';
+import { pickEntity } from '../../lib/entity-map';
 
 export type WorkflowAttachmentInput = { fileId: string };
 type Instance = Pick<typeof workflowInstances.$inferSelect, 'id' | 'tenantId' | 'formSnapshot'>;
@@ -172,6 +173,11 @@ export async function getWorkflowAttachmentSummary(id: number, executor: DbExecu
 export async function readWorkflowAttachment(id: number) {
   const row = await getWorkflowAttachmentSummary(id);
   return getRestrictedFileForRead(row.fileId);
+}
+
+export async function getWorkflowAttachmentDetail(id: number) {
+  const row = await getWorkflowAttachmentSummary(id);
+  return pickEntity(workflowAttachmentSchema, row, { url: workflowAttachmentContract.content.fullPath.replace('{id}', String(row.id)) });
 }
 
 export async function readWorkflowAttachmentUpload(fileId: string) {
