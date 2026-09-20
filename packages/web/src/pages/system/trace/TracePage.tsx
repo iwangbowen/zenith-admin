@@ -151,10 +151,22 @@ export default function TracePage() {
   const timelineQuery = useTraceTimeline(traceId);
   const nodes = useMemo(() => timelineQuery.data?.nodes ?? [], [timelineQuery.data]);
 
+  /**
+   * 只改写自己的 traceId 参数（写新值 / 传 null 删除）。
+   * 基础是 router 给的 searchParams 而非整份替换，页签等其它查询参数原样保留——
+   * 与 `useUrlTabState` 的「各写各的参数」一致；参数无变化时不写 URL，不污染历史记录。
+   */
+  function applyTraceId(next: string | null) {
+    const params = new URLSearchParams(searchParams);
+    if (next) params.set('traceId', next);
+    else params.delete('traceId');
+    if (params.toString() !== searchParams.toString()) setSearchParams(params);
+  }
+
   function handleSearch() {
     const next = draft.trim();
     if (!next || !TRACE_ID_RE.test(next)) return;
-    setSearchParams(next === traceId ? searchParams : { traceId: next });
+    applyTraceId(next);
   }
 
   /**
@@ -164,17 +176,14 @@ export default function TracePage() {
   function handleReset() {
     setDraft('');
     setDetailNode(null);
-    if (!traceId) return;
-    const next = new URLSearchParams(searchParams);
-    next.delete('traceId');
-    setSearchParams(next);
+    if (traceId) applyTraceId(null);
   }
 
   /** 失败列表行点击：回填 ID、切换到查询 Tab 并触发查询 */
   function handleViewFailure(id: string) {
     setDraft(id);
     setActiveTab('query');
-    setSearchParams({ traceId: id });
+    applyTraceId(id);
   }
 
   const kindCounts = useMemo(() => {
