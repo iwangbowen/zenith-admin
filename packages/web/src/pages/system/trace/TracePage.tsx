@@ -17,6 +17,7 @@ import { useLogFiles, useLogFileContent } from '@/hooks/queries/log-files';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { FilterSelect } from '@/components/search-filters';
 import { ResetButton, SearchButton } from '@/components/toolbar-controls';
+import { TextBlock } from '@/components/TextBlock';
 
 const { Text, Paragraph } = Typography;
 
@@ -316,12 +317,9 @@ export default function TracePage() {
             </Card>
             <Card title="明细" style={{ marginTop: 12 }}>
               <Paragraph>
-                <pre style={{
-                  margin: 0, fontSize: 12, lineHeight: '20px', whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-all', maxHeight: 480, overflow: 'auto',
-                }}>
+                <TextBlock maxHeight={480}>
                   {JSON.stringify(detailNode.detail, null, 2)}
-                </pre>
+                </TextBlock>
               </Paragraph>
             </Card>
           </div>

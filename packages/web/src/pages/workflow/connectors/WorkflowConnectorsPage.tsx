@@ -22,6 +22,7 @@ import { parseHeadersJson } from '../components/http-integration';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListPage } from '@/hooks/useListPage';
 import { EditFormSheet } from '@/components/EditFormModal';
+import { TextBlock } from '@/components/TextBlock';
 
 /** 可创建的连接器类型（与后端 workflowConnectorTypeSchema 对齐；mq/database 暂无运行时实现不开放） */
 const TYPE_OPTIONS: Array<{ value: WorkflowConnectorType; label: string }> = [
@@ -309,7 +310,7 @@ export default function WorkflowConnectorsPage() {
               {testResult.responseSnippet && (
                 <div style={{ marginTop: 10 }}>
                   <Typography.Text strong size="small">响应预览</Typography.Text>
-                  <pre style={{ marginTop: 4, maxHeight: '40vh', overflow: 'auto', background: 'var(--semi-color-fill-0)', padding: 8, borderRadius: 'var(--semi-border-radius-medium)', fontSize: 12, wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>{testResult.responseSnippet}</pre>
+                  <TextBlock maxHeight="40vh" style={{ marginTop: 4 }}>{testResult.responseSnippet}</TextBlock>
                 </div>
               )}
             </div>

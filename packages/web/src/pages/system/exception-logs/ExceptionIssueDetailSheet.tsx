@@ -103,9 +103,8 @@ export function ExceptionIssueDetailSheet({ groupId, onClose, onOpenEvent }: Exc
       closeOnEsc
     >
       <Spin spinning={detailQuery.isLoading}>
-        {/* paddingBottom：抽屉底部无内边距，内容以表格结尾时最后一行会贴着边缘（与 global.css 给 Modal 补的同类间距一致） */}
         {detail ? (
-          <Space vertical align="start" spacing={16} style={{ width: '100%', paddingBottom: 16 }}>
+          <Space vertical align="start" spacing={16} style={{ width: '100%' }}>
             <Space spacing={8} wrap>
               <ErrorTypeTag type={detail.group.errorType} />
               <ErrorLevelTag level={detail.group.level} />

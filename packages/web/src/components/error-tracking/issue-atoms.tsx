@@ -7,6 +7,7 @@ import { Tag, Typography } from '@douyinfe/semi-ui';
 import { AlertCircle, AlertTriangle, Bug, Clock, FileCode, ListChecks, MessageSquare, Radio, ScrollText, ServerCrash, Skull, Zap } from 'lucide-react';
 import type { ErrorLevel, ErrorStatus, ErrorType } from '@zenith/shared/analytics';
 import { ERROR_LEVEL_LABELS, ERROR_STATUS_LABELS, ERROR_TYPE_LABELS } from '@zenith/shared/analytics';
+import { TextBlock } from '@/components/TextBlock';
 import { ERROR_LEVEL_COLORS, ERROR_STATUS_COLORS, ERROR_TYPE_COLORS, alertChannelMeta } from './issue-meta';
 import './error-tracking.css';
 
@@ -54,13 +55,9 @@ export function AlertChannelTags({ channels }: Readonly<{ channels: readonly str
   );
 }
 
-/** 等宽只读文本块（堆栈 / JSON 上下文） */
+/** 等宽只读文本块（堆栈 / JSON 上下文）；外观由共享的 TextBlock 提供，本页面不再自带样式 */
 export function CodeBlock({ children, maxHeight = 280 }: Readonly<{ children: ReactNode; maxHeight?: number }>) {
-  return (
-    <pre className="error-tracking-code-block" style={{ maxHeight }}>
-      {children}
-    </pre>
-  );
+  return <TextBlock maxHeight={maxHeight}>{children}</TextBlock>;
 }
 
 const SPARK_W = 96;

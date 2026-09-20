@@ -58,9 +58,8 @@ export function ExceptionEventDetailSheet({ event, onClose }: ExceptionEventDeta
       width={760}
       closeOnEsc
     >
-      {/* paddingBottom：抽屉底部无内边距，内容以文本块结尾时会贴着边缘（与 global.css 给 Modal 补的同类间距一致） */}
       {event && (
-        <Space vertical align="start" spacing={16} style={{ width: '100%', paddingBottom: 16 }}>
+        <Space vertical align="start" spacing={16} style={{ width: '100%' }}>
           <Space spacing={8} wrap>
             <ErrorTypeTag type={event.errorType} />
             <ErrorLevelTag level={event.level} />

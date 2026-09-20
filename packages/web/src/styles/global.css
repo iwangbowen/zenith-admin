@@ -163,6 +163,15 @@ body {
   padding-bottom: 20px;
 }
 
+/* SideSheet 的同类问题：body 只给了左右内边距（Semi 的 `padding: 0 24px`），
+   内容以表格 / 文本块结尾时最后一行贴住抽屉底边。在全局补齐，页面无需再各自写行内 paddingBottom。
+   选择器多带一层 .semi-sidesheet 提高特异性：与 Semi 的 padding 简写（0,1,0）不是按加载顺序决胜，
+   只覆盖底部而不动它给的左右 24px；抽屉自带完整 padding 的页面类（如 .fd-config-drawer）
+   特异性相同且值一致，不受影响。 */
+.semi-sidesheet .semi-sidesheet-body {
+  padding-bottom: 16px;
+}
+
 /* 窄屏 Modal 宽度自适应，防止溢出屏幕 */
 @media (--sm-down) {
   .semi-modal-wrap .semi-modal {
@@ -1579,6 +1588,23 @@ body[theme-mode='dark'] .semi-json-viewer-view-line {
 /* Slider 在 flex 行内自适应占满（Semi Slider 不透传 style，默认 fit-content 塌陷） */
 .zx-slider-row { display: flex; align-items: center; gap: 16px; max-width: 520px; }
 .zx-slider-row .semi-slider { width: 100%; flex: 1; }
+
+/* 扁平只读文本块（错误信息 / 堆栈 / 请求响应体 / 差异等诊断文本）——全站唯一来源。
+   底色 + 边框 + 圆角会把详情页切成一个个盒子，与「zx-panel 无卡片面板」的全局语言相反，
+   因此这里只保留等宽字体与滚动，分隔交给留白与标题；需要边界感的场景（终端输出、代码示例）
+   自带工具栏或容器，不应复用本类，也不要给本类加回背景 / 边框 / 圆角。
+   用法见 @/components/TextBlock（错误监控的 CodeBlock 也复用本类）。 */
+.zx-text-block {
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  font-family: var(--semi-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--semi-color-text-0);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
 
 /* 会话回放 DevTools 面板行 */
 .zx-replay-devtools-row {

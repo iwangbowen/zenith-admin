@@ -33,6 +33,7 @@ import { useWorkflowConnectorList } from '@/hooks/queries/workflow-connectors';
 import { CreateButton } from '@/components/toolbar-controls';
 import { ListSearchToolbar, listTableProps, useCrudOperationColumn } from '@/components/list-page';
 import { useEditModal } from '@/hooks/useEditModal';
+import { TextBlock } from '@/components/TextBlock';
 import { EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { DateRangeFilter, FilterSelect, StatusSelect } from '@/components/search-filters';
@@ -90,9 +91,9 @@ export default function WorkflowEventSubscriptionsPage() {
               <div>HTTP 状态：{result.httpStatus ?? EMPTY_PLACEHOLDER} · 耗时 {result.durationMs}ms</div>
               {result.error && <div style={{ color: 'var(--semi-color-danger)' }}>错误：{result.error}</div>}
               {result.responseSnippet && (
-                <pre style={{ maxHeight: 160, overflow: 'auto', background: 'var(--semi-color-fill-0)', padding: 8, borderRadius: 'var(--semi-border-radius-small)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                <TextBlock maxHeight={160} style={{ marginTop: 4 }}>
                   {result.responseSnippet}
-                </pre>
+                </TextBlock>
               )}
             </div>
           ),
@@ -477,16 +478,16 @@ export default function WorkflowEventSubscriptionsPage() {
             )}
             <div>
               <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 4 }}>事件负载</Typography.Text>
-              <pre style={{ margin: 0, maxHeight: 260, overflow: 'auto', padding: 12, borderRadius: 'var(--semi-border-radius-medium)', background: 'var(--semi-color-fill-0)', fontSize: 12, lineHeight: 1.5 }}>
+              <TextBlock maxHeight={260}>
                 {deliveryDetail.payload ? JSON.stringify(deliveryDetail.payload, null, 2) : EMPTY_PLACEHOLDER}
-              </pre>
+              </TextBlock>
             </div>
             {deliveryDetail.responseBody && (
               <div>
                 <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 4 }}>响应内容</Typography.Text>
-                <pre style={{ margin: 0, maxHeight: 160, overflow: 'auto', padding: 12, borderRadius: 'var(--semi-border-radius-medium)', background: 'var(--semi-color-fill-0)', fontSize: 12, lineHeight: 1.5 }}>
+                <TextBlock maxHeight={160}>
                   {deliveryDetail.responseBody}
-                </pre>
+                </TextBlock>
               </div>
             )}
           </div>

@@ -36,6 +36,7 @@ import {
 } from '@/hooks/queries/iot-automations';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
 import { EditFormSheet } from '@/components/EditFormModal';
+import { TextBlock } from '@/components/TextBlock';
 
 const { Text } = Typography;
 
@@ -544,10 +545,7 @@ function AutomationRunsTab({ filterAutomation, onClearFilter }: Readonly<{
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
               <Text type="secondary" size="small">触发上下文</Text>
-              <pre style={{
-                margin: '4px 0 0', padding: 12, borderRadius: 'var(--semi-border-radius-medium)', fontSize: 12,
-                background: 'var(--semi-color-fill-0)', overflow: 'auto',
-              }}>{JSON.stringify(detailRun.triggerContext, null, 2)}</pre>
+              <TextBlock style={{ marginTop: 4 }}>{JSON.stringify(detailRun.triggerContext, null, 2)}</TextBlock>
             </div>
             <div>
               <Text type="secondary" size="small">动作结果</Text>

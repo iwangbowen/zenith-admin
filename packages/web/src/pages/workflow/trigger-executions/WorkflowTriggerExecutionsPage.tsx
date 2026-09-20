@@ -28,6 +28,7 @@ import {
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { ListSearchToolbar } from '@/components/list-page';
 import { JsonBlock } from '@/components/JsonBlock';
+import { TextBlock } from '@/components/TextBlock';
 import { useListPage } from '@/hooks/useListPage';
 
 const STATUS_COLORS: Record<WorkflowTriggerExecutionStatus, 'grey' | 'blue' | 'green' | 'red' | 'orange'> = {
@@ -182,9 +183,9 @@ export default function WorkflowTriggerExecutionsPage() {
             {detail.errorMessage && (
               <div>
                 <Typography.Text type="tertiary" size="small">错误信息</Typography.Text>
-                <pre style={{ background: 'var(--semi-color-fill-0)', padding: 12, borderRadius: 'var(--semi-border-radius-small)', marginTop: 4, color: 'var(--semi-color-danger)' }}>
+                <TextBlock style={{ marginTop: 4, color: 'var(--semi-color-danger)' }}>
                   {detail.errorMessage}
-                </pre>
+                </TextBlock>
               </div>
             )}
           </div>

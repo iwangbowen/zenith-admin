@@ -46,6 +46,7 @@ import { StatusSelect } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 import { JsonBlock } from '@/components/JsonBlock';
+import { TextBlock } from '@/components/TextBlock';
 import { abortSubmit } from '@/lib/abort-submit';
 import { useListPage } from '@/hooks/useListPage';
 
@@ -934,9 +935,9 @@ export default function RuleTablesPage() {
           )}
         />
         {diff && (
-          <pre style={{ marginTop: 12, background: 'var(--semi-color-fill-0)', padding: 12, borderRadius: 'var(--semi-border-radius-medium)', whiteSpace: 'pre-wrap' }}>
+          <TextBlock style={{ marginTop: 12 }}>
             {`v${diff.from} → ${diff.to === 0 ? '当前' : `v${diff.to}`}\n` + (diff.changes.length ? diff.changes.map((c) => `[${c.op}] ${c.kind} ${c.ref}: ${c.detail}`).join('\n') : '无差异')}
-          </pre>
+          </TextBlock>
         )}
       </SideSheet>
 

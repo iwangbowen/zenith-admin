@@ -30,6 +30,7 @@ import {
 } from '@/hooks/queries/iot-forwards';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
 import { EditFormModal } from '@/components/EditFormModal';
+import { TextBlock } from '@/components/TextBlock';
 
 const { Text } = Typography;
 
@@ -313,12 +314,7 @@ function ForwardLogsTab({ filterRule, onClearFilter }: Readonly<{
         onCancel={() => setDetailLog(null)}
         width={520}
       >
-        {detailLog && (
-          <pre style={{
-            margin: 0, padding: 12, borderRadius: 'var(--semi-border-radius-medium)', fontSize: 12,
-            background: 'var(--semi-color-fill-0)', overflow: 'auto',
-          }}>{JSON.stringify(detailLog.payload, null, 2)}</pre>
-        )}
+        {detailLog && <TextBlock>{JSON.stringify(detailLog.payload, null, 2)}</TextBlock>}
       </SideSheet>
     </>
   );

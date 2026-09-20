@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { ErrorEvent, ErrorLevel, ServerErrorType } from '@zenith/shared/analytics';
 import { ERROR_LEVEL_OPTIONS, SERVER_ERROR_TYPE_OPTIONS } from '@zenith/shared/analytics';
@@ -13,10 +12,8 @@ import { useFilterQuery } from '@/hooks/useFilterQuery';
 import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { useListSearch } from '@/hooks/useListSearch';
 import { formatDateTimeRangeForApi } from '@/utils/date';
-import { EMPTY_PLACEHOLDER, copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, copyableNoColumn, dateTimeColumn, renderCodeEllipsis, renderEllipsis } from '@/utils/table-columns';
 import { ExceptionEventDetailSheet } from './ExceptionEventDetailSheet';
-
-const { Text } = Typography;
 
 interface EventFilters {
   traceId: string;
@@ -55,15 +52,16 @@ export function ExceptionEventsTab({ active }: Readonly<{ active: boolean }>) {
       title: '异常信息',
       dataIndex: 'message',
       minWidth: 320,
-      render: (_v, record) => <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 300 }}>{record.errorName ? `${record.errorName}: ` : ''}{record.message}</Text>,
+      // 用工厂而不是写死 maxWidth：写死的上限比单元格宽得多，列被压窄时省略会按上限而非单元格截断，文字压过列边界
+      render: (_v, record) => renderEllipsis(record.errorName ? `${record.errorName}: ${record.message}` : record.message),
     },
     {
       title: '路由 / 作业',
       dataIndex: 'route',
       width: 260,
       render: (_v, record) => {
-        const text = record.route ? `${record.httpMethod ?? ''} ${record.route}`.trim() : record.jobType ? `${record.jobType}${record.jobId ? ` #${record.jobId}` : ''}` : EMPTY_PLACEHOLDER;
-        return <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 240 }} code>{text}</Text>;
+        const text = record.route ? `${record.httpMethod ?? ''} ${record.route}`.trim() : record.jobType ? `${record.jobType}${record.jobId ? ` #${record.jobId}` : ''}` : null;
+        return renderCodeEllipsis(text);
       },
     },
     { title: 'HTTP', dataIndex: 'httpStatus', width: 90, align: 'right', render: (v: number | null) => v ?? EMPTY_PLACEHOLDER },
