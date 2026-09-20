@@ -86,8 +86,8 @@ export const domainEvents = pgTable('domain_events', {
   /** Optional causal source object that emitted the event. */
   sourceType: varchar({ length: 96 }),
   sourceKey: varchar({ length: 512 }),
-  traceId: varchar({ length: 64 }),
-  parentRef: varchar({ length: 128 }),
+  traceId: varchar({ length: 128 }),
+  parentRef: varchar({ length: 256 }),
   dedupeKey: varchar({ length: 192 }),
   occurredAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
 }, (t) => [

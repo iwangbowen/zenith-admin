@@ -1,5 +1,5 @@
 {
-  "id": "b79c8a48-cb65-4c5c-bfd5-aef1dc44e77f",
+  "id": "bb0fc25f-3ac3-445d-9258-2dbca2f31b69",
   "prevId": "51ecda5b-9eca-4d25-9c3a-71e54145822c",
   "version": "7",
   "dialect": "postgresql",
@@ -11273,13 +11273,13 @@
         },
         "trace_id": {
           "name": "trace_id",
-          "type": "varchar(64)",
+          "type": "varchar(128)",
           "primaryKey": false,
           "notNull": false
         },
         "parent_ref": {
           "name": "parent_ref",
-          "type": "varchar(128)",
+          "type": "varchar(256)",
           "primaryKey": false,
           "notNull": false
         },
