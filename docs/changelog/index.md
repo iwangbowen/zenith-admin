@@ -4,6 +4,80 @@
 
 ---
 
+## v2.49.0 - 2026-09-20
+
+### Added
+
+#### 跨对象关联视图（核心）
+
+- 新增平台级对象上下文读模型：`core/entity-ref.ts` 定义 `EntityRef { type, key }` 与带角色的 `SubjectRef`，`platform/entity-catalog.ts` 作为无运行依赖的对象类型清单，`entity-registry.ts` 提供对应校验 schema；搜索类型经显式映射引用规范实体类型，不再维护第二套对象词典。
+- 平台按「锚点解析器 + 领域关系提供者」装配：各模块贡献独立的 `EntityAnchorResolver[]` 与 `RelationProvider[]`，装配期拒绝重复 key、缺少来源 / 目标解析器与描述 key 不一致；平台不接受表名、SQL、归属列等客户端输入。
+- 已接入 17 类锚点：支付订单（退款、投诉、落单后风控命中、审核、对账调整审批、会计凭证、对账案件与调整、分账、结算批次、已验证渠道回调）、退款 / 投诉 / 风控记录反查订单、会计凭证与对账案件与结算批次的反查、分账单与接收方与冲正的双向查询、渠道回调反查订单、用户归属的后台支付订单、会员明确履约的支付订单、请假单 / CMS 内容 / 对账调整单的历次审批与附件、流程实例与审批任务、审批附件与归档件、设备与告警、CMS 相关文章、网盘节点、Wiki 文档，以及异步任务 / 通知 / 操作审计反查来源业务对象。
+- 分组按需加载：描述接口只返回可见锚点与分组、不预先统计每组计数；组内在 SQL 内 keyset 分页（取 `limit + 1` 判断是否还有下一页）；游标签名并绑定用户、模拟登录、租户视角、锚点真实租户、对象与分组，每次请求仍重新授权，游标不作为授权凭据。
+- 统一对象时间线：把领域事件与结构化业务主体合并为按事件时间、来源类别与 ID 稳定倒序的分页时间线，未知事件类型不进入，来源对象重新解析授权。
+- 人工关联：`entity_relation_edges` 只存人工 N:M 关系，当前开放对称 `platform.related`（双向同一规范排序与唯一约束），服务端校验双方存在、可见、同租户并禁止自关联；读时两端再次授权。新增权限码 `system:relation:manage` 控制维护，添加与解除均记审计。
+- 新增读取接口：`/api/platform/entities/{type}/{key}/relations`、`/{sectionKey}`、`/timeline` 与 `/links`（建立 / 解除）。
+
+#### 副作用主体关联
+
+- 新增 `operation_log_subjects`、`notification_outbox_subjects`、`async_task_subjects`、`domain_event_subjects` 四张主体表，把审计、通知、异步任务、领域事件与业务对象结构化关联；父行与 subjects 同事务提交，摘要只允许事件目录声明的字段，不透传业务 payload。
+- 新增 `domain_events` 事件表：`event_type` / `schema_version` 校验、`actor` 与 `source` 成对约束、租户级与平台级幂等键部分唯一索引，默认保留 365 天；与支付 outbox、流程 outbox、通知、任务同事务写入，重放按幂等键校验业务事实与主体集合。
+- 审计、通知投递、异步任务与各财务列表复用公共关联列，可按结构化主体反查来源业务对象。
+
+#### 审批受控附件与归档
+
+- 新增 `workflow_attachment_links` 与 `workflow_attachment_uploads`：附件以绑定 ID 为 key，保留实例、任务 / 评论 / 表单字段来源，`fileId` 外键指向 `managed_files`；任务与评论使用含实例 ID 的复合外键，数据库禁止来源跨实例。
+- 附件输入统一为 `[{ fileId }]`，名称、大小、类型与访问 URL 全部由服务端生成，输出 `{ id, fileId, name, size, mimeType, url }` 快照；`url` 是工作流专属受控读取地址，不是文件身份或授权凭据。设计器只遍历声明的 `attachment` / `image` 字段与明细、布局容器，不从任意 JSON 或 URL 字符串推测附件。
+- 新增工作流专属读取接口 `GET /api/workflows/attachments/{id}`、`/{id}/content`、`/uploads/{fileId}/content`，与有效租户、流程参与关系及节点字段权限一起校验，隐藏表单字段不经关联视图泄漏；上传文件登记为 `restricted` 且对象存储强制 private ACL，未绑定上传进入孤儿文件宽限期，删除流程先释放引用再由统一 GC 回收。
+- 归档原件继续按 `archiveFileId + archiveSha256` 读取，下载明确请求 `source=archive` 并校验 SHA-256，不回退为当前版式；存在隐藏或需脱敏字段的查看者不能读取完整原件。
+
+#### 支付与业务审批关联闭环
+
+- 支付订单详情新增关联区：退款、投诉、落单后风控命中、审核、对账调整审批、会计凭证、对账案件与调整、分账、结算批次与已验证渠道回调。财务关联沿实际记账来源、外键与结算逐笔分录，约束租户、应用、渠道账户与币种，不按金额或日期推测。
+- 渠道回调仅在验签通过、处理结果为 `processed:*` 且应用与渠道配置匹配时反查订单，原始请求体与请求头不进入摘要；用户 / 会员与支付记录的归属不按整数 ID 相等推断。
+- 请假单、CMS 内容与对账调整单接入业务审批：历次审批按 `bizType + bizId + tenantId` 查询，不再依赖业务表只指向最新轮次的实例指针；流程监控权限不会自动授予他人的业务单据权限。
+- 新增审批附件反查所属审批与任务的关联组，以及审批任务、子流程、所属实例与同业务其他轮次的关联。
+- 新增精确读取对账调整单 `GET /api/payment/recon/adjustments/{id}`。
+
+#### 前端
+
+- 新增公共组件 `EntityContextView`（关联区 + 独立时间线，保留领域自身概览）、`RelationPanel`、`EntityTimeline`、`EntityLinkManager`、`EntityRefBadge`、`EntityRelationButton` 与 `WorkflowAttachmentView`，以及公共关联列。
+- 分组首次展开才请求，支持刷新、重试与继续加载；关联对象在同一 SideSheet 内导航并可返回，不堆叠抽屉；原详情入口只注册支持精确 ID 加载的路由，不使用关键词模糊定位。
+- 全局搜索结果新增「关联信息」入口，可关闭搜索弹窗并直接打开对象上下文；用户、会员、设备、网盘、Wiki、CMS、财务列表、任务中心、通知投递与操作审计均接入公共关联与时间线。
+
+### Changed
+
+- 审批附件契约由 `{ name, url, size? }` 改为受控快照 `{ id, fileId, name, size, mimeType, url }`；上传接口必须携带所属 `instanceId`，附件上传权限放行范围同步调整。
+- 搜索适配器类型（`SearchType`）与规范实体类型（`EntityType`）正式分离，`globalSearchEntityTypes` 提供唯一映射；新增搜索适配器必须在平台实体注册表登记对应映射。
+- 前端分包新增 `entity-discovery` 特性层：统一搜索面板、关联与时间线 UI、查询契约和实体元数据移出壳层静态依赖，搜索面板首次打开时才加载，Ctrl/Cmd+K 监听仍留在壳层触发器中。
+- 关系缓存失效改由查询 meta 标记（`lib/entity-relation-cache.ts`），业务 mutation 不再为失效缓存而静态导入关系运行时。
+- 关系读请求限制每进程最多 8 个并发、不建立无界队列，使用只读事务与 1500ms statement timeout / 750ms lock timeout，并记录 Prometheus 耗时与成功 / 失败 / 超时结果。
+
+### Fixed
+
+- 时间线访问口径与领域详情权限对齐，避免以更低门槛读到业务事实。
+- 修正领域事件引用长度约束，`traceId` / `parentRef` 只描述请求因果，不再承担业务归属。
+- 修正全量读取后内存分页：锚点租户绑定与微秒级时间游标进入 SQL，受限数据范围缺失归属列时直接报错而非静默放行。
+- 不再把 Provider 内的所有异常统一转成 404：仅已完成授权的单组查询超时返回可重试的降级状态，系统性故障返回 503。
+- 修复关联分组命名冲突、契约操作 query key 冲突，以及用户 / 租户 / 模拟登录身份的缓存隔离。
+- 修复关联列表重复 React key、重复空态、搜索结果行内 Portal 冒泡与精确 ID 详情加载。
+- 投诉退款的关联与事件写入退款持久化事务，事务失败不会调用支付渠道。
+
+### Docs
+
+- 新增《跨对象关联视图》（`docs/guide/entity-relations.md`）：对象与模块接入、契约与分页授权、关系事实与写入、前端与缓存、新模块接入清单。
+- 新增《跨对象关联视图验收记录》（`docs/guide/entity-relations-qa.md`）：自动化验证矩阵、浏览器实测步骤与验证中修复的问题。
+- `docs/workflow/business-integration.md` 增加「受控附件与归档」一节，覆盖上传来源、绑定事务、删除与 GC、设计器字段解析与归档原件读取。
+- `docs/guide/global-search.md` 更新 C9 / C10 边界，`docs/frontend/bundle-performance.md` 补记 `entity-discovery` 特性层与分包实测预算。
+
+### 升级注意
+
+- 本版含三个数据库迁移（`0006_chilly_stardust` / `0007_lame_golden_guardian` / `0008_funny_paibok`）：新增 `domain_events`、四张 subjects 表、`entity_relation_edges`、`workflow_attachment_links` 与 `workflow_attachment_uploads`，并为 `workflow_tasks` / `workflow_comments` 补 `(id, instance_id)` 复合唯一约束。升级前请先执行 `npm run db:migrate`。
+- 新增权限码 `system:relation:manage`（维护对象关联），入口挂在搜索中心；seed 未变更，已有环境需在角色授权中手工勾选。
+- 审批附件不做 URL 解析、回填或双读兼容：升级前产生的任务 / 评论附件仍是旧的 `{ name, url, size }`，不携带新的 `id` / `fileId` 绑定，也不会进入受控附件生命周期，需要时请在升级后重新上传。
+- `domain_events` 默认保留 365 天，可沿用既有保留策略管理；subjects 随父记录级联清理。
+- 未接入锚点的领域不会自动补全通知 / 任务历史或推断关系，后续按《跨对象关联视图》的新模块清单逐模块登记。
+
 ## v2.48.0 - 2026-09-19
 
 ### Added
