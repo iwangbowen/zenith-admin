@@ -1,3 +1,4 @@
+import { entityRelationColumn } from '@/components/entity-relations/entity-relation-columns';
 import { useState, type CSSProperties } from 'react';
 import { formatMinorAmount, formatYuan } from '@/utils/payment';
 import { Button, Form, SideSheet, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
@@ -131,6 +132,7 @@ export default function PaymentSettlementsPage() {
   }
 
   const columns: ColumnProps<PaymentSettlementBatch>[] = [
+    entityRelationColumn<PaymentSettlementBatch>('payment.settlement-batch'),
     copyableNoColumn('批次号', 'batchNo'),
     { title: '支付应用', dataIndex: 'appId', width: 200, render: (v: number) => renderEllipsis(appById.get(v)?.name ?? `应用 #${v}`) },
     { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <PaymentChannelTag channel={v} /> },

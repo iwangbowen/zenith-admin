@@ -1,3 +1,4 @@
+import { entityRelationColumn } from '@/components/entity-relations/entity-relation-columns';
 import { PAYMENT_CHANNEL_TAG_COLOR } from '@/utils/payment';
 import { Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -49,6 +50,7 @@ export default function PaymentLogsPage() {
   const columns: ColumnProps<PaymentNotifyLog>[] = [
     // 订单号置于首列承载展开箭头；内部日志 ID 移入展开详情
     copyableNoColumn('订单号', 'orderNo', { width: 300 }),
+    entityRelationColumn<PaymentNotifyLog>('payment.notify-log'),
     { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <Tag color={PAYMENT_CHANNEL_TAG_COLOR[v]}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
     { title: '场景', dataIndex: 'scene', width: 100, render: (v: string) => (v === 'refund' ? '退款回调' : '支付回调') },
     { title: '验签', dataIndex: 'signatureValid', width: 90, render: (v: boolean) => <Tag color={v ? 'green' : 'red'}>{v ? '通过' : '失败'}</Tag> },

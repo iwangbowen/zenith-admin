@@ -2,6 +2,7 @@ import { keepPreviousData } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { paymentJournalContract } from '@zenith/shared/payment';
 import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
 
 export type PaymentLedgerAccountListParams = NonNullable<QueryOf<typeof paymentJournalContract.accounts>>;
 export type PaymentJournalListParams = NonNullable<QueryOf<typeof paymentJournalContract.list>>;
@@ -52,6 +53,7 @@ export function usePaymentJournalDetail(id: number | undefined, enabled = true) 
 export function usePostPaymentJournal() {
   return useApiMutation(paymentJournalContract.post, {
     invalidate: (qc, journal) => {
+      void invalidateEntityRelations(qc);
       qc.setQueryData(paymentJournalKeys.detail(journal.id), journal);
       void qc.invalidateQueries({ queryKey: paymentJournalKeys.lists });
     },
@@ -62,6 +64,7 @@ export function usePostPaymentJournal() {
 export function useReversePaymentJournal() {
   return useApiMutation(paymentJournalContract.reverse, {
     invalidate: (qc, journal, { params }) => {
+      void invalidateEntityRelations(qc);
       qc.setQueryData(paymentJournalKeys.detail(journal.id), journal);
       void qc.invalidateQueries({ queryKey: paymentJournalKeys.detail(params.id) });
       void qc.invalidateQueries({ queryKey: paymentJournalKeys.lists });

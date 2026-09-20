@@ -1,3 +1,4 @@
+import { entityRelationColumn } from '@/components/entity-relations/entity-relation-columns';
 import { useState } from 'react';
 import { formatYuan } from '@/utils/payment';
 import { Button, Descriptions, Form, SideSheet, Spin, Tabs, TabPane, Tag, TextArea, Toast } from '@douyinfe/semi-ui';
@@ -189,6 +190,7 @@ export default function PaymentSharingPage() {
   }
 
   const receiverColumns: ColumnProps<PaymentSharingReceiver>[] = [
+    entityRelationColumn<PaymentSharingReceiver>('payment.sharing-receiver'),
     { title: '名称', dataIndex: 'name', minWidth: 180, render: renderEllipsis },
     { title: '类型', dataIndex: 'receiverType', width: 90, render: (v: PaymentSharingReceiverType) => PAYMENT_SHARING_RECEIVER_TYPE_LABELS[v] },
     copyableNoColumn('账号', 'account', { width: 200 }),
@@ -215,6 +217,7 @@ export default function PaymentSharingPage() {
   ];
 
   const orderColumns: ColumnProps<PaymentSharingOrder>[] = [
+    entityRelationColumn<PaymentSharingOrder>('payment.sharing-order'),
     copyableNoColumn('分账单号', 'sharingNo'),
     copyableNoColumn('订单号', 'orderNo'),
     { title: '接收方', dataIndex: 'receiverName', minWidth: 150, render: renderEllipsis },
@@ -236,6 +239,7 @@ export default function PaymentSharingPage() {
   ];
 
   const reversalColumns: ColumnProps<PaymentSharingReversal>[] = [
+    entityRelationColumn<PaymentSharingReversal>('payment.sharing-reversal'),
     copyableNoColumn('冲正单号', 'reversalNo', { width: 210 }),
     copyableNoColumn('分账单号', 'sharingNo', { width: 210 }),
     copyableNoColumn('订单号', 'orderNo', { width: 210 }),

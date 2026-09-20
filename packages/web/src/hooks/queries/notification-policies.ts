@@ -6,6 +6,7 @@ import type { QueryOf } from '@zenith/shared/core';
 import { notificationPolicyContract } from '@zenith/shared/messaging';
 import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { notificationPreferenceKeys } from './notification-preferences';
+import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
 
 export type NotificationDispatchListParams = NonNullable<QueryOf<typeof notificationPolicyContract.dispatches>>;
 
@@ -41,6 +42,7 @@ export function useNotificationDispatches(params: NotificationDispatchListParams
 export function useTestFireNotification() {
   return useApiMutation(notificationPolicyContract.testFire, {
     invalidate: (qc) => {
+      void invalidateEntityRelations(qc);
       void qc.invalidateQueries({ queryKey: notificationPolicyKeys.dispatches });
     },
   });

@@ -8,6 +8,8 @@ import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockDateOffset, mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 import { includesKeyword, matchesFilter } from '@/mocks/utils/filter';
 import { removeByIds, requireItem } from '../utils/crud';
+import type { CanonicalEntityRef } from '@zenith/shared/platform';
+import { recordMockSubjects } from '@/mocks/data/entity-subjects';
 
 /**
  * 任务中心 Mock：用「按读取时间推进」策略模拟异步任务执行。
@@ -290,7 +292,7 @@ const sims = new Map<number, SimState>();
 const retryAt = new Map<number, number>();
 const itemsByTask = new Map<number, AsyncTaskItem[]>();
 
-const tasks: AsyncTask[] = [
+export const mockAsyncTasks: AsyncTask[] = [
   {
     id: 1,
     taskType: 'demo-batch',
@@ -347,6 +349,8 @@ const tasks: AsyncTask[] = [
   },
 ];
 
+const tasks = mockAsyncTasks;
+
 export function createImmediateMockTask(input: {
   taskType: string;
   title: string;
@@ -355,6 +359,7 @@ export function createImmediateMockTask(input: {
   allowConcurrent?: boolean;
   payload?: Record<string, unknown>;
   maxAttempts?: number;
+  subjectRefs?: readonly CanonicalEntityRef[];
 }): AsyncTask {
   if (!taskTypes.some((item) => item.taskType === input.taskType)) {
     taskTypes.unshift({
@@ -398,6 +403,7 @@ export function createImmediateMockTask(input: {
     updatedAt: now,
   };
   tasks.unshift(task);
+  recordMockSubjects({ type: 'tasks.async', key: String(task.id) }, input.subjectRefs ?? []);
   return task;
 }
 

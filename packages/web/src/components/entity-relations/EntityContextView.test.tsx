@@ -5,6 +5,8 @@ import { entityRelationsContract, globalSearchContract } from '@zenith/shared/pl
 import { ApiRecorder, createRequestMock, createTestQueryClient, createWrapper } from '@/test-utils/query-harness';
 import { urlOf } from '@/lib/contract-query';
 import EntityContextView from './EntityContextRuntime';
+import { entityRelationColumn } from './entity-relation-columns';
+import { isValidElement } from 'react';
 
 const recorder = new ApiRecorder();
 vi.mock('@/utils/request', () => ({ request: createRequestMock(() => recorder) }));
@@ -38,6 +40,36 @@ function renderView() {
 }
 
 describe('EntityContextView with actual Semi components', () => {
+  it('opens a dispatch outbox reference rather than the dispatch row ID and hides suppressed rows', async () => {
+    const column = entityRelationColumn<{ id: number; outboxId: number | null }>('notification.outbox', (row) => row.outboxId);
+    expect(column.render?.(null, { id: 900, outboxId: null }, 0)).toBeNull();
+    const cell = column.render?.(null, { id: 900, outboxId: 41 }, 0);
+    if (!isValidElement(cell)) throw new Error('Expected an entity entry');
+    const outboxRef = { type: 'notification.outbox' as const, key: '41' };
+    const outboxUrl = urlOf(entityRelationsContract.describe, { params: outboxRef });
+    recorder.on('GET', outboxUrl, { anchor: { ref: outboxRef, title: '通知来源验证' }, sections: [], canManageLinks: false });
+    const Wrapper = createWrapper(createTestQueryClient());
+    render(<Wrapper><MemoryRouter>{cell}</MemoryRouter></Wrapper>);
+    fireEvent.click(screen.getByRole('button', { name: '关联信息' }));
+    expect(await screen.findByText('通知来源验证')).toBeVisible();
+    expect(recorder.countOf('GET', outboxUrl)).toBe(1);
+    expect(recorder.calls.some((call) => call.url.includes('/notification.outbox/900/'))).toBe(false);
+  });
+
+  it('opens a journal directly by its primary key', async () => {
+    const column = entityRelationColumn<{ id: number }>('payment.journal');
+    const cell = column.render?.(null, { id: 83 }, 0);
+    if (!isValidElement(cell)) throw new Error('Expected an entity entry');
+    const journalRef = { type: 'payment.journal' as const, key: '83' };
+    const journalUrl = urlOf(entityRelationsContract.describe, { params: journalRef });
+    recorder.on('GET', journalUrl, { anchor: { ref: journalRef, title: '凭证 JRN-83' }, sections: [], canManageLinks: false });
+    const Wrapper = createWrapper(createTestQueryClient());
+    render(<Wrapper><MemoryRouter>{cell}</MemoryRouter></Wrapper>);
+    fireEvent.click(screen.getByRole('button', { name: '关联信息' }));
+    expect(await screen.findByText('凭证 JRN-83')).toBeVisible();
+    expect(recorder.countOf('GET', journalUrl)).toBe(1);
+  });
+
   it('renders an authorized group and keeps it expanded when refreshing', async () => {
     renderView();
     await screen.findByText('支付订单 PAY-1');

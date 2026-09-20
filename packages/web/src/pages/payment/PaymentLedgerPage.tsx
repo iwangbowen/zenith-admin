@@ -1,3 +1,4 @@
+import { entityRelationColumn } from '@/components/entity-relations/entity-relation-columns';
 import { useMemo, useState, type CSSProperties } from 'react';
 import { ListSearchToolbar } from '@/components/list-page';
 import { ArrayField, Banner, Button, Descriptions, Form, Modal, SideSheet, TabPane, Tabs, Tag, TextArea, Toast } from '@douyinfe/semi-ui';
@@ -486,6 +487,7 @@ export default function PaymentLedgerPage() {
   ];
 
   const journalColumns: ColumnProps<PaymentJournal>[] = [
+    entityRelationColumn<PaymentJournal>('payment.journal'),
     copyableNoColumn('凭证号', 'journalNo'),
     { title: '来源类型', dataIndex: 'sourceType', width: 150, render: renderEllipsis },
     { title: '来源标识', dataIndex: 'sourceId', width: 180, render: renderEllipsis },

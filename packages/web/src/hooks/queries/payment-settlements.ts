@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { paymentSettlementContract } from '@zenith/shared/payment';
 import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
 
 export type PaymentSettlementListParams = NonNullable<QueryOf<typeof paymentSettlementContract.list>>;
 
@@ -15,6 +16,7 @@ export const paymentSettlementKeys = {
 
 /** 批次状态流转 / 生成 / 删除都会改变列表与详情 */
 function invalidateSettlements(qc: QueryClient) {
+  void invalidateEntityRelations(qc);
   void qc.invalidateQueries({ queryKey: paymentSettlementKeys.lists });
   void qc.invalidateQueries({ queryKey: [...paymentSettlementKeys.all, 'detail'] });
 }

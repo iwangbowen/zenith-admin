@@ -4,6 +4,7 @@ import type { BodyOf, QueryOf } from '@zenith/shared/core';
 import { paymentSharingContract } from '@zenith/shared/payment';
 import { api, useSaveMutation, contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME } from '@/lib/query';
+import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
 
 export type PaymentSharingReceiverListParams = NonNullable<QueryOf<typeof paymentSharingContract.receivers>>;
 export type PaymentSharingOrderListParams = NonNullable<QueryOf<typeof paymentSharingContract.orders>>;
@@ -31,12 +32,14 @@ export const paymentSharingKeys = {
 
 /** 分账方增删改：列表（含启用中下拉源，同前缀）与详情一并回源；分账单不受影响 */
 function invalidateReceivers(qc: QueryClient) {
+  void invalidateEntityRelations(qc);
   void qc.invalidateQueries({ queryKey: paymentSharingKeys.receiverLists });
   void qc.invalidateQueries({ queryKey: paymentSharingKeys.receiverDetails });
 }
 
 /** 分账 / 冲正改变分账单与冲正记录两份列表 */
 function invalidateSharingOrders(qc: QueryClient) {
+  void invalidateEntityRelations(qc);
   void qc.invalidateQueries({ queryKey: paymentSharingKeys.orderLists });
   void qc.invalidateQueries({ queryKey: paymentSharingKeys.reversalLists });
   void qc.invalidateQueries({ queryKey: paymentSharingKeys.reversalDetails });
@@ -92,7 +95,7 @@ export function useEnabledPaymentSharingReceivers(enabled = true) {
 /** 新增分账单不改变分账方名单，故不碰 receiverLists 与 enabledReceivers */
 export function useCreatePaymentSharingOrder() {
   return useApiMutation(paymentSharingContract.dispatch, {
-    invalidate: (qc) => void qc.invalidateQueries({ queryKey: paymentSharingKeys.orderLists }),
+    invalidate: (qc) => { void invalidateEntityRelations(qc); void qc.invalidateQueries({ queryKey: paymentSharingKeys.orderLists }); },
   });
 }
 

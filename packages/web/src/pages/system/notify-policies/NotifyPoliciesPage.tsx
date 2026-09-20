@@ -1,3 +1,4 @@
+import { entityRelationColumn } from '@/components/entity-relations/entity-relation-columns';
 /**
  * 通知策略中心（管理员）。
  *
@@ -240,6 +241,7 @@ function DispatchLogTab() {
   });
 
   const columns: ColumnProps<NotificationDispatch>[] = [
+    entityRelationColumn<NotificationDispatch>('notification.outbox', (record) => record.outboxId),
     dateTimeColumn('派发时间', 'createdAt'),
     { title: '事件', dataIndex: 'eventLabel', width: 180, render: renderEllipsis },
     {

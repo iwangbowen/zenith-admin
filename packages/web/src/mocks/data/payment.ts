@@ -41,6 +41,12 @@ let nextRefundId = 4;
 export const getNextPaymentRefundId = () => nextRefundId++;
 
 export const mockPaymentLogs: PaymentNotifyLog[] = [
-  { id: 1, channel: 'wechat', channelConfigId: 1, scene: 'payment', orderNo: 'PAY1700000000001', signatureValid: true, result: 'success', message: null, ip: '127.0.0.1', rawBody: '{"id":"EV-DEMO-001","event_type":"TRANSACTION.SUCCESS","resource":{"ciphertext":"***","original_type":"transaction"}}', headers: '{"wechatpay-serial":"5F2D...A1B2","wechatpay-signature":"***","content-type":"application/json"}', createdAt: SEED },
-  { id: 2, channel: 'wechat', channelConfigId: 1, scene: 'refund', orderNo: 'PAY1700000000003', signatureValid: true, result: 'refunded', message: null, ip: '127.0.0.1', rawBody: '{"id":"EV-DEMO-002","event_type":"REFUND.SUCCESS","resource":{"ciphertext":"***","original_type":"refund"}}', headers: '{"wechatpay-serial":"5F2D...A1B2","wechatpay-signature":"***","content-type":"application/json"}', createdAt: SEED },
+  { id: 1, channel: 'wechat', channelConfigId: 1, scene: 'payment', orderNo: 'PAY1700000000001', signatureValid: true, result: 'processed:success', message: null, ip: '127.0.0.1', rawBody: '{"id":"EV-DEMO-001","event_type":"TRANSACTION.SUCCESS","resource":{"ciphertext":"***","original_type":"transaction"}}', headers: '{"wechatpay-serial":"5F2D...A1B2","wechatpay-signature":"***","content-type":"application/json"}', createdAt: SEED },
+  { id: 2, channel: 'wechat', channelConfigId: 1, scene: 'refund', orderNo: 'PAY1700000000003', signatureValid: true, result: 'processed:refunded', message: null, ip: '127.0.0.1', rawBody: '{"id":"EV-DEMO-002","event_type":"REFUND.SUCCESS","resource":{"ciphertext":"***","original_type":"refund"}}', headers: '{"wechatpay-serial":"5F2D...A1B2","wechatpay-signature":"***","content-type":"application/json"}', createdAt: SEED },
 ];
+
+/** Scope captured when the Demo callbacks were verified; it is not inferred from log text. */
+export const mockPaymentNotifyLogScopes = new Map<number, { appId: number; currency: string }>([
+  [1, { appId: 1, currency: 'CNY' }],
+  [2, { appId: 1, currency: 'CNY' }],
+]);

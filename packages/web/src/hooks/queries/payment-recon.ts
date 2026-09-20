@@ -4,6 +4,7 @@ import { resourceKeyOf, type QueryOf } from '@zenith/shared/core';
 import { paymentChannelAccountContract, paymentReconContract } from '@zenith/shared/payment';
 import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { paymentJournalKeys, paymentLedgerAccountKeys } from './payment-journals';
+import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
 
 const periods = createResourceQueries(paymentReconContract);
 const accounts = createResourceQueries(paymentChannelAccountContract);
@@ -23,6 +24,7 @@ export const paymentReconKeys = {
 
 /** 核对、案件与审批均互相影响；任务完成和所有变更复用同一失效边界。 */
 export function invalidatePaymentReconciliation(qc: QueryClient) {
+  void invalidateEntityRelations(qc);
   void qc.invalidateQueries({ queryKey: paymentReconKeys.all });
   void qc.invalidateQueries({ queryKey: ['async-tasks'] });
   void qc.invalidateQueries({ queryKey: paymentJournalKeys.lists });

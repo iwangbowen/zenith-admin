@@ -17,6 +17,7 @@ import { filterByKeyword, matchesFilter, withinDateRange } from '@/mocks/utils/f
 
 const accounts: PaymentLedgerAccount[] = [];
 const journals: PaymentJournal[] = [];
+export { journals as mockPaymentJournals };
 const reservations: PaymentFundReservation[] = [];
 let nextAccountId = 1;
 let nextJournalId = 1;

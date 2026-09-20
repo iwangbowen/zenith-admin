@@ -4,6 +4,7 @@ import { resourceKeyOf, type QueryOf } from '@zenith/shared/core';
 import { asyncTaskContract } from '@zenith/shared/tasks';
 import type { AsyncTaskItemStatus } from '@zenith/shared/tasks';
 import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
 
 export type AsyncTaskListParams = NonNullable<QueryOf<typeof asyncTaskContract.list>>;
 
@@ -64,6 +65,7 @@ export function useAsyncTaskItems({ taskId, ...query }: AsyncTaskItemsParams, en
  * 刻意共享同一命名空间以复用缓存，失效语义也必须跟着一致。
  */
 export function invalidateAsyncTaskState(qc: QueryClient) {
+  void invalidateEntityRelations(qc);
   void qc.invalidateQueries({ queryKey: asyncTaskKeys.lists });
   void qc.invalidateQueries({ queryKey: asyncTaskKeys.stats });
   void qc.invalidateQueries({ queryKey: asyncTaskKeys.items });

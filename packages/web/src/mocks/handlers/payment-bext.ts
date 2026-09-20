@@ -116,6 +116,7 @@ const mockSettlementLines: MockSettlementLine[] = [
   { id: 3, journalLineId: 10003, amount: '1900', appId: 1, channelConfigId: 1, currency: 'CNY', postedDate: '2024-01-15', batchId: null, createdAt: SEED },
 ];
 const TRANSITIONS: Record<PaymentSettlementStatus, PaymentSettlementStatus[]> = { pending: ['settling', 'failed'], settling: ['settled', 'failed'], settled: [], failed: [] };
+export { settlements as mockPaymentSettlements, mockSettlementLines };
 
 const settlementHandlers = [
   mock(paymentSettlementContract.list, ({ query, ok, paginate }) => {
@@ -220,6 +221,7 @@ const sharingReversals: PaymentSharingReversal[] = [
   },
 ];
 let nextSharingReversalId = 2;
+export { receivers as mockPaymentSharingReceivers, sharingOrders as mockPaymentSharingOrders, sharingReversals as mockPaymentSharingReversals };
 const sharingReversalIdempotency = new Map<string, { requestHash: string; reversalId: number }>();
 
 const sharingHandlers = [

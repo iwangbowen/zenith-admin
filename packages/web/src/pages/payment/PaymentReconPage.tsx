@@ -1,3 +1,4 @@
+import { entityRelationColumn } from '@/components/entity-relations/entity-relation-columns';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrayField, Banner, Button, DatePicker, Empty, Form, Select, SideSheet, Space, Spin, Tabs, Tag, Timeline, Toast, Typography, Upload } from '@douyinfe/semi-ui';
@@ -171,6 +172,7 @@ export default function PaymentReconPage() {
     ] }),
   ];
   const caseColumns: ColumnProps<PaymentReconCase>[] = [
+    entityRelationColumn<PaymentReconCase>('payment.recon-case'),
     { title: '案件', dataIndex: 'id', width: 80 }, { title: '业务标识', dataIndex: 'entryKey', width: 220 },
     { title: '差异类型', dataIndex: 'type', width: 110, render: (value: PaymentReconCase['type']) => PAYMENT_RECON_CASE_TYPE_LABELS[value] },
     { title: '阶段', dataIndex: 'stage', width: 100, render: (value: PaymentReconCase['stage']) => PAYMENT_STATEMENT_TYPE_LABELS[value] },
@@ -191,6 +193,7 @@ export default function PaymentReconPage() {
     </div>
   ) : null;
   const adjustmentColumns: ColumnProps<PaymentReconAdjustment>[] = [
+    entityRelationColumn<PaymentReconAdjustment>('payment.recon-adjustment'),
     { title: '调整单', dataIndex: 'id', width: 90 }, { title: '案件', dataIndex: 'caseId', width: 90 },
     { title: '金额', dataIndex: 'amount', width: 130, render: renderAmount }, { title: '状态', dataIndex: 'status', width: 110, render: (value: PaymentReconAdjustment['status']) => PAYMENT_RECON_ADJUSTMENT_STATUS_LABELS[value] },
     { title: '依据', dataIndex: 'reason', width: 300 }, { title: '凭证', dataIndex: 'journalId', width: 100 },

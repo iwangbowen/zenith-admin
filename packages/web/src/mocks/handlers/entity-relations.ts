@@ -14,6 +14,9 @@ import { mockCmsContents } from '@/mocks/data/cms';
 import { mockOperationLogs } from '@/mocks/data/logs';
 import { entityDetailRoute } from '@/utils/entity-relations';
 import dayjs from 'dayjs';
+import { mockAsyncTasks } from './async-tasks';
+import { mockEntitySubjects, mockNotificationOutboxes } from '@/mocks/data/entity-subjects';
+import { mockFinancialItem, mockFinancialRelationRefs, mockFinancialSections } from './entity-financial-relations';
 
 const manualLinks = new Map<string, readonly [CanonicalEntityRef, CanonicalEntityRef]>();
 function refId(ref: CanonicalEntityRef) { return `${ref.type}:${ref.key}`; }
@@ -28,7 +31,10 @@ const READ_PERMISSIONS: Partial<Record<CanonicalEntityType, string>> = {
   'payment.refund': 'payment:refund:list', 'iot.device': 'iot:device:list', 'iot.alarm': 'iot:alarm:list',
   'workflow.definition': 'workflow:definition:list', 'workflow.instance': 'workflow:instance:list',
   'workflow.task': 'workflow:task:list', 'drive.file': 'drive:node:list', 'wiki.document': 'wiki:doc:list', 'cms.content': 'cms:content:list',
-  'platform.operation-log': 'system:log:list',
+  'platform.operation-log': 'system:log:operation', 'notification.outbox': 'system:notify-policy:list', 'tasks.async': 'system:async-task:list',
+  'payment.journal': 'payment:ledger:list', 'payment.recon-case': 'payment:recon:list', 'payment.recon-adjustment': 'payment:recon:list',
+  'payment.sharing-order': 'payment:sharing:list', 'payment.sharing-receiver': 'payment:sharing:list', 'payment.sharing-reversal': 'payment:sharing:list',
+  'payment.settlement-batch': 'payment:settlement:list', 'payment.notify-log': 'payment:log:list',
 };
 
 function canReadType(session: MockSession, type: CanonicalEntityType) {
@@ -62,7 +68,9 @@ function resolveAnchor(ref: CanonicalEntityRef, session: MockSession): { ref: Ca
     case 'wiki.document': { const row = mockWikiDocs.find((item) => item.id === id && !item.deletedAt); return row ? { ref, title: row.title } : undefined; }
     case 'cms.content': { const row = mockCmsContents.find((item) => item.id === id); return row ? { ref, title: row.title } : undefined; }
     case 'platform.operation-log': { const row = mockOperationLogs.find((item) => item.id === id); return row ? { ref, title: row.description || row.module || `操作记录 #${row.id}` } : undefined; }
-    default: return undefined;
+    case 'tasks.async': { const row = mockAsyncTasks.find((item) => item.id === id); return row ? { ref, title: row.title } : undefined; }
+    case 'notification.outbox': { const row = mockNotificationOutboxes.find((item) => item.id === id); return row ? { ref, title: row.title } : undefined; }
+    default: { const item = mockFinancialItem(ref); return item ? { ref, title: item.title } : undefined; }
   }
 }
 
@@ -80,6 +88,13 @@ function sectionsFor(type: CanonicalEntityType, session: MockSession): EntityRel
   const sections: EntityRelationSection[] = (definitions[type] ?? []).filter(([, target]) => canReadType(session, target)).map(([key, target]) => ({
     key, labelKey: `relation.${key}`, targetTypes: [target], kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true },
   }));
+  sections.push(...mockFinancialSections(type).filter((section) => section.targetTypes.some((target) => canReadType(session, target))));
+  if (['platform.operation-log', 'tasks.async', 'notification.outbox'].includes(type)) {
+    sections.push({ key: `${type}.subjects`, labelKey: 'relation.common.subjects', targetTypes: [...ENTITY_RELATION_TYPES], kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true } });
+  }
+  for (const [suffix, target] of [['audit', 'platform.operation-log'], ['tasks', 'tasks.async'], ['notifications', 'notification.outbox']] as const) {
+    if (canReadType(session, target)) sections.push({ key: `${type}.${suffix}`, labelKey: `relation.common.${suffix}`, targetTypes: [target], kind: 'activity', cardinality: 'many', capabilities: { view: true, open: true } });
+  }
   sections.push({ key: `${type}.links`, labelKey: 'relation.common.related', targetTypes: [...ENTITY_RELATION_TYPES], kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true } });
   return sections;
 }
@@ -87,6 +102,17 @@ function sectionsFor(type: CanonicalEntityType, session: MockSession): EntityRel
 function relationItems(ref: CanonicalEntityRef, sectionKey: string, session: MockSession): EntityRelationItem[] {
   const id = Number(ref.key);
   const rows: Array<{ type: CanonicalEntityType; id: number; title: string; subtitle?: string | null; createdAt?: string | null }> = [];
+  const fromRefs = (refs: readonly CanonicalEntityRef[]): EntityRelationItem[] => refs.flatMap((target) => {
+    const anchor = resolveAnchor(target, session);
+    return anchor ? [mockFinancialItem(target, sectionKey) ?? { ref: target, title: anchor.title, relationKey: sectionKey, capabilities: { view: true, open: true } }] : [];
+  });
+  if (sectionKey === `${ref.type}.subjects`) return fromRefs(mockEntitySubjects.get(refId(ref)) ?? []);
+  const commonTarget = ({ audit: 'platform.operation-log', tasks: 'tasks.async', notifications: 'notification.outbox' } as const)[sectionKey.slice(`${ref.type}.`.length) as 'audit' | 'tasks' | 'notifications'];
+  if (commonTarget) return fromRefs([...mockEntitySubjects.entries()].flatMap(([source, subjects]) => {
+    if (!source.startsWith(`${commonTarget}:`) || !subjects.some((subject) => refId(subject) === refId(ref))) return [];
+    return [{ type: commonTarget, key: source.slice(commonTarget.length + 1) }];
+  }));
+  if (mockFinancialSections(ref.type).some((section) => section.key === sectionKey)) return fromRefs(mockFinancialRelationRefs(ref, sectionKey));
   if (sectionKey === `${ref.type}.links`) return [...manualLinks.values()].flatMap(([source, target]) => {
     const other = refId(source) === refId(ref) ? target : refId(target) === refId(ref) ? source : undefined;
     const anchor = other && resolveAnchor(other, session);

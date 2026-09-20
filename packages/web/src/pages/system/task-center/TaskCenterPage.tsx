@@ -41,6 +41,7 @@ import {
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { JsonBlock } from '@/components/JsonBlock';
 import TaskStatsTab from './TaskStatsTab';
+import { entityRelationColumn } from '@/components/entity-relations/entity-relation-columns';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
@@ -313,6 +314,7 @@ export default function TaskCenterPage() {
   };
 
   const columns: ColumnProps<AsyncTask>[] = [
+    entityRelationColumn<AsyncTask>('tasks.async'),
     { title: '任务ID', dataIndex: 'id', width: 90 },
     { title: '任务名称', dataIndex: 'title', minWidth: 220, render: renderEllipsis },
     { title: '任务类型', dataIndex: 'taskType', width: 200, render: renderEllipsis },

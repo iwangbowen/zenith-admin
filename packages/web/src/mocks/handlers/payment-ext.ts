@@ -18,6 +18,7 @@ import { mock } from '@/mocks/utils/contract';
 import { requireItem } from '@/mocks/utils/crud';
 import { mockDateTime } from '@/mocks/utils/date';
 import { badRequest } from '@/mocks/utils/handlers';
+import { recordMockNotification, recordMockOperationAudit } from '@/mocks/data/entity-subjects';
 import { recordMockSystemJournal } from './payment-journals';
 import { filterByKeyword, matchesFilter } from '@/mocks/utils/filter';
 import { createImmediateMockTask } from './async-tasks';
@@ -35,6 +36,8 @@ const runs: PaymentReconRun[] = [];
 const cases: PaymentReconCase[] = [{ id: 1, accountId: 1, periodId: 1, caseKey: 'payment:merchant:PAY1700000000004', entryKey: 'PAY1700000000004', type: 'amount_diff', stage: 'trade', status: 'open', version: 1, lastRunId: 0, applicationId: 1, orderId: 4, refundId: null, localAmount: '5000', channelAmount: '4900', currency: 'CNY', evidence: { source: 'provider_download' }, assignedTo: null, dueAt: '2026-09-20 00:00:00', resolution: null, tenantId: null, createdBy: 1, updatedBy: 1, createdAt: SEED, updatedAt: SEED }];
 const caseEvents: PaymentReconCaseEvent[] = [];
 const adjustments: PaymentReconAdjustment[] = [];
+export { cases as mockPaymentReconCases, adjustments as mockPaymentReconAdjustments };
+for (const item of cases) recordMockNotification('payment.recon.difference', [{ type: 'payment.recon-case', key: String(item.id) }]);
 const summary: PaymentReconSummary = { activeRuns: 0, runRevision: '', expectedPeriods: 0, waitingPeriods: 0, readyPeriods: 1, failedPeriods: 1, openCases: 1, suspendedCases: 0, overdueCases: 0, pendingAdjustments: 0, unmatchedBankEntries: 0, unmatchedSettlementEntries: 0, differenceAmounts: [{ currency: 'CNY', amount: '100' }] };
 let nextId = 20;
 const asyncTask = (taskType: string, title: string) => createImmediateMockTask({ taskType, title, module: '支付中心' });
@@ -53,7 +56,12 @@ const reconHandlers = [
   mock(paymentReconContract.cases, ({ query, ok }) => ok(paginate(cases.filter((item) => (!query.accountId || item.accountId === query.accountId) && (!query.status || item.status === query.status) && (!query.type || item.type === query.type)), query.page, query.pageSize))),
   mock(paymentReconContract.caseDetail, ({ params, ok }) => { const item = requireItem(cases, params.id, '差异案件不存在'); return ok({ ...item, events: caseEvents.filter((event) => event.caseId === item.id), adjustments: adjustments.filter((a) => a.caseId === item.id) }); }),
   mock(paymentReconContract.handleCase, ({ params, body, ok }) => { const item = requireItem(cases, params.id, '差异案件不存在'); if (item.version !== body.expectedVersion) return badRequest('案件已经变化，请刷新后操作'); item.status = body.action === 'investigate' ? 'investigating' : body.action === 'suspend' ? 'suspended' : body.action === 'ignore' ? 'ignored' : 'open'; item.version += 1; item.resolution = body.remark; caseEvents.push({ id: nextId++, caseId: item.id, action: body.action, actorId: 1, remark: body.remark, before: {}, after: { status: item.status }, createdAt: now(), tenantId: null }); return ok(item); }),
-  mock(paymentReconContract.compensate, ({ params, ok }) => ok(asyncTask('payment-recon-compensate', `补偿案件 #${params.id}`))),
+  mock(paymentReconContract.compensate, ({ params, request, ok }) => {
+    requireItem(cases, params.id, '差异案件不存在');
+    const task = createImmediateMockTask({ taskType: 'payment-recon-compensate', title: `补偿案件 #${params.id}`, module: '支付中心', subjectRefs: [{ type: 'payment.recon-case', key: String(params.id) }] });
+    recordMockOperationAudit(request, `提交对账补偿 #${params.id}`, [{ type: 'payment.recon-case', key: String(params.id) }, { type: 'tasks.async', key: String(task.id) }]);
+    return ok(task);
+  }),
   mock(paymentReconContract.adjustments, ({ query, ok }) => ok(paginate(adjustments.filter((item) => !query.caseId || item.caseId === query.caseId), query.page, query.pageSize))),
   mock(paymentReconContract.createAdjustment, ({ params, body, ok }) => { const item: PaymentReconAdjustment = { id: nextId++, caseId: params.id, caseVersion: 1, applicationId: body.applicationId, channelConfigId: body.channelConfigId, amount: body.amount, direction: body.direction, reason: body.reason, evidence: {}, status: 'draft', workflowInstanceId: null, journalId: null, reversalOfId: null, applicantId: 1, approverId: null, approvedAt: null, executedAt: null, tenantId: null, createdBy: 1, updatedBy: 1, createdAt: now(), updatedAt: now() }; adjustments.unshift(item); return ok(item); }),
   mock(paymentReconContract.submitAdjustment, ({ params, ok }) => { const item = requireItem(adjustments, params.id, '调整单不存在'); item.status = 'pending'; return ok(item); }),

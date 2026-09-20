@@ -11,6 +11,7 @@ import './OperationLogsTable.css';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { UserDisplayCell, formatUserLabel } from '@/components/UserDisplay';
 import { usePermission } from '@/hooks/usePermission';
+import { entityRelationColumn } from '@/components/entity-relations/entity-relation-columns';
 
 interface OperationLogsTableProps {
   readonly dataSource: OperationLog[];
@@ -151,6 +152,7 @@ export function OperationLogsTable({
         return <Tag color={success ? 'green' : 'red'}>{success ? '成功' : '失败'}</Tag>;
       },
     },
+    entityRelationColumn<OperationLog>('platform.operation-log'),
     createOperationColumn<OperationLog>({
       width: 100,
       actions: (record) => [{ key: 'detail', label: '详情', onClick: () => setDetailLog(record) }],
