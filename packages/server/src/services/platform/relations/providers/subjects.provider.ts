@@ -7,6 +7,11 @@ import { hasPermission } from '../../../../lib/context';
 import type { EntityAnchorResolver, RelationProvider } from '../types';
 import { decodeRelationCursor } from '../cursor';
 import { relationPage } from '../page';
+import { getNotificationEvent, isNotificationEventKey } from '@zenith/shared/messaging';
+
+function notificationTitle(key: string): string {
+  return isNotificationEventKey(key) ? getNotificationEvent(key).label : '业务通知';
+}
 
 const capabilities = { view: true, open: true };
 export const subjectAnchorResolvers: readonly EntityAnchorResolver[] = [
@@ -20,7 +25,7 @@ export const subjectAnchorResolvers: readonly EntityAnchorResolver[] = [
     if (!(await hasPermission('system:notify-policy:list')) || !/^[1-9]\d*$/.test(ref.key)) return null;
     const [row] = await access.db.select({ title: notificationOutbox.eventKey, tenantId: notificationOutbox.tenantId }).from(notificationOutbox)
       .where(buildWhere(eq(notificationOutbox.id, Number(ref.key)), tenantCondition(notificationOutbox, access.user))).limit(1);
-    return row ? { ref: { type: 'notification.outbox', key: ref.key }, title: row.title, tenantId: row.tenantId } : null;
+    return row ? { ref: { type: 'notification.outbox', key: ref.key }, title: notificationTitle(row.title), tenantId: row.tenantId } : null;
   } },
 ];
 export function subjectProviders(sourceType: CanonicalEntityType): readonly RelationProvider[] {
@@ -46,7 +51,7 @@ export function subjectProviders(sourceType: CanonicalEntityType): readonly Rela
           exists(access.db.select({ id: notificationOutboxSubjects.outboxId }).from(notificationOutboxSubjects).where(and(
             eq(notificationOutboxSubjects.outboxId, notificationOutbox.id), eq(notificationOutboxSubjects.entityType, anchor.ref.type), eq(notificationOutboxSubjects.entityKey, anchor.ref.key), exactTenantCondition(notificationOutboxSubjects.tenantId, anchor.tenantId)))),
           before ? lt(notificationOutbox.id, before) : undefined)).orderBy(desc(notificationOutbox.id)).limit(limit + 1);
-      return relationPage(rows, limit, (row) => ({ ref: { type: 'notification.outbox', key: String(row.id) }, relationKey: `${sourceType}.notifications`, title: row.title,
+      return relationPage(rows, limit, (row) => ({ ref: { type: 'notification.outbox', key: String(row.id) }, relationKey: `${sourceType}.notifications`, title: notificationTitle(row.title),
         occurredAt: row.createdAt.toISOString(), status: row.status, capabilities }));
     }),
     spec('tasks', 'tasks.async', ['system:async-task:list'], async (anchor, { cursor, limit, access }) => {

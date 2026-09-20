@@ -2,6 +2,7 @@ import { and, desc, eq, exists, inArray, lt, or, sql, type AnyColumn } from 'dri
 import { HTTPException } from 'hono/http-exception';
 import { DOMAIN_EVENT_CATALOG, getDomainEventDefinition, canonicalEntityTypeSchema, type EntityTimelineResponse, type CanonicalEntityType } from '@zenith/shared/platform';
 import type { TimelineEvent } from '@zenith/shared/core';
+import { permissionList } from '@zenith/shared/core';
 import { hasPermission } from '../../../lib/context';
 import { domainEventSubjects, domainEvents, operationLogSubjects, operationLogs } from '../../../db/schema';
 import { exactTenantCondition, tenantCondition } from '../../../lib/tenant';
@@ -36,7 +37,7 @@ export async function listEntityTimeline(input: { type: CanonicalEntityType; key
     let position = decode(readRelationCursor(input.cursor, scope));
     const auditAllowed = await hasPermission('system:log:operation');
     const allowedTypes: string[] = [];
-    for (const [type, definition] of Object.entries(DOMAIN_EVENT_CATALOG)) if (await hasPermission(definition.permission)) allowedTypes.push(type);
+    for (const [type, definition] of Object.entries(DOMAIN_EVENT_CATALOG)) if (await hasPermission(...permissionList(definition.permission))) allowedTypes.push(type);
     const visible: Array<{ event: TimelineEvent; position: Position }> = [];
     const sourceAccess = new Map<string, boolean>();
     for (let scanned = 0; scanned < 512 && visible.length <= input.limit; scanned += input.limit + 1) {

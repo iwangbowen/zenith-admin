@@ -11,6 +11,7 @@ const refundSummary = paymentSummary.extend({ refundNo: z.string().max(64), refu
 const riskReviewSummary = z.object({ reviewNo: z.string().max(64), status: z.enum(PAYMENT_RISK_REVIEW_STATUSES) });
 const disputeSummary = z.object({ disputeNo: z.string().max(64), status: z.enum(PAYMENT_DISPUTE_STATUSES) });
 const workflowInstanceSummary = z.object({ instanceId: z.number().int().positive(), status: z.string().max(32) });
+const workflowReadPermissions = ['workflow:instance:list', 'workflow:task:handle', 'workflow:instance:monitor'] as const;
 
 /** Safe timeline summaries only: provider payloads, addresses and form/comment bodies never enter this catalog. */
 export const DOMAIN_EVENT_CATALOG = {
@@ -27,13 +28,13 @@ export const DOMAIN_EVENT_CATALOG = {
   'payment.dispute.refund-requested': { permission: 'payment:dispute:list', summarySchema: disputeSummary },
   'payment.dispute.refunded': { permission: 'payment:dispute:list', summarySchema: disputeSummary },
   'payment.dispute.refund-failed': { permission: 'payment:dispute:list', summarySchema: disputeSummary },
-  'workflow.instance.created': { permission: 'workflow:instance:list', summarySchema: workflowInstanceSummary },
-  'workflow.instance.approved': { permission: 'workflow:instance:list', summarySchema: workflowInstanceSummary },
-  'workflow.instance.rejected': { permission: 'workflow:instance:list', summarySchema: workflowInstanceSummary },
-  'workflow.instance.withdrawn': { permission: 'workflow:instance:list', summarySchema: workflowInstanceSummary },
-  'workflow.instance.returned': { permission: 'workflow:instance:list', summarySchema: workflowInstanceSummary },
+  'workflow.instance.created': { permission: workflowReadPermissions, summarySchema: workflowInstanceSummary },
+  'workflow.instance.approved': { permission: workflowReadPermissions, summarySchema: workflowInstanceSummary },
+  'workflow.instance.rejected': { permission: workflowReadPermissions, summarySchema: workflowInstanceSummary },
+  'workflow.instance.withdrawn': { permission: workflowReadPermissions, summarySchema: workflowInstanceSummary },
+  'workflow.instance.returned': { permission: workflowReadPermissions, summarySchema: workflowInstanceSummary },
   'workflow.task.changed': {
-    permission: 'workflow:task:handle',
+    permission: workflowReadPermissions,
     summarySchema: z.object({ action: z.string().max(48), status: z.string().max(32) }),
   },
   'messaging.notification.queued': {
@@ -44,7 +45,7 @@ export const DOMAIN_EVENT_CATALOG = {
     permission: 'system:async-task:list',
     summarySchema: z.object({ taskType: z.string().max(96) }),
   },
-} as const satisfies Record<string, { permission: Permission; summarySchema: z.ZodType<Record<string, unknown>> }>;
+} as const satisfies Record<string, { permission: Permission | readonly Permission[]; summarySchema: z.ZodType<Record<string, unknown>> }>;
 
 export type DomainEventType = keyof typeof DOMAIN_EVENT_CATALOG;
 export type DomainEventPayload<K extends DomainEventType> = z.input<(typeof DOMAIN_EVENT_CATALOG)[K]['summarySchema']>;
