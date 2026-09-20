@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button, Card, Empty, Space, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import type { EntityRelationSection, CanonicalEntityType } from '@zenith/shared/platform';
 import { useEntityRelationSection, useEntityRelations } from '@/hooks/queries/entity-relations';
+import { entityRelationLabel } from '@/utils/entity-relations';
 
 interface RelationPanelProps {
   readonly entityType: CanonicalEntityType;
@@ -32,7 +33,7 @@ function RelationSectionView({
       headerLine={false}
       title={(
         <Space>
-          <Typography.Text strong>{section.labelKey}</Typography.Text>
+          <Typography.Text strong>{entityRelationLabel(section.labelKey)}</Typography.Text>
           {query.data?.total !== undefined && <Tag size="small">{query.data.total}</Tag>}
         </Space>
       )}

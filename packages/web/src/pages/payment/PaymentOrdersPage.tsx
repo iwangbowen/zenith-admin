@@ -46,6 +46,7 @@ import { PaymentChannelTag, paymentMoneyColumn } from './payment-display';
 import { useAppPaymentMethodOptions } from './payment-app-options';
 import { EditFormModal } from '@/components/EditFormModal';
 import RelationPanel from '@/components/entity-relations/RelationPanel';
+import { invalidateEntityRelations } from '@/hooks/queries/entity-relations';
 const yuan = formatYuan;
 const PAYMENT_CREATE_METHODS = createPaymentSchema.shape.payMethod.options;
 
@@ -161,6 +162,7 @@ export default function PaymentOrdersPage() {
     },
     successMessage: () => null,
     onSaved: () => {
+      invalidateEntityRelations(queryClient);
       const result = latestRefundResult.current;
       if (result?.status === 'pending') Toast.info('退款申请已提交，等待审批');
       else if (result?.status === 'success') Toast.success('退款已完成');
@@ -255,6 +257,7 @@ export default function PaymentOrdersPage() {
       title: '确认关闭订单', content: `确认关闭订单 ${record.orderNo}？`,
       onOk: async () => {
         await closeMutation.mutateAsync({ params: { id: record.id } });
+        invalidateEntityRelations(queryClient);
         Toast.success('订单已关闭');
       },
     });

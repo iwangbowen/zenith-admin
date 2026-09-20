@@ -1,7 +1,14 @@
 import { entityRelationsContract, entityTimelineContract, type CanonicalEntityType } from '@zenith/shared/platform';
-import { useApiQuery } from '@/lib/contract-query';
+import { contractKey, useApiQuery } from '@/lib/contract-query';
+import type { QueryClient } from '@tanstack/react-query';
 
 const RELATION_STALE_TIME = 15_000;
+
+export function invalidateEntityRelations(queryClient: QueryClient) {
+  void queryClient.invalidateQueries({ queryKey: contractKey(entityRelationsContract.describe) });
+  void queryClient.invalidateQueries({ queryKey: contractKey(entityRelationsContract.list) });
+  void queryClient.invalidateQueries({ queryKey: contractKey(entityTimelineContract.list) });
+}
 
 export function useEntityRelations(type: CanonicalEntityType, key: string | undefined, enabled = true) {
   return useApiQuery(

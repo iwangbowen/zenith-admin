@@ -3,11 +3,16 @@ import { hasPermission } from '../../../lib/context';
 import { canonicalEntityTypeSchema, type CanonicalEntityType, type EntityRelationsResponse, type EntityRelationPage } from '@zenith/shared/platform';
 import type { RelationAccessContext, RelationProvider, VisibleEntityAnchor } from './types';
 import { paymentOrderAuditProvider, paymentOrderRefundsProvider, paymentOrderWorkflowProvider } from './providers/payment-order.provider';
+import { identityRelationProviders } from './providers/identity.provider';
+import { cmsContentRelatedProvider, iotDeviceAlarmsProvider } from './providers/iot-content.provider';
 
 export const relationProviders: readonly RelationProvider[] = [
   paymentOrderRefundsProvider,
   paymentOrderWorkflowProvider,
   paymentOrderAuditProvider,
+  ...identityRelationProviders,
+  iotDeviceAlarmsProvider,
+  cmsContentRelatedProvider,
 ];
 
 function providersFor(type: CanonicalEntityType): RelationProvider[] {
