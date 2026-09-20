@@ -4,7 +4,7 @@ import { paymentOpsContract, paymentOrderContract, paymentRefundContract } from 
 import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { invalidatePaymentRefunds, paymentRefundKeys } from './payment-refunds';
 import { paymentStatsKeys } from './payment-stats';
-import { invalidateEntityRelations } from './entity-relations';
+import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
 
 export type PaymentOrderListParams = NonNullable<QueryOf<typeof paymentOrderContract.orders>>;
 

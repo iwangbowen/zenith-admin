@@ -7,7 +7,7 @@ import { useMemberOverview } from '@/hooks/queries/member-admin';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { MEMBER_STATUS_COLORS } from './member-tag-colors';
-import EntityContextView from '@/components/entity-relations/EntityContextView';
+import { EntityContextView } from '@/components/entity-relations/EntityRelationButton';
 
 const { Text } = Typography;
 

@@ -1,4 +1,5 @@
-import { globalSearchRoutePrefixes, globalSearchTypes, supportsEntityRelations, type GlobalSearchResult, type GlobalSearchType } from '@zenith/shared/platform';
+import { globalSearchRoutePrefixes, globalSearchTypes, type GlobalSearchResult, type GlobalSearchType } from '@zenith/shared/platform';
+import { supportsEntityRelations } from '@zenith/shared/platform/entity-catalog';
 
 export const GLOBAL_SEARCH_TYPE_LABELS: Record<GlobalSearchType, string> = {
   user: '用户',

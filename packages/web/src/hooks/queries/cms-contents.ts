@@ -5,7 +5,7 @@ import { cmsContentContract, isCmsEntityLink, type CmsEditLock } from '@zenith/s
 import { api, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { invalidateCmsPublishingViews } from './cms-stage3';
 import { invalidateCmsDashboardStats } from './cms-stats';
-import { invalidateEntityRelations } from './entity-relations';
+import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
 
 export type CmsContentListParams = NonNullable<QueryOf<typeof cmsContentContract.list>>;
 

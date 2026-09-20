@@ -13,7 +13,7 @@ import {
   workflowTriggerExecutionContract,
 } from '@zenith/shared/workflow';
 import { api, contractKey, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
-import { invalidateEntityRelations } from './entity-relations';
+import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
 import { compactQuery } from '@/lib/query';
 import { request } from '@/utils/request';
 

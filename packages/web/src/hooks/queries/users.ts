@@ -3,7 +3,7 @@ import { apiQueryOptions, contractKey, createResourceQueries, useApiMutation, us
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 import { invalidateCurrentUserAccess } from './menus';
 import { invalidateScopeMemberPreviews } from './scope-members';
-import { invalidateEntityRelations } from './entity-relations';
+import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
 
 const resource = createResourceQueries(userContract, {
   // 下拉源展示昵称与用户名，且被角色分配、岗位成员、用户组等多页共享；告警接收人下拉同样渲染昵称。

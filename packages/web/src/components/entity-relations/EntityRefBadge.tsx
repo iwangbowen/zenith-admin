@@ -1,11 +1,10 @@
-import { lazy, Suspense, useContext, useState, type ReactNode } from 'react';
+import { Suspense, useContext, useState, type ReactNode } from 'react';
 import { Button, Typography } from '@douyinfe/semi-ui';
 import type { CanonicalEntityRef } from '@zenith/shared/platform';
 import { entityDetailRoute, entityTypeLabel } from '@/utils/entity-relations';
 import { useNavigate } from 'react-router-dom';
 import { EntityNavigationContext } from './entity-navigation';
-
-const EntityContextSheet = lazy(() => import('./EntityContextSheet'));
+import { EntityContextSheet } from './EntityRelationButton';
 
 export default function EntityRefBadge({ entityRef, capabilities, children }: {
   readonly entityRef: CanonicalEntityRef;

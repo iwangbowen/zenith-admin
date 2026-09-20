@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import EntityContextView from '@/components/entity-relations/EntityContextView';
+import { EntityContextView } from '@/components/entity-relations/EntityRelationButton';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Banner, Button, Descriptions, Form, Popconfirm, Radio, RadioGroup, Select,

@@ -4,7 +4,7 @@
 
 ## 对象与模块接入
 
-`shared/core/entity-ref.ts` 定义 `EntityRef { type, key }` 和带角色的 `SubjectRef`。对象 key 是最长 128 字符的 URL 安全不透明字符串；数字主键使用标准十进制，复合键由所属模块编码。引用不携带客户端可选的租户。`shared/platform/entity-registry.ts` 是类型清单，`ENTITY_RELATION_TYPES` 仅标记当前实际具备服务端解析器的对象；搜索类型通过显式映射引用实体类型。
+`shared/core/entity-ref.ts` 定义 `EntityRef { type, key }` 和带角色的 `SubjectRef`。对象 key 是最长 128 字符的 URL 安全不透明字符串；数字主键使用标准十进制，复合键由所属模块编码。引用不携带客户端可选的租户。`shared/platform/entity-catalog.ts` 是无运行依赖的类型清单，`entity-registry.ts` 提供对应校验 schema；`ENTITY_RELATION_TYPES` 仅标记当前实际具备服务端解析器的对象，搜索类型通过显式映射引用实体类型。
 
 每个业务模块贡献独立的 `EntityAnchorResolver[]` 与 `RelationProvider[]`。平台装配时拒绝重复 key、缺少来源/目标解析器、描述 key 不一致。解析器负责锚点权限及真实租户，Provider 负责本域关系语义和目标可见性 SQL。平台不接受表名、SQL、归属列等客户端输入。
 

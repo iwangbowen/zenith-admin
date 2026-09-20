@@ -287,6 +287,13 @@ export default defineConfig(({ command, mode }) => {
               { name: 'vendor-semi', test: /node_modules[\\/]@douyinfe[\\/](?:semi-ui|semi-foundation|semi-icons|semi-animation)[\\/]/, priority: 14 },
               // 审批端的 SVG 图标共用一个延迟加载包，避免单个图标产生独立请求。
               ...(entry === 'approval' ? [{ name: 'vendor-approval-icons', test: /node_modules[\\/]lucide-react[\\/]/, priority: 13 }] : []),
+              // Search and related-object views are one deferred feature. Its trigger and cache invalidator
+              // stay outside this group; opening the palette or a business detail loads the runtime once.
+              {
+                name: 'entity-discovery',
+                test: /[\\/]packages[\\/](?:web[\\/]src[\\/](?:components[\\/](?:entity-relations[\\/]|MenuCommandPalette\.tsx$)|hooks[\\/]queries[\\/](?:entity-relations|global-search)\.ts$|utils[\\/](?:entity-relations|global-search)\.ts$)|shared[\\/]src[\\/](?:core[\\/](?:entity-ref|timeline)\.ts$|platform[\\/](?:entity-catalog\.ts$|entity-registry\.ts$|contracts[\\/](?:entity-relations|entity-timeline|global-search)\.ts$)))/,
+                priority: 12,
+              },
               { name: 'vendor-common', test: /node_modules/, priority: 10, minShareCount: 10 },
               { name: 'app-shared', test: APP_SHARED_LOGIC, priority: 8, minShareCount: 10 },
               { name: 'vendor', test: /node_modules/, priority: 5, entriesAware: true, entriesAwareMergeThreshold: 0 },

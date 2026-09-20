@@ -4,7 +4,7 @@ import { resourceKeyOf } from '@zenith/shared/core';
 import { checkinMilestoneContract, checkinRuleContract, checkinSettingsContract, couponContract, memberCheckinContract, memberContract, memberLevelContract, memberPointContract, memberRechargeContract, memberStatsContract, memberTagContract, memberWalletContract } from '@zenith/shared/member';
 import { api, useSaveMutation, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { memberLookupKeys } from './members-lookup';
-import { invalidateEntityRelations } from './entity-relations';
+import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
 
 export type MemberListParams = NonNullable<QueryOf<typeof memberContract.list>>;
 export type MemberLoginLogListParams = NonNullable<QueryOf<typeof memberContract.loginLogs>>;

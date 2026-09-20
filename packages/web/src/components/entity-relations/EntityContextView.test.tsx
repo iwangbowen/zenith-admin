@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { entityRelationsContract, globalSearchContract } from '@zenith/shared/platform';
 import { ApiRecorder, createRequestMock, createTestQueryClient, createWrapper } from '@/test-utils/query-harness';
 import { urlOf } from '@/lib/contract-query';
-import EntityContextView from './EntityContextView';
+import EntityContextView from './EntityContextRuntime';
 
 const recorder = new ApiRecorder();
 vi.mock('@/utils/request', () => ({ request: createRequestMock(() => recorder) }));

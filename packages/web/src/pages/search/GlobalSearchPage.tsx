@@ -1,16 +1,14 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Empty, Input, List, Select, Space, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import { Search, Bookmark } from 'lucide-react';
 import { globalSearchTypes, SEARCH_TYPE_ENTITY_TYPES, supportsEntityRelations, type CanonicalEntityRef, type GlobalSearchType } from '@zenith/shared/platform';
-import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
+import EntityRelationButton, { EntityContextSheet } from '@/components/entity-relations/EntityRelationButton';
 import { useGlobalSearch } from '@/hooks/queries/global-search';
 import { renderLucideIcon } from '@/utils/icons';
 import { GLOBAL_SEARCH_TYPE_LABELS, GLOBAL_SEARCH_TYPE_OPTIONS, isSafeInternalSearchRoute } from '@/utils/global-search';
 import { trackEvent } from '@/utils/tracker';
 import { useListDeepLink } from '@/hooks/useListDeepLink';
-
-const EntityContextSheet = lazy(() => import('@/components/entity-relations/EntityContextSheet'));
 
 const TYPE_LABELS = GLOBAL_SEARCH_TYPE_LABELS;
 const TYPE_OPTIONS = GLOBAL_SEARCH_TYPE_OPTIONS;

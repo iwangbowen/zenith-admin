@@ -45,8 +45,8 @@ import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { PaymentChannelTag, paymentMoneyColumn } from './payment-display';
 import { useAppPaymentMethodOptions } from './payment-app-options';
 import { EditFormModal } from '@/components/EditFormModal';
-import EntityContextView from '@/components/entity-relations/EntityContextView';
-import { invalidateEntityRelations } from '@/hooks/queries/entity-relations';
+import { EntityContextView } from '@/components/entity-relations/EntityRelationButton';
+import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
 const yuan = formatYuan;
 const PAYMENT_CREATE_METHODS = createPaymentSchema.shape.payMethod.options;
 

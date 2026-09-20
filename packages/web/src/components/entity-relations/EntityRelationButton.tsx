@@ -1,9 +1,15 @@
 import { lazy, Suspense, useState } from 'react';
-import { Button } from '@douyinfe/semi-ui';
+import { Button, Spin } from '@douyinfe/semi-ui';
 import { Link2 } from 'lucide-react';
-import { supportsEntityRelations, type CanonicalEntityRef } from '@zenith/shared/platform';
+import { supportsEntityRelations, type CanonicalEntityRef, type CanonicalEntityType } from '@zenith/shared/platform/entity-catalog';
 
-const EntityContextSheet = lazy(() => import('./EntityContextSheet'));
+const EntityContextRuntime = lazy(() => import('./EntityContextRuntime'));
+export const EntityContextSheet = lazy(() => import('./EntityContextRuntime').then((module) => ({ default: module.EntityContextSheet })));
+
+/** Entry components keep relation queries, contracts and renderers out of the application shell. */
+export function EntityContextView(props: { readonly entityType: CanonicalEntityType; readonly entityKey: string | undefined; readonly showAnchor?: boolean }) {
+  return <Suspense fallback={<Spin size="small" />}><EntityContextRuntime {...props} /></Suspense>;
+}
 
 /** Entry points may probe an object; the sheet always authorizes its exact ref. */
 export default function EntityRelationButton({ entityRef, onOpen }: { readonly entityRef: CanonicalEntityRef; readonly onOpen?: (ref: CanonicalEntityRef) => void }) {

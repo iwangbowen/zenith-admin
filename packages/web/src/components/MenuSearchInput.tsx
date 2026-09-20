@@ -1,7 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef } from 'react';
 import { Search } from 'lucide-react';
-import MenuCommandPalette from './MenuCommandPalette';
+import { useOptionalPreferences } from '@/hooks/usePreferences';
 import './MenuSearchInput.css';
+
+const MenuCommandPalette = lazy(() => import('./MenuCommandPalette'));
 
 export interface FlatMenuItem {
   id: number;
@@ -20,14 +22,28 @@ interface MenuSearchInputProps {
 
 export default function MenuSearchInput({ menus, recentMenus, onClearRecents, onRemoveRecent }: MenuSearchInputProps) {
   const [open, setOpen] = useState(false);
+  const [openedOnce, setOpenedOnce] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const shortcutsEnabled = useOptionalPreferences()?.preferences.enableShortcuts ?? true;
 
-  // Listen for global Ctrl+K shortcut dispatched from palette
+  // The trigger owns shortcuts so the search runtime can stay unloaded until first use.
   useEffect(() => {
-    const handler = () => setOpen(true);
+    const handler = () => { setOpenedOnce(true); setOpen(true); };
+    const keyboard = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'k' && shortcutsEnabled) {
+        event.preventDefault();
+        setOpenedOnce(true);
+        setOpen((current) => !current);
+      }
+      if (event.key === 'Escape') setOpen(false);
+    };
     globalThis.addEventListener('open-menu-palette', handler);
-    return () => globalThis.removeEventListener('open-menu-palette', handler);
-  }, []);
+    globalThis.addEventListener('keydown', keyboard);
+    return () => {
+      globalThis.removeEventListener('open-menu-palette', handler);
+      globalThis.removeEventListener('keydown', keyboard);
+    };
+  }, [shortcutsEnabled]);
 
   const handleClose = () => {
     setOpen(false);
@@ -56,7 +72,7 @@ export default function MenuSearchInput({ menus, recentMenus, onClearRecents, on
         ref={buttonRef}
         type="button"
         className="menu-search-trigger"
-        onClick={() => setOpen(true)}
+        onClick={() => { setOpenedOnce(true); setOpen(true); }}
         title="全局搜索 (Ctrl+K)"
         aria-label="全局搜索"
         aria-expanded={open}
@@ -67,7 +83,7 @@ export default function MenuSearchInput({ menus, recentMenus, onClearRecents, on
         <span className="menu-search-trigger__label">全局搜索</span>
         <kbd className="menu-search-trigger__kbd">Ctrl K</kbd>
       </button>
-      <MenuCommandPalette menus={menus} recentMenus={recentMenus} onClearRecents={onClearRecents} onRemoveRecent={onRemoveRecent} open={open} onClose={handleClose} />
+      {openedOnce && <Suspense fallback={null}><MenuCommandPalette menus={menus} recentMenus={recentMenus} onClearRecents={onClearRecents} onRemoveRecent={onRemoveRecent} open={open} onClose={handleClose} /></Suspense>}
     </>
   );
 }

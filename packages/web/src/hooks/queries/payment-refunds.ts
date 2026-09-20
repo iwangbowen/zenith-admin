@@ -2,7 +2,7 @@ import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { paymentRefundContract } from '@zenith/shared/payment';
 import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
-import { invalidateEntityRelations } from './entity-relations';
+import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
 
 export type PaymentRefundListParams = NonNullable<QueryOf<typeof paymentRefundContract.refunds>>;
 

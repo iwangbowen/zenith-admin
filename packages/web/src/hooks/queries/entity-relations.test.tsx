@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { entityRelationsContract, entityTimelineContract } from '@zenith/shared/platform';
 import { ApiRecorder, createRequestMock, createTestQueryClient, createWrapper } from '@/test-utils/query-harness';
 import { contractKey, urlOf } from '@/lib/contract-query';
+import { ENTITY_RELATION_QUERY_META } from '@/lib/entity-relation-cache';
 
 const recorder = new ApiRecorder();
 const auth = vi.hoisted(() => ({
@@ -80,7 +81,10 @@ describe('entity relations cursor and identity isolation', () => {
     const left = contractKey(entityRelationsContract.describe, { params });
     const right = contractKey(entityRelationsContract.describe, { params: { type: 'wiki.document', key: '7' } });
     const timeline = contractKey(entityTimelineContract.timeline, { params, query: { limit: 20 } });
-    for (const key of [left, right, timeline]) client.setQueryData(key, {});
+    for (const key of [left, right, timeline]) {
+      client.setQueryDefaults(key, { meta: ENTITY_RELATION_QUERY_META });
+      client.setQueryData(key, {});
+    }
     client.setQueryData(['unrelated'], {});
     await invalidateEntityRelations(client);
     for (const key of [left, right, timeline]) expect(client.getQueryState(key)?.isInvalidated).toBe(true);

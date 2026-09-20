@@ -1,20 +1,18 @@
-import { lazy, Suspense, useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { Suspense, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Modal, Spin } from '@douyinfe/semi-ui';
 import { textMatches } from '@/utils/pinyin';
 import { Search, Clock, Hash, X } from 'lucide-react';
 import { renderLucideIcon } from '@/utils/icons';
-import { useOptionalPreferences } from '@/hooks/usePreferences';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import { usePinyinReady } from '@/hooks/usePinyinReady';
 import { useGlobalSearch } from '@/hooks/queries/global-search';
-import { SEARCH_TYPE_ENTITY_TYPES, type CanonicalEntityRef, type GlobalSearchResult, type GlobalSearchType } from '@zenith/shared/platform';
-import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
+import type { GlobalSearchResult, GlobalSearchType } from '@zenith/shared/platform';
+import { SEARCH_TYPE_ENTITY_TYPES, type CanonicalEntityRef } from '@zenith/shared/platform/entity-catalog';
+import EntityRelationButton, { EntityContextSheet } from '@/components/entity-relations/EntityRelationButton';
 import { GLOBAL_SEARCH_TYPE_LABELS, GLOBAL_SEARCH_TYPE_OPTIONS, isSafeInternalSearchRoute } from '@/utils/global-search';
 import { trackEvent } from '@/utils/tracker';
 import type { FlatMenuItem } from './MenuSearchInput';
-
-const EntityContextSheet = lazy(() => import('./entity-relations/EntityContextSheet'));
 
 interface Props {
   readonly menus: FlatMenuItem[];
@@ -47,7 +45,6 @@ function getBusinessIcon(item: GlobalSearchResult) {
 export default function MenuCommandPalette({ menus, recentMenus, onClearRecents, onRemoveRecent, open, onClose }: Props) {
   const navigate = useNavigate();
   const [relationRef, setRelationRef] = useState<CanonicalEntityRef | null>(null);
-  const shortcutsEnabled = useOptionalPreferences()?.preferences.enableShortcuts ?? true;
   const isMobile = useIsMobile();
   const pinyinReady = usePinyinReady();
   const [query, setQuery] = useState('');
@@ -147,20 +144,6 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
       if (item) handleSelect(item);
     }
   }, [displayItems, handleSelect, onClose, openSearchCenter, selectedIndex]);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        if (!shortcutsEnabled) return;
-        e.preventDefault();
-        if (open) onClose();
-        else globalThis.dispatchEvent(new CustomEvent('open-menu-palette'));
-      }
-      if (e.key === 'Escape' && open) onClose();
-    };
-    globalThis.addEventListener('keydown', handler);
-    return () => globalThis.removeEventListener('keydown', handler);
-  }, [open, onClose, shortcutsEnabled]);
 
   const renderItem = (item: PaletteItem, index: number, isRecent: boolean) => {
     const isSelected = index === selectedIndex;

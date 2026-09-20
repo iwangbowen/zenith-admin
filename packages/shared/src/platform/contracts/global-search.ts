@@ -1,6 +1,6 @@
 import * as z from 'zod';
 import { defineContract, op } from '../../core/contract';
-import { SEARCH_TYPE_ENTITY_TYPES, type CanonicalEntityType, type SearchType } from '../entity-registry';
+import { SEARCH_TYPE_ENTITY_TYPES, type CanonicalEntityType, type SearchType } from '../entity-catalog';
 
 /** 顶部统一搜索支持的适配器类型（SearchType）；菜单结果由 Web 本地菜单树提供。 */
 export const globalSearchTypes = [

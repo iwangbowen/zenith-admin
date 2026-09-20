@@ -15,7 +15,7 @@ import {
 } from '@zenith/shared/drive';
 import { api, contractKey, createResourceQueries, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME, unwrap } from '@/lib/query';
-import { invalidateEntityRelations } from './entity-relations';
+import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
 import { request } from '@/utils/request';
 import { chunkedUpload, type ChunkedUploadEndpoints } from '@/utils/chunked-upload';
 import { formatDate } from '@/utils/date';

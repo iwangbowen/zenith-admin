@@ -2,7 +2,7 @@ import { keepPreviousData } from '@tanstack/react-query';
 import { resourceKeyOf, type QueryOf } from '@zenith/shared/core';
 import { iotAlarmContract, iotAlarmRuleContract, iotMaintenanceWindowContract } from '@zenith/shared/iot';
 import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
-import { invalidateEntityRelations } from './entity-relations';
+import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
 
 // ─── 告警规则 ─────────────────────────────────────────────────────────────────
 export type IotAlarmRuleListParams = NonNullable<QueryOf<typeof iotAlarmRuleContract.list>>;

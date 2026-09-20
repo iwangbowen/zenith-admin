@@ -3,7 +3,7 @@
  * 在 MyApplications / WorkflowMonitor / PendingApprovals 中复用
  */
 import type { ReactNode } from 'react';
-import EntityContextView from '@/components/entity-relations/EntityContextView';
+import { EntityContextView } from '@/components/entity-relations/EntityRelationButton';
 import { useEffect, useState } from 'react';
 import {
   Descriptions, Empty, Skeleton, Table, Tabs, TabPane, Tag, Typography, Button,

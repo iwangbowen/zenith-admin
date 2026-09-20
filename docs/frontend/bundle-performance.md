@@ -59,12 +59,15 @@ lucide 图标全表（615 KB / 153 KB gz）在任何口径下都是运行时按�
 | 壳层 | `vendor-semi-form` | Semi Form（BaseForm 静态引入全部字段控件）+ 只经 Form 使用的 Cascader / TreeSelect / Upload(+Cropper) / TagInput / AutoComplete / Transfer；`form/label`、Slider 与 semi-foundation 的 `form/*` 因被核心反向引用（`input/inputGroup`、`image/previewFooter`）留在 `vendor-semi` | 使用表单的页面 |
 | 壳层 | `vendor-semi` | 其余全部 Semi（semi-ui / semi-foundation / semi-icons / semi-animation） | 登录后 |
 | 页面层 | `vendor-approval-icons`（仅审批入口） | 不在入口静态闭包内的 lucide SVG 图标；优先级低于 `initial-vendor` | 首次使用相关页面或预热图标时 |
+| 特性层 | `entity-discovery` | 统一搜索面板、对象关联与时间线 UI、查询契约和实体元数据 | 打开统一搜索或相关业务页面；快捷键触发器与纯缓存失效 helper 留在组外 |
 | 壳层 | `vendor-common` | 被 ≥ 10 个模块共享的 node_modules | 登录后 |
 | 壳层 | `app-shared` | 被 ≥ 10 个模块共享的 `hooks/` `lib/` `utils/` `providers/` `config/` + `@zenith/shared` + analytics-sdk 源码 | 登录后 |
 | 页面层 | `vendor~A~B~…` | 其余第三方，按「消费页面集合」精确分组（`entriesAware`，不侧向合并） | 使用它的页面 |
 | 页面层 | 页面 chunk | 页面注册表的每个动态入口及其独占模块 | 路由命中 |
 
 ### 分层为什么安全
+
+- **关系失效不导入关系运行时**：业务 mutation 只引用 `lib/entity-relation-cache.ts`，通过查询 meta 标记失效；不能为了失效缓存静态导入包含全部关系契约和 UI 的 hooks。搜索面板由轻量 `MenuSearchInput` 首次打开时加载，Ctrl/Cmd+K 监听保留在触发器中。2026-09-20 实测：总 JS 1008 个、主入口 815 个、认证首屏 59 个文件 / 996.0 KB gzip，均在原预算内，未上调预算。
 
 - **关键路径层对 import 封闭**：闭包内模块的依赖必然也在闭包内，不会与任何其它 chunk 成环；也不按「哪些页面用到」再拆——它们在任何页面运行前都已加载，拆出来只会制造请求。
 - **Semi 核心只有一个 chunk**：Semi 内部 `button ↔ iconButton`、`form ↔ 各控件` 等强连通分量全部留在 chunk 内；Semi 只被外部单向引用，不会形成跨 chunk 环。

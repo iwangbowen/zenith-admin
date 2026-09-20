@@ -3,7 +3,7 @@ import type { QueryOf } from '@zenith/shared/core';
 import { wikiDocContract, type WikiDoc } from '@zenith/shared/wiki';
 import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { wikiStatsKeys } from './wiki-query-keys';
-import { invalidateEntityRelations } from './entity-relations';
+import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
 
 export type WikiDocListParams = NonNullable<QueryOf<typeof wikiDocContract.list>>;
 export type WikiDocSearchParams = NonNullable<QueryOf<typeof wikiDocContract.search>>;

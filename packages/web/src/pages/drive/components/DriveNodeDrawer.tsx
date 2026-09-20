@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import EntityContextView from '@/components/entity-relations/EntityContextView';
+import { EntityContextView } from '@/components/entity-relations/EntityRelationButton';
 import { Button, Descriptions, Input, Select, SideSheet, Space, Spin, Tabs, TabPane, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { Download, Lock, LockOpen, MessageSquareShare, Scale, Star, StarOff } from 'lucide-react';
 import { formatBytes } from '@zenith/shared/core';
