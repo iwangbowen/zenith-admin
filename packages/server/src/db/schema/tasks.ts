@@ -1,9 +1,10 @@
 import { timestampColumns, idColumn } from './common';
-import { pgTable, varchar, timestamp, pgEnum, integer, boolean, unique, uniqueIndex, text, index, jsonb, uuid as pgUuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { check, pgTable, varchar, timestamp, pgEnum, integer, boolean, unique, uniqueIndex, primaryKey, text, index, jsonb, uuid as pgUuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { auditColumns, users, tenantIdColumn } from './core';
 import { managedFiles } from './files';
 import { EXPORT_JOB_FORMATS } from '@zenith/shared/tasks';
+import { entitySubjectRoleEnum } from './entity-relations';
 
 export const exportJobFormatEnum = pgEnum('export_job_format', EXPORT_JOB_FORMATS);
 
@@ -134,6 +135,24 @@ export const asyncTasks = pgTable('async_tasks', {
 export type AsyncTaskRow = typeof asyncTasks.$inferSelect;
 
 export type NewAsyncTask = typeof asyncTasks.$inferInsert;
+
+/** Structured business subjects carried by an async task submission. */
+export const asyncTaskSubjects = pgTable('async_task_subjects', {
+  taskId: integer().notNull().references(() => asyncTasks.id, { onDelete: 'cascade' }),
+  tenantId: tenantIdColumn(),
+  entityType: varchar({ length: 96 }).notNull(),
+  entityKey: varchar({ length: 512 }).notNull(),
+  role: entitySubjectRoleEnum().notNull().default('related'),
+}, (t) => [
+  check('async_task_subjects_entity_type_check', sql`length(${t.entityType}) > 0`),
+  check('async_task_subjects_entity_key_check', sql`length(${t.entityKey}) > 0`),
+  primaryKey({ columns: [t.taskId, t.entityType, t.entityKey, t.role] }),
+  index('async_task_subjects_entity_idx').on(t.tenantId, t.entityType, t.entityKey, t.taskId),
+  index('async_task_subjects_task_idx').on(t.taskId),
+]);
+
+export type AsyncTaskSubjectRow = typeof asyncTaskSubjects.$inferSelect;
+export type NewAsyncTaskSubject = typeof asyncTaskSubjects.$inferInsert;
 
 /** 任务项明细（可选层）：行级处理状态，导入/批量场景的逐行错误报告 */
 export const asyncTaskItems = pgTable('async_task_items', {

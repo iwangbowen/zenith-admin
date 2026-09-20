@@ -1,4 +1,4 @@
-import { pgTable, varchar, timestamp, pgEnum, integer, boolean, text, unique, index, jsonb, uniqueIndex, smallint } from 'drizzle-orm/pg-core';
+import { check, pgTable, varchar, timestamp, pgEnum, integer, boolean, text, unique, index, jsonb, uniqueIndex, primaryKey, smallint } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import {
   NOTIFICATION_CHANNELS,
@@ -15,6 +15,7 @@ import type {
 import { pushProviderEnum, timestampColumns, idColumn, statusColumn } from './common';
 import { auditColumns, users, tenantIdColumn } from './core';
 import { clientApps } from './app-releases';
+import { entitySubjectRoleEnum } from './entity-relations';
 
 // ─── 邮件配置表 ──────────────────────────────────────────────────────────────
 export const emailEncryptionEnum = pgEnum('email_encryption', ['none', 'ssl', 'tls']);
@@ -449,6 +450,24 @@ export const notificationOutbox = pgTable('notification_outbox', {
 export type NotificationOutboxRow = typeof notificationOutbox.$inferSelect;
 
 export type NewNotificationOutbox = typeof notificationOutbox.$inferInsert;
+
+/** Structured business subjects carried by a notification event. */
+export const notificationOutboxSubjects = pgTable('notification_outbox_subjects', {
+  outboxId: integer().notNull().references(() => notificationOutbox.id, { onDelete: 'cascade' }),
+  tenantId: tenantIdColumn(),
+  entityType: varchar({ length: 96 }).notNull(),
+  entityKey: varchar({ length: 512 }).notNull(),
+  role: entitySubjectRoleEnum().notNull().default('related'),
+}, (t) => [
+  check('notification_outbox_subjects_entity_type_check', sql`length(${t.entityType}) > 0`),
+  check('notification_outbox_subjects_entity_key_check', sql`length(${t.entityKey}) > 0`),
+  primaryKey({ columns: [t.outboxId, t.entityType, t.entityKey, t.role] }),
+  index('notification_outbox_subjects_entity_idx').on(t.tenantId, t.entityType, t.entityKey, t.outboxId),
+  index('notification_outbox_subjects_outbox_idx').on(t.outboxId),
+]);
+
+export type NotificationOutboxSubjectRow = typeof notificationOutboxSubjects.$inferSelect;
+export type NewNotificationOutboxSubject = typeof notificationOutboxSubjects.$inferInsert;
 
 /**
  * 「收件人 × 渠道」的派发决策与结果。
