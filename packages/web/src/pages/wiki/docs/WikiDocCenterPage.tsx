@@ -30,6 +30,7 @@ import {
 import { useCreateWikiComment, useDeleteMyWikiComment, useResolveWikiComment, useWikiDocComments } from '@/hooks/queries/wiki-comments';
 import { useImportWikiDocs } from '@/hooks/queries/wiki-governance';
 import './WikiDocCenterPage.css';
+import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
 import { WIKI_DOC_STATUS_TAG_COLOR } from '../wiki-tag-colors';
 
 const { Text, Title } = Typography;
@@ -601,6 +602,7 @@ export default function WikiDocCenterPage() {
           ) : null}
         </div>
         <Space spacing={4}>
+          <EntityRelationButton entityRef={{ type: 'wiki.document', key: String(doc.id) }} />
           {outline.length >= 2 ? (
             <Popover
               trigger="click"

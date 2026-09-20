@@ -3,6 +3,7 @@
  * 在 MyApplications / WorkflowMonitor / PendingApprovals 中复用
  */
 import type { ReactNode } from 'react';
+import EntityContextView from '@/components/entity-relations/EntityContextView';
 import { useEffect, useState } from 'react';
 import {
   Descriptions, Empty, Skeleton, Table, Tabs, TabPane, Tag, Typography, Button,
@@ -572,6 +573,9 @@ export default function WorkflowInstanceDetailPanel({
             </div>
           </TabPane>
         )}
+        <TabPane tab="关联信息" itemKey="relations">
+          <EntityContextView entityType="workflow.instance" entityKey={String(instance.id)} />
+        </TabPane>
         <TabPane tab={`流转记录${flowTasks.length > 0 ? ` (${flowTasks.length})` : ''}`} itemKey="flow-records">
           <FlowRecords key={instance.id} tasks={instance.tasks ?? []} />
         </TabPane>

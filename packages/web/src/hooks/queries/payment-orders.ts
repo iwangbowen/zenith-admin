@@ -4,6 +4,7 @@ import { paymentOpsContract, paymentOrderContract, paymentRefundContract } from 
 import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { invalidatePaymentRefunds, paymentRefundKeys } from './payment-refunds';
 import { paymentStatsKeys } from './payment-stats';
+import { invalidateEntityRelations } from './entity-relations';
 
 export type PaymentOrderListParams = NonNullable<QueryOf<typeof paymentOrderContract.orders>>;
 
@@ -20,6 +21,7 @@ export const paymentOrderKeys = {
 
 /** 订单状态变化影响列表、详情、按单号查询与统计概览 / 趋势 */
 export function invalidatePaymentOrders(qc: QueryClient) {
+  void invalidateEntityRelations(qc);
   void qc.invalidateQueries({ queryKey: paymentOrderKeys.lists });
   void qc.invalidateQueries({ queryKey: paymentOrderKeys.details });
   void qc.invalidateQueries({ queryKey: paymentOrderKeys.byNos });

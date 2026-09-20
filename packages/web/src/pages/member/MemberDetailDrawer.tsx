@@ -7,6 +7,7 @@ import { useMemberOverview } from '@/hooks/queries/member-admin';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { dateTimeColumn } from '@/utils/table-columns';
 import { MEMBER_STATUS_COLORS } from './member-tag-colors';
+import EntityContextView from '@/components/entity-relations/EntityContextView';
 
 const { Text } = Typography;
 
@@ -149,6 +150,10 @@ export function MemberDetailDrawer({ memberId, onClose }: Readonly<Props>) {
                 pagination={false}
                 empty={<div style={{ textAlign: 'center', padding: '16px 0', color: '#9ca3af' }}>暂无记录</div>}
               />
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <EntityContextView entityType="member.member" entityKey={memberId === null ? undefined : String(memberId)} />
             </div>
 
             {/* 最近登录记录 */}

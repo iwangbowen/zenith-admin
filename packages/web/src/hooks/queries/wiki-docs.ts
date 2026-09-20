@@ -3,6 +3,7 @@ import type { QueryOf } from '@zenith/shared/core';
 import { wikiDocContract, type WikiDoc } from '@zenith/shared/wiki';
 import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { wikiStatsKeys } from './wiki-query-keys';
+import { invalidateEntityRelations } from './entity-relations';
 
 export type WikiDocListParams = NonNullable<QueryOf<typeof wikiDocContract.list>>;
 export type WikiDocSearchParams = NonNullable<QueryOf<typeof wikiDocContract.search>>;
@@ -68,6 +69,7 @@ export const {
    * 统计资源整组：总量、热门排行、贡献榜、沉睡文档与运营分布全部由文档派生，五个操作都会变。
    */
   onDeleted: (qc) => {
+    void invalidateEntityRelations(qc);
     void qc.invalidateQueries({ queryKey: wikiDocTreeKeys.all });
     void qc.invalidateQueries({ queryKey: wikiDocFavoriteKeys.all });
     void qc.invalidateQueries({ queryKey: wikiDocRecycleKeys.all });
@@ -145,6 +147,7 @@ export function useMyProcessedReviews(params: WikiDocPageParams, enabled = true)
  * 回收站、最近访问、审核时间线、已读名单与评论树都不受保存影响。
  */
 export function invalidateWikiDocAfterSave(qc: QueryClient, saved: WikiDoc) {
+  void invalidateEntityRelations(qc);
   void qc.invalidateQueries({ queryKey: wikiDocKeys.detail(saved.id) });
   void qc.invalidateQueries({ queryKey: wikiDocKeys.lists });
   void qc.invalidateQueries({ queryKey: wikiDocTreeKeys.of(saved.spaceId) });
@@ -169,6 +172,7 @@ export function useUpdateWikiDoc() {
  * 统计只动概览（publishedCount / pendingCount）与运营（审核积压 / 通过拒绝计数），热门 / 贡献 / 沉睡与状态无关。
  */
 export function invalidateWikiDocAfterStatusChange(qc: QueryClient, saved: WikiDoc) {
+  void invalidateEntityRelations(qc);
   void qc.invalidateQueries({ queryKey: wikiDocKeys.detail(saved.id) });
   void qc.invalidateQueries({ queryKey: wikiDocKeys.lists });
   void qc.invalidateQueries({ queryKey: wikiDocTreeKeys.of(saved.spaceId) });

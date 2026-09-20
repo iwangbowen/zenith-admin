@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { iotBatchContract, iotDeviceContract, type IotDeviceShadow } from '@zenith/shared/iot';
 import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { invalidateEntityRelations } from './entity-relations';
 
 export type IotDeviceListParams = NonNullable<QueryOf<typeof iotDeviceContract.list>>;
 
@@ -11,7 +12,10 @@ export const {
   useDetail: useIotDeviceDetail,
   useSave: useSaveIotDevice,
   useDelete: useDeleteIotDevices,
-} = createResourceQueries(iotDeviceContract);
+} = createResourceQueries(iotDeviceContract, {
+  onSaved: (qc) => { void invalidateEntityRelations(qc); },
+  onDeleted: (qc) => { void invalidateEntityRelations(qc); },
+});
 
 /** 重置接入密钥：详情（凭证展示）与列表都要刷新 */
 export function useResetIotDeviceSecret() {

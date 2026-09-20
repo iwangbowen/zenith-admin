@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { lazy, Suspense, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Modal, Spin } from '@douyinfe/semi-ui';
 import { textMatches } from '@/utils/pinyin';
@@ -8,10 +8,13 @@ import { useOptionalPreferences } from '@/hooks/usePreferences';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import { usePinyinReady } from '@/hooks/usePinyinReady';
 import { useGlobalSearch } from '@/hooks/queries/global-search';
-import type { GlobalSearchResult, GlobalSearchType } from '@zenith/shared/platform';
+import { SEARCH_TYPE_ENTITY_TYPES, type CanonicalEntityRef, type GlobalSearchResult, type GlobalSearchType } from '@zenith/shared/platform';
+import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
 import { GLOBAL_SEARCH_TYPE_LABELS, GLOBAL_SEARCH_TYPE_OPTIONS, isSafeInternalSearchRoute } from '@/utils/global-search';
 import { trackEvent } from '@/utils/tracker';
 import type { FlatMenuItem } from './MenuSearchInput';
+
+const EntityContextSheet = lazy(() => import('./entity-relations/EntityContextSheet'));
 
 interface Props {
   readonly menus: FlatMenuItem[];
@@ -43,6 +46,7 @@ function getBusinessIcon(item: GlobalSearchResult) {
 
 export default function MenuCommandPalette({ menus, recentMenus, onClearRecents, onRemoveRecent, open, onClose }: Props) {
   const navigate = useNavigate();
+  const [relationRef, setRelationRef] = useState<CanonicalEntityRef | null>(null);
   const shortcutsEnabled = useOptionalPreferences()?.preferences.enableShortcuts ?? true;
   const isMobile = useIsMobile();
   const pinyinReady = usePinyinReady();
@@ -188,6 +192,10 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
         {isSelected && <kbd style={{ fontSize: 10, color: 'var(--semi-color-primary)', background: 'var(--semi-color-primary-light-default)', border: '1px solid var(--semi-color-primary-light-hover)', borderRadius: 'var(--semi-border-radius-small)', padding: '1px 5px', fontFamily: 'monospace', flexShrink: 0 }}>↵</kbd>}
       </button>
     );
+    if (item.kind === 'business') return <div key={`${item.value.type}-${item.value.id}`} style={{ display: 'flex', alignItems: 'center' }}>
+      {row}
+      {item.value.actions?.view !== false && <EntityRelationButton entityRef={{ type: SEARCH_TYPE_ENTITY_TYPES[item.value.type], key: String(item.value.id) }} onOpen={(ref) => { setRelationRef(ref); onClose(); }} />}
+    </div>;
     if (!isRecent || !isMenu) return row;
     return (
       <div key={`recent-${item.value.id}`} style={{ position: 'relative' }}>
@@ -209,6 +217,7 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
   };
 
   return (
+    <>
     <Modal visible={open} header={null} footer={null} closable={false} onCancel={onClose} closeOnEsc={false} maskClosable width={600} className="cmd-palette-modal" style={{ margin: '12vh auto', overflow: 'hidden', borderRadius: 'var(--semi-border-radius-large)', padding: 0 }} bodyStyle={{ padding: 0, overflow: 'hidden' }} zIndex={9999} keepDOM={false}>
       <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '60vh' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--semi-color-border)' }}>
@@ -242,5 +251,7 @@ export default function MenuCommandPalette({ menus, recentMenus, onClearRecents,
         {!isMobile && <div className="cmd-palette-footer" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 16px', borderTop: '1px solid var(--semi-color-border)', fontSize: 11, color: 'var(--semi-color-text-2)' }}><span><kbd style={{ fontFamily: 'monospace', fontSize: 10, padding: '0 3px', border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-small)' }}>↑↓</kbd> 导航</span><span><kbd style={{ fontFamily: 'monospace', fontSize: 10, padding: '0 3px', border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-small)' }}>↵</kbd> 跳转</span><span><kbd style={{ fontFamily: 'monospace', fontSize: 10, padding: '0 3px', border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-small)' }}>ESC</kbd> 关闭</span><span style={{ marginLeft: 'auto' }}><kbd style={{ fontFamily: 'monospace', fontSize: 10, padding: '0 3px', border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-small)' }}>Ctrl K</kbd> 快速打开</span></div>}
       </div>
     </Modal>
+    {relationRef && <Suspense fallback={null}><EntityContextSheet key={`${relationRef.type}:${relationRef.key}`} entityRef={relationRef} onClose={() => setRelationRef(null)} /></Suspense>}
+    </>
   );
 }

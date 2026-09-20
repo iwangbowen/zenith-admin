@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { paymentDisputeContract } from '@zenith/shared/payment';
 import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { invalidateEntityRelations } from './entity-relations';
 
 export type PaymentDisputeListParams = NonNullable<QueryOf<typeof paymentDisputeContract.list>>;
 
@@ -15,6 +16,7 @@ export const paymentDisputeKeys = {
 
 /** 工单状态变化影响列表、详情与统计卡（待处理 / 超时数） */
 function invalidateDisputes(qc: QueryClient) {
+  void invalidateEntityRelations(qc);
   void qc.invalidateQueries({ queryKey: paymentDisputeKeys.lists });
   void qc.invalidateQueries({ queryKey: paymentDisputeKeys.details });
   void qc.invalidateQueries({ queryKey: paymentDisputeKeys.stats });

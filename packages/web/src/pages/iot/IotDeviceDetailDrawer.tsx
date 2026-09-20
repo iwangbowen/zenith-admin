@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import EntityContextView from '@/components/entity-relations/EntityContextView';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Banner, Button, Descriptions, Form, Popconfirm, Radio, RadioGroup, Select,
@@ -637,6 +638,9 @@ export default function IotDeviceDetailDrawer({ device, onClose }: Readonly<IotD
               />
             </TabPane>
 
+            <TabPane tab="关联信息" itemKey="relations">
+              <EntityContextView entityType="iot.device" entityKey={String(device.id)} />
+            </TabPane>
             <TabPane tab="设备日志" itemKey="logs">
               <div style={{ display: 'flex', gap: 8, margin: '8px 0' }}>
                 <FilterSelect

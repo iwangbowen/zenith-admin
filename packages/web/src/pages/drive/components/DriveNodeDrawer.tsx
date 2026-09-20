@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import EntityContextView from '@/components/entity-relations/EntityContextView';
 import { Button, Descriptions, Input, Select, SideSheet, Space, Spin, Tabs, TabPane, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { Download, Lock, LockOpen, MessageSquareShare, Scale, Star, StarOff } from 'lucide-react';
 import { formatBytes } from '@zenith/shared/core';
@@ -181,6 +182,7 @@ export function DriveNodeDrawer({ nodeId, allowExternalShare, onClose, onDownloa
               {node.type === 'file' && <TabPane tab="版本" itemKey="versions"><DriveVersionsPanel node={node} /></TabPane>}
               <TabPane tab="外链" itemKey="links"><DriveShareLinksPanel node={node} allowExternalShare={allowExternalShare} /></TabPane>
               <TabPane tab="动态" itemKey="activities"><DriveActivityPanel node={node} /></TabPane>
+              <TabPane tab="关联信息" itemKey="relations"><EntityContextView entityType="drive.file" entityKey={String(node.id)} /></TabPane>
               <TabPane tab="评论" itemKey="comments"><DriveCommentsPanel node={node} /></TabPane>
             </Tabs>
           </>

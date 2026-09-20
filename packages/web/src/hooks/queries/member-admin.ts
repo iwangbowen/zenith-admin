@@ -4,6 +4,7 @@ import { resourceKeyOf } from '@zenith/shared/core';
 import { checkinMilestoneContract, checkinRuleContract, checkinSettingsContract, couponContract, memberCheckinContract, memberContract, memberLevelContract, memberPointContract, memberRechargeContract, memberStatsContract, memberTagContract, memberWalletContract } from '@zenith/shared/member';
 import { api, useSaveMutation, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { memberLookupKeys } from './members-lookup';
+import { invalidateEntityRelations } from './entity-relations';
 
 export type MemberListParams = NonNullable<QueryOf<typeof memberContract.list>>;
 export type MemberLoginLogListParams = NonNullable<QueryOf<typeof memberContract.loginLogs>>;
@@ -28,6 +29,7 @@ export type CheckinMilestoneFormValues = Partial<BodyOf<typeof checkinMilestoneC
 
 const memberResource = createResourceQueries(memberContract, {
   onDeleted: (qc, ids) => {
+    void invalidateEntityRelations(qc);
     for (const id of ids) qc.removeQueries({ queryKey: memberAdminKeys.memberOverview(id) });
     invalidate(qc, [memberAdminKeys.levels, memberAdminKeys.stats, memberLookupKeys.optionsRoot]);
   },
@@ -84,6 +86,7 @@ function invalidate(qc: QueryClient, keys: ReadonlyArray<readonly unknown[]>) {
 
 /** 会员数据变动：列表 / 概览 / 下拉源（MemberSelect 等）一并回源 */
 function invalidateMembers(qc: QueryClient) {
+  void invalidateEntityRelations(qc);
   invalidate(qc, [memberAdminKeys.memberLists, memberAdminKeys.memberOverviews, memberLookupKeys.optionsRoot]);
 }
 

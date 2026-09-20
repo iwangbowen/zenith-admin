@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Form, Spin, Toast, Row, Col, Banner, SideSheet, Space, Timeline, Modal, Upload, Typography, useFormApi, Tag, Input, Tabs, TabPane } from '@douyinfe/semi-ui';
+import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { ArrowLeft, Save, Send, History, ImageUp, Eye, GitCompare, Images, Paperclip, SpellCheck, ScrollText, Workflow } from 'lucide-react';
 import { useDebouncedCallback } from '@tanstack/react-pacer';
@@ -604,6 +605,7 @@ export default function ContentEditPage() {
         <Button icon={<Eye size={14} />} loading={previewMutation.isPending || saveMutation.isPending} onClick={() => void handlePreview()}>预览</Button>
         {id ? (
           <>
+            <EntityRelationButton entityRef={{ type: 'cms.content', key: String(id) }} />
             <Button icon={<History size={14} />} onClick={() => setVersionsVisible(true)}>历史版本</Button>
             <Button icon={<ScrollText size={14} />} onClick={() => setOpLogsVisible(true)}>操作记录</Button>
           </>

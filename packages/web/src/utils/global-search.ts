@@ -1,4 +1,4 @@
-import { globalSearchRoutePrefixes, globalSearchTypes, type GlobalSearchResult, type GlobalSearchType } from '@zenith/shared/platform';
+import { globalSearchRoutePrefixes, globalSearchTypes, supportsEntityRelations, type GlobalSearchResult, type GlobalSearchType } from '@zenith/shared/platform';
 
 export const GLOBAL_SEARCH_TYPE_LABELS: Record<GlobalSearchType, string> = {
   user: '用户',
@@ -31,6 +31,10 @@ export function globalSearchTypeLabel(type: GlobalSearchResult['type']): string 
 }
 
 export function isSafeInternalSearchRoute(route: string): boolean {
+  if (route.startsWith('/search?')) {
+    const params = new URLSearchParams(route.slice('/search?'.length));
+    return supportsEntityRelations(params.get('entityType') ?? '') && Boolean(params.get('entityKey'));
+  }
   return route.startsWith('/') && !route.startsWith('//') && globalSearchRoutePrefixes.some((prefix) => {
     const root = prefix.endsWith('/') ? prefix.slice(0, -1) : prefix;
     return route === root || route.startsWith(`${root}?`) || route.startsWith(prefix);

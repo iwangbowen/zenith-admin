@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatYuan, PAYMENT_ORDER_STATUS_TAG_COLOR, PAYMENT_REFUND_STATUS_TAG_COLOR } from '@/utils/payment';
 import { useQueryClient } from '@tanstack/react-query';
-import { Banner, Col, Divider, Form, Row, SideSheet, Tabs, TabPane, Toast, Tag, Timeline, Typography, Modal, Descriptions } from '@douyinfe/semi-ui';
+import { Banner, Col, Divider, Empty, Form, Row, SideSheet, Spin, Tabs, TabPane, Toast, Tag, Timeline, Typography, Modal, Descriptions } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { PaymentResultModal } from './PaymentResultModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -45,7 +45,7 @@ import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { PaymentChannelTag, paymentMoneyColumn } from './payment-display';
 import { useAppPaymentMethodOptions } from './payment-app-options';
 import { EditFormModal } from '@/components/EditFormModal';
-import RelationPanel from '@/components/entity-relations/RelationPanel';
+import EntityContextView from '@/components/entity-relations/EntityContextView';
 import { invalidateEntityRelations } from '@/hooks/queries/entity-relations';
 const yuan = formatYuan;
 const PAYMENT_CREATE_METHODS = createPaymentSchema.shape.payMethod.options;
@@ -95,9 +95,12 @@ export default function PaymentOrdersPage() {
     bind, bindKeyword, submittedParams,
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: paymentOrderKeys.lists });
-  useListDeepLink(['keyword'], (params) => applySearch({ ...defaultSearch, keyword: params.keyword ?? '' }));
+  useListDeepLink(['keyword', 'orderId'], (params) => {
+    if (params.keyword !== undefined) applySearch({ ...defaultSearch, keyword: params.keyword });
+    if (params.orderId && /^[1-9]\d*$/.test(params.orderId)) setDetailId(Number(params.orderId));
+  });
 
-  const [detail, setDetail] = useState<PaymentOrder | null>(null);
+  const [detailId, setDetailId] = useState<number | undefined>();
   const [refundCheckTarget, setRefundCheckTarget] = useState<PaymentOrder | null>(null);
   const [refundedAmount, setRefundedAmount] = useState(0); // 已锁定退款总额（分）
   const [payResult, setPayResult] = useState<CreatePaymentResult | null>(null);
@@ -124,9 +127,9 @@ export default function PaymentOrdersPage() {
   const listQuery = usePaymentOrderList({ page, pageSize, ...filterQuery });
   const statsQuery = usePaymentStats();
   const stats: PaymentStats | null = statsQuery.data ?? null;
-  const detailQuery = usePaymentOrderDetail(detail?.id, !!detail);
-  const detailOrder = detail ? (detailQuery.data ?? detail) : null;
-  const detailRefundsQuery = usePaymentOrderRefunds(detail?.id, !!detail && canViewRefunds);
+  const detailQuery = usePaymentOrderDetail(detailId, detailId !== undefined);
+  const detailOrder = detailQuery.data;
+  const detailRefundsQuery = usePaymentOrderRefunds(detailId, detailId !== undefined && canViewRefunds);
   const detailRefunds = detailRefundsQuery.data ?? [];
   const refundCheckQuery = usePaymentOrderRefunds(refundCheckTarget?.id, !!refundCheckTarget && canViewRefunds);
   const createOrderMutation = useCreatePaymentOrder();
@@ -241,7 +244,7 @@ export default function PaymentOrdersPage() {
   }, [canViewRefunds, refundCheckQuery.data, refundCheckQuery.isFetching, refundCheckTarget, openRefundEdit]);
 
   function openDetail(order: PaymentOrder) {
-    setDetail(order);
+    setDetailId(order.id);
   }
 
   async function handleQuery(record: PaymentOrder) {
@@ -384,7 +387,9 @@ export default function PaymentOrdersPage() {
         </TabPane>
       </Tabs>
 
-      <SideSheet title="订单详情" visible={!!detail} onCancel={() => setDetail(null)} width={560} closeOnEsc>
+      <SideSheet title="订单详情" visible={detailId !== undefined} onCancel={() => setDetailId(undefined)} width={680} closeOnEsc>
+        {detailQuery.isLoading && <Spin />}
+        {detailQuery.isError && <Empty description="订单不存在或没有访问权限" />}
         {detailOrder && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingBottom: 24 }}>
             {/* 摘要头：金额 + 状态一眼定位，标题弱化随行 */}
@@ -465,7 +470,7 @@ export default function PaymentOrdersPage() {
 
             <div>
               <Divider align="left" style={{ margin: '4px 0 10px' }}>关联对象</Divider>
-              <RelationPanel entityType="payment.order" entityKey={String(detailOrder.id)} />
+              <EntityContextView entityType="payment.order" entityKey={String(detailOrder.id)} />
             </div>
 
             <div>

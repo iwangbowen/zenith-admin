@@ -5,12 +5,14 @@ import { cmsContentContract, isCmsEntityLink, type CmsEditLock } from '@zenith/s
 import { api, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { invalidateCmsPublishingViews } from './cms-stage3';
 import { invalidateCmsDashboardStats } from './cms-stats';
+import { invalidateEntityRelations } from './entity-relations';
 
 export type CmsContentListParams = NonNullable<QueryOf<typeof cmsContentContract.list>>;
 
 const resource = createResourceQueries(cmsContentContract, {
   // 保存会留档一个新版本并追加操作日志；新建草稿改变看板 totals.draft。列表 / 详情由工厂失效
   onSaved: (qc, saved) => {
+    void invalidateEntityRelations(qc);
     void qc.invalidateQueries({ queryKey: cmsContentKeys.versionList(saved.id) });
     void qc.invalidateQueries({ queryKey: cmsContentKeys.opLogs(saved.id) });
     void qc.invalidateQueries({ queryKey: cmsContentKeys.workflowContext(saved.id) });
@@ -92,6 +94,7 @@ export function useCmsContentApprovalDetail(contentId: number | undefined, insta
  * 栏目树（树不含内容计数）、站点 / 主题元数据与标签下拉源。
  */
 export function invalidateAfterCmsContentChange(qc: QueryClient, ids?: readonly number[]) {
+  void invalidateEntityRelations(qc);
   void qc.invalidateQueries({ queryKey: cmsContentKeys.lists });
   if (ids) {
     for (const id of ids) {

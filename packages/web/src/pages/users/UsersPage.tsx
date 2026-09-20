@@ -1,4 +1,5 @@
 import { FormPasswordInput } from '@/components/PasswordInput';
+import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Button, Select, Space, Form, Toast, Tag, Row, Col, Tree } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -446,6 +447,7 @@ export default function UsersPage() {
     },
     dateTimeColumn('最近登录', 'lastLoginAt'),
     dateTimeColumn('最近活跃', 'lastActiveAt'),
+    { title: '关联信息', key: 'relations', width: 120, render: (_: unknown, record: User) => <EntityRelationButton entityRef={{ type: 'identity.user', key: String(record.id) }} /> },
     createdAtColumn,
     status.column(),
     createOperationColumn<User>({

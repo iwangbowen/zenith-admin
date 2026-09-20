@@ -1,41 +1,62 @@
+// Identity-scoped keys and cursor accumulation require the underlying query hooks.
+// eslint-disable-next-line no-restricted-imports
+import { useInfiniteQuery, useQuery, type QueryClient } from '@tanstack/react-query';
 import { entityRelationsContract, entityTimelineContract, type CanonicalEntityType } from '@zenith/shared/platform';
-import { contractKey, useApiQuery } from '@/lib/contract-query';
-import type { QueryClient } from '@tanstack/react-query';
+import { api, apiQueryOptions, contractKey, useApiMutation } from '@/lib/contract-query';
+import { useAuth } from '@/hooks/useAuth';
 
 const RELATION_STALE_TIME = 15_000;
 
+export function useEntityAccessKey() {
+  const { user, impersonation } = useAuth();
+  return [user?.id ?? null, user?.tenantId ?? null, user?.viewingTenantId ?? null, impersonation?.impersonationId ?? null] as const;
+}
+
+/** Newly added relations can affect any anchor; mark all summaries stale, refetch only active groups. */
 export function invalidateEntityRelations(queryClient: QueryClient) {
-  void queryClient.invalidateQueries({ queryKey: contractKey(entityRelationsContract.describe) });
-  void queryClient.invalidateQueries({ queryKey: contractKey(entityRelationsContract.list) });
-  void queryClient.invalidateQueries({ queryKey: contractKey(entityTimelineContract.list) });
+  return queryClient.invalidateQueries({ queryKey: contractKey(entityRelationsContract.describe).slice(0, 1) });
+}
+
+export function useLinkEntity() {
+  return useApiMutation(entityRelationsContract.link, { invalidate: (qc) => { void invalidateEntityRelations(qc); } });
+}
+
+export function useUnlinkEntity() {
+  return useApiMutation(entityRelationsContract.unlink, { invalidate: (qc) => { void invalidateEntityRelations(qc); } });
 }
 
 export function useEntityRelations(type: CanonicalEntityType, key: string | undefined, enabled = true) {
-  return useApiQuery(
-    entityRelationsContract.describe,
-    { params: { type, key: key ?? '' }, query: { limit: 5 } },
-    { enabled: enabled && Boolean(key), staleTime: RELATION_STALE_TIME, retry: false },
-  );
+  const access = useEntityAccessKey();
+  const options = apiQueryOptions(entityRelationsContract.describe,
+    { params: { type, key: key ?? '' } },
+    { enabled: enabled && Boolean(key) && access[0] !== null, staleTime: RELATION_STALE_TIME, retry: false, requestOptions: { silent: true } });
+  return useQuery({ ...options, queryKey: [...options.queryKey, access] });
 }
 
-export function useEntityRelationSection(
-  type: CanonicalEntityType,
-  key: string | undefined,
-  sectionKey: string,
-  enabled = true,
-  limit = 5,
-) {
-  return useApiQuery(
-    entityRelationsContract.list,
-    { params: { type, key: key ?? '', sectionKey }, query: { limit } },
-    { enabled: enabled && Boolean(key), staleTime: RELATION_STALE_TIME, retry: false },
-  );
+export function useEntityRelationSection(type: CanonicalEntityType, key: string | undefined, sectionKey: string, enabled = true, limit = 5) {
+  const access = useEntityAccessKey();
+  const params = { type, key: key ?? '', sectionKey };
+  return useInfiniteQuery({
+    queryKey: [...contractKey(entityRelationsContract.section, { params, query: { limit } }), access],
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam, signal }) => api(entityRelationsContract.section, { params, query: { limit, cursor: pageParam } }, { silent: true, signal }),
+    getNextPageParam: (lastPage) => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
+    enabled: enabled && Boolean(key) && access[0] !== null,
+    staleTime: RELATION_STALE_TIME,
+    retry: false,
+  });
 }
 
 export function useEntityTimeline(type: CanonicalEntityType, key: string | undefined, enabled = true, limit = 20) {
-  return useApiQuery(
-    entityTimelineContract.list,
-    { params: { type, key: key ?? '' }, query: { limit } },
-    { enabled: enabled && Boolean(key), staleTime: RELATION_STALE_TIME, retry: false },
-  );
+  const access = useEntityAccessKey();
+  const params = { type, key: key ?? '' };
+  return useInfiniteQuery({
+    queryKey: [...contractKey(entityTimelineContract.timeline, { params, query: { limit } }), access],
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam, signal }) => api(entityTimelineContract.timeline, { params, query: { limit, cursor: pageParam } }, { silent: true, signal }),
+    getNextPageParam: (lastPage) => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
+    enabled: enabled && Boolean(key) && access[0] !== null,
+    staleTime: RELATION_STALE_TIME,
+    retry: false,
+  });
 }

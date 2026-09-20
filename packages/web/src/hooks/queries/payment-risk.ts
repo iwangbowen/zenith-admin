@@ -3,6 +3,7 @@ import { keepPreviousData } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { paymentRiskOpsContract, paymentRiskRuleContract } from '@zenith/shared/payment';
 import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { invalidateEntityRelations } from './entity-relations';
 
 export type PaymentRiskRuleListParams = NonNullable<QueryOf<typeof paymentRiskRuleContract.list>>;
 export type PaymentRiskHitListParams = NonNullable<QueryOf<typeof paymentRiskOpsContract.hits>>;
@@ -13,6 +14,7 @@ const HIT_LISTS_KEY = contractKey(paymentRiskOpsContract.hits);
 const REVIEW_LISTS_KEY = contractKey(paymentRiskOpsContract.reviews);
 
 function invalidateRiskOps(qc: QueryClient) {
+  void invalidateEntityRelations(qc);
   void qc.invalidateQueries({ queryKey: HIT_LISTS_KEY });
   void qc.invalidateQueries({ queryKey: REVIEW_LISTS_KEY });
 }
@@ -46,12 +48,12 @@ export function usePaymentRiskReviewList(params: PaymentRiskReviewListParams) {
 /** 审核结论只改变审核队列；命中记录是历史留痕，不随审核变化 */
 export function useApprovePaymentRiskReview() {
   return useApiMutation(paymentRiskOpsContract.approveReview, {
-    invalidate: (qc) => void qc.invalidateQueries({ queryKey: REVIEW_LISTS_KEY }),
+    invalidate: (qc) => { void invalidateEntityRelations(qc); void qc.invalidateQueries({ queryKey: REVIEW_LISTS_KEY }); },
   });
 }
 
 export function useRejectPaymentRiskReview() {
   return useApiMutation(paymentRiskOpsContract.rejectReview, {
-    invalidate: (qc) => void qc.invalidateQueries({ queryKey: REVIEW_LISTS_KEY }),
+    invalidate: (qc) => { void invalidateEntityRelations(qc); void qc.invalidateQueries({ queryKey: REVIEW_LISTS_KEY }); },
   });
 }

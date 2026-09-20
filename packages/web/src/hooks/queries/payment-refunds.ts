@@ -2,6 +2,7 @@ import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { paymentRefundContract } from '@zenith/shared/payment';
 import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { invalidateEntityRelations } from './entity-relations';
 
 export type PaymentRefundListParams = NonNullable<QueryOf<typeof paymentRefundContract.refunds>>;
 
@@ -18,6 +19,7 @@ export const paymentRefundKeys = {
 
 /** 退款状态变化影响退款列表、详情与订单关联退款三处 */
 export function invalidatePaymentRefunds(qc: QueryClient) {
+  void invalidateEntityRelations(qc);
   void qc.invalidateQueries({ queryKey: paymentRefundKeys.lists });
   void qc.invalidateQueries({ queryKey: paymentRefundKeys.details });
   void qc.invalidateQueries({ queryKey: paymentRefundKeys.byOrders });

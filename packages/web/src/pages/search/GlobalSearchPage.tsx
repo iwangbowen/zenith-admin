@@ -1,12 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Empty, Input, List, Select, Space, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import { Search, Bookmark } from 'lucide-react';
-import { globalSearchTypes, type GlobalSearchType } from '@zenith/shared/platform';
+import { globalSearchTypes, SEARCH_TYPE_ENTITY_TYPES, supportsEntityRelations, type CanonicalEntityRef, type GlobalSearchType } from '@zenith/shared/platform';
+import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
 import { useGlobalSearch } from '@/hooks/queries/global-search';
 import { renderLucideIcon } from '@/utils/icons';
 import { GLOBAL_SEARCH_TYPE_LABELS, GLOBAL_SEARCH_TYPE_OPTIONS, isSafeInternalSearchRoute } from '@/utils/global-search';
 import { trackEvent } from '@/utils/tracker';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
+
+const EntityContextSheet = lazy(() => import('@/components/entity-relations/EntityContextSheet'));
 
 const TYPE_LABELS = GLOBAL_SEARCH_TYPE_LABELS;
 const TYPE_OPTIONS = GLOBAL_SEARCH_TYPE_OPTIONS;
@@ -27,6 +31,10 @@ function persistStored(key: string, value: SavedSearch[]) {
 
 export default function GlobalSearchPage() {
   const navigate = useNavigate();
+  const [entityRef, setEntityRef] = useState<CanonicalEntityRef | null>(null);
+  useListDeepLink(['entityType', 'entityKey'], (params) => {
+    if (supportsEntityRelations(params.entityType) && params.entityKey) setEntityRef({ type: params.entityType, key: params.entityKey });
+  });
   const [searchParams, setSearchParams] = useSearchParams();
   const [draft, setDraft] = useState(searchParams.get('q') ?? '');
   const [type, setType] = useState<GlobalSearchType | undefined>(() => {
@@ -162,6 +170,7 @@ export default function GlobalSearchPage() {
                 <div style={{ color: 'var(--semi-color-text-2)', fontSize: 12 }}>{[TYPE_LABELS[item.type], item.subtitle, item.description].filter(Boolean).join(' · ')}</div>
                 {item.highlights[0] && <div style={{ color: 'var(--semi-color-text-2)', fontSize: 12 }}>命中：{item.highlights[0].text}</div>}
               </span>
+              {item.actions?.view !== false && <EntityRelationButton entityRef={{ type: SEARCH_TYPE_ENTITY_TYPES[item.type], key: String(item.id) }} onOpen={setEntityRef} />}
             </div>
           </List.Item>
         )}
@@ -170,6 +179,7 @@ export default function GlobalSearchPage() {
       {!search.isFetching && results.length >= limit && limit < 50 && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}><Button onClick={() => setLimit((value) => Math.min(value + 10, 50))}>加载更多</Button></div>}
       {search.data?.partial && <Typography.Text type="tertiary" style={{ display: 'block', marginTop: 12 }}>部分结果暂时不可用：{search.data.failedTypes.map((failedType) => TYPE_LABELS[failedType]).join('、')}</Typography.Text>}
       {search.error && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}><Button theme="borderless" onClick={() => { void search.refetch(); }}>重新搜索</Button></div>}
+      {entityRef && <Suspense fallback={null}><EntityContextSheet key={`${entityRef.type}:${entityRef.key}`} entityRef={entityRef} onClose={() => setEntityRef(null)} /></Suspense>}
     </div>
   );
 }

@@ -3,15 +3,18 @@ import { apiQueryOptions, contractKey, createResourceQueries, useApiMutation, us
 import { LOOKUP_STALE_TIME } from '@/lib/query';
 import { invalidateCurrentUserAccess } from './menus';
 import { invalidateScopeMemberPreviews } from './scope-members';
+import { invalidateEntityRelations } from './entity-relations';
 
 const resource = createResourceQueries(userContract, {
   // 下拉源展示昵称与用户名，且被角色分配、岗位成员、用户组等多页共享；告警接收人下拉同样渲染昵称。
   // 保存可能改动用户的部门 / 岗位 / 角色，各归属范围的成员预览随之变化
   onSaved: (qc) => {
+    void invalidateEntityRelations(qc);
     void qc.invalidateQueries({ queryKey: userKeys.alertRecipients });
     invalidateScopeMemberPreviews(qc);
   },
   onDeleted: (qc, ids) => {
+    void invalidateEntityRelations(qc);
     for (const id of ids) {
       qc.removeQueries({ queryKey: userKeys.dataPermission(id) });
       qc.removeQueries({ queryKey: userKeys.effectivePermissions(id) });

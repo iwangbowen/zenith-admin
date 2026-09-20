@@ -15,6 +15,7 @@ import {
 } from '@zenith/shared/drive';
 import { api, contractKey, createResourceQueries, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { LOOKUP_STALE_TIME, unwrap } from '@/lib/query';
+import { invalidateEntityRelations } from './entity-relations';
 import { request } from '@/utils/request';
 import { chunkedUpload, type ChunkedUploadEndpoints } from '@/utils/chunked-upload';
 import { formatDate } from '@/utils/date';
@@ -161,6 +162,7 @@ export function invalidateDir(qc: QueryClient, spaceId: number, parentId: number
 }
 
 function invalidateNodeViews(qc: QueryClient) {
+  void invalidateEntityRelations(qc);
   for (const queryKey of NODE_VIEW_KEYS) void qc.invalidateQueries({ queryKey });
 }
 
