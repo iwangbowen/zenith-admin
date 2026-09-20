@@ -1,5 +1,5 @@
 {
-  "id": "258d2add-796b-43d7-b1ce-8fc822950c55",
+  "id": "b79c8a48-cb65-4c5c-bfd5-aef1dc44e77f",
   "prevId": "51ecda5b-9eca-4d25-9c3a-71e54145822c",
   "version": "7",
   "dialect": "postgresql",
@@ -11247,9 +11247,27 @@
           "notNull": true,
           "default": "'{}'::jsonb"
         },
-        "actor_id": {
-          "name": "actor_id",
-          "type": "integer",
+        "actor_type": {
+          "name": "actor_type",
+          "type": "varchar(96)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "actor_key": {
+          "name": "actor_key",
+          "type": "varchar(512)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_type": {
+          "name": "source_type",
+          "type": "varchar(96)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_key": {
+          "name": "source_key",
+          "type": "varchar(512)",
           "primaryKey": false,
           "notNull": false
         },
@@ -11389,19 +11407,6 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
-        },
-        "domain_events_actor_id_users_id_fk": {
-          "name": "domain_events_actor_id_users_id_fk",
-          "tableFrom": "domain_events",
-          "tableTo": "users",
-          "columnsFrom": [
-            "actor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -11415,6 +11420,14 @@
         "domain_events_schema_version_check": {
           "name": "domain_events_schema_version_check",
           "value": "\"domain_events\".\"schema_version\" > 0"
+        },
+        "domain_events_actor_ref_pair_check": {
+          "name": "domain_events_actor_ref_pair_check",
+          "value": "(\"domain_events\".\"actor_type\" is null) = (\"domain_events\".\"actor_key\" is null)"
+        },
+        "domain_events_source_ref_pair_check": {
+          "name": "domain_events_source_ref_pair_check",
+          "value": "(\"domain_events\".\"source_type\" is null) = (\"domain_events\".\"source_key\" is null)"
         }
       },
       "isRLSEnabled": false

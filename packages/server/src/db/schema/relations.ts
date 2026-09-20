@@ -84,8 +84,7 @@ export const operationLogSubjectsRelations = relations(operationLogSubjects, ({ 
   operationLog: one(operationLogs, { fields: [operationLogSubjects.operationLogId], references: [operationLogs.id] }),
 }));
 
-export const domainEventsRelations = relations(domainEvents, ({ one, many }) => ({
-  actor: one(users, { fields: [domainEvents.actorId], references: [users.id] }),
+export const domainEventsRelations = relations(domainEvents, ({ many }) => ({
   subjects: many(domainEventSubjects),
 }));
 

@@ -27,13 +27,18 @@ CREATE TABLE "domain_events" (
 	"event_type" varchar(128) NOT NULL,
 	"schema_version" integer DEFAULT 1 NOT NULL,
 	"payload" jsonb DEFAULT '{}'::jsonb NOT NULL,
-	"actor_id" integer,
+	"actor_type" varchar(96),
+	"actor_key" varchar(512),
+	"source_type" varchar(96),
+	"source_key" varchar(512),
 	"trace_id" varchar(64),
 	"parent_ref" varchar(128),
 	"dedupe_key" varchar(192),
 	"occurred_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "domain_events_event_type_check" CHECK (length("domain_events"."event_type") > 0),
-	CONSTRAINT "domain_events_schema_version_check" CHECK ("domain_events"."schema_version" > 0)
+	CONSTRAINT "domain_events_schema_version_check" CHECK ("domain_events"."schema_version" > 0),
+	CONSTRAINT "domain_events_actor_ref_pair_check" CHECK (("domain_events"."actor_type" is null) = ("domain_events"."actor_key" is null)),
+	CONSTRAINT "domain_events_source_ref_pair_check" CHECK (("domain_events"."source_type" is null) = ("domain_events"."source_key" is null))
 );
 --> statement-breakpoint
 CREATE TABLE "entity_relation_edges" (
@@ -59,7 +64,6 @@ ALTER TABLE "operation_log_subjects" ADD CONSTRAINT "operation_log_subjects_tena
 ALTER TABLE "domain_event_subjects" ADD CONSTRAINT "domain_event_subjects_event_id_domain_events_id_fk" FOREIGN KEY ("event_id") REFERENCES "public"."domain_events"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "domain_event_subjects" ADD CONSTRAINT "domain_event_subjects_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "domain_events" ADD CONSTRAINT "domain_events_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "domain_events" ADD CONSTRAINT "domain_events_actor_id_users_id_fk" FOREIGN KEY ("actor_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "entity_relation_edges" ADD CONSTRAINT "entity_relation_edges_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "entity_relation_edges" ADD CONSTRAINT "entity_relation_edges_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "operation_log_subjects_entity_idx" ON "operation_log_subjects" USING btree ("tenant_id","entity_type","entity_key","operation_log_id");--> statement-breakpoint

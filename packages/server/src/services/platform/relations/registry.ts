@@ -2,9 +2,13 @@ import { HTTPException } from 'hono/http-exception';
 import { hasPermission } from '../../../lib/context';
 import { canonicalEntityTypeSchema, type CanonicalEntityType, type EntityRelationsResponse, type EntityRelationPage } from '@zenith/shared/platform';
 import type { RelationAccessContext, RelationProvider, VisibleEntityAnchor } from './types';
-import { paymentOrderRefundsProvider } from './providers/payment-order.provider';
+import { paymentOrderAuditProvider, paymentOrderRefundsProvider, paymentOrderWorkflowProvider } from './providers/payment-order.provider';
 
-export const relationProviders: readonly RelationProvider[] = [paymentOrderRefundsProvider];
+export const relationProviders: readonly RelationProvider[] = [
+  paymentOrderRefundsProvider,
+  paymentOrderWorkflowProvider,
+  paymentOrderAuditProvider,
+];
 
 function providersFor(type: CanonicalEntityType): RelationProvider[] {
   return relationProviders.filter((provider) => provider.sourceType === type);

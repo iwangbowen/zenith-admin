@@ -80,7 +80,12 @@ export const domainEvents = pgTable('domain_events', {
   eventType: varchar({ length: 128 }).notNull(),
   schemaVersion: integer().notNull().default(1),
   payload: jsonb().$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
-  actorId: integer().references(() => users.id, { onDelete: 'set null' }),
+  /** Generic actor identity; e.g. identity.user / system.worker. */
+  actorType: varchar({ length: 96 }),
+  actorKey: varchar({ length: 512 }),
+  /** Optional causal source object that emitted the event. */
+  sourceType: varchar({ length: 96 }),
+  sourceKey: varchar({ length: 512 }),
   traceId: varchar({ length: 64 }),
   parentRef: varchar({ length: 128 }),
   dedupeKey: varchar({ length: 192 }),
@@ -88,6 +93,8 @@ export const domainEvents = pgTable('domain_events', {
 }, (t) => [
   check('domain_events_event_type_check', sql`length(${t.eventType}) > 0`),
   check('domain_events_schema_version_check', sql`${t.schemaVersion} > 0`),
+  check('domain_events_actor_ref_pair_check', sql`(${t.actorType} is null) = (${t.actorKey} is null)`),
+  check('domain_events_source_ref_pair_check', sql`(${t.sourceType} is null) = (${t.sourceKey} is null)`),
   uniqueIndex('domain_events_tenant_dedupe_uq')
     .on(t.tenantId, t.dedupeKey)
     .where(sql`${t.tenantId} is not null and ${t.dedupeKey} is not null`),
