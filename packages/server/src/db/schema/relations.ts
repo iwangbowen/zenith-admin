@@ -1,6 +1,7 @@
 import { relations } from 'drizzle-orm';
 import { paymentBankMatches, paymentReconAdjustments, paymentReconCaseEvents, paymentReconCases, paymentReconRuns, paymentStatementEntries, paymentStatementFiles, paymentStatementPeriods, paymentStatements } from './payment-reconciliation';
 import { departments, menus, positions, roleDeptScopes, roleMenus, roles, tenantPackageFeatures, tenantPackages, tenants, userDeptScopes, userGroupMembers, userGroupRoles, userGroups, userMenus, userPositions, userRoles, users } from './core';
+import { domainEventSubjects, domainEvents, entityRelationEdges } from './entity-relations';
 import { businessFiles, fileStorageConfigs, managedFiles, uploadChunks, uploadSessions } from './files';
 import { asyncTaskItems, asyncTasks, exportJobDownloads, exportJobs } from './tasks';
 import { cronJobLogs, cronJobs, userFeedbacks } from './system';
@@ -72,8 +73,30 @@ import {
   driveActivities, driveFileVersions, driveNodeComments, driveNodePermissions, driveNodeProfiles, driveNodeRenditions, driveNodes, driveNodeStars, driveNodeSubscriptions, driveNodeTags,
   driveNodeTexts, driveRecentAccess, driveShareAccessLogs, driveShareLinks, driveSpaceMembers, driveSpaces, driveTags, driveUploadBindings,
 } from './drive';
+import { operationLogSubjects, operationLogs } from './logs';
 
 // ─── 关联关系 ────────────────────────────────────────────────────────────────
+export const operationLogsRelations = relations(operationLogs, ({ many }) => ({
+  subjects: many(operationLogSubjects),
+}));
+
+export const operationLogSubjectsRelations = relations(operationLogSubjects, ({ one }) => ({
+  operationLog: one(operationLogs, { fields: [operationLogSubjects.operationLogId], references: [operationLogs.id] }),
+}));
+
+export const domainEventsRelations = relations(domainEvents, ({ one, many }) => ({
+  actor: one(users, { fields: [domainEvents.actorId], references: [users.id] }),
+  subjects: many(domainEventSubjects),
+}));
+
+export const domainEventSubjectsRelations = relations(domainEventSubjects, ({ one }) => ({
+  event: one(domainEvents, { fields: [domainEventSubjects.eventId], references: [domainEvents.id] }),
+}));
+
+// Entity relation edges intentionally have no `one()` relations for source or
+// target: those columns are polymorphic references resolved by domain services.
+export const entityRelationEdgesRelations = relations(entityRelationEdges, () => ({}));
+
 export const errorGroupsRelations = relations(errorGroups, ({ many, one }) => ({
   events: many(errorEvents),
   assignee: one(users, { fields: [errorGroups.assigneeId], references: [users.id] }),

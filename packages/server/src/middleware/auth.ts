@@ -16,6 +16,7 @@ import { TtlCache } from '../lib/ttl-cache';
 import { onInvalidate, onInvalidationReset } from '../lib/invalidation-bus';
 import { impersonationWriteDenial } from '../lib/impersonation-guard';
 import { tagMiddleware } from '../lib/route-facts';
+import type { NormalizedAuditSubjectRef } from '../lib/audit-subject';
 
 export interface JwtPayload {
   userId: number;
@@ -374,5 +375,6 @@ declare module 'hono' {
     user: JwtPayload;
     auditBeforeData: string | undefined;
     auditAfterData: string | undefined;
+    auditSubjects: NormalizedAuditSubjectRef[] | undefined;
   }
 }

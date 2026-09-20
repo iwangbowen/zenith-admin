@@ -1,7 +1,9 @@
-import { pgTable, varchar, timestamp, pgEnum, integer, text, smallint, index } from 'drizzle-orm/pg-core';
+import { check, integer, index, pgEnum, pgTable, primaryKey, smallint, text, timestamp, varchar } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { LOGIN_EVENT_TYPES } from '@zenith/shared/identity';
 import { tenantIdColumn } from './core';
 import { idColumn } from './common';
+import { entitySubjectRoleEnum } from './entity-relations';
 
 // ─── 登录日志表 ─────────────────────────────────────────────────────────────────
 export const loginStatusEnum = pgEnum('login_status', ['success', 'fail']);
@@ -82,6 +84,30 @@ export const operationLogs = pgTable('operation_logs', {
 export type OperationLogRow = typeof operationLogs.$inferSelect;
 
 export type NewOperationLog = typeof operationLogs.$inferInsert;
+
+/**
+ * Structured entity references for an operation log.
+ *
+ * A single operation may affect several objects (for example an order and a
+ * refund, or a batch of users), so the subject identity is kept in a child
+ * table instead of overloading operation_logs with one resource column.
+ */
+export const operationLogSubjects = pgTable('operation_log_subjects', {
+  operationLogId: integer().notNull().references(() => operationLogs.id, { onDelete: 'cascade' }),
+  tenantId: tenantIdColumn(),
+  entityType: varchar({ length: 96 }).notNull(),
+  entityKey: varchar({ length: 512 }).notNull(),
+  role: entitySubjectRoleEnum().notNull().default('primary'),
+}, (t) => [
+  check('operation_log_subjects_entity_type_check', sql`length(${t.entityType}) > 0`),
+  check('operation_log_subjects_entity_key_check', sql`length(${t.entityKey}) > 0`),
+  primaryKey({ columns: [t.operationLogId, t.entityType, t.entityKey, t.role] }),
+  index('operation_log_subjects_entity_idx').on(t.tenantId, t.entityType, t.entityKey, t.operationLogId),
+  index('operation_log_subjects_log_idx').on(t.operationLogId),
+]);
+
+export type OperationLogSubjectRow = typeof operationLogSubjects.$inferSelect;
+export type NewOperationLogSubject = typeof operationLogSubjects.$inferInsert;
 
 // ─── IP 访问控制拦截日志表 ───────────────────────────────────────────────────────
 export const ipAccessLogs = pgTable('ip_access_logs', {

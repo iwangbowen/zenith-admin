@@ -6,7 +6,7 @@ import { isSuperAdmin, getUserPermissions } from '../lib/permissions';
 import { clampAuditJson, sliceUtf8Text, AUDIT_REQUEST_BODY_BUDGET_BYTES, AUDIT_SNAPSHOT_BUDGET_BYTES } from '../lib/audit-clamp';
 import { redactBody, truncateVarchar } from '../lib/sanitize';
 import { db } from '../db';
-import { operationLogs } from '../db/schema';
+import { operationLogSubjects, operationLogs } from '../db/schema';
 import { errBody } from '../lib/openapi-schemas';
 import { getClientIp, getPlatformVersion, resolveRequestClient } from '../lib/request-helpers';
 import { lookupIpLocation } from '../lib/ip-location';
@@ -15,6 +15,7 @@ import { assertFeatureEnabled } from '../lib/licensing';
 import type { LicenseFeatureKey } from '@zenith/shared/licensing';
 import { permissionList, type Permission } from '@zenith/shared/core';
 import { tagMiddleware } from '../lib/route-facts';
+import type { NormalizedAuditSubjectRef } from '../lib/audit-subject';
 
 export interface AuditLogOptions {
   description: string;
@@ -52,6 +53,7 @@ async function writeOperationLog(
   beforeData: string | undefined,
   afterData: string | undefined,
   responseBody: string | undefined,
+  subjects: readonly NormalizedAuditSubjectRef[],
 ) {
   try {
     const user = c.get('user') as JwtPayload | undefined;
@@ -68,7 +70,7 @@ async function writeOperationLog(
         ? clampAuditJson(redactBody(requestBody), AUDIT_REQUEST_BODY_BUDGET_BYTES)
         : undefined;
 
-    await db.insert(operationLogs).values({
+    const operationLogValues = {
       userId: user?.userId ?? null,
       username: truncateVarchar(user?.username, 32),
       // 模拟登录：userId / username 是被模拟用户，这里记下实际操作人
@@ -92,7 +94,36 @@ async function writeOperationLog(
       browser: browserName === 'Unknown' ? null : truncateVarchar(browserName, 64),
       // 归属租户：租户用户记自身租户；平台超管在租户视角下记该租户，平台视角记 null
       tenantId: user ? getEffectiveTenantId(user) : null,
-    });
+    };
+
+    // Preserve the existing single insert path when no subjects were attached.
+    // For subject-aware operations request the generated operation id and then
+    // persist all refs in one child insert. The fallback keeps lightweight test
+    // doubles and non-Drizzle adapters compatible with the legacy writer.
+    const insertBuilder = db.insert(operationLogs).values(operationLogValues);
+    if (subjects.length === 0) {
+      await insertBuilder;
+      return;
+    }
+
+    type ReturningBuilder = {
+      returning?: (fields: { id: typeof operationLogs.id }) => Promise<Array<{ id: number }>>;
+    };
+    const returningBuilder = insertBuilder as unknown as ReturningBuilder;
+    if (typeof returningBuilder.returning !== 'function') {
+      await insertBuilder;
+      return;
+    }
+
+    const [operationLog] = await returningBuilder.returning({ id: operationLogs.id });
+    if (!operationLog) return;
+    await db.insert(operationLogSubjects).values(subjects.map((subject) => ({
+      operationLogId: operationLog.id,
+      tenantId: user ? getEffectiveTenantId(user) : null,
+      entityType: subject.type,
+      entityKey: subject.key,
+      role: subject.role,
+    })));
   } catch {
     // 日志写入失败不影响主流程
   }
@@ -153,6 +184,7 @@ export function guard(opts: GuardOptions) {
       // 捕获操作前快照（由路由处理器通过 setAuditBeforeData 注入）
       const beforeData = c.get('auditBeforeData') as string | undefined;
       const manualAfterData = c.get('auditAfterData') as string | undefined;
+      const auditSubjects = c.get('auditSubjects') ?? [];
       const durationMs = Date.now() - start;
       const auditOpts = opts.audit;
       // clone 必须在响应流被消费前同步执行；body 读取与 JSON 解析延后到响应发出之后，
@@ -188,7 +220,7 @@ export function guard(opts: GuardOptions) {
           } catch {
             // 响应体读取失败，忽略
           }
-          await writeOperationLog(c, auditOpts, durationMs, body, beforeData, afterData, responseBodyStr);
+          await writeOperationLog(c, auditOpts, durationMs, body, beforeData, afterData, responseBodyStr, auditSubjects);
         })().catch(() => {});
       });
       return;

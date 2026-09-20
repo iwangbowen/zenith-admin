@@ -2,6 +2,8 @@ export * from './business-files';
 export * from './cache';
 export * from './cron-jobs';
 export * from './data-mask';
+export * from './entity-relations';
+export * from './entity-timeline';
 export * from './dicts';
 export * from './exception-logs';
 export * from './file-storage-configs';

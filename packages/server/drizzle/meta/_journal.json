@@ -43,6 +43,13 @@
       "when": 1789731553051,
       "tag": "0005_noisy_echo",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789868769441,
+      "tag": "0006_minor_franklin_richards",
+      "breakpoints": true
     }
   ]
 }

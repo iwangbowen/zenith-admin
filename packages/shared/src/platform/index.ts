@@ -9,6 +9,7 @@ export * from './contracts';
 export * from './cron-expression';
 export * from './cron-health';
 export * from './data-mask';
+export * from './entity-registry';
 export * from './regions';
 export * from './types';
 export * from './upload';
