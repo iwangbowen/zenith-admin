@@ -142,6 +142,7 @@ export function OperationLogsTable({
       render: (v: number | null) => v === null ? '-' : `${v} ms`,
     },
     dateTimeColumn('操作时间', 'createdAt'),
+    entityRelationColumn<OperationLog>('platform.operation-log', undefined, { fixed: 'right' }),
     {
       title: '状态',
       dataIndex: 'responseCode',
@@ -152,7 +153,6 @@ export function OperationLogsTable({
         return <Tag color={success ? 'green' : 'red'}>{success ? '成功' : '失败'}</Tag>;
       },
     },
-    entityRelationColumn<OperationLog>('platform.operation-log'),
     createOperationColumn<OperationLog>({
       width: 100,
       actions: (record) => [{ key: 'detail', label: '详情', onClick: () => setDetailLog(record) }],
