@@ -499,6 +499,7 @@ export default function PaymentSharingPage() {
               ]}
             />
           )}
+          {reversalDetail && <EntityRelationButton entityRef={{ type: 'payment.sharing-reversal', key: String(reversalDetail.id) }} />}
         </Spin>
       </SideSheet>
     </div>

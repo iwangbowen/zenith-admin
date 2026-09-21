@@ -2,10 +2,10 @@ import { entityRelationColumn } from '@/components/entity-relations/entity-relat
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PAYMENT_CHANNEL_TAG_COLOR } from '@/utils/payment';
-import { Tag, Toast } from '@douyinfe/semi-ui';
+import { Descriptions, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { formatDateTimeRangeForApi } from '@/utils/date';
+import { formatDateTime, formatDateTimeRangeForApi } from '@/utils/date';
 import { enumValueOf } from '@zenith/shared/core';
 import { PAYMENT_CHANNELS, PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
 import type { PaymentChannel, PaymentNotifyLog } from '@zenith/shared/payment';
@@ -16,6 +16,7 @@ import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-
 import { JsonBlock } from '@/components/JsonBlock';
 import { PaymentExpandedDetail } from './payment-expanded-detail';
 import AppModal from '@/components/AppModal';
+import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
 import { useListPage } from '@/hooks/useListPage';
 
 const NOTIFY_SCENES = ['payment', 'refund'] as const;
@@ -128,10 +129,30 @@ export default function PaymentLogsPage() {
         expandRowByClick
       />
       <AppModal title={detailLog ? `渠道回调 #${detailLog.id}` : '渠道回调详情'} visible={detailLogId !== undefined} onCancel={closeDetail} width={760} footer={null} closeOnEsc>
-        {detailLog && <PaymentExpandedDetail meta={`日志 ID：${detailLog.id}`} sections={[
-          { title: '请求头', visible: Boolean(detailLog.headers), content: <JsonBlock value={formatRaw(detailLog.headers)} /> },
-          { title: '原始 Body', content: <JsonBlock value={formatRaw(detailLog.rawBody) || '（无）'} /> },
-        ]} />}
+        {detailLog && <>
+          <Descriptions
+            align="plain"
+            layout="horizontal"
+            column={2}
+            data={[
+              { key: '订单号', value: detailLog.orderNo ?? '—' },
+              { key: '渠道', value: PAYMENT_CHANNEL_LABELS[detailLog.channel] },
+              { key: '场景', value: detailLog.scene === 'refund' ? '退款回调' : '支付回调' },
+              { key: '验签', value: <Tag color={detailLog.signatureValid ? 'green' : 'red'}>{detailLog.signatureValid ? '通过' : '失败'}</Tag> },
+              { key: '结果', value: detailLog.result ?? '—' },
+              { key: '说明', value: detailLog.message ?? '—' },
+              { key: 'IP', value: detailLog.ip ?? '—' },
+              { key: '时间', value: formatDateTime(detailLog.createdAt) },
+            ]}
+          />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '12px 0' }}>
+            <EntityRelationButton entityRef={{ type: 'payment.notify-log', key: String(detailLog.id) }} />
+          </div>
+          <PaymentExpandedDetail meta={`日志 ID：${detailLog.id}`} sections={[
+            { title: '请求头', visible: Boolean(detailLog.headers), content: <JsonBlock value={formatRaw(detailLog.headers)} /> },
+            { title: '原始 Body', content: <JsonBlock value={formatRaw(detailLog.rawBody) || '（无）'} /> },
+          ]} />
+        </>}
       </AppModal>
     </div>
   );
