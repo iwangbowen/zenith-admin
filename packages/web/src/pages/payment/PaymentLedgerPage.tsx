@@ -36,6 +36,7 @@ import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/com
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { usePaymentAppList } from '@/hooks/queries/payment-apps';
 import { usePaymentChannelOperationLookup } from '@/hooks/queries/payment-channels';
 import {
@@ -200,8 +201,6 @@ function JournalLinesField({ accountOptions }: Readonly<{ accountOptions: Array<
 
 export default function PaymentLedgerPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const journalParam = searchParams.get('journalId');
-  const linkedJournalId = journalParam && /^[1-9]\d*$/.test(journalParam) && Number.isSafeInteger(Number(journalParam)) ? Number(journalParam) : undefined;
   const { hasPermission } = usePermission();
   const canView = hasPermission('payment:ledger:list');
   const canCreateAccount = hasPermission('payment:ledger:account:create');
@@ -209,6 +208,7 @@ export default function PaymentLedgerPage() {
   const canReverseJournal = hasPermission('payment:ledger:reverse');
   const canReserve = hasPermission('payment:ledger:reserve');
   const [activeTab, setActiveTab] = useUrlTabState(['accounts', 'journals', 'reservations'] as const, 'accounts');
+  const [linkedJournalId, setLinkedJournalId] = useState<number>();
   const [journalDetailTarget, setJournalDetailTarget] = useState<PaymentJournal | null>(null);
   const [reverseTarget, setReverseTarget] = useState<PaymentJournal | null>(null);
   const [reverseReason, setReverseReason] = useState('');
@@ -405,6 +405,15 @@ export default function PaymentLedgerPage() {
   const linkedJournalQuery = usePaymentJournalDetail(linkedJournalId, linkedJournalId !== undefined);
   const detailJournal = journalDetailTarget ? (detailQuery.data ?? journalDetailTarget) : null;
 
+  useListDeepLink(['journalId'], (params) => {
+    const id = params.journalId && /^[1-9]\d*$/.test(params.journalId) && Number.isSafeInteger(Number(params.journalId))
+      ? Number(params.journalId)
+      : undefined;
+    if (id === undefined) return;
+    setActiveTab('journals');
+    setLinkedJournalId(id);
+  }, { getNextParams: () => ({ tab: 'journals' }) });
+
   useEffect(() => {
     if (!linkedJournalId) return;
     if (linkedJournalQuery.isError) {
@@ -413,10 +422,8 @@ export default function PaymentLedgerPage() {
       setActiveTab('journals');
       setJournalDetailTarget(linkedJournalQuery.data);
     } else return;
-    const next = new URLSearchParams(searchParams);
-    next.delete('journalId');
-    setSearchParams(next, { replace: true });
-  }, [linkedJournalId, linkedJournalQuery.data, linkedJournalQuery.isError, searchParams, setActiveTab, setSearchParams]);
+    setLinkedJournalId(undefined);
+  }, [linkedJournalId, linkedJournalQuery.data, linkedJournalQuery.isError, setActiveTab]);
 
   function openJournalDetail(record: PaymentJournal) {
     setJournalDetailTarget(record);
@@ -428,6 +435,7 @@ export default function PaymentLedgerPage() {
 
   function closeJournalDetail() {
     setJournalDetailTarget(null);
+    setLinkedJournalId(undefined);
     if (!searchParams.has('journalId')) return;
     const next = new URLSearchParams(searchParams);
     next.delete('journalId');
