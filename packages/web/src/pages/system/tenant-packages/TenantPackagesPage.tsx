@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Form, Toast, Spin, CheckboxGroup, Tag, Space } from '@douyinfe/semi-ui';
+import { Form, Toast, Spin, CheckboxGroup, Tag, Space, Popover, OverflowList } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { tenantPackageContract, type CreateTenantPackageInput, type TenantPackage } from '@zenith/shared/identity';
 import { enumValueOf } from '@zenith/shared/core';
@@ -108,6 +108,7 @@ export default function TenantPackagesPage() {
     desktopInlineKeys: ['edit', 'features', 'delete'],
   });
 
+  const FEATURE_TAG_CONTENT_WIDTH = 288;
   const columns: ColumnProps<TenantPackage>[] = [
     { title: '套餐名称', dataIndex: 'name', width: 180, render: renderEllipsis },
     {
@@ -116,14 +117,36 @@ export default function TenantPackagesPage() {
       width: 320,
       render: (features?: string[]) => {
         if (!features || features.length === 0) return <span style={{ color: 'var(--semi-color-text-2)' }}>仅核心功能</span>;
-        const shown = features.slice(0, 3);
+        const featureLabel = (feature: string) => LICENSE_FEATURE_LABELS[feature as keyof typeof LICENSE_FEATURE_LABELS] ?? feature;
+        const items = features.map((feature) => ({ key: feature, feature }));
         return (
-          <Space spacing={4} wrap>
-            {shown.map((f) => (
-              <Tag key={f} size="small" color="blue">{LICENSE_FEATURE_LABELS[f as keyof typeof LICENSE_FEATURE_LABELS] ?? f}</Tag>
-            ))}
-            {features.length > shown.length && <Tag size="small">+{features.length - shown.length}</Tag>}
-          </Space>
+          <div style={{ width: FEATURE_TAG_CONTENT_WIDTH, maxWidth: '100%', minWidth: 0, overflow: 'hidden' }}>
+            <OverflowList
+              items={items}
+              renderMode="collapse"
+              style={{ width: FEATURE_TAG_CONTENT_WIDTH, maxWidth: '100%', minWidth: 0 }}
+              visibleItemRenderer={(item) => (
+                <Tag key={item.key} size="small" color="blue" style={{ flex: '0 0 auto', marginRight: 4 }}>
+                  {featureLabel(item.feature)}
+                </Tag>
+              )}
+              overflowRenderer={(overflowItems) => (
+                overflowItems.length > 0 ? (
+                  <Popover
+                    position="bottomLeft"
+                    trigger="hover"
+                    content={(
+                      <Space spacing={4} wrap style={{ maxWidth: 280 }}>
+                        {overflowItems.map((item) => <Tag key={item.key} size="small" color="blue">{featureLabel(item.feature)}</Tag>)}
+                      </Space>
+                    )}
+                  >
+                    <Tag size="small" color="grey" style={{ flex: '0 0 auto', cursor: 'help' }}>+{overflowItems.length}</Tag>
+                  </Popover>
+                ) : null
+              )}
+            />
+          </div>
         );
       },
     },
