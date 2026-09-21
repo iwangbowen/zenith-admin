@@ -1462,6 +1462,12 @@ export async function listNotifyLogs(q: QueryOutputOf<typeof paymentNotifyLogCon
   });
 }
 
+export async function getNotifyLog(id: number): Promise<PaymentNotifyLog> {
+  const [row] = await db.select().from(paymentNotifyLogs).where(and(eq(paymentNotifyLogs.id, id), tenantCondition(paymentNotifyLogs, currentUser()))).limit(1);
+  requireRow(row, '回调日志不存在');
+  return mapNotifyLog(row);
+}
+
 // ─── 纯函数：可供单测直接导入 ──────────────────────────────────────────────────
 
 /**

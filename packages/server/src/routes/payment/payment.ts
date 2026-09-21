@@ -36,6 +36,7 @@ import {
   approveRefund,
   rejectRefund,
   listNotifyLogs,
+  getNotifyLog,
   testChannelConnectivity,
 } from '../../services/payment/payment.service';
 import { getPaymentStats, getPaymentTrend } from '../../services/payment/payment-stats.service';
@@ -207,6 +208,9 @@ const refundRejectRoute = defineContractRoute(paymentRefundContract.rejectRefund
 const logsListRoute = defineContractRoute(paymentNotifyLogContract.logs, {
   handler: async (c) => c.json(okBody(await listNotifyLogs(c.req.valid('query'))), 200),
 });
+const logDetailRoute = defineContractRoute(paymentNotifyLogContract.logDetail, {
+  handler: async (c) => c.json(okBody(await getNotifyLog(c.req.valid('param').id)), 200),
+});
 
 // 注册顺序即匹配顺序：静态段（/channels/all、/orders/by-no）必须早于同级动态段（/{id}）
 paymentRouter.openapiRoutes([
@@ -241,6 +245,7 @@ paymentRouter.openapiRoutes([
   refundApproveRoute,
   refundRejectRoute,
   logsListRoute,
+  logDetailRoute,
 ] as const);
 
 export default paymentRouter;

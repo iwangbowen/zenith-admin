@@ -50,6 +50,9 @@ function invalidateSharingOrders(qc: QueryClient) {
 export function usePaymentSharingReceivers(params: PaymentSharingReceiverListParams, enabled = true) {
   return useApiQuery(paymentSharingContract.receivers, { query: params }, { placeholderData: keepPreviousData, enabled });
 }
+export function usePaymentSharingReceiverDetail(id: number | undefined, enabled = true) {
+  return useApiQuery(paymentSharingContract.receiverDetail, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
+}
 export function usePaymentSharingOrderDetail(id: number | undefined, enabled = true) {
   return useApiQuery(paymentSharingContract.orderDetail, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
 }

@@ -10,6 +10,10 @@ export const paymentLogKeys = {
   list: (params: PaymentLogListParams) => contractKey(paymentNotifyLogContract.logs, { query: params }),
 };
 
+export function usePaymentLogDetail(id: number | undefined, enabled = true) {
+  return useApiQuery(paymentNotifyLogContract.logDetail, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
+}
+
 export function usePaymentLogList(params: PaymentLogListParams) {
   return useApiQuery(paymentNotifyLogContract.logs, { query: params }, { placeholderData: keepPreviousData });
 }

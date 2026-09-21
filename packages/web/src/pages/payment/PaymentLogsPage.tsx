@@ -1,13 +1,15 @@
 import { entityRelationColumn } from '@/components/entity-relations/entity-relation-columns';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { PAYMENT_CHANNEL_TAG_COLOR } from '@/utils/payment';
-import { Tag } from '@douyinfe/semi-ui';
+import { SideSheet, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { enumValueOf } from '@zenith/shared/core';
 import { PAYMENT_CHANNELS, PAYMENT_CHANNEL_LABELS, PAYMENT_CHANNEL_OPTIONS } from '@zenith/shared/payment';
 import type { PaymentChannel, PaymentNotifyLog } from '@zenith/shared/payment';
-import { paymentLogKeys, usePaymentLogList } from '@/hooks/queries/payment-logs';
+import { paymentLogKeys, usePaymentLogDetail, usePaymentLogList } from '@/hooks/queries/payment-logs';
 import { ListSearchToolbar } from '@/components/list-page';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
 import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
@@ -26,6 +28,21 @@ function formatRaw(raw: string | null | undefined): string {
 }
 
 export default function PaymentLogsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const logParam = searchParams.get('notifyLogId');
+  const linkedLogId = logParam && /^[1-9]\d*$/.test(logParam) && Number.isSafeInteger(Number(logParam)) ? Number(logParam) : undefined;
+  const [detailLogId, setDetailLogId] = useState<number>();
+  const linkedLogQuery = usePaymentLogDetail(linkedLogId, linkedLogId !== undefined);
+  const detailLogQuery = usePaymentLogDetail(detailLogId, detailLogId !== undefined);
+  const detailLog = detailLogQuery.data ?? (detailLogId === linkedLogId ? linkedLogQuery.data : undefined);
+  useEffect(() => {
+    if (!linkedLogId) return;
+    if (linkedLogQuery.isError) Toast.error('回调日志不存在或无权查看');
+    else if (linkedLogQuery.data) setDetailLogId(linkedLogId);
+    else return;
+    const next = new URLSearchParams(searchParams); next.delete('notifyLogId'); setSearchParams(next, { replace: true });
+  }, [linkedLogId, linkedLogQuery.data, linkedLogQuery.isError, searchParams, setSearchParams]);
+  function closeDetail() { setDetailLogId(undefined); if (!searchParams.has('notifyLogId')) return; const next = new URLSearchParams(searchParams); next.delete('notifyLogId'); setSearchParams(next, { replace: true }); }
   const {
     bind,
     bindKeyword,
@@ -50,7 +67,7 @@ export default function PaymentLogsPage() {
   const columns: ColumnProps<PaymentNotifyLog>[] = [
     // 订单号置于首列承载展开箭头；内部日志 ID 移入展开详情
     copyableNoColumn('订单号', 'orderNo', { width: 300 }),
-    entityRelationColumn<PaymentNotifyLog>('payment.notify-log'),
+    entityRelationColumn<PaymentNotifyLog>('payment.notify-log', (record) => record.id),
     { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <Tag color={PAYMENT_CHANNEL_TAG_COLOR[v]}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
     { title: '场景', dataIndex: 'scene', width: 100, render: (v: string) => (v === 'refund' ? '退款回调' : '支付回调') },
     { title: '验签', dataIndex: 'signatureValid', width: 90, render: (v: boolean) => <Tag color={v ? 'green' : 'red'}>{v ? '通过' : '失败'}</Tag> },
@@ -109,6 +126,12 @@ export default function PaymentLogsPage() {
         rowExpandable={(r) => !!(r && (r.rawBody || r.headers))}
         expandRowByClick
       />
+      <SideSheet title={detailLog ? `渠道回调 #${detailLog.id}` : '渠道回调详情'} visible={detailLogId !== undefined} onCancel={closeDetail} width={760} closeOnEsc>
+        {detailLog && <PaymentExpandedDetail meta={`日志 ID：${detailLog.id}`} sections={[
+          { title: '请求头', visible: Boolean(detailLog.headers), content: <JsonBlock value={formatRaw(detailLog.headers)} /> },
+          { title: '原始 Body', content: <JsonBlock value={formatRaw(detailLog.rawBody) || '（无）'} /> },
+        ]} />}
+      </SideSheet>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeQuery, keywordQuery, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, idParam, keywordQuery, paginated, paginationQuery, queryBool, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { PAYMENT_CHANNELS } from '../constants';
 
@@ -41,4 +41,5 @@ export const paymentNotifyLogListQuery = paginationQuery.extend({
 /** 渠道回调日志：共用支付资源根 */
 export const paymentNotifyLogContract = defineContract('/api/payment', {
   logs: op.get('/logs', { access: { permission: 'payment:log:list' }, query: paymentNotifyLogListQuery, response: paginated(paymentNotifyLogSchema), summary: '支付回调日志' }),
+  logDetail: op.get('/logs/{id}', { access: { permission: 'payment:log:list' }, params: idParam, response: paymentNotifyLogSchema, summary: '支付回调日志详情' }),
 }, { tags: ['支付中心'] });
