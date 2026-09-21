@@ -30,7 +30,6 @@ import {
   useTestFireNotification,
 } from '@/hooks/queries/notification-policies';
 import { NOTIFICATION_SEVERITY_TAG_COLOR } from './notify-tag-colors';
-import { EntityContextView } from '@/components/entity-relations/EntityRelationButton';
 
 const { Text } = Typography;
 
@@ -339,8 +338,6 @@ export default function NotifyPoliciesPage() {
             { key: '计划时间', value: detailQuery.data.scheduledAt ?? EMPTY_PLACEHOLDER }, { key: '错误', value: detailQuery.data.lastError ?? EMPTY_PLACEHOLDER, span: 2 },
             { key: '跳转地址', value: detailQuery.data.link ?? EMPTY_PLACEHOLDER, span: 2 },
           ]} />
-          <Typography.Title heading={6} style={{ marginTop: 20 }}>关联信息</Typography.Title>
-          <EntityContextView entityType="notification.outbox" entityKey={String(detailQuery.data.id)} />
         </>}
       </SideSheet>
     </div>

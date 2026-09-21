@@ -25,7 +25,7 @@ import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { EMPTY_PLACEHOLDER, copyableNoColumn, dateTimeColumn } from '@/utils/table-columns';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
-import { EntityContextView } from '@/components/entity-relations/EntityRelationButton';
+import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
 
 const APPROVAL_COLOR = { none: 'grey', pending: 'amber', approved: 'green', rejected: 'red' } as const satisfies Record<PaymentRefundApprovalStatus, string>;
 const yuan = formatYuan;
@@ -229,7 +229,7 @@ export default function PaymentRefundsPage() {
         )}
         {refundDetail && <>
           <Typography.Title heading={6} style={{ marginTop: 20 }}>关联信息</Typography.Title>
-          <EntityContextView entityType="payment.refund" entityKey={String(refundDetail.id)} showAnchor={false} />
+          <EntityRelationButton entityRef={{ type: 'payment.refund', key: String(refundDetail.id) }} />
         </>}
       </SideSheet>
 

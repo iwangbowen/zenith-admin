@@ -2,7 +2,7 @@ import { entityRelationColumn } from '@/components/entity-relations/entity-relat
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PAYMENT_CHANNEL_TAG_COLOR } from '@/utils/payment';
-import { SideSheet, Tag, Toast } from '@douyinfe/semi-ui';
+import { Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { formatDateTimeRangeForApi } from '@/utils/date';
@@ -15,6 +15,7 @@ import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search
 import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { JsonBlock } from '@/components/JsonBlock';
 import { PaymentExpandedDetail } from './payment-expanded-detail';
+import AppModal from '@/components/AppModal';
 import { useListPage } from '@/hooks/useListPage';
 
 const NOTIFY_SCENES = ['payment', 'refund'] as const;
@@ -126,12 +127,12 @@ export default function PaymentLogsPage() {
         rowExpandable={(r) => !!(r && (r.rawBody || r.headers))}
         expandRowByClick
       />
-      <SideSheet title={detailLog ? `渠道回调 #${detailLog.id}` : '渠道回调详情'} visible={detailLogId !== undefined} onCancel={closeDetail} width={760} closeOnEsc>
+      <AppModal title={detailLog ? `渠道回调 #${detailLog.id}` : '渠道回调详情'} visible={detailLogId !== undefined} onCancel={closeDetail} width={760} footer={null} closeOnEsc>
         {detailLog && <PaymentExpandedDetail meta={`日志 ID：${detailLog.id}`} sections={[
           { title: '请求头', visible: Boolean(detailLog.headers), content: <JsonBlock value={formatRaw(detailLog.headers)} /> },
           { title: '原始 Body', content: <JsonBlock value={formatRaw(detailLog.rawBody) || '（无）'} /> },
         ]} />}
-      </SideSheet>
+      </AppModal>
     </div>
   );
 }
