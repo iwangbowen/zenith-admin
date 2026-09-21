@@ -19,6 +19,9 @@ export const operationLogKeys = {
 export function useOperationLogList(params: OperationLogListParams, enabled = true) {
   return useApiQuery(operationLogContract.list, { query: params }, { placeholderData: keepPreviousData, enabled });
 }
+export function useOperationLogDetail(id: number | undefined, enabled = true) {
+  return useApiQuery(operationLogContract.detail, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
+}
 
 export function useOperationLogStats(params: OperationLogStatsParams) {
   return useApiQuery(operationLogContract.stats, { query: params }, {

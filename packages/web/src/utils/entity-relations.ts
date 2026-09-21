@@ -58,6 +58,7 @@ const ENTITY_DETAIL_ROUTES: Partial<Record<CanonicalEntityType, (key: string) =>
   'payment.sharing-order': (key) => `/payment/sharing?sharingOrderId=${encodeURIComponent(key)}`,
   'payment.sharing-reversal': (key) => `/payment/sharing?reversalId=${encodeURIComponent(key)}`,
   'payment.notify-log': (key) => `/payment/logs?notifyLogId=${encodeURIComponent(key)}`,
+  'platform.operation-log': (key) => `/system/operation-logs?operationLogId=${encodeURIComponent(key)}`,
   'member.member': (key) => `/member/members?memberId=${encodeURIComponent(key)}`,
   'drive.file': (key) => `/drive?node=${encodeURIComponent(key)}`,
   'workflow.instance': (key) => `/workflow/instance/${encodeURIComponent(key)}`,

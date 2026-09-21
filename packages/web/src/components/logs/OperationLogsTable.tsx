@@ -1,4 +1,5 @@
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
 import { Button, Descriptions, JsonViewer, TabPane, Tabs, Tag, Tooltip, Typography } from '@douyinfe/semi-ui';
 import AppModal from '@/components/AppModal';
@@ -11,6 +12,7 @@ import './OperationLogsTable.css';
 import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { UserDisplayCell, formatUserLabel } from '@/components/UserDisplay';
 import { usePermission } from '@/hooks/usePermission';
+import { useOperationLogDetail } from '@/hooks/queries/operation-logs';
 import { entityRelationColumn } from '@/components/entity-relations/entity-relation-columns';
 
 interface OperationLogsTableProps {
@@ -104,10 +106,25 @@ export function OperationLogsTable({
   columnSettings,
   columnSettingsKey,
 }: OperationLogsTableProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const operationLogParam = searchParams.get('operationLogId');
+  const linkedOperationLogId = operationLogParam && /^[1-9]\d*$/.test(operationLogParam) && Number.isSafeInteger(Number(operationLogParam)) ? Number(operationLogParam) : undefined;
   const [detailLog, setDetailLog] = useState<OperationLog | null>(null);
+  const linkedDetailQuery = useOperationLogDetail(linkedOperationLogId, linkedOperationLogId !== undefined);
   const [detailActiveTab, setDetailActiveTab] = useState('basic');
   const navigate = useNavigate();
   const { hasPermission } = usePermission();
+  useEffect(() => {
+    if (!linkedOperationLogId || !linkedDetailQuery.data) return;
+    setDetailLog(linkedDetailQuery.data);
+    const next = new URLSearchParams(searchParams); next.delete('operationLogId'); setSearchParams(next, { replace: true });
+  }, [linkedOperationLogId, linkedDetailQuery.data, searchParams, setSearchParams]);
+
+  const closeDetail = () => {
+    setDetailLog(null); setDetailActiveTab('basic');
+    if (!searchParams.has('operationLogId')) return;
+    const next = new URLSearchParams(searchParams); next.delete('operationLogId'); setSearchParams(next, { replace: true });
+  };
 
   const columns = useMemo<ColumnProps<OperationLog>[]>(() => [
     { title: 'ID', dataIndex: 'id', width: 70 },
@@ -176,7 +193,7 @@ export function OperationLogsTable({
       <AppModal
         title="操作日志详情"
         visible={detailLog !== null}
-        onCancel={() => { setDetailLog(null); setDetailActiveTab('basic'); }}
+        onCancel={closeDetail}
         footer={null}
         width={700}
         style={{ top: 40 }}

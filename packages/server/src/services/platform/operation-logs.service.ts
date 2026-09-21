@@ -11,6 +11,7 @@ import type { JwtPayload } from '../../middleware/auth';
 import { formatDateTime, resolveStatsWindow } from '../../lib/datetime';
 import { getNicknameMap, findUsernamesByNickname } from '../../lib/user-nicknames';
 import { buildListResult } from '../../lib/list-query';
+import { requireRow } from '../../lib/db-assert';
 
 export type OperationLogsListFilter = Omit<QueryOutputOf<typeof operationLogContract.list>, 'page' | 'pageSize'>;
 
@@ -58,6 +59,13 @@ export async function listOperationLogs(q: QueryOutputOf<typeof operationLogCont
       return rows.map((r) => ({ ...r, nickname: r.username ? nicknameMap.get(r.username) ?? null : null, createdAt: formatDateTime(r.createdAt) }));
     },
   });
+}
+
+export async function getOperationLog(id: number) {
+  const [row] = await db.select().from(operationLogs).where(and(eq(operationLogs.id, id), tenantCondition(operationLogs, currentUser()))).limit(1);
+  requireRow(row, '操作日志不存在');
+  const nicknameMap = await getNicknameMap(row.username ? [row.username] : []);
+  return { ...row, nickname: row.username ? nicknameMap.get(row.username) ?? null : null, createdAt: formatDateTime(row.createdAt) };
 }
 
 /**

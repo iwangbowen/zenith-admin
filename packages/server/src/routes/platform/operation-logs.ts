@@ -3,7 +3,7 @@ import { operationLogContract } from '@zenith/shared/platform';
 import { setAuditAfterData, setAuditBeforeData } from '../../middleware/guard';
 import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
-import { listOperationLogs, operationLogStats, cleanOperationLogs, getCleanOperationLogsBeforeAudit } from '../../services/platform/operation-logs.service';
+import { listOperationLogs, getOperationLog, operationLogStats, cleanOperationLogs, getCleanOperationLogsBeforeAudit } from '../../services/platform/operation-logs.service';
 import { mountCrud } from '../_crud';
 
 const operationLogsRoute = new OpenAPIHono({ defaultHook: validationHook });
@@ -24,7 +24,7 @@ const cleanRoute = defineContractRoute(operationLogContract.clean, {
 });
 
 mountCrud(operationLogsRoute, operationLogContract,
-  { list: listOperationLogs },
+  { list: listOperationLogs, get: getOperationLog },
   {},
   [statsRoute, cleanRoute],
 );

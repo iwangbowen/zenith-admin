@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeQuery, idQuery, paginated, paginationQuery, queryBool, queryEnum, keywordQuery } from '../../core/api-schemas';
+import { dateRangeQuery, idParam, idQuery, paginated, paginationQuery, queryBool, queryEnum, keywordQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { OPERATION_LOG_RESULTS } from '../constants';
 
@@ -101,6 +101,7 @@ export const operationLogCleanQuery = z.object({
 
 export const operationLogContract = defineContract('/api/operation-logs', {
   list: op.get('/', { access: { permission: 'system:log:operation' }, query: operationLogListQuery, response: paginated(operationLogSchema), summary: '操作日志分页列表' }),
+  detail: op.get('/{id}', { access: { permission: 'system:log:operation' }, params: idParam, response: operationLogSchema, summary: '操作日志详情' }),
   stats: op.get('/stats', { access: { permission: 'system:log:operation' }, query: operationLogStatsQuery, response: operationLogStatsSchema, summary: '操作日志统计' }),
   clean: op.delete('/clean', { access: { permission: 'system:log:operation' }, audit: '清除操作日志', query: operationLogCleanQuery, summary: '清除操作日志' }),
 }, { auditModule: '操作日志', tags: ['OperationLogs'] });
