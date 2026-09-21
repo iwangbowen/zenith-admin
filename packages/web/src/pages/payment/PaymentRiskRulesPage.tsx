@@ -35,6 +35,7 @@ import { deleteAction, useStatusToggle, ListSearchToolbar, listTableProps } from
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useListPage } from '@/hooks/useListPage';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
+import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
 import { EditFormModal } from '@/components/EditFormModal';
 const yuan = formatYuan;
 const channelOptions = PAYMENT_CHANNEL_OPTIONS;
@@ -383,12 +384,14 @@ export default function PaymentRiskRulesPage() {
         {hitDetailQuery.data && <>
           <Typography.Title heading={6}>{hitDetailQuery.data.ruleName}</Typography.Title>
           <Typography.Text>动作：{hitDetailQuery.data.action} · 维度：{hitDetailQuery.data.dimension} · 业务：{hitDetailQuery.data.bizType}:{hitDetailQuery.data.bizId}</Typography.Text>
+          <EntityRelationButton entityRef={{ type: 'payment.risk-hit', key: String(hitDetailQuery.data.id) }} />
         </>}
       </AppModal>
       <AppModal title="风控审核详情" visible={reviewDetailId !== undefined} onCancel={() => closeRiskDetail('review')} width={720} footer={null} closeOnEsc>
         {reviewDetailQuery.data && <>
           <Typography.Title heading={6}>{reviewDetailQuery.data.reviewNo}</Typography.Title>
           <Typography.Text>订单：{reviewDetailQuery.data.orderNo} · 状态：{reviewDetailQuery.data.status} · 原因：{reviewDetailQuery.data.reason}</Typography.Text>
+          <EntityRelationButton entityRef={{ type: 'payment.risk-review', key: String(reviewDetailQuery.data.id) }} />
         </>}
       </AppModal>
 

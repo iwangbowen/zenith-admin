@@ -146,7 +146,7 @@ function TabBarItemInner({
         {tab.pinned && (
           <span className="admin-tab-item__pin"><Pin size={10} /></span>
         )}
-        {tab.closable && (
+        {tab.closable ? (
           <button
             type="button"
             className="admin-tab-item__close"
@@ -154,6 +154,9 @@ function TabBarItemInner({
           >
             <X size={12} />
           </button>
+        ) : (
+          /* 不可关闭页签（首页 / 固定）保留关闭按钮占位，避免与可关闭页签宽度不一致 */
+          <span className="admin-tab-item__close admin-tab-item__close--placeholder" aria-hidden="true" />
         )}
       </div>
     </Dropdown>

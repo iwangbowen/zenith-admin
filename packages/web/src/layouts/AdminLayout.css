@@ -1434,6 +1434,15 @@
   opacity: 1;
 }
 
+/* 不可关闭页签的关闭按钮占位：保留布局空间但永不显示 */
+.admin-tab-item__close--placeholder,
+.admin-tab-item--active .admin-tab-item__close--placeholder,
+.admin-tab-item:hover .admin-tab-item__close--placeholder {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .admin-tab-item__pin {
   display: inline-flex;
   align-items: center;

@@ -2,7 +2,7 @@ import { entityRelationColumn } from '@/components/entity-relations/entity-relat
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { formatYuan } from '@/utils/payment';
-import { Button, Descriptions, Form, SideSheet, Spin, Tabs, TabPane, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Descriptions, Form, SideSheet, Spin, Tabs, TabPane, Tag, TextArea, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -35,6 +35,7 @@ import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 import { deleteAction, useStatusToggle, ListSearchToolbar } from '@/components/list-page';
+import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useListPage } from '@/hooks/useListPage';
@@ -429,6 +430,7 @@ export default function PaymentSharingPage() {
             { key: '状态', value: receiverDetailTarget.status },
             { key: '备注', value: receiverDetailTarget.remark ?? EMPTY_PLACEHOLDER, span: 2 },
           ]} />
+          <EntityRelationButton entityRef={{ type: 'payment.sharing-receiver', key: String(receiverDetailTarget.id) }} />
         </>}
       </SideSheet>
 
@@ -443,6 +445,7 @@ export default function PaymentSharingPage() {
             { key: '渠道分账号', value: orderDetailTarget.channelSharingNo ?? EMPTY_PLACEHOLDER },
             { key: '备注', value: orderDetailTarget.remark ?? EMPTY_PLACEHOLDER, span: 2 },
           ]} />
+          <EntityRelationButton entityRef={{ type: 'payment.sharing-order', key: String(orderDetailTarget.id) }} />
         </>}
       </SideSheet>
 
