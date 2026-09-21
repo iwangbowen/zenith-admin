@@ -545,7 +545,10 @@ export default function UsersPage() {
             label: '强制下线',
             danger: true,
             dividerBefore: !canImpersonate(record),
-            hidden: !record.isOnline || !hasPermission('system:session:forceLogout'),
+            // 离线用户仍展示入口（便于发现该能力），但不可点击
+            hidden: !hasPermission('system:session:forceLogout'),
+            disabled: !record.isOnline,
+            disabledReason: '该用户当前不在线',
             onClick: () => {
               confirmDanger({
                 title: '强制下线',
