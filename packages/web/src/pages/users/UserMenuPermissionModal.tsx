@@ -96,24 +96,28 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
         <TabPane tab="最终有效权限" itemKey="effective">
           <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--semi-color-text-2)' }}>
             <div>最终权限 = 角色权限 ∪ 用户组继承 ∪ 用户直接授权，仅供预览</div>
-            <div style={{ marginTop: 6 }}>
-              权限来源：
-              {[...new Set(Object.values(permissionsQuery.data?.menuSources ?? {}).flat())].map((source) => (
-                <Tag
-                  key={source}
-                  size="small"
-                  color={source === '用户直接授权' ? 'green' : source.includes('用户组：') ? 'orange' : 'blue'}
-                  style={{ marginLeft: 4 }}
-                >
-                  {source}
-                </Tag>
-              ))}
+            <div style={{ display: 'grid', gridTemplateColumns: '88px minmax(0, 1fr)', columnGap: 8, rowGap: 6, alignItems: 'start', marginTop: 6 }}>
+              <span>权限来源：</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {[...new Set(Object.values(permissionsQuery.data?.menuSources ?? {}).flat())].map((source) => (
+                  <Tag
+                    key={source}
+                    size="small"
+                    color={source === '用户直接授权' ? 'green' : source.includes('用户组：') ? 'orange' : 'blue'}
+                  >
+                    {source}
+                  </Tag>
+                ))}
+              </div>
+              {groups.length > 0 && (
+                <>
+                  <span>继承自用户组：</span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {groups.map((g) => <Tag key={g.id} size="small" color="orange">{g.name}</Tag>)}
+                  </div>
+                </>
+              )}
             </div>
-            {groups.length > 0 && (
-              <span style={{ marginLeft: 8 }}>
-                继承自用户组：{groups.map((g) => <Tag key={g.id} size="small" color="orange" style={{ marginLeft: 4 }}>{g.name}</Tag>)}
-              </span>
-            )}
           </div>
           <MenuPermissionPanel
             allMenus={menuTreeQuery.data ?? []}
