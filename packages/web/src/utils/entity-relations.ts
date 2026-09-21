@@ -47,6 +47,7 @@ const ENTITY_DETAIL_ROUTES: Partial<Record<CanonicalEntityType, (key: string) =>
   'cms.content': (key) => `/cms/contents/edit?id=${encodeURIComponent(key)}`,
   'payment.recon-adjustment': (key) => `/payment/recon?adjustmentId=${encodeURIComponent(key)}`,
   'payment.order': (key) => `/payment/orders?orderId=${encodeURIComponent(key)}`,
+  'payment.refund': (key) => `/payment/refunds?refundId=${encodeURIComponent(key)}`,
   'member.member': (key) => `/member/members?memberId=${encodeURIComponent(key)}`,
   'drive.file': (key) => `/drive?node=${encodeURIComponent(key)}`,
   'workflow.instance': (key) => `/workflow/instance/${encodeURIComponent(key)}`,

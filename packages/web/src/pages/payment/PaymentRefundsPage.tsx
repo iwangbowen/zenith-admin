@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { formatYuan, PAYMENT_CHANNEL_TAG_COLOR, PAYMENT_REFUND_STATUS_TAG_COLOR } from '@/utils/payment';
-import { Form, Input, Tag, Toast, Typography, Descriptions } from '@douyinfe/semi-ui';
+import { Form, Input, SideSheet, Tag, Toast, Typography, Descriptions } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -24,6 +25,7 @@ import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { EMPTY_PLACEHOLDER, copyableNoColumn, dateTimeColumn } from '@/utils/table-columns';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
+import { EntityContextView } from '@/components/entity-relations/EntityRelationButton';
 
 const APPROVAL_COLOR = { none: 'grey', pending: 'amber', approved: 'green', rejected: 'red' } as const satisfies Record<PaymentRefundApprovalStatus, string>;
 const yuan = formatYuan;
@@ -32,6 +34,10 @@ interface SearchParams { keyword: string; channel?: string; status?: string; app
 const defaultSearch: SearchParams = { keyword: '', channel: undefined, status: undefined, approvalStatus: undefined, timeRange: null };
 
 export default function PaymentRefundsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const refundIdParam = searchParams.get('refundId');
+  const linkedRefundId = refundIdParam && /^[1-9]\d*$/.test(refundIdParam) && Number.isSafeInteger(Number(refundIdParam))
+    ? Number(refundIdParam) : undefined;
   const { hasPermission } = usePermission();
   const {
     page, pageSize, buildPagination,
@@ -55,12 +61,42 @@ export default function PaymentRefundsPage() {
 
   const listQuery = usePaymentRefundList({ page, pageSize, ...filterQuery });
   const detailQuery = usePaymentRefundDetail(detail?.id, !!detail);
+  const linkedDetailQuery = usePaymentRefundDetail(linkedRefundId, linkedRefundId !== undefined);
   const refundDetail = detail ? (detailQuery.data ?? detail) : null;
   const queryMutation = useQueryPaymentRefund();
   const approveMutation = useApprovePaymentRefund();
   const rejectMutation = useRejectPaymentRefund();
   const queryingId = queryMutation.isPending ? (queryMutation.variables?.params.id ?? null) : null;
   const approvingId = approveMutation.isPending ? (approveMutation.variables?.params.id ?? null) : null;
+
+  useEffect(() => {
+    if (!linkedRefundId) return;
+    if (linkedDetailQuery.isError) {
+      Toast.error('退款记录不存在或无权查看');
+    } else if (!linkedDetailQuery.data) {
+      return;
+    } else {
+      setDetail(linkedDetailQuery.data);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('refundId');
+    setSearchParams(next, { replace: true });
+  }, [linkedRefundId, linkedDetailQuery.data, linkedDetailQuery.isError, searchParams, setSearchParams]);
+
+  function closeDetail() {
+    setDetail(null);
+    if (!searchParams.has('refundId')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('refundId');
+    setSearchParams(next, { replace: true });
+  }
+
+  function openDetail(record: PaymentRefund) {
+    setDetail(record);
+    const next = new URLSearchParams(searchParams);
+    next.set('refundId', String(record.id));
+    setSearchParams(next, { replace: true });
+  }
 
   function handleRefundQuery(record: PaymentRefund) {
     queryMutation.mutate({ params: { id: record.id } }, {
@@ -106,7 +142,7 @@ export default function PaymentRefundsPage() {
         {
           key: 'detail',
           label: '详情',
-          onClick: () => setDetail(r),
+          onClick: () => openDetail(r),
         },
         ...((r.status === 'processing' || r.status === 'pending' || r.status === 'unknown') && r.approvalStatus !== 'pending' ? [{
           key: 'query',
@@ -166,7 +202,7 @@ export default function PaymentRefundsPage() {
         {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
-      <AppModal title="退款详情" visible={!!detail} onCancel={() => setDetail(null)} footer={null} width={560} closeOnEsc>
+      <SideSheet title="退款详情" visible={!!detail} onCancel={closeDetail} width={760} closeOnEsc>
         {refundDetail && (
           <Descriptions
             align="plain"
@@ -191,7 +227,11 @@ export default function PaymentRefundsPage() {
             ]}
           />
         )}
-      </AppModal>
+        {refundDetail && <>
+          <Typography.Title heading={6} style={{ marginTop: 20 }}>关联信息</Typography.Title>
+          <EntityContextView entityType="payment.refund" entityKey={String(refundDetail.id)} showAnchor={false} />
+        </>}
+      </SideSheet>
 
       <AppModal title="审批通过退款" visible={!!approveTarget} onOk={submitApprove} onCancel={() => setApproveTarget(null)} okText="确认通过" okButtonProps={{ loading: approveMutation.isPending }} width={460} closeOnEsc>
         {approveTarget && (
