@@ -9,8 +9,21 @@
 .monitor-header__actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 12px;
   margin-left: auto;
+  min-width: 0;
+}
+
+.monitor-refresh-error {
+  margin-bottom: 16px;
+}
+
+.monitor-refresh-select {
+  width: 230px;
+  max-width: 100%;
+  flex-shrink: 0;
 }
 
 .monitor-loading {
@@ -324,10 +337,26 @@
 }
 
 /* ===== SSE 连接状态指示灯 ===== */
-.monitor-sse-tag {
-  display: inline-flex !important;
+.monitor-refresh-status {
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  width: 16px;
+  height: 24px;
+  flex-shrink: 0;
+  color: var(--semi-color-text-2);
+}
+
+.monitor-refresh-status--open {
+  color: var(--semi-color-success);
+}
+
+.monitor-refresh-status--connecting {
+  color: var(--semi-color-info);
+}
+
+.monitor-refresh-status--error {
+  color: var(--semi-color-danger);
 }
 
 .monitor-sse-dot {

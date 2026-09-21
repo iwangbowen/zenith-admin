@@ -1,16 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
-import { Button, Descriptions, Skeleton, Tabs, TabPane, Toast, Typography, Select, Tag, Table, RadioGroup, Tooltip } from '@douyinfe/semi-ui';
+import { Banner, Button, Descriptions, Skeleton, Tabs, TabPane, Toast, Typography, Select, Tag, Table, RadioGroup, Tooltip } from '@douyinfe/semi-ui';
 import { LineChart, chartOptions, makeLineSpec, useChartPalette } from '@/components/charts';
 import { RefreshCw, Cpu, HardDrive, Database, Server, MemoryStick, Layers, Activity, Network, Wifi, History, Thermometer, ListTree, Download, Copy as CopyIcon, ExternalLink, Bug } from 'lucide-react';
 import { formatDateTime } from '@/utils/date';
 import DateTimeText from '@/components/DateTimeText';
 import { formatSecondsHuman } from '@/utils/format';
-import { request } from '@/utils/request';
-import { readSseStream } from '@/utils/streaming';
 import { TABLE_PAGE_SIZE_OPTIONS, usePagination } from '@/hooks/usePagination';
-import { useMonitorHistory, useMonitorSnapshot } from '@/hooks/queries/monitor';
+import { useMonitorRefreshController } from './useMonitorRefreshController';
 import { useExceptionOverview } from '@/hooks/queries/exception-logs';
 import { usePermission } from '@/hooks/usePermission';
 import { MetricMeter, type MetricMeterTone } from '@/components/data-viz/MetricMeter';
@@ -22,7 +20,6 @@ import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { enumValueOf, formatBytes } from '@zenith/shared/core';
 import {
   MONITOR_HISTORY_RANGES,
-  monitorContract,
   type MonitorDbInfo,
   type MonitorHistoryPoint,
   type MonitorHistoryRange,
@@ -34,15 +31,12 @@ import {
   type MonitorTopProcesses,
   type MonitorWsConnection,
   type MonitorWsDisconnect,
-  type MonitorWsMetrics,
 } from '@zenith/shared/platform';
-import { urlOf } from '@/lib/contract-query';
 const { Text } = Typography;
 
 type MonitorData = MonitorSnapshot;
 type TimeseriesPoint = MonitorTimeseriesPoint;
 type HistoryPoint = MonitorHistoryPoint;
-type WsMetrics = MonitorWsMetrics;
 type WsConnection = MonitorWsConnection;
 type WsDisconnect = MonitorWsDisconnect;
 type HttpStats = MonitorHttpStats;
@@ -82,6 +76,7 @@ const MONITOR_PREFS_KEY = 'zenith_monitor_prefs';
 interface MonitorPrefs {
   activeTab?: string;
   refreshInterval?: number;
+  historyRefreshInterval?: number;
   historyRange?: MonitorHistoryRange;
   historyStat?: 'avg' | 'max';
 }
@@ -95,16 +90,6 @@ function loadPrefs(): MonitorPrefs {
 }
 
 const SKELETON_ROW_KEYS = ['r0','r1','r2','r3','r4','r5','r6','r7','r8','r9','r10','r11'] as const;
-const EMPTY_HISTORY: HistoryPoint[] = [];
-
-const REFRESH_OPTIONS = [
-  { label: '实时推送 (SSE)', value: -1 },
-  { label: '5 秒', value: 5000 },
-  { label: '10 秒', value: 10000 },
-  { label: '30 秒', value: 30000 },
-  { label: '60 秒', value: 60000 },
-  { label: '暂停', value: 0 },
-];
 
 function formatBitrate(bps: number): string {
   if (!Number.isFinite(bps) || bps < 0) return '0 B/s';
@@ -113,13 +98,6 @@ function formatBitrate(bps: number): string {
   if (bps < 1024 * 1024 * 1024) return `${(bps / 1024 / 1024).toFixed(2)} MB/s`;
   return `${(bps / 1024 / 1024 / 1024).toFixed(2)} GB/s`;
 }
-
-const SSE_STATUS_META: Record<'idle' | 'connecting' | 'open' | 'error', { color: 'grey' | 'blue' | 'green' | 'red'; text: string }> = {
-  idle: { color: 'grey', text: '未连接' },
-  connecting: { color: 'blue', text: '连接中…' },
-  open: { color: 'green', text: '实时推送中' },
-  error: { color: 'red', text: '已断开，自动重连中' },
-};
 
 /** 页面级 Tab 全集（URL ?tab= 定位与偏好记忆共用） */
 const MONITOR_TABS = ['overview', 'history', 'cpu', 'mem', 'disk', 'net', 'node', 'http', 'db', 'redis', 'ws'] as const;
@@ -133,12 +111,6 @@ export default function MonitorPage() {
   const exceptionOverviewQuery = useExceptionOverview(1, hasPermission('system:exception-log:list'));
   const exceptionOverview = exceptionOverviewQuery.data ?? null;
   const prefsRef = useRef(loadPrefs());
-  const [data, setData] = useState<MonitorData | null>(null);
-  const [series, setSeries] = useState<TimeseriesPoint[]>([]);
-  const [wsMetrics, setWsMetrics] = useState<WsMetrics | null>(null);
-  const [sseLoading, setSseLoading] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [refreshInterval, setRefreshInterval] = useState<number>(prefsRef.current.refreshInterval ?? 30000);
   // URL ?tab= 优先定位；无参数时回落到用户上次停留的 Tab（偏好记忆），偏好值非法时回总览
   const savedTab = prefsRef.current.activeTab as MonitorTab | undefined;
   const [activeTab, setActiveTab] = useUrlTabState(MONITOR_TABS, savedTab && MONITOR_TABS.includes(savedTab) ? savedTab : 'overview');
@@ -154,41 +126,37 @@ export default function MonitorPage() {
   const [gcRate, setGcRate] = useState<{ countPerMin: number; durationMsPerMin: number } | null>(null);
   const { buildPagination: buildConnectionsPagination } = usePagination(10);
   const { buildPagination: buildDisconnectsPagination } = usePagination(10);
-  /** SSE 连接状态，仅在 SSE 模式下展示 */
-  const [sseStatus, setSseStatus] = useState<'idle' | 'connecting' | 'open' | 'error'>('idle');
-  const sseAbortRef = useRef<AbortController | null>(null);
-
-  const snapshotQuery = useMonitorSnapshot(
-    refreshInterval > 0 ? refreshInterval : false,
-    refreshInterval !== -1,
-  );
-  const historyQuery = useMonitorHistory(historyRange, activeTab === 'history');
+  const controller = useMonitorRefreshController({
+    activeTab,
+    historyRange,
+    initialRefreshInterval: prefsRef.current.refreshInterval,
+    initialHistoryRefreshInterval: prefsRef.current.historyRefreshInterval,
+  });
+  const {
+    data, series, wsMetrics, history, historyLoading, loading,
+    realtimeInterval, historyInterval, refreshInterval, setRefreshInterval,
+    refresh, refreshOptions, updatedAt, latestHistoryPeriod, isHistory,
+    sseEnabled, sseStatus, errorMessage,
+  } = controller;
+  const refreshStatus = errorMessage ? 'error' : loading ? 'connecting' : refreshInterval === 0 ? 'idle' : sseEnabled ? sseStatus : 'open';
+  const refreshStatusText = errorMessage ?? (loading ? '正在更新数据' : refreshInterval === 0 ? '自动更新已暂停' : sseEnabled ? '实时连接正常' : '自动更新已开启');
   const connectionsPagination = buildConnectionsPagination(wsMetrics?.connections.length ?? 0);
   const disconnectsPagination = buildDisconnectsPagination(wsMetrics?.recentDisconnects.length ?? 0);
-  const history = historyQuery.data?.points ?? EMPTY_HISTORY;
-  const historyLoading = historyQuery.isFetching;
-  const loading = refreshInterval === -1 ? sseLoading : snapshotQuery.isFetching;
 
+  // 实时指标与历史趋势分别记忆更新方式，切换 Tab 不改变另一类的暂停状态。
   useEffect(() => {
-    if (!snapshotQuery.data) return;
-    setData(snapshotQuery.data.data);
-    setSeries(snapshotQuery.data.series);
-    setWsMetrics(snapshotQuery.data.wsMetrics);
-    setLastUpdated(new Date(snapshotQuery.dataUpdatedAt));
-  }, [snapshotQuery.data, snapshotQuery.dataUpdatedAt]);
-
-  // 偏好持久化（Tab / 刷新间隔 / 历史范围 / 统计口径）
-  useEffect(() => {
-    const prefs: MonitorPrefs = { activeTab, refreshInterval, historyRange, historyStat };
+    const prefs: MonitorPrefs = {
+      activeTab, refreshInterval: realtimeInterval, historyRefreshInterval: historyInterval, historyRange, historyStat,
+    };
     try { localStorage.setItem(MONITOR_PREFS_KEY, JSON.stringify(prefs)); } catch { /* 忽略配额错误 */ }
-  }, [activeTab, refreshInterval, historyRange, historyStat]);
+  }, [activeTab, realtimeInterval, historyInterval, historyRange, historyStat]);
 
   // Windows 等平台无网络指标时，恢复的 activeTab 可能指向被隐藏的网络 Tab，回退总览
   useEffect(() => {
     if (activeTab === 'net' && data && (!data.network || data.network.length === 0)) {
       setActiveTab('overview');
     }
-  }, [activeTab, data]);
+  }, [activeTab, data, setActiveTab]);
 
   // WS Tab 打开时每 30s tick 一次，让「已持续 / 最近活动」列自动更新
   useEffect(() => {
@@ -217,118 +185,6 @@ export default function MonitorPage() {
     }
     gcPrevRef.current = { at: now, totalCount: gc.totalCount, totalDurationMs: gc.totalDurationMs };
   }, [data]);
-
-  const fetchData = () => snapshotQuery.refetch();
-
-  /**
-   * SSE 订阅模式：refreshInterval === -1 时生效。
-   * 事件协议：
-   * - `metrics`（全量 snapshot）/ `metrics:diff`（差量 patch，null 表示删除键）
-   * - `series`（全量时序数组）/ `series:point`（追加单点，客户端按 capacity 截断）
-   * - `ws`（WS 指标全量）
-   * 断线自动重连：指数退避 1s → 2s → 4s → … → 30s 封顶，重连成功后重置。
-   */
-  useEffect(() => {
-    if (refreshInterval !== -1) {
-      setSseStatus('idle');
-      setSseLoading(false);
-      return;
-    }
-    setSseLoading(true);
-    const ctrl = new AbortController();
-    sseAbortRef.current = ctrl;
-
-    /** 将 patch 深合并到 base，返回合并结果（不修改入参 base） */
-    const mergePatch = (base: unknown, patch: unknown): unknown => {
-      if (patch === null) return undefined; // 删除标记
-      if (patch === undefined) return base;
-      if (Array.isArray(patch)) return patch; // 数组整段替换
-      if (typeof patch !== 'object' || typeof base !== 'object' || base === null || Array.isArray(base)) {
-        return patch;
-      }
-      const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
-      for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
-        if (v === null) {
-          delete out[k];
-        } else {
-          out[k] = mergePatch(out[k], v);
-        }
-      }
-      return out;
-    };
-
-    const handleFrame = (currentEvent: string, dataLine: string) => {
-      try {
-        const payload: unknown = JSON.parse(dataLine);
-        if (currentEvent === 'metrics') {
-          setData(payload as MonitorData);
-          setLastUpdated(new Date());
-          setSseLoading(false);
-        } else if (currentEvent === 'metrics:diff') {
-          setData((prev) => (prev ? (mergePatch(prev, payload) as MonitorData) : prev));
-          setLastUpdated(new Date());
-        } else if (currentEvent === 'series') {
-          const s = payload as { points?: TimeseriesPoint[] };
-          setSeries(Array.isArray(s.points) ? s.points : []);
-        } else if (currentEvent === 'series:point') {
-          setSeries((prev) => {
-            const next = [...prev, payload as TimeseriesPoint];
-            return next.length > 360 ? next.slice(next.length - 360) : next;
-          });
-        } else if (currentEvent === 'ws') {
-          setWsMetrics(payload as WsMetrics);
-        }
-      } catch { /* ignore parse error */ }
-    };
-
-    /** 单次连接；返回是否应该重连（aborted 时返回 false） */
-    const connectOnce = async (): Promise<boolean> => {
-      try {
-        setSseStatus('connecting');
-        const res = await request.fetchRaw(urlOf(monitorContract.stream), { signal: ctrl.signal, silent: true });
-        if (!res || !res.ok || !res.body) return !ctrl.signal.aborted;
-        setSseStatus('open');
-        await readSseStream(res, (events) => {
-          for (const { event, data } of events) {
-            if (data) handleFrame(event, data);
-          }
-        });
-        // 服务端正常关闭流也视为需要重连
-        return !ctrl.signal.aborted;
-      } catch (e: unknown) {
-        if (e instanceof Error && e.name === 'AbortError') return false;
-        return !ctrl.signal.aborted;
-      }
-    };
-
-    /** 可被 abort 打断的 sleep */
-    const sleep = (ms: number) => new Promise<void>((resolve) => {
-      const t = setTimeout(resolve, ms);
-      ctrl.signal.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
-    });
-
-    (async () => {
-      let attempt = 0;
-      let notified = false;
-      while (!ctrl.signal.aborted) {
-        const started = Date.now();
-        const shouldRetry = await connectOnce();
-        if (!shouldRetry || ctrl.signal.aborted) break;
-        // 连接存活超过 30s 视为曾成功，重置退避
-        if (Date.now() - started > 30_000) { attempt = 0; notified = false; }
-        setSseStatus('error');
-        setSseLoading(false);
-        if (!notified) {
-          Toast.warning('实时推送连接中断，正在自动重连…');
-          notified = true;
-        }
-        attempt += 1;
-        await sleep(Math.min(30_000, 1000 * 2 ** Math.min(attempt - 1, 5)));
-      }
-    })();
-
-    return () => { ctrl.abort(); };
-  }, [refreshInterval]);
 
   const chartData = useMemo(
     () => series.map((p) => ({ ...p, time: formatTimestamp(p.t) })),
@@ -490,13 +346,12 @@ export default function MonitorPage() {
               style={{ width: 130 }}
               size="small"
             />
-            <Button size="small" icon={<RefreshCw size={14} />} onClick={() => void historyQuery.refetch()} loading={historyLoading}>刷新</Button>
             <Button size="small" icon={<Download size={14} />} onClick={exportHistoryCsv} disabled={history.length === 0}>导出 CSV</Button>
           </div>
         </div>
         {history.length === 0 ? (
           <div style={{ padding: '48px 0', textAlign: 'center' }}>
-            <Text type="tertiary">{historyLoading ? '加载中…' : '暂无历史数据（采样任务每分钟落库，请稍后再试）'}</Text>
+            <Text type="tertiary">{historyLoading ? '加载中…' : errorMessage ? '历史趋势加载失败，请点击顶部刷新重试' : '暂无历史数据（采样任务每分钟落库，请稍后再试）'}</Text>
           </div>
         ) : (
           <div className="monitor-history-grid">
@@ -722,12 +577,13 @@ export default function MonitorPage() {
     return <Text type="tertiary">磁盘信息不可用</Text>;
   }
 
+  function renderRealtimePlaceholder() {
+    if (loading) return renderSkeleton();
+    return <div className="monitor-loading"><Text type="tertiary">{errorMessage ? '监控数据加载失败，请点击顶部刷新重试' : '暂无监控数据'}</Text></div>;
+  }
+
   function renderContent() {
-    if (loading && !data) return renderSkeleton();
-    if (!data) {
-      return <div className="monitor-loading"><Text type="tertiary">暂无数据</Text></div>;
-    }
-    const heapPercent = data.node.memoryUsage.heapTotal > 0
+    const heapPercent = data && data.node.memoryUsage.heapTotal > 0
       ? Math.round((data.node.memoryUsage.heapUsed / data.node.memoryUsage.heapTotal) * 100)
       : 0;
 
@@ -735,6 +591,7 @@ export default function MonitorPage() {
       <Tabs collapsible="auto" type="line" activeKey={activeTab} onChange={(k) => setActiveTab(k as MonitorTab)}>
           {/* ===== 总览 ===== */}
           <TabPane tab={<span className="monitor-tab-label"><Server size={14} />总览</span>} itemKey="overview">
+            {data ? (<>
             <div className="monitor-overview-grid">
               <div className="monitor-overview-metric">
                 <div className="monitor-overview-metric__header"><Cpu size={15} /><Text strong>CPU</Text></div>
@@ -869,6 +726,7 @@ export default function MonitorPage() {
               </div>
               {renderTopProcesses(data.topProcesses)}
             </>)}
+            </>) : renderRealtimePlaceholder()}
           </TabPane>
 
           {/* ===== 历史趋势 ===== */}
@@ -878,6 +736,7 @@ export default function MonitorPage() {
 
           {/* ===== CPU ===== */}
           <TabPane tab={<span className="monitor-tab-label"><Cpu size={14} />CPU</span>} itemKey="cpu">
+            {data ? (<>
             <Descriptions
               data={[
                 { key: '处理器型号', value: data.cpu.model, span: 2 },
@@ -929,10 +788,12 @@ export default function MonitorPage() {
               { dataKey: 'cpu', label: '系统 CPU(%)', color: '#1677ff' },
               { dataKey: 'procCpu', label: '进程 CPU(%)', color: '#fa8c16' },
             ], { unit: '%' })}
+            </>) : renderRealtimePlaceholder()}
           </TabPane>
 
           {/* ===== 内存 ===== */}
           <TabPane tab={<span className="monitor-tab-label"><MemoryStick size={14} />内存</span>} itemKey="mem">
+            {data ? (<>
             <Descriptions
               data={[
                 { key: '总内存', value: formatBytes(data.memory.total) },
@@ -981,16 +842,20 @@ export default function MonitorPage() {
               { dataKey: 'mem', label: '系统内存(%)', color: '#52c41a' },
               { dataKey: 'heap', label: 'Node 堆(%)', color: '#722ed1' },
             ], { unit: '%' })}
+            </>) : renderRealtimePlaceholder()}
           </TabPane>
 
           {/* ===== 磁盘 ===== */}
           <TabPane tab={<span className="monitor-tab-label"><HardDrive size={14} />磁盘</span>} itemKey="disk">
+            {data ? (<>
             {renderDiskTab(data)}
+            </>) : renderRealtimePlaceholder()}
           </TabPane>
 
           {/* ===== 网络（无指标平台隐藏，如 Windows） ===== */}
-          {data.network && data.network.length > 0 && (
+          {(!data || data.network.length > 0) && (
           <TabPane tab={<span className="monitor-tab-label"><Wifi size={14} />网络</span>} itemKey="net">
+            {data ? (<>
             <>
               <table className="monitor-slow-table">
                 <thead>
@@ -1019,11 +884,13 @@ export default function MonitorPage() {
                 { dataKey: 'netTxBps', label: '上行 (B/s)', color: '#fa8c16' },
               ])}
             </>
+            </>) : renderRealtimePlaceholder()}
           </TabPane>
           )}
 
           {/* ===== Node.js ===== */}
           <TabPane tab={<span className="monitor-tab-label"><Server size={14} />Node.js</span>} itemKey="node">
+            {data ? (<>
             <Descriptions
               data={[
                 { key: '进程 PID', value: String(data.node.pid) },
@@ -1112,15 +979,19 @@ export default function MonitorPage() {
                 align="left"
               />
             </>)}
+            </>) : renderRealtimePlaceholder()}
           </TabPane>
 
           {/* ===== HTTP ===== */}
           <TabPane tab={<span className="monitor-tab-label"><Network size={14} />HTTP</span>} itemKey="http">
+            {data ? (<>
             {renderHttpTab(data.http)}
+            </>) : renderRealtimePlaceholder()}
           </TabPane>
 
           {/* ===== 数据库 ===== */}
           <TabPane tab={<span className="monitor-tab-label"><Database size={14} />数据库</span>} itemKey="db">
+            {data ? (<>
             {data.database ? (<>
               <Descriptions
                 data={[
@@ -1154,10 +1025,12 @@ export default function MonitorPage() {
                 { dataKey: 'dbConnections', label: '连接数', color: '#3b82f6' },
               ])}
             </>) : <Text type="tertiary">数据库信息不可用</Text>}
+            </>) : renderRealtimePlaceholder()}
           </TabPane>
 
           {/* ===== Redis ===== */}
           <TabPane tab={<span className="monitor-tab-label"><Layers size={14} />Redis</span>} itemKey="redis">
+            {data ? (<>
             {data.redis ? (() => {
               const r = data.redis!;
               const hitTotal = r.keyspaceHits + r.keyspaceMisses;
@@ -1253,9 +1126,11 @@ export default function MonitorPage() {
                 </>
               );
             })() : <Text type="tertiary">Redis 信息不可用</Text>}
+            </>) : renderRealtimePlaceholder()}
           </TabPane>
 
           <TabPane tab={<span className="monitor-tab-label"><Activity size={14} />WebSocket</span>} itemKey="ws">
+            {data ? (<>
             {wsMetrics ? (<>
               <Descriptions
                 data={[
@@ -1326,6 +1201,7 @@ export default function MonitorPage() {
                 ]}
               />
             </>) : <Text type="tertiary">WebSocket 监控数据不可用</Text>}
+            </>) : renderRealtimePlaceholder()}
           </TabPane>
       </Tabs>
     );
@@ -1335,29 +1211,28 @@ export default function MonitorPage() {
     <div className="monitor-page">
       <div className="responsive-toolbar monitor-header">
         <div className="monitor-header__actions">
-          {refreshInterval === -1 && (
-            <Tag
-              size="small"
-              color={SSE_STATUS_META[sseStatus].color}
-              className="monitor-sse-tag"
-            >
-              <span className={`monitor-sse-dot monitor-sse-dot--${sseStatus}`} />
-              {SSE_STATUS_META[sseStatus].text}
-            </Tag>
+          <Tooltip content={refreshStatusText}>
+            <span role="status" aria-label={refreshStatusText} tabIndex={0} className={`monitor-refresh-status monitor-refresh-status--${refreshStatus}`}>
+              <span className={`monitor-sse-dot monitor-sse-dot--${refreshStatus}`} />
+            </span>
+          </Tooltip>
+          {updatedAt > 0 && (
+            <Text type="tertiary" size="small">{isHistory ? '查询时间' : '数据更新时间'}：<DateTimeText value={updatedAt} mode="absolute" /></Text>
           )}
-          {lastUpdated && (
-            <Text type="tertiary" size="small">最后更新：<DateTimeText value={lastUpdated} /></Text>
+          {isHistory && latestHistoryPeriod && (
+            <Text type="tertiary" size="small">最新数据时段：<DateTimeText value={latestHistoryPeriod} mode="absolute" /></Text>
           )}
           <Select
+            aria-label="更新方式"
             value={refreshInterval}
             onChange={(v) => setRefreshInterval(Number(v))}
-            optionList={REFRESH_OPTIONS}
-            style={{ width: 110 }}
+            optionList={refreshOptions}
+            className="monitor-refresh-select"
             size="small"
           />
           <Button
             icon={<RefreshCw size={14} />}
-            onClick={fetchData}
+            onClick={() => void refresh()}
             loading={loading}
             theme="light"
             size="small"
@@ -1366,6 +1241,7 @@ export default function MonitorPage() {
           </Button>
         </div>
       </div>
+      {errorMessage && <Banner type="danger" description={errorMessage} closeIcon={null} className="monitor-refresh-error" />}
       {renderContent()}
     </div>
   );

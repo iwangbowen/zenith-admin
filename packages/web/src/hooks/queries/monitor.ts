@@ -13,11 +13,11 @@ export const monitorKeys = {
 export function useMonitorSnapshot(refetchInterval: number | false, enabled = true) {
   return useQuery({
     queryKey: monitorKeys.snapshot,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const [data, timeseries, wsMetrics] = await Promise.all([
-        api(monitorContract.snapshot, { silent: true }),
-        api(monitorContract.timeseries, { silent: true }),
-        api(monitorContract.ws, { silent: true }),
+        api(monitorContract.snapshot, { silent: true, signal }),
+        api(monitorContract.timeseries, { silent: true, signal }),
+        api(monitorContract.ws, { silent: true, signal }),
       ]);
       return { data, series: timeseries.points, wsMetrics };
     },
@@ -26,8 +26,12 @@ export function useMonitorSnapshot(refetchInterval: number | false, enabled = tr
   });
 }
 
-export function useMonitorHistory(range: MonitorHistoryRange, enabled = true) {
-  return useApiQuery(monitorContract.history, { query: { range } }, { enabled, requestOptions: { silent: true } });
+export function useMonitorHistory(range: MonitorHistoryRange, enabled = true, refetchInterval: number | false = false) {
+  return useApiQuery(monitorContract.history, { query: { range } }, {
+    enabled,
+    refetchInterval,
+    requestOptions: { silent: true },
+  });
 }
 
 /** WebSocket 连接监控独立页面使用的轻量查询，不拉取整机监控快照。 */
