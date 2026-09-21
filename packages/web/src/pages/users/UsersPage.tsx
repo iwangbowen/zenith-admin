@@ -1,7 +1,7 @@
 import { FormPasswordInput } from '@/components/PasswordInput';
 import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Button, Select, Space, Form, Toast, Tag, Row, Col, Tree } from '@douyinfe/semi-ui';
+import { Button, Select, Space, Form, Toast, Tag, Row, Col, Tree, OverflowList, Popover } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { ChevronsUpDown, ChevronsDownUp, Building2, KeyRound } from 'lucide-react';
 import type { CreateUserInput, User, Role, Department, Position } from '@zenith/shared/identity';
@@ -432,14 +432,39 @@ export default function UsersPage() {
     {
       title: '角色',
       dataIndex: 'roles',
-      width: 180,
-      render: (roles: Role[]) => (
-        <Space spacing={4} wrap>
-          {roles.length === 0 ? <Tag color="grey">无角色</Tag> : roles.map((r) => (
-            <Tag key={r.id} color="blue">{r.name}</Tag>
-          ))}
-        </Space>
-      ),
+      width: 260,
+      render: (roles: Role[]) => {
+        if (roles.length === 0) return <Tag color="grey">无角色</Tag>;
+        const items = roles.map((role) => ({ key: String(role.id), role }));
+        return (
+          <div style={{ width: '100%', minWidth: 0, maxWidth: '100%', overflow: 'hidden' }}>
+            <OverflowList
+              items={items}
+              renderMode="collapse"
+              style={{ width: '100%', minWidth: 0, maxWidth: '100%' }}
+              visibleItemRenderer={(item) => (
+                <Tag key={item.key} color="blue" style={{ flex: '0 0 auto', marginRight: 4 }}>
+                  {item.role.name}
+                </Tag>
+              )}
+              overflowRenderer={(overflowItems) => (
+                overflowItems.length > 0 ? (
+                  <Popover
+                  position="bottomLeft"
+                  content={(
+                    <Space spacing={4} wrap style={{ maxWidth: 240 }}>
+                      {overflowItems.map((item) => <Tag key={item.key} color="blue">{item.role.name}</Tag>)}
+                    </Space>
+                  )}
+                >
+                  <Tag color="grey" style={{ flex: '0 0 auto', cursor: 'pointer' }}>+{overflowItems.length}</Tag>
+                  </Popover>
+                ) : null
+              )}
+            />
+          </div>
+        );
+      },
     },
     {
       title: '性别',
