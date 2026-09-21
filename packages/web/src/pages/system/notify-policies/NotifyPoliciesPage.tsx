@@ -5,8 +5,9 @@ import { entityRelationColumn } from '@/components/entity-relations/entity-relat
  * Tab 1 事件策略：事件目录（来自代码常量）+ 当前作用域的渠道覆盖与锁定；
  * Tab 2 投递日志：每次派发的「收件人 × 渠道」决策与归因，回答「为什么他没收到」。
  */
-import { useMemo } from 'react';
-import { Button, Modal, Spin, Switch, Tabs, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Button, Descriptions, Modal, SideSheet, Spin, Switch, Tabs, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Lock, RotateCcw, Unlock } from 'lucide-react';
 import { NOTIFICATION_CHANNEL_LABELS, NOTIFICATION_DECISION_LABELS, NOTIFICATION_DECISION_OPTIONS, NOTIFICATION_REASON_CODE_LABELS, NOTIFICATION_SEVERITY_LABELS, type NotificationChannel, type NotificationDecision, type NotificationDispatch, type NotificationPolicyEvent, type NotificationReasonCode, NOTIFICATION_CHANNEL_OPTIONS } from '@zenith/shared/messaging';
@@ -22,12 +23,14 @@ import { useUrlTabState } from '@/hooks/useUrlTabState';
 import {
   notificationPolicyKeys,
   useNotificationDispatches,
+  useNotificationOutboxDetail,
   useNotificationPolicyEvents,
   useResetNotificationOverride,
   useSaveNotificationOverride,
   useTestFireNotification,
 } from '@/hooks/queries/notification-policies';
 import { NOTIFICATION_SEVERITY_TAG_COLOR } from './notify-tag-colors';
+import { EntityContextView } from '@/components/entity-relations/EntityRelationButton';
 
 const { Text } = Typography;
 
@@ -303,6 +306,20 @@ function DispatchLogTab() {
 
 export default function NotifyPoliciesPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['events', 'dispatches'] as const, 'events');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const outboxParam = searchParams.get('outboxId');
+  const outboxId = outboxParam && /^[1-9]\d*$/.test(outboxParam) && Number.isSafeInteger(Number(outboxParam)) ? Number(outboxParam) : undefined;
+  const [detailId, setDetailId] = useState<number>();
+  const detailQuery = useNotificationOutboxDetail(detailId, detailId !== undefined);
+  const linkedQuery = useNotificationOutboxDetail(outboxId, outboxId !== undefined);
+  useEffect(() => {
+    if (!outboxId) return;
+    if (linkedQuery.isError) Toast.error('通知事件不存在或无权查看');
+    else if (linkedQuery.data) { setActiveTab('dispatches'); setDetailId(outboxId); }
+    else return;
+    const next = new URLSearchParams(searchParams); next.delete('outboxId'); setSearchParams(next, { replace: true });
+  }, [linkedQuery.data, linkedQuery.isError, outboxId, searchParams, setActiveTab, setSearchParams]);
+  function closeDetail() { setDetailId(undefined); if (!searchParams.has('outboxId')) return; const next = new URLSearchParams(searchParams); next.delete('outboxId'); setSearchParams(next, { replace: true }); }
 
   return (
     <div className="page-container page-tabs-page">
@@ -314,6 +331,18 @@ export default function NotifyPoliciesPage() {
           <DispatchLogTab />
         </Tabs.TabPane>
       </Tabs>
+      <SideSheet title="通知事件详情" visible={detailId !== undefined} onCancel={closeDetail} width={720} closeOnEsc>
+        {detailQuery.data && <>
+          <Descriptions column={2} data={[
+            { key: '事件', value: detailQuery.data.eventKey }, { key: '状态', value: detailQuery.data.status },
+            { key: '投递次数', value: detailQuery.data.attempts }, { key: '创建时间', value: detailQuery.data.createdAt },
+            { key: '计划时间', value: detailQuery.data.scheduledAt ?? EMPTY_PLACEHOLDER }, { key: '错误', value: detailQuery.data.lastError ?? EMPTY_PLACEHOLDER, span: 2 },
+            { key: '跳转地址', value: detailQuery.data.link ?? EMPTY_PLACEHOLDER, span: 2 },
+          ]} />
+          <Typography.Title heading={6} style={{ marginTop: 20 }}>关联信息</Typography.Title>
+          <EntityContextView entityType="notification.outbox" entityKey={String(detailQuery.data.id)} />
+        </>}
+      </SideSheet>
     </div>
   );
 }

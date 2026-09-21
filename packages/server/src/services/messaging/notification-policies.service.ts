@@ -23,13 +23,14 @@ import type { QueryOutputOf } from '@zenith/shared/core';
 import { db } from '../../db';
 import {
   notificationDispatches,
+  notificationOutbox,
   notificationEventOverrides,
   users,
   type NotificationEventOverrideRow,
 } from '../../db/schema';
-import { effectiveTenantId } from '../../lib/context';
+import { effectiveTenantId, currentUser } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
-import { exactTenantCondition, inheritedTenantCondition, tenantScope } from '../../lib/tenant';
+import { exactTenantCondition, inheritedTenantCondition, tenantCondition, tenantScope } from '../../lib/tenant';
 import { buildWhere, dateRangeConditions, withPagination } from '../../lib/where-helpers';
 import { buildListResult } from '../../lib/list-query';
 import { notify } from './notification-outbox.service';
@@ -205,4 +206,12 @@ export async function listNotificationDispatches(q: QueryOutputOf<typeof notific
       createdAt: formatDateTime(dispatch.createdAt),
     }),
   });
+}
+
+export async function getNotificationOutbox(id: number) {
+  const [row] = await db.select().from(notificationOutbox).where(and(eq(notificationOutbox.id, id), tenantCondition(notificationOutbox, currentUser()))).limit(1);
+  if (!row) throw new HTTPException(404, { message: '通知事件不存在' });
+  return { id: row.id, eventKey: row.eventKey, status: row.status, link: row.link, attempts: row.attempts,
+    lastError: row.lastError, scheduledAt: row.scheduledAt ? formatDateTime(row.scheduledAt) : null,
+    tenantId: row.tenantId, createdAt: formatDateTime(row.createdAt) };
 }

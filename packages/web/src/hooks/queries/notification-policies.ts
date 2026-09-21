@@ -37,6 +37,9 @@ export function useResetNotificationOverride() {
 export function useNotificationDispatches(params: NotificationDispatchListParams) {
   return useApiQuery(notificationPolicyContract.dispatches, { query: params }, { placeholderData: keepPreviousData });
 }
+export function useNotificationOutboxDetail(id: number | undefined, enabled = true) {
+  return useApiQuery(notificationPolicyContract.outboxDetail, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
+}
 
 /** 测试触发：真实派发一次事件给当前管理员 → 失效投递日志 */
 export function useTestFireNotification() {

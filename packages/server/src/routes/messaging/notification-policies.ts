@@ -8,6 +8,7 @@ import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   listNotificationDispatches,
+  getNotificationOutbox,
   listNotificationPolicyEvents,
   resetNotificationOverride,
   saveNotificationOverride,
@@ -45,6 +46,9 @@ const testFireRoute = defineContractRoute(notificationPolicyContract.testFire, {
 const dispatchesRoute = defineContractRoute(notificationPolicyContract.dispatches, {
   handler: async (c) => c.json(okBody(await listNotificationDispatches(c.req.valid('query'))), 200),
 });
+const outboxDetailRoute = defineContractRoute(notificationPolicyContract.outboxDetail, {
+  handler: async (c) => c.json(okBody(await getNotificationOutbox(c.req.valid('param').id)), 200),
+});
 
 router.openapiRoutes([
   eventsRoute,
@@ -52,6 +56,7 @@ router.openapiRoutes([
   resetOverrideRoute,
   testFireRoute,
   dispatchesRoute,
+  outboxDetailRoute,
 ] as const);
 
 export default router;

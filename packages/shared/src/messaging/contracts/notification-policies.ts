@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import { dateRangeQuery, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
+import { dateRangeQuery, idParam, idQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import {
   NOTIFICATION_CHANNELS,
@@ -56,6 +56,12 @@ export const notificationDispatchSchema = z.object({
 
 export type NotificationDispatch = z.infer<typeof notificationDispatchSchema>;
 
+export const notificationOutboxSchema = z.object({
+  id: z.int(), eventKey: z.string(), status: z.string(), link: z.string().nullable(), attempts: z.int(),
+  lastError: z.string().nullable(), scheduledAt: z.string().nullable(), tenantId: z.int().nullable(), createdAt: z.string(),
+}).meta({ id: 'NotificationOutbox' });
+export type NotificationOutbox = z.infer<typeof notificationOutboxSchema>;
+
 export const notificationTestFireResultSchema = z.object({
   outboxId: z.int().nullable().meta({ description: '写入的 outbox 记录 ID；事件被整体抑制时为 null' }),
 }).meta({ id: 'NotificationTestFireResult' });
@@ -79,4 +85,5 @@ export const notificationPolicyContract = defineContract('/api/notification-poli
   resetOverride: op.post('/overrides/reset', { access: { permission: 'system:notify-policy:save' }, audit: '重置通知策略覆盖', body: resetNotificationOverrideSchema, summary: '重置事件渠道覆盖（恢复默认）' }),
   testFire: op.post('/test-fire', { access: { permission: 'system:notify-policy:test' }, audit: '测试触发通知事件', body: testFireNotificationSchema, response: notificationTestFireResultSchema, summary: '测试触发事件（真实派发给当前管理员）' }),
   dispatches: op.get('/dispatches', { access: { permission: 'system:notify-policy:list' }, query: notificationDispatchListQuery, response: paginated(notificationDispatchSchema), summary: '通知派发日志（含抑制归因）' }),
+  outboxDetail: op.get('/outbox/{id}', { access: { permission: 'system:notify-policy:list' }, params: idParam, response: notificationOutboxSchema, summary: '通知事件详情' }),
 }, { auditModule: '通知策略', tags: ['NotificationPolicies'] });

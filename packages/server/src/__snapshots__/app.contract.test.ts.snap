@@ -878,6 +878,7 @@ exports[`路由表快照 > 完整路由表保持不变 1`] = `
   "GET /api/nginx-sites/info",
   "GET /api/notification-policies/dispatches",
   "GET /api/notification-policies/events",
+  "GET /api/notification-policies/outbox/:id",
   "GET /api/notification-preferences/matrix",
   "GET /api/notification-preferences/settings",
   "GET /api/notification-unsubscribe/:token",
