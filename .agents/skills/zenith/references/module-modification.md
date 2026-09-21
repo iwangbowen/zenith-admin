@@ -130,6 +130,20 @@
 按 [业务模块接入工作流](../../../../docs/workflow/business-integration.md) 实现业务表单内的流程预览、实际审批信息与轮次查看。
 该文档是本场景的唯一流程规范；公共容器接法、业务与工作流权限边界、契约、seed / Mock 同步要求不在此重复。
 
+---
+
+## 场景 7：接入跨对象关联视图
+
+当模块需要从详情查看关联对象、从关联对象反查来源、展示业务时间线或在折叠分组上提示是否有内容时，按
+[entity-relations.md](./entity-relations.md) 实施，不在页面内复制一套关系查询逻辑。
+
+1. **Shared 目录与契约**：登记实体类型、详情能力和安全详情路由；关系分组、对象引用、分页和 `summaryState` 只在
+   `shared/src/platform/contracts/entity-relations.ts` 定义。
+2. **Server 锚点与 Provider**：增加 Resolver / Provider，声明 source、target、权限和适用条件；列表、摘要和目标详情必须复用同一租户、数据范围和目标权限。摘要只返回 `has-data`、`empty`、`attention`、`unavailable`，不返回数量。
+3. **Web 入口**：列表列使用 `entityRelationColumn()`；标准详情 SideSheet / 面板直接嵌入 `EntityContextView`，关联项通过精确详情深链下钻。操作日志等已有专用关联列的页面，保留该列，详情弹窗不重复嵌入关联区。
+4. **缓存与 Mock**：关系写入、解除和业务状态变化后失效关系查询；Demo 模式同步关系分组、摘要状态和目标权限，不用全量数据绕过授权。
+5. **验证**：补契约 / Provider / 权限 / 缓存测试；浏览器检查空、有数据、异常三种摘要状态、详情下钻和刷新时内容位置稳定。
+
 ## 修改后的验证
 
 按 [SKILL.md → CRUD 完成标准](../SKILL.md#crud-完成标准) 逐项核对（迁移 / build / lint / 测试 / 页面实测 / Mock / 约束对照），另加两项：
