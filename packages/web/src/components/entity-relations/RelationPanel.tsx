@@ -63,18 +63,18 @@ function RelationSectionView({ entityType, entityKey, section, active, canManage
   const pages = query.data?.pages ?? [];
   const items = pages.flatMap((page) => page.items).filter((item) => item.capabilities.view);
   const degraded = pages.some((page) => page.degraded);
-  const sectionLoading = query.isLoading;
   const sectionError = query.isError;
   const hasResponse = query.data !== undefined;
+  const showInitialLoading = query.isLoading && !hasResponse;
   useEffect(() => {
-    if (!active || sectionLoading) return;
+    if (!active || showInitialLoading) return;
     if (sectionError || degraded) {
       onSummaryStateChange(section.key, 'unavailable');
       return;
     }
     if (!hasResponse) return;
     onSummaryStateChange(section.key, items.length > 0 ? (section.summaryState === 'attention' ? 'attention' : 'has-data') : 'empty');
-  }, [active, degraded, hasResponse, items.length, onSummaryStateChange, section.key, section.summaryState, sectionError, sectionLoading]);
+  }, [active, degraded, hasResponse, items.length, onSummaryStateChange, section.key, section.summaryState, sectionError, showInitialLoading]);
   const label = entityRelationLabel(section.labelKey, section.targetTypes);
   return <div style={{ position: 'relative' }}>
     <Tooltip content={`刷新${label}`}>
@@ -82,12 +82,12 @@ function RelationSectionView({ entityType, entityKey, section, active, canManage
         onClick={(event) => { event.stopPropagation(); void query.refetch(); }} />
     </Tooltip>
     <div style={{ paddingTop: 4, paddingRight: 32 }}>
-      {query.isLoading && <Spin size="small" />}
+      {showInitialLoading && <Spin size="small" />}
       {(query.isError || degraded) && <Space wrap spacing={8}>
         <Typography.Text type="danger">{degraded ? '部分关联记录暂时不可用' : '关联记录加载失败'}</Typography.Text>
         <Button size="small" onClick={() => void (query.isFetchNextPageError ? query.fetchNextPage() : query.refetch())}>重试</Button>
       </Space>}
-      {!query.isLoading && !query.isError && !degraded && items.length === 0 && <Empty description="暂无关联记录" />}
+      {hasResponse && !sectionError && !degraded && items.length === 0 && <Empty description="暂无关联记录" />}
       {items.length > 0 && <List size="small" split dataSource={items} renderItem={(item) => <List.Item key={`${item.ref.type}:${item.ref.key}`}
       extra={canManageLinks && section.labelKey === 'relation.common.related' ? <Button size="small" theme="borderless" type="danger" disabled={unlink.isPending} onClick={() => confirmAndDelete({
         title: `解除与「${item.title}」的关联？`, okText: '解除关联', successMessage: '已解除关联',
