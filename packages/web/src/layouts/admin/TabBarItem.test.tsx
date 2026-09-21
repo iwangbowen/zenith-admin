@@ -174,7 +174,7 @@ describe('TabBarItem', () => {
     expect(actions.onClose).toHaveBeenCalledWith('/system/users');
   });
 
-  it('不可关闭的页签不渲染关闭按钮，且「关闭当前」禁用', () => {
+  it('不可关闭的页签渲染关闭占位以对齐宽度，且「关闭当前」禁用', () => {
     render(
       <TabBarItem
         {...baseProps(actions)}
@@ -183,7 +183,9 @@ describe('TabBarItem', () => {
       />,
     );
     const tabEl = screen.getByRole('tab');
-    expect(tabEl.querySelector('.admin-tab-item__close')).toBeNull();
+    const placeholder = tabEl.querySelector('.admin-tab-item__close--placeholder');
+    expect(placeholder).not.toBeNull();
+    expect(tabEl.querySelector('button.admin-tab-item__close')).toBeNull();
 
     fireEvent.contextMenu(tabEl);
     fireEvent.click(screen.getByText('关闭当前'));
