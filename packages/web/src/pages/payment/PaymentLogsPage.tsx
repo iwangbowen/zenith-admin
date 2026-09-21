@@ -16,7 +16,7 @@ import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-
 import { JsonBlock } from '@/components/JsonBlock';
 import { PaymentExpandedDetail } from './payment-expanded-detail';
 import AppModal from '@/components/AppModal';
-import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
+import { EntityContextView } from '@/components/entity-relations/EntityRelationButton';
 import { useListPage } from '@/hooks/useListPage';
 
 const NOTIFY_SCENES = ['payment', 'refund'] as const;
@@ -145,9 +145,7 @@ export default function PaymentLogsPage() {
               { key: '时间', value: formatDateTime(detailLog.createdAt) },
             ]}
           />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '12px 0' }}>
-            <EntityRelationButton entityRef={{ type: 'payment.notify-log', key: String(detailLog.id) }} />
-          </div>
+          <EntityContextView entityType="payment.notify-log" entityKey={String(detailLog.id)} />
           <PaymentExpandedDetail meta={`日志 ID：${detailLog.id}`} sections={[
             { title: '请求头', visible: Boolean(detailLog.headers), content: <JsonBlock value={formatRaw(detailLog.headers)} /> },
             { title: '原始 Body', content: <JsonBlock value={formatRaw(detailLog.rawBody) || '（无）'} /> },

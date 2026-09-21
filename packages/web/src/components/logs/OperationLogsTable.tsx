@@ -14,7 +14,6 @@ import { UserDisplayCell, formatUserLabel } from '@/components/UserDisplay';
 import { usePermission } from '@/hooks/usePermission';
 import { useOperationLogDetail } from '@/hooks/queries/operation-logs';
 import { entityRelationColumn } from '@/components/entity-relations/entity-relation-columns';
-import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
 
 interface OperationLogsTableProps {
   readonly dataSource: OperationLog[];
@@ -257,9 +256,6 @@ export function OperationLogsTable({
                   layout="horizontal"
                   align="left"
                 />
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
-                  <EntityRelationButton entityRef={{ type: 'platform.operation-log', key: String(detailLog.id) }} />
-                </div>
               </TabPane>
               <TabPane tab="请求详情" itemKey="request">
                 <div style={{ padding: '4px 0 8px' }}>

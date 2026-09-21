@@ -28,7 +28,7 @@ import {
 } from '@zenith/shared/payment';
 import './PaymentLedgerPage.css';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
+import { EntityContextView } from '@/components/entity-relations/EntityRelationButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
 import { CreateButton } from '@/components/toolbar-controls';
@@ -787,9 +787,7 @@ export default function PaymentLedgerPage() {
                 <Button type="danger" icon={<RotateCcw size={15} />} onClick={() => openReverse(detailJournal)}>冲正凭证</Button>
               </div>
             )}
-            <div className="payment-journal-detail__actions">
-              <EntityRelationButton entityRef={{ type: 'payment.journal', key: String(detailJournal.id) }} />
-            </div>
+            <EntityContextView entityType="payment.journal" entityKey={String(detailJournal.id)} />
           </div>
         )}
       </SideSheet>

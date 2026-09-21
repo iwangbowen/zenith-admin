@@ -1,6 +1,6 @@
 import { entityRelationColumn } from '@/components/entity-relations/entity-relation-columns';
 import { useSearchParams } from 'react-router-dom';
-import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
+import EntityRelationButton, { EntityContextView } from '@/components/entity-relations/EntityRelationButton';
 import { usePaymentReconAdjustment } from '@/hooks/queries/payment-recon';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -317,11 +317,15 @@ export default function PaymentReconPage() {
           </section>
 
           <div className="payment-recon-case-sheet__actions">
-            <EntityRelationButton entityRef={{ type: 'payment.recon-case', key: String(caseDetail.data.id) }} />
             {hasPermission('payment:recon:handle') && <Button onClick={handleModal.openCreate}>追加处理记录</Button>}
             {hasPermission('payment:recon:compensate') && isUnresolvedReconciliationCase(caseDetail.data.status) && <Button onClick={async () => afterTask(await compensate.mutateAsync({ params: { id: caseDetail.data.id } }))}>查单补偿</Button>}
             {hasPermission('payment:recon:adjust') && isUnresolvedReconciliationCase(caseDetail.data.status) && <Button theme="solid" onClick={() => { setSelectedAppId(caseDetail.data.applicationId); adjustmentModal.openCreate(); }}>申请调整</Button>}
           </div>
+
+          <section className="payment-recon-case-sheet__section">
+            <div className="payment-recon-case-sheet__section-title">关联信息</div>
+            <EntityContextView entityType="payment.recon-case" entityKey={String(caseDetail.data.id)} />
+          </section>
 
           <section className="payment-recon-case-sheet__section">
             <div className="payment-recon-case-sheet__section-title">账单与本地证据</div>

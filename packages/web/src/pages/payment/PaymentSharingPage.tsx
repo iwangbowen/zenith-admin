@@ -35,7 +35,7 @@ import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 import { deleteAction, useStatusToggle, ListSearchToolbar } from '@/components/list-page';
-import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
+import { EntityContextView } from '@/components/entity-relations/EntityRelationButton';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useListPage } from '@/hooks/useListPage';
@@ -430,7 +430,7 @@ export default function PaymentSharingPage() {
             { key: '状态', value: receiverDetailTarget.status },
             { key: '备注', value: receiverDetailTarget.remark ?? EMPTY_PLACEHOLDER, span: 2 },
           ]} />
-          <EntityRelationButton entityRef={{ type: 'payment.sharing-receiver', key: String(receiverDetailTarget.id) }} />
+          <EntityContextView entityType="payment.sharing-receiver" entityKey={String(receiverDetailTarget.id)} />
         </>}
       </SideSheet>
 
@@ -445,7 +445,7 @@ export default function PaymentSharingPage() {
             { key: '渠道分账号', value: orderDetailTarget.channelSharingNo ?? EMPTY_PLACEHOLDER },
             { key: '备注', value: orderDetailTarget.remark ?? EMPTY_PLACEHOLDER, span: 2 },
           ]} />
-          <EntityRelationButton entityRef={{ type: 'payment.sharing-order', key: String(orderDetailTarget.id) }} />
+          <EntityContextView entityType="payment.sharing-order" entityKey={String(orderDetailTarget.id)} />
         </>}
       </SideSheet>
 
@@ -499,7 +499,7 @@ export default function PaymentSharingPage() {
               ]}
             />
           )}
-          {reversalDetail && <EntityRelationButton entityRef={{ type: 'payment.sharing-reversal', key: String(reversalDetail.id) }} />}
+          {reversalDetail && <EntityContextView entityType="payment.sharing-reversal" entityKey={String(reversalDetail.id)} />}
         </Spin>
       </SideSheet>
     </div>
