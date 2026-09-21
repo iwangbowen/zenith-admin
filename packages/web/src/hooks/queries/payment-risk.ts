@@ -40,9 +40,15 @@ export const useDeletePaymentRiskRules = rules.useDelete;
 export function usePaymentRiskHitList(params: PaymentRiskHitListParams) {
   return useApiQuery(paymentRiskOpsContract.hits, { query: params }, { placeholderData: keepPreviousData });
 }
+export function usePaymentRiskHitDetail(id: number | undefined, enabled = true) {
+  return useApiQuery(paymentRiskOpsContract.hitDetail, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
+}
 
 export function usePaymentRiskReviewList(params: PaymentRiskReviewListParams) {
   return useApiQuery(paymentRiskOpsContract.reviews, { query: params }, { placeholderData: keepPreviousData });
+}
+export function usePaymentRiskReviewDetail(id: number | undefined, enabled = true) {
+  return useApiQuery(paymentRiskOpsContract.reviewDetail, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
 }
 
 /** 审核结论只改变审核队列；命中记录是历史留痕，不随审核变化 */

@@ -23,6 +23,8 @@ export const paymentSharingKeys = {
   /** 启用中的分账方下拉源（发起分账弹窗）：位于 receiverLists 前缀之下，随分账方增删改一并回源 */
   enabledReceivers: contractKey(paymentSharingContract.receivers, { query: ENABLED_RECEIVERS_QUERY }),
   orderLists: contractKey(paymentSharingContract.orders),
+  orderDetails: contractKey(paymentSharingContract.orderDetail),
+  orderDetail: (id: number | undefined) => contractKey(paymentSharingContract.orderDetail, { params: { id: id ?? 0 } }),
   orderList: (params: PaymentSharingOrderListParams) => contractKey(paymentSharingContract.orders, { query: params }),
   reversalLists: contractKey(paymentSharingContract.reversals),
   reversalList: (params: PaymentSharingReversalListParams) => contractKey(paymentSharingContract.reversals, { query: params }),
@@ -47,6 +49,9 @@ function invalidateSharingOrders(qc: QueryClient) {
 
 export function usePaymentSharingReceivers(params: PaymentSharingReceiverListParams, enabled = true) {
   return useApiQuery(paymentSharingContract.receivers, { query: params }, { placeholderData: keepPreviousData, enabled });
+}
+export function usePaymentSharingOrderDetail(id: number | undefined, enabled = true) {
+  return useApiQuery(paymentSharingContract.orderDetail, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
 }
 
 /** 无 id 走新增，有 id 走更新 */

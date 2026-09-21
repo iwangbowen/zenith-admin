@@ -11,7 +11,9 @@ import {
   approveRiskReview,
   findRiskReviewById,
   listRiskHits,
+  getRiskHit,
   listRiskReviews,
+  getRiskReview,
   rejectRiskReview,
 } from '../../services/payment/payment-risk.service';
 
@@ -20,9 +22,15 @@ const router = new OpenAPIHono({ defaultHook: validationHook });
 const hitsRoute = defineContractRoute(paymentRiskOpsContract.hits, {
   handler: async (c) => c.json(okBody(await listRiskHits(c.req.valid('query'))), 200),
 });
+const hitDetailRoute = defineContractRoute(paymentRiskOpsContract.hitDetail, {
+  handler: async (c) => c.json(okBody(await getRiskHit(c.req.valid('param').id)), 200),
+});
 
 const reviewsRoute = defineContractRoute(paymentRiskOpsContract.reviews, {
   handler: async (c) => c.json(okBody(await listRiskReviews(c.req.valid('query'))), 200),
+});
+const reviewDetailRoute = defineContractRoute(paymentRiskOpsContract.reviewDetail, {
+  handler: async (c) => c.json(okBody(await getRiskReview(c.req.valid('param').id)), 200),
 });
 
 const approveRoute = defineContractRoute(paymentRiskOpsContract.approveReview, {
@@ -41,6 +49,6 @@ const rejectRoute = defineContractRoute(paymentRiskOpsContract.rejectReview, {
   },
 });
 
-router.openapiRoutes([hitsRoute, reviewsRoute, approveRoute, rejectRoute] as const);
+router.openapiRoutes([hitsRoute, hitDetailRoute, reviewsRoute, reviewDetailRoute, approveRoute, rejectRoute] as const);
 
 export default router;

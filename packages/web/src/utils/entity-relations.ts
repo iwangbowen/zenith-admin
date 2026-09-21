@@ -49,6 +49,8 @@ const ENTITY_DETAIL_ROUTES: Partial<Record<CanonicalEntityType, (key: string) =>
   'payment.order': (key) => `/payment/orders?orderId=${encodeURIComponent(key)}`,
   'payment.refund': (key) => `/payment/refunds?refundId=${encodeURIComponent(key)}`,
   'payment.dispute': (key) => `/payment/disputes?disputeId=${encodeURIComponent(key)}`,
+  'payment.risk-hit': (key) => `/payment/risk-rules?tab=hits&hitId=${encodeURIComponent(key)}`,
+  'payment.risk-review': (key) => `/payment/risk-rules?tab=reviews&reviewId=${encodeURIComponent(key)}`,
   'payment.journal': (key) => `/payment/ledger?tab=journals&journalId=${encodeURIComponent(key)}`,
   'payment.recon-case': (key) => `/payment/recon?caseId=${encodeURIComponent(key)}`,
   'payment.settlement-batch': (key) => `/payment/settlements?batchId=${encodeURIComponent(key)}`,

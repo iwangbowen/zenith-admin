@@ -1,7 +1,8 @@
 import type { CSSProperties } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { formatYuan } from '@/utils/payment';
-import { Banner, Form, Space, Tabs, TabPane, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Form, SideSheet, Space, Tabs, TabPane, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -14,7 +15,9 @@ import {
   useApprovePaymentRiskReview,
   useDeletePaymentRiskRules,
   usePaymentRiskHitList,
+  usePaymentRiskHitDetail,
   usePaymentRiskReviewList,
+  usePaymentRiskReviewDetail,
   usePaymentRiskRuleList,
   useRejectPaymentRiskReview,
   useSavePaymentRiskRule,
@@ -32,6 +35,7 @@ import { deleteAction, useStatusToggle, ListSearchToolbar, listTableProps } from
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useListPage } from '@/hooks/useListPage';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
+import { EntityContextView } from '@/components/entity-relations/EntityRelationButton';
 import { EditFormModal } from '@/components/EditFormModal';
 const yuan = formatYuan;
 const channelOptions = PAYMENT_CHANNEL_OPTIONS;
@@ -63,12 +67,19 @@ interface RiskFormValues {
 type ReviewDecision = 'approve' | 'reject';
 
 export default function PaymentRiskRulesPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const hitParam = searchParams.get('hitId');
+  const reviewParam = searchParams.get('reviewId');
+  const linkedHitId = hitParam && /^[1-9]\d*$/.test(hitParam) && Number.isSafeInteger(Number(hitParam)) ? Number(hitParam) : undefined;
+  const linkedReviewId = reviewParam && /^[1-9]\d*$/.test(reviewParam) && Number.isSafeInteger(Number(reviewParam)) ? Number(reviewParam) : undefined;
   const { items: statusItems, options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const canReview = hasPermission('payment:risk:review');
   const canReadRuleLists = hasPermission('rule:list:list');
   const [activeTab, setActiveTab] = useUrlTabState(['rules', 'hits', 'reviews'] as const, 'rules');
   const [reviewTarget, setReviewTarget] = useState<PaymentRiskReview | null>(null);
+  const [hitDetailId, setHitDetailId] = useState<number>();
+  const [reviewDetailId, setReviewDetailId] = useState<number>();
   const [reviewDecision, setReviewDecision] = useState<ReviewDecision | null>(null);
   const [reviewRemark, setReviewRemark] = useState('');
 
@@ -113,6 +124,39 @@ export default function PaymentRiskRulesPage() {
     pageSize: reviewSearch.pageSize,
     ...reviewFilterQuery,
   });
+  const hitDetailQuery = usePaymentRiskHitDetail(hitDetailId, hitDetailId !== undefined);
+  const reviewDetailQuery = usePaymentRiskReviewDetail(reviewDetailId, reviewDetailId !== undefined);
+  const linkedHitQuery = usePaymentRiskHitDetail(linkedHitId, linkedHitId !== undefined);
+  const linkedReviewQuery = usePaymentRiskReviewDetail(linkedReviewId, linkedReviewId !== undefined);
+
+  useEffect(() => {
+    const linked = linkedHitId !== undefined ? { id: linkedHitId, query: linkedHitQuery, tab: 'hits' as const } : linkedReviewId !== undefined ? { id: linkedReviewId, query: linkedReviewQuery, tab: 'reviews' as const } : null;
+    if (!linked) return;
+    if (linked.query.isError) {
+      Toast.error('风控记录不存在或无权查看');
+    } else if (linked.query.data) {
+      setActiveTab(linked.tab);
+      if (linked.tab === 'hits') setHitDetailId(linked.id); else setReviewDetailId(linked.id);
+    } else return;
+    const next = new URLSearchParams(searchParams);
+    next.delete(linked.tab === 'hits' ? 'hitId' : 'reviewId');
+    setSearchParams(next, { replace: true });
+  }, [linkedHitId, linkedHitQuery, linkedReviewId, linkedReviewQuery, searchParams, setActiveTab, setSearchParams]);
+
+  function openRiskDetail(type: 'hit' | 'review', id: number) {
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', type === 'hit' ? 'hits' : 'reviews');
+    next.set(type === 'hit' ? 'hitId' : 'reviewId', String(id));
+    setSearchParams(next, { replace: true });
+    if (type === 'hit') setHitDetailId(id); else setReviewDetailId(id);
+  }
+
+  function closeRiskDetail(type: 'hit' | 'review') {
+    if (type === 'hit') setHitDetailId(undefined); else setReviewDetailId(undefined);
+    const next = new URLSearchParams(searchParams);
+    next.delete(type === 'hit' ? 'hitId' : 'reviewId');
+    setSearchParams(next, { replace: true });
+  }
 
   const saveMutation = useSavePaymentRiskRule();
   const toggleMutation = useSavePaymentRiskRule();
@@ -230,6 +274,7 @@ export default function PaymentRiskRulesPage() {
   ];
 
   const hitColumns: ColumnProps<PaymentRiskHit>[] = [
+    { title: '关联信息', key: 'entityRelations', width: 120, render: (_: unknown, record) => <Button theme="borderless" size="small" onClick={() => openRiskDetail('hit', record.id)}>详情</Button> },
     { title: '命中规则', dataIndex: 'ruleName', minWidth: 200, render: renderEllipsis },
     { title: '动作', dataIndex: 'action', width: 90, render: (v: PaymentRiskAction) => (v === 'review' ? <Tag color="orange">送审</Tag> : <Tag color="red">拦截</Tag>) },
     { title: '命中维度', dataIndex: 'dimension', width: 110, render: (v: PaymentRiskDimension) => PAYMENT_RISK_DIMENSION_LABELS[v] },
@@ -243,6 +288,7 @@ export default function PaymentRiskRulesPage() {
   ];
 
   const reviewColumns: ColumnProps<PaymentRiskReview>[] = [
+    { title: '关联信息', key: 'entityRelations', width: 120, render: (_: unknown, record) => <Button theme="borderless" size="small" onClick={() => openRiskDetail('review', record.id)}>详情</Button> },
     copyableNoColumn('审核单号', 'reviewNo'),
     copyableNoColumn('订单号', 'orderNo'),
     { title: '渠道', dataIndex: 'channel', width: 90, render: (v: PaymentChannel) => PAYMENT_CHANNEL_LABELS[v] },
@@ -334,6 +380,20 @@ export default function PaymentRiskRulesPage() {
           />
         </TabPane>
       </Tabs>
+      <SideSheet title="风控命中详情" visible={hitDetailId !== undefined} onCancel={() => closeRiskDetail('hit')} width={720} closeOnEsc>
+        {hitDetailQuery.data && <>
+          <Typography.Title heading={6}>{hitDetailQuery.data.ruleName}</Typography.Title>
+          <Typography.Text>动作：{hitDetailQuery.data.action} · 维度：{hitDetailQuery.data.dimension} · 业务：{hitDetailQuery.data.bizType}:{hitDetailQuery.data.bizId}</Typography.Text>
+          <EntityContextView entityType="payment.risk-hit" entityKey={String(hitDetailQuery.data.id)} />
+        </>}
+      </SideSheet>
+      <SideSheet title="风控审核详情" visible={reviewDetailId !== undefined} onCancel={() => closeRiskDetail('review')} width={720} closeOnEsc>
+        {reviewDetailQuery.data && <>
+          <Typography.Title heading={6}>{reviewDetailQuery.data.reviewNo}</Typography.Title>
+          <Typography.Text>订单：{reviewDetailQuery.data.orderNo} · 状态：{reviewDetailQuery.data.status} · 原因：{reviewDetailQuery.data.reason}</Typography.Text>
+          <EntityContextView entityType="payment.risk-review" entityKey={String(reviewDetailQuery.data.id)} />
+        </>}
+      </SideSheet>
 
       <EditFormModal modal={modal} width={700} formProps={{ onValueChange: (v) => { if (v.scope && v.scope !== scopeWatch) setScopeWatch(v.scope as PaymentRiskScope); } }}>
         <div className="auto-grid" style={{ ['--auto-grid-min']: '220px', ['--auto-grid-cols']: 2 } as CSSProperties}>

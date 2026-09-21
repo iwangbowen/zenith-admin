@@ -159,6 +159,14 @@ export async function listSharingOrders(q: QueryOutputOf<typeof paymentSharingCo
   });
 }
 
+export async function getSharingOrder(id: number): Promise<PaymentSharingOrder> {
+  const [row] = await db.select({ order: paymentSharingOrders, receiverName: paymentSharingReceivers.name })
+    .from(paymentSharingOrders).leftJoin(paymentSharingReceivers, eq(paymentSharingReceivers.id, paymentSharingOrders.receiverId))
+    .where(and(eq(paymentSharingOrders.id, id), tenantCondition(paymentSharingOrders, currentUser()))).limit(1);
+  const order = requireRow(row?.order, '分账单不存在');
+  return mapSharingOrder({ ...order, receiverName: row?.receiverName ?? null });
+}
+
 export interface DispatchSharingInput {
   orderNo: string;
   receiverId: number;

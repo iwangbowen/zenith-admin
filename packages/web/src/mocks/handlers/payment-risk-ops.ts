@@ -55,6 +55,7 @@ export const paymentRiskOpsHandlers = [
     );
     return ok(paginate([...filtered].sort((a, b) => b.id - a.id)));
   }),
+  mock(paymentRiskOpsContract.hitDetail, ({ params, ok }) => ok(requireItem(hits, params.id, '风控命中记录不存在'))),
   mock(paymentRiskOpsContract.reviews, ({ query, ok, paginate }) => {
     const filtered = reviews.filter((r) =>
       includesKeyword(query.keyword, r.reviewNo, r.orderNo, r.bizId) &&
@@ -62,6 +63,7 @@ export const paymentRiskOpsHandlers = [
     );
     return ok(paginate([...filtered].sort((a, b) => b.id - a.id)));
   }),
+  mock(paymentRiskOpsContract.reviewDetail, ({ params, ok }) => ok(requireItem(reviews, params.id, '审核单不存在'))),
   mock(paymentRiskOpsContract.approveReview, ({ params, body, ok }) => {
     const r = requireItem(reviews, params.id, '审核单不存在');
     if (r.status !== 'pending') return badRequest('该审核单已处理');

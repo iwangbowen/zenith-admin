@@ -109,7 +109,9 @@ export const paymentRiskReviewListQuery = paginationQuery.extend({
 /** 风控运营：拦截 / 命中留痕与人工审核队列 */
 export const paymentRiskOpsContract = defineContract('/api/payment/risk', {
   hits: op.get('/hits', { access: { permission: 'payment:risk:list' }, query: paymentRiskHitListQuery, response: paginated(paymentRiskHitSchema), summary: '风控命中/拦截记录' }),
+  hitDetail: op.get('/hits/{id}', { access: { permission: 'payment:risk:list' }, params: idParam, response: paymentRiskHitSchema, summary: '风控命中详情' }),
   reviews: op.get('/reviews', { access: { permission: 'payment:risk:list' }, query: paymentRiskReviewListQuery, response: paginated(paymentRiskReviewSchema), summary: '人工审核队列' }),
+  reviewDetail: op.get('/reviews/{id}', { access: { permission: 'payment:risk:list' }, params: idParam, response: paymentRiskReviewSchema, summary: '风控审核详情' }),
   approveReview: op.post('/reviews/{id}/approve', { access: { permission: 'payment:risk:review' }, audit: '风控审核放行', params: idParam, body: handlePaymentRiskReviewSchema, response: paymentRiskReviewSchema, summary: '审核放行（挂起订单可继续支付）' }),
   rejectReview: op.post('/reviews/{id}/reject', { access: { permission: 'payment:risk:review' }, audit: '风控审核拒绝', params: idParam, body: handlePaymentRiskReviewSchema, response: paymentRiskReviewSchema, summary: '审核拒绝（关闭挂起订单）' }),
 }, { auditModule: '支付中心', tags: ['支付中心-风控'] });

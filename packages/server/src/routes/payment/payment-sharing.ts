@@ -11,6 +11,7 @@ import {
   updateReceiver,
   deleteReceiver,
   listSharingOrders,
+  getSharingOrder,
   dispatchSharing,
 } from '../../services/payment/payment-sharing.service';
 import {
@@ -56,6 +57,9 @@ const deleteReceiverRoute = defineContractRoute(paymentSharingContract.removeRec
 const listOrdersRoute = defineContractRoute(paymentSharingContract.orders, {
   handler: async (c) => c.json(okBody(await listSharingOrders(c.req.valid('query'))), 200),
 });
+const orderDetailRoute = defineContractRoute(paymentSharingContract.orderDetail, {
+  handler: async (c) => c.json(okBody(await getSharingOrder(c.req.valid('param').id)), 200),
+});
 
 const dispatchRoute = defineContractRoute(paymentSharingContract.dispatch, {
   handler: async (c) => c.json(okBody(await dispatchSharing(c.req.valid('json')), '分账已发起'), 200),
@@ -83,6 +87,7 @@ const reversalQueryRoute = defineContractRoute(paymentSharingContract.queryRever
 });
 
 router.openapiRoutes([
+  orderDetailRoute,
   listReceiversRoute,
   receiverDetailRoute,
   createReceiverRoute,

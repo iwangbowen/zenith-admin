@@ -256,6 +256,9 @@ const sharingHandlers = [
       .filter((o) => matchesFilter(o.status, query.status) && matchesFilter(o.receiverId, query.receiverId));
     return ok(paginate([...filtered].reverse()));
   }),
+  mock(paymentSharingContract.orderDetail, ({ params, ok }) => {
+    return ok(requireItem(sharingOrders, params.id, '分账单不存在', { status: 404 }));
+  }),
   mock(paymentSharingContract.dispatch, ({ body, ok }) => {
     const order = mockPaymentOrders.find((o) => o.orderNo === body.orderNo);
     if (!order) return notFound('支付订单不存在');

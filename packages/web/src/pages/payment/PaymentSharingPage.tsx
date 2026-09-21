@@ -2,7 +2,7 @@ import { entityRelationColumn } from '@/components/entity-relations/entity-relat
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { formatYuan } from '@/utils/payment';
-import { Button, Descriptions, Form, SideSheet, Spin, Tabs, TabPane, Tag, TextArea, Toast } from '@douyinfe/semi-ui';
+import { Button, Descriptions, Form, SideSheet, Spin, Tabs, TabPane, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -19,6 +19,7 @@ import {
   usePaymentSharingReversals,
   usePaymentSharingReversalDetail,
   usePaymentSharingOrders,
+  usePaymentSharingOrderDetail,
   usePaymentSharingReceivers,
   useQueryPaymentSharingReversal,
   useReversePaymentSharingOrder,
@@ -33,6 +34,7 @@ import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { confirmDanger } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 import { deleteAction, useStatusToggle, ListSearchToolbar } from '@/components/list-page';
+import { EntityContextView } from '@/components/entity-relations/EntityRelationButton';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useListPage } from '@/hooks/useListPage';
@@ -48,7 +50,9 @@ interface DispatchFormValues { orderNo: string; receiverId: number; amountYuan?:
 export default function PaymentSharingPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const reversalParam = searchParams.get('reversalId');
+  const orderParam = searchParams.get('sharingOrderId');
   const linkedReversalId = reversalParam && /^[1-9]\d*$/.test(reversalParam) && Number.isSafeInteger(Number(reversalParam)) ? Number(reversalParam) : undefined;
+  const linkedOrderId = orderParam && /^[1-9]\d*$/.test(orderParam) && Number.isSafeInteger(Number(orderParam)) ? Number(orderParam) : undefined;
   const { options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const canManage = hasPermission('payment:sharing:manage');
@@ -81,13 +85,29 @@ export default function PaymentSharingPage() {
     table: { empty: '暂无冲正记录' },
   });
   const [reverseTarget, setReverseTarget] = useState<PaymentSharingOrder | null>(null);
+  const [orderDetailTarget, setOrderDetailTarget] = useState<PaymentSharingOrder | null>(null);
   const [reverseReason, setReverseReason] = useState('');
   const [reverseIdempotencyKey, setReverseIdempotencyKey] = useState('');
   const [reversalDetailTarget, setReversalDetailTarget] = useState<PaymentSharingReversal | null>(null);
 
   const reversalDetailQuery = usePaymentSharingReversalDetail(reversalDetailTarget?.id, !!reversalDetailTarget);
   const linkedReversalQuery = usePaymentSharingReversalDetail(linkedReversalId, linkedReversalId !== undefined);
+  const linkedOrderQuery = usePaymentSharingOrderDetail(linkedOrderId, linkedOrderId !== undefined);
   const reversalDetail = reversalDetailTarget ? (reversalDetailQuery.data ?? reversalDetailTarget) : null;
+
+  useEffect(() => {
+    if (!linkedOrderId) return;
+    if (linkedOrderQuery.isError) Toast.error('分账单不存在或无权查看');
+    else if (linkedOrderQuery.data) { setActiveTab('orders'); setOrderDetailTarget(linkedOrderQuery.data); }
+    else return;
+    const next = new URLSearchParams(searchParams); next.delete('sharingOrderId'); setSearchParams(next, { replace: true });
+  }, [linkedOrderId, linkedOrderQuery.data, linkedOrderQuery.isError, searchParams, setActiveTab, setSearchParams]);
+
+  function closeOrderDetail() {
+    setOrderDetailTarget(null);
+    if (!searchParams.has('sharingOrderId')) return;
+    const next = new URLSearchParams(searchParams); next.delete('sharingOrderId'); setSearchParams(next, { replace: true });
+  }
 
   useEffect(() => {
     if (!linkedReversalId) return;
@@ -379,6 +399,22 @@ export default function PaymentSharingPage() {
         <Form.InputNumber field="amountYuan" label="分账金额(元)" min={0.01} step={0.01} precision={2} style={{ width: '100%' }} placeholder="留空=按接收方默认比例计算" />
         <Form.TextArea field="remark" label="备注" autosize rows={1} placeholder="可选" />
       </EditFormModal>
+
+      <SideSheet title="分账单详情" visible={!!orderDetailTarget} onCancel={closeOrderDetail} width={760} closeOnEsc>
+        {orderDetailTarget && <>
+          <Descriptions column={2} data={[
+            { key: '分账单号', value: orderDetailTarget.sharingNo },
+            { key: '订单号', value: orderDetailTarget.orderNo },
+            { key: '接收方', value: orderDetailTarget.receiverName ?? `接收方 #${orderDetailTarget.receiverId}` },
+            { key: '金额', value: yuan(orderDetailTarget.amount) },
+            { key: '状态', value: PAYMENT_SHARING_ORDER_STATUS_LABELS[orderDetailTarget.status] },
+            { key: '渠道分账号', value: orderDetailTarget.channelSharingNo ?? EMPTY_PLACEHOLDER },
+            { key: '备注', value: orderDetailTarget.remark ?? EMPTY_PLACEHOLDER, span: 2 },
+          ]} />
+          <Typography.Title heading={6} style={{ marginTop: 20 }}>关联信息</Typography.Title>
+          <EntityContextView entityType="payment.sharing-order" entityKey={String(orderDetailTarget.id)} />
+        </>}
+      </SideSheet>
 
       <AppModal
         title="发起分账冲正"

@@ -93,6 +93,7 @@ export const paymentSharingContract = defineContract('/api/payment/sharing', {
   updateReceiver: op.put('/receivers/{id}', { access: { permission: 'payment:sharing:manage' }, audit: '编辑分账接收方', params: idParam, body: updatePaymentSharingReceiverSchema, response: paymentSharingReceiverSchema, summary: '编辑分账接收方' }),
   removeReceiver: op.delete('/receivers/{id}', { access: { permission: 'payment:sharing:manage' }, audit: '删除分账接收方', params: idParam, summary: '删除分账接收方' }),
   orders: op.get('/orders', { access: { permission: 'payment:sharing:list' }, query: paymentSharingOrderListQuery, response: paginated(paymentSharingOrderSchema), summary: '分账单列表' }),
+  orderDetail: op.get('/orders/{id}', { access: { permission: 'payment:sharing:list' }, params: idParam, response: paymentSharingOrderSchema, summary: '分账单详情' }),
   dispatch: op.post('/orders', { access: { permission: 'payment:sharing:dispatch' }, audit: '发起支付分账', body: dispatchPaymentSharingSchema, response: paymentSharingOrderSchema, summary: '发起分账' }),
   reversals: op.get('/reversals', { access: { permission: 'payment:sharing:list' }, query: paymentSharingReversalListQuery, response: paginated(paymentSharingReversalSchema), summary: '分账冲正列表' }),
   reverse: op.post('/orders/{id}/reverse', {

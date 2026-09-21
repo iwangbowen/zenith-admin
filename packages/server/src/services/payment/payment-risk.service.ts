@@ -383,6 +383,11 @@ export async function listRiskHits(q: QueryOutputOf<typeof paymentRiskOpsContrac
   });
 }
 
+export async function getRiskHit(id: number): Promise<PaymentRiskHit> {
+  const [row] = await db.select().from(paymentRiskHits).where(and(eq(paymentRiskHits.id, id), tenantCondition(paymentRiskHits, currentUser()))).limit(1);
+  return mapRiskHit(requireRow(row, '风控命中记录不存在'));
+}
+
 // ─── 人工审核队列 ─────────────────────────────────────────────────────────────
 
 function mapRiskReview(row: PaymentRiskReviewRow & { reviewer?: { nickname: string | null } | null }): PaymentRiskReview {
@@ -487,6 +492,10 @@ export async function listRiskReviews(q: QueryOutputOf<typeof paymentRiskOpsCont
     }),
     map: mapRiskReview,
   });
+}
+
+export async function getRiskReview(id: number): Promise<PaymentRiskReview> {
+  return mapRiskReview(await ensureRiskReview(id));
 }
 
 async function ensureRiskReview(id: number): Promise<PaymentRiskReviewRow> {
