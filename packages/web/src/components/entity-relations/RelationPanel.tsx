@@ -65,24 +65,24 @@ function RelationSectionView({ entityType, entityKey, section, active, canManage
   const degraded = pages.some((page) => page.degraded);
   const sectionError = query.isError;
   const hasResponse = query.data !== undefined;
-  const showInitialLoading = query.isLoading && !hasResponse;
   useEffect(() => {
-    if (!active || showInitialLoading) return;
+    if (!active || query.isLoading || !hasResponse) return;
     if (sectionError || degraded) {
       onSummaryStateChange(section.key, 'unavailable');
       return;
     }
     if (!hasResponse) return;
     onSummaryStateChange(section.key, items.length > 0 ? (section.summaryState === 'attention' ? 'attention' : 'has-data') : 'empty');
-  }, [active, degraded, hasResponse, items.length, onSummaryStateChange, section.key, section.summaryState, sectionError, showInitialLoading]);
+  }, [active, degraded, hasResponse, items.length, onSummaryStateChange, query.isLoading, section.key, section.summaryState, sectionError]);
   const label = entityRelationLabel(section.labelKey, section.targetTypes);
   return <div style={{ position: 'relative' }}>
-    <Tooltip content={`刷新${label}`}>
-      <Button size="small" theme="borderless" icon={<RefreshCw size={14} />} loading={query.isRefetching} aria-label={`刷新${label}`} style={{ position: 'absolute', top: 0, right: 0 }}
-        onClick={(event) => { event.stopPropagation(); void query.refetch(); }} />
-    </Tooltip>
+    <span style={{ position: 'absolute', top: 0, right: 0, zIndex: 1, lineHeight: 0 }}>
+      <Tooltip content={`刷新${label}`}>
+        <Button size="small" theme="borderless" icon={<RefreshCw size={14} />} loading={query.isFetching} aria-label={`刷新${label}`}
+          onClick={(event) => { event.stopPropagation(); void query.refetch(); }} />
+      </Tooltip>
+    </span>
     <div style={{ paddingTop: 4, paddingRight: 32 }}>
-      {showInitialLoading && <Spin size="small" />}
       {(query.isError || degraded) && <Space wrap spacing={8}>
         <Typography.Text type="danger">{degraded ? '部分关联记录暂时不可用' : '关联记录加载失败'}</Typography.Text>
         <Button size="small" onClick={() => void (query.isFetchNextPageError ? query.fetchNextPage() : query.refetch())}>重试</Button>
