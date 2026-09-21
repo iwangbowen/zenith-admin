@@ -1,5 +1,6 @@
 import { entityRelationColumn } from '@/components/entity-relations/entity-relation-columns';
-import { useState, type CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { formatMinorAmount, formatYuan } from '@/utils/payment';
 import { Button, Form, SideSheet, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -16,6 +17,7 @@ import {
   useDeletePaymentSettlement,
   useGeneratePaymentSettlement,
   usePaymentSettlementItems,
+  usePaymentSettlementDetail,
   usePaymentSettlementList,
   useUpdatePaymentSettlementStatus,
 } from '@/hooks/queries/payment-settlements';
@@ -41,10 +43,14 @@ interface GenerateFormValues { applicationId: number; channelConfigId: number; c
 interface SettlementReferenceFormValues { reference: string; }
 
 export default function PaymentSettlementsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const batchParam = searchParams.get('batchId');
+  const linkedBatchId = batchParam && /^[1-9]\d*$/.test(batchParam) && Number.isSafeInteger(Number(batchParam)) ? Number(batchParam) : undefined;
   const { hasPermission } = usePermission();
   const canSettle = hasPermission('payment:settlement:settle');
   const [selectedAppId, setSelectedAppId] = useState<number | null>(null);
   const [detailBatch, setDetailBatch] = useState<PaymentSettlementBatch | null>(null);
+  const linkedBatchQuery = usePaymentSettlementDetail(linkedBatchId, linkedBatchId !== undefined);
   const {
     page, pageSize, buildPagination,
     bind, submittedParams,
@@ -60,6 +66,26 @@ export default function PaymentSettlementsPage() {
   const { channelConfigsQuery, appById, appOptions, appsFetching, channelConfigById, merchantConfigOptions } = useAppMerchantConfigLookup(selectedAppId);
   const generateMutation = useGeneratePaymentSettlement();
   const itemsQuery = usePaymentSettlementItems(detailBatch?.id, !!detailBatch);
+
+  useEffect(() => {
+    if (!linkedBatchId) return;
+    if (linkedBatchQuery.isError) {
+      Toast.error('结算批次不存在或无权查看');
+    } else if (linkedBatchQuery.data) {
+      setDetailBatch(linkedBatchQuery.data);
+    } else return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('batchId');
+    setSearchParams(next, { replace: true });
+  }, [linkedBatchId, linkedBatchQuery.data, linkedBatchQuery.isError, searchParams, setSearchParams]);
+
+  function closeBatchDetail() {
+    setDetailBatch(null);
+    if (!searchParams.has('batchId')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('batchId');
+    setSearchParams(next, { replace: true });
+  }
   const transitionMutation = useUpdatePaymentSettlementStatus();
   const deleteMutation = useDeletePaymentSettlement();
   const transitioningId = transitionMutation.isPending ? (transitionMutation.variables?.params.id ?? null) : null;
@@ -277,7 +303,7 @@ export default function PaymentSettlementsPage() {
       <SideSheet
         title={`结算资金明细${detailBatch ? `（${detailBatch.batchNo}）` : ''}`}
         visible={!!detailBatch}
-        onCancel={() => setDetailBatch(null)}
+        onCancel={closeBatchDetail}
         width={860}
         closeOnEsc
       >

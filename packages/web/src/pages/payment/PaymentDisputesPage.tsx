@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { formatYuan } from '@/utils/payment';
 import { Banner, Button, Input, Modal, SideSheet, Spin, Tag, TextArea, Timeline, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -35,6 +36,9 @@ interface SearchParams { keyword: string; status?: string; type?: string; channe
 const defaultSearchParams: SearchParams = { keyword: '', status: undefined, type: undefined, channel: undefined, route: '' };
 
 export default function PaymentDisputesPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const disputeParam = searchParams.get('disputeId');
+  const linkedDisputeId = disputeParam && /^[1-9]\d*$/.test(disputeParam) && Number.isSafeInteger(Number(disputeParam)) ? Number(disputeParam) : undefined;
   const { hasPermission } = usePermission();
   const canHandle = hasPermission('payment:dispute:handle');
   const {
@@ -58,7 +62,20 @@ export default function PaymentDisputesPage() {
   const statsQuery = usePaymentDisputeStats();
   const stats = statsQuery.data ?? null;
   const detailQuery = usePaymentDisputeDetail(detailId ?? undefined);
+  const linkedDetailQuery = usePaymentDisputeDetail(linkedDisputeId, linkedDisputeId !== undefined);
   const detail = detailQuery.data ?? null;
+
+  useEffect(() => {
+    if (!linkedDisputeId) return;
+    if (linkedDetailQuery.isError) {
+      Toast.error('投诉记录不存在或无权查看');
+    } else if (linkedDetailQuery.data) {
+      setDetailId(linkedDisputeId);
+    } else return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('disputeId');
+    setSearchParams(next, { replace: true });
+  }, [linkedDisputeId, linkedDetailQuery.data, linkedDetailQuery.isError, searchParams, setSearchParams]);
 
   const replyMutation = useReplyPaymentDispute();
   const resolveMutation = useResolvePaymentDispute();
@@ -74,6 +91,17 @@ export default function PaymentDisputesPage() {
     setReplyContent('');
     setRefundAmountYuan('');
     setDetailId(id);
+    const next = new URLSearchParams(searchParams);
+    next.set('disputeId', String(id));
+    setSearchParams(next, { replace: true });
+  }
+
+  function closeDetail() {
+    setDetailId(null);
+    if (!searchParams.has('disputeId')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('disputeId');
+    setSearchParams(next, { replace: true });
   }
 
   async function handleReply() {
@@ -211,7 +239,7 @@ export default function PaymentDisputesPage() {
       <SideSheet
         title={detail ? `投诉工单 ${detail.disputeNo}` : '投诉工单'}
         visible={detailId != null}
-        onCancel={() => setDetailId(null)}
+        onCancel={closeDetail}
         width={560}
         closeOnEsc
       >

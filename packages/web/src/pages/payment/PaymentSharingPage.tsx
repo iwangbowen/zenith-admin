@@ -1,5 +1,6 @@
 import { entityRelationColumn } from '@/components/entity-relations/entity-relation-columns';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { formatYuan } from '@/utils/payment';
 import { Button, Descriptions, Form, SideSheet, Spin, Tabs, TabPane, Tag, TextArea, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -45,6 +46,9 @@ interface ReceiverFormValues { name: string; receiverType: PaymentSharingReceive
 interface DispatchFormValues { orderNo: string; receiverId: number; amountYuan?: number; remark?: string; }
 
 export default function PaymentSharingPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const reversalParam = searchParams.get('reversalId');
+  const linkedReversalId = reversalParam && /^[1-9]\d*$/.test(reversalParam) && Number.isSafeInteger(Number(reversalParam)) ? Number(reversalParam) : undefined;
   const { options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const canManage = hasPermission('payment:sharing:manage');
@@ -82,7 +86,37 @@ export default function PaymentSharingPage() {
   const [reversalDetailTarget, setReversalDetailTarget] = useState<PaymentSharingReversal | null>(null);
 
   const reversalDetailQuery = usePaymentSharingReversalDetail(reversalDetailTarget?.id, !!reversalDetailTarget);
+  const linkedReversalQuery = usePaymentSharingReversalDetail(linkedReversalId, linkedReversalId !== undefined);
   const reversalDetail = reversalDetailTarget ? (reversalDetailQuery.data ?? reversalDetailTarget) : null;
+
+  useEffect(() => {
+    if (!linkedReversalId) return;
+    if (linkedReversalQuery.isError) {
+      Toast.error('分账冲正不存在或无权查看');
+    } else if (linkedReversalQuery.data) {
+      setActiveTab('reversals');
+      setReversalDetailTarget(linkedReversalQuery.data);
+    } else return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('reversalId');
+    setSearchParams(next, { replace: true });
+  }, [linkedReversalId, linkedReversalQuery.data, linkedReversalQuery.isError, searchParams, setActiveTab, setSearchParams]);
+
+  function openReversalDetail(record: PaymentSharingReversal) {
+    setReversalDetailTarget(record);
+    const next = new URLSearchParams(searchParams);
+    next.set('reversalId', String(record.id));
+    next.set('tab', 'reversals');
+    setSearchParams(next, { replace: true });
+  }
+
+  function closeReversalDetail() {
+    setReversalDetailTarget(null);
+    if (!searchParams.has('reversalId')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('reversalId');
+    setSearchParams(next, { replace: true });
+  }
   const saveReceiverMutation = useSavePaymentSharingReceiver();
   const toggleReceiverMutation = useSavePaymentSharingReceiver();
   const deleteReceiverMutation = useDeletePaymentSharingReceivers();
@@ -256,7 +290,7 @@ export default function PaymentSharingPage() {
       width: 120,
       desktopInlineKeys: ['detail'],
       actions: (record) => [
-        { key: 'detail', label: '详情', onClick: () => setReversalDetailTarget(record) },
+        { key: 'detail', label: '详情', onClick: () => openReversalDetail(record) },
         ...(canDispatch && (record.status === 'processing' || record.status === 'unknown') ? [{
           key: 'query',
           label: '查单',
@@ -371,7 +405,7 @@ export default function PaymentSharingPage() {
       <SideSheet
         title={reversalDetail ? `分账冲正 · ${reversalDetail.reversalNo}` : '分账冲正详情'}
         visible={!!reversalDetailTarget}
-        onCancel={() => setReversalDetailTarget(null)}
+        onCancel={closeReversalDetail}
         width={680}
         closeOnEsc
       >

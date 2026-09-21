@@ -1,5 +1,6 @@
 import { entityRelationColumn } from '@/components/entity-relations/entity-relation-columns';
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ListSearchToolbar } from '@/components/list-page';
 import { ArrayField, Banner, Button, Descriptions, Form, Modal, SideSheet, TabPane, Tabs, Tag, TextArea, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -197,6 +198,9 @@ function JournalLinesField({ accountOptions }: Readonly<{ accountOptions: Array<
 }
 
 export default function PaymentLedgerPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const journalParam = searchParams.get('journalId');
+  const linkedJournalId = journalParam && /^[1-9]\d*$/.test(journalParam) && Number.isSafeInteger(Number(journalParam)) ? Number(journalParam) : undefined;
   const { hasPermission } = usePermission();
   const canView = hasPermission('payment:ledger:list');
   const canCreateAccount = hasPermission('payment:ledger:account:create');
@@ -397,7 +401,37 @@ export default function PaymentLedgerPage() {
   );
 
   const detailQuery = usePaymentJournalDetail(journalDetailTarget?.id, !!journalDetailTarget);
+  const linkedJournalQuery = usePaymentJournalDetail(linkedJournalId, linkedJournalId !== undefined);
   const detailJournal = journalDetailTarget ? (detailQuery.data ?? journalDetailTarget) : null;
+
+  useEffect(() => {
+    if (!linkedJournalId) return;
+    if (linkedJournalQuery.isError) {
+      Toast.error('账务凭证不存在或无权查看');
+    } else if (linkedJournalQuery.data) {
+      setActiveTab('journals');
+      setJournalDetailTarget(linkedJournalQuery.data);
+    } else return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('journalId');
+    setSearchParams(next, { replace: true });
+  }, [linkedJournalId, linkedJournalQuery.data, linkedJournalQuery.isError, searchParams, setActiveTab, setSearchParams]);
+
+  function openJournalDetail(record: PaymentJournal) {
+    setJournalDetailTarget(record);
+    const next = new URLSearchParams(searchParams);
+    next.set('journalId', String(record.id));
+    next.set('tab', 'journals');
+    setSearchParams(next, { replace: true });
+  }
+
+  function closeJournalDetail() {
+    setJournalDetailTarget(null);
+    if (!searchParams.has('journalId')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('journalId');
+    setSearchParams(next, { replace: true });
+  }
   const detailDebit = detailJournal ? amountTotal(detailJournal.lines, 'debitAmount') : 0n;
   const detailCredit = detailJournal ? amountTotal(detailJournal.lines, 'creditAmount') : 0n;
 
@@ -515,7 +549,7 @@ export default function PaymentLedgerPage() {
       width: 120,
       desktopInlineKeys: ['detail'],
       actions: (record) => [
-        { key: 'detail', label: '详情', onClick: () => setJournalDetailTarget(record) },
+        { key: 'detail', label: '详情', onClick: () => openJournalDetail(record) },
         ...(canReverseJournal && record.reversalOfJournalId == null && record.reversedByJournalId == null && record.sourceType.startsWith('manual.') ? [{ key: 'reverse', label: '冲正', danger: true, onClick: () => openReverse(record) }] : []),
       ],
     }),
@@ -706,7 +740,7 @@ export default function PaymentLedgerPage() {
         />
       </EditFormModal>
 
-      <SideSheet title={detailJournal ? `资金凭证 · ${detailJournal.journalNo}` : '资金凭证详情'} visible={!!journalDetailTarget} onCancel={() => setJournalDetailTarget(null)} width={820} closeOnEsc>
+      <SideSheet title={detailJournal ? `资金凭证 · ${detailJournal.journalNo}` : '资金凭证详情'} visible={!!journalDetailTarget} onCancel={closeJournalDetail} width={820} closeOnEsc>
         {detailJournal && (
           <div className="payment-journal-detail">
             <Descriptions
