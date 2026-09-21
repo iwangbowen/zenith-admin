@@ -172,8 +172,8 @@ export const userGroupsHandlers = [
       ruleSyncedAt: memberMode === 'dynamic' ? now : null,
       memberCount: memberIds.length,
       memberIds,
-      roleIds: [],
-      roleCount: 0,
+      roleIds: body.roleIds ?? [],
+      roleCount: (body.roleIds ?? []).length,
       status: body.status,
       createdAt: now,
       updatedAt: now,
@@ -185,6 +185,7 @@ export const userGroupsHandlers = [
   mock(userGroupContract.update, ({ params, body, ok }) => {
     const grp = requireItem(mockUserGroups, params.id, '用户组不存在', { status: 404 });
     Object.assign(grp, body, { updatedAt: mockDateTime() });
+    if (body.roleIds !== undefined) grp.roleCount = body.roleIds.length;
     if (grp.memberMode === 'static') {
       grp.memberRule = null;
     } else if (body.memberRule !== undefined || body.memberMode !== undefined) {

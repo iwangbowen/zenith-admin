@@ -103,6 +103,7 @@ export interface CreateUserGroupInput {
   status?: 'enabled' | 'disabled';
   memberMode?: UserGroupMemberMode;
   memberRule?: UserGroupMemberRule | null;
+  roleIds?: number[];
 }
 export type UpdateUserGroupInput = Partial<CreateUserGroupInput>;
 
@@ -150,20 +151,22 @@ export async function getUserGroup(id: number) {
 }
 
 export async function createUserGroup(input: CreateUserGroupInput) {
-  const memberMode = input.memberMode ?? 'static';
-  if (!validateUserGroupRulePresence(memberMode, input.memberRule)) {
+  const { roleIds = [], ...groupInput } = input;
+  const memberMode = groupInput.memberMode ?? 'static';
+  if (!validateUserGroupRulePresence(memberMode, groupInput.memberRule)) {
     throw new HTTPException(400, { message: '动态用户组至少需要一个部门/岗位条件或强制包含名单' });
   }
   try {
     const [row] = await db
       .insert(userGroups)
       .values({
-        ...input,
+        ...groupInput,
         memberMode,
-        memberRule: memberMode === 'dynamic' ? input.memberRule ?? null : null,
+        memberRule: memberMode === 'dynamic' ? groupInput.memberRule ?? null : null,
         tenantId: getCreateTenantId(currentUser()),
       })
       .returning();
+    if (roleIds.length > 0) await setGroupRoles(row.id, roleIds);
     // 动态组建组即物化一次成员
     if (row.memberMode === 'dynamic') await syncDynamicGroup(row.id);
     return getUserGroup(row.id);
@@ -174,6 +177,7 @@ export async function createUserGroup(input: CreateUserGroupInput) {
 }
 
 export async function updateUserGroup(id: number, input: UpdateUserGroupInput) {
+  const { roleIds, ...groupInput } = input;
   const tc = tenantCondition(userGroups, currentUser());
   const [existing] = await db
     .select({ id: userGroups.id, memberMode: userGroups.memberMode, memberRule: userGroups.memberRule })
@@ -183,8 +187,8 @@ export async function updateUserGroup(id: number, input: UpdateUserGroupInput) {
   requireRow(existing, '用户组不存在');
 
   // 合并态校验：partial 更新下 mode 与 rule 可能只来其一
-  const nextMode = (input.memberMode ?? existing.memberMode) as UserGroupMemberMode;
-  const nextRule = input.memberRule !== undefined ? input.memberRule : existing.memberRule;
+  const nextMode = (groupInput.memberMode ?? existing.memberMode) as UserGroupMemberMode;
+  const nextRule = groupInput.memberRule !== undefined ? groupInput.memberRule : existing.memberRule;
   if (!validateUserGroupRulePresence(nextMode, nextRule)) {
     throw new HTTPException(400, { message: '动态用户组至少需要一个部门/岗位条件或强制包含名单' });
   }
@@ -193,7 +197,7 @@ export async function updateUserGroup(id: number, input: UpdateUserGroupInput) {
     const [row] = await db
       .update(userGroups)
       .set({
-        ...input,
+        ...groupInput,
         // dynamic → static：冻结当前成员为手工维护，规则清空
         ...(nextMode === 'static' ? { memberRule: null } : {}),
       })
@@ -201,7 +205,8 @@ export async function updateUserGroup(id: number, input: UpdateUserGroupInput) {
       .returning();
     requireRow(row, '用户组不存在');
 
-    const ruleChanged = input.memberRule !== undefined || input.memberMode !== undefined;
+    if (roleIds !== undefined) await setGroupRoles(id, roleIds);
+    const ruleChanged = groupInput.memberRule !== undefined || groupInput.memberMode !== undefined;
     if (nextMode === 'dynamic' && ruleChanged) {
       // static → dynamic 或规则变化：成员整体重算（含清缓存）
       await syncDynamicGroup(id);

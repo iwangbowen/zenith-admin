@@ -211,6 +211,7 @@ const userGroupBaseSchema = z.object({
   status: entityStatusSchema.default('enabled'),
   memberMode: z.enum(['static', 'dynamic']).default('static'),
   memberRule: userGroupMemberRuleSchema.nullable().optional(),
+  roleIds: z.array(z.number().int().positive()).default([]),
 });
 
 /** dynamic 模式的规则完整性校验（更新走 partial，合并态校验在服务层再做一次） */

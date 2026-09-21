@@ -76,7 +76,7 @@ export default function UserGroupsPage() {
   const [roleGroup, setRoleGroup] = useState<UserGroup | null>(null);
   const [roleIds, setRoleIds] = useState<number[]>([]);
   const groupRolesQuery = useUserGroupRoles(roleGroup?.id, roleModalVisible);
-  const allRolesQuery = useAllRoles({ enabled: roleModalVisible });
+  const allRolesQuery = useAllRoles();
   const saveMutation = useSaveUserGroup();
   const rulePreviewMutation = useUserGroupRulePreview();
   const syncMutation = useSyncUserGroup();
@@ -85,7 +85,7 @@ export default function UserGroupsPage() {
     entityName: '用户组',
     save: saveMutation,
     useDetail: useUserGroupDetail,
-    defaults: { status: 'enabled', memberMode: 'static' },
+    defaults: { status: 'enabled', memberMode: 'static', roleIds: [] },
     labelPosition: 'top',
     toValues: (group) => ({
       name: group.name,
@@ -95,6 +95,7 @@ export default function UserGroupsPage() {
       status: group.status,
       memberMode: group.memberMode ?? 'static',
       memberRule: group.memberRule ?? undefined,
+      roleIds: group.rolePreview?.map((role) => role.id) ?? [],
     }),
   });
   const toggleStatusMutation = useSaveUserGroup();
@@ -292,6 +293,11 @@ export default function UserGroupsPage() {
               <Form.Select
                 field="status" label="状态" style={{ width: '100%' }}
                 optionList={statusOptions}
+              />
+              <Form.Select
+                field="roleIds" label="角色" placeholder="请选择角色（可选）"
+                style={{ width: '100%' }} multiple filter showClear
+                optionList={(allRolesQuery.data ?? []).map((role) => ({ value: role.id, label: `${role.name}（${role.code}）` }))}
               />
               <Form.RadioGroup
                 field="memberMode" label="成员模式" type="button"
