@@ -10,6 +10,7 @@ import { Tabs, TabPane, Toast, Tag, Space } from '@douyinfe/semi-ui';
 import AppModal from '@/components/AppModal';
 import { MenuPermissionPanel } from '@/components/permissions/MenuPermissionPanel';
 import { useMenuTree } from '@/hooks/queries/menus';
+import ModalFooter from '@/components/ModalFooter';
 import { useSaveUserMenus, useUserEffectivePermissions } from '@/hooks/queries/users';
 
 type Props = Readonly<{
@@ -77,11 +78,15 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
       title={`菜单权限 — ${userName}`}
       visible={visible}
       onCancel={onClose}
-      onOk={activeTab === 'direct' ? handleSave : undefined}
-      okText={activeTab === 'direct' ? '保存' : undefined}
-      okButtonProps={{ disabled: !permissionsQuery.isSuccess }}
-      footer={activeTab === 'effective' ? null : undefined}
-      confirmLoading={saveMenusMutation.isPending}
+      footer={activeTab === 'effective' ? null : (
+        <ModalFooter
+          onCancel={onClose}
+          onOk={handleSave}
+          okText="保存"
+          loading={saveMenusMutation.isPending}
+          disabled={!permissionsQuery.isSuccess}
+        />
+      )}
       width={640}
     >
       <Tabs collapsible="auto" activeKey={activeTab} onChange={setActiveTab}>
