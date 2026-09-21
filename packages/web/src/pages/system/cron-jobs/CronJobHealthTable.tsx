@@ -7,12 +7,11 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { DataBar } from '@/components/data-viz/DataBar';
 import { formatDurationMs } from '@/utils/format';
 import { formatRelativeTime } from '@/utils/date';
-import { DATE_TIME_COLUMN_WIDTH, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import {
   DurationSparkline,
   FAIL_COLOR,
   RecentResultBlocks,
-  RelativeTime,
   SUCCESS_COLOR,
   TIMEOUT_COLOR,
   TrendMark,
@@ -47,20 +46,21 @@ function numberSorter(pick: (row: CronJobStatsPerJob) => number | null) {
 export function CronJobHealthTable({ rows, loading, now, onRefresh, canExecute, canUpdate, onViewLogs, onOpenDetail, onRun, onToggleStatus }: Props) {
   const columns: ColumnProps<CronJobStatsPerJob>[] = [
     {
-      title: '任务', dataIndex: 'jobName', minWidth: 200,
+      title: '任务', dataIndex: 'jobName', width: 240,
       sorter: (a?: CronJobStatsPerJob, b?: CronJobStatsPerJob) => (a && b ? a.jobName.localeCompare(b.jobName) : 0),
       render: (_: unknown, r: CronJobStatsPerJob) => (
         <div className="cron-cell">
-          <div className="cron-cell__main">
-            <Typography.Text link className="cron-cell__title" onClick={() => onOpenDetail(r.jobId, r.jobName)} title={r.jobName}>{r.jobName}</Typography.Text>
-            {!r.enabled && <Tag size="small" color="grey" type="light">已停用</Tag>}
-            {r.consecutiveFails >= CRON_HEALTH_RULES.consecutiveFailThreshold && (
-              <Tag size="small" color="red">连败 {r.consecutiveFails}</Tag>
-            )}
-          </div>
-          <span className="cron-cell__sub" title={r.handler}>{r.handler}</span>
+          <Typography.Text link className="cron-cell__title" onClick={() => onOpenDetail(r.jobId, r.jobName)} title={r.jobName}>{r.jobName}</Typography.Text>
+          {!r.enabled && <Tag size="small" color="grey" type="light">已停用</Tag>}
+          {r.consecutiveFails >= CRON_HEALTH_RULES.consecutiveFailThreshold && (
+            <Tag size="small" color="red">连败 {r.consecutiveFails}</Tag>
+          )}
         </div>
       ),
+    },
+    {
+      title: '处理器', dataIndex: 'handler', width: 220,
+      render: (v: string) => <span className="cron-mono cron-cell__title" title={v} style={{ fontSize: 12 }}>{v}</span>,
     },
     {
       title: '表达式', dataIndex: 'cronExpression', width: 140,
@@ -76,7 +76,7 @@ export function CronJobHealthTable({ rows, loading, now, onRefresh, canExecute, 
       render: (v: (number | null)[]) => <DurationSparkline values={v} width={88} />,
     },
     {
-      title: '成功率', dataIndex: 'successRate', width: 130,
+      title: '成功率', dataIndex: 'successRate', width: 170,
       sorter: numberSorter((r) => r.successRate),
       render: (_: unknown, r: CronJobStatsPerJob) => {
         if (r.successRate == null) return <span style={{ color: 'var(--semi-color-text-3)' }}>{EMPTY_PLACEHOLDER}</span>;
@@ -96,7 +96,7 @@ export function CronJobHealthTable({ rows, loading, now, onRefresh, canExecute, 
       },
     },
     {
-      title: '执行', dataIndex: 'runs', width: 96, align: 'right',
+      title: '执行', dataIndex: 'runs', width: 130, align: 'right',
       sorter: numberSorter((r) => r.runs),
       render: (_: unknown, r: CronJobStatsPerJob) => (
         <div className="cron-cell cron-cell--right">
@@ -151,36 +151,38 @@ export function CronJobHealthTable({ rows, loading, now, onRefresh, canExecute, 
       ),
     },
     {
-      // 复合列：状态 + 相对时间 + 精确时刻，宽度按时间列口径
-      title: '最近执行', dataIndex: 'lastRunAt', width: DATE_TIME_COLUMN_WIDTH,
+      // 复合列：状态 + 精确时刻
+      title: '最近执行', dataIndex: 'lastRunAt', width: 210,
       sorter: (a?: CronJobStatsPerJob, b?: CronJobStatsPerJob) => (a && b ? (a.lastRunAt ?? '').localeCompare(b.lastRunAt ?? '') : 0),
       render: (_: unknown, r: CronJobStatsPerJob) => {
         const meta = statusMeta(r.lastRunStatus);
         return (
-          <div className="cron-cell">
-            <div className="cron-cell__main">
-              <span className="cron-status-dot" style={{ background: meta.color }} />
-              <span>{meta.label}</span>
-              {r.lastRunAt && <span style={{ color: 'var(--semi-color-text-2)' }}>· {formatRelativeTime(r.lastRunAt, now)}</span>}
+          <Tooltip content={r.lastRunAt ? formatRelativeTime(r.lastRunAt, now) : undefined} position="top">
+            <div className="cron-cell">
+              <div className="cron-cell__main">
+                <span className="cron-status-dot" style={{ background: meta.color }} />
+                <span>{meta.label}</span>
+              </div>
+              <span className="cron-cell__sub" title={r.lastError ?? undefined}>
+                {(r.lastRunStatus === 'fail' || r.lastRunStatus === 'timeout') && r.lastError ? r.lastError : (r.lastRunAt ?? '尚无执行记录')}
+              </span>
             </div>
-            <span className="cron-cell__sub" title={r.lastError ?? undefined}>
-              {(r.lastRunStatus === 'fail' || r.lastRunStatus === 'timeout') && r.lastError ? r.lastError : (r.lastRunAt ?? '尚无执行记录')}
-            </span>
-          </div>
+          </Tooltip>
         );
       },
     },
     {
-      title: '下次执行', dataIndex: 'nextRunAt', width: DATE_TIME_COLUMN_WIDTH,
+      title: '下次执行', dataIndex: 'nextRunAt', width: 180,
       sorter: (a?: CronJobStatsPerJob, b?: CronJobStatsPerJob) => (a && b ? (a.nextRunAt ?? '9').localeCompare(b.nextRunAt ?? '9') : 0),
       render: (v: string | null, r: CronJobStatsPerJob) => {
         if (!r.enabled) return <span style={{ color: 'var(--semi-color-text-3)' }}>已停用</span>;
         if (!v) return <span style={{ color: 'var(--semi-color-text-3)' }}>表达式无效</span>;
         return (
-          <div className="cron-cell">
-            <RelativeTime value={v} now={now} />
-            <span className="cron-cell__sub">{v}</span>
-          </div>
+          <Tooltip content={formatRelativeTime(v, now)} position="top">
+            <div className="cron-cell">
+              <span className="cron-cell__sub">{v}</span>
+            </div>
+          </Tooltip>
         );
       },
     },

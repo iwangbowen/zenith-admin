@@ -189,28 +189,37 @@
   padding-top: 6px;
 }
 
-/* ── 表格复合单元格 ── */
+/* ── 表格单元格 ──
+   复合信息保持在同一行，列宽不足时整行截断，完整内容仍可通过 title 查看。 */
 .cron-cell {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  line-height: 1.35;
-}
-
-.cron-cell__main {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
+  overflow: hidden;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.cron-cell__main {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  gap: 6px;
+  overflow: hidden;
 }
 
 .cron-cell__title {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .cron-cell__sub {
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   font-size: 12px;
   color: var(--semi-color-text-2);
@@ -219,7 +228,7 @@
 }
 
 .cron-cell--right {
-  align-items: flex-end;
+  justify-content: flex-end;
 }
 
 .cron-status-dot {
