@@ -2,7 +2,6 @@
 import { useMemo, useState } from 'react';
 import { Avatar, Empty, Select, SideSheet, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { DataBar } from '@/components/data-viz/DataBar';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import DateTimeText from '@/components/DateTimeText';
 import { dateTimeColumn } from '@/utils/table-columns';
@@ -32,8 +31,6 @@ export default function AnalyticsUsersTab() {
     id: item.userId == null ? `anonymous-${index}` : String(item.userId),
     rank: (page - 1) * pageSize + index + 1,
   })), [data, page, pageSize]);
-  const maxEvents = Math.max(1, ...rows.map((item) => item.totalEvents));
-
   const openTimeline = (record: UserStatsRow) => {
     if (record.userId == null) return;
     setTimelineUserId(record.userId);
@@ -48,10 +45,8 @@ export default function AnalyticsUsersTab() {
       render: (_value, record) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Avatar size="small" color={record.userId == null ? 'grey' : 'blue'}>{(record.username || '访').slice(0, 1).toUpperCase()}</Avatar>
-          <div>
-            <Typography.Text strong>{record.username || (record.userId == null ? '匿名访客' : `用户 #${record.userId}`)}</Typography.Text>
-            <div><Typography.Text type="tertiary" size="small">#{record.rank}</Typography.Text></div>
-          </div>
+          <Typography.Text strong ellipsis={{ showTooltip: true }} style={{ flex: 1, minWidth: 0 }}>{record.username || (record.userId == null ? '匿名访客' : `用户 #${record.userId}`)}</Typography.Text>
+          <Typography.Text type="tertiary" size="small" style={{ flexShrink: 0 }}>#{record.rank}</Typography.Text>
         </div>
       ),
     },
@@ -59,12 +54,9 @@ export default function AnalyticsUsersTab() {
       title: '总操作',
       align: 'right',
       dataIndex: 'totalEvents',
-      width: 220,
+      width: 130,
       render: (_value, record) => (
-        <div>
-          <Typography.Text strong>{numberText(record.totalEvents)}</Typography.Text>
-          <DataBar value={record.totalEvents} max={maxEvents} style={{ marginTop: 6 }} />
-        </div>
+        <Typography.Text strong>{numberText(record.totalEvents)}</Typography.Text>
       ),
     },
     { title: '页面访问', dataIndex: 'pageViews', width: 110 },

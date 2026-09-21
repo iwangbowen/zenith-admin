@@ -3,10 +3,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Card, Empty, Select, Space, Spin, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Activity, BarChart3, Flame, Users } from 'lucide-react';
-import { DataBar } from '@/components/data-viz/DataBar';
 import { ScatterChart, chartOptions, makeScatterSpec, datumNumber, datumText, datumBoolean, useChartPalette, StatCard, StatGrid, type ChartDatum } from '@/components/charts';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { useAnalyticsHeatmap, useAnalyticsHeatmapPages } from '@/hooks/queries/analytics';
 import type { AnalyticsEventSource, HeatmapData, HeatmapElementItem, HeatmapPageListItem, HeatmapRageClickItem } from '@zenith/shared/analytics';
 import { ANALYTICS_DEVICE_TYPE_OPTIONS, ANALYTICS_EVENT_SOURCE_OPTIONS } from '@zenith/shared/analytics';
@@ -125,7 +124,6 @@ export default function AnalyticsHeatmapTab() {
     () => (data?.topElements ?? []).map((item, index) => ({ ...item, id: item.elementKey, rank: index + 1 })),
     [data],
   );
-  const maxElementCount = useMemo(() => Math.max(1, ...elementRows.map((item) => item.count)), [elementRows]);
   const rageRows = useMemo<RageClickRow[]>(
     () => (data?.rageClicks ?? []).map((item, index) => ({ ...item, id: `${item.elementKey ?? 'unknown'}:${index}` })),
     [data],
@@ -142,14 +140,17 @@ export default function AnalyticsHeatmapTab() {
     { title: '排名', dataIndex: 'rank', width: 80, render: (value) => <Tag color={Number(value) <= 3 ? 'orange' : 'grey'}>#{String(value)}</Tag> },
     {
       title: '元素',
-      dataIndex: 'elementKey',
-      width: 240,
+      dataIndex: 'elementLabel',
+      width: 160,
       render: (_value, record) => (
-        <div>
-          <Typography.Text strong>{elementDisplayName(record.elementLabel, record.elementKey)}</Typography.Text>
-          <div><Typography.Text type="tertiary" size="small">{record.elementKey}</Typography.Text></div>
-        </div>
+        <Typography.Text strong ellipsis={{ showTooltip: true }}>{elementDisplayName(record.elementLabel, record.elementKey)}</Typography.Text>
       ),
+    },
+    {
+      title: '元素标识',
+      dataIndex: 'elementKey',
+      minWidth: 160,
+      render: (value) => renderEllipsis(String(value)),
     },
     { title: 'UI区域', dataIndex: 'componentArea', width: 130, render: (_value, record) => (record.componentArea ? <Tag color="blue">{record.componentArea}</Tag> : <Tag color="grey">未标记</Tag>) },
     { title: '平均落点', dataIndex: 'avgX', width: 120, render: (_value, record) => <Typography.Text type="tertiary">{record.avgX == null || record.avgY == null ? '–' : `${record.avgX}% , ${record.avgY}%`}</Typography.Text> },
@@ -158,12 +159,9 @@ export default function AnalyticsHeatmapTab() {
       title: '点击次数',
       align: 'right',
       dataIndex: 'count',
-      width: 200,
+      width: 120,
       render: (_value, record) => (
-        <div>
-          <Typography.Text strong>{numberText(record.count)}</Typography.Text>
-          <DataBar value={record.count} max={maxElementCount} style={{ marginTop: 6 }} />
-        </div>
+        <Typography.Text strong>{numberText(record.count)}</Typography.Text>
       ),
     },
   ];
@@ -171,13 +169,17 @@ export default function AnalyticsHeatmapTab() {
   const rageColumns: ColumnProps<RageClickRow>[] = [
     {
       title: '元素',
-      dataIndex: 'elementKey',
+      dataIndex: 'elementLabel',
+      width: 160,
       render: (_value, record) => (
-        <div>
-          <Typography.Text strong>{record.elementLabel || record.elementKey || '未识别元素'}</Typography.Text>
-          <div><Typography.Text type="tertiary" size="small">{record.elementKey}</Typography.Text></div>
-        </div>
+        <Typography.Text strong ellipsis={{ showTooltip: true }}>{record.elementLabel || record.elementKey || '未识别元素'}</Typography.Text>
       ),
+    },
+    {
+      title: '元素标识',
+      dataIndex: 'elementKey',
+      minWidth: 160,
+      render: (value: string | null) => renderEllipsis(value),
     },
     { title: '发生次数', dataIndex: 'count', width: 110, align: 'right', render: (value) => <Tag color="red">{numberText(Number(value))}</Tag> },
     { title: '影响人数', dataIndex: 'uniqueUsers', width: 110, align: 'right', render: (value) => numberText(Number(value)) },

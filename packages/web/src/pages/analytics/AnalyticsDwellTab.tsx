@@ -3,9 +3,9 @@ import { useMemo } from 'react';
 import { Card, Select, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { BarChart3, Clock, Eye } from 'lucide-react';
-import { DataBar } from '@/components/data-viz/DataBar';
 import { TreemapChart, chartOptions, makeTreemapSpec, datumNumber, useChartPalette, StatCard, StatGrid, type TreemapNode } from '@/components/charts';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
+import { renderEllipsis } from '@/utils/table-columns';
 import { usePagination } from '@/hooks/usePagination';
 import { useAnalyticsPageStats } from '@/hooks/queries/analytics';
 import type { PageStats } from '@zenith/shared/analytics';
@@ -83,7 +83,6 @@ export default function AnalyticsDwellTab() {
     () => (chartQuery.data?.list ?? []).map((item) => ({ ...item, id: item.pagePath })),
     [chartQuery.data],
   );
-  const maxAvg = useMemo(() => Math.max(1, ...rows.map((item) => item.avgMs ?? 0)), [rows]);
   const avgDwell = data?.avgDwellMs ?? null;
   const dwellTreemapData = useMemo(() => buildDwellTreemap(chartRows), [chartRows]);
   const dwellTreemapSpec = useMemo(() => makeTreemapSpec({
@@ -100,26 +99,26 @@ export default function AnalyticsDwellTab() {
   const columns: ColumnProps<PageStatsRow>[] = [
     {
       title: '页面',
-      dataIndex: 'pagePath',
-      width: 320,
+      dataIndex: 'pageTitle',
+      width: 180,
       render: (_value, record) => (
-        <div>
-          <Typography.Text strong ellipsis={{ showTooltip: true }}>{record.pageTitle || record.pagePath}</Typography.Text>
-          <div><Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }}>{record.pagePath}</Typography.Text></div>
-        </div>
+        <Typography.Text strong ellipsis={{ showTooltip: true }}>{record.pageTitle || record.pagePath}</Typography.Text>
       ),
+    },
+    {
+      title: '路径',
+      dataIndex: 'pagePath',
+      minWidth: 200,
+      render: (value) => renderEllipsis(String(value)),
     },
     { title: '访问次数', dataIndex: 'visits', width: 120, align: 'right', render: (value) => numberText(Number(value)) },
     {
       title: '平均停留',
       align: 'right',
       dataIndex: 'avgMs',
-      width: 220,
+      width: 130,
       render: (_value, record) => (
-        <div>
-          <Typography.Text strong>{msToReadable(record.avgMs)}</Typography.Text>
-          <DataBar value={record.avgMs ?? 0} max={maxAvg} style={{ marginTop: 6 }} />
-        </div>
+        <Typography.Text strong>{msToReadable(record.avgMs)}</Typography.Text>
       ),
     },
     { title: '中位数', dataIndex: 'medianMs', width: 120, align: 'right', render: (_value, record) => msToReadable(record.medianMs) },

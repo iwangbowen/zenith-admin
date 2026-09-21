@@ -2,7 +2,6 @@
 import { useMemo } from 'react';
 import { Card, Select, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { DataBar } from '@/components/data-viz/DataBar';
 import { TreemapChart, chartOptions, makeTreemapSpec, useChartPalette, type TreemapNode } from '@/components/charts';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { usePagination } from '@/hooks/usePagination';
@@ -82,7 +81,6 @@ export default function AnalyticsFeatureTab() {
     id: `${item.pagePath}:${item.elementKey}:${index}`,
     rank: index + 1,
   })), [chartQuery.data]);
-  const maxCount = useMemo(() => Math.max(1, ...rows.map((item) => item.count)), [rows]);
   const treemapData = useMemo(() => buildFeatureTreemap(chartRows), [chartRows]);
   const treemapSpec = useMemo(() => makeTreemapSpec({
     data: treemapData,
@@ -94,14 +92,17 @@ export default function AnalyticsFeatureTab() {
     { title: '排名', dataIndex: 'rank', width: 90, render: (value) => <Tag color={Number(value) <= 3 ? 'orange' : 'grey'}>#{String(value)}</Tag> },
     {
       title: '功能',
-      dataIndex: 'elementKey',
-      width: 260,
+      dataIndex: 'elementLabel',
+      width: 170,
       render: (_value, record) => (
-        <div>
-          <Typography.Text strong>{elementDisplayName(record.elementLabel, record.elementKey)}</Typography.Text>
-          <div><Typography.Text type="tertiary" size="small">{record.elementKey}</Typography.Text></div>
-        </div>
+        <Typography.Text strong ellipsis={{ showTooltip: true }}>{elementDisplayName(record.elementLabel, record.elementKey)}</Typography.Text>
       ),
+    },
+    {
+      title: '元素标识',
+      dataIndex: 'elementKey',
+      minWidth: 160,
+      render: (value) => renderEllipsis(String(value)),
     },
     { title: 'UI区域', dataIndex: 'componentArea', width: 140, render: (_value, record) => (record.componentArea ? <Tag color="blue">{record.componentArea}</Tag> : <Tag color="grey">未标记</Tag>) },
     { title: '所在页面', dataIndex: 'pagePath', width: 260, render: (value) => renderEllipsis(String(value)) },
@@ -109,12 +110,9 @@ export default function AnalyticsFeatureTab() {
       title: '使用次数',
       align: 'right',
       dataIndex: 'count',
-      width: 240,
+      width: 130,
       render: (_value, record) => (
-        <div>
-          <Typography.Text strong>{numberText(record.count)}</Typography.Text>
-          <DataBar value={record.count} max={maxCount} style={{ marginTop: 6 }} />
-        </div>
+        <Typography.Text strong>{numberText(record.count)}</Typography.Text>
       ),
     },
   ];

@@ -3,7 +3,6 @@ import { useMemo, useState } from 'react';
 import { Card, Select, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Activity, BarChart3, RefreshCcw } from 'lucide-react';
-import { DataBar } from '@/components/data-viz/DataBar';
 import { SankeyChart, chartOptions, makeSankeySpec, datumNumber, datumText, useChartPalette, StatCard, StatGrid } from '@/components/charts';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { renderEllipsis } from '@/utils/table-columns';
@@ -110,7 +109,6 @@ export default function AnalyticsPathTab() {
       sourceLabel: pathNodeText(nodeLabelMap.get(link.source) ?? link.source),
       targetLabel: pathNodeText(nodeLabelMap.get(link.target) ?? link.target),
     })), [links, nodeLabelMap]);
-  const maxValue = useMemo(() => Math.max(1, ...rows.map((row) => row.value)), [rows]);
   // 图与表同源（都来自这一次查询的 links），表格在本地切页即可，不需要再发一次请求
   const pagedRows = useMemo(() => rows.slice((page - 1) * pageSize, page * pageSize), [rows, page, pageSize]);
 
@@ -127,12 +125,9 @@ export default function AnalyticsPathTab() {
       title: '跳转次数',
       align: 'right',
       dataIndex: 'value',
-      width: 220,
+      width: 120,
       render: (_value, record) => (
-        <div>
-          <Typography.Text strong>{numberText(record.value)}</Typography.Text>
-          <DataBar value={record.value} max={maxValue} style={{ marginTop: 6 }} />
-        </div>
+        <Typography.Text strong>{numberText(record.value)}</Typography.Text>
       ),
     },
     {

@@ -6,7 +6,6 @@ import { Banner, Button, Col, Form, Input, InputNumber, Modal, Row, SideSheet, S
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, Trash2 } from 'lucide-react';
 import type { AnalyticsExperiment, AnalyticsExperimentReportVariant, AnalyticsExperimentVariant, CreateAnalyticsExperimentInput } from '@zenith/shared/analytics';
-import { DataBar } from '@/components/data-viz/DataBar';
 import { ANALYTICS_EXPERIMENT_STATUS_LABELS, ANALYTICS_EXPERIMENT_STATUS_OPTIONS } from '@zenith/shared/analytics';
 import { AppModal } from '@/components/AppModal';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
@@ -211,7 +210,6 @@ export default function AnalyticsExperimentsTab() {
   ];
 
   const reportRows = reportQuery.data?.variants ?? [];
-  const maxRate = Math.max(...reportRows.map((item) => item.conversionRate), 1);
   const report = reportQuery.data ?? null;
   const controlRow = reportRows.find((row) => row.isControl) ?? null;
   // 曝光量未达估算样本量时，「不显著」只说明样本不够，不能解读为「没有效果」
@@ -330,7 +328,7 @@ export default function AnalyticsExperimentsTab() {
             ) },
             { title: '曝光用户', dataIndex: 'exposures', width: 100, align: 'right', render: (value: number) => value.toLocaleString() },
             { title: '转化用户', dataIndex: 'conversions', width: 100, align: 'right', render: (value: number) => value.toLocaleString() },
-            { title: '转化率', dataIndex: 'conversionRate', width: 220, align: 'right', render: (value: number) => <Space style={{ width: '100%' }}><Typography.Text style={{ width: 56 }}>{value.toFixed(1)}%</Typography.Text><DataBar value={value} max={maxRate} style={{ width: 140 }} /></Space> },
+            { title: '转化率', dataIndex: 'conversionRate', width: 110, align: 'right', render: (value: number) => <Typography.Text>{value.toFixed(1)}%</Typography.Text> },
             { title: '相对提升', dataIndex: 'relativeUplift', width: 110, align: 'right', render: (value: number | null, record) => (
               record.isControl ? <Typography.Text type="tertiary">基准</Typography.Text>
                 : value == null ? '–'
