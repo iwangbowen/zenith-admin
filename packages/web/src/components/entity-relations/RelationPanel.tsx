@@ -1,6 +1,8 @@
-import { lazy, Suspense, useState } from 'react';
-import { Button, Collapse, Empty, List, Space, Spin, Tag, Typography } from '@douyinfe/semi-ui';
-import type { EntityRelationSection, CanonicalEntityType } from '@zenith/shared/platform';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Button, Collapse, Empty, List, Space, Spin, Tag, Tooltip, Typography } from '@douyinfe/semi-ui';
+import type { EntityRelationSection, EntityRelationSummaryState, CanonicalEntityType } from '@zenith/shared/platform';
+import { CircleAlert, CircleCheck, CircleOff, CircleSlash2, RefreshCw } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useEntityAccessKey, useEntityRelationSection, useEntityRelations, useUnlinkEntity } from '@/hooks/queries/entity-relations';
 import { entityRelationLabel, entityStatusLabel } from '@/utils/entity-relations';
 import DateTimeText from '@/components/DateTimeText';
@@ -10,6 +12,35 @@ import { confirmAndDelete } from '@/components/list-page';
 const WorkflowPrintButton = lazy(() => import('@/components/workflow/WorkflowPrintButton'));
 const WorkflowAttachmentView = lazy(() => import('./WorkflowAttachmentView'));
 
+const RELATION_SUMMARY_PRESENTATION: Record<EntityRelationSummaryState, {
+  readonly label: string;
+  readonly Icon: LucideIcon;
+  readonly color: string;
+}> = {
+  'has-data': { label: '有记录', Icon: CircleCheck, color: 'var(--semi-color-success)' },
+  empty: { label: '暂无记录', Icon: CircleSlash2, color: 'var(--semi-color-tertiary)' },
+  attention: { label: '需处理', Icon: CircleAlert, color: 'var(--semi-color-warning)' },
+  unavailable: { label: '暂不可用', Icon: CircleOff, color: 'var(--semi-color-danger)' },
+};
+
+function RelationSectionHeader({ section, summaryState }: {
+  readonly section: EntityRelationSection;
+  readonly summaryState: EntityRelationSummaryState;
+}) {
+  const label = entityRelationLabel(section.labelKey, section.targetTypes);
+  const presentation = RELATION_SUMMARY_PRESENTATION[summaryState];
+  const statusLabel = `${label}：${presentation.label}`;
+  const Icon = presentation.Icon;
+  return <Space spacing={6} aria-label={statusLabel}>
+    <Tooltip content={statusLabel}>
+      <span role="img" aria-label={statusLabel} style={{ color: presentation.color, display: 'inline-flex' }}>
+        <Icon size={15} aria-hidden="true" />
+      </span>
+    </Tooltip>
+    <span>{label}</span>
+  </Space>;
+}
+
 interface RelationPanelProps {
   readonly entityType: CanonicalEntityType;
   readonly entityKey: string | undefined;
@@ -17,30 +48,47 @@ interface RelationPanelProps {
   readonly showAnchor?: boolean;
 }
 
-function RelationSectionView({ entityType, entityKey, section, active, canManageLinks }: {
+type RelationSectionQuery = ReturnType<typeof useEntityRelationSection>;
+
+function RelationSectionView({ entityType, entityKey, section, active, canManageLinks, onSummaryStateChange, query }: {
   readonly entityType: CanonicalEntityType;
   readonly entityKey: string;
   readonly section: EntityRelationSection;
   readonly active: boolean;
   readonly canManageLinks: boolean;
+  readonly onSummaryStateChange: (sectionKey: string, state: EntityRelationSummaryState) => void;
+  readonly query: RelationSectionQuery;
 }) {
-  const query = useEntityRelationSection(entityType, entityKey, section.key, active);
   const unlink = useUnlinkEntity();
   const pages = query.data?.pages ?? [];
   const items = pages.flatMap((page) => page.items).filter((item) => item.capabilities.view);
   const degraded = pages.some((page) => page.degraded);
-  return <>
-    <Space wrap spacing={8}>
-      {pages[0]?.total !== undefined && <Typography.Text type="tertiary">共 {pages[0].total} 条</Typography.Text>}
-      <Button size="small" theme="borderless" loading={query.isRefetching} onClick={() => void query.refetch()}>刷新</Button>
-    </Space>
-    {query.isLoading && <Spin size="small" />}
-    {(query.isError || degraded) && <Space wrap spacing={8}>
-      <Typography.Text type="danger">{degraded ? '部分关联记录暂时不可用' : '关联记录加载失败'}</Typography.Text>
-      <Button size="small" onClick={() => void (query.isFetchNextPageError ? query.fetchNextPage() : query.refetch())}>重试</Button>
-    </Space>}
-    {!query.isLoading && !query.isError && !degraded && items.length === 0 && <Empty description="暂无关联记录" />}
-    {items.length > 0 && <List size="small" split dataSource={items} renderItem={(item) => <List.Item key={`${item.ref.type}:${item.ref.key}`}
+  const sectionLoading = query.isLoading;
+  const sectionError = query.isError;
+  const hasResponse = query.data !== undefined;
+  useEffect(() => {
+    if (!active || sectionLoading) return;
+    if (sectionError || degraded) {
+      onSummaryStateChange(section.key, 'unavailable');
+      return;
+    }
+    if (!hasResponse) return;
+    onSummaryStateChange(section.key, items.length > 0 ? (section.summaryState === 'attention' ? 'attention' : 'has-data') : 'empty');
+  }, [active, degraded, hasResponse, items.length, onSummaryStateChange, section.key, section.summaryState, sectionError, sectionLoading]);
+  const label = entityRelationLabel(section.labelKey, section.targetTypes);
+  return <div style={{ position: 'relative' }}>
+    <Tooltip content={`刷新${label}`}>
+      <Button size="small" theme="borderless" icon={<RefreshCw size={14} />} loading={query.isRefetching} aria-label={`刷新${label}`} style={{ position: 'absolute', top: 0, right: 0 }}
+        onClick={(event) => { event.stopPropagation(); void query.refetch(); }} />
+    </Tooltip>
+    <div style={{ paddingTop: 4, paddingRight: 32 }}>
+      {query.isLoading && <Spin size="small" />}
+      {(query.isError || degraded) && <Space wrap spacing={8}>
+        <Typography.Text type="danger">{degraded ? '部分关联记录暂时不可用' : '关联记录加载失败'}</Typography.Text>
+        <Button size="small" onClick={() => void (query.isFetchNextPageError ? query.fetchNextPage() : query.refetch())}>重试</Button>
+      </Space>}
+      {!query.isLoading && !query.isError && !degraded && items.length === 0 && <Empty description="暂无关联记录" />}
+      {items.length > 0 && <List size="small" split dataSource={items} renderItem={(item) => <List.Item key={`${item.ref.type}:${item.ref.key}`}
       extra={canManageLinks && section.labelKey === 'relation.common.related' ? <Button size="small" theme="borderless" type="danger" disabled={unlink.isPending} onClick={() => confirmAndDelete({
         title: `解除与「${item.title}」的关联？`, okText: '解除关联', successMessage: '已解除关联',
         run: () => unlink.mutateAsync({ params: { type: entityType, key: entityKey }, body: { target: item.ref } }),
@@ -52,16 +100,46 @@ function RelationSectionView({ entityType, entityKey, section, active, canManage
         {item.description && <div><Typography.Text type="tertiary">{item.description}</Typography.Text></div>}
         {item.occurredAt && <div><Typography.Text type="tertiary"><DateTimeText value={item.occurredAt} /></Typography.Text></div>}
       </div>} />} />}
-    {query.hasNextPage && <Button size="small" loading={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>加载更多</Button>}
-  </>;
+      {query.hasNextPage && <Button size="small" loading={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>加载更多</Button>}
+    </div>
+  </div>;
+}
+
+function RelationGroupItem({ entityType, entityKey, section, active, summaryState, canManageLinks, onSummaryStateChange }: {
+  readonly entityType: CanonicalEntityType;
+  readonly entityKey: string;
+  readonly section: EntityRelationSection;
+  readonly active: boolean;
+  readonly summaryState: EntityRelationSummaryState;
+  readonly canManageLinks: boolean;
+  readonly onSummaryStateChange: (sectionKey: string, state: EntityRelationSummaryState) => void;
+}) {
+  const query = useEntityRelationSection(entityType, entityKey, section.key, active);
+  return <Collapse.Panel key={section.key} itemKey={section.key}
+    header={<RelationSectionHeader section={section} summaryState={summaryState} />}>
+    <RelationSectionView entityType={entityType} entityKey={entityKey} section={section} active={active} canManageLinks={canManageLinks}
+      onSummaryStateChange={onSummaryStateChange} query={query} />
+  </Collapse.Panel>;
 }
 
 function RelationGroups({ entityType, entityKey, sections, canManageLinks }: { readonly entityType: CanonicalEntityType; readonly entityKey: string; readonly sections: EntityRelationSection[]; readonly canManageLinks: boolean }) {
   const [activeKeys, setActiveKeys] = useState<string[]>([]);
+  const defaultSummaryStates = useMemo(() => Object.fromEntries(
+    sections.map((section) => [section.key, section.summaryState]),
+  ), [sections]);
+  const [summaryStates, setSummaryStates] = useState<Record<string, EntityRelationSummaryState>>(() => Object.fromEntries(
+    sections.map((section) => [section.key, section.summaryState]),
+  ));
+  useEffect(() => {
+    setSummaryStates(defaultSummaryStates);
+  }, [defaultSummaryStates]);
+  const updateSummaryState = useCallback((sectionKey: string, state: EntityRelationSummaryState) => {
+    setSummaryStates((previous) => previous[sectionKey] === state ? previous : { ...previous, [sectionKey]: state });
+  }, []);
   return <Collapse activeKey={activeKeys} onChange={(keys) => setActiveKeys(Array.isArray(keys) ? keys.map(String) : [String(keys)])}>
-    {sections.filter((section) => section.capabilities.view).map((section) => <Collapse.Panel key={section.key} itemKey={section.key} header={entityRelationLabel(section.labelKey, section.targetTypes)}>
-      <RelationSectionView entityType={entityType} entityKey={entityKey} section={section} active={activeKeys.includes(section.key)} canManageLinks={canManageLinks} />
-    </Collapse.Panel>)}
+    {sections.filter((section) => section.capabilities.view).map((section) => <RelationGroupItem key={section.key} entityType={entityType} entityKey={entityKey}
+      section={section} active={activeKeys.includes(section.key)} summaryState={summaryStates[section.key] ?? 'unavailable'} canManageLinks={canManageLinks}
+      onSummaryStateChange={updateSummaryState} />)}
   </Collapse>;
 }
 

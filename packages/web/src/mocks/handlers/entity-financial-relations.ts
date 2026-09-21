@@ -22,7 +22,7 @@ const definitions: Partial<Record<CanonicalEntityType, Array<[string, CanonicalE
 
 export function mockFinancialSections(type: CanonicalEntityType): EntityRelationSection[] {
   return (definitions[type] ?? []).map(([suffix, targetType]) => ({ key: `${type}.${suffix}`, labelKey: `relation.${type}.${suffix}`, targetTypes: [targetType],
-    kind: 'derived', cardinality: 'many', capabilities: { view: true, open: true } }));
+    kind: 'derived', cardinality: 'many', capabilities: { view: true, open: true }, summaryState: 'unavailable' }));
 }
 
 export function mockFinancialItem(value: CanonicalEntityRef, relationKey = ''): EntityRelationItem | undefined {

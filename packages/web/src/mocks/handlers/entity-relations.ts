@@ -107,11 +107,11 @@ function sectionsFor(type: CanonicalEntityType, session: MockSession, key: strin
     'cms.content': [['cms.content.related', 'cms.content']],
   };
   const sections: EntityRelationSection[] = (definitions[type] ?? []).filter(([, target]) => canReadType(session, target)).map(([key, target]) => ({
-    key, labelKey: `relation.${key}`, targetTypes: [target], kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true },
+    key, labelKey: `relation.${key}`, targetTypes: [target], kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true }, summaryState: 'unavailable',
   }));
   sections.push(...mockFinancialSections(type).filter((section) => section.targetTypes.some((target) => canReadType(session, target))));
   const addWorkflowSection = (suffix: string, target: CanonicalEntityType) => {
-    if (canReadType(session, target)) sections.push({ key: `${type}.${suffix}`, labelKey: `relation.${type}.${suffix}`, targetTypes: [target], kind: 'derived', cardinality: 'many', capabilities: { view: true, open: true } });
+    if (canReadType(session, target)) sections.push({ key: `${type}.${suffix}`, labelKey: `relation.${type}.${suffix}`, targetTypes: [target], kind: 'derived', cardinality: 'many', capabilities: { view: true, open: true }, summaryState: 'unavailable' });
   };
   if (WORKFLOW_BUSINESS_ENTITY_TYPES.some((item) => item.entityType === type)) {
     addWorkflowSection('workflow-instances', 'workflow.instance'); addWorkflowSection('archives', 'workflow.archive'); addWorkflowSection('attachments', 'workflow.attachment');
@@ -126,13 +126,17 @@ function sectionsFor(type: CanonicalEntityType, session: MockSession, key: strin
   if (type === 'workflow.attachment') { addWorkflowSection('instance', 'workflow.instance'); addWorkflowSection('approval-tasks', 'workflow.task'); }
   if (type === 'workflow.archive') addWorkflowSection('instance', 'workflow.instance');
   if (['platform.operation-log', 'tasks.async', 'notification.outbox'].includes(type)) {
-    sections.push({ key: `${type}.subjects`, labelKey: 'relation.common.subjects', targetTypes: [...ENTITY_RELATION_TYPES], kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true } });
+    sections.push({ key: `${type}.subjects`, labelKey: 'relation.common.subjects', targetTypes: [...ENTITY_RELATION_TYPES], kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true }, summaryState: 'unavailable' });
   }
   for (const [suffix, target] of [['audit', 'platform.operation-log'], ['tasks', 'tasks.async'], ['notifications', 'notification.outbox']] as const) {
-    if (canReadType(session, target)) sections.push({ key: `${type}.${suffix}`, labelKey: `relation.common.${suffix}`, targetTypes: [target], kind: 'activity', cardinality: 'many', capabilities: { view: true, open: true } });
+    if (canReadType(session, target)) sections.push({ key: `${type}.${suffix}`, labelKey: `relation.common.${suffix}`, targetTypes: [target], kind: 'activity', cardinality: 'many', capabilities: { view: true, open: true }, summaryState: 'unavailable' });
   }
-  sections.push({ key: `${type}.links`, labelKey: 'relation.common.related', targetTypes: [...ENTITY_RELATION_TYPES], kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true } });
-  return sections;
+  sections.push({ key: `${type}.links`, labelKey: 'relation.common.related', targetTypes: [...ENTITY_RELATION_TYPES], kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true }, summaryState: 'unavailable' });
+  return sections.map((section) => {
+    const items = relationItems({ type, key }, section.key, session);
+    const hasAttention = items.some((item) => ['pending', 'processing', 'failed', 'open'].includes(item.status ?? ''));
+    return { ...section, summaryState: hasAttention ? 'attention' : items.length > 0 ? 'has-data' : 'empty' };
+  });
 }
 
 function relationItems(ref: CanonicalEntityRef, sectionKey: string, session: MockSession): EntityRelationItem[] {
