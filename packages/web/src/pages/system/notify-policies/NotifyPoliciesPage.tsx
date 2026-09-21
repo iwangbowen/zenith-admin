@@ -20,6 +20,7 @@ import { formatDateTimeRangeForApi } from '@/utils/date';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
 import {
   notificationPolicyKeys,
   useNotificationDispatches,
@@ -307,18 +308,21 @@ function DispatchLogTab() {
 export default function NotifyPoliciesPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['events', 'dispatches'] as const, 'events');
   const [searchParams, setSearchParams] = useSearchParams();
-  const outboxParam = searchParams.get('outboxId');
-  const outboxId = outboxParam && /^[1-9]\d*$/.test(outboxParam) && Number.isSafeInteger(Number(outboxParam)) ? Number(outboxParam) : undefined;
   const [detailId, setDetailId] = useState<number>();
   const detailQuery = useNotificationOutboxDetail(detailId, detailId !== undefined);
-  const linkedQuery = useNotificationOutboxDetail(outboxId, outboxId !== undefined);
+  useListDeepLink(['outboxId'], (params) => {
+    const id = params.outboxId && /^[1-9]\d*$/.test(params.outboxId) && Number.isSafeInteger(Number(params.outboxId)) ? Number(params.outboxId) : undefined;
+    if (id !== undefined) {
+      setActiveTab('dispatches');
+      setDetailId(id);
+    }
+  }, { getNextParams: (params) => {
+    const id = params.outboxId && /^[1-9]\d*$/.test(params.outboxId) && Number.isSafeInteger(Number(params.outboxId));
+    return id ? { tab: 'dispatches' } : undefined;
+  } });
   useEffect(() => {
-    if (!outboxId) return;
-    if (linkedQuery.isError) Toast.error('通知事件不存在或无权查看');
-    else if (linkedQuery.data) { setActiveTab('dispatches'); setDetailId(outboxId); }
-    else return;
-    const next = new URLSearchParams(searchParams); next.delete('outboxId'); setSearchParams(next, { replace: true });
-  }, [linkedQuery.data, linkedQuery.isError, outboxId, searchParams, setActiveTab, setSearchParams]);
+    if (detailId !== undefined && detailQuery.isError) Toast.error('通知事件不存在或无权查看');
+  }, [detailId, detailQuery.isError]);
   function closeDetail() { setDetailId(undefined); if (!searchParams.has('outboxId')) return; const next = new URLSearchParams(searchParams); next.delete('outboxId'); setSearchParams(next, { replace: true }); }
 
   return (

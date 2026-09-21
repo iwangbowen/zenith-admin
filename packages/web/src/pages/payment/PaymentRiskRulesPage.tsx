@@ -34,6 +34,7 @@ import { deleteAction, useStatusToggle, ListSearchToolbar, listTableProps } from
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useListPage } from '@/hooks/useListPage';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
 import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
 import { EditFormModal } from '@/components/EditFormModal';
@@ -68,10 +69,6 @@ type ReviewDecision = 'approve' | 'reject';
 
 export default function PaymentRiskRulesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const hitParam = searchParams.get('hitId');
-  const reviewParam = searchParams.get('reviewId');
-  const linkedHitId = hitParam && /^[1-9]\d*$/.test(hitParam) && Number.isSafeInteger(Number(hitParam)) ? Number(hitParam) : undefined;
-  const linkedReviewId = reviewParam && /^[1-9]\d*$/.test(reviewParam) && Number.isSafeInteger(Number(reviewParam)) ? Number(reviewParam) : undefined;
   const { items: statusItems, options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const canReview = hasPermission('payment:risk:review');
@@ -126,29 +123,38 @@ export default function PaymentRiskRulesPage() {
   });
   const hitDetailQuery = usePaymentRiskHitDetail(hitDetailId, hitDetailId !== undefined);
   const reviewDetailQuery = usePaymentRiskReviewDetail(reviewDetailId, reviewDetailId !== undefined);
-  const linkedHitQuery = usePaymentRiskHitDetail(linkedHitId, linkedHitId !== undefined);
-  const linkedReviewQuery = usePaymentRiskReviewDetail(linkedReviewId, linkedReviewId !== undefined);
+
+  useListDeepLink(['hitId', 'reviewId'], (params) => {
+    const hitId = params.hitId && /^[1-9]\d*$/.test(params.hitId) && Number.isSafeInteger(Number(params.hitId)) ? Number(params.hitId) : undefined;
+    const reviewId = params.reviewId && /^[1-9]\d*$/.test(params.reviewId) && Number.isSafeInteger(Number(params.reviewId)) ? Number(params.reviewId) : undefined;
+    if (hitId !== undefined) {
+      setActiveTab('hits');
+      setHitDetailId(hitId);
+      setReviewDetailId(undefined);
+    } else if (reviewId !== undefined) {
+      setActiveTab('reviews');
+      setReviewDetailId(reviewId);
+      setHitDetailId(undefined);
+    }
+  }, {
+    getNextParams: (params) => {
+      const hitId = params.hitId && /^[1-9]\d*$/.test(params.hitId) && Number.isSafeInteger(Number(params.hitId));
+      const reviewId = params.reviewId && /^[1-9]\d*$/.test(params.reviewId) && Number.isSafeInteger(Number(params.reviewId));
+      return hitId ? { tab: 'hits' } : reviewId ? { tab: 'reviews' } : undefined;
+    },
+  });
 
   useEffect(() => {
-    const linked = linkedHitId !== undefined ? { id: linkedHitId, query: linkedHitQuery, tab: 'hits' as const } : linkedReviewId !== undefined ? { id: linkedReviewId, query: linkedReviewQuery, tab: 'reviews' as const } : null;
-    if (!linked) return;
-    if (linked.query.isError) {
-      Toast.error('风控记录不存在或无权查看');
-    } else if (linked.query.data) {
-      setActiveTab(linked.tab);
-      if (linked.tab === 'hits') setHitDetailId(linked.id); else setReviewDetailId(linked.id);
-    } else return;
-    const next = new URLSearchParams(searchParams);
-    next.delete(linked.tab === 'hits' ? 'hitId' : 'reviewId');
-    setSearchParams(next, { replace: true });
-  }, [linkedHitId, linkedHitQuery, linkedReviewId, linkedReviewQuery, searchParams, setActiveTab, setSearchParams]);
+    if (hitDetailId !== undefined && hitDetailQuery.isError) Toast.error('风控记录不存在或无权查看');
+    if (reviewDetailId !== undefined && reviewDetailQuery.isError) Toast.error('风控记录不存在或无权查看');
+  }, [hitDetailId, hitDetailQuery.isError, reviewDetailId, reviewDetailQuery.isError]);
 
   function openRiskDetail(type: 'hit' | 'review', id: number) {
     const next = new URLSearchParams(searchParams);
     next.set('tab', type === 'hit' ? 'hits' : 'reviews');
     next.set(type === 'hit' ? 'hitId' : 'reviewId', String(id));
     setSearchParams(next, { replace: true });
-    if (type === 'hit') setHitDetailId(id); else setReviewDetailId(id);
+    if (type === 'hit') { setHitDetailId(id); setReviewDetailId(undefined); } else { setReviewDetailId(id); setHitDetailId(undefined); }
   }
 
   function closeRiskDetail(type: 'hit' | 'review') {

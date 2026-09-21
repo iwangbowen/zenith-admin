@@ -43,6 +43,21 @@ describe('useListDeepLink', () => {
     expect([...new Set(observed)]).toEqual(['?keyword=first&view=compact', '?view=compact&tab=cases']);
   });
 
+  it('consumes competing detail parameters together while selecting one target tab', async () => {
+    const apply = vi.fn();
+    const hook = renderHook(() => {
+      useListDeepLink(['hitId', 'reviewId'], apply, {
+        getNextParams: (params) => ({ tab: params.hitId ? 'hits' : 'reviews' }),
+      });
+      return useLocation();
+    }, {
+      wrapper: ({ children }: { children: ReactNode }) => <MemoryRouter initialEntries={['/list?hitId=7&reviewId=11&view=compact']}>{children}</MemoryRouter>,
+    });
+
+    await waitFor(() => expect(hook.result.current.search).toBe('?view=compact&tab=hits'));
+    expect(apply).toHaveBeenCalledExactlyOnceWith({ hitId: '7', reviewId: '11' });
+  });
+
   it('preserves parameters inside the Electron hash route', async () => {
     window.history.replaceState(null, '', '/#/list?keyword=first&view=compact');
     const apply = vi.fn();
