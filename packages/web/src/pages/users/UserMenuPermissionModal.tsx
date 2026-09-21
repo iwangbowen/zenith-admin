@@ -52,17 +52,21 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
     onClose();
   };
 
-  /** 构造有效权限 Tab 里的来源 Tag（同一菜单可能有多个来源） */
+  /** 构造有效权限 Tab 里的具体来源 Tag（同一菜单可能有多个来源） */
   function buildLabelSuffix(): Record<string, React.ReactNode> {
-    const directSet = new Set(directMenuIds);
-    const roleSet = new Set(roleMenuIds);
-    const groupSet = new Set(groupMenuIds);
+    const menuSources = permissionsQuery.data?.menuSources ?? {};
     const result: Record<string, React.ReactNode> = {};
     for (const id of effectiveMenuIds) {
-      const tags: React.ReactNode[] = [];
-      if (roleSet.has(id)) tags.push(<Tag key="role" size="small" color="blue">角色</Tag>);
-      if (groupSet.has(id)) tags.push(<Tag key="group" size="small" color="orange">用户组</Tag>);
-      if (directSet.has(id)) tags.push(<Tag key="direct" size="small" color="green">用户</Tag>);
+      const sources = menuSources[String(id)] ?? [];
+      const tags = sources.map((source) => (
+        <Tag
+          key={source}
+          size="small"
+          color={source === '用户直接授权' ? 'green' : source.includes('用户组：') ? 'orange' : 'blue'}
+        >
+          {source}
+        </Tag>
+      ));
       result[String(id)] = <Space spacing={4} style={{ marginLeft: 4 }}>{tags}</Space>;
     }
     return result;
@@ -91,7 +95,20 @@ export function UserMenuPermissionModal({ userId, userName, visible, onClose }: 
         </TabPane>
         <TabPane tab="最终有效权限" itemKey="effective">
           <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--semi-color-text-2)' }}>
-            最终权限 = 角色权限 ∪ 用户组继承 ∪ 用户直接授权，仅供预览
+            <div>最终权限 = 角色权限 ∪ 用户组继承 ∪ 用户直接授权，仅供预览</div>
+            <div style={{ marginTop: 6 }}>
+              权限来源：
+              {[...new Set(Object.values(permissionsQuery.data?.menuSources ?? {}).flat())].map((source) => (
+                <Tag
+                  key={source}
+                  size="small"
+                  color={source === '用户直接授权' ? 'green' : source.includes('用户组：') ? 'orange' : 'blue'}
+                  style={{ marginLeft: 4 }}
+                >
+                  {source}
+                </Tag>
+              ))}
+            </div>
             {groups.length > 0 && (
               <span style={{ marginLeft: 8 }}>
                 继承自用户组：{groups.map((g) => <Tag key={g.id} size="small" color="orange" style={{ marginLeft: 4 }}>{g.name}</Tag>)}

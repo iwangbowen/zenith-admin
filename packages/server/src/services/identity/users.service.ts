@@ -681,7 +681,7 @@ export async function assignRolesToUser(userId: number, roleIds: number[]) {
 const getMostPermissiveScope = mostPermissiveDataScope;
 
 const groupRolesWith = enabledGroupRolesWith({
-  columns: { status: true, dataScope: true },
+  columns: { id: true, name: true, code: true, status: true, dataScope: true },
   with: {
     roleMenus: { columns: { menuId: true } },
     deptScopes: { columns: { deptId: true } },
@@ -695,7 +695,7 @@ function extractGroupInheritance(
       id: number;
       name: string;
       status: string;
-      groupRoles: Array<{ role: { status: string; dataScope: string; roleMenus: Array<{ menuId: number }>; deptScopes: Array<{ deptId: number }> } }>;
+      groupRoles: Array<{ role: { id: number; name: string; code: string; status: string; dataScope: string; roleMenus: Array<{ menuId: number }>; deptScopes: Array<{ deptId: number }> } }>;
     };
   }> | undefined,
 ) {
@@ -705,7 +705,24 @@ function extractGroupInheritance(
   const groupDeptScopeIds = [...new Set(
     roles.filter((r) => r.dataScope === 'custom').flatMap((r) => r.deptScopes.map((ds) => ds.deptId))
   )];
-  return { groupMenuIds, groupDataScope, groupDeptScopeIds, groups };
+  const inheritedRoleGroups = new Map<number, { id: number; name: string; code: string; groupNames: Set<string> }>();
+  for (const membership of memberships ?? []) {
+    if (membership.group.status !== 'enabled') continue;
+    for (const groupRole of membership.group.groupRoles) {
+      const role = groupRole.role;
+      if (role.status !== 'enabled') continue;
+      const existing = inheritedRoleGroups.get(role.id);
+      if (existing) existing.groupNames.add(membership.group.name);
+      else inheritedRoleGroups.set(role.id, {
+        id: role.id,
+        name: role.name,
+        code: role.code,
+        groupNames: new Set([membership.group.name]),
+      });
+    }
+  }
+  const inheritedRoles = [...inheritedRoleGroups.values()].map((role) => ({ ...role, groupNames: [...role.groupNames] }));
+  return { groupMenuIds, groupDataScope, groupDeptScopeIds, groups, inheritedRoles };
 }
 
 export async function getUserDataPermission(userId: number) {
@@ -782,7 +799,7 @@ export async function getUserEffectivePermissions(userId: number) {
         columns: {},
         with: {
           role: {
-            columns: { dataScope: true },
+            columns: { name: true, code: true, dataScope: true },
             with: {
               roleMenus: { columns: { menuId: true } },
               deptScopes: { columns: { deptId: true } },
@@ -794,11 +811,34 @@ export async function getUserEffectivePermissions(userId: number) {
     },
   }), '用户不存在');
 
-  const { groupMenuIds, groupDataScope, groupDeptScopeIds, groups } = extractGroupInheritance(user.userGroupMembers ?? []);
+  const { groupMenuIds, groupDataScope, groupDeptScopeIds, groups, inheritedRoles } = extractGroupInheritance(user.userGroupMembers ?? []);
 
   const directMenuIds = user.userMenus.map((m) => m.menuId);
   const roleMenuIds = [...new Set(user.userRoles.flatMap((ur) => ur.role.roleMenus.map((rm) => rm.menuId)))];
   const effectiveMenuIds = [...new Set([...directMenuIds, ...roleMenuIds, ...groupMenuIds])];
+  const menuSources = new Map<number, Set<string>>();
+  const addMenuSource = (menuId: number, source: string) => {
+    const sources = menuSources.get(menuId) ?? new Set<string>();
+    sources.add(source);
+    menuSources.set(menuId, sources);
+  };
+  for (const menuId of directMenuIds) addMenuSource(menuId, '用户直接授权');
+  for (const userRole of user.userRoles) {
+    for (const roleMenu of userRole.role.roleMenus) addMenuSource(roleMenu.menuId, `角色：${userRole.role.name}`);
+  }
+  for (const membership of user.userGroupMembers ?? []) {
+    if (membership.group.status !== 'enabled') continue;
+    for (const groupRole of membership.group.groupRoles) {
+      const role = groupRole.role;
+      if (role.status !== 'enabled') continue;
+      for (const roleMenu of role.roleMenus) {
+        addMenuSource(roleMenu.menuId, `角色：${role.name}（用户组：${membership.group.name}）`);
+      }
+    }
+  }
+  const menuSourcesResult = Object.fromEntries(
+    [...menuSources.entries()].map(([menuId, sources]) => [String(menuId), [...sources]])
+  );
 
   const userDataScope = user.userDataScope ?? null;
   const roleDataScope = getMostPermissiveScope(user.userRoles.map((ur) => ur.role.dataScope));
@@ -828,5 +868,7 @@ export async function getUserEffectivePermissions(userId: number) {
     groupDeptScopeIds,
     effectiveDeptScopeIds,
     groups,
+    inheritedRoles,
+    menuSources: menuSourcesResult,
   };
 }

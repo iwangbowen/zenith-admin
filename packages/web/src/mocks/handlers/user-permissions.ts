@@ -25,7 +25,23 @@ function getGroupInheritance(userId: number) {
     groupRoles.filter((r) => r.dataScope === 'custom').flatMap((r) => r.deptScopeIds ?? [])
   )];
   const groups = memberGroups.filter((g) => g.roleIds.length > 0).map((g) => ({ id: g.id, name: g.name }));
-  return { groupMenuIds, groupDataScope, groupDeptScopeIds, groups };
+  const inheritedRoleGroups = new Map<number, { id: number; name: string; code: string; groupNames: Set<string> }>();
+  for (const group of memberGroups) {
+    for (const roleId of group.roleIds) {
+      const role = mockRoles.find((item) => item.id === roleId && item.status === 'enabled');
+      if (!role) continue;
+      const existing = inheritedRoleGroups.get(role.id);
+      if (existing) existing.groupNames.add(group.name);
+      else inheritedRoleGroups.set(role.id, {
+        id: role.id,
+        name: role.name,
+        code: role.code,
+        groupNames: new Set([group.name]),
+      });
+    }
+  }
+  const inheritedRoles = [...inheritedRoleGroups.values()].map((role) => ({ ...role, groupNames: [...role.groupNames] }));
+  return { groupMenuIds, groupDataScope, groupDeptScopeIds, groups, inheritedRoles };
 }
 
 /** 用户直接分配的角色（以 mock 角色表为准，保证菜单 / 数据权限字段最新） */
@@ -89,11 +105,33 @@ export const userPermissionsHandlers = [
     const user = requireItem(mockUsers, userId, '用户不存在', { status: 404 });
 
     const userRoles = getUserRoles(user.roles.map((r) => r.id));
-    const { groupMenuIds, groupDataScope, groupDeptScopeIds, groups } = getGroupInheritance(userId);
+    const { groupMenuIds, groupDataScope, groupDeptScopeIds, groups, inheritedRoles } = getGroupInheritance(userId);
 
     const directMenuIds = userMenuMap[userId] ?? [];
     const roleMenuIds = [...new Set(userRoles.flatMap((r) => r.menuIds ?? []))];
     const effectiveMenuIds = [...new Set([...directMenuIds, ...roleMenuIds, ...groupMenuIds])];
+    const menuSources = new Map<number, Set<string>>();
+    const addMenuSource = (menuId: number, source: string) => {
+      const sources = menuSources.get(menuId) ?? new Set<string>();
+      sources.add(source);
+      menuSources.set(menuId, sources);
+    };
+    for (const menuId of directMenuIds) addMenuSource(menuId, '用户直接授权');
+    for (const role of userRoles) {
+      for (const menuId of role.menuIds ?? []) addMenuSource(menuId, `角色：${role.name}`);
+    }
+    for (const group of mockUserGroups.filter((item) => item.status === 'enabled' && item.memberIds.includes(userId))) {
+      for (const roleId of group.roleIds) {
+        const role = mockRoles.find((item) => item.id === roleId && item.status === 'enabled');
+        if (!role) continue;
+        for (const menuId of role.menuIds ?? []) {
+          addMenuSource(menuId, `角色：${role.name}（用户组：${group.name}）`);
+        }
+      }
+    }
+    const menuSourcesResult = Object.fromEntries(
+      [...menuSources.entries()].map(([menuId, sources]) => [String(menuId), [...sources]])
+    );
 
     const userDataScope = userDataScopeMap[userId] ?? null;
     const roleDataScope = getMostPermissive(userRoles.map((r) => r.dataScope ?? null));
@@ -122,6 +160,8 @@ export const userPermissionsHandlers = [
       groupDeptScopeIds,
       effectiveDeptScopeIds,
       groups,
+      inheritedRoles,
+      menuSources: menuSourcesResult,
     });
   }),
 ];

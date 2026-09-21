@@ -73,6 +73,13 @@ export type UserMenuPermissions = z.infer<typeof userMenuPermissionsSchema>;
 
 const permissionGroupSchema = z.object({ id: z.int(), name: z.string() });
 
+const inheritedRoleSchema = z.object({
+  id: z.int(),
+  name: z.string(),
+  code: z.string(),
+  groupNames: z.array(z.string()).meta({ description: '继承来源用户组名称' }),
+}).meta({ id: 'InheritedRole' });
+
 export const userDataPermissionSchema = z.object({
   userDataScope: z.enum(DATA_SCOPES).nullable().meta({ description: '用户直接数据权限（null 表示未设置）' }),
   deptScopeIds: z.array(z.int()).meta({ description: '用户直接指定的部门 ID 列表' }),
@@ -99,6 +106,8 @@ export const userEffectivePermissionsSchema = z.object({
   groupDeptScopeIds: z.array(z.int()),
   effectiveDeptScopeIds: z.array(z.int()),
   groups: z.array(permissionGroupSchema).meta({ description: '带角色绑定的所属用户组' }),
+  inheritedRoles: z.array(inheritedRoleSchema).meta({ description: '通过用户组继承的角色及来源' }),
+  menuSources: z.record(z.string(), z.array(z.string())).meta({ description: '菜单 ID 到具体权限来源的映射' }),
 }).meta({ id: 'UserEffectivePermissions' });
 
 export type UserEffectivePermissions = z.infer<typeof userEffectivePermissionsSchema>;

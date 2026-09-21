@@ -46,6 +46,7 @@ import {
   useSaveUser,
   useUnlockUser,
   useUserDetail,
+  useUserEffectivePermissions,
   useUserList,
   userKeys,
 } from '@/hooks/queries/users';
@@ -162,6 +163,7 @@ export default function UsersPage() {
   const toggleStatusMutation = useBatchUserStatus();
   const batchPasswordMutation = useBatchUserPassword();
   const assignRolesMutation = useAssignUserRoles();
+  const roleEffectivePermissionsQuery = useUserEffectivePermissions(roleAssignUser?.id, roleAssignVisible);
   const kickSessionsMutation = useKickUserSessions();
   // 敏感字段（手机号 / 邮箱）对非豁免用户是掩码：编辑时锁定，提交前剔除未修改的锁定字段
   const sensitiveFieldsRef = useRef<ReturnType<typeof useSensitiveFormFields<User>> | null>(null);
@@ -984,16 +986,38 @@ export default function UsersPage() {
         cancelText="取消"
         width={480}
       >
-        <Select
-          multiple
-          filter
-          showClear
-          style={{ width: '100%' }}
-          value={roleAssignIds}
-          onChange={(v) => setRoleAssignIds((v as number[]) ?? [])}
-          optionList={allRoles.map((r) => ({ value: r.id, label: r.name }))}
-          placeholder="请选择要分配的角色"
-        />
+        <div>
+          <div style={{ marginBottom: 6, fontSize: 13, fontWeight: 600 }}>直接分配角色</div>
+          <Select
+            multiple
+            filter
+            showClear
+            style={{ width: '100%' }}
+            value={roleAssignIds}
+            onChange={(v) => setRoleAssignIds((v as number[]) ?? [])}
+            optionList={allRoles.map((r) => ({ value: r.id, label: r.name }))}
+            placeholder="请选择要分配的角色"
+          />
+        </div>
+        <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--semi-color-border)' }}>
+          <div style={{ marginBottom: 6, fontSize: 13, fontWeight: 600 }}>用户组继承角色</div>
+          <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--semi-color-text-2)' }}>
+            以下角色由用户组自动继承，只能在用户组中调整。
+          </div>
+          {roleEffectivePermissionsQuery.isFetching ? (
+            <div style={{ color: 'var(--semi-color-text-2)', fontSize: 12 }}>正在加载继承关系…</div>
+          ) : roleEffectivePermissionsQuery.data?.inheritedRoles.length ? (
+            <Space spacing={6} wrap>
+              {roleEffectivePermissionsQuery.data.inheritedRoles.map((role) => (
+                <Tag key={role.id} color="orange" style={{ marginBottom: 4 }}>
+                  {role.name}（来自：{role.groupNames.join('、')}）
+                </Tag>
+              ))}
+            </Space>
+          ) : (
+            <div style={{ color: 'var(--semi-color-text-2)', fontSize: 12 }}>暂无用户组继承角色</div>
+          )}
+        </div>
       </AppModal>
     </div>
   );
