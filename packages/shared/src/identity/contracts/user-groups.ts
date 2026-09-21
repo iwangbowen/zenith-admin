@@ -22,6 +22,15 @@ import { userPreviewSchema } from './user-preview';
  */
 export type UserGroupMemberRule = z.infer<typeof userGroupMemberRuleSchema>;
 
+export const userGroupRoleSchema = z.object({
+  id: z.int(),
+  name: z.string(),
+  code: z.string(),
+  status: entityStatusSchema,
+}).meta({ id: 'UserGroupRole' });
+
+export type UserGroupRole = z.infer<typeof userGroupRoleSchema>;
+
 export const userGroupSchema = z.object({
   id: z.int(),
   name: z.string().meta({ example: '研发部审批组' }),
@@ -35,6 +44,7 @@ export const userGroupSchema = z.object({
   memberCount: z.int().meta({ example: 5 }),
   memberPreview: z.array(userPreviewSchema).optional().meta({ description: '成员摘要（列表返回）' }),
   roleCount: z.int().optional().meta({ description: '绑定的角色数量' }),
+  rolePreview: z.array(userGroupRoleSchema).optional().meta({ description: '绑定角色摘要（列表返回）' }),
   status: entityStatusSchema,
   ...auditFieldsSchema,
   createdAt: z.string(),
@@ -54,15 +64,6 @@ export const userGroupMemberSchema = z.object({
 }).meta({ id: 'UserGroupMember' });
 
 export type UserGroupMember = z.infer<typeof userGroupMemberSchema>;
-
-export const userGroupRoleSchema = z.object({
-  id: z.int(),
-  name: z.string(),
-  code: z.string(),
-  status: entityStatusSchema,
-}).meta({ id: 'UserGroupRole' });
-
-export type UserGroupRole = z.infer<typeof userGroupRoleSchema>;
 
 const rulePreviewUserSchema = z.object({ id: z.int(), username: z.string(), nickname: z.string() });
 

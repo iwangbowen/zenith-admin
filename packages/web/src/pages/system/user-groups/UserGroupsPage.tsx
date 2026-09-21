@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Banner, Button, Form, Select, Space, Toast, SideSheet, Empty, Tag, Spin, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Form, Select, Space, Toast, SideSheet, Empty, Tag, Spin, Typography, OverflowList, Popover } from '@douyinfe/semi-ui';
 import { RefreshCw, Users } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
@@ -215,13 +215,43 @@ export default function UserGroupsPage() {
       getScope: (record) => ({ type: 'userGroup', id: record.id, name: record.name }),
     }),
     {
-      title: '角色', dataIndex: 'roleCount', width: 80, align: 'right',
-      render: (v: number | undefined, record: UserGroup) => (
-        <Tag color={v ? 'violet' : 'grey'} style={{ cursor: hasPermission('system:user-groups:assign') ? 'pointer' : 'default' }}
-          onClick={() => hasPermission('system:user-groups:assign') && openRoles(record)}>
-          {v ?? 0}
-        </Tag>
-      ),
+      title: '角色', dataIndex: 'rolePreview', width: 260,
+      render: (_: UserGroup['rolePreview'], record: UserGroup) => {
+        const roles = record.rolePreview ?? [];
+        if (roles.length === 0) return <Tag color="grey">无角色</Tag>;
+        const items = roles.map((role) => ({ key: String(role.id), role }));
+        return (
+          <div
+            style={{ width: '100%', minWidth: 0, maxWidth: '100%', overflow: 'hidden', cursor: hasPermission('system:user-groups:assign') ? 'pointer' : 'default' }}
+            onClick={() => hasPermission('system:user-groups:assign') && openRoles(record)}
+          >
+            <OverflowList
+              items={items}
+              renderMode="collapse"
+              style={{ width: '100%', minWidth: 0, maxWidth: '100%' }}
+              visibleItemRenderer={(item) => (
+                <Tag key={item.key} color="blue" style={{ flex: '0 0 auto', marginRight: 4 }}>
+                  {item.role.name}
+                </Tag>
+              )}
+              overflowRenderer={(overflowItems) => (
+                overflowItems.length > 0 ? (
+                  <Popover
+                    position="bottomLeft"
+                    content={(
+                      <Space spacing={4} wrap style={{ maxWidth: 240 }}>
+                        {overflowItems.map((item) => <Tag key={item.key} color="blue">{item.role.name}</Tag>)}
+                      </Space>
+                    )}
+                  >
+                    <Tag color="grey" style={{ flex: '0 0 auto' }}>+{overflowItems.length}</Tag>
+                  </Popover>
+                ) : null
+              )}
+            />
+          </div>
+        );
+      },
     },
     createdAtColumn,
     status.column(),

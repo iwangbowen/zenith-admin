@@ -32,7 +32,11 @@ function publicView(g: typeof mockUserGroups[number]): UserGroup {
     const u = mockUsers.find((mu) => mu.id === uid);
     return u ? { id: u.id, nickname: u.nickname, avatar: u.avatar ?? null } : null;
   }).filter((x): x is NonNullable<typeof x> => x !== null);
-  return { ...rest, memberCount: g.memberIds.length, memberPreview, roleCount: g.roleIds.length };
+  const rolePreview = g.roleIds
+    .map((roleId) => mockRoles.find((role) => role.id === roleId))
+    .filter((role): role is NonNullable<typeof role> => !!role)
+    .map((role) => ({ id: role.id, name: role.name, code: role.code, status: role.status }));
+  return { ...rest, memberCount: g.memberIds.length, memberPreview, roleCount: g.roleIds.length, rolePreview };
 }
 
 export const userGroupsHandlers = [

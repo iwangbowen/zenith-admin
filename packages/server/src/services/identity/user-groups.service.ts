@@ -33,7 +33,7 @@ interface RawGroupRow {
   updatedAt: Date;
 }
 
-function mapGroup(row: RawGroupRow) {
+function mapGroup(row: RawGroupRow, rolePreview: Array<{ id: number; name: string; code: string; status: 'enabled' | 'disabled' }> = []) {
   return {
     id: row.id,
     name: row.name,
@@ -46,6 +46,7 @@ function mapGroup(row: RawGroupRow) {
     ruleSyncedAt: row.ruleSyncedAt ? formatDateTime(row.ruleSyncedAt) : null,
     memberCount: row.memberCount ?? 0,
     roleCount: row.roleCount ?? 0,
+    rolePreview,
     status: row.status,
     ...formatTimestamps(row),
   };
@@ -54,6 +55,23 @@ function mapGroup(row: RawGroupRow) {
 const memberCountSql = sql<number>`(SELECT COUNT(*)::int FROM ${userGroupMembers} WHERE ${userGroupMembers.groupId} = ${userGroups.id})`;
 
 const roleCountSql = sql<number>`(SELECT COUNT(*)::int FROM ${userGroupRoles} WHERE ${userGroupRoles.groupId} = ${userGroups.id})`;
+
+async function listGroupRolePreviews(groupIds: number[]) {
+  if (groupIds.length === 0) return new Map<number, Array<{ id: number; name: string; code: string; status: 'enabled' | 'disabled' }>>();
+  const rows = await db
+    .select({ groupId: userGroupRoles.groupId, id: roles.id, name: roles.name, code: roles.code, status: roles.status })
+    .from(userGroupRoles)
+    .innerJoin(roles, eq(roles.id, userGroupRoles.roleId))
+    .where(and(inArray(userGroupRoles.groupId, groupIds), tenantCondition(roles, currentUser())))
+    .orderBy(asc(roles.id));
+  const result = new Map<number, Array<{ id: number; name: string; code: string; status: 'enabled' | 'disabled' }>>();
+  for (const row of rows) {
+    const list = result.get(row.groupId) ?? [];
+    list.push(row);
+    result.set(row.groupId, list);
+  }
+  return result;
+}
 
 function baseSelect() {
   return db
@@ -91,7 +109,8 @@ export type UpdateUserGroupInput = Partial<CreateUserGroupInput>;
 export async function listAllUserGroups() {
   const tc = tenantCondition(userGroups, currentUser());
   const rows = await baseSelect().where(tc).orderBy(asc(userGroups.id));
-  return rows.map(mapGroup);
+  const rolePreviews = await listGroupRolePreviews(rows.map((row) => row.id));
+  return rows.map((row) => mapGroup(row, rolePreviews.get(row.id) ?? []));
 }
 
 export async function listUserGroups(q: QueryOutputOf<typeof userGroupContract.list>) {
@@ -113,8 +132,9 @@ export async function listUserGroups(q: QueryOutputOf<typeof userGroupContract.l
         page, pageSize,
       );
       const memberSummaries = await getScopeMemberSummaries('userGroup', list.map((row) => row.id));
+      const rolePreviews = await listGroupRolePreviews(list.map((row) => row.id));
       return list.map((row) => ({
-        ...mapGroup(row),
+        ...mapGroup(row, rolePreviews.get(row.id) ?? []),
         memberPreview: memberSummaries.get(row.id)?.preview ?? [],
       }));
     },
@@ -124,7 +144,9 @@ export async function listUserGroups(q: QueryOutputOf<typeof userGroupContract.l
 export async function getUserGroup(id: number) {
   const tc = tenantCondition(userGroups, currentUser());
   const [row] = await baseSelect().where(and(eq(userGroups.id, id), tc)).limit(1);
-  return mapGroup(requireRow(row, '用户组不存在'));
+  const group = requireRow(row, '用户组不存在');
+  const rolePreviews = await listGroupRolePreviews([id]);
+  return mapGroup(group, rolePreviews.get(id) ?? []);
 }
 
 export async function createUserGroup(input: CreateUserGroupInput) {
@@ -241,7 +263,9 @@ export async function batchDeleteUserGroups(ids: number[]): Promise<{ count: num
 export async function getUserGroupBeforeAudit(id: number) {
   const tc = tenantCondition(userGroups, currentUser());
   const [row] = await baseSelect().where(and(eq(userGroups.id, id), tc)).limit(1);
-  return row ? mapGroup(row) : null;
+  if (!row) return null;
+  const rolePreviews = await listGroupRolePreviews([id]);
+  return mapGroup(row, rolePreviews.get(id) ?? []);
 }
 
 export async function getUserGroupsBeforeAudit(ids: number[]) {
