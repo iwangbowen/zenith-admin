@@ -5,6 +5,7 @@ import { Banner, Button, Input, Modal, SideSheet, Spin, Tag, TextArea, Timeline,
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { FlaskConical } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import ExportButton from '@/components/ExportButton';
 import { EMPTY_PLACEHOLDER, copyableNoColumn, createdAtColumn, renderEllipsis } from '@/utils/table-columns';
@@ -272,6 +273,10 @@ export default function PaymentDisputesPage() {
                   {PAYMENT_ORDER_STATUS_LABELS[detail.order.status]}{'　'}{detail.order.paidAt ? `支付于 ${detail.order.paidAt}` : ''}
                 </div>
               )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <EntityRelationButton entityRef={{ type: 'payment.dispute', key: String(detail.id) }} />
             </div>
 
             <div>

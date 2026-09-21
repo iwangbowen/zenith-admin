@@ -6,6 +6,7 @@ import { Button, Form, SideSheet, Spin, Tag, Toast, Typography } from '@douyinfe
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { formatDateForApi } from '@/utils/date';
 import { EMPTY_PLACEHOLDER, copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
@@ -320,6 +321,9 @@ export default function PaymentSettlementsPage() {
                 {...listTableProps(itemsQuery, { empty: '暂无已认领资金明细' })}
               />
             </Spin>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+              <EntityRelationButton entityRef={{ type: 'payment.settlement-batch', key: String(detailBatch.id) }} />
+            </div>
           </>
         )}
       </SideSheet>

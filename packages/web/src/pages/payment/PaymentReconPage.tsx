@@ -317,6 +317,7 @@ export default function PaymentReconPage() {
           </section>
 
           <div className="payment-recon-case-sheet__actions">
+            <EntityRelationButton entityRef={{ type: 'payment.recon-case', key: String(caseDetail.data.id) }} />
             {hasPermission('payment:recon:handle') && <Button onClick={handleModal.openCreate}>追加处理记录</Button>}
             {hasPermission('payment:recon:compensate') && isUnresolvedReconciliationCase(caseDetail.data.status) && <Button onClick={async () => afterTask(await compensate.mutateAsync({ params: { id: caseDetail.data.id } }))}>查单补偿</Button>}
             {hasPermission('payment:recon:adjust') && isUnresolvedReconciliationCase(caseDetail.data.status) && <Button theme="solid" onClick={() => { setSelectedAppId(caseDetail.data.applicationId); adjustmentModal.openCreate(); }}>申请调整</Button>}
