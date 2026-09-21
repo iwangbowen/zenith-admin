@@ -1,4 +1,4 @@
-import type { EntityRelationItem, EntityRelationPage, EntityRelationSection } from '@zenith/shared/platform';
+import type { EntityRelationItem, EntityRelationPage, EntityRelationSectionDescriptor, EntityRelationSummaryState } from '@zenith/shared/platform';
 import type { CanonicalEntityType } from '@zenith/shared/platform';
 import type { EntityRef, RelationKey } from '@zenith/shared/core';
 import type { Permission } from '@zenith/shared/core';
@@ -31,11 +31,28 @@ export interface RelationProvider {
   readonly allPermissions?: readonly Permission[];
   /** Pure domain applicability over an already authorized anchor; performs no I/O. */
   readonly appliesTo?: (anchor: VisibleEntityAnchor) => boolean;
-  readonly descriptor: EntityRelationSection;
+  readonly descriptor: EntityRelationSectionDescriptor;
   readonly list: (
     anchor: VisibleEntityAnchor,
     input: { readonly cursor?: string; readonly limit: number; readonly access: RelationAccessContext },
   ) => Promise<EntityRelationPage>;
+  /**
+   * Optional cheap qualitative summary. It must use the same authorization,
+   * tenant and data-scope predicates as list(). The response deliberately
+   * contains no count or other cardinality signal.
+   */
+  readonly summarize?: (
+    anchor: VisibleEntityAnchor,
+    input: { readonly access: RelationAccessContext },
+  ) => Promise<EntityRelationSummaryState>;
+  /**
+   * Optional existence-only fast path for providers that can answer with an
+   * indexed EXISTS query. `true` maps to has-data and `false` to empty.
+   */
+  readonly exists?: (
+    anchor: VisibleEntityAnchor,
+    input: { readonly access: RelationAccessContext },
+  ) => Promise<boolean>;
 }
 
 export type RelationItemMapper = (item: EntityRelationItem) => EntityRelationItem;

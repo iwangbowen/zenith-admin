@@ -1,5 +1,5 @@
 import { HTTPException } from 'hono/http-exception';
-import { entityRelationPageSchema, entityRelationsResponseSchema, type CanonicalEntityType, type EntityRelationsResponse, type EntityRelationPage } from '@zenith/shared/platform';
+import { entityRelationPageSchema, entityRelationSummaryStateSchema, entityRelationsResponseSchema, type CanonicalEntityType, type EntityRelationsResponse, type EntityRelationPage, type EntityRelationSummaryState } from '@zenith/shared/platform';
 import { isLicenseFeatureKey } from '@zenith/shared/licensing';
 import { hasPermission, runWithCurrentUser } from '../../../lib/context';
 import { isFeatureEnabled } from '../../../lib/licensing';
@@ -88,11 +88,37 @@ export function relationCursorScope(anchor: VisibleEntityAnchor, operation: stri
   return JSON.stringify([anchor.ref.type, anchor.ref.key, anchor.tenantId, operation, access.user.userId, access.user.tenantId,
     access.user.viewingTenantId, access.user.impersonation]);
 }
+
+/**
+ * Resolve a qualitative section state without exposing a count. Providers can
+ * supply an indexed `exists`/`summarize` implementation; the bounded list
+ * fallback keeps older providers useful while preserving their exact list
+ * authorization, tenant and data-scope predicates.
+ */
+async function summarizeRelationProvider(provider: RelationProvider, anchor: VisibleEntityAnchor, access: RelationAccessContext): Promise<EntityRelationSummaryState> {
+  try {
+    assertRelationBudget(access);
+    if (provider.summarize) return entityRelationSummaryStateSchema.parse(await provider.summarize(anchor, { access }));
+    if (provider.exists) return (await provider.exists(anchor, { access })) ? 'has-data' : 'empty';
+    const page = await provider.list(anchor, { cursor: undefined, limit: 1, access });
+    if (page.degraded) return 'unavailable';
+    return page.items.length > 0 ? 'has-data' : 'empty';
+  } catch {
+    // A summary is advisory. A timeout, revoked target, or provider-specific
+    // failure must not hide the authorized section or turn it into "empty".
+    return 'unavailable';
+  }
+}
+
 export async function describeEntityRelations(input: { type: CanonicalEntityType; key: string }, caller: Pick<RelationAccessContext, 'user'>): Promise<EntityRelationsResponse> {
   return withRelationRead('describe', caller, async (access) => {
     const anchor = await resolveVisibleEntityAnchor(input.type, input.key, access);
     const sections = [];
-    for (const provider of relationProviders) if (provider.sourceType === input.type && (!provider.appliesTo || provider.appliesTo(anchor)) && await canDiscover(provider)) sections.push(provider.descriptor);
+    for (const provider of relationProviders) {
+      if (provider.sourceType !== input.type || (provider.appliesTo && !provider.appliesTo(anchor)) || !(await canDiscover(provider))) continue;
+      const summaryState = await summarizeRelationProvider(provider, anchor, access);
+      sections.push({ ...provider.descriptor, summaryState });
+    }
     return entityRelationsResponseSchema.parse({ anchor: { ref: anchor.ref, title: anchor.title }, sections, canManageLinks: await hasPermission('system:relation:manage') });
   }).catch((error: unknown) => {
     if (isStatementTimeout(error)) throw new HTTPException(503, { message: '对象查询超时，请稍后重试' });

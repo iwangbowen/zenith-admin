@@ -11,6 +11,14 @@ export const ENTITY_RELATION_CARDINALITIES = ['one', 'many'] as const;
 export const entityRelationCardinalitySchema = z.enum(ENTITY_RELATION_CARDINALITIES).meta({ id: 'EntityRelationCardinality' });
 export type EntityRelationCardinality = z.infer<typeof entityRelationCardinalitySchema>;
 
+/**
+ * 定性关联摘要。刻意不暴露数量，避免折叠状态泄漏数据规模，同时让列表
+ * 在展开前就能表达是否存在记录或需要关注的记录。
+ */
+export const ENTITY_RELATION_SUMMARY_STATES = ['has-data', 'empty', 'attention', 'unavailable'] as const;
+export const entityRelationSummaryStateSchema = z.enum(ENTITY_RELATION_SUMMARY_STATES).meta({ id: 'EntityRelationSummaryState' });
+export type EntityRelationSummaryState = z.infer<typeof entityRelationSummaryStateSchema>;
+
 /** 关系摘要上的能力由服务端按目标对象权限计算，前端不自行猜测路由。 */
 export const entityRelationCapabilitiesSchema = z.object({
   view: z.boolean().default(true),
@@ -24,8 +32,13 @@ export const entityRelationSectionSchema = z.object({
   kind: entityRelationKindSchema,
   cardinality: entityRelationCardinalitySchema,
   capabilities: entityRelationCapabilitiesSchema,
+  summaryState: entityRelationSummaryStateSchema.default('unavailable'),
 }).meta({ id: 'EntityRelationSection' });
 export type EntityRelationSection = z.infer<typeof entityRelationSectionSchema>;
+/** Provider manifests may omit the server-computed state; describe fills it. */
+export type EntityRelationSectionDescriptor = Omit<EntityRelationSection, 'summaryState'> & {
+  summaryState?: EntityRelationSummaryState;
+};
 
 /** 关联分组中的最小摘要 DTO；完整目标对象必须通过自身详情接口再次鉴权。 */
 export const entityRelationItemSchema = z.object({

@@ -134,12 +134,15 @@ beforeEach(() => {
 describe('real registry assembly and authorization control flow', () => {
   it('omits inapplicable groups and denies direct access before executing a provider', async () => {
     const provider = entityRelationRegistry.relations.get(query.sectionKey)!;
-    Object.defineProperty(provider, 'appliesTo', { value: () => false, configurable: true });
-    try {
-      expect((await describeEntityRelations(source, caller())).sections.some((section) => section.key === query.sectionKey)).toBe(false);
-      await expect(listEntityRelation(query, caller())).rejects.toMatchObject({ status: 404 });
-      expect(state.list).not.toHaveBeenCalled();
-    } finally { Reflect.deleteProperty(provider, 'appliesTo'); }
+      Object.defineProperty(provider, 'appliesTo', { value: () => false, configurable: true });
+      try {
+        expect((await describeEntityRelations(source, caller())).sections.some((section) => section.key === query.sectionKey)).toBe(false);
+        // Describe now performs bounded qualitative summaries for other
+        // discoverable groups; isolate the direct-access assertion below.
+        state.list.mockClear();
+        await expect(listEntityRelation(query, caller())).rejects.toMatchObject({ status: 404 });
+        expect(state.list).not.toHaveBeenCalled();
+      } finally { Reflect.deleteProperty(provider, 'appliesTo'); }
   });
   it('assembles manual-link providers through the registry/edges circular import', () => {
     expect(entityRelationRegistry.anchors.has('payment.order')).toBe(true);
@@ -162,6 +165,21 @@ describe('real registry assembly and authorization control flow', () => {
     await expect(listEntityRelation(query, caller())).rejects.toMatchObject({ status: 404 });
     expect(state.list).not.toHaveBeenCalled();
     expect(described).not.toHaveProperty('total');
+  });
+
+  it('returns qualitative section states without exposing counts', async () => {
+    state.list.mockResolvedValueOnce({ items: [], nextCursor: null, hasMore: false })
+      .mockResolvedValueOnce({ items: [{ ref: target, relationKey: query.sectionKey, title: 'Refund', capabilities: { view: true, open: true } }], nextCursor: null, hasMore: false });
+    const sections = (await describeEntityRelations(source, caller())).sections;
+    expect(sections.find((section) => section.key === 'payment.order.refunds')?.summaryState).toBe('empty');
+    expect(sections.find((section) => section.key === 'payment.order.more-refunds')?.summaryState).toBe('has-data');
+    expect(sections).not.toEqual(expect.arrayContaining([expect.objectContaining({ total: expect.anything() })]));
+  });
+
+  it('marks a failed provider summary unavailable instead of claiming empty', async () => {
+    state.list.mockRejectedValue(new Error('summary unavailable'));
+    const sections = (await describeEntityRelations(source, caller())).sections;
+    expect(sections.filter((section) => ['payment.order.refunds', 'payment.order.more-refunds'].includes(section.key)).map((section) => section.summaryState)).toEqual(['unavailable', 'unavailable']);
   });
 
   it('does not let an arbitrary section key cross source types', async () => {
