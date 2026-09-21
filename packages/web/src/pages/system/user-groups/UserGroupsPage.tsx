@@ -33,6 +33,8 @@ import { MemberAssignmentSheet, memberPreviewColumn } from '@/components/members
 import { useListPage } from '@/hooks/useListPage';
 import { EditFormSheet } from '@/components/EditFormModal';
 
+const ROLE_TAG_CONTENT_WIDTH = 228;
+
 type SimpleUser = UserTransferUser & {
   email?: string | null;
   departmentId?: number | null;
@@ -85,7 +87,7 @@ export default function UserGroupsPage() {
     entityName: '用户组',
     save: saveMutation,
     useDetail: useUserGroupDetail,
-    defaults: { status: 'enabled', memberMode: 'static', roleIds: [] },
+    defaults: { status: 'enabled', memberMode: 'static', roleIds: [], userIds: [] },
     labelPosition: 'top',
     toValues: (group) => ({
       name: group.name,
@@ -223,13 +225,13 @@ export default function UserGroupsPage() {
         const items = roles.map((role) => ({ key: String(role.id), role }));
         return (
           <div
-            style={{ width: '100%', minWidth: 0, maxWidth: '100%', overflow: 'hidden', cursor: hasPermission('system:user-groups:assign') ? 'pointer' : 'default' }}
+            style={{ width: ROLE_TAG_CONTENT_WIDTH, maxWidth: '100%', minWidth: 0, overflow: 'hidden', cursor: hasPermission('system:user-groups:assign') ? 'pointer' : 'default' }}
             onClick={() => hasPermission('system:user-groups:assign') && openRoles(record)}
           >
             <OverflowList
               items={items}
               renderMode="collapse"
-              style={{ width: '100%', minWidth: 0, maxWidth: '100%' }}
+              style={{ width: ROLE_TAG_CONTENT_WIDTH, minWidth: 0, maxWidth: '100%' }}
               visibleItemRenderer={(item) => (
                 <Tag key={item.key} color="blue" style={{ flex: '0 0 auto', marginRight: 4 }}>
                   {item.role.name}
@@ -299,6 +301,13 @@ export default function UserGroupsPage() {
                 style={{ width: '100%' }} multiple filter showClear
                 optionList={(allRolesQuery.data ?? []).map((role) => ({ value: role.id, label: `${role.name}（${role.code}）` }))}
               />
+              {!groupModal.editing && memberMode === 'static' && (
+                <Form.Select
+                  field="userIds" label="成员" placeholder="请选择成员（可选）"
+                  style={{ width: '100%' }} multiple filter showClear
+                  optionList={allUsers.map((user) => ({ value: user.id, label: `${user.nickname}（${user.username}）` }))}
+                />
+              )}
               <Form.RadioGroup
                 field="memberMode" label="成员模式" type="button"
                 extraText={memberMode === 'dynamic'

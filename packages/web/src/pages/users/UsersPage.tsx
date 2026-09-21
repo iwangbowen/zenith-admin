@@ -94,6 +94,7 @@ const EMPTY_USERS: User[] = [];
 const EMPTY_ROLES: Role[] = [];
 const EMPTY_DEPARTMENTS: Department[] = [];
 const EMPTY_POSITIONS: Position[] = [];
+const ROLE_TAG_CONTENT_WIDTH = 228;
 
 function isAdminUser(user: Pick<User, 'username'>) {
   return user.username.trim().toLowerCase() === 'admin';
@@ -437,11 +438,11 @@ export default function UsersPage() {
         if (roles.length === 0) return <Tag color="grey">无角色</Tag>;
         const items = roles.map((role) => ({ key: String(role.id), role }));
         return (
-          <div style={{ width: '100%', minWidth: 0, maxWidth: '100%', overflow: 'hidden' }}>
+          <div style={{ width: ROLE_TAG_CONTENT_WIDTH, maxWidth: '100%', minWidth: 0, overflow: 'hidden' }}>
             <OverflowList
               items={items}
               renderMode="collapse"
-              style={{ width: '100%', minWidth: 0, maxWidth: '100%' }}
+              style={{ width: ROLE_TAG_CONTENT_WIDTH, maxWidth: '100%', minWidth: 0 }}
               visibleItemRenderer={(item) => (
                 <Tag key={item.key} color="blue" style={{ flex: '0 0 auto', marginRight: 4 }}>
                   {item.role.name}

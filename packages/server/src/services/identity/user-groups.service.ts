@@ -104,8 +104,9 @@ export interface CreateUserGroupInput {
   memberMode?: UserGroupMemberMode;
   memberRule?: UserGroupMemberRule | null;
   roleIds?: number[];
+  userIds?: number[];
 }
-export type UpdateUserGroupInput = Partial<CreateUserGroupInput>;
+export type UpdateUserGroupInput = Partial<Omit<CreateUserGroupInput, 'userIds'>>;
 
 export async function listAllUserGroups() {
   const tc = tenantCondition(userGroups, currentUser());
@@ -151,8 +152,11 @@ export async function getUserGroup(id: number) {
 }
 
 export async function createUserGroup(input: CreateUserGroupInput) {
-  const { roleIds = [], ...groupInput } = input;
+  const { roleIds = [], userIds = [], ...groupInput } = input;
   const memberMode = groupInput.memberMode ?? 'static';
+  if (memberMode === 'dynamic' && userIds.length > 0) {
+    throw new HTTPException(400, { message: '动态用户组不能在创建时手工指定成员' });
+  }
   if (!validateUserGroupRulePresence(memberMode, groupInput.memberRule)) {
     throw new HTTPException(400, { message: '动态用户组至少需要一个部门/岗位条件或强制包含名单' });
   }
@@ -167,6 +171,7 @@ export async function createUserGroup(input: CreateUserGroupInput) {
       })
       .returning();
     if (roleIds.length > 0) await setGroupRoles(row.id, roleIds);
+    if (memberMode === 'static' && userIds.length > 0) await setGroupMembers(row.id, userIds);
     // 动态组建组即物化一次成员
     if (row.memberMode === 'dynamic') await syncDynamicGroup(row.id);
     return getUserGroup(row.id);

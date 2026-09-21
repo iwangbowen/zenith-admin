@@ -224,7 +224,9 @@ export function validateUserGroupRulePresence(memberMode: string, rule: UserGrou
 
 export type UserGroupMemberRuleInput = z.infer<typeof userGroupMemberRuleSchema>;
 
-export const createUserGroupSchema = userGroupBaseSchema.superRefine((val, ctx) => {
+export const createUserGroupSchema = userGroupBaseSchema.extend({
+  userIds: z.array(z.number().int().positive()).default([]),
+}).superRefine((val, ctx) => {
   if (!validateUserGroupRulePresence(val.memberMode, val.memberRule)) {
     ctx.addIssue({ code: 'custom', path: ['memberRule'], message: '动态用户组至少需要一个部门/岗位条件或强制包含名单' });
   }

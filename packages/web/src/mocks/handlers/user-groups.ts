@@ -159,7 +159,7 @@ export const userGroupsHandlers = [
     const now = mockDateTime();
     const memberMode = body.memberMode;
     const memberRule = memberMode === 'dynamic' ? (body.memberRule ?? null) : null;
-    const memberIds = memberMode === 'dynamic' && memberRule ? evaluateRule(memberRule) : [];
+    const memberIds = memberMode === 'dynamic' && memberRule ? evaluateRule(memberRule) : (body.userIds ?? []);
     const created = {
       id: getNextUserGroupId(),
       name: body.name,
