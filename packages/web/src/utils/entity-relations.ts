@@ -1,4 +1,5 @@
-import type { CanonicalEntityRef, CanonicalEntityType, DomainEventType, EntityRelationKind } from '@zenith/shared/platform';
+import { ENTITY_TIMELINE_EVENT_LABELS } from '@zenith/shared/platform';
+import type { CanonicalEntityRef, CanonicalEntityType, EntityRelationKind } from '@zenith/shared/platform';
 import type { TimelineEvent } from '@zenith/shared/core';
 
 const ENTITY_LABELS: Record<CanonicalEntityType, string> = {
@@ -8,6 +9,8 @@ const ENTITY_LABELS: Record<CanonicalEntityType, string> = {
   'payment.sharing-order': '分账单', 'payment.sharing-receiver': '分账接收方', 'payment.sharing-reversal': '分账冲正',
   'payment.settlement-batch': '结算批次', 'payment.notify-log': '渠道回调',
   'workflow.definition': '流程定义', 'workflow.instance': '流程实例', 'workflow.task': '审批任务',
+  'member.wallet-transaction': '钱包流水', 'member.vip-renewal': 'VIP 续费履约',
+  'iot.ota-task': 'OTA 升级任务', 'iot.ota-device': '设备升级结果', 'iot.firmware': '固件', 'platform.managed-file': '业务附件',
   'workflow.attachment': '审批附件', 'workflow.archive': '审批归档件',
   'drive.file': '文件', 'iot.device': '设备', 'iot.alarm': '设备告警', 'cms.content': '内容',
   'wiki.document': '知识文档', 'messaging.announcement': '公告', 'chat.message': '聊天消息',
@@ -30,6 +33,9 @@ const RELATION_LABELS: Record<string, string> = {
   'workflow-instances': '历次审批', 'business-history': '同一业务的其他审批',
   'business-leave': '原请假单', 'business-content': '原内容', 'business-recon-adjustment': '原对账调整单',
   attachments: '审批附件', archives: '审批归档件',
+  'wallet-transactions': '钱包入账流水', 'vip-renewals': 'VIP 续费履约',
+  'ota-tasks': 'OTA 升级任务', 'ota-devices': '设备升级结果', firmware: '目标固件',
+  'business-attachments': '业务附件', 'wiki-usages': '知识文档引用', 'announcement-usages': '公告引用',
 };
 
 export function entityTypeLabel(type: CanonicalEntityType): string { return ENTITY_LABELS[type]; }
@@ -54,6 +60,12 @@ export function entityRelationKindLabel(kind: EntityRelationKind): string {
 
 /** Register only routes that resolve the exact entity independently of list pagination. */
 const ENTITY_DETAIL_ROUTES: Partial<Record<CanonicalEntityType, (key: string) => string>> = {
+  'member.wallet-transaction': (key) => `/member/wallets?transactionId=${encodeURIComponent(key)}`,
+  'member.vip-renewal': (key) => `/member/members?renewalId=${encodeURIComponent(key)}`,
+  'iot.ota-task': (key) => `/iot/ota?tab=tasks&otaTaskId=${encodeURIComponent(key)}`,
+  'iot.ota-device': (key) => `/iot/ota?tab=tasks&otaDeviceId=${encodeURIComponent(key)}`,
+  'iot.firmware': (key) => `/iot/ota?tab=firmwares&firmwareId=${encodeURIComponent(key)}`,
+  'messaging.announcement': (key) => `/system/announcements?announcementId=${encodeURIComponent(key)}`,
   'biz.leave': (key) => `/biz/leave?leaveId=${encodeURIComponent(key)}`,
   'cms.content': (key) => `/cms/contents/edit?id=${encodeURIComponent(key)}`,
   'payment.recon-adjustment': (key) => `/payment/recon?adjustmentId=${encodeURIComponent(key)}`,
@@ -85,18 +97,7 @@ export function entityDetailRoute(ref: CanonicalEntityRef): string | undefined {
   return ENTITY_DETAIL_ROUTES[ref.type]?.(ref.key);
 }
 
-const EVENT_LABELS = {
-  'payment.succeeded': '支付成功', 'payment.closed': '订单关闭', 'payment.failed': '支付失败',
-  'refund.succeeded': '退款成功', 'refund.failed': '退款失败',
-  'payment.risk.hit': '命中风控规则', 'payment.risk.review.created': '发起风控审核', 'payment.risk.review.decided': '风控审核完成',
-  'payment.dispute.replied': '回复支付投诉', 'payment.dispute.resolved': '支付投诉已解决',
-  'payment.dispute.refund-requested': '投诉发起退款', 'payment.dispute.refunded': '投诉退款完成', 'payment.dispute.refund-failed': '投诉退款失败',
-  'workflow.instance.created': '流程发起', 'workflow.instance.approved': '流程通过',
-  'workflow.instance.rejected': '流程驳回', 'workflow.instance.withdrawn': '流程撤回',
-  'workflow.instance.returned': '流程退回', 'workflow.task.changed': '审批任务更新',
-  'messaging.notification.queued': '通知进入发送队列', 'tasks.async-task.created': '异步任务创建',
-  'platform.audit.operation': '操作记录',
-} satisfies Record<DomainEventType | 'platform.audit.operation', string>;
+const EVENT_LABELS = ENTITY_TIMELINE_EVENT_LABELS;
 
 const STATUS_LABELS: Record<string, string> = {
   pending: '待处理', processing: '处理中', success: '成功', failed: '失败', refunded: '已退款', refunding: '退款中',

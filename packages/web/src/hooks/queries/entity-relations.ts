@@ -1,7 +1,7 @@
 // Identity-scoped keys and cursor accumulation require the underlying query hooks.
 // eslint-disable-next-line no-restricted-imports
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { entityRelationsContract, entityTimelineContract, type CanonicalEntityType } from '@zenith/shared/platform';
+import { entityRelationsContract, type CanonicalEntityType, type EntityRelationFilters } from '@zenith/shared/platform';
 import { api, apiQueryOptions, contractKey, useApiMutation } from '@/lib/contract-query';
 import { useAuth } from '@/hooks/useAuth';
 import { ENTITY_RELATION_QUERY_META, ENTITY_RELATION_REFRESH_OPTIONS, invalidateEntityRelations } from '@/lib/entity-relation-cache';
@@ -38,14 +38,14 @@ export function useEntityRelations(type: CanonicalEntityType, key: string | unde
   return useQuery({ ...options, queryKey: [...options.queryKey, access] });
 }
 
-export function useEntityRelationSection(type: CanonicalEntityType, key: string | undefined, sectionKey: string, enabled = true, limit = 5) {
+export function useEntityRelationSection(type: CanonicalEntityType, key: string | undefined, sectionKey: string, enabled = true, limit = 5, filters: EntityRelationFilters = {}) {
   const access = useEntityAccessKey();
   const params = { type, key: key ?? '', sectionKey };
   return useInfiniteQuery({
-    queryKey: [...contractKey(entityRelationsContract.section, { params, query: { limit } }), access],
+    queryKey: [...contractKey(entityRelationsContract.section, { params, query: { limit, ...filters } }), access],
     meta: ENTITY_RELATION_QUERY_META,
     initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam, signal }) => api(entityRelationsContract.section, { params, query: { limit, cursor: pageParam } }, { silent: true, signal }),
+    queryFn: ({ pageParam, signal }) => api(entityRelationsContract.section, { params, query: { limit, ...filters, cursor: pageParam } }, { silent: true, signal }),
     getNextPageParam: (lastPage) => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
     enabled: enabled && Boolean(key) && access[0] !== null,
     ...ENTITY_RELATION_REFRESH_OPTIONS,
@@ -53,17 +53,4 @@ export function useEntityRelationSection(type: CanonicalEntityType, key: string 
   });
 }
 
-export function useEntityTimeline(type: CanonicalEntityType, key: string | undefined, enabled = true, limit = 20) {
-  const access = useEntityAccessKey();
-  const params = { type, key: key ?? '' };
-  return useInfiniteQuery({
-    queryKey: [...contractKey(entityTimelineContract.timeline, { params, query: { limit } }), access],
-    meta: ENTITY_RELATION_QUERY_META,
-    initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam, signal }) => api(entityTimelineContract.timeline, { params, query: { limit, cursor: pageParam } }, { silent: true, signal }),
-    getNextPageParam: (lastPage) => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
-    enabled: enabled && Boolean(key) && access[0] !== null,
-    ...ENTITY_RELATION_REFRESH_OPTIONS,
-    retry: false,
-  });
-}
+export { useEntityTimeline } from './entity-timeline';

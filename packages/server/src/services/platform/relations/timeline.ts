@@ -1,12 +1,13 @@
 import { and, desc, eq, exists, inArray, lt, or, sql, type AnyColumn } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { DOMAIN_EVENT_CATALOG, getDomainEventDefinition, canonicalEntityTypeSchema, type EntityTimelineResponse, type CanonicalEntityType } from '@zenith/shared/platform';
-import type { TimelineEvent } from '@zenith/shared/core';
+import { DOMAIN_EVENT_CATALOG, getDomainEventDefinition, canonicalEntityTypeSchema, type EntityTimelineResponse, type entityTimelineContract } from '@zenith/shared/platform';
+import type { TimelineEvent, QueryOutputOf, ParamsOf } from '@zenith/shared/core';
 import { permissionList } from '@zenith/shared/core';
 import { hasPermission } from '../../../lib/context';
 import { domainEventSubjects, domainEvents, operationLogSubjects, operationLogs } from '../../../db/schema';
 import { exactTenantCondition, tenantCondition } from '../../../lib/tenant';
-import { buildWhere } from '../../../lib/where-helpers';
+import { buildWhere, dateRangeConditions } from '../../../lib/where-helpers';
+import { parseDateRangeEnd, parseDateRangeStart } from '../../../lib/datetime';
 import { readRelationCursor, signRelationCursor } from './cursor';
 import { relationCursorScope, resolveVisibleEntityAnchor } from './registry';
 import { assertRelationBudget, isStatementTimeout, withRelationRead } from './runtime';
@@ -30,14 +31,18 @@ function before(at: AnyColumn, id: AnyColumn, kind: Position['kind'], cursor?: P
 function compare(a: Position, b: Position): number {
   return b.at.localeCompare(a.at) || b.kind.localeCompare(a.kind) || b.id - a.id;
 }
-export async function listEntityTimeline(input: { type: CanonicalEntityType; key: string; cursor?: string; limit: number }, caller: Pick<RelationAccessContext, 'user'>): Promise<EntityTimelineResponse> {
+export async function listEntityTimeline(input: ParamsOf<typeof entityTimelineContract.timeline> & QueryOutputOf<typeof entityTimelineContract.timeline>, caller: Pick<RelationAccessContext, 'user'>): Promise<EntityTimelineResponse> {
+  const from = parseDateRangeStart(input.startTime);
+  const until = parseDateRangeEnd(input.endTime);
+  if (from && until && from > until) throw new HTTPException(400, { message: '起始时间不能晚于结束时间' });
   return withRelationRead('timeline', caller, async (access) => {
     const anchor = await resolveVisibleEntityAnchor(input.type, input.key, access);
-    const scope = relationCursorScope(anchor, 'timeline', access);
+    const scope = relationCursorScope(anchor, JSON.stringify(['timeline', input.eventType ?? null,
+      from?.getTime() ?? null, until?.getTime() ?? null]), access);
     let position = decode(readRelationCursor(input.cursor, scope));
-    const auditAllowed = await hasPermission('system:log:operation');
+    const auditAllowed = (!input.eventType || input.eventType === 'platform.audit.operation') && await hasPermission('system:log:operation');
     const allowedTypes: string[] = [];
-    for (const [type, definition] of Object.entries(DOMAIN_EVENT_CATALOG)) if (await hasPermission(...permissionList(definition.permission))) allowedTypes.push(type);
+    for (const [type, definition] of Object.entries(DOMAIN_EVENT_CATALOG)) if ((!input.eventType || input.eventType === type) && await hasPermission(...permissionList(definition.permission))) allowedTypes.push(type);
     const visible: Array<{ event: TimelineEvent; position: Position }> = [];
     const sourceAccess = new Map<string, boolean>();
     for (let scanned = 0; scanned < 512 && visible.length <= input.limit; scanned += input.limit + 1) {
@@ -46,11 +51,14 @@ export async function listEntityTimeline(input: { type: CanonicalEntityType; key
         .from(operationLogs).where(buildWhere(exactTenantCondition(operationLogs.tenantId, anchor.tenantId), tenantCondition(operationLogs, access.user),
           exists(access.db.select({ id: operationLogSubjects.operationLogId }).from(operationLogSubjects).where(and(
             eq(operationLogSubjects.operationLogId, operationLogs.id), eq(operationLogSubjects.entityType, anchor.ref.type), eq(operationLogSubjects.entityKey, anchor.ref.key), exactTenantCondition(operationLogSubjects.tenantId, anchor.tenantId)))),
+          ...dateRangeConditions(operationLogs.createdAt, input.startTime, input.endTime),
           before(operationLogs.createdAt, operationLogs.id, 'audit', position))).orderBy(desc(operationLogs.createdAt), desc(operationLogs.id)).limit(input.limit + 1) : [];
       const events = allowedTypes.length ? await access.db.select({ id: domainEvents.id, eventType: domainEvents.eventType, payload: domainEvents.payload, sourceType: domainEvents.sourceType, sourceKey: domainEvents.sourceKey, occurredAt: domainEvents.occurredAt, cursorAt: sql<string>`to_char(${domainEvents.occurredAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')` })
         .from(domainEvents).where(buildWhere(exactTenantCondition(domainEvents.tenantId, anchor.tenantId), tenantCondition(domainEvents, access.user), inArray(domainEvents.eventType, allowedTypes),
-          exists(access.db.select({ id: domainEventSubjects.eventId }).from(domainEventSubjects).where(and(
-            eq(domainEventSubjects.eventId, domainEvents.id), eq(domainEventSubjects.entityType, anchor.ref.type), eq(domainEventSubjects.entityKey, anchor.ref.key), exactTenantCondition(domainEventSubjects.tenantId, anchor.tenantId)))),
+          or(and(eq(domainEvents.sourceType, anchor.ref.type), eq(domainEvents.sourceKey, anchor.ref.key)),
+            exists(access.db.select({ id: domainEventSubjects.eventId }).from(domainEventSubjects).where(and(
+              eq(domainEventSubjects.eventId, domainEvents.id), eq(domainEventSubjects.entityType, anchor.ref.type), eq(domainEventSubjects.entityKey, anchor.ref.key), exactTenantCondition(domainEventSubjects.tenantId, anchor.tenantId))))),
+          ...dateRangeConditions(domainEvents.occurredAt, input.startTime, input.endTime),
           before(domainEvents.occurredAt, domainEvents.id, 'event', position))).orderBy(desc(domainEvents.occurredAt), desc(domainEvents.id)).limit(input.limit + 1) : [];
       const candidates = [
         ...audit.map((row) => ({ position: { at: row.cursorAt, id: row.id, kind: 'audit' as const }, audit: row, domain: null })),

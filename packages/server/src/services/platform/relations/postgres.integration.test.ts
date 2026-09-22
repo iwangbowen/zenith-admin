@@ -236,6 +236,26 @@ integration('entity relations on isolated PostgreSQL', () => {
     expect(await collectTimeline(reader, 2)).toEqual([]);
   });
 
+  it('filters the complete authorized timeline and rejects cursors reused under changed filters', async () => {
+    const ownTask = await createTask(tenantA, reader);
+    await createTaskEvent(ownTask, '2026-09-20T04:00:00.000001Z');
+    await createTaskEvent(ownTask, '2026-09-20T04:00:00.000002Z');
+    await createTaskEvent(ownTask, '2026-09-19T04:00:00.000001Z');
+    const filtered = { ...userRef(), limit: 1, eventType: 'tasks.async-task.created' as const, startTime: '2026-09-20', endTime: '2026-09-20' };
+    const first = await timeline.listEntityTimeline(filtered, { user: admin });
+    expect(first.items).toHaveLength(1);
+    expect(first.hasMore).toBe(true);
+    const second = await timeline.listEntityTimeline({ ...filtered, cursor: first.nextCursor! }, { user: admin });
+    expect(second.items).toHaveLength(1);
+    expect(second.hasMore).toBe(false);
+    expect(second.items[0].id).not.toBe(first.items[0].id);
+    await expect(timeline.listEntityTimeline({ ...filtered, eventType: 'platform.audit.operation', cursor: first.nextCursor! }, { user: admin })).rejects.toMatchObject({ status: 400 });
+    await expect(timeline.listEntityTimeline({ ...filtered, endTime: '2026-09-21', cursor: first.nextCursor! }, { user: admin })).rejects.toMatchObject({ status: 400 });
+    expect((await timeline.listEntityTimeline(filtered, { user: reader })).items).toEqual([]);
+    // The source object's own timeline does not need a duplicated subject row.
+    expect((await timeline.listEntityTimeline({ ...taskRef(ownTask), limit: 10 }, { user: admin })).items).toHaveLength(3);
+  });
+
   it('rolls back business rows, domain events and subjects atomically', async () => {
     let taskId = 0;
     let eventId = 0;

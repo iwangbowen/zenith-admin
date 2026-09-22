@@ -37,6 +37,7 @@ import { pushTaskProgress } from './map';
 import { normalizeAuditSubjects } from '../audit-subject';
 import { isCanonicalEntityType } from '@zenith/shared/platform';
 import { recordDomainEvent } from '../../services/platform/relations/events.service';
+import { completeAsyncTasks } from './terminal-events';
 
 export interface SubmitAsyncTaskInput {
   taskType: string;
@@ -302,10 +303,7 @@ export async function runAsyncTask(taskId: number): Promise<string> {
 
   const handler = getTaskHandler(claimed.taskType);
   if (!handler) {
-    const [failedRow] = await db.update(asyncTasks)
-      .set({ status: 'failed', errorMessage: `任务类型 "${claimed.taskType}" 未注册`, completedAt: new Date() })
-      .where(and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running')))
-      .returning();
+    const [failedRow] = await completeAsyncTasks({ status: 'failed', errorMessage: `任务类型 "${claimed.taskType}" 未注册`, completedAt: new Date() }, and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running')));
     if (failedRow) pushTaskProgress(failedRow, { force: true });
     return `任务 #${taskId} 失败：任务类型 "${claimed.taskType}" 未注册`;
   }
@@ -340,29 +338,23 @@ export async function runAsyncTask(taskId: number): Promise<string> {
       return `任务 #${taskId} 已被其他流程接管（当前状态：${current?.status ?? '不存在'}）`;
     }
     const finalStatus = current.cancelRequested ? 'cancelled' : 'success';
-    const [finalRow] = await db.update(asyncTasks)
-      .set({
+    const [finalRow] = await completeAsyncTasks({
         status: finalStatus,
         ...(result && typeof result === 'object' ? { result } : {}),
         completedAt: new Date(),
-      })
-      .where(and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running')))
-      .returning();
+      }, and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running')));
     if (finalRow) pushTaskProgress(finalRow, { force: true });
     return finalStatus === 'cancelled' ? `任务 #${taskId}「${claimed.title}」已取消` : `任务 #${taskId}「${claimed.title}」执行成功`;
   } catch (err) {
     const message = (err instanceof Error ? err.message : '任务执行失败').slice(0, 2000);
     if (err instanceof TaskCancelledError) {
-      const [cancelledRow] = await db.update(asyncTasks)
-        .set({
+      const [cancelledRow] = await completeAsyncTasks({
           status: 'cancelled',
           errorMessage: message,
           ...(err.result ? { result: err.result } : {}),
           completedAt: new Date(),
           heartbeatAt: null,
-        })
-        .where(and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running')))
-        .returning();
+        }, and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running')));
       if (cancelledRow) pushTaskProgress(cancelledRow, { force: true });
       return `任务 #${taskId} 已取消：${message}`;
     }
@@ -406,10 +398,7 @@ export async function runAsyncTask(taskId: number): Promise<string> {
       }
     }
 
-    const [failedRow] = await db.update(asyncTasks)
-      .set({ status: 'failed', errorMessage: message, completedAt: new Date() })
-      .where(and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running')))
-      .returning();
+    const [failedRow] = await completeAsyncTasks({ status: 'failed', errorMessage: message, completedAt: new Date() }, and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running')));
     if (failedRow) pushTaskProgress(failedRow, { force: true });
     throw err; // 让调度中心运行日志记为 failed（触发告警策略）
   }
@@ -417,10 +406,7 @@ export async function runAsyncTask(taskId: number): Promise<string> {
 
 /** 取消任务：pending 直接终止；running 置协作式取消标记，由 handler 在处理间隙退出 */
 export async function requestCancelAsyncTask(taskId: number): Promise<AsyncTaskRow> {
-  const [pendingRow] = await db.update(asyncTasks)
-    .set({ status: 'cancelled', cancelRequested: true, completedAt: new Date() })
-    .where(and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'pending')))
-    .returning();
+  const [pendingRow] = await completeAsyncTasks({ status: 'cancelled', cancelRequested: true, completedAt: new Date() }, and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'pending')));
   if (pendingRow) {
     pushTaskProgress(pendingRow, { force: true });
     return pendingRow;
@@ -508,10 +494,7 @@ export async function drainAsyncTasks(): Promise<{ recovered: number; redispatch
   );
 
   // 卡死且已请求取消 → 直接终止
-  const cancelledRows = await db.update(asyncTasks)
-    .set({ status: 'cancelled', completedAt: new Date() })
-    .where(and(staleRunning, eq(asyncTasks.cancelRequested, true)))
-    .returning();
+  const cancelledRows = await completeAsyncTasks({ status: 'cancelled', completedAt: new Date() }, and(staleRunning, eq(asyncTasks.cancelRequested, true)));
   for (const row of cancelledRows) pushTaskProgress(row, { force: true });
 
   // 卡死未取消 → 回收为 pending 从断点续跑
@@ -554,14 +537,11 @@ export async function drainAsyncTasks(): Promise<{ recovered: number; redispatch
  */
 async function failIfNodeGone(task: Pick<AsyncTaskRow, 'id' | 'nodeId'>): Promise<boolean> {
   if (!task.nodeId || await isSchedulerNodeAlive(task.nodeId)) return false;
-  const [row] = await db.update(asyncTasks)
-    .set({
+  const [row] = await completeAsyncTasks({
       status: 'failed',
       errorMessage: `执行节点 ${task.nodeId} 已下线，该任务只能在提交它的服务节点执行，请重新提交`,
       completedAt: new Date(),
-    })
-    .where(and(eq(asyncTasks.id, task.id), eq(asyncTasks.status, 'pending')))
-    .returning();
+    }, and(eq(asyncTasks.id, task.id), eq(asyncTasks.status, 'pending')));
   if (row) {
     pushTaskProgress(row, { force: true });
     logger.warn(`[task-center] 节点亲和任务 #${task.id} 的目标节点 ${task.nodeId} 已下线，已标记失败`);

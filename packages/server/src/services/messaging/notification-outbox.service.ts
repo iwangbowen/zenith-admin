@@ -23,7 +23,7 @@ import { mapWithConcurrency } from '../../lib/concurrency';
 import { currentTraceId, currentParentRef } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
 import { escapeHtml } from '@zenith/shared/core';
-import { deliverOutboxRow } from '../../lib/notification/dispatch';
+import { deliverOutboxRow, type DeliverSummary } from '../../lib/notification/dispatch';
 import { normalizeTemplateVars } from '../../lib/notification/template-vars';
 import logger from '../../lib/logger';
 import { renderTemplate } from '../../lib/sms-sender';
@@ -31,6 +31,8 @@ import { buildWhere } from '../../lib/where-helpers';
 import { normalizeAuditSubjects } from '../../lib/audit-subject';
 import { isCanonicalEntityType } from '@zenith/shared/platform';
 import { recordDomainEvent } from '../platform/relations/events.service';
+import { recordNotificationOutcome } from './notification-delivery-events';
+import { exactTenantCondition } from '../../lib/tenant';
 
 const MAX_ATTEMPTS = 5;
 /**
@@ -187,21 +189,36 @@ function claimableCondition(now: Date) {
  * 否则一个坏邮箱会让整条事件反复重试，把其他人重复轰炸一遍。
  */
 async function deliverClaimedRow(row: NotificationOutboxRow): Promise<void> {
+  let summary: DeliverSummary;
   try {
-    const summary = await deliverOutboxRow(row);
-    await db.update(notificationOutbox).set({ status: 'done' }).where(eq(notificationOutbox.id, row.id));
-    if (summary.failed > 0) {
-      logger.warn('[notification-outbox] 部分渠道投递失败', { id: row.id, eventKey: row.eventKey, ...summary });
-    }
+    summary = await deliverOutboxRow(row);
   } catch (err) {
     const attempts = row.attempts + 1;
     const status = attempts >= MAX_ATTEMPTS ? 'failed' : 'pending';
     const lastError = (err instanceof Error ? err.message : String(err)).slice(0, 500);
     // 保留认领时间：下一次重试要等认领超时，而不是被紧接着的补投轮次立刻再打一遍
-    await db.update(notificationOutbox).set({ attempts, status, lastError, claimedAt: new Date() })
-      .where(eq(notificationOutbox.id, row.id));
+    await db.transaction(async (tx) => {
+      const [updated] = await tx.update(notificationOutbox).set({ attempts, status, lastError, claimedAt: new Date() })
+        .where(claimedRowCondition(row)).returning();
+      if (updated && status === 'failed') await recordNotificationOutcome(tx, updated, 'failed', { sent: 0, failed: 0, deferred: 0, suppressed: 0 });
+    });
     logger.error('[notification-outbox] 派发失败', { id: row.id, attempts, lastError });
+    return;
   }
+  // Do not turn a failed state/event commit into a delivery failure: the claim expires and retries safely.
+  await db.transaction(async (tx) => {
+    const [updated] = await tx.update(notificationOutbox).set({ status: 'done' }).where(claimedRowCondition(row)).returning();
+    if (updated) await recordNotificationOutcome(tx, updated, 'done', summary);
+  });
+  if (summary.failed > 0) {
+    logger.warn('[notification-outbox] 部分渠道投递失败', { id: row.id, eventKey: row.eventKey, ...summary });
+  }
+}
+
+function claimedRowCondition(row: NotificationOutboxRow) {
+  return and(eq(notificationOutbox.id, row.id), eq(notificationOutbox.status, 'pending'),
+    exactTenantCondition(notificationOutbox.tenantId, row.tenantId),
+    row.claimedAt ? eq(notificationOutbox.claimedAt, row.claimedAt) : isNull(notificationOutbox.claimedAt));
 }
 
 /**
@@ -340,6 +357,7 @@ export async function aggregateNotificationDigests(): Promise<{ groups: number; 
           channelPolicy: { only: ['email'] },
           channelOptions: { email: { html, subject: `通知摘要：${lines.length} 条未读通知` } },
         });
+        for (const item of items) await recordNotificationOutcome(tx, item, 'done', { sent: 0, failed: 0, deferred: 1, suppressed: 0 });
         return { outboxId, itemCount: items.length };
       });
 

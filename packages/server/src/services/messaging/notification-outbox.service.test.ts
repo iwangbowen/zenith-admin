@@ -22,10 +22,12 @@ vi.mock('../../lib/notification/dispatch', () => ({
 vi.mock('../../lib/logger', () => ({
   default: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
+vi.mock('./notification-delivery-events', () => ({ recordNotificationOutcome: vi.fn() }));
 
 import { db } from '../../db';
 import { deliverOutboxRow } from '../../lib/notification/dispatch';
 import { dispatchPendingNotifications, processNotificationOutbox, notify } from './notification-outbox.service';
+import { recordNotificationOutcome } from './notification-delivery-events';
 
 const dbMock = vi.mocked(db);
 const deliverMock = vi.mocked(deliverOutboxRow);
@@ -74,6 +76,7 @@ function makeRow(id: number, overrides: Partial<NotificationOutboxRow> = {}): No
 /** 认领：set 只含 claimedAt → 依次返回预置的批；落状态：其他 set → 记录并返回空 */
 function installUpdateMock(batches: NotificationOutboxRow[][]) {
   const statusWrites: Record<string, unknown>[] = [];
+  const claimedRows = batches.flat();
   let claimCalls = 0;
   dbMock.update.mockImplementation(() => createChain((setValues) => {
     const keys = Object.keys(setValues ?? {});
@@ -82,7 +85,8 @@ function installUpdateMock(batches: NotificationOutboxRow[][]) {
       return batches.shift() ?? [];
     }
     statusWrites.push(setValues ?? {});
-    return [];
+    const row = claimedRows.shift();
+    return row ? [{ ...row, ...setValues }] : [];
   }));
   return { statusWrites, claimCalls: () => claimCalls };
 }
@@ -90,6 +94,7 @@ function installUpdateMock(batches: NotificationOutboxRow[][]) {
 beforeEach(() => {
   vi.resetAllMocks();
   dbMock.select.mockImplementation(() => createChain(() => []));
+  dbMock.transaction.mockImplementation(async (run) => run(db as unknown as DbTransaction));
   deliverMock.mockResolvedValue({ sent: 1, suppressed: 0, deferred: 0, failed: 0 });
 });
 
@@ -180,6 +185,7 @@ describe('processNotificationOutbox', () => {
     await processNotificationOutbox(9);
     expect(deliverMock).toHaveBeenCalledTimes(1);
     expect(statusWrites).toEqual([{ status: 'done' }]);
+    expect(recordNotificationOutcome).toHaveBeenCalledWith(db, expect.objectContaining({ id: 9, status: 'done' }), 'done', { sent: 1, failed: 0, deferred: 0, suppressed: 0 });
   });
 
   it('认领未命中（已被他人占用 / 非 pending）时不派发', async () => {

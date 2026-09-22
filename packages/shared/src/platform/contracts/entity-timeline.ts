@@ -3,10 +3,14 @@ import { defineContract, op } from '../../core/contract';
 import { entityKeySchema } from '../../core/entity-ref';
 import { timelineEventSchema } from '../../core/timeline';
 import { canonicalEntityTypeSchema } from '../entity-registry';
+import { dateRangeQuery, queryEnum } from '../../core/api-schemas';
+import { ENTITY_TIMELINE_EVENT_TYPES, ENTITY_TIMELINE_EVENT_OPTIONS } from '../domain-events';
 
 export const entityTimelineQuerySchema = z.object({
   cursor: z.string().min(1).max(4096).optional().meta({ description: '下一页游标' }),
   limit: z.coerce.number().int().min(1).max(100).default(20).meta({ description: '时间线条数', example: 20 }),
+  eventType: queryEnum(ENTITY_TIMELINE_EVENT_TYPES, { description: '事件类型', options: ENTITY_TIMELINE_EVENT_OPTIONS }),
+  ...dateRangeQuery('事件发生时间'),
 });
 
 export const entityTimelineResponseSchema = z.object({

@@ -33,6 +33,7 @@ vi.mock('./registry', async (original) => ({
   ...await original<typeof import('./registry')>(), getTaskHandler: mocks.handler, listTaskHandlers: () => mocks.handler() ? [mocks.handler()] : [],
 }));
 vi.mock('./map', () => ({ pushTaskProgress: mocks.push }));
+vi.mock('./terminal-events', () => ({ completeAsyncTasks: (values: unknown, where: unknown) => mocks.update().set(values).where(where).returning() }));
 
 import { drainAsyncTasks, enqueueAsyncTask, persistAsyncTask, registerAsyncTaskWorker } from './runner';
 

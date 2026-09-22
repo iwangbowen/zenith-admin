@@ -13,6 +13,8 @@ import type { canonicalEntityRefSchema } from './entity-registry';
 export const ENTITY_TYPES = [
   'identity.user',
   'member.member',
+  'member.wallet-transaction',
+  'member.vip-renewal',
   'payment.order',
   'payment.refund',
   'payment.dispute',
@@ -33,6 +35,10 @@ export const ENTITY_TYPES = [
   'workflow.archive',
   'drive.file',
   'iot.device',
+  'iot.ota-task',
+  'iot.ota-device',
+  'iot.firmware',
+  'platform.managed-file',
   'iot.alarm',
   'cms.content',
   'wiki.document',
@@ -60,6 +66,7 @@ export const ENTITY_RELATION_TYPES = [
   'biz.leave', 'workflow.attachment', 'workflow.archive',
   'drive.file', 'iot.device', 'iot.alarm', 'cms.content', 'wiki.document', 'tasks.async',
   'notification.outbox', 'platform.operation-log',
+  'member.wallet-transaction', 'member.vip-renewal', 'iot.ota-task', 'iot.ota-device', 'iot.firmware', 'platform.managed-file', 'messaging.announcement',
 ] as const satisfies readonly CanonicalEntityType[];
 export function supportsEntityRelations(type: string): type is (typeof ENTITY_RELATION_TYPES)[number] {
   return (ENTITY_RELATION_TYPES as readonly string[]).includes(type);
@@ -74,6 +81,12 @@ export interface EntityDefinition {
 
 /** 实体注册表是跨域对象发现、详情能力和关系能力的唯一清单。 */
 export const ENTITY_REGISTRY: Readonly<Record<CanonicalEntityType, EntityDefinition>> = {
+  'member.wallet-transaction': { type: 'member.wallet-transaction', labelKey: 'entity.member.wallet-transaction', searchable: false, capabilities: ['detail', 'relations'] },
+  'member.vip-renewal': { type: 'member.vip-renewal', labelKey: 'entity.member.vip-renewal', searchable: false, capabilities: ['detail', 'relations'] },
+  'iot.ota-task': { type: 'iot.ota-task', labelKey: 'entity.iot.ota-task', searchable: false, capabilities: ['detail', 'relations'] },
+  'iot.ota-device': { type: 'iot.ota-device', labelKey: 'entity.iot.ota-device', searchable: false, capabilities: ['detail', 'relations'] },
+  'iot.firmware': { type: 'iot.firmware', labelKey: 'entity.iot.firmware', searchable: false, capabilities: ['detail', 'relations'] },
+  'platform.managed-file': { type: 'platform.managed-file', labelKey: 'entity.platform.managed-file', searchable: false, capabilities: ['detail', 'relations'] },
   'workflow.attachment': { type: 'workflow.attachment', labelKey: 'entity.workflow.attachment', searchable: false, capabilities: ['detail', 'relations'] },
   'workflow.archive': { type: 'workflow.archive', labelKey: 'entity.workflow.archive', searchable: false, capabilities: ['detail', 'relations'] },
   'identity.user': { type: 'identity.user', labelKey: 'entity.identity.user', searchable: true, capabilities: ['detail', 'relations', 'timeline'] },
@@ -99,7 +112,7 @@ export const ENTITY_REGISTRY: Readonly<Record<CanonicalEntityType, EntityDefinit
   'iot.alarm': { type: 'iot.alarm', labelKey: 'entity.iot.alarm', searchable: true, capabilities: ['detail', 'relations', 'timeline'] },
   'cms.content': { type: 'cms.content', labelKey: 'entity.cms.content', searchable: true, capabilities: ['detail', 'relations', 'timeline'] },
   'wiki.document': { type: 'wiki.document', labelKey: 'entity.wiki.document', searchable: true, capabilities: ['detail', 'relations', 'timeline'] },
-  'messaging.announcement': { type: 'messaging.announcement', labelKey: 'entity.messaging.announcement', searchable: true, capabilities: ['detail'] },
+  'messaging.announcement': { type: 'messaging.announcement', labelKey: 'entity.messaging.announcement', searchable: true, capabilities: ['detail', 'relations'] },
   'chat.message': { type: 'chat.message', labelKey: 'entity.chat.message', searchable: true, capabilities: ['detail'] },
   'biz.leave': { type: 'biz.leave', labelKey: 'entity.biz.leave', searchable: true, capabilities: ['detail', 'relations'] },
   'report.dashboard': { type: 'report.dashboard', labelKey: 'entity.report.dashboard', searchable: true, capabilities: ['detail'] },

@@ -19,3 +19,5 @@ export * from './permissions';
 export * from './ws-monitor';
 export * from './workflow-business-catalog';
 export * from './relation-origin';
+export * from './relation-filter-capabilities';
+export * from './manual-relations';

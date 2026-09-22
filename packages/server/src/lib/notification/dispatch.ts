@@ -16,6 +16,7 @@ import { db } from '../../db';
 import {
   notificationDispatches,
   notificationOutbox,
+  notificationOutboxSubjects,
   type NewNotificationDispatch,
   type NotificationOutboxRow,
 } from '../../db/schema';
@@ -26,6 +27,7 @@ import { getNotificationAdapter } from './registry';
 import { resolveDispatchPlan, type ChannelResolution } from './resolver';
 import { normalizeTemplateVars } from './template-vars';
 import type { ResolvedRecipient } from './types';
+import { exactTenantCondition } from '../tenant';
 
 /**
  * 进程内同时在飞的渠道投递上限（跨 outbox 行、跨触发入口）。
@@ -93,20 +95,28 @@ async function enqueueDeferred(
   deferrals: Array<{ recipient: NotificationRecipient; channel: NotificationChannel; deferUntil: Date; digestKey: string | null }>,
 ): Promise<void> {
   if (deferrals.length === 0) return;
-  await db.insert(notificationOutbox).values(deferrals.map((item) => ({
-    eventKey: row.eventKey,
-    recipients: [item.recipient],
-    vars: row.vars,
-    channelPolicy: { only: [item.channel] },
-    channelOptions: row.channelOptions,
-    link: row.link,
-    // 延后行不继承 dedupeKey：与原行同键会被唯一索引直接吞掉
-    dedupeKey: null,
-    scheduledAt: item.deferUntil,
-    digestKey: item.digestKey,
-    traceId: row.traceId,
-    tenantId: row.tenantId,
-  })));
+  await db.transaction(async (tx) => {
+    const subjects = await tx.select({ entityType: notificationOutboxSubjects.entityType, entityKey: notificationOutboxSubjects.entityKey, role: notificationOutboxSubjects.role })
+      .from(notificationOutboxSubjects).where(and(eq(notificationOutboxSubjects.outboxId, row.id), exactTenantCondition(notificationOutboxSubjects.tenantId, row.tenantId)));
+    const deferredRows = await tx.insert(notificationOutbox).values(deferrals.map((item) => ({
+      eventKey: row.eventKey,
+      recipients: [item.recipient],
+      vars: row.vars,
+      channelPolicy: { only: [item.channel] },
+      channelOptions: row.channelOptions,
+      link: row.link,
+      // 延后行不继承 dedupeKey：与原行同键会被唯一索引直接吞掉
+      dedupeKey: null,
+      scheduledAt: item.deferUntil,
+      digestKey: item.digestKey,
+      traceId: row.traceId,
+      parentRef: row.parentRef,
+      tenantId: row.tenantId,
+    }))).returning({ id: notificationOutbox.id });
+    if (subjects.length) await tx.insert(notificationOutboxSubjects).values(deferredRows.flatMap((deferred) => subjects.map((subject) => ({
+      ...subject, outboxId: deferred.id, tenantId: row.tenantId,
+    }))));
+  });
 }
 
 /** 派发一条 outbox 事件。渠道级失败在这里被吸收并留痕，只有整体不可继续时才抛出。 */

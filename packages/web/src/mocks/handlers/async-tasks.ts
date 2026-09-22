@@ -1,4 +1,4 @@
-import type { QueryOf } from '@zenith/shared/core';
+import type { QueryOf, TimelineEvent } from '@zenith/shared/core';
 import { percentOf } from '@zenith/shared/core';
 import { asyncTaskContract, taskDemoContract, isAsyncTaskTerminal } from '@zenith/shared/tasks';
 import type { AsyncTask, AsyncTaskItem, AsyncTaskStats, AsyncTaskStatus, AsyncTaskTypeMeta } from '@zenith/shared/tasks';
@@ -9,7 +9,7 @@ import { mockDateOffset, mockDateTime, mockDateTimeOffset } from '@/mocks/utils/
 import { includesKeyword, matchesFilter } from '@/mocks/utils/filter';
 import { removeByIds, requireItem } from '../utils/crud';
 import type { CanonicalEntityRef } from '@zenith/shared/platform';
-import { recordMockSubjects } from '@/mocks/data/entity-subjects';
+import { recordMockSubjects, mockEntitySubjects } from '@/mocks/data/entity-subjects';
 
 /**
  * 任务中心 Mock：用「按读取时间推进」策略模拟异步任务执行。
@@ -349,6 +349,22 @@ export const mockAsyncTasks: AsyncTask[] = [
   },
 ];
 
+export const mockAsyncTaskTerminalEvents: TimelineEvent[] = [];
+function rememberTaskTerminal(task: AsyncTask) {
+  const status = task.status;
+  if (!task.completedAt || (status !== 'success' && status !== 'failed' && status !== 'cancelled')) return;
+  const sourceRef = { type: 'tasks.async', key: String(task.id) } as const;
+  const subjects = mockEntitySubjects.get(`tasks.async:${task.id}`) ?? [];
+  mockAsyncTaskTerminalEvents.push({
+    id: `task:${task.id}:terminal:${mockAsyncTaskTerminalEvents.length + 1}`,
+    eventType: `tasks.async-task.${status === 'success' ? 'succeeded' : status}`,
+    occurredAt: dayjs(task.completedAt).toISOString(), sourceRef,
+    subjectRefs: (subjects.length ? subjects : [sourceRef]).map((ref) => ({ ...ref, role: 'related' })),
+    visibility: 'restricted', payload: { taskType: task.taskType, status, attempt: task.attempts },
+  });
+}
+mockAsyncTasks.forEach(rememberTaskTerminal);
+
 const tasks = mockAsyncTasks;
 
 export function createImmediateMockTask(input: {
@@ -404,6 +420,7 @@ export function createImmediateMockTask(input: {
   };
   tasks.unshift(task);
   recordMockSubjects({ type: 'tasks.async', key: String(task.id) }, input.subjectRefs ?? []);
+  rememberTaskTerminal(task);
   return task;
 }
 
@@ -476,6 +493,7 @@ function finalize(task: AsyncTask, status: AsyncTaskStatus) {
   task.status = status;
   task.completedAt = mockDateTime();
   task.updatedAt = task.completedAt;
+  rememberTaskTerminal(task);
   task.nextRunAt = null;
   sims.delete(task.id);
 }

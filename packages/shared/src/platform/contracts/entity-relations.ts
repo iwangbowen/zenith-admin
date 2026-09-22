@@ -2,6 +2,10 @@ import * as z from 'zod';
 import { defineContract, op } from '../../core/contract';
 import { entityKeySchema, relationKeySchema } from '../../core/entity-ref';
 import { canonicalEntityRefSchema, canonicalEntityTypeSchema } from '../entity-registry';
+import { MANUAL_RELATION_TYPES } from '../manual-relations';
+import { dateRangeQuery, keywordQuery, queryBool } from '../../core/api-schemas';
+import { filterMeta } from '../../core/filter-meta';
+import type { QueryOutputOf } from '../../core/contract';
 
 export const ENTITY_RELATION_KINDS = ['direct', 'derived', 'causal', 'activity'] as const;
 export const entityRelationKindSchema = z.enum(ENTITY_RELATION_KINDS).meta({ id: 'EntityRelationKind' });
@@ -37,6 +41,15 @@ export const entityRelationOriginSchema = z.object({
 }).meta({ id: 'EntityRelationOrigin' });
 export type EntityRelationOrigin = z.infer<typeof entityRelationOriginSchema>;
 
+/** Declared per provider: absent capabilities must never silently ignore a filter. */
+export const entityRelationFilterCapabilitiesSchema = z.object({
+  keyword: z.boolean().optional(),
+  statusOptions: z.array(z.object({ value: z.string().max(64), label: z.string().max(80) })).optional(),
+  dateRange: z.boolean().optional(),
+  attentionOnly: z.boolean().optional(),
+}).meta({ id: 'EntityRelationFilterCapabilities' });
+export type EntityRelationFilterCapabilities = z.infer<typeof entityRelationFilterCapabilitiesSchema>;
+
 export const entityRelationSectionSchema = z.object({
   key: relationKeySchema,
   labelKey: z.string().min(1).max(128),
@@ -44,6 +57,7 @@ export const entityRelationSectionSchema = z.object({
   kind: entityRelationKindSchema,
   cardinality: entityRelationCardinalitySchema,
   capabilities: entityRelationCapabilitiesSchema,
+  filters: entityRelationFilterCapabilitiesSchema.optional(),
   summaryState: entityRelationSummaryStateSchema.default('unavailable'),
 }).meta({ id: 'EntityRelationSection' });
 export type EntityRelationSection = z.infer<typeof entityRelationSectionSchema>;
@@ -61,7 +75,15 @@ export const entityRelationItemSchema = z.object({
   description: z.string().max(500).nullable().optional(),
   status: z.string().max(64).nullable().optional(),
   occurredAt: z.string().nullable().optional(),
+  attention: z.boolean().optional().meta({ description: '依据该业务对象的真实待处理规则计算' }),
+  action: z.object({ label: z.string().min(1).max(40), target: canonicalEntityRefSchema }).optional(),
   origin: entityRelationOriginSchema.optional().meta({ description: '关系来源语义；不包含事件载荷' }),
+  manual: z.object({
+    type: z.enum(MANUAL_RELATION_TYPES),
+    direction: z.enum(['outgoing', 'incoming', 'symmetric']),
+    note: z.string().max(500).nullable(),
+    createdByName: z.string().nullable(),
+  }).optional(),
   capabilities: entityRelationCapabilitiesSchema,
 }).meta({ id: 'EntityRelationItem' });
 export type EntityRelationItem = z.infer<typeof entityRelationItemSchema>;
@@ -100,19 +122,23 @@ export const entityRelationSectionParamsSchema = entityRelationParamsSchema.exte
 export const entityRelationsQuerySchema = z.object({
   cursor: z.string().min(1).max(4096).optional().meta({ description: '下一页游标' }),
   limit: z.coerce.number().int().min(1).max(50).default(5).meta({ description: '单组预览 / 分页条数', example: 5 }),
+  keyword: keywordQuery('标题 / 编号', { max: 160 }),
+  status: z.string().trim().max(64).optional().meta({ description: '目标业务状态，取值由分组的 statusOptions 声明', ...filterMeta({ kind: 'enum', values: [] }) }),
+  ...dateRangeQuery('关联记录时间'),
+  attentionOnly: queryBool('仅看需处理记录'),
 });
 
 export const entityRelationsContract = defineContract('/api/platform/entities', {
   link: op.post('/{type}/{key}/links', {
     access: { permission: 'system:relation:manage' }, audit: '关联业务对象',
     params: entityRelationParamsSchema,
-    body: z.object({ target: canonicalEntityRefSchema }),
+    body: z.object({ target: canonicalEntityRefSchema, relationType: z.enum(MANUAL_RELATION_TYPES).default('related'), note: z.string().trim().max(500).optional() }),
     summary: '建立人工对象关联',
   }),
   unlink: op.delete('/{type}/{key}/links', {
     access: { permission: 'system:relation:manage' }, audit: '解除业务对象关联',
     params: entityRelationParamsSchema,
-    body: z.object({ target: canonicalEntityRefSchema }),
+    body: z.object({ target: canonicalEntityRefSchema, relationType: z.enum(MANUAL_RELATION_TYPES).default('related'), direction: z.enum(['outgoing', 'incoming', 'symmetric']).default('outgoing') }),
     summary: '解除人工对象关联',
   }),
   describe: op.get('/{type}/{key}/relations', {
@@ -129,3 +155,6 @@ export const entityRelationsContract = defineContract('/api/platform/entities', 
     summary: '分页获取对象关联分组',
   }),
 }, { tags: ['EntityRelations'] });
+
+export type EntityRelationFilters = Pick<QueryOutputOf<typeof entityRelationsContract.section>,
+  'keyword' | 'status' | 'startTime' | 'endTime' | 'attentionOnly'>;
