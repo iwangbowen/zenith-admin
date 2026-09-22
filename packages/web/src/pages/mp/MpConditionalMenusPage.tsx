@@ -162,7 +162,8 @@ export default function MpConditionalMenusPage() {
   const columns = [
     { title: '名称', dataIndex: 'name', minWidth: 160 },
     { title: '匹配规则', dataIndex: 'matchRule', width: 240, render: (r: MpMenuMatchRule) => <Text type="tertiary">{ruleSummary(r)}</Text> },
-    { title: '一级按钮数', dataIndex: 'buttons', width: 100, render: (b: MpMenuButton[]) => (b?.length ?? 0) },
+    // 表头「一级按钮数」5 字约 70px，原 100 定宽（可用 68）装不下会折成两行
+    { title: '一级按钮数', dataIndex: 'buttons', width: 120, render: (b: MpMenuButton[]) => (b?.length ?? 0) },
     { title: '状态', dataIndex: 'status', width: 90, fixed: 'right' as const, render: (s: string) => <Tag color={s === 'published' ? 'green' : 'grey'} type="light">{s === 'published' ? '已发布' : '草稿'}</Tag> },
     createOperationColumn<MpConditionalMenu>({
       width: 210,
