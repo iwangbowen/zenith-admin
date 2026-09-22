@@ -252,14 +252,14 @@ function ContainersTab() {
       title: '镜像', dataIndex: 'image', width: 220,
       render: (v: string, r: DockerContainer) => {
         if (isGroup(r)) return <Typography.Text type="tertiary" size="small">{v}</Typography.Text>;
-        return <Tooltip content={v}><Tag size="small" color="blue">{v.length > 30 ? `${v.slice(0, 30)}…` : v}</Tag></Tooltip>;
+        return <Tooltip content={v}><Tag size="small" color="blue" style={{ maxWidth: '100%' }}>{v}</Tag></Tooltip>;
       },
     },
     {
       title: '状态', dataIndex: 'state', width: 140,
       render: (v: string, r: DockerContainer) => (
         <Tooltip content={r.status}>
-          <Tag size="small" color={STATE_COLOR[v] ?? 'grey'}>{r.status}</Tag>
+          <Tag size="small" color={STATE_COLOR[v] ?? 'grey'} style={{ maxWidth: '100%' }}>{r.status}</Tag>
         </Tooltip>
       ),
     },
