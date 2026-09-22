@@ -35,9 +35,10 @@ export function useMemberLedgerSearch(listKey: QueryKey): UseListSearchReturn<Me
   return search;
 }
 
+/** 会员列：昵称优先展示名，180 宽单行省略 + tooltip（`memberName` 是昵称，比账号名长） */
 export function ledgerMemberColumn<T extends Data & { memberName?: string | null; memberId: number }>(): ColumnProps<T> {
   type Field = Extract<keyof T, string>;
-  return memberCellColumn<T>({ width: 140, nameField: 'memberName' as Field, idField: 'memberId' as Field });
+  return memberCellColumn<T>({ width: 180, nameField: 'memberName' as Field, idField: 'memberId' as Field, ellipsis: true });
 }
 
 export function ledgerTypeColumn<T extends Data>(labels: Record<string, string>, colors: Record<string, string>): ColumnProps<T> {
