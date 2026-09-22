@@ -37,7 +37,7 @@ function createWrapper(initialEntry: string, initialSync: boolean) {
 
 describe('useUrlSelectionState', () => {
   it('enables URL sync from the current selection without navigation churn', async () => {
-    const wrapper = createWrapper('/system/dicts?view=compact', false);
+    const wrapper = createWrapper('/system/dicts?view=compact#context', false);
     const hook = renderHook(() => {
       const [selection, setSelection] = useUrlSelectionState('dict');
       const location = useLocation();
@@ -53,6 +53,7 @@ describe('useUrlSelectionState', () => {
       const params = new URLSearchParams(hook.result.current.location.search);
       expect(params.get('view')).toBe('compact');
       expect(params.get('dict')).toBe('42');
+      expect(hook.result.current.location.hash).toBe('#context');
     });
 
     const settledLocationKey = hook.result.current.location.key;
@@ -64,7 +65,7 @@ describe('useUrlSelectionState', () => {
   });
 
   it('follows external URL changes and consumes deep links when sync is disabled', async () => {
-    const wrapper = createWrapper('/system/dicts?dict=7&view=compact', false);
+    const wrapper = createWrapper('/system/dicts?dict=7&view=compact#context', false);
     const hook = renderHook(() => {
       const [selection] = useUrlSelectionState('dict');
       const location = useLocation();
@@ -75,6 +76,7 @@ describe('useUrlSelectionState', () => {
     await waitFor(() => {
       expect(hook.result.current.selection).toBe('7');
       expect(new URLSearchParams(hook.result.current.location.search).has('dict')).toBe(false);
+      expect(hook.result.current.location.hash).toBe('#context');
     });
 
     wrapper.setSyncPreference(true);
@@ -129,7 +131,7 @@ describe('useUrlSelectionState', () => {
 
 describe('useUrlTabState', () => {
   it('writes user tab changes once and follows external navigation', async () => {
-    const wrapper = createWrapper('/analytics?view=compact', true);
+    const wrapper = createWrapper('/analytics?view=compact#context', true);
     const hook = renderHook(() => {
       const [tab, setTab] = useUrlTabState(['overview', 'events'] as const, 'overview');
       const location = useLocation();
@@ -141,6 +143,7 @@ describe('useUrlTabState', () => {
     await waitFor(() => {
       expect(hook.result.current.tab).toBe('events');
       expect(new URLSearchParams(hook.result.current.location.search).get('tab')).toBe('events');
+      expect(hook.result.current.location.hash).toBe('#context');
     });
 
     act(() => hook.result.current.navigate('/analytics?tab=overview&view=compact'));

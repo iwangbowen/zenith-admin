@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { EntityContextView } from '@/components/entity-relations/EntityRelationButton';
+import { sameEntity, useEntityRelationNavigationSession } from '@/lib/entity-relation-navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Banner, Button, Descriptions, Form, Popconfirm, Radio, RadioGroup, Select,
@@ -99,6 +100,8 @@ export default function IotDeviceDetailDrawer({ device, onClose, visible = devic
   const canCommand = hasPermission('iot:command:send');
 
   const deviceId = device?.id ?? null;
+  const relationNavigation = useEntityRelationNavigationSession();
+  const restoreRelations = deviceId !== null && sameEntity(relationNavigation?.restore?.ref, { type: 'iot.device', key: String(deviceId) });
   const modelQuery = useIotThingModel(device?.productId ?? null);
   const model = modelQuery.data;
   const shadowQuery = useIotDeviceShadow(deviceId);
@@ -503,7 +506,11 @@ export default function IotDeviceDetailDrawer({ device, onClose, visible = devic
           />
 
           {/* lazyRender：拓扑等重型 Tab 首次激活才挂载（避免在隐藏容器中初始化 ReactFlow 导致 fitView 失效） */}
-          <Tabs type="line" collapsible="auto" lazyRender>
+          <Tabs
+            key={`${deviceId}:${restoreRelations ? relationNavigation?.revision : 'detail'}`}
+            defaultActiveKey={restoreRelations ? 'relations' : 'properties'}
+            type="line" collapsible="auto" lazyRender
+          >
             <TabPane tab="属性状态" itemKey="properties">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '8px 0' }}>
                 <Text type="tertiary" size="small">

@@ -1,4 +1,4 @@
-import { NOTIFICATION_EVENTS, type NotificationDispatch, type NotificationEventKey } from '@zenith/shared/messaging';
+import { NOTIFICATION_EVENTS, type NotificationDispatch, type NotificationEventKey, type NotificationOutbox } from '@zenith/shared/messaging';
 import type { CanonicalEntityRef } from '@zenith/shared/platform';
 import { mockDateTime } from '@/mocks/utils/date';
 import { mockOperationLogs } from './logs';
@@ -7,7 +7,7 @@ import { mockUsers } from './users';
 
 /** Explicit fixture subjects; trace IDs and request text never create business relationships. */
 export const mockEntitySubjects = new Map<string, CanonicalEntityRef[]>();
-export const mockNotificationOutboxes: Array<{ id: number; title: string; eventKey: NotificationEventKey; createdAt: string }> = [];
+export const mockNotificationOutboxes: Array<NotificationOutbox & { title: string }> = [];
 export const mockNotificationDispatches: NotificationDispatch[] = [];
 
 export function recordMockSubjects(source: CanonicalEntityRef, subjects: readonly CanonicalEntityRef[]) {
@@ -30,7 +30,8 @@ export function recordMockNotification(eventKey: NotificationEventKey, subjects:
   const recipient = mockUsers.find((user) => user.id === recipientId);
   const id = (mockNotificationOutboxes.at(-1)?.id ?? 0) + 1;
   const createdAt = mockDateTime();
-  mockNotificationOutboxes.push({ id, title: event.label, eventKey, createdAt });
+  mockNotificationOutboxes.push({ id, title: event.label, eventKey, createdAt, status: 'done', link: null,
+    attempts: 1, lastError: null, scheduledAt: null, tenantId: null });
   recordMockSubjects({ type: 'notification.outbox', key: String(id) }, subjects);
   mockNotificationDispatches.push({
     id: 1000 + id, outboxId: id, eventKey, eventLabel: event.label,

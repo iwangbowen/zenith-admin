@@ -5,13 +5,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useListDeepLink } from './useListDeepLink';
 
 function wrapper({ children }: { children: ReactNode }) {
-  return <MemoryRouter initialEntries={['/list?keyword=first&view=compact']}>{children}</MemoryRouter>;
+  return <MemoryRouter initialEntries={[{ pathname: '/list', search: '?keyword=first&view=compact', hash: '#context', state: { returnTo: 'source' } }]}>{children}</MemoryRouter>;
 }
 
 describe('useListDeepLink', () => {
   afterEach(() => window.history.replaceState(null, '', '/'));
 
-  it('preserves existing callback behavior and unrelated router query parameters', async () => {
+  it('preserves existing callback behavior and unrelated query, hash and router state', async () => {
     // Existing callbacks may return an incidental value; their return remains ignored.
     const apply = vi.fn(() => true);
     const hook = renderHook(() => {
@@ -20,6 +20,8 @@ describe('useListDeepLink', () => {
     }, { wrapper });
 
     await waitFor(() => expect(hook.result.current.location.search).toBe('?view=compact'));
+    expect(hook.result.current.location.hash).toBe('#context');
+    expect(hook.result.current.location.state).toEqual({ returnTo: 'source' });
     expect(apply).toHaveBeenCalledExactlyOnceWith({ keyword: 'first' });
 
     act(() => hook.result.current.navigate('/list?keyword=second&view=compact'));
@@ -59,7 +61,7 @@ describe('useListDeepLink', () => {
   });
 
   it('preserves parameters inside the Electron hash route', async () => {
-    window.history.replaceState(null, '', '/#/list?keyword=first&view=compact');
+    window.history.replaceState(null, '', '/#/list?keyword=first&view=compact#context');
     const apply = vi.fn();
     const hook = renderHook(() => {
       useListDeepLink(['keyword'], apply, { getNextParams: () => ({ tab: 'cases' }) });
@@ -68,6 +70,6 @@ describe('useListDeepLink', () => {
 
     await waitFor(() => expect(hook.result.current.search).toBe('?view=compact&tab=cases'));
     expect(apply).toHaveBeenCalledExactlyOnceWith({ keyword: 'first' });
-    expect(window.location.hash).toBe('#/list?view=compact&tab=cases');
+    expect(window.location.hash).toBe('#/list?view=compact&tab=cases#context');
   });
 });

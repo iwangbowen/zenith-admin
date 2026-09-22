@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
 /**
  * 消费列表页的一次性深链筛选参数（如 `?memberKeyword=`）：
@@ -15,8 +15,9 @@ export function useListDeepLink(
   apply: (picked: Record<string, string>) => void,
   options?: { getNextParams?: (picked: Record<string, string>) => Record<string, string> | undefined },
 ): void {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const applyRef = useRef(apply);
   applyRef.current = apply;
   const optionsRef = useRef(options);
@@ -34,8 +35,9 @@ export function useListDeepLink(
     const next = new URLSearchParams(searchParams);
     for (const key of Object.keys(picked)) next.delete(key);
     for (const [key, value] of Object.entries(additions ?? {})) next.set(key, value);
-    setSearchParams(next, { replace: true, state: location.state });
+    // setSearchParams builds a search-only URL and clears the source object's hash.
+    navigate({ search: next.toString(), hash: location.hash }, { replace: true, state: location.state });
     // keys 为页面字面量数组，按值快照做依赖
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, setSearchParams, location.state, JSON.stringify(keys)]);
+  }, [searchParams, navigate, location.hash, location.state, JSON.stringify(keys)]);
 }

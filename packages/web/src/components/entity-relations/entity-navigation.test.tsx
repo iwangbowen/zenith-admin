@@ -32,7 +32,7 @@ beforeEach(() => {
     anchor: { ref: order, title: '来源订单 PAY-41' }, canManageLinks: false,
     sections: [{ key: sectionKey, labelKey: 'relation.payment.order.refunds', targetTypes: ['payment.refund'], kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true }, summaryState: 'has-data' }],
   });
-  recorder.on('GET', urlOf(entityRelationsContract.section, { params: { ...order, sectionKey } }), {
+  recorder.on('GET', urlOf(entityRelationsContract.section, { params: { ...order, sectionKey }, query: {} }), {
     items: [{ ref: { type: 'payment.refund', key: '7' }, relationKey: sectionKey, title: '关联退款 REF-7', capabilities: { view: true, open: true } }],
     nextCursor: null, hasMore: false,
   });
@@ -40,7 +40,7 @@ beforeEach(() => {
     anchor: { ref: audit, title: '来源审计记录' }, canManageLinks: false,
     sections: [{ key: 'audit.subjects', labelKey: 'relation.common.subjects', targetTypes: ['payment.refund'], kind: 'activity', cardinality: 'many', capabilities: { view: true, open: true }, summaryState: 'has-data' }],
   });
-  recorder.on('GET', urlOf(entityRelationsContract.section, { params: { ...audit, sectionKey: 'audit.subjects' } }), {
+  recorder.on('GET', urlOf(entityRelationsContract.section, { params: { ...audit, sectionKey: 'audit.subjects' }, query: {} }), {
     items: [{ ref: { type: 'payment.refund', key: '7' }, relationKey: 'audit.subjects', title: '关联退款 REF-7', capabilities: { view: true, open: true } }],
     nextCursor: null, hasMore: false,
   });

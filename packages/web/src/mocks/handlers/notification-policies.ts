@@ -1,8 +1,8 @@
 import { NOTIFICATION_CHANNELS, NOTIFICATION_EVENTS, NOTIFICATION_EVENT_GROUP_LABELS, isNotificationEventKey, notificationPolicyContract, type NotificationEventDef, type NotificationPolicyEvent } from '@zenith/shared/messaging';
 import { mock } from '@/mocks/utils/contract';
-import { badRequest, forbidden, unauthorized } from '@/mocks/utils/handlers';
+import { badRequest, forbidden, notFound, unauthorized } from '@/mocks/utils/handlers';
 import { currentMockSession, mockUserPermissions } from '@/mocks/utils/auth';
-import { mockNotificationDispatches, recordMockNotification } from '@/mocks/data/entity-subjects';
+import { mockNotificationDispatches, mockNotificationOutboxes, recordMockNotification } from '@/mocks/data/entity-subjects';
 import { matchesFilter, withinDateRange } from '@/mocks/utils/filter';
 
 const overrides = new Map<string, { enabled: boolean; locked: boolean }>();
@@ -18,6 +18,14 @@ function authorize(request: Request, permission: string) {
 }
 
 export const notificationPoliciesHandlers = [
+  mock(notificationPolicyContract.outboxDetail, ({ request, params, ok }) => {
+    const error = authorize(request, 'system:notify-policy:list');
+    if (error) return error;
+    const session = currentMockSession(request)!;
+    const tenantId = session.viewingTenantId ?? session.user.tenantId ?? null;
+    const row = mockNotificationOutboxes.find((entry) => entry.id === params.id && entry.tenantId === tenantId);
+    return row ? ok(row) : notFound('通知事件不存在', { status: 404 });
+  }),
   mock(notificationPolicyContract.events, ({ request, ok }) => {
     const error = authorize(request, 'system:notify-policy:list');
     if (error) return error;

@@ -5,7 +5,7 @@
 ## 阶段 1：摘要查询性能与处理状态
 
 - 关联分组摘要只返回 `has-data`、`empty`、`attention`、`unavailable`，不返回数量。
-- Provider 优先实现 `exists()` / `summarize()`，注册表对未实现 Provider 使用同权限的 `list(limit=1)` 兜底。
+- Provider 优先实现 `summaryQuery()` / `prepareSummaryQuery()`，以复用权限条件并参与批量 SQL；特殊 Provider 可使用 `exists()` / `summarize()`，均未实现时才使用同权限的 `list(limit=1)` 兜底。
 - 摘要查询按最多 8 组 EXISTS 合并 SQL，单个事务连接内保持串行，savepoint 隔离失败并遵守总预算。
 - 为退款待处理、投诉未解决、通知失败、审批待办等场景登记 `attention` 规则。
 
@@ -29,7 +29,7 @@
 
 ## 阶段 5：一致性与缓存
 
-- 关系建立 / 解除、业务状态变化、通知投递、任务状态和审批变更统一触发精确关系缓存失效。
+- 关系建立 / 解除和已接入的业务事件统一将关系查询标为过期，仅活跃查询立即回源，覆盖无法在客户端枚举的反向关联。
 - 详情页支持后台重新验证，刷新期间保留已有内容和布局。
 - 为关系摘要、列表和时间线定义清晰的 query key 与失效边界。
 
