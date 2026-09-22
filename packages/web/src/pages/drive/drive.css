@@ -197,13 +197,15 @@
   min-width: 0;
 }
 
-.drive-name-cell > .semi-tag {
-  flex: 0 0 auto;
-  max-width: 96px;
+/* 标签区最多占 180px，放不下的按宽度收进 +N 气泡；标签少时不占满，把宽度让回文件名 */
+.drive-name-cell__tags {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 180px;
 }
 
 @container (max-width: 260px) {
-  .drive-name-cell > .semi-tag {
+  .drive-name-cell__tags {
     display: none;
   }
 }

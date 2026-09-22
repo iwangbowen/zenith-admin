@@ -210,6 +210,9 @@
   才传 `maxTagCount` 走固定计数（内部 TagGroup），**禁止**在页面里直接写 `TagGroup maxTagCount + showPopover`。
   有权限的业务点击行为通过 `onClick(record)` 传入，禁止在页面重复实现 `OverflowList + Popover + Tag` 的渲染结构；
   空列表文案、业务去重 / 标签映射和权限判断仍由页面提供。
+  **复合列**（名称 / 标题列内嵌标记，或单元格还有其他内容）直接复用 `components/OverflowTagList`，不套列工厂：
+  把标签块放进 flex 容器并给 `contentWidth="100%"`（宽度由容器决定，列宽变化才能跟着重算），
+  外层用 `min-width: 0` + 固定/受限宽度（`max-width` 或 flex-basis）声明标签最多占多少，**禁止**再手写 `slice(0, N)` + `+N` Tag，也不允许直接丢弃溢出标签。
 - **时间 / 日期列**：一律用 `utils/table-columns` 的 `dateTimeColumn(title, dataIndex, options?)`
   （日期时间，宽 180）或 `dateColumn(...)`（纯日期，宽 120）创建，`createdAt` / `updatedAt`
   直接用预置的 `createdAtColumn` / `updatedAtColumn`。工厂已内建格式化、空值兜底与「时间显示方式」偏好

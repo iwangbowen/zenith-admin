@@ -23,6 +23,7 @@ import { confirmAndDelete, listTableProps } from '@/components/list-page';
 import { canPreviewFile, fetchManagedFileBlob } from '@/utils/file-utils';
 import { downloadBlob } from '@/utils/download';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
+import OverflowTagList from '@/components/OverflowTagList';
 import { DriveFolderPicker, type FolderTarget } from './DriveFolderPicker';
 import { DriveNodeCard } from './DriveNodeCard';
 import type { UploaderTarget } from '../hooks/useDriveUploader';
@@ -207,7 +208,17 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
           <FileNameCell name={node.name} mimeType={node.type === 'folder' ? 'inode/directory' : node.mimeType} onClick={() => openNode(node)} />
           {node.isStarred && <Star size={12} className="drive-name-cell__star" fill="currentColor" aria-label="已收藏" />}
           {node.lockedBy && <Tooltip content={`${node.lockedByName ?? ''} 签出锁定中`}><Lock size={12} className="drive-name-cell__lock" /></Tooltip>}
-          {(node.tags ?? []).slice(0, 2).map((t) => <Tag key={t.id} size="small" color="blue">{t.name}</Tag>)}
+          {(node.tags?.length ?? 0) > 0 && (
+            <div className="drive-name-cell__tags">
+              <OverflowTagList
+                items={(node.tags ?? []).map((t) => ({ key: t.id, label: t.name }))}
+                contentWidth="100%"
+                tagColor="blue"
+                tagSize="small"
+                popoverWidth={240}
+              />
+            </div>
+          )}
         </div>
       ),
     },

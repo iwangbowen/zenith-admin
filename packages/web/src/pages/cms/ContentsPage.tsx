@@ -26,6 +26,7 @@ import { CmsWidgetSourceRefsSheet, type CmsWidgetSourceTarget } from './CmsWidge
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import { DATE_TIME_COLUMN_WIDTH, EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
+import OverflowTagList, { type OverflowTagItem } from '@/components/OverflowTagList';
 import { abortSubmit } from '@/lib/abort-submit';
 import { compactParams } from '@/lib/query';
 
@@ -47,6 +48,21 @@ type TabKey = 'all' | 'pending' | 'published' | 'archived' | 'recycle';
 /** 栏目筛选树：仅 key / label，不带 value */
 function channelsToTree(nodes: CmsChannel[]): TreeNodeData[] {
   return mapTree<CmsChannel, TreeNodeData>(nodes, (n) => ({ key: String(n.id), label: n.name }));
+}
+
+/** 标题列的标记标签：顶 / 类型 / 荐 / 热 / 投稿 / 映射 / 锁定 / 原创 / 附件数（一篇文章可同时命中多枚） */
+function titleFlagItems(record: CmsContentListItem): OverflowTagItem[] {
+  const items: OverflowTagItem[] = [];
+  if (record.isTop) items.push({ key: 'top', label: record.topWeight > 0 ? `顶${record.topWeight}` : '顶', color: 'blue' });
+  if (record.contentType !== 'article') items.push({ key: 'type', label: CMS_CONTENT_TYPE_LABELS[record.contentType], color: 'light-blue' });
+  if (record.isRecommend) items.push({ key: 'recommend', label: '荐', color: 'cyan' });
+  if (record.isHot) items.push({ key: 'hot', label: '热', color: 'red' });
+  if (record.memberId) items.push({ key: 'contribute', label: '投稿', color: 'purple' });
+  if (record.mappingSourceId) items.push({ key: 'mapping', label: '映射', color: 'teal' });
+  if (record.lockedAt) items.push({ key: 'locked', label: '锁定', color: 'red' });
+  if (record.isOriginal) items.push({ key: 'original', label: '原创', color: 'green' });
+  if (record.attachments?.length) items.push({ key: 'attachments', label: `附${record.attachments.length}`, color: 'grey' });
+  return items;
 }
 
 export default function ContentsPage() {
@@ -285,30 +301,31 @@ export default function ContentsPage() {
       title: '标题',
       dataIndex: 'title',
       minWidth: 320,
-      render: (v: string, record) => (
-        <span>
-          {record.isTop ? <Tag size="small" color="blue" style={{ marginRight: 4 }}>{record.topWeight > 0 ? `顶${record.topWeight}` : '顶'}</Tag> : null}
-          {record.contentType !== 'article' ? <Tag size="small" color="light-blue" style={{ marginRight: 4 }}>{CMS_CONTENT_TYPE_LABELS[record.contentType]}</Tag> : null}
-          {record.isRecommend ? <Tag size="small" color="cyan" style={{ marginRight: 4 }}>荐</Tag> : null}
-          {record.isHot ? <Tag size="small" color="red" style={{ marginRight: 4 }}>热</Tag> : null}
-          {record.memberId ? <Tag size="small" color="purple" style={{ marginRight: 4 }}>投稿</Tag> : null}
-          {record.mappingSourceId ? <Tag size="small" color="teal" style={{ marginRight: 4 }}>映射</Tag> : null}
-          {record.lockedAt ? <Tag size="small" color="red" style={{ marginRight: 4 }}>锁定</Tag> : null}
-          {record.isOriginal ? <Tag size="small" color="green" style={{ marginRight: 4 }}>原创</Tag> : null}
-          {(record.attachments?.length ?? 0) > 0 ? <Tag size="small" color="grey" style={{ marginRight: 4 }}>{`附${record.attachments.length}`}</Tag> : null}
-          <Typography.Text
-            ellipsis={{ showTooltip: true }}
-            style={{
-              maxWidth: 240,
-              verticalAlign: 'middle',
-              ...(record.titleStyle?.bold ? { fontWeight: 700 } : {}),
-              ...(record.titleStyle?.color ? { color: record.titleStyle.color } : {}),
-            }}
-          >
-            {v}
-          </Typography.Text>
-        </span>
-      ),
+      render: (v: string, record) => {
+        const flags = titleFlagItems(record);
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+            {flags.length > 0 && (
+              // 标记最多九枚（顶 / 类型 / 荐 / 热 / 投稿 / 映射 / 锁定 / 原创 / 附件数），放不下的收进 +N
+              <div style={{ flex: '0 0 auto', maxWidth: '60%', minWidth: 0 }}>
+                <OverflowTagList items={flags} contentWidth="100%" tagSize="small" popoverWidth={280} />
+              </div>
+            )}
+            <Typography.Text
+              ellipsis={{ showTooltip: true }}
+              style={{
+                flex: '1 1 auto',
+                minWidth: 0,
+                maxWidth: 240,
+                ...(record.titleStyle?.bold ? { fontWeight: 700 } : {}),
+                ...(record.titleStyle?.color ? { color: record.titleStyle.color } : {}),
+              }}
+            >
+              {v}
+            </Typography.Text>
+          </div>
+        );
+      },
     },
     { title: '栏目', dataIndex: 'channelName', width: 110 },
     {

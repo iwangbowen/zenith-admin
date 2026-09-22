@@ -10,6 +10,7 @@ import ExportButton from '@/components/ExportButton';
 import ImportButton from '@/components/ImportButton';
 import AppModal from '@/components/AppModal';
 import { EMPTY_PLACEHOLDER, copyableNoColumn, dateTimeColumn, overflowTagColumn, renderEllipsis, enabledStatusColumn } from '@/utils/table-columns';
+import OverflowTagList from '@/components/OverflowTagList';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
@@ -34,6 +35,10 @@ import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { EditFormModal, EditFormSheet } from '@/components/EditFormModal';
 
 const { Text } = Typography;
+
+/** 「属性快照」列内容宽度 = 列宽 300 − 单元格左右 padding 32；带「待确认」标时再扣掉其宽度与间距 */
+const PROPERTY_TAG_CONTENT_WIDTH = 268;
+const PROPERTY_TAG_CONTENT_WIDTH_WITH_PENDING = 176;
 
 /** 设备表单值：记录里的 null 在表单中归一为空串 / 未填，提交前由 beforeSave 还原 */
 type IotDeviceFormValues = Partial<CreateIotDeviceInput>;
@@ -202,19 +207,24 @@ export default function IotDevicesPage() {
       ),
     },
     {
+      // 上报属性按剩余宽度收纳，超出部分进 +N 气泡（悬浮可看全）；「待确认」标占用固定宽度需先扣除
       title: '属性快照', width: 300,
       render: (_: unknown, r: IotDevice) => {
         const entries = Object.entries(r.reported ?? {});
         const pendingDesired = Object.keys(r.desired ?? {}).length;
         if (entries.length === 0 && pendingDesired === 0) return EMPTY_PLACEHOLDER;
-        const shown = entries.slice(0, 2);
         return (
-          <div style={{ display: 'flex', gap: 4, whiteSpace: 'nowrap', overflow: 'hidden' }}>
-            {shown.map(([k, v]) => (
-              <Tag key={k} size="small" color="cyan">{k}: {renderMetricValue(v)}</Tag>
-            ))}
-            {entries.length > 2 && <Tag size="small">+{entries.length - 2}</Tag>}
-            {pendingDesired > 0 && <Tag size="small" color="orange">待确认 {pendingDesired}</Tag>}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+            {entries.length > 0 && (
+              <OverflowTagList
+                items={entries.map(([k, v]) => ({ key: k, label: `${k}: ${renderMetricValue(v)}` }))}
+                contentWidth={pendingDesired > 0 ? PROPERTY_TAG_CONTENT_WIDTH_WITH_PENDING : PROPERTY_TAG_CONTENT_WIDTH}
+                tagColor="cyan"
+                tagSize="small"
+                popoverWidth={260}
+              />
+            )}
+            {pendingDesired > 0 && <Tag size="small" color="orange" style={{ flexShrink: 0 }}>待确认 {pendingDesired}</Tag>}
           </div>
         );
       },
