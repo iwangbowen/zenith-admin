@@ -1,6 +1,6 @@
 /** 页面搭建：区块 JSON 装配（P3 Batch6）——列表 + 区块搭建器 SideSheet */
 import { useEffect, useRef, useState } from 'react';
-import { Button, Dropdown, Form, Input, Select, SideSheet, Tag, Toast, Typography, Empty } from '@douyinfe/semi-ui';
+import { Button, Dropdown, Form, Input, OverflowList, Popover, Select, SideSheet, Space, Tag, Toast, Typography, Empty } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Plus, ArrowUp, ArrowDown, Trash2, Pencil, ExternalLink, ChevronDown, GripVertical, RefreshCw, LockKeyhole, ShieldCheck } from 'lucide-react';
@@ -41,6 +41,9 @@ function newBlockId(): string {
 }
 
 const BLOCK_TYPE_LABEL = Object.fromEntries(CMS_PAGE_BLOCK_TYPES.map((t) => [t.value, t.label]));
+
+/** 「区块构成」列内容宽度 = 列宽 240 − 单元格左右 padding 32 */
+const BLOCK_TAG_CONTENT_WIDTH = 208;
 interface SearchParams { keyword: string }
 const defaultSearchParams: SearchParams = { keyword: '' };
 
@@ -251,15 +254,41 @@ export default function PagesPage() {
         : <Tag size="small">可静态化</Tag>,
     },
     {
+      // 区块类型最多 6 种，全部铺开会折成多行、把行高撑大；单行放不下的收纳为 +N，
+      // 悬浮给出被收纳的类型（与用户管理的角色列同一做法）
       title: '区块构成',
       width: 240,
-      render: (_: unknown, r) => (
-        <span>
-          {[...new Set(r.blocks.map((b) => b.type))].map((t) => (
-            <Tag size="small" key={t} style={{ marginRight: 4 }}>{BLOCK_TYPE_LABEL[t] ?? t}</Tag>
-          ))}
-        </span>
-      ),
+      render: (_: unknown, r) => {
+        const types = [...new Set(r.blocks.map((b) => b.type))];
+        if (types.length === 0) return null;
+        const items = types.map((type) => ({ key: type, label: BLOCK_TYPE_LABEL[type] ?? type }));
+        return (
+          <div style={{ width: BLOCK_TAG_CONTENT_WIDTH, maxWidth: '100%', minWidth: 0, overflow: 'hidden' }}>
+            <OverflowList
+              items={items}
+              renderMode="collapse"
+              style={{ width: BLOCK_TAG_CONTENT_WIDTH, maxWidth: '100%', minWidth: 0 }}
+              visibleItemRenderer={(item) => (
+                <Tag size="small" key={item.key} style={{ flex: '0 0 auto', marginRight: 4 }}>{item.label}</Tag>
+              )}
+              overflowRenderer={(overflowItems) => (
+                overflowItems.length > 0 ? (
+                  <Popover
+                    position="bottomLeft"
+                    content={(
+                      <Space spacing={4} wrap style={{ maxWidth: 240 }}>
+                        {overflowItems.map((item) => <Tag size="small" key={item.key}>{item.label}</Tag>)}
+                      </Space>
+                    )}
+                  >
+                    <Tag size="small" color="grey" style={{ flex: '0 0 auto', cursor: 'pointer' }}>+{overflowItems.length}</Tag>
+                  </Popover>
+                ) : null
+              )}
+            />
+          </div>
+        );
+      },
     },
     dateTimeColumn('更新时间', 'updatedAt'),
     enabledStatusColumn(),
