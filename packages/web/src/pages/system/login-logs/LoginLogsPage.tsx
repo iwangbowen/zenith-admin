@@ -14,6 +14,16 @@ import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/com
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
+import dayjs from 'dayjs';
+
+/** URL 深链里的 `YYYY-MM-DD HH:mm:ss`：空值 / 非法值返回 null（解析约定与 utils/date 的 `replace(' ', 'T')` 一致） */
+function parseDateTimeParam(value: string | undefined): Date | null {
+  if (!value) return null;
+  const parsed = dayjs(value.replace(' ', 'T'));
+  return parsed.isValid() ? parsed.toDate() : null;
+}
+
 export default function LoginLogsPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['list', 'stats'] as const, 'list');
   interface SearchParams {
@@ -29,7 +39,19 @@ export default function LoginLogsPage() {
     page, pageSize, setPage, buildPagination,
     bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
+    applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultParams, listKey: loginLogKeys.lists });
+  // 首页登录趋势图表下钻（?status=…&startTime=…&endTime=…）：按某天与状态预置筛选，消费后即从地址栏移除；
+  // 同时在同一次导航里把页签切回列表——深链要看的是记录，停在上次离开的「统计分析」页签会看不到结果
+  useListDeepLink(['status', 'startTime', 'endTime'], (params) => {
+    const startTime = parseDateTimeParam(params.startTime);
+    const endTime = parseDateTimeParam(params.endTime);
+    applySearch({
+      ...defaultParams,
+      status: enumValueOf(LOGIN_STATUSES, params.status),
+      timeRange: startTime && endTime ? [startTime, endTime] : null,
+    });
+  }, { getNextParams: () => ({ tab: 'list' }) });
   // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
   const filterQuery = useFilterQuery({
     username: submittedParams.username,

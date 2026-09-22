@@ -15,7 +15,6 @@ export type DashboardStats = z.infer<typeof dashboardStatsSchema>;
 export const dashboardChartsSchema = z.object({
   loginTrend: z.array(z.object({ date: z.string(), successCount: z.number(), failCount: z.number() })),
   operationTypes: z.array(z.object({ module: z.string(), count: z.number() })),
-  userActivity: z.array(z.object({ date: z.string(), activeUsers: z.number() })),
 }).meta({ id: 'DashboardCharts' });
 
 export type DashboardCharts = z.infer<typeof dashboardChartsSchema>;

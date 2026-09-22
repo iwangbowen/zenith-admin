@@ -1,4 +1,4 @@
-import { count, countDistinct, sql, and, gte, lt, eq, desc } from 'drizzle-orm';
+import { count, sql, and, gte, lt, eq, desc } from 'drizzle-orm';
 import { db } from '../../db';
 import { users, loginLogs, operationLogs } from '../../db/schema';
 import { isSuperAdmin } from '../../lib/permissions';
@@ -58,14 +58,10 @@ export async function getDashboardCharts() {
   const todayOpWhere = otc
     ? and(gte(operationLogs.createdAt, todayStart), lt(operationLogs.createdAt, todayEnd), otc)
     : and(gte(operationLogs.createdAt, todayStart), lt(operationLogs.createdAt, todayEnd));
-  const activityRangeWhere = ltc
-    ? and(gte(loginLogs.createdAt, sevenDaysAgo), eq(loginLogs.eventType, 'login'), eq(loginLogs.status, 'success'), ltc)
-    : and(gte(loginLogs.createdAt, sevenDaysAgo), eq(loginLogs.eventType, 'login'), eq(loginLogs.status, 'success'));
 
   const loginTrendCount = count();
   const operationTypeCount = count();
-  const activeUserCount = countDistinct(loginLogs.username);
-  const [loginTrendRows, operationTypeRows, userActivityRows] = await Promise.all([
+  const [loginTrendRows, operationTypeRows] = await Promise.all([
     db
       .select({
         date: sql<string>`to_char(date(${loginLogs.createdAt}), 'YYYY-MM-DD')`,
@@ -83,15 +79,6 @@ export async function getDashboardCharts() {
       .groupBy(operationLogs.module)
       .orderBy(desc(operationTypeCount))
       .limit(8),
-    db
-      .select({
-        date: sql<string>`to_char(date(${loginLogs.createdAt}), 'YYYY-MM-DD')`,
-        activeUsers: activeUserCount,
-      })
-      .from(loginLogs)
-      .where(activityRangeWhere)
-      .groupBy(sql`date(${loginLogs.createdAt})`)
-      .orderBy(sql`date(${loginLogs.createdAt})`),
   ]);
 
   const dates: string[] = [];
@@ -112,13 +99,9 @@ export async function getDashboardCharts() {
     successCount: trendMap[date]?.successCount ?? 0,
     failCount: trendMap[date]?.failCount ?? 0,
   }));
-  const activityMap: Record<string, number> = {};
-  for (const row of userActivityRows) activityMap[row.date] = row.activeUsers;
-  const userActivity = dates.map((date) => ({ date, activeUsers: activityMap[date] ?? 0 }));
 
   return {
     loginTrend,
     operationTypes: operationTypeRows.map((r) => ({ module: r.module ?? '未知', count: r.count })),
-    userActivity,
   };
 }

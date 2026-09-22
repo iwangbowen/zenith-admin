@@ -321,7 +321,7 @@ export default function DashboardPage() {
       {isAdmin && (
         <Suspense          fallback={
             <div className="dashboard-charts-row">
-              {['7 天登录趋势', '今日操作分布', '7 天用户活跃度'].map((title) => (
+              {['7 天登录趋势', '今日操作分布'].map((title) => (
                 <section key={title} className="dashboard-chart-section">
                   <header className="dashboard-section-header">
                     <Text strong>{title}</Text>

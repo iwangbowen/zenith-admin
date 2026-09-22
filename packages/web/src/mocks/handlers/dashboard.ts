@@ -35,11 +35,6 @@ export const dashboardHandlers = [
       { module: '系统配置', count: 3 },
     ];
 
-    const userActivity = dates.map((date) => ({
-      date,
-      activeUsers: Math.floor(Math.random() * 6) + 1,
-    }));
-
-    return ok({ loginTrend, operationTypes, userActivity }, 'success');
+    return ok({ loginTrend, operationTypes }, 'success');
   }),
 ];

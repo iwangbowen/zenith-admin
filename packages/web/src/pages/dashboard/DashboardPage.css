@@ -211,10 +211,11 @@
    行本身不留上内边距，改由子元素承担——否则竖线会从横线下方 24px 处才起头，
    与横线断开一截，看着像悬空的短线。padding 放到子元素上，
    竖线便自横线处向下延伸，形成干净的 T 形交点。
-   gap 归零改由左右 padding 撑开，竖线才能落在两栏内容的正中间。 */
+   gap 归零改由左右 padding 撑开，竖线才能落在两栏内容的正中间。
+   首页固定两个图表（登录趋势 / 操作分布），宽屏两栏等分；收窄后在 md-down 降为单栏。 */
 .dashboard-charts-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-top: 34px;
   border-top: 1px solid var(--color-border);
 }
@@ -397,19 +398,6 @@
     padding-left: 0;
     border-left: 0;
   }
-
-  .dashboard-charts-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .dashboard-chart-section:nth-child(2n + 1) {
-    padding-left: 0;
-    border-left: 0;
-  }
-
-  .dashboard-chart-section:nth-child(2n) {
-    padding-right: 0;
-  }
 }
 
 @media (--md-down) {
@@ -432,6 +420,7 @@
     border-left: 0;
   }
 
+  /* 图表行在 <=md 降为单栏：两栏等分时的竖线与行首 / 行尾留白不再成立，这里显式复位 */
   .dashboard-charts-row {
     grid-template-columns: 1fr;
   }

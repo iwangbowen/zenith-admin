@@ -12,6 +12,7 @@ const PIE_COLORS = [
   '#722ED1', '#F5222D', '#EB2F96', '#1677FF',
 ];
 const OTHER_COLOR = '#94A3B8';
+const OTHER_MODULE = '其他';
 
 export interface ModuleOperationDatum {
   readonly module: string;
@@ -23,9 +24,11 @@ interface ModuleOperationPieProps {
   readonly height?: number;
   /** 数据为空时渲染的占位内容 */
   readonly empty?: ReactNode;
+  /** 点击扇区回调（首页据此下钻到该模块的操作日志）；聚合出的「其他」不是单个模块，不触发 */
+  readonly onSliceClick?: (module: string) => void;
 }
 
-export function ModuleOperationPie({ data, height = 200, empty = null }: ModuleOperationPieProps) {
+export function ModuleOperationPie({ data, height = 200, empty = null, onSliceClick }: ModuleOperationPieProps) {
   const palette = useChartPalette();
 
   const spec = useMemo(() => {
@@ -34,7 +37,7 @@ export function ModuleOperationPie({ data, height = 200, empty = null }: ModuleO
     const restCount = sorted.slice(PIE_COLORS.length).reduce((sum, d) => sum + d.count, 0);
     const coloredData = [
       ...head.map((item, idx) => ({ ...item, fill: PIE_COLORS[idx % PIE_COLORS.length] })),
-      ...(restCount > 0 ? [{ module: '其他', count: restCount, fill: OTHER_COLOR }] : []),
+      ...(restCount > 0 ? [{ module: OTHER_MODULE, count: restCount, fill: OTHER_COLOR }] : []),
     ];
     return makePieSpec({
       data: coloredData,
@@ -48,6 +51,14 @@ export function ModuleOperationPie({ data, height = 200, empty = null }: ModuleO
     });
   }, [data, palette]);
 
+  const sliceClick = onSliceClick
+    ? (payload: { datum?: { module?: unknown } } | undefined) => {
+      const module = payload?.datum?.module;
+      if (typeof module !== 'string' || module === OTHER_MODULE) return;
+      onSliceClick(module);
+    }
+    : undefined;
+
   if (data.length === 0) return <>{empty}</>;
-  return <PieChart {...spec} options={chartOptions} height={height} />;
+  return <PieChart {...spec} options={chartOptions} height={height} onClick={sliceClick} />;
 }

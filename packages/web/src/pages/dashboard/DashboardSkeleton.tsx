@@ -34,7 +34,7 @@ export default function DashboardSkeleton() {
       </div>
 
       <div className="dashboard-charts-row">
-        {(['c1', 'c2', 'c3'] as const).map((k) => (
+        {(['c1', 'c2'] as const).map((k) => (
           <section key={k} className="dashboard-chart-section">
             <Skeleton active loading placeholder={
               <div>
