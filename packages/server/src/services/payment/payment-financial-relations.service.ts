@@ -2,7 +2,7 @@ import { and, desc, eq, exists, inArray, isNotNull, isNull, lt, or, sql, type An
 import { alias } from 'drizzle-orm/pg-core';
 import type { EntityRef, Permission } from '@zenith/shared/core';
 import { PAYMENT_RECON_CASE_TYPE_LABELS, type PaymentReconCaseType } from '@zenith/shared/payment';
-import type { CanonicalEntityType, EntityRelationItem, EntityRelationPage } from '@zenith/shared/platform';
+import { entityRelationRecordFilters, type CanonicalEntityType, type EntityRelationItem, type EntityRelationPage } from '@zenith/shared/platform';
 import {
   paymentOrders as orders, paymentRefunds as refunds, paymentJournals as journals, paymentJournalLines as journalLines,
   paymentReconCases as cases, paymentReconAdjustments as adjustments, paymentChannelConfigs as configs,
@@ -16,6 +16,8 @@ import { buildOrdersWhere } from './payment.service';
 import type { EntityAnchorResolver, RelationAccessContext, RelationProvider, VisibleEntityAnchor } from '../platform/relations/types';
 import { decodeRelationCursor } from '../platform/relations/cursor';
 import { relationPage } from '../platform/relations/page';
+import { relationFilterWhere } from '../platform/relations/filters';
+import { formatDateTime } from '../../lib/datetime';
 
 type Input = Parameters<RelationProvider['list']>[1];
 type MoneyScope = { tenantId: number | null; appId: number; channelAccountId: number; currency: string };
@@ -87,7 +89,7 @@ function page<T extends { id: number; title: string; status?: string | null; at?
   return relationPage(rows, limit, (row): EntityRelationItem => ({ ref: { type, key: String(row.id) }, relationKey,
     title: row.title.slice(0, 160), subtitle: summarySubtitle(type, row.subtitle),
     status: type === 'payment.notify-log' && row.status?.startsWith('processed:') ? 'success' : row.status,
-    occurredAt: row.at?.toISOString(),
+    occurredAt: row.at ? formatDateTime(row.at) : undefined,
     ...((type === 'payment.journal' || type === 'payment.notify-log') && row.subtitle
       ? { origin: { kind: 'derived' as const, eventType: row.subtitle } } : {}),
     capabilities }));
@@ -199,7 +201,7 @@ async function resolveFinancialAnchor(ref: EntityRef, access: RelationAccessCont
 }
 
 async function listJournals(anchor: VisibleEntityAnchor, input: Input): Promise<EntityRelationPage> {
-  const { access, limit, cursor } = input;
+  const { access, limit, cursor, filters } = input;
   const before = decodeRelationCursor(cursor);
   const key = `${anchor.ref.type}.journals`;
   if (anchor.ref.type === 'payment.order' || anchor.ref.type === 'payment.refund') {
@@ -209,7 +211,7 @@ async function listJournals(anchor: VisibleEntityAnchor, input: Input): Promise<
       .from(journals).innerJoin(orders, eq(orders.id, scope.orderId))
       .leftJoin(refunds, scope.refundId ? and(eq(refunds.id, scope.refundId), refundOrderJoin) : sql`false`)
       .where(buildWhere(moneyWhere(journals, scope), journalForBusiness(access, scope.refundId !== undefined),
-        tenantCondition(journals, access.user), before ? lt(journals.id, before) : undefined)).orderBy(desc(journals.id)).limit(limit + 1);
+        tenantCondition(journals, access.user), relationFilterWhere(filters, { keyword: [journals.journalNo, journals.sourceType], occurredAt: journals.postedAt }), before ? lt(journals.id, before) : undefined)).orderBy(desc(journals.id)).limit(limit + 1);
     return page(rows, limit, 'payment.journal', key);
   }
   const scope = scopeOf(anchor);
@@ -225,7 +227,7 @@ async function listJournals(anchor: VisibleEntityAnchor, input: Input): Promise<
         ? and(eq(journals.sourceType, 'payment.sharing'), eq(journals.sourceId, String(anchor.metadata?.title)))
         : and(eq(journals.sourceType, 'payment.sharing_reversal'), eq(journals.sourceId, String(anchor.metadata?.title)));
   const rows = await access.db.select({ id: journals.id, title: journals.journalNo, subtitle: journals.sourceType, at: journals.postedAt }).from(journals)
-    .where(buildWhere(relation, moneyWhere(journals, scope), tenantCondition(journals, access.user), before ? lt(journals.id, before) : undefined))
+    .where(buildWhere(relation, moneyWhere(journals, scope), tenantCondition(journals, access.user), relationFilterWhere(filters, { keyword: [journals.journalNo, journals.sourceType], occurredAt: journals.postedAt }), before ? lt(journals.id, before) : undefined))
     .orderBy(desc(journals.id)).limit(limit + 1);
   return page(rows, limit, 'payment.journal', key);
 }
@@ -238,7 +240,7 @@ function settledJournal(anchor: VisibleEntityAnchor, access: RelationAccessConte
     .where(and(eq(settlementItems.batchId, Number(anchor.ref.key)), eq(journalLines.journalId, journals.id), moneyWhere(settlementItems, scope), sameMoney(settlementItems, journals))).limit(1));
 }
 
-async function listBusinessRecords(anchor: VisibleEntityAnchor, { access, limit, cursor }: Input, refundTarget: boolean): Promise<EntityRelationPage> {
+async function listBusinessRecords(anchor: VisibleEntityAnchor, { access, limit, cursor, filters }: Input, refundTarget: boolean): Promise<EntityRelationPage> {
   const scope = scopeOf(anchor);
   if (!scope) return empty();
   const before = decodeRelationCursor(cursor);
@@ -261,17 +263,17 @@ async function listBusinessRecords(anchor: VisibleEntityAnchor, { access, limit,
   const key = `${anchor.ref.type}.${refundTarget ? 'refunds' : 'orders'}`;
   if (refundTarget) {
     const rows = await access.db.select({ id: refunds.id, title: refunds.refundNo, status: refunds.status, at: refunds.createdAt }).from(refunds).innerJoin(orders, refundOrderJoin)
-      .where(buildWhere(association, moneyWhere(orders, scope), tenantCondition(refunds, access.user), before ? lt(refunds.id, before) : undefined))
+      .where(buildWhere(association, moneyWhere(orders, scope), tenantCondition(refunds, access.user), relationFilterWhere(filters, { keyword: [refunds.refundNo], occurredAt: refunds.createdAt, status: refunds.status }), before ? lt(refunds.id, before) : undefined))
       .orderBy(desc(refunds.id)).limit(limit + 1);
     return page(rows, limit, 'payment.refund', key);
   }
   const rows = await access.db.select({ id: orders.id, title: orders.orderNo, status: orders.status, at: orders.createdAt }).from(orders)
-    .where(buildWhere(association, moneyWhere(orders, scope), await buildOrdersWhere({}, access.db), before ? lt(orders.id, before) : undefined))
+    .where(buildWhere(association, moneyWhere(orders, scope), await buildOrdersWhere({}, access.db), relationFilterWhere(filters, { keyword: [orders.orderNo, orders.subject], occurredAt: orders.createdAt, status: orders.status }), before ? lt(orders.id, before) : undefined))
     .orderBy(desc(orders.id)).limit(limit + 1);
   return page(rows, limit, 'payment.order', key);
 }
 
-async function listReconCases(anchor: VisibleEntityAnchor, { access, cursor, limit }: Input): Promise<EntityRelationPage> {
+async function listReconCases(anchor: VisibleEntityAnchor, { access, cursor, limit, filters }: Input): Promise<EntityRelationPage> {
   const isPayment = anchor.ref.type === 'payment.order' || anchor.ref.type === 'payment.refund';
   const business = isPayment ? await paymentScope(anchor, access) : null;
   const scope = isPayment ? business : scopeOf(anchor);
@@ -282,11 +284,11 @@ async function listReconCases(anchor: VisibleEntityAnchor, { access, cursor, lim
       business ? eq(cases.orderId, business.orderId) : undefined,
       anchor.ref.type === 'payment.recon-adjustment' ? eq(cases.id, Number(anchor.metadata?.caseId)) :
         business?.refundId !== undefined ? eq(cases.refundId, business.refundId) : eq(cases.orderId, business!.orderId),
-      before ? lt(cases.id, before) : undefined)).orderBy(desc(cases.id)).limit(limit + 1);
+      relationFilterWhere(filters, { keyword: [sql`${cases.id}::text`, cases.type], occurredAt: cases.createdAt, status: cases.status }), before ? lt(cases.id, before) : undefined)).orderBy(desc(cases.id)).limit(limit + 1);
   return page(rows, limit, 'payment.recon-case', `${anchor.ref.type}.recon-cases`);
 }
 
-async function listReconAdjustments(anchor: VisibleEntityAnchor, { access, cursor, limit }: Input): Promise<EntityRelationPage> {
+async function listReconAdjustments(anchor: VisibleEntityAnchor, { access, cursor, limit, filters }: Input): Promise<EntityRelationPage> {
   const isPayment = anchor.ref.type === 'payment.order' || anchor.ref.type === 'payment.refund';
   const business = isPayment ? await paymentScope(anchor, access) : null;
   const scope = isPayment ? business : scopeOf(anchor);
@@ -300,11 +302,11 @@ async function listReconAdjustments(anchor: VisibleEntityAnchor, { access, curso
       anchor.ref.type === 'payment.journal' ? and(eq(adjustments.journalId, Number(anchor.ref.key)), eq(sql`${adjustments.id}::text`, String(anchor.metadata?.sourceId))) :
         anchor.ref.type === 'payment.recon-case' ? eq(adjustments.caseId, Number(anchor.ref.key)) :
           business?.refundId !== undefined ? eq(cases.refundId, business.refundId) : eq(cases.orderId, business!.orderId),
-      before ? lt(adjustments.id, before) : undefined)).orderBy(desc(adjustments.id)).limit(limit + 1);
+      relationFilterWhere(filters, { keyword: [sql`${adjustments.id}::text`], occurredAt: adjustments.createdAt, status: adjustments.status }), before ? lt(adjustments.id, before) : undefined)).orderBy(desc(adjustments.id)).limit(limit + 1);
   return page(rows, limit, 'payment.recon-adjustment', `${anchor.ref.type}.recon-adjustments`);
 }
 
-async function listSharingOrders(anchor: VisibleEntityAnchor, { access, cursor, limit }: Input): Promise<EntityRelationPage> {
+async function listSharingOrders(anchor: VisibleEntityAnchor, { access, cursor, limit, filters }: Input): Promise<EntityRelationPage> {
   const before = decodeRelationCursor(cursor);
   const scope = anchor.ref.type === 'payment.order' ? await paymentScope(anchor, access) : scopeOf(anchor);
   if (anchor.ref.type !== 'payment.sharing-receiver' && !scope) return empty();
@@ -316,21 +318,21 @@ async function listSharingOrders(anchor: VisibleEntityAnchor, { access, cursor, 
       anchor.ref.type === 'payment.sharing-receiver' ? eq(sharing.receiverId, Number(anchor.ref.key)) :
         anchor.ref.type === 'payment.sharing-reversal' ? eq(sharing.id, Number(anchor.metadata?.sharingOrderId)) :
           anchor.ref.type === 'payment.journal' ? eq(sharing.sharingNo, String(anchor.metadata?.sourceId)) : eq(orders.id, (scope as PaymentScope).orderId),
-      before ? lt(sharing.id, before) : undefined)).orderBy(desc(sharing.id)).limit(limit + 1);
+      relationFilterWhere(filters, { keyword: [sharing.sharingNo], occurredAt: sharing.createdAt, status: sharing.status }), before ? lt(sharing.id, before) : undefined)).orderBy(desc(sharing.id)).limit(limit + 1);
   return page(rows, limit, 'payment.sharing-order', `${anchor.ref.type}.sharing-orders`);
 }
 
-async function listReceivers(anchor: VisibleEntityAnchor, { access, cursor, limit }: Input): Promise<EntityRelationPage> {
+async function listReceivers(anchor: VisibleEntityAnchor, { access, cursor, limit, filters }: Input): Promise<EntityRelationPage> {
   const scope = scopeOf(anchor);
   if (!scope) return empty();
   const before = decodeRelationCursor(cursor);
   const rows = await access.db.select({ id: receivers.id, title: receivers.name, status: receivers.status, at: receivers.createdAt }).from(receivers)
     .where(buildWhere(eq(receivers.id, Number(anchor.metadata?.receiverId)), exactTenantCondition(receivers.tenantId, anchor.tenantId), tenantCondition(receivers, access.user),
-      before ? lt(receivers.id, before) : undefined)).orderBy(desc(receivers.id)).limit(limit + 1);
+      relationFilterWhere(filters, { keyword: [receivers.name], occurredAt: receivers.createdAt, status: receivers.status }), before ? lt(receivers.id, before) : undefined)).orderBy(desc(receivers.id)).limit(limit + 1);
   return page(rows, limit, 'payment.sharing-receiver', `${anchor.ref.type}.receiver`);
 }
 
-async function listSharingReversals(anchor: VisibleEntityAnchor, { access, cursor, limit }: Input): Promise<EntityRelationPage> {
+async function listSharingReversals(anchor: VisibleEntityAnchor, { access, cursor, limit, filters }: Input): Promise<EntityRelationPage> {
   const scope = scopeOf(anchor);
   if (!scope) return empty();
   if (anchor.ref.type === 'payment.journal' && anchor.metadata?.sourceType !== 'payment.sharing_reversal') return empty();
@@ -339,11 +341,11 @@ async function listSharingReversals(anchor: VisibleEntityAnchor, { access, curso
     .innerJoin(sharing, reversalSharingJoin).innerJoin(orders, sharingOrderJoin).where(buildWhere(
       anchor.ref.type === 'payment.journal' ? eq(reversals.reversalNo, String(anchor.metadata?.sourceId)) : eq(sharing.id, Number(anchor.ref.key)),
       moneyWhere(orders, scope), exactTenantCondition(reversals.tenantId, anchor.tenantId), tenantCondition(reversals, access.user),
-      before ? lt(reversals.id, before) : undefined)).orderBy(desc(reversals.id)).limit(limit + 1);
+      relationFilterWhere(filters, { keyword: [reversals.reversalNo], occurredAt: reversals.createdAt, status: reversals.status }), before ? lt(reversals.id, before) : undefined)).orderBy(desc(reversals.id)).limit(limit + 1);
   return page(rows, limit, 'payment.sharing-reversal', `${anchor.ref.type}.${anchor.ref.type === 'payment.journal' ? 'sharing-reversals' : 'reversals'}`);
 }
 
-async function listSettlements(anchor: VisibleEntityAnchor, { access, cursor, limit }: Input): Promise<EntityRelationPage> {
+async function listSettlements(anchor: VisibleEntityAnchor, { access, cursor, limit, filters }: Input): Promise<EntityRelationPage> {
   const isPayment = anchor.ref.type === 'payment.order' || anchor.ref.type === 'payment.refund';
   const business = isPayment ? await paymentScope(anchor, access) : null;
   const scope = isPayment ? business : scopeOf(anchor);
@@ -360,11 +362,11 @@ async function listSettlements(anchor: VisibleEntityAnchor, { access, cursor, li
       exists(access.db.select({ id: settlementItems.id }).from(settlementItems).innerJoin(journalLines, eq(journalLines.id, settlementItems.journalLineId))
         .innerJoin(journals, eq(journals.id, journalLines.journalId)).where(buildWhere(eq(settlementItems.batchId, batches.id),
           sameMoney(settlementItems, batches), sameMoney(journals, batches), ownedJournal)).limit(1))),
-      before ? lt(batches.id, before) : undefined)).orderBy(desc(batches.id)).limit(limit + 1);
+      relationFilterWhere(filters, { keyword: [batches.batchNo], occurredAt: batches.createdAt, status: batches.status }), before ? lt(batches.id, before) : undefined)).orderBy(desc(batches.id)).limit(limit + 1);
   return page(rows, limit, 'payment.settlement-batch', `${anchor.ref.type}.settlement-batches`);
 }
 
-async function listNotifyLogs(anchor: VisibleEntityAnchor, { access, cursor, limit }: Input): Promise<EntityRelationPage> {
+async function listNotifyLogs(anchor: VisibleEntityAnchor, { access, cursor, limit, filters }: Input): Promise<EntityRelationPage> {
   const scope = await paymentScope(anchor, access);
   if (!scope) return empty();
   const before = decodeRelationCursor(cursor);
@@ -373,14 +375,14 @@ async function listNotifyLogs(anchor: VisibleEntityAnchor, { access, cursor, lim
     .where(buildWhere(eq(notifyLogs.orderNo, scope.orderNo), eq(notifyLogs.appId, scope.appId), eq(notifyLogs.channelConfigId, scope.channelConfigId),
       eq(configs.channelAccountId, scope.channelAccountId), exactTenantCondition(notifyLogs.tenantId, scope.tenantId), tenantCondition(notifyLogs, access.user),
       eq(notifyLogs.signatureValid, true), sql`${notifyLogs.result} like 'processed:%'`, or(isNull(notifyLogs.currency), eq(notifyLogs.currency, scope.currency)),
-      before ? lt(notifyLogs.id, before) : undefined)).orderBy(desc(notifyLogs.id)).limit(limit + 1);
+      relationFilterWhere(filters, { keyword: [sql`${notifyLogs.id}::text`, notifyLogs.orderNo], occurredAt: notifyLogs.createdAt }), before ? lt(notifyLogs.id, before) : undefined)).orderBy(desc(notifyLogs.id)).limit(limit + 1);
   return page(rows, limit, 'payment.notify-log', `${anchor.ref.type}.notify-logs`);
 }
 
 function relation(sourceType: CanonicalEntityType, suffix: string, targetType: CanonicalEntityType, permission: Permission,
   list: RelationProvider['list'], cardinality: 'one' | 'many' = 'many'): RelationProvider {
   const key = `${sourceType}.${suffix}`;
-  return { sourceType, key, permissions: [permission], descriptor: { key, labelKey: `relation.${key}`, targetTypes: [targetType], kind: 'derived', cardinality, capabilities },
+  return { sourceType, key, permissions: [permission], descriptor: { key, labelKey: `relation.${key}`, targetTypes: [targetType], kind: 'derived', cardinality, capabilities, filters: entityRelationRecordFilters(targetType) },
     list: (anchor, input) => runWithCurrentUser(input.access.user, async () => (await hasPermission(permission)) ? list(anchor, input) : empty()) };
 }
 

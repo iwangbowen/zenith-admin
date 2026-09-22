@@ -1,7 +1,7 @@
 import type { DbExecutor } from '../../../../db/types';
 import { and, desc, eq, exists, isNull, lt, or, sql } from 'drizzle-orm';
 import type { EntityRef } from '@zenith/shared/core';
-import type { EntityRelationPage } from '@zenith/shared/platform';
+import { entityRelationRecordFilters, type EntityRelationPage } from '@zenith/shared/platform';
 import { asyncTasks, driveNodes, driveSpaces, wikiDocs, wikiSpaces, workflowInstances, workflowTasks } from '../../../../db/schema';
 import { hasPermission, runWithCurrentUser } from '../../../../lib/context';
 import { exactTenantCondition, tenantCondition } from '../../../../lib/tenant';
@@ -13,6 +13,8 @@ import type { EntityAnchorResolver, RelationAccessContext, RelationProvider, Vis
 import { decodeRelationCursor } from '../cursor';
 import { relationPage as page } from '../page';
 import { relationSummaryQuery } from '../summary-query';
+import { relationFilterWhere } from '../filters';
+import { formatDateTime } from '../../../../lib/datetime';
 
 const WORKFLOW_PERMISSIONS = ['workflow:instance:list', 'workflow:task:handle', 'workflow:instance:monitor'] as const;
 type RelationInput = Parameters<RelationProvider['list']>[1];
@@ -136,17 +138,17 @@ async function resolveAsyncTask(ref: EntityRef, access: RelationAccessContext): 
 
 export const workflowInstanceTasksProvider: RelationProvider = {
   sourceType: 'workflow.instance', key: 'workflow.instance.approval-tasks', permissions: WORKFLOW_PERMISSIONS,
-  descriptor: { key: 'workflow.instance.approval-tasks', labelKey: 'relation.workflow.instance.approval-tasks', targetTypes: ['workflow.task'], kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true } },
-  async list(anchor, { cursor, limit, access }) {
+  descriptor: { key: 'workflow.instance.approval-tasks', labelKey: 'relation.workflow.instance.approval-tasks', targetTypes: ['workflow.task'], filters: entityRelationRecordFilters('workflow.task', true), kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true } },
+  async list(anchor, { cursor, limit, access, filters }) {
     return runWithCurrentUser(access.user, async () => {
       if (!(await hasPermission(...WORKFLOW_PERMISSIONS))) return emptyPage();
       const id = parseId(anchor.ref.key);
       if (id == null) return emptyPage();
       const beforeId = decodeRelationCursor(cursor);
-      const rows = await access.db.select({ id: workflowTasks.id, name: workflowTasks.nodeName, status: workflowTasks.status, createdAt: workflowTasks.createdAt })
+      const rows = await access.db.select({ id: workflowTasks.id, name: workflowTasks.nodeName, status: workflowTasks.status, attention: sql<boolean>`coalesce(${and(eq(workflowTasks.status, 'pending'), eq(workflowInstances.status, 'running'))}, false)`, createdAt: workflowTasks.createdAt })
         .from(workflowTasks).innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-        .where(buildWhere(await workflowTasksWhere(anchor, access), beforeId ? lt(workflowTasks.id, beforeId) : undefined)).orderBy(desc(workflowTasks.id)).limit(limit + 1);
-      return page(rows, limit, (row) => ({ ref: { type: 'workflow.task', key: String(row.id) }, relationKey: 'workflow.instance.approval-tasks', title: row.name, status: row.status, occurredAt: row.createdAt.toISOString(), capabilities: { view: true, open: true } }));
+        .where(buildWhere(await workflowTasksWhere(anchor, access), relationFilterWhere(filters, { keyword: [workflowTasks.nodeName], status: workflowTasks.status, occurredAt: workflowTasks.createdAt, attention: and(eq(workflowTasks.status, 'pending'), eq(workflowInstances.status, 'running')) }), beforeId ? lt(workflowTasks.id, beforeId) : undefined)).orderBy(desc(workflowTasks.id)).limit(limit + 1);
+      return page(rows, limit, (row) => ({ ref: { type: 'workflow.task', key: String(row.id) }, relationKey: 'workflow.instance.approval-tasks', title: row.name, status: row.status, attention: row.attention, occurredAt: formatDateTime(row.createdAt), capabilities: { view: true, open: true } }));
     });
   },
   async prepareSummaryQuery(anchor, { access }) {
@@ -157,34 +159,35 @@ export const workflowInstanceTasksProvider: RelationProvider = {
   },
 };
 
-async function listWorkflowInstances(anchor: VisibleEntityAnchor, { cursor, limit, access }: RelationInput, relation: 'children' | 'instance'): Promise<EntityRelationPage> {
+async function listWorkflowInstances(anchor: VisibleEntityAnchor, { cursor, limit, access, filters }: RelationInput, relation: 'children' | 'instance'): Promise<EntityRelationPage> {
   return runWithCurrentUser(access.user, async () => {
     if (!(await hasPermission(...WORKFLOW_PERMISSIONS))) return emptyPage();
     const id = relation === 'children' ? parseId(anchor.ref.key) : anchor.metadata?.instanceId;
     if (typeof id !== 'number') return emptyPage();
     const beforeId = decodeRelationCursor(cursor);
-    const rows = await access.db.select({ id: workflowInstances.id, title: workflowInstances.title, serialNo: workflowInstances.serialNo, status: workflowInstances.status, createdAt: workflowInstances.createdAt })
+    const rows = await access.db.select({ id: workflowInstances.id, title: workflowInstances.title, serialNo: workflowInstances.serialNo, status: workflowInstances.status, attention: sql<boolean>`coalesce(${workflowInstanceAttention(access)}, false)`, createdAt: workflowInstances.createdAt })
       .from(workflowInstances).where(buildWhere(await workflowInstancesWhere(anchor, access, relation),
+        relationFilterWhere(filters, { keyword: [workflowInstances.title, workflowInstances.serialNo], status: workflowInstances.status, occurredAt: workflowInstances.createdAt, attention: workflowInstanceAttention(access) }),
         beforeId ? lt(workflowInstances.id, beforeId) : undefined,
       )).orderBy(desc(workflowInstances.id)).limit(limit + 1);
-    return page(rows, limit, (row) => ({ ref: { type: 'workflow.instance', key: String(row.id) }, relationKey: `${anchor.ref.type}.${relation}`, title: row.title, subtitle: row.serialNo, status: row.status, occurredAt: row.createdAt.toISOString(), capabilities: { view: true, open: true } }));
+    return page(rows, limit, (row) => ({ ref: { type: 'workflow.instance', key: String(row.id) }, relationKey: `${anchor.ref.type}.${relation}`, title: row.title, subtitle: row.serialNo, status: row.status, attention: row.attention, occurredAt: formatDateTime(row.createdAt), capabilities: { view: true, open: true } }));
   });
 }
 
 export const workflowInstanceChildrenProvider: RelationProvider = {
   sourceType: 'workflow.instance', key: 'workflow.instance.children', permissions: WORKFLOW_PERMISSIONS,
-  descriptor: { key: 'workflow.instance.children', labelKey: 'relation.workflow.instance.children', targetTypes: ['workflow.instance'], kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true } },
+  descriptor: { key: 'workflow.instance.children', labelKey: 'relation.workflow.instance.children', targetTypes: ['workflow.instance'], filters: entityRelationRecordFilters('workflow.instance', true), kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true } },
   list: (anchor, input) => listWorkflowInstances(anchor, input, 'children'),
   prepareSummaryQuery: (anchor, { access }) => workflowInstanceSummary(anchor, access, 'children'),
 };
 export const workflowTaskInstanceProvider: RelationProvider = {
   sourceType: 'workflow.task', key: 'workflow.task.instance', permissions: WORKFLOW_PERMISSIONS,
-  descriptor: { key: 'workflow.task.instance', labelKey: 'relation.workflow.task.instance', targetTypes: ['workflow.instance'], kind: 'direct', cardinality: 'one', capabilities: { view: true, open: true } },
+  descriptor: { key: 'workflow.task.instance', labelKey: 'relation.workflow.task.instance', targetTypes: ['workflow.instance'], filters: entityRelationRecordFilters('workflow.instance', true), kind: 'direct', cardinality: 'one', capabilities: { view: true, open: true } },
   list: (anchor, input) => listWorkflowInstances(anchor, input, 'instance'),
   prepareSummaryQuery: (anchor, { access }) => workflowInstanceSummary(anchor, access, 'instance'),
 };
 
-async function listDriveNodes(anchor: VisibleEntityAnchor, { cursor, limit, access }: RelationInput, direction: 'children' | 'parent'): Promise<EntityRelationPage> {
+async function listDriveNodes(anchor: VisibleEntityAnchor, { cursor, limit, access, filters }: RelationInput, direction: 'children' | 'parent'): Promise<EntityRelationPage> {
   return runWithCurrentUser(access.user, async () => {
     if (!(await hasPermission('drive:node:list'))) return emptyPage();
     const id = direction === 'children' ? parseId(anchor.ref.key) : anchor.metadata?.parentId;
@@ -197,19 +200,19 @@ async function listDriveNodes(anchor: VisibleEntityAnchor, { cursor, limit, acce
       .where(buildWhere(direction === 'children' ? eq(driveNodes.parentId, id) : eq(driveNodes.id, id),
         eq(driveNodes.spaceId, spaceId), isNull(driveNodes.deletedAt), exactTenantCondition(driveNodes.tenantId, anchor.tenantId),
         exactTenantCondition(driveSpaces.tenantId, anchor.tenantId), tenantCondition(driveNodes, access.user), visibleNodeCondition(subjects),
-        beforeId ? lt(driveNodes.id, beforeId) : undefined)).orderBy(desc(driveNodes.id)).limit(limit + 1);
-    return page(rows, limit, (row) => ({ ref: { type: 'drive.file', key: String(row.id) }, relationKey: `drive.file.${direction}`, title: row.name.slice(0, 160), subtitle: row.type, occurredAt: row.updatedAt.toISOString(), capabilities: { view: true, open: true } }));
+        relationFilterWhere(filters, { keyword: [driveNodes.name], occurredAt: driveNodes.updatedAt }), beforeId ? lt(driveNodes.id, beforeId) : undefined)).orderBy(desc(driveNodes.id)).limit(limit + 1);
+    return page(rows, limit, (row) => ({ ref: { type: 'drive.file', key: String(row.id) }, relationKey: `drive.file.${direction}`, title: row.name.slice(0, 160), subtitle: row.type, occurredAt: formatDateTime(row.updatedAt), capabilities: { view: true, open: true } }));
   });
 }
 
 function driveProvider(direction: 'children' | 'parent'): RelationProvider {
   const key = `drive.file.${direction}`;
   return { sourceType: 'drive.file', key, permissions: ['drive:node:list'], descriptor: {
-    key, labelKey: `relation.${key}`, targetTypes: ['drive.file'], kind: 'direct', cardinality: direction === 'parent' ? 'one' : 'many', capabilities: { view: true, open: true },
+    key, labelKey: `relation.${key}`, targetTypes: ['drive.file'], filters: entityRelationRecordFilters('drive.file'), kind: 'direct', cardinality: direction === 'parent' ? 'one' : 'many', capabilities: { view: true, open: true },
   }, list: (anchor, input) => listDriveNodes(anchor, input, direction) };
 }
 
-async function listWikiDocuments(anchor: VisibleEntityAnchor, { cursor, limit, access }: RelationInput, direction: 'children' | 'parent'): Promise<EntityRelationPage> {
+async function listWikiDocuments(anchor: VisibleEntityAnchor, { cursor, limit, access, filters }: RelationInput, direction: 'children' | 'parent'): Promise<EntityRelationPage> {
   return runWithCurrentUser(access.user, async () => {
     if (!(await hasPermission('wiki:doc:list'))) return emptyPage();
     const id = direction === 'children' ? parseId(anchor.ref.key) : anchor.metadata?.parentId;
@@ -221,15 +224,15 @@ async function listWikiDocuments(anchor: VisibleEntityAnchor, { cursor, limit, a
       .where(buildWhere(direction === 'children' ? eq(wikiDocs.parentId, id) : eq(wikiDocs.id, id),
         eq(wikiDocs.spaceId, spaceId), isNull(wikiDocs.deletedAt), eq(wikiDocs.isArchived, false),
         exactTenantCondition(wikiDocs.tenantId, anchor.tenantId), exactTenantCondition(wikiSpaces.tenantId, anchor.tenantId), tenantCondition(wikiDocs, access.user),
-        wikiSpaceAccessCondition(), wikiDocStatusVisibilityCondition(), beforeId ? lt(wikiDocs.id, beforeId) : undefined)).orderBy(desc(wikiDocs.id)).limit(limit + 1);
-    return page(rows, limit, (row) => ({ ref: { type: 'wiki.document', key: String(row.id) }, relationKey: `wiki.document.${direction}`, title: row.title.slice(0, 160), status: row.status, occurredAt: row.updatedAt.toISOString(), capabilities: { view: true, open: true } }));
+        wikiSpaceAccessCondition(), wikiDocStatusVisibilityCondition(), relationFilterWhere(filters, { keyword: [wikiDocs.title], status: wikiDocs.status, occurredAt: wikiDocs.updatedAt }), beforeId ? lt(wikiDocs.id, beforeId) : undefined)).orderBy(desc(wikiDocs.id)).limit(limit + 1);
+    return page(rows, limit, (row) => ({ ref: { type: 'wiki.document', key: String(row.id) }, relationKey: `wiki.document.${direction}`, title: row.title.slice(0, 160), status: row.status, occurredAt: formatDateTime(row.updatedAt), capabilities: { view: true, open: true } }));
   });
 }
 
 function wikiProvider(direction: 'children' | 'parent'): RelationProvider {
   const key = `wiki.document.${direction}`;
   return { sourceType: 'wiki.document', key, permissions: ['wiki:doc:list'], descriptor: {
-    key, labelKey: `relation.${key}`, targetTypes: ['wiki.document'], kind: 'direct', cardinality: direction === 'parent' ? 'one' : 'many', capabilities: { view: true, open: true },
+    key, labelKey: `relation.${key}`, targetTypes: ['wiki.document'], filters: entityRelationRecordFilters('wiki.document'), kind: 'direct', cardinality: direction === 'parent' ? 'one' : 'many', capabilities: { view: true, open: true },
   }, list: (anchor, input) => listWikiDocuments(anchor, input, direction) };
 }
 

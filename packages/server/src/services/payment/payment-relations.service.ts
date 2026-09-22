@@ -1,6 +1,8 @@
 import { and, desc, eq, exists, inArray, lt, or, sql } from 'drizzle-orm';
 import type { EntityRef } from '@zenith/shared/core';
-import type { EntityRelationItem } from '@zenith/shared/platform';
+import { entityRelationRecordFilters, type EntityRelationItem } from '@zenith/shared/platform';
+import { relationFilterWhere } from '../platform/relations/filters';
+import { formatDateTime } from '../../lib/datetime';
 import { paymentOrders, paymentRefunds, paymentDisputes, paymentRiskHits, paymentRiskReviews } from '../../db/schema';
 import { hasPermission } from '../../lib/context';
 import { buildWhere } from '../../lib/where-helpers';
@@ -91,48 +93,48 @@ async function recordOrderWhere(anchor: VisibleEntityAnchor, access: RelationAcc
 function provider(key: string, target: EntityRelationItem['ref']['type'], permission: Exclude<RelationProvider['permissions'], 'authenticated'>,
   list: RelationProvider['list'], summaryQuery: NonNullable<RelationProvider['summaryQuery']>): RelationProvider {
   return { sourceType: 'payment.order', key, permissions: permission, descriptor: {
-    key, labelKey: `relation.${key}`, targetTypes: [target], kind: 'direct', cardinality: 'many', capabilities,
+    key, labelKey: `relation.${key}`, targetTypes: [target], kind: 'direct', cardinality: 'many', capabilities, filters: entityRelationRecordFilters(target, target !== 'payment.risk-hit'),
   }, list, summaryQuery };
 }
 
-export const paymentOrderRefundsProvider = provider('payment.order.refunds', 'payment.refund', ['payment:refund:list'], async (anchor, { cursor, limit, access }) => {
+export const paymentOrderRefundsProvider = provider('payment.order.refunds', 'payment.refund', ['payment:refund:list'], async (anchor, { cursor, limit, access, filters }) => {
   const before = decodeRelationCursor(cursor);
-  const rows = await access.db.select({ id: paymentRefunds.id, title: paymentRefunds.refundNo, status: paymentRefunds.status, createdAt: paymentRefunds.createdAt })
-    .from(paymentRefunds).where(buildWhere(refundWhere(anchor, access), before ? lt(paymentRefunds.id, before) : undefined)).orderBy(desc(paymentRefunds.id)).limit(limit + 1);
+  const rows = await access.db.select({ id: paymentRefunds.id, title: paymentRefunds.refundNo, status: paymentRefunds.status, attention: sql<boolean>`coalesce(${or(eq(paymentRefunds.approvalStatus, 'pending'), inArray(paymentRefunds.status, ['failed', 'unknown']))}, false)`, createdAt: paymentRefunds.createdAt })
+    .from(paymentRefunds).where(buildWhere(refundWhere(anchor, access), relationFilterWhere(filters, { keyword: [paymentRefunds.refundNo], status: paymentRefunds.status, occurredAt: paymentRefunds.createdAt, attention: or(eq(paymentRefunds.approvalStatus, 'pending'), inArray(paymentRefunds.status, ['failed', 'unknown'])) }), before ? lt(paymentRefunds.id, before) : undefined)).orderBy(desc(paymentRefunds.id)).limit(limit + 1);
   return relationPage(rows, limit, (row) => ({ ref: { type: 'payment.refund', key: String(row.id) }, relationKey: 'payment.order.refunds',
-    title: row.title, status: row.status, occurredAt: row.createdAt.toISOString(), capabilities }));
+    title: row.title, status: row.status, attention: row.attention, occurredAt: formatDateTime(row.createdAt), capabilities }));
 }, (anchor, { access }) => {
   const visible = refundWhere(anchor, access);
   return relationSummaryQuery(access.db.select({ id: paymentRefunds.id }).from(paymentRefunds).where(visible),
     access.db.select({ id: paymentRefunds.id }).from(paymentRefunds).where(buildWhere(visible,
       or(eq(paymentRefunds.approvalStatus, 'pending'), inArray(paymentRefunds.status, ['failed', 'unknown'])))));
 });
-export const paymentOrderDisputesProvider = provider('payment.order.disputes', 'payment.dispute', ['payment:dispute:list'], async (anchor, { cursor, limit, access }) => {
+export const paymentOrderDisputesProvider = provider('payment.order.disputes', 'payment.dispute', ['payment:dispute:list'], async (anchor, { cursor, limit, access, filters }) => {
   const before = decodeRelationCursor(cursor);
-  const rows = await access.db.select({ id: paymentDisputes.id, title: paymentDisputes.disputeNo, status: paymentDisputes.status, createdAt: paymentDisputes.createdAt })
-    .from(paymentDisputes).where(buildWhere(disputeWhere(anchor, access), before ? lt(paymentDisputes.id, before) : undefined)).orderBy(desc(paymentDisputes.id)).limit(limit + 1);
+  const rows = await access.db.select({ id: paymentDisputes.id, title: paymentDisputes.disputeNo, status: paymentDisputes.status, attention: sql<boolean>`coalesce(${inArray(paymentDisputes.status, ['pending', 'processing'])}, false)`, createdAt: paymentDisputes.createdAt })
+    .from(paymentDisputes).where(buildWhere(disputeWhere(anchor, access), relationFilterWhere(filters, { keyword: [paymentDisputes.disputeNo], status: paymentDisputes.status, occurredAt: paymentDisputes.createdAt, attention: inArray(paymentDisputes.status, ['pending', 'processing']) }), before ? lt(paymentDisputes.id, before) : undefined)).orderBy(desc(paymentDisputes.id)).limit(limit + 1);
   return relationPage(rows, limit, (row) => ({ ref: { type: 'payment.dispute', key: String(row.id) }, relationKey: 'payment.order.disputes',
-    title: row.title, status: row.status, occurredAt: row.createdAt.toISOString(), capabilities }));
+    title: row.title, status: row.status, attention: row.attention, occurredAt: formatDateTime(row.createdAt), capabilities }));
 }, (anchor, { access }) => {
   const visible = disputeWhere(anchor, access);
   return relationSummaryQuery(access.db.select({ id: paymentDisputes.id }).from(paymentDisputes).where(visible),
     access.db.select({ id: paymentDisputes.id }).from(paymentDisputes).where(buildWhere(visible, inArray(paymentDisputes.status, ['pending', 'processing']))));
 });
-export const paymentOrderRiskHitsProvider = provider('payment.order.risk-hits', 'payment.risk-hit', ['payment:risk:list'], async (anchor, { cursor, limit, access }) => {
+export const paymentOrderRiskHitsProvider = provider('payment.order.risk-hits', 'payment.risk-hit', ['payment:risk:list'], async (anchor, { cursor, limit, access, filters }) => {
   const before = decodeRelationCursor(cursor);
   // A hit before order creation has no order identity. Do not conflate it with later payment attempts sharing a business key.
   const rows = await access.db.select({ id: paymentRiskHits.id, title: paymentRiskHits.ruleName, status: paymentRiskHits.action, createdAt: paymentRiskHits.createdAt })
-    .from(paymentRiskHits).where(buildWhere(riskHitWhere(anchor, access), before ? lt(paymentRiskHits.id, before) : undefined)).orderBy(desc(paymentRiskHits.id)).limit(limit + 1);
+    .from(paymentRiskHits).where(buildWhere(riskHitWhere(anchor, access), relationFilterWhere(filters, { keyword: [paymentRiskHits.ruleName], status: paymentRiskHits.action, occurredAt: paymentRiskHits.createdAt }), before ? lt(paymentRiskHits.id, before) : undefined)).orderBy(desc(paymentRiskHits.id)).limit(limit + 1);
   return relationPage(rows, limit, (row) => ({ ref: { type: 'payment.risk-hit', key: String(row.id) }, relationKey: 'payment.order.risk-hits',
-    title: row.title.slice(0, 160), status: row.status, occurredAt: row.createdAt.toISOString(), capabilities }));
+    title: row.title.slice(0, 160), status: row.status, occurredAt: formatDateTime(row.createdAt), capabilities }));
 }, (anchor, { access }) => relationSummaryQuery(access.db.select({ id: paymentRiskHits.id }).from(paymentRiskHits).where(riskHitWhere(anchor, access))));
-export const paymentOrderRiskReviewsProvider = provider('payment.order.risk-reviews', 'payment.risk-review', ['payment:risk:review'], async (anchor, { cursor, limit, access }) => {
+export const paymentOrderRiskReviewsProvider = provider('payment.order.risk-reviews', 'payment.risk-review', ['payment:risk:review'], async (anchor, { cursor, limit, access, filters }) => {
   const before = decodeRelationCursor(cursor);
-  const rows = await access.db.select({ id: paymentRiskReviews.id, title: paymentRiskReviews.reviewNo, status: paymentRiskReviews.status, createdAt: paymentRiskReviews.createdAt })
-    .from(paymentRiskReviews).where(buildWhere(riskReviewWhere(anchor, access), before ? lt(paymentRiskReviews.id, before) : undefined))
+  const rows = await access.db.select({ id: paymentRiskReviews.id, title: paymentRiskReviews.reviewNo, status: paymentRiskReviews.status, attention: sql<boolean>`coalesce(${eq(paymentRiskReviews.status, 'pending')}, false)`, createdAt: paymentRiskReviews.createdAt })
+    .from(paymentRiskReviews).where(buildWhere(riskReviewWhere(anchor, access), relationFilterWhere(filters, { keyword: [paymentRiskReviews.reviewNo], status: paymentRiskReviews.status, occurredAt: paymentRiskReviews.createdAt, attention: eq(paymentRiskReviews.status, 'pending') }), before ? lt(paymentRiskReviews.id, before) : undefined))
     .orderBy(desc(paymentRiskReviews.id)).limit(limit + 1);
   return relationPage(rows, limit, (row) => ({ ref: { type: 'payment.risk-review', key: String(row.id) }, relationKey: 'payment.order.risk-reviews',
-    title: row.title, status: row.status, occurredAt: row.createdAt.toISOString(), capabilities }));
+    title: row.title, status: row.status, attention: row.attention, occurredAt: formatDateTime(row.createdAt), capabilities }));
 }, (anchor, { access }) => {
   const visible = riskReviewWhere(anchor, access);
   return relationSummaryQuery(access.db.select({ id: paymentRiskReviews.id }).from(paymentRiskReviews).where(visible),
@@ -142,14 +144,15 @@ const recordTypes = ['payment.refund', 'payment.dispute', 'payment.risk-hit', 'p
 const paymentOrderWorkflowProvider: RelationProvider = {
   sourceType: 'payment.order', key: 'payment.order.workflow',
   permissions: ['workflow:instance:list', 'workflow:task:handle', 'workflow:instance:monitor'], allPermissions: ['payment:recon:list'],
-  descriptor: { key: 'payment.order.workflow', labelKey: 'relation.payment.order.workflow', targetTypes: ['workflow.instance'], kind: 'derived', cardinality: 'many', capabilities },
-  async list(anchor, { cursor, limit, access }) {
+  descriptor: { key: 'payment.order.workflow', labelKey: 'relation.payment.order.workflow', targetTypes: ['workflow.instance'], kind: 'derived', cardinality: 'many', capabilities, filters: entityRelationRecordFilters('workflow.instance', true) },
+  async list(anchor, { cursor, limit, access, filters }) {
     const before = decodeRelationCursor(cursor);
-    const rows = await access.db.select({ id: workflowInstances.id, title: workflowInstances.title, status: workflowInstances.status, createdAt: workflowInstances.createdAt })
+    const rows = await access.db.select({ id: workflowInstances.id, title: workflowInstances.title, status: workflowInstances.status, attention: sql<boolean>`coalesce(${workflowInstanceAttention(access)}, false)`, createdAt: workflowInstances.createdAt })
       .from(workflowInstances).where(buildWhere(await orderWorkflowWhere(anchor, access),
+        relationFilterWhere(filters, { keyword: [workflowInstances.title, workflowInstances.serialNo], status: workflowInstances.status, occurredAt: workflowInstances.createdAt, attention: workflowInstanceAttention(access) }),
         before ? lt(workflowInstances.id, before) : undefined)).orderBy(desc(workflowInstances.id)).limit(limit + 1);
     return relationPage(rows, limit, (row) => ({ ref: { type: 'workflow.instance', key: String(row.id) }, relationKey: 'payment.order.workflow',
-      title: row.title, status: row.status, occurredAt: row.createdAt.toISOString(), capabilities }));
+      title: row.title, status: row.status, attention: row.attention, occurredAt: formatDateTime(row.createdAt), capabilities }));
   },
   async prepareSummaryQuery(anchor, { access }) {
     const visible = await orderWorkflowWhere(anchor, access);
@@ -162,11 +165,11 @@ export const paymentAnchorResolvers: readonly EntityAnchorResolver[] = [
 ];
 export const paymentRelationProviders: readonly RelationProvider[] = [paymentOrderRefundsProvider, paymentOrderDisputesProvider, paymentOrderRiskHitsProvider, paymentOrderRiskReviewsProvider, paymentOrderWorkflowProvider,
   ...recordTypes.map((sourceType): RelationProvider => ({ sourceType, key: `${sourceType}.order`, permissions: ['payment:order:list'],
-    descriptor: { key: `${sourceType}.order`, labelKey: 'relation.payment.record.order', targetTypes: ['payment.order'], kind: 'direct', cardinality: 'one', capabilities },
-    async list(anchor, { access }) {
+    descriptor: { key: `${sourceType}.order`, labelKey: 'relation.payment.record.order', targetTypes: ['payment.order'], kind: 'direct', cardinality: 'one', capabilities, filters: entityRelationRecordFilters('payment.order') },
+    async list(anchor, { access, filters }) {
       if (!anchor.metadata?.orderId && !anchor.metadata?.orderNo) return { items: [], hasMore: false, nextCursor: null };
       const [row] = await access.db.select({ id: paymentOrders.id, title: paymentOrders.subject, orderNo: paymentOrders.orderNo, status: paymentOrders.status })
-        .from(paymentOrders).where(await recordOrderWhere(anchor, access)).limit(1);
+        .from(paymentOrders).where(buildWhere(await recordOrderWhere(anchor, access), relationFilterWhere(filters, { keyword: [paymentOrders.subject, paymentOrders.orderNo], status: paymentOrders.status, occurredAt: paymentOrders.createdAt }))).limit(1);
       return { items: row ? [{ ref: { type: 'payment.order', key: String(row.id) }, relationKey: `${sourceType}.order`, title: row.title.slice(0, 160), subtitle: row.orderNo, status: row.status, capabilities }] : [], hasMore: false, nextCursor: null };
     },
     async prepareSummaryQuery(anchor, { access }) {

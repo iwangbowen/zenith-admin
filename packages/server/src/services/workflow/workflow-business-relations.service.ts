@@ -1,7 +1,7 @@
 import { desc, eq, lt, ne, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { EntityRef } from '@zenith/shared/core';
-import { WORKFLOW_BUSINESS_ENTITY_TYPES, type CanonicalEntityType, type EntityRelationPage, type WorkflowBusinessEntityType } from '@zenith/shared/platform';
+import { entityRelationRecordFilters, WORKFLOW_BUSINESS_ENTITY_TYPES, type CanonicalEntityType, type EntityRelationPage, type WorkflowBusinessEntityType } from '@zenith/shared/platform';
 import { bizLeaves, workflowInstances } from '../../db/schema';
 import { hasPermission, runWithCurrentUser } from '../../lib/context';
 import { exactTenantCondition, tenantCondition } from '../../lib/tenant';
@@ -10,6 +10,8 @@ import { decodeRelationCursor } from '../platform/relations/cursor';
 import { relationPage } from '../platform/relations/page';
 import { workflowInstanceAttention, workflowVisibility } from '../platform/relations/providers/workflow-file.provider';
 import { relationSummaryQuery } from '../platform/relations/summary-query';
+import { relationFilterWhere, matchesRelationKeyword } from '../platform/relations/filters';
+import { formatDateTime } from '../../lib/datetime';
 import type { EntityAnchorResolver, RelationAccessContext, RelationProvider, VisibleEntityAnchor } from '../platform/relations/types';
 
 const WORKFLOW_PERMISSIONS = ['workflow:instance:list', 'workflow:task:handle', 'workflow:instance:monitor'] as const;
@@ -75,7 +77,7 @@ async function businessHistoryWhere(source: NonNullable<Awaited<ReturnType<typeo
     exactTenantCondition(workflowInstances.tenantId, source.tenantId), tenantCondition(workflowInstances, access.user), await workflowVisibility(access));
 }
 
-async function listBusinessInstances(anchor: VisibleEntityAnchor, { cursor, limit, access }: RelationInput,
+async function listBusinessInstances(anchor: VisibleEntityAnchor, { cursor, limit, access, filters }: RelationInput,
   business: BusinessType, resolveAnchor: WorkflowBusinessAnchorResolver): Promise<EntityRelationPage> {
   return runWithCurrentUser(access.user, async () => {
     if (anchor.ref.type !== business.entityType || !(await hasPermission(...WORKFLOW_PERMISSIONS))) return emptyPage();
@@ -84,19 +86,19 @@ async function listBusinessInstances(anchor: VisibleEntityAnchor, { cursor, limi
     const beforeId = decodeRelationCursor(cursor);
     // A business pointer only identifies its current round. The canonical business key preserves every round.
     const rows = await access.db.select({ id: workflowInstances.id, title: workflowInstances.title, serialNo: workflowInstances.serialNo,
-      status: workflowInstances.status, createdAt: workflowInstances.createdAt }).from(workflowInstances)
-      .where(buildWhere(await businessInstancesWhere(authorized, business, access), beforeId ? lt(workflowInstances.id, beforeId) : undefined))
+      status: workflowInstances.status, attention: sql<boolean>`coalesce(${workflowInstanceAttention(access)}, false)`, createdAt: workflowInstances.createdAt }).from(workflowInstances)
+      .where(buildWhere(await businessInstancesWhere(authorized, business, access), relationFilterWhere(filters, { keyword: [workflowInstances.title, workflowInstances.serialNo], status: workflowInstances.status, occurredAt: workflowInstances.createdAt, attention: workflowInstanceAttention(access) }), beforeId ? lt(workflowInstances.id, beforeId) : undefined))
       .orderBy(desc(workflowInstances.id)).limit(limit + 1);
     return relationPage(rows, limit, (row) => ({ ref: { type: 'workflow.instance', key: String(row.id) },
       relationKey: `${business.entityType}.workflow-instances`, title: row.title, subtitle: row.serialNo,
-      status: row.status, occurredAt: row.createdAt.toISOString(), capabilities }));
+      status: row.status, attention: row.attention, occurredAt: formatDateTime(row.createdAt), capabilities }));
   });
 }
 
 function businessProvider(business: BusinessType, resolveAnchor: WorkflowBusinessAnchorResolver): RelationProvider {
   const key = `${business.entityType}.workflow-instances`;
   return { sourceType: business.entityType, key, permissions: WORKFLOW_PERMISSIONS,
-    descriptor: { key, labelKey: 'relation.business.workflow-instances', targetTypes: ['workflow.instance'], kind: 'direct', cardinality: 'many', capabilities },
+    descriptor: { key, labelKey: 'relation.business.workflow-instances', targetTypes: ['workflow.instance'], filters: entityRelationRecordFilters('workflow.instance', true), kind: 'direct', cardinality: 'many', capabilities },
     list: (anchor, input) => listBusinessInstances(anchor, input, business, resolveAnchor),
     async prepareSummaryQuery(anchor, { access }) {
       const authorized = await requireMatchingAnchor(anchor, resolveAnchor, access);
@@ -111,8 +113,8 @@ function originatingBusinessProvider(business: BusinessType, resolveAnchor: Work
   const key = `workflow.instance.${business.reverseRelation}`;
   return { sourceType: 'workflow.instance', key, permissions: WORKFLOW_PERMISSIONS, allPermissions: businessPermissions[business.entityType],
     appliesTo: (anchor) => anchor.metadata?.bizType === business.bizType && Boolean(anchor.metadata.bizId),
-    descriptor: { key, labelKey: `relation.${key}`, targetTypes: [business.entityType], kind: 'direct', cardinality: 'one', capabilities },
-    async list(anchor, { cursor, access }) {
+    descriptor: { key, labelKey: `relation.${key}`, targetTypes: [business.entityType], filters: { keyword: true }, kind: 'direct', cardinality: 'one', capabilities },
+    async list(anchor, { cursor, access, filters }) {
       return runWithCurrentUser(access.user, async () => {
         const beforeId = decodeRelationCursor(cursor);
         const source = await readWorkflowBusiness(anchor, access);
@@ -122,6 +124,7 @@ function originatingBusinessProvider(business: BusinessType, resolveAnchor: Work
         try {
           const target = await resolveAnchor(business.entityType, source.bizId, access);
           if (target.tenantId !== source.tenantId || target.ref.type !== business.entityType || target.ref.key !== source.bizId) return emptyPage();
+          if (!matchesRelationKeyword(filters?.keyword, target.title, target.ref.key)) return emptyPage();
           return { items: [{ ref: target.ref, relationKey: key, title: target.title, capabilities }], hasMore: false, nextCursor: null };
         } catch (error) {
           if (error instanceof HTTPException && error.status === 404) return emptyPage();
@@ -135,18 +138,18 @@ export const workflowBusinessHistoryProvider: RelationProvider = {
   sourceType: 'workflow.instance', key: 'workflow.instance.business-history', permissions: WORKFLOW_PERMISSIONS,
   appliesTo: (anchor) => Boolean(anchor.metadata?.bizId) && businessTypes.some((business) => business.bizType === anchor.metadata?.bizType),
   descriptor: { key: 'workflow.instance.business-history', labelKey: 'relation.workflow.instance.business-history',
-    targetTypes: ['workflow.instance'], kind: 'derived', cardinality: 'many', capabilities },
-  async list(anchor, { cursor, limit, access }) {
+    targetTypes: ['workflow.instance'], filters: entityRelationRecordFilters('workflow.instance', true), kind: 'derived', cardinality: 'many', capabilities },
+  async list(anchor, { cursor, limit, access, filters }) {
     return runWithCurrentUser(access.user, async () => {
       const source = await readWorkflowBusiness(anchor, access);
       if (!source?.bizType || !source.bizId || !businessTypes.some((business) => business.bizType === source.bizType)) return emptyPage();
       const beforeId = decodeRelationCursor(cursor);
       const rows = await access.db.select({ id: workflowInstances.id, title: workflowInstances.title, serialNo: workflowInstances.serialNo,
-        status: workflowInstances.status, createdAt: workflowInstances.createdAt }).from(workflowInstances)
-        .where(buildWhere(await businessHistoryWhere(source, access), beforeId ? lt(workflowInstances.id, beforeId) : undefined))
+        status: workflowInstances.status, attention: sql<boolean>`coalesce(${workflowInstanceAttention(access)}, false)`, createdAt: workflowInstances.createdAt }).from(workflowInstances)
+        .where(buildWhere(await businessHistoryWhere(source, access), relationFilterWhere(filters, { keyword: [workflowInstances.title, workflowInstances.serialNo], status: workflowInstances.status, occurredAt: workflowInstances.createdAt, attention: workflowInstanceAttention(access) }), beforeId ? lt(workflowInstances.id, beforeId) : undefined))
         .orderBy(desc(workflowInstances.id)).limit(limit + 1);
       return relationPage(rows, limit, (row) => ({ ref: { type: 'workflow.instance', key: String(row.id) }, relationKey: 'workflow.instance.business-history',
-        title: row.title, subtitle: row.serialNo, status: row.status, occurredAt: row.createdAt.toISOString(), capabilities }));
+        title: row.title, subtitle: row.serialNo, status: row.status, attention: row.attention, occurredAt: formatDateTime(row.createdAt), capabilities }));
     });
   },
   async prepareSummaryQuery(anchor, { access }) {

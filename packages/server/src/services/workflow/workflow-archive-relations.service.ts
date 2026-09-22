@@ -1,6 +1,5 @@
 import { and, desc, eq, isNotNull, lt, sql } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
-import { WORKFLOW_BUSINESS_ENTITY_TYPES, type CanonicalEntityType, type EntityRelationItem } from '@zenith/shared/platform';
+import { entityRelationRecordFilters, WORKFLOW_BUSINESS_ENTITY_TYPES, type CanonicalEntityType, type EntityRelationItem } from '@zenith/shared/platform';
 import { managedFiles, workflowInstances, workflowTasks } from '../../db/schema';
 import { hasPermission, runWithCurrentUser } from '../../lib/context';
 import { exactTenantCondition, tenantCondition } from '../../lib/tenant';
@@ -9,6 +8,8 @@ import { workflowVisibility } from '../platform/relations/providers/workflow-fil
 import { decodeRelationCursor } from '../platform/relations/cursor';
 import { assertRelationBudget } from '../platform/relations/runtime';
 import type { EntityAnchorResolver, RelationAccessContext, RelationProvider, VisibleEntityAnchor } from '../platform/relations/types';
+import { relationFilterWhere, matchesRelationKeyword } from '../platform/relations/filters';
+import { formatDateTime } from '../../lib/datetime';
 import { workflowArchiveNeedsRedaction } from './workflow-print-access';
 
 const permissions = ['workflow:instance:list', 'workflow:task:handle', 'workflow:instance:monitor'] as const;
@@ -49,8 +50,8 @@ export const workflowArchiveAnchorResolvers: readonly EntityAnchorResolver[] = [
 function archiveProvider(sourceType: CanonicalEntityType): RelationProvider {
   const key = `${sourceType}.archives`;
   return { sourceType, key, permissions,
-    descriptor: { key, labelKey: 'relation.workflow.archives', targetTypes: ['workflow.archive'], kind: 'derived', cardinality: sourceType === 'workflow.instance' ? 'one' : 'many', capabilities },
-    list: (anchor, { cursor, limit, access }) => runWithCurrentUser(access.user, async () => {
+    descriptor: { key, labelKey: 'relation.workflow.archives', targetTypes: ['workflow.archive'], filters: entityRelationRecordFilters('workflow.archive'), kind: 'derived', cardinality: sourceType === 'workflow.instance' ? 'one' : 'many', capabilities },
+    list: (anchor, { cursor, limit, access, filters }) => runWithCurrentUser(access.user, async () => {
       if (!(await hasPermission(...permissions))) return empty();
       const id = idOf(anchor.ref.key);
       const business = WORKFLOW_BUSINESS_ENTITY_TYPES.find((item) => item.entityType === sourceType);
@@ -58,36 +59,37 @@ function archiveProvider(sourceType: CanonicalEntityType): RelationProvider {
       let before = decodeRelationCursor(cursor);
       const visible: EntityRelationItem[] = [];
       let scanned = 0;
+      let exhausted = false;
       while (visible.length <= limit) {
         assertRelationBudget(access);
-        if (scanned >= 256) throw new HTTPException(503, { message: '归档关联查询超出预算，请稍后重试' });
+        if (scanned >= 256 || (scanned > 0 && access.deadlineAt && access.deadlineAt - Date.now() < 150)) break;
         const rows = await access.db.select(columns).from(workflowInstances).innerJoin(managedFiles, fileJoin)
           .where(buildWhere(sourceType === 'workflow.instance' ? eq(workflowInstances.id, id)
             : and(eq(workflowInstances.bizType, business!.bizType), eq(workflowInstances.bizId, anchor.ref.key)),
           exactTenantCondition(workflowInstances.tenantId, anchor.tenantId), tenantCondition(workflowInstances, access.user),
-          await workflowVisibility(access), isNotNull(workflowInstances.archivedAt), before ? lt(workflowInstances.id, before) : undefined))
+          await workflowVisibility(access), isNotNull(workflowInstances.archivedAt), relationFilterWhere(filters, { keyword: [workflowInstances.title], occurredAt: workflowInstances.archivedAt }), before ? lt(workflowInstances.id, before) : undefined))
           .orderBy(desc(workflowInstances.id)).limit(32);
         for (const row of rows) {
           before = row.id; scanned++; assertRelationBudget(access);
           if (!(await archiveReadable(row, access))) continue;
           visible.push({ ref: { type: 'workflow.archive', key: String(row.id) }, title: `${row.title} · 审批归档件`,
-            relationKey: key, occurredAt: row.archivedAt?.toISOString(), capabilities });
+            relationKey: key, occurredAt: row.archivedAt ? formatDateTime(row.archivedAt) : undefined, capabilities });
           if (visible.length > limit) break;
         }
-        if (rows.length < 32) break;
+        if (rows.length < 32 && visible.length <= limit) { exhausted = true; break; }
       }
-      const items = visible.slice(0, limit), hasMore = visible.length > limit;
-      return { items, hasMore, nextCursor: hasMore ? items[items.length - 1].ref.key : null };
+      const items = visible.slice(0, limit), hasMore = visible.length > limit || !exhausted;
+      return { items, hasMore, nextCursor: hasMore ? visible.length > limit ? items[items.length - 1].ref.key : String(before) : null };
     }),
   };
 }
 export const workflowArchiveRelationProviders: readonly RelationProvider[] = [
   archiveProvider('workflow.instance'), ...WORKFLOW_BUSINESS_ENTITY_TYPES.map(({ entityType }) => archiveProvider(entityType)),
   { sourceType: 'workflow.archive', key: 'workflow.archive.instance', permissions,
-    descriptor: { key: 'workflow.archive.instance', labelKey: 'relation.workflow.archive.instance', targetTypes: ['workflow.instance'], kind: 'direct', cardinality: 'one', capabilities },
-    list: (anchor: VisibleEntityAnchor, { access }) => runWithCurrentUser(access.user, async () => {
+    descriptor: { key: 'workflow.archive.instance', labelKey: 'relation.workflow.archive.instance', targetTypes: ['workflow.instance'], filters: { keyword: true }, kind: 'direct', cardinality: 'one', capabilities },
+    list: (anchor: VisibleEntityAnchor, { access, filters }) => runWithCurrentUser(access.user, async () => {
       const row = await workflowArchiveAnchorResolvers[0].resolve(anchor.ref, access);
-      if (!row || row.tenantId !== anchor.tenantId) return empty();
+      if (!row || row.tenantId !== anchor.tenantId || !matchesRelationKeyword(filters?.keyword, row.title, row.ref.key)) return empty();
       return { items: [{ ref: { type: 'workflow.instance' as const, key: row.ref.key }, relationKey: 'workflow.archive.instance', title: row.title.replace(/ · 审批归档件$/, ''), capabilities }], hasMore: false, nextCursor: null };
     }),
   },

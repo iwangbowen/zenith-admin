@@ -1,6 +1,6 @@
 import { desc, eq, lt, lte } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { WORKFLOW_BUSINESS_ENTITY_TYPES, type CanonicalEntityType, type EntityRelationItem } from '@zenith/shared/platform';
+import { entityRelationRecordFilters, WORKFLOW_BUSINESS_ENTITY_TYPES, type CanonicalEntityType, type EntityRelationItem } from '@zenith/shared/platform';
 import { workflowInstances } from '../../db/schema';
 import { hasPermission, runWithCurrentUser } from '../../lib/context';
 import { exactTenantCondition, tenantCondition } from '../../lib/tenant';
@@ -8,6 +8,8 @@ import { buildWhere } from '../../lib/where-helpers';
 import { workflowVisibility } from '../platform/relations/providers/workflow-file.provider';
 import { decodeRelationCursor } from '../platform/relations/cursor';
 import { relationPage } from '../platform/relations/page';
+import { matchesRelationKeyword } from '../platform/relations/filters';
+import { formatDateTime } from '../../lib/datetime';
 import { assertRelationBudget } from '../platform/relations/runtime';
 import type { EntityAnchorResolver, RelationProvider } from '../platform/relations/types';
 import { getWorkflowAttachmentSummary, listWorkflowAttachmentSummaries } from './workflow-attachments.service';
@@ -20,7 +22,7 @@ function idOf(key: string) { const id = Number(key); return /^[1-9]\d*$/.test(ke
 function item(row: AttachmentSummary, key: string): EntityRelationItem {
   return { ref: { type: 'workflow.attachment', key: String(row.id) }, title: row.name, relationKey: key,
     subtitle: ({ form: '申请表单附件', task: '审批节点附件', comment: '流程沟通附件' })[row.source],
-    occurredAt: row.createdAt.toISOString(), capabilities };
+    occurredAt: formatDateTime(row.createdAt), capabilities };
 }
 export const workflowAttachmentAnchorResolvers: readonly EntityAnchorResolver[] = [{ type: 'workflow.attachment',
   resolve: (ref, access) => runWithCurrentUser(access.user, async () => {
@@ -37,12 +39,12 @@ export const workflowAttachmentAnchorResolvers: readonly EntityAnchorResolver[] 
 function instanceAttachments(sourceType: 'workflow.instance' | 'workflow.task'): RelationProvider {
   const key = `${sourceType}.attachments`;
   return { sourceType, key, permissions,
-    descriptor: { key, labelKey: 'relation.workflow.attachments', targetTypes: ['workflow.attachment'], kind: 'direct', cardinality: 'many', capabilities },
-    list: (anchor, { cursor, limit, access }) => runWithCurrentUser(access.user, async () => {
+    descriptor: { key, labelKey: 'relation.workflow.attachments', targetTypes: ['workflow.attachment'], filters: entityRelationRecordFilters('workflow.attachment'), kind: 'direct', cardinality: 'many', capabilities },
+    list: (anchor, { cursor, limit, access, filters }) => runWithCurrentUser(access.user, async () => {
       if (!(await hasPermission(...permissions))) return empty();
       const instanceId = sourceType === 'workflow.instance' ? idOf(anchor.ref.key) : anchor.metadata?.instanceId;
       if (typeof instanceId !== 'number') return empty();
-      const rows = await listWorkflowAttachmentSummaries(instanceId, { limit: limit + 1, beforeId: decodeRelationCursor(cursor),
+      const rows = await listWorkflowAttachmentSummaries(instanceId, { filters, limit: limit + 1, beforeId: decodeRelationCursor(cursor),
         ...(sourceType === 'workflow.task' ? { taskId: idOf(anchor.ref.key) } : {}) }, access.db);
       return relationPage(rows.filter((row) => row.tenantId === anchor.tenantId), limit, (row) => item(row, key));
     }),
@@ -61,16 +63,17 @@ function readBusinessCursor(value?: string): [number, number] | undefined {
 function businessAttachments(business: (typeof WORKFLOW_BUSINESS_ENTITY_TYPES)[number]): RelationProvider {
   const sourceType = business.entityType, key = `${sourceType}.attachments`;
   return { sourceType, key, permissions,
-    descriptor: { key, labelKey: 'relation.workflow.attachments', targetTypes: ['workflow.attachment'], kind: 'derived', cardinality: 'many', capabilities },
-    list: (anchor, { cursor, limit, access }) => runWithCurrentUser(access.user, async () => {
+    descriptor: { key, labelKey: 'relation.workflow.attachments', targetTypes: ['workflow.attachment'], filters: entityRelationRecordFilters('workflow.attachment'), kind: 'derived', cardinality: 'many', capabilities },
+    list: (anchor, { cursor, limit, access, filters }) => runWithCurrentUser(access.user, async () => {
       if (!(await hasPermission(...permissions))) return empty();
       const position = readBusinessCursor(cursor);
       let beforeInstance: number | undefined;
       const visible: Array<{ item: EntityRelationItem; cursor: [number, number] }> = [];
       let scanned = 0;
+      let exhausted = false;
       while (visible.length <= limit) {
         assertRelationBudget(access);
-        if (scanned >= 128) throw new HTTPException(503, { message: '附件关联查询超出预算，请稍后重试' });
+        if (scanned >= 128 || (scanned > 0 && access.deadlineAt && access.deadlineAt - Date.now() < 150)) break;
         const rounds = await access.db.select({ id: workflowInstances.id }).from(workflowInstances).where(buildWhere(
           eq(workflowInstances.bizType, business.bizType), eq(workflowInstances.bizId, anchor.ref.key),
           exactTenantCondition(workflowInstances.tenantId, anchor.tenantId), tenantCondition(workflowInstances, access.user),
@@ -79,30 +82,31 @@ function businessAttachments(business: (typeof WORKFLOW_BUSINESS_ENTITY_TYPES)[n
         )).orderBy(desc(workflowInstances.id)).limit(16);
         for (const round of rounds) {
           assertRelationBudget(access); scanned++; beforeInstance = round.id;
-          const files = await listWorkflowAttachmentSummaries(round.id, { limit: limit + 1 - visible.length,
+          const files = await listWorkflowAttachmentSummaries(round.id, { filters, limit: limit + 1 - visible.length,
             beforeId: position?.[0] === round.id ? position[1] : undefined }, access.db);
           for (const file of files) visible.push({ item: item(file, key), cursor: [round.id, file.id] });
           if (visible.length > limit) break;
         }
-        if (rounds.length < 16) break;
+        if (rounds.length < 16 && visible.length <= limit) { exhausted = true; break; }
       }
-      const shown = visible.slice(0, limit), hasMore = visible.length > limit;
-      return { items: shown.map((entry) => entry.item), hasMore, nextCursor: hasMore ? JSON.stringify(shown[shown.length - 1].cursor) : null };
+      const shown = visible.slice(0, limit), hasMore = visible.length > limit || !exhausted;
+      return { items: shown.map((entry) => entry.item), hasMore, nextCursor: hasMore ? JSON.stringify(visible.length > limit ? shown[shown.length - 1].cursor : [beforeInstance, 1]) : null };
     }),
   };
 }
 function sourceProvider(target: 'workflow.instance' | 'workflow.task'): RelationProvider {
   const suffix = target === 'workflow.instance' ? 'instance' : 'approval-tasks', key = `workflow.attachment.${suffix}`;
   return { sourceType: 'workflow.attachment', key, permissions,
-    descriptor: { key, labelKey: `relation.${key}`, targetTypes: [target], kind: 'direct', cardinality: 'one', capabilities },
-    list: (anchor, { access }) => runWithCurrentUser(access.user, async () => {
+    descriptor: { key, labelKey: `relation.${key}`, targetTypes: [target], filters: { keyword: true }, kind: 'direct', cardinality: 'one', capabilities },
+    list: (anchor, { access, filters }) => runWithCurrentUser(access.user, async () => {
       if (!(await hasPermission(...permissions))) return empty();
       const id = idOf(anchor.ref.key); if (id === undefined) return empty();
       const row = await getWorkflowAttachmentSummary(id, access.db);
       if (row.tenantId !== anchor.tenantId) return empty();
       const sourceId = target === 'workflow.instance' ? row.instanceId : row.taskId;
-      return sourceId == null ? empty() : { items: [{ ref: { type: target as CanonicalEntityType, key: String(sourceId) }, relationKey: key,
-        title: target === 'workflow.instance' ? `所属审批 #${sourceId}` : `所属审批任务 #${sourceId}`, capabilities }], hasMore: false, nextCursor: null };
+      const title = target === 'workflow.instance' ? `所属审批 #${sourceId}` : `所属审批任务 #${sourceId}`;
+      return sourceId == null || !matchesRelationKeyword(filters?.keyword, title, String(sourceId)) ? empty() : { items: [{ ref: { type: target as CanonicalEntityType, key: String(sourceId) }, relationKey: key,
+        title, capabilities }], hasMore: false, nextCursor: null };
     }),
   };
 }

@@ -1,6 +1,8 @@
 import { and, desc, eq, exists, isNull, lt, notInArray, or } from 'drizzle-orm';
 import type { EntityRef } from '@zenith/shared/core';
-import type { EntityRelationPage } from '@zenith/shared/platform';
+import { entityRelationRecordFilters, type EntityRelationPage } from '@zenith/shared/platform';
+import { relationFilterWhere } from '../filters';
+import { formatDateTime } from '../../../../lib/datetime';
 import { MEMBER_RENEWAL_BIZ_TYPE } from '@zenith/shared/member';
 import {
   members, memberVipRenewals, memberWalletTransactions, operationLogSubjects, operationLogs, paymentOrders, users,
@@ -49,7 +51,7 @@ async function resolveMember(ref: EntityRef, access: RelationAccessContext): Pro
   });
 }
 
-async function listPayments(anchor: VisibleEntityAnchor, { cursor, limit, access }: RelationInput): Promise<EntityRelationPage> {
+async function listPayments(anchor: VisibleEntityAnchor, { cursor, limit, access, filters }: RelationInput): Promise<EntityRelationPage> {
   return runWithCurrentUser(access.user, async () => {
     if (!(await hasPermission('payment:order:list'))) return emptyPage();
     const id = parseId(anchor.ref.key);
@@ -76,17 +78,18 @@ async function listPayments(anchor: VisibleEntityAnchor, { cursor, limit, access
         ownership,
         exactTenantCondition(paymentOrders.tenantId, anchor.tenantId),
         await buildOrdersWhere({}, access.db),
+        relationFilterWhere(filters, { keyword: [paymentOrders.subject, paymentOrders.orderNo], status: paymentOrders.status, occurredAt: paymentOrders.createdAt }),
         beforeId ? lt(paymentOrders.id, beforeId) : undefined,
       )).orderBy(desc(paymentOrders.id)).limit(limit + 1);
     return page(rows, limit, (order) => ({
       ref: { type: 'payment.order', key: String(order.id) }, relationKey: `${anchor.ref.type}.payment-orders`,
       title: (order.subject || order.orderNo).slice(0, 160), subtitle: order.orderNo, status: order.status,
-      occurredAt: order.createdAt.toISOString(), capabilities: { view: true, open: true },
+      occurredAt: formatDateTime(order.createdAt), capabilities: { view: true, open: true },
     }));
   });
 }
 
-async function listAudit(anchor: VisibleEntityAnchor, { cursor, limit, access }: RelationInput): Promise<EntityRelationPage> {
+async function listAudit(anchor: VisibleEntityAnchor, { cursor, limit, access, filters }: RelationInput): Promise<EntityRelationPage> {
   return runWithCurrentUser(access.user, async () => {
     if (!(await hasPermission('system:log:operation'))) return emptyPage();
     const beforeId = decodeRelationCursor(cursor);
@@ -97,12 +100,13 @@ async function listAudit(anchor: VisibleEntityAnchor, { cursor, limit, access }:
           eq(operationLogSubjects.operationLogId, operationLogs.id), eq(operationLogSubjects.entityType, anchor.ref.type),
           eq(operationLogSubjects.entityKey, anchor.ref.key), exactTenantCondition(operationLogSubjects.tenantId, anchor.tenantId),
         )).limit(1)),
+        relationFilterWhere(filters, { keyword: [operationLogs.description, operationLogs.module], occurredAt: operationLogs.createdAt }),
         beforeId ? lt(operationLogs.id, beforeId) : undefined,
       )).orderBy(desc(operationLogs.id)).limit(limit + 1);
     return page(rows, limit, (log) => ({
       ref: { type: 'platform.operation-log', key: String(log.id) }, relationKey: `${anchor.ref.type}.audit`,
       title: log.description.slice(0, 160), subtitle: [log.module, log.method].filter(Boolean).join(' · '),
-      status: log.responseCode == null ? null : String(log.responseCode), occurredAt: log.createdAt.toISOString(),
+      status: log.responseCode == null ? null : String(log.responseCode), occurredAt: formatDateTime(log.createdAt),
       capabilities: { view: true, open: true },
     }));
   });
@@ -116,14 +120,14 @@ export const identityAnchorResolvers: readonly EntityAnchorResolver[] = [
 function paymentsProvider(sourceType: 'identity.user' | 'member.member'): RelationProvider {
   const key = `${sourceType}.payment-orders`;
   return { sourceType, key, permissions: ['payment:order:list'], descriptor: {
-    key, labelKey: `relation.${key}`, targetTypes: ['payment.order'], kind: 'derived', cardinality: 'many', capabilities: { view: true, open: true },
+    key, labelKey: `relation.${key}`, targetTypes: ['payment.order'], kind: 'derived', cardinality: 'many', filters: entityRelationRecordFilters('payment.order'), capabilities: { view: true, open: true },
   }, list: listPayments };
 }
 
 function auditProvider(sourceType: 'identity.user' | 'member.member'): RelationProvider {
   const key = `${sourceType}.audit`;
   return { sourceType, key, permissions: ['system:log:operation'], descriptor: {
-    key, labelKey: `relation.${key}`, targetTypes: ['platform.operation-log'], kind: 'activity', cardinality: 'many', capabilities: { view: true, open: true },
+    key, labelKey: `relation.${key}`, targetTypes: ['platform.operation-log'], kind: 'activity', cardinality: 'many', filters: entityRelationRecordFilters('platform.operation-log'), capabilities: { view: true, open: true },
   }, list: listAudit };
 }
 

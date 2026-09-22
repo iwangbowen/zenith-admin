@@ -76,7 +76,8 @@ export async function summarizeRelationProviders(providers: readonly RelationPro
         if (provider.exists) return await provider.exists(anchor, { access: isolated }) ? 'has-data' : 'empty';
         // Polymorphic links still need per-target authorization; inspect a bounded page.
         const page = await provider.list(anchor, { limit: 1, access: isolated });
-        return page.degraded ? 'unavailable' : page.items.some((item) => item.capabilities.view) ? 'has-data' : 'empty';
+        return page.degraded ? 'unavailable' : page.items.some((item) => item.capabilities.view && item.attention) ? 'attention'
+          : page.items.some((item) => item.capabilities.view) ? 'has-data' : page.hasMore ? 'unavailable' : 'empty';
       });
       states.set(provider.key, state);
       recordRelationSummaryMetric(provider.sourceType, provider.key, state === 'unavailable' ? 'error' : 'success', started);

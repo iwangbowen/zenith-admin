@@ -1,4 +1,4 @@
-import type { EntityRelationItem, EntityRelationPage, EntityRelationSectionDescriptor, EntityRelationSummaryState } from '@zenith/shared/platform';
+import type { EntityRelationFilters, EntityRelationItem, EntityRelationPage, EntityRelationSectionDescriptor, EntityRelationSummaryState } from '@zenith/shared/platform';
 import type { CanonicalEntityType } from '@zenith/shared/platform';
 import type { EntityRef, RelationKey } from '@zenith/shared/core';
 import type { Permission } from '@zenith/shared/core';
@@ -35,7 +35,7 @@ export interface RelationProvider {
   readonly descriptor: EntityRelationSectionDescriptor;
   readonly list: (
     anchor: VisibleEntityAnchor,
-    input: { readonly cursor?: string; readonly limit: number; readonly access: RelationAccessContext },
+    input: { readonly cursor?: string; readonly limit: number; readonly access: RelationAccessContext; readonly filters?: EntityRelationFilters },
   ) => Promise<EntityRelationPage>;
   /**
    * An existence/attention SQL expression over the complete visible set. The

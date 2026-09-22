@@ -6,6 +6,7 @@ import { exactTenantCondition, tenantCondition } from '../../../../lib/tenant';
 import { buildWhere } from '../../../../lib/where-helpers';
 import { assertRelationBudget } from '../runtime';
 import type { RelationAccessContext, RelationProvider, VisibleEntityAnchor } from '../types';
+import { matchesRelationKeyword } from '../filters';
 
 type SubjectCursor = readonly [type: string, key: string];
 export type ReverseSubjectAnchorResolver = (
@@ -49,8 +50,8 @@ export function reverseSubjectProviders(
       key: relationKey,
       permissions: [source.permission],
       descriptor: { key: relationKey, labelKey: 'relation.common.subjects', targetTypes: [...supported],
-        kind: 'direct', cardinality: 'many', capabilities },
-      async list(anchor, { cursor, limit, access }) {
+        kind: 'direct', cardinality: 'many', capabilities, filters: { keyword: true } },
+      async list(anchor, { cursor, limit, access, filters }) {
         assertRelationBudget(access);
         if (anchor.ref.type !== source.type) throw new HTTPException(404, { message: '来源记录不存在或无权查看' });
         const authorized = await resolveAnchor(source.type, anchor.ref.key, access);
@@ -63,13 +64,14 @@ export function reverseSubjectProviders(
         }
         let after = readSubjectCursor(cursor);
         let scanned = 0;
+        let exhausted = false;
         const visible: Array<{ cursor: SubjectCursor; item: EntityRelationItem }> = [];
         // C collation gives type/key the same deterministic order for DISTINCT, comparisons and pagination.
         const typeColumn = sql<string>`${source.table.entityType} collate "C"`;
         const keyColumn = sql<string>`${source.table.entityKey} collate "C"`;
         while (visible.length <= limit) {
           assertRelationBudget(access);
-          if (scanned >= SUBJECT_SCAN_LIMIT) throw new HTTPException(503, { message: '关联查询超出预算，请稍后重试' });
+          if (scanned >= SUBJECT_SCAN_LIMIT || (scanned > 0 && access.deadlineAt && access.deadlineAt - Date.now() < 150)) break;
           const batchSize = Math.min(Math.max(SUBJECT_BATCH_SIZE, limit + 1), SUBJECT_SCAN_LIMIT - scanned);
           const rows = await access.db.selectDistinct({ type: typeColumn, key: keyColumn }).from(source.table).where(buildWhere(
             eq(source.parentId, parentId), exactTenantCondition(source.table.tenantId, authorized.tenantId), tenantCondition(source.table, access.user),
@@ -84,19 +86,20 @@ export function reverseSubjectProviders(
             try {
               const target = await resolveAnchor(parsed.data.type, parsed.data.key, access);
               if (target.tenantId !== authorized.tenantId) continue;
+              if (!matchesRelationKeyword(filters?.keyword, target.title, target.ref.key)) continue;
               visible.push({ cursor: after, item: { ref: target.ref, title: target.title.slice(0, 160), relationKey, capabilities } });
             } catch (error) {
               if (!(error instanceof HTTPException) || error.status !== 404) throw error;
             }
             if (visible.length > limit) break;
           }
-          if (rows.length < batchSize) break;
+          if (rows.length < batchSize && visible.length <= limit) { exhausted = true; break; }
         }
         assertRelationBudget(access);
         const shown = visible.slice(0, limit);
-        const hasMore = visible.length > limit;
+        const hasMore = visible.length > limit || !exhausted;
         return { items: shown.map(({ item }) => item), hasMore,
-          nextCursor: hasMore ? JSON.stringify(shown[shown.length - 1].cursor) : null };
+          nextCursor: hasMore ? JSON.stringify(visible.length > limit ? shown[shown.length - 1].cursor : after) : null };
       },
     };
   });

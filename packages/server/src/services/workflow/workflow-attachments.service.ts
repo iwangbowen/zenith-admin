@@ -1,3 +1,5 @@
+import type { EntityRelationFilters } from '@zenith/shared/platform';
+import { relationFilterWhere } from '../platform/relations/filters';
 import { and, desc, eq, inArray, lt, ne, not, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { workflowAttachmentContract, workflowAttachmentSchema, workflowTaskAttachmentsSchema, mapWorkflowFormAttachments, type WorkflowAttachment, type WorkflowInstanceFormSnapshot } from '@zenith/shared/workflow';
@@ -151,10 +153,10 @@ const summaryColumns = { id: workflowAttachmentLinks.id, instanceId: workflowAtt
   name: managedFiles.originalName, size: managedFiles.size, mimeType: managedFiles.mimeType,
   createdAt: workflowAttachmentLinks.createdAt, tenantId: workflowAttachmentLinks.tenantId };
 
-export async function listWorkflowAttachmentSummaries(instanceId: number, options: { limit: number; beforeId?: number; taskId?: number }, executor: DbExecutor = db) {
+export async function listWorkflowAttachmentSummaries(instanceId: number, options: { limit: number; beforeId?: number; taskId?: number; filters?: EntityRelationFilters }, executor: DbExecutor = db) {
   const scope = await workflowAttachmentReadScope(instanceId, executor);
   return executor.select(summaryColumns).from(workflowAttachmentLinks).innerJoin(managedFiles, eq(managedFiles.id, workflowAttachmentLinks.fileId))
-    .where(buildWhere(scope.where, options.beforeId ? lt(workflowAttachmentLinks.id, options.beforeId) : undefined,
+    .where(buildWhere(scope.where, relationFilterWhere(options.filters, { keyword: [managedFiles.originalName], occurredAt: workflowAttachmentLinks.createdAt }), options.beforeId ? lt(workflowAttachmentLinks.id, options.beforeId) : undefined,
       options.taskId ? eq(workflowAttachmentLinks.taskId, options.taskId) : undefined, eq(managedFiles.visibility, 'restricted'), sql`${managedFiles.tenantId} is not distinct from ${workflowAttachmentLinks.tenantId}`, ne(managedFiles.gcState, 'deleting')))
     .orderBy(desc(workflowAttachmentLinks.id)).limit(options.limit);
 }

@@ -35,6 +35,10 @@ export type ExportColumnType = (typeof EXPORT_COLUMN_TYPES)[number];
 export const ASYNC_TASK_STATUSES = ['pending', 'running', 'success', 'failed', 'cancelled'] as const;
 
 export type AsyncTaskStatus = (typeof ASYNC_TASK_STATUSES)[number];
+export const ASYNC_TASK_STATUS_LABELS: Record<AsyncTaskStatus, string> = {
+  pending: '等待执行', running: '执行中', success: '成功', failed: '失败', cancelled: '已取消',
+};
+export const ASYNC_TASK_STATUS_OPTIONS = ASYNC_TASK_STATUSES.map((value) => ({ value, label: ASYNC_TASK_STATUS_LABELS[value] }));
 
 /** 已进入终态（不再变化、可清理 / 重跑）的任务状态；server / web / mock 判定「任务是否结束」的唯一口径 */
 export const ASYNC_TASK_TERMINAL_STATUSES = ['success', 'failed', 'cancelled'] as const satisfies readonly AsyncTaskStatus[];
