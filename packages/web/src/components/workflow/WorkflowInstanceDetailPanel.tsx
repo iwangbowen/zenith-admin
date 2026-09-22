@@ -59,8 +59,9 @@ const FLOW_RECORD_COLUMNS: ColumnProps<WorkflowTask>[] = [
   {
     title: '审批人',
     dataIndex: 'assigneeName',
-    width: 110,
-    render: (v: string | null, r: WorkflowTask) => v ?? (r.assigneeId != null ? `#${r.assigneeId}` : EMPTY_PLACEHOLDER),
+    // 审批人是昵称优先的展示名，比用户 ID 长：单行省略 + tooltip；没有姓名时回退到 #ID
+    width: 160,
+    render: (v: string | null, r: WorkflowTask) => renderEllipsis(v ?? (r.assigneeId != null ? `#${r.assigneeId}` : null)),
   },
   dateTimeColumn('开始时间', 'createdAt', { className: 'table-cell-muted' }),
   dateTimeColumn('结束时间', 'actionAt', { className: 'table-cell-muted' }),
