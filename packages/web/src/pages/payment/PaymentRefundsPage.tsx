@@ -4,7 +4,7 @@ import { formatYuan, PAYMENT_CHANNEL_TAG_COLOR, PAYMENT_REFUND_STATUS_TAG_COLOR 
 import { Form, Input, SideSheet, Tag, Toast, Typography, Descriptions } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { createOperationColumn, ResponsiveTableActions, type ResponsiveTableAction } from '@/components/ResponsiveTableActions';
 import ExportButton from '@/components/ExportButton';
 import { AppModal } from '@/components/AppModal';
 import { formatDateTime, formatDateTimeRangeForApi } from '@/utils/date';
@@ -122,23 +122,7 @@ export default function PaymentRefundsPage() {
     setRejectTarget(null);
   }
 
-  const columns: ColumnProps<PaymentRefund>[] = [
-    copyableNoColumn('退款单号', 'refundNo', { flex: true }),
-    copyableNoColumn('原订单号', 'orderNo'),
-    { title: '退款金额', dataIndex: 'refundAmount', width: 110, align: 'right', render: (v: number) => yuan(v) },
-    { title: '原单金额', dataIndex: 'totalAmount', width: 110, align: 'right', render: (v: number) => yuan(v) },
-    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <Tag color={PAYMENT_CHANNEL_TAG_COLOR[v]}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
-    dateTimeColumn('退款时间', 'refundedAt'),
-    dateTimeColumn('创建时间', 'createdAt'),
-    {
-      title: '审批', dataIndex: 'approvalStatus', width: 100, fixed: 'right',
-      render: (v: PaymentRefundApprovalStatus) => (v === 'none' ? <Typography.Text type="tertiary">-</Typography.Text> : <Tag color={APPROVAL_COLOR[v]}>{PAYMENT_REFUND_APPROVAL_STATUS_LABELS[v]}</Tag>),
-    },
-    { title: '状态', dataIndex: 'status', width: 110, fixed: 'right', render: (v: PaymentRefundStatus) => <Tag color={PAYMENT_REFUND_STATUS_TAG_COLOR[v]}>{PAYMENT_REFUND_STATUS_LABELS[v]}</Tag> },
-    createOperationColumn<PaymentRefund>({
-      width: 120,
-      desktopInlineKeys: ['detail'],
-      actions: (r) => [
+  const refundActions = (r: PaymentRefund): ResponsiveTableAction[] => [
         {
           key: 'detail',
           label: '详情',
@@ -162,7 +146,25 @@ export default function PaymentRefundsPage() {
           danger: true,
           onClick: () => openReject(r),
         }] : []),
-      ],
+      ];
+
+  const columns: ColumnProps<PaymentRefund>[] = [
+    copyableNoColumn('退款单号', 'refundNo', { flex: true }),
+    copyableNoColumn('原订单号', 'orderNo'),
+    { title: '退款金额', dataIndex: 'refundAmount', width: 110, align: 'right', render: (v: number) => yuan(v) },
+    { title: '原单金额', dataIndex: 'totalAmount', width: 110, align: 'right', render: (v: number) => yuan(v) },
+    { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => <Tag color={PAYMENT_CHANNEL_TAG_COLOR[v]}>{PAYMENT_CHANNEL_LABELS[v]}</Tag> },
+    dateTimeColumn('退款时间', 'refundedAt'),
+    dateTimeColumn('创建时间', 'createdAt'),
+    {
+      title: '审批', dataIndex: 'approvalStatus', width: 100, fixed: 'right',
+      render: (v: PaymentRefundApprovalStatus) => (v === 'none' ? <Typography.Text type="tertiary">-</Typography.Text> : <Tag color={APPROVAL_COLOR[v]}>{PAYMENT_REFUND_APPROVAL_STATUS_LABELS[v]}</Tag>),
+    },
+    { title: '状态', dataIndex: 'status', width: 110, fixed: 'right', render: (v: PaymentRefundStatus) => <Tag color={PAYMENT_REFUND_STATUS_TAG_COLOR[v]}>{PAYMENT_REFUND_STATUS_LABELS[v]}</Tag> },
+    createOperationColumn<PaymentRefund>({
+      width: 120,
+      desktopInlineKeys: ['detail'],
+      actions: refundActions,
     }),
   ];
 
@@ -228,6 +230,7 @@ export default function PaymentRefundsPage() {
           />
         )}
         {refundDetail && <>
+            <ResponsiveTableActions actions={refundActions(refundDetail).filter((action) => action.key !== 'detail')} />
           <Typography.Title heading={6} style={{ marginTop: 20 }}>关联信息</Typography.Title>
           <EntityContextView entityType="payment.refund" entityKey={String(refundDetail.id)} />
         </>}

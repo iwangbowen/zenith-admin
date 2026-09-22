@@ -13,7 +13,7 @@ import { SearchToolbar } from '@/components/SearchToolbar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import AppModal from '@/components/AppModal';
-import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { createOperationColumn, ResponsiveTableActions, type ResponsiveTableAction } from '@/components/ResponsiveTableActions';
 import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import { usePagination } from '@/hooks/usePagination';
 import { usePermission } from '@/hooks/usePermission';
@@ -113,7 +113,9 @@ export default function TaskCenterPage() {
     applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: asyncTaskKeys.lists });
   useListDeepLink(['keyword'], (params) => applySearch({ ...defaultSearchParams, keyword: params.keyword ?? '' }));
-  const [detailTask, setDetailTask] = useState<AsyncTask | null>(null);
+  const [selectedTask, setDetailTask] = useState<AsyncTask | null>(null);
+  const selectedTaskQuery = useAsyncTaskDetail(selectedTask?.id, selectedTask !== null);
+  const detailTask = selectedTask ? selectedTaskQuery.data ?? selectedTask : null;
   const { selectedRowKeys, setSelectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
 
   // 详情抽屉：任务项明细
@@ -313,6 +315,48 @@ export default function TaskCenterPage() {
     setConfigType(null);
   };
 
+  const taskActions = (record: AsyncTask): ResponsiveTableAction[] => [
+        {
+          key: 'detail',
+          label: '详情',
+          onClick: () => openDetail(record),
+        },
+        {
+          key: 'cancel',
+          label: '取消',
+          hidden: !canManage || !['pending', 'running'].includes(record.status),
+          loading: actionLoadingId === record.id,
+          disabled: record.cancelRequested,
+          disabledReason: '已请求取消，等待任务退出',
+          onClick: () => void runAction(record, 'cancel', '已请求取消'),
+        },
+        {
+          key: 'resume',
+          label: '断点恢复',
+          hidden: !canManage || !['failed', 'cancelled'].includes(record.status),
+          loading: actionLoadingId === record.id,
+          onClick: () => void runAction(record, 'resume', '已从断点恢复，重新入队'),
+        },
+        {
+          key: 'restart',
+          label: '重新开始',
+          hidden: !canManage || !isAsyncTaskTerminal(record.status),
+          loading: actionLoadingId === record.id,
+          onClick: () => void runAction(record, 'restart', '已重新开始'),
+        },
+        {
+          ...deleteAction({
+            hidden: !canManage || !isAsyncTaskTerminal(record.status),
+            title: '删除任务记录',
+            content: `将删除任务 #${record.id}「${record.title}」的记录（含任务项明细），不可恢复。`,
+            run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
+            successMessage: '已删除',
+            onDeleted: () => setSelectedRowKeys((prev) => prev.filter((id) => id !== record.id)),
+          }),
+          dividerBefore: true,
+        },
+      ];
+
   const columns: ColumnProps<AsyncTask>[] = [
     entityRelationColumn<AsyncTask>('tasks.async'),
     { title: '任务ID', dataIndex: 'id', width: 90 },
@@ -357,47 +401,7 @@ export default function TaskCenterPage() {
       // 取消 / 断点恢复 / 重新开始 / 删除 随任务状态出现，统一进更多；行内只保留详情
       width: 120,
       desktopInlineKeys: ['detail'],
-      actions: (record) => [
-        {
-          key: 'detail',
-          label: '详情',
-          onClick: () => openDetail(record),
-        },
-        {
-          key: 'cancel',
-          label: '取消',
-          hidden: !canManage || !['pending', 'running'].includes(record.status),
-          loading: actionLoadingId === record.id,
-          disabled: record.cancelRequested,
-          disabledReason: '已请求取消，等待任务退出',
-          onClick: () => void runAction(record, 'cancel', '已请求取消'),
-        },
-        {
-          key: 'resume',
-          label: '断点恢复',
-          hidden: !canManage || !['failed', 'cancelled'].includes(record.status),
-          loading: actionLoadingId === record.id,
-          onClick: () => void runAction(record, 'resume', '已从断点恢复，重新入队'),
-        },
-        {
-          key: 'restart',
-          label: '重新开始',
-          hidden: !canManage || !isAsyncTaskTerminal(record.status),
-          loading: actionLoadingId === record.id,
-          onClick: () => void runAction(record, 'restart', '已重新开始'),
-        },
-        {
-          ...deleteAction({
-            hidden: !canManage || !isAsyncTaskTerminal(record.status),
-            title: '删除任务记录',
-            content: `将删除任务 #${record.id}「${record.title}」的记录（含任务项明细），不可恢复。`,
-            run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
-            successMessage: '已删除',
-            onDeleted: () => setSelectedRowKeys((prev) => prev.filter((id) => id !== record.id)),
-          }),
-          dividerBefore: true,
-        },
-      ],
+      actions: taskActions,
     }),
   ];
 
@@ -648,6 +652,7 @@ export default function TaskCenterPage() {
       >
         {detailTask && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <ResponsiveTableActions actions={taskActions(detailTask).filter((action) => action.key !== 'detail' && action.key !== 'delete')} />
             <Descriptions
               data={[
                 { key: '任务标题', value: detailTask.title },

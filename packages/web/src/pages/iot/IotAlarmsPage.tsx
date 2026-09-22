@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Descriptions, Form, Modal, Spin, TabPane, Tabs, Tag, TextArea, Toast, Tooltip, Typography, withField } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { createOperationColumn, ResponsiveTableActions, type ResponsiveTableAction } from '@/components/ResponsiveTableActions';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { CreateButton } from '@/components/toolbar-controls';
 import AppModal from '@/components/AppModal';
@@ -107,6 +107,28 @@ function AlarmRecordsTab({ detailId, onOpenDetail, onCloseDetail }: {
     return r.acknowledgedByName ?? (r.acknowledgedBy != null ? `#${r.acknowledgedBy}` : null);
   };
 
+  const alarmActions = (record: IotAlarm): ResponsiveTableAction[] => [
+        ...(hasPermission('iot:alarm:resolve') && record.status === 'firing' ? [{
+          key: 'acknowledge', label: '认领',
+          onClick: () => {
+            void acknowledgeMutation.mutateAsync({ params: { id: record.id } }).then(() => {
+              Toast.success('已认领，升级计时停止');
+            });
+          },
+        }] : []),
+        ...(hasPermission('iot:alarm:resolve') && record.status !== 'resolved' ? [{
+          key: 'resolve', label: '处理',
+          onClick: () => {
+            setResolveNote('');
+            setResolveTarget(record);
+          },
+        }] : []),
+        {
+          key: 'detail', label: '查看详情',
+          onClick: () => onOpenDetail(record.id),
+        },
+      ];
+
   const columns: ColumnProps<IotAlarm>[] = [
     {
       title: '级别', dataIndex: 'level', width: 80,
@@ -159,27 +181,7 @@ function AlarmRecordsTab({ detailId, onOpenDetail, onCloseDetail }: {
     createOperationColumn<IotAlarm>({
       // 告警中：认领 / 处理（52 + 4 + 52 = 108）；已恢复：处理详情（80）→ 150
       width: 150,
-      actions: (record) => [
-        ...(hasPermission('iot:alarm:resolve') && record.status === 'firing' ? [{
-          key: 'acknowledge', label: '认领',
-          onClick: () => {
-            void acknowledgeMutation.mutateAsync({ params: { id: record.id } }).then(() => {
-              Toast.success('已认领，升级计时停止');
-            });
-          },
-        }] : []),
-        ...(hasPermission('iot:alarm:resolve') && record.status !== 'resolved' ? [{
-          key: 'resolve', label: '处理',
-          onClick: () => {
-            setResolveNote('');
-            setResolveTarget(record);
-          },
-        }] : []),
-        {
-          key: 'detail', label: '查看详情',
-          onClick: () => onOpenDetail(record.id),
-        },
-      ],
+      actions: alarmActions,
     }),
   ];
 
@@ -276,6 +278,7 @@ function AlarmRecordsTab({ detailId, onOpenDetail, onCloseDetail }: {
         {detailQuery.isLoading && <Spin />}
         {detailTarget && (
           <>
+            <ResponsiveTableActions actions={alarmActions(detailTarget).filter((action) => action.key !== 'detail')} />
             <Descriptions
               align="plain"
               layout="horizontal"
