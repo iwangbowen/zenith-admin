@@ -164,7 +164,7 @@ export default function AlertEventsPage() {
     dateTimeColumn('触发时间', 'triggeredAt'),
     { title: '规则', dataIndex: 'ruleName', width: 160, render: renderEllipsis },
     { title: '触发条件', dataIndex: 'metric', width: 210, render: (_: unknown, r: MonitorAlertEvent) => <MonitorMetricCondition metric={r.metric} operator={r.operator} threshold={r.threshold} /> },
-    { title: '实际值', dataIndex: 'value', width: 110, render: (v: number, r: MonitorAlertEvent) => <b>{formatMonitorMetricValue(r.metric, v)}</b> },
+    { title: '实际值', dataIndex: 'value', width: 130, render: (v: number, r: MonitorAlertEvent) => <b>{formatMonitorMetricValue(r.metric, v)}</b> },
     { title: '级别', dataIndex: 'level', width: 80, render: (v: string) => <MonitorAlertLevelTag level={v} /> },
     { title: '描述', dataIndex: 'message', minWidth: 280, render: renderEllipsis },
     {
