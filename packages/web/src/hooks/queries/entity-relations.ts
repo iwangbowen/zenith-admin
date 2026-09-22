@@ -4,12 +4,10 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { entityRelationsContract, entityTimelineContract, type CanonicalEntityType } from '@zenith/shared/platform';
 import { api, apiQueryOptions, contractKey, useApiMutation } from '@/lib/contract-query';
 import { useAuth } from '@/hooks/useAuth';
-import { ENTITY_RELATION_QUERY_META, invalidateEntityRelations } from '@/lib/entity-relation-cache';
+import { ENTITY_RELATION_QUERY_META, ENTITY_RELATION_REFRESH_OPTIONS, invalidateEntityRelations } from '@/lib/entity-relation-cache';
 import { workflowAttachmentContract } from '@zenith/shared/workflow';
 
 export { invalidateEntityRelations } from '@/lib/entity-relation-cache';
-
-const RELATION_STALE_TIME = 15_000;
 
 export function useEntityAccessKey() {
   const { user, impersonation } = useAuth();
@@ -19,7 +17,7 @@ export function useEntityAccessKey() {
 export function useEntityWorkflowAttachment(id: number) {
   const access = useEntityAccessKey();
   const options = apiQueryOptions(workflowAttachmentContract.detail, { params: { id } }, {
-    enabled: access[0] !== null, meta: ENTITY_RELATION_QUERY_META, staleTime: RELATION_STALE_TIME, retry: false, requestOptions: { silent: true },
+    enabled: access[0] !== null, meta: ENTITY_RELATION_QUERY_META, ...ENTITY_RELATION_REFRESH_OPTIONS, retry: false, requestOptions: { silent: true },
   });
   return useQuery({ ...options, queryKey: [...options.queryKey, access] });
 }
@@ -36,7 +34,7 @@ export function useEntityRelations(type: CanonicalEntityType, key: string | unde
   const access = useEntityAccessKey();
   const options = apiQueryOptions(entityRelationsContract.describe,
     { params: { type, key: key ?? '' } },
-    { enabled: enabled && Boolean(key) && access[0] !== null, meta: ENTITY_RELATION_QUERY_META, staleTime: RELATION_STALE_TIME, retry: false, requestOptions: { silent: true } });
+    { enabled: enabled && Boolean(key) && access[0] !== null, meta: ENTITY_RELATION_QUERY_META, ...ENTITY_RELATION_REFRESH_OPTIONS, retry: false, requestOptions: { silent: true } });
   return useQuery({ ...options, queryKey: [...options.queryKey, access] });
 }
 
@@ -50,7 +48,7 @@ export function useEntityRelationSection(type: CanonicalEntityType, key: string 
     queryFn: ({ pageParam, signal }) => api(entityRelationsContract.section, { params, query: { limit, cursor: pageParam } }, { silent: true, signal }),
     getNextPageParam: (lastPage) => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
     enabled: enabled && Boolean(key) && access[0] !== null,
-    staleTime: RELATION_STALE_TIME,
+    ...ENTITY_RELATION_REFRESH_OPTIONS,
     retry: false,
   });
 }
@@ -65,7 +63,7 @@ export function useEntityTimeline(type: CanonicalEntityType, key: string | undef
     queryFn: ({ pageParam, signal }) => api(entityTimelineContract.timeline, { params, query: { limit, cursor: pageParam } }, { silent: true, signal }),
     getNextPageParam: (lastPage) => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
     enabled: enabled && Boolean(key) && access[0] !== null,
-    staleTime: RELATION_STALE_TIME,
+    ...ENTITY_RELATION_REFRESH_OPTIONS,
     retry: false,
   });
 }

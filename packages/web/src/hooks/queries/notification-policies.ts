@@ -6,7 +6,7 @@ import type { QueryOf } from '@zenith/shared/core';
 import { notificationPolicyContract } from '@zenith/shared/messaging';
 import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { notificationPreferenceKeys } from './notification-preferences';
-import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
+import { ENTITY_RELATION_REFRESH_OPTIONS, invalidateEntityRelations } from '@/lib/entity-relation-cache';
 
 export type NotificationDispatchListParams = NonNullable<QueryOf<typeof notificationPolicyContract.dispatches>>;
 
@@ -38,7 +38,10 @@ export function useNotificationDispatches(params: NotificationDispatchListParams
   return useApiQuery(notificationPolicyContract.dispatches, { query: params }, { placeholderData: keepPreviousData });
 }
 export function useNotificationOutboxDetail(id: number | undefined, enabled = true) {
-  return useApiQuery(notificationPolicyContract.outboxDetail, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
+  return useApiQuery(notificationPolicyContract.outboxDetail, { params: { id: id ?? 0 } }, {
+    ...ENTITY_RELATION_REFRESH_OPTIONS,
+    enabled: enabled && id !== undefined,
+  });
 }
 
 /** 测试触发：真实派发一次事件给当前管理员 → 失效投递日志 */

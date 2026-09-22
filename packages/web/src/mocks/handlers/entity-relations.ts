@@ -21,6 +21,7 @@ import { WORKFLOW_BUSINESS_ENTITY_TYPES } from '@zenith/shared/platform/workflow
 import { mockBizLeaves } from '@/mocks/data/biz-leave';
 import { mockPaymentReconAdjustments } from './payment-ext';
 import { mockWorkflowAttachmentLinks, canReadMockWorkflowAttachmentForSession } from '@/mocks/utils/workflow-attachments';
+import { explainEntityRelation } from '@zenith/shared/platform';
 
 const manualLinks = new Map<string, readonly [CanonicalEntityRef, CanonicalEntityRef]>();
 function refId(ref: CanonicalEntityRef) { return `${ref.type}:${ref.key}`; }
@@ -28,6 +29,27 @@ function linkId(source: CanonicalEntityRef, target: CanonicalEntityRef) { return
 function canManageLinks(session: MockSession) {
   const permissions = mockUserPermissions(session.user);
   return !session.impersonation?.readOnly && (permissions.includes('*') || permissions.includes('system:relation:manage'));
+}
+
+function needsAttention(item: EntityRelationItem): boolean {
+  const id = Number(item.ref.key);
+  switch (item.ref.type) {
+    case 'payment.refund': {
+      const refund = mockPaymentRefunds.find((row) => row.id === id);
+      return refund?.approvalStatus === 'pending' || refund?.status === 'failed' || refund?.status === 'unknown';
+    }
+    case 'workflow.instance':
+      return mockWorkflowInstances.some((row) => row.id === id && row.status === 'running')
+        && mockWorkflowTasks.some((task) => task.instanceId === id && task.status === 'pending');
+    case 'workflow.task': {
+      const task = mockWorkflowTasks.find((row) => row.id === id);
+      return task?.status === 'pending' && mockWorkflowInstances.some((row) => row.id === task.instanceId && row.status === 'running');
+    }
+    case 'notification.outbox': return mockNotificationOutboxes.some((row) => row.id === id && row.status === 'failed');
+    case 'tasks.async': return mockAsyncTasks.some((row) => row.id === id && row.status === 'failed');
+    case 'platform.operation-log': return mockOperationLogs.some((row) => row.id === id && (row.responseCode ?? 0) >= 400);
+    default: return false;
+  }
 }
 
 const READ_PERMISSIONS: Partial<Record<CanonicalEntityType, string>> = {
@@ -134,7 +156,7 @@ function sectionsFor(type: CanonicalEntityType, session: MockSession, key: strin
   sections.push({ key: `${type}.links`, labelKey: 'relation.common.related', targetTypes: [...ENTITY_RELATION_TYPES], kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true }, summaryState: 'unavailable' });
   return sections.map((section) => {
     const items = relationItems({ type, key }, section.key, session);
-    const hasAttention = items.some((item) => ['pending', 'processing', 'failed', 'open'].includes(item.status ?? ''));
+    const hasAttention = items.some(needsAttention);
     return { ...section, summaryState: hasAttention ? 'attention' : items.length > 0 ? 'has-data' : 'empty' };
   });
 }
@@ -273,9 +295,12 @@ export const entityRelationsHandlers = [
   mock(entityRelationsContract.section, ({ params, query, request, ok }) => {
     const session = currentMockSession(request);
     if (!session) return unauthorized('请先登录', { status: 401 });
-    if (!resolveAnchor(params, session) || !sectionsFor(params.type, session, params.key).some((section) => section.key === params.sectionKey)) return notFound('对象或分组不存在', { status: 404 });
-    const items = relationItems(params, params.sectionKey, session);
-    return ok({ ...pageOf(items, query.cursor, query.limit), total: items.length });
+    const section = sectionsFor(params.type, session, params.key).find((entry) => entry.key === params.sectionKey);
+    if (!resolveAnchor(params, session) || !section) return notFound('对象或分组不存在', { status: 404 });
+    const items = relationItems(params, params.sectionKey, session).map((item) => ({ ...item,
+      origin: { ...item.origin, kind: section.kind, explanation: explainEntityRelation(section) },
+    }));
+    return ok(pageOf(items, query.cursor, query.limit));
   }),
 ];
 

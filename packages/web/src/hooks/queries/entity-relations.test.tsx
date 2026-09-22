@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { focusManager } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { entityRelationsContract, entityTimelineContract } from '@zenith/shared/platform';
 import { ApiRecorder, createRequestMock, createTestQueryClient, createWrapper } from '@/test-utils/query-harness';
@@ -27,8 +28,37 @@ beforeEach(() => {
   auth.user = { id: 1, tenantId: null, viewingTenantId: null };
   auth.impersonation = null;
 });
+afterEach(() => { focusManager.setFocused(undefined); vi.useRealTimers(); });
 
 describe('entity relations cursor and identity isolation', () => {
+  it('revalidates visible relation data without a push and pauses disabled or background views', async () => {
+    let status = 'pending';
+    recorder.on('GET', describeUrl, () => ({ anchor: { ref: params, title: status }, sections: [], canManageLinks: false }));
+    recorder.on('GET', sectionUrl.split('?')[0], () => ({ items: [{ ...item('notification'), status }], nextCursor: null, hasMore: false }));
+    recorder.on('GET', timelineUrl.split('?')[0], () => ({ items: [], nextCursor: null, hasMore: false }));
+    const client = createTestQueryClient();
+    vi.useFakeTimers(); focusManager.setFocused(true);
+    const hook = renderHook(({ enabled }) => ({
+      summary: useEntityRelations(params.type, params.key, enabled),
+      section: useEntityRelationSection(params.type, params.key, sectionParams.sectionKey, enabled, 1),
+      timeline: useEntityTimeline(params.type, params.key, enabled),
+    }), { wrapper: createWrapper(client), initialProps: { enabled: true } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(recorder.countOf('GET')).toBe(3);
+    status = 'completed';
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(hook.result.current.summary.data?.anchor.title).toBe('completed');
+    expect(hook.result.current.section.data?.pages[0].items[0].status).toBe('completed');
+    expect(recorder.countOf('GET')).toBe(6);
+    act(() => focusManager.setFocused(false));
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(recorder.countOf('GET')).toBe(6);
+    hook.rerender({ enabled: false });
+    act(() => focusManager.setFocused(true));
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(recorder.countOf('GET')).toBe(6);
+    hook.unmount(); client.clear();
+  });
   it('waits for group activation and sends the server cursor for the next page', async () => {
     recorder.on('GET', sectionUrl.split('?')[0], ({ url }: { url: string }) => new URL(url, 'https://test.local').searchParams.has('cursor')
       ? { items: [item('second')], nextCursor: null, hasMore: false }

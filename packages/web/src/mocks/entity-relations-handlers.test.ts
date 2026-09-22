@@ -35,6 +35,28 @@ describe('Demo entity relations follow the real domain data', () => {
     params: { type, key, sectionKey: `${type}.${suffix}` }, query: { limit: 50 },
   }))).json()).data);
 
+  it('keeps an older pending approval visible in the summary and clears it after processing', async () => {
+    const refund = mockPaymentRefunds.find((row) => row.orderId === 1)!;
+    const original = { ...refund };
+    const newer = { ...refund, id: 99009, refundNo: 'SUMMARY-NEWER', status: 'success' as const, approvalStatus: 'approved' as const };
+    mockPaymentRefunds.push(newer);
+    const readSummary = async () => entityRelationsResponseSchema.parse((await (await call(urlOf(entityRelationsContract.describe, { params }))).json()).data)
+      .sections.find((entry) => entry.key === 'payment.order.refunds')?.summaryState;
+    try {
+      refund.status = 'pending'; refund.approvalStatus = 'pending';
+      expect(await readSummary()).toBe('attention');
+      refund.status = 'success'; refund.approvalStatus = 'approved';
+      expect(await readSummary()).toBe('has-data');
+      const result = await section('payment.order', '1', 'refunds');
+      expect(result).not.toHaveProperty('total');
+      expect(result.items[0].origin?.explanation).toBe('退款单明确引用当前支付订单');
+      expect(result.items[0].origin).not.toHaveProperty('relatedAt');
+    } finally {
+      Object.assign(refund, original);
+      mockPaymentRefunds.splice(mockPaymentRefunds.indexOf(newer), 1);
+    }
+  });
+
   it('links all rounds by exact business identity while excluding the same key in another tenant', async () => {
     const original = mockWorkflowInstances.find((row) => row.id === 9001)!;
     const older = { ...original, id: 99991, title: 'Earlier round', status: 'rejected' as const };

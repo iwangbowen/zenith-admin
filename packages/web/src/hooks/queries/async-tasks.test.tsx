@@ -25,6 +25,7 @@ vi.mock('@/utils/request', () => ({ request: createRequestMock(() => api) }));
 import {
   asyncTaskKeys,
   useAsyncTaskAction,
+  useAsyncTaskDetail,
   useAsyncTaskItems,
   useAsyncTaskList,
   useAsyncTaskStats,
@@ -45,6 +46,7 @@ beforeEach(() => {
     .on('GET', '/api/async-tasks/stats', { total: 0, running: 0 })
     .on('GET', '/api/async-tasks/types', [{ taskType: 'export', title: '导出' }])
     .on('GET', '/api/async-tasks/1/items', { list: [], total: 0, page: 1, pageSize: 10 })
+    .on('GET', '/api/async-tasks/1', { id: 1, status: 'running' })
     .on('POST', '/api/async-tasks/1/cancel', { id: 1, status: 'cancelled' })
     .on('POST', '/api/async-tasks/batch-cancel', { affected: 2 })
     .on('POST', '/api/async-tasks/cleanup', { cleaned: 3 })
@@ -61,6 +63,7 @@ function mountTaskCenter() {
       stats: useAsyncTaskStats(),
       types: useAsyncTaskTypes(),
       items: useAsyncTaskItems(ITEM_PARAMS),
+      detail: useAsyncTaskDetail(1),
       cancel: useAsyncTaskAction('cancel'),
       remove: useDeleteAsyncTask(),
       batchCancel: useBatchCancelAsyncTasks(),
@@ -78,6 +81,7 @@ async function settle(hook: ReturnType<typeof mountTaskCenter>['hook']) {
     expect(hook.result.current.stats.isSuccess).toBe(true);
     expect(hook.result.current.types.isSuccess).toBe(true);
     expect(hook.result.current.items.isSuccess).toBe(true);
+    expect(hook.result.current.detail.isSuccess).toBe(true);
   });
 }
 
@@ -118,6 +122,7 @@ describe('任务状态变更仍然刷新列表、统计与明细项', () => {
       expect(api.countOf('GET', '/api/async-tasks')).toBe(1);
       expect(api.countOf('GET', '/api/async-tasks/stats')).toBe(1);
       expect(api.countOf('GET', '/api/async-tasks/1/items')).toBe(1);
+      expect(api.countOf('GET', '/api/async-tasks/1')).toBe(1);
     });
 
     expect(api0).toBeGreaterThan(0);

@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { createEntityRelationEventHandler } from '@/lib/entity-relation-cache';
 import { Notification } from '@douyinfe/semi-ui';
 import type { NavigateFunction } from 'react-router-dom';
 import { TOKEN_KEY } from '@zenith/shared/core';
@@ -48,6 +50,9 @@ export function useLayoutWs({
   viewingTenantId: number | null;
   navigate: NavigateFunction;
 }) {
+  const queryClient = useQueryClient();
+  const relationEvents = useMemo(() => createEntityRelationEventHandler(queryClient), [queryClient]);
+  useEffect(() => () => relationEvents.dispose(), [relationEvents]);
   // 提示音 / 桌面通知偏好：useWebSocket 以 ref 持有 handler，偏好变化只更新闭包，不会重连
   const prefs = useOptionalPreferences();
   const soundEnabled = prefs?.preferences.notificationSound ?? false;
@@ -75,9 +80,11 @@ export function useLayoutWs({
     if (!hadDisconnectRef.current) return;
     hadDisconnectRef.current = false;
     refetchAfterReconnect();
-  }), [refetchAfterReconnect]);
+    relationEvents.reconnect();
+  }), [refetchAfterReconnect, relationEvents]);
 
   const handleWsMessage = useCallback((msg: WsMessage) => {
+    relationEvents.onMessage(msg);
     if (msg.type === 'in-app-message:new') {
       if (msg.payload.id > 0) {
         // 服务端载荷即真实行：直接写缓存，按 id 去重（多标签页 / 多进程重复投递不重复提示）
@@ -149,7 +156,7 @@ export function useLayoutWs({
       const effectiveTenantId = viewingTenantId !== null ? viewingTenantId : userTenantId;
       if (msg.payload.tenantId === effectiveTenantId) reloadTrackerConfig();
     }
-  }, [onLogout, fetchInAppMessages, prependInAppMessage, refreshInboxLists, applyAnnouncementEvent, clearLockPassword, userTenantId, viewingTenantId, setInAppMessages, setUnreadCount, setChatUnreadCount, recentInAppMessageRef, notifyArrival]);
+  }, [onLogout, fetchInAppMessages, prependInAppMessage, refreshInboxLists, applyAnnouncementEvent, clearLockPassword, userTenantId, viewingTenantId, setInAppMessages, setUnreadCount, setChatUnreadCount, recentInAppMessageRef, notifyArrival, relationEvents]);
 
   const { disconnect: disconnectWs } = useWebSocket(handleWsMessage);
 

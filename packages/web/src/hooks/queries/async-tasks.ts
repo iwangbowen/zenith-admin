@@ -17,6 +17,7 @@ export const asyncTaskKeys = {
   stats: contractKey(asyncTaskContract.stats),
   types: contractKey(asyncTaskContract.types),
   items: contractKey(asyncTaskContract.items),
+  details: contractKey(asyncTaskContract.detail),
   itemList: ({ taskId, ...query }: AsyncTaskItemsParams) => contractKey(asyncTaskContract.items, { params: { id: taskId }, query }),
   detail: (id: number) => contractKey(asyncTaskContract.detail, { params: { id } }),
 };
@@ -57,7 +58,7 @@ export function useAsyncTaskItems({ taskId, ...query }: AsyncTaskItemsParams, en
 /**
  * 任务状态变更（取消 / 恢复 / 重启 / 删除 / 批量 / 清理）的公共失效面。
  *
- * 覆盖列表、统计与明细项，但**不含 `types`**：任务类型元数据由
+ * 覆盖列表、统计、精确详情与明细项，但**不含 `types`**：任务类型元数据由
  * `useUpdateAsyncTaskTypeConfig` 单独维护，不随任务状态变化。
  * 任务中心一屏同时挂着 list / stats / types / items，用 `.all` 会连带把 types 打回源。
  *
@@ -69,6 +70,7 @@ export function invalidateAsyncTaskState(qc: QueryClient) {
   void qc.invalidateQueries({ queryKey: asyncTaskKeys.lists });
   void qc.invalidateQueries({ queryKey: asyncTaskKeys.stats });
   void qc.invalidateQueries({ queryKey: asyncTaskKeys.items });
+  void qc.invalidateQueries({ queryKey: asyncTaskKeys.details });
 }
 
 const TASK_ACTIONS = {

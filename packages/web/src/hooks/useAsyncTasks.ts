@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { WsMessage } from '@zenith/shared/platform';
 import { asyncTaskContract, type AsyncTask } from '@zenith/shared/tasks';
-import { api } from '@/lib/contract-query';
+import { api, contractKey } from '@/lib/contract-query';
 import { useWebSocket } from '@/hooks/useWebSocket';
 
 const ACTIVE_STATUSES = new Set<AsyncTask['status']>(['pending', 'running']);
@@ -59,6 +59,7 @@ export function useMyAsyncTasks(options: UseMyAsyncTasksOptions = {}) {
     useCallback((message: WsMessage) => {
       if (message.type !== 'task:progress') return;
       const task = message.payload;
+      queryClient.setQueryData<AsyncTask>(contractKey(asyncTaskContract.detail, { params: { id: task.id } }), (previous) => previous ? task : undefined);
       const filter = taskTypesRef.current;
       if (filter && !filter.has(task.taskType)) return;
       queryClient.setQueryData<AsyncTask[]>(queryKey, (prev = []) => {
@@ -79,11 +80,16 @@ export function useMyAsyncTasks(options: UseMyAsyncTasksOptions = {}) {
 
 /** 订阅任务进度 WS 事件（页面级自定义处理，如任务中心列表合并更新） */
 export function useTaskProgressEvents(onTask: (task: AsyncTask) => void) {
+  const queryClient = useQueryClient();
   const handlerRef = useRef(onTask);
   handlerRef.current = onTask;
   useWebSocket(
     useCallback((message: WsMessage) => {
-      if (message.type === 'task:progress') handlerRef.current(message.payload);
-    }, []),
+      if (message.type === 'task:progress') {
+        const task = message.payload;
+        queryClient.setQueryData<AsyncTask>(contractKey(asyncTaskContract.detail, { params: { id: task.id } }), (previous) => previous ? task : undefined);
+        handlerRef.current(task);
+      }
+    }, [queryClient]),
   );
 }
