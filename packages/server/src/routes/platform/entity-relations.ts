@@ -27,13 +27,15 @@ const listRoute = defineContractRoute(entityRelationsContract.section, {
 
 const linkRoute = defineContractRoute(entityRelationsContract.link, {
   handler: async (c) => {
-    await changeEntityLink(c.req.valid('param'), c.req.valid('json').target, false);
+    const body = c.req.valid('json');
+    await changeEntityLink(c.req.valid('param'), body.target, false, body);
     return c.json(okBody(null), 200);
   },
 });
 const unlinkRoute = defineContractRoute(entityRelationsContract.unlink, {
   handler: async (c) => {
-    await changeEntityLink(c.req.valid('param'), c.req.valid('json').target, true);
+    const body = c.req.valid('json');
+    await changeEntityLink(c.req.valid('param'), body.target, true, body);
     return c.json(okBody(null), 200);
   },
 });
