@@ -131,12 +131,15 @@ function PolicyEventsTab() {
 
   const columns: ColumnProps<NotificationPolicyEvent>[] = [
     {
-      title: '事件', dataIndex: 'label', width: 260,
+      // 事件文案最长约 254px（如「错误监控告警（前端错误 / 服务端异常）」），加锁图标共约 272px；
+      // 原 260 定宽只剩 228px 可用，长事件名会折成两行。列宽给到 360（可用 328），
+      // 常见屏幕下右侧弹性列（渠道策略，最小 420）仍有充足宽度；超出部分单行省略出 tooltip
+      title: '事件', dataIndex: 'label', width: 360,
       render: (label: string, record) => (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Text>{label}</Text>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%' }}>
+          <Text ellipsis={{ showTooltip: true }} style={{ minWidth: 0 }}>{label}</Text>
           {record.mandatory && (
-            <Tooltip content="必达通知：用户不可退订"><Lock size={12} style={{ color: 'var(--semi-color-text-2)' }} /></Tooltip>
+            <Tooltip content="必达通知：用户不可退订"><Lock size={12} style={{ flexShrink: 0, color: 'var(--semi-color-text-2)' }} /></Tooltip>
           )}
         </span>
       ),
