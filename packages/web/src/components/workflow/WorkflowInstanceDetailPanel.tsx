@@ -583,11 +583,11 @@ export default function WorkflowInstanceDetailPanel({
             </div>
           </TabPane>
         )}
-        <TabPane tab="关联信息" itemKey="relations">
-          <EntityContextView entityType="workflow.instance" entityKey={String(instance.id)} />
-        </TabPane>
         <TabPane tab={`流转记录${flowTasks.length > 0 ? ` (${flowTasks.length})` : ''}`} itemKey="flow-records">
           <FlowRecords key={instance.id} tasks={instance.tasks ?? []} />
+        </TabPane>
+        <TabPane tab="关联信息" itemKey="relations">
+          <EntityContextView entityType="workflow.instance" entityKey={String(instance.id)} />
         </TabPane>
         </Tabs>
       )}
