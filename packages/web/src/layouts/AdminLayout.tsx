@@ -75,7 +75,7 @@ import { TopBar } from './admin/TopBar';
 import { DoubleSidebar } from './admin/DoubleSidebar';
 import { SidebarNav } from './admin/SidebarNav';
 import { HeaderBreadcrumb } from './admin/HeaderBreadcrumb';
-import EntityRelationBackButton from '@/components/entity-relations/EntityRelationBackButton';
+const EntityRelationBackButton = lazy(() => import('@/components/entity-relations/EntityRelationBackButton'));
 import { ShortcutsModal } from './admin/ShortcutsModal';
 import { ImportPreferencesModal, LockPasswordModal, MessageDetailModal } from './admin/LayoutModals';
 import './AdminLayout.css';
@@ -938,7 +938,7 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
             <header className={`admin-header${headerDark ? ' semi-always-dark' : ''}`}>
               {/* Left: breadcrumb (vertical / double layouts only) */}
               <div style={{ display: 'flex', alignItems: 'center', minWidth: 0, gap: 4 }}>
-                <EntityRelationBackButton />
+                <Suspense fallback={null}><EntityRelationBackButton /></Suspense>
                 {preferences.showBreadcrumb && displayBreadcrumbs.length > 0 ? (
                   <HeaderBreadcrumb
                     displayBreadcrumbs={displayBreadcrumbs}
@@ -1002,7 +1002,7 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
           )}
           <div className="admin-content" style={{ overflow: 'auto', position: 'relative' }}>
             <div style={{ position: 'absolute', top: 8, left: 12, zIndex: 10 }}>
-              <EntityRelationBackButton />
+              <Suspense fallback={null}><EntityRelationBackButton /></Suspense>
             </div>
             <RouteErrorBoundary>
               <TabsMetaContext.Provider value={tabsMetaValue}>
