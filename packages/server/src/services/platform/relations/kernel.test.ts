@@ -13,7 +13,7 @@ const state = vi.hoisted(() => ({
   permissions: new Set<string>(),
   disabledFeatures: new Set<string>(),
   anchors: new Map<string, VisibleEntityAnchor>(),
-  resolve: vi.fn(), list: vi.fn(), transaction: vi.fn(), metrics: vi.fn(), errorLog: vi.fn(), audit: vi.fn(),
+  resolve: vi.fn(), list: vi.fn(), transaction: vi.fn(), metrics: vi.fn(), summaryMetrics: vi.fn(), errorLog: vi.fn(), audit: vi.fn(),
 }));
 vi.mock('../../../config', () => ({ config: { multiTenantMode: true, jwtSecret: 'unit-test-relation-signing-secret' } }));
 vi.mock('../../../db', () => ({ db: { transaction: state.transaction } }));
@@ -29,7 +29,7 @@ vi.mock('../../../lib/context', () => ({
 }));
 vi.mock('../../../lib/licensing', () => ({ isFeatureEnabled: async (key: string) => !state.disabledFeatures.has(key) }));
 vi.mock('../../../lib/logger', () => ({ default: { error: state.errorLog } }));
-vi.mock('./metrics', () => ({ recordRelationMetric: state.metrics }));
+vi.mock('./metrics', () => ({ recordRelationMetric: state.metrics, recordRelationSummaryState: state.summaryMetrics }));
 vi.mock('./providers/payment-order.provider', () => {
   const descriptor = (key: string) => ({ key, labelKey: `relation.${key}`, targetTypes: ['payment.refund'], kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true } });
   return {
