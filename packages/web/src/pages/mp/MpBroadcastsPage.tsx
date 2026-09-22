@@ -149,8 +149,12 @@ export default function MpBroadcastsPage() {
   const columns = [
     { title: '内容类型', dataIndex: 'msgType', width: 90, render: (v: MpBroadcastType) => <Tag type="light" color="blue">{MP_BROADCAST_TYPE_LABELS[v]}</Tag> },
     {
-      title: '群发对象', dataIndex: 'target', width: 130,
-      render: (v: MpBroadcastTarget, r: MpBroadcast) => (v === 'all' ? '全部粉丝' : `标签：${r.tagId ? (tagMap.get(r.tagId) ?? `#${r.tagId}`) : EMPTY_PLACEHOLDER}`),
+      // 文案是「全部粉丝」或「标签：<标签名>」，标签名是自由文本；
+      // 原 130 定宽（可用 98）连「标签：星标用户」都装不下会折行，加宽后仍单行省略出 tooltip
+      title: '群发对象', dataIndex: 'target', width: 200,
+      render: (v: MpBroadcastTarget, r: MpBroadcast) => renderEllipsis(
+        v === 'all' ? '全部粉丝' : `标签：${r.tagId ? (tagMap.get(r.tagId) ?? `#${r.tagId}`) : EMPTY_PLACEHOLDER}`,
+      ),
     },
     { title: '内容', dataIndex: 'content', minWidth: 260, render: (_: unknown, r: MpBroadcast) => renderEllipsis(summarize(r)) },
     dateTimeColumn('发送时间', 'sentAt'),
