@@ -2,12 +2,12 @@ import type { CSSProperties } from 'react';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { formatYuan } from '@/utils/payment';
-import { Banner, Button, Form, Space, Tabs, TabPane, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Form, Tabs, TabPane, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
-import { EMPTY_PLACEHOLDER, copyableNoColumn, createdAtColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, copyableNoColumn, createdAtColumn, dateTimeColumn, overflowTagColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import {
@@ -257,8 +257,26 @@ export default function PaymentRiskRulesPage() {
     { title: '单笔上限', dataIndex: 'singleLimit', width: 110, align: 'right', render: (v: number | null) => yuan(v) },
     { title: '当日限额', dataIndex: 'dailyLimit', width: 110, align: 'right', render: (v: number | null) => yuan(v) },
     { title: '当日笔数', dataIndex: 'dailyCountLimit', width: 95, align: 'right', render: (v: number | null) => (v == null ? EMPTY_PLACEHOLDER : v) },
-    { title: '黑名单', dataIndex: 'blockListKeys', width: 150, render: (v: string[]) => (v?.length ? <Space spacing={4} wrap>{v.map((k) => <Tag key={k} size="small" color="red">{k}</Tag>)}</Space> : EMPTY_PLACEHOLDER) },
-    { title: '白名单', dataIndex: 'allowListKeys', width: 150, render: (v: string[]) => (v?.length ? <Space spacing={4} wrap>{v.map((k) => <Tag key={k} size="small" color="green">{k}</Tag>)}</Space> : EMPTY_PLACEHOLDER) },
+    overflowTagColumn<PaymentRiskRule>({
+      title: '黑名单',
+      dataIndex: 'blockListKeys',
+      width: 150,
+      contentWidth: 118,
+      getItems: (v) => ((v as string[] | undefined) ?? []).map((k) => ({ key: k, label: k })),
+      tagColor: 'red',
+      tagSize: 'small',
+      popoverWidth: 180,
+    }),
+    overflowTagColumn<PaymentRiskRule>({
+      title: '白名单',
+      dataIndex: 'allowListKeys',
+      width: 150,
+      contentWidth: 118,
+      getItems: (v) => ((v as string[] | undefined) ?? []).map((k) => ({ key: k, label: k })),
+      tagColor: 'green',
+      tagSize: 'small',
+      popoverWidth: 180,
+    }),
     createdAtColumn as ColumnProps<PaymentRiskRule>,
     status.column(),
     createOperationColumn<PaymentRiskRule>({

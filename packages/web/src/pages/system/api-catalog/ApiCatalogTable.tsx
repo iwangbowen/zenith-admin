@@ -4,6 +4,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { PaginationProps } from '@douyinfe/semi-ui/lib/es/pagination';
 import { SECURITY_SCHEME_LABELS, type OperationVerdict } from '@zenith/shared/permission-catalog-core';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import OverflowTagList from '@/components/OverflowTagList';
 import { ListSearchToolbar } from '@/components/list-page';
 import { FilterSelect, KeywordInput } from '@/components/search-filters';
 import type { UseListSearchReturn } from '@/hooks/useListSearch';
@@ -36,26 +37,31 @@ export function MethodTag({ method }: Readonly<{ method: CatalogRow['method'] }>
   );
 }
 
-/** 权限码标签：最多展示 2 个，其余折成「+N」并悬停列出全部；带注册表里的中文名 */
-export function PermissionTags({ codes, labels, max = 2 }: Readonly<{ codes: readonly string[]; labels: PermissionLabels; max?: number }>) {
+/** 权限码标签：单行展示，超出部分收纳为 +N Popover；悬停单枚标签给出注册表里的中文名 */
+const PERMISSION_TAG_CONTENT_WIDTH = 268;
+
+export function PermissionTags({ codes, labels }: Readonly<{ codes: readonly string[]; labels: PermissionLabels }>) {
   if (codes.length === 0) return <>{EMPTY_PLACEHOLDER}</>;
-  const shown = codes.slice(0, max);
-  const rest = codes.slice(max);
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: '100%', minWidth: 0 }}>
-      {shown.map((code) => (
-        <Tooltip key={code} content={labels[code] ?? code}>
-          <Tag size="small" color="light-blue" style={{ fontFamily: 'var(--semi-font-family-mono, monospace)', maxWidth: 220 }}>
-            <Typography.Text ellipsis style={{ fontSize: 'inherit', color: 'inherit' }}>{code}</Typography.Text>
-          </Tag>
-        </Tooltip>
-      ))}
-      {rest.length > 0 && (
-        <Tooltip content={<div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>{rest.map((code) => <span key={code}>{code}</span>)}</div>}>
-          <Tag size="small" color="grey">+{rest.length}</Tag>
-        </Tooltip>
-      )}
-    </span>
+    <OverflowTagList
+      items={codes.map((code) => ({
+        key: code,
+        label: (
+          <Tooltip content={labels[code] ?? code}>
+            <Typography.Text
+              ellipsis
+              style={{ fontSize: 'inherit', color: 'inherit', fontFamily: 'var(--semi-font-family-mono, monospace)', maxWidth: 200 }}
+            >
+              {code}
+            </Typography.Text>
+          </Tooltip>
+        ),
+      }))}
+      contentWidth={PERMISSION_TAG_CONTENT_WIDTH}
+      tagSize="small"
+      tagColor="light-blue"
+      popoverWidth={280}
+    />
   );
 }
 

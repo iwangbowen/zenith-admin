@@ -22,6 +22,7 @@ import {
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { FileText, ChevronDown, ChevronUp, Activity, Info, Download, Trash2 } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import OverflowTagList from '@/components/OverflowTagList';
 import { MetricMeter } from '@/components/data-viz/MetricMeter';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { confirmAndDelete, deleteAction, InstantFilterToolbar } from '@/components/list-page';
@@ -552,13 +553,15 @@ function ImagesTab() {
         const validTags = r.repoTags.filter((t) => t !== '<none>:<none>');
         if (validTags.length === 0) return <Tag size="small" color="grey">&lt;none&gt;</Tag>;
         return (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            {validTags.map((t) => {
+          <OverflowTagList
+            items={validTags.map((t) => {
               const colon = t.lastIndexOf(':');
-              const tag = colon !== -1 ? t.slice(colon) : t;
-              return <Tag key={t} size="small" color="blue">{tag}</Tag>;
+              return { key: t, label: colon !== -1 ? t.slice(colon) : t };
             })}
-          </div>
+            contentWidth="100%"
+            tagSize="small"
+            tagColor="blue"
+          />
         );
       },
     },

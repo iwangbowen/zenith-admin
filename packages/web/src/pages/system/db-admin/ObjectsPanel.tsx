@@ -7,6 +7,7 @@ import { RefreshCw, ListOrdered, FunctionSquare, Zap, Tags, Package } from 'luci
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { AppModal } from '@/components/AppModal';
+import { overflowTagColumn } from '@/utils/table-columns';
 import type { DbAdminObjects } from '@zenith/shared/ops';
 import { useDbAdminObjects } from '@/hooks/queries/db-admin';
 
@@ -70,9 +71,16 @@ export function ObjectsPanel({ active }: Readonly<{ active: boolean }>) {
 
   const enumColumns: ColumnProps<DbAdminObjects['enums'][number]>[] = [
     { title: '类型名', width: 240, render: (_: unknown, r) => <Text strong>{fullName(r.schema, r.name)}</Text> },
-    { title: '取值', dataIndex: 'values', render: (v: string[]) => (
-      <Space wrap spacing={4}>{v.map((x) => <Tag key={x} size="small" color="violet">{x}</Tag>)}</Space>
-    )},
+    overflowTagColumn<DbAdminObjects['enums'][number]>({
+      title: '取值',
+      dataIndex: 'values',
+      minWidth: 200,
+      contentWidth: '100%',
+      getItems: (v) => ((v as string[] | undefined) ?? []).map((x) => ({ key: x, label: x })),
+      tagColor: 'violet',
+      tagSize: 'small',
+      popoverWidth: 280,
+    }),
   ];
 
   const extColumns: ColumnProps<DbAdminObjects['extensions'][number]>[] = [

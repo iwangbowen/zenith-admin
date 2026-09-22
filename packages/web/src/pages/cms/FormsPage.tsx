@@ -19,7 +19,7 @@ import { CMS_FORM_CAPTCHA_PROVIDERS, CMS_FORM_CAPTCHA_PROVIDER_LABELS, CMS_FORM_
 import type { CmsForm, CmsFormSubmission } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { CreateButton } from '@/components/toolbar-controls';
-import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis, enabledStatusColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, overflowTagColumn, renderEllipsis, enabledStatusColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { deleteAction, listTableProps } from '@/components/list-page';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
@@ -121,12 +121,18 @@ export default function FormsPage() {
   const columns: ColumnProps<CmsForm>[] = [
     { title: '表单名称', dataIndex: 'name', minWidth: 160 },
     { title: '标识', dataIndex: 'code', width: 120, render: (v: string) => <Tag size="small">{v}</Tag> },
-    {
+    overflowTagColumn<CmsForm>({
       title: '字段',
       dataIndex: 'fields',
       width: 280,
-      render: (fields: CmsForm['fields']) => fields.map((f) => <Tag key={f.name} size="small" style={{ marginRight: 4 }}>{f.label}</Tag>),
-    },
+      contentWidth: 248,
+      getItems: (fields) => ((fields as CmsForm['fields'] | undefined) ?? []).map((f) => ({
+        key: f.name,
+        label: f.label,
+      })),
+      tagSize: 'small',
+      popoverWidth: 260,
+    }),
     { title: '提交数', dataIndex: 'submissionCount', width: 90, align: 'right' },
     enabledStatusColumn(),
     createOperationColumn<CmsForm>({

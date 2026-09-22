@@ -47,7 +47,7 @@ import { useMyOAuth2Grants, useRevokeMyOAuth2Grant } from '@/hooks/queries/oauth
 import { useOAuthProviders } from '@/hooks/queries/auth-public';
 import type { OAuth2MyGrant } from '@zenith/shared/open-platform';
 import './ProfilePage.css';
-import { createdAtColumn, dateTimeColumn } from '../../utils/table-columns';
+import { createdAtColumn, dateTimeColumn, overflowTagColumn } from '../../utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { rememberOAuthPending } from '@/lib/oauth-pending';
 
@@ -772,15 +772,16 @@ export default function ProfilePage({ user }: ProfilePageProps) {
                         </Tag>
                       ),
                     },
-                    {
+                    overflowTagColumn<OAuth2MyGrant>({
                       title: '授权范围',
                       dataIndex: 'scopes',
-                      render: (v: string[]) => (
-                        <Space wrap spacing={4}>
-                          {v.map((s) => <Tag key={s} size="small" color="blue">{s}</Tag>)}
-                        </Space>
-                      ),
-                    },
+                      minWidth: 200,
+                      contentWidth: '100%',
+                      getItems: (v) => ((v as string[] | undefined) ?? []).map((s) => ({ key: s, label: s })),
+                      tagColor: 'blue',
+                      tagSize: 'small',
+                      popoverWidth: 240,
+                    }),
                     dateTimeColumn('首次授权', 'createdAt'),
                     dateTimeColumn('最近更新', 'updatedAt'),
                     {

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Button, Card, Descriptions, Empty, Skeleton, Space, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Card, Descriptions, Empty, Skeleton, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ArrowLeft } from 'lucide-react';
 import dayjs from 'dayjs';
@@ -25,7 +25,7 @@ import {
 } from '@/hooks/queries/open-platform';
 import { usePermission } from '@/hooks/usePermission';
 import { confirmDanger } from '@/utils/confirm';
-import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, overflowTagColumn } from '@/utils/table-columns';
 import { OpenPlatformPaginatedTab } from '../OpenPlatformPaginatedTab';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
@@ -93,7 +93,16 @@ function GrantsTab({ appId }: Readonly<{ appId: number }>) {
   const columns: ColumnProps<OAuth2UserGrant>[] = [
     { title: '用户', dataIndex: 'nickname', render: (value: string | null, row) => value || row.username || `用户 ${row.userId}` },
     { title: '用户名', dataIndex: 'username', width: 160, render: (value: string | null) => value ?? EMPTY_PLACEHOLDER },
-    { title: '授权 Scope', dataIndex: 'scopes', render: (values: string[]) => <Space wrap>{values.map((value) => <Tag key={value} size="small" color="blue">{value}</Tag>)}</Space> },
+    overflowTagColumn<OAuth2UserGrant>({
+      title: '授权 Scope',
+      dataIndex: 'scopes',
+      minWidth: 160,
+      contentWidth: '100%',
+      getItems: (values) => ((values as string[] | undefined) ?? []).map((value) => ({ key: value, label: value })),
+      tagColor: 'blue',
+      tagSize: 'small',
+      popoverWidth: 240,
+    }),
     dateTimeColumn('首次授权', 'createdAt'),
     dateTimeColumn('最近更新', 'updatedAt'),
   ];
@@ -114,7 +123,16 @@ function TokensTab({ clientId, canManage }: Readonly<{ clientId: string; canMana
     { title: '令牌', dataIndex: 'tokenPrefix', render: (value: string | null) => value ?? EMPTY_PLACEHOLDER },
     { title: '类型', dataIndex: 'tokenType', width: 100, render: (value: string) => <Tag size="small">{value}</Tag> },
     { title: '用户 ID', dataIndex: 'userId', width: 100, render: (value: number | null) => value ?? '服务账号' },
-    { title: 'Scope', dataIndex: 'scopes', render: (values: string[]) => <Space wrap>{values.map((value) => <Tag key={value} size="small" color="blue">{value}</Tag>)}</Space> },
+    overflowTagColumn<OAuth2Token>({
+      title: 'Scope',
+      dataIndex: 'scopes',
+      minWidth: 160,
+      contentWidth: '100%',
+      getItems: (values) => ((values as string[] | undefined) ?? []).map((value) => ({ key: value, label: value })),
+      tagColor: 'blue',
+      tagSize: 'small',
+      popoverWidth: 240,
+    }),
     dateTimeColumn('过期时间', 'expiresAt', { empty: '永久' }),
     {
       title: '状态',

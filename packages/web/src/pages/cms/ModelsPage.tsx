@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { createdAtColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
+import { createdAtColumn, overflowTagColumn, renderEllipsis, renderEnabledStatusTag } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useCmsModelList, useSaveCmsModel, useDeleteCmsModel } from '@/hooks/queries/cms';
@@ -143,14 +143,19 @@ export default function ModelsPage() {
         ? <Tag size="small" color="blue">平台共享</Tag>
         : <Tag size="small" color="teal">{record.ownerSiteName ?? `站点 #${record.ownerSiteId}`}</Tag>),
     },
-    {
+    overflowTagColumn<CmsModel>({
       title: '自定义字段',
       dataIndex: 'fields',
       width: 300,
-      render: (fields: CmsModel['fields']) => (fields && fields.length > 0
-        ? fields.map((f) => <Tag key={f.name} size="small" style={{ marginRight: 4 }}>{f.label}</Tag>)
-        : <span style={{ color: 'var(--semi-color-text-2)' }}>无（仅基础字段）</span>),
-    },
+      contentWidth: 268,
+      getItems: (fields) => ((fields as CmsModel['fields'] | undefined) ?? []).map((f) => ({
+        key: f.name,
+        label: f.label,
+      })),
+      tagSize: 'small',
+      popoverWidth: 280,
+      empty: <span style={{ color: 'var(--semi-color-text-2)' }}>无（仅基础字段）</span>,
+    }),
     { title: '描述', dataIndex: 'description', minWidth: 220, render: renderEllipsis },
     createdAtColumn,
     {

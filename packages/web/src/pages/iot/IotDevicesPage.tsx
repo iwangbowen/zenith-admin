@@ -9,7 +9,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import ExportButton from '@/components/ExportButton';
 import ImportButton from '@/components/ImportButton';
 import AppModal from '@/components/AppModal';
-import { EMPTY_PLACEHOLDER, copyableNoColumn, dateTimeColumn, renderEllipsis, enabledStatusColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, copyableNoColumn, dateTimeColumn, overflowTagColumn, renderEllipsis, enabledStatusColumn } from '@/utils/table-columns';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
@@ -184,19 +184,15 @@ export default function IotDevicesPage() {
         return <Text size="small" type="tertiary">直连</Text>;
       },
     },
-    {
-      title: '分组', width: 130,
-      render: (_: unknown, r: IotDevice) => {
-        const names = r.groupNames ?? [];
-        if (names.length === 0) return EMPTY_PLACEHOLDER;
-        return (
-          <div style={{ display: 'flex', gap: 4, whiteSpace: 'nowrap' }}>
-            <Tag size="small" style={{ maxWidth: 88 }}>{names[0]}</Tag>
-            {names.length > 1 && <Tag size="small">+{names.length - 1}</Tag>}
-          </div>
-        );
-      },
-    },
+    overflowTagColumn<IotDevice>({
+      title: '分组',
+      dataIndex: 'groupNames',
+      width: 130,
+      contentWidth: 98,
+      getItems: (names) => ((names as string[] | undefined) ?? []).map((name) => ({ key: name, label: name })),
+      tagSize: 'small',
+      popoverWidth: 200,
+    }),
     {
       title: '在线', dataIndex: 'online', width: 80, align: 'center',
       render: (v: boolean) => (

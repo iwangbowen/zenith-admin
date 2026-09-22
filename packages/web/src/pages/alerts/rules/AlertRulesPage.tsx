@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Form, Space, Toast, Tag, Row, Col, Select, withField } from '@douyinfe/semi-ui';
+import { Form, Toast, Tag, Row, Col, Select, withField } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { batchStatusHandler, confirmAndDelete, ListSearchToolbar, useStatusToggle, useRowSelection, useCrudOperationColumn } from '@/components/list-page';
@@ -24,7 +24,7 @@ import {
   formatMonitorMetricValue,
 } from './constants';
 import { BatchDeleteButton, BatchStatusButtons, CreateButton } from '@/components/toolbar-controls';
-import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, overflowTagColumn } from '@/utils/table-columns';
 import AlertRecipientUserSelect from './AlertRecipientUserSelect';
 import {
   MonitorAlertLevelTag,
@@ -197,10 +197,18 @@ export default function AlertRulesPage() {
       title: '级别', dataIndex: 'level', width: 80,
       render: (v: string) => <MonitorAlertLevelTag level={v} />,
     },
-    {
-      title: '通知渠道', dataIndex: 'channels', width: 160,
-      render: (chs: string[]) => chs?.length ? <Space spacing={4} wrap>{chs.map((c) => <Tag key={c} size="small" type="light">{MONITOR_CHANNEL_LABELS[c] ?? c}</Tag>)}</Space> : <span style={{ color: 'var(--semi-color-text-2)' }}>—</span>,
-    },
+    overflowTagColumn<MonitorAlertRule>({
+      title: '通知渠道',
+      dataIndex: 'channels',
+      width: 160,
+      contentWidth: 128,
+      getItems: (chs) => ((chs as string[] | undefined) ?? []).map((c) => ({
+        key: c,
+        label: MONITOR_CHANNEL_LABELS[c] ?? c,
+      })),
+      tagSize: 'small',
+      popoverWidth: 200,
+    }),
     {
       title: '当前值', dataIndex: 'lastValue', width: 100,
       render: (v: number | null, r: MonitorAlertRule) => v === null ? EMPTY_PLACEHOLDER : formatMonitorMetricValue(r.metric, v),

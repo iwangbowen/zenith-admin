@@ -4,7 +4,7 @@
  * 提供事件订阅 CRUD + 启用/禁用 + 投递记录查看与重试。
  */
 import { useState } from 'react';
-import { Button, Col, Form, Modal, Row, Space, SideSheet, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Col, Form, Modal, Row, SideSheet, Switch, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw } from 'lucide-react';
@@ -34,7 +34,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { ListSearchToolbar, listTableProps, useCrudOperationColumn } from '@/components/list-page';
 import { useEditModal } from '@/hooks/useEditModal';
 import { TextBlock } from '@/components/TextBlock';
-import { EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, overflowTagColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { DateRangeFilter, FilterSelect, StatusSelect } from '@/components/search-filters';
 import { useListPage } from '@/hooks/useListPage';
@@ -238,14 +238,18 @@ export default function WorkflowEventSubscriptionsPage() {
         ? <Tag color="blue">全局</Tag>
         : <Typography.Text>{r.definitionName ?? `#${r.definitionId}`}</Typography.Text>,
     },
-    {
-      title: '订阅事件', dataIndex: 'events', width: 280,
-      render: (v: WorkflowEventType[]) => (
-        <Space wrap spacing={4}>
-          {v.map((e) => <Tag key={e} size="small">{WORKFLOW_EVENT_TYPE_LABELS[e] ?? e}</Tag>)}
-        </Space>
-      ),
-    },
+    overflowTagColumn<WorkflowEventSubscription>({
+      title: '订阅事件',
+      dataIndex: 'events',
+      width: 280,
+      contentWidth: 248,
+      getItems: (v) => ((v as WorkflowEventType[] | undefined) ?? []).map((e) => ({
+        key: e,
+        label: WORKFLOW_EVENT_TYPE_LABELS[e] ?? e,
+      })),
+      tagSize: 'small',
+      popoverWidth: 260,
+    }),
     { title: 'URL', dataIndex: 'url', minWidth: 240, ellipsis: { showTitle: true } },
     { title: '签名', dataIndex: 'signMode', width: 100,
       render: (v: string) => v === 'hmacSha256' ? <Tag color="green" size="small">HMAC</Tag> : <Tag size="small">无</Tag>,

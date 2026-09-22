@@ -2,7 +2,7 @@
 import { useMemo } from 'react';
 import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
-import { Form, Modal, Space, Tag, Typography } from '@douyinfe/semi-ui';
+import { Form, Modal, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { AnalyticsSite } from '@zenith/shared/analytics';
 import { COMMON_STATUS_LABELS, COMMON_STATUS_OPTIONS } from '@zenith/shared/core';
@@ -19,7 +19,7 @@ import {
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { useEditModal } from '@/hooks/useEditModal';
-import { copyableNoColumn, dateTimeColumn } from '@/utils/table-columns';
+import { copyableNoColumn, dateTimeColumn, overflowTagColumn } from '@/utils/table-columns';
 import { confirmDelete } from '@/utils/confirm';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 
@@ -105,7 +105,16 @@ export default function AnalyticsSitesTab() {
     copyableNoColumn('Site Key', 'siteKey', { width: 340 }),
     { title: 'AppId', dataIndex: 'appId', width: 120, render: (value: string) => <Tag size="small">{value}</Tag> },
     { title: '归属租户', dataIndex: 'tenantName', width: 140, render: (_: unknown, record) => record.tenantName || '平台' },
-    { title: '来源白名单', dataIndex: 'allowedOrigins', minWidth: 220, render: (origins: string[] | null) => origins?.length ? <Space wrap>{origins.slice(0, 3).map((o) => <Tag key={o} size="small">{o}</Tag>)}{origins.length > 3 ? <Tag size="small">+{origins.length - 3}</Tag> : null}</Space> : '不限制' },
+    overflowTagColumn<AnalyticsSite>({
+      title: '来源白名单',
+      dataIndex: 'allowedOrigins',
+      minWidth: 220,
+      contentWidth: '100%',
+      getItems: (origins) => ((origins as string[] | null | undefined) ?? []).map((o) => ({ key: o, label: o })),
+      tagSize: 'small',
+      popoverWidth: 240,
+      empty: '不限制',
+    }),
     { title: '日配额', dataIndex: 'dailyEventQuota', width: 110, align: 'right', render: (value: number | null) => value ?? '不限' },
     { title: '今日用量', dataIndex: 'todayUsage', width: 140, align: 'right', render: (_: number | null, record) => renderUsage(record) },
     dateTimeColumn('更新时间', 'updatedAt'),

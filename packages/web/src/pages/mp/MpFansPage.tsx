@@ -5,7 +5,7 @@ import { type MpFan, type MpFanSubscribe, type UpdateMpFanInput, mpFanContract }
 import { usePermission } from '@/hooks/usePermission';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '../../utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, overflowTagColumn, renderEllipsis } from '../../utils/table-columns';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
@@ -117,16 +117,19 @@ export default function MpFansPage() {
     { title: 'openid', dataIndex: 'openid', width: 200, render: renderEllipsis },
     { title: '性别', dataIndex: 'sex', width: 70, render: (v: number) => SEX_LABELS[v] ?? '未知' },
     { title: '地区', dataIndex: 'province', width: 140, render: (_: unknown, r: MpFan) => [r.province, r.city].filter(Boolean).join(' ') || EMPTY_PLACEHOLDER },
-    {
-      title: '标签', dataIndex: 'tagIds', width: 200,
-      render: (ids: number[]) => (
-        ids.length === 0 ? EMPTY_PLACEHOLDER : (
-          <Space wrap spacing={4}>
-            {ids.map((id) => <Tag key={id} color="light-blue" type="light" size="small">{tagMap.get(id) ?? `#${id}`}</Tag>)}
-          </Space>
-        )
-      ),
-    },
+    overflowTagColumn<MpFan>({
+      title: '标签',
+      dataIndex: 'tagIds',
+      width: 200,
+      contentWidth: 168,
+      getItems: (ids) => ((ids as number[] | undefined) ?? []).map((id) => ({
+        key: id,
+        label: tagMap.get(id) ?? `#${id}`,
+      })),
+      tagColor: 'light-blue',
+      tagSize: 'small',
+      popoverWidth: 200,
+    }),
     { title: '备注', dataIndex: 'remark', minWidth: 140, render: renderEllipsis },
     dateTimeColumn('关注时间', 'subscribeTime'),
     {

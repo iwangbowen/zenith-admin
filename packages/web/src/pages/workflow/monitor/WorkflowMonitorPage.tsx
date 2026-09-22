@@ -37,7 +37,7 @@ import WorkflowJobsView from './WorkflowJobsView';
 import WorkflowCompensationsView from './WorkflowCompensationsView';
 import WorkflowEngineTraceView from './WorkflowEngineTraceView';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
-import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '../../../utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, overflowTagColumn, renderEllipsis } from '../../../utils/table-columns';
 import {
   fetchWorkflowDiagnosticBundle,
   useCancelWorkflowInstance,
@@ -951,19 +951,21 @@ export default function WorkflowMonitorPage() {
         ? <Tag size="small" color="blue">{v}</Tag>
         : <span style={{ color: 'var(--semi-color-text-2)' }}>—</span>,
     },
-    {
+    overflowTagColumn<WorkflowInstanceListItem>({
       title: '当前节点',
       dataIndex: 'currentNodeName',
       width: 180,
-      render: (v: string | null | undefined, record: WorkflowInstanceListItem) => {
+      contentWidth: 148,
+      getItems: (v, record) => {
         const names = (record.currentNodeNames && record.currentNodeNames.length > 0)
           ? record.currentNodeNames
-          : (v ? [v] : []);
-        return names.length > 0
-          ? <Space spacing={4} wrap>{names.map((name) => <Tag key={name} size="small" color="cyan">{name}</Tag>)}</Space>
-          : <span style={{ color: 'var(--semi-color-text-2)' }}>—</span>;
+          : (typeof v === 'string' && v ? [v] : []);
+        return names.map((name) => ({ key: name, label: name }));
       },
-    },
+      tagColor: 'cyan',
+      tagSize: 'small',
+      popoverWidth: 200,
+    }),
     {
       title: '申请人',
       dataIndex: 'initiatorName',

@@ -25,7 +25,7 @@ import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, ListSearchToolbar } from '@/components/list-page';
 import { CreateButton } from '@/components/toolbar-controls';
-import { EMPTY_PLACEHOLDER, createdAtColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, createdAtColumn, overflowTagColumn, renderEllipsis } from '@/utils/table-columns';
 import { useEditModal } from '@/hooks/useEditModal';
 import InsertShortLinkButton from '@/components/short-link/InsertShortLinkButton';
 import { usePermission } from '@/hooks/usePermission';
@@ -146,14 +146,18 @@ export default function BroadcastsPage() {
   const columns: ColumnProps<BroadcastCampaign>[] = [
     { title: '标题', dataIndex: 'title', width: 200, render: renderEllipsis },
     { title: '内容', dataIndex: 'content', minWidth: 240, render: renderEllipsis },
-    {
-      title: '渠道', dataIndex: 'channels', width: 150,
-      render: (v: BroadcastChannel[]) => (
-        <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
-          {v.map((c) => <Tag key={c} size="small" type="light">{NOTIFICATION_CHANNEL_LABELS[c]}</Tag>)}
-        </span>
-      ),
-    },
+    overflowTagColumn<BroadcastCampaign>({
+      title: '渠道',
+      dataIndex: 'channels',
+      width: 150,
+      contentWidth: 118,
+      getItems: (v) => ((v as BroadcastChannel[] | undefined) ?? []).map((c) => ({
+        key: c,
+        label: NOTIFICATION_CHANNEL_LABELS[c],
+      })),
+      tagSize: 'small',
+      popoverWidth: 180,
+    }),
     {
       title: '受众', dataIndex: 'audienceType', width: 130,
       render: (v: BroadcastAudienceType, record: BroadcastCampaign) => (

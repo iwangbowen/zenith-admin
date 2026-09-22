@@ -120,7 +120,9 @@ export function copyableNoColumn<RecordType extends Data = Data>(
 export interface OverflowTagColumnOptions<RecordType extends Data = Data> {
   readonly title: React.ReactNode;
   readonly dataIndex: string;
-  readonly width: number;
+  /** 固定列宽；与 minWidth 二选一（弹性主列用 minWidth，此时 contentWidth 建议传 '100%'） */
+  readonly width?: number;
+  readonly minWidth?: number;
   readonly contentWidth: number | string;
   readonly getItems: (value: unknown, record: RecordType) => readonly OverflowTagItem[];
   readonly tagColor?: React.ComponentProps<typeof Tag>['color'];
@@ -139,6 +141,7 @@ export function overflowTagColumn<RecordType extends Data = Data>({
   title,
   dataIndex,
   width,
+  minWidth,
   contentWidth,
   getItems,
   tagColor,
@@ -151,7 +154,7 @@ export function overflowTagColumn<RecordType extends Data = Data>({
   return {
     title,
     dataIndex,
-    width,
+    ...(width != null ? { width } : { minWidth }),
     render: (value: unknown, record: RecordType) => {
       const items = getItems(value, record);
       if (items.length === 0) return typeof empty === 'function' ? empty(value, record) : empty;
