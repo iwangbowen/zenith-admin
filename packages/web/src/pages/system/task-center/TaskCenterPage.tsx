@@ -23,7 +23,7 @@ import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { ASYNC_TASK_STATUS_TAG_MAP as statusTagMap, asyncTaskRateColor as rateColor } from '@/utils/async-task';
 import { formatDurationMs as formatDuration } from '@/utils/format';
 import { formatDateTime } from '@/utils/date';
-import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, renderCodeEllipsis, renderEllipsis } from '@/utils/table-columns';
 import {
   asyncTaskKeys,
   useAsyncTaskAction,
@@ -409,20 +409,22 @@ export default function TaskCenterPage() {
 
   const typeColumns: ColumnProps<TaskTypeRow>[] = [
     {
-      title: '任务类型',
+      // 展示名：最长注册名「批量检测报表数据源健康状态」约 182px，220 定宽（可用 188）单行容纳；
+      // 名称单行省略出 tooltip，「已下线」标记固定在同行右侧
+      title: '类型名称',
       dataIndex: 'title',
-      width: 200,
+      width: 220,
       render: (title: string, record: TaskTypeRow) => (
-        <div>
-          <div>
-            {title}
-            {record.retired && <Tag size="small" color="grey" style={{ marginLeft: 6 }}>已下线</Tag>}
-          </div>
-          <Typography.Text type="tertiary" size="small">{record.taskType}</Typography.Text>
-        </div>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%' }}>
+          <Typography.Text ellipsis={{ showTooltip: true }} style={{ minWidth: 0 }}>{title}</Typography.Text>
+          {record.retired && <Tag size="small" color="grey" style={{ flexShrink: 0 }}>已下线</Tag>}
+        </span>
       ),
     },
-    { title: '模块', dataIndex: 'module', width: 110, render: (value: string) => value || EMPTY_PLACEHOLDER },
+    // 类型标识（注册键）：接口路径 /types/{taskType}/config 与列表筛选都用它，等宽字体单行省略
+    { title: '类型标识', dataIndex: 'taskType', width: 200, render: renderCodeEllipsis },
+    // 模块：最长注册模块名「CMS内容管理」约 79px，140 定宽（可用 108）单行容纳；超长仍单行省略
+    { title: '模块', dataIndex: 'module', width: 140, render: renderEllipsis },
     { title: '说明', dataIndex: 'description', minWidth: 260, render: renderEllipsis },
     {
       title: '累计执行',
