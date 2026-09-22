@@ -46,3 +46,5 @@ export * from './schema/marketing';
 export * from './schema/iot';
 export * from './schema/drive';
 export * from './schema/relations';
+
+export * from './schema/entity-watches';

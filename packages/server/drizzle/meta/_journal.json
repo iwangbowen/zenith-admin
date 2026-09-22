@@ -64,6 +64,13 @@
       "when": 1789890518275,
       "tag": "0008_funny_paibok",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790058325808,
+      "tag": "0009_whole_puff_adder",
+      "breakpoints": true
     }
   ]
 }
