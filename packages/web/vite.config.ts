@@ -304,9 +304,12 @@ export default defineConfig(({ command, mode }) => {
                 priority: 12,
               }] : []),
               // Reference metadata and validation are shared by triggers and contracts, independently of UI.
+              // 这些模块被延迟加载的关联契约在模块顶层直接读取（`z.enum(ENTITY_TIMELINE_EVENT_TYPES)` 等），
+              // 因此必须与 entity-discovery 同层或更早，绝不能落回会反向 import entity-discovery 的共享包：
+              // 那样会形成跨 chunk 环，契约在实体化时读到 undefined，入口直接抛“Cannot convert undefined or null to object”。
               {
                 name: 'entity-primitives',
-                test: (id: string) => /[\\/]packages[\\/]shared[\\/]src[\\/](?:core[\\/](?:entity-ref|timeline)\.ts$|platform[\\/](?:entity-catalog|entity-registry|entity-detail-routes)\.ts$)/.test(id)
+                test: (id: string) => /[\\/]packages[\\/]shared[\\/]src[\\/](?:core[\\/](?:entity-ref|timeline)\.ts$|platform[\\/](?:entity-catalog|entity-registry|entity-detail-routes|entity-timeline-events|entity-watches|manual-relations)\.ts$)/.test(id)
                   || (entry === 'approval' && /[\\/]packages[\\/]web[\\/]src[\\/](?:utils[\\/](?:date|avatar-color)\.ts$|components[\\/]signature[\\/]SignatureClientContext\.tsx$)/.test(id)),
                 priority: 12,
               },

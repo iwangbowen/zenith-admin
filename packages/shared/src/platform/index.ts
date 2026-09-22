@@ -11,6 +11,7 @@ export * from './cron-health';
 export * from './data-mask';
 export * from './entity-registry';
 export * from './domain-events';
+export * from './entity-timeline-events';
 export * from './regions';
 export * from './types';
 export * from './upload';

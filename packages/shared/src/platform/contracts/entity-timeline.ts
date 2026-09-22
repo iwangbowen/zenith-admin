@@ -4,7 +4,7 @@ import { entityKeySchema } from '../../core/entity-ref';
 import { timelineEventSchema } from '../../core/timeline';
 import { canonicalEntityTypeSchema } from '../entity-registry';
 import { dateRangeQuery, queryEnum } from '../../core/api-schemas';
-import { ENTITY_TIMELINE_EVENT_TYPES, ENTITY_TIMELINE_EVENT_OPTIONS } from '../domain-events';
+import { ENTITY_TIMELINE_EVENT_TYPES, ENTITY_TIMELINE_EVENT_OPTIONS } from '../entity-timeline-events';
 
 export const entityTimelineQuerySchema = z.object({
   cursor: z.string().min(1).max(4096).optional().meta({ description: '下一页游标' }),
