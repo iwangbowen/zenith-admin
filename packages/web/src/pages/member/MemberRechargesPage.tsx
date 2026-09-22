@@ -8,7 +8,7 @@ import { PAYMENT_CHANNEL_LABELS, PAYMENT_METHOD_LABELS, PAYMENT_ORDER_STATUS_LAB
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { ListSearchToolbar } from '@/components/list-page';
 import ExportButton from '@/components/ExportButton';
-import { dateTimeColumn, renderEllipsis } from '../../utils/table-columns';
+import { dateTimeColumn, renderCodeEllipsis, renderEllipsis } from '../../utils/table-columns';
 import { formatDateRangeValuesForApi } from '@/utils/date';
 import { memberAdminKeys, useMemberRechargeList } from '@/hooks/queries/member-admin';
 import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
@@ -50,8 +50,10 @@ export default function MemberRechargesPage() {
   useMemberKeywordDeepLink<SearchParams>({ applySearch, buildParams: (memberKeyword) => ({ keyword: memberKeyword, dateRange: null }) });
 
   const columns: ColumnProps<MemberRecharge>[] = [
-    { title: '订单号', dataIndex: 'orderNo', width: 200, fixed: 'left', render: (v: string) => <span style={{ fontFamily: 'monospace' }}>{v}</span> },
-    memberCellColumn<MemberRecharge>({ width: 140, nameField: 'memberNickname', idField: 'memberId' }),
+    // 订单号是 genPaymentNo 生成的单号（"PAY" + 13 位毫秒 + 4 位尾号 = 20 字符，等宽字体约 168px），
+    // 原 200 定宽可用宽只剩 168，再长一点就折行；改用等宽字体单行省略 + tooltip
+    { title: '订单号', dataIndex: 'orderNo', width: 240, fixed: 'left', render: renderCodeEllipsis },
+    memberCellColumn<MemberRecharge>({ width: 180, nameField: 'memberNickname', idField: 'memberId', ellipsis: true }),
     { title: '手机号', dataIndex: 'memberPhone', width: 130, render: (v: string | null) => v ?? '—' },
     { title: '金额(元)', dataIndex: 'amount', width: 110, align: 'right', render: (v: number) => <span style={{ fontWeight: 600 }}>{(v / 100).toFixed(2)}</span> },
     { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => PAYMENT_CHANNEL_LABELS[v] ?? v },
