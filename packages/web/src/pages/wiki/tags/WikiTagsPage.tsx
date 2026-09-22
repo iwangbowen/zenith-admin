@@ -4,6 +4,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { wikiTagContract, type CreateWikiTagInput, type WikiTag } from '@zenith/shared/wiki';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { SwatchColorPicker } from '@/components/SwatchColorPicker';
+import { THEME_COLOR_PRESETS } from '@/lib/theme-color';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { deleteAction, ListSearchToolbar } from '@/components/list-page';
 import { CreateButton } from '@/components/toolbar-controls';
@@ -14,10 +15,12 @@ import { useDeleteWikiTags, useSaveWikiTag, useWikiTagList } from '@/hooks/queri
 import { useListPage } from '@/hooks/useListPage';
 import { EditFormModal } from '@/components/EditFormModal';
 
-const TAG_COLOR_PRESETS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#64748b'];
-
-/** 知识标签色板：8 个固定预设打头，存档值为 hex；其余经自定义取色器选择 */
-const TAG_COLOR_OPTIONS = TAG_COLOR_PRESETS.map((color) => ({ key: color, label: color, color }));
+/** 标签色板选项：存档值为 hex，与个人偏好主题色同款色板交互 */
+const TAG_COLOR_OPTIONS = THEME_COLOR_PRESETS.map((preset) => ({
+  key: preset.light.primary,
+  label: preset.name,
+  color: preset.light.primary,
+}));
 
 export default function WikiTagsPage() {
   const { hasPermission } = usePermission();
