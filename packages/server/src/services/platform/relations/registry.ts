@@ -110,15 +110,30 @@ async function summarizeRelationProvider(provider: RelationProvider, anchor: Vis
   }
 }
 
+const RELATION_SUMMARY_CONCURRENCY = 3;
+
+async function summarizeRelationProviders(providers: readonly RelationProvider[], anchor: VisibleEntityAnchor, access: RelationAccessContext) {
+  const sections = [];
+  for (let start = 0; start < providers.length; start += RELATION_SUMMARY_CONCURRENCY) {
+    assertRelationBudget(access);
+    const batch = providers.slice(start, start + RELATION_SUMMARY_CONCURRENCY);
+    sections.push(...await Promise.all(batch.map(async (provider) => ({
+      ...provider.descriptor,
+      summaryState: await summarizeRelationProvider(provider, anchor, access),
+    }))));
+  }
+  return sections;
+}
+
 export async function describeEntityRelations(input: { type: CanonicalEntityType; key: string }, caller: Pick<RelationAccessContext, 'user'>): Promise<EntityRelationsResponse> {
   return withRelationRead('describe', caller, async (access) => {
     const anchor = await resolveVisibleEntityAnchor(input.type, input.key, access);
-    const sections = [];
+    const providers = [];
     for (const provider of relationProviders) {
       if (provider.sourceType !== input.type || (provider.appliesTo && !provider.appliesTo(anchor)) || !(await canDiscover(provider))) continue;
-      const summaryState = await summarizeRelationProvider(provider, anchor, access);
-      sections.push({ ...provider.descriptor, summaryState });
+      providers.push(provider);
     }
+    const sections = await summarizeRelationProviders(providers, anchor, access);
     return entityRelationsResponseSchema.parse({ anchor: { ref: anchor.ref, title: anchor.title }, sections, canManageLinks: await hasPermission('system:relation:manage') });
   }).catch((error: unknown) => {
     if (isStatementTimeout(error)) throw new HTTPException(503, { message: '对象查询超时，请稍后重试' });
