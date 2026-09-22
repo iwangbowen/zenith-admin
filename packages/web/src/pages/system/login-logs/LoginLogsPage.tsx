@@ -4,7 +4,7 @@ import ExportButton from '@/components/ExportButton';
 import { LoginLogsTable } from '@/components/logs/LoginLogsTable';
 import { ClearLogsButtons, ClearLogsModal } from '@/components/logs/ClearLogsControl';
 import { useClearLogs } from '@/hooks/useClearLogs';
-import { formatDateTimeRangeForApi } from '@/utils/date';
+import { formatDateTimeRangeForApi, parseDateTimeParam } from '@/utils/date';
 import LoginLogStatsPanel from './LoginLogStatsPanel';
 import { loginLogKeys, useCleanLoginLogs, useLoginLogList } from '@/hooks/queries/login-logs';
 import { enumValueOf } from '@zenith/shared/core';
@@ -15,14 +15,6 @@ import { DateRangeFilter, FilterSelect, KeywordInput, StatusSelect } from '@/com
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
 import { useListDeepLink } from '@/hooks/useListDeepLink';
-import dayjs from 'dayjs';
-
-/** URL 深链里的 `YYYY-MM-DD HH:mm:ss`：空值 / 非法值返回 null（解析约定与 utils/date 的 `replace(' ', 'T')` 一致） */
-function parseDateTimeParam(value: string | undefined): Date | null {
-  if (!value) return null;
-  const parsed = dayjs(value.replace(' ', 'T'));
-  return parsed.isValid() ? parsed.toDate() : null;
-}
 
 export default function LoginLogsPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['list', 'stats'] as const, 'list');

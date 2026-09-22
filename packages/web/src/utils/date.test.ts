@@ -8,6 +8,7 @@ import {
   formatDateTimeForApi,
   formatDateTimeRangeForApi,
   formatDateTimeRangeValuesForApi,
+  parseDateTimeParam,
   shortDate,
   stripHtml,
 } from './date';
@@ -101,6 +102,21 @@ describe('formatDateTime', () => {
     // 已定义的元组得到非可选字符串，必选区间的调用方无需再做空值判断
     expectTypeOf(formatDateRangeValuesForApi([start, end] as const)).toEqualTypeOf<[string, string]>();
     expectTypeOf(formatDateRangeForApi([start, end] as const)).toEqualTypeOf<{ startTime: string; endTime: string }>();
+  });
+});
+
+describe('parseDateTimeParam', () => {
+  it('解析列表页深链里的时间端点（空格分隔，本地时区）', () => {
+    const parsed = parseDateTimeParam('2026-09-20 08:30:00');
+    expect(parsed).toBeInstanceOf(Date);
+    expect(formatDateTimeForApi(parsed)).toBe('2026-09-20 08:30:00');
+  });
+
+  it('空值 / 非法值返回 null，交给调用方回落到无区间', () => {
+    expect(parseDateTimeParam(undefined)).toBeNull();
+    expect(parseDateTimeParam(null)).toBeNull();
+    expect(parseDateTimeParam('')).toBeNull();
+    expect(parseDateTimeParam('不是时间')).toBeNull();
   });
 });
 

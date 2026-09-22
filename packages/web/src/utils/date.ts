@@ -42,6 +42,20 @@ export function formatDateTimeForApi(date: DateInput): string {
   return formatDateTime(date);
 }
 
+/**
+ * `YYYY-MM-DD HH:mm:ss` 字符串 → Date；空值 / 非法值返回 null。
+ *
+ * 配套 `formatDateTimeRangeForApi`：列表页深链里的时间端点就是它写出来的格式，
+ * 而 `new Date('2026-09-20 00:00:00')` 在 Safari 上是 Invalid Date，得先把空格换成 `T`
+ * （与 formatConvTime / formatRelativeTime 的解析约定一致）。
+ * 注意本地时区解析：深链里的时间按用户所在时区的自然日理解。
+ */
+export function parseDateTimeParam(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const parsed = dayjs(value.replace(' ', 'T'));
+  return parsed.isValid() ? parsed.toDate() : null;
+}
+
 export function formatDateTimeRangeValuesForApi(
   range: readonly [DefinedDateInput, DefinedDateInput],
 ): [string, string];

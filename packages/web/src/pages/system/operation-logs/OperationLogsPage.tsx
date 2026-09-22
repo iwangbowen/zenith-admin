@@ -4,7 +4,7 @@ import ExportButton from '@/components/ExportButton';
 import { OperationLogsTable } from '@/components/logs/OperationLogsTable';
 import { ClearLogsButtons, ClearLogsModal } from '@/components/logs/ClearLogsControl';
 import { useClearLogs } from '@/hooks/useClearLogs';
-import { formatDateTimeRangeForApi } from '@/utils/date';
+import { formatDateTimeRangeForApi, parseDateTimeParam } from '@/utils/date';
 import OperationLogStatsPanel from './OperationLogStatsPanel';
 import { operationLogKeys, useCleanOperationLogs, useOperationLogList } from '@/hooks/queries/operation-logs';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -48,13 +48,19 @@ export default function OperationLogsPage() {
     handleSearch, handleReset,
     applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultParams, listKey: operationLogKeys.all });
-  // 首页操作分布饼图按模块下钻（?module=）与其它入口的操作描述深链（?description=）走同一套一次性消费；
-  // 带模块的深链在同一次导航里切回列表页签，否则停在上次离开的「统计分析」看不到结果
-  useListDeepLink(['description', 'module'], (params) => applySearch({
-    ...defaultParams,
-    description: params.description ?? '',
-    module: params.module ?? '',
-  }), { getNextParams: (params) => (params.module ? { tab: 'list' } : undefined) });
+  // 首页操作分布饼图下钻（?module=&startTime=&endTime=，图表口径是今日）与其它入口的操作描述深链
+  // （?description=）走同一套一次性消费；带模块的深链在同一次导航里切回列表页签，
+  // 否则停在上次离开的「统计分析」看不到结果
+  useListDeepLink(['description', 'module', 'startTime', 'endTime'], (params) => {
+    const startTime = parseDateTimeParam(params.startTime);
+    const endTime = parseDateTimeParam(params.endTime);
+    applySearch({
+      ...defaultParams,
+      description: params.description ?? '',
+      module: params.module ?? '',
+      timeRange: startTime && endTime ? [startTime, endTime] : null,
+    });
+  }, { getNextParams: (params) => (params.module ? { tab: 'list' } : undefined) });
   // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
   const filterQuery = useFilterQuery({
     username: submittedParams.username,

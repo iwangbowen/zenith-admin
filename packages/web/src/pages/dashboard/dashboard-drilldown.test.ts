@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import dayjs from 'dayjs';
 import { LOGIN_TREND_SERIES, loginLogsDrillUrl, operationLogsDrillUrl } from './dashboard-drilldown';
 
 /** 目标页用 useListDeepLink 消费这些参数，因此断言按查询参数而非整串比对 */
@@ -33,9 +34,16 @@ describe('loginLogsDrillUrl', () => {
 });
 
 describe('operationLogsDrillUrl', () => {
-  it('按模块名落到操作日志', () => {
-    const { pathname, params } = paramsOf(operationLogsDrillUrl('用户管理'));
+  it('按模块名落到操作日志的当天区间', () => {
+    const { pathname, params } = paramsOf(operationLogsDrillUrl('用户管理', '2026-09-20'));
     expect(pathname).toBe('/system/operation-logs');
     expect(params.get('module')).toBe('用户管理');
+    expect(params.get('startTime')).toBe('2026-09-20 00:00:00');
+    expect(params.get('endTime')).toBe('2026-09-20 23:59:59');
+  });
+
+  it('缺省区间取今天——饼图口径是「今日操作分布」', () => {
+    const today = dayjs().format('YYYY-MM-DD');
+    expect(paramsOf(operationLogsDrillUrl('用户管理')).params.get('startTime')).toBe(`${today} 00:00:00`);
   });
 });
