@@ -1097,43 +1097,55 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
           </div>
         </TabPane>
         <TabPane tab="事件与调度" itemKey="scheduler">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: 12 }}>
-            <ConfigurableTable
-              bordered
-              columnSettings={false}
-              columns={listenerColumns}
-              dataSource={data.eventBus.listeners}
-              rowKey="eventType"
-              pagination={false}
-              empty="暂无事件监听器"
-            />
-            <ConfigurableTable
-              bordered
-              columnSettings={false}
-              columns={recurringJobColumns}
-              dataSource={data.telemetry.recurringJobs}
-              rowKey="name"
-              pagination={false}
-              empty="暂无系统周期任务"
-            />
-            <ConfigurableTable
-              bordered
-              columnSettings={false}
-              columns={queueWorkerColumns}
-              dataSource={data.scheduler.systemQueueWorkers}
-              rowKey="name"
-              pagination={false}
-              empty="暂无系统队列 Worker"
-            />
-            <ConfigurableTable
-              bordered
-              columnSettings={false}
-              columns={wipColumns}
-              dataSource={data.scheduler.wip}
-              rowKey="name"
-              pagination={false}
-              empty="暂无运行中 Job"
-            />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <section>
+              <SectionTitle icon={<Zap size={16} color="var(--semi-color-primary)" />} title={`事件监听器 ${data.eventBus.listeners.length}`} desc="事件总线订阅" />
+              <ConfigurableTable
+                bordered
+                columnSettings={false}
+                columns={listenerColumns}
+                dataSource={data.eventBus.listeners}
+                rowKey="eventType"
+                pagination={false}
+                empty="暂无事件监听器"
+              />
+            </section>
+            <section>
+              <SectionTitle icon={<TimerReset size={16} color="var(--semi-color-primary)" />} title={`系统周期任务 ${data.telemetry.recurringJobs.length}`} />
+              <ConfigurableTable
+                bordered
+                columnSettings={false}
+                columns={recurringJobColumns}
+                dataSource={data.telemetry.recurringJobs}
+                rowKey="name"
+                pagination={false}
+                empty="暂无系统周期任务"
+              />
+            </section>
+            <section>
+              <SectionTitle icon={<Layers size={16} color="var(--semi-color-primary)" />} title={`系统队列 Worker ${data.scheduler.systemQueueWorkers.length}`} />
+              <ConfigurableTable
+                bordered
+                columnSettings={false}
+                columns={queueWorkerColumns}
+                dataSource={data.scheduler.systemQueueWorkers}
+                rowKey="name"
+                pagination={false}
+                empty="暂无系统队列 Worker"
+              />
+            </section>
+            <section>
+              <SectionTitle icon={<Activity size={16} color="var(--semi-color-primary)" />} title={`运行中 Job ${data.scheduler.wip.length}`} />
+              <ConfigurableTable
+                bordered
+                columnSettings={false}
+                columns={wipColumns}
+                dataSource={data.scheduler.wip}
+                rowKey="name"
+                pagination={false}
+                empty="暂无运行中 Job"
+              />
+            </section>
           </div>
         </TabPane>
         <TabPane tab="原始快照" itemKey="raw">
