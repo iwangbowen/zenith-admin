@@ -46,6 +46,7 @@ import {
 } from '@/hooks/queries/workflow-instances';
 import { usePublishedWorkflowDefinitions } from '@/hooks/queries/workflow-definitions';
 import { deleteAction, ListSearchToolbar, useRowSelection } from '@/components/list-page';
+import { confirmDanger } from '@/utils/confirm';
 import { workflowInstanceStatusColumn } from '@/components/workflow/WorkflowInstanceListColumns';
 import { FilterSelect } from '@/components/search-filters';
 import { useListPage } from '@/hooks/useListPage';
@@ -280,6 +281,7 @@ export default function MyApplicationsPage() {
   const resubmitMutation = useResubmitWorkflowInstance();
   const batchWithdrawMutation = useBatchWithdrawWorkflowInstances();
   const batchUrgeMutation = useBatchUrgeWorkflowInstances();
+  const withdrawMutation = useWithdrawWorkflowInstance();
   const submitting = submitMutation.isPending || submitDraftMutation.isPending;
   const savingDraft = saveDraftMutation.isPending || updateDraftMutation.isPending;
 
@@ -439,6 +441,12 @@ export default function MyApplicationsPage() {
     Toast.success('已生成草稿，请在草稿箱中编辑提交');
   };
 
+  /** 列表行内撤回：与详情面板内的撤回共用同一契约操作与失效范围 */
+  const handleWithdraw = async (id: number) => {
+    await withdrawMutation.mutateAsync({ params: { id } });
+    Toast.success('已撤回');
+  };
+
   const selectedRunningIds = selectedRowKeys.filter((id) => (data?.list ?? []).some((item) => item.id === id && item.status === 'running'));
 
   const selectedWithdrawableIds = selectedRowKeys.filter((id) => (data?.list ?? []).some((item) => item.id === id && item.status === 'running' && item.allowWithdraw !== false));
@@ -529,9 +537,9 @@ export default function MyApplicationsPage() {
     dateTimeColumn('提交时间', 'createdAt'),
     workflowInstanceStatusColumn<WorkflowInstance>(),
     createOperationColumn<WorkflowInstance>({
-      // 草稿：编辑 / 提交 + 更多（删除）；已退回：修改重提 / 详情；已驳回：详情 / 重新提交
+      // 草稿：编辑 / 提交 + 更多（删除）；已退回：修改重提 / 详情；审批中：详情 / 撤回；已驳回：详情 / 重新提交
       width: 180,
-      desktopInlineKeys: ['edit-draft', 'submit-draft', 'detail', 'resubmit'],
+      desktopInlineKeys: ['edit-draft', 'submit-draft', 'detail', 'withdraw', 'resubmit'],
       actions: (record) => [
         {
           key: 'edit-draft',
@@ -557,6 +565,20 @@ export default function MyApplicationsPage() {
           label: '详情',
           hidden: record.status === 'draft',
           onClick: () => openDetail(record.id),
+        },
+        {
+          key: 'withdraw',
+          label: '撤回',
+          danger: true,
+          hidden: record.status !== 'running' || record.allowWithdraw === false,
+          onClick: () => {
+            confirmDanger({
+              title: '确定要撤回该申请吗？',
+              content: '撤回后流程终止，需要继续处理时可在本页「重新提交」。',
+              okText: '确认撤回',
+              onOk: () => handleWithdraw(record.id),
+            });
+          },
         },
         {
           key: 'resubmit',
