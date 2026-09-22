@@ -11,6 +11,7 @@ import { workflowFileAnchorResolvers, workflowFileRelationProviders } from './pr
 import { subjectAnchorResolvers, subjectProviders } from './providers/subjects.provider';
 import { readRelationCursor, signRelationCursor } from './cursor';
 import { assertRelationBudget, isStatementTimeout, withRelationRead } from './runtime';
+import { recordRelationSummaryState } from './metrics';
 import { manualLinksProvider } from './edges.service';
 import { paymentFinancialAnchorResolvers, paymentFinancialRelationProviders } from '../../payment/payment-financial-relations.service';
 import { reverseSubjectProviders } from './providers/reverse-subjects.provider';
@@ -98,14 +99,24 @@ export function relationCursorScope(anchor: VisibleEntityAnchor, operation: stri
 async function summarizeRelationProvider(provider: RelationProvider, anchor: VisibleEntityAnchor, access: RelationAccessContext): Promise<EntityRelationSummaryState> {
   try {
     assertRelationBudget(access);
-    if (provider.summarize) return entityRelationSummaryStateSchema.parse(await provider.summarize(anchor, { access }));
-    if (provider.exists) return (await provider.exists(anchor, { access })) ? 'has-data' : 'empty';
+    if (provider.summarize) {
+      const state = entityRelationSummaryStateSchema.parse(await provider.summarize(anchor, { access }));
+      recordRelationSummaryState(provider.sourceType, provider.key, state);
+      return state;
+    }
+    if (provider.exists) {
+      const state = (await provider.exists(anchor, { access })) ? 'has-data' : 'empty';
+      recordRelationSummaryState(provider.sourceType, provider.key, state);
+      return state;
+    }
     const page = await provider.list(anchor, { cursor: undefined, limit: 1, access });
-    if (page.degraded) return 'unavailable';
-    return page.items.length > 0 ? 'has-data' : 'empty';
+    const state = page.degraded ? 'unavailable' : page.items.length > 0 ? 'has-data' : 'empty';
+    recordRelationSummaryState(provider.sourceType, provider.key, state);
+    return state;
   } catch {
     // A summary is advisory. A timeout, revoked target, or provider-specific
     // failure must not hide the authorized section or turn it into "empty".
+    recordRelationSummaryState(provider.sourceType, provider.key, 'unavailable');
     return 'unavailable';
   }
 }
