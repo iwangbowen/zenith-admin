@@ -1,4 +1,5 @@
-import { Button, Empty, Space, Spin, Timeline, Typography } from '@douyinfe/semi-ui';
+import { Button, Empty, Space, Spin, Timeline, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { RefreshCw } from 'lucide-react';
 import type { CanonicalEntityType } from '@zenith/shared/platform';
 import { useEntityTimeline } from '@/hooks/queries/entity-relations';
 import { timelineEventDescription, timelineEventLabel } from '@/utils/entity-relations';
@@ -13,7 +14,17 @@ export default function EntityTimeline({ entityType, entityKey, enabled = true }
   return <div style={{ paddingTop: 12 }}>
     <Space wrap spacing={8} style={{ marginBottom: 12 }}>
       <Typography.Text type="tertiary">按业务事件发生时间展示</Typography.Text>
-      <Button size="small" theme="borderless" loading={query.isRefetching} onClick={() => void query.refetch()}>刷新</Button>
+      {/* 与「关联记录」页签的刷新同形：图标按钮 + tooltip，不占标题行宽度 */}
+      <Tooltip content="刷新业务时间线">
+        <Button
+          size="small"
+          theme="borderless"
+          icon={<RefreshCw size={14} />}
+          loading={query.isRefetching}
+          aria-label="刷新业务时间线"
+          onClick={() => void query.refetch()}
+        />
+      </Tooltip>
     </Space>
     {query.isLoading && <Spin />}
     {query.isError && <Space><Typography.Text type="danger">时间线加载失败</Typography.Text><Button size="small" onClick={() => void (query.isFetchNextPageError ? query.fetchNextPage() : query.refetch())}>重试</Button></Space>}
