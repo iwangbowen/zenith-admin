@@ -56,7 +56,7 @@ function thresholdHint(metric: MonitorMetric | undefined): string {
 export default function AlertRulesPage() {
   const { hasPermission } = usePermission();
   const navigate = useNavigate();
-  const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
+  const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection({ extra: { fixed: 'left' } });
 
   const canCreate = hasPermission('alert:rule:create');
   const canUpdate = hasPermission('alert:rule:update');
