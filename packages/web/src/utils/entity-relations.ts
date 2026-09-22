@@ -1,4 +1,4 @@
-import type { CanonicalEntityRef, CanonicalEntityType, DomainEventType } from '@zenith/shared/platform';
+import type { CanonicalEntityRef, CanonicalEntityType, DomainEventType, EntityRelationKind } from '@zenith/shared/platform';
 import type { TimelineEvent } from '@zenith/shared/core';
 
 const ENTITY_LABELS: Record<CanonicalEntityType, string> = {
@@ -39,6 +39,17 @@ export function entityRelationLabel(labelKey: string, targetTypes?: readonly Can
   if (labelKey === 'relation.common.subjects') return '来源业务对象';
   const name = labelKey.split('.').at(-1) ?? '';
   return RELATION_LABELS[name] ?? (targetTypes?.length ? targetTypes.map(entityTypeLabel).join('、') : '关联记录');
+}
+
+const RELATION_KIND_LABELS: Record<EntityRelationKind, string> = {
+  direct: '直接业务关联',
+  derived: '业务规则推导',
+  causal: '流程或事件触发',
+  activity: '操作活动来源',
+};
+
+export function entityRelationKindLabel(kind: EntityRelationKind): string {
+  return RELATION_KIND_LABELS[kind];
 }
 
 /** Register only routes that resolve the exact entity independently of list pagination. */

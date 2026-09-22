@@ -52,7 +52,7 @@ export function subjectProviders(sourceType: CanonicalEntityType): readonly Rela
             eq(notificationOutboxSubjects.outboxId, notificationOutbox.id), eq(notificationOutboxSubjects.entityType, anchor.ref.type), eq(notificationOutboxSubjects.entityKey, anchor.ref.key), exactTenantCondition(notificationOutboxSubjects.tenantId, anchor.tenantId)))),
           before ? lt(notificationOutbox.id, before) : undefined)).orderBy(desc(notificationOutbox.id)).limit(limit + 1);
       return relationPage(rows, limit, (row) => ({ ref: { type: 'notification.outbox', key: String(row.id) }, relationKey: `${sourceType}.notifications`, title: notificationTitle(row.title),
-        occurredAt: row.createdAt.toISOString(), status: row.status, capabilities }));
+        occurredAt: row.createdAt.toISOString(), status: row.status, origin: { kind: 'activity', eventType: row.title }, capabilities }));
     }),
     spec('tasks', 'tasks.async', ['system:async-task:list'], async (anchor, { cursor, limit, access }) => {
       const before = decodeRelationCursor(cursor);

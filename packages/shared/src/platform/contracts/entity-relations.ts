@@ -25,6 +25,16 @@ export const entityRelationCapabilitiesSchema = z.object({
   open: z.boolean().default(true),
 }).meta({ id: 'EntityRelationCapabilities' });
 
+/**
+ * 关系项的来源语义。kind 说明为什么能建立这条关系；eventType 仅允许
+ * 服务端提供安全的事件标识，不承载领域事件 payload 或其他敏感详情。
+ */
+export const entityRelationOriginSchema = z.object({
+  kind: entityRelationKindSchema,
+  eventType: z.string().max(128).nullable().optional().meta({ description: '建立或触发关系的事件标识，可空' }),
+}).meta({ id: 'EntityRelationOrigin' });
+export type EntityRelationOrigin = z.infer<typeof entityRelationOriginSchema>;
+
 export const entityRelationSectionSchema = z.object({
   key: relationKeySchema,
   labelKey: z.string().min(1).max(128),
@@ -49,6 +59,7 @@ export const entityRelationItemSchema = z.object({
   description: z.string().max(500).nullable().optional(),
   status: z.string().max(64).nullable().optional(),
   occurredAt: z.string().nullable().optional(),
+  origin: entityRelationOriginSchema.optional().meta({ description: '关系来源语义；不包含事件载荷' }),
   capabilities: entityRelationCapabilitiesSchema,
 }).meta({ id: 'EntityRelationItem' });
 export type EntityRelationItem = z.infer<typeof entityRelationItemSchema>;

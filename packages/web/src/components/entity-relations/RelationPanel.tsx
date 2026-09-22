@@ -1,10 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Collapse, Empty, List, Space, Spin, Tag, Tooltip, Typography } from '@douyinfe/semi-ui';
-import type { EntityRelationSection, EntityRelationSummaryState, CanonicalEntityType } from '@zenith/shared/platform';
-import { CircleAlert, CircleCheck, CircleOff, CircleSlash2, RefreshCw } from 'lucide-react';
+import type { EntityRelationItem, EntityRelationKind, EntityRelationSection, EntityRelationSummaryState, CanonicalEntityType } from '@zenith/shared/platform';
+import { Activity, CircleAlert, CircleCheck, CircleOff, CircleSlash2, GitBranch, Link2, RefreshCw, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useEntityAccessKey, useEntityRelationSection, useEntityRelations, useUnlinkEntity } from '@/hooks/queries/entity-relations';
-import { entityRelationLabel, entityStatusLabel } from '@/utils/entity-relations';
+import { entityRelationKindLabel, entityRelationLabel, entityStatusLabel } from '@/utils/entity-relations';
 import DateTimeText from '@/components/DateTimeText';
 import EntityRefBadge from './EntityRefBadge';
 import EntityLinkManager from './EntityLinkManager';
@@ -23,6 +23,16 @@ const RELATION_SUMMARY_PRESENTATION: Record<EntityRelationSummaryState, {
   unavailable: { label: '暂不可用', Icon: CircleOff, color: 'var(--semi-color-danger)' },
 };
 
+const RELATION_KIND_PRESENTATION: Record<EntityRelationKind, {
+  readonly Icon: LucideIcon;
+  readonly color: string;
+}> = {
+  direct: { Icon: Link2, color: 'var(--semi-color-primary)' },
+  derived: { Icon: GitBranch, color: 'var(--semi-color-info)' },
+  causal: { Icon: Zap, color: 'var(--semi-color-warning)' },
+  activity: { Icon: Activity, color: 'var(--semi-color-tertiary)' },
+};
+
 function RelationSectionHeader({ section, summaryState }: {
   readonly section: EntityRelationSection;
   readonly summaryState: EntityRelationSummaryState;
@@ -31,14 +41,37 @@ function RelationSectionHeader({ section, summaryState }: {
   const presentation = RELATION_SUMMARY_PRESENTATION[summaryState];
   const statusLabel = `${label}：${presentation.label}`;
   const Icon = presentation.Icon;
+  const kindPresentation = RELATION_KIND_PRESENTATION[section.kind];
+  const KindIcon = kindPresentation.Icon;
+  const kindLabel = `关联来源：${entityRelationKindLabel(section.kind)}`;
   return <Space spacing={6} aria-label={statusLabel}>
     <Tooltip content={statusLabel}>
       <span role="img" aria-label={statusLabel} style={{ color: presentation.color, display: 'inline-flex' }}>
         <Icon size={15} aria-hidden="true" />
       </span>
     </Tooltip>
+    <Tooltip content={kindLabel}>
+      <span role="img" aria-label={kindLabel} style={{ color: kindPresentation.color, display: 'inline-flex' }}>
+        <KindIcon size={14} aria-hidden="true" />
+      </span>
+    </Tooltip>
     <span>{label}</span>
   </Space>;
+}
+
+function RelationOriginHint({ section, item }: { readonly section: EntityRelationSection; readonly item: EntityRelationItem }) {
+  const kind = item.origin?.kind ?? section.kind;
+  const kindPresentation = RELATION_KIND_PRESENTATION[kind];
+  const Icon = kindPresentation.Icon;
+  const parts = [`关联来源：${entityRelationKindLabel(kind)}`];
+  if (item.origin?.eventType) parts.push(`来源事件：${item.origin.eventType}`);
+  if (item.occurredAt) parts.push(`关联时间：${item.occurredAt}`);
+  const label = parts.join(' · ');
+  return <Tooltip content={label}>
+    <span role="img" aria-label={label} style={{ color: kindPresentation.color, display: 'inline-flex' }}>
+      <Icon size={14} aria-hidden="true" />
+    </span>
+  </Tooltip>;
 }
 
 interface RelationPanelProps {
@@ -95,6 +128,7 @@ function RelationSectionView({ entityType, entityKey, section, active, canManage
       })}>解除</Button> : undefined}
       main={<div style={{ minWidth: 0 }}>
         <Space wrap spacing={8}><EntityRefBadge entityRef={item.ref} capabilities={{ view: item.capabilities.view && section.capabilities.view, open: item.capabilities.open && section.capabilities.open }}>{item.title}</EntityRefBadge>
+          <RelationOriginHint section={section} item={item} />
           {entityStatusLabel(item.status) && <Tag size="small">{entityStatusLabel(item.status)}</Tag>}</Space>
         {item.subtitle && <div><Typography.Text type="tertiary">{item.subtitle}</Typography.Text></div>}
         {item.description && <div><Typography.Text type="tertiary">{item.description}</Typography.Text></div>}

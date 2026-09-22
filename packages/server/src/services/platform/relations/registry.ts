@@ -151,7 +151,10 @@ export async function listEntityRelation(input: { type: CanonicalEntityType; key
       const cursor = readRelationCursor(input.cursor, scope);
       authorized = true;
       const result = await provider.list(anchor, { cursor, limit: input.limit, access });
-      return entityRelationPageSchema.parse({ ...result, items: result.items.map((item) => ({ ...item, title: item.title.slice(0, 160), subtitle: item.subtitle?.slice(0, 240), description: item.description?.slice(0, 500) })),
+      return entityRelationPageSchema.parse({ ...result, items: result.items.map((item) => ({ ...item,
+        title: item.title.slice(0, 160), subtitle: item.subtitle?.slice(0, 240), description: item.description?.slice(0, 500),
+        origin: { ...item.origin, kind: provider.descriptor.kind },
+      })),
         nextCursor: result.nextCursor ? signRelationCursor(result.nextCursor, scope) : null });
     });
   } catch (error) {

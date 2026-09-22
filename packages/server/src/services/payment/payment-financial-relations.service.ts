@@ -87,7 +87,10 @@ function page<T extends { id: number; title: string; status?: string | null; at?
   return relationPage(rows, limit, (row): EntityRelationItem => ({ ref: { type, key: String(row.id) }, relationKey,
     title: row.title.slice(0, 160), subtitle: summarySubtitle(type, row.subtitle),
     status: type === 'payment.notify-log' && row.status?.startsWith('processed:') ? 'success' : row.status,
-    occurredAt: row.at?.toISOString(), capabilities }));
+    occurredAt: row.at?.toISOString(),
+    ...((type === 'payment.journal' || type === 'payment.notify-log') && row.subtitle
+      ? { origin: { kind: 'derived' as const, eventType: row.subtitle } } : {}),
+    capabilities }));
 }
 
 const caseMoney = { tenantId: cases.tenantId, appId: cases.applicationId, channelAccountId: cases.accountId, currency: cases.currency };
