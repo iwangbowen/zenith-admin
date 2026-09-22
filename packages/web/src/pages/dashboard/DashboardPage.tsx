@@ -16,7 +16,7 @@ import DateTimeText from '@/components/DateTimeText';
 import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useDictItems } from '@/hooks/useDictItems';
-import AnnouncementDetailModal from '@/components/AnnouncementDetailModal';
+const AnnouncementDetailModal = lazy(() => import('@/components/AnnouncementDetailModal'));
 import { UserAvatar } from '@/components/UserAvatar';
 import type { DashboardCharts, DashboardStats } from '@zenith/shared/analytics';
 import { useDashboardCharts, useDashboardStats } from '@/hooks/queries/dashboard';
@@ -356,12 +356,12 @@ export default function DashboardPage() {
       </section>
 
       {/* ===== 公告详情 Modal ===== */}
-      <AnnouncementDetailModal
-        visible={selectedNotice !== null}
+      {selectedNotice !== null && <Suspense fallback={null}><AnnouncementDetailModal
+        visible
         announcement={selectedNoticeDetail}
         loading={noticeDetailLoading}
         onClose={() => setSelectedNotice(null)}
-      />
+      /></Suspense>}
     </div>
   );
 }

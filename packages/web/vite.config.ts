@@ -262,7 +262,8 @@ export default defineConfig(({ command, mode }) => {
                 // Vite 运行时 helper（preload polyfill 等虚拟模块）独立成组且优先级最高：
                 // 它被所有含动态 import 的 chunk 依赖，落入任何 vendor 包都会让入口被迫预载该包
                 name: 'vite-runtime',
-                test: (id: string) => id.includes('vite/preload-helper') || id.includes('vite/modulepreload-polyfill') || id.includes('vite/dynamic-import-helper') || id.includes('commonjsHelpers'),
+                test: (id: string) => id.includes('vite/preload-helper') || id.includes('vite/modulepreload-polyfill') || id.includes('vite/dynamic-import-helper') || id.includes('commonjsHelpers')
+                  || (entry === 'approval' && id.includes('vite-browser-external')),
                 priority: 40,
               },
               // react 运行时（含 jsx-runtime）独立成组：全应用共享，绝不允许被合并进任何业务 / vendor 大包
@@ -287,11 +288,33 @@ export default defineConfig(({ command, mode }) => {
               { name: 'vendor-semi', test: /node_modules[\\/]@douyinfe[\\/](?:semi-ui|semi-foundation|semi-icons|semi-animation)[\\/]/, priority: 14 },
               // 审批端的 SVG 图标共用一个延迟加载包，避免单个图标产生独立请求。
               ...(entry === 'approval' ? [{ name: 'vendor-approval-icons', test: /node_modules[\\/]lucide-react[\\/]/, priority: 13 }] : []),
-              // Search and related-object views are one deferred feature. Its trigger and cache invalidator
-              // stay outside this group; opening the palette or a business detail loads the runtime once.
+              // Query observers share one deferred framework boundary in the small approval app.
+              // Modules already needed by its entry remain in the higher-priority initial groups.
+              ...(entry === 'approval' ? [{ name: 'vendor-approval-query', test: /node_modules[\\/]@tanstack[\\/](?:react-query|query-core)[\\/]/, priority: 13 }] : []),
+              // Debounce/throttle hooks share one framework, rather than a tiny chunk per consuming page.
+              ...(entry === 'approval' ? [{ name: 'vendor-approval-pacer', test: /node_modules[\\/]@tanstack[\\/](?:react-pacer|pacer)[\\/]/, priority: 13 }] : []),
+              // The preview's two archive asset URL strings have no consumer outside this deferred panel.
+              ...(entry === 'approval' ? [{ name: 'approval-file-preview',
+                test: (id: string) => id.includes('virtual:file-viewer-renderers') || /(?:[\\/]components[\\/]FileViewerPreviewPanel\.tsx$|[\\/]libarchive\.js[\\/]dist[\\/](?:worker-bundle\.js|libarchive\.wasm)\?url$)/.test(id), priority: 13 }] : []),
+              // Reused approval display/search helpers are small and use the same existing UI foundation.
+              // Keep them together instead of emitting a separate request for every sub-kilobyte helper.
+              ...(entry === 'approval' ? [{
+                name: 'approval-ui',
+                test: /[\\/]packages[\\/]web[\\/]src[\\/](?:components[\\/](?:DateTimeText|UserAvatar|workflow[\\/]WorkflowPriorityTag)\.tsx$|hooks[\\/]usePinyinReady\.ts$)/,
+                priority: 12,
+              }] : []),
+              // Reference metadata and validation are shared by triggers and contracts, independently of UI.
+              {
+                name: 'entity-primitives',
+                test: (id: string) => /[\\/]packages[\\/]shared[\\/]src[\\/](?:core[\\/](?:entity-ref|timeline)\.ts$|platform[\\/](?:entity-catalog|entity-registry|entity-detail-routes)\.ts$)/.test(id)
+                  || (entry === 'approval' && /[\\/]packages[\\/]web[\\/]src[\\/](?:utils[\\/](?:date|avatar-color)\.ts$|components[\\/]signature[\\/]SignatureClientContext\.tsx$)/.test(id)),
+                priority: 12,
+              },
+              // Only the deferred runtime belongs here. Never force trigger components or shared reference
+              // primitives into its chunk: static consumers would then eagerly load the entire relation UI.
               {
                 name: 'entity-discovery',
-                test: /[\\/]packages[\\/](?:web[\\/]src[\\/](?:components[\\/](?:entity-relations[\\/]|MenuCommandPalette\.tsx$)|hooks[\\/]queries[\\/](?:entity-relations|global-search)\.ts$|utils[\\/](?:entity-relations|global-search)\.ts$)|shared[\\/]src[\\/](?:core[\\/](?:entity-ref|timeline)\.ts$|platform[\\/](?:entity-catalog\.ts$|entity-registry\.ts$|contracts[\\/](?:entity-relations|entity-timeline|global-search)\.ts$)))/,
+                test: /[\\/]packages[\\/](?:web[\\/]src[\\/](?:components[\\/](?:entity-relations[\\/](?!EntityRelationButton\.tsx$|entity-navigation\.ts$)|MenuCommandPalette\.tsx$)|hooks[\\/]queries[\\/](?:entity-relations|entity-timeline|entity-watches|global-search)\.ts$|utils[\\/](?:entity-relations|global-search)\.ts$)|shared[\\/]src[\\/]platform[\\/]contracts[\\/](?:entity-relations|entity-timeline|entity-watches|global-search)\.ts$)/,
                 priority: 12,
               },
               { name: 'vendor-common', test: /node_modules/, priority: 10, minShareCount: 10 },
