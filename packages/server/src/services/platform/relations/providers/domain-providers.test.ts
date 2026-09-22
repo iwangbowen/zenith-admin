@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq, type AnyColumn } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import type { JwtPayload } from '../../../../middleware/auth';
 import type { RelationAccessContext, VisibleEntityAnchor } from '../types';
 
@@ -59,7 +60,9 @@ vi.mock('../../../drive/drive-access.service', async (importOriginal) => {
 
 import { identityAnchorResolvers, identityRelationProviders, identityUserPaymentsProvider, memberPaymentsProvider, identityUserAuditProvider } from './identity.provider';
 import { iotContentAnchorResolvers, iotContentRelationProviders, cmsContentRelatedProvider, iotDeviceAlarmsProvider } from './iot-content.provider';
-import { workflowFileAnchorResolvers, workflowFileRelationProviders, workflowInstanceChildrenProvider } from './workflow-file.provider';
+import { workflowFileAnchorResolvers, workflowFileRelationProviders, workflowInstanceChildrenProvider, workflowInstanceTasksProvider } from './workflow-file.provider';
+import { paymentOrderRefundsProvider, paymentOrderDisputesProvider, paymentOrderRiskReviewsProvider } from '../../../payment/payment-relations.service';
+import { subjectProviders } from './subjects.provider';
 
 type Statement = { sql: string; params: unknown[] };
 type ExecutableQuery = { execute: () => Promise<unknown[]>; toSQL: () => Statement };
@@ -108,6 +111,53 @@ beforeEach(() => {
   state.allData = false;
   state.siteIds = [5];
   state.channelIds = [12];
+});
+
+describe('whole-set relation attention SQL', () => {
+  const dialect = new PgDialect({ casing: 'snake_case' });
+  it('checks pending approval and failed/unknown refunds across the same tenant-scoped set without paging', async () => {
+    const { access } = captureAccess();
+    const expression = paymentOrderRefundsProvider.summaryQuery!(anchor('payment.order'), { access });
+    const statement = dialect.sqlToQuery(expression);
+    expect(statement.sql).toMatch(/case when exists .* then 'attention' when exists .* then 'has-data' else 'empty'/);
+    expect(statement.sql).toContain('"payment_refunds"."approval_status"');
+    expect(statement.params).toEqual(expect.arrayContaining([21, 7, 'pending', 'failed', 'unknown']));
+    expect(statement.sql.match(/"payment_refunds"\."order_id" =/g)).toHaveLength(2);
+    expect(statement.sql.match(/"payment_refunds"\."tenant_id" =/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(statement.sql).not.toMatch(/order by|limit|offset|count\(/i);
+    expect(statement.sql).not.toContain('"refund_no"');
+  });
+
+  it('considers unresolved disputes and pending reviews while preserving application scope', () => {
+    const { access } = captureAccess();
+    const source = anchor('payment.order', { orderNo: 'PO-21', appId: 4 });
+    const dispute = dialect.sqlToQuery(paymentOrderDisputesProvider.summaryQuery!(source, { access }));
+    expect(dispute.params).toEqual(expect.arrayContaining(['PO-21', 'pending', 'processing', 7]));
+    expect(dispute.params).not.toContain('refunded');
+    const review = dialect.sqlToQuery(paymentOrderRiskReviewsProvider.summaryQuery!(source, { access }));
+    expect(review.params).toEqual(expect.arrayContaining(['PO-21', 4, 'pending', 7]));
+    expect(review.sql.match(/"payment_risk_reviews"\."app_id" =/g)).toHaveLength(2);
+  });
+
+  it.each(['notifications', 'tasks', 'audit'])('uses explicit subject identity for %s attention and existence', (suffix) => {
+    const { access } = captureAccess();
+    const provider = subjectProviders('payment.order').find((item) => item.key.endsWith(`.${suffix}`))!;
+    const statement = dialect.sqlToQuery(provider.summaryQuery!(anchor('payment.order'), { access }));
+    expect(statement.params).toEqual(expect.arrayContaining(['payment.order', '21', 7, suffix === 'audit' ? 400 : 'failed']));
+    expect(statement.sql.match(/"entity_type" =/g)).toHaveLength(2);
+    expect(statement.sql.match(/"entity_key" =/g)).toHaveLength(2);
+    expect(statement.sql).not.toMatch(/order by|limit|offset|count\(/i);
+    expect(statement.sql).not.toMatch(/"payload"|"request_body"|"recipient"/);
+  });
+
+  it('checks pending tasks only within running, participant-visible workflow instances', async () => {
+    const { access } = captureAccess();
+    const statement = dialect.sqlToQuery(await workflowInstanceTasksProvider.prepareSummaryQuery!(anchor('workflow.instance'), { access }));
+    expect(statement.params).toEqual(expect.arrayContaining([21, 7, 9, 'pending', 'running']));
+    expect(statement.sql.match(/"workflow_instances"\."initiator_id" =/g)).toHaveLength(2);
+    expect(statement.sql).not.toContain('"form_data"');
+    expect(statement.sql).not.toContain('order by');
+  });
 });
 
 describe('domain relation permission and pagination boundaries', () => {

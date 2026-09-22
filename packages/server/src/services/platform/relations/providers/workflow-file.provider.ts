@@ -12,6 +12,7 @@ import { resolveAsyncTaskAccessScope } from '../../../tasks/async-tasks.service'
 import type { EntityAnchorResolver, RelationAccessContext, RelationProvider, VisibleEntityAnchor } from '../types';
 import { decodeRelationCursor } from '../cursor';
 import { relationPage as page } from '../page';
+import { relationSummaryQuery } from '../summary-query';
 
 const WORKFLOW_PERMISSIONS = ['workflow:instance:list', 'workflow:task:handle', 'workflow:instance:monitor'] as const;
 type RelationInput = Parameters<RelationProvider['list']>[1];
@@ -44,6 +45,30 @@ export async function workflowVisibility(access: { user: RelationAccessContext['
       ) select 1 from ancestors where initiator_id = ${access.user.userId}
     )`,
   );
+}
+
+/** Running instances need attention only when a real pending approval task exists. */
+export function workflowInstanceAttention(access: RelationAccessContext) {
+  return and(eq(workflowInstances.status, 'running'), exists(access.db.select({ id: workflowTasks.id }).from(workflowTasks)
+    .where(and(eq(workflowTasks.instanceId, workflowInstances.id), eq(workflowTasks.status, 'pending')))));
+}
+
+async function workflowTasksWhere(anchor: VisibleEntityAnchor, access: RelationAccessContext) {
+  const id = parseId(anchor.ref.key);
+  return buildWhere(id == null ? sql`false` : eq(workflowInstances.id, id), exactTenantCondition(workflowInstances.tenantId, anchor.tenantId),
+    tenantCondition(workflowInstances, access.user), await workflowVisibility(access));
+}
+
+async function workflowInstancesWhere(anchor: VisibleEntityAnchor, access: RelationAccessContext, relation: 'children' | 'instance') {
+  const id = relation === 'children' ? parseId(anchor.ref.key) : anchor.metadata?.instanceId;
+  return buildWhere(typeof id !== 'number' ? sql`false` : relation === 'children' ? eq(workflowInstances.parentInstanceId, id) : eq(workflowInstances.id, id),
+    exactTenantCondition(workflowInstances.tenantId, anchor.tenantId), tenantCondition(workflowInstances, access.user), await workflowVisibility(access));
+}
+
+async function workflowInstanceSummary(anchor: VisibleEntityAnchor, access: RelationAccessContext, relation: 'children' | 'instance') {
+  const visible = await workflowInstancesWhere(anchor, access, relation);
+  return relationSummaryQuery(access.db.select({ id: workflowInstances.id }).from(workflowInstances).where(visible),
+    access.db.select({ id: workflowInstances.id }).from(workflowInstances).where(buildWhere(visible, workflowInstanceAttention(access))));
 }
 
 async function resolveWorkflowInstance(ref: EntityRef, access: RelationAccessContext): Promise<VisibleEntityAnchor | null> {
@@ -120,10 +145,15 @@ export const workflowInstanceTasksProvider: RelationProvider = {
       const beforeId = decodeRelationCursor(cursor);
       const rows = await access.db.select({ id: workflowTasks.id, name: workflowTasks.nodeName, status: workflowTasks.status, createdAt: workflowTasks.createdAt })
         .from(workflowTasks).innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
-        .where(buildWhere(eq(workflowInstances.id, id), exactTenantCondition(workflowInstances.tenantId, anchor.tenantId), tenantCondition(workflowInstances, access.user),
-          await workflowVisibility(access), beforeId ? lt(workflowTasks.id, beforeId) : undefined)).orderBy(desc(workflowTasks.id)).limit(limit + 1);
+        .where(buildWhere(await workflowTasksWhere(anchor, access), beforeId ? lt(workflowTasks.id, beforeId) : undefined)).orderBy(desc(workflowTasks.id)).limit(limit + 1);
       return page(rows, limit, (row) => ({ ref: { type: 'workflow.task', key: String(row.id) }, relationKey: 'workflow.instance.approval-tasks', title: row.name, status: row.status, occurredAt: row.createdAt.toISOString(), capabilities: { view: true, open: true } }));
     });
+  },
+  async prepareSummaryQuery(anchor, { access }) {
+    const visible = await workflowTasksWhere(anchor, access);
+    return relationSummaryQuery(access.db.select({ id: workflowTasks.id }).from(workflowTasks).innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id)).where(visible),
+      access.db.select({ id: workflowTasks.id }).from(workflowTasks).innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
+        .where(buildWhere(visible, eq(workflowTasks.status, 'pending'), eq(workflowInstances.status, 'running'))));
   },
 };
 
@@ -134,9 +164,7 @@ async function listWorkflowInstances(anchor: VisibleEntityAnchor, { cursor, limi
     if (typeof id !== 'number') return emptyPage();
     const beforeId = decodeRelationCursor(cursor);
     const rows = await access.db.select({ id: workflowInstances.id, title: workflowInstances.title, serialNo: workflowInstances.serialNo, status: workflowInstances.status, createdAt: workflowInstances.createdAt })
-      .from(workflowInstances).where(buildWhere(
-        relation === 'children' ? eq(workflowInstances.parentInstanceId, id) : eq(workflowInstances.id, id),
-        exactTenantCondition(workflowInstances.tenantId, anchor.tenantId), tenantCondition(workflowInstances, access.user), await workflowVisibility(access),
+      .from(workflowInstances).where(buildWhere(await workflowInstancesWhere(anchor, access, relation),
         beforeId ? lt(workflowInstances.id, beforeId) : undefined,
       )).orderBy(desc(workflowInstances.id)).limit(limit + 1);
     return page(rows, limit, (row) => ({ ref: { type: 'workflow.instance', key: String(row.id) }, relationKey: `${anchor.ref.type}.${relation}`, title: row.title, subtitle: row.serialNo, status: row.status, occurredAt: row.createdAt.toISOString(), capabilities: { view: true, open: true } }));
@@ -147,11 +175,13 @@ export const workflowInstanceChildrenProvider: RelationProvider = {
   sourceType: 'workflow.instance', key: 'workflow.instance.children', permissions: WORKFLOW_PERMISSIONS,
   descriptor: { key: 'workflow.instance.children', labelKey: 'relation.workflow.instance.children', targetTypes: ['workflow.instance'], kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true } },
   list: (anchor, input) => listWorkflowInstances(anchor, input, 'children'),
+  prepareSummaryQuery: (anchor, { access }) => workflowInstanceSummary(anchor, access, 'children'),
 };
 export const workflowTaskInstanceProvider: RelationProvider = {
   sourceType: 'workflow.task', key: 'workflow.task.instance', permissions: WORKFLOW_PERMISSIONS,
   descriptor: { key: 'workflow.task.instance', labelKey: 'relation.workflow.task.instance', targetTypes: ['workflow.instance'], kind: 'direct', cardinality: 'one', capabilities: { view: true, open: true } },
   list: (anchor, input) => listWorkflowInstances(anchor, input, 'instance'),
+  prepareSummaryQuery: (anchor, { access }) => workflowInstanceSummary(anchor, access, 'instance'),
 };
 
 async function listDriveNodes(anchor: VisibleEntityAnchor, { cursor, limit, access }: RelationInput, direction: 'children' | 'parent'): Promise<EntityRelationPage> {

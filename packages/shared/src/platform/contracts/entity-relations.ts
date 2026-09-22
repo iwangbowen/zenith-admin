@@ -32,6 +32,8 @@ export const entityRelationCapabilitiesSchema = z.object({
 export const entityRelationOriginSchema = z.object({
   kind: entityRelationKindSchema,
   eventType: z.string().max(128).nullable().optional().meta({ description: '建立或触发关系的事件标识，可空' }),
+  explanation: z.string().max(240).optional().meta({ description: '公开的关系依据，不含业务载荷' }),
+  relatedAt: z.string().optional().meta({ description: '实际关系建立时间；未知时不填，不能用记录创建时间替代' }),
 }).meta({ id: 'EntityRelationOrigin' });
 export type EntityRelationOrigin = z.infer<typeof entityRelationOriginSchema>;
 

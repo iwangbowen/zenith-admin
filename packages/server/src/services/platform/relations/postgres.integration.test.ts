@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { CanonicalEntityRef } from '@zenith/shared/platform';
 import type { JwtPayload } from '../../../middleware/auth';
+import type { RelationProvider } from './types';
 
 /** Never connect to a regular development, production, or remote database. */
 function isolatedDatabaseUrl(value: string | undefined): string | undefined {
@@ -143,6 +144,34 @@ integration('entity relations on isolated PostgreSQL', () => {
     expect(restricted.sections.some((section) => section.key === 'identity.user.tasks')).toBe(false);
     await expect(registry.listEntityRelation({ ...userRef(), sectionKey: 'identity.user.tasks', limit: 2 }, { user: reader })).rejects.toMatchObject({ status: 404 });
     await expect(registry.describeEntityRelations({ type: 'identity.user', key: String(foreignUser.userId) }, { user: reader })).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('finds an older failed task behind a newer successful task without leaking foreign attention', async () => {
+    const oldFailure = await createTask(tenantA, reader, 'QA older failure');
+    const latestSuccess = await createTask(tenantA, reader, 'QA recent success');
+    await attachTask(oldFailure, tenantA); await attachTask(latestSuccess, tenantA);
+    await storage.db.update(tables.asyncTasks).set({ status: 'failed' }).where(eq(tables.asyncTasks.id, oldFailure));
+    await storage.db.update(tables.asyncTasks).set({ status: 'success' }).where(eq(tables.asyncTasks.id, latestSuccess));
+    const attention = await registry.describeEntityRelations(userRef(), { user: admin });
+    expect(attention.sections.find((section) => section.key === 'identity.user.tasks')?.summaryState).toBe('attention');
+    await storage.db.update(tables.asyncTasks).set({ status: 'success' }).where(eq(tables.asyncTasks.id, oldFailure));
+    const foreignFailure = await createTask(tenantB, foreignUser, 'QA hidden failure');
+    await storage.db.update(tables.asyncTasks).set({ status: 'failed' }).where(eq(tables.asyncTasks.id, foreignFailure));
+    await attachTask(foreignFailure, tenantA);
+    const normal = await registry.describeEntityRelations(userRef(), { user: admin });
+    expect(normal.sections.find((section) => section.key === 'identity.user.tasks')?.summaryState).toBe('has-data');
+  });
+
+  it('recovers the transaction after one timed-out summary and retains healthy groups', async () => {
+    const [{ summarizeRelationProviders }, { withRelationRead }] = await Promise.all([import('./summary'), import('./runtime')]);
+    const provider = (key: string, slow = false): RelationProvider => ({ sourceType: 'identity.user', key, permissions: 'authenticated',
+      descriptor: { key, labelKey: key, targetTypes: ['identity.user'], kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true } },
+      list: async () => ({ items: [], nextCursor: null, hasMore: false }),
+      summaryQuery: () => slow ? sql<'empty'>`(select 'empty'::text from pg_sleep(1))` : sql<'has-data'>`'has-data'`,
+    });
+    const sections = await withRelationRead('describe', { user: admin }, (access) => summarizeRelationProviders(
+      [provider('identity.user.slow', true), provider('identity.user.healthy')], { ref: userRef(), title: 'QA user', tenantId: tenantA }, access));
+    expect(sections.map((section) => section.summaryState)).toEqual(['unavailable', 'has-data']);
   });
 
   it('creates one symmetric N:M edge, reads both directions, rejects cross-tenant/self links and unlinks in reverse', async () => {

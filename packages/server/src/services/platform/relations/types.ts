@@ -4,6 +4,7 @@ import type { EntityRef, RelationKey } from '@zenith/shared/core';
 import type { Permission } from '@zenith/shared/core';
 import type { JwtPayload } from '../../../middleware/auth';
 import type { DbTransaction } from '../../../db/types';
+import type { SQL } from 'drizzle-orm';
 
 export interface RelationAccessContext {
   readonly user: JwtPayload;
@@ -36,6 +37,20 @@ export interface RelationProvider {
     anchor: VisibleEntityAnchor,
     input: { readonly cursor?: string; readonly limit: number; readonly access: RelationAccessContext },
   ) => Promise<EntityRelationPage>;
+  /**
+   * An existence/attention SQL expression over the complete visible set. The
+   * registry batches authorized expressions into one statement. This builder
+   * is pure: no I/O, ordering, pagination or payload projection.
+   */
+  readonly summaryQuery?: (
+    anchor: VisibleEntityAnchor,
+    input: { readonly access: RelationAccessContext },
+  ) => SQL<EntityRelationSummaryState>;
+  /** Visibility preparation needing I/O runs in an isolated savepoint. */
+  readonly prepareSummaryQuery?: (
+    anchor: VisibleEntityAnchor,
+    input: { readonly access: RelationAccessContext },
+  ) => Promise<SQL<EntityRelationSummaryState>>;
   /**
    * Optional cheap qualitative summary. It must use the same authorization,
    * tenant and data-scope predicates as list(). The response deliberately

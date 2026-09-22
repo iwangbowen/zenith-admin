@@ -18,3 +18,4 @@ export * from './validation';
 export * from './permissions';
 export * from './ws-monitor';
 export * from './workflow-business-catalog';
+export * from './relation-origin';

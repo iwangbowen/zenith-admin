@@ -13,7 +13,7 @@ const state = vi.hoisted(() => ({
   permissions: new Set<string>(),
   disabledFeatures: new Set<string>(),
   anchors: new Map<string, VisibleEntityAnchor>(),
-  resolve: vi.fn(), list: vi.fn(), transaction: vi.fn(), metrics: vi.fn(), summaryMetrics: vi.fn(), errorLog: vi.fn(), audit: vi.fn(),
+  resolve: vi.fn(), list: vi.fn(), transaction: vi.fn(), metrics: vi.fn(), summaryMetrics: vi.fn(), summaryTiming: vi.fn(), errorLog: vi.fn(), audit: vi.fn(),
 }));
 vi.mock('../../../config', () => ({ config: { multiTenantMode: true, jwtSecret: 'unit-test-relation-signing-secret' } }));
 vi.mock('../../../db', () => ({ db: { transaction: state.transaction } }));
@@ -29,7 +29,7 @@ vi.mock('../../../lib/context', () => ({
 }));
 vi.mock('../../../lib/licensing', () => ({ isFeatureEnabled: async (key: string) => !state.disabledFeatures.has(key) }));
 vi.mock('../../../lib/logger', () => ({ default: { error: state.errorLog } }));
-vi.mock('./metrics', () => ({ recordRelationMetric: state.metrics, recordRelationSummaryState: state.summaryMetrics }));
+vi.mock('./metrics', () => ({ recordRelationMetric: state.metrics, recordRelationSummaryState: state.summaryMetrics, recordRelationSummaryMetric: state.summaryTiming }));
 vi.mock('./providers/payment-order.provider', () => {
   const descriptor = (key: string) => ({ key, labelKey: `relation.${key}`, targetTypes: ['payment.refund'], kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true } });
   return {
@@ -57,7 +57,7 @@ vi.mock('../../workflow/workflow-attachment-relations.service', () => ({ workflo
 import { changeEntityLink, manualLinksProvider } from './edges.service';
 import { createEntityRelationRegistry, describeEntityRelations, entityRelationRegistry, listEntityRelation } from './registry';
 import { decodeRelationCursor, encodeRelationCursor, readRelationCursor, signRelationCursor } from './cursor';
-import { isStatementTimeout, withRelationRead } from './runtime';
+import { assertRelationBudget, isStatementTimeout, withRelationRead } from './runtime';
 
 type Statement = { sql: string; params: unknown[] };
 type ExecutableQuery = { execute: () => Promise<unknown[]>; toSQL: () => Statement };
@@ -68,6 +68,7 @@ let tx: RelationAccessContext['db'];
 
 function makeTransaction() {
   const database = drizzle.mock({ casing: 'snake_case' });
+  vi.spyOn(database, 'transaction').mockImplementation(async (run) => run(database as unknown as Parameters<typeof run>[0]));
   const instrument = (query: ExecutableQuery, isRead: boolean) => {
     query.execute = async () => {
       statements.push(query.toSQL());
@@ -289,6 +290,14 @@ describe('relation transaction budget and failure semantics', () => {
   it('preserves deliberate HTTP errors', async () => {
     state.list.mockRejectedValue(new HTTPException(403, { message: 'revoked' }));
     await expect(listEntityRelation(query, caller())).rejects.toMatchObject({ status: 403 });
+    expect(state.metrics).toHaveBeenCalledWith('section', 'denied', expect.any(Number));
+  });
+
+  it('records exhausted request budgets separately from SQL failures', async () => {
+    await expect(withRelationRead('expired', caller(), async (access) => {
+      assertRelationBudget({ ...access, deadlineAt: performance.now() - 1 });
+    })).rejects.toMatchObject({ status: 503 });
+    expect(state.metrics).toHaveBeenCalledWith('expired', 'budget', expect.any(Number));
   });
 
   it('caps active reads without queueing and releases slots after completion', async () => {
@@ -296,6 +305,7 @@ describe('relation transaction budget and failure semantics', () => {
     const pending = new Promise<void>((resolve) => { release = resolve; });
     const running = Array.from({ length: 8 }, () => withRelationRead('busy', caller(), async () => pending));
     await expect(withRelationRead('overflow', caller(), async () => 'unexpected')).rejects.toMatchObject({ status: 503 });
+    expect(state.metrics).toHaveBeenCalledWith('overflow', 'busy', expect.any(Number));
     release();
     await Promise.all(running);
     expect(await withRelationRead('after', caller(), async () => 'ok')).toBe('ok');

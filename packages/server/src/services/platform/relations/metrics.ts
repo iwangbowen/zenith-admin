@@ -6,6 +6,10 @@ const summaryStates = (register.getSingleMetric('zenith_entity_relation_summary_
   help: 'Qualitative entity relation summary states',
   labelNames: ['source_type', 'relation_key', 'state'],
 });
+const summaryDuration = (register.getSingleMetric('zenith_entity_relation_summary_duration_seconds') as Histogram | undefined) ?? new Histogram({
+  name: 'zenith_entity_relation_summary_duration_seconds', help: 'Relation summary latency and isolated failure reasons',
+  labelNames: ['source_type', 'relation_key', 'result'], buckets: [0.005, 0.025, 0.1, 0.25, 0.5, 1],
+});
 export function recordRelationMetric(operation: string, status: string, started: number): void {
   const labels = { operation, status };
   duration.observe(labels, (performance.now() - started) / 1000);
@@ -14,4 +18,9 @@ export function recordRelationMetric(operation: string, status: string, started:
 
 export function recordRelationSummaryState(sourceType: string, relationKey: string, state: string): void {
   summaryStates.inc({ source_type: sourceType, relation_key: relationKey, state });
+}
+
+export function recordRelationSummaryMetric(sourceType: string, relationKey: string,
+  result: 'success' | 'timeout' | 'error' | 'budget', started: number): void {
+  summaryDuration.observe({ source_type: sourceType, relation_key: relationKey, result }, (performance.now() - started) / 1000);
 }

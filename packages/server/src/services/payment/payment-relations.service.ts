@@ -1,4 +1,4 @@
-import { and, desc, eq, exists, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, exists, inArray, lt, or, sql } from 'drizzle-orm';
 import type { EntityRef } from '@zenith/shared/core';
 import type { EntityRelationItem } from '@zenith/shared/platform';
 import { paymentOrders, paymentRefunds, paymentDisputes, paymentRiskHits, paymentRiskReviews } from '../../db/schema';
@@ -9,8 +9,9 @@ import { buildOrdersWhere } from './payment.service';
 import type { EntityAnchorResolver, RelationAccessContext, RelationProvider, VisibleEntityAnchor } from '../platform/relations/types';
 import { decodeRelationCursor } from '../platform/relations/cursor';
 import { relationPage } from '../platform/relations/page';
+import { relationSummaryQuery } from '../platform/relations/summary-query';
 import { paymentReconAdjustments, paymentReconCases, workflowInstances } from '../../db/schema';
-import { workflowVisibility } from '../platform/relations/providers/workflow-file.provider';
+import { workflowInstanceAttention, workflowVisibility } from '../platform/relations/providers/workflow-file.provider';
 import { PAYMENT_RECON_ADJUSTMENT_BIZ_TYPE } from '@zenith/shared/payment';
 
 function idOf(key: string): number | null {
@@ -61,46 +62,81 @@ async function resolvePaymentRecord(ref: EntityRef, access: RelationAccessContex
 }
 
 const capabilities = { view: true, open: true };
+const refundWhere = (anchor: VisibleEntityAnchor, access: RelationAccessContext) => buildWhere(
+  eq(paymentRefunds.orderId, Number(anchor.ref.key)), exactTenantCondition(paymentRefunds.tenantId, anchor.tenantId), tenantCondition(paymentRefunds, access.user));
+const disputeWhere = (anchor: VisibleEntityAnchor, access: RelationAccessContext) => buildWhere(
+  eq(paymentDisputes.orderNo, String(anchor.metadata?.orderNo)), exactTenantCondition(paymentDisputes.tenantId, anchor.tenantId), tenantCondition(paymentDisputes, access.user));
+const riskHitWhere = (anchor: VisibleEntityAnchor, access: RelationAccessContext) => buildWhere(
+  eq(paymentRiskHits.orderNo, String(anchor.metadata?.orderNo)), exactTenantCondition(paymentRiskHits.tenantId, anchor.tenantId), tenantCondition(paymentRiskHits, access.user));
+const riskReviewWhere = (anchor: VisibleEntityAnchor, access: RelationAccessContext) => buildWhere(
+  eq(paymentRiskReviews.orderNo, String(anchor.metadata?.orderNo)), eq(paymentRiskReviews.appId, Number(anchor.metadata?.appId)),
+  exactTenantCondition(paymentRiskReviews.tenantId, anchor.tenantId), tenantCondition(paymentRiskReviews, access.user));
+
+async function orderWorkflowWhere(anchor: VisibleEntityAnchor, access: RelationAccessContext) {
+  return buildWhere(exactTenantCondition(workflowInstances.tenantId, anchor.tenantId), tenantCondition(workflowInstances, access.user),
+    await workflowVisibility(access), eq(workflowInstances.bizType, PAYMENT_RECON_ADJUSTMENT_BIZ_TYPE),
+    exists(access.db.select({ id: paymentReconAdjustments.id }).from(paymentReconAdjustments)
+      .innerJoin(paymentReconCases, eq(paymentReconCases.id, paymentReconAdjustments.caseId)).where(and(
+        eq(paymentReconCases.orderId, Number(anchor.ref.key)), eq(paymentReconAdjustments.applicationId, Number(anchor.metadata?.appId)),
+        eq(workflowInstances.bizId, sql`${paymentReconAdjustments.id}::text`),
+        exactTenantCondition(paymentReconCases.tenantId, anchor.tenantId), exactTenantCondition(paymentReconAdjustments.tenantId, anchor.tenantId)))));
+}
+
+async function recordOrderWhere(anchor: VisibleEntityAnchor, access: RelationAccessContext) {
+  if (!anchor.metadata?.orderId && !anchor.metadata?.orderNo) return sql`false`;
+  return buildWhere(anchor.metadata.orderId ? eq(paymentOrders.id, Number(anchor.metadata.orderId)) : eq(paymentOrders.orderNo, String(anchor.metadata.orderNo)),
+    exactTenantCondition(paymentOrders.tenantId, anchor.tenantId), await buildOrdersWhere({}, access.db));
+}
+
 function provider(key: string, target: EntityRelationItem['ref']['type'], permission: Exclude<RelationProvider['permissions'], 'authenticated'>,
-  list: RelationProvider['list']): RelationProvider {
+  list: RelationProvider['list'], summaryQuery: NonNullable<RelationProvider['summaryQuery']>): RelationProvider {
   return { sourceType: 'payment.order', key, permissions: permission, descriptor: {
     key, labelKey: `relation.${key}`, targetTypes: [target], kind: 'direct', cardinality: 'many', capabilities,
-  }, list };
+  }, list, summaryQuery };
 }
 
 export const paymentOrderRefundsProvider = provider('payment.order.refunds', 'payment.refund', ['payment:refund:list'], async (anchor, { cursor, limit, access }) => {
   const before = decodeRelationCursor(cursor);
   const rows = await access.db.select({ id: paymentRefunds.id, title: paymentRefunds.refundNo, status: paymentRefunds.status, createdAt: paymentRefunds.createdAt })
-    .from(paymentRefunds).where(buildWhere(eq(paymentRefunds.orderId, Number(anchor.ref.key)), exactTenantCondition(paymentRefunds.tenantId, anchor.tenantId),
-      tenantCondition(paymentRefunds, access.user), before ? lt(paymentRefunds.id, before) : undefined)).orderBy(desc(paymentRefunds.id)).limit(limit + 1);
+    .from(paymentRefunds).where(buildWhere(refundWhere(anchor, access), before ? lt(paymentRefunds.id, before) : undefined)).orderBy(desc(paymentRefunds.id)).limit(limit + 1);
   return relationPage(rows, limit, (row) => ({ ref: { type: 'payment.refund', key: String(row.id) }, relationKey: 'payment.order.refunds',
     title: row.title, status: row.status, occurredAt: row.createdAt.toISOString(), capabilities }));
+}, (anchor, { access }) => {
+  const visible = refundWhere(anchor, access);
+  return relationSummaryQuery(access.db.select({ id: paymentRefunds.id }).from(paymentRefunds).where(visible),
+    access.db.select({ id: paymentRefunds.id }).from(paymentRefunds).where(buildWhere(visible,
+      or(eq(paymentRefunds.approvalStatus, 'pending'), inArray(paymentRefunds.status, ['failed', 'unknown'])))));
 });
 export const paymentOrderDisputesProvider = provider('payment.order.disputes', 'payment.dispute', ['payment:dispute:list'], async (anchor, { cursor, limit, access }) => {
   const before = decodeRelationCursor(cursor);
   const rows = await access.db.select({ id: paymentDisputes.id, title: paymentDisputes.disputeNo, status: paymentDisputes.status, createdAt: paymentDisputes.createdAt })
-    .from(paymentDisputes).where(buildWhere(eq(paymentDisputes.orderNo, String(anchor.metadata?.orderNo)), exactTenantCondition(paymentDisputes.tenantId, anchor.tenantId),
-      tenantCondition(paymentDisputes, access.user), before ? lt(paymentDisputes.id, before) : undefined)).orderBy(desc(paymentDisputes.id)).limit(limit + 1);
+    .from(paymentDisputes).where(buildWhere(disputeWhere(anchor, access), before ? lt(paymentDisputes.id, before) : undefined)).orderBy(desc(paymentDisputes.id)).limit(limit + 1);
   return relationPage(rows, limit, (row) => ({ ref: { type: 'payment.dispute', key: String(row.id) }, relationKey: 'payment.order.disputes',
     title: row.title, status: row.status, occurredAt: row.createdAt.toISOString(), capabilities }));
+}, (anchor, { access }) => {
+  const visible = disputeWhere(anchor, access);
+  return relationSummaryQuery(access.db.select({ id: paymentDisputes.id }).from(paymentDisputes).where(visible),
+    access.db.select({ id: paymentDisputes.id }).from(paymentDisputes).where(buildWhere(visible, inArray(paymentDisputes.status, ['pending', 'processing']))));
 });
 export const paymentOrderRiskHitsProvider = provider('payment.order.risk-hits', 'payment.risk-hit', ['payment:risk:list'], async (anchor, { cursor, limit, access }) => {
   const before = decodeRelationCursor(cursor);
   // A hit before order creation has no order identity. Do not conflate it with later payment attempts sharing a business key.
   const rows = await access.db.select({ id: paymentRiskHits.id, title: paymentRiskHits.ruleName, status: paymentRiskHits.action, createdAt: paymentRiskHits.createdAt })
-    .from(paymentRiskHits).where(buildWhere(eq(paymentRiskHits.orderNo, String(anchor.metadata?.orderNo)), exactTenantCondition(paymentRiskHits.tenantId, anchor.tenantId),
-      tenantCondition(paymentRiskHits, access.user), before ? lt(paymentRiskHits.id, before) : undefined)).orderBy(desc(paymentRiskHits.id)).limit(limit + 1);
+    .from(paymentRiskHits).where(buildWhere(riskHitWhere(anchor, access), before ? lt(paymentRiskHits.id, before) : undefined)).orderBy(desc(paymentRiskHits.id)).limit(limit + 1);
   return relationPage(rows, limit, (row) => ({ ref: { type: 'payment.risk-hit', key: String(row.id) }, relationKey: 'payment.order.risk-hits',
     title: row.title.slice(0, 160), status: row.status, occurredAt: row.createdAt.toISOString(), capabilities }));
-});
+}, (anchor, { access }) => relationSummaryQuery(access.db.select({ id: paymentRiskHits.id }).from(paymentRiskHits).where(riskHitWhere(anchor, access))));
 export const paymentOrderRiskReviewsProvider = provider('payment.order.risk-reviews', 'payment.risk-review', ['payment:risk:review'], async (anchor, { cursor, limit, access }) => {
   const before = decodeRelationCursor(cursor);
   const rows = await access.db.select({ id: paymentRiskReviews.id, title: paymentRiskReviews.reviewNo, status: paymentRiskReviews.status, createdAt: paymentRiskReviews.createdAt })
-    .from(paymentRiskReviews).where(buildWhere(eq(paymentRiskReviews.orderNo, String(anchor.metadata?.orderNo)), eq(paymentRiskReviews.appId, Number(anchor.metadata?.appId)),
-      exactTenantCondition(paymentRiskReviews.tenantId, anchor.tenantId), tenantCondition(paymentRiskReviews, access.user), before ? lt(paymentRiskReviews.id, before) : undefined))
+    .from(paymentRiskReviews).where(buildWhere(riskReviewWhere(anchor, access), before ? lt(paymentRiskReviews.id, before) : undefined))
     .orderBy(desc(paymentRiskReviews.id)).limit(limit + 1);
   return relationPage(rows, limit, (row) => ({ ref: { type: 'payment.risk-review', key: String(row.id) }, relationKey: 'payment.order.risk-reviews',
     title: row.title, status: row.status, occurredAt: row.createdAt.toISOString(), capabilities }));
+}, (anchor, { access }) => {
+  const visible = riskReviewWhere(anchor, access);
+  return relationSummaryQuery(access.db.select({ id: paymentRiskReviews.id }).from(paymentRiskReviews).where(visible),
+    access.db.select({ id: paymentRiskReviews.id }).from(paymentRiskReviews).where(buildWhere(visible, eq(paymentRiskReviews.status, 'pending'))));
 });
 const recordTypes = ['payment.refund', 'payment.dispute', 'payment.risk-hit', 'payment.risk-review'] as const;
 const paymentOrderWorkflowProvider: RelationProvider = {
@@ -110,16 +146,15 @@ const paymentOrderWorkflowProvider: RelationProvider = {
   async list(anchor, { cursor, limit, access }) {
     const before = decodeRelationCursor(cursor);
     const rows = await access.db.select({ id: workflowInstances.id, title: workflowInstances.title, status: workflowInstances.status, createdAt: workflowInstances.createdAt })
-      .from(workflowInstances).where(buildWhere(exactTenantCondition(workflowInstances.tenantId, anchor.tenantId), tenantCondition(workflowInstances, access.user),
-        await workflowVisibility(access), eq(workflowInstances.bizType, PAYMENT_RECON_ADJUSTMENT_BIZ_TYPE),
-        exists(access.db.select({ id: paymentReconAdjustments.id }).from(paymentReconAdjustments)
-          .innerJoin(paymentReconCases, eq(paymentReconCases.id, paymentReconAdjustments.caseId)).where(and(
-            eq(paymentReconCases.orderId, Number(anchor.ref.key)), eq(paymentReconAdjustments.applicationId, Number(anchor.metadata?.appId)),
-            eq(workflowInstances.bizId, sql`${paymentReconAdjustments.id}::text`),
-            exactTenantCondition(paymentReconCases.tenantId, anchor.tenantId), exactTenantCondition(paymentReconAdjustments.tenantId, anchor.tenantId)))),
+      .from(workflowInstances).where(buildWhere(await orderWorkflowWhere(anchor, access),
         before ? lt(workflowInstances.id, before) : undefined)).orderBy(desc(workflowInstances.id)).limit(limit + 1);
     return relationPage(rows, limit, (row) => ({ ref: { type: 'workflow.instance', key: String(row.id) }, relationKey: 'payment.order.workflow',
       title: row.title, status: row.status, occurredAt: row.createdAt.toISOString(), capabilities }));
+  },
+  async prepareSummaryQuery(anchor, { access }) {
+    const visible = await orderWorkflowWhere(anchor, access);
+    return relationSummaryQuery(access.db.select({ id: workflowInstances.id }).from(workflowInstances).where(visible),
+      access.db.select({ id: workflowInstances.id }).from(workflowInstances).where(buildWhere(visible, workflowInstanceAttention(access))));
   },
 };
 export const paymentAnchorResolvers: readonly EntityAnchorResolver[] = [
@@ -131,9 +166,11 @@ export const paymentRelationProviders: readonly RelationProvider[] = [paymentOrd
     async list(anchor, { access }) {
       if (!anchor.metadata?.orderId && !anchor.metadata?.orderNo) return { items: [], hasMore: false, nextCursor: null };
       const [row] = await access.db.select({ id: paymentOrders.id, title: paymentOrders.subject, orderNo: paymentOrders.orderNo, status: paymentOrders.status })
-        .from(paymentOrders).where(buildWhere(anchor.metadata.orderId ? eq(paymentOrders.id, Number(anchor.metadata.orderId)) : eq(paymentOrders.orderNo, String(anchor.metadata.orderNo)),
-          exactTenantCondition(paymentOrders.tenantId, anchor.tenantId), await buildOrdersWhere({}, access.db))).limit(1);
+        .from(paymentOrders).where(await recordOrderWhere(anchor, access)).limit(1);
       return { items: row ? [{ ref: { type: 'payment.order', key: String(row.id) }, relationKey: `${sourceType}.order`, title: row.title.slice(0, 160), subtitle: row.orderNo, status: row.status, capabilities }] : [], hasMore: false, nextCursor: null };
+    },
+    async prepareSummaryQuery(anchor, { access }) {
+      return relationSummaryQuery(access.db.select({ id: paymentOrders.id }).from(paymentOrders).where(await recordOrderWhere(anchor, access)));
     },
   })),
 ];

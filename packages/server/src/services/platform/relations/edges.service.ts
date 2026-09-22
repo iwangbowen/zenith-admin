@@ -51,7 +51,7 @@ export function manualLinksProvider(type: CanonicalEntityType, targetTypes: read
       const visible: Array<{ id: number; item: EntityRelationItem }> = [];
       for (let scanned = 0; scanned < 512 && visible.length <= limit; scanned += limit + 1) {
         const rows = await access.db.select({ id: entityRelationEdges.id, sourceType: entityRelationEdges.sourceType, sourceKey: entityRelationEdges.sourceKey,
-          targetType: entityRelationEdges.targetType, targetKey: entityRelationEdges.targetKey }).from(entityRelationEdges).where(buildWhere(
+          targetType: entityRelationEdges.targetType, targetKey: entityRelationEdges.targetKey, createdAt: entityRelationEdges.createdAt }).from(entityRelationEdges).where(buildWhere(
           exactTenantCondition(entityRelationEdges.tenantId, anchor.tenantId), tenantCondition(entityRelationEdges, access.user), eq(entityRelationEdges.relationKey, MANUAL_RELATION),
           or(and(eq(entityRelationEdges.sourceType, type), eq(entityRelationEdges.sourceKey, anchor.ref.key)), and(eq(entityRelationEdges.targetType, type), eq(entityRelationEdges.targetKey, anchor.ref.key))),
           before ? lt(entityRelationEdges.id, before) : undefined)).orderBy(desc(entityRelationEdges.id)).limit(limit + 1);
@@ -64,7 +64,8 @@ export function manualLinksProvider(type: CanonicalEntityType, targetTypes: read
           try {
             const target = await resolveVisibleEntityAnchor(parsedType.data, forward ? row.targetKey : row.sourceKey, access);
             if (target.tenantId !== anchor.tenantId) continue;
-            visible.push({ id: row.id, item: { ref: target.ref, title: target.title, relationKey: `${type}.links`, capabilities: { view: true, open: true } } });
+            visible.push({ id: row.id, item: { ref: target.ref, title: target.title, relationKey: `${type}.links`,
+              origin: { kind: 'direct', relatedAt: row.createdAt?.toISOString() }, capabilities: { view: true, open: true } } });
           } catch (error) {
             if (!(error instanceof HTTPException) || error.status !== 404) throw error;
           }

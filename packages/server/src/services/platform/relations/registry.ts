@@ -1,5 +1,5 @@
 import { HTTPException } from 'hono/http-exception';
-import { entityRelationPageSchema, entityRelationSummaryStateSchema, entityRelationsResponseSchema, type CanonicalEntityType, type EntityRelationsResponse, type EntityRelationPage, type EntityRelationSummaryState } from '@zenith/shared/platform';
+import { entityRelationPageSchema, entityRelationsResponseSchema, explainEntityRelation, type CanonicalEntityType, type EntityRelationsResponse, type EntityRelationPage } from '@zenith/shared/platform';
 import { isLicenseFeatureKey } from '@zenith/shared/licensing';
 import { hasPermission, runWithCurrentUser } from '../../../lib/context';
 import { isFeatureEnabled } from '../../../lib/licensing';
@@ -11,7 +11,7 @@ import { workflowFileAnchorResolvers, workflowFileRelationProviders } from './pr
 import { subjectAnchorResolvers, subjectProviders } from './providers/subjects.provider';
 import { readRelationCursor, signRelationCursor } from './cursor';
 import { assertRelationBudget, isStatementTimeout, withRelationRead } from './runtime';
-import { recordRelationSummaryState } from './metrics';
+import { summarizeRelationProviders } from './summary';
 import { manualLinksProvider } from './edges.service';
 import { paymentFinancialAnchorResolvers, paymentFinancialRelationProviders } from '../../payment/payment-financial-relations.service';
 import { reverseSubjectProviders } from './providers/reverse-subjects.provider';
@@ -90,52 +90,6 @@ export function relationCursorScope(anchor: VisibleEntityAnchor, operation: stri
     access.user.viewingTenantId, access.user.impersonation]);
 }
 
-/**
- * Resolve a qualitative section state without exposing a count. Providers can
- * supply an indexed `exists`/`summarize` implementation; the bounded list
- * fallback keeps older providers useful while preserving their exact list
- * authorization, tenant and data-scope predicates.
- */
-async function summarizeRelationProvider(provider: RelationProvider, anchor: VisibleEntityAnchor, access: RelationAccessContext): Promise<EntityRelationSummaryState> {
-  try {
-    assertRelationBudget(access);
-    if (provider.summarize) {
-      const state = entityRelationSummaryStateSchema.parse(await provider.summarize(anchor, { access }));
-      recordRelationSummaryState(provider.sourceType, provider.key, state);
-      return state;
-    }
-    if (provider.exists) {
-      const state = (await provider.exists(anchor, { access })) ? 'has-data' : 'empty';
-      recordRelationSummaryState(provider.sourceType, provider.key, state);
-      return state;
-    }
-    const page = await provider.list(anchor, { cursor: undefined, limit: 1, access });
-    const state = page.degraded ? 'unavailable' : page.items.length > 0 ? 'has-data' : 'empty';
-    recordRelationSummaryState(provider.sourceType, provider.key, state);
-    return state;
-  } catch {
-    // A summary is advisory. A timeout, revoked target, or provider-specific
-    // failure must not hide the authorized section or turn it into "empty".
-    recordRelationSummaryState(provider.sourceType, provider.key, 'unavailable');
-    return 'unavailable';
-  }
-}
-
-const RELATION_SUMMARY_CONCURRENCY = 3;
-
-async function summarizeRelationProviders(providers: readonly RelationProvider[], anchor: VisibleEntityAnchor, access: RelationAccessContext) {
-  const sections = [];
-  for (let start = 0; start < providers.length; start += RELATION_SUMMARY_CONCURRENCY) {
-    assertRelationBudget(access);
-    const batch = providers.slice(start, start + RELATION_SUMMARY_CONCURRENCY);
-    sections.push(...await Promise.all(batch.map(async (provider) => ({
-      ...provider.descriptor,
-      summaryState: await summarizeRelationProvider(provider, anchor, access),
-    }))));
-  }
-  return sections;
-}
-
 export async function describeEntityRelations(input: { type: CanonicalEntityType; key: string }, caller: Pick<RelationAccessContext, 'user'>): Promise<EntityRelationsResponse> {
   return withRelationRead('describe', caller, async (access) => {
     const anchor = await resolveVisibleEntityAnchor(input.type, input.key, access);
@@ -164,7 +118,7 @@ export async function listEntityRelation(input: { type: CanonicalEntityType; key
       const result = await provider.list(anchor, { cursor, limit: input.limit, access });
       return entityRelationPageSchema.parse({ ...result, items: result.items.map((item) => ({ ...item,
         title: item.title.slice(0, 160), subtitle: item.subtitle?.slice(0, 240), description: item.description?.slice(0, 500),
-        origin: { ...item.origin, kind: provider.descriptor.kind },
+        origin: { explanation: explainEntityRelation(provider.descriptor), ...item.origin, kind: provider.descriptor.kind },
       })),
         nextCursor: result.nextCursor ? signRelationCursor(result.nextCursor, scope) : null });
     });
