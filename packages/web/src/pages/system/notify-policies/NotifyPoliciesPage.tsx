@@ -249,18 +249,24 @@ function DispatchLogTab() {
     dateTimeColumn('派发时间', 'createdAt'),
     { title: '事件', dataIndex: 'eventLabel', width: 180, render: renderEllipsis },
     {
-      title: '收件人', dataIndex: 'recipientName', width: 160,
-      render: (_v, record) => record?.recipientName
+      // 收件人回退链依次是展示名 / 可达地址（裸邮箱、Webhook 地址可以很长）/ #ID，
+      // 三者都可能超过列宽：加宽到 200 并单行省略，长值出 tooltip 而不是换行
+      title: '收件人', dataIndex: 'recipientName', width: 200,
+      render: (_v, record) => renderEllipsis(record?.recipientName
         ?? record?.recipientAddress
-        ?? (record && record.recipientId !== null ? `#${record.recipientId}` : EMPTY_PLACEHOLDER),
+        ?? (record && record.recipientId !== null ? `#${record.recipientId}` : null)),
     },
     {
-      title: '渠道', dataIndex: 'channel', width: 90,
-      render: (v: NotificationChannel) => NOTIFICATION_CHANNEL_LABELS[v],
+      // 渠道标签来自 NOTIFICATION_CHANNEL_LABELS（最长「聊天卡片」/「App 推送」约 56px），
+      // 90 定宽下可用仅 58px 会把标签折成两行；加宽到 120 后仍有省略兼底，文案变长也不会换行
+      title: '渠道', dataIndex: 'channel', width: 120,
+      render: (v: NotificationChannel) => renderEllipsis(NOTIFICATION_CHANNEL_LABELS[v]),
     },
     {
-      title: '归因', dataIndex: 'reasonCode', width: 220,
-      render: (v: string | null) => (v ? (NOTIFICATION_REASON_CODE_LABELS[v as NotificationReasonCode] ?? v) : EMPTY_PLACEHOLDER),
+      // 归因文案来自 NOTIFICATION_REASON_CODE_LABELS，最长「收件人已关闭该事件的此渠道」约 182px，
+      // 原 220 定宽只剩 188px 可用，贴近临界就会折行；加宽到 240 并单行省略
+      title: '归因', dataIndex: 'reasonCode', width: 240,
+      render: (v: string | null) => renderEllipsis(v ? (NOTIFICATION_REASON_CODE_LABELS[v as NotificationReasonCode] ?? v) : null),
     },
     { title: '详情', dataIndex: 'reasonDetail', render: renderEllipsis },
     {
