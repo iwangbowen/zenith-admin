@@ -51,9 +51,10 @@ export default function MemberRechargesPage() {
 
   const columns: ColumnProps<MemberRecharge>[] = [
     // 订单号是 genPaymentNo 生成的单号（"PAY" + 13 位毫秒 + 4 位尾号 = 20 字符，等宽字体约 168px），
-    // 原 200 定宽可用宽只剩 168，再长一点就折行；改用等宽字体单行省略 + tooltip
-    { title: '订单号', dataIndex: 'orderNo', width: 240, fixed: 'left', render: renderCodeEllipsis },
-    memberCellColumn<MemberRecharge>({ width: 180, nameField: 'memberNickname', idField: 'memberId', ellipsis: true }),
+    // 280 与全站单号列统一宽度（`NO_COLUMN_WIDTH`）一致；超出仍单行省略 + tooltip
+    { title: '订单号', dataIndex: 'orderNo', width: 280, fixed: 'left', render: renderCodeEllipsis },
+    // 昵称上限 32 字（member.nickname），240 可用宽 208 约 14 汉字，长昵称省略 + tooltip
+    memberCellColumn<MemberRecharge>({ width: 240, nameField: 'memberNickname', idField: 'memberId', ellipsis: true }),
     { title: '手机号', dataIndex: 'memberPhone', width: 130, render: (v: string | null) => v ?? '—' },
     { title: '金额(元)', dataIndex: 'amount', width: 110, align: 'right', render: (v: number) => <span style={{ fontWeight: 600 }}>{(v / 100).toFixed(2)}</span> },
     { title: '渠道', dataIndex: 'channel', width: 100, render: (v: PaymentChannel) => PAYMENT_CHANNEL_LABELS[v] ?? v },
