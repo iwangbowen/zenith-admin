@@ -7,7 +7,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { EMPTY_PLACEHOLDER, createdAtColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, createdAtColumn, renderCodeEllipsis, renderEllipsis } from '@/utils/table-columns';
 import { useMpAccounts } from './useMpAccounts';
 import { MpAccountRequiredBanner } from './MpAccountRequiredBanner';
 import { MpAccountSwitcher } from './MpAccountSwitcher';
@@ -54,13 +54,17 @@ export default function MpQrcodesPage() {
       return payload;
     },
     successMessage: () => '生成成功',
+    // 最长标签「扫码奖励积分」6 字约 84px，默认 labelWidth 90 减去标签内边距后装不下会折行
+    labelWidth: 110,
   });
 
   const openCreate = () => { setModalType('permanent'); createModal.openCreate(); };
 
   const columns = [
     { title: '名称', dataIndex: 'name', minWidth: 160, render: renderEllipsis },
-    { title: '场景值', dataIndex: 'sceneStr', width: 180, render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
+    // 场景值是字母/数字/下划线/连字符标识（上限 64 字符），等宽字体单行省略 + tooltip；
+    // 240 定宽（可用 208）能完整容纳种子里的 channel_offline_store（约 176px），原 180 会折行
+    { title: '场景值', dataIndex: 'sceneStr', width: 240, render: renderCodeEllipsis },
     { title: '类型', dataIndex: 'type', width: 90, render: (v: MpQrcodeType) => <Tag color={TYPE_META[v].color} type="light">{TYPE_META[v].label}</Tag> },
     { title: '扫码次数', dataIndex: 'scanCount', width: 100, align: 'center' as const },
     { title: '奖励积分', dataIndex: 'rewardPoints', width: 100, align: 'center' as const, render: (v: number) => (v > 0 ? <Typography.Text type="success">+{v}</Typography.Text> : EMPTY_PLACEHOLDER) },
