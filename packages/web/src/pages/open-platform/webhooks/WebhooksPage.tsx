@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { ListSearchToolbar, listTableProps, useRowSelection, useCrudOperationColumn } from '@/components/list-page';
-import { Button, Tag, TagGroup, Modal, Form, Toast, Typography, Banner, SideSheet, Descriptions } from '@douyinfe/semi-ui';
+import { Button, Tag, Modal, Form, Toast, Typography, Banner, SideSheet, Descriptions } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { USER_STATUSES, enumValueOf } from '@zenith/shared/core';
 import { OPEN_WEBHOOK_DELIVERY_STATUS_LABELS, OPEN_WEBHOOK_EVENTS, OPEN_WEBHOOK_EVENT_LABELS, OPEN_WEBHOOK_SIGN_MODE_OPTIONS, PAYMENT_WEBHOOK_EVENTS, OPEN_WEBHOOK_DELIVERY_STATUS_OPTIONS } from '@zenith/shared/open-platform';
@@ -32,7 +32,7 @@ import { confirmDanger } from '@/utils/confirm';
 import { useEditModal } from '@/hooks/useEditModal';
 import { abortSubmit } from '@/lib/abort-submit';
 import { compactParams } from '@/lib/query';
-import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis, enabledStatusColumn } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, overflowTagColumn, renderEllipsis, enabledStatusColumn } from '@/utils/table-columns';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
 import { EditFormModal } from '@/components/EditFormModal';
 
@@ -249,21 +249,21 @@ export default function WebhooksPage({ scope = 'open' }: Readonly<WebhooksPagePr
     { title: '名称', dataIndex: 'name', width: 200, render: renderEllipsis },
     { title: '所属应用', dataIndex: 'clientId', width: 200, render: (v: string | null) => <Text size="small" ellipsis={{ showTooltip: true }} style={{ maxWidth: 190 }}>{v ? (appOptions.find((a) => a.clientId === v)?.name ?? v) : '系统内部'}</Text> },
     { title: '回调地址', dataIndex: 'url', minWidth: 240, render: (v: string) => <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 230 }}>{v}</Text> },
-    {
+    overflowTagColumn<AppWebhookSubscription>({
       title: '订阅事件',
       dataIndex: 'events',
       width: 200,
-      render: (v: string[]) => v.length === 0
-        ? <Tag size="small" color="grey">{paymentScope ? '未配置' : '全部非支付事件'}</Tag>
-        : (
-          <TagGroup
-            maxTagCount={2}
-            showPopover
-            size="small"
-            tagList={v.map((e) => ({ tagKey: e, children: OPEN_WEBHOOK_EVENT_LABELS[e] ?? e, color: 'blue' as const, size: 'small' as const }))}
-          />
-        ),
-    },
+      contentWidth: 168,
+      maxTagCount: 2,
+      getItems: (v) => ((v as string[] | undefined) ?? []).map((e) => ({
+        key: e,
+        label: OPEN_WEBHOOK_EVENT_LABELS[e] ?? e,
+      })),
+      tagColor: 'blue',
+      tagSize: 'small',
+      popoverWidth: 200,
+      empty: <Tag size="small" color="grey">{paymentScope ? '未配置' : '全部非支付事件'}</Tag>,
+    }),
     { title: '签名', dataIndex: 'signMode', width: 90, render: (v: string) => v === 'hmacSha256' ? <Tag size="small" color="orange">HMAC</Tag> : <Text type="tertiary">无</Text> },
     dateTimeColumn('最近投递', 'lastDeliveryAt'),
     enabledStatusColumn(),

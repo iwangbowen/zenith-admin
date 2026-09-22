@@ -124,6 +124,8 @@ export interface OverflowTagColumnOptions<RecordType extends Data = Data> {
   readonly width?: number;
   readonly minWidth?: number;
   readonly contentWidth: number | string;
+  /** 固定标签数收起（透传 TagGroup）；缺省按列宽自适应 */
+  readonly maxTagCount?: number;
   /** 业务值 → 标签项；`color` 缺省时回退到列级 tagColor */
   readonly getItems: (value: unknown, record: RecordType) => readonly OverflowTagItem[];
   readonly tagColor?: React.ComponentProps<typeof Tag>['color'];
@@ -138,6 +140,9 @@ export interface OverflowTagColumnOptions<RecordType extends Data = Data> {
  * 标签溢出列：单行展示标签，超出部分收纳到 +N Popover，避免表格行高被撑开。
  * 页面只负责把业务值转换为 `{ key, label }`（逐标签配色由业务数据决定时再带上 `color`），
  * 视觉与溢出行为统一由 OverflowTagList 处理。
+ *
+ * 收起方式：缺省按列宽自适应（标签数量 / 文案长度由数据决定时用）；
+ * 传 `maxTagCount` 则按固定数量收起（标签集合固定且文案长度相近时用）。
  */
 export function overflowTagColumn<RecordType extends Data = Data>({
   title,
@@ -145,6 +150,7 @@ export function overflowTagColumn<RecordType extends Data = Data>({
   width,
   minWidth,
   contentWidth,
+  maxTagCount,
   getItems,
   tagColor,
   tagSize,
@@ -164,6 +170,7 @@ export function overflowTagColumn<RecordType extends Data = Data>({
         <OverflowTagList
           items={items}
           contentWidth={contentWidth}
+          maxTagCount={maxTagCount}
           tagColor={tagColor}
           tagSize={tagSize}
           popoverWidth={popoverWidth}

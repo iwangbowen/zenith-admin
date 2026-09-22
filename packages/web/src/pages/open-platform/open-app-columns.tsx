@@ -3,9 +3,10 @@
  * 环境 / 审核状态标签与列、Scope 列，以及筛选下拉的选项。文案取 shared 的 `XXX_LABELS`，
  * Tag 颜色只在这里维护一份；列宽、标题等差异由参数表达。
  */
-import { Tag, TagGroup } from '@douyinfe/semi-ui';
+import { Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag/interface';
+import { overflowTagColumn } from '@/utils/table-columns';
 import {
   OPEN_APP_ENVIRONMENT_LABELS, OPEN_APP_REVIEW_STATUS_LABELS,
   type OAuth2Client, type OpenAppEnvironment, type OpenAppReviewStatus,
@@ -36,17 +37,18 @@ export function openAppReviewStatusColumn<T extends Pick<OpenAppRow, 'reviewStat
   return { title, dataIndex: 'reviewStatus', width, render: renderOpenAppReviewStatusTag };
 }
 
-/** 已授权 Scope 列：最多内联 2 个，其余进气泡 */
+/** 已授权 Scope 列：标签集合固定、文案长度相近，按固定数量收起（最多内联 2 个，其余进气泡） */
 export function openAppScopesColumn<T extends Pick<OpenAppRow, 'allowedScopes'>>({ title = 'Scope', width = 240, color }: { title?: string; width?: number; color?: TagColor } = {}): ColumnProps<T> {
-  return {
-    title, dataIndex: 'allowedScopes', width,
-    render: (values: string[]) => (
-      <TagGroup
-        maxTagCount={2}
-        showPopover
-        size="small"
-        tagList={(values ?? []).map((value) => ({ tagKey: value, children: value, size: 'small' as const, color }))}
-      />
-    ),
-  };
+  return overflowTagColumn<T>({
+    title,
+    dataIndex: 'allowedScopes',
+    width,
+    contentWidth: width - 32,
+    maxTagCount: 2,
+    getItems: (values) => ((values as string[] | undefined) ?? []).map((value) => ({ key: value, label: value, color })),
+    tagColor: color,
+    tagSize: 'small',
+    popoverWidth: width,
+    empty: null,
+  });
 }

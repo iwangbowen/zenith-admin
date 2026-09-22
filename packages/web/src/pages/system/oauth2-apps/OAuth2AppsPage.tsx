@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Tag, TagGroup, Modal, Form, Toast, Typography, Checkbox, Banner, Row, Col, TextArea } from '@douyinfe/semi-ui';
+import { Button, Tag, Modal, Form, Toast, Typography, Checkbox, Banner, Row, Col, TextArea } from '@douyinfe/semi-ui';
 import { enumValueOf } from '@zenith/shared/core';
 import { OAUTH2_GRANT_TYPE_LABELS, OAUTH2_GRANT_TYPES, OAUTH2_SCOPE_LABELS, OAUTH2_SCOPES, OPEN_APP_ENVIRONMENT_OPTIONS, oauth2ClientContract } from '@zenith/shared/open-platform';
 import type { OAuth2Client, OAuth2GrantType } from '@zenith/shared/open-platform';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { copyableNoColumn, createdAtColumn } from '@/utils/table-columns';
+import { copyableNoColumn, createdAtColumn, overflowTagColumn } from '@/utils/table-columns';
 import { openAppEnvironmentColumn, openAppReviewStatusColumn, openAppScopesColumn } from '../../open-platform/open-app-columns';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { ListSearchToolbar, useStatusToggle, useCrudOperationColumn } from '@/components/list-page';
@@ -227,23 +227,20 @@ export default function OAuth2AppsPage() {
       width: 140,
       render: (v: string | null) => v ?? <Text type="tertiary">（公开客户端）</Text>,
     },
-    {
+    overflowTagColumn<OAuth2Client>({
       title: '授权类型',
       dataIndex: 'grantTypes',
       width: 200,
-      render: (v: string[]) => (
-        <TagGroup
-          maxTagCount={2}
-          showPopover
-          size="small"
-          tagList={(v ?? []).map((t) => ({
-            tagKey: t,
-            children: OAUTH2_GRANT_TYPE_LABELS[t as keyof typeof OAUTH2_GRANT_TYPE_LABELS] ?? t,
-            size: 'small' as const,
-          }))}
-        />
-      ),
-    },
+      contentWidth: 168,
+      maxTagCount: 2,
+      getItems: (v) => ((v as string[] | undefined) ?? []).map((t) => ({
+        key: t,
+        label: OAUTH2_GRANT_TYPE_LABELS[t as keyof typeof OAUTH2_GRANT_TYPE_LABELS] ?? t,
+      })),
+      tagSize: 'small',
+      popoverWidth: 200,
+      empty: null,
+    }),
     openAppScopesColumn({ title: '权限范围', width: 220, color: 'blue' }),
     openAppEnvironmentColumn(),
     openAppReviewStatusColumn({ title: '审核', width: 100 }),

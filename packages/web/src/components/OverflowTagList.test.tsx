@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@douyinfe/semi-ui', () => {
   type Item = { key: string | number; label: ReactNode; color?: string };
+  type TagGroupItem = { tagKey: string | number; children: ReactNode; color?: string };
   type OverflowListProps = {
     items: Item[];
     visibleItemRenderer: (item: Item) => ReactNode;
@@ -31,7 +32,18 @@ vi.mock('@douyinfe/semi-ui', () => {
     return <span data-color={color ?? ''}>{children}</span>;
   }
 
-  return { OverflowList, Popover, Space, Tag };
+  function TagGroup({ maxTagCount, tagList }: { maxTagCount: number; tagList: TagGroupItem[] }) {
+    return (
+      <div data-max-tag-count={maxTagCount}>
+        {tagList.slice(0, maxTagCount).map((item) => (
+          <Tag key={item.tagKey} color={item.color}>{item.children}</Tag>
+        ))}
+        {tagList.length > maxTagCount ? <span>+{tagList.length - maxTagCount}</span> : null}
+      </div>
+    );
+  }
+
+  return { OverflowList, Popover, Space, Tag, TagGroup };
 });
 
 import OverflowTagList from './OverflowTagList';
@@ -64,6 +76,24 @@ describe('OverflowTagList', () => {
 
     expect(screen.getByText('高').getAttribute('data-color')).toBe('red');
     expect(screen.getByText('中').getAttribute('data-color')).toBe('blue');
+  });
+
+  it('collapses by maxTagCount in count mode and keeps per-item colors', () => {
+    const { container } = render(
+      <OverflowTagList
+        contentWidth={228}
+        tagColor="blue"
+        maxTagCount={1}
+        items={[
+          { key: 'scope-1', label: 'user:read', color: 'green' },
+          { key: 'scope-2', label: 'user:write' },
+        ]}
+      />,
+    );
+
+    expect(container.querySelector('[data-max-tag-count="1"]')).toBeTruthy();
+    expect(screen.getByText('user:read').getAttribute('data-color')).toBe('green');
+    expect(screen.getByText('+1')).toBeTruthy();
   });
 
   it('supports keyboard activation when the container is clickable', () => {

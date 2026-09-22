@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Col, Form, Modal, Row, Space, Tag, TagGroup, Toast, Typography } from '@douyinfe/semi-ui';
+import { Col, Form, Modal, Row, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Info } from 'lucide-react';
 import { MASK_TYPES, MASK_TYPE_LABELS, MASK_TYPE_OPTIONS, enumValueOf, previewMask, type CustomMaskRule, type MaskType } from '@zenith/shared/core';
@@ -15,7 +15,7 @@ import { useMenuTree } from '@/hooks/queries/menus';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
-import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, overflowTagColumn, renderEllipsis } from '@/utils/table-columns';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
 import { EditFormModal } from '@/components/EditFormModal';
 
@@ -194,19 +194,18 @@ export default function DataMaskPage() {
         </>
       ),
     },
-    {
-      title: '豁免权限', dataIndex: 'exemptPermissions', width: 240,
-      render: (codes: string[]) => codes.length === 0
-        ? <Text type="quaternary">仅平台超管</Text>
-        : (
-          <TagGroup
-            maxTagCount={1}
-            showPopover
-            size="small"
-            tagList={codes.map((code) => ({ tagKey: code, children: code, color: 'blue' as const, size: 'small' as const }))}
-          />
-        ),
-    },
+    overflowTagColumn<DataMaskFieldRow>({
+      title: '豁免权限',
+      dataIndex: 'exemptPermissions',
+      width: 240,
+      contentWidth: 208,
+      maxTagCount: 1,
+      getItems: (codes) => ((codes as string[] | undefined) ?? []).map((code) => ({ key: code, label: code })),
+      tagColor: 'blue',
+      tagSize: 'small',
+      popoverWidth: 240,
+      empty: <Text type="quaternary">仅平台超管</Text>,
+    }),
     {
       title: '来源', dataIndex: 'overridden', width: 100,
       render: (v: boolean) => (v ? <Tag size="small" color="orange">已自定义</Tag> : <Tag size="small" color="grey">契约默认</Tag>),
