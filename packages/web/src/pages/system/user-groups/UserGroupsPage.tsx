@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Banner, Button, Form, Select, Space, Toast, SideSheet, Empty, Tag, Spin, Typography, OverflowList, Popover } from '@douyinfe/semi-ui';
+import { Banner, Button, Form, Select, Space, Toast, SideSheet, Empty, Tag, Spin, Typography } from '@douyinfe/semi-ui';
 import { RefreshCw, Users } from 'lucide-react';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
@@ -8,7 +8,7 @@ import { usePermission } from '@/hooks/usePermission';
 import type { UserTransferUser } from '@/components/UserTransferSelect';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '../../../utils/table-columns';
+import { createdAtColumn, EMPTY_PLACEHOLDER, overflowTagColumn, renderEllipsis } from '../../../utils/table-columns';
 import { departmentsToTreeData, useFlatDepartments } from '@/hooks/queries/departments';
 import { useAllPositions } from '@/hooks/queries/positions';
 import {
@@ -32,8 +32,6 @@ import { confirmAndDelete, ListSearchToolbar, useRowSelection, useStatusToggle, 
 import { MemberAssignmentSheet, memberPreviewColumn } from '@/components/members/MemberAssignmentSheet';
 import { useListPage } from '@/hooks/useListPage';
 import { EditFormSheet } from '@/components/EditFormModal';
-
-const ROLE_TAG_CONTENT_WIDTH = 228;
 
 type SimpleUser = UserTransferUser & {
   email?: string | null;
@@ -172,13 +170,13 @@ export default function UserGroupsPage() {
         key: 'members',
         label: '成员',
         hidden: !hasPermission('system:user-groups:assign'),
-        onClick: () => { void openMembers(record); },
+        onClick: () => { openMembers(record); },
       },
       {
         key: 'roles',
         label: '角色',
         hidden: !hasPermission('system:user-groups:assign'),
-        onClick: () => { void openRoles(record); },
+        onClick: () => { openRoles(record); },
       },
       {
         key: 'sync',
@@ -217,45 +215,17 @@ export default function UserGroupsPage() {
       getCount: (record) => record.memberCount,
       getScope: (record) => ({ type: 'userGroup', id: record.id, name: record.name }),
     }),
-    {
-      title: '角色', dataIndex: 'rolePreview', width: 260,
-      render: (_: UserGroup['rolePreview'], record: UserGroup) => {
-        const roles = record.rolePreview ?? [];
-        if (roles.length === 0) return <Tag color="grey">无角色</Tag>;
-        const items = roles.map((role) => ({ key: String(role.id), role }));
-        return (
-          <div
-            style={{ width: ROLE_TAG_CONTENT_WIDTH, maxWidth: '100%', minWidth: 0, overflow: 'hidden', cursor: hasPermission('system:user-groups:assign') ? 'pointer' : 'default' }}
-            onClick={() => hasPermission('system:user-groups:assign') && openRoles(record)}
-          >
-            <OverflowList
-              items={items}
-              renderMode="collapse"
-              style={{ width: ROLE_TAG_CONTENT_WIDTH, minWidth: 0, maxWidth: '100%' }}
-              visibleItemRenderer={(item) => (
-                <Tag key={item.key} color="blue" style={{ flex: '0 0 auto', marginRight: 4 }}>
-                  {item.role.name}
-                </Tag>
-              )}
-              overflowRenderer={(overflowItems) => (
-                overflowItems.length > 0 ? (
-                  <Popover
-                    position="bottomLeft"
-                    content={(
-                      <Space spacing={4} wrap style={{ maxWidth: 240 }}>
-                        {overflowItems.map((item) => <Tag key={item.key} color="blue">{item.role.name}</Tag>)}
-                      </Space>
-                    )}
-                  >
-                    <Tag color="grey" style={{ flex: '0 0 auto' }}>+{overflowItems.length}</Tag>
-                  </Popover>
-                ) : null
-              )}
-            />
-          </div>
-        );
-      },
-    },
+    overflowTagColumn<UserGroup>({
+      title: '角色',
+      dataIndex: 'rolePreview',
+      width: 260,
+      contentWidth: 228,
+      getItems: (roles) => (roles as UserGroup['rolePreview'] ?? []).map((role) => ({ key: String(role.id), label: role.name })),
+      tagColor: 'blue',
+      popoverWidth: 240,
+      empty: <Tag color="grey">无角色</Tag>,
+      onClick: hasPermission('system:user-groups:assign') ? openRoles : undefined,
+    }),
     createdAtColumn,
     status.column(),
     operationColumn,
@@ -432,7 +402,7 @@ export default function UserGroupsPage() {
               fullMode={false}
               type="info"
               closeIcon={null}
-              description={`成员由规则自动维护，不可手工增删；需要例外时请在编辑规则中使用强制包含/排除名单。${memberGroup.ruleSyncedAt ? `最近同步：${memberGroup.ruleSyncedAt}` : '尚未同步'}`}
+              description={`成员由规则自动维护，不可手工增删；需要例外时请在编辑规则中使用强制包含/排除名单。${memberGroup.ruleSyncedAt ? '最近同步：' + memberGroup.ruleSyncedAt : '尚未同步'}`}
               style={{ width: '100%' }}
             />
             <Spin spinning={membersQuery.isFetching} style={{ width: '100%' }}>

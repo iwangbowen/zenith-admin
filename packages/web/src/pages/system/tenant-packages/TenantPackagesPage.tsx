@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Form, Toast, Spin, CheckboxGroup, Tag, Space, Popover, OverflowList } from '@douyinfe/semi-ui';
+import { Form, Toast, Spin, CheckboxGroup } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { tenantPackageContract, type CreateTenantPackageInput, type TenantPackage } from '@zenith/shared/identity';
 import { enumValueOf } from '@zenith/shared/core';
@@ -17,7 +17,7 @@ import {
   useTenantPackageDetail,
   useTenantPackageList,
 } from '@/hooks/queries/tenant-packages';
-import { createdAtColumn, renderEllipsis } from '@/utils/table-columns';
+import { createdAtColumn, overflowTagColumn, renderEllipsis } from '@/utils/table-columns';
 import { BatchDeleteButton, CreateButton } from '@/components/toolbar-controls';
 import { confirmAndDelete, ListSearchToolbar, useRowSelection, useStatusToggle, useCrudOperationColumn } from '@/components/list-page';
 import { EditFormModal } from '@/components/EditFormModal';
@@ -111,45 +111,21 @@ export default function TenantPackagesPage() {
   const FEATURE_TAG_CONTENT_WIDTH = 288;
   const columns: ColumnProps<TenantPackage>[] = [
     { title: '套餐名称', dataIndex: 'name', width: 180, render: renderEllipsis },
-    {
+    overflowTagColumn<TenantPackage>({
       title: '已授权功能',
       dataIndex: 'features',
       width: 320,
-      render: (features?: string[]) => {
-        if (!features || features.length === 0) return <span style={{ color: 'var(--semi-color-text-2)' }}>仅核心功能</span>;
-        const featureLabel = (feature: string) => LICENSE_FEATURE_LABELS[feature as keyof typeof LICENSE_FEATURE_LABELS] ?? feature;
-        const items = features.map((feature) => ({ key: feature, feature }));
-        return (
-          <div style={{ width: FEATURE_TAG_CONTENT_WIDTH, maxWidth: '100%', minWidth: 0, overflow: 'hidden' }}>
-            <OverflowList
-              items={items}
-              renderMode="collapse"
-              style={{ width: FEATURE_TAG_CONTENT_WIDTH, maxWidth: '100%', minWidth: 0 }}
-              visibleItemRenderer={(item) => (
-                <Tag key={item.key} size="small" color="blue" style={{ flex: '0 0 auto', marginRight: 4 }}>
-                  {featureLabel(item.feature)}
-                </Tag>
-              )}
-              overflowRenderer={(overflowItems) => (
-                overflowItems.length > 0 ? (
-                  <Popover
-                    position="bottomLeft"
-                    trigger="hover"
-                    content={(
-                      <Space spacing={4} wrap style={{ maxWidth: 280 }}>
-                        {overflowItems.map((item) => <Tag key={item.key} size="small" color="blue">{featureLabel(item.feature)}</Tag>)}
-                      </Space>
-                    )}
-                  >
-                    <Tag size="small" color="grey" style={{ flex: '0 0 auto', cursor: 'help' }}>+{overflowItems.length}</Tag>
-                  </Popover>
-                ) : null
-              )}
-            />
-          </div>
-        );
-      },
-    },
+      contentWidth: FEATURE_TAG_CONTENT_WIDTH,
+      getItems: (features) => ((features as string[] | undefined) ?? []).map((feature) => ({
+        key: feature,
+        label: LICENSE_FEATURE_LABELS[feature as keyof typeof LICENSE_FEATURE_LABELS] ?? feature,
+      })),
+      tagColor: 'blue',
+      tagSize: 'small',
+      popoverWidth: 280,
+      popoverTrigger: 'hover',
+      empty: <span style={{ color: 'var(--semi-color-text-2)' }}>仅核心功能</span>,
+    }),
     { title: '席位上限', dataIndex: 'quotas', width: 100, align: 'center', render: (q?: { maxUsers?: number } | null) => q?.maxUsers ?? '不限' },
     { title: '备注', dataIndex: 'remark', minWidth: 200, render: renderEllipsis },
     createdAtColumn,

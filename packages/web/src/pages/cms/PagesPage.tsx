@@ -1,6 +1,6 @@
 /** 页面搭建：区块 JSON 装配（P3 Batch6）——列表 + 区块搭建器 SideSheet */
 import { useEffect, useRef, useState } from 'react';
-import { Button, Dropdown, Form, Input, OverflowList, Popover, Select, SideSheet, Space, Tag, Toast, Typography, Empty } from '@douyinfe/semi-ui';
+import { Button, Dropdown, Form, Input, Select, SideSheet, Tag, Toast, Typography, Empty } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Plus, ArrowUp, ArrowDown, Trash2, Pencil, ExternalLink, ChevronDown, GripVertical, RefreshCw, LockKeyhole, ShieldCheck } from 'lucide-react';
@@ -22,9 +22,9 @@ import { formatDateTimeForApi } from '@/utils/date';
 import { useCmsWidgetRenderers, usePublishedCmsWidgets } from '@/hooks/queries/cms-widgets';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { dateTimeColumn, enabledStatusColumn } from '@/utils/table-columns';
+import { dateTimeColumn, enabledStatusColumn, overflowTagColumn } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
-import { mapTree } from '@zenith/shared/core';
+import { mapTree, randomUUID } from '@zenith/shared/core';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
 import { deleteAction, ListSearchToolbar } from '@/components/list-page';
 import ModalFooter from '@/components/ModalFooter';
@@ -37,7 +37,11 @@ function channelsToSelectTree(nodes: CmsChannel[]): TreeNodeData[] {
 }
 
 function newBlockId(): string {
-  return `b${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  return `b${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+}
+
+function displayText(value: unknown, fallback = ''): string {
+  return typeof value === 'string' || typeof value === 'number' ? String(value) : fallback;
 }
 
 const BLOCK_TYPE_LABEL = Object.fromEntries(CMS_PAGE_BLOCK_TYPES.map((t) => [t.value, t.label]));
@@ -51,12 +55,15 @@ const defaultSearchParams: SearchParams = { keyword: '' };
 function blockSummary(block: CmsPageBlock): string {
   const p = block.props;
   switch (block.type) {
-    case 'hero': return String(p.title ?? '');
-    case 'richtext': return String(p.html ?? '').replace(/<[^>]+>/g, '').slice(0, 40);
-    case 'image': return String(p.src ?? '');
-    case 'content-list': return `${String(p.title ?? '')}（${String(p.mode ?? 'latest')} × ${Number(p.count) || 5}）`;
+    case 'hero': return displayText(p.title);
+    case 'richtext': return displayText(p.html).replace(/<[^>]*>/g, '').slice(0, 40);
+    case 'image': return displayText(p.src);
+    case 'content-list': {
+      const count = typeof p.count === 'number' && p.count > 0 ? p.count : 5;
+      return `${displayText(p.title)}（${displayText(p.mode, 'latest')} × ${count}）`;
+    }
     case 'columns': return `${Array.isArray(p.items) ? p.items.length : 0} 列`;
-    case 'widget-ref': return `页面部件 #${String(p.widgetId ?? '未选择')} · ${String(p.rendererKey ?? 'list-sidebar')}`;
+    case 'widget-ref': return `页面部件 #${displayText(p.widgetId, '未选择')} · ${displayText(p.rendererKey, 'list-sidebar')}`;
     default: return '';
   }
 }
@@ -190,15 +197,19 @@ export default function PagesPage() {
       displayEndAt,
       ...props
     } = values as Record<string, unknown>;
-    const startAt = displayStartAt instanceof Date ? formatDateTimeForApi(displayStartAt) : (displayStartAt || null);
-    const endAt = displayEndAt instanceof Date ? formatDateTimeForApi(displayEndAt) : (displayEndAt || null);
+    const startAt = displayStartAt instanceof Date
+      ? formatDateTimeForApi(displayStartAt)
+      : typeof displayStartAt === 'string' ? displayStartAt : null;
+    const endAt = displayEndAt instanceof Date
+      ? formatDateTimeForApi(displayEndAt)
+      : typeof displayEndAt === 'string' ? displayEndAt : null;
     setBlocks((prev) => prev.map((block, index) => (index === blockModal.index ? {
       ...block,
       props,
       displayCondition: {
         audience: (displayAudience as 'always' | 'guest' | 'member') ?? 'always',
-        ...(startAt ? { startAt: String(startAt) } : {}),
-        ...(endAt ? { endAt: String(endAt) } : {}),
+        ...(startAt ? { startAt } : {}),
+        ...(endAt ? { endAt } : {}),
       },
     } : block)));
     setBlockModal(null);
@@ -253,43 +264,19 @@ export default function PagesPage() {
         ? <Tag size="small" color="orange">动态受众</Tag>
         : <Tag size="small">可静态化</Tag>,
     },
-    {
-      // 区块类型最多 6 种，全部铺开会折成多行、把行高撑大；单行放不下的收纳为 +N，
-      // 悬浮给出被收纳的类型（与用户管理的角色列同一做法）
+    overflowTagColumn<CmsPage>({
       title: '区块构成',
+      dataIndex: 'blocks',
       width: 240,
-      render: (_: unknown, r) => {
-        const types = [...new Set(r.blocks.map((b) => b.type))];
-        if (types.length === 0) return null;
-        const items = types.map((type) => ({ key: type, label: BLOCK_TYPE_LABEL[type] ?? type }));
-        return (
-          <div style={{ width: BLOCK_TAG_CONTENT_WIDTH, maxWidth: '100%', minWidth: 0, overflow: 'hidden' }}>
-            <OverflowList
-              items={items}
-              renderMode="collapse"
-              style={{ width: BLOCK_TAG_CONTENT_WIDTH, maxWidth: '100%', minWidth: 0 }}
-              visibleItemRenderer={(item) => (
-                <Tag size="small" key={item.key} style={{ flex: '0 0 auto', marginRight: 4 }}>{item.label}</Tag>
-              )}
-              overflowRenderer={(overflowItems) => (
-                overflowItems.length > 0 ? (
-                  <Popover
-                    position="bottomLeft"
-                    content={(
-                      <Space spacing={4} wrap style={{ maxWidth: 240 }}>
-                        {overflowItems.map((item) => <Tag size="small" key={item.key}>{item.label}</Tag>)}
-                      </Space>
-                    )}
-                  >
-                    <Tag size="small" color="grey" style={{ flex: '0 0 auto', cursor: 'pointer' }}>+{overflowItems.length}</Tag>
-                  </Popover>
-                ) : null
-              )}
-            />
-          </div>
-        );
-      },
-    },
+      contentWidth: BLOCK_TAG_CONTENT_WIDTH,
+      getItems: (_blocks, record) => [...new Set(record.blocks.map((block) => block.type))].map((type) => ({
+        key: type,
+        label: BLOCK_TYPE_LABEL[type] ?? type,
+      })),
+      tagSize: 'small',
+      popoverWidth: 240,
+      empty: null,
+    }),
     dateTimeColumn('更新时间', 'updatedAt'),
     enabledStatusColumn(),
     createOperationColumn<CmsPage>({
@@ -305,7 +292,8 @@ export default function PagesPage() {
           key: 'preview',
           label: '预览',
           onClick: () => {
-            window.open(cmsPreviewUrl(currentSite.code, record.isHome ? '/' : `/${cmsCustomPagePath(record)}`), '_blank');
+            const path = record.isHome ? '/' : `/${cmsCustomPagePath(record)}`;
+            window.open(cmsPreviewUrl(currentSite.code, path), '_blank');
           },
         }] : []),
         deleteAction({
@@ -320,6 +308,8 @@ export default function PagesPage() {
 
   const editingBlockType = blockModal?.block.type;
   const allBlocksManageable = blocks.every((block) => block.canManage !== false);
+  const previewPath = editingPage ? (editingPage.isHome ? '/' : `/${cmsCustomPagePath(editingPage)}`) : null;
+  const previewUrl = currentSite && previewPath ? cmsPreviewUrl(currentSite.code, previewPath) : null;
 
   return (
     <div className="page-container">
@@ -489,7 +479,7 @@ export default function PagesPage() {
             <iframe
               key={previewEpoch}
               title="页面预览"
-              src={`${cmsPreviewUrl(currentSite.code, editingPage.isHome ? '/' : `/${cmsCustomPagePath(editingPage)}`)}?_t=${previewEpoch}`}
+              src={previewUrl ? `${previewUrl}?_t=${previewEpoch}` : undefined}
               style={{ width: '100%', height: 380, border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', background: '#fff' }}
             />
           </>
@@ -675,11 +665,19 @@ export default function PagesPage() {
 }
 
 /** 多列卡片编辑（简单受控列表，保存时写回 form.items） */
+type ColumnEditorItem = { id: string; title?: string; description?: string };
+
+function newColumnEditorItem(item: Omit<ColumnEditorItem, 'id'> = {}): ColumnEditorItem {
+  return { id: randomUUID(), ...item };
+}
+
 function ColumnsEditor({ formApi, initItems }: Readonly<{ formApi: React.RefObject<FormApi | null>; initItems: { title?: string; description?: string }[] }>) {
-  const [items, setItems] = useState(initItems.length > 0 ? initItems : [{ title: '', description: '' }]);
+  const [items, setItems] = useState<ColumnEditorItem[]>(() => (
+    initItems.length > 0 ? initItems.map((item) => newColumnEditorItem(item)) : [newColumnEditorItem()]
+  ));
 
   useEffect(() => {
-    formApi.current?.setValue('items', items);
+    formApi.current?.setValue('items', items.map(({ id: _id, ...item }) => item));
   }, [items, formApi]);
 
   function update(index: number, key: 'title' | 'description', value: string) {
@@ -689,7 +687,7 @@ function ColumnsEditor({ formApi, initItems }: Readonly<{ formApi: React.RefObje
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {items.map((item, index) => (
-        <div key={`col-${index}`} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div key={item.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <Input placeholder="标题" value={item.title ?? ''} onChange={(v) => update(index, 'title', v)} style={{ width: 150 }} />
           <Input placeholder="描述" value={item.description ?? ''} onChange={(v) => update(index, 'description', v)} style={{ flex: 1 }} />
           <Button size="small" theme="borderless" type="danger" icon={<Trash2 size={13} />}
@@ -697,7 +695,7 @@ function ColumnsEditor({ formApi, initItems }: Readonly<{ formApi: React.RefObje
             onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))} />
         </div>
       ))}
-      <Button size="small" icon={<Plus size={13} />} onClick={() => setItems((prev) => [...prev, { title: '', description: '' }])}>
+      <Button size="small" icon={<Plus size={13} />} onClick={() => setItems((prev) => [...prev, newColumnEditorItem()])}>
         添加一列
       </Button>
     </div>

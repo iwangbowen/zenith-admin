@@ -4,11 +4,12 @@
  * 提供常用的预置列对象和 render 辅助函数，避免在每个页面重复手写。
  */
 /* eslint-disable react-refresh/only-export-components -- 纯工具模块（列工厂 / render 辅助 / 常量再导出），不导出组件 */
-import { Tag, Typography } from '@douyinfe/semi-ui';
+import { Popover, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps, Data } from '@douyinfe/semi-ui/lib/es/table';
 import { Check } from 'lucide-react';
 import { COMMON_STATUS_LABELS } from '@zenith/shared/core';
 import DateTimeText from '@/components/DateTimeText';
+import OverflowTagList, { type OverflowTagItem } from '@/components/OverflowTagList';
 import { formatDate } from './date';
 import { EMPTY_PLACEHOLDER } from './empty-placeholder';
 
@@ -102,10 +103,68 @@ export function copyableNoColumn<RecordType extends Data = Data>(
       const content = copyContent ? copyContent(v, record) : v;
       return (
         // stopPropagation：expandRowByClick 的表格里，点复制按钮/选中单号不应触发行展开
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: '100%' }} onClick={(e) => e.stopPropagation()}>
+        <span
+          role="presentation"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: '100%' }}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
           <Typography.Text ellipsis={{ showTooltip: true }} style={{ minWidth: 0 }}>{text}</Typography.Text>
           <Typography.Text style={{ flexShrink: 0 }} copyable={{ content, successTip: COPY_SUCCESS_TIP }} />
         </span>
+      );
+    },
+  };
+}
+
+export interface OverflowTagColumnOptions<RecordType extends Data = Data> {
+  readonly title: React.ReactNode;
+  readonly dataIndex: string;
+  readonly width: number;
+  readonly contentWidth: number | string;
+  readonly getItems: (value: unknown, record: RecordType) => readonly OverflowTagItem[];
+  readonly tagColor?: React.ComponentProps<typeof Tag>['color'];
+  readonly tagSize?: React.ComponentProps<typeof Tag>['size'];
+  readonly popoverWidth?: number | string;
+  readonly popoverTrigger?: React.ComponentProps<typeof Popover>['trigger'];
+  readonly empty?: React.ReactNode | ((value: unknown, record: RecordType) => React.ReactNode);
+  readonly onClick?: (record: RecordType) => void;
+}
+
+/**
+ * 标签溢出列：单行展示标签，超出部分收纳到 +N Popover，避免表格行高被撑开。
+ * 页面只负责把业务值转换为 `{ key, label }`，视觉与溢出行为统一由 OverflowTagList 处理。
+ */
+export function overflowTagColumn<RecordType extends Data = Data>({
+  title,
+  dataIndex,
+  width,
+  contentWidth,
+  getItems,
+  tagColor,
+  tagSize,
+  popoverWidth,
+  popoverTrigger,
+  empty = EMPTY_PLACEHOLDER,
+  onClick,
+}: OverflowTagColumnOptions<RecordType>): ColumnProps<RecordType> {
+  return {
+    title,
+    dataIndex,
+    width,
+    render: (value: unknown, record: RecordType) => {
+      const items = getItems(value, record);
+      if (items.length === 0) return typeof empty === 'function' ? empty(value, record) : empty;
+      return (
+        <OverflowTagList
+          items={items}
+          contentWidth={contentWidth}
+          tagColor={tagColor}
+          tagSize={tagSize}
+          popoverWidth={popoverWidth}
+          popoverTrigger={popoverTrigger}
+          onClick={onClick ? () => onClick(record) : undefined}
+        />
       );
     },
   };

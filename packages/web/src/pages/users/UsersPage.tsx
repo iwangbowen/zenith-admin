@@ -1,7 +1,7 @@
 import { FormPasswordInput } from '@/components/PasswordInput';
 import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Button, Select, Space, Form, Toast, Tag, Row, Col, Tree, OverflowList, Popover } from '@douyinfe/semi-ui';
+import { Button, Select, Space, Form, Toast, Tag, Row, Col, Tree } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { ChevronsUpDown, ChevronsDownUp, Building2, KeyRound } from 'lucide-react';
 import type { CreateUserInput, User, Role, Department, Position } from '@zenith/shared/identity';
@@ -23,7 +23,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import './UsersPage.css';
-import { createdAtColumn, dateTimeColumn, renderEllipsis } from '../../utils/table-columns';
+import { createdAtColumn, dateTimeColumn, overflowTagColumn, renderEllipsis } from '../../utils/table-columns';
 import { UserMenuPermissionModal } from './UserMenuPermissionModal';
 import { UserDataScopeModal } from './UserDataScopeModal';
 import { UserAvatarModal } from './UserAvatarModal';
@@ -94,8 +94,6 @@ const EMPTY_USERS: User[] = [];
 const EMPTY_ROLES: Role[] = [];
 const EMPTY_DEPARTMENTS: Department[] = [];
 const EMPTY_POSITIONS: Position[] = [];
-const ROLE_TAG_CONTENT_WIDTH = 228;
-
 function isAdminUser(user: Pick<User, 'username'>) {
   return user.username.trim().toLowerCase() === 'admin';
 }
@@ -430,43 +428,16 @@ export default function UsersPage() {
         );
       },
     },
-    {
+    overflowTagColumn<User>({
       title: '角色',
       dataIndex: 'roles',
       width: 260,
-      render: (roles: Role[]) => {
-        if (roles.length === 0) return <Tag color="grey">无角色</Tag>;
-        const items = roles.map((role) => ({ key: String(role.id), role }));
-        return (
-          <div style={{ width: ROLE_TAG_CONTENT_WIDTH, maxWidth: '100%', minWidth: 0, overflow: 'hidden' }}>
-            <OverflowList
-              items={items}
-              renderMode="collapse"
-              style={{ width: ROLE_TAG_CONTENT_WIDTH, maxWidth: '100%', minWidth: 0 }}
-              visibleItemRenderer={(item) => (
-                <Tag key={item.key} color="blue" style={{ flex: '0 0 auto', marginRight: 4 }}>
-                  {item.role.name}
-                </Tag>
-              )}
-              overflowRenderer={(overflowItems) => (
-                overflowItems.length > 0 ? (
-                  <Popover
-                  position="bottomLeft"
-                  content={(
-                    <Space spacing={4} wrap style={{ maxWidth: 240 }}>
-                      {overflowItems.map((item) => <Tag key={item.key} color="blue">{item.role.name}</Tag>)}
-                    </Space>
-                  )}
-                >
-                  <Tag color="grey" style={{ flex: '0 0 auto', cursor: 'pointer' }}>+{overflowItems.length}</Tag>
-                  </Popover>
-                ) : null
-              )}
-            />
-          </div>
-        );
-      },
-    },
+      contentWidth: 228,
+      getItems: (roles) => (roles as Role[]).map((role) => ({ key: String(role.id), label: role.name })),
+      tagColor: 'blue',
+      popoverWidth: 240,
+      empty: <Tag color="grey">无角色</Tag>,
+    }),
     {
       title: '性别',
       dataIndex: 'gender',
