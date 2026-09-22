@@ -729,6 +729,7 @@ exports[`路由表快照 > 完整路由表保持不变 1`] = `
   "GET /api/in-app-templates/:id",
   "GET /api/iot/alarm-rules",
   "GET /api/iot/alarms",
+  "GET /api/iot/alarms/:id",
   "GET /api/iot/automations",
   "GET /api/iot/automations/runs",
   "GET /api/iot/dashboard",

@@ -23,6 +23,11 @@ export const iotAlarmKeys = {
   list: (params: IotAlarmListParams) => contractKey(iotAlarmContract.list, { query: params }),
 };
 
+/** 精确详情：关联对象深链不依赖告警列表当前筛选和分页。 */
+export function useIotAlarmDetail(id: number | undefined, enabled = true) {
+  return useApiQuery(iotAlarmContract.detail, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
+}
+
 export function useIotAlarmList(params: IotAlarmListParams) {
   return useApiQuery(iotAlarmContract.list, { query: params }, { placeholderData: keepPreviousData });
 }

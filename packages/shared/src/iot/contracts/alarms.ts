@@ -109,6 +109,7 @@ const TAGS = ['IoT 告警'] as const;
 
 export const iotAlarmContract = defineContract('/api/iot/alarms', {
   list: op.get('/', { access: { permission: 'iot:alarm:list' }, query: iotAlarmListQuery, response: paginated(iotAlarmSchema), summary: '告警记录（含设备信息，按触发时间倒序）' }),
+  detail: op.get('/{id}', { access: { permission: 'iot:alarm:list' }, params: idParam, response: iotAlarmSchema, summary: '告警详情（含处理链路与触发上下文）' }),
   acknowledge: op.post('/{id}/acknowledge', { access: { permission: 'iot:alarm:resolve' }, audit: '认领 IoT 告警', params: idParam, response: iotAlarmSchema, summary: '认领告警（接手处理，升级计时停止）' }),
   resolve: op.post('/{id}/resolve', {
     access: { permission: 'iot:alarm:resolve' }, audit: '处理 IoT 告警',

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Descriptions, Form, Modal, TabPane, Tabs, Tag, TextArea, Toast, Tooltip, Typography, withField } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -6,6 +7,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { CreateButton } from '@/components/toolbar-controls';
 import AppModal from '@/components/AppModal';
+import { EntityContextView } from '@/components/entity-relations/EntityRelationButton';
 import UserSelect from '@/components/UserSelect';
 import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis, enabledStatusColumn } from '@/utils/table-columns';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
@@ -32,7 +34,7 @@ import { formatIotDateTime } from './iot-form-utils';
 import {
   iotAlarmKeys, iotAlarmRuleKeys, iotMaintenanceWindowKeys,
   useAcknowledgeIotAlarm, useDeleteIotAlarmRules, useDeleteIotMaintenanceWindows,
-  useIotAlarmList, useIotAlarmRuleList, useIotMaintenanceWindowList,
+  useIotAlarmDetail, useIotAlarmList, useIotAlarmRuleList, useIotMaintenanceWindowList,
   useResolveIotAlarm, useSaveIotAlarmRule, useSaveIotMaintenanceWindow,
 } from '@/hooks/queries/iot-alarms';
 import { IOT_ALARM_LEVEL_COLORS } from './iot-tag-colors';
@@ -57,6 +59,7 @@ const defaultAlarmSearch: AlarmSearchParams = { keyword: '', status: undefined, 
 
 function AlarmRecordsTab() {
   const { hasPermission } = usePermission();
+  const [searchParams, setSearchParams] = useSearchParams();
   const {
     page, pageSize, buildPagination,
     bind, bindKeyword, submittedParams,
@@ -86,6 +89,30 @@ function AlarmRecordsTab() {
   const [resolveTarget, setResolveTarget] = useState<IotAlarm | null>(null);
   const [resolveNote, setResolveNote] = useState('');
   const [detailTarget, setDetailTarget] = useState<IotAlarm | null>(null);
+  const deepLinkedAlarmId = Number(searchParams.get('alarmId')) || undefined;
+  const deepLinkedAlarmQuery = useIotAlarmDetail(deepLinkedAlarmId);
+
+  useEffect(() => {
+    if (deepLinkedAlarmQuery.data) setDetailTarget(deepLinkedAlarmQuery.data);
+  }, [deepLinkedAlarmQuery.data]);
+
+  function openAlarmDetail(alarm: IotAlarm) {
+    setDetailTarget(alarm);
+    setSearchParams((current) => {
+      current.set('tab', 'records');
+      current.set('alarmId', String(alarm.id));
+      return current;
+    }, { replace: true });
+  }
+
+  function closeAlarmDetail() {
+    setDetailTarget(null);
+    if (!searchParams.has('alarmId')) return;
+    setSearchParams((current) => {
+      current.delete('alarmId');
+      return current;
+    }, { replace: true });
+  }
 
   /** 处理人：已恢复看处理人（自动恢复无人），否则看认领人 */
   const handlerName = (r: IotAlarm): string | null => {
@@ -161,10 +188,10 @@ function AlarmRecordsTab() {
             setResolveTarget(record);
           },
         }] : []),
-        ...(record.status === 'resolved' ? [{
-          key: 'detail', label: '处理详情',
-          onClick: () => setDetailTarget(record),
-        }] : []),
+        {
+          key: 'detail', label: '查看详情',
+          onClick: () => openAlarmDetail(record),
+        },
       ],
     }),
   ];
@@ -252,9 +279,9 @@ function AlarmRecordsTab() {
 
       {/* 处理详情：只读查看认领 / 处理 / 升级链路与备注 */}
       <AppModal
-        title={detailTarget ? `处理详情「${detailTarget.ruleName}」` : ''}
+        title={detailTarget ? `告警详情「${detailTarget.ruleName}」` : ''}
         visible={detailTarget !== null}
-        onCancel={() => setDetailTarget(null)}
+        onCancel={closeAlarmDetail}
         footer={null}
         width={620}
         closeOnEsc
@@ -295,6 +322,7 @@ function AlarmRecordsTab() {
               },
             ]}
           />
+          <EntityContextView entityType="iot.alarm" entityKey={String(detailTarget.id)} />
         )}
       </AppModal>
     </>

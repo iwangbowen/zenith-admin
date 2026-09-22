@@ -10,6 +10,7 @@ import {
   createIotAlarmRule,
   deleteIotAlarmRule,
   ensureIotAlarmRuleExists,
+  getIotAlarm,
   listIotAlarmRules,
   listIotAlarms,
   mapIotAlarmRule,
@@ -49,8 +50,8 @@ const resolveAlarmRoute = defineContractRoute(iotAlarmContract.resolve, {
 });
 
 mountCrud(iotAlarmsRouter, iotAlarmContract,
-  { list: listIotAlarms },
-  {},
+  { list: listIotAlarms, get: getIotAlarm },
+  { responses: { detail: notFound } },
   [acknowledgeAlarmRoute, resolveAlarmRoute],
 );
 

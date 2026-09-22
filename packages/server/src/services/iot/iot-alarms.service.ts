@@ -218,6 +218,33 @@ export async function listIotAlarms(q: QueryOutputOf<typeof iotAlarmContract.lis
   });
 }
 
+/** 精确读取单条告警，供关联对象深链和处理详情使用。 */
+export async function getIotAlarm(id: number) {
+  const resolvers = aliasedTable(users, 'resolvers');
+  const row = await requireFirstRow(
+    db.select({
+      alarm: iotAlarms,
+      deviceName: iotDevices.name,
+      deviceSn: iotDevices.sn,
+      acknowledgedByName: users.username,
+      resolvedByName: resolvers.username,
+    })
+      .from(iotAlarms)
+      .innerJoin(iotDevices, eq(iotAlarms.deviceId, iotDevices.id))
+      .leftJoin(users, eq(iotAlarms.acknowledgedBy, users.id))
+      .leftJoin(resolvers, eq(iotAlarms.resolvedBy, resolvers.id))
+      .where(buildWhere(eq(iotAlarms.id, id), tenantCondition(iotDevices, currentUser())))
+      .limit(1),
+    '告警不存在',
+  );
+  return mapIotAlarm(row.alarm, {
+    deviceName: row.deviceName,
+    deviceSn: row.deviceSn,
+    acknowledgedByName: row.acknowledgedByName,
+    resolvedByName: row.resolvedByName,
+  });
+}
+
 /** 认领告警：接手处理，升级计时停止（幂等拒绝重复认领） */
 export async function acknowledgeIotAlarm(id: number) {
   const [row] = await db.update(iotAlarms)

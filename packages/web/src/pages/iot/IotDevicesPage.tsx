@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Badge, Button, Col, Form, Row, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
@@ -21,6 +22,7 @@ import { IotProductSelectField, useIotGroupOptions, useIotProductOptions } from 
 import { parseJsonObjectInput } from './iot-form-utils';
 import {
   useDeleteIotDevices,
+  useIotDeviceDetail,
   useIotDeviceList,
   useSaveIotDevice,
   useSubmitIotBatchCommand,
@@ -46,7 +48,31 @@ function renderMetricValue(v: number | string | boolean): string {
 
 export default function IotDevicesPage() {
   const { hasPermission } = usePermission();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [detailDevice, setDetailDevice] = useState<IotDevice | null>(null);
+  const deepLinkedDeviceId = Number(searchParams.get('deviceId')) || undefined;
+  const deepLinkedDeviceQuery = useIotDeviceDetail(deepLinkedDeviceId);
+
+  useEffect(() => {
+    if (deepLinkedDeviceQuery.data) setDetailDevice(deepLinkedDeviceQuery.data);
+  }, [deepLinkedDeviceQuery.data]);
+
+  function openDeviceDetail(device: IotDevice) {
+    setDetailDevice(device);
+    setSearchParams((current) => {
+      current.set('deviceId', String(device.id));
+      return current;
+    }, { replace: true });
+  }
+
+  function closeDeviceDetail() {
+    setDetailDevice(null);
+    if (!searchParams.has('deviceId')) return;
+    setSearchParams((current) => {
+      current.delete('deviceId');
+      return current;
+    }, { replace: true });
+  }
   const { selectedRowKeys, setSelectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
   const [groupsVisible, setGroupsVisible] = useState(false);
   const [batchKind, setBatchKind] = useState<'command' | 'desired' | null>(null);
@@ -225,7 +251,7 @@ export default function IotDevicesPage() {
       desktopInlineKeys: ['detail'],
       actions: (record) => [
         {
-          key: 'detail', label: '详情', onClick: () => setDetailDevice(record),
+          key: 'detail', label: '详情', onClick: () => openDeviceDetail(record),
         },
         ...(hasPermission('iot:device:update') ? [{
           key: 'edit', label: '编辑', onClick: () => modal.openEdit(record),
@@ -445,7 +471,7 @@ export default function IotDevicesPage() {
 
       {/* 导入设备走通用 ImportButton（导入中心 definition iot.devices） */}
 
-      <IotDeviceDetailDrawer device={detailDevice} onClose={() => setDetailDevice(null)} />
+      <IotDeviceDetailDrawer device={detailDevice} onClose={closeDeviceDetail} />
     </div>
   );
 }
