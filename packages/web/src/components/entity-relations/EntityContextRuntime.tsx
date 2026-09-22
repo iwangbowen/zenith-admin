@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Button, SideSheet, Space, Tabs, TabPane } from '@douyinfe/semi-ui';
 import { ArrowLeft } from 'lucide-react';
 import { ENTITY_REGISTRY, type CanonicalEntityRef, type CanonicalEntityType } from '@zenith/shared/platform/entity-catalog';
 import { useEntityAccessKey } from '@/hooks/queries/entity-relations';
 import { entityDetailRoute, entityTypeLabel } from '@/utils/entity-relations';
-import { EntityNavigationContext } from './entity-navigation';
+import { appendEntityRelationFrame, EntityNavigationContext } from './entity-navigation';
 import RelationPanel from './RelationPanel';
 import EntityTimeline from './EntityTimeline';
 
@@ -32,6 +32,7 @@ export function EntityContextSheet({ entityRef, onClose }: {
   readonly onClose: () => void;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [history, setHistory] = useState<CanonicalEntityRef[]>([entityRef]);
   const current = history[history.length - 1];
   return <SideSheet title={<Space>
@@ -40,7 +41,7 @@ export function EntityContextSheet({ entityRef, onClose }: {
   </Space>} visible onCancel={onClose} width={680} closeOnEsc>
     <EntityNavigationContext.Provider value={(ref) => {
       const route = entityDetailRoute(ref);
-      if (route) { onClose(); navigate(route); return; }
+      if (route) { onClose(); navigate(route, { state: appendEntityRelationFrame(location) }); return; }
       if (ref.type !== current.type || ref.key !== current.key) setHistory((refs) => [...refs, ref]);
     }}>
       <EntityContextView key={`${current.type}:${current.key}`} entityType={current.type} entityKey={current.key} showAnchor />

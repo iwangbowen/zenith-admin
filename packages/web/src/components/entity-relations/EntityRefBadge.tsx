@@ -2,8 +2,8 @@ import { Suspense, useContext, useState, type ReactNode } from 'react';
 import { Button, Typography } from '@douyinfe/semi-ui';
 import type { CanonicalEntityRef } from '@zenith/shared/platform';
 import { entityDetailRoute, entityTypeLabel } from '@/utils/entity-relations';
-import { useNavigate } from 'react-router-dom';
-import { EntityNavigationContext } from './entity-navigation';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { appendEntityRelationFrame, EntityNavigationContext } from './entity-navigation';
 import { EntityContextSheet } from './EntityRelationButton';
 
 export default function EntityRefBadge({ entityRef, capabilities, children }: {
@@ -12,6 +12,7 @@ export default function EntityRefBadge({ entityRef, capabilities, children }: {
   readonly children?: ReactNode;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const openEntity = useContext(EntityNavigationContext);
   const [open, setOpen] = useState(false);
   const title = children ?? `${entityTypeLabel(entityRef.type)} #${entityRef.key}`;
@@ -22,7 +23,7 @@ export default function EntityRefBadge({ entityRef, capabilities, children }: {
       event.stopPropagation();
       if (openEntity) { openEntity(entityRef); return; }
       const route = entityDetailRoute(entityRef);
-      if (route) navigate(route); else setOpen(true);
+      if (route) navigate(route, { state: appendEntityRelationFrame(location) }); else setOpen(true);
     }}><Typography.Text ellipsis={{ showTooltip: true }} style={{ color: 'inherit' }}>{title}</Typography.Text></Button>
     {open && <Suspense fallback={null}><EntityContextSheet entityRef={entityRef} onClose={() => setOpen(false)} /></Suspense>}
   </>;

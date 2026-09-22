@@ -75,6 +75,7 @@ import { TopBar } from './admin/TopBar';
 import { DoubleSidebar } from './admin/DoubleSidebar';
 import { SidebarNav } from './admin/SidebarNav';
 import { HeaderBreadcrumb } from './admin/HeaderBreadcrumb';
+import EntityRelationBackButton from '@/components/entity-relations/EntityRelationBackButton';
 import { ShortcutsModal } from './admin/ShortcutsModal';
 import { ImportPreferencesModal, LockPasswordModal, MessageDetailModal } from './admin/LayoutModals';
 import './AdminLayout.css';
@@ -936,23 +937,24 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
           {!isMobileNav && (navLayout === 'vertical' || navLayout === 'double') && (
             <header className={`admin-header${headerDark ? ' semi-always-dark' : ''}`}>
               {/* Left: breadcrumb (vertical / double layouts only) */}
-              {preferences.showBreadcrumb && displayBreadcrumbs.length > 0 ? (
-                <HeaderBreadcrumb
-                  displayBreadcrumbs={displayBreadcrumbs}
-                  breadcrumbIcon={preferences.breadcrumbIcon}
-                  breadcrumbSubMenu={preferences.breadcrumbSubMenu}
-                  breadcrumbClickable={preferences.breadcrumbClickable}
-                  showFavorites={preferences.showFavorites}
-                  navigateHome={navigateHome}
-                  navigate={navigate}
-                  pathname={location.pathname}
-                  flatMenus={flatMenus}
-                  isFavorite={isFavorite}
-                  toggleFavorite={toggleFavorite}
-                />
-              ) : (
-                <div />
-              )}
+              <div style={{ display: 'flex', alignItems: 'center', minWidth: 0, gap: 4 }}>
+                <EntityRelationBackButton />
+                {preferences.showBreadcrumb && displayBreadcrumbs.length > 0 ? (
+                  <HeaderBreadcrumb
+                    displayBreadcrumbs={displayBreadcrumbs}
+                    breadcrumbIcon={preferences.breadcrumbIcon}
+                    breadcrumbSubMenu={preferences.breadcrumbSubMenu}
+                    breadcrumbClickable={preferences.breadcrumbClickable}
+                    showFavorites={preferences.showFavorites}
+                    navigateHome={navigateHome}
+                    navigate={navigate}
+                    pathname={location.pathname}
+                    flatMenus={flatMenus}
+                    isFavorite={isFavorite}
+                    toggleFavorite={toggleFavorite}
+                  />
+                ) : <div />}
+              </div>
               {headerActions}
             </header>
           )}
