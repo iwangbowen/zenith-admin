@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { useOptionalPreferences } from '@/hooks/usePreferences';
 
 function parseTab<T extends string>(
@@ -29,6 +29,7 @@ export function useUrlTabState<T extends string>(
   paramName = 'tab',
 ): [T, (tab: T) => void] {
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
   const prefs = useOptionalPreferences();
   const syncToUrl = prefs ? (prefs.preferences.syncPageStateToUrl ?? false) : true;
   const validRef = useRef(validTabs);
@@ -77,9 +78,10 @@ export function useUrlTabState<T extends string>(
     configRef.current = configKey;
 
     if (nextTab !== activeTab) setActiveTab(nextTab);
-    if (nextSearch !== search) setSearchParams(nextParams, { replace: true });
+    if (nextSearch !== search) setSearchParams(nextParams, { replace: true, state: location.state });
   }, [
     activeTab,
+    location.state,
     configKey,
     defaultTab,
     paramName,

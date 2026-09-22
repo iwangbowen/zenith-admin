@@ -3,7 +3,8 @@ import { Button, Typography } from '@douyinfe/semi-ui';
 import type { CanonicalEntityRef } from '@zenith/shared/platform';
 import { entityDetailRoute, entityTypeLabel } from '@/utils/entity-relations';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { appendEntityRelationFrame, EntityNavigationContext } from './entity-navigation';
+import { beginEntityRelationNavigation, EntityNavigationContext, entityRelationSourceUrl } from './entity-navigation';
+import { useEntityAccessKey } from '@/hooks/queries/entity-relations';
 import { EntityContextSheet } from './EntityRelationButton';
 
 export default function EntityRefBadge({ entityRef, capabilities, children }: {
@@ -14,6 +15,7 @@ export default function EntityRefBadge({ entityRef, capabilities, children }: {
   const navigate = useNavigate();
   const location = useLocation();
   const openEntity = useContext(EntityNavigationContext);
+  const accessKey = JSON.stringify(useEntityAccessKey());
   const [open, setOpen] = useState(false);
   const title = children ?? `${entityTypeLabel(entityRef.type)} #${entityRef.key}`;
   if (!capabilities.view) return null;
@@ -23,7 +25,13 @@ export default function EntityRefBadge({ entityRef, capabilities, children }: {
       event.stopPropagation();
       if (openEntity) { openEntity(entityRef); return; }
       const route = entityDetailRoute(entityRef);
-      if (route) navigate(route, { state: appendEntityRelationFrame(location) }); else setOpen(true);
+      if (route) {
+        beginEntityRelationNavigation({
+          url: entityRelationSourceUrl(location), locationKey: location.key, state: location.state, kind: 'page',
+          pageScrollTop: document.querySelector<HTMLElement>('.admin-content')?.scrollTop ?? 0,
+        }, route, accessKey, location.pathname);
+        navigate(route);
+      } else setOpen(true);
     }}><Typography.Text ellipsis={{ showTooltip: true }} style={{ color: 'inherit' }}>{title}</Typography.Text></Button>
     {open && <Suspense fallback={null}><EntityContextSheet entityRef={entityRef} onClose={() => setOpen(false)} /></Suspense>}
   </>;

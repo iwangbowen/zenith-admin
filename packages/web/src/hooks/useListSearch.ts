@@ -1,9 +1,11 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useContext, useLayoutEffect, useRef, useState } from 'react';
+import { UNSAFE_LocationContext } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import type { QueryKey } from '@tanstack/react-query';
 import { usePagination, type UsePaginationReturn } from '@/hooks/usePagination';
 import { useOptionalPreferences } from '@/hooks/usePreferences';
 import { clearListFilterSnapshot, readListFilterSnapshot, writeListFilterSnapshot } from '@/lib/list-filter-memory';
+import { readRelationListSnapshot, registerRelationList } from '@/lib/entity-relation-navigation';
 
 export interface UseListSearchOptions<T> {
   /**
@@ -117,7 +119,12 @@ export function useListSearch<T>({
   onReset,
 }: UseListSearchOptions<T>): UseListSearchReturn<T> {
   const queryClient = useQueryClient();
-  const pagination = usePagination({ pageSize: overridePageSize, pageSizeOpts, resetKey });
+  // The optional Router context keeps this hook usable outside a route (embedded lists/tests).
+  const pathname = useContext(UNSAFE_LocationContext)?.location.pathname;
+  const relationListKey = JSON.stringify([listKey, resetKey]);
+  const [relationRestore] = useState(() => readRelationListSnapshot<T>(pathname, relationListKey));
+  const pagination = usePagination({ pageSize: overridePageSize, pageSizeOpts, resetKey,
+    initialPage: relationRestore?.page, initialPageSize: relationRestore?.pageSize });
   const { setPage } = pagination;
 
   // 偏好「记住列表筛选条件」：首次挂载用会话内上次提交的条件替代 defaults；查询写入、重置清除。
@@ -137,8 +144,14 @@ export function useListSearch<T>({
   const forgetSubmitted = useCallback(() => {
     clearListFilterSnapshot(memoryRef.current.listKey);
   }, []);
-  const [draftParams, setDraftParams] = useState<T>(initialParams);
-  const [submittedParams, setSubmittedParams] = useState<T>(initialParams);
+  const [draftParams, setDraftParams] = useState<T>(relationRestore?.draft ?? initialParams);
+  const [submittedParams, setSubmittedParams] = useState<T>(relationRestore?.submitted ?? initialParams);
+  const relationSnapshot = useRef({ draft: draftParams, submitted: submittedParams, page: pagination.page, pageSize: pagination.pageSize });
+  relationSnapshot.current = { draft: draftParams, submitted: submittedParams, page: pagination.page, pageSize: pagination.pageSize };
+  useLayoutEffect(() => {
+    if (!pathname) return;
+    return registerRelationList(pathname, relationListKey, () => relationSnapshot.current);
+  }, [pathname, relationListKey]);
 
   // setDraftParams 本身稳定，按 key 缓存后 setField('x') 每次渲染都返回同一函数
   const fieldSetters = useRef(new Map<keyof T, (value: unknown) => void>());

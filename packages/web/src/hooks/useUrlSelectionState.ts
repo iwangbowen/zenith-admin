@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { useOptionalPreferences } from '@/hooks/usePreferences';
 
 export type UrlSelection<K extends string> = Readonly<Record<K, string | null>>;
@@ -58,6 +58,7 @@ export function useUrlSelectionParams<K extends string>(
   paramNames: readonly K[],
 ): [UrlSelection<K>, Dispatch<SetStateAction<UrlSelection<K>>>] {
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
   const prefs = useOptionalPreferences();
   const syncToUrl = prefs ? (prefs.preferences.syncPageStateToUrl ?? false) : true;
 
@@ -119,8 +120,8 @@ export function useUrlSelectionParams<K extends string>(
     syncRef.current = syncToUrl;
 
     if (!selectionEquals(selection, nextSelection, names)) setSelection(nextSelection);
-    if (nextSearch !== search) setSearchParams(nextParams, { replace: true });
-  }, [search, searchParams, selection, setSearchParams, syncToUrl]);
+    if (nextSearch !== search) setSearchParams(nextParams, { replace: true, state: location.state });
+  }, [location.state, search, searchParams, selection, setSearchParams, syncToUrl]);
 
   return [selection, setSelection];
 }

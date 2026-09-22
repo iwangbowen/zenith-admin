@@ -30,6 +30,9 @@ export interface UsePaginationReturn {
 }
 
 export interface UsePaginationOptions {
+  /** 一次性恢复关联导航来源页的分页，不改变默认分页偏好。 */
+  initialPage?: number;
+  initialPageSize?: number;
   /** 覆盖默认页大小（默认取用户偏好） */
   pageSize?: number;
   /** 覆盖每页条数选项（如文件列表的 20 / 50 / 100）；缺省用 ConfigurableTable 的 TABLE_PAGE_SIZE_OPTIONS */
@@ -63,12 +66,12 @@ function sameResetKey(a: unknown, b: unknown): boolean {
  * ```
  */
 export function usePagination(options?: number | UsePaginationOptions): UsePaginationReturn {
-  const { pageSize: overrideDefaultPageSize, pageSizeOpts, resetKey } = typeof options === 'number' ? { pageSize: options } : (options ?? {});
+  const { pageSize: overrideDefaultPageSize, pageSizeOpts, resetKey, initialPage, initialPageSize } = typeof options === 'number' ? { pageSize: options } : (options ?? {});
   const { preferences } = usePreferences();
   const defaultPageSize = overrideDefaultPageSize ?? preferences.tablePageSize ?? 10;
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(initialPage ?? 1);
   // 未在本页选择过条数时持续继承默认值，覆盖策略冷加载及在线变更；临时选择后保持本页选择。
-  const [selectedPageSize, setPageSize] = useState<number | null>(null);
+  const [selectedPageSize, setPageSize] = useState<number | null>(initialPageSize ?? null);
   const pageSize = selectedPageSize ?? defaultPageSize;
   const [previousDefaultPageSize, setPreviousDefaultPageSize] = useState(defaultPageSize);
   if (previousDefaultPageSize !== defaultPageSize) {

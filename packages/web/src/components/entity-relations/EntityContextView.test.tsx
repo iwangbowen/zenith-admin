@@ -100,6 +100,22 @@ describe('EntityContextView with actual Semi components', () => {
     expect(screen.queryByText(/共 \d+ 条/)).not.toBeInTheDocument();
   });
 
+  it('refreshes attention from the full summary without replacing the open records', async () => {
+    let attention = true;
+    recorder.on('GET', describeUrl, () => ({ anchor: { ref: params, title: 'PAY-1' }, canManageLinks: false,
+      sections: [{ key: sectionKey, labelKey: 'relation.payment.order.refunds', targetTypes: ['payment.refund'], kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true }, summaryState: attention ? 'attention' : 'has-data' }],
+    }));
+    renderView();
+    fireEvent.click(await screen.findByText('退款记录'));
+    await screen.findByText('REF-3');
+    expect(screen.getByRole('img', { name: '退款记录：需处理' })).toBeVisible();
+    attention = false;
+    fireEvent.click(screen.getByRole('button', { name: '刷新退款记录' }));
+    expect(screen.getByText('REF-3')).toBeVisible();
+    await waitFor(() => expect(screen.getByRole('img', { name: '退款记录：有记录' })).toBeVisible());
+    expect(screen.getByText('REF-3')).toBeVisible();
+  });
+
   it('renders search rows in the link dialog and submits the selected exact reference', async () => {
     renderView();
     fireEvent.click(await screen.findByRole('button', { name: '添加关联' }));

@@ -1,14 +1,19 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Button, Collapse, Empty, List, Space, Spin, Tag, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { EntityRelationItem, EntityRelationKind, EntityRelationSection, EntityRelationSummaryState, CanonicalEntityType } from '@zenith/shared/platform';
 import { Activity, CircleAlert, CircleCheck, CircleOff, CircleSlash2, GitBranch, Link2, RefreshCw, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { entityRelationsContract } from '@zenith/shared/platform';
+import { contractKey } from '@/lib/contract-query';
 import { useEntityAccessKey, useEntityRelationSection, useEntityRelations, useUnlinkEntity } from '@/hooks/queries/entity-relations';
 import { entityRelationKindLabel, entityRelationLabel, entityStatusLabel } from '@/utils/entity-relations';
 import DateTimeText from '@/components/DateTimeText';
 import EntityRefBadge from './EntityRefBadge';
 import EntityLinkManager from './EntityLinkManager';
 import { confirmAndDelete } from '@/components/list-page';
+import { EntityRelationViewStateContext } from './entity-navigation';
+import { formatDateTime } from '@/utils/date';
 const WorkflowPrintButton = lazy(() => import('@/components/workflow/WorkflowPrintButton'));
 const WorkflowAttachmentView = lazy(() => import('./WorkflowAttachmentView'));
 
@@ -44,7 +49,7 @@ function RelationSectionHeader({ section, summaryState }: {
   const kindPresentation = RELATION_KIND_PRESENTATION[section.kind];
   const KindIcon = kindPresentation.Icon;
   const kindLabel = `关联来源：${entityRelationKindLabel(section.kind)}`;
-  return <Space spacing={6} aria-label={statusLabel}>
+  return <Space spacing={6}>
     <Tooltip content={statusLabel}>
       <span role="img" aria-label={statusLabel} style={{ color: presentation.color, display: 'inline-flex' }}>
         <Icon size={15} aria-hidden="true" />
@@ -64,8 +69,10 @@ function RelationOriginHint({ section, item }: { readonly section: EntityRelatio
   const kindPresentation = RELATION_KIND_PRESENTATION[kind];
   const Icon = kindPresentation.Icon;
   const parts = [`关联来源：${entityRelationKindLabel(kind)}`];
+  if (item.origin?.explanation) parts.push(item.origin.explanation);
   if (item.origin?.eventType) parts.push(`来源事件：${item.origin.eventType}`);
-  if (item.occurredAt) parts.push(`关联时间：${item.occurredAt}`);
+  if (item.origin?.relatedAt) parts.push(`关联建立时间：${formatDateTime(item.origin.relatedAt)}`);
+  if (item.occurredAt) parts.push(`记录时间：${formatDateTime(item.occurredAt)}`);
   const label = parts.join(' · ');
   return <Tooltip content={label}>
     <span role="img" aria-label={label} style={{ color: kindPresentation.color, display: 'inline-flex' }}>
@@ -93,26 +100,32 @@ function RelationSectionView({ entityType, entityKey, section, active, canManage
   readonly query: RelationSectionQuery;
 }) {
   const unlink = useUnlinkEntity();
+  const queryClient = useQueryClient();
+  const refreshSection = () => {
+    void query.refetch();
+    // Attention considers the full visible set; a page of records cannot clear it by itself.
+    void queryClient.invalidateQueries({ queryKey: contractKey(entityRelationsContract.describe, { params: { type: entityType, key: entityKey } }) });
+  };
   const pages = query.data?.pages ?? [];
   const items = pages.flatMap((page) => page.items).filter((item) => item.capabilities.view);
   const degraded = pages.some((page) => page.degraded);
   const sectionError = query.isError;
   const hasResponse = query.data !== undefined;
   useEffect(() => {
-    if (!active || query.isLoading || !hasResponse) return;
+    if (!active || query.isFetching) return;
     if (sectionError || degraded) {
       onSummaryStateChange(section.key, 'unavailable');
       return;
     }
     if (!hasResponse) return;
     onSummaryStateChange(section.key, items.length > 0 ? (section.summaryState === 'attention' ? 'attention' : 'has-data') : 'empty');
-  }, [active, degraded, hasResponse, items.length, onSummaryStateChange, query.isLoading, section.key, section.summaryState, sectionError]);
+  }, [active, degraded, hasResponse, items.length, onSummaryStateChange, query.isFetching, section.key, section.summaryState, sectionError]);
   const label = entityRelationLabel(section.labelKey, section.targetTypes);
   return <div style={{ position: 'relative' }}>
     <span style={{ position: 'absolute', top: 0, right: 0, zIndex: 1, lineHeight: 0 }}>
       <Tooltip content={`刷新${label}`}>
         <Button size="small" theme="borderless" icon={<RefreshCw size={14} />} loading={query.isFetching} aria-label={`刷新${label}`}
-          onClick={(event) => { event.stopPropagation(); void query.refetch(); }} />
+          onClick={(event) => { event.stopPropagation(); refreshSection(); }} />
       </Tooltip>
     </span>
     <div style={{ paddingTop: 4, paddingRight: 32 }}>
@@ -157,7 +170,10 @@ function RelationGroupItem({ entityType, entityKey, section, active, summaryStat
 }
 
 function RelationGroups({ entityType, entityKey, sections, canManageLinks }: { readonly entityType: CanonicalEntityType; readonly entityKey: string; readonly sections: EntityRelationSection[]; readonly canManageLinks: boolean }) {
-  const [activeKeys, setActiveKeys] = useState<string[]>([]);
+  const viewState = useContext(EntityRelationViewStateContext);
+  const [localActiveKeys, setLocalActiveKeys] = useState<string[]>([]);
+  const activeKeys = viewState?.expandedGroups ?? localActiveKeys;
+  const setActiveKeys = viewState?.setExpandedGroups ?? setLocalActiveKeys;
   const defaultSummaryStates = useMemo(() => Object.fromEntries(
     sections.map((section) => [section.key, section.summaryState]),
   ), [sections]);

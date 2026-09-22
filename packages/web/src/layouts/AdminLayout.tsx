@@ -26,6 +26,7 @@ import { config } from '@/config';
 import NProgress from '@/components/NProgress';
 import Watermark from '@/components/Watermark';
 import { FeedbackWidget } from '@/components/FeedbackWidget';
+import { clearEntityRelationNavigation, useEntityRelationNavigationSession } from '@/lib/entity-relation-navigation';
 // 重依赖懒加载：快捷聊天（Semi Chat 组件树）、音视频通话、聊天通知、锁屏（lunar 农历 ~300KB）均不进首屏 chunk
 const QuickChatButton = lazy(() => import('@/components/QuickChatButton'));
 const CallOverlayHost = lazy(() => import('@/webrtc/CallOverlayHost'));
@@ -245,6 +246,8 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
   const [tabRefreshVersion, setTabRefreshVersion] = useState<Record<string, number>>({});
   const navigate = useNavigate();
   const location = useLocation();
+  const entityNavigation = useEntityRelationNavigationSession();
+  useEffect(() => clearEntityRelationNavigation, []);
   const { recents, clear: clearRecents, remove: removeRecent } = useRecentMenus(flatMenus, location.pathname);
 
   // 全局页面浏览埋点：自动记录所有后台页面的 PV / 停留时长（无需逐页接入 usePageTracker）
@@ -938,7 +941,6 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
             <header className={`admin-header${headerDark ? ' semi-always-dark' : ''}`}>
               {/* Left: breadcrumb (vertical / double layouts only) */}
               <div style={{ display: 'flex', alignItems: 'center', minWidth: 0, gap: 4 }}>
-                <Suspense fallback={null}><EntityRelationBackButton /></Suspense>
                 {preferences.showBreadcrumb && displayBreadcrumbs.length > 0 ? (
                   <HeaderBreadcrumb
                     displayBreadcrumbs={displayBreadcrumbs}
@@ -1001,9 +1003,6 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
             </div>
           )}
           <div className="admin-content" style={{ overflow: 'auto', position: 'relative' }}>
-            <div style={{ position: 'absolute', top: 8, left: 12, zIndex: 10 }}>
-              <Suspense fallback={null}><EntityRelationBackButton /></Suspense>
-            </div>
             <RouteErrorBoundary>
               <TabsMetaContext.Provider value={tabsMetaValue}>
                 {pageCacheEnabled ? (
@@ -1029,6 +1028,8 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
               />
             )}
           </div>
+
+          {entityNavigation && <Suspense fallback={null}><EntityRelationBackButton /></Suspense>}
 
           {/* Preferences SideSheet */}
           <SideSheet
