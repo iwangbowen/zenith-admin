@@ -6,7 +6,7 @@ import { CronBuilderPopover } from '@/components/CronBuilderPopover';
 import { FormTimezoneSelect } from '@/components/FormTimezoneSelect';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { formatDateTime } from '@/utils/date';
-import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, overflowTagColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import {
@@ -255,16 +255,19 @@ export default function AlertsPage() {
       ),
     },
     { title: '规则', dataIndex: 'id', width: 180, render: (_: unknown, record: ReportAlertRule) => renderEllipsis(formatRule(record)) },
-    {
+    overflowTagColumn<ReportAlertRule>({
       title: '通道',
       dataIndex: 'channels',
       width: 140,
-      render: (channels: Array<'email' | 'inApp' | 'webhook'>) => (channels ?? []).map((channel) => (
-        <Tag key={channel} size="small" color={channel === 'email' ? 'blue' : channel === 'webhook' ? 'purple' : 'green'} style={{ marginRight: 4 }}>
-          {channelLabelMap[channel]}
-        </Tag>
-      )),
-    },
+      contentWidth: 108,
+      getItems: (channels) => ((channels as Array<'email' | 'inApp' | 'webhook'> | undefined) ?? []).map((channel) => ({
+        key: channel,
+        label: channelLabelMap[channel],
+        color: channel === 'email' ? 'blue' : channel === 'webhook' ? 'purple' : 'green',
+      })),
+      tagSize: 'small',
+      popoverWidth: 160,
+    }),
     {
       title: '最近触发',
       dataIndex: 'lastTriggered',

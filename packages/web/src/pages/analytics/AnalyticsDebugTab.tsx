@@ -1,7 +1,7 @@
 /**
  * 行为中心：事件调试 —— 事件明细分页查询，行内展开查看属性 payload。
  */
-import { Tag, Typography } from '@douyinfe/semi-ui';
+import { Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -9,7 +9,7 @@ import { useAnalyticsDebugEvents } from '@/hooks/queries/analytics';
 import type { AnalyticsDebugEvent, AnalyticsQualityIssueType } from '@zenith/shared/analytics';
 import { ANALYTICS_ENVIRONMENT_LABELS, ANALYTICS_EVENT_SOURCE_LABELS, ANALYTICS_QUALITY_ISSUE_TYPE_LABELS, USER_BEHAVIOR_EVENT_TYPE_LABELS } from '@zenith/shared/analytics';
 import { KeywordInput } from '@/components/search-filters';
-import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, overflowTagColumn, renderEllipsis } from '@/utils/table-columns';
 import { JsonBlock } from '@/components/JsonBlock';
 import { ANALYTICS_ISSUE_TAG_COLOR } from './analytics-tag-colors';
 import { nullableText } from './analytics-format';
@@ -47,16 +47,20 @@ export default function AnalyticsDebugTab({ active }: Readonly<{ active: boolean
     { title: 'Distinct ID', dataIndex: 'distinctId', width: 150, render: (value: string | null) => nullableText(value) },
     { title: '会员 ID', dataIndex: 'memberId', width: 90, render: (value: number | null) => nullableText(value) },
     { title: '页面', dataIndex: 'pagePath', width: 200, render: renderEllipsis },
-    {
+    overflowTagColumn<AnalyticsDebugEvent>({
       title: '质量问题',
       dataIndex: 'issueTypes',
       width: 200,
-      render: (value: AnalyticsQualityIssueType[]) => (
-        value.length
-          ? <>{value.map((t) => <Tag key={t} color={ANALYTICS_ISSUE_TAG_COLOR[t]} size="small" style={{ marginRight: 4 }}>{ANALYTICS_QUALITY_ISSUE_TYPE_LABELS[t]}</Tag>)}</>
-          : <Typography.Text type="tertiary" size="small">{EMPTY_PLACEHOLDER}</Typography.Text>
-      ),
-    },
+      contentWidth: 168,
+      getItems: (value) => ((value as AnalyticsQualityIssueType[] | undefined) ?? []).map((t) => ({
+        key: t,
+        label: ANALYTICS_QUALITY_ISSUE_TYPE_LABELS[t],
+        color: ANALYTICS_ISSUE_TAG_COLOR[t],
+      })),
+      tagSize: 'small',
+      popoverWidth: 200,
+      empty: <Typography.Text type="tertiary" size="small">{EMPTY_PLACEHOLDER}</Typography.Text>,
+    }),
   ];
 
   /** 行内展开：只补充行上没有的信息（事件 ID / 用户 / 属性 payload） */

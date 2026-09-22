@@ -6,7 +6,7 @@ import AppModal from '@/components/AppModal';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
-import { EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, overflowTagColumn, renderEllipsis } from '@/utils/table-columns';
 import { confirmAndDelete, listTableProps } from '@/components/list-page';
 import {
   IOT_ACCESS_MODE_LABELS, IOT_ACCESS_MODE_OPTIONS, IOT_EVENT_LEVEL_LABELS, IOT_EVENT_LEVEL_OPTIONS,
@@ -68,18 +68,21 @@ const identifierColumn: ColumnProps = {
   ),
 };
 
-/** 服务/事件的参数列摘要 */
-function renderParamsSummary(params: IotParamDef[]) {
-  if (params.length === 0) return EMPTY_PLACEHOLDER;
-  return (
-    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-      {params.map((p) => (
-        <Tag key={p.identifier} size="small" color="cyan">
-          {p.identifier}: {IOT_PROPERTY_TYPE_LABELS[p.dataType]}{p.required ? ' *' : ''}
-        </Tag>
-      ))}
-    </div>
-  );
+/** 服务 / 事件共用的「参数」溢出标签列（该表的弹性主列，不写 width） */
+function paramsColumn<T extends { params: IotParamDef[] }>(): ColumnProps<T> {
+  return overflowTagColumn<T>({
+    title: '参数',
+    dataIndex: 'params',
+    minWidth: 240,
+    contentWidth: '100%',
+    getItems: (params) => ((params as IotParamDef[] | undefined) ?? []).map((p) => ({
+      key: p.identifier,
+      label: `${p.identifier}: ${IOT_PROPERTY_TYPE_LABELS[p.dataType]}${p.required ? ' *' : ''}`,
+    })),
+    tagColor: 'cyan',
+    tagSize: 'small',
+    popoverWidth: 260,
+  });
 }
 
 /** 服务/事件共用的参数定义编辑器（ArrayField 行编辑） */
@@ -340,7 +343,7 @@ export default function IotThingModelDrawer({ product, onClose }: Readonly<IotTh
   const serviceColumns: ColumnProps<IotProductService>[] = [
     identifierColumn,
     { title: '名称', dataIndex: 'name', width: 110 },
-    { title: '参数', render: (_: unknown, r: IotProductService) => renderParamsSummary(r.params) },
+    paramsColumn<IotProductService>(),
     {
       title: '高危', dataIndex: 'danger', width: 80,
       render: (v: boolean) => v ? <Tag size="small" color="red">高危</Tag> : EMPTY_PLACEHOLDER,
@@ -371,7 +374,7 @@ export default function IotThingModelDrawer({ product, onClose }: Readonly<IotTh
         <Tag size="small" color={IOT_EVENT_LEVEL_COLORS[v]}>{IOT_EVENT_LEVEL_LABELS[v]}</Tag>
       ),
     },
-    { title: '参数', render: (_: unknown, r: IotProductEvent) => renderParamsSummary(r.params) },
+    paramsColumn<IotProductEvent>(),
     ...(canEdit ? [{
       title: '操作', width: 120, fixed: 'right' as const,
       render: (_: unknown, r: IotProductEvent) => (

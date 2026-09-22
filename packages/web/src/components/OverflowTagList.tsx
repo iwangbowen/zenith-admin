@@ -4,6 +4,8 @@ import { OverflowList, Popover, Space, Tag } from '@douyinfe/semi-ui';
 export type OverflowTagItem = {
   readonly key: Key;
   readonly label: ReactNode;
+  /** 逐项配色；缺省回退到列级 tagColor（适用于色值由业务数据决定的标签列，如成员标签 / 告警渠道） */
+  readonly color?: TagColor;
 };
 
 type TagColor = ComponentProps<typeof Tag>['color'];
@@ -21,7 +23,7 @@ export interface OverflowTagListProps {
   readonly style?: CSSProperties;
 }
 
-/** 单行标签列表：超出容器的标签收纳到 +N Popover 中，避免表格行高被撑开。 */
+/** 单行标签列表：超出容器的标签收纳到 +N Popover 中，避免表格行高被撑开；逐项 color 优先于列级 tagColor。 */
 export default function OverflowTagList({
   items,
   contentWidth,
@@ -57,7 +59,7 @@ export default function OverflowTagList({
         renderMode="collapse"
         style={{ width: contentWidth, maxWidth: '100%', minWidth: 0 }}
         visibleItemRenderer={(item) => (
-          <Tag key={item.key} size={tagSize} color={tagColor} style={{ flex: '0 0 auto', marginRight: 4 }}>
+          <Tag key={item.key} size={tagSize} color={item.color ?? tagColor} style={{ flex: '0 0 auto', marginRight: 4 }}>
             {item.label}
           </Tag>
         )}
@@ -69,7 +71,7 @@ export default function OverflowTagList({
               content={(
                 <Space spacing={4} wrap style={{ maxWidth: popoverWidth }}>
                   {overflowItems.map((item) => (
-                    <Tag key={item.key} size={tagSize} color={tagColor}>
+                    <Tag key={item.key} size={tagSize} color={item.color ?? tagColor}>
                       {item.label}
                     </Tag>
                   ))}

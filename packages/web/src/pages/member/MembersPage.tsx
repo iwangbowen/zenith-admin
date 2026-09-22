@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button, Select, Form, Toast, Tag, Spin, Row, Col, Dropdown, Modal } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
 import { KeyRound, ChevronDown, Tags } from 'lucide-react';
 import type { Member, MemberTag } from '@zenith/shared/member';
 import { MEMBER_STATUSES, MEMBER_STATUS_LABELS, type AdjustMemberGrowthInput } from '@zenith/shared/member';
@@ -19,7 +20,7 @@ import ImportButton from '@/components/ImportButton';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { ListSearchToolbar, listTableProps, useRowSelection, useCrudOperationColumn } from '@/components/list-page';
-import { createdAtColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
+import { createdAtColumn, EMPTY_PLACEHOLDER, overflowTagColumn, renderEllipsis } from '@/utils/table-columns';
 import { MemberDetailDrawer } from './MemberDetailDrawer';
 import { MemberTagsManageModal } from './MemberTagsManageModal';
 import {
@@ -250,12 +251,18 @@ export default function MembersPage() {
     { title: '手机号', dataIndex: 'phone', width: 150, render: (v: string | null, record: Member) => <SensitiveText entity="Member" id={record.id} field="phone" value={v} /> },
     { title: '邮箱', dataIndex: 'email', width: 200, render: (v: string | null, record: Member) => <SensitiveText entity="Member" id={record.id} field="email" value={v} /> },
     { title: '等级', dataIndex: 'levelName', width: 100, render: (v: string | null) => (v ? <Tag color="amber">{v}</Tag> : EMPTY_PLACEHOLDER) },
-    {
-      title: '标签', dataIndex: 'tags', width: 160,
-      render: (v?: Member['tags']) => (v && v.length > 0
-        ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{v.map((t) => <Tag key={t.id} size="small" color={(t.color || TAG_FALLBACK_COLOR) as 'blue'}>{t.name}</Tag>)}</div>
-        : EMPTY_PLACEHOLDER),
-    },
+    overflowTagColumn<Member>({
+      title: '标签',
+      dataIndex: 'tags',
+      width: 160,
+      contentWidth: 128,
+      getItems: (tags) => ((tags as Member['tags'] | undefined) ?? []).map((t) => ({
+        key: String(t.id),
+        label: t.name,
+        color: (t.color || TAG_FALLBACK_COLOR) as TagColor,
+      })),
+      popoverWidth: 160,
+    }),
     { title: '积分', dataIndex: 'pointBalance', width: 90, align: 'right', render: (v?: number) => v ?? 0 },
     { title: '余额(元)', dataIndex: 'walletBalance', width: 100, align: 'right', render: (v?: number) => ((v ?? 0) / 100).toFixed(2) },
     createdAtColumn,

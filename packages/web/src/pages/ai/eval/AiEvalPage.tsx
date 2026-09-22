@@ -34,7 +34,8 @@ import type { AiEvalDataset, AiEvalExperiment, AiEvalExperimentResult, AiEvalSco
 import { AI_EVAL_SCORERS } from '@zenith/shared/ai';
 import { CreateButton } from '@/components/toolbar-controls';
 import { confirmDelete } from '@/utils/confirm';
-import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, overflowTagColumn, renderEllipsis } from '@/utils/table-columns';
+import type { OverflowTagItem } from '@/components/OverflowTagList';
 import ModalFooter from '@/components/ModalFooter';
 
 const { Text, Paragraph } = Typography;
@@ -58,24 +59,31 @@ const STATUS_META: Record<AiEvalExperiment['status'], { label: string; color: 'b
   failed: { label: '失败', color: 'red' },
 };
 
-/** 各打分器分数(0-1)→ 百分比 Tag;reasons 提供时 LLM 评审理由经 Tooltip 透出 */
+/**
+ * 各打分器分数(0-1)→ 标签项;reasons 提供时 LLM 评审理由经 Tooltip 透出。
+ * 颜色按「好坏」而非分值：反向指标(毒性/偏见)高分算差。
+ */
+function scoreTagItems(scores: Record<string, number> | null, reasons?: Record<string, string>): OverflowTagItem[] {
+  if (!scores) return [];
+  return Object.entries(scores).map(([scorer, score]) => {
+    const goodness = INVERTED_SCORERS.has(scorer) ? 1 - score : score;
+    const text = `${SCORER_LABELS.get(scorer) ?? scorer} ${(score * 100).toFixed(1)}%`;
+    const reason = reasons?.[scorer];
+    return {
+      key: scorer,
+      label: reason ? <Tooltip content={<div style={{ maxWidth: 420 }}>{reason}</div>}>{text}</Tooltip> : text,
+      color: goodness >= 0.6 ? 'green' : goodness >= 0.3 ? 'amber' : 'red',
+    };
+  });
+}
+
+/** 详情面板里的评分平铺（非表格列：保留换行展示，不做溢出收纳） */
 function renderScores(scores: Record<string, number> | null, reasons?: Record<string, string>) {
-  if (!scores || Object.keys(scores).length === 0) return EMPTY_PLACEHOLDER;
+  const items = scoreTagItems(scores, reasons);
+  if (items.length === 0) return EMPTY_PLACEHOLDER;
   return (
     <Space spacing={4} wrap>
-      {Object.entries(scores).map(([scorer, score]) => {
-        // 反向指标(毒性/偏见)高分为差:颜色按「好坏」而非分值
-        const goodness = INVERTED_SCORERS.has(scorer) ? 1 - score : score;
-        const tag = (
-          <Tag key={scorer} size="small" color={goodness >= 0.6 ? 'green' : goodness >= 0.3 ? 'amber' : 'red'}>
-            {SCORER_LABELS.get(scorer) ?? scorer} {(score * 100).toFixed(1)}%
-          </Tag>
-        );
-        const reason = reasons?.[scorer];
-        return reason
-          ? <Tooltip key={scorer} content={<div style={{ maxWidth: 420 }}>{reason}</div>}>{tag}</Tooltip>
-          : tag;
-      })}
+      {items.map((item) => <Tag key={item.key} size="small" color={item.color}>{item.label}</Tag>)}
     </Space>
   );
 }
@@ -201,7 +209,15 @@ function DatasetDetail({ dataset, canManage }: { dataset: AiEvalDataset; canMana
           ? <span>{r.succeededCount}/{r.totalCount}<Text type="danger" style={{ marginLeft: 4 }}>({r.failedCount} 失败)</Text></span>
           : `${r.succeededCount}/${r.totalCount}`,
     },
-    { title: '平均分', dataIndex: 'avgScores', render: (v: Record<string, number> | null) => renderScores(v) },
+    overflowTagColumn<AiEvalExperiment>({
+      title: '平均分',
+      dataIndex: 'avgScores',
+      minWidth: 220,
+      contentWidth: '100%',
+      getItems: (v) => scoreTagItems(v as Record<string, number> | null),
+      tagSize: 'small',
+      popoverWidth: 240,
+    }),
     dateTimeColumn('发起时间', 'createdAt'),
     {
       title: '操作',
@@ -234,13 +250,18 @@ function DatasetDetail({ dataset, canManage }: { dataset: AiEvalDataset; canMana
       width: 180,
       render: (v: string | null) => v ? <Paragraph ellipsis={{ rows: 3, showTooltip: true }} style={{ fontSize: 13 }}>{v}</Paragraph> : EMPTY_PLACEHOLDER,
     },
-    {
+    overflowTagColumn<AiEvalExperimentResult>({
       title: '得分',
       dataIndex: 'scores',
       width: 170,
-      render: (v: Record<string, number>, record: AiEvalExperimentResult) =>
-        renderScores(Object.keys(v).length > 0 ? v : null, record.reasons),
-    },
+      contentWidth: 138,
+      getItems: (v, record) => {
+        const scores = (v as Record<string, number> | null) ?? null;
+        return scoreTagItems(scores && Object.keys(scores).length > 0 ? scores : null, record.reasons);
+      },
+      tagSize: 'small',
+      popoverWidth: 260,
+    }),
   ];
 
   return (

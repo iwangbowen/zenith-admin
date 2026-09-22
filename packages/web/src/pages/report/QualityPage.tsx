@@ -24,7 +24,7 @@ import {
   useUpdateReportDqAnomalyStatus,
 } from '@/hooks/queries/report-dq';
 import { useEnabledReportDatasets } from '@/hooks/queries/report-datasets';
-import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, overflowTagColumn, renderEllipsis } from '@/utils/table-columns';
 import { DEFAULT_TIMEZONE } from '@/utils/timezones';
 import { REPORT_DQ_ANOMALY_STATUS_LABELS, REPORT_DQ_ANOMALY_STATUS_OPTIONS, REPORT_DQ_TRIGGER_LABELS } from '@zenith/shared/report';
 import {
@@ -260,18 +260,24 @@ export default function QualityPage() {
     { title: '规则总数', dataIndex: 'totalRules', width: 100, align: 'right' },
     { title: '通过', dataIndex: 'passedRules', width: 90 },
     { title: '失败', dataIndex: 'failedRules', width: 90 },
-    { title: '维度明细', dataIndex: 'dimensions', width: 260, render: (v: Record<string, number> | null) => {
-      if (!v || Object.keys(v).length === 0) return EMPTY_PLACEHOLDER;
-      return (
-        <Space spacing={4} wrap>
-          {severityOptions.filter((item) => v[item.value] !== undefined).map((item) => (
-            <Tag key={item.value} size="small" color={severityColor[item.value as keyof typeof severityColor]}>
-              {item.label} {v[item.value]}
-            </Tag>
-          ))}
-        </Space>
-      );
-    } },
+    overflowTagColumn<ReportDqScore>({
+      title: '维度明细',
+      dataIndex: 'dimensions',
+      width: 260,
+      contentWidth: 228,
+      getItems: (v) => {
+        const counts = (v as Record<string, number> | null) ?? {};
+        return severityOptions
+          .filter((item) => counts[item.value] !== undefined)
+          .map((item) => ({
+            key: item.value,
+            label: `${item.label} ${counts[item.value]}`,
+            color: severityColor[item.value as keyof typeof severityColor],
+          }));
+      },
+      tagSize: 'small',
+      popoverWidth: 260,
+    }),
     dateTimeColumn('测量时间', 'measuredAt'),
   ];
 

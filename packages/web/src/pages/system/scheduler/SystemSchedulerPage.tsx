@@ -22,7 +22,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { formatDurationMs as formatDuration } from '@/utils/format';
-import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, overflowTagColumn, renderEllipsis } from '@/utils/table-columns';
 import {
   systemSchedulerKeys,
   useAcknowledgeSystemSchedulerAlert,
@@ -506,19 +506,19 @@ export default function SystemSchedulerPage() {
       ),
     },
     { title: '状态', dataIndex: 'active', width: 120, render: (_: unknown, record) => <Tag color={record.active && !record.stale ? 'green' : 'red'}>{record.active && !record.stale ? '在线' : '离线'}</Tag> },
-    {
+    // 只含 api 的节点仅声明任务、投递作业；执行由 worker 节点承担
+    overflowTagColumn<SystemSchedulerNode>({
       title: '角色',
       dataIndex: 'roles',
       width: 150,
-      // 只含 api 的节点仅声明任务、投递作业；执行由 worker 节点承担
-      render: (_: unknown, record) => (
-        <Space spacing={4}>
-          {record.roles.map((role) => (
-            <Tag key={role} color={role === 'worker' ? 'blue' : 'grey'}>{PROCESS_ROLE_LABELS[role]}</Tag>
-          ))}
-        </Space>
-      ),
-    },
+      contentWidth: 118,
+      getItems: (roles) => ((roles as SystemSchedulerNode['roles'] | undefined) ?? []).map((role) => ({
+        key: role,
+        label: PROCESS_ROLE_LABELS[role],
+        color: role === 'worker' ? 'blue' : 'grey',
+      })),
+      popoverWidth: 150,
+    }),
     { title: '版本', dataIndex: 'version', minWidth: 140, render: renderEllipsis },
     dateTimeColumn('启动时间', 'startedAt'),
     dateTimeColumn('最近心跳', 'lastHeartbeatAt'),

@@ -205,7 +205,7 @@
 - **标签溢出列**：表格中需要单行展示多枚标签、超出部分收纳为 `+N` 并通过 Popover 查看时，一律使用
   `utils/table-columns` 的 `overflowTagColumn({ title, dataIndex, width, contentWidth, getItems, ... })`；
   它内部复用 `components/OverflowTagList.tsx`，页面只负责通过 `getItems(value, record)` 转换业务数据为
-  `{ key, label }`，并按业务传入 `tagColor` / `tagSize` / `popoverWidth` / `popoverTrigger` / `empty`。
+  `{ key, label }`（配色由业务数据逐项决定时再带上 `color`，缺省回退列级 `tagColor`），并按业务传入 `tagColor` / `tagSize` / `popoverWidth` / `popoverTrigger` / `empty`。
   有权限的业务点击行为通过 `onClick(record)` 传入，禁止在页面重复实现 `OverflowList + Popover + Tag` 的渲染结构；
   空列表文案、业务去重 / 标签映射和权限判断仍由页面提供。
 - **时间 / 日期列**：一律用 `utils/table-columns` 的 `dateTimeColumn(title, dataIndex, options?)`

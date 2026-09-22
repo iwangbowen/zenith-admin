@@ -5,7 +5,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { CronBuilderPopover } from '@/components/CronBuilderPopover';
 import { FormTimezoneSelect } from '@/components/FormTimezoneSelect';
-import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, overflowTagColumn, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useQueryClient } from '@tanstack/react-query';
@@ -118,7 +118,19 @@ export default function SubscriptionsPage() {
     { title: '时区', dataIndex: 'timezone', width: 150, render: renderEllipsis },
     { title: '错过策略', dataIndex: 'misfirePolicy', width: 110, render: (value: string) => REPORT_MISFIRE_POLICY_OPTIONS.find((item) => item.value === value)?.label ?? value },
     dateTimeColumn('下次执行', 'nextRunAt'),
-    { title: '通道', dataIndex: 'channels', width: 170, render: (ch: string[]) => (ch ?? []).map((c) => <Tag key={c} size="small" color={c === 'email' ? 'blue' : c === 'webhook' ? 'purple' : 'green'} style={{ marginRight: 4 }}>{NOTIFY_CHANNEL_LABELS[c.toLowerCase() as NotifyChannel] ?? c}</Tag>) },
+    overflowTagColumn<ReportDashboardSubscription>({
+      title: '通道',
+      dataIndex: 'channels',
+      width: 170,
+      contentWidth: 138,
+      getItems: (ch) => ((ch as string[] | undefined) ?? []).map((c) => ({
+        key: c,
+        label: NOTIFY_CHANNEL_LABELS[c.toLowerCase() as NotifyChannel] ?? c,
+        color: c === 'email' ? 'blue' : c === 'webhook' ? 'purple' : 'green',
+      })),
+      tagSize: 'small',
+      popoverWidth: 170,
+    }),
     { title: '收件邮箱', dataIndex: 'recipients', minWidth: 200, render: renderEllipsis },
     dateTimeColumn('上次推送', 'lastRunAt'),
     {

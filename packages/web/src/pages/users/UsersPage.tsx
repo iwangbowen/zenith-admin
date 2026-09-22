@@ -413,21 +413,17 @@ export default function UsersPage() {
       width: 160,
       render: renderEllipsis,
     },
-    {
+    overflowTagColumn<User>({
       title: '岗位',
       dataIndex: 'positions',
       width: 220,
-      render: (positions: Position[] | undefined) => {
-        const list = positions ?? [];
-        return (
-          <Space spacing={4} wrap>
-            {list.length === 0 ? <Tag color="grey">无岗位</Tag> : list.map((item) => (
-              <Tag key={item.id} color="purple">{item.name}</Tag>
-            ))}
-          </Space>
-        );
-      },
-    },
+      contentWidth: 188,
+      getItems: (positions) => ((positions as Position[] | undefined) ?? [])
+        .map((item) => ({ key: String(item.id), label: item.name })),
+      tagColor: 'purple',
+      popoverWidth: 200,
+      empty: <Tag color="grey">无岗位</Tag>,
+    }),
     overflowTagColumn<User>({
       title: '角色',
       dataIndex: 'roles',

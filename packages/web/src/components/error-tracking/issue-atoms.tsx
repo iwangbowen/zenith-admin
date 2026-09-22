@@ -8,8 +8,7 @@ import { AlertCircle, AlertTriangle, Bug, Clock, FileCode, ListChecks, MessageSq
 import type { ErrorLevel, ErrorStatus, ErrorType } from '@zenith/shared/analytics';
 import { ERROR_LEVEL_LABELS, ERROR_STATUS_LABELS, ERROR_TYPE_LABELS } from '@zenith/shared/analytics';
 import { TextBlock } from '@/components/TextBlock';
-import { ERROR_LEVEL_COLORS, ERROR_STATUS_COLORS, ERROR_TYPE_COLORS, alertChannelMeta } from './issue-meta';
-import './error-tracking.css';
+import { ERROR_LEVEL_COLORS, ERROR_STATUS_COLORS, ERROR_TYPE_COLORS } from './issue-meta';
 
 const { Text } = Typography;
 
@@ -41,18 +40,6 @@ export function ErrorTypeIcon({ type }: Readonly<{ type: ErrorType }>) {
     case 'logged_error': return <ScrollText {...common} />;
     default: return <Bug {...common} />;
   }
-}
-
-export function AlertChannelTags({ channels }: Readonly<{ channels: readonly string[] }>) {
-  if (channels.length === 0) return <Text type="tertiary">未配置</Text>;
-  return (
-    <span className="error-tracking-channel-tags">
-      {channels.map((channel) => {
-        const meta = alertChannelMeta(channel);
-        return <Tag key={channel} color={meta.color}>{meta.label}</Tag>;
-      })}
-    </span>
-  );
 }
 
 /** 等宽只读文本块（堆栈 / JSON 上下文）；外观由共享的 TextBlock 提供，本页面不再自带样式 */

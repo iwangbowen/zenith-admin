@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@douyinfe/semi-ui', () => {
-  type Item = { key: string | number; label: ReactNode };
+  type Item = { key: string | number; label: ReactNode; color?: string };
   type OverflowListProps = {
     items: Item[];
     visibleItemRenderer: (item: Item) => ReactNode;
@@ -27,8 +27,8 @@ vi.mock('@douyinfe/semi-ui', () => {
     return <div>{children}</div>;
   }
 
-  function Tag({ children }: { children: ReactNode }) {
-    return <span>{children}</span>;
+  function Tag({ children, color }: { children: ReactNode; color?: string }) {
+    return <span data-color={color ?? ''}>{children}</span>;
   }
 
   return { OverflowList, Popover, Space, Tag };
@@ -48,6 +48,22 @@ describe('OverflowTagList', () => {
     expect(screen.getByText('管理员')).toBeTruthy();
     expect(screen.getByText('+1')).toBeTruthy();
     expect(screen.getByText('审核员')).toBeTruthy();
+  });
+
+  it('prefers the per-item color over the column-level tagColor', () => {
+    render(
+      <OverflowTagList
+        contentWidth={228}
+        tagColor="blue"
+        items={[
+          { key: 'high', label: '高', color: 'red' },
+          { key: 'medium', label: '中' },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('高').getAttribute('data-color')).toBe('red');
+    expect(screen.getByText('中').getAttribute('data-color')).toBe('blue');
   });
 
   it('supports keyboard activation when the container is clickable', () => {

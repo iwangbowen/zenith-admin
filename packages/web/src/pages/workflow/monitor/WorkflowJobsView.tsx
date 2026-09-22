@@ -9,7 +9,7 @@ import { downloadBlob } from '@/utils/download';
 import { formatDateTime } from '@/utils/date';
 import { formatDurationMs } from '@/utils/format';
 import { confirmDanger } from '@/utils/confirm';
-import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
+import { dateTimeColumn, overflowTagColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import WorkflowInstanceCell from '@/components/workflow/WorkflowInstanceCell';
@@ -513,31 +513,30 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
         );
       },
     },
-    {
+    // 集群行聚合组内作业类型，作业行展示类型 + 状态；两行都走同一套溢出标签列
+    overflowTagColumn<ClusterTreeRow>({
       title: '类型 / 状态',
       dataIndex: 'kind',
       width: 220,
-      render: (_: unknown, row: ClusterTreeRow) => {
+      contentWidth: 188,
+      getItems: (_v, row) => {
         if (row.kind === 'cluster' && row.cluster) {
-          return (
-            <Space wrap spacing={4}>
-              {row.cluster.jobTypes.map((t) => {
-                const meta = JOB_TYPE_META[t as WorkflowJobType];
-                return <Tag key={t} color={meta?.color ?? 'grey'} size="small">{meta?.text ?? t}</Tag>;
-              })}
-            </Space>
-          );
+          return row.cluster.jobTypes.map((t) => {
+            const meta = JOB_TYPE_META[t as WorkflowJobType];
+            return { key: t, label: meta?.text ?? t, color: meta?.color ?? 'grey' };
+          });
         }
         const j = row.job!;
         const meta = JOB_TYPE_META[j.jobType as WorkflowJobType];
-        return (
-          <Space spacing={4}>
-            <Tag color={meta?.color ?? 'grey'} size="small">{meta?.text ?? j.jobType}</Tag>
-            {renderStatusTag(j.status as WorkflowJobStatus)}
-          </Space>
-        );
+        const statusMeta = JOB_STATUS_META[j.status as WorkflowJobStatus];
+        return [
+          { key: 'type', label: meta?.text ?? j.jobType, color: meta?.color ?? 'grey' },
+          { key: 'status', label: statusMeta?.text ?? j.status, color: statusMeta?.color ?? 'grey' },
+        ];
       },
-    },
+      tagSize: 'small',
+      popoverWidth: 220,
+    }),
     {
       title: '执行进程 / 尝试',
       dataIndex: 'job',
