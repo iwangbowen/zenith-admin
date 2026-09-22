@@ -41,11 +41,12 @@ export function useEntityRelations(type: CanonicalEntityType, key: string | unde
 export function useEntityRelationSection(type: CanonicalEntityType, key: string | undefined, sectionKey: string, enabled = true, limit = 5, filters: EntityRelationFilters = {}) {
   const access = useEntityAccessKey();
   const params = { type, key: key ?? '', sectionKey };
+  const queryFilters = { ...filters, attentionOnly: filters.attentionOnly || undefined };
   return useInfiniteQuery({
-    queryKey: [...contractKey(entityRelationsContract.section, { params, query: { limit, ...filters } }), access],
+    queryKey: [...contractKey(entityRelationsContract.section, { params, query: { limit, ...queryFilters } }), access],
     meta: ENTITY_RELATION_QUERY_META,
     initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam, signal }) => api(entityRelationsContract.section, { params, query: { limit, ...filters, cursor: pageParam } }, { silent: true, signal }),
+    queryFn: ({ pageParam, signal }) => api(entityRelationsContract.section, { params, query: { limit, ...queryFilters, cursor: pageParam } }, { silent: true, signal }),
     getNextPageParam: (lastPage) => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
     enabled: enabled && Boolean(key) && access[0] !== null,
     ...ENTITY_RELATION_REFRESH_OPTIONS,

@@ -75,7 +75,7 @@ integration('entity relations on isolated PostgreSQL', () => {
 
   async function cleanupRecords() {
     if (!storage || !tenantA || !tenantB) return;
-    for (const table of [tables.domainEvents, tables.entityRelationEdges, tables.operationLogs, tables.notificationOutbox, tables.asyncTasks]) {
+    for (const table of [tables.entityWatches, tables.domainEvents, tables.entityRelationEdges, tables.operationLogs, tables.notificationOutbox, tables.asyncTasks]) {
       await storage.db.delete(table).where(inArray(table.tenantId, [tenantA, tenantB]));
     }
   }
@@ -162,6 +162,28 @@ integration('entity relations on isolated PostgreSQL', () => {
     expect(normal.sections.find((section) => section.key === 'identity.user.tasks')?.summaryState).toBe('has-data');
   });
 
+  it('filters the entire authorized set before pagination and binds cursors to the filter', async () => {
+    const first = await createTask(tenantA, reader, 'QA match older');
+    const second = await createTask(tenantA, reader, 'QA match newer');
+    for (const id of [first, second]) {
+      await attachTask(id, tenantA);
+      await storage.db.update(tables.asyncTasks).set({ status: 'failed', createdAt: new Date('2026-09-21T08:00:00Z') }).where(eq(tables.asyncTasks.id, id));
+    }
+    for (let index = 0; index < 7; index++) await attachTask(await createTask(tenantA, reader, 'unrelated success'), tenantA);
+    const foreign = await createTask(tenantB, foreignUser, 'QA match foreign');
+    await storage.db.update(tables.asyncTasks).set({ status: 'failed' }).where(eq(tables.asyncTasks.id, foreign));
+    await attachTask(foreign, tenantA);
+    const input = { ...userRef(), sectionKey: 'identity.user.tasks', limit: 1, keyword: 'QA match', status: 'failed', attentionOnly: true,
+      startTime: '2026-09-21', endTime: '2026-09-21' };
+    const page = await registry.listEntityRelation(input, { user: admin });
+    expect(page.items.map((item) => item.ref.key)).toEqual([String(second)]);
+    expect(page.hasMore).toBe(true);
+    const next = await registry.listEntityRelation({ ...input, cursor: page.nextCursor! }, { user: admin });
+    expect(next.items.map((item) => item.ref.key)).toEqual([String(first)]);
+    expect(next.hasMore).toBe(false);
+    await expect(registry.listEntityRelation({ ...input, keyword: 'different', cursor: page.nextCursor! }, { user: admin })).rejects.toMatchObject({ status: 400 });
+  });
+
   it('recovers the transaction after one timed-out summary and retains healthy groups', async () => {
     const [{ summarizeRelationProviders }, { withRelationRead }] = await Promise.all([import('./summary'), import('./runtime')]);
     const provider = (key: string, slow = false): RelationProvider => ({ sourceType: 'identity.user', key, permissions: 'authenticated',
@@ -189,6 +211,20 @@ integration('entity relations on isolated PostgreSQL', () => {
     expect(reverse.items.map((item) => item.ref)).toEqual([userRef()]);
     await context.runWithCurrentUser(admin, () => links.changeEntityLink(task, userRef(), true));
     expect(await storage.db.$count(tables.entityRelationEdges, eq(tables.entityRelationEdges.tenantId, tenantA))).toBe(0);
+  });
+
+  it('keeps distinct manual relation types and removes a directional edge from its reverse endpoint', async () => {
+    const task = taskRef(await createTask(tenantA, reader));
+    await context.runWithCurrentUser(admin, async () => {
+      await links.changeEntityLink(userRef(), task, false, { relationType: 'related' });
+      await links.changeEntityLink(userRef(), task, false, { relationType: 'reference', note: '作为处理依据' });
+    });
+    const reverse = await registry.listEntityRelation({ ...task, sectionKey: 'tasks.async.links', limit: 5 }, { user: admin });
+    expect(reverse.items.find((item) => item.manual?.type === 'reference')).toMatchObject({ subtitle: '被引用于', manual: { direction: 'incoming', note: '作为处理依据' } });
+    await context.runWithCurrentUser(admin, () => links.changeEntityLink(task, userRef(), true, { relationType: 'reference', direction: 'incoming' }));
+    const remaining = await registry.listEntityRelation({ ...userRef(), sectionKey: 'identity.user.links', limit: 5 }, { user: admin });
+    expect(remaining.items).toHaveLength(1);
+    expect(remaining.items[0].manual?.type).toBe('related');
   });
 
   it('hides forged cross-tenant, private and missing targets while retaining an owned target', async () => {
@@ -271,6 +307,65 @@ integration('entity relations on isolated PostgreSQL', () => {
     expect(await storage.db.$count(tables.asyncTasks, eq(tables.asyncTasks.id, taskId))).toBe(0);
     expect(await storage.db.$count(tables.domainEvents, eq(tables.domainEvents.id, eventId))).toBe(0);
     expect(await storage.db.$count(tables.domainEventSubjects, eq(tables.domainEventSubjects.eventId, eventId))).toBe(0);
+    expect(await storage.db.$count(tables.entityWatchEvents, eq(tables.entityWatchEvents.eventId, eventId))).toBe(0);
+  });
+
+  it('deduplicates overlapping watches and rechecks cancellation and live permissions before delayed delivery', async () => {
+    const [{ changeEntityWatch }, { drainEntityWatchEvents }, { authorizeEntityWatchDelivery }] = await Promise.all([
+      import('../entity-watches.service'), import('../entity-watch-worker'), import('../entity-watch-delivery-guard'),
+    ]);
+    const sourceId = await createTask(tenantA, taskReader, 'QA watched task');
+    const relatedId = await createTask(tenantA, taskReader, 'QA watched source');
+    await context.runWithCurrentUser(taskReader, async () => {
+      await changeEntityWatch(taskRef(sourceId), true);
+      await changeEntityWatch(taskRef(sourceId), true);
+      await changeEntityWatch(taskRef(relatedId), true);
+    });
+    const eventId = await storage.db.transaction((tx) => events.recordDomainEvent(tx, { eventType: 'tasks.async-task.failed',
+      source: taskRef(sourceId), subjects: [{ ...taskRef(relatedId), role: 'related' }], tenantId: tenantA,
+      payload: { taskType: 'entity.qa', status: 'failed', attempt: 1 }, dedupeKey: `${runId}:watch-failed` }));
+    await drainEntityWatchEvents();
+    const notifications = await storage.db.select().from(tables.notificationOutbox).where(and(eq(tables.notificationOutbox.tenantId, tenantA), eq(tables.notificationOutbox.eventKey, 'platform.entity.changed')));
+    expect(notifications).toHaveLength(1);
+    expect(await storage.db.$count(tables.entityWatchEvents, eq(tables.entityWatchEvents.eventId, eventId))).toBe(0);
+    const delayed = { ...notifications[0], scheduledAt: new Date(), vars: { ...notifications[0].vars, entityWatchDigestReady: true } };
+    expect(await authorizeEntityWatchDelivery(delayed, { type: 'user', id: taskReader.userId })).not.toBeNull();
+    await storage.db.delete(tables.userMenus).where(and(eq(tables.userMenus.userId, taskReader.userId), eq(tables.userMenus.menuId, menuIds[1])));
+    try { expect(await authorizeEntityWatchDelivery(delayed, { type: 'user', id: taskReader.userId })).toBeNull(); }
+    finally { await storage.db.insert(tables.userMenus).values({ userId: taskReader.userId, menuId: menuIds[1] }); }
+    await context.runWithCurrentUser(taskReader, () => changeEntityWatch(taskRef(sourceId), false));
+    expect(await authorizeEntityWatchDelivery(delayed, { type: 'user', id: taskReader.userId })).not.toBeNull();
+    await context.runWithCurrentUser(taskReader, () => changeEntityWatch(taskRef(relatedId), false));
+    expect(await authorizeEntityWatchDelivery(delayed, { type: 'user', id: taskReader.userId })).toBeNull();
+    await context.runWithCurrentUser(taskReader, () => changeEntityWatch(taskRef(sourceId), true));
+    expect(await authorizeEntityWatchDelivery(delayed, { type: 'user', id: taskReader.userId })).toBeNull();
+  });
+
+  it('does not lose a lower event id that commits after a later event was drained', async () => {
+    const { drainEntityWatchEvents } = await import('../entity-watch-worker');
+    const sourceId = await createTask(tenantA, taskReader);
+    let release!: () => void;
+    let reportId!: (id: number) => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const firstId = new Promise<number>((resolve) => { reportId = resolve; });
+    const input = { eventType: 'tasks.async-task.created' as const, source: taskRef(sourceId), subjects: [{ ...taskRef(sourceId), role: 'primary' as const }], tenantId: tenantA, payload: { taskType: 'entity.qa' } };
+    const lateCommit = storage.db.transaction(async (tx) => {
+      const id = await events.recordDomainEvent(tx, input);
+      reportId(id);
+      await held;
+      return id;
+    });
+    const older = await firstId;
+    try {
+      const newer = await storage.db.transaction((tx) => events.recordDomainEvent(tx, input));
+      expect(newer).toBeGreaterThan(older);
+      await drainEntityWatchEvents();
+      expect(await storage.db.$count(tables.entityWatchEvents, eq(tables.entityWatchEvents.eventId, newer))).toBe(0);
+    } finally { release(); }
+    await lateCommit;
+    expect(await storage.db.$count(tables.entityWatchEvents, eq(tables.entityWatchEvents.eventId, older))).toBe(1);
+    await drainEntityWatchEvents();
+    expect(await storage.db.$count(tables.entityWatchEvents, eq(tables.entityWatchEvents.eventId, older))).toBe(0);
   });
 
   it('deduplicates a committed event and refuses a different subject set under the same business key', async () => {

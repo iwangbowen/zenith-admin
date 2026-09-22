@@ -1,3 +1,5 @@
+import dayjs from 'dayjs';
+import { publishMockWatchEvent } from '@/mocks/data/entity-watch-events';
 import {
   paymentOpsContract,
   paymentReconContract,
@@ -122,6 +124,9 @@ export function recordMockPaymentSucceeded(order: typeof mockPaymentOrders[numbe
     });
   }
   recordMockOutboxEvent('payment.succeeded', order.orderNo);
+  publishMockWatchEvent({ id: `payment:${order.id}:succeeded`, eventType: 'payment.succeeded', occurredAt: dayjs().toISOString(),
+    sourceRef: { type: 'payment.order', key: String(order.id) }, subjectRefs: [{ type: 'payment.order', key: String(order.id), role: 'primary' }],
+    visibility: 'restricted', payload: { orderNo: order.orderNo, amount: order.amount, currency: order.currency } });
 }
 
 export function recordMockRefundSucceeded(refund: typeof mockPaymentRefunds[number]) {
@@ -140,6 +145,9 @@ export function recordMockRefundSucceeded(refund: typeof mockPaymentRefunds[numb
     ],
   });
   recordMockOutboxEvent('refund.succeeded', refund.orderNo);
+  publishMockWatchEvent({ id: `refund:${refund.id}:succeeded`, eventType: 'refund.succeeded', occurredAt: dayjs().toISOString(),
+    sourceRef: { type: 'payment.refund', key: String(refund.id) }, subjectRefs: [{ type: 'payment.order', key: String(order.id), role: 'related' }, { type: 'payment.refund', key: String(refund.id), role: 'primary' }],
+    visibility: 'restricted', payload: { orderNo: order.orderNo, amount: order.amount, currency: order.currency, refundNo: refund.refundNo, refundAmount: refund.refundAmount } });
 }
 
 const MOCK_OPS_HEALTH: PaymentOpsHealth = {

@@ -40,7 +40,7 @@ async function processWatch(tx: DbTransaction, event: typeof domainEvents.$infer
   const [pending] = await tx.select().from(entityWatchEvents).where(and(eq(entityWatchEvents.eventId, event.id), eq(entityWatchEvents.leaseToken, leaseToken)))
     .limit(1).for('update');
   if (!pending || pending.watcherCursor >= watchId) return;
-  const watch = await getCurrentWatch(tx, watchId);
+  const watch = await getCurrentWatch(tx, watchId, event.tenantId);
   if (watch) {
     const authorized = await authorizeWatchedEvent(tx, watch, event);
     if (authorized) await notifyWithin(tx, 'platform.entity.changed', {

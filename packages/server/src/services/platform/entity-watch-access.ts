@@ -63,7 +63,7 @@ export async function authorizeWatchedEvent(tx: DbTransaction, watch: EntityWatc
   }, tx));
 }
 
-export async function getCurrentWatch(tx: DbTransaction, watchId: number) {
-  const [watch] = await tx.select().from(entityWatches).where(eq(entityWatches.id, watchId)).limit(1).for('share');
+export async function getCurrentWatch(tx: DbTransaction, watchId: number, tenantId: number | null) {
+  const [watch] = await tx.select().from(entityWatches).where(and(eq(entityWatches.id, watchId), exactTenantCondition(entityWatches.tenantId, tenantId))).limit(1).for('share');
   return watch ?? null;
 }

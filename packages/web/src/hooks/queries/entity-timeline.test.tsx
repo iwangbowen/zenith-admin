@@ -22,8 +22,16 @@ describe('timeline query filter scope', () => {
       wrapper: createWrapper(createTestQueryClient()), initialProps: { filters: {} as EntityTimelineFilters },
     });
     await waitFor(() => expect(hook.result.current.isSuccess).toBe(true));
-    await act(async () => { await hook.result.current.fetchNextPage(); });
-    expect(hook.result.current.data?.pages).toHaveLength(2);
+    // Subscribe to data before pagination, as the timeline does during render.
+    // Reading only isSuccess would not notify this hook when another page arrives.
+    expect(hook.result.current.data?.pages).toHaveLength(1);
+    expect(hook.result.current.hasNextPage, JSON.stringify(recorder.calls)).toBe(true);
+    await act(async () => {
+      const next = await hook.result.current.fetchNextPage();
+      expect(next.error).toBeNull();
+      expect(next.data?.pages, JSON.stringify(recorder.calls)).toHaveLength(2);
+    });
+    await waitFor(() => expect(hook.result.current.data?.pages).toHaveLength(2));
     hook.rerender({ filters: { eventType: 'refund.failed', startTime: '2026-09-22', endTime: '2026-09-22' } });
     await waitFor(() => expect(hook.result.current.data?.pages[0].items[0].id).toBe('refund.failed'));
     expect(hook.result.current.data?.pages).toHaveLength(1);

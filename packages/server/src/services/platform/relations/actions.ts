@@ -37,5 +37,13 @@ export async function addRelationActions(items: EntityRelationItem[], anchor: Vi
         eq(workflowInstances.status, 'running'), exactTenantCondition(workflowInstances.tenantId, anchor.tenantId)));
     for (const row of rows) actions.set(`workflow.task:${row.id}`, { label: '办理审批', target: { type: 'workflow.instance', key: String(row.instanceId) } });
   }
+  const instanceIds = ids('workflow.instance');
+  if (instanceIds.length && await hasPermission('workflow:task:handle')) {
+    const rows = await access.db.selectDistinct({ id: workflowInstances.id }).from(workflowInstances)
+      .innerJoin(workflowTasks, eq(workflowTasks.instanceId, workflowInstances.id)).where(and(
+        inArray(workflowInstances.id, instanceIds), eq(workflowInstances.status, 'running'), eq(workflowTasks.status, 'pending'),
+        eq(workflowTasks.assigneeId, access.user.userId), exactTenantCondition(workflowInstances.tenantId, anchor.tenantId)));
+    for (const row of rows) actions.set(`workflow.instance:${row.id}`, { label: '办理审批', target: { type: 'workflow.instance', key: String(row.id) } });
+  }
   return items.map((item) => ({ ...item, action: actions.get(`${item.ref.type}:${item.ref.key}`) }));
 }

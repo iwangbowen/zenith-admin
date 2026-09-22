@@ -1,4 +1,4 @@
-import { eq, type SQL } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import { HTTPException } from 'hono/http-exception';
 import { normalizeEntityRelationFilters, supportsEntityRelationFilters, type EntityRelationFilterCapabilities, type EntityRelationFilters } from '@zenith/shared/platform';
@@ -14,7 +14,7 @@ export function relationFilterWhere(filters: EntityRelationFilters | undefined, 
   if (!filters) return undefined;
   return buildWhere(
     keywordCondition(filters.keyword, columns.keyword ?? [], 'ilike'),
-    filters.status && columns.status ? eq(columns.status, filters.status) : undefined,
+    filters.status && columns.status ? sql`${columns.status} = ${filters.status}` : undefined,
     ...(columns.occurredAt ? dateRangeConditions(columns.occurredAt, filters.startTime, filters.endTime) : []),
     filters.attentionOnly ? columns.attention : undefined,
   );

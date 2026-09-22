@@ -89,6 +89,16 @@ beforeEach(() => {
 });
 
 describe('resolveDispatchPlan 渠道优先级', () => {
+  it('honors a completed guarded-watch digest window while retaining mute and channel preferences', async () => {
+    const input = { eventKey: 'platform.entity.changed' as const, event: baseEvent, recipients: [{ type: 'user' as const, id: 1 }],
+      tenantId: 10, policy: { only: ['email' as const] }, digestWindowElapsed: true };
+    mockQueries([], [], [settingsRow({ digestMode: 'hourly' })]);
+    expect(channelOf(await resolveDispatchPlan(input), 'email')).toMatchObject({ allowed: true });
+    mockQueries([], [], [settingsRow({ digestMode: 'hourly', globalMuted: true })]);
+    expect(channelOf(await resolveDispatchPlan(input), 'email')).toMatchObject({ allowed: false, reasonCode: 'globally_muted' });
+    mockQueries([], [{ recipientType: 'user', recipientId: 1, channel: 'email', enabled: false }], [settingsRow({ digestMode: 'hourly' })]);
+    expect(channelOf(await resolveDispatchPlan(input), 'email')).toMatchObject({ allowed: false, reasonCode: 'preference_off' });
+  });
   it('无任何覆盖时按事件默认渠道投递，非默认的可选渠道保持关闭', async () => {
     mockQueries([], [], []);
     const plan = await resolve(baseEvent);

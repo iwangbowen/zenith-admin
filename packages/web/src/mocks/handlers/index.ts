@@ -1,3 +1,5 @@
+import { businessFileDetailHandlers } from './business-file-details';
+import { entityWatchesHandlers } from './entity-watches';
 import { workflowAttachmentHandlers } from './workflow-attachments';
 import { authHandlers } from './auth';
 import { usersHandlers } from './users';
@@ -168,6 +170,7 @@ export const handlers = [
   ...identityProvidersHandlers,
   ...directorySyncHandlers,
   ...announcementsHandlers,
+  ...businessFileDetailHandlers,
   ...filesHandlers,
   ...exportJobsHandlers,
   ...asyncTasksHandlers,
@@ -305,6 +308,7 @@ export const handlers = [
   ...traceHandlers,
   ...importJobsHandlers,
   ...entityRelationsHandlers,
+  ...entityWatchesHandlers,
   ...entityTimelineHandlers,
   ...notificationPoliciesHandlers,
   // 兜底 handler 必须放在最后：拦截所有未实现的 /api/* 请求，避免 dev:demo 下被代理到后端返回 401 跳转登录页

@@ -71,7 +71,7 @@ export function reverseSubjectProviders(
         const keyColumn = sql<string>`${source.table.entityKey} collate "C"`;
         while (visible.length <= limit) {
           assertRelationBudget(access);
-          if (scanned >= SUBJECT_SCAN_LIMIT || (scanned > 0 && access.deadlineAt && access.deadlineAt - Date.now() < 150)) break;
+          if (scanned >= SUBJECT_SCAN_LIMIT || (scanned > 0 && access.deadlineAt && access.deadlineAt - performance.now() < 150)) break;
           const batchSize = Math.min(Math.max(SUBJECT_BATCH_SIZE, limit + 1), SUBJECT_SCAN_LIMIT - scanned);
           const rows = await access.db.selectDistinct({ type: typeColumn, key: keyColumn }).from(source.table).where(buildWhere(
             eq(source.parentId, parentId), exactTenantCondition(source.table.tenantId, authorized.tenantId), tenantCondition(source.table, access.user),

@@ -59,7 +59,7 @@ export function manualLinksProvider(type: CanonicalEntityType, targetTypes: read
       let scanned = 0;
       let exhausted = false;
       while (scanned < 256 && visible.length <= limit) {
-        if (scanned > 0 && access.deadlineAt && access.deadlineAt - Date.now() < 150) break;
+        if (scanned > 0 && access.deadlineAt && access.deadlineAt - performance.now() < 150) break;
         const batchSize = Math.min(32, 256 - scanned);
         const rows = await access.db.select({ id: entityRelationEdges.id, sourceType: entityRelationEdges.sourceType, sourceKey: entityRelationEdges.sourceKey,
           targetType: entityRelationEdges.targetType, targetKey: entityRelationEdges.targetKey, createdAt: entityRelationEdges.createdAt, relationKey: entityRelationEdges.relationKey, metadata: entityRelationEdges.metadata, createdByName: users.nickname }).from(entityRelationEdges).leftJoin(users, eq(entityRelationEdges.createdBy, users.id)).where(buildWhere(

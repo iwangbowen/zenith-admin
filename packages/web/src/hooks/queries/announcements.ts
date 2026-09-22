@@ -1,3 +1,4 @@
+import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
 import { useMemo } from 'react';
 import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
@@ -56,6 +57,7 @@ const myKeys = {
  * 未挂载的查询只标脏不请求，代价接近零。`id` 已知时只打该条详情，否则覆盖全部收件箱详情。
  */
 export function invalidateMyAnnouncements(qc: QueryClient, id?: number) {
+  void invalidateEntityRelations(qc);
   void qc.invalidateQueries({ queryKey: myKeys.myLists });
   void qc.invalidateQueries({ queryKey: id === undefined ? contractKey(announcementContract.detail) : myKeys.myDetail(id) });
   void qc.invalidateQueries({ queryKey: myKeys.myUnreadCount });
@@ -73,6 +75,7 @@ const {
   // 不碰 recipientOptions / userSearch：保存时弹窗尚未关闭，它们仍是活跃查询，且与本次保存无关
   onSaved: (qc, saved) => invalidateMyAnnouncements(qc, saved.id),
   onDeleted: (qc, ids) => {
+    void invalidateEntityRelations(qc);
     for (const id of ids) qc.removeQueries({ queryKey: myKeys.myDetail(id) });
     void qc.invalidateQueries({ queryKey: myKeys.myLists });
     void qc.invalidateQueries({ queryKey: myKeys.myUnreadCount });

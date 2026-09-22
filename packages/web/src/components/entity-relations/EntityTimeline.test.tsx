@@ -1,3 +1,5 @@
+import { PreferencesContext } from '@/hooks/usePreferences';
+import { createPreferencesContext } from '@/test-utils/preferences';
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -22,7 +24,7 @@ describe('business timeline source navigation', () => {
     });
     const open = vi.fn();
     const Wrapper = createWrapper(createTestQueryClient());
-    render(<Wrapper><MemoryRouter><EntityNavigationContext.Provider value={open}><EntityTimeline entityType={params.type} entityKey={params.key} /></EntityNavigationContext.Provider></MemoryRouter></Wrapper>);
+    render(<Wrapper><PreferencesContext.Provider value={createPreferencesContext({ rememberListFilters: false })}><MemoryRouter><EntityNavigationContext.Provider value={open}><EntityTimeline entityType={params.type} entityKey={params.key} /></EntityNavigationContext.Provider></MemoryRouter></PreferencesContext.Provider></Wrapper>);
     fireEvent.click(await screen.findByRole('button', { name: '查看退款' }));
     expect(open).toHaveBeenCalledWith(sourceRef);
     expect(document.querySelector('.semi-sidesheet')).toBeNull();

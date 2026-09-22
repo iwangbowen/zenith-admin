@@ -165,8 +165,11 @@ describe('reverse subject queries', () => {
     const batches = Array.from({ length: 16 }, (_, index) => rows.slice(index * 32, index * 32 + 32));
     const f = captureAccess(batches);
     const resolve = visibleResolver(source, new Set(rows.map((ref) => ref.key)));
-    await expect(provider(source.ref.type, resolve).list(source, { limit: 1, access: f.access })).rejects.toMatchObject({ status: 503 });
+    const page = await provider(source.ref.type, resolve).list(source, { limit: 1, access: f.access });
+    expect(page).toMatchObject({ items: [], hasMore: true, nextCursor: JSON.stringify(['payment.order', '1511']) });
     expect(f.statements).toHaveLength(16);
+    const last = await provider(source.ref.type, resolve).list(source, { limit: 1, cursor: page.nextCursor!, access: f.access });
+    expect(last).toMatchObject({ items: [], hasMore: false, nextCursor: null });
   });
 
   it('enforces the shared deadline before resolving or fetching any objects', async () => {

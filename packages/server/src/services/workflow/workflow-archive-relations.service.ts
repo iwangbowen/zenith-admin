@@ -62,7 +62,7 @@ function archiveProvider(sourceType: CanonicalEntityType): RelationProvider {
       let exhausted = false;
       while (visible.length <= limit) {
         assertRelationBudget(access);
-        if (scanned >= 256 || (scanned > 0 && access.deadlineAt && access.deadlineAt - Date.now() < 150)) break;
+        if (scanned >= 256 || (scanned > 0 && access.deadlineAt && access.deadlineAt - performance.now() < 150)) break;
         const rows = await access.db.select(columns).from(workflowInstances).innerJoin(managedFiles, fileJoin)
           .where(buildWhere(sourceType === 'workflow.instance' ? eq(workflowInstances.id, id)
             : and(eq(workflowInstances.bizType, business!.bizType), eq(workflowInstances.bizId, anchor.ref.key)),

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Button, Empty, Input, List, Select, Space, Spin, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import { Plus } from 'lucide-react';
 import { MANUAL_RELATION_OPTIONS, SEARCH_TYPE_ENTITY_TYPES, supportsEntityRelations, type CanonicalEntityRef, type ManualRelationType } from '@zenith/shared/platform';
@@ -8,6 +8,7 @@ import { useLinkEntity } from '@/hooks/queries/entity-relations';
 import { entityTypeLabel } from '@/utils/entity-relations';
 
 function LinkDialog({ anchor, onClose }: { readonly anchor: CanonicalEntityRef; readonly onClose: () => void }) {
+  const typeLabelId = useId();
   const [keyword, setKeyword] = useState('');
   const [relationType, setRelationType] = useState<ManualRelationType>('related');
   const [note, setNote] = useState('');
@@ -27,7 +28,8 @@ function LinkDialog({ anchor, onClose }: { readonly anchor: CanonicalEntityRef; 
       onClose();
     }}>
     <Space vertical align="start" style={{ width: '100%', marginBottom: 12 }}>
-      <Select aria-label="关联类型" value={relationType} optionList={MANUAL_RELATION_OPTIONS} onChange={(value) => setRelationType(value as ManualRelationType)} style={{ width: 180 }} />
+      <Typography.Text id={typeLabelId}>关联类型</Typography.Text>
+      <Select aria-labelledby={typeLabelId} value={relationType} optionList={MANUAL_RELATION_OPTIONS} onChange={(value) => setRelationType(value as ManualRelationType)} style={{ width: 180 }} />
       <Typography.Text type="tertiary">选择目标对象作为当前对象的相关对象、补充材料、参考依据或后续处理事项。</Typography.Text>
       <TextArea aria-label="关联说明" value={note} onChange={setNote} placeholder="关联说明（选填）" maxCount={500} rows={2} />
     </Space>

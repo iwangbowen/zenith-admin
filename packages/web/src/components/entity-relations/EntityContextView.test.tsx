@@ -1,3 +1,5 @@
+import { PreferencesContext } from '@/hooks/usePreferences';
+import { createPreferencesContext } from '@/test-utils/preferences';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -19,6 +21,7 @@ const sectionUrl = urlOf(entityRelationsContract.section, { params: { ...params,
 
 beforeEach(() => {
   recorder.reset();
+  recorder.on('GET', /\/watch$/, { supported: true, watching: false });
   recorder.on('GET', describeUrl, {
     anchor: { ref: params, title: '支付订单 PAY-1' }, canManageLinks: true,
     sections: [{ key: sectionKey, labelKey: 'relation.payment.order.refunds', targetTypes: ['payment.refund'], kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true }, summaryState: 'has-data' }],
@@ -37,10 +40,33 @@ beforeEach(() => {
 function renderView() {
   const Wrapper = createWrapper(createTestQueryClient());
   // Semi List, Collapse, Tabs and Modal are deliberately real so API misuse fails at render time.
-  return render(<Wrapper><MemoryRouter><EntityContextView entityType={params.type} entityKey={params.key} showAnchor /></MemoryRouter></Wrapper>);
+  return render(<Wrapper><PreferencesContext.Provider value={createPreferencesContext({ rememberListFilters: false })}><MemoryRouter><EntityContextView entityType={params.type} entityKey={params.key} showAnchor /></MemoryRouter></PreferencesContext.Provider></Wrapper>);
 }
 
 describe('EntityContextView with actual Semi components', () => {
+  it('submits full-set filters to the server and keeps the unfiltered attention summary', async () => {
+    recorder.on('GET', describeUrl, {
+      anchor: { ref: params, title: '支付订单 PAY-1' }, canManageLinks: false,
+      sections: [{ key: sectionKey, labelKey: 'relation.payment.order.refunds', targetTypes: ['payment.refund'], kind: 'direct', cardinality: 'many',
+        capabilities: { view: true, open: true }, summaryState: 'attention', filters: { keyword: true, attentionOnly: true } }],
+    });
+    recorder.on('GET', sectionUrl.split('?')[0], ({ url }: { url: string }) => ({
+      items: new URL(url, 'https://test.local').searchParams.get('keyword') ? [] : [{ ref: { type: 'payment.refund', key: '3' }, relationKey: sectionKey, title: 'REF-3', capabilities: { view: true, open: false } }],
+      nextCursor: null, hasMore: false,
+    }));
+    renderView();
+    fireEvent.click(await screen.findByText('退款记录'));
+    await screen.findByText('REF-3');
+    fireEvent.click(screen.getByRole('button', { name: '筛选关联记录' }));
+    fireEvent.change(screen.getByLabelText('关联记录关键词'), { target: { value: '首屏以外的单号' } });
+    fireEvent.click(screen.getByText('仅看需处理'));
+    fireEvent.click(screen.getByRole('button', { name: /^查询$/ }));
+    await screen.findByText('没有符合筛选条件的关联记录');
+    expect(screen.getByRole('img', { name: '退款记录：需处理' })).toBeVisible();
+    const sent = new URL(recorder.calls.filter((call) => call.url.includes(`/relations/${sectionKey}`)).at(-1)!.url, 'https://test.local');
+    expect(sent.searchParams.get('keyword')).toBe('首屏以外的单号');
+    expect(sent.searchParams.get('attentionOnly')).toBe('true');
+  });
   it('opens a dispatch outbox reference rather than the dispatch row ID and hides suppressed rows', async () => {
     const column = entityRelationColumn<{ id: number; outboxId: number | null }>('notification.outbox', (row) => row.outboxId);
     expect(column.render?.(null, { id: 900, outboxId: null }, 0)).toBeNull();
@@ -50,7 +76,7 @@ describe('EntityContextView with actual Semi components', () => {
     const outboxUrl = urlOf(entityRelationsContract.describe, { params: outboxRef });
     recorder.on('GET', outboxUrl, { anchor: { ref: outboxRef, title: '通知来源验证' }, sections: [], canManageLinks: false });
     const Wrapper = createWrapper(createTestQueryClient());
-    render(<Wrapper><MemoryRouter>{cell}</MemoryRouter></Wrapper>);
+    render(<Wrapper><PreferencesContext.Provider value={createPreferencesContext({ rememberListFilters: false })}><MemoryRouter>{cell}</MemoryRouter></PreferencesContext.Provider></Wrapper>);
     fireEvent.click(screen.getByRole('button', { name: '关联信息' }));
     expect(await screen.findByText('通知来源验证')).toBeVisible();
     expect(recorder.countOf('GET', outboxUrl)).toBe(1);
@@ -65,7 +91,7 @@ describe('EntityContextView with actual Semi components', () => {
     const journalUrl = urlOf(entityRelationsContract.describe, { params: journalRef });
     recorder.on('GET', journalUrl, { anchor: { ref: journalRef, title: '凭证 JRN-83' }, sections: [], canManageLinks: false });
     const Wrapper = createWrapper(createTestQueryClient());
-    render(<Wrapper><MemoryRouter>{cell}</MemoryRouter></Wrapper>);
+    render(<Wrapper><PreferencesContext.Provider value={createPreferencesContext({ rememberListFilters: false })}><MemoryRouter>{cell}</MemoryRouter></PreferencesContext.Provider></Wrapper>);
     fireEvent.click(screen.getByRole('button', { name: '关联信息' }));
     expect(await screen.findByText('凭证 JRN-83')).toBeVisible();
     expect(recorder.countOf('GET', journalUrl)).toBe(1);
@@ -123,6 +149,6 @@ describe('EntityContextView with actual Semi components', () => {
     expect(await screen.findByText('关联测试文档')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: '选择' }));
     fireEvent.click(screen.getByRole('button', { name: 'confirm' }));
-    await waitFor(() => expect(recorder.calls.find((call) => call.method === 'POST')?.body).toEqual({ target: { type: 'wiki.document', key: '8' } }));
+    await waitFor(() => expect(recorder.calls.find((call) => call.method === 'POST')?.body).toEqual({ target: { type: 'wiki.document', key: '8' }, relationType: 'related', note: '' }));
   });
 });

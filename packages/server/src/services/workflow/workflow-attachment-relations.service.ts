@@ -73,7 +73,7 @@ function businessAttachments(business: (typeof WORKFLOW_BUSINESS_ENTITY_TYPES)[n
       let exhausted = false;
       while (visible.length <= limit) {
         assertRelationBudget(access);
-        if (scanned >= 128 || (scanned > 0 && access.deadlineAt && access.deadlineAt - Date.now() < 150)) break;
+        if (scanned >= 128 || (scanned > 0 && access.deadlineAt && access.deadlineAt - performance.now() < 150)) break;
         const rounds = await access.db.select({ id: workflowInstances.id }).from(workflowInstances).where(buildWhere(
           eq(workflowInstances.bizType, business.bizType), eq(workflowInstances.bizId, anchor.ref.key),
           exactTenantCondition(workflowInstances.tenantId, anchor.tenantId), tenantCondition(workflowInstances, access.user),

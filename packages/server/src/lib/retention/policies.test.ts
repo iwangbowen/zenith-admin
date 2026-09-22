@@ -39,6 +39,7 @@ const EXEMPT: Record<string, string> = {
   analytics_daily_rollup: '按日聚合结果，体积远小于原始事件，是原始数据裁剪后的留存载体',
   identity_provider_sync_records: '身份源同步明细，随同步日志级联回收',
   wiki_review_records: '审核时间线，随文档级联删除（doc_id cascade），属于业务过程数据而非日志',
+  entity_watch_events: '可靠待派发队列，成功后删除并随 domain_events 级联回收；不能在完成派发前按日志保留时间清理',
 };
 
 function collectTables(): Array<{ table: string; file: string }> {

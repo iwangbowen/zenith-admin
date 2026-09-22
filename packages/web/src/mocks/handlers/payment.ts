@@ -26,6 +26,8 @@ import { requireItem, removeByIds } from '@/mocks/utils/crud';
 import { mockDateTime, mockDateTimeOffset, mockDate } from '@/mocks/utils/date';
 import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
 import { recordMockPaymentSucceeded, recordMockRefundSucceeded } from './payment-ext';
+import { publishMockWatchEvent } from '@/mocks/data/entity-watch-events';
+import dayjs from 'dayjs';
 import { filterByKeyword, includesKeyword, matchesFilter, withinDateRange } from '@/mocks/utils/filter';
 
 interface MockRefundIdempotencyRecord {
@@ -270,6 +272,9 @@ export const paymentHandlers = [
     o.status = 'closed';
     o.version += 1;
     o.updatedAt = mockDateTime();
+    publishMockWatchEvent({ id: `payment:${o.id}:closed`, eventType: 'payment.closed', occurredAt: dayjs().toISOString(),
+      sourceRef: { type: 'payment.order', key: String(o.id) }, subjectRefs: [{ type: 'payment.order', key: String(o.id), role: 'primary' }],
+      visibility: 'restricted', payload: { orderNo: o.orderNo, amount: o.amount, currency: o.currency } });
     return ok(null, '订单已关闭');
   }),
 

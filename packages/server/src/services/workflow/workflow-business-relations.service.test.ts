@@ -17,9 +17,10 @@ vi.mock('../../lib/context', () => ({
   runWithCurrentUser: (_user: JwtPayload, run: () => unknown) => run(),
 }));
 // The participant predicate has its own integration/SQL tests. Keep this suite focused on applying it to both sides.
-vi.mock('../platform/relations/providers/workflow-file.provider', async () => {
+vi.mock('../platform/relations/providers/workflow-file.provider', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../platform/relations/providers/workflow-file.provider')>();
   const { workflowInstances } = await import('../../db/schema');
-  return { workflowVisibility: vi.fn(async (access: RelationAccessContext) => state.permissions.has('workflow:instance:monitor')
+  return { workflowInstanceAttention: actual.workflowInstanceAttention, workflowVisibility: vi.fn(async (access: RelationAccessContext) => state.permissions.has('workflow:instance:monitor')
     ? undefined : eq(workflowInstances.initiatorId, access.user.userId)) };
 });
 

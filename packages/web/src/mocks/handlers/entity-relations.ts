@@ -1,3 +1,6 @@
+import { canReadBusinessChainFixtures, mockBusinessChainItem, mockBusinessChainRefs, mockBusinessChainSections } from './entity-business-chains';
+import { mockIotBusinessEvents } from '@/mocks/data/entity-watch-events';
+import { canonicalEntityRefSchema, MANUAL_RELATION_CATALOG, type ManualRelationType } from '@zenith/shared/platform';
 import { ENTITY_RELATION_TYPES, SEARCH_TYPE_ENTITY_TYPES, entityRelationsContract, entityTimelineContract, globalSearchContract, type CanonicalEntityRef, type CanonicalEntityType, type EntityRelationItem, type EntityRelationSection, type GlobalSearchType, type GlobalSearchResult } from '@zenith/shared/platform';
 import type { TimelineEvent } from '@zenith/shared/core';
 import { mock } from '@/mocks/utils/contract';
@@ -14,24 +17,30 @@ import { mockCmsContents } from '@/mocks/data/cms';
 import { mockOperationLogs } from '@/mocks/data/logs';
 import { entityDetailRoute } from '@/utils/entity-relations';
 import dayjs from 'dayjs';
-import { mockAsyncTasks } from './async-tasks';
-import { mockEntitySubjects, mockNotificationOutboxes } from '@/mocks/data/entity-subjects';
+import { mockAsyncTasks, mockAsyncTaskTerminalEvents } from './async-tasks';
+import { mockEntitySubjects, mockNotificationOutboxes, mockNotificationDispatches } from '@/mocks/data/entity-subjects';
 import { mockFinancialItem, mockFinancialRelationRefs, mockFinancialSections } from './entity-financial-relations';
 import { WORKFLOW_BUSINESS_ENTITY_TYPES } from '@zenith/shared/platform/workflow-business-catalog';
 import { mockBizLeaves } from '@/mocks/data/biz-leave';
 import { mockPaymentReconAdjustments } from './payment-ext';
 import { mockWorkflowAttachmentLinks, canReadMockWorkflowAttachmentForSession } from '@/mocks/utils/workflow-attachments';
-import { explainEntityRelation } from '@zenith/shared/platform';
+import { entityRelationRecordFilters, explainEntityRelation, normalizeEntityRelationFilters, supportsEntityRelationFilters } from '@zenith/shared/platform';
+import { includesKeyword, matchesFilter, withinDateRange } from '@/mocks/utils/filter';
+import { formatDateTime } from '@/utils/date';
 
-const manualLinks = new Map<string, readonly [CanonicalEntityRef, CanonicalEntityRef]>();
+const manualLinks = new Map<string, { source: CanonicalEntityRef; target: CanonicalEntityRef; type: ManualRelationType; note: string | null; createdByName: string | null; createdAt: string }>();
 function refId(ref: CanonicalEntityRef) { return `${ref.type}:${ref.key}`; }
-function linkId(source: CanonicalEntityRef, target: CanonicalEntityRef) { return [refId(source), refId(target)].sort().join('|'); }
+function linkId(source: CanonicalEntityRef, target: CanonicalEntityRef, type: ManualRelationType) {
+  const endpoints = [refId(source), refId(target)];
+  return [type, ...(MANUAL_RELATION_CATALOG[type].symmetric ? endpoints.sort() : endpoints)].join('|');
+}
 function canManageLinks(session: MockSession) {
   const permissions = mockUserPermissions(session.user);
   return !session.impersonation?.readOnly && (permissions.includes('*') || permissions.includes('system:relation:manage'));
 }
 
 function needsAttention(item: EntityRelationItem): boolean {
+  if (item.attention !== undefined) return item.attention;
   const id = Number(item.ref.key);
   switch (item.ref.type) {
     case 'payment.refund': {
@@ -48,11 +57,14 @@ function needsAttention(item: EntityRelationItem): boolean {
     case 'notification.outbox': return mockNotificationOutboxes.some((row) => row.id === id && row.status === 'failed');
     case 'tasks.async': return mockAsyncTasks.some((row) => row.id === id && row.status === 'failed');
     case 'platform.operation-log': return mockOperationLogs.some((row) => row.id === id && (row.responseCode ?? 0) >= 400);
+    case 'iot.alarm': return mockIotAlarms.some((row) => row.id === id && (row.status === 'firing' || row.status === 'acknowledged'));
     default: return false;
   }
 }
 
 const READ_PERMISSIONS: Partial<Record<CanonicalEntityType, string>> = {
+  'member.wallet-transaction': 'member:wallet:list', 'member.vip-renewal': 'member:member:list',
+  'iot.ota-task': 'iot:ota:list', 'iot.ota-device': 'iot:ota:list', 'iot.firmware': 'iot:ota:list', 'messaging.announcement': 'system:announcement:list',
   'identity.user': 'system:user:list', 'member.member': 'member:member:list', 'payment.order': 'payment:order:list',
   'payment.refund': 'payment:refund:list', 'iot.device': 'iot:device:list', 'iot.alarm': 'iot:alarm:list',
   'workflow.definition': 'workflow:definition:list', 'workflow.instance': 'workflow:instance:list',
@@ -65,13 +77,16 @@ const READ_PERMISSIONS: Partial<Record<CanonicalEntityType, string>> = {
 
 function canReadType(session: MockSession, type: CanonicalEntityType) {
   const permissions = mockUserPermissions(session.user);
+  if (type === 'platform.managed-file') return canReadBusinessChainFixtures(session);
   if (type === 'biz.leave') return true;
   if (type === 'workflow.archive') return isMockPlatformAdmin(session.user);
   if (type === 'workflow.attachment') return permissions.includes('*') || ['workflow:instance:list', 'workflow:task:handle', 'workflow:instance:monitor'].some((permission) => permissions.includes(permission));
   return permissions.includes('*') || Boolean(READ_PERMISSIONS[type] && permissions.includes(READ_PERMISSIONS[type]!));
 }
 
-function resolveAnchor(ref: CanonicalEntityRef, session: MockSession): { ref: CanonicalEntityRef; title: string } | undefined {
+export function resolveAnchor(ref: CanonicalEntityRef, session: MockSession): { ref: CanonicalEntityRef; title: string } | undefined {
+  const chain = canReadBusinessChainFixtures(session) && canReadType(session, ref.type) ? mockBusinessChainItem(ref) : undefined;
+  if (chain) return { ref, title: chain.title };
   if (!canReadType(session, ref.type) || !/^[1-9]\d*$/.test(ref.key)) return undefined;
   const id = Number(ref.key);
   if (ref.type === 'workflow.attachment') {
@@ -131,6 +146,7 @@ function sectionsFor(type: CanonicalEntityType, session: MockSession, key: strin
   const sections: EntityRelationSection[] = (definitions[type] ?? []).filter(([, target]) => canReadType(session, target)).map(([key, target]) => ({
     key, labelKey: `relation.${key}`, targetTypes: [target], kind: 'direct', cardinality: 'many', capabilities: { view: true, open: true }, summaryState: 'unavailable',
   }));
+  sections.push(...mockBusinessChainSections({ type, key }).filter((section) => section.targetTypes.some((target) => canReadType(session, target))));
   sections.push(...mockFinancialSections(type).filter((section) => section.targetTypes.some((target) => canReadType(session, target))));
   const addWorkflowSection = (suffix: string, target: CanonicalEntityType) => {
     if (canReadType(session, target)) sections.push({ key: `${type}.${suffix}`, labelKey: `relation.${type}.${suffix}`, targetTypes: [target], kind: 'derived', cardinality: 'many', capabilities: { view: true, open: true }, summaryState: 'unavailable' });
@@ -157,7 +173,14 @@ function sectionsFor(type: CanonicalEntityType, session: MockSession, key: strin
   return sections.map((section) => {
     const items = relationItems({ type, key }, section.key, session);
     const hasAttention = items.some(needsAttention);
-    return { ...section, summaryState: hasAttention ? 'attention' : items.length > 0 ? 'has-data' : 'empty' };
+    const keywordOnly = section.key.endsWith('.links') || section.key.endsWith('.subjects')
+      || type === 'workflow.attachment' || type === 'workflow.archive'
+      || (type === 'workflow.instance' && WORKFLOW_BUSINESS_ENTITY_TYPES.some((business) => section.key === `workflow.instance.${business.reverseRelation}`));
+    const financial = mockFinancialSections(type).some((entry) => entry.key === section.key);
+    const target = section.targetTypes[0];
+    const attentionOnly = !financial && ['payment.refund', 'workflow.instance', 'workflow.task', 'notification.outbox', 'tasks.async', 'platform.operation-log', 'iot.alarm'].includes(target);
+    return { ...section, filters: section.filters ?? (keywordOnly ? { keyword: true } : entityRelationRecordFilters(target, attentionOnly)),
+      summaryState: hasAttention ? 'attention' : items.length > 0 ? 'has-data' : 'empty' };
   });
 }
 
@@ -166,8 +189,10 @@ function relationItems(ref: CanonicalEntityRef, sectionKey: string, session: Moc
   const rows: Array<{ type: CanonicalEntityType; id: number; title: string; subtitle?: string | null; createdAt?: string | null }> = [];
   const fromRefs = (refs: readonly CanonicalEntityRef[]): EntityRelationItem[] => refs.flatMap((target) => {
     const anchor = resolveAnchor(target, session);
-    return anchor ? [mockFinancialItem(target, sectionKey) ?? { ref: target, title: anchor.title, relationKey: sectionKey, capabilities: { view: true, open: true } }] : [];
+    return anchor ? [mockBusinessChainItem(target, sectionKey) ?? mockFinancialItem(target, sectionKey) ?? { ref: target, title: anchor.title, relationKey: sectionKey, capabilities: { view: true, open: true } }] : [];
   });
+  const chainRefs = mockBusinessChainRefs(ref, sectionKey);
+  if (chainRefs !== undefined) return fromRefs(chainRefs);
   if (sectionKey === `${ref.type}.subjects`) return fromRefs(mockEntitySubjects.get(refId(ref)) ?? []);
   if (ref.type === 'workflow.attachment') {
     const link = mockWorkflowAttachmentLinks.find((item) => item.id === id);
@@ -203,10 +228,14 @@ function relationItems(ref: CanonicalEntityRef, sectionKey: string, session: Moc
     return [{ type: commonTarget, key: source.slice(commonTarget.length + 1) }];
   }));
   if (mockFinancialSections(ref.type).some((section) => section.key === sectionKey)) return fromRefs(mockFinancialRelationRefs(ref, sectionKey));
-  if (sectionKey === `${ref.type}.links`) return [...manualLinks.values()].flatMap(([source, target]) => {
+  if (sectionKey === `${ref.type}.links`) return [...manualLinks.values()].flatMap(({ source, target, type, note, createdByName, createdAt }) => {
     const other = refId(source) === refId(ref) ? target : refId(target) === refId(ref) ? source : undefined;
     const anchor = other && resolveAnchor(other, session);
-    return anchor ? [{ ref: anchor.ref, title: anchor.title, relationKey: sectionKey, capabilities: { view: true, open: true } }] : [];
+    const definition = MANUAL_RELATION_CATALOG[type];
+    const forward = refId(source) === refId(ref);
+    return anchor ? [{ ref: anchor.ref, title: anchor.title, relationKey: sectionKey, subtitle: forward ? definition.label : definition.reverseLabel, description: note,
+      manual: { type, direction: definition.symmetric ? 'symmetric' as const : forward ? 'outgoing' as const : 'incoming' as const, note, createdByName },
+      origin: { kind: 'direct' as const, relatedAt: createdAt }, capabilities: { view: true, open: true } }] : [];
   });
   if (sectionKey === 'payment.order.refunds') rows.push(...mockPaymentRefunds.filter((row) => row.orderId === id).map((row) => ({ type: 'payment.refund' as const, id: row.id, title: row.refundNo, subtitle: row.reason, createdAt: row.createdAt })));
   if (sectionKey === 'payment.refund.order') {
@@ -232,6 +261,53 @@ function relationItems(ref: CanonicalEntityRef, sectionKey: string, session: Moc
     ref: { type: row.type, key: String(row.id) }, relationKey: sectionKey, title: row.title,
     subtitle: row.subtitle, occurredAt: row.createdAt, capabilities: { view: true, open: true },
   }));
+}
+
+/** Reuse the same backing records as the business pages, before any pagination. */
+function relationRecordFields(item: EntityRelationItem): EntityRelationItem {
+  const id = Number(item.ref.key);
+  let record: { status?: string | number | null; createdAt?: string | null; updatedAt?: string | null } | undefined;
+  let occurredAt = item.occurredAt;
+  switch (item.ref.type) {
+    case 'payment.order': record = mockPaymentOrders.find((row) => row.id === id); break;
+    case 'payment.refund': record = mockPaymentRefunds.find((row) => row.id === id); break;
+    case 'workflow.instance': record = mockWorkflowInstances.find((row) => row.id === id); break;
+    case 'workflow.task': record = mockWorkflowTasks.find((row) => row.id === id); break;
+    case 'iot.device': record = mockIotDevices.find((row) => row.id === id); break;
+    case 'iot.alarm': {
+      const alarm = mockIotAlarms.find((row) => row.id === id);
+      record = alarm; occurredAt = alarm?.firedAt ?? occurredAt; break;
+    }
+    case 'cms.content': record = mockCmsContents.find((row) => row.id === id); occurredAt = record?.updatedAt ?? occurredAt; break;
+    case 'wiki.document': record = mockWikiDocs.find((row) => row.id === id); occurredAt = record?.updatedAt ?? occurredAt; break;
+    case 'drive.file': record = mockDriveNodes.find((row) => row.id === id); occurredAt = record?.updatedAt ?? occurredAt; break;
+    case 'workflow.attachment': record = mockWorkflowAttachmentLinks.find((row) => row.id === id); break;
+    case 'workflow.archive': occurredAt = mockWorkflowInstances.find((row) => row.id === id)?.archive?.archivedAt; break;
+    case 'notification.outbox': record = mockNotificationOutboxes.find((row) => row.id === id); break;
+    case 'tasks.async': record = mockAsyncTasks.find((row) => row.id === id); break;
+    case 'platform.operation-log': {
+      const log = mockOperationLogs.find((row) => row.id === id);
+      record = log ? { status: log.responseCode, createdAt: log.createdAt } : undefined; break;
+    }
+  }
+  return { ...item, status: record?.status == null ? item.status : String(record.status),
+    occurredAt: occurredAt ?? record?.createdAt, attention: item.attention ?? needsAttention(item) };
+}
+
+function relationAction(item: EntityRelationItem, session: MockSession): EntityRelationItem['action'] {
+  const permissions = mockUserPermissions(session.user);
+  const allowed = (permission: string) => !session.impersonation?.readOnly && (permissions.includes('*') || permissions.includes(permission));
+  const id = Number(item.ref.key);
+  if (item.ref.type === 'payment.refund' && allowed('payment:refund:approve') && mockPaymentRefunds.some((row) => row.id === id && row.approvalStatus === 'pending')) return { label: '审核退款', target: item.ref };
+  if (item.ref.type === 'tasks.async' && allowed('system:async-task:manage') && ['failed', 'cancelled'].includes(item.status ?? '')) return { label: '处理任务', target: item.ref };
+  if (item.ref.type === 'iot.alarm' && allowed('iot:alarm:resolve') && ['firing', 'acknowledged'].includes(item.status ?? '')) return { label: '处理告警', target: item.ref };
+  if (item.ref.type === 'workflow.task' && allowed('workflow:task:handle')) {
+    const task = mockWorkflowTasks.find((row) => row.id === id && row.status === 'pending' && row.assigneeId === session.user.id);
+    if (task && mockWorkflowInstances.some((instance) => instance.id === task.instanceId && instance.status === 'running')) return { label: '办理审批', target: { type: 'workflow.instance', key: String(task.instanceId) } };
+  }
+  if (item.ref.type === 'workflow.instance' && allowed('workflow:task:handle') && item.status === 'running'
+    && mockWorkflowTasks.some((task) => task.instanceId === id && task.status === 'pending' && task.assigneeId === session.user.id)) return { label: '办理审批', target: item.ref };
+  return undefined;
 }
 
 function pageOf<T>(items: T[], cursor: string | undefined, limit: number) {
@@ -275,15 +351,18 @@ export const entityRelationsHandlers = [
     if (!canManageLinks(session)) return forbidden('无权管理关联', { status: 403 });
     if (!resolveAnchor(params, session) || !resolveAnchor(body.target, session)) return notFound('对象不存在', { status: 404 });
     if (refId(params) === refId(body.target)) return badRequest('不能关联对象自身', { status: 400 });
-    manualLinks.set(linkId(params, body.target), [params, body.target]);
+    const key = linkId(params, body.target, body.relationType);
+    if (!manualLinks.has(key)) manualLinks.set(key, { source: params, target: body.target, type: body.relationType, note: body.note?.trim() || null,
+      createdByName: session.user.nickname, createdAt: formatDateTime(new Date()) });
     return ok(null);
   }),
   mock(entityRelationsContract.unlink, ({ params, body, request, ok }) => {
     const session = currentMockSession(request);
     if (!session) return unauthorized('请先登录', { status: 401 });
     if (!canManageLinks(session)) return forbidden('无权管理关联', { status: 403 });
-    if (!resolveAnchor(params, session) || !resolveAnchor(body.target, session)) return notFound('对象不存在', { status: 404 });
-    manualLinks.delete(linkId(params, body.target));
+    if (!resolveAnchor(params, session)) return notFound('对象不存在', { status: 404 });
+    const [source, target] = body.direction === 'incoming' ? [body.target, params] : [params, body.target];
+    manualLinks.delete(linkId(source, target, body.relationType));
     return ok(null);
   }),
   mock(entityRelationsContract.describe, ({ params, request, ok }) => {
@@ -297,10 +376,26 @@ export const entityRelationsHandlers = [
     if (!session) return unauthorized('请先登录', { status: 401 });
     const section = sectionsFor(params.type, session, params.key).find((entry) => entry.key === params.sectionKey);
     if (!resolveAnchor(params, session) || !section) return notFound('对象或分组不存在', { status: 404 });
-    const items = relationItems(params, params.sectionKey, session).map((item) => ({ ...item,
+    const filters = normalizeEntityRelationFilters(query);
+    if (!supportsEntityRelationFilters(filters, section.filters)) return badRequest('该关联分组不支持所选筛选条件', { status: 400 });
+    const scope = JSON.stringify([params.type, params.key, params.sectionKey, filters, session.user.id,
+      session.user.tenantId, session.viewingTenantId ?? null, session.impersonation ?? null]);
+    let offset = 0;
+    if (query.cursor) {
+      try {
+        const decoded = JSON.parse(decodeURIComponent(query.cursor)) as { scope: string; offset: number };
+        if (decoded.scope !== scope || !Number.isSafeInteger(decoded.offset) || decoded.offset < 0) throw new Error();
+        offset = decoded.offset;
+      } catch { return badRequest('关联分页游标无效或不属于当前筛选', { status: 400 }); }
+    }
+    const items = relationItems(params, params.sectionKey, session).map(relationRecordFields).map((item) => ({ ...item, action: relationAction(item, session),
       origin: { ...item.origin, kind: section.kind, explanation: explainEntityRelation(section) },
-    }));
-    return ok(pageOf(items, query.cursor, query.limit));
+    })).filter((item) => includesKeyword(filters.keyword, item.title, item.subtitle, item.description, item.ref.key, { caseInsensitive: true })
+      && (!filters.status || item.status === filters.status)
+      && withinDateRange(item.occurredAt ? formatDateTime(item.occurredAt) : undefined, filters.startTime, filters.endTime)
+      && (!filters.attentionOnly || item.attention));
+    const page = pageOf(items, String(offset), query.limit);
+    return ok({ ...page, nextCursor: page.hasMore ? encodeURIComponent(JSON.stringify({ scope, offset: offset + query.limit })) : null });
   }),
 ];
 
@@ -321,7 +416,55 @@ export const entityTimelineHandlers = [
         }
       }
     }
-    events.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || b.id.localeCompare(a.id));
-    return ok(pageOf(events, query.cursor, query.limit));
+    for (const task of mockAsyncTasks) {
+      const sourceRef = { type: 'tasks.async', key: String(task.id) } as const;
+      const related = mockEntitySubjects.get(refId(sourceRef)) ?? [];
+      if (refId(sourceRef) !== refId(params) && !related.some((ref) => refId(ref) === refId(params))) continue;
+      if (!resolveAnchor(sourceRef, session)) continue;
+      events.push({ id: `task:${task.id}:created`, eventType: 'tasks.async-task.created', occurredAt: dayjs(task.createdAt).toISOString(),
+        sourceRef, subjectRefs: [{ ...params, role: 'related' }], visibility: 'restricted', payload: { taskType: task.taskType } });
+    }
+    for (const event of mockAsyncTaskTerminalEvents) {
+      if (!event.sourceRef || (refId(event.sourceRef as CanonicalEntityRef) !== refId(params) && !event.subjectRefs.some((ref) => refId(ref as CanonicalEntityRef) === refId(params)))) continue;
+      if (!resolveAnchor(event.sourceRef as CanonicalEntityRef, session)) continue;
+      events.push({ ...event, subjectRefs: [{ ...params, role: 'related' }] });
+    }
+    for (const outbox of mockNotificationOutboxes) {
+      const sourceRef = { type: 'notification.outbox', key: String(outbox.id) } as const;
+      const related = mockEntitySubjects.get(refId(sourceRef)) ?? [];
+      if (refId(sourceRef) !== refId(params) && !related.some((ref) => refId(ref) === refId(params))) continue;
+      if (!resolveAnchor(sourceRef, session)) continue;
+      events.push({ id: `outbox:${outbox.id}:queued`, eventType: 'messaging.notification.queued', occurredAt: dayjs(outbox.createdAt).toISOString(),
+        sourceRef, subjectRefs: [{ ...params, role: 'related' }], visibility: 'restricted', payload: { eventKey: outbox.eventKey } });
+      const dispatches = mockNotificationDispatches.filter((dispatch) => dispatch.outboxId === outbox.id);
+      const completedAt = dispatches.at(-1)?.createdAt;
+      if (completedAt && ['done', 'failed'].includes(outbox.status)) events.push({
+        id: `outbox:${outbox.id}:${outbox.status}`, eventType: outbox.status === 'done' ? 'messaging.notification.dispatched' : 'messaging.notification.failed',
+        occurredAt: dayjs(completedAt).toISOString(), sourceRef, subjectRefs: [{ ...params, role: 'related' }], visibility: 'restricted',
+        payload: { eventKey: outbox.eventKey, status: outbox.status, sent: dispatches.filter((item) => item.decision === 'sent').length,
+          failed: dispatches.filter((item) => item.decision === 'failed').length, deferred: 0, suppressed: 0 },
+      });
+    }
+    for (const event of mockIotBusinessEvents) {
+      const source = canonicalEntityRefSchema.safeParse(event.sourceRef);
+      if (source.success && resolveAnchor(source.data, session) && event.subjectRefs.some((ref) => ref.type === params.type && ref.key === params.key)) {
+        events.push({ ...event, subjectRefs: [{ ...params, role: 'related' }] });
+      }
+    }
+    const filtered = events.filter((event) => matchesFilter(event.eventType, query.eventType)
+      && withinDateRange(formatDateTime(event.occurredAt), query.startTime, query.endTime));
+    filtered.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || b.id.localeCompare(a.id));
+    const scope = JSON.stringify([params.type, params.key, query.eventType ?? null, query.startTime ?? null, query.endTime ?? null,
+      session.user.id, session.viewingTenantId ?? null, session.impersonation ?? null]);
+    let offset = 0;
+    if (query.cursor) {
+      try {
+        const decoded = JSON.parse(decodeURIComponent(query.cursor)) as { scope: string; offset: number };
+        if (decoded.scope !== scope || !Number.isSafeInteger(decoded.offset) || decoded.offset < 0) throw new Error();
+        offset = decoded.offset;
+      } catch { return badRequest('时间线分页游标无效', { status: 400 }); }
+    }
+    const page = pageOf(filtered, String(offset), query.limit);
+    return ok({ ...page, nextCursor: page.hasMore ? encodeURIComponent(JSON.stringify({ scope, offset: offset + query.limit })) : null });
   }),
 ];

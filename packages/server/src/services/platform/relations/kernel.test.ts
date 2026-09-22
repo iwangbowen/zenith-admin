@@ -43,6 +43,9 @@ vi.mock('./providers/identity.provider', () => ({
   identityAnchorResolvers: [{ type: 'identity.user', resolve: (...args: unknown[]) => state.resolve(...args) }],
   identityRelationProviders: [],
 }));
+vi.mock('./providers/member-fulfillment.provider', () => ({ memberFulfillmentAnchors: [], memberFulfillmentProviders: [] }));
+vi.mock('./providers/iot-ota.provider', () => ({ iotOtaAnchors: [], iotOtaProviders: [] }));
+vi.mock('./providers/business-file.provider', () => ({ businessFileAnchors: [], businessFileProviders: [] }));
 vi.mock('./providers/iot-content.provider', () => ({ iotContentAnchorResolvers: [], iotContentRelationProviders: [] }));
 vi.mock('./providers/workflow-file.provider', () => ({ workflowFileAnchorResolvers: [], workflowFileRelationProviders: [] }));
 vi.mock('./providers/subjects.provider', () => ({ subjectAnchorResolvers: [], subjectProviders: () => [] }));
@@ -55,6 +58,7 @@ vi.mock('../../workflow/workflow-attachment-relations.service', () => ({ workflo
 // Import edges first: its registry import and the registry's manual-provider
 // import must assemble through the real circular module graph.
 import { changeEntityLink, manualLinksProvider } from './edges.service';
+import { addRelationActions } from './actions';
 import { createEntityRelationRegistry, describeEntityRelations, entityRelationRegistry, listEntityRelation } from './registry';
 import { decodeRelationCursor, encodeRelationCursor, readRelationCursor, signRelationCursor } from './cursor';
 import { assertRelationBudget, isStatementTimeout, withRelationRead } from './runtime';
@@ -322,6 +326,19 @@ describe('relation transaction budget and failure semantics', () => {
 });
 
 describe('manual relation mutation and target authorization', () => {
+  it('adds refund handling only for authorized pending approvals and exposes no mutation command', async () => {
+    const item = { ref: target, relationKey: query.sectionKey, title: 'Refund', capabilities: { view: true, open: true } };
+    const anchor = state.anchors.get(refKey(source))!;
+    const access = { user: state.user, db: tx };
+    expect((await addRelationActions([item], anchor, access))[0].action).toBeUndefined();
+    expect(statements).toHaveLength(0);
+    state.permissions.add('payment:refund:approve');
+    readResults.push([{ id: 31 }]);
+    const result = await addRelationActions([item], anchor, access);
+    expect(result[0].action).toEqual({ label: '审核退款', target });
+    assertBinding(statements[0], '"payment_refunds"."tenant_id"', 7);
+    assertBinding(statements[0], '"payment_refunds"."approval_status"', 'pending');
+  });
   it('rejects missing manage permission before starting a transaction', async () => {
     await expect(changeEntityLink(source, target, false)).rejects.toMatchObject({ status: 403 });
     expect(state.transaction).not.toHaveBeenCalled();
@@ -370,6 +387,17 @@ describe('manual relation mutation and target authorization', () => {
     assertBinding(statements[0], '"entity_relation_edges"."relation_key"', 'platform.related');
   });
 
+  it('preserves directional semantics and removes exactly that type from the reverse endpoint', async () => {
+    state.permissions.add('system:relation:manage');
+    await changeEntityLink(source, target, false, { relationType: 'reference', note: '退款说明依据' });
+    expect(statements[0].params).toContain('platform.manual.reference');
+    expect(statements[0].params).toContain(JSON.stringify({ note: '退款说明依据' }));
+    await changeEntityLink(target, source, true, { relationType: 'reference', direction: 'incoming' });
+    assertBinding(statements[1], '"entity_relation_edges"."source_key"', source.key);
+    assertBinding(statements[1], '"entity_relation_edges"."target_key"', target.key);
+    assertBinding(statements[1], '"entity_relation_edges"."relation_key"', 'platform.manual.reference');
+  });
+
   it('allows removal of a deleted target while retaining the authorized source tenant', async () => {
     state.permissions.add('system:relation:manage');
     state.anchors.delete(refKey(target));
@@ -381,9 +409,9 @@ describe('manual relation mutation and target authorization', () => {
   it('filters inaccessible and cross-tenant manual targets without exposing counts', async () => {
     addAnchor({ type: 'payment.refund', key: '33' }, 8);
     readResults.push([
-      { id: 90, sourceType: source.type, sourceKey: source.key, targetType: target.type, targetKey: '32' },
-      { id: 80, sourceType: source.type, sourceKey: source.key, targetType: target.type, targetKey: '33' },
-      { id: 70, sourceType: source.type, sourceKey: source.key, targetType: target.type, targetKey: target.key },
+      { id: 90, sourceType: source.type, sourceKey: source.key, targetType: target.type, targetKey: '32', relationKey: 'platform.related' },
+      { id: 80, sourceType: source.type, sourceKey: source.key, targetType: target.type, targetKey: '33', relationKey: 'platform.related' },
+      { id: 70, sourceType: source.type, sourceKey: source.key, targetType: target.type, targetKey: target.key, relationKey: 'platform.related', createdByName: null },
     ], []);
     const provider = manualLinksProvider('payment.order', ['payment.refund']);
     const result = await provider.list(state.anchors.get(refKey(source))!, { limit: 2, access: { user: state.user, db: tx } });
@@ -391,22 +419,19 @@ describe('manual relation mutation and target authorization', () => {
     expect(result).toMatchObject({ hasMore: false, nextCursor: null });
     expect(result).not.toHaveProperty('total');
     assertBinding(statements[0], '"entity_relation_edges"."tenant_id"', 7);
-    expect(statements[0].params.at(-1)).toBe(3);
+    expect(statements[0].params.at(-1)).toBe(32);
   });
 
   it('manual links use edge IDs and the last visible item for continuation', async () => {
     addAnchor({ type: 'payment.refund', key: '34' });
     addAnchor({ type: 'payment.refund', key: '35' });
-    readResults.push([
-      { id: 90, sourceType: source.type, sourceKey: source.key, targetType: target.type, targetKey: '31' },
-      { id: 80, sourceType: source.type, sourceKey: source.key, targetType: target.type, targetKey: '32' },
-      { id: 70, sourceType: source.type, sourceKey: source.key, targetType: target.type, targetKey: '34' },
-    ], [{ id: 60, sourceType: source.type, sourceKey: source.key, targetType: target.type, targetKey: '35' }]);
+    const edge = (id: number, key: string) => ({ id, sourceType: source.type, sourceKey: source.key, targetType: target.type, targetKey: key, relationKey: 'platform.related', createdByName: null });
+    readResults.push(Array.from({ length: 32 }, (_, index) => edge(100 - index, index === 0 ? '31' : index === 31 ? '34' : '999')), [edge(68, '35')]);
     const provider: RelationProvider = manualLinksProvider('payment.order', ['payment.refund']);
-    const result = await provider.list(state.anchors.get(refKey(source))!, { limit: 2, access: { user: state.user, db: tx } });
+    const result = await provider.list(state.anchors.get(refKey(source))!, { limit: 2, access: { user: state.user, db: tx, deadlineAt: performance.now() + 2500 } });
     expect(result.items.map((item) => item.ref.key)).toEqual(['31', '34']);
-    expect(result).toMatchObject({ hasMore: true, nextCursor: '70' });
+    expect(result).toMatchObject({ hasMore: true, nextCursor: '69' });
     expect(statements[1].sql).toContain('"entity_relation_edges"."id" <');
-    expect(statements[1].params).toContain(70);
+    expect(statements[1].params).toContain(69);
   });
 });

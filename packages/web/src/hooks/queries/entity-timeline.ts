@@ -1,5 +1,4 @@
 // Identity-scoped keys and cursor accumulation require the underlying query hook.
-// eslint-disable-next-line no-restricted-imports
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { entityTimelineContract, type CanonicalEntityType } from '@zenith/shared/platform';
 import type { QueryOf } from '@zenith/shared/core';

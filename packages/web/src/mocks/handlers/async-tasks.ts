@@ -1,3 +1,4 @@
+import { publishMockWatchEvent } from '@/mocks/data/entity-watch-events';
 import type { QueryOf, TimelineEvent } from '@zenith/shared/core';
 import { percentOf } from '@zenith/shared/core';
 import { asyncTaskContract, taskDemoContract, isAsyncTaskTerminal } from '@zenith/shared/tasks';
@@ -355,13 +356,15 @@ function rememberTaskTerminal(task: AsyncTask) {
   if (!task.completedAt || (status !== 'success' && status !== 'failed' && status !== 'cancelled')) return;
   const sourceRef = { type: 'tasks.async', key: String(task.id) } as const;
   const subjects = mockEntitySubjects.get(`tasks.async:${task.id}`) ?? [];
-  mockAsyncTaskTerminalEvents.push({
+  const event: TimelineEvent = {
     id: `task:${task.id}:terminal:${mockAsyncTaskTerminalEvents.length + 1}`,
     eventType: `tasks.async-task.${status === 'success' ? 'succeeded' : status}`,
     occurredAt: dayjs(task.completedAt).toISOString(), sourceRef,
     subjectRefs: (subjects.length ? subjects : [sourceRef]).map((ref) => ({ ...ref, role: 'related' })),
     visibility: 'restricted', payload: { taskType: task.taskType, status, attempt: task.attempts },
-  });
+  };
+  mockAsyncTaskTerminalEvents.push(event);
+  publishMockWatchEvent(event);
 }
 mockAsyncTasks.forEach(rememberTaskTerminal);
 

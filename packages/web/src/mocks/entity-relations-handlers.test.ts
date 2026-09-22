@@ -160,6 +160,17 @@ describe('Demo entity relations follow the real domain data', () => {
     expect((await (await call(targetPageUrl)).json()).data.items).toEqual([]);
   });
 
+  it('preserves the meaning and note of a directional manual link when opened in reverse', async () => {
+    const target = { type: 'wiki.document' as const, key: '1' };
+    await call(urlOf(entityRelationsContract.link, { params }), { method: 'POST', body: { target, relationType: 'reference', note: '处理依据' } });
+    const reverse = await section(target.type, target.key, 'links');
+    expect(reverse.items.find((item) => item.manual?.type === 'reference')).toMatchObject({
+      subtitle: '被引用于', manual: { type: 'reference', direction: 'incoming', note: '处理依据' },
+    });
+    await call(urlOf(entityRelationsContract.unlink, { params: target }), { method: 'DELETE', body: { target: params, relationType: 'reference', direction: 'incoming' } });
+    expect((await section(params.type, params.key, 'links')).items.some((item) => item.manual?.type === 'reference')).toBe(false);
+  });
+
   it('uses real order timestamps for typed events and cursor pagination', async () => {
     const refundedOrder = { ...params, key: '3' };
     const first = entityTimelineResponseSchema.parse((await (await call(urlOf(entityTimelineContract.timeline, { params: refundedOrder, query: { limit: 1 } }))).json()).data);

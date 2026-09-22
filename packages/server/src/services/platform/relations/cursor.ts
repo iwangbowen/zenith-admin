@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import { HTTPException } from 'hono/http-exception';
 import { config } from '../../../config';
 
@@ -15,19 +15,33 @@ export function decodeRelationCursor(value?: string): number | undefined {
   return Number(value);
 }
 export function signRelationCursor(value: string, scope: string): string {
-  const data = Buffer.from(JSON.stringify({ v: 1, scope, value })).toString('base64url');
-  return `${data}.${createHmac('sha256', config.jwtSecret).update(data).digest('base64url')}`;
+  // A continuation may point past hidden records. Authentication alone would
+  // expose those object keys after base64 decoding, so the position is encrypted.
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', cursorKey(), iv);
+  cipher.setAAD(Buffer.from(scope));
+  const encrypted = Buffer.concat([cipher.update(JSON.stringify({ value }), 'utf8'), cipher.final()]);
+  return ['2', iv.toString('base64url'), encrypted.toString('base64url'), cipher.getAuthTag().toString('base64url')].join('.');
+}
+function cursorKey() { return createHash('sha256').update('zenith:relation-cursor:v2\0').update(config.jwtSecret).digest(); }
+function decodePart(value: string) {
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new Error('format');
+  const decoded = Buffer.from(value, 'base64url');
+  if (decoded.toString('base64url') !== value) throw new Error('format');
+  return decoded;
 }
 export function readRelationCursor(cursor: string | undefined, scope: string): string | undefined {
   if (!cursor) return undefined;
   try {
-    const [data, signature, extra] = cursor.split('.');
-    if (!data || !signature || extra) throw new Error('format');
-    const actual = Buffer.from(signature, 'base64url');
-    const expected = createHmac('sha256', config.jwtSecret).update(data).digest();
-    if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) throw new Error('signature');
-    const payload = JSON.parse(Buffer.from(data, 'base64url').toString('utf8')) as { v: number; scope: string; value: string };
-    if (payload.v !== 1 || payload.scope !== scope || typeof payload.value !== 'string') throw new Error('scope');
+    const [version, nonce, data, tag, extra] = cursor.split('.');
+    if (version !== '2' || !nonce || !data || !tag || extra || cursor.length > 4096) throw new Error('format');
+    const iv = decodePart(nonce), authTag = decodePart(tag);
+    if (iv.length !== 12 || authTag.length !== 16) throw new Error('format');
+    const decipher = createDecipheriv('aes-256-gcm', cursorKey(), iv);
+    decipher.setAAD(Buffer.from(scope));
+    decipher.setAuthTag(authTag);
+    const payload = JSON.parse(Buffer.concat([decipher.update(decodePart(data)), decipher.final()]).toString('utf8')) as { value: string };
+    if (typeof payload.value !== 'string') throw new Error('format');
     return payload.value;
   } catch {
     throw new HTTPException(400, { message: '关联分页游标无效或不属于当前对象' });
