@@ -666,7 +666,9 @@ export default function WorkflowApprovalDetailSheet({
         variant="split"
         footerRight={extraActions}
       >
-        {detailLoading ? (
+        {/* 骨架只在首次加载时出现：审批 / 评论触发的后台 refetch 若把面板换掉，
+            Tabs 会随卸载丢掉当前页签 */}
+        {detailLoading && !detail ? (
           <WorkflowDetailSkeleton />
         ) : (
           <WorkflowInstanceDetailPanel

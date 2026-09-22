@@ -36,7 +36,8 @@ export default function WorkflowInstanceDetailSheet({
       onCancel={onClose}
       variant="split"
     >
-      {loading ? (
+      {/* 占位符只在首次加载时出现，后台 refetch 不能卸载面板（否则 Tabs 页签与面板内状态会重置） */}
+      {loading && !data ? (
         <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
       ) : (
         <WorkflowInstanceDetailPanel

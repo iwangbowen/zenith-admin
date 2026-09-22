@@ -178,7 +178,9 @@ function InstanceDetailDrawer({
       }
     >
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        {loading ? (
+        {/* 占位符只在首次加载、尚无数据时出现：后台 refetch（如沟通发完消息回源详情）
+            若也把面板换掉，面板会卸载重挂，Tabs 的当前页签随之回到「表单」 */}
+        {loading && !data ? (
           <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
         ) : (
           <WorkflowInstanceDetailPanel

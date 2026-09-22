@@ -1162,7 +1162,8 @@ export default function WorkflowMonitorPage() {
         bodyStyle={{ padding: 0, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
       >
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-          {detailLoading ? (
+          {/* 占位符只在首次加载时出现，后台 refetch 不能卸载面板（否则 Tabs 页签与面板内状态会重置） */}
+          {detailLoading && !detail ? (
             <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
           ) : (
             <WorkflowInstanceDetailPanel instance={detail} definition={detailDef} loading={detailLoading} onOpenInstance={loadDetail} />
