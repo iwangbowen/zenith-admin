@@ -1,7 +1,7 @@
 
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Space, Form, Tag, Row, Col, Typography } from '@douyinfe/semi-ui';
+import { Space, Form, Tag, Row, Col, Typography, OverflowList, Popover } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { MemberLevel } from '@zenith/shared/member';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -13,6 +13,9 @@ import { useDictItems } from '@/hooks/useDictItems';
 import { CreateButton, RefreshButton } from '@/components/toolbar-controls';
 import { useEditModal } from '@/hooks/useEditModal';
 import { EditFormModal } from '@/components/EditFormModal';
+
+/** 「权益」列内容宽度 = 列宽 220 − 单元格左右 padding 32 */
+const BENEFIT_TAG_CONTENT_WIDTH = 188;
 
 export default function MemberLevelsPage() {
   const navigate = useNavigate();
@@ -49,7 +52,41 @@ export default function MemberLevelsPage() {
         ? <Typography.Text link onClick={() => navigate(`/member/members?levelId=${r.id}`)}>{v}</Typography.Text>
         : 0
     ) },
-    { title: '权益', dataIndex: 'benefits', width: 220, render: (v: string[]) => (v?.length ? <Space wrap spacing={4}>{v.map((b, i) => <Tag key={i} color="light-blue">{b}</Tag>)}</Space> : EMPTY_PLACEHOLDER) },
+    {
+      // 权益是自由文本标签，全部铺开会折成多行、把行高撑大；单行放不下的收纳为 +N，
+      // 悬浮给出被收纳的权益（与用户管理的角色列同一做法）
+      title: '权益', dataIndex: 'benefits', width: 220,
+      render: (v: string[]) => {
+        if (!v?.length) return EMPTY_PLACEHOLDER;
+        const items = v.map((benefit, index) => ({ key: `${index}-${benefit}`, label: benefit }));
+        return (
+          <div style={{ width: BENEFIT_TAG_CONTENT_WIDTH, maxWidth: '100%', minWidth: 0, overflow: 'hidden' }}>
+            <OverflowList
+              items={items}
+              renderMode="collapse"
+              style={{ width: BENEFIT_TAG_CONTENT_WIDTH, maxWidth: '100%', minWidth: 0 }}
+              visibleItemRenderer={(item) => (
+                <Tag key={item.key} color="light-blue" style={{ flex: '0 0 auto', marginRight: 4 }}>{item.label}</Tag>
+              )}
+              overflowRenderer={(overflowItems) => (
+                overflowItems.length > 0 ? (
+                  <Popover
+                    position="bottomLeft"
+                    content={(
+                      <Space spacing={4} wrap style={{ maxWidth: 220 }}>
+                        {overflowItems.map((item) => <Tag key={item.key} color="light-blue">{item.label}</Tag>)}
+                      </Space>
+                    )}
+                  >
+                    <Tag color="grey" style={{ flex: '0 0 auto', cursor: 'pointer' }}>+{overflowItems.length}</Tag>
+                  </Popover>
+                ) : null
+              )}
+            />
+          </div>
+        );
+      },
+    },
     enabledStatusColumn(),
     operationColumn,
   ];
