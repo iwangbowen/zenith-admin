@@ -4,7 +4,7 @@ import { Button, Typography, Tag, Skeleton, Empty, List } from '@douyinfe/semi-u
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag';
 import type { Announcement } from '@zenith/shared/messaging';
 import type { MonitorAlertOverview } from '@zenith/shared/platform';
-import { Bell, Siren, Users, Wifi, LogIn, Activity, MapPin, Clock, CalendarDays } from 'lucide-react';
+import { Megaphone, Siren, Users, Wifi, LogIn, Activity, MapPin, Clock, CalendarDays } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
 // 图表区懒加载：'@/components/charts' 拖 ~1.9MB 的 @visactor 依赖树，
@@ -343,18 +343,19 @@ export default function DashboardPage() {
         </Suspense>
       )}
 
-      <section className="dashboard-section dashboard-section--notice" aria-label="通知公告">
+      {/* 区块只承载公告（列表与「查看全部」都指向 /announcements），标题不再叫「通知公告」避免被当成通知中心 */}
+      <section className="dashboard-section dashboard-section--notice" aria-label="公告">
         <header className="dashboard-section-header">
           <div className="dashboard-section-heading">
-            <Bell size={15} />
-            <Text strong>通知公告</Text>
+            <Megaphone size={15} />
+            <Text strong>公告</Text>
           </div>
           <Button theme="borderless" size="small" type="tertiary" onClick={() => navigate('/announcements')}>查看全部</Button>
         </header>
         {renderNotices()}
       </section>
 
-      {/* ===== 通知详情 Modal ===== */}
+      {/* ===== 公告详情 Modal ===== */}
       <AnnouncementDetailModal
         visible={selectedNotice !== null}
         announcement={selectedNoticeDetail}
