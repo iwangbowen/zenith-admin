@@ -26,7 +26,8 @@ export interface SwatchColorPickerProps {
 
 /**
  * 色板颜色选择器：预设色块 + 自定义取色器，与个人偏好主题色同款交互。
- * value 语义由调用方决定（预设 key 或 hex），组件只做 `value === key` 与 `#` 前缀判断。
+ * value 语义由调用方决定（预设 key 或 hex）：色块高亮按 `value === key` 判断，
+ * 自定义按钮只在 `value` 是 hex 且不属于任何预设 key 时高亮（预设 key 本身也可能是 hex）。
  */
 export function SwatchColorPicker({
   value,
@@ -37,7 +38,7 @@ export function SwatchColorPicker({
   allowClear = false,
   clearTitle = '无颜色',
 }: SwatchColorPickerProps) {
-  const isCustomized = value.startsWith('#');
+  const isCustomized = value.startsWith('#') && !options.some((option) => option.key === value);
   return (
     <div className="swatch-color-picker">
       {allowClear && (

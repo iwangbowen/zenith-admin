@@ -23,6 +23,12 @@ describe('SwatchColorPicker', () => {
     expect(screen.getByRole('button', { name: '飞书蓝' })).toHaveAttribute('aria-pressed', 'false');
   });
 
+  it('预设 key 本身是 hex 时只高亮该预设，不高亮自定义按钮', () => {
+    render(<SwatchColorPicker value="#123456" onChange={vi.fn()} options={OPTIONS} />);
+    expect(screen.getByRole('button', { name: '深 slate' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '自定义颜色' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
   it('allowClear 展示无颜色选项并回传空串', async () => {
     const onChange = vi.fn();
     render(<SwatchColorPicker value="#abcdef" onChange={onChange} options={OPTIONS} allowClear />);

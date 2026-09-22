@@ -2,7 +2,7 @@
  * 流程定义页左侧分类侧栏
  */
 import { useState } from 'react';
-import { Button, Form, Input } from '@douyinfe/semi-ui';
+import { Button, Form } from '@douyinfe/semi-ui';
 import { Plus, Layers, LayoutGrid, Pencil, Trash2 } from 'lucide-react';
 import type { CreateWorkflowCategoryInput, WorkflowCategory } from '@zenith/shared/workflow';
 import { useDeleteWorkflowCategories, useSaveWorkflowCategory } from '@/hooks/useWorkflowCategories';
@@ -10,6 +10,8 @@ import { NavListPanel, NavListItem, NavListItemActions } from '@/components/NavL
 import { confirmAndDelete } from '@/components/list-page';
 import { useEditModal } from '@/hooks/useEditModal';
 import { EditFormModal } from '@/components/EditFormModal';
+import { SwatchColorPicker } from '@/components/SwatchColorPicker';
+import { THEME_COLOR_PRESETS } from '@/lib/theme-color';
 
 interface Props {
   categories: WorkflowCategory[];
@@ -19,7 +21,12 @@ interface Props {
   canManage: boolean;
 }
 
-const PRESET_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#64748b'];
+/** 分类色板选项：存档值为 hex，与个人偏好主题色同款色板交互 */
+const CATEGORY_COLOR_OPTIONS = THEME_COLOR_PRESETS.map((preset) => ({
+  key: preset.light.primary,
+  label: preset.name,
+  color: preset.light.primary,
+}));
 
 interface CategoryFormValues {
   name: string;
@@ -126,29 +133,13 @@ export default function CategorySidebar({ categories, selectedId, onSelect, onCh
         />
         <Form.Input field="code" label="编码" placeholder="可选，仅字母数字" />
         <Form.Slot label="颜色">
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-            {PRESET_COLORS.map(color => (
-              <button
-                key={color}
-                type="button"
-                onClick={() => setSelectedColor(selectedColor === color ? '' : color)}
-                style={{
-                  width: 24, height: 24, borderRadius: '50%', background: color,
-                  border: selectedColor === color ? '2px solid var(--semi-color-text-0)' : '2px solid transparent',
-                  cursor: 'pointer',
-                  flexShrink: 0,
-                }}
-                aria-label={color}
-              />
-            ))}
-            <Input
-              value={selectedColor}
-              onChange={setSelectedColor}
-              placeholder="自定义 #hex"
-              size="small"
-              style={{ width: 110 }}
-            />
-          </div>
+          <SwatchColorPicker
+            value={selectedColor}
+            onChange={setSelectedColor}
+            options={CATEGORY_COLOR_OPTIONS}
+            allowClear
+            clearTitle="无颜色（留空则无颜色）"
+          />
         </Form.Slot>
         <Form.InputNumber field="sort" label="排序" min={0} style={{ width: '100%' }} />
         <Form.TextArea field="description" label="描述" autosize={{ minRows: 2, maxRows: 4 }} />
