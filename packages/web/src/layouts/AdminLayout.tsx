@@ -1001,6 +1001,9 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
             </div>
           )}
           <div className="admin-content" style={{ overflow: 'auto', position: 'relative' }}>
+            <div style={{ position: 'absolute', top: 8, left: 12, zIndex: 10 }}>
+              <EntityRelationBackButton />
+            </div>
             <RouteErrorBoundary>
               <TabsMetaContext.Provider value={tabsMetaValue}>
                 {pageCacheEnabled ? (
