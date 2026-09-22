@@ -1,10 +1,10 @@
 import type { DbTransaction } from '../../../db/types';
 import { currentUserOrNull } from '../../../lib/context';
-import { domainEventSubjects, domainEvents } from '../../../db/schema';
+import { domainEventSubjects, domainEvents, entityWatchEvents } from '../../../db/schema';
 import { normalizeAuditSubjects, type AuditSubjectRef } from '../../../lib/audit-subject';
-import { isCanonicalEntityType, parseDomainEventSummary, type DomainEventPayload, type DomainEventType } from '@zenith/shared/platform';
+import { isCanonicalEntityType, isWatchableDomainEvent, parseDomainEventSummary, type DomainEventPayload, type DomainEventType } from '@zenith/shared/platform';
 import { entityRefSchema, type EntityRef } from '@zenith/shared/core';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { exactTenantCondition } from '../../../lib/tenant';
 
 export interface RecordDomainEventInput<K extends DomainEventType = DomainEventType> {
@@ -35,6 +35,7 @@ export async function recordDomainEvent<K extends DomainEventType>(tx: DbTransac
     tenantId: input.tenantId,
     eventType: input.eventType,
     payload,
+    occurredAt: sql`clock_timestamp()`,
     actorType: actor?.type ?? null,
     actorKey: actor?.key ?? null,
     sourceType: source.type,
@@ -57,6 +58,7 @@ export async function recordDomainEvent<K extends DomainEventType>(tx: DbTransac
       .from(domainEventSubjects).where(and(eq(domainEventSubjects.eventId, existing.id), exactTenantCondition(domainEventSubjects.tenantId, input.tenantId)));
     const signature = (refs: readonly AuditSubjectRef[]) => normalizeAuditSubjects(refs).map((ref) => JSON.stringify(ref)).sort().join('\n');
     if (signature(attached) !== signature(subjects)) throw new Error('Domain event dedupe key conflicts with different subjects');
+    if (isWatchableDomainEvent(input.eventType)) await tx.insert(entityWatchEvents).values({ eventId: existing.id }).onConflictDoNothing();
     return existing.id;
   }
   await tx.insert(domainEventSubjects).values(subjects.map((subject) => ({
@@ -66,5 +68,6 @@ export async function recordDomainEvent<K extends DomainEventType>(tx: DbTransac
     entityKey: subject.key,
     role: subject.role,
   })));
+  if (isWatchableDomainEvent(input.eventType)) await tx.insert(entityWatchEvents).values({ eventId: event.id }).onConflictDoNothing();
   return event.id;
 }

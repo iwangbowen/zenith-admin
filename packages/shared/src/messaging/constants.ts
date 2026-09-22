@@ -384,6 +384,7 @@ export const NOTIFICATION_REASON_CODES = [
   'quiet_hours',
   'digest',
   'delivery_error',
+  'source_unavailable',
 ] as const;
 
 export type NotificationReasonCode = (typeof NOTIFICATION_REASON_CODES)[number];
@@ -397,6 +398,7 @@ export const NOTIFICATION_REASON_CODE_LABELS: Record<NotificationReasonCode, str
   quiet_hours: '处于免打扰时段，已延后',
   digest: '按摘要模式聚合，已延后',
   delivery_error: '渠道投递失败',
+  source_unavailable: '关注已取消或对象访问权限已变化',
 };
 
 export const NOTIFICATION_REASON_CODE_OPTIONS: Array<{ value: NotificationReasonCode; label: string }> =

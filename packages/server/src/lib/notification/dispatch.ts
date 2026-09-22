@@ -101,18 +101,19 @@ async function enqueueDeferred(
     const deferredRows = await tx.insert(notificationOutbox).values(deferrals.map((item) => ({
       eventKey: row.eventKey,
       recipients: [item.recipient],
-      vars: row.vars,
+      vars: row.eventKey === 'platform.entity.changed' && item.digestKey ? { ...row.vars, entityWatchDigestReady: true } : row.vars,
       channelPolicy: { only: [item.channel] },
       channelOptions: row.channelOptions,
       link: row.link,
-      // 延后行不继承 dedupeKey：与原行同键会被唯一索引直接吞掉
-      dedupeKey: null,
+      // Guarded notifications retain a per-window key so retrying their original row cannot multiply delayed copies.
+      dedupeKey: row.eventKey === 'platform.entity.changed' && item.recipient.type === 'user'
+        ? `entity-watch-deferred:${String(row.vars.eventId)}:${item.recipient.id}:${item.channel}:${Math.floor(item.deferUntil.getTime() / 60_000)}` : null,
       scheduledAt: item.deferUntil,
-      digestKey: item.digestKey,
+      digestKey: row.eventKey === 'platform.entity.changed' ? null : item.digestKey,
       traceId: row.traceId,
       parentRef: row.parentRef,
       tenantId: row.tenantId,
-    }))).returning({ id: notificationOutbox.id });
+    }))).onConflictDoNothing({ target: notificationOutbox.dedupeKey, where: sql`${notificationOutbox.dedupeKey} is not null` }).returning({ id: notificationOutbox.id });
     if (subjects.length) await tx.insert(notificationOutboxSubjects).values(deferredRows.flatMap((deferred) => subjects.map((subject) => ({
       ...subject, outboxId: deferred.id, tenantId: row.tenantId,
     }))));
@@ -137,6 +138,8 @@ export async function deliverOutboxRow(row: NotificationOutboxRow): Promise<Deli
       recipients: row.recipients,
       tenantId: row.tenantId,
       policy: row.channelPolicy ?? null,
+      digestWindowElapsed: row.eventKey === 'platform.entity.changed' && row.vars.entityWatchDigestReady === true
+        && row.scheduledAt !== null && row.scheduledAt <= new Date(),
     }),
     loadAlreadySent(row.id),
   ]);
@@ -258,8 +261,9 @@ async function deliverOne(
   }
 
   let address: string | null;
+  const deliveryOptions = row.eventKey === 'platform.entity.changed' ? null : row.channelOptions ?? null;
   try {
-    address = await adapter.resolveAddress(recipient, row.channelOptions ?? null);
+    address = await adapter.resolveAddress(recipient, deliveryOptions);
   } catch (err) {
     records.push({
       ...base,
@@ -284,19 +288,36 @@ async function deliverOne(
     subjectId: recipient.type === 'external' ? null : recipient.id,
   };
 
+  let deliveryTitle = title;
+  let deliveryContent = content;
+  let deliveryVars = vars;
+  let deliveryLink = row.link;
+  if (row.eventKey === 'platform.entity.changed') {
+    const { authorizeEntityWatchDelivery } = await import('../../services/platform/entity-watch-delivery-guard');
+    const authorized = await authorizeEntityWatchDelivery(row, recipient);
+    if (!authorized) {
+      records.push({ ...base, decision: 'suppressed', reasonCode: 'source_unavailable', reasonDetail: null });
+      summary.suppressed += 1;
+      return;
+    }
+    deliveryVars = normalizeTemplateVars(authorized.vars);
+    deliveryTitle = renderTemplate(event.title, deliveryVars);
+    deliveryContent = renderTemplate(event.content, deliveryVars);
+    deliveryLink = authorized.link;
+  }
   try {
     const result = await adapter.send({
       eventKey,
       event,
       target,
-      title,
-      content,
-      vars,
-      link: row.link,
+      title: deliveryTitle,
+      content: deliveryContent,
+      vars: deliveryVars,
+      link: deliveryLink,
       tenantId: row.tenantId,
       dedupeKey: base.dedupeKey,
       channelLocked: resolution.locked === true,
-      options: row.channelOptions ?? null,
+      options: deliveryOptions,
     });
     records.push({ ...base, decision: 'sent', reasonCode: null, reasonDetail: null, providerMsgId: result.providerMsgId ?? null });
     summary.sent += 1;

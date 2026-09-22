@@ -2,6 +2,7 @@ import * as z from 'zod';
 import type { Permission } from '../core/permissions';
 import { PAYMENT_DISPUTE_STATUSES, PAYMENT_RISK_ACTIONS, PAYMENT_RISK_REVIEW_STATUSES } from '../payment/constants';
 import { ASYNC_TASK_TERMINAL_STATUSES } from '../tasks/constants';
+import { IOT_ALARM_LEVELS, IOT_ALARM_STATUSES } from '../iot/constants';
 
 const paymentSummary = z.object({
   orderNo: z.string().max(64),
@@ -22,6 +23,7 @@ const notificationResultSummary = z.object({
   deferred: z.number().int().nonnegative(),
   suppressed: z.number().int().nonnegative(),
 });
+const iotAlarmSummary = z.object({ status: z.enum(IOT_ALARM_STATUSES), level: z.enum(IOT_ALARM_LEVELS), ruleName: z.string().max(128) });
 
 /** Safe timeline summaries only: provider payloads, addresses and form/comment bodies never enter this catalog. */
 export const DOMAIN_EVENT_CATALOG = {
@@ -60,6 +62,9 @@ export const DOMAIN_EVENT_CATALOG = {
   'tasks.async-task.cancelled': { permission: 'system:async-task:list', summarySchema: taskTerminalSummary },
   'messaging.notification.dispatched': { permission: 'system:notify-policy:list', summarySchema: notificationResultSummary },
   'messaging.notification.failed': { permission: 'system:notify-policy:list', summarySchema: notificationResultSummary },
+  'iot.alarm.triggered': { permission: 'iot:alarm:list', summarySchema: iotAlarmSummary },
+  'iot.alarm.acknowledged': { permission: 'iot:alarm:list', summarySchema: iotAlarmSummary },
+  'iot.alarm.resolved': { permission: 'iot:alarm:list', summarySchema: iotAlarmSummary },
 } as const satisfies Record<string, { permission: Permission | readonly Permission[]; summarySchema: z.ZodType<Record<string, unknown>> }>;
 
 export type DomainEventType = keyof typeof DOMAIN_EVENT_CATALOG;
@@ -77,6 +82,7 @@ export const ENTITY_TIMELINE_EVENT_LABELS = {
   'messaging.notification.queued': '通知进入发送队列', 'messaging.notification.dispatched': '通知派发完成', 'messaging.notification.failed': '通知派发失败',
   'tasks.async-task.created': '异步任务创建', 'tasks.async-task.succeeded': '异步任务完成', 'tasks.async-task.failed': '异步任务失败', 'tasks.async-task.cancelled': '异步任务取消',
   'platform.audit.operation': '操作记录',
+  'iot.alarm.triggered': '设备触发告警', 'iot.alarm.acknowledged': '设备告警已认领', 'iot.alarm.resolved': '设备告警已恢复',
 } as const satisfies Record<DomainEventType | 'platform.audit.operation', string>;
 export const ENTITY_TIMELINE_EVENT_TYPES = Object.keys(ENTITY_TIMELINE_EVENT_LABELS) as Array<keyof typeof ENTITY_TIMELINE_EVENT_LABELS>;
 export const ENTITY_TIMELINE_EVENT_OPTIONS = ENTITY_TIMELINE_EVENT_TYPES.map((value) => ({ value, label: ENTITY_TIMELINE_EVENT_LABELS[value] }));

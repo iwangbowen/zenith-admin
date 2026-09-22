@@ -21,3 +21,5 @@ export * from './system-scheduler';
 export * from './tags';
 export * from './trace';
 export * from './user-feedbacks';
+
+export * from './entity-watches';

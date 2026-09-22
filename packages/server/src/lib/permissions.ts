@@ -1,4 +1,6 @@
 import { eq } from 'drizzle-orm';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import type { DbExecutor } from '../db/types';
 import { SUPER_ADMIN_CODE } from '@zenith/shared/identity';
 import { db } from '../db';
 import { users } from '../db/schema';
@@ -21,6 +23,13 @@ interface CacheEntry {
 // 进程内缓存：仅作为 Redis 不可用时的降级数据源（单实例语义）。
 // 主存储为 Redis，保证多实例部署下 clearUserPermissionCache 撤权即时生效。
 const localCache = new Map<number, CacheEntry>();
+const freshPermissionStore = new AsyncLocalStorage<{ userId: number; permissions: string[] }>();
+
+/** Background delivery guards must not reuse a permissions snapshot taken before revocation. */
+export async function runWithFreshUserPermissions<T>(userId: number, work: () => Promise<T>, executor: DbExecutor = db): Promise<T> {
+  const { permissions } = await fetchUserPermissionData(userId, executor, true);
+  return freshPermissionStore.run({ userId, permissions }, work);
+}
 
 async function readCacheEntry(userId: number): Promise<CacheEntry | null> {
   try {
@@ -64,6 +73,8 @@ export function isSuperAdmin(user: { roles: string[]; tenantId?: number | null }
 }
 
 export async function getUserPermissions(userId: number): Promise<string[]> {
+  const fresh = freshPermissionStore.getStore();
+  if (fresh?.userId === userId) return fresh.permissions;
   const entry = await readCacheEntry(userId);
   if (entry) return entry.permissions;
 
@@ -81,9 +92,9 @@ export async function getUserMenuIds(userId: number): Promise<number[]> {
   return menuIds;
 }
 
-async function fetchUserPermissionData(userId: number): Promise<{ permissions: string[]; menuIds: number[] }> {
+async function fetchUserPermissionData(userId: number, executor: DbExecutor = db, fresh = false): Promise<{ permissions: string[]; menuIds: number[] }> {
   const menuColumns = { id: true, permission: true, visible: true, status: true, featureKey: true } as const;
-  const user = await db.query.users.findFirst({
+  const user = await executor.query.users.findFirst({
     where: eq(users.id, userId),
     columns: { tenantId: true },
     with: {
@@ -134,7 +145,7 @@ async function fetchUserPermissionData(userId: number): Promise<{ permissions: s
 
   // 多租户：按租户套餐的功能集过滤——featureKey 为空的菜单是核心能力永远保留；
   // 有 featureKey 的菜单仅当套餐分配了对应功能时保留（套餐禁用时功能集为空 = fail-closed）。
-  const featureSet = await getTenantPackageFeatureSet(user.tenantId);
+  const featureSet = await getTenantPackageFeatureSet(user.tenantId, fresh ? executor : undefined);
   if (featureSet) {
     allMenuRows = allMenuRows.filter((menu) => !menu.featureKey || featureSet.has(menu.featureKey));
   }

@@ -69,6 +69,13 @@ export function eventVars<V extends Record<string, unknown>>(): V {
 }
 
 export const NOTIFICATION_EVENTS = defineNotificationEvents({
+  'platform.entity.changed': {
+    group: 'platform', label: '关注对象的业务变化', severity: 'normal',
+    defaultChannels: ['inapp'], availableChannels: ['inapp', 'email'],
+    description: '关注的订单、流程、设备告警或任务发生关键变化时提醒。取消关注或权限撤销后停止发送。',
+    vars: eventVars<{ watchId: number; eventId: number; objectTitle: string; eventLabel: string }>(),
+    title: '{{objectTitle}} · {{eventLabel}}', content: '你关注的对象发生了业务变化：{{eventLabel}}。',
+  },
   'payment.recon.failed': {
     group: 'ops', label: '支付账单获取或核对失败', severity: 'important',
     defaultChannels: ['inapp'], availableChannels: ['inapp', 'email', 'chat'],

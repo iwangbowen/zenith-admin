@@ -21,3 +21,7 @@ export * from './workflow-business-catalog';
 export * from './relation-origin';
 export * from './relation-filter-capabilities';
 export * from './manual-relations';
+
+export * from './entity-watches';
+
+export * from './entity-detail-routes';

@@ -9,6 +9,13 @@ import { registerSystemRecurringJob } from './pg-boss-scheduler';
  * 不要为单张日志表新增独立清理任务。
  */
 export async function registerSystemTasks(): Promise<void> {
+  const { drainEntityWatchEvents } = await import('../services/platform/entity-watch-worker');
+  await registerSystemRecurringJob({
+    name: 'entity-watch-delivery', title: '对象关注通知补投', module: '跨对象关联',
+    cronExpression: '* * * * *', allowManualRun: true,
+    description: '处理与业务事件同事务保存的关注通知，重新校验对象和收件人权限，并通过通知中心可靠派发。',
+    run: drainEntityWatchEvents,
+  });
   const { planPaymentReconciliation } = await import('../services/payment/payment-recon-tasks');
   await registerSystemRecurringJob({
     name: 'payment-reconciliation-coverage', title: '支付账单覆盖与补跑', module: '支付中心',

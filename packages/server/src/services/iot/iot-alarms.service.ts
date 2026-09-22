@@ -38,6 +38,7 @@ import { dispatchIotForward } from './iot-forward.service';
 import { ensureIotRuleReferencesValid } from './iot-rule-refs';
 import { isDeviceInMaintenance } from './iot-maintenance.service';
 import { pickEntity } from '../../lib/entity-map';
+import { recordIotAlarmEvent, updateIotAlarmWithEvent } from './iot-alarm-events';
 
 // ─── 规则映射与 CRUD ─────────────────────────────────────────────────────────
 export function mapIotAlarmRule(
@@ -247,23 +248,17 @@ export async function getIotAlarm(id: number) {
 
 /** 认领告警：接手处理，升级计时停止（幂等拒绝重复认领） */
 export async function acknowledgeIotAlarm(id: number) {
-  const [row] = await db.update(iotAlarms)
-    .set({ status: 'acknowledged', acknowledgedAt: new Date(), acknowledgedBy: currentUserId() })
-    .where(buildWhere(eq(iotAlarms.id, id), eq(iotAlarms.status, 'firing'),
+  const [row] = await updateIotAlarmWithEvent({ status: 'acknowledged', acknowledgedAt: new Date(), acknowledgedBy: currentUserId() }, buildWhere(eq(iotAlarms.id, id), eq(iotAlarms.status, 'firing'),
       exists(db.select({ id: iotDevices.id }).from(iotDevices)
-        .where(buildWhere(eq(iotDevices.id, iotAlarms.deviceId), tenantCondition(iotDevices, currentUser()))))))
-    .returning();
+        .where(buildWhere(eq(iotDevices.id, iotAlarms.deviceId), tenantCondition(iotDevices, currentUser()))))));
   return mapIotAlarm(requireRow(row, '告警不存在或已被认领/恢复'));
 }
 
 /** 管理员手动处理（恢复）告警：firing/acknowledged 均可直接处理，可附处理备注 */
 export async function resolveIotAlarm(id: number, note?: string | null) {
-  const [row] = await db.update(iotAlarms)
-    .set({ status: 'resolved', resolvedAt: new Date(), resolvedBy: currentUserId(), resolveNote: note ?? null })
-    .where(buildWhere(eq(iotAlarms.id, id), inArray(iotAlarms.status, ['firing', 'acknowledged']),
+  const [row] = await updateIotAlarmWithEvent({ status: 'resolved', resolvedAt: new Date(), resolvedBy: currentUserId(), resolveNote: note ?? null }, buildWhere(eq(iotAlarms.id, id), inArray(iotAlarms.status, ['firing', 'acknowledged']),
       exists(db.select({ id: iotDevices.id }).from(iotDevices)
-        .where(buildWhere(eq(iotDevices.id, iotAlarms.deviceId), tenantCondition(iotDevices, currentUser()))))))
-    .returning();
+        .where(buildWhere(eq(iotDevices.id, iotAlarms.deviceId), tenantCondition(iotDevices, currentUser()))))));
   const resolved = requireRow(row, '告警不存在或已恢复');
   const [device] = await db.select({ sn: iotDevices.sn, name: iotDevices.name, productId: iotDevices.productId, tenantId: iotDevices.tenantId })
     .from(iotDevices).where(buildWhere(eq(iotDevices.id, resolved.deviceId), tenantCondition(iotDevices, currentUser()))).limit(1);
@@ -307,16 +302,20 @@ async function fireIotAlarm(
   message: string,
   context: Record<string, unknown>,
 ): Promise<void> {
-  const [inserted] = await db.insert(iotAlarms).values({
-    ruleId: rule.id,
-    ruleName: rule.name,
-    deviceId: device.id,
-    ruleType: rule.ruleType,
-    level: rule.level,
-    status: 'firing',
-    message,
-    context,
-  }).onConflictDoNothing().returning({ id: iotAlarms.id });
+  const inserted = await db.transaction(async (tx) => {
+    const [row] = await tx.insert(iotAlarms).values({
+      ruleId: rule.id,
+      ruleName: rule.name,
+      deviceId: device.id,
+      ruleType: rule.ruleType,
+      level: rule.level,
+      status: 'firing',
+      message,
+      context,
+    }).onConflictDoNothing().returning();
+    if (row) await recordIotAlarmEvent(tx, row);
+    return row;
+  });
   if (!inserted) return;
   openEventBus.emit({
     type: 'iot.alarm.triggered',
@@ -336,14 +335,11 @@ async function autoResolveIotAlarm(
   device: Pick<IotDeviceRow, 'id' | 'name' | 'sn' | 'tenantId' | 'productId'>,
   message: string,
 ): Promise<void> {
-  const [resolved] = await db.update(iotAlarms)
-    .set({ status: 'resolved', resolvedAt: new Date() })
-    .where(and(
+  const [resolved] = await updateIotAlarmWithEvent({ status: 'resolved', resolvedAt: new Date() }, and(
       eq(iotAlarms.ruleId, rule.id),
       eq(iotAlarms.deviceId, device.id),
       inArray(iotAlarms.status, ['firing', 'acknowledged']),
-    ))
-    .returning({ id: iotAlarms.id });
+    ));
   if (!resolved) return;
   openEventBus.emit({
     type: 'iot.alarm.resolved',
@@ -499,9 +495,7 @@ export async function resolveIotOfflineAlarms(deviceId: number): Promise<void> {
     if (row.rule) {
       await autoResolveIotAlarm(row.rule, row.device, '设备已重新上线');
     } else {
-      await db.update(iotAlarms)
-        .set({ status: 'resolved', resolvedAt: new Date() })
-        .where(eq(iotAlarms.id, row.alarm.id));
+      await updateIotAlarmWithEvent({ status: 'resolved', resolvedAt: new Date() }, and(eq(iotAlarms.id, row.alarm.id), inArray(iotAlarms.status, ['firing', 'acknowledged'])));
     }
   }
 }

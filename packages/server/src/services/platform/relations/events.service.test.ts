@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { DbTransaction } from '../../../db/types';
-import { domainEventSubjects, domainEvents } from '../../../db/schema';
+import { domainEventSubjects, domainEvents, entityWatchEvents } from '../../../db/schema';
 import { recordDomainEvent } from './events.service';
 
 vi.mock('../../../lib/context', () => ({ currentUserOrNull: () => ({ userId: 1, tenantId: null }) }));
@@ -36,7 +36,14 @@ describe('domain event write boundary', () => {
     expect(f.pending).toEqual([
       { table: domainEvents, values: expect.objectContaining({ tenantId: 7, payload: { orderNo: 'PO-41', amount: 100, currency: 'CNY' } }) },
       { table: domainEventSubjects, values: [{ eventId: 41, tenantId: 7, entityType: 'payment.order', entityKey: '41', role: 'primary' }] },
+      { table: entityWatchEvents, values: { eventId: 41 } },
     ]);
+  });
+
+  it('does not enqueue notification meta-events and cannot recursively notify watchers', async () => {
+    const f = transaction();
+    await recordDomainEvent(f.tx, { ...input, eventType: 'messaging.notification.queued', payload: { eventKey: 'platform.entity.changed' } });
+    expect(f.pending.some((write) => write.table === entityWatchEvents)).toBe(false);
   });
 
   it('rejects unknown types, malformed refs and missing tenancy before writing', async () => {

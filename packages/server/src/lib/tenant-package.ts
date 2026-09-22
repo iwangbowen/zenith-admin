@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db';
+import type { DbExecutor } from '../db/types';
 import { tenants, tenantPackages, tenantPackageFeatures } from '../db/schema';
 import { config } from '../config';
 import { TtlCache } from './ttl-cache';
@@ -34,8 +35,8 @@ onInvalidate('tenant_package_features', resetTenantPackageFeatureCache);
 onInvalidationReset(resetTenantPackageFeatureCache);
 
 /** 租户 → 套餐 → 功能一次 JOIN 取回；行为空 = 租户不存在，套餐列为空 = 未绑定 / 套餐已不存在 */
-async function loadFeatureSet(tenantId: number): Promise<ReadonlySet<string> | null> {
-  const rows = await db
+async function loadFeatureSet(tenantId: number, executor: DbExecutor = db): Promise<ReadonlySet<string> | null> {
+  const rows = await executor
     .select({
       packageId: tenants.packageId,
       packageStatus: tenantPackages.status,
@@ -65,8 +66,9 @@ async function loadFeatureSet(tenantId: number): Promise<ReadonlySet<string> | n
  *
  * 结果经进程内副本读取（见上），返回的集合在调用方之间共享，只读。
  */
-export async function getTenantPackageFeatureSet(tenantId: number | null | undefined): Promise<ReadonlySet<string> | null> {
+export async function getTenantPackageFeatureSet(tenantId: number | null | undefined, executor?: DbExecutor): Promise<ReadonlySet<string> | null> {
   if (!config.multiTenantMode) return null;
   if (tenantId == null) return null;
+  if (executor) return loadFeatureSet(tenantId, executor);
   return featureSets.get(tenantId, () => loadFeatureSet(tenantId));
 }

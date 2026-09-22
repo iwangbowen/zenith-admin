@@ -19,6 +19,7 @@ vi.mock('./iot-maintenance.service', () => ({ isDeviceInMaintenance: vi.fn() }))
 vi.mock('../messaging/notification-outbox.service', () => ({ notify: vi.fn() }));
 
 import { db } from '../../db';
+import type { DbTransaction } from '../../db/types';
 import { acknowledgeIotAlarm, getIotAlarm, resolveIotAlarm } from './iot-alarms.service';
 
 type Statement = { sql: string; params: unknown[] };
@@ -26,6 +27,7 @@ type Executable = { execute: () => Promise<unknown[]>; toSQL: () => Statement };
 
 beforeEach(() => {
   vi.restoreAllMocks(); state.emitted.mockClear(); state.forwarded.mockClear();
+  vi.spyOn(db, 'transaction').mockImplementation(async (run) => run(db as unknown as DbTransaction));
   state.user = { userId: 9, username: 'operator', roles: ['operator'], tenantId: 7 };
 });
 

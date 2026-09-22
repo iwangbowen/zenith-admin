@@ -52,6 +52,8 @@ export interface ResolveInput {
   policy: NotificationChannelPolicy | null;
   /** 判定免打扰的基准时间，测试可注入 */
   now?: Date;
+  /** A guarded object-watch email has already waited for its digest window; it stays individually authorized. */
+  digestWindowElapsed?: boolean;
 }
 
 function recipientKey(type: NotificationRecipientType, id: number): string {
@@ -295,6 +297,7 @@ export async function resolveDispatchPlan(input: ResolveInput): Promise<Recipien
         && settings && settings.digestMode !== 'realtime'
         && !event.mandatory && !bypassQuiet
         && input.eventKey !== 'messaging.digest'
+        && !input.digestWindowElapsed
       ) {
         return {
           channel,

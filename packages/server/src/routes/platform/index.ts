@@ -20,6 +20,7 @@ import {
   globalSearchContract,
   entityRelationsContract,
   entityTimelineContract,
+  entityWatchContract,
 } from '@zenith/shared/platform';
 import {
   decisionFlowContract,
@@ -54,6 +55,7 @@ import userFeedbacksRoutes from './user-feedbacks';
 import globalSearchRoutes from './global-search';
 import entityRelationsRoutes from './entity-relations';
 import entityTimelineRoutes from './entity-timeline';
+import entityWatchesRoutes from './entity-watches';
 import { createWsRoute } from './ws';
 
 export default defineRouteDomain({
@@ -73,6 +75,7 @@ export default defineRouteDomain({
     [globalSearchContract.basePath, globalSearchRoutes],
     [entityRelationsContract.basePath, entityRelationsRoutes],
     [entityTimelineContract.basePath, entityTimelineRoutes],
+    [entityWatchContract.basePath, entityWatchesRoutes],
     [dataMaskContract.basePath, dataMaskRoutes],
     [regionContract.basePath, regionsRoutes],
     [cacheContract.basePath, cacheRoutes],
