@@ -6,6 +6,14 @@ export function explainEntityRelation(section: Pick<EntityRelationSectionDescrip
   if (section.labelKey === 'relation.common.subjects') return '该通知、任务或操作记录保存的来源业务对象引用';
   const suffix = section.key.split('.').at(-1);
   const explanations: Record<string, string> = {
+    'wallet-transactions': '按会员归属或不可变支付意图号查找实际钱包流水',
+    'vip-renewals': '续费履约记录保存的会员身份与支付单号',
+    'ota-tasks': '由固件外键或设备升级执行记录找到实际升级任务',
+    'ota-devices': '升级执行记录明确绑定任务与设备，并检查双方租户范围',
+    firmware: '升级任务明确引用的目标固件',
+    'business-attachments': '业务附件表保存的受控文件引用',
+    'wiki-usages': '该文件在可见知识文档中的实际附件引用',
+    'announcement-usages': '该文件在可见公告中的实际附件引用',
     audit: '操作日志记录的业务主体与当前对象一致',
     tasks: '后台任务记录的业务主体与当前对象一致',
     notifications: '通知事件记录的业务主体与当前对象一致',

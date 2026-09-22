@@ -118,10 +118,10 @@ export const mockPaymentContracts: PaymentContract[] = [
 ];
 
 /** 会员端续费记录（demo 会员） */
-export const mockVipRenewals: MemberVipRenewal[] = [
-  { id: 3, orderNo: 'DED17580000000001001', contractNo: 'CT17580000000001001', amount: 1500, vipExpireAfter: '2026-08-01 10:00:00', createdAt: '2026-07-01 10:00:00' },
-  { id: 2, orderNo: 'DED17580000000001000', contractNo: 'CT17580000000001001', amount: 1500, vipExpireAfter: '2026-07-01 10:00:00', createdAt: '2026-06-01 10:00:00' },
-  { id: 1, orderNo: 'DED17580000000000999', contractNo: 'CT17580000000001001', amount: 1500, vipExpireAfter: '2026-06-01 10:00:00', createdAt: '2026-05-01 10:00:00' },
+export const mockVipRenewals: Array<MemberVipRenewal & { memberId: number }> = [
+  { id: 3, memberId: 1, orderNo: 'DED17580000000001001', contractNo: 'CT17580000000001001', amount: 1500, vipExpireAfter: '2026-08-01 10:00:00', createdAt: '2026-07-01 10:00:00' },
+  { id: 2, memberId: 1, orderNo: 'DED17580000000001000', contractNo: 'CT17580000000001001', amount: 1500, vipExpireAfter: '2026-07-01 10:00:00', createdAt: '2026-06-01 10:00:00' },
+  { id: 1, memberId: 1, orderNo: 'DED17580000000000999', contractNo: 'CT17580000000001001', amount: 1500, vipExpireAfter: '2026-06-01 10:00:00', createdAt: '2026-05-01 10:00:00' },
 ];
 
 export function getNextContractId(): number {

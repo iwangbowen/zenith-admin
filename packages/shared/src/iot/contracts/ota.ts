@@ -112,6 +112,7 @@ const firmwareUploadIdParam = z.object({
 const TAGS = ['IoT 固件'] as const;
 
 export const iotFirmwareContract = defineContract('/api/iot/firmwares', {
+  detail: op.get('/{id}', { access: { permission: 'iot:ota:list' }, params: idParam, response: iotFirmwareSchema, summary: '固件详情' }),
   list: op.get('/', { access: { permission: 'iot:ota:list' }, query: iotFirmwareListQuery, response: paginated(iotFirmwareSchema), summary: '固件包列表' }),
   upload: op.post('/', { access: { permission: 'iot:ota:firmware:manage' }, audit: { description: '上传 IoT 固件', recordBody: false }, body: uploadIotFirmwareBody, response: iotFirmwareSchema, summary: '上传固件包（单请求 multipart，服务端计算 SHA256；超过分片阈值用分片接口）' }),
   uploadInit: op.post('/upload/init', { access: { permission: 'iot:ota:firmware:manage' }, audit: '初始化 IoT 固件分片上传', body: initIotFirmwareUploadSchema, response: uploadSessionInitSchema, summary: '初始化固件分片上传' }),
@@ -124,6 +125,7 @@ export const iotFirmwareContract = defineContract('/api/iot/firmwares', {
 }, { auditModule: 'IoT 固件', tags: TAGS });
 
 export const iotOtaTaskContract = defineContract('/api/iot/ota-tasks', {
+  deviceDetail: op.get('/device-results/{id}', { access: { permission: 'iot:ota:list' }, params: idParam, response: iotOtaTaskDeviceSchema, summary: '单设备升级结果详情' }),
   list: op.get('/', { access: { permission: 'iot:ota:list' }, query: iotOtaTaskListQuery, response: paginated(iotOtaTaskSchema), summary: '升级任务列表' }),
   create: op.post('/', { access: { permission: 'iot:ota:task:create' }, audit: '创建 IoT 升级任务', body: createIotOtaTaskSchema, response: iotOtaTaskSchema, summary: '创建升级任务（WS 在线即推，离线心跳捎带；版本上报一致即成功）' }),
   detail: op.get('/{id}', { access: { permission: 'iot:ota:list' }, params: idParam, response: iotOtaTaskSchema, summary: '升级任务详情' }),

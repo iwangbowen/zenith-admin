@@ -37,7 +37,13 @@ const businessFileItemParams = businessFileParams.extend({
   fileId: z.uuid().meta({ description: '文件 ID', example: '018f6f8a-5f76-7d8c-9a1b-2c3d4e5f6789' }),
 });
 
+export const managedBusinessFileSchema = businessFileSchema.shape.file.extend({ createdAt: z.string() })
+  .meta({ id: 'ManagedBusinessFile' });
+const managedBusinessFileParams = z.object({ fileId: z.uuid() });
+
 export const businessFileContract = defineContract('/api/business-files', {
+  managedDetail: op.get('/managed/{fileId}', { access: 'authenticated', params: managedBusinessFileParams, response: managedBusinessFileSchema, summary: '按可见业务引用读取附件详情' }),
+  managedContent: op.get('/managed/{fileId}/content', { access: 'authenticated', params: managedBusinessFileParams, kind: 'file', summary: '按可见业务引用读取附件内容' }),
   list: op.get('/{businessType}/{businessId}', { access: 'authenticated', params: businessFileParams, response: z.array(businessFileSchema), summary: '获取业务附件列表' }),
   remove: op.delete('/{businessType}/{businessId}/{fileId}', { access: { permission: 'system:file:delete' }, audit: '移除业务附件', params: businessFileItemParams, summary: '移除业务附件' }),
 }, { auditModule: '文件管理', tags: ['Business Files'] });

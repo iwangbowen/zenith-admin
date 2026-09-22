@@ -75,7 +75,7 @@ export const mockMemberPointTxs: MemberPointTransaction[] = [
 
 export const mockMemberWallet: MemberWallet = { memberId: 1, balance: 5000, frozen: 0, totalRecharge: 10000, totalConsume: 5000 };
 
-export const mockMemberWalletTxs: MemberWalletTransaction[] = [
+export const mockMemberWalletTxs: Array<MemberWalletTransaction & { paymentIntentNo?: string | null }> = [
   { id: 1, memberId: 1, type: 'recharge', amount: 10000, balanceAfter: 10000, bizType: 'member_recharge', bizId: 'PAY202601', remark: '账户充值', memberName: '演示会员', createdAt: now },
   { id: 2, memberId: 1, type: 'consume', amount: -5000, balanceAfter: 5000, bizType: 'order', bizId: 'ORD202602', remark: '订单支付', memberName: '演示会员', createdAt: now },
 ];

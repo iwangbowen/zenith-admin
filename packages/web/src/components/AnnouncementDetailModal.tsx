@@ -1,3 +1,5 @@
+import { EntityContextView } from '@/components/entity-relations/EntityRelationButton';
+import { usePermission } from '@/hooks/usePermission';
 import DOMPurify from 'dompurify';
 import { Button, Tag, Space, Typography, Divider, Spin } from '@douyinfe/semi-ui';
 import AppModal from '@/components/AppModal';
@@ -39,6 +41,7 @@ export default function AnnouncementDetailModal({
   hasNext,
   indexLabel,
 }: Readonly<AnnouncementDetailModalProps>) {
+  const { hasPermission } = usePermission();
   const {
     getLabel: getTypeLabel,
     getColor: getTypeColor,
@@ -146,6 +149,7 @@ export default function AnnouncementDetailModal({
           />
           {/* 附件区 */}
           <FileAttachment value={announcement?.attachments} mode="view" showTitle={false} />
+          {hasPermission('system:announcement:list') && <EntityContextView entityType="messaging.announcement" entityKey={String(announcement.id)} />}
         </div>
         )}
       </Spin>

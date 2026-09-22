@@ -1,5 +1,10 @@
+import { EntityContextView } from '@/components/entity-relations/EntityRelationButton';
+import EntityRefBadge from '@/components/entity-relations/EntityRefBadge';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
+import { useIotOtaTaskDetail } from '@/hooks/queries/iot-ota';
+import { IotFirmwareDetail, IotOtaDeviceDetail } from './IotOtaRecordDetails';
 import { useRef, useState } from 'react';
-import { Button, Form, Progress, SideSheet, TabPane, Tabs, Tag, Toast, Typography, Upload } from '@douyinfe/semi-ui';
+import { Button, Form, Progress, SideSheet, TabPane, Tabs, Tag, Toast, Typography, Upload, Spin } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { FileUp } from 'lucide-react';
@@ -116,7 +121,7 @@ function FirmwaresTab({ onCreateTask }: Readonly<{ onCreateTask: (firmware: IotF
   const deleteMutation = useDeleteIotFirmwares();
 
   const columns: ColumnProps<IotFirmware>[] = [
-    { title: '版本', dataIndex: 'version', width: 110, render: (v: string) => <Text code>v{v}</Text> },
+    { title: '版本', dataIndex: 'version', width: 110, render: (v: string, row: IotFirmware) => <EntityRefBadge entityRef={{ type: 'iot.firmware', key: String(row.id) }} capabilities={{ view: true, open: true }}>v{v}</EntityRefBadge> },
     { title: '所属产品', dataIndex: 'productName', width: 170, render: (v: string | null) => renderEllipsis(v) },
     { title: '文件名', dataIndex: 'fileName', width: 180, render: (v: string) => renderEllipsis(v) },
     {
@@ -355,7 +360,9 @@ function OtaTasksTab({ detailTask, onOpenDetail }: Readonly<{
 }
 
 /** 任务明细抽屉：设备状态机 + 进度轮询 */
-function OtaTaskDetailDrawer({ task, onClose }: Readonly<{ task: IotOtaTask | null; onClose: () => void }>) {
+function OtaTaskDetailDrawer({ task: initialTask, onClose }: Readonly<{ task: IotOtaTask | null; onClose: () => void }>) {
+  const detailQuery = useIotOtaTaskDetail(initialTask?.id);
+  const task = detailQuery.data ?? initialTask;
   const { page, pageSize, setPage, buildPagination } = usePagination(10);
   const [status, setStatus] = useState<string | undefined>();
   const devicesQuery = useIotOtaTaskDevices(
@@ -365,7 +372,7 @@ function OtaTaskDetailDrawer({ task, onClose }: Readonly<{ task: IotOtaTask | nu
   );
 
   const columns: ColumnProps<IotOtaTaskDevice>[] = [
-    { title: '设备', dataIndex: 'deviceName', width: 150, render: (v: string | null) => renderEllipsis(v) },
+    { title: '设备', dataIndex: 'deviceName', width: 150, render: (v: string | null, row: IotOtaTaskDevice) => <EntityRefBadge entityRef={{ type: 'iot.ota-device', key: String(row.id) }} capabilities={{ view: true, open: true }}>{v || row.deviceSn || '设备升级结果'}</EntityRefBadge> },
     {
       title: 'SN', dataIndex: 'deviceSn', width: 180,
       render: (v: string | null) => v ? <Text type="tertiary" size="small" style={{ whiteSpace: 'nowrap' }}>{v}</Text> : EMPTY_PLACEHOLDER,
@@ -416,6 +423,7 @@ function OtaTaskDetailDrawer({ task, onClose }: Readonly<{ task: IotOtaTask | nu
             columns={columns}
             {...listTableProps(devicesQuery, { pagination: buildPagination, empty: '暂无设备明细' })}
           />
+          <EntityContextView entityType="iot.ota-task" entityKey={String(task.id)} />
         </>
       )}
     </SideSheet>
@@ -533,6 +541,19 @@ export default function IotOtaPage() {
   const [activeTab, setActiveTab] = useUrlTabState(OTA_TABS, 'firmwares');
   const [taskFirmware, setTaskFirmware] = useState<IotFirmware | null>(null);
   const [detailTask, setDetailTask] = useState<IotOtaTask | null>(null);
+  const [deepTaskId, setDeepTaskId] = useState<number | null>(null);
+  const [firmwareId, setFirmwareId] = useState<number | null>(null);
+  const [otaDeviceId, setOtaDeviceId] = useState<number | null>(null);
+  const deepTaskQuery = useIotOtaTaskDetail(deepTaskId ?? undefined);
+  useListDeepLink(['otaTaskId', 'otaDeviceId', 'firmwareId'], (p) => {
+    const parse = (key: string) => { const id = Number(key); return /^[1-9]\d*$/.test(key) && Number.isSafeInteger(id) && id <= 2_147_483_647 ? id : null; };
+    setDetailTask(null);
+    setDeepTaskId(p.otaTaskId ? parse(p.otaTaskId) : null);
+    setOtaDeviceId(p.otaDeviceId ? parse(p.otaDeviceId) : null);
+    setFirmwareId(p.firmwareId ? parse(p.firmwareId) : null);
+  }, { getNextParams: (p) => ({ tab: p.firmwareId ? 'firmwares' : 'tasks' }) });
+  const openTask = (task: IotOtaTask | null) => { setDeepTaskId(null); setDetailTask(task); };
+
 
   return (
     <div className="page-container page-tabs-page">
@@ -541,9 +562,14 @@ export default function IotOtaPage() {
           <FirmwaresTab onCreateTask={setTaskFirmware} />
         </TabPane>
         <TabPane tab="升级任务" itemKey="tasks">
-          <OtaTasksTab detailTask={detailTask} onOpenDetail={setDetailTask} />
+          <OtaTasksTab detailTask={deepTaskId !== null ? deepTaskQuery.data ?? null : detailTask} onOpenDetail={openTask} />
         </TabPane>
       </Tabs>
+      <SideSheet title="升级任务详情" width={780} visible={deepTaskId !== null && !deepTaskQuery.data} onCancel={() => setDeepTaskId(null)}>
+        {deepTaskQuery.isLoading ? <Spin /> : <Text type="danger">升级任务不存在或无权查看</Text>}
+      </SideSheet>
+      <IotFirmwareDetail id={firmwareId} onClose={() => setFirmwareId(null)} />
+      <IotOtaDeviceDetail id={otaDeviceId} onClose={() => setOtaDeviceId(null)} />
       <CreateTaskModal
         firmware={taskFirmware}
         onClose={() => setTaskFirmware(null)}

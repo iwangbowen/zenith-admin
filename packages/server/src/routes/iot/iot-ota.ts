@@ -11,11 +11,10 @@ import {
   completeIotFirmwareUpload,
   createIotFirmware,
   deleteIotFirmware,
-  ensureIotFirmwareExists,
+  getIotFirmware,
   getIotFirmwareUploadStatus,
   initIotFirmwareUpload,
   listIotFirmwares,
-  mapIotFirmware,
   updateIotFirmware,
   uploadIotFirmwareChunk,
 } from '../../services/iot/iot-firmware.service';
@@ -23,6 +22,7 @@ import {
   cancelIotOtaTask,
   createIotOtaTask,
   getIotOtaTask,
+  getIotOtaTaskDevice,
   listIotOtaTaskDevices,
   listIotOtaTasks,
   releaseNextIotOtaBatch,
@@ -92,7 +92,7 @@ const firmwareUploadAbortRoute = defineContractRoute(iotFirmwareContract.uploadA
 mountCrud(iotFirmwaresRouter, iotFirmwareContract,
   {
     list: listIotFirmwares,
-    get: async (id: number) => mapIotFirmware(await ensureIotFirmwareExists(id)),
+    get: getIotFirmware,
     update: updateIotFirmware,
     remove: deleteIotFirmware,
   },
@@ -111,6 +111,10 @@ mountCrud(iotFirmwaresRouter, iotFirmwareContract,
 
 // ─── OTA 任务 ─────────────────────────────────────────────────────────────────
 export const iotOtaTasksRouter = new OpenAPIHono({ defaultHook: validationHook });
+
+const deviceDetailRoute = defineContractRoute(iotOtaTaskContract.deviceDetail, {
+  handler: async (c) => c.json(okBody(await getIotOtaTaskDevice(c.req.valid('param').id)), 200),
+});
 
 const listTaskDevicesRoute = defineContractRoute(iotOtaTaskContract.devices, {
   handler: async (c) => {
@@ -149,5 +153,5 @@ mountCrud(iotOtaTasksRouter, iotOtaTaskContract,
     messages: { create: '升级任务已创建' },
     responses: { detail: notFound },
   },
-  [listTaskDevicesRoute, cancelTaskRoute, releaseBatchRoute, resumeTaskRoute],
+  [deviceDetailRoute, listTaskDevicesRoute, cancelTaskRoute, releaseBatchRoute, resumeTaskRoute],
 );

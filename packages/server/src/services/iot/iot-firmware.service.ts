@@ -222,3 +222,11 @@ export async function deleteIotFirmware(id: number): Promise<void> {
     }
   }
 }
+
+/** Detail is independent of the current list page. */
+export async function getIotFirmware(id: number) {
+  const row = await ensureIotFirmwareExists(id);
+  const [product] = await db.select({ name: iotProducts.name }).from(iotProducts).where(buildWhere(eq(iotProducts.id, row.productId), tenantCondition(iotProducts, currentUser()))).limit(1);
+  const taskCount = await db.$count(iotOtaTasks, buildWhere(eq(iotOtaTasks.firmwareId, id), tenantCondition(iotOtaTasks, currentUser())));
+  return mapIotFirmware(row, { productName: product?.name ?? null, taskCount });
+}

@@ -1,3 +1,4 @@
+import { MemberVipRenewalDetail } from './MemberFulfillmentDetail';
 import { FormPasswordInput } from '@/components/PasswordInput';
 import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -64,9 +65,11 @@ export default function MembersPage() {
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearch, listKey: memberAdminKeys.memberLists });
   // 等级列表"会员数"等入口的深链筛选（?levelId=，消费后即从 URL 移除）
-  useListDeepLink(['levelId', 'keyword', 'memberId'], (p) => {
+  useListDeepLink(['levelId', 'keyword', 'memberId', 'renewalId'], (p) => {
     if (p.levelId !== undefined || p.keyword !== undefined) applySearch({ ...defaultSearch, levelId: Number(p.levelId) || undefined, keyword: p.keyword ?? '' });
-    if (p.memberId && /^[1-9]\d*$/.test(p.memberId)) setDetailMemberId(Number(p.memberId));
+    const renewalId = Number(p.renewalId);
+    if (p.renewalId && /^[1-9]\d*$/.test(p.renewalId) && Number.isSafeInteger(renewalId) && renewalId <= 2_147_483_647) { setDetailMemberId(null); setRenewalId(renewalId); }
+    if (p.memberId && /^[1-9]\d*$/.test(p.memberId)) { setRenewalId(null); setDetailMemberId(Number(p.memberId)); }
   });
   const [pwdVisible, setPwdVisible] = useState(false);
   const [pwdMember, setPwdMember] = useState<Member | null>(null);
@@ -87,6 +90,7 @@ export default function MembersPage() {
   const [batchStatus, setBatchStatus] = useState<string>('');
   const [batchLevelId, setBatchLevelId] = useState<number | undefined>(undefined);
   // detail drawer
+  const [renewalId, setRenewalId] = useState<number | null>(null);
   const [detailMemberId, setDetailMemberId] = useState<number | null>(null);
   // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
   const filterQuery = useFilterQuery({
@@ -447,6 +451,7 @@ export default function MembersPage() {
       <MemberTagsManageModal visible={tagsManageVisible} onClose={() => setTagsManageVisible(false)} />
 
       {/* 会员详情侧滑 */}
+      <MemberVipRenewalDetail id={renewalId} onClose={() => setRenewalId(null)} />
       <MemberDetailDrawer memberId={detailMemberId} onClose={() => setDetailMemberId(null)} />
     </div>
   );

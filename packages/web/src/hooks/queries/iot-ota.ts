@@ -2,6 +2,7 @@
 import { keepPreviousData, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { OutputOf, QueryOf } from '@zenith/shared/core';
 import { iotFirmwareContract, iotOtaTaskContract, type IotFirmware, type IotOtaTask } from '@zenith/shared/iot';
+import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
 import { request } from '@/utils/request';
 import { unwrap } from '@/lib/query';
 import { contractKey, createResourceQueries, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
@@ -15,9 +16,13 @@ export type IotFirmwareListParams = NonNullable<QueryOf<typeof iotFirmwareContra
 export const {
   keys: iotFirmwareKeys,
   useList: useIotFirmwareList,
+  useDetail: useIotFirmwareDetail,
   useSave: useSaveIotFirmware,
   useDelete: useDeleteIotFirmwares,
-} = createResourceQueries(iotFirmwareContract);
+} = createResourceQueries(iotFirmwareContract, {
+  onSaved: (qc) => { void invalidateEntityRelations(qc); },
+  onDeleted: (qc) => { void invalidateEntityRelations(qc); },
+});
 
 /** 固件分片上传接口（init / chunk / complete / status / abort），由契约派生 */
 const FIRMWARE_UPLOAD_ENDPOINTS: ChunkedUploadEndpoints = {
@@ -63,6 +68,7 @@ export function useUploadIotFirmware() {
       return request.postForm<OutputOf<typeof iotFirmwareContract.upload>>(urlOf(iotFirmwareContract.upload), formData, { onProgress, signal }).then(unwrap);
     },
     onSuccess: () => {
+      void invalidateEntityRelations(qc);
       void qc.invalidateQueries({ queryKey: iotFirmwareKeys.lists });
     },
   });
@@ -97,6 +103,7 @@ export function useIotOtaTaskDevices(taskId: number | null, params: IotOtaTaskDe
 export function useCreateIotOtaTask() {
   return useApiMutation(iotOtaTaskContract.create, {
     invalidate: (qc) => {
+      void invalidateEntityRelations(qc);
       void qc.invalidateQueries({ queryKey: iotOtaTaskKeys.lists });
       void qc.invalidateQueries({ queryKey: iotFirmwareKeys.lists });
     },
@@ -105,6 +112,8 @@ export function useCreateIotOtaTask() {
 
 /** 任务状态变更后：详情直接写入缓存、列表失效；设备明细按需失效 */
 function applyOtaTask(qc: QueryClient, saved: IotOtaTask, withDevices: boolean) {
+  void invalidateEntityRelations(qc);
+  void qc.invalidateQueries({ queryKey: contractKey(iotOtaTaskContract.deviceDetail) });
   qc.setQueryData(iotOtaTaskKeys.detail(saved.id), saved);
   void qc.invalidateQueries({ queryKey: iotOtaTaskKeys.lists });
   if (withDevices) void qc.invalidateQueries({ queryKey: iotOtaTaskDeviceKeys.ofTask(saved.id) });
@@ -128,4 +137,8 @@ export function useResumeIotOtaTask() {
   return useApiMutation(iotOtaTaskContract.resume, {
     invalidate: (qc, saved) => applyOtaTask(qc, saved, false),
   });
+}
+
+export function useIotOtaDeviceDetail(id: number | null) {
+  return useApiQuery(iotOtaTaskContract.deviceDetail, { params: { id: id ?? 0 } }, { enabled: id !== null });
 }

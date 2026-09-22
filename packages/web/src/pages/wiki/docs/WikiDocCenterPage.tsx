@@ -1,3 +1,4 @@
+import { EntityContextView } from '@/components/entity-relations/EntityRelationButton';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Banner, Breadcrumb, Button, Checkbox, Divider, Dropdown, Empty, List, Popover, Select, Space, Spin, Tabs, Tag, TextArea, Toast, Tooltip, Tree, TreeSelect, Typography } from '@douyinfe/semi-ui';
@@ -30,7 +31,6 @@ import {
 import { useCreateWikiComment, useDeleteMyWikiComment, useResolveWikiComment, useWikiDocComments } from '@/hooks/queries/wiki-comments';
 import { useImportWikiDocs } from '@/hooks/queries/wiki-governance';
 import './WikiDocCenterPage.css';
-import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
 import { WIKI_DOC_STATUS_TAG_COLOR } from '../wiki-tag-colors';
 
 const { Text, Title } = Typography;
@@ -602,7 +602,6 @@ export default function WikiDocCenterPage() {
           ) : null}
         </div>
         <Space spacing={4}>
-          <EntityRelationButton entityRef={{ type: 'wiki.document', key: String(doc.id) }} />
           {outline.length >= 2 ? (
             <Popover
               trigger="click"
@@ -754,6 +753,8 @@ export default function WikiDocCenterPage() {
             <FileAttachment mode="view" value={doc.attachments} title="附件" />
           </div>
         ) : null}
+
+        <div style={{ ...READING_COLUMN_STYLE, marginTop: 16 }}><EntityContextView entityType="wiki.document" entityKey={String(doc.id)} /></div>
 
         {prevDoc || nextDoc ? (
           <div style={{ ...READING_COLUMN_STYLE, marginTop: 24 }}>

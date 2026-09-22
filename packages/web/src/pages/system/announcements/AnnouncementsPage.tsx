@@ -1,3 +1,4 @@
+import AnnouncementDetailModal from '@/components/AnnouncementDetailModal';
 import { lazy, Suspense, useState, useEffect } from 'react';
 import { useDebouncer } from '@tanstack/react-pacer';
 import { useQueryClient } from '@tanstack/react-query';
@@ -89,7 +90,13 @@ export default function AnnouncementsPage() {
     bind, bindKeyword, submittedParams,
     handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: announcementKeys.lists });
-  useListDeepLink(['title'], (params) => applySearch({ ...defaultSearchParams, title: params.title ?? '' }));
+  const [relationAnnouncementId, setRelationAnnouncementId] = useState<number | null>(null);
+  const relationAnnouncement = useAnnouncementDetail(relationAnnouncementId ?? undefined);
+  useListDeepLink(['title', 'announcementId'], (params) => {
+    if (params.title !== undefined) applySearch({ ...defaultSearchParams, title: params.title });
+    const id = Number(params.announcementId);
+    if (params.announcementId && /^[1-9]\d*$/.test(params.announcementId) && Number.isSafeInteger(id) && id <= 2_147_483_647) setRelationAnnouncementId(id);
+  });
 
   const { selectedRowKeys, setSelectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
   const [contentHtml, setContentHtml] = useState('');
@@ -769,6 +776,8 @@ export default function AnnouncementsPage() {
         </Spin>
       </SideSheet>
 
+      <AnnouncementDetailModal visible={relationAnnouncementId !== null} announcement={relationAnnouncement.data ?? null}
+        loading={relationAnnouncement.isLoading} onClose={() => setRelationAnnouncementId(null)} />
       {/* 已读统计 SideSheet */}
       <SideSheet
         title={`《${statsNotice?.title ?? ''}》已读统计`}

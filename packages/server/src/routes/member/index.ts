@@ -15,6 +15,7 @@ import {
   memberStatsContract,
   memberTagContract,
   memberWalletContract,
+  memberFulfillmentContract,
 } from '@zenith/shared/member';
 import { memberCmsContract } from '@zenith/shared/cms';
 import { defineRouteDomain } from '../_kit';
@@ -35,6 +36,7 @@ import memberStatsRoutes from './member-stats';
 import memberTagsRoutes from './member-tags';
 import memberWalletsRoutes from './member-wallets';
 import membersRoutes from './members';
+import memberFulfillmentRoutes from './member-fulfillment';
 
 export default defineRouteDomain({
   name: 'member',
@@ -49,6 +51,7 @@ export default defineRouteDomain({
     [memberLevelContract.basePath, memberLevelsRoutes, { feature: 'member' }],
     [memberTagContract.basePath, memberTagsRoutes, { feature: 'member' }],
     [memberPointContract.basePath, memberPointsRoutes, { feature: 'member' }],
+    [memberFulfillmentContract.basePath, memberFulfillmentRoutes, { feature: 'member' }],
     [memberWalletContract.basePath, memberWalletsRoutes, { feature: 'member' }],
     [couponContract.basePath, couponsRoutes, { feature: 'member' }],
     [checkinRuleContract.basePath, checkinRulesRoutes, { feature: 'member' }],

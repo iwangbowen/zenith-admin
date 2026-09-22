@@ -1,3 +1,6 @@
+import { currentMockSession, isMockPlatformAdmin } from '@/mocks/utils/auth';
+import dayjs from 'dayjs';
+import { recordMockIotEvent } from '@/mocks/data/entity-watch-events';
 import { percentOf } from '@zenith/shared/core';
 import type {
   IotAlarmRule, IotAutomation, IotDevice, IotDeviceShadow, IotFirmware, IotForwardRule,
@@ -112,6 +115,18 @@ function thingModelOf(productId: number) {
 }
 
 export const iotHandlers = [
+  mock(iotFirmwareContract.detail, ({ params, request, ok }) => {
+    const session = currentMockSession(request);
+    if (!session || session.viewingTenantId != null || !isMockPlatformAdmin(session.user)) return notFound('固件不存在', { status: 404 });
+    const row = mockIotFirmwares.find((item) => item.id === params.id);
+    return row ? ok({ ...row, taskCount: mockIotOtaTasks.filter((task) => task.firmwareId === row.id).length }) : notFound('固件不存在', { status: 404 });
+  }),
+  mock(iotOtaTaskContract.deviceDetail, ({ params, request, ok }) => {
+    const session = currentMockSession(request);
+    if (!session || session.viewingTenantId != null || !isMockPlatformAdmin(session.user)) return notFound('升级结果不存在', { status: 404 });
+    const row = mockIotOtaTaskDevices.find((item) => item.id === params.id);
+    return row ? ok(row) : notFound('升级结果不存在', { status: 404 });
+  }),
   // ─── 总览仪表盘 ──────────────────────────────────────────────────────────────
   mock(iotDashboardContract.overview, ({ ok }) => {
     const total = mockIotDevices.filter((d) => d.status === 'enabled').length;
@@ -673,6 +688,7 @@ export const iotHandlers = [
     alarm.acknowledgedAt = mockDateTime();
     alarm.acknowledgedBy = 1;
     alarm.acknowledgedByName = '演示管理员';
+    recordAlarmEvent(alarm);
     return ok(alarm, '已认领');
   }),
   mock(iotAlarmContract.resolve, ({ params, body, ok }) => {
@@ -682,6 +698,7 @@ export const iotHandlers = [
     alarm.resolvedAt = mockDateTime();
     alarm.resolvedBy = 1;
     alarm.resolvedByName = '演示管理员';
+    recordAlarmEvent(alarm);
     alarm.resolveNote = body.note?.trim() || null;
     return ok(alarm, '告警已处理');
   }),
@@ -1139,3 +1156,10 @@ export const iotHandlers = [
     return ok(null, '删除成功');
   }),
 ];
+
+function recordAlarmEvent(alarm: (typeof mockIotAlarms)[number]) {
+  recordMockIotEvent({ id: `iot-alarm:${alarm.id}:${alarm.status}`, eventType: `iot.alarm.${alarm.status === 'firing' ? 'triggered' : alarm.status}`,
+    occurredAt: dayjs().toISOString(), sourceRef: { type: 'iot.alarm', key: String(alarm.id) },
+    subjectRefs: [{ type: 'iot.alarm', key: String(alarm.id), role: 'primary' }, { type: 'iot.device', key: String(alarm.deviceId), role: 'related' }],
+    visibility: 'restricted', payload: { status: alarm.status, level: alarm.level, ruleName: alarm.ruleName } });
+}

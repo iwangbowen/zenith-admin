@@ -45,13 +45,14 @@ function simulateDeduct(contract: PaymentContract): PaymentContractDeductOutcome
   if (contract.bizType === DEMO_MEMBER_BIZ.bizType) {
     const vipExpireAfter = contract.nextDeductAt;
     mockVipRenewals.unshift({
+      memberId: Number(contract.bizId),
       id: mockVipRenewals.reduce((m, r) => Math.max(m, r.id), 0) + 1,
       orderNo,
       contractNo: contract.contractNo,
       amount: plan?.amount ?? 0,
       vipExpireAfter,
       createdAt: now,
-    } satisfies MemberVipRenewal);
+    } satisfies MemberVipRenewal & { memberId: number });
   }
   return { orderNo, deductStatus: 'success' };
 }

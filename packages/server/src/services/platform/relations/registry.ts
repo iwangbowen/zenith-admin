@@ -1,5 +1,6 @@
 import { HTTPException } from 'hono/http-exception';
-import { entityRelationPageSchema, entityRelationsResponseSchema, explainEntityRelation, type CanonicalEntityType, type EntityRelationsResponse, type EntityRelationPage } from '@zenith/shared/platform';
+import { entityRelationPageSchema, entityRelationsResponseSchema, entityRelationsContract, explainEntityRelation, type CanonicalEntityType, type EntityRelationsResponse, type EntityRelationPage } from '@zenith/shared/platform';
+import type { QueryOutputOf } from '@zenith/shared/core';
 import { isLicenseFeatureKey } from '@zenith/shared/licensing';
 import { hasPermission, runWithCurrentUser } from '../../../lib/context';
 import { isFeatureEnabled } from '../../../lib/licensing';
@@ -18,6 +19,12 @@ import { reverseSubjectProviders } from './providers/reverse-subjects.provider';
 import { workflowBusinessAnchorResolvers, createWorkflowBusinessRelationProviders } from '../../workflow/workflow-business-relations.service';
 import { workflowArchiveAnchorResolvers, workflowArchiveRelationProviders } from '../../workflow/workflow-archive-relations.service';
 import { workflowAttachmentAnchorResolvers, workflowAttachmentRelationProviders } from '../../workflow/workflow-attachment-relations.service';
+import { assertSupportedRelationFilters, normalizeRelationFilters } from './filters';
+import { addRelationActions } from './actions';
+
+import { memberFulfillmentAnchors, memberFulfillmentProviders } from './providers/member-fulfillment.provider';
+import { iotOtaAnchors, iotOtaProviders } from './providers/iot-ota.provider';
+import { businessFileAnchors, businessFileProviders } from './providers/business-file.provider';
 
 /** Each module contributes a manifest; registration validates it once at assembly. */
 export interface EntityRelationManifest {
@@ -47,6 +54,9 @@ export function createEntityRelationRegistry(manifests: readonly EntityRelationM
   return { anchors, relations };
 }
 const manifests: EntityRelationManifest[] = [
+  { anchors: memberFulfillmentAnchors, relations: memberFulfillmentProviders },
+  { anchors: iotOtaAnchors, relations: iotOtaProviders },
+  { anchors: businessFileAnchors, relations: businessFileProviders },
   { anchors: paymentAnchorResolvers, relations: paymentRelationProviders },
   { anchors: paymentFinancialAnchorResolvers, relations: paymentFinancialRelationProviders },
   { anchors: identityAnchorResolvers, relations: identityRelationProviders.filter((item) => !item.key.endsWith('.audit')) },
@@ -105,18 +115,21 @@ export async function describeEntityRelations(input: { type: CanonicalEntityType
     throw error;
   });
 }
-export async function listEntityRelation(input: { type: CanonicalEntityType; key: string; sectionKey: string; cursor?: string; limit: number }, caller: Pick<RelationAccessContext, 'user'>): Promise<EntityRelationPage> {
+export async function listEntityRelation(input: { type: CanonicalEntityType; key: string; sectionKey: string } & QueryOutputOf<typeof entityRelationsContract.section>, caller: Pick<RelationAccessContext, 'user'>): Promise<EntityRelationPage> {
   let authorized = false;
   try {
     return await withRelationRead('section', caller, async (access) => {
       const anchor = await resolveVisibleEntityAnchor(input.type, input.key, access);
       const provider = entityRelationRegistry.relations.get(input.sectionKey);
       if (!provider || provider.sourceType !== anchor.ref.type || (provider.appliesTo && !provider.appliesTo(anchor)) || !(await canDiscover(provider))) throw new HTTPException(404, { message: '关联分组不存在或无权查看' });
-      const scope = relationCursorScope(anchor, provider.key, access);
+      const filters = normalizeRelationFilters(input);
+      assertSupportedRelationFilters(filters, provider.descriptor.filters);
+      const scope = relationCursorScope(anchor, `${provider.key}:${JSON.stringify(filters)}`, access);
       const cursor = readRelationCursor(input.cursor, scope);
       authorized = true;
-      const result = await provider.list(anchor, { cursor, limit: input.limit, access });
-      return entityRelationPageSchema.parse({ ...result, items: result.items.map((item) => ({ ...item,
+      const result = await provider.list(anchor, { cursor, limit: input.limit, access, filters });
+      const actionableItems = await addRelationActions(result.items, anchor, access);
+      return entityRelationPageSchema.parse({ ...result, items: actionableItems.map((item) => ({ ...item,
         title: item.title.slice(0, 160), subtitle: item.subtitle?.slice(0, 240), description: item.description?.slice(0, 500),
         origin: { explanation: explainEntityRelation(provider.descriptor), ...item.origin, kind: provider.descriptor.kind },
       })),

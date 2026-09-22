@@ -1,3 +1,5 @@
+import { mockVipRenewals } from '@/mocks/data/payment-contracts';
+import { currentMockSession, isMockPlatformAdmin } from '@/mocks/utils/auth';
 import {
   couponContract,
   memberContract,
@@ -7,6 +9,7 @@ import {
   memberStatsContract,
   memberTagContract,
   memberWalletContract,
+  memberFulfillmentContract,
   type MemberLevel,
   type MemberLoginLog,
   type MemberTag,
@@ -41,6 +44,18 @@ function loginLogView(l: MemberLoginLog): MemberLoginLog {
 }
 
 export const memberAdminHandlers = [
+  mock(memberFulfillmentContract.walletTransaction, ({ params, request, ok }) => {
+    const session = currentMockSession(request);
+    if (!session || session.viewingTenantId != null || !isMockPlatformAdmin(session.user)) return notFound('流水不存在', { status: 404 });
+    const row = mockMemberWalletTxs.find((item) => item.id === params.id);
+    return row ? ok({ ...row, paymentIntentNo: row.paymentIntentNo ?? null }) : notFound('流水不存在', { status: 404 });
+  }),
+  mock(memberFulfillmentContract.vipRenewal, ({ params, request, ok }) => {
+    const session = currentMockSession(request);
+    if (!session || session.viewingTenantId != null || !isMockPlatformAdmin(session.user)) return notFound('续费记录不存在', { status: 404 });
+    const row = mockVipRenewals.find((item) => item.id === params.id);
+    return row ? ok({ ...row, memberName: mockMembers.find((member) => member.id === row.memberId)?.nickname ?? null }) : notFound('续费记录不存在', { status: 404 });
+  }),
   // ── 会员：批量操作（静态段先于 /:id）────────────────────────────────────────
   mock(memberContract.batchStatus, ({ body, ok }) => {
     for (const m of mockMembers) if (body.ids.includes(m.id)) m.status = body.status;

@@ -1,3 +1,5 @@
+import { useListDeepLink } from '@/hooks/useListDeepLink';
+import { MemberWalletTransactionDetail } from './MemberFulfillmentDetail';
 import { useRef, useState } from 'react';
 import { Button, Form, Toast, Banner } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
@@ -35,6 +37,11 @@ const yuan = (fen: number) => (fen / 100).toFixed(2);
 
 export default function MemberWalletPage() {
   const { hasPermission } = usePermission();
+  const [detailId, setDetailId] = useState<number | null>(null);
+  useListDeepLink(['transactionId'], (p) => {
+    const id = Number(p.transactionId);
+    if (/^[1-9]\d*$/.test(p.transactionId) && Number.isSafeInteger(id) && id <= 2_147_483_647) setDetailId(id);
+  });
   // useEditModal 例外：钱包调整 / 退款动作表单（针对既有会员的资金操作，非实体新增 / 编辑）
   const formApi = useRef<FormApi | null>(null);
   const search = useMemberLedgerSearch(memberAdminKeys.walletLists);
@@ -71,6 +78,7 @@ export default function MemberWalletPage() {
   };
 
   const columns: ColumnProps<MemberWalletTransaction>[] = [
+    { title: '流水编号', dataIndex: 'id', width: 100, render: (id: number) => <Button theme="borderless" onClick={() => setDetailId(id)}>{id}</Button> },
     ledgerMemberColumn<MemberWalletTransaction>(),
     ledgerTypeColumn<MemberWalletTransaction>(WALLET_TX_TYPE_LABELS, TYPE_COLORS),
     { title: '变动(元)', dataIndex: 'amount', width: 110, align: 'right', render: signedYuanChange },
@@ -95,6 +103,7 @@ export default function MemberWalletPage() {
 
       <ConfigurableTable<MemberWalletTransaction> columns={columns} {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无钱包流水' })} />
 
+      <MemberWalletTransactionDetail id={detailId} onClose={() => setDetailId(null)} />
       <AppModal title={mode === 'adjust' ? '调整会员余额' : '会员钱包退款'} visible={modalVisible} width={480}
         onCancel={() => setModalVisible(false)} onOk={handleSubmit}>
         {mode === 'refund' && (

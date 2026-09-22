@@ -14,3 +14,4 @@ export * from './member-stats';
 export * from './member-tags';
 export * from './member-wallets';
 export * from './members';
+export * from './member-fulfillment';

@@ -15,7 +15,7 @@ import type { CreateIotOtaTaskInput, IotOtaPayload, IotOtaProgressInput } from '
 import { IOT_BATCH_DEVICE_MAX } from '@zenith/shared/iot';
 import { db } from '../../db';
 import {
-  iotDevices, iotFirmwares, iotOtaTaskDevices, iotOtaTasks, iotProducts,
+  iotDevices, iotDeviceState, iotFirmwares, iotOtaTaskDevices, iotOtaTasks, iotProducts,
   type IotDeviceRow, type IotFirmwareRow, type IotOtaTaskDeviceRow, type IotOtaTaskRow,
 } from '../../db/schema';
 import { formatTimestamps } from '../../lib/datetime';
@@ -452,4 +452,16 @@ export async function sweepIotOtaTimeouts(): Promise<string> {
     }
   }
   return failed > 0 ? `超时判 failed ${failed} 台` : '无超时设备';
+}
+
+/** Reauthorize the exact result through both the task and the current device. */
+export async function getIotOtaTaskDevice(id: number) {
+  const [found] = await db.select({ row: iotOtaTaskDevices, name: iotDevices.name, sn: iotDevices.sn, online: iotDeviceState.online })
+    .from(iotOtaTaskDevices).innerJoin(iotOtaTasks, eq(iotOtaTaskDevices.taskId, iotOtaTasks.id))
+    .innerJoin(iotDevices, eq(iotOtaTaskDevices.deviceId, iotDevices.id))
+    .leftJoin(iotDeviceState, eq(iotDeviceState.deviceId, iotDevices.id))
+    .where(buildWhere(eq(iotOtaTaskDevices.id, id), tenantCondition(iotOtaTasks, currentUser()), tenantCondition(iotDevices, currentUser()),
+      sql`${iotDevices.tenantId} is not distinct from ${iotOtaTasks.tenantId}`)).limit(1);
+  const result = requireRow(found, '设备升级结果不存在或无权查看');
+  return mapIotOtaTaskDevice(result.row, { deviceName: result.name, deviceSn: result.sn, online: result.online ?? false });
 }

@@ -43,6 +43,7 @@ vi.mock('../../../payment/payment.service', async () => {
   return { buildOrdersWhere: async () => buildWhere(tenantCondition(paymentOrders, state.user), state.allData ? undefined : eq(paymentOrders.createdBy, state.user.userId)) };
 });
 vi.mock('../../../member/member-wallet.service', () => ({ WALLET_RECHARGE_BIZ_TYPE: 'member_recharge' }));
+vi.mock('../../../../lib/licensing', () => ({ isFeatureEnabled: async () => true }));
 vi.mock('../../../cms/cms-sites.service', () => ({ getAccessibleSiteIds: async () => state.siteIds }));
 vi.mock('../../../cms/cms-channels.service', () => ({ getAccessibleChannelIds: async () => state.channelIds }));
 vi.mock('../../../tasks/async-tasks.service', () => ({
@@ -63,6 +64,9 @@ import { iotContentAnchorResolvers, iotContentRelationProviders, cmsContentRelat
 import { workflowFileAnchorResolvers, workflowFileRelationProviders, workflowInstanceChildrenProvider, workflowInstanceTasksProvider } from './workflow-file.provider';
 import { paymentOrderRefundsProvider, paymentOrderDisputesProvider, paymentOrderRiskReviewsProvider } from '../../../payment/payment-relations.service';
 import { subjectProviders } from './subjects.provider';
+import { memberFulfillmentProviders } from './member-fulfillment.provider';
+import { iotOtaProviders } from './iot-ota.provider';
+import { businessFileAnchors, businessFileProviders } from './business-file.provider';
 
 type Statement = { sql: string; params: unknown[] };
 type ExecutableQuery = { execute: () => Promise<unknown[]>; toSQL: () => Statement };
@@ -334,5 +338,58 @@ describe('domain relation permission and pagination boundaries', () => {
     const { access, tx } = captureAccess();
     expect(await identityAnchorResolvers[0].resolve({ type: 'identity.user', key }, access)).toBeNull();
     expect(tx.select).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('fulfillment, OTA and managed attachment chains', () => {
+  it('joins wallet fulfillment through the immutable payment intention and applies member visibility before pagination', async () => {
+    const { access, statements } = captureAccess();
+    const provider = memberFulfillmentProviders.find((row) => row.key === 'payment.order.wallet-transactions')!;
+    await provider.list(anchor('payment.order', { orderNo: 'INTENT-21', bizType: 'member_recharge' }), {
+      access, limit: 5, filters: { keyword: 'invoice', status: 'recharge' },
+    });
+    const statement = statements[0];
+    expectBinding(statement, '"member_wallet_transactions"."payment_intent_no"', 'INTENT-21');
+    expectBinding(statement, '"member_wallet_transactions"."biz_type"', 'member_recharge');
+    expectBinding(statement, '"members"."tenant_id"', 7);
+    expectBinding(statement, '"members"."created_by"', 9);
+    expect(statement.sql).toContain('"members"."deleted_at" is null');
+    expect(statement.sql).toContain('ilike');
+    expect(statement.params).toContain('%invoice%');
+    expect(statement.sql).not.toContain('"member_wallet_transactions"."biz_id"');
+  });
+
+  it('scopes OTA failure summaries to both the task tenant and device tenant over the complete set', () => {
+    const { access } = captureAccess();
+    const provider = iotOtaProviders.find((row) => row.key === 'iot.ota-task.ota-devices')!;
+    const statement = new PgDialect({ casing: 'snake_case' }).sqlToQuery(provider.summaryQuery!(anchor('iot.ota-task'), { access }));
+    expect(statement.sql).toContain('"iot_ota_tasks"."tenant_id"');
+    expect(statement.sql).toContain('"iot_devices"."tenant_id"');
+    expect(statement.params).toEqual(expect.arrayContaining([7, 21, 'failed']));
+    expect(statement.sql).not.toMatch(/limit|offset|order by/i);
+  });
+
+  it('does not confuse a managed-file UUID with a drive node ID', async () => {
+    const { access, tx } = captureAccess();
+    const resolver = businessFileAnchors.find((row) => row.type === 'platform.managed-file')!;
+    expect(await resolver.resolve({ type: 'platform.managed-file', key: '21' }, access)).toBeNull();
+    expect(tx.select).not.toHaveBeenCalled();
+  });
+
+  it('filters reverse wiki references through space ACL, document status, deletion and the exact file tenant', async () => {
+    state.permissions.add('wiki:doc:list');
+    const { access, statements } = captureAccess();
+    const provider = businessFileProviders.find((row) => row.key === 'platform.managed-file.wiki-usages')!;
+    const source = { ...anchor('platform.managed-file'), ref: { type: 'platform.managed-file' as const, key: '0197aabb-1111-7000-8000-000000000001' } };
+    await provider.list(source, { access, limit: 5, filters: { keyword: 'secret' } });
+    const statement = statements[0];
+    expectBinding(statement, '"business_files"."file_id"', source.ref.key);
+    expectBinding(statement, '"business_files"."tenant_id"', 7);
+    expect(statement.sql).toContain('"wiki_space_members"');
+    expect(statement.sql).toContain('"wiki_docs"."deleted_at" is null');
+    expect(statement.sql).toContain('"wiki_docs"."status"');
+    expect(statement.sql).not.toContain('drive_nodes');
+    expect(statement.params).toContain('%secret%');
   });
 });
