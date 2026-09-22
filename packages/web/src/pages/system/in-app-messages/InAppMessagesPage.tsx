@@ -138,7 +138,7 @@ export default function InAppMessagesPage() {
     // 标题是这张表的主列：写 minWidth 作为弹性主列吸收剩余宽度；内容只是摘要预览，必须写固定宽度。
     // 两列都不写宽度时浏览器会把剩余空间平分，标题会与自己的内容摘要一样窄。
     { title: '标题', dataIndex: 'title', minWidth: 260, render: renderEllipsis },
-    { title: '内容', dataIndex: 'content', width: 260, render: renderEllipsis },
+    { title: '内容', dataIndex: 'content', width: 360, render: renderEllipsis },
     {
       title: '类型', dataIndex: 'type', width: 90,
       render: renderTypeTag,
