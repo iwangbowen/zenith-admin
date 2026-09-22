@@ -1,6 +1,6 @@
 # 跨对象关联视图
 
-当需求包含“关联信息”“对象上下文”“从一个业务对象打开另一个对象”“反查来源”“详情页时间线”或“关联分组状态提示”时，先读取本参考；产品边界和已验收范围见 [跨对象关联视图](../../../docs/guide/entity-relations.md)，验收矩阵见 [跨对象关联视图验收记录](../../../docs/guide/entity-relations-qa.md)。
+当需求包含“关联信息”“对象上下文”“从一个业务对象打开另一个对象”“反查来源”“详情页时间线”或“关联分组状态提示”时，先读取本参考；产品边界和已验收范围见 [跨对象关联视图](../../../../docs/guide/entity-relations.md)，验收矩阵见 [跨对象关联视图验收记录](../../../../docs/guide/entity-relations-qa.md)。
 
 ## 统一边界
 
@@ -13,10 +13,10 @@
 
 1. 在 Shared 的实体目录登记 source / target 类型和能力；需要跨模块搜索或详情跳转时，同时登记安全的 `entityDetailRoute`。
 2. 在 Server 增加 `EntityAnchorResolver` 和 `RelationProvider`。Provider 必须声明 `sourceType`、关系 key、目标类型、权限和适用条件；`list()` 使用与锚点相同的租户、数据范围和目标权限约束。
-3. 为 Provider 提供可选的 `exists()` 或 `summarize()` 快速摘要；未提供时由注册表用同权限的 `list(limit=1)` 推导。摘要只能返回 `has-data`、`empty`、`attention`、`unavailable`，不得返回数量。
+3. 常见关系通过 `summaryQuery()` 返回带完整可见性谓词的 EXISTS SQL，需异步权限准备时用 `prepareSummaryQuery()`；注册表批量执行并用 savepoint 隔离失败，不在同一事务连接上伪并行。多态授权关系可用 `exists()` / `summarize()` 或有界 `list(limit=1)`。摘要只能返回四态；`attention` 必须检查整个可见集合，不能只检查最新记录。
 4. 对写入关系、解除关系和会影响关系结果的业务 mutation，调用 `invalidateEntityRelations()` 或域内具名失效 helper；不能只刷新当前列表。
 5. Web 列表使用 `entityRelationColumn()`；详情页使用 `EntityContextView` 直接展示关联分组和时间线。只有没有标准详情容器的场景才使用 `EntityRelationButton` 打开上下文抽屉。
-6. 关系项点击必须通过 `entityDetailRoute()` 或 `EntityNavigationContext` 进入目标对象的精确详情深链；详情页消费 query 参数后清理 URL。带 Tab 的页面使用 `useListDeepLink` 原子消费详情参数和目标页签，避免互相覆盖。
+6. 关系项点击经 `EntityNavigationContext` 和 `entityDetailRoute()` 进入精确详情，复用会话内导航栈恢复来源对象、关联页签、展开组与滚动；标准列表筛选/分页由 `useListSearch` 注册快照。不要把返回依赖放在会被 query 消费清空的 Router state 上。带 Tab 的详情用 `useListDeepLink` 一次消费详情参数和目标页签。
 7. Demo 模式同步 MSW 的关系分组、关系项和 `summaryState`；Mock 不得用未经权限过滤的全量数据伪造摘要。
 
 ## 分组摘要和交互
@@ -25,7 +25,9 @@
 
 分组内容按需加载。刷新使用右上角浮动图标，不能占一行，也不能触发折叠切换；刷新时保留已有列表和布局，只让图标进入 loading。首次加载没有旧数据时可以显示局部加载态，重新获取已有数据时不得插入或移除内容节点。
 
-关系来源使用 `EntityRelationItem.origin` 的受控摘要：`kind` 表示直接关联、业务推导、流程 / 事件触发或操作活动；可选 `eventType` 只传安全事件标识，不传事件 payload。RelationPanel 通过图标和 Tooltip 说明“为什么关联”，`occurredAt` 表示关联时间；来源字段由服务端 Provider 在同一权限、租户和数据范围内生成，前端不得自行推断。
+关系来源使用 `EntityRelationItem.origin` 的受控摘要：`kind` 表示直接关联、业务推导、流程 / 事件触发或操作活动；`explanation` 复用 Shared 的公开关系依据，`eventType` 只传安全事件标识，不传事件 payload。`occurredAt` 是记录时间；只有真正保存关系建立时间时填写 `origin.relatedAt`。前端不得把记录创建时间当成关系建立时间。
+
+后台已有业务推送经轻量 `entity-relation-cache` 合并刷新；新接入事件必须来自真实 `WsMessage` 契约。关系运行时和导航 UI 按需加载，后台壳层只导入轻量会话状态及失效入口，避免拖入关系契约和文件预览依赖。
 
 ## 验收要求
 
