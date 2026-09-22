@@ -1,4 +1,4 @@
-import { keepPreviousData } from '@tanstack/react-query';
+import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import { resourceKeyOf, type QueryOf } from '@zenith/shared/core';
 import { iotAlarmContract, iotAlarmRuleContract, iotMaintenanceWindowContract } from '@zenith/shared/iot';
 import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
@@ -21,28 +21,40 @@ export const iotAlarmKeys = {
   all: [resourceKeyOf(iotAlarmContract.basePath)] as const,
   lists: contractKey(iotAlarmContract.list),
   list: (params: IotAlarmListParams) => contractKey(iotAlarmContract.list, { query: params }),
+  detail: (id: number) => contractKey(iotAlarmContract.detail, { params: { id } }),
 };
 
 /** 精确详情：关联对象深链不依赖告警列表当前筛选和分页。 */
 export function useIotAlarmDetail(id: number | undefined, enabled = true) {
-  return useApiQuery(iotAlarmContract.detail, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
+  return useApiQuery(iotAlarmContract.detail, { params: { id: id ?? 0 } }, {
+    enabled: enabled && id !== undefined,
+    requestOptions: { silent: true },
+    refetchOnWindowFocus: true,
+    refetchInterval: 30_000,
+  });
 }
 
 export function useIotAlarmList(params: IotAlarmListParams) {
   return useApiQuery(iotAlarmContract.list, { query: params }, { placeholderData: keepPreviousData });
 }
 
-/** 认领告警：状态翻转，仅失效告警列表 */
+function invalidateAlarmState(qc: QueryClient, id: number) {
+  void invalidateEntityRelations(qc);
+  void qc.invalidateQueries({ queryKey: iotAlarmKeys.lists });
+  void qc.invalidateQueries({ queryKey: iotAlarmKeys.detail(id) });
+}
+
+/** 认领告警：列表、精确详情和关系摘要同时更新。 */
 export function useAcknowledgeIotAlarm() {
   return useApiMutation(iotAlarmContract.acknowledge, {
-    invalidate: (qc) => { void invalidateEntityRelations(qc); void qc.invalidateQueries({ queryKey: iotAlarmKeys.lists }); },
+    invalidate: (qc, _data, { params }) => invalidateAlarmState(qc, params.id),
   });
 }
 
-/** 手动处理告警（可附处理备注）：记录状态翻转，仅失效告警列表 */
+/** 手动处理告警（可附处理备注）：详情重新获取设备与处理人信息。 */
 export function useResolveIotAlarm() {
   return useApiMutation(iotAlarmContract.resolve, {
-    invalidate: (qc) => { void invalidateEntityRelations(qc); void qc.invalidateQueries({ queryKey: iotAlarmKeys.lists }); },
+    invalidate: (qc, _data, { params }) => invalidateAlarmState(qc, params.id),
   });
 }
 

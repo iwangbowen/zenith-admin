@@ -11,7 +11,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
  * 去重：`uq_iot_alarms_active`（同规则同设备仅一条 firing）+ insert onConflictDoNothing。
  * 通知：唯一入口 notify()，接收人来自规则 notifyUserIds，为空则只留告警记录。
  */
-import { and, count, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, exists, inArray, isNotNull, isNull, lt, or, type SQL } from 'drizzle-orm';
 import { alias as aliasedTable } from 'drizzle-orm/pg-core';
 import type { CreateIotAlarmRuleInput, IotAlarmRuleType, UpdateIotAlarmRuleInput } from '@zenith/shared/iot';
 import { IOT_ALARM_LEVEL_LABELS, IOT_COMPARE_OP_LABELS, IOT_ONLINE_TTL_SECONDS } from '@zenith/shared/iot';
@@ -249,7 +249,9 @@ export async function getIotAlarm(id: number) {
 export async function acknowledgeIotAlarm(id: number) {
   const [row] = await db.update(iotAlarms)
     .set({ status: 'acknowledged', acknowledgedAt: new Date(), acknowledgedBy: currentUserId() })
-    .where(and(eq(iotAlarms.id, id), eq(iotAlarms.status, 'firing')))
+    .where(buildWhere(eq(iotAlarms.id, id), eq(iotAlarms.status, 'firing'),
+      exists(db.select({ id: iotDevices.id }).from(iotDevices)
+        .where(buildWhere(eq(iotDevices.id, iotAlarms.deviceId), tenantCondition(iotDevices, currentUser()))))))
     .returning();
   return mapIotAlarm(requireRow(row, '告警不存在或已被认领/恢复'));
 }
@@ -258,11 +260,13 @@ export async function acknowledgeIotAlarm(id: number) {
 export async function resolveIotAlarm(id: number, note?: string | null) {
   const [row] = await db.update(iotAlarms)
     .set({ status: 'resolved', resolvedAt: new Date(), resolvedBy: currentUserId(), resolveNote: note ?? null })
-    .where(and(eq(iotAlarms.id, id), inArray(iotAlarms.status, ['firing', 'acknowledged'])))
+    .where(buildWhere(eq(iotAlarms.id, id), inArray(iotAlarms.status, ['firing', 'acknowledged']),
+      exists(db.select({ id: iotDevices.id }).from(iotDevices)
+        .where(buildWhere(eq(iotDevices.id, iotAlarms.deviceId), tenantCondition(iotDevices, currentUser()))))))
     .returning();
   const resolved = requireRow(row, '告警不存在或已恢复');
   const [device] = await db.select({ sn: iotDevices.sn, name: iotDevices.name, productId: iotDevices.productId, tenantId: iotDevices.tenantId })
-    .from(iotDevices).where(eq(iotDevices.id, resolved.deviceId)).limit(1);
+    .from(iotDevices).where(buildWhere(eq(iotDevices.id, resolved.deviceId), tenantCondition(iotDevices, currentUser()))).limit(1);
   openEventBus.emit({
     type: 'iot.alarm.resolved',
     tenantId: device?.tenantId ?? null,

@@ -88,10 +88,12 @@ function DefField({ def }: Readonly<{ def: IotParamDef }>) {
 interface IotDeviceDetailDrawerProps {
   device: IotDevice | null;
   onClose: () => void;
+  visible?: boolean;
+  loading?: boolean;
 }
 
 /** 设备详情抽屉：接入凭证 / 属性影子 / 遥测曲线 / 指令 / 事件时间线 */
-export default function IotDeviceDetailDrawer({ device, onClose }: Readonly<IotDeviceDetailDrawerProps>) {
+export default function IotDeviceDetailDrawer({ device, onClose, visible = device !== null, loading = false }: Readonly<IotDeviceDetailDrawerProps>) {
   const { hasPermission } = usePermission();
   const palette = useChartPalette();
   const canCommand = hasPermission('iot:command:send');
@@ -458,12 +460,13 @@ export default function IotDeviceDetailDrawer({ device, onClose }: Readonly<IotD
           </Tag>
         </span>
       )}
-      visible={device !== null}
+      visible={visible}
       onCancel={onClose}
       width={820}
       closeOnEsc
       bodyStyle={{ paddingBottom: 24 }}
     >
+      {!device && loading && <Spin />}
       {device && (
         <>
           <Descriptions

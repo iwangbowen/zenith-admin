@@ -656,6 +656,7 @@ export const iotHandlers = [
   }),
 
   // ─── 告警记录 ────────────────────────────────────────────────────────────────
+  mock(iotAlarmContract.detail, ({ params, ok }) => ok(requireItem(mockIotAlarms, params.id, '告警不存在', { status: 404 }))),
   mock(iotAlarmContract.list, ({ query, ok, paginate }) => {
     let list = [...mockIotAlarms];
     list = filterByKeyword(list, query.keyword, [(a) => a.ruleName, (a) => a.message, (a) => a.deviceName, (a) => a.deviceSn]);

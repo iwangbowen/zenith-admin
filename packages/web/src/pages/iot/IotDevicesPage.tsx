@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import { Badge, Button, Col, Form, Row, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
@@ -19,7 +18,7 @@ import { abortSubmit } from '@/lib/abort-submit';
 import { iotDeviceContract, type CreateIotDeviceGroupInput, type CreateIotDeviceInput, type IotDevice, type IotDeviceGroup, type IotMetricValue } from '@zenith/shared/iot';
 import { IOT_NODE_TYPE_OPTIONS } from '@zenith/shared/iot';
 import { IotProductSelectField, useIotGroupOptions, useIotProductOptions } from './components/IotSelectors';
-import { parseJsonObjectInput } from './iot-form-utils';
+import { parseIotDetailId, parseJsonObjectInput } from './iot-form-utils';
 import {
   useDeleteIotDevices,
   useIotDeviceDetail,
@@ -48,31 +47,15 @@ function renderMetricValue(v: number | string | boolean): string {
 
 export default function IotDevicesPage() {
   const { hasPermission } = usePermission();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [detailDevice, setDetailDevice] = useState<IotDevice | null>(null);
-  const deepLinkedDeviceId = Number(searchParams.get('deviceId')) || undefined;
-  const deepLinkedDeviceQuery = useIotDeviceDetail(deepLinkedDeviceId);
+  const [detailDeviceId, setDetailDeviceId] = useState<number>();
+  const detailQuery = useIotDeviceDetail(detailDeviceId);
+  const detailDevice = detailDeviceId === undefined ? null : detailQuery.data ?? null;
 
   useEffect(() => {
-    if (deepLinkedDeviceQuery.data) setDetailDevice(deepLinkedDeviceQuery.data);
-  }, [deepLinkedDeviceQuery.data]);
-
-  function openDeviceDetail(device: IotDevice) {
-    setDetailDevice(device);
-    setSearchParams((current) => {
-      current.set('deviceId', String(device.id));
-      return current;
-    }, { replace: true });
-  }
-
-  function closeDeviceDetail() {
-    setDetailDevice(null);
-    if (!searchParams.has('deviceId')) return;
-    setSearchParams((current) => {
-      current.delete('deviceId');
-      return current;
-    }, { replace: true });
-  }
+    if (detailDeviceId === undefined || !detailQuery.isError) return;
+    Toast.error('设备不存在或无权查看');
+    setDetailDeviceId(undefined);
+  }, [detailDeviceId, detailQuery.isError]);
   const { selectedRowKeys, setSelectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection();
   const [groupsVisible, setGroupsVisible] = useState(false);
   const [batchKind, setBatchKind] = useState<'command' | 'desired' | null>(null);
@@ -251,7 +234,7 @@ export default function IotDevicesPage() {
       desktopInlineKeys: ['detail'],
       actions: (record) => [
         {
-          key: 'detail', label: '详情', onClick: () => openDeviceDetail(record),
+          key: 'detail', label: '详情', onClick: () => setDetailDeviceId(record.id),
         },
         ...(hasPermission('iot:device:update') ? [{
           key: 'edit', label: '编辑', onClick: () => modal.openEdit(record),
@@ -297,7 +280,14 @@ export default function IotDevicesPage() {
     useList: useIotDeviceList,
     table: { empty: '暂无设备，点击「注册设备」接入第一台设备', rowSelection: canBatch ? rowSelection : undefined },
   });
-  useListDeepLink(['keyword'], (params) => page.applySearch({ keyword: params.keyword ?? '' }));
+  useListDeepLink(['keyword', 'deviceId'], (params) => {
+    if (params.keyword !== undefined) page.applySearch({ keyword: params.keyword });
+    if (params.deviceId !== undefined) {
+      const id = parseIotDetailId(params.deviceId);
+      if (id === undefined) Toast.error('设备详情链接无效');
+      setDetailDeviceId(id);
+    }
+  });
   const { tableProps, filterQuery, listQuery } = page;
 
   return (
@@ -471,7 +461,7 @@ export default function IotDevicesPage() {
 
       {/* 导入设备走通用 ImportButton（导入中心 definition iot.devices） */}
 
-      <IotDeviceDetailDrawer device={detailDevice} onClose={closeDeviceDetail} />
+      <IotDeviceDetailDrawer device={detailDevice} loading={detailQuery.isLoading} visible={detailDeviceId !== undefined} onClose={() => setDetailDeviceId(undefined)} />
     </div>
   );
 }

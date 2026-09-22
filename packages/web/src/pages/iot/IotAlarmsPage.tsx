@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Descriptions, Form, Modal, TabPane, Tabs, Tag, TextArea, Toast, Tooltip, Typography, withField } from '@douyinfe/semi-ui';
+import { Descriptions, Form, Modal, Spin, TabPane, Tabs, Tag, TextArea, Toast, Tooltip, Typography, withField } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -16,6 +15,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { useDictItems } from '@/hooks/useDictItems';
 import { deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
@@ -30,7 +30,8 @@ import type {
 } from '@zenith/shared/iot';
 import { IotDeviceSelectField, IotProductSelectField, useIotGroupOptions, useIotProductOptions } from './components/IotSelectors';
 import { IotEventSelectField, IotPropertyConditionFields } from './components/ThingModelFields';
-import { formatIotDateTime } from './iot-form-utils';
+import { formatIotDateTime, parseIotDetailId } from './iot-form-utils';
+import JsonBlock from '@/components/JsonBlock';
 import {
   iotAlarmKeys, iotAlarmRuleKeys, iotMaintenanceWindowKeys,
   useAcknowledgeIotAlarm, useDeleteIotAlarmRules, useDeleteIotMaintenanceWindows,
@@ -57,9 +58,12 @@ interface AlarmSearchParams {
 
 const defaultAlarmSearch: AlarmSearchParams = { keyword: '', status: undefined, level: undefined, ruleType: undefined };
 
-function AlarmRecordsTab() {
+function AlarmRecordsTab({ detailId, onOpenDetail, onCloseDetail }: {
+  readonly detailId: number | undefined;
+  readonly onOpenDetail: (id: number) => void;
+  readonly onCloseDetail: () => void;
+}) {
   const { hasPermission } = usePermission();
-  const [searchParams, setSearchParams] = useSearchParams();
   const {
     page, pageSize, buildPagination,
     bind, bindKeyword, submittedParams,
@@ -88,31 +92,14 @@ function AlarmRecordsTab() {
   const acknowledgeMutation = useAcknowledgeIotAlarm();
   const [resolveTarget, setResolveTarget] = useState<IotAlarm | null>(null);
   const [resolveNote, setResolveNote] = useState('');
-  const [detailTarget, setDetailTarget] = useState<IotAlarm | null>(null);
-  const deepLinkedAlarmId = Number(searchParams.get('alarmId')) || undefined;
-  const deepLinkedAlarmQuery = useIotAlarmDetail(deepLinkedAlarmId);
+  const detailQuery = useIotAlarmDetail(detailId);
+  const detailTarget = detailId === undefined ? undefined : detailQuery.data;
 
   useEffect(() => {
-    if (deepLinkedAlarmQuery.data) setDetailTarget(deepLinkedAlarmQuery.data);
-  }, [deepLinkedAlarmQuery.data]);
-
-  function openAlarmDetail(alarm: IotAlarm) {
-    setDetailTarget(alarm);
-    setSearchParams((current) => {
-      current.set('tab', 'records');
-      current.set('alarmId', String(alarm.id));
-      return current;
-    }, { replace: true });
-  }
-
-  function closeAlarmDetail() {
-    setDetailTarget(null);
-    if (!searchParams.has('alarmId')) return;
-    setSearchParams((current) => {
-      current.delete('alarmId');
-      return current;
-    }, { replace: true });
-  }
+    if (detailId === undefined || !detailQuery.isError) return;
+    Toast.error('告警不存在或无权查看');
+    onCloseDetail();
+  }, [detailId, detailQuery.isError, onCloseDetail]);
 
   /** 处理人：已恢复看处理人（自动恢复无人），否则看认领人 */
   const handlerName = (r: IotAlarm): string | null => {
@@ -190,7 +177,7 @@ function AlarmRecordsTab() {
         }] : []),
         {
           key: 'detail', label: '查看详情',
-          onClick: () => openAlarmDetail(record),
+          onClick: () => onOpenDetail(record.id),
         },
       ],
     }),
@@ -280,12 +267,13 @@ function AlarmRecordsTab() {
       {/* 处理详情：只读查看认领 / 处理 / 升级链路与备注 */}
       <AppModal
         title={detailTarget ? `告警详情「${detailTarget.ruleName}」` : ''}
-        visible={detailTarget !== null}
-        onCancel={closeAlarmDetail}
+        visible={detailId !== undefined}
+        onCancel={onCloseDetail}
         footer={null}
         width={620}
         closeOnEsc
       >
+        {detailQuery.isLoading && <Spin />}
         {detailTarget && (
           <>
             <Descriptions
@@ -301,6 +289,7 @@ function AlarmRecordsTab() {
                 value: <Tag size="small" color={IOT_ALARM_LEVEL_COLORS[detailTarget.level]}>{IOT_ALARM_LEVEL_LABELS[detailTarget.level]}</Tag>,
               },
               { key: '类型', value: IOT_ALARM_RULE_TYPE_LABELS[detailTarget.ruleType] },
+              { key: '状态', value: <Tag color={ALARM_STATUS_COLORS[detailTarget.status]}>{IOT_ALARM_STATUS_LABELS[detailTarget.status]}</Tag>, span: 2 },
               { key: '告警内容', value: detailTarget.message, span: 2 },
               { key: '触发时间', value: detailTarget.firedAt },
               { key: '升级通知', value: detailTarget.escalatedAt ?? '未升级' },
@@ -308,11 +297,11 @@ function AlarmRecordsTab() {
                 key: '认领',
                 value: detailTarget.acknowledgedAt
                   ? `${detailTarget.acknowledgedByName ?? (detailTarget.acknowledgedBy != null ? `#${detailTarget.acknowledgedBy}` : EMPTY_PLACEHOLDER)} · ${detailTarget.acknowledgedAt}`
-                  : '未认领，直接处理',
+                  : '未认领',
                 span: 2,
               },
-              { key: '处理方式', value: detailTarget.resolvedBy != null ? '人工处理' : '自动恢复（告警条件消失）' },
-              { key: '处理人', value: handlerName(detailTarget) ?? EMPTY_PLACEHOLDER },
+              { key: '处理方式', value: detailTarget.status !== 'resolved' ? '待处理' : detailTarget.resolvedBy != null ? '人工处理' : '自动恢复（告警条件消失）' },
+              { key: '处理人', value: detailTarget.status === 'resolved' ? handlerName(detailTarget) ?? EMPTY_PLACEHOLDER : EMPTY_PLACEHOLDER },
               { key: '处理时间', value: detailTarget.resolvedAt ?? EMPTY_PLACEHOLDER, span: 2 },
               {
                 key: '处理备注',
@@ -323,6 +312,7 @@ function AlarmRecordsTab() {
               },
               ]}
             />
+            {detailTarget.context && <JsonBlock value={detailTarget.context} />}
             <EntityContextView entityType="iot.alarm" entityKey={String(detailTarget.id)} />
           </>
         )}
@@ -686,12 +676,18 @@ const ALARM_TABS = ['records', 'rules', 'windows'] as const;
 
 export default function IotAlarmsPage() {
   const [activeTab, setActiveTab] = useUrlTabState(ALARM_TABS, 'records');
+  const [detailId, setDetailId] = useState<number>();
+  useListDeepLink(['alarmId'], ({ alarmId }) => {
+    const id = parseIotDetailId(alarmId);
+    if (id === undefined) Toast.error('告警详情链接无效');
+    setDetailId(id);
+  }, { getNextParams: ({ alarmId }) => parseIotDetailId(alarmId) === undefined ? undefined : { tab: 'records' } });
 
   return (
     <div className="page-container page-tabs-page">
       <Tabs type="line" collapsible="auto" activeKey={activeTab} onChange={(k) => setActiveTab(k as typeof ALARM_TABS[number])}>
         <TabPane tab="告警记录" itemKey="records">
-          <AlarmRecordsTab />
+          <AlarmRecordsTab detailId={detailId} onOpenDetail={setDetailId} onCloseDetail={() => setDetailId(undefined)} />
         </TabPane>
         <TabPane tab="告警规则" itemKey="rules">
           <AlarmRulesTab />

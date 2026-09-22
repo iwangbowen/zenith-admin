@@ -4,6 +4,13 @@ import { abortSubmit } from '@/lib/abort-submit';
 type EmptyJsonValue = 'undefined' | 'null';
 type JsonToastSeverity = 'warning' | 'error' | false;
 
+/** URL 对象键仅接受数据库整数主键的规范十进制形态。 */
+export function parseIotDetailId(value: string | undefined): number | undefined {
+  if (!value || !/^[1-9]\d*$/.test(value)) return undefined;
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id <= 2_147_483_647 ? id : undefined;
+}
+
 export interface ParseJsonObjectInputOptions<TEmpty extends EmptyJsonValue = EmptyJsonValue> {
   text: string | undefined | null;
   label: string;

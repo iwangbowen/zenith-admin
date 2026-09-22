@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { parseJsonObjectInput, jsonObjectToText, formatIotDateTime, toFiveFieldCron, toSixFieldCron } from './iot-form-utils';
+import { parseIotDetailId, parseJsonObjectInput, jsonObjectToText, formatIotDateTime, toFiveFieldCron, toSixFieldCron } from './iot-form-utils';
 
 vi.mock('@douyinfe/semi-ui', () => ({
   Toast: {
@@ -38,6 +38,13 @@ describe('parseJsonObjectInput', () => {
 });
 
 describe('iot form utilities', () => {
+  it('accepts only canonical database IDs in device and alarm deep links', () => {
+    expect(parseIotDetailId('1')).toBe(1);
+    expect(parseIotDetailId('2147483647')).toBe(2147483647);
+    for (const value of [undefined, '', '0', '-1', '1.5', '01', '1e3', ' 1', '2147483648', '9007199254740993', 'NaN']) {
+      expect(parseIotDetailId(value)).toBeUndefined();
+    }
+  });
   it('stringifies JSON objects', () => {
     expect(jsonObjectToText({ a: 1 })).toBe('{"a":1}');
     expect(jsonObjectToText({ a: 1 }, { pretty: true })).toBe('{\n  "a": 1\n}');
