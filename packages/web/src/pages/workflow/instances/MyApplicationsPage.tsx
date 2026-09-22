@@ -282,6 +282,7 @@ export default function MyApplicationsPage() {
   const batchWithdrawMutation = useBatchWithdrawWorkflowInstances();
   const batchUrgeMutation = useBatchUrgeWorkflowInstances();
   const withdrawMutation = useWithdrawWorkflowInstance();
+  const urgeMutation = useUrgeWorkflowInstance();
   const submitting = submitMutation.isPending || submitDraftMutation.isPending;
   const savingDraft = saveDraftMutation.isPending || updateDraftMutation.isPending;
 
@@ -447,6 +448,21 @@ export default function MyApplicationsPage() {
     Toast.success('已撤回');
   };
 
+  // 单条催办：与详情面板内的催办共用同一契约操作，留言可选
+  const [rowUrgeId, setRowUrgeId] = useState<number | null>(null);
+  const [rowUrgeMessage, setRowUrgeMessage] = useState('');
+  const openRowUrge = (id: number) => {
+    setRowUrgeId(id);
+    setRowUrgeMessage('');
+  };
+  const handleRowUrge = async () => {
+    if (!rowUrgeId) return;
+    await urgeMutation.mutateAsync({ params: { id: rowUrgeId }, body: { message: rowUrgeMessage.trim() || undefined } });
+    Toast.success('已催办');
+    setRowUrgeId(null);
+    setRowUrgeMessage('');
+  };
+
   const selectedRunningIds = selectedRowKeys.filter((id) => (data?.list ?? []).some((item) => item.id === id && item.status === 'running'));
 
   const selectedWithdrawableIds = selectedRowKeys.filter((id) => (data?.list ?? []).some((item) => item.id === id && item.status === 'running' && item.allowWithdraw !== false));
@@ -537,7 +553,7 @@ export default function MyApplicationsPage() {
     dateTimeColumn('提交时间', 'createdAt'),
     workflowInstanceStatusColumn<WorkflowInstance>(),
     createOperationColumn<WorkflowInstance>({
-      // 草稿：编辑 / 提交 + 更多（删除）；已退回：修改重提 / 详情；审批中：详情 / 撤回；已驳回：详情 / 重新提交
+      // 草稿：编辑 / 提交 + 更多（删除）；已退回：修改重提 / 详情；审批中：详情 / 撤回 + 更多（催办）；已驳回：详情 / 重新提交
       width: 180,
       desktopInlineKeys: ['edit-draft', 'submit-draft', 'detail', 'withdraw', 'resubmit'],
       actions: (record) => [
@@ -579,6 +595,13 @@ export default function MyApplicationsPage() {
               onOk: () => handleWithdraw(record.id),
             });
           },
+        },
+        {
+          // 低频动作：桌面端收进「更多」，移动端与其余动作一样在菜单内
+          key: 'urge',
+          label: '催办',
+          hidden: record.status !== 'running',
+          onClick: () => openRowUrge(record.id),
         },
         {
           key: 'resubmit',
@@ -767,6 +790,25 @@ export default function MyApplicationsPage() {
           maxLength={500}
           rows={3}
           style={{ marginTop: 12 }}
+        />
+      </AppModal>
+
+      <AppModal
+        title="催办"
+        visible={rowUrgeId !== null}
+        onCancel={() => setRowUrgeId(null)}
+        onOk={() => void handleRowUrge()}
+        confirmLoading={urgeMutation.isPending}
+        okText="发送催办"
+      >
+        <Typography.Text type="tertiary" size="small">将对当前实例所有待办人发起催办（5 分钟内已被催办过的人员会被跳过）</Typography.Text>
+        <TextArea
+          value={rowUrgeMessage}
+          onChange={setRowUrgeMessage}
+          placeholder="可选留言（最多 256 个字符）"
+          maxLength={256}
+          rows={3}
+          style={{ marginTop: 8 }}
         />
       </AppModal>
 
