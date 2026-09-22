@@ -34,7 +34,7 @@ export function readEntityRelationStack(state: unknown): readonly EntityRelation
 }
 
 export function appendEntityRelationFrame(
-  location: Pick<Location, 'pathname' | 'search' | 'hash' | 'state'>,
+  location: { readonly pathname: string; readonly search: string; readonly hash: string; readonly state: unknown },
   scrollTop = document.querySelector<HTMLElement>('.admin-content')?.scrollTop ?? 0,
 ): EntityRelationNavigationState {
   const stack = readEntityRelationStack(location.state);

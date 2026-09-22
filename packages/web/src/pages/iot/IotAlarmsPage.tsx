@@ -287,12 +287,13 @@ function AlarmRecordsTab() {
         closeOnEsc
       >
         {detailTarget && (
-          <Descriptions
-            align="plain"
-            layout="horizontal"
-            column={2}
-            style={{ width: '100%' }}
-            data={[
+          <>
+            <Descriptions
+              align="plain"
+              layout="horizontal"
+              column={2}
+              style={{ width: '100%' }}
+              data={[
               { key: '设备', value: detailTarget.deviceName ?? EMPTY_PLACEHOLDER },
               { key: 'SN', value: detailTarget.deviceSn ?? EMPTY_PLACEHOLDER },
               {
@@ -320,9 +321,10 @@ function AlarmRecordsTab() {
                   : <Text type="tertiary">未填写</Text>,
                 span: 2,
               },
-            ]}
-          />
-          <EntityContextView entityType="iot.alarm" entityKey={String(detailTarget.id)} />
+              ]}
+            />
+            <EntityContextView entityType="iot.alarm" entityKey={String(detailTarget.id)} />
+          </>
         )}
       </AppModal>
     </>

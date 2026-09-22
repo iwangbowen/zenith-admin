@@ -283,7 +283,8 @@ export async function getUserGroupsBeforeAudit(ids: number[]) {
   if (valid.length === 0) return [];
   const tc = tenantCondition(userGroups, currentUser());
   const rows = await baseSelect().where(and(inArray(userGroups.id, valid), tc));
-  return rows.map(mapGroup);
+  const rolePreviews = await listGroupRolePreviews(rows.map((row) => row.id));
+  return rows.map((row) => mapGroup(row, rolePreviews.get(row.id) ?? []));
 }
 
 export async function getUserGroupMembersBeforeAudit(groupId: number) {
