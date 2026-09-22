@@ -143,8 +143,10 @@ export default function InAppMessagesPage() {
       title: '类型', dataIndex: 'type', width: 90,
       render: renderTypeTag,
     },
-    { title: '收件人', dataIndex: 'username', width: 120, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
-    { title: '发送人', dataIndex: 'senderName', width: 120, render: (v: string | null) => v || '系统' },
+    // 收件人是昵称优先的展示名，比登录名长；定宽 + 单行省略，长昵称出 tooltip 而不是换行撑高行
+    { title: '收件人', dataIndex: 'username', width: 160, render: renderEllipsis },
+    // 系统自动投递的记录没有发送人，空值语义是「系统」而不是未填报，所以先回填再交给 renderEllipsis 单行省略
+    { title: '发送人', dataIndex: 'senderName', width: 120, render: (v: string | null) => renderEllipsis(v || '系统') },
     dateTimeColumn('阅读时间', 'readAt'),
     createdAtColumn,
     {
