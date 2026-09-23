@@ -34,7 +34,7 @@ describe('CMS site import code validation', () => {
     expect(source).toContain('insertCmsSiteRefsRebuildOutbox');
     const transactionStart = source.indexOf('const result = await db.transaction(');
     const taskWrite = source.indexOf('const publishTask = await insertCmsSiteRefsRebuildOutbox(', transactionStart);
-    const transactionEnd = source.indexOf('\n  });\n', taskWrite);
+    const transactionEnd = source.indexOf('});', taskWrite);
     const enqueue = source.indexOf('await enqueueCmsPublishOutboxes([result.publishTask]', transactionEnd);
     expect(transactionStart).toBeGreaterThanOrEqual(0);
     expect(taskWrite).toBeGreaterThan(transactionStart);

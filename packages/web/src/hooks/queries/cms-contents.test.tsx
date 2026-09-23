@@ -42,7 +42,7 @@ import { cmsTagKeys, useAllCmsTags } from './cms-tags';
 
 const SITE_ID = 1;
 const LIST_PARAMS = { page: 1, pageSize: 10, siteId: SITE_ID };
-const CONTENT = { id: 7, siteId: SITE_ID, channelId: 3, title: '发布稿', status: 'draft' };
+const CONTENT = { id: 7, siteId: SITE_ID, channelId: 3, title: '发布稿', status: 'draft', editorialStatus: 'draft', version: 1 };
 const PAGE = { list: [CONTENT], total: 1, page: 1, pageSize: 10 };
 
 beforeEach(() => {
@@ -51,7 +51,7 @@ beforeEach(() => {
     .on('GET', '/api/cms/contents', PAGE)
     .on('GET', '/api/cms/contents/7', CONTENT)
     .on('GET', '/api/cms/contents/7/op-logs', [])
-    .on('GET', '/api/cms/contents/7/versions', [])
+    .on('GET', '/api/cms/contents/7/versions', { list: [], page: 1, pageSize: 30, total: 0 })
     .on('GET', '/api/cms/contents/7/workflow', { instance: null, previousInstances: [] })
     .on('GET', '/api/cms/contents/7/approval-detail', CONTENT)
     .on('GET', '/api/cms/channels/tree', [])
@@ -93,7 +93,7 @@ async function settle(hook: ReturnType<typeof mountContentsPage>['hook']) {
 }
 
 describe('useCmsContentAction —— 状态流转按真实副作用失效', () => {
-  it('refetches list / detail / op logs / dashboard but leaves tree, tags and versions alone', async () => {
+  it('refetches list / detail / op logs / dashboard but refreshes frozen revision history while leaving tree and tags alone', async () => {
     const { qc, hook } = mountContentsPage();
     await settle(hook);
 
@@ -118,7 +118,7 @@ describe('useCmsContentAction —— 状态流转按真实副作用失效', () =
     const fetches = observeFetches(qc);
     api.resetCalls();
 
-    await hook.result.current.action.mutateAsync({ id: 7, action: 'publish' });
+    await hook.result.current.action.mutateAsync({ id: 7, action: 'publish', expectedVersion: 1 });
     await waitFor(() => {
       expect(hook.result.current.list.isFetching).toBe(false);
       expect(hook.result.current.dashboard.isFetching).toBe(false);
@@ -133,9 +133,9 @@ describe('useCmsContentAction —— 状态流转按真实副作用失效', () =
     // 看板 totals / todayPublished / publishTrend 都随发布变化——收敛前根本没失效
     expect(fetches.countOf(cmsDashboardKeys.statsAll)).toBe(1);
 
-    // 收敛前 `.all` 会把版本列表也打回源；栏目树与标签下拉源不含内容状态
-    expect(fetches.countOf(cmsContentKeys.versions)).toBe(0);
-    expect(isFresh(qc, cmsContentKeys.versionList(7))).toBe(true);
+    // 发布冻结修订，历史摘要必须回源；栏目树与标签下拉源不含内容状态
+    expect(fetches.countOf(cmsContentKeys.versions)).toBe(1);
+    expect(isFresh(qc, cmsContentKeys.versionPage(7))).toBe(true);
     expect(fetches.countOf(cmsChannelKeys.trees)).toBe(0);
     expect(fetches.countOf(cmsTagKeys.lookup)).toBe(0);
     expect(api.countOf('GET', '/api/cms/tags/all')).toBe(0);
@@ -168,12 +168,12 @@ describe('CMS 业务审批查询', () => {
   it('refreshes a pending list until the asynchronous approval result reaches CMS, then stops polling', async () => {
     vi.useFakeTimers();
     let status = 'pending';
-    api.on('GET', '/api/cms/contents', () => ({ ...PAGE, list: [{ ...CONTENT, status }] }));
+    api.on('GET', '/api/cms/contents', () => ({ ...PAGE, list: [{ ...CONTENT, status: status === 'published' ? 'published' : 'draft', editorialStatus: status === 'pending' ? 'pending' : 'clean' }] }));
     const qc = createTestQueryClient();
     const hook = renderHook(() => useCmsContentList(LIST_PARAMS), { wrapper: createWrapper(qc) });
     try {
       await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-      expect(hook.result.current.data?.list[0].status).toBe('pending');
+      expect(hook.result.current.data?.list[0].editorialStatus).toBe('pending');
       status = 'published';
       await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
       expect(hook.result.current.data?.list[0].status).toBe('published');
@@ -199,7 +199,7 @@ describe('useCmsContentBatch —— 彻底删除移除详情缓存', () => {
     qc.setQueryData(cmsContentKeys.versionList(7), []);
     api.resetCalls();
 
-    await hook.result.current.batch.mutateAsync({ action: 'purge', ids: [7] });
+    await hook.result.current.batch.mutateAsync({ action: 'purge', ids: [7], expectedVersions: { '7': 1 } });
     await waitFor(() => expect(hook.result.current.list.isFetching).toBe(false));
 
     expect(hasCacheEntry(qc, cmsContentKeys.detail(7))).toBe(false);
@@ -220,7 +220,7 @@ describe('useCmsContentBatchOps / useDuplicateCmsContent', () => {
     const fetches = observeFetches(qc);
     api.resetCalls();
 
-    await hook.result.current.batchOps.mutateAsync({ action: 'batch-flags', body: { ids: [7], isTop: true } });
+    await hook.result.current.batchOps.mutateAsync({ action: 'batch-flags', body: { ids: [7], expectedVersions: { '7': 1 }, isTop: true } });
     await waitFor(() => expect(hook.result.current.list.isFetching).toBe(false));
 
     expect(fetches.countOf(cmsContentKeys.lists)).toBe(1);

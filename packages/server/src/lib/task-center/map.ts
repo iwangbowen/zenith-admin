@@ -7,6 +7,11 @@ import { getTaskTypeMeta } from './registry';
 type AsyncTaskRowWithCreator = AsyncTaskRow & {
   createdByUser?: { nickname: string | null; username: string } | null;
 };
+/** Internal publication snapshots are never part of task list/detail/WS payloads. */
+export function publicAsyncTaskPayload(payload: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  const { configurationCapture: _configurationCapture, configurationCaptures: _configurationCaptures, ...visible } = payload ?? {};
+  return visible;
+}
 
 export function mapAsyncTask(row: AsyncTaskRowWithCreator): AsyncTask {
   return {
@@ -15,7 +20,7 @@ export function mapAsyncTask(row: AsyncTaskRowWithCreator): AsyncTask {
     title: row.title,
     module: getTaskTypeMeta(row.taskType)?.module ?? null,
     status: row.status,
-    payload: row.payload ?? {},
+    payload: publicAsyncTaskPayload(row.payload),
     totalCount: row.totalCount ?? null,
     processedCount: row.processedCount,
     failedCount: row.failedCount,

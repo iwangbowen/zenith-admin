@@ -1,0 +1,20 @@
+.cms-revision-body {
+  max-width: 100%;
+  overflow: auto;
+}
+
+.cms-revision-body img,
+.cms-revision-body video {
+  max-width: 100%;
+  height: auto;
+}
+
+.cms-revision-body table {
+  border-collapse: collapse;
+}
+
+.cms-revision-body th,
+.cms-revision-body td {
+  padding: 8px;
+  border: 1px solid var(--semi-color-border);
+}

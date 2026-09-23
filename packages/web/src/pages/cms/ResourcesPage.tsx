@@ -1,4 +1,5 @@
 import { useRef, useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button, Dropdown, Form, Modal, Space, Tag, Toast, Tooltip, Typography, Empty, Tree } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
@@ -15,7 +16,7 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
 import {
   cmsResourceKeys, useCmsResourceList, useCmsResourceReferences,
-  useUploadCmsResource, useUpdateCmsResource, useCropCmsResource, useDeleteCmsResources,
+  useUpdateCmsResource, useCropCmsResource, useDeleteCmsResources,
   useCmsResourceFolders, useSaveCmsResourceFolder, useDeleteCmsResourceFolder,
   useCmsResourceGovernance, useMoveCmsResources, useReplaceCmsResource, useRebuildCmsResourceRefs,
 } from '@/hooks/queries/cms';
@@ -33,6 +34,14 @@ import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } fro
 import ModalFooter from '@/components/ModalFooter';
 import { compactParams } from '@/lib/query';
 import { EditFormModal } from '@/components/EditFormModal';
+import { EditFormSheet } from '@/components/EditFormModal';
+import AssetRightsFields from './AssetRightsFields';
+import { useCmsAssetRights, useSaveCmsAssetRights, type CmsAssetRightsRecord } from '@/hooks/queries/cms-resources';
+import type { BodyOf } from '@zenith/shared/core';
+import { cmsResourceContract } from '@zenith/shared/cms';
+import { formatDateTimeForApi } from '@/utils/date';
+import { useCmsUploadQueue } from './useCmsUploadQueue';
+import { Progress } from '@douyinfe/semi-ui';
 
 const TYPE_COLORS: Record<CmsResourceType, 'blue' | 'purple' | 'cyan' | 'orange' | 'grey'> = {
   image: 'blue', video: 'purple', audio: 'cyan', document: 'orange', other: 'grey',
@@ -180,6 +189,7 @@ function CropModal({ resource, onClose }: Readonly<{ resource: CmsResource | nul
 
 /** 引用弹窗：列出素材被内容/栏目/广告等引用的位置 */
 function ReferencesModal({ resource, onClose }: Readonly<{ resource: CmsResource | null; onClose: () => void }>) {
+  const navigate = useNavigate();
   const refsQuery = useCmsResourceReferences(resource?.id ?? null);
   const refs = refsQuery.data ?? [];
   const columns: ColumnProps<CmsResourceReference>[] = [
@@ -189,6 +199,7 @@ function ReferencesModal({ resource, onClose }: Readonly<{ resource: CmsResource
     },
     { title: 'ID', dataIndex: 'id', width: 80 },
     { title: '标题', dataIndex: 'title', render: renderEllipsis },
+    { title: '查看', width: 80, render: (_value, row) => row.href ? <Button theme="borderless" onClick={() => { onClose(); navigate(row.href!); }}>打开</Button> : null },
     {
       title: '引用字段', dataIndex: 'field', width: 140,
       render: (v: string) => <Typography.Text type="tertiary" ellipsis={{ showTooltip: true }} style={{ maxWidth: 120, display: 'block' }}>{v}</Typography.Text>,
@@ -264,7 +275,6 @@ export default function ResourcesPage() {
     ...filterQuery,
   }, siteId !== undefined);
   const foldersQuery = useCmsResourceFolders(siteId);
-  const uploadMutation = useUploadCmsResource();
   const updateMutation = useUpdateCmsResource();
   const deleteMutation = useDeleteCmsResources();
   const saveFolderMutation = useSaveCmsResourceFolder();
@@ -288,6 +298,12 @@ export default function ResourcesPage() {
   const governanceMutation = useCmsResourceGovernance();
   const moveMutation = useMoveCmsResources();
   const replaceMutation = useReplaceCmsResource();
+  const uploadQueue = useCmsUploadQueue();
+  const rightsModal = useEditModal<CmsAssetRightsRecord, BodyOf<typeof cmsResourceContract.updateRights>>({
+    entityName: '素材授权', save: useSaveCmsAssetRights(), useDetail: useCmsAssetRights,
+    toValues: (record) => ({ source: record.source, license: record.license, expiresAt: record.expiresAt, revoked: record.revoked, tags: record.tags, alt: record.alt }),
+    beforeSave: (values) => ({ ...values, expiresAt: values.expiresAt ? formatDateTimeForApi(values.expiresAt) : null }),
+  });
   const rebuildRefsMutation = useRebuildCmsResourceRefs();
   const { tasks, loading: tasksLoading, refresh: refreshTasks } = useMyAsyncTasks({ taskTypes: ['cms-resource-governance', 'cms-resource-ref-rebuild'] });
 
@@ -304,11 +320,10 @@ export default function ResourcesPage() {
   }
 
   async function handleUploadFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files ?? []);
     e.target.value = '';
-    if (!file || siteId === undefined) return;
-    await uploadMutation.mutateAsync({ siteId, folderId: folderId && folderId > 0 ? folderId : undefined, file });
-    Toast.success('上传成功');
+    if (!files.length || siteId === undefined) return;
+    uploadQueue.add(files, siteId, folderId && folderId > 0 ? folderId : undefined);
   }
 
   async function handleReplaceFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -318,7 +333,7 @@ export default function ResourcesPage() {
     setReplaceTarget(null);
     if (!file || !target) return;
     await replaceMutation.mutateAsync({ id: target.id, file });
-    Toast.success('替换成功，引用该素材的位置已自动指向新文件');
+    Toast.success('新文件版本已保存，已发布稿件保持原文件');
   }
 
   async function submitRebuildRefs() {
@@ -384,6 +399,7 @@ export default function ResourcesPage() {
       width: 240,
       desktopInlineKeys: ['references', 'rename', 'delete'],
       actions: (record) => [
+        { key: 'rights', label: '版本与授权', hidden: !canUpdate, onClick: () => rightsModal.openEdit({ id: record.id, resourceId: record.id, source: null, license: null, expiresAt: null, revoked: false, tags: [], alt: null }) },
         { key: 'references', label: '引用', onClick: () => setRefsTarget(record) },
         ...(canUpdate ? [{
           key: 'replace',
@@ -497,7 +513,7 @@ export default function ResourcesPage() {
               onSearch={handleSearch}
               onReset={handleReset}
               create={canUpload ? (
-                <Button type="primary" icon={<Upload size={14} />} loading={uploadMutation.isPending} disabled={siteId === undefined} onClick={() => fileInputRef.current?.click()}>
+                <Button type="primary" icon={<Upload size={14} />} loading={uploadQueue.busy} disabled={siteId === undefined} onClick={() => fileInputRef.current?.click()}>
                   上传素材
                 </Button>
               ) : null}
@@ -514,7 +530,7 @@ export default function ResourcesPage() {
                 </>
               )}
             />
-            <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={(e) => void handleUploadFile(e)} />
+            <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={(e) => void handleUploadFile(e)} />
             <input ref={replaceInputRef} type="file" style={{ display: 'none' }} onChange={(e) => void handleReplaceFile(e)} />
             <ConfigurableTable<CmsResource>
               columns={columns}
@@ -655,6 +671,13 @@ export default function ResourcesPage() {
       </EditFormModal>
 
       <CropModal resource={cropTarget} onClose={() => setCropTarget(null)} />
+      {uploadQueue.items.length ? <div style={{ padding: 16 }}>
+        <Typography.Text>素材上传：已完成 {uploadQueue.items.filter((item) => item.state === 'success').length} / {uploadQueue.items.length}</Typography.Text>
+        <Progress percent={Math.round(uploadQueue.items.filter((item) => item.state === 'success' || item.state === 'failed').length / uploadQueue.items.length * 100)} />
+        {uploadQueue.items.filter((item) => item.state === 'failed').map((item) => <Typography.Paragraph key={item.id} type="danger">{item.file.name}：{item.error}</Typography.Paragraph>)}
+        <Space wrap><Button disabled={uploadQueue.busy || !uploadQueue.items.some((item) => item.state === 'failed')} onClick={uploadQueue.retry}>重试失败文件</Button><Button disabled={uploadQueue.busy} onClick={uploadQueue.clear}>清除已完成记录</Button></Space>
+      </div> : null}
+      <EditFormSheet modal={rightsModal} width={760} title="素材版本与授权"><AssetRightsFields resourceId={rightsModal.editing?.id} /></EditFormSheet>
       <ReferencesModal resource={refsTarget} onClose={() => setRefsTarget(null)} />
     </div>
   );

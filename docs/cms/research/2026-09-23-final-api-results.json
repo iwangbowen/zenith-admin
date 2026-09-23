@@ -1,0 +1,25 @@
+{
+  "startedAt": "2026-09-23T07:42:25.855Z",
+  "base": "http://localhost:5373",
+  "siteId": 3,
+  "channelId": 5,
+  "checks": [
+    "initial publication builds and activates an immutable generation",
+    "working-copy saves leave public generation unchanged and reject stale/missing CAS",
+    "submission remains frozen while a newer working copy is edited",
+    "restoration restores full fields into a draft without publishing",
+    "notes, quality report, manual translation and duplicate-language protection",
+    "generation rollback changes delivery and stale activation CAS is rejected",
+    "emergency withdrawal and restoration apply to active generation",
+    "working-copy list, search and calendar SQL execute on PostgreSQL"
+  ],
+  "fixtures": {
+    "contentId": 11,
+    "publicPath": "/__cms/qa-cms-20260923-core-mudf48us/qa-core/qa-cms-final-1790149346117.html",
+    "firstReleaseId": 2,
+    "translationId": 12,
+    "secondReleaseId": 3
+  },
+  "status": "passed",
+  "finishedAt": "2026-09-23T07:42:44.305Z"
+}

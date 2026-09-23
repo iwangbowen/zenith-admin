@@ -121,8 +121,11 @@ describe('CMS page widgets', () => {
     expect(pages).toContain('syncCmsPageWidgetRefs');
     expect(pages).toContain('deleteCmsPageWidgetRefs');
     expect(contents).toContain("assertCmsWidgetSourcesMutable('content'");
-    expect(contents).toContain("submitCmsWidgetSourceRefreshSideEffect('content'");
-    expect(contents).toContain("assertCmsWidgetSourcesMutable('content', [id], tx)");
+    // Working-copy edits cannot rebuild live widgets; the release builds all dependent pages.
+    expect(contents).toContain('createCmsContentRelease(');
+    const releases = await source('cms-releases.service.ts');
+    expect(releases).toContain('assertCmsReleaseDependencies(tx, release.siteId)');
+    expect(releases).toContain('buildSiteStatic(release.siteId,');
     expect(channels).toContain("assertCmsWidgetSourcesMutable('channel'");
     expect(channels).toContain("assertCmsWidgetSourcesMutable('channel', [id], tx)");
     expect(channels).toContain('submitCmsWidgetChannelRefreshSideEffect([id])');

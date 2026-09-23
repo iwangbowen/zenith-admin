@@ -28,7 +28,7 @@ describe('CMS Stage4 subscriptions', () => {
       readFile(new URL('../../routes/member/member-cms.ts', import.meta.url), 'utf8'),
       readFile(new URL('./cms-subscriptions.service.ts', import.meta.url), 'utf8'),
       readFile(new URL('./cms-stage4-tasks.ts', import.meta.url), 'utf8'),
-      readFile(new URL('./cms-contents-write.service.ts', import.meta.url), 'utf8'),
+      readFile(new URL('./cms-releases.service.ts', import.meta.url), 'utf8'),
     ]);
     expect(route).toContain('memberAuthMiddleware');
     expect(service).toContain('eq(cmsMemberSubscriptions.memberId, memberId)');
@@ -45,6 +45,6 @@ describe('CMS Stage4 subscriptions', () => {
     expect(tasks).toContain('getPublicCmsSubscriptionNotificationContent');
     expect(tasks).toContain('runWithCurrentUser({');
     expect(tasks).not.toContain('label: `会员 #${recipient.memberId}`');
-    expect(contents).toContain('insertCmsSubscriptionNotificationOutbox(tx, updated)');
+    expect(contents).toContain("if (content.status === 'published') notifications.push(await insertCmsSubscriptionNotificationOutbox(tx, content))");
   });
 });

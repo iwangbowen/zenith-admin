@@ -6,6 +6,7 @@ import { db } from '../../db';
 import { cmsAssetRights, cmsAssetVersions } from '../../db/schema/cms-design';
 import { cmsContents, cmsResources } from '../../db/schema/cms';
 import { cmsContentRevisions } from '../../db/schema/cms-revisions';
+import { cmsReleases } from '../../db/schema/cms-releases';
 import type { DbExecutor } from '../../db/types';
 import { requireRow } from '../../lib/db-assert';
 import { parseDateTimeInput } from '../../lib/datetime';
@@ -39,7 +40,8 @@ export async function getCmsAssetRights(id: number) {
 
 export async function updateCmsAssetRights(id: number, input: BodyOf<typeof cmsResourceContract.updateRights>) {
   const resource = await requireResource(id);
-  const values = { ...input, ...(input.expiresAt !== undefined ? { expiresAt: parseDateTimeInput(input.expiresAt) } : {}) };
+  const { expiresAt, ...fields } = input;
+  const values = { ...fields, ...(expiresAt !== undefined ? { expiresAt: parseDateTimeInput(expiresAt) } : {}) };
   const eventKey = `resource:${id}:rights:${randomUUID()}`;
   const task = await db.transaction(async (tx) => {
     await ensureCmsAssetVersion(tx, id, resource.siteId);
@@ -61,6 +63,8 @@ export async function removeUnusedCmsAssetVersions(tx: DbExecutor, resourceId: n
   requireRow(resource, '素材不存在');
   const used = await tx.$count(cmsContentRevisions, sql`${cmsContentRevisions.snapshot}->'assetVersions' ? ${String(resourceId)}`);
   if (used) throw new HTTPException(409, { message: '素材仍被不可变内容修订引用，不能删除' });
+  const configured = await tx.$count(cmsReleases, sql`${cmsReleases.configurationSnapshot}->'assetVersions' ? ${String(resourceId)}`);
+  if (configured) throw new HTTPException(409, { message: '素材仍被固定发布配置引用，不能删除' });
   const versions = await tx.select({ id: cmsAssetVersions.id, fileId: cmsAssetVersions.fileId }).from(cmsAssetVersions).where(eq(cmsAssetVersions.resourceId, resourceId));
   await tx.delete(cmsAssetVersions).where(eq(cmsAssetVersions.resourceId, resourceId));
   await releaseManagedFiles(tx, versions.map((version) => version.fileId));

@@ -1,3 +1,4 @@
+import { getMockCmsWorkingContent, resetMockCmsRevisions } from './utils/cms-revisions';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   mockCmsContents, mockCmsForms, mockCmsHotwordGroups, mockCmsHotKeywords,
@@ -17,6 +18,7 @@ const snapshots = {
 };
 
 afterEach(() => {
+  resetMockCmsRevisions();
   mockCmsContents.splice(0, mockCmsContents.length, ...structuredClone(snapshots.contents));
   mockCmsForms.splice(0, mockCmsForms.length, ...structuredClone(snapshots.forms));
   mockCmsHotwordGroups.splice(0, mockCmsHotwordGroups.length, ...structuredClone(snapshots.groups));
@@ -43,13 +45,14 @@ async function call(method: string, path: string, body?: unknown) {
 
 describe('CMS Stage 2 MSW handlers', () => {
   it('locks content, blocks mutation, then unlocks it', async () => {
-    const locked = await call('POST', '/api/cms/contents/1/lock', { reason: '合规审查' });
+    const content = getMockCmsWorkingContent(1);
+    const locked = await call('POST', '/api/cms/contents/1/lock', { reason: '合规审查', expectedVersion: content.version });
     expect(locked.status).toBe(200);
     expect(mockCmsContents.find((item) => item.id === 1)?.scheduledAt).toBeNull();
-    const denied = await call('PUT', '/api/cms/contents/1', { title: '不可修改' });
+    const denied = await call('PUT', '/api/cms/contents/1', { title: '不可修改', expectedVersion: content.version });
     expect(denied.status).toBe(423);
-    await call('POST', '/api/cms/contents/1/unlock', {});
-    expect((await call('PUT', '/api/cms/contents/1', { title: '允许修改' })).status).toBe(200);
+    await call('POST', '/api/cms/contents/1/unlock', { expectedVersion: content.version });
+    expect((await call('PUT', '/api/cms/contents/1', { title: '允许修改', expectedVersion: content.version })).status).toBe(200);
   });
 
   it('manages resource folders and submits governance tasks', async () => {

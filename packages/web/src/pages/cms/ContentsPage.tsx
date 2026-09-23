@@ -1,7 +1,7 @@
-import { lazy, Suspense, useRef, useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { lazy, Suspense, useRef, useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Input, Tag, Toast, Tooltip, Modal, Tabs, TabPane, Tree, TreeSelect, Typography, Dropdown, Form, SplitButtonGroup } from '@douyinfe/semi-ui';
+import { Button, Input, Tag, Toast, Tooltip, Modal, Tabs, TabPane, Tree, TreeSelect, Typography, Dropdown, Form, SplitButtonGroup, Space, Select } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
@@ -17,18 +17,25 @@ import ImportButton from '@/components/ImportButton';
 import {
   useCmsChannelTree, useCmsContentList, useCmsContentAction, useCmsContentBatch,
   useAllCmsSites, useAllCmsTags, useCmsContentBatchOps, useCmsContentBatchStatus, useDuplicateCmsContent, cmsContentKeys,
-  useCmsContentPersistentLock,
+  useCmsContentPersistentLock, useAllCmsModels, useCmsEditorialMetrics, useSuppressCmsContent, useUnsuppressCmsContent,
 } from '@/hooks/queries/cms';
 import { CMS_CONTENT_STATUS_LABELS, CMS_CONTENT_TYPE_LABELS, CMS_CONTENT_TYPE_OPTIONS } from '@zenith/shared/cms';
-import type { CmsChannel, CmsContentListItem, CmsContentStatus, CmsContentType } from '@zenith/shared/cms';
+import type { CmsChannel, CmsContentListItem, CmsContentStatus, CmsContentType, CmsEditorialStatus, CmsModelField } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { CmsWidgetSourceRefsSheet, type CmsWidgetSourceTarget } from './CmsWidgetSourceRefsSheet';
 import { CreateButton } from '@/components/toolbar-controls';
-import { FilterSelect, KeywordInput } from '@/components/search-filters';
+import { FilterSelect, KeywordInput, DateRangeFilter } from '@/components/search-filters';
 import { DATE_TIME_COLUMN_WIDTH, EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
 import OverflowTagList, { type OverflowTagItem } from '@/components/OverflowTagList';
 import { abortSubmit } from '@/lib/abort-submit';
-import { compactParams } from '@/lib/query';
+import { useFilterQuery } from '@/hooks/useFilterQuery';
+import { useAuth } from '@/hooks/useAuth';
+import { useAllUsers } from '@/hooks/queries/users';
+import { StatCard, StatGrid } from '@/components/charts/StatCard';
+import { formatDateTimeRangeForApi } from '@/utils/date';
+import { copyTextWithToast } from '@/utils/clipboard';
+import { CMS_EDITORIAL_STATUS_LABELS, CMS_EDITORIAL_STATUS_COLORS } from './cms-content-view-state';
+import CmsContentCalendar from './CmsContentCalendar';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { channelsToSelectTree } from './channel-tree';
@@ -43,7 +50,11 @@ const STATUS_COLORS: Record<CmsContentStatus, 'grey' | 'orange' | 'green' | 'red
 };
 const CmsContentWorkflowSheet = lazy(() => import('./CmsContentWorkflowSheet'));
 
-type TabKey = 'all' | 'pending' | 'published' | 'archived' | 'recycle';
+type TabKey = 'all' | 'pending' | 'published' | 'archived' | 'recycle' | 'calendar';
+interface ContentFilters { keyword: string; modelId?: number; ownerId?: number; locale: string; editorialStatus?: CmsEditorialStatus; hasUnpublishedChanges?: boolean; tags?: string; timeRange: [Date, Date] | null }
+const DEFAULT_FILTERS: ContentFilters = { keyword: '', locale: '', timeRange: null };
+interface SavedContentView { name: string; filters: ContentFilters; channelId?: number; contentType?: CmsContentType; tab?: TabKey }
+
 
 /** 栏目筛选树：仅 key / label，不带 value */
 function channelsToTree(nodes: CmsChannel[]): TreeNodeData[] {
@@ -68,19 +79,22 @@ function titleFlagItems(record: CmsContentListItem): OverflowTagItem[] {
 export default function ContentsPage() {
   const { hasPermission } = usePermission();
   const navigate = useNavigate();
+  const [urlParams] = useSearchParams();
+  const { user } = useAuth();
+  const { data: users } = useAllUsers();
   const queryClient = useQueryClient();
 
   const [siteId, setSiteId] = useState<number | undefined>(undefined);
-  const [activeTab, setActiveTab] = useUrlTabState(['all', 'pending', 'published', 'archived', 'recycle'] as const, 'all');
+  const [activeTab, setActiveTab] = useUrlTabState(['all', 'pending', 'published', 'archived', 'recycle', 'calendar'] as const, 'all');
   const [channelId, setChannelId] = useState<number | undefined>(undefined);
   const [contentType, setContentType] = useState<CmsContentType | undefined>(undefined);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   // 栏目 / 类型为即时筛选，仅关键字走「草稿 → 查询」；重置时一并清空即时筛选与选中行
   const {
     page, pageSize, setPage, buildPagination,
-    bindKeyword, submittedParams, handleSearch, handleReset,
-  } = useListSearch<{ keyword: string }>({
-    defaults: { keyword: '' },
+    bind, bindKeyword, submittedParams, handleSearch, handleReset, applySearch,
+  } = useListSearch<ContentFilters>({
+    defaults: DEFAULT_FILTERS,
     listKey: cmsContentKeys.lists,
     onSearch: () => setSelectedIds([]),
     onReset: () => { setChannelId(undefined); setContentType(undefined); setSelectedIds([]); },
@@ -93,6 +107,46 @@ export default function ContentsPage() {
 
   const treeQuery = useCmsChannelTree(siteId);
   const { data: sites } = useAllCmsSites();
+  const { data: models } = useAllCmsModels(siteId);
+  const metrics = useCmsEditorialMetrics(siteId);
+  const suppressMutation = useSuppressCmsContent();
+  const unsuppressMutation = useUnsuppressCmsContent();
+  const viewStorageKey = `cms-content-views:${user?.id ?? 0}:${siteId ?? 0}`;
+  const [savedViews, setSavedViews] = useState<SavedContentView[]>([]);
+  const [selectedView, setSelectedView] = useState<string>();
+  useEffect(() => {
+    setSelectedView(undefined);
+    try { const stored: unknown = JSON.parse(localStorage.getItem(viewStorageKey) ?? '[]'); setSavedViews(Array.isArray(stored) ? stored.filter((view) => typeof view?.name === 'string' && view.filters) : []); } catch { setSavedViews([]); }
+  }, [viewStorageKey]);
+  const appliedUrlView = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const raw = urlParams.get('view');
+    if (!raw || appliedUrlView.current === raw) return;
+    appliedUrlView.current = raw;
+    try {
+      const parsed = JSON.parse(raw) as Partial<ContentFilters> & { siteId?: number; channelId?: number; contentType?: CmsContentType; tab?: TabKey };
+      if (parsed.siteId) setSiteId(parsed.siteId);
+      setChannelId(parsed.channelId); setContentType(parsed.contentType);
+      if (parsed.tab && ['all', 'pending', 'published', 'archived', 'recycle', 'calendar'].includes(parsed.tab)) setActiveTab(parsed.tab);
+      applySearch({ ...DEFAULT_FILTERS, ...parsed, timeRange: parsed.timeRange ? [new Date(String(parsed.timeRange[0])), new Date(String(parsed.timeRange[1]))] : null });
+    } catch { Toast.warning('无法读取分享视图'); }
+  }, [urlParams, applySearch, setActiveTab]);
+  function saveView() {
+    let name = '';
+    Modal.confirm({ title: '保存当前筛选视图', content: <Input placeholder="视图名称" maxLength={50} onChange={(value) => { name = value; }} />, onOk: () => {
+      if (!name.trim()) { Toast.warning('请输入名称'); abortSubmit('validation'); }
+      const next = [...savedViews.filter((view) => view.name !== name.trim()), { name: name.trim(), filters: submittedParams, channelId, contentType, tab: activeTab }];
+      localStorage.setItem(viewStorageKey, JSON.stringify(next)); setSavedViews(next); setSelectedView(name.trim());
+    } });
+  }
+  function emergencyVisibility(record: CmsContentListItem, action: 'suppress' | 'unsuppress') {
+    let reason = '';
+    Modal.confirm({ title: action === 'suppress' ? '紧急撤下内容' : '解除紧急撤下', content: <Input placeholder="请填写操作原因" maxLength={1000} onChange={(value) => { reason = value; }} />, onOk: async () => {
+      if (!reason.trim()) { Toast.warning('请填写原因'); abortSubmit('validation'); }
+      await (action === 'suppress' ? suppressMutation : unsuppressMutation).mutateAsync({ params: { id: record.id }, body: { reason: reason.trim() } });
+      Toast.success(action === 'suppress' ? '源站访问已阻止，外部缓存刷新进入队列' : '已解除紧急撤下门禁');
+    } });
+  }
 
   function handleSiteChange(next: number) {
     setSiteId(next);
@@ -102,26 +156,34 @@ export default function ContentsPage() {
   }
 
   const statusFilter: CmsContentStatus | undefined =
-    activeTab === 'pending' ? 'pending' : activeTab === 'published' ? 'published' : undefined;
+    activeTab === 'published' ? 'published' : undefined;
 
   // 已提交筛选 → 契约查询参数：列表与导出共用同一份映射
-  const filterQuery = useMemo(() => ({
-    siteId: siteId ?? 0,
-    ...compactParams({
-      channelId,
-      status: statusFilter,
-      contentType,
-      keyword: submittedParams.keyword,
-      deleted: activeTab === 'recycle' ? true : undefined,
-      archived: activeTab === 'archived' ? true : undefined,
-    }),
-  }), [submittedParams, siteId, channelId, statusFilter, contentType, activeTab]);
+  const filterQuery = useFilterQuery({
+    siteId: siteId ?? 0, channelId, status: statusFilter, contentType,
+    keyword: submittedParams.keyword, modelId: submittedParams.modelId, ownerId: submittedParams.ownerId,
+    locale: submittedParams.locale, tags: submittedParams.tags, hasUnpublishedChanges: submittedParams.hasUnpublishedChanges,
+    editorialStatus: activeTab === 'pending' ? 'pending' as const : submittedParams.editorialStatus,
+    ...formatDateTimeRangeForApi(submittedParams.timeRange),
+    deleted: activeTab === 'recycle' ? true : undefined, archived: activeTab === 'archived' ? true : undefined,
+  });
   const listQuery = useCmsContentList({
     page,
     pageSize,
     ...filterQuery,
-  }, siteId !== undefined);
+    siteId: siteId ?? 0,
+  }, siteId !== undefined && activeTab !== 'calendar');
   const list = listQuery.data?.list ?? [];
+  const listModelFields = new Map<string, { modelId: number; modelName: string; field: CmsModelField }>();
+  for (const model of models ?? []) {
+    if (submittedParams.modelId && model.id !== submittedParams.modelId) continue;
+    for (const field of (model.fields ?? []).filter((item) => item.showInList)) listModelFields.set(`${model.id}:${field.name}`, { modelId: model.id, modelName: model.name, field });
+  }
+  for (const record of list) {
+    if (!record.modelId) continue;
+    for (const field of (record.modelFields ?? []).filter((item) => item.showInList)) listModelFields.set(`${record.modelId}:${field.name}`, { modelId: record.modelId, modelName: models?.find((model) => model.id === record.modelId)?.name ?? '内容模型', field });
+  }
+  const versionsFor = (ids: number[]) => Object.fromEntries(ids.map((id) => [String(id), list.find((record) => record.id === id)?.version ?? 0]));
 
   const actionMutation = useCmsContentAction();
   const batchMutation = useCmsContentBatch();
@@ -150,8 +212,8 @@ export default function ContentsPage() {
   }
 
   async function runAction(id: number, action: 'submit' | 'publish' | 'offline', successMsg: string) {
-    await actionMutation.mutateAsync({ id, action });
-    Toast.success(successMsg);
+    await actionMutation.mutateAsync({ id, action, expectedVersion: list.find((record) => record.id === id)!.version });
+    Toast.success(action === 'publish' ? '已提交发布任务，请在发布中心查看生效结果' : successMsg);
   }
 
   function handleReject(record: CmsContentListItem) {
@@ -167,7 +229,7 @@ export default function ContentsPage() {
           abortSubmit('validation');
         }
 
-        await actionMutation.mutateAsync({ id: record.id, action: 'reject', reason });
+        await actionMutation.mutateAsync({ id: record.id, action: 'reject', reason, expectedVersion: record.version });
         Toast.success('已驳回');
       },
     });
@@ -179,7 +241,7 @@ export default function ContentsPage() {
         title: `解除「${record.title}」的持久锁？`,
         content: '解锁后内容可再次编辑和流转；已取消的计划发布时间不会自动恢复。',
         onOk: async () => {
-          await persistentLockMutation.mutateAsync({ id: record.id, action: 'unlock' });
+          await persistentLockMutation.mutateAsync({ id: record.id, action: 'unlock', expectedVersion: record.version });
           Toast.success('已解除持久锁');
         },
       });
@@ -194,24 +256,24 @@ export default function ContentsPage() {
           Toast.warning('请输入锁定原因');
           abortSubmit('validation');
         }
-        await persistentLockMutation.mutateAsync({ id: record.id, action: 'lock', reason: reason.trim() });
+        await persistentLockMutation.mutateAsync({ id: record.id, action: 'lock', reason: reason.trim(), expectedVersion: record.version });
         Toast.success('内容已持久锁定');
       },
     });
   }
 
   async function runBatch(action: 'recycle' | 'restore' | 'purge' | 'archive' | 'unarchive', ids: number[], successMsg: string) {
-    await batchMutation.mutateAsync({ action, ids });
+    await batchMutation.mutateAsync({ action, ids, expectedVersions: versionsFor(ids) });
     setSelectedIds([]);
     Toast.success(successMsg);
   }
 
   /** 批量状态流转：部分成功时逐条明示失败原因（欠提示比误吞更危险） */
   async function runBatchStatus(action: 'submit' | 'publish' | 'reject' | 'offline', label: string, reason?: string) {
-    const result = await batchStatusMutation.mutateAsync({ body: { ids: selectedIds, action, reason } });
+    const result = await batchStatusMutation.mutateAsync({ body: { ids: selectedIds, action, reason, expectedVersions: versionsFor(selectedIds) } });
     setSelectedIds([]);
     if (result.failed.length === 0) {
-      Toast.success(`已${label} ${result.okIds.length} 条内容`);
+      Toast.success(action === 'publish' ? `已提交 ${result.okIds.length} 条发布任务，生效结果请在发布中心查看` : `已${label} ${result.okIds.length} 条内容`);
       return;
     }
     Modal.warning({
@@ -249,7 +311,7 @@ export default function ContentsPage() {
 
   // ─── P3 批量操作 ──────────────────────────────────────────────────────────
   async function handleBatchFlags(flags: Record<string, boolean>, label: string) {
-    await batchOpsMutation.mutateAsync({ action: 'batch-flags', body: { ids: selectedIds, ...flags } });
+    await batchOpsMutation.mutateAsync({ action: 'batch-flags', body: { ids: selectedIds, expectedVersions: versionsFor(selectedIds), ...flags } });
     setSelectedIds([]);
     Toast.success(`已${label} ${selectedIds.length} 条内容`);
   }
@@ -257,14 +319,14 @@ export default function ContentsPage() {
   /** 行级标记快捷切换（置顶/推荐/热门/原创，复用 batch-flags 单条调用） */
   async function handleRowFlag(record: CmsContentListItem, flag: 'isTop' | 'isRecommend' | 'isHot' | 'isOriginal', label: string) {
     const next = !record[flag];
-    await batchOpsMutation.mutateAsync({ action: 'batch-flags', body: { ids: [record.id], [flag]: next } });
+    await batchOpsMutation.mutateAsync({ action: 'batch-flags', body: { ids: [record.id], expectedVersions: { [String(record.id)]: record.version }, [flag]: next } });
     Toast.success(`「${record.title}」${next ? '已' : '已取消'}${label}`);
   }
 
   async function handleBatchMoveOk() {
     const values = await moveFormApi.current?.validate().catch(() => null);
     if (!values?.channelId) abortSubmit('validation');
-    await batchOpsMutation.mutateAsync({ action: 'batch-move', body: { ids: selectedIds, channelId: values.channelId } });
+    await batchOpsMutation.mutateAsync({ action: 'batch-move', body: { ids: selectedIds, expectedVersions: versionsFor(selectedIds), channelId: values.channelId } });
     setSelectedIds([]);
     setMoveModalVisible(false);
     Toast.success('移动成功');
@@ -273,7 +335,7 @@ export default function ContentsPage() {
   async function handleBatchTagOk() {
     const values = await tagFormApi.current?.validate().catch(() => null);
     if (!values?.tagIds || (values.tagIds as number[]).length === 0) abortSubmit('validation');
-    await batchOpsMutation.mutateAsync({ action: 'batch-tag', body: { ids: selectedIds, tagIds: values.tagIds } });
+    await batchOpsMutation.mutateAsync({ action: 'batch-tag', body: { ids: selectedIds, expectedVersions: versionsFor(selectedIds), tagIds: values.tagIds } });
     setSelectedIds([]);
     setTagModalVisible(false);
     Toast.success('打标成功');
@@ -341,6 +403,9 @@ export default function ContentsPage() {
           : EMPTY_PLACEHOLDER;
       },
     },
+    { title: '语言', dataIndex: 'locale', width: 90 },
+    { title: '负责人', dataIndex: 'ownerId', width: 110, render: (value: number | null) => users?.find((user) => user.id === value)?.nickname ?? EMPTY_PLACEHOLDER },
+    dateTimeColumn('审稿截止', 'dueAt'),
     { title: '作者', dataIndex: 'author', width: 90, render: (v: string | null) => v || EMPTY_PLACEHOLDER },
     { title: '浏览', dataIndex: 'viewCount', width: 80, align: 'right' },
     { title: '赞/藏', dataIndex: 'likeCount', width: 90, align: 'right', render: (_: number, record) => `${record.likeCount}/${record.favoriteCount}` },
@@ -359,14 +424,25 @@ export default function ContentsPage() {
       },
     },
     dateTimeColumn('更新时间', 'updatedAt'),
+    ...[...listModelFields.values()].map(({ modelId, modelName, field }): ColumnProps<CmsContentListItem> => ({
+      key: `model-${modelId}-${field.name}`, title: `${modelName} · ${field.label}`, width: 180,
+      render: (_value: unknown, record) => {
+        if (record.modelId !== modelId) return EMPTY_PLACEHOLDER;
+        const value = record.listFields?.[field.name];
+        if (value == null || value === '') return EMPTY_PLACEHOLDER;
+        if (typeof value === 'boolean') return value ? '是' : '否';
+        const options = field.resolvedOptions ?? field.options ?? [];
+        return <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 150 }}>{Array.isArray(value) ? value.map((item) => options.find((option) => option.value === item)?.label ?? String(item)).join('、') : typeof value === 'object' ? JSON.stringify(value) : options.find((option) => option.value === value)?.label ?? String(value)}</Typography.Text>;
+      },
+    })),
     {
-      title: '状态',
+      title: '线上 / 编辑状态',
       dataIndex: 'status',
-      width: 130,
+      width: 210,
       fixed: 'right',
       render: (v: CmsContentStatus, record) => (
         <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
-          <Tag size="small" color={STATUS_COLORS[v]}>{CMS_CONTENT_STATUS_LABELS[v]}</Tag>
+          <Space wrap spacing={4}><Tag size="small" color={STATUS_COLORS[v]}>{CMS_CONTENT_STATUS_LABELS[v]}</Tag><Tag size="small" color={CMS_EDITORIAL_STATUS_COLORS[record.editorialStatus]}>{CMS_EDITORIAL_STATUS_LABELS[record.editorialStatus]}</Tag>{record.hasUnpublishedChanges ? <Tag size="small" color="orange">有修改</Tag> : null}</Space>
           {v !== 'published' && record.scheduledAt ? (
             <Tooltip content={`定时发布：${record.scheduledAt}`}>
               <Tag size="small" color="blue">定时</Tag>
@@ -442,17 +518,17 @@ export default function ContentsPage() {
               label: '页面部件引用',
               onClick: () => setWidgetSourceTarget({ type: 'content', id: record.id, name: record.title }),
             }] : []),
-            ...(hasPermission('cms:content:update') && (record.status === 'draft' || record.status === 'rejected') ? [{
+            ...(hasPermission('cms:content:update') && (record.editorialStatus === 'draft' || record.editorialStatus === 'rejected') ? [{
               key: 'submit',
               label: '提交审核',
               onClick: () => void runAction(record.id, 'submit', '已提交审核'),
             }] : []),
-            ...(hasPermission('cms:content:publish') && record.status !== 'published' ? [{
+            ...(hasPermission('cms:content:publish') && (record.hasUnpublishedChanges || record.status !== 'published') ? [{
               key: 'publish',
               label: '发布',
               onClick: () => void runAction(record.id, 'publish', '发布成功'),
             }] : []),
-            ...(hasPermission('cms:content:audit') && record.status === 'pending' ? [{
+            ...(hasPermission('cms:content:audit') && record.editorialStatus === 'pending' ? [{
               key: 'reject',
               label: '驳回',
               danger: true,
@@ -464,6 +540,10 @@ export default function ContentsPage() {
               danger: true,
               onClick: () => void runAction(record.id, 'offline', '已下线'),
             }] : []),
+            ...(hasPermission('cms:content:publish') ? [
+              { key: 'suppress', label: '紧急撤下', danger: true, onClick: () => emergencyVisibility(record, 'suppress') },
+              { key: 'unsuppress', label: '解除紧急撤下', onClick: () => emergencyVisibility(record, 'unsuppress') },
+            ] : []),
             ...(hasPermission('cms:content:create') ? [{
               key: 'duplicate',
               label: '复制',
@@ -608,9 +688,19 @@ export default function ContentsPage() {
 
   const tableContent = (
     <>
+      <Space wrap spacing={8} style={{ margin: '8px 0' }}>
+        <Button size="small" onClick={() => applySearch({ ...DEFAULT_FILTERS, ownerId: user?.id, editorialStatus: 'draft' })}>我的工作稿</Button>
+        <Button size="small" onClick={() => applySearch({ ...DEFAULT_FILTERS, editorialStatus: 'rejected' })}>已驳回</Button>
+        <Button size="small" onClick={() => applySearch({ ...DEFAULT_FILTERS, hasUnpublishedChanges: true })}>未发布修改</Button>
+        <Select showClear value={selectedView} placeholder="我的保存视图" style={{ width: 180 }} optionList={savedViews.map((view) => ({ value: view.name, label: view.name }))} onChange={(name) => { setSelectedView(name == null ? undefined : String(name)); const view = savedViews.find((item) => item.name === name); if (view) { setChannelId(view.channelId); setContentType(view.contentType); setActiveTab(view.tab ?? 'all'); applySearch({ ...view.filters, timeRange: view.filters.timeRange ? [new Date(String(view.filters.timeRange[0])), new Date(String(view.filters.timeRange[1]))] : null }); } }} />
+        <Button size="small" onClick={saveView}>保存视图</Button>
+        {selectedView ? <Button size="small" type="danger" theme="borderless" onClick={() => { const next = savedViews.filter((view) => view.name !== selectedView); localStorage.setItem(viewStorageKey, JSON.stringify(next)); setSavedViews(next); setSelectedView(undefined); }}>移除视图</Button> : null}
+        <Button size="small" onClick={() => void copyTextWithToast(`${window.location.origin}${window.location.pathname}?view=${encodeURIComponent(JSON.stringify({ ...submittedParams, siteId, channelId, contentType, tab: activeTab }))}`)}>分享视图</Button>
+      </Space>
       <ListSearchToolbar
         keyword={<KeywordInput placeholder="搜索标题/作者..." {...bindKeyword('keyword')} />}
         filters={(
+          <>
           <FilterSelect
             placeholder="全部内容形态"
             items={CMS_CONTENT_TYPE_OPTIONS}
@@ -618,6 +708,13 @@ export default function ContentsPage() {
             onChange={(v) => { setContentType(v as CmsContentType | undefined); setPage(1); setSelectedIds([]); }}
             width={140}
           />
+          <FilterSelect placeholder="内容模型" width={150} items={(models ?? []).map((model) => ({ value: model.id, label: model.name }))} {...bind('modelId')} />
+          <FilterSelect placeholder="负责人" width={140} items={(users ?? []).map((user) => ({ value: user.id, label: user.nickname }))} {...bind('ownerId')} />
+          <FilterSelect placeholder="编辑状态" width={130} items={Object.entries(CMS_EDITORIAL_STATUS_LABELS).map(([value, label]) => ({ value: value as CmsEditorialStatus, label }))} {...bind('editorialStatus')} />
+          <Input placeholder="语言，如 zh-CN" {...bind('locale')} style={{ width: 130 }} showClear />
+          <Select multiple showClear placeholder="标签" value={submittedParams.tags?.split(',').map(Number)} onChange={(value) => applySearch({ ...submittedParams, tags: Array.isArray(value) && value.length ? value.join(',') : undefined })} optionList={(allTags ?? []).map((tag) => ({ value: tag.id, label: tag.name }))} style={{ width: 180 }} />
+          <DateRangeFilter {...bind('timeRange')} />
+          </>
         )}
         onSearch={handleSearch}
         onReset={handleReset}
@@ -706,7 +803,7 @@ export default function ContentsPage() {
           onChange={(value: unknown) => setCopyChannelId(value == null ? undefined : Number(value))}
         />
         <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 8 }}>
-          副本以草稿状态创建，URL 标识与自定义静态路径置空；换栏目后扩展字段按目标栏目模型解释。
+          副本以草稿状态创建，URL 标识与自定义静态路径置空；移动或复制栏目不会改变内容模型。
         </Typography.Text>
       </AppModal>
       <AppModal
@@ -800,6 +897,14 @@ export default function ContentsPage() {
         master={masterContent}
         detail={(
           <div style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <StatGrid minItemWidth={140} style={{ padding: '0 0 12px' }}>
+              <StatCard title="工作稿" value={metrics.data?.working ?? 0} />
+              <StatCard title="待审核" value={metrics.data?.pending ?? 0} />
+              <StatCard title="逾期事项" value={metrics.data?.overdue ?? 0} />
+              <StatCard title="已排期" value={metrics.data?.scheduled ?? 0} />
+              <StatCard title="未发布修改" value={metrics.data?.unpublishedChanges ?? 0} />
+              <StatCard title="待处理批注" value={metrics.data?.unresolvedNotes ?? 0} />
+            </StatGrid>
             {/* 标签栏固定，内容区独立滚动：否则矮窗口下表格尾部与分页会被 overflow: hidden 裁掉 */}
             <Tabs
               collapsible="auto"
@@ -816,6 +921,7 @@ export default function ContentsPage() {
               <TabPane tab="已发布" itemKey="published">{tableContent}</TabPane>
               <TabPane tab="归档" itemKey="archived">{tableContent}</TabPane>
               <TabPane tab="回收站" itemKey="recycle">{tableContent}</TabPane>
+              <TabPane tab="内容日历" itemKey="calendar"><CmsContentCalendar siteId={siteId} onOpen={(id) => navigate(`/cms/contents/edit?id=${id}&siteId=${siteId}`)} /></TabPane>
             </Tabs>
           </div>
         )}

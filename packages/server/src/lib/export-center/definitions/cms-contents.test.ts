@@ -58,8 +58,10 @@ describe('CMS 内容导出与列表共用 where', () => {
     vi.mocked(getAccessibleChannelIds).mockResolvedValueOnce([3, 5]);
     const scoped = dialect.sqlToQuery((await buildCmsContentListWhere({ siteId: 1, keyword: '通知' }))!);
     expect(scoped.sql).toMatch(/"channelId" in \(\$2, \$3\)/);
-    // 关键字同时匹配标题与作者两列
-    expect(scoped.params).toEqual([1, 3, 5, '%通知%', '%通知%']);
+    // 公开栏目和工作稿栏目分别检查同一授权集合；关键字匹配工作稿标题与作者
+    expect(scoped.params).toEqual([1, 3, 5, 3, 5, '%通知%', '%通知%']);
+    expect(scoped.sql).toMatch(/snapshot.*channelId.*in \(\$4, \$5\)/);
+    expect(scoped.sql).toContain('exists (select 1 from');
 
     vi.mocked(getAccessibleChannelIds).mockResolvedValueOnce(null);
     const admin = dialect.sqlToQuery((await buildCmsContentListWhere({ siteId: 1 }))!);

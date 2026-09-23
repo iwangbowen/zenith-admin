@@ -8,7 +8,12 @@ async function source(name: string): Promise<string> {
 describe('CMS object-level access wiring', () => {
   it('gates content detail by both site and channel ACL', async () => {
     const text = await source('cms-contents-query.service.ts');
-    expect(text).toMatch(/getCmsContent[\s\S]*?assertSiteAccess\(current\.siteId\)[\s\S]*?assertChannelAccess\(current\.channelId\)/);
+    expect(text).toMatch(/getCmsContent[\s\S]*?await requireCmsContentAccess\(id\)/);
+    const access = await source('cms-content-access.service.ts');
+    expect(access).toContain('cmsContentDataScope(executor)');
+    expect(access).toContain('await assertSiteAccess(row.siteId)');
+    expect(access).toContain('await assertChannelAccess(row.channelId)');
+    expect(access).toContain('await assertChannelAccess(working.channelId)');
   });
 
   it('gates versions, operation logs, preview links and edit locks before access', async () => {
@@ -19,8 +24,7 @@ describe('CMS object-level access wiring', () => {
       source('cms-edit-lock.service.ts'),
     ]);
     for (const text of [versions, logs, preview, locks]) {
-      expect(text).toContain('assertSiteAccess');
-      expect(text).toContain('assertChannelAccess');
+      expect(text).toContain('await requireCmsContentAccess(contentId)');
     }
   });
 
@@ -56,6 +60,6 @@ describe('CMS object-level access wiring', () => {
     const calls = text.match(/requireCmsScheduledAtMutationPermission\(/g) ?? [];
     expect(calls).toHaveLength(2);
     expect(text).toContain('current: null');
-    expect(text).toContain('current: current.scheduledAt');
+    expect(text).toContain('current: parseDateTimeInput(before.snapshot.scheduledAt)');
   });
 });

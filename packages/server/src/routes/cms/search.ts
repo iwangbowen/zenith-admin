@@ -4,7 +4,11 @@ import { cmsSearchContract } from '@zenith/shared/cms';
 import { setAuditBeforeData } from '../../middleware/guard';
 import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
-import { mapAsyncTask, submitAsyncTask } from '../../lib/task-center';
+import { enqueueAsyncTask, mapAsyncTask, persistAsyncTask } from '../../lib/task-center';
+import { db } from '../../db';
+import { cmsSites, cmsSiteGenerations } from '../../db/schema';
+import { eq } from 'drizzle-orm';
+import { captureCmsConfiguration, type CmsCapturedConfiguration } from '../../services/cms/cms-configuration-snapshot.service';
 import { searchCmsContents, segmentForQuery, reloadCmsSearchDict, clearHotKeywords } from '../../services/cms/cms-search.service';
 import {
   listCmsSearchWords, createCmsSearchWord, updateCmsSearchWord, deleteCmsSearchWord,
@@ -50,11 +54,17 @@ const reindexRoute = defineContractRoute(cmsSearchContract.reindex, {
     } else if (!isCmsPlatformAdmin()) {
       throw new HTTPException(403, { message: '非平台管理员重建索引时必须选择并拥有完整栏目权限的站点' });
     }
-    const row = await submitAsyncTask({
-      taskType: 'cms-search-reindex',
-      title,
-      payload: { siteId: siteId ?? null },
+    const row = await db.transaction(async (tx) => {
+      const sites = siteId ? [{ id: siteId }] : await tx.select({ id: cmsSites.id }).from(cmsSites);
+      const captures: Record<string, CmsCapturedConfiguration> = {};
+      for (const site of sites) {
+        const frozen = await captureCmsConfiguration(tx, site.id, { configurationTables: ['cms_search_words'] });
+        const [generation] = await tx.select().from(cmsSiteGenerations).where(eq(cmsSiteGenerations.siteId, site.id)).limit(1);
+        captures[String(site.id)] = { ...frozen, baseGenerationId: generation?.activeGenerationId ?? null };
+      }
+      return persistAsyncTask(tx, { taskType: 'cms-search-reindex', title, tenantId: null, payload: { siteId: siteId ?? null, configurationCaptures: captures } });
     });
+    await enqueueAsyncTask(row.id).catch(() => undefined);
     return c.json(okBody(mapAsyncTask(row), '任务已提交，可在任务中心查看进度'), 200);
   },
 });

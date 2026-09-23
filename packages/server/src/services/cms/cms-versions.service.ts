@@ -1,20 +1,35 @@
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, getTableColumns } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { cmsContentRevisions, users } from '../../db/schema';
-import { cmsContentVersionSchema } from '@zenith/shared/cms';
+import { cmsContentRevisions, cmsModelVersions, users } from '../../db/schema';
+import { cmsContentContract, cmsContentVersionSchema, cmsContentVersionSummarySchema } from '@zenith/shared/cms';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import { buildListResult } from '../../lib/list-query';
+import { withPagination } from '../../lib/where-helpers';
+import { resolveUserNames } from '../../lib/user-nicknames';
 import { pickEntity } from '../../lib/entity-map';
 import { requireCmsContentAccess } from './cms-content-access.service';
 import { canonicalCmsJson, loadCmsRevision, requireCmsWorkingCopy } from './cms-content-revisions.service';
 import { resolveCmsResourcePayload } from './cms-resource-refs.service';
 
 /** Milestone history is append-only; autosave checkpoints do not evict approved or published revisions. */
-export async function listContentVersions(contentId: number) {
-  const identity = await requireCmsContentAccess(contentId);
-  const rows = await db.select({ revision: cmsContentRevisions, author: users.nickname }).from(cmsContentRevisions)
-    .leftJoin(users, eq(users.id, cmsContentRevisions.createdBy))
-    .where(eq(cmsContentRevisions.contentId, contentId)).orderBy(desc(cmsContentRevisions.version));
-  return resolveCmsResourcePayload(rows.map(({ revision, author }) => pickEntity(cmsContentVersionSchema, revision, { createdByName: author })), identity.siteId);
+export async function listContentVersions(contentId: number, query: QueryOutputOf<typeof cmsContentContract.versions>) {
+  await requireCmsContentAccess(contentId);
+  const { snapshot: _snapshot, ...columns } = getTableColumns(cmsContentRevisions);
+  const where = eq(cmsContentRevisions.contentId, contentId);
+  return buildListResult({ page: query.page, pageSize: query.pageSize,
+    count: () => db.$count(cmsContentRevisions, where),
+    rows: () => withPagination(db.select({ revision: columns, author: users.nickname }).from(cmsContentRevisions)
+      .leftJoin(users, eq(users.id, cmsContentRevisions.createdBy)).where(where).orderBy(desc(cmsContentRevisions.version)).$dynamic(), query.page, query.pageSize),
+    map: ({ revision, author }) => pickEntity(cmsContentVersionSummarySchema, revision, { createdByName: author }),
+  });
+}
+
+export async function getContentVersion(contentId: number, versionId: number) {
+  const revision = await ensureVersionExists(contentId, versionId);
+  const [model] = revision.snapshot.modelVersionId ? await db.select({ fields: cmsModelVersions.fields }).from(cmsModelVersions).where(eq(cmsModelVersions.id, revision.snapshot.modelVersionId)).limit(1) : [];
+  const names = await resolveUserNames(revision.createdBy ? [revision.createdBy] : []);
+  return resolveCmsResourcePayload(pickEntity(cmsContentVersionSchema, revision, { snapshot: { ...revision.snapshot, modelFields: model?.fields ?? [] }, createdByName: revision.createdBy ? names.get(revision.createdBy) ?? null : null }), revision.siteId);
 }
 
 export async function ensureVersionExists(contentId: number, versionId: number) {
@@ -40,6 +55,7 @@ export async function diffContentVersion(contentId: number, versionId: number) {
   const before = revision.snapshot as Record<string, unknown>;
   const after = working.snapshot as Record<string, unknown>;
   return [...new Set([...Object.keys(before), ...Object.keys(after)])]
+    .filter((field) => field !== 'bodyDocument')
     .filter((field) => canonicalCmsJson(before[field]) !== canonicalCmsJson(after[field]))
     .map((field) => ({ field, label: LABELS[field] ?? field, before: before[field] ?? null, after: after[field] ?? null }));
 }

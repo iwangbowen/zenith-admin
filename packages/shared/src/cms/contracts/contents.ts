@@ -1,6 +1,6 @@
 import { cmsBodyDocumentSchema } from '../document';
 import * as z from 'zod';
-import { batchIdsBody, dateRangeQuery, dateRangeBound, idParam, idQuery, keywordQuery, paginated, paginationQuery, queryBool, queryEnum, requiredIdQuery } from '../../core/api-schemas';
+import { dateRangeQuery, dateRangeBound, idParam, idQuery, keywordQuery, paginated, paginationQuery, queryBool, queryEnum, requiredIdQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { CMS_CONTENT_STATUSES, CMS_CONTENT_TYPES } from '../constants';
 import { CMS_EDITORIAL_STATUSES, cmsContentCasSchema, cmsContentBatchCasSchema } from '../content-revision';
@@ -189,6 +189,8 @@ export const cmsContentVersionSchema = z.object({
 }).meta({ id: 'CmsContentVersion' });
 
 export type CmsContentVersion = z.infer<typeof cmsContentVersionSchema>;
+export const cmsContentVersionSummarySchema = cmsContentVersionSchema.omit({ snapshot: true }).meta({ id: 'CmsContentVersionSummary' });
+export type CmsContentVersionSummary = z.infer<typeof cmsContentVersionSummarySchema>;
 
 /** 版本差异对比项（before = 历史版本值，after = 当前值） */
 export const cmsContentVersionDiffSchema = z.object({
@@ -335,7 +337,8 @@ export const cmsContentContract = defineContract('/api/cms/contents', {
   recycle: op.post('/recycle', { access: { permission: 'cms:content:delete' }, audit: 'CMS 内容移入回收站', body: cmsContentBatchCasSchema, summary: '移入回收站（批量）' }),
   restore: op.post('/restore', { access: { permission: 'cms:content:delete' }, audit: 'CMS 内容从回收站恢复', body: cmsContentBatchCasSchema, summary: '从回收站恢复（批量，恢复为草稿）' }),
   purge: op.post('/purge', { access: { permission: 'cms:content:delete' }, audit: 'CMS 内容彻底删除', body: cmsContentBatchCasSchema, summary: '彻底删除（批量，仅限回收站内容）' }),
-  versions: op.get('/{id}/versions', { access: { permission: 'cms:content:list' }, params: idParam, response: z.array(cmsContentVersionSchema), summary: '内容版本历史' }),
+  versions: op.get('/{id}/versions', { access: { permission: 'cms:content:list' }, params: idParam, query: paginationQuery, response: paginated(cmsContentVersionSummarySchema), summary: '内容修订历史（分页摘要，不含正文）' }),
+  version: op.get('/{id}/versions/{versionId}', { access: { permission: 'cms:content:list' }, params: cmsContentVersionParam, response: cmsContentVersionSchema, summary: '固定模型与素材的完整修订' }),
   restoreVersion: op.post('/{id}/versions/{versionId}/restore', { access: { permission: 'cms:content:update' }, audit: 'CMS 内容版本回滚', params: cmsContentVersionParam, body: cmsContentCasSchema, response: cmsContentSchema, summary: '回滚到指定版本（回滚前自动留档当前状态）' }),
   versionDiff: op.get('/{id}/versions/{versionId}/diff', { access: { permission: 'cms:content:list' }, params: cmsContentVersionParam, response: z.array(cmsContentVersionDiffSchema), summary: '版本差异对比（历史版本 vs 当前内容，仅返回变更字段）' }),
   acquireEditLock: op.post('/{id}/edit-lock', { access: { permission: 'cms:content:update' }, params: idParam, response: cmsEditLockSchema, summary: '抢占/续期内容编辑锁（软锁，防多人同编相互覆盖）' }),

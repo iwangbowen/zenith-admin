@@ -1,6 +1,7 @@
 import { HTTPException } from 'hono/http-exception';
 import dayjs from 'dayjs';
 import { validateCmsStructuredFields } from '@zenith/shared/cms';
+import { sanitizeCmsModelValues } from './cms-document.service';
 import type { CmsModelFieldRow } from '../../db/schema';
 import { listCmsModelFields, resolveCmsModelFieldOptions } from './cms-models.service';
 
@@ -103,6 +104,7 @@ export async function validateCmsModelExtend(
   if (errors.length > 0) {
     throw new HTTPException(400, { message: `模型字段校验失败：${errors.join('；')}` });
   }
+  if (extend) Object.assign(extend, sanitizeCmsModelValues(fields, extend));
 }
 
 function parseDefaultValue(field: CmsModelFieldRow): unknown {

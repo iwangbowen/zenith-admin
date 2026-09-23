@@ -289,50 +289,48 @@ export async function batchDeleteFiles(ids: string[]) {
   const tc = tenantCondition(managedFiles, user);
   const idCondition = inArray(managedFiles.id, ids);
   const where = buildWhere(idCondition, tc, eq(managedFiles.visibility, 'public'));
-  const files = await db.select().from(managedFiles).where(where);
-  if (files.some((file) => file.refCount > 0)) throw new HTTPException(409, { message: '所选文件仍被业务修订引用，不能删除' });
-  const configIds = [...new Set(files.map((f) => f.storageConfigId))];
-  const configs = await db.select().from(fileStorageConfigs).where(inArray(fileStorageConfigs.id, configIds));
-  const configMap = new Map(configs.map((c) => [c.id, c]));
-  await Promise.allSettled(
-    files.map(async (file) => {
-      const storageConfig = configMap.get(file.storageConfigId);
-      if (storageConfig) await deleteStoredFile(file, storageConfig);
-    }),
-  );
-  await db.delete(managedFiles).where(where);
+  const files = await claimManagedFileDeletion(where);
+  for (const file of files) await removeClaimedManagedFile(file.id, file.tenantId);
   return files.length;
+}
+
+/** Claim before external I/O so a concurrent CMS revision cannot retain a deleting binary. */
+async function claimManagedFileDeletion(where: SQL | undefined) {
+  return db.transaction(async (tx) => {
+    const files = await tx.select().from(managedFiles).where(where).orderBy(managedFiles.id).for('update');
+    if (files.some((file) => file.refCount > 0)) throw new HTTPException(409, { message: '文件仍被业务修订引用，不能删除' });
+    if (files.length) await tx.update(managedFiles).set({ gcState: 'deleting' }).where(inArray(managedFiles.id, files.map((file) => file.id)));
+    return files;
+  });
+}
+
+async function removeClaimedManagedFile(id: string, tenantId: number | null) {
+  // The durable tombstone survives failure; retrying deletion remains safe. The row lock
+  // also prevents a new FK reference appearing between storage deletion and row removal.
+  await db.transaction(async (tx) => {
+    const [file] = await tx.select().from(managedFiles).where(and(eq(managedFiles.id, id), exactTenantCondition(managedFiles.tenantId, tenantId), eq(managedFiles.gcState, 'deleting'), eq(managedFiles.refCount, 0))).for('update').limit(1);
+    if (!file) return;
+    const [storageConfig] = await tx.select().from(fileStorageConfigs).where(eq(fileStorageConfigs.id, file.storageConfigId)).limit(1);
+    if (storageConfig) await deleteStoredFile(file, storageConfig);
+    await tx.delete(managedFiles).where(and(eq(managedFiles.id, id), exactTenantCondition(managedFiles.tenantId, tenantId)));
+  });
 }
 
 export async function deleteManagedFile(id: string) {
   const user = currentUser();
   const tc = tenantCondition(managedFiles, user);
   const where = buildWhere(eq(managedFiles.id, id), tc, eq(managedFiles.visibility, 'public'));
-  const [file] = await db.select().from(managedFiles).where(where).limit(1);
+  const [file] = await claimManagedFileDeletion(where);
   requireRow(file, '文件不存在');
-  if (file.refCount > 0) throw new HTTPException(409, { message: '文件仍被业务修订引用，不能删除' });
-  const [storageConfig] = await db
-    .select()
-    .from(fileStorageConfigs)
-    .where(eq(fileStorageConfigs.id, file.storageConfigId))
-    .limit(1);
-  if (storageConfig) {
-    await deleteStoredFile(file, storageConfig);
-  }
-  await db.delete(managedFiles).where(where);
+  await removeClaimedManagedFile(file.id, file.tenantId);
 }
 
 export async function deleteGeneratedManagedFile(id: string, tenantId: number | null): Promise<void> {
   const tenantWhere = exactTenantCondition(managedFiles.tenantId, tenantId);
   const where = and(eq(managedFiles.id, id), tenantWhere);
-  const [file] = await db.select().from(managedFiles).where(where).limit(1);
+  const [file] = await claimManagedFileDeletion(where);
   if (!file) return;
-  if (file.refCount > 0) throw new HTTPException(409, { message: '文件仍被业务修订引用，不能删除' });
-  const [storageConfig] = await db.select().from(fileStorageConfigs)
-    .where(eq(fileStorageConfigs.id, file.storageConfigId))
-    .limit(1);
-  if (storageConfig) await deleteStoredFile(file, storageConfig);
-  await db.delete(managedFiles).where(where);
+  await removeClaimedManagedFile(file.id, file.tenantId);
 }
 
 export async function getManagedFile(id: string) {

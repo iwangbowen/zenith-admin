@@ -27,7 +27,7 @@ export function cmsRevisionHash(snapshot: CmsContentRevisionSnapshot): string {
 }
 
 /** Snapshot every editable field and relationship through the shared create schema. */
-export function buildCmsRevisionSnapshot(row: Partial<CmsContentRow> & Record<string, unknown>, relations: { tagIds?: number[]; extraChannelIds?: number[]; relatedIds?: number[] } = {}): CmsContentRevisionSnapshot {
+export function buildCmsRevisionSnapshot(row: Record<string, unknown>, relations: { tagIds?: number[]; extraChannelIds?: number[]; relatedIds?: number[] } = {}): CmsContentRevisionSnapshot {
   const values: Record<string, unknown> = { ...row, ...relations };
   for (const field of DATE_FIELDS) if (values[field] instanceof Date) values[field] = formatDateTime(values[field] as Date);
   return cmsContentRevisionSnapshotSchema.parse(values);

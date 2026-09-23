@@ -1,6 +1,6 @@
-import { useCallback, useState } from 'react';
+import { lazy, Suspense, useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Banner, Button, Descriptions, Form, Input, Modal, Select, SideSheet, Space, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Descriptions, Form, Input, Modal, Select, TreeSelect, SideSheet, Space, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { XCircle } from 'lucide-react';
 import { CMS_PUBLISH_ARTIFACT_STATUS_LABELS, CMS_PUBLISH_TARGET_TYPE_LABELS, CMS_PUBLISH_TARGET_TYPES } from '@zenith/shared/cms';
@@ -15,7 +15,9 @@ import { usePagination } from '@/hooks/usePagination';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useTaskProgressEvents } from '@/hooks/useAsyncTasks';
-import { useAllCmsSites } from '@/hooks/queries/cms';
+import { useAllCmsSites, useCmsChannelTree, useCmsPageList } from '@/hooks/queries/cms';
+import CmsContentReferenceInput from './CmsContentReferenceInput';
+import { channelsToSelectTree } from './channel-tree';
 import {
   cmsPublishingKeys,
   invalidateCmsPublishingViews,
@@ -36,7 +38,9 @@ import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
 
-type TabKey = 'queue' | 'history' | 'artifacts' | 'failed';
+const CmsReleasesPanel = lazy(() => import('./CmsReleasesPanel'));
+
+type TabKey = 'releases' | 'queue' | 'history' | 'artifacts' | 'failed';
 
 interface Filters {
   siteId?: number;
@@ -62,7 +66,7 @@ export default function PublishingPage() {
   const sitesQuery = useAllCmsSites();
   const sites = sitesQuery.data ?? [];
   const siteOptions = sites.map((site) => ({ value: site.id, label: site.name }));
-  const [activeTab, setActiveTab] = useUrlTabState(['queue', 'history', 'artifacts', 'failed'] as const, 'queue');
+  const [activeTab, setActiveTab] = useUrlTabState(['releases', 'queue', 'history', 'artifacts', 'failed'] as const, 'releases');
   const [selected, setSelected] = useState<number[]>([]);
   // 同一组筛选驱动任务列表与产物列表：任务列表分页由 useListSearch 托管，产物列表另有独立分页，查询 / 重置时同步回首页
   const artifactPagination = usePagination();
@@ -100,7 +104,7 @@ export default function PublishingPage() {
     page: taskPagination.page,
     pageSize: taskPagination.pageSize,
     ...taskFilterQuery,
-  }, activeTab !== 'artifacts');
+  }, activeTab !== 'artifacts' && activeTab !== 'releases');
   const artifactListQuery = useCmsPublishArtifactList({
     page: artifactPagination.page,
     pageSize: artifactPagination.pageSize,
@@ -119,12 +123,16 @@ export default function PublishingPage() {
   const [submitForm, setSubmitForm] = useState({
     siteId: undefined as number | undefined,
     targetType: 'site' as CmsPublishTargetType,
-    contentIds: '',
-    channelId: '',
-    pageId: '',
+    contentIds: [] as number[],
+    channelId: undefined as number | undefined,
+    pageId: undefined as number | undefined,
     reason: '',
   });
 
+  const targetChannels = useCmsChannelTree(submitForm.siteId);
+  const [pageKeyword, setPageKeyword] = useState('');
+  const [pagePickerPage, setPagePickerPage] = useState(1);
+  const targetPages = useCmsPageList({ siteId: submitForm.siteId, page: pagePickerPage, pageSize: 30, keyword: pageKeyword });
   useTaskProgressEvents(useCallback(() => {
     invalidateCmsPublishingViews(queryClient);
   }, [queryClient]));
@@ -153,7 +161,7 @@ export default function PublishingPage() {
 
   const submitBuild = async () => {
     if (!submitForm.siteId) return Toast.warning('请选择站点');
-    const contentIds = submitForm.contentIds.split(',').map((item) => Number(item.trim())).filter((item) => Number.isInteger(item) && item > 0);
+    const contentIds = submitForm.contentIds;
     await submitMutation.mutateAsync({
       body: {
         siteId: submitForm.siteId,
@@ -164,7 +172,7 @@ export default function PublishingPage() {
         reason: submitForm.reason || undefined,
       },
     });
-    Toast.success('发布任务已提交');
+    Toast.success('构建任务已提交，配置变更须在发布单中激活');
     setSubmitVisible(false);
   };
 
@@ -270,7 +278,7 @@ export default function PublishingPage() {
     </>
   );
 
-  const taskPane = (tab: Exclude<TabKey, 'artifacts'>) => (
+  const taskPane = (tab: Exclude<TabKey, 'artifacts' | 'releases'>) => (
     <>
       <ListSearchToolbar
         keyword={keywordInput}
@@ -296,6 +304,7 @@ export default function PublishingPage() {
   return (
     <div className="page-container page-tabs-page">
       <Tabs collapsible="auto" type="line" activeKey={activeTab} onChange={(key) => { setActiveTab(key as TabKey); setSelected([]); }}>
+        <TabPane tab="发布单" itemKey="releases"><Suspense fallback={<Typography.Text>正在加载发布单…</Typography.Text>}><CmsReleasesPanel /></Suspense></TabPane>
         <TabPane tab="队列" itemKey="queue">{taskPane('queue')}</TabPane>
         <TabPane tab="历史" itemKey="history">{taskPane('history')}</TabPane>
         <TabPane tab="产物" itemKey="artifacts">
@@ -322,13 +331,13 @@ export default function PublishingPage() {
       <AppModal title="新建 CMS 发布" visible={submitVisible} onCancel={() => setSubmitVisible(false)} onOk={() => void submitBuild()} confirmLoading={submitMutation.isPending} width={560} closeOnEsc>
         <Form labelPosition="left" labelWidth={90}>
           <Space vertical spacing={12} style={{ width: '100%' }}>
-          <Select prefix="站点" optionList={siteOptions} value={submitForm.siteId} onChange={(value) => setSubmitForm((prev) => ({ ...prev, siteId: Number(value) }))} style={{ width: '100%' }} />
+          <Select prefix="站点" optionList={siteOptions} value={submitForm.siteId} onChange={(value) => setSubmitForm((prev) => ({ ...prev, siteId: Number(value), contentIds: [], channelId: undefined, pageId: undefined }))} style={{ width: '100%' }} />
           <Select prefix="目标" optionList={CMS_PUBLISH_TARGET_TYPES.filter((value) => ['content', 'contents', 'channel', 'site', 'page'].includes(value)).map((value) => ({ value, label: CMS_PUBLISH_TARGET_TYPE_LABELS[value] }))} value={submitForm.targetType} onChange={(value) => setSubmitForm((prev) => ({ ...prev, targetType: value as CmsPublishTargetType }))} style={{ width: '100%' }} />
-          {['content', 'contents'].includes(submitForm.targetType) ? <Input prefix="内容 ID" placeholder="逗号分隔，如 1,2,3" value={submitForm.contentIds} onChange={(contentIds) => setSubmitForm((prev) => ({ ...prev, contentIds }))} /> : null}
-          {submitForm.targetType === 'channel' ? <Input prefix="栏目 ID" value={submitForm.channelId} onChange={(channelId) => setSubmitForm((prev) => ({ ...prev, channelId }))} /> : null}
-          {submitForm.targetType === 'page' ? <Input prefix="页面 ID" value={submitForm.pageId} onChange={(pageId) => setSubmitForm((prev) => ({ ...prev, pageId }))} /> : null}
+          {['content', 'contents'].includes(submitForm.targetType) ? <CmsContentReferenceInput siteId={submitForm.siteId} multiple value={submitForm.contentIds} onChange={(value) => setSubmitForm((prev) => ({ ...prev, contentIds: Array.isArray(value) ? value : [] }))} /> : null}
+          {submitForm.targetType === 'channel' ? <TreeSelect placeholder="选择栏目" treeData={channelsToSelectTree(targetChannels.data ?? [])} value={submitForm.channelId} onChange={(value) => setSubmitForm((prev) => ({ ...prev, channelId: Number(value) }))} style={{ width: '100%' }} /> : null}
+          {submitForm.targetType === 'page' ? <Space vertical align="start" style={{ width: '100%' }}><Select placeholder="搜索并选择页面" remote filter loading={targetPages.isFetching} value={submitForm.pageId} onSearch={(value) => { setPageKeyword(value); setPagePickerPage(1); }} optionList={(targetPages.data?.list ?? []).map((page) => ({ value: page.id, label: page.name }))} onChange={(value) => setSubmitForm((prev) => ({ ...prev, pageId: Number(value) }))} style={{ width: '100%' }} /><Space><Button disabled={pagePickerPage === 1} onClick={() => setPagePickerPage((value) => value - 1)}>上一页</Button><Button disabled={pagePickerPage * 30 >= (targetPages.data?.total ?? 0)} onClick={() => setPagePickerPage((value) => value + 1)}>下一页</Button></Space></Space> : null}
           <Input prefix="原因" placeholder="可选，便于任务审计" value={submitForm.reason} onChange={(reason) => setSubmitForm((prev) => ({ ...prev, reason }))} />
-          <Banner type="info" description="任务复用通用 async_tasks 队列；相同活动任务会复用，已结束任务可再次合法重建，并支持进度、取消、断点恢复与自动重试。" />
+          <Banner type="info" description="提交后在队列中跟踪构建进度；配置型任务构建成功后，需到发布单激活。失败时可以恢复或重建。" />
           </Space>
         </Form>
       </AppModal>

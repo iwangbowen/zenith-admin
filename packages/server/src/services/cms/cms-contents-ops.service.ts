@@ -24,7 +24,7 @@ import { insertContentPublishOutbox, recalcTagContentCounts, ensureChannelForCon
 import { offlineCmsContent, publishCmsContent, rejectCmsContent, submitCmsContent, createCmsContent } from './cms-contents-write.service';
 import { buildWhere } from '../../lib/where-helpers';
 import { requireCmsContentAccess, requireCmsContentsAccess } from './cms-content-access.service';
-import { assertCmsContentVersion, requireCmsWorkingCopy, snapshotCmsContentProjection } from './cms-content-revisions.service';
+import { assertCmsContentVersion, requireCmsWorkingCopy, snapshotCmsContentProjection, writeCmsSystemWorkingCopy } from './cms-content-revisions.service';
 import type { CmsContentRevisionSnapshot } from '@zenith/shared/cms';
 
 // ─── 回收站 ───────────────────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ async function mutateWorkingCopies(ids: number[], expectedVersions: ExpectedVers
       const working = await requireCmsWorkingCopy(tx, identity.id, true);
       assertCmsContentVersion(working, expectedVersions?.[String(identity.id)]);
       const snapshot = await change(working.snapshot, identity, tx);
-      await tx.update(cmsContentWorkingCopies).set({ snapshot, editorialStatus: 'draft', version: sql`${cmsContentWorkingCopies.version} + 1` }).where(eq(cmsContentWorkingCopies.contentId, identity.id));
+      await writeCmsSystemWorkingCopy(tx, identity, snapshot, working.version);
       await logContentOp(tx, identity.id, 'updated', '批量更新工作稿，公开版本保持不变');
     }
     return identities.length;

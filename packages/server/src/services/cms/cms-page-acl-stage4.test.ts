@@ -66,7 +66,7 @@ describe('CMS Stage4 page block ACL and display security', () => {
       readFile(new URL('./cms-page-acl.service.ts', import.meta.url), 'utf8'),
     ]);
     expect(frontend).toContain('resolveDynamicCmsPageForPath');
-    expect(frontend).toContain("if (!dynamicPage && !isPreview");
+    expect(frontend).toContain("if (!runtimeBlocked && !dynamicPage && !isPreview");
     expect(frontend).toContain("'Cache-Control': 'private, no-store'");
     expect(staticService).toContain('refreshHomeStatic');
     expect(staticService).toContain('takeover?.requiresDynamic');

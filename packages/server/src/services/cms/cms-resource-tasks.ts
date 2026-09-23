@@ -8,6 +8,7 @@ import type { DbExecutor } from '../../db/types';
 import {
   cmsAds, cmsAdSlots, cmsChannels, cmsContents, cmsContentRevisions, cmsForms,
   cmsFriendLinks, cmsPages, cmsResources, cmsSites,
+  cmsReleases,
 } from '../../db/schema';
 import { registerTaskHandler } from '../../lib/task-center';
 import {
@@ -251,5 +252,6 @@ export function buildRefRebuildStages(siteId: number, executor: DbExecutor = db)
     },
     bySite('page', '搭建页面', 'page', cmsPages),
     bySite('form', '表单', 'form', cmsForms),
+    bySite('release', '发布单', 'release', cmsReleases),
   ];
 }

@@ -1,3 +1,5 @@
+import { assertMockCmsCas, freezeMockCmsRevision } from '@/mocks/utils/cms-revisions';
+import { submitMockCmsContentRelease } from './cms-releases';
 import { assertMockCmsManualAudit } from '@/mocks/utils/workflow-business';
 import { percentOf } from '@zenith/shared/core';
 import { http, HttpResponse } from 'msw';
@@ -320,24 +322,16 @@ function recordAdEvent(adId: number, eventType: 'impression' | 'click', path: st
 }
 
 export const cmsStage4Handlers = [
-  mock(cmsContentContract.publish, ({ params, ok }) => {
-    const content = requireItem(mockCmsContents, params.id, '内容不存在', { status: 404 });
+  mock(cmsContentContract.publish, ({ params, body, ok }) => {
+    const content = assertMockCmsCas(params.id, body.expectedVersion);
     assertMockCmsManualAudit(content);
-    content.status = 'published';
-    content.version += 1;
+    const revision = content.editorialStatus === 'pending' && content.submittedRevisionId
+      ? content.submittedRevisionId : freezeMockCmsRevision(content.id, 'publication').id;
+    content.approvedRevisionId = revision;
+    content.editorialStatus = 'approved';
     content.updatedAt = mockDateTime();
-    createProgressingMockTask({
-      taskType: 'cms-subscription-notify',
-      title: `CMS 订阅通知：${content.title}`,
-      payload: {
-        contentId: content.id,
-        contentVersion: content.version,
-        siteId: content.siteId,
-        channelId: content.channelId,
-      },
-      totalItems: mockCmsSubscriptions.filter((item) => item.siteId === content.siteId && item.active && item.notificationEnabled).length || 1,
-    });
-    return ok(content, '发布成功');
+    submitMockCmsContentRelease(content.id, revision);
+    return ok(content, '已提交发布任务');
   }),
 
   // ─── 统一互动问卷后台 ───────────────────────────────────────────────────────

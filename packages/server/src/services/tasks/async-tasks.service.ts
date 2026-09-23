@@ -36,7 +36,7 @@ function buildAsyncTaskWhere(query: AsyncTaskListFilter, extra?: SQL): SQL | und
     query.taskType ? eq(asyncTasks.taskType, query.taskType) : undefined,
     asyncTaskStatusCondition(query.status),
     keywordCondition(query.keyword, [asyncTasks.title, asyncTasks.taskType], 'ilike'),
-    keywordCondition(query.content, [sql`${asyncTasks.payload}::text`, sql`${asyncTasks.result}::text`], 'ilike'),
+    keywordCondition(query.content, [sql`(${asyncTasks.payload} - 'configurationCapture' - 'configurationCaptures')::text`, sql`${asyncTasks.result}::text`], 'ilike'),
     ...dateRangeConditions(asyncTasks.createdAt, query.startTime, query.endTime),
     extra,
   );

@@ -93,7 +93,7 @@ export async function listCmsTranslations(id: number) {
   const content = await requireCmsContentAccess(id);
   const current = await requireCmsWorkingCopy(db, id);
   const sourceId = current.snapshot.translationOfId ?? content.id;
-  const scope = await buildCmsContentListWhere({ siteId: content.siteId, page: 1, pageSize: 200 });
+  const scope = await buildCmsContentListWhere({ siteId: content.siteId });
   const rows = await db.select({ id: cmsContents.id, status: cmsContents.status, snapshot: sql<typeof cmsContentWorkingCopies.$inferSelect['snapshot']>`${cmsContentWorkingCopies.snapshot} - 'body' - 'bodyDocument'` })
     .from(cmsContents).innerJoin(cmsContentWorkingCopies, eq(cmsContentWorkingCopies.contentId, cmsContents.id))
     .where(buildWhere(scope, or(eq(cmsContents.id, sourceId), sql`(${cmsContentWorkingCopies.snapshot}->>'translationOfId')::integer = ${sourceId}`)));
@@ -121,7 +121,7 @@ export async function createCmsTranslation(id: number, input: BodyOf<typeof cmsE
 }
 
 export async function getCmsEditorialMetrics(siteId: number) {
-  const where = await buildCmsContentListWhere({ siteId, page: 1, pageSize: 200 });
+  const where = await buildCmsContentListWhere({ siteId });
   return readSnapshot(async (tx) => {
   const [row] = await tx.select({
     total: sql<number>`count(*)::integer`,

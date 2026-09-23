@@ -24,6 +24,7 @@ import {
   cmsPages,
   cmsPublishArtifacts,
   cmsSites,
+  cmsSiteGenerations,
   type AsyncTaskRow,
   type CmsPublishArtifactRow,
 } from '../../db/schema';
@@ -44,7 +45,6 @@ import {
   requestCancelAsyncTask,
   resumeAsyncTask,
   persistAsyncTask,
-  submitAsyncTask,
   type TaskRunContext,
   TaskCancelledError,
 } from '../../lib/task-center';
@@ -81,6 +81,7 @@ import { cmsSiteFencePayload, withCmsSitePublishLock } from './cms-site-publish-
 import { acquireCmsSitePublishLock } from './cms-site-publish-lock.service';
 import { enqueueCmsPublishOutboxes, insertCmsPublishOutbox } from './cms-publish-outbox.service';
 import { captureCmsContentPublishSnapshot } from './cms-content-publish-snapshot.service';
+import { captureCmsConfiguration, cmsConfigurationSelection, type CmsCapturedConfiguration } from './cms-configuration-snapshot.service';
 import {
   listCmsSubtreeIds,
   loadCmsInheritanceState,
@@ -528,9 +529,16 @@ export async function submitCmsPublishTask(
       },
       idempotencyKey: options?.eventKey ? `cms-publish-event:${options.eventKey}` : null,
     };
-    const row = options?.executor
-      ? await persistAsyncTask(options.executor, taskInput)
-      : await submitAsyncTask(taskInput);
+    const persist = async (tx: DbTransaction) => {
+      await acquireCmsSitePublishLock(tx, input.siteId);
+      const configuration = await captureCmsConfiguration(tx, input.siteId, cmsConfigurationSelection(input));
+      const [generation] = await tx.select().from(cmsSiteGenerations).where(eq(cmsSiteGenerations.siteId, input.siteId)).limit(1);
+      return persistAsyncTask(tx, { ...taskInput, payload: { ...taskInput.payload,
+        configurationCapture: { ...configuration, baseGenerationId: generation?.activeGenerationId ?? null },
+      } });
+    };
+    const row = options?.executor ? await persist(options.executor) : await db.transaction(persist);
+    if (!options?.executor) await enqueueCmsPublishOutboxes([mapAsyncTask(row)], 'CMS 配置任务提交');
     return mapAsyncTask(row);
   });
 }
@@ -697,7 +705,9 @@ export function registerCmsPublishingTaskHandler(): void {
       // write over the active generation's directory or expose partially rebuilt pages.
       if (CMS_PUBLISH_TARGET_TYPES.includes(input.targetType)) {
         const { createCmsConfigurationRelease } = await import('./cms-releases.service');
-        const release = await createCmsConfigurationRelease(input.siteId, ctx.taskId, input.reason);
+        const captured = ctx.payload.configurationCapture as CmsCapturedConfiguration | undefined;
+        if (!captured) throw new Error('配置任务缺少提交时快照，请重新提交发布');
+        const release = await createCmsConfigurationRelease(input.siteId, ctx.taskId, input.reason, captured);
         await ctx.progress({ processed: 1, total: 1, note: `已提交发布单 #${release.id}；在发布单中查看构建和激活结果` });
         return { releaseId: release.id, deploymentId: release.deploymentId, delegated: true };
       }

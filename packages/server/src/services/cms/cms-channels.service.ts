@@ -7,7 +7,7 @@ import { pinyin } from 'pinyin-pro';
 import { cmsChannelContract, cmsChannelFieldsSchema } from '@zenith/shared/cms';
 import { pickEntity } from '../../lib/entity-map';
 import { db } from '../../db';
-import { cmsChannels, cmsContents, cmsModels, cmsContentChannels, cmsCollectRules, cmsChannelUsers, cmsPages, users } from '../../db/schema';
+import { cmsChannels, cmsContents, cmsModels, cmsCollectRules, cmsChannelUsers, cmsPages, users } from '../../db/schema';
 import type { CmsChannelRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import { buildWhere } from '../../lib/where-helpers';
@@ -25,7 +25,7 @@ import { bumpCmsTemplateRefsRevision, lockCmsSiteForMutation } from './cms-site-
 import { enqueueCmsPublishOutboxes, insertCmsSiteRefsRebuildOutbox } from './cms-publish-outbox.service';
 import { canonicalizeCmsResourceFields, deleteCmsResourceRefsForOwner, syncCmsResourceRefs, resolveCmsResourcePayload } from './cms-resource-refs.service';
 import { assertCmsWidgetChannelVisibilityMutable, assertCmsWidgetSourcesMutable } from './cms-widgets.service';
-import { submitCmsWidgetChannelRefreshSideEffect, submitCmsWidgetSourceRefreshSideEffect } from './cms-widget-tasks';
+import { submitCmsWidgetChannelRefreshSideEffect } from './cms-widget-tasks';
 import { sanitizeCmsHtml } from './cms-html-sanitizer';
 import { resolveEffectivelyEnabledChannelIds } from './cms-channel-visibility.service';
 import { buildTree } from '@zenith/shared/core';

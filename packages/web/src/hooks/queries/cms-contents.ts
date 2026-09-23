@@ -1,7 +1,7 @@
 // eslint-disable-next-line no-restricted-imports -- H5 保留：手写 useQuery / useMutation 的理由见本文件对应 hook 的注释；queryKey 仍由 contractKey 生成
 import { keepPreviousData, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { BodyOf, QueryOf } from '@zenith/shared/core';
-import { cmsContentContract, isCmsEntityLink, type CmsEditLock } from '@zenith/shared/cms';
+import { cmsContentContract, cmsEditorialContract, cmsReleaseContract, isCmsEntityLink, type CmsEditLock } from '@zenith/shared/cms';
 import { api, contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { invalidateCmsPublishingViews } from './cms-stage3';
 import { invalidateCmsDashboardStats } from './cms-stats';
@@ -18,6 +18,8 @@ const resource = createResourceQueries(cmsContentContract, {
     void qc.invalidateQueries({ queryKey: cmsContentKeys.workflowContext(saved.id) });
     void qc.invalidateQueries({ queryKey: cmsContentKeys.approvalDetail(saved.id) });
     invalidateCmsDashboardStats(qc);
+    void qc.invalidateQueries({ queryKey: contractKey(cmsEditorialContract.metrics) });
+    void qc.invalidateQueries({ queryKey: contractKey(cmsEditorialContract.quality, { params: { id: saved.id } }) });
   },
 });
 
@@ -28,7 +30,8 @@ export const cmsContentKeys = {
   opLogsAll: contractKey(cmsContentContract.opLogs),
   opLogs: (contentId: number | undefined) => contractKey(cmsContentContract.opLogs, { params: { id: contentId ?? 0 } }),
   versions: contractKey(cmsContentContract.versions),
-  versionList: (contentId: number | undefined) => contractKey(cmsContentContract.versions, { params: { id: contentId ?? 0 } }),
+  versionList: (contentId: number | undefined) => contractKey(cmsContentContract.versions, { params: { id: contentId ?? 0 }, query: {} }),
+  versionPage: (contentId: number, page = 1) => contractKey(cmsContentContract.versions, { params: { id: contentId }, query: { page, pageSize: 30 } }),
   versionDiffs: contractKey(cmsContentContract.versionDiff),
   linkTargets: contractKey(cmsContentContract.linkTarget),
   workflowContexts: contractKey(cmsContentContract.workflowContext),
@@ -44,7 +47,7 @@ export function useCmsContentList(query: CmsContentListParams, enabled = true) {
   return useApiQuery(cmsContentContract.list, { query }, {
     enabled,
     placeholderData: keepPreviousData,
-    refetchInterval: (state) => state.state.data?.list.some((content) => content.status === 'pending') ? 10_000 : false,
+    refetchInterval: (state) => state.state.data?.list.some((content) => ['pending', 'approved'].includes(content.editorialStatus)) ? 10_000 : false,
   });
 }
 export const useCmsContentDetail = resource.useDetail;
@@ -54,7 +57,7 @@ export const useSaveCmsContent = resource.useSave;
 export function useCmsContentWorkflowRecord(contentId: number | undefined, enabled = true) {
   return useApiQuery(cmsContentContract.detail, { params: { id: contentId ?? 0 } }, {
     enabled: enabled && contentId !== undefined,
-    refetchInterval: (query) => query.state.data?.status === 'pending' ? 10_000 : false,
+    refetchInterval: (query) => query.state.data && ['pending', 'approved'].includes(query.state.data.editorialStatus) ? 10_000 : false,
   });
 }
 
@@ -95,6 +98,10 @@ export function useCmsContentApprovalDetail(contentId: number | undefined, insta
  */
 export function invalidateAfterCmsContentChange(qc: QueryClient, ids?: readonly number[]) {
   void invalidateEntityRelations(qc);
+  void qc.invalidateQueries({ queryKey: contractKey(cmsEditorialContract.metrics) });
+  void qc.invalidateQueries({ queryKey: contractKey(cmsEditorialContract.quality) });
+  void qc.invalidateQueries({ queryKey: contractKey(cmsEditorialContract.translations) });
+  void qc.invalidateQueries({ queryKey: contractKey(cmsReleaseContract.list) });
   void qc.invalidateQueries({ queryKey: cmsContentKeys.lists });
   if (ids) {
     for (const id of ids) {
@@ -132,11 +139,17 @@ export type CmsContentAction = 'submit' | 'publish' | 'offline' | 'reject';
 export function useCmsContentAction() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, action, reason }: { id: number; action: CmsContentAction; reason?: string }) =>
+    mutationFn: ({ id, action, expectedVersion, reason }: { id: number; action: CmsContentAction; expectedVersion: number; reason?: string }) =>
       action === 'reject'
-        ? api(cmsContentContract.reject, { params: { id }, body: { reason: reason ?? '' } })
-        : api(cmsContentContract[action], { params: { id } }),
-    onSuccess: (_output, { id }) => invalidateAfterCmsContentChange(qc, [id]),
+        ? api(cmsContentContract.reject, { params: { id }, body: { reason: reason ?? '', expectedVersion } })
+        : api(cmsContentContract[action], { params: { id }, body: { expectedVersion } }),
+    onSuccess: (_output, { id, action }) => {
+      invalidateAfterCmsContentChange(qc, [id]);
+      if (action === 'submit' || action === 'publish') {
+        void qc.invalidateQueries({ queryKey: cmsContentKeys.versionList(id) });
+        void qc.invalidateQueries({ queryKey: cmsContentKeys.versionDiffs });
+      }
+    },
   });
 }
 
@@ -147,10 +160,10 @@ export function useCmsContentAction() {
 export function useCmsContentPersistentLock() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, action, reason }: { id: number; action: 'lock' | 'unlock'; reason?: string }) =>
+    mutationFn: ({ id, action, expectedVersion, reason }: { id: number; action: 'lock' | 'unlock'; expectedVersion: number; reason?: string }) =>
       action === 'lock'
-        ? api(cmsContentContract.lock, { params: { id }, body: { reason: reason ?? '' } })
-        : api(cmsContentContract.unlock, { params: { id } }),
+        ? api(cmsContentContract.lock, { params: { id }, body: { reason: reason ?? '', expectedVersion } })
+        : api(cmsContentContract.unlock, { params: { id }, body: { expectedVersion } }),
     onSuccess: (_output, { id }) => invalidateAfterCmsContentChange(qc, [id]),
   });
 }
@@ -172,8 +185,8 @@ const BATCH_OPERATIONS = {
 export function useCmsContentBatch() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ action, ids }: { action: CmsContentBatchAction; ids: number[] }) =>
-      api(BATCH_OPERATIONS[action], { body: { ids } }),
+    mutationFn: ({ action, ids, expectedVersions }: { action: CmsContentBatchAction; ids: number[]; expectedVersions: Record<string, number> }) =>
+      api(BATCH_OPERATIONS[action], { body: { ids, expectedVersions } }),
     onSuccess: (_output, { action, ids }) => {
       // 彻底删除后详情 / 日志 / 版本都不再有对应资源，移除而非失效（失效会去请求一个必然 404 的资源）
       if (action === 'purge') {
@@ -203,10 +216,14 @@ export function useCmsCheckText() {
 }
 
 // ─── 内容版本 ─────────────────────────────────────────────────────────────────
-export function useCmsContentVersions(contentId: number | undefined, enabled = true) {
-  return useApiQuery(cmsContentContract.versions, { params: { id: contentId ?? 0 } }, {
+export function useCmsContentVersions(contentId: number | undefined, enabled = true, page = 1) {
+  return useApiQuery(cmsContentContract.versions, { params: { id: contentId ?? 0 }, query: { page, pageSize: 30 } }, {
     enabled: enabled && contentId !== undefined,
   });
+}
+
+export function useCmsContentVersion(contentId: number | undefined, versionId: number | undefined) {
+  return useApiQuery(cmsContentContract.version, { params: { id: contentId ?? 0, versionId: versionId ?? 0 } }, { enabled: contentId !== undefined && versionId !== undefined });
 }
 
 /** 回滚会改写正文 / 标题并自动留档当前状态：详情、版本列表与差异都变，列表标题列随之变化 */
@@ -243,6 +260,10 @@ export function useCmsPreviewLink() {
   return useApiMutation(cmsContentContract.previewLink);
 }
 
+export function useRevokeCmsPreviewLink() {
+  return useApiMutation(cmsContentContract.revokePreview);
+}
+
 // ─── 批量操作 / 复制 / 站群分发 ───────────────────────────────────────────────
 export type CmsContentBatchOpInput =
   | { action: 'batch-move'; body: BodyOf<typeof cmsContentContract.batchMove> }
@@ -273,7 +294,10 @@ export function useCmsContentBatchOps() {
 /** 批量状态流转（提审/发布/驳回/下线）：返回部分成功明细 */
 export function useCmsContentBatchStatus() {
   return useApiMutation(cmsContentContract.batchStatus, {
-    invalidate: (qc, _output, { body }) => invalidateAfterCmsContentChange(qc, body.ids),
+    invalidate: (qc, _output, { body }) => {
+      invalidateAfterCmsContentChange(qc, body.ids);
+      if (body.action === 'submit' || body.action === 'publish') void qc.invalidateQueries({ queryKey: cmsContentKeys.versions });
+    },
   });
 }
 

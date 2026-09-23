@@ -1,6 +1,6 @@
 import { boolean, index, integer, jsonb, pgEnum, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core';
 import { CMS_DEPLOYMENT_STATUSES, CMS_RELEASE_STATUSES } from '@zenith/shared/cms';
-import type { CmsRelease } from '@zenith/shared/cms';
+import type { CmsRelease, CmsConfigurationSnapshot } from '@zenith/shared/cms';
 import { idColumn, timestampColumns } from './common';
 import { auditColumns } from './core';
 import { cmsContents, cmsSites } from './cms';
@@ -22,6 +22,8 @@ export const cmsReleases = pgTable('cms_releases', {
   name: varchar({ length: 200 }).notNull(), status: cmsReleaseStatusEnum().notNull().default('draft'),
   baseGenerationId: integer(), deploymentId: integer(),
   items: jsonb().$type<CmsRelease['items']>().notNull().default([]),
+  configurationItems: jsonb().$type<CmsRelease['configurationItems']>().notNull().default([]),
+  configurationSnapshot: jsonb().$type<CmsConfigurationSnapshot>().notNull().default({ tables: {}, replaceAll: [] }),
   activateAt: timestamp({ withTimezone: true }), timeZone: varchar({ length: 80 }).notNull().default('Asia/Shanghai'),
   autoActivate: boolean().notNull().default(false), error: text(),
   ...auditColumns(), ...timestampColumns(),
@@ -44,5 +46,14 @@ export const cmsContentSuppressions = pgTable('cms_content_suppressions', {
   siteId: integer().notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
   reason: text().notNull(), ...auditColumns(), ...timestampColumns(),
 }, (t) => [index('cms_content_suppressions_site_idx').on(t.siteId)]);
+/** Every activation is an append-only fact, including reactivation of the same historic deployment. */
+export const cmsReleaseActivations = pgTable('cms_release_activations', {
+  id: idColumn(), siteId: integer().notNull().references(() => cmsSites.id, { onDelete: 'restrict' }),
+  releaseId: integer().notNull().references(() => cmsReleases.id, { onDelete: 'restrict' }),
+  fromGenerationId: integer(), toGenerationId: integer().notNull().references(() => cmsDeployments.id, { onDelete: 'restrict' }),
+  action: varchar({ length: 20 }).$type<'activate' | 'rollback'>().notNull(),
+  operatorId: integer(), operatorName: varchar({ length: 100 }).notNull(),
+  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index('cms_release_activations_site_idx').on(t.siteId, t.id)]);
 export type CmsReleaseRow = typeof cmsReleases.$inferSelect;
 export type CmsDeploymentRow = typeof cmsDeployments.$inferSelect;

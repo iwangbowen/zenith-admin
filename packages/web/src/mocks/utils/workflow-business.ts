@@ -1,3 +1,5 @@
+import { getMockCmsReviewContent, getMockCmsWorkingContent } from './cms-revisions';
+import { submitMockCmsContentRelease } from '../handlers/cms-releases';
 import dayjs from 'dayjs';
 import { publishMockWatchEvent } from '@/mocks/data/entity-watch-events';
 import type { CmsContent } from '@zenith/shared/cms';
@@ -124,10 +126,15 @@ export function syncMockWorkflowBusinessResult(instance: WorkflowInstance): void
     leave.updatedAt = instance.updatedAt;
   } else if (instance.bizType === 'cms_content') {
     const content = mockCmsContents.find((item) => String(item.id) === instance.bizId);
-    if (!content || content.status !== 'pending' || content.lockedAt || (content as CmsContent & { deleted?: boolean }).deleted || getMockCmsCurrentInstanceId(content) !== instance.id) return;
-    if (instance.status === 'approved') { content.status = 'published'; content.publishedAt = instance.updatedAt; content.version += 1; }
-    else if (instance.status === 'rejected') { content.status = 'rejected'; content.rejectReason = '工作流审核驳回'; }
-    else if (instance.status === 'withdrawn') content.status = 'draft';
+    if (!content || !content.submittedRevisionId || content.lockedAt || (content as CmsContent & { deleted?: boolean }).deleted || getMockCmsCurrentInstanceId(content) !== instance.id) return;
+    getMockCmsWorkingContent(content.id);
+    const reviewed = getMockCmsReviewContent(content.id, instance.id);
+    if (instance.status === 'approved' && reviewed.revisionId) {
+      content.approvedRevisionId = reviewed.revisionId;
+      if (content.version === reviewed.version) content.editorialStatus = 'approved';
+      submitMockCmsContentRelease(content.id, reviewed.revisionId);
+    } else if (instance.status === 'rejected') { content.editorialStatus = 'rejected'; content.rejectReason = '工作流审核驳回'; }
+    else if (instance.status === 'withdrawn') content.editorialStatus = 'draft';
     content.updatedAt = instance.updatedAt;
   }
 }

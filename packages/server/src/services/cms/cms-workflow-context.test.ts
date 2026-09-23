@@ -47,14 +47,14 @@ describe('CMS business workflow entry points', () => {
     await previewCmsContentWorkflow({ siteId: 1, channelId: 2, title: '新标题' });
     expect(mocks.preview).toHaveBeenCalledWith(6, { contentTitle: '新标题', siteName: '门户', channelName: '通知' });
   });
-  it.each(['draft', 'rejected'])('%s defaults to this submission preview, preserving explicit round selection', async (status) => {
-    mocks.content.mockResolvedValueOnce({ id: 10, status });
+  it.each(['draft', 'rejected'])('%s work defaults to this submission preview even when a prior version is public', async (editorialStatus) => {
+    mocks.content.mockResolvedValueOnce({ id: 10, status: 'published', editorialStatus, submittedRevisionId: null });
     await getCmsContentWorkflowContext(10, 3);
     expect(mocks.content).toHaveBeenCalledWith(10);
     expect(mocks.context).toHaveBeenCalledWith('cms_content', '10', null, 3);
   });
-  it.each(['pending', 'published'])('%s defaults to the latest actual round', async (status) => {
-    mocks.content.mockResolvedValueOnce({ id: 10, status });
+  it.each(['draft', 'pending', 'approved', 'clean'])('%s work retains the submitted revision round regardless of public status', async (editorialStatus) => {
+    mocks.content.mockResolvedValueOnce({ id: 10, status: 'draft', editorialStatus, submittedRevisionId: 41 });
     await getCmsContentWorkflowContext(10);
     expect(mocks.context).toHaveBeenCalledWith('cms_content', '10', 'latest', undefined);
   });

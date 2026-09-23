@@ -1,10 +1,11 @@
+import { matchesFilter } from '../utils/filter';
 import { http } from 'msw';
 import { memberCmsContract } from '@zenith/shared/cms';
 import type { CmsContribution, CmsMemberComment, CmsMemberContentItem } from '@zenith/shared/cms';
 import { memberAuthContract, memberSelfContract } from '@zenith/shared/member';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem } from '@/mocks/utils/crud';
-import { badRequest, ok } from '@/mocks/utils/handlers';
+import { badRequest, conflict, ok } from '@/mocks/utils/handlers';
 import {
   memberView,
   mockMembers,
@@ -155,8 +156,8 @@ export const memberFrontHandlers = [
     return ok(row);
   }),
   mock(memberCmsContract.contributions, ({ query, ok }) => {
-    const { status } = query;
-    return ok(fixedPage(status ? mockContributions.filter((x) => x.status === status) : mockContributions));
+    const rows = mockContributions.filter((item) => matchesFilter(item.status, query.status) && matchesFilter(item.editorialStatus, query.editorialStatus));
+    return ok({ list: rows.slice((query.page - 1) * query.pageSize, query.page * query.pageSize), total: rows.length, page: query.page, pageSize: query.pageSize });
   }),
   mock(memberCmsContract.createContribution, ({ body, ok }) => {
     const now = mockDateTime();
@@ -169,7 +170,7 @@ export const memberFrontHandlers = [
       summary: body.summary ?? null,
       coverImage: null,
       body: body.body,
-      status: 'pending',
+      status: 'draft', editorialStatus: 'pending', version: 1,
       rejectReason: null,
       publishedAt: null,
       viewCount: 0,
@@ -181,11 +182,14 @@ export const memberFrontHandlers = [
   }),
   mock(memberCmsContract.updateContribution, ({ params, body, ok }) => {
     const item = requireItem(mockContributions, params.id, '投稿不存在', { status: 404 });
-    Object.assign(item, body, { status: 'pending', rejectReason: null, updatedAt: mockDateTime() });
+    if (item.version !== body.expectedVersion) return conflict('投稿版本冲突，请刷新后重试', { status: 409 });
+    const { expectedVersion: _expected, ...patch } = body;
+    Object.assign(item, patch, { editorialStatus: 'pending', version: item.version + 1, rejectReason: null, updatedAt: mockDateTime() });
     return ok(item, '已重新提交，等待审核');
   }),
-  mock(memberCmsContract.removeContribution, ({ params, ok }) => {
+  mock(memberCmsContract.removeContribution, ({ params, body, ok }) => {
     const idx = mockContributions.findIndex((x) => x.id === params.id);
+    if (idx !== -1 && mockContributions[idx].version !== body.expectedVersion) return conflict('投稿版本冲突，请刷新后重试', { status: 409 });
     if (idx !== -1) mockContributions.splice(idx, 1);
     return ok(null, '删除成功');
   }),
@@ -281,7 +285,7 @@ let nextMyCommentId = 100;
 
 const mockContributions: CmsContribution[] = [
 
-  { id: 1, siteId: 1, channelId: 2, channelName: '新闻中心', title: '我的第一篇投稿', summary: '演示投稿数据', coverImage: null, body: '<p>投稿正文</p>', status: 'published', rejectReason: null, publishedAt: '2024-06-01 10:00:00', viewCount: 88, createdAt: '2024-05-30 09:00:00', updatedAt: '2024-06-01 10:00:00' },
-  { id: 2, siteId: 1, channelId: 3, channelName: '产品中心', title: '待审核的投稿示例', summary: null, coverImage: null, body: '<p>等待审核</p>', status: 'pending', rejectReason: null, publishedAt: null, viewCount: 0, createdAt: '2024-06-02 14:00:00', updatedAt: '2024-06-02 14:00:00' },
-  { id: 3, siteId: 1, channelId: 2, channelName: '新闻中心', title: '被驳回的投稿示例', summary: null, coverImage: null, body: '<p>需要修改</p>', status: 'rejected', rejectReason: '内容与栏目主题不符，请调整后重新提交', publishedAt: null, viewCount: 0, createdAt: '2024-06-03 16:00:00', updatedAt: '2024-06-03 18:00:00' },
+  { id: 1, siteId: 1, channelId: 2, channelName: '新闻中心', title: '我的第一篇投稿', summary: '演示投稿数据', coverImage: null, body: '<p>投稿正文</p>', status: 'published', editorialStatus: 'clean', version: 1, rejectReason: null, publishedAt: '2024-06-01 10:00:00', viewCount: 88, createdAt: '2024-05-30 09:00:00', updatedAt: '2024-06-01 10:00:00' },
+  { id: 2, siteId: 1, channelId: 3, channelName: '产品中心', title: '待审核的投稿示例', summary: null, coverImage: null, body: '<p>等待审核</p>', status: 'draft', editorialStatus: 'pending', version: 1, rejectReason: null, publishedAt: null, viewCount: 0, createdAt: '2024-06-02 14:00:00', updatedAt: '2024-06-02 14:00:00' },
+  { id: 3, siteId: 1, channelId: 2, channelName: '新闻中心', title: '被驳回的投稿示例', summary: null, coverImage: null, body: '<p>需要修改</p>', status: 'draft', editorialStatus: 'rejected', version: 1, rejectReason: '内容与栏目主题不符，请调整后重新提交', publishedAt: null, viewCount: 0, createdAt: '2024-06-03 16:00:00', updatedAt: '2024-06-03 18:00:00' },
 ];

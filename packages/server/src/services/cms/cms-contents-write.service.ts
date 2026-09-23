@@ -17,7 +17,7 @@ import { isWorkflowAuditEnabled, startCmsContentWorkflow, assertNoActiveContentW
 import { enqueueCmsWebhookEvents, insertCmsContentWebhookOutbox } from './cms-webhook.service';
 import { assertContentTemplateBySite } from './cms-template-refs.service';
 import type { CmsContentAttachment, CmsSiteOpsSettings, CreateCmsContentInput, UpdateCmsContentInput, CmsContentStatus } from '@zenith/shared/cms';
-import { buildCmsEntityLink, isCmsEntityLink } from '@zenith/shared/cms';
+import { buildCmsEntityLink, isCmsEntityLink, createCmsContentSchema, updateCmsContentSchema } from '@zenith/shared/cms';
 import { ensureCmsLinkTargetExists } from './cms-link.service';
 import { extractFirstImage, normalizeAttachments } from './cms-body.service';
 import { resolveCmsSiteOpsSettings } from './cms-site-settings';
@@ -179,7 +179,8 @@ export async function applyCmsContentPolicies<T extends CmsContentPolicyInput>(
 }
 
 /** New content starts as a non-public identity plus an independently editable working copy. */
-export async function createCmsContent(data: CreateCmsContentInput) {
+export async function createCmsContent(input: CreateCmsContentInput) {
+  const data = createCmsContentSchema.parse(input);
   const site = await ensureCmsSiteExists(data.siteId);
   await assertSiteAccess(data.siteId);
   await assertChannelAccess(data.channelId);
@@ -222,7 +223,8 @@ export async function createCmsContent(data: CreateCmsContentInput) {
   return getCmsContent(created.id);
 }
 
-export async function updateCmsContent(id: number, data: UpdateCmsContentInput, options?: { suppressDistributionSideEffects?: boolean; skipAccessCheck?: boolean }) {
+export async function updateCmsContent(id: number, input: UpdateCmsContentInput, options?: { suppressDistributionSideEffects?: boolean; skipAccessCheck?: boolean }) {
+  const data = updateCmsContentSchema.parse(input);
   const identity = options?.skipAccessCheck ? await ensureCmsContentExists(id) : await requireCmsContentAccess(id);
   assertCmsContentUnlocked(identity);
   if (identity.deletedAt || identity.archivedAt) throw new HTTPException(409, { message: '回收站或已归档内容不可编辑' });

@@ -279,6 +279,7 @@ function DictTab({ siteId, onSiteChange }: Readonly<{ siteId: number | undefined
       />
       <EditFormModal modal={modal} width={480}>
         <Form.Input field="word" label="词条" placeholder="如：泽尼斯系统" rules={[{ required: true, message: '请输入词条' }]} />
+        <Form.TagInput field="synonyms" label="同义词" placeholder="输入词语后回车" extraText="扩展词可配置等价检索词；随站点发布版本生效。" />
         <Form.Select field="type" label="类型" optionList={CMS_SEARCH_WORD_TYPES.map((value) => ({ value, label: CMS_SEARCH_WORD_TYPE_LABELS[value] }))} />
         <Form.Input field="groupName" label="分组" />
         <Form.InputNumber field="weight" label="词频权重" min={1} max={999999} style={{ width: 180 }} extraText="越大越优先成词，默认 1000" />

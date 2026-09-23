@@ -24,7 +24,7 @@ import { resolveEffectiveCmsSite } from './cms-site-inheritance.service';
 import { assertCmsContentUnlocked } from './cms-content-lock.service';
 import { getEffectivelyEnabledCmsChannelIds } from './cms-channel-visibility.service';
 import {
-  canonicalizeCmsResourceFields, deleteCmsResourceRefsForOwner, resolveCmsContentRow, resolveCmsContentRows,
+  canonicalizeCmsResourceFields, deleteCmsResourceRefsForOwner, resolveCmsContentRows,
   syncCmsResourceRefs,
 } from './cms-resource-refs.service';
 

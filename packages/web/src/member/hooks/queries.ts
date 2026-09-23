@@ -361,10 +361,10 @@ export function useSaveContribution() {
   const update = useApiMutation(memberCmsContract.updateContribution, { requestOptions: memberClient });
   return {
     isPending: create.isPending || update.isPending,
-    mutateAsync: async (input: { id?: number; values: CreateCmsContributionInput }) => {
+    mutateAsync: async (input: { id?: number; expectedVersion?: number; values: CreateCmsContributionInput }) => {
       const { id, values } = input;
       const saved = id
-        ? await update.mutateAsync({ params: { id }, body: { channelId: values.channelId, title: values.title, summary: values.summary, body: values.body } })
+        ? await update.mutateAsync({ params: { id }, body: { channelId: values.channelId, title: values.title, summary: values.summary, body: values.body, expectedVersion: input.expectedVersion! } })
         : await create.mutateAsync({ body: values });
       void qc.invalidateQueries({ queryKey: memberCmsKeys.contributions.lists });
       if (id) void qc.invalidateQueries({ queryKey: memberCmsKeys.contributions.detail(id) });

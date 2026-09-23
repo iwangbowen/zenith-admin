@@ -4,7 +4,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import type { CmsPublishSubmitInput } from '@zenith/shared/cms';
 import type { AsyncTask } from '@zenith/shared/tasks';
 import { CMS_PUBLISH_TARGET_TYPE_LABELS } from '@zenith/shared/cms';
-import { asyncTasks, cmsSites } from '../../db/schema';
+import { asyncTasks, cmsSites, cmsSiteGenerations } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
 import { currentUserOrNull, runWithCurrentUser } from '../../lib/context';
 import { enqueueAsyncTask, mapAsyncTask, persistAsyncTask } from '../../lib/task-center';
@@ -13,6 +13,7 @@ import type { CmsSiteRow } from '../../db/schema';
 import type { DbTransaction } from '../../db/types';
 import { acquireCmsSitePublishLock, bumpCmsPublicRevision, cmsSiteFencePayload } from './cms-site-publish-lock.service';
 import { invalidateCmsSiteCaches } from './cms-cache.service';
+import { captureCmsConfiguration, cmsConfigurationSelection } from './cms-configuration-snapshot.service';
 
 const SYSTEM_USER = { userId: 1, username: 'admin', roles: ['super_admin'], tenantId: null };
 const transactionPublicRevisions = new WeakMap<object, Map<number, number>>();
@@ -73,6 +74,8 @@ async function insertCmsPublishOutboxInExecutor(
     input.expectedPublicRevision ?? 0,
   );
   const fencedInput: CmsPublishSubmitInput = { ...input, expectedPublicRevision: publicRevision };
+  const configuration = await captureCmsConfiguration(executor, input.siteId, cmsConfigurationSelection(input));
+  const [generation] = await executor.select().from(cmsSiteGenerations).where(eq(cmsSiteGenerations.siteId, input.siteId)).limit(1);
   const row = await persistAsyncTask(executor, {
     taskType: 'cms-publish-build',
     title: `CMS ${CMS_PUBLISH_TARGET_TYPE_LABELS[input.targetType]}发布`,
@@ -81,6 +84,7 @@ async function insertCmsPublishOutboxInExecutor(
       submittedAt: formatDateTime(dayjs().toDate()),
       systemTriggered: true,
       dedupeFingerprint: `event:${eventKey}`,
+      configurationCapture: { ...configuration, baseGenerationId: generation?.activeGenerationId ?? null },
     },
     idempotencyKey,
   });

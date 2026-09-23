@@ -443,11 +443,7 @@ export async function pruneOrphanStaticFiles(siteCode: string, kept: ReadonlySet
 }
 
 // ─── sitemap / robots ─────────────────────────────────────────────────────────
-function xmlEscape(s: string): string {
-  return s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;');
-}
-
-/** 生成站点 sitemap.xml（首页 + 栏目首屏 + 已发布内容，上限 5 万条） */
+/** 生成站点 sitemap.xml 或分片（首页 + 栏目首屏 + 已发布内容）。 */
 export async function generateSitemapXml(site: CmsSiteRow, part?: number): Promise<string> {
   const origin = siteOrigin(site) ?? '';
   const entries: { loc: string; lastmod: string | null; priority: string }[] = [];
@@ -847,8 +843,11 @@ async function buildSiteStaticInner(
   onProgress?: (p: FullBuildProgress) => Promise<boolean | void>,
   options?: { resumeAfterKey?: string | null },
 ): Promise<{ pages: number; pruned: number }> {
-  const site = await resolveEffectiveCmsSiteRow(siteId).catch(() => null);
-  if (!site) throw new Error(`站点不存在（id=${siteId}）`);
+  const effectiveSite = await resolveEffectiveCmsSiteRow(siteId).catch(() => null);
+  if (!effectiveSite) throw new Error(`站点不存在（id=${siteId}）`);
+  // Candidate validation must render dynamic and inherited-dynamic sites too;
+  // keep the frozen site configuration unchanged while building its artifacts.
+  const site = cmsGenerationContext()?.candidate ? { ...effectiveSite, staticMode: 'static' as const } : effectiveSite;
   const effectiveChannelIds = await getEffectivelyEnabledCmsChannelIds(siteId);
 
   const channels = await db.select().from(cmsChannels)

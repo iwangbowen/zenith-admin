@@ -15,6 +15,7 @@ import { db } from '../../db';
 import {
   cmsAds, cmsAdSlots, cmsChannels, cmsContents, cmsContentRevisions, cmsForms,
   cmsFriendLinks, cmsPages, cmsResourceRefs, cmsResources, cmsSites, cmsWidgets, managedFiles,
+  cmsReleases,
 } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import {
@@ -29,6 +30,7 @@ export const CMS_RESOURCE_OWNER_FIELDS = {
   site: ['logo', 'favicon', 'extend', 'settings'],
   content: ['coverImage', 'body', 'mediaData', 'extend', 'attachments', 'externalLink', 'sourceUrl'],
   contentVersion: ['snapshot'],
+  release: ['configurationSnapshot'],
   channel: ['image', 'pageContent', 'settings', 'linkUrl'],
   friendLink: ['logo', 'url'],
   ad: ['image', 'linkUrl'],
@@ -534,11 +536,19 @@ export async function listCmsResourceRefDetails(resourceId: number, siteId: numb
     idsByType.set(ref.ownerType, list);
   }
   const titles = await loadOwnerTitles(idsByType, siteId);
+  const versionIds = idsByType.get('contentVersion') ?? [];
+  const versionSources = versionIds.length ? await db.select({ id: cmsContentRevisions.id, contentId: cmsContentRevisions.contentId }).from(cmsContentRevisions)
+    .innerJoin(cmsContents, eq(cmsContentRevisions.contentId, cmsContents.id)).where(and(eq(cmsContents.siteId, siteId), inArray(cmsContentRevisions.id, versionIds))) : [];
+  const contentIds = new Map(versionSources.map((row) => [row.id, row.contentId]));
   return refs.map((ref) => ({
     kind: ref.ownerType,
     id: ref.ownerId,
     title: titles.get(`${ref.ownerType}:${ref.ownerId}`) ?? `#${ref.ownerId}`,
     field: ref.field,
+    href: ref.ownerType === 'content' ? `/cms/contents/edit?id=${ref.ownerId}&siteId=${siteId}`
+      : ref.ownerType === 'contentVersion' && contentIds.has(ref.ownerId) ? `/cms/contents/edit?id=${contentIds.get(ref.ownerId)}&siteId=${siteId}`
+        : ref.ownerType === 'widget' ? `/cms/widgets/edit?id=${ref.ownerId}&siteId=${siteId}`
+          : ref.ownerType === 'release' ? `/cms/publishing?tab=releases&release=${ref.ownerId}&site=${siteId}` : undefined,
   }));
 }
 
@@ -558,6 +568,8 @@ async function loadOwnerTitles(idsByType: Map<CmsResourceOwnerType, number[]>, s
   const pageIds = ids('page');
   const widgetIds = ids('widget');
   const formIds = ids('form');
+  const releaseIds = ids('release');
+  if (releaseIds.length) put('release', await db.select({ id: cmsReleases.id, title: cmsReleases.name }).from(cmsReleases).where(and(eq(cmsReleases.siteId, siteId), inArray(cmsReleases.id, releaseIds))));
 
   const [sites, contents, versions, channels, friendLinks, ads, pages, widgets, forms] = await Promise.all([
     siteIds.length

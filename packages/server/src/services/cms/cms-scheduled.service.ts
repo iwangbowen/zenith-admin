@@ -4,6 +4,7 @@ import { cmsContents, cmsContentWorkingCopies, cmsContentRevisions } from '../..
 import { config } from '../../config';
 import redis from '../../lib/redis';
 import logger from '../../lib/logger';
+import { APP_TIME_ZONE } from '../../lib/datetime';
 import { offlineExpiredCmsContents, cancelExpiredTopContents, flushViewCountBuffer } from './cms-contents.service';
 import { publishCmsContent } from './cms-contents.service';
 import { activateScheduledCmsReleases } from './cms-releases.service';
@@ -29,7 +30,7 @@ export async function publishScheduledCmsContents(): Promise<string> {
       .innerJoin(cmsContentRevisions, eq(cmsContentRevisions.id, cmsContentWorkingCopies.approvedRevisionId))
       .where(and(
         sql`${cmsContentRevisions.snapshot}->>'scheduledAt' is not null`,
-        sql`(${cmsContentRevisions.snapshot}->>'scheduledAt')::timestamptz <= ${now}`,
+        sql`((${cmsContentRevisions.snapshot}->>'scheduledAt')::timestamp AT TIME ZONE ${APP_TIME_ZONE}) <= ${now.toISOString()}::timestamptz`,
         sql`${cmsContentWorkingCopies.publishedRevisionId} is distinct from ${cmsContentRevisions.id}`,
         isNull(cmsContents.deletedAt), isNull(cmsContents.lockedAt),
       )).limit(200);

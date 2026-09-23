@@ -119,7 +119,9 @@ export default function ModelsPage() {
                     })
                   : null,
               };
-          return { ...withOptions, sort: i, detailSort: i };
+          const configuration = { ...(fieldRest.configuration as Record<string, unknown> | undefined) };
+          if (!(configuration.requiredWhen as { field?: string } | undefined)?.field) delete configuration.requiredWhen;
+          return { ...withOptions, configuration, sort: i, detailSort: i };
         }),
       };
     },
@@ -252,7 +254,7 @@ export default function ModelsPage() {
                     <Form.Input field={`${field}[detailGroup]`} noLabel placeholder="详情分组（如 文件信息）" style={{ width: 150 }} />
                     <Button type="danger" theme="borderless" icon={<Trash2 size={14} />} onClick={() => remove()} style={{ marginTop: 4 }} />
                     <FieldOptionSource field={field} />
-                    <ModelFieldRules field={field} />
+                    <ModelFieldRules field={field} siteId={siteId} />
                   </div>
                 ))}
                 <Button icon={<Plus size={14} />} onClick={() => add()}>添加字段</Button>

@@ -5,6 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import {
   cmsContents, cmsContentLikes, cmsContentFavorites, cmsMemberViewHistory, cmsChannels, cmsComments, cmsSites,
+  memberPointAccounts, memberPointTransactions,
 } from '../../db/schema';
 import type { CmsContentRow } from '../../db/schema';
 import { config } from '../../config';
@@ -12,7 +13,7 @@ import redis from '../../lib/redis';
 import logger from '../../lib/logger';
 import { formatDateTime } from '../../lib/datetime';
 import { currentMemberId } from '../../lib/member-context';
-import { changePoints } from '../member/member-points.service';
+import { changePoints, changePointsInTransaction, ensurePointAccount } from '../member/member-points.service';
 import { submitCmsComment } from './cms-comments.service';
 import { withPagination } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
@@ -27,6 +28,7 @@ import type { PaginatedResponse } from '@zenith/shared/core';
 import { formatDate } from '../../lib/datetime';
 import { getEffectivelyEnabledCmsChannelIds } from './cms-channel-visibility.service';
 import { resolveEffectiveCmsSite } from './cms-site-inheritance.service';
+import { withCmsPublicGeneration } from './cms-generation-storage.service';
 
 /** 每位会员保留的浏览历史上限（超出裁剪最旧） */
 const VIEW_HISTORY_LIMIT = 100;
@@ -68,13 +70,28 @@ export async function awardInteractionPoints(memberId: number, contentId: number
 }
 
 /** 投稿发布积分（publishCmsContent 调用；每内容仅一次） */
-export function awardContributionPoints(row: Pick<CmsContentRow, 'id' | 'memberId'>): void {
+export async function awardContributionPoints(row: Pick<CmsContentRow, 'id' | 'memberId'>): Promise<void> {
   if (!row.memberId) return;
-  void awardInteractionPoints(row.memberId, row.id, 'contribution');
+  const memberId = row.memberId;
+  const amount = CMS_INTERACTION_POINTS.contribution;
+  if (!amount) return;
+  await ensurePointAccount(memberId);
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext('cms-contribution-points'), ${row.id})`);
+    const [existing] = await tx.select({ id: memberPointTransactions.id }).from(memberPointTransactions).where(and(
+      eq(memberPointTransactions.memberId, memberId), eq(memberPointTransactions.bizType, 'cms_interaction'), eq(memberPointTransactions.bizId, `contribution:${row.id}`),
+    )).limit(1);
+    if (existing) return;
+    await tx.select({ id: memberPointAccounts.id }).from(memberPointAccounts).where(eq(memberPointAccounts.memberId, memberId)).for('update');
+    await changePointsInTransaction({ memberId, type: 'earn', amount, bizType: 'cms_interaction', bizId: `contribution:${row.id}`, remark: 'CMS 投稿发布奖励' }, tx);
+  });
 }
 
 // ─── 前置校验 ─────────────────────────────────────────────────────────────────
 async function ensureInteractableContent(contentId: number): Promise<CmsContentRow> {
+  const [identity] = await db.select({ siteId: cmsContents.siteId }).from(cmsContents).where(eq(cmsContents.id, contentId)).limit(1);
+  if (!identity) throw new HTTPException(404, { message: '内容不存在或未发布' });
+  return withCmsPublicGeneration(identity.siteId, async () => {
   const [row] = await db.select().from(cmsContents).where(eq(cmsContents.id, contentId)).limit(1);
   if (!row || !isCmsContentPubliclyVisible(row)) {
     throw new HTTPException(404, { message: '内容不存在或未发布' });
@@ -86,6 +103,7 @@ async function ensureInteractableContent(contentId: number): Promise<CmsContentR
     throw new HTTPException(404, { message: '内容不存在或未发布' });
   }
   return row;
+  });
 }
 
 // ─── 点赞 / 收藏 ──────────────────────────────────────────────────────────────

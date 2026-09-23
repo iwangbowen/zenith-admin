@@ -51,7 +51,9 @@ describe('CMS resource governance', () => {
 
   it('owner 写入与引用重建在同一事务内完成（索引不会漂移）', async () => {
     const source = await readFile(new URL('./cms-contents-ops.service.ts', import.meta.url), 'utf8');
-    expect(source).toContain('syncCmsResourceRefs(tx,');
+    expect(source).toContain('writeCmsSystemWorkingCopy(tx,');
+    const revisions = await readFile(new URL('./cms-content-revisions.service.ts', import.meta.url), 'utf8');
+    expect(revisions).toContain("syncCmsResourceRefs(tx, 'content', identity.id, identity.siteId, normalized)");
     expect(source).toContain('deleteCmsResourceRefsForOwner(tx,');
   });
 
@@ -116,15 +118,14 @@ describe('CMS resource governance', () => {
   it('跨站复制覆盖内容的全部素材字段（不只是正文与扩展字段）', async () => {
     const dist = await readFile(new URL('./cms-distributions-sync.service.ts', import.meta.url), 'utf8');
     // 增量同步：整个 patch（含 coverImage/mediaData/externalLink/sourceUrl）先跨站登记
-    expect(dist).toMatch(/adoptCmsResourcesIntoSite\(\s*tx,\s*rule\.targetSiteId,\s*updatePatch\(/);
+    expect(dist).toContain('adoptCmsResourcesIntoSite(tx, rule.targetSiteId, { ...updatePatch(source, body), attachments: source.attachments })');
     // 首次物化：六个字段都取自登记结果
     for (const field of ['coverImage: media.coverImage', 'mediaData: media.mediaData', 'body: media.body', 'extend: media.extend', 'externalLink: media.externalLink', 'sourceUrl: media.sourceUrl']) {
       expect(dist).toContain(field);
     }
     const contents = await readFile(new URL('./cms-contents-ops.service.ts', import.meta.url), 'utf8');
-    for (const field of ['coverImage: media.coverImage', 'mediaData: media.mediaData', 'sourceUrl: media.sourceUrl', 'externalLink: media.externalLink']) {
-      expect(contents).toContain(field);
-    }
+    expect(contents).toContain('adoptCmsResourcesIntoSite(db, targetSiteId, snapshot)');
+    expect(contents).toContain('createCmsContent({ ...snapshot, ...adopted,');
   });
 
   it('跨站登记走 insert-on-conflict + 补查，避免并发撞唯一索引', async () => {

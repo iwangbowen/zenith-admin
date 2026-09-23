@@ -20,3 +20,6 @@ export * from './cms-subscriptions';
 export * from './cms-tags';
 export * from './cms-upload';
 export * from './cms-words';
+
+export * from './cms-editorial';
+export * from './cms-releases';

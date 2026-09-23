@@ -257,7 +257,7 @@ export const CMS_RESOURCE_URI_PREFIX = 'cms-res://';
 
 /** 素材引用方（反向索引 owner_type 取值） */
 export const CMS_RESOURCE_OWNER_TYPES = [
-  'site', 'content', 'contentVersion', 'channel', 'friendLink', 'ad', 'page', 'widget', 'form',
+  'site', 'content', 'contentVersion', 'channel', 'friendLink', 'ad', 'page', 'widget', 'form', 'release',
 ] as const;
 
 export type CmsResourceOwnerType = (typeof CMS_RESOURCE_OWNER_TYPES)[number];
@@ -266,6 +266,7 @@ export const CMS_RESOURCE_OWNER_TYPE_LABELS: Record<CmsResourceOwnerType, string
   site: '站点',
   content: '内容',
   contentVersion: '内容版本',
+  release: '发布单',
   channel: '栏目',
   friendLink: '友情链接',
   ad: '广告',
@@ -603,6 +604,7 @@ export const CMS_CONTENT_OP_ACTION_LABELS: Record<(typeof CMS_CONTENT_OP_ACTIONS
 };
 
 export const CMS_FIELD_TYPES = ['text', 'textarea', 'richtext', 'number', 'date', 'datetime', 'image', 'file', 'select', 'radio', 'checkbox', 'switch', 'reference', 'references', 'object', 'array', 'blocks'] as const;
+export const CMS_COMPONENT_FIELD_TYPES = ['text', 'textarea', 'richtext', 'number', 'date', 'datetime', 'switch'] as const;
 
 export const CMS_FIELD_TYPE_LABELS: Record<(typeof CMS_FIELD_TYPES)[number], string> = {
   text: '单行文本',

@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import { escapeHtml } from '../core/text';
+import { lazyRecursive } from '../core/validation';
 
 export const CMS_DOCUMENT_TAGS = ['p', 'br', 'hr', 'div', 'span', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'b', 'em', 'i', 'u', 's', 'sub', 'sup', 'blockquote', 'pre', 'code', 'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'a', 'img', 'figure', 'figcaption', 'video', 'audio', 'source'] as const;
 const textNodeSchema = z.object({ id: z.string().min(1).max(100), kind: z.literal('text'), text: z.string().max(2_000_000) });
@@ -8,10 +9,10 @@ const elementFieldsSchema = z.object({
   attributes: z.record(z.string().max(100), z.string().max(10_000)),
 });
 export type CmsDocumentNode = z.infer<typeof textNodeSchema> | (z.infer<typeof elementFieldsSchema> & { children: CmsDocumentNode[] });
-export const cmsDocumentNodeSchema: z.ZodType<CmsDocumentNode> = z.union([
+export const cmsDocumentNodeSchema: z.ZodType<CmsDocumentNode> = lazyRecursive(() => z.union([
   textNodeSchema,
-  elementFieldsSchema.extend({ get children() { return z.array(cmsDocumentNodeSchema).max(10_000); } }),
-]);
+  elementFieldsSchema.extend({ children: z.array(cmsDocumentNodeSchema).max(10_000) }),
+])).meta({ id: 'CmsDocumentNode' });
 export const cmsBodyDocumentSchema = z.object({
   schemaVersion: z.literal(1),
   nodes: z.array(cmsDocumentNodeSchema).max(10_000),

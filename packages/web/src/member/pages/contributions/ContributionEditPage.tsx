@@ -43,13 +43,14 @@ export default function ContributionEditPage() {
     if (!body.trim()) { Toast.warning('请输入正文'); return; }
     await saveMutation.mutateAsync({
       id,
+      expectedVersion: detailQuery.data?.version,
       values: { siteId, channelId, title: title.trim(), summary: summary.trim() || undefined, body },
     });
     Toast.success('投稿已提交，等待审核');
     navigate('/contributions', { replace: true });
   }
 
-  const rejected = detailQuery.data?.status === 'rejected';
+  const rejected = detailQuery.data?.editorialStatus === 'rejected';
 
   return (
     <MemberPage title={id ? '修改投稿' : '写投稿'} showBack>
@@ -95,7 +96,7 @@ export default function ContributionEditPage() {
         </div>
       </div>
       <div style={{ fontSize: 12, color: 'var(--m-text-secondary)', marginTop: 10, lineHeight: 1.6 }}>
-        投稿提交后将进入平台审核，通过后自动发布到所选栏目；请勿提交违法违规内容。
+        投稿提交后将进入平台审核，通过后进入发布流程，生效状态可在投稿列表查看；请勿提交违法违规内容。
       </div>
     </MemberPage>
   );

@@ -9,7 +9,7 @@ import type { TaskHandlerRegistration, TaskRunContext } from '../../lib/task-cen
  * 各阶段的取数 SQL 与批量重建的语义由真实数据库验证，本文件只关心编排。
  */
 const runtime = vi.hoisted(() => ({
-  pages: new Map<unknown, Array<Array<{ id: number }>>>(),
+  pages: new Map<unknown, Array<Array<{ id: number; snapshot?: Record<string, unknown>; configurationSnapshot?: Record<string, unknown> }>>>(),
   fetched: [] as unknown[],
 }));
 
@@ -43,7 +43,7 @@ vi.mock('./cms-resource-refs.service', async (importOriginal) => ({
   rebuildCmsResourceRefsForOwners: vi.fn(async () => undefined),
 }));
 
-import { cmsContents, cmsSites } from '../../db/schema';
+import { cmsContentWorkingCopies, cmsReleases, cmsSites } from '../../db/schema';
 import { registerTaskHandler } from '../../lib/task-center';
 import { rebuildCmsResourceRefsForOwners } from './cms-resource-refs.service';
 import { CMS_RESOURCE_REF_REBUILD_TASK, registerCmsResourceTaskHandler } from './cms-resource-tasks';
@@ -72,20 +72,24 @@ beforeEach(() => {
 describe('CMS 素材引用索引重建：分片编排', () => {
   it('rebuilds each owner type in id-ordered chunks, one transaction per chunk, and checkpoints the cursor', async () => {
     runtime.pages.set(cmsSites, [[{ id: 1 }]]);
-    runtime.pages.set(cmsContents, [range(1, 200), range(201, 400), range(401, 450)]);
+    runtime.pages.set(cmsContentWorkingCopies, [range(1, 200), range(201, 400), range(401, 450)].map((rows) => rows.map((row) => ({ ...row, snapshot: { body: `工作稿正文 ${row.id}` } }))));
+    runtime.pages.set(cmsReleases, [[{ id: 701, configurationSnapshot: { pages: [{ coverImage: 'cms-res://21' }] } }]]);
     const { ctx, progress, reportItems } = makeCtx();
 
     const result = await handler.run(ctx);
 
-    // 站点 1 片 + 内容 3 片 = 4 次整批重建，每次都拿到事务执行器
+    // 站点 1 片 + 工作稿 3 片 + 发布单 1 片 = 5 次整批重建，每次都拿到事务执行器
     const calls = vi.mocked(rebuildCmsResourceRefsForOwners).mock.calls;
-    expect(calls).toHaveLength(4);
+    expect(calls).toHaveLength(5);
     expect(calls.every(([executor]) => executor === TX)).toBe(true);
     const contentCalls = calls.filter(([, ownerType]) => ownerType === 'content');
     expect(contentCalls.map(([, , , owners]) => [owners[0].ownerId, owners.at(-1)!.ownerId, owners.length]))
       .toEqual([[1, 200, 200], [201, 400, 200], [401, 450, 50]]);
-    // 内容表恰好取 3 片：最后一片不足 200 即停，不再多发一次空查询
-    expect(runtime.fetched.filter((table) => table === cmsContents)).toHaveLength(3);
+    expect(contentCalls[0][3][0].row).toMatchObject({ id: 1, body: '工作稿正文 1' });
+    const releaseCalls = calls.filter(([, ownerType]) => ownerType === 'release');
+    expect(releaseCalls[0][3][0]).toMatchObject({ ownerId: 701, row: { configurationSnapshot: { pages: [{ coverImage: 'cms-res://21' }] } } });
+    // 工作稿表恰好取 3 片：最后一片不足 200 即停，不再多发一次空查询
+    expect(runtime.fetched.filter((table) => table === cmsContentWorkingCopies)).toHaveLength(3);
 
     // 断点随每片推进：内容是第 3 个阶段（index 2）
     const checkpoints = progress.mock.calls.map(([update]) => (update as { checkpoint: unknown }).checkpoint);
@@ -96,11 +100,11 @@ describe('CMS 素材引用索引重建：分片编排', () => {
       { processed: 3, cursor: 0, stageCount: 0 },
     ]));
     expect(reportItems).toHaveBeenCalledWith([expect.objectContaining({ key: 'stage-content', message: '已重建 450 个对象的引用' })]);
-    expect(result).toEqual({ siteId: 1, processed: 8, total: 8 });
+    expect(result).toEqual({ siteId: 1, processed: 9, total: 9 });
   });
 
   it('resumes from the checkpointed stage and cursor instead of restarting the stage', async () => {
-    runtime.pages.set(cmsContents, [range(401, 450)]);
+    runtime.pages.set(cmsContentWorkingCopies, [range(401, 450)]);
     const { ctx, reportItems } = makeCtx({ processed: 2, cursor: 400, stageCount: 400 });
 
     await handler.run(ctx);
@@ -115,12 +119,12 @@ describe('CMS 素材引用索引重建：分片编排', () => {
 
   it('stops right after the chunk during which cancellation was requested', async () => {
     runtime.pages.set(cmsSites, [[{ id: 1 }]]);
-    runtime.pages.set(cmsContents, [range(1, 200), range(201, 400)]);
+    runtime.pages.set(cmsContentWorkingCopies, [range(1, 200), range(201, 400)]);
     const { ctx } = makeCtx(null, 1);
 
     const result = await handler.run(ctx);
 
     expect(rebuildCmsResourceRefsForOwners).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ siteId: 1, processed: 0, total: 8, cancelled: true });
+    expect(result).toEqual({ siteId: 1, processed: 0, total: 9, cancelled: true });
   });
 });

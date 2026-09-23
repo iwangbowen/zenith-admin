@@ -3,7 +3,7 @@ import { Jieba } from '@node-rs/jieba';
 import { dict } from '@node-rs/jieba/dict.js';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { db } from '../../db';
-import { cmsContents, cmsChannels, cmsSearchWords } from '../../db/schema';
+import { cmsContents, cmsChannels, cmsSearchWords, cmsModelVersions } from '../../db/schema';
 import { formatNullableDateTime } from '../../lib/datetime';
 import { keywordCondition, buildWhere, withPagination } from '../../lib/where-helpers';
 import { config } from '../../config';
@@ -483,14 +483,19 @@ export async function rebuildSearchIndex(options: {
       body: cmsContents.body,
       extend: cmsContents.extend,
       siteId: cmsContents.siteId,
+      modelVersionId: cmsContents.modelVersionId,
     })
       .from(cmsContents)
-      .where(scope ? and(scope, cursor, isNull(cmsContents.lockedAt)) : and(cursor, isNull(cmsContents.lockedAt)))
+      .where(buildWhere(scope, cursor, cmsGenerationContext()?.candidate ? undefined : isNull(cmsContents.lockedAt)))
       .orderBy(cmsContents.id)
       .limit(batchSize);
     if (rows.length === 0) break;
+    const versionIds = [...new Set(rows.map((row) => row.modelVersionId).filter((id): id is number => id != null))];
+    const versions = versionIds.length ? await db.select({ id: cmsModelVersions.id, fields: cmsModelVersions.fields }).from(cmsModelVersions).where(inArray(cmsModelVersions.id, versionIds)) : [];
+    const searchableByVersion = new Map(versions.map((version) => [version.id, new Set(version.fields.filter((field) => field.searchable).map((field) => field.name))]));
     for (const row of rows) {
-      const extendTexts = Object.values(row.extend ?? {}).filter((v): v is string => typeof v === 'string');
+      const searchable = row.modelVersionId ? searchableByVersion.get(row.modelVersionId) : undefined;
+      const extendTexts = extendSearchTexts(Object.fromEntries(Object.entries(row.extend ?? {}).filter(([key]) => searchable?.has(key))));
       await db.update(cmsContents)
         .set({ searchVector: buildSearchVector({ ...row, extendTexts }) })
         .where(eq(cmsContents.id, row.id));

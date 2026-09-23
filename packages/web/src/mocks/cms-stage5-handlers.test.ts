@@ -1,3 +1,4 @@
+import { activateMockCmsRevision, freezeMockCmsRevision, getMockCmsWorkingContent, resetMockCmsRevisions } from './utils/cms-revisions';
 import { afterEach, describe, expect, it } from 'vitest';
 import { CMS_SECRET_MASK } from '@zenith/shared/cms';
 import type { CmsSite } from '@zenith/shared/cms';
@@ -19,6 +20,7 @@ const snapshots = {
 };
 
 afterEach(() => {
+  resetMockCmsRevisions();
   mockCmsSites.splice(0, mockCmsSites.length, ...structuredClone(snapshots.sites));
   mockCmsChannels.splice(0, mockCmsChannels.length, ...structuredClone(snapshots.channels));
   mockCmsContents.splice(0, mockCmsContents.length, ...structuredClone(snapshots.contents));
@@ -113,8 +115,10 @@ describe('CMS Stage 5 MSW handlers', () => {
 
   it('sanitizes copied HTML and creates only a target draft through a governed rule', async () => {
     const source = mockCmsContents.find((content) => content.id === 1)!;
+    getMockCmsWorkingContent(source.id);
     source.body = '<p onclick="alert(1)">safe</p><script>alert(2)</script>';
     source.version += 2;
+    activateMockCmsRevision(freezeMockCmsRevision(source.id, 'publication').id);
     const created = await call('POST', '/api/cms/distributions', {
       name: '安全复制演示',
       sourceSiteId: 1,
@@ -142,15 +146,16 @@ describe('CMS Stage 5 MSW handlers', () => {
     expect(target?.body).not.toMatch(/script|onclick/i);
   });
 
-  it('refuses to delete a locked mapping rule and otherwise materializes the last body snapshot', async () => {
+  it('refuses to delete a locked mapping rule and preserves the independent target working snapshot', async () => {
     const target = mockCmsContents.find((content) => content.id === 6)!;
+    target.body = '<p>目标自己的完整工作稿</p>';
     target.lockedAt = '2026-07-24 08:00:00';
     expect((await call('DELETE', '/api/cms/distributions/1')).status).toBe(423);
     target.lockedAt = null;
     expect((await call('DELETE', '/api/cms/distributions/1')).status).toBe(200);
     expect(target.distributionRuleId).toBeNull();
     expect(target.mappingSourceId).toBeNull();
-    expect(target.body).toContain('Zenith Admin 全新 CMS 模块');
+    expect(target.body).toBe('<p>目标自己的完整工作稿</p>');
   });
 
   it('submits one fenced publishing task per enabled site in a group', async () => {

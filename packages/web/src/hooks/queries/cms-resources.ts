@@ -7,6 +7,25 @@ import { unwrap } from '@/lib/query';
 import { request } from '@/utils/request';
 
 export type CmsResourceListParams = NonNullable<QueryOf<typeof cmsResourceContract.list>>;
+export type CmsAssetRightsRecord = OutputOf<typeof cmsResourceContract.rights> & { id: number };
+
+export function useCmsAssetRights(id?: number, enabled = true) {
+  const query = useApiQuery(cmsResourceContract.rights, { params: { id: id ?? 0 } }, { enabled: enabled && id !== undefined });
+  return { ...query, data: query.data ? { ...query.data, id: query.data.resourceId } : undefined };
+}
+export function useCmsAssetVersions(id?: number) {
+  return useApiQuery(cmsResourceContract.versions, { params: { id: id ?? 0 } }, { enabled: id !== undefined });
+}
+export function useSaveCmsAssetRights() {
+  const mutation = useApiMutation(cmsResourceContract.updateRights, { invalidate: (qc) => {
+    void qc.invalidateQueries({ queryKey: contractKey(cmsResourceContract.rights) });
+    void qc.invalidateQueries({ queryKey: contractKey(cmsResourceContract.list) });
+  } });
+  return { isPending: mutation.isPending, mutateAsync: async ({ id, values }: { id?: number; values: BodyOf<typeof cmsResourceContract.updateRights> }) => {
+    const result = await mutation.mutateAsync({ params: { id: id! }, body: values });
+    return { ...result, id: result.resourceId };
+  } };
+}
 
 export const cmsResourceKeys = {
   lists: contractKey(cmsResourceContract.list),

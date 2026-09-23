@@ -340,7 +340,7 @@ export const createCmsContentSchema = z.object({
 });
 
 export const updateCmsContentSchema = partialForUpdate(createCmsContentSchema).omit({ siteId: true, contentType: true }).extend({
-  saveMode: z.enum(['manual', 'autosave']).default('manual'),
+  saveMode: z.enum(['manual', 'autosave']).optional(),
   /** 工作稿 CAS 必填；省略或陈旧版本均拒绝写入。 */
   expectedVersion: z.number().int().positive(),
 });

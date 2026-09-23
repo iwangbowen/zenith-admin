@@ -6,9 +6,9 @@ import { eq, asc, desc, and, or, inArray, notInArray, isNull, isNotNull, ne, lt,
 import { db, withoutDbExecutor } from '../../db';
 import { withCmsPublicGeneration } from './cms-generation-storage.service';
 import { cmsGenerationContext } from './cms-generation-context';
-import { cmsContents, cmsContentTags, cmsContentChannels, cmsContentRelations, cmsContentWorkingCopies, cmsChannels, cmsTags } from '../../db/schema';
+import { cmsContents, cmsContentTags, cmsContentChannels, cmsContentRelations, cmsContentWorkingCopies, cmsChannels, cmsTags, users } from '../../db/schema';
 import type { CmsContentRow, CmsTagRow } from '../../db/schema';
-import { formatTimestamps } from '../../lib/datetime';
+import { formatTimestamps, parseDateRangeStart, parseDateRangeEnd, APP_TIME_ZONE } from '../../lib/datetime';
 import { pickEntity } from '../../lib/entity-map';
 import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { config } from '../../config';
@@ -16,7 +16,6 @@ import redis from '../../lib/redis';
 import { getAccessibleChannelIds, assertChannelAccess } from './cms-channels.service';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 import { cmsContentContract, cmsContentSchema, type CmsEditorialStatus, type CmsContentRevisionSnapshot, type CmsBodyDocument } from '@zenith/shared/cms';
-import { pageOffset } from '../../lib/pagination';
 import { resolveCmsContentRow, resolveCmsContentRows } from './cms-resource-refs.service';
 import { buildCmsContentUrls } from './cms-urls';
 import { getEffectivelyEnabledCmsChannelIds } from './cms-channel-visibility.service';
@@ -139,9 +138,14 @@ export async function buildCmsContentListWhere(q: CmsContentListFilter): Promise
   const accessibleChannelIds = await getAccessibleChannelIds();
   const scopeCondition = await cmsContentDataScope();
   const workingChannel = sql<number>`(${cmsContentWorkingCopies.snapshot}->>'channelId')::integer`;
+  const calendarStart = parseDateRangeStart(q.calendarFrom)?.toISOString();
+  const calendarEnd = parseDateRangeEnd(q.calendarTo)?.toISOString();
   const workingCondition = buildWhere(
     eq(cmsContentWorkingCopies.contentId, cmsContents.id),
-    q.calendarFrom || q.calendarTo ? or(...['scheduledAt', 'expireAt', 'dueAt'].map((field) => buildWhere(...dateRangeConditions(sql`nullif(${cmsContentWorkingCopies.snapshot}->>${field}, '')::timestamp`, q.calendarFrom, q.calendarTo)))) : undefined,
+    q.calendarFrom || q.calendarTo ? or(...['scheduledAt', 'expireAt', 'dueAt'].map((field) => {
+      const at = sql`nullif(${cmsContentWorkingCopies.snapshot}->>${field}, '')::timestamp AT TIME ZONE ${APP_TIME_ZONE}`;
+      return buildWhere(calendarStart ? sql`(${at}) >= ${calendarStart}::timestamptz` : undefined, calendarEnd ? sql`(${at}) <= ${calendarEnd}::timestamptz` : undefined);
+    })) : undefined,
     q.channelId ? eq(workingChannel, q.channelId) : undefined,
     accessibleChannelIds !== null ? inArray(workingChannel, accessibleChannelIds) : undefined,
     q.editorialStatus ? eq(cmsContentWorkingCopies.editorialStatus, q.editorialStatus) : undefined,
@@ -177,18 +181,15 @@ export async function listCmsContents(q: QueryOutputOf<typeof cmsContentContract
     pageSize: q.pageSize,
     count: () => db.$count(cmsContents, where),
     rows: async () => {
-      const rows = await db.query.cmsContents.findMany({
-        where,
-        // 列表不输出正文与检索向量（两个最大的 TOAST 列）；attachments 保留给列表的附件计数角标
-        columns: { body: false, searchVector: false, extend: false, mediaData: false, attachments: false },
-        with: {
-          channel: { columns: { name: true, path: true, detailPathRule: true } },
-          lockedByUser: { columns: { nickname: true } },
-        },
-        orderBy: [desc(cmsContents.isTop), desc(cmsContents.topWeight), desc(cmsContents.id)],
-        limit: q.pageSize,
-        offset: pageOffset(q.page, q.pageSize),
-      });
+      const { extend: _extend, mediaData: _mediaData, ...adminColumns } = cmsContentListColumns;
+      // Explicit joins preserve the working-copy subquery's table identity.
+      // Relational findMany remaps every column in raw SQL to its root alias.
+      const rows = await withPagination(db.select({ ...adminColumns,
+        channel: { name: cmsChannels.name, path: cmsChannels.path, detailPathRule: cmsChannels.detailPathRule },
+        lockedByUser: { nickname: users.nickname },
+      }).from(cmsContents).leftJoin(cmsChannels, eq(cmsChannels.id, cmsContents.channelId))
+        .leftJoin(users, eq(users.id, cmsContents.lockedBy)).where(where)
+        .orderBy(desc(cmsContents.isTop), desc(cmsContents.topWeight), desc(cmsContents.id)).$dynamic(), q.page, q.pageSize);
       if (!rows.length) return [];
       const drafts = await db.select({
         contentId: cmsContentWorkingCopies.contentId, version: cmsContentWorkingCopies.version,

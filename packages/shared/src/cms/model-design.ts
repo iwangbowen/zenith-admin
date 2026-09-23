@@ -1,7 +1,7 @@
 import * as z from 'zod';
-import { CMS_FIELD_TYPES } from './constants';
+import { CMS_COMPONENT_FIELD_TYPES, CMS_FIELD_TYPES } from './constants';
 
-const childFields = z.object({ name: z.string().regex(/^[a-z][a-z0-9_]*$/), label: z.string().min(1), fieldType: z.enum(CMS_FIELD_TYPES), required: z.boolean().optional() });
+const childFields = z.object({ name: z.string().regex(/^[a-z][a-z0-9_]*$/), label: z.string().min(1), fieldType: z.enum(CMS_COMPONENT_FIELD_TYPES), required: z.boolean().optional() });
 export const cmsFieldConfigurationSchema = z.object({
   min: z.number().optional(), max: z.number().optional(),
   minLength: z.int().min(0).optional(), maxLength: z.int().min(1).max(2_000_000).optional(),
@@ -18,7 +18,7 @@ export const cmsQualityIssueSchema = z.object({
 });
 export type CmsQualityIssue = z.infer<typeof cmsQualityIssueSchema>;
 
-type FieldDefinition = z.infer<typeof childFields> & { configuration?: CmsFieldConfiguration | null; options?: { value: string; label: string }[] | null; resolvedOptions?: { value: string; label: string }[] };
+type FieldDefinition = Omit<z.infer<typeof childFields>, 'fieldType'> & { fieldType: (typeof CMS_FIELD_TYPES)[number]; configuration?: CmsFieldConfiguration | null; options?: { value: string; label: string }[] | null; resolvedOptions?: { value: string; label: string }[] };
 export function validateCmsStructuredFields(fields: readonly FieldDefinition[], values: Record<string, unknown>, strict: boolean, prefix = 'extend'): CmsQualityIssue[] {
   const issues: CmsQualityIssue[] = [];
   const issue = (fieldPath: string, message: string, rule = 'model') => issues.push({ rule, severity: 'error', fieldPath, message });

@@ -5,9 +5,10 @@ import { formatBytes } from '@zenith/shared/core';
 import { formatDateTime } from '@/utils/date';
 import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { cmsModelFieldOptions } from './model-field-renderer';
+import './ContentRevisionViewer.css';
 
 /** 审批、历史和业务详情共用完整稿件视图；调用方获取有权查看的确定修订。 */
-export function ContentRevisionViewer({ content, fields = [], heading = '稿件详情' }: Readonly<{
+export function ContentRevisionViewer({ content, fields = content.modelFields ?? [], heading = '稿件详情' }: Readonly<{
   content: CmsContent;
   fields?: readonly CmsModelField[];
   heading?: string;
@@ -23,13 +24,17 @@ export function ContentRevisionViewer({ content, fields = [], heading = '稿件�
     <Space vertical align="start" spacing={20} style={{ width: '100%' }}>
       <div style={{ width: '100%' }}>
         <Typography.Title heading={5}>{heading}</Typography.Title>
-        <Space wrap><Tag>{CMS_CONTENT_TYPE_LABELS[content.contentType]}</Tag><Tag>{CMS_CONTENT_STATUS_LABELS[content.status]}</Tag><Typography.Text type="tertiary">版本 {content.version}</Typography.Text></Space>
+        <Space wrap><Tag>{CMS_CONTENT_TYPE_LABELS[content.contentType]}</Tag><Tag>{CMS_CONTENT_STATUS_LABELS[content.status]}</Tag><Typography.Text type="tertiary">{content.revisionId ? `固定修订 #${content.revisionId}` : `工作稿 v${content.version}`}</Typography.Text></Space>
         <Typography.Title heading={4}>{content.title || '未命名内容'}</Typography.Title>
         {content.subTitle ? <Typography.Paragraph>{content.subTitle}</Typography.Paragraph> : null}
         {content.summary ? <Typography.Paragraph type="secondary">{content.summary}</Typography.Paragraph> : null}
         {content.coverImage ? <Image src={content.coverImage} alt={content.socialImageAlt || content.title} width={240} /> : null}
       </div>
       <Descriptions row data={[
+        { key: '语言', value: content.locale },
+        { key: '内容负责人', value: content.ownerId ? `用户 #${content.ownerId}` : EMPTY_PLACEHOLDER },
+        { key: '审稿截止', value: content.dueAt ? formatDateTime(content.dueAt) : EMPTY_PLACEHOLDER },
+        { key: '源修订', value: content.sourceRevisionId ? `#${content.sourceRevisionId}` : EMPTY_PLACEHOLDER },
         { key: '栏目', value: content.channelName ?? `#${content.channelId}` },
         { key: '作者 / 责任编辑', value: [content.author, content.editor].filter(Boolean).join(' / ') || EMPTY_PLACEHOLDER },
         { key: '来源', value: content.source || EMPTY_PLACEHOLDER },

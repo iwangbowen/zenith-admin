@@ -12,6 +12,8 @@ import { registerCmsWebhookTaskHandler } from './cms-webhook.service';
 import { registerCmsWidgetTaskHandlers } from './cms-widget-tasks';
 import { registerCmsReleaseTaskHandler } from './cms-releases.service';
 import { registerCmsCdnTaskHandler } from './cms-cdn.service';
+import { registerCmsPublicationEffectTasks } from './cms-publication-effects.service';
+import type { CmsCapturedConfiguration } from './cms-configuration-snapshot.service';
 
 /** CMS 任务中心 handler 注册（index.ts 启动流程中、registerSystemTasks 之前调用） */
 export function registerCmsTaskHandlers(): void {
@@ -25,6 +27,7 @@ export function registerCmsTaskHandlers(): void {
   registerCmsWidgetTaskHandlers();
   registerCmsReleaseTaskHandler();
   registerCmsCdnTaskHandler();
+  registerCmsPublicationEffectTasks();
 
   registerTaskHandler({
     taskType: 'cms-search-reindex',
@@ -53,13 +56,9 @@ export function registerCmsTaskHandlers(): void {
         },
       });
       const { createCmsConfigurationRelease } = await import('./cms-releases.service');
-      if (siteId) await createCmsConfigurationRelease(siteId, ctx.taskId, '检索词典与索引更新');
-      else {
-        const { db } = await import('../../db');
-        const { cmsSites } = await import('../../db/schema');
-        const sites = await db.select({ id: cmsSites.id }).from(cmsSites);
-        for (const site of sites) await createCmsConfigurationRelease(site.id, ctx.taskId, '检索词典与索引更新');
-      }
+      const captures = ctx.payload.configurationCaptures as Record<string, CmsCapturedConfiguration> | undefined;
+      if (!captures) throw new Error('检索任务缺少提交时配置快照，请重新提交');
+      for (const [id, frozen] of Object.entries(captures)) await createCmsConfigurationRelease(Number(id), ctx.taskId, '检索词典与索引更新', frozen);
       return { processed: processedBefore + processed };
     },
   });

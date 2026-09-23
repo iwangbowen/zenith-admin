@@ -103,9 +103,12 @@ export const SEED_CMS_TAGS: CmsTag[] = [
 ];
 
 /** coverThumb 由封面素材派生而非独立字段，种子数据不声明 */
+const CMS_SEED_EDITORIAL_FIELDS = { ownerId: null, locale: 'zh-CN', translationOfId: null, sourceRevisionId: null, dueAt: null,
+  editorialStatus: 'clean' as const, publishedRevisionId: null, submittedRevisionId: null, approvedRevisionId: null, hasUnpublishedChanges: false };
 export const SEED_CMS_CONTENTS: (Omit<CmsContent, 'coverThumb'> & { tagIds: number[] })[] = [
   {
     id: 1, siteId: 1, channelId: 1, channelName: '新闻中心', modelId: 1,
+    ...CMS_SEED_EDITORIAL_FIELDS,
     contentType: 'article', mediaData: {},
     titleStyle: {}, title: 'Zenith Admin 发布 CMS 内容管理模块', subTitle: null, shortTitle: 'CMS 模块发布', slug: null,
     summary: '全新 CMS 模块支持多站点、SEO 优化、SSR 静态化发布与基于 PostgreSQL 的中文全文检索。',
@@ -118,6 +121,7 @@ export const SEED_CMS_CONTENTS: (Omit<CmsContent, 'coverThumb'> & { tagIds: numb
   },
   {
     id: 2, siteId: 1, channelId: 1, channelName: '新闻中心', modelId: 1,
+    ...CMS_SEED_EDITORIAL_FIELDS,
     contentType: 'article', mediaData: {},
     titleStyle: {}, title: '内容管理系统选型指南：静态化与全文检索实践', subTitle: null, shortTitle: null, slug: null,
     summary: '解析传统 CMS 的静态化方案与现代 SSR 渲染的结合方式，以及不依赖 Elasticsearch 的 PostgreSQL 全文检索实现。',
@@ -130,6 +134,7 @@ export const SEED_CMS_CONTENTS: (Omit<CmsContent, 'coverThumb'> & { tagIds: numb
   },
   {
     id: 3, siteId: 1, channelId: 2, channelName: '产品中心', modelId: 2,
+    ...CMS_SEED_EDITORIAL_FIELDS,
     contentType: 'article', mediaData: {},
     titleStyle: {}, title: 'Zenith 企业版', subTitle: '一体化数字化底座', shortTitle: null, slug: 'enterprise',
     summary: '面向中大型企业的一体化数字化底座。',
@@ -146,6 +151,7 @@ export const SEED_CMS_CONTENTS: (Omit<CmsContent, 'coverThumb'> & { tagIds: numb
   },
   {
     id: 4, siteId: 1, channelId: 1, channelName: '新闻中心', modelId: 1,
+    ...CMS_SEED_EDITORIAL_FIELDS,
     contentType: 'album', mediaData: {
       images: [
         { url: 'https://picsum.photos/seed/zenith-album-1/1200/800', thumb: 'https://picsum.photos/seed/zenith-album-1/400/267', caption: '发布会现场' },
@@ -166,6 +172,7 @@ export const SEED_CMS_CONTENTS: (Omit<CmsContent, 'coverThumb'> & { tagIds: numb
   },
   {
     id: 5, siteId: 1, channelId: 1, channelName: '新闻中心', modelId: 1,
+    ...CMS_SEED_EDITORIAL_FIELDS,
     contentType: 'media', mediaData: {
       mediaType: 'video',
       mediaUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
@@ -185,6 +192,7 @@ export const SEED_CMS_CONTENTS: (Omit<CmsContent, 'coverThumb'> & { tagIds: numb
   },
   {
     id: 6, siteId: 2, channelId: 4, channelName: '技术动态', modelId: 1,
+    ...CMS_SEED_EDITORIAL_FIELDS, editorialStatus: 'draft', hasUnpublishedChanges: true,
     contentType: 'article', mediaData: {},
     titleStyle: {}, title: 'Zenith Admin 发布 CMS 内容管理模块', subTitle: null, shortTitle: 'CMS 模块发布', slug: null,
     summary: '由 Stage 5 分发规则映射自根站点；正文跟随来源，发布仍需走子站审核管道。',
@@ -215,7 +223,7 @@ export const SEED_CMS_CONTENT_VERSIONS: CmsContentVersion[] = [
     contentId: 1,
     version: 1,
     title: 'Zenith Admin 发布 CMS 内容管理模块',
-    snapshot: { title: 'Zenith Admin 发布 CMS 内容管理模块', summary: '首个已发布版本' },
+    snapshot: { ...SEED_CMS_CONTENTS[0] }, hash: 'seed-content-1-v1', kind: 'publication', sourceVersion: 1,
     remark: 'Demo 初始发布快照',
     createdByName: '管理员',
     createdAt: SEED_DATE,

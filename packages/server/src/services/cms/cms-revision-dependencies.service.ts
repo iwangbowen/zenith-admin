@@ -7,7 +7,7 @@ import type { DbExecutor } from '../../db/types';
 import { requireRow } from '../../lib/db-assert';
 import { extractCmsResourceIds, resolveCmsResourceUris } from '../../lib/cms-resource-uri';
 import { cmsSnapshotHash, ensureCmsAssetVersion } from './cms-design-versions.service';
-import { normalizeCmsContentDocument, renderCmsContentDocument } from './cms-document.service';
+import { normalizeCmsContentDocument, renderCmsContentDocument, sanitizeCmsModelValues } from './cms-document.service';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 
 /** Freeze definitions and binary identities before the immutable revision is inserted. */
@@ -23,6 +23,7 @@ export async function freezeCmsRevisionDependencies(tx: DbExecutor, siteId: numb
     requireRow(version, '模型版本不存在');
     const issues = validateCmsStructuredFields(version.fields, snapshot.extend ?? {}, options.strict ?? false);
     if (issues.length) throw new HTTPException(400, { message: issues.map((issue) => `${issue.fieldPath}: ${issue.message}`).join('；') });
+    snapshot = { ...snapshot, extend: sanitizeCmsModelValues(version.fields, snapshot.extend ?? {}) };
     for (const field of version.fields.filter((field) => field.fieldType === 'reference' || field.fieldType === 'references')) {
       const value = snapshot.extend?.[field.name];
       const ids = typeof value === 'number' ? [value] : Array.isArray(value) ? value.filter((id): id is number => typeof id === 'number') : [];

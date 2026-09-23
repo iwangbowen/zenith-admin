@@ -23,10 +23,13 @@ vi.mock('./cms-site-publish-lock.service', async (importOriginal) => ({
 import { insertCmsPublishOutbox } from './cms-publish-outbox.service';
 import { assertLockedCmsPublishPreconditions, canAutoOfflineCmsContent } from './cms-contents.service';
 import type { CmsContentRow } from '../../db/schema';
+import { assertCmsContentVersion } from './cms-content-revisions.service';
+
+const executorDouble = () => ({ select: () => ({ from: () => ({ where: () => ({ limit: async () => [] }) }) }) }) as unknown as DbTransaction;
 
 describe('CMS standard publish pipeline behavior', () => {
   it('persists a content snapshot task through the caller transaction without pre-commit enqueue', async () => {
-    const executor = {} as DbTransaction;
+    const executor = executorDouble();
     const row = { id: 42, taskType: 'cms-publish-build', payload: {}, status: 'pending' };
     mocks.persistAsyncTask.mockResolvedValueOnce(row);
     const task = await insertCmsPublishOutbox(executor, {
@@ -64,6 +67,7 @@ describe('CMS standard publish pipeline behavior', () => {
           // publicRevision.
           expectedPublicRevision: 0,
           systemTriggered: true,
+          configurationCapture: expect.objectContaining({ baseGenerationId: null, items: [], snapshot: expect.objectContaining({ tables: {}, replaceAll: [] }) }),
         }),
       }),
     );
@@ -72,7 +76,7 @@ describe('CMS standard publish pipeline behavior', () => {
 
   it('propagates outbox insertion failure so the surrounding content transaction can roll back', async () => {
     mocks.persistAsyncTask.mockRejectedValueOnce(new Error('outbox insert failed'));
-    await expect(insertCmsPublishOutbox({} as DbTransaction, {
+    await expect(insertCmsPublishOutbox(executorDouble(), {
       siteId: 1,
       targetType: 'content',
       contentIds: [9],
@@ -88,7 +92,7 @@ describe('CMS standard publish pipeline behavior', () => {
     }, new Date('2026-07-23T10:00:01Z'))).toBe(true);
   });
 
-  it('rejects the second concurrent publish at the locked-row fence before version/outbox/side effects', () => {
+  it('uses working-copy CAS even when both operations publish an already public identity', () => {
     const row = (status: CmsContentRow['status']) => ({
       id: 9,
       status,
@@ -104,14 +108,18 @@ describe('CMS standard publish pipeline behavior', () => {
     let versionIncrements = 0;
     let outboxes = 0;
     let sideEffects = 0;
-    const commitAfterFence = (locked: CmsContentRow) => {
+    const working = { version: 4 };
+    const commitAfterFence = (locked: CmsContentRow, expectedVersion: number | undefined) => {
+      assertCmsContentVersion(working, expectedVersion);
       assertLockedCmsPublishPreconditions('draft', locked);
+      working.version++;
       versionIncrements += 1;
       outboxes += 1;
       sideEffects += 1;
     };
-    commitAfterFence(row('draft'));
-    expect(() => commitAfterFence(row('published'))).toThrow(expect.objectContaining({ status: 409 }));
+    commitAfterFence(row('published'), 4);
+    expect(() => commitAfterFence(row('published'), 4)).toThrow(expect.objectContaining({ status: 409 }));
+    expect(() => commitAfterFence(row('published'), undefined)).toThrow(expect.objectContaining({ status: 409 }));
     expect({ versionIncrements, outboxes, sideEffects }).toEqual({ versionIncrements: 1, outboxes: 1, sideEffects: 1 });
   });
 });

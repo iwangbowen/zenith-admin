@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import CmsValueDiff from './CmsValueDiff';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, Form, Spin, Toast, Row, Col, Banner, SideSheet, Space, Timeline, Modal, Upload, Typography, useFormApi, Tag, Input, Tabs, TabPane } from '@douyinfe/semi-ui';
+import { Button, Form, Spin, Toast, Row, Col, Banner, SideSheet, Space, Timeline, Modal, Upload, Typography, useFormApi, Tag, Input, Tabs, TabPane, withField, Pagination } from '@douyinfe/semi-ui';
 import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { ArrowLeft, Save, Send, History, ImageUp, Eye, GitCompare, Images, Paperclip, SpellCheck, ScrollText, Workflow } from 'lucide-react';
@@ -14,26 +15,35 @@ import { config as appConfig } from '@/config';
 import { confirmDanger } from '@/utils/confirm';
 import {
   useCmsContentWorkflowRecord, useCmsChannelTree, useAllCmsModels, useAllCmsTags,
-  useSaveCmsContent, useCmsContentAction, useCmsContentVersions, useRestoreCmsContentVersion,
-  useCmsVersionDiff, useCmsPreviewLink, acquireCmsEditLock, releaseCmsEditLock, useCmsContentList,
+  useSaveCmsContent, useCmsContentAction, useCmsContentVersions, useCmsContentVersion, useRestoreCmsContentVersion,
+  useCmsVersionDiff, useCmsPreviewLink, useRevokeCmsPreviewLink, acquireCmsEditLock, releaseCmsEditLock, useCmsContentApprovalDetail,
   useAllCmsSites, useCmsThemeTemplates, useCmsContentOpLogs, useCmsCheckText, useUploadCmsResource,
   useCheckCmsContentTitle, useUploadCmsImage, cmsImageUploadUrl,
   useCmsContentWorkflowPreview, useCmsContentWorkflowContext,
 } from '@/hooks/queries/cms';
 import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { CMS_CONTENT_STATUS_LABELS, CMS_CONTENT_TYPE_LABELS, CMS_CONTENT_TYPES, CMS_TITLE_STYLE_COLORS } from '@zenith/shared/cms';
-import type { CmsChannel, CmsModelField, CmsEditLock, CmsTextCheckResult, CmsContentType, CmsAlbumImage, CmsContentAttachment } from '@zenith/shared/cms';
+import type { CmsContent, CmsPreviewLink, CmsModelField, CmsEditLock, CmsTextCheckResult, CmsContentType, CmsAlbumImage, CmsContentAttachment } from '@zenith/shared/cms';
 import { useCmsLinkPicker } from './CmsLinkInput';
 import { formatBytes } from '@zenith/shared/core';
 import { channelsToSelectTree } from './channel-tree';
 import { CmsModelFieldControl } from './model-field-renderer';
 import { ContentApprovalDetails } from './ContentApprovalView';
+import { ContentRevisionViewer } from './ContentRevisionViewer';
+import CmsContentReferenceInput from './CmsContentReferenceInput';
+import { useCmsEditorRecovery } from './useCmsEditorRecovery';
+import { CMS_EDITORIAL_STATUS_LABELS, CMS_EDITORIAL_STATUS_COLORS } from './cms-content-view-state';
+import CmsEditorialPanel from './CmsEditorialPanel';
+import { useAllUsers } from '@/hooks/queries/users';
+import { ApiError } from '@/lib/query';
+import { copyTextWithToast } from '@/utils/clipboard';
 import { INSTANCE_STATUS_MAP } from '@/components/workflow/workflow-runtime';
 import './ContentEditPage.css';
 
 // 富文本引擎（wangeditor）压缩后约 266 KB。静态导入会阻塞整个编辑页 chunk 的加载，
-// 且「链接」类型内容与已映射内容根本不渲染编辑器；改为懒加载后表单先出，编辑器再补。
+// 且「链接」类型内容不渲染正文编辑器；改为懒加载后表单先出，编辑器再补。
 const RichTextEditor = lazy(() => import('@/components/RichTextEditor'));
+const FormContentReference = withField(CmsContentReferenceInput);
 const BusinessWorkflowPanel = lazy(() => import('@/components/workflow/BusinessWorkflowPanel'));
 const editorLoadingFallback = (
   <div
@@ -50,18 +60,8 @@ const editorLoadingFallback = (
   </div>
 );
 
-const AUTO_SAVE_INTERVAL_MS = 30_000;
+const AUTO_SAVE_INTERVAL_MS = 5_000;
 const EDIT_LOCK_HEARTBEAT_MS = 30_000;
-
-function findChannel(nodes: CmsChannel[], id: number | undefined): CmsChannel | undefined {
-  if (!id) return undefined;
-  for (const n of nodes) {
-    if (n.id === id) return n;
-    const hit = n.children ? findChannel(n.children, id) : undefined;
-    if (hit) return hit;
-  }
-  return undefined;
-}
 
 /** image/file 型模型字段：输入框 + 媒体库选择按钮 */
 function MediaFieldControl({ field, canUpload }: Readonly<{ field: CmsModelField; canUpload: boolean }>) {
@@ -143,12 +143,6 @@ function ModelFieldControl({ field, applyDefault, canUpload, siteId }: Readonly<
 }
 
 /** 版本差异值展示（布尔/对象友好化） */
-function diffValueText(value: unknown): string {
-  if (value === null || value === undefined || value === '') return '（空）';
-  if (typeof value === 'boolean') return value ? '是' : '否';
-  if (typeof value === 'object') return JSON.stringify(value, null, 2);
-  return String(value);
-}
 
 /** 右侧属性面板字段 → 所属标签页，校验失败时自动切到出错分组 */
 const SIDE_TAB_BY_FIELD: Record<string, string> = {
@@ -196,14 +190,11 @@ export default function ContentEditPage() {
   const treeQuery = useCmsChannelTree(siteId);
   const { data: models } = useAllCmsModels(siteId);
   const { data: tags } = useAllCmsTags(siteId);
-  // 相关文章候选：本站最近 100 条已发布内容
-  const relatedCandidatesQuery = useCmsContentList(
-    { page: 1, pageSize: 100, siteId: siteId ?? 0, status: 'published' },
-    siteId !== undefined,
-  );
   const saveMutation = useSaveCmsContent();
   const actionMutation = useCmsContentAction();
   const previewMutation = useCmsPreviewLink();
+  const revokePreviewMutation = useRevokeCmsPreviewLink();
+  const [lastPreview, setLastPreview] = useState<CmsPreviewLink | null>(null);
   const uploadMediaMutation = useUploadFile();
   const uploadResourceMutation = useUploadCmsResource();
   const canUploadResources = hasPermission('cms:resource:upload');
@@ -226,8 +217,10 @@ export default function ContentEditPage() {
   }
 
   const [body, setBody] = useState('');
+  const [selectedModelId, setSelectedModelId] = useState<number | null | undefined>(undefined);
+  const { data: users } = useAllUsers();
   const [selectedChannelId, setSelectedChannelId] = useState<number | undefined>(channelIdParam);
-  const [activeTab, setActiveTab] = useUrlTabState(['content', 'workflow'] as const, 'content');
+  const [activeTab, setActiveTab] = useUrlTabState(['content', 'workflow', 'collaboration', 'snapshot'] as const, 'content');
   const [selectedWorkflowInstanceId, setSelectedWorkflowInstanceId] = useState<number>();
   const [workflowTitle, setWorkflowTitle] = useState<string>();
   const scheduleWorkflowTitle = useDebouncedCallback((title: string) => setWorkflowTitle(title), { wait: 500 });
@@ -238,6 +231,7 @@ export default function ContentEditPage() {
     title: workflowTitle ?? detail?.title,
   });
   const workflowContext = workflowContextQuery.data;
+  const approvalQuery = useCmsContentApprovalDetail(id, workflowContext?.instance?.id);
   const workflowPreview = workflowPreviewQuery.data;
   // 本次提交使用当前站点的有效审核配置；往次实例只影响记录展示。
   const workflowMode = !!workflowPreview?.definition;
@@ -256,8 +250,11 @@ export default function ContentEditPage() {
   const [attachments, setAttachments] = useState<CmsContentAttachment[]>([]);
   const [albumPickerVisible, setAlbumPickerVisible] = useState(false);
   const [versionsVisible, setVersionsVisible] = useState(false);
-  const versionsQuery = useCmsContentVersions(id, versionsVisible);
+  const [versionsPage, setVersionsPage] = useState(1);
+  const versionsQuery = useCmsContentVersions(id, versionsVisible, versionsPage);
   const restoreMutation = useRestoreCmsContentVersion();
+  const [viewVersionId, setViewVersionId] = useState<number | undefined>(undefined);
+  const viewedVersionQuery = useCmsContentVersion(id, viewVersionId);
   const [diffVersionId, setDiffVersionId] = useState<number | undefined>(undefined);
   const diffQuery = useCmsVersionDiff(id, diffVersionId);
   const [coverPickerVisible, setCoverPickerVisible] = useState(false);
@@ -281,7 +278,7 @@ export default function ContentEditPage() {
     onPick: (next) => {
       formApi.current?.setValue('externalLink', next);
       setExternalLink(next);
-      dirtyRef.current = true;
+      markDirty();
     },
   });
 
@@ -289,16 +286,46 @@ export default function ContentEditPage() {
   const [lockHolder, setLockHolder] = useState<CmsEditLock['holder']>(null);
   const [autoSavedAt, setAutoSavedAt] = useState<string | null>(null);
   const dirtyRef = useRef(false);
+  const editSequenceRef = useRef(0);
+  const editorTouchedRef = useRef(false);
   const versionRef = useRef<number | undefined>(undefined);
-  const detailStatusRef = useRef<string | undefined>(undefined);
+  const savingRef = useRef<Promise<number | null> | null>(null);
+  const createdIdRef = useRef<number | undefined>(id);
+  const [saveState, setSaveState] = useState<'saved' | 'dirty' | 'saving' | 'error' | 'conflict'>('saved');
+  const [saveError, setSaveError] = useState('');
+  const [conflictVisible, setConflictVisible] = useState(false);
+  const baseDraftRef = useRef<Record<string, unknown>>({});
+  const recovery = useCmsEditorRecovery({
+    key: `${siteId ?? 0}:${id ?? `new-${contentType}-${channelIdParam ?? 0}`}`,
+    dirty: dirtyRef,
+    getDraft: () => ({ values: formApi.current?.getValues() ?? {}, body, albumImages, attachments, version: versionRef.current }),
+  });
+  function markDirty() {
+    if (!editorTouchedRef.current) return;
+    dirtyRef.current = true;
+    editSequenceRef.current += 1;
+    setSaveState((state) => state === 'conflict' ? state : 'dirty');
+    recovery.checkpoint();
+  }
+  function restoreLocalDraft() {
+    const draft = recovery.pending;
+    if (!draft) return;
+    formApi.current?.setValues(draft.values);
+    setBody(draft.body);
+    setAlbumImages(draft.albumImages ?? []);
+    setAttachments(draft.attachments ?? []);
+    if (draft.version !== undefined) versionRef.current = draft.version;
+    recovery.dismiss();
+    editorTouchedRef.current = true;
+    markDirty();
+  }
   const bodyInitializedForRef = useRef<number | null>(null);
   const pendingFormResetRef = useRef(false);
   const [formEpoch, setFormEpoch] = useState(0);
 
   useEffect(() => {
     if (!detail) return;
-    versionRef.current = detail.version;
-    detailStatusRef.current = detail.status;
+    if (!dirtyRef.current || bodyInitializedForRef.current !== detail.id) versionRef.current = detail.version;
     // 版本回滚后强制重挂表单，加载最新字段值
     if (pendingFormResetRef.current) {
       pendingFormResetRef.current = false;
@@ -310,15 +337,18 @@ export default function ContentEditPage() {
       bodyInitializedForRef.current = detail.id;
       setBody(detail.body ?? '');
       setSelectedChannelId(detail.channelId);
+      setSelectedModelId(detail.modelId);
+      baseDraftRef.current = { ...detail };
       setExternalLink(detail.externalLink ?? '');
       setAlbumImages(Array.isArray(detail.mediaData?.images) ? detail.mediaData.images.map((img) => ({ ...img })) : []);
       setAttachments(Array.isArray(detail.attachments) ? detail.attachments.map((a) => ({ ...a })) : []);
     }
   }, [detail]);
 
+  const hasDetail = !!detail;
   // 编辑锁：进入抢占 + 30s 心跳续期，离开释放（软锁，保存冲突由乐观锁兜底）
   useEffect(() => {
-    if (!id || !detail || isPersistentlyLocked) return;
+    if (!id || !hasDetail || isPersistentlyLocked) return;
     let stopped = false;
     const beat = () => {
       acquireCmsEditLock(id)
@@ -332,18 +362,17 @@ export default function ContentEditPage() {
       clearInterval(timer);
       void releaseCmsEditLock(id).catch(() => undefined);
     };
-  }, [detail, id, isPersistentlyLocked]);
+  }, [id, hasDetail, isPersistentlyLocked]);
 
-  const currentChannel = findChannel(treeQuery.data ?? [], selectedChannelId);
   const { data: allSites } = useAllCmsSites();
   const selectedSite = allSites?.find((site) => site.id === siteId);
   const siteTheme = selectedSite?.effectiveTheme ?? selectedSite?.theme;
   const { data: themeTemplates } = useCmsThemeTemplates(siteTheme, siteId || undefined);
   const currentModel = useMemo(
-    () => (models ?? []).find((m) => m.id === (currentChannel?.modelId ?? detail?.modelId)),
-    [models, currentChannel, detail],
+    () => (models ?? []).find((m) => m.id === (selectedModelId ?? detail?.modelId)),
+    [models, selectedModelId, detail],
   );
-  const modelFields = currentModel?.fields ?? [];
+  const modelFields = detail?.modelFields ?? currentModel?.fields ?? [];
 
   /** 模板试穿：以选中详情模板打开预览（?__template= 仅预览路径生效，不影响线上） */
   function handleTemplateTryOn() {
@@ -363,6 +392,10 @@ export default function ContentEditPage() {
   const initValues = detail
     ? {
         channelId: detail.channelId,
+        modelId: detail.modelId ?? undefined,
+        ownerId: detail.ownerId ?? undefined,
+        locale: detail.locale,
+        dueAt: detail.dueAt ?? undefined,
         title: detail.title,
         subTitle: detail.subTitle ?? '',
         shortTitle: detail.shortTitle ?? '',
@@ -401,10 +434,11 @@ export default function ContentEditPage() {
         mediaPoster: detail.mediaData?.poster ?? '',
         mediaDuration: detail.mediaData?.duration ?? '',
       }
-    : { channelId: channelIdParam, isTop: false, topWeight: 0, isOriginal: false, isRecommend: false, isHot: false, sort: 0, tagIds: [], extraChannelIds: [], relatedIds: [], extend: {}, mediaType: 'video', titleBold: false, titleColor: '' };
+    : { channelId: channelIdParam, locale: 'zh-CN', isTop: false, topWeight: 0, isOriginal: false, isRecommend: false, isHot: false, sort: 0, tagIds: [], extraChannelIds: [], relatedIds: [], extend: {}, mediaType: 'video', titleBold: false, titleColor: '' };
 
-  async function save(opts?: { silent?: boolean }): Promise<number | null> {
-    if (isPersistentlyLocked) {
+  async function performSave(opts?: { silent?: boolean }): Promise<number | null> {
+    const recordId = id ?? createdIdRef.current;
+    if (isReadOnly) {
       if (!opts?.silent) Toast.warning('内容已被持久锁定，当前页面为只读状态');
       return null;
     }
@@ -414,7 +448,9 @@ export default function ContentEditPage() {
     }
     let values: Record<string, unknown>;
     try {
-      values = (await formApi.current?.validate()) ?? {};
+      values = opts?.silent ? { ...formApi.current?.getValues() } : (await formApi.current?.validate()) ?? {};
+      if (!values.channelId) return null;
+      if (!String(values.title ?? '').trim()) values.title = '未命名内容';
     } catch (err) {
       if (!opts?.silent) {
         setActiveTab('content');
@@ -435,7 +471,12 @@ export default function ContentEditPage() {
       }
       return null;
     }
-    const payload: Record<string, unknown> = { ...values, body };
+    const payload: Record<string, unknown> = { ...values, body, saveMode: opts?.silent ? 'autosave' : 'manual' };
+    if (values.dueAt instanceof Date) payload.dueAt = formatDateTimeForApi(values.dueAt);
+    if (!values.dueAt) payload.dueAt = null;
+    payload.ownerId = values.ownerId ?? null;
+    if (!recordId) payload.modelId = selectedModelId ?? values.modelId ?? null;
+    else delete payload.modelId;
     if (!values.slug) payload.slug = null;
     payload.staticPath = values.staticPath ? String(values.staticPath).trim() : null;
     // 标题样式：两个表单字段合成 titleStyle JSON（都为空时提交空对象，回落主题默认）
@@ -457,7 +498,7 @@ export default function ContentEditPage() {
     if (values.topExpireAt instanceof Date) payload.topExpireAt = formatDateTimeForApi(values.topExpireAt);
     if (!values.topExpireAt) payload.topExpireAt = null;
     // 内容形态：新建时提交；mediaType 等临时字段组装进 mediaData 后从 payload 移除
-    if (!id) payload.contentType = contentType;
+    if (!recordId) payload.contentType = contentType;
     if (contentType === 'album') {
       payload.mediaData = { images: albumImages };
     } else if (contentType === 'media') {
@@ -474,60 +515,66 @@ export default function ContentEditPage() {
     delete payload.mediaUrl;
     delete payload.mediaPoster;
     delete payload.mediaDuration;
-    // 映射内容：正文/扩展字段共享来源，不随保存提交（服务端也会拒绝）
-    if (isMapped) {
-      delete payload.body;
-      delete payload.extend;
-    }
-    if (!id) payload.siteId = siteId;
-    // 乐观锁：携带读取时的版本号，被他人修改时后端返回 409
-    if (id && versionRef.current !== undefined) payload.expectedVersion = versionRef.current;
+    if (!recordId) payload.siteId = siteId;
+    if (recordId) payload.expectedVersion = versionRef.current;
     const wasDirty = dirtyRef.current;
-    dirtyRef.current = false;
+    const savingSequence = editSequenceRef.current;
+    setSaveState('saving');
+    setSaveError('');
     try {
-      const saved = await saveMutation.mutateAsync({ id, values: payload });
+      const saved = await saveMutation.mutateAsync({ id: recordId, values: payload });
+      createdIdRef.current = saved.id;
       versionRef.current = saved.version;
-      detailStatusRef.current = saved.status;
+      baseDraftRef.current = { ...saved };
+      dirtyRef.current = editSequenceRef.current !== savingSequence;
+      setSaveState(dirtyRef.current ? 'dirty' : 'saved');
+      setAutoSavedAt(new Date().toTimeString().slice(0, 8));
+      if (!dirtyRef.current) recovery.clear();
+      if (!id) recovery.navigateSaved(() => navigate(`/cms/contents/edit?id=${saved.id}&siteId=${siteId}`, { replace: true }));
       return saved.id;
     } catch (err) {
-      dirtyRef.current = wasDirty;
-      throw err;
+      dirtyRef.current = dirtyRef.current || wasDirty;
+      const conflict = err instanceof ApiError && err.code === 409;
+      setSaveState(conflict ? 'conflict' : 'error');
+      setSaveError(err instanceof Error ? err.message : '保存失败，请重试');
+      recovery.persist();
+      if (conflict) { setConflictVisible(true); void detailQuery.refetch(); }
+      return null;
     }
   }
 
+  async function save(opts?: { silent?: boolean }): Promise<number | null> {
+    if (savingRef.current) {
+      const saved = await savingRef.current;
+      if (opts?.silent || !dirtyRef.current) return saved;
+    }
+    const pending = performSave(opts);
+    savingRef.current = pending;
+    try { return await pending; } finally { if (savingRef.current === pending) savingRef.current = null; }
+  }
   const saveRef = useRef(save);
   saveRef.current = save;
-
-  // 自动保存：仅对已存在的草稿/驳回内容，有改动时每 30s 静默保存一次
+  const canAutosave = !isReadOnly && saveState !== 'conflict' && !recovery.pending;
   useEffect(() => {
-    if (!id || isPersistentlyLocked) return;
+    if (!canAutosave) return;
     const timer = setInterval(() => {
-      if (!dirtyRef.current) return;
-      const status = detailStatusRef.current;
-      if (status !== 'draft' && status !== 'rejected') return;
-      void saveRef.current({ silent: true })
-        .then((savedId) => {
-          if (savedId) setAutoSavedAt(new Date().toTimeString().slice(0, 8));
-        })
-        .catch(() => undefined);
+      if (dirtyRef.current && !savingRef.current) void saveRef.current({ silent: true });
     }, AUTO_SAVE_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [id, isPersistentlyLocked]);
+  }, [canAutosave]);
 
   async function handleSaveDraft() {
     const savedId = await save();
     if (savedId) {
       Toast.success('保存成功');
-      if (!id) navigate(`/cms/contents/edit?id=${savedId}&siteId=${siteId}`, { replace: true });
     }
   }
 
   async function handleSaveAndPublish() {
     const savedId = await save();
     if (savedId) {
-      await actionMutation.mutateAsync({ id: savedId, action: 'publish' });
-      Toast.success('已保存并发布');
-      navigate(-1);
+      await actionMutation.mutateAsync({ id: savedId, action: 'publish', expectedVersion: versionRef.current! });
+      Toast.success('已提交发布任务，生效结果请在发布中心查看');
     }
   }
 
@@ -535,8 +582,7 @@ export default function ContentEditPage() {
     const savedId = await save();
     if (!savedId) return;
     // 新建成功后先进入该记录，后续提审失败仍可在已保存的草稿上重试，不会重复创建。
-    if (!id) navigate(`/cms/contents/edit?id=${savedId}&siteId=${siteId}`, { replace: true });
-    await actionMutation.mutateAsync({ id: savedId, action: 'submit' });
+    await actionMutation.mutateAsync({ id: savedId, action: 'submit', expectedVersion: versionRef.current! });
     setSelectedWorkflowInstanceId(undefined);
     setActiveTab('workflow');
     Toast.success('已保存并提交审核');
@@ -549,7 +595,6 @@ export default function ContentEditPage() {
       const savedId = await save(previewId ? { silent: true } : undefined).catch(() => null);
       if (savedId) {
         previewId = savedId;
-        if (!id) navigate(`/cms/contents/edit?id=${savedId}&siteId=${siteId}`, { replace: true });
       } else if (previewId) {
         Toast.warning('存在未通过校验的字段，预览将展示最近一次保存的内容');
       } else {
@@ -558,6 +603,7 @@ export default function ContentEditPage() {
       }
     }
     const link = await previewMutation.mutateAsync({ params: { id: previewId } });
+    setLastPreview(link);
     window.open(link.url, '_blank');
   }
 
@@ -583,22 +629,23 @@ export default function ContentEditPage() {
       if (typeof v === 'string' && v.includes(word)) api.setValue(field, v.replaceAll(word, correction));
     }
     if (body.includes(word)) setBody(body.replaceAll(word, correction));
-    dirtyRef.current = true;
+    markDirty();
     setCheckResult((prev) => prev ? { ...prev, errorProne: prev.errorProne.filter((h) => h.word !== word) } : prev);
     Toast.success(`已替换「${word}」→「${correction}」`);
   }
 
   const loading = (!!id && detailQuery.isFetching && !detail) || treeQuery.isLoading;
-  const diffVersion = (versionsQuery.data ?? []).find((v) => v.id === diffVersionId);
+  const diffVersion = (versionsQuery.data?.list ?? []).find((v) => v.id === diffVersionId);
+  const viewedVersion = viewedVersionQuery.data;
 
   return (
-    <div className="page-container page-tabs-page cms-content-edit">
+    <div className="page-container page-tabs-page cms-content-edit" onInputCapture={() => { editorTouchedRef.current = true; }} onKeyDownCapture={() => { editorTouchedRef.current = true; }} onPointerDownCapture={() => { editorTouchedRef.current = true; }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <Button icon={<ArrowLeft size={14} />} onClick={() => navigate(-1)}>返回</Button>
         <h3 style={{ margin: 0, flex: 1, minWidth: 200 }}>
           {id ? '编辑内容' : '新增内容'}
           <Tag size="small" color="blue" style={{ marginLeft: 12, verticalAlign: 'middle' }}>{CMS_CONTENT_TYPE_LABELS[contentType]}</Tag>
-          {detail ? <span style={{ marginLeft: 12, fontSize: 13, fontWeight: 'normal', color: 'var(--semi-color-text-2)' }}>状态：{CMS_CONTENT_STATUS_LABELS[detail.status]}</span> : null}
+          {detail ? <Space spacing={8}><Tag>{detail.status === 'published' ? '线上已发布' : CMS_CONTENT_STATUS_LABELS[detail.status]}</Tag><Tag color={CMS_EDITORIAL_STATUS_COLORS[detail.editorialStatus]}>{CMS_EDITORIAL_STATUS_LABELS[detail.editorialStatus]}</Tag>{detail.hasUnpublishedChanges ? <Tag color="orange">有未发布修改</Tag> : null}</Space> : null}
           {autoSavedAt ? <span style={{ marginLeft: 12, fontSize: 12, fontWeight: 'normal', color: 'var(--semi-color-text-2)' }}>已自动保存 {autoSavedAt}</span> : null}
         </h3>
         <Button icon={<Save size={14} />} loading={saveMutation.isPending} disabled={isReadOnly || actionMutation.isPending} onClick={() => void handleSaveDraft()}>保存</Button>
@@ -613,15 +660,25 @@ export default function ContentEditPage() {
         ) : null}
         {workflowMode ? (
           <Button type="primary" icon={<Send size={14} />} loading={saveMutation.isPending || actionMutation.isPending}
-            disabled={isReadOnly || workflowBusy || !!workflowPreviewQuery.error || (detail != null && detail.status !== 'draft' && detail.status !== 'rejected') || !hasPermission('cms:content:update')}
+            disabled={isReadOnly || workflowBusy || !!workflowPreviewQuery.error || (detail?.editorialStatus === 'pending') || !hasPermission('cms:content:update')}
             onClick={() => void handleSaveAndSubmit()}>保存并提交审核</Button>
         ) : hasPermission('cms:content:publish') ? (
           <Button type="primary" icon={<Send size={14} />} loading={actionMutation.isPending}
             disabled={isReadOnly || saveMutation.isPending || workflowBusy || !workflowPreview || !!workflowPreviewQuery.error}
-            onClick={() => void handleSaveAndPublish()}>保存并发布</Button>
+            onClick={() => void handleSaveAndPublish()}>保存并申请发布</Button>
         ) : null}
       </div>
 
+      <Space wrap spacing={12} style={{ marginBottom: 12 }}>
+        <Tag color={saveState === 'error' || saveState === 'conflict' ? 'red' : saveState === 'saved' ? 'green' : 'orange'}>{({ saved: '已保存工作稿', dirty: '有未保存修改', saving: '正在保存', error: '保存失败', conflict: '版本冲突' })[saveState]}</Tag>
+        <Typography.Text type="tertiary">保存不改变线上内容；提审会冻结当前修订。</Typography.Text>
+        {saveState === 'error' ? <Button size="small" onClick={() => void handleSaveDraft()}>重试保存</Button> : null}
+        {saveState === 'conflict' ? <Button size="small" onClick={() => setConflictVisible(true)}>处理冲突</Button> : null}
+      </Space>
+      {lastPreview ? <Banner type="info" closeIcon={null} description={<Space wrap><span>预览固定修订 #{lastPreview.revisionId} · 有效至 {lastPreview.expiresAt}</span><Button size="small" onClick={() => void copyTextWithToast(new URL(lastPreview.url, window.location.href).href)}>复制预览链接</Button><Button size="small" disabled={isReadOnly} loading={revokePreviewMutation.isPending} onClick={async () => { await revokePreviewMutation.mutateAsync({ params: { id: id ?? createdIdRef.current!, grantId: lastPreview.grantId } }); setLastPreview(null); Toast.success('预览链接已撤销'); }}>撤销链接</Button></Space>} /> : null}
+      {saveError ? <Banner type="danger" description={saveError} closeIcon={null} /> : null}
+      {recovery.storageError ? <Banner type="warning" description="浏览器无法保存恢复副本，请及时手动保存到服务器。" /> : null}
+      {recovery.pending ? <Banner type="warning" closeIcon={null} description={<Space wrap><span>发现本浏览器在 {new Date(recovery.pending.savedAt).toLocaleString()} 保留的未保存工作稿。</span><Button size="small" onClick={restoreLocalDraft}>恢复修改</Button><Button size="small" onClick={recovery.clear}>丢弃副本</Button></Space>} /> : null}
       <div className="cms-content-edit__workflow-summary">
         <Space spacing={8} wrap>
           <Workflow size={15} />
@@ -679,28 +736,28 @@ export default function ContentEditPage() {
       {isMapped ? (
         <Banner
           type="info"
-          description={`本内容为映射内容（来源：${detail?.mappingSourceTitle ?? `#${detail?.mappingSourceId}`}）。正文与扩展字段共享来源内容并随其更新，此处不可编辑；如需独立编辑请使用「复制」创建副本。`}
+          description={`本内容为映射内容（来源：${detail?.mappingSourceTitle ?? `#${detail?.mappingSourceId}`}）。来源更新将形成待合并差异。当前工作稿可独立编辑，请在「协作与质量」中逐字段处理来源与目标冲突。`}
           style={{ marginBottom: 12 }}
           closeIcon={null}
         />
       ) : null}
 
-      {detail?.status === 'rejected' && detail.rejectReason ? (
+      {detail?.editorialStatus === 'rejected' && detail.rejectReason ? (
         <Banner type="danger" description={`驳回原因：${detail.rejectReason}`} style={{ marginBottom: 12 }} closeIcon={null} />
       ) : null}
 
       <Tabs collapsible="auto" className="cms-content-edit__tabs" activeKey={activeTab}
-        onChange={(tab) => setActiveTab(tab as 'content' | 'workflow')} keepDOM>
+        onChange={(tab) => setActiveTab(tab as 'content' | 'workflow' | 'collaboration' | 'snapshot')} keepDOM>
       <TabPane tab="内容" itemKey="content">
       <Spin spinning={loading} wrapperClassName="cms-content-edit__spin">
         <Form
           key={`${detail?.id ?? 'new'}-${formEpoch}`}
           getFormApi={(api) => { formApi.current = api; }}
           allowEmpty
-          disabled={isReadOnly}
+          disabled={isReadOnly || saveMutation.isPending}
           initValues={initValues}
           onValueChange={(values) => {
-            dirtyRef.current = true;
+            markDirty();
             if (values.channelId !== selectedChannelId) setSelectedChannelId(values.channelId as number);
             setExternalLink((values.externalLink as string) ?? '');
             scheduleWorkflowTitle(String(values.title ?? ''));
@@ -725,7 +782,7 @@ export default function ContentEditPage() {
                   {linkPicker.hint}
                 </>
               ) : null}
-              {contentType === 'album' && !isMapped ? (
+              {contentType === 'album' ? (
                 <Form.Slot label={`图集图片（${albumImages.length}）`}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {albumImages.map((img, i) => (
@@ -737,16 +794,16 @@ export default function ContentEditPage() {
                           disabled={isReadOnly}
                           onChange={(v) => {
                             setAlbumImages((list) => list.map((x, xi) => xi === i ? { ...x, caption: v || null } : x));
-                            dirtyRef.current = true;
+                            markDirty();
                           }}
                           style={{ flex: 1 }}
                         />
                         <Button size="small" theme="borderless" disabled={isReadOnly || i === 0}
-                          onClick={() => { setAlbumImages((list) => { const next = [...list]; [next[i - 1], next[i]] = [next[i], next[i - 1]]; return next; }); dirtyRef.current = true; }}>上移</Button>
+                          onClick={() => { setAlbumImages((list) => { const next = [...list]; [next[i - 1], next[i]] = [next[i], next[i - 1]]; return next; }); markDirty(); }}>上移</Button>
                         <Button size="small" theme="borderless" disabled={isReadOnly || i === albumImages.length - 1}
-                          onClick={() => { setAlbumImages((list) => { const next = [...list]; [next[i], next[i + 1]] = [next[i + 1], next[i]]; return next; }); dirtyRef.current = true; }}>下移</Button>
+                          onClick={() => { setAlbumImages((list) => { const next = [...list]; [next[i], next[i + 1]] = [next[i + 1], next[i]]; return next; }); markDirty(); }}>下移</Button>
                         <Button size="small" theme="borderless" type="danger" disabled={isReadOnly}
-                          onClick={() => { setAlbumImages((list) => list.filter((_, xi) => xi !== i)); dirtyRef.current = true; }}>删除</Button>
+                          onClick={() => { setAlbumImages((list) => list.filter((_, xi) => xi !== i)); markDirty(); }}>删除</Button>
                       </div>
                     ))}
                     <div style={{ display: 'flex', gap: 8 }}>
@@ -764,7 +821,7 @@ export default function ContentEditPage() {
                             formData.append('file', fileInstance);
                             const res = await uploadCmsImage.mutateAsync({ siteId, formData });
                             setAlbumImages((list) => [...list, { url: res.url, thumb: res.thumbUrl ?? null, caption: null }]);
-                            dirtyRef.current = true;
+                            markDirty();
                             onSuccess?.({});
                           } catch {
                             onError?.({ status: 0 });
@@ -778,7 +835,7 @@ export default function ContentEditPage() {
                   </div>
                 </Form.Slot>
               ) : null}
-              {contentType === 'media' && !isMapped ? (
+              {contentType === 'media' ? (
                 <Form.Section text="音视频">
                   <Row gutter={12}>
                     <Col span={12}>
@@ -805,7 +862,7 @@ export default function ContentEditPage() {
                                 const uploaded = await uploadMediaMutation.mutateAsync({ formData: (() => { const fd = new FormData(); fd.append('file', fileInstance); return fd; })() });
                                 // 多文件上传接口返回数组；此处每次只传一个文件
                                 formApi.current?.setValue('mediaUrl', uploaded[0]?.url ?? '');
-                                dirtyRef.current = true;
+                                markDirty();
                                 Toast.success('上传成功');
                                 onSuccess?.({});
                               } catch {
@@ -824,24 +881,17 @@ export default function ContentEditPage() {
               ) : null}
               {contentType !== 'link' ? (
                 <Form.Slot noLabel>
-                  {isMapped ? (
-                    <div
-                      style={{ border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', padding: 16, maxHeight: 420, overflow: 'auto', background: 'var(--semi-color-fill-0)' }}
-                      dangerouslySetInnerHTML={{ __html: body }}
-                    />
-                  ) : (
-                    <Suspense fallback={editorLoadingFallback}>
+                  <Suspense fallback={editorLoadingFallback}>
                       <RichTextEditor
                         value={body}
-                        onChange={(v) => { setBody(v); dirtyRef.current = true; }}
-                        readOnly={isReadOnly}
+                        onChange={(v) => { setBody(v); markDirty(); }}
+                        readOnly={isReadOnly || saveMutation.isPending}
                         height={contentType === 'article' ? 420 : 240}
                         enablePageBreak={contentType === 'article'}
                         placeholder={contentType === 'article' ? '请输入正文内容...' : '图文说明（可选）'}
                         uploadServer={siteId && canUploadResources ? `${appConfig.apiBaseUrl}${cmsImageUploadUrl(siteId)}` : undefined}
                       />
-                    </Suspense>
-                  )}
+                  </Suspense>
                 </Form.Slot>
               ) : null}
               {contentType !== 'link' ? (
@@ -857,7 +907,7 @@ export default function ContentEditPage() {
                           disabled={isReadOnly}
                           onChange={(v) => {
                             setAttachments((list) => list.map((x, xi) => xi === i ? { ...x, name: v } : x));
-                            dirtyRef.current = true;
+                            markDirty();
                           }}
                           style={{ flex: 1, minWidth: 180 }}
                         />
@@ -865,11 +915,11 @@ export default function ContentEditPage() {
                           {att.size > 0 ? formatBytes(att.size) : EMPTY_PLACEHOLDER}
                         </Typography.Text>
                         <Button size="small" theme="borderless" disabled={i === 0 || isReadOnly}
-                          onClick={() => { setAttachments((l) => { const n = [...l]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; return n.map((x, xi) => ({ ...x, sort: xi })); }); dirtyRef.current = true; }}>上移</Button>
+                          onClick={() => { setAttachments((l) => { const n = [...l]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; return n.map((x, xi) => ({ ...x, sort: xi })); }); markDirty(); }}>上移</Button>
                         <Button size="small" theme="borderless" disabled={i === attachments.length - 1 || isReadOnly}
-                          onClick={() => { setAttachments((l) => { const n = [...l]; [n[i], n[i + 1]] = [n[i + 1], n[i]]; return n.map((x, xi) => ({ ...x, sort: xi })); }); dirtyRef.current = true; }}>下移</Button>
+                          onClick={() => { setAttachments((l) => { const n = [...l]; [n[i], n[i + 1]] = [n[i + 1], n[i]]; return n.map((x, xi) => ({ ...x, sort: xi })); }); markDirty(); }}>下移</Button>
                         <Button size="small" theme="borderless" type="danger" disabled={isReadOnly}
-                          onClick={() => { setAttachments((l) => l.filter((_, xi) => xi !== i).map((x, xi) => ({ ...x, sort: xi }))); dirtyRef.current = true; }}>删除</Button>
+                          onClick={() => { setAttachments((l) => l.filter((_, xi) => xi !== i).map((x, xi) => ({ ...x, sort: xi }))); markDirty(); }}>删除</Button>
                       </div>
                     ))}
                     <div>
@@ -890,7 +940,7 @@ export default function ContentEditPage() {
                               ext: (fileInstance.name.split('.').pop() ?? '').toLowerCase(),
                               sort: list.length,
                             }]);
-                            dirtyRef.current = true;
+                            markDirty();
                             onSuccess?.({});
                           } catch {
                             onError?.({ status: 0 });
@@ -903,7 +953,7 @@ export default function ContentEditPage() {
                   </div>
                 </Form.Section>
               ) : null}
-              {modelFields.length > 0 && !isMapped ? (
+              {modelFields.length > 0 ? (
                 <Form.Section text={`模型字段（${currentModel?.name}）`}>
                   <Row gutter={16}>
                     {modelFields.map((f) => (
@@ -927,6 +977,7 @@ export default function ContentEditPage() {
                     treeData={channelsToSelectTree(treeQuery.data ?? [])}
                     rules={[{ required: true, message: '请选择栏目' }]}
                   />
+                  <Form.Select field="modelId" label="内容模型" disabled={!!id} showClear optionList={(models ?? []).map((model) => ({ value: model.id, label: model.name }))} onChange={(value) => setSelectedModelId(value == null ? null : Number(value))} style={{ width: '100%' }} extraText={id ? '类型转换在协作面板中预览字段映射后执行' : '内容类型独立于栏目，移动栏目不会改变模型'} />
                   <Form.Input
                     field="title" label="标题" size="small"
                     rules={[{ required: true, message: '请输入标题' }]}
@@ -993,7 +1044,7 @@ export default function ContentEditPage() {
                               formData.append('file', fileInstance);
                               const res = await uploadCmsImage.mutateAsync({ siteId, formData });
                               formApi.current?.setValue('coverImage', res.url);
-                              dirtyRef.current = true;
+                              markDirty();
                               Toast.success(res.watermarked ? '上传成功（已加水印）' : '上传成功');
                               onSuccess?.({});
                             } catch {
@@ -1023,18 +1074,10 @@ export default function ContentEditPage() {
                     treeData={channelsToSelectTree(treeQuery.data ?? [])}
                     placeholder="同时展示在其他栏目（可选）"
                   />
-                  <Form.Select
-                    field="relatedIds"
-                    label="相关文章"
-                    multiple
-                    filter
-                    size="small"
-                    style={{ width: '100%' }}
-                    placeholder="手动指定相关阅读（不足自动按标签补齐）"
-                    optionList={(relatedCandidatesQuery.data?.list ?? [])
-                      .filter((c) => c.id !== id)
-                      .map((c) => ({ value: c.id, label: c.title }))}
-                  />
+                  <FormContentReference field="relatedIds" label="相关文章" siteId={siteId} multiple />
+                  <Form.Select field="ownerId" label="内容负责人" showClear filter optionList={(users ?? []).map((user) => ({ value: user.id, label: user.nickname || user.username }))} style={{ width: '100%' }} />
+                  <Form.Input field="locale" label="内容语言" placeholder="zh-CN / en-US" />
+                  <Form.DatePicker field="dueAt" label="审稿截止时间" type="dateTime" density="compact" style={{ width: '100%' }} showClear />
                   <Form.Input field="author" label="作者" size="small" />
                   <Form.Input field="editor" label="责任编辑" size="small" />
                   <Form.Input field="source" label="来源" size="small" />
@@ -1127,10 +1170,10 @@ export default function ContentEditPage() {
               context={workflowContext}
               selectedInstanceId={selectedWorkflowInstanceId}
               onSelectInstance={setSelectedWorkflowInstanceId}
-              loading={workflowBusy}
-              error={workflowContextQuery.error ?? (workflowContext?.instance ? null : workflowPreviewQuery.error)}
-              onRetry={() => { if (id) void workflowContextQuery.refetch(); void workflowPreviewQuery.refetch(); }}
-              formContent={detail && workflowContext?.instance ? <ContentApprovalDetails content={detail} /> : (
+              loading={workflowBusy || approvalQuery.isLoading}
+              error={approvalQuery.error ?? workflowContextQuery.error ?? (workflowContext?.instance ? null : workflowPreviewQuery.error)}
+              onRetry={() => { if (id) void workflowContextQuery.refetch(); if (workflowContext?.instance) void approvalQuery.refetch(); void workflowPreviewQuery.refetch(); }}
+              formContent={approvalQuery.data && workflowContext?.instance ? <ContentApprovalDetails content={approvalQuery.data} /> : (
                 <div>
                   <Typography.Title heading={6}>本次提审预览</Typography.Title>
                   <Typography.Paragraph>{workflowTitle ?? detail?.title ?? '新增内容'}</Typography.Paragraph>
@@ -1142,6 +1185,8 @@ export default function ContentEditPage() {
           </Suspense>
         ) : null}
       </TabPane>
+      <TabPane tab="协作与质量" itemKey="collaboration"><CmsEditorialPanel content={detail} disabled={saveState !== 'saved'} models={models ?? []} onChanged={() => { pendingFormResetRef.current = true; dirtyRef.current = false; recovery.clear(); void detailQuery.refetch(); }} onOpen={(contentId) => navigate(`/cms/contents/edit?id=${contentId}&siteId=${siteId}`)} /></TabPane>
+      <TabPane tab="已保存稿件" itemKey="snapshot">{detail ? <ContentRevisionViewer content={detail} fields={modelFields} heading="已保存工作稿" /> : <Typography.Text>保存后可查看完整稿件。</Typography.Text>}</TabPane>
       </Tabs>
 
       {/* 内部链接选择弹窗 */}
@@ -1153,7 +1198,7 @@ export default function ContentEditPage() {
         onCancel={() => setCoverPickerVisible(false)}
         onSelect={(file) => {
           formApi.current?.setValue('coverImage', file.url);
-          dirtyRef.current = true;
+          markDirty();
           setCoverPickerVisible(false);
         }}
       />
@@ -1165,20 +1210,32 @@ export default function ContentEditPage() {
         onCancel={() => setAlbumPickerVisible(false)}
         onSelect={(file) => {
           setAlbumImages((list) => [...list, { url: file.url ?? '', thumb: null, caption: null }]);
-          dirtyRef.current = true;
+          markDirty();
           setAlbumPickerVisible(false);
         }}
       />
 
+      <Modal title="工作稿版本冲突" visible={conflictVisible} onCancel={() => setConflictVisible(false)} footer={null} width={960}>
+        <Banner type="warning" description="服务器已有更新。下面保留原始基稿、服务器最新稿与本地修改；核对后可采用最新版本作为基线继续编辑。" />
+        <div className="auto-grid" style={{ '--auto-grid-cols': 3 } as React.CSSProperties}>
+          {[['原始基稿', baseDraftRef.current], ['服务器最新稿', detail], ['本地修改', { ...formApi.current?.getValues(), body, attachments, albumImages }]].map(([label, value]) => <div key={String(label)}><Typography.Title heading={6}>{String(label)}</Typography.Title><pre style={{ maxHeight: 340, overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify(value, null, 2)}</pre></div>)}
+        </div>
+        <Space wrap style={{ marginTop: 16 }}>
+          <Button onClick={() => void detailQuery.refetch()}>刷新服务器稿</Button>
+          <Button onClick={() => { if (!detail) return; versionRef.current = detail.version; baseDraftRef.current = { ...detail }; setSaveState('dirty'); setSaveError(''); setConflictVisible(false); }}>保留本地修改，以最新版本为基线</Button>
+          <Button type="warning" onClick={() => { dirtyRef.current = false; recovery.clear(); pendingFormResetRef.current = true; setSaveError(''); setSaveState('saved'); setConflictVisible(false); void detailQuery.refetch(); }}>采用服务器稿</Button>
+        </Space>
+      </Modal>
       {/* 版本历史抽屉 */}
       <SideSheet title="历史版本" visible={versionsVisible} onCancel={() => setVersionsVisible(false)} width={420}>
-        {versionsQuery.data && versionsQuery.data.length > 0 ? (
+        {versionsQuery.data && versionsQuery.data.list.length > 0 ? (
           <Timeline>
-            {versionsQuery.data.map((v) => (
+            {versionsQuery.data.list.map((v) => (
               <Timeline.Item key={v.id} time={v.createdAt}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <b>v{v.version}</b>
                   <span style={{ flex: 1, minWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.title}</span>
+                  <Button size="small" theme="borderless" onClick={() => setViewVersionId(v.id)}>查看完整修订</Button>
                   <Button
                     size="small"
                     theme="borderless"
@@ -1191,20 +1248,23 @@ export default function ContentEditPage() {
                     size="small"
                     theme="borderless"
                     loading={restoreMutation.isPending}
+                    disabled={isReadOnly}
                     onClick={() => {
                       confirmDanger({
-                        title: `回滚到 v${v.version}？`,
-                        content: '当前内容将自动留档后被该版本覆盖',
+                        title: `将 v${v.version} 恢复为工作稿？`,
+                        content: '恢复完整字段与关系到工作稿，后续仍需审核和发布。',
                         onOk: async () => {
                           pendingFormResetRef.current = true;
-                          await restoreMutation.mutateAsync({ params: { id: id!, versionId: v.id } });
-                          Toast.success('回滚成功');
+                          await restoreMutation.mutateAsync({ params: { id: id!, versionId: v.id }, body: { expectedVersion: versionRef.current! } });
+                          dirtyRef.current = false;
+                          recovery.clear();
+                          Toast.success('历史修订已恢复为工作稿');
                           setVersionsVisible(false);
                         },
                       });
                     }}
                   >
-                    回滚
+                    恢复为工作稿
                   </Button>
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)' }}>
@@ -1215,11 +1275,16 @@ export default function ContentEditPage() {
           </Timeline>
         ) : (
           <div style={{ color: 'var(--semi-color-text-2)', padding: 24, textAlign: 'center' }}>
-            {versionsQuery.isFetching ? '加载中…' : '暂无历史版本（每次保存自动留档）'}
+            {versionsQuery.isFetching ? '加载中…' : '暂无历史修订（手动保存、提审和发布会建立里程碑）'}
           </div>
         )}
+        <Pagination currentPage={versionsPage} pageSize={30} total={versionsQuery.data?.total ?? 0} onPageChange={setVersionsPage} />
       </SideSheet>
 
+      <SideSheet title="历史修订" visible={viewVersionId !== undefined} onCancel={() => setViewVersionId(undefined)} width={900}>
+        {viewedVersionQuery.isFetching ? <Spin /> : null}
+        {viewedVersion && detail ? <ContentRevisionViewer content={{ ...detail, ...viewedVersion.snapshot, tags: undefined, channelName: undefined, modelFields: Array.isArray(viewedVersion.snapshot.modelFields) ? viewedVersion.snapshot.modelFields : [], revisionId: viewedVersion.id, contentHash: viewedVersion.hash } as CmsContent} heading={`历史修订 v${viewedVersion.version}`} /> : null}
+      </SideSheet>
       {/* 版本差异对比 */}
       <Modal
         title={diffVersion ? `v${diffVersion.version} 与当前内容的差异` : '版本差异'}
@@ -1235,20 +1300,7 @@ export default function ContentEditPage() {
               {diffQuery.data.map((d) => (
                 <div key={d.field} style={{ marginBottom: 16 }}>
                   <Typography.Title heading={6} style={{ marginBottom: 8 }}>{d.label}</Typography.Title>
-                  <Row gutter={12}>
-                    <Col span={12}>
-                      <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginBottom: 4 }}>v{diffVersion?.version ?? ''}（历史版本）</div>
-                      <pre style={{ margin: 0, padding: 8, background: 'var(--semi-color-danger-light-default)', borderRadius: 'var(--semi-border-radius-small)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 12, maxHeight: 200, overflow: 'auto' }}>
-                        {diffValueText(d.before)}
-                      </pre>
-                    </Col>
-                    <Col span={12}>
-                      <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)', marginBottom: 4 }}>当前内容</div>
-                      <pre style={{ margin: 0, padding: 8, background: 'var(--semi-color-success-light-default)', borderRadius: 'var(--semi-border-radius-small)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 12, maxHeight: 200, overflow: 'auto' }}>
-                        {diffValueText(d.after)}
-                      </pre>
-                    </Col>
-                  </Row>
+                  <CmsValueDiff before={d.before} after={d.after} html={d.field === 'body'} />
                 </div>
               ))}
             </div>

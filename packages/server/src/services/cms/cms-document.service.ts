@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
 import type { AnyNode } from 'domhandler';
-import { CMS_DOCUMENT_TAGS, serializeCmsBodyDocument, type CmsBodyDocument, type CmsDocumentNode } from '@zenith/shared/cms';
+import { CMS_DOCUMENT_TAGS, serializeCmsBodyDocument, type CmsBodyDocument, type CmsDocumentNode, type CmsFieldConfiguration } from '@zenith/shared/cms';
 import { sanitizeCmsHtml } from './cms-html-sanitizer';
 
 const require = createRequire(import.meta.url);
@@ -49,4 +49,19 @@ export function normalizeCmsContentDocument(html: string, previous?: CmsBodyDocu
 
 export function renderCmsContentDocument(document: CmsBodyDocument): string {
   return sanitizeCmsHtml(serializeCmsBodyDocument(document));
+}
+
+export function sanitizeCmsModelValues(fields: readonly { name: string; fieldType: string; configuration?: CmsFieldConfiguration | null }[], values: Record<string, unknown>): Record<string, unknown> {
+  const result = { ...values };
+  for (const field of fields) {
+    const value = result[field.name];
+    if (field.fieldType === 'richtext' && typeof value === 'string') result[field.name] = sanitizeCmsHtml(value);
+    if (field.fieldType === 'object' && value && typeof value === 'object' && !Array.isArray(value)) result[field.name] = sanitizeCmsModelValues(field.configuration?.fields ?? [], value as Record<string, unknown>);
+    if (['array', 'blocks'].includes(field.fieldType) && Array.isArray(value)) result[field.name] = value.map((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+      const children = field.fieldType === 'blocks' ? field.configuration?.blockTypes?.find((block) => block.code === item.blockType)?.fields : field.configuration?.fields;
+      return sanitizeCmsModelValues(children ?? [], item);
+    });
+  }
+  return result;
 }

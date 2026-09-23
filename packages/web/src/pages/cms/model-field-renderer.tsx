@@ -53,12 +53,12 @@ export function CmsModelFieldControl({ field, common, media, siteId }: CmsModelF
     case 'object':
       return <Form.Section text={common.label}>{field.configuration?.fields?.map((child) => <CmsModelFieldControl key={child.name} field={{ ...field, ...child, required: child.required ?? false, configuration: null }} common={{ field: `${common.field}.${child.name}`, label: child.label }} siteId={siteId} />)}</Form.Section>;
     case 'array': case 'blocks':
-      return <Form.Section text={common.label}><ArrayField field={common.field}>{({ arrayFields, add }) => <Space vertical align="start" style={{ width: '100%' }}>
+      return <Form.Section text={common.label}><ArrayField field={common.field}>{({ arrayFields, addWithInitValue }) => <Space vertical align="start" style={{ width: '100%' }}>
         {arrayFields.map(({ field: item, key, remove }) => <div key={key} style={{ width: '100%' }}>
           <ComponentFields definition={field} path={item} siteId={siteId} />
           <Button type="danger" theme="borderless" onClick={remove}>移除此组件</Button>
         </div>)}
-        <Button onClick={() => add(field.fieldType === 'blocks' ? { blockType: field.configuration?.blockTypes?.[0]?.code } : {})}>添加组件</Button>
+        <Button onClick={() => addWithInitValue(field.fieldType === 'blocks' ? { blockType: field.configuration?.blockTypes?.[0]?.code } : {})}>添加组件</Button>
       </Space>}</ArrayField></Form.Section>;
     case 'number':
       return <Form.InputNumber {...common} style={{ width: '100%' }} />;

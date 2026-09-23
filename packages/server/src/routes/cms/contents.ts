@@ -26,7 +26,7 @@ import {
   unarchiveCmsContents,
   checkCmsContentTitle,
 } from '../../services/cms/cms-contents.service';
-import { listContentVersions, diffContentVersion } from '../../services/cms/cms-versions.service';
+import { listContentVersions, diffContentVersion, getContentVersion } from '../../services/cms/cms-versions.service';
 import { listContentOpLogs } from '../../services/cms/cms-content-op-logs.service';
 import { checkCmsText } from '../../services/cms/cms-word-check.service';
 import { acquireContentEditLock, releaseContentEditLock } from '../../services/cms/cms-edit-lock.service';
@@ -138,7 +138,7 @@ const purgeRoute = defineContractRoute(cmsContentContract.purge, {
 
 // ─── 版本历史 ─────────────────────────────────────────────────────────────────
 const versionsRoute = defineContractRoute(cmsContentContract.versions, {
-  handler: async (c) => c.json(okBody(await listContentVersions(c.req.valid('param').id)), 200),
+  handler: async (c) => c.json(okBody(await listContentVersions(c.req.valid('param').id, c.req.valid('query'))), 200),
 });
 
 const restoreVersionRoute = defineContractRoute(cmsContentContract.restoreVersion, {
@@ -294,6 +294,7 @@ mountCrud(router, cmsContentContract,
     restoreRoute,
     purgeRoute,
     versionsRoute,
+    defineContractRoute(cmsContentContract.version, { handler: async (c) => c.json(okBody(await getContentVersion(c.req.valid('param').id, c.req.valid('param').versionId)), 200) }),
     restoreVersionRoute,
     versionDiffRoute,
   ],

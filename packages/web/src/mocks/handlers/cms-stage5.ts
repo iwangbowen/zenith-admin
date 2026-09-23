@@ -1,3 +1,4 @@
+import { getMockCmsPublishedContent, mergeMockCmsDistribution, setMockCmsDistributionBase } from '@/mocks/utils/cms-revisions';
 import { badRequest, conflict, locked, notFound } from '@/mocks/utils/handlers';
 import { mock } from '@/mocks/utils/contract';
 import { removeByIds, requireItem } from '@/mocks/utils/crud';
@@ -204,7 +205,7 @@ function sanitizeMockHtml(value: string | null): string | null {
 }
 
 function executeMockDistribution(rule: CmsDistributionRule, taskId: number) {
-  const sources = mockCmsContents.filter((content) =>
+  const sources = mockCmsContents.flatMap((content) => { const published = getMockCmsPublishedContent(content.id); return published ? [published] : []; }).filter((content) =>
     content.siteId === rule.sourceSiteId
     && content.status === 'published'
     && content.distributionSourceId == null
@@ -231,6 +232,11 @@ function executeMockDistribution(rule: CmsDistributionRule, taskId: number) {
       outcome = 'conflict';
       conflicts += 1;
       message = '目标内容已锁定，禁止覆盖';
+    } else if (tracked && (tracked.distributionSourceVersion ?? 0) < source.version) {
+      const merged = mergeMockCmsDistribution(tracked.id, source);
+      outcome = merged ? 'success' : 'conflict';
+      if (merged) succeeded += 1; else conflicts += 1;
+      message = merged ? '来源更新已合并为目标工作稿' : '来源与目标均有修改，请在内容协作面板处理三方差异';
     } else if (tracked && (tracked.distributionSourceVersion ?? 0) >= source.version) {
       outcome = 'skipped';
       skipped += 1;
@@ -247,7 +253,7 @@ function executeMockDistribution(rule: CmsDistributionRule, taskId: number) {
           id: getNextCmsContentId(),
           siteId: rule.targetSiteId,
           channelId: rule.targetChannelId,
-          status: 'draft' as const,
+          status: 'draft' as const, editorialStatus: 'draft' as const, publishedRevisionId: null, submittedRevisionId: null, approvedRevisionId: null, hasUnpublishedChanges: true, version: 1,
           publishedAt: null,
           viewCount: 0,
           likeCount: 0,
@@ -259,8 +265,8 @@ function executeMockDistribution(rule: CmsDistributionRule, taskId: number) {
       Object.assign(target, {
         title: source.title,
         summary: source.summary,
-        body: rule.mode === 'mapping' ? null : sanitizeMockHtml(source.body),
-        extend: rule.mode === 'mapping' ? {} : structuredClone(source.extend),
+        body: sanitizeMockHtml(source.body),
+        extend: structuredClone(source.extend),
         mappingSourceId: rule.mode === 'mapping' ? (source.mappingSourceId ?? source.id) : null,
         distributionRuleId: rule.id,
         distributionSourceId: source.id,
@@ -268,6 +274,8 @@ function executeMockDistribution(rule: CmsDistributionRule, taskId: number) {
         updatedAt: mockDateTime(),
       });
       if (!mockCmsContents.some((content) => content.id === target.id)) mockCmsContents.push(target);
+      target.editorialStatus = 'draft'; target.hasUnpublishedChanges = true;
+      setMockCmsDistributionBase(target.id, source);
       succeeded += 1;
       targetId = target.id;
       outcome = 'success';
@@ -523,9 +531,6 @@ export const cmsStage5Handlers = [
     mockCmsContents.forEach((content) => {
       if (content.distributionRuleId !== rule.id) return;
       if (content.mappingSourceId != null) {
-        const source = mockCmsContents.find((item) => item.id === content.mappingSourceId);
-        content.body = sanitizeMockHtml(source?.body ?? content.body);
-        content.extend = structuredClone(source?.extend ?? content.extend);
         content.mappingSourceId = null;
         content.version += 1;
       }

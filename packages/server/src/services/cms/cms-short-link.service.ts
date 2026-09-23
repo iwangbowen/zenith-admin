@@ -10,7 +10,12 @@ import { ensureShortLink } from '../short-link/short-link.service';
 import { loadPublishedContentTarget } from './cms-published-content-target';
 
 export function triggerShortLinkForContent(contentId: number): void {
-  void (async () => {
+  void ensureCmsPublishedShortLink(contentId).catch((err) => {
+    logger.warn(`[CMS] 内容 ${contentId} 发布短链生成失败`, err);
+  });
+}
+
+export async function ensureCmsPublishedShortLink(contentId: number): Promise<void> {
     const target = await loadPublishedContentTarget(contentId);
     if (!target) return;
     await ensureShortLink({
@@ -20,7 +25,4 @@ export function triggerShortLinkForContent(contentId: number): void {
       title: target.content.title,
       tenantId: null,
     });
-  })().catch((err) => {
-    logger.warn(`[CMS] 内容 ${contentId} 发布短链生成失败`, err);
-  });
 }

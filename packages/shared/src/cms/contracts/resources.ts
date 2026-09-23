@@ -51,6 +51,7 @@ export const cmsResourceReferenceSchema = z.object({
   id: z.int(),
   title: z.string(),
   field: z.string(),
+  href: z.string().optional(),
 }).meta({ id: 'CmsResourceReference' });
 
 export type CmsResourceReference = z.infer<typeof cmsResourceReferenceSchema>;

@@ -88,7 +88,7 @@ export const cmsModelListQuery = paginationQuery.extend({
 
 export const cmsModelContract = defineContract('/api/cms/models', {
   list: op.get('/', { access: { permission: 'cms:model:list' }, query: cmsModelListQuery, response: paginated(cmsModelSchema), summary: '模型分页列表' }),
-  all: op.get('/all', { access: { permission: 'cms:channel:list' }, query: cmsModelScopeQuery, response: z.array(cmsModelSchema), summary: '全部启用模型（栏目绑定下拉；普通请求必须提供 siteId）' }),
+  all: op.get('/all', { access: { permission: ['cms:channel:list', 'cms:model:list', 'cms:content:list', 'cms:content:create', 'cms:content:update'] }, query: cmsModelScopeQuery, response: z.array(cmsModelSchema), summary: '全部启用模型（栏目及内容模型下拉；普通请求必须提供 siteId）' }),
   detail: op.get('/{id}', { access: { permission: 'cms:model:list' }, params: idParam, query: cmsModelScopeQuery, response: cmsModelSchema, summary: '模型详情（含字段）' }),
   refs: op.get('/{id}/refs', { access: { permission: 'cms:model:list' }, params: idParam, query: cmsModelScopeQuery, response: cmsModelRefsSchema, summary: '模型引用统计（被哪些栏目绑定、内容/站点扩展使用量）' }),
   versions: op.get('/{id}/versions', { access: { permission: 'cms:model:list' }, params: idParam, query: cmsModelScopeQuery, response: z.array(cmsModelVersionSchema), summary: '不可变模型版本' }),

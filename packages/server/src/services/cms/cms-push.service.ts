@@ -124,15 +124,18 @@ export async function pushCmsUrls(siteId: number, urls: string[], engines?: CmsP
 
 /** 内容发布后自动推送（未配置引擎时静默跳过；路由 fire-and-forget 调用） */
 export function triggerAutoPushForContent(contentId: number): void {
-  void (async () => {
+  void pushCmsPublishedContent(contentId).catch((err) => {
+    logger.error(`[CMS] 内容 ${contentId} 自动推送失败`, err);
+  });
+}
+
+export async function pushCmsPublishedContent(contentId: number): Promise<void> {
     const target = await loadPublishedContentTarget(contentId);
     if (!target) return;
     const cfg = getSitePushConfig(target.site);
     if (!cfg.baiduPushToken && !cfg.indexNowKey) return;
-    await pushCmsUrlsForSite(target.site, [target.path]);
-  })().catch((err) => {
-    logger.error(`[CMS] 内容 ${contentId} 自动推送失败`, err);
-  });
+    const results = await pushCmsUrlsForSite(target.site, [target.path]);
+    if (results.some((result) => !result.submitted && !result.reason)) throw new Error('搜索引擎推送失败，等待重试');
 }
 
 // ─── 推送日志 ─────────────────────────────────────────────────────────────────

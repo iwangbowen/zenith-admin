@@ -1,3 +1,5 @@
+import { submitMockCmsContentRelease, submitMockCmsWithdrawal } from './cms-releases';
+import { getMockCmsWorkingContent, getMockCmsPublishedContent, getMockCmsRevision, getMockCmsReviewContent, bindMockCmsReview, assertMockCmsCas, freezeMockCmsRevision, saveMockCmsWorkingContent, restoreMockCmsRevision } from '@/mocks/utils/cms-revisions';
 import { HttpResponse } from 'msw';
 import type * as z from 'zod';
 import { badRequest, notFound, conflict, locked } from '@/mocks/utils/handlers';
@@ -6,7 +8,6 @@ import { removeByIds, removeItem, requireItem, updateItem } from '@/mocks/utils/
 import type {
   CmsChannel,
   CmsContent,
-  CmsContentStatus,
   CmsForm,
   CmsModel,
   CmsModelField,
@@ -480,15 +481,25 @@ export const cmsHandlers = [
 
   // ═══ 内容 ═══════════════════════════════════════════════════════════════
   mock(cmsContentContract.list, ({ query, ok, paginate }) => {
+    if (mockCmsContents.length) getMockCmsWorkingContent(mockCmsContents[0].id);
     const { siteId, channelId, status, contentType, keyword, deleted, archived } = query;
     let list = mockCmsContents.filter((c) => c.siteId === siteId && (deleted ? c.status === 'offline' && isDeleted(c) : !isDeleted(c)));
     if (!deleted) list = list.filter((c) => (archived ? !!c.archivedAt : !c.archivedAt));
     if (channelId) list = list.filter((c) => c.channelId === channelId);
     if (status) list = list.filter((c) => c.status === status);
     if (contentType) list = list.filter((c) => c.contentType === contentType);
+    if (query.editorialStatus) list = list.filter((content) => content.editorialStatus === query.editorialStatus);
+    if (query.ownerId) list = list.filter((content) => content.ownerId === query.ownerId);
+    if (query.modelId) list = list.filter((content) => content.modelId === query.modelId);
+    if (query.locale) list = list.filter((content) => content.locale === query.locale);
+    if (query.hasUnpublishedChanges !== undefined) list = list.filter((content) => content.hasUnpublishedChanges === query.hasUnpublishedChanges);
+    if (query.tags) list = list.filter((content) => query.tags!.split(',').map(Number).every((tag) => content.tagIds.includes(tag)));
+    if (query.startTime) list = list.filter((content) => content.createdAt >= query.startTime!);
+    if (query.endTime) list = list.filter((content) => content.createdAt <= query.endTime!);
+    if (query.calendarFrom || query.calendarTo) list = list.filter((content) => [content.scheduledAt, content.expireAt, content.dueAt].some((date) => date && (!query.calendarFrom || date >= query.calendarFrom) && (!query.calendarTo || date <= query.calendarTo)));
     list = filterByKeyword(list, keyword, [(c) => c.title, (c) => c.author]);
     list = [...list].sort((a, b) => Number(b.isTop) - Number(a.isTop) || (b.topWeight ?? 0) - (a.topWeight ?? 0) || b.id - a.id);
-    return ok(paginate(list.map((c) => ({ ...c, channelName: mockCmsChannels.find((ch) => ch.id === c.channelId)?.name ?? null }))));
+    return ok(paginate(list.map((c) => ({ ...c, listFields: Object.fromEntries((c.modelFields ?? []).filter((field) => field.showInList).map((field) => [field.name, c.extend[field.name]])), channelName: mockCmsChannels.find((ch) => ch.id === c.channelId)?.name ?? null }))));
   }),
   mock(cmsContentContract.checkTitle, ({ query, ok }) => {
     const { siteId, excludeId } = query;
@@ -542,23 +553,17 @@ export const cmsHandlers = [
   }),
   mock(cmsContentContract.workflowContext, ({ params, query, ok }) => {
     const content = requireItem(mockCmsContents, params.id, '内容不存在', { status: 404 });
-    const currentId = content.status === 'draft' || content.status === 'rejected' ? null : getMockCmsCurrentInstanceId(content);
+    const currentId = content.editorialStatus === 'draft' || content.editorialStatus === 'rejected' ? null : getMockCmsCurrentInstanceId(content);
     return ok(getMockBusinessContext('cms_content', content.id, currentId, query.instanceId));
   }),
   mock(cmsContentContract.approvalDetail, ({ params, query, ok }) => {
     requireMockBusinessInstance('cms_content', params.id, query.instanceId);
-    const content = requireItem(mockCmsContents, params.id, '内容不存在', { status: 404 });
-    return ok({ ...content, channelName: mockCmsChannels.find((channel) => channel.id === content.channelId)?.name ?? null, tags: mockCmsTags.filter((tag) => content.tagIds.includes(tag.id)) });
+    return ok(getMockCmsReviewContent(params.id, query.instanceId));
   }),
-  mock(cmsContentContract.detail, ({ params, ok }) => {
-    const content = requireItem(mockCmsContents, params.id, '内容不存在', { status: 404 });
-    return ok({
-      ...content,
-      channelName: mockCmsChannels.find((ch) => ch.id === content.channelId)?.name ?? null,
-      tags: mockCmsTags.filter((t) => content.tagIds.includes(t.id)),
-    });
-  }),
+  mock(cmsContentContract.detail, ({ params, ok }) => ok(getMockCmsWorkingContent(params.id))),
   mock(cmsContentContract.recycle, ({ body, ok }) => {
+    for (const id of body.ids) { const item = assertMockCmsCas(id, body.expectedVersions[String(id)]); if (item.lockedAt) return locked('内容已被持久锁定', { status: 423 }); }
+    for (const id of body.ids) { const item = getMockCmsWorkingContent(id); item.version += 1; item.hasUnpublishedChanges = true; }
     const { ids } = body;
     const widget = ids.map((id) => publishedWidgetUsing('content', id)).find(Boolean);
     if (widget) return conflict(`已发布页面部件「${widget.name}」引用了所选内容`, { status: 409 });
@@ -571,6 +576,8 @@ export const cmsHandlers = [
     return ok(null, `已移入回收站 ${ids.length} 条`);
   }),
   mock(cmsContentContract.restore, ({ body, ok }) => {
+    for (const id of body.ids) { const item = assertMockCmsCas(id, body.expectedVersions[String(id)]); if (item.lockedAt) return locked('内容已被持久锁定', { status: 423 }); }
+    for (const id of body.ids) { const item = getMockCmsWorkingContent(id); item.version += 1; item.hasUnpublishedChanges = true; }
     const { ids } = body;
     for (const c of mockCmsContents) {
       if (ids.includes(c.id)) {
@@ -581,6 +588,8 @@ export const cmsHandlers = [
     return ok(null, `已恢复 ${ids.length} 条`);
   }),
   mock(cmsContentContract.purge, ({ body, ok }) => {
+    for (const id of body.ids) { const item = assertMockCmsCas(id, body.expectedVersions[String(id)]); if (item.lockedAt) return locked('内容已被持久锁定', { status: 423 }); }
+    for (const id of body.ids) { const item = getMockCmsWorkingContent(id); item.version += 1; item.hasUnpublishedChanges = true; }
     const { ids } = body;
     const widget = ids.map((id) => publishedWidgetUsing('content', id)).find(Boolean);
     if (widget) return conflict(`已发布页面部件「${widget.name}」引用了所选内容`, { status: 409 });
@@ -589,6 +598,8 @@ export const cmsHandlers = [
   }),
   // ─── 归档 ────────────────────────────────────────────────────────────────
   mock(cmsContentContract.archive, ({ body, ok }) => {
+    for (const id of body.ids) { const item = assertMockCmsCas(id, body.expectedVersions[String(id)]); if (item.lockedAt) return locked('内容已被持久锁定', { status: 423 }); }
+    for (const id of body.ids) { const item = getMockCmsWorkingContent(id); item.version += 1; item.hasUnpublishedChanges = true; }
     let count = 0;
     for (const c of mockCmsContents) {
       if (body.ids.includes(c.id) && (c.status === 'published' || c.status === 'offline') && !c.archivedAt) {
@@ -599,6 +610,8 @@ export const cmsHandlers = [
     return ok(null, `已归档 ${count} 条（仅已发布/已下线内容可归档）`);
   }),
   mock(cmsContentContract.unarchive, ({ body, ok }) => {
+    for (const id of body.ids) { const item = assertMockCmsCas(id, body.expectedVersions[String(id)]); if (item.lockedAt) return locked('内容已被持久锁定', { status: 423 }); }
+    for (const id of body.ids) { const item = getMockCmsWorkingContent(id); item.version += 1; item.hasUnpublishedChanges = true; }
     for (const c of mockCmsContents) {
       if (body.ids.includes(c.id)) c.archivedAt = null;
     }
@@ -618,29 +631,30 @@ export const cmsHandlers = [
       .filter((h) => h.count > 0);
     return ok({ sensitive, errorProne });
   }),
-  ...(['submit', 'reject', 'offline'] as const).map((action) => mock(cmsContentContract[action], ({ params, ok }) => {
-    const content = requireItem(mockCmsContents, params.id, '内容不存在', { status: 404 });
-    const statusMap: Record<typeof action, CmsContentStatus> = { submit: 'pending', reject: 'rejected', offline: 'offline' };
-    const opActionMap: Record<typeof action, { action: string; label: string }> = {
-      submit: { action: 'submitted', label: '提交审核' },
-      reject: { action: 'rejected', label: '驳回' },
-      offline: { action: 'offlined', label: '下线' },
-    };
-    const widget = action === 'offline' ? publishedWidgetUsing('content', content.id) : null;
-    if (widget) return conflict(`已发布页面部件「${widget.name}」引用了该内容`, { status: 409 });
-    if (content.lockedAt) return locked(`内容已被持久锁定：${content.lockReason ?? ''}`, { status: 423 });
+  ...(['submit', 'reject', 'offline'] as const).map((action) => mock(cmsContentContract[action], ({ params, body, ok }) => {
+    const content = assertMockCmsCas(params.id, body.expectedVersion);
+    if (content.lockedAt) return locked('内容已被持久锁定', { status: 423 });
     if (action === 'submit') {
-      if (content.status !== 'draft' && content.status !== 'rejected') return badRequest('当前状态不允许提交审核', { status: 400 });
+      if (content.editorialStatus === 'pending') return badRequest('该工作稿已在审核中', { status: 400 });
       startMockCmsWorkflow(content);
-    } else if (action === 'reject') assertMockCmsManualAudit(content);
-    content.status = statusMap[action];
+      content.version += 1;
+      const revision = freezeMockCmsRevision(content.id, 'submission');
+      content.submittedRevisionId = revision.id;
+      content.editorialStatus = 'pending';
+      bindMockCmsReview(getMockCmsCurrentInstanceId(content), revision.id);
+    } else if (action === 'reject') {
+      assertMockCmsManualAudit(content);
+      if (content.editorialStatus !== 'pending') return badRequest('仅待审核稿件可以驳回', { status: 400 });
+      content.editorialStatus = 'rejected';
+      content.rejectReason = 'reason' in body ? body.reason : '驳回';
+      content.version += 1;
+    } else {
+      submitMockCmsWithdrawal(content.id);
+      content.version += 1;
+    }
     content.updatedAt = mockDateTime();
-    submitMockCmsWidgetSourceRefresh('content', [content.id]);
-    mockCmsContentOpLogs.push({
-      id: getNextCmsContentOpLogId(), contentId: content.id, action: opActionMap[action].action, actionLabel: opActionMap[action].label,
-      detail: null, operatorId: 1, operatorName: 'admin', createdAt: mockDateTime(),
-    });
-    return ok(content, '操作成功');
+    mockCmsContentOpLogs.push({ id: getNextCmsContentOpLogId(), contentId: content.id, action, actionLabel: action === 'submit' ? '提交审核' : action === 'reject' ? '驳回' : '下线', detail: null, operatorId: 1, operatorName: 'admin', createdAt: mockDateTime() });
+    return ok(content, '操作已提交');
   })),
   mock(cmsContentContract.create, ({ body, ok }) => {
     const now = mockDateTime();
@@ -648,7 +662,8 @@ export const cmsHandlers = [
       id: getNextCmsContentId(),
       siteId: body.siteId,
       channelId: body.channelId,
-      modelId: mockCmsChannels.find((c) => c.id === body.channelId)?.modelId ?? null,
+      modelId: body.modelId ?? null,
+      modelFields: structuredClone(mockCmsModels.find((model) => model.id === body.modelId)?.fields ?? []),
       contentType: body.contentType,
       mediaData: body.mediaData,
       title: body.title,
@@ -676,6 +691,9 @@ export const cmsHandlers = [
       isRecommend: body.isRecommend,
       isHot: body.isHot,
       status: 'draft',
+      editorialStatus: 'draft', publishedRevisionId: null, submittedRevisionId: null, approvedRevisionId: null, hasUnpublishedChanges: true,
+      ownerId: body.ownerId ?? null, locale: body.locale, dueAt: body.dueAt ?? null, translationOfId: null, sourceRevisionId: null,
+      extraChannelIds: body.extraChannelIds, relatedIds: body.relatedIds,
       rejectReason: null,
       publishedAt: null,
       scheduledAt: body.scheduledAt ?? null,
@@ -709,19 +727,9 @@ export const cmsHandlers = [
     });
     return ok(content, '创建成功');
   }),
-  mock(cmsContentContract.update, ({ params, body, ok }) => {
-    const item = requireItem(mockCmsContents, params.id, '内容不存在', { status: 404 });
-    if (item.lockedAt) return locked('内容已被持久锁定', { status: 423 });
-    const { expectedVersion: _expectedVersion, ...rest } = body;
-    Object.assign(item, rest, {
-      version: (item.version ?? 1) + 1,
-      updatedAt: mockDateTime(),
-    });
-    submitMockCmsWidgetSourceRefresh('content', [params.id]);
-    return ok(item, '更新成功');
-  }),
+  mock(cmsContentContract.update, ({ params, body, ok }) => ok(saveMockCmsWorkingContent(params.id, body, body.expectedVersion, body.saveMode), '工作稿已保存')),
   mock(cmsContentContract.lock, ({ params, body, ok }) => {
-    const content = requireItem(mockCmsContents, params.id, '内容不存在', { status: 404 });
+    const content = assertMockCmsCas(params.id, body.expectedVersion);
     if (content.lockedAt) return badRequest('内容已被持久锁定', { status: 400 });
     const lockedAt = mockDateTime();
     content.lockedAt = lockedAt;
@@ -736,8 +744,8 @@ export const cmsHandlers = [
     });
     return ok({ lockedAt, lockedBy: content.lockedBy, lockReason: content.lockReason }, '锁定成功');
   }),
-  mock(cmsContentContract.unlock, ({ params, ok }) => {
-    const content = requireItem(mockCmsContents, params.id, '内容不存在', { status: 404 });
+  mock(cmsContentContract.unlock, ({ params, body, ok }) => {
+    const content = assertMockCmsCas(params.id, body.expectedVersion);
     content.lockedAt = null;
     content.lockedBy = null;
     content.lockedByName = null;
@@ -752,8 +760,12 @@ export const cmsHandlers = [
   // ─── 编辑锁 / 草稿预览（demo 模式恒定成功）───────────────────────────────
   mock(cmsContentContract.acquireEditLock, ({ ok }) => ok({ acquired: true, holder: null })),
   mock(cmsContentContract.releaseEditLock, ({ ok }) => ok(null, '已释放')),
-  mock(cmsContentContract.previewLink, ({ params, ok }) =>
-    ok({ url: `/__cms/main/preview/${params.id}?exp=0&sig=demo`, expiresAt: mockDateTime() }, 'Demo 模式无前台渲染，链接仅作展示')),
+  mock(cmsContentContract.previewLink, ({ params, ok }) => {
+    const revision = freezeMockCmsRevision(params.id, 'preview');
+    const grantId = crypto.randomUUID();
+    return ok({ url: `/__cms/main/preview/${params.id}?revision=${revision.id}&grant=${grantId}`, expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), revisionId: revision.id, grantId }, '固定版本预览已创建');
+  }),
+  mock(cmsContentContract.revokePreview, ({ params, ok }) => { getMockCmsWorkingContent(params.id); return ok(null, '预览链接已撤销'); }),
   // ─── 操作日志时间线 ──────────────────────────────────────────────────────
   mock(cmsContentContract.opLogs, ({ params, ok }) =>
     ok(mockCmsContentOpLogs.filter((l) => l.contentId === params.id).sort((a, b) => b.id - a.id))),
@@ -972,18 +984,22 @@ export const cmsHandlers = [
 // ═══ P2 handlers ══════════════════════════════════════════════════════════════
 export const cmsP2Handlers = [
   // ─── 内容版本 ───────────────────────────────────────────────────────────────
-  mock(cmsContentContract.versions, ({ params, ok }) => ok(mockCmsContentVersions.filter((v) => v.contentId === params.id))),
-  mock(cmsContentContract.restoreVersion, ({ params, ok }) => {
-    const content = requireItem(mockCmsContents, params.id, '内容不存在', { status: 404 });
-    return ok(content, '回滚成功');
+  mock(cmsContentContract.versions, ({ params, paginate, ok }) => {
+    getMockCmsWorkingContent(params.id);
+    return ok(paginate(mockCmsContentVersions.filter((version) => version.contentId === params.id).map(({ snapshot: _snapshot, ...summary }) => summary)));
   }),
+  mock(cmsContentContract.version, ({ params, ok }) => {
+    const revision = getMockCmsRevision(params.versionId);
+    if (!revision || revision.contentId !== params.id) return notFound('版本不存在', { status: 404 });
+    return ok(revision);
+  }),
+  mock(cmsContentContract.restoreVersion, ({ params, body, ok }) => ok(restoreMockCmsRevision(params.id, params.versionId, body.expectedVersion), '已恢复为工作稿')),
   mock(cmsContentContract.versionDiff, ({ params, ok }) => {
-    const content = mockCmsContents.find((c) => c.id === params.id);
-    const version = mockCmsContentVersions.find((v) => v.id === params.versionId);
-    if (!content || !version) return notFound('版本不存在', { status: 404 });
-    const beforeTitle = (version.snapshot as { title?: string }).title ?? version.title;
-    if (beforeTitle === content.title) return ok([]);
-    return ok([{ field: 'title', label: '标题', before: beforeTitle, after: content.title }]);
+    const content = getMockCmsWorkingContent(params.id);
+    const revision = getMockCmsRevision(params.versionId);
+    if (!revision || revision.contentId !== params.id) return notFound('版本不存在', { status: 404 });
+    const current = content as unknown as Record<string, unknown>;
+    return ok(Object.entries(revision.snapshot).filter(([field, value]) => JSON.stringify(value) !== JSON.stringify(current[field])).map(([field, value]) => ({ field, label: field, before: value ?? null, after: current[field] ?? null })));
   }),
 
   // ─── SEO：重定向 ────────────────────────────────────────────────────────────
@@ -1727,6 +1743,8 @@ export const cmsP3Handlers = [
 
   // 内容批量操作
   mock(cmsContentContract.batchMove, ({ body, ok }) => {
+    for (const id of body.ids) { const item = assertMockCmsCas(id, body.expectedVersions[String(id)]); if (item.lockedAt) return locked('内容已被持久锁定', { status: 423 }); }
+    for (const id of body.ids) { const item = getMockCmsWorkingContent(id); item.version += 1; item.hasUnpublishedChanges = true; }
     const { ids, channelId } = body;
     for (const c of mockCmsContents) {
       if (ids.includes(c.id)) c.channelId = channelId;
@@ -1735,6 +1753,8 @@ export const cmsP3Handlers = [
     return ok(null, `已移动 ${ids.length} 条内容`);
   }),
   mock(cmsContentContract.batchFlags, ({ body, ok }) => {
+    for (const id of body.ids) { const item = assertMockCmsCas(id, body.expectedVersions[String(id)]); if (item.lockedAt) return locked('内容已被持久锁定', { status: 423 }); }
+    for (const id of body.ids) { const item = getMockCmsWorkingContent(id); item.version += 1; item.hasUnpublishedChanges = true; }
     const { ids } = body;
     for (const c of mockCmsContents) {
       if (!ids.includes(c.id)) continue;
@@ -1746,6 +1766,8 @@ export const cmsP3Handlers = [
     return ok(null, `已更新 ${ids.length} 条内容`);
   }),
   mock(cmsContentContract.batchTag, ({ body, ok }) => {
+    for (const id of body.ids) { const item = assertMockCmsCas(id, body.expectedVersions[String(id)]); if (item.lockedAt) return locked('内容已被持久锁定', { status: 423 }); }
+    for (const id of body.ids) { const item = getMockCmsWorkingContent(id); item.version += 1; item.hasUnpublishedChanges = true; }
     const { ids, tagIds } = body;
     for (const c of mockCmsContents) {
       if (ids.includes(c.id)) c.tagIds = Array.from(new Set([...c.tagIds, ...tagIds]));
@@ -1763,8 +1785,10 @@ export const cmsP3Handlers = [
         failed.push({ id, reason: '内容不存在' });
         continue;
       }
+      if (content.version !== body.expectedVersions[String(id)]) { failed.push({ id, reason: '工作稿版本冲突' }); continue; }
+      if (content.lockedAt) { failed.push({ id, reason: '内容已被持久锁定' }); continue; }
       if (action === 'submit') {
-        if (content.status === 'draft' || content.status === 'rejected') {
+        if (content.editorialStatus !== 'pending') {
           try { startMockCmsWorkflow(content); } catch (error) {
             const message = error instanceof MockHttpError
               ? String((await error.response.clone().json() as { message: string }).message)
@@ -1772,31 +1796,37 @@ export const cmsP3Handlers = [
             failed.push({ id, reason: message });
             continue;
           }
-          content.status = 'pending';
+          content.version += 1;
+          content.submittedRevisionId = freezeMockCmsRevision(id, 'submission').id;
+          content.editorialStatus = 'pending';
+          bindMockCmsReview(getMockCmsCurrentInstanceId(content), content.submittedRevisionId);
           okIds.push(id);
         } else {
           failed.push({ id, reason: `当前状态（${content.status}）不允许提交审核` });
         }
       } else if (action === 'publish') {
         try { assertMockCmsManualAudit(content); } catch { failed.push({ id, reason: '内容正在工作流审核中，请在流程中处理' }); continue; }
-        if (content.status !== 'published' && !content.archivedAt) {
-          content.status = 'published';
-          content.publishedAt = mockDateTime();
+        if (!content.archivedAt) {
+          content.approvedRevisionId = content.submittedRevisionId ?? freezeMockCmsRevision(id, 'publication').id;
+          content.editorialStatus = 'approved';
+          submitMockCmsContentRelease(id, content.approvedRevisionId);
           okIds.push(id);
         } else {
           failed.push({ id, reason: '内容已发布或不可发布' });
         }
       } else if (action === 'reject') {
         try { assertMockCmsManualAudit(content); } catch { failed.push({ id, reason: '内容正在工作流审核中，请在流程中处理' }); continue; }
-        if (content.status === 'pending') {
-          content.status = 'rejected';
+        if (content.editorialStatus === 'pending') {
+          content.version += 1;
+          content.editorialStatus = 'rejected';
           content.rejectReason = reason || '批量驳回';
           okIds.push(id);
         } else {
           failed.push({ id, reason: '仅待审核内容可驳回' });
         }
       } else if (content.status === 'published') {
-        content.status = 'offline';
+        submitMockCmsWithdrawal(id);
+        content.version += 1;
         okIds.push(id);
       } else {
         failed.push({ id, reason: '仅已发布内容可下线' });
@@ -1810,7 +1840,8 @@ export const cmsP3Handlers = [
   mock(cmsContentContract.distribute, ({ body, ok }) => {
     const { ids } = body;
     const now = mockDateTime();
-    const sources = mockCmsContents.filter((c) => ids.includes(c.id));
+    const sources = ids.flatMap((id) => { const content = getMockCmsPublishedContent(id); return content ? [content] : []; });
+    if (sources.length !== ids.length) return badRequest('只能分发已发布内容', { status: 400 });
     const disallowed = sources.find((content) => content.status !== 'published' || content.archivedAt);
     if (disallowed) return badRequest(`内容 #${disallowed.id} 不是可分发的已发布内容`, { status: 400 });
     for (const src of sources) {
@@ -1820,6 +1851,7 @@ export const cmsP3Handlers = [
         siteId: body.targetSiteId,
         channelId: body.targetChannelId,
         status: 'draft',
+        editorialStatus: 'draft', publishedRevisionId: null, submittedRevisionId: null, approvedRevisionId: null, hasUnpublishedChanges: true,
         publishedAt: null,
         viewCount: 0,
         likeCount: 0,
@@ -1849,7 +1881,8 @@ export const cmsP3Handlers = [
       channelId: body.targetChannelId ?? src.channelId,
       title: `${src.title}（副本）`,
       slug: null,
-      status: 'draft' as CmsContentStatus,
+      status: 'draft' as const,
+      editorialStatus: 'draft' as const, publishedRevisionId: null, submittedRevisionId: null, approvedRevisionId: null, hasUnpublishedChanges: true, version: 1,
       publishedAt: null,
       viewCount: 0,
       tagIds: [...src.tagIds],
