@@ -362,7 +362,7 @@ export default function ContentsPage() {
     {
       title: '标题',
       dataIndex: 'title',
-      minWidth: 320,
+      minWidth: 400,
       render: (v: string, record) => {
         const flags = titleFlagItems(record);
         return (
@@ -378,7 +378,7 @@ export default function ContentsPage() {
               style={{
                 flex: '1 1 auto',
                 minWidth: 0,
-                maxWidth: 240,
+                maxWidth: 360,
                 ...(record.titleStyle?.bold ? { fontWeight: 700 } : {}),
                 ...(record.titleStyle?.color ? { color: record.titleStyle.color } : {}),
               }}
