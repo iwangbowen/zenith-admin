@@ -85,6 +85,9 @@
 - `databaseBackup`
 - `publishScheduledAnnouncements`
 - `cleanupTerminalRecordings`
+- `finalizeStaleReplays`
+- `sslCertificateInspection`
+- `probeOpsHosts`
 - `closeExpiredPaymentOrders`
 - `executeDueDeductions`
 - `syncPaymentDisputes`
