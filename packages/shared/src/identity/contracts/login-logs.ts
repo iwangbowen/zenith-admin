@@ -34,7 +34,6 @@ const loginLogSummarySchema = z.object({
   total: z.number(),
   successCount: z.number(),
   failCount: z.number(),
-  uniqueUsers: z.number(),
 });
 
 export const loginLogStatsSchema = z.object({

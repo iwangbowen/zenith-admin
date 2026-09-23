@@ -70,7 +70,6 @@ async function computeLoginLogStats(user: JwtPayload, daysRaw?: number) {
     total: count(),
     successCount: sql<number>`(count(case when ${loginLogs.status} = 'success' then 1 end))::integer`,
     failCount: sql<number>`(count(case when ${loginLogs.status} = 'fail' then 1 end))::integer`,
-    uniqueUsers: sql<number>`(count(distinct ${loginLogs.username}))::integer`,
   };
 
   const [
@@ -110,8 +109,8 @@ async function computeLoginLogStats(user: JwtPayload, daysRaw?: number) {
     db.select({ gpu: loginLogs.gpu, cnt: count() }).from(loginLogs).where(and(baseWhere, sql`${loginLogs.gpu} is not null`)).groupBy(loginLogs.gpu).orderBy(desc(count())).limit(8),
   ]);
 
-  const s = summaryRows[0] ?? { total: 0, successCount: 0, failCount: 0, uniqueUsers: 0 };
-  const ps = prevSummaryRows[0] ?? { total: 0, successCount: 0, failCount: 0, uniqueUsers: 0 };
+  const s = summaryRows[0] ?? { total: 0, successCount: 0, failCount: 0 };
+  const ps = prevSummaryRows[0] ?? { total: 0, successCount: 0, failCount: 0 };
   const hourlyMap = new Map(hourlyRaw.map((r) => [r.hour, r.cnt]));
   const dowHourMap = new Map(dowHourRaw.map((r) => [`${r.dow}-${r.hour}`, r.cnt]));
   const nicknameMap = await getNicknameMap(userStats.map((r) => r.username));
@@ -121,13 +120,11 @@ async function computeLoginLogStats(user: JwtPayload, daysRaw?: number) {
       total: s.total,
       successCount: Number(s.successCount),
       failCount: Number(s.failCount),
-      uniqueUsers: Number(s.uniqueUsers),
     },
     prevSummary: {
       total: ps.total,
       successCount: Number(ps.successCount),
       failCount: Number(ps.failCount),
-      uniqueUsers: Number(ps.uniqueUsers),
     },
     dailyStats: dailyStats.map((r) => ({
       date: r.date || startDateLabel,

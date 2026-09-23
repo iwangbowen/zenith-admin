@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { LogIn, CheckCircle2, XCircle, Users } from 'lucide-react';
+import { LogIn, CheckCircle2, XCircle } from 'lucide-react';
 import {
   AreaChart,
   BarChart,
@@ -326,15 +326,6 @@ export default function LoginLogStatsPanel() {
             icon={<XCircle size={22} />}
             accent={summary && summary.failCount > 0 ? 'var(--semi-color-danger)' : undefined}
             delta={summary && prevSummary ? deltaOf(summary.failCount, prevSummary.failCount) : null}
-            deltaLabel="较上一周期"
-          />
-          <StatCard
-            title="活跃用户数"
-            value={summary ? summary.uniqueUsers.toLocaleString() : EMPTY_PLACEHOLDER}
-            sub="不重复用户账号"
-            icon={<Users size={22} />}
-            accent="var(--semi-color-data-2)"
-            delta={summary && prevSummary ? deltaOf(summary.uniqueUsers, prevSummary.uniqueUsers) : null}
             deltaLabel="较上一周期"
           />
         </StatGrid>
