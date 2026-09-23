@@ -12,7 +12,7 @@ export const identitySecuritySettingsSchema = z.object({
     expiryDays: z.int().min(1).max(3650).default(90).meta({ title: '密码过期天数' }),
   }).prefault({}).meta({ title: '密码策略' }),
   loginChallenge: z.object({
-    maxAttemptsPerSource: z.int().min(1).max(1000).default(20).meta({
+    maxAttemptsPerSource: z.int().min(1).max(1000).default(30).meta({
       title: '单来源失败次数阈值',
       description: '同一账号同一 IP 在窗口内的失败次数，达到后该来源登录需先通过验证码',
     }),

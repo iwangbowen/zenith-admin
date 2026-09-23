@@ -93,7 +93,7 @@ describe('resolveSettings', () => {
     const resolved = resolveSettings('identitySecurity', [{ loginChallenge: { maxAttemptsPerSource: 'many', windowMinutes: 45 } }]);
     expect(resolved.degraded).toBe(true);
     expect(resolved.droppedPaths).toEqual(['loginChallenge.maxAttemptsPerSource']);
-    expect(resolved.value.loginChallenge).toEqual({ maxAttemptsPerSource: 20, sourceLimit: 5, windowMinutes: 45 });
+    expect(resolved.value.loginChallenge).toEqual({ maxAttemptsPerSource: 30, sourceLimit: 5, windowMinutes: 45 });
   });
 
   it('整体不可解析时回退纯默认文档', () => {

@@ -161,7 +161,7 @@
 | `password.requireUppercase` | 是否要求大写字母 |
 | `password.requireSpecialChar` | 是否要求特殊字符 |
 | `password.expiryEnabled` / `password.expiryDays` | 密码过期强制修改 |
-| `loginChallenge.maxAttemptsPerSource` | 单来源失败阈值：同一账号 + 同一 IP 的失败次数，达到后该来源登录需先过验证码（默认 20） |
+| `loginChallenge.maxAttemptsPerSource` | 单来源失败阈值：同一账号 + 同一 IP 的失败次数，达到后该来源登录需先过验证码（默认 30） |
 | `loginChallenge.sourceLimit` | 多来源失败阈值：窗口内失败来源 IP 数，达到后该账号所有来源都需验证码（默认 5） |
 | `loginChallenge.windowMinutes` | 计数窗口与验证码要求的持续时长（默认 30） |
 | `session.maxSessions` | 同时在线上限：0 不限制、1 仅一处登录、N 最多 N 处；模拟登录会话不计入 |
