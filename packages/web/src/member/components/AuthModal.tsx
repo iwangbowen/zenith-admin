@@ -3,8 +3,10 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Modal, Input, Button, PinCode, Toast } from '@douyinfe/semi-ui';
 import { Crown } from 'lucide-react';
+import type { LoginCaptchaChallenge } from '@zenith/shared/identity';
 import { useMemberAuth } from '../hooks/useMemberAuth';
 import { useSmsCode } from '../hooks/useSmsCode';
+import { CaptchaChallengeField } from './CaptchaChallengeField';
 
 const PHONE_REGEX = /^1[3-9]\d{9}$/;
 
@@ -32,6 +34,9 @@ export function AuthModal({ visible, onClose, defaultTab = 'login' }: Readonly<A
   const [regCode, setRegCode] = useState('');
   const [nickname, setNickname] = useState('');
   const [regPassword, setRegPassword] = useState('');
+  // 登录失败防护命中后服务端下发的验证码挑战（不锁定账号，答对即可继续登录）
+  const [captcha, setCaptcha] = useState<LoginCaptchaChallenge | null>(null);
+  const [captchaCode, setCaptchaCode] = useState('');
   // 邀请码：支持从邀请链接 #/?invite=XXXX 预填
   const [inviteCode, setInviteCode] = useState(() => {
     const hashQuery = window.location.hash.split('?')[1];
@@ -45,17 +50,24 @@ export function AuthModal({ visible, onClose, defaultTab = 'login' }: Readonly<A
   const handleLogin = async () => {
     if (loginType === 'password') {
       if (!account || !password) { Toast.warning('请输入账号和密码'); return; }
+      if (captcha && !captchaCode.trim()) { Toast.warning('请输入验证码'); return; }
     } else if (!PHONE_REGEX.test(loginPhone) || loginSmsCode.length !== 6) {
       Toast.warning('请输入手机号和 6 位验证码'); return;
     }
     setLoading(true);
     const res = await login(
       loginType === 'password'
-        ? { loginType: 'password', account, password }
+        ? { loginType: 'password', account, password, ...(captcha ? { captchaId: captcha.captchaId, captchaCode } : {}) }
         : { loginType: 'sms', phone: loginPhone, smsCode: loginSmsCode },
     );
     setLoading(false);
     if (res.code === 0) {
+      if ('captchaRequired' in res.data) {
+        setCaptcha(res.data);
+        setCaptchaCode('');
+        Toast.warning(res.data.message);
+        return;
+      }
       Toast.success('登录成功');
       onClose();
     } else {
@@ -124,6 +136,9 @@ export function AuthModal({ visible, onClose, defaultTab = 'login' }: Readonly<A
               <>
                 <Input size="large" placeholder="手机号 / 邮箱 / 用户名" value={account} onChange={setAccount} style={{ marginBottom: 12 }} />
                 <PasswordInput size="large" placeholder="登录密码" value={password} onChange={setPassword} onEnterPress={handleLogin} />
+                {captcha && (
+                  <CaptchaChallengeField challenge={captcha} value={captchaCode} onChange={setCaptchaCode} onEnterPress={handleLogin} />
+                )}
               </>
             ) : (
               <>

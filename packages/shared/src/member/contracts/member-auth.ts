@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import { defineContract, op } from '../../core/contract';
+import { loginCaptchaChallengeSchema } from '../../identity/contracts/auth';
 import {
   memberChangePasswordSchema,
   memberDeactivateSchema,
@@ -28,6 +29,11 @@ export const memberLoginResultSchema = z.object({
 
 export type MemberLoginResult = z.infer<typeof memberLoginResultSchema>;
 
+/** 会员登录结果：成功签发即 memberLoginResultSchema，失败防护命中时返回验证码挑战（不锁定账号） */
+export const memberLoginResponseSchema = z.union([memberLoginResultSchema, loginCaptchaChallengeSchema]).meta({ id: 'MemberLoginResponse' });
+
+export type MemberLoginResponse = z.infer<typeof memberLoginResponseSchema>;
+
 export const memberRefreshResultSchema = z.object({
   accessToken: z.string(),
   refreshToken: z.string().meta({ description: '续签同时轮换 refresh token：客户端必须以新值替换本地保存的 refresh token' }),
@@ -47,7 +53,7 @@ export type MemberSmsCodeResult = z.infer<typeof memberSmsCodeResultSchema>;
 export const memberAuthContract = defineContract('/api/member/auth', {
   smsCode: op.post('/sms-code', { body: memberSmsCodeSchema, response: memberSmsCodeResultSchema, summary: '发送会员短信验证码', public: true }),
   register: op.post('/register', { body: memberRegisterSchema, response: memberLoginResultSchema, summary: '会员注册', public: true }),
-  login: op.post('/login', { body: memberLoginSchema, response: memberLoginResultSchema, summary: '会员登录', public: true }),
+  login: op.post('/login', { body: memberLoginSchema, response: memberLoginResponseSchema, summary: '会员登录', public: true }),
   refresh: op.post('/refresh', { body: memberRefreshTokenSchema, response: memberRefreshResultSchema, summary: '刷新会员令牌', public: true }),
   resetPassword: op.post('/reset-password', { body: memberResetPasswordSchema, summary: '会员重置密码（短信验证码）', public: true }),
   logout: op.post('/logout', { summary: '会员退出登录' }),

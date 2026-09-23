@@ -1,14 +1,19 @@
 import svgCaptcha from 'svg-captcha';
 import crypto from 'node:crypto';
+import redis from './redis';
+import { config } from '../config';
 
-interface CaptchaEntry {
-  text: string;
-  expireAt: number;
-}
+/**
+ * 登录图形验证码。
+ *
+ * 存放在 Redis（而非进程内 Map）：api 角色可多节点部署，取验证码与提交登录很可能是
+ * 不同节点，进程内存储会让校验随机失败；Redis TTL 顺带免去清理任务。
+ */
 
-const store = new Map<string, CaptchaEntry>();
+const CAPTCHA_PREFIX = `${config.redis.keyPrefix}captcha:`;
 
-const CAPTCHA_EXPIRE_MS = 5 * 60 * 1000; // 5 minutes
+/** 验证码有效期（秒） */
+const CAPTCHA_TTL_SECONDS = 5 * 60;
 
 /** 验证码复杂度：low（干扰少、易识别）/ medium（默认）/ high（干扰强、防机器识别） */
 export type CaptchaComplexity = 'low' | 'medium' | 'high';
@@ -24,21 +29,8 @@ export function resolveCaptchaComplexity(value?: string): CaptchaComplexity {
   return value === 'low' || value === 'high' ? value : 'medium';
 }
 
-/** Clean up expired captchas */
-export function cleanExpiredCaptchas(): number {
-  const now = Date.now();
-  let count = 0;
-  for (const [id, entry] of store) {
-    if (entry.expireAt < now) {
-      store.delete(id);
-      count++;
-    }
-  }
-  return count;
-}
-
-/** Generate a math captcha and return id + SVG */
-export function generateCaptcha(complexity: CaptchaComplexity = 'medium'): { captchaId: string; captchaImage: string } {
+/** Generate a math captcha, store its answer in Redis and return id + SVG */
+export async function generateCaptcha(complexity: CaptchaComplexity = 'medium'): Promise<{ captchaId: string; captchaImage: string }> {
   const preset = COMPLEXITY_PRESETS[complexity];
   const captcha = svgCaptcha.createMathExpr({
     ...preset,
@@ -49,27 +41,23 @@ export function generateCaptcha(complexity: CaptchaComplexity = 'medium'): { cap
   });
 
   const captchaId = crypto.randomUUID();
-  store.set(captchaId, {
-    text: captcha.text,
-    expireAt: Date.now() + CAPTCHA_EXPIRE_MS,
-  });
+  await redis.setex(`${CAPTCHA_PREFIX}${captchaId}`, CAPTCHA_TTL_SECONDS, captcha.text);
 
   return { captchaId, captchaImage: captcha.data };
 }
 
-/** Verify captcha — one-time use, removes entry after verification */
-export function verifyCaptcha(captchaId: string, code: string): boolean {
-  const entry = store.get(captchaId);
-  if (!entry) return false;
-
-  store.delete(captchaId);
-
-  if (entry.expireAt < Date.now()) return false;
-
-  return entry.text.toLowerCase() === code.toLowerCase();
+/** Verify captcha — one-time use (GETDEL), 任意节点可校验；Redis 故障按校验失败处理 */
+export async function verifyCaptcha(captchaId: string, code: string): Promise<boolean> {
+  if (!captchaId || !code) return false;
+  const expected = await redis.getdel(`${CAPTCHA_PREFIX}${captchaId}`).catch(() => null);
+  if (!expected) return false;
+  return expected.toLowerCase() === code.trim().toLowerCase();
 }
 
-/** Get current store size (for monitoring) */
-export function getCaptchaStoreSize(): number {
-  return store.size;
+/**
+ * 兼容既有定时任务（`cleanExpiredCaptchas`）：验证码改由 Redis TTL 自动过期，不再需要清理，
+ * 但保留导出与 handler 注册，避免已初始化的环境里 cron 任务找不到处理器。
+ */
+export async function cleanExpiredCaptchas(): Promise<number> {
+  return 0;
 }

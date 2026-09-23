@@ -27,7 +27,7 @@ vi.mock('../../db', async () => {
 });
 vi.mock('../../lib/context', () => ({ currentUser: () => ({ userId: 1, username: 'admin', tenantId: null, roles: ['super_admin'] }) }));
 vi.mock('../../lib/data-scope', () => ({ getDataScopeCondition: async () => undefined }));
-vi.mock('../../lib/session-manager', () => ({ forceLogoutAllByUsers: async () => [], unlockUser: vi.fn(), batchCheckLoginLock: vi.fn(), getOnlineSessions: vi.fn() }));
+vi.mock('../../lib/session-manager', () => ({ forceLogoutAllByUsers: async () => [], unlockUser: vi.fn(), batchLoginChallengeRequired: vi.fn(async () => new Set()), getOnlineSessions: vi.fn() }));
 vi.mock('../../lib/data-mask/reveal', () => ({ registerRevealSource: vi.fn() }));
 vi.mock('../../lib/identity-lifecycle', () => ({ emitIdentityRemoval: vi.fn() }));
 vi.mock('./user-signature-lifecycle', () => ({ releaseIdentitySignatures: state.release }));

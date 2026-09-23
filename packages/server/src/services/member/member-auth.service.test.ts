@@ -56,7 +56,7 @@ vi.mock('../../lib/member-session-manager', () => ({
   consumeMemberRefreshGrant: vi.fn().mockResolvedValue(true),
   isMemberTokenBlacklisted: vi.fn().mockResolvedValue(false),
   getMemberSession: vi.fn().mockResolvedValue(null),
-  checkMemberLoginLock: vi.fn().mockResolvedValue(0),
+  checkMemberLoginGuard: vi.fn().mockResolvedValue(false),
   recordMemberLoginFailure: vi.fn().mockResolvedValue(0),
   clearMemberLoginAttempts: vi.fn().mockResolvedValue(undefined),
 }));
@@ -73,6 +73,12 @@ vi.mock('../../lib/member-context', () => ({
   currentMember: vi.fn(),
   currentMemberId: vi.fn().mockReturnValue(1),
 }));
+
+// 验证码挑战与校验是外部依赖（运行时设置 + Redis 验证码存储），单测只验证服务分支
+vi.mock('../../lib/login-captcha-challenge', () => ({
+  issueLoginCaptchaChallenge: vi.fn(async (message: string) => ({ captchaRequired: true, captchaId: 'mock-captcha-id', svg: '<svg/>', message })),
+}));
+vi.mock('../../lib/captcha', () => ({ verifyCaptcha: vi.fn().mockResolvedValue(false) }));
 
 vi.mock('../../lib/logger', () => ({
   default: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
@@ -95,7 +101,7 @@ import {
   registerMemberSession,
   removeMemberSession,
   forceLogoutAllByMember,
-  checkMemberLoginLock,
+  checkMemberLoginGuard,
   recordMemberLoginFailure,
   grantMemberRefresh,
   consumeMemberRefreshGrant,
@@ -103,6 +109,7 @@ import {
   getMemberSession,
 } from '../../lib/member-session-manager';
 import { verifyMemberSmsCode } from './member-sms.service';
+import { verifyCaptcha } from '../../lib/captcha';
 import { currentMember } from '../../lib/member-context';
 import { verifyToken } from '../../lib/jwt';
 import { trackServerEvent } from '../analytics/analytics-server-events.service';
@@ -234,17 +241,30 @@ describe('loginMember - 账号密码', () => {
     });
   });
 
-  it('密码错误时累计账号失败次数（防爆破）', async () => {
+  it('密码错误时按 账号 × 来源 累计失败次数（防爆破）', async () => {
     dbMock.select.mockReturnValueOnce(createChain([makeMember()]));
     await expect(loginMember({ ...input, password: 'wrong-password' })).rejects.toMatchObject({ status: 400 });
-    // 会员已定位到，锁定策略按其所属租户解析（makeMember 无租户 → null）
-    expect(recordMemberLoginFailure).toHaveBeenCalledWith('alice', null);
+    // 会员已定位到，失败记录按其所属租户与请求来源 IP 记（makeMember 无租户 → null）
+    expect(recordMemberLoginFailure).toHaveBeenCalledWith('alice', REQ.ip, null);
   });
 
-  it('账号已被锁定 → 423，短路不再查询会员', async () => {
-    vi.mocked(checkMemberLoginLock).mockResolvedValueOnce(120);
-    await expect(loginMember(input)).rejects.toMatchObject({ status: 423 });
+  it('该来源已进入验证码防护 → 返回验证码挑战（不锁定账号、不查库）', async () => {
+    vi.mocked(checkMemberLoginGuard).mockResolvedValueOnce(true);
+    const result = await loginMember(input);
+    expect(result).toMatchObject({ captchaRequired: true, captchaId: 'mock-captcha-id' });
     expect(dbMock.select).not.toHaveBeenCalled();
+  });
+
+  it('验证码防护下携带了验证码：校验通过则继续登录流程，验码失败 → 400', async () => {
+    vi.mocked(checkMemberLoginGuard).mockResolvedValueOnce(true);
+    await expect(loginMember({ ...input, captchaId: 'x', captchaCode: '1234' }))
+      .rejects.toMatchObject({ status: 400, message: '验证码错误或已过期' });
+
+    vi.mocked(checkMemberLoginGuard).mockResolvedValueOnce(true);
+    vi.mocked(verifyCaptcha).mockResolvedValueOnce(true);
+    dbMock.select.mockReturnValueOnce(createChain([makeMember()]));
+    const result = await loginMember({ ...input, captchaId: 'x', captchaCode: '1234' });
+    expect(result).toMatchObject({ member: { id: 1 } });
   });
 
   it('封禁账号 → 403 账号已被封禁', async () => {

@@ -50,6 +50,8 @@ const loginRoute = defineContractRoute(memberAuthContract.login, {
   handler: async (c) => {
     const { ip, ua } = getClientInfo(c);
     const result = await loginMember({ ...c.req.valid('json'), ip, ua });
+    // 失败防护命中时返回的是验证码挑战（不是一次成功登录，也不要求重输密码）
+    if ('captchaRequired' in result) return c.json(okBody(result, result.message), 200);
     return c.json(okBody(result, '登录成功'), 200);
   },
 });

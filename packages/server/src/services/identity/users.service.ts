@@ -16,7 +16,7 @@ import { getDataScopeCondition } from '../../lib/data-scope';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import { validatePassword } from '@zenith/shared/settings';
 import { getSettings } from '../../lib/settings';
-import { unlockUser as unlockUserSession, batchCheckLoginLock, getOnlineSessions, forceLogoutAllByUsers } from '../../lib/session-manager';
+import { unlockUser as clearLoginChallenge, batchLoginChallengeRequired, getOnlineSessions, forceLogoutAllByUsers } from '../../lib/session-manager';
 import { batchIterable, streamToExcel, streamToCsv, formatDateTimeForExcel, type ExcelColumn } from '../../lib/excel-export';
 import { clearUserPermissionCache } from '../../lib/permissions';
 import type { JwtPayload } from '../../middleware/auth';
@@ -270,7 +270,7 @@ export async function listUsers(q: QueryOutputOf<typeof userContract.list>) {
     count: () => db.$count(users, where),
     rows: async () => {
       const rawList = await findUsersWithRelations({ where, limit: pageSize, offset: pageOffset(page, pageSize), orderBy: users.id });
-      const lockMap = await batchCheckLoginLock(rawList.map((u) => u.username));
+      const challengeRequired = await batchLoginChallengeRequired(rawList.map((u) => u.username));
       const onlineSessions = await getOnlineSessions();
       const onlineUserIds = new Set(onlineSessions.map((s) => s.userId));
       // 同一用户多会话取最新活跃时间；离线用户为 null，前端显示占位符
@@ -282,7 +282,7 @@ export async function listUsers(q: QueryOutputOf<typeof userContract.list>) {
       const mapped = mapUsers(rawList);
       return mapped.map((u) => {
         const lastActive = lastActiveMap.get(u.id);
-        return { ...u, isLocked: (lockMap.get(u.username) ?? 0) > 0, isOnline: onlineUserIds.has(u.id), lastActiveAt: lastActive ? formatDateTime(lastActive) : null };
+        return { ...u, loginChallengeRequired: challengeRequired.has(u.username), isOnline: onlineUserIds.has(u.id), lastActiveAt: lastActive ? formatDateTime(lastActive) : null };
       });
     },
   });
@@ -556,12 +556,13 @@ export async function updateUserPassword(id: number, password: string) {
   await revokeUserSessions([id]);
 }
 
+/** 清除该账号的登录失败防护状态（全部来源的失败计数 + 验证码要求） */
 export async function unlockUserById(id: number) {
   const cond = await manageableUsersCondition();
   const [u] = await db.select({ username: users.username }).from(users)
     .where(cond ? and(eq(users.id, id), cond) : eq(users.id, id)).limit(1);
   requireRow(u, '用户不存在');
-  await unlockUserSession(u.username);
+  await clearLoginChallenge(u.username);
 }
 
 const USER_EXPORT_COLUMNS: ExcelColumn[] = [

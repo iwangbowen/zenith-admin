@@ -12,9 +12,9 @@
 import crypto from 'node:crypto';
 import type { SessionRevokeReason } from '@zenith/shared/identity';
 import { config } from '../config';
-import redis from './redis';
 import { getSettings } from './settings';
 import { createRedisSessionStore } from './redis-session-store';
+import { createLoginChallengeGuard } from './login-challenge-guard';
 
 export interface MemberSessionInfo {
   tokenId: string;
@@ -111,36 +111,22 @@ export async function getOnlineMemberCount(): Promise<number> {
   return store.count();
 }
 
-// ─── 会员登录失败锁定（与管理员 login_lock 隔离，key 前缀 member:login_*）─────────
-const MEMBER_LOGIN_ATTEMPT_PREFIX = `${keyPrefix}member:login_attempt:`;
-const MEMBER_LOGIN_LOCK_PREFIX = `${keyPrefix}member:login_lock:`;
+// ─── 会员登录失败防护（与管理员 login_* 隔离，键前缀 member:login_*）─────────────
+// 与管理员共用 login-challenge-guard 的算法：失败按「账号 × 来源」计数 → 达阈值要求验证码，不锁定账号。
 
-/** 检查会员账号是否被锁定，返回剩余秒数（0 表示未锁定）*/
-export async function checkMemberLoginLock(account: string): Promise<number> {
-  const ttl = await redis.ttl(`${MEMBER_LOGIN_LOCK_PREFIX}${account}`);
-  return Math.max(ttl, 0);
-}
+const memberLoginGuard = createLoginChallengeGuard(`${keyPrefix}member:login_`);
+
+/** 当前会员登录是否需要先通过验证码（账号级挑战对所有来源生效，来源级只对被失败过的 IP 生效） */
+export const checkMemberLoginGuard = memberLoginGuard.check;
 
 /**
- * 记录一次会员登录失败，达到阈值后自动锁定，返回剩余允许次数。
- * 沿用身份安全策略的锁定次数 / 时长（与管理员一致）；会员所属租户已知时按租户策略，否则平台策略。
+ * 记录一次会员登录失败，返回剩余可用次数（<= 0 表示已进入验证码防护）。
+ * 沿用身份安全策略的失败阈值 / 窗口（与管理员一致）；会员所属租户已知时按租户策略，否则平台策略。
  */
-export async function recordMemberLoginFailure(account: string, tenantId: number | null = null): Promise<number> {
-  const { maxAttempts, durationMinutes: lockMinutes } = (await getSettings('identitySecurity', { tenantId })).lockout;
-  const lockSeconds = lockMinutes * 60;
-  const attemptKey = `${MEMBER_LOGIN_ATTEMPT_PREFIX}${account}`;
-  const count = await redis.incr(attemptKey);
-  // 首次失败时设置过期，避免计数永久累积
-  if (count === 1) await redis.expire(attemptKey, lockSeconds);
-  const remaining = maxAttempts - count;
-  if (remaining <= 0) {
-    await redis.set(`${MEMBER_LOGIN_LOCK_PREFIX}${account}`, '1', 'EX', lockSeconds);
-    await redis.del(attemptKey);
-  }
-  return Math.max(remaining, 0);
+export async function recordMemberLoginFailure(account: string, ip: string, tenantId: number | null = null): Promise<number> {
+  const policy = (await getSettings('identitySecurity', { tenantId })).loginChallenge;
+  return memberLoginGuard.recordFailure(account, ip, policy);
 }
 
-/** 会员登录成功后清除失败计数 */
-export async function clearMemberLoginAttempts(account: string): Promise<void> {
-  await redis.del(`${MEMBER_LOGIN_ATTEMPT_PREFIX}${account}`);
-}
+/** 会员登录成功后清除该来源的失败计数与来源级验证码要求（账号级要求保留到窗口结束） */
+export const clearMemberLoginAttempts = memberLoginGuard.clear;

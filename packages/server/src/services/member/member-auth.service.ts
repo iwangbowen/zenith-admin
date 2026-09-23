@@ -23,7 +23,7 @@ import {
   consumeMemberRefreshGrant,
   isMemberTokenBlacklisted,
   getMemberSession,
-  checkMemberLoginLock,
+  checkMemberLoginGuard,
   recordMemberLoginFailure,
   clearMemberLoginAttempts,
 } from '../../lib/member-session-manager';
@@ -38,7 +38,9 @@ import logger from '../../lib/logger';
 import { verifyMemberSmsCode } from './member-sms.service';
 import { trackServerEvent } from '../analytics/analytics-server-events.service';
 import { decide } from '../platform/rules-runtime.service';
-import { memberSchema, type MemberRegisterInput, type MemberLoginInput, type MemberUpdateProfileInput, type MemberChangePasswordInput, type MemberResetPasswordInput, type MemberLoginResult } from '@zenith/shared/member';
+import { memberSchema, type MemberRegisterInput, type MemberLoginInput, type MemberUpdateProfileInput, type MemberChangePasswordInput, type MemberResetPasswordInput, type MemberLoginResult, type MemberLoginResponse } from '@zenith/shared/member';
+import { verifyCaptcha } from '../../lib/captcha';
+import { issueLoginCaptchaChallenge } from '../../lib/login-captcha-challenge';
 import { ANALYTICS_EVENT_NAMES } from '@zenith/shared/analytics';
 import { isTenantActive } from '../../lib/tenant';
 import { withPagination } from '../../lib/where-helpers';
@@ -283,7 +285,7 @@ export interface MemberLoginServiceInput extends MemberLoginInput {
   ua: string;
 }
 
-export async function loginMember(input: MemberLoginServiceInput): Promise<MemberLoginResult> {
+export async function loginMember(input: MemberLoginServiceInput): Promise<MemberLoginResponse> {
   let member: MemberRow | undefined;
 
   await ensureNotBlacklisted([input.phone, input.ip], '登录', input);
@@ -304,28 +306,31 @@ export async function loginMember(input: MemberLoginServiceInput): Promise<Membe
   } else {
     if (!input.account || !input.password) throw new HTTPException(400, { message: '请输入账号和密码' });
 
-    // 账号级登录失败锁定（与后台隔离，见 member-session-manager；沿用系统配置的次数/时长）
+    // 登录失败防护（与后台隔离，见 member-session-manager）：按「账号 × 来源」计数，
+    // 达阈值要求验证码而不是锁定账号——否则任何知道会员账号的人都能把他关在门外
     const account = input.account.trim().toLowerCase();
-    const remainingLockSeconds = await checkMemberLoginLock(account);
-    if (remainingLockSeconds > 0) {
-      const remainingMinutes = Math.ceil(remainingLockSeconds / 60);
-      recordMemberLoginLog({ ip: input.ip, ua: input.ua, browser: input.browser, os: input.os, status: 'fail', message: '账号已被锁定' });
-      throw new HTTPException(423, { message: `账号已被锁定，请 ${remainingMinutes} 分钟后重试` });
+    if (await checkMemberLoginGuard(account, input.ip)) {
+      if (!input.captchaId || !input.captchaCode) {
+        return issueLoginCaptchaChallenge('为确认真实用户操作，请先输入验证码');
+      }
+      if (!(await verifyCaptcha(input.captchaId, input.captchaCode))) {
+        throw new HTTPException(400, { message: '验证码错误或已过期' });
+      }
     }
 
     member = await findMemberByAccount(input.account);
     if (!member?.password) {
       recordMemberLoginLog({ ip: input.ip, ua: input.ua, browser: input.browser, os: input.os, status: 'fail', message: '账号或密码错误' });
-      await recordMemberLoginFailure(account);
+      await recordMemberLoginFailure(account, input.ip);
       throw new HTTPException(400, { message: '账号或密码错误' });
     }
     const valid = await verifyPassword(input.password, member.password);
     if (!valid) {
       recordMemberLoginLog({ memberId: member.id, ip: input.ip, ua: input.ua, browser: input.browser, os: input.os, status: 'fail', message: '账号或密码错误' });
-      await recordMemberLoginFailure(account, member.tenantId ?? null);
+      await recordMemberLoginFailure(account, input.ip, member.tenantId ?? null);
       throw new HTTPException(400, { message: '账号或密码错误' });
     }
-    await clearMemberLoginAttempts(account);
+    await clearMemberLoginAttempts(account, input.ip);
   }
 
   if (member.status === 'banned') {

@@ -67,6 +67,9 @@ vi.mock('../../lib/redis', () => ({
     script: vi.fn().mockResolvedValue('mock-sha'),
     evalsha: vi.fn().mockResolvedValue([1, 60]),
     decr: vi.fn().mockResolvedValue(0),
+    // 登录验证码答案存 Redis（setex 写入 / getdel 一次性消费）
+    setex: vi.fn().mockResolvedValue('OK'),
+    getdel: vi.fn().mockResolvedValue(null),
   },
 }));
 
@@ -85,7 +88,8 @@ vi.mock('../../lib/session-manager', () => ({
   forceLogoutAllByUser: vi.fn().mockResolvedValue([]),
   forceLogoutAllByUserExcept: vi.fn().mockResolvedValue([]),
   removeSession: vi.fn(),
-  checkLoginLock: vi.fn().mockResolvedValue({ isLocked: false, attempts: 0 }),
+  checkLoginGuard: vi.fn().mockResolvedValue(false),
+  isSourceChallenged: vi.fn().mockResolvedValue(false),
   recordLoginFailure: vi.fn(),
   clearLoginAttempts: vi.fn(),
   getOnlineSessions: vi.fn().mockResolvedValue([]),
@@ -136,6 +140,7 @@ vi.mock('../../lib/permissions', () => ({
 import { db } from '../../db';
 import authRoutes from './auth';
 import { refreshAccessToken } from '../../services/identity/auth.service';
+import { checkLoginGuard, recordLoginFailure } from '../../lib/session-manager';
 import { verifyToken } from '../../lib/jwt';
 import { resetAdminSubjectCache, authMiddleware } from '../../middleware/auth';
 import { dispatchInvalidation } from '../../lib/invalidation-bus';
@@ -213,6 +218,39 @@ describe('GET /api/auth/captcha', () => {
     expect(res.status).toBe(200);
     expect(body.code).toBe(0);
     expect(body.data.enabled).toBe(false);
+  });
+});
+
+describe('POST /api/auth/login - 失败防护', () => {
+  const post = (payload: unknown) => ({
+    method: 'POST' as const,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const CREDENTIALS = { username: 'alice', password: 'secret123' };
+
+  it('该来源需要验证码时返回验证码挑战（200，不锁定账号、不查库）', async () => {
+    vi.mocked(checkLoginGuard).mockResolvedValueOnce(true);
+    const app = buildApp();
+    const res = await app.request('/api/auth/login', post(CREDENTIALS));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.code).toBe(0);
+    expect(body.data).toMatchObject({ captchaRequired: true });
+    expect(body.data.svg).toContain('<svg');
+    // 挑战在凭据校验之前返回：既不算一次失败，也不锁定账号
+    expect(recordLoginFailure).not.toHaveBeenCalled();
+  });
+
+  it('携带的验证码校验失败 → 400 验证码错误或已过期', async () => {
+    vi.mocked(checkLoginGuard).mockResolvedValueOnce(true);
+    const app = buildApp();
+    const res = await app.request('/api/auth/login', post({ ...CREDENTIALS, captchaId: 'captcha-1', captchaCode: '9999' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.message).toBe('验证码错误或已过期');
   });
 });
 

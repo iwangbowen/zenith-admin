@@ -1,0 +1,166 @@
+/**
+ * 登录失败防护守卫单元测试。
+ *
+ * 覆盖要点（用内存假 Redis 验证发出的命令与状态迁移，而非真实连接）：
+ *   1. 失败按「账号 × 来源」计数：达阈值只让失败的来源过验证码，别的来源不受影响
+ *      —— 这是「攻击者不能用别人的用户名把真正的用户锁在门外」的核心保证
+ *   2. 窗口内失败来源 IP 数达到 sourceLimit 时，整个账号都需验证码（分布式猜解）
+ *   3. 登录成功只清该来源的计数与来源级要求，账号级要求保留到窗口结束
+ *   4. batchRequired / clearAll 的账号级读写
+ */
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createLoginChallengeGuard, type LoginChallengePolicy } from './login-challenge-guard';
+
+const state = vi.hoisted(() => ({
+  counters: new Map<string, number>(),
+  sets: new Map<string, Set<string>>(),
+  zsets: new Map<string, Map<string, number>>(),
+}));
+
+function deleteKeys(keys: string[]): void {
+  for (const key of keys) {
+    state.counters.delete(key);
+    state.sets.delete(key);
+    state.zsets.delete(key);
+  }
+}
+
+vi.mock('./redis', () => ({
+  default: {
+    incr: vi.fn(async (key: string) => {
+      const next = (state.counters.get(key) ?? 0) + 1;
+      state.counters.set(key, next);
+      return next;
+    }),
+    expire: vi.fn(async () => 1),
+    del: vi.fn(async (...keys: string[]) => { deleteKeys(keys); return keys.length; }),
+    sadd: vi.fn(async (key: string, ...members: string[]) => {
+      const set = state.sets.get(key) ?? new Set<string>();
+      for (const member of members) set.add(member);
+      state.sets.set(key, set);
+      return members.length;
+    }),
+    srem: vi.fn(async (key: string, ...members: string[]) => {
+      const set = state.sets.get(key);
+      if (!set) return 0;
+      let removed = 0;
+      for (const member of members) if (set.delete(member)) removed += 1;
+      return removed;
+    }),
+    smembers: vi.fn(async (key: string) => [...(state.sets.get(key) ?? [])]),
+    sismember: vi.fn(async (key: string, member: string) => (state.sets.get(key)?.has(member) ? 1 : 0)),
+    zadd: vi.fn(async (key: string, score: string, member: string) => {
+      const zset = state.zsets.get(key) ?? new Map<string, number>();
+      zset.set(member, Number(score));
+      state.zsets.set(key, zset);
+      return 1;
+    }),
+    zrem: vi.fn(async (key: string, ...members: string[]) => {
+      const zset = state.zsets.get(key);
+      if (!zset) return 0;
+      let removed = 0;
+      for (const member of members) if (zset.delete(member)) removed += 1;
+      return removed;
+    }),
+    zrange: vi.fn(async (key: string) => [...(state.zsets.get(key)?.keys() ?? [])]),
+    zcard: vi.fn(async (key: string) => state.zsets.get(key)?.size ?? 0),
+    zremrangebyscore: vi.fn(async () => 0),
+    pipeline: vi.fn(() => {
+      const keys: string[] = [];
+      const chain: Record<string, unknown> = {};
+      chain.exists = (key: string) => { keys.push(key); return chain; };
+      chain.exec = async () => keys.map((key) => [null, state.sets.has(key) ? 1 : 0]);
+      return chain;
+    }),
+  },
+}));
+
+const guard = createLoginChallengeGuard('zenith:login_');
+const POLICY: LoginChallengePolicy = { maxAttemptsPerSource: 3, sourceLimit: 2, windowMinutes: 30 };
+
+/** 连续失败 n 次（模拟同一来源的连续尝试） */
+async function failTimes(username: string, ip: string, times: number) {
+  let remaining = Number.NaN;
+  for (let i = 0; i < times; i += 1) remaining = await guard.recordFailure(username, ip, POLICY);
+  return remaining;
+}
+
+beforeEach(() => {
+  state.counters.clear();
+  state.sets.clear();
+  state.zsets.clear();
+});
+
+describe('按 账号 × 来源 隔离', () => {
+  it('达到来源阈值只要求该来源过验证码，其它来源不受影响', async () => {
+    const remaining = await failTimes('alice', '1.1.1.1', 3);
+    expect(remaining).toBe(0);
+
+    expect(await guard.check('alice', '1.1.1.1')).toBe(true);
+    // 真正的用户从自己的出口登录：既不需要验证码，也不被拒绝
+    expect(await guard.check('alice', '2.2.2.2')).toBe(false);
+  });
+
+  it('阈值以下是普通失败，不进入验证码防护', async () => {
+    const remaining = await failTimes('alice', '1.1.1.1', 2);
+    expect(remaining).toBe(1);
+    expect(await guard.check('alice', '1.1.1.1')).toBe(false);
+  });
+
+  it('不同账号互不影响', async () => {
+    await failTimes('alice', '1.1.1.1', 3);
+    expect(await guard.check('bob', '1.1.1.1')).toBe(false);
+  });
+});
+
+describe('多来源失败升级为账号级验证码', () => {
+  it('窗口内失败来源数达到 sourceLimit 时，该账号所有来源都要验证码', async () => {
+    await failTimes('alice', '1.1.1.1', 1);
+    await failTimes('alice', '2.2.2.2', 1);
+
+    expect(await guard.check('alice', '3.3.3.3')).toBe(true);
+  });
+
+  it('同一来源重复失败只算一个来源，不会误升级为账号级', async () => {
+    await failTimes('alice', '1.1.1.1', 2);
+    expect(await guard.check('alice', '2.2.2.2')).toBe(false);
+  });
+});
+
+describe('登录成功后的清理', () => {
+  it('只清该来源的计数与来源级要求，账号级要求保留到窗口结束', async () => {
+    await failTimes('alice', '1.1.1.1', 3);
+    await failTimes('alice', '2.2.2.2', 3);
+    await failTimes('alice', '1.1.1.1', 1);
+    await failTimes('alice', '2.2.2.2', 1);
+
+    await guard.clear('alice', '1.1.1.1');
+
+    // 该来源恢复自由（计数清零后重新从 1 计）
+    expect(await failTimes('alice', '1.1.1.1', 1)).toBe(2);
+    expect(await guard.isSourceChallenged('alice', '1.1.1.1')).toBe(false);
+    // 账号级要求仍在：攻击还在继续，但真正的用户凭验证码照样能登录
+    expect(await guard.check('alice', '9.9.9.9')).toBe(true);
+  });
+});
+
+describe('批量查询与管理员清除', () => {
+  it('batchRequired 只返回当前要求验证码的账号', async () => {
+    await failTimes('alice', '1.1.1.1', 3);
+    await failTimes('bob', '2.2.2.2', 1);
+
+    expect(await guard.batchRequired(['alice', 'bob', 'carol'])).toEqual(new Set(['alice']));
+    expect(await guard.batchRequired([])).toEqual(new Set());
+  });
+
+  it('clearAll 清空全部来源的计数与验证码要求', async () => {
+    await failTimes('alice', '1.1.1.1', 3);
+    await failTimes('alice', '2.2.2.2', 1);
+
+    await guard.clearAll('alice');
+
+    expect(await guard.check('alice', '1.1.1.1')).toBe(false);
+    expect(await guard.check('alice', '2.2.2.2')).toBe(false);
+    expect(await failTimes('alice', '1.1.1.1', 1)).toBe(2);
+  });
+});

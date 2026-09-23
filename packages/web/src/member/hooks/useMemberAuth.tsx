@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import { MEMBER_TOKEN_KEY, MEMBER_REFRESH_TOKEN_KEY } from '@zenith/shared/core';
 import type { ApiResponse, BodyOf } from '@zenith/shared/core';
-import { memberAuthContract, type Member, type MemberLoginResult } from '@zenith/shared/member';
+import { memberAuthContract, type Member, type MemberLoginResult, type MemberLoginResponse } from '@zenith/shared/member';
 import { apiRaw } from '@/lib/contract-query';
 import { getPreciseOs } from '@/utils/client-os';
 import { prepareTrackerLogout } from '@/utils/tracker';
@@ -18,7 +18,7 @@ interface MemberAuthState {
 }
 
 interface MemberAuthContextValue extends MemberAuthState {
-  login: (params: MemberLoginParams) => Promise<ApiResponse<MemberLoginResult>>;
+  login: (params: MemberLoginParams) => Promise<ApiResponse<MemberLoginResponse>>;
   register: (params: MemberRegisterParams) => Promise<ApiResponse<MemberLoginResult>>;
   logout: () => void;
   refresh: () => Promise<void>;
@@ -69,7 +69,8 @@ export function MemberAuthProvider({ children }: Readonly<{ children: ReactNode 
     // 精确 OS 自报（Win11 等 UA 冻结的系统）；拿不到时服务端回退 UA 解析
     const os = await getPreciseOs();
     const res = await apiRaw(memberAuthContract.login, { body: { ...params, ...(os === undefined ? {} : { os }) } }, { client: memberRequest, silent: true });
-    if (res.code === 0) applyLoginResult(res.data);
+    // 失败防护命中的响应是验证码挑战（不是登录成功）：交给调用方展示验证码后重新提交
+    if (res.code === 0 && !('captchaRequired' in res.data)) applyLoginResult(res.data);
     return res;
   }, [applyLoginResult]);
 

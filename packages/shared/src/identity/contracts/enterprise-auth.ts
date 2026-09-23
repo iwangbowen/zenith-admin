@@ -3,7 +3,7 @@ import { idParam } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { IDENTITY_PROVIDER_TYPES } from '../constants';
 import { enterpriseLdapLoginSchema, enterpriseOidcCallbackSchema, enterpriseSamlExchangeSchema } from '../validation';
-import { loginResultSchema } from './auth';
+import { sessionLoginResultSchema } from './auth';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
@@ -31,9 +31,12 @@ export const enterpriseAuthUrlSchema = z.object({
 
 export type EnterpriseAuthUrl = z.infer<typeof enterpriseAuthUrlSchema>;
 
-/** 企业登录结果：登录态或 MFA 挑战 + 发起登录时携带的回跳地址 */
+/**
+ * 企业登录结果：登录态 / MFA 挑战 / 会话冲突 + 发起登录时携带的回跳地址。
+ * 不含密码登录的验证码挑战分支：企业 LDAP 没有验证码环节，失败防护只对失败的那个来源做节流。
+ */
 export const enterpriseLoginResultSchema = z.object({
-  loginResult: loginResultSchema,
+  loginResult: sessionLoginResultSchema,
   redirectTo: z.string().nullable().optional(),
 }).meta({ id: 'EnterpriseLoginResult' });
 

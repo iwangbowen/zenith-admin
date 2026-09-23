@@ -62,6 +62,20 @@ export const mfaLoginChallengeSchema = z.object({
 
 export type MfaLoginChallenge = z.infer<typeof mfaLoginChallengeSchema>;
 
+/**
+ * 登录失败防护命中：该来源（同一账号同一 IP 失败过多）或整个账号（失败来源 IP 过多，疑似分布式猜解）
+ * 需要先通过验证码。与 MFA 挑战同一模式：200 响应 + 判别字段，前端展示验证码后重新提交登录，
+ * 账号永不被锁定——真正的用户凭正确密码 + 验证码始终能登录。
+ */
+export const loginCaptchaChallengeSchema = z.object({
+  captchaRequired: z.literal(true),
+  captchaId: z.string().meta({ example: 'uuid-xxx' }),
+  svg: z.string().meta({ example: '<svg>...</svg>' }),
+  message: z.string().meta({ description: '给用户的说明文案' }),
+}).meta({ id: 'LoginCaptchaChallenge' });
+
+export type LoginCaptchaChallenge = z.infer<typeof loginCaptchaChallengeSchema>;
+
 /** 占用同时在线名额的既有会话（拒绝模式下展示给正在登录的用户本人） */
 export const conflictingSessionSchema = z.object({
   client: z.enum(SESSION_CLIENT_KINDS),
@@ -93,7 +107,14 @@ export const resolveSessionConflictSchema = z.object({
   ticket: z.string().min(1),
 }).meta({ id: 'ResolveSessionConflictInput' });
 
-export const loginResultSchema = z.union([loginResponseSchema, mfaLoginChallengeSchema, sessionConflictSchema]).meta({ id: 'LoginResult' });
+/**
+ * 凭据校验通过后的登录结果：登录态 / MFA 挑战 / 会话冲突。
+ * 企业 SSO、OIDC、SAML 等不校验密码的路径只可能返回这三种。
+ */
+export const sessionLoginResultSchema = z.union([loginResponseSchema, mfaLoginChallengeSchema, sessionConflictSchema]).meta({ id: 'SessionLoginResult' });
+
+/** 密码登录结果：还可能返回失败防护的验证码挑战（企业登录走来源级节流，不返回验证码挑战） */
+export const loginResultSchema = z.union([sessionLoginResultSchema, loginCaptchaChallengeSchema]).meta({ id: 'LoginResult' });
 
 export type LoginResult = z.infer<typeof loginResultSchema>;
 

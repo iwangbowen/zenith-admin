@@ -2,7 +2,7 @@ import * as z from 'zod';
 import { LOGIN_RISK_NEW_DEVICE_ACTIONS, MFA_MODES, SESSION_CONCURRENCY_SCOPES, SESSION_EXCEED_ACTIONS } from '../../identity/constants';
 import { defineSettingsModule } from '../module-def';
 
-/** 身份安全策略：密码规则、登录锁定、会话并发、MFA、登录风险 */
+/** 身份安全策略：密码规则、登录失败防护、会话并发、MFA、登录风险 */
 export const identitySecuritySettingsSchema = z.object({
   password: z.object({
     minLength: z.int().min(6).max(64).default(6).meta({ title: '密码最小长度' }),
@@ -11,10 +11,20 @@ export const identitySecuritySettingsSchema = z.object({
     expiryEnabled: z.boolean().default(false).meta({ title: '密码过期强制重置' }),
     expiryDays: z.int().min(1).max(3650).default(90).meta({ title: '密码过期天数' }),
   }).prefault({}).meta({ title: '密码策略' }),
-  lockout: z.object({
-    maxAttempts: z.int().min(1).max(100).default(10).meta({ title: '登录失败最大次数', description: '超出后锁定账号' }),
-    durationMinutes: z.int().min(1).max(1440).default(30).meta({ title: '锁定时长（分钟）' }),
-  }).prefault({}).meta({ title: '登录锁定' }),
+  loginChallenge: z.object({
+    maxAttemptsPerSource: z.int().min(1).max(1000).default(20).meta({
+      title: '单来源失败次数阈值',
+      description: '同一账号同一 IP 在窗口内的失败次数，达到后该来源登录需先通过验证码',
+    }),
+    sourceLimit: z.int().min(1).max(100).default(5).meta({
+      title: '多来源失败阈值',
+      description: '窗口内失败来源 IP 数达到后，该账号所有来源登录都需通过验证码（应对分布式猜解）',
+    }),
+    windowMinutes: z.int().min(1).max(1440).default(30).meta({
+      title: '计数窗口（分钟）',
+      description: '失败计数与验证码要求的持续时长',
+    }),
+  }).prefault({}).meta({ title: '登录失败防护' }),
   session: z.object({
     maxSessions: z.int().min(0).max(20).default(0).meta({ title: '同时在线上限', description: '0 不限制；1 = 同一账号只能在一处登录；模拟登录会话不计入' }),
     scope: z.enum(SESSION_CONCURRENCY_SCOPES).default('global').meta({ title: '统计范围', description: 'global 全部终端合计 / per-client 网页、移动审批、桌面端各算一份' }),
@@ -46,7 +56,7 @@ export type PasswordRules = Pick<PasswordPolicy, 'minLength' | 'requireUppercase
 export const identitySecuritySettingsModule = defineSettingsModule({
   schema: identitySecuritySettingsSchema,
   title: '身份安全',
-  description: '密码策略、登录锁定、多因素认证与登录风险',
+  description: '密码策略、登录失败防护、多因素认证与登录风险',
   scope: 'tenant',
   readPermission: 'system:identity-security:manage',
   writePermission: 'system:identity-security:manage',

@@ -33,7 +33,7 @@ const captchaRoute = defineContractRoute(authContract.captcha, {
   handler: async (c) => {
     const { captchaEnabled, captchaComplexity } = await getSettings('auth');
     if (!captchaEnabled) return c.json(okBody({ enabled: false, captchaId: '', svg: '' }), 200);
-    const result = generateCaptcha(resolveCaptchaComplexity(captchaComplexity));
+    const result = await generateCaptcha(resolveCaptchaComplexity(captchaComplexity));
     return c.json(okBody({ enabled: true, captchaId: result.captchaId, svg: result.captchaImage }), 200);
   },
 });
@@ -42,6 +42,8 @@ const loginRoute = defineContractRoute(authContract.login, {
   middleware: [authRateLimit] as const,
   handler: async (c) => {
     const result = await login({ ...c.req.valid('json'), ...getClientInfo(c) });
+    // 失败防护命中时返回的是验证码挑战（不是一次成功登录，也不要求重输密码）
+    if ('captchaRequired' in result) return c.json(okBody(result, result.message), 200);
     return c.json(okBody(result, '登录成功'), 200);
   },
 });

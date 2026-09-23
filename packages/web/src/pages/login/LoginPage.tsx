@@ -5,7 +5,7 @@ import { User, Lock, Mail, AtSign, Building2, ShieldCheck, ShieldAlert, Briefcas
 import dayjs from 'dayjs';
 import { MAX_STORED_ACCOUNTS, REFRESH_TOKEN_KEY, TOKEN_KEY } from '@zenith/shared/core';
 import { OAUTH_PROVIDER_LABELS, enterpriseAuthContract, oauthContract } from '@zenith/shared/identity';
-import type { RegisterInput, OAuthProviderType, LoginResult, LoginResponse, MfaLoginChallenge, SessionConflict, TenantIdentityProviderSummary } from '@zenith/shared/identity';
+import type { RegisterInput, OAuthProviderType, LoginResult, LoginResponse, MfaLoginChallenge, SessionConflict, LoginCaptchaChallenge, TenantIdentityProviderSummary } from '@zenith/shared/identity';
 import { api } from '@/lib/contract-query';
 import { ApiError } from '@/lib/query';
 import { takeAuthInvalidatedReason, type AuthInvalidatedReason } from '@/utils/http-client';
@@ -70,12 +70,28 @@ const INVALIDATED_TITLES: Record<string, string> = {
 
 const PRIMARY_BUTTON_STYLE = { marginTop: 8, borderRadius: 'var(--semi-border-radius-medium)', height: 42 } as const;
 
+/** 验证码图片容器：全局开关可点击刷新；失败防护下发的挑战图提交后会自动换新 */
+const CAPTCHA_BOX_STYLE = {
+  flexShrink: 0,
+  borderRadius: 'var(--semi-border-radius-small)',
+  overflow: 'hidden',
+  border: '1px solid var(--semi-color-border)',
+  padding: 0,
+  background: 'transparent',
+  lineHeight: 0,
+} as const;
+
 function isMfaChallenge(data: LoginResult): data is MfaLoginChallenge {
   return 'mfaRequired' in data && data.mfaRequired;
 }
 
 function isSessionConflict(data: LoginResult): data is SessionConflict {
   return 'sessionConflict' in data && data.sessionConflict;
+}
+
+/** 登录失败防护命中：需先过验证码（账号不会被锁定，答对即可继续） */
+function isLoginCaptchaChallenge(data: LoginResult): data is LoginCaptchaChallenge {
+  return 'captchaRequired' in data && data.captchaRequired;
 }
 
 export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly<LoginPageProps>) {
@@ -131,11 +147,17 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
   const captchaSvg = captchaQuery.data?.svg ?? '';
   const fetchCaptcha = () => { void captchaQuery.refetch(); };
 
+  // 失败防护命中时服务端随响应下发验证码挑战（全局开关关闭也能用；账号永不被锁定）
+  const [captchaChallenge, setCaptchaChallenge] = useState<LoginCaptchaChallenge | null>(null);
+  const captchaRequired = captchaEnabled || captchaChallenge !== null;
+  const effectiveCaptchaId = captchaChallenge?.captchaId ?? captchaId;
+  const effectiveCaptchaSvg = captchaChallenge?.svg ?? captchaSvg;
+
   const loginRules = useMemo<FieldRules<LoginFormValues>>(() => ({
     username: [{ required: true, message: '请输入用户名/手机号' }],
     password: [{ required: true, message: '请输入密码' }],
-    captchaCode: captchaEnabled ? [{ required: true, message: '请输入验证码' }] : [],
-  }), [captchaEnabled]);
+    captchaCode: captchaRequired ? [{ required: true, message: '请输入验证码' }] : [],
+  }), [captchaRequired]);
   const loginInitial = useMemo<LoginFormValues>(
     () => ({ tenantCode: '', username: prefillUsername, password: '', captchaCode: '' }),
     [prefillUsername],
@@ -179,8 +201,8 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
       const res = await onLogin(
         values.username,
         values.password,
-        captchaId,
-        captchaEnabled ? values.captchaCode : undefined,
+        effectiveCaptchaId,
+        captchaRequired ? values.captchaCode : undefined,
         config.multiTenantMode && values.tenantCode ? values.tenantCode : undefined,
         loginOptions,
       );
@@ -211,6 +233,11 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
     }
     if (isSessionConflict(data)) {
       setSessionConflict(data);
+      return true;
+    }
+    if (isLoginCaptchaChallenge(data)) {
+      setCaptchaChallenge(data);
+      loginForm.setFormError(data.message);
       return true;
     }
     return addAccountMode;
@@ -346,7 +373,7 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
         size="large"
         autoComplete="current-password"
       />
-      {captchaEnabled && (
+      {captchaRequired && (
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
           <div style={{ flex: 1 }}>
             <LoginField
@@ -357,23 +384,13 @@ export default function LoginPage({ onLogin, onVerifyMfa, onRegister }: Readonly
               autoComplete="one-time-code"
             />
           </div>
-          <button
-            type="button"
-            style={{
-              cursor: 'pointer',
-              flexShrink: 0,
-              borderRadius: 'var(--semi-border-radius-small)',
-              overflow: 'hidden',
-              border: '1px solid var(--semi-color-border)',
-              padding: 0,
-              background: 'transparent',
-              lineHeight: 0,
-            }}
-            title="点击刷新验证码"
-            onClick={fetchCaptcha}
-          >
-            <div dangerouslySetInnerHTML={{ __html: captchaSvg }} />
-          </button>
+          {captchaEnabled ? (
+            <button type="button" style={{ ...CAPTCHA_BOX_STYLE, cursor: 'pointer' }} title="点击刷新验证码" onClick={fetchCaptcha}>
+              <div dangerouslySetInnerHTML={{ __html: effectiveCaptchaSvg }} />
+            </button>
+          ) : (
+            <div style={CAPTCHA_BOX_STYLE} title="验证码错误时重新提交会换新图" dangerouslySetInnerHTML={{ __html: effectiveCaptchaSvg }} />
+          )}
         </div>
       )}
       <LoginFormError message={loginForm.formError} />

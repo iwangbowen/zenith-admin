@@ -120,6 +120,17 @@
 - **拒绝新登录**：与 MFA 挑战同构。凭据校验**通过后**（避免未认证探测账号在线状态）、MFA 之前判定名额：已满则不签发 token，返回 `{ sessionConflict: true, ticket, maxSessions, sessions }`（占用者只含终端 / IP / 归属地 / 浏览器 / 时间，不含 `tokenId`），票据 5 分钟一次性（GETDEL），冻结了原登录上下文（用户 / 终端 / IP / UA / 设备信息 / 日志文案）。登录页弹层展示占用设备，用户确认「下线其他设备并登录」→ `POST /api/auth/session-conflict/resolve` 凭票据继续原流程（可能再转入 MFA，挑战里带 `evictOthers` 记忆），签发后全部挤掉；不必重输密码。企业 SSO / OAuth 回调页拿到冲突结果时与 MFA 挑战一样经 `location.state` 交回登录页处理。
 - **用户可见**：`session` 字段对登录用户可见（`/api/settings/me`），「我的设备」在策略开启时说明当前规则；身份安全页保存前实时预览生效行为（文案 `formatSessionPolicyHint` 前后端同源）。
 
+### 登录失败防护（不锁定账号）
+
+登录失败按**账号 × 来源 IP** 计数（`lib/login-challenge-guard.ts`，管理员键前缀 `login_*`、会员 `member:login_*`），达到 `loginChallenge` 阈值后要求**验证码**而不是锁定账号：
+
+- **单来源超阈值**：只让失败的那个来源过验证码（响应与 MFA 挑战同构：200 + `{ captchaRequired: true, captchaId, svg, message }`，客户端展示验证码后带 `captchaId` / `captchaCode` 重新提交），真正的用户从自己的出口登录不受影响。
+- **多来源超阈值**：窗口内失败来源 IP 数达到 `sourceLimit`（疑似分布式猜解）时整个账号都需验证码，但凭**正确密码 + 验证码**始终能登录——攻击者无法用他人的用户名把真正的用户关在门外。
+- **永不锁定**：不再写 `login_lock` 类键，也不存在 423「账号已被锁定」；所有状态带窗口 TTL，窗口内不再失败即自动恢复。
+- **企业 LDAP 例外**：该路径没有验证码环节，只对失败的那个来源做节流（429），目录账号不受其它来源影响。
+- **治理入口**：用户列表对处于防护中的账号显示「需验证码」标记，管理员可用行操作的「清除登录验证码要求」（`POST /api/users/{id}/unlock`）清掉全部来源的计数与要求。
+- **验证码存储**：`lib/captcha.ts` 的答案存 Redis（5 分钟 TTL，`GETDEL` 一次性消费），多 api 节点任一节点都能校验；到期的键由 TTL 自然消失。
+
 ### 多账号切换
 
 前端账号切换器实现位于 `packages\web\src\lib\account-store.ts` 与 `AuthProvider.tsx`：
@@ -150,7 +161,9 @@
 | `password.requireUppercase` | 是否要求大写字母 |
 | `password.requireSpecialChar` | 是否要求特殊字符 |
 | `password.expiryEnabled` / `password.expiryDays` | 密码过期强制修改 |
-| `lockout.maxAttempts` / `lockout.durationMinutes` | 登录失败锁定阈值与锁定时长，按用户所属租户解析 |
+| `loginChallenge.maxAttemptsPerSource` | 单来源失败阈值：同一账号 + 同一 IP 的失败次数，达到后该来源登录需先过验证码（默认 20） |
+| `loginChallenge.sourceLimit` | 多来源失败阈值：窗口内失败来源 IP 数，达到后该账号所有来源都需验证码（默认 5） |
+| `loginChallenge.windowMinutes` | 计数窗口与验证码要求的持续时长（默认 30） |
 | `session.maxSessions` | 同时在线上限：0 不限制、1 仅一处登录、N 最多 N 处；模拟登录会话不计入 |
 | `session.scope` | 并发统计范围：`global` 全部终端合计 / `per-client` 网页、移动审批、桌面端各算一份 |
 | `session.exceedAction` | 超限处理：`kick-oldest` 新登录挤掉最早的会话 / `reject-new` 拒绝新登录（登录页可选择下线其它设备） |
@@ -264,7 +277,7 @@ MFA 当前落库类型包括 `totp`、`passkey`、`recovery_code`，接口实现
 | DELETE | `/api/users/{id}`、`DELETE /api/users/batch` | 删除用户并吊销会话 | `system:user:delete` |
 | PUT | `/api/users/{id}/password`、`PUT /api/users/batch-password` | 重置用户密码，校验密码策略 | `system:user:update` |
 | PUT | `/api/users/batch-status` | 批量启用/禁用；禁用会吊销会话 | `system:user:update` |
-| POST | `/api/users/{id}/unlock` | 清除登录锁定 | `system:user:update` |
+| POST | `/api/users/{id}/unlock` | 清除登录验证码要求 | `system:user:update` |
 | GET/POST | `/api/users/import-template`、`/api/users/import` | 下载 Excel 模板、导入用户 | `system:user:import` |
 | GET/PUT | `/api/users/{id}/roles` | 分配用户角色 | `system:user:assign` |
 | GET/PUT | `/api/users/{id}/menus` | 分配用户直接菜单权限 | `system:user:assign` |

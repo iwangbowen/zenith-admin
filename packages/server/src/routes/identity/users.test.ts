@@ -70,14 +70,15 @@ vi.mock('../../lib/session-manager', () => ({
   getTokenRevocation: vi.fn().mockResolvedValue(null),
   forceLogout: vi.fn(),
   removeSession: vi.fn(),
-  checkLoginLock: vi.fn().mockResolvedValue({ isLocked: false, attempts: 0 }),
+  checkLoginGuard: vi.fn().mockResolvedValue(false),
+  isSourceChallenged: vi.fn().mockResolvedValue(false),
   recordLoginFailure: vi.fn(),
   clearLoginAttempts: vi.fn(),
   getOnlineSessions: vi.fn().mockResolvedValue([]),
   unlockUser: vi.fn(),
   forceLogoutAllByUsers: vi.fn().mockResolvedValue([]),
-  // 列表查询经 users.service 调用，批量返回各用户锁定计数；空 Map = 均未锁定
-  batchCheckLoginLock: vi.fn().mockResolvedValue(new Map()),
+  // 列表查询经 users.service 调用，批量返回当前要求验证码的账号；空 Set = 均无需验证码
+  batchLoginChallengeRequired: vi.fn().mockResolvedValue(new Set()),
 }));
 
 vi.mock('../../lib/logger', () => ({

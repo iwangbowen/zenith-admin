@@ -22,7 +22,7 @@ import { pageOffset } from '../../lib/pagination';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { httpGet, httpPost, HttpClientError } from '../../lib/http-client';
 import { getSettings } from '../../lib/settings';
-import { checkLoginLock, clearLoginAttempts, recordLoginFailure } from '../../lib/session-manager';
+import { isSourceChallenged, clearLoginAttempts, recordLoginFailure } from '../../lib/session-manager';
 import { completeLoginWithMfa, recordLoginLog, type DeviceInfo } from './auth.service';
 import { assertDefaultRolesGrantable, resolveGrantableDefaultRoleIds, userHasPlatformSuperRole } from './role-grant';
 
@@ -1041,15 +1041,13 @@ export async function handleEnterpriseLdapLogin(input: {
   const provider = await getUsableProvider(input.providerId);
   ensureDirectoryProvider(provider);
   const lockKey = `enterprise:${provider.id}:${input.username.toLowerCase()}`;
-  const remainingLockSeconds = await checkLoginLock(lockKey);
-  if (remainingLockSeconds > 0) {
-    const remainingMinutes = Math.ceil(remainingLockSeconds / 60);
-    throw new HTTPException(423, { message: `账号已被锁定，请 ${remainingMinutes} 分钟后重试` });
+  // 失败防护按「账号 × 来源」计数：企业 LDAP 没有验证码环节，只节流失败的那个来源，
+  // 不给攻击者用他人的目录用户名把真正的用户挡在门外（目录账号永不被锁定）
+  if (await isSourceChallenged(lockKey, input.ip)) {
+    throw new HTTPException(429, { message: '登录尝试过于频繁，请稍后再试' });
   }
   // 企业身份源归属租户的身份安全策略（平台级身份源用平台策略）
-  const { lockout } = await getSettings('identitySecurity', { tenantId: provider.tenantId ?? null });
-  const loginMaxAttempts = lockout.maxAttempts;
-  const lockDurationSeconds = lockout.durationMinutes * 60;
+  const { loginChallenge } = await getSettings('identitySecurity', { tenantId: provider.tenantId ?? null });
   const failCredentials = async () => {
     await Promise.all([
       recordLoginLog({
@@ -1060,7 +1058,7 @@ export async function handleEnterpriseLdapLogin(input: {
         message: `企业身份源 ${provider.name} 目录账号或密码错误`,
         tenantId: provider.tenantId ?? null,
       }),
-      recordLoginFailure(lockKey, loginMaxAttempts, lockDurationSeconds),
+      recordLoginFailure(lockKey, input.ip, loginChallenge),
     ]);
     throw new HTTPException(400, { message: '目录账号或密码错误' });
   };
@@ -1119,7 +1117,7 @@ export async function handleEnterpriseLdapLogin(input: {
     });
     throw new HTTPException(403, { message: '账号已被禁用' });
   }
-  await clearLoginAttempts(lockKey);
+  await clearLoginAttempts(lockKey, input.ip);
   const loginResult = await completeEnterpriseLogin(
     user,
     { ip: input.ip, ua: input.ua, deviceInfo: input.deviceInfo, deviceId: input.deviceId },

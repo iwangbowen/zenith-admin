@@ -80,20 +80,20 @@ describe('resolveSettings', () => {
     expect(merged).toEqual({ a: { x: 1, y: 3 }, list: [9] });
 
     const resolved = resolveSettings('identitySecurity', [
-      { lockout: { maxAttempts: 5 } },
-      { lockout: { durationMinutes: 60 }, mfa: { enabled: true } },
+      { loginChallenge: { maxAttemptsPerSource: 5 } },
+      { loginChallenge: { windowMinutes: 60 }, mfa: { enabled: true } },
     ]);
     expect(resolved.degraded).toBe(false);
-    expect(resolved.value.lockout).toEqual({ maxAttempts: 5, durationMinutes: 60 });
+    expect(resolved.value.loginChallenge).toEqual({ maxAttemptsPerSource: 5, sourceLimit: 5, windowMinutes: 60 });
     expect(resolved.value.mfa.enabled).toBe(true);
     expect(resolved.value.password.minLength).toBe(6);
   });
 
   it('存量字段不合规时剔除该字段并降级，而不是抛错', () => {
-    const resolved = resolveSettings('identitySecurity', [{ lockout: { maxAttempts: 'many', durationMinutes: 45 } }]);
+    const resolved = resolveSettings('identitySecurity', [{ loginChallenge: { maxAttemptsPerSource: 'many', windowMinutes: 45 } }]);
     expect(resolved.degraded).toBe(true);
-    expect(resolved.droppedPaths).toEqual(['lockout.maxAttempts']);
-    expect(resolved.value.lockout).toEqual({ maxAttempts: 10, durationMinutes: 45 });
+    expect(resolved.droppedPaths).toEqual(['loginChallenge.maxAttemptsPerSource']);
+    expect(resolved.value.loginChallenge).toEqual({ maxAttemptsPerSource: 20, sourceLimit: 5, windowMinutes: 45 });
   });
 
   it('整体不可解析时回退纯默认文档', () => {
@@ -106,19 +106,19 @@ describe('resolveSettings', () => {
     const inherited = SETTINGS_MODULES.identitySecurity.schema.parse({});
     const effective: SettingsOf<'identitySecurity'> = {
       ...inherited,
-      lockout: { ...inherited.lockout, maxAttempts: 3 },
+      loginChallenge: { ...inherited.loginChallenge, maxAttemptsPerSource: 3 },
       mfa: { ...inherited.mfa },
     };
     const own = diffSettings(effective, inherited);
-    expect(own).toEqual({ lockout: { maxAttempts: 3 } });
-    expect(settingsOverriddenPaths(own)).toEqual(['lockout.maxAttempts']);
+    expect(own).toEqual({ loginChallenge: { maxAttemptsPerSource: 3 } });
+    expect(settingsOverriddenPaths(own)).toEqual(['loginChallenge.maxAttemptsPerSource']);
     expect(diffSettings(inherited, inherited)).toEqual({});
   });
 
   it('按可见性投影顶层字段', () => {
     const effective = SETTINGS_MODULES.identitySecurity.schema.parse({});
     expect(Object.keys(pickSettingsFields('identitySecurity', effective, ['public']))).toEqual(['password']);
-    expect(Object.keys(pickSettingsFields('identitySecurity', effective, ['admin']))).toEqual(['lockout', 'mfa', 'risk']);
+    expect(Object.keys(pickSettingsFields('identitySecurity', effective, ['admin']))).toEqual(['loginChallenge', 'mfa', 'risk']);
     expect(settingsModuleHasVisibility('ui', ['authenticated'])).toBe(true);
     expect(settingsModuleHasVisibility('drive', ['public'])).toBe(false);
     expect(settingsModuleHasVisibility('drive', ['authenticated'])).toBe(true);

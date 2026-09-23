@@ -122,18 +122,18 @@ describe('getSettings', () => {
     configState.multiTenantMode = true;
     ctx.user = tenantAdmin;
     dbState.selectResults.push([
-      row('identitySecurity', null, { lockout: { maxAttempts: 5 }, mfa: { enabled: true } }),
-      row('identitySecurity', 3, { lockout: { durationMinutes: 120 } }),
+      row('identitySecurity', null, { loginChallenge: { maxAttemptsPerSource: 5 }, mfa: { enabled: true } }),
+      row('identitySecurity', 3, { loginChallenge: { windowMinutes: 120 } }),
     ]);
     const policy = await getSettings('identitySecurity');
-    expect(policy.lockout).toEqual({ maxAttempts: 5, durationMinutes: 120 });
+    expect(policy.loginChallenge).toEqual({ maxAttemptsPerSource: 5, sourceLimit: 5, windowMinutes: 120 });
     expect(policy.mfa.enabled).toBe(true);
     expect(policy.password.minLength).toBe(6);
 
     // 显式指定平台作用域：另一个副本键，重新加载
-    dbState.selectResults.push([row('identitySecurity', null, { lockout: { maxAttempts: 5 } })]);
+    dbState.selectResults.push([row('identitySecurity', null, { loginChallenge: { maxAttemptsPerSource: 5 } })]);
     const platform = await getSettings('identitySecurity', { tenantId: null });
-    expect(platform.lockout).toEqual({ maxAttempts: 5, durationMinutes: 30 });
+    expect(platform.loginChallenge).toEqual({ maxAttemptsPerSource: 5, sourceLimit: 5, windowMinutes: 30 });
     expect(selectMock).toHaveBeenCalledTimes(2);
   });
 
@@ -195,12 +195,12 @@ describe('saveSettings', () => {
   it('已有行：版本 +1 并整体替换稀疏文档；租户行只存与平台生效值不同的叶子', async () => {
     configState.multiTenantMode = true;
     dbState.selectResults.push([{ id: 3, version: 2 }]);                                   // 租户行 for update
-    dbState.selectResults.push([{ data: { lockout: { maxAttempts: 5 } } }]);              // 平台行
+    dbState.selectResults.push([{ data: { loginChallenge: { maxAttemptsPerSource: 5 } } }]); // 平台行
     dbState.selectResults.push([]);                                                        // 重载
-    const defaults = { password: { minLength: 6, requireUppercase: false, requireSpecialChar: false, expiryEnabled: false, expiryDays: 90 }, lockout: { maxAttempts: 5, durationMinutes: 45 }, mfa: { enabled: false, mode: 'off' as const, rememberDeviceDays: 30 }, risk: { enabled: false, newDeviceAction: 'allow' as const } };
+    const defaults = { password: { minLength: 6, requireUppercase: false, requireSpecialChar: false, expiryEnabled: false, expiryDays: 90 }, loginChallenge: { maxAttemptsPerSource: 5, sourceLimit: 5, windowMinutes: 45 }, mfa: { enabled: false, mode: 'off' as const, rememberDeviceDays: 30 }, risk: { enabled: false, newDeviceAction: 'allow' as const } };
     await saveSettings('identitySecurity', tenantAdmin, { version: 2, data: defaults });
-    // maxAttempts=5 与平台生效值相同 → 继承；只有 durationMinutes 落库
-    expect(dbState.updates).toEqual([{ data: { lockout: { durationMinutes: 45 } }, version: 3 }]);
+    // maxAttemptsPerSource=5 与平台生效值相同 → 继承；只有 windowMinutes 落库
+    expect(dbState.updates).toEqual([{ data: { loginChallenge: { windowMinutes: 45 } }, version: 3 }]);
   });
 
   it('多租户下租户管理员写平台级模块 → 403', async () => {

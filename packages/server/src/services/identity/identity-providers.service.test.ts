@@ -43,7 +43,7 @@ vi.mock('../../lib/settings', async () => {
   return { getSettings: vi.fn(async (module: keyof typeof SETTINGS_MODULES) => SETTINGS_MODULES[module].schema.parse({})) };
 });
 vi.mock('../../lib/session-manager', () => ({
-  checkLoginLock: vi.fn(async () => 0), clearLoginAttempts: vi.fn(), recordLoginFailure: vi.fn(),
+  isSourceChallenged: vi.fn(async () => false), clearLoginAttempts: vi.fn(), recordLoginFailure: vi.fn(),
 }));
 vi.mock('./user-group-rules.service', () => ({ syncUserDynamicMembershipsSafe: vi.fn() }));
 vi.mock('./auth.service', () => ({ finalizeLogin: vi.fn(), recordLoginLog: vi.fn(), completeLoginWithMfa: vi.fn() }));

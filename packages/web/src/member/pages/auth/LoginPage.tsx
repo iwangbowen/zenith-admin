@@ -3,8 +3,10 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Input, Button, PinCode, Toast } from '@douyinfe/semi-ui';
 import { Crown } from 'lucide-react';
+import type { LoginCaptchaChallenge } from '@zenith/shared/identity';
 import { useMemberAuth } from '../../hooks/useMemberAuth';
 import { useSmsCode } from '../../hooks/useSmsCode';
+import { CaptchaChallengeField } from '../../components/CaptchaChallengeField';
 
 const PHONE_REGEX = /^1[3-9]\d{9}$/;
 
@@ -18,11 +20,18 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [smsCode, setSmsCode] = useState('');
+  // 登录失败防护命中后服务端下发的验证码挑战（不锁定账号，答对即可继续登录）
+  const [captcha, setCaptcha] = useState<LoginCaptchaChallenge | null>(null);
+  const [captchaCode, setCaptchaCode] = useState('');
 
   const handleLogin = async () => {
     if (tab === 'password') {
       if (!account || !password) {
         Toast.warning('请输入账号和密码');
+        return;
+      }
+      if (captcha && !captchaCode.trim()) {
+        Toast.warning('请输入验证码');
         return;
       }
     } else if (!PHONE_REGEX.test(phone) || smsCode.length !== 6) {
@@ -32,11 +41,17 @@ export default function LoginPage() {
     setLoading(true);
     const res = await login(
       tab === 'password'
-        ? { loginType: 'password', account, password }
+        ? { loginType: 'password', account, password, ...(captcha ? { captchaId: captcha.captchaId, captchaCode } : {}) }
         : { loginType: 'sms', phone, smsCode },
     );
     setLoading(false);
     if (res.code === 0) {
+      if ('captchaRequired' in res.data) {
+        setCaptcha(res.data);
+        setCaptchaCode('');
+        Toast.warning(res.data.message);
+        return;
+      }
       Toast.success('登录成功');
       navigate('/home', { replace: true });
     } else {
@@ -86,6 +101,9 @@ export default function LoginPage() {
               onChange={setPassword}
               onEnterPress={handleLogin}
             />
+            {captcha && (
+              <CaptchaChallengeField challenge={captcha} value={captchaCode} onChange={setCaptchaCode} onEnterPress={handleLogin} />
+            )}
           </>
         ) : (
           <>

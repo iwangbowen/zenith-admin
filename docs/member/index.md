@@ -56,6 +56,8 @@ JWT 签名有效不等于会员仍然有效：`memberAuthMiddleware`（CMS 前�
 
 密码使用 `bcryptjs`，hash 强度为 `10`。会员注册与后台创建会员都会在事务内初始化 `member_point_accounts` 与 `member_wallets`。
 
+密码登录的失败防护与后台同源（`identitySecurity.loginChallenge`，键前缀隔离）：失败按「账号 × 来源 IP」计数，达阈值返回验证码挑战（`{ captchaRequired: true, captchaId, svg, message }`，前端展示验证码后带 `captchaId` / `captchaCode` 重新提交），**不锁定账号**；窗口内失败来源 IP 数达阈值时升级为账号级验证码。与后台的区别：会员登录没有全局验证码开关，验证码仅在防护命中时出现。
+
 注册与登录在业务校验前接入规则中心名单判定：`member-auth.service.ts` 通过统一求值门面 `decide({ kind: 'list', key: 'risk_blacklist' }, ..., { caller: 'member.auth' })` 检查手机号（注册 / 短信登录）与客户端 IP。名单命中时写入失败登录日志并返回 403；名单不存在、禁用或求值异常按可选接入语义放行。规则资产配置与执行留痕见[规则中心 · 在线求值](/rules/evaluation)。
 
 短信验证码存储在 Redis：

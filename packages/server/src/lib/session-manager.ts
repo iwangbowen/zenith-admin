@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
 import type { SessionClientKind, SessionRevokeReason } from '@zenith/shared/identity';
 import { config } from '../config';
-import redis from './redis';
 import { createRedisSessionStore } from './redis-session-store';
+import { createLoginChallengeGuard } from './login-challenge-guard';
 
 export interface SessionInfo {
   tokenId: string;
@@ -137,63 +137,25 @@ export async function getOnlineCount(): Promise<number> {
   return store.count();
 }
 
-// ─── 登录失败锁定 ────────────────────────────────────────────────────────────
+// ─── 登录失败防护（按 账号 × 来源 计数 → 要求验证码，永不锁定账号）────────────
+// 算法与注释见 login-challenge-guard.ts；本处只绑定管理员键前缀 `login_*`。
 
-const LOGIN_ATTEMPT_PREFIX = `${keyPrefix}login_attempt:`;
-const LOGIN_LOCK_PREFIX = `${keyPrefix}login_lock:`;
+const loginGuard = createLoginChallengeGuard(`${keyPrefix}login_`);
 
-/** 检查账号是否被锁定，返回剩余秒数（0 表示未锁定） */
-export async function checkLoginLock(username: string): Promise<number> {
-  const ttl = await redis.ttl(`${LOGIN_LOCK_PREFIX}${username}`);
-  return Math.max(ttl, 0);
-}
+/** 当前登录是否需要先通过验证码（账号级挑战对所有来源生效，来源级只对被失败过的 IP 生效） */
+export const checkLoginGuard = loginGuard.check;
 
-/** 记录一次登录失败，达到阈值后自动锁定，返回剩余允许次数 */
-export async function recordLoginFailure(
-  username: string,
-  maxAttempts: number,
-  lockDurationSeconds: number,
-): Promise<number> {
-  const attemptKey = `${LOGIN_ATTEMPT_PREFIX}${username}`;
-  const count = await redis.incr(attemptKey);
-  // 第一次失败时设置过期时间（锁定时长，避免永久累积）
-  if (count === 1) {
-    await redis.expire(attemptKey, lockDurationSeconds);
-  }
-  const remaining = maxAttempts - count;
-  if (remaining <= 0) {
-    // 触发锁定
-    await redis.set(`${LOGIN_LOCK_PREFIX}${username}`, '1', 'EX', lockDurationSeconds);
-    await redis.del(attemptKey);
-  }
-  return Math.max(remaining, 0);
-}
+/** 只判断该来源是否已进入防护（忽略账号级标记），供无验证码环节的登录路径做来源级节流 */
+export const isSourceChallenged = loginGuard.isSourceChallenged;
 
-/** 登录成功后清除失败计数 */
-export async function clearLoginAttempts(username: string): Promise<void> {
-  await redis.del(`${LOGIN_ATTEMPT_PREFIX}${username}`);
-}
+/** 记录一次登录失败（按 账号 × 来源 计数），返回剩余可用次数（<= 0 表示已进入验证码防护） */
+export const recordLoginFailure = loginGuard.recordFailure;
 
-/** 批量检查多个账号的锁定剩余秒数（0 表示未锁定），使用 pipeline 减少 RTT */
-export async function batchCheckLoginLock(usernames: string[]): Promise<Map<string, number>> {
-  if (usernames.length === 0) return new Map();
-  const pipeline = redis.pipeline();
-  for (const username of usernames) {
-    pipeline.ttl(`${LOGIN_LOCK_PREFIX}${username}`);
-  }
-  const results = await pipeline.exec();
-  const map = new Map<string, number>();
-  usernames.forEach((username, i) => {
-    const [err, ttl] = results?.[i] ?? [null, -2];
-    map.set(username, err ? 0 : Math.max(Number(ttl), 0));
-  });
-  return map;
-}
+/** 登录成功：清除该来源的失败计数与来源级验证码要求（账号级要求保留到窗口结束） */
+export const clearLoginAttempts = loginGuard.clear;
 
-/** 管理员手动解除账号锁定 */
-export async function unlockUser(username: string): Promise<void> {
-  await Promise.all([
-    redis.del(`${LOGIN_LOCK_PREFIX}${username}`),
-    redis.del(`${LOGIN_ATTEMPT_PREFIX}${username}`),
-  ]);
-}
+/** 批量检查多个账号当前是否要求验证码（用户列表用） */
+export const batchLoginChallengeRequired = loginGuard.batchRequired;
+
+/** 管理员清除账号的登录失败防护状态：删除全部来源计数与验证码要求 */
+export const unlockUser = loginGuard.clearAll;

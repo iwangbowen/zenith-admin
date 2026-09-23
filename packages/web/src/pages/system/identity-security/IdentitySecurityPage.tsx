@@ -107,9 +107,11 @@ export default function IdentitySecurityPage() {
               <Form.Switch field="password.expiryEnabled" label="启用密码过期" />
               <Form.InputNumber field="password.expiryDays" label="过期天数" min={1} max={3650} />
 
-              <div className="section-title" style={{ marginTop: 24 }}>账号锁定</div>
-              <Form.InputNumber field="lockout.maxAttempts" label="失败次数阈值" min={1} max={100} />
-              <Form.InputNumber field="lockout.durationMinutes" label="锁定时长（分钟）" min={1} max={1440} />
+              {/* 登录失败不再锁定账号：达到阈值只要求验证码，真正的用户凭正确密码 + 验证码仍可登录 */}
+              <div className="section-title" style={{ marginTop: 24 }}>登录失败防护</div>
+              <Form.InputNumber field="loginChallenge.maxAttemptsPerSource" label="单来源失败阈值" min={1} max={1000} extraText="同一账号 + 同一 IP 的失败次数，达到后该来源需先过验证码" />
+              <Form.InputNumber field="loginChallenge.sourceLimit" label="多来源失败阈值" min={1} max={100} extraText="窗口内失败来源 IP 数，达到后该账号所有来源都需验证码（防分布式猜解）" />
+              <Form.InputNumber field="loginChallenge.windowMinutes" label="计数窗口（分钟）" min={1} max={1440} />
 
               <div className="section-title" style={{ marginTop: 24 }}>会话并发</div>
               <SessionPolicyFields />

@@ -81,7 +81,7 @@
 
 `packages/server/src/lib/pg-boss-scheduler.ts` 注册可被 `cron_jobs.handler` 引用的处理器：
 
-- `cleanExpiredCaptchas`
+- `cleanExpiredCaptchas`（兼容保留：登录验证码改由 Redis TTL 自动过期，该处理器不再做实际清理）
 - `echo`
 - `databaseBackup`
 - `publishScheduledAnnouncements`

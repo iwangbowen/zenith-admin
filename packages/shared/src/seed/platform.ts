@@ -211,7 +211,7 @@ export const SEED_CRON_JOBS: CronJob[] = [
     handler: 'cleanExpiredCaptchas',
     params: null,
     status: 'enabled',
-    description: '每30分钟清理过期的验证码',
+    description: '兼容保留：验证码改存 Redis 并按 TTL 自动过期，无需清理',
     retryCount: 0,
     retryInterval: 0,
     retryBackoff: false,

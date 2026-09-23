@@ -357,7 +357,7 @@ export default function UsersPage() {
   const { mutateAsync: unlockUser } = unlockMutation;
   const handleUnlock = useCallback(async (id: number) => {
     await unlockUser({ params: { id } });
-    Toast.success('解锁成功');
+    Toast.success('已清除登录验证码要求');
   }, [unlockUser]);
 
   const { mutateAsync: kickUserSessions } = kickSessionsMutation;
@@ -389,8 +389,8 @@ export default function UsersPage() {
           <span className="table-cell-ellipsis" title={`${record.nickname}（${record.username}）`}>
             {record.nickname}（{record.username}）
           </span>
-          {record.isLocked && (
-            <Tag size="small" color="red" style={{ flexShrink: 0 }}>已锁定</Tag>
+          {record.loginChallengeRequired && (
+            <Tag size="small" color="orange" style={{ flexShrink: 0 }}>需验证码</Tag>
           )}
         </div>
       ),
@@ -486,8 +486,8 @@ export default function UsersPage() {
           },
           {
             key: 'unlock',
-            label: '解锁',
-            hidden: !record.isLocked || !hasPermission('system:user:update'),
+            label: '清除登录验证码要求',
+            hidden: !record.loginChallengeRequired || !hasPermission('system:user:update'),
             onClick: () => handleUnlock(record.id),
           },
           {

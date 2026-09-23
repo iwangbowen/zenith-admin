@@ -7,7 +7,7 @@ import { reserveTenantSeats } from '../../lib/tenant-quota';
 import { signToken, verifyToken } from '../../lib/jwt';
 import {
   generateTokenId, registerSession, removeSession, grantRefresh, consumeRefreshGrant, getTokenRevocation,
-  checkLoginLock, recordLoginFailure, clearLoginAttempts, forceLogout, forceLogoutAllByUser,
+  checkLoginGuard, recordLoginFailure, clearLoginAttempts, forceLogout, forceLogoutAllByUser,
   forceLogoutAllByUserExcept, getSession, listUserSessions,
 } from '../../lib/session-manager';
 import { SessionRevokedException } from '../../lib/session-liveness';
@@ -139,6 +139,7 @@ import { config } from '../../config';
 import { sendMail } from '../../lib/email';
 import { isSuperAdmin, getUserPermissions } from '../../lib/permissions';
 import { verifyCaptcha } from '../../lib/captcha';
+import { issueLoginCaptchaChallenge } from '../../lib/login-captcha-challenge';
 import { isPlatformAdmin, isTenantActive, isTenantExpired } from '../../lib/tenant';
 import { checkSubjectLiveness, loadSubjectRow } from '../../lib/subject-liveness';
 import { HTTPException } from 'hono/http-exception';
@@ -350,9 +351,11 @@ export async function resolveSessionConflict(ticket: string) {
 export async function login(input: LoginInput) {
   // 验证码开关在租户解析之前判定，只能是平台级设置
   const auth = await getSettings('auth');
+  // 全局开关开启时本次请求已消费一次验证码，失败防护命中时不再要求第二次
+  const captchaSatisfied = auth.captchaEnabled;
   if (auth.captchaEnabled) {
     if (!input.captchaId || !input.captchaCode) throw new HTTPException(400, { message: '请输入验证码' });
-    if (!verifyCaptcha(input.captchaId, input.captchaCode)) throw new HTTPException(400, { message: '验证码错误或已过期' });
+    if (!(await verifyCaptcha(input.captchaId, input.captchaCode))) throw new HTTPException(400, { message: '验证码错误或已过期' });
   }
 
   let tenantId: number | null = null;
@@ -367,13 +370,16 @@ export async function login(input: LoginInput) {
   // 整条登录链路（锁定 / 密码过期 / MFA / 风控）统一使用目标租户的身份安全策略
   const policy = await getSettings('identitySecurity', { tenantId });
 
-  const remainingLockSeconds = await checkLoginLock(input.username);
-  if (remainingLockSeconds > 0) {
-    const remainingMinutes = Math.ceil(remainingLockSeconds / 60);
-    throw new HTTPException(423, { message: `账号已被锁定，请 ${remainingMinutes} 分钟后重试` });
+  // 失败防护：该来源（或整个账号）失败过多时要求验证码。账号永不被锁定——
+  // 否则攻击者只要知道用户名，用任意 IP 刷失败次数就能把真正的用户关在门外。
+  if (!captchaSatisfied && await checkLoginGuard(input.username, input.ip)) {
+    if (!input.captchaId || !input.captchaCode) {
+      return issueLoginCaptchaChallenge('为确认真实用户操作，请先输入验证码');
+    }
+    if (!(await verifyCaptcha(input.captchaId, input.captchaCode))) {
+      throw new HTTPException(400, { message: '验证码错误或已过期' });
+    }
   }
-  const loginMaxAttempts = policy.lockout.maxAttempts;
-  const lockDurationSeconds = policy.lockout.durationMinutes * 60;
 
   // 支持用户名或手机号登录
   const identifierWhere = or(eq(users.username, input.username), eq(users.phone, input.username))!;
@@ -386,7 +392,7 @@ export async function login(input: LoginInput) {
   if (!user) {
     await Promise.all([
       recordLoginLog({ ip: input.ip, ua: input.ua, browser: input.browser, os: input.os, username: input.username, status: 'fail', message: '用户名或密码错误', tenantId }),
-      recordLoginFailure(input.username, loginMaxAttempts, lockDurationSeconds),
+      recordLoginFailure(input.username, input.ip, policy.loginChallenge),
     ]);
     throw new HTTPException(400, { message: '用户名或密码错误' });
   }
@@ -398,12 +404,12 @@ export async function login(input: LoginInput) {
   if (!valid) {
     await Promise.all([
       recordLoginLog({ ip: input.ip, ua: input.ua, browser: input.browser, os: input.os, username: input.username, status: 'fail', message: '用户名或密码错误', userId: user.id, tenantId }),
-      recordLoginFailure(input.username, loginMaxAttempts, lockDurationSeconds),
+      recordLoginFailure(input.username, input.ip, policy.loginChallenge),
     ]);
     throw new HTTPException(400, { message: '用户名或密码错误' });
   }
 
-  await clearLoginAttempts(input.username);
+  await clearLoginAttempts(input.username, input.ip);
   // 凭据已通过：会话并发 → MFA → 密码过期 → 签发，与 SSO / OAuth 同一收口
   return completeLoginWithMfa(user, input, '登录成功', { policy });
 }
