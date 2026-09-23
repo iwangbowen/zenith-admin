@@ -152,7 +152,7 @@ export default function SitesPage() {
   }
 
   const columns: ColumnProps<CmsSite>[] = [
-    { title: '站点名称', dataIndex: 'name', width: 240 },
+    { title: '站点名称', dataIndex: 'name', width: 320, render: renderEllipsis },
     {
       title: '父级 / 层级',
       width: 200,
@@ -160,7 +160,7 @@ export default function SitesPage() {
         ? `${record.parentName} / L${record.depth ?? EMPTY_PLACEHOLDER}`
         : `根站点 / L${record.depth ?? 1}`,
     },
-    { title: '标识', dataIndex: 'code', width: 160 },
+    { title: '标识', dataIndex: 'code', width: 200, render: renderEllipsis },
     {
       title: '默认站点',
       dataIndex: 'isDefault',
