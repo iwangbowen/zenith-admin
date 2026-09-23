@@ -1058,7 +1058,7 @@ export async function handleEnterpriseLdapLogin(input: {
         message: `企业身份源 ${provider.name} 目录账号或密码错误`,
         tenantId: provider.tenantId ?? null,
       }),
-      recordLoginFailure(lockKey, input.ip, loginChallenge),
+      recordLoginFailure(lockKey, input.ip, loginChallenge, provider.tenantId ?? null),
     ]);
     throw new HTTPException(400, { message: '目录账号或密码错误' });
   };

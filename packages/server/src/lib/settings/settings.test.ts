@@ -126,14 +126,24 @@ describe('getSettings', () => {
       row('identitySecurity', 3, { loginChallenge: { windowMinutes: 120 } }),
     ]);
     const policy = await getSettings('identitySecurity');
-    expect(policy.loginChallenge).toEqual({ maxAttemptsPerSource: 5, sourceLimit: 5, windowMinutes: 120 });
+    expect(policy.loginChallenge).toEqual({
+      maxAttemptsPerSource: 5,
+      sourceLimit: 5,
+      windowMinutes: 120,
+      alert: { enabled: true, sourceThreshold: 3, failureThreshold: 60 },
+    });
     expect(policy.mfa.enabled).toBe(true);
     expect(policy.password.minLength).toBe(6);
 
     // 显式指定平台作用域：另一个副本键，重新加载
     dbState.selectResults.push([row('identitySecurity', null, { loginChallenge: { maxAttemptsPerSource: 5 } })]);
     const platform = await getSettings('identitySecurity', { tenantId: null });
-    expect(platform.loginChallenge).toEqual({ maxAttemptsPerSource: 5, sourceLimit: 5, windowMinutes: 30 });
+    expect(platform.loginChallenge).toEqual({
+      maxAttemptsPerSource: 5,
+      sourceLimit: 5,
+      windowMinutes: 30,
+      alert: { enabled: true, sourceThreshold: 3, failureThreshold: 60 },
+    });
     expect(selectMock).toHaveBeenCalledTimes(2);
   });
 
@@ -197,7 +207,7 @@ describe('saveSettings', () => {
     dbState.selectResults.push([{ id: 3, version: 2 }]);                                   // 租户行 for update
     dbState.selectResults.push([{ data: { loginChallenge: { maxAttemptsPerSource: 5 } } }]); // 平台行
     dbState.selectResults.push([]);                                                        // 重载
-    const defaults = { password: { minLength: 6, requireUppercase: false, requireSpecialChar: false, expiryEnabled: false, expiryDays: 90 }, loginChallenge: { maxAttemptsPerSource: 5, sourceLimit: 5, windowMinutes: 45 }, mfa: { enabled: false, mode: 'off' as const, rememberDeviceDays: 30 }, risk: { enabled: false, newDeviceAction: 'allow' as const } };
+    const defaults = { password: { minLength: 6, requireUppercase: false, requireSpecialChar: false, expiryEnabled: false, expiryDays: 90 }, loginChallenge: { maxAttemptsPerSource: 5, sourceLimit: 5, windowMinutes: 45, alert: { enabled: true, sourceThreshold: 3, failureThreshold: 60 } }, mfa: { enabled: false, mode: 'off' as const, rememberDeviceDays: 30 }, risk: { enabled: false, newDeviceAction: 'allow' as const } };
     await saveSettings('identitySecurity', tenantAdmin, { version: 2, data: defaults });
     // maxAttemptsPerSource=5 与平台生效值相同 → 继承；只有 windowMinutes 落库
     expect(dbState.updates).toEqual([{ data: { loginChallenge: { windowMinutes: 45 } }, version: 3 }]);

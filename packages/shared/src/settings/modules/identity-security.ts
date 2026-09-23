@@ -24,6 +24,20 @@ export const identitySecuritySettingsSchema = z.object({
       title: '计数窗口（分钟）',
       description: '失败计数与验证码要求的持续时长',
     }),
+    alert: z.object({
+      enabled: z.boolean().default(true).meta({
+        title: '登录失败突增告警',
+        description: '同一账号在窗口内出现多个失败来源或失败量异常时通知安全管理员，攻击进行中即可看到',
+      }),
+      sourceThreshold: z.int().min(2).max(100).default(3).meta({
+        title: '多来源告警阈值',
+        description: '窗口内失败来源 IP 数达到后告警一次（疑似分布式猜解）',
+      }),
+      failureThreshold: z.int().min(5).max(100000).default(60).meta({
+        title: '失败总量告警阈值',
+        description: '窗口内同一账号的失败总次数达到后告警一次（疑似口令爆破）',
+      }),
+    }).prefault({}).meta({ title: '突增告警' }),
   }).prefault({}).meta({ title: '登录失败防护' }),
   session: z.object({
     maxSessions: z.int().min(0).max(20).default(0).meta({ title: '同时在线上限', description: '0 不限制；1 = 同一账号只能在一处登录；模拟登录会话不计入' }),

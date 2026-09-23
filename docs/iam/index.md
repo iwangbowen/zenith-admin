@@ -130,6 +130,7 @@
 - **企业 LDAP 例外**：该路径没有验证码环节，只对失败的那个来源做节流（429），目录账号不受其它来源影响。
 - **治理入口**：用户列表对处于防护中的账号显示「需验证码」标记，管理员可用行操作的「清除登录验证码要求」（`POST /api/users/{id}/unlock`）清掉全部来源的计数与要求。
 - **验证码存储**：`lib/captcha.ts` 的答案存 Redis（5 分钟 TTL，`GETDEL` 一次性消费），多 api 节点任一节点都能校验；到期的键由 TTL 自然消失。
+- **突增告警**：窗口内失败来源 IP 数或账号失败总量达到 `loginChallenge.alert` 阈值时，立即通知安全管理员（`identity.login.burst_alert`，接收人 = 身份安全策略管理员 / 登录风险查看者 / 平台超管）。判定与去重都在守卫里完成——`login_failures:{账号}` 记账号级失败总量，`login_burst:{账号}:{原因}` 用 `SET NX` 抢占，因此**同一账号同一原因每个窗口只告警一次**，攻击进行中就能在站内信 / 邮件看到；管理员清除防护状态（`POST /api/users/{id}/unlock`）后，同一窗口内再次触发仍会告警。会员登录同源（深链指向会员登录日志），阈值同样按租户生效。
 
 ### 多账号切换
 
@@ -164,6 +165,9 @@
 | `loginChallenge.maxAttemptsPerSource` | 单来源失败阈值：同一账号 + 同一 IP 的失败次数，达到后该来源登录需先过验证码（默认 30） |
 | `loginChallenge.sourceLimit` | 多来源失败阈值：窗口内失败来源 IP 数，达到后该账号所有来源都需验证码（默认 5） |
 | `loginChallenge.windowMinutes` | 计数窗口与验证码要求的持续时长（默认 30） |
+| `loginChallenge.alert.enabled` | 是否在登录失败突增时通知安全管理员（默认开） |
+| `loginChallenge.alert.sourceThreshold` | 多来源告警阈值：窗口内失败来源 IP 数达到即告警一次（默认 3） |
+| `loginChallenge.alert.failureThreshold` | 失败总量告警阈值：窗口内同一账号失败总次数达到即告警一次（默认 60） |
 | `session.maxSessions` | 同时在线上限：0 不限制、1 仅一处登录、N 最多 N 处；模拟登录会话不计入 |
 | `session.scope` | 并发统计范围：`global` 全部终端合计 / `per-client` 网页、移动审批、桌面端各算一份 |
 | `session.exceedAction` | 超限处理：`kick-oldest` 新登录挤掉最早的会话 / `reject-new` 拒绝新登录（登录页可选择下线其它设备） |

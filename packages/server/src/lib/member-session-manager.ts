@@ -14,7 +14,7 @@ import type { SessionRevokeReason } from '@zenith/shared/identity';
 import { config } from '../config';
 import { getSettings } from './settings';
 import { createRedisSessionStore } from './redis-session-store';
-import { createLoginChallengeGuard } from './login-challenge-guard';
+import { createLoginChallengeGuard, type LoginFailureOutcome } from './login-challenge-guard';
 
 export interface MemberSessionInfo {
   tokenId: string;
@@ -120,12 +120,29 @@ const memberLoginGuard = createLoginChallengeGuard(`${keyPrefix}member:login_`);
 export const checkMemberLoginGuard = memberLoginGuard.check;
 
 /**
- * 记录一次会员登录失败，返回剩余可用次数（<= 0 表示已进入验证码防护）。
- * 沿用身份安全策略的失败阈值 / 窗口（与管理员一致）；会员所属租户已知时按租户策略，否则平台策略。
+ * 记录一次会员登录失败，返回剩余可用次数（<= 0 表示已进入验证码防护）、窗口内失败统计与触发的告警原因。
+ * 沿用身份安全策略的失败阈值 / 窗口 / 突增告警阈值（与管理员一致）；
+ * 会员所属租户已知时按租户策略与租户安全管理员，否则用平台策略并把告警发给平台安全管理员。
  */
-export async function recordMemberLoginFailure(account: string, ip: string, tenantId: number | null = null): Promise<number> {
+export async function recordMemberLoginFailure(
+  account: string,
+  ip: string,
+  tenantId: number | null = null,
+): Promise<LoginFailureOutcome> {
   const policy = (await getSettings('identitySecurity', { tenantId })).loginChallenge;
-  return memberLoginGuard.recordFailure(account, ip, policy);
+  const outcome = await memberLoginGuard.recordFailure(account, ip, policy);
+  // 告警只在真的触发时才加载派发服务（它依赖 db / logger），避免会话基础设施被迫拉起这些模块
+  if (outcome.bursts.length > 0) {
+    const { dispatchLoginBurstAlerts } = await import('../services/identity/login-burst-alerts.service');
+    await dispatchLoginBurstAlerts(outcome, {
+      username: account,
+      ip,
+      tenantId,
+      windowMinutes: policy.windowMinutes,
+      link: '/member/login-logs',
+    });
+  }
+  return outcome;
 }
 
 /** 会员登录成功后清除该来源的失败计数与来源级验证码要求（账号级要求保留到窗口结束） */

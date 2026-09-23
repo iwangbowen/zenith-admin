@@ -360,6 +360,21 @@ export const NOTIFICATION_EVENTS = defineNotificationEvents({
     content: '管理员 {{impersonatorName}} 已开始以你的账号身份进入系统（{{mode}}），原因：{{reason}}。该会话将于 {{expiresAt}} 自动结束，全部操作均记录为该管理员所为。',
   },
 
+  'identity.login.burst_alert': {
+    group: 'identity',
+    label: '登录失败突增（疑似爆破）',
+    description: '同一账号在窗口内出现多个失败来源或失败量异常时提醒安全管理员',
+    severity: 'critical',
+    defaultChannels: ['inapp'],
+    availableChannels: ['inapp', 'email', 'webhook'],
+    // 攻击进行中的告警，等免打扰时段结束再送达就失去了处置窗口；
+    // 幂等由登录守卫按「账号 + 原因 + 窗口」去重，无需再配 rateLimit
+    bypassQuietHours: true,
+    vars: eventVars<{ username: string; kindLabel: string; failureCount: number; sourceCount: number; windowMinutes: number; ip: string }>(),
+    title: '[安全告警] 账号「{{username}}」登录失败突增',
+    content: '{{kindLabel}}：窗口 {{windowMinutes}} 分钟内该账号失败 {{failureCount}} 次、涉及 {{sourceCount}} 个来源 IP（最近来源 {{ip}}）。账号不会被锁定，请前往登录日志核查是否为真实攻击。',
+  },
+
   // ─── 运维与告警 ─────────────────────────────────────────────────────────────
   // 告警类事件由管理员在规则上显式指定渠道与接收人，收件人不得自行关闭：
   // 「配了规则却没人收到」正是这套系统最不能出现的失效模式。

@@ -84,7 +84,12 @@ describe('resolveSettings', () => {
       { loginChallenge: { windowMinutes: 60 }, mfa: { enabled: true } },
     ]);
     expect(resolved.degraded).toBe(false);
-    expect(resolved.value.loginChallenge).toEqual({ maxAttemptsPerSource: 5, sourceLimit: 5, windowMinutes: 60 });
+    expect(resolved.value.loginChallenge).toEqual({
+      maxAttemptsPerSource: 5,
+      sourceLimit: 5,
+      windowMinutes: 60,
+      alert: { enabled: true, sourceThreshold: 3, failureThreshold: 60 },
+    });
     expect(resolved.value.mfa.enabled).toBe(true);
     expect(resolved.value.password.minLength).toBe(6);
   });
@@ -93,7 +98,12 @@ describe('resolveSettings', () => {
     const resolved = resolveSettings('identitySecurity', [{ loginChallenge: { maxAttemptsPerSource: 'many', windowMinutes: 45 } }]);
     expect(resolved.degraded).toBe(true);
     expect(resolved.droppedPaths).toEqual(['loginChallenge.maxAttemptsPerSource']);
-    expect(resolved.value.loginChallenge).toEqual({ maxAttemptsPerSource: 30, sourceLimit: 5, windowMinutes: 45 });
+    expect(resolved.value.loginChallenge).toEqual({
+      maxAttemptsPerSource: 30,
+      sourceLimit: 5,
+      windowMinutes: 45,
+      alert: { enabled: true, sourceThreshold: 3, failureThreshold: 60 },
+    });
   });
 
   it('整体不可解析时回退纯默认文档', () => {

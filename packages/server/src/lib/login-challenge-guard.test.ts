@@ -7,6 +7,7 @@
  *   2. 窗口内失败来源 IP 数达到 sourceLimit 时，整个账号都需验证码（分布式猜解）
  *   3. 登录成功只清该来源的计数与来源级要求，账号级要求保留到窗口结束
  *   4. batchRequired / clearAll 的账号级读写
+ *   5. 突增告警：多来源 / 失败总量阈值各触发一次，同一账号同一原因每窗口只触发一次
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createLoginChallengeGuard, type LoginChallengePolicy } from './login-challenge-guard';
@@ -14,6 +15,7 @@ import { createLoginChallengeGuard, type LoginChallengePolicy } from './login-ch
 const state = vi.hoisted(() => ({
   counters: new Map<string, number>(),
   sets: new Map<string, Set<string>>(),
+  flags: new Map<string, string>(),
   zsets: new Map<string, Map<string, number>>(),
 }));
 
@@ -21,6 +23,7 @@ function deleteKeys(keys: string[]): void {
   for (const key of keys) {
     state.counters.delete(key);
     state.sets.delete(key);
+    state.flags.delete(key);
     state.zsets.delete(key);
   }
 }
@@ -34,6 +37,11 @@ vi.mock('./redis', () => ({
     }),
     expire: vi.fn(async () => 1),
     del: vi.fn(async (...keys: string[]) => { deleteKeys(keys); return keys.length; }),
+    set: vi.fn(async (key: string, value: string, _ex: string, _ttl: number, nx?: string) => {
+      if (nx === 'NX' && state.flags.has(key)) return null;
+      state.flags.set(key, value);
+      return 'OK';
+    }),
     sadd: vi.fn(async (key: string, ...members: string[]) => {
       const set = state.sets.get(key) ?? new Set<string>();
       for (const member of members) set.add(member);
@@ -76,18 +84,32 @@ vi.mock('./redis', () => ({
 }));
 
 const guard = createLoginChallengeGuard('zenith:login_');
-const POLICY: LoginChallengePolicy = { maxAttemptsPerSource: 3, sourceLimit: 2, windowMinutes: 30 };
 
-/** 连续失败 n 次（模拟同一来源的连续尝试） */
-async function failTimes(username: string, ip: string, times: number) {
+/** 防护阈值：3 次单来源失败即要求验证码，2 个来源即账号级；告警关闭 */
+const POLICY: LoginChallengePolicy = {
+  maxAttemptsPerSource: 3,
+  sourceLimit: 2,
+  windowMinutes: 30,
+  alert: { enabled: false, sourceThreshold: 3, failureThreshold: 5 },
+};
+
+/** 3 个来源 / 5 次失败即告警 */
+const ALERT_POLICY: LoginChallengePolicy = {
+  ...POLICY,
+  alert: { enabled: true, sourceThreshold: 3, failureThreshold: 5 },
+};
+
+/** 连续失败 n 次（模拟同一来源的连续尝试），返回最后一次的剩余次数 */
+async function failTimes(username: string, ip: string, times: number, policy: LoginChallengePolicy = POLICY) {
   let remaining = Number.NaN;
-  for (let i = 0; i < times; i += 1) remaining = await guard.recordFailure(username, ip, POLICY);
+  for (let i = 0; i < times; i += 1) remaining = (await guard.recordFailure(username, ip, policy)).remaining;
   return remaining;
 }
 
 beforeEach(() => {
   state.counters.clear();
   state.sets.clear();
+  state.flags.clear();
   state.zsets.clear();
 });
 
@@ -162,5 +184,69 @@ describe('批量查询与管理员清除', () => {
     expect(await guard.check('alice', '1.1.1.1')).toBe(false);
     expect(await guard.check('alice', '2.2.2.2')).toBe(false);
     expect(await failTimes('alice', '1.1.1.1', 1)).toBe(2);
+  });
+});
+
+describe('突增告警', () => {
+  it('窗口内失败来源数达到告警阈值时返回多来源告警，且同窗口不再重复', async () => {
+    await failTimes('alice', '1.1.1.1', 1, ALERT_POLICY);
+    await failTimes('alice', '2.2.2.2', 1, ALERT_POLICY);
+
+    const hit = await guard.recordFailure('alice', '3.3.3.3', ALERT_POLICY);
+    expect(hit.bursts).toEqual(['multi-source']);
+    expect(hit).toMatchObject({ sourceCount: 3, failureCount: 3 });
+
+    // 攻击继续，但同一窗口不再重复告警（否则管理员会被同一场攻击刷屏）
+    const again = await guard.recordFailure('alice', '4.4.4.4', ALERT_POLICY);
+    expect(again.bursts).toEqual([]);
+  });
+
+  it('失败总量达到告警阈值时返回失败量告警', async () => {
+    // 2 个来源（低于多来源阈值 3），但累计失败 5 次命中总量阈值
+    let last = await guard.recordFailure('alice', '1.1.1.1', ALERT_POLICY);
+    for (let i = 0; i < 3; i += 1) last = await guard.recordFailure('alice', '1.1.1.1', ALERT_POLICY);
+    expect(last.bursts).toEqual([]);
+
+    last = await guard.recordFailure('alice', '2.2.2.2', ALERT_POLICY);
+    expect(last.bursts).toEqual(['high-volume']);
+    expect(last.failureCount).toBe(5);
+  });
+
+  it('两种原因可以同时触发', async () => {
+    const policy: LoginChallengePolicy = { ...ALERT_POLICY, alert: { enabled: true, sourceThreshold: 2, failureThreshold: 2 } };
+    await guard.recordFailure('alice', '1.1.1.1', policy);
+    const hit = await guard.recordFailure('alice', '2.2.2.2', policy);
+
+    expect(hit.bursts.sort()).toEqual(['high-volume', 'multi-source']);
+  });
+
+  it('关闭告警后只计数不告警', async () => {
+    const hits: string[][] = [];
+    for (let i = 0; i < 6; i += 1) {
+      hits.push((await guard.recordFailure('alice', `10.0.0.${i}`, POLICY)).bursts);
+    }
+    expect(hits.flat()).toEqual([]);
+  });
+
+  it('账号间互不干扰：一个账号的告警不影响另一个账号', async () => {
+    await failTimes('alice', '1.1.1.1', 1, ALERT_POLICY);
+    await failTimes('alice', '2.2.2.2', 1, ALERT_POLICY);
+    await guard.recordFailure('alice', '3.3.3.3', ALERT_POLICY);
+
+    const bob = await guard.recordFailure('bob', '4.4.4.4', ALERT_POLICY);
+    expect(bob.bursts).toEqual([]);
+  });
+
+  it('管理员清除后同一窗口内再次触发仍会告警', async () => {
+    await failTimes('alice', '1.1.1.1', 1, ALERT_POLICY);
+    await failTimes('alice', '2.2.2.2', 1, ALERT_POLICY);
+    await guard.recordFailure('alice', '3.3.3.3', ALERT_POLICY);
+
+    await guard.clearAll('alice');
+
+    await failTimes('alice', '1.1.1.1', 1, ALERT_POLICY);
+    await failTimes('alice', '2.2.2.2', 1, ALERT_POLICY);
+    const hit = await guard.recordFailure('alice', '5.5.5.5', ALERT_POLICY);
+    expect(hit.bursts).toEqual(['multi-source']);
   });
 });

@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import type { SessionClientKind, SessionRevokeReason } from '@zenith/shared/identity';
 import { config } from '../config';
 import { createRedisSessionStore } from './redis-session-store';
-import { createLoginChallengeGuard } from './login-challenge-guard';
+import { createLoginChallengeGuard, type LoginChallengePolicy, type LoginFailureOutcome } from './login-challenge-guard';
 
 export interface SessionInfo {
   tokenId: string;
@@ -148,8 +148,30 @@ export const checkLoginGuard = loginGuard.check;
 /** 只判断该来源是否已进入防护（忽略账号级标记），供无验证码环节的登录路径做来源级节流 */
 export const isSourceChallenged = loginGuard.isSourceChallenged;
 
-/** 记录一次登录失败（按 账号 × 来源 计数），返回剩余可用次数（<= 0 表示已进入验证码防护） */
-export const recordLoginFailure = loginGuard.recordFailure;
+/**
+ * 记录一次登录失败（按 账号 × 来源 计数）；窗口内失败来源数或总量达到突增阈值时通知安全管理员。
+ * 返回剩余可用次数（<= 0 表示已进入验证码防护）、窗口内失败统计与本轮触发的告警原因。
+ */
+export async function recordLoginFailure(
+  username: string,
+  ip: string,
+  policy: LoginChallengePolicy,
+  tenantId: number | null = null,
+): Promise<LoginFailureOutcome> {
+  const outcome = await loginGuard.recordFailure(username, ip, policy);
+  // 告警只在真的触发时才加载派发服务（它依赖 db / logger），避免会话基础设施被迫拉起这些模块
+  if (outcome.bursts.length > 0) {
+    const { dispatchLoginBurstAlerts } = await import('../services/identity/login-burst-alerts.service');
+    await dispatchLoginBurstAlerts(outcome, {
+      username,
+      ip,
+      tenantId,
+      windowMinutes: policy.windowMinutes,
+      link: '/system/login-logs',
+    });
+  }
+  return outcome;
+}
 
 /** 登录成功：清除该来源的失败计数与来源级验证码要求（账号级要求保留到窗口结束） */
 export const clearLoginAttempts = loginGuard.clear;

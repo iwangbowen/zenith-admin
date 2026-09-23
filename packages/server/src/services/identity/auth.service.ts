@@ -392,7 +392,7 @@ export async function login(input: LoginInput) {
   if (!user) {
     await Promise.all([
       recordLoginLog({ ip: input.ip, ua: input.ua, browser: input.browser, os: input.os, username: input.username, status: 'fail', message: '用户名或密码错误', tenantId }),
-      recordLoginFailure(input.username, input.ip, policy.loginChallenge),
+      recordLoginFailure(input.username, input.ip, policy.loginChallenge, tenantId),
     ]);
     throw new HTTPException(400, { message: '用户名或密码错误' });
   }
@@ -404,7 +404,7 @@ export async function login(input: LoginInput) {
   if (!valid) {
     await Promise.all([
       recordLoginLog({ ip: input.ip, ua: input.ua, browser: input.browser, os: input.os, username: input.username, status: 'fail', message: '用户名或密码错误', userId: user.id, tenantId }),
-      recordLoginFailure(input.username, input.ip, policy.loginChallenge),
+      recordLoginFailure(input.username, input.ip, policy.loginChallenge, tenantId),
     ]);
     throw new HTTPException(400, { message: '用户名或密码错误' });
   }

@@ -10,10 +10,28 @@ import redis from './redis';
  *   真正的用户从自己的出口登录不受影响（旧实现把计数挂在账号上，任意 IP 刷失败即可锁死账号）；
  * - 窗口内失败来源 IP 数达到 sourceLimit（疑似分布式猜解）才要求整个账号过验证码；
  * - 任何情况下都不锁定账号，凭正确密码 + 验证码始终可以登录；
- * - 全部状态带窗口 TTL，窗口内不再失败即自动恢复。
+ * - 全部状态带窗口 TTL，窗口内不再失败即自动恢复；
+ * - 突增告警：窗口内失败来源 IP 数或账号失败总量达到告警阈值时返回一次 bursts
+ *   （Redis 去重，同一账号同一原因每个窗口只告警一次），由调用方交给通知派发层。
  */
 
 export type LoginChallengePolicy = SettingsOf<'identitySecurity'>['loginChallenge'];
+
+/** 突增告警原因：多来源尝试（疑似分布式猜解）/ 失败量异常（疑似口令爆破） */
+export type LoginBurstKind = 'multi-source' | 'high-volume';
+
+export const LOGIN_BURST_KINDS: readonly LoginBurstKind[] = ['multi-source', 'high-volume'];
+
+export interface LoginFailureOutcome {
+  /** 剩余可用次数（<= 0 表示该来源已进入验证码防护） */
+  remaining: number;
+  /** 窗口内该账号的失败来源 IP 数 */
+  sourceCount: number;
+  /** 窗口内该账号的失败总次数 */
+  failureCount: number;
+  /** 本窗口内首次触发、尚未告警过的原因；已消费（调用方无需再判重） */
+  bursts: LoginBurstKind[];
+}
 
 export interface LoginChallengeGuard {
   /** 当前登录是否需要先通过验证码 */
@@ -23,8 +41,8 @@ export interface LoginChallengeGuard {
    * 供没有验证码环节的登录路径（企业 LDAP）做来源级节流：只挡失败的那个来源，不影响真正的用户。
    */
   isSourceChallenged(username: string, ip: string): Promise<boolean>;
-  /** 记录一次失败，返回剩余可用次数（<= 0 表示已进入验证码防护） */
-  recordFailure(username: string, ip: string, policy: LoginChallengePolicy): Promise<number>;
+  /** 记录一次失败，返回剩余次数、窗口内失败统计与需要告警的原因 */
+  recordFailure(username: string, ip: string, policy: LoginChallengePolicy): Promise<LoginFailureOutcome>;
   /** 登录成功：清除该来源的计数与来源级验证码要求 */
   clear(username: string, ip: string): Promise<void>;
   /** 批量检查多个账号当前是否要求验证码（用户列表用） */
@@ -41,6 +59,10 @@ export function createLoginChallengeGuard(prefix: string): LoginChallengeGuard {
   const attemptKey = `${prefix}attempt:`;
   /** {username} → ZSET<ip, 最后失败时间> */
   const sourcesKey = `${prefix}sources:`;
+  /** {username} → 窗口内失败总次数（「失败量异常」判定用） */
+  const failuresKey = `${prefix}failures:`;
+  /** {username}:{kind} → 本窗口已告警标记 */
+  const burstKey = `${prefix}burst:`;
   /** {username} → SET<ip | '*'>，需要验证码的来源 */
   const challengeKey = `${prefix}challenge:`;
 
@@ -54,7 +76,34 @@ export function createLoginChallengeGuard(prefix: string): LoginChallengeGuard {
     return redis.sismember(`${challengeKey}${username}`, ip).then((hit) => hit === 1);
   }
 
-  async function recordFailure(username: string, ip: string, policy: LoginChallengePolicy): Promise<number> {
+  /**
+   * 是否触发突增告警。用 SET NX 抢占「本窗口已告警」标记：并发节点里只有一个能抢到，
+   * 因此每个账号每个原因每窗口只返回一次，调用方不必再去重；未启用的阈值不参与判定。
+   */
+  async function detectBursts(
+    username: string,
+    policy: LoginChallengePolicy,
+    stats: { sourceCount: number; failureCount: number },
+    windowSeconds: number,
+  ): Promise<LoginBurstKind[]> {
+    const { alert } = policy;
+    if (!alert.enabled) return [];
+    const hits: LoginBurstKind[] = [];
+    if (stats.sourceCount >= alert.sourceThreshold) hits.push('multi-source');
+    if (stats.failureCount >= alert.failureThreshold) hits.push('high-volume');
+    const bursts: LoginBurstKind[] = [];
+    for (const kind of hits) {
+      const claimed = await redis.set(`${burstKey}${username}:${kind}`, '1', 'EX', windowSeconds, 'NX');
+      if (claimed === 'OK') bursts.push(kind);
+    }
+    return bursts;
+  }
+
+  async function recordFailure(
+    username: string,
+    ip: string,
+    policy: LoginChallengePolicy,
+  ): Promise<LoginFailureOutcome> {
     const { maxAttemptsPerSource, sourceLimit, windowMinutes } = policy;
     const windowSeconds = windowMinutes * 60;
     const key = `${attemptKey}${username}|${ip}`;
@@ -62,20 +111,30 @@ export function createLoginChallengeGuard(prefix: string): LoginChallengeGuard {
     // 首次失败时设置窗口 TTL，避免计数永久累积
     if (count === 1) await redis.expire(key, windowSeconds);
 
+    const failures = `${failuresKey}${username}`;
+    const failureCount = await redis.incr(failures);
+    if (failureCount === 1) await redis.expire(failures, windowSeconds);
+
     const sources = `${sourcesKey}${username}`;
     const now = Date.now();
     await redis.zadd(sources, String(now), ip);
     await redis.zremrangebyscore(sources, '-inf', String(now - windowSeconds * 1000));
     await redis.expire(sources, windowSeconds);
+    const sourceCount = await redis.zcard(sources);
 
     const marks: string[] = [];
     if (count >= maxAttemptsPerSource) marks.push(ip);
-    if (await redis.zcard(sources) >= sourceLimit) marks.push(ALL_SOURCES_MARK);
+    if (sourceCount >= sourceLimit) marks.push(ALL_SOURCES_MARK);
     if (marks.length > 0) {
       await redis.sadd(`${challengeKey}${username}`, ...marks);
       await redis.expire(`${challengeKey}${username}`, windowSeconds);
     }
-    return Math.max(maxAttemptsPerSource - count, 0);
+    return {
+      remaining: Math.max(maxAttemptsPerSource - count, 0),
+      sourceCount,
+      failureCount,
+      bursts: await detectBursts(username, policy, { sourceCount, failureCount }, windowSeconds),
+    };
   }
 
   async function clear(username: string, ip: string): Promise<void> {
@@ -105,7 +164,9 @@ export function createLoginChallengeGuard(prefix: string): LoginChallengeGuard {
     const sources = await redis.zrange(`${sourcesKey}${username}`, '0', '-1');
     await Promise.all([
       ...sources.map((ip) => redis.del(`${attemptKey}${username}|${ip}`)),
+      ...LOGIN_BURST_KINDS.map((kind) => redis.del(`${burstKey}${username}:${kind}`)),
       redis.del(`${sourcesKey}${username}`),
+      redis.del(`${failuresKey}${username}`),
       redis.del(`${challengeKey}${username}`),
     ]);
   }

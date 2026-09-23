@@ -45,7 +45,7 @@ JWT 签名有效不等于主体仍然有效：认证中间件（`middleware/auth
 | `POST` | `/api/auth/logout-by-refresh` | 按 refresh token 注销对应会话，用于多账号切换器移除停靠账号 |
 | `GET` | `/api/auth/me` | 查询当前登录人 |
 
-刷新令牌会校验用户状态、租户状态和租户到期时间。登录失败防护使用 Redis key：`login_attempt:{用户名}|{来源 IP}`（失败计数）、`login_sources:{用户名}`（窗口内失败来源 IP）、`login_challenge:{用户名}`（需验证码的来源），会员侧为 `member:login_*` 同构键，均叠加 `REDIS_KEY_PREFIX`。
+刷新令牌会校验用户状态、租户状态和租户到期时间。登录失败防护使用 Redis key：`login_attempt:{用户名}|{来源 IP}`（失败计数）、`login_sources:{用户名}`（窗口内失败来源 IP）、`login_failures:{用户名}`（窗口内账号失败总量）、`login_challenge:{用户名}`（需验证码的来源）、`login_burst:{用户名}:{原因}`（本窗口已告警标记），会员侧为 `member:login_*` 同构键，均叠加 `REDIS_KEY_PREFIX`。
 
 ## 授权与审计
 
@@ -83,8 +83,9 @@ License 门控在 `feature`。`defineContractRoute` 据此装配 `authMiddleware
 
 - `mfa.enabled`、`mfa.mode`、`mfa.rememberDeviceDays` 控制 MFA 与可信设备；
 - `risk.enabled`、`risk.newDeviceAction` 控制新设备风险动作；
-- `loginChallenge.maxAttemptsPerSource` / `loginChallenge.sourceLimit` / `loginChallenge.windowMinutes` 与 `password.*` 控制登录失败防护与密码策略，按用户所属租户解析，未覆盖时继承平台值；
+- `loginChallenge.maxAttemptsPerSource` / `loginChallenge.sourceLimit` / `loginChallenge.windowMinutes` / `loginChallenge.alert.*` 与 `password.*` 控制登录失败防护、突增告警与密码策略，按用户所属租户解析，未覆盖时继承平台值；
 - 登录失败**按账号 × 来源 IP 计数**（`lib/login-challenge-guard.ts`）：达阈值只要求验证码，永不锁定账号——否则任何知道用户名的人都能用失败请求把真正的用户关在门外。失败来源 IP 数达到 `sourceLimit` 时升级为账号级验证码（应对分布式猜解），凭正确密码 + 验证码仍可登录；企业 LDAP 路径无验证码环节，只对失败的那个来源做节流；
+- 登录失败**突增告警**：窗口内失败来源 IP 数或账号失败总量达到 `loginChallenge.alert` 阈值时，守卫返回一次 `bursts`，由 `services/identity/login-burst-alerts.service.ts` 通知身份安全策略管理员 / 登录风险查看者 / 平台超管（事件 `identity.login.burst_alert`，绕过免打扰）。接收人由权限码解析（`system:identity-security:manage` / `system:login-risk:list`）并叠加 `super_admin` 角色，范围经 `inheritedTenantCondition` 限定（租户告警同时送达平台超管）；去重由守卫的 `SET NX` 标记与 `notify` 的 dedupeKey 双重保证，同一账号同一原因每窗口一条；
 - MFA 因子表为 `user_mfa_factors`，可信设备表为 `user_trusted_devices`；
 - 登录风险事件写入 `login_risk_events`，查看要求独立的 `system:login-risk:list` 权限；列表与总数都按 `tenantCondition` 限定当前租户视角，不因策略继承而共享平台或其他租户的事件。
 

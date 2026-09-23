@@ -112,6 +112,9 @@ export default function IdentitySecurityPage() {
               <Form.InputNumber field="loginChallenge.maxAttemptsPerSource" label="单来源失败阈值" min={1} max={1000} extraText="同一账号 + 同一 IP 的失败次数，达到后该来源需先过验证码" />
               <Form.InputNumber field="loginChallenge.sourceLimit" label="多来源失败阈值" min={1} max={100} extraText="窗口内失败来源 IP 数，达到后该账号所有来源都需验证码（防分布式猜解）" />
               <Form.InputNumber field="loginChallenge.windowMinutes" label="计数窗口（分钟）" min={1} max={1440} />
+              <Form.Switch field="loginChallenge.alert.enabled" label="登录失败突增告警" extraText="达到下方阈值即通知安全管理员（身份安全策略管理员 / 登录风险查看者 / 平台超管），同一账号同一原因每个窗口只告警一次" />
+              <Form.InputNumber field="loginChallenge.alert.sourceThreshold" label="多来源告警阈值" min={2} max={100} extraText="窗口内失败来源 IP 数达到即告警一次（疑似分布式猜解）" />
+              <Form.InputNumber field="loginChallenge.alert.failureThreshold" label="失败总量告警阈值" min={5} max={100000} extraText="窗口内同一账号失败总次数达到即告警一次（疑似口令爆破）" />
 
               <div className="section-title" style={{ marginTop: 24 }}>会话并发</div>
               <SessionPolicyFields />
