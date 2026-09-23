@@ -1,5 +1,7 @@
 import { assertCmsContentVersion, cmsRevisionToContentRow, initializeCmsContentWorkingCopy, requireCmsWorkingCopy, writeCmsSystemWorkingCopy } from './cms-content-revisions.service';
 import type { CmsEditorialStatus } from '@zenith/shared/cms';
+import { memberCmsContract } from '@zenith/shared/cms';
+import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 会员投稿（前台 C 端）：会员在 member SPA 提交内容 → 进入 CMS 审核（简单/工作流按站点配置）。
  * 全部按 currentMemberId() 过滤防越权；发布仍走后台既有审核/发布管道。
@@ -85,12 +87,13 @@ export async function listContributableChannels() {
     .filter((s) => s.channels.length > 0);
 }
 
-export async function listMyContributions(params: { page: number; pageSize: number; status?: string }) {
+export async function listMyContributions(params: QueryOutputOf<typeof memberCmsContract.contributions>) {
   const memberId = currentMemberId();
   const where = buildWhere(
     eq(cmsContents.memberId, memberId),
     isNull(cmsContents.deletedAt),
-    params.status ? eq(cmsContents.status, params.status as CmsContentRow['status']) : undefined,
+    params.status ? eq(cmsContents.status, params.status) : undefined,
+    params.editorialStatus ? inArray(cmsContents.id, db.select({ id: cmsContentWorkingCopies.contentId }).from(cmsContentWorkingCopies).where(eq(cmsContentWorkingCopies.editorialStatus, params.editorialStatus))) : undefined,
   );
   return buildListResult({
     page: params.page,

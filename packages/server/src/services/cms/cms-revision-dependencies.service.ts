@@ -8,6 +8,7 @@ import { requireRow } from '../../lib/db-assert';
 import { extractCmsResourceIds, resolveCmsResourceUris } from '../../lib/cms-resource-uri';
 import { cmsSnapshotHash, ensureCmsAssetVersion } from './cms-design-versions.service';
 import { normalizeCmsContentDocument, renderCmsContentDocument } from './cms-document.service';
+import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 
 /** Freeze definitions and binary identities before the immutable revision is inserted. */
 export async function freezeCmsRevisionDependencies(tx: DbExecutor, siteId: number, modelId: number | null, snapshot: CmsContentRevisionSnapshot, options: { strict?: boolean } = {}) {
@@ -58,5 +59,6 @@ export async function claimCmsUniqueModelValues(tx: DbExecutor, siteId: number, 
   if (!version) return;
   const values = version.fields.filter((field) => field.configuration?.unique && snapshot.extend?.[field.name] != null)
     .map((field) => ({ siteId, contentId, modelId: snapshot.modelId!, field: field.name, valueHash: cmsSnapshotHash(snapshot.extend![field.name]) }));
-  if (values.length) await tx.insert(cmsModelUniqueValues).values(values);
+  try { if (values.length) await tx.insert(cmsModelUniqueValues).values(values); }
+  catch (error) { rethrowPgUniqueViolation(error, '模型唯一字段值已被其他内容使用'); }
 }

@@ -8,7 +8,7 @@ export const createCmsReleaseSchema = z.object({
   name: z.string().trim().min(1).max(200),
   revisionIds: z.array(z.int().positive()).max(1000).default([]),
   withdrawContentIds: z.array(z.int().positive()).max(1000).default([]),
-  activateAt: z.iso.datetime({ offset: true }).nullable().optional(),
+  activateAt: z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/, '排期格式为 YYYY-MM-DD HH:mm:ss').nullable().optional(),
   timeZone: z.string().max(80).default('Asia/Shanghai').refine((value) => {
     try { new Intl.DateTimeFormat('en', { timeZone: value }); return true; } catch { return false; }
   }, '请选择有效的 IANA 时区'),

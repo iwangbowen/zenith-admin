@@ -20,14 +20,17 @@ import { assertAllCmsSiteChannelsAccess, getAccessibleChannelIds } from './cms-c
 import { loadCmsExtensionWords, normalizeCmsSearchDictionaryWord } from './cms-search-dictionary';
 import { listSummaryOf } from './cms-content-columns';
 import { escapeHtml, escapeRegExp } from '@zenith/shared/core';
+import { cmsGenerationContext } from './cms-generation-context';
 
 // ─── 分词器（进程级单例，加载默认词典 + DB 自定义词典）─────────────────────────
-const jiebaBySite = new Map<number, Jieba>();
-const stopWordsBySite = new Map<number, Set<string>>();
+const jiebaBySite = new Map<string, Jieba>();
+const stopWordsBySite = new Map<string, Set<string>>();
+const synonymsBySite = new Map<string, Map<string, string[]>>();
+const dictionaryKey = (siteId: number) => `${cmsGenerationContext()?.generationId ?? 'working'}:${siteId}`;
 let defaultJieba: Jieba | null = null;
 
 function getJieba(siteId?: number): Jieba {
-  if (siteId && jiebaBySite.has(siteId)) return jiebaBySite.get(siteId)!;
+  if (siteId && jiebaBySite.has(dictionaryKey(siteId))) return jiebaBySite.get(dictionaryKey(siteId))!;
   if (!defaultJieba) defaultJieba = Jieba.withDict(dict);
   return defaultJieba;
 }
@@ -47,28 +50,38 @@ export async function reloadCmsSearchDict(siteId?: number): Promise<number> {
   if (!siteId) {
     jiebaBySite.clear();
     stopWordsBySite.clear();
+    synonymsBySite.clear();
   }
   let accepted = 0;
   for (const [targetSiteId, siteRows] of grouped) {
     const jieba = Jieba.withDict(dict);
-    const extensions = siteRows.filter((row) => row.type === 'extension');
+    const extensions = siteRows.filter((row) => row.type === 'extension').flatMap((row) => [row, ...(row.synonyms ?? []).map((word) => ({ ...row, word }))]);
+    const synonyms = new Map<string, string[]>();
+    for (const row of siteRows.filter((item) => item.type === 'extension')) {
+      const group = [...new Set([row.word, ...(row.synonyms ?? [])].map((word) => word.toLowerCase()))];
+      for (const term of group) synonyms.set(term, [...new Set([...(synonyms.get(term) ?? []), ...group.filter((word) => word !== term)])].slice(0, 20));
+    }
+    synonymsBySite.set(dictionaryKey(targetSiteId), synonyms);
     const loadedExtensions = loadCmsExtensionWords(jieba, extensions, (row, error) => {
       logger.warn(`[CMS] 站点 ${targetSiteId} 跳过无效扩展词 #${row.id}「${row.word}」`, error);
     });
-    jiebaBySite.set(targetSiteId, jieba);
+    jiebaBySite.set(dictionaryKey(targetSiteId), jieba);
     const stopWords = new Set(
       siteRows
         .filter((row) => row.type === 'stop')
         .map((row) => normalizeCmsSearchDictionaryWord(row.word)?.toLowerCase())
         .filter((word): word is string => !!word),
     );
-    stopWordsBySite.set(targetSiteId, stopWords);
+    stopWordsBySite.set(dictionaryKey(targetSiteId), stopWords);
     accepted += loadedExtensions + stopWords.size;
     if (loadedExtensions !== extensions.length) {
       logger.warn(`[CMS] 站点 ${targetSiteId} 扩展词加载 ${loadedExtensions}/${extensions.length}`);
     }
   }
   return accepted;
+}
+export async function ensureCmsSearchDictionary(siteId: number): Promise<void> {
+  if (!jiebaBySite.has(dictionaryKey(siteId))) await reloadCmsSearchDict(siteId);
 }
 
 // ─── tsvector 解析器配置（默认 simple=应用层 jieba 分词；可切 zhparser 等 PG 扩展配置）──
@@ -85,6 +98,7 @@ export function usesAppSegmentation(): boolean {
 const HOTWORD_PREFIX = `${config.redis.keyPrefix}cms:hotwords:`;
 
 export function recordSearchKeyword(siteId: number, keyword: string): void {
+  if (cmsGenerationContext()?.candidate) return;
   const kw = keyword.trim().slice(0, 32);
   if (!kw) return;
   redis.zincrby(`${HOTWORD_PREFIX}${siteId}`, 1, kw).catch(() => undefined);
@@ -145,7 +159,7 @@ export function segmentForIndex(text: string | null | undefined, siteId?: number
   // 索引正文截断，避免超长文章拖慢写入（tsvector 位置上限 16383）
   const bounded = plain.length > 20000 ? plain.slice(0, 20000) : plain;
   const tokens = getJieba(siteId).cutForSearch(bounded, true);
-  const stopWords = siteId ? stopWordsBySite.get(siteId) : undefined;
+  const stopWords = siteId ? stopWordsBySite.get(dictionaryKey(siteId)) : undefined;
   return filterCmsSearchTokens(tokens, stopWords).join(' ');
 }
 
@@ -153,7 +167,7 @@ export function segmentForIndex(text: string | null | undefined, siteId?: number
 export function segmentForQuery(keyword: string, siteId?: number): string[] {  const plain = keyword.trim();
   if (!plain) return [];
   const tokens = getJieba(siteId).cut(plain, true);
-  const stopWords = siteId ? stopWordsBySite.get(siteId) : undefined;
+  const stopWords = siteId ? stopWordsBySite.get(dictionaryKey(siteId)) : undefined;
   return filterCmsSearchTokens(tokens, stopWords);
 }
 
@@ -168,9 +182,19 @@ export function buildCmsSearchCondition(keyword: string, siteId: number): SQL | 
   if (tokens.length === 0) return null;
   const cfg = sql.raw(`'${TSVECTOR_CONFIG}'`);
   const tsquery = usesAppSegmentation()
-    ? sql`plainto_tsquery(${cfg}::regconfig, ${tokens.join(' ')})`
+    ? buildCmsTokenQuery(tokens, siteId)
     : sql`plainto_tsquery(${cfg}::regconfig, ${keyword.trim()})`;
   return sql`${cmsContents.searchVector} @@ ${tsquery}`;
+}
+
+function buildCmsTokenQuery(tokens: string[], siteId: number): SQL {
+  const cfg = sql.raw(`'${TSVECTOR_CONFIG}'`);
+  const synonyms = synonymsBySite.get(dictionaryKey(siteId));
+  const groups = tokens.map((token) => {
+    const alternatives = [token, ...(synonyms?.get(token) ?? [])].slice(0, 21);
+    return sql`(${sql.join(alternatives.map((word) => sql`plainto_tsquery(${cfg}::regconfig, ${word})`), sql` || `)})`;
+  });
+  return sql`(${sql.join(groups, sql` && `)})`;
 }
 
 export interface SearchVectorInput {  siteId?: number;
@@ -333,7 +357,7 @@ export async function searchCmsContents(q: CmsSearchQuery): Promise<{ list: CmsS
     await assertSiteAccess(siteId);
   }
   const accessibleChannelIds = q.skipAccessCheck ? null : await getAccessibleChannelIds();
-  if (!jiebaBySite.has(siteId)) await reloadCmsSearchDict(siteId);
+  await ensureCmsSearchDictionary(siteId);
   const tokens = segmentForQuery(keyword, siteId);
   const empty = { list: [] as CmsSearchResult[], total: 0, page, pageSize, tokens };
   if (tokens.length === 0) return empty;
@@ -341,7 +365,7 @@ export async function searchCmsContents(q: CmsSearchQuery): Promise<{ list: CmsS
 
   const cfg = sql.raw(`'${TSVECTOR_CONFIG}'`);
   const tsquery = usesAppSegmentation()
-    ? sql`plainto_tsquery(${cfg}::regconfig, ${tokens.join(' ')})`
+    ? buildCmsTokenQuery(tokens, siteId)
     : sql`plainto_tsquery(${cfg}::regconfig, ${keyword.trim()})`;
   const effectivelyEnabledChannelIds = await getEffectivelyEnabledCmsChannelIds(siteId);
   if (effectivelyEnabledChannelIds.size === 0) return empty;

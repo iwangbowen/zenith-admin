@@ -84,9 +84,10 @@ export async function validateCmsModelExtend(
   modelId: number | null | undefined,
   extend: Record<string, unknown> | null | undefined,
   mode: CmsExtendValidateMode,
+  modelVersionId?: number | null,
 ): Promise<void> {
   if (!modelId) return;
-  const fields = await listCmsModelFields(modelId);
+  const fields = await listCmsModelFields(modelId, undefined, modelVersionId);
   const resolved = await resolveCmsModelFieldOptions(fields);
   const values = extend ?? {};
   const errors: string[] = [];

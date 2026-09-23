@@ -48,6 +48,8 @@ import { CMS_CONTENT_STATUS_LABELS, isValidCmsAssetUrl, isValidCmsLink } from '@
 import { stripCmsPreviewScripts } from './cms-preview';
 import { getEffectivelyEnabledCmsChannelIds } from './cms-channel-visibility.service';
 import { sanitizeCmsHtml } from './cms-html-sanitizer';
+import { isCmsGenerationRead } from './cms-generation-context';
+import type { loadCmsRevision } from './cms-content-revisions.service';
 
 // ─── URL 规则（站点内相对路径，静态文件名与之一一对应）──────────────────────────
 export { channelUrl, tagUrl, contentUrl, customPageUrl, customPagePath } from './cms-urls';
@@ -92,6 +94,10 @@ let modelCodeCache: { map: Map<number, string>; loadedAt: number } | null = null
 const MODEL_CACHE_TTL_MS = 30_000;
 
 async function getModelCode(modelId: number): Promise<string | null> {
+  if (isCmsGenerationRead()) {
+    const [row] = await db.select({ code: cmsModels.code }).from(cmsModels).where(eq(cmsModels.id, modelId)).limit(1);
+    return row?.code ?? null;
+  }
   if (!modelCodeCache || Date.now() - modelCodeCache.loadedAt > MODEL_CACHE_TTL_MS) {
     const rows = await db.select({ id: cmsModels.id, code: cmsModels.code }).from(cmsModels);
     modelCodeCache = { map: new Map(rows.map((r) => [r.id, r.code])), loadedAt: Date.now() };
@@ -372,7 +378,7 @@ function toContentItem(row: CmsContentListRow & { coverThumb?: string | null }, 
     isRecommend: row.isRecommend,
     isHot: row.isHot,
     modelFields: listFieldDefs
-      ? buildCmsListModelFieldValues(row.modelId, (row.extend ?? {}) as Record<string, unknown>, listFieldDefs)
+      ? buildCmsListModelFieldValues(row.modelId, (row.extend ?? {}) as Record<string, unknown>, listFieldDefs, row.modelVersionId)
       : [],
   };
 }
@@ -479,7 +485,7 @@ export async function renderCustomPage(
     const mode = block.props.mode === 'recommend' || block.props.mode === 'hot' ? block.props.mode : 'latest';
     const rows = await listBlockContents(site.id, { channelId, tagSlug, count, mode });
     const resolveLink = await buildCmsLinkResolver(site.id, baseUrl, rows.map((r) => r.externalLink));
-    const listFieldDefs = await loadCmsListModelFieldDefs(rows.map((r) => r.modelId));
+    const listFieldDefs = await loadCmsListModelFieldDefs(rows);
     contentListData.set(block.id, rows.map((row) => toContentItem(row, baseUrl, channelPathMap.get(row.channelId) ?? FALLBACK_URL_CHANNEL, resolveLink, listFieldDefs)));
   }
   const widgetData = await resolveCmsWidgetPlacements(
@@ -611,7 +617,7 @@ export function createCmsThemeDataApi(site: CmsSiteRow, baseUrl: string): CmsThe
           const rows = await listBlockContents(site.id, { channelId: channel?.id, count: limit, mode });
           const channelPathMap = await loadChannelPathMap(site.id);
           const resolveLink = await buildCmsLinkResolver(site.id, baseUrl, rows.map((r) => r.externalLink));
-          const listFieldDefs = await loadCmsListModelFieldDefs(rows.map((r) => r.modelId));
+          const listFieldDefs = await loadCmsListModelFieldDefs(rows);
           return {
             channel: channel
               ? { id: channel.id, code: channel.code, name: channel.name, url: channelUrl(baseUrl, channel.path, 1) }
@@ -659,7 +665,7 @@ export async function renderHomePage(
     [...home.latest, ...home.recommended, ...home.hot].map((r) => r.externalLink),
   );
   const homeFieldDefs = await loadCmsListModelFieldDefs(
-    [...home.latest, ...home.recommended, ...home.hot].map((r) => r.modelId),
+    [...home.latest, ...home.recommended, ...home.hot],
   );
   const toItem = (row: ResolvedCmsContentListRow) => toContentItem(row, baseUrl, channelPathMap.get(row.channelId) ?? FALLBACK_URL_CHANNEL, resolveLink, homeFieldDefs);
   const props = {
@@ -759,7 +765,7 @@ export async function renderChannelPage(site: CmsSiteRow, baseUrl: string, chann
   // cms_content_channels），而详情页只在主栏目路径下可达（getPublishedContent 锁 channelId）。
   // 用当前栏目拼链接会让副栏目条目全部指向 404，也会给同一内容制造第二个 URL。
   const channelPathMap = await loadChannelPathMap(site.id);
-  const listFieldDefs = await loadCmsListModelFieldDefs(rows.map((r) => r.modelId));
+  const listFieldDefs = await loadCmsListModelFieldDefs(rows);
   const props = {
     ...base,
     channel: toChannelInfo(channel, baseUrl),
@@ -873,7 +879,7 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
     listApprovedComments(row.id),
     listRelatedContents(row),
     resolveContentBodyExtend(row, site.id),
-    buildCmsModelFieldValues(row.modelId, (row.extend ?? {}) as Record<string, unknown>),
+    buildCmsModelFieldValues(row.modelId, (row.extend ?? {}) as Record<string, unknown>, row.modelVersionId),
   ]);
   const resolveLink = await buildCmsLinkResolver(site.id, baseUrl, [row.externalLink, ...linkWords.map((word) => word.url)]);
   const safeBody = sanitizeCmsHtml(resolved.body);
@@ -925,10 +931,8 @@ async function buildRelatedLinks(baseUrl: string, rows: CmsContentLinkRow[]): Pr
  * 草稿预览渲染（签名链接访问，不校验发布状态）：
  * 复用详情页模板，顶部注入预览提示条；无缓存、无静态回写、无浏览计数。
  */
-export async function renderContentPreviewPage(site: CmsSiteRow, baseUrl: string, contentId: number): Promise<RenderResult> {
-  const [raw] = await db.select().from(cmsContents)
-    .where(and(eq(cmsContents.id, contentId), eq(cmsContents.siteId, site.id), isNull(cmsContents.deletedAt)))
-    .limit(1);
+export async function renderContentPreviewPage(site: CmsSiteRow, baseUrl: string, contentId: number, revision?: Awaited<ReturnType<typeof loadCmsRevision>>): Promise<RenderResult> {
+  const raw = revision?.contentId === contentId && revision.siteId === site.id ? revision.payload : null;
   if (!raw) return renderNotFound(site, baseUrl, `/preview/${contentId}`);
   // 草稿预览同样要把素材句柄还原为真实地址，否则预览页出现 cms-res:// 裸串
   const row = await resolveCmsContentRow(raw, site.id);
@@ -951,10 +955,10 @@ export async function renderContentPreviewPage(site: CmsSiteRow, baseUrl: string
   const [base, breadcrumbs, tags, linkWords, resolved, previewModelFields] = await Promise.all([
     buildBaseContext(site, baseUrl, seo),
     buildBreadcrumbs(site, baseUrl, channel),
-    listContentTags(row.id),
+    revision?.snapshot.tagIds.length ? db.select().from(cmsTags).where(inArray(cmsTags.id, revision.snapshot.tagIds)) : Promise.resolve([]),
     getEnabledLinkWords(site.id),
     resolveContentBodyExtend(row, site.id),
-    buildCmsModelFieldValues(row.modelId, (row.extend ?? {}) as Record<string, unknown>),
+    buildCmsModelFieldValues(row.modelId, (row.extend ?? {}) as Record<string, unknown>, row.modelVersionId),
   ]);
   const previewTemplate = await resolveDetailComponent(site, channel, row.detailTemplate, row.modelId);
   const { pageBody: previewBody, extras: previewExtras } = buildDetailExtras(row, sanitizeCmsHtml(resolved.body), baseUrl, channel, 1);
@@ -1124,7 +1128,7 @@ export async function renderTagPage(site: CmsSiteRow, baseUrl: string, slug: str
   if (page > 1 && rows.length === 0) return renderNotFound(site, baseUrl, tagUrl('', slug, page));
   const channelPathMap = await loadChannelPathMap(site.id);
   const resolveLink = await buildCmsLinkResolver(site.id, baseUrl, rows.map((r) => r.externalLink));
-  const tagFieldDefs = await loadCmsListModelFieldDefs(rows.map((r) => r.modelId));
+  const tagFieldDefs = await loadCmsListModelFieldDefs(rows);
   const props = {
     ...base,
     tag: { name: tag.name, slug: tag.slug, contentCount: tag.contentCount },

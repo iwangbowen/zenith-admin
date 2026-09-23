@@ -75,6 +75,14 @@ export async function listCmsResources(q: QueryOutputOf<typeof cmsResourceContra
 }
 
 /** 素材上传：图片走站点图片管线（压缩/水印/缩略图），其他类型原样入库 */
+async function persistCmsUploadedResource(input: typeof cmsResources.$inferInsert) {
+  return db.transaction(async (tx) => {
+    const [row] = await tx.insert(cmsResources).values(input).returning();
+    await ensureCmsAssetVersion(tx, row.id, row.siteId);
+    return row;
+  });
+}
+
 export async function uploadCmsResource(file: File, siteId: number, folderId?: number | null) {
   await ensureCmsSiteExists(siteId);
   await assertSiteAccess(siteId);
@@ -85,17 +93,17 @@ export async function uploadCmsResource(file: File, siteId: number, folderId?: n
   const type = detectResourceType(file.type);
   if (type === 'image') {
     const img = await processCmsImageUpload(file, siteId);
-    const [row] = await db.insert(cmsResources).values({
+    const row = await persistCmsUploadedResource({
       siteId, folderId: folderId ?? null, type, name: file.name, url: img.url, thumbUrl: img.thumbUrl,
       fileId: img.fileId, size: file.size, width: img.width, height: img.height, mimeType: file.type,
-    }).returning();
+    });
     return mapCmsResource(row);
   }
   const raw = await uploadManagedFile(file);
-  const [row] = await db.insert(cmsResources).values({
+  const row = await persistCmsUploadedResource({
     siteId, folderId: folderId ?? null, type, name: file.name, url: raw.url ?? '', thumbUrl: null,
     fileId: raw.id, size: file.size, width: null, height: null, mimeType: file.type || null,
-  }).returning();
+  });
   return mapCmsResource(row);
 }
 
@@ -304,10 +312,10 @@ export async function cropCmsResource(id: number, rect: CropCmsResourceInput) {
   const cropName = dot > 0 ? `${res.name.slice(0, dot)}_crop${res.name.slice(dot)}` : `${res.name}_crop`;
   const cropFile = new File([new Blob([new Uint8Array(output.data)], { type: mime })], cropName, { type: mime });
   const uploaded = await uploadManagedFile(cropFile);
-  const [row] = await db.insert(cmsResources).values({
+  const row = await persistCmsUploadedResource({
     siteId: res.siteId, folderId: res.folderId, type: 'image', name: cropName, url: uploaded.url ?? '', thumbUrl: null,
     fileId: uploaded.id, size: output.data.length, width: output.info.width ?? null, height: output.info.height ?? null,
     mimeType: mime, remark: `裁剪自素材 #${res.id}`,
-  }).returning();
+  });
   return mapCmsResource(row);
 }

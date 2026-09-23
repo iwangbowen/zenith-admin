@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { cmsSlugRegex } from '@zenith/shared/cms';
+import { cmsGenerationContext } from './cms-generation-context';
 
 export const CMS_STATIC_ROOT = process.env.CMS_STATIC_ROOT?.trim()
   ? path.resolve(process.env.CMS_STATIC_ROOT.trim())
@@ -14,7 +15,10 @@ export function siteStaticDir(siteCode: string): string {
   if (siteCode.length > 50 || !cmsSlugRegex.test(siteCode)) {
     throw new Error('CMS 站点 code 格式无效');
   }
-  const dir = path.resolve(CMS_STATIC_ROOT, siteCode);
+  const generation = cmsGenerationContext();
+  const dir = generation
+    ? path.resolve(CMS_STATIC_ROOT, siteCode, `generation-${generation.generationId}`)
+    : path.resolve(CMS_STATIC_ROOT, siteCode);
   if (!isStrictlyWithin(CMS_STATIC_ROOT, dir)) {
     throw new Error('CMS 站点静态目录越界');
   }

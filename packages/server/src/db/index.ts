@@ -1,6 +1,7 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import type { Logger } from 'drizzle-orm/logger';
 import postgres from 'postgres';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { config } from '../config';
 import logger from '../lib/logger';
 import { currentAuditUserId } from '../lib/audit-context';
@@ -104,7 +105,24 @@ function wrapExecutor<T extends object>(executor: T): T {
 /** 仅供单元测试验证审计注入行为，业务代码禁止直接调用。 */
 export { wrapExecutor as wrapExecutorForTest };
 
-export const db = wrapExecutor(rawDb);
+const executorScope = new AsyncLocalStorage<DbTransaction>();
+const auditedDb = wrapExecutor(rawDb);
+
+/** Explicit transaction scope for CMS generation rendering. It never changes other requests. */
+export function withDbExecutor<T>(executor: DbTransaction, fn: () => Promise<T>): Promise<T> {
+  return executorScope.run(executor, fn);
+}
+/** Runtime writes such as telemetry must not inherit a read-only publication transaction. */
+export function withoutDbExecutor<T>(fn: () => T): T { return executorScope.exit(fn); }
+
+export const db = new Proxy(auditedDb, {
+  get(target, property, receiver) {
+    const scoped = executorScope.getStore();
+    const owner = scoped ?? target;
+    const value = Reflect.get(owner, property, scoped ? owner : receiver);
+    return typeof value === 'function' ? value.bind(owner) : value;
+  },
+});
 
 /**
  * 只读一致性快照事务（repeatable read + read only）。

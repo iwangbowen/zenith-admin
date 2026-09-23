@@ -14,13 +14,12 @@ import { syncCmsResourceRefs } from './cms-resource-refs.service';
 import { contentSearchVector, extendSearchTexts } from './cms-search.service';
 import { claimCmsUniqueModelValues, freezeCmsRevisionDependencies } from './cms-revision-dependencies.service';
 import { normalizeCmsContentDocument } from './cms-document.service';
+import { stableStringify } from '@zenith/shared/core';
 
 const DATE_FIELDS = ['scheduledAt', 'expireAt', 'topExpireAt', 'dueAt'] as const;
 
 export function canonicalCmsJson(value: unknown): string {
-  if (Array.isArray(value)) return '[' + value.map(canonicalCmsJson).join(',') + ']';
-  if (value && typeof value === 'object') return '{' + Object.entries(value).filter(([, v]) => v !== undefined).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, v]) => JSON.stringify(key) + ':' + canonicalCmsJson(v)).join(',') + '}';
-  return JSON.stringify(value ?? null);
+  return stableStringify(JSON.parse(JSON.stringify(value ?? null)));
 }
 
 export function cmsRevisionHash(snapshot: CmsContentRevisionSnapshot): string {

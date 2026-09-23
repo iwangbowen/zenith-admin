@@ -3,6 +3,8 @@ import fs from 'node:fs/promises';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { eq, and, gt, inArray, isNull, isNotNull, lte, or, asc, desc, sql } from 'drizzle-orm';
 import { db } from '../../db';
+import { buildCmsSitemapDocument } from './cms-sitemap';
+import { HTTPException } from 'hono/http-exception';
 import {
  cmsAds, cmsAdSlots, cmsChannels, cmsContents, cmsInteractions,
   cmsPages, cmsContentTags, cmsContentChannels, cmsContentTombstones, cmsWidgets, cmsTags, cmsSites, cmsPublishArtifacts, asyncTasks,
@@ -32,6 +34,7 @@ import { cmsStaticTargetKey, isCmsStaticTargetCompleted } from './cms-static-bui
 import { assertCmsStaticWriteFence } from './cms-site-publish-lock.service';
 import { invalidateCmsSiteCaches } from './cms-cache.service';
 import { getEffectivelyEnabledCmsChannelIds } from './cms-channel-visibility.service';
+import { cmsGenerationContext } from './cms-generation-context';
 export {
   CMS_STATIC_ROOT, isStrictlyWithin, pathToStaticFile, resolveStaticFile, siteStaticDir,
 } from './cms-static-path';
@@ -445,7 +448,7 @@ function xmlEscape(s: string): string {
 }
 
 /** 生成站点 sitemap.xml（首页 + 栏目首屏 + 已发布内容，上限 5 万条） */
-export async function generateSitemapXml(site: CmsSiteRow): Promise<string> {
+export async function generateSitemapXml(site: CmsSiteRow, part?: number): Promise<string> {
   const origin = siteOrigin(site) ?? '';
   const entries: { loc: string; lastmod: string | null; priority: string }[] = [];
   entries.push({ loc: `${origin}/`, lastmod: formatIso8601(new Date()), priority: '1.0' });
@@ -469,6 +472,7 @@ export async function generateSitemapXml(site: CmsSiteRow): Promise<string> {
     slug: cmsContents.slug,
     staticPath: cmsContents.staticPath,
     channelId: cmsContents.channelId,
+    updatedAt: cmsContents.updatedAt,
     publishedAt: cmsContents.publishedAt,
     createdAt: cmsContents.createdAt,
     externalLink: cmsContents.externalLink,
@@ -482,12 +486,12 @@ export async function generateSitemapXml(site: CmsSiteRow): Promise<string> {
       or(isNull(cmsContents.expireAt), gt(cmsContents.expireAt, new Date())),
       effectiveChannelIds.size > 0 ? inArray(cmsContents.channelId, [...effectiveChannelIds]) : sql`false`,
     ))
-    .limit(50000);
+    .orderBy(cmsContents.id);
   for (const row of contents) {
     if (row.externalLink?.trim()) continue;
     const urlChannel = channelPathMap.get(row.channelId);
     if (!urlChannel) continue;
-    entries.push({ loc: `${origin}${contentUrl('', urlChannel, row)}`, lastmod: formatIso8601(row.publishedAt), priority: '0.6' });
+    entries.push({ loc: `${origin}${contentUrl('', urlChannel, row)}`, lastmod: formatIso8601(row.updatedAt), priority: '0.6' });
   }
 
   // 标签聚合页
@@ -517,14 +521,9 @@ export async function generateSitemapXml(site: CmsSiteRow): Promise<string> {
     entries.push({ loc: `${origin}${customPageUrl('', page)}`, lastmod: formatIso8601(page.updatedAt), priority: '0.7' });
   }
 
-  const body = entries.map((e) => [
-    '  <url>',
-    `    <loc>${xmlEscape(e.loc)}</loc>`,
-    e.lastmod ? `    <lastmod>${e.lastmod}</lastmod>` : '',
-    `    <priority>${e.priority}</priority>`,
-    '  </url>',
-  ].filter(Boolean).join('\n')).join('\n');
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>\n`;
+  const xml = buildCmsSitemapDocument(entries, origin, part);
+  if (!xml) throw new HTTPException(404, { message: 'Sitemap 分片不存在' });
+  return xml;
 }
 
 export function buildRobotsTxt(site: CmsSiteRow): string {
@@ -572,6 +571,7 @@ async function writeRenderedPath(site: CmsSiteRow, relPath: string): Promise<boo
     await writeStaticFile(site.code, relPath, result.html);
     return true;
   }
+  if (cmsGenerationContext()?.candidate && result.status !== 302) throw new Error(`候选页面 ${relPath} 渲染失败（${result.status}）`);
 
   if (result.status === 404) {
     await deleteStaticFile(site.code, relPath);
@@ -591,6 +591,7 @@ export async function refreshHomeStatic(site: CmsSiteRow): Promise<boolean> {
   }
   const home = await renderHomePage(site, '');
   if (home.status !== 200) {
+    if (cmsGenerationContext()?.candidate) throw new Error(`候选首页渲染失败（${home.status}）`);
     await deleteStaticFile(site.code, staticPath);
     return false;
   }
@@ -608,10 +609,19 @@ async function regenerateChannelPages(
   pageCap = MAX_LIST_PAGES,
 ): Promise<number> {
   if (channel.type === 'link') return 0;
-  if (isChannelDynamic(site, channel)) return 0;
+  if (isChannelDynamic(site, channel)) {
+    if (cmsGenerationContext()?.candidate) {
+      const result = await renderChannelPage(site, '', channel, 1);
+      if (result.status !== 200) throw new Error(`动态栏目 ${channel.path} 渲染失败（${result.status}）`);
+    }
+    return 0;
+  }
   let generated = 0;
   const first = await renderChannelPage(site, '', channel, 1);
-  if (first.status !== 200) return 0;
+  if (first.status !== 200) {
+    if (cmsGenerationContext()?.candidate) throw new Error(`候选栏目 ${channel.path} 渲染失败（${first.status}）`);
+    return 0;
+  }
   await writeStaticFile(site.code, `${channel.path}/`, first.html);
   generated += 1;
   if (channel.type === 'page') return generated;
@@ -855,6 +865,7 @@ async function buildSiteStaticInner(
       eq(cmsContents.siteId, siteId),
       eq(cmsContents.status, 'published'),
       isNull(cmsContents.deletedAt),
+      isNull(cmsContents.archivedAt),
       or(isNull(cmsContents.expireAt), gt(cmsContents.expireAt, new Date())),
       effectiveChannelIds.size > 0 ? inArray(cmsContents.channelId, [...effectiveChannelIds]) : sql`false`,
     ))
@@ -942,6 +953,9 @@ async function buildSiteStaticInner(
           const ok = await writeRenderedPath(site, contentUrl('', channel, row, p));
           if (ok) pages += 1;
         }
+      } else if (channel && !row.externalLink?.trim() && cmsGenerationContext()?.candidate) {
+        const rendered = await renderSitePath(site, '', contentUrl('', channel, row));
+        if (rendered.status !== 200) throw new Error(`动态内容 #${row.id} 渲染失败（${rendered.status}）`);
       }
       if (await report(`内容 ${row.id} 已生成`, {
         phase: 'content', lastKey: key, lastId: row.id,

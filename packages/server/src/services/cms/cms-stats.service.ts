@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { and, eq, gte, sql, desc, isNotNull } from 'drizzle-orm';
-import { db } from '../../db';
+import { db, withoutDbExecutor } from '../../db';
+import { cmsGenerationContext } from './cms-generation-context';
 import { cmsVisitLogs, cmsSearchLogs, cmsContents } from '../../db/schema';
 import logger from '../../lib/logger';
 import { formatDate, startOfRecentDays } from '../../lib/datetime';
@@ -60,9 +61,10 @@ export interface RecordVisitInput {
  * 静态命中与 SSR 渲染统一在响应路径埋点，visitorHash = md5(ip+ua) 供 UV 去重。
  */
 export function recordCmsVisit(input: RecordVisitInput): void {
+  if (cmsGenerationContext()?.candidate) return;
   const deviceType = detectDeviceType(input.userAgent);
   const visitorHash = createHash('md5').update(`${input.ip ?? ''}|${input.userAgent ?? ''}`).digest('hex');
-  void db.insert(cmsVisitLogs).values({
+  withoutDbExecutor(() => { void db.insert(cmsVisitLogs).values({
     siteId: input.siteId,
     path: `/${input.sitePath}`.slice(0, 500),
     pageKind: input.pageKind.slice(0, 20),
@@ -73,13 +75,14 @@ export function recordCmsVisit(input: RecordVisitInput): void {
     referrerHost: parseReferrerHost(input.referrer, input.host),
   }).catch((err) => {
     logger.warn('[CMS] 访问日志写入失败', err);
-  });
+  }); });
 }
 
 /** 记录前台搜索日志（fire-and-forget） */
 export function recordCmsSearchLog(input: { siteId: number; keyword: string; resultCount: number; ip: string | null; userAgent: string | null }): void {
+  if (cmsGenerationContext()?.candidate) return;
   if (!input.keyword.trim()) return;
-  void db.insert(cmsSearchLogs).values({
+  withoutDbExecutor(() => { void db.insert(cmsSearchLogs).values({
     siteId: input.siteId,
     keyword: input.keyword.trim().slice(0, 64),
     resultCount: input.resultCount,
@@ -87,7 +90,7 @@ export function recordCmsSearchLog(input: { siteId: number; keyword: string; res
     deviceType: detectDeviceType(input.userAgent),
   }).catch((err) => {
     logger.warn('[CMS] 搜索日志写入失败', err);
-  });
+  }); });
 }
 
 // ─── 报表 ─────────────────────────────────────────────────────────────────────

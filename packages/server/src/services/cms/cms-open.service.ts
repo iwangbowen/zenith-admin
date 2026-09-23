@@ -28,9 +28,10 @@ import { CMS_OPEN_SYNC_PAGE_SIZE_MAX, isValidCmsAssetUrl } from '@zenith/shared/
 import { resolveCmsContentRows } from './cms-resource-refs.service';
 import { cmsContentListColumns, type CmsContentListRow } from './cms-content-columns';
 import { contentUrl } from './cms-urls';
-import { buildCmsSearchCondition } from './cms-search.service';
+import { buildCmsSearchCondition, ensureCmsSearchDictionary } from './cms-search.service';
 import { isCmsContentPubliclyVisible } from './cms-content-state';
 import { getEffectivelyEnabledCmsChannelIds } from './cms-channel-visibility.service';
+import { cmsGenerationContext } from './cms-generation-context';
 import { buildCmsLinkResolver } from './cms-link.service';
 import type { CmsLinkResolver } from './cms-link.service';
 
@@ -236,6 +237,7 @@ function channelScopeCondition(channelIds: number[]): SQL {
 }
 
 async function buildListWhere(site: CmsSiteRow, query: ParsedCmsOpenQuery): Promise<SQL | undefined> {
+  if (query.keyword) await ensureCmsSearchDictionary(site.id);
   const effectivelyEnabledIds = await getEffectivelyEnabledCmsChannelIds(site.id);
   const channelIds = [
     ...await resolveChannelIds(site.id, query.channels),
@@ -450,6 +452,8 @@ export async function listOpenCmsContents(site: CmsSiteRow, query: ParsedCmsOpen
  * 适合客户端做全量首次拉取。
  */
 export async function listOpenCmsContentsByCursor(site: CmsSiteRow, query: ParsedCmsOpenQuery) {
+  const generationId = cmsGenerationContext()?.generationId;
+  if (query.cursor && query.cursor.generationId !== generationId) throw new HTTPException(409, { message: '公开代次已变化，请从第一页重新拉取' });
   assertCursorSortable(query.sort);
   const baseWhere = await buildListWhere(site, query);
   const cursor = query.cursor;
@@ -476,7 +480,7 @@ export async function listOpenCmsContentsByCursor(site: CmsSiteRow, query: Parse
     list: resolved.map((row) => pickCmsOpenFields(mapOpenContent(row, opts), query.fields)),
     pageSize: query.pageSize,
     hasMore,
-    nextCursor: hasMore && last ? encodeCmsOpenCursor({ value: lastValue, id: last.id }) : null,
+    nextCursor: hasMore && last ? encodeCmsOpenCursor({ value: lastValue, id: last.id, generationId }) : null,
   };
 }
 
@@ -512,8 +516,10 @@ export async function getOpenCmsContent(site: CmsSiteRow, idOrSlug: string, quer
  */
 export async function syncOpenCmsContents(
   site: CmsSiteRow,
-  input: { since?: string | null; cursor?: { value: number | null; id: number } | null; pageSize: number; includes: Set<string> },
+  input: { since?: string | null; cursor?: { value: number | null; id: number; generationId?: number } | null; pageSize: number; includes: Set<string> },
 ) {
+  const generationId = cmsGenerationContext()?.generationId;
+  if (input.cursor && input.cursor.generationId !== generationId) throw new HTTPException(409, { message: '公开代次已变化，请使用上次同步时间重新拉取' });
   const pageSize = Math.min(CMS_OPEN_SYNC_PAGE_SIZE_MAX, Math.max(1, input.pageSize));
   /**
    * 游标时间以**微秒**为单位（与游标列表端点共用 `microsOf` / `microsToTimestamp`）。
@@ -586,6 +592,6 @@ export async function syncOpenCmsContents(
     changes,
     pageSize,
     hasMore,
-    nextCursor: hasMore && last ? encodeCmsOpenCursor({ value: last.micros, id: last.id }) : null,
+    nextCursor: hasMore && last ? encodeCmsOpenCursor({ value: last.micros, id: last.id, generationId }) : null,
   };
 }

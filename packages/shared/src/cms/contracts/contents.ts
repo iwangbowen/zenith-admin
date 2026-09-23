@@ -1,6 +1,6 @@
 import { cmsBodyDocumentSchema } from '../document';
 import * as z from 'zod';
-import { batchIdsBody, dateRangeQuery, idParam, idQuery, keywordQuery, paginated, paginationQuery, queryBool, queryEnum, requiredIdQuery } from '../../core/api-schemas';
+import { batchIdsBody, dateRangeQuery, dateRangeBound, idParam, idQuery, keywordQuery, paginated, paginationQuery, queryBool, queryEnum, requiredIdQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { CMS_CONTENT_STATUSES, CMS_CONTENT_TYPES } from '../constants';
 import { CMS_EDITORIAL_STATUSES, cmsContentCasSchema, cmsContentBatchCasSchema } from '../content-revision';
@@ -161,7 +161,7 @@ export type CmsContent = z.infer<typeof cmsContentSchema>;
  * 后台内容列表项：不含正文与两个大 JSONB（扩展字段 / 形态数据）。
  * 列表页只展示元数据与附件计数；编辑、审批视图另走 detail 取全量。
  */
-export const cmsContentListItemSchema = cmsContentSchema.omit({ body: true, extend: true, mediaData: true }).meta({ id: 'CmsContentListItem' });
+export const cmsContentListItemSchema = cmsContentSchema.omit({ body: true, extend: true, mediaData: true, bodyDocument: true }).extend({ listFields: z.record(z.string(), z.unknown()).optional() }).meta({ id: 'CmsContentListItem' });
 
 export type CmsContentListItem = z.infer<typeof cmsContentListItemSchema>;
 
@@ -280,6 +280,8 @@ export type CmsContentBatchStatusResult = z.infer<typeof cmsContentBatchStatusRe
 // ─── 入参 ────────────────────────────────────────────────────────────────────
 
 export const cmsContentListQuery = paginationQuery.extend({
+  calendarFrom: dateRangeBound('发布、到期或审稿截止起点', 'start'),
+  calendarTo: dateRangeBound('发布、到期或审稿截止终点', 'end'),
   modelId: idQuery(),
   ownerId: idQuery(),
   locale: z.string().max(35).optional(),

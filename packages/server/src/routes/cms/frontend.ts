@@ -11,7 +11,9 @@ import { resolveRedirect } from '../../services/cms/cms-redirects.service';
 import {
   renderSitePath, renderSearchPage, renderContentPreviewPage, type RenderResult,
 } from '../../services/cms/cms-render.service';
-import { verifyContentPreviewToken } from '../../services/cms/cms-preview.service';
+import { resolveCmsPreviewRevision } from '../../services/cms/cms-preview.service';
+import { cmsGenerationNeedsDynamicDelivery, withCmsPublicGeneration } from '../../services/cms/cms-generation-storage.service';
+import { cmsGenerationContext } from '../../services/cms/cms-generation-context';
 import { readStaticFile, writeStaticFile, generateSitemapXml, buildRobotsTxt, isCmsStaticArtifactCurrent, assertCmsHybridWriteSafe } from '../../services/cms/cms-static.service';
 import { generateRssXml, findChannelByPath, ensureSiteThemeCssAsset, ensureSiteIslandsAsset } from '../../services/cms/cms-render.service';
 import { recordCmsVisit, pageKindFromPath } from '../../services/cms/cms-stats.service';
@@ -137,7 +139,12 @@ export function createCmsFrontendRoutes(): Hono {
 
     const target = await resolveTarget(c.req.header('host'), pathname);
     if (!target) return next();
-    const { site, sitePath, baseUrl, isPreview } = target;
+    const { sitePath, baseUrl, isPreview } = target;
+    const deliver = async () => {
+    const site = await resolveSiteByCode(target.site.code) ?? target.site;
+    const generation = cmsGenerationContext();
+    if (generation) c.header('X-Cms-Generation', String(generation.generationId));
+    const runtimeBlocked = generation ? await cmsGenerationNeedsDynamicDelivery(site.id) : false;
     const dynamicPage = await resolveDynamicCmsPageForPath(site.id, sitePath);
     const memberViewer = c.get('member')?.memberId != null;
 
@@ -208,13 +215,14 @@ export function createCmsFrontendRoutes(): Hono {
     if (sitePath === 'robots.txt') {
       return c.text(buildRobotsTxt(site));
     }
-    if (sitePath === 'sitemap.xml') {
+    const sitemapPart = /^sitemap-([1-9]\d{0,4})\.xml$/.exec(sitePath);
+    if (sitePath === 'sitemap.xml' || sitemapPart) {
       const cacheEpoch = await readCmsCacheEpoch(site.id);
-      const cacheKey = `${SITEMAP_CACHE_PREFIX}${site.id}:${cacheEpoch}`;
-      let xml = await redis.get(cacheKey).catch(() => null);
+      const cacheKey = `${SITEMAP_CACHE_PREFIX}${site.id}:${generation?.generationId ?? 0}:${sitemapPart?.[1] ?? 'index'}:${cacheEpoch}`;
+      let xml = runtimeBlocked ? null : await redis.get(cacheKey).catch(() => null);
       if (!xml) {
-        xml = await generateSitemapXml(site);
-        if (await readCmsCacheEpoch(site.id) === cacheEpoch) {
+        xml = await generateSitemapXml(site, sitemapPart ? Number(sitemapPart[1]) : undefined);
+        if (!runtimeBlocked && await readCmsCacheEpoch(site.id) === cacheEpoch) {
           redis.setex(cacheKey, SITEMAP_CACHE_TTL_SECONDS, xml).catch(() => undefined);
         }
       }
@@ -227,11 +235,11 @@ export function createCmsFrontendRoutes(): Hono {
       const channel = channelPath ? await findChannelByPath(site.id, channelPath) : null;
       if (channelPath && !channel) return next();
       const cacheEpoch = await readCmsCacheEpoch(site.id);
-      const cacheKey = `${SITEMAP_CACHE_PREFIX}rss:${site.id}:${channelPath ?? ''}:${cacheEpoch}`;
-      let xml = await redis.get(cacheKey).catch(() => null);
+      const cacheKey = `${SITEMAP_CACHE_PREFIX}rss:${site.id}:${generation?.generationId ?? 0}:${channelPath ?? ''}:${cacheEpoch}`;
+      let xml = runtimeBlocked ? null : await redis.get(cacheKey).catch(() => null);
       if (!xml) {
         xml = await generateRssXml(site, channel);
-        if (await readCmsCacheEpoch(site.id) === cacheEpoch) {
+        if (!runtimeBlocked && await readCmsCacheEpoch(site.id) === cacheEpoch) {
           redis.setex(cacheKey, SITEMAP_CACHE_TTL_SECONDS, xml).catch(() => undefined);
         }
       }
@@ -244,10 +252,13 @@ export function createCmsFrontendRoutes(): Hono {
       const contentId = Number(previewMatch[1]);
       const exp = Number(c.req.query('exp'));
       const sig = c.req.query('sig') ?? '';
-      if (!verifyContentPreviewToken(contentId, exp, sig)) {
+      const revision = await resolveCmsPreviewRevision(contentId, exp, sig, Number(c.req.query('rid')), c.req.query('gid') ?? '');
+      if (!revision || revision.siteId !== site.id) {
         return c.text('预览链接无效或已过期', 403);
       }
-      const result = await renderContentPreviewPage(site, baseUrl, contentId);
+      const result = await renderContentPreviewPage(site, baseUrl, contentId, revision);
+      c.header('Cache-Control', 'private, no-store');
+      c.header('Referrer-Policy', 'no-referrer');
       return respond(c, result);
     }
 
@@ -264,9 +275,9 @@ export function createCmsFrontendRoutes(): Hono {
     }
 
     // 静态文件命中（预览模式跳过，保证后台改动即时可见；非默认通道走 __{code}/ 子树）
-    if (!dynamicPage && !isPreview && site.staticMode !== 'dynamic' && (sitePath === '' || sitePath.endsWith('/') || sitePath.endsWith('.html'))) {
+    if (!runtimeBlocked && !dynamicPage && !isPreview && site.staticMode !== 'dynamic' && (sitePath === '' || sitePath.endsWith('/') || sitePath.endsWith('.html'))) {
       const cached = await readStaticFile(site.code, sitePath);
-     const artifactCurrent = cached === null ? false : await isCmsStaticArtifactCurrent(site.id, site.code, sitePath).catch((error) => {
+     const artifactCurrent = cached === null ? false : generation ? true : await isCmsStaticArtifactCurrent(site.id, site.code, sitePath).catch((error) => {
         logger.warn(`[CMS] 静态产物状态校验失败，回退 SSR site=${site.code} path=${sitePath}`, error);
         return false;
       });
@@ -279,7 +290,7 @@ export function createCmsFrontendRoutes(): Hono {
     // dynamic 模式：Redis 页面缓存
     const cacheEpoch = await readCmsCacheEpoch(site.id);
     const cacheKey = `${PAGE_CACHE_PREFIX}${site.id}:${cacheEpoch}:${sitePath}`;
-    if (!dynamicPage && !isPreview && site.staticMode === 'dynamic') {
+    if (!runtimeBlocked && !dynamicPage && !isPreview && site.staticMode === 'dynamic') {
       const cached = await redis.get(cacheKey).catch(() => null);
       if (cached) {
         trackVisit(pageKindFromPath(sitePath));
@@ -295,7 +306,7 @@ export function createCmsFrontendRoutes(): Hono {
     if (result.status === 200) {
       trackVisit(result.kind, 'contentId' in result ? result.contentId : null);
       const ttl = PAGE_CACHE_TTL_BY_KIND[result.kind] ?? PAGE_CACHE_TTL_DEFAULT_SECONDS;
-      if (!dynamicPage && !isPreview && site.staticMode === 'hybrid') {
+      if (!generation && !dynamicPage && !isPreview && site.staticMode === 'hybrid') {
         // 混合模式：miss 即渲染并回写，下次直接命中静态文件
         void withCmsStaticWriteFence(
           async () => {
@@ -316,7 +327,7 @@ export function createCmsFrontendRoutes(): Hono {
           logger.error(`[CMS] 静态回写失败 site=${site.code} path=${sitePath}`, err);
         });
       }
-     if (!dynamicPage && !isPreview && site.staticMode === 'dynamic') {
+     if (!runtimeBlocked && !dynamicPage && !isPreview && site.staticMode === 'dynamic') {
         if (await readCmsCacheEpoch(site.id) === renderCacheEpoch) {
           redis.setex(cacheKey, ttl, result.html).catch(() => undefined);
         }
@@ -329,10 +340,12 @@ export function createCmsFrontendRoutes(): Hono {
         });
       }
       if (!isPreview) {
-        return htmlResponse(c, result.html, ttl);
+        return htmlResponse(c, result.html, runtimeBlocked ? 0 : ttl);
       }
     }
     return respond(c, result);
+    };
+    return /^preview\/\d+\/?$/.test(sitePath) ? deliver() : withCmsPublicGeneration(target.site.id, deliver);
   });
 
   return app;

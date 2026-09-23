@@ -1,34 +1,32 @@
-/**
- * 草稿预览签名黄金测试：`sig = hex(HMAC-SHA256(secret, "cms-preview:<contentId>:<exp>"))`，
- * 随 URL 查询参数下发（?exp=&sig=），实现重构不得改变一个字节。
- */
 import { createHmac } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+const mocks = vi.hoisted(() => ({ grants: vi.fn() }));
+vi.mock('../../db', () => ({ db: { select: () => ({ from: () => ({ where: () => ({ limit: mocks.grants }) }) }) } }));
 import { config } from '../../config';
 import { verifyContentPreviewToken } from './cms-preview.service';
 
 const NOW = Date.UTC(2026, 0, 15, 8, 0, 0);
-
-function golden(contentId: number, exp: number): string {
-  return createHmac('sha256', config.jwtSecret).update(`cms-preview:${contentId}:${exp}`).digest('hex');
-}
-
-describe('CMS preview signature wire format', () => {
-  afterEach(() => vi.useRealTimers());
-
-  it('原始公式计算的签名可通过校验；过期 / 篡改 / 缺失不通过', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(NOW);
-    const exp = Math.floor(NOW / 1000) + 3600;
-    const sig = golden(1001, exp);
-    expect(sig).toMatch(/^[0-9a-f]{64}$/);
-    expect(verifyContentPreviewToken(1001, exp, sig)).toBe(true);
-    expect(verifyContentPreviewToken(1002, exp, sig)).toBe(false);
-    expect(verifyContentPreviewToken(1001, exp + 1, sig)).toBe(false);
-    expect(verifyContentPreviewToken(1001, exp, `${sig.slice(0, -1)}0`)).toBe(false);
-    expect(verifyContentPreviewToken(1001, exp, sig.slice(0, -1))).toBe(false);
-    expect(verifyContentPreviewToken(1001, exp, '')).toBe(false);
-    expect(verifyContentPreviewToken(1001, Math.floor(NOW / 1000) - 1, golden(1001, Math.floor(NOW / 1000) - 1))).toBe(false);
-    expect(verifyContentPreviewToken(1001, 1.5, sig)).toBe(false);
+const grantId = '12345678-1234-4234-8234-123456789abc';
+const golden = (id: number, rid: number, exp: number) => createHmac('sha256', config.jwtSecret).update(`cms-preview:${id}:${rid}:${grantId}:${exp}`).digest('hex');
+describe('CMS immutable revision preview grants', () => {
+  afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });
+  it('binds the signed URL to one revision and a revocable persisted grant', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(NOW);
+    const exp = NOW / 1000 + 3600;
+    mocks.grants.mockResolvedValue([{ expiresAt: new Date(exp * 1000) }]);
+    const sig = golden(1001, 27, exp);
+    expect(await verifyContentPreviewToken(1001, exp, sig, 27, grantId)).toBe(true);
+    expect(await verifyContentPreviewToken(1001, exp, sig, 28, grantId)).toBe(false);
+    expect(await verifyContentPreviewToken(1002, exp, sig, 27, grantId)).toBe(false);
+    expect(await verifyContentPreviewToken(1001, exp + 1, sig, 27, grantId)).toBe(false);
+    expect(await verifyContentPreviewToken(1001, exp, sig)).toBe(false);
+    mocks.grants.mockResolvedValue([]);
+    expect(await verifyContentPreviewToken(1001, exp, sig, 27, grantId)).toBe(false);
+  });
+  it('rejects expired or malformed grants before querying storage', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(NOW);
+    expect(await verifyContentPreviewToken(1, NOW / 1000 - 1, 'bad', 27, grantId)).toBe(false);
+    expect(await verifyContentPreviewToken(1, 1.5, 'bad', 27, grantId)).toBe(false);
+    expect(mocks.grants).not.toHaveBeenCalled();
   });
 });

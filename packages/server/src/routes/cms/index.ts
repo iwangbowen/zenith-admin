@@ -4,6 +4,7 @@ import {
   cmsCollectContract,
   cmsCommentContract,
   cmsContentContract,
+  cmsEditorialContract,
   cmsDashboardContract,
   cmsDistributionContract,
   cmsErrorProneWordContract,
@@ -13,6 +14,7 @@ import {
   cmsModelContract,
   cmsPageContract,
   cmsPublishingContract,
+  cmsReleaseContract,
   cmsResourceContract,
   cmsSearchContract,
   cmsSensitiveWordContract,
@@ -32,6 +34,7 @@ import cmsChannelsRoutes from './channels';
 import cmsCollectRoutes from './collect';
 import cmsCommentsRoutes from './comments';
 import cmsContentsRoutes from './contents';
+import cmsEditorialRoutes from './editorial';
 import cmsDashboardRoutes from './dashboard';
 import cmsDistributionRoutes from './distributions';
 import cmsErrorProneWordsRoutes from './error-prone-words';
@@ -41,6 +44,7 @@ import cmsInteractionsRoutes from './interactions';
 import cmsModelsRoutes from './models';
 import cmsPagesRoutes from './pages';
 import cmsPublishingRoutes from './publishing';
+import cmsReleasesRoutes from './releases';
 import cmsResourcesRoutes from './resources';
 import cmsSearchRoutes from './search';
 import cmsSensitiveWordsRoutes from './sensitive-words';
@@ -62,6 +66,7 @@ export default defineRouteDomain({
     [cmsModelContract.basePath, cmsModelsRoutes, { feature: 'cms' }],
     [cmsChannelContract.basePath, cmsChannelsRoutes, { feature: 'cms' }],
     [cmsContentContract.basePath, cmsContentsRoutes, { feature: 'cms' }],
+    [cmsEditorialContract.basePath, cmsEditorialRoutes, { feature: 'cms' }],
     [cmsTagContract.basePath, cmsTagsRoutes, { feature: 'cms' }],
     [cmsFriendLinkContract.basePath, cmsFriendLinksRoutes, { feature: 'cms' }],
     [cmsStaticContract.basePath, cmsStaticRoutes, { feature: 'cms' }],
@@ -79,6 +84,7 @@ export default defineRouteDomain({
     [cmsWidgetContract.basePath, cmsWidgetsRoutes, { feature: 'cms' }],
     [cmsDashboardContract.basePath, cmsDashboardRoutes, { feature: 'cms' }],
     [cmsPublishingContract.basePath, cmsPublishingRoutes, { feature: 'cms' }],
+    [cmsReleaseContract.basePath, cmsReleasesRoutes, { feature: 'cms' }],
     [cmsDistributionContract.basePath, cmsDistributionRoutes, { feature: 'cms' }],
     [cmsResourceContract.basePath, cmsResourcesRoutes, { feature: 'cms' }],
     [cmsSubscriptionContract.basePath, cmsSubscriptionsRoutes, { feature: 'cms' }],

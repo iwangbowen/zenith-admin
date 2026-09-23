@@ -1,4 +1,9 @@
 import { initializeCmsContentWorkingCopy, requireCmsWorkingCopy, writeCmsSystemWorkingCopy, cmsRevisionToContentRow } from './cms-content-revisions.service';
+import { cmsDistributionSyncStates } from '../../db/schema/cms-design';
+import { cmsContentWorkingCopies } from '../../db/schema/cms-revisions';
+import { mergeCmsDistributionFields } from '@zenith/shared/cms';
+import { freezeCmsRevisionDependencies } from './cms-revision-dependencies.service';
+import { formatNullableDateTime } from '../../lib/datetime';
 import { requireRow } from '../../lib/db-assert';
 import {
   and,
@@ -231,8 +236,6 @@ export async function submitCmsDistributionRun(
 
 function updatePatch(source: CmsContentRow, body: string): Record<string, unknown> {
   return {
-    expectedVersion: undefined,
-   channelId: undefined,
    title: source.title,
     titleStyle: source.titleStyle ?? {},
     subTitle: source.subTitle,
@@ -253,7 +256,7 @@ function updatePatch(source: CmsContentRow, body: string): Record<string, unknow
     topExpireAt: null,
     isRecommend: source.isRecommend,
    isHot: source.isHot,
-    expireAt: source.expireAt?.toISOString() ?? null,
+    expireAt: formatNullableDateTime(source.expireAt),
     seoTitle: source.seoTitle,
     seoKeywords: source.seoKeywords,
     seoDescription: source.seoDescription,
@@ -340,7 +343,10 @@ async function createMaterializedContent(
       distributionSourceVersion: source.version,
       searchVector: contentSearchVector(rule.targetSiteId, { ...source, body }, extendSearchTexts(extend)),
     }).returning();
-    await initializeCmsContentWorkingCopy(tx, rows[0]);
+    const initial = await initializeCmsContentWorkingCopy(tx, rows[0]);
+    const initialFrozen = await freezeCmsRevisionDependencies(tx, rows[0].siteId, initial.snapshot.modelId, initial.snapshot);
+    await tx.update(cmsContentWorkingCopies).set({ snapshot: initialFrozen.snapshot }).where(eq(cmsContentWorkingCopies.contentId, rows[0].id));
+    await tx.insert(cmsDistributionSyncStates).values({ contentId: rows[0].id, sourceVersion: source.version, baseline: initialFrozen.snapshot });
     await logContentOp(tx, rows[0].id, 'created', `分发规则 #${rule.id} 从内容 #${source.id} 创建草稿`);
     await syncCmsResourceRefs(tx, 'content', rows[0].id, rows[0].siteId, rows[0]);
     return rows;
@@ -361,9 +367,22 @@ async function synchronizeExisting(
     assertCmsContentUnlocked(locked);
     const adopted = await adoptCmsResourcesIntoSite(tx, rule.targetSiteId, { ...updatePatch(source, body), attachments: source.attachments });
     const canonical = await canonicalizeCmsResourceFields(tx, rule.targetSiteId, adopted, 'content');
-    const working = await writeCmsSystemWorkingCopy(tx, locked, { ...canonical, extend, modelId: expected.snapshot.modelId,
-      titleStyle: source.titleStyle, attachments: canonical.attachments, topExpireAt: source.topExpireAt, expireAt: source.expireAt,
-    }, expected.version);
+    const sourcePatch = { ...canonical, extend, modelId: expected.snapshot.modelId,
+      titleStyle: source.titleStyle, attachments: canonical.attachments, topExpireAt: formatNullableDateTime(source.topExpireAt), expireAt: formatNullableDateTime(source.expireAt),
+    };
+    const sourceFrozen = await freezeCmsRevisionDependencies(tx, locked.siteId, expected.snapshot.modelId, { ...expected.snapshot, ...sourcePatch, assetVersions: {} });
+    const incoming = Object.fromEntries(Object.keys(sourcePatch).map((field) => [field, sourceFrozen.snapshot[field as keyof typeof sourceFrozen.snapshot]]));
+    const [state] = await tx.select().from(cmsDistributionSyncStates).where(eq(cmsDistributionSyncStates.contentId, target.id)).for('update').limit(1);
+    const merge = mergeCmsDistributionFields(state?.baseline ?? expected.snapshot, expected.snapshot, incoming, state?.targetOwnedFields);
+    if (merge.conflicts.length) {
+      const pending = { sourceVersion: source.version, targetVersion: expected.version, incoming, conflicts: merge.conflicts };
+      if (state) await tx.update(cmsDistributionSyncStates).set({ pending }).where(eq(cmsDistributionSyncStates.contentId, target.id));
+      else await tx.insert(cmsDistributionSyncStates).values({ contentId: target.id, sourceVersion: target.distributionSourceVersion ?? 0, baseline: expected.snapshot, pending });
+      return { ...locked, mergeConflicts: merge.conflicts.map((conflict) => conflict.field) };
+    }
+    const working = await writeCmsSystemWorkingCopy(tx, locked, merge.patch, expected.version);
+    if (state) await tx.update(cmsDistributionSyncStates).set({ baseline: incoming, sourceVersion: source.version, pending: null }).where(eq(cmsDistributionSyncStates.contentId, target.id));
+    else await tx.insert(cmsDistributionSyncStates).values({ contentId: target.id, sourceVersion: source.version, baseline: incoming });
     // Synchronization provenance is operational metadata; public editorial fields remain untouched.
     await tx.update(cmsContents).set({ mappingSourceId: rule.mode === 'mapping' ? (source.mappingSourceId ?? source.id) : null,
       distributionRuleId: rule.id, distributionSourceId: source.id, distributionSourceVersion: source.version,
@@ -424,6 +443,7 @@ async function synchronizeOne(
   }
   if (decision === 'update-tracked' || decision === 'overwrite') {
     const updated = await synchronizeExisting(rule, source, candidate!, body, extend);
+    if ('mergeConflicts' in updated) return { outcome: 'conflict', targetContentId: updated.id, message: `来源与目标同时修改：${updated.mergeConflicts.join('、')}，请审阅合并` };
     return {
       outcome: 'success',
       targetContentId: updated.id,

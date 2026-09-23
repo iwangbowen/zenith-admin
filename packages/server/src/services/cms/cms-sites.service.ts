@@ -36,6 +36,7 @@ import { enqueueCmsPublishOutboxes, insertCmsSiteRefsRebuildOutbox } from './cms
 import { canonicalizeCmsResourceFields, resolveCmsResourcePayload, syncCmsResourceRefs } from './cms-resource-refs.service';
 import { syncCmsSiteWebhookSubscription } from './cms-webhook.service';
 import { invalidateCmsSiteCaches } from './cms-cache.service';
+import { isCmsGenerationRead } from './cms-generation-context';
 import {
   DEFAULT_CMS_SITE_INHERITANCE,
   buildCmsSiteChain,
@@ -87,12 +88,13 @@ async function loadSiteCache() {
     }
     if (row.isDefault && !defaultSite) defaultSite = row;
   }
-  siteCache = { byHost, byCode, defaultSite, loadedAt: Date.now() };
-  return siteCache;
+  const result = { byHost, byCode, defaultSite, loadedAt: Date.now() };
+  if (!isCmsGenerationRead()) siteCache = result;
+  return result;
 }
 
 async function getSiteCache() {
-  if (siteCache && Date.now() - siteCache.loadedAt < SITE_CACHE_TTL_MS) return siteCache;
+  if (!isCmsGenerationRead() && siteCache && Date.now() - siteCache.loadedAt < SITE_CACHE_TTL_MS) return siteCache;
   return loadSiteCache();
 }
 

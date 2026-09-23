@@ -1046,6 +1046,7 @@ export const createCmsSearchWordSchema = z.object({
   word: z.string().trim().min(1, '词条不能为空').max(50)
     .regex(CMS_SEARCH_DICTIONARY_WORD_PATTERN, '词条仅允许字母、数字、中文及 _ + . # -，且不能包含空白'),
   type: z.enum(['extension', 'stop']).default('extension'),
+  synonyms: z.array(z.string().trim().min(1).max(50).regex(CMS_SEARCH_DICTIONARY_WORD_PATTERN)).max(20).default([]),
   groupName: z.string().trim().min(1).max(100).default('默认分组'),
   weight: z.number().int().min(1).max(999999).default(1000),
   status: entityStatusSchema.default('enabled'),

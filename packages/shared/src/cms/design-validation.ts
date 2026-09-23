@@ -18,3 +18,8 @@ export const createCmsTranslationSchema = z.object({
   locale: z.string().min(2).max(35).regex(/^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/),
   channelId: z.int().positive(), title: z.string().min(1).max(255),
 });
+export const cmsTypeConversionSchema = z.object({
+  modelId: z.int().positive(), modelVersionId: z.int().positive().optional(),
+  fieldMapping: z.record(z.string(), z.string()).optional(),
+});
+export const applyCmsTypeConversionSchema = cmsTypeConversionSchema.extend({ expectedVersion: z.int().positive(), acknowledgeLoss: z.boolean() });

@@ -1,7 +1,11 @@
 import type { CmsSiteRow } from '../../db/schema';
 import { httpPost } from '../../lib/http-client';
 import logger from '../../lib/logger';
+import { cmsGenerationContext } from './cms-generation-context';
 import { siteOrigin } from './cms-render.service';
+import type { DbTransaction } from '../../db/types';
+import { persistAsyncTask, registerTaskHandler, submitAsyncTask } from '../../lib/task-center';
+import { resolveEffectiveCmsSiteRow } from './cms-site-inheritance.service';
 import {
   CMS_CDN_HTTP_SAFETY_OPTIONS, cmsCdnPurgeHostAllowlist, validateCdnPurgeEndpoint,
 } from './cms-cdn-policy';
@@ -68,17 +72,34 @@ async function sendPurge(site: CmsSiteRow, paths: string[], purgeAll: boolean): 
   }
 }
 
-/** 增量刷新（fire-and-forget，失败仅记日志不影响静态化结果） */
+export async function insertCmsCdnPurgeOutbox(tx: DbTransaction, siteId: number, eventKey: string) {
+  return persistAsyncTask(tx, { taskType: 'cms-cdn-purge', title: 'CMS CDN 生效', tenantId: null, payload: { siteId, purgeAll: true, paths: [] }, idempotencyKey: `cms-cdn:${eventKey}` });
+}
+export function registerCmsCdnTaskHandler(): void {
+  registerTaskHandler({ taskType: 'cms-cdn-purge', title: 'CMS CDN 刷新', module: 'CMS内容管理', allowConcurrent: true, maxAttempts: 5, retryDelayMs: 30000,
+    async run(ctx) {
+      const site = await resolveEffectiveCmsSiteRow(Number(ctx.payload.siteId));
+      const paths = Array.isArray(ctx.payload.paths) ? ctx.payload.paths.filter((item): item is string => typeof item === 'string') : [];
+      await sendPurge(site, paths, ctx.payload.purgeAll === true);
+      return { siteId: site.id, paths: paths.length, purgeAll: ctx.payload.purgeAll === true };
+    },
+  });
+}
+/** Compatibility entry points also use durable task retries. */
 export function triggerCdnPurge(site: CmsSiteRow, paths: string[]): void {
+  if (cmsGenerationContext()?.candidate) return;
   if (paths.length === 0) return;
-  void sendPurge(site, paths, false).catch((err) => {
+  if (!(site.settings as Record<string, unknown> | null)?.cdnPurgeUrl) return;
+  void submitAsyncTask({ taskType: 'cms-cdn-purge', title: `CMS CDN 刷新：${site.name}`, tenantId: null, payload: { siteId: site.id, paths, purgeAll: false } }).catch((err) => {
     logger.warn(`[CMS] 站点 ${site.code} CDN 刷新失败: ${err instanceof Error ? err.message : err}`);
   });
 }
 
 /** 全站刷新（整站重建完成后调用） */
 export function triggerCdnPurgeAll(site: CmsSiteRow): void {
-  void sendPurge(site, [], true).catch((err) => {
+  if (cmsGenerationContext()?.candidate) return;
+  if (!(site.settings as Record<string, unknown> | null)?.cdnPurgeUrl) return;
+  void submitAsyncTask({ taskType: 'cms-cdn-purge', title: `CMS CDN 全站刷新：${site.name}`, tenantId: null, payload: { siteId: site.id, paths: [], purgeAll: true } }).catch((err) => {
     logger.warn(`[CMS] 站点 ${site.code} CDN 全站刷新失败: ${err instanceof Error ? err.message : err}`);
   });
 }

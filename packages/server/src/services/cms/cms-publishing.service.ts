@@ -693,6 +693,14 @@ export function registerCmsPublishingTaskHandler(): void {
       if (!systemTriggered && !(await hasPermission('cms:publish:build'))) {
         throw new Error('发布任务创建者的 CMS 发布权限已失效');
       }
+      // Existing configuration outboxes now submit an immutable release. They never
+      // write over the active generation's directory or expose partially rebuilt pages.
+      if (CMS_PUBLISH_TARGET_TYPES.includes(input.targetType)) {
+        const { createCmsConfigurationRelease } = await import('./cms-releases.service');
+        const release = await createCmsConfigurationRelease(input.siteId, ctx.taskId, input.reason);
+        await ctx.progress({ processed: 1, total: 1, note: `已提交发布单 #${release.id}；在发布单中查看构建和激活结果` });
+        return { releaseId: release.id, deploymentId: release.deploymentId, delegated: true };
+      }
       return withCmsSitePublishLock(input.siteId, input, async () => {
       await validatePublishInput(input, systemTriggered);
       await db.delete(cmsPublishArtifacts).where(and(
@@ -849,4 +857,3 @@ export async function batchCmsPublishingAction(ids: number[], action: 'cancel' |
   }
   return { affected, errors };
 }
-

@@ -989,6 +989,7 @@ export const cmsSearchWords = pgTable('cms_search_words', {
   id: idColumn(),
   siteId: integer().notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
   word: varchar({ length: 50 }).notNull(),
+  synonyms: jsonb().$type<string[]>().notNull().default([]),
   type: cmsSearchWordTypeEnum().notNull().default('extension'),
   groupName: varchar({ length: 100 }).notNull().default('默认分组'),
   /** 词频权重（越大越优先成词），jieba 用户词典格式 */

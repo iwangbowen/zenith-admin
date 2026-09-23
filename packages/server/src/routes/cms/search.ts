@@ -13,6 +13,7 @@ import {
 import { assertSiteAccess, ensureCmsSiteExists } from '../../services/cms/cms-sites.service';
 import { isCmsPlatformAdmin } from '../../services/cms/cms-access';
 import { assertAllCmsSiteChannelsAccess } from '../../services/cms/cms-channels.service';
+import { withCmsPublicGeneration } from '../../services/cms/cms-generation-storage.service';
 import {
   createCmsHotword, createCmsHotwordGroup, deleteCmsHotword, deleteCmsHotwordGroup,
   listCmsHotwordGroups, listCmsHotwords, updateCmsHotword, updateCmsHotwordGroup,
@@ -23,7 +24,7 @@ const router = new OpenAPIHono({ defaultHook: validationHook });
 const testRoute = defineContractRoute(cmsSearchContract.test, {
   handler: async (c) => {
     const q = c.req.valid('query');
-    const { tokens: _tokens, ...result } = await searchCmsContents(q);
+    const { tokens: _tokens, ...result } = await withCmsPublicGeneration(q.siteId, () => searchCmsContents(q));
     return c.json(okBody(result), 200);
   },
 });

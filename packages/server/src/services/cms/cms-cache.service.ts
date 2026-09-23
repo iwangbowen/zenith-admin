@@ -1,13 +1,16 @@
 import { config } from '../../config';
 import redis from '../../lib/redis';
 import logger from '../../lib/logger';
+import { cmsGenerationContext } from './cms-generation-context';
 
 const PAGE_CACHE_PREFIX = `${config.redis.keyPrefix}cms:page:`;
 const META_CACHE_PREFIX = `${config.redis.keyPrefix}cms:sitemap:`;
 const CACHE_EPOCH_PREFIX = `${config.redis.keyPrefix}cms:epoch:`;
 
 export async function readCmsCacheEpoch(siteId: number): Promise<string> {
-  return String(await redis.get(`${CACHE_EPOCH_PREFIX}${siteId}`).catch(() => '0') ?? '0');
+  const epoch = String(await redis.get(`${CACHE_EPOCH_PREFIX}${siteId}`).catch(() => '0') ?? '0');
+  const generation = cmsGenerationContext();
+  return generation ? `${generation.generationId}:${epoch}` : epoch;
 }
 
 function pageKey(siteId: number, path: string): string {
@@ -34,6 +37,7 @@ async function scanKeys(pattern: string): Promise<string[]> {
  * content mutation fail.
  */
 export async function invalidateCmsSiteCaches(siteId: number, paths: readonly string[] = []): Promise<void> {
+  if (cmsGenerationContext()?.candidate) return;
   if (!Number.isInteger(siteId) || siteId <= 0) return;
   try {
     await redis.incr(`${CACHE_EPOCH_PREFIX}${siteId}`);

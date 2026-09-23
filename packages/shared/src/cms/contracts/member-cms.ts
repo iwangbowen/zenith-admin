@@ -91,6 +91,7 @@ export type CmsMemberComment = z.infer<typeof cmsMemberCommentSchema>;
 
 export const memberCmsContributionListQuery = paginationQuery.extend({
   status: queryEnum(CMS_CONTENT_STATUSES),
+  editorialStatus: queryEnum(CMS_EDITORIAL_STATUSES),
 });
 
 export const memberCmsSubscriptionListQuery = paginationQuery.extend({

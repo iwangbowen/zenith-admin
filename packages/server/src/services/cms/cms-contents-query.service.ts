@@ -3,12 +3,14 @@ import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { eq, asc, desc, and, or, inArray, notInArray, isNull, isNotNull, ne, lt, gt, sql, type SQL } from 'drizzle-orm';
-import { db } from '../../db';
+import { db, withoutDbExecutor } from '../../db';
+import { withCmsPublicGeneration } from './cms-generation-storage.service';
+import { cmsGenerationContext } from './cms-generation-context';
 import { cmsContents, cmsContentTags, cmsContentChannels, cmsContentRelations, cmsContentWorkingCopies, cmsChannels, cmsTags } from '../../db/schema';
 import type { CmsContentRow, CmsTagRow } from '../../db/schema';
 import { formatTimestamps } from '../../lib/datetime';
 import { pickEntity } from '../../lib/entity-map';
-import { buildWhere, dateRangeConditions, withPagination } from '../../lib/where-helpers';
+import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { config } from '../../config';
 import redis from '../../lib/redis';
 import { getAccessibleChannelIds, assertChannelAccess } from './cms-channels.service';
@@ -42,9 +44,10 @@ export function mapCmsContentListItem(row: Omit<CmsContentMapRow, 'body'>, extra
   lockedByName?: string | null;
   canonicalUrl?: string | null;
   previewUrl?: string | null;
+  listFields?: Record<string, unknown>;
 }) {
   const { body: _body, extend: _extend, mediaData: _mediaData, ...item } = mapCmsContent({ ...row, body: null }, extra);
-  return item;
+  return { ...item, listFields: extra?.listFields ?? {} };
 }
 
 /** `mapCmsContent` 不读取 search_vector，列表投影行补上 `body: null` 即可复用同一映射 */
@@ -138,6 +141,7 @@ export async function buildCmsContentListWhere(q: CmsContentListFilter): Promise
   const workingChannel = sql<number>`(${cmsContentWorkingCopies.snapshot}->>'channelId')::integer`;
   const workingCondition = buildWhere(
     eq(cmsContentWorkingCopies.contentId, cmsContents.id),
+    q.calendarFrom || q.calendarTo ? or(...['scheduledAt', 'expireAt', 'dueAt'].map((field) => buildWhere(...dateRangeConditions(sql`nullif(${cmsContentWorkingCopies.snapshot}->>${field}, '')::timestamp`, q.calendarFrom, q.calendarTo)))) : undefined,
     q.channelId ? eq(workingChannel, q.channelId) : undefined,
     accessibleChannelIds !== null ? inArray(workingChannel, accessibleChannelIds) : undefined,
     q.editorialStatus ? eq(cmsContentWorkingCopies.editorialStatus, q.editorialStatus) : undefined,
@@ -146,7 +150,7 @@ export async function buildCmsContentListWhere(q: CmsContentListFilter): Promise
     q.locale ? sql`${cmsContentWorkingCopies.snapshot}->>'locale' = ${q.locale}` : undefined,
     q.hasUnpublishedChanges !== undefined ? (q.hasUnpublishedChanges ? ne(cmsContentWorkingCopies.editorialStatus, 'clean') : eq(cmsContentWorkingCopies.editorialStatus, 'clean')) : undefined,
     q.tags ? sql`${cmsContentWorkingCopies.snapshot}->'tagIds' @> ${JSON.stringify(q.tags.split(',').map(Number))}::jsonb` : undefined,
-    q.keyword ? sql`(${cmsContentWorkingCopies.snapshot}->>'title' ilike ${'%' + q.keyword + '%'} or ${cmsContentWorkingCopies.snapshot}->>'author' ilike ${'%' + q.keyword + '%'})` : undefined,
+    keywordCondition(q.keyword, [sql`${cmsContentWorkingCopies.snapshot}->>'title'`, sql`${cmsContentWorkingCopies.snapshot}->>'author'`], 'ilike'),
     q.isTop !== undefined ? sql`(${cmsContentWorkingCopies.snapshot}->>'isTop')::boolean = ${q.isTop}` : undefined,
     q.isRecommend !== undefined ? sql`(${cmsContentWorkingCopies.snapshot}->>'isRecommend')::boolean = ${q.isRecommend}` : undefined,
     q.isHot !== undefined ? sql`(${cmsContentWorkingCopies.snapshot}->>'isHot')::boolean = ${q.isHot}` : undefined,
@@ -191,14 +195,24 @@ export async function listCmsContents(q: QueryOutputOf<typeof cmsContentContract
         editorialStatus: cmsContentWorkingCopies.editorialStatus, updatedAt: cmsContentWorkingCopies.updatedAt,
         rejectReason: cmsContentWorkingCopies.rejectReason, publishedRevisionId: cmsContentWorkingCopies.publishedRevisionId,
         submittedRevisionId: cmsContentWorkingCopies.submittedRevisionId, approvedRevisionId: cmsContentWorkingCopies.approvedRevisionId,
-        snapshot: sql<Omit<CmsContentRevisionSnapshot, 'body' | 'bodyDocument'>>`${cmsContentWorkingCopies.snapshot} - 'body' - 'bodyDocument'`,
+        snapshot: sql<Omit<CmsContentRevisionSnapshot, 'body' | 'bodyDocument'>>`jsonb_set(
+          ${cmsContentWorkingCopies.snapshot} - 'body' - 'bodyDocument' - 'mediaData' - 'attachments', '{extend}',
+          coalesce((select jsonb_object_agg(entry.key, entry.value)
+            from jsonb_each(coalesce(${cmsContentWorkingCopies.snapshot}->'extend', '{}'::jsonb)) entry
+            where exists (select 1 from ${cmsModelVersions} model_version,
+              jsonb_array_elements(model_version.fields) field
+              where model_version.id = (${cmsContentWorkingCopies.snapshot}->>'modelVersionId')::integer
+                and field->>'name' = entry.key and field->>'showInList' = 'true')), '{}'::jsonb))`,
       }).from(cmsContentWorkingCopies).where(inArray(cmsContentWorkingCopies.contentId, rows.map((row) => row.id)));
       const draftMap = new Map(drafts.map((draft) => [draft.contentId, draft]));
       const channels = await db.select().from(cmsChannels).where(inArray(cmsChannels.id, [...new Set(drafts.map((draft) => draft.snapshot.channelId))]));
       const channelMap = new Map(channels.map((channel) => [channel.id, channel]));
+      const modelVersionIds = [...new Set(drafts.flatMap((draft) => draft.snapshot.modelVersionId ? [draft.snapshot.modelVersionId] : []))];
+      const modelVersions = modelVersionIds.length ? await db.select({ id: cmsModelVersions.id, fields: cmsModelVersions.fields }).from(cmsModelVersions).where(inArray(cmsModelVersions.id, modelVersionIds)) : [];
+      const listFieldsByVersion = new Map(modelVersions.map((version) => [version.id, version.fields.filter((field) => field.showInList).map((field) => field.name)]));
       const editorialRows = rows.map((row) => {
         const draft = requireRow(draftMap.get(row.id), '内容缺少工作稿', 409);
-        return { ...cmsRevisionToContentRow({ ...row, body: null, searchVector: null, extend: {}, mediaData: {}, attachments: [] }, { ...draft.snapshot, body: null, bodyDocument: null }), body: null,
+        return { ...cmsRevisionToContentRow({ ...row, body: null, searchVector: null, extend: {}, mediaData: {}, attachments: [] }, { ...draft.snapshot, body: null, bodyDocument: null, mediaData: {}, attachments: [] }), body: null,
           version: draft.version, editorialStatus: draft.editorialStatus, publishedRevisionId: draft.publishedRevisionId,
           submittedRevisionId: draft.submittedRevisionId, approvedRevisionId: draft.approvedRevisionId,
           hasUnpublishedChanges: draft.editorialStatus !== 'clean', updatedAt: draft.updatedAt, rejectReason: draft.rejectReason };
@@ -206,7 +220,8 @@ export async function listCmsContents(q: QueryOutputOf<typeof cmsContentContract
       const resolvedRows = await resolveCmsContentRows(editorialRows, q.siteId);
       return resolvedRows.map((row) => {
         const channel = channelMap.get(row.channelId);
-        return mapCmsContentListItem(row, { channelName: channel?.name, ...buildCmsContentUrls(row, { siteCode: site.code, channelPath: channel?.path, detailPathRule: channel?.detailPathRule }) });
+        const listFields = Object.fromEntries((listFieldsByVersion.get(row.modelVersionId ?? 0) ?? []).map((name) => [name, row.extend[name]]));
+        return mapCmsContentListItem(row, { listFields, channelName: channel?.name, ...buildCmsContentUrls(row, { siteCode: site.code, channelPath: channel?.path, detailPathRule: channel?.detailPathRule }) });
       });
     },
   });
@@ -247,7 +262,7 @@ const publishedWhere = (siteId: number) => and(
 )!;
 
 /** 栏目下已发布内容分页（含以此为副栏目的内容；归档内容不参与聚合；置顶权重优先，发布时间倒序） */
-export async function listPublishedContents(siteId: number, channelId: number, page: number, pageSize: number) {
+async function query_listPublishedContents(siteId: number, channelId: number, page: number, pageSize: number) {
   const effectiveChannelIds = await getEffectivelyEnabledCmsChannelIds(siteId);
   if (!effectiveChannelIds.has(channelId)) return { total: 0, rows: [] as ResolvedCmsContentListRow[] };
   const extraIdsQuery = db.select({ contentId: cmsContentChannels.contentId })
@@ -279,7 +294,7 @@ export async function listPublishedContents(siteId: number, channelId: number, p
 }
 
 /** 首页区块：最新 / 推荐 / 热门（归档内容不参与）；三组行合并做一次素材解析（内容大量重叠，素材 id 只查一遍） */
-export async function listHomeContents(siteId: number, limit = 10) {
+async function query_listHomeContents(siteId: number, limit = 10) {
   const effectiveChannelIds = await getEffectivelyEnabledCmsChannelIds(siteId);
   if (effectiveChannelIds.size === 0) return { latest: [] as ResolvedCmsContentListRow[], recommended: [] as ResolvedCmsContentListRow[], hot: [] as ResolvedCmsContentListRow[] };
   const base = and(publishedWhere(siteId), isNull(cmsContents.archivedAt), inArray(cmsContents.channelId, [...effectiveChannelIds]))!;
@@ -297,7 +312,7 @@ export async function listHomeContents(siteId: number, limit = 10) {
 }
 
 /** 前台详情（按 id 或 slug）；返回 null 表示 404 */
-export async function getPublishedContent(siteId: number, channelId: number, idOrSlug: string): Promise<ResolvedCmsContentRow | null> {
+async function query_getPublishedContent(siteId: number, channelId: number, idOrSlug: string): Promise<ResolvedCmsContentRow | null> {
   if (!(await getEffectivelyEnabledCmsChannelIds(siteId)).has(channelId)) return null;
   const numericId = /^\d+$/.test(idOrSlug) ? Number(idOrSlug) : null;
   const matcher = numericId !== null ? eq(cmsContents.id, numericId) : eq(cmsContents.slug, idOrSlug);
@@ -316,7 +331,7 @@ export async function getPublishedContent(siteId: number, channelId: number, idO
  * runs. The returned row is intentionally raw; renderDetailPage performs the
  * same resource resolution as every other detail request.
  */
-export async function findPublishedContentByStaticPath(
+async function query_findPublishedContentByStaticPath(
   siteId: number,
   rawPath: string,
 ): Promise<{ content: CmsContentRow; bodyPage: number } | null> {
@@ -349,7 +364,7 @@ export async function findPublishedContentByStaticPath(
 }
 
 /** 按 id 取站点内已发布内容（不限栏目；Headless API 用） */
-export async function getPublishedContentById(siteId: number, id: number): Promise<ResolvedCmsContentRow | null> {
+async function query_getPublishedContentById(siteId: number, id: number): Promise<ResolvedCmsContentRow | null> {
   const effectiveChannelIds = await getEffectivelyEnabledCmsChannelIds(siteId);
   if (effectiveChannelIds.size === 0) return null;
   const [row] = await db.select().from(cmsContents)
@@ -388,7 +403,7 @@ export async function resolveContentBodyExtend(
 }
 
 /** 上一篇 / 下一篇（同栏目按发布时间序；跳过归档内容）：只取拼「标题 + 链接」所需的列 */
-export async function getAdjacentContents(row: Pick<CmsContentRow, 'id' | 'siteId' | 'channelId' | 'publishedAt' | 'createdAt'>) {
+async function query_getAdjacentContents(row: Pick<CmsContentRow, 'id' | 'siteId' | 'channelId' | 'publishedAt' | 'createdAt'>) {
   const effectiveChannelIds = await getEffectivelyEnabledCmsChannelIds(row.siteId);
   if (!effectiveChannelIds.has(row.channelId)) return { prev: null as CmsContentLinkRow | null, next: null as CmsContentLinkRow | null };
   const base = and(publishedWhere(row.siteId), isNull(cmsContents.archivedAt), inArray(cmsContents.channelId, [...effectiveChannelIds]), eq(cmsContents.channelId, row.channelId), ne(cmsContents.id, row.id))!;
@@ -410,10 +425,11 @@ const VIEW_BUFFER_KEY = `${config.redis.keyPrefix}cms:viewbuf`;
 const VIEW_FLUSH_CHUNK = 5000;
 
 export async function increaseViewCount(id: number): Promise<void> {
+  if (cmsGenerationContext()?.candidate) return;
   try {
     await redis.hincrby(VIEW_BUFFER_KEY, String(id), 1);
   } catch {
-    await db.execute(sql`update ${cmsContents} set view_count = view_count + 1 where id = ${id}`);
+    await withoutDbExecutor(() => db.execute(sql`update ${cmsContents} set view_count = view_count + 1 where id = ${id}`));
   }
 }
 
@@ -454,7 +470,7 @@ export async function listContentTags(contentId: number): Promise<CmsTagRow[]> {
 }
 
 /** 详情页相关文章：手动关联优先（按 sort），不足 limit 时按共同标签自动补齐；只取拼「标题 + 链接」所需的列 */
-export async function listRelatedContents(row: Pick<CmsContentRow, 'id' | 'siteId'>, limit = 5): Promise<CmsContentLinkRow[]> {
+async function query_listRelatedContents(row: Pick<CmsContentRow, 'id' | 'siteId'>, limit = 5): Promise<CmsContentLinkRow[]> {
   const effectiveChannelIds = await getEffectivelyEnabledCmsChannelIds(row.siteId);
   if (effectiveChannelIds.size === 0) return [];
   const visible = and(publishedWhere(row.siteId), isNull(cmsContents.archivedAt), inArray(cmsContents.channelId, [...effectiveChannelIds]))!;
@@ -486,7 +502,7 @@ export async function listRelatedContents(row: Pick<CmsContentRow, 'id' | 'siteI
 }
 
 /** 标签聚合页：按标签取已发布内容分页（归档内容不参与） */
-export async function listPublishedContentsByTag(siteId: number, tagId: number, page: number, pageSize: number) {
+async function query_listPublishedContentsByTag(siteId: number, tagId: number, page: number, pageSize: number) {
   const effectiveChannelIds = await getEffectivelyEnabledCmsChannelIds(siteId);
   if (effectiveChannelIds.size === 0) return { total: 0, rows: [] as ResolvedCmsContentListRow[] };
   const idsQuery = db.select({ contentId: cmsContentTags.contentId }).from(cmsContentTags).where(and(
@@ -504,4 +520,30 @@ export async function listPublishedContentsByTag(siteId: number, tagId: number, 
     ),
   ]);
   return { total, rows: await resolveCmsContentRows(rows, siteId) };
+}
+
+// Public callers share one generation even when invoked from member or interaction services.
+export function listPublishedContents(siteId: number, channelId: number, page: number, pageSize: number) {
+  return withCmsPublicGeneration(siteId, () => query_listPublishedContents(siteId, channelId, page, pageSize));
+}
+export function listHomeContents(siteId: number, limit = 10) {
+  return withCmsPublicGeneration(siteId, () => query_listHomeContents(siteId, limit));
+}
+export function getPublishedContent(siteId: number, channelId: number, idOrSlug: string) {
+  return withCmsPublicGeneration(siteId, () => query_getPublishedContent(siteId, channelId, idOrSlug));
+}
+export function findPublishedContentByStaticPath(siteId: number, rawPath: string) {
+  return withCmsPublicGeneration(siteId, () => query_findPublishedContentByStaticPath(siteId, rawPath));
+}
+export function getPublishedContentById(siteId: number, id: number) {
+  return withCmsPublicGeneration(siteId, () => query_getPublishedContentById(siteId, id));
+}
+export function getAdjacentContents(row: Parameters<typeof query_getAdjacentContents>[0]) {
+  return withCmsPublicGeneration(row.siteId, () => query_getAdjacentContents(row));
+}
+export function listRelatedContents(row: Parameters<typeof query_listRelatedContents>[0], limit = 5) {
+  return withCmsPublicGeneration(row.siteId, () => query_listRelatedContents(row, limit));
+}
+export function listPublishedContentsByTag(siteId: number, tagId: number, page: number, pageSize: number) {
+  return withCmsPublicGeneration(siteId, () => query_listPublishedContentsByTag(siteId, tagId, page, pageSize));
 }

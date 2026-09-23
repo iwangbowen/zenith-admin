@@ -22,6 +22,7 @@ export interface CmsOpenCursor {
   /** 主排序值（时间戳毫秒或数值） */
   value: number | null;
   id: number;
+  generationId?: number;
 }
 
 export interface ParsedCmsOpenQuery {
@@ -141,7 +142,7 @@ export function parseCmsOpenIncludes(raw: string | undefined | null): Set<CmsOpe
 /** 游标编解码：base64url(`{value}:{id}`)，value 为空用 `-` 占位 */
 export function encodeCmsOpenCursor(cursor: CmsOpenCursor): string {
   const value = cursor.value == null ? '-' : String(cursor.value);
-  return Buffer.from(`${value}:${cursor.id}`, 'utf8').toString('base64url');
+  return Buffer.from(`${cursor.generationId ? `g${cursor.generationId}:` : ''}${value}:${cursor.id}`, 'utf8').toString('base64url');
 }
 
 export function decodeCmsOpenCursor(raw: string | undefined | null): CmsOpenCursor | null {
@@ -153,14 +154,16 @@ export function decodeCmsOpenCursor(raw: string | undefined | null): CmsOpenCurs
   } catch {
     throw new OpenQueryError('cursor 格式不正确');
   }
-  const match = /^(-|\d+):(\d+)$/.exec(decoded);
+  const match = /^(?:g(\d+):)?(-|\d+):(\d+)$/.exec(decoded);
   if (!match) throw new OpenQueryError('cursor 格式不正确');
-  const id = Number(match[2]);
+  const id = Number(match[3]);
+  const generationId = match[1] ? Number(match[1]) : undefined;
+  if (generationId !== undefined && (!Number.isSafeInteger(generationId) || generationId <= 0)) throw new OpenQueryError('cursor 代次不正确');
   if (!Number.isSafeInteger(id) || id < 0) throw new OpenQueryError('cursor 格式不正确');
-  if (match[1] === '-') return { value: null, id };
-  const value = Number(match[1]);
+  if (match[2] === '-') return { value: null, id, ...(generationId ? { generationId } : {}) };
+  const value = Number(match[2]);
   if (!Number.isSafeInteger(value)) throw new OpenQueryError('cursor 格式不正确');
-  return { value, id };
+  return { value, id, ...(generationId ? { generationId } : {}) };
 }
 
 /** `extend.price=99` 形式的扩展字段过滤；字段名先做词法校验，是否可用由调用方按模型再核 */

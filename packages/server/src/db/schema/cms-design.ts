@@ -46,3 +46,11 @@ export const cmsEditorialNotes = pgTable('cms_editorial_notes', {
   mentionedUserIds: jsonb().$type<number[]>().notNull().default([]),
   resolved: boolean().notNull().default(false), ...auditColumns(), ...timestampColumns(),
 }, (t) => [index('cms_editorial_notes_content_idx').on(t.contentId, t.id)]);
+
+export const cmsDistributionSyncStates = pgTable('cms_distribution_sync_states', {
+  contentId: integer().primaryKey().references(() => cmsContents.id, { onDelete: 'cascade' }),
+  sourceVersion: integer().notNull(), baseline: jsonb().$type<Record<string, unknown>>().notNull(),
+  targetOwnedFields: jsonb().$type<string[]>().notNull().default([]),
+  pending: jsonb().$type<{ sourceVersion: number; targetVersion: number; incoming: Record<string, unknown>; conflicts: Array<{ field: string; base: unknown; target: unknown; incoming: unknown }> }>(),
+  ...auditColumns(), ...timestampColumns(),
+});

@@ -10,6 +10,8 @@ import { registerCmsStage4TaskHandlers } from './cms-stage4-tasks';
 import { registerCmsDistributionTaskHandler } from './cms-distributions.service';
 import { registerCmsWebhookTaskHandler } from './cms-webhook.service';
 import { registerCmsWidgetTaskHandlers } from './cms-widget-tasks';
+import { registerCmsReleaseTaskHandler } from './cms-releases.service';
+import { registerCmsCdnTaskHandler } from './cms-cdn.service';
 
 /** CMS 任务中心 handler 注册（index.ts 启动流程中、registerSystemTasks 之前调用） */
 export function registerCmsTaskHandlers(): void {
@@ -21,6 +23,8 @@ export function registerCmsTaskHandlers(): void {
   registerCmsDistributionTaskHandler();
   registerCmsWebhookTaskHandler();
   registerCmsWidgetTaskHandlers();
+  registerCmsReleaseTaskHandler();
+  registerCmsCdnTaskHandler();
 
   registerTaskHandler({
     taskType: 'cms-search-reindex',
@@ -48,6 +52,14 @@ export function registerCmsTaskHandlers(): void {
           return cancelRequested;
         },
       });
+      const { createCmsConfigurationRelease } = await import('./cms-releases.service');
+      if (siteId) await createCmsConfigurationRelease(siteId, ctx.taskId, '检索词典与索引更新');
+      else {
+        const { db } = await import('../../db');
+        const { cmsSites } = await import('../../db/schema');
+        const sites = await db.select({ id: cmsSites.id }).from(cmsSites);
+        for (const site of sites) await createCmsConfigurationRelease(site.id, ctx.taskId, '检索词典与索引更新');
+      }
       return { processed: processedBefore + processed };
     },
   });

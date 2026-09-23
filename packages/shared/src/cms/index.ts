@@ -15,3 +15,4 @@ export * from './release-validation';
 export * from './document';
 export * from './model-design';
 export * from './design-validation';
+export * from './distribution-merge';

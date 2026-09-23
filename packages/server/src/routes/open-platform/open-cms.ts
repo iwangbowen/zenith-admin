@@ -23,6 +23,8 @@ import {
   submitOpenCmsContent, updateOpenCmsContent,
 } from '../../services/cms/cms-open-write.service';
 import type { CmsSiteRow } from '../../db/schema';
+import { withCmsPublicGeneration } from '../../services/cms/cms-generation-storage.service';
+import { cmsGenerationContext } from '../../services/cms/cms-generation-context';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -54,6 +56,17 @@ async function requireSite(siteCode: string): Promise<CmsSiteRow> {
   if (site.status !== 'enabled') throw new HTTPException(404, { message: '站点已停用' });
   return site;
 }
+async function readPublished<T>(c: Context, site: CmsSiteRow, read: (publishedSite: CmsSiteRow) => Promise<T>): Promise<T> {
+  return withCmsPublicGeneration(site.id, async () => {
+    const generation = cmsGenerationContext();
+    if (generation) {
+      c.header('X-Cms-Generation', String(generation.generationId));
+      const expected = c.req.header('X-Cms-Generation');
+      if (expected && expected !== String(generation.generationId)) throw new HTTPException(409, { message: '公开代次已变化，请从第一页重新拉取' });
+    }
+    return read(await requireSite(site.code));
+  });
+}
 
 /** DSL 解析失败按 400 返回，而不是 500 */
 function parseQuery(raw: Record<string, string>) {
@@ -79,7 +92,7 @@ const channelsRoute = defineContractRoute(openCmsContract.channels, {
   responses: forbidden,
   handler: async (c) => {
     const site = await requireSite(c.req.valid('query').siteCode);
-    const tree = await listCmsChannelTree({ siteId: site.id, status: 'enabled' }, { skipAccessCheck: true });
+    const tree = await readPublished(c, site, () => listCmsChannelTree({ siteId: site.id, status: 'enabled' }, { skipAccessCheck: true }));
     return c.json(okBody(tree), 200);
   },
 });
@@ -90,7 +103,7 @@ const contentsRoute = defineContractRoute(openCmsContract.contents, {
   handler: async (c) => {
     const raw = rawQuery(c);
     const site = await requireSite(c.req.valid('query').siteCode);
-    return c.json(okBody(await listOpenCmsContents(site, parseQuery(raw))), 200);
+    return c.json(okBody(await readPublished(c, site, (publishedSite) => listOpenCmsContents(publishedSite, parseQuery(raw)))), 200);
   },
 });
 
@@ -100,7 +113,7 @@ const contentsCursorRoute = defineContractRoute(openCmsContract.contentsCursor, 
   handler: async (c) => {
     const raw = rawQuery(c);
     const site = await requireSite(c.req.valid('query').siteCode);
-    return c.json(okBody(await listOpenCmsContentsByCursor(site, parseQuery(raw))), 200);
+    return c.json(okBody(await readPublished(c, site, (publishedSite) => listOpenCmsContentsByCursor(publishedSite, parseQuery(raw)))), 200);
   },
 });
 
@@ -111,12 +124,12 @@ const syncRoute = defineContractRoute(openCmsContract.sync, {
     const query = c.req.valid('query');
     const site = await requireSite(query.siteCode);
     try {
-      return c.json(okBody(await syncOpenCmsContents(site, {
+      return c.json(okBody(await readPublished(c, site, (publishedSite) => syncOpenCmsContents(publishedSite, {
         since: query.since ?? null,
         cursor: decodeCmsOpenCursor(query.cursor),
         pageSize: parsePositiveInteger(query.pageSize, 100, 'pageSize', CMS_OPEN_SYNC_PAGE_SIZE_MAX),
         includes: parseCmsOpenIncludes(query.include),
-      })), 200);
+      }))), 200);
     } catch (err) {
       if (err instanceof OpenQueryError) throw new HTTPException(400, { message: err.message });
       throw err;
@@ -130,7 +143,7 @@ const contentDetailRoute = defineContractRoute(openCmsContract.contentDetail, {
   handler: async (c) => {
     const raw = rawQuery(c);
     const site = await requireSite(c.req.valid('query').siteCode);
-    const content = await getOpenCmsContent(site, c.req.valid('param').idOrSlug, parseQuery(raw));
+    const content = await readPublished(c, site, (publishedSite) => getOpenCmsContent(publishedSite, c.req.valid('param').idOrSlug, parseQuery(raw)));
     return c.json(okBody(content), 200);
   },
 });

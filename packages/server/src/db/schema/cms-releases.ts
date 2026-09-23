@@ -14,6 +14,8 @@ export interface CmsDeploymentSnapshot {
   revisions: Array<{ contentId: number; revisionId: number; hash: string }>;
   sitePublicRevision: number;
   createdAt: string;
+  siteCode?: string;
+  artifacts?: Array<{ path: string; checksum: string; size: number }>;
 }
 export const cmsReleases = pgTable('cms_releases', {
   id: idColumn(), siteId: integer().notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),

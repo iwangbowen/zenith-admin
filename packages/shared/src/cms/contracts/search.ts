@@ -46,6 +46,7 @@ export const cmsSearchWordSchema = z.object({
   id: z.int(),
   siteId: z.int(),
   word: z.string().meta({ example: '全文检索' }),
+  synonyms: z.array(z.string()).optional(),
   type: z.enum(CMS_SEARCH_WORD_TYPES),
   groupName: z.string(),
   weight: z.int(),

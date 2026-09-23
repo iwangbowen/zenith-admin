@@ -243,13 +243,19 @@ export async function updateCmsContent(id: number, data: UpdateCmsContentInput, 
     if (!options?.skipAccessCheck) await assertChannelAccess(patch.channelId);
     await ensureChannelForContent(identity.siteId, patch.channelId);
   }
-  if (patch.modelId !== undefined && patch.modelId !== identity.modelId) throw new HTTPException(400, { message: '内容类型创建后不可直接更换，请使用类型转换' });
   if (!options?.skipAccessCheck) {
     if (patch.extraChannelIds) await assertChannelsAccess(patch.extraChannelIds);
     if (patch.relatedIds) await assertRelatedContentAccess(identity.siteId, patch.relatedIds);
   }
   if (patch.externalLink !== undefined) await ensureCmsLinkTargetExists(identity.siteId, patch.externalLink);
   if (isCmsEntityLink(patch.externalLink) && patch.externalLink === buildCmsEntityLink('content', id)) throw new HTTPException(400, { message: '内部链接不能指向内容自身' });
+  const before = await requireCmsWorkingCopy(db, id);
+  if (patch.modelId !== undefined && patch.modelId !== before.snapshot.modelId) throw new HTTPException(400, { message: '内容类型不可直接更换，请使用类型转换' });
+  assertCmsContentVersion(before, expectedVersion);
+  await requireCmsScheduledAtMutationPermission({ current: parseDateTimeInput(before.snapshot.scheduledAt), requested: patch.scheduledAt === undefined ? undefined : parseDateTimeInput(patch.scheduledAt) });
+  const policied = await applyCmsContentPolicies(patch, site, { body: before.snapshot.body, coverImage: before.snapshot.coverImage });
+  await validateCmsModelExtend(before.snapshot.modelId, policied.extend ?? before.snapshot.extend, 'draft', before.snapshot.modelVersionId);
+  await assertContentTemplateBySite(identity.siteId, policied.detailTemplate === undefined ? before.snapshot.detailTemplate : policied.detailTemplate);
   await db.transaction(async (tx) => {
     await lockCmsSiteForMutation(tx, identity.siteId);
     const [locked] = await tx.select().from(cmsContents).where(eq(cmsContents.id, id)).for('update').limit(1);
@@ -257,12 +263,8 @@ export async function updateCmsContent(id: number, data: UpdateCmsContentInput, 
     assertCmsContentUnlocked(locked);
     const working = await requireCmsWorkingCopy(tx, id, true);
     assertCmsContentVersion(working, expectedVersion);
-    await requireCmsScheduledAtMutationPermission({ current: parseDateTimeInput(working.snapshot.scheduledAt), requested: patch.scheduledAt === undefined ? undefined : parseDateTimeInput(patch.scheduledAt) });
-    const policied = await applyCmsContentPolicies(patch, site, { body: working.snapshot.body, coverImage: working.snapshot.coverImage });
     const canonical = await canonicalizeCmsResourceFields(tx, identity.siteId, policied, 'content');
     const snapshot = buildCmsRevisionSnapshot({ ...working.snapshot, ...canonical, modelId: working.snapshot.modelId, ...(canonical.body !== undefined ? { bodyDocument: normalizeCmsContentDocument(canonical.body ?? '', patch.bodyDocument ?? working.snapshot.bodyDocument ?? undefined) } : {}) });
-    await validateCmsModelExtend(snapshot.modelId, snapshot.extend, 'draft');
-    await assertContentTemplateBySite(identity.siteId, snapshot.detailTemplate);
     await assertContentStaticPathFree(tx, identity.siteId, snapshot.staticPath);
     if (snapshot.tagIds.length) {
       const tags = await tx.select({ id: cmsTags.id }).from(cmsTags).where(and(eq(cmsTags.siteId, identity.siteId), inArray(cmsTags.id, snapshot.tagIds)));

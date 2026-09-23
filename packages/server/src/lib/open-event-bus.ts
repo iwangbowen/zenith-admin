@@ -35,6 +35,8 @@ export interface OpenEventInput {
   scope?: { siteId?: number; spaceId?: number };
   data?: Record<string, unknown>;
   eventId?: string;
+  /** Durable producers preserve the original business time when replaying an outbox. */
+  occurredAt?: string;
 }
 
 type Handler = (event: OpenPlatformEvent) => void | Promise<void>;
@@ -59,7 +61,7 @@ class OpenEventBus {
       ...(input.tenantId !== undefined ? { tenantId: input.tenantId } : {}),
       ...(input.scope ? { scope: input.scope } : {}),
       eventId: input.eventId ?? randomUUID(),
-      occurredAt: formatDateTime(new Date()),
+      occurredAt: input.occurredAt ?? formatDateTime(new Date()),
       data: input.data ?? {},
     };
   }

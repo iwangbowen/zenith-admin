@@ -15,6 +15,7 @@
  * syncCmsSiteWebhookSubscription），因此站点级 Webhook 同样享有重试与投递日志。
  */
 import { and, eq } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import type { CmsOpenWebhookEvent } from '@zenith/shared/cms';
 import type { AsyncTask } from '@zenith/shared/tasks';
 import { db } from '../../db';
@@ -38,6 +39,8 @@ interface CmsWebhookPayload {
   siteId: number;
   data: Record<string, unknown>;
   systemTriggered: true;
+  eventId: string;
+  occurredAt: string;
 }
 
 /**
@@ -53,19 +56,13 @@ export async function insertCmsWebhookOutbox(
   data: Record<string, unknown>,
   eventKey: string,
 ): Promise<AsyncTask | null> {
-  try {
     const row = await runWithCurrentUser(SYSTEM_ACTOR, () => persistAsyncTask(executor, {
       taskType: CMS_WEBHOOK_EMIT_TASK,
       title: `CMS 事件外推：${event}`,
-      payload: { event, siteId, data, systemTriggered: true } satisfies CmsWebhookPayload,
+      payload: { event, siteId, data, systemTriggered: true, eventId: randomUUID(), occurredAt: formatDateTime(new Date()) } satisfies CmsWebhookPayload,
       idempotencyKey: `cms-webhook:${eventKey}`.slice(0, 128),
     }));
     return mapAsyncTask(row);
-  } catch (error) {
-    // 事件外推不得阻断内容发布：登记失败只记日志
-    logger.error(`[cms-webhook] 事件 ${event} 登记失败（site #${siteId}）`, error);
-    return null;
-  }
 }
 
 export async function enqueueCmsWebhookEvents(tasks: readonly (AsyncTask | null)[]): Promise<void> {
@@ -114,13 +111,22 @@ export async function buildCmsContentEventData(contentId: number): Promise<Recor
 export async function insertCmsContentWebhookOutbox(
   executor: DbTransaction,
   event: CmsOpenWebhookEvent,
-  content: Pick<CmsContentRow, 'id' | 'siteId' | 'version'>,
+  content: Pick<CmsContentRow, 'id' | 'siteId' | 'version'> & Partial<CmsContentRow>,
 ): Promise<AsyncTask | null> {
+  const [site] = await executor.select({ code: cmsSites.code, name: cmsSites.name })
+    .from(cmsSites).where(eq(cmsSites.id, content.siteId)).limit(1);
   return insertCmsWebhookOutbox(
     executor,
     event,
     content.siteId,
-    { contentId: content.id },
+    {
+      site: { id: content.siteId, code: site?.code ?? null, name: site?.name ?? null },
+      content: {
+        id: content.id, channelId: content.channelId ?? null, title: content.title ?? null,
+        slug: content.slug ?? null, status: content.status ?? null, version: content.version,
+        publishedAt: content.publishedAt ? formatDateTime(content.publishedAt) : null,
+      },
+    },
     `${event}:${content.id}:v${content.version}`,
   );
 }
@@ -137,18 +143,13 @@ export function registerCmsWebhookTaskHandler(): void {
     retryDelayMs: 5000,
     async run(ctx) {
       const payload = ctx.payload as unknown as CmsWebhookPayload;
-      let data = payload.data;
-      // 内容事件只登记 id，emit 前取最新快照，避免 outbox 里存冗余副本
-      if (typeof data.contentId === 'number') {
-        const built = await buildCmsContentEventData(data.contentId);
-        if (!built) return { skipped: true, reason: '内容已不存在' };
-        data = built;
-      }
       // emitAndWait：等订阅者把 delivery 持久化后再算任务成功，失败可由任务中心重试
       await openEventBus.emitAndWait({
         type: payload.event,
         scope: { siteId: payload.siteId },
-        data,
+        data: payload.data,
+        eventId: payload.eventId,
+        occurredAt: payload.occurredAt,
       });
       return { event: payload.event, siteId: payload.siteId };
     },

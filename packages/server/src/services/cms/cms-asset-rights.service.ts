@@ -4,7 +4,7 @@ import { cmsAssetRightsSchema, cmsAssetVersionSchema, cmsResourceContract } from
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { cmsAssetRights, cmsAssetVersions } from '../../db/schema/cms-design';
-import { cmsResources } from '../../db/schema/cms';
+import { cmsContents, cmsResources } from '../../db/schema/cms';
 import { cmsContentRevisions } from '../../db/schema/cms-revisions';
 import type { DbExecutor } from '../../db/types';
 import { requireRow } from '../../lib/db-assert';
@@ -13,6 +13,10 @@ import { pickEntity } from '../../lib/entity-map';
 import { assertSiteAccess } from './cms-sites.service';
 import { ensureCmsAssetVersion } from './cms-design-versions.service';
 import { releaseManagedFiles } from '../files/file-gc.service';
+import { randomUUID } from 'node:crypto';
+import { insertCmsCdnPurgeOutbox } from './cms-cdn.service';
+import { enqueueAsyncTask } from '../../lib/task-center';
+import { invalidateCmsSiteCaches } from './cms-cache.service';
 
 async function requireResource(id: number) {
   const [row] = await db.select().from(cmsResources).where(eq(cmsResources.id, id)).limit(1);
@@ -36,12 +40,19 @@ export async function getCmsAssetRights(id: number) {
 export async function updateCmsAssetRights(id: number, input: BodyOf<typeof cmsResourceContract.updateRights>) {
   const resource = await requireResource(id);
   const values = { ...input, ...(input.expiresAt !== undefined ? { expiresAt: parseDateTimeInput(input.expiresAt) } : {}) };
-  await db.transaction(async (tx) => {
+  const eventKey = `resource:${id}:rights:${randomUUID()}`;
+  const task = await db.transaction(async (tx) => {
     await ensureCmsAssetVersion(tx, id, resource.siteId);
     const [existing] = await tx.select().from(cmsAssetRights).where(eq(cmsAssetRights.resourceId, id)).limit(1);
     if (existing) await tx.update(cmsAssetRights).set(values).where(eq(cmsAssetRights.resourceId, id));
     else await tx.insert(cmsAssetRights).values({ ...values, resourceId: id });
+    await tx.update(cmsContents).set({ version: sql`${cmsContents.version}` }).where(sql`${cmsContents.id} IN (
+      SELECT ${cmsContentRevisions.contentId} FROM ${cmsContentRevisions} WHERE ${cmsContentRevisions.snapshot}->'assetVersions' ? ${String(id)}
+    )`);
+    return insertCmsCdnPurgeOutbox(tx, resource.siteId, eventKey);
   });
+  await invalidateCmsSiteCaches(resource.siteId);
+  await enqueueAsyncTask(task.id).catch(() => undefined);
   return getCmsAssetRights(id);
 }
 
