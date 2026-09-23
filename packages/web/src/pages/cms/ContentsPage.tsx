@@ -25,7 +25,7 @@ import { CmsSiteSelect } from './CmsSiteSelect';
 import { CmsWidgetSourceRefsSheet, type CmsWidgetSourceTarget } from './CmsWidgetSourceRefsSheet';
 import { CreateButton } from '@/components/toolbar-controls';
 import { FilterSelect, KeywordInput, DateRangeFilter } from '@/components/search-filters';
-import { DATE_TIME_COLUMN_WIDTH, EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
+import { DATE_TIME_COLUMN_WIDTH, EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import OverflowTagList, { type OverflowTagItem } from '@/components/OverflowTagList';
 import { abortSubmit } from '@/lib/abort-submit';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
@@ -389,7 +389,8 @@ export default function ContentsPage() {
         );
       },
     },
-    { title: '栏目', dataIndex: 'channelName', width: 110 },
+    // 栏目名可达 190+px（如 QA-CMS-20260923-核验栏目），110 定宽下折成三行：按内容宽加宽并单行省略
+    { title: '栏目', dataIndex: 'channelName', width: 240, render: renderEllipsis },
     {
       title: '属性', dataIndex: 'hasImage', width: 90,
       render: (_: boolean, record) => {
