@@ -329,7 +329,7 @@ export default function PublishingPage() {
 
       <AppModal title="新建 CMS 发布" visible={submitVisible} onCancel={() => setSubmitVisible(false)} onOk={() => void submitBuild()} confirmLoading={submitMutation.isPending} width={560} closeOnEsc>
         <Form labelPosition="left" labelWidth={90}>
-          <Space vertical spacing={12} style={{ width: '100%' }}>
+          <Space vertical align="start" spacing={12} style={{ width: '100%' }}>
           <Select prefix="站点" optionList={siteOptions} value={submitForm.siteId} onChange={(value) => setSubmitForm((prev) => ({ ...prev, siteId: Number(value), contentIds: [], channelId: undefined, pageId: undefined }))} style={{ width: '100%' }} />
           <Select prefix="目标" optionList={CMS_PUBLISH_TARGET_TYPES.filter((value) => ['content', 'contents', 'channel', 'site', 'page'].includes(value)).map((value) => ({ value, label: CMS_PUBLISH_TARGET_TYPE_LABELS[value] }))} value={submitForm.targetType} onChange={(value) => setSubmitForm((prev) => ({ ...prev, targetType: value as CmsPublishTargetType }))} style={{ width: '100%' }} />
           {['content', 'contents'].includes(submitForm.targetType) ? <CmsContentReferenceInput siteId={submitForm.siteId} multiple value={submitForm.contentIds} onChange={(value) => setSubmitForm((prev) => ({ ...prev, contentIds: Array.isArray(value) ? value : [] }))} /> : null}

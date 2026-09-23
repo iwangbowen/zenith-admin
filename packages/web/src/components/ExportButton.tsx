@@ -74,7 +74,7 @@ export function ExportButton({
 
   if (isFlat) {
     return (
-      <Space vertical spacing={8} className={rootClassName} style={{ width: '100%' }}>
+      <Space vertical align="start" spacing={8} className={rootClassName} style={{ width: '100%' }}>
         {formats.map((format) => (
           <Button
             key={format}

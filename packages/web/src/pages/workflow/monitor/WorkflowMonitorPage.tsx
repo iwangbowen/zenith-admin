@@ -811,7 +811,7 @@ export default function WorkflowMonitorPage() {
           {focusDiagnosis.activeTasks.length > 0 && (
             <div style={{ marginTop: 12 }}>
               <Typography.Text type="tertiary" size="small">当前活动任务</Typography.Text>
-              <Space vertical spacing={6} style={{ width: '100%', marginTop: 6 }}>
+              <Space vertical align="start" spacing={6} style={{ width: '100%', marginTop: 6 }}>
                 {focusDiagnosis.activeTasks.slice(0, 3).map((task) => (
                   <div
                     key={task.id}
@@ -820,6 +820,7 @@ export default function WorkflowMonitorPage() {
                       alignItems: 'center',
                       gap: 10,
                       flexWrap: 'wrap',
+                      width: '100%',
                       padding: '7px 10px',
                       border: '1px solid var(--semi-color-fill-1)',
                       borderRadius: 'var(--semi-border-radius-medium)',
