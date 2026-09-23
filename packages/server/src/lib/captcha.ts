@@ -54,10 +54,3 @@ export async function verifyCaptcha(captchaId: string, code: string): Promise<bo
   return expected.toLowerCase() === code.trim().toLowerCase();
 }
 
-/**
- * 兼容既有定时任务（`cleanExpiredCaptchas`）：验证码改由 Redis TTL 自动过期，不再需要清理，
- * 但保留导出与 handler 注册，避免已初始化的环境里 cron 任务找不到处理器。
- */
-export async function cleanExpiredCaptchas(): Promise<number> {
-  return 0;
-}

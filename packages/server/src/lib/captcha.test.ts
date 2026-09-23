@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import redis from './redis';
-import { generateCaptcha, verifyCaptcha, cleanExpiredCaptchas, resolveCaptchaComplexity } from './captcha';
+import { generateCaptcha, verifyCaptcha, resolveCaptchaComplexity } from './captcha';
 
 const state = vi.hoisted(() => ({ store: new Map<string, string>() }));
 
@@ -86,9 +86,5 @@ describe('captcha', () => {
   it('Redis 故障按校验失败处理（不把异常抛给登录链路）', async () => {
     redisMock.getdel.mockRejectedValueOnce(new Error('redis down'));
     expect(await verifyCaptcha('any-id', '42')).toBe(false);
-  });
-
-  it('cleanExpiredCaptchas 为兼容既有定时任务保留的空实现', async () => {
-    expect(await cleanExpiredCaptchas()).toBe(0);
   });
 });

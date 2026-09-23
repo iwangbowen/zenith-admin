@@ -55,7 +55,6 @@ vi.mock('pg-boss', () => ({ PgBoss: fake.PgBoss }));
 vi.mock('./logger', () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock('./alert-dispatch', () => ({ dispatchAlertChannels: vi.fn() }));
 vi.mock('./db-backup', () => ({ createPgDumpBackup: vi.fn(), createDrizzleExportBackup: vi.fn() }));
-vi.mock('./captcha', () => ({ cleanExpiredCaptchas: vi.fn() }));
 vi.mock('../services/messaging/notification-outbox.service', () => ({ notify: vi.fn() }));
 // 任意链式查询都能走通的 db 替身：insert 链解析为一行 { id: 1 }（returning），其余解析为空结果
 vi.mock('../db', () => {
