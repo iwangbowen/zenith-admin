@@ -1,7 +1,9 @@
+import { cmsBodyDocumentSchema } from '../document';
 import * as z from 'zod';
 import { batchIdsBody, dateRangeQuery, idParam, idQuery, keywordQuery, paginated, paginationQuery, queryBool, queryEnum, requiredIdQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
 import { CMS_CONTENT_STATUSES, CMS_CONTENT_TYPES } from '../constants';
+import { CMS_EDITORIAL_STATUSES, cmsContentCasSchema, cmsContentBatchCasSchema } from '../content-revision';
 import type { CmsLinkTarget } from '../link';
 import {
   batchCmsContentFlagsSchema,
@@ -17,6 +19,7 @@ import {
   rejectCmsContentSchema,
   updateCmsContentSchema,
 } from '../validation';
+import { cmsModelFieldViewSchema } from './models';
 import { cmsTagSchema } from './tags';
 import { workflowBusinessApprovalQuery, workflowBusinessContextQuery, workflowBusinessContextSchema, workflowBusinessPreviewSchema } from '../../workflow/contracts/business';
 
@@ -66,6 +69,11 @@ export const cmsContentMediaDataSchema = z.object({
 export type CmsContentMediaData = z.infer<typeof cmsContentMediaDataSchema>;
 
 export const cmsContentSchema = z.object({
+  ownerId: z.int().nullable(),
+  locale: z.string(),
+  translationOfId: z.int().nullable(),
+  sourceRevisionId: z.int().nullable(),
+  dueAt: z.string().nullable(),
   id: z.int(),
   siteId: z.int(),
   channelId: z.int(),
@@ -103,6 +111,17 @@ export const cmsContentSchema = z.object({
   hasVideo: z.boolean().optional().meta({ description: '含视频（保存时自动检测）' }),
   hasAttachment: z.boolean().optional().meta({ description: '含附件（保存时自动检测）' }),
   status: cmsContentStatusSchema,
+  editorialStatus: z.enum(CMS_EDITORIAL_STATUSES),
+  publishedRevisionId: z.int().nullable(),
+  submittedRevisionId: z.int().nullable(),
+  approvedRevisionId: z.int().nullable(),
+  hasUnpublishedChanges: z.boolean(),
+  bodyDocument: cmsBodyDocumentSchema.nullable().optional(),
+  modelVersionId: z.int().nullable().optional(),
+  modelFields: z.array(cmsModelFieldViewSchema).optional(),
+  revisionId: z.int().optional(),
+  contentHash: z.string().optional(),
+  assetVersions: z.record(z.string(), z.int()).optional(),
   rejectReason: z.string().nullable(),
   publishedAt: z.string().nullable(),
   scheduledAt: z.string().nullable(),
@@ -161,6 +180,9 @@ export const cmsContentVersionSchema = z.object({
   version: z.int(),
   title: z.string(),
   snapshot: z.record(z.string(), z.unknown()),
+  hash: z.string(),
+  kind: z.string(),
+  sourceVersion: z.int(),
   remark: z.string().nullable(),
   createdByName: z.string().nullable().optional(),
   createdAt: z.string(),
@@ -194,6 +216,8 @@ export type CmsEditLock = z.infer<typeof cmsEditLockSchema>;
 export const cmsPreviewLinkSchema = z.object({
   url: z.string().meta({ example: '/__cms/main/preview/1?exp=1789000000&sig=abc' }),
   expiresAt: z.string(),
+  revisionId: z.int(),
+  grantId: z.string(),
 }).meta({ id: 'CmsPreviewLink' });
 
 export type CmsPreviewLink = z.infer<typeof cmsPreviewLinkSchema>;
@@ -256,9 +280,15 @@ export type CmsContentBatchStatusResult = z.infer<typeof cmsContentBatchStatusRe
 // ─── 入参 ────────────────────────────────────────────────────────────────────
 
 export const cmsContentListQuery = paginationQuery.extend({
+  modelId: idQuery(),
+  ownerId: idQuery(),
+  locale: z.string().max(35).optional(),
+  hasUnpublishedChanges: queryBool(),
+  tags: z.string().regex(/^\d+(?:,\d+)*$/).optional(),
   siteId: requiredIdQuery(),
   channelId: idQuery(),
   status: queryEnum(CMS_CONTENT_STATUSES),
+  editorialStatus: queryEnum(CMS_EDITORIAL_STATUSES),
   contentType: queryEnum(CMS_CONTENT_TYPES),
   keyword: keywordQuery(),
   isTop: queryBool(),
@@ -296,30 +326,31 @@ export const cmsContentContract = defineContract('/api/cms/contents', {
   detail: op.get('/{id}', { access: { permission: 'cms:content:list' }, params: idParam, response: cmsContentSchema, summary: '内容详情' }),
   create: op.post('/', { access: { permission: 'cms:content:create' }, audit: '创建 CMS 内容', body: createCmsContentSchema, response: cmsContentSchema, summary: '创建内容（默认草稿）' }),
   update: op.put('/{id}', { access: { permission: 'cms:content:update' }, audit: '更新 CMS 内容', params: idParam, body: updateCmsContentSchema, response: cmsContentSchema, summary: '更新内容' }),
-  submit: op.post('/{id}/submit', { access: { permission: 'cms:content:update' }, audit: '提交 CMS 内容审核', params: idParam, response: cmsContentSchema, summary: '提交审核' }),
-  publish: op.post('/{id}/publish', { access: { permission: 'cms:content:publish' }, audit: '发布 CMS 内容', params: idParam, response: cmsContentSchema, summary: '发布（直接发布或审核通过）' }),
+  submit: op.post('/{id}/submit', { access: { permission: 'cms:content:update' }, audit: '提交 CMS 内容审核', params: idParam, body: cmsContentCasSchema, response: cmsContentSchema, summary: '提交审核' }),
+  publish: op.post('/{id}/publish', { access: { permission: 'cms:content:publish' }, audit: '发布 CMS 内容', params: idParam, body: cmsContentCasSchema, response: cmsContentSchema, summary: '发布（直接发布或审核通过）' }),
   reject: op.post('/{id}/reject', { access: { permission: 'cms:content:audit' }, audit: '驳回 CMS 内容', params: idParam, body: rejectCmsContentSchema, response: cmsContentSchema, summary: '驳回' }),
-  offline: op.post('/{id}/offline', { access: { permission: 'cms:content:publish' }, audit: '下线 CMS 内容', params: idParam, response: cmsContentSchema, summary: '下线' }),
-  recycle: op.post('/recycle', { access: { permission: 'cms:content:delete' }, audit: 'CMS 内容移入回收站', body: batchIdsBody, summary: '移入回收站（批量）' }),
-  restore: op.post('/restore', { access: { permission: 'cms:content:delete' }, audit: 'CMS 内容从回收站恢复', body: batchIdsBody, summary: '从回收站恢复（批量，恢复为草稿）' }),
-  purge: op.post('/purge', { access: { permission: 'cms:content:delete' }, audit: 'CMS 内容彻底删除', body: batchIdsBody, summary: '彻底删除（批量，仅限回收站内容）' }),
+  offline: op.post('/{id}/offline', { access: { permission: 'cms:content:publish' }, audit: '下线 CMS 内容', params: idParam, body: cmsContentCasSchema, response: cmsContentSchema, summary: '下线' }),
+  recycle: op.post('/recycle', { access: { permission: 'cms:content:delete' }, audit: 'CMS 内容移入回收站', body: cmsContentBatchCasSchema, summary: '移入回收站（批量）' }),
+  restore: op.post('/restore', { access: { permission: 'cms:content:delete' }, audit: 'CMS 内容从回收站恢复', body: cmsContentBatchCasSchema, summary: '从回收站恢复（批量，恢复为草稿）' }),
+  purge: op.post('/purge', { access: { permission: 'cms:content:delete' }, audit: 'CMS 内容彻底删除', body: cmsContentBatchCasSchema, summary: '彻底删除（批量，仅限回收站内容）' }),
   versions: op.get('/{id}/versions', { access: { permission: 'cms:content:list' }, params: idParam, response: z.array(cmsContentVersionSchema), summary: '内容版本历史' }),
-  restoreVersion: op.post('/{id}/versions/{versionId}/restore', { access: { permission: 'cms:content:update' }, audit: 'CMS 内容版本回滚', params: cmsContentVersionParam, response: cmsContentSchema, summary: '回滚到指定版本（回滚前自动留档当前状态）' }),
+  restoreVersion: op.post('/{id}/versions/{versionId}/restore', { access: { permission: 'cms:content:update' }, audit: 'CMS 内容版本回滚', params: cmsContentVersionParam, body: cmsContentCasSchema, response: cmsContentSchema, summary: '回滚到指定版本（回滚前自动留档当前状态）' }),
   versionDiff: op.get('/{id}/versions/{versionId}/diff', { access: { permission: 'cms:content:list' }, params: cmsContentVersionParam, response: z.array(cmsContentVersionDiffSchema), summary: '版本差异对比（历史版本 vs 当前内容，仅返回变更字段）' }),
   acquireEditLock: op.post('/{id}/edit-lock', { access: { permission: 'cms:content:update' }, params: idParam, response: cmsEditLockSchema, summary: '抢占/续期内容编辑锁（软锁，防多人同编相互覆盖）' }),
   releaseEditLock: op.delete('/{id}/edit-lock', { access: { permission: 'cms:content:update' }, params: idParam, summary: '释放内容编辑锁（仅持有人生效）' }),
   previewLink: op.post('/{id}/preview-link', { access: { permission: 'cms:content:list' }, params: idParam, response: cmsPreviewLinkSchema, summary: '生成草稿预览链接（签名临时链接，默认 2 小时有效）' }),
+  revokePreview: op.post('/{id}/preview-links/{grantId}/revoke', { access: { permission: 'cms:content:update' }, params: idParam.extend({ grantId: z.uuid() }), summary: '撤销固定修订预览链接' }),
   batchMove: op.post('/batch-move', { access: { permission: 'cms:content:update' }, audit: 'CMS 内容批量移动', body: batchMoveCmsContentsSchema, summary: '批量移动栏目' }),
   batchFlags: op.post('/batch-flags', { access: { permission: 'cms:content:update' }, audit: 'CMS 内容批量设置属性', body: batchCmsContentFlagsSchema, summary: '批量设置属性（置顶/推荐/热门/原创）' }),
   batchTag: op.post('/batch-tag', { access: { permission: 'cms:content:update' }, audit: 'CMS 内容批量打标', body: batchTagCmsContentsSchema, summary: '批量追加标签' }),
   batchStatus: op.post('/batch-status', { access: { permission: ['cms:content:update', 'cms:content:publish', 'cms:content:audit'] }, audit: 'CMS 内容批量状态流转', body: batchCmsContentStatusSchema, response: cmsContentBatchStatusResultSchema, summary: '批量状态流转（提审/发布/驳回/下线），逐条独立校验并返回部分成功明细' }),
   duplicate: op.post('/{id}/duplicate', { access: { permission: 'cms:content:create' }, audit: 'CMS 内容复制', params: idParam, body: duplicateCmsContentSchema, response: cmsContentSchema, summary: '复制为草稿（可指定本站其他栏目）' }),
   distribute: op.post('/distribute', { access: { permission: 'cms:distribution:run' }, audit: 'CMS 内容站群分发', body: distributeCmsContentsSchema, summary: '站群分发（创建可独立编辑的完整快照）' }),
-  archive: op.post('/archive', { access: { permission: 'cms:content:update' }, audit: 'CMS 内容归档', body: batchIdsBody, summary: '归档（批量，仅已发布/已下线内容；前台详情保留，不参与列表聚合）' }),
-  unarchive: op.post('/unarchive', { access: { permission: 'cms:content:update' }, audit: 'CMS 内容取消归档', body: batchIdsBody, summary: '取消归档（批量）' }),
+  archive: op.post('/archive', { access: { permission: 'cms:content:update' }, audit: 'CMS 内容归档', body: cmsContentBatchCasSchema, summary: '归档（批量，仅已发布/已下线内容；前台详情保留，不参与列表聚合）' }),
+  unarchive: op.post('/unarchive', { access: { permission: 'cms:content:update' }, audit: 'CMS 内容取消归档', body: cmsContentBatchCasSchema, summary: '取消归档（批量）' }),
   opLogs: op.get('/{id}/op-logs', { access: { permission: 'cms:content:list' }, params: idParam, response: z.array(cmsContentOpLogSchema), summary: '内容操作日志时间线（新→旧，最近 100 条）' }),
   checkText: op.post('/check-text', { access: { permission: 'cms:content:update' }, body: checkCmsTextSchema, response: cmsTextCheckResultSchema, summary: '内容词库检查（敏感词 + 易错词命中清单，编辑辅助）' }),
   lock: op.post('/{id}/lock', { access: { permission: 'cms:content:lock' }, audit: '持久锁定 CMS 内容', params: idParam, body: lockCmsContentSchema, response: cmsContentLockStateSchema, summary: '持久锁定内容（取消待执行计划发布时间）' }),
-  unlock: op.post('/{id}/unlock', { access: { permission: 'cms:content:lock' }, audit: '解除 CMS 内容持久锁', params: idParam, summary: '解除内容持久锁' }),
+  unlock: op.post('/{id}/unlock', { access: { permission: 'cms:content:lock' }, audit: '解除 CMS 内容持久锁', params: idParam, body: cmsContentCasSchema, summary: '解除内容持久锁' }),
 }, { auditModule: 'CMS内容管理', tags: ['CMS-内容管理'] });
 

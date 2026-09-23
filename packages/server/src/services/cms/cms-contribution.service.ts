@@ -1,3 +1,5 @@
+import { assertCmsContentVersion, cmsRevisionToContentRow, initializeCmsContentWorkingCopy, requireCmsWorkingCopy, writeCmsSystemWorkingCopy } from './cms-content-revisions.service';
+import type { CmsEditorialStatus } from '@zenith/shared/cms';
 /**
  * 会员投稿（前台 C 端）：会员在 member SPA 提交内容 → 进入 CMS 审核（简单/工作流按站点配置）。
  * 全部按 currentMemberId() 过滤防越权；发布仍走后台既有审核/发布管道。
@@ -7,7 +9,7 @@ import { buildListResult } from '../../lib/list-query';
 import { and, desc, eq, isNull, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { cmsContents, cmsChannels, cmsSites, members } from '../../db/schema';
+import { cmsContents, cmsChannels, cmsSites, members, cmsContentWorkingCopies } from '../../db/schema';
 import type { CmsContentRow } from '../../db/schema';
 import { formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import { buildWhere, withPagination } from '../../lib/where-helpers';
@@ -26,7 +28,7 @@ import {
 
 const CONTRIBUTION_SOURCE = '会员投稿';
 
-function mapContribution(row: CmsContentRow, channelName?: string | null) {
+function mapContribution(row: CmsContentRow & { editorialStatus?: CmsEditorialStatus }, channelName?: string | null) {
   return {
     id: row.id,
     siteId: row.siteId,
@@ -37,6 +39,8 @@ function mapContribution(row: CmsContentRow, channelName?: string | null) {
     coverImage: row.coverImage ?? null,
     body: row.body ?? null,
     status: row.status,
+    editorialStatus: row.editorialStatus ?? 'draft',
+    version: row.version,
     rejectReason: row.rejectReason ?? null,
     publishedAt: formatNullableDateTime(row.publishedAt),
     viewCount: row.viewCount,
@@ -45,6 +49,13 @@ function mapContribution(row: CmsContentRow, channelName?: string | null) {
 }
 
 async function resolveContributionRows(rows: readonly CmsContentRow[]): Promise<(CmsContentRow & { coverThumb: string | null })[]> {
+  const workingRows = rows.length ? await db.select().from(cmsContentWorkingCopies).where(inArray(cmsContentWorkingCopies.contentId, rows.map((row) => row.id))) : [];
+  const workingMap = new Map(workingRows.map((working) => [working.contentId, working]));
+  rows = rows.map((row) => {
+    const working = workingMap.get(row.id);
+    if (!working) throw new HTTPException(409, { message: '投稿缺少工作稿' });
+    return { ...cmsRevisionToContentRow(row, working.snapshot), version: working.version, editorialStatus: working.editorialStatus, rejectReason: working.rejectReason };
+  });
   const resolved = new Array<CmsContentRow & { coverThumb: string | null }>(rows.length);
   const groups = new Map<number, number[]>();
   rows.forEach((row, index) => groups.set(row.siteId, [...(groups.get(row.siteId) ?? []), index]));
@@ -118,7 +129,8 @@ export async function getMyContribution(id: number) {
   const [channel] = await db.select({ name: cmsChannels.name }).from(cmsChannels).where(and(
     eq(cmsChannels.id, row.channelId),
   )).limit(1);
-  return mapContribution(await resolveCmsContentRow(row, row.siteId), channel?.name);
+  const [resolved] = await resolveContributionRows([row]);
+  return mapContribution(resolved, channel?.name);
 }
 
 async function ensureContributableChannel(siteId: number, channelId: number) {
@@ -173,18 +185,21 @@ export async function createContribution(input: ContributionInput) {
       memberId,
       searchVector: contentSearchVector(input.siteId, { title: policy.title, summary: policy.summary ?? null, body }),
     }).returning();
+    await initializeCmsContentWorkingCopy(tx, row);
     await syncCmsResourceRefs(tx, 'content', row.id, row.siteId, row);
     return row;
   });
-  await submitCmsContent(created.id, { skipAccessCheck: true });
+  await submitCmsContent(created.id, { expectedVersion: 1, skipAccessCheck: true });
   return getMyContribution(created.id);
 }
 
 /** 修改被驳回/草稿投稿并重新提交审核 */
-export async function updateMyContribution(id: number, input: Omit<ContributionInput, 'siteId'>) {
+export async function updateMyContribution(id: number, input: Omit<ContributionInput, 'siteId'> & { expectedVersion: number }) {
   const row = await getOwnContribution(id);
   assertCmsContentUnlocked(row);
-  if (row.status !== 'draft' && row.status !== 'rejected') {
+  const working = await requireCmsWorkingCopy(db, id);
+  assertCmsContentVersion(working, input.expectedVersion);
+  if (working.editorialStatus !== 'draft' && working.editorialStatus !== 'rejected') {
     throw new HTTPException(400, { message: '仅草稿或被驳回的投稿可修改' });
   }
   await ensureContributableChannel(row.siteId, input.channelId);
@@ -198,27 +213,22 @@ export async function updateMyContribution(id: number, input: Omit<ContributionI
   if (!body.trim()) throw new HTTPException(400, { message: '正文净化后不能为空' });
   await db.transaction(async (tx) => {
     const canonical = await canonicalizeCmsResourceFields(tx, row.siteId, { body }, 'content');
-    const [updated] = await tx.update(cmsContents).set({
-      channelId: input.channelId,
-      title: policy.title,
-      summary: policy.summary ?? null,
-      body: canonical.body,
-      searchVector: contentSearchVector(row.siteId, { title: policy.title, summary: policy.summary ?? null, body }),
-    }).where(and(eq(cmsContents.id, id), isNull(cmsContents.lockedAt))).returning();
-    if (updated) await syncCmsResourceRefs(tx, 'content', updated.id, updated.siteId, updated);
+    await writeCmsSystemWorkingCopy(tx, row, { channelId: input.channelId, title: policy.title, summary: policy.summary ?? null, body: canonical.body }, input.expectedVersion);
   });
-  await submitCmsContent(id, { skipAccessCheck: true });
+  await submitCmsContent(id, { expectedVersion: input.expectedVersion + 1, skipAccessCheck: true });
   return getMyContribution(id);
 }
 
 /** 删除投稿（仅草稿/被驳回；已发布内容不可自行删除） */
-export async function deleteMyContribution(id: number) {
+export async function deleteMyContribution(id: number, expectedVersion: number) {
   const row = await getOwnContribution(id);
   assertCmsContentUnlocked(row);
-  if (row.status !== 'draft' && row.status !== 'rejected') {
+  const working = await requireCmsWorkingCopy(db, id);
+  if (working.editorialStatus !== 'draft' && working.editorialStatus !== 'rejected') {
     throw new HTTPException(400, { message: '仅草稿或被驳回的投稿可删除' });
   }
   await db.transaction(async (tx) => {
+    assertCmsContentVersion(await requireCmsWorkingCopy(tx, id, true), expectedVersion);
     const deleted = await tx.delete(cmsContents)
       .where(and(eq(cmsContents.id, id), isNull(cmsContents.lockedAt)))
       .returning({ id: cmsContents.id });

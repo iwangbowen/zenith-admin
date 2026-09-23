@@ -69,6 +69,12 @@ export function eventVars<V extends Record<string, unknown>>(): V {
 }
 
 export const NOTIFICATION_EVENTS = defineNotificationEvents({
+  'cms.content.mentioned': {
+    group: 'cms', label: '审稿批注提及', severity: 'normal',
+    defaultChannels: ['inapp'], availableChannels: ['inapp'],
+    vars: eventVars<{ contentId: number; noteId: number }>(),
+    title: '内容审稿批注提及了你', content: '请打开内容工作台查看批注。内容详情仍按你的访问权限展示。',
+  },
   'platform.entity.changed': {
     group: 'platform', label: '关注对象的业务变化', severity: 'normal',
     defaultChannels: ['inapp'], availableChannels: ['inapp', 'email'],

@@ -1,14 +1,14 @@
+import { requireCmsContentAccess } from './cms-content-access.service';
+import { assertCmsContentVersion, requireCmsWorkingCopy } from './cms-content-revisions.service';
 import { requireRow } from '../../lib/db-assert';
 import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { cmsContents } from '../../db/schema';
+import { cmsContents, cmsContentWorkingCopies } from '../../db/schema';
 import type { CmsContentRow } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
-import { assertChannelAccess } from './cms-channels.service';
 import { logContentOp } from './cms-content-op-logs.service';
-import { assertSiteAccess } from './cms-sites.service';
 
 function lockedMessage(row: Pick<CmsContentRow, 'id' | 'lockReason'>): string {
   return `内容 #${row.id} 已被持久锁定${row.lockReason ? `：${row.lockReason}` : ''}`;
@@ -49,14 +49,15 @@ export async function assertNoLockedCmsMappedCopies(sourceIds: number | number[]
   if (locked) throw new HTTPException(423, { message: lockedMessage(locked) });
 }
 
-export async function lockCmsContent(id: number, reason: string) {
-  const current = requireRow(await db.query.cmsContents.findFirst({ where: eq(cmsContents.id, id) }), '内容不存在');
-  await assertSiteAccess(current.siteId);
-  await assertChannelAccess(current.channelId);
+export async function lockCmsContent(id: number, reason: string, expectedVersion?: number) {
+  const current = await requireCmsContentAccess(id);
   if (current.lockedAt) throw new HTTPException(409, { message: lockedMessage(current) });
   const user = currentUser();
   const now = new Date();
   const updated = await db.transaction(async (tx) => {
+    const working = await requireCmsWorkingCopy(tx, id, true);
+    assertCmsContentVersion(working, expectedVersion);
+    await tx.update(cmsContentWorkingCopies).set({ version: sql`${cmsContentWorkingCopies.version} + 1` }).where(eq(cmsContentWorkingCopies.contentId, id));
     const [row] = await tx.update(cmsContents).set({
       lockedAt: now,
       lockedBy: user.userId,
@@ -75,12 +76,13 @@ export async function lockCmsContent(id: number, reason: string) {
   };
 }
 
-export async function unlockCmsContent(id: number) {
-  const current = requireRow(await db.query.cmsContents.findFirst({ where: eq(cmsContents.id, id) }), '内容不存在');
-  await assertSiteAccess(current.siteId);
-  await assertChannelAccess(current.channelId);
+export async function unlockCmsContent(id: number, expectedVersion?: number) {
+  const current = await requireCmsContentAccess(id);
   if (!current.lockedAt) return;
   await db.transaction(async (tx) => {
+    const working = await requireCmsWorkingCopy(tx, id, true);
+    assertCmsContentVersion(working, expectedVersion);
+    await tx.update(cmsContentWorkingCopies).set({ version: sql`${cmsContentWorkingCopies.version} + 1` }).where(eq(cmsContentWorkingCopies.contentId, id));
     const [row] = await tx.update(cmsContents).set({
       lockedAt: null,
       lockedBy: null,

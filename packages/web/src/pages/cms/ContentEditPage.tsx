@@ -120,7 +120,7 @@ function parseFieldDefault(field: CmsModelField): unknown {
 }
 
 /** 按模型字段元数据渲染动态表单控件（值写入 extend.{name}）；applyDefault 仅新建内容时生效 */
-function ModelFieldControl({ field, applyDefault, canUpload }: Readonly<{ field: CmsModelField; applyDefault?: boolean; canUpload: boolean }>) {
+function ModelFieldControl({ field, applyDefault, canUpload, siteId }: Readonly<{ field: CmsModelField; applyDefault?: boolean; canUpload: boolean; siteId?: number }>) {
   const f = `extend.${field.name}`;
   // 必填不挂表单 rules：草稿保存必须放行缺失的模型必填（写一半先存是常态），
   // 提审/发布时由服务端按模型定义强校验并给出逐字段错误提示
@@ -135,6 +135,7 @@ function ModelFieldControl({ field, applyDefault, canUpload }: Readonly<{ field:
     <CmsModelFieldControl
       field={field}
       common={common}
+      siteId={siteId}
       richtext={{ rows: 5, placeholder: field.placeholder ?? '支持 HTML' }}
       media={<MediaFieldControl field={field} canUpload={canUpload} />}
     />
@@ -907,7 +908,7 @@ export default function ContentEditPage() {
                   <Row gutter={16}>
                     {modelFields.map((f) => (
                       <Col key={f.name} span={f.fieldType === 'textarea' || f.fieldType === 'richtext' ? 24 : 12}>
-                        <ModelFieldControl field={f} applyDefault={!detail} canUpload={canUploadResources} />
+                        <ModelFieldControl field={f} applyDefault={!detail} canUpload={canUploadResources} siteId={siteId} />
                       </Col>
                     ))}
                   </Row>

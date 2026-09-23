@@ -129,9 +129,9 @@ export async function createOpenCmsContent(
     } as Parameters<typeof createCmsContent>[0]);
     if (!created) throw new HTTPException(500, { message: '内容创建失败' });
     if (publish) {
-      await publishCmsContent(created.id, { skipAccessCheck: true });
+      await publishCmsContent(created.id, { expectedVersion: created.version, skipAccessCheck: true });
     } else {
-      await submitCmsContent(created.id, { skipAccessCheck: true });
+      await submitCmsContent(created.id, { expectedVersion: created.version, skipAccessCheck: true });
     }
     return getCmsContent(created.id);
   });
@@ -140,7 +140,7 @@ export async function createOpenCmsContent(
 export interface OpenUpdateContentInput extends Partial<Omit<OpenCreateContentInput, 'channel' | 'publish'>> {
   channel?: string;
   /** 乐观锁：与当前 version 不一致返回 409 */
-  expectedVersion?: number;
+  expectedVersion: number;
 }
 
 export async function updateOpenCmsContent(
@@ -162,11 +162,11 @@ export async function updateOpenCmsContent(
   });
 }
 
-export async function submitOpenCmsContent(site: CmsSiteRow, clientId: string, id: number) {
+export async function submitOpenCmsContent(site: CmsSiteRow, clientId: string, id: number, expectedVersion: number) {
   const access = await assertCmsOpenWriteAccess(clientId, site.id);
   await ensureWritableContent(site, access, id);
   return withOpenApiActor(access, ['cms:content:submit'], async () => {
-    await submitCmsContent(id, { skipAccessCheck: true });
+    await submitCmsContent(id, { expectedVersion, skipAccessCheck: true });
     return getCmsContent(id);
   });
 }
@@ -176,21 +176,22 @@ export async function publishOpenCmsContent(
   clientId: string,
   hasPublishScope: boolean,
   id: number,
+  expectedVersion: number,
 ) {
   const access = await assertCmsOpenWriteAccess(clientId, site.id);
   await assertCmsOpenPublishAllowed(access, hasPublishScope);
   await ensureWritableContent(site, access, id);
   return withOpenApiActor(access, ['cms:content:publish'], async () => {
-    await publishCmsContent(id, { skipAccessCheck: true });
+    await publishCmsContent(id, { expectedVersion, skipAccessCheck: true });
     return getCmsContent(id);
   });
 }
 
 /** 删除即移入回收站；彻底删除只能由后台执行 */
-export async function recycleOpenCmsContent(site: CmsSiteRow, clientId: string, id: number) {
+export async function recycleOpenCmsContent(site: CmsSiteRow, clientId: string, id: number, expectedVersion: number) {
   const access = await assertCmsOpenWriteAccess(clientId, site.id);
   await ensureWritableContent(site, access, id);
   return withOpenApiActor(access, ['cms:content:delete'], async () => {
-    await recycleCmsContents([id]);
+    await recycleCmsContents([id], { [String(id)]: expectedVersion });
   });
 }

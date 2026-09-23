@@ -1,3 +1,4 @@
+import { cmsContentWorkingCopies } from '../../db/schema/cms-revisions';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { eq, asc, and, inArray, isNull, isNotNull } from 'drizzle-orm';
@@ -427,54 +428,12 @@ export async function mergeCmsChannels(sourceIds: number[], targetId: number): P
   await assertCmsContentsUnlocked(sourceContents.map((row) => row.id));
   await assertCmsWidgetSourcesMutable('channel', uniqueSources);
 
-  const mutation = await db.transaction(async (tx) => {
-    const site = await lockCmsSiteForMutation(tx, target.siteId);
-    await assertCmsWidgetSourcesMutable('channel', uniqueSources, tx);
-    // 主栏目迁移（含回收站内容，保证来源栏目可删）
-    const moved = await tx.update(cmsContents)
-      .set({ channelId: targetId, modelId: target.modelId ?? null })
-      .where(and(inArray(cmsContents.channelId, uniqueSources), isNull(cmsContents.lockedAt)))
-      .returning({ id: cmsContents.id });
-    // 副栏目绑定重指向：先清掉「已在目标栏目/主栏目即目标」的冗余绑定，再整体改指向
-    await tx.delete(cmsContentChannels).where(and(
-      inArray(cmsContentChannels.channelId, uniqueSources),
-      inArray(cmsContentChannels.contentId, tx.select({ id: cmsContents.id }).from(cmsContents).where(and(
-        eq(cmsContents.channelId, targetId),
-      ))),
-    ));
-    await tx.delete(cmsContentChannels).where(and(
-      inArray(cmsContentChannels.channelId, uniqueSources),
-      inArray(cmsContentChannels.contentId, tx.select({ contentId: cmsContentChannels.contentId }).from(cmsContentChannels).where(and(
-        eq(cmsContentChannels.channelId, targetId),
-      ))),
-    ));
-    await tx.update(cmsContentChannels)
-      .set({ channelId: targetId })
-      .where(and(
-        inArray(cmsContentChannels.channelId, uniqueSources),
-      ));
-    await tx.update(cmsCollectRules)
-      .set({ channelId: targetId })
-      .where(and(
-        inArray(cmsCollectRules.channelId, uniqueSources),
-      ));
-    // 目标栏目自身内容若曾以来源栏目为副栏目，上一步已清理；删除来源栏目
-    await tx.delete(cmsChannels).where(and(
-      inArray(cmsChannels.id, uniqueSources),
-    ));
-    await deleteCmsResourceRefsForOwner(tx, 'channel', uniqueSources, target.siteId);
-    const revision = await bumpCmsTemplateRefsRevision(tx, target.siteId);
-    const task = await insertCmsSiteRefsRebuildOutbox(
-      tx,
-      { ...site, templateRefsRevision: revision },
-      '栏目合并与模板继承更新',
-      `site:${target.siteId}:refs:${revision}`,
-    );
-    return { count: moved.length, task };
-  });
-  await enqueueCmsPublishOutboxes([mutation.task], '栏目合并');
-  submitCmsWidgetSourceRefreshSideEffect('content', sourceContents.map((row) => row.id));
-  return mutation.count;
+  // A merge changes draft placements first. Source channels remain until those placements are published.
+  const contentIds = sourceContents.map((row) => row.id);
+  if (!contentIds.length) return 0;
+  const copies = await db.select({ id: cmsContentWorkingCopies.contentId, version: cmsContentWorkingCopies.version }).from(cmsContentWorkingCopies).where(inArray(cmsContentWorkingCopies.contentId, contentIds));
+  const { batchMoveCmsContents } = await import('./cms-contents.service');
+  return batchMoveCmsContents(contentIds, targetId, Object.fromEntries(copies.map((row) => [String(row.id), row.version])));
 }
 
 /** 清空栏目：栏目下全部未删除内容移入回收站（不含子栏目） */
@@ -486,7 +445,9 @@ export async function clearCmsChannel(id: number): Promise<number> {
     .where(and(eq(cmsContents.channelId, id), isNull(cmsContents.deletedAt)));
   await assertCmsContentsUnlocked(contents.map((row) => row.id));
   const { recycleCmsContents } = await import('./cms-contents.service');
-  return recycleCmsContents(contents.map((row) => row.id));
+  const contentIds = contents.map((row) => row.id);
+  const versions = contentIds.length ? await db.select().from(cmsContentWorkingCopies).where(inArray(cmsContentWorkingCopies.contentId, contentIds)) : [];
+  return recycleCmsContents(contentIds, Object.fromEntries(versions.map((row) => [String(row.contentId), row.version])));
 }
 
 /**

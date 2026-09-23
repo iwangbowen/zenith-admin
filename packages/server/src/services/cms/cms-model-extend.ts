@@ -1,5 +1,6 @@
 import { HTTPException } from 'hono/http-exception';
 import dayjs from 'dayjs';
+import { validateCmsStructuredFields } from '@zenith/shared/cms';
 import type { CmsModelFieldRow } from '../../db/schema';
 import { listCmsModelFields, resolveCmsModelFieldOptions } from './cms-models.service';
 
@@ -32,6 +33,8 @@ function validateFieldValue(
   errors: string[],
 ): void {
   switch (field.fieldType) {
+    case 'reference': case 'references': case 'object': case 'array': case 'blocks':
+      break; // Structured validation is shared with editor and revision publication.
     case 'number': {
       const num = typeof value === 'number' ? value : Number(String(value).trim());
       if (Number.isNaN(num)) errors.push(`「${field.label}」需为数字`);
@@ -45,8 +48,7 @@ function validateFieldValue(
     case 'select':
     case 'radio': {
       const allowed = new Set(options.map((o) => o.value));
-      // 选项集为空（字典被删/停用）时跳过成员校验：此时拦截会让存量内容无法保存
-      if (allowed.size > 0 && !allowed.has(String(value))) {
+      if (!allowed.has(String(value))) {
         errors.push(`「${field.label}」的值不在可选项内`);
       }
       break;
@@ -85,10 +87,10 @@ export async function validateCmsModelExtend(
 ): Promise<void> {
   if (!modelId) return;
   const fields = await listCmsModelFields(modelId);
-  if (fields.length === 0) return;
   const resolved = await resolveCmsModelFieldOptions(fields);
   const values = extend ?? {};
   const errors: string[] = [];
+  errors.push(...validateCmsStructuredFields(fields.map((field) => ({ ...field, resolvedOptions: resolved.get(field.id) ?? [] })), values, mode === 'publish').map((issue) => `${issue.fieldPath}: ${issue.message}`));
   for (const field of fields) {
     const value = values[field.name];
     if (isEmptyExtendValue(value)) {
@@ -106,6 +108,10 @@ function parseDefaultValue(field: CmsModelFieldRow): unknown {
   const raw = field.defaultValue?.trim();
   if (!raw) return undefined;
   switch (field.fieldType) {
+    case 'number': case 'reference':
+      return Number(raw);
+    case 'object': case 'array': case 'blocks': case 'references':
+      try { return JSON.parse(raw) as unknown; } catch { return undefined; }
     case 'switch':
       return raw === 'true';
     case 'checkbox':

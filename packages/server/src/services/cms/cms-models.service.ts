@@ -2,9 +2,8 @@ import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { eq, asc, and, or, inArray, isNull, type SQL } from 'drizzle-orm';
-import { randomUUID } from 'node:crypto';
 import { HTTPException } from 'hono/http-exception';
-import { cmsModelContract, cmsModelFieldViewSchema, cmsModelSchema, type CmsModel, type CmsModelField } from '@zenith/shared/cms';
+import { cmsModelContract, cmsModelFieldViewSchema, cmsModelSchema, cmsModelVersionSchema, type CmsModel, type CmsModelField } from '@zenith/shared/cms';
 import { pickEntity } from '../../lib/entity-map';
 import { db } from '../../db';
 import { cmsModels, cmsModelFields, cmsChannels, cmsContents, cmsSites, dicts, dictItems } from '../../db/schema';
@@ -15,8 +14,10 @@ import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import type { CreateCmsModelInput, UpdateCmsModelInput, CmsModelFieldInput } from '@zenith/shared/cms';
 import { assertSiteAccess } from './cms-sites.service';
 import { acquireCmsGlobalThemeLifecycleLock, lockCmsSiteForMutation } from './cms-site-publish-lock.service';
-import { enqueueCmsPublishOutboxes, insertCmsSiteRefsRebuildOutbox } from './cms-publish-outbox.service';
 import { isCmsPlatformAdmin } from './cms-access';
+import { cmsModelVersions } from '../../db/schema/cms-design';
+import { captureCmsModelVersion } from './cms-design-versions.service';
+import { parseDateTimeInput } from '../../lib/datetime';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 
@@ -28,11 +29,11 @@ import { isCmsPlatformAdmin } from './cms-access';
  * 前端表单只消费该字段，不必各自判断来源。
  */
 export async function resolveCmsModelFieldOptions(
-  rows: readonly CmsModelFieldRow[],
+  rows: readonly (CmsModelFieldRow & { resolvedOptions?: { label: string; value: string }[] })[],
 ): Promise<Map<number, { label: string; value: string }[]>> {
   const resolved = new Map<number, { label: string; value: string }[]>();
   const dictCodes = [...new Set(rows
-    .filter((r) => r.optionSource === 'dict' && r.dictCode?.trim())
+    .filter((r) => r.resolvedOptions === undefined && r.optionSource === 'dict' && r.dictCode?.trim())
     .map((r) => r.dictCode!.trim()))];
 
   const byCode = new Map<string, { label: string; value: string }[]>();
@@ -60,10 +61,10 @@ export async function resolveCmsModelFieldOptions(
   }
 
   for (const row of rows) {
-    resolved.set(row.id, row.optionSource === 'dict'
+    resolved.set(row.id, row.resolvedOptions ?? (row.optionSource === 'dict'
       // 字典被删/停用时给空数组而不是回落手工选项：静默回落会让运营以为配置仍生效
       ? (byCode.get(row.dictCode?.trim() ?? '') ?? [])
-      : (row.options ?? []));
+      : (row.options ?? [])));
   }
   return resolved;
 }
@@ -142,7 +143,7 @@ export async function getCmsModel(id: number, siteId?: number) {
 }
 
 /** 获取模型的字段定义（内容编辑动态表单/检索索引用） */
-export async function listCmsModelFields(modelId: number, siteId?: number): Promise<CmsModelFieldRow[]> {
+export async function listCmsModelFields(modelId: number, siteId?: number, modelVersionId?: number | null): Promise<CmsModelFieldRow[]> {
   const row = await ensureCmsModelExists(modelId);
   if (siteId != null) {
     await assertSiteAccess(siteId);
@@ -154,9 +155,12 @@ export async function listCmsModelFields(modelId: number, siteId?: number): Prom
     // derive it from the immutable owner and still enforce the ACL.
     await assertSiteAccess(row.ownerSiteId);
   }
-  return db.select().from(cmsModelFields)
-    .where(eq(cmsModelFields.modelId, modelId))
-    .orderBy(asc(cmsModelFields.sort), asc(cmsModelFields.id));
+  const versionId = modelVersionId ?? row.publishedVersionId;
+  if (!versionId) throw new HTTPException(400, { message: '内容模型尚未发布版本' });
+  const [version] = await db.select().from(cmsModelVersions).where(and(eq(cmsModelVersions.id, versionId), eq(cmsModelVersions.modelId, modelId))).limit(1);
+  requireRow(version, '内容模型版本不存在');
+  return version.fields.map((field) => ({ ...field, configuration: field.configuration ?? null, createdBy: null, updatedBy: null,
+    createdAt: parseDateTimeInput(field.createdAt) ?? version.createdAt, updatedAt: parseDateTimeInput(field.updatedAt) ?? version.createdAt }));
 }
 
 // ─── 列表 ─────────────────────────────────────────────────────────────────────
@@ -229,11 +233,12 @@ export async function listAllCmsModels(siteId?: number) {
     orderBy: [asc(cmsModels.sort), asc(cmsModels.id)],
     with: { fields: { orderBy: [asc(cmsModelFields.sort), asc(cmsModelFields.id)] } },
   });
-  const allFields = rows.flatMap((row) => row.fields);
-  const resolved = await resolveCmsModelFieldOptions(allFields);
+  const versionIds = rows.flatMap((row) => row.publishedVersionId ? [row.publishedVersionId] : []);
+  const versions = versionIds.length ? await db.select().from(cmsModelVersions).where(inArray(cmsModelVersions.id, versionIds)) : [];
+  const versionsById = new Map(versions.map((version) => [version.id, version]));
   return rows.map((row) => ({
     ...mapCmsModel(row),
-    fields: row.fields.map((field) => mapCmsModelField(field, resolved.get(field.id) ?? [])),
+    fields: row.publishedVersionId ? versionsById.get(row.publishedVersionId)?.fields ?? [] : [],
   }));
 }
 
@@ -287,6 +292,7 @@ async function replaceModelFields(executor: DbExecutor, modelId: number, fields:
       name: f.name,
       label: f.label,
       fieldType: f.fieldType ?? 'text',
+      configuration: f.configuration ?? null,
       required: f.required ?? false,
       searchable: f.searchable ?? false,
       showInList: f.showInList ?? false,
@@ -328,6 +334,7 @@ export async function createCmsModel(data: CreateCmsModelInput) {
     const row = await db.transaction(async (tx) => {
       const [created] = await tx.insert(cmsModels).values(model).returning();
       await replaceModelFields(tx, created.id, fields);
+      await captureCmsModelVersion(tx, created.id);
       return created;
     });
     return getCmsModel(row.id, row.ownerSiteId ?? undefined);
@@ -346,7 +353,7 @@ export async function updateCmsModel(id: number, data: UpdateCmsModelInput, site
   }
   const { fields, ...model } = data;
   try {
-    const tasks = await db.transaction(async (tx) => {
+    await db.transaction(async (tx) => {
       await acquireCmsGlobalThemeLifecycleLock(tx);
       const referenceSiteIds = await listCmsModelReferenceSiteIds(tx, id, current.ownerSiteId);
       // Site locks precede the model row lock. Channel/content writes use the
@@ -361,31 +368,30 @@ export async function updateCmsModel(id: number, data: UpdateCmsModelInput, site
         throw new HTTPException(409, { message: '内容模型归属已发生变化，请重试' });
       }
       if (Object.keys(model).length > 0) {
-        const [updated] = await tx.update(cmsModels).set(model).where(eq(cmsModels.id, id)).returning();
+        const [updated] = await tx.update(cmsModels).set({ ...model, hasUnpublishedChanges: true }).where(eq(cmsModels.id, id)).returning();
         requireRow(updated, '内容模型不存在');
       }
       if (fields) {
         await replaceModelFields(tx, id, fields);
+        await tx.update(cmsModels).set({ hasUnpublishedChanges: true }).where(eq(cmsModels.id, id));
       }
-      const rebuilds = [];
-      for (const referencedSiteId of referenceSiteIds) {
-        const [site] = await tx.select().from(cmsSites)
-          .where(eq(cmsSites.id, referencedSiteId)).limit(1);
-        if (!site) continue;
-        rebuilds.push(await insertCmsSiteRefsRebuildOutbox(
-          tx,
-          site,
-          '内容模型字段更新',
-          'site:' + referencedSiteId + ':model:' + id + ':' + randomUUID(),
-        ));
-      }
-      return rebuilds;
     });
-    await enqueueCmsPublishOutboxes(tasks, '内容模型 #' + id + ' 更新');
     return getCmsModel(id, siteId);
   } catch (err) {
     rethrowPgUniqueViolation(err, '模型标识已存在');
   }
+}
+
+export async function publishCmsModel(id: number, siteId?: number) {
+  await ensureCmsModelMutable(id, siteId);
+  await db.transaction((tx) => captureCmsModelVersion(tx, id));
+  return getCmsModel(id, siteId);
+}
+
+export async function listCmsModelVersions(id: number, siteId?: number) {
+  await ensureCmsModelReadable(id, siteId);
+  const rows = await db.select().from(cmsModelVersions).where(eq(cmsModelVersions.modelId, id)).orderBy(asc(cmsModelVersions.version));
+  return rows.map((row) => pickEntity(cmsModelVersionSchema, row));
 }
 
 // ─── 删除 ─────────────────────────────────────────────────────────────────────

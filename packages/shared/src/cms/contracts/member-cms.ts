@@ -1,3 +1,4 @@
+import { cmsContentCasSchema, CMS_EDITORIAL_STATUSES } from '../content-revision';
 import * as z from 'zod';
 import { idParam, idQuery, paginated, paginationQuery, queryEnum, requiredIdQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
@@ -27,6 +28,8 @@ export const cmsContributionSchema = z.object({
   coverImage: z.string().nullable(),
   body: z.string().nullable(),
   status: z.enum(CMS_CONTENT_STATUSES),
+  editorialStatus: z.enum(CMS_EDITORIAL_STATUSES),
+  version: z.int(),
   rejectReason: z.string().nullable(),
   publishedAt: z.string().nullable(),
   viewCount: z.int(),
@@ -113,7 +116,7 @@ export const memberCmsContract = defineContract('/api/member/cms', {
   contribution: op.get('/contributions/{id}', { params: idParam, response: cmsContributionSchema, summary: '投稿详情' }),
   createContribution: op.post('/contributions', { body: createCmsContributionSchema, response: cmsContributionSchema, summary: '提交投稿（进入审核）' }),
   updateContribution: op.put('/contributions/{id}', { params: idParam, body: updateCmsContributionSchema, response: cmsContributionSchema, summary: '修改投稿并重新提交' }),
-  removeContribution: op.delete('/contributions/{id}', { params: idParam, summary: '删除投稿（草稿/被驳回）' }),
+  removeContribution: op.delete('/contributions/{id}', { params: idParam, body: cmsContentCasSchema, summary: '删除投稿（草稿/被驳回）' }),
   interactionState: op.get('/contents/{id}/interaction-state', { params: idParam, response: cmsInteractionStateSchema, summary: '我对内容的互动状态（点赞/收藏 + 计数）' }),
   like: op.post('/contents/{id}/like', { params: idParam, response: cmsInteractionStateSchema, summary: '点赞内容' }),
   unlike: op.delete('/contents/{id}/like', { params: idParam, response: cmsInteractionStateSchema, summary: '取消点赞' }),

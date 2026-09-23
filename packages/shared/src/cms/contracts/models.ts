@@ -3,6 +3,7 @@ import { entityStatusQuery, entityStatusSchema, idParam, idQuery, keywordQuery, 
 import { defineContract, op } from '../../core/contract';
 import { CMS_FIELD_OPTION_SOURCES, CMS_FIELD_TYPES } from '../constants';
 import { createCmsModelSchema, updateCmsModelSchema } from '../validation';
+import { cmsFieldConfigurationSchema } from '../model-design';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
@@ -14,6 +15,7 @@ export const cmsModelFieldViewSchema = z.object({
   name: z.string().meta({ example: 'video_url' }),
   label: z.string().meta({ example: '视频地址' }),
   fieldType: z.enum(CMS_FIELD_TYPES),
+  configuration: cmsFieldConfigurationSchema.nullable().optional(),
   required: z.boolean(),
   searchable: z.boolean(),
   showInList: z.boolean(),
@@ -37,6 +39,8 @@ export type CmsModelField = z.infer<typeof cmsModelFieldViewSchema>;
 export const cmsModelSchema = z.object({
   id: z.int(),
   ownerSiteId: z.int().nullable().meta({ description: '归属站点：null = 平台共享（全部站点可用）' }),
+  publishedVersionId: z.int().nullable().optional(),
+  hasUnpublishedChanges: z.boolean().optional(),
   ownerSiteName: z.string().nullable(),
   name: z.string().meta({ example: '文章' }),
   code: z.string().meta({ example: 'article' }),
@@ -50,6 +54,8 @@ export const cmsModelSchema = z.object({
 }).meta({ id: 'CmsModel' });
 
 export type CmsModel = z.infer<typeof cmsModelSchema>;
+export const cmsModelVersionSchema = z.object({ id: z.int(), modelId: z.int(), version: z.int(), fields: z.array(cmsModelFieldViewSchema), contentHash: z.string(), createdAt: z.string() }).meta({ id: 'CmsModelVersion' });
+export type CmsModelVersion = z.infer<typeof cmsModelVersionSchema>;
 
 /** 模型引用统计（删除阻断明细与「使用中」列消费） */
 export const cmsModelRefsSchema = z.object({
@@ -85,8 +91,9 @@ export const cmsModelContract = defineContract('/api/cms/models', {
   all: op.get('/all', { access: { permission: 'cms:channel:list' }, query: cmsModelScopeQuery, response: z.array(cmsModelSchema), summary: '全部启用模型（栏目绑定下拉；普通请求必须提供 siteId）' }),
   detail: op.get('/{id}', { access: { permission: 'cms:model:list' }, params: idParam, query: cmsModelScopeQuery, response: cmsModelSchema, summary: '模型详情（含字段）' }),
   refs: op.get('/{id}/refs', { access: { permission: 'cms:model:list' }, params: idParam, query: cmsModelScopeQuery, response: cmsModelRefsSchema, summary: '模型引用统计（被哪些栏目绑定、内容/站点扩展使用量）' }),
+  versions: op.get('/{id}/versions', { access: { permission: 'cms:model:list' }, params: idParam, query: cmsModelScopeQuery, response: z.array(cmsModelVersionSchema), summary: '不可变模型版本' }),
+  publish: op.post('/{id}/publish', { access: { permission: 'cms:model:update' }, audit: '发布 CMS 模型版本', params: idParam, query: cmsModelScopeQuery, response: cmsModelSchema, summary: '校验并发布模型工作稿' }),
   create: op.post('/', { access: { permission: 'cms:model:create' }, audit: '创建 CMS 内容模型', body: createCmsModelSchema, response: cmsModelSchema, summary: '创建模型' }),
   update: op.put('/{id}', { access: { permission: 'cms:model:update' }, audit: '更新 CMS 内容模型', params: idParam, query: cmsModelScopeQuery, body: updateCmsModelSchema, response: cmsModelSchema, summary: '更新模型（fields 提供时整组替换）' }),
   remove: op.delete('/{id}', { access: { permission: 'cms:model:delete' }, audit: '删除 CMS 内容模型', params: idParam, query: cmsModelScopeQuery, summary: '删除模型' }),
 }, { auditModule: 'CMS内容管理', tags: ['CMS-内容模型'] });
-

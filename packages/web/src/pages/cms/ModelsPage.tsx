@@ -1,4 +1,4 @@
-import { Button, Form, Tag, ArrayField, Row, Col, useFormApi } from '@douyinfe/semi-ui';
+import { Button, Form, Tag, ArrayField, Row, Col, useFormApi, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
@@ -18,6 +18,8 @@ import { deleteAction, ListSearchToolbar } from '@/components/list-page';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 import { useListPage } from '@/hooks/useListPage';
 import { EditFormModal } from '@/components/EditFormModal';
+import ModelFieldRules from './ModelFieldRules';
+import { usePublishCmsModel } from '@/hooks/queries/cms-models';
 
 const FIELD_TYPE_OPTIONS = CMS_FIELD_TYPES.map((t) => ({ value: t, label: CMS_FIELD_TYPE_LABELS[t] }));
 const OPTION_SOURCE_OPTIONS = CMS_FIELD_OPTION_SOURCES.map((s) => ({ value: s, label: CMS_FIELD_OPTION_SOURCE_LABELS[s] }));
@@ -76,6 +78,7 @@ export default function ModelsPage() {
   const { setPage, tableProps } = page;
 
   const saveMutation = useSaveCmsModel(siteId);
+  const publishModel = usePublishCmsModel();
   const modal = useEditModal<CmsModel, Record<string, unknown>, Record<string, unknown>>({
     entityName: '模型',
     save: saveMutation,
@@ -90,6 +93,7 @@ export default function ModelsPage() {
         name: f.name, label: f.label, fieldType: f.fieldType, required: f.required, searchable: f.searchable, showInList: f.showInList,
         showInDetail: f.showInDetail, detailGroup: f.detailGroup ?? '', defaultValue: f.defaultValue ?? '',
         placeholder: f.placeholder ?? '', optionSource: f.optionSource ?? 'manual', dictCode: f.dictCode ?? '', options: f.options ?? null,
+        configuration: f.configuration ?? {},
         optionsText: (f.options ?? []).map((o) => (o.label === o.value ? o.value : `${o.value}|${o.label}`)).join('\n'),
       })),
     }),
@@ -135,6 +139,7 @@ export default function ModelsPage() {
       ),
     },
     { title: '标识', dataIndex: 'code', width: 120 },
+    { title: '模型版本', dataIndex: 'hasUnpublishedChanges', width: 160, render: (_value, record) => <Tag color={record.hasUnpublishedChanges ? 'orange' : 'green'}>{record.hasUnpublishedChanges ? '有待发布修改' : '已发布'}</Tag> },
     {
       title: '归属',
       dataIndex: 'ownerSiteId',
@@ -166,9 +171,11 @@ export default function ModelsPage() {
       render: renderEnabledStatusTag,
     },
     createOperationColumn<CmsModel>({
-      width: 150,
-      desktopInlineKeys: ['edit', 'delete'],
+      width: 210,
+      desktopInlineKeys: ['edit', 'publish'],
       actions: (record) => [
+        { key: 'publish', label: '发布版本', hidden: !hasPermission('cms:model:update') || !record.hasUnpublishedChanges,
+          onClick: async () => { await publishModel.mutateAsync({ params: { id: record.id }, query: { siteId } }); Toast.success('模型版本已发布'); } },
         ...(hasPermission('cms:model:update') ? [{
           key: 'edit',
           label: '编辑',
@@ -245,6 +252,7 @@ export default function ModelsPage() {
                     <Form.Input field={`${field}[detailGroup]`} noLabel placeholder="详情分组（如 文件信息）" style={{ width: 150 }} />
                     <Button type="danger" theme="borderless" icon={<Trash2 size={14} />} onClick={() => remove()} style={{ marginTop: 4 }} />
                     <FieldOptionSource field={field} />
+                    <ModelFieldRules field={field} />
                   </div>
                 ))}
                 <Button icon={<Plus size={14} />} onClick={() => add()}>添加字段</Button>

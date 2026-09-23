@@ -22,6 +22,14 @@ export const cmsModelKeys = {
 export const useCmsModelList = resource.useList;
 export const useCmsModelDetail = resource.useDetail;
 
+export function usePublishCmsModel() {
+  return useApiMutation(cmsModelContract.publish, { invalidate: (qc, _data, { params }) => invalidateAfterCmsModelChange(qc, params.id) });
+}
+
+export function useCmsModelVersions(id?: number, siteId?: number) {
+  return useApiQuery(cmsModelContract.versions, { params: { id: id ?? 0 }, query: { siteId } }, { enabled: id !== undefined });
+}
+
 /** 全部启用模型；siteId 提供时按站群可见性过滤（平台共享 + 该站点专属） */
 export function useAllCmsModels(siteId?: number) {
   return useApiQuery(cmsModelContract.all, { query: { siteId } }, { staleTime: LOOKUP_STALE_TIME });

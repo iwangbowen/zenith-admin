@@ -164,7 +164,7 @@ const submitContentRoute = defineContractRoute(openCmsContract.submitContent, {
   responses: forbidden,
   handler: async (c) => {
     const site = await requireSite(c.req.valid('query').siteCode);
-    const content = await submitOpenCmsContent(site, clientIdOf(c), c.req.valid('param').id);
+    const content = await submitOpenCmsContent(site, clientIdOf(c), c.req.valid('param').id, c.req.valid('json').expectedVersion);
     return c.json(okBody(content, '已提交审核'), 200);
   },
 });
@@ -174,7 +174,7 @@ const publishContentRoute = defineContractRoute(openCmsContract.publishContent, 
   responses: forbidden,
   handler: async (c) => {
     const site = await requireSite(c.req.valid('query').siteCode);
-    const content = await publishOpenCmsContent(site, clientIdOf(c), true, c.req.valid('param').id);
+    const content = await publishOpenCmsContent(site, clientIdOf(c), true, c.req.valid('param').id, c.req.valid('json').expectedVersion);
     return c.json(okBody(content, '已发布'), 200);
   },
 });
@@ -184,7 +184,7 @@ const deleteContentRoute = defineContractRoute(openCmsContract.recycleContent, {
   responses: forbidden,
   handler: async (c) => {
     const site = await requireSite(c.req.valid('query').siteCode);
-    await recycleOpenCmsContent(site, clientIdOf(c), c.req.valid('param').id);
+    await recycleOpenCmsContent(site, clientIdOf(c), c.req.valid('param').id, c.req.valid('json').expectedVersion);
     return c.json(okBody(null, '已移入回收站'), 200);
   },
 });

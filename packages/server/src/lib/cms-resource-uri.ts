@@ -39,6 +39,16 @@ export function parseCmsResourceUri(value: unknown): number | null {
 /** 深度遍历任意值，收集其中出现的全部素材 id（去重，保持首次出现顺序） */
 export function extractCmsResourceIds(value: unknown): number[] {
   const ids = new Set<number>();
+  const pinned = (item: unknown): void => {
+    if (Array.isArray(item)) { item.forEach(pinned); return; }
+    if (!item || typeof item !== 'object') return;
+    for (const [key, child] of Object.entries(item)) {
+      if (key === 'assetVersions' && child && typeof child === 'object' && !Array.isArray(child)) {
+        for (const id of Object.keys(child)) if (/^[1-9]\d*$/.test(id) && Number.isSafeInteger(Number(id))) ids.add(Number(id));
+      } else pinned(child);
+    }
+  };
+  pinned(value);
   walkStrings(value, (text) => {
     for (const match of text.matchAll(RESOURCE_URI_RE)) {
       const id = Number(match[1]);

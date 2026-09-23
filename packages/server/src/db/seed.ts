@@ -1,3 +1,6 @@
+import { captureCmsModelVersion } from '../services/cms/cms-design-versions.service';
+import { initializeCmsContentWorkingCopy, freezeCmsContentRevision, approveCmsRevision } from '../services/cms/cms-content-revisions.service';
+import { cmsContentWorkingCopies } from './schema/cms-revisions';
 import { db } from './index';
 import { wikiSpaces, wikiSpaceMembers, wikiTags, wikiTemplates, wikiDocs, wikiDocVersions, wikiDocTags, wikiComments, users, menus, roles, roleMenus, userRoles, dicts, dictItems, fileStorageConfigs, departments, positions, userPositions, cronJobs, rateLimitRules, regions, tenants, tenantPackages, tenantPackageFeatures, emailTemplates, smsConfigs, smsTemplates, inAppTemplates, tags, dataMaskPolicies, monitorAlertRules, clientApps, memberLevels, memberTags, members, memberPointAccounts, memberPointTransactions, memberWallets, coupons, memberCoupons, checkinRules, checkinSettings, checkinMilestones, workflowForms, workflowDataSources, workflowConnectors, workflowTemplates, workflowDefinitions, aiPromptTemplates, paymentMethodConfigs, paymentDeductPlans, mpAccounts, mpTags, mpFans, mpMessages, mpAutoReplies, mpMenus, mpMaterials, mpDrafts, mpMessageTemplates, mpBroadcasts, mpQrcodes, mpKfAccounts, mpKfSessions, mpKfSessionEvents, mpKfRoutingConfigs, mpConditionalMenus, channels, channelQuickReplies, reportDatasources, reportDatasets, reportDashboards, apiScopes, ratePlans, reportPrintTemplates, ruleDecisionTables, ruleDecisionFlows, ruleLists, ruleListItems, ruleScorecards, reportFolders, reportEnvironments, reportMetrics, reportDqRules, reportQueryQuotas, reportSlaRules, reportAssetTemplates, reportFillTemplates, analyticsEventMeta, analyticsSites, asyncTaskItems, asyncTasks, cmsSites, cmsSiteInheritances, cmsModels, cmsModelFields, cmsChannels, cmsDistributionRules, cmsContents, cmsTags, cmsContentTags, cmsContentChannels, cmsContentRelations, cmsContentVersions, cmsFriendLinkGroups, cmsFriendLinks, cmsAdSlots, cmsAds, cmsAdEvents, cmsForms, cmsSensitiveWords, cmsErrorProneWords, cmsLinkWords, cmsComments, cmsSiteUsers, cmsChannelUsers, cmsInteractions, cmsInteractionQuestions, cmsInteractionResponses, cmsInteractionAnswers, cmsMemberSubscriptions, cmsResources, cmsResourceFolders, cmsResourceRefs, cmsSearchWords, cmsHotwordGroups, cmsHotwords, cmsCollectRules, cmsCollectItems, cmsWidgets, cmsWidgetRefs, cmsWidgetSourceRefs, cmsPages, cmsPageBlockAcls, cmsPublishArtifacts } from './schema';
 import { hashPassword } from '../lib/password';
@@ -1236,6 +1239,29 @@ async function seedRest() {
     })),
   ).onConflictDoNothing();
 
+  // Seed the same immutable model/content lifecycle used by application writes.
+  await db.transaction(async (tx) => {
+    for (const seed of SEED_CMS_MODELS) {
+      const [model] = await tx.select().from(cmsModels).where(eq(cmsModels.id, seed.id)).limit(1);
+      if (model && !model.publishedVersionId) await captureCmsModelVersion(tx, model.id);
+    }
+    for (const seed of SEED_CMS_CONTENTS) {
+      const [existing] = await tx.select().from(cmsContentWorkingCopies).where(eq(cmsContentWorkingCopies.contentId, seed.id)).limit(1);
+      if (existing) continue;
+      const [content] = await tx.select().from(cmsContents).where(eq(cmsContents.id, seed.id)).limit(1);
+      if (!content) continue;
+      const working = await initializeCmsContentWorkingCopy(tx, content);
+      const revision = await freezeCmsContentRevision(tx, content, working, 'checkpoint', '初始演示内容完整修订');
+      if (content.status === 'published') await approveCmsRevision(tx, revision.id);
+      await tx.update(cmsContentWorkingCopies).set({
+        editorialStatus: content.status === 'published' ? 'clean' : content.status === 'pending' ? 'pending' : content.status === 'rejected' ? 'rejected' : 'draft',
+        submittedRevisionId: content.status === 'pending' ? revision.id : null,
+        approvedRevisionId: content.status === 'published' ? revision.id : null,
+        publishedRevisionId: content.status === 'published' ? revision.id : null,
+      }).where(eq(cmsContentWorkingCopies.contentId, content.id));
+      if (content.status === 'pending' || content.status === 'rejected') await tx.update(cmsContents).set({ status: 'draft' }).where(eq(cmsContents.id, content.id));
+    }
+  });
   logger.info('  ✔ CMS seeded (onConflictDoNothing)');
 
   // ─── 知识中心（Wiki）────────────────────────────────────────────────────────

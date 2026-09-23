@@ -1,3 +1,4 @@
+import { requireCmsContentAccess } from './cms-content-access.service';
 /**
  * CMS 内容编辑锁（Redis 心跳锁，防多人同时编辑相互覆盖）。
  *
@@ -12,7 +13,6 @@ import { db } from '../../db';
 import { users } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
-import { ensureCmsContentExists } from './cms-contents.service';
 import { assertSiteAccess } from './cms-sites.service';
 import { assertChannelAccess } from './cms-channels.service';
 import { assertCmsContentUnlocked } from './cms-content-lock.service';
@@ -55,7 +55,7 @@ async function currentNickname(): Promise<string> {
 
 /** 抢占/续期编辑锁（同一用户重复调用即心跳续期） */
 export async function acquireContentEditLock(contentId: number): Promise<CmsEditLockResult> {
-  const row = await ensureCmsContentExists(contentId);
+  const row = await requireCmsContentAccess(contentId);
   await assertSiteAccess(row.siteId);
   await assertChannelAccess(row.channelId);
   assertCmsContentUnlocked(row);
@@ -83,7 +83,7 @@ export async function acquireContentEditLock(contentId: number): Promise<CmsEdit
 
 /** 释放编辑锁（仅持有人可释放，他人调用为空操作） */
 export async function releaseContentEditLock(contentId: number): Promise<void> {
-  const row = await ensureCmsContentExists(contentId);
+  const row = await requireCmsContentAccess(contentId);
   await assertSiteAccess(row.siteId);
   await assertChannelAccess(row.channelId);
   const user = currentUser();

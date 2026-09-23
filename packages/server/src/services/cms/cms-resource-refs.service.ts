@@ -10,9 +10,10 @@
  */
 import { and, eq, inArray, notExists, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { isCmsGenerationRead } from './cms-generation-context';
 import { db } from '../../db';
 import {
-  cmsAds, cmsAdSlots, cmsChannels, cmsContents, cmsContentVersions, cmsForms,
+  cmsAds, cmsAdSlots, cmsChannels, cmsContents, cmsContentRevisions, cmsForms,
   cmsFriendLinks, cmsPages, cmsResourceRefs, cmsResources, cmsSites, cmsWidgets, managedFiles,
 } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
@@ -223,6 +224,7 @@ export async function rebuildCmsResourceRefsForOwners(
   const extractedByOwner = owners.map(({ ownerId, row }) => {
     const record = row as Record<string, unknown>;
     const fields = Object.fromEntries(fieldNames.map((name) => [name, record[name]]));
+    if (record.assetVersions) fields.pinnedAssets = { assetVersions: record.assetVersions };
     return { ownerId, refs: extractCmsResourceRefFields(fields) };
   });
 
@@ -350,7 +352,7 @@ async function loadResourceTargets(siteId: number, ids: readonly number[]): Prom
   const out = new Map<number, ResourceTarget | null>();
   const missing: number[] = [];
   for (const id of ids) {
-    const hit = cache.get(resourceCacheKey(siteId, id));
+    const hit = isCmsGenerationRead() ? undefined : cache.get(resourceCacheKey(siteId, id));
     if (hit && hit.expiresAt > now) out.set(id, hit.value);
     else missing.push(id);
   }
@@ -367,7 +369,7 @@ async function loadResourceTargets(siteId: number, ids: readonly number[]): Prom
     if (cache.size > CACHE_MAX) cache.clear();
     for (const id of missing) {
       const value = found.get(id) ?? null;
-      cache.set(resourceCacheKey(siteId, id), { value, expiresAt: now + CACHE_TTL_MS });
+      if (!isCmsGenerationRead()) cache.set(resourceCacheKey(siteId, id), { value, expiresAt: now + CACHE_TTL_MS });
       out.set(id, value);
     }
   }
@@ -565,10 +567,10 @@ async function loadOwnerTitles(idsByType: Map<CmsResourceOwnerType, number[]>, s
       ? db.select({ id: cmsContents.id, title: cmsContents.title }).from(cmsContents).where(and(eq(cmsContents.siteId, siteId), inArray(cmsContents.id, contentIds)))
       : [],
     versionIds.length
-      ? db.select({ id: cmsContentVersions.id, version: cmsContentVersions.version, title: cmsContents.title })
-          .from(cmsContentVersions)
-          .innerJoin(cmsContents, eq(cmsContentVersions.contentId, cmsContents.id))
-          .where(and(eq(cmsContents.siteId, siteId), inArray(cmsContentVersions.id, versionIds)))
+      ? db.select({ id: cmsContentRevisions.id, version: cmsContentRevisions.version, title: cmsContents.title })
+          .from(cmsContentRevisions)
+          .innerJoin(cmsContents, eq(cmsContentRevisions.contentId, cmsContents.id))
+          .where(and(eq(cmsContents.siteId, siteId), inArray(cmsContentRevisions.id, versionIds)))
       : [],
     channelIds.length
       ? db.select({ id: cmsChannels.id, title: cmsChannels.name }).from(cmsChannels).where(and(eq(cmsChannels.siteId, siteId), inArray(cmsChannels.id, channelIds)))

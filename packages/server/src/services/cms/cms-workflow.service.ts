@@ -7,7 +7,7 @@
  * 流程通过 → 自动发布 + 刷新静态页 + 搜索引擎推送；驳回 / 撤回 → 回写内容状态。
  * 流程审核期间禁止后台手动发布 / 驳回，避免双轨状态漂移。
  */
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { WORKFLOW_ACTIVE_INSTANCE_STATUSES, type WorkflowBusinessPreview } from '@zenith/shared/workflow';
 import type { BodyOf } from '@zenith/shared/core';
@@ -18,9 +18,10 @@ import { resolveEffectiveCmsSiteRow } from './cms-site-inheritance.service';
 import { assertSiteAccess } from './cms-sites.service';
 import { assertChannelAccess, ensureCmsChannelExists } from './cms-channels.service';
 import { db } from '../../db';
-import { cmsContents, workflowDefinitions, workflowInstances } from '../../db/schema';
+import { cmsContentWorkingCopies, workflowDefinitions, workflowInstances } from '../../db/schema';
 import logger from '../../lib/logger';
 import { startWorkflowForBiz, onWorkflowResult } from '../../lib/workflow-biz-bridge';
+import { approveCmsRevision, bindCmsReviewRevision, getCmsReviewRevision, requireCmsWorkingCopy } from './cms-content-revisions.service';
 
 export const CMS_CONTENT_BIZ_TYPE = 'cms_content';
 const CMS_AUDIT_WORKFLOW_NAME = 'CMS 内容审核';
@@ -78,7 +79,7 @@ export async function previewCmsContentWorkflow(data: BodyOf<typeof cmsContentCo
 
 export async function getCmsContentWorkflowContext(id: number, instanceId?: number) {
   const content = await getCmsContent(id);
-  const current = content.status === 'draft' || content.status === 'rejected' ? null : 'latest';
+  const current = content.submittedRevisionId ? 'latest' : null;
   return getBusinessWorkflowContext(CMS_CONTENT_BIZ_TYPE, String(id), current, instanceId);
 }
 
@@ -106,6 +107,8 @@ export async function assertNoActiveContentWorkflow(contentId: number): Promise<
 /** 提交审核时发起工作流（幂等：已有活跃实例直接复用） */
 export async function startCmsContentWorkflow(input: {
   contentId: number;
+  revisionId: number;
+  revisionHash: string;
   title: string;
   siteName: string;
   channelName: string;
@@ -120,7 +123,7 @@ export async function startCmsContentWorkflow(input: {
     title: `内容审核 - ${input.title}`,
     bizType: CMS_CONTENT_BIZ_TYPE,
     bizId: input.contentId,
-    variables: cmsContentWorkflowVariables(input),
+    variables: { ...cmsContentWorkflowVariables(input), revisionId: input.revisionId, revisionHash: input.revisionHash },
     caller: input.caller,
   });
 }
@@ -131,60 +134,39 @@ export async function startCmsContentWorkflow(input: {
  */
 export function registerCmsWorkflowSubscribers(): void {
   onWorkflowResult(CMS_CONTENT_BIZ_TYPE, {
+    onCreated: async (instance) => {
+      const revisionId = Number(instance.formData?.revisionId);
+      if (!Number.isInteger(revisionId) || revisionId <= 0) throw new HTTPException(409, { message: '内容审核实例缺少精确修订' });
+      await bindCmsReviewRevision(Number(instance.bizId), instance.id, revisionId);
+    },
     onApproved: async (instance) => {
       const contentId = Number(instance.bizId);
-      try {
-        // 复验内容当前状态：长周期流程通过时内容可能已被回收/驳回/下线，仅待审状态才自动发布
-        const [current] = await db.select({ status: cmsContents.status, deletedAt: cmsContents.deletedAt })
-          .from(cmsContents).where(eq(cmsContents.id, contentId)).limit(1);
-        if (!current || current.deletedAt || current.status !== 'pending') {
-          logger.warn(`[cms-workflow] 内容 #${contentId} 流程通过但当前状态不可发布（status=${current?.status ?? '不存在'}），跳过自动发布`);
-          return;
-        }
-        const { publishCmsContent } = await import('./cms-contents.service');
-        await publishCmsContent(contentId, { fromWorkflow: true, skipAccessCheck: true });
-        logger.info(`[cms-workflow] 内容 #${contentId} 流程审核通过，已自动发布`);
-      } catch (err) {
-        logger.error(`[cms-workflow] 内容 #${contentId} 流程通过后发布失败`, err);
-      }
+      const revision = await getCmsReviewRevision(contentId, instance.id);
+      await db.transaction(async (tx) => {
+        const working = await requireCmsWorkingCopy(tx, contentId, true);
+        if (working.submittedRevisionId !== revision.id) throw new HTTPException(409, { message: '审核轮次不再是当前提交的修订' });
+        await approveCmsRevision(tx, revision.id, instance.id);
+        await tx.update(cmsContentWorkingCopies).set({ approvedRevisionId: revision.id,
+          editorialStatus: working.editorialStatus === 'draft' ? 'draft' : 'approved',
+          version: sql`${cmsContentWorkingCopies.version} + 1`,
+        }).where(eq(cmsContentWorkingCopies.contentId, contentId));
+      });
+      const { publishCmsContent } = await import('./cms-contents.service');
+      await publishCmsContent(contentId, { fromWorkflow: true, skipAccessCheck: true, revisionId: revision.id });
+      logger.info(`[cms-workflow] 内容 #${contentId} 的修订 #${revision.id} 审核通过，发布单已提交`);
     },
     onRejected: async (instance) => {
       const contentId = Number(instance.bizId);
-      try {
-        const [current] = await db.select({ id: cmsContents.id, lockedAt: cmsContents.lockedAt }).from(cmsContents)
-          .where(eq(cmsContents.id, contentId)).limit(1);
-        if (!current) return;
-        if (current.lockedAt) {
-          logger.warn(`[cms-workflow] 内容 #${contentId} 已被持久锁定，忽略流程撤回回写`);
-          return;
-        }
-        const { rejectCmsContent } = await import('./cms-contents.service');
-        await rejectCmsContent(contentId, '工作流审核驳回', {
-          fromWorkflow: true,
-          skipAccessCheck: true,
-        });
-        logger.info(`[cms-workflow] 内容 #${contentId} 流程审核驳回`);
-      } catch (err) {
-        logger.error(`[cms-workflow] 内容 #${contentId} 流程驳回回写失败`, err);
-      }
+      const revision = await getCmsReviewRevision(contentId, instance.id);
+      const { rejectCmsContent } = await import('./cms-contents.service');
+      await rejectCmsContent(contentId, '工作流审核驳回', { fromWorkflow: true, skipAccessCheck: true, revisionId: revision.id });
     },
     onWithdrawn: async (instance) => {
       const contentId = Number(instance.bizId);
-      try {
-        const [current] = await db.select({ id: cmsContents.id }).from(cmsContents)
-          .where(eq(cmsContents.id, contentId)).limit(1);
-        if (!current) return;
-        await db.update(cmsContents)
-          .set({ status: 'draft' })
-          .where(and(
-            eq(cmsContents.id, contentId),
-            eq(cmsContents.status, 'pending'),
-            isNull(cmsContents.lockedAt),
-          ));
-        logger.info(`[cms-workflow] 内容 #${contentId} 流程撤回，已退回草稿`);
-      } catch (err) {
-        logger.error(`[cms-workflow] 内容 #${contentId} 流程撤回回写失败`, err);
-      }
+      const revision = await getCmsReviewRevision(contentId, instance.id);
+      await db.update(cmsContentWorkingCopies).set({ editorialStatus: 'draft', submittedRevisionId: null, approvedRevisionId: null,
+        version: sql`${cmsContentWorkingCopies.version} + 1`,
+      }).where(and(eq(cmsContentWorkingCopies.contentId, contentId), eq(cmsContentWorkingCopies.submittedRevisionId, revision.id)));
     },
   });
 }

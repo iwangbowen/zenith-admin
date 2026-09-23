@@ -582,12 +582,13 @@ export const CMS_INTERACTION_DAILY_LIMITS = {
 } as const;
 
 /** CMS 内容操作日志动作（内容级时间线） */
-export const CMS_CONTENT_OP_ACTIONS = ['created', 'updated', 'submitted', 'published', 'rejected', 'offlined', 'recycled', 'restored', 'rolled_back', 'archived', 'unarchived', 'moved', 'locked', 'unlocked'] as const;
+export const CMS_CONTENT_OP_ACTIONS = ['created', 'updated', 'submitted', 'approved', 'published', 'rejected', 'offlined', 'recycled', 'restored', 'rolled_back', 'archived', 'unarchived', 'moved', 'locked', 'unlocked'] as const;
 
 export const CMS_CONTENT_OP_ACTION_LABELS: Record<(typeof CMS_CONTENT_OP_ACTIONS)[number], string> = {
   created: '创建',
   updated: '更新',
   submitted: '提交审核',
+  approved: '批准修订',
   published: '发布',
   rejected: '驳回',
   offlined: '下线',
@@ -601,7 +602,7 @@ export const CMS_CONTENT_OP_ACTION_LABELS: Record<(typeof CMS_CONTENT_OP_ACTIONS
   unlocked: '解除锁定',
 };
 
-export const CMS_FIELD_TYPES = ['text', 'textarea', 'richtext', 'number', 'date', 'datetime', 'image', 'file', 'select', 'radio', 'checkbox', 'switch'] as const;
+export const CMS_FIELD_TYPES = ['text', 'textarea', 'richtext', 'number', 'date', 'datetime', 'image', 'file', 'select', 'radio', 'checkbox', 'switch', 'reference', 'references', 'object', 'array', 'blocks'] as const;
 
 export const CMS_FIELD_TYPE_LABELS: Record<(typeof CMS_FIELD_TYPES)[number], string> = {
   text: '单行文本',
@@ -616,6 +617,11 @@ export const CMS_FIELD_TYPE_LABELS: Record<(typeof CMS_FIELD_TYPES)[number], str
   radio: '单选',
   checkbox: '多选',
   switch: '开关',
+  reference: '内容引用',
+  references: '多内容引用',
+  object: '字段组',
+  array: '重复组件',
+  blocks: '动态区块',
 };
 
 /** CMS 前台预览路径前缀（无域名绑定时通过 /__cms/{siteCode}/... 访问站点） */
@@ -697,4 +703,3 @@ export const CMS_TWITTER_CARD_LABELS: Record<(typeof CMS_TWITTER_CARDS)[number],
   summary_large_image: '大图摘要',
   summary: '标准摘要',
 };
-

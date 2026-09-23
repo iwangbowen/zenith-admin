@@ -10,3 +10,8 @@ export * from './types';
 export * from './validation';
 export * from './link';
 export * from './permissions';
+export * from './content-revision';
+export * from './release-validation';
+export * from './document';
+export * from './model-design';
+export * from './design-validation';

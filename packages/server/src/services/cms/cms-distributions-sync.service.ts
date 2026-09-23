@@ -1,3 +1,4 @@
+import { initializeCmsContentWorkingCopy, requireCmsWorkingCopy, writeCmsSystemWorkingCopy, cmsRevisionToContentRow } from './cms-content-revisions.service';
 import { requireRow } from '../../lib/db-assert';
 import {
   and,
@@ -91,19 +92,6 @@ export async function deleteCmsDistributionRule(id: number): Promise<void> {
         message: `映射内容 #${lockedMapping.id} 已锁定，不能删除规则并解除映射`,
       });
     }
-    const sourceIds = [...new Set(materialized
-      .map((content) => content.mappingSourceId)
-      .filter((sourceId): sourceId is number => sourceId != null))];
-   const directSources = sourceIds.length
-      ? await tx.select().from(cmsContents).where(and(inArray(cmsContents.id, sourceIds), eq(cmsContents.siteId, rule.sourceSiteId)))
-     : [];
-    const originIds = [...new Set(directSources
-      .map((source) => source.mappingSourceId)
-      .filter((sourceId): sourceId is number => sourceId != null))];
-   const origins = originIds.length
-      ? await tx.select().from(cmsContents).where(and(inArray(cmsContents.id, originIds), eq(cmsContents.siteId, rule.sourceSiteId)))
-     : [];
-    const sourceById = new Map([...directSources, ...origins].map((source) => [source.id, source]));
    for (const content of materialized) {
       if (content.mappingSourceId == null) {
         await tx.update(cmsContents).set({
@@ -114,16 +102,8 @@ export async function deleteCmsDistributionRule(id: number): Promise<void> {
         }).where(eq(cmsContents.id, content.id));
         continue;
       }
-     const source = sourceById.get(content.mappingSourceId);
-     const origin = source?.mappingSourceId ? sourceById.get(source.mappingSourceId) : source;
-      if (source && source.siteId !== rule.sourceSiteId) throw new HTTPException(400, { message: '映射来源站点不匹配，拒绝跨站物化' });
-      if (source?.mappingSourceId && !origin) throw new HTTPException(400, { message: '映射来源链不完整，拒绝跨站物化' });
-      const body = sanitizeCmsHtml(origin?.body ?? content.body);
-      const extend = origin?.extend ?? content.extend ?? {};
-      const adopted = await adoptCmsResourcesIntoSite(tx, content.siteId, { body, extend });
       const [materializedRow] = await tx.update(cmsContents).set({
-        ...adopted,
-        searchVector: contentSearchVector(content.siteId, { ...content, ...adopted }, extendSearchTexts(adopted.extend)),
+
        mappingSourceId: null,
        distributionRuleId: null,
        distributionSourceId: null,
@@ -360,6 +340,7 @@ async function createMaterializedContent(
       distributionSourceVersion: source.version,
       searchVector: contentSearchVector(rule.targetSiteId, { ...source, body }, extendSearchTexts(extend)),
     }).returning();
+    await initializeCmsContentWorkingCopy(tx, rows[0]);
     await logContentOp(tx, rows[0].id, 'created', `分发规则 #${rule.id} 从内容 #${source.id} 创建草稿`);
     await syncCmsResourceRefs(tx, 'content', rows[0].id, rows[0].siteId, rows[0]);
     return rows;
@@ -368,54 +349,28 @@ async function createMaterializedContent(
 }
 
 async function synchronizeExisting(
-  rule: CmsDistributionRuleRow,
-  source: CmsContentRow,
-  target: CmsContentRow,
-  body: string,
-  extend: Record<string, unknown>,
+  rule: CmsDistributionRuleRow, source: CmsContentRow, target: CmsContentRow,
+  body: string, extend: Record<string, unknown>,
 ) {
   assertCmsContentUnlocked(target);
-  const mappingSourceId = rule.mode === 'mapping' ? (source.mappingSourceId ?? source.id) : null;
-  const mutation = await db.transaction(async (tx) => {
-    const site = await lockCmsSiteForMutation(tx, rule.targetSiteId);
-    const [locked] = await tx.select().from(cmsContents)
-      .where(and(eq(cmsContents.id, target.id), eq(cmsContents.siteId, rule.targetSiteId)))
-      .for('update').limit(1);
-    if (!locked || locked.version !== target.version || locked.lockedAt) {
-      throw new HTTPException(409, { message: '目标内容已被其他操作修改或锁定' });
-    }
-    const oldPublish = locked.status === 'published'
-      ? await captureCmsContentPublishSnapshot(tx, locked, { includeExistingArtifacts: true })
-      : null;
-    const adopted = await adoptCmsResourcesIntoSite(tx, rule.targetSiteId, updatePatch(source, body));
+  const expected = await requireCmsWorkingCopy(db, target.id);
+  return db.transaction(async (tx) => {
+    await lockCmsSiteForMutation(tx, rule.targetSiteId);
+    const [locked] = await tx.select().from(cmsContents).where(and(eq(cmsContents.id, target.id), eq(cmsContents.siteId, rule.targetSiteId))).for('update').limit(1);
+    requireRow(locked, '目标内容不存在');
+    assertCmsContentUnlocked(locked);
+    const adopted = await adoptCmsResourcesIntoSite(tx, rule.targetSiteId, { ...updatePatch(source, body), attachments: source.attachments });
     const canonical = await canonicalizeCmsResourceFields(tx, rule.targetSiteId, adopted, 'content');
-    const { expectedVersion: _expectedVersion, channelId: _channelId, ...contentPatch } = canonical;
-    const [updated] = await tx.update(cmsContents).set({
-      ...contentPatch,
-      titleStyle: source.titleStyle ?? {},
-      attachments: source.attachments ?? [],
-      topExpireAt: source.topExpireAt,
-      expireAt: source.expireAt,
-      modelId: locked.modelId,
-      mappingSourceId,
-      distributionRuleId: rule.id,
-      distributionSourceId: source.id,
-      distributionSourceVersion: source.version,
-      version: sql`${cmsContents.version} + 1`,
-      searchVector: contentSearchVector(rule.targetSiteId, { ...source, ...contentPatch, body }, extendSearchTexts((contentPatch.extend ?? extend) as Record<string, unknown>)),
-    }).where(and(eq(cmsContents.id, locked.id), eq(cmsContents.version, locked.version), isNull(cmsContents.lockedAt))).returning();
-    requireRow(updated, '目标内容已被其他操作修改或锁定', 409);
-    await syncCmsResourceRefs(tx, 'content', updated.id, updated.siteId, updated);
-    await logContentOp(tx, target.id, 'updated', '分发规则 #' + rule.id + ' 同步来源内容 #' + source.id + ' v' + source.version);
-    const task = oldPublish
-      ? await insertContentPublishOutbox(tx, site, updated, 'distribution-sync', oldPublish.deletePaths, {
-          build: updated.status === 'published' && !updated.deletedAt && !updated.externalLink?.trim(),
-        })
-      : null;
-    return { updated, task };
+    const working = await writeCmsSystemWorkingCopy(tx, locked, { ...canonical, extend, modelId: expected.snapshot.modelId,
+      titleStyle: source.titleStyle, attachments: canonical.attachments, topExpireAt: source.topExpireAt, expireAt: source.expireAt,
+    }, expected.version);
+    // Synchronization provenance is operational metadata; public editorial fields remain untouched.
+    await tx.update(cmsContents).set({ mappingSourceId: rule.mode === 'mapping' ? (source.mappingSourceId ?? source.id) : null,
+      distributionRuleId: rule.id, distributionSourceId: source.id, distributionSourceVersion: source.version,
+    }).where(eq(cmsContents.id, locked.id));
+    await logContentOp(tx, target.id, 'updated', `来源 #${source.id} 同步到工作稿，等待目标站审核发布`);
+    return cmsRevisionToContentRow(locked, working.snapshot);
   });
-  if (mutation.task) await enqueueCmsPublishOutboxes([mutation.task], '分发规则 #' + rule.id + ' 内容同步');
-  return mutation.updated;
 }
 
 interface SyncOneResult {
@@ -513,9 +468,8 @@ async function mappingTargetsForCheck(rule: CmsDistributionRuleRow, afterTargetI
 async function detachStaleMapping(
   rule: CmsDistributionRuleRow,
   target: CmsContentRow,
-  source: CmsContentRow | null,
+  _source: CmsContentRow | null,
 ) {
-  const safeSource = source && source.siteId === rule.sourceSiteId ? source : null;
   const mutation = await db.transaction(async (tx) => {
     const site = await lockCmsSiteForMutation(tx, target.siteId);
     const [locked] = await tx.select().from(cmsContents)
@@ -525,23 +479,15 @@ async function detachStaleMapping(
     const oldPublish = locked.status === 'published'
       ? await captureCmsContentPublishSnapshot(tx, locked, { includeExistingArtifacts: true })
       : null;
-    const body = sanitizeCmsHtml(safeSource?.body ?? locked.body);
-    const extend = safeSource?.extend ?? locked.extend ?? {};
-    const adopted = await adoptCmsResourcesIntoSite(
-      tx,
-      target.siteId,
-      await canonicalizeCmsResourceFields(tx, target.siteId, { body, extend }, 'content'),
-    );
     const [updated] = await tx.update(cmsContents).set({
-      // 物化后正文归本行所有，与引用索引一并在事务内落定
-      ...adopted,
+      // 保留已发布快照；来源撤下仅撤销可见性和跟随关系。
       status: oldPublish ? 'offline' : locked.status,
       mappingSourceId: null,
       distributionRuleId: null,
       distributionSourceId: null,
       distributionSourceVersion: null,
       version: sql`${cmsContents.version} + 1`,
-      searchVector: contentSearchVector(target.siteId, { ...locked, ...adopted, body }, extendSearchTexts(extend)),
+
     }).where(and(eq(cmsContents.id, locked.id), eq(cmsContents.version, locked.version), isNull(cmsContents.lockedAt))).returning();
     requireRow(updated, '目标内容已被其他操作修改', 409);
     await syncCmsResourceRefs(tx, 'content', updated.id, updated.siteId, updated);

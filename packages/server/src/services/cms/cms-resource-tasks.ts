@@ -3,9 +3,10 @@ import type { CmsResourceOwnerType } from '@zenith/shared/cms';
 import { and, asc, eq, gt } from 'drizzle-orm';
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core';
 import { db } from '../../db';
+import { cmsContentWorkingCopies } from '../../db/schema/cms-revisions';
 import type { DbExecutor } from '../../db/types';
 import {
-  cmsAds, cmsAdSlots, cmsChannels, cmsContents, cmsContentVersions, cmsForms,
+  cmsAds, cmsAdSlots, cmsChannels, cmsContents, cmsContentRevisions, cmsForms,
   cmsFriendLinks, cmsPages, cmsResources, cmsSites,
 } from '../../db/schema';
 import { registerTaskHandler } from '../../lib/task-center';
@@ -218,15 +219,23 @@ export function buildRefRebuildStages(siteId: number, executor: DbExecutor = db)
         .limit(limit) as unknown as Promise<OwnerRow[]>,
     },
     bySite('channel', '栏目', 'channel', cmsChannels),
-    bySite('content', '内容', 'content', cmsContents),
+    {
+      key: 'content', label: '内容工作稿', ownerType: 'content',
+      fetchAfter: async (afterId, limit) => {
+        const rows = await executor.select({ id: cmsContentWorkingCopies.contentId, snapshot: cmsContentWorkingCopies.snapshot }).from(cmsContentWorkingCopies)
+          .innerJoin(cmsContents, eq(cmsContentWorkingCopies.contentId, cmsContents.id))
+          .where(and(eq(cmsContents.siteId, siteId), gt(cmsContents.id, afterId))).orderBy(asc(cmsContents.id)).limit(limit);
+        return rows.map((row) => ({ id: row.id, ...row.snapshot }));
+      },
+    },
     {
       key: 'contentVersion',
       label: '内容版本快照',
       ownerType: 'contentVersion',
-      fetchAfter: (afterId, limit) => executor.select(ownerColumns(cmsContentVersions, 'contentVersion')).from(cmsContentVersions)
-        .innerJoin(cmsContents, eq(cmsContentVersions.contentId, cmsContents.id))
-        .where(and(eq(cmsContents.siteId, siteId), gt(cmsContentVersions.id, afterId)))
-        .orderBy(asc(cmsContentVersions.id))
+      fetchAfter: (afterId, limit) => executor.select(ownerColumns(cmsContentRevisions, 'contentVersion')).from(cmsContentRevisions)
+        .innerJoin(cmsContents, eq(cmsContentRevisions.contentId, cmsContents.id))
+        .where(and(eq(cmsContents.siteId, siteId), gt(cmsContentRevisions.id, afterId)))
+        .orderBy(asc(cmsContentRevisions.id))
         .limit(limit) as unknown as Promise<OwnerRow[]>,
     },
     bySite('friendLink', '友情链接', 'friendLink', cmsFriendLinks),

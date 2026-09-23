@@ -40,11 +40,11 @@ function describeInvalidRef(ref: CmsInvalidTemplateRef): string {
 }
 
 /** 站点扩展模型字段控件（值写入 extend.{name}，与内容编辑页保持一致的渲染规则） */
-function SiteModelFieldControl({ field }: Readonly<{ field: CmsModelField }>) {
+function SiteModelFieldControl({ field, siteId }: Readonly<{ field: CmsModelField; siteId?: number }>) {
   const f = `extend.${field.name}`;
   const rules = field.required ? [{ required: true, message: `请填写${field.label}` }] : undefined;
   const common = { field: f, label: field.label, labelWidth: 140, rules, placeholder: field.placeholder ?? undefined };
-  return <CmsModelFieldControl field={field} common={common} />;
+  return <CmsModelFieldControl field={field} common={common} siteId={siteId} />;
 }
 
 interface SiteEditSheetProps {
@@ -577,7 +577,7 @@ export default function SiteEditSheet({ open, site, onClose }: Readonly<SiteEdit
                   <Row gutter={16}>
                     {siteModelFields.map((f) => (
                       <Col key={f.name} span={f.fieldType === 'textarea' || f.fieldType === 'richtext' ? 24 : 12}>
-                        <SiteModelFieldControl field={f} />
+                        <SiteModelFieldControl field={f} siteId={site?.id} />
                       </Col>
                     ))}
                   </Row>

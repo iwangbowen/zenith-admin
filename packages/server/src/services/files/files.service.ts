@@ -290,6 +290,7 @@ export async function batchDeleteFiles(ids: string[]) {
   const idCondition = inArray(managedFiles.id, ids);
   const where = buildWhere(idCondition, tc, eq(managedFiles.visibility, 'public'));
   const files = await db.select().from(managedFiles).where(where);
+  if (files.some((file) => file.refCount > 0)) throw new HTTPException(409, { message: '所选文件仍被业务修订引用，不能删除' });
   const configIds = [...new Set(files.map((f) => f.storageConfigId))];
   const configs = await db.select().from(fileStorageConfigs).where(inArray(fileStorageConfigs.id, configIds));
   const configMap = new Map(configs.map((c) => [c.id, c]));
@@ -309,6 +310,7 @@ export async function deleteManagedFile(id: string) {
   const where = buildWhere(eq(managedFiles.id, id), tc, eq(managedFiles.visibility, 'public'));
   const [file] = await db.select().from(managedFiles).where(where).limit(1);
   requireRow(file, '文件不存在');
+  if (file.refCount > 0) throw new HTTPException(409, { message: '文件仍被业务修订引用，不能删除' });
   const [storageConfig] = await db
     .select()
     .from(fileStorageConfigs)
@@ -325,6 +327,7 @@ export async function deleteGeneratedManagedFile(id: string, tenantId: number | 
   const where = and(eq(managedFiles.id, id), tenantWhere);
   const [file] = await db.select().from(managedFiles).where(where).limit(1);
   if (!file) return;
+  if (file.refCount > 0) throw new HTTPException(409, { message: '文件仍被业务修订引用，不能删除' });
   const [storageConfig] = await db.select().from(fileStorageConfigs)
     .where(eq(fileStorageConfigs.id, file.storageConfigId))
     .limit(1);

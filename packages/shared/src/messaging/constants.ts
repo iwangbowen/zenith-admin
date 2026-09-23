@@ -286,6 +286,7 @@ export const NOTIFICATION_SEVERITY_OPTIONS: Array<{ value: NotificationSeverity;
 
 /** 事件分组，用于偏好矩阵按业务域折叠展示。 */
 export const NOTIFICATION_EVENT_GROUPS = [
+  'cms',
   'security',
   'identity',
   'workflow',
@@ -305,6 +306,7 @@ export const NOTIFICATION_EVENT_GROUPS = [
 export type NotificationEventGroup = (typeof NOTIFICATION_EVENT_GROUPS)[number];
 
 export const NOTIFICATION_EVENT_GROUP_LABELS: Record<NotificationEventGroup, string> = {
+  cms: '内容管理',
   security: '账号与安全',
   identity: '组织与租户',
   workflow: '工作流',

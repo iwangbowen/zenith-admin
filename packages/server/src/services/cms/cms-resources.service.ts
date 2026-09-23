@@ -19,7 +19,8 @@ import { ensureCmsResourceFolderExists } from './cms-resource-folders.service';
 import {
   countCmsResourceRefs, invalidateCmsResourceCache, listCmsOrphanResourceIds, listCmsResourceRefDetails,
 } from './cms-resource-refs.service';
-import { refreshCmsPublicConfiguration } from './cms-public-config-refresh.service';
+import { ensureCmsAssetVersion } from './cms-design-versions.service';
+import { removeUnusedCmsAssetVersions } from './cms-asset-rights.service';
 import { sharp } from '../../lib/sharp-loader';
 import { pickEntity } from '../../lib/entity-map';
 
@@ -120,9 +121,7 @@ export async function updateCmsResource(id: number, data: UpdateCmsResourceInput
 }
 
 /**
- * 素材替换：保留素材 id 换掉底层文件，全站引用自动跟随新地址。
- *
- * 句柄化之前做不到这件事 —— URL 就是句柄，换文件必然要逐处改引用。
+ * Replacement creates an immutable binary version. Published revisions keep their pinned file.
  */
 export async function replaceCmsResource(id: number, file: File) {
   const current = await ensureResource(id);
@@ -139,7 +138,9 @@ export async function replaceCmsResource(id: number, file: File) {
       })();
   if (!uploaded.url) throw new HTTPException(500, { message: '素材替换失败：上传未返回地址' });
 
-  const [row] = await db.update(cmsResources).set({
+  const row = await db.transaction(async (tx) => {
+    await ensureCmsAssetVersion(tx, id, current.siteId);
+    const [updated] = await tx.update(cmsResources).set({
     type,
     url: uploaded.url,
     thumbUrl: uploaded.thumbUrl,
@@ -150,9 +151,11 @@ export async function replaceCmsResource(id: number, file: File) {
     width: uploaded.width,
     height: uploaded.height,
     mimeType: file.type || null,
-  }).where(eq(cmsResources.id, id)).returning();
+    }).where(eq(cmsResources.id, id)).returning();
+    await ensureCmsAssetVersion(tx, id, current.siteId);
+    return updated;
+  });
   invalidateCmsResourceCache(current.siteId, [id]);
-  await refreshCmsPublicConfiguration(current.siteId, '素材替换', `resource:${row.id}:${row.updatedAt.getTime()}`);
   // Old binaries remain until the managed-file orphan cleanup runs. Deleting
   // them before the new static deployment activates would break existing HTML.
   return mapCmsResource(row);
@@ -206,7 +209,10 @@ export async function deleteCmsOrphanResource(row: CmsResourceRow): Promise<void
     eq(cmsResourceRefs.siteId, row.siteId),
   ));
   if (refCount > 0) throw new HTTPException(409, { message: '素材已产生引用，无法治理删除' });
-  await db.delete(cmsResources).where(and(eq(cmsResources.id, row.id), eq(cmsResources.siteId, row.siteId)));
+  await db.transaction(async (tx) => {
+    await removeUnusedCmsAssetVersions(tx, row.id);
+    await tx.delete(cmsResources).where(and(eq(cmsResources.id, row.id), eq(cmsResources.siteId, row.siteId)));
+  });
   invalidateCmsResourceCache(row.siteId, [row.id]);
   await deleteOrphanedManagedFile(row, []);
 }
@@ -228,7 +234,10 @@ export async function deleteCmsResources(ids: number[]): Promise<number> {
   if (blocked) {
     throw new HTTPException(400, { message: `素材「${blocked.name}」仍被 ${refCounts.get(blocked.id)} 处引用，请先处理引用后再删除` });
   }
-  await db.delete(cmsResources).where(inArray(cmsResources.id, ids));
+  await db.transaction(async (tx) => {
+    for (const row of [...rows].sort((a, b) => a.id - b.id)) await removeUnusedCmsAssetVersions(tx, row.id);
+    await tx.delete(cmsResources).where(inArray(cmsResources.id, ids));
+  });
   for (const siteId of new Set(rows.map((row) => row.siteId))) {
     invalidateCmsResourceCache(siteId, rows.filter((row) => row.siteId === siteId).map((row) => row.id));
   }

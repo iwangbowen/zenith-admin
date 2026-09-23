@@ -1,17 +1,15 @@
+import { requireTenantUser } from '../../lib/user-nicknames';
 import { requireRow } from '../../lib/db-assert';
-import { eq, and, inArray, isNull, isNotNull, lte, sql } from 'drizzle-orm';
+import { eq, and, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { cmsContents, cmsContentTags, cmsTags, cmsChannels, cmsContentChannels, cmsContentRelations, cmsPages, users } from '../../db/schema';
+import { cmsContents, cmsTags, cmsPages, cmsContentWorkingCopies, users } from '../../db/schema';
 import type { CmsContentRow, CmsSiteRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import { parseDateTimeInput } from '../../lib/datetime';
-import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { buildWhere } from '../../lib/where-helpers';
-import { contentSearchVector, contentSearchVectorOnUpdate } from './cms-search.service';
-import { listCmsModelFields } from './cms-models.service';
+import { assertCmsModelUsableBySite } from './cms-models.service';
 import { assertChannelAccess, assertChannelsAccess } from './cms-channels.service';
-import { snapshotContentVersion, restoreContentVersion } from './cms-versions.service';
 import { logContentOp } from './cms-content-op-logs.service';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 import { currentUserOrNull } from '../../lib/context';
@@ -19,7 +17,6 @@ import { isWorkflowAuditEnabled, startCmsContentWorkflow, assertNoActiveContentW
 import { enqueueCmsWebhookEvents, insertCmsContentWebhookOutbox } from './cms-webhook.service';
 import { assertContentTemplateBySite } from './cms-template-refs.service';
 import type { CmsContentAttachment, CmsSiteOpsSettings, CreateCmsContentInput, UpdateCmsContentInput, CmsContentStatus } from '@zenith/shared/cms';
-import type { AsyncTask } from '@zenith/shared/tasks';
 import { buildCmsEntityLink, isCmsEntityLink } from '@zenith/shared/cms';
 import { ensureCmsLinkTargetExists } from './cms-link.service';
 import { extractFirstImage, normalizeAttachments } from './cms-body.service';
@@ -27,72 +24,32 @@ import { resolveCmsSiteOpsSettings } from './cms-site-settings';
 import { sanitizeUserText } from './cms-sensitive-words.service';
 import { replaceErrorProneWords } from './cms-error-prone-words.service';
 import { assertCompleteCmsBatch } from './cms-access';
-import {
-  canTransitionCmsContentStatus, type CmsContentTransitionAction,
-} from './cms-content-state';
+import { canTransitionCmsContentStatus } from './cms-content-state';
 import { requireCmsScheduledAtMutationPermission } from './cms-publish-permission';
 import { assertCmsContentUnlocked, assertNoLockedCmsMappedCopies } from './cms-content-lock.service';
-import { bumpCmsTemplateRefsRevision, lockCmsSiteForMutation } from './cms-site-publish-lock.service';
+import { lockCmsSiteForMutation } from './cms-site-publish-lock.service';
 import { captureCmsContentPublishSnapshot } from './cms-content-publish-snapshot.service';
 import { canonicalizeCmsResourceFields, syncCmsResourceRefs } from './cms-resource-refs.service';
-import { enqueueCmsPublishOutboxes, insertCmsSiteRefsRebuildOutbox } from './cms-publish-outbox.service';
-import {
-  enqueueCmsSubscriptionNotification,
-  insertCmsSubscriptionNotificationOutbox,
-} from './cms-stage4-tasks';
+import { enqueueCmsPublishOutboxes } from './cms-publish-outbox.service';
 import { resolveEffectiveCmsSiteRow } from './cms-site-inheritance.service';
-import logger from '../../lib/logger';
 import { assertCmsWidgetSourcesMutable } from './cms-widgets.service';
-import { submitCmsWidgetSourceRefreshSideEffect } from './cms-widget-tasks';
-import { insertContentPublishOutbox, recalcTagContentCounts, ensureChannelForContent } from './cms-contents-internal';
-import { ensureCmsContentExists, getCmsContent, mapCmsContent } from './cms-contents-query.service';
+import { insertContentPublishOutbox, ensureChannelForContent } from './cms-contents-internal';
+import { ensureCmsContentExists, getCmsContent } from './cms-contents-query.service';
 import { applyCmsModelFieldDefaults, validateCmsModelExtend } from './cms-model-extend';
 import { sanitizeCmsHtml } from './cms-html-sanitizer';
+import { requireCmsContentAccess, requireCmsContentsAccess } from './cms-content-access.service';
+import { approveCmsRevision, assertCmsContentVersion, bindCmsReviewRevision, buildCmsRevisionSnapshot, cmsRevisionToContentRow, freezeCmsContentRevision, initializeCmsContentWorkingCopy, loadCmsRevision, requireCmsWorkingCopy } from './cms-content-revisions.service';
+import { normalizeCmsContentDocument, renderCmsContentDocument } from './cms-document.service';
 
 // ─── 写入辅助 ─────────────────────────────────────────────────────────────────
 
 /** 模型 searchable 字段的 extend 文本值（纳入全文索引） */
-async function collectSearchableExtendTexts(modelId: number | null | undefined, extend: Record<string, unknown>): Promise<string[]> {
-  if (!modelId) return [];
-  const fields = await listCmsModelFields(modelId);
-  return fields
-    .filter((f) => f.searchable)
-    .map((f) => extend[f.name])
-    .filter((v): v is string => typeof v === 'string' && v.trim() !== '');
-}
-
-/** 先删后插替换内容标签，并重算受影响标签的 contentCount */
-async function setContentTags(executor: DbExecutor, contentId: number, siteId: number, tagIds: number[]): Promise<void> {
-  const previous = await executor.select({ tagId: cmsContentTags.tagId }).from(cmsContentTags).where(and(
-    eq(cmsContentTags.contentId, contentId),
-  ));
-  await executor.delete(cmsContentTags).where(and(
-    eq(cmsContentTags.contentId, contentId),
-  ));
-  if (tagIds.length > 0) {
-    const validTags = await executor.select({ id: cmsTags.id }).from(cmsTags)
-      .where(and(inArray(cmsTags.id, tagIds), eq(cmsTags.siteId, siteId)));
-    if (validTags.length !== tagIds.length) {
-      throw new HTTPException(400, { message: '存在无效标签或标签不属于当前站点' });
-    }
-    await executor.insert(cmsContentTags).values(tagIds.map((tagId) => ({ contentId, tagId })));
-  }
-  await recalcTagContentCounts(executor, [...previous.map((p) => p.tagId), ...tagIds]);
-}
-
 export async function ensureCmsContentTargetAccess(siteId: number, channelId: number) {
   await ensureCmsSiteExists(siteId);
   await assertSiteAccess(siteId);
   await assertChannelAccess(channelId);
   const channel = await ensureChannelForContent(siteId, channelId);
   return { channel };
-}
-
-/** 形态结构化数据中的可检索文本（图集说明等纳入全文索引） */
-function mediaDataTexts(mediaData: Record<string, unknown> | null | undefined): string[] {
-  const images = (mediaData as { images?: { caption?: string | null }[] } | null)?.images;
-  if (!Array.isArray(images)) return [];
-  return images.map((img) => img?.caption).filter((v): v is string => typeof v === 'string' && v.trim() !== '');
 }
 
 /** 发布前按内容形态校验必要数据（草稿允许不完整，发布必须齐备） */
@@ -107,41 +64,6 @@ function assertContentTypeReady(row: CmsContentRow): void {
   if (row.contentType === 'media' && !media.mediaUrl?.trim()) {
     throw new HTTPException(400, { message: '音视频内容须填写媒体地址后才能发布' });
   }
-}
-
-/** 先删后插替换副栏目（一文多栏目；副栏目须为本站列表栏目且 ≠ 主栏目） */
-async function setContentExtraChannels(executor: DbExecutor, contentId: number, siteId: number, mainChannelId: number, extraChannelIds: number[]): Promise<void> {
-  await executor.delete(cmsContentChannels).where(and(
-    eq(cmsContentChannels.contentId, contentId),
-  ));
-  const targets = [...new Set(extraChannelIds)].filter((id) => id !== mainChannelId);
-  if (targets.length === 0) return;
-  const valid = await executor.select({ id: cmsChannels.id }).from(cmsChannels)
-    .where(and(inArray(cmsChannels.id, targets), eq(cmsChannels.siteId, siteId), eq(cmsChannels.type, 'list')));
-  if (valid.length !== targets.length) {
-    throw new HTTPException(400, { message: '存在无效副栏目（须为本站点的列表栏目）' });
-  }
-  await executor.insert(cmsContentChannels).values(targets.map((channelId) => ({ contentId, channelId })));
-}
-
-/** 先删后插替换相关文章（须为本站内容且 ≠ 自身） */
-async function setContentRelations(executor: DbExecutor, contentId: number, siteId: number, relatedIds: number[]): Promise<void> {
-  await executor.delete(cmsContentRelations).where(and(
-    eq(cmsContentRelations.contentId, contentId),
-  ));
-  const targets = [...new Set(relatedIds)].filter((id) => id !== contentId);
-  if (targets.length === 0) return;
-  const valid = await executor.select({ id: cmsContents.id }).from(cmsContents)
-    .where(and(inArray(cmsContents.id, targets), eq(cmsContents.siteId, siteId), isNull(cmsContents.deletedAt)));
-  if (valid.length !== targets.length) {
-    throw new HTTPException(400, { message: '存在无效的相关文章（须为本站点内容）' });
-  }
-
-  await executor.insert(cmsContentRelations).values(targets.map((relatedId, index) => ({
-    contentId,
-    relatedId,
-    sort: index,
-  })));
 }
 
 async function assertContentStaticPathFree(
@@ -166,17 +88,11 @@ async function assertRelatedContentAccess(siteId: number, relatedIds: number[]):
       isNull(cmsContents.deletedAt),
     ));
   assertCompleteCmsBatch(targets, rows.map((row) => row.id), '相关文章');
-  await assertChannelsAccess(rows.map((row) => row.channelId));
+  await requireCmsContentsAccess(targets);
 }
 
 // ─── 属性自动标记（P4：保存时按正文/形态数据/封面检测含图/含视频/含附件）──────────
 const ATTACHMENT_LINK_RE = /<a\b[^>]*href="[^"]*\.(?:pdf|docx?|xlsx?|pptx?|zip|rar|7z|csv)(?:[?#][^"]*)?"/i;
-
-/** cms_contents 的多个唯一约束 → 精准错误提示（未命中回落到通用文案） */
-const CMS_CONTENT_UNIQUE_MESSAGES = {
-  cms_contents_site_slug_uq: '同站点下已存在相同 URL 标识的内容',
-  cms_contents_site_static_path_uq: '同站点下已存在相同静态路径的内容',
-} as const;
 
 export function detectContentFlags(input: {
   contentType: string;
@@ -262,498 +178,244 @@ export async function applyCmsContentPolicies<T extends CmsContentPolicyInput>(
   return out;
 }
 
-/** 站点关闭「已发布内容可编辑」时，拦截对已发布内容的直接编辑 */
-function assertCmsContentEditable(current: CmsContentRow, site: Pick<CmsSiteRow, 'settings'>): void {
-  if (current.status !== 'published') return;
-  if (resolveCmsSiteOpsSettings(site.settings).publishedContentEditable) return;
-  throw new HTTPException(400, { message: '站点已关闭「已发布内容可编辑」，请先下线内容再编辑' });
-}
-
-// ─── 创建 ─────────────────────────────────────────────────────────────────────
+/** New content starts as a non-public identity plus an independently editable working copy. */
 export async function createCmsContent(data: CreateCmsContentInput) {
-  const siteRow = await ensureCmsSiteExists(data.siteId);
+  const site = await ensureCmsSiteExists(data.siteId);
   await assertSiteAccess(data.siteId);
   await assertChannelAccess(data.channelId);
-  await assertContentTemplateBySite(data.siteId, data.detailTemplate);
   const channel = await ensureChannelForContent(data.siteId, data.channelId);
-  const { tagIds = [], extraChannelIds = [], relatedIds = [], scheduledAt, expireAt, topExpireAt, ...raw } = data;
-  const policied = await applyCmsContentPolicies(raw as typeof raw & CmsContentPolicyInput, siteRow);
-  const parsedScheduledAt = parseDateTimeInput(scheduledAt);
-  await requireCmsScheduledAtMutationPermission({
-    current: null,
-    requested: parsedScheduledAt,
-  });
-  await assertChannelsAccess(extraChannelIds);
-  await assertRelatedContentAccess(data.siteId, relatedIds);
-  await ensureCmsLinkTargetExists(data.siteId, policied.externalLink);
-  const modelId = channel.modelId ?? null;
-  // 模型字段：先回填 defaultValue（只补缺），再做草稿级校验（类型/选项合法性）
-  policied.extend = await applyCmsModelFieldDefaults(modelId, (policied.extend ?? {}) as Record<string, unknown>);
-  await validateCmsModelExtend(modelId, policied.extend as Record<string, unknown>, 'draft');
-  const extendTexts = [
-    ...await collectSearchableExtendTexts(modelId, (policied.extend ?? {}) as Record<string, unknown>),
-    ...mediaDataTexts(policied.mediaData as Record<string, unknown>),
-  ];
-  // P5 部门数据权限：创建时快照创建人及其部门
+  const modelId = data.modelId === undefined ? channel.modelId : data.modelId;
+  if (modelId) await assertCmsModelUsableBySite(modelId, data.siteId);
+  await assertContentTemplateBySite(data.siteId, data.detailTemplate);
+  await assertChannelsAccess(data.extraChannelIds ?? []);
+  await assertRelatedContentAccess(data.siteId, data.relatedIds ?? []);
+  await ensureCmsLinkTargetExists(data.siteId, data.externalLink);
+  await requireCmsScheduledAtMutationPermission({ current: null, requested: parseDateTimeInput(data.scheduledAt) });
+  if (data.ownerId) await requireTenantUser(data.ownerId, '内容负责人不存在或已停用', { enabledOnly: true });
+  if (data.translationOfId) {
+    const source = await requireCmsContentAccess(data.translationOfId);
+    if (source.siteId !== data.siteId) throw new HTTPException(400, { message: '翻译来源必须属于同一站点' });
+  }
+  if (data.sourceRevisionId) {
+    const source = await loadCmsRevision(db, data.sourceRevisionId);
+    await requireCmsContentAccess(source.contentId);
+    if (source.siteId !== data.siteId || (data.translationOfId && source.contentId !== data.translationOfId)) throw new HTTPException(400, { message: '来源修订不属于所选来源内容或站点' });
+  }
+  const prepared = await applyCmsContentPolicies({ ...data, ...(data.bodyDocument ? { body: renderCmsContentDocument(data.bodyDocument) } : {}) }, site);
+  prepared.extend = await applyCmsModelFieldDefaults(modelId, prepared.extend ?? {});
+  await validateCmsModelExtend(modelId, prepared.extend, 'draft');
   const creator = currentUserOrNull();
-  const creatorDept = creator
-    ? await db.query.users.findFirst({ where: eq(users.id, creator.userId), columns: { departmentId: true } })
-    : null;
-  try {
-    const mutation = await db.transaction(async (tx) => {
-      let site = await lockCmsSiteForMutation(tx, data.siteId);
-      await assertContentStaticPathFree(tx, data.siteId, policied.staticPath);
-      await assertContentTemplateBySite(data.siteId, data.detailTemplate);
-      // 素材句柄归一化必须在事务内：会为文件中心引用补登记素材行，回滚时要一并撤销
-      const rest = await canonicalizeCmsResourceFields(tx, data.siteId, policied, 'content');
-      const [created] = await tx.insert(cmsContents).values({
-        ...rest,
-        extend: (rest.extend ?? {}) as Record<string, unknown>,
-        modelId,
-        createdBy: creator?.userId ?? null,
-        deptId: creatorDept?.departmentId ?? null,
-        scheduledAt: parsedScheduledAt,
-        expireAt: parseDateTimeInput(expireAt),
-        topExpireAt: parseDateTimeInput(topExpireAt),
-        ...detectContentFlags({
-          contentType: rest.contentType ?? 'article',
-          body: rest.body,
-          mediaData: rest.mediaData as Record<string, unknown>,
-          coverImage: rest.coverImage,
-          attachments: rest.attachments,
-        }),
-        searchVector: contentSearchVector(data.siteId, rest, extendTexts),
-      }).returning();
-      await setContentTags(tx, created.id, data.siteId, tagIds);
-      await setContentExtraChannels(tx, created.id, data.siteId, created.channelId, extraChannelIds);
-      await setContentRelations(tx, created.id, data.siteId, relatedIds);
-      await syncCmsResourceRefs(tx, 'content', created.id, created.siteId, created);
-      await logContentOp(tx, created.id, 'created');
-      let refsTask: AsyncTask | null = null;
-      if (created.detailTemplate) {
-        const revision = await bumpCmsTemplateRefsRevision(tx, data.siteId);
-        site = { ...site, templateRefsRevision: revision };
-        refsTask = await insertCmsSiteRefsRebuildOutbox(
-          tx,
-          site,
-          '内容模板引用创建',
-          `site:${data.siteId}:refs:${revision}`,
-        );
-      }
-      return { created, refsTask };
-    });
-    if (mutation.refsTask) await enqueueCmsPublishOutboxes([mutation.refsTask], `内容 #${mutation.created.id} 模板引用创建`);
-    return getCmsContent(mutation.created.id);
-  } catch (err) {
-    rethrowPgUniqueViolation(err, '同站点下已存在相同 URL 标识的内容', CMS_CONTENT_UNIQUE_MESSAGES);
-  }
-}
-
-// ─── 更新 ─────────────────────────────────────────────────────────────────────
-export async function updateCmsContent(
-  id: number,
-  data: UpdateCmsContentInput,
-  options?: { suppressDistributionSideEffects?: boolean },
-) {
-  const current = await ensureCmsContentExists(id);
-  await assertSiteAccess(current.siteId);
-  await assertChannelAccess(current.channelId);
-  assertCmsContentUnlocked(current);
-  const siteRow = await ensureCmsSiteExists(current.siteId);
-  assertCmsContentEditable(current, siteRow);
-  await assertNoLockedCmsMappedCopies(id);
-  await assertContentTemplateBySite(current.siteId, data.detailTemplate);
-  let modelId = current.modelId;
-  if (data.channelId && data.channelId !== current.channelId) {
-    await assertChannelAccess(data.channelId);
-    const channel = await ensureChannelForContent(current.siteId, data.channelId);
-    modelId = channel.modelId ?? null;
-  }
-  const { tagIds, extraChannelIds, relatedIds, scheduledAt, expireAt, topExpireAt, expectedVersion, ...raw } = data;
-  const rest = await applyCmsContentPolicies(
-    raw as typeof raw & CmsContentPolicyInput,
-    siteRow,
-    { body: current.body, coverImage: current.coverImage },
-  );
-  const parsedScheduledAt = scheduledAt === undefined ? undefined : parseDateTimeInput(scheduledAt);
-  await requireCmsScheduledAtMutationPermission({
-    current: current.scheduledAt,
-    requested: parsedScheduledAt,
+  const owner = creator ? await db.query.users.findFirst({ where: eq(users.id, creator.userId), columns: { departmentId: true } }) : null;
+  const created = await db.transaction(async (tx) => {
+    await lockCmsSiteForMutation(tx, data.siteId);
+    await assertContentStaticPathFree(tx, data.siteId, prepared.staticPath);
+    const canonical = await canonicalizeCmsResourceFields(tx, data.siteId, prepared, 'content');
+    const snapshot = buildCmsRevisionSnapshot({ ...canonical, modelId: modelId ?? null, bodyDocument: normalizeCmsContentDocument(canonical.body ?? '', data.bodyDocument ?? undefined) });
+    const [identity] = await tx.insert(cmsContents).values({ siteId: data.siteId, channelId: data.channelId, modelId: modelId ?? null, title: data.title, contentType: data.contentType ?? 'article', deptId: owner?.departmentId ?? null, status: 'draft' }).returning();
+    requireRow(identity, '内容创建失败');
+    const working = await initializeCmsContentWorkingCopy(tx, identity, snapshot);
+    await freezeCmsContentRevision(tx, identity, working, 'checkpoint', '初始工作稿');
+    await syncCmsResourceRefs(tx, 'content', identity.id, identity.siteId, snapshot);
+    await logContentOp(tx, identity.id, 'created');
+    return identity;
   });
-  if (extraChannelIds) await assertChannelsAccess(extraChannelIds);
-  if (relatedIds) await assertRelatedContentAccess(current.siteId, relatedIds);
-  if (rest.externalLink !== undefined) await ensureCmsLinkTargetExists(current.siteId, rest.externalLink);
-  // 内部链接不能指向自己（保存后会形成自跳转死循环）
-  if (isCmsEntityLink(rest.externalLink) && rest.externalLink === buildCmsEntityLink('content', id)) {
-    throw new HTTPException(400, { message: '内部链接不能指向内容自身' });
-  }
-  // 乐观锁：携带 expectedVersion 时先行比对，冲突返回 409（前端提示刷新后重试）
-  if (expectedVersion !== undefined && current.version !== expectedVersion) {
-    throw new HTTPException(409, { message: '内容已被其他人修改，请刷新页面获取最新版本后再保存' });
-  }
-  // 映射内容：正文/扩展字段共享来源内容，禁止独立编辑（请编辑来源内容或改用独立复制）
-  if (current.mappingSourceId && (rest.body !== undefined || rest.extend !== undefined)) {
-    throw new HTTPException(400, { message: '映射内容的正文与扩展字段共享来源内容，不可独立编辑' });
-  }
-  const nextExtend = (rest.extend ?? current.extend ?? {}) as Record<string, unknown>;
-  await validateCmsModelExtend(modelId, nextExtend, current.status === 'published' ? 'publish' : 'draft');
-  const nextMediaData = (rest.mediaData ?? current.mediaData ?? {}) as Record<string, unknown>;
-  const extendTexts = [...await collectSearchableExtendTexts(modelId, nextExtend), ...mediaDataTexts(nextMediaData)];
-  try {
-    const mutation = await db.transaction(async (tx) => {
-      let site = await lockCmsSiteForMutation(tx, current.siteId);
-      const [locked] = await tx.select().from(cmsContents).where(eq(cmsContents.id, id)).for('update').limit(1);
-      requireRow(locked, '内容不存在');
-      if (rest.staticPath !== undefined) await assertContentStaticPathFree(tx, current.siteId, rest.staticPath);
-      await assertContentTemplateBySite(current.siteId, data.detailTemplate);
-      const oldPublish = locked.status === 'published'
-        ? await captureCmsContentPublishSnapshot(tx, locked, { includeExistingArtifacts: true })
-        : null;
-      // 更新前自动留档版本快照（可在编辑页回滚）
-      await snapshotContentVersion(tx, locked, '更新前留档');
-      const versionGuard = expectedVersion !== undefined
-        ? and(eq(cmsContents.id, id), eq(cmsContents.version, expectedVersion), isNull(cmsContents.lockedAt))!
-        : and(eq(cmsContents.id, id), isNull(cmsContents.lockedAt))!;
-      // 素材句柄归一化必须在事务内：会为文件中心引用补登记素材行，回滚时要一并撤销
-      const canonical = await canonicalizeCmsResourceFields(tx, current.siteId, rest, 'content');
-      const [updated] = await tx.update(cmsContents).set({
-        ...canonical,
-        modelId,
-        version: sql`${cmsContents.version} + 1`,
-        ...(parsedScheduledAt !== undefined ? { scheduledAt: parsedScheduledAt } : {}),
-        ...(expireAt !== undefined ? { expireAt: parseDateTimeInput(expireAt) } : {}),
-        ...(topExpireAt !== undefined ? { topExpireAt: parseDateTimeInput(topExpireAt) } : {}),
-        ...detectContentFlags({
-          contentType: current.contentType,
-          body: canonical.body !== undefined ? canonical.body : current.body,
-          mediaData: nextMediaData,
-          coverImage: rest.coverImage !== undefined ? rest.coverImage : current.coverImage,
-          attachments: canonical.attachments !== undefined ? canonical.attachments : current.attachments,
-        }),
-        // 映射内容正文在来源行，保持自身检索向量不动（分发时已按来源快照写入）
-        ...(current.mappingSourceId ? {} : {
-          searchVector: contentSearchVectorOnUpdate(current, rest, extendTexts),
-        }),
-      }).where(versionGuard).returning();
-      if (!updated) {
-        throw new HTTPException(409, { message: '内容已被其他人修改，请刷新页面获取最新版本后再保存' });
-      }
-      if (tagIds) {
-        await setContentTags(tx, id, current.siteId, tagIds);
-      }
-      if (extraChannelIds) {
-        await setContentExtraChannels(tx, id, current.siteId, updated.channelId, extraChannelIds);
-      }
-      if (relatedIds) {
-        await setContentRelations(tx, id, current.siteId, relatedIds);
-      }
-      await syncCmsResourceRefs(tx, 'content', id, updated.siteId, updated);
-      await logContentOp(tx, id, 'updated');
-      const webhookTask = await insertCmsContentWebhookOutbox(tx, 'cms.content.updated', updated);
-      let refsTask: AsyncTask | null = null;
-      if (data.detailTemplate !== undefined && data.detailTemplate !== locked.detailTemplate) {
-        const revision = await bumpCmsTemplateRefsRevision(tx, current.siteId);
-        site = { ...site, templateRefsRevision: revision };
-        refsTask = await insertCmsSiteRefsRebuildOutbox(
-          tx,
-          site,
-          '内容模板引用更新',
-          `site:${current.siteId}:refs:${revision}`,
-        );
-      }
-      const task = oldPublish
-        ? await insertContentPublishOutbox(
-            tx,
-            site,
-            updated,
-            'update',
-            oldPublish.deletePaths,
-            {
-              build: updated.status === 'published' && !updated.deletedAt && !updated.externalLink?.trim(),
-              refreshChannelIds: [locked.channelId, updated.channelId],
-            },
-          )
-        : null;
-      return { task, refsTask, webhookTask, updated };
-    });
-    await enqueueCmsPublishOutboxes(
-      [mutation.task, mutation.refsTask].filter((task): task is AsyncTask => task != null),
-      `内容 #${id} 更新`,
-    );
-    await enqueueCmsWebhookEvents([mutation.webhookTask]);
-    if (mutation.updated.status === 'published' && !mutation.updated.deletedAt) {
-      submitCmsWidgetSourceRefreshSideEffect('content', [id]);
-    }
-    if (!options?.suppressDistributionSideEffects) {
-      const { submitCmsMappingDistributionSideEffects } = await import('./cms-distributions.service');
-      await submitCmsMappingDistributionSideEffects(id).catch((error) => {
-        logger.warn(`[cms-distribution] 内容 #${id} 映射跟随任务提交失败`, error);
-      });
-    }
-    return getCmsContent(id);
-  } catch (err) {
-    rethrowPgUniqueViolation(err, '同站点下已存在相同 URL 标识的内容', CMS_CONTENT_UNIQUE_MESSAGES);
-  }
+  return getCmsContent(created.id);
 }
 
-// ─── 状态流转 ─────────────────────────────────────────────────────────────────
-async function transitionStatus(
-  id: number,
-  action: CmsContentTransitionAction,
-  patch: Partial<typeof cmsContents.$inferInsert>,
-  options?: { skipAccessCheck?: boolean },
-) {
-  const current = await ensureCmsContentExists(id);
+export async function updateCmsContent(id: number, data: UpdateCmsContentInput, options?: { suppressDistributionSideEffects?: boolean; skipAccessCheck?: boolean }) {
+  const identity = options?.skipAccessCheck ? await ensureCmsContentExists(id) : await requireCmsContentAccess(id);
+  assertCmsContentUnlocked(identity);
+  if (identity.deletedAt || identity.archivedAt) throw new HTTPException(409, { message: '回收站或已归档内容不可编辑' });
+  const site = await ensureCmsSiteExists(identity.siteId);
+  const { expectedVersion, saveMode = 'manual', ...patch } = data;
+  if (patch.ownerId) await requireTenantUser(patch.ownerId, '内容负责人不存在或已停用', { enabledOnly: true });
+  if (patch.translationOfId) {
+    const source = await requireCmsContentAccess(patch.translationOfId);
+    if (source.siteId !== identity.siteId || source.id === id) throw new HTTPException(400, { message: '翻译来源必须是本站其他内容' });
+  }
+  if (patch.sourceRevisionId) {
+    const source = await loadCmsRevision(db, patch.sourceRevisionId);
+    await requireCmsContentAccess(source.contentId);
+    if (source.siteId !== identity.siteId || (patch.translationOfId && source.contentId !== patch.translationOfId)) throw new HTTPException(400, { message: '来源修订不属于所选来源内容或站点' });
+  }
+  if (patch.bodyDocument) patch.body = renderCmsContentDocument(patch.bodyDocument);
+  if (patch.channelId) {
+    if (!options?.skipAccessCheck) await assertChannelAccess(patch.channelId);
+    await ensureChannelForContent(identity.siteId, patch.channelId);
+  }
+  if (patch.modelId !== undefined && patch.modelId !== identity.modelId) throw new HTTPException(400, { message: '内容类型创建后不可直接更换，请使用类型转换' });
   if (!options?.skipAccessCheck) {
-    await assertSiteAccess(current.siteId);
-    await assertChannelAccess(current.channelId);
+    if (patch.extraChannelIds) await assertChannelsAccess(patch.extraChannelIds);
+    if (patch.relatedIds) await assertRelatedContentAccess(identity.siteId, patch.relatedIds);
   }
-  assertCmsContentUnlocked(current);
-  await assertNoLockedCmsMappedCopies(id);
-  if (current.deletedAt) throw new HTTPException(400, { message: '回收站中的内容不可操作，请先恢复' });
-  if (current.archivedAt) throw new HTTPException(400, { message: '已归档的内容不可操作，请先取消归档' });
-  if (!canTransitionCmsContentStatus(current.status, action)) {
-    throw new HTTPException(400, { message: `当前状态（${current.status}）不允许此操作` });
-  }
-  const [updated] = await db.update(cmsContents).set({
-    ...patch,
-    // Status transitions are content revisions too; otherwise an editor holding
-    // an old optimistic-lock token can overwrite a newly submitted/rejected row.
-    version: sql`${cmsContents.version} + 1`,
-  }).where(and(
-    eq(cmsContents.id, id),
-    eq(cmsContents.status, current.status),
-    isNull(cmsContents.lockedAt),
-  )).returning();
-  requireRow(updated, '内容状态已变化，请刷新后重试', 409);
-  return options?.skipAccessCheck ? mapCmsContent(updated) : getCmsContent(id);
+  if (patch.externalLink !== undefined) await ensureCmsLinkTargetExists(identity.siteId, patch.externalLink);
+  if (isCmsEntityLink(patch.externalLink) && patch.externalLink === buildCmsEntityLink('content', id)) throw new HTTPException(400, { message: '内部链接不能指向内容自身' });
+  await db.transaction(async (tx) => {
+    await lockCmsSiteForMutation(tx, identity.siteId);
+    const [locked] = await tx.select().from(cmsContents).where(eq(cmsContents.id, id)).for('update').limit(1);
+    requireRow(locked, '内容不存在');
+    assertCmsContentUnlocked(locked);
+    const working = await requireCmsWorkingCopy(tx, id, true);
+    assertCmsContentVersion(working, expectedVersion);
+    await requireCmsScheduledAtMutationPermission({ current: parseDateTimeInput(working.snapshot.scheduledAt), requested: patch.scheduledAt === undefined ? undefined : parseDateTimeInput(patch.scheduledAt) });
+    const policied = await applyCmsContentPolicies(patch, site, { body: working.snapshot.body, coverImage: working.snapshot.coverImage });
+    const canonical = await canonicalizeCmsResourceFields(tx, identity.siteId, policied, 'content');
+    const snapshot = buildCmsRevisionSnapshot({ ...working.snapshot, ...canonical, modelId: working.snapshot.modelId, ...(canonical.body !== undefined ? { bodyDocument: normalizeCmsContentDocument(canonical.body ?? '', patch.bodyDocument ?? working.snapshot.bodyDocument ?? undefined) } : {}) });
+    await validateCmsModelExtend(snapshot.modelId, snapshot.extend, 'draft');
+    await assertContentTemplateBySite(identity.siteId, snapshot.detailTemplate);
+    await assertContentStaticPathFree(tx, identity.siteId, snapshot.staticPath);
+    if (snapshot.tagIds.length) {
+      const tags = await tx.select({ id: cmsTags.id }).from(cmsTags).where(and(eq(cmsTags.siteId, identity.siteId), inArray(cmsTags.id, snapshot.tagIds)));
+      assertCompleteCmsBatch(snapshot.tagIds, tags.map((tag) => tag.id), '标签');
+    }
+    await tx.update(cmsContentWorkingCopies).set({ snapshot, version: sql`${cmsContentWorkingCopies.version} + 1`, editorialStatus: 'draft', rejectReason: null }).where(and(eq(cmsContentWorkingCopies.contentId, id), eq(cmsContentWorkingCopies.version, expectedVersion)));
+    if (saveMode === 'manual') {
+      const saved = await requireCmsWorkingCopy(tx, id);
+      await freezeCmsContentRevision(tx, identity, saved, 'checkpoint', '人工保存工作稿');
+    }
+    await syncCmsResourceRefs(tx, 'content', id, identity.siteId, snapshot);
+    await logContentOp(tx, id, 'updated', '保存独立工作稿，公开版本保持不变');
+  });
+  return options?.skipAccessCheck ? getCmsContent(id, { skipAccessCheck: true }) : getCmsContent(id);
 }
 
-/** 提交审核：站点开启工作流审核模式时自动发起审核流程 */
-export async function submitCmsContent(id: number, options?: { skipAccessCheck?: boolean }) {
-  const current = await ensureCmsContentExists(id);
-  if (!options?.skipAccessCheck) {
-    await assertSiteAccess(current.siteId);
-    await assertChannelAccess(current.channelId);
-  }
-  assertCmsContentUnlocked(current);
-  const site = await resolveEffectiveCmsSiteRow(current.siteId);
-  const settings = (site.settings ?? {}) as Record<string, unknown>;
-  // 提审即进入审核发布链：此处强校验模型必填，避免缺文号等硬伤流入审核队列
-  await validateCmsModelExtend(current.modelId, (current.extend ?? {}) as Record<string, unknown>, 'publish');
-  const result = await transitionStatus(id, 'submit', { status: 'pending', rejectReason: null }, options);
-  await logContentOp(db, id, 'submitted');
+export async function submitCmsContent(id: number, options?: { skipAccessCheck?: boolean; expectedVersion?: number }) {
+  const identity = options?.skipAccessCheck ? await ensureCmsContentExists(id) : await requireCmsContentAccess(id);
+  assertCmsContentUnlocked(identity);
+  await assertNoActiveContentWorkflow(id);
+  const site = await resolveEffectiveCmsSiteRow(identity.siteId);
+  const settings = site.settings ?? {};
+  const revision = await db.transaction(async (tx) => {
+    await lockCmsSiteForMutation(tx, identity.siteId);
+    const working = await requireCmsWorkingCopy(tx, id, true);
+    assertCmsContentVersion(working, options?.expectedVersion);
+    if (identity.deletedAt || identity.archivedAt) throw new HTTPException(409, { message: '回收站或已归档内容不可提审' });
+    await validateCmsModelExtend(working.snapshot.modelId, working.snapshot.extend, 'publish');
+    assertContentTypeReady(cmsRevisionToContentRow(identity, working.snapshot));
+    const frozen = await freezeCmsContentRevision(tx, identity, working, 'submission', '冻结提审稿');
+    await tx.update(cmsContentWorkingCopies).set({ submittedRevisionId: frozen.id, approvedRevisionId: null, editorialStatus: 'pending', rejectReason: null, version: sql`${cmsContentWorkingCopies.version} + 1` }).where(eq(cmsContentWorkingCopies.contentId, id));
+    await logContentOp(tx, id, 'submitted', `修订 #${frozen.id} ${frozen.hash}`);
+    return frozen;
+  });
   if (isWorkflowAuditEnabled(settings)) {
     try {
-      const channel = await db.query.cmsChannels.findFirst({
-        where: eq(cmsChannels.id, current.channelId),
-        columns: { name: true },
-      });
+      const channel = await ensureChannelForContent(identity.siteId, revision.snapshot.channelId);
       let caller: { userId: number; username: string; tenantId: null; roles?: string[] } | undefined;
-      if (options?.skipAccessCheck) {
-        if (!site.createdBy) {
-          throw new HTTPException(400, { message: '站点未配置可用的工作流发起人' });
-        }
-        const [siteCreator] = await db.select({ username: users.username }).from(users)
-          .where(eq(users.id, site.createdBy)).limit(1);
-        requireRow(siteCreator, '站点工作流发起人不存在', 400);
-        caller = {
-          userId: site.createdBy,
-          username: siteCreator.username,
-          tenantId: null,
-          roles: [],
-        };
+      if (options?.skipAccessCheck && !currentUserOrNull()) {
+        if (!site.createdBy) throw new HTTPException(400, { message: '站点未配置工作流发起人' });
+        const [owner] = await db.select({ username: users.username }).from(users).where(eq(users.id, site.createdBy)).limit(1);
+        requireRow(owner, '站点工作流发起人不存在', 400);
+        caller = { userId: site.createdBy, username: owner.username, tenantId: null, roles: [] };
       }
-      await startCmsContentWorkflow({
-        contentId: id,
-        title: current.title,
-        siteName: site.name,
-        channelName: channel?.name ?? '',
-        settings,
-        caller,
-      });
-    } catch (err) {
-      // 流程发起失败回退待审状态，避免内容卡在 pending 无人处理
-      await db.update(cmsContents).set({ status: current.status }).where(and(
-        eq(cmsContents.id, id),
-        isNull(cmsContents.lockedAt),
-      ));
-      throw err;
+      const instance = await startCmsContentWorkflow({ contentId: id, revisionId: revision.id, revisionHash: revision.hash, title: revision.title, siteName: site.name, channelName: channel.name, settings, caller });
+      await bindCmsReviewRevision(id, instance.id, revision.id);
+    } catch (error) {
+      await db.update(cmsContentWorkingCopies).set({ editorialStatus: 'draft', submittedRevisionId: null }).where(and(eq(cmsContentWorkingCopies.contentId, id), eq(cmsContentWorkingCopies.submittedRevisionId, revision.id)));
+      throw error;
     }
   }
-  return result;
+  return getCmsContent(id, { skipAccessCheck: options?.skipAccessCheck });
 }
 
-export interface PublishCmsContentOptions {
-  fromWorkflow?: boolean;
-  skipAccessCheck?: boolean;
-  scheduledAtBefore?: Date;
-}
+export interface PublishCmsContentOptions { fromWorkflow?: boolean; skipAccessCheck?: boolean; expectedVersion?: number; revisionId?: number; scheduledAtBefore?: Date }
 
-export function assertLockedCmsPublishPreconditions(
-  initialStatus: CmsContentStatus,
-  locked: CmsContentRow,
-  opts?: PublishCmsContentOptions,
-): void {
+export function assertLockedCmsPublishPreconditions(_initialStatus: CmsContentStatus, locked: CmsContentRow, opts?: PublishCmsContentOptions): void {
   assertCmsContentUnlocked(locked);
-  if (locked.status !== initialStatus || !canTransitionCmsContentStatus(locked.status, 'publish')) {
-    throw new HTTPException(409, { message: '内容发布前置状态已变化，请刷新后重试' });
-  }
-  if (locked.deletedAt || locked.archivedAt) {
-    throw new HTTPException(409, { message: '回收站或已归档内容不可发布' });
-  }
-  if (opts?.scheduledAtBefore && (
-    !locked.scheduledAt
-    || locked.scheduledAt.getTime() > opts.scheduledAtBefore.getTime()
-  )) {
-    throw new HTTPException(409, { message: '定时发布条件已变化，请等待下一轮调度' });
-  }
+  if (locked.deletedAt || locked.archivedAt) throw new HTTPException(409, { message: '回收站或已归档内容不可发布' });
+  if (opts?.scheduledAtBefore && (!locked.scheduledAt || locked.scheduledAt > opts.scheduledAtBefore)) throw new HTTPException(409, { message: '定时发布条件已变化' });
   assertContentTypeReady(locked);
 }
 
-/** 发布（直接、审核通过、采集或定时发布均走此原子管道）。 */
-export async function publishCmsContent(id: number, opts?: PublishCmsContentOptions) {
-  const row = await ensureCmsContentExists(id);
-  if (!opts?.skipAccessCheck) {
-    await assertSiteAccess(row.siteId);
-    await assertChannelAccess(row.channelId);
-  }
-  assertCmsContentUnlocked(row);
-  if (!opts?.fromWorkflow) await assertNoActiveContentWorkflow(id);
-  assertContentTypeReady(row);
-  // 发布 = 内容对外可见的最终闸口：模型必填在此强制兜底（覆盖导入/采集/分发/Headless 等非表单通道）
-  await validateCmsModelExtend(row.modelId, (row.extend ?? {}) as Record<string, unknown>, 'publish');
-  if (!canTransitionCmsContentStatus(row.status, 'publish')) {
-    throw new HTTPException(409, { message: `当前状态（${row.status}）不允许发布` });
-  }
-  if (row.deletedAt || row.archivedAt) {
-    throw new HTTPException(400, { message: '回收站或已归档内容不可发布' });
-  }
-  const publication = await db.transaction(async (tx) => {
-    const site = await lockCmsSiteForMutation(tx, row.siteId);
-    const [locked] = await tx.select().from(cmsContents).where(eq(cmsContents.id, id)).for('update').limit(1);
-    requireRow(locked, '内容不存在');
-    assertLockedCmsPublishPreconditions(row.status, locked, opts);
-    if (!opts?.fromWorkflow) await assertNoActiveContentWorkflow(id);
-    const oldPublish = await captureCmsContentPublishSnapshot(tx, locked, { includeExistingArtifacts: true });
-    const where = buildWhere(
-      eq(cmsContents.id, id),
-      eq(cmsContents.status, locked.status),
-      isNull(cmsContents.deletedAt),
-      isNull(cmsContents.archivedAt),
-      isNull(cmsContents.lockedAt),
-      opts?.scheduledAtBefore ? isNotNull(cmsContents.scheduledAt) : undefined,
-      opts?.scheduledAtBefore ? lte(cmsContents.scheduledAt, opts.scheduledAtBefore) : undefined,
-    );
-    const [updated] = await tx.update(cmsContents).set({
-      status: 'published',
-      publishedAt: new Date(),
-      scheduledAt: null,
-      rejectReason: null,
-      version: sql`${cmsContents.version} + 1`,
-    }).where(where).returning();
-    requireRow(updated, '内容已发布或定时发布条件已变化', 409);
-    await logContentOp(tx, id, 'published', opts?.fromWorkflow ? '工作流审核通过' : null);
-    const task = await insertContentPublishOutbox(tx, site, updated, 'publish', oldPublish.deletePaths, { build: true });
-    const notificationTask = await insertCmsSubscriptionNotificationOutbox(tx, updated);
-    // 事件外推走事务 outbox：事务提交即代表事件不会丢，替代原先的 fire-and-forget
-    const webhookTask = await insertCmsContentWebhookOutbox(tx, 'cms.content.published', updated);
-    return { updated, task, notificationTask, webhookTask };
+/** Approve/freeze the exact subject and submit an implicit release; activation owns the public projection. */
+export async function publishCmsContent(id: number, options?: PublishCmsContentOptions) {
+  const identity = options?.skipAccessCheck ? await ensureCmsContentExists(id) : await requireCmsContentAccess(id);
+  assertCmsContentUnlocked(identity);
+  if (!options?.fromWorkflow) await assertNoActiveContentWorkflow(id);
+  const site = await resolveEffectiveCmsSiteRow(identity.siteId);
+  const prepared = await db.transaction(async (tx) => {
+    await lockCmsSiteForMutation(tx, identity.siteId);
+    const working = await requireCmsWorkingCopy(tx, id, true);
+    if (!options?.fromWorkflow) assertCmsContentVersion(working, options?.expectedVersion);
+    if (identity.deletedAt || identity.archivedAt) throw new HTTPException(409, { message: '回收站或已归档内容不可发布' });
+    const requestedId = options?.revisionId ?? (working.editorialStatus === 'pending' ? working.submittedRevisionId : working.editorialStatus === 'approved' ? working.approvedRevisionId : null);
+    const revision = requestedId ? await loadCmsRevision(tx, requestedId) : await freezeCmsContentRevision(tx, identity, working, 'publication', '冻结发布稿');
+    if (revision.contentId !== id) throw new HTTPException(409, { message: '发布修订不属于当前内容' });
+    if (isWorkflowAuditEnabled(site.settings) && working.approvedRevisionId !== revision.id) throw new HTTPException(409, { message: '该修订尚未通过工作流审核' });
+    assertContentTypeReady(cmsRevisionToContentRow(identity, revision.snapshot));
+    await validateCmsModelExtend(revision.snapshot.modelId, revision.snapshot.extend, 'publish');
+    if (options?.scheduledAtBefore && (!revision.snapshot.scheduledAt || parseDateTimeInput(revision.snapshot.scheduledAt)! > options.scheduledAtBefore)) throw new HTTPException(409, { message: '定时发布条件已变化' });
+    await approveCmsRevision(tx, revision.id);
+    await tx.update(cmsContentWorkingCopies).set({ approvedRevisionId: revision.id, editorialStatus: working.editorialStatus === 'draft' && requestedId ? 'draft' : 'approved', version: sql`${cmsContentWorkingCopies.version} + 1` }).where(eq(cmsContentWorkingCopies.contentId, id));
+    await logContentOp(tx, id, 'approved', `批准修订 #${revision.id}，等待发布单激活`);
+    return { revisionId: revision.id, version: working.version + 1 };
   });
-  await enqueueCmsPublishOutboxes([publication.task], `内容 #${id} 发布`);
-  await enqueueCmsSubscriptionNotification(publication.notificationTask);
-  await enqueueCmsWebhookEvents([publication.webhookTask]);
-  triggerCmsPublishedSideEffects(publication.updated);
-  return opts?.skipAccessCheck ? mapCmsContent(publication.updated) : getCmsContent(id);
+  const { createCmsContentRelease } = await import('./cms-releases.service');
+  await createCmsContentRelease({ contentId: id, revisionId: prepared.revisionId, expectedVersion: prepared.version });
+  return getCmsContent(id, { skipAccessCheck: options?.skipAccessCheck });
 }
 
-function triggerCmsPublishedSideEffects(row: CmsContentRow): void {
-  void import('./cms-member-interaction.service').then(({ awardContributionPoints }) => {
-    awardContributionPoints(row);
+export async function rejectCmsContent(id: number, reason: string, options?: { fromWorkflow?: boolean; skipAccessCheck?: boolean; expectedVersion?: number; revisionId?: number }) {
+  const identity = options?.skipAccessCheck ? await ensureCmsContentExists(id) : await requireCmsContentAccess(id);
+  assertCmsContentUnlocked(identity);
+  if (!options?.fromWorkflow) await assertNoActiveContentWorkflow(id);
+  await db.transaction(async (tx) => {
+    const working = await requireCmsWorkingCopy(tx, id, true);
+    if (!options?.fromWorkflow) assertCmsContentVersion(working, options?.expectedVersion);
+    if (!working.submittedRevisionId || (options?.revisionId && working.submittedRevisionId !== options.revisionId)) throw new HTTPException(409, { message: '提审修订已变化' });
+    await tx.update(cmsContentWorkingCopies).set({ editorialStatus: working.editorialStatus === 'draft' ? 'draft' : 'rejected', approvedRevisionId: null, rejectReason: reason, version: sql`${cmsContentWorkingCopies.version} + 1` }).where(eq(cmsContentWorkingCopies.contentId, id));
+    await logContentOp(tx, id, 'rejected', reason);
   });
-  void import('./cms-push.service').then((pushService) => {
-    pushService.triggerAutoPushForContent(row.id);
-  });
-  void import('./cms-short-link.service')
-    .then(({ triggerShortLinkForContent }) => triggerShortLinkForContent(row.id))
-    .catch((error) => logger.warn(`[cms-short-link] 内容 #${row.id} 发布后的短链生成失败`, error));
-  void import('./cms-distributions.service')
-    .then(({ submitCmsMappingDistributionSideEffects }) => submitCmsMappingDistributionSideEffects(row.id))
-    .catch((error) => logger.warn(`[cms-distribution] 内容 #${row.id} 发布后的映射任务提交失败`, error));
+  return getCmsContent(id, { skipAccessCheck: options?.skipAccessCheck });
 }
 
-/** 驳回；工作流审核期间禁止手动驳回 */
-export async function rejectCmsContent(id: number, reason: string, opts?: { fromWorkflow?: boolean; skipAccessCheck?: boolean }) {
-  if (!opts?.fromWorkflow) {
-    const row = await ensureCmsContentExists(id);
-    if (!opts?.skipAccessCheck) {
-      await assertSiteAccess(row.siteId);
-      await assertChannelAccess(row.channelId);
-    }
-    await assertNoActiveContentWorkflow(id);
-  }
-  const result = await transitionStatus(
-    id,
-    'reject',
-    { status: 'rejected', rejectReason: reason },
-    opts?.skipAccessCheck ? { skipAccessCheck: true } : undefined,
-  );
-  await logContentOp(db, id, 'rejected', reason);
-  return result;
-}
-
-/** 下线 */
-export async function offlineCmsContent(id: number, options?: { skipAccessCheck?: boolean; expireAtBefore?: Date }) {
-  const current = await ensureCmsContentExists(id);
-  if (!options?.skipAccessCheck) {
-    await assertSiteAccess(current.siteId);
-    await assertChannelAccess(current.channelId);
-  }
+export async function offlineCmsContent(id: number, options?: { skipAccessCheck?: boolean; expectedVersion?: number; expireAtBefore?: Date }) {
+  const current = options?.skipAccessCheck ? await ensureCmsContentExists(id) : await requireCmsContentAccess(id);
   await assertCmsWidgetSourcesMutable('content', [id]);
   assertCmsContentUnlocked(current);
   await assertNoLockedCmsMappedCopies(id);
   const mutation = await db.transaction(async (tx) => {
     const site = await lockCmsSiteForMutation(tx, current.siteId);
+    const working = await requireCmsWorkingCopy(tx, id, true);
+    assertCmsContentVersion(working, options?.expectedVersion);
     const [locked] = await tx.select().from(cmsContents).where(eq(cmsContents.id, id)).for('update').limit(1);
     requireRow(locked, '内容不存在');
-    await assertCmsWidgetSourcesMutable('content', [id], tx);
-    if (!canTransitionCmsContentStatus(locked.status, 'offline')) {
-      throw new HTTPException(400, { message: `当前状态（${locked.status}）不允许此操作` });
-    }
-    const oldPublish = await captureCmsContentPublishSnapshot(tx, locked, { includeExistingArtifacts: true });
-    const [updated] = await tx.update(cmsContents).set({
-      status: 'offline',
-      version: sql`${cmsContents.version} + 1`,
-    }).where(buildWhere(
-      eq(cmsContents.id, id),
-      eq(cmsContents.status, locked.status),
-      isNull(cmsContents.lockedAt),
-      ...(options?.expireAtBefore ? [isNotNull(cmsContents.expireAt), lte(cmsContents.expireAt, options.expireAtBefore)] : []),
-    )).returning();
-    requireRow(updated, '内容状态已变化，请刷新后重试', 409);
+    if (!canTransitionCmsContentStatus(locked.status, 'offline')) throw new HTTPException(409, { message: '当前内容未发布' });
+    const old = await captureCmsContentPublishSnapshot(tx, locked, { includeExistingArtifacts: true });
+    const [updated] = await tx.update(cmsContents).set({ status: 'offline', version: sql`${cmsContents.version} + 1` }).where(buildWhere(eq(cmsContents.id, id), isNull(cmsContents.lockedAt), options?.expireAtBefore ? lte(cmsContents.expireAt, options.expireAtBefore) : undefined)).returning();
+    requireRow(updated, '内容状态已变化', 409);
+    await tx.update(cmsContentWorkingCopies).set({ version: sql`${cmsContentWorkingCopies.version} + 1` }).where(eq(cmsContentWorkingCopies.contentId, id));
     await logContentOp(tx, id, 'offlined');
-    const task = await insertContentPublishOutbox(tx, site, updated, 'offline', oldPublish.deletePaths, { build: false });
+    const task = await insertContentPublishOutbox(tx, site, updated, 'offline', old.deletePaths, { build: false });
     const webhookTask = await insertCmsContentWebhookOutbox(tx, 'cms.content.offline', updated);
-    return { updated, task, webhookTask };
+    return { task, webhookTask };
   });
   await enqueueCmsPublishOutboxes([mutation.task], `内容 #${id} 下线`);
   await enqueueCmsWebhookEvents([mutation.webhookTask]);
-  void import('./cms-distributions.service')
-    .then(({ submitCmsMappingDistributionSideEffects }) => submitCmsMappingDistributionSideEffects(id))
-    .catch((error) => logger.warn(`[cms-distribution] 内容 #${id} 下线后的映射任务提交失败`, error));
-  return options?.skipAccessCheck ? mapCmsContent(mutation.updated) : getCmsContent(id);
+  return getCmsContent(id, { skipAccessCheck: options?.skipAccessCheck });
 }
 
-/** 回滚内容到指定版本（复用更新管道：重算检索向量并留档） */
-export async function restoreCmsContentToVersion(contentId: number, versionId: number) {
-  const current = await ensureCmsContentExists(contentId);
-  const snapshot = await restoreContentVersion(contentId, versionId);
-  // 映射内容正文/扩展字段共享来源行，回滚仅作用于自身元数据
-  if (current.mappingSourceId) {
-    delete snapshot.body;
-    delete snapshot.extend;
-  }
-  const result = await updateCmsContent(contentId, snapshot as UpdateCmsContentInput);
-  await logContentOp(db, contentId, 'rolled_back');
-  return result;
+/** Restore the complete immutable snapshot into a new working copy; never publish as a side effect. */
+export async function restoreCmsContentToVersion(contentId: number, versionId: number, expectedVersion: number) {
+  const identity = await requireCmsContentAccess(contentId);
+  assertCmsContentUnlocked(identity);
+  if (identity.deletedAt || identity.archivedAt) throw new HTTPException(409, { message: '回收站或已归档内容不可回滚' });
+  const revision = await loadCmsRevision(db, versionId);
+  if (revision.contentId !== contentId) throw new HTTPException(404, { message: '版本不属于当前内容' });
+  await assertChannelAccess(revision.snapshot.channelId);
+  await assertChannelsAccess(revision.snapshot.extraChannelIds);
+  await assertRelatedContentAccess(identity.siteId, revision.snapshot.relatedIds);
+  await db.transaction(async (tx) => {
+    await lockCmsSiteForMutation(tx, identity.siteId);
+    const working = await requireCmsWorkingCopy(tx, contentId, true);
+    assertCmsContentVersion(working, expectedVersion);
+    // Restore the complete frozen document and dependency pins without resolving them back to latest resources.
+    const [restored] = await tx.update(cmsContentWorkingCopies).set({ snapshot: revision.snapshot, editorialStatus: 'draft', rejectReason: null,
+      version: sql`${cmsContentWorkingCopies.version} + 1`,
+    }).where(and(eq(cmsContentWorkingCopies.contentId, contentId), eq(cmsContentWorkingCopies.version, expectedVersion))).returning();
+    requireRow(restored, '工作稿已变化', 409);
+    await freezeCmsContentRevision(tx, identity, restored, 'restore', `从修订 #${versionId} 完整恢复工作稿`);
+    await syncCmsResourceRefs(tx, 'content', contentId, identity.siteId, revision.snapshot);
+    await logContentOp(tx, contentId, 'rolled_back', `从修订 #${versionId} 恢复工作稿，未发布`);
+  });
+  return getCmsContent(contentId);
 }

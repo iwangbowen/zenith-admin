@@ -1,3 +1,4 @@
+import { initializeCmsContentWorkingCopy, requireCmsWorkingCopy } from './cms-content-revisions.service';
 /**
  * 采集中心：列表页翻页 + CSS 选择器抽取 → 清洗 → 可选图片本地化 → 入库（草稿或直接发布）。
  * 执行走任务中心（进度/取消/行级明细）；URL 级去重防重复采集；全程 http-client SSRF 防护。
@@ -398,10 +399,11 @@ export function registerCmsCollectTaskHandler(): void {
               status: 'draft',
               searchVector: contentSearchVector(rule.siteId, { title: article.title, summary: article.summary, body: bodyHtml }),
             }).returning();
+            await initializeCmsContentWorkingCopy(tx, row);
             await syncCmsResourceRefs(tx, 'content', row.id, row.siteId, row);
             return row;
           });
-          if (rule.autoPublish) await publishCmsContent(content.id);
+          if (rule.autoPublish) await publishCmsContent(content.id, { expectedVersion: (await requireCmsWorkingCopy(db, content.id)).version });
           await db.insert(cmsCollectItems).values({
             ruleId: rule.id,
             url,

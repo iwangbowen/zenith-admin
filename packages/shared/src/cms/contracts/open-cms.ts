@@ -1,3 +1,4 @@
+import { cmsContentCasSchema } from '../content-revision';
 import * as z from 'zod';
 import { dateRangeBound, idParam, paginated } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
@@ -204,6 +205,7 @@ export const openCmsContract = defineContract('/api/open', {
   submitContent: op.post('/v1/cms/contents/{id}/submit', {
     security: 'open-gateway',
     params: idParam,
+    body: cmsContentCasSchema,
     query: openCmsSiteCodeQuery,
     response: cmsContentSchema,
     summary: '提交审核',
@@ -212,6 +214,7 @@ export const openCmsContract = defineContract('/api/open', {
   publishContent: op.post('/v1/cms/contents/{id}/publish', {
     security: 'open-gateway',
     params: idParam,
+    body: cmsContentCasSchema,
     query: openCmsSiteCodeQuery,
     response: cmsContentSchema,
     summary: '直接发布（需 cms:publish + 授权 + 站点开关）',
@@ -220,6 +223,7 @@ export const openCmsContract = defineContract('/api/open', {
   recycleContent: op.delete('/v1/cms/contents/{id}', {
     security: 'open-gateway',
     params: idParam,
+    body: cmsContentCasSchema,
     query: openCmsSiteCodeQuery,
     summary: '移入回收站（彻底删除仅限后台）',
     description: '所需 scope：cms:write。',

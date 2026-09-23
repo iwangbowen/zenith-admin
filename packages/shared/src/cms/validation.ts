@@ -1,9 +1,12 @@
+import { cmsBodyDocumentSchema } from './document';
 import * as z from 'zod';
 import { dateTimeStringSchema, httpUrl, partialForUpdate } from '../core/validation';
 import { DATE_TIME_PATTERN } from '../core/constants';
 import { CMS_CHANNEL_DETAIL_PATH_RULES, CMS_CHANNEL_STATIC_MODES, CMS_PUBLISH_ACTIONS, CMS_DISTRIBUTION_CONFLICT_STRATEGIES, CMS_DISTRIBUTION_MODES, CMS_FIELD_OPTION_SOURCES, CMS_INTERACTION_CHOICE_QUESTION_TYPES, CMS_INTERACTION_CONDITION_OPS, CMS_INTERACTION_OTHER_VALUE, CMS_INTERACTION_QUESTION_TYPES, CMS_INTERACTION_RATING_MAX_LIMIT, CMS_PUBLISH_TARGET_TYPES, CMS_SEARCH_DICTIONARY_WORD_PATTERN, CMS_SITE_INHERITABLE_FIELDS, CMS_WIDGET_REF_OWNER_TYPES, CMS_WIDGET_RENDERER_KEYS, CMS_WIDGET_SOURCE_TYPES, CMS_WIDGET_TYPES } from './constants';
 import { CMS_LINK_FORMAT_MESSAGE, isDirectCmsHref, isValidCmsAssetUrl, isValidCmsLink } from './link';
 import { entityStatusSchema } from '../core/api-schemas';
+import { CMS_FIELD_TYPES } from './constants';
+import { cmsFieldConfigurationSchema } from './model-design';
 
 // ─── CMS 内容管理 Schema ──────────────────────────────────────────────────────
 export const cmsSlugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -186,7 +189,8 @@ export const cmsModelFieldSchema = z.object({
   id: z.number().int().positive().optional(),
   name: z.string().min(1, '字段标识不能为空').max(50).regex(/^[a-z][a-z0-9_]*$/, '字段标识须以小写字母开头，仅含小写字母/数字/下划线'),
   label: z.string().min(1, '字段名称不能为空').max(100),
-  fieldType: z.enum(['text', 'textarea', 'richtext', 'number', 'date', 'datetime', 'image', 'file', 'select', 'radio', 'checkbox', 'switch']).default('text'),
+  fieldType: z.enum(CMS_FIELD_TYPES).default('text'),
+  configuration: cmsFieldConfigurationSchema.nullable().optional(),
   required: z.boolean().default(false),
   searchable: z.boolean().default(false),
   showInList: z.boolean().default(false),
@@ -257,6 +261,13 @@ export const createCmsChannelSchema = z.object({
 export const updateCmsChannelSchema = partialForUpdate(createCmsChannelSchema).omit({ siteId: true });
 
 export const createCmsContentSchema = z.object({
+  ownerId: z.number().int().positive().nullable().default(null),
+  locale: z.string().regex(/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/).max(35).default('zh-CN'),
+  translationOfId: z.number().int().positive().nullable().default(null),
+  sourceRevisionId: z.number().int().positive().nullable().default(null),
+  dueAt: dateTimeStringSchema.nullable().optional(),
+  bodyDocument: cmsBodyDocumentSchema.nullable().optional(),
+  modelId: z.number().int().positive().nullable().optional(),
   siteId: z.number().int().positive(),
   channelId: z.number().int().positive(),
   /** 内容形态（创建后不可变更）：article=图文 album=图集 media=音视频 link=外链 */
@@ -319,6 +330,8 @@ export const createCmsContentSchema = z.object({
   seoTitle: z.string().max(255).nullable().optional(),
   seoKeywords: z.string().max(500).nullable().optional(),
   seoDescription: z.string().max(500).nullable().optional(),
+  socialImageAlt: z.string().max(255).nullable().optional(),
+  twitterCreator: z.string().max(100).nullable().optional(),
   tagIds: z.array(z.number().int().positive()).default([]),
   /** 副栏目 id 列表（一文多栏目；不含主栏目） */
   extraChannelIds: z.array(z.number().int().positive()).default([]),
@@ -327,16 +340,19 @@ export const createCmsContentSchema = z.object({
 });
 
 export const updateCmsContentSchema = partialForUpdate(createCmsContentSchema).omit({ siteId: true, contentType: true }).extend({
-  /** 乐观锁：携带读取时的版本号，服务端版本不一致返回 409（不传则跳过检查） */
-  expectedVersion: z.number().int().positive().optional(),
+  saveMode: z.enum(['manual', 'autosave']).default('manual'),
+  /** 工作稿 CAS 必填；省略或陈旧版本均拒绝写入。 */
+  expectedVersion: z.number().int().positive(),
 });
 
 export const lockCmsContentSchema = z.object({
+  expectedVersion: z.number().int().positive(),
   reason: z.string().trim().min(1, '请输入锁定原因').max(500),
 });
 
 /** 批量状态流转（提审/发布/驳回/下线）；驳回必须携带原因 */
 export const batchCmsContentStatusSchema = z.object({
+  expectedVersions: z.record(z.string(), z.number().int().positive()),
   ids: z.array(z.number().int().positive()).min(1, '请选择内容').max(100, '单次最多操作 100 条'),
   action: z.enum(['submit', 'publish', 'reject', 'offline']),
   reason: z.string().trim().max(500).optional(),
@@ -1177,12 +1193,14 @@ export type BatchCreateCmsChannelsInput = z.input<typeof batchCreateCmsChannelsS
 
 // ─── 内容操作入参 ──────────────────────────────────────────────────────────────
 export const rejectCmsContentSchema = z.object({
+  expectedVersion: z.number().int().positive(),
   reason: z.string().min(1, '驳回原因不能为空').max(500),
 });
 
 export type RejectCmsContentInput = z.input<typeof rejectCmsContentSchema>;
 
 export const batchMoveCmsContentsSchema = z.object({
+  expectedVersions: z.record(z.string(), z.number().int().positive()),
   ids: z.array(z.number().int()).min(1),
   channelId: z.number().int().positive(),
 });
@@ -1190,6 +1208,7 @@ export const batchMoveCmsContentsSchema = z.object({
 export type BatchMoveCmsContentsInput = z.input<typeof batchMoveCmsContentsSchema>;
 
 export const batchCmsContentFlagsSchema = z.object({
+  expectedVersions: z.record(z.string(), z.number().int().positive()),
   ids: z.array(z.number().int()).min(1),
   isTop: z.boolean().optional(),
   isRecommend: z.boolean().optional(),
@@ -1200,6 +1219,7 @@ export const batchCmsContentFlagsSchema = z.object({
 export type BatchCmsContentFlagsInput = z.input<typeof batchCmsContentFlagsSchema>;
 
 export const batchTagCmsContentsSchema = z.object({
+  expectedVersions: z.record(z.string(), z.number().int().positive()),
   ids: z.array(z.number().int()).min(1),
   tagIds: z.array(z.number().int()).min(1),
 });
@@ -1283,7 +1303,7 @@ export const createCmsContributionSchema = z.object({
 export type CreateCmsContributionInput = z.input<typeof createCmsContributionSchema>;
 
 /** 修改投稿：站点随原稿不可变更 */
-export const updateCmsContributionSchema = createCmsContributionSchema.omit({ siteId: true });
+export const updateCmsContributionSchema = createCmsContributionSchema.omit({ siteId: true }).extend({ expectedVersion: z.number().int().positive() });
 
 export type UpdateCmsContributionInput = z.input<typeof updateCmsContributionSchema>;
 
@@ -1326,7 +1346,7 @@ export type OpenCmsContentWriteInput = z.input<typeof openCmsContentWriteSchema>
 
 /** 更新不接受 publish：状态流转必须走显式的 /publish 端点 */
 export const openCmsContentUpdateSchema = partialForUpdate(openCmsContentWriteSchema.omit({ publish: true })).extend({
-  expectedVersion: z.number().int().positive().optional().meta({ description: '与当前 version 不一致返回 409' }),
+  expectedVersion: z.number().int().positive().meta({ description: '必填工作稿版本；与当前 version 不一致返回 409' }),
 });
 
 export type OpenCmsContentUpdateInput = z.input<typeof openCmsContentUpdateSchema>;

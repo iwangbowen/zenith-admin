@@ -21,6 +21,7 @@ import {
 import { mapAsyncTask } from '../../lib/task-center';
 import { submitCmsResourceTask, submitCmsResourceRefRebuildTask } from '../../services/cms/cms-resource-task-submit.service';
 import { mountCrud } from '../_crud';
+import { getCmsAssetRights, listCmsAssetVersions, updateCmsAssetRights } from '../../services/cms/cms-asset-rights.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -109,7 +110,7 @@ const replaceRoute = defineContractRoute(cmsResourceContract.replace, {
       throw new HTTPException(400, { message: '请选择要上传的文件' });
     }
     const row = await replaceCmsResource(c.req.valid('param').id, file as File);
-    return c.json(okBody(row, '替换成功，引用该素材的位置将自动指向新文件'), 200);
+    return c.json(okBody(row, '素材新版本已保存，已发布稿件保持原文件'), 200);
   },
 });
 
@@ -127,6 +128,9 @@ mountCrud(router, cmsResourceContract,
     exclude: ['update'],
   },
   [
+    defineContractRoute(cmsResourceContract.versions, { handler: async (c) => c.json(okBody(await listCmsAssetVersions(c.req.valid('param').id)), 200) }),
+    defineContractRoute(cmsResourceContract.rights, { handler: async (c) => c.json(okBody(await getCmsAssetRights(c.req.valid('param').id)), 200) }),
+    defineContractRoute(cmsResourceContract.updateRights, { handler: async (c) => c.json(okBody(await updateCmsAssetRights(c.req.valid('param').id, c.req.valid('json'))), 200) }),
     folderTreeRoute,
     createFolderRoute,
     updateFolderRoute,

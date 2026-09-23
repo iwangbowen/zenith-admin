@@ -68,7 +68,7 @@ const updateRouteDef = defineContractRoute(memberCmsContract.updateContribution,
 const deleteRouteDef = defineContractRoute(memberCmsContract.removeContribution, {
   middleware: member,
   handler: async (c) => {
-    await deleteMyContribution(c.req.valid('param').id);
+    await deleteMyContribution(c.req.valid('param').id, c.req.valid('json').expectedVersion);
     return c.json(okBody(null, '删除成功'), 200);
   },
 });

@@ -11,6 +11,7 @@ import {
   updateCmsModel,
   deleteCmsModel,
   getCmsModelRefs,
+  publishCmsModel, listCmsModelVersions,
 } from '../../services/cms/cms-models.service';
 import { mountCrud } from '../_crud';
 
@@ -56,7 +57,10 @@ const deleteRouteDef = defineContractRoute(cmsModelContract.remove, {
 mountCrud(router, cmsModelContract,
   { list: listCmsModels, create: createCmsModel },
   { exclude: ['detail', 'update', 'remove'] },
-  [allRoute, getOneRoute, refsRoute, updateRouteDef, deleteRouteDef],
+  [allRoute, getOneRoute, refsRoute, updateRouteDef, deleteRouteDef,
+    defineContractRoute(cmsModelContract.versions, { handler: async (c) => c.json(okBody(await listCmsModelVersions(c.req.valid('param').id, c.req.valid('query').siteId)), 200) }),
+    defineContractRoute(cmsModelContract.publish, { handler: async (c) => c.json(okBody(await publishCmsModel(c.req.valid('param').id, c.req.valid('query').siteId), '模型版本已发布'), 200) }),
+  ],
 );
 
 export default router;

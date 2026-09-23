@@ -13,6 +13,10 @@ import {
   updateCmsResourceSchema,
 } from '../validation';
 import { cmsSiteScopeQuery } from './tags';
+import { updateCmsAssetRightsSchema } from '../design-validation';
+
+export const cmsAssetVersionSchema = z.object({ id: z.int(), resourceId: z.int(), version: z.int(), url: z.string(), thumbUrl: z.string().nullable(), fileId: z.string().nullable(), mimeType: z.string().nullable(), size: z.int(), width: z.int().nullable(), height: z.int().nullable(), contentHash: z.string(), createdAt: z.string() }).meta({ id: 'CmsAssetVersion' });
+export const cmsAssetRightsSchema = z.object({ resourceId: z.int(), source: z.string().nullable(), license: z.string().nullable(), expiresAt: z.string().nullable(), revoked: z.boolean(), tags: z.array(z.string()), alt: z.string().nullable() }).meta({ id: 'CmsAssetRights' });
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
@@ -97,6 +101,9 @@ const cmsResourceFileBody = multipart(z.object({
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const cmsResourceContract = defineContract('/api/cms/resources', {
+  versions: op.get('/{id}/versions', { access: { permission: 'cms:resource:list' }, params: idParam, response: z.array(cmsAssetVersionSchema), summary: '素材不可变文件版本' }),
+  rights: op.get('/{id}/rights', { access: { permission: 'cms:resource:list' }, params: idParam, response: cmsAssetRightsSchema, summary: '素材来源与版权' }),
+  updateRights: op.put('/{id}/rights', { access: { permission: 'cms:resource:update' }, params: idParam, body: updateCmsAssetRightsSchema, response: cmsAssetRightsSchema, audit: '更新 CMS 素材版权', summary: '维护素材授权与替代文本' }),
   list: op.get('/', { access: { permission: 'cms:resource:list' }, query: cmsResourceListQuery, response: paginated(cmsResourceSchema), summary: '素材分页列表' }),
   folders: op.get('/folders', { access: { permission: 'cms:resource:list' }, query: cmsSiteScopeQuery, response: z.array(cmsResourceFolderSchema), summary: '素材文件夹树' }),
   folderCreate: op.post('/folders', { access: { permission: 'cms:resource:update' }, audit: '创建 CMS 素材文件夹', body: createCmsResourceFolderSchema, response: cmsResourceFolderSchema, summary: '创建素材文件夹' }),
@@ -106,7 +113,7 @@ export const cmsResourceContract = defineContract('/api/cms/resources', {
   update: op.put('/{id}', { access: { permission: 'cms:resource:update' }, audit: 'CMS 编辑素材', params: idParam, body: updateCmsResourceSchema, response: cmsResourceSchema, summary: '编辑素材（重命名/备注）' }),
   references: op.get('/{id}/references', { access: { permission: 'cms:resource:list' }, params: idParam, response: z.array(cmsResourceReferenceSchema), summary: '素材站内引用（内容/栏目/广告等）' }),
   crop: op.post('/{id}/crop', { access: { permission: 'cms:resource:update' }, audit: 'CMS 裁剪素材', params: idParam, body: cropCmsResourceSchema, response: cmsResourceSchema, summary: '裁剪图片（非破坏，另存为新素材）' }),
-  replace: op.post('/{id}/replace', { access: { permission: 'cms:resource:update' }, audit: { description: 'CMS 替换素材', recordBody: false }, params: idParam, body: cmsResourceFileBody, response: cmsResourceSchema, summary: '替换素材文件（保留素材 id，全站引用自动跟随）' }),
+  replace: op.post('/{id}/replace', { access: { permission: 'cms:resource:update' }, audit: { description: 'CMS 替换素材', recordBody: false }, params: idParam, body: cmsResourceFileBody, response: cmsResourceSchema, summary: '创建素材新版本（已发布修订固定原文件）' }),
   batchDelete: op.post('/delete', { access: { permission: 'cms:resource:delete' }, audit: 'CMS 删除素材', body: batchIdsBody, summary: '批量删除素材（存在站内引用则拒绝）' }),
   governance: op.post('/governance', { access: { permission: 'cms:resource:delete' }, audit: '提交 CMS 素材治理任务', body: cmsResourceGovernanceSchema, response: asyncTaskSchema, summary: '提交孤立素材扫描/清理任务' }),
   rebuildRefs: op.post('/rebuild-refs', { access: { permission: 'cms:resource:update' }, audit: '重建 CMS 素材引用索引', body: cmsSiteIdBodySchema, response: asyncTaskSchema, summary: '提交素材引用索引重建任务（存量回填 / 索引修复）' }),

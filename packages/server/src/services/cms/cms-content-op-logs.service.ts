@@ -1,13 +1,12 @@
+import { requireCmsContentAccess } from './cms-content-access.service';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../../db';
-import { cmsContentOpLogs, cmsContents } from '../../db/schema';
+import { cmsContentOpLogs } from '../../db/schema';
 import type { CmsContentOpLogRow } from '../../db/schema';
 import type { DbExecutor } from '../../db/types';
 import { currentUserOrNull } from '../../lib/context';
 import logger from '../../lib/logger';
 import { CMS_CONTENT_OP_ACTION_LABELS, cmsContentOpLogSchema } from '@zenith/shared/cms';
-import { assertSiteAccess } from './cms-sites.service';
-import { assertChannelAccess } from './cms-channels.service';
 import { pickEntity } from '../../lib/entity-map';
 
 export type CmsContentOpAction = keyof typeof CMS_CONTENT_OP_ACTION_LABELS;
@@ -61,13 +60,7 @@ export async function logContentOps(
 
 /** 内容操作时间线（新→旧，最多返回最近 100 条） */
 export async function listContentOpLogs(contentId: number) {
-  const [content] = await db.select({
-    siteId: cmsContents.siteId,
-    channelId: cmsContents.channelId,
-  }).from(cmsContents).where(eq(cmsContents.id, contentId)).limit(1);
-  if (!content) return [];
-  await assertSiteAccess(content.siteId);
-  await assertChannelAccess(content.channelId);
+  await requireCmsContentAccess(contentId);
   const rows = await db.select().from(cmsContentOpLogs)
     .where(and(
       eq(cmsContentOpLogs.contentId, contentId),

@@ -1,3 +1,4 @@
+import { initializeCmsContentWorkingCopy } from './cms-content-revisions.service';
 import { requireRow } from '../../lib/db-assert';
 import { eq, and, isNull, inArray, or, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -980,6 +981,11 @@ export async function importCmsSite(payload: unknown) {
       }).returning();
       widgetIdMap.set(oldId, created.id);
       await syncCmsResourceRefs(tx, 'widget', created.id, siteId, created);
+    }
+
+    for (const contentId of contentIdMap.values()) {
+      const [content] = await tx.select().from(cmsContents).where(eq(cmsContents.id, contentId)).limit(1);
+      if (content) await initializeCmsContentWorkingCopy(tx, content);
     }
 
     // 6. 站点附属实体

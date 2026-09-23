@@ -1,182 +1,45 @@
-import { requireFirstRow, requireRow } from '../../lib/db-assert';
-import { and, eq, desc, max, inArray } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
+import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
-import { cmsContentVersions, cmsContents } from '../../db/schema';
-import type { CmsContentRow, CmsContentVersionRow } from '../../db/schema';
-import type { DbExecutor } from '../../db/types';
-import { assertSiteAccess } from './cms-sites.service';
-import { assertChannelAccess } from './cms-channels.service';
-import { deleteCmsResourceRefsForOwner, resolveCmsResourcePayload, syncCmsResourceRefs } from './cms-resource-refs.service';
+import { cmsContentRevisions, users } from '../../db/schema';
 import { cmsContentVersionSchema } from '@zenith/shared/cms';
 import { pickEntity } from '../../lib/entity-map';
+import { requireCmsContentAccess } from './cms-content-access.service';
+import { canonicalCmsJson, loadCmsRevision, requireCmsWorkingCopy } from './cms-content-revisions.service';
+import { resolveCmsResourcePayload } from './cms-resource-refs.service';
 
-/** 每条内容保留的最大版本数（超出自动裁剪最旧版本） */
-const MAX_VERSIONS = 20;
-
-/** 从内容行提取可回滚快照字段 */
-export function buildContentSnapshot(row: CmsContentRow): Record<string, unknown> {
-  return {
-    channelId: row.channelId,
-    title: row.title,
-    subTitle: row.subTitle,
-    shortTitle: row.shortTitle,
-    slug: row.slug,
-    summary: row.summary,
-    coverImage: row.coverImage,
-    author: row.author,
-    editor: row.editor,
-    source: row.source,
-    sourceUrl: row.sourceUrl,
-    isOriginal: row.isOriginal,
-    body: row.body,
-    extend: row.extend,
-    mediaData: row.mediaData,
-    externalLink: row.externalLink,
-    isTop: row.isTop,
-    topWeight: row.topWeight,
-    isRecommend: row.isRecommend,
-    isHot: row.isHot,
-    sort: row.sort,
-    seoTitle: row.seoTitle,
-    seoKeywords: row.seoKeywords,
-    seoDescription: row.seoDescription,
-  };
-}
-
-/** 写入版本快照并裁剪历史（在内容更新事务内调用） */
-export async function snapshotContentVersion(executor: DbExecutor, row: CmsContentRow, remark: string): Promise<void> {
-  const [{ latest }] = await executor
-    .select({ latest: max(cmsContentVersions.version) })
-    .from(cmsContentVersions)
-    .where(and(
-      eq(cmsContentVersions.contentId, row.id),
-    ));
-  const version = (latest ?? 0) + 1;
-  const [created] = await executor.insert(cmsContentVersions).values({
-    contentId: row.id,
-    version,
-    title: row.title,
-    snapshot: buildContentSnapshot(row),
-    remark,
-  }).returning({ id: cmsContentVersions.id });
-  // 快照冻结了当时的正文与封面，同样要占住素材引用，避免历史版本回滚后指向已被清理的素材
-  await syncCmsResourceRefs(executor, 'contentVersion', created.id, row.siteId, {
-    snapshot: buildContentSnapshot(row),
-  });
-  // 裁剪最旧版本（单条 DELETE 子查询，避免逐条删除）
-  const staleIds = await executor.select({ id: cmsContentVersions.id })
-    .from(cmsContentVersions)
-    .where(and(
-      eq(cmsContentVersions.contentId, row.id),
-    ))
-    .orderBy(desc(cmsContentVersions.version))
-    .offset(MAX_VERSIONS);
-  if (staleIds.length === 0) return;
-  await deleteCmsResourceRefsForOwner(executor, 'contentVersion', staleIds.map((item) => item.id), row.siteId);
-  await executor.delete(cmsContentVersions).where(and(
-    inArray(cmsContentVersions.id, staleIds.map((item) => item.id)),
-  ));
-}
-
-export function mapCmsContentVersion(row: CmsContentVersionRow, createdByName?: string | null) {
-  return pickEntity(cmsContentVersionSchema, row, {
-    createdByName: createdByName ?? null,
-  });
-}
-
-/** 内容的版本列表（新→旧） */
+/** Milestone history is append-only; autosave checkpoints do not evict approved or published revisions. */
 export async function listContentVersions(contentId: number) {
-  const content = await ensureContentVersionAccess(contentId);
-  const rows = await db.query.cmsContentVersions.findMany({
-    where: and(
-      eq(cmsContentVersions.contentId, contentId),
-    ),
-    with: { createdByUser: { columns: { nickname: true } } },
-    orderBy: desc(cmsContentVersions.version),
-  });
-  return resolveCmsResourcePayload(rows.map((r) => mapCmsContentVersion(r, r.createdByUser?.nickname)), content.siteId);
+  const identity = await requireCmsContentAccess(contentId);
+  const rows = await db.select({ revision: cmsContentRevisions, author: users.nickname }).from(cmsContentRevisions)
+    .leftJoin(users, eq(users.id, cmsContentRevisions.createdBy))
+    .where(eq(cmsContentRevisions.contentId, contentId)).orderBy(desc(cmsContentRevisions.version));
+  return resolveCmsResourcePayload(rows.map(({ revision, author }) => pickEntity(cmsContentVersionSchema, revision, { createdByName: author })), identity.siteId);
 }
 
-export async function ensureVersionExists(contentId: number, versionId: number): Promise<CmsContentVersionRow> {
-  await ensureContentVersionAccess(contentId);
-  return requireFirstRow(
-    db.select().from(cmsContentVersions)
-      .where(and(
-        eq(cmsContentVersions.id, versionId),
-        eq(cmsContentVersions.contentId, contentId),
-      ))
-      .limit(1),
-    '版本不存在',
-  );
+export async function ensureVersionExists(contentId: number, versionId: number) {
+  await requireCmsContentAccess(contentId);
+  const revision = await loadCmsRevision(db, versionId);
+  if (revision.contentId !== contentId) throw new HTTPException(404, { message: '版本不存在' });
+  return revision;
 }
 
-async function ensureContentVersionAccess(contentId: number): Promise<CmsContentRow> {
-  const [content] = await db.select().from(cmsContents).where(eq(cmsContents.id, contentId)).limit(1);
-  requireRow(content, '内容不存在');
-  await assertSiteAccess(content.siteId);
-  await assertChannelAccess(content.channelId);
-  return content;
-}
-
-/** 回滚到指定版本（回滚前自动为当前状态留档） */
-export async function restoreContentVersion(contentId: number, versionId: number): Promise<Record<string, unknown>> {
-  const version = await ensureVersionExists(contentId, versionId);
-  const current = await ensureContentVersionAccess(contentId);
-  await db.transaction(async (tx) => {
-    await snapshotContentVersion(tx, current, `回滚到 v${version.version} 前留档`);
-  });
-  // 快照里存的是素材句柄，回填到编辑器前解析为真实地址；保存时会再次归一化，可无损往返
-  return resolveCmsResourcePayload(version.snapshot, current.siteId);
-}
-
-// ─── 版本差异对比 ─────────────────────────────────────────────────────────────
-const SNAPSHOT_FIELD_LABELS: Record<string, string> = {
-  channelId: '所属栏目',
-  title: '标题',
-  subTitle: '副标题',
-  shortTitle: '短标题',
-  slug: 'URL 标识',
-  summary: '摘要',
-  coverImage: '封面图',
-  author: '作者',
-  editor: '责任编辑',
-  source: '来源',
-  sourceUrl: '来源链接',
-  isOriginal: '原创',
-  body: '正文',
-  extend: '扩展字段',
-  mediaData: '形态数据（图集/音视频）',
-  externalLink: '外链地址',
-  isTop: '置顶',
-  topWeight: '置顶权重',
-  isRecommend: '推荐',
-  isHot: '热门',
-  sort: '排序权重',
-  seoTitle: 'SEO 标题',
-  seoKeywords: 'SEO 关键词',
-  seoDescription: 'SEO 描述',
+const LABELS: Record<string, string> = {
+  channelId: '所属栏目', modelId: '内容类型', modelVersionId: '类型版本', title: '标题', titleStyle: '标题样式',
+  subTitle: '副标题', shortTitle: '短标题', slug: 'URL 标识', summary: '摘要', coverImage: '封面', author: '作者', editor: '责任编辑',
+  source: '来源', sourceUrl: '来源链接', isOriginal: '原创', body: '正文', bodyDocument: '结构化正文', extend: '模型字段', mediaData: '媒体',
+  attachments: '附件', tagIds: '标签', extraChannelIds: '副栏目', relatedIds: '关联内容', externalLink: '链接', detailTemplate: '详情模板', staticPath: '静态路径',
+  isTop: '置顶', topWeight: '置顶权重', topExpireAt: '置顶到期', isRecommend: '推荐', isHot: '热门', sort: '排序',
+  scheduledAt: '计划发布', expireAt: '到期时间', seoTitle: 'SEO 标题', seoKeywords: 'SEO 关键词', seoDescription: 'SEO 描述',
+  socialImageAlt: '分享图片说明', twitterCreator: '社交作者', assetVersions: '素材版本', contentType: '内容形态',
 };
 
-export interface CmsVersionDiffItem {
-  field: string;
-  label: string;
-  before: unknown;
-  after: unknown;
-}
-
-/** 对比版本快照与当前内容（before=历史版本值，after=当前值），仅返回有差异的字段 */
-export async function diffContentVersion(contentId: number, versionId: number): Promise<CmsVersionDiffItem[]> {
-  const version = await ensureVersionExists(contentId, versionId);
-  const current = await ensureContentVersionAccess(contentId);
-  const currentSnapshot = buildContentSnapshot(current);
-  const versionSnapshot = version.snapshot as Record<string, unknown>;
-  const diffs: CmsVersionDiffItem[] = [];
-  for (const [field, label] of Object.entries(SNAPSHOT_FIELD_LABELS)) {
-    const before = versionSnapshot[field] ?? null;
-    const after = currentSnapshot[field] ?? null;
-    if (JSON.stringify(before) !== JSON.stringify(after)) {
-      diffs.push({ field, label, before, after });
-    }
-  }
-  return diffs;
+export async function diffContentVersion(contentId: number, versionId: number) {
+  const revision = await ensureVersionExists(contentId, versionId);
+  const working = await requireCmsWorkingCopy(db, contentId);
+  const before = revision.snapshot as Record<string, unknown>;
+  const after = working.snapshot as Record<string, unknown>;
+  return [...new Set([...Object.keys(before), ...Object.keys(after)])]
+    .filter((field) => canonicalCmsJson(before[field]) !== canonicalCmsJson(after[field]))
+    .map((field) => ({ field, label: LABELS[field] ?? field, before: before[field] ?? null, after: after[field] ?? null }));
 }

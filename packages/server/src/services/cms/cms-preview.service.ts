@@ -1,45 +1,50 @@
-/**
- * CMS 草稿预览链接（签名 token，未发布内容可分享给审核人预览）。
- *
- * URL 形如 /__cms/{siteCode}/preview/{contentId}?exp={unix}&sig={hmac}，
- * 由后台「生成预览链接」接口签发（默认 2 小时有效），前台渲染时校验签名与有效期，
- * 无需登录即可查看，杜绝把草稿正文粘贴到聊天工具的原始流程。
- */
+import { randomUUID } from 'node:crypto';
+import { and, eq, isNull } from 'drizzle-orm';
 import { CMS_PREVIEW_PREFIX } from '@zenith/shared/cms';
+import { db } from '../../db';
+import { cmsContentPreviewGrants } from '../../db/schema';
 import { formatDateTime } from '../../lib/datetime';
 import { constantTimeEqual, hmacSha256 } from '../../lib/signed-token';
-import { ensureCmsContentExists } from './cms-contents.service';
-import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
-import { assertChannelAccess } from './cms-channels.service';
+import { requireCmsContentAccess } from './cms-content-access.service';
+import { ensureCmsSiteExists } from './cms-sites.service';
+import { freezeCmsContentRevision, loadCmsRevision, requireCmsWorkingCopy } from './cms-content-revisions.service';
+import { lockCmsSiteForMutation } from './cms-site-publish-lock.service';
 
 const PREVIEW_TTL_SECONDS = 2 * 60 * 60;
+const sign = (contentId: number, revisionId: number, token: string, exp: number) => hmacSha256(`cms-preview:${contentId}:${revisionId}:${token}:${exp}`, 'hex');
 
-function sign(contentId: number, exp: number): string {
-  return hmacSha256(`cms-preview:${contentId}:${exp}`, 'hex');
-}
-
-export interface CmsPreviewLink {
-  /** 站内相对路径（含签名参数），前端拼接当前 origin 使用 */
-  url: string;
-  expiresAt: string;
-}
-
-/** 签发草稿预览链接（校验站点数据权限） */
-export async function createContentPreviewLink(contentId: number): Promise<CmsPreviewLink> {
-  const row = await ensureCmsContentExists(contentId);
-  await assertSiteAccess(row.siteId);
-  await assertChannelAccess(row.channelId);
-  const site = await ensureCmsSiteExists(row.siteId);
+export async function createContentPreviewLink(contentId: number) {
+  const identity = await requireCmsContentAccess(contentId);
+  const site = await ensureCmsSiteExists(identity.siteId);
   const exp = Math.floor(Date.now() / 1000) + PREVIEW_TTL_SECONDS;
-  const sig = sign(contentId, exp);
+  const token = randomUUID();
+  const revision = await db.transaction(async (tx) => {
+    await lockCmsSiteForMutation(tx, identity.siteId);
+    const working = await requireCmsWorkingCopy(tx, contentId, true);
+    const frozen = await freezeCmsContentRevision(tx, identity, working, 'preview', '固定版本预览');
+    await tx.insert(cmsContentPreviewGrants).values({ token, contentId, revisionId: frozen.id, expiresAt: new Date(exp * 1000) });
+    return frozen;
+  });
   return {
-    url: `${CMS_PREVIEW_PREFIX}/${site.code}/preview/${contentId}?exp=${exp}&sig=${sig}`,
-    expiresAt: formatDateTime(new Date(exp * 1000)),
+    url: `${CMS_PREVIEW_PREFIX}/${site.code}/preview/${contentId}?rid=${revision.id}&gid=${token}&exp=${exp}&sig=${sign(contentId, revision.id, token, exp)}`,
+    expiresAt: formatDateTime(new Date(exp * 1000)), revisionId: revision.id, grantId: token,
   };
 }
 
-/** 校验预览签名（常量时间比较，防时序攻击） */
-export function verifyContentPreviewToken(contentId: number, exp: number, sig: string): boolean {
-  if (!Number.isInteger(exp) || exp * 1000 < Date.now() || !sig) return false;
-  return constantTimeEqual(sig, sign(contentId, exp));
+export async function verifyContentPreviewToken(contentId: number, exp: number, sig: string, revisionId?: number, grantId?: string): Promise<boolean> {
+  if (!revisionId || !grantId || !Number.isInteger(exp) || exp * 1000 < Date.now() || !sig) return false;
+  if (!constantTimeEqual(sig, sign(contentId, revisionId, grantId, exp))) return false;
+  const [grant] = await db.select().from(cmsContentPreviewGrants).where(and(eq(cmsContentPreviewGrants.token, grantId), eq(cmsContentPreviewGrants.contentId, contentId), eq(cmsContentPreviewGrants.revisionId, revisionId), isNull(cmsContentPreviewGrants.revokedAt))).limit(1);
+  return Boolean(grant && grant.expiresAt.getTime() === exp * 1000 && grant.expiresAt > new Date());
+}
+
+export async function resolveCmsPreviewRevision(contentId: number, exp: number, sig: string, revisionId: number, grantId: string) {
+  if (!await verifyContentPreviewToken(contentId, exp, sig, revisionId, grantId)) return null;
+  const revision = await loadCmsRevision(db, revisionId);
+  return revision.contentId === contentId && !revision.payload.deletedAt ? revision : null;
+}
+
+export async function revokeCmsContentPreview(contentId: number, grantId: string): Promise<void> {
+  await requireCmsContentAccess(contentId);
+  await db.update(cmsContentPreviewGrants).set({ revokedAt: new Date() }).where(and(eq(cmsContentPreviewGrants.contentId, contentId), eq(cmsContentPreviewGrants.token, grantId), isNull(cmsContentPreviewGrants.revokedAt)));
 }

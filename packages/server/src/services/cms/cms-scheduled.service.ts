@@ -1,11 +1,12 @@
-import { and, lte, ne, isNull, isNotNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../../db';
-import { cmsContents } from '../../db/schema';
+import { cmsContents, cmsContentWorkingCopies, cmsContentRevisions } from '../../db/schema';
 import { config } from '../../config';
 import redis from '../../lib/redis';
 import logger from '../../lib/logger';
 import { offlineExpiredCmsContents, cancelExpiredTopContents, flushViewCountBuffer } from './cms-contents.service';
 import { publishCmsContent } from './cms-contents.service';
+import { activateScheduledCmsReleases } from './cms-releases.service';
 
 const LOCK_KEY = `${config.redis.keyPrefix}cms:scheduled-publish-lock`;
 const LOCK_TTL_SECONDS = 300;
@@ -21,21 +22,22 @@ export async function publishScheduledCmsContents(): Promise<string> {
   if (!acquired) return '上一轮定时发布仍在执行，本轮跳过';
   try {
     const now = new Date();
-    const due = await db.select({ id: cmsContents.id, title: cmsContents.title })
-      .from(cmsContents)
+    const activatedReleases = await activateScheduledCmsReleases();
+    const due = await db.select({ id: cmsContents.id, title: cmsContentRevisions.title, revisionId: cmsContentRevisions.id, version: cmsContentWorkingCopies.version })
+      .from(cmsContentWorkingCopies)
+      .innerJoin(cmsContents, eq(cmsContents.id, cmsContentWorkingCopies.contentId))
+      .innerJoin(cmsContentRevisions, eq(cmsContentRevisions.id, cmsContentWorkingCopies.approvedRevisionId))
       .where(and(
-        isNotNull(cmsContents.scheduledAt),
-        lte(cmsContents.scheduledAt, now),
-        ne(cmsContents.status, 'published'),
-        isNull(cmsContents.deletedAt),
-        isNull(cmsContents.lockedAt),
-      ))
-      .limit(200);
+        sql`${cmsContentRevisions.snapshot}->>'scheduledAt' is not null`,
+        sql`(${cmsContentRevisions.snapshot}->>'scheduledAt')::timestamptz <= ${now}`,
+        sql`${cmsContentWorkingCopies.publishedRevisionId} is distinct from ${cmsContentRevisions.id}`,
+        isNull(cmsContents.deletedAt), isNull(cmsContents.lockedAt),
+      )).limit(200);
 
     let published = 0;
     for (const row of due) {
       try {
-        await publishCmsContent(row.id, { skipAccessCheck: true, scheduledAtBefore: now });
+        await publishCmsContent(row.id, { skipAccessCheck: true, scheduledAtBefore: now, revisionId: row.revisionId, expectedVersion: row.version });
         published += 1;
       } catch (err) {
         logger.error(`[CMS] 定时发布内容 ${row.id} 失败`, err);
@@ -56,10 +58,10 @@ export async function publishScheduledCmsContents(): Promise<string> {
       return 0;
     });
 
-    if (due.length === 0 && expired.offlined.length === 0 && expired.blocked.length === 0 && untopIds.length === 0 && flushed === 0) {
+    if (due.length === 0 && activatedReleases === 0 && expired.offlined.length === 0 && expired.blocked.length === 0 && untopIds.length === 0 && flushed === 0) {
       return '无到期的定时发布/过期内容';
     }
-    return `定时发布 ${published}/${due.length} 条，过期下线 ${expired.offlined.length} 条，部件引用阻塞 ${expired.blocked.length} 条，置顶到期取消 ${untopIds.length} 条，浏览计数落库 ${flushed} 条`;
+    return `定时激活发布单 ${activatedReleases} 个，提交发布 ${published}/${due.length} 条，过期下线 ${expired.offlined.length} 条，部件引用阻塞 ${expired.blocked.length} 条，置顶到期取消 ${untopIds.length} 条，浏览计数落库 ${flushed} 条`;
   } finally {
     await redis.del(LOCK_KEY).catch(() => undefined);
   }

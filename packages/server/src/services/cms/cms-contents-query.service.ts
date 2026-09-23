@@ -1,28 +1,28 @@
+import { cmsModelVersions } from '../../db/schema/cms-design';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { eq, asc, desc, and, or, inArray, notInArray, isNull, isNotNull, ne, lt, gt, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
-import { cmsContents, cmsContentTags, cmsContentChannels, cmsContentRelations } from '../../db/schema';
+import { cmsContents, cmsContentTags, cmsContentChannels, cmsContentRelations, cmsContentWorkingCopies, cmsChannels, cmsTags } from '../../db/schema';
 import type { CmsContentRow, CmsTagRow } from '../../db/schema';
 import { formatTimestamps } from '../../lib/datetime';
 import { pickEntity } from '../../lib/entity-map';
-import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
+import { buildWhere, dateRangeConditions, withPagination } from '../../lib/where-helpers';
 import { config } from '../../config';
 import redis from '../../lib/redis';
 import { getAccessibleChannelIds, assertChannelAccess } from './cms-channels.service';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
-import { getDataScopeCondition } from '../../lib/data-scope';
-import { currentUserOrNull } from '../../lib/context';
-import { CMS_PREVIEW_PREFIX, cmsContentContract, cmsContentSchema } from '@zenith/shared/cms';
+import { cmsContentContract, cmsContentSchema, type CmsEditorialStatus, type CmsContentRevisionSnapshot, type CmsBodyDocument } from '@zenith/shared/cms';
 import { pageOffset } from '../../lib/pagination';
 import { resolveCmsContentRow, resolveCmsContentRows } from './cms-resource-refs.service';
 import { buildCmsContentUrls } from './cms-urls';
-import { buildCmsLinkResolver, resolveCmsLink } from './cms-link.service';
 import { getEffectivelyEnabledCmsChannelIds } from './cms-channel-visibility.service';
 import { requireBusinessApprovalInstance } from '../workflow/workflow-business-context.service';
 import { cmsContentLinkColumns, cmsContentListColumns } from './cms-content-columns';
 import type { CmsContentLinkRow, CmsContentListRow } from './cms-content-columns';
+import { cmsContentDataScope, requireCmsContentAccess } from './cms-content-access.service';
+import { cmsRevisionToContentRow, getCmsReviewRevision, requireCmsWorkingCopy } from './cms-content-revisions.service';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 
@@ -48,7 +48,7 @@ export function mapCmsContentListItem(row: Omit<CmsContentMapRow, 'body'>, extra
 }
 
 /** `mapCmsContent` 不读取 search_vector，列表投影行补上 `body: null` 即可复用同一映射 */
-type CmsContentMapRow = Omit<CmsContentRow, 'searchVector'> & { coverThumb?: string | null };
+type CmsContentMapRow = Omit<CmsContentRow, 'searchVector'> & { coverThumb?: string | null; editorialStatus?: CmsEditorialStatus; publishedRevisionId?: number | null; submittedRevisionId?: number | null; approvedRevisionId?: number | null; hasUnpublishedChanges?: boolean; bodyDocument?: CmsBodyDocument | null; modelVersionId?: number | null; assetVersions?: Record<string, number> };
 
 export function mapCmsContent(row: CmsContentMapRow, extra?: {
   channelName?: string | null;
@@ -61,6 +61,11 @@ export function mapCmsContent(row: CmsContentMapRow, extra?: {
   previewUrl?: string | null;
 }) {
   return pickEntity(cmsContentSchema, row, {
+    editorialStatus: row.editorialStatus ?? 'clean',
+    publishedRevisionId: row.publishedRevisionId ?? null,
+    submittedRevisionId: row.submittedRevisionId ?? null,
+    approvedRevisionId: row.approvedRevisionId ?? null,
+    hasUnpublishedChanges: row.hasUnpublishedChanges ?? false,
     channelName: extra?.channelName ?? null,
     mediaData: row.mediaData ?? {},
     titleStyle: row.titleStyle ?? {},
@@ -86,76 +91,35 @@ export async function ensureCmsContentExists(id: number): Promise<CmsContentRow>
   return requireFirstRow(db.select().from(cmsContents).where(eq(cmsContents.id, id)).limit(1), '内容不存在');
 }
 
-/** 只为站点 / 栏目访问断言取归属列，不解压正文（`getCmsContent` 随后会带关联取全行） */
-async function ensureCmsContentOwnership(id: number): Promise<Pick<CmsContentRow, 'id' | 'siteId' | 'channelId'>> {
-  return requireFirstRow(
-    db.select({ id: cmsContents.id, siteId: cmsContents.siteId, channelId: cmsContents.channelId })
-      .from(cmsContents).where(eq(cmsContents.id, id)).limit(1),
-    '内容不存在',
-  );
+export async function getCmsContent(id: number, options?: { skipAccessCheck?: boolean }) {
+  const current = options?.skipAccessCheck ? await ensureCmsContentExists(id) : await requireCmsContentAccess(id);
+  return loadAuthorizedCmsContent(current);
 }
 
-export async function getCmsContent(id: number) {
-  const current = await ensureCmsContentOwnership(id);
-  await assertSiteAccess(current.siteId);
-  await assertChannelAccess(current.channelId);
-  return loadAuthorizedCmsContent(id, current.siteId);
-}
-
-/** 工作流查看入口只授权精确业务实例的参与者，不放宽普通内容接口。 */
+/** Approval authorization exposes only the frozen subject of this exact round. */
 export async function getCmsContentForApproval(id: number, instanceId: number) {
   await requireBusinessApprovalInstance(instanceId, 'cms_content', String(id));
-  const current = await ensureCmsContentOwnership(id);
-  return loadAuthorizedCmsContent(id, current.siteId);
+  const revision = await getCmsReviewRevision(id, instanceId);
+  return { ...await loadAuthorizedCmsContent(revision.payload, revision.snapshot), revisionId: revision.id, contentHash: revision.hash };
 }
 
-async function loadAuthorizedCmsContent(id: number, siteId: number) {
-  const site = await ensureCmsSiteExists(siteId);
-  const row = await db.query.cmsContents.findFirst({
-    where: eq(cmsContents.id, id),
-    with: {
-      channel: { columns: { name: true, path: true, detailPathRule: true } },
-     contentTags: { with: { tag: true } },
-     extraChannels: { columns: { channelId: true } },
-     relatedContents: { columns: { relatedId: true, sort: true } },
-     lockedByUser: { columns: { nickname: true } },
-   },
- });
-  const content = requireRow(row, '内容不存在');
-  // Mapping rows are materialized snapshots. Never read body/extend from a
-  // relation that could belong to another site; only expose a same-site
-  // source title for governance UI.
-  const [mappingSource] = content.mappingSourceId
-    ? await db.select({ title: cmsContents.title }).from(cmsContents).where(and(
-      eq(cmsContents.id, content.mappingSourceId),
-      eq(cmsContents.siteId, site.id),
-    )).limit(1)
-    : [null];
+async function loadAuthorizedCmsContent(identity: CmsContentRow, revisionSnapshot?: CmsContentRevisionSnapshot) {
+  const working = await requireCmsWorkingCopy(db, identity.id);
+  const snapshot = revisionSnapshot ?? working.snapshot;
+  const content = cmsRevisionToContentRow(identity, snapshot);
+  const [site, channel, tags] = await Promise.all([
+    ensureCmsSiteExists(identity.siteId),
+    db.query.cmsChannels.findFirst({ where: eq(cmsChannels.id, snapshot.channelId), columns: { name: true, path: true, detailPathRule: true } }),
+    snapshot.tagIds.length ? db.select().from(cmsTags).where(and(eq(cmsTags.siteId, identity.siteId), inArray(cmsTags.id, snapshot.tagIds))) : Promise.resolve([]),
+  ]);
   const resolved = await resolveCmsContentRow(content, site.id);
-  const urls = buildCmsContentUrls(resolved, {
-    siteCode: site.code,
-    channelPath: content.channel?.path,
-    detailPathRule: content.channel?.detailPathRule,
-  });
-  if (resolved.externalLink) {
-    const [canonicalLink, previewLink] = await Promise.all([
-      resolveCmsLink(site.id, '', resolved.externalLink),
-      resolved.status === 'published'
-        ? resolveCmsLink(site.id, `${CMS_PREVIEW_PREFIX}/${site.code}`, resolved.externalLink)
-        : null,
-    ]);
-    urls.canonicalUrl = canonicalLink?.url ?? null;
-    urls.previewUrl = previewLink?.url ?? null;
-  }
-  return mapCmsContent(resolved, {
-    channelName: content.channel?.name,
-    ...urls,
-    tags: content.contentTags.map((ct) => ct.tag),
-    extraChannelIds: content.extraChannels.map((ec) => ec.channelId),
-    relatedIds: [...content.relatedContents].sort((a, b) => a.sort - b.sort).map((r) => r.relatedId),
-    mappingSourceTitle: mappingSource?.title ?? null,
-    lockedByName: content.lockedByUser?.nickname ?? null,
-  });
+  const urls = buildCmsContentUrls(resolved, { siteCode: site.code, channelPath: channel?.path, detailPathRule: channel?.detailPathRule });
+  const [modelVersion] = snapshot.modelVersionId ? await db.select().from(cmsModelVersions).where(eq(cmsModelVersions.id, snapshot.modelVersionId)).limit(1) : [];
+  return { ...mapCmsContent({ ...resolved, version: working.version, updatedAt: working.updatedAt, rejectReason: working.rejectReason,
+    editorialStatus: working.editorialStatus, publishedRevisionId: working.publishedRevisionId, submittedRevisionId: working.submittedRevisionId,
+    approvedRevisionId: working.approvedRevisionId, hasUnpublishedChanges: working.editorialStatus !== 'clean',
+    bodyDocument: snapshot.bodyDocument, modelVersionId: snapshot.modelVersionId, assetVersions: snapshot.assetVersions,
+  }, { channelName: channel?.name, ...urls, tags, extraChannelIds: snapshot.extraChannelIds, relatedIds: snapshot.relatedIds }), modelFields: modelVersion?.fields ?? [] };
 }
 
 // ─── 列表 ─────────────────────────────────────────────────────────────────────
@@ -170,27 +134,32 @@ export async function buildCmsContentListWhere(q: CmsContentListFilter): Promise
   await assertSiteAccess(q.siteId);
   if (q.channelId) await assertChannelAccess(q.channelId);
   const accessibleChannelIds = await getAccessibleChannelIds();
-  const scopeUser = currentUserOrNull();
-  const scopeCondition = scopeUser
-    ? await getDataScopeCondition({
-      currentUserId: scopeUser.userId,
-      deptColumn: cmsContents.deptId,
-      ownerColumn: cmsContents.createdBy,
-    })
-    : undefined;
+  const scopeCondition = await cmsContentDataScope();
+  const workingChannel = sql<number>`(${cmsContentWorkingCopies.snapshot}->>'channelId')::integer`;
+  const workingCondition = buildWhere(
+    eq(cmsContentWorkingCopies.contentId, cmsContents.id),
+    q.channelId ? eq(workingChannel, q.channelId) : undefined,
+    accessibleChannelIds !== null ? inArray(workingChannel, accessibleChannelIds) : undefined,
+    q.editorialStatus ? eq(cmsContentWorkingCopies.editorialStatus, q.editorialStatus) : undefined,
+    q.modelId ? sql`(${cmsContentWorkingCopies.snapshot}->>'modelId')::integer = ${q.modelId}` : undefined,
+    q.ownerId ? sql`(${cmsContentWorkingCopies.snapshot}->>'ownerId')::integer = ${q.ownerId}` : undefined,
+    q.locale ? sql`${cmsContentWorkingCopies.snapshot}->>'locale' = ${q.locale}` : undefined,
+    q.hasUnpublishedChanges !== undefined ? (q.hasUnpublishedChanges ? ne(cmsContentWorkingCopies.editorialStatus, 'clean') : eq(cmsContentWorkingCopies.editorialStatus, 'clean')) : undefined,
+    q.tags ? sql`${cmsContentWorkingCopies.snapshot}->'tagIds' @> ${JSON.stringify(q.tags.split(',').map(Number))}::jsonb` : undefined,
+    q.keyword ? sql`(${cmsContentWorkingCopies.snapshot}->>'title' ilike ${'%' + q.keyword + '%'} or ${cmsContentWorkingCopies.snapshot}->>'author' ilike ${'%' + q.keyword + '%'})` : undefined,
+    q.isTop !== undefined ? sql`(${cmsContentWorkingCopies.snapshot}->>'isTop')::boolean = ${q.isTop}` : undefined,
+    q.isRecommend !== undefined ? sql`(${cmsContentWorkingCopies.snapshot}->>'isRecommend')::boolean = ${q.isRecommend}` : undefined,
+    q.isHot !== undefined ? sql`(${cmsContentWorkingCopies.snapshot}->>'isHot')::boolean = ${q.isHot}` : undefined,
+  );
 
   return buildWhere(
     eq(cmsContents.siteId, q.siteId),
     accessibleChannelIds !== null ? inArray(cmsContents.channelId, accessibleChannelIds) : undefined,
     q.deleted ? isNotNull(cmsContents.deletedAt) : isNull(cmsContents.deletedAt),
     !q.deleted ? (q.archived ? isNotNull(cmsContents.archivedAt) : isNull(cmsContents.archivedAt)) : undefined,
-    q.channelId ? eq(cmsContents.channelId, q.channelId) : undefined,
+    sql`exists (select 1 from ${cmsContentWorkingCopies} where ${workingCondition})`,
     q.status ? eq(cmsContents.status, q.status) : undefined,
     q.contentType ? eq(cmsContents.contentType, q.contentType) : undefined,
-    q.isTop !== undefined ? eq(cmsContents.isTop, q.isTop) : undefined,
-    q.isRecommend !== undefined ? eq(cmsContents.isRecommend, q.isRecommend) : undefined,
-    q.isHot !== undefined ? eq(cmsContents.isHot, q.isHot) : undefined,
-    keywordCondition(q.keyword, [cmsContents.title, cmsContents.author]),
     ...dateRangeConditions(cmsContents.createdAt, q.startTime, q.endTime),
     scopeCondition,
   );
@@ -207,7 +176,7 @@ export async function listCmsContents(q: QueryOutputOf<typeof cmsContentContract
       const rows = await db.query.cmsContents.findMany({
         where,
         // 列表不输出正文与检索向量（两个最大的 TOAST 列）；attachments 保留给列表的附件计数角标
-        columns: { body: false, searchVector: false },
+        columns: { body: false, searchVector: false, extend: false, mediaData: false, attachments: false },
         with: {
           channel: { columns: { name: true, path: true, detailPathRule: true } },
           lockedByUser: { columns: { nickname: true } },
@@ -216,27 +185,29 @@ export async function listCmsContents(q: QueryOutputOf<typeof cmsContentContract
         limit: q.pageSize,
         offset: pageOffset(q.page, q.pageSize),
       });
-      const resolvedRows = await resolveCmsContentRows(rows, q.siteId);
-      const [canonicalLinkResolver, previewLinkResolver] = await Promise.all([
-        buildCmsLinkResolver(q.siteId, '', resolvedRows.map((row) => row.externalLink)),
-        buildCmsLinkResolver(q.siteId, `${CMS_PREVIEW_PREFIX}/${site.code}`, resolvedRows.map((row) => row.externalLink)),
-      ]);
-      return resolvedRows.map((r) => mapCmsContentListItem(r, {
-        channelName: r.channel?.name,
-        ...(() => {
-          const urls = buildCmsContentUrls(r, {
-          siteCode: site.code,
-          channelPath: r.channel?.path,
-          detailPathRule: r.channel?.detailPathRule,
-          });
-          if (r.externalLink) {
-            urls.canonicalUrl = canonicalLinkResolver(r.externalLink)?.url ?? null;
-            urls.previewUrl = r.status === 'published' ? previewLinkResolver(r.externalLink)?.url ?? null : null;
-          }
-          return urls;
-        })(),
-        lockedByName: r.lockedByUser?.nickname ?? null,
-      }));
+      if (!rows.length) return [];
+      const drafts = await db.select({
+        contentId: cmsContentWorkingCopies.contentId, version: cmsContentWorkingCopies.version,
+        editorialStatus: cmsContentWorkingCopies.editorialStatus, updatedAt: cmsContentWorkingCopies.updatedAt,
+        rejectReason: cmsContentWorkingCopies.rejectReason, publishedRevisionId: cmsContentWorkingCopies.publishedRevisionId,
+        submittedRevisionId: cmsContentWorkingCopies.submittedRevisionId, approvedRevisionId: cmsContentWorkingCopies.approvedRevisionId,
+        snapshot: sql<Omit<CmsContentRevisionSnapshot, 'body' | 'bodyDocument'>>`${cmsContentWorkingCopies.snapshot} - 'body' - 'bodyDocument'`,
+      }).from(cmsContentWorkingCopies).where(inArray(cmsContentWorkingCopies.contentId, rows.map((row) => row.id)));
+      const draftMap = new Map(drafts.map((draft) => [draft.contentId, draft]));
+      const channels = await db.select().from(cmsChannels).where(inArray(cmsChannels.id, [...new Set(drafts.map((draft) => draft.snapshot.channelId))]));
+      const channelMap = new Map(channels.map((channel) => [channel.id, channel]));
+      const editorialRows = rows.map((row) => {
+        const draft = requireRow(draftMap.get(row.id), '内容缺少工作稿', 409);
+        return { ...cmsRevisionToContentRow({ ...row, body: null, searchVector: null, extend: {}, mediaData: {}, attachments: [] }, { ...draft.snapshot, body: null, bodyDocument: null }), body: null,
+          version: draft.version, editorialStatus: draft.editorialStatus, publishedRevisionId: draft.publishedRevisionId,
+          submittedRevisionId: draft.submittedRevisionId, approvedRevisionId: draft.approvedRevisionId,
+          hasUnpublishedChanges: draft.editorialStatus !== 'clean', updatedAt: draft.updatedAt, rejectReason: draft.rejectReason };
+      });
+      const resolvedRows = await resolveCmsContentRows(editorialRows, q.siteId);
+      return resolvedRows.map((row) => {
+        const channel = channelMap.get(row.channelId);
+        return mapCmsContentListItem(row, { channelName: channel?.name, ...buildCmsContentUrls(row, { siteCode: site.code, channelPath: channel?.path, detailPathRule: channel?.detailPathRule }) });
+      });
     },
   });
 }
@@ -248,13 +219,15 @@ export async function checkCmsContentTitle(siteId: number, title: string, exclud
   const accessibleChannelIds = await getAccessibleChannelIds();
   const where = buildWhere(
     eq(cmsContents.siteId, siteId),
-    eq(cmsContents.title, title.trim()),
+    sql`${cmsContentWorkingCopies.snapshot}->>'title' = ${title.trim()}`,
+    await cmsContentDataScope(),
     isNull(cmsContents.deletedAt),
     accessibleChannelIds !== null ? inArray(cmsContents.channelId, accessibleChannelIds) : undefined,
     excludeId ? ne(cmsContents.id, excludeId) : undefined,
   );
-  const rows = await db.select({ id: cmsContents.id, title: cmsContents.title, status: cmsContents.status, channelId: cmsContents.channelId })
+  const rows = await db.select({ id: cmsContents.id, title: sql<string>`${cmsContentWorkingCopies.snapshot}->>'title'`, status: cmsContents.status, channelId: cmsContents.channelId })
     .from(cmsContents)
+    .innerJoin(cmsContentWorkingCopies, eq(cmsContentWorkingCopies.contentId, cmsContents.id))
     .where(where)
     .orderBy(desc(cmsContents.id))
     .limit(5);
