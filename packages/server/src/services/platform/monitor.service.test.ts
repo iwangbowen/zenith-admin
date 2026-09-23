@@ -7,7 +7,7 @@
  *
  * 租户工具（getTenantScopeId / isPlatformAdmin）只在这里替换取值，语义本身由 lib/tenant.test.ts 覆盖。
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WSContext } from 'hono/ws';
 
 const state = {
@@ -57,16 +57,32 @@ const USER_ROWS = [
   { id: 20, username: 't2-a', nickname: '租户二甲', tenantId: 2 },
 ];
 
-beforeEach(async () => {
-  vi.useFakeTimers();
+async function loadMonitor() {
   // 模块级连接表在用例间隔离；monitor.service 与 ws-manager 必须拿到同一份新实例
   vi.resetModules();
+  m = await import('../../lib/ws-manager');
+  service = await import('./monitor.service');
+}
+
+// Cold compilation of shared contracts/schema belongs to suite setup, with
+// real timers available to the module loader. Individual cases stay at 15s.
+beforeAll(loadMonitor, 120_000);
+
+beforeEach(async () => {
   state.rows = [...USER_ROWS];
   state.superUserIds = new Set([1, 11]);
   state.scope = undefined;
   state.platformAdmin = true;
-  m = await import('../../lib/ws-manager');
-  service = await import('./monitor.service');
+  await loadMonitor();
+  vi.useFakeTimers();
+});
+
+afterEach(() => {
+  if (vi.isFakeTimers()) {
+    // Discard the presence-flush debounce belonging to this case's manager.
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  }
 });
 
 describe('resolveVisibleWsUserIds（可见范围判定）', () => {

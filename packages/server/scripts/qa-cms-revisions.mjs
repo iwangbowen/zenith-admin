@@ -1,6 +1,7 @@
 /** Opt-in live regression. Retains clearly named fixtures in the supplied development environment. */
 import { writeFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
+import sharp from 'sharp';
 
 const base = process.env.CMS_QA_BASE ?? 'http://localhost:5373';
 const siteId = Number(process.env.CMS_QA_SITE_ID ?? 3);
@@ -15,6 +16,13 @@ async function request(path, method = 'GET', body, expected = 200) {
   return payload.data;
 }
 function check(name) { report.checks.push(name); console.log(`PASS ${name}`); }
+async function upload(path, color) {
+  const bytes = await sharp({ create: { width: 16, height: 16, channels: 3, background: color } }).png().toBuffer();
+  const form = new FormData(); form.append('file', new Blob([bytes], { type: 'image/png' }), 'qa-cms-version.png');
+  const response = await fetch(`${base}${path}`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, Origin: new URL(base).origin }, body: form });
+  const payload = await response.json(); assert.equal(response.status, 200, payload.message); assert.equal(payload.code, 0, payload.message);
+  return payload.data;
+}
 async function awaitRelease(id, wanted = ['active']) {
   const until = Date.now() + 180_000;
   while (Date.now() < until) {
@@ -93,6 +101,10 @@ try {
   assert.ok((await fetch(`${base}${publicPath}`).then((response) => response.text())).includes(`${prefix}-D`));
   await request(`/api/cms/releases/${first.id}/rollback`, 'POST', { expectedGenerationId: second.activeGenerationId });
   assert.ok((await fetch(`${base}${publicPath}`).then((response) => response.text())).includes(`${prefix}-A`));
+  const afterRollback = await request(path);
+  assert.equal(afterRollback.title, `${prefix}-D`);
+  assert.equal(afterRollback.hasUnpublishedChanges, true);
+  assert.equal(afterRollback.editorialStatus, 'draft');
   await request(`/api/cms/releases/${second.id}/activate`, 'POST', { expectedGenerationId: second.activeGenerationId }, 409);
   check('generation rollback changes delivery and stale activation CAS is rejected');
   await request(`/api/cms/releases/content/${contentId}/suppress`, 'POST', { reason: 'QA emergency withdrawal' });
@@ -104,6 +116,58 @@ try {
   assert.ok(list.total >= 2);
   await request(`/api/cms/contents?siteId=${siteId}&page=1&pageSize=10&calendarFrom=2026-09-01&calendarTo=2026-10-01`);
   check('working-copy list, search and calendar SQL execute on PostgreSQL');
+  const asset = await upload(`/api/cms/resources/upload?siteId=${siteId}`, '#123456');
+  report.fixtures.assetId = asset.id;
+  await request(`/api/cms/resources/${asset.id}/rights`, 'PUT', { source: 'QA generated bitmap', license: 'QA fixture', alt: '蓝色色块', revoked: false });
+  let illustrated = await request('/api/cms/contents', 'POST', { siteId, channelId, title: `${prefix}-asset`, slug: `${prefix.toLowerCase()}-asset`, coverImage: `cms-res://${asset.id}`, body: `<p>素材固定版本</p><img src="cms-res://${asset.id}" alt="色块">` });
+  report.fixtures.assetContentId = illustrated.id;
+  await request(`/api/cms/contents/${illustrated.id}/publish`, 'POST', { expectedVersion: illustrated.version });
+  await awaitRelease((await latestRelease(illustrated.id)).id);
+  illustrated = await request(`/api/cms/contents/${illustrated.id}`);
+  const assetRevision = await request(`/api/cms/contents/${illustrated.id}/versions/${illustrated.publishedRevisionId}`);
+  const pinnedUrl = assetRevision.snapshot.coverImage;
+  const imagePath = `/__cms/${site.code}/${channel.path}/${illustrated.slug}.html`;
+  const replacement = await upload(`/api/cms/resources/${asset.id}/replace`, '#abcdef');
+  assert.notEqual(replacement.url, pinnedUrl);
+  assert.ok((await request(`/api/cms/resources/${asset.id}/versions`)).length >= 2);
+  const pinnedHtml = await fetch(`${base}${imagePath}`).then((r) => r.text());
+  assert.ok(pinnedHtml.includes(pinnedUrl) && !pinnedHtml.includes(replacement.url));
+  await request(`/api/cms/resources/${asset.id}/rights`, 'PUT', { revoked: true });
+  assert.equal((await fetch(`${base}${imagePath}`)).status, 404);
+  await request(`/api/cms/resources/${asset.id}/rights`, 'PUT', { revoked: false });
+  assert.equal((await fetch(`${base}${imagePath}`)).status, 200);
+  check('asset replacement preserves the published binary version and rights revoke delivery');
+  const modelFields = [{ name: 'sku', label: '编号', fieldType: 'text', required: true, showInList: true, configuration: { unique: true } }];
+  let model = await request('/api/cms/models', 'POST', { ownerSiteId: siteId, name: `${prefix}-model`, code: `${prefix.toLowerCase()}-model`, fields: modelFields });
+  const oldModelVersion = model.publishedVersionId;
+  report.fixtures.modelId = model.id;
+  let typed = await request('/api/cms/contents', 'POST', { siteId, channelId, modelId: model.id, title: `${prefix}-typed`, slug: `${prefix.toLowerCase()}-typed`, body: '<p>独立内容类型</p>', extend: { sku: 'QA-001' } });
+  report.fixtures.typedContentId = typed.id;
+  await request(`/api/cms/models/${model.id}?siteId=${siteId}`, 'PUT', { fields: [...modelFields, { name: 'new_required', label: '新版必填字段', fieldType: 'text', required: true }] });
+  model = await request(`/api/cms/models/${model.id}/publish?siteId=${siteId}`, 'POST');
+  assert.notEqual(model.publishedVersionId, oldModelVersion);
+  assert.equal(typed.modelVersionId, oldModelVersion);
+  await request(`/api/cms/contents/${typed.id}/publish`, 'POST', { expectedVersion: typed.version });
+  await awaitRelease((await latestRelease(typed.id)).id);
+  typed = await request(`/api/cms/contents/${typed.id}`);
+  const typedList = await request(`/api/cms/contents?siteId=${siteId}&page=1&pageSize=10&keyword=${prefix}-typed`);
+  assert.ok(typedList.list[0].modelFields.some((field) => field.name === 'sku'));
+  assert.ok(!typedList.list[0].modelFields.some((field) => field.name === 'new_required'));
+  check('model versions remain pinned for validation and list display after schema publication');
+  const page = await request('/api/cms/pages', 'POST', { siteId, name: `${prefix}-page-A`, slug: `${prefix.toLowerCase()}-page`, seoTitle: `${prefix}-page-A`, blocks: [{ id: 'main', type: 'richtext', props: { html: '<p>冻结页面 A</p>' } }] });
+  report.fixtures.pageId = page.id;
+  const group = await request('/api/cms/releases', 'POST', { siteId, name: `${prefix}-group`, revisionIds: [typed.publishedRevisionId, illustrated.publishedRevisionId], pageIds: [page.id] });
+  report.fixtures.groupReleaseId = group.id;
+  await request(`/api/cms/pages/${page.id}`, 'PUT', { name: `${prefix}-page-B`, seoTitle: `${prefix}-page-B` });
+  await request(`/api/cms/releases/${group.id}/build`, 'POST');
+  const ready = await awaitRelease(group.id, ['ready']);
+  const preview = await request(`/api/cms/releases/${group.id}/preview?path=${encodeURIComponent(`/p/${page.slug}/`)}`);
+  assert.equal(preview.status, 200);
+  assert.ok(preview.html.includes(`${prefix}-page-A`) && !preview.html.includes(`${prefix}-page-B`));
+  await request(`/api/cms/releases/${group.id}/activate`, 'POST', { expectedGenerationId: ready.activeGenerationId });
+  check('group releases freeze content and page configuration before candidate build and activation');
+  const runs = await request('/api/system-scheduler/runs?taskName=cms-scheduled-publish&page=1&pageSize=10');
+  report.schedulerRuns = runs.list.map((run) => ({ status: run.status, startedAt: run.startedAt, message: run.message }));
   report.status = 'passed';
 } catch (error) {
   report.status = 'failed'; report.error = error instanceof Error ? error.message : String(error); console.error(report.error); process.exitCode = 1;

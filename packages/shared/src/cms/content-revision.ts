@@ -17,6 +17,11 @@ export type CmsContentRevisionSnapshot = z.output<typeof cmsContentRevisionSnaps
 export type CmsEditorialStatus = (typeof CMS_EDITORIAL_STATUSES)[number];
 export type CmsRevisionKind = (typeof CMS_REVISION_KINDS)[number];
 
+/** A public pointer can move back while the editor keeps a newer document. */
+export function cmsEditorialStatusAfterPublication(current: CmsEditorialStatus, matchesPublished: boolean): CmsEditorialStatus {
+  return matchesPublished ? 'clean' : current === 'clean' ? 'draft' : current;
+}
+
 export const cmsContentCasSchema = z.object({ expectedVersion: z.int().positive() });
 export const cmsContentBatchCasSchema = z.object({
   ids: z.array(z.int().positive()).min(1).max(1000),

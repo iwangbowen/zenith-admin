@@ -1,7 +1,8 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import CmsValueDiff from './CmsValueDiff';
+import CmsContentConflictView from './CmsContentConflictView';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, Form, Spin, Toast, Row, Col, Banner, SideSheet, Space, Timeline, Modal, Upload, Typography, useFormApi, Tag, Input, Tabs, TabPane, withField, Pagination } from '@douyinfe/semi-ui';
+import { Button, Form, Spin, Toast, Row, Col, Banner, SideSheet, Space, Timeline, Modal, Upload, Typography, Tag, Input, Tabs, TabPane, withField, Pagination } from '@douyinfe/semi-ui';
 import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { ArrowLeft, Save, Send, History, ImageUp, Eye, GitCompare, Images, Paperclip, SpellCheck, ScrollText, Workflow } from 'lucide-react';
@@ -32,6 +33,8 @@ import { ContentApprovalDetails } from './ContentApprovalView';
 import { ContentRevisionViewer } from './ContentRevisionViewer';
 import CmsContentReferenceInput from './CmsContentReferenceInput';
 import { useCmsEditorRecovery } from './useCmsEditorRecovery';
+import { useCmsEditorBaseline } from './useCmsEditorBaseline';
+import CmsModelMediaField from './CmsModelMediaField';
 import { CMS_EDITORIAL_STATUS_LABELS, CMS_EDITORIAL_STATUS_COLORS } from './cms-content-view-state';
 import CmsEditorialPanel from './CmsEditorialPanel';
 import { useAllUsers } from '@/hooks/queries/users';
@@ -62,35 +65,6 @@ const editorLoadingFallback = (
 
 const AUTO_SAVE_INTERVAL_MS = 5_000;
 const EDIT_LOCK_HEARTBEAT_MS = 30_000;
-
-/** image/file 型模型字段：输入框 + 媒体库选择按钮 */
-function MediaFieldControl({ field, canUpload }: Readonly<{ field: CmsModelField; canUpload: boolean }>) {
-  const formApi = useFormApi();
-  const [pickerVisible, setPickerVisible] = useState(false);
-  const rules = field.required ? [{ required: true, message: `请填写${field.label}` }] : undefined;
-  return (
-    <>
-      <Form.Input
-        field={`extend.${field.name}`}
-        label={field.label}
-        rules={rules}
-        placeholder={field.placeholder ?? '资源 URL（可从媒体库选择）'}
-        suffix={(
-          <Button size="small" theme="borderless" icon={<Images size={14} />} disabled={!canUpload} onClick={() => setPickerVisible(true)}>媒体库</Button>
-        )}
-      />
-      <MediaPickerModal
-        visible={pickerVisible}
-        imageOnly={field.fieldType === 'image'}
-        onCancel={() => setPickerVisible(false)}
-        onSelect={(file) => {
-          formApi.setValue(`extend.${field.name}`, file.url);
-          setPickerVisible(false);
-        }}
-      />
-    </>
-  );
-}
 
 /** 解析模型字段 defaultValue 为表单控件初值（与服务端 applyCmsModelFieldDefaults 同一口径） */
 function parseFieldDefault(field: CmsModelField): unknown {
@@ -137,7 +111,7 @@ function ModelFieldControl({ field, applyDefault, canUpload, siteId }: Readonly<
       common={common}
       siteId={siteId}
       richtext={{ rows: 5, placeholder: field.placeholder ?? '支持 HTML' }}
-      media={<MediaFieldControl field={field} canUpload={canUpload} />}
+      media={<CmsModelMediaField field={field} canUpload={canUpload} />}
     />
   );
 }
@@ -268,7 +242,7 @@ export default function ContentEditPage() {
   const isMapped = !!detail?.mappingSourceId;
   const isPersistentlyLocked = !!detail?.lockedAt;
   const canUpdateContent = id ? hasPermission('cms:content:update') : hasPermission('cms:content:create');
-  const isReadOnly = isPersistentlyLocked || !canUpdateContent;
+  const isReadOnly = isPersistentlyLocked || !canUpdateContent || (!!id && (!detail || detail.id !== id));
 
   const linkPicker = useCmsLinkPicker({
     siteId,
@@ -319,31 +293,41 @@ export default function ContentEditPage() {
     editorTouchedRef.current = true;
     markDirty();
   }
-  const bodyInitializedForRef = useRef<number | null>(null);
-  const pendingFormResetRef = useRef(false);
+  const displayedRecordId = useRef<number | undefined>(undefined);
+  const [formRecord, setFormRecord] = useState<CmsContent>();
   const [formEpoch, setFormEpoch] = useState(0);
-
-  useEffect(() => {
-    if (!detail) return;
-    if (!dirtyRef.current || bodyInitializedForRef.current !== detail.id) versionRef.current = detail.version;
-    // 版本回滚后强制重挂表单，加载最新字段值
-    if (pendingFormResetRef.current) {
-      pendingFormResetRef.current = false;
-      bodyInitializedForRef.current = null;
-      setFormEpoch((e) => e + 1);
-    }
-    // 正文只在首次加载（或回滚重置后）初始化，避免自动保存触发的 refetch 吞掉输入
-    if (bodyInitializedForRef.current !== detail.id) {
-      bodyInitializedForRef.current = detail.id;
-      setBody(detail.body ?? '');
-      setSelectedChannelId(detail.channelId);
-      setSelectedModelId(detail.modelId);
-      baseDraftRef.current = { ...detail };
-      setExternalLink(detail.externalLink ?? '');
-      setAlbumImages(Array.isArray(detail.mediaData?.images) ? detail.mediaData.images.map((img) => ({ ...img })) : []);
-      setAttachments(Array.isArray(detail.attachments) ? detail.attachments.map((a) => ({ ...a })) : []);
-    }
-  }, [detail]);
+  const baseline = useCmsEditorBaseline({
+    record: detail, dirty: dirtyRef, saving: savingRef, saveState,
+    onAdopt: (record) => {
+      if (displayedRecordId.current !== record.id) {
+        setLastPreview(null);
+        setVersionsPage(1);
+        setViewVersionId(undefined);
+        setDiffVersionId(undefined);
+      }
+      displayedRecordId.current = record.id;
+      versionRef.current = record.version;
+      baseDraftRef.current = { ...record };
+      dirtyRef.current = false;
+      editorTouchedRef.current = false;
+      setFormRecord(record);
+      setFormEpoch((value) => value + 1);
+      setBody(record.body ?? '');
+      setSelectedChannelId(record.channelId);
+      setSelectedModelId(record.modelId);
+      setExternalLink(record.externalLink ?? '');
+      setAlbumImages(record.mediaData.images?.map((image) => ({ ...image })) ?? []);
+      setAttachments(record.attachments.map((attachment) => ({ ...attachment })));
+      setSaveError('');
+      setSaveState('saved');
+    },
+    onConflict: () => {
+      setSaveState('conflict');
+      setSaveError('服务器已有新的工作稿。你的本地修改已保留，请比较后再保存。');
+      setConflictVisible(true);
+      recovery.persist();
+    },
+  });
 
   const hasDetail = !!detail;
   // 编辑锁：进入抢占 + 30s 心跳续期，离开释放（软锁，保存冲突由乐观锁兜底）
@@ -372,7 +356,7 @@ export default function ContentEditPage() {
     () => (models ?? []).find((m) => m.id === (selectedModelId ?? detail?.modelId)),
     [models, selectedModelId, detail],
   );
-  const modelFields = detail?.modelFields ?? currentModel?.fields ?? [];
+  const modelFields = formRecord?.modelFields ?? detail?.modelFields ?? currentModel?.fields ?? [];
 
   /** 模板试穿：以选中详情模板打开预览（?__template= 仅预览路径生效，不影响线上） */
   function handleTemplateTryOn() {
@@ -389,50 +373,50 @@ export default function ContentEditPage() {
     window.open(`${detail.previewUrl}${query}`, '_blank');
   }
 
-  const initValues = detail
+  const initValues = formRecord
     ? {
-        channelId: detail.channelId,
-        modelId: detail.modelId ?? undefined,
-        ownerId: detail.ownerId ?? undefined,
-        locale: detail.locale,
-        dueAt: detail.dueAt ?? undefined,
-        title: detail.title,
-        subTitle: detail.subTitle ?? '',
-        shortTitle: detail.shortTitle ?? '',
-        slug: detail.slug ?? '',
-        staticPath: detail.staticPath ?? '',
-        titleBold: detail.titleStyle?.bold ?? false,
-        titleColor: detail.titleStyle?.color ?? '',
-        summary: detail.summary ?? '',
-        coverImage: detail.coverImage ?? '',
-        author: detail.author ?? '',
-        editor: detail.editor ?? '',
-        source: detail.source ?? '',
-        sourceUrl: detail.sourceUrl ?? '',
-        isOriginal: detail.isOriginal,
-        externalLink: detail.externalLink ?? '',
-        detailTemplate: detail.detailTemplate ?? undefined,
-        isTop: detail.isTop,
-        topWeight: detail.topWeight,
-        topExpireAt: detail.topExpireAt ?? undefined,
-        isRecommend: detail.isRecommend,
-        isHot: detail.isHot,
-        sort: detail.sort,
-        tagIds: detail.tagIds ?? [],
-        extraChannelIds: detail.extraChannelIds ?? [],
-        relatedIds: detail.relatedIds ?? [],
-        seoTitle: detail.seoTitle ?? '',
-        seoKeywords: detail.seoKeywords ?? '',
-        seoDescription: detail.seoDescription ?? '',
-        socialImageAlt: detail.socialImageAlt ?? '',
-        twitterCreator: detail.twitterCreator ?? '',
-        scheduledAt: detail.scheduledAt ?? undefined,
-        expireAt: detail.expireAt ?? undefined,
-        extend: detail.extend ?? {},
-        mediaType: detail.mediaData?.mediaType ?? 'video',
-        mediaUrl: detail.mediaData?.mediaUrl ?? '',
-        mediaPoster: detail.mediaData?.poster ?? '',
-        mediaDuration: detail.mediaData?.duration ?? '',
+        channelId: formRecord.channelId,
+        modelId: formRecord.modelId ?? undefined,
+        ownerId: formRecord.ownerId ?? undefined,
+        locale: formRecord.locale,
+        dueAt: formRecord.dueAt ?? undefined,
+        title: formRecord.title,
+        subTitle: formRecord.subTitle ?? '',
+        shortTitle: formRecord.shortTitle ?? '',
+        slug: formRecord.slug ?? '',
+        staticPath: formRecord.staticPath ?? '',
+        titleBold: formRecord.titleStyle?.bold ?? false,
+        titleColor: formRecord.titleStyle?.color ?? '',
+        summary: formRecord.summary ?? '',
+        coverImage: formRecord.coverImage ?? '',
+        author: formRecord.author ?? '',
+        editor: formRecord.editor ?? '',
+        source: formRecord.source ?? '',
+        sourceUrl: formRecord.sourceUrl ?? '',
+        isOriginal: formRecord.isOriginal,
+        externalLink: formRecord.externalLink ?? '',
+        detailTemplate: formRecord.detailTemplate ?? undefined,
+        isTop: formRecord.isTop,
+        topWeight: formRecord.topWeight,
+        topExpireAt: formRecord.topExpireAt ?? undefined,
+        isRecommend: formRecord.isRecommend,
+        isHot: formRecord.isHot,
+        sort: formRecord.sort,
+        tagIds: formRecord.tagIds ?? [],
+        extraChannelIds: formRecord.extraChannelIds ?? [],
+        relatedIds: formRecord.relatedIds ?? [],
+        seoTitle: formRecord.seoTitle ?? '',
+        seoKeywords: formRecord.seoKeywords ?? '',
+        seoDescription: formRecord.seoDescription ?? '',
+        socialImageAlt: formRecord.socialImageAlt ?? '',
+        twitterCreator: formRecord.twitterCreator ?? '',
+        scheduledAt: formRecord.scheduledAt ?? undefined,
+        expireAt: formRecord.expireAt ?? undefined,
+        extend: formRecord.extend ?? {},
+        mediaType: formRecord.mediaData?.mediaType ?? 'video',
+        mediaUrl: formRecord.mediaData?.mediaUrl ?? '',
+        mediaPoster: formRecord.mediaData?.poster ?? '',
+        mediaDuration: formRecord.mediaData?.duration ?? '',
       }
     : { channelId: channelIdParam, locale: 'zh-CN', isTop: false, topWeight: 0, isOriginal: false, isRecommend: false, isHot: false, sort: 0, tagIds: [], extraChannelIds: [], relatedIds: [], extend: {}, mediaType: 'video', titleBold: false, titleColor: '' };
 
@@ -527,6 +511,9 @@ export default function ContentEditPage() {
       versionRef.current = saved.version;
       baseDraftRef.current = { ...saved };
       dirtyRef.current = editSequenceRef.current !== savingSequence;
+      // 自己的保存已由当前输入组成，不重挂编辑器，避免自动保存打断光标。
+      setFormRecord(saved);
+      baseline.acknowledge(saved, !recordId && !dirtyRef.current);
       setSaveState(dirtyRef.current ? 'dirty' : 'saved');
       setAutoSavedAt(new Date().toTimeString().slice(0, 8));
       if (!dirtyRef.current) recovery.clear();
@@ -1185,8 +1172,8 @@ export default function ContentEditPage() {
           </Suspense>
         ) : null}
       </TabPane>
-      <TabPane tab="协作与质量" itemKey="collaboration"><CmsEditorialPanel content={detail} disabled={saveState !== 'saved'} models={models ?? []} onChanged={() => { pendingFormResetRef.current = true; dirtyRef.current = false; recovery.clear(); void detailQuery.refetch(); }} onOpen={(contentId) => navigate(`/cms/contents/edit?id=${contentId}&siteId=${siteId}`)} /></TabPane>
-      <TabPane tab="已保存稿件" itemKey="snapshot">{detail ? <ContentRevisionViewer content={detail} fields={modelFields} heading="已保存工作稿" /> : <Typography.Text>保存后可查看完整稿件。</Typography.Text>}</TabPane>
+      <TabPane tab="协作与质量" itemKey="collaboration"><div className="cms-content-edit__scroll-pane"><CmsEditorialPanel content={detail} disabled={saveState !== 'saved'} models={models ?? []} onChanged={() => { dirtyRef.current = false; recovery.clear(); void detailQuery.refetch().then(() => baseline.adoptLatest()); }} onOpen={(contentId) => navigate(`/cms/contents/edit?id=${contentId}&siteId=${siteId}`)} /></div></TabPane>
+      <TabPane tab="已保存稿件" itemKey="snapshot"><div className="cms-content-edit__scroll-pane">{detail ? <ContentRevisionViewer content={detail} fields={modelFields} heading="已保存工作稿" /> : <Typography.Text>保存后可查看完整稿件。</Typography.Text>}</div></TabPane>
       </Tabs>
 
       {/* 内部链接选择弹窗 */}
@@ -1217,13 +1204,13 @@ export default function ContentEditPage() {
 
       <Modal title="工作稿版本冲突" visible={conflictVisible} onCancel={() => setConflictVisible(false)} footer={null} width={960}>
         <Banner type="warning" description="服务器已有更新。下面保留原始基稿、服务器最新稿与本地修改；核对后可采用最新版本作为基线继续编辑。" />
-        <div className="auto-grid" style={{ '--auto-grid-cols': 3 } as React.CSSProperties}>
-          {[['原始基稿', baseDraftRef.current], ['服务器最新稿', detail], ['本地修改', { ...formApi.current?.getValues(), body, attachments, albumImages }]].map(([label, value]) => <div key={String(label)}><Typography.Title heading={6}>{String(label)}</Typography.Title><pre style={{ maxHeight: 340, overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{JSON.stringify(value, null, 2)}</pre></div>)}
-        </div>
+        <CmsContentConflictView base={baseDraftRef.current} server={detail}
+          local={{ ...formApi.current?.getValues(), body, attachments, albumImages }} fields={modelFields}
+          channels={treeQuery.data} models={models} users={users} tags={tags} />
         <Space wrap style={{ marginTop: 16 }}>
           <Button onClick={() => void detailQuery.refetch()}>刷新服务器稿</Button>
-          <Button onClick={() => { if (!detail) return; versionRef.current = detail.version; baseDraftRef.current = { ...detail }; setSaveState('dirty'); setSaveError(''); setConflictVisible(false); }}>保留本地修改，以最新版本为基线</Button>
-          <Button type="warning" onClick={() => { dirtyRef.current = false; recovery.clear(); pendingFormResetRef.current = true; setSaveError(''); setSaveState('saved'); setConflictVisible(false); void detailQuery.refetch(); }}>采用服务器稿</Button>
+          <Button onClick={() => { if (!detail) return; versionRef.current = detail.version; baseDraftRef.current = { ...detail }; baseline.acknowledge(detail, false); setSaveState('dirty'); setSaveError(''); setConflictVisible(false); }}>保留本地修改，以最新版本为基线</Button>
+          <Button type="warning" onClick={() => { dirtyRef.current = false; recovery.clear(); setSaveError(''); setConflictVisible(false); baseline.adoptLatest(); }}>采用服务器稿</Button>
         </Space>
       </Modal>
       {/* 版本历史抽屉 */}
@@ -1254,9 +1241,9 @@ export default function ContentEditPage() {
                         title: `将 v${v.version} 恢复为工作稿？`,
                         content: '恢复完整字段与关系到工作稿，后续仍需审核和发布。',
                         onOk: async () => {
-                          pendingFormResetRef.current = true;
-                          await restoreMutation.mutateAsync({ params: { id: id!, versionId: v.id }, body: { expectedVersion: versionRef.current! } });
+                          const restored = await restoreMutation.mutateAsync({ params: { id: id!, versionId: v.id }, body: { expectedVersion: versionRef.current! } });
                           dirtyRef.current = false;
+                          baseline.acknowledge(restored, true);
                           recovery.clear();
                           Toast.success('历史修订已恢复为工作稿');
                           setVersionsVisible(false);

@@ -265,7 +265,7 @@ export async function activateCmsRelease(id: number, expectedGenerationId: numbe
     if (rollback) for (const contentId of affectedIds) {
       await tx.update(cmsContents).set({ version: sql`${cmsContents.version}+1` }).where(eq(cmsContents.id, contentId));
       const revisionId = nextRevisions.get(contentId);
-      if (revisionId) await tx.update(cmsContentWorkingCopies).set({ publishedRevisionId: revisionId }).where(eq(cmsContentWorkingCopies.contentId, contentId));
+      await markCmsRevisionPublished(tx, contentId, revisionId ?? null);
     }
     if (current) {
       await tx.update(cmsDeployments).set({ status: 'retired' }).where(eq(cmsDeployments.id, current));

@@ -2,7 +2,7 @@ import { cmsModelVersions } from '../../db/schema/cms-design';
 import { createHash } from 'node:crypto';
 import { and, eq, max, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { cmsContentRevisionSnapshotSchema, type CmsContentRevisionSnapshot, type CmsRevisionKind } from '@zenith/shared/cms';
+import { cmsContentRevisionSnapshotSchema, cmsEditorialStatusAfterPublication, type CmsContentRevisionSnapshot, type CmsRevisionKind } from '@zenith/shared/cms';
 import { db } from '../../db';
 import { cmsContents, cmsContentTags, cmsContentChannels, cmsContentRelations, cmsContentRevisions, cmsContentWorkingCopies, cmsContentReviewRevisions, cmsContentRevisionApprovals } from '../../db/schema';
 import type { CmsContentRow, CmsContentRevisionRow, CmsContentWorkingCopyRow } from '../../db/schema';
@@ -113,11 +113,11 @@ export async function applyCmsRevisionProjection(tx: DbTransaction, revision: Aw
   return row;
 }
 
-export async function markCmsRevisionPublished(tx: DbTransaction, contentId: number, revisionId: number): Promise<void> {
+export async function markCmsRevisionPublished(tx: DbTransaction, contentId: number, revisionId: number | null): Promise<void> {
   const working = await requireCmsWorkingCopy(tx, contentId, true);
-  const revision = await loadCmsRevision(tx, revisionId);
-  if (revision.contentId !== contentId) throw new HTTPException(409, { message: '发布修订不属于当前内容' });
-  await tx.update(cmsContentWorkingCopies).set({ publishedRevisionId: revisionId, editorialStatus: cmsRevisionHash(working.snapshot) === revision.hash ? 'clean' : working.editorialStatus }).where(eq(cmsContentWorkingCopies.contentId, contentId));
+  const revision = revisionId ? await loadCmsRevision(tx, revisionId) : null;
+  if (revision && revision.contentId !== contentId) throw new HTTPException(409, { message: '发布修订不属于当前内容' });
+  await tx.update(cmsContentWorkingCopies).set({ publishedRevisionId: revisionId, editorialStatus: cmsEditorialStatusAfterPublication(working.editorialStatus, Boolean(revision && cmsRevisionHash(working.snapshot) === revision.hash)) }).where(eq(cmsContentWorkingCopies.contentId, contentId));
 }
 
 /** Trusted import/collection/member/distribution boundaries still carry a captured CAS token. */

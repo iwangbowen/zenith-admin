@@ -1,5 +1,5 @@
 {
-  "startedAt": "2026-09-23T07:42:25.855Z",
+  "startedAt": "2026-09-23T08:13:02.555Z",
   "base": "http://localhost:5373",
   "siteId": 3,
   "channelId": 5,
@@ -11,15 +11,52 @@
     "notes, quality report, manual translation and duplicate-language protection",
     "generation rollback changes delivery and stale activation CAS is rejected",
     "emergency withdrawal and restoration apply to active generation",
-    "working-copy list, search and calendar SQL execute on PostgreSQL"
+    "working-copy list, search and calendar SQL execute on PostgreSQL",
+    "asset replacement preserves the published binary version and rights revoke delivery",
+    "model versions remain pinned for validation and list display after schema publication",
+    "group releases freeze content and page configuration before candidate build and activation",
+    "rollback retains working content and CAS while recomputing unpublished consistency"
   ],
   "fixtures": {
-    "contentId": 11,
-    "publicPath": "/__cms/qa-cms-20260923-core-mudf48us/qa-core/qa-cms-final-1790149346117.html",
-    "firstReleaseId": 2,
-    "translationId": 12,
-    "secondReleaseId": 3
+    "contentId": 18,
+    "publicPath": "/__cms/qa-cms-20260923-core-mudf48us/qa-core/qa-cms-final-1790151182783.html",
+    "firstReleaseId": 8,
+    "translationId": 19,
+    "secondReleaseId": 9,
+    "assetId": 4,
+    "assetContentId": 20,
+    "modelId": 3,
+    "typedContentId": 21,
+    "pageId": 2,
+    "groupReleaseId": 12
   },
   "status": "passed",
-  "finishedAt": "2026-09-23T07:42:44.305Z"
+  "finishedAt": "2026-09-23T09:14:25.4758087Z",
+  "schedulerRuns": [
+    {
+      "status": "success",
+      "startedAt": "2026-09-23 16:17:52",
+      "message": null
+    },
+    {
+      "status": "success",
+      "startedAt": "2026-09-23 16:16:24",
+      "message": null
+    },
+    {
+      "status": "success",
+      "startedAt": "2026-09-23 16:15:54",
+      "message": null
+    },
+    {
+      "status": "success",
+      "startedAt": "2026-09-23 16:14:22",
+      "message": null
+    },
+    {
+      "status": "success",
+      "startedAt": "2026-09-23 16:13:23",
+      "message": null
+    }
+  ]
 }

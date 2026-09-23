@@ -32,6 +32,7 @@ import {
   useCmsContentList,
   useCmsContentOpLogs,
   useCmsContentVersions,
+  useCmsPreviewLink,
   useCmsContentWorkflowContext,
   useCmsContentWorkflowPreview,
   useCmsContentApprovalDetail,
@@ -267,5 +268,27 @@ describe('useCmsChannelSampleContent —— 一次性取样不进缓存', () => 
     expect(url).toContain('status=published');
     expect(url).toContain('pageSize=1');
     expect(hasCacheEntry(qc, cmsContentKeys.list({ ...query }))).toBe(false);
+  });
+});
+
+
+describe('固定修订预览后的历史刷新', () => {
+  it('loads the new preview revision into the open history without touching another content history', async () => {
+    let total = 0;
+    api.on('GET', '/api/cms/contents/7/versions', () => ({ list: total ? [{ id: 99, contentId: 7, version: 2, title: '固定预览' }] : [], total, page: 1, pageSize: 30 }))
+      .on('GET', '/api/cms/contents/8/versions', { list: [], total: 0, page: 1, pageSize: 30 })
+      .on('POST', '/api/cms/contents/7/preview-link', () => {
+        total = 1;
+        return { url: '/__cms/main/preview/7?rid=99', revisionId: 99, grantId: '11111111-1111-4111-8111-111111111111', expiresAt: '2026-09-24 12:00:00' };
+      });
+    const qc = createTestQueryClient();
+    const hook = renderHook(() => ({ history: useCmsContentVersions(7), other: useCmsContentVersions(8), preview: useCmsPreviewLink() }), { wrapper: createWrapper(qc) });
+    await waitFor(() => { expect(hook.result.current.history.isSuccess).toBe(true); expect(hook.result.current.other.isSuccess).toBe(true); });
+    api.resetCalls();
+    await hook.result.current.preview.mutateAsync({ params: { id: 7 } });
+    await waitFor(() => expect(hook.result.current.history.data?.list[0].id).toBe(99));
+    expect(api.countOf('GET', '/api/cms/contents/7/versions')).toBe(1);
+    expect(api.countOf('GET', '/api/cms/contents/8/versions')).toBe(0);
+    hook.unmount();
   });
 });

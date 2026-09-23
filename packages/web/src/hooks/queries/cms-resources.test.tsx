@@ -18,11 +18,13 @@ import {
 } from '@/test-utils/query-harness';
 
 const api = new ApiRecorder();
-vi.mock('@/utils/request', () => ({ request: createRequestMock(() => api) }));
+vi.mock('@/utils/request', () => ({ request: { ...createRequestMock(() => api), postForm: (url: string, body: FormData) => api.dispatch('POST', url, body) } }));
 
 import {
   cmsResourceKeys,
   useCmsResourceFolders,
+  useCmsAssetVersions,
+  useReplaceCmsResource,
   useCmsResourceList,
   useCmsResourceReferences,
   useDeleteCmsResources,
@@ -120,5 +122,32 @@ describe('素材 / 文件夹写操作只打列表与文件夹计数', () => {
     expect(hasCacheEntry(qc, cmsResourceKeys.references(5))).toBe(false);
     expect(api.countOf('GET', '/api/cms/resources/5/references')).toBe(0);
     expect(api.countOf('GET', '/api/cms/resources')).toBe(1);
+  });
+});
+
+
+describe('素材版本抽屉缓存', () => {
+  it('reloads the replaced resource history when reopening, without refetching another resource', async () => {
+    let history = [{ id: 11, resourceId: 5, version: 1, url: '/file-v1.png' }];
+    api.on('GET', '/api/cms/resources/5/versions', () => history)
+      .on('GET', '/api/cms/resources/6/versions', [{ id: 61, resourceId: 6, version: 1 }])
+      .on('POST', '/api/cms/resources/5/replace', () => {
+        history = [...history, { id: 12, resourceId: 5, version: 2, url: '/file-v2.png' }];
+        return { ...RESOURCE, url: '/file-v2.png' };
+      });
+    const qc = createTestQueryClient();
+    const hook = renderHook(({ selectedId }: { selectedId?: number }) => ({
+      versions: useCmsAssetVersions(selectedId), other: useCmsAssetVersions(6), replace: useReplaceCmsResource(),
+    }), { initialProps: { selectedId: 5 as number | undefined }, wrapper: createWrapper(qc) });
+    await waitFor(() => { expect(hook.result.current.versions.data).toHaveLength(1); expect(hook.result.current.other.isSuccess).toBe(true); });
+    hook.rerender({ selectedId: undefined });
+    api.resetCalls();
+    await hook.result.current.replace.mutateAsync({ id: 5, file: new File(['replacement'], 'banner.png', { type: 'image/png' }) });
+    expect(api.countOf('GET', '/api/cms/resources/5/versions')).toBe(0);
+    hook.rerender({ selectedId: 5 });
+    await waitFor(() => expect(hook.result.current.versions.data?.map((version) => version.version)).toEqual([1, 2]));
+    expect(api.countOf('GET', '/api/cms/resources/5/versions')).toBe(1);
+    expect(api.countOf('GET', '/api/cms/resources/6/versions')).toBe(0);
+    hook.unmount();
   });
 });

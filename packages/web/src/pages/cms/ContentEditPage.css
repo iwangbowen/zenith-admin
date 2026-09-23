@@ -28,6 +28,10 @@
   min-height: 560px;
 }
 
+.cms-content-edit__scroll-pane {
+  min-width: 0;
+}
+
 @media (--lg-up) {
   .cms-content-edit {
     height: 100%;
@@ -50,6 +54,12 @@
 
   .cms-content-edit__tabs > .semi-tabs-content {
     overflow: hidden;
+  }
+
+  .cms-content-edit__scroll-pane {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
   }
 
   .cms-content-edit__cols {

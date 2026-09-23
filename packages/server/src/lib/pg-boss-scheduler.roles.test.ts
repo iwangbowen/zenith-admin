@@ -2,7 +2,7 @@
  * 角色门控：声明在任何角色都发生，执行（work / cron monitor / 对账）只在 worker 角色。
  * 用假 PgBoss 记录调用；三种角色下分别加载模块并比较注册表——这是「声明漂移」的结构性守卫。
  */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 type Scheduler = typeof import('./pg-boss-scheduler');
 
@@ -100,6 +100,10 @@ async function declareAll(s: Scheduler): Promise<void> {
 }
 
 afterEach(() => vi.doUnmock('../config'));
+
+// Compile the full shared/schema module graph as suite setup. Each case still
+// reloads state and keeps the normal 15-second execution deadline.
+beforeAll(async () => { await loadScheduler('api'); }, 120_000);
 
 describe('api 角色（只发不执行）', () => {
   it('pg-boss 以 send-only 参数构造，不注册任何轮询 worker，但队列与 schedule 照常声明', async () => {

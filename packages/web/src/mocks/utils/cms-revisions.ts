@@ -1,4 +1,5 @@
 import type { CmsContent, CmsContentVersion } from '@zenith/shared/cms';
+import { cmsEditorialStatusAfterPublication } from '@zenith/shared/cms';
 import { mockCmsContents, mockCmsContentVersions, mockCmsModels, mockCmsTags, mockCmsChannels } from '../data/cms';
 import { MockHttpError } from './contract';
 import { conflict, locked, notFound } from './handlers';
@@ -86,7 +87,7 @@ export function activateMockCmsRevision(revisionId: number): CmsContent {
   content.publishedRevisionId = revisionId;
   content.publishedAt = published.publishedAt;
   content.hasUnpublishedChanges = content.version !== revision.sourceVersion;
-  if (!content.hasUnpublishedChanges) content.editorialStatus = 'clean';
+  content.editorialStatus = cmsEditorialStatusAfterPublication(content.editorialStatus, !content.hasUnpublishedChanges);
   return content;
 }
 export function getMockCmsPublishedContent(contentId: number): CmsContent | undefined { initialize(); const work = mockCmsContents.find((item) => item.id === contentId); if (!work || work.status !== 'published' || (work as CmsContent & { deleted?: boolean }).deleted) return undefined; return publicContents.get(contentId); }

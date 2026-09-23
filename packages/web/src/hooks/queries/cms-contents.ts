@@ -257,7 +257,11 @@ export function releaseCmsEditLock(contentId: number): Promise<null> {
 
 /** 生成草稿预览链接 */
 export function useCmsPreviewLink() {
-  return useApiMutation(cmsContentContract.previewLink);
+  return useApiMutation(cmsContentContract.previewLink, {
+    invalidate: (qc, _link, { params }) => {
+      void qc.invalidateQueries({ queryKey: cmsContentKeys.versionList(params.id) });
+    },
+  });
 }
 
 export function useRevokeCmsPreviewLink() {

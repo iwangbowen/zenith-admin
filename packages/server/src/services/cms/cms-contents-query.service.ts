@@ -15,7 +15,7 @@ import { config } from '../../config';
 import redis from '../../lib/redis';
 import { getAccessibleChannelIds, assertChannelAccess } from './cms-channels.service';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
-import { cmsContentContract, cmsContentSchema, type CmsEditorialStatus, type CmsContentRevisionSnapshot, type CmsBodyDocument } from '@zenith/shared/cms';
+import { cmsContentContract, cmsContentSchema, type CmsEditorialStatus, type CmsContentRevisionSnapshot, type CmsBodyDocument, type CmsModelField } from '@zenith/shared/cms';
 import { resolveCmsContentRow, resolveCmsContentRows } from './cms-resource-refs.service';
 import { buildCmsContentUrls } from './cms-urls';
 import { getEffectivelyEnabledCmsChannelIds } from './cms-channel-visibility.service';
@@ -44,9 +44,10 @@ export function mapCmsContentListItem(row: Omit<CmsContentMapRow, 'body'>, extra
   canonicalUrl?: string | null;
   previewUrl?: string | null;
   listFields?: Record<string, unknown>;
+  modelFields?: CmsModelField[];
 }) {
   const { body: _body, extend: _extend, mediaData: _mediaData, ...item } = mapCmsContent({ ...row, body: null }, extra);
-  return { ...item, listFields: extra?.listFields ?? {} };
+  return { ...item, listFields: extra?.listFields ?? {}, modelFields: extra?.modelFields ?? [] };
 }
 
 /** `mapCmsContent` 不读取 search_vector，列表投影行补上 `body: null` 即可复用同一映射 */
@@ -211,6 +212,7 @@ export async function listCmsContents(q: QueryOutputOf<typeof cmsContentContract
       const modelVersionIds = [...new Set(drafts.flatMap((draft) => draft.snapshot.modelVersionId ? [draft.snapshot.modelVersionId] : []))];
       const modelVersions = modelVersionIds.length ? await db.select({ id: cmsModelVersions.id, fields: cmsModelVersions.fields }).from(cmsModelVersions).where(inArray(cmsModelVersions.id, modelVersionIds)) : [];
       const listFieldsByVersion = new Map(modelVersions.map((version) => [version.id, version.fields.filter((field) => field.showInList).map((field) => field.name)]));
+      const modelFieldsByVersion = new Map(modelVersions.map((version) => [version.id, version.fields]));
       const editorialRows = rows.map((row) => {
         const draft = requireRow(draftMap.get(row.id), '内容缺少工作稿', 409);
         return { ...cmsRevisionToContentRow({ ...row, body: null, searchVector: null, extend: {}, mediaData: {}, attachments: [] }, { ...draft.snapshot, body: null, bodyDocument: null, mediaData: {}, attachments: [] }), body: null,
@@ -222,7 +224,7 @@ export async function listCmsContents(q: QueryOutputOf<typeof cmsContentContract
       return resolvedRows.map((row) => {
         const channel = channelMap.get(row.channelId);
         const listFields = Object.fromEntries((listFieldsByVersion.get(row.modelVersionId ?? 0) ?? []).map((name) => [name, row.extend[name]]));
-        return mapCmsContentListItem(row, { listFields, channelName: channel?.name, ...buildCmsContentUrls(row, { siteCode: site.code, channelPath: channel?.path, detailPathRule: channel?.detailPathRule }) });
+        return mapCmsContentListItem(row, { listFields, modelFields: modelFieldsByVersion.get(row.modelVersionId ?? 0) ?? [], channelName: channel?.name, ...buildCmsContentUrls(row, { siteCode: site.code, channelPath: channel?.path, detailPathRule: channel?.detailPathRule }) });
       });
     },
   });

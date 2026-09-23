@@ -29,6 +29,7 @@ export function useSaveCmsAssetRights() {
 
 export const cmsResourceKeys = {
   lists: contractKey(cmsResourceContract.list),
+  versions: (id: number) => contractKey(cmsResourceContract.versions, { params: { id } }),
   list: (params: CmsResourceListParams) => contractKey(cmsResourceContract.list, { query: params }),
   references: (id: number) => contractKey(cmsResourceContract.references, { params: { id } }),
   /** 全部站点文件夹树的公共前缀 */
@@ -120,7 +121,7 @@ export function useCmsResourceGovernance() {
 }
 
 /**
- * 替换素材文件：保留素材 id，站内所有引用位置自动指向新文件（列表的 url / 大小 / 缩略图变化，引用索引不变）。
+ * 替换素材文件：稳定资产身份保留，新增文件版本；已冻结的内容修订继续引用旧文件版本。
  * H5：mutationFn 走 `request.postForm` 表单通道而非单次 `api(op)`，故保留手写 useMutation。
  */
 export function useReplaceCmsResource() {
@@ -133,7 +134,10 @@ export function useReplaceCmsResource() {
         .postForm<OutputOf<typeof cmsResourceContract.replace>>(urlOf(cmsResourceContract.replace, { params: { id } }), formData)
         .then(unwrap);
     },
-    onSuccess: () => invalidateAfterCmsResourceChange(qc),
+    onSuccess: (_result, { id }) => {
+      invalidateAfterCmsResourceChange(qc);
+      void qc.invalidateQueries({ queryKey: cmsResourceKeys.versions(id) });
+    },
   });
 }
 

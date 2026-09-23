@@ -294,7 +294,7 @@ export async function submitCmsContent(id: number, options?: { skipAccessCheck?:
     const working = await requireCmsWorkingCopy(tx, id, true);
     assertCmsContentVersion(working, options?.expectedVersion);
     if (identity.deletedAt || identity.archivedAt) throw new HTTPException(409, { message: '回收站或已归档内容不可提审' });
-    await validateCmsModelExtend(working.snapshot.modelId, working.snapshot.extend, 'publish');
+    await validateCmsModelExtend(working.snapshot.modelId, working.snapshot.extend, 'publish', working.snapshot.modelVersionId);
     assertContentTypeReady(cmsRevisionToContentRow(identity, working.snapshot));
     const frozen = await freezeCmsContentRevision(tx, identity, working, 'submission', '冻结提审稿');
     await tx.update(cmsContentWorkingCopies).set({ submittedRevisionId: frozen.id, approvedRevisionId: null, editorialStatus: 'pending', rejectReason: null, version: sql`${cmsContentWorkingCopies.version} + 1` }).where(eq(cmsContentWorkingCopies.contentId, id));
@@ -346,7 +346,7 @@ export async function publishCmsContent(id: number, options?: PublishCmsContentO
     if (revision.contentId !== id) throw new HTTPException(409, { message: '发布修订不属于当前内容' });
     if (isWorkflowAuditEnabled(site.settings) && working.approvedRevisionId !== revision.id) throw new HTTPException(409, { message: '该修订尚未通过工作流审核' });
     assertContentTypeReady(cmsRevisionToContentRow(identity, revision.snapshot));
-    await validateCmsModelExtend(revision.snapshot.modelId, revision.snapshot.extend, 'publish');
+    await validateCmsModelExtend(revision.snapshot.modelId, revision.snapshot.extend, 'publish', revision.snapshot.modelVersionId);
     if (options?.scheduledAtBefore && (!revision.snapshot.scheduledAt || parseDateTimeInput(revision.snapshot.scheduledAt)! > options.scheduledAtBefore)) throw new HTTPException(409, { message: '定时发布条件已变化' });
     await approveCmsRevision(tx, revision.id);
     await tx.update(cmsContentWorkingCopies).set({ approvedRevisionId: revision.id, editorialStatus: working.editorialStatus === 'draft' && requestedId ? 'draft' : 'approved', version: sql`${cmsContentWorkingCopies.version} + 1` }).where(eq(cmsContentWorkingCopies.contentId, id));

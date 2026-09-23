@@ -36,6 +36,7 @@ import { formatDateTimeRangeForApi } from '@/utils/date';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { CMS_EDITORIAL_STATUS_LABELS, CMS_EDITORIAL_STATUS_COLORS } from './cms-content-view-state';
 import CmsContentCalendar from './CmsContentCalendar';
+import { cmsFieldDisplayText } from './cms-field-display';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { channelsToSelectTree } from './channel-tree';
@@ -175,10 +176,6 @@ export default function ContentsPage() {
   }, siteId !== undefined && activeTab !== 'calendar');
   const list = listQuery.data?.list ?? [];
   const listModelFields = new Map<string, { modelId: number; modelName: string; field: CmsModelField }>();
-  for (const model of models ?? []) {
-    if (submittedParams.modelId && model.id !== submittedParams.modelId) continue;
-    for (const field of (model.fields ?? []).filter((item) => item.showInList)) listModelFields.set(`${model.id}:${field.name}`, { modelId: model.id, modelName: model.name, field });
-  }
   for (const record of list) {
     if (!record.modelId) continue;
     for (const field of (record.modelFields ?? []).filter((item) => item.showInList)) listModelFields.set(`${record.modelId}:${field.name}`, { modelId: record.modelId, modelName: models?.find((model) => model.id === record.modelId)?.name ?? '内容模型', field });
@@ -426,14 +423,16 @@ export default function ContentsPage() {
     },
     dateTimeColumn('更新时间', 'updatedAt'),
     ...[...listModelFields.values()].map(({ modelId, modelName, field }): ColumnProps<CmsContentListItem> => ({
-      key: `model-${modelId}-${field.name}`, title: `${modelName} · ${field.label}`, width: 180,
+      // 模型自定义字段列：列头是「模型名 · 字段名」（模型名可达 30+ 字符），列级 ellipsis
+      // 让表头与单元格都单行省略，表头还能靠原生 title 悬停看全名
+      key: `model-${modelId}-${field.name}`, title: `${modelName} · ${field.label}`, width: 220, ellipsis: true,
       render: (_value: unknown, record) => {
         if (record.modelId !== modelId) return EMPTY_PLACEHOLDER;
         const value = record.listFields?.[field.name];
         if (value == null || value === '') return EMPTY_PLACEHOLDER;
         if (typeof value === 'boolean') return value ? '是' : '否';
-        const options = field.resolvedOptions ?? field.options ?? [];
-        return <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 150 }}>{Array.isArray(value) ? value.map((item) => options.find((option) => option.value === item)?.label ?? String(item)).join('、') : typeof value === 'object' ? JSON.stringify(value) : options.find((option) => option.value === value)?.label ?? String(value)}</Typography.Text>;
+        const rowField = record.modelFields?.find((item) => item.name === field.name);
+        return <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 150 }}>{cmsFieldDisplayText(value, rowField)}</Typography.Text>;
       },
     })),
     {

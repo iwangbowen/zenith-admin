@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ workerNodes: 1, dbDown: false, fanout: 'subscribed' as string, bus: 'listening' as string }));
 
@@ -31,9 +31,11 @@ const stubConfigBase = {
 async function loadHealth(roles: { api: boolean; worker: boolean; list: string[] }): Promise<HealthApp> {
   vi.resetModules();
   vi.doMock('../../config', () => ({ config: { ...stubConfigBase, roles: { ...roles, explicit: true, label: roles.list.join(',') } } }));
-  const mod = await import('./health');
-  vi.doUnmock('../../config');
-  return mod.default;
+  try {
+    return (await import('./health')).default;
+  } finally {
+    vi.doUnmock('../../config');
+  }
 }
 
 async function check(app: HealthApp) {
@@ -41,7 +43,15 @@ async function check(app: HealthApp) {
   return { status: res.status, body: (await res.json()) as { data: { status: string; roles: string[]; checks: Record<string, string> } } };
 }
 
+// Contract routing and the scheduler load the complete shared/schema graph.
+// Compile it once as suite setup; each role still gets fresh module state and
+// every request/expectation keeps the normal 15-second test deadline.
+beforeAll(async () => {
+  await loadHealth({ api: true, worker: false, list: ['api'] });
+}, 120_000);
+
 afterEach(() => {
+  vi.doUnmock('../../config');
   mocks.workerNodes = 1;
   mocks.dbDown = false;
   mocks.fanout = 'subscribed';
