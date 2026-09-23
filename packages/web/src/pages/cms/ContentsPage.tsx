@@ -457,9 +457,10 @@ export default function ContentsPage() {
       ),
     },
     createOperationColumn<CmsContentListItem>({
-      // 审批信息与业务编辑并列，发布/前台预览等次要操作收在更多菜单。
-      width: activeTab === 'recycle' ? 210 : 290,
-      desktopInlineKeys: activeTab === 'recycle' ? ['restore', 'purge'] : activeTab === 'archived' ? ['workflow', 'unarchive', 'preview'] : ['edit', 'workflow', 'submit', 'offline'],
+      // 预览是列表里最高频的动作，置于行内第一位；编辑/提交审核并列行内，
+      // 发布、下线、查看审批等低频或危险动作收进更多菜单（width 按最宽内联组合重算）。
+      width: activeTab === 'recycle' || activeTab === 'archived' ? 210 : 260,
+      desktopInlineKeys: activeTab === 'recycle' ? ['restore', 'purge'] : activeTab === 'archived' ? ['preview', 'unarchive'] : ['preview', 'edit', 'submit'],
       actions: (record) => {
         const contentActions = record.lockedAt
         ? [
@@ -485,15 +486,15 @@ export default function ContentsPage() {
           ]
         : activeTab === 'archived'
         ? [
-            ...(hasPermission('cms:content:update') ? [{
-              key: 'unarchive',
-              label: '取消归档',
-              onClick: () => void runBatch('unarchive', [record.id], '已取消归档'),
-            }] : []),
             ...(record.status === 'published' ? [{
               key: 'preview',
               label: '预览',
               onClick: () => previewContent(record),
+            }] : []),
+            ...(hasPermission('cms:content:update') ? [{
+              key: 'unarchive',
+              label: '取消归档',
+              onClick: () => void runBatch('unarchive', [record.id], '已取消归档'),
             }] : []),
             ...(hasPermission('cms:widget:list') ? [{
               key: 'widget-refs',
@@ -503,15 +504,15 @@ export default function ContentsPage() {
             ...(hasPermission('cms:content:lock') ? [{ key: 'lock', label: '锁定', onClick: () => handlePersistentLock(record) }] : []),
           ]
         : [
-            ...(hasPermission('cms:content:update') ? [{
-              key: 'edit',
-              label: '编辑',
-              onClick: () => navigate(`/cms/contents/edit?id=${record.id}&siteId=${record.siteId}`),
-            }] : []),
             ...(record.status === 'published' ? [{
               key: 'preview',
               label: '预览',
               onClick: () => previewContent(record),
+            }] : []),
+            ...(hasPermission('cms:content:update') ? [{
+              key: 'edit',
+              label: '编辑',
+              onClick: () => navigate(`/cms/contents/edit?id=${record.id}&siteId=${record.siteId}`),
             }] : []),
             ...(hasPermission('cms:widget:list') ? [{
               key: 'widget-refs',
