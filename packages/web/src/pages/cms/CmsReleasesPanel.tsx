@@ -12,7 +12,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { useListPage } from '@/hooks/useListPage';
 import { usePermission } from '@/hooks/usePermission';
 import { useListDeepLink } from '@/hooks/useListDeepLink';
-import { dateTimeColumn } from '@/utils/table-columns';
+import { dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { formatDateTimeForApi } from '@/utils/date';
 import { confirmDanger } from '@/utils/confirm';
 import { CmsSiteSelect } from './CmsSiteSelect';
@@ -60,7 +60,8 @@ export default function CmsReleasesPanel() {
   const histories = useQueries({ queries: contentIds.map((id) => apiQueryOptions(cmsContentContract.versions, { params: { id }, query: { page: 1, pageSize: 200 } })) });
   const columns: ColumnProps<CmsRelease>[] = [
     { title: '发布单', dataIndex: 'name', minWidth: 230 },
-    { title: '范围', width: 120, render: (_value, record) => `${record.items.filter((item) => item.action === 'publish').length} 发布 / ${record.items.filter((item) => item.action === 'withdraw').length} 撤下` },
+    // 「0 发布 / 0 撤下」在 120 定宽下会折行（内容宽约 124），按内容宽加宽并单行省略
+    { title: '范围', width: 150, render: (_value, record) => renderEllipsis(`${record.items.filter((item) => item.action === 'publish').length} 发布 / ${record.items.filter((item) => item.action === 'withdraw').length} 撤下`) },
     { title: '排期', width: 220, render: (_value, record) => record.activateAt ? `${record.activateAt}（${record.timeZone}）` : record.autoActivate ? '构建成功后激活' : '手动激活' },
     { title: '公开代次', dataIndex: 'deploymentId', width: 110 },
     dateTimeColumn('创建时间', 'createdAt'),
@@ -112,7 +113,8 @@ export default function CmsReleasesPanel() {
       {detail.isError ? <Banner type="danger" description="发布单加载失败" /> : detail.data ? <Space vertical align="start" spacing={16} style={{ width: '100%' }}>
         <Typography.Title heading={5}>{detail.data.name}</Typography.Title>
         <Tag color={RELEASE_COLORS[detail.data.status]}>{RELEASE_LABELS[detail.data.status]}</Tag>
-        <Descriptions row data={[{ key: '当前公开代次', value: detail.data.activeGenerationId ?? '尚未上线' }, { key: '候选部署', value: detail.data.deploymentId ?? '待构建' }, { key: '基础代次', value: detail.data.baseGenerationId ?? '首次部署' }, { key: '排期', value: detail.data.activateAt ? `${detail.data.activateAt}（${detail.data.timeZone}）` : '无' }, { key: '产物数', value: detail.data.deployment?.artifactCount ?? 0 }, { key: '部署摘要', value: detail.data.deployment?.manifestHash ?? '构建后生成' }]} />
+        {/* 单列键值对：row（双行）模式会把值渲染成大字并让 64 位摘要溢出抽屉边界 */}
+        <Descriptions data={[{ key: '当前公开代次', value: detail.data.activeGenerationId ?? '尚未上线' }, { key: '候选部署', value: detail.data.deploymentId ?? '待构建' }, { key: '基础代次', value: detail.data.baseGenerationId ?? '首次部署' }, { key: '排期', value: detail.data.activateAt ? `${detail.data.activateAt}（${detail.data.timeZone}）` : '无' }, { key: '产物数', value: detail.data.deployment?.artifactCount ?? 0 }, { key: '部署摘要', value: detail.data.deployment?.manifestHash ? <Typography.Text code style={{ wordBreak: 'break-all' }}>{detail.data.deployment.manifestHash}</Typography.Text> : '构建后生成' }]} />
         {detail.data.error ? <Banner type="danger" description={detail.data.error} /> : null}
         {detail.data.blockingChecks.map((message) => <Banner key={message} type="warning" description={message} />)}
         <Typography.Title heading={6}>已冻结的变更范围</Typography.Title>

@@ -278,7 +278,7 @@ export default function PublishingPage() {
     </>
   );
 
-  const taskPane = (tab: Exclude<TabKey, 'artifacts' | 'releases'>) => (
+  const taskPane = (
     <>
       <ListSearchToolbar
         keyword={keywordInput}
@@ -289,7 +289,6 @@ export default function PublishingPage() {
         actions={<>{batchActions}{taskActions}</>}
       />
       {taskListQuery.isError ? <Banner type="danger" description="发布任务加载失败，请确认站点权限或网络后刷新重试。" /> : null}
-      {tab === 'failed' && taskListQuery.data?.list.length === 0 ? <Banner type="success" description="当前筛选范围内没有失败任务。" /> : null}
       <ConfigurableTable<CmsPublishingTask>
         columns={taskColumns}
         {...listTableProps(taskListQuery, {
@@ -305,8 +304,8 @@ export default function PublishingPage() {
     <div className="page-container page-tabs-page">
       <Tabs collapsible="auto" type="line" activeKey={activeTab} onChange={(key) => { setActiveTab(key as TabKey); setSelected([]); }}>
         <TabPane tab="发布单" itemKey="releases"><Suspense fallback={<Typography.Text>正在加载发布单…</Typography.Text>}><CmsReleasesPanel /></Suspense></TabPane>
-        <TabPane tab="队列" itemKey="queue">{taskPane('queue')}</TabPane>
-        <TabPane tab="历史" itemKey="history">{taskPane('history')}</TabPane>
+        <TabPane tab="队列" itemKey="queue">{taskPane}</TabPane>
+        <TabPane tab="历史" itemKey="history">{taskPane}</TabPane>
         <TabPane tab="产物" itemKey="artifacts">
           <ListSearchToolbar
             keyword={keywordInput}
@@ -325,7 +324,7 @@ export default function PublishingPage() {
             })}
           />
         </TabPane>
-        <TabPane tab="失败" itemKey="failed">{taskPane('failed')}</TabPane>
+        <TabPane tab="失败" itemKey="failed">{taskPane}</TabPane>
       </Tabs>
 
       <AppModal title="新建 CMS 发布" visible={submitVisible} onCancel={() => setSubmitVisible(false)} onOk={() => void submitBuild()} confirmLoading={submitMutation.isPending} width={560} closeOnEsc>
@@ -346,7 +345,8 @@ export default function PublishingPage() {
         {detailQuery.isError ? (
           <Banner type="danger" description="详情加载失败。请确认任务仍存在且你拥有该站点访问权限。" />
         ) : detailQuery.data ? (
-          <Space vertical spacing={16} style={{ width: '100%' }}>
+          // align="start"：Semi Space 默认 align="center"，会让收缩到内容宽的 Descriptions 与进度条整体居中
+          <Space vertical align="start" spacing={16} style={{ width: '100%' }}>
             <Descriptions
               data={[
                 { key: '任务', value: detailQuery.data.task.title },
@@ -361,14 +361,14 @@ export default function PublishingPage() {
             {detailQuery.data.task.errorMessage ? <Banner type="danger" icon={<XCircle size={16} />} description={`${detailQuery.data.task.errorMessage}；可选择断点恢复或重新开始。`} /> : null}
             <Typography.Title heading={6}>逐路径明细</Typography.Title>
             {detailQuery.data.items.length ? detailQuery.data.items.map((item) => (
-              <div key={item.id} style={{ padding: 10, borderBottom: '1px solid var(--semi-color-border)' }}>
+              <div key={item.id} style={{ width: '100%', padding: '10px 0', borderBottom: '1px solid var(--semi-color-border)' }}>
                 <Typography.Text strong>{item.label ?? item.itemKey}</Typography.Text>
                 <div><Typography.Text type={item.status === 'failed' ? 'danger' : 'tertiary'} size="small">{item.message ?? item.status}</Typography.Text></div>
               </div>
             )) : <Typography.Text type="tertiary">暂无逐路径明细</Typography.Text>}
             <Typography.Title heading={6}>产物</Typography.Title>
             {detailQuery.data.artifacts.length ? detailQuery.data.artifacts.map((artifact) => (
-              <div key={artifact.id} style={{ padding: 10, borderBottom: '1px solid var(--semi-color-border)' }}>
+              <div key={artifact.id} style={{ width: '100%', padding: '10px 0', borderBottom: '1px solid var(--semi-color-border)' }}>
                 <Typography.Text code>{artifact.path}</Typography.Text> <Tag color={artifact.status === 'failed' ? 'red' : 'green'}>{CMS_PUBLISH_ARTIFACT_STATUS_LABELS[artifact.status]}</Tag>
                 {artifact.error ? <div><Typography.Text type="danger" size="small">{artifact.error}</Typography.Text></div> : null}
               </div>
