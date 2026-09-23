@@ -205,24 +205,6 @@ export const SEED_RATE_LIMIT_RULES = [
 
 export const SEED_CRON_JOBS: CronJob[] = [
   {
-    id: 1,
-    name: '清理过期验证码',
-    cronExpression: '0 */30 * * * *',
-    handler: 'cleanExpiredCaptchas',
-    params: null,
-    status: 'enabled',
-    description: '兼容保留：验证码改存 Redis 并按 TTL 自动过期，无需清理',
-    retryCount: 0,
-    retryInterval: 0,
-    retryBackoff: false,
-    monitorTimeout: null,
-    lastRunAt: '2024-01-01 00:30:00',
-    lastRunStatus: 'success',
-    lastRunMessage: null,
-    createdAt: SEED_DATE,
-    updatedAt: SEED_DATE,
-  },
-  {
     id: 4,
     name: '定时公告自动发布',
     cronExpression: '*/5 * * * *',

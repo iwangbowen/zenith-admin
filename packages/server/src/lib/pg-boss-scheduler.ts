@@ -657,12 +657,6 @@ async function executeSystemTask(
 type HandlerFn = (params?: string | null) => Promise<string>;
 const handlerRegistry = new Map<string, HandlerFn>();
 
-handlerRegistry.set('cleanExpiredCaptchas', async () => {
-  // 登录验证码改存 Redis（5 分钟 TTL，键到期自动消失），进程内已无可清理条目。
-  // 保留 handler 只为兼容既有的 cron_jobs 行：未注册的 handler 会让任务每轮失败并推送告警。
-  return '验证码按 Redis TTL 自动过期，无需清理';
-});
-
 handlerRegistry.set('echo', async (params) => {
   return `Echo: ${params ?? 'no params'}`;
 });
