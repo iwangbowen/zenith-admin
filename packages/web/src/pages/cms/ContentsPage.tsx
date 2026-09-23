@@ -77,6 +77,21 @@ function titleFlagItems(record: CmsContentListItem): OverflowTagItem[] {
   return items;
 }
 
+/**
+ * 模型自定义字段列宽：列头是「模型名 · 字段名」，而模型名由用户自建、长度不可预期（实测可达 320px）。
+ * 按字符宽估算列头文案宽度（汉字 14px、大写字母 9px、其余 ASCII 7.8px，度量常量见 ui-patterns → 操作列），
+ * 加 40 = 32 单元格 padding + 8 留白后向上取整到 10，并夹在 [200, 360]：
+ * 短模型名列不留白，超长模型名也不会把表格撑爆（超出部分仍由列级 ellipsis 单行省略 + 悬停看全名）。
+ */
+const MODEL_FIELD_COLUMN_MIN_WIDTH = 200;
+const MODEL_FIELD_COLUMN_MAX_WIDTH = 360;
+function modelFieldColumnWidth(modelName: string, fieldLabel: string): number {
+  let textWidth = 0;
+  for (const char of `${modelName} · ${fieldLabel}`) textWidth += char.charCodeAt(0) > 0xff ? 14 : /[A-Z]/.test(char) ? 9 : 7.8;
+  const width = Math.ceil((textWidth + 40) / 10) * 10;
+  return Math.min(MODEL_FIELD_COLUMN_MAX_WIDTH, Math.max(MODEL_FIELD_COLUMN_MIN_WIDTH, width));
+}
+
 export default function ContentsPage() {
   const { hasPermission } = usePermission();
   const navigate = useNavigate();
@@ -423,16 +438,16 @@ export default function ContentsPage() {
     },
     dateTimeColumn('更新时间', 'updatedAt'),
     ...[...listModelFields.values()].map(({ modelId, modelName, field }): ColumnProps<CmsContentListItem> => ({
-      // 模型自定义字段列：列头是「模型名 · 字段名」（模型名可达 30+ 字符），列级 ellipsis
-      // 让表头与单元格都单行省略，表头还能靠原生 title 悬停看全名
-      key: `model-${modelId}-${field.name}`, title: `${modelName} · ${field.label}`, width: 220, ellipsis: true,
+      // 模型自定义字段列：列头是「模型名 · 字段名」（模型名可达 30+ 字符），列宽按列头文案估算（见 modelFieldColumnWidth），
+      // 列级 ellipsis 让表头与单元格都单行省略，超出部分靠原生 title 悬停看全名
+      key: `model-${modelId}-${field.name}`, title: `${modelName} · ${field.label}`, width: modelFieldColumnWidth(modelName, field.label), ellipsis: true,
       render: (_value: unknown, record) => {
         if (record.modelId !== modelId) return EMPTY_PLACEHOLDER;
         const value = record.listFields?.[field.name];
         if (value == null || value === '') return EMPTY_PLACEHOLDER;
         if (typeof value === 'boolean') return value ? '是' : '否';
         const rowField = record.modelFields?.find((item) => item.name === field.name);
-        return <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 150 }}>{cmsFieldDisplayText(value, rowField)}</Typography.Text>;
+        return renderEllipsis(cmsFieldDisplayText(value, rowField));
       },
     })),
     {
