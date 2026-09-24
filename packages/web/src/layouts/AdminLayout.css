@@ -1473,6 +1473,19 @@
   right: -2px !important;
 }
 
+/* 任务托盘悬浮列表：Semi List.Item 内容区是 flex 子项（min-width: auto 不收缩），
+   长标题会把行撑宽并在 overflow-y: auto 下带出横向滚动条；允许收缩 + 兜底隐藏横向溢出 */
+.task-tray-list {
+  overflow-x: hidden;
+}
+.task-tray-list .semi-list-item-body {
+  min-width: 0;
+}
+.task-tray-list .semi-list-item-body-main {
+  flex: 1;
+  min-width: 0;
+}
+
 /* 解决各种菜单模式（侧边栏折叠、顶部水平导航）弹出的子菜单无法滚动的问题 */
 .semi-portal .semi-dropdown-wrapper:has(.semi-navigation-item) {
   max-height: calc(100vh - 80px) !important;

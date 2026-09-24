@@ -79,6 +79,7 @@ export default function TaskTray() {
             />
           ) : (
             <List
+              className="task-tray-list"
               style={{ overflowY: 'auto', flex: 1 }}
               dataSource={trayTasks}
               renderItem={(task) => (
