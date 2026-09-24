@@ -242,10 +242,11 @@ export default function ModelsPage() {
                   <div
                     key={key}
                     style={index === arrayFields.length - 1
-                      ? { paddingBottom: 4 }
-                      : { borderBottom: '1px solid var(--semi-color-border)', paddingBottom: 16, marginBottom: 16 }}
+                      ? { position: 'relative', paddingBottom: 4 }
+                      : { position: 'relative', borderBottom: '1px solid var(--semi-color-border)', paddingBottom: 16, marginBottom: 16 }}
                   >
-                    <Row gutter={16}>
+                    <Button type="danger" theme="borderless" icon={<Trash2 size={14} />} onClick={() => remove()} aria-label="删除字段" style={{ position: 'absolute', top: 0, right: 0 }} />
+                    <Row gutter={16} style={{ paddingRight: 40 }}>
                       <Col span={12}>
                         <Form.Input field={`${field}[name]`} label="字段标识" placeholder="英文，如 venue"
                           rules={[{ required: true, message: '必填' }, { pattern: /^[a-z][a-z0-9_]*$/, message: '小写字母开头' }]} />
@@ -267,16 +268,15 @@ export default function ModelsPage() {
                         <Form.Input field={`${field}[detailGroup]`} label="详情分组" placeholder="如 活动信息" />
                       </Col>
                     </Row>
-                    <div style={{ display: 'flex', gap: 16, alignItems: 'center', margin: '4px 0 8px' }}>
+                    <FieldOptionSource field={field} />
+                    <ModelFieldRules field={field} siteId={siteId} />
+                    <div style={{ display: 'flex', gap: 16, alignItems: 'center', margin: '4px 0' }}>
                       <Form.Checkbox field={`${field}[required]`} noLabel>必填</Form.Checkbox>
                       <Form.Checkbox field={`${field}[searchable]`} noLabel>检索</Form.Checkbox>
                       <Form.Checkbox field={`${field}[showInList]`} noLabel>列表显示</Form.Checkbox>
                       <Form.Checkbox field={`${field}[showInDetail]`} noLabel>详情展示</Form.Checkbox>
                       <Form.Checkbox field={`${field}.configuration.unique`} noLabel>站内唯一</Form.Checkbox>
-                      <Button type="danger" theme="borderless" icon={<Trash2 size={14} />} onClick={() => remove()} style={{ marginLeft: 'auto' }} />
                     </div>
-                    <FieldOptionSource field={field} />
-                    <ModelFieldRules field={field} siteId={siteId} />
                   </div>
                 ))}
                 <Button icon={<Plus size={14} />} onClick={() => add()}>添加字段</Button>
