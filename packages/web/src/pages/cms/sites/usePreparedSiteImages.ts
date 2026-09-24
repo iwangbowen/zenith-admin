@@ -11,9 +11,10 @@ export function usePreparedSiteImages(sessionKey: string | null) {
   }, []);
   useEffect(() => {
     clear();
+    const sessionImages = imagesRef.current;
     return () => {
-      for (const image of imagesRef.current.values()) URL.revokeObjectURL(image.previewUrl);
-      imagesRef.current.clear();
+      for (const image of sessionImages.values()) URL.revokeObjectURL(image.previewUrl);
+      sessionImages.clear();
     };
   }, [sessionKey, clear]);
   const prepare = (key: string, file: File) => {

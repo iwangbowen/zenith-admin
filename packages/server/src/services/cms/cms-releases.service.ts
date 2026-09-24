@@ -151,7 +151,9 @@ export async function buildCmsRelease(id: number): Promise<CmsRelease> {
     if (currentGenerationId !== locked.baseGenerationId) {
       // Content-only releases carry approved revisions and no working site
       // configuration. Rebuild them on the latest public set before freezing.
-      if (!['content', 'configuration'].includes(locked.source) || (locked.source === 'content' && locked.configurationItems.length)) throw new HTTPException(409, { message: '发布基代已变化，请新建发布单' });
+      const canAdvance = (locked.source === 'content' && !locked.configurationItems.length)
+        || (locked.source === 'configuration' && locked.status === 'draft' && locked.deploymentId === null);
+      if (!canAdvance) throw new HTTPException(409, { message: '发布基代已变化，请新建发布单' });
       [locked] = await tx.update(cmsReleases).set({ baseGenerationId: currentGenerationId }).where(eq(cmsReleases.id, id)).returning();
     }
     const [deployment] = await tx.insert(cmsDeployments).values({ siteId: locked.siteId, releaseId: id }).returning();

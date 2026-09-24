@@ -83,7 +83,7 @@ export default function ImportCenterPage() {
   });
 
   const listQuery = useAsyncTaskList(
-    { page, pageSize, taskTypes: IMPORT_TASK_TYPES.join(','), ...filterQuery },
+    { page, pageSize, taskTypes: [...IMPORT_TASK_TYPES], ...filterQuery },
     // 有进行中的任务时轮询列表（渲染期重新求值，任务终态后自动停止）
     { refetchInterval: hasActiveTask ? 3000 : false },
   );

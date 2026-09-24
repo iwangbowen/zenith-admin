@@ -100,7 +100,7 @@ import { mockCmsDistributionRules } from '../data/cms-stage5';
 import { createProgressingMockTask } from './async-tasks';
 import { submitMockCmsWidgetSourceRefresh } from './cms-widgets';
 import { mockDateTime, mockDate } from '../utils/date';
-import { filterByKeyword } from '@/mocks/utils/filter';
+import { filterByKeyword, matchesFilter } from '@/mocks/utils/filter';
 import { mockResource } from '@/mocks/utils/resource';
 import { assertMockCmsManualAudit, getMockBusinessContext, getMockCmsCurrentInstanceId, previewMockBusinessWorkflow, requireMockBusinessInstance, resolveMockCmsAuditDefinition, startMockCmsWorkflow } from '@/mocks/utils/workflow-business';
 
@@ -1215,7 +1215,7 @@ export const cmsP2Handlers = [
   mock(cmsResourceContract.selection, ({ query, ok }) => {
     const match = /^cms-res:\/\/([1-9]\d*)$/.exec(query.value);
     return ok(mockCmsResources.find((resource) => resource.siteId === query.siteId
-      && (!query.type || resource.type === query.type)
+      && matchesFilter(resource.type, query.type)
       && (match ? resource.id === Number(match[1]) : resource.url === query.value)) ?? null);
   }),
   mock(cmsResourceContract.upload, ({ query, body, ok }) => {

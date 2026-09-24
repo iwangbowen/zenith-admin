@@ -113,6 +113,7 @@ export function registerImportTaskHandler(): void {
           if (processed % 10 === 0 || processed === rows.length) {
             const { cancelRequested } = await ctx.progress({
               processed,
+              failed,
               total: rows.length,
               note: `${modeNote}：成功 ${succeeded} / 失败 ${failed}（共 ${rows.length} 行）`,
               checkpoint: { processed, succeeded, failed },

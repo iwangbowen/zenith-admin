@@ -70,7 +70,7 @@ describe('CMS 显示稿与保存版本一致性', () => {
     const saving = { current: null as unknown };
     const adopt = vi.fn();
     const conflict = vi.fn();
-    const hook = renderHook(({ record }: { record?: Draft }) => useCmsEditorBaseline({ record, dirty, saving, saveState: 'dirty', onAdopt: adopt, onConflict: conflict }), { initialProps: { record: undefined } });
+    const hook = renderHook(({ record }: { record?: Draft }) => useCmsEditorBaseline({ record, dirty, saving, saveState: 'dirty', onAdopt: adopt, onConflict: conflict }), { initialProps: { record: undefined as Draft | undefined } });
     const created = { ...initial, id: 19, version: 1, title: 'POST 发出时的标题' };
     act(() => hook.result.current.acknowledge(created, false));
     hook.rerender({ record: created });

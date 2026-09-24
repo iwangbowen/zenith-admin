@@ -8,7 +8,7 @@ import { publishCmsContentBatch } from './cms-content-batch-publish.service';
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.prepare.mockImplementation(async (id) => ({ contentId: id, revisionId: id + 100, version: 2 }));
-  mocks.revision.mockImplementation(async (id) => ({ id, contentId: id - 100, siteId: 4, payload: { scheduledAt: null } }));
+  mocks.revision.mockImplementation(async (_executor: unknown, id: number) => ({ id, contentId: id - 100, siteId: 4, payload: { scheduledAt: null } }));
   mocks.create.mockResolvedValue({ id: 9 }); mocks.build.mockResolvedValue({ id: 9, status: 'building' });
 });
 describe('batch publication grouping', () => {
@@ -28,7 +28,7 @@ describe('batch publication grouping', () => {
     expect(result.failed[0].reason).toContain('发布单 #9 已保存');
   });
   it('keeps independent sites in separate releases', async () => {
-    mocks.revision.mockImplementation(async (id) => ({ id, contentId: id - 100, siteId: id === 103 ? 5 : 4, payload: { scheduledAt: null } }));
+    mocks.revision.mockImplementation(async (_executor: unknown, id: number) => ({ id, contentId: id - 100, siteId: id === 103 ? 5 : 4, payload: { scheduledAt: null } }));
     await publishCmsContentBatch([1, 2, 3]); expect(mocks.create).toHaveBeenCalledTimes(2);
   });
 });

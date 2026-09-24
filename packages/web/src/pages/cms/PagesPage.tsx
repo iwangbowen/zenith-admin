@@ -464,7 +464,7 @@ export default function PagesPage() {
         {editingPage && currentSite ? (
           <>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '18px 0 8px' }}>
-              <Typography.Title heading={6} style={{ margin: 0 }}>实时预览（保存后自动刷新）</Typography.Title>
+              <Typography.Title heading={6} style={{ margin: 0 }}>当前公开页面（发布后更新）</Typography.Title>
               <div style={{ display: 'flex', gap: 8 }}>
                 <Button size="small" theme="borderless" icon={<RefreshCw size={13} />} onClick={() => setPreviewEpoch((e) => e + 1)}>刷新</Button>
                 <Button

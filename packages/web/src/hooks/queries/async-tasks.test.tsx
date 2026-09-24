@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
+import { asyncTaskContract, IMPORT_TASK_TYPES } from '@zenith/shared/tasks';
 import {
   ApiRecorder,
   createRequestMock,
@@ -52,6 +53,14 @@ beforeEach(() => {
     .on('POST', '/api/async-tasks/cleanup', { cleaned: 3 })
     .on('DELETE', '/api/async-tasks/1', null)
     .on('PUT', '/api/async-tasks/types/export/config', { taskType: 'export', title: '导出' });
+});
+
+it('encodes import and preview task types as one comma-separated query value accepted by the server contract', async () => {
+  const hook = renderHook(() => useAsyncTaskList({ ...LIST_PARAMS, taskTypes: [...IMPORT_TASK_TYPES] }), { wrapper: createWrapper(createTestQueryClient()) });
+  await waitFor(() => expect(hook.result.current.isSuccess).toBe(true));
+  const query = new URL(api.urls('GET')[0], window.location.origin).searchParams;
+  expect(query.getAll('taskTypes')).toEqual(['data-import,data-import-preview']);
+  expect(asyncTaskContract.list.query.parse(Object.fromEntries(query)).taskTypes).toEqual(['data-import', 'data-import-preview']);
 });
 
 /** 还原 TaskCenterPage 的挂载：list / stats / types / items 同屏 */

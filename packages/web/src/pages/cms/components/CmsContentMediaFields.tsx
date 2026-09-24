@@ -36,7 +36,10 @@ export default function CmsContentMediaFields({ siteId, disabled, allowUpload, o
       }}><Radio value="library">本站素材</Radio><Radio value="external">外部地址</Radio></RadioGroup>
     </Form.Slot>
     {sourceMode === 'library' ? <FormAsset field="mediaUrl" label={type === 'audio' ? '音频素材' : '视频素材'} siteId={siteId} type={type}
-      disabled={disabled} allowUpload={allowUpload} onResourceChange={(selected) => { clearDuration(); onResourceChange?.(selected); }} onDuration={readDuration} /> : <>
+      disabled={disabled} allowUpload={allowUpload} onResourceChange={(selected) => {
+        if (!selected || selected.url !== (resource.data?.url ?? value)) clearDuration();
+        onResourceChange?.(selected);
+      }} onDuration={readDuration} /> : <>
       <Form.Input field="mediaUrl" label="外部媒体地址" disabled={disabled} placeholder="https://example.com/media.mp4" showClear onChange={clearDuration}
         rules={[{ validator: (_rule, next) => !next || isExternalCmsMediaUrl(String(next)), message: '请输入完整的 HTTP 或 HTTPS 媒体地址' }]} />
       {isExternalCmsMediaUrl(value) ? <Form.Slot noLabel>
