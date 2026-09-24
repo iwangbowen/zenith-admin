@@ -528,8 +528,8 @@ export default function TaskCenterPage() {
                   items={statusOptions}
                   {...bind('status')}
                 />
-                <KeywordInput placeholder="任务内容包含…" {...bindKeyword('content')} width={170} />
-                <KeywordInput placeholder="提交人（用户名/昵称）" {...bindKeyword('createdBy')} width={170} />
+                <KeywordInput placeholder="任务内容包含…" {...bindKeyword('content')} />
+                <KeywordInput placeholder="提交人（用户名/昵称）" {...bindKeyword('createdBy')} />
               </>
             )}
             onSearch={handleSearch}
