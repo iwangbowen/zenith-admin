@@ -55,8 +55,6 @@ export default function CmsDashboardPage() {
         <CmsSiteSelect value={siteId} onChange={setSiteId} width={200} />
       </SearchToolbar>
 
-      <CmsSiteWorkspace siteId={siteId} />
-      <CmsEditorialWorkspace siteId={siteId} />
       <Spin spinning={statsQuery.isFetching && !stats}>
         {/* 状态统计卡片 */}
         <StatGrid minItemWidth={160}>
@@ -131,6 +129,12 @@ export default function CmsDashboardPage() {
           </Card>
         </div>
       </Spin>
+
+      {/* 工作区置于页面收尾：建站工作区在上、编辑与读者反馈工作台在最下方 */}
+      <div style={{ marginTop: 12 }}>
+        <CmsSiteWorkspace siteId={siteId} />
+        <CmsEditorialWorkspace siteId={siteId} />
+      </div>
     </div>
   );
 }
