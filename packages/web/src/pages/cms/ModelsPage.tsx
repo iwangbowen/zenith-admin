@@ -140,7 +140,7 @@ export default function ModelsPage() {
         </span>
       ),
     },
-    { title: '标识', dataIndex: 'code', width: 120 },
+    { title: '标识', dataIndex: 'code', width: 180, render: renderEllipsis },
     { title: '模型版本', dataIndex: 'hasUnpublishedChanges', width: 160, render: (_value, record) => <Tag color={record.hasUnpublishedChanges ? 'orange' : 'green'}>{record.hasUnpublishedChanges ? '有待发布修改' : '已发布'}</Tag> },
     {
       title: '归属',
