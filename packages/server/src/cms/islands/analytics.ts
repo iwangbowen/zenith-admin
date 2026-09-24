@@ -71,7 +71,7 @@ export function runAnalytics(doc: Document = document): void {
       const link = event.target.closest<HTMLAnchorElement>('a[download],.attachments a,.model-display-download a,.home-hero a,.home-banner a,.cms-block-hero a,[data-cms-topic]');
       if (!link) return;
       const isDownload = link.hasAttribute('download') || Boolean(link.closest('.attachments,.model-display-download'));
-      let targetPath = ''; try { targetPath = new URL(link.href, location.href).pathname; } catch { return; }
+      let targetPath: string; try { targetPath = new URL(link.href, location.href).pathname; } catch { return; }
       beacon(`/api/analytics/events?siteKey=${encodeURIComponent(siteKey)}`, { events: [attributionEvent(isDownload ? CMS_ATTRIBUTION_EVENT_NAMES.download : CMS_ATTRIBUTION_EVENT_NAMES.topicClick, { targetPath: targetPath.slice(0, 500) })] });
     }, { signal: controller.signal });
     doc.addEventListener('submit', (event) => {

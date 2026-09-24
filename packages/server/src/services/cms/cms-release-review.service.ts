@@ -2,7 +2,7 @@ import { asc, eq, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type * as z from 'zod';
 import { cmsReleaseFieldDiffs, type CmsReleaseChange, type CmsReleaseReview, recreateCmsReleaseSchema } from '@zenith/shared/cms';
-import { db, readSnapshot, withDbExecutor } from '../../db';
+import { readSnapshot, withDbExecutor } from '../../db';
 import { asyncTasks, cmsChannels, cmsContents, cmsDeployments } from '../../db/schema';
 import { createCmsRelease, getCmsReleaseDetail, requireRelease } from './cms-releases.service';
 import { loadCmsRevision } from './cms-content-revisions.service';

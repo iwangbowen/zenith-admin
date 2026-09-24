@@ -6,7 +6,7 @@ import { getCmsEditorialWorkspace } from '../../services/cms/cms-editorial-works
 import { getCmsAttribution } from '../../services/cms/cms-attribution.service';
 import { getCmsFeedbackDetail, getCmsFormHandlingPolicy, handleCmsFeedback, listCmsFeedback, saveCmsFormHandlingPolicy } from '../../services/cms/cms-feedback.service';
 import { getCmsFeedbackWorkflowContext, previewCmsFeedbackWorkflow, submitCmsFeedbackWorkflow } from '../../services/cms/cms-feedback-workflow.service';
-import { createCmsEditorialTask, getCmsEditorialTask, listCmsEditorialTasks, updateCmsEditorialTask } from '../../services/cms/cms-editorial-tasks.service';
+import { createCmsEditorialTask, listCmsEditorialTasks, updateCmsEditorialTask } from '../../services/cms/cms-editorial-tasks.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 router.openapiRoutes([
