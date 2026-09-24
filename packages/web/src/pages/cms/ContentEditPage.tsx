@@ -1136,7 +1136,7 @@ export default function ContentEditPage() {
       {/* 内部链接选择弹窗 */}
       {linkPicker.modals}
 
-      {/* 图集媒体库添加 */}
+      {/* 图集媒体库添加（支持复选框多选、跨翻页累计） */}
       <CmsResourcePicker
         siteId={siteId}
         visible={albumPickerVisible}
@@ -1144,6 +1144,12 @@ export default function ContentEditPage() {
         disabled={isReadOnly}
         allowUpload={canUploadResources}
         onCancel={() => setAlbumPickerVisible(false)}
+        multiple
+        onMultiSelect={(files) => {
+          setAlbumImages((list) => [...list, ...files.map((file) => ({ url: `${CMS_RESOURCE_URI_PREFIX}${file.id}`, thumb: file.thumbUrl ?? file.url, caption: null }))]);
+          files.forEach(selectResource);
+          setAlbumPickerVisible(false);
+        }}
         onSelect={(file) => {
           setAlbumImages((list) => [...list, { url: `${CMS_RESOURCE_URI_PREFIX}${file.id}`, thumb: file.thumbUrl ?? file.url, caption: null }]);
           selectResource(file);
