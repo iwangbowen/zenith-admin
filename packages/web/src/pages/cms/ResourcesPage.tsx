@@ -1,6 +1,6 @@
 import { useRef, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Dropdown, Form, Modal, Space, Tag, Toast, Tooltip, Typography, Empty, Tree } from '@douyinfe/semi-ui';
+import { Button, Dropdown, Form, Modal, Space, TabPane, Tabs, Tag, Toast, Tooltip, Typography, Empty, Tree } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
 import { Upload, FileText, Film, Music, File as FileIcon, FolderPlus, FolderPen, FolderX, Move, ShieldCheck, MoreHorizontal } from 'lucide-react';
@@ -14,6 +14,7 @@ import { ExportButton } from '@/components/ExportButton';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
 import {
   cmsResourceKeys, useCmsResourceList, useCmsResourceReferences,
   useUpdateCmsResource, useCropCmsResource, useDeleteCmsResources,
@@ -239,6 +240,8 @@ export default function ResourcesPage() {
   const [folderKey, setFolderKey] = useState('all');
   /** 窄屏单栏模式下当前展示素材列表（宽屏忽略）：默认进列表，「返回」回到文件夹树 */
   const [showListOnNarrow, setShowListOnNarrow] = useState(true);
+  /** 素材列表与素材治理的数据集、工具栏完全不同，拆成两个页签，避免两张大表同屏堆叠 */
+  const [activeTab, setActiveTab] = useUrlTabState(['resources', 'governance'] as const, 'resources');
   const [governanceRange, setGovernanceRange] = useState<[Date, Date] | null>(null);
   const {
     page, pageSize, setPage, buildPagination,
@@ -311,6 +314,11 @@ export default function ResourcesPage() {
   const canUpdate = hasPermission('cms:resource:update');
   const canDelete = hasPermission('cms:resource:delete');
   const selectedFolder = folderId && folderId > 0 ? findFolder(foldersQuery.data ?? [], folderId) : null;
+
+  function handleTabChange(key: string) {
+    setActiveTab(key as 'resources' | 'governance');
+    setSelectedIds([]);
+  }
 
   function handleSiteChange(next: number) {
     setSiteId(next);
@@ -492,103 +500,119 @@ export default function ResourcesPage() {
                   ...foldersToTree(foldersQuery.data ?? []),
                 ]}
                 value={folderKey}
-                onChange={(key) => { setFolderKey(String(key)); setPage(1); setSelectedIds([]); setShowListOnNarrow(true); }}
+                // 文件夹只筛选素材列表，选中后回到列表页签，避免停在治理页签看不到变化
+                onChange={(key) => { setFolderKey(String(key)); setPage(1); setSelectedIds([]); setShowListOnNarrow(true); setActiveTab('resources'); }}
                 defaultExpandAll
               />}
             </MasterDetailLayout.Body>
           </>
         )}
         detail={(
-          <MasterDetailLayout.Body padding="0 0 0 16px">
-            <ListSearchToolbar
-              keyword={<KeywordInput placeholder="搜索素材名称" {...bindKeyword('keyword')} width={200} />}
-              filters={(
-                <FilterSelect
-                  placeholder="全部素材类型"
-                  items={CMS_RESOURCE_TYPES.map((t) => ({ label: CMS_RESOURCE_TYPE_LABELS[t], value: t }))}
-                  {...bind('type')}
-                  width={140}
-                />
-              )}
-              onSearch={handleSearch}
-              onReset={handleReset}
-              create={canUpload ? (
-                <Button type="primary" icon={<Upload size={14} />} loading={uploadQueue.busy} disabled={siteId === undefined} onClick={() => fileInputRef.current?.click()}>
-                  上传素材
-                </Button>
-              ) : null}
-              actions={(
-                <>
-                  {selectedIds.length > 0 && canDelete ? (
-                    <Button type="danger" onClick={() => handleDelete(selectedIds)}>批量删除（{selectedIds.length}）</Button>
-                  ) : null}
-                  {selectedIds.length > 0 && canUpdate ? (
-                    <Button icon={<Move size={14} />} onClick={() => setMoveModalVisible(true)}>
-                      移动到目录（{selectedIds.length}）
+          <div style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '0 0 0 16px' }}>
+            {/* 页签栏固定，内容区独立滚动（同 ContentsPage）：矮窗口下表尾与分页不会被裁掉 */}
+            <Tabs
+              collapsible="auto"
+              activeKey={activeTab}
+              onChange={handleTabChange}
+              type="line"
+              lazyRender
+              keepDOM={false}
+              style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
+              contentStyle={{ flex: 1, minHeight: 0, overflow: 'auto' }}
+            >
+              <TabPane tab="素材列表" itemKey="resources">
+                <ListSearchToolbar
+                  keyword={<KeywordInput placeholder="搜索素材名称" {...bindKeyword('keyword')} width={200} />}
+                  filters={(
+                    <FilterSelect
+                      placeholder="全部素材类型"
+                      items={CMS_RESOURCE_TYPES.map((t) => ({ label: CMS_RESOURCE_TYPE_LABELS[t], value: t }))}
+                      {...bind('type')}
+                      width={140}
+                    />
+                  )}
+                  onSearch={handleSearch}
+                  onReset={handleReset}
+                  create={canUpload ? (
+                    <Button type="primary" icon={<Upload size={14} />} loading={uploadQueue.busy} disabled={siteId === undefined} onClick={() => fileInputRef.current?.click()}>
+                      上传素材
                     </Button>
                   ) : null}
-                </>
-              )}
-            />
-            <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={(e) => void handleUploadFile(e)} />
-            <input ref={replaceInputRef} type="file" style={{ display: 'none' }} onChange={(e) => void handleReplaceFile(e)} />
-            <ConfigurableTable<CmsResource>
-              columns={columns}
-              {...listTableProps(listQuery, {
-                rowKey: (record) => String(record?.id ?? ''),
-                empty: '暂无素材，请先选择站点后上传',
-                pagination: (total) => buildPagination(total, () => setSelectedIds([])),
-                rowSelection: {
-                  selectedRowKeys: selectedIds.map(String),
-                  onChange: (keys) => setSelectedIds((keys ?? []).map(Number)),
-                },
-              })}
-            />
-            <Typography.Title heading={6} style={{ margin: '18px 0 8px' }}>素材治理任务</Typography.Title>
-            <SearchToolbar>
-              {siteId && canDelete ? (
-                <>
-                  <Button icon={<ShieldCheck size={14} />} onClick={() => void submitGovernance('scan', true)}>孤立扫描</Button>
-                  <Button type="danger" onClick={() => {
-                    confirmDelete({
-                      title: '清理全部孤立素材？',
-                      content: '任务会逐项复核完整引用后删除底层文件，支持取消与明细报告。',
-                      onOk: () => submitGovernance('cleanup', false),
-                    });
-                  }}>清理孤立素材</Button>
-                </>
-              ) : null}
-              {siteId && canUpdate ? (
-                <Button onClick={() => {
-                  Modal.confirm({
-                    title: '重建素材引用索引？',
-                    content: '引用索引由内容写入时实时维护，一般无需重建。存量数据首次接入或怀疑索引漂移时使用。',
-                    onOk: () => submitRebuildRefs(),
-                  });
-                }}>重建引用索引</Button>
-              ) : null}
-              <DateRangeFilter placeholder={['治理开始时间', '治理结束时间']} value={governanceRange} onChange={setGovernanceRange} />
-              {siteId ? <ExportButton entity="cms.resource-governance" permission="cms:resource:list" query={{
-                siteId,
-                ...formatDateTimeRangeForApi(governanceRange),
-              }} label="导出治理报告" /> : null}
-            </SearchToolbar>
-            <ConfigurableTable
-              columns={[
-                { title: '任务', dataIndex: 'title', width: 240 },
-                { title: '进度', width: 280, render: (_: unknown, record) => <AsyncTaskProgress task={record} /> },
-                {
-                  title: '结果',
-                  width: 220,
-                  render: (_: unknown, record) => record.result
-                    ? `孤立 ${Number(record.result.orphanCount ?? 0)} / 清理 ${Number(record.result.deletedCount ?? 0)}`
-                    : (record.errorMessage ?? EMPTY_PLACEHOLDER),
-                },
-                dateTimeColumn('提交时间', 'createdAt'),
-              ]}
-              {...listTableProps({ data: tasks, isFetching: tasksLoading, refetch: refreshTasks }, { empty: '暂无素材治理任务' })}
-            />
-          </MasterDetailLayout.Body>
+                  actions={(
+                    <>
+                      {selectedIds.length > 0 && canDelete ? (
+                        <Button type="danger" onClick={() => handleDelete(selectedIds)}>批量删除（{selectedIds.length}）</Button>
+                      ) : null}
+                      {selectedIds.length > 0 && canUpdate ? (
+                        <Button icon={<Move size={14} />} onClick={() => setMoveModalVisible(true)}>
+                          移动到目录（{selectedIds.length}）
+                        </Button>
+                      ) : null}
+                    </>
+                  )}
+                />
+                <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={(e) => void handleUploadFile(e)} />
+                <input ref={replaceInputRef} type="file" style={{ display: 'none' }} onChange={(e) => void handleReplaceFile(e)} />
+                <ConfigurableTable<CmsResource>
+                  columns={columns}
+                  {...listTableProps(listQuery, {
+                    rowKey: (record) => String(record?.id ?? ''),
+                    empty: '暂无素材，请先选择站点后上传',
+                    pagination: (total) => buildPagination(total, () => setSelectedIds([])),
+                    rowSelection: {
+                      selectedRowKeys: selectedIds.map(String),
+                      onChange: (keys) => setSelectedIds((keys ?? []).map(Number)),
+                    },
+                  })}
+                />
+              </TabPane>
+              <TabPane tab="素材治理" itemKey="governance">
+                <SearchToolbar>
+                  {siteId && canDelete ? (
+                    <>
+                      <Button icon={<ShieldCheck size={14} />} onClick={() => void submitGovernance('scan', true)}>孤立扫描</Button>
+                      <Button type="danger" onClick={() => {
+                        confirmDelete({
+                          title: '清理全部孤立素材？',
+                          content: '任务会逐项复核完整引用后删除底层文件，支持取消与明细报告。',
+                          onOk: () => submitGovernance('cleanup', false),
+                        });
+                      }}>清理孤立素材</Button>
+                    </>
+                  ) : null}
+                  {siteId && canUpdate ? (
+                    <Button onClick={() => {
+                      Modal.confirm({
+                        title: '重建素材引用索引？',
+                        content: '引用索引由内容写入时实时维护，一般无需重建。存量数据首次接入或怀疑索引漂移时使用。',
+                        onOk: () => submitRebuildRefs(),
+                      });
+                    }}>重建引用索引</Button>
+                  ) : null}
+                  <DateRangeFilter placeholder={['治理开始时间', '治理结束时间']} value={governanceRange} onChange={setGovernanceRange} />
+                  {siteId ? <ExportButton entity="cms.resource-governance" permission="cms:resource:list" query={{
+                    siteId,
+                    ...formatDateTimeRangeForApi(governanceRange),
+                  }} label="导出治理报告" /> : null}
+                </SearchToolbar>
+                {siteId ? <ConfigurableTable
+                  columns={[
+                    { title: '任务', dataIndex: 'title', width: 240 },
+                    { title: '进度', width: 280, render: (_: unknown, record) => <AsyncTaskProgress task={record} /> },
+                    {
+                      title: '结果',
+                      width: 220,
+                      render: (_: unknown, record) => record.result
+                        ? `孤立 ${Number(record.result.orphanCount ?? 0)} / 清理 ${Number(record.result.deletedCount ?? 0)}`
+                        : (record.errorMessage ?? EMPTY_PLACEHOLDER),
+                    },
+                    dateTimeColumn('提交时间', 'createdAt'),
+                  ]}
+                  {...listTableProps({ data: tasks, isFetching: tasksLoading, refetch: refreshTasks }, { empty: '暂无素材治理任务' })}
+                /> : <Empty description="请先选择站点后执行素材治理" style={{ padding: 48 }} />}
+              </TabPane>
+            </Tabs>
+          </div>
         )}
       />
 
