@@ -1466,6 +1466,13 @@
   right: 2px !important;
 }
 
+/* 顶栏图标数字徽标：Semi 默认以按钮边角为中心压边（translate 50%,-50%），18px 高徽标会向上探出约 9px，
+   在 40px 高顶栏下顶部超出 .admin-layout（overflow: hidden）被裁掉；往右上微调，仍压住右上角但顶部留在顶栏内 */
+.admin-notify-badge .semi-badge-count.semi-badge-rightTop {
+  top: 5px !important;
+  right: -2px !important;
+}
+
 /* 解决各种菜单模式（侧边栏折叠、顶部水平导航）弹出的子菜单无法滚动的问题 */
 .semi-portal .semi-dropdown-wrapper:has(.semi-navigation-item) {
   max-height: calc(100vh - 80px) !important;

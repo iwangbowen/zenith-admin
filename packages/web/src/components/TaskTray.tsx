@@ -118,7 +118,7 @@ export default function TaskTray() {
       }
     >
       <div className="admin-header-action admin-header-action--tasks" style={{ display: 'inline-flex', cursor: 'pointer' }}>
-        <Badge count={activeCount > 0 ? activeCount : undefined} overflowCount={9} className="admin-notify-badge" style={{ zIndex: 1 }}>
+        <Badge count={activeCount > 0 ? activeCount : undefined} overflowCount={99} className="admin-notify-badge" style={{ zIndex: 1 }}>
           <button type="button" className="admin-theme-btn" title={hasActive ? `我的任务（${activeCount} 个进行中）` : '我的任务'}>
             <ListChecks size={16} strokeWidth={1.5} />
           </button>
