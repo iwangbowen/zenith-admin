@@ -205,25 +205,50 @@ export default function FormsPage() {
           <ArrayField field="fields">
             {({ add, arrayFields }) => (
               <>
-                {arrayFields.map(({ field, key, remove }) => (
-                  <div key={key} style={{ border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', padding: 10, marginBottom: 8 }}>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                      <Form.Input field={`${field}[name]`} noLabel placeholder="字段标识（英文）" style={{ width: 140 }}
-                      rules={[{ required: true, message: '必填' }, { pattern: /^[a-z][a-z0-9_]*$/, message: '小写字母开头' }]} />
-                      <Form.Input field={`${field}[label]`} noLabel placeholder="字段名称" style={{ width: 130 }}
-                      rules={[{ required: true, message: '必填' }]} />
-                      <Form.Select field={`${field}[fieldType]`} noLabel initValue="text" style={{ width: 110 }} optionList={FIELD_TYPE_OPTIONS} />
+                {arrayFields.map(({ field, key, remove }, index) => (
+                  <div
+                    key={key}
+                    style={index === arrayFields.length - 1
+                      ? { position: 'relative', paddingBottom: 4 }
+                      : { position: 'relative', borderBottom: '1px solid var(--semi-color-border)', paddingBottom: 16, marginBottom: 16 }}
+                  >
+                    <Button type="danger" theme="borderless" icon={<Trash2 size={14} />} onClick={() => remove()} aria-label="删除字段" style={{ position: 'absolute', top: 0, right: 0 }} />
+                    <Row gutter={16} style={{ paddingRight: 40 }}>
+                      <Col span={12}>
+                        <Form.Input field={`${field}[name]`} label="字段标识" placeholder="英文，如 venue"
+                          rules={[{ required: true, message: '必填' }, { pattern: /^[a-z][a-z0-9_]*$/, message: '小写字母开头' }]} />
+                      </Col>
+                      <Col span={12}>
+                        <Form.Input field={`${field}[label]`} label="字段名称"
+                          rules={[{ required: true, message: '必填' }]} />
+                      </Col>
+                      <Col span={12}>
+                        <Form.Select field={`${field}[fieldType]`} label="字段类型" initValue="text" optionList={FIELD_TYPE_OPTIONS} />
+                      </Col>
+                      <Col span={12}>
+                        <Form.Input field={`${field}[errorMessage]`} label="自定义错误提示" />
+                      </Col>
+                      <Col span={12}>
+                        <Form.InputNumber field={`${field}[minLength]`} label="最小长度" min={0} max={2000} />
+                      </Col>
+                      <Col span={12}>
+                        <Form.InputNumber field={`${field}[maxLength]`} label="最大长度" min={1} max={2000} />
+                      </Col>
+                      <Col span={12}>
+                        <Form.InputNumber field={`${field}[min]`} label="数字最小值" />
+                      </Col>
+                      <Col span={12}>
+                        <Form.InputNumber field={`${field}[max]`} label="数字最大值" />
+                      </Col>
+                      <Col span={24}>
+                        <Form.Input field={`${field}[pattern]`} label="校验规则" placeholder="RE2 规则，如 ^[A-Z]{2}-\\d{4}$" />
+                      </Col>
+                      <Col span={24}>
+                        <Form.TextArea field={`${field}[optionsText]`} label="选项说明" rows={2} placeholder="选项（select/radio），每行：显示名=值" />
+                      </Col>
+                    </Row>
+                    <div style={{ display: 'flex', gap: 16, alignItems: 'center', margin: '4px 0' }}>
                       <Form.Checkbox field={`${field}[required]`} noLabel>必填</Form.Checkbox>
-                      <Button type="danger" theme="borderless" icon={<Trash2 size={14} />} onClick={() => remove()} style={{ marginTop: 4 }} />
-                    </div>
-                    <div className="auto-grid" style={{ ['--auto-grid-min' as string]: '150px', ['--auto-grid-cols' as string]: 3, ['--auto-grid-gap' as string]: '8px' }}>
-                      <Form.InputNumber field={`${field}[minLength]`} noLabel placeholder="最小长度" min={0} max={2000} />
-                      <Form.InputNumber field={`${field}[maxLength]`} noLabel placeholder="最大长度" min={1} max={2000} />
-                      <Form.Input field={`${field}[pattern]`} noLabel placeholder="RE2 规则，如 ^[A-Z]{2}-\\d{4}$" />
-                      <Form.InputNumber field={`${field}[min]`} noLabel placeholder="数字最小值" />
-                      <Form.InputNumber field={`${field}[max]`} noLabel placeholder="数字最大值" />
-                      <Form.Input field={`${field}[errorMessage]`} noLabel placeholder="自定义错误提示" />
-                      <Form.TextArea field={`${field}[optionsText]`} noLabel rows={2} placeholder={'选项（select/radio），每行：显示名=值'} />
                     </div>
                   </div>
                 ))}
