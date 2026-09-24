@@ -1,19 +1,21 @@
 import { useRef, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Dropdown, Form, Modal, Space, TabPane, Tabs, Tag, Toast, Tooltip, Typography, Empty, Tree } from '@douyinfe/semi-ui';
+import { Button, Dropdown, Form, Modal, Space, Spin, TabPane, Tabs, Tag, Toast, Tooltip, Typography, Empty, Tree } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
-import { Upload, FileText, Film, Music, File as FileIcon, FolderPlus, FolderPen, FolderX, Move, ShieldCheck, MoreHorizontal } from 'lucide-react';
+import { Upload, FileText, Film, Music, File as FileIcon, FolderPlus, FolderPen, FolderX, Move, ShieldCheck, MoreHorizontal, CheckCircle2, XCircle } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { AppModal } from '@/components/AppModal';
 import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
+import { FilePreviewLayer } from '@/components/FilePreviewLayer';
 import { ExportButton } from '@/components/ExportButton';
 import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
+import { useFilePreview } from '@/hooks/useFilePreview';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import {
   cmsResourceKeys, useCmsResourceList, useCmsResourceReferences,
@@ -29,6 +31,7 @@ import { formatDateTimeRangeForApi } from '@/utils/date';
 import { DateRangeFilter, FilterSelect, KeywordInput } from '@/components/search-filters';
 import { confirmDelete } from '@/utils/confirm';
 import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
+import { canPreviewFile } from '@/utils/file-utils';
 import { abortSubmit } from '@/lib/abort-submit';
 import { formatBytes, mapTree } from '@zenith/shared/core';
 import { confirmAndDelete, deleteAction, ListSearchToolbar, listTableProps } from '@/components/list-page';
@@ -234,6 +237,49 @@ function ReferencesModal({ resource, onClose }: Readonly<{ resource: CmsResource
   );
 }
 
+/**
+ * 上传队列状态：放在页签栏右侧（固定高度的行），不进入表格上方的文档流。
+ *
+ * 排在内容里会随上传状态挂载/卸载，把表格推上推下，并触发 ConfigurableTable 的高度重算（视觉上就是“闪”）；
+ * 因此这里：图标占固定 14px 槽位（Spin small 同为 14px）、计数用等宽数字、
+ * 进度条在上传期间常驻不卸载，布局在整批上传过程中保持不变。
+ */
+function UploadQueueStatus({ queue }: Readonly<{ queue: ReturnType<typeof useCmsUploadQueue> }>) {
+  const total = queue.items.length;
+  if (total === 0) return null;
+  const done = queue.items.filter((item) => item.state === 'success').length;
+  const failed = queue.items.filter((item) => item.state === 'failed');
+  const settled = done + failed.length;
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 8, color: 'var(--semi-color-text-2)', fontSize: 12 }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, flexShrink: 0 }}>
+        {queue.busy
+          ? <Spin size="small" />
+          : failed.length > 0
+            ? <XCircle size={14} color="var(--semi-color-danger)" />
+            : <CheckCircle2 size={14} color="var(--semi-color-success)" />}
+      </span>
+      <span style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>素材上传 {done}/{total}</span>
+      <Progress percent={Math.round((settled / total) * 100)} showInfo={false} width={80} strokeWidth={4} />
+      {failed.length > 0 && (
+        <Tooltip content={<div style={{ maxWidth: 320 }}>
+          {failed.map((item) => <div key={item.id}>{item.file.name}：{item.error}</div>)}
+        </div>}>
+          <Tag size="small" color="red" style={{ cursor: 'default' }}>{failed.length} 个失败</Tag>
+        </Tooltip>
+      )}
+      {failed.length > 0 && (
+        <Button theme="borderless" size="small" disabled={queue.busy} onClick={queue.retry}>重试</Button>
+      )}
+      <Button theme="borderless" size="small" disabled={queue.busy} onClick={queue.clear}>清除</Button>
+    </div>
+  );
+}
+
+/** CmsResource → 预览设施的最小文件形状（预览列点击与图集构建共用） */
+const toPreviewFile = (r: CmsResource) => ({ id: String(r.id), url: r.url, originalName: r.name, mimeType: r.mimeType });
+
 export default function ResourcesPage() {
   const { hasPermission } = usePermission();
   const [siteId, setSiteId] = useState<number | undefined>(undefined);
@@ -277,6 +323,8 @@ export default function ResourcesPage() {
     pageSize,
     ...filterQuery,
   }, siteId !== undefined);
+  // 点击预览列内容进入预览，与文件列表页同一套设施（图集 / 文件弹窗 / 兜底新窗口）
+  const preview = useFilePreview(() => (listQuery.data?.list ?? []).map(toPreviewFile));
   const foldersQuery = useCmsResourceFolders(siteId);
   const updateMutation = useUpdateCmsResource();
   const deleteMutation = useDeleteCmsResources();
@@ -378,9 +426,29 @@ export default function ResourcesPage() {
   const columns: ColumnProps<CmsResource>[] = [
     {
       title: '预览', dataIndex: 'url', width: 80,
-      render: (_: string, record: CmsResource) => record.type === 'image'
-        ? <img src={record.thumbUrl ?? record.url} alt={record.name} style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 'var(--semi-border-radius-medium)' }} />
-        : <div style={{ width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--semi-color-text-2)', background: 'var(--semi-color-fill-0)', borderRadius: 'var(--semi-border-radius-medium)' }}><TypeIcon type={record.type} /></div>,
+      render: (_: string, record: CmsResource) => {
+        // 与文件列表页一致：仅可预览类型渲染为可点击
+        const previewable = canPreviewFile(record.mimeType, record.name);
+        const content = record.type === 'image'
+          ? <img src={record.thumbUrl ?? record.url} alt={record.name} draggable={false} style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 'var(--semi-border-radius-medium)' }} />
+          : <div style={{ width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--semi-color-text-2)', background: 'var(--semi-color-fill-0)', borderRadius: 'var(--semi-border-radius-medium)' }}><TypeIcon type={record.type} /></div>;
+        if (!previewable) return content;
+        return (
+          <button
+            type="button"
+            title={`预览 ${record.name}`}
+            aria-label={`预览 ${record.name}`}
+            onClick={() => void preview.handlePreview(toPreviewFile(record))}
+            style={{
+              padding: 0, border: 'none', background: 'none', lineHeight: 0, cursor: 'pointer',
+              borderRadius: 'var(--semi-border-radius-medium)',
+              opacity: preview.previewLoadingId === String(record.id) ? 0.6 : 1,
+            }}
+          >
+            {content}
+          </button>
+        );
+      },
     },
     { title: '名称', dataIndex: 'name', minWidth: 240, render: renderEllipsis },
     {
@@ -519,6 +587,7 @@ export default function ResourcesPage() {
               keepDOM={false}
               style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
               contentStyle={{ flex: 1, minHeight: 0, overflow: 'auto' }}
+              tabBarExtraContent={<UploadQueueStatus queue={uploadQueue} />}
             >
               <TabPane tab="素材列表" itemKey="resources">
                 <ListSearchToolbar
@@ -695,12 +764,7 @@ export default function ResourcesPage() {
       </EditFormModal>
 
       <CropModal resource={cropTarget} onClose={() => setCropTarget(null)} />
-      {uploadQueue.items.length ? <div style={{ padding: 16 }}>
-        <Typography.Text>素材上传：已完成 {uploadQueue.items.filter((item) => item.state === 'success').length} / {uploadQueue.items.length}</Typography.Text>
-        <Progress percent={Math.round(uploadQueue.items.filter((item) => item.state === 'success' || item.state === 'failed').length / uploadQueue.items.length * 100)} />
-        {uploadQueue.items.filter((item) => item.state === 'failed').map((item) => <Typography.Paragraph key={item.id} type="danger">{item.file.name}：{item.error}</Typography.Paragraph>)}
-        <Space wrap><Button disabled={uploadQueue.busy || !uploadQueue.items.some((item) => item.state === 'failed')} onClick={uploadQueue.retry}>重试失败文件</Button><Button disabled={uploadQueue.busy} onClick={uploadQueue.clear}>清除已完成记录</Button></Space>
-      </div> : null}
+      <FilePreviewLayer preview={preview} />
       <EditFormSheet modal={rightsModal} width={760} title="素材版本与授权"><AssetRightsFields resourceId={rightsModal.editing?.id} /></EditFormSheet>
       <ReferencesModal resource={refsTarget} onClose={() => setRefsTarget(null)} />
     </div>

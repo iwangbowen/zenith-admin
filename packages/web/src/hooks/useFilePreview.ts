@@ -1,8 +1,15 @@
 import { useRef, useState } from 'react';
 import { Toast } from '@douyinfe/semi-ui';
-import type { ManagedFile } from '@zenith/shared/platform';
 import { canPreviewFile, fetchManagedFileBlob, isGalleryImageFile, resolveFileMimeType } from '@/utils/file-utils';
 import { createDisplayableImageUrl } from '@/utils/image-decode';
+
+/** 预览/下载所需的最小文件形状：ManagedFile 天然满足；素材等业务实体映射这四个字段即可复用预览设施 */
+export interface PreviewableFile {
+  id: string;
+  url: string;
+  originalName: string;
+  mimeType?: string | null;
+}
 
 interface FilePreviewTarget {
   id: string;
@@ -22,7 +29,7 @@ interface FilePreviewTarget {
  *
  * @param getImageFiles 返回当前列表中的图片文件（点击图片时构建图集用）
  */
-export function useFilePreview(getImageFiles: () => ManagedFile[]) {
+export function useFilePreview(getImageFiles: () => PreviewableFile[]) {
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewSrcList, setPreviewSrcList] = useState<string[]>([]);
   const [previewCurrentIndex, setPreviewCurrentIndex] = useState(0);
@@ -39,7 +46,7 @@ export function useFilePreview(getImageFiles: () => ManagedFile[]) {
     previewBlobUrlsRef.current = [];
   };
 
-  const handlePreview = async (file: ManagedFile) => {
+  const handlePreview = async (file: PreviewableFile) => {
     const resolvedMimeType = resolveFileMimeType(file.mimeType, file.originalName);
     const isImage = isGalleryImageFile(file.mimeType, file.originalName);
     const isPreviewable = canPreviewFile(file.mimeType, file.originalName);
@@ -134,7 +141,7 @@ export function useFilePreview(getImageFiles: () => ManagedFile[]) {
     }
   };
 
-  const handleDownload = async (file: ManagedFile) => {
+  const handleDownload = async (file: PreviewableFile) => {
     setDownloadLoadingId(file.id);
     try {
       const blob = await fetchManagedFileBlob(file.url);
