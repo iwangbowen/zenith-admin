@@ -199,7 +199,7 @@ export default function DistributionPage() {
     {
       title: '目标',
       width: 210,
-      render: (_: unknown, row) => `${row.targetSiteName} / ${row.targetChannelName}`,
+      render: (_: unknown, row) => renderEllipsis(`${row.targetSiteName} / ${row.targetChannelName}`),
     },
     {
       title: '模式',
