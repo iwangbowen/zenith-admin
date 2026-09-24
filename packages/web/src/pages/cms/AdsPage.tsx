@@ -124,8 +124,8 @@ function AdsTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
   const canManage = hasPermission('cms:ad:manage');
 
   const columns: ColumnProps<CmsAd>[] = [
-    { title: '广告名称', dataIndex: 'name', width: 180 },
-    { title: '广告位', dataIndex: 'slotName', width: 140 },
+    { title: '广告名称', dataIndex: 'name', width: 220, render: renderEllipsis },
+    { title: '广告位', dataIndex: 'slotName', width: 180, render: renderEllipsis },
     { title: '跳转地址', dataIndex: 'linkUrl', minWidth: 200, render: renderEllipsis },
     { title: '曝光量', dataIndex: 'viewCount', width: 90, align: 'right' },
     { title: '点击量', dataIndex: 'clickCount', width: 90, align: 'right' },
