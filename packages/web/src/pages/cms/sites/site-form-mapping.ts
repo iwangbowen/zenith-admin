@@ -87,7 +87,7 @@ export function cleanThemeConfig(config: Record<string, unknown>): Record<string
 
 /** 新建站点时的表单默认值 */
 export const SITE_FORM_CREATE_DEFAULTS: Record<string, unknown> = {
-  parentId: null, theme: 'default', staticMode: 'hybrid', status: 'enabled', isDefault: false, aliasDomains: [],
+  parentId: null, logo: '', favicon: '', theme: 'default', staticMode: 'hybrid', status: 'enabled', isDefault: false, aliasDomains: [],
   themeDark: 'light', imageMaxWidth: 1600, watermarkEnabled: false, watermarkPosition: 'southeast',
   watermarkOpacity: 45, thumbEnabled: false, thumbWidth: 400, auditMode: 'simple',
   ...CMS_SITE_OPS_DEFAULTS,
@@ -100,6 +100,8 @@ export function buildSiteFormInitValues(record: CmsSite): Record<string, unknown
     name: record.name,
     code: record.code,
     theme: record.theme,
+    logo: record.logo ?? '',
+    favicon: record.favicon ?? '',
     domain: record.domain ?? '',
     aliasDomains: record.aliasDomains,
     isDefault: record.isDefault,
@@ -188,6 +190,9 @@ export function buildSiteSavePayload({ values, editingRecord, templateDefaults, 
     ...rest
   } = merged;
   rest.theme = requestedTheme ?? editingRecord?.theme ?? 'default';
+  for (const key of ['logo', 'favicon'] as const) {
+    if (Object.hasOwn(values, key)) rest[key] = typeof values[key] === 'string' ? values[key].trim() || null : null;
+  }
   // Clearable model Selects emit undefined; make the detach operation explicit
   // so JSON serialization cannot silently preserve the previous binding.
   rest.modelId = values.modelId == null || values.modelId === '' ? null : Number(values.modelId);

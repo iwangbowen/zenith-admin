@@ -1,9 +1,9 @@
 import { and, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { parseCmsLink } from '@zenith/shared/cms';
+import { cmsSiteRelativePath, parseCmsLink } from '@zenith/shared/cms';
 import type { CmsChannelDetailPathRule, CmsLinkEntityType, CmsLinkRef, CmsLinkTarget } from '@zenith/shared/cms';
 import { db } from '../../db';
-import { cmsChannels, cmsContents } from '../../db/schema';
+import { cmsChannels, cmsContents, cmsSites } from '../../db/schema';
 import { channelUrl, contentUrl } from './cms-urls';
 import { getEffectivelyEnabledCmsChannelIds } from './cms-channel-visibility.service';
 
@@ -140,9 +140,17 @@ export async function buildCmsLinkResolver(
     channelByCode = new Map(channelRows.map((row) => [row.code, row]));
   }
 
+  const previewCode = /^\/__cms\/([^/]+)$/.exec(baseUrl)?.[1];
+  const needsSiteCode = [...refs.values()].some((ref) => ref.kind === 'internal' && ref.path.startsWith('/__cms/'))
+    || [...contentMap.values()].some((row) => row.externalLink?.includes('/__cms/'))
+    || [...channelMap.values()].some((row) => row.linkUrl?.includes('/__cms/'));
+  const siteCode = previewCode ?? (needsSiteCode ? (await db.query.cmsSites.findFirst({ where: eq(cmsSites.id, siteId), columns: { code: true } }))?.code : undefined);
   const resolveRef = (ref: CmsLinkRef, seen: Set<string>): CmsLinkResolution | null => {
     if (ref.kind === 'external') return { url: ref.url, isExternal: true };
-    if (ref.kind === 'internal') return { url: `${baseUrl}${ref.path}`, isExternal: false };
+    if (ref.kind === 'internal') {
+      const path = cmsSiteRelativePath(ref.path, siteCode);
+      return path === null ? null : { url: `${baseUrl}${path}`, isExternal: false };
+    }
     // 按 code 引用先换算成 id，之后与 id 引用走同一套跟随逻辑
     if (ref.code !== null) {
       const target = channelByCode.get(ref.code);
@@ -216,7 +224,11 @@ export async function describeCmsLink(siteId: number, raw: string | null | undef
   const ref = parseCmsLink(value);
   if (!ref) return { kind: 'invalid', label: value, targetId: null, targetCode: null, exists: false };
   if (ref.kind === 'external') return { kind: 'external', label: ref.url, targetId: null, targetCode: null, exists: true };
-  if (ref.kind === 'internal') return { kind: 'internal', label: ref.path, targetId: null, targetCode: null, exists: true };
+  if (ref.kind === 'internal') {
+    const site = ref.path.startsWith('/__cms/') ? await db.query.cmsSites.findFirst({ where: eq(cmsSites.id, siteId), columns: { code: true } }) : null;
+    const path = cmsSiteRelativePath(ref.path, site?.code);
+    return { kind: 'internal', label: path ?? '该预览链接不属于当前站点，请使用目标站点的完整地址', targetId: null, targetCode: null, exists: path !== null };
+  }
 
   if (ref.code !== null) {
     const target = await db.query.cmsChannels.findFirst({
@@ -264,6 +276,10 @@ export async function describeCmsLink(siteId: number, raw: string | null | undef
 
 export async function ensureCmsLinkTargetExists(siteId: number, raw: string | null | undefined): Promise<void> {
   const ref = parseCmsLink(raw);
+  if (ref?.kind === 'internal' && ref.path.startsWith('/__cms/')) {
+    const site = await db.query.cmsSites.findFirst({ where: eq(cmsSites.id, siteId), columns: { code: true } });
+    if (cmsSiteRelativePath(ref.path, site?.code) === null) throw new HTTPException(400, { message: '预览链接不属于当前站点，请使用目标站点的完整地址' });
+  }
   if (ref?.kind !== 'entity') return;
 
   if (ref.code !== null) {

@@ -1,4 +1,4 @@
-import { submitMockCmsContentBatch, submitMockCmsWithdrawal } from './cms-releases';
+import { stageMockCmsConfigurationDraft, submitMockCmsContentBatch, submitMockCmsWithdrawal } from './cms-releases';
 import { getMockCmsWorkingContent, getMockCmsPublishedContent, getMockCmsRevision, getMockCmsReviewContent, bindMockCmsReview, assertMockCmsCas, freezeMockCmsRevision, saveMockCmsWorkingContent, restoreMockCmsRevision } from '@/mocks/utils/cms-revisions';
 import { HttpResponse } from 'msw';
 import type * as z from 'zod';
@@ -54,6 +54,7 @@ import {
   getNextCmsModelFieldId,
   getNextCmsChannelId,
   getNextCmsContentId,
+  getNextCmsTagId,
   getNextCmsFriendLinkId,
   getNextCmsFriendLinkGroupId,
   mockCmsAdSlots,
@@ -291,8 +292,8 @@ export const cmsHandlers = [
       title: body.title ?? null,
       keywords: body.keywords ?? null,
       description: body.description ?? null,
-      logo: null,
-      favicon: null,
+      logo: body.logo ?? null,
+      favicon: body.favicon ?? null,
       icp: body.icp ?? null,
       copyright: body.copyright ?? null,
       theme: body.theme,
@@ -337,6 +338,7 @@ export const cmsHandlers = [
     if (mergedSettings) mockCmsSites[idx].templateRefsRevision += 1;
     if (body.isDefault) mockCmsSites.forEach((s) => { s.isDefault = false; });
     Object.assign(mockCmsSites[idx], patch, mergedSettings ? { settings: mergedSettings } : {}, { code, updatedAt: mockDateTime() });
+    stageMockCmsConfigurationDraft(params.id);
     return ok(redactMockSite(mockCmsSites[idx]), '更新成功');
   }),
   mock(cmsSiteContract.remove, ({ params, ok }) => {
@@ -452,6 +454,7 @@ export const cmsHandlers = [
       updatedAt: now,
     };
     mockCmsChannels.push(channel);
+    stageMockCmsConfigurationDraft(channel.siteId);
     return ok(channel, '创建成功');
   }),
   mock(cmsChannelContract.update, ({ params, body, ok }) => {
@@ -461,6 +464,7 @@ export const cmsHandlers = [
     Object.assign(item, body, { updatedAt: mockDateTime() });
     const parent = mockCmsChannels.find((c) => c.id === item.parentId);
     item.path = parent ? `${parent.path}/${item.slug}` : item.slug;
+    stageMockCmsConfigurationDraft(item.siteId);
     submitMockCmsWidgetSourceRefresh('channel', [params.id]);
     return ok(item, '更新成功');
   }),
@@ -474,8 +478,9 @@ export const cmsHandlers = [
     if (mockCmsContents.some((c) => c.channelId === id)) {
       return badRequest('栏目下存在内容，请先移除内容', { status: 400 });
     }
-    requireItem(mockCmsChannels, id, '栏目不存在', { status: 404 });
+    const channel = requireItem(mockCmsChannels, id, '栏目不存在', { status: 404 });
     removeByIds(mockCmsChannels, [id]);
+    stageMockCmsConfigurationDraft(channel.siteId);
     return ok(null, '删除成功');
   }),
 
@@ -781,8 +786,23 @@ export const cmsHandlers = [
   ...mockResource(cmsTagContract, {
     store: mockCmsTags,
     notFound: '标签不存在',
-    create: (body, id, now) => ({ id, siteId: body.siteId, name: body.name, slug: body.slug, groupName: body.groupName ?? null, contentCount: 0, createdAt: now, updatedAt: now }),
-    exclude: ['list'],
+    exclude: ['list', 'create', 'remove'],
+    update: (item, body, now) => {
+      Object.assign(item, body, { updatedAt: now });
+      stageMockCmsConfigurationDraft(item.siteId);
+    },
+  }),
+  mock(cmsTagContract.create, ({ body, ok }) => {
+    const now = mockDateTime();
+    const row = { id: getNextCmsTagId(), siteId: body.siteId, name: body.name, slug: body.slug, groupName: body.groupName ?? null, contentCount: 0, createdAt: now, updatedAt: now };
+    mockCmsTags.push(row);
+    stageMockCmsConfigurationDraft(row.siteId);
+    return ok(row, '创建成功');
+  }),
+  mock(cmsTagContract.remove, ({ params, ok }) => {
+    const tag = removeItem(mockCmsTags, params.id, '标签不存在', { status: 404 });
+    stageMockCmsConfigurationDraft(tag.siteId);
+    return ok(null, '删除成功');
   }),
 
   // ═══ 友情链接分组 ═══════════════════════════════════════════════════════
@@ -810,6 +830,7 @@ export const cmsHandlers = [
       updatedAt: now,
     };
     mockCmsFriendLinkGroups.push(group);
+    stageMockCmsConfigurationDraft(group.siteId);
     return ok(group, '创建成功');
   }),
   mock(cmsFriendLinkContract.groupUpdate, ({ params, body, ok }) => {
@@ -817,15 +838,17 @@ export const cmsHandlers = [
     Object.assign(item, body, { updatedAt: mockDateTime() });
     const group = item;
     for (const link of mockCmsFriendLinks) if (link.groupId === group.id) link.groupName = group.name;
+    stageMockCmsConfigurationDraft(group.siteId);
     return ok(group, '更新成功');
   }),
   mock(cmsFriendLinkContract.groupRemove, ({ params, ok }) => {
     const { id } = params;
-    requireItem(mockCmsFriendLinkGroups, id, '友链分组不存在', { status: 404 });
+    const group = requireItem(mockCmsFriendLinkGroups, id, '友链分组不存在', { status: 404 });
     removeByIds(mockCmsFriendLinkGroups, [id]);
     for (const link of mockCmsFriendLinks) {
       if (link.groupId === id) { link.groupId = null; link.groupName = null; }
     }
+    stageMockCmsConfigurationDraft(group.siteId);
     return ok(null, '删除成功');
   }),
 
@@ -857,6 +880,7 @@ export const cmsHandlers = [
       updatedAt: now,
     };
     mockCmsFriendLinks.push(link);
+    stageMockCmsConfigurationDraft(link.siteId);
     return ok(link, '创建成功');
   }),
   mock(cmsFriendLinkContract.update, ({ params, body, ok }) => {
@@ -864,11 +888,13 @@ export const cmsHandlers = [
     Object.assign(item, body, { updatedAt: mockDateTime() });
     const link = item;
     link.groupName = mockCmsFriendLinkGroups.find((g) => g.id === link.groupId)?.name ?? null;
+    stageMockCmsConfigurationDraft(link.siteId);
     return ok(link, '更新成功');
   }),
   mock(cmsFriendLinkContract.remove, ({ params, ok }) => {
-    requireItem(mockCmsFriendLinks, params.id, '友情链接不存在', { status: 404 });
+    const link = requireItem(mockCmsFriendLinks, params.id, '友情链接不存在', { status: 404 });
     removeByIds(mockCmsFriendLinks, [params.id]);
+    stageMockCmsConfigurationDraft(link.siteId);
     return ok(null, '删除成功');
   }),
 
@@ -1055,15 +1081,18 @@ export const cmsP2Handlers = [
       updatedAt: now,
     };
     mockCmsLinkWords.push(row);
+    stageMockCmsConfigurationDraft(row.siteId);
     return ok(row, '创建成功');
   }),
   mock(cmsSeoContract.linkWordUpdate, ({ params, body, ok }) => {
     const item = updateItem(mockCmsLinkWords, params.id, body, { notFoundMessage: '内链词不存在', now: mockDateTime, init: { status: 404 } });
+    stageMockCmsConfigurationDraft(item.siteId);
     return ok(item, '更新成功');
   }),
   mock(cmsSeoContract.linkWordRemove, ({ params, ok }) => {
-    requireItem(mockCmsLinkWords, params.id, '内链词不存在', { status: 404 });
+    const word = requireItem(mockCmsLinkWords, params.id, '内链词不存在', { status: 404 });
     removeByIds(mockCmsLinkWords, [params.id]);
+    stageMockCmsConfigurationDraft(word.siteId);
     return ok(null, '删除成功');
   }),
 
@@ -1300,10 +1329,12 @@ export const cmsP2Handlers = [
       updatedAt: now,
     };
     mockCmsAdSlots.push(row);
+    stageMockCmsConfigurationDraft(row.siteId);
     return ok(row, '创建成功');
   }),
   mock(cmsAdContract.slotUpdate, ({ params, body, ok }) => {
     const item = updateItem(mockCmsAdSlots, params.id, body, { notFoundMessage: '广告位不存在', now: mockDateTime, init: { status: 404 } });
+    stageMockCmsConfigurationDraft(item.siteId);
     return ok(item, '更新成功');
   }),
   mock(cmsAdContract.slotRemove, ({ params, ok }) => {
@@ -1311,8 +1342,9 @@ export const cmsP2Handlers = [
     if (mockCmsAds.some((a) => a.slotId === id)) {
       return badRequest('广告位下存在广告，请先删除广告', { status: 400 });
     }
-    requireItem(mockCmsAdSlots, id, '广告位不存在', { status: 404 });
+    const slot = requireItem(mockCmsAdSlots, id, '广告位不存在', { status: 404 });
     removeByIds(mockCmsAdSlots, [id]);
+    stageMockCmsConfigurationDraft(slot.siteId);
     return ok(null, '删除成功');
   }),
   mock(cmsAdContract.list, ({ query, ok, paginate }) => {
@@ -1324,7 +1356,7 @@ export const cmsP2Handlers = [
   }),
   mock(cmsAdContract.create, ({ body, ok }) => {
     const now = mockDateTime();
-    const slot = mockCmsAdSlots.find((s) => s.id === body.slotId);
+    const slot = requireItem(mockCmsAdSlots, body.slotId, '广告位不存在', { status: 404 });
     const row = {
       id: getNextCmsAdId(),
       slotId: body.slotId,
@@ -1342,12 +1374,25 @@ export const cmsP2Handlers = [
       updatedAt: now,
     };
     mockCmsAds.push(row);
+    stageMockCmsConfigurationDraft(slot.siteId);
     return ok(row, '创建成功');
   }),
   ...mockResource(cmsAdContract, {
     store: mockCmsAds,
     notFound: '广告不存在',
-    exclude: ['list', 'create'],
+    exclude: ['list', 'create', 'remove'],
+    update: (item, body, now) => {
+      Object.assign(item, body, { updatedAt: now });
+      const slot = requireItem(mockCmsAdSlots, item.slotId, '广告位不存在', { status: 404 });
+      stageMockCmsConfigurationDraft(slot.siteId);
+    },
+  }),
+  mock(cmsAdContract.remove, ({ params, ok }) => {
+    const item = requireItem(mockCmsAds, params.id, '广告不存在', { status: 404 });
+    const slot = requireItem(mockCmsAdSlots, item.slotId, '广告位不存在', { status: 404 });
+    removeByIds(mockCmsAds, [item.id]);
+    stageMockCmsConfigurationDraft(slot.siteId);
+    return ok(null, '删除成功');
   }),
 
   // ─── 表单 ───────────────────────────────────────────────────────────────────
@@ -1399,6 +1444,7 @@ export const cmsP2Handlers = [
       updatedAt: now,
     };
     mockCmsForms.push(row);
+    stageMockCmsConfigurationDraft(row.siteId);
     return ok(redactMockForm(row), '创建成功');
   }),
   mock(cmsFormContract.update, ({ params, body, ok }) => {
@@ -1408,11 +1454,13 @@ export const cmsP2Handlers = [
       ? {}
       : { turnstileSecret };
     Object.assign(item, patch, secretPatch, { updatedAt: mockDateTime() });
+    stageMockCmsConfigurationDraft(item.siteId);
     return ok(redactMockForm(item), '更新成功');
   }),
   mock(cmsFormContract.remove, ({ params, ok }) => {
-    requireItem(mockCmsForms, params.id, '表单不存在', { status: 404 });
+    const form = requireItem(mockCmsForms, params.id, '表单不存在', { status: 404 });
     removeByIds(mockCmsForms, [params.id]);
+    stageMockCmsConfigurationDraft(form.siteId);
     return ok(null, '删除成功');
   }),
 
@@ -1449,7 +1497,7 @@ export const cmsP2Handlers = [
   // ═══ 栏目运维（合并 / 清空 / 批量新增）═════════════════════════════════════
   mock(cmsChannelContract.merge, ({ body, ok }) => {
     const { sourceIds, targetId } = body;
-    requireItem(mockCmsChannels, targetId, '目标栏目不存在', { status: 404 });
+    const target = requireItem(mockCmsChannels, targetId, '目标栏目不存在', { status: 404 });
     let moved = 0;
     for (const c of mockCmsContents) {
       if (sourceIds.includes(c.channelId)) {
@@ -1458,6 +1506,7 @@ export const cmsP2Handlers = [
       }
     }
     removeByIds(mockCmsChannels, sourceIds);
+    stageMockCmsConfigurationDraft(target.siteId);
     return ok(null, `合并完成，已迁移 ${moved} 条内容`);
   }),
   mock(cmsChannelContract.batchCreate, ({ body, ok }) => {
@@ -1496,6 +1545,7 @@ export const cmsP2Handlers = [
         updatedAt: now,
       });
     }
+    stageMockCmsConfigurationDraft(body.siteId);
     return ok(null, `已创建 ${names.length} 个栏目`);
   }),
   mock(cmsChannelContract.clear, ({ params, ok }) => {
@@ -1909,6 +1959,7 @@ export const cmsP3Handlers = [
     const siteKey = `mock-key-${site.code}`;
     settings.analyticsSiteKey = siteKey;
     site.settings = settings;
+    stageMockCmsConfigurationDraft(site.id);
     return ok({ siteKey, created: true }, '开通成功');
   }),
 
@@ -1983,15 +2034,17 @@ export const cmsP6Handlers = [
     };
     mockCmsPages.push(row);
     syncMockPageWidgetRefs(row);
+    stageMockCmsConfigurationDraft(row.siteId);
     return ok(row, '创建成功');
   }),
   mock(cmsPageContract.remove, ({ params, ok }) => {
-    requireItem(mockCmsPages, params.id, '页面不存在', { status: 404 });
+    const page = requireItem(mockCmsPages, params.id, '页面不存在', { status: 404 });
     for (let refIndex = mockCmsWidgetRefs.length - 1; refIndex >= 0; refIndex -= 1) {
       const ref = mockCmsWidgetRefs[refIndex];
       if (ref.ownerType === 'page' && ref.ownerId === params.id) mockCmsWidgetRefs.splice(refIndex, 1);
     }
     removeByIds(mockCmsPages, [params.id]);
+    stageMockCmsConfigurationDraft(page.siteId);
     return ok(null, '删除成功');
   }),
 ];

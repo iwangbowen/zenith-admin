@@ -8,7 +8,7 @@
 import dayjs from 'dayjs';
 import timezone from 'dayjs/plugin/timezone.js';
 import utc from 'dayjs/plugin/utc.js';
-import { CMS_PREVIEW_PREFIX, cmsCustomPagePath, parseCmsLink } from '@zenith/shared/cms';
+import { CMS_PREVIEW_PREFIX, cmsCustomPagePath, cmsSiteRelativePath, parseCmsLink } from '@zenith/shared/cms';
 import type { CmsChannelDetailPathRule, CmsContentStatus } from '@zenith/shared/cms';
 import { APP_TIME_ZONE } from '../../lib/datetime';
 
@@ -85,10 +85,10 @@ export function buildCmsContentUrls(
   const external = content.externalLink?.trim();
   if (external) {
     const parsed = parseCmsLink(external);
-    const directUrl = parsed?.kind === 'external' ? parsed.url : parsed?.kind === 'internal' ? parsed.path : null;
+    const directUrl = parsed?.kind === 'external' ? parsed.url : parsed?.kind === 'internal' ? cmsSiteRelativePath(parsed.path, context.siteCode) : null;
     const previewUrl = content.status === 'published' && directUrl
       ? (parsed?.kind === 'internal' && context.siteCode
-        ? `${CMS_PREVIEW_PREFIX}/${context.siteCode}${parsed.path}`
+        ? `${CMS_PREVIEW_PREFIX}/${context.siteCode}${directUrl}`
         : directUrl)
       : null;
     return { canonicalUrl: directUrl, previewUrl };

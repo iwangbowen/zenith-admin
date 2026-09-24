@@ -30,6 +30,7 @@ import { deleteAction, ListSearchToolbar } from '@/components/list-page';
 import ModalFooter from '@/components/ModalFooter';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 import { useListPage } from '@/hooks/useListPage';
+import CmsPageBlockFields from './CmsPageBlockFields';
 
 /** 区块按栏目标识引用栏目：value 用 code，站点复制/重建后配置无需重配 */
 function channelsToSelectTree(nodes: CmsChannel[]): TreeNodeData[] {
@@ -530,25 +531,8 @@ export default function PagesPage() {
               style={{ width: '100%' }}
               placeholder="不限制"
             />
-            {editingBlockType === 'hero' ? (
-              <>
-                <Form.Input field="title" label="主标题" rules={[{ required: true, message: '请输入主标题' }]} />
-                <Form.Input field="subtitle" label="副标题" />
-                <Form.Input field="image" label="背景图 URL" />
-                <Form.Input field="buttonText" label="按钮文字" />
-                <Form.Input field="buttonUrl" label="按钮链接" />
-              </>
-            ) : null}
-            {editingBlockType === 'richtext' ? (
-              <Form.TextArea field="html" label="HTML 内容" rows={10} placeholder="支持 HTML 标签" />
-            ) : null}
-            {editingBlockType === 'image' ? (
-              <>
-                <Form.Input field="src" label="图片 URL" rules={[{ required: true, message: '请输入图片 URL' }]} />
-                <Form.Input field="alt" label="替代文本" />
-                <Form.Input field="linkUrl" label="点击链接" />
-              </>
-            ) : null}
+            {editingBlockType === 'hero' || editingBlockType === 'richtext' || editingBlockType === 'image'
+              ? <CmsPageBlockFields type={editingBlockType} siteId={siteId} /> : null}
             {editingBlockType === 'content-list' ? (
               <>
                 <Form.Input field="title" label="标题" />

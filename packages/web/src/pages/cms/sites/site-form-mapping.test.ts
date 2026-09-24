@@ -265,3 +265,19 @@ describe('site-tree-utils', () => {
     expect(siteIndentOptions(flat.slice(0, 3)).map((o) => o.label)).toEqual(['主站', '—子站A', '——孙站']);
   });
 });
+
+
+describe('站点品牌图片映射', () => {
+  it('restores logo and favicon and explicitly clears either image without discarding other settings', () => {
+    const record = makeSite({ logo: 'cms-res://11', favicon: 'cms-res://12', settings: { retained: true } });
+    const values = buildSiteFormInitValues(record);
+    expect(values).toMatchObject({ logo: 'cms-res://11', favicon: 'cms-res://12' });
+    const result = buildSiteSavePayload({ values: { ...values, logo: '', favicon: 'cms-res://13' }, editingRecord: record, templateDefaults: EMPTY_TEMPLATE_DEFAULTS, themeConfig: {} });
+    expect(result.payload).toMatchObject({ logo: null, favicon: 'cms-res://13', settings: { retained: true } });
+  });
+  it('does not clear brand images when a partial form payload omits them', () => {
+    const result = buildSiteSavePayload({ values: { name: '新名称' }, editingRecord: makeSite({ logo: '/logo.png', favicon: '/favicon.ico' }), templateDefaults: EMPTY_TEMPLATE_DEFAULTS, themeConfig: {} });
+    expect(result.payload).not.toHaveProperty('logo');
+    expect(result.payload).not.toHaveProperty('favicon');
+  });
+});

@@ -16,6 +16,7 @@ import {
 import { mockDateTime } from '../utils/date';
 import { createProgressingMockTask } from './async-tasks';
 import { filterByKeyword } from '@/mocks/utils/filter';
+import { stageMockCmsConfigurationDraft } from './cms-releases';
 
 function refreshCounts() {
   for (const widget of mockCmsWidgets) {
@@ -165,6 +166,7 @@ export const cmsWidgetsHandlers = [
       });
     }
     refreshCounts();
+    stageMockCmsConfigurationDraft(siteId);
     submitMockWidgetRefresh(siteId);
     return ok([homeSidebarSlot(siteId)], '主题插槽已更新');
   }),
@@ -174,6 +176,7 @@ export const cmsWidgetsHandlers = [
     let succeeded = 0;
     let failed = 0;
     let skipped = 0;
+    const configurationSites = new Set<number>();
     for (const id of ids) {
       const index = mockCmsWidgets.findIndex((widget) => widget.id === id);
       if (index < 0) {
@@ -186,10 +189,12 @@ export const cmsWidgetsHandlers = [
         widget.publishedName = widget.name;
         widget.publishedRevision = widget.draftRevision;
         widget.status = 'published';
+        configurationSites.add(widget.siteId);
         succeeded += 1;
       } else if (body.action === 'offline') {
         if (widget.status === 'published') {
           widget.status = 'offline';
+          configurationSites.add(widget.siteId);
           succeeded += 1;
         } else failed += 1;
       } else if (body.action === 'delete') {
@@ -201,6 +206,7 @@ export const cmsWidgetsHandlers = [
       }
     }
     refreshCounts();
+    for (const siteId of configurationSites) stageMockCmsConfigurationDraft(siteId);
     const task = createProgressingMockTask({
       taskType: 'cms-widget-batch',
       title: '页面部件批量操作',
@@ -274,8 +280,9 @@ export const cmsWidgetsHandlers = [
     widget.status = 'published';
     widget.hasUnpublishedChanges = false;
     widget.updatedAt = mockDateTime();
+    stageMockCmsConfigurationDraft(widget.siteId);
     submitMockWidgetRefresh(widget.siteId, `publish:${widget.id}:${widget.draftRevision}:${Date.now()}`);
-    return ok(widget, '发布成功');
+    return ok(widget, '已加入配置发布草稿');
   }),
 
   mock(cmsWidgetContract.offline, ({ params, ok }) => {
@@ -283,8 +290,9 @@ export const cmsWidgetsHandlers = [
     if (widget.status !== 'published') return badRequest(`当前状态（${widget.status}）不允许下线`, { status: 400 });
     widget.status = 'offline';
     widget.updatedAt = mockDateTime();
+    stageMockCmsConfigurationDraft(widget.siteId);
     submitMockWidgetRefresh(widget.siteId, `offline:${widget.id}:${widget.draftRevision}:${Date.now()}`);
-    return ok(widget, '下线成功');
+    return ok(widget, '已加入配置发布草稿');
   }),
 
   mock(cmsWidgetContract.detail, ({ params, ok }) => {

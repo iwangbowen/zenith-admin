@@ -9,18 +9,17 @@ import { FormPasswordInput } from '@/components/PasswordInput';
  */
 import React, { useEffect, useRef, useState } from 'react';
 import ModalFooter from '@/components/ModalFooter';
-import { Banner, Button, Col, ColorPicker, Form, Input, InputNumber, Modal, Row, Select, SideSheet, Switch, Tabs, TabPane, TextArea, Toast, Typography, Upload, withField } from '@douyinfe/semi-ui';
+import { Banner, Button, Col, ColorPicker, Form, Input, InputNumber, Modal, Row, Select, SideSheet, Switch, Tabs, TabPane, TextArea, Toast, Typography, withField } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { ImageUp } from 'lucide-react';
 import { usePermission } from '@/hooks/usePermission';
 import {
   useAllCmsModels, useAllCmsSites, useCmsSiteTemplateHealth, useCmsStaticBuild,
   useCmsThemeSettingsSchema, useCmsThemeTemplates, useCmsThemes, useSaveCmsSite,
-  useUploadCmsImage,
+  useUploadCmsResource,
 } from '@/hooks/queries/cms';
 import { useCmsWidgetRenderers, useCmsWidgetSlots, usePublishedCmsWidgets, useSaveCmsWidgetSlot } from '@/hooks/queries/cms-widgets';
 import { useWorkflowDefinitionList } from '@/hooks/queries/workflow-definitions';
-import { CMS_STATIC_MODES, CMS_STATIC_MODE_LABELS, CMS_TWITTER_CARDS, CMS_TWITTER_CARD_LABELS } from '@zenith/shared/cms';
+import { CMS_RESOURCE_URI_PREFIX, CMS_STATIC_MODES, CMS_STATIC_MODE_LABELS, CMS_TWITTER_CARDS, CMS_TWITTER_CARD_LABELS } from '@zenith/shared/cms';
 import type { CmsInvalidTemplateRef, CmsModelField, CmsSite, CmsThemeSettingField, CmsWidgetRendererKey } from '@zenith/shared/cms';
 import {
   EMPTY_TEMPLATE_DEFAULTS, SITE_FORM_CREATE_DEFAULTS, buildSiteFormInitValues, buildSiteSavePayload,
@@ -32,9 +31,13 @@ import { CmsModelFieldControl } from '../model-field-renderer';
 import { FormSliderInput } from '@/components/SliderInput';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 import ColorPickerInput from '@/components/ColorPickerInput';
+import SiteImageInput from './SiteImageInput';
+import { usePreparedSiteImages } from './usePreparedSiteImages';
+import { saveSiteWithPreparedImages } from './site-image-save';
 
 /** 主题色表单控件：Semi ColorPicker 封装，值为颜色字符串（留空用主题默认） */
 const FormThemeColorPicker = withField(ColorPickerInput);
+const FormSiteImageInput = withField(SiteImageInput);
 
 /** 失效模板引用的人类可读描述（健康检查 Banner 用） */
 function describeInvalidRef(ref: CmsInvalidTemplateRef): string {
@@ -58,12 +61,20 @@ interface SiteEditSheetProps {
   readonly onClose: () => void;
 }
 
-export default function SiteEditSheet({ open, site, onClose }: Readonly<SiteEditSheetProps>) {
+export default function SiteEditSheet({ open, site: initialSite, onClose }: Readonly<SiteEditSheetProps>) {
   const { hasPermission } = usePermission();
   // useEditModal 例外：受控子组件（打开态与编辑对象由父级持有）的多页签站点编辑工作区，
   // 主题参数 / 模板默认值 / 扩展模型为表单外受控状态；编辑对象来自父级列表行，无详情查询
   const formApi = useRef<FormApi | null>(null);
-  const uploadCmsImage = useUploadCmsImage();
+  const uploadResource = useUploadCmsResource();
+  const [createdSite, setCreatedSite] = useState<CmsSite | null>(null);
+  const site = initialSite ?? createdSite;
+  const confirmedSite = useRef<CmsSite | null>(initialSite);
+  const openKey = open ? String(initialSite?.id ?? 'new') : null;
+  const preparedImages = usePreparedSiteImages(openKey);
+  const [savingImages, setSavingImages] = useState(false);
+  const [imageSaveError, setImageSaveError] = useState('');
+  const canUploadImage = hasPermission('cms:resource:upload') && (Boolean(site) || hasPermission('cms:site:update'));
   const [activeTab, setActiveTab] = useState('basic');
   // 模板下拉跟随表单里实时选中的主题（Form 值不具备响应性，用 state 镜像）
   const [selectedTheme, setSelectedTheme] = useState('default');
@@ -98,16 +109,18 @@ export default function SiteEditSheet({ open, site, onClose }: Readonly<SiteEdit
   // 保证本 commit 内后续 effect（如下方失效模板清理）读到的已是新站点的值，
   // 复现拆分前「openEdit 先设状态、再开弹窗」的时序。
   const [lastOpenKey, setLastOpenKey] = useState<string | null>(null);
-  const openKey = open ? String(site?.id ?? 'new') : null;
   if (openKey !== lastOpenKey) {
     setLastOpenKey(openKey);
+    setCreatedSite(null);
+    confirmedSite.current = initialSite;
+    setImageSaveError('');
     if (openKey !== null) {
       setActiveTab('basic');
-      if (site) {
-        setSelectedTheme(site.theme);
-        setSelectedModelId(site.modelId ?? undefined);
-        setTemplateDefaults(templateDefaultsFromSettings(site.settings as Record<string, unknown>));
-        setThemeConfig({ ...((site.settings as Record<string, unknown>)?.themeConfig as Record<string, unknown> ?? {}) });
+      if (initialSite) {
+        setSelectedTheme(initialSite.theme);
+        setSelectedModelId(initialSite.modelId ?? undefined);
+        setTemplateDefaults(templateDefaultsFromSettings(initialSite.settings as Record<string, unknown>));
+        setThemeConfig({ ...((initialSite.settings as Record<string, unknown>)?.themeConfig as Record<string, unknown> ?? {}) });
       } else {
         setSelectedTheme('default');
         setSelectedModelId(undefined);
@@ -160,11 +173,33 @@ export default function SiteEditSheet({ open, site, onClose }: Readonly<SiteEdit
     }
     const { payload, themeConfigChanged, themeChanged } = buildSiteSavePayload({ values, editingRecord: site, templateDefaults, themeConfig });
     let saved: CmsSite;
+    setSavingImages(true);
+    setImageSaveError('');
     try {
-      saved = await saveMutation.mutateAsync({ id: site?.id, values: payload });
-    } catch {
-      return; // 错误提示由请求层统一 Toast
-    }
+      saved = await saveSiteWithPreparedImages({
+        siteId: site?.id, payload, images: preparedImages.images,
+        save: (id, values) => saveMutation.mutateAsync({ id, values }),
+        upload: async (siteId, file) => {
+          const resource = await uploadResource.mutateAsync({ siteId, file });
+          return `${CMS_RESOURCE_URI_PREFIX}${resource.id}`;
+        },
+        onSaved: (record) => {
+          confirmedSite.current = record;
+          if (!initialSite) setCreatedSite(record);
+        },
+        onUploaded: (key, value) => {
+          preparedImages.uploaded(key, value);
+          if (key === 'logo' || key === 'favicon') formApi.current?.setValue(key, value);
+          else if (key.startsWith('theme:')) setThemeConfig((current) => ({ ...current, [key.slice(6)]: value }));
+        },
+      });
+      preparedImages.clear();
+    } catch (error) {
+      if (confirmedSite.current && preparedImages.images.length) {
+        setImageSaveError(`站点已保存，图片关联尚未完成。请重试保存，将继续处理原站点和已上传图片。${error instanceof Error ? ` ${error.message}` : ''}`);
+      }
+      return;
+    } finally { setSavingImages(false); }
     Toast.success(site ? '更新成功' : '创建成功');
     onClose();
     // 主题或主题参数变更 + 非纯动态站点 → 保存后提示重新生成静态页
@@ -310,42 +345,11 @@ export default function SiteEditSheet({ open, site, onClose }: Readonly<SiteEdit
         );
       }
       case 'image': {
-        const url = typeof value === 'string' ? value : '';
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: 480, maxWidth: '100%' }}>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Input
-                value={url}
-                placeholder={field.placeholder ?? '图片 URL，或点击上传'}
-                showClear
-                onChange={(v) => themeConfigPatch(field.name, v)}
-                style={{ flex: 1 }}
-              />
-              <Upload
-                action=""
-                accept="image/*"
-                showUploadList={false}
-                disabled={!site}
-                customRequest={async ({ fileInstance, onSuccess, onError }) => {
-                  if (!site) { onError?.({ status: 0 }); return; }
-                  try {
-                    const formData = new FormData();
-                    formData.append('file', fileInstance);
-                    const res = await uploadCmsImage.mutateAsync({ siteId: site.id, formData });
-                    themeConfigPatch(field.name, res.url);
-                    onSuccess?.({});
-                  } catch {
-                    onError?.({ status: 0 });
-                  }
-                }}
-              >
-                <Button icon={<ImageUp size={14} />} disabled={!site}
-                  title={site ? undefined : '保存站点后可上传，也可直接粘贴 URL'}>上传</Button>
-              </Upload>
-            </div>
-            {url ? <img src={url} alt={field.label} style={{ maxWidth: 320, maxHeight: 120, borderRadius: 'var(--semi-border-radius-medium)', objectFit: 'cover', border: '1px solid var(--semi-color-border)' }} /> : null}
-          </div>
-        );
+        const key = `theme:${field.name}`;
+        return <SiteImageInput value={typeof value === 'string' ? value : ''} imageLabel={field.label} siteId={site?.id}
+          onChange={(next) => themeConfigPatch(field.name, next)} placeholder={field.placeholder}
+          prepared={preparedImages.images.find((image) => image.key === key)} prepare={(file) => preparedImages.prepare(key, file)}
+          removePrepared={() => preparedImages.remove(key)} disabled={savingImages} allowUpload={canUploadImage} />;
       }
       default:
         return (
@@ -450,15 +454,18 @@ export default function SiteEditSheet({ open, site, onClose }: Readonly<SiteEdit
     <SideSheet
       title={site ? '编辑站点' : '新增站点'}
       visible={open}
-      onCancel={onClose}
+      onCancel={() => { if (!savingImages) onClose(); }}
       width={720}
       closeOnEsc
-      footer={<ModalFooter onCancel={onClose} onOk={() => void handleSave()} okText="保存" loading={saveMutation.isPending} />}
+      footer={<ModalFooter onCancel={() => { if (!savingImages) onClose(); }} onOk={() => void handleSave()} okText={imageSaveError ? '重试保存' : '保存'} loading={savingImages || saveMutation.isPending} />}
     >
+      {imageSaveError ? <Banner type="warning" description={imageSaveError} closeIcon={null} /> : null}
+      {!initialSite && preparedImages.images.length > 0 ? <Banner type="info" description={`已准备 ${preparedImages.images.length} 张图片，将在保存站点后上传；关闭窗口会放弃尚未上传的本地文件。`} closeIcon={null} /> : null}
       <Form
-        key={site?.id ?? 'new'}
+        key={initialSite?.id ?? 'new'}
         getFormApi={(api) => { formApi.current = api; }}
         allowEmpty
+        disabled={savingImages}
         initValues={formInitValues}
         labelPosition="left"
         labelWidth={100}
@@ -494,6 +501,17 @@ export default function SiteEditSheet({ open, site, onClose }: Readonly<SiteEdit
               </Col>
               <Col span={12}>
                 <Form.TagInput field="aliasDomains" label="别名域名" placeholder="回车添加" />
+              </Col>
+              <Col span={24}>
+                <FormSiteImageInput field="logo" label="站点 Logo" imageLabel="站点 Logo" siteId={site?.id}
+                  prepared={preparedImages.images.find((image) => image.key === 'logo')} prepare={(file: File) => preparedImages.prepare('logo', file)}
+                  removePrepared={() => preparedImages.remove('logo')} allowUpload={canUploadImage} disabled={savingImages} />
+              </Col>
+              <Col span={24}>
+                <FormSiteImageInput field="favicon" label="站点图标" imageLabel="站点图标" siteId={site?.id}
+                  prepared={preparedImages.images.find((image) => image.key === 'favicon')} prepare={(file: File) => preparedImages.prepare('favicon', file)}
+                  removePrepared={() => preparedImages.remove('favicon')} allowUpload={canUploadImage} disabled={savingImages}
+                  extraText="用于浏览器标签页，建议使用正方形 PNG、SVG 或 ICO 图片。" />
               </Col>
               <Col span={12}>
                 <Form.Select field="theme" label="主题" style={{ width: '100%' }}

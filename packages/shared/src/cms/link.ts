@@ -156,6 +156,17 @@ export function isCmsSiteLink(raw: string | null | undefined): boolean {
   return ref !== null && ref.kind !== 'external';
 }
 
+/** 复制的本站预览路径还原为站点相对路径；不把其他站点的路径冒充本站链接。 */
+export function cmsSiteRelativePath(path: string, siteCode?: string | null): string | null {
+  if (!isSafeInternalPath(path)) return null;
+  const preview = /^\/__cms\/([^/?#]+)(?=\/|[?#]|$)/.exec(path);
+  if (!preview) return path;
+  if (!siteCode || preview[1] !== siteCode) return null;
+  const tail = path.slice(preview[0].length);
+  const relative = tail.startsWith('/') ? tail : `/${tail}`;
+  return relative.startsWith('/__cms/') ? null : relative;
+}
+
 /** 是否为实体引用链接 */
 export function isCmsEntityLink(raw: string | null | undefined): boolean {
   return parseCmsLink(raw)?.kind === 'entity';

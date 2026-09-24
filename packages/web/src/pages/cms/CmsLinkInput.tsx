@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Button, Dropdown, Modal, Tag, Tree, Typography } from '@douyinfe/semi-ui';
+import { Button, Dropdown, Input, Modal, Tag, Tree, Typography, withField } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
 import { ChevronDown, Home, Link2 } from 'lucide-react';
@@ -207,7 +207,11 @@ export function useCmsLinkPicker({
   const hintText = ((): { text: string; danger: boolean } | null => {
     if (!raw) return null;
     if (!ref) return { text: '链接格式不合法', danger: true };
-    if (ref.kind === 'internal') return { text: `站内路径：${ref.path}`, danger: false };
+    if (ref.kind === 'internal') {
+      const target = targetQuery.data;
+      return target ? { text: target.exists ? `站内路径：${target.label}` : target.label, danger: !target.exists }
+        : { text: `站内路径：${ref.path}`, danger: false };
+    }
     if (ref.kind !== 'entity') return null;
     if (targetQuery.isFetching) return { text: '解析中…', danger: false };
     const target = targetQuery.data;
@@ -264,3 +268,12 @@ export function useCmsLinkPicker({
 
   return { suffix, hint, modals };
 }
+
+/** 供页面搭建等受控字段复用与内容/栏目相同的站内链接入口。 */
+export const FormCmsLinkField = withField(function CmsLinkField({ siteId, value, onChange, disabled }: {
+  siteId?: number; value?: string | null; onChange?: (value: string) => void; disabled?: boolean;
+}) {
+  const picker = useCmsLinkPicker({ siteId, value, disabled, onPick: (next) => onChange?.(next) });
+  return <><Input value={value ?? ''} onChange={(next) => onChange?.(next)} disabled={disabled} showClear
+    placeholder="选择站内内容/栏目，或粘贴路径、完整网址" suffix={picker.suffix} />{picker.hint}{picker.modals}</>;
+});

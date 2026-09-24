@@ -1,10 +1,10 @@
 import { matchesFilter } from '../utils/filter';
-import { cmsReleaseContract, type CmsRelease, type CmsDeployment, type CreateCmsReleaseInput } from '@zenith/shared/cms';
+import { cmsReleaseContract, mergeCmsConfigurationSnapshots, type CmsConfigurationSnapshot, type CmsRelease, type CmsDeployment, type CreateCmsReleaseInput } from '@zenith/shared/cms';
 import { mock, MockHttpError } from '../utils/contract';
 import { requireItem, updateItem } from '../utils/crud';
 import { badRequest, conflict, nextIdFrom } from '../utils/handlers';
 import { mockDateTime } from '../utils/date';
-import { mockCmsContents, mockCmsSites, mockCmsPages, mockCmsWidgets } from '../data/cms';
+import { mockCmsContents, mockCmsSites, mockCmsPages, mockCmsWidgets, mockCmsChannels, mockCmsWidgetRefs, mockCmsFriendLinkGroups, mockCmsFriendLinks, mockCmsLinkWords, mockCmsRedirects, mockCmsSearchWords, mockCmsResources } from '../data/cms';
 import { activateMockCmsRevision, getMockCmsPublishedContent, getMockCmsRevision, getMockCmsRevisionContent, getMockCmsWorkingContent, withdrawMockCmsContent } from '../utils/cms-revisions';
 import { escapeHtml, type OutputOf } from '@zenith/shared/core';
 
@@ -13,8 +13,49 @@ const deployments: (CmsDeployment & { siteId: number; revisions: Map<number, num
 const active = new Map<number, number>();
 const suppressed = new Set<number>();
 const activations: (OutputOf<typeof cmsReleaseContract.detail>['activations'][number] & { releaseId: number })[] = [];
-const configurations = new Map<number, { pages: typeof mockCmsPages; widgets: typeof mockCmsWidgets }>();
+const configurations = new Map<number, CmsConfigurationSnapshot>();
 const requireRelease = (id: number) => requireItem(releases, id, '发布单不存在', { status: 404 });
+
+function captureConfiguration(siteId: number, options: { pageIds?: number[]; widgetIds?: number[]; includeSiteConfiguration?: boolean }) {
+  const all = options.includeSiteConfiguration === true;
+  const pageIds = options.pageIds ?? [];
+  const widgetIds = options.widgetIds ?? [];
+  const pages = mockCmsPages.filter((row) => row.siteId === siteId && (all || pageIds.includes(row.id)));
+  const widgets = mockCmsWidgets.filter((row) => row.siteId === siteId && (all || widgetIds.includes(row.id)));
+  const rows = (values: readonly object[]) => values.map((row) => Object.fromEntries(Object.entries(row).map(([key, value]) => [key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`), structuredClone(value)])));
+  const snapshot: CmsConfigurationSnapshot = { tables: {}, replaceAll: [], pageIds, widgetIds, deleteIds: {} };
+  if (all || pageIds.length) {
+    snapshot.tables.cms_pages = rows(pages);
+    snapshot.tables.cms_widget_refs = rows(mockCmsWidgetRefs.filter((row) => row.siteId === siteId && (all || (row.ownerType === 'page' && pageIds.includes(row.ownerId)))));
+  }
+  if (all || widgetIds.length) snapshot.tables.cms_widgets = rows(widgets);
+  if (all) {
+    for (const [table, values] of Object.entries({ cms_sites: mockCmsSites, cms_channels: mockCmsChannels, cms_friend_link_groups: mockCmsFriendLinkGroups, cms_friend_links: mockCmsFriendLinks, cms_link_words: mockCmsLinkWords, cms_redirects: mockCmsRedirects, cms_search_words: mockCmsSearchWords, cms_resources: mockCmsResources })) {
+      snapshot.tables[table] = rows(values.filter((row) => 'siteId' in row ? row.siteId === siteId : row.id === siteId));
+    }
+    snapshot.replaceAll = Object.keys(snapshot.tables);
+  }
+  const items: CmsRelease['configurationItems'] = [
+    ...(all ? [{ kind: 'site' as const, id: siteId, title: '整站公开配置与导航' }] : []),
+    ...pages.map((page) => ({ kind: 'page' as const, id: page.id, title: page.name })),
+    ...widgets.map((widget) => ({ kind: 'widget' as const, id: widget.id, title: widget.name })),
+  ];
+  return { snapshot, items, pages, widgets };
+}
+
+/** Saving configuration only updates the current actor's review draft. Building freezes it. */
+export function stageMockCmsConfigurationDraft(siteId: number) {
+  requireItem(mockCmsSites, siteId, '站点不存在', { status: 404 });
+  const capture = captureConfiguration(siteId, { includeSiteConfiguration: true });
+  const existing = releases.findLast((row) => row.siteId === siteId && row.source === 'configuration' && row.status === 'draft' && row.createdBy === 1);
+  if (existing) {
+    configurations.set(existing.id, mergeCmsConfigurationSnapshots(configurations.get(existing.id)!, capture.snapshot));
+    return updateItem(releases, existing.id, { configurationItems: capture.items, baseGenerationId: active.get(siteId) ?? null, error: null }, { notFoundMessage: '发布单不存在', now: mockDateTime });
+  }
+  const release = create({ siteId, name: '站点配置变更', revisionIds: [], withdrawContentIds: [], pageIds: [], widgetIds: [], includeSiteConfiguration: true, timeZone: 'Asia/Shanghai', autoActivate: false });
+  release.source = 'configuration';
+  return release;
+}
 
 function activate(id: number, expectedGenerationId: number | null, rollback = false) {
   const release = requireRelease(id);
@@ -46,8 +87,7 @@ function create(input: CreateCmsReleaseInput) {
     if (content.siteId !== input.siteId || (content.approvedRevisionId !== id && content.publishedRevisionId !== id)) throw new MockHttpError(badRequest('修订未批准或不属于该站点', { status: 400 }));
     return { contentId: content.id, revisionId: revision.id, title: revision.title, action: 'publish' as const };
   });
-  const pages = mockCmsPages.filter((page) => page.siteId === input.siteId && (input.includeSiteConfiguration || input.pageIds.includes(page.id)));
-  const widgets = mockCmsWidgets.filter((widget) => widget.siteId === input.siteId && (input.includeSiteConfiguration || input.widgetIds.includes(widget.id)));
+  const { pages, widgets, snapshot, items: configurationItems } = captureConfiguration(input.siteId, input);
   if (!input.includeSiteConfiguration && (pages.length !== new Set(input.pageIds).size || widgets.length !== new Set(input.widgetIds).size)) throw new MockHttpError(badRequest('配置对象不属于所选站点', { status: 400 }));
   for (const id of input.withdrawContentIds) {
     const row = getMockCmsWorkingContent(id);
@@ -55,12 +95,11 @@ function create(input: CreateCmsReleaseInput) {
     items.push({ contentId: id, revisionId: null, title: row.title, action: 'withdraw' });
   }
   const release: CmsRelease = { id: nextIdFrom(releases), siteId: input.siteId, name: input.name, source: 'manual', status: 'draft', items,
-    configurationItems: [...(input.includeSiteConfiguration ? [{ kind: 'site' as const, id: input.siteId, title: '整站公开配置与导航' }] : []),
-      ...pages.map((page) => ({ kind: 'page' as const, id: page.id, title: page.name })), ...widgets.map((widget) => ({ kind: 'widget' as const, id: widget.id, title: widget.name }))],
+    configurationItems,
     baseGenerationId: active.get(input.siteId) ?? null, deploymentId: null, activateAt: input.activateAt ?? null, timeZone: input.timeZone,
     autoActivate: input.autoActivate, error: null, createdBy: 1, updatedBy: 1, createdAt: mockDateTime(), updatedAt: mockDateTime() };
   releases.push(release);
-  configurations.set(release.id, structuredClone({ pages, widgets }));
+  configurations.set(release.id, snapshot);
   return release;
 }
 
@@ -133,7 +172,7 @@ export const cmsReleaseHandlers = [
       const row = getMockCmsRevisionContent(revisionId);
       return `<article><h2>${escapeHtml(row.title)}</h2><p>${escapeHtml(row.summary ?? '')}</p><p>${escapeHtml((row.body ?? '').replace(/<[^>]+>/g, ''))}</p></article>`;
     }).join('');
-    const configHtml = configurations.get(release.id)?.pages.map((page) => `<section><h2>${escapeHtml(page.name)}</h2></section>`).join('') ?? '';
+    const configHtml = configurations.get(release.id)?.tables.cms_pages?.map((page) => `<section><h2>${escapeHtml(String(page.name ?? ''))}</h2></section>`).join('') ?? '';
     return ok({ html: `<!doctype html><html><body><h1>${escapeHtml(release.name)}</h1>${configHtml}${contentHtml}</body></html>`, status: 200, path: query.path, generationId: deployment.id });
   }),
   mock(cmsReleaseContract.create, ({ body, ok }) => ok(create(body))),

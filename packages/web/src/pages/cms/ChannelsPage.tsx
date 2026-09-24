@@ -1,3 +1,6 @@
+import { withField } from '@douyinfe/semi-ui';
+import CmsChannelFormField from './CmsChannelFormField';
+import { channelBoundFormCode, channelSettingsWithForm } from './channel-form-binding';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Button, Dropdown, Empty, Form, Spin, Tag, Toast, Row, Col, Select, Tooltip, Tree, Typography } from '@douyinfe/semi-ui';
@@ -57,6 +60,8 @@ function toTreeSelectData(nodes: CmsChannel[], excludeId?: number): TreeNodeData
 }
 
 /** 栏目树拍平为一维数组，用于按 id 反查最新栏目对象 */
+const FormChannelFormField = withField(CmsChannelFormField);
+
 export default function ChannelsPage() {
   const { hasPermission } = usePermission();
   // 拼音词典就绪后重渲染，补上已输入关键字的拼音命中
@@ -201,6 +206,7 @@ export default function ChannelsPage() {
         code: editingRecord.code,
         slug: editingRecord.slug,
         type: editingRecord.type,
+        formCode: channelBoundFormCode(editingRecord),
         modelId: editingRecord.modelId ?? undefined,
         linkUrl: editingRecord.linkUrl ?? '',
         pageSize: editingRecord.pageSize,
@@ -231,7 +237,8 @@ export default function ChannelsPage() {
     // 模板下拉清空后为 undefined，显式置 null 才能在更新时清除覆盖
     values.listTemplate = values.listTemplate ?? null;
     values.detailTemplate = values.detailTemplate ?? null;
-    const payload: Record<string, unknown> = { ...values, pageContent };
+    const { formCode, ...fields } = values;
+    const payload: Record<string, unknown> = { ...fields, pageContent, settings: channelSettingsWithForm(editingRecord?.settings, values.type, formCode) };
     if (!editingRecord) payload.siteId = siteId;
     let saved: CmsChannel;
     try {
@@ -409,7 +416,10 @@ export default function ChannelsPage() {
       allowEmpty
       initValues={formInitValues}
       onValueChange={(values) => {
-        if (values.type !== channelType) setChannelType(values.type as string);
+        if (values.type !== channelType) {
+          setChannelType(values.type as string);
+          if (values.type !== 'page') formApi.current?.setValue('formCode', undefined);
+        }
       }}
       labelPosition="left"
       labelWidth={110}
@@ -509,6 +519,9 @@ export default function ChannelsPage() {
           <FormStatusRadioGroup />
         </Col>
       </Row>
+      {channelType === 'page' ? (
+        <FormChannelFormField field="formCode" label="绑定表单" siteId={siteId} disabled={!hasPermission('cms:form:list')} extraText="可选；表单显示在单页正文下方。切换栏目类型会清除绑定。" />
+      ) : null}
       {channelType === 'page' ? (
         <Form.Slot label="单页内容">
           <Suspense fallback={editorLoadingFallback}>

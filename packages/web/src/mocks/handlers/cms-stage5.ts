@@ -1,4 +1,5 @@
 import { getMockCmsPublishedContent, mergeMockCmsDistribution, setMockCmsDistributionBase } from '@/mocks/utils/cms-revisions';
+import { stageMockCmsConfigurationDraft } from './cms-releases';
 import { badRequest, conflict, locked, notFound } from '@/mocks/utils/handlers';
 import { mock } from '@/mocks/utils/contract';
 import { removeByIds, requireItem } from '@/mocks/utils/crud';
@@ -377,6 +378,7 @@ export const cmsStage5Handlers = [
     site.themeRevision += 1;
     site.templateRefsRevision += 1;
     site.updatedAt = mockDateTime();
+    for (const siteId of descendants(site.id)) stageMockCmsConfigurationDraft(siteId);
     return ok({
       site,
       affectedSiteIds: descendants(site.id),
@@ -391,6 +393,7 @@ export const cmsStage5Handlers = [
     site.themeRevision += 1;
     site.templateRefsRevision += 1;
     site.updatedAt = mockDateTime();
+    for (const siteId of descendants(site.id)) stageMockCmsConfigurationDraft(siteId);
     return ok({
       inheritance: site.inheritance,
       effectiveConfig: effectiveConfig(site),

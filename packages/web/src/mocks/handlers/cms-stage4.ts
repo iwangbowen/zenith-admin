@@ -1,5 +1,5 @@
 import { assertMockCmsCas, freezeMockCmsRevision } from '@/mocks/utils/cms-revisions';
-import { submitMockCmsContentRelease } from './cms-releases';
+import { stageMockCmsConfigurationDraft, submitMockCmsContentRelease } from './cms-releases';
 import { assertMockCmsManualAudit } from '@/mocks/utils/workflow-business';
 import { percentOf } from '@zenith/shared/core';
 import { http, HttpResponse } from 'msw';
@@ -473,6 +473,7 @@ export const cmsStage4Handlers = [
       updatedAt: mockDateTime(),
     };
     mockCmsInteractions.unshift(interaction);
+    stageMockCmsConfigurationDraft(interaction.siteId);
     return ok(interaction, '创建成功');
   }),
   mock(cmsInteractionContract.update, ({ params, body, ok }) => {
@@ -484,6 +485,7 @@ export const cmsStage4Handlers = [
       questions: questions ? normalizeQuestions(interaction.id, questions) : interaction.questions,
       updatedAt: mockDateTime(),
     });
+    stageMockCmsConfigurationDraft(interaction.siteId);
     return ok(interaction, '更新成功');
   }),
   mock(cmsInteractionContract.copy, ({ params, ok }) => {
@@ -516,12 +518,14 @@ export const cmsStage4Handlers = [
     const interaction = requireItem(mockCmsInteractions, params.id, '互动问卷不存在', { status: 404 });
     interaction.status = body.status;
     interaction.updatedAt = mockDateTime();
+    stageMockCmsConfigurationDraft(interaction.siteId);
     return ok(interaction, '状态已更新');
   }),
   mock(cmsInteractionContract.batchStatus, ({ body, ok }) => {
     mockCmsInteractions.forEach((interaction) => {
       if (body.ids.includes(interaction.id)) interaction.status = body.status;
     });
+    for (const siteId of new Set(mockCmsInteractions.filter((row) => body.ids.includes(row.id)).map((row) => row.siteId))) stageMockCmsConfigurationDraft(siteId);
     return ok(createProgressingMockTask({
       taskType: 'cms-interactions-batch-status',
       title: body.status === 'published' ? 'CMS 互动问卷批量发布' : 'CMS 互动问卷批量关闭',
@@ -534,6 +538,7 @@ export const cmsStage4Handlers = [
     for (let responseIndex = mockCmsInteractionResponses.length - 1; responseIndex >= 0; responseIndex -= 1) {
       if (mockCmsInteractionResponses[responseIndex].interactionId === removed.id) mockCmsInteractionResponses.splice(responseIndex, 1);
     }
+    stageMockCmsConfigurationDraft(removed.siteId);
     return ok(null, '删除成功');
   }),
 
@@ -807,6 +812,7 @@ export const cmsStage4Handlers = [
         || !!block.displayCondition?.endAt);
     }
     Object.assign(page, patch, { updatedAt: mockDateTime() });
+    stageMockCmsConfigurationDraft(page.siteId);
     return ok(page, '更新成功');
   }),
 ];
