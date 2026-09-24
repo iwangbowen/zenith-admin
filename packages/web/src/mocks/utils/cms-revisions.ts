@@ -1,6 +1,6 @@
 import type { CmsContent, CmsContentVersion } from '@zenith/shared/cms';
 import { cmsEditorialStatusAfterPublication } from '@zenith/shared/cms';
-import { mockCmsContents, mockCmsContentVersions, mockCmsModels, mockCmsTags, mockCmsChannels } from '../data/cms';
+import { mockCmsContents, mockCmsContentVersions, mockCmsModels, mockCmsTags, mockCmsChannels, mockCmsResources } from '../data/cms';
 import { MockHttpError } from './contract';
 import { conflict, locked, notFound } from './handlers';
 import { mockDateTime } from './date';
@@ -8,6 +8,23 @@ import { mockDateTime } from './date';
 const publicContents = new Map<number, CmsContent>();
 const reviewRevisions = new Map<number, number>();
 const distributionBases = new Map<number, Record<string, unknown>>();
+const resourcePins = new Map<number, Map<number, string>>();
+
+function resolveSelectedResources(content: CmsContent, refreshIds: readonly number[] = []) {
+  const pins = resourcePins.get(content.id) ?? new Map<number, string>();
+  for (const id of refreshIds) pins.delete(id);
+  const resolved = JSON.parse(JSON.stringify(content), (_key, value: unknown) => typeof value === 'string'
+    ? value.replace(/cms-res:\/\/([1-9]\d*)(?![\dA-Za-z_-])/g, (_match, rawId: string) => {
+      const id = Number(rawId);
+      const resource = mockCmsResources.find((item) => item.id === id && item.siteId === content.siteId);
+      if (!resource) throw new MockHttpError(notFound('素材不存在或不属于本站', { status: 404 }));
+      const url = pins.get(id) ?? resource.url;
+      pins.set(id, url);
+      return url;
+    }) : value) as CmsContent;
+  resourcePins.set(content.id, pins);
+  Object.assign(content, resolved);
+}
 const distributionPending = new Map<number, { sourceVersion: number; incoming: Record<string, unknown>; conflicts: { field: string; base: unknown; target: unknown; incoming: unknown }[] }>();
 let initialized = false;
 function initialize() {
@@ -49,6 +66,7 @@ export function assertMockCmsCas(id: number, expectedVersion: number): CmsConten
 }
 export function freezeMockCmsRevision(contentId: number, kind = 'checkpoint'): CmsContentVersion {
   const content = getMockCmsWorkingContent(contentId);
+  resolveSelectedResources(content);
   const revision: CmsContentVersion = {
     id: Math.max(0, ...mockCmsContentVersions.map((item) => item.id)) + 1,
     contentId, version: content.version, sourceVersion: content.version, title: content.title,
@@ -95,8 +113,9 @@ export function withdrawMockCmsContent(contentId: number) { const content = getM
 export function saveMockCmsWorkingContent(contentId: number, values: Record<string, unknown>, expectedVersion: number, mode = 'manual'): CmsContent {
   const content = assertMockCmsCas(contentId, expectedVersion);
   if (content.lockedAt) throw new MockHttpError(locked('内容已被持久锁定', { status: 423 }));
-  const { expectedVersion: _version, saveMode: _mode, status: _status, editorialStatus: _editorialStatus, ...patch } = values;
+  const { expectedVersion: _version, saveMode: _mode, status: _status, editorialStatus: _editorialStatus, refreshResourceIds, ...patch } = values;
   Object.assign(content, structuredClone(patch), { version: content.version + 1, editorialStatus: 'draft', hasUnpublishedChanges: true, updatedAt: mockDateTime() });
+  resolveSelectedResources(content, Array.isArray(refreshResourceIds) ? refreshResourceIds.filter((id): id is number => typeof id === 'number') : []);
   if (mode === 'manual') freezeMockCmsRevision(contentId);
   return content;
 }
@@ -152,4 +171,4 @@ export function resolveMockCmsDistribution(contentId: number, expectedVersion: n
   return { version: target.version };
 }
 
-export function resetMockCmsRevisions() { publicContents.clear(); reviewRevisions.clear(); distributionBases.clear(); distributionPending.clear(); initialized = false; }
+export function resetMockCmsRevisions() { publicContents.clear(); reviewRevisions.clear(); distributionBases.clear(); distributionPending.clear(); resourcePins.clear(); initialized = false; }

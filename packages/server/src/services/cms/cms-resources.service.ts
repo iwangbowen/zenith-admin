@@ -6,6 +6,8 @@ import { HTTPException } from 'hono/http-exception';
 import { cmsResourceContract, cmsResourceSchema } from '@zenith/shared/cms';
 import { db } from '../../db';
 import { cmsResources, cmsResourceFolders, cmsResourceRefs } from '../../db/schema';
+import { cmsAssetVersions } from '../../db/schema/cms-design';
+import { parseCmsResourceUri } from '../../lib/cms-resource-uri';
 import type { CmsResourceRow } from '../../db/schema';
 import { buildWhere, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { uploadManagedFile, deleteManagedFile, readFileContent } from '../files/files.service';
@@ -72,6 +74,32 @@ export async function listCmsResources(q: QueryOutputOf<typeof cmsResourceContra
       return rows.map((row) => mapCmsResource(row.resource, row.folderName, refCounts.get(row.resource.id) ?? 0));
     },
   });
+}
+
+/** Exact, site-scoped selection lookup; never fetch external URLs or scan a paginated list. */
+export async function getCmsResourceSelection(q: QueryOutputOf<typeof cmsResourceContract.selection>) {
+  await ensureCmsSiteExists(q.siteId);
+  await assertSiteAccess(q.siteId);
+  const resourceId = parseCmsResourceUri(q.value);
+  if (q.value.startsWith('cms-res://') && resourceId === null) return null;
+  const [current] = await db.select().from(cmsResources).where(buildWhere(
+    eq(cmsResources.siteId, q.siteId),
+    resourceId === null ? eq(cmsResources.url, q.value) : eq(cmsResources.id, resourceId),
+    q.type ? eq(cmsResources.type, q.type) : undefined,
+  )).limit(1);
+  if (current) return mapCmsResource(current);
+  if (resourceId !== null) return null;
+  // A saved revision can point to a retained binary version after the resource was replaced.
+  const [retained] = await db.select({ resource: cmsResources, version: cmsAssetVersions }).from(cmsAssetVersions)
+    .innerJoin(cmsResources, eq(cmsResources.id, cmsAssetVersions.resourceId))
+    .where(buildWhere(eq(cmsAssetVersions.siteId, q.siteId), eq(cmsResources.siteId, q.siteId), eq(cmsAssetVersions.url, q.value)))
+    .orderBy(desc(cmsAssetVersions.version)).limit(1);
+  if (!retained) return null;
+  const type = retained.version.mimeType ? detectResourceType(retained.version.mimeType) : retained.resource.type;
+  if (q.type && type !== q.type) return null;
+  return mapCmsResource({ ...retained.resource, type, url: retained.version.url, thumbUrl: retained.version.thumbUrl,
+    fileId: retained.version.fileId, size: retained.version.size, width: retained.version.width, height: retained.version.height,
+    mimeType: retained.version.mimeType });
 }
 
 /** 素材上传：图片走站点图片管线（压缩/水印/缩略图），其他类型原样入库 */

@@ -340,6 +340,8 @@ export const createCmsContentSchema = z.object({
 });
 
 export const updateCmsContentSchema = partialForUpdate(createCmsContentSchema).omit({ siteId: true, contentType: true }).extend({
+  /** Only an explicit asset re-selection adopts its latest binary version. */
+  refreshResourceIds: z.array(z.number().int().positive()).max(200).optional(),
   saveMode: z.enum(['manual', 'autosave']).optional(),
   /** 工作稿 CAS 必填；省略或陈旧版本均拒绝写入。 */
   expectedVersion: z.number().int().positive(),

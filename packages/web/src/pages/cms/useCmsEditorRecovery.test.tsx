@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
+import { MemoryRouter, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCmsEditorRecovery } from './useCmsEditorRecovery';
@@ -71,5 +71,28 @@ describe('CMS 编辑恢复', () => {
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(hook.result.current.location.search).toBe('?tab=workflow');
     hook.unmount();
+  });
+
+  it('moves edits made during the initial POST to the created id without a restore prompt or orphaned new draft', () => {
+    const dirty = { current: true };
+    const createdKey = 'cms-editor-recovery:71:3:19';
+    const inFlightDraft = { ...draft, values: { title: '首次保存期间继续输入', mediaUrl: 'cms-res://41' }, version: 1, refreshResourceIds: [41] };
+    const hook = renderHook(() => {
+      const [params] = useSearchParams();
+      const id = params.get('id');
+      return { recovery: useCmsEditorRecovery({ key: `3:${id ?? 'new-article'}`, dirty, getDraft: () => inFlightDraft }), navigate: useNavigate() };
+    }, { wrapper });
+    act(() => hook.result.current.recovery.persist());
+    act(() => {
+      expect(hook.result.current.recovery.promote('3:19')).toBe(true);
+      hook.result.current.recovery.navigateSaved(() => hook.result.current.navigate('/cms/contents/edit?id=19', { replace: true }));
+    });
+    expect(localStorage.getItem(key)).toBeNull();
+    expect(JSON.parse(localStorage.getItem(createdKey)!)).toMatchObject(inFlightDraft);
+    expect(hook.result.current.recovery.pending).toBeNull();
+    expect(confirm).not.toHaveBeenCalled();
+    hook.unmount();
+    expect(localStorage.getItem(key)).toBeNull();
+    localStorage.removeItem(createdKey);
   });
 });

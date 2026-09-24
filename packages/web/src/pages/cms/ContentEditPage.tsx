@@ -7,11 +7,9 @@ import EntityRelationButton from '@/components/entity-relations/EntityRelationBu
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { ArrowLeft, Save, Send, History, ImageUp, Eye, GitCompare, Images, Paperclip, SpellCheck, ScrollText, Workflow } from 'lucide-react';
 import { useDebouncedCallback } from '@tanstack/react-pacer';
-import { MediaPickerModal } from '@/components/MediaPickerModal';
 import { formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
-import { useUploadFile } from '@/hooks/queries/files';
 import { config as appConfig } from '@/config';
 import { confirmDanger } from '@/utils/confirm';
 import {
@@ -23,8 +21,8 @@ import {
   useCmsContentWorkflowPreview, useCmsContentWorkflowContext,
 } from '@/hooks/queries/cms';
 import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
-import { CMS_CONTENT_STATUS_LABELS, CMS_CONTENT_TYPE_LABELS, CMS_CONTENT_TYPES, CMS_TITLE_STYLE_COLORS } from '@zenith/shared/cms';
-import type { CmsContent, CmsPreviewLink, CmsModelField, CmsEditLock, CmsTextCheckResult, CmsContentType, CmsAlbumImage, CmsContentAttachment } from '@zenith/shared/cms';
+import { CMS_CONTENT_STATUS_LABELS, CMS_CONTENT_TYPE_LABELS, CMS_CONTENT_TYPES, CMS_TITLE_STYLE_COLORS, CMS_RESOURCE_URI_PREFIX } from '@zenith/shared/cms';
+import type { CmsContent, CmsPreviewLink, CmsModelField, CmsEditLock, CmsTextCheckResult, CmsContentType, CmsAlbumImage, CmsContentAttachment, CmsResource } from '@zenith/shared/cms';
 import { useCmsLinkPicker } from './CmsLinkInput';
 import { formatBytes } from '@zenith/shared/core';
 import { channelsToSelectTree } from './channel-tree';
@@ -35,6 +33,10 @@ import CmsContentReferenceInput from './CmsContentReferenceInput';
 import { useCmsEditorRecovery } from './useCmsEditorRecovery';
 import { useCmsEditorBaseline } from './useCmsEditorBaseline';
 import CmsModelMediaField from './CmsModelMediaField';
+import { CmsAssetField } from './components/CmsAssetField';
+import { CmsResourcePicker } from './components/CmsResourcePicker';
+import CmsContentMediaFields from './components/CmsContentMediaFields';
+import { adoptCmsSavedResourceValues, createCmsResourceSelections } from './cms-resource-selections';
 import { CMS_EDITORIAL_STATUS_LABELS, CMS_EDITORIAL_STATUS_COLORS } from './cms-content-view-state';
 import CmsEditorialPanel from './CmsEditorialPanel';
 import { useAllUsers } from '@/hooks/queries/users';
@@ -47,6 +49,7 @@ import './ContentEditPage.css';
 // 且「链接」类型内容不渲染正文编辑器；改为懒加载后表单先出，编辑器再补。
 const RichTextEditor = lazy(() => import('@/components/RichTextEditor'));
 const FormContentReference = withField(CmsContentReferenceInput);
+const FormCmsAsset = withField(CmsAssetField);
 const BusinessWorkflowPanel = lazy(() => import('@/components/workflow/BusinessWorkflowPanel'));
 const editorLoadingFallback = (
   <div
@@ -94,7 +97,7 @@ function parseFieldDefault(field: CmsModelField): unknown {
 }
 
 /** 按模型字段元数据渲染动态表单控件（值写入 extend.{name}）；applyDefault 仅新建内容时生效 */
-function ModelFieldControl({ field, applyDefault, canUpload, siteId }: Readonly<{ field: CmsModelField; applyDefault?: boolean; canUpload: boolean; siteId?: number }>) {
+function ModelFieldControl({ field, applyDefault, canUpload, siteId, onResourceChange }: Readonly<{ field: CmsModelField; applyDefault?: boolean; canUpload: boolean; siteId?: number; onResourceChange?: (resource: CmsResource | null) => void }>) {
   const f = `extend.${field.name}`;
   // 必填不挂表单 rules：草稿保存必须放行缺失的模型必填（写一半先存是常态），
   // 提审/发布时由服务端按模型定义强校验并给出逐字段错误提示
@@ -111,7 +114,7 @@ function ModelFieldControl({ field, applyDefault, canUpload, siteId }: Readonly<
       common={common}
       siteId={siteId}
       richtext={{ rows: 5, placeholder: field.placeholder ?? '支持 HTML' }}
-      media={<CmsModelMediaField field={field} canUpload={canUpload} />}
+      media={<CmsModelMediaField field={field} canUpload={canUpload} siteId={siteId} onResourceChange={onResourceChange} />}
     />
   );
 }
@@ -144,7 +147,7 @@ export default function ContentEditPage() {
   const { hasPermission } = usePermission();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  // useEditModal 例外：整页内容编辑器（路由页）；表单 key 含详情 id 与 formEpoch，详情到达即重挂载
+  // useEditModal 例外：整页内容编辑器；仅采用服务端基线时更新 formEpoch，首次创建切换 id 不重挂表单
   const formApi = useRef<FormApi | null>(null);
   const uploadCmsImage = useUploadCmsImage();
 
@@ -157,8 +160,11 @@ export default function ContentEditPage() {
     ? (contentTypeParam as CmsContentType)
     : 'article';
 
+  const [formRecord, setFormRecord] = useState<CmsContent>();
   const detailQuery = useCmsContentWorkflowRecord(id);
-  const detail = detailQuery.data;
+  // The first POST response is already the complete record. Keep it available
+  // while the new id route fetches, so media shape and editability never fall back.
+  const detail = detailQuery.data ?? (formRecord?.id === id ? formRecord : undefined);
   const siteId = detail?.siteId ?? siteIdParam;
 
   const treeQuery = useCmsChannelTree(siteId);
@@ -169,7 +175,6 @@ export default function ContentEditPage() {
   const previewMutation = useCmsPreviewLink();
   const revokePreviewMutation = useRevokeCmsPreviewLink();
   const [lastPreview, setLastPreview] = useState<CmsPreviewLink | null>(null);
-  const uploadMediaMutation = useUploadFile();
   const uploadResourceMutation = useUploadCmsResource();
   const canUploadResources = hasPermission('cms:resource:upload');
 
@@ -217,7 +222,7 @@ export default function ContentEditPage() {
   }, [id]);
   // 链接字段的镜像值：仅用于回显解析出的内部链接目标名（真值仍在 Form 里）
   const [externalLink, setExternalLink] = useState('');
-  const contentType: CmsContentType = detail?.contentType ?? newContentType;
+  const contentType: CmsContentType = detail?.contentType ?? formRecord?.contentType ?? newContentType;
   // 图集图片（受控管理，保存时并入 mediaData.images）
   const [albumImages, setAlbumImages] = useState<CmsAlbumImage[]>([]);
   // 正文附件（受控管理，保存时随 payload.attachments 提交）
@@ -231,7 +236,6 @@ export default function ContentEditPage() {
   const viewedVersionQuery = useCmsContentVersion(id, viewVersionId);
   const [diffVersionId, setDiffVersionId] = useState<number | undefined>(undefined);
   const diffQuery = useCmsVersionDiff(id, diffVersionId);
-  const [coverPickerVisible, setCoverPickerVisible] = useState(false);
   // 右侧属性面板当前标签页（受控：校验失败时自动切到出错分组）
   const [sideTab, setSideTab] = useState('basic');
   const [opLogsVisible, setOpLogsVisible] = useState(false);
@@ -261,6 +265,7 @@ export default function ContentEditPage() {
   const [autoSavedAt, setAutoSavedAt] = useState<string | null>(null);
   const dirtyRef = useRef(false);
   const editSequenceRef = useRef(0);
+  const applyingSavedResources = useRef(false);
   const editorTouchedRef = useRef(false);
   const versionRef = useRef<number | undefined>(undefined);
   const savingRef = useRef<Promise<number | null> | null>(null);
@@ -269,17 +274,22 @@ export default function ContentEditPage() {
   const [saveError, setSaveError] = useState('');
   const [conflictVisible, setConflictVisible] = useState(false);
   const baseDraftRef = useRef<Record<string, unknown>>({});
+  const [resourceSelections] = useState(createCmsResourceSelections);
   const recovery = useCmsEditorRecovery({
     key: `${siteId ?? 0}:${id ?? `new-${contentType}-${channelIdParam ?? 0}`}`,
     dirty: dirtyRef,
-    getDraft: () => ({ values: formApi.current?.getValues() ?? {}, body, albumImages, attachments, version: versionRef.current }),
+    getDraft: () => ({ values: formApi.current?.getValues() ?? {}, body, albumImages, attachments, version: versionRef.current, refreshResourceIds: resourceSelections.ids() }),
   });
   function markDirty() {
-    if (!editorTouchedRef.current) return;
+    if (!editorTouchedRef.current || applyingSavedResources.current) return;
     dirtyRef.current = true;
     editSequenceRef.current += 1;
     setSaveState((state) => state === 'conflict' ? state : 'dirty');
     recovery.checkpoint();
+  }
+  function selectResource(resource: CmsResource | null) {
+    if (resource) resourceSelections.select(resource.id);
+    markDirty();
   }
   function restoreLocalDraft() {
     const draft = recovery.pending;
@@ -289,12 +299,12 @@ export default function ContentEditPage() {
     setAlbumImages(draft.albumImages ?? []);
     setAttachments(draft.attachments ?? []);
     if (draft.version !== undefined) versionRef.current = draft.version;
+    resourceSelections.reset(draft.refreshResourceIds ?? []);
     recovery.dismiss();
     editorTouchedRef.current = true;
     markDirty();
   }
   const displayedRecordId = useRef<number | undefined>(undefined);
-  const [formRecord, setFormRecord] = useState<CmsContent>();
   const [formEpoch, setFormEpoch] = useState(0);
   const baseline = useCmsEditorBaseline({
     record: detail, dirty: dirtyRef, saving: savingRef, saveState,
@@ -309,6 +319,7 @@ export default function ContentEditPage() {
       versionRef.current = record.version;
       baseDraftRef.current = { ...record };
       dirtyRef.current = false;
+      resourceSelections.reset();
       editorTouchedRef.current = false;
       setFormRecord(record);
       setFormEpoch((value) => value + 1);
@@ -501,6 +512,10 @@ export default function ContentEditPage() {
     delete payload.mediaDuration;
     if (!recordId) payload.siteId = siteId;
     if (recordId) payload.expectedVersion = versionRef.current;
+    const submittedValues = structuredClone(values);
+    const submittedAlbumImages = structuredClone(albumImages);
+    const selectedResources = resourceSelections.capture(payload);
+    if (recordId && selectedResources.size) payload.refreshResourceIds = [...selectedResources.keys()];
     const wasDirty = dirtyRef.current;
     const savingSequence = editSequenceRef.current;
     setSaveState('saving');
@@ -510,14 +525,28 @@ export default function ContentEditPage() {
       createdIdRef.current = saved.id;
       versionRef.current = saved.version;
       baseDraftRef.current = { ...saved };
+      resourceSelections.acknowledge(selectedResources);
+      const pendingResourceIds = new Set(resourceSelections.ids());
+      const currentValues = formApi.current?.getValues() ?? {};
+      const adoptedValues = adoptCmsSavedResourceValues(currentValues, submittedValues, {
+        ...saved, mediaUrl: saved.mediaData.mediaUrl, mediaPoster: saved.mediaData.poster,
+      }, pendingResourceIds);
+      if (adoptedValues !== currentValues) {
+        applyingSavedResources.current = true;
+        try { formApi.current?.setValues(adoptedValues); } finally { applyingSavedResources.current = false; }
+      }
+      setAlbumImages((current) => adoptCmsSavedResourceValues(current, submittedAlbumImages, saved.mediaData.images ?? [], pendingResourceIds));
       dirtyRef.current = editSequenceRef.current !== savingSequence;
       // 自己的保存已由当前输入组成，不重挂编辑器，避免自动保存打断光标。
       setFormRecord(saved);
-      baseline.acknowledge(saved, !recordId && !dirtyRef.current);
+      baseline.acknowledge(saved, false);
       setSaveState(dirtyRef.current ? 'dirty' : 'saved');
       setAutoSavedAt(new Date().toTimeString().slice(0, 8));
       if (!dirtyRef.current) recovery.clear();
-      if (!id) recovery.navigateSaved(() => navigate(`/cms/contents/edit?id=${saved.id}&siteId=${siteId}`, { replace: true }));
+      if (!id) {
+        recovery.promote(`${siteId}:${saved.id}`);
+        recovery.navigateSaved(() => navigate(`/cms/contents/edit?id=${saved.id}&siteId=${siteId}`, { replace: true }));
+      }
       return saved.id;
     } catch (err) {
       dirtyRef.current = dirtyRef.current || wasDirty;
@@ -738,7 +767,7 @@ export default function ContentEditPage() {
       <TabPane tab="内容" itemKey="content">
       <Spin spinning={loading} wrapperClassName="cms-content-edit__spin">
         <Form
-          key={`${detail?.id ?? 'new'}-${formEpoch}`}
+          key={formEpoch}
           getFormApi={(api) => { formApi.current = api; }}
           allowEmpty
           disabled={isReadOnly || saveMutation.isPending}
@@ -817,55 +846,12 @@ export default function ContentEditPage() {
                       >
                         <Button icon={<ImageUp size={14} />}>上传图片</Button>
                       </Upload>
-                      <Button icon={<Images size={14} />} disabled={isReadOnly || !canUploadResources} onClick={() => setAlbumPickerVisible(true)}>媒体库添加</Button>
+                      <Button icon={<Images size={14} />} disabled={isReadOnly || !hasPermission('cms:resource:list')} onClick={() => setAlbumPickerVisible(true)}>媒体库添加</Button>
                     </div>
                   </div>
                 </Form.Slot>
               ) : null}
-              {contentType === 'media' ? (
-                <Form.Section text="音视频">
-                  <Row gutter={12}>
-                    <Col span={12}>
-                      <Form.RadioGroup field="mediaType" label="媒体类型">
-                        <Form.Radio value="video">视频</Form.Radio>
-                        <Form.Radio value="audio">音频</Form.Radio>
-                      </Form.RadioGroup>
-                    </Col>
-                    <Col span={12}><Form.Input field="mediaDuration" label="时长" placeholder="如 03:45（可选）" /></Col>
-                    <Col span={24}>
-                      <Form.Input
-                        field="mediaUrl"
-                        label="媒体地址"
-                        placeholder="https://...（发布前必填）"
-                        suffix={(
-                          <Upload
-                            action=""
-                            accept="video/*,audio/*"
-                            limit={1}
-                            showUploadList={false}
-                            disabled={isReadOnly || !canUploadResources}
-                            customRequest={async ({ fileInstance, onSuccess, onError }) => {
-                              try {
-                                const uploaded = await uploadMediaMutation.mutateAsync({ formData: (() => { const fd = new FormData(); fd.append('file', fileInstance); return fd; })() });
-                                // 多文件上传接口返回数组；此处每次只传一个文件
-                                formApi.current?.setValue('mediaUrl', uploaded[0]?.url ?? '');
-                                markDirty();
-                                Toast.success('上传成功');
-                                onSuccess?.({});
-                              } catch {
-                                onError?.({ status: 0 });
-                              }
-                            }}
-                          >
-                            <Button size="small" theme="borderless" icon={<ImageUp size={14} />} loading={uploadMediaMutation.isPending} disabled={isReadOnly || !canUploadResources}>上传</Button>
-                          </Upload>
-                        )}
-                      />
-                    </Col>
-                    <Col span={24}><Form.Input field="mediaPoster" label="封面海报 URL" placeholder="视频封面（可选，留空用封面图）" /></Col>
-                  </Row>
-                </Form.Section>
-              ) : null}
+              {contentType === 'media' ? <CmsContentMediaFields siteId={siteId} disabled={isReadOnly} allowUpload={canUploadResources} onResourceChange={selectResource} /> : null}
               {contentType !== 'link' ? (
                 <Form.Slot noLabel>
                   <Suspense fallback={editorLoadingFallback}>
@@ -945,7 +931,7 @@ export default function ContentEditPage() {
                   <Row gutter={16}>
                     {modelFields.map((f) => (
                       <Col key={f.name} span={f.fieldType === 'textarea' || f.fieldType === 'richtext' ? 24 : 12}>
-                        <ModelFieldControl field={f} applyDefault={!detail} canUpload={canUploadResources} siteId={siteId} />
+                        <ModelFieldControl field={f} applyDefault={!detail} canUpload={canUploadResources} siteId={siteId} onResourceChange={selectResource} />
                       </Col>
                     ))}
                   </Row>
@@ -1010,40 +996,7 @@ export default function ContentEditPage() {
                     style={{ width: '100%' }}
                     optionList={(tags ?? []).map((t) => ({ value: t.id, label: t.name }))}
                   />
-                  <Form.Input
-                    field="coverImage"
-                    label="封面图 URL"
-                    size="small"
-                    placeholder="https://... 或从媒体库选择"
-                    suffix={(
-                      <Space spacing={2}>
-                        <Button size="small" theme="borderless" icon={<Images size={14} />} disabled={isReadOnly || !canUploadResources} onClick={() => setCoverPickerVisible(true)}>媒体库</Button>
-                        <Upload
-                          action=""
-                          accept="image/*"
-                          limit={1}
-                          showUploadList={false}
-                          disabled={isReadOnly || !canUploadResources}
-                          customRequest={async ({ fileInstance, onSuccess, onError }) => {
-                            if (!siteId) { onError?.({ status: 0 }); return; }
-                            try {
-                              const formData = new FormData();
-                              formData.append('file', fileInstance);
-                              const res = await uploadCmsImage.mutateAsync({ siteId, formData });
-                              formApi.current?.setValue('coverImage', res.url);
-                              markDirty();
-                              Toast.success(res.watermarked ? '上传成功（已加水印）' : '上传成功');
-                              onSuccess?.({});
-                            } catch {
-                              onError?.({ status: 0 });
-                            }
-                          }}
-                        >
-                          <Button size="small" theme="borderless" icon={<ImageUp size={14} />} disabled={isReadOnly || !canUploadResources}>上传</Button>
-                        </Upload>
-                      </Space>
-                    )}
-                  />
+                  <FormCmsAsset field="coverImage" label="内容封面" siteId={siteId} type="image" disabled={isReadOnly} allowUpload={canUploadResources} onResourceChange={selectResource} />
                   <Row gutter={12}>
                     <Col span={6}><Form.Switch field="isTop" label="置顶" size="small" /></Col>
                     <Col span={6}><Form.Switch field="isOriginal" label="原创" size="small" /></Col>
@@ -1179,25 +1132,17 @@ export default function ContentEditPage() {
       {/* 内部链接选择弹窗 */}
       {linkPicker.modals}
 
-      {/* 封面图媒体库选择 */}
-      <MediaPickerModal
-        visible={coverPickerVisible}
-        onCancel={() => setCoverPickerVisible(false)}
-        onSelect={(file) => {
-          formApi.current?.setValue('coverImage', file.url);
-          markDirty();
-          setCoverPickerVisible(false);
-        }}
-      />
-
       {/* 图集媒体库添加 */}
-      <MediaPickerModal
+      <CmsResourcePicker
+        siteId={siteId}
         visible={albumPickerVisible}
-        imageOnly
+        type="image"
+        disabled={isReadOnly}
+        allowUpload={canUploadResources}
         onCancel={() => setAlbumPickerVisible(false)}
         onSelect={(file) => {
-          setAlbumImages((list) => [...list, { url: file.url ?? '', thumb: null, caption: null }]);
-          markDirty();
+          setAlbumImages((list) => [...list, { url: `${CMS_RESOURCE_URI_PREFIX}${file.id}`, thumb: file.thumbUrl ?? file.url, caption: null }]);
+          selectResource(file);
           setAlbumPickerVisible(false);
         }}
       />

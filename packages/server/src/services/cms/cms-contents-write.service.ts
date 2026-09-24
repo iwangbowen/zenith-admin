@@ -12,7 +12,7 @@ import { assertCmsModelUsableBySite } from './cms-models.service';
 import { assertChannelAccess, assertChannelsAccess } from './cms-channels.service';
 import { logContentOp } from './cms-content-op-logs.service';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
-import { currentUserOrNull } from '../../lib/context';
+import { currentUserOrNull, hasPermission } from '../../lib/context';
 import { isWorkflowAuditEnabled, startCmsContentWorkflow, assertNoActiveContentWorkflow } from './cms-workflow.service';
 import { enqueueCmsWebhookEvents, insertCmsContentWebhookOutbox } from './cms-webhook.service';
 import { assertContentTemplateBySite } from './cms-template-refs.service';
@@ -40,6 +40,7 @@ import { sanitizeCmsHtml } from './cms-html-sanitizer';
 import { requireCmsContentAccess, requireCmsContentsAccess } from './cms-content-access.service';
 import { approveCmsRevision, assertCmsContentVersion, bindCmsReviewRevision, buildCmsRevisionSnapshot, cmsRevisionToContentRow, freezeCmsContentRevision, initializeCmsContentWorkingCopy, loadCmsRevision, requireCmsWorkingCopy } from './cms-content-revisions.service';
 import { normalizeCmsContentDocument, renderCmsContentDocument } from './cms-document.service';
+import { refreshCmsContentResourcePins } from './cms-content-resource-selection';
 
 // ─── 写入辅助 ─────────────────────────────────────────────────────────────────
 
@@ -229,7 +230,8 @@ export async function updateCmsContent(id: number, input: UpdateCmsContentInput,
   assertCmsContentUnlocked(identity);
   if (identity.deletedAt || identity.archivedAt) throw new HTTPException(409, { message: '回收站或已归档内容不可编辑' });
   const site = await ensureCmsSiteExists(identity.siteId);
-  const { expectedVersion, saveMode = 'manual', ...patch } = data;
+  const { expectedVersion, saveMode = 'manual', refreshResourceIds = [], ...patch } = data;
+  if (refreshResourceIds.length && !await hasPermission('cms:resource:list')) throw new HTTPException(403, { message: '重新选择素材需要本站素材查看权限' });
   if (patch.ownerId) await requireTenantUser(patch.ownerId, '内容负责人不存在或已停用', { enabledOnly: true });
   if (patch.translationOfId) {
     const source = await requireCmsContentAccess(patch.translationOfId);
@@ -266,7 +268,8 @@ export async function updateCmsContent(id: number, input: UpdateCmsContentInput,
     const working = await requireCmsWorkingCopy(tx, id, true);
     assertCmsContentVersion(working, expectedVersion);
     const canonical = await canonicalizeCmsResourceFields(tx, identity.siteId, policied, 'content');
-    const snapshot = buildCmsRevisionSnapshot({ ...working.snapshot, ...canonical, modelId: working.snapshot.modelId, ...(canonical.body !== undefined ? { bodyDocument: normalizeCmsContentDocument(canonical.body ?? '', patch.bodyDocument ?? working.snapshot.bodyDocument ?? undefined) } : {}) });
+    const assetVersions = await refreshCmsContentResourcePins(tx, identity.siteId, working.snapshot.assetVersions, patch, refreshResourceIds);
+    const snapshot = buildCmsRevisionSnapshot({ ...working.snapshot, ...canonical, assetVersions, modelId: working.snapshot.modelId, ...(canonical.body !== undefined ? { bodyDocument: normalizeCmsContentDocument(canonical.body ?? '', patch.bodyDocument ?? working.snapshot.bodyDocument ?? undefined) } : {}) });
     await assertContentStaticPathFree(tx, identity.siteId, snapshot.staticPath);
     if (snapshot.tagIds.length) {
       const tags = await tx.select({ id: cmsTags.id }).from(cmsTags).where(and(eq(cmsTags.siteId, identity.siteId), inArray(cmsTags.id, snapshot.tagIds)));

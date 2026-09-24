@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { mockCmsModels } from '@/mocks/data/cms';
 import CmsModelMediaField from './CmsModelMediaField';
 
-vi.mock('@/components/MediaPickerModal', () => ({ MediaPickerModal: () => null }));
+vi.mock('./components/CmsAssetField', () => ({ CmsAssetField: ({ value, onChange }: { value?: string; onChange?: (value: string) => void }) => <input value={value ?? ''} onChange={(event) => onChange?.(event.target.value)} /> }));
 
 describe('CMS 模型媒体字段的草稿校验', () => {
   it.each(['image', 'file'] as const)('allows manually saving a draft with an unfinished required %s field', async (fieldType) => {

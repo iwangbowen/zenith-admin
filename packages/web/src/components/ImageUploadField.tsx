@@ -23,6 +23,11 @@ interface ImageUploadFieldProps {
   /** 预览图尺寸；默认按内容自适应且限制最大边长 */
   readonly previewStyle?: React.CSSProperties;
   readonly accept?: string;
+  /** 领域上传或本地待提交文件：返回值原样交给 onChange，预览 URL 由调用方解析。 */
+  readonly customUpload?: (file: File) => Promise<string>;
+  readonly disabled?: boolean;
+  /** 本地预备文件可关闭“已上传”提示，避免尚未持久化时误导用户。 */
+  readonly uploadSuccessMessage?: string | false;
 }
 
 const DEFAULT_PREVIEW_STYLE: React.CSSProperties = { maxWidth: 240, maxHeight: 180 };
@@ -33,7 +38,14 @@ export function ImageUploadField({
   label = '图片',
   previewStyle = DEFAULT_PREVIEW_STYLE,
   accept = 'image/*',
+  customUpload,
+  disabled = false,
+  uploadSuccessMessage,
 }: ImageUploadFieldProps) {
+  const uploaded = (url: string) => {
+    onChange(url);
+    if (uploadSuccessMessage !== false) Toast.success(uploadSuccessMessage ?? `${label}已上传`);
+  };
   return (
     <Space align="start">
       {value
@@ -55,6 +67,7 @@ export function ImageUploadField({
               size="small"
               icon={<Trash2 size={14} />}
               aria-label={`删除${label}`}
+              disabled={disabled}
               style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(255,255,255,0.8)' }}
               onClick={() => onChange('')}
             />
@@ -68,17 +81,28 @@ export function ImageUploadField({
             accept={accept}
             limit={1}
             showUploadList={false}
+            disabled={disabled}
+            customRequest={customUpload ? async ({ fileInstance, onSuccess, onError }) => {
+              try {
+                const url = await customUpload(fileInstance);
+                uploaded(url);
+                onSuccess?.({ code: 0, data: { url } });
+              } catch (error) {
+                Toast.error(error instanceof Error ? error.message : `${label}上传失败`);
+                onError?.({ status: 0 });
+              }
+            } : undefined}
             onSuccess={(res) => {
+              if (customUpload) return;
               const url = extractUploadUrl(res);
               if (url) {
-                onChange(url);
-                Toast.success(`${label}已上传`);
+                uploaded(url);
               } else {
                 Toast.error(`${label}上传失败`);
               }
             }}
           >
-            <Button icon={<ImagePlus size={14} />}>上传{label}</Button>
+            <Button disabled={disabled} icon={<ImagePlus size={14} />}>上传{label}</Button>
           </Upload>
         )}
     </Space>

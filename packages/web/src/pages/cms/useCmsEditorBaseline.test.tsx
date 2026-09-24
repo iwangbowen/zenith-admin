@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { useRef, useState } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { useCmsEditorBaseline } from './useCmsEditorBaseline';
 
 interface Draft { id: number; version: number; title: string; body: string; ownerId: number }
@@ -63,5 +63,19 @@ describe('CMS 显示稿与保存版本一致性', () => {
     expect(hook.result.current.form.title).toBe('保存期间继续输入');
     expect(hook.result.current.state).toBe('dirty');
     expect(hook.result.current.conflicts).toBe(0);
+  });
+
+  it('does not adopt an initial POST response over newer inputs when the new id detail query arrives', () => {
+    const dirty = { current: true };
+    const saving = { current: null as unknown };
+    const adopt = vi.fn();
+    const conflict = vi.fn();
+    const hook = renderHook(({ record }: { record?: Draft }) => useCmsEditorBaseline({ record, dirty, saving, saveState: 'dirty', onAdopt: adopt, onConflict: conflict }), { initialProps: { record: undefined } });
+    const created = { ...initial, id: 19, version: 1, title: 'POST 发出时的标题' };
+    act(() => hook.result.current.acknowledge(created, false));
+    hook.rerender({ record: created });
+    expect(adopt).not.toHaveBeenCalled();
+    expect(conflict).not.toHaveBeenCalled();
+    expect(dirty.current).toBe(true);
   });
 });

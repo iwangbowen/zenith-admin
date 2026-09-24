@@ -1,7 +1,7 @@
 // eslint-disable-next-line no-restricted-imports -- H5 保留：手写 useQuery / useMutation 的理由见本文件对应 hook 的注释；queryKey 仍由 contractKey 生成
 import { keepPreviousData, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { BodyOf, OutputOf, QueryOf } from '@zenith/shared/core';
-import { cmsResourceContract } from '@zenith/shared/cms';
+import { CMS_RESOURCE_URI_PREFIX, cmsResourceContract, type CmsResource } from '@zenith/shared/cms';
 import { useSaveMutation, contractKey, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { unwrap } from '@/lib/query';
 import { request } from '@/utils/request';
@@ -29,6 +29,8 @@ export function useSaveCmsAssetRights() {
 
 export const cmsResourceKeys = {
   lists: contractKey(cmsResourceContract.list),
+  selections: contractKey(cmsResourceContract.selection),
+  selection: (siteId: number, value: string, type?: CmsResourceListParams['type']) => contractKey(cmsResourceContract.selection, { query: { siteId, value, type } }),
   versions: (id: number) => contractKey(cmsResourceContract.versions, { params: { id } }),
   list: (params: CmsResourceListParams) => contractKey(cmsResourceContract.list, { query: params }),
   references: (id: number) => contractKey(cmsResourceContract.references, { params: { id } }),
@@ -46,6 +48,27 @@ export const cmsResourceKeys = {
 export function invalidateAfterCmsResourceChange(qc: QueryClient) {
   void qc.invalidateQueries({ queryKey: cmsResourceKeys.lists });
   void qc.invalidateQueries({ queryKey: cmsResourceKeys.foldersAll });
+  void qc.invalidateQueries({ queryKey: cmsResourceKeys.selections });
+}
+
+export function useCmsResourceSelection(siteId: number | undefined, value: string | null | undefined, type?: CmsResourceListParams['type'], enabled = true) {
+  const selected = value?.trim() ?? '';
+  return useApiQuery(cmsResourceContract.selection, { query: { siteId: siteId ?? 0, value: selected, type } }, {
+    enabled: enabled && siteId !== undefined && Boolean(selected),
+    staleTime: 30_000,
+  });
+}
+
+export function useRememberCmsResourceSelection() {
+  const qc = useQueryClient();
+  return (resource: CmsResource, type?: CmsResourceListParams['type']) => {
+    const queryKey = cmsResourceKeys.selection(resource.siteId, `${CMS_RESOURCE_URI_PREFIX}${resource.id}`, type);
+    // Cancel an older lookup before seeding the resource the user actually chose.
+    void qc.cancelQueries({ queryKey, exact: true }).then(() => {
+      qc.setQueryData(queryKey, resource);
+      void qc.invalidateQueries({ queryKey, exact: true });
+    }).catch(() => undefined);
+  };
 }
 
 export function useCmsResourceList(params: CmsResourceListParams, enabled = true) {

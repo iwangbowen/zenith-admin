@@ -95,6 +95,12 @@ export const cmsResourceUploadQuery = z.object({
   folderId: idQuery(),
 });
 
+export const cmsResourceSelectionQuery = z.object({
+  siteId: requiredIdQuery(),
+  value: z.string().trim().min(1).max(500),
+  type: queryEnum(CMS_RESOURCE_TYPES),
+});
+
 const cmsResourceFileBody = multipart(z.object({
   file: fileField(),
 }));
@@ -102,6 +108,7 @@ const cmsResourceFileBody = multipart(z.object({
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const cmsResourceContract = defineContract('/api/cms/resources', {
+  selection: op.get('/selection', { access: { permission: 'cms:resource:list' }, query: cmsResourceSelectionQuery, response: cmsResourceSchema.nullable(), summary: '按本站素材句柄或已登记地址精确回显素材' }),
   versions: op.get('/{id}/versions', { access: { permission: 'cms:resource:list' }, params: idParam, response: z.array(cmsAssetVersionSchema), summary: '素材不可变文件版本' }),
   rights: op.get('/{id}/rights', { access: { permission: 'cms:resource:list' }, params: idParam, response: cmsAssetRightsSchema, summary: '素材来源与版权' }),
   updateRights: op.put('/{id}/rights', { access: { permission: 'cms:resource:update' }, params: idParam, body: updateCmsAssetRightsSchema, response: cmsAssetRightsSchema, audit: '更新 CMS 素材版权', summary: '维护素材授权与替代文本' }),

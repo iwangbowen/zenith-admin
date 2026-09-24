@@ -11,6 +11,7 @@ export interface CmsEditorDraft {
   albumImages: CmsAlbumImage[];
   attachments: CmsContentAttachment[];
   version?: number;
+  refreshResourceIds?: number[];
   savedAt: number;
 }
 
@@ -29,9 +30,12 @@ export function useCmsEditorRecovery({ key, dirty, getDraft }: Readonly<{
   const getter = useRef(getDraft);
   getter.current = getDraft;
   const allowed = useRef(false);
+  const retiredKeys = useRef(new Set<string>());
+  const promotedKey = useRef<string | null>(null);
   const [pending, setPending] = useState<CmsEditorDraft | null>(null);
   const [storageError, setStorageError] = useState(false);
   const persist = useCallback(() => {
+    if (retiredKeys.current.has(storageKey)) return true;
     if (!dirty.current) return true;
     try {
       localStorage.setItem(storageKey, JSON.stringify({ ...getter.current(), savedAt: Date.now() }));
@@ -47,6 +51,9 @@ export function useCmsEditorRecovery({ key, dirty, getDraft }: Readonly<{
     setPending(null);
   }, [persistDebouncer, storageKey]);
   useEffect(() => {
+    // The editor itself moved the current local draft after its first POST.
+    // Keep that recovery copy without offering to restore over the live input.
+    if (promotedKey.current === storageKey) { promotedKey.current = null; setPending(null); return; }
     try {
       const raw = localStorage.getItem(storageKey);
       const parsed = raw ? JSON.parse(raw) as CmsEditorDraft : null;
@@ -109,5 +116,22 @@ export function useCmsEditorRecovery({ key, dirty, getDraft }: Readonly<{
     allowed.current = true;
     try { action(); } finally { allowed.current = false; }
   };
-  return { pending, storageError, checkpoint, persist, clear, dismiss: () => setPending(null), navigateSaved };
+  const promote = (nextKey: string) => {
+    const nextStorageKey = `cms-editor-recovery:${user?.id ?? 0}:${nextKey}`;
+    if (nextStorageKey === storageKey) return true;
+    persistDebouncer.cancel();
+    try {
+      if (dirty.current) localStorage.setItem(nextStorageKey, JSON.stringify({ ...getter.current(), savedAt: Date.now() }));
+      else localStorage.removeItem(nextStorageKey);
+      localStorage.removeItem(storageKey);
+      // Cleanup of the old route must not recreate a second "new content" draft.
+      retiredKeys.current.add(storageKey);
+      retiredKeys.current.delete(nextStorageKey);
+      promotedKey.current = nextStorageKey;
+      setPending(null);
+      setStorageError(false);
+      return true;
+    } catch { setStorageError(true); return false; }
+  };
+  return { pending, storageError, checkpoint, persist, clear, promote, dismiss: () => setPending(null), navigateSaved };
 }

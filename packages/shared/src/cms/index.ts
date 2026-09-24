@@ -18,3 +18,4 @@ export * from './model-design';
 export * from './design-validation';
 export * from './distribution-merge';
 export * from './content-import';
+export * from './resource-selection';

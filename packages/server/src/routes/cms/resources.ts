@@ -5,6 +5,7 @@ import { defineContractRoute } from '../../lib/contract-route';
 import { ErrorResponse, jsonContent, okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   listCmsResources,
+  getCmsResourceSelection,
   uploadCmsResource,
   updateCmsResource,
   deleteCmsResources,
@@ -128,6 +129,7 @@ mountCrud(router, cmsResourceContract,
     exclude: ['update'],
   },
   [
+    defineContractRoute(cmsResourceContract.selection, { handler: async (c) => c.json(okBody(await getCmsResourceSelection(c.req.valid('query'))), 200) }),
     defineContractRoute(cmsResourceContract.versions, { handler: async (c) => c.json(okBody(await listCmsAssetVersions(c.req.valid('param').id)), 200) }),
     defineContractRoute(cmsResourceContract.rights, { handler: async (c) => c.json(okBody(await getCmsAssetRights(c.req.valid('param').id)), 200) }),
     defineContractRoute(cmsResourceContract.updateRights, { handler: async (c) => c.json(okBody(await updateCmsAssetRights(c.req.valid('param').id, c.req.valid('json'))), 200) }),

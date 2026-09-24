@@ -1183,6 +1183,12 @@ export const cmsP2Handlers = [
       .map((r) => ({ ...r, refCount: collectMockResourceRefs(r).length }));
     return ok(paginate(sorted));
   }),
+  mock(cmsResourceContract.selection, ({ query, ok }) => {
+    const match = /^cms-res:\/\/([1-9]\d*)$/.exec(query.value);
+    return ok(mockCmsResources.find((resource) => resource.siteId === query.siteId
+      && (!query.type || resource.type === query.type)
+      && (match ? resource.id === Number(match[1]) : resource.url === query.value)) ?? null);
+  }),
   mock(cmsResourceContract.upload, ({ query, body, ok }) => {
     const siteId = query.siteId ?? 1;
     const folderId = query.folderId ?? null;
