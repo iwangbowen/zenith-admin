@@ -99,9 +99,12 @@ export default function TaskTray() {
                             ? <Tag color="orange" size="small">等待重试</Tag>
                             : <Tag color={statusTagMap[task.status].color} size="small">{statusTagMap[task.status].label}</Tag>}
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 2px' }}>
-                        <AsyncTaskProgress task={task} noteDisplay="tooltip" fluid />
-                      </div>
+                      {/* pending 且无处理明细时进度位无内容可展（状态已由标题行徽标表达），整行省略 */}
+                      {(task.status !== 'pending' || task.processedCount > 0) && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 2px' }}>
+                          <AsyncTaskProgress task={task} noteDisplay="tooltip" fluid hidePendingLabel />
+                        </div>
+                      )}
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <Typography.Text type="tertiary" size="small">
                           <DateTimeText value={task.createdAt} />
