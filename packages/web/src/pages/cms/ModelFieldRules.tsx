@@ -1,4 +1,4 @@
-import { ArrayField, Button, Form, Space, Typography, useFormState } from '@douyinfe/semi-ui';
+import { ArrayField, Button, Col, Form, Row, Space, Typography, useFormState } from '@douyinfe/semi-ui';
 import { Plus, Trash2 } from 'lucide-react';
 import { getByPath } from '@zenith/shared/core';
 import { CMS_COMPONENT_FIELD_TYPES, CMS_FIELD_TYPE_LABELS, type CmsModelField } from '@zenith/shared/cms';
@@ -27,23 +27,42 @@ export default function ModelFieldRules({ field, siteId }: Readonly<{ field: str
   const requiredField = getByPath(state.values, `${field}.configuration.requiredWhen.field`);
   const requiredType = siblings.find((sibling) => sibling.name === requiredField)?.fieldType;
   return <div style={{ width: '100%', padding: '8px 0 4px' }}>
-    <Space wrap>
+    <Row gutter={16}>
       {type === 'number' ? <>
-        <Form.InputNumber field={`${field}.configuration.min`} label="最小值" style={{ width: 150 }} />
-        <Form.InputNumber field={`${field}.configuration.max`} label="最大值" style={{ width: 150 }} />
+        <Col span={12}>
+          <Form.InputNumber field={`${field}.configuration.min`} label="最小值" />
+        </Col>
+        <Col span={12}>
+          <Form.InputNumber field={`${field}.configuration.max`} label="最大值" />
+        </Col>
       </> : <>
-        <Form.InputNumber field={`${field}.configuration.minLength`} label="最小长度" min={0} style={{ width: 150 }} />
-        <Form.InputNumber field={`${field}.configuration.maxLength`} label="最大长度" min={1} style={{ width: 150 }} />
+        <Col span={12}>
+          <Form.InputNumber field={`${field}.configuration.minLength`} label="最小长度" min={0} />
+        </Col>
+        <Col span={12}>
+          <Form.InputNumber field={`${field}.configuration.maxLength`} label="最大长度" min={1} />
+        </Col>
       </>}
-      <Form.Checkbox field={`${field}.configuration.unique`} noLabel>站内唯一</Form.Checkbox>
-    </Space>
-    <Space wrap>
-      <Form.Select field={`${field}.configuration.requiredWhen.field`} label="条件必填" showClear placeholder="选择条件字段" style={{ width: 220 }} optionList={siblings.filter((sibling) => sibling.name).map((sibling) => ({ value: sibling.name, label: sibling.label ?? sibling.name }))} />
-      {requiredField ? requiredType === 'number' ? <Form.InputNumber field={`${field}.configuration.requiredWhen.equals`} label="等于" />
-        : requiredType === 'switch' ? <Form.Switch field={`${field}.configuration.requiredWhen.equals`} label="等于" initValue={false} />
-          : <Form.Input field={`${field}.configuration.requiredWhen.equals`} label="等于" /> : null}
-      {type === 'reference' || type === 'references' ? <Form.Select field={`${field}.configuration.referenceModelIds`} label="允许引用的类型" multiple showClear style={{ width: 300 }} optionList={(models.data ?? []).map((model) => ({ value: model.id, label: model.name }))} /> : null}
-    </Space>
+    </Row>
+    <Row gutter={16}>
+      <Col span={12}>
+        <Form.Select field={`${field}.configuration.requiredWhen.field`} label="条件必填" showClear placeholder="选择条件字段" optionList={siblings.filter((sibling) => sibling.name).map((sibling) => ({ value: sibling.name, label: sibling.label ?? sibling.name }))} />
+      </Col>
+      {requiredField && (
+        <Col span={12}>
+          {requiredType === 'number' ? <Form.InputNumber field={`${field}.configuration.requiredWhen.equals`} label="等于" />
+            : requiredType === 'switch' ? <Form.Switch field={`${field}.configuration.requiredWhen.equals`} label="等于" initValue={false} />
+              : <Form.Input field={`${field}.configuration.requiredWhen.equals`} label="等于" />}
+        </Col>
+      )}
+    </Row>
+    {(type === 'reference' || type === 'references') && (
+      <Row gutter={16}>
+        <Col span={24}>
+          <Form.Select field={`${field}.configuration.referenceModelIds`} label="允许引用的类型" multiple showClear optionList={(models.data ?? []).map((model) => ({ value: model.id, label: model.name }))} />
+        </Col>
+      </Row>
+    )}
     {(type === 'object' || type === 'array') && <ChildFields field={`${field}.configuration.fields`} />}
     {type === 'blocks' && <ArrayField field={`${field}.configuration.blockTypes`}>{({ arrayFields, addWithInitValue }) => <Space vertical align="start" style={{ width: '100%' }}>
       {arrayFields.map(({ field: block, key, remove }) => <div key={key}>

@@ -245,24 +245,35 @@ export default function ModelsPage() {
                       ? { paddingBottom: 4 }
                       : { borderBottom: '1px solid var(--semi-color-border)', paddingBottom: 16, marginBottom: 16 }}
                   >
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 8 }}>
-                      <Form.Input field={`${field}[name]`} noLabel placeholder="字段标识（英文）" style={{ width: 160 }}
-                        rules={[{ required: true, message: '必填' }, { pattern: /^[a-z][a-z0-9_]*$/, message: '小写字母开头' }]} />
-                      <Form.Input field={`${field}[label]`} noLabel placeholder="字段名称" style={{ width: 160 }}
-                        rules={[{ required: true, message: '必填' }]} />
-                      <Form.Select field={`${field}[fieldType]`} noLabel initValue="text" style={{ width: 150 }} optionList={FIELD_TYPE_OPTIONS} />
-                      <Button type="danger" theme="borderless" icon={<Trash2 size={14} />} onClick={() => remove()} style={{ marginLeft: 'auto', marginTop: 4 }} />
-                    </div>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 8 }}>
-                      <Form.Input field={`${field}[placeholder]`} noLabel placeholder="提示文案" style={{ flex: 1, minWidth: 160 }} />
-                      <Form.Input field={`${field}[defaultValue]`} noLabel placeholder="默认值（新建内容自动填充）" style={{ flex: 1, minWidth: 160 }} />
-                      <Form.Input field={`${field}[detailGroup]`} noLabel placeholder="详情分组（如 活动信息）" style={{ width: 180, flexShrink: 0 }} />
-                    </div>
-                    <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 4 }}>
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <Form.Input field={`${field}[name]`} label="字段标识" placeholder="英文，如 venue"
+                          rules={[{ required: true, message: '必填' }, { pattern: /^[a-z][a-z0-9_]*$/, message: '小写字母开头' }]} />
+                      </Col>
+                      <Col span={12}>
+                        <Form.Input field={`${field}[label]`} label="字段名称"
+                          rules={[{ required: true, message: '必填' }]} />
+                      </Col>
+                      <Col span={12}>
+                        <Form.Select field={`${field}[fieldType]`} label="字段类型" initValue="text" optionList={FIELD_TYPE_OPTIONS} />
+                      </Col>
+                      <Col span={12}>
+                        <Form.Input field={`${field}[placeholder]`} label="提示文案" />
+                      </Col>
+                      <Col span={12}>
+                        <Form.Input field={`${field}[defaultValue]`} label="默认值" placeholder="新建内容自动填充" />
+                      </Col>
+                      <Col span={12}>
+                        <Form.Input field={`${field}[detailGroup]`} label="详情分组" placeholder="如 活动信息" />
+                      </Col>
+                    </Row>
+                    <div style={{ display: 'flex', gap: 16, alignItems: 'center', margin: '4px 0 8px' }}>
                       <Form.Checkbox field={`${field}[required]`} noLabel>必填</Form.Checkbox>
                       <Form.Checkbox field={`${field}[searchable]`} noLabel>检索</Form.Checkbox>
                       <Form.Checkbox field={`${field}[showInList]`} noLabel>列表显示</Form.Checkbox>
                       <Form.Checkbox field={`${field}[showInDetail]`} noLabel>详情展示</Form.Checkbox>
+                      <Form.Checkbox field={`${field}.configuration.unique`} noLabel>站内唯一</Form.Checkbox>
+                      <Button type="danger" theme="borderless" icon={<Trash2 size={14} />} onClick={() => remove()} style={{ marginLeft: 'auto' }} />
                     </div>
                     <FieldOptionSource field={field} />
                     <ModelFieldRules field={field} siteId={siteId} />
