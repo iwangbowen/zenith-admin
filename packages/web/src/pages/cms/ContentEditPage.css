@@ -15,15 +15,6 @@
   min-width: 0;
 }
 
-.cms-content-edit__workflow-summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 8px 0;
-}
-
 .cms-content-edit__workflow-pane {
   min-height: 560px;
 }

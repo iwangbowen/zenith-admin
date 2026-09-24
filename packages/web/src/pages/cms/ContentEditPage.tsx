@@ -3,10 +3,11 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import CmsValueDiff from './CmsValueDiff';
 import CmsContentConflictView from './CmsContentConflictView';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, Divider, Form, Spin, Toast, Row, Col, Banner, SideSheet, Space, Timeline, Modal, Upload, Typography, Tag, Input, Tabs, TabPane, withField, Pagination } from '@douyinfe/semi-ui';
-import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
+import { Button, Divider, Dropdown, Form, Spin, Toast, Tooltip, Row, Col, Banner, SideSheet, Space, Timeline, Modal, Upload, Typography, Tag, Input, Tabs, TabPane, withField, Pagination } from '@douyinfe/semi-ui';
+import { EntityContextSheet } from '@/components/entity-relations/EntityRelationButton';
+import { supportsEntityRelations } from '@zenith/shared/platform/entity-catalog';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { ArrowLeft, Save, Send, History, ImageUp, Eye, GitCompare, Images, Paperclip, SpellCheck, ScrollText, Workflow } from 'lucide-react';
+import { ArrowLeft, Save, Send, History, ImageUp, Eye, GitCompare, Images, Paperclip, SpellCheck, ScrollText, Workflow, Link2, MoreHorizontal } from 'lucide-react';
 import { useDebouncedCallback } from '@tanstack/react-pacer';
 import { formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
@@ -231,6 +232,7 @@ export default function ContentEditPage() {
   const [attachments, setAttachments] = useState<CmsContentAttachment[]>([]);
   const [albumPickerVisible, setAlbumPickerVisible] = useState(false);
   const [versionsVisible, setVersionsVisible] = useState(false);
+  const [relationVisible, setRelationVisible] = useState(false);
   const [versionsPage, setVersionsPage] = useState(1);
   const versionsQuery = useCmsContentVersions(id, versionsVisible, versionsPage);
   const restoreMutation = useRestoreCmsContentVersion();
@@ -667,34 +669,6 @@ export default function ContentEditPage() {
           {detail ? <Space spacing={8}><Tag>{detail.status === 'published' ? '线上已发布' : CMS_CONTENT_STATUS_LABELS[detail.status]}</Tag><Tag color={CMS_EDITORIAL_STATUS_COLORS[detail.editorialStatus]}>{CMS_EDITORIAL_STATUS_LABELS[detail.editorialStatus]}</Tag>{detail.hasUnpublishedChanges ? <Tag color="orange">有未发布修改</Tag> : null}</Space> : null}
           {autoSavedAt ? <span style={{ marginLeft: 12, fontSize: 12, fontWeight: 'normal', color: 'var(--semi-color-text-2)' }}>已自动保存 {autoSavedAt}</span> : null}
         </h3>
-        <Button icon={<Save size={14} />} loading={saveMutation.isPending} disabled={isReadOnly || actionMutation.isPending} onClick={() => void handleSaveDraft()}>保存</Button>
-        <Button icon={<SpellCheck size={14} />} loading={checkMutation.isPending} onClick={() => void handleCheckText()}>内容检查</Button>
-        <Button icon={<Eye size={14} />} loading={previewMutation.isPending || saveMutation.isPending} onClick={() => void handlePreview()}>工作稿预览</Button>
-        <Button loading={previewMutation.isPending} onClick={() => void handlePreview(true)}>生成分享预览</Button>
-        {id ? (
-          <>
-            <EntityRelationButton entityRef={{ type: 'cms.content', key: String(id) }} />
-            <Button icon={<History size={14} />} onClick={() => setVersionsVisible(true)}>历史版本</Button>
-            <Button icon={<ScrollText size={14} />} onClick={() => setOpLogsVisible(true)}>操作记录</Button>
-          </>
-        ) : null}
-        {workflowMode ? (
-          <Button type="primary" icon={<Send size={14} />} loading={saveMutation.isPending || actionMutation.isPending}
-            disabled={isReadOnly || workflowBusy || !!workflowPreviewQuery.error || (detail?.editorialStatus === 'pending') || !hasPermission('cms:content:update')}
-            onClick={() => void handleSaveAndSubmit()}>保存并提交审核</Button>
-        ) : hasPermission('cms:content:publish') ? (<>
-          <Button loading={actionMutation.isPending} disabled={isReadOnly || saveMutation.isPending || workflowBusy || !workflowPreview || !!workflowPreviewQuery.error} onClick={() => void handleSaveAndPublish(true)}>保存并批准待发布</Button>
-          <Button type="primary" icon={<Send size={14} />} loading={actionMutation.isPending}
-            disabled={isReadOnly || saveMutation.isPending || workflowBusy || !workflowPreview || !!workflowPreviewQuery.error}
-            onClick={() => void handleSaveAndPublish()}>保存并申请发布</Button>
-        </>) : null}
-      </div>
-
-      {lastPreview ? <Banner type="info" closeIcon={null} description={<Space wrap><span>预览固定修订 #{lastPreview.revisionId} · 有效至 {lastPreview.expiresAt}</span><Button size="small" onClick={() => void copyTextWithToast(new URL(lastPreview.url, window.location.href).href)}>复制预览链接</Button><Button size="small" disabled={isReadOnly} loading={revokePreviewMutation.isPending} onClick={async () => { await revokePreviewMutation.mutateAsync({ params: { id: id ?? createdIdRef.current!, grantId: lastPreview.grantId } }); setLastPreview(null); Toast.success('预览链接已撤销'); }}>撤销链接</Button></Space>} /> : null}
-      {saveError ? <Banner type="danger" description={saveError} closeIcon={null} /> : null}
-      {recovery.storageError ? <Banner type="warning" description="浏览器无法保存恢复副本，请及时手动保存到服务器。" /> : null}
-      {recovery.pending ? <Banner type="warning" closeIcon={null} description={<Space wrap><span>发现本浏览器在 {new Date(recovery.pending.savedAt).toLocaleString()} 保留的未保存工作稿。</span><Button size="small" onClick={restoreLocalDraft}>恢复修改</Button><Button size="small" onClick={recovery.clear}>丢弃副本</Button></Space>} /> : null}
-      <div className="cms-content-edit__workflow-summary">
         <Space spacing={8} wrap>
           <Tag color={saveState === 'error' || saveState === 'conflict' ? 'red' : saveState === 'saved' ? 'green' : 'orange'}>{({ saved: '已保存工作稿', dirty: '有未保存修改', saving: '正在保存', error: '保存失败', conflict: '版本冲突' })[saveState]}</Tag>
           <Typography.Text type="tertiary">保存不改变线上内容；提审会冻结当前修订。</Typography.Text>
@@ -722,9 +696,53 @@ export default function ContentEditPage() {
                 : '本站采用普通内容审核'}
             </Typography.Text>
           )}
+          <Button theme="borderless" onClick={() => setActiveTab('workflow')}>查看流程</Button>
         </Space>
-        <Button theme="borderless" onClick={() => setActiveTab('workflow')}>查看流程</Button>
+        <Space spacing={8}>
+          <Tooltip content="保存"><Button icon={<Save size={14} />} loading={saveMutation.isPending} disabled={isReadOnly || actionMutation.isPending} onClick={() => void handleSaveDraft()} /></Tooltip>
+          <Tooltip content="工作稿预览"><Button icon={<Eye size={14} />} loading={previewMutation.isPending || saveMutation.isPending} onClick={() => void handlePreview()} /></Tooltip>
+          {workflowMode ? (
+            <Tooltip content="保存并提交审核"><Button type="primary" icon={<Send size={14} />} loading={saveMutation.isPending || actionMutation.isPending}
+              disabled={isReadOnly || workflowBusy || !!workflowPreviewQuery.error || (detail?.editorialStatus === 'pending') || !hasPermission('cms:content:update')}
+              onClick={() => void handleSaveAndSubmit()} /></Tooltip>
+          ) : hasPermission('cms:content:publish') ? (
+            <Tooltip content="保存并申请发布"><Button type="primary" icon={<Send size={14} />} loading={actionMutation.isPending}
+              disabled={isReadOnly || saveMutation.isPending || workflowBusy || !workflowPreview || !!workflowPreviewQuery.error}
+              onClick={() => void handleSaveAndPublish()} /></Tooltip>
+          ) : null}
+          <Dropdown
+            trigger="click"
+            position="bottomRight"
+            clickToHide
+            render={
+              <Dropdown.Menu>
+                <Dropdown.Item icon={<SpellCheck size={14} />} onClick={() => void handleCheckText()}>内容检查</Dropdown.Item>
+                <Dropdown.Item onClick={() => void handlePreview(true)}>生成分享预览</Dropdown.Item>
+                {!workflowMode && hasPermission('cms:content:publish') ? (
+                  <Dropdown.Item icon={<Send size={14} />} disabled={isReadOnly || saveMutation.isPending || actionMutation.isPending || workflowBusy || !workflowPreview || !!workflowPreviewQuery.error} onClick={() => void handleSaveAndPublish(true)}>保存并批准待发布</Dropdown.Item>
+                ) : null}
+                {id && supportsEntityRelations('cms.content') ? <Dropdown.Item icon={<Link2 size={14} />} onClick={() => setRelationVisible(true)}>关联信息</Dropdown.Item> : null}
+                {id ? <Dropdown.Item icon={<History size={14} />} onClick={() => setVersionsVisible(true)}>历史版本</Dropdown.Item> : null}
+                {id ? <Dropdown.Item icon={<ScrollText size={14} />} onClick={() => setOpLogsVisible(true)}>操作记录</Dropdown.Item> : null}
+              </Dropdown.Menu>
+            }
+          >
+            <span style={{ display: 'inline-flex' }}>
+              <Tooltip content="更多"><Button icon={<MoreHorizontal size={14} />} /></Tooltip>
+            </span>
+          </Dropdown>
+        </Space>
       </div>
+
+      {lastPreview ? <Banner type="info" closeIcon={null} description={<Space wrap><span>预览固定修订 #{lastPreview.revisionId} · 有效至 {lastPreview.expiresAt}</span><Button size="small" onClick={() => void copyTextWithToast(new URL(lastPreview.url, window.location.href).href)}>复制预览链接</Button><Button size="small" disabled={isReadOnly} loading={revokePreviewMutation.isPending} onClick={async () => { await revokePreviewMutation.mutateAsync({ params: { id: id ?? createdIdRef.current!, grantId: lastPreview.grantId } }); setLastPreview(null); Toast.success('预览链接已撤销'); }}>撤销链接</Button></Space>} /> : null}
+      {saveError ? <Banner type="danger" description={saveError} closeIcon={null} /> : null}
+      {recovery.storageError ? <Banner type="warning" description="浏览器无法保存恢复副本，请及时手动保存到服务器。" /> : null}
+      {recovery.pending ? <Banner type="warning" closeIcon={null} description={<Space wrap><span>发现本浏览器在 {new Date(recovery.pending.savedAt).toLocaleString()} 保留的未保存工作稿。</span><Button size="small" onClick={restoreLocalDraft}>恢复修改</Button><Button size="small" onClick={recovery.clear}>丢弃副本</Button></Space>} /> : null}
+      {relationVisible && id ? (
+        <Suspense fallback={null}>
+          <EntityContextSheet entityRef={{ type: 'cms.content', key: String(id) }} onClose={() => setRelationVisible(false)} />
+        </Suspense>
+      ) : null}
 
       {lockHolder ? (
         <Banner
