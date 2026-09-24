@@ -12,7 +12,7 @@ import { readFileContent, saveGeneratedManagedFile } from '../../services/files/
 import { currentUser } from '../context';
 import { getImportDefinition } from './registry';
 import { parseImportWorkbook, type ParsedImportRow } from './parser';
-import { DEFAULT_MAX_ROWS, IMPORT_TASK_TYPE } from './types';
+import { DEFAULT_MAX_ROWS, IMPORT_TASK_TYPE, IMPORT_PREVIEW_TASK_TYPE } from './types';
 import type { ImportColumnMeta } from '@zenith/shared/tasks';
 
 interface FailedRow {
@@ -54,91 +54,94 @@ async function buildErrorWorkbook(columns: ImportColumnMeta[], failed: FailedRow
 }
 
 export function registerImportTaskHandler(): void {
-  registerTaskHandler({
-    taskType: IMPORT_TASK_TYPE,
-    title: '数据导入',
-    module: '导入中心',
-    allowConcurrent: false,
-    maxAttempts: 1,
-    async run(ctx) {
-      const { entity, fileId, dryRun, context, filename } = ctx.payload as {
-        entity?: string; fileId?: string; dryRun?: boolean;
-        context?: Record<string, unknown>; filename?: string | null;
-      };
-      if (!entity || !fileId) throw new Error('缺少 entity / fileId 参数');
-      const def = getImportDefinition(entity);
-      const parsedContext = def.contextSchema ? def.contextSchema.parse(context ?? {}) as Record<string, unknown> : (context ?? {});
+  for (const preview of [false, true]) {
+    registerTaskHandler({
+      taskType: preview ? IMPORT_PREVIEW_TASK_TYPE : IMPORT_TASK_TYPE,
+      title: preview ? '导入预检' : '数据导入',
+      module: '导入中心',
+      allowConcurrent: preview,
+      maxAttempts: 1,
+      async run(ctx) {
+        const { entity, fileId, context, filename } = ctx.payload as {
+          entity?: string; fileId?: string; dryRun?: boolean;
+          context?: Record<string, unknown>; filename?: string | null;
+        };
+        const dryRun = preview;
+        if (!entity || !fileId) throw new Error('缺少 entity / fileId 参数');
+        const def = getImportDefinition(entity);
+        const parsedContext = def.contextSchema ? def.contextSchema.parse(context ?? {}) as Record<string, unknown> : (context ?? {});
 
-      const stored = await readFileContent(fileId);
-      const buffer = await new Response(stored.stream).arrayBuffer();
-      const rows: ParsedImportRow[] = await parseImportWorkbook(buffer, def.columns, def.maxRows ?? DEFAULT_MAX_ROWS, filename);
-      if (rows.length === 0) throw new Error('文件中没有可导入的数据行');
+        const stored = await readFileContent(fileId);
+        const buffer = await new Response(stored.stream).arrayBuffer();
+        const rows: ParsedImportRow[] = await parseImportWorkbook(buffer, def.columns, def.maxRows ?? DEFAULT_MAX_ROWS, filename);
+        if (rows.length === 0) throw new Error('文件中没有可导入的数据行');
 
-      const prepared = await def.prepare(parsedContext);
-      const firstKey = def.columns[0]?.key ?? '';
-      const modeNote = dryRun ? '预检' : '导入';
+        const prepared = await def.prepare(parsedContext);
+        const firstKey = def.columns[0]?.key ?? '';
+        const modeNote = dryRun ? '预检' : '导入';
 
-      let processed = Number(ctx.checkpoint?.processed ?? 0);
-      let succeeded = Number(ctx.checkpoint?.succeeded ?? 0);
-      let failed = Number(ctx.checkpoint?.failed ?? 0);
-      const failedRows: FailedRow[] = [];
+        let processed = Number(ctx.checkpoint?.processed ?? 0);
+        let succeeded = Number(ctx.checkpoint?.succeeded ?? 0);
+        let failed = Number(ctx.checkpoint?.failed ?? 0);
+        const failedRows: FailedRow[] = [];
 
-      for (let i = processed; i < rows.length; i++) {
-        const { rowNum, cells } = rows[i];
-        const fallbackLabel = cells[firstKey] || `第 ${rowNum} 行`;
-        try {
-          const row = await def.parseRow(cells, prepared, rowNum);
-          if (!dryRun) await def.insertRow(row, prepared);
-          succeeded += 1;
-          await ctx.reportItems([{
-            key: `row-${rowNum}`,
-            label: (def.rowLabel?.(row) ?? fallbackLabel).slice(0, 100),
-            status: 'success',
-            message: dryRun ? '校验通过' : null,
-          }]);
-        } catch (err) {
-          failed += 1;
-          const message = (err instanceof Error ? err.message : `${modeNote}失败`).slice(0, 200);
-          failedRows.push({ rowNum, cells, error: message });
-          await ctx.reportItems([{
-            key: `row-${rowNum}`,
-            label: fallbackLabel.slice(0, 100),
-            status: 'failed',
-            message,
-          }]);
+        for (let i = processed; i < rows.length; i++) {
+          const { rowNum, cells } = rows[i];
+          const fallbackLabel = cells[firstKey] || `第 ${rowNum} 行`;
+          try {
+            const row = await def.parseRow(cells, prepared, rowNum);
+            if (!dryRun) await def.insertRow(row, prepared);
+            succeeded += 1;
+            await ctx.reportItems([{
+              key: `row-${rowNum}`,
+              label: (def.rowLabel?.(row) ?? fallbackLabel).slice(0, 100),
+              status: 'success',
+              message: dryRun ? '校验通过' : null,
+            }]);
+          } catch (err) {
+            failed += 1;
+            const message = (err instanceof Error ? err.message : `${modeNote}失败`).slice(0, 200);
+            failedRows.push({ rowNum, cells, error: message });
+            await ctx.reportItems([{
+              key: `row-${rowNum}`,
+              label: fallbackLabel.slice(0, 100),
+              status: 'failed',
+              message,
+            }]);
+          }
+          processed = i + 1;
+          if (processed % 10 === 0 || processed === rows.length) {
+            const { cancelRequested } = await ctx.progress({
+              processed,
+              total: rows.length,
+              note: `${modeNote}：成功 ${succeeded} / 失败 ${failed}（共 ${rows.length} 行）`,
+              checkpoint: { processed, succeeded, failed },
+            });
+            if (cancelRequested) return { processed, succeeded, failed, cancelled: true };
+          }
         }
-        processed = i + 1;
-        if (processed % 10 === 0 || processed === rows.length) {
-          const { cancelRequested } = await ctx.progress({
-            processed,
-            total: rows.length,
-            note: `${modeNote}：成功 ${succeeded} / 失败 ${failed}（共 ${rows.length} 行）`,
-            checkpoint: { processed, succeeded, failed },
+
+        if (!dryRun) await def.finalize?.(prepared, { succeeded, failed });
+
+        // 失败行回导文件：修正「错误原因」列指出的问题后即可重新上传
+        let errorFileId: string | null = null;
+        let errorFileName: string | null = null;
+        if (failedRows.length > 0) {
+          const user = currentUser();
+          const errorBuffer = await buildErrorWorkbook(def.columns, failedRows);
+          errorFileName = `${def.title}${modeNote}错误行-${Date.now()}.xlsx`;
+          const saved = await saveGeneratedManagedFile({
+            buffer: errorBuffer,
+            filename: errorFileName,
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            tenantId: user.tenantId ?? null,
+            createdBy: user.userId,
           });
-          if (cancelRequested) return { processed, succeeded, failed, cancelled: true };
+          errorFileId = saved.id;
         }
-      }
 
-      if (!dryRun) await def.finalize?.(prepared, { succeeded, failed });
-
-      // 失败行回导文件：修正「错误原因」列指出的问题后即可重新上传
-      let errorFileId: string | null = null;
-      let errorFileName: string | null = null;
-      if (failedRows.length > 0) {
-        const user = currentUser();
-        const errorBuffer = await buildErrorWorkbook(def.columns, failedRows);
-        errorFileName = `${def.title}${modeNote}错误行-${Date.now()}.xlsx`;
-        const saved = await saveGeneratedManagedFile({
-          buffer: errorBuffer,
-          filename: errorFileName,
-          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          tenantId: user.tenantId ?? null,
-          createdBy: user.userId,
-        });
-        errorFileId = saved.id;
-      }
-
-      return { total: rows.length, succeeded, failed, dryRun: dryRun ?? false, errorFileId, errorFileName };
-    },
-  });
+        return { total: rows.length, succeeded, failed, dryRun: dryRun ?? false, errorFileId, errorFileName };
+      },
+    });
+  }
 }

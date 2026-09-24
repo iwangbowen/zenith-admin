@@ -29,15 +29,22 @@ import { logContentOp } from './cms-content-op-logs.service';
 import { requireCmsContentAccess } from './cms-content-access.service';
 import { syncCmsResourceRefs } from './cms-resource-refs.service';
 import { captureCmsConfiguration, type CmsCapturedConfiguration } from './cms-configuration-snapshot.service';
+import { stageCmsConfigurationDraft } from './cms-configuration-drafts.service';
 import { assertCmsReleaseSelectionAccess, cmsReleaseScope } from './cms-release-access.service';
 import { assertCmsReleaseDependencies } from './cms-release-preflight.service';
 import { isCmsRevisionAssetVisible } from './cms-asset-rights.service';
 import { APP_TIME_ZONE, formatDateTime } from '../../lib/datetime';
 import { formatCmsReleaseActivationTime, resolveCmsReleaseActivationTime } from './cms-release-time';
+import type { TaskRunContext } from '../../lib/task-center/types';
 
 const mapRelease = entityMapper(cmsReleaseSchema, (row: CmsReleaseRow) => ({ activateAt: formatCmsReleaseActivationTime(row.activateAt, row.timeZone) }));
 const mapDeployment = entityMapper(cmsDeploymentSchema);
 const RELEASE_BUILD_TASK = 'cms-release-build';
+async function lockCurrentReleaseExecution(tx: DbTransaction, execution: Pick<TaskRunContext, 'taskId' | 'dispatchToken'>) {
+  const [run] = await tx.select({ cancelRequested: asyncTasks.cancelRequested }).from(asyncTasks)
+    .where(and(eq(asyncTasks.id, execution.taskId), eq(asyncTasks.dispatchToken, execution.dispatchToken), eq(asyncTasks.status, 'running'))).for('update').limit(1);
+  return run;
+}
 let buildTail: Promise<void> = Promise.resolve();
 async function acquireGenerationBuildSlot(): Promise<() => void> {
   const previous = buildTail;
@@ -93,7 +100,7 @@ export async function previewCmsRelease(id: number, path: string) {
   });
 }
 
-export async function createCmsRelease(input: CreateCmsReleaseInput, captured?: CmsCapturedConfiguration): Promise<CmsRelease> {
+export async function createCmsRelease(input: CreateCmsReleaseInput, captured?: CmsCapturedConfiguration, source: CmsRelease['source'] = 'manual'): Promise<CmsRelease> {
   const activateAt = resolveCmsReleaseActivationTime(input.activateAt, input.timeZone);
   if (!captured && !input.revisionIds.length && !input.withdrawContentIds.length && !input.pageIds.length && !input.widgetIds.length && !input.includeSiteConfiguration) throw new HTTPException(400, { message: '请至少选择一个内容修订、页面、部件或站点配置' });
   const configurationRequested = captured ? captured.items.length > 0 : Boolean(input.includeSiteConfiguration || input.pageIds.length || input.widgetIds.length);
@@ -124,7 +131,7 @@ export async function createCmsRelease(input: CreateCmsReleaseInput, captured?: 
     }
     configuration.snapshot.publicContentGuards = items.length ? await tx.select({ id: cmsContents.id, version: cmsContents.version, status: cmsContents.status }).from(cmsContents).where(inArray(cmsContents.id, items.map((item) => item.contentId))) : [];
     const [row] = await tx.insert(cmsReleases).values({
-      siteId: input.siteId, name: input.name, items, configurationItems: configuration.items, configurationSnapshot: configuration.snapshot, baseGenerationId: captured ? captured.baseGenerationId : await activeGeneration(input.siteId, tx),
+      siteId: input.siteId, name: input.name, source, items, configurationItems: configuration.items, configurationSnapshot: configuration.snapshot, baseGenerationId: captured ? captured.baseGenerationId : await activeGeneration(input.siteId, tx),
       activateAt, timeZone: input.timeZone,
       autoActivate: input.autoActivate || Boolean(input.activateAt),
     }).returning();
@@ -135,11 +142,18 @@ export async function createCmsRelease(input: CreateCmsReleaseInput, captured?: 
 }
 
 export async function buildCmsRelease(id: number): Promise<CmsRelease> {
-  await requireRelease(id);
+  const initial = await requireRelease(id);
   const result = await db.transaction(async (tx) => {
-    const [locked] = await tx.select().from(cmsReleases).where(eq(cmsReleases.id, id)).for('update').limit(1);
+    await acquireCmsSitePublishLock(tx, initial.siteId);
+    let [locked] = await tx.select().from(cmsReleases).where(eq(cmsReleases.id, id)).for('update').limit(1);
     if (!locked || !['draft', 'failed'].includes(locked.status)) throw new HTTPException(409, { message: '仅草稿或构建失败的发布单可以构建' });
-    if (await activeGeneration(locked.siteId, tx) !== locked.baseGenerationId) throw new HTTPException(409, { message: '发布基代已变化，请新建发布单' });
+    const currentGenerationId = await activeGeneration(locked.siteId, tx);
+    if (currentGenerationId !== locked.baseGenerationId) {
+      // Content-only releases carry approved revisions and no working site
+      // configuration. Rebuild them on the latest public set before freezing.
+      if (!['content', 'configuration'].includes(locked.source) || (locked.source === 'content' && locked.configurationItems.length)) throw new HTTPException(409, { message: '发布基代已变化，请新建发布单' });
+      [locked] = await tx.update(cmsReleases).set({ baseGenerationId: currentGenerationId }).where(eq(cmsReleases.id, id)).returning();
+    }
     const [deployment] = await tx.insert(cmsDeployments).values({ siteId: locked.siteId, releaseId: id }).returning();
     const [updated] = await tx.update(cmsReleases).set({ status: 'building', deploymentId: deployment.id, error: null }).where(eq(cmsReleases.id, id)).returning();
     const task = await persistAsyncTask(tx, { taskType: RELEASE_BUILD_TASK, title: `CMS 发布单：${locked.name}`, tenantId: null, payload: { siteId: locked.siteId, releaseId: id, deploymentId: deployment.id }, idempotencyKey: `cms-release:${id}:deployment:${deployment.id}` });
@@ -164,16 +178,17 @@ export async function createCmsContentRelease(input: { contentId: number; revisi
   if (pending) return pending.status === 'draft' ? buildCmsRelease(pending.id) : mapRelease(pending);
   const created = await createCmsRelease({ siteId: revision.siteId, name: `发布：${revision.payload.title}`, revisionIds: [revision.id], withdrawContentIds: [], autoActivate: true,
     pageIds: [], widgetIds: [], includeSiteConfiguration: false,
-    activateAt: revision.payload.scheduledAt ? formatDateTime(revision.payload.scheduledAt) : null, timeZone: APP_TIME_ZONE });
+    activateAt: revision.payload.scheduledAt ? formatDateTime(revision.payload.scheduledAt) : null, timeZone: APP_TIME_ZONE }, undefined, 'content');
   return buildCmsRelease(created.id);
 }
 
 export async function createCmsConfigurationRelease(siteId: number, sourceTaskId: number, reason: string | undefined, captured: CmsCapturedConfiguration): Promise<CmsRelease> {
-  const name = `配置发布 #${sourceTaskId}：${reason ?? '站点公开配置更新'}`.slice(0, 200);
-  const [existing] = await db.select().from(cmsReleases).where(and(eq(cmsReleases.siteId, siteId), eq(cmsReleases.name, name))).orderBy(desc(cmsReleases.id)).limit(1);
-  if (existing) { await requireRelease(existing.id); return existing.status === 'draft' ? buildCmsRelease(existing.id) : mapRelease(existing); }
-  const release = await createCmsRelease({ siteId, name, revisionIds: [], withdrawContentIds: [], pageIds: [], widgetIds: [], includeSiteConfiguration: true, autoActivate: false, timeZone: APP_TIME_ZONE }, captured);
-  return buildCmsRelease(release.id);
+  await assertSiteAccess(siteId);
+  // Source IDs and reasons remain on the originating task. Saving a configuration
+  // draft never creates a candidate build or claims that anything is online.
+  void sourceTaskId; void reason;
+  const release = await db.transaction((tx) => stageCmsConfigurationDraft(tx, siteId, captured));
+  return mapRelease(release);
 }
 
 /** Restore the fixed public projection; live counters and identity/audit ownership are preserved. */
@@ -199,7 +214,7 @@ async function restoreProjection(tx: DbTransaction, siteId: number, generationId
   }
 }
 
-export async function activateCmsRelease(id: number, expectedGenerationId: number | null, rollback = false): Promise<CmsRelease> {
+export async function activateCmsRelease(id: number, expectedGenerationId: number | null, rollback = false, execution?: Pick<TaskRunContext, 'taskId' | 'dispatchToken'>): Promise<CmsRelease> {
   const release = await requireRelease(id);
   if (!await hasPermission('cms:publish:manage') && (rollback || release.configurationItems.length > 0 || !await hasPermission('cms:content:publish'))) throw new HTTPException(403, { message: '发布单激活权限已失效' });
   const [preparedDeployment] = release.deploymentId ? await db.select().from(cmsDeployments).where(eq(cmsDeployments.id, release.deploymentId)).limit(1) : [];
@@ -214,6 +229,10 @@ export async function activateCmsRelease(id: number, expectedGenerationId: numbe
   await verifyCmsGenerationArtifacts(preparedDeployment.id, preparedDeployment.snapshot);
   const result = await db.transaction(async (tx) => {
     await acquireCmsSitePublishLock(tx, release.siteId);
+    if (execution) {
+      const run = await lockCurrentReleaseExecution(tx, execution);
+      if (!run || run.cancelRequested) throw new HTTPException(409, { message: '发布执行轮次已失效或已取消' });
+    }
     const [locked] = await tx.select().from(cmsReleases).where(eq(cmsReleases.id, id)).for('update').limit(1);
     if (!locked?.deploymentId) throw new HTTPException(409, { message: '发布单尚未生成候选部署' });
     const current = await activeGeneration(locked.siteId, tx);
@@ -335,7 +354,15 @@ export async function activateScheduledCmsReleases(): Promise<number> {
   const due = await db.select().from(cmsReleases).where(and(eq(cmsReleases.status, 'scheduled'), isNotNull(cmsReleases.activateAt), lte(cmsReleases.activateAt, new Date()))).orderBy(asc(cmsReleases.activateAt)).limit(100);
   let activated = 0;
   for (const row of due) {
-    try { await activateCmsRelease(row.id, row.baseGenerationId); activated++; }
+    try {
+      const current = await activeGeneration(row.siteId);
+      if (row.source === 'content' && !row.configurationItems.length && current !== row.baseGenerationId) {
+        const [reset] = await db.update(cmsReleases).set({ status: 'draft', deploymentId: null }).where(and(eq(cmsReleases.id, row.id), eq(cmsReleases.status, 'scheduled'))).returning();
+        if (reset) await buildCmsRelease(row.id);
+        continue;
+      }
+      await activateCmsRelease(row.id, row.baseGenerationId); activated++;
+    }
     catch (error) { await db.update(cmsReleases).set({ status: 'failed', error: error instanceof Error ? error.message : String(error) }).where(and(eq(cmsReleases.id, row.id), eq(cmsReleases.status, 'scheduled'))); }
   }
   return activated;
@@ -384,18 +411,32 @@ export function registerCmsReleaseTaskHandler(): void {
             manifest.snapshot.sitePublicRevision = site.publicRevision;
             manifest.snapshot.artifacts = await collectCmsGenerationArtifacts(site.code, deploymentId);
             manifest.hash = hashCmsDeploymentManifest(manifest.snapshot);
+            // 构建事务为 repeatable read；心跳由外部连接更新，不能在旧快照中锁任务行。
+            if (await withoutDbExecutor(() => ctx.isCancelRequested())) throw new Error('发布执行轮次已失效或已取消');
             await sealCmsGenerationStorage(tx, deploymentId, manifest.snapshot.revisions);
             await tx.update(cmsDeployments).set({ status: 'ready', snapshot: manifest.snapshot, manifestHash: manifest.hash, artifactCount: manifest.snapshot.artifacts.length }).where(eq(cmsDeployments.id, deploymentId));
           }));
         }, { isolationLevel: 'repeatable read' });
         const status = release.activateAt && release.activateAt > new Date() ? 'scheduled' : 'ready';
-        const [ready] = await db.update(cmsReleases).set({ status, error: null }).where(and(eq(cmsReleases.id, releaseId), eq(cmsReleases.status, 'building'), eq(cmsReleases.deploymentId, deploymentId))).returning();
-        const activated = ready?.autoActivate && status === 'ready' ? await activateCmsRelease(releaseId, release.baseGenerationId) : null;
+        const ready = await db.transaction(async (tx) => {
+          const run = await lockCurrentReleaseExecution(tx, ctx);
+          if (!run || run.cancelRequested) throw new Error('发布执行轮次已失效或已取消');
+          const [row] = await tx.update(cmsReleases).set({ status, error: null }).where(and(eq(cmsReleases.id, releaseId), eq(cmsReleases.status, 'building'), eq(cmsReleases.deploymentId, deploymentId))).returning();
+          return row;
+        });
+        if (await ctx.isCancelRequested()) throw new Error('发布任务已取消或被新轮次接管，候选部署未激活');
+        const activated = ready?.autoActivate && status === 'ready' ? await activateCmsRelease(releaseId, release.baseGenerationId, false, ctx) : null;
         return { releaseId, deploymentId, status: activated?.status ?? ready?.status ?? 'cancelled' };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        await db.update(cmsDeployments).set({ status: 'failed', error: message }).where(and(eq(cmsDeployments.id, deploymentId), inArray(cmsDeployments.status, ['building', 'ready'])));
-        await db.update(cmsReleases).set({ status: 'failed', error: message }).where(and(eq(cmsReleases.id, releaseId), eq(cmsReleases.deploymentId, deploymentId), inArray(cmsReleases.status, ['building', 'ready', 'scheduled'])));
+        const owned = await db.transaction(async (tx) => {
+          const run = await lockCurrentReleaseExecution(tx, ctx);
+          if (!run) return false;
+          await tx.update(cmsDeployments).set({ status: 'failed', error: message }).where(and(eq(cmsDeployments.id, deploymentId), inArray(cmsDeployments.status, ['building', 'ready'])));
+          await tx.update(cmsReleases).set({ status: run.cancelRequested ? 'cancelled' : 'failed', error: message }).where(and(eq(cmsReleases.id, releaseId), eq(cmsReleases.deploymentId, deploymentId), inArray(cmsReleases.status, ['building', 'ready', 'scheduled'])));
+          return true;
+        });
+        if (!owned) return { releaseId, deploymentId, skipped: true, reason: '执行轮次已交接' };
         await dropFailedCmsGenerationStorage(deploymentId);
         throw error;
       } finally {

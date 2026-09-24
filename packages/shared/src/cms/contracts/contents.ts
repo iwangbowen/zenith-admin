@@ -274,6 +274,8 @@ export type CmsTitleDuplicateCheck = z.infer<typeof cmsTitleDuplicateCheckSchema
 /** 批量状态流转结果（逐条独立校验的部分成功明细） */
 export const cmsContentBatchStatusResultSchema = z.object({
   okIds: z.array(z.int()),
+  approvedIds: z.array(z.int()),
+  releases: z.array(z.object({ id: z.int(), siteId: z.int(), status: z.string(), contentIds: z.array(z.int()) })),
   failed: z.array(z.object({ id: z.int(), reason: z.string() })),
 }).meta({ id: 'CmsContentBatchStatusResult' });
 
@@ -358,4 +360,3 @@ export const cmsContentContract = defineContract('/api/cms/contents', {
   lock: op.post('/{id}/lock', { access: { permission: 'cms:content:lock' }, audit: '持久锁定 CMS 内容', params: idParam, body: lockCmsContentSchema, response: cmsContentLockStateSchema, summary: '持久锁定内容（取消待执行计划发布时间）' }),
   unlock: op.post('/{id}/unlock', { access: { permission: 'cms:content:lock' }, audit: '解除 CMS 内容持久锁', params: idParam, body: cmsContentCasSchema, summary: '解除内容持久锁' }),
 }, { auditModule: 'CMS内容管理', tags: ['CMS-内容管理'] });
-

@@ -4,6 +4,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DbTransaction } from '../../db/types';
 import { asyncTaskTypeConfigs } from '../../db/schema';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
 
 const mocks = vi.hoisted(() => ({
   send: vi.fn(), sendAfter: vi.fn(), handler: vi.fn(), select: vi.fn(), update: vi.fn(), transaction: vi.fn(), push: vi.fn(),
@@ -26,6 +28,7 @@ vi.mock('../pg-boss-scheduler', () => ({
   isQueueNotFoundError: (err: unknown) => err instanceof Error
     && (/queue .* (does not exist|not found)/i.test(err.message) || (err as { code?: string }).code === '23503'),
   nodeQueueName: (base: string, nodeId: string) => `${base}/node/${nodeId.replace(/[^\w.-]+/g, '_')}`,
+  getSystemJobState: vi.fn(async () => null),
   sendSystemJob: mocks.send,
   sendSystemJobAfter: mocks.sendAfter,
 }));
@@ -71,17 +74,17 @@ describe('提交', () => {
 
 describe('投递', () => {
   it('按任务行的 nodeId 选择队列：节点亲和 → 该进程的节点队列，其余 → 共享队列', async () => {
-    mocks.select.mockImplementation(() => ({ from: () => ({ where: () => ({ limit: async () => [{ id: 1, nodeId: 'node-b:99' }] }) }) }));
+    mocks.select.mockImplementation(() => ({ from: () => ({ where: () => ({ limit: async () => [{ id: 1, nodeId: 'node-b:99', status: 'pending', dispatchToken: '00000000-0000-4000-8000-000000000001', nextRunAt: null }] }) }) }));
     await enqueueAsyncTask(1);
-    expect(mocks.send).toHaveBeenCalledWith('async-tasks/node/node-b_99', { taskId: 1 }, expect.objectContaining({ singletonKey: 'async-task-1' }));
+    expect(mocks.send).toHaveBeenCalledWith('async-tasks/node/node-b_99', expect.objectContaining({ taskId: 1, dispatchToken: expect.any(String) }), expect.objectContaining({ singletonKey: 'async-task-1' }));
 
-    mocks.select.mockImplementation(() => ({ from: () => ({ where: () => ({ limit: async () => [{ id: 2, nodeId: null }] }) }) }));
+    mocks.select.mockImplementation(() => ({ from: () => ({ where: () => ({ limit: async () => [{ id: 2, nodeId: null, status: 'pending', dispatchToken: '00000000-0000-4000-8000-000000000002', nextRunAt: null }] }) }) }));
     await enqueueAsyncTask(2);
-    expect(mocks.send).toHaveBeenLastCalledWith('async-tasks', { taskId: 2 }, expect.any(Object));
+    expect(mocks.send).toHaveBeenLastCalledWith('async-tasks', expect.objectContaining({ taskId: 2, dispatchToken: expect.any(String) }), expect.any(Object));
   });
 
   it('本进程节点队列被误删（pg-boss "does not exist"）时重建后重试一次；共享队列或其他错误直接抛出', async () => {
-    mocks.select.mockImplementation(() => ({ from: () => ({ where: () => ({ limit: async () => [{ id: 3, nodeId: 'node-a:11' }] }) }) }));
+    mocks.select.mockImplementation(() => ({ from: () => ({ where: () => ({ limit: async () => [{ id: 3, nodeId: 'node-a:11', status: 'pending', dispatchToken: '00000000-0000-4000-8000-000000000003', nextRunAt: null }] }) }) }));
     mocks.send.mockRejectedValueOnce(new Error('Queue async-tasks/node/node-a_11 does not exist')).mockResolvedValueOnce('job');
     mocks.ensureLocalQueue.mockResolvedValue(true);
     await enqueueAsyncTask(3);
@@ -92,7 +95,7 @@ describe('投递', () => {
     await expect(enqueueAsyncTask(3)).rejects.toThrow('connection refused');
     expect(mocks.send).toHaveBeenCalledTimes(1);
 
-    mocks.select.mockImplementation(() => ({ from: () => ({ where: () => ({ limit: async () => [{ id: 4, nodeId: null }] }) }) }));
+    mocks.select.mockImplementation(() => ({ from: () => ({ where: () => ({ limit: async () => [{ id: 4, nodeId: null, status: 'pending', dispatchToken: '00000000-0000-4000-8000-000000000004', nextRunAt: null }] }) }) }));
     mocks.send.mockReset().mockRejectedValue(new Error('Queue async-tasks does not exist'));
     await expect(enqueueAsyncTask(4)).rejects.toThrow('does not exist');
     expect(mocks.send).toHaveBeenCalledTimes(1);
@@ -113,7 +116,10 @@ describe('兜底扫描', () => {
         }),
       }),
     }));
-    mocks.select.mockImplementation(() => ({ from: () => ({ where: async () => pending }) }));
+    mocks.select.mockImplementation(() => ({ from: () => ({ where: (where: SQL) => {
+      const id = new PgDialect().sqlToQuery(where).params.find((value) => typeof value === 'number');
+      return Object.assign(Promise.resolve(pending), { limit: async () => pending.filter((row) => row.id === id).map((row) => ({ ...row, status: 'pending', dispatchToken: `00000000-0000-4000-8000-${String(row.id).padStart(12, '0')}`, nextRunAt: null })) });
+    } }) }));
     return { failed };
   }
 
@@ -122,8 +128,8 @@ describe('兜底扫描', () => {
     mocks.nodeAlive.mockImplementation(async (nodeId: string) => nodeId === 'node-b:1');
     const result = await drainAsyncTasks();
     expect(mocks.send.mock.calls.map(([queue, data]) => [queue, data])).toEqual([
-      ['async-tasks/node/node-b_1', { taskId: 5 }],
-      ['async-tasks', { taskId: 7 }],
+      ['async-tasks/node/node-b_1', { taskId: 5, dispatchToken: '00000000-0000-4000-8000-000000000005' }],
+      ['async-tasks', { taskId: 7, dispatchToken: '00000000-0000-4000-8000-000000000007' }],
     ]);
     expect(f.failed).toHaveLength(1);
     expect(mocks.push).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed' }), { force: true });

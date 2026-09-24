@@ -20,6 +20,7 @@ export interface CmsDeploymentSnapshot {
 export const cmsReleases = pgTable('cms_releases', {
   id: idColumn(), siteId: integer().notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
   name: varchar({ length: 200 }).notNull(), status: cmsReleaseStatusEnum().notNull().default('draft'),
+  source: varchar({ length: 24 }).$type<'manual' | 'content' | 'configuration'>().notNull().default('manual'),
   baseGenerationId: integer(), deploymentId: integer(),
   items: jsonb().$type<CmsRelease['items']>().notNull().default([]),
   configurationItems: jsonb().$type<CmsRelease['configurationItems']>().notNull().default([]),

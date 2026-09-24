@@ -12,7 +12,7 @@ vi.mock('../context', () => ({
   currentTraceId: () => undefined, currentParentRef: () => undefined,
 }));
 vi.mock('../pg-boss-scheduler', () => ({
-  registerSystemQueueWorker: vi.fn(), sendSystemJob: mocks.send, sendSystemJobAfter: vi.fn(),
+  getSystemJobState: vi.fn(async () => null), registerSystemQueueWorker: vi.fn(), sendSystemJob: mocks.send, sendSystemJobAfter: vi.fn(),
 }));
 vi.mock('./registry', async (original) => ({
   ...await original<typeof import('./registry')>(), getTaskHandler: mocks.handler,
@@ -23,7 +23,7 @@ import { getTaskTypePolicy } from './config';
 import { persistAsyncTask, restartAsyncTask, restartAsyncTaskInTransaction, submitAsyncTask } from './runner';
 
 const policy = { enabled: true, allowConcurrent: true, maxAttempts: 3, retryDelayMs: 7300, retentionDays: 30 };
-const row = { id: 42, taskType: 'cms-publish-build', status: 'pending', createdBy: 7, tenantId: null };
+const row = { dispatchToken: '00000000-0000-4000-8000-000000000042', id: 42, taskType: 'cms-publish-build', status: 'pending', createdBy: 7, tenantId: null };
 
 function fixture(options: { policy?: typeof policy | null; policyError?: Error; existing?: object; insertError?: Error; unfinished?: number } = {}) {
   const events: string[] = [];
@@ -132,6 +132,7 @@ describe('task-center transaction ownership and policy snapshots', () => {
       const result = await fn(f.tx);
       expect(mocks.send).not.toHaveBeenCalled();
       f.events.push('commit');
+      mocks.select.mockImplementation(() => ({ from: () => ({ where: () => ({ limit: async () => [row] }) }) }));
       return result;
     });
     mocks.send.mockImplementation(async () => { f.events.push('enqueue'); });

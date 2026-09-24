@@ -331,7 +331,7 @@ export function assertLockedCmsPublishPreconditions(_initialStatus: CmsContentSt
 }
 
 /** Approve/freeze the exact subject and submit an implicit release; activation owns the public projection. */
-export async function publishCmsContent(id: number, options?: PublishCmsContentOptions) {
+export async function prepareCmsContentPublication(id: number, options?: PublishCmsContentOptions) {
   const identity = options?.skipAccessCheck ? await ensureCmsContentExists(id) : await requireCmsContentAccess(id);
   assertCmsContentUnlocked(identity);
   if (!options?.fromWorkflow) await assertNoActiveContentWorkflow(id);
@@ -340,9 +340,11 @@ export async function publishCmsContent(id: number, options?: PublishCmsContentO
     await lockCmsSiteForMutation(tx, identity.siteId);
     const working = await requireCmsWorkingCopy(tx, id, true);
     if (!options?.fromWorkflow) assertCmsContentVersion(working, options?.expectedVersion);
-    if (identity.deletedAt || identity.archivedAt) throw new HTTPException(409, { message: '回收站或已归档内容不可发布' });
+    const [currentIdentity] = await tx.select().from(cmsContents).where(eq(cmsContents.id, id)).for('update').limit(1);
+    if (!currentIdentity || currentIdentity.deletedAt || currentIdentity.archivedAt) throw new HTTPException(409, { message: '回收站或已归档内容不可发布' });
+    assertCmsContentUnlocked(currentIdentity);
     const requestedId = options?.revisionId ?? (working.editorialStatus === 'pending' ? working.submittedRevisionId : working.editorialStatus === 'approved' ? working.approvedRevisionId : null);
-    const revision = requestedId ? await loadCmsRevision(tx, requestedId) : await freezeCmsContentRevision(tx, identity, working, 'publication', '冻结发布稿');
+    const revision = requestedId ? await loadCmsRevision(tx, requestedId) : await freezeCmsContentRevision(tx, currentIdentity, working, 'publication', '冻结发布稿');
     if (revision.contentId !== id) throw new HTTPException(409, { message: '发布修订不属于当前内容' });
     if (isWorkflowAuditEnabled(site.settings) && working.approvedRevisionId !== revision.id) throw new HTTPException(409, { message: '该修订尚未通过工作流审核' });
     assertContentTypeReady(cmsRevisionToContentRow(identity, revision.snapshot));
@@ -353,6 +355,11 @@ export async function publishCmsContent(id: number, options?: PublishCmsContentO
     await logContentOp(tx, id, 'approved', `批准修订 #${revision.id}，等待发布单激活`);
     return { revisionId: revision.id, version: working.version + 1 };
   });
+  return { contentId: id, siteId: identity.siteId, ...prepared };
+}
+
+export async function publishCmsContent(id: number, options?: PublishCmsContentOptions) {
+  const prepared = await prepareCmsContentPublication(id, options);
   const { createCmsContentRelease } = await import('./cms-releases.service');
   await createCmsContentRelease({ contentId: id, revisionId: prepared.revisionId, expectedVersion: prepared.version });
   return getCmsContent(id, { skipAccessCheck: options?.skipAccessCheck });

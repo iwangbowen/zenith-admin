@@ -147,6 +147,9 @@ export type AsyncTaskCleanupResult = z.infer<typeof asyncTaskCleanupResultSchema
 
 export const asyncTaskListQuery = paginationQuery.extend({
   taskType: keywordQuery('任务类型'),
+  taskTypes: keywordQuery('任务类型列表', { max: 2000, description: '逗号分隔的精确任务类型，最多 20 项' })
+    .transform((value) => value ? [...new Set(value.split(',').map((item) => item.trim()).filter(Boolean))] : undefined)
+    .pipe(z.array(z.string().min(1).max(100)).min(1).max(20).optional()),
   status: queryEnum(ASYNC_TASK_STATUSES),
   keyword: keywordQuery('任务标题 / 任务类型'),
   content: keywordQuery('内容', { description: '任务内容关键字（匹配入参与产出）' }),

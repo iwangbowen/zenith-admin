@@ -1,7 +1,8 @@
-import { importJobContract } from '@zenith/shared/tasks';
+import { importJobContract, IMPORT_TASK_TYPE, IMPORT_PREVIEW_TASK_TYPE } from '@zenith/shared/tasks';
+import { CMS_CONTENT_IMPORT_COLUMNS } from '@zenith/shared/cms';
 import type { ImportEntityMeta } from '@zenith/shared/tasks';
 import { mock } from '@/mocks/utils/contract';
-import { mockDateTime } from '../utils/date';
+import { createImmediateMockTask } from './async-tasks';
 
 const entities: ImportEntityMeta[] = [
   {
@@ -78,30 +79,22 @@ const entities: ImportEntityMeta[] = [
     title: 'CMS 内容',
     module: 'CMS内容管理',
     description: '需在 CMS 内容管理页选择站点/栏目后导入，逐行创建草稿内容',
-    maxRows: 10000,
+    maxRows: 2000,
     requiresContext: true,
-    columns: [
-      { key: 'title', header: '标题', required: true },
-      { key: 'summary', header: '摘要' },
-      { key: 'body', header: '正文' },
-    ],
+    columns: CMS_CONTENT_IMPORT_COLUMNS,
   },
 ];
 
-let nextImportTaskId = 9000;
-
 export const importJobsHandlers = [
   mock(importJobContract.entities, ({ ok }) => ok(entities)),
-  mock(importJobContract.submit, ({ ok }) => {
-    const now = mockDateTime();
-    const id = nextImportTaskId++;
-    return ok({
-      id, taskType: 'data-import', title: '会员导入（demo.xlsx）', module: '导入中心',
-      status: 'success', payload: {}, totalCount: 3, processedCount: 3, failedCount: 1,
-      progressNote: '成功 2 / 失败 1（共 3 行）', result: { total: 3, succeeded: 2, failed: 1 },
-      errorMessage: null, cancelRequested: false, attempts: 1, maxAttempts: 1, retryDelayMs: 5000, nextRunAt: null,
-      createdBy: 1, createdByName: '管理员', tenantId: null, traceId: null,
-      startedAt: now, completedAt: now, createdAt: now, updatedAt: now,
-    }, '导入任务已提交，可在任务中心查看进度与行级明细');
+  mock(importJobContract.submit, ({ body, ok }) => {
+    const dryRun = body.dryRun ?? false;
+    const title = entities.find((entity) => entity.entity === body.entity)?.title ?? '数据';
+    const task = createImmediateMockTask({
+      taskType: dryRun ? IMPORT_PREVIEW_TASK_TYPE : IMPORT_TASK_TYPE,
+      title: `${title}${dryRun ? '预检' : '导入'}`, module: '导入中心', payload: body, allowConcurrent: dryRun,
+    });
+    task.result = { total: 1, succeeded: 1, failed: 0, dryRun, errorFileId: null, errorFileName: null };
+    return ok(task, '任务已完成，可查看处理结果');
   }),
 ];

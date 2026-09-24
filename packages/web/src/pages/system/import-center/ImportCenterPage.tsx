@@ -7,7 +7,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { AsyncTask, ImportEntityMeta } from '@zenith/shared/tasks';
-import { ASYNC_TASK_STATUSES } from '@zenith/shared/tasks';
+import { ASYNC_TASK_STATUSES, IMPORT_TASK_TYPES } from '@zenith/shared/tasks';
 import { enumValueOf } from '@zenith/shared/core';
 import { ImportProgressModal } from '@/components/ImportButton';
 import AsyncTaskProgress from '@/components/AsyncTaskProgress';
@@ -83,7 +83,7 @@ export default function ImportCenterPage() {
   });
 
   const listQuery = useAsyncTaskList(
-    { page, pageSize, taskType: 'data-import', ...filterQuery },
+    { page, pageSize, taskTypes: IMPORT_TASK_TYPES.join(','), ...filterQuery },
     // 有进行中的任务时轮询列表（渲染期重新求值，任务终态后自动停止）
     { refetchInterval: hasActiveTask ? 3000 : false },
   );

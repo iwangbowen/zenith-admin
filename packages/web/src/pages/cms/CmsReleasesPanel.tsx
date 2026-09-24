@@ -59,7 +59,7 @@ export default function CmsReleasesPanel() {
   const selectedContents = useQueries({ queries: contentIds.map((id) => apiQueryOptions(cmsContentContract.detail, { params: { id } })) });
   const histories = useQueries({ queries: contentIds.map((id) => apiQueryOptions(cmsContentContract.versions, { params: { id }, query: { page: 1, pageSize: 200 } })) });
   const columns: ColumnProps<CmsRelease>[] = [
-    { title: '发布单', dataIndex: 'name', minWidth: 230 },
+    { title: '发布单', dataIndex: 'name', minWidth: 230, render: (value, record) => <Space><span>{value}</span>{record.source === 'configuration' && record.status === 'draft' ? <Tag color="blue">配置变更汇总</Tag> : null}</Space> },
     // 「0 发布 / 0 撤下」在 120 定宽下会折行（内容宽约 124），按内容宽加宽并单行省略
     { title: '范围', width: 150, render: (_value, record) => renderEllipsis(`${record.items.filter((item) => item.action === 'publish').length} 发布 / ${record.items.filter((item) => item.action === 'withdraw').length} 撤下`) },
     { title: '排期', width: 220, render: (_value, record) => record.activateAt ? `${record.activateAt}（${record.timeZone}）` : record.autoActivate ? '构建成功后激活' : '手动激活' },
@@ -81,7 +81,7 @@ export default function CmsReleasesPanel() {
     setDetailId(release.id);
   }
   return <>
-    <Banner type="info" closeIcon={null} description="发布单冻结内容修订与依赖。构建完成并激活后才改变源站公开内容；外部缓存和渠道送达在任务记录中追踪。" style={{ marginBottom: 12 }} />
+    <Banner type="info" closeIcon={null} description="配置保存会合并到本站待构建的配置草稿；点击构建后冻结本次范围。内容批准表示修订可发布，构建并激活后才更新线上内容。" style={{ marginBottom: 12 }} />
     <ListSearchToolbar page={page} filters={['keyword']} extraFilters={<CmsSiteSelect value={siteId} onChange={(id) => { setSiteId(id); page.setPage(1); }} />} create={canBuild ? <CreateButton disabled={!siteId} onClick={() => { setName(''); setContentIds([]); setWithdrawIds([]); setPageIds([]); setWidgetIds([]); setIncludeSiteConfiguration(false); setRevisions({}); setActivateAt(undefined); setAutoActivate(false); setCreating(true); }}>新建发布单</CreateButton> : null} />
     <ConfigurableTable columns={columns} {...page.tableProps} />
     {/* 发布单包含远程修订选择与多种对象动作，属于复合编排表单。 */}
@@ -112,6 +112,7 @@ export default function CmsReleasesPanel() {
     <SideSheet title="发布单详情" visible={!!detailId} onCancel={() => setDetailId(undefined)} width={820}>
       {detail.isError ? <Banner type="danger" description="发布单加载失败" /> : detail.data ? <Space vertical align="start" spacing={16} style={{ width: '100%' }}>
         <Typography.Title heading={5}>{detail.data.name}</Typography.Title>
+        {detail.data.source === 'configuration' && detail.data.status === 'draft' ? <Banner type="info" description="本站后续配置保存会继续合并到这份草稿。确认变更范围后构建，构建后的发布单保持固定。" /> : null}
         <Tag color={RELEASE_COLORS[detail.data.status]}>{RELEASE_LABELS[detail.data.status]}</Tag>
         {/* 单列键值对：row（双行）模式会把值渲染成大字并让 64 位摘要溢出抽屉边界 */}
         <Descriptions data={[{ key: '当前公开代次', value: detail.data.activeGenerationId ?? '尚未上线' }, { key: '候选部署', value: detail.data.deploymentId ?? '待构建' }, { key: '基础代次', value: detail.data.baseGenerationId ?? '首次部署' }, { key: '排期', value: detail.data.activateAt ? `${detail.data.activateAt}（${detail.data.timeZone}）` : '无' }, { key: '产物数', value: detail.data.deployment?.artifactCount ?? 0 }, { key: '部署摘要', value: detail.data.deployment?.manifestHash ? <Typography.Text code style={{ wordBreak: 'break-all' }}>{detail.data.deployment.manifestHash}</Typography.Text> : '构建后生成' }]} />

@@ -14,6 +14,7 @@ import type { DbTransaction } from '../../db/types';
 import { acquireCmsSitePublishLock, bumpCmsPublicRevision, cmsSiteFencePayload } from './cms-site-publish-lock.service';
 import { invalidateCmsSiteCaches } from './cms-cache.service';
 import { captureCmsConfiguration, cmsConfigurationSelection } from './cms-configuration-snapshot.service';
+import { stageCmsConfigurationDraft } from './cms-configuration-drafts.service';
 
 const SYSTEM_USER = { userId: 1, username: 'admin', roles: ['super_admin'], tenantId: null };
 const transactionPublicRevisions = new WeakMap<object, Map<number, number>>();
@@ -76,17 +77,19 @@ async function insertCmsPublishOutboxInExecutor(
   const fencedInput: CmsPublishSubmitInput = { ...input, expectedPublicRevision: publicRevision };
   const configuration = await captureCmsConfiguration(executor, input.siteId, cmsConfigurationSelection(input));
   const [generation] = await executor.select().from(cmsSiteGenerations).where(eq(cmsSiteGenerations.siteId, input.siteId)).limit(1);
+  const capture = { ...configuration, baseGenerationId: generation?.activeGenerationId ?? null };
+  const draft = configuration.items.length ? await stageCmsConfigurationDraft(executor, input.siteId, capture) : null;
   const row = await persistAsyncTask(executor, {
     taskType: 'cms-publish-build',
-    title: `CMS ${CMS_PUBLISH_TARGET_TYPE_LABELS[input.targetType]}发布`,
+    title: draft ? `CMS 配置草稿 #${draft.id}` : `CMS ${CMS_PUBLISH_TARGET_TYPE_LABELS[input.targetType]}发布`,
     payload: {
       ...fencedInput,
       submittedAt: formatDateTime(dayjs().toDate()),
       systemTriggered: true,
       dedupeFingerprint: `event:${eventKey}`,
-      configurationCapture: { ...configuration, baseGenerationId: generation?.activeGenerationId ?? null },
+      ...(draft ? { configurationDraftId: draft.id } : { configurationCapture: capture }),
     },
-    idempotencyKey,
+    idempotencyKey: draft ? `cms-configuration-draft:${draft.id}` : idempotencyKey,
   });
   return mapAsyncTask(row);
 }

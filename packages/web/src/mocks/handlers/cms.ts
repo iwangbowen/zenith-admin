@@ -1,4 +1,4 @@
-import { submitMockCmsContentRelease, submitMockCmsWithdrawal } from './cms-releases';
+import { submitMockCmsContentBatch, submitMockCmsWithdrawal } from './cms-releases';
 import { getMockCmsWorkingContent, getMockCmsPublishedContent, getMockCmsRevision, getMockCmsReviewContent, bindMockCmsReview, assertMockCmsCas, freezeMockCmsRevision, saveMockCmsWorkingContent, restoreMockCmsRevision } from '@/mocks/utils/cms-revisions';
 import { HttpResponse } from 'msw';
 import type * as z from 'zod';
@@ -1809,7 +1809,6 @@ export const cmsP3Handlers = [
         if (!content.archivedAt) {
           content.approvedRevisionId = content.submittedRevisionId ?? freezeMockCmsRevision(id, 'publication').id;
           content.editorialStatus = 'approved';
-          submitMockCmsContentRelease(id, content.approvedRevisionId);
           okIds.push(id);
         } else {
           failed.push({ id, reason: '内容已发布或不可发布' });
@@ -1835,7 +1834,8 @@ export const cmsP3Handlers = [
     const message = failed.length === 0
       ? `已处理 ${okIds.length} 条内容`
       : `成功 ${okIds.length} 条，失败 ${failed.length} 条`;
-    return ok({ okIds, failed }, message);
+    const releases = action === 'publish' && okIds.length ? submitMockCmsContentBatch(okIds) : [];
+    return ok({ okIds, failed, approvedIds: action === 'publish' ? [...okIds] : [], releases }, message);
   }),
   mock(cmsContentContract.distribute, ({ body, ok }) => {
     const { ids } = body;

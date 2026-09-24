@@ -628,6 +628,7 @@ export const CMS_FIELD_TYPE_LABELS: Record<(typeof CMS_FIELD_TYPES)[number], str
 
 /** CMS 前台预览路径前缀（无域名绑定时通过 /__cms/{siteCode}/... 访问站点） */
 export const CMS_PREVIEW_PREFIX = '/__cms';
+export const CMS_RELEASE_SOURCES = ['manual', 'content', 'configuration'] as const;
 
 /**
  * 搭建页站内路径（不含前导斜杠）：设了自定义 path 用它，否则回落 `p/{slug}/`。

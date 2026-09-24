@@ -21,7 +21,9 @@ import logger from '../../lib/logger';
 import { assertCmsWidgetSourcesMutable } from './cms-widgets.service';
 import { enqueueCmsWebhookEvents, insertCmsContentWebhookOutbox } from './cms-webhook.service';
 import { insertContentPublishOutbox, recalcTagContentCounts, ensureChannelForContent } from './cms-contents-internal';
-import { offlineCmsContent, publishCmsContent, rejectCmsContent, submitCmsContent, createCmsContent } from './cms-contents-write.service';
+import { offlineCmsContent, rejectCmsContent, submitCmsContent, createCmsContent } from './cms-contents-write.service';
+import { publishCmsContentBatch } from './cms-content-batch-publish.service';
+import type { CmsContentBatchStatusResult } from '@zenith/shared/cms';
 import { buildWhere } from '../../lib/where-helpers';
 import { requireCmsContentAccess, requireCmsContentsAccess } from './cms-content-access.service';
 import { assertCmsContentVersion, requireCmsWorkingCopy, snapshotCmsContentProjection, writeCmsSystemWorkingCopy } from './cms-content-revisions.service';
@@ -423,18 +425,18 @@ export async function batchTransitionCmsContents(
   action: 'submit' | 'publish' | 'reject' | 'offline',
   reason?: string,
   expectedVersions?: ExpectedVersions,
-): Promise<{ okIds: number[]; failed: { id: number; reason: string }[] }> {
+): Promise<CmsContentBatchStatusResult> {
   const unique = [...new Set(ids)];
-  if (unique.length === 0) return { okIds: [], failed: [] };
+  if (unique.length === 0) return { okIds: [], approvedIds: [], releases: [], failed: [] };
   if (!(await hasPermission(CMS_BATCH_STATUS_PERMISSIONS[action]))) {
     throw new HTTPException(403, { message: '权限不足' });
   }
   const okIds: number[] = [];
+  if (action === 'publish') return publishCmsContentBatch(unique, expectedVersions);
   const failed: { id: number; reason: string }[] = [];
   for (const id of unique) {
     try {
       if (action === 'submit') await submitCmsContent(id, { expectedVersion: expectedVersions?.[String(id)] });
-      else if (action === 'publish') await publishCmsContent(id, { expectedVersion: expectedVersions?.[String(id)] });
       else if (action === 'reject') await rejectCmsContent(id, reason?.trim() || '批量驳回', { expectedVersion: expectedVersions?.[String(id)] });
       else await offlineCmsContent(id, { expectedVersion: expectedVersions?.[String(id)] });
       okIds.push(id);
@@ -444,7 +446,7 @@ export async function batchTransitionCmsContents(
       if (!(err instanceof HTTPException)) logger.warn(`[cms] 批量${action} 内容 #${id} 失败`, err);
     }
   }
-  return { okIds, failed };
+  return { okIds, failed, approvedIds: [], releases: [] };
 }
 
 export async function batchAddCmsContentTags(ids: number[], tagIds: number[], expectedVersions?: ExpectedVersions): Promise<number> {

@@ -89,6 +89,8 @@ export const asyncTasks = pgTable('async_tasks', {
   retryDelayMs: integer().notNull(),
   /** 下次允许执行时间（自动重试退避）；null = 立即可执行 */
   nextRunAt: timestamp(),
+  /** One durable queue-message identity per execution round; changed on retry/recovery/restart. */
+  dispatchToken: pgUuid().notNull().defaultRandom(),
   /**
    * 幂等键：相同 key 的重复提交返回已存在任务。
    *

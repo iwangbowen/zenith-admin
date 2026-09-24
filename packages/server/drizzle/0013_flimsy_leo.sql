@@ -1,0 +1,2 @@
+ALTER TABLE "async_tasks" ADD COLUMN "dispatch_token" uuid DEFAULT gen_random_uuid() NOT NULL;--> statement-breakpoint
+ALTER TABLE "cms_releases" ADD COLUMN "source" varchar(24) DEFAULT 'manual' NOT NULL;

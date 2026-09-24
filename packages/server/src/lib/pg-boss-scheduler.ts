@@ -1891,6 +1891,11 @@ export async function sendSystemJob<T extends object>(
 export async function deleteSystemJob(name: string, id: string): Promise<void> {
   await getBoss().deleteJob(name, id);
 }
+/** Read-only dispatch reconciliation; does not consume or mutate a job. */
+export async function getSystemJobState(name: string, id: string): Promise<string | null> {
+  const [job] = await getBoss().findJobs(name, { id });
+  return job?.state ?? null;
+}
 
 /** 校验 cron 表达式（兼容 5 段标准格式和带秒的 6 段格式） */
 export function validateCronExpression(expression: string): boolean {

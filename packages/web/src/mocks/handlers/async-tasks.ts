@@ -1,5 +1,5 @@
 import { publishMockWatchEvent } from '@/mocks/data/entity-watch-events';
-import type { QueryOf, TimelineEvent } from '@zenith/shared/core';
+import type { QueryOutputOf, TimelineEvent } from '@zenith/shared/core';
 import { percentOf } from '@zenith/shared/core';
 import { asyncTaskContract, taskDemoContract, isAsyncTaskTerminal } from '@zenith/shared/tasks';
 import type { AsyncTask, AsyncTaskItem, AsyncTaskStats, AsyncTaskStatus, AsyncTaskTypeMeta } from '@zenith/shared/tasks';
@@ -624,13 +624,14 @@ function findTask(id: number) {
   return tasks.find((item) => item.id === id);
 }
 
-type TaskListQuery = QueryOf<typeof asyncTaskContract.list>;
+type TaskListQuery = QueryOutputOf<typeof asyncTaskContract.list>;
 
 /** 按契约查询参数筛选（服务端语义：类型 / 状态精确匹配，关键字匹配标题与类型，内容匹配入参与产出，提交人匹配昵称） */
 function filterTasks(query: TaskListQuery, source: AsyncTask[]) {
   const content = (query.content ?? '').toLowerCase();
   return source.filter((task) => {
     if (query.taskType && task.taskType !== query.taskType) return false;
+    if (query.taskTypes && !query.taskTypes.includes(task.taskType)) return false;
     if (query.status && task.status !== query.status) return false;
     if (query.keyword && !includesKeyword(query.keyword, task.title, task.taskType)) return false;
     if (content && !(

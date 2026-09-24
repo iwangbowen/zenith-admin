@@ -30,7 +30,7 @@ describe('analytics-tasks — rollup rebuild task-center registration', () => {
     const handler = getTaskHandler(ANALYTICS_ROLLUP_REBUILD_TASK_TYPE)!;
     const progress = vi.fn(async () => ({ cancelRequested: false }));
     const ctx: TaskRunContext = {
-      taskId: 1, attempt: 1, payload: { days: 14 }, checkpoint: null,
+      taskId: 1, dispatchToken: 'test-run', attempt: 1, payload: { days: 14 }, checkpoint: null,
       progress, reportItems: vi.fn(async () => undefined), isCancelRequested: () => false,
     };
     const result = await handler.run(ctx);
@@ -104,3 +104,4 @@ describe('analytics-tasks — segment materialize task-center registration', () 
     expect(materializeSegment).not.toHaveBeenCalled();
   });
 });
+

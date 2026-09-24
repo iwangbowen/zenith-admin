@@ -54,6 +54,11 @@ export function isAsyncTaskTerminal(status: string | null | undefined): status i
 
 export const ASYNC_TASK_ITEM_STATUSES = ['pending', 'success', 'failed', 'skipped'] as const;
 
+/** 只读预检独立于写入任务，预检排队不占用正式导入的互斥额度。 */
+export const IMPORT_TASK_TYPE = 'data-import';
+export const IMPORT_PREVIEW_TASK_TYPE = 'data-import-preview';
+export const IMPORT_TASK_TYPES = [IMPORT_TASK_TYPE, IMPORT_PREVIEW_TASK_TYPE] as const;
+
 export type AsyncTaskItemStatus = (typeof ASYNC_TASK_ITEM_STATUSES)[number];
 
 // ─── 演示任务 ────────────────────────────────────────────────────────────────

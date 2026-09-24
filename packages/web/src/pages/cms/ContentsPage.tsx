@@ -285,11 +285,11 @@ export default function ContentsPage() {
     const result = await batchStatusMutation.mutateAsync({ body: { ids: selectedIds, action, reason, expectedVersions: versionsFor(selectedIds) } });
     setSelectedIds([]);
     if (result.failed.length === 0) {
-      Toast.success(action === 'publish' ? `已提交 ${result.okIds.length} 条发布任务，生效结果请在发布中心查看` : `已${label} ${result.okIds.length} 条内容`);
+      Toast.success(action === 'publish' ? `已批准 ${result.approvedIds.length} 条修订，合并为 ${result.releases.length} 个发布单；构建和激活结果请在发布中心查看` : `已${label} ${result.okIds.length} 条内容`);
       return;
     }
     Modal.warning({
-      title: `${label}完成：成功 ${result.okIds.length} 条，失败 ${result.failed.length} 条`,
+      title: action === 'publish' ? `已批准 ${result.approvedIds.length} 条，已提交 ${result.releases.filter((release) => release.status !== 'draft').length} 个发布单；${result.failed.length} 条待处理` : `${label}完成：成功 ${result.okIds.length} 条，失败 ${result.failed.length} 条`,
       content: (
         <ul style={{ maxHeight: 240, overflow: 'auto', paddingLeft: 18 }}>
           {result.failed.map((f) => <li key={f.id}>#{f.id}：{f.reason}</li>)}
@@ -647,7 +647,7 @@ export default function ContentsPage() {
     ) : null) : (
       <>
         {hasPermission('cms:content:publish') ? (
-          <Button onClick={() => confirmBatchStatus('publish', '批量发布', '仅草稿/待审核/已驳回/已下线内容会被发布并触发静态化')}>批量发布</Button>
+          <Button onClick={() => confirmBatchStatus('publish', '批量申请发布', '逐条校验并批准修订，按站点和排期合并发布单；构建并激活后才更新线上内容。')}>批量申请发布</Button>
         ) : null}
         {activeTab === 'pending' && hasPermission('cms:content:audit') ? (
           <Button onClick={handleBatchReject}>批量驳回</Button>

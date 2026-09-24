@@ -48,7 +48,7 @@ export interface ImportDefinition<TRow = unknown, TPrepared = unknown> {
   finalize?(prepared: TPrepared, stats: { succeeded: number; failed: number }): Promise<void>;
 }
 
-export const IMPORT_TASK_TYPE = 'data-import';
+export { IMPORT_TASK_TYPE, IMPORT_PREVIEW_TASK_TYPE } from '@zenith/shared/tasks';
 
 export const DEFAULT_MAX_ROWS = 10_000;
 

@@ -2,6 +2,7 @@ import * as z from 'zod';
 import { defineContract, op } from '../../core/contract';
 import { auditFieldsSchema, dateRangeQuery, idParam, keywordQuery, paginated, paginationQuery, queryEnum, requiredIdQuery } from '../../core/api-schemas';
 import { activateCmsReleaseSchema, CMS_DEPLOYMENT_STATUSES, CMS_RELEASE_STATUSES, createCmsReleaseSchema, suppressCmsContentSchema } from '../release-validation';
+import { CMS_RELEASE_SOURCES } from '../constants';
 
 export const cmsReleaseItemSchema = z.object({ contentId: z.int(), revisionId: z.int().nullable(), title: z.string(), action: z.enum(['publish', 'withdraw']) });
 export const cmsDeploymentSchema = z.object({
@@ -12,6 +13,7 @@ export type CmsDeployment = z.infer<typeof cmsDeploymentSchema>;
 export const cmsReleaseActivationSchema = z.object({ id: z.int(), fromGenerationId: z.int().nullable(), toGenerationId: z.int(), action: z.enum(['activate', 'rollback']), operatorId: z.int().nullable(), operatorName: z.string(), createdAt: z.string() });
 export const cmsReleaseSchema = z.object({
   id: z.int(), siteId: z.int(), name: z.string(), status: z.enum(CMS_RELEASE_STATUSES),
+  source: z.enum(CMS_RELEASE_SOURCES),
   baseGenerationId: z.int().nullable(), deploymentId: z.int().nullable(), activateAt: z.string().nullable(),
   timeZone: z.string(), autoActivate: z.boolean(), error: z.string().nullable(), items: z.array(cmsReleaseItemSchema),
   configurationItems: z.array(z.object({ kind: z.enum(['site', 'page', 'widget']), id: z.int(), title: z.string() })),

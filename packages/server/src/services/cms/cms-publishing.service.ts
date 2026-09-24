@@ -82,6 +82,7 @@ import { acquireCmsSitePublishLock } from './cms-site-publish-lock.service';
 import { enqueueCmsPublishOutboxes, insertCmsPublishOutbox } from './cms-publish-outbox.service';
 import { captureCmsContentPublishSnapshot } from './cms-content-publish-snapshot.service';
 import { captureCmsConfiguration, cmsConfigurationSelection, type CmsCapturedConfiguration } from './cms-configuration-snapshot.service';
+import { stageCmsConfigurationDraft } from './cms-configuration-drafts.service';
 import {
   listCmsSubtreeIds,
   loadCmsInheritanceState,
@@ -500,8 +501,9 @@ export async function submitCmsPublishTask(
     expectedPublicRevision: input.expectedPublicRevision ?? fence.expectedPublicRevision,
   };
   const dedupeFingerprint = buildCmsPublishDedupeFingerprint(fencedInput, user.userId);
+  const automatic = Boolean(options?.eventKey || options?.skipAccessCheck);
   return runWithCurrentUser({ ...user, tenantId: null, viewingTenantId: undefined }, async () => {
-    if (fencedInput.targetType === 'site' || fencedInput.targetType === 'theme') {
+    if (automatic && (fencedInput.targetType === 'site' || fencedInput.targetType === 'theme')) {
       const eventKey = options?.eventKey ?? ('manual:' + fencedInput.siteId + ':' + randomUUID());
       const task = options?.executor
         ? await insertCmsPublishOutbox(options.executor, fencedInput, eventKey)
@@ -525,6 +527,7 @@ export async function submitCmsPublishTask(
         ...fencedInput,
         submittedAt: formatDateTime(dayjs().toDate()),
         systemTriggered: options?.skipAccessCheck === true,
+        explicitBuild: !automatic,
         dedupeFingerprint,
       },
       idempotencyKey: options?.eventKey ? `cms-publish-event:${options.eventKey}` : null,
@@ -533,8 +536,10 @@ export async function submitCmsPublishTask(
       await acquireCmsSitePublishLock(tx, input.siteId);
       const configuration = await captureCmsConfiguration(tx, input.siteId, cmsConfigurationSelection(input));
       const [generation] = await tx.select().from(cmsSiteGenerations).where(eq(cmsSiteGenerations.siteId, input.siteId)).limit(1);
-      return persistAsyncTask(tx, { ...taskInput, payload: { ...taskInput.payload,
-        configurationCapture: { ...configuration, baseGenerationId: generation?.activeGenerationId ?? null },
+      const capture = { ...configuration, baseGenerationId: generation?.activeGenerationId ?? null };
+      const draft = automatic && configuration.items.length ? await stageCmsConfigurationDraft(tx, input.siteId, capture) : null;
+      return persistAsyncTask(tx, { ...taskInput, ...(draft ? { idempotencyKey: `cms-configuration-draft:${draft.id}`, title: `CMS 配置草稿 #${draft.id}` } : {}), payload: { ...taskInput.payload,
+        ...(draft ? { configurationDraftId: draft.id } : { configurationCapture: capture }),
       } });
     };
     const row = options?.executor ? await persist(options.executor) : await db.transaction(persist);
@@ -704,12 +709,27 @@ export function registerCmsPublishingTaskHandler(): void {
       // Existing configuration outboxes now submit an immutable release. They never
       // write over the active generation's directory or expose partially rebuilt pages.
       if (CMS_PUBLISH_TARGET_TYPES.includes(input.targetType)) {
+        if (typeof ctx.payload.configurationDraftId === 'number') {
+          const releaseId = ctx.payload.configurationDraftId;
+          await ctx.progress({ processed: 1, total: 1, note: `配置已归入发布草稿 #${releaseId}，请在发布中心审阅并构建` });
+          return { releaseId, status: 'draft', drafted: true };
+        }
         const { createCmsConfigurationRelease } = await import('./cms-releases.service');
         const captured = ctx.payload.configurationCapture as CmsCapturedConfiguration | undefined;
         if (!captured) throw new Error('配置任务缺少提交时快照，请重新提交发布');
+        if (!captured.items.length) {
+          await ctx.progress({ processed: 1, total: 1, note: '内容可见性变更已生效；没有需要另行构建的配置变更' });
+          return { configurationChanged: false };
+        }
         const release = await createCmsConfigurationRelease(input.siteId, ctx.taskId, input.reason, captured);
-        await ctx.progress({ processed: 1, total: 1, note: `已提交发布单 #${release.id}；在发布单中查看构建和激活结果` });
-        return { releaseId: release.id, deploymentId: release.deploymentId, delegated: true };
+        if (ctx.payload.explicitBuild === true) {
+          const { buildCmsRelease } = await import('./cms-releases.service');
+          const submitted = await buildCmsRelease(release.id);
+          await ctx.progress({ processed: 1, total: 1, note: `已提交发布单 #${release.id} 构建，请在发布中心查看并激活` });
+          return { releaseId: release.id, deploymentId: submitted.deploymentId, delegated: true };
+        }
+        await ctx.progress({ processed: 1, total: 1, note: `已归入发布草稿 #${release.id}；请在发布中心审阅并构建` });
+        return { releaseId: release.id, status: release.status, drafted: true };
       }
       return withCmsSitePublishLock(input.siteId, input, async () => {
       await validatePublishInput(input, systemTriggered);

@@ -54,7 +54,7 @@ function create(input: CreateCmsReleaseInput) {
     if (row.siteId !== input.siteId) throw new MockHttpError(badRequest('内容不属于该站点', { status: 400 }));
     items.push({ contentId: id, revisionId: null, title: row.title, action: 'withdraw' });
   }
-  const release: CmsRelease = { id: nextIdFrom(releases), siteId: input.siteId, name: input.name, status: 'draft', items,
+  const release: CmsRelease = { id: nextIdFrom(releases), siteId: input.siteId, name: input.name, source: 'manual', status: 'draft', items,
     configurationItems: [...(input.includeSiteConfiguration ? [{ kind: 'site' as const, id: input.siteId, title: '整站公开配置与导航' }] : []),
       ...pages.map((page) => ({ kind: 'page' as const, id: page.id, title: page.name })), ...widgets.map((widget) => ({ kind: 'widget' as const, id: widget.id, title: widget.name }))],
     baseGenerationId: active.get(input.siteId) ?? null, deploymentId: null, activateAt: input.activateAt ?? null, timeZone: input.timeZone,
@@ -92,7 +92,25 @@ function build(id: number) {
 
 export function submitMockCmsContentRelease(contentId: number, revisionId: number) {
   const content = getMockCmsWorkingContent(contentId);
-  return build(create({ siteId: content.siteId, name: `发布：${content.title}`, revisionIds: [revisionId], withdrawContentIds: [], pageIds: [], widgetIds: [], includeSiteConfiguration: false, activateAt: content.scheduledAt, timeZone: 'Asia/Shanghai', autoActivate: true }).id);
+  const release = create({ siteId: content.siteId, name: `发布：${content.title}`, revisionIds: [revisionId], withdrawContentIds: [], pageIds: [], widgetIds: [], includeSiteConfiguration: false, activateAt: content.scheduledAt, timeZone: 'Asia/Shanghai', autoActivate: true });
+  release.source = 'content';
+  return build(release.id);
+}
+export function submitMockCmsContentBatch(contentIds: number[]) {
+  const groups = new Map<string, number[]>();
+  for (const id of contentIds) {
+    const row = getMockCmsWorkingContent(id);
+    const key = JSON.stringify([row.siteId, row.scheduledAt ?? null]);
+    groups.set(key, [...(groups.get(key) ?? []), id]);
+  }
+  return [...groups.values()].map((ids) => {
+    const rows = ids.map(getMockCmsWorkingContent);
+    const release = create({ siteId: rows[0].siteId, name: `批量发布 ${ids.length} 条内容`, revisionIds: rows.map((row) => row.approvedRevisionId!),
+      withdrawContentIds: [], pageIds: [], widgetIds: [], includeSiteConfiguration: false, activateAt: rows[0].scheduledAt, timeZone: 'Asia/Shanghai', autoActivate: true });
+    release.source = 'content';
+    const submitted = build(release.id);
+    return { id: release.id, siteId: release.siteId, status: submitted.status, contentIds: ids };
+  });
 }
 export function submitMockCmsWithdrawal(contentId: number) {
   const content = getMockCmsWorkingContent(contentId);

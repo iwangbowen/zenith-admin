@@ -57,6 +57,8 @@ export interface TaskItemReport {
 
 export interface TaskRunContext {
   taskId: number;
+  /** 本次派发的持久化标识；业务提交点可用它拒绝旧 worker 的副作用。 */
+  dispatchToken: string;
   /** 任务入参 */
   payload: Record<string, unknown>;
   /** 上次中断时保存的断点状态；首次执行为 null */

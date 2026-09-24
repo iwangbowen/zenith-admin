@@ -34,6 +34,7 @@ type AsyncTaskListFilter = Omit<QueryOutputOf<typeof asyncTaskContract.list>, 'p
 function buildAsyncTaskWhere(query: AsyncTaskListFilter, extra?: SQL): SQL | undefined {
   return buildWhere(
     query.taskType ? eq(asyncTasks.taskType, query.taskType) : undefined,
+    query.taskTypes ? inArray(asyncTasks.taskType, query.taskTypes) : undefined,
     asyncTaskStatusCondition(query.status),
     keywordCondition(query.keyword, [asyncTasks.title, asyncTasks.taskType], 'ilike'),
     keywordCondition(query.content, [sql`(${asyncTasks.payload} - 'configurationCapture' - 'configurationCaptures')::text`, sql`${asyncTasks.result}::text`], 'ilike'),
