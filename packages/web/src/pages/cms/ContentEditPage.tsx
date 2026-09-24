@@ -3,7 +3,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import CmsValueDiff from './CmsValueDiff';
 import CmsContentConflictView from './CmsContentConflictView';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, Form, Spin, Toast, Row, Col, Banner, SideSheet, Space, Timeline, Modal, Upload, Typography, Tag, Input, Tabs, TabPane, withField, Pagination } from '@douyinfe/semi-ui';
+import { Button, Divider, Form, Spin, Toast, Row, Col, Banner, SideSheet, Space, Timeline, Modal, Upload, Typography, Tag, Input, Tabs, TabPane, withField, Pagination } from '@douyinfe/semi-ui';
 import EntityRelationButton from '@/components/entity-relations/EntityRelationButton';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { ArrowLeft, Save, Send, History, ImageUp, Eye, GitCompare, Images, Paperclip, SpellCheck, ScrollText, Workflow } from 'lucide-react';
@@ -690,18 +690,17 @@ export default function ContentEditPage() {
         </>) : null}
       </div>
 
-      <Space wrap spacing={12} style={{ marginBottom: 12 }}>
-        <Tag color={saveState === 'error' || saveState === 'conflict' ? 'red' : saveState === 'saved' ? 'green' : 'orange'}>{({ saved: '已保存工作稿', dirty: '有未保存修改', saving: '正在保存', error: '保存失败', conflict: '版本冲突' })[saveState]}</Tag>
-        <Typography.Text type="tertiary">保存不改变线上内容；提审会冻结当前修订。</Typography.Text>
-        {saveState === 'error' ? <Button size="small" onClick={() => void handleSaveDraft()}>重试保存</Button> : null}
-        {saveState === 'conflict' ? <Button size="small" onClick={() => setConflictVisible(true)}>处理冲突</Button> : null}
-      </Space>
       {lastPreview ? <Banner type="info" closeIcon={null} description={<Space wrap><span>预览固定修订 #{lastPreview.revisionId} · 有效至 {lastPreview.expiresAt}</span><Button size="small" onClick={() => void copyTextWithToast(new URL(lastPreview.url, window.location.href).href)}>复制预览链接</Button><Button size="small" disabled={isReadOnly} loading={revokePreviewMutation.isPending} onClick={async () => { await revokePreviewMutation.mutateAsync({ params: { id: id ?? createdIdRef.current!, grantId: lastPreview.grantId } }); setLastPreview(null); Toast.success('预览链接已撤销'); }}>撤销链接</Button></Space>} /> : null}
       {saveError ? <Banner type="danger" description={saveError} closeIcon={null} /> : null}
       {recovery.storageError ? <Banner type="warning" description="浏览器无法保存恢复副本，请及时手动保存到服务器。" /> : null}
       {recovery.pending ? <Banner type="warning" closeIcon={null} description={<Space wrap><span>发现本浏览器在 {new Date(recovery.pending.savedAt).toLocaleString()} 保留的未保存工作稿。</span><Button size="small" onClick={restoreLocalDraft}>恢复修改</Button><Button size="small" onClick={recovery.clear}>丢弃副本</Button></Space>} /> : null}
       <div className="cms-content-edit__workflow-summary">
         <Space spacing={8} wrap>
+          <Tag color={saveState === 'error' || saveState === 'conflict' ? 'red' : saveState === 'saved' ? 'green' : 'orange'}>{({ saved: '已保存工作稿', dirty: '有未保存修改', saving: '正在保存', error: '保存失败', conflict: '版本冲突' })[saveState]}</Tag>
+          <Typography.Text type="tertiary">保存不改变线上内容；提审会冻结当前修订。</Typography.Text>
+          {saveState === 'error' ? <Button size="small" onClick={() => void handleSaveDraft()}>重试保存</Button> : null}
+          {saveState === 'conflict' ? <Button size="small" onClick={() => setConflictVisible(true)}>处理冲突</Button> : null}
+          <Divider layout="vertical" />
           <Workflow size={15} />
           <Typography.Text strong>审批流程</Typography.Text>
           {workflowContext?.instance ? (
