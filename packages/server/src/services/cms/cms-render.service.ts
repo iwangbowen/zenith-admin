@@ -171,8 +171,8 @@ export function mergeSeo(site: CmsSiteRow, overrides: Partial<CmsSeo> & { pathFo
   const origin = siteOrigin(site);
   const settings = (site.settings ?? {}) as Record<string, unknown>;
   const siteTitle = site.title?.trim() || site.name;
-  const title = overrides.title ?? siteTitle;
-  const description = overrides.description ?? site.description ?? '';
+  const title = overrides.title?.trim() || siteTitle;
+  const description = overrides.description?.trim() || site.description?.trim() || '';
   const canonical = origin && overrides.pathForCanonical !== undefined ? `${origin}${overrides.pathForCanonical}` : null;
   const image = overrides.ogImage ?? site.logo ?? null;
   const imageAbsolute = image && origin && image.startsWith('/') ? `${origin}${image}` : image;
@@ -185,11 +185,11 @@ export function mergeSeo(site: CmsSiteRow, overrides: Partial<CmsSeo> & { pathFo
     : site.name;
   return {
     title,
-    keywords: overrides.keywords ?? site.keywords ?? '',
+    keywords: overrides.keywords?.trim() || site.keywords?.trim() || '',
     description,
     canonical,
-    ogTitle: overrides.ogTitle ?? title,
-    ogDescription: overrides.ogDescription ?? description,
+    ogTitle: overrides.ogTitle?.trim() || title,
+    ogDescription: overrides.ogDescription?.trim() || description,
     ogImage: imageAbsolute,
     ogImageAlt: overrides.ogImageAlt ?? (imageAbsolute ? defaultImageAlt : null),
     ogType: overrides.ogType ?? 'website',
@@ -201,8 +201,8 @@ export function mergeSeo(site: CmsSiteRow, overrides: Partial<CmsSeo> & { pathFo
     twitterCard: overrides.twitterCard ?? twitterCard,
     twitterSite: overrides.twitterSite ?? twitterSite,
     twitterCreator: overrides.twitterCreator ?? null,
-    twitterTitle: overrides.twitterTitle ?? overrides.ogTitle ?? title,
-    twitterDescription: overrides.twitterDescription ?? overrides.ogDescription ?? description,
+    twitterTitle: overrides.twitterTitle?.trim() || overrides.ogTitle?.trim() || title,
+    twitterDescription: overrides.twitterDescription?.trim() || overrides.ogDescription?.trim() || description,
     twitterImage: overrides.twitterImage ?? imageAbsolute,
     twitterImageAlt: overrides.twitterImageAlt ?? overrides.ogImageAlt ?? (imageAbsolute ? defaultImageAlt : null),
     jsonLd: overrides.jsonLd ?? null,
@@ -222,6 +222,10 @@ async function buildBaseContext(site: CmsSiteRow, baseUrl: string, seo: CmsSeo, 
   // 站点 logo/favicon/主题配置、广告、友链都以素材句柄存储，
   // 整块上下文统一解析一次，避免逐个模板忘记解析而渲染出 cms-res:// 裸串
   const nav = await navFromTree(tree, baseUrl, site.id);
+  const themeConfig = resolveThemeConfig(site.theme, site.settings as Record<string, unknown> | null);
+  if (typeof themeConfig.bannerLink === 'string') {
+    themeConfig.bannerLink = (await resolveCmsLink(site.id, baseUrl, themeConfig.bannerLink))?.url ?? '';
+  }
   return resolveCmsResourcePayload({
     site: {
       id: site.id,
@@ -237,7 +241,7 @@ async function buildBaseContext(site: CmsSiteRow, baseUrl: string, seo: CmsSeo, 
       theme: site.theme,
       extend: site.extend ?? {},
       settings: site.settings ?? {},
-      themeConfig: resolveThemeConfig(site.theme, site.settings as Record<string, unknown> | null),
+      themeConfig,
     },
     baseUrl,
     nav,
@@ -456,7 +460,7 @@ export async function renderCustomPage(
 ): Promise<RenderResult> {
   const theme = getBuiltinThemeFallback(site.theme);
   const seo = mergeSeo(site, {
-    title: pageRow.seoTitle ?? (opts?.asHome ? undefined : `${pageRow.name} - ${site.title?.trim() || site.name}`),
+    title: pageRow.seoTitle?.trim() || (opts?.asHome ? undefined : `${pageRow.name} - ${site.title?.trim() || site.name}`),
     keywords: pageRow.seoKeywords ?? undefined,
     description: pageRow.seoDescription ?? undefined,
     pathForCanonical: opts?.asHome ? '/' : customPageUrl('', pageRow),
@@ -724,7 +728,7 @@ export async function renderChannelPage(site: CmsSiteRow, baseUrl: string, chann
     return { status: 302, location: resolved?.url ?? `${baseUrl}/` };
   }
   const seo = mergeSeo(site, {
-    title: channel.seoTitle ?? `${channel.name} - ${site.title?.trim() || site.name}`,
+    title: channel.seoTitle?.trim() || `${channel.name} - ${site.title?.trim() || site.name}`,
     keywords: channel.seoKeywords ?? undefined,
     description: channel.seoDescription ?? undefined,
     pathForCanonical: channelUrl('', channel.path, page),
@@ -847,7 +851,7 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
   }
   const origin = siteOrigin(site);
   const seo = mergeSeo(site, {
-    title: (row.seoTitle ?? `${row.title} - ${site.title?.trim() || site.name}`) + (bodyPage > 1 ? `（第${bodyPage}页）` : ''),
+    title: (row.seoTitle?.trim() || `${row.title} - ${site.title?.trim() || site.name}`) + (bodyPage > 1 ? `（第${bodyPage}页）` : ''),
     keywords: row.seoKeywords ?? undefined,
     description: row.seoDescription ?? row.summary ?? undefined,
     ogTitle: row.title,

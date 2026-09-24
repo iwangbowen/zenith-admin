@@ -3,7 +3,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult } from '../../lib/list-query';
 import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { cmsAdContract, cmsAdEventSchema } from '@zenith/shared/cms';
+import { cmsAdContract, cmsAdEventSchema, parseCmsLink } from '@zenith/shared/cms';
 import type { CmsAdEventType } from '@zenith/shared/cms';
 import { db } from '../../db';
 import {
@@ -22,6 +22,7 @@ import { detectDeviceType } from './cms-stats.service';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 import { hashCmsRequestKey, hashCmsVisitor, hashCmsIp } from './cms-visitor';
 import { pickEntity } from '../../lib/entity-map';
+import { resolveCmsLink } from './cms-link.service';
 
 const EVENT_DEDUPE_SECONDS: Record<CmsAdEventType, number> = {
   impression: 60,
@@ -41,15 +42,12 @@ export interface CmsAdEventMeta {
 
 export function normalizeCmsAdClickUrl(raw: string | null | undefined): string | null {
   const value = raw?.trim();
-  if (!value || value.length > 500 || /[\0\r\n]/.test(value)) return null;
-  if (value.startsWith('/') && !value.startsWith('//')) return value;
-  try {
-    const parsed = new URL(value);
-    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) return null;
-    return parsed.toString();
-  } catch {
-    return null;
-  }
+  if (!value || value.length > 500) return null;
+  const ref = parseCmsLink(value);
+  if (!ref) return null;
+  if (ref.kind !== 'external') return value;
+  const url = new URL(ref.url);
+  return ['http:', 'https:'].includes(url.protocol) ? url.toString() : null;
 }
 
 function activeAdWhere(now: Date): SQL {
@@ -159,12 +157,13 @@ export async function recordCmsAdImpressions(ids: number[], meta: CmsAdEventMeta
   return recordAcceptedEvents(rows, 'impression', meta);
 }
 
-export async function recordCmsAdClick(id: number, meta: CmsAdEventMeta): Promise<string | null> {
+async function loadCmsAdClickTarget(id: number, meta: CmsAdEventMeta) {
   const now = meta.occurredAt ?? new Date();
   const [row] = await db.select({
     id: cmsAds.id,
     slotId: cmsAds.slotId,
     siteId: cmsAdSlots.siteId,
+    siteCode: cmsSites.code,
     linkUrl: cmsAds.linkUrl,
   })
     .from(cmsAds)
@@ -178,10 +177,23 @@ export async function recordCmsAdClick(id: number, meta: CmsAdEventMeta): Promis
     ))
     .limit(1);
   if (!row) return null;
-  const linkUrl = normalizeCmsAdClickUrl(row.linkUrl);
-  if (!linkUrl) return null;
-  await recordAcceptedEvents([row], 'click', meta);
-  return linkUrl;
+  if (!normalizeCmsAdClickUrl(row.linkUrl)) return null;
+  const previewBase = `/__cms/${row.siteCode}`;
+  const baseUrl = meta.path === previewBase || meta.path?.startsWith(`${previewBase}/`) ? previewBase : '';
+  const target = await resolveCmsLink(row.siteId, baseUrl, row.linkUrl);
+  return target && normalizeCmsAdClickUrl(target.url) ? { row, url: target.url } : null;
+}
+
+/** 公开导航与事件计数分离：旧页面可抵达仍有效的目标，但不能补记过期/重复事件。 */
+export async function getCmsAdClickTarget(id: number, meta: CmsAdEventMeta): Promise<string | null> {
+  return (await loadCmsAdClickTarget(id, meta))?.url ?? null;
+}
+
+export async function recordCmsAdClick(id: number, meta: CmsAdEventMeta): Promise<string | null> {
+  const target = await loadCmsAdClickTarget(id, meta);
+  if (!target) return null;
+  await recordAcceptedEvents([target.row], 'click', meta);
+  return target.url;
 }
 
 

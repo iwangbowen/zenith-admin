@@ -22,6 +22,11 @@ const site = {
 } as unknown as CmsSiteRow;
 
 describe('CMS social SEO rendering behavior', () => {
+  it('uses readable fallback metadata for empty or whitespace overrides', () => {
+    expect(mergeSeo(site, { title: ' ', description: '', ogTitle: '', twitterTitle: '  ' })).toMatchObject({
+      title: 'Zenith CMS', description: 'CMS 平台', ogTitle: 'Zenith CMS', twitterTitle: 'Zenith CMS',
+    });
+  });
   it('renders complete OG/article/Twitter metadata in default and docs themes', () => {
     const seo = mergeSeo(site, {
       title: '文章标题',

@@ -38,6 +38,7 @@ describe('ads page island', () => {
     expect(calls[0].headers.Authorization).toBe('Bearer mt');
     const first = document.querySelector<HTMLAnchorElement>('[data-ad-id="5"]')!;
     expect(first.getAttribute('href')).toBe('/api/public/cms/ads/5/click?token=c5');
+    expect(document.querySelectorAll<HTMLAnchorElement>('[data-ad-id="5"]')[1].getAttribute('href')).toBe('/api/public/cms/ads/5/click?token=c5');
     // 不可点击广告不改 href
     expect(document.querySelector<HTMLAnchorElement>('[data-ad-id="6"]')!.getAttribute('href')).toBe('#');
     expect(calls[1]).toMatchObject({ url: '/api/public/cms/ads/view', method: 'POST', body: { tokens: ['v5', 'v6'] } });

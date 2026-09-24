@@ -158,13 +158,10 @@ export async function consumeCmsAdEventToken(
   token: string,
   expected: CmsAdEventTokenExpectation,
 ): Promise<CmsAdEventTokenPayload> {
-  const payload = parseSignedToken(token);
+  const payload = verifyCmsAdNavigationToken(token, expected);
   const now = Math.floor(Date.now() / 1000);
   if (
     payload.expiresAt <= now
-    || payload.eventType !== expected.eventType
-    || (expected.adId !== undefined && payload.adId !== expected.adId)
-    || payload.visitorHash !== hashCmsVisitor(expected.ip, expected.userAgent)
   ) {
     throw new HTTPException(403, { message: '广告事件令牌无效或已过期' });
   }
@@ -181,6 +178,17 @@ export async function consumeCmsAdEventToken(
     throw new HTTPException(503, { message: '广告事件安全服务暂不可用' });
   }
   if (accepted !== 'OK') throw new HTTPException(409, { message: '广告事件令牌已使用' });
+  return payload;
+}
+
+/** 仅用于恢复公开跳转；绝不据此计数。签名、广告和访客绑定仍必须全部有效。 */
+export function verifyCmsAdNavigationToken(token: string, expected: CmsAdEventTokenExpectation): CmsAdEventTokenPayload {
+  const payload = parseSignedToken(token);
+  if (payload.eventType !== expected.eventType
+    || (expected.adId !== undefined && payload.adId !== expected.adId)
+    || payload.visitorHash !== hashCmsVisitor(expected.ip, expected.userAgent)) {
+    throw new HTTPException(403, { message: '广告事件令牌无效' });
+  }
   return payload;
 }
 

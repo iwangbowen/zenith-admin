@@ -9,6 +9,7 @@ import { getCmsFormByCode, submitCmsForm } from '../../services/cms/cms-forms.se
 import { increaseViewCount } from '../../services/cms/cms-contents.service';
 import {
   recordCmsAdClick,
+  getCmsAdClickTarget,
   recordCmsAdImpressions,
 } from '../../services/cms/cms-ad-events.service';
 import {
@@ -17,6 +18,7 @@ import {
   issueCmsAdEventTokens,
   releaseCmsAdEventToken,
   throttleCmsAdTokenIssue,
+  verifyCmsAdNavigationToken,
   type CmsAdEventTokenPayload,
 } from '../../services/cms/cms-ad-event-token.service';
 import { generateCmsCaptcha, verifyCmsCaptcha, isCaptchaEnabled } from '../../services/cms/cms-captcha.service';
@@ -239,6 +241,16 @@ export function createCmsFrontPublicRoutes() {
       });
     } catch (error) {
       const status = error instanceof HTTPException ? error.status : 403;
+      if (status === 403 || status === 409) {
+        try {
+          const navigation = verifyCmsAdNavigationToken(token, { eventType: 'click', adId, ip, userAgent: c.req.header('user-agent') ?? null });
+          const target = await getCmsAdClickTarget(adId, {
+            ip, userAgent: c.req.header('user-agent') ?? null, referrer: null,
+            path: navigation.path, memberId: navigation.memberId, expectedSiteId: navigation.siteId,
+          });
+          if (target) return c.redirect(target, 302);
+        } catch { /* 未通过签名/访客校验的令牌不得触发导航恢复。 */ }
+      }
       return c.text(error instanceof HTTPException ? error.message : '广告事件令牌无效', status);
     }
     const referrer = c.req.header('referer') ?? null;

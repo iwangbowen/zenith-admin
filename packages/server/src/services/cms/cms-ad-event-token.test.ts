@@ -14,6 +14,7 @@ import {
   consumeCmsAdEventToken,
   consumeCmsAdEventTokens,
   signCmsAdEventToken,
+  verifyCmsAdNavigationToken,
   type CmsAdEventTokenPayload,
 } from './cms-ad-event-token.service';
 import { hashCmsVisitor } from './cms-visitor';
@@ -44,6 +45,16 @@ function token(overrides: Partial<CmsAdEventTokenPayload> = {}): string {
 }
 
 describe('CMS ad event signed tokens', () => {
+  it('allows signed expired navigation without accepting an event or relaxing visitor binding', async () => {
+    const signed = token({ eventType: 'click', expiresAt: 1 });
+    const expected = { eventType: 'click' as const, adId: 9, ip, userAgent };
+    expect(verifyCmsAdNavigationToken(signed, expected).adId).toBe(9);
+    await expect(consumeCmsAdEventToken(signed, expected)).rejects.toMatchObject({ status: 403 });
+    expect(redis.set).not.toHaveBeenCalled();
+    expect(() => verifyCmsAdNavigationToken(`${signed}x`, expected)).toThrow();
+    expect(() => verifyCmsAdNavigationToken(signed, { ...expected, adId: 10 })).toThrow();
+    expect(() => verifyCmsAdNavigationToken(signed, { ...expected, ip: '203.0.113.21' })).toThrow();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(redis.set).mockResolvedValue('OK');

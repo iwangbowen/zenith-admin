@@ -15,7 +15,7 @@ import type { CreateCmsAdSlotInput, UpdateCmsAdSlotInput, CreateCmsAdInput, Upda
 import { ensureCmsSiteExists } from './cms-sites.service';
 import { buildWhere, withPagination } from '../../lib/where-helpers';
 import { normalizeCmsAdClickUrl } from './cms-ad-events.service';
-import { buildCmsLinkResolver } from './cms-link.service';
+import { buildCmsLinkResolver, ensureCmsLinkTargetExists } from './cms-link.service';
 import { refreshCmsPublicConfiguration } from './cms-public-config-refresh.service';
 import { pickEntity } from '../../lib/entity-map';
 
@@ -149,6 +149,7 @@ export async function listCmsAds(q: QueryOutputOf<typeof cmsAdContract.list>) {
 export async function createCmsAd(data: CreateCmsAdInput) {
   const slot = await ensureCmsAdSlotExists(data.slotId);
   await assertSiteAccess(slot.siteId);
+  await ensureCmsLinkTargetExists(slot.siteId, data.linkUrl);
   if (data.linkUrl && !normalizeCmsAdClickUrl(data.linkUrl)) {
     throw new HTTPException(400, { message: '跳转地址仅允许站内相对路径或 http/https URL，且不得包含账号凭据' });
   }
@@ -175,6 +176,7 @@ export async function updateCmsAd(id: number, data: UpdateCmsAdInput) {
   if (slot.siteId !== currentSlot.siteId) {
     throw new HTTPException(400, { message: '广告不能直接移动到其他站点的广告位，请使用站点迁移流程' });
   }
+  await ensureCmsLinkTargetExists(slot.siteId, data.linkUrl);
   if (data.linkUrl && !normalizeCmsAdClickUrl(data.linkUrl)) {
     throw new HTTPException(400, { message: '跳转地址仅允许站内相对路径或 http/https URL，且不得包含账号凭据' });
   }

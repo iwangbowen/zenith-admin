@@ -35,10 +35,12 @@ export function runAds(doc: Document = document): void {
       if (!isOk(result) || !Array.isArray(result.data)) return;
       const views: string[] = [];
       for (const item of result.data) {
-        const el = doc.querySelector<HTMLAnchorElement>(`[data-ad-id="${item.adId}"]`);
-        if (!el) continue;
-        if (item.clickToken && el.getAttribute('data-ad-clickable') === 'true') {
-          el.href = `/api/public/cms/ads/${item.adId}/click?token=${encodeURIComponent(item.clickToken)}`;
+        const placements = doc.querySelectorAll<HTMLAnchorElement>(`[data-ad-id="${item.adId}"]`);
+        if (!placements.length) continue;
+        for (const el of placements) {
+          if (item.clickToken && el.getAttribute('data-ad-clickable') === 'true') {
+            el.href = `/api/public/cms/ads/${item.adId}/click?token=${encodeURIComponent(item.clickToken)}`;
+          }
         }
         if (item.viewToken) views.push(item.viewToken);
       }
