@@ -10,17 +10,26 @@ import { getMockCmsWorkingContent, getMockCmsDistributionConflict, resolveMockCm
 const notes: CmsEditorialNote[] = [];
 const rights: (OutputOf<typeof cmsResourceContract.rights> & { id: number })[] = [];
 const modelVersions: CmsModelVersion[] = [];
+const initialModelFields = new Map(mockCmsModels.map((row) => [row.id, structuredClone(row.fields ?? [])]));
+const publishedModelIds = new Set(initialModelFields.keys());
 const content = getMockCmsWorkingContent;
 const model = (id: number) => requireItem(mockCmsModels, id, '模型不存在', { status: 404 });
 function modelVersion(id: number) {
   const current = model(id);
   let version = modelVersions.filter((item) => item.modelId === id).at(-1);
   if (!version) {
-    version = { id: nextIdFrom(modelVersions), modelId: id, version: 1, fields: structuredClone(current.fields ?? []), contentHash: `demo-model-${id}-1`, createdAt: mockDateTime() };
+    version = { id: nextIdFrom(modelVersions), modelId: id, version: 1, fields: structuredClone(initialModelFields.get(id) ?? current.fields ?? []), contentHash: `demo-model-${id}-1`, createdAt: mockDateTime() };
     modelVersions.push(version);
     current.publishedVersionId = version.id;
   }
   return version;
+}
+
+export function getMockCmsPublishedModelFields(id: number) {
+  if (!publishedModelIds.has(id)) return [];
+  const current = model(id);
+  const initial = modelVersion(id);
+  return structuredClone(modelVersions.find((version) => version.id === current.publishedVersionId && version.modelId === id)?.fields ?? initial.fields);
 }
 
 export const cmsEditorialHandlers = [
@@ -108,6 +117,7 @@ export const cmsEditorialHandlers = [
     const previous = modelVersion(params.id);
     const version = { ...previous, id: nextIdFrom(modelVersions), version: previous.version + 1, fields: structuredClone(row.fields ?? []), createdAt: mockDateTime() };
     modelVersions.push(version);
+    publishedModelIds.add(row.id);
     return ok(updateItem(mockCmsModels, row.id, { publishedVersionId: version.id, hasUnpublishedChanges: false }, { notFoundMessage: '模型不存在', now: mockDateTime }));
   }),
   mock(cmsResourceContract.versions, ({ params, ok }) => {

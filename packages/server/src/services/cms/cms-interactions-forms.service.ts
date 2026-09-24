@@ -649,6 +649,7 @@ export async function submitCmsInteraction(
     duplicate = true;
   }
   const finalInteraction = transactionResult.interaction;
+  if (!duplicate) void recordCmsAttributionConversion(finalInteraction.siteId, 'vote', responseId, input.attribution, meta.memberId).catch(() => undefined);
   const canSee = finalInteraction.resultVisibility === 'always' || finalInteraction.resultVisibility === 'after_submit';
   return {
     responseId,
@@ -714,3 +715,4 @@ export async function getCmsInteractionPublicState(
       : null,
   };
 }
+import { recordCmsAttributionConversion } from './cms-attribution.service';

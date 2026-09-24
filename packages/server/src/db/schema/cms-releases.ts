@@ -36,6 +36,8 @@ export const cmsDeployments = pgTable('cms_deployments', {
   snapshot: jsonb().$type<CmsDeploymentSnapshot>(), manifestHash: varchar({ length: 64 }),
   artifactCount: integer().notNull().default(0), error: text(), activatedAt: timestamp({ withTimezone: true }),
   taskIds: jsonb().$type<number[]>().notNull().default([]),
+  buildPlan: jsonb().$type<{ version: 1; phases: Array<{ key: string; label: string; dependsOn: string[]; status: 'pending' | 'running' | 'completed' | 'failed'; processed: number; total: number }> }>().notNull().default({ version: 1, phases: [] }),
+  buildMetrics: jsonb().$type<{ startedAt?: string; completedAt?: string; elapsedMs?: number; reusedArtifacts?: number; generatedArtifacts?: number; peakMemoryMb?: number }>().notNull().default({}),
   ...auditColumns(), ...timestampColumns(),
 }, (t) => [index('cms_deployments_site_idx').on(t.siteId)]);
 export const cmsSiteGenerations = pgTable('cms_site_generations', {

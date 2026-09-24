@@ -14,6 +14,7 @@ import { registerWsWorkflowSubscriber } from '../lib/workflow-subscribers/ws';
 import { registerAnalyticsServerEventSubscribers } from '../services/analytics/analytics-server-event-subscribers';
 import { registerBizLeaveSubscribers } from '../services/biz-demo/biz-leave-subscribers';
 import { registerCmsWorkflowSubscribers } from '../services/cms/cms-workflow.service';
+import { registerCmsFeedbackWorkflowSubscribers } from '../services/cms/cms-feedback-workflow.service';
 import { registerBizPayDemoSubscribers } from '../services/payment/biz-pay-demo-subscribers';
 import { registerContractSubscribers } from '../services/payment/payment-contract.service';
 import { registerCouponPaymentSubscribers } from '../services/payment/payment-coupon.service';
@@ -43,6 +44,7 @@ export function registerEventSubscribers(): void {
   registerBizLeaveSubscribers();
   registerBizPayDemoSubscribers();
   registerCmsWorkflowSubscribers(); // CMS 内容工作流审核（通过→发布+静态化，驳回/撤回→回写状态）
+  registerCmsFeedbackWorkflowSubscribers();
   registerPaymentJournalSubscribers();
   registerReconAdjustmentSubscribers();
   registerFeeSubscribers();

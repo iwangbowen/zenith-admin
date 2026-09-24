@@ -16,12 +16,12 @@ function reset() {
 beforeEach(() => { reset(); vi.useFakeTimers(); });
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); reset(); });
 
-async function call<T>(method: string, path: string, body?: unknown) {
+async function call<T>(method: string, path: string, body?: unknown, expectedStatus = 200) {
   for (const handler of [...cmsReleaseHandlers, ...cmsStage4Handlers, ...cmsHandlers, ...cmsP6Handlers]) {
     const request = new Request(`${window.location.origin}${path}`, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
     const result = await (handler as unknown as { run(args: unknown): Promise<{ response?: Response } | null> }).run({ request, requestId: `cms-config-${Math.random()}` });
     if (result?.response) {
-      expect(result.response.status).toBe(200);
+      expect(result.response.status).toBe(expectedStatus);
       return (await result.response.json() as { data: T }).data;
     }
   }
@@ -31,6 +31,17 @@ const releasePath = cmsReleaseContract.basePath;
 const drafts = async (siteId: number) => (await call<{ list: CmsRelease[] }>('GET', `${releasePath}?siteId=${siteId}&pageSize=100`)).list;
 
 describe('CMS Demo 配置待审阅草稿', () => {
+  it('rejects invalid home references without replacing the saved site configuration', async () => {
+    const site = mockCmsSites[0];
+    const previous = structuredClone(site.settings);
+    const section = { id: 'bad', source: 'channel', channelId: 999999, title: '', count: 6, style: 'cards', imageRatio: 'wide', focusX: 50, focusY: 50 };
+    await call('PUT', `${cmsSiteContract.basePath}/${site.id}`, { settings: { themeConfig: { homeSections: [section] } } }, 400);
+    expect(site.settings).toEqual(previous);
+    expect(await drafts(site.id)).toEqual([]);
+    await call('PUT', `${cmsSiteContract.basePath}/${site.id}`, { settings: { themeConfig: { homeSections: [{ ...section, source: 'latest', channelId: null, count: 3 }] } } });
+    expect((site.settings.themeConfig as Record<string, unknown>).homeSections).toEqual([{ ...section, source: 'latest', channelId: null, count: 3 }]);
+    expect(await drafts(site.id)).toHaveLength(1);
+  });
   it('merges consecutive site and page writes into one review draft without touching a manual release', async () => {
     const site = mockCmsSites[0];
     const page = mockCmsPages.find((row) => row.siteId === site.id)!;

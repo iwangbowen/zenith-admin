@@ -1,0 +1,9 @@
+.cms-composition-editor { display: flex; flex-direction: column; gap: 12px; width: 100%; min-width: 0; }
+.cms-composition-row { display: flex; flex-direction: column; gap: 12px; padding: 12px; border: 1px solid var(--semi-color-border); border-radius: var(--semi-border-radius-medium); min-width: 0; }
+.cms-composition-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.cms-composition-editor label { display: flex; flex-direction: column; gap: 6px; min-width: 0; color: var(--semi-color-text-1); font-size: 12px; }
+.cms-composition-editor .semi-select { width: 100%; }
+.cms-composition-drag { display: flex; align-items: center; padding: 6px; border: 0; border-radius: var(--semi-border-radius-small); background: var(--semi-color-fill-0); color: var(--semi-color-text-1); cursor: grab; }
+@media (max-width: 600px) {
+  .cms-composition-grid { grid-template-columns: minmax(0, 1fr); }
+}

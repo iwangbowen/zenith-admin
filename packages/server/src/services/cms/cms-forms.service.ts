@@ -25,6 +25,8 @@ import { verifyCmsFormCaptcha } from './cms-form-captcha.service';
 import { compileCmsFormPattern } from './cms-form-pattern';
 import { refreshCmsPublicConfiguration } from './cms-public-config-refresh.service';
 import { pickEntity } from '../../lib/entity-map';
+import { assertCmsSubmissionsDeletable, createCmsFeedbackForSubmission } from './cms-feedback.service';
+import { recordCmsAttributionConversion } from './cms-attribution.service';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 export function mapCmsForm(row: CmsFormRow, submissionCount?: number) {
@@ -77,13 +79,13 @@ export async function submitCmsForm(input: SubmitFormInput) {
   for (const [name, value] of Object.entries(validated)) {
     data[name] = value ? await sanitizeUserText(value) : '';
   }
-  const [row] = await db.insert(cmsFormSubmissions).values({
-    formId: input.form.id,
-    data,
-    ip: input.ip,
-    userAgent: input.userAgent,
-  }).returning();
+  const row = await db.transaction(async (tx) => {
+    const [submission] = await tx.insert(cmsFormSubmissions).values({ formId: input.form.id, data, ip: input.ip, userAgent: input.userAgent }).returning();
+    await createCmsFeedbackForSubmission(tx, input.form, submission);
+    return submission;
+  });
   notifyFormSubmission(input.form, data);
+  void recordCmsAttributionConversion(input.site.id, 'form', row.id, input.raw._cmsAttribution).catch((error) => logger.warn('[CMS] 表单完成归因写入失败', error));
   return mapCmsFormSubmission(row);
 }
 
@@ -251,6 +253,7 @@ export async function updateCmsForm(id: number, data: UpdateCmsFormInput) {
 export async function deleteCmsForm(id: number) {
   const current = await ensureCmsFormExists(id);
   await assertSiteAccess(current.siteId);
+  await assertCmsSubmissionsDeletable(id);
   await db.transaction(async (tx) => {
     await tx.delete(cmsForms).where(eq(cmsForms.id, id));
     await deleteCmsResourceRefsForOwner(tx, 'form', [id], current.siteId);
@@ -277,6 +280,7 @@ export async function deleteCmsFormSubmissions(formId: number, ids: number[]) {
   const form = await ensureCmsFormExists(formId);
   await assertSiteAccess(form.siteId);
   if (ids.length === 0) return;
+  await assertCmsSubmissionsDeletable(formId, ids);
   const rows = await db.select({ id: cmsFormSubmissions.id }).from(cmsFormSubmissions).where(and(
     eq(cmsFormSubmissions.formId, formId),
     inArray(cmsFormSubmissions.id, ids),

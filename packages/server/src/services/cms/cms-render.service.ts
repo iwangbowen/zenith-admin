@@ -1,8 +1,9 @@
 import { createElement, type ComponentType } from 'react';
+import { cmsModelDisplayFor } from '@zenith/shared/cms';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { eq, and, desc, gt, isNull, inArray, or } from 'drizzle-orm';
 import { db } from '../../db';
-import { cmsChannels, cmsTags, cmsContentTags, cmsContents, cmsModels, cmsSites } from '../../db/schema';
+import { cmsChannels, cmsTags, cmsContentTags, cmsContents, cmsModels, cmsSites, cmsDeployments } from '../../db/schema';
 import type { CmsSiteRow, CmsChannelRow, CmsContentRow, CmsTagRow } from '../../db/schema';
 import { formatNullableDateTime, formatIso8601 } from '../../lib/datetime';
 import { buildWhere } from '../../lib/where-helpers';
@@ -23,6 +24,7 @@ import { buildCmsModelFieldValues, buildCmsListModelFieldValues, loadCmsListMode
 import { listCmsChannelTree } from './cms-channels.service';
 import { channelUrl, tagUrl, contentUrl, customPageUrl, type CmsUrlChannel } from './cms-urls';
 import { buildCmsLinkResolver, resolveCmsLink, type CmsLinkResolver } from './cms-link.service';
+import { cmsGenerationContext } from './cms-generation-context';
 import { buildCmsPagination } from './cms-render-pagination';
 import {
   listPublishedContents, listHomeContents, getPublishedContent, getAdjacentContents, listContentTags,
@@ -41,7 +43,7 @@ import { getActiveAds } from './cms-ads.service';
 import { getCmsFormByCode } from './cms-forms.service';
 import {
   resolveCmsWidgetPlacements,
-  resolveCmsWidgetSlotForRender,
+  resolveCmsThemeSlotsForRender,
 } from './cms-widgets.service';
 import type { CmsChannel, CmsFormField, CmsPageBlock, CmsResolvedWidget, CmsSiteTemplateDefaults } from '@zenith/shared/cms';
 import { CMS_CONTENT_STATUS_LABELS, isValidCmsAssetUrl, isValidCmsLink } from '@zenith/shared/cms';
@@ -210,15 +212,20 @@ export function mergeSeo(site: CmsSiteRow, overrides: Partial<CmsSeo> & { pathFo
 }
 
 async function buildBaseContext(site: CmsSiteRow, baseUrl: string, seo: CmsSeo, analyticsContentId?: number): Promise<CmsBaseContext> {
-  const [tree, friendLinks, friendLinkGroups, ads, langAlternates, assets] = await Promise.all([
+  const [tree, friendLinks, friendLinkGroups, ads, langAlternates, assets, themeSlots] = await Promise.all([
     listCmsChannelTree({ siteId: site.id, status: 'enabled' }, { skipAccessCheck: true }),
     listEnabledFriendLinks(site.id, baseUrl),
     listEnabledFriendLinkGroups(site.id, baseUrl),
     getActiveAds(site.id, baseUrl),
     buildLangAlternates(site),
     resolveThemeAssets(site, baseUrl),
+    resolveCmsThemeSlotsForRender(site.id, site.theme, baseUrl),
   ]);
   const analyticsSiteKey = (site.settings as Record<string, unknown> | null)?.analyticsSiteKey;
+  const generation = cmsGenerationContext();
+  const [deployment] = generation?.candidate && generation.generationId
+    ? await db.select({ releaseId: cmsDeployments.releaseId }).from(cmsDeployments).where(eq(cmsDeployments.id, generation.generationId)).limit(1)
+    : [];
   // 站点 logo/favicon/主题配置、广告、友链都以素材句柄存储，
   // 整块上下文统一解析一次，避免逐个模板忘记解析而渲染出 cms-res:// 裸串
   const nav = await navFromTree(tree, baseUrl, site.id);
@@ -251,11 +258,12 @@ async function buildBaseContext(site: CmsSiteRow, baseUrl: string, seo: CmsSeo, 
     seo,
     searchUrl: `${baseUrl}/search`,
     analytics: typeof analyticsSiteKey === 'string' && analyticsSiteKey
-      ? { siteKey: analyticsSiteKey, ...(analyticsContentId ? { contentId: analyticsContentId } : {}) }
+      ? { siteKey: analyticsSiteKey, ...(analyticsContentId ? { contentId: analyticsContentId } : {}), ...(generation?.candidate && generation.generationId ? { deploymentId: generation.generationId } : {}), ...(deployment?.releaseId ? { releaseId: deployment.releaseId } : {}) }
       : null,
     langAlternates,
     audience: { dynamic: false, member: false },
     assets,
+    themeSlots,
   }, site.id);
 }
 
@@ -362,6 +370,7 @@ function toContentItem(row: CmsContentListRow & { coverThumb?: string | null }, 
   const media = (row.mediaData ?? {}) as { images?: unknown[]; mediaType?: 'video' | 'audio' };
   return {
     id: row.id,
+    modelId: row.modelId,
     title: row.title,
     titleStyle: row.titleStyle ?? {},
     url: rawLink ? (link?.url ?? '#') : contentUrl(baseUrl, channel, row),
@@ -596,7 +605,7 @@ export function createCmsThemeDataApi(site: CmsSiteRow, baseUrl: string): CmsThe
   return {
     contents: {
       list: (query) => {
-        const key = JSON.stringify(['contents', query.channelCode ?? '', query.limit, query.recommend ?? false, query.hot ?? false]);
+        const key = JSON.stringify(['contents', query.channelId ?? null, query.channelCode ?? '', query.limit, query.recommend ?? false, query.hot ?? false]);
         const cached = memo.get(key);
         if (cached) return cached;
         if (++calls > THEME_DATA_MAX_CALLS) {
@@ -605,12 +614,12 @@ export function createCmsThemeDataApi(site: CmsSiteRow, baseUrl: string): CmsThe
         const promise = (async (): Promise<CmsThemeContentCollection> => {
           const limit = Math.min(THEME_DATA_MAX_LIMIT, Math.max(1, Math.floor(query.limit) || 1));
           let channel: { id: number; code: string; name: string; path: string } | null = null;
-          if (query.channelCode) {
+          if (query.channelId || query.channelCode) {
             const [row] = await db.select({
               id: cmsChannels.id, code: cmsChannels.code, name: cmsChannels.name, path: cmsChannels.path,
             }).from(cmsChannels).where(and(
               eq(cmsChannels.siteId, site.id),
-              eq(cmsChannels.code, query.channelCode),
+              query.channelId ? eq(cmsChannels.id, query.channelId) : eq(cmsChannels.code, query.channelCode!),
               eq(cmsChannels.status, 'enabled'),
             )).limit(1);
             // 栏目不存在时返回空集而不是抛错：主题参数配错栏目 code 不应打挂整个首页
@@ -655,14 +664,11 @@ export async function renderHomePage(
   }
   const theme = getBuiltinThemeFallback(site.theme);
   const seo = mergeSeo(site, { pathForCanonical: '/' });
-  const homeSidebarPromise = options && Object.hasOwn(options, 'homeSidebarOverride')
-    ? Promise.resolve(options.homeSidebarOverride ?? null)
-    : resolveCmsWidgetSlotForRender(site.id, 'home.sidebar', baseUrl);
-  const [base, home, homeSidebar] = await Promise.all([
+  const [base, home] = await Promise.all([
     buildBaseContext(site, baseUrl, seo),
     listHomeContents(site.id),
-    homeSidebarPromise,
   ]);
+  const homeSidebar = options && Object.hasOwn(options, 'homeSidebarOverride') ? options.homeSidebarOverride ?? null : base.themeSlots?.['home.sidebar'] ?? null;
   const channelPathMap = await loadChannelPathMap(site.id);
   const resolveLink = await buildCmsLinkResolver(
     site.id, baseUrl,
@@ -883,7 +889,7 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
     listApprovedComments(row.id),
     listRelatedContents(row),
     resolveContentBodyExtend(row, site.id),
-    buildCmsModelFieldValues(row.modelId, (row.extend ?? {}) as Record<string, unknown>, row.modelVersionId),
+    buildCmsModelFieldValues(row.modelId, (row.extend ?? {}) as Record<string, unknown>, row.modelVersionId, Object.values(cmsModelDisplayFor(resolveThemeConfig(site.theme, site.settings), row.modelId)?.fields ?? {})),
   ]);
   const resolveLink = await buildCmsLinkResolver(site.id, baseUrl, [row.externalLink, ...linkWords.map((word) => word.url)]);
   const safeBody = sanitizeCmsHtml(resolved.body);
@@ -900,7 +906,7 @@ export async function renderDetailPage(site: CmsSiteRow, baseUrl: string, channe
       body: applyInteractionMarkers(applyLinkWords(pageBody, linkWords, resolveLink), site.code, row.siteId),
       ...extras,
       extend: resolved.extend,
-      modelFields,
+      modelFields: await resolveCmsResourcePayload(modelFields, site.id),
       tags: tags.map((t) => ({ name: t.name, slug: t.slug, url: tagUrl(baseUrl, t.slug, 1) })),
       prev: adjacent.prev ? { title: adjacent.prev.title, url: contentUrl(baseUrl, channel, adjacent.prev) } : null,
       next: adjacent.next ? { title: adjacent.next.title, url: contentUrl(baseUrl, channel, adjacent.next) } : null,
@@ -962,7 +968,7 @@ export async function renderContentPreviewPage(site: CmsSiteRow, baseUrl: string
     revision?.snapshot.tagIds.length ? db.select().from(cmsTags).where(inArray(cmsTags.id, revision.snapshot.tagIds)) : Promise.resolve([]),
     getEnabledLinkWords(site.id),
     resolveContentBodyExtend(row, site.id),
-    buildCmsModelFieldValues(row.modelId, (row.extend ?? {}) as Record<string, unknown>, row.modelVersionId),
+    buildCmsModelFieldValues(row.modelId, (row.extend ?? {}) as Record<string, unknown>, row.modelVersionId, Object.values(cmsModelDisplayFor(resolveThemeConfig(site.theme, site.settings), row.modelId)?.fields ?? {})),
   ]);
   const previewTemplate = await resolveDetailComponent(site, channel, row.detailTemplate, row.modelId);
   const { pageBody: previewBody, extras: previewExtras } = buildDetailExtras(row, sanitizeCmsHtml(resolved.body), baseUrl, channel, 1);
@@ -976,7 +982,7 @@ export async function renderContentPreviewPage(site: CmsSiteRow, baseUrl: string
       body: applyInteractionMarkers(applyLinkWords(previewBody, linkWords, resolveLink), site.code, row.siteId),
       ...previewExtras,
       extend: resolved.extend,
-      modelFields: previewModelFields,
+      modelFields: await resolveCmsResourcePayload(previewModelFields, site.id),
       tags: tags.map((t) => ({ name: t.name, slug: t.slug, url: tagUrl(baseUrl, t.slug, 1) })),
       prev: null,
       next: null,

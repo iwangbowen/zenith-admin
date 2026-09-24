@@ -22,7 +22,7 @@ import {
   updateCmsSiteInheritance,
 } from '../../services/cms/cms-sites.service';
 import { getSiteTemplateHealth } from '../../services/cms/cms-template-refs.service';
-import { exportCmsSite, importCmsSite } from '../../services/cms/cms-site-transfer.service';
+import { exportCmsSite, importCmsSite, listCmsSiteBlueprints, createCmsSiteFromBlueprint } from '../../services/cms/cms-site-transfer.service';
 import {
   deleteCmsOpenAppGrant,
   listCmsOpenAppGrants,
@@ -187,6 +187,8 @@ mountCrud(router, cmsSiteContract,
     getSiteUsersRoute,
     setSiteUsersRoute,
     enableAnalyticsRoute,
+    defineContractRoute(cmsSiteContract.blueprints, { handler: (c) => c.json(okBody(listCmsSiteBlueprints()), 200) }),
+    defineContractRoute(cmsSiteContract.fromBlueprint, { handler: async (c) => c.json(okBody(await createCmsSiteFromBlueprint(c.req.valid('json')), '建站配置已准备，待补充内容并发布'), 200) }),
     importSiteRoute,
     exportSiteRoute,
     listGrantsRoute,

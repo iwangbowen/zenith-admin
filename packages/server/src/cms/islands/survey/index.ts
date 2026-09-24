@@ -85,7 +85,7 @@ function renderForm(el: HTMLElement, box: SurveyContainer, token: string | null,
     }
     const submitButton = form.querySelector<HTMLButtonElement>('.survey-submit')!;
     submitButton.disabled = true;
-    submitAnswers(submitUrl(box, interaction.id, token), token, buildPayload(form, state))
+    submitAnswers(submitUrl(box, interaction.id, token), token, { ...buildPayload(form, state), attribution: getCmsAttributionContext(el.ownerDocument) })
       .then((result) => {
         submitButton.disabled = false;
         if (!isOk(result)) {
@@ -153,3 +153,4 @@ export function mountSurvey(el: HTMLElement): void {
       el.style.display = 'none';
     });
 }
+import { getCmsAttributionContext } from '../analytics';

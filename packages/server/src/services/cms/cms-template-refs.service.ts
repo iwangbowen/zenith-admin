@@ -17,6 +17,7 @@ import { isTemplateRegistered, isThemeRegistered, listThemeTemplates, getThemeSe
 import { isDirectCmsHref, isValidCmsAssetUrl } from '@zenith/shared/cms';
 import type { CmsSiteTemplateDefaults, CmsTemplateHealth, CmsInvalidTemplateRef } from '@zenith/shared/cms';
 import { resolveEffectiveCmsSiteRow } from './cms-site-inheritance.service';
+import { assertCmsSiteComposition } from './cms-site-composition.service';
 
 type TemplateKind = 'list' | 'detail';
 
@@ -98,6 +99,7 @@ export async function assertSiteTemplateSettings(
   siteId?: number,
   executor?: DbExecutor,
 ): Promise<void> {
+  await assertCmsSiteComposition(themeCode, settings, siteId, executor);
   assertTemplateDefaultsMap(
     themeCode,
     settings?.defaultTemplates,

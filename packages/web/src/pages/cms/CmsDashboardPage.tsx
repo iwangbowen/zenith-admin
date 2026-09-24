@@ -1,3 +1,5 @@
+import CmsSiteWorkspace from './sites/CmsSiteWorkspace';
+import CmsEditorialWorkspace from './CmsEditorialWorkspace';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, Spin, Typography, Empty } from '@douyinfe/semi-ui';
@@ -53,6 +55,8 @@ export default function CmsDashboardPage() {
         <CmsSiteSelect value={siteId} onChange={setSiteId} width={200} />
       </SearchToolbar>
 
+      <CmsSiteWorkspace siteId={siteId} />
+      <CmsEditorialWorkspace siteId={siteId} />
       <Spin spinning={statsQuery.isFetching && !stats}>
         {/* 状态统计卡片 */}
         <StatGrid minItemWidth={160}>

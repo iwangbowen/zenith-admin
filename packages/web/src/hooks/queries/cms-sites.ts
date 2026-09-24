@@ -268,3 +268,6 @@ export function invalidateAfterCmsSiteImport(qc: QueryClient) {
 export function useImportCmsSite() {
   return useApiMutation(cmsSiteContract.import, { invalidate: invalidateAfterCmsSiteImport });
 }
+
+/** Blueprint uses the same atomic site graph importer, including all dependent lookup invalidations. */
+export function useCreateCmsSiteFromBlueprint() { return useApiMutation(cmsSiteContract.fromBlueprint, { invalidate: invalidateAfterCmsSiteImport }); }

@@ -162,7 +162,12 @@ export async function buildCmsRelease(id: number): Promise<CmsRelease> {
       if (!canAdvance) throw new HTTPException(409, { message: '发布基代已变化，请新建发布单' });
       [locked] = await tx.update(cmsReleases).set({ baseGenerationId: currentGenerationId }).where(eq(cmsReleases.id, id)).returning();
     }
-    const [deployment] = await tx.insert(cmsDeployments).values({ siteId: locked.siteId, releaseId: id }).returning();
+    const [deployment] = await tx.insert(cmsDeployments).values({ siteId: locked.siteId, releaseId: id, buildPlan: { version: 1, phases: [
+      { key: 'projection', label: '生成公开投影', dependsOn: [], status: 'pending', processed: 0, total: 1 },
+      { key: 'search', label: '重建搜索索引', dependsOn: ['projection'], status: 'pending', processed: 0, total: 1 },
+      { key: 'static', label: '生成静态页面', dependsOn: ['projection', 'search'], status: 'pending', processed: 0, total: 0 },
+      { key: 'manifest', label: '校验并封存产物', dependsOn: ['static'], status: 'pending', processed: 0, total: 1 },
+    ] } }).returning();
     const [updated] = await tx.update(cmsReleases).set({ status: 'building', deploymentId: deployment.id, error: null }).where(eq(cmsReleases.id, id)).returning();
     const task = await persistAsyncTask(tx, { taskType: RELEASE_BUILD_TASK, title: `CMS 发布单：${locked.name}`, tenantId: null, payload: { siteId: locked.siteId, releaseId: id, deploymentId: deployment.id }, idempotencyKey: `cms-release:${id}:deployment:${deployment.id}` });
     await tx.update(cmsDeployments).set({ taskIds: [task.id] }).where(eq(cmsDeployments.id, deployment.id));
@@ -387,6 +392,8 @@ export function registerCmsReleaseTaskHandler(): void {
       if (release.deploymentId !== deploymentId || release.status !== 'building') return { skipped: true };
       const releaseSlot = await acquireGenerationBuildSlot();
       try {
+        const startedAt = new Date();
+        await db.update(cmsDeployments).set({ buildMetrics: { startedAt: startedAt.toISOString() }, buildPlan: { version: 1, phases: [{ key: 'projection', label: '生成公开投影', dependsOn: [], status: 'running', processed: 0, total: 1 }, { key: 'search', label: '重建搜索索引', dependsOn: ['projection'], status: 'pending', processed: 0, total: 1 }, { key: 'static', label: '生成静态页面', dependsOn: ['projection', 'search'], status: 'pending', processed: 0, total: 0 }, { key: 'manifest', label: '校验并封存产物', dependsOn: ['static'], status: 'pending', processed: 0, total: 1 }] } }).where(eq(cmsDeployments.id, deploymentId));
         const [existingDeployment] = await db.select().from(cmsDeployments).where(eq(cmsDeployments.id, deploymentId)).limit(1);
         if (existingDeployment?.status !== 'ready') await db.transaction(async (tx) => {
           await createCmsGenerationStorage(tx, release.siteId, deploymentId, release.baseGenerationId, release.configurationSnapshot);
@@ -400,6 +407,7 @@ export function registerCmsReleaseTaskHandler(): void {
           await tx.execute(sql`select set_config('search_path', ${`${cmsGenerationSchemaName(deploymentId)},public`}, true)`);
           await withDbExecutor(tx, () => withCmsGenerationContext({ siteId: release.siteId, generationId: deploymentId, candidate: true }, async () => {
             await reloadCmsSearchDict(release.siteId);
+            await tx.update(cmsDeployments).set({ buildPlan: sql`${cmsDeployments.buildPlan} || jsonb_build_object('lastPhase','search')` }).where(eq(cmsDeployments.id, deploymentId));
             for (const revision of revisions) {
               const [channel] = await tx.select({ id: cmsChannels.id }).from(cmsChannels).where(and(eq(cmsChannels.siteId, release.siteId), eq(cmsChannels.id, revision.payload.channelId), eq(cmsChannels.status, 'enabled'))).limit(1);
               if (!channel) throw new HTTPException(409, { message: '修订目标栏目未包含在候选公开配置中，请将栏目配置一并发布' });
@@ -411,6 +419,7 @@ export function registerCmsReleaseTaskHandler(): void {
             await rebuildSearchIndex({ siteId: release.siteId });
             const [site] = await tx.select().from(cmsSites).where(eq(cmsSites.id, release.siteId)).limit(1);
             await buildSiteStatic(release.siteId, async (progress) => {
+              await withoutDbExecutor(() => db.update(cmsDeployments).set({ buildPlan: sql`${cmsDeployments.buildPlan} || jsonb_build_object('lastCheckpoint', ${JSON.stringify(progress.checkpoint)})` }).where(eq(cmsDeployments.id, deploymentId)));
               const result = await withoutDbExecutor(() => ctx.progress({ processed: progress.processed, total: progress.total, note: progress.note }));
               const [currentRelease] = await withoutDbExecutor(() => db.select({ status: cmsReleases.status }).from(cmsReleases).where(eq(cmsReleases.id, releaseId)).limit(1));
               if (currentRelease?.status === 'cancelled') throw new Error('发布单已取消');
@@ -425,7 +434,11 @@ export function registerCmsReleaseTaskHandler(): void {
             // 构建事务为 repeatable read；心跳由外部连接更新，不能在旧快照中锁任务行。
             if (await withoutDbExecutor(() => ctx.isCancelRequested())) throw new Error('发布执行轮次已失效或已取消');
             await sealCmsGenerationStorage(tx, deploymentId, manifest.snapshot.revisions);
-            await tx.update(cmsDeployments).set({ status: 'ready', snapshot: manifest.snapshot, manifestHash: manifest.hash, artifactCount: manifest.snapshot.artifacts.length }).where(eq(cmsDeployments.id, deploymentId));
+            const completedAt = new Date();
+            await tx.update(cmsDeployments).set({ status: 'ready', snapshot: manifest.snapshot, manifestHash: manifest.hash, artifactCount: manifest.snapshot.artifacts.length,
+              buildMetrics: { startedAt: startedAt.toISOString(), completedAt: completedAt.toISOString(), elapsedMs: completedAt.getTime() - startedAt.getTime(), reusedArtifacts: 0, generatedArtifacts: manifest.snapshot.artifacts.length },
+              buildPlan: sql`${cmsDeployments.buildPlan} || jsonb_build_object('lastPhase','manifest','completed',true)`,
+            }).where(eq(cmsDeployments.id, deploymentId));
           }));
         }, { isolationLevel: 'repeatable read' });
         const status = release.activateAt && release.activateAt > new Date() ? 'scheduled' : 'ready';

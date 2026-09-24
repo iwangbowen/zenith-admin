@@ -1,4 +1,5 @@
 import { ANALYTICS_EXPERIMENT_EXPOSURE_EVENT, ANALYTICS_SEMANTIC_EVENT_LABELS } from '../analytics/constants';
+import { CMS_ATTRIBUTION_EVENTS, CMS_ATTRIBUTION_EVENT_LABELS } from '../cms/constants';
 import type { AnalyticsSemanticEventName } from '../analytics/constants';
 import type { AnalyticsSite, AnalyticsUserSegment } from '../analytics/contracts';
 import type { AnalyticsEventPropertyDef } from '../analytics/validation';
@@ -77,6 +78,11 @@ export const SEED_ANALYTICS_SITES: AnalyticsSite[] = [
 ];
 
 export const SEED_ANALYTICS_EVENT_META: SeedAnalyticsEventMeta[] = [
+  ...CMS_ATTRIBUTION_EVENTS.map((eventName, index): SeedAnalyticsEventMeta => ({ id: 1070 + index, eventName, displayName: CMS_ATTRIBUTION_EVENT_LABELS[eventName], category: 'growth', description: 'CMS 内容与发布版本的入口转化事件；表单及投票完成由服务端确认', strictMode: false, propertySchema: [
+    { key: 'cmsSiteId', type: 'number', required: true, description: 'CMS 站点 ID' }, { key: 'contentId', type: 'number', description: '内容 ID' },
+    { key: 'releaseId', type: 'number', description: '本次页面的发布单 ID' }, { key: 'deploymentId', type: 'number', description: '本次页面部署代次' },
+    { key: 'entryPath', type: 'string', description: '会话入口路径' }, { key: 'entrySource', type: 'string', description: '入口来源' },
+  ] })),
   // ── A/B 实验（source=web_*，SDK getVariant 自动上报）──
   { id: 1050, eventName: ANALYTICS_EXPERIMENT_EXPOSURE_EVENT, displayName: ANALYTICS_SEMANTIC_EVENT_LABELS[ANALYTICS_EXPERIMENT_EXPOSURE_EVENT], category: 'system', description: 'A/B 实验变体曝光（SDK getVariant 自动上报）', propertySchema: [
     { key: 'expKey', type: 'string', required: true, description: '实验标识' },

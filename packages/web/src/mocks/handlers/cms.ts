@@ -99,6 +99,9 @@ import { mockCmsPublishingTasks } from '../data/cms-stage3';
 import { mockCmsDistributionRules } from '../data/cms-stage5';
 import { createProgressingMockTask } from './async-tasks';
 import { submitMockCmsWidgetSourceRefresh } from './cms-widgets';
+import { assertMockCmsSiteComposition } from '../utils/cms-site-composition';
+import { getMockCmsPublishedModelFields } from './cms-editorial';
+import { CMS_SITE_COMPOSITION_SETTING_FIELDS } from '@zenith/shared/cms';
 import { mockDateTime, mockDate } from '../utils/date';
 import { filterByKeyword, matchesFilter } from '@/mocks/utils/filter';
 import { mockResource } from '@/mocks/utils/resource';
@@ -264,6 +267,7 @@ export const cmsHandlers = [
     { name: 'contactPhone', label: '页头联系电话', fieldType: 'text', group: '页头', placeholder: '如 400-800-8888', description: '显示在页头搜索框左侧，留空不显示' },
     { name: 'bannerImage', label: '首页横幅图', fieldType: 'image', group: '首页', description: '显示在首页顶部，留空不显示' },
     { name: 'bannerLink', label: '横幅跳转链接', fieldType: 'text', group: '首页', placeholder: 'https://... 留空不跳转' },
+    ...CMS_SITE_COMPOSITION_SETTING_FIELDS,
     { name: 'showHotSection', label: '显示热门排行', fieldType: 'switch', defaultValue: true, group: '首页' },
     { name: 'footerText', label: '页脚附加文案', fieldType: 'textarea', group: '页脚', placeholder: '如联系地址、邮箱等，支持多行' },
   ] : [])),
@@ -311,6 +315,7 @@ export const cmsHandlers = [
       createdAt: now,
       updatedAt: now,
     };
+    assertMockCmsSiteComposition(site.id, site.theme, site.settings);
     mockCmsSites.push(site);
     return ok(redactMockSite(site), '创建成功');
   }),
@@ -335,6 +340,7 @@ export const cmsHandlers = [
     const mergedSettings = settings
       ? mergeMockSiteSettings(mockCmsSites[idx].settings, settings)
       : undefined;
+    assertMockCmsSiteComposition(params.id, mockCmsSites[idx].theme, mergedSettings ?? mockCmsSites[idx].settings);
     if (mergedSettings) mockCmsSites[idx].templateRefsRevision += 1;
     if (body.isDefault) mockCmsSites.forEach((s) => { s.isDefault = false; });
     Object.assign(mockCmsSites[idx], patch, mergedSettings ? { settings: mergedSettings } : {}, { code, updatedAt: mockDateTime() });
@@ -358,7 +364,7 @@ export const cmsHandlers = [
   }),
 
   // ═══ 模型 ═══════════════════════════════════════════════════════════════
-  mock(cmsModelContract.all, ({ ok }) => ok(mockCmsModels.filter((m) => m.status === 'enabled'))),
+  mock(cmsModelContract.all, ({ query, ok }) => ok(mockCmsModels.filter((m) => m.status === 'enabled' && (query.siteId === undefined || m.ownerSiteId == null || m.ownerSiteId === query.siteId)).map((model) => ({ ...model, fields: getMockCmsPublishedModelFields(model.id) })))),
   mock(cmsModelContract.list, ({ query, ok, paginate }) => {
     const { keyword } = query;
     let list = [...mockCmsModels];

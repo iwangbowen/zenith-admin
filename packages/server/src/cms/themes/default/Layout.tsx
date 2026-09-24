@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { CmsBaseContext, CmsNavItem } from '../types';
 import { SeoHead, ThemeFooterLinks } from '../_shared';
+import { renderCmsWidgetHtml } from '../widgets';
 
 function NavLinks({ items, currentUrl }: { items: CmsNavItem[]; currentUrl?: string }) {
   return (
@@ -107,6 +108,7 @@ export function Layout({ ctx, currentUrl, children }: LayoutProps) {
         </main>
         <footer className="site-footer">
           <div className="container">
+            {ctx.themeSlots?.footer ? <div className="footer-widget" dangerouslySetInnerHTML={{ __html: renderCmsWidgetHtml(ctx.themeSlots.footer) }} /> : null}
             <ThemeFooterLinks
               friendLinkGroups={friendLinkGroups}
               footerText={footerText}

@@ -113,6 +113,20 @@
       "when": 1790242672619,
       "tag": "0015_foamy_loki",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1790253300669,
+      "tag": "0016_milky_clint_barton",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790255030731,
+      "tag": "0017_complete_captain_marvel",
+      "breakpoints": true
     }
   ]
 }

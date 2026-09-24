@@ -1,3 +1,4 @@
+import { useLocation } from 'react-router-dom';
 import { TreeSelect } from '@douyinfe/semi-ui';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree';
 import { useEffect, useMemo, useRef } from 'react';
@@ -59,6 +60,7 @@ function buildSiteTree(sites: CmsSite[]): TreeNodeData[] {
  */
 export function CmsSiteSelect({ value, onChange, width = 200 }: Readonly<CmsSiteSelectProps>) {
   const { data: sites } = useAllCmsSites();
+  const { search } = useLocation();
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
@@ -67,12 +69,14 @@ export function CmsSiteSelect({ value, onChange, width = 200 }: Readonly<CmsSite
   useEffect(() => {
     if (value === undefined && sites && sites.length > 0) {
       const stored = readStoredSiteId();
-      const preferred = sites.find((s) => s.id === stored)
+      const params = new URLSearchParams(search);
+      const requested = Number(params.get('siteId') ?? params.get('site'));
+      const preferred = sites.find((s) => s.id === requested) ?? sites.find((s) => s.id === stored)
         ?? sites.find((s) => s.isDefault)
         ?? sites[0];
       onChangeRef.current(preferred.id);
     }
-  }, [value, sites]);
+  }, [value, sites, search]);
 
   return (
     <TreeSelect

@@ -5,7 +5,7 @@ import {
 } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { CMS_WIDGET_HIGH_FANOUT_THRESHOLD, CMS_WIDGET_RENDERER_KEYS, cmsWidgetDataSchema, cmsWidgetSchema } from '@zenith/shared/cms';
-import type { CmsPageBlock, CmsResolvedWidget, CmsResolvedWidgetItem, CmsWidgetData, CmsWidgetRefOwnerType, CmsWidgetRendererKey, CmsWidgetSlot, CmsWidgetSourceType, CreateCmsWidgetInput, UpdateCmsWidgetInput } from '@zenith/shared/cms';
+import type { CmsPageBlock, CmsResolvedWidget, CmsResolvedWidgetItem, CmsWidgetData, CmsWidgetRefOwnerType, CmsWidgetRendererKey, CmsWidgetSlot, CmsWidgetSlotKey, CmsWidgetSourceType, CreateCmsWidgetInput, UpdateCmsWidgetInput } from '@zenith/shared/cms';
 import type { SaveCmsWidgetSlotInput } from '@zenith/shared/report';
 import { db } from '../../db';
 import {
@@ -494,7 +494,7 @@ export async function listCmsWidgetSlots(siteId: number): Promise<CmsWidgetSlot[
 }
 
 export async function saveCmsWidgetSlot(
-  slotKey: 'home.sidebar',
+  slotKey: CmsWidgetSlotKey,
   input: SaveCmsWidgetSlotInput,
 ) {
   await assertSiteAccess(input.siteId);
@@ -794,7 +794,7 @@ export async function resolveCmsWidgetPlacements(
 
 export async function resolveCmsWidgetSlotForRender(
   siteId: number,
-  slotKey: 'home.sidebar',
+  slotKey: CmsWidgetSlotKey,
   baseUrl: string,
 ): Promise<CmsResolvedWidget | null> {
   const [binding] = await db.select().from(cmsWidgetRefs).where(and(
@@ -810,6 +810,22 @@ export async function resolveCmsWidgetSlotForRender(
     rendererKey: rendererKey(binding.rendererKey),
   }]);
   return resolved.get(slotKey) ?? null;
+}
+
+/** One bounded query for this theme's placements; stale or unsupported bindings are ignored. */
+export async function resolveCmsThemeSlotsForRender(siteId: number, themeCode: string, baseUrl: string): Promise<Partial<Record<CmsWidgetSlotKey, CmsResolvedWidget | null>>> {
+  const definitions = getThemeWidgetSlots(themeCode);
+  if (!definitions.length) return {};
+  const bindings = await db.select().from(cmsWidgetRefs).where(and(eq(cmsWidgetRefs.siteId, siteId), eq(cmsWidgetRefs.ownerType, 'theme_slot'), eq(cmsWidgetRefs.ownerId, siteId)));
+  const placements = definitions.flatMap((definition) => {
+    const binding = bindings.find((row) => row.field === definition.key && definition.rendererKeys.includes(row.rendererKey as CmsWidgetRendererKey));
+    return binding ? [{ key: definition.key, widgetId: binding.widgetId, rendererKey: rendererKey(binding.rendererKey) }] : [];
+  });
+  const resolved = await resolveCmsWidgetPlacements(siteId, baseUrl, placements);
+  return Object.fromEntries(definitions.map((definition) => {
+    const widget = resolved.get(definition.key);
+    return [definition.key, widget && definition.allowedTypes.includes(widget.type) ? widget : null];
+  }));
 }
 
 export async function getCmsWidgetPreview(id: number, requestedRenderer?: CmsWidgetRendererKey) {

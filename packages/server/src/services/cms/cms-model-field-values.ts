@@ -26,9 +26,10 @@ export async function buildCmsModelFieldValues(
   modelId: number | null | undefined,
   extend: Record<string, unknown> | null | undefined,
   modelVersionId?: number | null,
+  additionalNames: readonly string[] = [],
 ): Promise<CmsModelFieldValue[]> {
   if (!modelId) return [];
-  const fields = (await renderModelFields(modelId, modelVersionId)).filter((f) => f.showInDetail);
+  const fields = (await renderModelFields(modelId, modelVersionId)).filter((f) => f.showInDetail || additionalNames.includes(f.name));
   if (fields.length === 0) return [];
   const resolved = await resolveCmsModelFieldOptions(fields);
   const values = extend ?? {};

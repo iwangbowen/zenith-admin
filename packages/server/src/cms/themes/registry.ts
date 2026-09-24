@@ -1,7 +1,7 @@
 import type { ComponentType } from 'react';
 import logger from '../../lib/logger';
 import type { CmsThemeSettingField } from '@zenith/shared/cms';
-import { isDirectCmsHref, isValidCmsAssetUrl } from '@zenith/shared/cms';
+import { isDirectCmsHref, isValidCmsAssetUrl, cmsHomeSectionsSchema, cmsModelDisplaysSchema } from '@zenith/shared/cms';
 import type { CmsTheme, CmsListContext, CmsDetailContext, CmsTemplateVariant } from './types';
 import type { CmsWidgetRendererKey, CmsWidgetType } from '@zenith/shared/cms';
 import { listCoreCmsWidgetRenderers, resolveCoreCmsWidgetRenderer } from './widgets';
@@ -136,6 +136,14 @@ function isThemeLinkField(field: CmsThemeSettingField): boolean {
 function parseThemeConfigValue(field: CmsThemeSettingField, raw: unknown): unknown {
   if (raw === undefined || raw === null) return undefined;
   switch (field.fieldType) {
+    case 'home-sections': {
+      const parsed = cmsHomeSectionsSchema.safeParse(raw);
+      return parsed.success ? parsed.data : undefined;
+    }
+    case 'model-displays': {
+      const parsed = cmsModelDisplaysSchema.safeParse(raw);
+      return parsed.success ? parsed.data : undefined;
+    }
     case 'switch':
       return typeof raw === 'boolean' ? raw : undefined;
     case 'number': {

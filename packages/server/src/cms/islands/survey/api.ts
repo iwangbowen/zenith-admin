@@ -1,4 +1,4 @@
-import type { CmsInteractionPublicState, CmsInteractionPublicStats, CmsInteractionSubmitResult } from '@zenith/shared/cms';
+import type { CmsAttributionContext, CmsInteractionPublicState, CmsInteractionPublicStats, CmsInteractionSubmitResult } from '@zenith/shared/cms';
 import { apiHeaders, apiJson, type ApiResult } from '../shared/api';
 
 export type SurveyState = CmsInteractionPublicState;
@@ -27,6 +27,7 @@ export function fetchState(box: SurveyContainer, token: string | null): Promise<
 }
 
 export interface SubmitPayload {
+  attribution?: CmsAttributionContext;
   answers: Record<string, string | string[]>;
   idempotencyKey: string;
   captchaId?: string;

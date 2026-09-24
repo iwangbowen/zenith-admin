@@ -2,7 +2,7 @@ import { escapeHtml } from '@zenith/shared/core';
 import { badRequest, conflict } from '@/mocks/utils/handlers';
 import { mock } from '@/mocks/utils/contract';
 import { removeByIds, requireItem } from '@/mocks/utils/crud';
-import { CMS_WIDGET_HIGH_FANOUT_THRESHOLD, CMS_WIDGET_RENDERER_KEYS, CMS_WIDGET_RENDERER_LABELS, cmsWidgetContract } from '@zenith/shared/cms';
+import { CMS_DEFAULT_THEME_WIDGET_SLOTS, CMS_WIDGET_HIGH_FANOUT_THRESHOLD, CMS_WIDGET_RENDERER_KEYS, CMS_WIDGET_RENDERER_LABELS, cmsWidgetContract } from '@zenith/shared/cms';
 import type { CmsResolvedWidget, CmsResolvedWidgetItem, CmsWidget, CmsWidgetData, CmsWidgetSlot, CmsWidgetSourceReference } from '@zenith/shared/cms';
 import {
   getNextCmsWidgetId,
@@ -81,16 +81,12 @@ function cloneItems(value: CmsWidgetData | null | undefined): CmsWidgetData {
   return { items: (value?.items ?? []).map((item) => ({ ...item })) };
 }
 
-function homeSidebarSlot(siteId: number): CmsWidgetSlot {
-  const binding = mockCmsWidgetRefs.find((ref) =>
-    ref.siteId === siteId && ref.ownerType === 'theme_slot' && ref.field === 'home.sidebar') ?? null;
-  return {
-    key: 'home.sidebar',
-    label: '首页侧栏',
-    allowedTypes: ['manual-list'],
-    rendererKeys: [...CMS_WIDGET_RENDERER_KEYS],
-    binding,
-  };
+function themeSlots(siteId: number): CmsWidgetSlot[] {
+  const site = requireItem(mockCmsSites, siteId, '站点不存在', { status: 404 });
+  const definitions = site.theme === 'default' ? CMS_DEFAULT_THEME_WIDGET_SLOTS : [{ key: 'home.sidebar', label: '首页侧栏', allowedTypes: ['manual-list'], rendererKeys: CMS_WIDGET_RENDERER_KEYS }] as const;
+  return definitions.map((definition) => ({ ...definition, allowedTypes: [...definition.allowedTypes], rendererKeys: [...definition.rendererKeys],
+    binding: mockCmsWidgetRefs.find((ref) => ref.siteId === siteId && ref.ownerType === 'theme_slot' && ref.field === definition.key) ?? null,
+  }));
 }
 
 const refreshTasksByKey = new Map<string, ReturnType<typeof createProgressingMockTask>>();
@@ -140,17 +136,19 @@ export const cmsWidgetsHandlers = [
 
   mock(cmsWidgetContract.renderers, ({ ok }) => ok(rendererOptions())),
 
-  mock(cmsWidgetContract.slots, ({ query, ok }) => ok([homeSidebarSlot(query.siteId)])),
+  mock(cmsWidgetContract.slots, ({ query, ok }) => ok(themeSlots(query.siteId))),
 
   mock(cmsWidgetContract.saveSlot, ({ params, body, ok }) => {
     const { siteId } = body;
     const { slotKey } = params;
+    const definition = themeSlots(siteId).find((slot) => slot.key === slotKey);
+    if (!definition || !definition.rendererKeys.includes(body.rendererKey)) return badRequest('当前主题插槽不支持所选展示模板', { status: 400 });
+    const widget = body.widgetId ? mockCmsWidgets.find((entry) => entry.id === body.widgetId && entry.siteId === siteId) : null;
+    if (body.widgetId && (!widget || widget.status !== 'published' || !definition.allowedTypes.includes(widget.type))) return badRequest('请选择本站已发布且符合插槽类型的页面部件', { status: 400 });
     const index = mockCmsWidgetRefs.findIndex((ref) =>
       ref.siteId === siteId && ref.ownerType === 'theme_slot' && ref.field === slotKey);
     if (index >= 0) mockCmsWidgetRefs.splice(index, 1);
-    if (body.widgetId) {
-      const widget = mockCmsWidgets.find((entry) => entry.id === body.widgetId && entry.siteId === siteId);
-      if (!widget || widget.status !== 'published') return badRequest('主题插槽只能绑定已发布页面部件', { status: 400 });
+    if (widget) {
       mockCmsWidgetRefs.push({
         id: getNextCmsWidgetRefId(),
         siteId,
@@ -168,7 +166,7 @@ export const cmsWidgetsHandlers = [
     refreshCounts();
     stageMockCmsConfigurationDraft(siteId);
     submitMockWidgetRefresh(siteId);
-    return ok([homeSidebarSlot(siteId)], '主题插槽已更新');
+    return ok(themeSlots(siteId), '主题插槽已保存，待发布');
   }),
 
   mock(cmsWidgetContract.batch, ({ body, ok }) => {

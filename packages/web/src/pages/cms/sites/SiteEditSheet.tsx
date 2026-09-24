@@ -9,18 +9,18 @@ import { FormPasswordInput } from '@/components/PasswordInput';
  */
 import React, { useEffect, useRef, useState } from 'react';
 import ModalFooter from '@/components/ModalFooter';
-import { Banner, Button, Col, ColorPicker, Form, Input, InputNumber, Modal, Row, Select, SideSheet, Switch, Tabs, TabPane, TextArea, Toast, Typography, withField } from '@douyinfe/semi-ui';
+import { Banner, Button, Col, ColorPicker, Form, Input, InputNumber, Row, Select, SideSheet, Switch, Tabs, TabPane, TextArea, Toast, Typography, withField } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { usePermission } from '@/hooks/usePermission';
 import {
-  useAllCmsModels, useAllCmsSites, useCmsSiteTemplateHealth, useCmsStaticBuild,
+  useAllCmsModels, useAllCmsSites, useCmsSiteTemplateHealth,
   useCmsThemeSettingsSchema, useCmsThemeTemplates, useCmsThemes, useSaveCmsSite,
   useUploadCmsResource,
 } from '@/hooks/queries/cms';
-import { useCmsWidgetRenderers, useCmsWidgetSlots, usePublishedCmsWidgets, useSaveCmsWidgetSlot } from '@/hooks/queries/cms-widgets';
 import { useWorkflowDefinitionList } from '@/hooks/queries/workflow-definitions';
 import { CMS_RESOURCE_URI_PREFIX, CMS_STATIC_MODES, CMS_STATIC_MODE_LABELS, CMS_TWITTER_CARDS, CMS_TWITTER_CARD_LABELS } from '@zenith/shared/cms';
-import type { CmsInvalidTemplateRef, CmsModelField, CmsSite, CmsThemeSettingField, CmsWidgetRendererKey } from '@zenith/shared/cms';
+import type { CmsInvalidTemplateRef, CmsModelField, CmsSite, CmsThemeSettingField, CmsHomeSection, CmsModelDisplay } from '@zenith/shared/cms';
+import { cmsHomeSectionsSchema, cmsModelDisplaysSchema } from '@zenith/shared/cms';
 import {
   EMPTY_TEMPLATE_DEFAULTS, SITE_FORM_CREATE_DEFAULTS, buildSiteFormInitValues, buildSiteSavePayload,
   templateDefaultsFromSettings,
@@ -34,6 +34,11 @@ import ColorPickerInput from '@/components/ColorPickerInput';
 import SiteImageInput from './SiteImageInput';
 import { usePreparedSiteImages } from './usePreparedSiteImages';
 import { saveSiteWithPreparedImages } from './site-image-save';
+import HomeSectionsEditor from './HomeSectionsEditor';
+import ModelDisplaysEditor from './ModelDisplaysEditor';
+import ThemeWidgetSlotsEditor from './ThemeWidgetSlotsEditor';
+import CmsConfigurationNotice from '../CmsConfigurationNotice';
+import CmsWorkbenchPreview from '../CmsWorkbenchPreview';
 
 /** 主题色表单控件：Semi ColorPicker 封装，值为颜色字符串（留空用主题默认） */
 const FormThemeColorPicker = withField(ColorPickerInput);
@@ -83,17 +88,12 @@ export default function SiteEditSheet({ open, site: initialSite, onClose }: Read
   const [themeConfig, setThemeConfig] = useState<Record<string, unknown>>({});
   // 站点扩展模型：跟随表单里实时选中的模型（Form 值不具备响应性，用 state 镜像）
   const [selectedModelId, setSelectedModelId] = useState<number | undefined>(undefined);
-  const [homeSidebarWidgetId, setHomeSidebarWidgetId] = useState<number | null>(null);
-  const [homeSidebarRenderer, setHomeSidebarRenderer] = useState<CmsWidgetRendererKey>('list-sidebar');
+  const [previewSiteId, setPreviewSiteId] = useState<number>();
 
   const { data: allSites } = useAllCmsSites();
   const { data: themes } = useCmsThemes(site?.id);
   const { data: themeTemplates } = useCmsThemeTemplates(open ? selectedTheme : undefined, site?.id);
   const { data: themeSettingsSchema } = useCmsThemeSettingsSchema(open ? selectedTheme : undefined);
-  const widgetSlotsQuery = useCmsWidgetSlots(site?.id, open && !!site);
-  const widgetOptionsQuery = usePublishedCmsWidgets(site?.id, open && !!site);
-  const widgetRenderersQuery = useCmsWidgetRenderers(site?.id, 'manual-list', open && !!site);
-  const saveWidgetSlotMutation = useSaveCmsWidgetSlot();
   const { data: allModels } = useAllCmsModels(site?.id);
   const siteModel = (allModels ?? []).find((m) => m.id === selectedModelId);
   const siteModelFields = siteModel?.fields ?? [];
@@ -102,7 +102,6 @@ export default function SiteEditSheet({ open, site: initialSite, onClose }: Read
   const { data: defsPage } = useWorkflowDefinitionList({ page: 1, pageSize: 100, status: 'published' });
   const publishedDefs = defsPage?.list;
   const saveMutation = useSaveCmsSite();
-  const staticBuildMutation = useCmsStaticBuild();
 
   // 打开时按站点（或新建默认值）初始化编辑态。
   // 用 render 期受控重置（React「adjusting state when props change」模式）而非 useEffect：
@@ -156,13 +155,7 @@ export default function SiteEditSheet({ open, site: initialSite, onClose }: Read
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在主题清单变化时清理，避免编辑操作反复触发
   }, [themeTemplates, open]);
 
-  useEffect(() => {
-    const slot = widgetSlotsQuery.data?.find((item) => item.key === 'home.sidebar');
-    setHomeSidebarWidgetId(slot?.binding?.widgetId ?? null);
-    setHomeSidebarRenderer(slot?.binding?.rendererKey ?? 'list-sidebar');
-  }, [widgetSlotsQuery.data]);
-
-  async function handleSave() {
+  async function handleSave(previewAfter = false) {
     let values: Record<string, unknown>;
     try {
       values = (await formApi.current?.validate()) ?? {};
@@ -171,7 +164,13 @@ export default function SiteEditSheet({ open, site: initialSite, onClose }: Read
       setActiveTab('basic');
       return;
     }
-    const { payload, themeConfigChanged, themeChanged } = buildSiteSavePayload({ values, editingRecord: site, templateDefaults, themeConfig });
+    const home = cmsHomeSectionsSchema.safeParse(themeConfig.homeSections ?? []);
+    const displays = cmsModelDisplaysSchema.safeParse(themeConfig.modelDisplays ?? []);
+    if (!home.success || !displays.success) {
+      Toast.warning([...(!home.success ? home.error.issues : []), ...(!displays.success ? displays.error.issues : [])].map((issue) => issue.message).join('；'));
+      return;
+    }
+    const { payload } = buildSiteSavePayload({ values, editingRecord: site, templateDefaults, themeConfig });
     let saved: CmsSite;
     setSavingImages(true);
     setImageSaveError('');
@@ -200,23 +199,9 @@ export default function SiteEditSheet({ open, site: initialSite, onClose }: Read
       }
       return;
     } finally { setSavingImages(false); }
-    Toast.success(site ? '更新成功' : '创建成功');
+    Toast.success('已保存，待发布');
+    if (previewAfter) { setPreviewSiteId(saved.id); return; }
     onClose();
-    // 主题或主题参数变更 + 非纯动态站点 → 保存后提示重新生成静态页
-    if ((themeChanged || themeConfigChanged) && saved.staticMode !== 'dynamic') {
-      Modal.confirm({
-        title: '重新生成静态页？',
-        content: themeChanged
-          ? '站点主题已切换，已生成的静态页仍是旧主题样式。是否立即提交全站静态化任务？'
-          : '主题参数已变更，已生成的静态页仍是旧样式。是否立即提交全站静态化任务？',
-        okText: '立即生成',
-        cancelText: '稍后手动',
-        onOk: async () => {
-          await staticBuildMutation.mutateAsync({ body: { siteId: saved.id } });
-          Toast.success('静态化任务已提交，可在任务中心查看进度');
-        },
-      });
-    }
   }
 
   const formInitValues = site ? buildSiteFormInitValues(site) : SITE_FORM_CREATE_DEFAULTS;
@@ -297,6 +282,10 @@ export default function SiteEditSheet({ open, site: initialSite, onClose }: Read
             style={{ width: 320 }}
           />
         );
+      case 'home-sections':
+        return <HomeSectionsEditor siteId={site?.id} value={Array.isArray(value) ? value as CmsHomeSection[] : []} onChange={(next) => themeConfigPatch(field.name, next)} disabled={savingImages} />;
+      case 'model-displays':
+        return <ModelDisplaysEditor siteId={site?.id} value={Array.isArray(value) ? value as CmsModelDisplay[] : []} onChange={(next) => themeConfigPatch(field.name, next)} disabled={savingImages} />;
       case 'select':
         return (
           <Select
@@ -395,70 +384,18 @@ export default function SiteEditSheet({ open, site: initialSite, onClose }: Read
     ));
   };
 
-  const renderWidgetSlotSection = () => {
-    if (!site) return null;
-    const slot = widgetSlotsQuery.data?.find((item) => item.key === 'home.sidebar');
-    if (!slot) return null;
-    return (
-      <Form.Section text="页面部件插槽 — 首页侧栏">
-        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-          <Select
-            value={homeSidebarWidgetId ?? undefined}
-            placeholder="不绑定页面部件"
-            showClear
-            filter
-            loading={widgetOptionsQuery.isFetching}
-            optionList={(widgetOptionsQuery.data ?? []).map((widget) => ({
-              value: widget.id,
-              label: `${widget.name}（${widget.code}）`,
-            }))}
-            onChange={(value) => setHomeSidebarWidgetId(value == null ? null : Number(value))}
-            style={{ width: 320 }}
-          />
-          <Select
-            value={homeSidebarRenderer}
-            optionList={(widgetRenderersQuery.data ?? []).map((renderer) => ({
-              value: renderer.key,
-              label: renderer.label,
-            }))}
-            onChange={(value) => setHomeSidebarRenderer(value as CmsWidgetRendererKey)}
-            style={{ width: 180 }}
-          />
-          <Button
-            type="primary"
-            loading={saveWidgetSlotMutation.isPending}
-            disabled={!hasPermission('cms:widget:bind')}
-            onClick={async () => {
-              await saveWidgetSlotMutation.mutateAsync({
-                params: { slotKey: 'home.sidebar' },
-                body: {
-                  siteId: site.id,
-                  widgetId: homeSidebarWidgetId,
-                  rendererKey: homeSidebarRenderer,
-                },
-              });
-              Toast.success('首页侧栏页面部件已更新');
-            }}
-          >
-            保存插槽
-          </Button>
-        </div>
-        <Typography.Text type="tertiary" size="small">
-          Header/Footer 仍由主题 Layout 统一负责；这里只配置首页侧栏的可选页面部件。
-        </Typography.Text>
-      </Form.Section>
-    );
-  };
+  const renderWidgetSlotSection = () => <Form.Section text="主题页面部件插槽"><ThemeWidgetSlotsEditor siteId={site?.id} /></Form.Section>;
 
-  return (
+  return (<>
     <SideSheet
       title={site ? '编辑站点' : '新增站点'}
       visible={open}
       onCancel={() => { if (!savingImages) onClose(); }}
       width={720}
       closeOnEsc
-      footer={<ModalFooter onCancel={() => { if (!savingImages) onClose(); }} onOk={() => void handleSave()} okText={imageSaveError ? '重试保存' : '保存'} loading={savingImages || saveMutation.isPending} />}
+      footer={<ModalFooter onCancel={() => { if (!savingImages) onClose(); }} onOk={() => void handleSave()} okText={imageSaveError ? '重试保存' : '保存'} loading={savingImages || saveMutation.isPending} extra={<Button disabled={savingImages || saveMutation.isPending} onClick={() => void handleSave(true)}>保存并预览工作稿</Button>} />}
     >
+      {site?.id ? <CmsConfigurationNotice siteId={site.id} /> : null}
       {imageSaveError ? <Banner type="warning" description={imageSaveError} closeIcon={null} /> : null}
       {!initialSite && preparedImages.images.length > 0 ? <Banner type="info" description={`已准备 ${preparedImages.images.length} 张图片，将在保存站点后上传；关闭窗口会放弃尚未上传的本地文件。`} closeIcon={null} /> : null}
       <Form
@@ -776,5 +713,6 @@ export default function SiteEditSheet({ open, site: initialSite, onClose }: Read
         </Tabs>
       </Form>
     </SideSheet>
-  );
+    <CmsWorkbenchPreview visible={previewSiteId !== undefined} onClose={() => setPreviewSiteId(undefined)} siteId={previewSiteId} initialPath="/" initialMode="working" selection={{ includeSiteConfiguration: true }} />
+  </>);
 }

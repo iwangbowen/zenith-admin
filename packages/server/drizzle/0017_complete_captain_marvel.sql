@@ -1,0 +1,2 @@
+ALTER TABLE "cms_deployments" ADD COLUMN "build_plan" jsonb DEFAULT '{"version":1,"phases":[]}'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "cms_deployments" ADD COLUMN "build_metrics" jsonb DEFAULT '{}'::jsonb NOT NULL;

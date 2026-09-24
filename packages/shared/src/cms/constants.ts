@@ -163,7 +163,7 @@ export const CMS_TEMPLATE_RESOLUTION_SOURCE_LABELS: Record<(typeof CMS_TEMPLATE_
 };
 
 /** 主题参数字段类型（后台主题参数面板动态表单） */
-export const CMS_THEME_SETTING_FIELD_TYPES = ['text', 'textarea', 'color', 'number', 'switch', 'select', 'image'] as const;
+export const CMS_THEME_SETTING_FIELD_TYPES = ['text', 'textarea', 'color', 'number', 'switch', 'select', 'image', 'home-sections', 'model-displays'] as const;
 
 export const CMS_PUBLISH_TARGET_TYPES = [
   'content',
@@ -437,7 +437,36 @@ export const CMS_WIDGET_RENDERER_OPTIONS = createLabelOptionsFromMap(CMS_WIDGET_
 
 export const CMS_WIDGET_REF_OWNER_TYPES = ['page', 'theme_slot'] as const;
 
-export const CMS_WIDGET_SLOT_KEYS = ['home.sidebar'] as const;
+export const CMS_WIDGET_SLOT_KEYS = ['home.main', 'home.sidebar', 'detail.related', 'footer'] as const;
+
+export const CMS_HOME_SECTION_SOURCES = ['channel', 'latest', 'recommended', 'hot'] as const;
+export const CMS_HOME_SECTION_SOURCE_LABELS = { channel: '指定栏目', latest: '全站最新', recommended: '推荐内容', hot: '热门内容' };
+export const CMS_HOME_SECTION_SOURCE_OPTIONS = createLabelOptionsFromMap(CMS_HOME_SECTION_SOURCE_LABELS);
+export const CMS_HOME_SECTION_STYLES = ['feature-list', 'cards', 'compact'] as const;
+export const CMS_HOME_SECTION_STYLE_LABELS = { 'feature-list': '首条图文，其余标题', cards: '图文卡片', compact: '紧凑标题' };
+export const CMS_HOME_SECTION_STYLE_OPTIONS = createLabelOptionsFromMap(CMS_HOME_SECTION_STYLE_LABELS);
+export const CMS_HOME_IMAGE_RATIOS = ['wide', 'square', 'portrait'] as const;
+export const CMS_HOME_IMAGE_RATIO_LABELS = { wide: '横图 16:9', square: '方图 1:1', portrait: '竖图 3:4' };
+export const CMS_HOME_IMAGE_RATIO_OPTIONS = createLabelOptionsFromMap(CMS_HOME_IMAGE_RATIO_LABELS);
+export const CMS_MODEL_DISPLAY_KINDS = ['event', 'person', 'download'] as const;
+export const CMS_MODEL_DISPLAY_LABELS = { event: '活动信息卡', person: '人物资料卡', download: '资料下载卡' };
+export const CMS_MODEL_DISPLAY_OPTIONS = createLabelOptionsFromMap(CMS_MODEL_DISPLAY_LABELS);
+
+export const CMS_FEEDBACK_STATUSES = ['new', 'processing', 'resolved', 'closed'] as const;
+export const CMS_FEEDBACK_STATUS_LABELS = { new: '待处理', processing: '处理中', resolved: '已处理', closed: '已关闭' };
+export const CMS_FEEDBACK_STATUS_OPTIONS = createLabelOptionsFromMap(CMS_FEEDBACK_STATUS_LABELS);
+export const CMS_EDITORIAL_TASK_STATUSES = ['open', 'in_progress', 'done', 'cancelled'] as const;
+export const CMS_EDITORIAL_TASK_STATUS_LABELS = { open: '待开始', in_progress: '进行中', done: '已完成', cancelled: '已取消' };
+export const CMS_EDITORIAL_TASK_STATUS_OPTIONS = createLabelOptionsFromMap(CMS_EDITORIAL_TASK_STATUS_LABELS);
+export const CMS_EDITORIAL_TASK_SOURCES = ['manual', 'search', 'submission'] as const;
+export const CMS_EDITORIAL_TASK_SOURCE_LABELS = { manual: '手工事项', search: '无结果搜索', submission: '表单来信' };
+export const CMS_WORKSPACE_QUEUES = ['mine', 'review', 'overdue', 'notes', 'unpublished', 'feedback', 'tasks'] as const;
+export const CMS_WORKSPACE_QUEUE_LABELS = { mine: '我的稿件', review: '待审核', overdue: '逾期稿件', notes: '未解决批注', unpublished: '待发布修改', feedback: '待办理反馈', tasks: '编辑事项' };
+export const CMS_WORKSPACE_QUEUE_OPTIONS = createLabelOptionsFromMap(CMS_WORKSPACE_QUEUE_LABELS);
+export const CMS_ATTRIBUTION_EVENT_NAMES = { entry: 'cms.entry', read: 'cms.read', topicClick: 'cms.topic_click', download: 'cms.download', formComplete: 'cms.form_complete', voteComplete: 'cms.vote_complete' } as const;
+export const CMS_ATTRIBUTION_EVENTS = [CMS_ATTRIBUTION_EVENT_NAMES.entry, CMS_ATTRIBUTION_EVENT_NAMES.read, CMS_ATTRIBUTION_EVENT_NAMES.topicClick, CMS_ATTRIBUTION_EVENT_NAMES.download, CMS_ATTRIBUTION_EVENT_NAMES.formComplete, CMS_ATTRIBUTION_EVENT_NAMES.voteComplete] as const;
+export const CMS_ATTRIBUTION_EVENT_LABELS = { 'cms.entry': '页面入口', 'cms.read': '内容阅读', 'cms.topic_click': '专题按钮', 'cms.download': '资料下载', 'cms.form_complete': '表单完成', 'cms.vote_complete': '投票完成' };
+export const CMS_ATTRIBUTION_EVENT_OPTIONS = createLabelOptionsFromMap(CMS_ATTRIBUTION_EVENT_LABELS);
 
 /** CMS 会员订阅对象类型。 */
 export const CMS_SUBSCRIPTION_SUBJECT_TYPES = ['site', 'channel', 'author'] as const;
@@ -629,6 +658,11 @@ export const CMS_FIELD_TYPE_LABELS: Record<(typeof CMS_FIELD_TYPES)[number], str
 /** CMS 前台预览路径前缀（无域名绑定时通过 /__cms/{siteCode}/... 访问站点） */
 export const CMS_PREVIEW_PREFIX = '/__cms';
 export const CMS_RELEASE_SOURCES = ['manual', 'content', 'configuration'] as const;
+export const CMS_PREVIEW_MODES = ['working', 'candidate', 'online'] as const;
+export const CMS_PREVIEW_MODE_LABELS = { working: '已保存工作稿', candidate: '本次候选部署', online: '当前线上版本' } as const;
+export const CMS_RELEASE_CHANGE_KINDS = ['content', 'site', 'channel', 'page', 'widget', 'resource', 'navigation'] as const;
+export const CMS_RELEASE_CHANGE_LABELS = { content: '内容', site: '站点', channel: '栏目', page: '页面', widget: '部件', resource: '素材', navigation: '配置关联' } as const;
+export const CMS_RELEASE_CHANGE_OPERATIONS = { create: '新增', update: '修改', remove: '移除' } as const;
 
 /**
  * 搭建页站内路径（不含前导斜杠）：设了自定义 path 用它，否则回落 `p/{slug}/`。
@@ -706,8 +740,3 @@ export const CMS_TWITTER_CARD_LABELS: Record<(typeof CMS_TWITTER_CARDS)[number],
   summary_large_image: '大图摘要',
   summary: '标准摘要',
 };
-export const CMS_PREVIEW_MODES = ['working', 'candidate', 'online'] as const;
-export const CMS_PREVIEW_MODE_LABELS = { working: '已保存工作稿', candidate: '本次候选部署', online: '当前线上版本' } as const;
-export const CMS_RELEASE_CHANGE_KINDS = ['content', 'site', 'channel', 'page', 'widget', 'resource', 'navigation'] as const;
-export const CMS_RELEASE_CHANGE_LABELS = { content: '内容', site: '站点', channel: '栏目', page: '页面', widget: '部件', resource: '素材', navigation: '配置关联' } as const;
-export const CMS_RELEASE_CHANGE_OPERATIONS = { create: '新增', update: '修改', remove: '移除' } as const;

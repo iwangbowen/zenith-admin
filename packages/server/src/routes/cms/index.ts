@@ -16,6 +16,7 @@ import {
   cmsPublishingContract,
   cmsReleaseContract,
   cmsWorkbenchContract,
+  cmsOperationsContract,
   cmsResourceContract,
   cmsSearchContract,
   cmsSensitiveWordContract,
@@ -47,6 +48,7 @@ import cmsPagesRoutes from './pages';
 import cmsPublishingRoutes from './publishing';
 import cmsReleasesRoutes from './releases';
 import cmsWorkbenchRoutes from './workbench';
+import cmsOperationsRoutes from './operations';
 import cmsResourcesRoutes from './resources';
 import cmsSearchRoutes from './search';
 import cmsSensitiveWordsRoutes from './sensitive-words';
@@ -88,6 +90,7 @@ export default defineRouteDomain({
     [cmsPublishingContract.basePath, cmsPublishingRoutes, { feature: 'cms' }],
     [cmsReleaseContract.basePath, cmsReleasesRoutes, { feature: 'cms' }],
     [cmsWorkbenchContract.basePath, cmsWorkbenchRoutes, { feature: 'cms' }],
+    [cmsOperationsContract.basePath, cmsOperationsRoutes, { feature: 'cms' }],
     [cmsDistributionContract.basePath, cmsDistributionRoutes, { feature: 'cms' }],
     [cmsResourceContract.basePath, cmsResourcesRoutes, { feature: 'cms' }],
     [cmsSubscriptionContract.basePath, cmsSubscriptionsRoutes, { feature: 'cms' }],

@@ -22,4 +22,5 @@ export * from './cms-upload';
 export * from './cms-words';
 
 export * from './cms-editorial';
+export * from './cms-operations';
 export * from './cms-releases';

@@ -1,4 +1,5 @@
 import { COMMON_STATUS_LABELS, COMMON_STATUS_OPTIONS } from '../core/constants';
+import { CMS_ATTRIBUTION_EVENTS, CMS_ATTRIBUTION_EVENT_LABELS } from '../cms/constants';
 import { createLabelOptions, createLabelOptionsFromMap } from '../core/enum-options';
 
 export const SOURCE_MAP_MAX_BYTES = 20 * 1024 * 1024;
@@ -505,6 +506,7 @@ export const ANALYTICS_SERVER_SHORTLINK_EVENT_NAMES = [
 export const ANALYTICS_CLIENT_SYSTEM_EVENT_NAMES = [ANALYTICS_EXPERIMENT_EXPOSURE_EVENT, 'page_not_found', 'page_forbidden'] as const;
 
 export const ANALYTICS_SEMANTIC_EVENT_NAMES = [
+  ...CMS_ATTRIBUTION_EVENTS,
   ...ANALYTICS_CLIENT_SYSTEM_EVENT_NAMES,
   ...ANALYTICS_SERVER_PAYMENT_EVENT_NAMES,
   ...ANALYTICS_SERVER_WORKFLOW_EVENT_NAMES,
@@ -547,6 +549,7 @@ export const ANALYTICS_MEMBER_POINTS_EVENT_BY_TX_TYPE: Record<'earn' | 'redeem' 
 };
 
 export const ANALYTICS_SEMANTIC_EVENT_LABELS: Record<AnalyticsSemanticEventName, string> = {
+  ...CMS_ATTRIBUTION_EVENT_LABELS,
   [ANALYTICS_EXPERIMENT_EXPOSURE_EVENT]: '实验曝光',
   page_not_found: '404 访问',
   page_forbidden: '越权访问拦截',

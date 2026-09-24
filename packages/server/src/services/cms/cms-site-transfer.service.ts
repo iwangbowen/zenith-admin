@@ -1,3 +1,6 @@
+import { CMS_SITE_BLUEPRINTS, buildCmsSiteBlueprint, remapCmsSiteComposition, type CmsSiteBlueprintInput } from '@zenith/shared/cms';
+import { captureCmsModelVersion } from './cms-design-versions.service';
+import { assertCmsSiteComposition } from './cms-site-composition.service';
 import { initializeCmsContentWorkingCopy } from './cms-content-revisions.service';
 import { requireRow } from '../../lib/db-assert';
 import { eq, and, isNull, inArray, or, sql } from 'drizzle-orm';
@@ -10,7 +13,7 @@ import {
   cmsModels, cmsModelFields,
   cmsInteractions, cmsInteractionQuestions,
   cmsSiteInheritances, cmsSiteUsers, cmsChannelUsers,
-  cmsWidgetRefs, cmsWidgets,
+  cmsWidgetRefs, cmsWidgets, cmsWidgetSourceRefs,
 } from '../../db/schema';
 import { formatDateTime, parseDateTimeInput } from '../../lib/datetime';
 import { contentSearchVector } from './cms-search.service';
@@ -499,7 +502,7 @@ function importedModelFieldDefinition(field: PlainRow, index: number, modelCode:
 }
 
 /** 导入整站：创建新站点并重映射全部内部引用。返回新站点 id 与各实体导入数量 */
-export async function importCmsSite(payload: unknown) {
+export async function importCmsSite(payload: unknown, options: { blueprint?: boolean } = {}) {
   const pkg = payload as Partial<CmsSiteExportPackage> | null;
   if (!pkg || typeof pkg !== 'object' || Number(pkg.version) !== CMS_SITE_EXPORT_VERSION || !pkg.site || typeof pkg.site !== 'object') {
     throw new HTTPException(400, { message: '导入文件格式不正确或版本不兼容' });
@@ -631,6 +634,7 @@ export async function importCmsSite(payload: unknown) {
 
     // 1.6 内容模型：按稳定 code 映射平台共享模型，站点专属模型在目标站重建，
     // 并把字段定义一并恢复。模型自增 id 只在本包内部使用，不能跨环境直传。
+    const newModelIds: number[] = [];
     const modelIdMap = new Map<number, number>();
     const modelCodeMap = new Map<string, string>();
     const modelSourceIds = new Set<number>();
@@ -671,6 +675,7 @@ export async function importCmsSite(payload: unknown) {
           sort: num(rawModel.sort) ?? 0,
         }).returning({ id: cmsModels.id });
         targetId = createdModel.id;
+        newModelIds.push(targetId);
         if (sourceDefinitions.length > 0) {
           await tx.insert(cmsModelFields).values(sourceDefinitions.map((definition) => ({ modelId: targetId!, ...definition })));
         }
@@ -688,6 +693,7 @@ export async function importCmsSite(payload: unknown) {
       modelIdMap.set(oldId, targetId);
       modelCodeMap.set(modelCode, targetCode);
     }
+    for (const modelId of newModelIds) await captureCmsModelVersion(tx, modelId);
     const sourceSiteModelId = num(site.modelId);
     const targetSiteModelId = sourceSiteModelId == null ? null : requireMappedId(modelIdMap, sourceSiteModelId, '站点模型');
     if (targetSiteModelId != null) {
@@ -889,11 +895,15 @@ export async function importCmsSite(payload: unknown) {
     // the remapped scalar/JSON fields back to those rows and rebuild resource
     // refs from the actual persisted values.
     const remappedSiteAfterEntities = (data.site ?? {}) as PlainRow;
+    let composedSettings: Record<string, unknown>;
+    try { composedSettings = remapCmsSiteComposition(remapModelCodesInSettings(importedSiteSettings(remappedSiteAfterEntities.settings), modelCodeMap), channelIdMap, modelIdMap); }
+    catch (error) { throw new HTTPException(400, { message: error instanceof Error ? error.message : '建站编排引用无法映射' }); }
+    await assertCmsSiteComposition(themeCode, composedSettings, siteId, tx);
     await tx.update(cmsSites).set({
       logo: importedCmsAsset(remappedSiteAfterEntities.logo, '站点 Logo'),
       favicon: importedCmsAsset(remappedSiteAfterEntities.favicon, '站点 favicon'),
       extend: importedRecord(remappedSiteAfterEntities.extend, '站点扩展字段'),
-      settings: remapModelCodesInSettings(importedSiteSettings(remappedSiteAfterEntities.settings), modelCodeMap),
+      settings: composedSettings,
     }).where(eq(cmsSites.id, siteId));
     const remappedChannelRows = (data.channels ?? []) as PlainRow[];
     for (const channel of remappedChannelRows) {
@@ -971,15 +981,16 @@ export async function importCmsSite(payload: unknown) {
         type: 'manual-list',
         schemaVersion: 1,
         draftData,
-        publishedData: null,
-        publishedName: null,
+        publishedData: options.blueprint ? draftData : null,
+        publishedName: options.blueprint ? String(widget.name) : null,
         draftRevision: 1,
-        publishedRevision: 0,
-        status: 'draft',
+        publishedRevision: options.blueprint ? 1 : 0,
+        status: options.blueprint ? 'published' : 'draft',
         defaultRendererKey: str(widget.defaultRendererKey) ?? 'list-sidebar',
         remark: str(widget.remark),
       }).returning();
       widgetIdMap.set(oldId, created.id);
+      if (options.blueprint && draftData.items.length) await tx.insert(cmsWidgetSourceRefs).values(draftData.items.flatMap((item) => item.sourceType !== 'manual' && item.sourceId ? [{ siteId, widgetId: created.id, itemId: item.id, sourceType: item.sourceType, sourceId: item.sourceId }] : []));
       await syncCmsResourceRefs(tx, 'widget', created.id, siteId, created);
     }
 
@@ -1193,14 +1204,17 @@ export async function importCmsSite(payload: unknown) {
     }
     // 导入页面部件统一降级为草稿；主题插槽只允许绑定已发布部件，因此不恢复旧站绑定。
     // 页面中的 widget-ref 会保留并重映射，部件重新发布后可由运营在站点主题配置中恢复插槽。
-    const skippedWidgetSlots = (data.widgetSlots ?? []).length;
+    if (options.blueprint) for (const slot of (data.widgetSlots ?? []) as PlainRow[]) {
+      await tx.insert(cmsWidgetRefs).values({ siteId, widgetId: requireMappedId(widgetIdMap, slot.widgetId, '蓝图部件'), ownerType: 'theme_slot', ownerId: siteId, field: String(slot.field), rendererKey: String(slot.rendererKey) });
+    }
+    const skippedWidgetSlots = options.blueprint ? 0 : (data.widgetSlots ?? []).length;
     const renamedModels = [...modelCodeMap.entries()].filter(([source, target]) => source !== target);
     const warnings = [
       '运行环境绑定的分析标识、Webhook/CDN/推送配置与验证码密钥未导入，请在目标环境重新配置',
       ...(renamedModels.length > 0
         ? [`${renamedModels.length} 个站点专属模型因目标环境 code 冲突已重命名：${renamedModels.map(([source, target]) => `${source}→${target}`).join('、')}`]
         : []),
-      ...(widgetIdMap.size > 0
+      ...(!options.blueprint && widgetIdMap.size > 0
         ? [`已导入 ${widgetIdMap.size} 个页面部件并统一降级为草稿，请审核后重新发布`]
         : []),
       ...(skippedWidgetSlots > 0
@@ -1261,3 +1275,6 @@ export async function importCmsSite(payload: unknown) {
   await enqueueCmsPublishOutboxes([result.publishTask], `站点「${result.result.siteName}」导入`);
   return result.result;
 }
+
+export function listCmsSiteBlueprints() { return CMS_SITE_BLUEPRINTS.map((item) => ({ ...item })); }
+export async function createCmsSiteFromBlueprint(input: CmsSiteBlueprintInput) { return importCmsSite(buildCmsSiteBlueprint(input), { blueprint: true }); }

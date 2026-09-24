@@ -97,7 +97,7 @@ export async function renderCmsWorkbenchPreview(input: PreviewInput): Promise<Cm
       const key = fingerprint({ mode: 'working', base: pointer?.activeGenerationId ?? null, configuration: configuration.snapshot,
         contents: working.map(({ identity, copy }) => ({ id: identity.id, version: copy.version, snapshot: copy.snapshot })) });
       assertFingerprint(input, key);
-      const revisions = [];
+      const revisions: Awaited<ReturnType<typeof loadCmsRevision>>[] = [];
       for (const { identity, copy } of working) {
         const revision = await freezeCmsContentRevision(tx, identity, copy, 'preview', '工作区组合预览');
         revisions.push(await loadCmsRevision(tx, revision.id));

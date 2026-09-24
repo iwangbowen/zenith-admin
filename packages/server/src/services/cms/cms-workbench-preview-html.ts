@@ -5,7 +5,7 @@ export function prepareCmsWorkbenchHtml(html: string, baseUrl: string): string {
   const $ = load(html);
   $('script,iframe,object,embed,base,meta[http-equiv="refresh"]').remove();
   $('*').each((_index, element) => {
-    for (const key of Object.keys(element.attribs ?? {})) if (/^on/i.test(key)) $(element).removeAttr(key);
+    if ('attribs' in element) for (const key of Object.keys(element.attribs ?? {})) if (/^on/i.test(key)) $(element).removeAttr(key);
   });
   $('form').removeAttr('action').removeAttr('method').attr('data-preview-readonly', 'true');
   $('input,textarea,select,button').attr('disabled', 'disabled');

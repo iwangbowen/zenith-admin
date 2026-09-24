@@ -1,5 +1,6 @@
 import { cmsBodyDocumentSchema } from './document';
 import * as z from 'zod';
+import { cmsAttributionContextSchema } from './operations-validation';
 import { dateTimeStringSchema, httpUrl, partialForUpdate } from '../core/validation';
 import { DATE_TIME_PATTERN } from '../core/constants';
 import { CMS_CHANNEL_DETAIL_PATH_RULES, CMS_CHANNEL_STATIC_MODES, CMS_PUBLISH_ACTIONS, CMS_DISTRIBUTION_CONFLICT_STRATEGIES, CMS_DISTRIBUTION_MODES, CMS_FIELD_OPTION_SOURCES, CMS_INTERACTION_CHOICE_QUESTION_TYPES, CMS_INTERACTION_CONDITION_OPS, CMS_INTERACTION_OTHER_VALUE, CMS_INTERACTION_QUESTION_TYPES, CMS_INTERACTION_RATING_MAX_LIMIT, CMS_PUBLISH_TARGET_TYPES, CMS_SEARCH_DICTIONARY_WORD_PATTERN, CMS_SITE_INHERITABLE_FIELDS, CMS_WIDGET_REF_OWNER_TYPES, CMS_WIDGET_RENDERER_KEYS, CMS_WIDGET_SOURCE_TYPES, CMS_WIDGET_TYPES } from './constants';
@@ -736,6 +737,7 @@ export const updateCmsInteractionSchema = partialForUpdate(cmsInteractionBaseSch
 
 /** 前台统一答卷提交：key = 题目 id 字符串。 */
 export const submitCmsInteractionSchema = z.object({
+  attribution: cmsAttributionContextSchema.optional(),
   // 数组项需容纳 `rowId::optionValue`（矩阵）与 `__other__:自由文本`（其他填空）
   answers: z.record(z.string(), z.union([z.string().max(2000), z.array(z.string().max(300)).max(50)])),
   captchaId: z.string().max(128).optional(),

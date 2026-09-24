@@ -72,6 +72,9 @@ export function SeoHead({ ctx, langAlternates = false, children }: SeoHeadProps)
       {/* 页面级岛配置（非执行内容，不进 CSP 哈希）：站点编码供广告令牌；统计开启时输出采集 key 与详情内容 id */}
       <meta name="cms-site" content={site.code} />
       {ctx.analytics ? <meta name="cms-analytics-key" content={ctx.analytics.siteKey} /> : null}
+      {ctx.analytics?.deploymentId ? <meta name="cms-deployment-id" content={String(ctx.analytics.deploymentId)} /> : null}
+      {ctx.analytics?.releaseId ? <meta name="cms-release-id" content={String(ctx.analytics.releaseId)} /> : null}
+      <meta name="cms-site-id" content={String(site.id)} />
       {ctx.analytics?.contentId ? <meta name="cms-content-id" content={String(ctx.analytics.contentId)} /> : null}
       {seo.jsonLd ? (
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonForScript(seo.jsonLd) }} />

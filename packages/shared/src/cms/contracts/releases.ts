@@ -10,6 +10,8 @@ export const cmsReleaseItemSchema = z.object({ contentId: z.int(), revisionId: z
 export const cmsDeploymentSchema = z.object({
   id: z.int(), status: z.enum(CMS_DEPLOYMENT_STATUSES), manifestHash: z.string().nullable(),
   artifactCount: z.int(), error: z.string().nullable(), activatedAt: z.string().nullable(),
+  buildPlan: z.object({ version: z.literal(1), phases: z.array(z.object({ key: z.string(), label: z.string(), dependsOn: z.array(z.string()), status: z.enum(['pending', 'running', 'completed', 'failed']), processed: z.int(), total: z.int() })) }),
+  buildMetrics: z.object({ startedAt: z.string().optional(), completedAt: z.string().optional(), elapsedMs: z.int().optional(), reusedArtifacts: z.int().optional(), generatedArtifacts: z.int().optional(), peakMemoryMb: z.int().optional() }),
 });
 export type CmsDeployment = z.infer<typeof cmsDeploymentSchema>;
 export const cmsReleaseActivationSchema = z.object({ id: z.int(), fromGenerationId: z.int().nullable(), toGenerationId: z.int(), action: z.enum(['activate', 'rollback']), operatorId: z.int().nullable(), operatorName: z.string(), createdAt: z.string() });

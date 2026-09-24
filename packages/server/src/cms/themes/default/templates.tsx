@@ -1,6 +1,8 @@
 import { CmsFollowButton, Layout } from './Layout';
 import type { CSSProperties } from 'react';
 import type { CmsContentAttachment, CmsTitleStyle } from '@zenith/shared/cms';
+import { CMS_HOME_SECTION_SOURCE_LABELS, cmsHomeSectionsSchema, cmsModelDisplayFor, validateCmsModelDisplay, type CmsHomeSection } from '@zenith/shared/cms';
+import { ModelDisplayCard } from './ModelDisplayCard';
 import type {
   CmsBaseContext, CmsContentItem, CmsHomeContext, CmsListContext,
   CmsDetailContext, CmsPageContext, CmsSearchContext, CmsNotFoundContext,
@@ -12,7 +14,7 @@ import {
   signCmsAdRenderProof,
 } from '../../../services/cms/cms-ad-render-proof';
 import { renderCmsWidgetHtml } from '../widgets';
-import { ArticleNav, Breadcrumbs, FrontForm, MediaBlock, ModelFieldTable, PageLinks, Pagination, RelatedArticles, PublishedDate, SinglePageArticle, TagLinks, externalLinkProps, loadHomeBlocks, SearchResultLink, SearchResultList } from '../_shared';
+import { ArticleNav, Breadcrumbs, FrontForm, MediaBlock, ModelFieldTable, PageLinks, Pagination, RelatedArticles, PublishedDate, SinglePageArticle, TagLinks, externalLinkProps, SearchResultLink, SearchResultList } from '../_shared';
 import { defineHomeTemplate } from '../sdk';
 import type { CmsThemeContentCollection } from '../types';
 import { formatBytes } from '@zenith/shared/core';
@@ -199,16 +201,21 @@ export function IndexTemplate(ctx: CmsHomeContext) {
 }
 
 /**
- * 首页模板（Theme API 定义体）：站点主题参数配置了「首页栏目区块」（homeChannels，
- * 逗号分隔栏目标识）时，load() 并发读取各栏目最新内容，主栏渲染为多栏目区块；
- * 未配置时回落「最新发布」时间流。
+ * Structured sections preserve editorial order while querying sources concurrently.
  */
 export const HomeTemplate = defineHomeTemplate({
-  load: async ({ cms, site }) => ({ channelBlocks: await loadHomeBlocks(cms, site, { limit: 8, maxChannels: 8 }) }),
+  load: async ({ cms, site }) => {
+    const parsed = cmsHomeSectionsSchema.safeParse(site.themeConfig.homeSections ?? []);
+    const sections = parsed.success ? parsed.data : [];
+    const channelBlocks = await Promise.all(sections.map(async (section) => ({
+      ...await cms.contents.list({ channelId: section.channelId ?? undefined, limit: section.count, recommend: section.source === 'recommended', hot: section.source === 'hot' }), section,
+    })));
+    return { channelBlocks };
+  },
   Component: ({ data, ...ctx }) => <IndexBody ctx={ctx} channelBlocks={data.channelBlocks} />,
 });
 
-function IndexBody({ ctx, channelBlocks }: { ctx: CmsHomeContext; channelBlocks: CmsThemeContentCollection[] }) {
+function IndexBody({ ctx, channelBlocks }: { ctx: CmsHomeContext; channelBlocks: (CmsThemeContentCollection & { section?: CmsHomeSection })[] }) {
   const bannerImage = typeof ctx.site.themeConfig.bannerImage === 'string' ? ctx.site.themeConfig.bannerImage : null;
   const bannerLink = typeof ctx.site.themeConfig.bannerLink === 'string' ? ctx.site.themeConfig.bannerLink : null;
   const showHot = ctx.site.themeConfig.showHotSection !== false;
@@ -230,19 +237,21 @@ function IndexBody({ ctx, channelBlocks }: { ctx: CmsHomeContext; channelBlocks:
       <AdSlot ctx={ctx} code="home-ad" />
       <div className={`home-grid${channelBlocks.length ? ' home-grid-channels' : ''}${hasSidebar ? '' : ' home-grid-full'}`}>
         <div className="home-main">
+          {ctx.themeSlots?.['home.main'] ? <div className="home-main-widget" dangerouslySetInnerHTML={{ __html: renderCmsWidgetHtml(ctx.themeSlots['home.main']) }} /> : null}
           {channelBlocks.length > 0 ? (
             <div className="home-channel-grid">{channelBlocks.map((block, blockIndex) => (
-              <section className="home-channel-block" key={`${block.channel!.code}-${blockIndex}`} aria-labelledby={`home-channel-${block.channel!.id}-${blockIndex}`}>
+              <section className="home-channel-block" key={block.section?.id ?? `${block.channel?.code}-${blockIndex}`} data-style={block.section?.style ?? 'feature-list'} aria-labelledby={`home-channel-${block.channel?.id ?? 'all'}-${blockIndex}`}
+                style={{ '--home-image-ratio': block.section?.imageRatio === 'square' ? '1 / 1' : block.section?.imageRatio === 'portrait' ? '3 / 4' : '16 / 9', '--home-image-position': `${block.section?.focusX ?? 50}% ${block.section?.focusY ?? 50}%` } as CSSProperties}>
                 <div className="home-channel-heading">
-                  <h2 className="section-title" id={`home-channel-${block.channel!.id}-${blockIndex}`}>
-                    <a href={block.channel!.url}>{block.channel!.name}</a>
+                  <h2 className="section-title" id={`home-channel-${block.channel?.id ?? 'all'}-${blockIndex}`}>
+                    <a href={block.channel?.url ?? ctx.searchUrl}>{block.section?.title || block.channel?.name || CMS_HOME_SECTION_SOURCE_LABELS[block.section?.source ?? 'latest']}</a>
                   </h2>
-                  <a className="home-channel-more" href={block.channel!.url} aria-label={`查看更多${block.channel!.name}`}>查看更多 <span aria-hidden="true">→</span></a>
+                  <a className="home-channel-more" href={block.channel?.url ?? ctx.searchUrl} aria-label={`查看更多${block.section?.title || block.channel?.name || '内容'}`}>查看更多 <span aria-hidden="true">→</span></a>
                 </div>
                 <div className="content-list">
                   {block.list.length === 0
                     ? <div className="empty">暂无内容</div>
-                    : block.list.map((item, index) => <ContentItemRow key={item.id} item={item} homeVariant={index === 0 ? 'featured' : 'compact'} />)}
+                    : block.list.map((item, index) => <ContentItemRow key={item.id} item={item} homeVariant={block.section?.style === 'compact' ? 'compact' : block.section?.style === 'cards' || index === 0 ? 'featured' : 'compact'} />)}
                 </div>
               </section>
             ))}</div>
@@ -327,6 +336,9 @@ function InteractionBar({ content }: { content: CmsDetailContext['content'] }) {
 /** 详情正文公共段：标题、元信息（作者 / 关注 / 来源 / 时间 / 阅读）、媒体、模型字段、正文、正文分页、附件 */
 function ArticleBody({ ctx }: { ctx: CmsDetailContext }) {
   const { content } = ctx;
+  const display = cmsModelDisplayFor(ctx.site.themeConfig, content.modelId);
+  const mapped = display && !validateCmsModelDisplay(display, { id: display.modelId, fields: content.modelFields }).length ? new Set(Object.values(display.fields)) : new Set<string>();
+  const additionalFields = content.modelFields.filter((field) => !mapped.has(field.name));
   return (
     <>
       <h1 style={titleStyleOf(content.titleStyle)}>{content.title}</h1>
@@ -340,9 +352,10 @@ function ArticleBody({ ctx }: { ctx: CmsDetailContext }) {
         <span>{content.viewCount} 阅读</span>
       </div>
       <MediaBlock content={content} />
-      {content.modelFields.length > 0 ? (
+      <ModelDisplayCard ctx={ctx} />
+      {additionalFields.length > 0 ? (
         <>
-          <ModelFieldTable fields={content.modelFields} />
+          <ModelFieldTable fields={additionalFields} />
         </>
       ) : null}
       <div className="body" dangerouslySetInnerHTML={{ __html: content.body }} />
@@ -364,6 +377,7 @@ export function DetailTemplate(ctx: CmsDetailContext) {
       </article>
       <ArticleNav prev={content.prev} next={content.next} />
       <RelatedArticles items={ctx.related} heading="h2" />
+      {ctx.themeSlots?.['detail.related'] ? <div dangerouslySetInnerHTML={{ __html: renderCmsWidgetHtml(ctx.themeSlots['detail.related']) }} /> : null}
       <CommentsBlock comments={ctx.comments} form={ctx.commentForm} />
     </Layout>
   );
@@ -551,6 +565,7 @@ export function DetailPlainTemplate(ctx: CmsDetailContext) {
         <ArticleBody ctx={ctx} />
       </article>
       <ArticleNav prev={content.prev} next={content.next} />
+      {ctx.themeSlots?.['detail.related'] ? <div dangerouslySetInnerHTML={{ __html: renderCmsWidgetHtml(ctx.themeSlots['detail.related']) }} /> : null}
     </Layout>
   );
 }

@@ -1,3 +1,4 @@
+import { cmsSiteBlueprintInputSchema } from '../site-blueprints';
 import * as z from 'zod';
 import { entityStatusQuery, entityStatusSchema, idParam, idQuery, keywordQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
@@ -316,6 +317,8 @@ export const cmsOpenGrantIdParam = z.object({
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const cmsSiteContract = defineContract('/api/cms/sites', {
+  blueprints: op.get('/blueprints', { access: { permission: 'cms:site:list' }, response: z.array(z.object({ code: z.string(), name: z.string(), description: z.string() })), summary: '可复用建站蓝图' }),
+  fromBlueprint: op.post('/from-blueprint', { access: { permission: 'cms:site:create' }, audit: '从蓝图创建 CMS 站点', body: cmsSiteBlueprintInputSchema, response: cmsSiteImportResultSchema, summary: '从蓝图创建栏目、模型、页面、表单及绑定' }),
   list: op.get('/', { access: { permission: 'cms:site:list' }, query: cmsSiteListQuery, response: paginated(cmsSiteSchema), summary: '站点分页列表' }),
   all: op.get('/all', { access: { permission: 'cms:site:list' }, response: z.array(cmsSiteSchema), summary: '全部启用站点（站点切换器）' }),
   tree: op.get('/tree', { access: { permission: 'cms:site:list' }, query: cmsSiteTreeQuery, response: z.array(cmsSiteSchema), summary: '受权站点树（普通用户仅返回显式授权站点）' }),

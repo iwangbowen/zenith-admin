@@ -108,7 +108,7 @@ function build(id: number) {
   const release = requireRelease(id);
   if (!['draft', 'failed'].includes(release.status)) throw new MockHttpError(conflict('当前状态不能构建', { status: 409 }));
   release.status = 'building';
-  const deployment = { id: nextIdFrom(deployments), siteId: release.siteId, status: 'building' as CmsDeployment['status'], manifestHash: null as string | null, artifactCount: 0, error: null, activatedAt: null, revisions: new Map<number, number>() };
+  const deployment = { id: nextIdFrom(deployments), siteId: release.siteId, status: 'building' as CmsDeployment['status'], manifestHash: null as string | null, artifactCount: 0, error: null, activatedAt: null, buildPlan: { version: 1 as const, phases: [] }, buildMetrics: {}, revisions: new Map<number, number>() };
   deployments.push(deployment); release.deploymentId = deployment.id;
   setTimeout(() => {
     if (release.status === 'cancelled') return;

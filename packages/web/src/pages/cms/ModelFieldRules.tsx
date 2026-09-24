@@ -46,9 +46,9 @@ export default function ModelFieldRules({ field, siteId }: Readonly<{ field: str
     </Row>
     <Row gutter={16}>
       <Col span={12}>
-        <Form.Select field={`${field}.configuration.requiredWhen.field`} label="条件必填" showClear placeholder="选择条件字段" optionList={siblings.filter((sibling) => sibling.name).map((sibling) => ({ value: sibling.name, label: sibling.label ?? sibling.name }))} />
+      <Form.Select field={`${field}.configuration.requiredWhen.field`} label="条件必填" showClear placeholder="选择条件字段" optionList={siblings.filter((sibling) => sibling.name).map((sibling) => ({ value: sibling.name!, label: String(sibling.label ?? sibling.name) }))} />
       </Col>
-      {requiredField && (
+      {Boolean(requiredField) && (
         <Col span={12}>
           {requiredType === 'number' ? <Form.InputNumber field={`${field}.configuration.requiredWhen.equals`} label="等于" />
             : requiredType === 'switch' ? <Form.Switch field={`${field}.configuration.requiredWhen.equals`} label="等于" initValue={false} />

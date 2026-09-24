@@ -1,8 +1,9 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { load } from 'cheerio';
-import { describe, expect, it } from 'vitest';
-import type { CmsContentItem, CmsHomeContext, CmsThemeContentCollection } from '../types';
+import { describe, expect, it, vi } from 'vitest';
+import type { CmsHomeSection, CmsResolvedWidget } from '@zenith/shared/cms';
+import type { CmsContentItem, CmsHomeContext, CmsThemeContentCollection, CmsThemeContentQuery } from '../types';
 import { HomeTemplate } from './templates';
 import { Layout } from './Layout';
 
@@ -37,10 +38,40 @@ function content(id: number): CmsContentItem {
 }
 
 function renderHome(ctx: CmsHomeContext, channelBlocks: CmsThemeContentCollection[] = []) {
-  return load(renderToStaticMarkup(createElement(HomeTemplate.Component, { ...ctx, data: { channelBlocks } })));
+  return load(renderToStaticMarkup(createElement(HomeTemplate.Component, { ...ctx, data: { channelBlocks: channelBlocks.map((block, index) => ({ ...block, section: { id: `block-${index}`, source: 'channel', channelId: block.channel?.id ?? null, title: '', count: 8, style: 'feature-list', imageRatio: 'wide', focusX: 50, focusY: 50 } as CmsHomeSection })) } })));
 }
 
 describe('默认主题首页栏目展示', () => {
+  it('renders separately bound main and footer widgets in their declared regions', () => {
+    const ctx = context();
+    const widget: CmsResolvedWidget = { id: 1, name: '主区推荐', type: 'manual-list', rendererKey: 'list-grid', items: [{ id: 'one', sourceType: 'manual', sourceId: null, title: '专题入口', summary: null, url: '/topic/', image: null, displayDate: null }] };
+    ctx.themeSlots = { 'home.main': widget, footer: { ...widget, id: 2, name: '页脚推荐', rendererKey: 'list-sidebar', items: [{ ...widget.items[0], title: '联系入口', url: '/contact/' }] } };
+    const $ = renderHome(ctx);
+    expect($('.home-main-widget a').attr('href')).toBe('/topic/');
+    expect($('.footer-widget a').attr('href')).toBe('/contact/');
+    expect($('.home-main-widget').text()).not.toContain('联系入口');
+  });
+  it('loads structured sources with independent counts and preserves editorial order and presentation styles', async () => {
+    const ctx = context();
+    const common = { channelId: null, title: '', imageRatio: 'square' as const, focusX: 25, focusY: 75 };
+    ctx.site.themeConfig.homeSections = [
+      { ...common, id: 'hot', source: 'hot', count: 2, style: 'cards' },
+      { ...common, id: 'news', source: 'channel', channelId: 7, count: 1, style: 'compact', title: '新闻精选' },
+    ];
+    const query = vi.fn(async (request: CmsThemeContentQuery) => ({ channel: request.channelId ? { id: 7, code: 'news', name: '新闻', url: '/news/' } : null, list: Array.from({ length: request.limit }, (_, index) => content(index + 1)) }));
+    const data = await HomeTemplate.load!({ cms: { contents: { list: query } }, site: ctx.site, baseUrl: ctx.baseUrl });
+    expect(query.mock.calls.map(([request]) => request)).toEqual([
+      { channelId: undefined, limit: 2, recommend: false, hot: true },
+      { channelId: 7, limit: 1, recommend: false, hot: false },
+    ]);
+    const $ = load(renderToStaticMarkup(createElement(HomeTemplate.Component, { ...ctx, data })));
+    expect($('.home-channel-block').first().attr('data-style')).toBe('cards');
+    expect($('.home-channel-block').first().find('.thumb')).toHaveLength(2);
+    expect($('.home-channel-block').last().attr('data-style')).toBe('compact');
+    expect($('.home-channel-block').last().find('.thumb')).toHaveLength(0);
+    expect($('.home-channel-block').last().text()).toContain('新闻精选');
+    expect($('.home-channel-block').first().attr('style')).toContain('25% 75%');
+  });
   it('preserves all 37 articles in eight channel blocks, emphasizing one lead without repeating every summary or cover', () => {
     const ctx = context();
     let id = 1;

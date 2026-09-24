@@ -1,3 +1,7 @@
+import CmsSiteWorkspace from './sites/CmsSiteWorkspace';
+import SiteBlueprintSheet from './sites/SiteBlueprintSheet';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
+import { useCmsSiteDetail } from '@/hooks/queries/cms-sites';
 /**
  * 站点管理（/cms/sites，菜单 component: 'cms/SitesPage'——入口路径不可移动）。
  *
@@ -9,7 +13,7 @@
  * settings JSONB ⇄ 表单映射的纯函数与单测见 ./sites/site-form-mapping.ts。
  */
 import React, { useMemo, useRef, useState } from 'react';
-import { Button, Modal, Tag, Toast } from '@douyinfe/semi-ui';
+import { Button, Modal, SideSheet, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Upload as UploadIcon, ChevronsDownUp, ChevronsUpDown, ListTree, List as ListIcon } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -76,6 +80,10 @@ export default function SitesPage() {
   } = useTreeExpansion(tree);
 
   // ── 各工作流弹窗的开关状态（内容与数据由各组件自持） ──────────────────────
+  const [blueprintOpen, setBlueprintOpen] = useState(false);
+  const [workspaceSiteId, setWorkspaceSiteId] = useState<number>();
+  const workspaceSite = useCmsSiteDetail(workspaceSiteId);
+  useListDeepLink(['siteId', 'site'], (picked) => { const id = Number(picked.siteId ?? picked.site); if (Number.isSafeInteger(id) && id > 0) setWorkspaceSiteId(id); });
   const [editSheetOpen, setEditSheetOpen] = useState(false);
   const [editingSite, setEditingSite] = useState<CmsSite | null>(null);
   const [usersSite, setUsersSite] = useState<CmsSite | null>(null);
@@ -192,9 +200,9 @@ export default function SitesPage() {
     },
     createOperationColumn<CmsSite>({
       width: 240,
-      desktopInlineKeys: ['visit', 'edit', 'delete'],
+      desktopInlineKeys: ['workspace', 'visit', 'edit'],
       actions: (record) => {
-        const actions: ResponsiveTableAction[] = [{
+        const actions: ResponsiveTableAction[] = [{ key: 'workspace', label: '工作区', onClick: () => setWorkspaceSiteId(record.id) }, {
           key: 'visit',
           label: '访问',
           onClick: () => { window.open(cmsPreviewUrl(record.code), '_blank'); },
@@ -290,7 +298,7 @@ export default function SitesPage() {
               </Button>
             ) : null}
             {hasPermission('cms:site:create') ? (
-              <Button icon={<UploadIcon size={14} />} loading={importMutation.isPending} onClick={() => importFileRef.current?.click()}>导入</Button>
+              <><Button onClick={() => setBlueprintOpen(true)}>从蓝图建站</Button><Button icon={<UploadIcon size={14} />} loading={importMutation.isPending} onClick={() => importFileRef.current?.click()}>导入</Button></>
             ) : null}
           </>
         )}
@@ -315,6 +323,10 @@ export default function SitesPage() {
       {/* 站点导入：隐藏文件选择器（读取导出包 JSON 后提交） */}
       <input type="file" accept=".json,application/json" hidden ref={importFileRef} onChange={(e) => void handleImportFile(e)} />
 
+      <SiteBlueprintSheet visible={blueprintOpen} onClose={() => setBlueprintOpen(false)} onCreated={setWorkspaceSiteId} />
+      <SideSheet title="站点工作区" visible={!!workspaceSiteId} onCancel={() => setWorkspaceSiteId(undefined)} width={880}>
+        <CmsSiteWorkspace siteId={workspaceSiteId} onEdit={() => { if (workspaceSite.data) openEdit(workspaceSite.data); }} />
+      </SideSheet>
       <SiteEditSheet open={editSheetOpen} site={editingSite} onClose={closeEditSheet} />
       <SiteUsersModal site={usersSite} onClose={() => setUsersSite(null)} />
       <SiteOpenGrantsModal site={grantsSite} onClose={() => setGrantsSite(null)} />

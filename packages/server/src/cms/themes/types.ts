@@ -1,5 +1,5 @@
 import type { ComponentType, ReactNode } from 'react';
-import type { CmsContentAttachment, CmsFormField, CmsInteractionQuestionType, CmsSearchResult, CmsThemeSettingField, CmsTitleStyle, CmsResolvedWidget, CmsWidgetRendererKey, CmsWidgetType } from '@zenith/shared/cms';
+import type { CmsContentAttachment, CmsFormField, CmsInteractionQuestionType, CmsSearchResult, CmsThemeSettingField, CmsTitleStyle, CmsResolvedWidget, CmsWidgetRendererKey, CmsWidgetType, CmsWidgetSlotKey } from '@zenith/shared/cms';
 import type { CmsWidgetRendererDefinition } from './widgets';
 
 /** 渲染上下文：站点信息 */
@@ -66,6 +66,7 @@ export interface CmsSeo {
 /** 列表条目 */
 export interface CmsContentItem {
   id: number;
+  modelId?: number | null;
   title: string;
   /** 标题样式（加粗 / 颜色）；空对象 = 主题默认 */
   titleStyle: CmsTitleStyle;
@@ -174,6 +175,7 @@ export interface CmsAdItem {
 
 /** 所有模板共享的基础上下文 */
 export interface CmsBaseContext {
+  themeSlots?: Partial<Record<CmsWidgetSlotKey, CmsResolvedWidget | null>>;
   site: CmsRenderSite;
   /** URL 前缀：正式域名下为 ''，预览模式为 /__cms/{code} */
   baseUrl: string;
@@ -190,7 +192,7 @@ export interface CmsBaseContext {
   seo: CmsSeo;
   searchUrl: string;
   /** 行为统计（站点开启后注入采集脚本）；detail 页附 contentId 供浏览计数 beacon */
-  analytics: { siteKey: string; contentId?: number } | null;
+  analytics: { siteKey: string; contentId?: number; releaseId?: number; deploymentId?: number } | null;
   /** 多语言站点关联（P5）：hreflang alternate + 语言切换；空数组 = 未配置 */
   langAlternates: { language: string; name: string; url: string; current: boolean }[];
   /** 搭建页受众渲染上下文；仅 dynamic=true 时使用 Bearer 可选会员身份二次渲染。 */
@@ -218,6 +220,7 @@ export interface CmsHomeContext extends CmsBaseContext {
 export interface CmsThemeContentQuery {
   /** 栏目标识（站内 code）；留空取全站 */
   channelCode?: string;
+  channelId?: number;
   limit: number;
   /** 仅推荐 / 仅热门过滤 */
   recommend?: boolean;
@@ -422,9 +425,9 @@ export interface CmsTheme {
   settingsSchema?: CmsThemeSettingField[];
   /** 暗色模式 CSS 变量组（如 '--text:#e6edf3; --bg:#0d1117;'）；声明后站点可启用暗色/跟随系统 */
   darkVars?: string;
-  /** 主题可放置页面部件的位置；第一期仅支持单值 home.sidebar。 */
+  /** 主题声明的部件位置；绑定与渲染均限制为当前主题允许的类型与展示器。 */
   widgetSlots?: {
-    key: 'home.sidebar';
+    key: CmsWidgetSlotKey;
     label: string;
     allowedTypes: CmsWidgetType[];
     rendererKeys: CmsWidgetRendererKey[];

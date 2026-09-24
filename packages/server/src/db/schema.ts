@@ -42,6 +42,7 @@ export * from './schema/report-platform';
 export * from './schema/cms';
 export * from './schema/cms-design';
 export * from './schema/cms-revisions';
+export * from './schema/cms-operations';
 export * from './schema/cms-releases';
 export * from './schema/wiki';
 export * from './schema/short-link';

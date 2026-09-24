@@ -60,18 +60,21 @@ describe('CMS page widgets', () => {
     }
   });
 
-  it('declares the same home sidebar slot for both built-in themes', () => {
+  it('declares theme-specific placements and restricts the main region to visual renderers', () => {
     for (const theme of ['default', 'docs']) {
-      expect(getThemeWidgetSlots(theme)).toEqual([expect.objectContaining({
+      expect(getThemeWidgetSlots(theme)).toEqual(expect.arrayContaining([expect.objectContaining({
         key: 'home.sidebar',
         allowedTypes: ['manual-list'],
-      })]);
+      })]));
       expect(listThemeWidgetRenderers(theme, 'manual-list').map((item) => item.key)).toEqual([
         'list-sidebar',
         'list-grid',
         'list-carousel',
       ]);
     }
+    expect(getThemeWidgetSlots('default').map((slot) => slot.key)).toEqual(['home.main', 'home.sidebar', 'detail.related', 'footer']);
+    expect(getThemeWidgetSlots('default')[0].rendererKeys).toEqual(['list-grid', 'list-carousel']);
+    expect(getThemeWidgetSlots('docs').map((slot) => slot.key)).toEqual(['home.sidebar']);
   });
 
   it('requires optimistic revision and rejects immutable code in updates', () => {
@@ -133,7 +136,8 @@ describe('CMS page widgets', () => {
     expect(transfer).toContain('remapImportedWidgetBlocks');
     expect(transfer).toContain('skippedWidgetSlots');
     expect(render).toContain('resolveCmsWidgetPlacements');
-    expect(render).toContain("resolveCmsWidgetSlotForRender(site.id, 'home.sidebar'");
+    expect(render).toContain('resolveCmsThemeSlotsForRender(site.id, site.theme, baseUrl)');
+    expect(render).toContain("base.themeSlots?.['home.sidebar']");
     expect(render).toContain('renderCmsWidgetThemePreview');
     expect(tasks).toContain('debounceBySite: true');
     expect(tasks).toContain("status: isBusinessBlock ? 'skipped' : 'failed'");
