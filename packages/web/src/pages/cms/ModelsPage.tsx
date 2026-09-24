@@ -216,7 +216,7 @@ export default function ModelsPage() {
           <Col span={12}>
             <Form.Input field="code" label="模型标识" disabled={modal.isEdit} placeholder="如 article" rules={[{ required: true, message: '请输入模型标识' }]} />
           </Col>
-          <Col span={12}>
+          <Col span={24}>
             <Form.Input field="description" label="描述" />
           </Col>
           <Col span={12}>
