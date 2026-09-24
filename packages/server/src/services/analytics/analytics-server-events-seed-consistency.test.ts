@@ -10,12 +10,12 @@ import { ANALYTICS_SEMANTIC_EVENT_NAMES, ANALYTICS_SERVER_PAYMENT_EVENT_NAMES, A
 import { SEED_ANALYTICS_EVENT_META } from '@zenith/shared/seed';
 
 describe('SEED_ANALYTICS_EVENT_META 与 ANALYTICS_SEMANTIC_EVENT_NAMES 一致性', () => {
-  it('事件总数为 3（系统）+ 5（支付）+ 15（工作流）+ 10（会员）+ 1（短链）= 34', () => {
+  it('事件总数为 9（系统）+ 5（支付）+ 15（工作流）+ 10（会员）+ 1（短链）= 40', () => {
     expect(ANALYTICS_SERVER_PAYMENT_EVENT_NAMES.length).toBe(5);
     expect(ANALYTICS_SERVER_WORKFLOW_EVENT_NAMES.length).toBe(15);
     expect(ANALYTICS_SERVER_MEMBER_EVENT_NAMES.length).toBe(10);
     expect(ANALYTICS_SERVER_SHORTLINK_EVENT_NAMES.length).toBe(1);
-    expect(ANALYTICS_SEMANTIC_EVENT_NAMES.length).toBe(34);
+    expect(ANALYTICS_SEMANTIC_EVENT_NAMES.length).toBe(40);
   });
 
   it('SEED_ANALYTICS_EVENT_META 覆盖 ANALYTICS_SEMANTIC_EVENT_NAMES 的每一个事件名，且无多余/重复', () => {

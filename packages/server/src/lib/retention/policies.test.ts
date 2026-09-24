@@ -34,6 +34,7 @@ const EXEMPT: Record<string, string> = {
   cms_publish_logs: '发布日志（任务子项明细），随发布任务级联回收',
   cms_distribution_runs: '分发运行记录，随分发规则级联回收',
   cms_interaction_responses: '互动应答数据，属于业务数据',
+  cms_feedback_history: '审稿批注哈希链账本（previousHash/hash 链式校验），迁移在数据库层拒绝 UPDATE/DELETE，保留框架无法清理且删除会破坏链式完整性校验',
   cms_form_submissions: '表单提交，属于业务数据',
   open_quota_alerts: '配额告警，由开放平台聚合任务按状态回收',
   analytics_daily_rollup: '按日聚合结果，体积远小于原始事件，是原始数据裁剪后的留存载体',
