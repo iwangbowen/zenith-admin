@@ -25,11 +25,28 @@ export type CmsSiteListParams = QueryOf<typeof cmsSiteContract.list>;
 
 export type CmsSiteTreeParams = NonNullable<QueryOf<typeof cmsSiteContract.tree>>;
 
-const resource = createResourceQueries(cmsSiteContract);
+/**
+ * 站群层级视图的公共前缀（tree / chain / effective 各自操作名不同，故逐个列出）。
+ * 定义在 resource 之前：保存 / 删除的 onSaved / onDeleted 需要它，而 cmsSiteKeys 又依赖 resource.keys。
+ */
+function invalidateSiteHierarchy(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: contractKey(cmsSiteContract.tree) });
+  void qc.invalidateQueries({ queryKey: contractKey(cmsSiteContract.inheritanceChain) });
+  void qc.invalidateQueries({ queryKey: contractKey(cmsSiteContract.effectiveConfig) });
+}
+
+/**
+ * 新增 / 编辑 / 删除同时影响分页列表与默认树视图：通用工厂只打 lists / detail / lookup，
+ * 这里经 onSaved / onDeleted 补打层级视图，否则树视图下保存后不刷新。
+ */
+const resource = createResourceQueries(cmsSiteContract, {
+  onSaved: invalidateSiteHierarchy,
+  onDeleted: invalidateSiteHierarchy,
+});
 
 /**
  * 站点域 query keys。主题元数据（themes / themeTemplates / themeSettingsSchema，均为 LOOKUP_STALE_TIME）
- * 与站点增删改无因果关系，站点级动作只失效 lists / detail / lookup，不广播 `all`。
+ * 与站点增删改无因果关系，站点级动作只失效 lists / detail / lookup / hierarchy，不广播 `all`。
  */
 export const cmsSiteKeys = {
   ...resource.keys,
@@ -58,8 +75,9 @@ export const cmsSiteKeys = {
 
 export const useCmsSiteList = resource.useList;
 export const useCmsSiteDetail = resource.useDetail;
+/** 保存成功后失效列表、详情、下拉源与层级树视图（默认树视图依赖后者） */
 export const useSaveCmsSite = resource.useSave;
-/** 单个删除；成功后移除详情缓存并失效列表与站点下拉源 */
+/** 删除成功后移除详情缓存并失效列表、站点下拉源与层级树视图 */
 export const useDeleteCmsSites = resource.useDelete;
 
 /** 全部启用站点（各 CMS 页面顶部站点切换器共用） */
@@ -131,6 +149,7 @@ export function useEnableSiteAnalytics() {
       void qc.invalidateQueries({ queryKey: cmsSiteKeys.detail(params.id) });
       void qc.invalidateQueries({ queryKey: cmsSiteKeys.lists });
       void qc.invalidateQueries({ queryKey: cmsSiteKeys.allSites });
+      invalidateSiteHierarchy(qc);
     },
   });
 }
@@ -157,7 +176,7 @@ export function useDeleteCmsOpenGrant() {
 
 // ─── 站群层级：受权站点树 / 继承链 / 有效配置 / 移动 / 继承策略 ────────────────
 function invalidateHierarchy(qc: QueryClient) {
-  for (const key of cmsSiteKeys.hierarchy) void qc.invalidateQueries({ queryKey: key });
+  invalidateSiteHierarchy(qc);
 }
 
 export function useCmsSiteTree(params: CmsSiteTreeParams, enabled = true) {
@@ -193,11 +212,13 @@ export function useMoveCmsSite() {
   });
 }
 
-/** 继承开关影响站点自身与其后代的生效配置，并会触发受影响站点的重建任务 */
+/** 继承开关影响站点自身与其后代的生效配置（列表的有效主题 / 静态化模式列），并会触发受影响站点的重建任务 */
 export function useUpdateCmsSiteInheritance() {
   return useApiMutation(cmsSiteContract.updateInheritance, {
     invalidate: (qc, _output, { params }) => {
       void qc.invalidateQueries({ queryKey: cmsSiteKeys.detail(params.id) });
+      void qc.invalidateQueries({ queryKey: cmsSiteKeys.lists });
+      void qc.invalidateQueries({ queryKey: cmsSiteKeys.allSites });
       invalidateHierarchy(qc);
       invalidateCmsPublishingViews(qc);
     },
