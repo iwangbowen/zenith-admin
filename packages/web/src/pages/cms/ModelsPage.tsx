@@ -37,7 +37,7 @@ function FieldOptionSource({ field }: { field: string }) {
 
   if (!CMS_FIELD_TYPES_WITH_OPTIONS.includes(fieldType as (typeof CMS_FIELD_TYPES_WITH_OPTIONS)[number])) return null;
   return (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', width: '100%', paddingLeft: 24 }}>
+    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', width: '100%', marginBottom: 8 }}>
       <Form.Select field={`${field}[optionSource]`} noLabel initValue="manual" style={{ width: 150 }} optionList={OPTION_SOURCE_OPTIONS} />
       {optionSource === 'dict' ? (
         <Form.Select
@@ -238,21 +238,32 @@ export default function ModelsPage() {
           <ArrayField field="fields">
             {({ add, arrayFields }) => (
               <>
-                {arrayFields.map(({ field, key, remove }) => (
-                  <div key={key} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 4, flexWrap: 'wrap' }}>
-                    <Form.Input field={`${field}[name]`} noLabel placeholder="字段标识（英文）" style={{ width: 140 }}
-                      rules={[{ required: true, message: '必填' }, { pattern: /^[a-z][a-z0-9_]*$/, message: '小写字母开头' }]} />
-                    <Form.Input field={`${field}[label]`} noLabel placeholder="字段名称" style={{ width: 120 }}
-                      rules={[{ required: true, message: '必填' }]} />
-                    <Form.Select field={`${field}[fieldType]`} noLabel initValue="text" style={{ width: 120 }} optionList={FIELD_TYPE_OPTIONS} />
-                    <Form.Input field={`${field}[placeholder]`} noLabel placeholder="提示文案" style={{ width: 150 }} />
-                    <Form.Input field={`${field}[defaultValue]`} noLabel placeholder="默认值（新建内容自动填充）" style={{ width: 180 }} />
-                    <Form.Checkbox field={`${field}[required]`} noLabel>必填</Form.Checkbox>
-                    <Form.Checkbox field={`${field}[searchable]`} noLabel>检索</Form.Checkbox>
-                    <Form.Checkbox field={`${field}[showInList]`} noLabel>列表显示</Form.Checkbox>
-                    <Form.Checkbox field={`${field}[showInDetail]`} noLabel>详情展示</Form.Checkbox>
-                    <Form.Input field={`${field}[detailGroup]`} noLabel placeholder="详情分组（如 文件信息）" style={{ width: 150 }} />
-                    <Button type="danger" theme="borderless" icon={<Trash2 size={14} />} onClick={() => remove()} style={{ marginTop: 4 }} />
+                {arrayFields.map(({ field, key, remove }, index) => (
+                  <div
+                    key={key}
+                    style={index === arrayFields.length - 1
+                      ? { paddingBottom: 4 }
+                      : { borderBottom: '1px solid var(--semi-color-border)', paddingBottom: 16, marginBottom: 16 }}
+                  >
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 8 }}>
+                      <Form.Input field={`${field}[name]`} noLabel placeholder="字段标识（英文）" style={{ width: 160 }}
+                        rules={[{ required: true, message: '必填' }, { pattern: /^[a-z][a-z0-9_]*$/, message: '小写字母开头' }]} />
+                      <Form.Input field={`${field}[label]`} noLabel placeholder="字段名称" style={{ width: 160 }}
+                        rules={[{ required: true, message: '必填' }]} />
+                      <Form.Select field={`${field}[fieldType]`} noLabel initValue="text" style={{ width: 150 }} optionList={FIELD_TYPE_OPTIONS} />
+                      <Button type="danger" theme="borderless" icon={<Trash2 size={14} />} onClick={() => remove()} style={{ marginLeft: 'auto', marginTop: 4 }} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 8 }}>
+                      <Form.Input field={`${field}[placeholder]`} noLabel placeholder="提示文案" style={{ flex: 1, minWidth: 160 }} />
+                      <Form.Input field={`${field}[defaultValue]`} noLabel placeholder="默认值（新建内容自动填充）" style={{ flex: 1, minWidth: 160 }} />
+                      <Form.Input field={`${field}[detailGroup]`} noLabel placeholder="详情分组（如 活动信息）" style={{ width: 180, flexShrink: 0 }} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 4 }}>
+                      <Form.Checkbox field={`${field}[required]`} noLabel>必填</Form.Checkbox>
+                      <Form.Checkbox field={`${field}[searchable]`} noLabel>检索</Form.Checkbox>
+                      <Form.Checkbox field={`${field}[showInList]`} noLabel>列表显示</Form.Checkbox>
+                      <Form.Checkbox field={`${field}[showInDetail]`} noLabel>详情展示</Form.Checkbox>
+                    </div>
                     <FieldOptionSource field={field} />
                     <ModelFieldRules field={field} siteId={siteId} />
                   </div>

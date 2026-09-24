@@ -26,7 +26,7 @@ export default function ModelFieldRules({ field, siteId }: Readonly<{ field: str
   const siblings = (getByPath(state.values, 'fields') ?? []) as Partial<CmsModelField>[];
   const requiredField = getByPath(state.values, `${field}.configuration.requiredWhen.field`);
   const requiredType = siblings.find((sibling) => sibling.name === requiredField)?.fieldType;
-  return <div style={{ width: '100%', padding: '0 16px 16px' }}>
+  return <div style={{ width: '100%', padding: '8px 0 4px' }}>
     <Space wrap>
       {type === 'number' ? <>
         <Form.InputNumber field={`${field}.configuration.min`} label="最小值" style={{ width: 150 }} />
