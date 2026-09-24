@@ -56,7 +56,24 @@ export default function ColorPickerInput({
             : v.hex;
           onChange?.(next);
         }}
-      />
+      >
+        {/* value 为空时渲染空态触发块：Semi 的默认色块会回落到组件内置 defaultValue（#39c5bb），
+            让「留空」看起来像已选了一个青绿色 */}
+        {value ? undefined : (
+          <span
+            aria-hidden
+            style={{
+              display: 'inline-block',
+              width: 20,
+              height: 20,
+              borderRadius: 'var(--semi-border-radius-small)',
+              border: '1px dashed var(--semi-color-border)',
+              verticalAlign: 'middle',
+              cursor: 'pointer',
+            }}
+          />
+        )}
+      </ColorPicker>
       {allowClear && value ? (
         <Button
           type="tertiary"
