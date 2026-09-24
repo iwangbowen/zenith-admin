@@ -293,9 +293,9 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
 
   const effectivePagination = useMemo(() => {
     if (!pagination || typeof pagination === 'boolean') return pagination;
-    // 移动端紧凑分页：隐藏每页条数选择器与总数文案、使用小尺寸；页面显式传入的分页配置仍可覆盖
+    // 移动端紧凑分页：隐藏每页条数选择器与总数文案、使用小尺寸，并开启 hover 页码快速切换；页面显式传入的分页配置仍可覆盖
     const defaults = isMobile
-      ? { showTotal: false, showSizeChanger: false, size: 'small' as const, pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS }
+      ? { showTotal: false, showSizeChanger: false, size: 'small' as const, hoverShowPageSelect: true, pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS }
       : { showTotal: true, showSizeChanger: true, pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS };
     return { ...defaults, ...pagination };
   }, [pagination, isMobile]);

@@ -374,6 +374,7 @@ export default function ChatBiPage() {
         footer={listQuery.data && listQuery.data.total > pageSize ? (
           <Pagination
             size="small"
+            hoverShowPageSelect
             currentPage={page}
             pageSize={pageSize}
             total={listQuery.data.total}

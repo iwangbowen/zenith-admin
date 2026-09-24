@@ -32,6 +32,7 @@ export function ListPagination({ pagination }: Readonly<{ pagination: Pagination
         showSizeChanger={!isMobile}
         showTotal={!isMobile}
         size={isMobile ? 'small' : 'default'}
+        hoverShowPageSelect={isMobile}
         onPageChange={pagination.onPageChange}
         onPageSizeChange={pagination.onPageSizeChange}
       />

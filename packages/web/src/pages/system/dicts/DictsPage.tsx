@@ -372,6 +372,7 @@ export default function DictsPage() {
       footer={
         <Pagination
           size="small"
+          hoverShowPageSelect
           total={total}
           currentPage={page}
           pageSize={pageSize}

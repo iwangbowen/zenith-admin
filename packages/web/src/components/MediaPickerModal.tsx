@@ -132,7 +132,7 @@ export function MediaPickerModal({ visible, onCancel, onSelect, imageOnly = true
       </Spin>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
-        <Pagination total={total} pageSize={PAGE_SIZE} currentPage={page} onPageChange={setPage} size="small" />
+        <Pagination total={total} pageSize={PAGE_SIZE} currentPage={page} onPageChange={setPage} size="small" hoverShowPageSelect />
       </div>
     </AppModal>
   );

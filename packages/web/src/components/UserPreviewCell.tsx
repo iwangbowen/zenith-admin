@@ -163,6 +163,7 @@ function ScopeMemberModal({ scope, total, onClose }: ScopeMemberModalProps) {
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
           <Pagination
             size="small"
+            hoverShowPageSelect
             currentPage={page}
             pageSize={pageSize}
             total={data?.total ?? 0}

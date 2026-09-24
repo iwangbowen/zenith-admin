@@ -373,6 +373,7 @@ export default function StorageFileBrowser({ config, onClose }: Readonly<Storage
               total={totalCount}
               onPageChange={setPage}
               size="small"
+              hoverShowPageSelect
             />
           )}
         </div>

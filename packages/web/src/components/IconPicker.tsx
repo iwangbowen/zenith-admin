@@ -90,6 +90,7 @@ export default function IconPicker({ value, onChange, style }: Readonly<IconPick
         <div className="icon-picker-pagination">
           <Pagination
             size="small"
+            hoverShowPageSelect
             total={filteredNames.length}
             pageSize={PAGE_SIZE}
             currentPage={currentPage}
