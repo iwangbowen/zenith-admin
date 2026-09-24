@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Badge, Button, Empty, Popover, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Badge, Button, Empty, List, Popover, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import { ListChecks } from 'lucide-react';
 import type { AsyncTask, AsyncTaskStatus } from '@zenith/shared/tasks';
 import { useAsyncTaskAction } from '@/hooks/queries/async-tasks';
@@ -78,41 +78,50 @@ export default function TaskTray() {
               style={{ padding: '16px 0 20px' }}
             />
           ) : (
-            <div style={{ overflowY: 'auto', flex: 1 }}>
-              {trayTasks.map((task) => (
-                <div key={task.id} style={{ padding: '6px 14px 7px', borderBottom: '1px solid var(--semi-color-border)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <Typography.Text strong ellipsis={{ showTooltip: true }} style={{ fontSize: 13, flex: 1 }}>
-                      {task.title}
-                    </Typography.Text>
-                    {task.status === 'running' && task.cancelRequested
-                      ? <Tag color="orange" size="small">取消中</Tag>
-                      : task.status === 'pending' && task.nextRunAt
-                        ? <Tag color="orange" size="small">等待重试</Tag>
-                        : <Tag color={statusTagMap[task.status].color} size="small">{statusTagMap[task.status].label}</Tag>}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 2px' }}>
-                    <AsyncTaskProgress task={task} noteDisplay="tooltip" fluid />
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Typography.Text type="tertiary" size="small">
-                      <DateTimeText value={task.createdAt} />
-                    </Typography.Text>
-                    {ACTIVE_STATUSES.has(task.status) && !task.cancelRequested && (
-                      <Button
-                        theme="borderless"
-                        type="danger"
-                        size="small"
-                        loading={cancelingId === task.id}
-                        onClick={() => void handleCancel(task)}
-                      >
-                        取消
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <List
+              style={{ overflowY: 'auto', flex: 1 }}
+              dataSource={trayTasks}
+              renderItem={(task) => (
+                <List.Item
+                  key={task.id}
+                  style={{ padding: '6px 14px 7px' }}
+                  header={null}
+                  main={
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <Typography.Text strong ellipsis={{ showTooltip: true }} style={{ fontSize: 13, flex: 1 }}>
+                          {task.title}
+                        </Typography.Text>
+                        {task.status === 'running' && task.cancelRequested
+                          ? <Tag color="orange" size="small">取消中</Tag>
+                          : task.status === 'pending' && task.nextRunAt
+                            ? <Tag color="orange" size="small">等待重试</Tag>
+                            : <Tag color={statusTagMap[task.status].color} size="small">{statusTagMap[task.status].label}</Tag>}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 2px' }}>
+                        <AsyncTaskProgress task={task} noteDisplay="tooltip" fluid />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Typography.Text type="tertiary" size="small">
+                          <DateTimeText value={task.createdAt} />
+                        </Typography.Text>
+                        {ACTIVE_STATUSES.has(task.status) && !task.cancelRequested && (
+                          <Button
+                            theme="borderless"
+                            type="danger"
+                            size="small"
+                            loading={cancelingId === task.id}
+                            onClick={() => void handleCancel(task)}
+                          >
+                            取消
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  }
+                />
+              )}
+            />
           )}
         </div>
       }
