@@ -189,7 +189,7 @@ export default function SurveysPage() {
       title: '类型', dataIndex: 'kind', width: 90,
       render: (value: CmsInteractionKind) => <Tag size="small">{CMS_INTERACTION_KIND_LABELS[value]}</Tag>,
     },
-    { title: '标识', dataIndex: 'code', width: 150 },
+    { title: '标识', dataIndex: 'code', width: 180, render: renderEllipsis },
     { title: '参与范围', dataIndex: 'participantScope', width: 120, render: (value: CmsInteraction['participantScope']) => CMS_INTERACTION_PARTICIPANT_SCOPE_LABELS[value] },
     { title: '重复策略', dataIndex: 'repeatPolicy', width: 140, render: (value: CmsInteraction['repeatPolicy']) => CMS_INTERACTION_REPEAT_POLICY_LABELS[value] },
     { title: '答卷数', dataIndex: 'responseCount', width: 90, align: 'right' },
