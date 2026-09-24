@@ -17,7 +17,7 @@ import { abortSubmit } from '@/lib/abort-submit';
 import { deleteAction, ListSearchToolbar } from '@/components/list-page';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 import { useListPage } from '@/hooks/useListPage';
-import { EditFormModal } from '@/components/EditFormModal';
+import { EditFormSheet } from '@/components/EditFormModal';
 import ModelFieldRules from './ModelFieldRules';
 import { usePublishCmsModel } from '@/hooks/queries/cms-models';
 
@@ -208,7 +208,7 @@ export default function ModelsPage() {
         {...tableProps}
       />
 
-      <EditFormModal modal={modal} width={860}>
+      <EditFormSheet modal={modal} width={860}>
         <Row gutter={16}>
           <Col span={12}>
             <Form.Input field="name" label="模型名称" rules={[{ required: true, message: '请输入模型名称' }]} />
@@ -262,7 +262,7 @@ export default function ModelsPage() {
             )}
           </ArrayField>
         </Form.Section>
-      </EditFormModal>
+      </EditFormSheet>
     </div>
   );
 }
