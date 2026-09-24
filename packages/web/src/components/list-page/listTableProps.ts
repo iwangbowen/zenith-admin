@@ -37,7 +37,10 @@ export function listTableProps<T extends Data>(query: ListQueryLike<T>, options:
     rowKey: options.rowKey ?? 'id',
     size: options.size ?? 'small',
     dataSource: list,
-    loading: query.isFetching,
+    // 只有还没有数据快照（首载）时才盖 Spin 蒙层：Semi 的 Spin 会把子树压暗到 50% 再弹回，
+    // 若让后台重拉（mutation 后的失效刷新、翻页时的 placeholder 数据）也盖蒙层，
+    // 批量上传一类场景会每个文件闪一次整表；后台重拉只让列头刷新按钮转圈（refreshLoading）。
+    loading: query.isFetching && query.data === undefined,
     onRefresh: () => { void query.refetch(); },
     refreshLoading: query.isFetching,
     pagination: options.pagination ? options.pagination(total) : (false as const),
