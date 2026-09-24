@@ -1,7 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { PaginationProps } from '@douyinfe/semi-ui/lib/es/pagination';
 import { usePreferences } from '@/hooks/usePreferences';
 
 export const TABLE_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+
+/**
+ * 窄屏（移动端）与窄面板共用的小尺寸分页预设：隐藏总数文案与每页条数选择器，
+ * 并开启 hover 页码快速切换（Semi 仅在 `size === 'small'` 时渲染页码浮层）。
+ */
+export const COMPACT_PAGINATION_PROPS: PaginationProps = {
+  size: 'small',
+  showTotal: false,
+  showSizeChanger: false,
+  hoverShowPageSelect: true,
+  pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS,
+};
+
+/** 桌面端分页默认值：展示总数文案与每页条数选择器，页码常驻可点 */
+export const DESKTOP_PAGINATION_PROPS: PaginationProps = {
+  showTotal: true,
+  showSizeChanger: true,
+  pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS,
+};
 
 export interface PaginationConfig {
   currentPage: number;

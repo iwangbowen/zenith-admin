@@ -256,6 +256,8 @@
   没有「显示第 x 条-第 y 条，共 z 条」的条数信息。模板与机理见
   [ui-patterns.md → List 列表页分页](./ui-patterns.md#list-列表页分页listpagination)。
   **例外**：窄面板 / 弹窗内的内嵌分页（`NavListPanel` 的 footer、选择器弹窗）保持紧凑形态，不套用
+  `ListPagination`，统一取 `hooks/usePagination.ts` 的 `COMPACT_PAGINATION_PROPS`（小尺寸 + hover
+  页码快速切换），不要逐页手抄 `size` / `showTotal` / `hoverShowPageSelect` 组合
 
 ## 表单与展示组件
 

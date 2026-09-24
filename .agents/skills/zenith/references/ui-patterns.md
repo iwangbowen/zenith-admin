@@ -284,7 +284,9 @@ const pagination = buildPagination(total);
   独立组件拿不到。`ListPagination` 在分页器左侧补齐同款文案（14px、`--semi-color-text-2`），
   布局与 `.semi-table-pagination-outer` 一致（两端对齐）
 - 移动端与 `ConfigurableTable` 的移动端分页同策略：隐藏条数信息、总页数与每页条数选择器，
-  分页器右对齐并用小尺寸；组件内部已用 `useIsMobile` 处理，页面无需再分支
+  分页器右对齐、用小尺寸并开启 hover 页码快速切换；两侧共用 `hooks/usePagination.ts` 的
+  `COMPACT_PAGINATION_PROPS` / `DESKTOP_PAGINATION_PROPS` 预设（改预设即同时改表格与列表分页），
+  组件内部已用 `useIsMobile` 处理，页面无需再分支
 - 入参就是 `usePagination().buildPagination(total)` 返回的 `PaginationConfig`，
   `pageSizeOpts` 固定 `TABLE_PAGE_SIZE_OPTIONS`，与表格一致
 - 列表为空时页面通常整体切换到 `Empty`，分页条随之不渲染，无需在组件外再判 `total > 0`

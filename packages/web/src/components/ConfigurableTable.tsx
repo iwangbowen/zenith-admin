@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePreferences } from '@/hooks/usePreferences';
 import { useIsMobile } from '@/hooks/useMediaQuery';
-import { TABLE_PAGE_SIZE_OPTIONS } from '@/hooks/usePagination';
+import { COMPACT_PAGINATION_PROPS, DESKTOP_PAGINATION_PROPS } from '@/hooks/usePagination';
 import { Button, Checkbox, Dropdown, Radio, RadioGroup, Space, Switch, Table } from '@douyinfe/semi-ui';
 import { RotateCcw, Rows3, Settings, Settings2, Maximize2, Minimize2, RefreshCw } from 'lucide-react';
 import type { ColumnProps, Data, TableProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -293,10 +293,9 @@ export function ConfigurableTable<RecordType extends TableRecord = TableRecord>(
 
   const effectivePagination = useMemo(() => {
     if (!pagination || typeof pagination === 'boolean') return pagination;
-    // 移动端紧凑分页：隐藏每页条数选择器与总数文案、使用小尺寸，并开启 hover 页码快速切换；页面显式传入的分页配置仍可覆盖
-    const defaults = isMobile
-      ? { showTotal: false, showSizeChanger: false, size: 'small' as const, hoverShowPageSelect: true, pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS }
-      : { showTotal: true, showSizeChanger: true, pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS };
+    // 移动端走紧凑分页预设（小尺寸 + hover 页码快速切换），桌面端展示总数与每页条数选择器；
+    // 页面显式传入的分页配置仍可覆盖预设
+    const defaults = isMobile ? COMPACT_PAGINATION_PROPS : DESKTOP_PAGINATION_PROPS;
     return { ...defaults, ...pagination };
   }, [pagination, isMobile]);
   const effectiveColumnSettings = (preferences.showTableColumnSettings ?? true) && columnSettings;
