@@ -706,3 +706,8 @@ export const CMS_TWITTER_CARD_LABELS: Record<(typeof CMS_TWITTER_CARDS)[number],
   summary_large_image: '大图摘要',
   summary: '标准摘要',
 };
+export const CMS_PREVIEW_MODES = ['working', 'candidate', 'online'] as const;
+export const CMS_PREVIEW_MODE_LABELS = { working: '已保存工作稿', candidate: '本次候选部署', online: '当前线上版本' } as const;
+export const CMS_RELEASE_CHANGE_KINDS = ['content', 'site', 'channel', 'page', 'widget', 'resource', 'navigation'] as const;
+export const CMS_RELEASE_CHANGE_LABELS = { content: '内容', site: '站点', channel: '栏目', page: '页面', widget: '部件', resource: '素材', navigation: '配置关联' } as const;
+export const CMS_RELEASE_CHANGE_OPERATIONS = { create: '新增', update: '修改', remove: '移除' } as const;

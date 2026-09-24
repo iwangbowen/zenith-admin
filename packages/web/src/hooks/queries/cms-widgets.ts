@@ -1,3 +1,4 @@
+import { invalidateCmsPublishingViews } from './cms-stage3';
 import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { cmsWidgetContract, type CmsWidgetRendererKey, type CmsWidgetType } from '@zenith/shared/cms';
@@ -37,6 +38,7 @@ export const cmsWidgetKeys = {
  * renderers / slots 是站点级配置，不随部件状态变化，不动。
  */
 export function invalidateAfterCmsWidgetStatusChange(qc: QueryClient) {
+  invalidateCmsPublishingViews(qc);
   void qc.invalidateQueries({ queryKey: cmsWidgetKeys.lists });
   void qc.invalidateQueries({ queryKey: cmsWidgetKeys.optionsPrefix });
   void qc.invalidateQueries({ queryKey: cmsWidgetKeys.details });
@@ -107,6 +109,7 @@ export const useSaveCmsWidget = resource.useSave;
 export function usePublishCmsWidget() {
   return useApiMutation(cmsWidgetContract.publish, {
     invalidate: (qc, _output, { params }) => {
+      invalidateCmsPublishingViews(qc);
       void qc.invalidateQueries({ queryKey: cmsWidgetKeys.detail(params.id) });
       void qc.invalidateQueries({ queryKey: cmsWidgetKeys.lists });
       void qc.invalidateQueries({ queryKey: cmsWidgetKeys.optionsPrefix });
@@ -117,6 +120,7 @@ export function usePublishCmsWidget() {
 export function useOfflineCmsWidget() {
   return useApiMutation(cmsWidgetContract.offline, {
     invalidate: (qc, _output, { params }) => {
+      invalidateCmsPublishingViews(qc);
       void qc.invalidateQueries({ queryKey: cmsWidgetKeys.detail(params.id) });
       void qc.invalidateQueries({ queryKey: cmsWidgetKeys.lists });
       void qc.invalidateQueries({ queryKey: cmsWidgetKeys.optionsPrefix });
@@ -128,6 +132,7 @@ export function useOfflineCmsWidget() {
 export function useDeleteCmsWidget() {
   return useApiMutation(cmsWidgetContract.remove, {
     invalidate: (qc, _output, { params }) => {
+      invalidateCmsPublishingViews(qc);
       qc.removeQueries({ queryKey: cmsWidgetKeys.detail(params.id) });
       qc.removeQueries({ queryKey: cmsWidgetKeys.refs(params.id) });
       qc.removeQueries({ queryKey: cmsWidgetKeys.previewsOf(params.id) });
@@ -150,6 +155,9 @@ export function useCmsWidgetBatch() {
 /** slots(siteId) 已精确定位到该站点的插槽配置，无需再广播整个部件域 */
 export function useSaveCmsWidgetSlot() {
   return useApiMutation(cmsWidgetContract.saveSlot, {
-    invalidate: (qc, _output, { body }) => void qc.invalidateQueries({ queryKey: cmsWidgetKeys.slots(body.siteId) }),
+    invalidate: (qc, _output, { body }) => {
+      void qc.invalidateQueries({ queryKey: cmsWidgetKeys.slots(body.siteId) });
+      invalidateCmsPublishingViews(qc);
+    },
   });
 }

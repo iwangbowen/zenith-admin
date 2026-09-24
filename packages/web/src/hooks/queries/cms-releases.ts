@@ -1,5 +1,5 @@
 import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
-import { cmsReleaseContract } from '@zenith/shared/cms';
+import { cmsReleaseContract, cmsWorkbenchContract } from '@zenith/shared/cms';
 import type { QueryOf } from '@zenith/shared/core';
 import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { invalidateAfterCmsContentChange } from './cms-contents';
@@ -9,6 +9,8 @@ export const cmsReleaseKeys = { lists: contractKey(cmsReleaseContract.list), det
 export function invalidateCmsReleases(qc: QueryClient) {
   void qc.invalidateQueries({ queryKey: cmsReleaseKeys.lists });
   void qc.invalidateQueries({ queryKey: cmsReleaseKeys.details });
+  void qc.invalidateQueries({ queryKey: contractKey(cmsReleaseContract.review) });
+  void qc.invalidateQueries({ queryKey: contractKey(cmsWorkbenchContract.configurationDraft) });
   invalidateCmsPublishingViews(qc);
 }
 export const useCmsReleaseList = (query: QueryOf<typeof cmsReleaseContract.list>, enabled = true) => useApiQuery(cmsReleaseContract.list, { query }, {

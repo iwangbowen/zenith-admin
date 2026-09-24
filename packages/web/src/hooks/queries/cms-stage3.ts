@@ -1,6 +1,6 @@
 import { keepPreviousData, type QueryClient } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
-import { cmsPublishingContract, cmsReleaseContract } from '@zenith/shared/cms';
+import { cmsPublishingContract, cmsReleaseContract, cmsWorkbenchContract } from '@zenith/shared/cms';
 import { invalidateAsyncTaskState } from './async-tasks';
 import { contractKey, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
@@ -24,6 +24,8 @@ export const cmsPublishingKeys = {
  * 发布中心页面上的任务进度事件也用它刷新。这里不含任务中心（async-tasks）的视图，由 mutation 侧另行处理。
  */
 export function invalidateCmsPublishingViews(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: contractKey(cmsWorkbenchContract.configurationDraft) });
+  void qc.invalidateQueries({ queryKey: contractKey(cmsReleaseContract.review) });
   void qc.invalidateQueries({ queryKey: contractKey(cmsReleaseContract.list) });
   void qc.invalidateQueries({ queryKey: contractKey(cmsReleaseContract.detail) });
   void qc.invalidateQueries({ queryKey: cmsPublishingKeys.lists });

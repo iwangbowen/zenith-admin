@@ -18,7 +18,9 @@ import { confirmDanger } from '@/utils/confirm';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import CmsContentReferenceInput from './CmsContentReferenceInput';
 import CmsConfigurationPicker from './CmsConfigurationPicker';
-import { useCmsReleaseList, useCmsReleaseDetail, useCmsReleasePreview, useCreateCmsRelease, useBuildCmsRelease, useActivateCmsRelease, useCancelCmsRelease, useRollbackCmsRelease } from '@/hooks/queries/cms-releases';
+import CmsWorkbenchPreview from './CmsWorkbenchPreview';
+import CmsReleaseReviewPanel from './CmsReleaseReviewPanel';
+import { useCmsReleaseList, useCmsReleaseDetail, useCreateCmsRelease, useBuildCmsRelease, useActivateCmsRelease, useCancelCmsRelease, useRollbackCmsRelease } from '@/hooks/queries/cms-releases';
 
 const RELEASE_LABELS: Record<CmsRelease['status'], string> = { draft: '草拟', building: '构建中', ready: '待激活', scheduled: '已排期', active: '已激活', failed: '失败', cancelled: '已取消', superseded: '历史部署' };
 const RELEASE_COLORS: Record<CmsRelease['status'], 'grey' | 'orange' | 'blue' | 'green' | 'red'> = { draft: 'grey', building: 'blue', ready: 'orange', scheduled: 'blue', active: 'green', failed: 'red', cancelled: 'grey', superseded: 'grey' };
@@ -36,9 +38,6 @@ export default function CmsReleasesPanel() {
   const detail = useCmsReleaseDetail(detailId);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewPath, setPreviewPath] = useState('/');
-  const [previewPathInput, setPreviewPathInput] = useState('/');
-  const [mobilePreview, setMobilePreview] = useState(false);
-  const preview = useCmsReleasePreview(detailId, previewPath, previewOpen);
   const page = useListPage({ contract: cmsReleaseContract, useList: useCmsReleaseList, params: { siteId: siteId ?? 0 }, enabled: !!siteId });
   const create = useCreateCmsRelease();
   const build = useBuildCmsRelease();
@@ -118,6 +117,7 @@ export default function CmsReleasesPanel() {
         <Descriptions data={[{ key: '当前公开代次', value: detail.data.activeGenerationId ?? '尚未上线' }, { key: '候选部署', value: detail.data.deploymentId ?? '待构建' }, { key: '基础代次', value: detail.data.baseGenerationId ?? '首次部署' }, { key: '排期', value: detail.data.activateAt ? `${detail.data.activateAt}（${detail.data.timeZone}）` : '无' }, { key: '产物数', value: detail.data.deployment?.artifactCount ?? 0 }, { key: '部署摘要', value: detail.data.deployment?.manifestHash ? <Typography.Text code style={{ wordBreak: 'break-all' }}>{detail.data.deployment.manifestHash}</Typography.Text> : '构建后生成' }]} />
         {detail.data.error ? <Banner type="danger" description={detail.data.error} /> : null}
         {detail.data.blockingChecks.map((message) => <Banner key={message} type="warning" description={message} />)}
+        <CmsReleaseReviewPanel releaseId={detail.data.id} onRecreated={setDetailId} onPreview={(path) => { setPreviewPath(path); setPreviewOpen(true); }} />
         <Typography.Title heading={6}>已冻结的变更范围</Typography.Title>
         {detail.data.items.length ? detail.data.items.map((item) => <Space key={item.contentId} wrap><Tag color={item.action === 'withdraw' ? 'red' : 'blue'}>{item.action === 'withdraw' ? '撤下' : '发布'}</Tag><Typography.Text>{item.title}</Typography.Text>{item.revisionId ? <Typography.Text type="tertiary">固定修订 #{item.revisionId}</Typography.Text> : null}</Space>) : <Typography.Text type="tertiary">重建本站当前公开集合</Typography.Text>}
         {detail.data.configurationItems.map((item) => <Space key={`${item.kind}-${item.id}`} wrap><Tag>{item.kind === 'page' ? '页面' : item.kind === 'widget' ? '部件' : '站点配置'}</Tag><Typography.Text>{item.title}</Typography.Text></Space>)}
@@ -130,15 +130,6 @@ export default function CmsReleasesPanel() {
         {detail.data.activations.map((entry) => <Typography.Text key={entry.id} type="secondary">{entry.createdAt} · {entry.operatorName} · {entry.action === 'rollback' ? '回滚' : '激活'} · {entry.fromGenerationId ?? '初始'} → {entry.toGenerationId}</Typography.Text>)}
       </Space> : <Typography.Text>正在加载…</Typography.Text>}
     </SideSheet>
-    <SideSheet title="固定部署预览" visible={previewOpen && Boolean(detailId)} onCancel={() => setPreviewOpen(false)} width="90vw">
-      <Space wrap style={{ marginBottom: 12 }}>
-        <Input value={previewPathInput} onChange={setPreviewPathInput} placeholder="页面路径，如 /news/example.html" style={{ width: 360 }} />
-        <Button loading={preview.isFetching} onClick={() => { if (previewPathInput === previewPath) void preview.refetch(); else setPreviewPath(previewPathInput || '/'); }}>打开页面</Button>
-        <Button theme={mobilePreview ? 'light' : 'solid'} onClick={() => setMobilePreview(false)}>桌面</Button>
-        <Button theme={mobilePreview ? 'solid' : 'light'} onClick={() => setMobilePreview(true)}>手机</Button>
-      </Space>
-      {preview.error ? <Banner type="danger" description={preview.error.message} /> : null}
-      {preview.data ? <iframe title="固定候选部署" sandbox="" srcDoc={preview.data.html} style={{ display: 'block', width: mobilePreview ? 375 : '100%', maxWidth: '100%', height: '72vh', border: 0, margin: '0 auto' }} /> : null}
-    </SideSheet>
+    <CmsWorkbenchPreview visible={previewOpen && Boolean(detailId)} onClose={() => setPreviewOpen(false)} siteId={detail.data?.siteId} releaseId={detailId} initialPath={previewPath} initialMode={detail.data?.deployment?.manifestHash ? 'candidate' : 'online'} />
   </>;
 }

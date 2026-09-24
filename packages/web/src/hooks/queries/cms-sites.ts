@@ -30,6 +30,7 @@ export type CmsSiteTreeParams = NonNullable<QueryOf<typeof cmsSiteContract.tree>
  * 定义在 resource 之前：保存 / 删除的 onSaved / onDeleted 需要它，而 cmsSiteKeys 又依赖 resource.keys。
  */
 function invalidateSiteHierarchy(qc: QueryClient) {
+  invalidateCmsPublishingViews(qc);
   void qc.invalidateQueries({ queryKey: contractKey(cmsSiteContract.tree) });
   void qc.invalidateQueries({ queryKey: contractKey(cmsSiteContract.inheritanceChain) });
   void qc.invalidateQueries({ queryKey: contractKey(cmsSiteContract.effectiveConfig) });

@@ -1,15 +1,16 @@
 import { matchesFilter } from '../utils/filter';
-import { cmsReleaseContract, mergeCmsConfigurationSnapshots, type CmsConfigurationSnapshot, type CmsRelease, type CmsDeployment, type CreateCmsReleaseInput } from '@zenith/shared/cms';
+import { cmsReleaseContract, cmsWorkbenchContract, CMS_PREVIEW_MODE_LABELS, cmsReleaseFieldDiffs, mergeCmsConfigurationSnapshots, type CmsReleaseChange, type CmsConfigurationSnapshot, type CmsRelease, type CmsDeployment, type CreateCmsReleaseInput } from '@zenith/shared/cms';
 import { mock, MockHttpError } from '../utils/contract';
 import { requireItem, updateItem } from '../utils/crud';
 import { badRequest, conflict, nextIdFrom } from '../utils/handlers';
 import { mockDateTime } from '../utils/date';
 import { mockCmsContents, mockCmsSites, mockCmsPages, mockCmsWidgets, mockCmsChannels, mockCmsWidgetRefs, mockCmsFriendLinkGroups, mockCmsFriendLinks, mockCmsLinkWords, mockCmsRedirects, mockCmsSearchWords, mockCmsResources } from '../data/cms';
 import { activateMockCmsRevision, getMockCmsPublishedContent, getMockCmsRevision, getMockCmsRevisionContent, getMockCmsWorkingContent, withdrawMockCmsContent } from '../utils/cms-revisions';
-import { escapeHtml, type OutputOf } from '@zenith/shared/core';
+import { escapeHtml, stableStringify, type OutputOf } from '@zenith/shared/core';
 
 const releases: CmsRelease[] = [];
 const deployments: (CmsDeployment & { siteId: number; revisions: Map<number, number> })[] = [];
+const deploymentConfigurations = new Map<number, CmsConfigurationSnapshot>();
 const active = new Map<number, number>();
 const suppressed = new Set<number>();
 const activations: (OutputOf<typeof cmsReleaseContract.detail>['activations'][number] & { releaseId: number })[] = [];
@@ -121,6 +122,8 @@ function build(id: number) {
         if (item.action === 'publish' && item.revisionId) deployment.revisions.set(item.contentId, item.revisionId);
         else deployment.revisions.delete(item.contentId);
       }
+      const baseConfig = base ? deploymentConfigurations.get(base) : undefined;
+      deploymentConfigurations.set(deployment.id, mergeCmsConfigurationSnapshots(baseConfig ?? captureConfiguration(release.siteId, { includeSiteConfiguration: true }).snapshot, configurations.get(release.id)!));
       deployment.status = 'ready'; deployment.manifestHash = `demo-generation-${deployment.id}`; deployment.artifactCount = deployment.revisions.size + 1;
       release.status = release.activateAt && release.activateAt > mockDateTime() ? 'scheduled' : 'ready';
       if (release.autoActivate && release.status === 'ready') activate(release.id, release.baseGenerationId);
@@ -156,7 +159,77 @@ export function submitMockCmsWithdrawal(contentId: number) {
   return build(create({ siteId: content.siteId, name: `撤下：${content.title}`, revisionIds: [], withdrawContentIds: [contentId], pageIds: [], widgetIds: [], includeSiteConfiguration: false, timeZone: 'Asia/Shanghai', autoActivate: true }).id);
 }
 
+async function mockFingerprint(value: unknown) {
+  const bytes = new TextEncoder().encode(stableStringify(value));
+  return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+const releaseFingerprint = (release: CmsRelease) => mockFingerprint({ items: release.items, configuration: configurations.get(release.id), base: release.baseGenerationId });
+
 export const cmsReleaseHandlers = [
+  mock(cmsWorkbenchContract.configurationDraft, ({ query, ok }) => {
+    const draft = releases.findLast((row) => row.siteId === query.siteId && row.source === 'configuration' && row.status === 'draft' && row.createdBy === 1);
+    return ok(draft ? { id: draft.id, name: draft.name, href: `/cms/publishing?site=${query.siteId}&release=${draft.id}` } : null);
+  }),
+  mock(cmsWorkbenchContract.preview, async ({ body, ok }) => {
+    const site = requireItem(mockCmsSites, body.siteId, '站点不存在', { status: 404 });
+    const release = body.mode === 'candidate' ? requireRelease(body.releaseId!) : undefined;
+    if (release && release.siteId !== body.siteId) return badRequest('发布单不属于本站', { status: 404 });
+    const generationId = release?.deploymentId ?? active.get(body.siteId) ?? null;
+    const deployment = deployments.find((row) => row.id === generationId);
+    if (body.mode === 'candidate' && (!deployment?.manifestHash || !release || !['ready', 'scheduled', 'active', 'superseded'].includes(release.status))) return conflict('请先完成候选构建', { status: 409 });
+    const contents = mockCmsContents.filter((row) => row.siteId === body.siteId).flatMap((row) => {
+      if (body.mode === 'working' && body.contentIds.includes(row.id)) return [getMockCmsWorkingContent(row.id)];
+      const revisionId = deployment?.revisions.get(row.id);
+      const published = revisionId ? getMockCmsRevisionContent(revisionId) : !deployment ? getMockCmsPublishedContent(row.id) : undefined;
+      return published && !suppressed.has(row.id) ? [published] : [];
+    });
+    if (body.contentIds.some((id) => !mockCmsContents.some((row) => row.id === id && row.siteId === body.siteId))) return badRequest('内容不属于本站', { status: 404 });
+    const base = deploymentConfigurations.get(generationId ?? 0) ?? captureConfiguration(body.siteId, { includeSiteConfiguration: true }).snapshot;
+    const configuration = body.mode === 'working' ? mergeCmsConfigurationSnapshots(base, captureConfiguration(body.siteId, body).snapshot) : base;
+    const fingerprint = await mockFingerprint({ mode: body.mode, generationId, configuration, contents });
+    if (body.expectedFingerprint && body.expectedFingerprint !== fingerprint) return conflict('预览来源已变化，请刷新预览', { status: 409 });
+    const target = /^\/@content\/(\d+)$/.exec(body.path);
+    const picked = target ? contents.filter((row) => row.id === Number(target[1])) : contents;
+    const contentHtml = picked.map((row) => `<article><h2>${escapeHtml(row.title)}</h2><p>${escapeHtml(row.summary ?? '')}</p><p>${escapeHtml((row.body ?? '').replace(/<[^>]+>/g, ''))}</p></article>`).join('');
+    const configurationHtml = (configuration.tables.cms_pages ?? []).map((page) => `<section><h2>${escapeHtml(String(page.name ?? ''))}</h2><pre>${escapeHtml(JSON.stringify(page.blocks))}</pre></section>`).join('');
+    return ok({ html: `<!doctype html><html><head><meta name="robots" content="noindex,nofollow"></head><body><h1>${escapeHtml(site.name)}</h1><p>Demo 预览采用本地数据，正式站点由服务端主题渲染。</p>${target ? '' : configurationHtml}${contentHtml}</body></html>`,
+      status: target && !picked.length ? 404 : 200, path: body.path, mode: body.mode, sourceLabel: CMS_PREVIEW_MODE_LABELS[body.mode], fingerprint, generationId,
+      contentVersions: body.mode === 'working' ? contents.filter((row) => body.contentIds.includes(row.id)).map((row) => ({ id: row.id, version: row.version })) : [] });
+  }),
+  mock(cmsReleaseContract.review, async ({ params, ok }) => {
+    const release = requireRelease(params.id);
+    const currentGenerationId = active.get(release.siteId) ?? null;
+    const historical = ['active', 'superseded'].includes(release.status);
+    const comparisonGenerationId = historical ? release.baseGenerationId : currentGenerationId;
+    const previous = deployments.find((row) => row.id === comparisonGenerationId);
+    const changes: CmsReleaseChange[] = [];
+    for (const item of release.items) {
+      const priorId = previous?.revisions.get(item.contentId);
+      const before = priorId ? getMockCmsRevision(priorId)?.snapshot ?? null : null;
+      const after = item.revisionId ? getMockCmsRevision(item.revisionId)?.snapshot ?? null : null;
+      const fields = cmsReleaseFieldDiffs(before, after);
+      if (fields.length) changes.push({ kind: 'content', id: item.contentId, title: item.title, operation: after ? before ? 'update' : 'create' : 'remove', fields, editPath: `/cms/contents/edit?id=${item.contentId}&siteId=${release.siteId}`, paths: [`/@content/${item.contentId}`] });
+    }
+    const oldConfig = deploymentConfigurations.get(comparisonGenerationId ?? 0);
+    for (const [table, incoming] of Object.entries(configurations.get(release.id)?.tables ?? {})) {
+      const kinds: Record<string, CmsReleaseChange['kind']> = { cms_sites: 'site', cms_channels: 'channel', cms_pages: 'page', cms_widgets: 'widget', cms_resources: 'resource' };
+      const kind = kinds[table] ?? 'navigation';
+      for (const row of incoming) {
+        const before = oldConfig?.tables[table]?.find((old) => old.id === row.id) ?? null;
+        const fields = cmsReleaseFieldDiffs(before, row);
+        if (fields.length) changes.push({ kind, id: Number(row.id ?? release.siteId), title: String(row.name ?? row.title ?? table), operation: before ? 'update' : 'create', fields, editPath: `/cms/${kind === 'page' ? 'pages' : kind === 'widget' ? 'widgets' : kind === 'channel' ? 'channels' : 'sites'}?siteId=${release.siteId}`, paths: ['/'] });
+      }
+    }
+    return ok({ releaseId: release.id, fingerprint: await releaseFingerprint(release), baseGenerationId: release.baseGenerationId, currentGenerationId, comparisonGenerationId,
+      stale: !historical && currentGenerationId !== release.baseGenerationId, changes, checks: release.error ? [{ severity: 'error' as const, code: 'release', message: release.error, objectTitle: release.name, editPath: null }] : [],
+      affectedPaths: [...new Set(['/', ...changes.flatMap((change) => change.paths)])], wholeSiteAffected: release.configurationItems.length > 0, tasks: [] });
+  }),
+  mock(cmsReleaseContract.recreate, async ({ params, body, ok }) => {
+    const release = requireRelease(params.id);
+    if (body.expectedFingerprint !== await releaseFingerprint(release) || body.expectedGenerationId !== (active.get(release.siteId) ?? null)) return conflict('发布草稿或线上版本已变化，请重新审阅', { status: 409 });
+    return ok(create({ siteId: release.siteId, name: `${release.name.slice(0, 180)}（重新审阅）`, revisionIds: release.items.flatMap((item) => item.revisionId ? [item.revisionId] : []), withdrawContentIds: release.items.filter((item) => item.action === 'withdraw').map((item) => item.contentId),
+      pageIds: release.configurationItems.filter((item) => item.kind === 'page').map((item) => item.id), widgetIds: release.configurationItems.filter((item) => item.kind === 'widget').map((item) => item.id), includeSiteConfiguration: release.configurationItems.some((item) => item.kind === 'site'), timeZone: release.timeZone, autoActivate: false }));
+  }),
   mock(cmsReleaseContract.list, ({ query, paginate, ok }) => ok(paginate(releases.filter((row) => row.siteId === query.siteId && (!query.keyword || row.name.includes(query.keyword)) && matchesFilter(row.status, query.status)).toReversed()))),
   mock(cmsReleaseContract.detail, ({ params, ok }) => {
     const row = requireRelease(params.id);
@@ -200,4 +273,5 @@ export function resetMockCmsReleases() {
   active.clear();
   suppressed.clear();
   configurations.clear();
+  deploymentConfigurations.clear();
 }

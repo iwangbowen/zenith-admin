@@ -1,3 +1,5 @@
+import CmsWorkbenchPreview from './CmsWorkbenchPreview';
+import CmsConfigurationNotice from './CmsConfigurationNotice';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -66,6 +68,7 @@ export default function WidgetEditPage() {
   const [itemModal, setItemModal] = useState<{ item: CmsWidgetItem; index: number | null } | null>(null);
   const [editingSourceType, setEditingSourceType] = useState<CmsWidgetSourceType>('manual');
   const [mediaPickerVisible, setMediaPickerVisible] = useState(false);
+  const [sitePreviewId, setSitePreviewId] = useState<number>();
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewId, setPreviewId] = useState<number | undefined>();
   const [previewViewport, setPreviewViewport] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
@@ -216,11 +219,11 @@ export default function WidgetEditPage() {
     Modal.confirm({
       title: `发布页面部件「${saved.name}」？`,
       content: saved.impactCount > 0
-        ? `发布后将刷新 ${saved.impactCount} 个页面或首页${saved.highFanout ? '，该部件影响范围较大，请确认变更' : ''}。`
-        : '当前没有页面或主题插槽引用，发布不会触发页面刷新。',
+        ? `将更新可引用版本并加入配置草稿，影响 ${saved.impactCount} 个页面或首页，构建并激活发布单后上线。`
+        : '将更新可引用版本并加入配置草稿；当前没有页面或主题插槽引用。',
       onOk: async () => {
         await publishMutation.mutateAsync({ params: { id: saved.id } });
-        Toast.success('发布成功，引用刷新任务已提交');
+        Toast.success('可引用版本已更新，待发布单激活上线');
       },
     });
   }
@@ -522,6 +525,9 @@ export default function WidgetEditPage() {
           </div>
         </Spin>
       </AppModal>
+      <CmsConfigurationNotice siteId={siteId} />
+      <Button disabled={!canEditWidget} loading={saveMutation.isPending} onClick={async () => { const saved = await saveWidget(); setSitePreviewId(saved.id); }}>保存后查看整站工作稿</Button>
+      <CmsWorkbenchPreview visible={!!sitePreviewId} onClose={() => setSitePreviewId(undefined)} siteId={siteId} selection={{ widgetIds: sitePreviewId ? [sitePreviewId] : [] }} />
     </div>
   );
 }

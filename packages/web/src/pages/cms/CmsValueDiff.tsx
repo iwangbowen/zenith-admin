@@ -9,7 +9,7 @@ function display(value: unknown, html: boolean) {
 }
 
 /** Highlight the changed text while retaining shared context, including Unicode characters. */
-export default function CmsValueDiff({ before, after, html = false }: Readonly<{ before: unknown; after: unknown; html?: boolean }>) {
+export default function CmsValueDiff({ before, after, html = false, beforeLabel = '历史修订', afterLabel = '当前工作稿' }: Readonly<{ before: unknown; after: unknown; html?: boolean; beforeLabel?: string; afterLabel?: string }>) {
   const left = Array.from(display(before, html));
   const right = Array.from(display(after, html));
   let prefix = 0;
@@ -23,7 +23,7 @@ export default function CmsValueDiff({ before, after, html = false }: Readonly<{
     {suffix ? value.slice(value.length - suffix).join('') : ''}
   </div>;
   return <div className="auto-grid" style={{ '--auto-grid-cols': 2 } as CSSProperties}>
-    <div><Typography.Text type="secondary">历史修订</Typography.Text>{render(left, false)}</div>
-    <div><Typography.Text type="secondary">当前工作稿</Typography.Text>{render(right, true)}</div>
+    <div><Typography.Text type="secondary">{beforeLabel}</Typography.Text>{render(left, false)}</div>
+    <div><Typography.Text type="secondary">{afterLabel}</Typography.Text>{render(right, true)}</div>
   </div>;
 }

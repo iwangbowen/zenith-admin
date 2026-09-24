@@ -1,3 +1,4 @@
+import { invalidateCmsPublishingViews } from './cms-stage3';
 import { keepPreviousData } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { cmsPageContract } from '@zenith/shared/cms';
@@ -5,7 +6,7 @@ import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from 
 
 export type CmsPageListParams = NonNullable<QueryOf<typeof cmsPageContract.list>>;
 
-const resource = createResourceQueries(cmsPageContract);
+const resource = createResourceQueries(cmsPageContract, { onSaved: invalidateCmsPublishingViews, onDeleted: invalidateCmsPublishingViews });
 
 export const cmsPageKeys = {
   ...resource.keys,

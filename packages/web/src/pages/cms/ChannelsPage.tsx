@@ -1,3 +1,5 @@
+import CmsWorkbenchPreview from './CmsWorkbenchPreview';
+import CmsConfigurationNotice from './CmsConfigurationNotice';
 import { withField } from '@douyinfe/semi-ui';
 import CmsChannelFormField from './CmsChannelFormField';
 import { channelBoundFormCode, channelSettingsWithForm } from './channel-form-binding';
@@ -78,6 +80,7 @@ export default function ChannelsPage() {
   const urlSiteId = urlSelection.site !== null ? Number(urlSelection.site) : undefined;
   const siteId = urlSiteId ?? localSiteId;
   const selectedId = urlSelection.channel === null ? null : Number(urlSelection.channel);
+  const [previewPath, setPreviewPath] = useState<string>();
   const sampleContentMutation = useCmsChannelSampleContent();
 
   const treeQuery = useCmsChannelTree(siteId);
@@ -246,11 +249,12 @@ export default function ChannelsPage() {
     } catch {
       return; // 错误提示由请求层统一 Toast，保持编辑区打开
     }
-    Toast.success(editingRecord ? '更新成功' : '创建成功');
+    Toast.success('已保存，待发布');
     // 新建成功后停留在该栏目的编辑态，方便继续补充模板/SEO
     setCreateParentId(null);
     initializedChannelIdRef.current = saved.id;
     setUrlSelection({ site: siteId !== undefined ? String(siteId) : null, channel: String(saved.id) });
+    return saved;
   }
 
   async function handleDelete(id: number) {
@@ -259,26 +263,18 @@ export default function ChannelsPage() {
     Toast.success('删除成功');
   }
 
-  // ─── 模板试穿预览（?__template= 仅预览路径生效，不影响线上静态页）──────────
-  function previewListTemplate() {
-    if (!currentSite || !editingRecord) return;
-    const tpl = (formApi.current?.getValue('listTemplate') as string | undefined) ?? '';
-    const query = tpl ? `?__template=${encodeURIComponent(tpl)}` : '';
-    window.open(`${cmsPreviewUrl(currentSite.code, `${editingRecord.path}/`)}${query}`, '_blank');
+  async function previewListTemplate() {
+    const saved = await handleSave();
+    if (saved) setPreviewPath(`/${saved.path}/`);
   }
 
   async function previewDetailTemplate() {
-    if (!currentSite || !editingRecord) return;
-    const tpl = (formApi.current?.getValue('detailTemplate') as string | undefined) ?? '';
-    const data = await sampleContentMutation.mutateAsync({ query: { siteId: currentSite.id, channelId: editingRecord.id, ...CMS_CHANNEL_SAMPLE_CONTENT_QUERY } })
-      .catch(() => null);
+    const saved = await handleSave();
+    if (!saved) return;
+    const data = await sampleContentMutation.mutateAsync({ query: { siteId: saved.siteId, channelId: saved.id, ...CMS_CHANNEL_SAMPLE_CONTENT_QUERY } }).catch(() => null);
     const content = data?.list?.[0];
-    if (!content) {
-      Toast.info('该栏目暂无已发布内容，无法预览详情模板');
-      return;
-    }
-    const query = tpl ? `?__template=${encodeURIComponent(tpl)}` : '';
-    window.open(`${cmsPreviewUrl(currentSite.code, `${editingRecord.path}/${content.slug || content.id}.html`)}${query}`, '_blank');
+    if (!content) { Toast.info('该栏目暂无已发布内容，无法预览详情模板'); return; }
+    setPreviewPath(`/@content/${content.id}`);
   }
 
   async function handleMergeOk() {
@@ -541,7 +537,7 @@ export default function ChannelsPage() {
                 </div>
                 {editingRecord ? (
                   <Button icon={<Eye size={14} />} title="以当前选中模板试穿预览栏目列表页（不影响线上）"
-                    onClick={previewListTemplate}>预览</Button>
+                    onClick={() => void previewListTemplate()}>保存后预览</Button>
                 ) : null}
               </div>
             </Col>
@@ -554,7 +550,7 @@ export default function ChannelsPage() {
                 </div>
                 {editingRecord ? (
                   <Button icon={<Eye size={14} />} title="以当前选中模板试穿预览最新一篇已发布内容（不影响线上）"
-                    onClick={() => void previewDetailTemplate()}>预览</Button>
+                    onClick={() => void previewDetailTemplate()}>保存后预览</Button>
                 ) : null}
               </div>
             </Col>
@@ -766,6 +762,8 @@ export default function ChannelsPage() {
         target={widgetSourceTarget}
         onClose={() => setWidgetSourceTarget(null)}
       />
+      <CmsConfigurationNotice siteId={siteId} />
+      <CmsWorkbenchPreview visible={previewPath !== undefined} onClose={() => setPreviewPath(undefined)} siteId={siteId} initialPath={previewPath} selection={{ includeSiteConfiguration: true }} />
     </div>
   );
 }

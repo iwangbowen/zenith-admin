@@ -29,6 +29,7 @@ import { logContentOp } from './cms-content-op-logs.service';
 import { requireCmsContentAccess } from './cms-content-access.service';
 import { syncCmsResourceRefs } from './cms-resource-refs.service';
 import { captureCmsConfiguration, type CmsCapturedConfiguration } from './cms-configuration-snapshot.service';
+import { cmsReleaseInputFingerprint } from './cms-release-fingerprint';
 import { stageCmsConfigurationDraft } from './cms-configuration-drafts.service';
 import { assertCmsReleaseSelectionAccess, cmsReleaseScope } from './cms-release-access.service';
 import { assertCmsReleaseDependencies } from './cms-release-preflight.service';
@@ -54,7 +55,7 @@ async function acquireGenerationBuildSlot(): Promise<() => void> {
   return release;
 }
 
-async function requireRelease(id: number): Promise<CmsReleaseRow> {
+export async function requireRelease(id: number): Promise<CmsReleaseRow> {
   const [row] = await db.select().from(cmsReleases).where(eq(cmsReleases.id, id)).limit(1);
   const release = requireRow(row, '发布单不存在');
   const scope = await cmsReleaseScope(release.siteId);
@@ -100,7 +101,7 @@ export async function previewCmsRelease(id: number, path: string) {
   });
 }
 
-export async function createCmsRelease(input: CreateCmsReleaseInput, captured?: CmsCapturedConfiguration, source: CmsRelease['source'] = 'manual'): Promise<CmsRelease> {
+export async function createCmsRelease(input: CreateCmsReleaseInput, captured?: CmsCapturedConfiguration, source: CmsRelease['source'] = 'manual', expectedGenerationId?: number | null, expectedSource?: { id: number; fingerprint: string }): Promise<CmsRelease> {
   const activateAt = resolveCmsReleaseActivationTime(input.activateAt, input.timeZone);
   if (!captured && !input.revisionIds.length && !input.withdrawContentIds.length && !input.pageIds.length && !input.widgetIds.length && !input.includeSiteConfiguration) throw new HTTPException(400, { message: '请至少选择一个内容修订、页面、部件或站点配置' });
   const configurationRequested = captured ? captured.items.length > 0 : Boolean(input.includeSiteConfiguration || input.pageIds.length || input.widgetIds.length);
@@ -114,6 +115,11 @@ export async function createCmsRelease(input: CreateCmsReleaseInput, captured?: 
   const withdrawals = [...new Set(input.withdrawContentIds)];
   const release = await db.transaction(async (tx) => {
     await acquireCmsSitePublishLock(tx, input.siteId);
+    if (expectedGenerationId !== undefined && await activeGeneration(input.siteId, tx) !== expectedGenerationId) throw new HTTPException(409, { message: '公开版本再次变化，请刷新差异后重新准备发布单' });
+    if (expectedSource) {
+      const [original] = await tx.select().from(cmsReleases).where(eq(cmsReleases.id, expectedSource.id)).for('share').limit(1);
+      if (!original || original.siteId !== input.siteId || cmsReleaseInputFingerprint(original) !== expectedSource.fingerprint) throw new HTTPException(409, { message: '发布草稿已有变化，请重新审阅后再准备' });
+    }
     const configuration = captured ?? await captureCmsConfiguration(tx, input.siteId, input);
     const items: CmsRelease['items'] = [];
     for (const id of ids) {
@@ -159,6 +165,7 @@ export async function buildCmsRelease(id: number): Promise<CmsRelease> {
     const [deployment] = await tx.insert(cmsDeployments).values({ siteId: locked.siteId, releaseId: id }).returning();
     const [updated] = await tx.update(cmsReleases).set({ status: 'building', deploymentId: deployment.id, error: null }).where(eq(cmsReleases.id, id)).returning();
     const task = await persistAsyncTask(tx, { taskType: RELEASE_BUILD_TASK, title: `CMS 发布单：${locked.name}`, tenantId: null, payload: { siteId: locked.siteId, releaseId: id, deploymentId: deployment.id }, idempotencyKey: `cms-release:${id}:deployment:${deployment.id}` });
+    await tx.update(cmsDeployments).set({ taskIds: [task.id] }).where(eq(cmsDeployments.id, deployment.id));
     return { release: updated, task };
   });
   await enqueueAsyncTask(result.task.id).catch(() => undefined); // Durable pending recovery retries queue delivery.
@@ -310,6 +317,8 @@ export async function activateCmsRelease(id: number, expectedGenerationId: numbe
       }
     }
     const cdnTask = await insertCmsCdnPurgeOutbox(tx, locked.siteId, `activation:${activation.id}`);
+    const deliveryIds = [...webhooks, ...notifications, ...effects, cdnTask].flatMap((task) => task ? [task.id] : []);
+    await tx.update(cmsDeployments).set({ taskIds: [...new Set([...(deployment.taskIds ?? []), ...deliveryIds])] }).where(eq(cmsDeployments.id, deployment.id));
     return { release: updated, webhooks, notifications, effects, cdnTaskId: cdnTask.id };
   });
   invalidateSiteCache();

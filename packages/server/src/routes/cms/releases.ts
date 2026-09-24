@@ -4,9 +4,12 @@ import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { activateCmsRelease, buildCmsRelease, cancelCmsRelease, createCmsRelease, getCmsReleaseDetail, listCmsReleases, previewCmsRelease, suppressCmsContent } from '../../services/cms/cms-releases.service';
 import { mountCrud } from '../_crud';
+import { getCmsReleaseReview, recreateCmsRelease } from '../../services/cms/cms-release-review.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 const routes = [
+  defineContractRoute(cmsReleaseContract.review, { handler: async (c) => { c.header('Cache-Control', 'private, no-store'); return c.json(okBody(await getCmsReleaseReview(c.req.valid('param').id)), 200); } }),
+  defineContractRoute(cmsReleaseContract.recreate, { handler: async (c) => c.json(okBody(await recreateCmsRelease(c.req.valid('param').id, c.req.valid('json'))), 200) }),
   defineContractRoute(cmsReleaseContract.preview, { handler: async (c) => { c.header('Cache-Control', 'private, no-store'); return c.json(okBody(await previewCmsRelease(c.req.valid('param').id, c.req.valid('query').path)), 200); } }),
   defineContractRoute(cmsReleaseContract.build, { handler: async (c) => c.json(okBody(await buildCmsRelease(c.req.valid('param').id)), 200) }),
   defineContractRoute(cmsReleaseContract.activate, { handler: async (c) => c.json(okBody(await activateCmsRelease(c.req.valid('param').id, c.req.valid('json').expectedGenerationId)), 200) }),

@@ -105,7 +105,10 @@ export async function withCmsPublicGeneration<T>(siteId: number, fn: () => Promi
 export async function sealCmsGenerationStorage(tx: DbTransaction, generationId: number, revisions: CmsDeploymentSnapshot['revisions']): Promise<void> {
   const schema = identifier(cmsGenerationSchemaName(generationId));
   await tx.execute(sql.raw(`CREATE TABLE ${schema}.cms_generation_revision_refs (content_id integer PRIMARY KEY, revision_id integer NOT NULL, hash varchar(64) NOT NULL)`));
-  for (const revision of revisions) await tx.execute(sql`INSERT INTO ${sql.raw(schema)}.cms_generation_revision_refs (content_id,revision_id,hash) VALUES (${revision.contentId},${revision.revisionId},${revision.hash})`);
+  for (let start = 0; start < revisions.length; start += 500) {
+    const batch = revisions.slice(start, start + 500);
+    await tx.execute(sql`INSERT INTO ${sql.raw(schema)}.cms_generation_revision_refs (content_id,revision_id,hash) VALUES ${sql.join(batch.map((revision) => sql`(${revision.contentId},${revision.revisionId},${revision.hash})`), sql`,`)}`);
+  }
   await tx.execute(sql.raw(`ALTER TABLE ${schema}.cms_contents RENAME TO cms_content_projection`));
   await tx.execute(sql.raw(`ALTER TABLE ${schema}.cms_resources RENAME TO cms_resource_projection`));
   await tx.execute(sql.raw(`CREATE VIEW ${schema}.cms_resources AS SELECT resource.* FROM ${schema}.cms_resource_projection resource WHERE NOT EXISTS (SELECT 1 FROM public.cms_asset_rights rights WHERE rights.resource_id=resource.id AND (rights.revoked OR rights.expires_at<=now()))`));

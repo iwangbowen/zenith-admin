@@ -24,3 +24,4 @@ export * from './subscriptions';
 export * from './tags';
 export * from './widgets';
 export * from './words';
+export * from './workbench';

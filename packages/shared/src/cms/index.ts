@@ -19,3 +19,5 @@ export * from './design-validation';
 export * from './distribution-merge';
 export * from './content-import';
 export * from './resource-selection';
+export * from './workbench-validation';
+export * from './release-review';

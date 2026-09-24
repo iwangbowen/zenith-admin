@@ -3,6 +3,8 @@ import { defineContract, op } from '../../core/contract';
 import { auditFieldsSchema, dateRangeQuery, idParam, keywordQuery, paginated, paginationQuery, queryEnum, requiredIdQuery } from '../../core/api-schemas';
 import { activateCmsReleaseSchema, CMS_DEPLOYMENT_STATUSES, CMS_RELEASE_STATUSES, createCmsReleaseSchema, suppressCmsContentSchema } from '../release-validation';
 import { CMS_RELEASE_SOURCES } from '../constants';
+import { cmsReleaseReviewSchema } from './workbench';
+import { recreateCmsReleaseSchema } from '../workbench-validation';
 
 export const cmsReleaseItemSchema = z.object({ contentId: z.int(), revisionId: z.int().nullable(), title: z.string(), action: z.enum(['publish', 'withdraw']) });
 export const cmsDeploymentSchema = z.object({
@@ -28,6 +30,8 @@ export type CmsReleaseDetail = z.infer<typeof cmsReleaseDetailSchema>;
 export const cmsReleaseContract = defineContract('/api/cms/releases', {
   list: op.get('/', { access: { permission: 'cms:publish:view' }, query: paginationQuery.extend({ siteId: requiredIdQuery('站点'), keyword: keywordQuery('发布单名称'), status: queryEnum(CMS_RELEASE_STATUSES), ...dateRangeQuery('创建时间') }), response: paginated(cmsReleaseSchema), summary: '发布单列表' }),
   detail: op.get('/{id}', { access: { permission: 'cms:publish:view' }, params: idParam, response: cmsReleaseDetailSchema, summary: '发布单与部署检查' }),
+  review: op.get('/{id}/review', { access: { permission: 'cms:publish:view' }, params: idParam, response: cmsReleaseReviewSchema, summary: '相对当前线上版本的变更、检查与交付进度' }),
+  recreate: op.post('/{id}/recreate', { access: { permission: 'cms:publish:build' }, params: idParam, body: recreateCmsReleaseSchema, response: cmsReleaseSchema, audit: '重新准备 CMS 发布单', summary: '在确认当前基代后创建待重新审阅的发布单' }),
   preview: op.get('/{id}/preview', { access: { permission: 'cms:publish:view' }, params: idParam, query: z.object({ path: z.string().max(1000).default('/') }), response: z.object({ html: z.string(), status: z.int(), path: z.string(), generationId: z.int() }), summary: '预览固定候选部署中的页面' }),
   create: op.post('/', { access: { permission: 'cms:publish:build' }, audit: '创建 CMS 发布单', body: createCmsReleaseSchema, response: cmsReleaseSchema, summary: '固定内容修订并创建发布单' }),
   build: op.post('/{id}/build', { access: { permission: 'cms:publish:build' }, audit: '构建 CMS 候选部署', params: idParam, response: cmsReleaseSchema, summary: '构建候选部署，不影响当前公开版本' }),

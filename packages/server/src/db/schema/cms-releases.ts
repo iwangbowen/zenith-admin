@@ -35,6 +35,7 @@ export const cmsDeployments = pgTable('cms_deployments', {
   status: cmsDeploymentStatusEnum().notNull().default('building'),
   snapshot: jsonb().$type<CmsDeploymentSnapshot>(), manifestHash: varchar({ length: 64 }),
   artifactCount: integer().notNull().default(0), error: text(), activatedAt: timestamp({ withTimezone: true }),
+  taskIds: jsonb().$type<number[]>().notNull().default([]),
   ...auditColumns(), ...timestampColumns(),
 }, (t) => [index('cms_deployments_site_idx').on(t.siteId)]);
 export const cmsSiteGenerations = pgTable('cms_site_generations', {

@@ -1,3 +1,4 @@
+import CmsWorkbenchPreview from './CmsWorkbenchPreview';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import CmsValueDiff from './CmsValueDiff';
 import CmsContentConflictView from './CmsContentConflictView';
@@ -174,6 +175,7 @@ export default function ContentEditPage() {
   const actionMutation = useCmsContentAction();
   const previewMutation = useCmsPreviewLink();
   const revokePreviewMutation = useRevokeCmsPreviewLink();
+  const [workbenchPreviewId, setWorkbenchPreviewId] = useState<number>();
   const [lastPreview, setLastPreview] = useState<CmsPreviewLink | null>(null);
   const uploadResourceMutation = useUploadCmsResource();
   const canUploadResources = hasPermission('cms:resource:upload');
@@ -604,7 +606,7 @@ export default function ContentEditPage() {
     Toast.success('已保存并提交审核');
   }
 
-  async function handlePreview() {
+  async function handlePreview(share = false) {
     // 新建内容需先落库拿到 id；已存在内容有改动时先静默保存，保证「预览即所见」
     let previewId = id;
     if (!previewId || dirtyRef.current) {
@@ -618,6 +620,7 @@ export default function ContentEditPage() {
         return;
       }
     }
+    if (!share) { setWorkbenchPreviewId(previewId); return; }
     const link = await previewMutation.mutateAsync({ params: { id: previewId } });
     setLastPreview(link);
     window.open(link.url, '_blank');
@@ -666,7 +669,8 @@ export default function ContentEditPage() {
         </h3>
         <Button icon={<Save size={14} />} loading={saveMutation.isPending} disabled={isReadOnly || actionMutation.isPending} onClick={() => void handleSaveDraft()}>保存</Button>
         <Button icon={<SpellCheck size={14} />} loading={checkMutation.isPending} onClick={() => void handleCheckText()}>内容检查</Button>
-        <Button icon={<Eye size={14} />} loading={previewMutation.isPending || saveMutation.isPending} onClick={() => void handlePreview()}>预览</Button>
+        <Button icon={<Eye size={14} />} loading={previewMutation.isPending || saveMutation.isPending} onClick={() => void handlePreview()}>工作稿预览</Button>
+        <Button loading={previewMutation.isPending} onClick={() => void handlePreview(true)}>生成分享预览</Button>
         {id ? (
           <>
             <EntityRelationButton entityRef={{ type: 'cms.content', key: String(id) }} />
@@ -1317,6 +1321,7 @@ export default function ContentEditPage() {
           </div>
         ) : null}
       </Modal>
+      <CmsWorkbenchPreview visible={!!workbenchPreviewId} onClose={() => setWorkbenchPreviewId(undefined)} siteId={siteId} initialPath={workbenchPreviewId ? `/@content/${workbenchPreviewId}` : '/'} selection={{ contentIds: workbenchPreviewId ? [workbenchPreviewId] : [] }} />
     </div>
   );
 }

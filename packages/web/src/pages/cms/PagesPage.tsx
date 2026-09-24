@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button, Dropdown, Form, Input, Select, SideSheet, Tag, Toast, Typography, Empty } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { Plus, ArrowUp, ArrowDown, Trash2, Pencil, ExternalLink, ChevronDown, GripVertical, RefreshCw, LockKeyhole, ShieldCheck } from 'lucide-react';
+import { Plus, ArrowUp, ArrowDown, Trash2, Pencil, ChevronDown, GripVertical, LockKeyhole, ShieldCheck } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import AppModal from '@/components/AppModal';
@@ -17,7 +17,9 @@ import { useAllRoles } from '@/hooks/queries/roles';
 import { toUserOptions, useAllUsers } from '@/hooks/queries/users';
 import { CMS_PAGE_BLOCK_AUDIENCE_LABELS, CMS_PAGE_BLOCK_TYPES, cmsCustomPagePath, CMS_PAGE_BLOCK_AUDIENCE_OPTIONS } from '@zenith/shared/cms';
 import type { CmsChannel, CmsPage, CmsPageBlock, CmsPageBlockType } from '@zenith/shared/cms';
-import { CmsSiteSelect, cmsPreviewUrl } from './CmsSiteSelect';
+import { CmsSiteSelect } from './CmsSiteSelect';
+import CmsWorkbenchPreview from './CmsWorkbenchPreview';
+import CmsConfigurationNotice from './CmsConfigurationNotice';
 import { formatDateTimeForApi } from '@/utils/date';
 import { useCmsWidgetRenderers, usePublishedCmsWidgets } from '@/hooks/queries/cms-widgets';
 import { CreateButton } from '@/components/toolbar-controls';
@@ -113,7 +115,7 @@ export default function PagesPage() {
   // 拖拽排序 + 内嵌预览
   const dragIndexRef = useRef<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  const [previewEpoch, setPreviewEpoch] = useState(0);
+  const [previewPage, setPreviewPage] = useState<CmsPage>();
   const [aclBlock, setAclBlock] = useState<CmsPageBlock | null>(null);
   const [aclUserIds, setAclUserIds] = useState<number[]>([]);
   const [aclRoleIds, setAclRoleIds] = useState<number[]>([]);
@@ -216,14 +218,14 @@ export default function PagesPage() {
     setBlockModal(null);
   }
 
-  async function handleSavePage() {
+  async function handleSavePage(previewAfterSave = false) {
     let base: Record<string, unknown>;
     try {
       base = (await baseFormApi.current?.validate()) ?? {};
     } catch {
       return;
     }
-    await saveMutation.mutateAsync({
+    const saved = await saveMutation.mutateAsync({
       id: editingPage?.id,
       values: {
         ...(editingPage ? {} : { siteId }),
@@ -231,12 +233,10 @@ export default function PagesPage() {
         blocks: blocks.map(({ id, type, props, displayCondition }) => ({ id, type, props, displayCondition })),
       },
     });
-    Toast.success(editingPage ? '保存成功（静态页已刷新）' : '创建成功');
-    if (editingPage) {
-      setPreviewEpoch((e) => e + 1); // 刷新内嵌预览
-    } else {
-      setBuilderVisible(false);
-    }
+    Toast.success('已保存，待发布');
+    if (previewAfterSave) setPreviewPage(saved);
+    if (!editingPage) { setEditingPage(saved); }
+
   }
 
   const currentSite = (sitesPage?.list ?? []).find((s) => s.id === siteId);
@@ -293,14 +293,13 @@ export default function PagesPage() {
           key: 'preview',
           label: '预览',
           onClick: () => {
-            const path = record.isHome ? '/' : `/${cmsCustomPagePath(record)}`;
-            window.open(cmsPreviewUrl(currentSite.code, path), '_blank');
+            setPreviewPage(record);
           },
         }] : []),
         deleteAction({
           hidden: !hasPermission('cms:page:delete'),
           title: `删除页面「${record.name}」？`,
-          content: '静态文件将同步移除',
+          content: '删除将加入配置草稿，发布后更新线上页面',
           run: () => deleteMutation.mutateAsync([record.id]),
         }),
       ],
@@ -309,8 +308,6 @@ export default function PagesPage() {
 
   const editingBlockType = blockModal?.block.type;
   const allBlocksManageable = blocks.every((block) => block.canManage !== false);
-  const previewPath = editingPage ? (editingPage.isHome ? '/' : `/${cmsCustomPagePath(editingPage)}`) : null;
-  const previewUrl = currentSite && previewPath ? cmsPreviewUrl(currentSite.code, previewPath) : null;
 
   return (
     <div className="page-container">
@@ -337,7 +334,7 @@ export default function PagesPage() {
         visible={builderVisible}
         onCancel={() => setBuilderVisible(false)}
         width={680}
-        footer={<ModalFooter onCancel={() => setBuilderVisible(false)} onOk={handleSavePage} okText="保存" loading={saveMutation.isPending} />}
+        footer={<ModalFooter onCancel={() => setBuilderVisible(false)} onOk={() => handleSavePage()} okText="保存" loading={saveMutation.isPending} />}
       >
         <Form
           key={formRemountKey(editablePage?.id, detailQuery.data)}
@@ -461,32 +458,12 @@ export default function PagesPage() {
           </div>
         )}
 
-        {editingPage && currentSite ? (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '18px 0 8px' }}>
-              <Typography.Title heading={6} style={{ margin: 0 }}>当前公开页面（发布后更新）</Typography.Title>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <Button size="small" theme="borderless" icon={<RefreshCw size={13} />} onClick={() => setPreviewEpoch((e) => e + 1)}>刷新</Button>
-                <Button
-                  size="small"
-                  theme="borderless"
-                  icon={<ExternalLink size={13} />}
-                  onClick={() => window.open(cmsPreviewUrl(currentSite.code, editingPage.isHome ? '/' : `/${cmsCustomPagePath(editingPage)}`), '_blank')}
-                >
-                  新窗口打开
-                </Button>
-              </div>
-            </div>
-            <iframe
-              key={previewEpoch}
-              title="页面预览"
-              src={previewUrl ? `${previewUrl}?_t=${previewEpoch}` : undefined}
-              style={{ width: '100%', height: 380, border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', background: '#fff' }}
-            />
-          </>
-        ) : null}
+        <CmsConfigurationNotice siteId={siteId} />
+        <Button loading={saveMutation.isPending} onClick={() => void handleSavePage(true)}>保存后预览工作稿</Button>
       </SideSheet>
 
+      <CmsWorkbenchPreview visible={!!previewPage} onClose={() => setPreviewPage(undefined)} siteId={siteId}
+        initialPath={previewPage?.isHome ? '/' : previewPage ? `/${cmsCustomPagePath(previewPage)}` : '/'} selection={{ pageIds: previewPage ? [previewPage.id] : [] }} />
       {/* 区块属性编辑 */}
       <AppModal
         title={blockModal ? `编辑区块：${BLOCK_TYPE_LABEL[blockModal.block.type]}` : '编辑区块'}
