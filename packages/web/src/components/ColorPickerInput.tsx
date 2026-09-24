@@ -1,12 +1,17 @@
-import { ColorPicker } from '@douyinfe/semi-ui';
+import { Button, ColorPicker } from '@douyinfe/semi-ui';
+import { X } from 'lucide-react';
 import type { CSSProperties } from 'react';
 
 export interface ColorPickerInputProps {
-  /** 颜色值（hex，或开启 alpha 时为 rgba 字符串） */
+  /** 颜色值（hex，或开启 alpha 时为 rgba 字符串）；空串/undefined 视为未选择 */
   value?: string;
   onChange?: (value: string) => void;
   /** 是否支持透明度 */
   alpha?: boolean;
+  /** 展示「清除」按钮，选中后 onChange('')，用于颜色可空的场景（如留空跟随默认） */
+  allowClear?: boolean;
+  /** 清除按钮提示文案 */
+  clearTitle?: string;
   /** 只读态：展示色块 + 文本，不渲染交互选择器（ColorPicker 无 disabled 属性） */
   disabled?: boolean;
   style?: CSSProperties;
@@ -20,6 +25,8 @@ export default function ColorPickerInput({
   value,
   onChange,
   alpha = false,
+  allowClear = false,
+  clearTitle = '清除颜色',
   disabled = false,
   style,
 }: Readonly<ColorPickerInputProps>) {
@@ -38,17 +45,29 @@ export default function ColorPickerInput({
 
   const colorValue = value ? ColorPicker.colorStringToValue(value) : undefined;
   return (
-    <ColorPicker
-      usePopover
-      alpha={alpha}
-      value={colorValue}
-      onChange={(v) => {
-        const next = alpha
-          ? `rgba(${v.rgba.r}, ${v.rgba.g}, ${v.rgba.b}, ${Number(v.rgba.a.toFixed(2))})`
-          : v.hex;
-        onChange?.(next);
-      }}
-      style={style}
-    />
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, ...style }}>
+      <ColorPicker
+        usePopover
+        alpha={alpha}
+        value={colorValue}
+        onChange={(v) => {
+          const next = alpha
+            ? `rgba(${v.rgba.r}, ${v.rgba.g}, ${v.rgba.b}, ${Number(v.rgba.a.toFixed(2))})`
+            : v.hex;
+          onChange?.(next);
+        }}
+      />
+      {allowClear && value ? (
+        <Button
+          type="tertiary"
+          theme="borderless"
+          icon={<X size={14} />}
+          aria-label={clearTitle}
+          title={clearTitle}
+          onClick={() => onChange?.('')}
+          style={{ padding: 4, minWidth: 0, flexShrink: 0 }}
+        />
+      ) : null}
+    </div>
   );
 }

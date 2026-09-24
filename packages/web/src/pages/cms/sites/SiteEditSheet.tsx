@@ -9,7 +9,7 @@ import { FormPasswordInput } from '@/components/PasswordInput';
  */
 import React, { useEffect, useRef, useState } from 'react';
 import ModalFooter from '@/components/ModalFooter';
-import { Banner, Button, Col, ColorPicker, Form, Input, InputNumber, Modal, Row, Select, SideSheet, Switch, Tabs, TabPane, TextArea, Toast, Typography, Upload } from '@douyinfe/semi-ui';
+import { Banner, Button, Col, ColorPicker, Form, Input, InputNumber, Modal, Row, Select, SideSheet, Switch, Tabs, TabPane, TextArea, Toast, Typography, Upload, withField } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { ImageUp } from 'lucide-react';
 import { usePermission } from '@/hooks/usePermission';
@@ -31,6 +31,10 @@ import { siteIndentOptions } from './site-tree-utils';
 import { CmsModelFieldControl } from '../model-field-renderer';
 import { FormSliderInput } from '@/components/SliderInput';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
+import ColorPickerInput from '@/components/ColorPickerInput';
+
+/** 主题色表单控件：Semi ColorPicker 封装，值为颜色字符串（留空用主题默认） */
+const FormThemeColorPicker = withField(ColorPickerInput);
 
 /** 失效模板引用的人类可读描述（健康检查 Banner 用） */
 function describeInvalidRef(ref: CmsInvalidTemplateRef): string {
@@ -642,7 +646,14 @@ export default function SiteEditSheet({ open, site, onClose }: Readonly<SiteEdit
               <Form.Section text="主题参数">
                 <Row gutter={16}>
                   <Col span={12}>
-                    <Form.Input field="themePrimary" label="主题色" labelWidth={140} placeholder="如 #1f6feb，留空用主题默认" />
+                    <FormThemeColorPicker
+                      field="themePrimary"
+                      label="主题色"
+                      labelWidth={140}
+                      allowClear
+                      clearTitle="清除主题色（跟随主题默认）"
+                      extraText="留空使用主题默认色"
+                    />
                   </Col>
                   <Col span={12}>
                     <Form.Select field="themeDark" label="暗色模式" labelWidth={140} style={{ width: '100%' }}
