@@ -261,7 +261,7 @@ function EventsTab({ siteId, setSiteId }: Readonly<{
       title: '事件', dataIndex: 'eventType', width: 90,
       render: (value: CmsAdEvent['eventType']) => <Tag size="small">{CMS_AD_EVENT_TYPE_LABELS[value]}</Tag>,
     },
-    { title: '广告', dataIndex: 'adName', width: 180 },
+    { title: '广告', dataIndex: 'adName', width: 220, render: renderEllipsis },
     { title: '广告位', dataIndex: 'slotName', width: 150 },
     {
       title: '设备', dataIndex: 'device', width: 100,
