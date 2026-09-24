@@ -6,13 +6,15 @@ export const TABLE_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
 /**
  * 窄屏（移动端）与窄面板共用的小尺寸分页预设：隐藏总数文案与每页条数选择器，
- * 并开启 hover 页码快速切换（Semi 仅在 `size === 'small'` 时渲染页码浮层）。
+ * 并开启 hover 页码快速切换（Semi 仅在 `size === 'small'` 时渲染页码浮层）；
+ * 只有一页时不渲染（`hideOnSinglePage`），调用方无需再写 `total > pageSize` 判断。
  */
 export const COMPACT_PAGINATION_PROPS: PaginationProps = {
   size: 'small',
   showTotal: false,
   showSizeChanger: false,
   hoverShowPageSelect: true,
+  hideOnSinglePage: true,
   pageSizeOpts: TABLE_PAGE_SIZE_OPTIONS,
 };
 

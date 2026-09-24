@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { AvatarGroup, Badge, Button, Empty, Form, Select, Spin, Tabs, TabPane, Tag, TextArea, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { AvatarGroup, Badge, Button, Empty, Form, Pagination, Select, Spin, Tabs, TabPane, Tag, TextArea, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Eye, Inbox, ShieldQuestion } from 'lucide-react';
 import {
@@ -19,7 +19,7 @@ import {
   useCancelDriveAccessRequest, useCreateDriveAccessRequest, useDecideDriveAccessRequest, useDriveAccessRequests, useDriveAccessTarget, useDriveNodePresence,
 } from '@/hooks/queries/drive';
 import { usePermission } from '@/hooks/usePermission';
-import { usePagination } from '@/hooks/usePagination';
+import { COMPACT_PAGINATION_PROPS, usePagination } from '@/hooks/usePagination';
 import { StatusSelect } from '@/components/search-filters';
 import { formatDateTimeForApi } from '@/utils/date';
 
@@ -200,9 +200,9 @@ export function DriveAccessRequestsModal({ visible, initialBox = 'inbox', onClos
           ? <Empty description={box === 'inbox' ? '没有需要你处理的申请' : '你还没有提交过访问申请'} style={{ padding: '24px 0' }} />
           : <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>{list.map((r) => <RequestItem key={r.id} request={r} box={box} onOpenNode={onOpenNode} />)}</ul>}
         {total > pageSize && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 8 }}>
-            <Button size="small" disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</Button>
-            <Button size="small" disabled={page * pageSize >= total} onClick={() => setPage(page + 1)}>下一页</Button>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 8 }}>
+            <Pagination currentPage={page} pageSize={pageSize} total={total}
+              onPageChange={setPage} {...COMPACT_PAGINATION_PROPS} />
           </div>
         )}
       </Spin>

@@ -3,6 +3,7 @@ import {
   Button,
   Empty,
   Input,
+  Pagination,
   Select,
   SideSheet,
   Spin,
@@ -23,6 +24,7 @@ import {
   useCmsInteractionTrend,
 } from '@/hooks/queries/cms';
 import { useListSearch } from '@/hooks/useListSearch';
+import { COMPACT_PAGINATION_PROPS } from '@/hooks/usePagination';
 import './interaction-editor.css';
 import { DataBar } from '@/components/data-viz/DataBar';
 import { emptyIllustration } from '@/components/EmptyIllustration';
@@ -116,14 +118,8 @@ function TextAnswers({ interactionId, question }: Readonly<{
             ))}
             <div className="interaction-stats__text-foot">
               <Typography.Text type="tertiary" size="small">共 {query.data?.total ?? 0} 条</Typography.Text>
-              <Button size="small" disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</Button>
-              <Button
-                size="small"
-                disabled={page * TEXT_PAGE_SIZE >= (query.data?.total ?? 0)}
-                onClick={() => setPage(page + 1)}
-              >
-                下一页
-              </Button>
+              <Pagination currentPage={page} pageSize={TEXT_PAGE_SIZE} total={query.data?.total ?? 0}
+                onPageChange={setPage} {...COMPACT_PAGINATION_PROPS} />
             </div>
           </>
         )}

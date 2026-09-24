@@ -236,14 +236,6 @@
   padding: 4px 2px;
 }
 
-.drive-grid__pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 12px 0 4px;
-}
-
 .drive-card {
   position: relative;
   display: flex;

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Banner, Button, Descriptions, Form, Input, Modal, Select, TreeSelect, SideSheet, Space, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Descriptions, Form, Input, Modal, Pagination, Select, TreeSelect, SideSheet, Space, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { XCircle } from 'lucide-react';
 import { CMS_PUBLISH_ARTIFACT_STATUS_LABELS, CMS_PUBLISH_TARGET_TYPE_LABELS, CMS_PUBLISH_TARGET_TYPES } from '@zenith/shared/cms';
@@ -11,7 +11,7 @@ import AsyncTaskProgress from '@/components/AsyncTaskProgress';
 import AppModal from '@/components/AppModal';
 import ExportButton from '@/components/ExportButton';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { usePagination } from '@/hooks/usePagination';
+import { COMPACT_PAGINATION_PROPS, usePagination } from '@/hooks/usePagination';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { useTaskProgressEvents } from '@/hooks/useAsyncTasks';
@@ -57,6 +57,9 @@ const EMPTY_FILTERS: Filters = {
   keyword: '',
   timeRange: null,
 };
+
+/** 目标页面选择器每页条数 */
+const PAGE_PICKER_PAGE_SIZE = 30;
 
 export default function PublishingPage() {
   const queryClient = useQueryClient();
@@ -132,7 +135,7 @@ export default function PublishingPage() {
   const targetChannels = useCmsChannelTree(submitForm.siteId);
   const [pageKeyword, setPageKeyword] = useState('');
   const [pagePickerPage, setPagePickerPage] = useState(1);
-  const targetPages = useCmsPageList({ siteId: submitForm.siteId, page: pagePickerPage, pageSize: 30, keyword: pageKeyword });
+  const targetPages = useCmsPageList({ siteId: submitForm.siteId, page: pagePickerPage, pageSize: PAGE_PICKER_PAGE_SIZE, keyword: pageKeyword });
   useTaskProgressEvents(useCallback(() => {
     invalidateCmsPublishingViews(queryClient);
   }, [queryClient]));
@@ -334,7 +337,7 @@ export default function PublishingPage() {
           <Select prefix="目标" optionList={CMS_PUBLISH_TARGET_TYPES.filter((value) => ['content', 'contents', 'channel', 'site', 'page'].includes(value)).map((value) => ({ value, label: CMS_PUBLISH_TARGET_TYPE_LABELS[value] }))} value={submitForm.targetType} onChange={(value) => setSubmitForm((prev) => ({ ...prev, targetType: value as CmsPublishTargetType }))} style={{ width: '100%' }} />
           {['content', 'contents'].includes(submitForm.targetType) ? <CmsContentReferenceInput siteId={submitForm.siteId} multiple value={submitForm.contentIds} onChange={(value) => setSubmitForm((prev) => ({ ...prev, contentIds: Array.isArray(value) ? value : [] }))} /> : null}
           {submitForm.targetType === 'channel' ? <TreeSelect placeholder="选择栏目" treeData={channelsToSelectTree(targetChannels.data ?? [])} value={submitForm.channelId} onChange={(value) => setSubmitForm((prev) => ({ ...prev, channelId: Number(value) }))} style={{ width: '100%' }} /> : null}
-          {submitForm.targetType === 'page' ? <Space vertical align="start" style={{ width: '100%' }}><Select placeholder="搜索并选择页面" remote filter loading={targetPages.isFetching} value={submitForm.pageId} onSearch={(value) => { setPageKeyword(value); setPagePickerPage(1); }} optionList={(targetPages.data?.list ?? []).map((page) => ({ value: page.id, label: page.name }))} onChange={(value) => setSubmitForm((prev) => ({ ...prev, pageId: Number(value) }))} style={{ width: '100%' }} /><Space><Button disabled={pagePickerPage === 1} onClick={() => setPagePickerPage((value) => value - 1)}>上一页</Button><Button disabled={pagePickerPage * 30 >= (targetPages.data?.total ?? 0)} onClick={() => setPagePickerPage((value) => value + 1)}>下一页</Button></Space></Space> : null}
+          {submitForm.targetType === 'page' ? <Space vertical align="start" style={{ width: '100%' }}><Select placeholder="搜索并选择页面" remote filter loading={targetPages.isFetching} value={submitForm.pageId} onSearch={(value) => { setPageKeyword(value); setPagePickerPage(1); }} optionList={(targetPages.data?.list ?? []).map((page) => ({ value: page.id, label: page.name }))} onChange={(value) => setSubmitForm((prev) => ({ ...prev, pageId: Number(value) }))} style={{ width: '100%' }} /><Pagination currentPage={pagePickerPage} pageSize={PAGE_PICKER_PAGE_SIZE} total={targetPages.data?.total ?? 0} onPageChange={setPagePickerPage} {...COMPACT_PAGINATION_PROPS} /></Space> : null}
           <Input prefix="原因" placeholder="可选，便于任务审计" value={submitForm.reason} onChange={(reason) => setSubmitForm((prev) => ({ ...prev, reason }))} />
           <Banner type="info" description="提交后在队列中跟踪构建进度；配置型任务构建成功后，需到发布单激活。失败时可以恢复或重建。" />
           </Space>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useDebouncedValue } from '@tanstack/react-pacer';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Avatar, Banner, Button, Empty, SideSheet, Space, Spin, TextArea, Toast, Typography, Tag } from '@douyinfe/semi-ui';
+import { Avatar, Banner, Button, Empty, Pagination, SideSheet, Space, Spin, TextArea, Toast, Typography, Tag } from '@douyinfe/semi-ui';
 import PageLoading from '@/components/PageLoading';
 import { ArrowLeft, RotateCcw, PencilRuler, Maximize, Image, MessageSquare, Send, Trash2, CheckCircle2, CornerDownRight } from 'lucide-react';
 import { toPng } from 'html-to-image';
@@ -15,6 +15,7 @@ import { FilterBar } from './widgets/FilterBar';
 import { MobileDashboardHeader, type MobileDashboardAction } from './widgets/MobileDashboardHeader';
 import { filterValuesFromSearch, withFilterParam } from './widgets/filter-url';
 import { useIsMobile } from '@/hooks/useMediaQuery';
+import { COMPACT_PAGINATION_PROPS } from '@/hooks/usePagination';
 import type { ReportWidget, ReportFilter, ReportGridItem, ReportCanvasItem, ReportDatasetQueryOptions } from '@zenith/shared/report';
 import {
   useCreateReportDashboardComment,
@@ -26,6 +27,9 @@ import {
 } from '@/hooks/queries/report-dashboards';
 import { useReportDeprecationList } from '@/hooks/queries/report-assets';
 import { useReportDqAnomalyList } from '@/hooks/queries/report-dq';
+
+/** 评论区每页条数 */
+const COMMENT_PAGE_SIZE = 20;
 
 function defaultFilterValue(f: ReportFilter): unknown {
   if (f.defaultValue !== undefined) return f.defaultValue;
@@ -104,7 +108,7 @@ export default function DashboardViewPage() {
     widgetQueries,
     mode: viewMode,
   });
-  const commentsQuery = useReportDashboardComments(dashboardId, { page: commentPage, pageSize: 20, widgetId: commentWidgetId }, commentsVisible);
+  const commentsQuery = useReportDashboardComments(dashboardId, { page: commentPage, pageSize: COMMENT_PAGE_SIZE, widgetId: commentWidgetId }, commentsVisible);
   const comments = commentsQuery.data?.list ?? [];
   const createCommentMutation = useCreateReportDashboardComment();
   const deleteCommentMutation = useDeleteReportDashboardComment();
@@ -412,10 +416,9 @@ export default function DashboardViewPage() {
                 ))}
               </Space>
             )}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12 }}>
-              <Button disabled={commentPage <= 1} onClick={() => setCommentPage((page) => Math.max(1, page - 1))}>上一页</Button>
-              <Typography.Text type="tertiary">第 {commentPage} 页 / 共 {Math.max(1, Math.ceil((commentsQuery.data?.total ?? 0) / (commentsQuery.data?.pageSize ?? 20)))} 页</Typography.Text>
-              <Button disabled={commentPage >= Math.max(1, Math.ceil((commentsQuery.data?.total ?? 0) / (commentsQuery.data?.pageSize ?? 20)))} onClick={() => setCommentPage((page) => page + 1)}>下一页</Button>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+              <Pagination currentPage={commentPage} pageSize={COMMENT_PAGE_SIZE} total={commentsQuery.data?.total ?? 0}
+                onPageChange={setCommentPage} {...COMPACT_PAGINATION_PROPS} />
             </div>
           </div>
           <div style={{ borderTop: '1px solid var(--semi-color-border)', padding: 16 }}>

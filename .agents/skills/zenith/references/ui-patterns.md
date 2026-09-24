@@ -287,6 +287,8 @@ const pagination = buildPagination(total);
   分页器右对齐、用小尺寸并开启 hover 页码快速切换；两侧共用 `hooks/usePagination.ts` 的
   `COMPACT_PAGINATION_PROPS` / `DESKTOP_PAGINATION_PROPS` 预设（改预设即同时改表格与列表分页），
   组件内部已用 `useIsMobile` 处理，页面无需再分支
+- 紧凑预设还带 `hideOnSinglePage`：窄屏 / 窄面板下只有一页时整个分页器不渲染，
+  这类位置无需再写 `total > pageSize` 判断；宽屏走 `DESKTOP_PAGINATION_PROPS`，保留 Semi 默认行为
 - 入参就是 `usePagination().buildPagination(total)` 返回的 `PaginationConfig`，
   `pageSizeOpts` 固定 `TABLE_PAGE_SIZE_OPTIONS`，与表格一致
 - 列表为空时页面通常整体切换到 `Empty`，分页条随之不渲染，无需在组件外再判 `total > 0`

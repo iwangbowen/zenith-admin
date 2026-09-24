@@ -1,7 +1,7 @@
 import { useDeferredValue, useState } from 'react';
-import { Banner, Button, Select, Space } from '@douyinfe/semi-ui';
+import { Banner, Pagination, Select, Space } from '@douyinfe/semi-ui';
 import { useCmsFormList } from '@/hooks/queries/cms-forms';
-import { usePagination } from '@/hooks/usePagination';
+import { COMPACT_PAGINATION_PROPS, usePagination } from '@/hooks/usePagination';
 
 export default function CmsChannelFormField({ siteId, value, onChange, disabled = false }: Readonly<{
   siteId?: number; value?: string; onChange?: (value: string | undefined) => void; disabled?: boolean;
@@ -15,7 +15,8 @@ export default function CmsChannelFormField({ siteId, value, onChange, disabled 
   return <Space vertical align="start" spacing={8} style={{ width: '100%' }}>
     <Select value={value} onChange={(next) => onChange?.(typeof next === 'string' && next ? next : undefined)} filter remote showClear disabled={disabled || !siteId} loading={forms.isFetching}
       onSearch={setKeyword} optionList={options} placeholder="选择本站已启用表单，清空后不展示表单" style={{ width: '100%' }} />
-    {(forms.data?.total ?? 0) > paging.pageSize || paging.page > 1 ? <Space><Button size="small" disabled={paging.page === 1} onClick={() => paging.setPage(paging.page - 1)}>上一页</Button><span>{paging.page}</span><Button size="small" disabled={paging.page * paging.pageSize >= (forms.data?.total ?? 0)} onClick={() => paging.setPage(paging.page + 1)}>下一页</Button></Space> : null}
+    <Pagination currentPage={paging.page} pageSize={paging.pageSize} total={forms.data?.total ?? 0}
+      onPageChange={paging.setPage} {...COMPACT_PAGINATION_PROPS} />
     {forms.isError ? <Banner type="warning" description="表单列表加载失败，可刷新重试；当前绑定保持不变。" /> : null}
   </Space>;
 }

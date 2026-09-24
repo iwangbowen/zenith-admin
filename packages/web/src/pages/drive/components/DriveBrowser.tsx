@@ -6,6 +6,7 @@ import { formatBytes } from '@zenith/shared/core';
 import { DRIVE_NODE_SORT_FIELD_OPTIONS, DRIVE_ROLE_LABELS, type DriveNode, type DriveNodeListResult, type DriveNodeSortField } from '@zenith/shared/drive';
 import { EditFormModal } from '@/components/EditFormModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import { ListPagination } from '@/components/ListPagination';
 import { CursorContextDropdown, type CursorPoint } from '@/components/CursorContextDropdown';
 import { FileNameCell } from '@/components/FileNameCell';
 import { FilePreviewLayer } from '@/components/FilePreviewLayer';
@@ -66,7 +67,7 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
   const directoryInputRef = useRef<HTMLInputElement>(null);
 
   const listKey = driveKeys.dir(spaceId, folderId);
-  const { page, pageSize, buildPagination, draftParams, setDraftParams, setField, submittedParams, handleSearch, handleReset, setPage, applySearch } =
+  const { page, pageSize, buildPagination, draftParams, setDraftParams, setField, submittedParams, handleSearch, handleReset, applySearch } =
     useListSearch<SearchParams>({ defaults: { keyword: '', tagId: undefined, sortBy: 'name', order: 'asc' }, listKey, pageSize: 50, resetKey: [spaceId, folderId] });
   const tags = useDriveTags(spaceId);
 
@@ -351,13 +352,8 @@ export function DriveBrowser({ spaceId, folderId, onNavigate, onOpenDetail, onUp
                 ))}
               </div>
             )}
-            {(data?.total ?? 0) > pageSize && (
-              <div className="drive-grid__pagination">
-                <Button size="small" disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</Button>
-                <Typography.Text type="tertiary">第 {page} 页 · 共 {data?.total ?? 0} 项</Typography.Text>
-                <Button size="small" disabled={page * pageSize >= (data?.total ?? 0)} onClick={() => setPage(page + 1)}>下一页</Button>
-              </div>
-            )}
+            {/* 网格视图与列表视图同源分页：共用 ListPagination，形态与表格分页一致 */}
+            {(data?.total ?? 0) > pageSize && <ListPagination pagination={buildPagination(data?.total ?? 0)} />}
           </>
         )}
       </div>

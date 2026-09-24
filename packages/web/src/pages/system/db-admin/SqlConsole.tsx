@@ -1,7 +1,7 @@
 import {
   forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,
 } from 'react';
-import { Banner, Button, Dropdown, Empty, Form, List, Popconfirm, SideSheet, Space, Spin, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Dropdown, Empty, Form, List, Pagination, Popconfirm, SideSheet, Space, Spin, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import {
   Play, Eye, Download, Plus, X, Bookmark, BookmarkPlus, ArrowRight, Pencil, Trash2,
   Sparkles, Copy, Code, Ban, BarChart3, ChevronDown, SquareTerminal,
@@ -13,6 +13,7 @@ import type { DbAdminQueryResult, DbQueryFavorite } from '@zenith/shared/ops';
 import { downloadBlob } from '@/utils/download';
 import { AppModal } from '@/components/AppModal';
 import { useEditModal } from '@/hooks/useEditModal';
+import { COMPACT_PAGINATION_PROPS } from '@/hooks/usePagination';
 import { confirmDanger } from '@/utils/confirm';
 import { DataGrid, CellDetailDrawer, type CellPos, type DataGridColumn, type DataGridHandle } from '@/components/data-grid';
 import { formatDateTime } from '@/utils/date';
@@ -616,19 +617,14 @@ export const SqlConsole = forwardRef<SqlConsoleHandle, SqlConsoleProps>(function
             <>
               {result.paginated && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <Button
-                    size="small"
-                    disabled={(result.page ?? 1) <= 1 || queryLoading}
-                    onClick={() => void loadPage((result.page ?? 1) - 1)}
-                  >上一页</Button>
-                  <Text type="tertiary" size="small">
-                    第 {result.page ?? 1} / {Math.max(1, Math.ceil((result.total ?? 0) / (result.pageSize ?? PAGE_SIZE)))} 页
-                  </Text>
-                  <Button
-                    size="small"
-                    disabled={queryLoading || (result.page ?? 1) >= Math.ceil((result.total ?? 0) / (result.pageSize ?? PAGE_SIZE))}
-                    onClick={() => void loadPage((result.page ?? 1) + 1)}
-                  >下一页</Button>
+                  <Pagination
+                    currentPage={result.page ?? 1}
+                    pageSize={result.pageSize ?? PAGE_SIZE}
+                    total={result.total ?? 0}
+                    disabled={queryLoading}
+                    onPageChange={(next) => void loadPage(next)}
+                    {...COMPACT_PAGINATION_PROPS}
+                  />
                 </div>
               )}
               <div style={{ height: 'min(560px, 62vh)' }}>
