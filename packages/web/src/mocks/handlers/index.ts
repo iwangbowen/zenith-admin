@@ -57,6 +57,8 @@ import { cmsStage4Handlers } from './cms-stage4';
 import { cmsStage5Handlers } from './cms-stage5';
 import { cmsWidgetsHandlers } from './cms-widgets';
 import { cmsEditorialHandlers } from './cms-editorial';
+import { cmsOperationsHandlers } from './cms-operations';
+import { cmsBlueprintHandlers } from './cms-blueprints';
 import { cmsReleaseHandlers } from './cms-releases';
 import { wikiHandlers } from './wiki';
 import { driveHandlers } from './drive';
@@ -292,7 +294,9 @@ export const handlers = [
   ...userFeedbacksHandlers,
   ...cmsStage5Handlers,
   ...cmsEditorialHandlers,
+  ...cmsOperationsHandlers,
   ...cmsReleaseHandlers,
+  ...cmsBlueprintHandlers,
   ...cmsStage4Handlers,
   ...cmsP6Handlers,
   ...cmsP3Handlers,

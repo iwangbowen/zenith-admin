@@ -1,4 +1,5 @@
 import { getMockCmsReviewContent, getMockCmsWorkingContent } from './cms-revisions';
+import { syncMockCmsFeedbackWorkflow } from '../data/cms-operations';
 import { submitMockCmsContentRelease } from '../handlers/cms-releases';
 import dayjs from 'dayjs';
 import { publishMockWatchEvent } from '@/mocks/data/entity-watch-events';
@@ -111,6 +112,7 @@ export function assertMockCmsManualAudit(content: CmsContent): void {
 
 /** 只回写该业务的当前轮次，审批旧轮次不会覆盖已重新提交的业务。 */
 export function syncMockWorkflowBusinessResult(instance: WorkflowInstance): void {
+  syncMockCmsFeedbackWorkflow(instance);
   if (['approved', 'rejected', 'withdrawn', 'returned'].includes(instance.status)) {
     publishMockWatchEvent({ id: `workflow:${instance.id}:${instance.status}:${instance.updatedAt}`, eventType: `workflow.instance.${instance.status}`,
       occurredAt: dayjs().toISOString(), sourceRef: { type: 'workflow.instance', key: String(instance.id) },

@@ -1,4 +1,5 @@
 import { stageMockCmsConfigurationDraft, submitMockCmsContentBatch, submitMockCmsWithdrawal } from './cms-releases';
+import { mockCmsFeedback, mockCmsNoResultKeywords, syncMockCmsFeedbackSubmissions } from '../data/cms-operations';
 import { getMockCmsWorkingContent, getMockCmsPublishedContent, getMockCmsRevision, getMockCmsReviewContent, bindMockCmsReview, assertMockCmsCas, freezeMockCmsRevision, saveMockCmsWorkingContent, restoreMockCmsRevision } from '@/mocks/utils/cms-revisions';
 import { HttpResponse } from 'msw';
 import type * as z from 'zod';
@@ -739,6 +740,15 @@ export const cmsHandlers = [
     return ok(content, '创建成功');
   }),
   mock(cmsContentContract.update, ({ params, body, ok }) => ok(saveMockCmsWorkingContent(params.id, body, body.expectedVersion, body.saveMode), '工作稿已保存')),
+  mock(cmsContentContract.preparePublication, ({ params, body, ok }) => {
+    const content = assertMockCmsCas(params.id, body.expectedVersion);
+    assertMockCmsManualAudit(content);
+    if (content.lockedAt || content.archivedAt) return conflict('内容已锁定或归档', { status: 409 });
+    const revisionId = content.editorialStatus === 'pending' ? content.submittedRevisionId : content.editorialStatus === 'approved' ? content.approvedRevisionId : null;
+    content.approvedRevisionId = revisionId ?? freezeMockCmsRevision(params.id, 'publication').id;
+    content.editorialStatus = 'approved'; content.version += 1; content.hasUnpublishedChanges = true;
+    return ok(content, '已批准，待加入发布单');
+  }),
   mock(cmsContentContract.lock, ({ params, body, ok }) => {
     const content = assertMockCmsCas(params.id, body.expectedVersion);
     if (content.lockedAt) return badRequest('内容已被持久锁定', { status: 400 });
@@ -1407,6 +1417,8 @@ export const cmsP2Handlers = [
     return ok(paginate([...list].sort((a, b) => b.id - a.id)));
   }),
   mock(cmsFormContract.deleteSubmissions, ({ params, body, ok }) => {
+    syncMockCmsFeedbackSubmissions();
+    if (mockCmsFeedback.some((row) => row.formId === params.id && body.ids.includes(row.submissionId))) return conflict('来信已经进入办理台账，不能删除办理证据', { status: 409 });
     for (const id of body.ids) {
       const idx = mockCmsFormSubmissions.findIndex((s) => s.formId === params.id && s.id === id);
       if (idx >= 0) mockCmsFormSubmissions.splice(idx, 1);
@@ -1465,6 +1477,8 @@ export const cmsP2Handlers = [
   }),
   mock(cmsFormContract.remove, ({ params, ok }) => {
     const form = requireItem(mockCmsForms, params.id, '表单不存在', { status: 404 });
+    syncMockCmsFeedbackSubmissions();
+    if (mockCmsFeedback.some((row) => row.formId === form.id)) return conflict('表单存在办理记录，不能删除办理证据', { status: 409 });
     removeByIds(mockCmsForms, [params.id]);
     stageMockCmsConfigurationDraft(form.siteId);
     return ok(null, '删除成功');
@@ -1610,10 +1624,7 @@ export const cmsP2Handlers = [
         { keyword: '静态化', count: 31, avgResults: 3 },
         { keyword: '全文检索', count: 22, avgResults: 2 },
       ],
-      noResultKeywords: [
-        { keyword: '小程序模板', count: 9 },
-        { keyword: '价格表', count: 5 },
-      ],
+      noResultKeywords: mockCmsNoResultKeywords,
     });
   }),
 

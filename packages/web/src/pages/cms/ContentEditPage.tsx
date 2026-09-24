@@ -588,11 +588,11 @@ export default function ContentEditPage() {
     }
   }
 
-  async function handleSaveAndPublish() {
+  async function handleSaveAndPublish(prepareOnly = false) {
     const savedId = await save();
     if (savedId) {
-      await actionMutation.mutateAsync({ id: savedId, action: 'publish', expectedVersion: versionRef.current! });
-      Toast.success('已提交发布任务，生效结果请在发布中心查看');
+      await actionMutation.mutateAsync({ id: savedId, action: prepareOnly ? 'preparePublication' : 'publish', expectedVersion: versionRef.current! });
+      Toast.success(prepareOnly ? '修订已批准，可在发布中心与专题页面组合发布' : '已提交发布任务，生效结果请在发布中心查看');
     }
   }
 
@@ -682,11 +682,12 @@ export default function ContentEditPage() {
           <Button type="primary" icon={<Send size={14} />} loading={saveMutation.isPending || actionMutation.isPending}
             disabled={isReadOnly || workflowBusy || !!workflowPreviewQuery.error || (detail?.editorialStatus === 'pending') || !hasPermission('cms:content:update')}
             onClick={() => void handleSaveAndSubmit()}>保存并提交审核</Button>
-        ) : hasPermission('cms:content:publish') ? (
+        ) : hasPermission('cms:content:publish') ? (<>
+          <Button loading={actionMutation.isPending} disabled={isReadOnly || saveMutation.isPending || workflowBusy || !workflowPreview || !!workflowPreviewQuery.error} onClick={() => void handleSaveAndPublish(true)}>保存并批准待发布</Button>
           <Button type="primary" icon={<Send size={14} />} loading={actionMutation.isPending}
             disabled={isReadOnly || saveMutation.isPending || workflowBusy || !workflowPreview || !!workflowPreviewQuery.error}
             onClick={() => void handleSaveAndPublish()}>保存并申请发布</Button>
-        ) : null}
+        </>) : null}
       </div>
 
       <Space wrap spacing={12} style={{ marginBottom: 12 }}>

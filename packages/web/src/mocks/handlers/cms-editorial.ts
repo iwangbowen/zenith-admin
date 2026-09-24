@@ -8,6 +8,7 @@ import { getNextCmsContentId, mockCmsChannels, mockCmsContents, mockCmsContentVe
 import { getMockCmsWorkingContent, getMockCmsDistributionConflict, resolveMockCmsDistribution, saveMockCmsWorkingContent } from '../utils/cms-revisions';
 
 const notes: CmsEditorialNote[] = [];
+export const getMockCmsUnresolvedNoteContentIds = () => new Set(notes.filter((note) => !note.resolved).map((note) => note.contentId));
 const rights: (OutputOf<typeof cmsResourceContract.rights> & { id: number })[] = [];
 const modelVersions: CmsModelVersion[] = [];
 const initialModelFields = new Map(mockCmsModels.map((row) => [row.id, structuredClone(row.fields ?? [])]));
@@ -113,12 +114,7 @@ export const cmsEditorialHandlers = [
   }),
   mock(cmsModelContract.versions, ({ params, ok }) => { modelVersion(params.id); return ok(modelVersions.filter((version) => version.modelId === params.id)); }),
   mock(cmsModelContract.publish, ({ params, ok }) => {
-    const row = model(params.id);
-    const previous = modelVersion(params.id);
-    const version = { ...previous, id: nextIdFrom(modelVersions), version: previous.version + 1, fields: structuredClone(row.fields ?? []), createdAt: mockDateTime() };
-    modelVersions.push(version);
-    publishedModelIds.add(row.id);
-    return ok(updateItem(mockCmsModels, row.id, { publishedVersionId: version.id, hasUnpublishedChanges: false }, { notFoundMessage: '模型不存在', now: mockDateTime }));
+    return ok(publishMockCmsModelVersion(params.id));
   }),
   mock(cmsResourceContract.versions, ({ params, ok }) => {
     const resource = requireItem(mockCmsResources, params.id, '素材不存在', { status: 404 });
@@ -135,3 +131,12 @@ export const cmsEditorialHandlers = [
     return ok(updateItem(rights, params.id, body, { notFoundMessage: '素材授权不存在' }));
   }),
 ];
+
+export function publishMockCmsModelVersion(id: number) {
+    const row = model(id);
+    const previous = modelVersion(id);
+    const version = { ...previous, id: nextIdFrom(modelVersions), version: previous.version + 1, fields: structuredClone(row.fields ?? []), createdAt: mockDateTime() };
+    modelVersions.push(version);
+    publishedModelIds.add(row.id);
+    return updateItem(mockCmsModels, row.id, { publishedVersionId: version.id, hasUnpublishedChanges: false }, { notFoundMessage: '模型不存在', now: mockDateTime });
+}

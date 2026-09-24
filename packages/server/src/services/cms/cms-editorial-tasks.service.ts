@@ -10,17 +10,17 @@ import { requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { parseDateTimeInput } from '../../lib/datetime';
-import { requireTenantUser } from '../../lib/user-nicknames';
 import { hasPermission } from '../../lib/context';
 import { assertSiteAccess } from './cms-sites.service';
 import { assertAllCmsSiteChannelsAccess } from './cms-channels.service';
 import { buildCmsContentListWhere, getCmsContent } from './cms-contents-query.service';
-import { getCmsFeedbackDetail } from './cms-feedback.service';
+import { getCmsFeedbackDetail, requireCmsOperationsAssignee } from './cms-feedback.service';
 
 export async function cmsEditorialTaskVisibility(siteId: number) {
-  if (!await hasPermission('cms:content:list')) return isNull(cmsEditorialTasks.contentId);
+  const feedbackScope = await hasPermission('cms:form:list') ? undefined : isNull(cmsEditorialTasks.feedbackId);
+  if (!await hasPermission('cms:content:list')) return buildWhere(isNull(cmsEditorialTasks.contentId), feedbackScope);
   const scope = await buildCmsContentListWhere(cmsContentContract.list.query.parse({ siteId }));
-  return or(isNull(cmsEditorialTasks.contentId), sql`exists (select 1 from ${cmsContents} where ${cmsContents.id} = ${cmsEditorialTasks.contentId} and ${scope})`);
+  return buildWhere(feedbackScope, or(isNull(cmsEditorialTasks.contentId), sql`exists (select 1 from ${cmsContents} where ${cmsContents.id} = ${cmsEditorialTasks.contentId} and ${scope})`));
 }
 const selection = { item: cmsEditorialTasks, ownerName: users.nickname, contentTitle: sql<string | null>`${cmsContentWorkingCopies.snapshot}->>'title'`, contentStatus: cmsContents.status,
   editorialStatus: cmsContentWorkingCopies.editorialStatus, publishedRevisionId: cmsContentWorkingCopies.publishedRevisionId };
@@ -50,7 +50,7 @@ async function validateTaskContent(siteId: number, contentId?: number | null) {
 }
 export async function createCmsEditorialTask(input: z.output<typeof createCmsEditorialTaskSchema>) {
   await assertSiteAccess(input.siteId); await validateTaskContent(input.siteId, input.contentId);
-  if (input.ownerId) await requireTenantUser(input.ownerId, '事项负责人不存在或已停用', { enabledOnly: true });
+  if (input.ownerId) await requireCmsOperationsAssignee(input.ownerId, '事项负责人不存在或已停用');
   let sourceKey: string | null = null;
   if (input.source === 'search') {
     if (!await hasPermission('cms:stat:view')) throw new HTTPException(403, { message: '没有查看搜索反馈的权限' });
@@ -72,8 +72,8 @@ export async function createCmsEditorialTask(input: z.output<typeof createCmsEdi
 export async function updateCmsEditorialTask(id: number, input: z.output<typeof updateCmsEditorialTaskSchema>) {
   const current = await getCmsEditorialTask(id);
   await validateTaskContent(current.siteId, input.contentId);
-  if (input.ownerId) await requireTenantUser(input.ownerId, '事项负责人不存在或已停用', { enabledOnly: true });
-  if (input.status === 'done' && current.source !== 'manual' && !(input.contentId === undefined ? current.contentId : input.contentId)) throw new HTTPException(400, { message: '请先关联处理该反馈的稿件，再完成编辑事项' });
+  if (input.ownerId) await requireCmsOperationsAssignee(input.ownerId, '事项负责人不存在或已停用');
+  if ((input.status ?? current.status) === 'done' && current.source !== 'manual' && !(input.contentId === undefined ? current.contentId : input.contentId)) throw new HTTPException(400, { message: '请先关联处理该反馈的稿件，再完成编辑事项' });
   const { expectedVersion, dueAt, ...patch } = input;
   const [row] = await db.update(cmsEditorialTasks).set({ ...patch, ...(dueAt !== undefined ? { dueAt: dueAt ? parseDateTimeInput(dueAt) : null } : {}), version: sql`${cmsEditorialTasks.version} + 1` }).where(and(eq(cmsEditorialTasks.id, id), eq(cmsEditorialTasks.version, expectedVersion))).returning({ id: cmsEditorialTasks.id });
   if (!row) throw new HTTPException(409, { message: '编辑事项已被更新，请刷新后重试' });

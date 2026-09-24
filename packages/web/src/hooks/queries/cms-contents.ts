@@ -6,12 +6,14 @@ import { api, contractKey, createResourceQueries, useApiMutation, useApiQuery } 
 import { invalidateCmsPublishingViews } from './cms-stage3';
 import { invalidateCmsDashboardStats } from './cms-stats';
 import { invalidateEntityRelations } from '@/lib/entity-relation-cache';
+import { invalidateCmsOperationsContentViews } from './cms-operations';
 
 export type CmsContentListParams = NonNullable<QueryOf<typeof cmsContentContract.list>>;
 
 const resource = createResourceQueries(cmsContentContract, {
   // 保存会留档一个新版本并追加操作日志；新建草稿改变看板 totals.draft。列表 / 详情由工厂失效
   onSaved: (qc, saved) => {
+    invalidateCmsOperationsContentViews(qc);
     void invalidateEntityRelations(qc);
     void qc.invalidateQueries({ queryKey: cmsContentKeys.versionList(saved.id) });
     void qc.invalidateQueries({ queryKey: cmsContentKeys.opLogs(saved.id) });
@@ -97,6 +99,7 @@ export function useCmsContentApprovalDetail(contentId: number | undefined, insta
  * 栏目树（树不含内容计数）、站点 / 主题元数据与标签下拉源。
  */
 export function invalidateAfterCmsContentChange(qc: QueryClient, ids?: readonly number[]) {
+  invalidateCmsOperationsContentViews(qc);
   void invalidateEntityRelations(qc);
   void qc.invalidateQueries({ queryKey: contractKey(cmsEditorialContract.metrics) });
   void qc.invalidateQueries({ queryKey: contractKey(cmsEditorialContract.quality) });
@@ -130,7 +133,7 @@ export function useCmsLinkTarget(siteId: number | undefined, link: string | null
   });
 }
 
-export type CmsContentAction = 'submit' | 'publish' | 'offline' | 'reject';
+export type CmsContentAction = 'submit' | 'publish' | 'offline' | 'reject' | 'preparePublication';
 
 /**
  * 状态流转：submit / publish / offline / reject（驳回必须携带原因）。
@@ -145,7 +148,7 @@ export function useCmsContentAction() {
         : api(cmsContentContract[action], { params: { id }, body: { expectedVersion } }),
     onSuccess: (_output, { id, action }) => {
       invalidateAfterCmsContentChange(qc, [id]);
-      if (action === 'submit' || action === 'publish') {
+      if (action === 'submit' || action === 'publish' || action === 'preparePublication') {
         void qc.invalidateQueries({ queryKey: cmsContentKeys.versionList(id) });
         void qc.invalidateQueries({ queryKey: cmsContentKeys.versionDiffs });
       }

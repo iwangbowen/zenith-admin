@@ -13,6 +13,7 @@ export const updateCmsFeedbackSchema = z.object({
   dueAt: dateTimeStringSchema.nullable().optional(), note: z.string().trim().max(5000).optional(),
 }).refine((value) => value.status !== undefined || value.ownerId !== undefined || value.dueAt !== undefined || Boolean(value.note), '请填写办理意见或修改办理信息');
 export const submitCmsFeedbackWorkflowSchema = z.object({ expectedVersion: z.int().positive(), note: z.string().trim().min(1).max(5000) });
+export const previewCmsFeedbackWorkflowSchema = z.object({ note: z.string().trim().max(5000).optional() });
 export const saveCmsFormHandlingPolicySchema = z.object({
   expectedVersion: z.int().min(0), workflowDefinitionId: z.int().positive().nullable(), defaultOwnerId: z.int().positive().nullable(),
 });

@@ -32,6 +32,7 @@ import { deleteAction, ListSearchToolbar } from '@/components/list-page';
 import ModalFooter from '@/components/ModalFooter';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 import { useListPage } from '@/hooks/useListPage';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
 import CmsPageBlockFields from './CmsPageBlockFields';
 
 /** 区块按栏目标识引用栏目：value 用 code，站点复制/重建后配置无需重配 */
@@ -103,8 +104,10 @@ export default function PagesPage() {
   // 但「详情到达必须重挂载表单」这条契约同样适用，故 key 直接复用 formRemountKey。
   const [builderVisible, setBuilderVisible] = useState(false);
   const [editingPage, setEditingPage] = useState<CmsPage | null>(null);
+  const [linkedPageId, setLinkedPageId] = useState<number>();
+  useListDeepLink(['page'], (picked) => { const id = Number(picked.page); if (Number.isSafeInteger(id) && id > 0) setLinkedPageId(id); });
   const [blocks, setBlocks] = useState<CmsPageBlock[]>([]);
-  const detailQuery = useCmsPageDetail(editingPage?.id);
+  const detailQuery = useCmsPageDetail(linkedPageId ?? editingPage?.id);
   const editablePage = detailQuery.data ?? editingPage;
   // useEditModal 例外：搭建器工作区表单（理由见上方注释），key 用 formRemountKey 跟随详情重挂载
   const baseFormApi = useRef<FormApi | null>(null);
@@ -126,6 +129,11 @@ export default function PagesPage() {
   const widgetOptionsQuery = usePublishedCmsWidgets(siteId, builderVisible);
   const widgetRenderersQuery = useCmsWidgetRenderers(siteId, 'manual-list', builderVisible);
   const canEditPage = hasPermission('cms:page:update');
+
+  useEffect(() => {
+    if (!linkedPageId || detailQuery.data?.id !== linkedPageId) return;
+    setSiteId(detailQuery.data.siteId); setEditingPage(detailQuery.data); setBuilderVisible(true); setLinkedPageId(undefined);
+  }, [linkedPageId, detailQuery.data]);
 
   useEffect(() => {
     if (builderVisible) setBlocks(editablePage?.blocks ?? []);

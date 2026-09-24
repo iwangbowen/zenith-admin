@@ -525,6 +525,19 @@ export const SEED_WORKFLOW_DEFINITIONS: SeedWorkflowDefinition[] = [
   },
 ];
 
+// 新来信可按表单策略选择此流程；历史办理记录保留收件时的定义引用。
+SEED_WORKFLOW_DEFINITIONS.push({
+  id: 4, name: 'CMS 来信办理审批', description: '读者反馈由办理人填写结果后提交，审批通过后完成办理。',
+  initiatorScopeType: 'all',
+  flowData: buildLinearFlow([{ key: 'approve_feedback', name: '办理结果复核', props: { assigneeType: 'user', assigneeIds: [1], sameInitiatorStrategy: 'selfApprove', emptyStrategy: 'reject', signaturePolicy: 'none' } }],
+    { ...TEMPLATE_SETTINGS, allowResubmit: false, notifyInitiator: true, summaryFields: ['siteName', 'feedbackTitle', 'resolution'] }),
+  formType: 'external', customForm: { createComponent: '', viewComponent: 'cms/feedback/CmsFeedbackApprovalView', icon: 'MailCheck', variables: [
+    { key: 'siteName', label: '所属站点', type: 'string' }, { key: 'formName', label: '表单名称', type: 'string' },
+    { key: 'feedbackTitle', label: '来信标题', type: 'string' }, { key: 'ownerId', label: '办理人', type: 'number' },
+    { key: 'feedbackVersion', label: '办理版本', type: 'number' }, { key: 'resolution', label: '办理结果', type: 'string' },
+  ] }, status: 'published', version: 1, tenantId: null,
+});
+
 // ─── 工作流分类 ─────────────────────────────────────────────────────────────────
 
 export const SEED_WORKFLOW_CATEGORIES: WorkflowCategory[] = [

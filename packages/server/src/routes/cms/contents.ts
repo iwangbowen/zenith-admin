@@ -37,6 +37,7 @@ import { ensureCmsSiteExists, assertSiteAccess } from '../../services/cms/cms-si
 import { mountCrud } from '../_crud';
 import { previewCmsContentWorkflow, getCmsContentWorkflowContext } from '../../services/cms/cms-workflow.service';
 import { getCmsContentForApproval } from '../../services/cms/cms-contents-query.service';
+import { approveCmsContentForRelease } from '../../services/cms/cms-contents-write.service';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
 
@@ -89,7 +90,7 @@ const publishRoute = defineContractRoute(cmsContentContract.publish, {
     const { id } = c.req.valid('param');
     setAuditBeforeData(c, { ...await getCmsContent(id), body: undefined });
     const row = await publishCmsContent(id, { expectedVersion: c.req.valid('json').expectedVersion });
-    return c.json(okBody(row, '发布成功'), 200);
+    return c.json(okBody(row, '已申请发布，请在发布中心查看生效结果'), 200);
   },
 });
 
@@ -287,6 +288,7 @@ mountCrud(router, cmsContentContract,
     describeLinkRoute,
     updateRouteDef,
     submitRoute,
+    defineContractRoute(cmsContentContract.preparePublication, { handler: async (c) => c.json(okBody(await approveCmsContentForRelease(c.req.valid('param').id, c.req.valid('json').expectedVersion), '已批准，待加入发布单'), 200) }),
     publishRoute,
     rejectRoute,
     offlineRoute,

@@ -18,6 +18,8 @@ const kindOf = (table: string): CmsReleaseChange['kind'] => CONFIGURATION_KINDS[
 const hrefOf = (kind: CmsReleaseChange['kind'], siteId: number, id: number) => {
   if (kind === 'content') return `/cms/contents/edit?id=${id}&siteId=${siteId}`;
   if (kind === 'channel') return `/cms/channels?site=${siteId}&channel=${id}`;
+  if (kind === 'widget') return `/cms/widgets/edit?id=${id}&siteId=${siteId}`;
+  if (kind === 'page') return `/cms/pages?siteId=${siteId}&page=${id}`;
   const pages = { site: 'sites', page: 'pages', widget: 'widgets', resource: 'resources', navigation: 'sites' };
   return `/cms/${pages[kind]}?siteId=${siteId}`;
 };
@@ -40,7 +42,7 @@ export async function getCmsReleaseReview(id: number): Promise<CmsReleaseReview>
     const report: CmsReleaseReview = { releaseId: id, fingerprint: cmsReleaseInputFingerprint(release), baseGenerationId: release.baseGenerationId,
       currentGenerationId: detail.activeGenerationId, comparisonGenerationId, stale: !historical && detail.activeGenerationId !== release.baseGenerationId,
       changes: [], checks: [], affectedPaths: [], wholeSiteAffected: false, tasks: [] };
-    for (const message of detail.blockingChecks) report.checks.push({ severity: release.status === 'draft' && message.includes('尚未成功构建') ? 'warning' : 'error', code: 'release', message, objectTitle: release.name, editPath: null });
+    for (const message of detail.blockingChecks) if (!historical || !message.includes('公开代次已变化')) report.checks.push({ severity: release.status === 'draft' && message.includes('尚未成功构建') ? 'warning' : 'error', code: 'release', message, objectTitle: release.name, editPath: null });
     const channels = comparisonGenerationId
       ? await tx.execute<{ id: number; path: string; detailPathRule: typeof cmsChannels.$inferSelect.detailPathRule }>(sql.raw(`SELECT id,path,detail_path_rule AS "detailPathRule" FROM "${cmsGenerationSchemaName(comparisonGenerationId)}".cms_channels`))
       : await tx.select({ id: cmsChannels.id, path: cmsChannels.path, detailPathRule: cmsChannels.detailPathRule }).from(cmsChannels).where(eq(cmsChannels.siteId, release.siteId));
@@ -55,9 +57,10 @@ export async function getCmsReleaseReview(id: number): Promise<CmsReleaseReview>
       const after = item.revisionId ? (await loadCmsRevision(tx, item.revisionId)).snapshot : null;
       const fields = cmsReleaseFieldDiffs(before, after);
       const [oldContent] = comparisonGenerationId ? await tx.execute<{ publishedAt: string | null }>(sql`SELECT published_at AS "publishedAt" FROM ${sql.raw(`"${cmsGenerationSchemaName(comparisonGenerationId)}".cms_contents`)} WHERE id=${item.contentId}`) : [];
+      const [candidateContent] = release.deploymentId && detail.deployment?.manifestHash ? await tx.execute<{ publishedAt: string | null }>(sql`SELECT published_at AS "publishedAt" FROM ${sql.raw(`"${cmsGenerationSchemaName(release.deploymentId)}".cms_contents`)} WHERE id=${item.contentId}`) : [];
       const paths = [before, after].flatMap((snapshot, index) => {
         const channel = snapshot ? (index === 0 ? beforeChannels : afterChannels).get(snapshot.channelId) : undefined;
-        const publishedAt = index === 0 ? oldContent?.publishedAt ? new Date(oldContent.publishedAt) : null : release.activateAt ?? new Date();
+        const publishedAt = index === 0 ? oldContent?.publishedAt ? new Date(oldContent.publishedAt) : null : candidateContent?.publishedAt ? new Date(candidateContent.publishedAt) : release.activateAt ?? new Date();
         return snapshot && channel ? [contentUrl('', channel, { id: item.contentId, slug: snapshot.slug ?? null, staticPath: snapshot.staticPath ?? null, publishedAt, createdAt: dates.get(item.contentId) ?? null }), channelUrl('', channel.path, 1)] : [];
       });
       if (fields.length) report.changes.push({ kind: 'content', id: item.contentId, title: item.title,
@@ -78,7 +81,8 @@ export async function getCmsReleaseReview(id: number): Promise<CmsReleaseReview>
       if (!incoming) continue;
       const scopeRows = (rows: Record<string, unknown>[]) => rows
         .filter((row) => table === 'cms_sites' ? Number(row.id) === release.siteId : table === 'cms_site_inheritances' ? Number(row.site_id) === release.siteId : true)
-        .map((row) => table !== 'cms_sites' ? row : { ...row, settings: Object.fromEntries(CMS_PUBLIC_SITE_SETTINGS.flatMap((key) => {
+        .map((row) => table === 'cms_widgets' ? { id: row.id, code: row.code, name: row.published_name, items: row.published_data, status: row.status, default_renderer_key: row.default_renderer_key }
+          : table !== 'cms_sites' ? row : { ...row, settings: Object.fromEntries(CMS_PUBLIC_SITE_SETTINGS.flatMap((key) => {
           const value = (row.settings as Record<string, unknown> | null)?.[key];
           return value == null ? [] : [[key, value]];
         })) });

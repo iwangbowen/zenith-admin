@@ -1,7 +1,7 @@
 import { Banner, Button, Collapsible, Empty, Space, Tag, Typography } from '@douyinfe/semi-ui';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CMS_RELEASE_CHANGE_LABELS, CMS_RELEASE_CHANGE_OPERATIONS } from '@zenith/shared/cms';
+import { CMS_RELEASE_CHANGE_LABELS, CMS_RELEASE_CHANGE_OPERATIONS, cmsReleaseFieldLabel } from '@zenith/shared/cms';
 import { ASYNC_TASK_STATUS_LABELS } from '@zenith/shared/tasks';
 import { useCmsReleaseReview, useRecreateCmsRelease } from '@/hooks/queries/cms-workbench';
 import { usePermission } from '@/hooks/usePermission';
@@ -30,7 +30,7 @@ export default function CmsReleaseReviewPanel({ releaseId, onRecreated, onPrevie
           <Button theme="borderless" onClick={() => setExpanded(expanded === key ? undefined : key)}>{change.title} · {change.fields.length} 个字段</Button>
           <Button size="small" theme="borderless" onClick={() => navigate(change.editPath)}>打开编辑对象</Button>
         </Space>
-        <Collapsible isOpen={expanded === key}>{change.fields.map((field) => <div key={field.path} style={{ marginTop: 12 }}><Typography.Text strong>{field.path}</Typography.Text><CmsValueDiff before={field.before} after={field.after} html={field.path === 'body'} beforeLabel="线上值" afterLabel="本次变更" /></div>)}</Collapsible>
+        <Collapsible isOpen={expanded === key}>{change.fields.map((field) => <div key={field.path} style={{ marginTop: 12 }}><Typography.Text strong>{cmsReleaseFieldLabel(field.path)}</Typography.Text><CmsValueDiff before={field.before} after={field.after} html={field.path === 'body' || field.path === 'page_content'} beforeLabel="比较版本" afterLabel="本次变更" /></div>)}</Collapsible>
       </div>;
     })}
     <Typography.Title heading={6}>检查与影响范围</Typography.Title>

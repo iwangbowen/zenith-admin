@@ -10,7 +10,7 @@ import { useState } from 'react';
 export default function CmsSiteWorkspace({ siteId, onEdit }: Readonly<{ siteId?: number; onEdit?: () => void }>) {
   const navigate = useNavigate();
   const { hasPermission } = usePermission();
-  const site = useCmsSiteDetail(siteId);
+  const site = useCmsSiteDetail(hasPermission('cms:site:list') ? siteId : undefined);
   const channels = useCmsChannelTree(hasPermission('cms:channel:list') ? siteId : undefined);
   const pages = useCmsPageList({ siteId: hasPermission('cms:page:list') ? siteId : undefined, page: 1, pageSize: 100 });
   const [preview, setPreview] = useState(false);
@@ -28,7 +28,7 @@ export default function CmsSiteWorkspace({ siteId, onEdit }: Readonly<{ siteId?:
     {site.isError ? <Banner type="danger" description={site.error.message} /> : null}
     <Space wrap style={{ marginBottom: 12 }}>
       {([['channels', '栏目与导航', 'cms:channel:list'], ['contents', '内容', 'cms:content:list'], ['resources', '素材', 'cms:resource:list'], ['pages', '页面与首页', 'cms:page:list'], ['widgets', '页面部件', 'cms:widget:list'], ['models', '内容模型', 'cms:model:list'], ['forms', '表单', 'cms:form:list'], ['publishing', '发布记录', 'cms:publish:view']] as const).filter(([, , permission]) => hasPermission(permission as Permission)).map(([path, label]) => <Button key={path} onClick={() => navigate(`/cms/${path}?site=${siteId}&siteId=${siteId}`)}>{label}</Button>)}
-      {onEdit && hasPermission('cms:site:update') ? <Button onClick={onEdit}>主题与站点设置</Button> : null}
+      {hasPermission('cms:site:update') ? <Button onClick={() => onEdit ? onEdit() : navigate(`/cms/sites?siteId=${siteId}`)}>主题与站点设置</Button> : null}
       {hasPermission('cms:publish:view') ? <Button onClick={() => setPreview(true)}>组合预览站点工作稿</Button> : null}
     </Space>
     <Space wrap style={{ marginBottom: 12 }}>{checks.filter((item) => hasPermission(item.permission as Permission)).map((item) => <Button key={item.name} theme="borderless" onClick={() => item.to === 'sites' && onEdit ? onEdit() : navigate(`/cms/${item.to}?siteId=${siteId}`)}><Tag color={item.done ? 'green' : 'orange'}>{item.done ? '已配置' : '待完善'}</Tag> {item.name}</Button>)}</Space>

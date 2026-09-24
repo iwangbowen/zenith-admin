@@ -1,7 +1,7 @@
 /** 访问统计（P4）：PV/UV 趋势、内容 TOP、来源/设备/通道分布 + 搜索分析（无结果词榜） */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Space, Spin, Typography, Empty, Tabs, TabPane, RadioGroup, Radio, Tag } from '@douyinfe/semi-ui';
+import { Card, Space, Spin, Typography, Empty, Tabs, TabPane, RadioGroup, Radio, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -12,6 +12,11 @@ import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { DataBar } from '@/components/data-viz/DataBar';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
+import { usePermission } from '@/hooks/usePermission';
+import { useCreateCmsEditorialTask } from '@/hooks/queries/cms-operations';
+import { createOperationColumn } from '@/components/ResponsiveTableActions';
+import { useCmsTaskEditor } from './CmsEditorialTasks';
+import CmsAttributionPanel from './CmsAttributionPanel';
 const DEVICE_LABELS: Record<string, string> = { pc: 'PC', mobile: '移动端', bot: '爬虫' };
 
 /** 双指标趋势柱状（PV 主柱 + UV 覆盖柱，纯 CSS 与 Dashboard 同风格） */
@@ -110,6 +115,9 @@ function VisitsTab({ siteId, days }: { siteId: number | undefined; days: number 
 }
 
 function SearchTab({ siteId, days }: { siteId: number | undefined; days: number }) {
+  const { hasPermission } = usePermission();
+  const createTask = useCreateCmsEditorialTask();
+  const editor = useCmsTaskEditor(siteId);
   const query = useCmsSearchAnalytics(siteId, days);
   const data = query.data;
   const maxTrend = Math.max(1, ...(data?.trend ?? []).map((t) => t.count));
@@ -122,6 +130,7 @@ function SearchTab({ siteId, days }: { siteId: number | undefined; days: number 
   const noResultColumns: ColumnProps<CmsSearchAnalytics['noResultKeywords'][number]>[] = [
     { title: '关键词', dataIndex: 'keyword', render: (v: string) => <span>{v} <Tag size="small" color="orange">无结果</Tag></span> },
     { title: '搜索次数', dataIndex: 'count', width: 100, align: 'right' },
+    createOperationColumn<CmsSearchAnalytics['noResultKeywords'][number]>({ width: 130, desktopInlineKeys: ['task'], actions: (row) => hasPermission('cms:editorial-task:manage') && siteId ? [{ key: 'task', label: '转为编辑事项', disabled: createTask.isPending, onClick: async () => { const task = await createTask.mutateAsync({ body: { siteId, title: `补充内容：${row.keyword}`, description: `读者搜索“${row.keyword}”未找到结果。`, source: 'search', sourceKeyword: row.keyword } }); Toast.success('已打开对应编辑事项'); editor.openEdit(task); } }] : [] }),
   ];
 
   return (
@@ -150,12 +159,13 @@ function SearchTab({ siteId, days }: { siteId: number | undefined; days: number 
           <ConfigurableTable columnSettingsKey="cms-stats-no-result-keywords" columns={noResultColumns} dataSource={data?.noResultKeywords ?? []} rowKey="keyword" size="small" pagination={false} empty="暂无无结果搜索" onRefresh={() => void query.refetch()} refreshLoading={query.isFetching} />
         </Card>
       </div>
+      {editor.editor}
     </Spin>
   );
 }
 
 export default function StatsPage() {
-  const [activeTab, setActiveTab] = useUrlTabState(['visits', 'search'] as const, 'visits');
+  const [activeTab, setActiveTab] = useUrlTabState(['visits', 'search', 'attribution'] as const, 'visits');
   const [siteId, setSiteId] = useState<number | undefined>(undefined);
   const [days, setDays] = useState(30);
 
@@ -172,6 +182,7 @@ export default function StatsPage() {
       <Tabs collapsible="auto" type="line" lazyRender activeKey={activeTab} onChange={(k) => setActiveTab(k as typeof activeTab)}>
         <TabPane tab="访问统计" itemKey="visits"><VisitsTab siteId={siteId} days={days} /></TabPane>
         <TabPane tab="搜索分析" itemKey="search"><SearchTab siteId={siteId} days={days} /></TabPane>
+        <TabPane tab="内容转化归因" itemKey="attribution"><CmsAttributionPanel siteId={siteId} days={days} /></TabPane>
       </Tabs>
     </div>
   );

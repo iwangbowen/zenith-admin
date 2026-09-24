@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type * as z from 'zod';
-import { submitCmsFeedbackWorkflowSchema } from '@zenith/shared/cms';
+import { previewCmsFeedbackWorkflowSchema, submitCmsFeedbackWorkflowSchema } from '@zenith/shared/cms';
 import { WORKFLOW_ACTIVE_INSTANCE_STATUSES, type WorkflowInstance } from '@zenith/shared/workflow';
 import { db } from '../../db';
 import { cmsFeedbackCases, workflowInstances, type CmsFeedbackCaseRow } from '../../db/schema';
@@ -13,19 +13,19 @@ import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 import { appendCmsFeedbackHistory, assertCmsFeedbackEditable, assertCmsFeedbackVersion, CMS_FEEDBACK_BIZ_TYPE, getCmsFeedbackDetail, requireCmsFeedbackCase, validateCmsFeedbackWorkflowDefinition } from './cms-feedback.service';
 
 const variables = (row: CmsFeedbackCaseRow, siteName: string) => ({ feedbackTitle: row.title, formName: row.formName, siteName, ownerId: row.ownerId, feedbackVersion: row.workflowSubjectVersion, resolution: row.resolution });
-export async function previewCmsFeedbackWorkflow(id: number) {
+export async function previewCmsFeedbackWorkflow(id: number, input: z.output<typeof previewCmsFeedbackWorkflowSchema>) {
   const row = await requireCmsFeedbackCase(db, id); await assertSiteAccess(row.siteId);
   if (!row.workflowDefinitionId) return { definition: null, nodes: [] };
   await validateCmsFeedbackWorkflowDefinition(row.workflowDefinitionId);
   const site = await ensureCmsSiteExists(row.siteId);
-  return previewBusinessWorkflow(row.workflowDefinitionId, variables(row, site.name));
+  return previewBusinessWorkflow(row.workflowDefinitionId, { ...variables(row, site.name), resolution: input.note ?? row.resolution, feedbackVersion: row.version + 1 });
 }
 export async function getCmsFeedbackWorkflowContext(id: number, instanceId?: number) {
   const row = await requireCmsFeedbackCase(db, id); await assertSiteAccess(row.siteId);
   const current = row.status === 'resolved' || WORKFLOW_ACTIVE_INSTANCE_STATUSES.some((status) => status === row.workflowStatus) ? row.workflowInstanceId ?? 'latest' : null;
   return getBusinessWorkflowContext(CMS_FEEDBACK_BIZ_TYPE, String(id), current, instanceId);
 }
-async function applyFeedbackWorkflowResult(instance: WorkflowInstance, status: 'created' | 'approved' | 'rejected' | 'withdrawn') {
+async function applyFeedbackWorkflowResult(instance: Pick<WorkflowInstance, 'id' | 'bizId' | 'formData' | 'status'>, status: 'created' | 'approved' | 'rejected' | 'withdrawn' | 'cancelled') {
   const id = Number(instance.bizId);
   await db.transaction(async (tx) => {
     const row = await requireCmsFeedbackCase(tx, id, true);
@@ -35,7 +35,7 @@ async function applyFeedbackWorkflowResult(instance: WorkflowInstance, status: '
     if (status === 'created' && row.workflowInstanceId === instance.id) return;
     if (status !== 'created' && row.workflowStatus === status && (status !== 'approved' || row.status === 'resolved')) return;
     const [updated] = await tx.update(cmsFeedbackCases).set({ workflowInstanceId: instance.id, workflowStatus: status === 'created' ? instance.status : status,
-      ...(status === 'approved' || (status === 'created' && instance.status === 'approved') ? { status: 'resolved' as const } : status === 'rejected' || status === 'withdrawn' ? { status: 'processing' as const } : {}), version: row.version + 1,
+      ...(status === 'approved' || (status === 'created' && instance.status === 'approved') ? { status: 'resolved' as const } : status === 'rejected' || status === 'withdrawn' || status === 'cancelled' ? { status: 'processing' as const } : {}), version: row.version + 1,
     }).where(eq(cmsFeedbackCases.id, id)).returning();
     await appendCmsFeedbackHistory(tx, updated, `workflow:${status}`, null, { id: null, name: '工作流' });
   });
@@ -77,6 +77,13 @@ export async function submitCmsFeedbackWorkflow(id: number, input: z.output<type
     throw error;
   }
   return getCmsFeedbackDetail(id);
+}
+export async function reconcileCmsFeedbackWorkflow(id: number) {
+  const row = await requireCmsFeedbackCase(db, id);
+  if (!row.workflowInstanceId) return;
+  const [instance] = await db.select({ id: workflowInstances.id, bizId: workflowInstances.bizId, formData: workflowInstances.formData, status: workflowInstances.status }).from(workflowInstances)
+    .where(and(eq(workflowInstances.id, row.workflowInstanceId), eq(workflowInstances.bizType, CMS_FEEDBACK_BIZ_TYPE), eq(workflowInstances.bizId, String(id)))).limit(1);
+  if (instance && (instance.status === 'approved' || instance.status === 'rejected' || instance.status === 'withdrawn' || instance.status === 'cancelled')) await applyFeedbackWorkflowResult(instance, instance.status);
 }
 export function registerCmsFeedbackWorkflowSubscribers() {
   onWorkflowResult(CMS_FEEDBACK_BIZ_TYPE, { onCreated: (instance) => applyFeedbackWorkflowResult(instance, 'created'), onApproved: (instance) => applyFeedbackWorkflowResult(instance, 'approved'), onRejected: (instance) => applyFeedbackWorkflowResult(instance, 'rejected'), onWithdrawn: (instance) => applyFeedbackWorkflowResult(instance, 'withdrawn') });

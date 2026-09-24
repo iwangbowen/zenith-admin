@@ -1,6 +1,6 @@
 import { FormPasswordInput } from '@/components/PasswordInput';
 import { useState } from 'react';
-import { ArrayField, Button, Col, Form, Row, SideSheet, Tag, Typography } from '@douyinfe/semi-ui';
+import { ArrayField, Button, Col, Form, Row, SideSheet, Tag, Typography, Tabs, TabPane } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Plus, Trash2 } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -24,6 +24,8 @@ import { abortSubmit } from '@/lib/abort-submit';
 import { deleteAction, listTableProps } from '@/components/list-page';
 import { FormStatusRadioGroup } from '@/components/FormStatusRadioGroup';
 import { EditFormSheet } from '@/components/EditFormModal';
+import { useUrlSelectionParams } from '@/hooks/useUrlSelectionState';
+import CmsFeedbackList, { useCmsHandlingPolicyEditor } from './CmsFeedbackList';
 
 const FIELD_TYPE_OPTIONS = CMS_FORM_FIELD_TYPES.map((t) => ({ value: t, label: CMS_FORM_FIELD_TYPE_LABELS[t] }));
 
@@ -83,11 +85,15 @@ function SubmissionsSheet({ form, onClose }: Readonly<{ form: CmsForm | null; on
 export default function FormsPage() {
   const { hasPermission } = usePermission();
   const [siteId, setSiteId] = useState<number | undefined>(undefined);
+  const [selection, setSelection] = useUrlSelectionParams(['site', 'feedback']);
+  const selectedSiteId = selection.site ? Number(selection.site) : siteId;
+  const [activeTab, setActiveTab] = useState(selection.feedback ? 'feedback' : 'forms');
+  const policyEditor = useCmsHandlingPolicyEditor();
   const { page, pageSize, setPage, buildPagination } = usePagination();
   const [viewingForm, setViewingForm] = useState<CmsForm | null>(null);
   const [previewingForm, setPreviewingForm] = useState<CmsForm | null>(null);
 
-  const listQuery = useCmsFormList({ page, pageSize, siteId: siteId ?? 0 }, siteId !== undefined);
+  const listQuery = useCmsFormList({ page, pageSize, siteId: selectedSiteId ?? 0 }, selectedSiteId !== undefined);
   const saveMutation = useSaveCmsForm();
   const modal = useEditModal<CmsForm, Partial<CmsForm> & { clearTurnstileSecret?: boolean; fields?: Array<Record<string, unknown>> }, Record<string, unknown>>({
     entityName: '表单',
@@ -99,8 +105,8 @@ export default function FormsPage() {
       status: record.status, fields: record.fields.map((f) => ({ ...f, optionsText: (f.options ?? []).map((option) => `${option.label}=${option.value}`).join('\n') })),
     }),
     beforeSave: (values, { isEdit }) => {
-      if (!isEdit && !siteId) abortSubmit('validation');
-      const payload: Record<string, unknown> = { ...values, ...(!isEdit ? { siteId } : {}) };
+      if (!isEdit && !selectedSiteId) abortSubmit('validation');
+      const payload: Record<string, unknown> = { ...values, ...(!isEdit ? { siteId: selectedSiteId } : {}) };
       payload.turnstileSecret = values.clearTurnstileSecret === true ? null : (values.turnstileSecret ?? '');
       delete payload.clearTurnstileSecret;
       payload.fields = ((values.fields as Array<Record<string, unknown>> | undefined) ?? []).map((field) => {
@@ -143,6 +149,7 @@ export default function FormsPage() {
         { key: 'preview', label: '预览', onClick: () => setPreviewingForm(record) },
         ...(canManage ? [
           { key: 'edit', label: '编辑', onClick: () => modal.openEdit(record) },
+          { key: 'handling', label: '办理策略', onClick: () => policyEditor.open(record.id) },
           // eslint-disable-next-line no-restricted-syntax -- 嵌套组件 / 复合操作列，保留 createOperationColumn
           deleteAction({
             title: '确定要删除该表单吗？',
@@ -157,14 +164,19 @@ export default function FormsPage() {
   return (
     <div className="page-container">
       <SearchToolbar>
-        <CmsSiteSelect value={siteId} onChange={(v) => { setSiteId(v); setPage(1); }} width={200} />
-        {canManage ? <CreateButton onClick={modal.openCreate}>新增表单</CreateButton> : null}
+        <CmsSiteSelect value={selectedSiteId} onChange={(v) => { setSiteId(v); setSelection({ site: v ? String(v) : null, feedback: null }); setPage(1); }} width={200} />
+        {canManage && activeTab === 'forms' ? <CreateButton onClick={modal.openCreate}>新增表单</CreateButton> : null}
       </SearchToolbar>
-
+      <Tabs collapsible="auto" activeKey={selection.feedback ? 'feedback' : activeTab} onChange={(value) => { setActiveTab(value); if (value !== 'feedback') setSelection((previous) => ({ ...previous, feedback: null })); }}>
+      <TabPane tab="表单配置" itemKey="forms">
       <ConfigurableTable<CmsForm>
         columns={columns}
         {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无表单；将表单标识填入单页栏目 settings.formCode 即可在前台展示' })}
       />
+      </TabPane>
+      <TabPane tab="读者反馈办理" itemKey="feedback"><CmsFeedbackList siteId={selectedSiteId} selectedId={selection.feedback ? Number(selection.feedback) : undefined} onSelect={(id) => setSelection({ site: selectedSiteId ? String(selectedSiteId) : null, feedback: id ? String(id) : null })} /></TabPane>
+      </Tabs>
+      {policyEditor.editor}
 
       <EditFormSheet modal={modal} width={860}>
         <Form.Section text="基础信息">

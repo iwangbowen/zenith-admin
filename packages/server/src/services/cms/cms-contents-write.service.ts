@@ -368,6 +368,11 @@ export async function publishCmsContent(id: number, options?: PublishCmsContentO
   return getCmsContent(id, { skipAccessCheck: options?.skipAccessCheck });
 }
 
+export async function approveCmsContentForRelease(id: number, expectedVersion: number) {
+  await prepareCmsContentPublication(id, { expectedVersion });
+  return getCmsContent(id);
+}
+
 export async function rejectCmsContent(id: number, reason: string, options?: { fromWorkflow?: boolean; skipAccessCheck?: boolean; expectedVersion?: number; revisionId?: number }) {
   const identity = options?.skipAccessCheck ? await ensureCmsContentExists(id) : await requireCmsContentAccess(id);
   assertCmsContentUnlocked(identity);

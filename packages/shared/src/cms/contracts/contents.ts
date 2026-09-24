@@ -334,6 +334,7 @@ export const cmsContentContract = defineContract('/api/cms/contents', {
   update: op.put('/{id}', { access: { permission: 'cms:content:update' }, audit: '更新 CMS 内容', params: idParam, body: updateCmsContentSchema, response: cmsContentSchema, summary: '更新内容' }),
   submit: op.post('/{id}/submit', { access: { permission: 'cms:content:update' }, audit: '提交 CMS 内容审核', params: idParam, body: cmsContentCasSchema, response: cmsContentSchema, summary: '提交审核' }),
   publish: op.post('/{id}/publish', { access: { permission: 'cms:content:publish' }, audit: '发布 CMS 内容', params: idParam, body: cmsContentCasSchema, response: cmsContentSchema, summary: '发布（直接发布或审核通过）' }),
+  preparePublication: op.post('/{id}/prepare-publication', { access: { permission: 'cms:content:publish' }, audit: '批准 CMS 内容待发布稿', params: idParam, body: cmsContentCasSchema, response: cmsContentSchema, summary: '冻结并批准修订，供组合发布单选择' }),
   reject: op.post('/{id}/reject', { access: { permission: 'cms:content:audit' }, audit: '驳回 CMS 内容', params: idParam, body: rejectCmsContentSchema, response: cmsContentSchema, summary: '驳回' }),
   offline: op.post('/{id}/offline', { access: { permission: 'cms:content:publish' }, audit: '下线 CMS 内容', params: idParam, body: cmsContentCasSchema, response: cmsContentSchema, summary: '下线' }),
   recycle: op.post('/recycle', { access: { permission: 'cms:content:delete' }, audit: 'CMS 内容移入回收站', body: cmsContentBatchCasSchema, summary: '移入回收站（批量）' }),

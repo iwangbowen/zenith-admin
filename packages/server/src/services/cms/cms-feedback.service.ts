@@ -20,6 +20,21 @@ import { assertSiteAccess } from './cms-sites.service';
 export const CMS_FEEDBACK_BIZ_TYPE = 'cms_feedback';
 export const CMS_FEEDBACK_VIEW_COMPONENT = 'cms/feedback/CmsFeedbackApprovalView';
 
+export async function listCmsOperationsAssignees() {
+  return db.select({ id: users.id, name: users.nickname }).from(users).where(and(isNull(users.tenantId), eq(users.status, 'enabled'))).orderBy(users.nickname);
+}
+export async function requireCmsOperationsAssignee(id: number, message: string) {
+  await requireTenantUser(id, message, { enabledOnly: true });
+  // CMS 站点是平台资源，平台管理员的跨租户视角也不能将负责人指定为租户账号。
+  const [user] = await db.select({ id: users.id }).from(users).where(and(eq(users.id, id), isNull(users.tenantId))).limit(1);
+  requireRow(user, message, 400);
+}
+export async function listCmsHandlingWorkflows() {
+  const definitions = await db.select({ id: workflowDefinitions.id, name: workflowDefinitions.name, customForm: workflowDefinitions.customForm }).from(workflowDefinitions)
+    .where(and(isNull(workflowDefinitions.tenantId), eq(workflowDefinitions.status, 'published'), eq(workflowDefinitions.formType, 'external'))).orderBy(workflowDefinitions.name);
+  return definitions.filter((definition) => definition.customForm?.viewComponent === CMS_FEEDBACK_VIEW_COMPONENT).map(({ id, name }) => ({ id, name }));
+}
+
 export async function requireCmsFeedbackCase(executor: DbExecutor, id: number, lock = false) {
   const query = executor.select().from(cmsFeedbackCases).where(eq(cmsFeedbackCases.id, id)).limit(1);
   const [row] = await (lock ? query.for('update') : query);
@@ -63,11 +78,17 @@ export async function listCmsFeedback(q: QueryOutputOf<typeof cmsOperationsContr
   });
 }
 export async function getCmsFeedbackDetail(id: number, options?: { approvalInstanceId?: number }) {
-  const row = await requireCmsFeedbackCase(db, id);
+  let row = await requireCmsFeedbackCase(db, id);
   if (options?.approvalInstanceId) {
     const { requireBusinessApprovalInstance } = await import('../workflow/workflow-business-context.service');
     await requireBusinessApprovalInstance(options.approvalInstanceId, CMS_FEEDBACK_BIZ_TYPE, String(id));
   } else await assertSiteAccess(row.siteId);
+  // 管理员取消流程不会发出业务结果事件，按关联实例对账后解除办理锁。
+  if (row.workflowInstanceId && row.workflowStatus && WORKFLOW_ACTIVE_INSTANCE_STATUSES.some((status) => status === row.workflowStatus)) {
+    const { reconcileCmsFeedbackWorkflow } = await import('./cms-feedback-workflow.service');
+    await reconcileCmsFeedbackWorkflow(id);
+    row = await requireCmsFeedbackCase(db, id);
+  }
   const [[submission], [owner], history] = await Promise.all([
     db.select({ data: cmsFormSubmissions.data }).from(cmsFormSubmissions).where(and(eq(cmsFormSubmissions.id, row.submissionId), eq(cmsFormSubmissions.formId, row.formId))).limit(1),
     row.ownerId ? db.select({ name: users.nickname }).from(users).where(eq(users.id, row.ownerId)).limit(1) : Promise.resolve([]),
@@ -77,7 +98,7 @@ export async function getCmsFeedbackDetail(id: number, options?: { approvalInsta
 }
 export async function handleCmsFeedback(id: number, input: z.output<typeof updateCmsFeedbackSchema>) {
   const original = await requireCmsFeedbackCase(db, id); await assertSiteAccess(original.siteId);
-  if (input.ownerId) await requireTenantUser(input.ownerId, '办理负责人不存在或已停用', { enabledOnly: true });
+  if (input.ownerId) await requireCmsOperationsAssignee(input.ownerId, '办理负责人不存在或已停用');
   await db.transaction(async (tx) => {
     const row = await requireCmsFeedbackCase(tx, id, true); assertCmsFeedbackVersion(row, input.expectedVersion); assertCmsFeedbackEditable(row);
     const status = input.status ?? row.status;
@@ -88,7 +109,7 @@ export async function handleCmsFeedback(id: number, input: z.output<typeof updat
       ...(input.ownerId !== undefined ? { ownerId: input.ownerId } : {}), ...(input.dueAt !== undefined ? { dueAt: input.dueAt ? parseDateTimeInput(input.dueAt) : null } : {}),
       ...(status === 'resolved' || status === 'closed' ? { resolution: input.note ?? row.resolution } : {}),
     }).where(and(eq(cmsFeedbackCases.id, id), eq(cmsFeedbackCases.version, input.expectedVersion))).returning();
-    await appendCmsFeedbackHistory(tx, requireRow(updated, '办理记录已变化', 409), status !== row.status ? `status:${status}` : input.ownerId !== undefined ? 'assigned' : 'note', input.note);
+    await appendCmsFeedbackHistory(tx, requireRow(updated, '办理记录已变化', 409), status !== row.status ? `status:${status}` : input.ownerId !== undefined && input.ownerId !== row.ownerId ? 'assigned' : input.dueAt !== undefined && (input.dueAt ? parseDateTimeInput(input.dueAt)?.getTime() : null) !== (row.dueAt?.getTime() ?? null) ? 'deadline' : 'note', input.note);
   });
   return getCmsFeedbackDetail(id);
 }
@@ -106,7 +127,7 @@ export async function validateCmsFeedbackWorkflowDefinition(id: number, executor
 }
 export async function saveCmsFormHandlingPolicy(formId: number, input: z.output<typeof saveCmsFormHandlingPolicySchema>) {
   await requireForm(formId);
-  if (input.defaultOwnerId) await requireTenantUser(input.defaultOwnerId, '默认负责人不存在或已停用', { enabledOnly: true });
+  if (input.defaultOwnerId) await requireCmsOperationsAssignee(input.defaultOwnerId, '默认负责人不存在或已停用');
   if (input.workflowDefinitionId) await validateCmsFeedbackWorkflowDefinition(input.workflowDefinitionId);
   await db.transaction(async (tx) => {
     await tx.select({ id: cmsForms.id }).from(cmsForms).where(eq(cmsForms.id, formId)).for('update');
