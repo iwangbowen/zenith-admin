@@ -55,14 +55,14 @@ function AttachmentSection({ items }: { items: CmsContentAttachment[] }) {
   );
 }
 
-/** 附件体积展示（KB/MB 保留一位小数） */
-function ContentItemRow({ item }: { item: CmsContentItem }) {
+/** 列表条目；首页栏目首条强调图文，其余条目紧凑展示。 */
+function ContentItemRow({ item, homeVariant }: { item: CmsContentItem; homeVariant?: 'featured' | 'compact' }) {
   const cover = item.coverThumb ?? item.coverImage;
   const badge = typeBadgeText(item);
   return (
-    <div className="content-item">
-      {cover ? <img className="thumb" src={cover} alt={item.title} loading="lazy" /> : null}
-      <div>
+    <div className={homeVariant ? `content-item home-content-${homeVariant}` : 'content-item'}>
+      {cover && homeVariant !== 'compact' ? <img className="thumb" src={cover} alt={item.title} loading="lazy" /> : null}
+      <div className={homeVariant ? 'home-content-text' : undefined}>
         <h3>
           {item.isTop ? <span className="badge">置顶</span> : null}
           {item.isHot ? <span className="badge hot">热门</span> : null}
@@ -75,12 +75,14 @@ function ContentItemRow({ item }: { item: CmsContentItem }) {
             {item.title}{item.isExternal ? ' ↗' : ''}
           </a>
         </h3>
-        {item.summary ? <div className="summary">{item.summary}</div> : null}
+        {item.summary && homeVariant !== 'compact' ? <div className="summary">{item.summary}</div> : null}
         <div className="meta">
-          {item.author ? <span>{item.author}</span> : null}
-          {item.source ? <span>来源：{item.source}</span> : null}
-          {item.publishedAt ? <time>{item.publishedAt}</time> : null}
-          <span>{item.viewCount} 阅读</span>
+          {homeVariant ? <PublishedDate value={item.publishedAt} /> : <>
+            {item.author ? <span>{item.author}</span> : null}
+            {item.source ? <span>来源：{item.source}</span> : null}
+            {item.publishedAt ? <time>{item.publishedAt}</time> : null}
+            <span>{item.viewCount} 阅读</span>
+          </>}
         </div>
       </div>
     </div>
@@ -210,13 +212,14 @@ function IndexBody({ ctx, channelBlocks }: { ctx: CmsHomeContext; channelBlocks:
   const bannerImage = typeof ctx.site.themeConfig.bannerImage === 'string' ? ctx.site.themeConfig.bannerImage : null;
   const bannerLink = typeof ctx.site.themeConfig.bannerLink === 'string' ? ctx.site.themeConfig.bannerLink : null;
   const showHot = ctx.site.themeConfig.showHotSection !== false;
+  const hasSidebar = Boolean(ctx.homeSidebar || ctx.recommended.length || (showHot && ctx.hot.length));
   return (
     <Layout ctx={ctx} currentUrl={`${ctx.baseUrl}/`}>
       {bannerImage ? (
         <div className="home-banner">
           {bannerLink
-            ? <a href={bannerLink} target="_blank" rel="noopener noreferrer"><img src={bannerImage} alt="banner" /></a>
-            : <img src={bannerImage} alt="banner" />}
+            ? <a href={bannerLink} target="_blank" rel="noopener noreferrer"><img src={bannerImage} alt={`${ctx.site.name}首页横幅`} /></a>
+            : <img src={bannerImage} alt={`${ctx.site.name}首页横幅`} />}
         </div>
       ) : (
         <div className="home-hero">
@@ -225,21 +228,24 @@ function IndexBody({ ctx, channelBlocks }: { ctx: CmsHomeContext; channelBlocks:
         </div>
       )}
       <AdSlot ctx={ctx} code="home-ad" />
-      <div className="home-grid">
-        <section>
+      <div className={`home-grid${channelBlocks.length ? ' home-grid-channels' : ''}${hasSidebar ? '' : ' home-grid-full'}`}>
+        <div className="home-main">
           {channelBlocks.length > 0 ? (
-            channelBlocks.map((block) => (
-              <section className="home-channel-block" key={block.channel!.code}>
-                <h2 className="section-title">
-                  <a href={block.channel!.url}>{block.channel!.name}</a>
-                </h2>
+            <div className="home-channel-grid">{channelBlocks.map((block, blockIndex) => (
+              <section className="home-channel-block" key={`${block.channel!.code}-${blockIndex}`} aria-labelledby={`home-channel-${block.channel!.id}-${blockIndex}`}>
+                <div className="home-channel-heading">
+                  <h2 className="section-title" id={`home-channel-${block.channel!.id}-${blockIndex}`}>
+                    <a href={block.channel!.url}>{block.channel!.name}</a>
+                  </h2>
+                  <a className="home-channel-more" href={block.channel!.url} aria-label={`查看更多${block.channel!.name}`}>查看更多 <span aria-hidden="true">→</span></a>
+                </div>
                 <div className="content-list">
                   {block.list.length === 0
                     ? <div className="empty">暂无内容</div>
-                    : block.list.map((item) => <ContentItemRow key={item.id} item={item} />)}
+                    : block.list.map((item, index) => <ContentItemRow key={item.id} item={item} homeVariant={index === 0 ? 'featured' : 'compact'} />)}
                 </div>
               </section>
-            ))
+            ))}</div>
           ) : (
             <>
               <h2 className="section-title">最新发布</h2>
@@ -248,8 +254,8 @@ function IndexBody({ ctx, channelBlocks }: { ctx: CmsHomeContext; channelBlocks:
               </div>
             </>
           )}
-        </section>
-        <aside>
+        </div>
+        {hasSidebar ? <aside className="home-sidebar" aria-label="延伸阅读">
           {ctx.homeSidebar ? <div dangerouslySetInnerHTML={{ __html: renderCmsWidgetHtml(ctx.homeSidebar) }} /> : null}
           {ctx.recommended.length > 0 ? (
             <div className="side-card">
@@ -271,7 +277,7 @@ function IndexBody({ ctx, channelBlocks }: { ctx: CmsHomeContext; channelBlocks:
               </ul>
             </div>
           ) : null}
-        </aside>
+        </aside> : null}
       </div>
     </Layout>
   );

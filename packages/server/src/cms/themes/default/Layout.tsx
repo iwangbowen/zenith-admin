@@ -4,9 +4,9 @@ import { SeoHead, ThemeFooterLinks } from '../_shared';
 
 function NavLinks({ items, currentUrl }: { items: CmsNavItem[]; currentUrl?: string }) {
   return (
-    <nav className="site-nav">
+    <nav className="site-nav" aria-label="栏目导航">
       {items.map((item) => (
-        <a key={item.id} href={item.url} target={item.target} className={currentUrl && currentUrl === item.url ? 'active' : undefined}>
+        <a key={item.id} href={item.url} target={item.target} aria-current={currentUrl === item.url ? 'page' : undefined} className={currentUrl && currentUrl === item.url ? 'active' : undefined}>
           {item.name}
         </a>
       ))}
@@ -87,7 +87,7 @@ export function Layout({ ctx, currentUrl, children }: LayoutProps) {
                 </nav>
               ) : null}
               <form className="site-search" action={ctx.searchUrl} method="get">
-                <input type="search" name="q" placeholder="站内搜索…" />
+                <input type="search" name="q" aria-label="站内搜索" placeholder="站内搜索…" />
                 <button type="submit">搜索</button>
               </form>
               {ctx.assets.darkMode !== 'light' ? (
