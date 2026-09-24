@@ -4,6 +4,7 @@ import { mock, MockHttpError } from '../utils/contract';
 import { requireItem } from '../utils/crud';
 import { badRequest, conflict, nextIdFrom } from '../utils/handlers';
 import { mockDateTime } from '../utils/date';
+import { matchesFilter } from '../utils/filter';
 import { mockCmsContents, mockCmsForms, mockCmsSites } from '../data/cms';
 import { mockUsers } from '../data/users';
 import { mockWorkflowDefinitions } from '../data/workflow';
@@ -44,7 +45,7 @@ export const cmsOperationsHandlers = [
   mock(cmsOperationsContract.handlingWorkflows, ({ ok }) => ok(mockWorkflowDefinitions.filter((row) => row.status === 'published' && row.formType === 'external' && row.customForm?.viewComponent === 'cms/feedback/CmsFeedbackApprovalView').map(({ id, name }) => ({ id, name })))),
   mock(cmsOperationsContract.feedback, ({ query, ok, paginate }) => {
     syncMockCmsFeedbackSubmissions();
-    return ok(paginate(mockCmsFeedback.filter((row) => row.siteId === query.siteId && (!query.formId || row.formId === query.formId) && (!query.status || row.status === query.status) && (!query.ownerId || row.ownerId === query.ownerId) && (!query.keyword || row.title.includes(query.keyword))).sort((a, b) => b.id - a.id).map((row) => cmsFeedbackSchema.parse(feedback(row.id)))));
+    return ok(paginate(mockCmsFeedback.filter((row) => row.siteId === query.siteId && matchesFilter(row.formId, query.formId) && matchesFilter(row.status, query.status) && matchesFilter(row.ownerId, query.ownerId) && (!query.keyword || row.title.includes(query.keyword))).sort((a, b) => b.id - a.id).map((row) => cmsFeedbackSchema.parse(feedback(row.id)))));
   }),
   mock(cmsOperationsContract.feedbackDetail, ({ params, ok }) => ok(feedback(params.id))),
   mock(cmsOperationsContract.approvalDetail, ({ params, query, ok }) => { requireMockBusinessInstance('cms_feedback', params.id, query.instanceId); return ok(feedback(params.id)); }),
@@ -82,7 +83,7 @@ export const cmsOperationsHandlers = [
     row.workflowInstanceId = instance.id; row.workflowStatus = instance.status; if (instance.status === 'approved') row.status = 'resolved';
     appendMockCmsFeedbackHistory(row, 'workflow:submitted', body.note); return ok(row);
   }),
-  mock(cmsOperationsContract.tasks, ({ query, ok, paginate }) => ok(paginate(mockCmsEditorialTasks.filter((row) => row.siteId === query.siteId && (!query.status || row.status === query.status) && (!query.ownerId || row.ownerId === query.ownerId) && (!query.keyword || row.title.includes(query.keyword))).sort((a, b) => b.id - a.id).map(task)))),
+  mock(cmsOperationsContract.tasks, ({ query, ok, paginate }) => ok(paginate(mockCmsEditorialTasks.filter((row) => row.siteId === query.siteId && matchesFilter(row.status, query.status) && matchesFilter(row.ownerId, query.ownerId) && (!query.keyword || row.title.includes(query.keyword))).sort((a, b) => b.id - a.id).map(task)))),
   mock(cmsOperationsContract.taskDetail, ({ params, ok }) => ok(task(requireItem(mockCmsEditorialTasks, params.id, '事项不存在', { status: 404 })))),
   mock(cmsOperationsContract.createTask, ({ body, ok }) => {
     requireItem(mockCmsSites, body.siteId, '站点不存在', { status: 404 }); person(body.ownerId); taskContent(body.siteId, body.contentId);
@@ -105,12 +106,12 @@ export const cmsOperationsHandlers = [
     const noteIds = getMockCmsUnresolvedNoteContentIds();
     const items = (queue: typeof CMS_WORKSPACE_QUEUES[number]): CmsWorkspaceItem[] => queue === 'feedback' ? mockCmsFeedback.filter((row) => row.siteId === query.siteId && ['new', 'processing'].includes(row.status) && (!row.ownerId || row.ownerId === 1)).map((row) => ({ id: row.id, title: row.title, status: row.status, dueAt: row.dueAt, kind: 'feedback' as const, ownerName: ownerName(row.ownerId), href: `/cms/forms?site=${row.siteId}&feedback=${row.id}` }))
       : queue === 'tasks' ? mockCmsEditorialTasks.filter((row) => row.siteId === query.siteId && ['open', 'in_progress'].includes(row.status) && (!row.ownerId || row.ownerId === 1)).map((row) => ({ id: row.id, title: row.title, status: row.status, dueAt: row.dueAt, kind: 'task' as const, ownerName: ownerName(row.ownerId), href: `/cms/dashboard?site=${row.siteId}&task=${row.id}` }))
-      : contents.filter((row) => queue === 'mine' ? (row.ownerId ?? row.createdBy) === 1 : queue === 'review' ? row.editorialStatus === 'pending' : queue === 'overdue' ? !!row.dueAt && row.dueAt < mockDateTime() && row.editorialStatus !== 'clean' : queue === 'notes' ? noteIds.has(row.id) : row.editorialStatus !== 'clean').map((row) => ({ id: row.id, title: row.title, kind: 'content' as const, status: row.editorialStatus, ownerName: ownerName(row.ownerId), dueAt: row.dueAt, href: `/cms/contents/edit?id=${row.id}&site=${query.siteId}` }));
+      : contents.filter((row) => queue === 'mine' ? row.ownerId === 1 : queue === 'review' ? row.editorialStatus === 'pending' : queue === 'overdue' ? !!row.dueAt && row.dueAt < mockDateTime() && row.editorialStatus !== 'clean' : queue === 'notes' ? noteIds.has(row.id) : row.editorialStatus !== 'clean').map((row) => ({ id: row.id, title: row.title, kind: 'content' as const, status: row.editorialStatus, ownerName: ownerName(row.ownerId), dueAt: row.dueAt, href: `/cms/contents/edit?id=${row.id}&site=${query.siteId}` }));
     return ok({ ...paginate(items(query.queue ?? 'mine').filter((row) => !query.keyword || row.title.includes(query.keyword))), counters: CMS_WORKSPACE_QUEUES.map((queue) => ({ queue, count: items(queue).length, available: true })) });
   }),
   mock(cmsOperationsContract.attribution, ({ query, ok }) => {
     requireItem(mockCmsSites, query.siteId, '站点不存在', { status: 404 });
-    const reads = mockCmsAttributionReads.filter((row) => row.siteId === query.siteId && (!query.contentId || row.contentId === query.contentId) && !query.releaseId && !query.deploymentId && (!query.startTime || row.createdAt >= query.startTime) && (!query.endTime || row.createdAt <= query.endTime));
+    const reads = mockCmsAttributionReads.filter((row) => row.siteId === query.siteId && matchesFilter(row.contentId, query.contentId) && !query.releaseId && !query.deploymentId && (!query.startTime || row.createdAt >= query.startTime) && (!query.endTime || row.createdAt <= query.endTime));
     const count = reads.reduce((total, row) => total + row.count, 0);
     const visitors = reads.reduce((total, row) => total + row.visitors, 0);
     return ok({ totals: CMS_ATTRIBUTION_EVENTS.map((event) => ({ event, count: event === 'cms.read' || event === 'cms.entry' ? count : 0, visitors: event === 'cms.read' || event === 'cms.entry' ? visitors : 0 })),

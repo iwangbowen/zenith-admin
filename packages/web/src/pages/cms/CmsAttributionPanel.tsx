@@ -13,8 +13,8 @@ import { formatDateTimeForApi } from '@/utils/date';
 
 export default function CmsAttributionPanel({ siteId, days }: Readonly<{ siteId?: number; days: number }>) {
   const filters = useListSearch<{ contentId?: number; releaseId?: number; deploymentId?: number }>({ defaults: {}, listKey: contractKey(cmsOperationsContract.attribution), resetKey: `${siteId}:${days}` });
-  const query = useFilterQuery({ siteId: siteId ?? 0, ...filters.submittedParams, startTime: formatDateTimeForApi(dayjs().subtract(days - 1, 'day').startOf('day').toDate()), endTime: formatDateTimeForApi(dayjs().endOf('day').toDate()) });
-  const attribution = useCmsAttribution(query);
+  const query = useFilterQuery({ ...filters.submittedParams, startTime: formatDateTimeForApi(dayjs().subtract(days - 1, 'day').startOf('day').toDate()), endTime: formatDateTimeForApi(dayjs().endOf('day').toDate()) });
+  const attribution = useCmsAttribution({ siteId: siteId ?? 0, ...query });
   return <>
     <ListSearchToolbar onSearch={filters.handleSearch} onReset={filters.handleReset} filters={<><NumberFilter {...filters.bind('contentId')} placeholder="内容 ID" /><NumberFilter {...filters.bind('releaseId')} placeholder="发布版本 ID" /><NumberFilter {...filters.bind('deploymentId')} placeholder="部署 ID" /></>} />
     {attribution.isError ? <Banner type="danger" description={attribution.error.message} /> : null}

@@ -140,10 +140,11 @@ function splitArgs<Op extends AnyOperation>(op: Op, args: unknown[]): [InputOf<O
 
 /**
  * 契约操作的 query key：`[资源键, 操作名, input?]`。
- * 省略 input 得到该操作全部查询的公共前缀（供 `invalidateQueries` / `useListSearch({ listKey })` 使用）。
+ * 省略 input 得到该操作全部查询的公共前缀（供 `invalidateQueries` / `useListSearch({ listKey })` 使用）；
+ * 传部分输入（如只有 `params`）得到该输入子集的前缀，覆盖该输入下全部 query / body 变体。
  * 业务请求头不参与 key：它们不是资源身份的一部分。
  */
-export function contractKey<Op extends AnyOperation>(op: Op, input?: InputOf<Op>): readonly unknown[] {
+export function contractKey<Op extends AnyOperation>(op: Op, input?: Partial<InputOf<Op>>): readonly unknown[] {
   if (input === undefined) return [resourceKeyOf(op.basePath), op.name];
   const { headers: _headers, ...identity } = input as LooseInput & object;
   return [resourceKeyOf(op.basePath), op.name, identity];
