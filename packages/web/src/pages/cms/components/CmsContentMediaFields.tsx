@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Form, Radio, RadioGroup, Typography, useFormApi, useFormState, withField } from '@douyinfe/semi-ui';
+import { Col, Form, Radio, RadioGroup, Row, Typography, useFormApi, useFormState, withField } from '@douyinfe/semi-ui';
 import { useCmsResourceSelection } from '@/hooks/queries/cms-resources';
 import { usePermission } from '@/hooks/usePermission';
 import { CmsAssetField } from './CmsAssetField';
 import { cmsMediaDurationFromMetadata, isExternalCmsMediaUrl } from './cms-media';
+import './cms-assets.css';
 import type { CmsResource } from '@zenith/shared/cms';
 
 const FormAsset = withField(CmsAssetField);
@@ -24,34 +25,51 @@ export default function CmsContentMediaFields({ siteId, disabled, allowUpload, o
     const duration = cmsMediaDurationFromMetadata(seconds, loadedValue, form.getValue('mediaUrl'), form.getValue('mediaDuration'));
     if (duration && !disabled) form.setValue('mediaDuration', duration);
   };
-  return <Form.Slot noLabel>
-    <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>音视频</Typography.Text>
-    <Form.RadioGroup field="mediaType" label="媒体类型" disabled={disabled} onChange={() => { form.setValue('mediaUrl', ''); clearDuration(); }}>
-      <Form.Radio value="video">视频</Form.Radio><Form.Radio value="audio">音频</Form.Radio>
-    </Form.RadioGroup>
-    <Form.Slot label="媒体来源">
-      <RadioGroup type="button" value={sourceMode} disabled={disabled} onChange={(event) => {
-        setChosenMode(event.target.value as 'library' | 'external');
-        form.setValue('mediaUrl', '');
-        clearDuration();
-      }}><Radio value="library">本站素材</Radio><Radio value="external">外部地址</Radio></RadioGroup>
-    </Form.Slot>
-    {sourceMode === 'library' ? <FormAsset field="mediaUrl" label={type === 'audio' ? '音频素材' : '视频素材'} siteId={siteId} type={type}
-      disabled={disabled} allowUpload={allowUpload} onResourceChange={(selected) => {
-        if (!selected || selected.url !== (resource.data?.url ?? value)) clearDuration();
-        onResourceChange?.(selected);
-      }} onDuration={readDuration} /> : <>
-      <Form.Input field="mediaUrl" label="外部媒体地址" disabled={disabled} placeholder="https://example.com/media.mp4" showClear onChange={clearDuration}
-        rules={[{ validator: (_rule, next) => !next || isExternalCmsMediaUrl(String(next)), message: '请输入完整的 HTTP 或 HTTPS 媒体地址' }]} />
-      {isExternalCmsMediaUrl(value) ? <Form.Slot noLabel>
-        <div className="cms-asset-field__player">
-          {type === 'audio' ? <audio key={value} aria-label="外部音频预览" controls preload="metadata" src={value} onLoadedMetadata={(event) => readDuration(event.currentTarget.duration, value)} onError={() => setFailedPreview(value)} />
-            : <video key={value} aria-label="外部视频预览" controls preload="metadata" src={value} onLoadedMetadata={(event) => readDuration(event.currentTarget.duration, value)} onError={() => setFailedPreview(value)} />}
-        </div>
-        {failedPreview === value ? <Typography.Text type="warning" size="small">无法加载媒体预览，请确认地址能直接播放；时长可手动填写。</Typography.Text> : null}
-      </Form.Slot> : null}
-    </>}
-    <Form.Input field="mediaDuration" label="时长" disabled={disabled} placeholder="读取媒体后自动填写，也可输入 03:45" />
-    <FormAsset field="mediaPoster" label="媒体海报" siteId={siteId} type="image" disabled={disabled} allowUpload={allowUpload} onResourceChange={onResourceChange} placeholder="可选择或上传图片，留空时使用内容封面" />
-  </Form.Slot>;
+  // 两列紧凑排布：字段仍交给 Form 注册（校验/禁用不受影响），行间节奏沿用 .semi-form-field 自带间距。
+  // label 统一 96px（Form.Slot 不收 labelWidth，改用 label 对象的 width 覆盖）。
+  return <div className="cms-media-fields">
+    <Row gutter={16}>
+      <Col xs={24} lg={12}>
+        <Form.RadioGroup field="mediaType" label="媒体类型" labelPosition="left" labelWidth={96} disabled={disabled} onChange={() => { form.setValue('mediaUrl', ''); clearDuration(); }}>
+          <Form.Radio value="video">视频</Form.Radio><Form.Radio value="audio">音频</Form.Radio>
+        </Form.RadioGroup>
+      </Col>
+      <Col xs={24} lg={12}>
+        <Form.Slot label={{ text: '媒体来源', width: 96 }} labelPosition="left">
+          <RadioGroup type="button" value={sourceMode} disabled={disabled} onChange={(event) => {
+            setChosenMode(event.target.value as 'library' | 'external');
+            form.setValue('mediaUrl', '');
+            clearDuration();
+          }}><Radio value="library">本站素材</Radio><Radio value="external">外部地址</Radio></RadioGroup>
+        </Form.Slot>
+      </Col>
+    </Row>
+    <Row gutter={16}>
+      <Col xs={24} lg={12}>
+        {sourceMode === 'library' ? <FormAsset field="mediaUrl" label={type === 'audio' ? '音频素材' : '视频素材'} labelPosition="left" labelWidth={96} siteId={siteId} type={type}
+          disabled={disabled} allowUpload={allowUpload} onResourceChange={(selected) => {
+            if (!selected || selected.url !== (resource.data?.url ?? value)) clearDuration();
+            onResourceChange?.(selected);
+          }} onDuration={readDuration} /> : <Form.Input field="mediaUrl" label="外部媒体地址" labelPosition="left" labelWidth={96} disabled={disabled} placeholder="https://example.com/media.mp4" showClear onChange={clearDuration}
+            rules={[{ validator: (_rule, next) => !next || isExternalCmsMediaUrl(String(next)), message: '请输入完整的 HTTP 或 HTTPS 媒体地址' }]} />}
+      </Col>
+      <Col xs={24} lg={12}>
+        <Form.Input field="mediaDuration" label="时长" labelPosition="left" labelWidth={96} disabled={disabled} placeholder="读取媒体后自动填写，也可输入 03:45" />
+      </Col>
+    </Row>
+    <Row gutter={16}>
+      <Col xs={24} lg={12}>
+        <FormAsset field="mediaPoster" label="媒体海报" labelPosition="left" labelWidth={96} siteId={siteId} type="image" disabled={disabled} allowUpload={allowUpload} onResourceChange={onResourceChange} placeholder="可选择或上传图片，留空时使用内容封面" />
+      </Col>
+      <Col xs={24} lg={12}>
+        {isExternalCmsMediaUrl(value) ? <div className="cms-media-fields__preview">
+          <div className="cms-asset-field__player">
+            {type === 'audio' ? <audio key={value} aria-label="外部音频预览" controls preload="metadata" src={value} onLoadedMetadata={(event) => readDuration(event.currentTarget.duration, value)} onError={() => setFailedPreview(value)} />
+              : <video key={value} aria-label="外部视频预览" controls preload="metadata" src={value} onLoadedMetadata={(event) => readDuration(event.currentTarget.duration, value)} onError={() => setFailedPreview(value)} />}
+          </div>
+          {failedPreview === value ? <Typography.Text type="warning" size="small">无法加载媒体预览，请确认地址能直接播放；时长可手动填写。</Typography.Text> : null}
+        </div> : null}
+      </Col>
+    </Row>
+  </div>;
 }

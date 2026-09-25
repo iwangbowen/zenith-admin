@@ -47,22 +47,25 @@ export function CmsAssetField({ siteId, type, value, onChange, disabled = false,
   };
   const clear = () => { setPicked(null); onChange?.(''); onResourceChange?.(null); };
   return <div className="cms-asset-field">
-    {type === 'image' ? <ImageUploadField value={previewUrl} label={name} disabled={disabled || (!previewUrl && (!siteId || !canUpload))}
-      customUpload={async (file) => {
-        if (!siteId || !canUpload || disabled) throw new Error('当前无法上传本站素材');
-        const next = await upload.mutateAsync({ siteId, file });
-        if (next.type !== 'image') throw new Error('请选择图片文件');
-        const nextValue = `${CMS_RESOURCE_URI_PREFIX}${next.id}`;
-        setPicked({ value: nextValue, resource: next });
-        rememberSelection(next, type);
-        onResourceChange?.(next);
-        return nextValue;
-      }} onChange={(next) => next ? onChange?.(next) : clear()} /> : previewUrl ? <div className="cms-asset-field__player"><CmsResourcePreview resource={{ type: type ?? resource?.type ?? 'other', url: previewUrl, thumbUrl: null, name: resource?.name ?? name }} onDuration={(seconds) => onDuration?.(seconds, selectedValue)} /></div> : null}
-    <Space wrap>
-      <Button size="small" icon={<Images size={14} />} disabled={disabled || !siteId || !canRead} onClick={() => setVisible(true)}>选择{name}</Button>
-      {selectedValue && (type !== 'image' || !previewUrl) ? <Button size="small" theme="borderless" disabled={disabled} onClick={clear}>清除{name}</Button> : null}
-      {query.isFetching ? <Spin size="small" /> : null}
-    </Space>
+    {/* 预览/上传与操作按钮同一行（换行时自动折行），播放器独占整行 */}
+    <div className="cms-asset-field__row">
+      {type === 'image' ? <ImageUploadField value={previewUrl} label={name} disabled={disabled || (!previewUrl && (!siteId || !canUpload))}
+        customUpload={async (file) => {
+          if (!siteId || !canUpload || disabled) throw new Error('当前无法上传本站素材');
+          const next = await upload.mutateAsync({ siteId, file });
+          if (next.type !== 'image') throw new Error('请选择图片文件');
+          const nextValue = `${CMS_RESOURCE_URI_PREFIX}${next.id}`;
+          setPicked({ value: nextValue, resource: next });
+          rememberSelection(next, type);
+          onResourceChange?.(next);
+          return nextValue;
+        }} onChange={(next) => next ? onChange?.(next) : clear()} /> : previewUrl ? <div className="cms-asset-field__player"><CmsResourcePreview resource={{ type: type ?? resource?.type ?? 'other', url: previewUrl, thumbUrl: null, name: resource?.name ?? name }} onDuration={(seconds) => onDuration?.(seconds, selectedValue)} /></div> : null}
+      <Space wrap>
+        <Button size="small" icon={<Images size={14} />} disabled={disabled || !siteId || !canRead} onClick={() => setVisible(true)}>选择{name}</Button>
+        {selectedValue && (type !== 'image' || !previewUrl) ? <Button size="small" theme="borderless" disabled={disabled} onClick={clear}>清除{name}</Button> : null}
+        {query.isFetching ? <Spin size="small" /> : null}
+      </Space>
+    </div>
     {resource ? <Typography.Text size="small" ellipsis={{ showTooltip: true }}>{resource.name}</Typography.Text>
       : !siteId ? <Typography.Text type="tertiary" size="small">请先确定所属站点</Typography.Text>
       : !canRead && selectedValue ? <Typography.Text type="tertiary" size="small">没有查看素材详情的权限</Typography.Text>

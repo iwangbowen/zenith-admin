@@ -5,10 +5,35 @@
   min-width: 0;
 }
 
+/* 预览/上传与选择按钮同一行，放不下时折行；播放器独占整行 */
+.cms-asset-field__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cms-asset-field__player {
+  flex-basis: 100%;
+  min-width: 0;
+}
+
 .cms-asset-field__player audio,
 .cms-asset-field__player video {
   width: 100%;
   max-height: 280px;
+}
+
+/* 音视频字段两列排布容器：clip 掉 Row gutter 的负边距溢出 */
+.cms-media-fields {
+  overflow: hidden;
+}
+
+/* 外部媒体预览（与媒体海报同列），上下对齐 .semi-form-field 的行内节奏 */
+.cms-media-fields__preview {
+  padding-top: 12px;
+  padding-bottom: 12px;
 }
 
 .cms-resource-picker__toolbar {
