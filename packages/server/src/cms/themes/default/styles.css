@@ -120,7 +120,7 @@ section > .section-title:first-child, .home-grid .section-title:first-child { ma
 .breadcrumbs { font-size: 13px; color: var(--text-2); margin-bottom: 16px; }
 .breadcrumbs a { color: var(--text-2); }
 .breadcrumbs a:hover { color: var(--primary); }
-.page-title { font-size: 22px; font-weight: 700; margin-bottom: 16px; padding-left: 12px; border-left: 5px solid var(--primary); line-height: 1.4; }
+.page-title { font-size: 22px; font-weight: 700; margin-bottom: 16px; line-height: 1.4; }
 .pagination { display: flex; gap: 8px; justify-content: center; margin-top: 30px; flex-wrap: wrap; }
 .pagination a, .pagination span { min-width: 34px; text-align: center; padding: 6px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 14px; transition: all .15s ease; }
 .pagination a:hover { border-color: var(--primary); color: var(--primary); }
