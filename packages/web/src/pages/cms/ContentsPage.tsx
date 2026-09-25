@@ -472,10 +472,10 @@ export default function ContentsPage() {
       ),
     },
     createOperationColumn<CmsContentListItem>({
-      // 预览是列表里最高频的动作，置于行内第一位；编辑/提交审核并列行内，
-      // 发布、下线、查看审批等低频或危险动作收进更多菜单（width 按最宽内联组合重算）。
-      width: activeTab === 'recycle' || activeTab === 'archived' ? 210 : 260,
-      desktopInlineKeys: activeTab === 'recycle' ? ['restore', 'purge'] : activeTab === 'archived' ? ['preview', 'unarchive'] : ['preview', 'edit', 'submit'],
+      // 预览是列表里最高频的动作，置于行内第一位；编辑/发布并列行内，
+      // 提交审核、下线、查看审批等其余动作收进更多菜单（width 按最宽内联组合重算）。
+      width: activeTab === 'recycle' || activeTab === 'archived' ? 210 : 240,
+      desktopInlineKeys: activeTab === 'recycle' ? ['restore', 'purge'] : activeTab === 'archived' ? ['preview', 'unarchive'] : ['preview', 'edit', 'publish'],
       actions: (record) => {
         const contentActions = record.lockedAt
         ? [
