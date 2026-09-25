@@ -16,6 +16,7 @@ import { acquireCmsSitePublishLock } from './cms-site-publish-lock.service';
 import { invalidateCmsSiteCaches } from './cms-cache.service';
 import { applyCmsRevisionProjection, loadCmsPublishableRevision, markCmsRevisionPublished, requireCmsWorkingCopy } from './cms-content-revisions.service';
 import { buildSiteStatic } from './cms-static.service';
+import { cmsStaticBuildResumeAfterKey, reportCmsStaticBuildProgress } from './cms-release-build-plan';
 import { withCmsGenerationContext } from './cms-generation-context';
 import { cmsGenerationManifest, cmsGenerationSchemaName, collectCmsGenerationArtifacts, createCmsGenerationStorage, dropFailedCmsGenerationStorage, hashCmsDeploymentManifest, sealCmsGenerationStorage, verifyCmsGenerationArtifacts, withCmsGenerationTransaction } from './cms-generation-storage.service';
 import { ensureSiteThemeCssAsset, renderSitePath } from './cms-render.service';
@@ -419,13 +420,12 @@ export function registerCmsReleaseTaskHandler(): void {
             await rebuildSearchIndex({ siteId: release.siteId });
             const [site] = await tx.select().from(cmsSites).where(eq(cmsSites.id, release.siteId)).limit(1);
             await buildSiteStatic(release.siteId, async (progress) => {
-              await withoutDbExecutor(() => db.update(cmsDeployments).set({ buildPlan: sql`${cmsDeployments.buildPlan} || jsonb_build_object('lastCheckpoint', ${JSON.stringify(progress.checkpoint)})` }).where(eq(cmsDeployments.id, deploymentId)));
-              const result = await withoutDbExecutor(() => ctx.progress({ processed: progress.processed, total: progress.total, note: progress.note }));
+              const result = await reportCmsStaticBuildProgress(ctx, progress);
               const [currentRelease] = await withoutDbExecutor(() => db.select({ status: cmsReleases.status }).from(cmsReleases).where(eq(cmsReleases.id, releaseId)).limit(1));
               if (currentRelease?.status === 'cancelled') throw new Error('发布单已取消');
               if (result.cancelRequested) throw new Error('发布构建已取消');
               return false;
-            });
+            }, { resumeAfterKey: cmsStaticBuildResumeAfterKey(ctx.checkpoint) });
             const manifest = await cmsGenerationManifest(tx, deploymentId, [...revisionMap.values()]);
             manifest.snapshot.siteCode = site.code;
             manifest.snapshot.sitePublicRevision = site.publicRevision;

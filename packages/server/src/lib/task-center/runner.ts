@@ -7,7 +7,7 @@ import {
 } from '@zenith/shared/tasks';
 import type { SubjectRef } from '@zenith/shared/core';
 import { requireRow } from '../db-assert';
-import { db } from '../../db';
+import { db, withoutDbExecutor } from '../../db';
 import { asyncTaskItems, asyncTaskSubjects, asyncTasks, asyncTaskTypeConfigs, users } from '../../db/schema';
 import type { AsyncTaskRow } from '../../db/schema';
 import type { DbTransaction } from '../../db/types';
@@ -40,6 +40,30 @@ import { normalizeAuditSubjects } from '../audit-subject';
 import { isCanonicalEntityType } from '@zenith/shared/platform';
 import { recordDomainEvent } from '../../services/platform/relations/events.service';
 import { completeAsyncTasks } from './terminal-events';
+
+const TASK_HEARTBEAT_INTERVAL_MS = Math.floor(HEARTBEAT_STALE_MS / 3);
+
+/** Keep a running lease alive while async handler work is in flight, even between progress reports. */
+function startAsyncTaskHeartbeat(taskId: number, dispatchToken: string): () => void {
+  let inFlight = false;
+  const timer = setInterval(() => {
+    if (inFlight) return;
+    inFlight = true;
+    const heartbeat = withoutDbExecutor(() => db.update(asyncTasks)
+      .set({ heartbeatAt: new Date() })
+      .where(and(eq(asyncTasks.id, taskId), eq(asyncTasks.status, 'running'), eq(asyncTasks.dispatchToken, dispatchToken)))
+      .returning({ id: asyncTasks.id }));
+    void heartbeat.then(([row]) => {
+      if (!row) clearInterval(timer);
+    }).catch((err) => {
+      logger.warn('[task-center] 任务执行心跳更新失败', { taskId, err });
+    }).finally(() => {
+      inFlight = false;
+    });
+  }, TASK_HEARTBEAT_INTERVAL_MS);
+  timer.unref?.();
+  return () => clearInterval(timer);
+}
 
 export interface SubmitAsyncTaskInput {
   taskType: string;
@@ -347,6 +371,7 @@ export async function runAsyncTask(taskId: number, dispatchToken?: string): Prom
     },
   };
 
+  const stopHeartbeat = startAsyncTaskHeartbeat(claimed.id, claimed.dispatchToken);
   let creator: JwtPayload | null = null;
   try {
     creator = await getCreatorPayload(claimed);
@@ -424,6 +449,8 @@ export async function runAsyncTask(taskId: number, dispatchToken?: string): Prom
     const [failedRow] = await completeAsyncTasks({ status: 'failed', errorMessage: message, completedAt: new Date() }, ownedRun);
     if (failedRow) pushTaskProgress(failedRow, { force: true });
     throw err; // 让调度中心运行日志记为 failed（触发告警策略）
+  } finally {
+    stopHeartbeat();
   }
 }
 
