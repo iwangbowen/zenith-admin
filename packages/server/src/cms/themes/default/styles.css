@@ -107,8 +107,7 @@ section > .section-title:first-child, .home-grid .section-title:first-child { ma
 .home-channel-block .home-content-compact .meta:empty { display: none; }
 .side-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 0 16px 8px; margin-bottom: 20px; }
 .side-card .section-title { margin: 0 -16px 6px; padding: 12px 16px 10px; border-bottom: 1px solid var(--border); background: var(--bg-2); border-radius: var(--radius) var(--radius) 0 0; font-size: 16px; }
-.side-card .section-title::after { display: none; }
-.side-card .section-title::before { height: 16px; }
+.side-card .section-title::before, .side-card .section-title::after { display: none; }
 .side-list { counter-reset: rank; }
 .side-list li { list-style: none; padding: 9px 0; border-bottom: 1px dashed var(--border); font-size: 14px; display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
 .side-list li:last-child { border-bottom: none; }
