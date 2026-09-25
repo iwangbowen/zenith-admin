@@ -795,7 +795,8 @@ export default function ContentEditPage() {
           key={formEpoch}
           getFormApi={(api) => { formApi.current = api; }}
           allowEmpty
-          disabled={isReadOnly || saveMutation.isPending}
+          /* 保存期间不禁用表单：自动保存每 5s 触发，整表置灰/恢复会两栏同闪；保存中的并发输入由 editSequence 与 CAS 版本兜底 */
+          disabled={isReadOnly}
           initValues={initValues}
           onValueChange={(values) => {
             markDirty();
