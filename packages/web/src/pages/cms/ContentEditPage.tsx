@@ -835,30 +835,10 @@ export default function ContentEditPage() {
                 </>
               ) : null}
               {contentType === 'album' ? (
-                <Form.Slot label={`图集图片（${albumImages.length}）`}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {albumImages.map((img, i) => (
-                      <div key={`${img.url}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', padding: 8 }}>
-                        <img src={img.thumb ?? img.url} alt="" style={{ width: 72, height: 54, objectFit: 'cover', borderRadius: 'var(--semi-border-radius-small)', flexShrink: 0 }} />
-                        <Input
-                          placeholder="图片说明（可选）"
-                          value={img.caption ?? ''}
-                          disabled={isReadOnly}
-                          onChange={(v) => {
-                            setAlbumImages((list) => list.map((x, xi) => xi === i ? { ...x, caption: v || null } : x));
-                            markDirty();
-                          }}
-                          style={{ flex: 1 }}
-                        />
-                        <Button size="small" theme="borderless" disabled={isReadOnly || i === 0}
-                          onClick={() => { setAlbumImages((list) => { const next = [...list]; [next[i - 1], next[i]] = [next[i], next[i - 1]]; return next; }); markDirty(); }}>上移</Button>
-                        <Button size="small" theme="borderless" disabled={isReadOnly || i === albumImages.length - 1}
-                          onClick={() => { setAlbumImages((list) => { const next = [...list]; [next[i], next[i + 1]] = [next[i + 1], next[i]]; return next; }); markDirty(); }}>下移</Button>
-                        <Button size="small" theme="borderless" type="danger" disabled={isReadOnly}
-                          onClick={() => { setAlbumImages((list) => list.filter((_, xi) => xi !== i)); markDirty(); }}>删除</Button>
-                      </div>
-                    ))}
-                    <div style={{ display: 'flex', gap: 8 }}>
+                <Form.Slot noLabel>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <Typography.Text strong>图集图片（{albumImages.length}）</Typography.Text>
                       <Upload
                         action=""
                         accept="image/*"
@@ -880,10 +860,31 @@ export default function ContentEditPage() {
                           }
                         }}
                       >
-                        <Button icon={<ImageUp size={14} />}>上传图片</Button>
+                        <Button size="small" icon={<ImageUp size={14} />}>上传图片</Button>
                       </Upload>
-                      <Button icon={<Images size={14} />} disabled={isReadOnly || !hasPermission('cms:resource:list')} onClick={() => setAlbumPickerVisible(true)}>媒体库添加</Button>
+                      <Button size="small" icon={<Images size={14} />} disabled={isReadOnly || !hasPermission('cms:resource:list')} onClick={() => setAlbumPickerVisible(true)}>媒体库添加</Button>
                     </div>
+                    {albumImages.map((img, i) => (
+                      <div key={`${img.url}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', padding: 8 }}>
+                        <img src={img.thumb ?? img.url} alt="" style={{ width: 72, height: 54, objectFit: 'cover', borderRadius: 'var(--semi-border-radius-small)', flexShrink: 0 }} />
+                        <Input
+                          placeholder="图片说明（可选）"
+                          value={img.caption ?? ''}
+                          disabled={isReadOnly}
+                          onChange={(v) => {
+                            setAlbumImages((list) => list.map((x, xi) => xi === i ? { ...x, caption: v || null } : x));
+                            markDirty();
+                          }}
+                          style={{ flex: 1 }}
+                        />
+                        <Button size="small" theme="borderless" disabled={isReadOnly || i === 0}
+                          onClick={() => { setAlbumImages((list) => { const next = [...list]; [next[i - 1], next[i]] = [next[i], next[i - 1]]; return next; }); markDirty(); }}>上移</Button>
+                        <Button size="small" theme="borderless" disabled={isReadOnly || i === albumImages.length - 1}
+                          onClick={() => { setAlbumImages((list) => { const next = [...list]; [next[i], next[i + 1]] = [next[i + 1], next[i]]; return next; }); markDirty(); }}>下移</Button>
+                        <Button size="small" theme="borderless" type="danger" disabled={isReadOnly}
+                          onClick={() => { setAlbumImages((list) => list.filter((_, xi) => xi !== i)); markDirty(); }}>删除</Button>
+                      </div>
+                    ))}
                   </div>
                 </Form.Slot>
               ) : null}
@@ -904,8 +905,37 @@ export default function ContentEditPage() {
                 </Form.Slot>
               ) : null}
               {contentType !== 'link' ? (
-                <Form.Section text={`附件（${attachments.length}）`}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <Form.Slot noLabel>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Typography.Text strong>附件（{attachments.length}）</Typography.Text>
+                      <Upload
+                        action=""
+                        multiple
+                        limit={20}
+                        showUploadList={false}
+                        disabled={isReadOnly || !canUploadResources}
+                        customRequest={async ({ fileInstance, onSuccess, onError }) => {
+                          if (!siteId) { onError?.({ status: 0 }); return; }
+                          try {
+                            const uploaded = await uploadResourceMutation.mutateAsync({ siteId, file: fileInstance });
+                            setAttachments((list) => [...list, {
+                              name: fileInstance.name,
+                              url: uploaded.url ?? '',
+                              size: fileInstance.size ?? 0,
+                              ext: (fileInstance.name.split('.').pop() ?? '').toLowerCase(),
+                              sort: list.length,
+                            }]);
+                            markDirty();
+                            onSuccess?.({});
+                          } catch {
+                            onError?.({ status: 0 });
+                          }
+                        }}
+                      >
+                        <Button size="small" icon={<Paperclip size={14} />} loading={uploadResourceMutation.isPending} disabled={isReadOnly || !canUploadResources}>上传附件</Button>
+                      </Upload>
+                    </div>
                     {attachments.map((att, i) => (
                       <div key={`${att.url}-${i}`} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                         <Tag size="small">{att.ext ? att.ext.toUpperCase() : '文件'}</Tag>
@@ -931,39 +961,12 @@ export default function ContentEditPage() {
                           onClick={() => { setAttachments((l) => l.filter((_, xi) => xi !== i).map((x, xi) => ({ ...x, sort: xi }))); markDirty(); }}>删除</Button>
                       </div>
                     ))}
-                    <div>
-                      <Upload
-                        action=""
-                        multiple
-                        limit={20}
-                        showUploadList={false}
-                        disabled={isReadOnly || !canUploadResources}
-                        customRequest={async ({ fileInstance, onSuccess, onError }) => {
-                          if (!siteId) { onError?.({ status: 0 }); return; }
-                          try {
-                            const uploaded = await uploadResourceMutation.mutateAsync({ siteId, file: fileInstance });
-                            setAttachments((list) => [...list, {
-                              name: fileInstance.name,
-                              url: uploaded.url ?? '',
-                              size: fileInstance.size ?? 0,
-                              ext: (fileInstance.name.split('.').pop() ?? '').toLowerCase(),
-                              sort: list.length,
-                            }]);
-                            markDirty();
-                            onSuccess?.({});
-                          } catch {
-                            onError?.({ status: 0 });
-                          }
-                        }}
-                      >
-                        <Button icon={<Paperclip size={14} />} loading={uploadResourceMutation.isPending} disabled={isReadOnly || !canUploadResources}>上传附件</Button>
-                      </Upload>
-                    </div>
                   </div>
-                </Form.Section>
+                </Form.Slot>
               ) : null}
               {modelFields.length > 0 ? (
-                <Form.Section text={`模型字段（${currentModel?.name}）`}>
+                <Form.Slot noLabel>
+                  <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>模型字段（{currentModel?.name}）</Typography.Text>
                   <Row gutter={16}>
                     {modelFields.map((f) => (
                       <Col key={f.name} span={f.fieldType === 'textarea' || f.fieldType === 'richtext' ? 24 : 12}>
@@ -971,7 +974,7 @@ export default function ContentEditPage() {
                       </Col>
                     ))}
                   </Row>
-                </Form.Section>
+                </Form.Slot>
               ) : null}
             </div>}
             master={<div className="cms-content-edit__side">

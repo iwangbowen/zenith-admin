@@ -24,7 +24,8 @@ export default function CmsContentMediaFields({ siteId, disabled, allowUpload, o
     const duration = cmsMediaDurationFromMetadata(seconds, loadedValue, form.getValue('mediaUrl'), form.getValue('mediaDuration'));
     if (duration && !disabled) form.setValue('mediaDuration', duration);
   };
-  return <Form.Section text="音视频">
+  return <Form.Slot noLabel>
+    <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>音视频</Typography.Text>
     <Form.RadioGroup field="mediaType" label="媒体类型" disabled={disabled} onChange={() => { form.setValue('mediaUrl', ''); clearDuration(); }}>
       <Form.Radio value="video">视频</Form.Radio><Form.Radio value="audio">音频</Form.Radio>
     </Form.RadioGroup>
@@ -52,5 +53,5 @@ export default function CmsContentMediaFields({ siteId, disabled, allowUpload, o
     </>}
     <Form.Input field="mediaDuration" label="时长" disabled={disabled} placeholder="读取媒体后自动填写，也可输入 03:45" />
     <FormAsset field="mediaPoster" label="媒体海报" siteId={siteId} type="image" disabled={disabled} allowUpload={allowUpload} onResourceChange={onResourceChange} placeholder="可选择或上传图片，留空时使用内容封面" />
-  </Form.Section>;
+  </Form.Slot>;
 }
