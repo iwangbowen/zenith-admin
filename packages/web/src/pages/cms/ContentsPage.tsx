@@ -705,13 +705,10 @@ export default function ContentsPage() {
   const tableContent = (
     <>
       <Space wrap spacing={8} style={{ margin: '8px 0' }}>
-        <Button size="small" onClick={() => applySearch({ ...DEFAULT_FILTERS, ownerId: user?.id, editorialStatus: 'draft' })}>我的工作稿</Button>
-        <Button size="small" onClick={() => applySearch({ ...DEFAULT_FILTERS, editorialStatus: 'rejected' })}>已驳回</Button>
-        <Button size="small" onClick={() => applySearch({ ...DEFAULT_FILTERS, hasUnpublishedChanges: true })}>未发布修改</Button>
         <Select showClear value={selectedView} placeholder="我的保存视图" style={{ width: 180 }} optionList={savedViews.map((view) => ({ value: view.name, label: view.name }))} onChange={(name) => { setSelectedView(name == null ? undefined : String(name)); const view = savedViews.find((item) => item.name === name); if (view) { setChannelId(view.channelId); setContentType(view.contentType); setActiveTab(view.tab ?? 'all'); applySearch({ ...view.filters, timeRange: view.filters.timeRange ? [new Date(String(view.filters.timeRange[0])), new Date(String(view.filters.timeRange[1]))] : null }); } }} />
-        <Button size="small" onClick={saveView}>保存视图</Button>
-        {selectedView ? <Button size="small" type="danger" theme="borderless" onClick={() => { const next = savedViews.filter((view) => view.name !== selectedView); localStorage.setItem(viewStorageKey, JSON.stringify(next)); setSavedViews(next); setSelectedView(undefined); }}>移除视图</Button> : null}
-        <Button size="small" onClick={() => void copyTextWithToast(`${window.location.origin}${window.location.pathname}?view=${encodeURIComponent(JSON.stringify({ ...submittedParams, siteId, channelId, contentType, tab: activeTab }))}`)}>分享视图</Button>
+        <Button onClick={saveView}>保存视图</Button>
+        {selectedView ? <Button type="danger" theme="borderless" onClick={() => { const next = savedViews.filter((view) => view.name !== selectedView); localStorage.setItem(viewStorageKey, JSON.stringify(next)); setSavedViews(next); setSelectedView(undefined); }}>移除视图</Button> : null}
+        <Button onClick={() => void copyTextWithToast(`${window.location.origin}${window.location.pathname}?view=${encodeURIComponent(JSON.stringify({ ...submittedParams, siteId, channelId, contentType, tab: activeTab }))}`)}>分享视图</Button>
       </Space>
       <ListSearchToolbar
         keyword={<KeywordInput placeholder="搜索标题/作者..." {...bindKeyword('keyword')} />}
