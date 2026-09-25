@@ -325,7 +325,7 @@ export default function SitesPage() {
 
       <SiteBlueprintSheet visible={blueprintOpen} onClose={() => setBlueprintOpen(false)} onCreated={setWorkspaceSiteId} />
       <SideSheet title="站点工作区" visible={!!workspaceSiteId} onCancel={() => setWorkspaceSiteId(undefined)} width={880}>
-        <CmsSiteWorkspace siteId={workspaceSiteId} onEdit={() => { if (workspaceSite.data) openEdit(workspaceSite.data); }} />
+        <CmsSiteWorkspace siteId={workspaceSiteId} bare onEdit={() => { if (workspaceSite.data) openEdit(workspaceSite.data); }} />
       </SideSheet>
       <SiteEditSheet open={editSheetOpen} site={editingSite} onClose={closeEditSheet} />
       <SiteUsersModal site={usersSite} onClose={() => setUsersSite(null)} />

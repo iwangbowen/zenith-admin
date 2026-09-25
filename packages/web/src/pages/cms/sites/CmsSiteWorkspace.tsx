@@ -7,7 +7,7 @@ import CmsConfigurationNotice from '../CmsConfigurationNotice';
 import CmsWorkbenchPreview from '../CmsWorkbenchPreview';
 import { useState } from 'react';
 
-export default function CmsSiteWorkspace({ siteId, onEdit }: Readonly<{ siteId?: number; onEdit?: () => void }>) {
+export default function CmsSiteWorkspace({ siteId, onEdit, bare }: Readonly<{ siteId?: number; onEdit?: () => void; bare?: boolean }>) {
   const navigate = useNavigate();
   const { hasPermission } = usePermission();
   const site = useCmsSiteDetail(hasPermission('cms:site:list') ? siteId : undefined);
@@ -24,7 +24,9 @@ export default function CmsSiteWorkspace({ siteId, onEdit }: Readonly<{ siteId?:
     { name: '内容栏目', done: (channels.data?.length ?? 0) > 0, to: 'channels', permission: 'cms:channel:list' },
     { name: '首页编排', done: !!takeover || (Array.isArray(sections) && sections.length > 0), to: takeover ? 'pages' : 'sites', permission: 'cms:site:list' },
   ];
-  return <Card title={`${data?.name ?? '当前站点'} · 建站工作区`} style={{ marginBottom: 16 }}>
+  const title = `${data?.name ?? '当前站点'} · 建站工作区`;
+  const body = (
+    <>
     {site.isError ? <Banner type="danger" description={site.error.message} /> : null}
     <Space wrap style={{ marginBottom: 12 }}>
       {([['channels', '栏目与导航', 'cms:channel:list'], ['contents', '内容', 'cms:content:list'], ['resources', '素材', 'cms:resource:list'], ['pages', '页面与首页', 'cms:page:list'], ['widgets', '页面部件', 'cms:widget:list'], ['models', '内容模型', 'cms:model:list'], ['forms', '表单', 'cms:form:list'], ['publishing', '发布记录', 'cms:publish:view']] as const).filter(([, , permission]) => hasPermission(permission as Permission)).map(([path, label]) => <Button key={path} onClick={() => navigate(`/cms/${path}?site=${siteId}&siteId=${siteId}`)}>{label}</Button>)}
@@ -35,5 +37,16 @@ export default function CmsSiteWorkspace({ siteId, onEdit }: Readonly<{ siteId?:
     {takeover ? <Typography.Paragraph type="secondary">首页由搭建页「{takeover.name}」接管，可进入页面与首页调整区块。主题首页编排在取消接管后生效。</Typography.Paragraph> : null}
     <CmsConfigurationNotice siteId={siteId} />
     <CmsWorkbenchPreview visible={preview} onClose={() => setPreview(false)} siteId={siteId} selection={{ includeSiteConfiguration: true }} />
-  </Card>;
+    </>
+  );
+  // SideSheet 内已有标题与容器，去掉 Card 边框/底色避免双层卡片
+  if (bare) {
+    return (
+      <div>
+        <Typography.Title heading={6} style={{ margin: '0 0 12px' }}>{title}</Typography.Title>
+        {body}
+      </div>
+    );
+  }
+  return <Card title={title} style={{ marginBottom: 16 }}>{body}</Card>;
 }
