@@ -64,6 +64,8 @@ main { min-height: 60vh; padding: 24px 0 56px; }
 .section-title::after { content: ''; position: absolute; left: 0; bottom: -2px; width: 86px; height: 2px; background: var(--primary); }
 .section-title a:hover { color: var(--primary); }
 section > .section-title:first-child, .home-grid .section-title:first-child { margin-top: 0; }
+/* 首页「最新发布」标题去左侧色块（栏目块与侧栏标题保留） */
+.home-main > .section-title::before { display: none; }
 
 /* ── 内容列表 ─────────────────────────────────────────────────── */
 .content-list { display: flex; flex-direction: column; }
