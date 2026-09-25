@@ -5,6 +5,7 @@ import { canTransitionCmsFeedback, CMS_FEEDBACK_STATUS_LABELS, CMS_FEEDBACK_STAT
 import { WORKFLOW_ACTIVE_INSTANCE_STATUSES } from '@zenith/shared/workflow';
 import { useCmsFeedbackDetail, useCmsFeedbackWorkflow, useCmsFeedbackWorkflowPreview, useCmsOperationsAssignees, useHandleCmsFeedback, useSubmitCmsFeedbackWorkflow, useCreateCmsEditorialTask } from '@/hooks/queries/cms-operations';
 import { usePermission } from '@/hooks/usePermission';
+import DateTimeText from '@/components/DateTimeText';
 import WorkflowSideSheet from '@/components/workflow/WorkflowSideSheet';
 import BusinessWorkflowPanel from '@/components/workflow/BusinessWorkflowPanel';
 import { formatDateTime, formatDateTimeForApi, parseDateTimeParam } from '@/utils/date';
@@ -55,7 +56,7 @@ function FeedbackHandling({ feedback, onNoteChange }: Readonly<{ feedback: CmsFe
       {feedback.workflowDefinitionId ? <Typography.Text type="tertiary">先保存分派和处理状态，再填写办理结果提交审批。</Typography.Text> : null}
     </Space> : null}
     <Typography.Title heading={6} style={{ marginTop: 24 }}>办理历史</Typography.Title>
-    {feedback.history.map((event) => <div key={event.id} style={{ padding: '12px 0', borderBottom: '1px solid var(--semi-color-border)' }}><Space wrap><Tag>{actionLabel(event.action)}</Tag><Typography.Text>{event.actorName ?? '系统'}</Typography.Text><Typography.Text type="tertiary">{formatDateTime(event.createdAt)} · v{event.version}</Typography.Text></Space>{event.note ? <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>{event.note}</Typography.Paragraph> : null}</div>)}
+    {feedback.history.map((event) => <div key={event.id} style={{ padding: '12px 0', borderBottom: '1px solid var(--semi-color-border)' }}><Space wrap><Tag>{actionLabel(event.action)}</Tag><Typography.Text>{event.actorName ?? '系统'}</Typography.Text><Typography.Text type="tertiary"><DateTimeText value={event.createdAt} /> · v{event.version}</Typography.Text></Space>{event.note ? <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>{event.note}</Typography.Paragraph> : null}</div>)}
   </div>;
 }
 
