@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, Form, Tag, Toast, Tooltip } from '@douyinfe/semi-ui';
+import { Button, Descriptions, Form, Tag, Toast, Tooltip } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -100,6 +100,7 @@ export default function AlertEventsPage() {
     { ids: number[]; handleStatus: MonitorAlertHandleStatus } | null
   >(null);
   const [handleFormApi, setHandleFormApi] = useState<FormApi | null>(null);
+  const [detailTarget, setDetailTarget] = useState<MonitorAlertEvent | null>(null);
 
   // URL 携带的筛选作为初始条件，保证跳转过来时表单控件与列表结果一致
   const searchDefaults: () => (SearchParams) = () => ({
@@ -194,8 +195,8 @@ export default function AlertEventsPage() {
       render: (s: string) => <MonitorAlertStateTag state={s} okText="已恢复" />,
     },
     createOperationColumn<MonitorAlertEvent>({
-      desktopInlineKeys: ['ack', 'close'],
-      width: 220,
+      desktopInlineKeys: ['ack', 'close', 'handleDetail'],
+      width: 250,
       actions: (record) => [
         {
           key: 'viewLog',
@@ -224,6 +225,12 @@ export default function AlertEventsPage() {
           label: '撤销认领',
           hidden: !canHandle || record.handleStatus === 'pending',
           onClick: () => openHandleModal([record.id], 'pending'),
+        },
+        {
+          key: 'handleDetail',
+          label: '处理详情',
+          hidden: record.handleStatus === 'pending',
+          onClick: () => setDetailTarget(record),
         },
       ],
     }),
@@ -296,6 +303,31 @@ export default function AlertEventsPage() {
         empty="暂无告警记录"
         {...tableProps}
       />
+
+      {/* 处理详情只读弹窗：行快照透视，不走 useEditModal（非新增 / 编辑） */}
+      <AppModal
+        title="处理详情"
+        visible={detailTarget !== null}
+        footer={null}
+        onCancel={() => setDetailTarget(null)}
+        closeOnEsc
+        width={480}
+        fullscreenable={false}
+      >
+        {detailTarget && (
+          <Descriptions
+            size="small"
+            row
+            data={[
+              { key: '处理状态', value: HANDLE_CONFIG[detailTarget.handleStatus]?.label ?? detailTarget.handleStatus },
+              { key: '处理人', value: detailTarget.handledByName ?? EMPTY_PLACEHOLDER },
+              { key: '处理时间', value: detailTarget.handledAt ?? EMPTY_PLACEHOLDER },
+              ...(detailTarget.acknowledgedAt ? [{ key: '认领时间', value: detailTarget.acknowledgedAt }] : []),
+              { key: '处理备注', value: detailTarget.handleNote ?? '暂无备注' },
+            ]}
+          />
+        )}
+      </AppModal>
 
       {/* 处理弹窗不走 useEditModal：它不是实体的新增 / 编辑，而是对既有记录的状态流转 */}
       <AppModal
