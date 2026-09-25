@@ -24,7 +24,7 @@ import { formatDateTimeForApi } from '@/utils/date';
 import { useCmsWidgetRenderers, usePublishedCmsWidgets } from '@/hooks/queries/cms-widgets';
 import { CreateButton } from '@/components/toolbar-controls';
 import { KeywordInput } from '@/components/search-filters';
-import { dateTimeColumn, enabledStatusColumn, overflowTagColumn } from '@/utils/table-columns';
+import { dateTimeColumn, enabledStatusColumn, overflowTagColumn, renderCodeEllipsis } from '@/utils/table-columns';
 import { abortSubmit } from '@/lib/abort-submit';
 import { mapTree, randomUUID } from '@zenith/shared/core';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
@@ -262,8 +262,8 @@ export default function PagesPage() {
       ),
     },
     {
-      title: '访问路径', dataIndex: 'slug', width: 180,
-      render: (_v: string, record: CmsPage) => <Typography.Text code>{cmsCustomPagePath(record)}</Typography.Text>,
+      title: '访问路径', dataIndex: 'slug', width: 240,
+      render: (_v: string, record: CmsPage) => renderCodeEllipsis(cmsCustomPagePath(record)),
     },
     { title: '区块数', width: 80, render: (_: unknown, r) => r.blocks.length },
     {
