@@ -26,6 +26,8 @@ interface ImageUploadFieldProps {
   /** 领域上传或本地待提交文件：返回值原样交给 onChange，预览 URL 由调用方解析。 */
   readonly customUpload?: (file: File) => Promise<string>;
   readonly disabled?: boolean;
+  /** 上传按钮尺寸；紧凑表单字段传 'small' 与相邻操作按钮对齐，默认随 Semi 默认尺寸 */
+  readonly buttonSize?: 'small' | 'default' | 'large';
   /** 本地预备文件可关闭“已上传”提示，避免尚未持久化时误导用户。 */
   readonly uploadSuccessMessage?: string | false;
 }
@@ -40,6 +42,7 @@ export function ImageUploadField({
   accept = 'image/*',
   customUpload,
   disabled = false,
+  buttonSize,
   uploadSuccessMessage,
 }: ImageUploadFieldProps) {
   const uploaded = (url: string) => {
@@ -102,7 +105,7 @@ export function ImageUploadField({
               }
             }}
           >
-            <Button disabled={disabled} icon={<ImagePlus size={14} />}>上传{label}</Button>
+            <Button size={buttonSize} disabled={disabled} icon={<ImagePlus size={14} />}>上传{label}</Button>
           </Upload>
         )}
     </Space>

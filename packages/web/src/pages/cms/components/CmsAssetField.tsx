@@ -49,7 +49,7 @@ export function CmsAssetField({ siteId, type, value, onChange, disabled = false,
   return <div className="cms-asset-field">
     {/* 预览/上传与操作按钮同一行（换行时自动折行），播放器独占整行 */}
     <div className="cms-asset-field__row">
-      {type === 'image' ? <ImageUploadField value={previewUrl} label={name} disabled={disabled || (!previewUrl && (!siteId || !canUpload))}
+      {type === 'image' ? <ImageUploadField value={previewUrl} label={name} buttonSize="small" disabled={disabled || (!previewUrl && (!siteId || !canUpload))}
         customUpload={async (file) => {
           if (!siteId || !canUpload || disabled) throw new Error('当前无法上传本站素材');
           const next = await upload.mutateAsync({ siteId, file });
