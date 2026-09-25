@@ -897,7 +897,9 @@ export default function ContentEditPage() {
                       <RichTextEditor
                         value={body}
                         onChange={(v) => { setBody(v); markDirty(); }}
-                        readOnly={isReadOnly || saveMutation.isPending}
+                        /* 保存中不锁定编辑器：readOnly 翻转会触发 wangeditor disable/enable + 工具栏显隐，
+                        每次自动保存（5s 一次）编辑区闪一次、还会丢光标；保存中的并发输入由 editSequence 与 CAS 版本兜底 */
+                        readOnly={isReadOnly}
                         height={contentType === 'article' ? 420 : 240}
                         enablePageBreak={contentType === 'article'}
                         placeholder={contentType === 'article' ? '请输入正文内容...' : '图文说明（可选）'}
