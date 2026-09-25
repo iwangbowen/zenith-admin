@@ -666,7 +666,9 @@ export default function ContentEditPage() {
   return (
     <div className="page-container page-tabs-page cms-content-edit" onInputCapture={() => { editorTouchedRef.current = true; }} onKeyDownCapture={() => { editorTouchedRef.current = true; }} onPointerDownCapture={() => { editorTouchedRef.current = true; }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-        <Button icon={<ArrowLeft size={14} />} onClick={() => navigate(-1)}>返回</Button>
+        <Tooltip content="返回">
+          <Button aria-label="返回" icon={<ArrowLeft size={16} />} theme="borderless" type="tertiary" onClick={() => navigate(-1)} />
+        </Tooltip>
         <h3 style={{ margin: 0, flex: 1, minWidth: 200 }}>
           {id ? '编辑内容' : '新增内容'}
           <Tag size="small" color="blue" style={{ marginLeft: 12, verticalAlign: 'middle' }}>{CMS_CONTENT_TYPE_LABELS[contentType]}</Tag>
