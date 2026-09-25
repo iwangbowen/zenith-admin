@@ -27,8 +27,8 @@ graph LR
     subgraph 流量运营
         G[SEO 管理] & H[广告事件] & I[评论/表单名单守卫] & J[互动问卷] & K[页面搭建/页面部件]
     end
-    subgraph 平台能力
-        L[数据看板] & M[Headless API] & N[采集中心] & O[全文检索]
+    subgraph 平台与协作能力
+        L[数据看板] & M[内容工作台] & N[Headless API] & O[采集中心] & P[全文检索]
     end
 ```
 
@@ -36,8 +36,9 @@ graph LR
 
 | 菜单 | 路径 | 说明 | 文档 |
 |------|------|------|------|
-| 数据看板 | `/cms/dashboard` | 状态分布、发布趋势、热文 TOP、栏目分布 | 本页 |
-| 站点管理 | `/cms/sites` | 父子站群、显式继承、域名路由、主题选择与主题参数、审核模式、Webhook | [站群与分发](./site-groups-and-distribution) · [主题](./themes) |
+| 数据看板 | `/cms/dashboard` | 纯内容运营概览：状态分布、发布趋势、热文 TOP、栏目分布 | 本页 |
+| 内容工作台 | `/cms/workspace` | 按当前站点集中处理稿件待办、读者反馈与编辑事项 | 本页 |
+| 站点管理 | `/cms/sites` | 父子站群、显式继承、域名路由、主题选择与主题参数、审核模式、Webhook；站点行内工作区提供建站检查与配置快捷入口 | [站群与分发](./site-groups-and-distribution) · [主题](./themes) |
 | 栏目管理 | `/cms/channels` | 左树右编辑，树形栏目（列表/单页/外链），栏目标识 code + 级联 path，批量建栏目 | [内容管线](./content-pipeline) |
 | 内容管理 | `/cms/contents` | 5 态状态机、多形态内容（图文/图集/音视频/外链）、批量状态流转、导入导出、回收站 | [内容管线](./content-pipeline) |
 | 内容模型 | `/cms/models` | 12 种自定义字段、选项绑字典、默认值、发布必填、列表/详情展示配置、站群归属治理 | [内容模型](./content-models) |
@@ -112,7 +113,7 @@ SEO 与采集：`cms_redirects` / `cms_link_words` / `cms_push_logs` / `cms_sear
 
 ## 数据看板
 
-「数据看板」页（权限 `cms:dashboard:view`）提供站点内容运营概览：
+「数据看板」页（查看权限 `cms:dashboard:view`；站点选择器需要 `cms:site:list`）提供站点内容运营概览：
 
 - **状态卡片**：已发布 / 草稿 / 待审核 / 已下线 / 已驳回 / 回收站数量
 - **运营指标**：今日发布、累计浏览量、待审核评论
@@ -120,11 +121,17 @@ SEO 与采集：`cms_redirects` / `cms_link_words` / `cms_push_logs` / `cms_sear
 - **热门内容 TOP10**：按浏览量排序，点击直达编辑页
 - **栏目内容分布 TOP10**
 
-接口：`GET /api/cms/dashboard/stats?siteId=`，60s 自动轮询刷新。
+接口：`GET /api/cms/dashboard/stats?siteId=`，60s 自动轮询刷新。数据看板只展示数据，不嵌入建站操作或待办工作台。
+
+## 内容工作台与建站工作区
+
+「内容工作台」（`/cms/workspace`）按站点汇总我的稿件、待审核、逾期稿件、未解决批注、待发布修改、待办理反馈和编辑事项；服务端根据内容查询、审核、表单查询和编辑事项管理权限分别标记可用队列，并继续执行站点与栏目数据范围校验。工作台页面需要 `cms:site:list` 选择站点，以及 `cms:content:list`、`cms:form:list` 或 `cms:editorial-task:manage` 中至少一项；编辑事项列表与详情由 `cms:editorial-task:manage` 控制。
+
+建站工作区仍位于「站点管理」的站点行内工作区，承载站点配置检查、栏目/页面快捷入口和组合预览，不再放在数据看板。
 
 ## 权限码
 
-所有权限以 `cms:` 前缀，按资源划分：`cms:dashboard:view`、`cms:site:list|create|update|delete|hierarchy`、`cms:channel:list|create|update|delete`、`cms:content:list|create|update|delete|export|publish|audit|lock`、`cms:resource:list|upload|update|delete`、`cms:model:list|create|update|delete`、`cms:tag:list|create|update|delete`、`cms:link:list|create|update|delete`、`cms:search:manage`、`cms:seo:manage|push`、`cms:comment:list|audit|delete`、`cms:ad:list|manage`、`cms:ad-event:list|export|export-raw|cleanup`、`cms:form:list|manage`、`cms:sensitive:list|manage`、`cms:collect:list|create|update|delete|run`、`cms:widget:list|create|update|publish|offline|delete|bind`、`cms:page:list|create|update|delete|acl`、`cms:word:list|manage`、`cms:interaction:list|manage|batch|export|export-raw`、`cms:stat:view`、`cms:publish:view|build|manage|group`、`cms:subscription:list|export|export-raw`、`cms:distribution:list|create|update|delete|run|export`。
+所有权限以 `cms:` 前缀，按资源划分：`cms:dashboard:view`、`cms:site:list|create|update|delete|hierarchy`、`cms:channel:list|create|update|delete`、`cms:content:list|create|update|delete|export|publish|audit|lock`、`cms:resource:list|upload|update|delete`、`cms:model:list|create|update|delete`、`cms:tag:list|create|update|delete`、`cms:link:list|create|update|delete`、`cms:search:manage`、`cms:seo:manage|push`、`cms:comment:list|audit|delete`、`cms:ad:list|manage`、`cms:ad-event:list|export|export-raw|cleanup`、`cms:form:list|manage`、`cms:feedback:manage`、`cms:editorial-task:manage`、`cms:sensitive:list|manage`、`cms:collect:list|create|update|delete|run`、`cms:widget:list|create|update|publish|offline|delete|bind`、`cms:page:list|create|update|delete|acl`、`cms:word:list|manage`、`cms:interaction:list|manage|batch|export|export-raw`、`cms:stat:view`、`cms:publish:view|build|manage|group`、`cms:subscription:list|export|export-raw`、`cms:distribution:list|create|update|delete|run|export`。
 
 站点级数据权限：非平台超管必须在「站点管理 → 授权用户」中显式绑定后才能访问；未绑定时默认拒绝。平台超管可跨站点管理。
 

@@ -1,5 +1,5 @@
 /**
- * CMS 数据看板：站点内容概览（状态分布 / 发布趋势 / 热文 / 栏目分布 / 待办）。
+ * CMS 数据看板：站点内容运营指标（状态分布 / 发布趋势 / 热文 / 栏目分布 / 待审核评论）。
  */
 import { and, desc, eq, gte, inArray, isNull, isNotNull, sql } from 'drizzle-orm';
 import { buildWhere } from '../../lib/where-helpers';

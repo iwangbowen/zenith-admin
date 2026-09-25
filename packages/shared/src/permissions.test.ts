@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PERMISSION_REGISTRY_BY_DOMAIN, ALL_PERMISSIONS } from './permissions';
+import { CMS_PERMISSIONS } from './cms/permissions';
 import { SEED_MENUS } from './seed/menus';
 
 describe('权限码注册表', () => {
@@ -22,6 +23,18 @@ describe('权限码注册表', () => {
       expect(code, code).toMatch(/^[a-z][a-z0-9-]*(?::[a-zA-Z0-9-]+){1,3}$/);
       expect(meta.label.trim().length, code).toBeGreaterThan(0);
     }
+  });
+
+  it('CMS 页面访问权限覆盖独立看板、统计与内容工作台入口', () => {
+    expect(CMS_PERMISSIONS['cms:dashboard:view'].menu).toBe('CmsDashboard');
+    expect(CMS_PERMISSIONS['cms:site:list'].menu).toEqual(['CmsSites', 'CmsDashboard', 'CmsStats', 'CmsWorkspace']);
+    expect(CMS_PERMISSIONS['cms:content:list'].menu).toEqual(['CmsContents', 'CmsContentEdit', 'CmsWorkspace']);
+    expect(CMS_PERMISSIONS['cms:form:list'].menu).toEqual(['CmsForms', 'CmsWorkspace']);
+    expect(CMS_PERMISSIONS['cms:editorial-task:manage'].menu).toBe('CmsWorkspace');
+    expect(SEED_MENUS.find((menu) => menu.name === 'CmsWorkspace')).toMatchObject({
+      path: '/cms/workspace',
+      component: 'cms/CmsWorkspacePage',
+    });
   });
 
   it('menu / id / sort 数组按位置对应', () => {

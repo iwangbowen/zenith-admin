@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { ALL_PERMISSIONS } from './permissions';
+import { cmsDashboardContract, cmsOperationsContract } from './cms';
 import { accessPermissions, type OperationAccess } from './core/contract';
 import { CONTRACTS_BY_DOMAIN, listAllOperations } from './contracts';
 
@@ -38,6 +39,15 @@ describe('契约访问声明', () => {
   it('非登录令牌操作不声明 access（构造期已拒绝，此处兜底）', () => {
     const invalid = operations.filter(({ op }) => op.security !== 'bearer' && op.access !== undefined).map(({ op }) => op.fullPath);
     expect(invalid).toEqual([]);
+  });
+
+  it('CMS 数据看板与内容工作台使用独立访问权限', () => {
+    expect(accessPermissions(cmsDashboardContract.stats.access)).toEqual(['cms:dashboard:view']);
+    expect(accessPermissions(cmsOperationsContract.workspace.access)).toEqual([
+      'cms:content:list', 'cms:form:list', 'cms:editorial-task:manage',
+    ]);
+    expect(accessPermissions(cmsOperationsContract.tasks.access)).toEqual(['cms:editorial-task:manage']);
+    expect(accessPermissions(cmsOperationsContract.taskDetail.access)).toEqual(['cms:editorial-task:manage']);
   });
 
   it('会员前台契约组整组使用会员令牌，不与后台令牌混用', () => {

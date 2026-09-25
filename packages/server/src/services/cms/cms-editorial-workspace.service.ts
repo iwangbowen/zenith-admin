@@ -4,8 +4,7 @@ import { cmsContentContract, cmsOperationsContract, CMS_WORKSPACE_QUEUES, type C
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { db } from '../../db';
 import { cmsContents, cmsContentWorkingCopies, cmsEditorialNotes, cmsEditorialTasks, cmsFeedbackCases, users } from '../../db/schema';
-import { currentUser } from '../../lib/context';
-import { hasPermission } from '../../lib/context';
+import { currentUser, hasPermission } from '../../lib/context';
 import { APP_TIME_ZONE, formatNullableDateTime } from '../../lib/datetime';
 import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
@@ -15,9 +14,10 @@ import { cmsEditorialTaskVisibility } from './cms-editorial-tasks.service';
 
 type Queue = (typeof CMS_WORKSPACE_QUEUES)[number];
 export async function getCmsEditorialWorkspace(q: QueryOutputOf<typeof cmsOperationsContract.workspace>) {
+  if (!await hasPermission('cms:site:list')) throw new HTTPException(403, { message: '没有查看站点列表的权限' });
   await assertSiteAccess(q.siteId);
   const actor = currentUser().userId;
-  const [contentAllowed, reviewAllowed, feedbackAllowed] = await Promise.all([hasPermission('cms:content:list'), hasPermission('cms:content:audit'), hasPermission('cms:form:list')]);
+  const [contentAllowed, reviewAllowed, feedbackAllowed, tasksAllowed] = await Promise.all([hasPermission('cms:content:list'), hasPermission('cms:content:audit'), hasPermission('cms:form:list'), hasPermission('cms:editorial-task:manage')]);
   const contentScope = contentAllowed ? await buildCmsContentListWhere(cmsContentContract.list.query.parse({ siteId: q.siteId })) : sql`false`;
   const taskScope = await cmsEditorialTaskVisibility(q.siteId);
   const workingOwner = sql<number>`nullif(${cmsContentWorkingCopies.snapshot}->>'ownerId','')::integer`;
@@ -28,7 +28,7 @@ export async function getCmsEditorialWorkspace(q: QueryOutputOf<typeof cmsOperat
     notes: sql`exists (select 1 from ${cmsEditorialNotes} where ${cmsEditorialNotes.contentId}=${cmsContents.id} and ${cmsEditorialNotes.resolved}=false)`,
     unpublished: ne(cmsContentWorkingCopies.editorialStatus, 'clean'), feedback: undefined, tasks: undefined,
   };
-  const allowed = (queue: Queue) => queue === 'feedback' ? feedbackAllowed : queue === 'tasks' ? true : contentAllowed && (queue !== 'review' || reviewAllowed);
+  const allowed = (queue: Queue) => queue === 'feedback' ? feedbackAllowed : queue === 'tasks' ? tasksAllowed : contentAllowed && (queue !== 'review' || reviewAllowed);
   const contentWhere = (queue: Queue, keyword?: string) => buildWhere(contentScope, sql`exists (select 1 from ${cmsContentWorkingCopies} where ${buildWhere(eq(cmsContentWorkingCopies.contentId, cmsContents.id), queueConditions[queue], keywordCondition(keyword, [sql`${cmsContentWorkingCopies.snapshot}->>'title'`]))})`);
   const feedbackWhere = (keyword?: string) => buildWhere(eq(cmsFeedbackCases.siteId, q.siteId), inArray(cmsFeedbackCases.status, ['new', 'processing']), or(isNull(cmsFeedbackCases.ownerId), eq(cmsFeedbackCases.ownerId, actor)), keywordCondition(keyword, [cmsFeedbackCases.title]));
   const tasksWhere = (keyword?: string) => buildWhere(eq(cmsEditorialTasks.siteId, q.siteId), taskScope, inArray(cmsEditorialTasks.status, ['open', 'in_progress']), or(isNull(cmsEditorialTasks.ownerId), eq(cmsEditorialTasks.ownerId, actor)), keywordCondition(keyword, [cmsEditorialTasks.title]));
@@ -41,7 +41,7 @@ export async function getCmsEditorialWorkspace(q: QueryOutputOf<typeof cmsOperat
     result = await buildListResult({ page: q.page, pageSize: q.pageSize, count: () => db.$count(cmsFeedbackCases, where), rows: () => withPagination(db.select({ id: cmsFeedbackCases.id, title: cmsFeedbackCases.title, status: cmsFeedbackCases.status, ownerName: users.nickname, dueAt: cmsFeedbackCases.dueAt }).from(cmsFeedbackCases).leftJoin(users, eq(users.id, cmsFeedbackCases.ownerId)).where(where).orderBy(desc(cmsFeedbackCases.id)).$dynamic(), q.page, q.pageSize), map: (row): CmsWorkspaceItem => ({ ...row, dueAt: formatNullableDateTime(row.dueAt), kind: 'feedback', href: `/cms/forms?site=${q.siteId}&feedback=${row.id}` }) });
   } else if (queue === 'tasks') {
     const where = tasksWhere(q.keyword);
-    result = await buildListResult({ page: q.page, pageSize: q.pageSize, count: () => db.$count(cmsEditorialTasks, where), rows: () => withPagination(db.select({ id: cmsEditorialTasks.id, title: cmsEditorialTasks.title, status: cmsEditorialTasks.status, ownerName: users.nickname, dueAt: cmsEditorialTasks.dueAt }).from(cmsEditorialTasks).leftJoin(users, eq(users.id, cmsEditorialTasks.ownerId)).where(where).orderBy(desc(cmsEditorialTasks.id)).$dynamic(), q.page, q.pageSize), map: (row): CmsWorkspaceItem => ({ ...row, dueAt: formatNullableDateTime(row.dueAt), kind: 'task', href: `/cms/dashboard?site=${q.siteId}&task=${row.id}` }) });
+    result = await buildListResult({ page: q.page, pageSize: q.pageSize, count: () => db.$count(cmsEditorialTasks, where), rows: () => withPagination(db.select({ id: cmsEditorialTasks.id, title: cmsEditorialTasks.title, status: cmsEditorialTasks.status, ownerName: users.nickname, dueAt: cmsEditorialTasks.dueAt }).from(cmsEditorialTasks).leftJoin(users, eq(users.id, cmsEditorialTasks.ownerId)).where(where).orderBy(desc(cmsEditorialTasks.id)).$dynamic(), q.page, q.pageSize), map: (row): CmsWorkspaceItem => ({ ...row, dueAt: formatNullableDateTime(row.dueAt), kind: 'task', href: `/cms/workspace?siteId=${q.siteId}&task=${row.id}` }) });
   } else {
     const where = contentWhere(queue, q.keyword);
     result = await buildListResult({ page: q.page, pageSize: q.pageSize, count: () => db.$count(cmsContents, where), rows: () => withPagination(db.select({ id: cmsContents.id, title: sql<string>`${cmsContentWorkingCopies.snapshot}->>'title'`, status: cmsContentWorkingCopies.editorialStatus, ownerName: users.nickname, dueAt: due }).from(cmsContents).innerJoin(cmsContentWorkingCopies, eq(cmsContentWorkingCopies.contentId, cmsContents.id)).leftJoin(users, eq(users.id, workingOwner)).where(where).orderBy(desc(cmsContents.id)).$dynamic(), q.page, q.pageSize), map: (row): CmsWorkspaceItem => ({ ...row, kind: 'content', href: `/cms/contents/edit?id=${row.id}&site=${q.siteId}` }) });
