@@ -279,7 +279,7 @@ export default function TracePage() {
                   </Timeline>
 
                   {hasPermission('system:log:files') && (
-                    <Collapse style={{ marginTop: 16 }}>
+                    <Collapse style={{ marginTop: 16 }} defaultActiveKey={['logs']}>
                       <Collapse.Panel header="应用日志（按链路 ID 过滤）" itemKey="logs">
                         <TraceLogsPanel traceId={traceId} />
                       </Collapse.Panel>
