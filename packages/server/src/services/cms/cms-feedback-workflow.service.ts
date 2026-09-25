@@ -83,7 +83,7 @@ export async function reconcileCmsFeedbackWorkflow(id: number) {
   if (!row.workflowInstanceId) return;
   const [instance] = await db.select({ id: workflowInstances.id, bizId: workflowInstances.bizId, formData: workflowInstances.formData, status: workflowInstances.status }).from(workflowInstances)
     .where(and(eq(workflowInstances.id, row.workflowInstanceId), eq(workflowInstances.bizType, CMS_FEEDBACK_BIZ_TYPE), eq(workflowInstances.bizId, String(id)))).limit(1);
-  if (instance && (instance.status === 'approved' || instance.status === 'rejected' || instance.status === 'withdrawn' || instance.status === 'cancelled')) await applyFeedbackWorkflowResult(instance, instance.status);
+  if (instance && (instance.status === 'approved' || instance.status === 'rejected' || instance.status === 'withdrawn' || instance.status === 'cancelled')) await applyFeedbackWorkflowResult({ ...instance, formData: instance.formData as Record<string, unknown> | null }, instance.status);
 }
 export function registerCmsFeedbackWorkflowSubscribers() {
   onWorkflowResult(CMS_FEEDBACK_BIZ_TYPE, { onCreated: (instance) => applyFeedbackWorkflowResult(instance, 'created'), onApproved: (instance) => applyFeedbackWorkflowResult(instance, 'approved'), onRejected: (instance) => applyFeedbackWorkflowResult(instance, 'rejected'), onWithdrawn: (instance) => applyFeedbackWorkflowResult(instance, 'withdrawn') });

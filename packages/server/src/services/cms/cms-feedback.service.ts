@@ -32,7 +32,8 @@ export async function requireCmsOperationsAssignee(id: number, message: string) 
 export async function listCmsHandlingWorkflows() {
   const definitions = await db.select({ id: workflowDefinitions.id, name: workflowDefinitions.name, customForm: workflowDefinitions.customForm }).from(workflowDefinitions)
     .where(and(isNull(workflowDefinitions.tenantId), eq(workflowDefinitions.status, 'published'), eq(workflowDefinitions.formType, 'external'))).orderBy(workflowDefinitions.name);
-  return definitions.filter((definition) => definition.customForm?.viewComponent === CMS_FEEDBACK_VIEW_COMPONENT).map(({ id, name }) => ({ id, name }));
+  // workflowDefinitions.customForm 是无类型 jsonb()，读取时按业务形态断言（同 validateCmsFeedbackWorkflowDefinition）。
+  return definitions.filter((definition) => (definition.customForm as { viewComponent?: string | null } | null)?.viewComponent === CMS_FEEDBACK_VIEW_COMPONENT).map(({ id, name }) => ({ id, name }));
 }
 
 export async function requireCmsFeedbackCase(executor: DbExecutor, id: number, lock = false) {
