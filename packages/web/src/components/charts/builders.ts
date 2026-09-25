@@ -1176,7 +1176,7 @@ export interface HeatmapOptions {
   readonly valueField: string;
   readonly palette: ChartPalette;
   readonly dataId?: string;
-  /** 值域两端颜色，默认 [近透明的填充色, 主题色] */
+  /** 值域两端颜色，默认 [填充色, 数据蓝]：密度语义固定用蓝色系，不跟主题色，避免红色主题下被误读为错误 */
   readonly colorRange?: readonly string[];
   readonly axis?: {
     readonly xLabel?: (value: string) => string;
@@ -1191,10 +1191,10 @@ export interface HeatmapOptions {
   readonly colorLegend?: boolean;
 }
 
-/** 热力图：适合星期 × 小时等类目矩阵的密度展示，颜色随主题联动。 */
+/** 热力图：适合星期 × 小时等类目矩阵的密度展示，密度色固定为蓝色系、不跟主题色。 */
 export function makeHeatmapSpec(o: HeatmapOptions): Partial<IHeatmapChartSpec> {
   const dataId = o.dataId ?? 'heatmap';
-  const range = o.colorRange ? [...o.colorRange] : [o.palette.fill1, o.palette.primary];
+  const range = o.colorRange ? [...o.colorRange] : [o.palette.fill1, o.palette.dataColors[0] ?? o.palette.primary];
   const valueFmt = o.tooltip?.value ?? ((value: number) => compactCount(value));
   const valueName = o.tooltip?.valueName ?? '次数';
 
