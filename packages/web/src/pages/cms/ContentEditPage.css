@@ -1,15 +1,10 @@
 /*
  * CMS 内容编辑页布局
  *
- * 宽屏（lg 及以上）：页面锁定视口高度，左侧正文区与右侧基本信息面板各自独立滚动，
- * 右侧标签栏固定不随内容滚动；窄屏回退为上下堆叠 + 整页统一滚动。
+ * 双栏由 MasterDetailLayout 承载（正文为 detail、信息面板为 master 且固定在右侧，
+ * 可拖宽 / 折叠）。宽屏（lg 及以上）：页面锁定视口高度，两侧各自独立滚动，
+ * 右侧标签栏固定不随内容滚动；窄屏进入单栏模式（默认正文，顶部按钮切信息面板）。
  */
-.cms-content-edit__cols {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
 .cms-content-edit__main,
 .cms-content-edit__side {
   min-width: 0;
@@ -53,28 +48,19 @@
     overflow: auto;
   }
 
-  .cms-content-edit__cols {
-    flex: 1;
-    flex-direction: row;
-    align-items: stretch;
-    gap: 24px;
-    min-height: 0;
-  }
-
   .cms-content-edit__main {
-    flex: 1 1 auto;
+    flex: 1;
+    min-height: 0;
     overflow: auto;
     padding-right: 8px;
   }
 
   .cms-content-edit__side {
     display: flex;
-    flex: 0 0 26%;
+    flex: 1;
     flex-direction: column;
-    max-width: 380px;
     min-height: 0;
     padding-left: 20px;
-    border-left: 1px solid var(--semi-color-border);
   }
 
   .cms-content-edit__side > .semi-tabs {

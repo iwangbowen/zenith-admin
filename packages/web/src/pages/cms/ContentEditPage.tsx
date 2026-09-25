@@ -5,9 +5,10 @@ import CmsContentConflictView from './CmsContentConflictView';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Divider, Dropdown, Form, Spin, Toast, Tooltip, Row, Col, Banner, SideSheet, Space, Timeline, Modal, Upload, Typography, Tag, Input, Tabs, TabPane, withField, Pagination } from '@douyinfe/semi-ui';
 import { EntityContextSheet } from '@/components/entity-relations/EntityRelationButton';
+import { MasterDetailLayout } from '@/components/MasterDetailLayout';
 import { supportsEntityRelations } from '@zenith/shared/platform/entity-catalog';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
-import { ArrowLeft, Save, Send, History, ImageUp, Eye, GitCompare, Images, Paperclip, SpellCheck, ScrollText, Workflow, Link2, MoreHorizontal } from 'lucide-react';
+import { ArrowLeft, Save, Send, ImageUp, Eye, GitCompare, Images, Paperclip, Workflow, MoreHorizontal, PanelRight } from 'lucide-react';
 import { useDebouncedCallback } from '@tanstack/react-pacer';
 import { formatDateTimeForApi } from '@/utils/date';
 import { usePermission } from '@/hooks/usePermission';
@@ -233,6 +234,9 @@ export default function ContentEditPage() {
   const [albumPickerVisible, setAlbumPickerVisible] = useState(false);
   const [versionsVisible, setVersionsVisible] = useState(false);
   const [relationVisible, setRelationVisible] = useState(false);
+  // 窄屏单栏：默认展示正文编辑区，顶部按钮切入信息面板（MasterDetailLayout 响应式模式）
+  const [showEditorOnNarrow, setShowEditorOnNarrow] = useState(true);
+  const [isLayoutNarrow, setIsLayoutNarrow] = useState(false);
   const [versionsPage, setVersionsPage] = useState(1);
   const versionsQuery = useCmsContentVersions(id, versionsVisible, versionsPage);
   const restoreMutation = useRestoreCmsContentVersion();
@@ -699,14 +703,15 @@ export default function ContentEditPage() {
           <Button theme="borderless" onClick={() => setActiveTab('workflow')}>查看流程</Button>
         </Space>
         <Space spacing={8}>
-          <Tooltip content="保存"><Button icon={<Save size={14} />} loading={saveMutation.isPending} disabled={isReadOnly || actionMutation.isPending} onClick={() => void handleSaveDraft()} /></Tooltip>
-          <Tooltip content="工作稿预览"><Button icon={<Eye size={14} />} loading={previewMutation.isPending || saveMutation.isPending} onClick={() => void handlePreview()} /></Tooltip>
+          {isLayoutNarrow ? <Tooltip content="信息与发布设置"><Button theme="borderless" icon={<PanelRight size={14} />} onClick={() => setShowEditorOnNarrow(false)} /></Tooltip> : null}
+          <Tooltip content="保存"><Button theme="borderless" icon={<Save size={14} />} loading={saveMutation.isPending} disabled={isReadOnly || actionMutation.isPending} onClick={() => void handleSaveDraft()} /></Tooltip>
+          <Tooltip content="工作稿预览"><Button theme="borderless" icon={<Eye size={14} />} loading={previewMutation.isPending || saveMutation.isPending} onClick={() => void handlePreview()} /></Tooltip>
           {workflowMode ? (
-            <Tooltip content="保存并提交审核"><Button type="primary" icon={<Send size={14} />} loading={saveMutation.isPending || actionMutation.isPending}
+            <Tooltip content="保存并提交审核"><Button theme="borderless" type="primary" icon={<Send size={14} />} loading={saveMutation.isPending || actionMutation.isPending}
               disabled={isReadOnly || workflowBusy || !!workflowPreviewQuery.error || (detail?.editorialStatus === 'pending') || !hasPermission('cms:content:update')}
               onClick={() => void handleSaveAndSubmit()} /></Tooltip>
           ) : hasPermission('cms:content:publish') ? (
-            <Tooltip content="保存并申请发布"><Button type="primary" icon={<Send size={14} />} loading={actionMutation.isPending}
+            <Tooltip content="保存并申请发布"><Button theme="borderless" type="primary" icon={<Send size={14} />} loading={actionMutation.isPending}
               disabled={isReadOnly || saveMutation.isPending || workflowBusy || !workflowPreview || !!workflowPreviewQuery.error}
               onClick={() => void handleSaveAndPublish()} /></Tooltip>
           ) : null}
@@ -716,19 +721,19 @@ export default function ContentEditPage() {
             clickToHide
             render={
               <Dropdown.Menu>
-                <Dropdown.Item icon={<SpellCheck size={14} />} onClick={() => void handleCheckText()}>内容检查</Dropdown.Item>
+                <Dropdown.Item onClick={() => void handleCheckText()}>内容检查</Dropdown.Item>
                 <Dropdown.Item onClick={() => void handlePreview(true)}>生成分享预览</Dropdown.Item>
                 {!workflowMode && hasPermission('cms:content:publish') ? (
-                  <Dropdown.Item icon={<Send size={14} />} disabled={isReadOnly || saveMutation.isPending || actionMutation.isPending || workflowBusy || !workflowPreview || !!workflowPreviewQuery.error} onClick={() => void handleSaveAndPublish(true)}>保存并批准待发布</Dropdown.Item>
+                  <Dropdown.Item disabled={isReadOnly || saveMutation.isPending || actionMutation.isPending || workflowBusy || !workflowPreview || !!workflowPreviewQuery.error} onClick={() => void handleSaveAndPublish(true)}>保存并批准待发布</Dropdown.Item>
                 ) : null}
-                {id && supportsEntityRelations('cms.content') ? <Dropdown.Item icon={<Link2 size={14} />} onClick={() => setRelationVisible(true)}>关联信息</Dropdown.Item> : null}
-                {id ? <Dropdown.Item icon={<History size={14} />} onClick={() => setVersionsVisible(true)}>历史版本</Dropdown.Item> : null}
-                {id ? <Dropdown.Item icon={<ScrollText size={14} />} onClick={() => setOpLogsVisible(true)}>操作记录</Dropdown.Item> : null}
+                {id && supportsEntityRelations('cms.content') ? <Dropdown.Item onClick={() => setRelationVisible(true)}>关联信息</Dropdown.Item> : null}
+                {id ? <Dropdown.Item onClick={() => setVersionsVisible(true)}>历史版本</Dropdown.Item> : null}
+                {id ? <Dropdown.Item onClick={() => setOpLogsVisible(true)}>操作记录</Dropdown.Item> : null}
               </Dropdown.Menu>
             }
           >
             <span style={{ display: 'inline-flex' }}>
-              <Tooltip content="更多"><Button icon={<MoreHorizontal size={14} />} /></Tooltip>
+              <Tooltip content="更多"><Button theme="borderless" icon={<MoreHorizontal size={14} />} /></Tooltip>
             </span>
           </Dropdown>
         </Space>
@@ -803,9 +808,19 @@ export default function ContentEditPage() {
           labelPosition="top"
           className="cms-content-edit__form"
         >
-          <div className="cms-content-edit__cols">
-            {/* 左：正文主编辑区（宽屏下独立滚动） */}
-            <div className="cms-content-edit__main">
+          <MasterDetailLayout
+            persistKey="cms-content-edit-side"
+            side="right"
+            sideSwitchable={false}
+            defaultSize={360}
+            minSize={280}
+            maxSize={520}
+            style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}
+            showDetail={showEditorOnNarrow}
+            onMasterBack={() => setShowEditorOnNarrow(true)}
+            masterBackLabel="返回编辑"
+            onResponsiveChange={setIsLayoutNarrow}
+            detail={<div className="cms-content-edit__main">
               {contentType === 'link' ? (
                 <>
                   <Banner type="info" closeIcon={null} style={{ marginBottom: 12 }} description="链接型内容：前台列表点击标题直接跳转，不生成详情页。可手输外链，也可用右侧「内部链接」选择站内内容/栏目（目标改 slug 或换栏目时链接自动跟随）。" />
@@ -959,9 +974,8 @@ export default function ContentEditPage() {
                   </Row>
                 </Form.Section>
               ) : null}
-            </div>
-            {/* 右：基本信息面板 —— 横向标签页分组（宽屏下独立滚动） */}
-            <div className="cms-content-edit__side">
+            </div>}
+            master={<div className="cms-content-edit__side">
               <Tabs type="line" size="small" collapsible="auto" activeKey={sideTab} onChange={setSideTab}>
                 <TabPane tab="基础信息" itemKey="basic">
                   <Form.TreeSelect
@@ -1119,8 +1133,8 @@ export default function ContentEditPage() {
                   </Form.Slot>
                 </TabPane>
               </Tabs>
-            </div>
-          </div>
+            </div>}
+          />
         </Form>
       </Spin>
       </TabPane>
