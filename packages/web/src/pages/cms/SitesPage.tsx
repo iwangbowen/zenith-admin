@@ -199,8 +199,8 @@ export default function SitesPage() {
       render: renderEnabledStatusTag,
     },
     createOperationColumn<CmsSite>({
-      width: 240,
-      desktopInlineKeys: ['workspace', 'visit', 'edit'],
+      width: 180,
+      desktopInlineKeys: ['visit', 'edit'],
       actions: (record) => {
         const actions: ResponsiveTableAction[] = [{ key: 'workspace', label: '工作区', onClick: () => setWorkspaceSiteId(record.id) }, {
           key: 'visit',
