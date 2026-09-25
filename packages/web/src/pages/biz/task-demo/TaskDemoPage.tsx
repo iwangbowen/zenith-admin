@@ -205,7 +205,7 @@ export default function TaskDemoPage() {
     }),
   ];
 
-  const itemColumns = asyncTaskItemColumns({ itemKey: 110, label: 130 });
+  const itemColumns = asyncTaskItemColumns();
 
   return (
     <div className="page-container">

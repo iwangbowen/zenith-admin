@@ -8,7 +8,7 @@ import { Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { AsyncTask, AsyncTaskItem, AsyncTaskItemStatus, AsyncTaskStatus } from '@zenith/shared/tasks';
 import { ASYNC_TASK_ITEM_STATUS_TAG_MAP, ASYNC_TASK_STATUS_TAG_MAP } from '@/utils/async-task';
-import { renderEllipsis } from '@/utils/table-columns';
+import { renderCodeEllipsis, renderEllipsis } from '@/utils/table-columns';
 
 /** 任务状态 Tag：执行中且已请求取消 → 「取消中」，排队中且有下次执行时间 → 「等待重试」，其余按状态映射 */
 export function renderAsyncTaskStatus(value: AsyncTaskStatus, record: Pick<AsyncTask, 'cancelRequested' | 'nextRunAt'>) {
@@ -34,11 +34,11 @@ export function renderAsyncTaskItemStatus(value: AsyncTaskItemStatus) {
   return <Tag color={meta.color}>{meta.label}</Tag>;
 }
 
-/** 任务项明细表（标识 / 名称 / 状态 / 信息 / 执行轮次） */
+/** 任务项明细表（标识 / 名称 / 状态 / 信息 / 执行轮次）：名称为弹性主列 */
 export function asyncTaskItemColumns(widths: { itemKey?: number; label?: number } = {}): ColumnProps<AsyncTaskItem>[] {
   return [
-    { title: '标识', dataIndex: 'itemKey', width: widths.itemKey ?? 120 },
-    { title: '名称', dataIndex: 'label', width: widths.label ?? 150, render: (value: string | null) => value ?? '-' },
+    { title: '标识', dataIndex: 'itemKey', width: widths.itemKey ?? 180, render: renderCodeEllipsis },
+    { title: '名称', dataIndex: 'label', minWidth: widths.label ?? 220, render: renderEllipsis },
     { title: '状态', dataIndex: 'status', width: 90, render: (value: AsyncTaskItemStatus) => renderAsyncTaskItemStatus(value) },
     { title: '信息', dataIndex: 'message', width: 220, render: renderEllipsis },
     { title: '执行轮次', dataIndex: 'attempt', width: 90 },
