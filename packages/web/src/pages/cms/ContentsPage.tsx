@@ -31,7 +31,6 @@ import { abortSubmit } from '@/lib/abort-submit';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
 import { useAuth } from '@/hooks/useAuth';
 import { useAllUsers } from '@/hooks/queries/users';
-import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { CMS_EDITORIAL_STATUS_LABELS, CMS_EDITORIAL_STATUS_COLORS } from './cms-content-view-state';
@@ -910,14 +909,27 @@ export default function ContentsPage() {
         master={masterContent}
         detail={(
           <div style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <StatGrid minItemWidth={140} style={{ padding: '0 0 12px' }}>
-              <StatCard title="工作稿" value={metrics.data?.working ?? 0} />
-              <StatCard title="待审核" value={metrics.data?.pending ?? 0} />
-              <StatCard title="逾期事项" value={metrics.data?.overdue ?? 0} />
-              <StatCard title="已排期" value={metrics.data?.scheduled ?? 0} />
-              <StatCard title="未发布修改" value={metrics.data?.unpublishedChanges ?? 0} />
-              <StatCard title="待处理批注" value={metrics.data?.unresolvedNotes ?? 0} />
-            </StatGrid>
+            <Typography.Text size="small" type="tertiary" style={{ padding: '0 0 8px' }}>
+              {[
+                { label: '工作稿', value: metrics.data?.working ?? 0 },
+                { label: '待审核', value: metrics.data?.pending ?? 0, attention: true },
+                { label: '逾期事项', value: metrics.data?.overdue ?? 0, attention: true },
+                { label: '已排期', value: metrics.data?.scheduled ?? 0 },
+                { label: '未发布修改', value: metrics.data?.unpublishedChanges ?? 0, attention: true },
+                { label: '待处理批注', value: metrics.data?.unresolvedNotes ?? 0, attention: true },
+              ].map((item, i) => (
+                <span key={item.label}>
+                  {i > 0 ? ' · ' : null}
+                  {item.label}{' '}
+                  <span style={item.attention && item.value > 0
+                    ? { color: 'var(--semi-color-primary)', fontWeight: 600 }
+                    : { fontWeight: 600 }}
+                  >
+                    {item.value}
+                  </span>
+                </span>
+              ))}
+            </Typography.Text>
             {/* 标签栏固定，内容区独立滚动：否则矮窗口下表格尾部与分页会被 overflow: hidden 裁掉 */}
             <Tabs
               collapsible="auto"
