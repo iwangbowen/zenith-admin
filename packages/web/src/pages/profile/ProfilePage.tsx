@@ -59,6 +59,13 @@ import NotificationSettingsTab from './NotificationSettingsTab';
 import { EditFormModal } from '@/components/EditFormModal';
 const { Title, Text } = Typography;
 
+/** 跟随主题色的浅底标签：Semi Tag 的 color 只支持固定色板，主题色走 CSS 变量覆盖（亮 / 暗主题与主题色切换自动跟随） */
+const THEME_TAG_STYLE = {
+  color: 'var(--semi-color-primary)',
+  backgroundColor: 'var(--semi-color-primary-light-default)',
+  borderColor: 'transparent',
+} as const;
+
 type SectionKey = 'profile' | 'signature' | 'security' | 'notifications' | 'devices' | 'login' | 'operation' | 'api-tokens' | 'authorized-apps';
 
 /** 个人视角的记录面板 scope：模块级常量，避免每次渲染换引用 */
@@ -393,7 +400,7 @@ export default function ProfilePage({ user }: ProfilePageProps) {
                               key: '岗位',
                               value: user.positions?.length ? (
                                 <Space spacing={4} style={{ display: 'inline-flex', flexWrap: 'wrap' }}>
-                                  {user.positions.map((p) => <Tag key={p.id} size="small" color="teal">{p.name}</Tag>)}
+                                  {user.positions.map((p) => <Tag key={p.id} size="small" style={THEME_TAG_STYLE}>{p.name}</Tag>)}
                                 </Space>
                               ) : undefined,
                               hidden: !user.positions?.length,
@@ -402,7 +409,7 @@ export default function ProfilePage({ user }: ProfilePageProps) {
                               key: '角色',
                               value: user.roles?.length ? (
                                 <Space spacing={4} style={{ display: 'inline-flex', flexWrap: 'wrap' }}>
-                                  {user.roles.map((r) => <Tag key={r.id} size="small" color="blue">{r.name}</Tag>)}
+                                  {user.roles.map((r) => <Tag key={r.id} size="small" style={THEME_TAG_STYLE}>{r.name}</Tag>)}
                                 </Space>
                               ) : '无角色',
                             },
