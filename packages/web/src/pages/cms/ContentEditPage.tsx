@@ -680,7 +680,6 @@ export default function ContentEditPage() {
           {saveState === 'conflict' ? <Button size="small" onClick={() => setConflictVisible(true)}>处理冲突</Button> : null}
           <Divider layout="vertical" />
           <Workflow size={15} />
-          <Typography.Text strong>审批流程</Typography.Text>
           {workflowContext?.instance ? (
             <>
               <Typography.Text>{workflowContext.instance.definitionName}</Typography.Text>
@@ -700,7 +699,6 @@ export default function ContentEditPage() {
                 : '本站采用普通内容审核'}
             </Typography.Text>
           )}
-          <Button theme="borderless" onClick={() => setActiveTab('workflow')}>查看流程</Button>
         </Space>
         <Space spacing={8}>
           {isLayoutNarrow ? <Tooltip content="信息与发布设置"><Button theme="borderless" icon={<PanelRight size={14} />} onClick={() => setShowEditorOnNarrow(false)} /></Tooltip> : null}
