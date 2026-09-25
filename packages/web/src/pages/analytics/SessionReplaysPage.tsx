@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Checkbox, Descriptions, SideSheet, Space, TabPane, Tabs, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { Download, Trash2 } from 'lucide-react';
+import { Download } from 'lucide-react';
 import type { ReplaySession, ReplayStatus, ReplayTriggerType } from '@zenith/shared/analytics';
 import { REPLAY_STATUS_LABELS, REPLAY_STATUS_OPTIONS, REPLAY_STATUSES, REPLAY_TRIGGER_TYPE_LABELS, REPLAY_TRIGGER_TYPE_OPTIONS, REPLAY_TRIGGER_TYPES } from '@zenith/shared/analytics';
 import { enumValueOf } from '@zenith/shared/core';
@@ -18,14 +18,14 @@ import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-fi
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { formatDurationMs } from '@/utils/format';
-import { confirmDelete } from '@/utils/confirm';
 import { exportReplayHtml } from '@/utils/replay-export';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePermission } from '@/hooks/usePermission';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { replayKeys, useBatchDeleteReplays, useReplayDetail, useReplayList, useReplayStorageStats } from '@/hooks/queries/session-replays';
 import { formatBytes } from '@zenith/shared/core';
-import { ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
+import { ListSearchToolbar, confirmAndDelete, deleteAction, listTableProps, useRowSelection } from '@/components/list-page';
+import { BatchDeleteButton } from '@/components/toolbar-controls';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
 
 const { Text } = Typography;
@@ -74,7 +74,8 @@ export default function SessionReplaysPage() {
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: replayKeys.lists });
 
   const [detailId, setDetailId] = useState<string | null>(null);
-  const { selectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection<string>();
+  const canManage = hasPermission('monitor:replay:manage');
+  const { selectedRowKeys, setSelectedRowKeys, clear: clearSelection, rowSelection } = useRowSelection<string>();
 
   // 已提交筛选 → 契约查询参数：只映射一次
   const filterQuery = useFilterQuery({
@@ -134,7 +135,7 @@ export default function SessionReplaysPage() {
       render: (_: unknown, r: ReplaySession) => r.username ?? (r.memberId ? `会员#${r.memberId}` : '匿名'),
     },
     {
-      title: '时长', dataIndex: 'durationMs', width: 90,
+      title: '时长', dataIndex: 'durationMs', width: 110,
       render: (v: number) => formatDurationMs(v),
     },
     {
@@ -167,19 +168,28 @@ export default function SessionReplaysPage() {
     },
     dateTimeColumn('开始时间', 'startedAt'),
     createOperationColumn<ReplaySession>({
-      width: 100,
-      desktopInlineKeys: ['play'],
+      width: 150,
+      desktopInlineKeys: ['play', 'delete'],
       actions: (record) => [
         { key: 'play', label: '播放', onClick: () => setDetailId(record.id) },
+        deleteAction({
+          hidden: !canManage,
+          title: '确定删除这条回放吗？',
+          content: '录像分片将一并删除，不可恢复。',
+          run: () => batchDeleteMutation.mutateAsync({ body: { ids: [record.id] } }),
+          onDeleted: () => setSelectedRowKeys((keys) => keys.filter((k) => k !== record.id)),
+        }),
       ],
     }),
-  ], []);
+  ], [batchDeleteMutation, canManage, setSelectedRowKeys]);
 
-  async function handleBatchDelete() {
-    const ok = await confirmDelete({ title: `确认删除选中的 ${selectedRowKeys.length} 条回放？`, content: '录像分片将一并删除，不可恢复。' });
-    if (!ok) return;
-    await batchDeleteMutation.mutateAsync({ body: { ids: selectedRowKeys } });
-    clearSelection();
+  function handleBatchDelete() {
+    confirmAndDelete({
+      title: `确认删除选中的 ${selectedRowKeys.length} 条回放？`,
+      content: '录像分片将一并删除，不可恢复。',
+      run: () => batchDeleteMutation.mutateAsync({ body: { ids: selectedRowKeys } }),
+      onDeleted: clearSelection,
+    });
   }
 
   return (
@@ -246,10 +256,8 @@ export default function SessionReplaysPage() {
             )}
             onSearch={handleSearch}
             onReset={handleReset}
-            actions={selectedRowKeys.length > 0 ? (
-              <Button type="danger" icon={<Trash2 size={14} />} loading={batchDeleteMutation.isPending} onClick={() => void handleBatchDelete()}>
-                批量删除 ({selectedRowKeys.length})
-              </Button>
+            actions={selectedRowKeys.length > 0 && canManage ? (
+              <BatchDeleteButton count={selectedRowKeys.length} loading={batchDeleteMutation.isPending} onClick={handleBatchDelete} />
             ) : null}
           />
 
@@ -257,7 +265,7 @@ export default function SessionReplaysPage() {
             columns={columns}
             {...listTableProps(listQuery, {
               pagination: () => buildPagination(total),
-              rowSelection,
+              rowSelection: canManage ? rowSelection : undefined,
               empty: '暂无回放记录。开启「数据分析设置 → 会话回放」后，报错现场将自动录制。',
             })}
           />
@@ -265,7 +273,7 @@ export default function SessionReplaysPage() {
         <TabPane tab="点击热力" itemKey="heatmap">
           <ReplayHeatmapTab />
         </TabPane>
-        {hasPermission('monitor:replay:manage') && (
+        {canManage && (
           <TabPane tab="访问审计" itemKey="audit">
             <ReplayAccessLogsTab onOpenReplay={setDetailId} />
           </TabPane>
