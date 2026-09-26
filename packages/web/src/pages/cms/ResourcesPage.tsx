@@ -80,10 +80,10 @@ function findFolder(folders: CmsResourceFolder[], id: number): CmsResourceFolder
 }
 
 function TypeIcon({ type }: Readonly<{ type: CmsResourceType }>) {
-  if (type === 'video') return <Film size={22} />;
-  if (type === 'audio') return <Music size={22} />;
-  if (type === 'document') return <FileText size={22} />;
-  return <FileIcon size={22} />;
+  if (type === 'video') return <Film size={16} />;
+  if (type === 'audio') return <Music size={16} />;
+  if (type === 'document') return <FileText size={16} />;
+  return <FileIcon size={16} />;
 }
 
 /** 目录树里的文件类型节点：glyph 与颜色都区别于文件夹，点即按类型筛选 */
@@ -545,13 +545,13 @@ export default function ResourcesPage() {
 
   const columns: ColumnProps<CmsResource>[] = [
     {
-      title: '预览', dataIndex: 'url', width: 80,
+      title: '预览', dataIndex: 'url', width: 60,
       render: (_: string, record: CmsResource) => {
         // 与文件列表页一致：仅可预览类型渲染为可点击
         const previewable = canPreviewFile(record.mimeType, record.name);
         const content = record.type === 'image'
-          ? <img src={record.thumbUrl ?? record.url} alt={record.name} draggable={false} style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 'var(--semi-border-radius-medium)' }} />
-          : <div style={{ width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--semi-color-text-2)', background: 'var(--semi-color-fill-0)', borderRadius: 'var(--semi-border-radius-medium)' }}><TypeIcon type={record.type} /></div>;
+          ? <img src={record.thumbUrl ?? record.url} alt={record.name} draggable={false} style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 'var(--semi-border-radius-small)' }} />
+          : <div style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--semi-color-text-2)', background: 'var(--semi-color-fill-0)', borderRadius: 'var(--semi-border-radius-small)' }}><TypeIcon type={record.type} /></div>;
         if (!previewable) return content;
         return (
           <button
