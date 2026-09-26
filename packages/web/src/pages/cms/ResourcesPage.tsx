@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button, Dropdown, Form, Modal, Space, Spin, TabPane, Tabs, Tag, Toast, Tooltip, Typography, Empty, Tree } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
-import { Upload, FileText, Film, Music, File as FileIcon, FolderPlus, FolderPen, FolderX, Move, ShieldCheck, MoreHorizontal, CheckCircle2, XCircle } from 'lucide-react';
+import { Upload, FileText, Film, Music, File as FileIcon, Folder, FolderPlus, FolderPen, FolderX, Image as ImageIcon, Inbox, LayoutGrid, Move, ShieldCheck, MoreHorizontal, CheckCircle2, XCircle } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { SearchToolbar } from '@/components/SearchToolbar';
@@ -25,6 +25,7 @@ import {
 } from '@/hooks/queries/cms';
 import { useMyAsyncTasks } from '@/hooks/useAsyncTasks';
 import { CMS_RESOURCE_OWNER_TYPE_LABELS, CMS_RESOURCE_TYPE_LABELS, CMS_RESOURCE_TYPES } from '@zenith/shared/cms';
+import { enumValueOf } from '@zenith/shared/core';
 import type { CmsResource, CmsResourceFolder, CmsResourceReference, CmsResourceOwnerType, CmsResourceType } from '@zenith/shared/cms';
 import { CmsSiteSelect } from './CmsSiteSelect';
 import { formatDateTimeRangeForApi } from '@/utils/date';
@@ -63,6 +64,7 @@ function foldersToTree(folders: CmsResourceFolder[]): TreeNodeData[] {
     key: String(folder.id),
     value: folder.id,
     label: `${folder.name}${folder.resourceCount ? ` (${folder.resourceCount})` : ''}`,
+    icon: <Folder size={14} style={{ marginRight: 6, color: 'var(--semi-color-warning)' }} />,
   }));
 }
 
@@ -80,6 +82,23 @@ function TypeIcon({ type }: Readonly<{ type: CmsResourceType }>) {
   if (type === 'audio') return <Music size={22} />;
   if (type === 'document') return <FileText size={22} />;
   return <FileIcon size={22} />;
+}
+
+/** 目录树里的文件类型节点：glyph 与颜色都区别于文件夹，点即按类型筛选 */
+const TYPE_TREE_ICON_COLORS: Record<CmsResourceType, string> = {
+  image: 'var(--semi-color-primary)',
+  video: 'var(--semi-color-info)',
+  audio: 'var(--semi-color-warning)',
+  document: 'var(--semi-color-success)',
+  other: 'var(--semi-color-text-2)',
+};
+function TypeTreeIcon({ type }: Readonly<{ type: CmsResourceType }>) {
+  const style = { marginRight: 6, color: TYPE_TREE_ICON_COLORS[type] };
+  if (type === 'image') return <ImageIcon size={14} style={style} />;
+  if (type === 'video') return <Film size={14} style={style} />;
+  if (type === 'audio') return <Music size={14} style={style} />;
+  if (type === 'document') return <FileText size={14} style={style} />;
+  return <FileIcon size={14} style={style} />;
 }
 
 /** 裁剪弹窗：图片上拖拽画选区（映射回原图像素），调服务端 sharp 裁剪另存新素材 */
@@ -291,7 +310,7 @@ export default function ResourcesPage() {
   const [governanceRange, setGovernanceRange] = useState<[Date, Date] | null>(null);
   const {
     page, pageSize, setPage, buildPagination,
-    bind, bindKeyword, submittedParams,
+    bind, bindKeyword, submittedParams, applySearch,
     handleSearch, handleReset,
   } = useListSearch<SearchParams>({
     defaults: defaultSearchParams,
@@ -563,13 +582,40 @@ export default function ResourcesPage() {
             <MasterDetailLayout.Body padding={8}>
               {foldersQuery.isError ? <Empty title="文件夹加载失败" description="请刷新重试" /> : <Tree
                 treeData={[
-                  { key: 'all', label: '全部素材' },
-                  { key: '0', label: '根目录（未分类）' },
+                  {
+                    key: 'all',
+                    label: '全部素材',
+                    icon: <LayoutGrid size={14} style={{ marginRight: 6, color: 'var(--semi-color-primary)' }} />,
+                    children: CMS_RESOURCE_TYPES.map((t) => ({
+                      key: `type:${t}`,
+                      label: CMS_RESOURCE_TYPE_LABELS[t],
+                      icon: <TypeTreeIcon type={t} />,
+                    })),
+                  },
+                  { key: '0', label: '根目录（未分类）', icon: <Inbox size={14} style={{ marginRight: 6, color: 'var(--semi-color-text-2)' }} /> },
                   ...foldersToTree(foldersQuery.data ?? []),
                 ]}
-                value={folderKey}
-                // 文件夹只筛选素材列表，选中后回到列表页签，避免停在治理页签看不到变化
-                onChange={(key) => { setFolderKey(String(key)); setPage(1); setSelectedIds([]); setShowListOnNarrow(true); setActiveTab('resources'); }}
+                value={submittedParams.type ? `type:${submittedParams.type}` : folderKey}
+                // 树单选即范围唯一真相：类型节点按类型筛并回到全部；目录节点清空类型
+                onChange={(raw) => {
+                  const key = String(raw);
+                  if (key.startsWith('type:')) {
+                    const type = enumValueOf(CMS_RESOURCE_TYPES, key.slice('type:'.length));
+                    if (!type) return;
+                    setFolderKey('all');
+                    applySearch({ ...submittedParams, type });
+                  } else {
+                    setFolderKey(key);
+                    if (submittedParams.type === undefined) {
+                      setPage(1);
+                      setSelectedIds([]);
+                    } else {
+                      applySearch({ ...submittedParams, type: undefined });
+                    }
+                  }
+                  setShowListOnNarrow(true);
+                  setActiveTab('resources');
+                }}
                 defaultExpandAll
               />}
             </MasterDetailLayout.Body>
