@@ -33,6 +33,7 @@ export async function listCmsTags(q: QueryOutputOf<typeof cmsTagContract.list>) 
   const where = buildWhere(
     eq(cmsTags.siteId, q.siteId),
     keywordCondition(q.keyword, [cmsTags.name, cmsTags.slug]),
+    keywordCondition(q.groupName, [cmsTags.groupName]),
   );
   return listRows({
     page: q.page,
@@ -64,6 +65,7 @@ export const cmsTagService = defineCrudService(cmsTagContract, {
     where: [
       eq(cmsTags.siteId, q.siteId),
       keywordCondition(q.keyword, [cmsTags.name, cmsTags.slug]),
+      keywordCondition(q.groupName, [cmsTags.groupName]),
     ],
     orderBy: [asc(cmsTags.id)],
   }),

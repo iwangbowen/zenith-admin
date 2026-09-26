@@ -23,6 +23,7 @@ export type CmsTag = z.infer<typeof cmsTagSchema>;
 export const cmsTagListQuery = paginationQuery.extend({
   siteId: requiredIdQuery(),
   keyword: keywordQuery(),
+  groupName: keywordQuery('分组', { max: 50 }),
 });
 
 export const cmsSiteScopeQuery = z.object({

@@ -843,9 +843,10 @@ export const cmsHandlers = [
   // ═══ 标签 ═══════════════════════════════════════════════════════════════
   mock(cmsTagContract.all, ({ query, ok }) => ok(mockCmsTags.filter((t) => t.siteId === query.siteId))),
   mock(cmsTagContract.list, ({ query, ok, paginate }) => {
-    const { siteId, keyword } = query;
+    const { siteId, keyword, groupName } = query;
     let list = mockCmsTags.filter((t) => t.siteId === siteId);
     list = filterByKeyword(list, keyword, [(t) => t.name, (t) => t.slug]);
+    list = filterByKeyword(list, groupName, [(t) => t.groupName]);
     return ok(paginate(list));
   }),
   ...mockResource(cmsTagContract, {

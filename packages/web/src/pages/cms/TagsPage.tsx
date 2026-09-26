@@ -15,6 +15,7 @@ import { slugifyName } from '@/utils/slug';
 import { abortSubmit } from '@/lib/abort-submit';
 import { useListPage } from '@/hooks/useListPage';
 import { EditFormModal } from '@/components/EditFormModal';
+import { KeywordInput } from '@/components/search-filters';
 
 export default function TagsPage() {
   const { hasPermission } = usePermission();
@@ -84,11 +85,17 @@ export default function TagsPage() {
 
   return (
     <div className="page-container">
-      {/* 站点是列表的作用域而非筛选条件，与关键字一起留在移动端主区 */}
+      {/* 站点选择放在首位，分组搜索作为附加筛选 */}
       <ListSearchToolbar
-        page={page}
-        filters={['keyword']}
-        extraFilters={<CmsSiteSelect value={siteId} onChange={(v) => { setSiteId(v); setPage(1); }} width={180} />}
+        keyword={(
+          <>
+            <CmsSiteSelect value={siteId} onChange={(v) => { setSiteId(v); setPage(1); }} width={180} />
+            <KeywordInput placeholder="搜索关键字" {...page.bindKeyword('keyword')} />
+          </>
+        )}
+        filters={<KeywordInput placeholder="搜索分组" {...page.bindKeyword('groupName')} width={160} />}
+        onSearch={page.toolbarProps.onSearch}
+        onReset={page.toolbarProps.onReset}
         create={<CreateButton permission="cms:tag:create" onClick={modal.openCreate} />}
       />
 

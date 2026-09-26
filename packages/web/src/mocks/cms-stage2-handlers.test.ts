@@ -69,6 +69,13 @@ describe('CMS Stage 2 MSW handlers', () => {
     await call('DELETE', `/api/cms/resources/folders/${folderId}`);
   });
 
+  it('filters CMS tags by group name', async () => {
+    const response = await call('GET', '/api/cms/tags?siteId=1&page=1&pageSize=20&groupName=%E4%BA%A7');
+    expect(response.status).toBe(200);
+    const data = response.body as { data: { list: Array<{ name: string }> } };
+    expect(data.data.list.map((tag) => tag.name)).toEqual(['产品发布']);
+  });
+
   it('supports site dictionary types, hotword groups and masked form secrets', async () => {
     const word = await call('POST', '/api/cms/search/words', {
       siteId: 1, word: '停用演示', type: 'stop', groupName: '测试', weight: 1, status: 'enabled',
