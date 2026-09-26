@@ -1,11 +1,11 @@
 import { lazy, Suspense, useRef, useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Input, Tag, Toast, Tooltip, Modal, Tabs, TabPane, Tree, TreeSelect, Typography, Dropdown, Form, SplitButtonGroup, Space, Select } from '@douyinfe/semi-ui';
+import { Button, Checkbox, Input, Tag, Toast, Tooltip, Modal, Popover, Tabs, TabPane, Tree, TreeSelect, Typography, Dropdown, Form, SplitButtonGroup, Space, Select } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { TreeNodeData } from '@douyinfe/semi-ui/lib/es/tree/interface';
-import { ChevronDown, Image as ImageIcon, Film, Paperclip, FolderTree } from 'lucide-react';
+import { ChevronDown, Filter, Image as ImageIcon, Film, Paperclip, FolderTree } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import AppModal from '@/components/AppModal';
@@ -51,8 +51,8 @@ const STATUS_COLORS: Record<CmsContentStatus, 'grey' | 'orange' | 'green' | 'red
 const CmsContentWorkflowSheet = lazy(() => import('./CmsContentWorkflowSheet'));
 
 type TabKey = 'all' | 'pending' | 'published' | 'archived' | 'recycle' | 'calendar';
-interface ContentFilters { keyword: string; modelId?: number; ownerId?: number; locale: string; editorialStatus?: CmsEditorialStatus; hasUnpublishedChanges?: boolean; tags?: string; timeRange: [Date, Date] | null }
-const DEFAULT_FILTERS: ContentFilters = { keyword: '', locale: '', timeRange: null };
+interface ContentFilters { keyword: string; modelId?: number; ownerId?: number; locale: string; editorialStatus?: CmsEditorialStatus; hasUnpublishedChanges?: boolean; tags?: string; flags: ContentFlagFilter[]; timeRange: [Date, Date] | null }
+const DEFAULT_FILTERS: ContentFilters = { keyword: '', locale: '', flags: [], timeRange: null };
 interface SavedContentView { name: string; filters: ContentFilters; channelId?: number; contentType?: CmsContentType; tab?: TabKey }
 
 
@@ -74,6 +74,59 @@ function titleFlagItems(record: CmsContentListItem): OverflowTagItem[] {
   if (record.isOriginal) items.push({ key: 'original', label: '原创', color: 'green' });
   if (record.attachments?.length) items.push({ key: 'attachments', label: `附${record.attachments.length}`, color: 'grey' });
   return items;
+}
+
+/** 标题列快速筛选的标记选项：配色与行内标记标签一致，多选按 AND 走服务端查询 */
+type ContentFlagFilter = 'isTop' | 'isRecommend' | 'isHot' | 'isOriginal';
+const FLAG_FILTER_OPTIONS = [
+  { value: 'isTop', label: '置顶', color: 'blue' },
+  { value: 'isRecommend', label: '推荐', color: 'cyan' },
+  { value: 'isHot', label: '热门', color: 'red' },
+  { value: 'isOriginal', label: '原创', color: 'green' },
+] as const satisfies readonly { value: ContentFlagFilter; label: string; color: 'blue' | 'cyan' | 'red' | 'green' }[];
+
+/** 标题列头标记筛选按钮：Popover 内勾选即时走服务端查询；激活态主题色高亮 */
+function TitleFlagFilterButton({ value, onChange }: Readonly<{ value: readonly ContentFlagFilter[]; onChange: (flags: ContentFlagFilter[]) => void }>) {
+  const [visible, setVisible] = useState(false);
+  const active = value.length > 0;
+  const activeLabels = FLAG_FILTER_OPTIONS.filter((o) => (value as readonly string[]).includes(o.value)).map((o) => o.label).join('、');
+  return (
+    <Popover
+      content={(
+        <div style={{ padding: 8, width: 160 }}>
+          <Checkbox.Group
+            direction="vertical"
+            value={[...value]}
+            onChange={(checked) => onChange(checked.filter((v): v is ContentFlagFilter => FLAG_FILTER_OPTIONS.some((o) => o.value === v)))}
+            options={FLAG_FILTER_OPTIONS.map((o) => ({ label: <Tag size="small" color={o.color}>{o.label}</Tag>, value: o.value }))}
+          />
+          <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Button size="small" theme="borderless" onClick={() => { onChange([]); setVisible(false); }}>重置</Button>
+            <Typography.Text size="small" type="tertiary">{active ? `已选 ${value.length} 项` : '勾选即筛选'}</Typography.Text>
+          </div>
+        </div>
+      )}
+      trigger="click"
+      visible={visible}
+      onVisibleChange={setVisible}
+      onClickOutSide={() => setVisible(false)}
+      position="bottomLeft"
+      getPopupContainer={() => document.body}
+    >
+      <button
+        type="button"
+        aria-label="按标记筛选标题"
+        title={active ? `已筛：${activeLabels}` : '按标记筛选：置顶 / 推荐 / 热门 / 原创'}
+        onClick={(e) => { e.stopPropagation(); setVisible((v) => !v); }}
+        onMouseDown={(e) => e.stopPropagation()}
+        style={active
+          ? { display: 'inline-flex', padding: 2, border: 0, borderRadius: 'var(--semi-border-radius-small)', cursor: 'pointer', color: 'var(--semi-color-primary)', background: 'var(--semi-color-primary-light-default)' }
+          : { display: 'inline-flex', padding: 2, border: 0, borderRadius: 'var(--semi-border-radius-small)', cursor: 'pointer', color: 'var(--semi-color-text-2)', background: 'transparent' }}
+      >
+        <Filter size={12} fill={active ? 'currentColor' : 'none'} />
+      </button>
+    </Popover>
+  );
 }
 
 /**
@@ -178,6 +231,10 @@ export default function ContentsPage() {
     siteId: siteId ?? 0, channelId, status: statusFilter, contentType,
     keyword: submittedParams.keyword, modelId: submittedParams.modelId, ownerId: submittedParams.ownerId,
     locale: submittedParams.locale, tags: submittedParams.tags, hasUnpublishedChanges: submittedParams.hasUnpublishedChanges,
+    isTop: submittedParams.flags.includes('isTop') ? true : undefined,
+    isRecommend: submittedParams.flags.includes('isRecommend') ? true : undefined,
+    isHot: submittedParams.flags.includes('isHot') ? true : undefined,
+    isOriginal: submittedParams.flags.includes('isOriginal') ? true : undefined,
     editorialStatus: activeTab === 'pending' ? 'pending' as const : submittedParams.editorialStatus,
     ...formatDateTimeRangeForApi(submittedParams.timeRange),
     deleted: activeTab === 'recycle' ? true : undefined, archived: activeTab === 'archived' ? true : undefined,
@@ -371,7 +428,12 @@ export default function ContentsPage() {
 
   const columns: ColumnProps<CmsContentListItem>[] = [
     {
-      title: '标题',
+      title: (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          标题
+          <TitleFlagFilterButton value={submittedParams.flags} onChange={(flags) => applySearch({ ...submittedParams, flags })} />
+        </span>
+      ),
       dataIndex: 'title',
       minWidth: 400,
       render: (v: string, record) => {

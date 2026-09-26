@@ -350,6 +350,7 @@ export const cmsContentListQuery = paginationQuery.extend({
   isTop: queryBool(),
   isRecommend: queryBool(),
   isHot: queryBool(),
+  isOriginal: queryBool(),
   deleted: queryBool('仅回收站内容'),
   archived: queryBool('仅已归档内容'),
   ...dateRangeQuery(),

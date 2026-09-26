@@ -50,6 +50,7 @@ function normalizeQuery(query: Record<string, unknown>): CmsContentListFilter {
     isTop: asBoolean(query.isTop),
     isRecommend: asBoolean(query.isRecommend),
     isHot: asBoolean(query.isHot),
+    isOriginal: asBoolean(query.isOriginal),
     deleted: asBoolean(query.deleted),
     archived: asBoolean(query.archived),
     startTime: asString(query.startTime),

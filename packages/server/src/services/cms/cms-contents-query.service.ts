@@ -160,6 +160,7 @@ export async function buildCmsContentListWhere(q: CmsContentListFilter): Promise
     q.isTop !== undefined ? sql`(${cmsContentWorkingCopies.snapshot}->>'isTop')::boolean = ${q.isTop}` : undefined,
     q.isRecommend !== undefined ? sql`(${cmsContentWorkingCopies.snapshot}->>'isRecommend')::boolean = ${q.isRecommend}` : undefined,
     q.isHot !== undefined ? sql`(${cmsContentWorkingCopies.snapshot}->>'isHot')::boolean = ${q.isHot}` : undefined,
+    q.isOriginal !== undefined ? sql`(${cmsContentWorkingCopies.snapshot}->>'isOriginal')::boolean = ${q.isOriginal}` : undefined,
   );
 
   return buildWhere(

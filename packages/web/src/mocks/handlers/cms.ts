@@ -508,6 +508,10 @@ export const cmsHandlers = [
     if (query.modelId) list = list.filter((content) => content.modelId === query.modelId);
     if (query.locale) list = list.filter((content) => content.locale === query.locale);
     if (query.hasUnpublishedChanges !== undefined) list = list.filter((content) => content.hasUnpublishedChanges === query.hasUnpublishedChanges);
+    if (query.isTop !== undefined) list = list.filter((content) => content.isTop === query.isTop);
+    if (query.isRecommend !== undefined) list = list.filter((content) => content.isRecommend === query.isRecommend);
+    if (query.isHot !== undefined) list = list.filter((content) => content.isHot === query.isHot);
+    if (query.isOriginal !== undefined) list = list.filter((content) => content.isOriginal === query.isOriginal);
     if (query.tags) list = list.filter((content) => query.tags!.split(',').map(Number).every((tag) => content.tagIds.includes(tag)));
     if (query.startTime) list = list.filter((content) => content.createdAt >= query.startTime!);
     if (query.endTime) list = list.filter((content) => content.createdAt <= query.endTime!);
