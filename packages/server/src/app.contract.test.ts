@@ -117,6 +117,41 @@ describe('路由装配', () => {
     expect(res.status).toBe(404);
     expect(await res.json()).toMatchObject({ code: 404 });
   });
+
+  /**
+   * 路径遮蔽：契约里的操作不能被**另一个**路由抢先匹配。
+   *
+   * Hono 按注册顺序匹配：`GET /{id}` 先注册时，`GET /calendar` 会落进 `{id}` 的
+   * `z.coerce.number()` 校验，返回「参数「id」类型不正确，期望 number」。路由表快照
+   * （只存 method + path 且已排序）与「未认证一律 401」（ID 路径同样要认证）都看不出问题。
+   * 2026-09 内容日历 `GET /api/cms/contents/calendar` 就是这样被吞掉的。
+   *
+   * 因此这里按注册顺序模拟一次匹配：找到与方法 + 路径模式都相符的**第一个**已注册路由，
+   * 它必须就是契约自己声明的那条路径。静态路径被参数路径抢先就命中不了自己，直接标红。
+   * 修法优先用 `orderRoutes()` 排序（见 `routes/_crud.ts`），而不是调换注册顺序依赖人工记忆。
+   */
+  it('契约里的操作不会被同方法下先注册的参数路径遮蔽', () => {
+    const escapeSegment = (segment: string) => segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = (path: string) => new RegExp(`^${path.split('/').map((segment) => (segment.startsWith(':') ? '[^/]+' : escapeSegment(segment))).join('/')}$`);
+    // 只有「同方法 + 同段数」才可能互相匹配：按这两个维度分桶，避免 2500×2500 全量比对
+    const buckets = new Map<string, { path: string; re: RegExp }[]>();
+    for (const route of routes) {
+      if (route.method === 'ALL') continue;
+      const key = `${route.method} ${route.path.split('/').length}`;
+      buckets.set(key, [...(buckets.get(key) ?? []), { path: route.path, re: pattern(route.path) }]);
+    }
+    const toHonoPath = (fullPath: string) => fullPath.replace(/\{([^}]+)\}/g, ':$1');
+
+    const shadowed: string[] = [];
+    for (const { op } of listAllOperations()) {
+      const method = op.method.toUpperCase();
+      const path = toHonoPath(op.fullPath);
+      const winner = (buckets.get(`${method} ${path.split('/').length}`) ?? []).find((candidate) => candidate.re.test(path));
+      if (winner && winner.path !== path) shadowed.push(`${method} ${path} → 先被 ${winner.path} 匹配`);
+    }
+
+    expect(shadowed).toEqual([]);
+  });
 });
 
 describe('认证契约：声明与运行时行为必须一致', () => {

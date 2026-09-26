@@ -489,6 +489,7 @@ exports[`路由表快照 > 完整路由表保持不变 1`] = `
   "GET /api/cms/contents/:id/versions/:versionId",
   "GET /api/cms/contents/:id/versions/:versionId/diff",
   "GET /api/cms/contents/:id/workflow",
+  "GET /api/cms/contents/calendar",
   "GET /api/cms/contents/check-title",
   "GET /api/cms/contents/link-target",
   "GET /api/cms/dashboard/stats",

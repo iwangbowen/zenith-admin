@@ -281,7 +281,57 @@ export const cmsContentBatchStatusResultSchema = z.object({
 
 export type CmsContentBatchStatusResult = z.infer<typeof cmsContentBatchStatusResultSchema>;
 
+// ─── 内容日历 ────────────────────────────────────────────────────────────────
+
+/**
+ * 日历事件类型：`published` 是**实际发布时间**（`cms_contents.published_at`），
+ * 其余三类是稿件上的待办日程（计划发布 / 审稿截止 / 过期下线）。
+ * 直接发布的内容没有 `scheduledAt`，因此实际发布必须单独成类，否则日历经查不到已发布内容。
+ */
+export const CMS_CONTENT_CALENDAR_EVENT_KINDS = ['published', 'scheduled', 'due', 'expire'] as const;
+
+export const cmsContentCalendarEventKindSchema = z.enum(CMS_CONTENT_CALENDAR_EVENT_KINDS);
+
+export type CmsContentCalendarEventKind = z.infer<typeof cmsContentCalendarEventKindSchema>;
+
+/** 日历事件明细（悬浮列表用；只带展示与跳转所需字段） */
+export const cmsContentCalendarItemSchema = z.object({
+  contentId: z.int(),
+  title: z.string(),
+  kind: cmsContentCalendarEventKindSchema,
+}).meta({ id: 'CmsContentCalendarItem' });
+
+export type CmsContentCalendarItem = z.infer<typeof cmsContentCalendarItemSchema>;
+
+const cmsContentCalendarCountsSchema = z.object({
+  published: z.int(),
+  scheduled: z.int(),
+  due: z.int(),
+  expire: z.int(),
+});
+
+/**
+ * 日历中的一天。`counts` 是精确计数（格子徽标），`items` 是悬浮列表用的明细，
+ * 每天最多 `CMS_CONTENT_CALENDAR_DAY_ITEM_LIMIT` 条，超出部分由 `counts - items.length` 提示。
+ */
+export const cmsContentCalendarDaySchema = z.object({
+  date: z.string().meta({ description: '应用时区下的 YYYY-MM-DD', example: '2026-09-26' }),
+  counts: cmsContentCalendarCountsSchema,
+  items: z.array(cmsContentCalendarItemSchema),
+}).meta({ id: 'CmsContentCalendarDay' });
+
+export type CmsContentCalendarDay = z.infer<typeof cmsContentCalendarDaySchema>;
+
+/** 悬浮列表每天展示的事件上限（超出只影响明细，不影响 counts） */
+export const CMS_CONTENT_CALENDAR_DAY_ITEM_LIMIT = 20;
+
 // ─── 入参 ────────────────────────────────────────────────────────────────────
+
+/** 内容日历查询（按月聚合，不翻页） */
+export const cmsContentCalendarQuery = z.object({
+  siteId: requiredIdQuery(),
+  month: z.string().regex(/^\d{4}-\d{2}$/, '月份格式为 YYYY-MM').meta({ example: '2026-09' }),
+});
 
 export const cmsContentListQuery = paginationQuery.extend({
   calendarFrom: dateRangeBound('发布、到期或审稿截止起点', 'start'),
@@ -325,6 +375,7 @@ export const cmsContentVersionParam = idParam.extend({
 export const cmsContentContract = defineContract('/api/cms/contents', {
   list: op.get('/', { access: { permission: 'cms:content:list' }, query: cmsContentListQuery, response: paginated(cmsContentListItemSchema), summary: '内容分页列表（不含正文 / 扩展字段 / 形态数据）' }),
   checkTitle: op.get('/check-title', { access: { permission: 'cms:content:list' }, query: cmsContentTitleCheckQuery, response: cmsTitleDuplicateCheckSchema, summary: '同站标题查重（编辑辅助，不阻断保存）' }),
+  calendar: op.get('/calendar', { access: { permission: 'cms:content:list' }, query: cmsContentCalendarQuery, response: z.array(cmsContentCalendarDaySchema), summary: '内容日历（按天聚合实际发布与待办日程）' }),
   linkTarget: op.get('/link-target', { access: { permission: 'cms:content:list' }, query: cmsLinkTargetQuery, response: cmsLinkTargetSchema, summary: '解析内部链接目标（编辑页回显 entity: 链接的可读名称）' }),
   workflowPreview: op.post('/workflow-preview', { access: { permission: ['cms:content:list', 'cms:content:create', 'cms:content:update'] }, body: previewCmsContentWorkflowSchema, response: workflowBusinessPreviewSchema, summary: '内容审核链路预览（不保存）' }),
   workflowContext: op.get('/{id}/workflow', { access: { permission: 'cms:content:list' }, params: idParam, query: workflowBusinessContextQuery, response: workflowBusinessContextSchema, summary: '内容审批流程与往次记录' }),

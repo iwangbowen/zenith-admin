@@ -5,6 +5,7 @@ import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   listCmsContents,
+  getCmsContentCalendar,
   getCmsContent,
   createCmsContent,
   updateCmsContent,
@@ -34,7 +35,7 @@ import { createContentPreviewLink, revokeCmsContentPreview } from '../../service
 import { lockCmsContent, unlockCmsContent } from '../../services/cms/cms-content-lock.service';
 import { describeCmsLink } from '../../services/cms/cms-link.service';
 import { ensureCmsSiteExists, assertSiteAccess } from '../../services/cms/cms-sites.service';
-import { mountCrud } from '../_crud';
+import { mountCrud, orderRoutes } from '../_crud';
 import { previewCmsContentWorkflow, getCmsContentWorkflowContext } from '../../services/cms/cms-workflow.service';
 import { getCmsContentForApproval } from '../../services/cms/cms-contents-query.service';
 import { approveCmsContentForRelease } from '../../services/cms/cms-contents-write.service';
@@ -260,6 +261,10 @@ const checkTextRoute = defineContractRoute(cmsContentContract.checkText, {
   handler: async (c) => c.json(okBody(await checkCmsText(c.req.valid('json').text)), 200),
 });
 
+const calendarRoute = defineContractRoute(cmsContentContract.calendar, {
+  handler: async (c) => c.json(okBody(await getCmsContentCalendar(c.req.valid('query'))), 200),
+});
+
 const persistentLockRoute = defineContractRoute(cmsContentContract.lock, {
   handler: async (c) => {
     const { id } = c.req.valid('param');
@@ -286,6 +291,8 @@ mountCrud(router, cmsContentContract,
   [
     checkTitleRoute,
     describeLinkRoute,
+    // 静态路径必须在 `GET /{id}` 之前注册（openapiRoutes 按传入顺序匹配，本批由 orderRoutes 排序）
+    calendarRoute,
     updateRouteDef,
     submitRoute,
     defineContractRoute(cmsContentContract.preparePublication, { handler: async (c) => c.json(okBody(await approveCmsContentForRelease(c.req.valid('param').id, c.req.valid('json').expectedVersion), '已批准，待加入发布单'), 200) }),
@@ -301,12 +308,14 @@ mountCrud(router, cmsContentContract,
     versionDiffRoute,
   ],
 );
-router.openapiRoutes([
+// 本批含 `POST /{id}/…` 等参数路径，同样要过 orderRoutes：否则后加的静态路径会被
+// 早先注册的参数路径吞掉（Hono 按注册顺序匹配，`GET /calendar` 曾落进 `GET /{id}` 的 coerce 校验返回 400）。
+router.openapiRoutes(orderRoutes([
   workflowPreviewRoute, workflowContextRoute, approvalDetailRoute,
   editLockAcquireRoute, editLockReleaseRoute, previewLinkRoute, revokePreviewRoute,
   batchMoveRoute, batchFlagsRoute, batchTagRoute, batchStatusRoute, duplicateRoute, distributeRoute,
   archiveRoute, unarchiveRoute, opLogsRoute, checkTextRoute,
   persistentLockRoute, persistentUnlockRoute,
-] as const);
+]));
 
 export default router;

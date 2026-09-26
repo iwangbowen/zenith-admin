@@ -36,6 +36,8 @@ export const cmsContentKeys = {
   versionPage: (contentId: number, page = 1) => contractKey(cmsContentContract.versions, { params: { id: contentId }, query: { page, pageSize: 30 } }),
   versionDiffs: contractKey(cmsContentContract.versionDiff),
   linkTargets: contractKey(cmsContentContract.linkTarget),
+  /** 内容日历（按月聚合）的公共前缀 */
+  calendar: contractKey(cmsContentContract.calendar),
   workflowContexts: contractKey(cmsContentContract.workflowContext),
   workflowContext: (contentId: number) => contractKey(cmsContentContract.workflowContext, { params: { id: contentId }, query: {} }),
   approvalDetails: contractKey(cmsContentContract.approvalDetail),
@@ -53,6 +55,14 @@ export function useCmsContentList(query: CmsContentListParams, enabled = true) {
   });
 }
 export const useCmsContentDetail = resource.useDetail;
+
+/** 内容日历按天聚合（站点 + 月份）；发布 / 状态流转后由 invalidateAfterCmsContentChange 失效。 */
+export function useCmsContentCalendar(siteId: number | undefined, month: string, enabled = true) {
+  return useApiQuery(cmsContentContract.calendar, { query: { siteId: siteId ?? 0, month } }, {
+    enabled: enabled && !!siteId,
+    placeholderData: keepPreviousData,
+  });
+}
 export const useSaveCmsContent = resource.useSave;
 
 /** 审批中的业务记录持续回源，直到工作流订阅者完成 CMS 状态回写。与普通详情共用契约缓存。 */
@@ -106,6 +116,8 @@ export function invalidateAfterCmsContentChange(qc: QueryClient, ids?: readonly 
   void qc.invalidateQueries({ queryKey: contractKey(cmsEditorialContract.translations) });
   void qc.invalidateQueries({ queryKey: contractKey(cmsReleaseContract.list) });
   void qc.invalidateQueries({ queryKey: cmsContentKeys.lists });
+  // 发布 / 下线 / 改计划发布时间都会改变日历格子：内容列表的失效点一并覆盖日历
+  void qc.invalidateQueries({ queryKey: cmsContentKeys.calendar });
   if (ids) {
     for (const id of ids) {
       void qc.invalidateQueries({ queryKey: cmsContentKeys.detail(id) });

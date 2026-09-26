@@ -40,7 +40,7 @@ graph LR
 | 内容工作台 | `/cms/workspace` | 按当前站点集中处理稿件待办、读者反馈与编辑事项 | 本页 |
 | 站点管理 | `/cms/sites` | 父子站群、显式继承、域名路由、主题选择与主题参数、审核模式、Webhook；站点行内工作区提供建站检查与配置快捷入口 | [站群与分发](./site-groups-and-distribution) · [主题](./themes) |
 | 栏目管理 | `/cms/channels` | 左树右编辑，树形栏目（列表/单页/外链），栏目标识 code + 级联 path，批量建栏目 | [内容管线](./content-pipeline) |
-| 内容管理 | `/cms/contents` | 5 态状态机、多形态内容（图文/图集/音视频/外链）、批量状态流转、导入导出、回收站 | [内容管线](./content-pipeline) |
+| 内容管理 | `/cms/contents` | 5 态状态机、多形态内容（图文/图集/音视频/外链）、批量状态流转、导入导出、回收站、内容日历 | [内容管线](./content-pipeline) |
 | 内容模型 | `/cms/models` | 12 种自定义字段、选项绑字典、默认值、发布必填、列表/详情展示配置、站群归属治理 | [内容模型](./content-models) |
 | 标签管理 | `/cms/tags` | 站点级标签（名称自动生成拼音 slug）+ 前台聚合页 | [内容管线](./content-pipeline) |
 | 友情链接 | `/cms/friend-links` | 前台页脚友链，支持分组管理与按组渲染 | [互动与运营](./interaction) |

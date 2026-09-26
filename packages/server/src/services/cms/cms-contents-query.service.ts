@@ -8,14 +8,15 @@ import { withCmsPublicGeneration } from './cms-generation-storage.service';
 import { cmsGenerationContext } from './cms-generation-context';
 import { cmsContents, cmsContentTags, cmsContentChannels, cmsContentRelations, cmsContentWorkingCopies, cmsChannels, cmsTags, users } from '../../db/schema';
 import type { CmsContentRow, CmsTagRow } from '../../db/schema';
-import { formatTimestamps, parseDateRangeStart, parseDateRangeEnd, APP_TIME_ZONE } from '../../lib/datetime';
+import dayjs from 'dayjs';
+import { DATE_FORMAT, formatDate, formatTimestamps, parseDateRangeStart, parseDateRangeEnd, APP_TIME_ZONE } from '../../lib/datetime';
 import { pickEntity } from '../../lib/entity-map';
 import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { config } from '../../config';
 import redis from '../../lib/redis';
 import { getAccessibleChannelIds, assertChannelAccess } from './cms-channels.service';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
-import { cmsContentContract, cmsContentSchema, type CmsEditorialStatus, type CmsContentRevisionSnapshot, type CmsBodyDocument, type CmsModelField } from '@zenith/shared/cms';
+import { CMS_CONTENT_CALENDAR_DAY_ITEM_LIMIT, cmsContentContract, cmsContentSchema, type CmsContentCalendarEventKind, type CmsContentCalendarItem, type CmsEditorialStatus, type CmsContentRevisionSnapshot, type CmsBodyDocument, type CmsModelField } from '@zenith/shared/cms';
 import { resolveCmsContentRow, resolveCmsContentRows } from './cms-resource-refs.service';
 import { buildCmsContentUrls } from './cms-urls';
 import { getEffectivelyEnabledCmsChannelIds } from './cms-channel-visibility.service';
@@ -228,6 +229,75 @@ export async function listCmsContents(q: QueryOutputOf<typeof cmsContentContract
       });
     },
   });
+}
+
+// ─── 内容日历（按月聚合）─────────────────────────────────────────────────────
+
+/** 事件类型顺序（同时是悬浮列表的排序依据）：实际发布 → 计划发布 → 审稿截止 → 过期下线 */
+const CALENDAR_KIND_ORDER: CmsContentCalendarEventKind[] = ['published', 'scheduled', 'due', 'expire'];
+
+/**
+ * 内容日历：把一个月内每篇稿件的「事件日期」摊平成按天聚合的格子数据。
+ *
+ * 事件源有两类：
+ * - **实际发布** `cms_contents.published_at`（主表列）；
+ * - **待办日程** 工作副本快照里的 `scheduledAt` / `dueAt` / `expireAt`。
+ *
+ * 直接发布的内容在发布激活时 `scheduledAt` 被清空（见 `applyCmsRevisionProjection`），
+ * 因此只登记主表列；不把 `published_at` 纳入事件源的话，日历会看不到刚发布的内容。
+ * `counts` 始终是精确值，`items` 每天截断到 `CMS_CONTENT_CALENDAR_DAY_ITEM_LIMIT` 条供悬浮列表使用。
+ */
+export async function getCmsContentCalendar(q: QueryOutputOf<typeof cmsContentContract.calendar>) {
+  await ensureCmsSiteExists(q.siteId);
+  await assertSiteAccess(q.siteId);
+  const accessibleChannelIds = await getAccessibleChannelIds();
+  const scopeCondition = await cmsContentDataScope();
+  const monthStart = dayjs.tz(`${q.month}-01`, DATE_FORMAT, APP_TIME_ZONE);
+  // 传 ISO 字符串而非 Date：postgres-js 无法为 `::timestamptz` 占位符推断 Date 参数类型，
+  // 会在绑定阶段报 ERR_INVALID_ARG_TYPE（与 buildCmsContentListWhere 的日历筛选写法一致）
+  const start = monthStart.toISOString();
+  const end = monthStart.add(1, 'month').toISOString();
+
+  const where = buildWhere(
+    eq(cmsContents.siteId, q.siteId),
+    isNull(cmsContents.deletedAt),
+    isNull(cmsContents.archivedAt),
+    accessibleChannelIds !== null ? inArray(cmsContents.channelId, accessibleChannelIds) : undefined,
+    scopeCondition,
+  ) ?? sql`true`;
+
+  // 四类事件用 `values` 摊平后再按月份区间过滤：任一类落在本月即成为一条日历事件。
+  const rows = await db.execute<{ contentId: number; title: string; kind: CmsContentCalendarEventKind; at: Date }>(sql`
+    select ${cmsContents.id} as "contentId",
+           coalesce(${cmsContentWorkingCopies.snapshot}->>'title', '') as title,
+           calendar_event.kind as kind,
+           calendar_event.at as at
+    from ${cmsContents}
+    join ${cmsContentWorkingCopies} on ${cmsContentWorkingCopies.contentId} = ${cmsContents.id}
+    join lateral (values
+      ('published', ${cmsContents.publishedAt}),
+      ('scheduled', nullif(${cmsContentWorkingCopies.snapshot}->>'scheduledAt', '')::timestamp at time zone ${APP_TIME_ZONE}),
+      ('due', nullif(${cmsContentWorkingCopies.snapshot}->>'dueAt', '')::timestamp at time zone ${APP_TIME_ZONE}),
+      ('expire', nullif(${cmsContentWorkingCopies.snapshot}->>'expireAt', '')::timestamp at time zone ${APP_TIME_ZONE})
+    ) as calendar_event(kind, at)
+      on calendar_event.at >= ${start}::timestamptz and calendar_event.at < ${end}::timestamptz
+    where ${where}
+    order by calendar_event.at asc, ${cmsContents.id} desc
+  `);
+
+  const days = new Map<string, { date: string; counts: Record<CmsContentCalendarEventKind, number>; items: CmsContentCalendarItem[] }>();
+  for (const row of rows) {
+    const date = formatDate(row.at);
+    let day = days.get(date);
+    if (!day) {
+      day = { date, counts: { published: 0, scheduled: 0, due: 0, expire: 0 }, items: [] };
+      days.set(date, day);
+    }
+    day.counts[row.kind] += 1;
+    if (day.items.length < CMS_CONTENT_CALENDAR_DAY_ITEM_LIMIT) day.items.push({ contentId: row.contentId, title: row.title, kind: row.kind });
+  }
+  for (const day of days.values()) day.items.sort((a, b) => CALENDAR_KIND_ORDER.indexOf(a.kind) - CALENDAR_KIND_ORDER.indexOf(b.kind) || b.contentId - a.contentId);
+  return [...days.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
 // ─── 标题查重（P4：编辑辅助提示，不阻断保存；排除回收站与自身）───────────────────

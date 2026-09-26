@@ -9,6 +9,8 @@ import { removeByIds, removeItem, requireItem, updateItem } from '@/mocks/utils/
 import type {
   CmsChannel,
   CmsContent,
+  CmsContentCalendarDay,
+  CmsContentCalendarEventKind,
   CmsForm,
   CmsModel,
   CmsModelField,
@@ -17,6 +19,7 @@ import type {
   cmsModelFieldSchema,
 } from '@zenith/shared/cms';
 import {
+  CMS_CONTENT_CALENDAR_DAY_ITEM_LIMIT,
   CMS_SECRET_MASK,
   cmsAdContract,
   cmsChannelContract,
@@ -512,6 +515,29 @@ export const cmsHandlers = [
     list = filterByKeyword(list, keyword, [(c) => c.title, (c) => c.author]);
     list = [...list].sort((a, b) => Number(b.isTop) - Number(a.isTop) || (b.topWeight ?? 0) - (a.topWeight ?? 0) || b.id - a.id);
     return ok(paginate(list.map((c) => ({ ...c, listFields: Object.fromEntries((c.modelFields ?? []).filter((field) => field.showInList).map((field) => [field.name, c.extend[field.name]])), channelName: mockCmsChannels.find((ch) => ch.id === c.channelId)?.name ?? null }))));
+  }),
+  // 日历按月聚合：实际发布（publishedAt）+ 三类日程（scheduledAt / dueAt / expireAt）
+  mock(cmsContentContract.calendar, ({ query, ok }) => {
+    const sources: [CmsContentCalendarEventKind, (content: CmsContent) => string | null][] = [
+      ['published', (content) => content.publishedAt],
+      ['scheduled', (content) => content.scheduledAt],
+      ['due', (content) => content.dueAt],
+      ['expire', (content) => content.expireAt],
+    ];
+    const days = new Map<string, CmsContentCalendarDay>();
+    for (const content of mockCmsContents) {
+      if (content.siteId !== query.siteId || isDeleted(content) || content.archivedAt) continue;
+      for (const [kind, read] of sources) {
+        const at = read(content);
+        if (!at || at.slice(0, 7) !== query.month) continue;
+        const date = at.slice(0, 10);
+        const day = days.get(date) ?? { date, counts: { published: 0, scheduled: 0, due: 0, expire: 0 }, items: [] };
+        days.set(date, day);
+        day.counts[kind] += 1;
+        if (day.items.length < CMS_CONTENT_CALENDAR_DAY_ITEM_LIMIT) day.items.push({ contentId: content.id, title: content.title, kind });
+      }
+    }
+    return ok([...days.values()].sort((a, b) => a.date.localeCompare(b.date)));
   }),
   mock(cmsContentContract.checkTitle, ({ query, ok }) => {
     const { siteId, excludeId } = query;

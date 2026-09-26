@@ -6,6 +6,7 @@ export {
   ensureCmsContentExists,
   getCmsContent,
   listCmsContents,
+  getCmsContentCalendar,
   checkCmsContentTitle,
   listPublishedContents,
   listHomeContents,
