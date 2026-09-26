@@ -51,7 +51,7 @@ const STATUS_COLORS: Record<CmsContentStatus, 'grey' | 'orange' | 'green' | 'red
 const CmsContentWorkflowSheet = lazy(() => import('./CmsContentWorkflowSheet'));
 
 type TabKey = 'all' | 'pending' | 'published' | 'archived' | 'recycle' | 'calendar';
-interface ContentFilters { keyword: string; modelId?: number; ownerId?: number; locale: string; editorialStatus?: CmsEditorialStatus; hasUnpublishedChanges?: boolean; tags?: string; flags: ContentFlagFilter[]; timeRange: [Date, Date] | null }
+interface ContentFilters { keyword: string; modelId?: number; ownerId?: number; locale: string; editorialStatus?: CmsEditorialStatus; hasUnpublishedChanges?: boolean; overdue?: boolean; scheduled?: boolean; hasUnresolvedNotes?: boolean; tags?: string; flags: ContentFlagFilter[]; timeRange: [Date, Date] | null }
 const DEFAULT_FILTERS: ContentFilters = { keyword: '', locale: '', flags: [], timeRange: null };
 interface SavedContentView { name: string; filters: ContentFilters; channelId?: number; contentType?: CmsContentType; tab?: TabKey }
 
@@ -231,6 +231,7 @@ export default function ContentsPage() {
     siteId: siteId ?? 0, channelId, status: statusFilter, contentType,
     keyword: submittedParams.keyword, modelId: submittedParams.modelId, ownerId: submittedParams.ownerId,
     locale: submittedParams.locale, tags: submittedParams.tags, hasUnpublishedChanges: submittedParams.hasUnpublishedChanges,
+    overdue: submittedParams.overdue, scheduled: submittedParams.scheduled, hasUnresolvedNotes: submittedParams.hasUnresolvedNotes,
     isTop: submittedParams.flags.includes('isTop') ? true : undefined,
     isRecommend: submittedParams.flags.includes('isRecommend') ? true : undefined,
     isHot: submittedParams.flags.includes('isHot') ? true : undefined,

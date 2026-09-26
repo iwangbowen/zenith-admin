@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { requiredIdQuery } from '../../core';
 import { defineContract, op } from '../../core/contract';
-import { CMS_DEVICE_TYPES } from '../constants';
+import { CMS_CONTENT_TYPES, CMS_DEVICE_TYPES } from '../constants';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
@@ -54,12 +54,20 @@ export const cmsDashboardStatsSchema = z.object({
     title: z.string(),
     viewCount: z.int(),
     channelName: z.string().nullable(),
+    publishedAt: z.string().nullable(),
+    likeCount: z.int(),
+    favoriteCount: z.int(),
+    commentCount: z.int(),
   })),
   channelDistribution: z.array(z.object({
     channelId: z.int(),
     channelName: z.string(),
     count: z.int(),
   })),
+  contentTypeDistribution: z.array(z.object({
+    contentType: z.enum(CMS_CONTENT_TYPES),
+    count: z.int(),
+  })).meta({ description: '内容形态分布（图文 / 图集 / 音视频 / 链接）' }),
 }).meta({ id: 'CmsDashboardStats' });
 
 export type CmsDashboardStats = z.infer<typeof cmsDashboardStatsSchema>;

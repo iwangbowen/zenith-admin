@@ -6,7 +6,7 @@ import { eq, asc, desc, and, or, inArray, notInArray, isNull, isNotNull, ne, lt,
 import { db, withoutDbExecutor } from '../../db';
 import { withCmsPublicGeneration } from './cms-generation-storage.service';
 import { cmsGenerationContext } from './cms-generation-context';
-import { cmsContents, cmsContentTags, cmsContentChannels, cmsContentRelations, cmsContentWorkingCopies, cmsChannels, cmsTags, users } from '../../db/schema';
+import { cmsContents, cmsContentTags, cmsContentChannels, cmsContentRelations, cmsContentWorkingCopies, cmsChannels, cmsTags, cmsEditorialNotes, users } from '../../db/schema';
 import type { CmsContentRow, CmsTagRow } from '../../db/schema';
 import dayjs from 'dayjs';
 import { DATE_FORMAT, formatDate, formatTimestamps, parseDateRangeStart, parseDateRangeEnd, APP_TIME_ZONE } from '../../lib/datetime';
@@ -161,6 +161,16 @@ export async function buildCmsContentListWhere(q: CmsContentListFilter): Promise
     q.isRecommend !== undefined ? sql`(${cmsContentWorkingCopies.snapshot}->>'isRecommend')::boolean = ${q.isRecommend}` : undefined,
     q.isHot !== undefined ? sql`(${cmsContentWorkingCopies.snapshot}->>'isHot')::boolean = ${q.isHot}` : undefined,
     q.isOriginal !== undefined ? sql`(${cmsContentWorkingCopies.snapshot}->>'isOriginal')::boolean = ${q.isOriginal}` : undefined,
+    // 待办口径与内容生产指标（getCmsEditorialMetrics）一致：比較用服务端 now()，保证看板数字与列表结果对得上
+    q.overdue !== undefined ? (q.overdue
+      ? and(ne(cmsContentWorkingCopies.editorialStatus, 'clean'), sql`(${cmsContentWorkingCopies.snapshot}->>'dueAt')::timestamp < now()`)
+      : or(eq(cmsContentWorkingCopies.editorialStatus, 'clean'), sql`(${cmsContentWorkingCopies.snapshot}->>'dueAt')::timestamp >= now()`, sql`nullif(${cmsContentWorkingCopies.snapshot}->>'dueAt', '') is null`)) : undefined,
+    q.scheduled !== undefined ? (q.scheduled
+      ? sql`(${cmsContentWorkingCopies.snapshot}->>'scheduledAt')::timestamp > now()`
+      : or(sql`(${cmsContentWorkingCopies.snapshot}->>'scheduledAt')::timestamp <= now()`, sql`nullif(${cmsContentWorkingCopies.snapshot}->>'scheduledAt', '') is null`)) : undefined,
+    q.hasUnresolvedNotes !== undefined ? (q.hasUnresolvedNotes
+      ? sql`exists (select 1 from ${cmsEditorialNotes} where ${cmsEditorialNotes.contentId} = ${cmsContents.id} and ${cmsEditorialNotes.resolved} = false)`
+      : sql`not exists (select 1 from ${cmsEditorialNotes} where ${cmsEditorialNotes.contentId} = ${cmsContents.id} and ${cmsEditorialNotes.resolved} = false)`) : undefined,
   );
 
   return buildWhere(

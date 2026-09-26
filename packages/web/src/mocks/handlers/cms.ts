@@ -11,6 +11,7 @@ import type {
   CmsContent,
   CmsContentCalendarDay,
   CmsContentCalendarEventKind,
+  CmsContentType,
   CmsForm,
   CmsModel,
   CmsModelField,
@@ -104,7 +105,7 @@ import { mockCmsDistributionRules } from '../data/cms-stage5';
 import { createProgressingMockTask } from './async-tasks';
 import { submitMockCmsWidgetSourceRefresh } from './cms-widgets';
 import { assertMockCmsSiteComposition } from '../utils/cms-site-composition';
-import { getMockCmsPublishedModelFields } from './cms-editorial';
+import { getMockCmsPublishedModelFields, getMockCmsUnresolvedNoteContentIds } from './cms-editorial';
 import { CMS_SITE_COMPOSITION_SETTING_FIELDS } from '@zenith/shared/cms';
 import { mockDateTime, mockDate } from '../utils/date';
 import { filterByKeyword, matchesFilter } from '@/mocks/utils/filter';
@@ -512,6 +513,24 @@ export const cmsHandlers = [
     if (query.isRecommend !== undefined) list = list.filter((content) => content.isRecommend === query.isRecommend);
     if (query.isHot !== undefined) list = list.filter((content) => content.isHot === query.isHot);
     if (query.isOriginal !== undefined) list = list.filter((content) => content.isOriginal === query.isOriginal);
+    // 待办口径与服务端一致（工作稿快照字段 + 服务端 now）
+    if (query.overdue !== undefined || query.scheduled !== undefined || query.hasUnresolvedNotes !== undefined) {
+      const now = mockDateTime();
+      const unresolvedIds = query.hasUnresolvedNotes !== undefined ? getMockCmsUnresolvedNoteContentIds() : null;
+      list = list.filter((content) => {
+        const working = getMockCmsWorkingContent(content.id);
+        if (query.overdue !== undefined) {
+          const overdue = !!working?.dueAt && working.dueAt < now && working.editorialStatus !== 'clean';
+          if (overdue !== query.overdue) return false;
+        }
+        if (query.scheduled !== undefined) {
+          const scheduled = !!working?.scheduledAt && working.scheduledAt > now;
+          if (scheduled !== query.scheduled) return false;
+        }
+        if (unresolvedIds && unresolvedIds.has(content.id) !== query.hasUnresolvedNotes) return false;
+        return true;
+      });
+    }
     if (query.tags) list = list.filter((content) => query.tags!.split(',').map(Number).every((tag) => content.tagIds.includes(tag)));
     if (query.startTime) list = list.filter((content) => content.createdAt >= query.startTime!);
     if (query.endTime) list = list.filter((content) => content.createdAt <= query.endTime!);
@@ -994,6 +1013,8 @@ export const cmsHandlers = [
     });
     const channelCounts = new Map<number, number>();
     for (const c of contents) channelCounts.set(c.channelId, (channelCounts.get(c.channelId) ?? 0) + 1);
+    const typeCounts = new Map<CmsContentType, number>();
+    for (const c of contents) typeCounts.set(c.contentType, (typeCounts.get(c.contentType) ?? 0) + 1);
     return ok({
       totals: {
         published: byStatus('published'),
@@ -1011,11 +1032,21 @@ export const cmsHandlers = [
         .filter((c) => c.status === 'published')
         .sort((a, b) => b.viewCount - a.viewCount)
         .slice(0, 10)
-        .map((c) => ({ id: c.id, title: c.title, viewCount: c.viewCount, channelName: mockCmsChannels.find((ch) => ch.id === c.channelId)?.name ?? null })),
+        .map((c) => ({
+          id: c.id,
+          title: c.title,
+          viewCount: c.viewCount,
+          channelName: mockCmsChannels.find((ch) => ch.id === c.channelId)?.name ?? null,
+          publishedAt: c.publishedAt ?? null,
+          likeCount: c.likeCount ?? 0,
+          favoriteCount: c.favoriteCount ?? 0,
+          commentCount: mockCmsComments.filter((m) => m.contentId === c.id).length,
+        })),
       channelDistribution: [...channelCounts.entries()]
         .map(([channelId, count]) => ({ channelId, channelName: mockCmsChannels.find((ch) => ch.id === channelId)?.name ?? `栏目 ${channelId}`, count }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10),
+      contentTypeDistribution: [...typeCounts.entries()].map(([contentType, count]) => ({ contentType, count })),
     });
   }),
 
