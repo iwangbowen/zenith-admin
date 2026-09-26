@@ -546,7 +546,7 @@ export default function ResourcesPage() {
 
   const columns: ColumnProps<CmsResource>[] = [
     {
-      title: '预览', dataIndex: 'url', width: 60,
+      title: '预览', dataIndex: 'url', width: 72,
       render: (_: string, record: CmsResource) => {
         // 与文件列表页一致：仅可预览类型渲染为可点击
         const previewable = canPreviewFile(record.mimeType, record.name);
