@@ -866,9 +866,10 @@ export default function ContentEditPage() {
                       </Upload>
                       <Button size="small" icon={<Images size={14} />} disabled={isReadOnly || !hasPermission('cms:resource:list')} onClick={() => setAlbumPickerVisible(true)}>媒体库添加</Button>
                     </div>
-                    {albumImages.map((img, i) => (
-                      <div key={`${img.url}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', padding: 8 }}>
-                        <img src={img.thumb ?? img.url} alt="" style={{ width: 72, height: 54, objectFit: 'cover', borderRadius: 'var(--semi-border-radius-small)', flexShrink: 0 }} />
+                      {albumImages.map((img, i) => (
+                        <div key={`${img.url}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', ...(i < albumImages.length - 1 ? { borderBottom: '1px solid var(--semi-color-border)' } : {}) }}>
+                          <Typography.Text type="tertiary" size="small" style={{ flexShrink: 0, minWidth: 20, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>{i + 1}</Typography.Text>
+                          <img src={img.thumb ?? img.url} alt="" style={{ width: 72, height: 54, objectFit: 'cover', borderRadius: 'var(--semi-border-radius-small)', flexShrink: 0 }} />
                         <Input
                           placeholder="图片说明（可选）"
                           value={img.caption ?? ''}
