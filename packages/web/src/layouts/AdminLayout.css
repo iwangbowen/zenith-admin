@@ -1227,7 +1227,7 @@
     width: 56px;
     height: 3px;
     border-radius: var(--semi-border-radius-small);
-    background: var(--semi-color-border);
+    background: var(--semi-color-primary);
     opacity: 1;
     transition: opacity 0.15s ease 0.45s;
     pointer-events: none;
