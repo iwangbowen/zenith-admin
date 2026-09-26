@@ -6,23 +6,36 @@
  * 2. 「最近关闭的标签页」默认折叠，展开后点击重开回调
  * 3. Ctrl+Shift+A 开合面板
  */
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { TabSwitcher, type RecentlyClosedTab } from './TabSwitcher';
 import type { TabItem } from '@/hooks/useTabsStore';
 
+/**
+ * 副标题里的相对时间（「30 秒前」/「1 分钟前」）与真实时钟耦合，而这些时间戳在模块求值时就算好了：
+ * 整套测试满载时（本文件从 import 到执行可拉开几十秒）「30 秒前」会漂成「1 分钟前」而偶发失败。
+ * 只伪造 `Date`（保留真实定时器，`setTimeout` 聚焦与 React 调度照常），把系统时间钉在基准时刻。
+ */
+const BASE_TIME = new Date('2026-09-26 12:00:00').getTime();
+
 beforeAll(() => {
+  vi.useFakeTimers({ toFake: ['Date'], shouldAdvanceTime: true });
+  vi.setSystemTime(BASE_TIME);
   // jsdom 未实现 scrollIntoView（组件内高亮项滚动用）
   Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', { value: vi.fn(), configurable: true });
 });
 
+afterAll(() => {
+  vi.useRealTimers();
+});
+
 const tabs: TabItem[] = [
-  { key: '/', title: '首页', closable: false, lastUsedAt: Date.now() - 5_000 },
-  { key: '/system/users', title: '用户管理', closable: true, lastUsedAt: Date.now() - 65_000 },
+  { key: '/', title: '首页', closable: false, lastUsedAt: BASE_TIME - 5_000 },
+  { key: '/system/users', title: '用户管理', closable: true, lastUsedAt: BASE_TIME - 65_000 },
 ];
 
 const closed: RecentlyClosedTab[] = [
-  { key: '/cms/contents', title: '内容管理', closedAt: Date.now() - 30_000 },
+  { key: '/cms/contents', title: '内容管理', closedAt: BASE_TIME - 30_000 },
 ];
 
 function renderSwitcher(override: Partial<Parameters<typeof TabSwitcher>[0]> = {}) {

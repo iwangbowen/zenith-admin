@@ -7,8 +7,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import CmsWorkspacePage from './CmsWorkspacePage';
 import CmsDashboardPage from './CmsDashboardPage';
 
-const dashboard = vi.hoisted(() => ({ stats: vi.fn(() => ({ data: undefined, isFetching: false, refetch: vi.fn() })) }));
+const dashboard = vi.hoisted(() => ({
+  stats: vi.fn(() => ({ data: undefined, isFetching: false, refetch: vi.fn() })),
+  visits: vi.fn(() => ({ data: undefined, isFetching: false, refetch: vi.fn() })),
+}));
+// 看板页直接 import 叶子模块（`@/hooks/queries/cms` 只是再导出 barrel），mock 必须落在被 import 的那个模块上，
+// 否则真实 hook 会去找 QueryClient —— 这两个用例没套 Provider，会以「No QueryClient set」整体失败。
+vi.mock('@/hooks/queries/cms-stats', () => ({ useCmsDashboardStats: dashboard.stats, useCmsVisitStats: dashboard.visits }));
 vi.mock('@/hooks/queries/cms', () => ({ useCmsDashboardStats: dashboard.stats }));
+// 看板内的待办条同样直接取叶子模块的 hook（无 Provider 的用例必须把它也挡在 mock 边界上）
+vi.mock('@/hooks/queries/cms-editorial', () => ({
+  useCmsEditorialMetrics: () => ({ data: undefined, isFetching: false, refetch: vi.fn() }),
+}));
 
 const permissions = vi.hoisted(() => ({ codes: [] as string[] }));
 const workspace = vi.hoisted(() => ({
