@@ -167,12 +167,13 @@ export default function CheckinPage() {
         </div>
       )}
 
-      <div style={{ background: '#fff', border: '1px solid var(--m-border)', borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}>
+      {/* 卡片自身提供留白：MonthCalendar 不再给头部加内边距，否则选择器会与月历栅格错开 */}
+      <div style={{ background: '#fff', border: '1px solid var(--m-border)', borderRadius: 12, overflow: 'hidden', marginBottom: 20, padding: '12px 16px 0' }}>
         <Spin spinning={calendarQuery.isFetching} size="middle">
           <MonthCalendar
             month={displayMonth}
             onMonthChange={handleCalendarMonthChange}
-            showToday={false}
+            hint="圆点表示当日已签到"
             disableNext={(nextMonth) => nextMonth.isAfter(dayjs().startOf('month'), 'month')}
             height={360}
             dateGridRender={(_, date) => {

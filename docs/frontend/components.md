@@ -262,7 +262,7 @@ const operationColumn = createOperationColumn<User>({
 | `ExportButton` | 导出任务按钮；props 包含 `entity`、`query`、`resolveQuery`、`label`、`formats`、`raw`、`watermark`、`executionMode`、`variant` |
 | `IconPicker` | lucide 图标选择器 |
 | `MediaPickerModal` | 媒体库选择器，支持搜索与就地上传 |
-| `MonthCalendar` | 月视图日历 |
+| `MonthCalendar` | 月视图日历；月份切换统一用月份选择器（`DatePicker type="month"`，无上一月/下一月箭头），一行内可选放说明文案 `hint`；`weekStartsOn` 默认跟随「一周起始日」偏好；全站日历（会员签到记录/会员签到页/内容日历）都走这个组件 |
 | `CursorContextDropdown` | 光标上下文菜单 |
 
 ---

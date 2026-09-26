@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
-import { Button, Calendar, DatePicker, Form, List, Popover, RadioGroup, Radio, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Form, List, Popover, RadioGroup, Radio, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import MonthCalendar from '@/components/MonthCalendar';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { CalendarPlus } from 'lucide-react';
@@ -217,18 +218,10 @@ export default function CheckinLogsPage() {
         />
       ) : (
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-            <DatePicker
-              type="month"
-              value={calendarMonth}
-              onChange={(v) => { if (v instanceof Date) setCalendarMonth(v); }}
-              style={{ width: 140 }}
-            />
-            <Typography.Text type="tertiary" size="small">点击日期查看当天签到明细</Typography.Text>
-          </div>
-          <Calendar
-            mode="month"
-            displayValue={calendarMonth}
+          <MonthCalendar
+            month={calendarMonth}
+            onMonthChange={(next) => setCalendarMonth(next.toDate())}
+            hint="点击日期查看当天签到明细"
             dateGridRender={renderCalendarCell}
             onClick={(_e, value) => drillDownDate(value)}
             height={640}
