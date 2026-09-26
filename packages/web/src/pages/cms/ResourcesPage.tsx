@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useMemo } from 'react';
+import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Dropdown, Form, Modal, Space, Spin, TabPane, Tabs, Tag, Toast, Tooltip, Typography, Empty, Tree } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -47,6 +48,7 @@ import { cmsResourceContract } from '@zenith/shared/cms';
 import { formatDateTimeForApi } from '@/utils/date';
 import { useCmsUploadQueue } from './useCmsUploadQueue';
 import { Progress } from '@douyinfe/semi-ui';
+import { NavListItemActions } from '@/components/NavListPanel';
 
 const TYPE_COLORS: Record<CmsResourceType, 'blue' | 'purple' | 'cyan' | 'orange' | 'grey'> = {
   image: 'blue', video: 'purple', audio: 'cyan', document: 'orange', other: 'grey',
@@ -387,10 +389,13 @@ export default function ResourcesPage() {
   const updateMutation = useUpdateCmsResource();
   const deleteMutation = useDeleteCmsResources();
   const saveFolderMutation = useSaveCmsResourceFolder();
+  // 行内「新建子文件夹」需要把父级指向被点的那一行，而不是当前选中的目录；
+  // useEditModal 的 defaults 在 openCreate 那一刻求值，这里用 ref 暂存行内指定的父级，用完即清。
+  const newFolderParentRef = useRef<number | null>(null);
   const folderModal = useEditModal<CmsResourceFolder, Partial<CmsResourceFolder>, Record<string, unknown>>({
     entityName: '素材文件夹',
     save: saveFolderMutation,
-    defaults: () => ({ sort: 0, parentId: folderId && folderId > 0 ? folderId : 0 }),
+    defaults: () => ({ sort: 0, parentId: newFolderParentRef.current ?? (folderId && folderId > 0 ? folderId : 0) }),
     labelWidth: 80,
     toValues: (folder) => ({ name: folder.name, sort: folder.sort, parentId: folder.parentId ?? 0 }),
     beforeSave: (values, { isEdit }) => {
@@ -420,6 +425,63 @@ export default function ResourcesPage() {
   const canUpdate = hasPermission('cms:resource:update');
   const canDelete = hasPermission('cms:resource:delete');
   const selectedFolder = folderId && folderId > 0 ? findFolder(foldersQuery.data ?? [], folderId) : null;
+
+  // 文件夹 id → 记录：行内更多菜单按 TreeNodeData.key 反查（参考栏目管理的 renderChannelLabel）
+  const folderById = useMemo(() => {
+    const map = new Map<number, CmsResourceFolder>();
+    const walk = (nodes: CmsResourceFolder[]) => {
+      for (const node of nodes) {
+        map.set(node.id, node);
+        if (node.children) walk(node.children);
+      }
+    };
+    walk(foldersQuery.data ?? []);
+    return map;
+  }, [foldersQuery.data]);
+
+  function openCreateFolderWithParent(parentId: number | null) {
+    newFolderParentRef.current = parentId;
+    folderModal.openCreate();
+    newFolderParentRef.current = null;
+  }
+
+  function handleDeleteFolderRecord(folder: CmsResourceFolder) {
+    confirmAndDelete({
+      title: `删除文件夹「${folder.name}」？`,
+      content: '仅空文件夹可删除。',
+      run: () => deleteFolderMutation.mutateAsync({ params: { id: folder.id } }),
+      successMessage: '文件夹已删除',
+      onDeleted: () => {
+        if (String(folder.id) === folderKey) setFolderKey('all');
+      },
+    });
+  }
+
+  /** 文件夹树节点：名称 + 行内更多（新建子文件夹 / 重命名 / 删除），系统节点不带操作 */
+  function renderFolderLabel(label?: ReactNode, data?: TreeNodeData) {
+    if (!data) return label;
+    const key = String(data.key);
+    if (key === 'all' || key === '0' || key.startsWith('type:')) return label;
+    const record = folderById.get(Number(key));
+    if (!record) return label;
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, width: '100%', minWidth: 0 }}>
+        <span
+          style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          title={record.name}
+        >
+          {label}
+        </span>
+        <NavListItemActions
+          items={[
+            { key: 'create-child', label: '新建子文件夹', icon: <FolderPlus size={14} />, hidden: !canUpdate, onClick: () => openCreateFolderWithParent(record.id) },
+            { key: 'rename', label: '重命名文件夹', icon: <FolderPen size={14} />, hidden: !canUpdate, onClick: () => folderModal.openEdit(record) },
+            { key: 'delete', label: '删除文件夹', icon: <FolderX size={14} />, danger: true, dividerBefore: true, hidden: !canDelete, onClick: () => handleDeleteFolderRecord(record) },
+          ]}
+        />
+      </div>
+    );
+  }
 
   function handleTabChange(key: string) {
     setActiveTab(key as 'resources' | 'governance');
@@ -637,6 +699,7 @@ export default function ResourcesPage() {
                 value={submittedParams.type ? `type:${submittedParams.type}` : folderKey}
                 expandedKeys={expandedKeys}
                 onExpand={(keys) => setExpandedKeys((keys as (string | number)[]).map(String))}
+                renderLabel={renderFolderLabel}
                 // 树单选即范围唯一真相：类型节点按类型筛并回到全部；目录节点清空类型
                 onChange={(raw) => {
                   const key = String(raw);
