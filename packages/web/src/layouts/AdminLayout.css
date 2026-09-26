@@ -1526,6 +1526,7 @@
 }
 
 /* ===== Notification badge dot ===== */
+/* 按钮 32px、图标 16px 居中：圆点压住图标右上角（24,8），不再飘在按钮盒子角上 */
 .admin-notify-badge .semi-badge-dot {
   width: 6px !important;
   height: 6px !important;
@@ -1533,8 +1534,8 @@
   background-color: var(--semi-color-danger) !important;
   box-shadow: 0 0 0 1.5px var(--color-header-bg) !important;
   border-radius: 50% !important;
-  top: 2px !important;
-  right: 2px !important;
+  top: 6px !important;
+  right: 6px !important;
 }
 
 /* 顶栏图标数字徽标：Semi 默认以按钮边角为中心压边（translate 50%,-50%），18px 高徽标会向上探出约 9px，
