@@ -3,6 +3,7 @@ import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from
 import { Button, Tooltip } from '@douyinfe/semi-ui';
 import { ArrowLeftRight } from 'lucide-react';
 import { clamp } from '@zenith/shared/core';
+import './MasterDetailLayout.css';
 
 type Side = 'left' | 'right';
 
@@ -406,11 +407,14 @@ function MasterDetailLayoutImpl(props: Readonly<MasterDetailLayoutProps>) {
       onPointerDown={(e) => e.stopPropagation()}
       title={`${collapsed ? '展开' : '收起'}${side === 'left' ? '左侧' : '右侧'}面板`}
       aria-label={`${collapsed ? '展开' : '收起'}${side === 'left' ? '左侧' : '右侧'}面板`}
+      /* 折叠态周期性轻推提示可展开；位移方向按 side 经 --mdl-hint-x 传入 */
+      className={collapsed ? 'mdl-expand-hint' : undefined}
       style={{
         position: 'absolute',
         top: '50%',
         left: '50%',
         transform: 'translate(-50%, -50%)',
+        ...(collapsed ? { '--mdl-hint-x': side === 'left' ? '3px' : '-3px' } as CSSProperties : null),
         width: 20,
         height: 20,
         borderRadius: '50%',

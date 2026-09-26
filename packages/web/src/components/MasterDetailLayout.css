@@ -1,0 +1,31 @@
+/* MasterDetailLayout 折叠态展开按钮的周期性提示：静止约 3.5s → 用约 1s 缓缓推出并泛一圈光晕，
+   再用约 1s 缓缓收回，提醒用户此处可展开。位移走独立 translate 属性，不干扰按钮居中的 transform: translate(-50%, -50%)；
+   方向由 --mdl-hint-x 按 side 传入（左侧面板 +3px，右侧面板 -3px）。 */
+@keyframes mdl-expand-hint {
+  0%,
+  62%,
+  100% {
+    translate: 0 0;
+    box-shadow: 0 0 0 0 transparent;
+  }
+
+  81% {
+    translate: var(--mdl-hint-x, 3px) 0;
+    box-shadow: 0 0 0 4px var(--semi-color-primary-light-default);
+  }
+}
+
+.mdl-expand-hint {
+  animation: mdl-expand-hint 6s ease-in-out infinite;
+}
+
+/* 悬停时暂停，避免与 hover 高亮打架 */
+.mdl-expand-hint:hover {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdl-expand-hint {
+    animation: none;
+  }
+}
