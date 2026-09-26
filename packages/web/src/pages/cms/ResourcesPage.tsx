@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo } from 'react';
+import { useRef, useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Dropdown, Form, Modal, Space, Spin, TabPane, Tabs, Tag, Toast, Tooltip, Typography, Empty, Tree } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
@@ -303,6 +303,10 @@ export default function ResourcesPage() {
   const { hasPermission } = usePermission();
   const [siteId, setSiteId] = useState<number | undefined>(undefined);
   const [folderKey, setFolderKey] = useState('all');
+  // 目录树受控展开态：defaultExpandAll 只在挂载生效，增删后 treeData 换引用会整体回缩；
+  // 这里增删后保留仍存在的展开项，并展开新增目录的祖先链保证其可见
+  const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
+  const seenFolderIds = useRef<Set<string>>(new Set());
   /** 窄屏单栏模式下当前展示素材列表（宽屏忽略）：默认进列表，「返回」回到文件夹树 */
   const [showListOnNarrow, setShowListOnNarrow] = useState(true);
   /** 素材列表与素材治理的数据集、工具栏完全不同，拆成两个页签，避免两张大表同屏堆叠 */
@@ -345,6 +349,41 @@ export default function ResourcesPage() {
   // 点击预览列内容进入预览，与文件列表页同一套设施（图集 / 文件弹窗 / 兜底新窗口）
   const preview = useFilePreview(() => (listQuery.data?.list ?? []).map(toPreviewFile));
   const foldersQuery = useCmsResourceFolders(siteId);
+  useEffect(() => {
+    const ids = new Set<string>(['all']);
+    const parentOf = new Map<string, string>();
+    const walk = (nodes: CmsResourceFolder[], parent: string) => {
+      for (const n of nodes) {
+        const key = String(n.id);
+        ids.add(key);
+        parentOf.set(key, parent);
+        if (n.children) walk(n.children, key);
+      }
+    };
+    walk(foldersQuery.data ?? [], 'all');
+    const fresh = [...ids].filter((k) => !seenFolderIds.current.has(k));
+    seenFolderIds.current = ids;
+    if (fresh.length === 0 && seenFolderIds.current.size > 0) {
+      // 非新增的数据刷新：只清掉已删除的展开项
+      setExpandedKeys((prev) => {
+        const kept = prev.filter((k) => ids.has(k));
+        return kept.length === prev.length ? prev : kept;
+      });
+      return;
+    }
+    setExpandedKeys((prev) => {
+      const kept = prev.filter((k) => ids.has(k));
+      const reveal = new Set<string>();
+      for (const k of fresh) {
+        let cur: string | undefined = k;
+        while (cur) {
+          reveal.add(cur);
+          cur = parentOf.get(cur);
+        }
+      }
+      return [...kept, ...[...reveal].filter((k) => !kept.includes(k))];
+    });
+  }, [foldersQuery.data]);
   const updateMutation = useUpdateCmsResource();
   const deleteMutation = useDeleteCmsResources();
   const saveFolderMutation = useSaveCmsResourceFolder();
@@ -596,6 +635,8 @@ export default function ResourcesPage() {
                   ...foldersToTree(foldersQuery.data ?? []),
                 ]}
                 value={submittedParams.type ? `type:${submittedParams.type}` : folderKey}
+                expandedKeys={expandedKeys}
+                onExpand={(keys) => setExpandedKeys((keys as (string | number)[]).map(String))}
                 // 树单选即范围唯一真相：类型节点按类型筛并回到全部；目录节点清空类型
                 onChange={(raw) => {
                   const key = String(raw);
@@ -616,7 +657,6 @@ export default function ResourcesPage() {
                   setShowListOnNarrow(true);
                   setActiveTab('resources');
                 }}
-                defaultExpandAll
               />}
             </MasterDetailLayout.Body>
           </>
