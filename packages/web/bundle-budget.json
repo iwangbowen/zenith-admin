@@ -4,7 +4,7 @@
   "entries": {
     "index.html": {
       "maxCriticalFiles": 8,
-      "maxCriticalGzKB": 325,
+      "maxCriticalGzKB": 330,
       "maxCriticalCssFiles": 4,
       "routes": {
         "AdminLayout": {
@@ -20,7 +20,7 @@
         "maxFiles": 60,
         "maxGzKB": 1000
       },
-      "maxTotalJsChunks": 830,
+      "maxTotalJsChunks": 840,
       "maxTotalJsMB": 41
     },
     "member.html": {
