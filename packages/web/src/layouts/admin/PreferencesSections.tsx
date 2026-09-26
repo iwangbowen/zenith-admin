@@ -1267,6 +1267,19 @@ export function PrefsTabsSection({
       </div>
       </PreferenceControl>
       )}
+      {(preferences.enableTabs || !!prefsSearch.trim()) && matchesPref(['自动隐藏', '隐藏标签', '程序坞', 'dock', '标签页', '标签']) && (
+      <PreferenceControl path="autoHideTabs">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          自动隐藏标签栏
+          <Tooltip content="平时收起为一条细线，鼠标悬停或键盘聚焦时展开；触屏设备上保持常显" position="right">
+            <Info size={13} style={{ color: 'var(--semi-color-text-2)', cursor: 'help' }} />
+          </Tooltip>
+        </span>
+        <Switch checked={preferences.autoHideTabs ?? false} onChange={(v) => setPreferences({ autoHideTabs: v })} />
+      </div>
+      </PreferenceControl>
+      )}
       {(preferences.enableTabs || !!prefsSearch.trim()) && matchesPref(['最大标签', '标签数量', '标签页', '标签']) && (
       <PreferenceControl path="tabsMaxCount">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

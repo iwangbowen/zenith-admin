@@ -37,6 +37,7 @@ export const preferenceValuesSchema = z.strictObject({
   tabsMaxCount: z.int().min(5).max(50).default(20),
   showTabIcon: z.boolean().default(true),
   compactTabs: z.boolean().default(true),
+  autoHideTabs: z.boolean().default(false),
   tabsSize: z.enum(C.TAB_SIZES).default('small'),
   tabsType: z.enum(C.TAB_TYPES).default('line'),
   tabStyle: z.enum(C.TAB_STYLES).default('line'),

@@ -78,6 +78,7 @@ const metadata: Record<PreferencePath, Entry> = {
   enablePageCache: { label: '启用页面缓存', group: 'tabs', applicableWhen: tabs },
   showTabIcon: { label: '标签页显示图标', group: 'tabs', applicableWhen: tabs },
   compactTabs: { label: '紧凑标签页', group: 'tabs', applicableWhen: tabs },
+  autoHideTabs: { label: '自动隐藏标签栏', group: 'tabs', applicableWhen: tabs, description: '平时收起为一条细线，鼠标悬停或键盘聚焦时展开；触屏设备上保持常显。' },
   showTabSwitcher: { label: '显示标签切换器', group: 'tabs', applicableWhen: tabs },
   tabsMaxCount: { label: '最大标签数', group: 'tabs', min: 5, max: 50, step: 1, applicableWhen: tabs },
   tabEvictPolicy: { label: '标签超限关闭策略', group: 'tabs', options: options(C.TAB_EVICT_POLICIES, ['最早打开（FIFO）', '最久未使用（LRU）']), applicableWhen: tabs },

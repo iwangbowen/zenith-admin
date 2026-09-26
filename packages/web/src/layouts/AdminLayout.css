@@ -1198,6 +1198,77 @@
   border-radius: var(--semi-border-radius-small) var(--semi-border-radius-small) 0 0;
 }
 
+/* ── 自动隐藏标签栏（仅 hover 可用设备；触屏保持常显）──
+   平时收起为 8px 细带 + 居中把手，悬停 / 键盘聚焦时展开；离开延迟收起。
+   把手与内容淡入淡出共用同一延迟节拍，避免收起瞬间闪一下。 */
+@media (hover: hover) {
+  .admin-tabs-bar--autohide {
+    max-height: 8px;
+    overflow: hidden;
+    transition: max-height 0.28s ease 0.45s, margin-bottom 0.28s ease 0.45s, border-color 0.2s ease 0.45s;
+  }
+  /* 收起态：隐藏各标签风格的栏底边框，并用负边距把下方内容上拉贴紧 */
+  .admin-tabs-bar--autohide:not(:hover):not(:focus-within) {
+    margin-bottom: -8px;
+    border-bottom-color: transparent;
+  }
+  .admin-tabs-bar--autohide .admin-tabs-bar__scroll,
+  .admin-tabs-bar--autohide .admin-tabs-bar__switcher {
+    opacity: 0;
+    transition: opacity 0.15s ease 0.45s;
+    pointer-events: none;
+  }
+  .admin-tabs-bar--autohide::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: 2px;
+    transform: translateX(-50%);
+    width: 56px;
+    height: 3px;
+    border-radius: var(--semi-border-radius-small);
+    background: var(--semi-color-border);
+    opacity: 1;
+    transition: opacity 0.15s ease 0.45s;
+    pointer-events: none;
+  }
+  .admin-tabs-bar--autohide:hover,
+  .admin-tabs-bar--autohide:focus-within {
+    max-height: 80px;
+    margin-bottom: 0;
+    transition-delay: 0.05s;
+  }
+  .admin-tabs-bar--autohide:hover .admin-tabs-bar__scroll,
+  .admin-tabs-bar--autohide:hover .admin-tabs-bar__switcher,
+  .admin-tabs-bar--autohide:focus-within .admin-tabs-bar__scroll,
+  .admin-tabs-bar--autohide:focus-within .admin-tabs-bar__switcher {
+    opacity: 1;
+    transition-delay: 0.12s;
+    pointer-events: auto;
+  }
+  .admin-tabs-bar--autohide:hover::after,
+  .admin-tabs-bar--autohide:focus-within::after {
+    opacity: 0;
+    transition-delay: 0s;
+  }
+  /* 减弱动效：即时显隐 */
+  .admin-tabs-bar--autohide-no-motion,
+  .admin-tabs-bar--autohide-no-motion .admin-tabs-bar__scroll,
+  .admin-tabs-bar--autohide-no-motion .admin-tabs-bar__switcher,
+  .admin-tabs-bar--autohide-no-motion::after {
+    transition: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-tabs-bar--autohide,
+  .admin-tabs-bar--autohide .admin-tabs-bar__scroll,
+  .admin-tabs-bar--autohide .admin-tabs-bar__switcher,
+  .admin-tabs-bar--autohide::after {
+    transition: none;
+  }
+}
+
 /* ── 卡片风格 ── */
 .admin-tabs-bar[data-tab-style="card"] {
   border-bottom: 1px solid var(--semi-color-border);
