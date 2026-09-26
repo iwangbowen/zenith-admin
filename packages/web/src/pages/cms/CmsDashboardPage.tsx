@@ -1,15 +1,19 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Banner, Card, Empty, Spin, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { SearchToolbar } from '@/components/SearchToolbar';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
+// 只取卡片壳（无 vchart 依赖），画面本体见 CmsPublishTrendChart 懒加载 chunk
+import { ChartCard } from '@/components/charts/ChartCard';
 import { DataBar } from '@/components/data-viz/DataBar';
 import { usePermission } from '@/hooks/usePermission';
 import { useCmsDashboardStats } from '@/hooks/queries/cms';
 import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { CmsSiteSelect } from './CmsSiteSelect';
+
+const CmsPublishTrendChart = lazy(() => import('./CmsPublishTrendChart'));
 
 const STAT_CARDS: { key: 'published' | 'draft' | 'pending' | 'offline' | 'rejected' | 'recycled'; label: string; color: string }[] = [
   { key: 'published', label: '已发布', color: 'var(--semi-color-success)' },
@@ -30,7 +34,6 @@ export default function CmsDashboardPage() {
   const statsQuery = useCmsDashboardStats(canOpenDashboard ? siteId : undefined);
   const stats = statsQuery.data;
 
-  const maxTrend = Math.max(1, ...(stats?.publishTrend ?? []).map((trend) => trend.count));
   const maxChannel = Math.max(1, ...(stats?.channelDistribution ?? []).map((channel) => channel.count));
 
   const topColumns: ColumnProps<NonNullable<typeof stats>['topViewed'][number]>[] = [
@@ -77,29 +80,12 @@ export default function CmsDashboardPage() {
               />
             </StatGrid>
 
-            <Card title="发布趋势（近 14 天）" style={{ marginTop: 12 }} bodyStyle={{ padding: '16px 20px' }}>
-              {stats && stats.publishTrend.some((trend) => trend.count > 0) ? (
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 140 }}>
-                  {stats.publishTrend.map((trend) => (
-                    <div key={trend.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 0 }}>
-                      <span style={{ fontSize: 11, color: 'var(--semi-color-text-2)' }}>{trend.count > 0 ? trend.count : ''}</span>
-                      <div
-                        title={`${trend.date}：${trend.count} 篇`}
-                        style={{
-                          width: '60%',
-                          height: `${Math.max(2, Math.round((trend.count / maxTrend) * 100))}px`,
-                          background: trend.count > 0 ? 'var(--semi-color-primary)' : 'var(--semi-color-fill-1)',
-                          borderRadius: 'var(--semi-border-radius-small)',
-                        }}
-                      />
-                      <span style={{ fontSize: 11, color: 'var(--semi-color-text-3)', whiteSpace: 'nowrap' }}>{trend.date.slice(5)}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <Empty description="近 14 天暂无发布" style={{ padding: '24px 0' }} />
-              )}
-            </Card>
+            <Suspense fallback={<ChartCard title="发布趋势（近 14 天）" loading>{null}</ChartCard>}>
+              <CmsPublishTrendChart
+                data={stats?.publishTrend}
+                loading={statsQuery.isFetching && !stats}
+              />
+            </Suspense>
 
             <div className="chart-grid chart-grid--aside" style={{ ['--chart-aside-main' as string]: '1.4fr', ['--chart-aside-side' as string]: '1fr', marginTop: 12 }}>
               <Card title="热门内容 TOP10（按浏览量）" bodyStyle={{ padding: 0 }}>
