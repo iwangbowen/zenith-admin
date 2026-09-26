@@ -415,6 +415,7 @@ export default function ResourcesPage() {
   const uploadQueue = useCmsUploadQueue();
   const rightsModal = useEditModal<CmsAssetRightsRecord, BodyOf<typeof cmsResourceContract.updateRights>>({
     entityName: '素材授权', save: useSaveCmsAssetRights(), useDetail: useCmsAssetRights,
+    labelWidth: 110,
     toValues: (record) => ({ source: record.source, license: record.license, expiresAt: record.expiresAt, revoked: record.revoked, tags: record.tags, alt: record.alt }),
     beforeSave: (values) => ({ ...values, expiresAt: values.expiresAt ? formatDateTimeForApi(values.expiresAt) : null }),
   });
