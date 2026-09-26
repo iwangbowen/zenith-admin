@@ -10,6 +10,17 @@
   min-width: 0;
 }
 
+/* 正文列各区块（图集 / 编辑器 / 附件）贴紧：Semi 表单项默认上下各 12px padding */
+.cms-content-edit__main .semi-form-field {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+/* 顶栏 Tabs 与编辑区贴紧：全局给了 padding-top: 12px，这里用更高优先级清零，仅本页主标签页 */
+.page-container > .semi-tabs.cms-content-edit__tabs > .semi-tabs-content:not(.semi-tabs-content-left) {
+  padding-top: 0;
+}
+
 .cms-content-edit__workflow-pane {
   min-height: 560px;
 }

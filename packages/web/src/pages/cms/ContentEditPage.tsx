@@ -665,7 +665,7 @@ export default function ContentEditPage() {
 
   return (
     <div className="page-container page-tabs-page cms-content-edit" onInputCapture={() => { editorTouchedRef.current = true; }} onKeyDownCapture={() => { editorTouchedRef.current = true; }} onPointerDownCapture={() => { editorTouchedRef.current = true; }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4, flexWrap: 'wrap' }}>
         <Tooltip content="返回">
           <Button aria-label="返回" icon={<ArrowLeft size={16} />} theme="borderless" type="tertiary" onClick={() => navigate(-1)} />
         </Tooltip>
