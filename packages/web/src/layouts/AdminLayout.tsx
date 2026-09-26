@@ -38,7 +38,7 @@ const AnnouncementDetailModal = lazy(() => import('@/components/AnnouncementDeta
 const PreferencesSheetBody = lazy(() => import('./admin/PreferencesSheetBody'));
 import TaskTray from '@/components/TaskTray';
 import { KeywordInput } from '@/components/search-filters';
-import { TabSwitcher } from './TabSwitcher';
+import { TabSwitcher, type RecentlyClosedTab } from './TabSwitcher';
 import { TabBarItem, type TabBarItemActions } from './admin/TabBarItem';
 import { useLockScreen } from '@/hooks/useLockScreen';
 import { useFavoriteMenus } from '@/hooks/useFavoriteMenus';
@@ -241,6 +241,8 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [exitingTabKeys, setExitingTabKeys] = useState<Set<string>>(new Set());
   const [enteringTabKeys, setEnteringTabKeys] = useState<Set<string>>(new Set());
+  // 最近关闭的标签快照（会话内有效，供标签切换器重开；批量关闭不计入）
+  const [recentlyClosed, setRecentlyClosed] = useState<RecentlyClosedTab[]>([]);
   const prevTabsLengthRef = useRef(0);
   const [manualTopKey, setManualTopKey] = useState<string | null>(null);
   const [tabRefreshVersion, setTabRefreshVersion] = useState<Record<string, number>>({});
@@ -464,6 +466,12 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
 
   const doRemoveTab = (key: string) => {
     const currentActive = activeKey;
+    // 最近关闭快照（会话内有效，供标签切换器重开）：重开走路由导航，标题/图标由路由元数据重新解析
+    const closing = tabs.find((t) => t.key === key);
+    if (closing?.closable) {
+      const snapshot = { key: closing.key, title: closing.title, ...(closing.icon ? { icon: closing.icon } : {}), closedAt: Date.now() };
+      setRecentlyClosed((prev) => [snapshot, ...prev.filter((t) => t.key !== key)].slice(0, 10));
+    }
     removeTab(key);
     if (key === currentActive) {
       const idx = tabs.findIndex((t) => t.key === key);
@@ -479,6 +487,11 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
 
   const handleTabChange = useEventCallback((key: string) => {
     setActiveKey(key);
+    navigateToTab(key);
+  });
+
+  // 重开最近关闭的标签：走路由导航重建（标题/图标由路由元数据重新解析），历史保留
+  const handleTabReopen = useEventCallback((key: string) => {
     navigateToTab(key);
   });
 
@@ -998,6 +1011,8 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
                 resolveIcon={resolveIcon}
                 onNavigate={handleTabChange}
                 onClose={(key) => handleTabClose(key)}
+                recentlyClosed={recentlyClosed}
+                onReopen={handleTabReopen}
               />
               )}
             </div>
