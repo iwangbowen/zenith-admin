@@ -76,3 +76,93 @@ describe('collectFlowAssigneeIds / applyFlowAssigneeNames', () => {
     expect(named.nodes[1].data.assigneeNames).toEqual(['用户#13', '用户#17']);
   });
 });
+
+// ─── 设计器树：画布渲染读 process.initiator 链，运行时读扁平 nodes ─────────────────
+
+const processFlow = () => ({
+  nodes: [
+    { id: 'start', position: { x: 0, y: 0 }, data: { key: 'start', type: 'start', label: '发起' } },
+  ],
+  process: {
+    initiator: {
+      id: 'i1',
+      type: 'initiator',
+      name: '发起人',
+      props: {},
+      children: {
+        id: 'a1',
+        type: 'approver',
+        name: '法务审批',
+        props: { assigneeType: 'user', userIds: [17, 13] },
+        children: {
+          id: 'br1',
+          type: 'conditionBranch',
+          name: '金额分支',
+          props: {},
+          branches: [
+            {
+              id: 'b1',
+              name: '大额',
+              children: { id: 'c1', type: 'approver', name: '总经理审批', props: { assigneeType: 'user', userIds: [13], assigneeIds: [11] } },
+            },
+            {
+              id: 'b2',
+              name: '其它情况',
+              isDefault: true,
+              children: { id: 'd1', type: 'cc', name: '抄送行政', props: { assigneeType: 'user', userIds: [21] } },
+            },
+          ],
+          children: { id: 'm1', type: 'approver', name: '主管审批', props: { assigneeType: 'manager', managerLevel: 2 } },
+        },
+      },
+    },
+  },
+});
+
+interface ProcessNodeShape {
+  props: Record<string, unknown>;
+  children?: ProcessNodeShape;
+  branches?: Array<{ children?: ProcessNodeShape }>;
+}
+
+function processRoot(flowData: unknown): ProcessNodeShape {
+  return (flowData as { process: { initiator: ProcessNodeShape } }).process.initiator;
+}
+
+describe('设计器 process 树归一', () => {
+  it('树形 props 的 userIds 合并进 assigneeIds 并删除（含分支内节点）', () => {
+    const root = processRoot(normalizeDefinitionFlowData(processFlow()));
+    const legal = root.children; // 法务审批
+    expect(legal?.props.assigneeIds).toEqual([17, 13]);
+    expect(legal?.props.userIds).toBeUndefined();
+    const branchNode = legal?.children; // 条件分支
+    // 分支内：assigneeIds 优先，userIds 合并去重
+    expect(branchNode?.branches?.[0].children?.props.assigneeIds).toEqual([11, 13]);
+    expect(branchNode?.branches?.[0].children?.props.userIds).toBeUndefined();
+    expect(branchNode?.branches?.[1].children?.props.assigneeIds).toEqual([21]);
+    // 非「指定成员」来源不受影响
+    expect(branchNode?.children?.props.assigneeIds).toBeUndefined();
+  });
+
+  it('幂等：对含 process 树的 flowData 重复调用结果不变', () => {
+    const once = normalizeDefinitionFlowData(processFlow());
+    expect(normalizeDefinitionFlowData(once)).toEqual(once);
+  });
+
+  it('收集指定成员 id 覆盖树形节点（原始 userIds 与归一后均可）', () => {
+    const expectIds = (data: unknown) => expect(collectFlowAssigneeIds(data).sort((a, b) => a - b)).toEqual([11, 13, 17, 21]);
+    expectIds(processFlow());
+    expectIds(normalizeDefinitionFlowData(processFlow()));
+  });
+
+  it('补写姓名覆盖树形节点，按 id 顺序一一对应', () => {
+    const names = new Map([[11, '陈国栋'], [13, '刘会计'], [17, '张律师'], [21, '郑香']]);
+    const root = processRoot(applyFlowAssigneeNames(normalizeDefinitionFlowData(processFlow()), names));
+    expect(root.children?.props.assigneeNames).toEqual(['张律师', '刘会计']);
+    const branchNode = root.children?.children;
+    expect(branchNode?.branches?.[0].children?.props.assigneeNames).toEqual(['陈国栋', '刘会计']);
+    expect(branchNode?.branches?.[1].children?.props.assigneeNames).toEqual(['郑香']);
+    // 主管来源不写姓名（画布按 managerLevel 渲染）
+    expect(branchNode?.children?.props.assigneeNames).toBeUndefined();
+  });
+});
