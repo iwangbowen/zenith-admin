@@ -2292,14 +2292,61 @@ td.fd-action-button-table__action {
 .fd-form-selector__bar-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 12px 24px;
   flex-wrap: wrap;
+  min-width: 0;
+  flex: 1;
+}
+
+.fd-form-selector__group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.fd-form-selector__group--grow {
+  flex: 1;
+}
+
+.fd-form-selector__select {
+  width: 320px;
+  max-width: 100%;
 }
 
 .fd-form-selector__bar-right {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
+}
+
+/* 窄屏：工具栏按组纵向堆叠，下拉与操作区占满整行 */
+@media (max-width: 900px) {
+  .fd-form-selector {
+    padding: 12px 16px;
+  }
+
+  .fd-form-selector__bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .fd-form-selector__group {
+    flex-wrap: wrap;
+  }
+
+  .fd-form-selector__select {
+    width: auto;
+    flex: 1;
+    min-width: 180px;
+  }
+
+  .fd-form-selector__bar-right {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
 }
 
 .fd-form-selector__preview {

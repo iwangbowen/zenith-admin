@@ -2,7 +2,7 @@
  * 流程设计器 · 第二步「表单」— 从表单库选择已设计的表单
  * 下拉选择 + 刷新 + 只读预览；新建/编辑表单时在下方内联展示表单设计器（不再新开页面）。
  */
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button, Select, Typography, Empty, Spin } from '@douyinfe/semi-ui';
 import { RefreshCw, Pencil } from 'lucide-react';
@@ -18,9 +18,11 @@ interface FormSelectorPanelProps {
   /** 已绑定表单的名称（用于绑定表单已停用、不在启用列表时回显） */
   formName?: string | null;
   onSelect: (form: WorkflowForm | null) => void;
+  /** 「表单类型」切换器，合并进本面板工具栏同一行；内联设计器展开时须随 disabled 置灰 */
+  typeSwitcher?: (disabled: boolean) => ReactNode;
 }
 
-export default function FormSelectorPanel({ formId, formName, onSelect }: Readonly<FormSelectorPanelProps>) {
+export default function FormSelectorPanel({ formId, formName, onSelect, typeSwitcher }: Readonly<FormSelectorPanelProps>) {
   const queryClient = useQueryClient();
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorFormId, setEditorFormId] = useState<number | null>(null);
@@ -52,25 +54,33 @@ export default function FormSelectorPanel({ formId, formName, onSelect }: Readon
     <div className="fd-form-selector">
       <div className="fd-form-selector__bar">
         <div className="fd-form-selector__bar-left">
-          <Typography.Text strong>选择表单</Typography.Text>
-          <Select
-            value={formId ?? undefined}
-            onChange={handleSelect}
-            placeholder="请选择已设计的表单"
-            style={{ width: 320 }}
-            loading={loading}
-            disabled={editorOpen}
-            filter
-            showClear
-            emptyContent={<Typography.Text type="tertiary">暂无启用的表单，请先新建</Typography.Text>}
-            optionList={forms.map(f => ({
-              value: f.id,
-              label: f.status === 'disabled' ? `${f.name}（已停用）` : f.name,
-            }))}
-          />
-          {formId && !selected && formName && (
-            <Typography.Text type="warning" size="small">当前绑定：{formName}</Typography.Text>
+          {typeSwitcher && (
+            <div className="fd-form-selector__group">
+              <Typography.Text strong>表单类型</Typography.Text>
+              {typeSwitcher(editorOpen)}
+            </div>
           )}
+          <div className="fd-form-selector__group fd-form-selector__group--grow">
+            <Typography.Text strong>选择表单</Typography.Text>
+            <Select
+              className="fd-form-selector__select"
+              value={formId ?? undefined}
+              onChange={handleSelect}
+              placeholder="请选择已设计的表单"
+              loading={loading}
+              disabled={editorOpen}
+              filter
+              showClear
+              emptyContent={<Typography.Text type="tertiary">暂无启用的表单，请先新建</Typography.Text>}
+              optionList={forms.map(f => ({
+                value: f.id,
+                label: f.status === 'disabled' ? `${f.name}（已停用）` : f.name,
+              }))}
+            />
+            {formId && !selected && formName && (
+              <Typography.Text type="warning" size="small">当前绑定：{formName}</Typography.Text>
+            )}
+          </div>
         </div>
         <div className="fd-form-selector__bar-right">
           <Button icon={<RefreshCw size={14} />} type="tertiary" theme="borderless" disabled={editorOpen} onClick={() => void formsQuery.refetch()}>

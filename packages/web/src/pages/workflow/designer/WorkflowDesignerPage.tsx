@@ -773,6 +773,20 @@ export default function WorkflowDesignerPage({
     setFormType(next);
   };
 
+  /** 「表单类型」切换器：designer 类型下由 FormSelectorPanel 合并进工具栏同一行渲染 */
+  const renderFormTypeSwitcher = (disabled: boolean) => (
+    <RadioGroup
+      type="button"
+      value={formType}
+      disabled={disabled}
+      onChange={(e) => handleFormTypeChange((e.target as HTMLInputElement).value as WorkflowFormType)}
+    >
+      {WORKFLOW_FORM_TYPES.map((t) => (
+        <Radio key={t} value={t}>{WORKFLOW_FORM_TYPE_LABELS[t]}</Radio>
+      ))}
+    </RadioGroup>
+  );
+
   // ─── 渲染 ─────────────────────────────────────────────────────────
 
   // 已发布流程也允许编辑；保存后后端会自动将 status 转为 draft，需重新发布。
@@ -907,19 +921,12 @@ export default function WorkflowDesignerPage({
       {/* 步骤 ② 表单 */}
       {currentStep === 2 && (
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <div style={{ padding: '4px 20px 12px', borderBottom: '1px solid var(--semi-color-border)', marginBottom: 16 }}>
-            <Typography.Text strong style={{ marginRight: 16 }}>表单类型</Typography.Text>
-            <RadioGroup
-              type="button"
-              value={formType}
-              disabled={readOnly}
-              onChange={(e) => handleFormTypeChange((e.target as HTMLInputElement).value as WorkflowFormType)}
-            >
-              {WORKFLOW_FORM_TYPES.map((t) => (
-                <Radio key={t} value={t}>{WORKFLOW_FORM_TYPE_LABELS[t]}</Radio>
-              ))}
-            </RadioGroup>
-          </div>
+          {(readOnly || formType !== 'designer') && (
+            <div style={{ padding: '4px 20px 12px', borderBottom: '1px solid var(--semi-color-border)', marginBottom: 16 }}>
+              <Typography.Text strong style={{ marginRight: 16 }}>表单类型</Typography.Text>
+              {renderFormTypeSwitcher(readOnly)}
+            </div>
+          )}
           {readOnly ? (
             <div style={{ padding: '0 20px 16px' }}>
               {formType === 'designer' ? (
@@ -938,6 +945,7 @@ export default function WorkflowDesignerPage({
             <FormSelectorPanel
               formId={formId}
               formName={formName ?? definition?.formName}
+              typeSwitcher={renderFormTypeSwitcher}
               onSelect={(form) => {
                 setFormId(form?.id ?? null);
                 setFormName(form?.name ?? null);
