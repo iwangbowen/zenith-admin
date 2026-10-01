@@ -646,7 +646,7 @@ export default function WorkflowMonitorPage() {
       ) },
       { title: '分支', dataIndex: 'branchPath', width: 150, render: (bp: WorkflowExecutionToken['branchPath']) => bp.length === 0 ? '主路径' : bp.map((f) => `${f.index + 1}/${f.total}`).join(' · ') },
       { title: '深度', dataIndex: 'depth', width: 70 },
-      { title: '父 Token', dataIndex: 'parentTokenId', width: 90, render: (v: number | null) => v ? `#${v}` : EMPTY_PLACEHOLDER },
+      { title: '父 Token', dataIndex: 'parentTokenId', width: 110, render: (v: number | null) => v ? `#${v}` : EMPTY_PLACEHOLDER },
       { title: '作用域', dataIndex: 'scopeKey', width: 180, ellipsis: { showTitle: true }, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
       dateTimeColumn('创建', 'createdAt'),
       dateTimeColumn('消费/终止', 'consumedAt'),
@@ -947,9 +947,13 @@ export default function WorkflowMonitorPage() {
     {
       title: '分类',
       dataIndex: 'categoryName',
-      width: 110,
+      width: 200,
       render: (v: string | null) => v
-        ? <Tag size="small" color="blue">{v}</Tag>
+        ? (
+          <Tooltip content={v}>
+            <Tag size="small" color="blue" style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block', verticalAlign: 'middle' }}>{v}</Tag>
+          </Tooltip>
+        )
         : <span style={{ color: 'var(--semi-color-text-2)' }}>—</span>,
     },
     overflowTagColumn<WorkflowInstanceListItem>({
@@ -970,12 +974,14 @@ export default function WorkflowMonitorPage() {
     {
       title: '申请人',
       dataIndex: 'initiatorName',
-      width: 160,
+      width: 200,
       render: (v: string | null, record: WorkflowInstanceListItem) => (
-        <Space spacing={6}>
-          <UserAvatar name={v ?? '?'} avatar={record.initiatorAvatar} semiSize="extra-extra-small" size={20} />
-          <span>{v ?? EMPTY_PLACEHOLDER}</span>
-        </Space>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, maxWidth: '100%', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+          <span style={{ flexShrink: 0, display: 'inline-flex' }}>
+            <UserAvatar name={v ?? '?'} avatar={record.initiatorAvatar} semiSize="extra-extra-small" size={20} />
+          </span>
+          <Typography.Text ellipsis={{ showTooltip: true }} style={{ minWidth: 0, flex: 1 }}>{v ?? EMPTY_PLACEHOLDER}</Typography.Text>
+        </div>
       ),
     },
     dateTimeColumn('提交时间', 'createdAt'),
