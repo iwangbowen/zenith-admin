@@ -112,6 +112,7 @@ export default function CategorySidebar({ categories, selectedId, onSelect, onCh
               onClick={() => onSelect(isAll ? null : item.id!)}
               icon={itemIcon}
               primary={item.name}
+              className="nav-list-item--single-line"
               extra={
                 canManage && !isAll ? (
                   <NavListItemActions items={[

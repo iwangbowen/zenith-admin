@@ -229,3 +229,16 @@
   opacity: 1;
   visibility: visible;
 }
+
+/* ─── 单行条目修饰：图标 / 首行文字 / 右侧操作区垂直居中 ──────────────────── */
+/* 仅用于无 secondary / meta 的单行列表（如流程分类侧栏）：条目整体居中对齐后，
+   三者在同一水平线上；多行条目继续用默认的顶部对齐，不要加此类。 */
+.nav-list-item--single-line.semi-list-item {
+  align-items: center;
+}
+
+.nav-list-item--single-line .nav-list-item__icon {
+  margin-top: 0;
+  display: inline-flex;
+  align-items: center;
+}
