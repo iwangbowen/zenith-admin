@@ -83,7 +83,7 @@ export default function HandledPage() {
       />
       <ConfigurableTable<WorkflowHandledInstanceItem>
         columns={columns}
-        {...listTableProps(listQuery, { pagination: buildPagination, rowKey: (row) => row.handledTask.id })}
+        {...listTableProps(listQuery, { pagination: buildPagination, rowKey: (row) => String(row?.handledTask.id) })}
       />
       <WorkflowInstanceDetailSheet
         instanceId={selectedId}
