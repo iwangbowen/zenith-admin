@@ -371,7 +371,13 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
       },
     },
     {
-      title: '流程 / 实例',
+      title: '流程',
+      dataIndex: 'definitionName',
+      width: 150,
+      render: (v: string | null) => renderEllipsis(v ?? '未知流程'),
+    },
+    {
+      title: '实例',
       dataIndex: 'instanceId',
       width: 240,
       render: (_: unknown, record: WorkflowJob) => (
@@ -379,7 +385,6 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
           size="small"
           instanceId={record.instanceId}
           title={record.instanceTitle}
-          definitionName={record.definitionName ?? '未知流程'}
           extra={record.nodeKey}
           emptyText={`系统事件${record.nodeKey ? ` · ${record.nodeKey}` : ''}`}
         />
@@ -440,6 +445,7 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
     {
       title: '请求',
       dataIndex: 'requestUrl',
+      minWidth: 180,
       render: (_: unknown, r: WorkflowJobExecution) => r.requestUrl
         ? <Typography.Text size="small" ellipsis={{ showTooltip: true }} style={{ maxWidth: 240 }}>{r.requestMethod ? `${r.requestMethod} ` : ''}{r.requestUrl}</Typography.Text>
         : <Typography.Text size="small" type="tertiary">—</Typography.Text>,
@@ -449,6 +455,7 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
     {
       title: '错误',
       dataIndex: 'errorMessage',
+      width: 200,
       render: (v: string | null) => v
         ? <Tooltip content={<div style={{ maxWidth: 360, wordBreak: 'break-all' }}>{v}</div>}><Typography.Text size="small" type="danger" ellipsis={{ rows: 1 }} style={{ maxWidth: 200 }}>{v}</Typography.Text></Tooltip>
         : <Typography.Text size="small" type="tertiary">—</Typography.Text>,

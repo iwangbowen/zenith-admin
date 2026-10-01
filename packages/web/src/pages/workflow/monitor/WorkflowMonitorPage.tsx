@@ -984,12 +984,12 @@ export default function WorkflowMonitorPage() {
       title: '耗时',
       align: 'right',
       key: 'duration',
-      width: 120,
+      width: 150,
       render: (_: unknown, record: WorkflowInstanceListItem) => {
         // 草稿尚未提交，从创建时间累计耗时没有意义
         if (record.status === 'draft') return <span style={{ color: 'var(--semi-color-text-2)' }}>—</span>;
         const end = RUNNING_STATUSES.has(record.status) ? dayjs().format('YYYY-MM-DD HH:mm:ss') : record.updatedAt;
-        return <span style={{ color: 'var(--semi-color-text-1)' }}>{formatSecondsBetween(record.createdAt, end)}</span>;
+        return <span style={{ color: 'var(--semi-color-text-1)', whiteSpace: 'nowrap' }}>{formatSecondsBetween(record.createdAt, end)}</span>;
       },
     },
     workflowInstanceStatusColumn<WorkflowInstanceListItem>(),
