@@ -69,10 +69,15 @@ function DataDiff({ beforeData, afterData }: Readonly<{ beforeData: string | nul
 
   return (
     <div style={{ maxHeight: 400, overflowY: 'auto' }}>
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, wordBreak: 'break-all' }}>
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, wordBreak: 'break-all', tableLayout: 'fixed' }}>
+      <colgroup>
+        <col style={{ width: '24%' }} />
+        <col style={{ width: '38%' }} />
+        <col style={{ width: '38%' }} />
+      </colgroup>
       <thead style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--semi-color-bg-2)' }}>
         <tr style={{ background: 'var(--semi-color-fill-0)' }}>
-          <th style={{ padding: '4px 8px', textAlign: 'left', width: '30%' }}>字段</th>
+          <th style={{ padding: '4px 8px', textAlign: 'left' }}>字段</th>
           <th style={{ padding: '4px 8px', textAlign: 'left', color: 'var(--semi-color-danger)' }}>变更前</th>
           <th style={{ padding: '4px 8px', textAlign: 'left', color: 'var(--semi-color-success)' }}>变更后</th>
         </tr>
@@ -84,11 +89,11 @@ function DataDiff({ beforeData, afterData }: Readonly<{ beforeData: string | nul
           const changed = JSON.stringify(bv) !== JSON.stringify(av);
           return (
             <tr key={k} style={{ background: changed ? 'var(--semi-color-warning-light-default)' : undefined }}>
-              <td style={{ padding: '3px 8px', fontWeight: 500 }}>{k}</td>
-              <td style={{ padding: '3px 8px', color: changed ? 'var(--semi-color-danger)' : undefined }}>
+              <td style={{ padding: '3px 8px', verticalAlign: 'top', fontWeight: 500 }}>{k}</td>
+              <td style={{ padding: '3px 8px', verticalAlign: 'top', color: changed ? 'var(--semi-color-danger)' : undefined }}>
                 {fmtVal(bv) == null ? <span style={{ opacity: 0.4 }}>—</span> : fmtVal(bv)}
               </td>
-              <td style={{ padding: '3px 8px', color: changed ? 'var(--semi-color-success)' : undefined }}>
+              <td style={{ padding: '3px 8px', verticalAlign: 'top', color: changed ? 'var(--semi-color-success)' : undefined }}>
                 {fmtVal(av) == null ? <span style={{ opacity: 0.4 }}>—</span> : fmtVal(av)}
               </td>
             </tr>
