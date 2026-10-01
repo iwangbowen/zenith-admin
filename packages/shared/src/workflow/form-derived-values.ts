@@ -28,9 +28,43 @@ function derivedDayValue(range: unknown): number | undefined {
   return end.diff(start, 'day') + 1;
 }
 
+/** 公式引用的字段 key（只取根 key，忽略明细列后缀） */
+function formulaRefKeys(formula: string): string[] {
+  return [...formula.matchAll(/\{([^}]+)\}/g)].map((m) => m[1].trim().split('.', 1)[0].split('[', 1)[0]);
+}
+
+const NUMERIC_FIELD_TYPES = new Set(['number', 'amount', 'formula']);
+
+/**
+ * 把「公式引用的数值型字段」里的空白值视为 0（Excel 语义）的副本。
+ *
+ * 必要性：`{交通费}+{住宿费}+{补贴}` 中任一可选金额留空会让整个和式变成空值，
+ * 依赖它的分级条件静默不成立（漏审批）。只替换数值型引用，日期 / 文本字段的空白
+ * 保持原样，避免 `DATEDIF(空白, ...)` 之类被误算成 1970 年。
+ * 无需替换时返回 null，让调用方跳过第二次求值。
+ */
+function withNumericBlanksAsZero(
+  values: Values,
+  keys: string[],
+  byKey: Map<string, WorkflowFormField>,
+): Values | null {
+  let next: Values | null = null;
+  for (const key of keys) {
+    const field = byKey.get(key);
+    if (!field || !NUMERIC_FIELD_TYPES.has(field.type)) continue;
+    const value = values[key];
+    if (value === undefined || value === null || value === '') {
+      if (!next) next = { ...values };
+      next[key] = 0;
+    }
+  }
+  return next;
+}
+
 /**
  * 归一可编辑表单的派生值。按依赖计算日期天数、行内公式、明细聚合与公式链，
  * 不依赖字段排列或 Form 的事件时序；循环依赖和无效表达式清空旧结果。
+ * 引用到留空的数值字段时按 0 参与运算（Excel 语义），避免部分留空使整式失效。
  * 查看已提交快照时不得调用，避免改写历史展示值。
  */
 export function computeWorkflowDerivedValues(fields: WorkflowFormField[], values: Values): Values {
@@ -70,10 +104,15 @@ function computeScope(fields: WorkflowFormField[], values: Values, detailRow: bo
       compute(field.daysFromKey);
       write(key, derivedDayValue(next[field.daysFromKey]));
     } else if ((field.type === 'formula' || detailRow) && field.formula?.trim()) {
-      for (const match of field.formula.matchAll(/\{([^}]+)\}/g)) {
-        compute(match[1].trim().split('.', 1)[0].split('[', 1)[0]);
+      const refKeys = formulaRefKeys(field.formula);
+      for (const refKey of refKeys) compute(refKey);
+      let value = cyclic.has(key) ? null : evalFormula(field.formula, next, field.precision ?? 2);
+      if (value === null && !cyclic.has(key)) {
+        // 整式因留空的数值字段变成空值时按 0 重算一次（只补引用的数值字段）
+        const filled = withNumericBlanksAsZero(next, refKeys, byKey);
+        if (filled) value = evalFormula(field.formula, filled, field.precision ?? 2);
       }
-      write(key, cyclic.has(key) ? undefined : evalFormula(field.formula, next, field.precision ?? 2) ?? undefined);
+      write(key, value ?? undefined);
     }
     visiting.delete(key);
     visited.add(key);
