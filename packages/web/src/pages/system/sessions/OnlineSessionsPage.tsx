@@ -80,7 +80,7 @@ export default function OnlineSessionsPage() {
         </Space>
       ),
     },
-    { title: '昵称', dataIndex: 'nickname', minWidth: 140 },
+    { title: '昵称', dataIndex: 'nickname', minWidth: 180, render: renderEllipsis },
     { title: '终端', dataIndex: 'client', width: 110, render: (v: OnlineSession['client']) => <SessionClientTag client={v} /> },
     { title: 'IP 地址', dataIndex: 'ip', width: 140 },
     { title: '登录地点', dataIndex: 'location', width: 180, render: renderEllipsis },
