@@ -683,8 +683,10 @@ export default function WorkflowApprovalDetailSheet({
         )}
       </WorkflowSideSheet>
 
+      {/* 审批/办理动作弹窗：只有一段意见输入，去掉右上角冗余的全屏切换按钮（fullscreenable=false） */}
       <AppModal
         title={approveLabel}
+        fullscreenable={false}
         visible={approveVisible}
         onCancel={() => { setApproveVisible(false); setAttachmentsFor('approve', []); setApproveSignature(null); resetNextApprovers(); if (!detailSheetVisible) onClose(); }}
         onOk={() => void handleApprove()}
@@ -776,6 +778,7 @@ export default function WorkflowApprovalDetailSheet({
 
       <AppModal
         title="驳回申请"
+        fullscreenable={false}
         visible={rejectVisible}
         onCancel={() => {
           setRejectVisible(false);
@@ -811,6 +814,7 @@ export default function WorkflowApprovalDetailSheet({
 
       <AppModal
         title={btnTransfer.displayName ?? '转办'}
+        fullscreenable={false}
         visible={transferVisible}
         onCancel={() => { setTransferVisible(false); setAttachmentsFor('transfer', []); }}
         onOk={() => void handleTransfer()}
@@ -835,6 +839,7 @@ export default function WorkflowApprovalDetailSheet({
 
       <AppModal
         title={btnDelegate.displayName ?? '委派'}
+        fullscreenable={false}
         visible={delegateVisible}
         onCancel={() => { setDelegateVisible(false); setAttachmentsFor('delegate', []); }}
         onOk={() => void handleDelegate()}
@@ -859,6 +864,7 @@ export default function WorkflowApprovalDetailSheet({
 
       <AppModal
         title={btnAddSign.displayName ?? '加签'}
+        fullscreenable={false}
         visible={addSignVisible}
         onCancel={() => {
           resetAddSignForm();
@@ -907,6 +913,7 @@ export default function WorkflowApprovalDetailSheet({
 
       <AppModal
         title={btnReduceSign.displayName ?? '减签'}
+        fullscreenable={false}
         visible={reduceSignVisible}
         onCancel={() => setReduceSignVisible(false)}
         onOk={() => void handleReduceSign()}
@@ -931,6 +938,7 @@ export default function WorkflowApprovalDetailSheet({
 
       <AppModal
         title={btnReturn.displayName ?? '退回'}
+        fullscreenable={false}
         visible={returnVisible}
         onCancel={() => { setReturnVisible(false); setAttachmentsFor('return', []); }}
         onOk={() => void handleReturn()}
