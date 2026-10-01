@@ -11,7 +11,8 @@ import { RefreshCw } from 'lucide-react';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import dayjs from 'dayjs';
 import type { WorkflowDefinition, WorkflowInstancePriority } from '@zenith/shared/workflow';
-import { applyFieldPermissionsToFields } from '@zenith/shared/workflow';
+import { applyFieldPermissionsToFields, initializeWorkflowFormValues } from '@zenith/shared/workflow';
+import { sameLaunchValues, type WorkflowLaunchSnapshot } from './launch-snapshot';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkflowUserOptions } from '@/hooks/queries/workflow-shared';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
@@ -41,6 +42,9 @@ export interface WorkflowLaunchFormData {
 }
 
 export interface WorkflowLaunchFormHandle {
+  /** 切换承载页时取快照，绝不校验尚未填完的必填字段。 */
+  getSnapshot: () => WorkflowLaunchSnapshot | null;
+  hasUnsavedChanges: () => boolean;
   collectFormData: (options?: {
     requireInitiatorApprovers?: boolean;
     /** false 时跳过表单校验（存草稿场景，与服务端草稿宽松语义一致），直接取当前值 */
@@ -59,19 +63,23 @@ interface WorkflowLaunchFormProps {
   initialTitle?: string;
   /** 优先级初始值（草稿/编辑回填，留空默认 normal） */
   initialPriority?: string;
+  initialCcUserIds?: number[];
+  initialSelectedInitiatorApprovers?: SelectedInitiatorApprovers;
+  initialDirty?: boolean;
   /** 是否显示抄送人字段（草稿编辑场景下抄送不持久化，可隐藏） */
   showCc?: boolean;
 }
 
 const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFormProps>(
-  function WorkflowLaunchForm({ def, instanceId, container, initialFormData, initialTitle, initialPriority, showCc = true }, ref) {
+  function WorkflowLaunchForm({ def, instanceId, container, initialFormData, initialTitle, initialPriority, initialCcUserIds, initialSelectedInitiatorApprovers, initialDirty = false, showCc = true }, ref) {
     const { user } = useAuth();
     const formApi = useRef<FormApi | null>(null);
     const dynamicFormApi = useRef<FormApi | null>(null);
     const businessFormApi = useRef<WorkflowBusinessFormApi | null>(null);
+    const businessBaseline = useRef<{ definitionId: number; values: Record<string, unknown> } | null>(null);
     const { userOptions } = useWorkflowUserOptions({ immediate: true });
-    const [selectedInitiatorApprovers, setSelectedInitiatorApprovers] = useState<SelectedInitiatorApprovers>({});
-    const latestSelectedInitiatorApproversRef = useRef<SelectedInitiatorApprovers>({});
+    const [selectedInitiatorApprovers, setSelectedInitiatorApprovers] = useState<SelectedInitiatorApprovers>(initialSelectedInitiatorApprovers ?? {});
+    const latestSelectedInitiatorApproversRef = useRef<SelectedInitiatorApprovers>(initialSelectedInitiatorApprovers ?? {});
     const [initiatorSelectNodes, setInitiatorSelectNodes] = useState<InitiatorApproverSelectNode[]>([]);
     const [highlightMissing, setHighlightMissing] = useState(false);
     // 审批链路预测刷新信号：表单变更防抖触发，发起人也可手动「刷新」
@@ -79,11 +87,11 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
     const scheduleChainReload = useDebouncedCallback(() => setChainReloadKey((k) => k + 1), { wait: 500 });
 
     useEffect(() => {
-      latestSelectedInitiatorApproversRef.current = {};
-      setSelectedInitiatorApprovers({});
+      latestSelectedInitiatorApproversRef.current = initialSelectedInitiatorApprovers ?? {};
+      setSelectedInitiatorApprovers(initialSelectedInitiatorApprovers ?? {});
       setInitiatorSelectNodes([]);
       setHighlightMissing(false);
-    }, [def.id]);
+    }, [def.id, initialSelectedInitiatorApprovers]);
 
     const handleSelectedInitiatorApproversChange = (next: SelectedInitiatorApprovers) => {
       latestSelectedInitiatorApproversRef.current = next;
@@ -96,13 +104,13 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
     const autoTitleRef = useRef('');
     useEffect(() => {
       const who = user?.nickname || user?.username || '我';
-      const title = initialTitle?.trim() || `${def.name} - ${who} - ${dayjs().format('YYYY-MM-DD HH:mm')}`;
+      const title = initialTitle ?? `${def.name} - ${who} - ${dayjs().format('YYYY-MM-DD HH:mm')}`;
       const defChanged = lastDefId.current !== def.id;
       lastDefId.current = def.id;
       const timer = setTimeout(() => {
         const current = (formApi.current?.getValue('title') as string | undefined)?.trim() ?? '';
         // 切换流程时重置标题；同一流程内仅在标题未被手动修改时刷新（如登录人加载完成）
-        if (defChanged || !current || current === autoTitleRef.current) {
+        if (defChanged || (initialTitle === undefined && (!current || current === autoTitleRef.current))) {
           formApi.current?.setValue('title', title);
           autoTitleRef.current = title;
         }
@@ -112,6 +120,27 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
     }, [def.id, user?.nickname, user?.username]);
 
     useImperativeHandle(ref, () => ({
+      getSnapshot: () => {
+        if (!formApi.current || def.formType === 'external') return null;
+        let formData: Record<string, unknown>;
+        if (def.formType === 'custom') {
+          if (!businessFormApi.current?.getValues) {
+            Toast.warning('业务表单暂不支持切换页面，请在当前窗口继续填写');
+            return null;
+          }
+          formData = businessFormApi.current.getValues();
+        } else {
+          formData = (dynamicFormApi.current?.getValues() as Record<string, unknown>) ?? initialFormData ?? {};
+        }
+        return structuredClone({
+          definitionId: def.id,
+          values: formApi.current.getValues() as WorkflowLaunchHeaderValues,
+          formData,
+          selectedInitiatorApprovers: latestSelectedInitiatorApproversRef.current,
+          dirty: hasUnsavedChanges(),
+        });
+      },
+      hasUnsavedChanges,
       collectFormData: async (options) => {
         if (!formApi.current) return null;
         if (def.formType === 'external') {
@@ -155,7 +184,7 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
           return null;
         }
       },
-    }), [def, initiatorSelectNodes]);
+    }));
 
     const getPreviewFormData = () => (
       def.formType === 'custom'
@@ -180,6 +209,20 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
       const startPerms = def.flowData?.nodes.find((n) => n.data.type === 'start')?.data.fieldPermissions;
       return applyFieldPermissionsToFields(def.formFields ?? [], startPerms);
     }, [def.flowData, def.formFields]);
+    const launchInitialValues = useMemo(() => initializeWorkflowFormValues(launchFields, { ...dynamicDefaults, ...initialFormData }), [launchFields, dynamicDefaults, initialFormData]);
+
+    const hasUnsavedChanges = () => {
+      if (!formApi.current) return false;
+      if (initialDirty) return true;
+      const header = formApi.current?.getValues() as WorkflowLaunchHeaderValues | undefined;
+      if (!sameLaunchValues(header, { title: initialTitle ?? autoTitleRef.current, priority: initialPriority ?? 'normal', ccUserIds: initialCcUserIds })) return true;
+      if (!sameLaunchValues(latestSelectedInitiatorApproversRef.current, initialSelectedInitiatorApprovers ?? {})) return true;
+      const current = getPreviewFormData();
+      const baseline = def.formType === 'custom'
+        ? businessBaseline.current?.values ?? initialFormData ?? {}
+        : launchInitialValues;
+      return !sameLaunchValues(current, baseline);
+    };
 
     const renderFormBody = () => {
       if (def.formType === 'external') {
@@ -200,7 +243,12 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
             container={container}
             definitionId={def.id}
             value={initialFormData}
-            getFormApi={(api) => { businessFormApi.current = api; }}
+            getFormApi={(api) => {
+              businessFormApi.current = api;
+              if (businessBaseline.current?.definitionId !== def.id && api.getValues) {
+                businessBaseline.current = { definitionId: def.id, values: structuredClone(api.getValues()) };
+              }
+            }}
           />
         );
       }
@@ -210,7 +258,7 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
             attachmentInstanceId={instanceId}
             key={`form-${def.id}`}
             fields={launchFields}
-            initValues={{ ...dynamicDefaults, ...(initialFormData ?? {}) }}
+            initValues={launchInitialValues}
             getFormApi={(api) => { dynamicFormApi.current = api; }}
             onValueChange={scheduleChainReload}
           />
@@ -246,6 +294,7 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
                   showClear
                   style={{ width: '100%' }}
                   optionList={userOptions}
+                  initValue={initialCcUserIds}
                 />
               </Col>
             )}

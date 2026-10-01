@@ -6,6 +6,7 @@ import type { WorkflowDefinition } from '@zenith/shared/workflow';
 import { ListSearchToolbar } from '@/components/list-page';
 import { KeywordInput } from '@/components/search-filters';
 import WorkflowLaunchForm, { type WorkflowLaunchFormHandle } from '@/components/workflow/WorkflowLaunchForm';
+import { useLaunchLeaveGuard } from '@/components/workflow/useLaunchLeaveGuard';
 import WorkflowSideSheet from '@/components/workflow/WorkflowSideSheet';
 import WorkbenchSummary from './WorkbenchSummary';
 import { useWorkflowCategories } from '@/hooks/useWorkflowCategories';
@@ -39,6 +40,7 @@ export default function WorkflowLaunchpadPage() {
   const launchFormRef = useRef<WorkflowLaunchFormHandle>(null);
   const [applyVisible, setApplyVisible] = useState(false);
   const [selectedDef, setSelectedDef] = useState<WorkflowDefinition | null>(null);
+  const leaveGuard = useLaunchLeaveGuard(() => launchFormRef.current?.hasUnsavedChanges() ?? false, applyVisible);
   const definitionsQuery = usePublishedWorkflowDefinitions();
   const launchMutation = useLaunchWorkflowInstance();
   const draftMutation = useLaunchWorkflowInstance();
@@ -86,6 +88,18 @@ export default function WorkflowLaunchpadPage() {
   const closeApply = () => {
     setApplyVisible(false);
     setSelectedDef(null);
+  };
+  const requestCloseApply = () => leaveGuard.confirmLeave(closeApply);
+
+  const openFullPage = () => {
+    if (!selectedDef) return;
+    const launchSnapshot = launchFormRef.current?.getSnapshot();
+    if (!launchSnapshot) return;
+    const icon = selectedDef.customForm?.icon ?? selectedDef.categoryIcon ?? 'Send';
+    leaveGuard.allowNavigation(() => navigate(`/workflow/launch/${selectedDef.id}`, {
+      state: { tabTitle: `发起：${selectedDef.name}`, tabIcon: icon, launchSnapshot },
+    }));
+    closeApply();
   };
 
   const handleSubmit = async (asDraft: boolean) => {
@@ -148,10 +162,16 @@ export default function WorkflowLaunchpadPage() {
   );
 
   const renderContent = () => {
-    if (loading) {
+    if (loading && !definitionsQuery.data) {
       return <div style={{ textAlign: 'center', padding: 60 }}><Spin /></div>;
     }
+    if (definitionsQuery.isError) {
+      return <Empty title="流程加载失败" description="请重试获取可发起的流程" style={{ padding: 60 }}><Button loading={loading} onClick={() => void definitionsQuery.refetch()}>重试</Button></Empty>;
+    }
     if (grouped.length === 0) {
+      if (activeKeyword.trim() && definitions.length > 0) {
+        return <Empty title="没有匹配的流程" description="请调整关键词，或清空搜索查看全部流程" style={{ padding: 60 }}><Button onClick={handleReset}>清空搜索</Button></Empty>;
+      }
       // 有流程管理权限的用户直接引导去发布，普通成员提示联系管理员
       const canManage = hasPermission('workflow:definition:create') || hasPermission('workflow:definition:publish');
       return (
@@ -205,24 +225,20 @@ export default function WorkflowLaunchpadPage() {
       <WorkflowSideSheet
         title={selectedDef ? `发起：${selectedDef.name}` : '发起申请'}
         visible={applyVisible}
-        onCancel={closeApply}
+        onCancel={requestCloseApply}
         variant="split"
         footerLeft={
           <Button
             theme="borderless"
             icon={<ExternalLink size={14} />}
-            onClick={() => {
-              if (!selectedDef) return;
-              const icon = selectedDef.customForm?.icon ?? selectedDef.categoryIcon ?? 'Send';
-              navigate(`/workflow/launch/${selectedDef.id}`, { state: { tabTitle: `发起：${selectedDef.name}`, tabIcon: icon } });
-            }}
+            onClick={openFullPage}
           >
             在新页签打开
           </Button>
         }
         footerRight={
           <Space>
-            <Button onClick={closeApply}>取消</Button>
+            <Button onClick={requestCloseApply}>取消</Button>
             <Button loading={savingDraft} disabled={submitting} onClick={() => void handleSubmit(true)}>保存草稿</Button>
             <Button type="primary" loading={submitting} disabled={savingDraft} onClick={() => void handleSubmit(false)}>提交</Button>
           </Space>

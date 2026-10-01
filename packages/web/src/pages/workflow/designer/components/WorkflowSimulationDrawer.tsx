@@ -6,6 +6,7 @@ import { Banner, Button, Input, Select, SideSheet, Space, Switch, Tag, TextArea,
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { AlertTriangle, Bookmark, Bug, CheckCircle2, ChevronLeft, ChevronRight, CircleDashed, Clock, FastForward, GitCompare, Keyboard, ListChecks, Minus, PanelRightClose, Pause, Play, Plus, RotateCcw, RotateCw, Save, Send, SlidersHorizontal, Trash2, Wand2, XCircle } from 'lucide-react';
 import type { WorkflowFlowData, WorkflowFormField, WorkflowSimulationCase, WorkflowSimulationDecision, WorkflowSimulationHealthIssue, WorkflowSimulationResult } from '@zenith/shared/workflow';
+import { computeWorkflowDerivedValues, initializeWorkflowFormValues } from '@zenith/shared/workflow';
 import { formatDateForApi } from '@/utils/date';
 import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import AppModal from '@/components/AppModal';
@@ -142,7 +143,7 @@ function pickValidationMessage(error: unknown): string {
 function visitFormFields(fields: WorkflowFormField[], visitor: (field: WorkflowFormField) => void): void {
   for (const field of fields) {
     visitor(field);
-    if (field.children) visitFormFields(field.children, visitor);
+    if (field.children && field.type !== 'detail') visitFormFields(field.children, visitor);
     if (field.columns) field.columns.forEach((col) => visitFormFields(col.fields, visitor));
     if (field.panes) field.panes.forEach((pane) => visitFormFields(pane.fields, visitor));
   }
@@ -153,7 +154,7 @@ function defaultFormDataFromFields(fields: WorkflowFormField[]): Record<string, 
   visitFormFields(fields, (field) => {
     if (field.defaultValue !== undefined) out[field.key] = field.defaultValue;
   });
-  return out;
+  return initializeWorkflowFormValues(fields, out);
 }
 
 function firstOption(field: WorkflowFormField): string | undefined {
@@ -161,6 +162,7 @@ function firstOption(field: WorkflowFormField): string | undefined {
 }
 
 function mockValueForField(field: WorkflowFormField, users: UserOption[]): unknown {
+  if (field.type === 'formula' || field.formula?.trim() || field.daysFromKey) return undefined;
   if (field.defaultValue !== undefined) return field.defaultValue;
   const option = firstOption(field) ?? '选项A';
   const firstUserId = users[0]?.id ?? 1;
@@ -185,7 +187,6 @@ function mockValueForField(field: WorkflowFormField, users: UserOption[]): unkno
     case 'amount':
     case 'slider':
     case 'rate':
-    case 'formula':
       return field.min ?? 100;
     case 'date':
       return formatDateForApi(new Date());
@@ -244,7 +245,7 @@ function generateMockFormData(fields: WorkflowFormField[], users: UserOption[]):
     const value = mockValueForField(field, users);
     if (value !== undefined) out[field.key] = value;
   });
-  return out;
+  return initializeWorkflowFormValues(fields, out);
 }
 
 function buildLocalHealthIssues(flowData: WorkflowFlowData): WorkflowSimulationHealthIssue[] {
@@ -485,8 +486,9 @@ export default function WorkflowSimulationDrawer({
   };
 
   const applyFormValues = (values: Record<string, unknown>) => {
-    setFormData(values);
-    setJsonDraft(JSON.stringify(values, null, 2));
+    const normalized = initializeWorkflowFormValues(formFields, values);
+    setFormData(normalized);
+    setJsonDraft(JSON.stringify(normalized, null, 2));
     setFormRenderKey((key) => key + 1);
   };
 
@@ -494,7 +496,7 @@ export default function WorkflowSimulationDrawer({
     if (formFields.length > 0 && formApi.current) {
       try {
         const values = await formApi.current.validate() as Record<string, unknown>;
-        return values;
+        return computeWorkflowDerivedValues(formFields, values);
       } catch (err) {
         Toast.warning(pickValidationMessage(err));
         return null;
@@ -505,7 +507,7 @@ export default function WorkflowSimulationDrawer({
       Toast.warning('表单数据必须是 JSON 对象');
       return null;
     }
-    return parsed;
+    return computeWorkflowDerivedValues(formFields, parsed);
   };
 
   const runSimulation = async (
@@ -513,8 +515,9 @@ export default function WorkflowSimulationDrawer({
     overrideDecisions?: WorkflowSimulationDecision[],
     toastText = '仿真已启动',
   ) => {
-    const values = overrideValues ?? await effectiveFormData();
-    if (!values) return;
+    const input = overrideValues ?? await effectiveFormData();
+    if (!input) return;
+    const values = computeWorkflowDerivedValues(formFields, input);
     const nextDecisions = overrideDecisions ?? decisions;
     stopReplay();
     try {

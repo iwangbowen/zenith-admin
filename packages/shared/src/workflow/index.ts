@@ -19,3 +19,4 @@ export * from './permissions';
 export * from './form-signatures';
 export * from './form-attachments';
 export * from './task-history';
+export * from './form-derived-values';

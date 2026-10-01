@@ -1,69 +1,16 @@
 /**
- * 表单联动：默认值公式一次性注入、公式实时计算、dateRange→天数、select 级联收敛、联动赋值与远程数据源回填。
- * 每次 onValueChange 依次执行：公式 → 天数 → 级联 → 联动赋值（顺序即语义，勿调换）。
+ * 表单联动：共享派生值计算、select 级联收敛、联动赋值与远程数据源回填。
  */
 import { useMemo, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { Toast } from '@douyinfe/semi-ui';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import dayjs from 'dayjs';
 import type { WorkflowFormField } from '@zenith/shared/workflow';
-import { evalFormula } from '../../form-formula';
+import { computeWorkflowDerivedValues, initializeWorkflowFormValues } from '@zenith/shared/workflow';
 import { fetchWorkflowDataSourceRecord } from '@/hooks/queries/workflow-designer';
 import { getCascadeAllowedOptions } from './field-utils';
 
 type Values = Record<string, unknown>;
-
-/** 默认值公式：按「静态默认值 + 外部初始值」求值一次注入（外部已给值/只读展示不覆盖） */
-function enrichInitValues(all: WorkflowFormField[], initValues: Values | undefined, readOnly: boolean | undefined): Values | undefined {
-  if (readOnly) return initValues;
-  const withFormula = all.filter((f) => f.defaultFormula?.trim());
-  if (withFormula.length === 0) return initValues;
-  const base: Values = {};
-  for (const f of all) if (f.defaultValue !== undefined) base[f.key] = f.defaultValue;
-  Object.assign(base, initValues);
-  const out: Values = { ...(initValues ?? {}) };
-  for (const f of withFormula) {
-    if (out[f.key] !== undefined && out[f.key] !== null && out[f.key] !== '') continue;
-    const v = evalFormula(f.defaultFormula ?? '', base, f.precision ?? 2);
-    if (v !== null) out[f.key] = v;
-  }
-  return out;
-}
-
-function syncFormulaFields(api: FormApi, formulaFields: WorkflowFormField[], next: Values) {
-  for (const f of formulaFields) {
-    if (!f.formula) continue;
-    const result = evalFormula(f.formula, next, f.precision ?? 2);
-    if (result !== null && next[f.key] !== result) {
-      api.setValue(f.key, result);
-    } else if (result === null && next[f.key] !== undefined) {
-      api.setValue(f.key, undefined);
-    }
-  }
-}
-
-/** 日期范围 → 天数（含首尾） */
-function syncDayFields(api: FormApi, dayFields: WorkflowFormField[], next: Values) {
-  for (const f of dayFields) {
-    if (!f.daysFromKey) continue;
-    const range = next[f.daysFromKey];
-    if (Array.isArray(range) && range.length === 2 && range[0] && range[1]) {
-      const start = dayjs(range[0] as string | Date);
-      const end = dayjs(range[1] as string | Date);
-      if (start.isValid() && end.isValid()) {
-        const days = end.diff(start, 'day') + 1;
-        if (Number.isFinite(days) && days >= 0 && next[f.key] !== days) {
-          api.setValue(f.key, days);
-        } else if ((!Number.isFinite(days) || days < 0) && next[f.key] !== undefined) {
-          api.setValue(f.key, undefined);
-        }
-      }
-    } else if (next[f.key] !== undefined) {
-      api.setValue(f.key, undefined);
-    }
-  }
-}
 
 /** 级联：父值变化后过滤已失效的子值 */
 function syncCascadeFields(api: FormApi, cascadeFields: WorkflowFormField[], next: Values) {
@@ -86,6 +33,7 @@ function syncCascadeFields(api: FormApi, cascadeFields: WorkflowFormField[], nex
 }
 
 interface UseFormLinkageOptions {
+  fields: WorkflowFormField[];
   /** 平铺后的全部字段（含容器内子字段） */
   all: WorkflowFormField[];
   initValues?: Values;
@@ -94,14 +42,12 @@ interface UseFormLinkageOptions {
   onValueChange?: (values: Values) => void;
 }
 
-export function useFormLinkage({ all, initValues, readOnly, formApiRef, onValueChange }: UseFormLinkageOptions) {
-  const [enrichedInitValues] = useState<Values | undefined>(() => enrichInitValues(all, initValues, readOnly));
+export function useFormLinkage({ fields, all, initValues, readOnly, formApiRef, onValueChange }: UseFormLinkageOptions) {
+  const [enrichedInitValues] = useState<Values | undefined>(() => readOnly ? initValues : initializeWorkflowFormValues(fields, initValues));
 
   const valuesRef = useRef<Values>(enrichedInitValues ?? {});
   const [valuesState, setValuesState] = useState<Values>(enrichedInitValues ?? {});
 
-  const formulaFields = useMemo(() => all.filter(f => f.type === 'formula' && f.formula), [all]);
-  const dayFields = useMemo(() => all.filter(f => f.daysFromKey && (f.type === 'number' || f.type === 'amount')), [all]);
   const cascadeFields = useMemo(() => all.filter(f => f.optionsFrom), [all]);
   const autoFillFields = useMemo(() => all.filter(f => f.autoFill && f.autoFill.targets.length > 0), [all]);
 
@@ -166,13 +112,14 @@ export function useFormLinkage({ all, initValues, readOnly, formApiRef, onValueC
     // 否则第一次 setState 之后 state 与 next 恒等（Object.is），
     // React 跳过重渲染，第二次值变更起显隐/条件必填联动全部失效。
     const prev = valuesRef.current;
-    const next = { ...raw };
+    const next = readOnly ? { ...raw } : computeWorkflowDerivedValues(fields, { ...raw });
     valuesRef.current = next;
     setValuesState(next);
     const api = formApiRef.current;
-    if (api) {
-      syncFormulaFields(api, formulaFields, next);
-      syncDayFields(api, dayFields, next);
+    if (api && !readOnly) {
+      for (const [key, value] of Object.entries(next)) {
+        if (!Object.is(raw[key], value)) api.setValue(key, value);
+      }
       syncCascadeFields(api, cascadeFields, next);
       syncAutoFillFields(api, next, prev);
     }

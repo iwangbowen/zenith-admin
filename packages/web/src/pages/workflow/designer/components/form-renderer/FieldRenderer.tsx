@@ -58,7 +58,7 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
         <Form.Input
           field={field.key} label={field.label}
           placeholder={field.placeholder ?? `请输入${field.label}`}
-          initValue={field.defaultValue} rules={rules} disabled={disabled}
+          rules={rules} disabled={disabled}
           {...extraProps}
         />
       );
@@ -69,7 +69,7 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
           field={field.key} label={field.label}
           placeholder={field.placeholder ?? `请输入${field.label}`}
           autosize={{ minRows: 2, maxRows: 6 }}
-          initValue={field.defaultValue} rules={rules} disabled={disabled}
+          rules={rules} disabled={disabled}
           {...extraProps}
         />
       );
@@ -79,7 +79,7 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
         <Form.Input
           field={field.key} label={field.label}
           placeholder={field.placeholder ?? '请输入手机号'}
-          initValue={field.defaultValue} disabled={disabled}
+          disabled={disabled}
           rules={[
             ...requiredRules(field, dynamicRequired),
             { pattern: PHONE_REGEX, message: '手机号格式不正确' },
@@ -93,7 +93,7 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
         <Form.Input
           field={field.key} label={field.label}
           placeholder={field.placeholder ?? '请输入邮箱'}
-          initValue={field.defaultValue} disabled={disabled}
+          disabled={disabled}
           rules={[
             ...requiredRules(field, dynamicRequired),
             { pattern: EMAIL_REGEX, message: '邮箱格式不正确' },
@@ -107,7 +107,7 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
         <Form.Input
           field={field.key} label={field.label}
           placeholder={field.placeholder ?? '请输入身份证号'}
-          initValue={field.defaultValue} maxLength={18} disabled={disabled}
+          maxLength={18} disabled={disabled}
           rules={[
             ...requiredRules(field, dynamicRequired),
             { pattern: ID_CARD_REGEX, message: '身份证号格式不正确' },
@@ -121,7 +121,7 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
         <Form.Input
           field={field.key} label={field.label}
           placeholder={field.placeholder ?? '请输入网址'}
-          initValue={field.defaultValue} disabled={disabled}
+          disabled={disabled}
           rules={[
             ...requiredRules(field, dynamicRequired),
             { pattern: URL_REGEX, message: '网址需以 http:// 或 https:// 开头' },
@@ -135,7 +135,7 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
         <FormPasswordInput
           field={field.key} label={field.label}
           placeholder={field.placeholder ?? `请输入${field.label}`}
-          initValue={field.defaultValue} rules={rules} disabled={disabled}
+          rules={rules} disabled={disabled}
           {...extraProps}
         />
       );
@@ -145,7 +145,6 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
         <Form.PinCode
           field={field.key} label={field.label}
           count={field.maxCount ?? 6}
-          initValue={field.defaultValue}
           rules={rules} disabled={disabled}
           {...extraProps}
         />
@@ -157,7 +156,6 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
           field={field.key} label={field.label}
           data={field.options ?? []}
           placeholder={field.placeholder ?? `请输入${field.label}`}
-          initValue={field.defaultValue}
           style={{ width: '100%' }} rules={rules} disabled={disabled}
           {...extraProps}
         />
@@ -168,7 +166,6 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
         <FormRating
           field={field.key} label={fieldLabelNode(field, dynamicRequired)}
           count={field.rateMax ?? 5}
-          initValue={Number(field.defaultValue) || 0}
           disabled={disabled}
           rules={dynamicRequired ? [{ validator: (_r: unknown, v: unknown) => typeof v === 'number' && v > 0, message: `请为${field.label}评分` }] : undefined}
           {...extraProps}
@@ -179,7 +176,6 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
       return (
         <Form.Input
           field={field.key} label={numberLabel} disabled
-          initValue={field.defaultValue}
           placeholder="请填写依赖字段后自动计算"
           {...extraProps}
         />
@@ -194,7 +190,6 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
           placeholder={field.placeholder ?? `请输入${field.label}`}
           precision={field.precision} step={field.step}
           min={field.min} max={field.max}
-          initValue={field.defaultValue}
           style={{ width: '100%' }}
           disabled={disabled || auto}
           rules={numberRules}
@@ -216,7 +211,6 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
           placeholder={field.placeholder ?? `请输入${field.label}`}
           precision={field.precision ?? 2}
           min={field.min} max={field.max}
-          initValue={field.defaultValue}
           style={{ width: '100%' }}
           prefix="¥" disabled={disabled}
           rules={numberRules}
@@ -264,7 +258,6 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
           placeholder={field.placeholder ?? `请选择${field.label}`}
           style={{ width: '100%' }}
           format={field.timeFormat ?? 'HH:mm'}
-          initValue={field.defaultValue}
           rules={rules} disabled={disabled}
           {...extraProps}
         />
@@ -275,7 +268,6 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
         <FormRegion
           field={field.key} label={field.label}
           placeholder={field.placeholder ?? '请选择省/市/区'}
-          initValue={field.defaultValue}
           rules={rules} disabled={disabled}
           style={{ width: '100%' }}
           {...extraProps}
@@ -296,12 +288,11 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
         );
       }
       if (signatureMode === 'image') {
-        return <FormImageSignature field={field.key} label={field.label} initValue={field.defaultValue} rules={rules} {...extraProps} />;
+        return <FormImageSignature field={field.key} label={field.label} rules={rules} {...extraProps} />;
       }
       return (
         <FormSignature
           field={field.key} label={field.label}
-          initValue={field.defaultValue}
           policy={field.signaturePolicy ?? 'reusable'}
           rules={rules}
           {...extraProps}
@@ -322,7 +313,6 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
       return (
         <FormRichText
           field={field.key} label={field.label}
-          initValue={field.defaultValue}
           placeholder={field.placeholder ?? `请输入${field.label}`}
           rules={rules}
           {...extraProps}
@@ -336,8 +326,7 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
             field={field.key} label={field.label}
             dataSourceId={field.dataSourceId}
             placeholder={field.placeholder ?? `请选择${field.label}`}
-            initValue={field.defaultValue}
-            rules={rules} disabled={disabled}
+           rules={rules} disabled={disabled}
             {...extraProps}
           />
         );
@@ -349,8 +338,7 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
             field={field.key} label={field.label}
             mode="select" options={options} allowOther
             placeholder={field.placeholder ?? `请选择${field.label}`}
-            initValue={field.defaultValue}
-            rules={rules} disabled={disabled}
+           rules={rules} disabled={disabled}
             {...extraProps}
           />
         );
@@ -392,8 +380,7 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
           <FormOptionInput
             field={field.key} label={field.label}
             mode="radio" options={options} allowOther
-            initValue={field.defaultValue}
-            rules={rules} disabled={disabled}
+           rules={rules} disabled={disabled}
             {...extraProps}
           />
         );
@@ -401,7 +388,7 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
       return (
         <Form.RadioGroup
           field={field.key} label={field.label}
-          initValue={field.defaultValue} rules={rules} disabled={disabled}
+          rules={rules} disabled={disabled}
           options={options.map(opt => ({ label: optionLabelNode(opt), value: opt.value, disabled: opt.disabled }))}
           {...extraProps}
         />
@@ -425,7 +412,6 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
       return (
         <Form.Switch
           field={field.key} label={field.label}
-          initValue={field.defaultValue === true}
           disabled={disabled}
           {...extraProps}
         />
@@ -439,7 +425,6 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
           field={field.key} label={numberLabel}
           min={sMin} max={sMax} step={field.step ?? 1}
           marks={field.sliderMarks ? { [sMin]: String(sMin), [sMax]: String(sMax) } : undefined}
-          initValue={field.defaultValue}
           disabled={disabled}
           {...extraProps}
         />
@@ -462,7 +447,6 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
         <FormMatrix
           field={field.key} label={fieldLabelNode(field, dynamicRequired)}
           rows={mRows} cols={mCols}
-          initValue={field.defaultValue as Record<string, string> | undefined}
           rules={matrixRules} disabled={disabled}
           {...extraProps}
         />
@@ -496,7 +480,6 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
           placeholder={field.placeholder ?? `请选择${field.label}`}
           treeData={toCascaderTreeData(field.cascaderOptions ?? [])}
           changeOnSelect={field.cascaderChangeOnSelect}
-          initValue={field.defaultValue as string[] | undefined}
           showClear
           style={{ width: '100%' }} rules={rules} disabled={disabled}
           {...extraProps}
@@ -516,7 +499,6 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
         <Form.RadioGroup
           field={field.key} label={field.label}
           type="button" buttonSize="middle"
-          initValue={typeof field.defaultValue === 'number' ? field.defaultValue : undefined}
           rules={rules} disabled={disabled}
           options={Array.from({ length: 11 }, (_, i) => ({ label: String(i), value: i }))}
           {...extraProps}
@@ -531,7 +513,6 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
           field={field.key} label={field.label}
           placeholder={field.placeholder ?? `请输入${field.label}后回车`}
           max={field.maxCount}
-          initValue={field.defaultValue}
           rules={rules} disabled={disabled}
           {...extraProps}
         />
@@ -542,7 +523,6 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
         <FormColorPicker
           field={field.key} label={field.label}
           alpha={field.alpha}
-          initValue={field.defaultValue}
           rules={rules} disabled={disabled}
           {...extraProps}
         />
@@ -577,7 +557,6 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
           field={field.key} label={field.label}
           multiple={field.multiple}
           placeholder={field.placeholder ?? '请选择人员'}
-          initValue={field.defaultValue}
           rules={rules} disabled={disabled}
           {...extraProps}
         />
@@ -589,7 +568,6 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
           field={field.key} label={field.label}
           multiple={field.multiple}
           placeholder={field.placeholder ?? '请选择部门'}
-          initValue={field.defaultValue}
           rules={rules} disabled={disabled}
           {...extraProps}
         />
@@ -602,7 +580,6 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
           dictCode={field.dictCode}
           multiple={field.multiple}
           placeholder={field.placeholder ?? '请选择'}
-          initValue={field.defaultValue}
           rules={rules} disabled={disabled}
           {...extraProps}
         />
@@ -615,7 +592,6 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
           relationDefinitionId={field.relationDefinitionId}
           multiple={field.multiple}
           placeholder={field.placeholder ?? '请选择关联审批单'}
-          initValue={field.defaultValue}
           rules={rules} disabled={disabled}
           {...extraProps}
         />
@@ -636,7 +612,7 @@ export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFor
       return (
         <Form.Input
           field={field.key} label={field.label} disabled
-          initValue={`${field.serialPrefix ?? ''}20260101001`}
+          placeholder="提交后自动生成"
         />
       );
 

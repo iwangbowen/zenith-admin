@@ -4,9 +4,8 @@
 import { Button, DatePicker, Input, InputNumber, Select, Toast, Typography, withField } from '@douyinfe/semi-ui';
 import { Plus, Trash2, Copy, ClipboardPaste } from 'lucide-react';
 import type { WorkflowFormField } from '@zenith/shared/workflow';
-import { isWorkflowFieldVisible as isFieldVisible } from '@zenith/shared/workflow';
+import { computeWorkflowDerivedValues, isWorkflowFieldVisible as isFieldVisible } from '@zenith/shared/workflow';
 import { toDateFnsToken, dateFormatHasTime, dateFormatHasDay } from '../../form-types';
-import { evalFormula } from '../../form-formula';
 import { readClipboardText } from '@/utils/clipboard';
 
 type DetailRow = Record<string, unknown>;
@@ -81,13 +80,8 @@ function DetailTableInput({ value, onChange, columns, disabled }: Readonly<Detai
   const setRows = (next: DetailRow[]) => onChange?.(next);
   // 行内公式列重算（引用同行其它列 {列key}）
   const applyRowFormulas = (row: DetailRow): DetailRow => {
-    let nr = row;
-    for (const col of columns) {
-      if (!col.formula?.trim()) continue;
-      const res = evalFormula(col.formula, nr, col.precision ?? 2);
-      nr = { ...nr, [col.key]: res ?? undefined };
-    }
-    return nr;
+    const normalized = computeWorkflowDerivedValues([{ key: 'rows', type: 'detail', label: '明细', children: columns }], { rows: [row] });
+    return (normalized.rows as DetailRow[])[0];
   };
   const addRow = () => setRows([...rows, applyRowFormulas({})]);
   const removeRow = (idx: number) => setRows(rows.filter((_, i) => i !== idx));

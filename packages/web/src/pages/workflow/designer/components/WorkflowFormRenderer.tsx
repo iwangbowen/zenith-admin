@@ -44,7 +44,7 @@ export default function WorkflowFormRenderer({
 
   const all = useMemo(() => flattenFields(fields), [fields]);
   const { enrichedInitValues, valuesState, handleValueChange } = useFormLinkage({
-    all, initValues, readOnly, formApiRef, onValueChange,
+    fields, all, initValues, readOnly, formApiRef, onValueChange,
   });
 
   return (
