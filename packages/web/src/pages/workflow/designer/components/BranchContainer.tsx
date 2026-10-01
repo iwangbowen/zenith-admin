@@ -53,12 +53,13 @@ function getBranchDesc(branch: FlowBranch, branchType: BranchNodeType): string {
     return v ? `匹配值：${v}` : '点击配置路由值';
   }
   if (branch.conditions?.length) {
-    const totalRules = branch.conditions.reduce((s, g) => s + g.rules.length, 0);
-    const groupInfo = branch.conditions.map(g => {
-      const logicLabel = g.type === 'and' ? '且' : '或';
-      return `${g.rules.length}条件(${logicLabel})`;
-    }).join(' + ');
-    return `${totalRules} 个条件：${groupInfo}`;
+    const groups = branch.conditions;
+    const totalRules = groups.reduce((s, g) => s + g.rules.length, 0);
+    const logicLabel = (g: (typeof groups)[number]) => (g.type === 'and' ? '且' : '或');
+    // 单条件组不再重复计数（旧文案为「1 个条件：1条件(且)」）；多组时保留每组条数
+    if (groups.length === 1) return `共 ${totalRules} 条条件 · ${logicLabel(groups[0])}`;
+    const groupInfo = groups.map(g => `${g.rules.length} 条${logicLabel(g)}`).join(' + ');
+    return `共 ${totalRules} 条条件 · ${groupInfo}`;
   }
   return '点击配置条件';
 }

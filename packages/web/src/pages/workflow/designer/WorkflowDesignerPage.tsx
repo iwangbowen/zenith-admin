@@ -587,8 +587,13 @@ export default function WorkflowDesignerPage({
       printTemplateId,
     };
 
+    // 保存前的状态：服务端不允许 update 直接发布，已发布/已停用的流程被保存后会回到草稿
+    const previousStatus = definition?.status ?? null;
     const saved = await saveMutation.mutateAsync({ id: isNew ? undefined : definitionId ?? undefined, values: payload });
     if (options.showToast !== false) Toast.success('保存成功');
+    if (previousStatus && previousStatus !== 'draft' && saved?.status === 'draft') {
+      Toast.warning('保存已生效，但该流程已下架为草稿：需重新发布后才会出现在发起列表');
+    }
     if (isNew && saved) {
       navigate(`/workflow/designer/${saved.id}`, { replace: true, state: { step: currentStep } });
     }

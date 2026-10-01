@@ -504,13 +504,31 @@ function renderValueInput(
   }
 
   const field = formFields.find(f => f.key === rule.field);
+  // 属于 / 不属于：多值语义（引擎按逗号串拆分比对），单选会让「合同 或 协议」这类条件无法配置
+  const isListOperator = rule.operator === 'in' || rule.operator === 'notIn';
 
-  if (field?.type === 'select' && field.options) {
+  if ((field?.type === 'select' || field?.type === 'multiSelect' || field?.type === 'checkbox') && field.options?.length) {
+    const optionList = field.options.map(o => ({ value: o, label: o }));
+    if (isListOperator) {
+      const selected = String(rule.value ?? '').split(',').map(s => s.trim()).filter(Boolean);
+      return (
+        <Select
+          multiple
+          filter
+          value={selected}
+          onChange={(v) => onChange((v as string[]).join(','))}
+          optionList={optionList}
+          style={{ width: 200 }}
+          size="small"
+          placeholder="可多选"
+        />
+      );
+    }
     return (
       <Select
         value={rule.value as string}
         onChange={(v) => onChange(v as string)}
-        optionList={field.options.map(o => ({ value: o, label: o }))}
+        optionList={optionList}
         style={{ width: 140 }}
         size="small"
         placeholder="选择值"
@@ -535,7 +553,7 @@ function renderValueInput(
     <Input
       value={String(rule.value ?? '')}
       onChange={(v) => onChange(v)}
-      placeholder="输入值"
+      placeholder={isListOperator ? '多个值用英文逗号分隔' : '输入值'}
       style={{ width: 140 }}
       size="small"
     />
