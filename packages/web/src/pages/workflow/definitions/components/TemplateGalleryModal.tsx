@@ -1,9 +1,13 @@
-import { useEffect, useState } from 'react';
-import { Button, Modal, Spin, Toast, Input, TextArea, Typography } from '@douyinfe/semi-ui';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { Button, Spin, Toast, Input, TextArea, Typography } from '@douyinfe/semi-ui';
 import { LayoutTemplate, ArrowLeft } from 'lucide-react';
 import type { WorkflowTemplate } from '@zenith/shared/workflow';
 import { useCloneWorkflowTemplate, useWorkflowTemplates } from '@/hooks/queries/workflow-templates';
 import ModalFooter from '@/components/ModalFooter';
+import AppModal from '@/components/AppModal';
+import PageLoading from '@/components/PageLoading';
+
+const WorkflowTemplatePreview = lazy(() => import('../../components/WorkflowTemplatePreview'));
 
 interface Props {
   visible: boolean;
@@ -50,13 +54,13 @@ export function TemplateGalleryModal({ visible, onCancel, categoryId = null, onC
   };
 
   return (
-    <Modal
+    <AppModal
       title={picked ? '配置新流程' : '从模板新建流程'}
       visible={visible}
       onCancel={onCancel}
       footer={picked ? <ModalFooter onCancel={() => setPicked(null)} onOk={handleCreate} okText="创建流程" loading={creating} /> : null}
-      width={760}
-      bodyStyle={{ paddingBottom: 24 }}
+      width={880}
+      bodyStyle={{ paddingBottom: 24, maxHeight: '70vh', overflowY: 'auto' }}
       closeOnEsc
     >
       {picked ? (
@@ -74,6 +78,11 @@ export function TemplateGalleryModal({ visible, onCancel, categoryId = null, onC
           <div>
             <Typography.Text strong style={{ display: 'block', marginBottom: 4 }}>流程描述</Typography.Text>
             <TextArea value={description} onChange={setDescription} maxCount={512} autosize rows={3} placeholder="可选，简要描述该流程用途" />
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <Suspense fallback={<PageLoading inline />}>
+              <WorkflowTemplatePreview key={picked.id} template={picked} />
+            </Suspense>
           </div>
         </div>
       ) : (
@@ -158,13 +167,13 @@ export function TemplateGalleryModal({ visible, onCancel, categoryId = null, onC
                   style={{ marginTop: 8, width: '100%' }}
                   onClick={() => pickTemplate(tpl)}
                 >
-                  使用此模板
+                  预览并使用
                 </Button>
               </div>
             ))}
           </div>
         </Spin>
       )}
-    </Modal>
+    </AppModal>
   );
 }

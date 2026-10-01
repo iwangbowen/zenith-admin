@@ -425,16 +425,18 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
       const navState = location.state as { tabTitle?: string; tabIcon?: string } | null;
       const fallbackTitle = resolveTitle(location.pathname);
       const fallbackIcon = resolveIcon(location.pathname);
+      const isExactMenuPath = flatMenus.some((menu) => menu.path === location.pathname);
       addTab(location.pathname, navState?.tabTitle, navState?.tabIcon, fallbackTitle);
       // addTab 对已存在的页签只激活不改元信息；菜单 / 固定路由元数据就绪后同步纠正持久化旧标题。
       if (navState?.tabTitle || navState?.tabIcon || fallbackTitle !== location.pathname || fallbackIcon) {
         setTabMeta(location.pathname, {
-          title: navState?.tabTitle ?? (fallbackTitle !== location.pathname ? fallbackTitle : undefined),
+          // 动态子页面由 useTabMeta 命名；前缀菜单只提供首次兜底，切回时不能覆盖页面标题。
+          title: navState?.tabTitle ?? (isExactMenuPath && fallbackTitle !== location.pathname ? fallbackTitle : undefined),
           icon: navState?.tabIcon ?? fallbackIcon,
         });
       }
     }
-  }, [location.pathname, location.state, preferences.enableTabs, resolveTitle, resolveIcon, addTab, setTabMeta]);
+  }, [location.pathname, location.state, preferences.enableTabs, resolveTitle, resolveIcon, flatMenus, addTab, setTabMeta]);
 
   const tabsMetaValue = useMemo(
     () => ({ enabled: !!preferences.enableTabs, setTabMeta, closeTab: removeTab }),
@@ -635,21 +637,22 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
   const tabHoverTitles = useMemo(() => {
     const entries = flatMenus.map((m) => ({
       path: m.path,
+      title: m.title,
       label: m.breadcrumb.length > 0 ? `${m.breadcrumb.join(' / ')} / ${m.title}` : m.title,
     }));
     const byPath = new Map(entries.map((m) => [m.path, m.label]));
     return tabs.map((t) => {
       const exact = byPath.get(t.key);
       if (exact) return exact;
-      let best: string | undefined;
+      let best: (typeof entries)[number] | undefined;
       let bestLength = -1;
       for (const m of entries) {
         if (m.path.length > bestLength && t.key.startsWith(`${m.path}/`)) {
-          best = m.label;
+          best = m;
           bestLength = m.path.length;
         }
       }
-      return best ?? t.title;
+      return best ? `${best.label}${t.title !== best.title ? ` / ${t.title}` : ''}` : t.title;
     });
   }, [flatMenus, tabs]);
 

@@ -1,10 +1,13 @@
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { Space, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { LayoutTemplate } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { WorkflowTemplate } from '@zenith/shared/workflow';
 import ConfigurableTable from '@/components/ConfigurableTable';
+import AppModal from '@/components/AppModal';
+import ModalFooter from '@/components/ModalFooter';
+import PageLoading from '@/components/PageLoading';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { usePinyinReady } from '@/hooks/usePinyinReady';
@@ -21,6 +24,8 @@ import {
   workflowTemplateKeys,
 } from '@/hooks/queries/workflow-templates';
 
+const WorkflowTemplatePreview = lazy(() => import('../components/WorkflowTemplatePreview'));
+
 export default function WorkflowTemplatesPage() {
   const { hasPermission } = usePermission();
   const navigate = useNavigate();
@@ -35,6 +40,7 @@ export default function WorkflowTemplatesPage() {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editing, setEditing] = useState<WorkflowTemplate | null>(null);
+  const [previewing, setPreviewing] = useState<WorkflowTemplate | null>(null);
   const templatesQuery = useWorkflowTemplates();
   const updateMutation = useUpdateWorkflowTemplate();
   const deleteMutation = useDeleteWorkflowTemplate();
@@ -86,6 +92,7 @@ export default function WorkflowTemplatesPage() {
   const handleCloneToDefinition = async (record: WorkflowTemplate) => {
     const res = await cloneMutation.mutateAsync({ params: { id: record.id }, body: {} });
     Toast.success('已从模板创建流程');
+    setPreviewing(null);
     navigate(`/workflow/designer/${res.id}`);
   };
 
@@ -98,16 +105,21 @@ export default function WorkflowTemplatesPage() {
     disabled: { remove: (record) => record.builtin, reason: '系统内置模板不可删除' },
     extra: (record) => [
       {
+        key: 'preview',
+        label: '预览',
+        onClick: () => setPreviewing(record),
+      },
+      {
         key: 'clone',
         label: '从模板新建',
         hidden: !canCreate,
         loading: cloningId === record.id,
         disabled: cloningId !== null,
-        onClick: () => void handleCloneToDefinition(record),
+        onClick: () => setPreviewing(record),
       },
     ],
-    width: 250,
-    desktopInlineKeys: ['clone', 'edit', 'delete'],
+    width: 200,
+    desktopInlineKeys: ['preview', 'clone'],
   });
 
   const columns: ColumnProps<WorkflowTemplate>[] = [
@@ -193,6 +205,28 @@ export default function WorkflowTemplatesPage() {
           sort: editing?.sort ?? 0,
         }}
       />
+
+      <AppModal
+        title={`模板预览：${previewing?.name ?? ''}`}
+        visible={previewing !== null}
+        onCancel={() => { if (!cloneMutation.isPending) setPreviewing(null); }}
+        width={880}
+        bodyStyle={{ maxHeight: '70vh', overflowY: 'auto' }}
+        footer={canCreate ? (
+          <ModalFooter
+            onCancel={() => { if (!cloneMutation.isPending) setPreviewing(null); }}
+            onOk={() => previewing && handleCloneToDefinition(previewing)}
+            okText="从模板新建"
+            loading={cloneMutation.isPending}
+          />
+        ) : null}
+      >
+        {previewing && (
+          <Suspense fallback={<PageLoading inline />}>
+            <WorkflowTemplatePreview key={previewing.id} template={previewing} />
+          </Suspense>
+        )}
+      </AppModal>
     </div>
   );
 }

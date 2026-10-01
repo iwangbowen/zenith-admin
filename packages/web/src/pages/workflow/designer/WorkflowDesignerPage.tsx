@@ -60,6 +60,7 @@ import { useAllRoles } from '@/hooks/queries/roles';
 import { useFlatDepartments } from '@/hooks/queries/departments';
 import { usePublishedWorkflowDefinitions, useWorkflowDefinitionDetail } from '@/hooks/queries/workflow-definitions';
 import { confirmDanger } from '@/utils/confirm';
+import { useTabMeta } from '@/hooks/useTabMeta';
 import {
   usePublishWorkflowDesignerDefinition,
   useSaveWorkflowDesignerDefinition,
@@ -153,6 +154,7 @@ export default function WorkflowDesignerPage({
 
   // 基础信息（内联编辑）
   const [metaName, setMetaName] = useState('');
+  useTabMeta({ title: embedded ? undefined : `设计：${metaName.trim() || definition?.name || (isNew ? '新建流程' : '流程')}` });
   const [metaDesc, setMetaDesc] = useState('');
   const [metaInitiatorScopeType, setMetaInitiatorScopeType] = useState<'all' | 'users' | 'departments' | 'roles'>('all');
   const [metaInitiatorScopeIds, setMetaInitiatorScopeIds] = useState<number[]>([]);
