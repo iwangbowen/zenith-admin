@@ -894,8 +894,11 @@ function RuntimeStatusBar({ onDeadClick }: Readonly<{ onDeadClick?: () => void }
           </div>
         </Tooltip>
         <StatCard title="在途作业" value={status?.runningJobs ?? EMPTY_PLACEHOLDER} />
+        <StatCard title="执行槽" value={status ? `${status.activeSlots} / ${status.totalSlots}` : EMPTY_PLACEHOLDER} />
         <StatCard title="卡死" value={status?.stuckRunningJobs ?? EMPTY_PLACEHOLDER} accent={status && status.stuckRunningJobs > 0 ? danger : undefined} />
         <StatCard title="积压" value={status?.backlog ?? EMPTY_PLACEHOLDER} accent={status && status.backlog > 0 ? danger : undefined} />
+        <StatCard title="最老排队" value={status?.oldestDueSeconds != null ? `${Math.floor(status.oldestDueSeconds)}s` : EMPTY_PLACEHOLDER} accent={status && (status.oldestDueSeconds ?? 0) >= 120 ? danger : undefined} />
+        <StatCard title="排队 p95(1h)" value={status?.queueP95Ms != null ? `${status.queueP95Ms}ms` : EMPTY_PLACEHOLDER} />
         {status && status.deadLetter > 0 && onDeadClick ? (
           <Tooltip content="查看失败原因聚类（跨队列），可按簇重放">
             <div style={{ minWidth: 0 }}>

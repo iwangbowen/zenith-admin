@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   transaction: vi.fn(), dbSelect: vi.fn(), killTokens: vi.fn(), cancelJobs: vi.fn(),
   advance: vi.fn(), checkCompletion: vi.fn(), bridge: vi.fn(),
   emitTask: vi.fn(), emitNode: vi.fn(), emitInstance: vi.fn(), emitEntered: vi.fn(), lock: vi.fn(),
+  join: vi.fn(),
 }));
 vi.mock('../../../db', () => ({ db: { select: mocks.dbSelect } }));
 vi.mock('../../../lib/workflow-jobs/lease', () => ({ workflowTransaction: mocks.transaction }));
@@ -26,7 +27,7 @@ vi.mock('./signatures', () => ({ resolveWorkflowFormSignatures: vi.fn(), resolve
 vi.mock('../../../lib/context', () => ({ currentUser: () => ({ userId: 7, username: 'reviewer' }) }));
 vi.mock('../workflow-assignee-resolver.service', () => ({ buildStarterContext: async () => ({}), searchSelectableApprovers: vi.fn() }));
 vi.mock('../../../lib/logger', () => ({ default: { error: vi.fn() } }));
-vi.mock('./async-jobs', () => ({ enqueueSubprocessJoin: vi.fn() }));
+vi.mock('./async-jobs', () => ({ enqueueSubprocessJoin: mocks.join }));
 vi.mock('./initiator-select', () => ({ assertSelectedNextApprovers: vi.fn() }));
 vi.mock('./mapping', () => ({ mapInstance: (row: unknown) => row, mapTask: (row: unknown) => row }));
 vi.mock('./materialize', () => ({
@@ -125,6 +126,7 @@ function expectTerminalCleanup(tx: DbExecutor, inst: InstanceRow, tasks: TaskRow
   expect(tasks.filter((row) => row.instanceId === inst.id && ['pending', 'waiting'].includes(row.status))).toEqual([]);
   expect(mocks.killTokens).toHaveBeenCalledWith(tx, inst.id);
   expect(mocks.cancelJobs).toHaveBeenCalledWith({ instanceId: inst.id, jobTypes: WORKFLOW_ADVANCING_JOB_TYPES }, tx);
+  expect(mocks.join).toHaveBeenCalledWith(expect.objectContaining({ id: inst.id, status: 'rejected' }), tx);
   expect(mocks.emitTask.mock.calls.every(([, , , executor]) => executor === tx)).toBe(true);
   expect(mocks.emitInstance).toHaveBeenCalledWith('instance.rejected', expect.objectContaining({ id: inst.id, status: 'rejected' }), actor, tx);
 }

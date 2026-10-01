@@ -106,12 +106,12 @@ vi.mock('../../db', () => ({ db: model.db }));
 vi.mock('../../db/schema', () => model.tables);
 vi.mock('../context', () => ({ currentTraceId: () => null, currentParentRef: () => null,
   runWithTraceId: (_id: string, fn: () => unknown) => fn(), runWithParentRef: (_id: string, fn: () => unknown) => fn() }));
-vi.mock('../pg-boss-scheduler', () => ({ registerSystemQueueWorker: vi.fn(), sendSystemJobAfter: model.send }));
+vi.mock('../pg-boss-scheduler', () => ({ registerSystemLedgerWorker: vi.fn(), sendSystemJob: model.send }));
 vi.mock('../logger', () => ({ default: { warn: vi.fn(), error: vi.fn() } }));
 vi.mock('../datetime', () => ({ formatDateTime: (date: Date) => date.toISOString() }));
 vi.mock('./registry', () => ({ getJobHandler: () => model.handler }));
 
-import { cancelJobs, drainWorkflowJobs, enqueueJob, pauseInstanceJobs, resumeInstanceJobs, retryJob, runJob } from './engine';
+import { cancelJobs, claimDueWorkflowJobs, drainWorkflowJobs, enqueueJob, pauseInstanceJobs, resumeInstanceJobs, retryJob, runJob } from './engine';
 import { workflowTransaction } from './lease';
 import { WorkflowJobError } from './errors';
 import { deferWorkflowJobEffect } from './execution-context';
@@ -139,11 +139,13 @@ describe('workflow execution leases', () => {
   });
   afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
-  it('reconciliation publishes 50 wakeups without claiming or running any handler', async () => {
+  it('reconciliation coalesces 50 durable rows into one hint without executing handlers', async () => {
     seed(50); const result = await drainWorkflowJobs({ limit: 50 });
     expect(result).toEqual({ recovered: 0, dead: 0, requeued: 50 });
     expect(model.handler).not.toHaveBeenCalled();
     expect(model.state.jobs.every((job) => job.status === 'pending' && job.attempts === 0)).toBe(true);
+    expect(model.send).toHaveBeenCalledTimes(2);
+    expect(model.send.mock.calls[0][1]).toEqual({});
   });
   it('transactional enqueue has no pre-commit queue or direct-execution side effects', async () => {
     await enqueueJob({ jobType: 'event_dispatch' }, { ...model.db } as unknown as DbExecutor);
@@ -155,7 +157,7 @@ describe('workflow execution leases', () => {
       await enqueueJob({ jobType: 'event_dispatch' }, tx);
       expect(model.send).not.toHaveBeenCalled();
     });
-    expect(model.send).toHaveBeenCalledTimes(1);
+    expect(model.send).toHaveBeenCalledTimes(2);
     model.send.mockClear();
     await expect(workflowTransaction(async (tx) => {
       await enqueueJob({ jobType: 'event_dispatch' }, tx);
@@ -194,7 +196,7 @@ describe('workflow execution leases', () => {
     await runJob(1);
     expect(model.state.jobs[0]).toMatchObject({ status: 'pending', lastError: 'event outbox unavailable' });
     expect(model.state.executions[0]).toMatchObject({ status: 'failed', errorMessage: 'event outbox unavailable' });
-    expect(model.send).toHaveBeenCalledTimes(1);
+    expect(model.send).toHaveBeenCalledTimes(2);
   });
   it('a canceled attempt cannot overwrite cancellation when its handler returns', async () => {
     seed(); const wait = deferred(); model.handler.mockReturnValue(wait.promise);
@@ -237,7 +239,7 @@ describe('workflow execution leases', () => {
     await runJob(1);
     expect(model.state.jobs[0]).toMatchObject({ status: 'pending', operationKey: 'op-1' });
     expect(model.state.executions[0]).toMatchObject({ status: 'failed', responseStatus: 400 });
-    expect(model.send).toHaveBeenCalledTimes(1);
+    expect(model.send).toHaveBeenCalledTimes(2);
   });
   it('recovery preserves external uncertainty and exhausts the attempt without requeueing', async () => {
     seed(); const wait = deferred(); model.handler.mockReturnValue(wait.promise);
@@ -266,7 +268,7 @@ describe('workflow execution leases', () => {
     }
     const result = await drainWorkflowJobs({ limit: 2 });
     expect(result).toEqual({ recovered: 2, dead: 0, requeued: 2 });
-    expect(model.send.mock.calls.map((call) => call[1])).toEqual([{ jobId: 1 }, { jobId: 2 }]);
+    expect(model.send.mock.calls.map((call) => call[1])).toEqual([{}, {}]);
     expect(model.state.jobs.slice(0, 2).every((job) => job.lockedBy === null)).toBe(true);
   });
   it('paused timers cannot be claimed and resume with their remaining delay', async () => {
@@ -277,6 +279,42 @@ describe('workflow execution leases', () => {
     await resumeInstanceJobs(model.db as unknown as DbExecutor, 7, ['delay_wake']);
     expect(model.state.jobs[0]).toMatchObject({ status: 'pending', generation: 2, attempts: 2, pausedRemainingMs: null });
     expect(Number(model.state.jobs[0].runAt)).toBe(Date.now() + 30_000);
+  });
+  it('claims only free slots and preserves this attempt due time in execution history', async () => {
+    seed(12); const claims = await claimDueWorkflowJobs(3);
+    expect(claims).toHaveLength(3);
+    expect(model.state.jobs.filter((job) => job.status === 'running')).toHaveLength(3);
+    expect(model.state.executions.every((execution) => execution.scheduledAt instanceof Date)).toBe(true);
+    expect(model.handler).not.toHaveBeenCalled();
+  });
+  it('polling reconsiders small IDs whose scheduled time becomes due', async () => {
+    seed(2); model.state.jobs[0].runAt = new Date(Date.now() + 10_000);
+    expect((await claimDueWorkflowJobs(2)).map((claim) => claim.job.id)).toEqual([2]);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect((await claimDueWorkflowJobs(2)).map((claim) => claim.job.id)).toEqual([1]);
+  });
+  it('old ordinary jobs receive a slot despite continuously eligible urgent jobs', async () => {
+    seed(12); model.state.jobs[0].runAt = new Date(Date.now() - 3600_000);
+    model.state.jobs[0].priority = 1000;
+    for (const job of model.state.jobs.slice(1)) job.priority = 1;
+    expect((await claimDueWorkflowJobs(4)).some((claim) => claim.job.id === 1)).toBe(true);
+  });
+  it('outbound claims cannot consume the flow lane reserved for subprocess advancement', async () => {
+    seed(10); model.state.jobs[9].jobType = 'subprocess_join';
+    expect((await claimDueWorkflowJobs(4, 'outbound')).every((claim) => claim.job.jobType === 'webhook_delivery')).toBe(true);
+    expect((await claimDueWorkflowJobs(4, 'flow')).map((claim) => claim.job.id)).toEqual([10]);
+  });
+  it('each lane independently rotates to its oldest due job under interleaved urgent load', async () => {
+    seed(20); for (const [index, job] of model.state.jobs.entries()) {
+      job.jobType = index < 10 ? 'subprocess_join' : 'webhook_delivery'; job.priority = 1;
+    }
+    for (const index of [0, 10]) Object.assign(model.state.jobs[index], { runAt: new Date(Date.now() - 3600_000), priority: 1000 });
+    const ids: number[] = [];
+    for (let turn = 0; turn < 4; turn++) {
+      ids.push(...(await claimDueWorkflowJobs(1, 'flow')).map((claim) => claim.job.id));
+      ids.push(...(await claimDueWorkflowJobs(1, 'outbound')).map((claim) => claim.job.id));
+    }
+    expect(ids).toContain(1); expect(ids).toContain(11);
   });
   it('does not charge retry budget for a pre-I/O attempt interrupted by suspension', async () => {
     seed(1, {

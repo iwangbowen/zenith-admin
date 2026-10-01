@@ -13,8 +13,8 @@ import dayjs from 'dayjs';
  * 子实例结束后入队 subprocess_join 作业唤醒/汇聚父任务（取代直接 resumeParentSubProcess 调用）。
  * 幂等键含 childInst.id，确保每个子实例的结束都触发一次（多实例汇聚靠 reconcile 绝对重算收敛）。
  */
-export async function enqueueSubprocessJoin(childInst: typeof workflowInstances.$inferSelect): Promise<void> {
-  if (!childInst.parentTaskId) return;
+export async function enqueueSubprocessJoin(childInst: typeof workflowInstances.$inferSelect, executor: DbExecutor = db): Promise<void> {
+  if (!childInst.parentTaskId || !['approved', 'rejected', 'withdrawn', 'cancelled'].includes(childInst.status)) return;
   await enqueueJob({
     jobType: 'subprocess_join',
     taskId: childInst.parentTaskId,
@@ -23,7 +23,7 @@ export async function enqueueSubprocessJoin(childInst: typeof workflowInstances.
     maxAttempts: 5,
     idempotencyKey: `subprocess_join:${childInst.parentTaskId}:${childInst.id}`,
     tenantId: childInst.tenantId ?? null,
-  });
+  }, executor);
 }
 
 function computeDelayWakeAt(nodeConfig: TaskAction['nodeConfig'], formData: Record<string, unknown>): Date {

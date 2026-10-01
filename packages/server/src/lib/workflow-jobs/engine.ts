@@ -5,10 +5,11 @@ import type { WorkflowJobType } from '@zenith/shared/workflow';
 import { db } from '../../db';
 import { workflowJobs, workflowJobExecutions, type WorkflowJobRow, type NewWorkflowJob } from '../../db/schema';
 import type { DbExecutor, DbTransaction } from '../../db/types';
-import { registerSystemQueueWorker } from '../pg-boss-scheduler';
+import { registerSystemLedgerWorker } from '../pg-boss-scheduler';
+import logger from '../logger';
 import { currentTraceId, currentParentRef, runWithTraceId, runWithParentRef } from '../context';
 import { formatDateTime } from '../datetime';
-import { WORKFLOW_JOB_QUEUE, WORKFLOW_JOB_LEASE_MS, WORKFLOW_JOB_HEARTBEAT_MS, WORKFLOW_JOB_EXECUTION_TIMEOUT_MS, type WorkflowJobContext, type WorkflowJobResult } from './types';
+import { WORKFLOW_JOB_QUEUE, WORKFLOW_OUTBOUND_JOB_QUEUE, WORKFLOW_JOB_LEASE_MS, WORKFLOW_JOB_HEARTBEAT_MS, WORKFLOW_JOB_EXECUTION_TIMEOUT_MS, type WorkflowJobContext, type WorkflowJobResult } from './types';
 import { WorkflowJobSkip, WorkflowJobPermanentError, WorkflowJobError, WorkflowJobLeaseLostError, WorkflowJobDeadlineError } from './errors';
 import { computeBackoffMs } from './backoff';
 import { getJobHandler } from './registry';
@@ -168,10 +169,36 @@ export async function skipJob(id: number): Promise<WorkflowJobRow | null> {
 }
 
 
-interface ClaimedJob { job: WorkflowJobRow; executionId: number }
+export interface ClaimedJob { job: WorkflowJobRow; executionId: number }
 
-async function claimJob(jobId: number): Promise<ClaimedJob | null> {
+/** Weighted lanes isolate flow advancement from slow outbound/event work. Every fourth
+ * claim takes the oldest due row regardless of priority, so continuous urgent traffic
+ * cannot permanently starve ordinary jobs. No ID cursor: retries and timers can move back. */
+const FLOW_JOB_TYPES: WorkflowJobType[] = ['subprocess_spawn', 'subprocess_join', 'delay_wake', 'task_timeout'];
+const claimTurns = { flow: 0, outbound: 0, all: 0 };
+export async function claimDueWorkflowJobs(available: number, lane?: 'flow' | 'outbound'): Promise<ClaimedJob[]> {
+  if (available <= 0) return [];
   return db.transaction(async (tx) => {
+    const claimed: ClaimedJob[] = [];
+    for (let slot = 0; slot < available; slot++) {
+      const turn = claimTurns[lane ?? 'all']++ % 4;
+      const due = and(eq(workflowJobs.status, 'pending'), lte(workflowJobs.runAt, dbNow),
+        sql`${workflowJobs.attempts} < ${workflowJobs.maxAttempts}`,
+        lane === 'flow' ? inArray(workflowJobs.jobType, FLOW_JOB_TYPES) : lane === 'outbound' ? notInArray(workflowJobs.jobType, FLOW_JOB_TYPES) : undefined);
+      const order = turn === 3 ? [asc(workflowJobs.runAt), asc(workflowJobs.id)]
+        : [asc(workflowJobs.priority), asc(workflowJobs.runAt), asc(workflowJobs.id)];
+      const [candidate] = await tx.select({ id: workflowJobs.id }).from(workflowJobs)
+        .where(due).orderBy(...order).limit(1).for('update', { skipLocked: true });
+      if (!candidate) break;
+      const row = await claimJob(candidate.id, tx);
+      if (row) claimed.push(row);
+    }
+    return claimed;
+  });
+}
+
+async function claimJob(jobId: number, executor?: DbTransaction): Promise<ClaimedJob | null> {
+  const claim = async (tx: DbTransaction) => {
     const token = randomUUID();
     const [job] = await tx.update(workflowJobs).set({
       status: 'running', lockedAt: dbNow, lockedBy: WORKER_ID, leaseToken: token,
@@ -183,10 +210,11 @@ async function claimJob(jobId: number): Promise<ClaimedJob | null> {
     if (!job) return null;
     const [execution] = await tx.insert(workflowJobExecutions).values({
       jobId: job.id, jobType: job.jobType, attempt: job.attempts, generation: job.generation,
-      leaseToken: token, status: 'running', startedAt: job.lockedAt, tenantId: job.tenantId,
+      leaseToken: token, status: 'running', scheduledAt: job.runAt, startedAt: job.lockedAt, tenantId: job.tenantId,
     }).returning({ id: workflowJobExecutions.id });
     return { job, executionId: execution.id };
-  });
+  };
+  return executor ? claim(executor) : db.transaction(claim);
 }
 
 async function finishJob(context: WorkflowJobContext, error: unknown, result: WorkflowJobResult = {}): Promise<void> {
@@ -327,10 +355,8 @@ export async function drainWorkflowJobs(opts: DrainWorkflowJobsOptions = {}): Pr
       recoveredIds.length ? notInArray(workflowJobs.id, recoveredIds) : undefined,
       ...extraConditions(opts),
     )).orderBy(asc(workflowJobs.priority), asc(workflowJobs.runAt)).limit(remaining);
-  let requeued = 0;
-  for (const job of [...recovery.wakeups, ...pending]) {
-    if (await publishWorkflowJobPickup(job.id, job.runAt)) requeued++;
-  }
+  const count = recovery.wakeups.length + pending.length;
+  const requeued = count && await publishWorkflowJobPickup() ? count : 0;
   return { recovered: recovery.recovered, dead: recovery.dead, requeued };
 }
 
@@ -354,10 +380,16 @@ export async function previewDrainableJobs(filter: DrainableFilter & { sampleLim
 export async function registerWorkflowJobWorker(): Promise<void> {
   // Handler registration belongs to worker bootstrap, not service-module loading.
   await import('./handlers');
-  await registerSystemQueueWorker<{ jobId: number }>({
-    name: WORKFLOW_JOB_QUEUE, title: '工作流作业 Worker', module: '工作流',
-    description: '消费工作流唤醒消息，取得业务租约后执行作业。',
-    handler: async ({ jobId }) => { await runJob(jobId); return `作业 ${jobId} 唤醒已处理`; },
-    queueOptions: { retentionSeconds: 604800, retryLimit: 0 },
-  });
+  for (const lane of ['flow', 'outbound'] as const) {
+    await registerSystemLedgerWorker<ClaimedJob>({
+      name: lane === 'flow' ? WORKFLOW_JOB_QUEUE : WORKFLOW_OUTBOUND_JOB_QUEUE,
+      title: lane === 'flow' ? '工作流推进 Worker' : '工作流事件与外呼 Worker', module: '工作流',
+      description: '直接领取工作流账本到期作业，通知合并唤醒，短轮询兜底；推进与外呼各保留4个执行槽。',
+      concurrency: 4,
+      pollingIntervalMs: 2000,
+      claim: (available) => claimDueWorkflowJobs(available, lane),
+      execute: async (job) => { await executeClaimedJob(job); return `作业 ${job.job.id} 已执行`; },
+      onError: (error) => logger.error('[workflow-jobs] ledger worker failed', error),
+    });
+  }
 }

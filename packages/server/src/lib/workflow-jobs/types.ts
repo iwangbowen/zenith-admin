@@ -1,7 +1,8 @@
 import type { WorkflowJobRow } from '../../db/schema';
 
 /** 统一作业队列（pg-boss queue 名）—— 所有 jobType 共用一个 Worker 消费 */
-export const WORKFLOW_JOB_QUEUE = 'workflow-jobs';
+export const WORKFLOW_JOB_QUEUE = 'workflow-ledger';
+export const WORKFLOW_OUTBOUND_JOB_QUEUE = 'workflow-ledger-outbound';
 /** 兜底扫描 + 崩溃恢复的周期任务名 */
 export const WORKFLOW_JOB_DRAIN_TASK = 'workflow-jobs-drain';
 

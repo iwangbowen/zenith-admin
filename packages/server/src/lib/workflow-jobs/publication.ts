@@ -1,34 +1,37 @@
 import type { DbExecutor } from '../../db/types';
-import { sendSystemJobAfter } from '../pg-boss-scheduler';
+import { sendSystemJob } from '../pg-boss-scheduler';
 import logger from '../logger';
-import { WORKFLOW_JOB_QUEUE } from './types';
+import { WORKFLOW_JOB_QUEUE, WORKFLOW_OUTBOUND_JOB_QUEUE } from './types';
 
-const pendingPickups = new WeakMap<DbExecutor, Map<number, Date>>();
-const options = { retryLimit: 0, expireInSeconds: 7200, retentionSeconds: 86400 };
+const pendingPickups = new WeakSet<DbExecutor>();
+const options = { retryLimit: 0, expireInSeconds: 60, retentionSeconds: 60 };
+let pendingPublication: Promise<boolean> | null = null;
 
-export function rememberWorkflowJobPickup(executor: DbExecutor, id: number, runAt: Date): void {
-  let jobs = pendingPickups.get(executor);
-  if (!jobs) { jobs = new Map(); pendingPickups.set(executor, jobs); }
-  jobs.set(id, runAt);
+export function rememberWorkflowJobPickup(executor: DbExecutor, _id: number, _runAt: Date): void {
+  pendingPickups.add(executor);
 }
 
-export async function publishWorkflowJobPickup(id: number, runAt: Date): Promise<boolean> {
-  try {
-    await sendSystemJobAfter(WORKFLOW_JOB_QUEUE, { jobId: id }, runAt, options);
-    return true;
-  } catch (err) {
-    logger.warn('[workflow-jobs] wakeup failed; pending reconciliation will retry', { jobId: id, err });
-    return false;
-  }
+export function publishWorkflowJobPickup(): Promise<boolean> {
+  if (pendingPublication) return pendingPublication;
+  pendingPublication = Promise.resolve().then(async () => {
+    try {
+      await Promise.all([WORKFLOW_JOB_QUEUE, WORKFLOW_OUTBOUND_JOB_QUEUE].map((name) => sendSystemJob(name, {}, options)));
+      return true; // null means another pending hint already covers this wakeup.
+    } catch (err) {
+      logger.warn('[workflow-jobs] wakeup failed; ledger polling will retry', { err });
+      return false;
+    } finally { pendingPublication = null; }
+  });
+  return pendingPublication;
 }
 
-export function scheduleJobPickup(id: number, runAt: Date): void {
-  void publishWorkflowJobPickup(id, runAt);
+export function scheduleJobPickup(_id: number, _runAt: Date): void {
+  void publishWorkflowJobPickup();
 }
 
 /** Call only after the associated transaction has committed. Rolled-back executors are never flushed. */
 export async function flushWorkflowJobPickups(executor: DbExecutor): Promise<void> {
-  const jobs = pendingPickups.get(executor);
+  const hasJobs = pendingPickups.has(executor);
   pendingPickups.delete(executor);
-  if (jobs) await Promise.all([...jobs].map(([id, runAt]) => publishWorkflowJobPickup(id, runAt)));
+  if (hasJobs) await publishWorkflowJobPickup();
 }

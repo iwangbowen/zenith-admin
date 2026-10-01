@@ -17,6 +17,8 @@ import { mapTriggerExecution as mapSharedTriggerExecution } from './workflow-tri
 import { payloadString } from './payload-utils';
 import { jobExecutionsWithJob } from './workflow-job-execution-helpers';
 import { buildWhere } from '../../lib/where-helpers';
+import { getWorkflowJobRuntimeStatus } from './workflow-jobs.service';
+import { WORKFLOW_JOB_QUEUE } from '../../lib/workflow-jobs/types';
 
 type ComponentKey = WorkflowEngineComponent['key'];
 
@@ -613,6 +615,14 @@ export async function getWorkflowEngineIntrospection(
     }))
     .slice(0, 50);
 
+  const waitingSubTaskIds = runtimeTaskRows.filter((row) => row.nodeType === 'subProcess' && row.status === 'waiting').map((row) => row.taskId);
+  const children = waitingSubTaskIds.length ? await db.select({ parentTaskId: workflowInstances.parentTaskId, status: workflowInstances.status })
+    .from(workflowInstances).where(inArray(workflowInstances.parentTaskId, waitingSubTaskIds)) : [];
+  const backgroundSubTaskIds = new Set(waitingSubTaskIds.filter((id) => {
+    const group = children.filter((child) => child.parentTaskId === id);
+    return !group.length || group.every((child) => ['approved', 'rejected', 'cancelled', 'withdrawn'].includes(child.status));
+  }));
+  const jobRuntime = await getWorkflowJobRuntimeStatus();
   const runtimeTasks: WorkflowEngineRuntimeTask[] = runtimeTaskRows.flatMap((row) => {
     const queues: WorkflowEngineQueueKey[] = [];
     if (row.status === 'pending' && row.nodeType !== 'trigger') queues.push('humanTasks');
@@ -620,7 +630,7 @@ export async function getWorkflowEngineIntrospection(
     if (row.status === 'pending' && row.timeoutAt && row.timeoutAt <= now) queues.push('timeouts');
     if (row.nodeType === 'trigger') queues.push('triggerDispatch');
     if (row.externalCallbackId || row.externalDispatchStatus) queues.push('externalApprovals');
-    if (row.nodeType === 'subProcess' && row.status === 'waiting') queues.push('subProcessJoin');
+    if (row.nodeType === 'subProcess' && row.status === 'waiting' && backgroundSubTaskIds.has(row.taskId)) queues.push('subProcessJoin');
     return queues.map((queue) => mapRuntimeTask({ ...row, queue }, now));
   });
   const triggerExecutions = triggerRows.map((row) => mapTriggerExecution(row));
@@ -639,7 +649,7 @@ export async function getWorkflowEngineIntrospection(
   const retryingOutbox = outboxEvents.filter((event) => event.status === 'retrying' || event.status === 'processing');
   const failedOutbox = outboxEvents.filter((event) => event.status === 'failed');
   const workflowJobsDrainRegistered = scheduler.systemRecurringJobs.some((item) => item.name === 'workflow-jobs-drain')
-    || scheduler.systemQueueWorkers.some((item) => item.name === 'workflow-jobs' || item.name === 'workflow-jobs-drain');
+    || scheduler.systemQueueWorkers.some((item) => item.name === WORKFLOW_JOB_QUEUE || item.name === 'workflow-jobs-drain');
 
   const queues = [
     queueSnapshot({
@@ -708,6 +718,15 @@ export async function getWorkflowEngineIntrospection(
   });
 
   const componentStatusByIssue = (key: ComponentKey): WorkflowEngineComponentStatus => worstStatus(issues.filter((issue) => issue.component === key).map((issue) => issue.severity === 'info' ? 'healthy' : issue.severity));
+  if (jobRuntime.backlog > 0 && (jobRuntime.activeWorkers === 0 || (jobRuntime.oldestDueSeconds ?? 0) >= 30)) {
+    issues.unshift({
+      id: 'scheduler:workflow-ledger-backlog', component: 'scheduler', refType: 'scheduler',
+      severity: jobRuntime.activeWorkers === 0 || (jobRuntime.oldestDueSeconds ?? 0) >= 120 ? 'critical' : 'warning',
+      title: jobRuntime.activeWorkers === 0 ? '工作流到期作业没有执行 Worker' : '工作流后台作业领取延迟',
+      description: `到期待处理 ${jobRuntime.backlog} 项，最老等待 ${Math.floor(jobRuntime.oldestDueSeconds ?? 0)} 秒；不包含人工审批等待。`,
+      metadata: { dueCount: jobRuntime.backlog, oldestDueSeconds: jobRuntime.oldestDueSeconds, queueP95Ms: jobRuntime.queueP95Ms },
+    });
+  }
   const queueStatus = (key: WorkflowEngineQueueKey) => queues.find((queue) => queue.key === key)?.status ?? 'healthy';
 
   const components: WorkflowEngineComponent[] = [
@@ -758,11 +777,14 @@ export async function getWorkflowEngineIntrospection(
       metric('retrying', retryingOutbox.length),
       metric('failed', failedOutbox.length, failedOutbox.length > 0 ? 'critical' : 'healthy'),
     ]),
-    component('scheduler', scheduler.initialized ? 'healthy' : 'critical', [
+    component('scheduler', worstStatus([scheduler.initialized ? 'healthy' : 'critical', componentStatusByIssue('scheduler')]), [
       metric('初始化', scheduler.initialized ? '是' : '否', scheduler.initialized ? 'healthy' : 'critical'),
       metric('运行中 Job', scheduler.runningJobCount),
       metric('系统周期任务', scheduler.systemRecurringJobs.length),
       metric('系统队列 Worker', scheduler.systemQueueWorkers.length),
+      metric('到期业务作业', jobRuntime.backlog),
+      metric('最老领取等待(秒)', Math.floor(jobRuntime.oldestDueSeconds ?? 0)),
+      metric('排队 p95(ms)', jobRuntime.queueP95Ms ?? '—'),
     ], { wip: scheduler.wip }),
   ];
 

@@ -11,6 +11,7 @@ import { buildStarterContext } from '../workflow-assignee-resolver.service';
 import logger from '../../../lib/logger';
 import { pauseInstanceJobs, resumeInstanceJobs } from '../../../lib/workflow-jobs/engine';
 import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
+import { enqueueSubprocessJoin } from './async-jobs';
 import { scheduleJobPickup } from '../../../lib/workflow-jobs/publication';
 import { emitMaterializedAdvanceEvents } from './lifecycle';
 import { mapInstance, mapTask } from './mapping';
@@ -58,6 +59,7 @@ export async function jumpInstance(id: number, targetNodeKey: string, comment?: 
       currentNodeKey: materialized.rejected || materialized.finished ? null : (materialized.currentNodeKeys[0] ?? targetNode.data.key),
     }).where(eq(workflowInstances.id, id)).returning();
     // 强跳不是新实例：仅发新任务/节点/终态事件，不再重复 instance.created（避免误触发 created 自动化）
+    await enqueueSubprocessJoin(updatedInstance, tx);
     await emitMaterializedAdvanceEvents(mapInstance(updatedInstance), updatedInstance, materialized.createdTasks, { userId: user.userId, name: user.username }, tx);
     return updatedInstance;
   });
@@ -267,6 +269,7 @@ export async function skipStuckToken(tokenId: number, reason?: string) {
     const [row] = await tx.update(workflowInstances).set({
       status, currentNodeKey: status === 'running' ? (materialized.currentNodeKeys[0] ?? null) : null,
     }).where(eq(workflowInstances.id, inst.id)).returning();
+    await enqueueSubprocessJoin(row, tx);
     return { row, newTasks: materialized.createdTasks, status };
   });
 

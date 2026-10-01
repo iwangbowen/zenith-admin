@@ -194,8 +194,10 @@ export type WorkflowJobFailureCluster = z.infer<typeof workflowJobFailureCluster
 
 /** 作业平台运行状态（worker 心跳聚合 + 作业维度派生指标） */
 export const workflowJobRuntimeStatusSchema = z.object({
-  activeWorkers: z.int().meta({ description: '存活 worker（心跳新鲜的调度节点）数' }),
+  activeWorkers: z.int().meta({ description: '心跳新鲜且已注册工作流账本执行器的 Worker 节点数' }),
   totalWorkers: z.int(),
+  totalSlots: z.int().meta({ description: '存活账本执行器的总执行槽数' }),
+  activeSlots: z.int(),
   workers: z.array(z.object({
     nodeId: z.string(),
     hostname: z.string().nullable(),
@@ -206,6 +208,9 @@ export const workflowJobRuntimeStatusSchema = z.object({
   runningJobs: z.int(),
   stuckRunningJobs: z.int().meta({ description: 'running 且租约已失效或超过执行截止时间的作业数' }),
   backlog: z.int().meta({ description: '到期待处理（pending 且 runAt<=now）作业数' }),
+  oldestDueSeconds: z.number().nullable().meta({ description: '最老到期业务作业的排队秒数，不含人工等待' }),
+  queueP95Ms: z.number().nullable().meta({ description: '近一小时从计划到期至实际领取的排队延迟 p95' }),
+  queueP99Ms: z.number().nullable(),
   deadLetter: z.int(),
   lastClaimedAt: z.string().nullable(),
   failureRate: z.number().meta({ description: '近 60 分钟执行失败率（%）' }),
@@ -542,7 +547,7 @@ export const workflowEngineActionResultSchema = z.object({
   action: z.enum(WORKFLOW_ENGINE_ACTION_KEYS),
   ok: z.boolean(),
   message: z.string(),
-  detail: z.record(z.string(), z.number()).meta({ description: '恢复扫描计数：recovered=回收，requeued=已提交补投，dead=重试耗尽或外部结果待确认；不表示业务执行完成' }),
+  detail: z.record(z.string(), z.number()).meta({ description: '恢复扫描计数：recovered=回收，requeued=已通知账本扫描的匹配作业，dead=重试耗尽或外部结果待确认；不表示业务执行完成' }),
 }).meta({ id: 'WorkflowEngineActionResult' });
 
 export type WorkflowEngineActionResult = z.infer<typeof workflowEngineActionResultSchema>;

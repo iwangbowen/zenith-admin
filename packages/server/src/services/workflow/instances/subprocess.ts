@@ -1,5 +1,6 @@
 import { bindWorkflowFormAttachments } from '../workflow-attachments.service';
 import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
+import { enqueueSubprocessJoin } from './async-jobs';
 // ─── 子流程派生、多实例扇出与父流程回填（拆分自 workflow-instances.service.ts）───
 import { eq, and, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
@@ -170,6 +171,7 @@ async function createChildInstanceAndMaterialize(
       status: materialized.rejected ? 'rejected' : (materialized.finished ? 'approved' : 'running'),
       currentNodeKey: materialized.rejected || materialized.finished ? null : materialized.currentNodeKeys[0] ?? null,
     }).where(eq(workflowInstances.id, created.id)).returning();
+    await enqueueSubprocessJoin(updated, tx);
     const meta = { definitionId: updated.definitionId, tenantId: updated.tenantId, actor };
     await emitInstanceEvent('instance.created', mapInstance(updated), actor, tx);
     for (const task of materialized.createdTasks) {
@@ -441,7 +443,7 @@ export async function reconcileMultiSubProcess(
     }).from(workflowInstances)
       .where(and(
         eq(workflowInstances.parentTaskId, pt.id),
-        inArray(workflowInstances.status, ['approved', 'rejected']),
+        inArray(workflowInstances.status, ['approved', 'rejected', 'withdrawn', 'cancelled']),
       ))
       .orderBy(workflowInstances.id);
     const settledCount = settledChildren.length;
@@ -463,7 +465,7 @@ export async function reconcileMultiSubProcess(
 
     const ignoreReject = nodeCfg?.subProcessIgnoreReject === true;
     const abortOnReject = (nodeCfg?.subProcessOnChildReject ?? 'abort') === 'abort';
-    const hasRejected = settledChildren.some((c) => c.status === 'rejected');
+    const hasRejected = settledChildren.some((c) => c.status !== 'approved');
     const wantReject = hasRejected && abortOnReject && !ignoreReject;
     const wantApprove = !wantReject && settledCount >= pt.subTotal;
 

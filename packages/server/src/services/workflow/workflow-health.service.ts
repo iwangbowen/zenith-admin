@@ -77,7 +77,7 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
   const taskJobRows = taskIds.length > 0
     ? await db.select().from(workflowJobs).where(and(
       inArray(workflowJobs.taskId, taskIds),
-      inArray(workflowJobs.jobType, ['external_dispatch', 'trigger_dispatch', 'delay_wake', 'task_timeout']),
+      inArray(workflowJobs.jobType, ['external_dispatch', 'trigger_dispatch', 'delay_wake', 'task_timeout', 'subprocess_spawn', 'subprocess_join']),
     ))
     : [];
   const jobsByTask = new Map<number, Array<typeof workflowJobs.$inferSelect>>();
@@ -100,6 +100,9 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
   const activeTokenKeys = new Set(activeTokenRows.map((row) => `${row.instanceId}:${row.nodeKey}`));
 
   const issues: WorkflowHealthIssue[] = [];
+  const subTaskIds = taskRows.filter((row) => row.task.nodeType === 'subProcess').map((row) => row.task.id);
+  const subChildren = subTaskIds.length ? await db.select({ parentTaskId: workflowInstances.parentTaskId, status: workflowInstances.status })
+    .from(workflowInstances).where(inArray(workflowInstances.parentTaskId, subTaskIds)) : [];
   for (const row of taskRows) {
     const { task } = row;
     const externalJob = findJob(task.id, 'external_dispatch');
@@ -164,11 +167,15 @@ export async function getWorkflowHealthSummary(thresholdMinutes = 30): Promise<W
       continue;
     }
     if (task.nodeType === 'subProcess' && task.status === 'waiting') {
+      const children = subChildren.filter((child) => child.parentTaskId === task.id);
+      const outstanding = jobsByTask.get(task.id)?.filter((job) => ['subprocess_spawn', 'subprocess_join'].includes(job.jobType)
+        && ['pending', 'running', 'failed', 'dead'].includes(job.status)) ?? [];
+      if (children.some((child) => ['running', 'draft', 'suspended', 'returned'].includes(child.status)) && !outstanding.length) continue;
       issues.push(taskIssue({
         type: 'subprocess_waiting',
         severity: 'warning',
-        title: '子流程等待过久',
-        description: '子流程父任务等待超过阈值，请检查子实例是否创建或是否已结束未唤醒父流程。',
+        title: children.length ? '已结束子流程尚未汇聚' : '子流程后台创建等待过久',
+        description: children.length ? '子实例已结束，父流程后台汇聚尚未完成，请检查 subprocess_join 作业。' : '尚无子实例，请检查 subprocess_spawn 作业；人工审批等待不计入此问题。',
         row,
         now,
       }));

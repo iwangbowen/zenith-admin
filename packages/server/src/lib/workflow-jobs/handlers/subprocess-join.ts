@@ -37,13 +37,13 @@ async function handle({ payload }: WorkflowJobContext): Promise<void> {
   const [child] = await db.select().from(workflowInstances)
     .where(and(
       eq(workflowInstances.parentTaskId, parentTask.id),
-      inArray(workflowInstances.status, ['approved', 'rejected']),
+      inArray(workflowInstances.status, ['approved', 'rejected', 'withdrawn', 'cancelled']),
     ))
     .orderBy(workflowInstances.id)
     .limit(1);
   if (!child) throw new WorkflowJobSkip('尚无已结束子实例，等待子流程完成');
 
-  await resumeParentSubProcess(child, child.status as 'approved' | 'rejected', ACTOR);
+  await resumeParentSubProcess(child, child.status === 'approved' ? 'approved' : 'rejected', ACTOR);
 }
 
 registerJobHandler('subprocess_join', handle);

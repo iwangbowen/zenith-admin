@@ -235,17 +235,11 @@ async function settleInstanceInTx(
     actorId: opts.actorId,
     comment: opts.comment ?? null,
   });
+  await enqueueSubprocessJoin(row, tx);
   return { row, fillBridge, skippedTasks };
 }
 
 
-/** 子实例进入终态时唤醒父流程 join 作业 */
-function notifySubprocessParent(row: InstanceRow): void {
-  if (!row.parentTaskId) return;
-  void enqueueSubprocessJoin(row).catch((err) => {
-    logger.error('[subProcess] resume parent failed', { childId: row.id, err });
-  });
-}
 
 /** 报表填报桥接确认通过后，异步补发同步任务 */
 function scheduleReportFillSync(fillBridge: FillBridgeResult | null, instanceId: number): void {
@@ -378,7 +372,6 @@ export async function approveTaskCore(
   });
 
   scheduleReportFillSync(updated.fillBridge, updated.row.id);
-  if (updated.finished || updated.rejected) notifySubprocessParent(updated.row);
 
   let message: string;
   if (updated.rejected) {
@@ -668,9 +661,6 @@ export async function rejectTaskCore(
   scheduleReportFillSync(updated.fillBridge, updated.row.id);
   if ((updated as { partial?: boolean }).partial) {
     return { instance: mapInstance(updated.row), message: '已驳回' };
-  }
-  if (updated.terminated || updated.finished) {
-    notifySubprocessParent(updated.row);
   }
   if ((updated as { returned?: boolean }).returned) {
     return { instance: mapInstance(updated.row), message: '已驳回，申请已退回发起人修改' };

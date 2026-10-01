@@ -1,8 +1,8 @@
-import { workflowEngineContract } from '@zenith/shared/workflow';
+import { workflowEngineContract, type WorkflowJobRuntimeStatus } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { percentOf } from '@zenith/shared/core';
 import { WORKFLOW_JOB_TYPES, summarizeWorkflowJobChain } from '@zenith/shared/workflow';
-import { and, asc, avg, count, desc, eq, gte, inArray, isNotNull, lte, max } from 'drizzle-orm';
+import { and, asc, avg, count, desc, eq, gte, inArray, isNotNull, lte, max, min, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowJobs, workflowJobExecutions, workflowInstances, workflowDefinitions, systemSchedulerNodes } from '../../db/schema';
 import type { WorkflowJobRow, WorkflowJobExecutionRow } from '../../db/schema';
@@ -12,6 +12,7 @@ import { retryJob, skipJob } from '../../lib/workflow-jobs/engine';
 import { expiredWorkflowJobCondition } from '../../lib/workflow-jobs/engine';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
+import { WORKFLOW_JOB_QUEUE, WORKFLOW_OUTBOUND_JOB_QUEUE } from '../../lib/workflow-jobs/types';
 
 function mapJob(row: WorkflowJobRow, extra?: { instanceTitle?: string | null; definitionName?: string | null }) {
   return {
@@ -481,23 +482,9 @@ const HEARTBEAT_FRESH_MS = 90_000;
  */
 const WORKER_VISIBLE_WINDOW_MS = 10 * 60_000;
 
-export interface WorkflowJobRuntimeStatus {
-  activeWorkers: number;
-  totalWorkers: number;
-  workers: Array<{ nodeId: string; hostname: string | null; runningJobCount: number; lastHeartbeatAt: string | null; fresh: boolean }>;
-  runningJobs: number;
-  stuckRunningJobs: number;
-  backlog: number;
-  deadLetter: number;
-  lastClaimedAt: string | null;
-  failureRate: number;
-  avgDurationMs: number | null;
-  recentExecutions: number;
-}
-
 /**
  * 作业平台运行状态：复用 system_scheduler_nodes 心跳 + workflow_jobs/executions 派生指标。
- * 单 Worker + drain 模型下 activeWorkers 实为"心跳新鲜的调度节点数"；
+ * 只计已注册工作流账本执行器的 Worker，普通调度节点/API 节点不能证明作业有人执行。
  * totalWorkers 只统计近 10 分钟有心跳的节点（历史重启行不计入分母）。
  */
 export async function getWorkflowJobRuntimeStatus(): Promise<WorkflowJobRuntimeStatus> {
@@ -514,41 +501,70 @@ export async function getWorkflowJobRuntimeStatus(): Promise<WorkflowJobRuntimeS
     recentExecutions,
     recentFailed,
     durationRow,
+    dueRow,
+    queueLatency,
   ] = await Promise.all([
-    db.select({ nodeId: systemSchedulerNodes.nodeId, hostname: systemSchedulerNodes.hostname, runningJobCount: systemSchedulerNodes.runningJobCount, lastHeartbeatAt: systemSchedulerNodes.lastHeartbeatAt, active: systemSchedulerNodes.active })
+    db.select({ nodeId: systemSchedulerNodes.nodeId, hostname: systemSchedulerNodes.hostname, metadata: systemSchedulerNodes.metadata, lastHeartbeatAt: systemSchedulerNodes.lastHeartbeatAt, active: systemSchedulerNodes.active })
       .from(systemSchedulerNodes)
-      .where(gte(systemSchedulerNodes.lastHeartbeatAt, new Date(now - WORKER_VISIBLE_WINDOW_MS)))
+      .where(and(gte(systemSchedulerNodes.lastHeartbeatAt, new Date(now - WORKER_VISIBLE_WINDOW_MS)),
+        sql`${systemSchedulerNodes.roles} @> ARRAY['worker']::process_role[]`))
       .orderBy(desc(systemSchedulerNodes.lastHeartbeatAt)),
     db.$count(workflowJobs, eq(workflowJobs.status, 'running')),
     db.$count(workflowJobs, expiredWorkflowJobCondition()),
     db.$count(workflowJobs, and(eq(workflowJobs.status, 'pending'), lte(workflowJobs.runAt, new Date(now)))),
     db.$count(workflowJobs, eq(workflowJobs.status, 'dead')),
-    db.select({ v: max(workflowJobs.lockedAt) }).from(workflowJobs),
+    db.select({ v: max(workflowJobExecutions.startedAt) }).from(workflowJobExecutions),
     db.$count(workflowJobExecutions, gte(workflowJobExecutions.createdAt, execCutoff)),
     db.$count(workflowJobExecutions, and(gte(workflowJobExecutions.createdAt, execCutoff), eq(workflowJobExecutions.status, 'failed'))),
     db.select({ v: avg(workflowJobExecutions.durationMs) }).from(workflowJobExecutions)
       .where(and(gte(workflowJobExecutions.createdAt, execCutoff), isNotNull(workflowJobExecutions.durationMs))),
+    db.select({ at: min(workflowJobs.runAt) }).from(workflowJobs)
+      .where(and(eq(workflowJobs.status, 'pending'), lte(workflowJobs.runAt, new Date(now)))),
+    db.select({
+      p95: sql<number | null>`percentile_cont(0.95) within group (order by greatest(0, extract(epoch from (${workflowJobExecutions.startedAt} - ${workflowJobExecutions.scheduledAt})) * 1000))`.mapWith(Number),
+      p99: sql<number | null>`percentile_cont(0.99) within group (order by greatest(0, extract(epoch from (${workflowJobExecutions.startedAt} - ${workflowJobExecutions.scheduledAt})) * 1000))`.mapWith(Number),
+    }).from(workflowJobExecutions).where(gte(workflowJobExecutions.startedAt, execCutoff)),
   ]);
 
-  const workers = nodes.map((n) => {
+  const workersWithSlots = nodes.flatMap((n) => {
+    const slots = workflowLedgerSlots(n.metadata);
+    if (!slots.capacity) return [];
     const fresh = n.active && now - n.lastHeartbeatAt.getTime() <= HEARTBEAT_FRESH_MS;
-    return { nodeId: n.nodeId, hostname: n.hostname, runningJobCount: n.runningJobCount, lastHeartbeatAt: formatNullableDateTime(n.lastHeartbeatAt), fresh };
+    return [{ nodeId: n.nodeId, hostname: n.hostname, runningJobCount: slots.active, lastHeartbeatAt: formatNullableDateTime(n.lastHeartbeatAt), fresh, capacity: slots.capacity }];
   });
+  const workers = workersWithSlots.map(({ capacity: _capacity, ...worker }) => worker);
   const avgRaw = durationRow[0]?.v;
 
   return {
     activeWorkers: workers.filter((w) => w.fresh).length,
-    totalWorkers: nodes.length,
+    totalWorkers: workers.length,
+    totalSlots: workersWithSlots.filter((worker) => worker.fresh).reduce((sum, worker) => sum + worker.capacity, 0),
+    activeSlots: workers.filter((worker) => worker.fresh).reduce((sum, worker) => sum + worker.runningJobCount, 0),
     workers,
     runningJobs,
     stuckRunningJobs,
     backlog,
+    oldestDueSeconds: dueRow[0]?.at ? Math.max(0, (now - new Date(dueRow[0].at).getTime()) / 1000) : null,
+    queueP95Ms: queueLatency[0]?.p95 != null ? Math.round(queueLatency[0].p95) : null,
+    queueP99Ms: queueLatency[0]?.p99 != null ? Math.round(queueLatency[0].p99) : null,
     deadLetter,
     lastClaimedAt: formatNullableDateTime(lastClaimedRow[0]?.v ?? null),
     failureRate: percentOf(recentFailed, recentExecutions) ?? 0,
     avgDurationMs: avgRaw != null ? Math.round(Number(avgRaw)) : null,
     recentExecutions,
   };
+}
+
+/** Heartbeat metadata is untrusted JSON; count only explicitly registered workflow pools. */
+export function workflowLedgerSlots(metadata: unknown): { capacity: number; active: number } {
+  if (!metadata || typeof metadata !== 'object' || !('ledgerWorkers' in metadata) || !Array.isArray(metadata.ledgerWorkers)) return { capacity: 0, active: 0 };
+  return metadata.ledgerWorkers.reduce((slots: { capacity: number; active: number }, worker: unknown) => {
+    if (!worker || typeof worker !== 'object' || !('name' in worker) || !('concurrency' in worker) || !('active' in worker)
+      || ![WORKFLOW_JOB_QUEUE, WORKFLOW_OUTBOUND_JOB_QUEUE].includes(String(worker.name))
+      || typeof worker.concurrency !== 'number' || !Number.isInteger(worker.concurrency) || worker.concurrency <= 0
+      || typeof worker.active !== 'number' || !Number.isInteger(worker.active) || worker.active < 0) return slots;
+    return { capacity: slots.capacity + worker.concurrency, active: slots.active + Math.min(worker.active, worker.concurrency) };
+  }, { capacity: 0, active: 0 });
 }
 
 export interface WorkflowJobAlertMetrics {

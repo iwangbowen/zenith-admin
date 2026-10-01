@@ -1,5 +1,6 @@
 import { bindWorkflowAttachments } from '../workflow-attachments.service';
 import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
+import { enqueueSubprocessJoin } from './async-jobs';
 // ─── 任务流转：转办/委派/加签/减签/退回（拆分自 workflow-instances.service.ts）───
 import { eq, and, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
@@ -318,6 +319,7 @@ export async function reduceSignTask(taskId: number, targetTaskIds: number[], co
       await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: '[自动拒绝] 流程被自动拒绝终止，本待办作废' })
         .where(and(eq(workflowTasks.instanceId, inst.id), inArray(workflowTasks.status, ['pending', 'waiting'])));
       const [row] = await tx.update(workflowInstances).set({ status: 'rejected', currentNodeKey: null }).where(eq(workflowInstances.id, inst.id)).returning();
+      await enqueueSubprocessJoin(row, tx);
       const fillBridge = await bridgeReportFillWorkflowOutcome(tx, {
         workflowInstanceId: inst.id,
         outcome: 'rejected',
@@ -328,6 +330,7 @@ export async function reduceSignTask(taskId: number, targetTaskIds: number[], co
     }
     if (materialized.finished) {
       const [row] = await tx.update(workflowInstances).set({ status: 'approved', currentNodeKey: null }).where(eq(workflowInstances.id, inst.id)).returning();
+      await enqueueSubprocessJoin(row, tx);
       const fillBridge = await bridgeReportFillWorkflowOutcome(tx, {
         workflowInstanceId: inst.id,
         outcome: 'approved',

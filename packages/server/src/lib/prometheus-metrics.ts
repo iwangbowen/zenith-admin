@@ -11,6 +11,16 @@ import { metricsSampler } from './metrics-sampler';
 import { countActiveWorkerNodes, getQueueDepths } from './pg-boss-scheduler';
 import { getWsFanoutCounters } from './ws-fanout';
 import { getWsSnapshot } from './ws-manager';
+import type { WorkflowJobRuntimeStatus } from '@zenith/shared/workflow';
+
+let workflowMetricsCache: { until: number; value: Promise<WorkflowJobRuntimeStatus> } | null = null;
+function workflowMetrics(): Promise<WorkflowJobRuntimeStatus> {
+  if (!workflowMetricsCache || workflowMetricsCache.until < Date.now()) {
+    workflowMetricsCache = { until: Date.now() + 5000,
+      value: import('../services/workflow/workflow-jobs.service').then(({ getWorkflowJobRuntimeStatus }) => getWorkflowJobRuntimeStatus()) };
+  }
+  return workflowMetricsCache.value;
+}
 
 export function registerZenithMetrics(registry: Registry): void {
   // 进程角色作为全局标签：api / worker 拆分部署后同一指标名来自不同角色，抓取端按 process_role 区分
@@ -99,6 +109,42 @@ export function registerZenithMetrics(registry: Registry): void {
       } catch {
         /* keep last value */
       }
+    },
+  });
+  new Gauge({
+    name: 'zenith_workflow_ledger_jobs',
+    help: 'Business workflow ledger jobs, excluding coalesced hints and human approvals',
+    labelNames: ['state'], registers: [registry],
+    async collect() {
+      try {
+        const metrics = await workflowMetrics();
+        this.set({ state: 'due' }, metrics.backlog);
+        this.set({ state: 'running' }, metrics.runningJobs);
+        this.set({ state: 'expired' }, metrics.stuckRunningJobs);
+        this.set({ state: 'dead' }, metrics.deadLetter);
+        this.set({ state: 'slots' }, metrics.totalSlots);
+        this.set({ state: 'active_slots' }, metrics.activeSlots);
+      } catch { /* preserve last successful sample */ }
+    },
+  });
+  new Gauge({
+    name: 'zenith_workflow_ledger_oldest_due_seconds',
+    help: 'Age of the oldest due business job; excludes future timers and human approvals',
+    registers: [registry],
+    async collect() {
+      try { this.set((await workflowMetrics()).oldestDueSeconds ?? 0); } catch { /* preserve last successful sample */ }
+    },
+  });
+  new Gauge({
+    name: 'zenith_workflow_ledger_queue_wait_ms',
+    help: 'Business ledger due-to-claim latency quantiles over the last hour',
+    labelNames: ['quantile'], registers: [registry],
+    async collect() {
+      try {
+        const metrics = await workflowMetrics();
+        if (metrics.queueP95Ms != null) this.set({ quantile: '0.95' }, metrics.queueP95Ms);
+        if (metrics.queueP99Ms != null) this.set({ quantile: '0.99' }, metrics.queueP99Ms);
+      } catch { /* preserve last successful sample */ }
     },
   });
 }

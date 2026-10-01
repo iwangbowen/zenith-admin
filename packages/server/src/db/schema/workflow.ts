@@ -700,6 +700,7 @@ export const workflowJobs = pgTable('workflow_jobs', {
   ...timestampColumns(),
 }, (t) => [index('workflow_jobs_task_idx').on(t.taskId), index('workflow_jobs_tenant_idx').on(t.tenantId), 
   index('workflow_jobs_due_idx').on(t.status, t.runAt),
+  index('workflow_jobs_claim_idx').on(t.priority, t.runAt, t.id).where(sql`${t.status} = 'pending'`),
   index('workflow_jobs_lease_idx').on(t.status, t.leaseUntil),
   index('workflow_jobs_type_status_idx').on(t.jobType, t.status),
   index('workflow_jobs_trace_idx').on(t.traceId),
@@ -727,6 +728,8 @@ export const workflowJobExecutions = pgTable('workflow_job_executions', {
   responseBody: text(),
   errorMessage: text(),
   durationMs: integer(),
+  /** This attempt's due time, retained independently of retries for queue latency. */
+  scheduledAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   startedAt: timestamp({ withTimezone: true }),
   finishedAt: timestamp({ withTimezone: true }),
   tenantId: tenantIdColumn('set null'),
@@ -735,6 +738,7 @@ export const workflowJobExecutions = pgTable('workflow_job_executions', {
   index('workflow_job_executions_job_idx').on(t.jobId, t.attempt),
   uniqueIndex('workflow_job_executions_lease_token_unique').on(t.leaseToken),
   index('workflow_job_executions_type_idx').on(t.jobType, t.status),
+  index('workflow_job_executions_started_idx').on(t.startedAt),
 ]);
 
 export type WorkflowJobExecutionRow = typeof workflowJobExecutions.$inferSelect;

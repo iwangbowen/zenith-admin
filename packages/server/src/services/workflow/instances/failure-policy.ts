@@ -1,4 +1,5 @@
 import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
+import { enqueueSubprocessJoin } from './async-jobs';
 // ─── 节点失败策略、Saga 回滚与补偿恢复（拆分自 workflow-instances.service.ts）───
 import { randomUUID } from 'node:crypto';
 import { eq, and, desc, inArray } from 'drizzle-orm';
@@ -70,6 +71,7 @@ async function markInstanceRejected(tx: DbExecutor, args: { instanceId: number; 
     actorId: args.actorId,
     comment: args.comment,
   });
+  await enqueueSubprocessJoin(row, tx);
   return row;
 }
 
@@ -91,6 +93,7 @@ async function settleMaterialized(
     const [row] = await tx.update(workflowInstances).set({ status: 'approved', currentNodeKey: null })
       .where(eq(workflowInstances.id, instanceId)).returning();
     await bridgeReportFillWorkflowOutcome(tx, { workflowInstanceId: instanceId, outcome: 'approved', actorId: outcome.actorId, comment: outcome.comment });
+    await enqueueSubprocessJoin(row, tx);
     return { row, finished: true, rejected: false };
   }
   const [row] = await tx.update(workflowInstances).set({ currentNodeKey: materialized.currentNodeKeys[0] ?? null })
@@ -309,6 +312,7 @@ export async function resumeInstanceForCompensation(id: number): Promise<{ resum
     } else {
       [row] = await tx.update(workflowInstances).set({ currentNodeKey: materialized.currentNodeKeys[0] ?? null }).where(eq(workflowInstances.id, inst.id)).returning();
     }
+    await enqueueSubprocessJoin(row, tx);
 
     await tx.update(workflowCompensations)
       .set({ status: 'resolved', resolution: '恢复并继续推进', resolvedBy: cu?.userId ?? null, resolvedAt: new Date() })

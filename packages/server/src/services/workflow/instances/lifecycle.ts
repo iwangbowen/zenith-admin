@@ -8,6 +8,7 @@ import { eq, and, desc, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
 import { releaseManagedFiles } from '../../files/file-gc.service';
 import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
+import { enqueueSubprocessJoin } from './async-jobs';
 import { workflowInstances, workflowTasks, workflowDefinitions, users } from '../../../db/schema';
 import { tenantCondition, getCreateTenantId } from '../../../lib/tenant';
 import { buildWhere } from '../../../lib/where-helpers';
@@ -164,6 +165,7 @@ export async function createInstance(data: { definitionId: number; title: string
         currentNodeKey: materialized.rejected || materialized.finished ? null : materialized.currentNodeKeys[0] ?? null,
       }).where(eq(workflowInstances.id, createdInstance.id)).returning();
       // 事务性 outbox：发起事件在同一事务内入队，与实例/任务插入原子提交（崩溃不丢）
+      await enqueueSubprocessJoin(updatedInstance, tx);
       await emitInstanceStartEvents(mapInstance(updatedInstance), updatedInstance, materialized.createdTasks, { userId: user.userId, name: user.username }, tx);
       return { instance: updatedInstance, createdTasks: materialized.createdTasks };
     });
@@ -280,6 +282,7 @@ export async function withdrawInstance(id: number) {
     await killInstanceTokens(tx, id);
     await cancelJobs({ instanceId: id, jobTypes: WORKFLOW_ADVANCING_JOB_TYPES }, tx);
     const [row] = await tx.update(workflowInstances).set({ status: 'withdrawn' }).where(where).returning();
+    await enqueueSubprocessJoin(row, tx);
     await bridgeReportFillWorkflowOutcome(tx, {
       workflowInstanceId: id,
       outcome: 'withdrawn',
@@ -313,6 +316,7 @@ export async function cancelInstance(id: number) {
     await killInstanceTokens(tx, id);
     await cancelJobs({ instanceId: id, jobTypes: WORKFLOW_ADVANCING_JOB_TYPES }, tx);
     const [row] = await tx.update(workflowInstances).set({ status: 'cancelled', currentNodeKey: null, suspendedAt: null, suspendReason: null }).where(where).returning();
+    await enqueueSubprocessJoin(row, tx);
     await bridgeReportFillWorkflowOutcome(tx, {
       workflowInstanceId: id,
       outcome: 'cancelled',
@@ -445,6 +449,7 @@ export async function submitDraftInstance(id: number, input: { selectedInitiator
     }).where(eq(workflowInstances.id, id)).returning();
     const actor = { userId: user.userId, name: user.username };
     if (isResubmitAfterReturn) {
+      await enqueueSubprocessJoin(updatedInstance, tx);
       // 重提不是新实例：不重复发 instance.created（避免误触发订阅 created 的自动化与业务桥接）
       await emitMaterializedAdvanceEvents(mapInstance(updatedInstance), updatedInstance, materialized.createdTasks, actor, tx);
     } else {

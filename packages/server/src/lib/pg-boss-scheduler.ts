@@ -28,6 +28,7 @@ import type { SystemSchedulerAlertChannel } from '@zenith/shared/chat';
 import type { CronRunStatus, CronRunTrigger, ProcessRole, SystemSchedulerTaskBase, SystemSchedulerTaskType, SystemSchedulerRunStatus, SystemSchedulerTriggerType } from '@zenith/shared/platform';
 import { CRON_HEALTH_RULES, SCHEDULER_WARNING_SEVERE_TYPES, schedulerWarningLabel, toMinuteCron } from '@zenith/shared/platform';
 import { notify } from '../services/messaging/notification-outbox.service';
+import { createLedgerWorker, type LedgerWorkerRegistration } from './ledger-worker';
 
 /** 定时任务失败 → 推送告警卡片给任务创建者（无则推给系统管理员） */
 async function pushCronFailureAlert(jobId: number, jobName: string, message: string): Promise<void> {
@@ -179,7 +180,7 @@ export interface SystemQueueWorkerRegistration<T extends object> {
   alertEmails?: string[];
   alertWebhookUrl?: string | null;
   handler: (data: T) => Promise<unknown>;
-  queueOptions?: Omit<QueueOptions, 'name'>;
+  queueOptions?: Omit<Queue, 'name'>;
   /**
    * 在任何角色都激活本地 worker（默认只有 worker 角色执行）。
    * 仅限绑定本进程资源的队列（节点亲和的任务中心队列）；普通业务队列不得设置，否则 api 又回到执行作业的老路。
@@ -217,6 +218,7 @@ const DEFAULT_SYSTEM_TASK_POLICY: SystemSchedulerTaskPolicy = {
 const systemRecurringJobs = new Map<string, SystemRecurringJobInfo>();
 const systemRecurringJobHandlers = new Map<string, () => Promise<unknown>>();
 const systemQueueWorkers = new Map<string, SystemQueueWorkerInfo>();
+const ledgerWorkers = new Map<string, ReturnType<typeof createLedgerWorker>>();
 let schedulerHeartbeatTimer: NodeJS.Timeout | null = null;
 const schedulerStartedAt = new Date();
 
@@ -293,6 +295,7 @@ function getWipByQueue(): Array<{ name: string; count: number }> {
   if (!boss) return [];
   const byName = new Map<string, number>();
   for (const item of boss.getWipData()) byName.set(item.name, (byName.get(item.name) ?? 0) + item.count);
+  for (const [name, worker] of ledgerWorkers) byName.set(name, (byName.get(name) ?? 0) + worker.active);
   return [...byName].map(([name, count]) => ({ name, count }));
 }
 
@@ -302,6 +305,7 @@ async function heartbeatSystemSchedulerNode(active = true): Promise<void> {
     wip: getWipByQueue(),
     warnings: getRecentSchedulerWarnings(),
     health: schedulerHealth,
+    ledgerWorkers: [...ledgerWorkers].map(([name, worker]) => ({ name, concurrency: worker.concurrency, active: worker.active })),
   };
   await db.insert(systemSchedulerNodes).values({
     nodeId: schedulerNodeId,
@@ -1546,6 +1550,16 @@ export async function runJobOnce(jobId: number, triggeredBy: number | null = nul
  *   只发不执行的 api 实例没有在飞作业，直接非 graceful 关闭，不占用停机预算。
  */
 export async function stopAllJobs(drainTimeoutMs?: number): Promise<void> {
+  // Stop claiming before pg-boss/database teardown. Expired leases recover after a forced exit.
+  const drains = [...ledgerWorkers.values()].map((worker) => worker.stop());
+  await Promise.race([
+    Promise.allSettled(drains),
+    new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, Math.max(drainTimeoutMs ?? 30_000, 1_000));
+      timer.unref?.();
+    }),
+  ]);
+  ledgerWorkers.clear();
   if (boss) {
     if (schedulerHeartbeatTimer) {
       clearInterval(schedulerHeartbeatTimer);
@@ -1575,7 +1589,7 @@ export async function stopAllJobs(drainTimeoutMs?: number): Promise<void> {
 /** 获取当前正在运行中的 job 数（基于 pg-boss worker WIP 数据） */
 export function getRunningJobCount(): number {
   if (!boss) return 0;
-  return boss.getWipData().filter(w => w.count > 0).reduce((sum, w) => sum + w.count, 0);
+  return getWipByQueue().reduce((sum, w) => sum + w.count, 0);
 }
 
 export function getSchedulerIntrospection(): {
@@ -1844,6 +1858,26 @@ export async function registerSystemQueueWorker<T extends object>(registration: 
   systemQueueWorkers.set(registration.name, info);
   logger.info(`pg-boss: system queue worker "${registration.name}" ${schedulerExecutesJobs() || registration.forceLocal ? 'registered' : 'declared (not executing in this role)'}`);
   await heartbeatSystemSchedulerNode(true).catch((err) => logger.warn('[system-scheduler] 节点心跳上报失败', err));
+}
+
+/** Database jobs retain their own leases/retries. The pg-boss queue contains at most one
+ * pending coalesced hint, never a second durable message for each business job. */
+export async function registerSystemLedgerWorker<T>(
+  registration: Omit<SystemQueueWorkerRegistration<object>, 'handler' | 'forceLocal' | 'queueOptions'> & LedgerWorkerRegistration<T>,
+): Promise<void> {
+  const worker = schedulerExecutesJobs() ? createLedgerWorker({
+    ...registration,
+    execute: (item) => executeSystemTask(systemQueueWorkers.get(registration.name)!, 'queue', () => registration.execute(item)),
+  }) : undefined;
+  await registerSystemQueueWorker({
+    ...registration,
+    handler: async () => { worker?.wake(); return '账本扫描已唤醒'; },
+    queueOptions: { policy: 'short', retryLimit: 0, retentionSeconds: 60 },
+  });
+  if (!worker) return;
+  ledgerWorkers.set(registration.name, worker as ReturnType<typeof createLedgerWorker>);
+  worker.start();
+  await heartbeatSystemSchedulerNode(true);
 }
 
 /**
