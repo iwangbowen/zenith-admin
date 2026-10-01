@@ -653,6 +653,7 @@ export async function listAllTasks(query: QueryOutputOf<typeof workflowTaskContr
       assigneeName: assignee.nickname,
       assigneeAvatar: assignee.avatar,
       initiatorName: users.nickname,
+      initiatorAvatar: users.avatar,
     })
     .from(workflowTasks)
     .innerJoin(workflowInstances, eq(workflowTasks.instanceId, workflowInstances.id))
@@ -727,6 +728,7 @@ export async function listAllTasks(query: QueryOutputOf<typeof workflowTaskContr
         assigneeName: r.assigneeName ?? null,
         assigneeAvatar: r.assigneeAvatar ?? null,
         initiatorName: r.initiatorName ?? null,
+        initiatorAvatar: r.initiatorAvatar ?? null,
         createdAt: formatDateTime(t.createdAt),
         actionAt: formatNullableDateTime(t.actionAt),
         stayedSec,

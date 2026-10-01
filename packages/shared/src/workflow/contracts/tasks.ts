@@ -79,6 +79,7 @@ export const workflowTaskMonitorItemSchema = z.object({
   assigneeName: z.string().nullable(),
   assigneeAvatar: z.string().nullable(),
   initiatorName: z.string().nullable(),
+  initiatorAvatar: z.string().nullable(),
   createdAt: z.string(),
   actionAt: z.string().nullable(),
   stayedSec: z.int().nullable().meta({ description: '停留 / 处理耗时（秒）：未终态=至今，终态=创建→处理；无 actionAt 的终态为 null' }),

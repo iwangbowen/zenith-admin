@@ -4,10 +4,11 @@
  * 审批状态 / 审批建议 / 耗时 / 流程编号 / 任务编号；行操作：详情（实例详情抽屉）/ 催办。
  */
 import { useQueryClient } from '@tanstack/react-query';
-import { Modal, Toast } from '@douyinfe/semi-ui';
+import { Modal, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { enumValueOf } from '@zenith/shared/core';
 import { WORKFLOW_TASK_MONITOR_NODE_TYPES, WORKFLOW_TASK_STATUSES, workflowTaskContract, type WorkflowTaskMonitorItem } from '@zenith/shared/workflow';
+import { UserAvatar } from '@/components/UserAvatar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -102,7 +103,19 @@ export default function WorkflowTasksMonitorView({ onOpenInstance }: Props) {
       minWidth: 200,
       render: (v: string | null, r) => renderEllipsis(`${r.serialNo ?? `#${r.instanceId}`} · ${v ?? EMPTY_PLACEHOLDER}`),
     },
-    { title: '发起人', dataIndex: 'initiatorName', width: 110, render: (v: string | null) => v ?? EMPTY_PLACEHOLDER },
+    {
+      title: '发起人',
+      dataIndex: 'initiatorName',
+      width: 170,
+      render: (v: string | null, r) => (v
+        ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, maxWidth: '100%', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+            <UserAvatar name={v} avatar={r.initiatorAvatar} semiSize="extra-extra-small" size={20} />
+            <Typography.Text ellipsis={{ showTooltip: true }} style={{ minWidth: 0, flex: 1 }}>{v}</Typography.Text>
+          </div>
+        )
+        : <span style={{ color: 'var(--semi-color-text-2)' }}>{EMPTY_PLACEHOLDER}</span>),
+    },
     dateTimeColumn('发起时间', 'instanceCreatedAt'),
     taskNodeColumn<WorkflowTaskMonitorItem>({ title: '当前任务', width: 200, withTypeTag: true }),
     dateTimeColumn('任务开始时间', 'createdAt'),
