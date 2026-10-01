@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Button, Card, Empty, Spin, Typography } from '@douyinfe/semi-ui';
 import { RotateCcw } from 'lucide-react';
-import WorkflowInstanceCell from '@/components/workflow/WorkflowInstanceCell';
 import {
   BarChart,
   LineChart,
@@ -194,14 +193,14 @@ export default function WorkflowAnalyticsView({ definitions }: Readonly<{ defini
                   return (
                     <tr key={o.taskId} style={{ borderTop: '1px solid var(--semi-color-border)' }}>
                       <td style={{ padding: '6px 8px' }}><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: lamp }} /></td>
-                      <td style={{ padding: '6px 8px' }}>
-                        <WorkflowInstanceCell
+                      <td style={{ padding: '6px 8px', maxWidth: 320 }}>
+                        <Typography.Text
                           size="small"
-                          instanceId={o.instanceId}
-                          title={o.instanceTitle}
-                          serialNo={o.serialNo}
-                          definitionName={o.definitionName}
-                        />
+                          ellipsis={{ showTooltip: true }}
+                          style={{ display: 'block', maxWidth: '100%', whiteSpace: 'nowrap' }}
+                        >
+                          {`${o.serialNo ?? `#${o.instanceId}`} · ${o.instanceTitle} · ${o.definitionName}`}
+                        </Typography.Text>
                       </td>
                       <td style={{ padding: '6px 8px' }}>{o.nodeName}</td>
                       <td style={{ padding: '6px 8px' }}>{o.assigneeName ?? EMPTY_PLACEHOLDER}</td>

@@ -689,7 +689,16 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
 
   const triggerColumns: ColumnProps<WorkflowEngineTriggerExecution>[] = [
     { title: 'ID', dataIndex: 'id', width: 80 },
-    { title: '实例', dataIndex: 'instanceTitle', width: 260, render: (value, record) => <WorkflowInstanceCell instanceId={record.instanceId} title={value as string | null} showSub={false} /> },
+    {
+      title: '实例',
+      dataIndex: 'instanceTitle',
+      width: 260,
+      render: (value, record) => (
+        <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%', whiteSpace: 'nowrap' }}>
+          {`#${record.instanceId} · ${(value as string | null) ?? EMPTY_PLACEHOLDER}`}
+        </Typography.Text>
+      ),
+    },
     { title: '节点', dataIndex: 'nodeName', width: 160, render: (value, record) => value || record.nodeKey },
     { title: '类型', dataIndex: 'triggerType', width: 120 },
     { title: '状态', dataIndex: 'status', width: 100, render: (value) => rawTag(value as string, value === 'failed' ? 'red' : value === 'retrying' ? 'orange' : 'blue') },
@@ -702,7 +711,20 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
   const outboxColumns: ColumnProps<WorkflowEngineOutboxEvent>[] = [
     { title: 'ID', dataIndex: 'id', width: 80 },
     { title: '事件', dataIndex: 'eventType', width: 180 },
-    { title: '实例', dataIndex: 'instanceTitle', width: 260, render: (value, record) => <WorkflowInstanceCell instanceId={record.instanceId} title={value as string | null} showSub={false} /> },
+    {
+      title: '实例',
+      dataIndex: 'instanceTitle',
+      width: 260,
+      render: (value, record: WorkflowEngineOutboxEvent) => {
+        const title = (value as string | null) ?? EMPTY_PLACEHOLDER;
+        const text = record.instanceId != null ? `#${record.instanceId} · ${title}` : title;
+        return (
+          <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%', whiteSpace: 'nowrap' }}>
+            {text}
+          </Typography.Text>
+        );
+      },
+    },
     { title: '状态', dataIndex: 'status', width: 100, render: (value) => rawTag(value as string, value === 'failed' ? 'red' : value === 'retrying' ? 'orange' : 'blue') },
     { title: '尝试', dataIndex: 'attempts', width: 80 },
     dateTimeColumn('下次重试', 'nextRetryAt'),

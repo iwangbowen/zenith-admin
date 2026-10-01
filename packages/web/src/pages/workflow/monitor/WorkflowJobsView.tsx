@@ -12,7 +12,6 @@ import { confirmDanger } from '@/utils/confirm';
 import { dateTimeColumn, overflowTagColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { ListSearchToolbar, listTableProps, useRowSelection } from '@/components/list-page';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import WorkflowInstanceCell from '@/components/workflow/WorkflowInstanceCell';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { compactParams } from '@/lib/query';
 import { useListSearch } from '@/hooks/useListSearch';
@@ -380,15 +379,17 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
       title: '实例',
       dataIndex: 'instanceId',
       width: 240,
-      render: (_: unknown, record: WorkflowJob) => (
-        <WorkflowInstanceCell
-          size="small"
-          instanceId={record.instanceId}
-          title={record.instanceTitle}
-          extra={record.nodeKey}
-          emptyText={`系统事件${record.nodeKey ? ` · ${record.nodeKey}` : ''}`}
-        />
-      ),
+      render: (_: unknown, record: WorkflowJob) => {
+        const noInstance = record.instanceId == null && !record.instanceTitle;
+        const text = noInstance
+          ? `系统事件${record.nodeKey ? ` · ${record.nodeKey}` : ''}`
+          : [record.instanceTitle ?? `#${record.instanceId}`, record.nodeKey].filter(Boolean).join(' · ');
+        return (
+          <Typography.Text size="small" ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%', whiteSpace: 'nowrap' }}>
+            {text}
+          </Typography.Text>
+        );
+      },
     },
     {
       title: '尝试',
@@ -505,17 +506,16 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
           );
         }
         const j = row.job!;
+        const noInstance = j.instanceId == null && !j.instanceTitle;
+        const instanceText = noInstance
+          ? `系统事件${j.nodeKey ? ` · ${j.nodeKey}` : ''}`
+          : [j.instanceTitle ?? `#${j.instanceId}`, j.definitionName ?? '未知流程', j.nodeKey].filter(Boolean).join(' · ');
         return (
-          <span style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 8, minWidth: 0, maxWidth: '100%', verticalAlign: 'middle' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0, maxWidth: '100%', verticalAlign: 'middle' }}>
             <Typography.Text size="small" type="tertiary" style={{ flexShrink: 0 }}>#{j.id}</Typography.Text>
-            <WorkflowInstanceCell
-              size="small"
-              instanceId={j.instanceId}
-              title={j.instanceTitle}
-              definitionName={j.definitionName ?? '未知流程'}
-              extra={j.nodeKey}
-              emptyText={`系统事件${j.nodeKey ? ` · ${j.nodeKey}` : ''}`}
-            />
+            <Typography.Text size="small" ellipsis={{ showTooltip: true }} style={{ minWidth: 0, flex: 1, whiteSpace: 'nowrap' }}>
+              {instanceText}
+            </Typography.Text>
           </span>
         );
       },
