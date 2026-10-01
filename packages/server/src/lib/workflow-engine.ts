@@ -195,7 +195,12 @@ function isPrimitiveConditionValue(value: unknown): value is string | number | b
   return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || value == null;
 }
 
-function parseTargetList(target: string | number | boolean): string[] {
+function parseTargetList(target: string | number | boolean | Array<string | number | boolean>): string[] {
+  // 契约上条件值是多值也行（string|number|boolean，多值用逗号串），写入入口已归一；
+  // 这里仍接受数组作为防御：历史/外部导入可能带来数组，不应表现为"条件恒不成立"。
+  if (Array.isArray(target)) {
+    return target.map((v) => String(v ?? '').trim()).filter(Boolean);
+  }
   return typeof target === 'string'
     ? target.split(',').map((s) => s.trim()).filter(Boolean)
     : [String(target)];

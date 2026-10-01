@@ -1,5 +1,6 @@
 // ─── 任务行物化与令牌推进（拆分自 workflow-instances.service.ts）───
 import { eq, and, or, inArray } from 'drizzle-orm';
+import { buildWhere } from '../../../lib/where-helpers';
 import { workflowInstances, workflowTasks, workflowTokens } from '../../../db/schema';
 import { resolveRuntimeApproveMethod, type TaskAction } from '../../../lib/workflow-engine';
 import { advanceTokens, type AdvanceTrigger, type BranchPath } from '../../../lib/workflow-token-engine';
@@ -39,6 +40,8 @@ async function pushAdminFallbackOrReject(args: {
   rows: ExpandedTaskRow[];
   task: TaskAction;
   ctx: ExpandTasksContext;
+  /** 落到管理员名下的原因（写入任务 comment，让处理人知道为什么轮到自己） */
+  comment: string;
   rejectReason: string;
 }): Promise<boolean> {
   const adminId = await resolveAdminUserId(args.ctx.executor);
@@ -50,6 +53,8 @@ async function pushAdminFallbackOrReject(args: {
       nodeType: args.task.nodeType,
       assigneeId: adminId,
       status: 'pending' as const,
+      // 兜底任务必须自带留痕：否则详情里只有一个管理员名字，看不出为何没有真实审批人
+      comment: `[审批人兜底] ${args.comment}，已转交系统管理员处理`,
     });
     return true;
   }
@@ -268,7 +273,7 @@ async function expandTasksToRows(
         if (nodeCatch === 'terminate') {
           pushAutoRow(t, 'rejected', `${emptyReason}，按异常策略终止流程`);
         } else if (nodeCatch === 'toAdmin') {
-          if (!await pushAdminFallbackOrReject({ rows, task: t, ctx, rejectReason: `${emptyReason}，且无可用管理员接管，自动拒绝` })) autoRejectedNodeKey = t.nodeKey;
+          if (!await pushAdminFallbackOrReject({ rows, task: t, ctx, comment: `${emptyReason}（节点异常策略：转交管理员）`, rejectReason: `${emptyReason}，且无可用管理员接管，自动拒绝` })) autoRejectedNodeKey = t.nodeKey;
         } else {
           // notify：自动通过本节点并继续 + 通知相关人
           pushAutoRow(t, 'approved', `${emptyReason}，按异常策略自动通过`);
@@ -296,6 +301,7 @@ async function expandTasksToRows(
               nodeType: 'catchNode',
               assigneeId: adminId,
               status: 'pending' as const,
+              comment: `[审批人兜底] ${emptyReason}，已触发异常捕获（${catchCfg.label}）并转交系统管理员处理`,
             });
           } else {
             pushAutoRow(t, 'rejected', `${emptyReason}，且无可用管理员接管，自动拒绝`);
@@ -334,10 +340,11 @@ async function expandTasksToRows(
             assigneeId: uid,
             status: 'pending' as const,
             approveMethod: emptyMethod,
+            comment: `[审批人兜底] ${emptyReason}，已按空审批人策略转交指定成员处理`,
           });
         });
       } else if (emptyStrategy === 'assignToAdmin') {
-        if (!await pushAdminFallbackOrReject({ rows, task: t, ctx, rejectReason: `${emptyReason}，且无可用管理员接管，自动拒绝` })) autoRejectedNodeKey = t.nodeKey;
+        if (!await pushAdminFallbackOrReject({ rows, task: t, ctx, comment: `${emptyReason}（空审批人策略：转交管理员）`, rejectReason: `${emptyReason}，且无可用管理员接管，自动拒绝` })) autoRejectedNodeKey = t.nodeKey;
       } else if (emptyStrategy === 'reject') {
         pushAutoRow(t, 'rejected', `${emptyReason}，按空审批人策略自动拒绝`);
       } else {
@@ -400,7 +407,7 @@ async function expandTasksToRows(
  * 历史轮（重入前）的 approved 同样不参与，与 checkNodeCompletion 口径一致。
  */
 async function getCompletedNodeKeys(exec: DbExecutor, instanceId: number): Promise<Set<string>> {
-  const rows = await exec.select({ id: workflowTasks.id, nodeKey: workflowTasks.nodeKey, status: workflowTasks.status, activationId: workflowTasks.activationId })
+  const rows = await exec.select({ id: workflowTasks.id, nodeKey: workflowTasks.nodeKey, status: workflowTasks.status, activationId: workflowTasks.activationId, nodeType: workflowTasks.nodeType, signType: workflowTasks.signType })
     .from(workflowTasks)
     .where(eq(workflowTasks.instanceId, instanceId));
   const byNode = new Map<string, typeof rows>();
@@ -579,15 +586,40 @@ export async function advanceAndMaterialize(
 }
 
 /**
- * 过滤出节点"当前激活轮"的任务：以最新任务行的 activationId 为当前轮标识。
+ * 过滤出节点"当前激活轮"的任务：以最新**参与判定**任务行的 activationId 为当前轮标识。
  * 重入节点（驳回回退/退回重审后再次到达）会生成新 activationId，历史轮的
  * rejected/skipped 任务不再参与完成判定与 ratio 分母。
  * activation_id 已收紧为 NOT NULL（所有写入路径必须显式赋值），不再兼容空值回退。
+ *
+ * ⚠️ 轮次只能由「审批/办理任务行」推断：抄送行（nodeType='ccNode'，含转发抄送 / 动态补加抄送）
+ * 与运行时排除留痕（signType='excluded'）不是节点控制流的一部分，却可能因同 nodeKey 且 id
+ * 更大而把轮次带偏（曾导致加签任务遗留 pending、甚至节点被提前判定完成）。
+ * 仅当节点下不存在任何审批行时才退化为按全部行推断（保持对纯抄送节点的既有语义）。
  */
-export function filterCurrentActivation<T extends { id: number; activationId: string }>(rows: T[]): T[] {
+export function filterCurrentActivation<T extends { id: number; activationId: string; nodeType?: string | null; signType?: string | null }>(rows: T[]): T[] {
   if (rows.length === 0) return rows;
-  const latest = rows.reduce((a, b) => (b.id > a.id ? b : a));
+  const judgedRows = rows.filter((t) => t.nodeType !== 'ccNode' && t.signType !== 'excluded');
+  const pool = judgedRows.length > 0 ? judgedRows : rows;
+  const latest = pool.reduce((a, b) => (b.id > a.id ? b : a));
   return rows.filter((t) => t.activationId === latest.activationId);
+}
+
+/** 节点结算兜底清场：把同节点当前轮未结束的审批/办理任务置 skipped（留痕），保证完成节点无残留待办 */
+async function settleNodeRemainder(
+  tx: DbExecutor,
+  instanceId: number,
+  nodeKey: string,
+  activationId: string | null | undefined,
+  comment: string,
+): Promise<void> {
+  if (!activationId) return;
+  await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment })
+    .where(and(
+      eq(workflowTasks.instanceId, instanceId),
+      eq(workflowTasks.nodeKey, nodeKey),
+      eq(workflowTasks.activationId, activationId),
+      inArray(workflowTasks.status, ['pending', 'waiting']),
+    ));
 }
 
 /**
@@ -607,6 +639,10 @@ export async function checkNodeCompletion(
   if (allRows.length === 0) return { completed: true, method: null };
   const siblings = filterCurrentActivation(allRows);
   const method = siblings.find((t) => t.approveMethod)?.approveMethod ?? null;
+  // 本节点当前轮标识：兜底清场按轮次收敛，不误伤其它轮次的任务
+  const currentActivationId = siblings.find((t) => t.nodeType !== 'ccNode' && t.signType !== 'excluded')?.activationId
+    ?? siblings[0]?.activationId
+    ?? null;
 
   // before-加签恢复：如果同节点存在挂起原任务（status=waiting且非顺序会签）且所有前加签任务都已处理，则将原任务升回 pending，让节点能够继续流转。
   const beforeSuspended = siblings.filter((t) => t.status === 'waiting' && t.taskOrder == null);
@@ -630,22 +666,28 @@ export async function checkNodeCompletion(
 
   // 前加签任务是「先于原审批人」的前置关卡：全部处理完后即失去话语权，不参与本节点的
   // and/or/sequential/ratio 完成判定——or 模式下若不排除，加签人通过会立即完成节点并跳过刚恢复的原审批人。
-  // excluded 是运行时排除留痕行（同发起人/去重具名记录），同样不参与判定与 ratio 分母
-  const judged = siblings.filter((t) => t.signType !== 'before' && t.signType !== 'excluded');
+  // excluded 是运行时排除留痕行（同发起人/去重具名记录），同样不参与判定与 ratio 分母；
+  // ccNode 行（转发抄送 / 动态补加抄送）恒为 skipped，不是审批意见，也不参与判定。
+  const judged = siblings.filter((t) => t.signType !== 'before' && t.signType !== 'excluded' && t.nodeType !== 'ccNode');
 
   if (!method || method === 'and') {
     const allDone = judged.every((t) => t.status === 'approved' || t.status === 'skipped');
-    return { completed: allDone, method };
+    if (allDone) {
+      await settleNodeRemainder(tx, instanceId, nodeKey, currentActivationId, '[会签完成] 本节点已完成，其余未处理待办作废');
+      return { completed: true, method };
+    }
+    return { completed: false, method };
   }
   if (method === 'or') {
     const anyApproved = judged.some((t) => t.status === 'approved');
     if (anyApproved) {
-      // 其余 pending 任务跳过
+      // 其余 pending / waiting 任务跳过（限本节点当前轮，避免误伤重入轮次）
       await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: '[或签联动] 本节点已有审批人通过，其余待办作废' })
-        .where(and(
+        .where(buildWhere(
           eq(workflowTasks.instanceId, instanceId),
           eq(workflowTasks.nodeKey, nodeKey),
-          eq(workflowTasks.status, 'pending'),
+          inArray(workflowTasks.status, ['pending', 'waiting']),
+          currentActivationId ? eq(workflowTasks.activationId, currentActivationId) : undefined,
         ));
       return { completed: true, method };
     }
@@ -653,7 +695,10 @@ export async function checkNodeCompletion(
   }
   if (method === 'sequential') {
     const allApproved = judged.every((t) => t.status === 'approved');
-    if (allApproved) return { completed: true, method };
+    if (allApproved) {
+      await settleNodeRemainder(tx, instanceId, nodeKey, currentActivationId, '[顺序会签完成] 本节点已完成，其余未处理待办作废');
+      return { completed: true, method };
+    }
     // 将下一个 waiting 按 taskOrder 提升为 pending
     const nextWaiting = judged
       .filter((t) => t.status === 'waiting')
@@ -675,12 +720,13 @@ export async function checkNodeCompletion(
     const required = Math.ceil(total * ratioPct / 100);
     const approvedCount = judged.filter((t) => t.status === 'approved').length;
     if (approvedCount >= required) {
-      // 剩余 pending/waiting 任务跳过
+      // 剩余 pending/waiting 任务跳过（限本节点当前轮）
       await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: '[比例会签联动] 已达通过比例，其余待办作废' })
-        .where(and(
+        .where(buildWhere(
           eq(workflowTasks.instanceId, instanceId),
           eq(workflowTasks.nodeKey, nodeKey),
           or(eq(workflowTasks.status, 'pending'), eq(workflowTasks.status, 'waiting')),
+          currentActivationId ? eq(workflowTasks.activationId, currentActivationId) : undefined,
         ));
       return { completed: true, method };
     }

@@ -54,7 +54,10 @@ export async function forwardInstance(instanceId: number, userIds: number[], not
   const forwardActivation = randomUUID();
   const rows = toAdd.map((uid) => ({
     instanceId,
-    nodeKey: inst.currentNodeKey ?? '__forward__',
+    // 转发抄送不是流程节点：固定用独立 key，绝不能复用 inst.currentNodeKey。
+    // 复用会让抄送行混进审批节点的任务集合，带偏节点完成判定的"当前轮"推断
+    // （曾导致会签节点被提前判定完成、其余审批人的加签/会签任务遗留 pending）。
+    nodeKey: '__forward__',
     nodeName: '转发抄送',
     nodeType: 'ccNode' as const,
     assigneeId: uid,

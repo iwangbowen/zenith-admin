@@ -42,6 +42,37 @@ const ASSIGNEE_NODE_TYPES = new Set(['approve', 'handler', 'ccNode']);
 /** 需要运行时动态解析、应配置空审批人兜底策略的来源类型 */
 const DYNAMIC_ASSIGNEE_TYPES = new Set(['role', 'department', 'deptMember', 'userGroup', 'post', 'manager', 'expression', 'startUserDeptResponsible']);
 
+/**
+ * 运行时可能解析到同一人的「负责人」来源桶。
+ * - `manager`/`initiatorLeader` L1、`department`（未指定 deptIds）、`initiatorDept`
+ *   → 都是「发起人所在部门的负责人」
+ * - `manager` L2+、`startUserDeptResponsible`、`multiLevelDeptHead`/`multiLevelManager`
+ *   → 都是「发起人上级部门的负责人」
+ * `department` 指定了 deptIds 时是「部门成员」语义，不归入负责人桶。
+ */
+function equivalentAssigneeBucket(cfg: WorkflowNodeConfig): 'dept-leader' | 'upper-dept-leader' | null {
+  switch (cfg.assigneeType) {
+    case 'manager':
+    case 'initiatorLeader':
+      return (cfg.managerLevel ?? 1) <= 1 ? 'dept-leader' : 'upper-dept-leader';
+    case 'initiatorDept':
+      return 'dept-leader';
+    case 'department':
+      return (cfg.deptIds?.length ?? 0) > 0 ? null : 'dept-leader';
+    case 'startUserDeptResponsible':
+    case 'multiLevelDeptHead':
+    case 'multiLevelManager':
+      return 'upper-dept-leader';
+    default:
+      return null;
+  }
+}
+
+const EQUIVALENT_BUCKET_LABELS = {
+  'dept-leader': '均为发起人所在部门的负责人',
+  'upper-dept-leader': '均为发起人上级部门的负责人',
+} as const;
+
 function issue(severity: WorkflowDefinitionHealthIssue['severity'], message: string, suggestion: string | null, node?: FlowNode | null): WorkflowDefinitionHealthIssue {
   return { severity, message, suggestion, nodeKey: node?.data.key ?? null, nodeName: node ? (node.data.label || node.data.key) : null };
 }
@@ -165,6 +196,29 @@ export function analyzeWorkflowHealth(
           approverIssues.push(issue('warning', `节点「${n.data.label || n.data.key}」${m}`, '更换为在用的审批人，或改用动态来源并配置空审批人兜底策略', n));
         }
       }
+    }
+  }
+  // 同源审批人 × 全流程去重：上面几类来源在同一组织层级下解析到同一个人，
+  // 配合流程级「全流程去重」会把后一个节点的审批人整体跳过——若该节点的空审批人策略是
+  // 「转交管理员」或「自动拒绝」，就变成管理员代办或整单被拒。属于可直接判定的配置陷阱。
+  if ((flowData.settings?.approverDedupMode ?? 'all') === 'all') {
+    const buckets = new Map<keyof typeof EQUIVALENT_BUCKET_LABELS, FlowNode[]>();
+    for (const n of assigneeNodes) {
+      const bucket = equivalentAssigneeBucket(n.data);
+      if (!bucket) continue;
+      const list = buckets.get(bucket);
+      if (list) list.push(n);
+      else buckets.set(bucket, [n]);
+    }
+    for (const [bucket, group] of buckets) {
+      if (group.length < 2) continue;
+      const labels = group.map((n) => `「${n.data.label || n.data.key}」`).join('、');
+      approverIssues.push(issue(
+        'warning',
+        `${labels} 在运行时可能解析到同一位审批人（${EQUIVALENT_BUCKET_LABELS[bucket]}），而本流程已开启「全流程去重」`,
+        '同一层级只需保留一个节点，或把流程级去重改为「不自动通过」；被去重跳过的节点请配置合理的空审批人兑底策略',
+        group[0],
+      ));
     }
   }
   const approverScore = assigneeNodes.length === 0 ? 100 : toScore((resolvable / assigneeNodes.length) * 100);
