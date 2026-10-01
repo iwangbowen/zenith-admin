@@ -310,6 +310,7 @@ export const workflowEngineRuntimeTaskSchema = z.object({
   status: z.enum(WORKFLOW_TASK_STATUSES),
   assigneeId: z.int().nullable(),
   assigneeName: z.string().nullable(),
+  assigneeAvatar: z.string().nullable(),
   priority: z.enum(WORKFLOW_INSTANCE_PRIORITIES),
   externalCallbackId: z.string().nullable(),
   externalDispatchStatus: z.enum(WORKFLOW_TASK_EXTERNAL_DISPATCH_STATUSES).nullable(),

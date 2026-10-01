@@ -130,6 +130,7 @@ function mapRuntimeTask(row: {
   status: typeof workflowTasks.$inferSelect['status'];
   assigneeId: number | null;
   assigneeName: string | null;
+  assigneeAvatar: string | null;
   priority: string;
   externalCallbackId: string | null;
   externalDispatchStatus: WorkflowEngineRuntimeTask['externalDispatchStatus'];
@@ -155,6 +156,7 @@ function mapRuntimeTask(row: {
     status: row.status,
     assigneeId: row.assigneeId ?? null,
     assigneeName: row.assigneeName ?? null,
+    assigneeAvatar: row.assigneeAvatar ?? null,
     priority: (row.priority || 'normal') as WorkflowInstancePriority,
     externalCallbackId: row.externalCallbackId ?? null,
     externalDispatchStatus: row.externalDispatchStatus ?? null,
@@ -436,6 +438,7 @@ export async function getWorkflowEngineIntrospection(
       status: workflowTasks.status,
       assigneeId: workflowTasks.assigneeId,
       assigneeName: assigneeUsers.nickname,
+      assigneeAvatar: assigneeUsers.avatar,
       priority: workflowInstances.priority,
       externalCallbackId: workflowTasks.externalCallbackId,
       externalDispatchStatus: sql<WorkflowEngineRuntimeTask['externalDispatchStatus']>`

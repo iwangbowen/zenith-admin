@@ -7,6 +7,7 @@ import {
   WORKFLOW_ISSUE_SEVERITY_META as ISSUE_META,
   WORKFLOW_JOB_STATUS_META as JOB_STATUS_META,
 } from './constants';
+import { UserAvatar } from '@/components/UserAvatar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import WorkflowInstanceCell from '@/components/workflow/WorkflowInstanceCell';
 import { AreaChart, LineChart, StatGrid, chartOptions, makeAreaSpec, makeLineSpec, useChartPalette, type ChartPalette } from '@/components/charts';
@@ -664,12 +665,26 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
     },
     { title: '节点', dataIndex: 'nodeName', width: 180, render: (_value, record) => `${record.nodeName || record.nodeKey}${record.nodeType ? ` / ${workflowNodeTypeLabel(record.nodeType)}` : ''}` },
     { title: '状态', dataIndex: 'status', width: 100, render: (value) => rawTag(value as string, 'grey') },
-    { title: '处理人', dataIndex: 'assigneeName', width: 110, render: (value) => value || EMPTY_PLACEHOLDER },
+    {
+      title: '处理人',
+      dataIndex: 'assigneeName',
+      width: 170,
+      render: (value, record) => (value
+        ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, maxWidth: '100%', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+            <UserAvatar name={value as string} avatar={record.assigneeAvatar} semiSize="extra-extra-small" size={20} />
+            <Typography.Text ellipsis={{ showTooltip: true }} style={{ minWidth: 0, flex: 1 }}>{value as string}</Typography.Text>
+          </div>
+        )
+        : <span style={{ color: 'var(--semi-color-text-2)' }}>{EMPTY_PLACEHOLDER}</span>),
+    },
     { title: '触发器', dataIndex: 'triggerDispatchStatus', width: 110, render: (value) => rawTag(value as string | null, value === 'failed' ? 'red' : value === 'retrying' ? 'orange' : 'grey') },
     { title: '外部审批', dataIndex: 'externalDispatchStatus', width: 110, render: (value) => rawTag(value as string | null, value === 'failed' ? 'red' : 'grey') },
     dateTimeColumn('timeoutAt', 'timeoutAt'),
     dateTimeColumn('wakeAt', 'wakeAt'),
-    { title: '年龄', dataIndex: 'ageMinutes', width: 110, align: 'right', render: (value) => formatAge(value as number | null) },
+    { title: '年龄', dataIndex: 'ageMinutes', width: 150, align: 'right', render: (value) => (
+      <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%', whiteSpace: 'nowrap' }}>{formatAge(value as number | null)}</Typography.Text>
+    ) },
   ];
 
   const triggerColumns: ColumnProps<WorkflowEngineTriggerExecution>[] = [
@@ -692,7 +707,9 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
     { title: '尝试', dataIndex: 'attempts', width: 80 },
     dateTimeColumn('下次重试', 'nextRetryAt'),
     { title: '错误', dataIndex: 'errorMessage', width: 260, render: (value) => renderEllipsis(value as string | null) },
-    { title: '年龄', dataIndex: 'ageMinutes', width: 110, align: 'right', render: (value) => formatAge(value as number | null) },
+    { title: '年龄', dataIndex: 'ageMinutes', width: 150, align: 'right', render: (value) => (
+      <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%', whiteSpace: 'nowrap' }}>{formatAge(value as number | null)}</Typography.Text>
+    ) },
   ];
 
   const invalidDefinitionColumns: ColumnProps<WorkflowEngineDefinitionValidationItem>[] = [
