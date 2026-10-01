@@ -224,14 +224,16 @@ export default function PendingApprovalsPage() {
     {
       title: '流程名称',
       dataIndex: 'definitionName',
-      width: 160,
+      width: 200,
       render: renderEllipsis,
     },
     {
       title: '申请人',
       dataIndex: 'initiatorName',
-      width: 120,
-      render: (v: string | null) => v ?? EMPTY_PLACEHOLDER,
+      width: 150,
+      render: (v: string | null) => (v
+        ? <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{v}</Typography.Text>
+        : <span style={{ color: 'var(--semi-color-text-2)' }}>{EMPTY_PLACEHOLDER}</span>),
     },
     dateTimeColumn('提交时间', 'createdAt'),
     createOperationColumn<PendingItem>({

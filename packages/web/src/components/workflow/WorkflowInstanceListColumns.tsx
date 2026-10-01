@@ -1,8 +1,8 @@
 /* eslint-disable react-refresh/only-export-components */
-import { Tag } from '@douyinfe/semi-ui';
+import { Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps, Data } from '@douyinfe/semi-ui/lib/es/table';
 import { INSTANCE_STATUS_MAP } from '@/components/workflow/workflow-runtime';
-import { renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 
 type InstanceStatusColumnOptions = {
   title?: string;
@@ -27,7 +27,14 @@ export function workflowDefinitionNameColumn<T extends Data>(): ColumnProps<T> {
 }
 
 export function workflowInitiatorColumn<T extends Data>(): ColumnProps<T> {
-  return { title: '发起人', dataIndex: 'initiatorName', width: 120, render: (value: string | null) => value ?? '—' };
+  return {
+    title: '发起人',
+    dataIndex: 'initiatorName',
+    width: 150,
+    render: (value: string | null) => (value
+      ? <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{value}</Typography.Text>
+      : <span style={{ color: 'var(--semi-color-text-2)' }}>{EMPTY_PLACEHOLDER}</span>),
+  };
 }
 
 export function workflowInstanceStatusColumn<T extends Data>(
