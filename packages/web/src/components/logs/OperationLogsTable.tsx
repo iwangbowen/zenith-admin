@@ -68,8 +68,9 @@ function DataDiff({ beforeData, afterData }: Readonly<{ beforeData: string | nul
   };
 
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-      <thead>
+    <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, wordBreak: 'break-all' }}>
+      <thead style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--semi-color-bg-2)' }}>
         <tr style={{ background: 'var(--semi-color-fill-0)' }}>
           <th style={{ padding: '4px 8px', textAlign: 'left', width: '30%' }}>字段</th>
           <th style={{ padding: '4px 8px', textAlign: 'left', color: 'var(--semi-color-danger)' }}>变更前</th>
@@ -95,6 +96,7 @@ function DataDiff({ beforeData, afterData }: Readonly<{ beforeData: string | nul
         })}
       </tbody>
     </table>
+    </div>
   );
 }
 
@@ -210,12 +212,13 @@ export function OperationLogsTable({
                 <Descriptions
                   data={[
                     { key: 'ID', value: detailLog.id },
-                    { key: '操作人', value: formatUserLabel(detailLog.username, detailLog.nickname) },
-                    ...(detailLog.impersonatorName
-                      ? [{ key: '实际操作人', value: <Tag color="orange" size="small">{detailLog.impersonatorName}（模拟登录）</Tag> }]
-                      : []),
                     { key: '功能模块', value: detailLog.module ?? '-' },
+                    { key: '操作人', value: formatUserLabel(detailLog.username, detailLog.nickname), span: 2 },
+                    ...(detailLog.impersonatorName
+                      ? [{ key: '实际操作人', value: <Tag color="orange" size="small">{detailLog.impersonatorName}（模拟登录）</Tag>, span: 2 }]
+                      : []),
                     { key: '操作描述', value: detailLog.description },
+                    { key: '耗时', value: duration },
                     {
                       key: '请求方法',
                       value: <Tag color="blue" size="small">{detailLog.method}</Tag>,
@@ -224,12 +227,11 @@ export function OperationLogsTable({
                       key: '响应状态',
                       value: <Tag color={resOk ? 'green' : 'red'} size="small">{resCode ?? '-'}</Tag>,
                     },
-                    { key: '耗时', value: duration },
-                    { key: '操作时间', value: formatDateTime(detailLog.createdAt) },
                     { key: 'IP 地址', value: detailLog.ip ?? '-' },
                     { key: '操作地点', value: detailLog.location ?? '-' },
-                    { key: '浏览器', value: detailLog.browser ?? '-', span: 2 },
+                    { key: '浏览器', value: detailLog.browser ?? '-' },
                     { key: '操作系统', value: detailLog.os ?? '-' },
+                    { key: '操作时间', value: formatDateTime(detailLog.createdAt), span: 2 },
                     {
                       key: '链路 ID',
                       span: 2,
