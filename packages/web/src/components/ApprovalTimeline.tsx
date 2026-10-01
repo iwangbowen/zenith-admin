@@ -117,11 +117,11 @@ export default function ApprovalTimeline({ tasks, flowNodes, initiator, instance
             <Typography.Text strong style={{ fontSize: 13 }}>发起申请</Typography.Text>
             <Tag color="blue" size="small">已提交</Tag>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <UserAvatar name={initiator.name ?? '?'} avatar={initiator.avatar} semiSize="extra-extra-small" size={20} />
-            <Typography.Text size="small" type="tertiary">{initiator.name ?? '发起人'}</Typography.Text>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            <UserAvatar name={initiator.name ?? '?'} avatar={initiator.avatar} semiSize="extra-extra-small" size={20} style={{ flexShrink: 0 }} />
+            <Typography.Text size="small" type="tertiary" ellipsis={{ showTooltip: true }} style={{ minWidth: 0, flex: 1 }}>{initiator.name ?? '发起人'}</Typography.Text>
             {initiator.submittedAt && (
-              <Typography.Text size="small" type="quaternary" style={{ marginLeft: 'auto' }}>
+              <Typography.Text size="small" type="quaternary" style={{ marginLeft: 'auto', whiteSpace: 'nowrap', flexShrink: 0 }}>
                 <DateTimeText value={initiator.submittedAt} />
               </Typography.Text>
             )}
@@ -216,8 +216,8 @@ export default function ApprovalTimeline({ tasks, flowNodes, initiator, instance
               )}
             </div>
 
-            {/* 审批人 + 时间 */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: task.comment ? 6 : 0 }}>
+            {/* 审批人 + 时间：姓名弹性省略，时间定长保单行不换行 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, marginBottom: task.comment ? 6 : 0 }}>
               {isSystemAuto ? (
                 <span style={{
                   width: 20,
@@ -237,14 +237,14 @@ export default function ApprovalTimeline({ tasks, flowNodes, initiator, instance
                   avatar={isSkipped ? null : task.assigneeAvatar}
                   semiSize="extra-extra-small"
                   size={20}
-                  style={isSkipped ? { backgroundColor: 'var(--semi-color-fill-2)', color: 'var(--semi-color-text-2)' } : undefined}
+                  style={isSkipped ? { backgroundColor: 'var(--semi-color-fill-2)', color: 'var(--semi-color-text-2)', flexShrink: 0 } : { flexShrink: 0 }}
                 />
               )}
-              <Typography.Text size="small" type="tertiary">
+              <Typography.Text size="small" type="tertiary" ellipsis={{ showTooltip: true }} style={{ minWidth: 0, flex: 1 }}>
                 {isSystemAuto ? '系统自动' : (task.assigneeName ?? '未指定')}
               </Typography.Text>
               {task.actionAt && (
-                <Typography.Text size="small" type="quaternary" style={{ marginLeft: 'auto' }}>
+                <Typography.Text size="small" type="quaternary" style={{ marginLeft: 'auto', whiteSpace: 'nowrap', flexShrink: 0 }}>
                   <DateTimeText value={task.actionAt} />
                 </Typography.Text>
               )}
