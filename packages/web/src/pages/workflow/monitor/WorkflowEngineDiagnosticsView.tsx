@@ -680,8 +680,8 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
     },
     { title: '触发器', dataIndex: 'triggerDispatchStatus', width: 110, render: (value) => rawTag(value as string | null, value === 'failed' ? 'red' : value === 'retrying' ? 'orange' : 'grey') },
     { title: '外部审批', dataIndex: 'externalDispatchStatus', width: 110, render: (value) => rawTag(value as string | null, value === 'failed' ? 'red' : 'grey') },
-    dateTimeColumn('timeoutAt', 'timeoutAt'),
-    dateTimeColumn('wakeAt', 'wakeAt'),
+    dateTimeColumn('超时时间', 'timeoutAt'),
+    dateTimeColumn('唤醒时间', 'wakeAt'),
     { title: '年龄', dataIndex: 'ageMinutes', width: 150, align: 'right', render: (value) => (
       <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%', whiteSpace: 'nowrap' }}>{formatAge(value as number | null)}</Typography.Text>
     ) },
