@@ -53,6 +53,7 @@ import {
   resolveNodeFieldPermissions,
   resolveSerialPeriodKey,
   sanitizeFormUpdatesByNodePerms,
+  WORKFLOW_RETURN_TO_INITIATOR_KEY,
   summarizeWorkflowJobChain,
   worstWorkflowEngineStatus,
   WORKFLOW_SERIAL_SAMPLE_VARS,
@@ -1355,6 +1356,7 @@ async function settleTask(
   const current = mockWorkflowTasks[taskIdx];
   const attachments = bindMockWorkflowAttachments(request, current.instanceId, { taskId: current.id }, body.attachments);
   const taskPatch = hooks.taskPatch?.(current);
+  const actionSnapshot = { action: decision === 'rejected' ? 'reject' as const : current.nodeType === 'handler' ? 'complete' as const : 'approve' as const, targetNodeKey: null, targetNodeName: null };
   await hooks.beforeSettle?.(current, now);
 
   const respond = (message?: string) => {
@@ -1369,7 +1371,7 @@ async function settleTask(
   // 委派回执：仅关闭当前任务、为原委派人生成新 pending，不推进 / 不驳回流程
   if (current.delegatedFromId) {
     const receiptComment = `[委派回执] ${current.assigneeName ?? '审批人'} ${decision === 'approved' ? '建议同意' : '建议拒绝'}：${body.comment ?? ''}`;
-    mockWorkflowTasks[taskIdx] = { ...current, status: decision, comment: receiptComment, attachments, ...taskPatch, actionAt: now };
+    mockWorkflowTasks[taskIdx] = { ...current, status: decision, decision: actionSnapshot, comment: receiptComment, attachments, ...taskPatch, actionAt: now };
     createDelegationReceiptTask(current, receiptComment, now);
     return respond('已提交委派回执，等待原审批人确认');
   }
@@ -1377,6 +1379,7 @@ async function settleTask(
   mockWorkflowTasks[taskIdx] = {
     ...current,
     status: decision,
+    decision: actionSnapshot,
     comment: body.comment ?? null,
     attachments,
     ...taskPatch,
@@ -2818,12 +2821,17 @@ export const workflowHandlers = [
     const firstNodeKey = body.targetNodeKeys[0];
     const now = mockDateTime();
     const current = mockWorkflowTasks[taskIdx];
+    const returnedToInitiator = body.targetNodeKeys.includes(WORKFLOW_RETURN_TO_INITIATOR_KEY);
+    const instance = mockWorkflowInstances.find((item) => item.id === current.instanceId);
+    const targetName = instance?.definitionSnapshot?.flowData?.nodes.find((node) => node.data.key === firstNodeKey)?.data.label
+      ?? mockWorkflowDefinitions.find((definition) => definition.id === instance?.definitionId)?.flowData?.nodes.find((node) => node.data.key === firstNodeKey)?.data.label ?? firstNodeKey;
     const tag = body.targetNodeKeys.length > 1
       ? `[退回多节点: ${body.targetNodeKeys.join('、')}]`
       : `[退回至 ${firstNodeKey}]`;
     mockWorkflowTasks[taskIdx] = {
       ...current,
       status: 'rejected',
+      decision: { action: returnedToInitiator ? 'returnInitiator' : 'returnNode', targetNodeKey: returnedToInitiator ? null : firstNodeKey, targetNodeName: returnedToInitiator ? null : targetName },
       comment: `${tag} ${body.comment}`,
       attachments: bindMockWorkflowAttachments(request, current.instanceId, { taskId: current.id }, body.attachments),
       actionAt: now,
@@ -2832,9 +2840,19 @@ export const workflowHandlers = [
     if (instIdx === -1) return notFound('流程实例不存在');
     mockWorkflowInstances[instIdx] = {
       ...mockWorkflowInstances[instIdx],
-      currentNodeKey: firstNodeKey,
+      ...(returnedToInitiator ? { status: 'returned' as const } : {}),
+      currentNodeKey: returnedToInitiator ? null : firstNodeKey,
       updatedAt: now,
     };
+    if (returnedToInitiator) {
+      for (const task of mockWorkflowTasks) {
+        if (task.instanceId === current.instanceId && (task.status === 'pending' || task.status === 'waiting')) {
+          task.status = 'skipped';
+          task.actionAt = now;
+          task.comment = '[退回发起人] 流程退回修改，本待办作废';
+        }
+      }
+    }
     return ok(mockWorkflowInstances[instIdx]);
   }),
 ];

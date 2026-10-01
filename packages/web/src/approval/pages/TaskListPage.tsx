@@ -12,6 +12,7 @@ import { UserAvatar } from '@/components/UserAvatar';
 import WorkflowSummaryLine from '@/components/workflow/WorkflowSummaryLine';
 import WorkflowSLATag from '@/components/workflow/WorkflowSLATag';
 import WorkflowPriorityTag from '@/components/workflow/WorkflowPriorityTag';
+import WorkflowHandledTaskTag from '@/components/workflow/WorkflowHandledTaskTag';
 import {
   useApprovalCounts, useApprovalList, useBatchApprove, useMarkCcRead, useTaskAction,
   type ApprovalListItem, type ApprovalTab,
@@ -20,14 +21,7 @@ import { useInfiniteSentinel, usePullRefresh } from '../lib/usePullRefresh';
 import { INSTANCE_STATUS_MAP as STATUS_MAP } from '@/components/workflow/workflow-runtime';
 import { KeywordInput } from '@/components/search-filters';
 
-type TagColor = 'amber' | 'blue' | 'green' | 'grey' | 'orange' | 'purple' | 'red';
 const SignatureField = lazy(() => import('@/components/signature/SignatureField'));
-
-const TASK_RESULT_MAP: Record<string, { text: string; color: TagColor }> = {
-  approved: { text: '我已同意', color: 'green' },
-  rejected: { text: '我已拒绝', color: 'red' },
-  skipped: { text: '已跳过', color: 'grey' },
-};
 
 const EMPTY_TEXT: Record<ApprovalTab, string> = {
   pending: '没有待办，休息一下 🎉',
@@ -66,7 +60,7 @@ function isQuickable(item: ApprovalListItem): boolean {
 
 function TaskCard({ item, tab, onOpen, onQuickApprove, quickApproving, batchMode, checked }: Readonly<CardProps>) {
   const status = STATUS_MAP[item.status];
-  const myResult = tab === 'handled' && item.myTaskStatus ? TASK_RESULT_MAP[item.myTaskStatus] : null;
+  const handledTask = tab === 'handled' ? item.handledTask : undefined;
   const ccUnread = tab === 'cc' && item.ccTaskId != null && !item.ccReadAt;
   const quickable = tab === 'pending' && isQuickable(item);
   const batchable = tab === 'pending' && isBatchable(item);
@@ -87,10 +81,13 @@ function TaskCard({ item, tab, onOpen, onQuickApprove, quickApproving, batchMode
         {ccUnread && <span className="ap-dot" aria-label="未读" />}
         <span className="ap-card__title">{item.title}</span>
         {(item.priority === 'high' || item.priority === 'urgent') && <WorkflowPriorityTag priority={item.priority} />}
-        {myResult
-          ? <Tag size="small" color={myResult.color} style={{ flexShrink: 0 }}>{myResult.text}</Tag>
+        {handledTask
+          ? <WorkflowHandledTaskTag task={handledTask} />
           : status && <Tag size="small" color={status.color} style={{ flexShrink: 0 }}>{status.text}</Tag>}
       </div>
+      {handledTask && (
+        <div className="ap-card__meta">{handledTask.nodeName} · 第 {handledTask.round} 轮{handledTask.decision?.targetNodeName ? ` · 退回至 ${handledTask.decision.targetNodeName}` : ''}</div>
+      )}
       <WorkflowSummaryLine items={item.summary} />
       <div className="ap-card__meta">
         <UserAvatar name={item.initiatorName ?? '—'} avatar={item.initiatorAvatar ?? undefined} size={18} semiSize="extra-extra-small" />
@@ -310,7 +307,7 @@ function TaskListContent() {
         )}
         {list.map((item) => (
           <TaskCard
-            key={`${item.id}-${item.pendingTaskId ?? item.ccTaskId ?? 0}`}
+            key={`${item.id}-${item.handledTask?.id ?? item.pendingTaskId ?? item.ccTaskId ?? 0}`}
             item={item}
             tab={tab}
             onOpen={() => openItem(item)}

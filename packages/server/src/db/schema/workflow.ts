@@ -1,7 +1,7 @@
 import type { SignatureSnapshot } from '@zenith/shared/core';
 import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, unique, text, uniqueIndex, index, jsonb, smallint, real, foreignKey, check, uuid as pgUuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import type { WorkflowAutomationAction, WorkflowDefinitionSnapshot, WorkflowInstanceFormSnapshot, WorkflowAttachment } from '@zenith/shared/workflow';
+import type { WorkflowAutomationAction, WorkflowDefinitionSnapshot, WorkflowInstanceFormSnapshot, WorkflowAttachment, WorkflowTaskDecision } from '@zenith/shared/workflow';
 import { timestampColumns, idColumn, statusColumn, sortColumn, remarkColumn } from './common';
 import { auditColumns, users, tenantIdColumn } from './core';
 import { managedFiles } from './files';
@@ -497,6 +497,8 @@ export const workflowTasks = pgTable('workflow_tasks', {
   /** 审批附件元数据快照；身份与授权来源由 workflowAttachmentLinks 持有。 */
   attachments: jsonb().$type<WorkflowAttachment[]>(),
   actionAt: timestamp({ withTimezone: true }),
+  /** 当次处理事实：退回目标和动作不可由节点当前配置或意见文本推断。 */
+  decision: jsonb().$type<WorkflowTaskDecision>(),
   /** 顺序会签中的顺序（0-based），非顺序场景为 null */
   taskOrder: integer(),
   /** 多人审批方式（仅同一 nodeKey 多 task 时生效） */

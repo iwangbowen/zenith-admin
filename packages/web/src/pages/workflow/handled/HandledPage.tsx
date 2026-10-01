@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { Tag } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import type { WorkflowInstance } from '@zenith/shared/workflow';
+import type { WorkflowHandledInstanceItem } from '@zenith/shared/workflow';
 import SavedViewsBar from '@/components/workflow/SavedViewsBar';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import WorkflowInstanceDetailSheet from '@/components/workflow/WorkflowInstanceDetailSheet';
-import { dateTimeColumn, EMPTY_PLACEHOLDER } from '../../../utils/table-columns';
+import WorkflowHandledTaskTag from '@/components/workflow/WorkflowHandledTaskTag';
+import { dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
 import { useListSearch } from '@/hooks/useListSearch';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { KeywordInput } from '@/components/search-filters';
@@ -19,13 +19,6 @@ import {
 } from '@/components/workflow/WorkflowInstanceListColumns';
 import { useHandledWorkflowInstances, workflowInstanceKeys } from '@/hooks/queries/workflow-instances';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
-
-type TagColor = 'amber' | 'blue' | 'green' | 'grey' | 'orange' | 'purple' | 'red';
-
-const MY_TASK_STATUS_MAP: Record<string, { text: string; color: TagColor }> = {
-  approved: { text: '我已通过', color: 'green' },
-  rejected: { text: '我已驳回', color: 'red' },
-};
 
 interface SearchParams {
   keyword: string;
@@ -47,23 +40,27 @@ export default function HandledPage() {
     setDetailVisible(true);
   };
 
-  const columns: ColumnProps<WorkflowInstance>[] = [
-    workflowInstanceTitleColumn<WorkflowInstance>(),
-    workflowSerialNoColumn<WorkflowInstance>(),
-    workflowDefinitionNameColumn<WorkflowInstance>(),
-    workflowInitiatorColumn<WorkflowInstance>(),
+  const columns: ColumnProps<WorkflowHandledInstanceItem>[] = [
+    workflowInstanceTitleColumn<WorkflowHandledInstanceItem>(),
+    workflowSerialNoColumn<WorkflowHandledInstanceItem>(),
+    workflowDefinitionNameColumn<WorkflowHandledInstanceItem>(),
+    workflowInitiatorColumn<WorkflowHandledInstanceItem>(),
+    {
+      title: '处理节点', dataIndex: 'handledTask', width: 180,
+      render: (_value, record) => renderEllipsis(record.handledTask.nodeName),
+    },
+    {
+      title: '审批轮次', dataIndex: 'handledTask', key: 'handledRound', width: 90,
+      render: (_value, record) => `第 ${record.handledTask.round} 轮`,
+    },
     {
       title: '我的处理',
-      dataIndex: 'myTaskStatus',
-      width: 110,
-      render: (v: string | null) => {
-        const s = v ? MY_TASK_STATUS_MAP[v] : null;
-        return s ? <Tag color={s.color}>{s.text}</Tag> : EMPTY_PLACEHOLDER;
-      },
+      dataIndex: 'handledTask', key: 'handledDecision', width: 170,
+      render: (_value, record) => <WorkflowHandledTaskTag task={record.handledTask} />,
     },
     dateTimeColumn('处理时间', 'myActionAt'),
-    workflowInstanceStatusColumn<WorkflowInstance>({ title: '流程状态' }),
-    createOperationColumn<WorkflowInstance>({
+    workflowInstanceStatusColumn<WorkflowHandledInstanceItem>({ title: '流程状态' }),
+    createOperationColumn<WorkflowHandledInstanceItem>({
       width: 100,
       desktopInlineKeys: ['detail'],
       actions: (record) => [
@@ -84,9 +81,9 @@ export default function HandledPage() {
         onSearch={handleSearch}
         onReset={handleReset}
       />
-      <ConfigurableTable<WorkflowInstance>
+      <ConfigurableTable<WorkflowHandledInstanceItem>
         columns={columns}
-        {...listTableProps(listQuery, { pagination: buildPagination })}
+        {...listTableProps(listQuery, { pagination: buildPagination, rowKey: (row) => row.handledTask.id })}
       />
       <WorkflowInstanceDetailSheet
         instanceId={selectedId}

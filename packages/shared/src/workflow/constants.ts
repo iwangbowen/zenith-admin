@@ -44,6 +44,16 @@ export const WORKFLOW_SIGNATURE_POLICY_OPTIONS = createLabelOptions(WORKFLOW_SIG
 
 export const WORKFLOW_TASK_STATUSES = ['pending', 'approved', 'rejected', 'skipped', 'waiting'] as const;
 
+/** 当次任务处理动作，与引擎任务状态分别记录（退回的任务状态仍为 rejected）。 */
+export const WORKFLOW_TASK_DECISION_ACTIONS = ['approve', 'complete', 'reject', 'returnInitiator', 'returnNode'] as const;
+export const WORKFLOW_TASK_DECISION_LABELS: Record<(typeof WORKFLOW_TASK_DECISION_ACTIONS)[number], string> = {
+  approve: '同意',
+  complete: '办理完成',
+  reject: '驳回',
+  returnInitiator: '退回发起人',
+  returnNode: '退回节点',
+};
+
 /** 外部审批派发状态（task.status='waiting' 且启用 externalApproval 时） */
 export const WORKFLOW_TASK_EXTERNAL_DISPATCH_STATUSES = ['pending', 'dispatched', 'failed', 'fallback'] as const;
 

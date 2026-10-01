@@ -1,9 +1,9 @@
 import { sanitizeDetailFormDataForViewer } from '../workflow-form-access';
-import { workflowInstanceContract, workflowTaskContract, WORKFLOW_INSTANCE_STATUSES, type WorkflowWorkbenchSummary } from '@zenith/shared/workflow';
+import { workflowInstanceContract, workflowTaskContract, WORKFLOW_INSTANCE_STATUSES, workflowTaskActivationKey, workflowTaskActivationRounds, type WorkflowWorkbenchSummary, type WorkflowHandledInstanceItem } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
 // ─── 实例/待办/已办/抄送列表查询与详情（拆分自 workflow-instances.service.ts）───
 import { formatDateTime, formatNullableDateTime } from '../../../lib/datetime';
-import { count, countDistinct, eq, and, desc, or, inArray, lte, sql, type SQL } from 'drizzle-orm';
+import { count, countDistinct, eq, and, asc, desc, min, or, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { keywordCondition, withPagination, dateRangeConditions, buildWhere } from '../../../lib/where-helpers';
 import { db } from '../../../db';
@@ -376,15 +376,36 @@ export async function listMyHandled(query: QueryOutputOf<typeof workflowInstance
   );
   const { total, rows } = await queryTaskJoinedInstancePage({ where, orderBy: desc(workflowTasks.actionAt), page, pageSize });
   const activeNodeKeys = await loadActiveNodeKeysByInstance(rows.map((row) => row.inst.id));
+  const instanceIds = [...new Set(rows.map((row) => row.inst.id))];
+  const activations = instanceIds.length === 0 ? [] : await db.select({
+    instanceId: workflowTasks.instanceId,
+    nodeKey: workflowTasks.nodeKey,
+    activationId: workflowTasks.activationId,
+    firstTaskId: min(workflowTasks.id),
+  }).from(workflowTasks)
+    .where(inArray(workflowTasks.instanceId, instanceIds))
+    .groupBy(workflowTasks.instanceId, workflowTasks.nodeKey, workflowTasks.activationId)
+    .orderBy(asc(min(workflowTasks.id)));
+  const rounds = workflowTaskActivationRounds(activations);
   return {
-    list: rows.map((r) => mapInstance(r.inst, {
+    list: rows.map((r): WorkflowHandledInstanceItem => ({ ...mapInstance(r.inst, {
       definitionName: r.definitionName,
       initiatorName: r.initiatorName,
       initiatorAvatar: r.initiatorAvatar,
       currentNodeKeys: activeNodeKeys.get(r.inst.id),
       myTaskStatus: r.task.status,
       myActionAt: r.task.actionAt,
-    })),
+    }), handledTask: {
+      id: r.task.id,
+      nodeKey: r.task.nodeKey,
+      nodeName: r.task.nodeName,
+      nodeType: r.task.nodeType,
+      activationId: r.task.activationId,
+      round: rounds.get(workflowTaskActivationKey(r.task))!,
+      status: r.task.status as 'approved' | 'rejected',
+      actionAt: formatNullableDateTime(r.task.actionAt),
+      decision: r.task.decision ?? null,
+    } })),
     total,
     page,
     pageSize,

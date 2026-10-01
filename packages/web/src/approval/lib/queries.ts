@@ -5,7 +5,7 @@
  */
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BodyOf } from '@zenith/shared/core';
-import { workflowDefinitionContract, workflowInstanceContract, workflowQuickPhraseContract, workflowTaskContract, type WorkflowInstanceListItem } from '@zenith/shared/workflow';
+import { workflowDefinitionContract, workflowInstanceContract, workflowQuickPhraseContract, workflowTaskContract, type WorkflowInstanceListItem, type WorkflowHandledInstanceItem } from '@zenith/shared/workflow';
 import { authContract, userContract } from '@zenith/shared/identity';
 import { api, urlOf } from '@/lib/contract-query';
 import { runWorkflowBatchApprove, runWorkflowTaskAction, type WorkflowTaskDecisionVariables } from '@/hooks/queries/workflow-tasks';
@@ -14,7 +14,7 @@ import { approvalRequest } from './approval-request';
 export type ApprovalTab = 'pending' | 'handled' | 'mine' | 'cc';
 
 /** 四个 Tab 共用的列表项形态：待办返回 SLA / 摘要扩展字段，其余 Tab 返回实例摘要 */
-export type ApprovalListItem = WorkflowInstanceListItem;
+export type ApprovalListItem = WorkflowInstanceListItem & Partial<Pick<WorkflowHandledInstanceItem, 'handledTask'>>;
 
 /** 审批端请求实例：与后台 `request` 隔离的会话与 401 处理 */
 const client = { client: approvalRequest } as const;

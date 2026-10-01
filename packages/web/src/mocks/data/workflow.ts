@@ -668,6 +668,7 @@ export function buildFirstApproveTask(def: Pick<WorkflowDefinition, 'flowData'>,
     comment: null,
     actionAt: null,
     createdAt: now,
+    activationId: crypto.randomUUID(),
   };
 }
 

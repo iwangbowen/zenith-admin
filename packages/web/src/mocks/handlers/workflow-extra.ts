@@ -16,6 +16,8 @@ import {
   workflowTaskContract,
   workflowTemplateContract,
   clearWorkflowFormSignaturesData,
+  workflowTaskActivationKey,
+  workflowTaskActivationRounds,
   type WorkflowAnalytics,
   type WorkflowApproverPreviewNode,
   type WorkflowBatchActionResponse,
@@ -28,6 +30,7 @@ import {
   type WorkflowFlowData,
   type WorkflowFormField,
   type WorkflowInstance,
+  type WorkflowHandledInstanceItem,
   type WorkflowInstanceStatus,
   type WorkflowOverdueTask,
   type WorkflowQuickPhrase,
@@ -336,15 +339,23 @@ export const workflowExtraHandlers = [
   }),
 
   // ── 我已办（必须在 /instances/:id 之前注册）──
-  mock(workflowInstanceContract.handledMine, ({ query, ok, paginate }) => {
+  mock(workflowInstanceContract.handledMine, ({ query, ok, paginate, request }) => {
     const keyword = (query.keyword ?? '').toLowerCase();
-    let all = mockWorkflowInstances.filter((i) => i.status === 'approved' || i.status === 'rejected');
-    if (keyword) all = filterByKeyword(all, keyword, [(i) => i.title, (i) => i.definitionName], { caseInsensitive: true });
-    const list: WorkflowInstance[] = all.map((i) => ({
-      ...i,
-      myTaskStatus: i.status === 'approved' ? 'approved' : 'rejected',
-      myActionAt: i.updatedAt,
-    }));
+    const sessionUserId = currentMockSession(request)?.user.id ?? 1;
+    const tasks = mockWorkflowTasks.map((task) => ({ ...task, activationId: task.activationId ?? `seed-${task.instanceId}-${task.nodeKey}` }));
+    const rounds = workflowTaskActivationRounds([...tasks].sort((a, b) => a.id - b.id));
+    let list: WorkflowHandledInstanceItem[] = tasks.flatMap((task) => {
+      if (task.assigneeId !== sessionUserId || (task.status !== 'approved' && task.status !== 'rejected')) return [];
+      const inst = mockWorkflowInstances.find((item) => item.id === task.instanceId);
+      if (!inst) return [];
+      return [{ ...inst, myTaskStatus: task.status, myActionAt: task.actionAt, handledTask: {
+        id: task.id, nodeKey: task.nodeKey, nodeName: task.nodeName, nodeType: task.nodeType,
+        activationId: task.activationId, round: rounds.get(workflowTaskActivationKey(task))!,
+        status: task.status, actionAt: task.actionAt, decision: task.decision ?? null,
+      } }];
+    });
+    if (keyword) list = filterByKeyword(list, keyword, [(i) => i.title, (i) => i.definitionName], { caseInsensitive: true });
+    list.sort((a, b) => (b.myActionAt ?? '').localeCompare(a.myActionAt ?? '') || b.handledTask.id - a.handledTask.id);
     return ok(paginate(list));
   }),
 
@@ -755,6 +766,7 @@ export const workflowExtraHandlers = [
           throw new MockHttpError(badRequest('请填写审批意见', { status: 400 }));
         }
         Object.assign(task, signature);
+        task.decision = { action: task.nodeType === 'handler' ? 'complete' : 'approve', targetNodeKey: null, targetNodeName: null };
         task.status = 'approved'; task.comment = comment ?? null; task.actionAt = now;
         syncInstanceApprovedIfComplete(task.instanceId, now);
       }),
@@ -767,6 +779,7 @@ export const workflowExtraHandlers = [
       request,
       cache: batchActionCache,
       run: () => runBatchTaskAction(taskIds, (task, now) => {
+        task.decision = { action: 'reject', targetNodeKey: null, targetNodeName: null };
         task.status = 'rejected'; task.comment = comment; task.actionAt = now;
         const inst = mockWorkflowInstances.find((i) => i.id === task.instanceId);
         if (inst) {

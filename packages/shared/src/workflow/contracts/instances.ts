@@ -3,7 +3,7 @@ import { workflowSignaturePolicySchema } from '../validation';
 import * as z from 'zod';
 import { auditFieldsSchema, idParam, idQuery, keywordQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
-import { WORKFLOW_INSTANCE_PRIORITIES, WORKFLOW_INSTANCE_PRIORITY_OPTIONS, WORKFLOW_INSTANCE_STATUSES, WORKFLOW_INSTANCE_STATUS_OPTIONS, WORKFLOW_SLA_LEVELS, WORKFLOW_TASK_CONSULT_STATUSES, WORKFLOW_TASK_STATUSES, WORKFLOW_INSTANCE_STATUS_FILTERS, WORKFLOW_INSTANCE_PRINT_SOURCES } from '../constants';
+import { WORKFLOW_INSTANCE_PRIORITIES, WORKFLOW_INSTANCE_PRIORITY_OPTIONS, WORKFLOW_INSTANCE_STATUSES, WORKFLOW_INSTANCE_STATUS_OPTIONS, WORKFLOW_SLA_LEVELS, WORKFLOW_TASK_CONSULT_STATUSES, WORKFLOW_TASK_STATUSES, WORKFLOW_INSTANCE_STATUS_FILTERS, WORKFLOW_INSTANCE_PRINT_SOURCES, WORKFLOW_TASK_DECISION_ACTIONS } from '../constants';
 import {
   addInstanceCcSchema,
   batchUrgeWorkflowInstanceSchema,
@@ -46,12 +46,20 @@ export const workflowTaskTransferSchema = z.object({
 
 export type WorkflowTaskTransfer = z.infer<typeof workflowTaskTransferSchema>;
 
+export const workflowTaskDecisionSchema = z.object({
+  action: z.enum(WORKFLOW_TASK_DECISION_ACTIONS),
+  targetNodeKey: z.string().nullable(),
+  targetNodeName: z.string().nullable(),
+}).meta({ id: 'WorkflowTaskDecision' });
+export type WorkflowTaskDecision = z.infer<typeof workflowTaskDecisionSchema>;
+
 export const workflowTaskSchema = z.object({
   id: z.int(),
   instanceId: z.int(),
   nodeKey: z.string(),
   nodeName: z.string(),
   nodeType: z.string().nullable(),
+  activationId: z.string().optional().meta({ description: '同一次进入节点的任务共享激活轮次 ID' }),
   assigneeId: z.int().nullable(),
   assigneeName: z.string().nullable().optional(),
   assigneeAvatar: z.string().nullable().optional(),
@@ -62,6 +70,7 @@ export const workflowTaskSchema = z.object({
   attachments: z.array(workflowTaskAttachmentRefSchema).optional(),
   signaturePolicy: workflowSignaturePolicySchema.optional().meta({ description: '所属节点的签署策略' }),
   actionAt: z.string().nullable(),
+  decision: workflowTaskDecisionSchema.nullable().optional().meta({ description: '任务实际处理动作与当次退回目标快照' }),
   originalAssigneeId: z.int().nullable().optional().meta({ description: '任务原始处理人（创建时快照，转办 / 委派不会修改）' }),
   transfers: z.array(workflowTaskTransferSchema).nullable().optional().meta({ description: '转办明细（详情场景填充）' }),
   delegatedFromId: z.int().nullable().optional().meta({ description: '委派来源（仅委派期间设置；回执任务为 null）' }),
@@ -246,6 +255,22 @@ export type WorkflowInstanceListItem = z.infer<typeof workflowInstanceListItemSc
 export const workflowPendingInstanceItemSchema = workflowInstanceListItemSchema.extend({ pendingTaskId: z.int() }).meta({ id: 'WorkflowPendingInstanceItem' });
 
 export type WorkflowPendingInstanceItem = z.infer<typeof workflowPendingInstanceItemSchema>;
+
+/** 已办保持任务粒度；同一实例的多节点处理与重新审批各自拥有独立身份。 */
+export const workflowHandledInstanceItemSchema = workflowInstanceListItemSchema.extend({
+  handledTask: z.object({
+    id: z.int(),
+    nodeKey: z.string(),
+    nodeName: z.string(),
+    nodeType: z.string().nullable(),
+    activationId: z.string(),
+    round: z.int().positive(),
+    status: z.enum(['approved', 'rejected']),
+    actionAt: z.string().nullable(),
+    decision: workflowTaskDecisionSchema.nullable(),
+  }),
+}).meta({ id: 'WorkflowHandledInstanceItem' });
+export type WorkflowHandledInstanceItem = z.infer<typeof workflowHandledInstanceItemSchema>;
 
 /** 全局流程实例列表（监控）：分页 + 口径内状态分布 */
 export const workflowInstanceMonitorPageSchema = z.object({
@@ -488,7 +513,7 @@ export const workflowInstanceContract = defineContract('/api/workflows', {
   pendingDefinitionOptions: op.get('/instances/pending-mine/definitions', { access: { permission: 'workflow:task:handle' }, response: z.array(workflowDefinitionOptionSchema), summary: '待我审批的流程筛选选项' }),
   monitor: op.get('/instances/all', { access: { permission: 'workflow:instance:monitor' }, query: workflowInstanceMonitorQuery, response: workflowInstanceMonitorPageSchema, summary: '全局流程实例列表' }),
   ccMine: op.get('/instances/cc-mine', { access: { permission: 'workflow:instance:list' }, query: workflowKeywordPageQuery, response: paginated(workflowInstanceSchema), summary: '抄送我的列表' }),
-  handledMine: op.get('/instances/handled-mine', { access: { permission: 'workflow:task:handle' }, query: workflowKeywordPageQuery, response: paginated(workflowInstanceSchema), summary: '我已办列表' }),
+  handledMine: op.get('/instances/handled-mine', { access: { permission: 'workflow:task:handle' }, query: workflowKeywordPageQuery, response: paginated(workflowHandledInstanceItemSchema), summary: '我已办列表（按处理任务）' }),
   ccUnreadCount: op.get('/instances/cc-mine/unread-count', { access: { permission: 'workflow:instance:list' }, response: workflowCountSchema, summary: '抄送未读数' }),
   workbenchSummary: op.get('/instances/workbench-summary', { access: { permission: ['workflow:task:handle', 'workflow:instance:list', 'workflow:instance:create'] }, response: workflowWorkbenchSummarySchema, summary: '发起工作台概览：待我审批 / 协办 / 抄送未读 / 退回 / 草稿 / 审批中计数' }),
   relationOptions: op.get('/instances/relation-options', { access: { permission: 'workflow:instance:list' }, query: workflowRelationOptionsQuery, response: z.array(workflowRelationOptionSchema), summary: '关联审批单候选' }),
