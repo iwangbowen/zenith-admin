@@ -259,15 +259,15 @@ export default function WorkflowDefinitionsPage() {
     {
       title: '分类',
       dataIndex: 'categoryName',
-      width: 110,
+      width: 210,
       render: (_v: unknown, record: WorkflowDefinition) => {
         if (!record.categoryName) return <span style={{ color: 'var(--semi-color-text-2)' }}>—</span>;
         const color = record.categoryColor ?? undefined;
         return (
-          <Space spacing={6}>
-            {color && <span style={{ width: 8, height: 8, borderRadius: '50%', background: color }} />}
-            <span>{record.categoryName}</span>
-          </Space>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, maxWidth: '100%', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+            {color && <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />}
+            <Typography.Text ellipsis={{ showTooltip: true }} style={{ minWidth: 0, flex: 1 }}>{record.categoryName}</Typography.Text>
+          </div>
         );
       },
     },
