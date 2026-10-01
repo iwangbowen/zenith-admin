@@ -710,12 +710,14 @@ export default function WorkflowFormInlineEditor({
         visible={previewVisible}
         onCancel={() => setPreviewVisible(false)}
         footer={<Button type="primary" onClick={() => setPreviewVisible(false)}>关闭</Button>}
-        width={previewMode === 'mobile' ? 460 : 640}
+        width={640}
         bodyStyle={{ maxHeight: '70vh', overflowY: 'auto', background: previewMode === 'mobile' ? 'var(--semi-color-fill-0)' : undefined }}
       >
         {previewMode === 'mobile' ? (
           <div style={{
-            width: 375,
+            width: '100%',
+            maxWidth: 375,
+            boxSizing: 'border-box',
             margin: '12px auto',
             padding: '16px 14px',
             background: 'var(--surface-card)',
