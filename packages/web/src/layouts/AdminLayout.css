@@ -1439,21 +1439,18 @@
   background: none;
 }
 
-/* ── 分段式：整条轨道带底色，激活页签浮起 ── */
-.admin-tabs-bar[data-tab-style="segment"] {
-  border-bottom: 1px solid var(--semi-color-border);
-}
-
+/* ── 分段式：沿用页签栏底色，每个页签为浅灰分段块，激活段以主题浅色高亮 ── */
 .admin-tabs-bar[data-tab-style="segment"] .admin-tabs-bar__scroll {
-  gap: 2px;
-  padding: 4px 12px;
-  background: var(--semi-color-fill-0);
+  gap: 4px;
+  padding: 5px 12px;
 }
 
 /* stylelint-disable-next-line no-descending-specificity */
 [data-tab-style="segment"] .admin-tab-item {
-  padding: 6px 14px;
+  padding: 5px 14px;
   border-radius: var(--semi-border-radius-medium);
+  background: var(--semi-color-fill-0);
+  transition: background 0.15s, color 0.15s;
 }
 
 [data-tab-style="segment"] .admin-tab-item::after {
@@ -1461,10 +1458,9 @@
 }
 
 [data-tab-style="segment"] .admin-tab-item--active {
-  background: var(--semi-color-bg-0);
+  background: var(--semi-color-primary-light-default);
   color: var(--semi-color-primary);
   font-weight: 500;
-  box-shadow: var(--semi-shadow-elevated);
 }
 
 [data-tab-style="segment"] .admin-tab-item:hover:not(.admin-tab-item--active) {
@@ -1604,8 +1600,8 @@
 }
 
 .admin-tabs-bar.admin-tabs-bar--compact[data-tab-style="segment"] .admin-tabs-bar__scroll {
-  gap: 2px;
-  padding: 3px 8px;
+  gap: 3px;
+  padding: 4px 8px;
 }
 
 .admin-tabs-bar.admin-tabs-bar--compact[data-tab-style="segment"] .admin-tab-item {
