@@ -653,14 +653,14 @@ export default function WorkflowEngineDiagnosticsView({ onOpenInstanceDiagnostic
       dataIndex: 'instanceTitle',
       width: 300,
       render: (_value, record) => (
-        <WorkflowInstanceCell
-          instanceId={record.instanceId}
-          title={record.instanceTitle}
-          serialNo={record.serialNo}
-          action={onOpenInstanceDiagnostics && (
-            <Button theme="borderless" size="small" icon={<Stethoscope size={13} />} onClick={() => onOpenInstanceDiagnostics(record.instanceId)} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, maxWidth: '100%', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+          <Typography.Text ellipsis={{ showTooltip: true }} style={{ minWidth: 0, flex: 1 }}>
+            {`${record.serialNo ?? `#${record.instanceId}`} · ${record.instanceTitle}`}
+          </Typography.Text>
+          {onOpenInstanceDiagnostics && (
+            <Button theme="borderless" size="small" icon={<Stethoscope size={13} />} style={{ flexShrink: 0 }} onClick={() => onOpenInstanceDiagnostics(record.instanceId)} />
           )}
-        />
+        </div>
       ),
     },
     { title: '节点', dataIndex: 'nodeName', width: 180, render: (_value, record) => `${record.nodeName || record.nodeKey}${record.nodeType ? ` / ${workflowNodeTypeLabel(record.nodeType)}` : ''}` },
