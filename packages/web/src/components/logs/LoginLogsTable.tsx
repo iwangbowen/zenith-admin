@@ -66,7 +66,7 @@ export function LoginLogsTable({
     { title: 'IP 地址', dataIndex: 'ip', width: 150, render: (v: string | null) => v ?? '-' },
     { title: '地点', dataIndex: 'location', width: 180, render: (v: string | null) => v ?? '-' },
     { title: '浏览器', dataIndex: 'browser', width: 150, render: (v: string | null) => renderEllipsis(v ?? '-') },
-    { title: '操作系统', dataIndex: 'os', width: 150, render: (v: string | null) => v ?? '-' },
+    { title: '操作系统', dataIndex: 'os', width: 180, render: (v: string | null) => renderEllipsis(v ?? '-') },
     dateTimeColumn('操作时间', 'createdAt'),
     {
       title: '状态',
