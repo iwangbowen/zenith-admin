@@ -29,6 +29,7 @@
   group: 'wiki',                           // 偏好矩阵折叠分组（NOTIFICATION_EVENT_GROUPS）
   label: '文档收到新评论',                    // 矩阵与策略中心展示名
   severity: 'normal',                      // normal | important | critical（critical 自动穿透免打扰）
+  // inAppType: 'warning',                 // 可选：站内信标签语气，与 severity 无关；省略时 critical=error，其余 info
   defaultChannels: ['inapp'],              // 用户未配置时实际发送的渠道
   availableChannels: ['inapp', 'email'],   // 用户可自行开关的渠道全集；省略 = defaultChannels
   rateLimit: { limit: 10, windowMinutes: 60 },  // 可选：评论/提及类防风暴

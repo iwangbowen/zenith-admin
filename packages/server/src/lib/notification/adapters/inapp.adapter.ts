@@ -12,12 +12,10 @@ import { formatDateTime } from '../../datetime';
 import { scheduleSendToUsers } from '../../ws-manager';
 import type { DeliveryContext, DeliveryResult, NotificationChannelAdapter } from '../types';
 
-/** 事件级别 → 站内信视觉类型 */
-const SEVERITY_TO_TYPE: Record<string, InAppMessageType> = {
-  normal: 'info',
-  important: 'warning',
-  critical: 'error',
-};
+/** 事件未声明 inAppType 时的语气兜底：重要程度不等于警示，只有 critical 视为错误 */
+function defaultInAppType(severity: string): InAppMessageType {
+  return severity === 'critical' ? 'error' : 'info';
+}
 
 async function userExists(id: number): Promise<boolean> {
   const [row] = await db.select({ id: users.id }).from(users).where(eq(users.id, id)).limit(1);
@@ -37,7 +35,7 @@ export const inAppAdapter: NotificationChannelAdapter = {
     const userId = ctx.target.subjectId;
     if (userId === null) throw new Error('站内信收件人缺少用户 ID');
 
-    const type = ctx.options?.inapp?.type ?? SEVERITY_TO_TYPE[ctx.event.severity] ?? 'info';
+    const type = ctx.options?.inapp?.type ?? ctx.event.inAppType ?? defaultInAppType(ctx.event.severity);
     const [inserted] = await db.insert(inAppMessages).values({
       userId,
       title: ctx.title,

@@ -10,6 +10,7 @@
  * 新增事件 = 在 `NOTIFICATION_EVENTS` 里加一项 + 在业务处调用 `notify()`，无需迁移、无需种子。
  */
 import type {
+  InAppMessageType,
   NotificationChannel,
   NotificationEventGroup,
   NotificationSeverity,
@@ -23,6 +24,11 @@ export interface NotificationEventDef {
   /** 补充说明，展示为矩阵行的次级文案 */
   description?: string;
   severity: NotificationSeverity;
+  /**
+   * 站内信展示语气（标签颜色）。与 `severity` 正交：severity 决定投递策略（如穿透免打扰），
+   * inAppType 表达内容语义（成功 / 警示 / 失败）。省略时 critical 为 `error`，其余为 `info`。
+   */
+  inAppType?: InAppMessageType;
   /** 收件人未做任何配置时实际生效的渠道 */
   defaultChannels: readonly NotificationChannel[];
   /**
@@ -83,19 +89,19 @@ export const NOTIFICATION_EVENTS = defineNotificationEvents({
     title: '{{objectTitle}} · {{eventLabel}}', content: '你关注的对象发生了业务变化：{{eventLabel}}。',
   },
   'payment.recon.failed': {
-    group: 'ops', label: '支付账单获取或核对失败', severity: 'important',
+    group: 'ops', label: '支付账单获取或核对失败', severity: 'important', inAppType: 'error',
     defaultChannels: ['inapp'], availableChannels: ['inapp', 'email', 'chat'],
     vars: eventVars<{ accountName: string; billDate: string; message: string }>(),
     title: '支付对账异常：{{accountName}}', content: '{{billDate}}：{{message}}',
   },
   'payment.recon.difference': {
-    group: 'ops', label: '支付对账发现差异', severity: 'important',
+    group: 'ops', label: '支付对账发现差异', severity: 'important', inAppType: 'warning',
     defaultChannels: ['inapp'], availableChannels: ['inapp', 'email', 'chat'],
     vars: eventVars<{ accountName: string; billDate: string; count: number }>(),
     title: '支付对账发现差异', content: '{{accountName}} {{billDate}} 存在 {{count}} 项差异，请核验。',
   },
   'payment.recon.overdue': {
-    group: 'ops', label: '支付对账逾期', severity: 'important',
+    group: 'ops', label: '支付对账逾期', severity: 'important', inAppType: 'warning',
     defaultChannels: ['inapp'], availableChannels: ['inapp', 'email', 'chat'],
     vars: eventVars<{ accountName: string; billDate: string; message: string }>(),
     title: '支付对账待办逾期', content: '{{accountName}} {{billDate}}：{{message}}',
@@ -106,13 +112,13 @@ export const NOTIFICATION_EVENTS = defineNotificationEvents({
     title: '支付账单已恢复', content: '{{accountName}} {{billDate}} 已完成取账与校验。',
   },
   'payment.adjustment.executed': {
-    group: 'ops', label: '支付调整已执行', severity: 'important', defaultChannels: ['inapp'],
+    group: 'ops', label: '支付调整已执行', severity: 'important', inAppType: 'success', defaultChannels: ['inapp'],
     availableChannels: ['inapp', 'email', 'chat'],
     vars: eventVars<{ adjustmentId: number; amount: string; currency: string }>(),
     title: '支付调整已执行', content: '调整单 #{{adjustmentId}} 已入账 {{amount}}（最小货币单位）{{currency}}。',
   },
   'payment.recon.adjustment_failed': {
-    group: 'ops', label: '支付调整执行失败', severity: 'important', defaultChannels: ['inapp'],
+    group: 'ops', label: '支付调整执行失败', severity: 'important', inAppType: 'error', defaultChannels: ['inapp'],
     availableChannels: ['inapp', 'email', 'chat'],
     vars: eventVars<{ adjustmentId: number; caseId: number; message: string }>(),
     title: '支付调整 #{{adjustmentId}} 执行失败', content: '差异案件 #{{caseId}}：{{message}}',
@@ -174,6 +180,7 @@ export const NOTIFICATION_EVENTS = defineNotificationEvents({
     group: 'wiki',
     label: '文档复审到期 / 已过有效期',
     severity: 'important',
+    inAppType: 'warning',
     defaultChannels: ['inapp'],
     availableChannels: ['inapp', 'email'],
     vars: eventVars<{ docId: number; docTitle: string; stateText: string }>(),
@@ -208,6 +215,7 @@ export const NOTIFICATION_EVENTS = defineNotificationEvents({
     group: 'workflow',
     label: '待办被催办',
     severity: 'important',
+    inAppType: 'warning',
     defaultChannels: ['inapp'],
     availableChannels: ['inapp', 'push'],
     bypassQuietHours: true,
@@ -228,6 +236,7 @@ export const NOTIFICATION_EVENTS = defineNotificationEvents({
     group: 'workflow',
     label: '我发起的流程通过',
     severity: 'important',
+    inAppType: 'success',
     defaultChannels: ['inapp'],
     availableChannels: ['inapp', 'email', 'sms'],
     vars: eventVars<{ instanceId: number; title: string; status: string }>(),
@@ -238,6 +247,7 @@ export const NOTIFICATION_EVENTS = defineNotificationEvents({
     group: 'workflow',
     label: '我发起的流程被驳回',
     severity: 'important',
+    inAppType: 'error',
     defaultChannels: ['inapp'],
     availableChannels: ['inapp', 'email', 'sms'],
     vars: eventVars<{ instanceId: number; title: string; status: string }>(),
@@ -258,6 +268,7 @@ export const NOTIFICATION_EVENTS = defineNotificationEvents({
     group: 'workflow',
     label: '我发起的流程被退回',
     severity: 'important',
+    inAppType: 'warning',
     defaultChannels: ['inapp'],
     availableChannels: ['inapp', 'email', 'sms'],
     vars: eventVars<{ instanceId: number; title: string; status: string }>(),
@@ -301,6 +312,7 @@ export const NOTIFICATION_EVENTS = defineNotificationEvents({
     group: 'workflow',
     label: '流程节点异常处理',
     severity: 'important',
+    inAppType: 'warning',
     defaultChannels: ['inapp'],
     availableChannels: ['inapp', 'email'],
     // 异常兜底改变了流程走向（自动通过/跳过），相关人越早知道越好
@@ -326,6 +338,7 @@ export const NOTIFICATION_EVENTS = defineNotificationEvents({
     group: 'identity',
     label: '租户即将到期',
     severity: 'important',
+    inAppType: 'warning',
     defaultChannels: ['inapp'],
     availableChannels: ['inapp', 'email'],
     bypassQuietHours: true,
@@ -350,6 +363,7 @@ export const NOTIFICATION_EVENTS = defineNotificationEvents({
     group: 'identity',
     label: '账号被管理员模拟登录',
     severity: 'important',
+    inAppType: 'warning',
     defaultChannels: ['inapp'],
     availableChannels: ['inapp', 'email'],
     // 账号安全透明度：被模拟的人必须知道有人以自己的身份在操作，不允许关闭
@@ -433,6 +447,7 @@ export const NOTIFICATION_EVENTS = defineNotificationEvents({
     group: 'ops',
     label: 'SSL 证书到期提醒',
     severity: 'important',
+    inAppType: 'warning',
     defaultChannels: ['inapp'],
     availableChannels: ['inapp', 'email'],
     vars: eventVars<{ detail: string }>(),
@@ -490,6 +505,7 @@ export const NOTIFICATION_EVENTS = defineNotificationEvents({
     group: 'ops',
     label: 'License 即将到期 / 宽限期提醒',
     severity: 'important',
+    inAppType: 'warning',
     defaultChannels: ['inapp'],
     availableChannels: ['inapp', 'email'],
     // 巡检任务按天触发并带 dedupeKey，无需再配 rateLimit
@@ -528,6 +544,7 @@ export const NOTIFICATION_EVENTS = defineNotificationEvents({
     group: 'iot',
     label: 'IoT 设备告警恢复',
     severity: 'important',
+    inAppType: 'resolved',
     defaultChannels: ['inapp'],
     availableChannels: ['inapp', 'email', 'webhook'],
     vars: eventVars<{ ruleName: string; deviceName: string; sn: string; message: string }>(),
@@ -585,6 +602,7 @@ export const NOTIFICATION_EVENTS = defineNotificationEvents({
     group: 'open-platform',
     label: 'Webhook 投递失败',
     severity: 'important',
+    inAppType: 'error',
     defaultChannels: ['inapp'],
     availableChannels: ['inapp', 'email'],
     vars: eventVars<{ subscriptionName: string; detail: string }>(),
@@ -595,6 +613,7 @@ export const NOTIFICATION_EVENTS = defineNotificationEvents({
     group: 'open-platform',
     label: 'API 配额告警',
     severity: 'important',
+    inAppType: 'warning',
     defaultChannels: ['inapp'],
     availableChannels: ['inapp', 'email'],
     bypassQuietHours: true,
@@ -699,7 +718,7 @@ export const NOTIFICATION_EVENTS = defineNotificationEvents({
   },
   // ─── 企业网盘 ─────────────────────────────────────────────────────────────
   'drive.space.orphaned': {
-    group: 'drive', label: '网盘空间待接管', severity: 'important',
+    group: 'drive', label: '网盘空间待接管', severity: 'important', inAppType: 'warning',
     defaultChannels: ['inapp'], availableChannels: ['inapp', 'email'],
     vars: eventVars<{ spaceId: number; spaceName: string }>(),
     title: '空间「{{spaceName}}」需要接管',
@@ -745,6 +764,7 @@ export const NOTIFICATION_EVENTS = defineNotificationEvents({
     group: 'drive',
     label: '空间配额预警',
     severity: 'important',
+    inAppType: 'warning',
     defaultChannels: ['inapp'],
     availableChannels: ['inapp', 'email'],
     vars: eventVars<{ spaceId: number; spaceName: string; usedText: string; quotaText: string; percent: number }>(),
