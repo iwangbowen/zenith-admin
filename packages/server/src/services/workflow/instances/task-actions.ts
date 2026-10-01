@@ -24,6 +24,7 @@ import { enqueueSubprocessJoin } from './async-jobs';
 import { assertSelectedNextApprovers } from './initiator-select';
 import { mapInstance, mapTask } from './mapping';
 import { advanceAndMaterialize, checkNodeCompletion, filterCurrentActivation, killInstanceTokens } from './materialize';
+import { normalizeInstanceFormData } from './form-derived';
 import type { MaterializeTrigger } from './materialize';
 import { emitInstanceEvent, emitNodeEvent, emitTaskEvent, emitTasksEnteredEvents, lockInstanceExpecting, requireCallbackTaskContext } from './shared';
 import { hasUserHandledTask } from './transfers';
@@ -298,10 +299,15 @@ export async function approveTaskCore(
       options?.formUpdates,
     );
     const hasFormUpdates = Object.keys(sanitizedUpdates).length > 0;
-    const mergedFormData = hasFormUpdates
-      ? await bindWorkflowFormAttachments(tx, inst, inst.formSnapshot, { ...baseFormData, ...sanitizedUpdates }, actor.userId ?? undefined)
+    // 审批人改过字段后必须重算派生值（公式/合计），否则后续分支条件用的是脏值；
+    // 未改字段时也校正一次（历史物化/旧客户端可能存下了未归一的派生值），仅在确实变化时回写。
+    const mergedInput = hasFormUpdates ? { ...baseFormData, ...sanitizedUpdates } : baseFormData;
+    const normalizedFormData = normalizeInstanceFormData(inst.formSnapshot, mergedInput);
+    const formDataChanged = hasFormUpdates || normalizedFormData !== mergedInput;
+    const mergedFormData = formDataChanged
+      ? await bindWorkflowFormAttachments(tx, inst, inst.formSnapshot, normalizedFormData, actor.userId ?? undefined)
       : baseFormData;
-    if (hasFormUpdates) {
+    if (formDataChanged) {
       await tx.update(workflowInstances).set({ formData: mergedFormData }).where(eq(workflowInstances.id, inst.id));
     }
 
@@ -726,7 +732,8 @@ async function processDelegatedReceipt(
         .from(workflowInstances).where(eq(workflowInstances.id, inst.id)).for('update').limit(1);
       const base = (locked?.formData ?? inst.formData ?? {}) as Record<string, unknown>;
       assertWorkflowFormUpdatesCurrent((inst.formData ?? {}) as Record<string, unknown>, base, sanitizedUpdates);
-      await tx.update(workflowInstances).set({ formData: await bindWorkflowFormAttachments(tx, inst, inst.formSnapshot, { ...base, ...sanitizedUpdates }, actor.userId ?? undefined) }).where(eq(workflowInstances.id, inst.id));
+      const merged = normalizeInstanceFormData(inst.formSnapshot, { ...base, ...sanitizedUpdates });
+      await tx.update(workflowInstances).set({ formData: await bindWorkflowFormAttachments(tx, inst, inst.formSnapshot, merged, actor.userId ?? undefined) }).where(eq(workflowInstances.id, inst.id));
     }
     // 委派人已在本节点同轮持有其它活动任务（如同时被加签/会签同节点）时不再重建回执任务，
     // 其既有任务即可承接后续确认——重复建行会撞 wf_tasks_active_uniq 唯一索引

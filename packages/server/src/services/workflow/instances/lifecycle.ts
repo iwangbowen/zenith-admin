@@ -27,6 +27,7 @@ import { applyInitiatorSelectedApprovers, hasExecutableEntry, sanitizeFormByStar
 import type { SelectedApproverMap } from './initiator-select';
 import { assertLaunchMatchesFormType, buildInstanceFormSnapshot, mapInstance, mapTask } from './mapping';
 import { advanceAndMaterialize, killInstanceTokens } from './materialize';
+import { normalizeInstanceFormData } from './form-derived';
 import { buildSerialNoContext, emitInstanceEvent, emitTaskEvent, emitTasksEnteredEvents, toDefinitionSnapshot, lockInstanceExpecting, requireVisibleInstance } from './shared';
 import { bridgeReportFillWorkflowOutcome } from '../../report/report-fill-workflow-bridge.service';
 import { requireRow } from '../../../lib/db-assert';
@@ -92,6 +93,8 @@ export async function createInstance(data: { definitionId: number; title: string
   const existingBizInstance = await findInstanceByBusinessKey(normalizedBizType, normalizedBizId);
   if (existingBizInstance) return mapInstance(existingBizInstance);
   formData = await resolveWorkflowFormSignatures(formSnapshot, formData, {}, callerOverride ? { userId: user.userId, tenantId: user.tenantId ?? null } : undefined);
+  // 服务端权威派生值：公式/天数/明细聚合在入库前重算（客户端提交值不可信，条件分级依赖它）
+  formData = normalizeInstanceFormData(formSnapshot, formData);
 
   // 草稿：仅保存表单，不进入流转、不生成业务编号、不触发事件
   if (data.asDraft) {
@@ -363,7 +366,7 @@ export async function updateInstanceDraft(id: number, input: { title?: string; f
         else delete values[key];
       }
     }
-    patch.formData = await resolveWorkflowFormSignatures(inst.formSnapshot, values, previous);
+    patch.formData = await resolveWorkflowFormSignatures(inst.formSnapshot, normalizeInstanceFormData(inst.formSnapshot, values), previous);
   }
   if (input.priority !== undefined) patch.priority = input.priority;
   const row = await db.transaction(async (tx) => {
@@ -395,6 +398,8 @@ export async function submitDraftInstance(id: number, input: { selectedInitiator
   const resolvedFormSnapshot = await resolveFormSnapshot(def.formId);
   const formSnapshot = buildInstanceFormSnapshot(def, resolvedFormSnapshot);
   formData = await resolveWorkflowFormSignatures(formSnapshot, formData, recordFormData(inst.formData));
+  // 提交与重提同样在入库前重算派生值：草稿期内客户端可能未计算或未提交公式字段
+  formData = normalizeInstanceFormData(formSnapshot, formData);
   const starter = await buildStarterContext(user.userId);
   if (!hasExecutableEntry(flowData, formData, starter)) {
     throw new HTTPException(400, { message: '流程定义中无可执行节点' });
