@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Form, Select, Tag } from '@douyinfe/semi-ui';
+import { Form, Select, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { WorkflowDelegation } from '@zenith/shared/workflow';
 import { formatDateTime, formatDateTimeForApi } from '@/utils/date';
@@ -114,21 +114,28 @@ export default function WorkflowDelegationsPage() {
     {
       title: '委托人',
       dataIndex: 'principalName',
-      width: 130,
-      render: (_v: unknown, r: WorkflowDelegation) => r.principalName ?? `#${r.principalId}`,
+      width: 150,
+      render: (_v: unknown, r: WorkflowDelegation) => (
+        <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{r.principalName ?? `#${r.principalId}`}</Typography.Text>
+      ),
     },
     {
       title: '代理人',
       dataIndex: 'delegateName',
-      width: 130,
-      render: (_v: unknown, r: WorkflowDelegation) => r.delegateName ?? `#${r.delegateId}`,
+      width: 150,
+      render: (_v: unknown, r: WorkflowDelegation) => (
+        <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{r.delegateName ?? `#${r.delegateId}`}</Typography.Text>
+      ),
     },
     {
       title: '适用流程',
       dataIndex: 'definitionName',
       minWidth: 180,
-      render: (_v: unknown, r: WorkflowDelegation) =>
-        r.definitionId == null ? '全部流程' : (r.definitionName ?? `#${r.definitionId}`),
+      render: (_v: unknown, r: WorkflowDelegation) => (
+        <Typography.Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>
+          {r.definitionId == null ? '全部流程' : (r.definitionName ?? `#${r.definitionId}`)}
+        </Typography.Text>
+      ),
     },
     {
       title: '代理模式',
@@ -141,11 +148,11 @@ export default function WorkflowDelegationsPage() {
     {
       title: '生效时间',
       dataIndex: 'startAt',
-      width: 260,
+      width: 320,
       render: (_v: unknown, r: WorkflowDelegation) => {
         const start = r.startAt ? formatDateTime(r.startAt) : '立即';
         const end = r.endAt ? formatDateTime(r.endAt) : '长期';
-        return `${start} ~ ${end}`;
+        return <span style={{ whiteSpace: 'nowrap' }}>{start} ~ {end}</span>;
       },
     },
     dateTimeColumn('创建时间', 'createdAt'),

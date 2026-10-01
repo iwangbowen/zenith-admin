@@ -19,7 +19,7 @@ export function workflowInstanceTitleColumn<T extends Data>(): ColumnProps<T> {
 }
 
 export function workflowSerialNoColumn<T extends Data>(): ColumnProps<T> {
-  return { title: '业务编号', dataIndex: 'serialNo', width: 130, render: (value: string | null) => value ?? '—' };
+  return { title: '业务编号', dataIndex: 'serialNo', width: 150, render: renderEllipsis };
 }
 
 export function workflowDefinitionNameColumn<T extends Data>(): ColumnProps<T> {
