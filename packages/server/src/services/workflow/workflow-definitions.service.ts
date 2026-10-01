@@ -81,6 +81,7 @@ import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { normalizeFlowData } from '../../lib/workflow-engine';
+import { applyFlowAssigneeNames, collectFlowAssigneeIds, normalizeDefinitionFlowData } from '../../lib/workflow-flow-normalize';
 import { analyzeWorkflowHealth } from '../../lib/workflow-health';
 import { buildVersionDiff } from '../../lib/workflow-version-diff';
 import type { WorkflowFlowData } from '@zenith/shared/workflow';
@@ -118,6 +119,22 @@ function validateBusinessFormConfigForPublish(
 function normalizeScopeIds(ids: unknown): number[] {
   if (!Array.isArray(ids)) return [];
   return ids.map(Number).filter((v) => Number.isInteger(v) && v > 0);
+}
+
+/**
+ * 写入 flowData 前的唯一收口：形状归一（userIds → assigneeIds、条件值数组 → 逗号串）
+ * + 补写指定成员姓名（画布卡片与审批链路只读 assigneeNames，否则会显示「请选择成员」）。
+ */
+async function normalizeFlowDataForWrite(flowData: unknown): Promise<WorkflowFlowData | null> {
+  if (flowData == null) return null;
+  const ids = collectFlowAssigneeIds(flowData);
+  const nameById = new Map<number, string>();
+  if (ids.length > 0) {
+    const rows = await db.select({ id: users.id, nickname: users.nickname, username: users.username })
+      .from(users).where(inArray(users.id, ids));
+    for (const r of rows) nameById.set(r.id, r.nickname || r.username || `用户#${r.id}`);
+  }
+  return applyFlowAssigneeNames(normalizeDefinitionFlowData(flowData), nameById) as WorkflowFlowData;
 }
 
 function canUserInitiateByScope(
@@ -244,7 +261,7 @@ export async function createDefinition(data: {
     categoryId: data.categoryId ?? null,
     initiatorScopeType: scopeType,
     initiatorScopeIds: scopeIds,
-    flowData: data.flowData ?? null,
+    flowData: await normalizeFlowDataForWrite(data.flowData),
     formId: formType === 'designer' ? (data.formId ?? null) : null,
     formType,
     customForm: hasBusinessFormConfig(formType) ? (data.customForm ?? null) : null,
@@ -266,7 +283,7 @@ export async function updateDefinition(id: number, data: Partial<{
   const nextFormType = (data.formType ?? existing.formType ?? 'designer') as WorkflowFormType;
   if (nextFormType === 'designer' && data.formId != null) await ensureFormExists(data.formId);
   const updateData: Record<string, unknown> = { ...data };
-  if (data.flowData !== undefined) updateData.flowData = data.flowData;
+  if (data.flowData !== undefined) updateData.flowData = await normalizeFlowDataForWrite(data.flowData);
   if (data.formType !== undefined) updateData.formType = data.formType;
   // 切到业务表单时清空表单库引用；切到设计器表单时清空业务表单配置，避免脏数据
   if (hasBusinessFormConfig(nextFormType)) {
@@ -362,7 +379,7 @@ export async function publishDefinition(id: number) {
       name: locked.name,
       description: locked.description,
       // 发布即冻结当前 schema 的快照（运行时兼容迁移的写入边界）
-      flowData: locked.flowData ? normalizeFlowData(locked.flowData as WorkflowFlowData) : null,
+      flowData: await normalizeFlowDataForWrite(locked.flowData ? normalizeFlowData(locked.flowData as WorkflowFlowData) : null),
       formId: locked.formId,
       formType: locked.formType,
       customForm: locked.customForm,
@@ -429,7 +446,8 @@ export async function restoreVersion(definitionId: number, versionId: number) {
   const [updated] = await db.update(workflowDefinitions).set({
     name: ver.name,
     description: ver.description,
-    flowData: ver.flowData,
+    // 历史版本可能是归一前的形状，回写到定义时统一收口，避免旧写法再次流入运行时
+    flowData: await normalizeFlowDataForWrite(ver.flowData),
     formId: ver.formId,
     formType: ver.formType,
     customForm: ver.customForm,
@@ -468,7 +486,7 @@ export async function duplicateDefinition(id: number) {
       categoryId: src.categoryId ?? null,
       initiatorScopeType: src.initiatorScopeType ?? 'all',
       initiatorScopeIds: src.initiatorScopeIds ?? null,
-      flowData: src.flowData ?? null,
+      flowData: await normalizeFlowDataForWrite(src.flowData),
       formId: newFormId,
       formType: src.formType,
       customForm: src.customForm,
@@ -518,9 +536,9 @@ export async function importDefinition(data: {
   const user = currentUser();
   const tenantId = getCreateTenantId(user);
   const formType = data.formType ?? 'designer';
-  // 运行时兼容迁移：把导入件的 flowData 从其 schemaVersion 升级到当前引擎 schema
+  // 运行时兼容迁移：把导入件的 flowData 从其 schemaVersion 升级到当前引擎 schema，再做形状归一
   const importedFlow = data.flowData
-    ? normalizeFlowData(data.flowData as WorkflowFlowData, data.schemaVersion ?? WORKFLOW_SCHEMA_VERSION)
+    ? await normalizeFlowDataForWrite(normalizeFlowData(data.flowData as WorkflowFlowData, data.schemaVersion ?? WORKFLOW_SCHEMA_VERSION))
     : null;
   let categoryId: number | null = null;
   if (data.categoryName) {
