@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Modal, Select, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Modal, Select, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { WORKFLOW_HEALTH_ISSUE_TYPE_LABELS, WORKFLOW_HEALTH_ISSUE_TYPE_OPTIONS, workflowTaskContract, type WorkflowHealthIssue, type WorkflowHealthSummary } from '@zenith/shared/workflow';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -10,7 +10,7 @@ import { useWorkflowHealthSummary, workflowHealthKeys } from '@/hooks/queries/wo
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
-import { dateTimeColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
+import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { useApiMutation } from '@/lib/contract-query';
 import { FilterSelect } from '@/components/search-filters';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
@@ -65,22 +65,24 @@ export default function WorkflowHealthPage() {
     {
       title: '说明',
       dataIndex: 'title',
-      ellipsis: { showTitle: true },
-      render: (_: unknown, row) => (
-        <div>
-          <Typography.Text strong>{row.title}</Typography.Text>
-          <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>{row.description}</Typography.Text>
-        </div>
-      ),
+      width: 180,
+      render: renderEllipsis,
+    },
+    {
+      title: '详情',
+      dataIndex: 'description',
+      minWidth: 240,
+      render: renderEllipsis,
     },
     {
       title: '实例',
       dataIndex: 'instanceId',
-      width: 220,
+      width: 260,
       render: (_: unknown, row) => (
         <WorkflowInstanceCell
           instanceId={row.instanceId}
-          title={row.instanceTitle}
+          title={row.instanceId != null ? `#${row.instanceId} · ${row.instanceTitle ?? ''}`.trim() : (row.instanceTitle ?? null)}
+          showSub={false}
           onOpen={(id) => setDetailInstanceId(id)}
         />
       ),
