@@ -119,19 +119,19 @@ export function LoginLogsTable({
           <Descriptions
             data={[
               { key: 'ID', value: String(detailLog.id) },
-              { key: '用户', value: formatUserLabel(detailLog.username, detailLog.nickname) },
-              { key: '事件', value: <LoginEventTypeTag eventType={detailLog.eventType} size="small" /> },
               {
                 key: '状态',
                 value: <LoginStatusTag status={detailLog.status} size="small" />,
               },
+              { key: '用户', value: formatUserLabel(detailLog.username, detailLog.nickname), span: 2 },
+              { key: '事件', value: <LoginEventTypeTag eventType={detailLog.eventType} size="small" /> },
               { key: '事件信息', value: detailLog.message ?? '-' },
               { key: 'IP 地址', value: detailLog.ip ?? '-' },
               { key: '地点', value: detailLog.location ?? '-' },
               { key: '浏览器', value: detailLog.browser ?? '-' },
               { key: '操作系统', value: detailLog.os ?? '-' },
-              { key: 'User-Agent', value: detailLog.userAgent ?? '-', span: 2 },
               { key: '操作时间', value: formatDateTime(detailLog.createdAt), span: 2 },
+              { key: 'User-Agent', value: detailLog.userAgent ?? '-', span: 2 },
               ...(detailLog.screenWidth && detailLog.screenHeight ? [
                 { key: '屏幕分辨率', value: [detailLog.screenWidth, ' × ', detailLog.screenHeight, detailLog.devicePixelRatio && detailLog.devicePixelRatio !== '1' ? ` (${detailLog.devicePixelRatio}x)` : ''].join(''), span: 2 },
               ] : []),
