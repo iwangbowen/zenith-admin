@@ -582,7 +582,13 @@ export async function rejectTaskCore(
     const decision: WorkflowTaskDecision = { action: 'returnNode', targetNodeKey: targetCfg.key, targetNodeName: targetCfg.label };
     [rejectedTask] = await tx.update(workflowTasks).set({ decision }).where(eq(workflowTasks.id, taskId)).returning();
 
-    // 回退前清场：终止所有 active token，避免旧并行分支残留 token 影响重建路径的汇聚判定
+    // 回退重建路径前关闭旧并行待办、轮次和作业，避免已失去 token 的旧任务继续可办理。
+    const crossNodeSkipped = await tx.update(workflowTasks)
+      .set({ status: 'skipped', actionAt: new Date(), comment: '[退回节点] 路径已重建，本待办作废' })
+      .where(and(eq(workflowTasks.instanceId, inst.id), inArray(workflowTasks.status, ['pending', 'waiting'])))
+      .returning();
+    skipped.push(...crossNodeSkipped);
+    await cancelJobs({ instanceId: inst.id, jobTypes: WORKFLOW_ADVANCING_JOB_TYPES }, tx);
     await killInstanceTokens(tx, inst.id);
     const materialized = await advanceAndMaterialize(returnTrigger, {
       instanceId: inst.id,
@@ -692,7 +698,7 @@ async function processDelegatedReceipt(
   const tail = comment ? `：${comment}` : '';
   const receiptComment = `[委派回执] ${actor.name ?? '系统'} 建议${verb}${tail}`;
 
-  const result = await workflowTransaction(async (tx) => {
+  await workflowTransaction(async (tx) => {
     await lockInstanceExpecting(tx, inst.id, 'running', '流程状态已变化，无法反馈委派意见');
     const [closedTask] = await tx.update(workflowTasks).set({
       status: action,

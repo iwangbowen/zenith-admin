@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   transaction: vi.fn(), dbSelect: vi.fn(), killTokens: vi.fn(), cancelJobs: vi.fn(),
   advance: vi.fn(), checkCompletion: vi.fn(), bridge: vi.fn(),
   emitTask: vi.fn(), emitNode: vi.fn(), emitInstance: vi.fn(), emitEntered: vi.fn(), lock: vi.fn(),
-  join: vi.fn(),
+  join: vi.fn(), slotOutcome: vi.fn(), reconcile: vi.fn(), cancelActivations: vi.fn(),
 }));
 vi.mock('../../../db', () => ({ db: { select: mocks.dbSelect } }));
 vi.mock('../../../lib/workflow-jobs/lease', () => ({ workflowTransaction: mocks.transaction }));
@@ -33,7 +33,6 @@ vi.mock('./mapping', () => ({ mapInstance: (row: unknown) => row, mapTask: (row:
 vi.mock('./materialize', () => ({
   advanceAndMaterialize: mocks.advance,
   checkNodeCompletion: mocks.checkCompletion,
-  filterCurrentActivation: <T>(rows: T[]) => rows,
   killInstanceTokens: mocks.killTokens,
 }));
 vi.mock('./shared', () => ({
@@ -43,6 +42,8 @@ vi.mock('./shared', () => ({
 vi.mock('./transfers', () => ({ hasUserHandledTask: vi.fn() }));
 vi.mock('../../report/report-fill-workflow-bridge.service', () => ({ bridgeReportFillWorkflowOutcome: mocks.bridge }));
 vi.mock('../../report/report-fill-task.service', () => ({ submitReportFillSyncForWorkflowInstance: vi.fn() }));
+
+vi.mock('./approval-state', () => ({ recordSlotOutcome: mocks.slotOutcome, reconcileApprovalActivation: mocks.reconcile, cancelApprovalActivations: mocks.cancelActivations }));
 
 import { approveTaskCore, rejectTaskCore } from './task-actions';
 
@@ -55,8 +56,8 @@ const dialect = new PgDialect({ casing: 'snake_case' });
 function task(overrides: Partial<TaskRow> = {}): TaskRow {
   return {
     id: 1, instanceId: 10, nodeKey: 'finance', nodeName: '财务审批', nodeType: 'approve',
-    assigneeId: 7, status: 'pending', approveMethod: 'and', approveRatio: null,
-    activationId: 'round-1', signType: null, decision: null, comment: null,
+    assigneeId: 7, status: 'pending', slotId: 101, taskKind: 'approval', waitReason: null, activatedAt: new Date(),
+    activationId: 'round-1', decision: null, comment: null,
     attachments: [], actionAt: null, ...overrides,
   } as TaskRow;
 }
@@ -136,6 +137,7 @@ beforeEach(() => {
   mocks.bridge.mockResolvedValue({ changed: false, approved: false });
   mocks.cancelJobs.mockResolvedValue(0);
   mocks.checkCompletion.mockResolvedValue({ completed: true });
+  mocks.reconcile.mockResolvedValue({ completed: false, failed: true, method: 'and' });
   mocks.advance.mockResolvedValue({ createdTasks: [], rejected: false, finished: false, currentNodeKeys: ['target'] });
 });
 
@@ -175,11 +177,12 @@ describe('rejectTaskCore terminal cleanup', () => {
   it('keeps a ratio node and its parallel branch active while its approval threshold is still reachable', async () => {
     const inst = instance('returnStart');
     const tasks = [
-      task({ approveMethod: 'ratio', approveRatio: 51 }),
-      task({ id: 2, assigneeId: 8, approveMethod: 'ratio', approveRatio: 51 }),
-      task({ id: 3, assigneeId: 9, approveMethod: 'ratio', approveRatio: 51 }),
+      task(),
+      task({ id: 2, assigneeId: 8 }),
+      task({ id: 3, assigneeId: 9 }),
       task({ id: 4, nodeKey: 'budget', status: 'waiting' }),
     ];
+    mocks.reconcile.mockResolvedValue({ completed: false, failed: false, method: 'ratio' });
     executor(inst, tasks);
     await rejectTaskCore(structuredClone(tasks[0]), structuredClone(inst), '拒绝意见', actor);
     expect(inst.status).toBe('running');
@@ -195,9 +198,9 @@ describe('rejectTaskCore terminal cleanup', () => {
   it('terminates and clears all branches when ratio approval can no longer reach the threshold', async () => {
     const inst = instance();
     const tasks = [
-      task({ approveMethod: 'ratio', approveRatio: 75 }),
-      task({ id: 2, status: 'rejected', approveMethod: 'ratio', approveRatio: 75 }),
-      task({ id: 3, approveMethod: 'ratio', approveRatio: 75 }),
+      task(),
+      task({ id: 2, status: 'rejected' }),
+      task({ id: 3 }),
       task({ id: 4, nodeKey: 'budget', status: 'waiting' }),
     ];
     const tx = executor(inst, tasks);
@@ -220,9 +223,12 @@ describe('rejectTaskCore terminal cleanup', () => {
 
   it('records the actual target for a valid node return', async () => {
     const inst = instance('returnToNode', { key: 'manager', type: 'approve' });
-    const tasks = [task()];
-    executor(inst, tasks);
+    const tasks = [task(), task({ id: 2, nodeKey: 'budget', slotId: 102 }), task({ id: 3, nodeKey: 'external', status: 'waiting', slotId: 103 })];
+    const tx = executor(inst, tasks);
     await rejectTaskCore(structuredClone(tasks[0]), structuredClone(inst), '重新审核', actor);
+    expect(tasks.map((row) => row.status)).toEqual(['rejected', 'skipped', 'skipped']);
+    expect(skippedIds()).toEqual([2, 3]);
+    expect(mocks.cancelJobs).toHaveBeenCalledWith({ instanceId: inst.id, jobTypes: WORKFLOW_ADVANCING_JOB_TYPES }, tx);
     expect(inst.status).toBe('running');
     expect(tasks[0].decision).toEqual({ action: 'returnNode', targetNodeKey: 'manager', targetNodeName: '退回目标' });
     expect(mocks.advance).toHaveBeenCalledWith({ kind: 'enterNode', nodeKey: 'manager' }, expect.anything());
