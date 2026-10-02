@@ -29,17 +29,20 @@ import { FormLocation } from './LocationInput';
 import { FormOptionInput } from './OptionInput';
 import { READONLY_TEXT_TYPES } from './read-only-text';
 import { ReadOnlyFieldValue } from './ReadOnlyFieldValue';
+import { ReadOnlyDetailTable } from './ReadOnlyDetailTable';
 import { GroupLayout, RowLayout, StepsLayout, TabsLayout, type RenderField } from './layout-fields';
 
 export function FieldRenderer({ field, readOnly }: Readonly<{ field: WorkflowFormField; readOnly?: boolean }>) {
   const values = useContext(ValuesContext);
   const signatureMode = useContext(SignatureModeContext);
   const readOnlyAsText = useContext(ReadOnlyTextContext);
-  // 整表单只读的查看态：简单值字段直接文本化；字段级 readOnly（编辑态中的禁用字段）仍走控件禁用形态
-  if (readOnly && readOnlyAsText && READONLY_TEXT_TYPES.has(field.type)) {
-    return <ReadOnlyFieldValue field={field} />;
-  }
   const { dynamicRequired, dynamicReadOnly, rules, numberRules } = buildFieldRules(field, values);
+  const valueOnly = !!(readOnly || field.readOnly || dynamicReadOnly || field.type === 'formula' || field.daysFromKey);
+  // 审批查看模式中只有真正可编辑字段保留输入控件；设计器结构预览仍展示控件形态。
+  if (valueOnly && readOnlyAsText) {
+    if (field.type === 'detail') return <ReadOnlyDetailTable field={field} />;
+    if (READONLY_TEXT_TYPES.has(field.type)) return <ReadOnlyFieldValue field={field} />;
+  }
   const helpText = field.helpText;
   // 字段级标签覆盖（labelPosition/labelAlign/labelWidth），随 extraProps 透传至每个 Form 字段
   const labelOverride: Record<string, unknown> = {};
