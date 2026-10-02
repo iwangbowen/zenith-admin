@@ -7,6 +7,7 @@ import type { DbExecutor } from '../../../db/types';
 import { requireRow } from '../../../lib/db-assert';
 import { pickEntity } from '../../../lib/entity-map';
 import { resolveUserNames } from '../../../lib/user-nicknames';
+import { tenantScope } from '../../../lib/tenant';
 import { cancelJobs } from '../../../lib/workflow-jobs/engine';
 import { armTaskAsyncJobs } from './async-jobs';
 import { emitTaskEvent } from './shared';
@@ -16,7 +17,7 @@ export async function loadApprovalActivations(executor: DbExecutor, instanceId: 
   const activations = await executor.select().from(workflowNodeActivations).where(eq(workflowNodeActivations.instanceId, instanceId)).orderBy(workflowNodeActivations.createdAt);
   if (activations.length === 0) return [];
   const [policyInstance] = viewerId != null || administrator
-    ? await executor.select({ status: workflowInstances.status, snapshot: workflowInstances.definitionSnapshot }).from(workflowInstances).where(eq(workflowInstances.id, instanceId)).limit(1)
+    ? await executor.select({ status: workflowInstances.status, snapshot: workflowInstances.definitionSnapshot }).from(workflowInstances).where(and(eq(workflowInstances.id, instanceId), tenantScope(workflowInstances))).limit(1)
     : [];
   const activationIds = activations.map((row) => row.id);
   const slots = await executor.select().from(workflowApprovalSlots).where(inArray(workflowApprovalSlots.activationId, activationIds));

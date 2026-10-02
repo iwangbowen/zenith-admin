@@ -1,6 +1,5 @@
 // ─── 任务行物化与令牌推进（拆分自 workflow-instances.service.ts）───
-import { eq, and, or, inArray } from 'drizzle-orm';
-import { buildWhere } from '../../../lib/where-helpers';
+import { eq, and, inArray } from 'drizzle-orm';
 import { workflowInstances, workflowTasks, workflowTokens } from '../../../db/schema';
 import { resolveRuntimeApproveMethod, type TaskAction } from '../../../lib/workflow-engine';
 import { advanceTokens, type AdvanceTrigger, type BranchPath } from '../../../lib/workflow-token-engine';
@@ -566,11 +565,9 @@ export async function advanceAndMaterialize(
   return { createdTasks, finished, rejected: false, currentNodeKeys };
 }
 
-/** 完成判定仅使用对应 token 的显式节点进入身份。 */
-export async function checkNodeCompletion(tx: DbExecutor, instanceId: number, nodeKey: string, flowData?: WorkflowFlowData, activationId?: string): Promise<{ completed: boolean; failed: boolean; method: WorkflowResolvedApproveMethod | null }> {
- const [inst] = await tx.select().from(workflowInstances).where(eq(workflowInstances.id, instanceId)).limit(1);
- if (!inst) throw new HTTPException(409, { message: '流程实例不存在' });
- const id = activationId ?? (await tx.select({ id: workflowNodeActivations.id }).from(workflowNodeActivations).innerJoin(workflowTokens, eq(workflowNodeActivations.tokenId, workflowTokens.id)).where(and(eq(workflowNodeActivations.instanceId, instanceId), eq(workflowNodeActivations.nodeKey, nodeKey), eq(workflowTokens.status, 'active'))).limit(1))[0]?.id;
+/** 调用方传入已授权并锁定的实例；完成判定只使用对应 token 的显式进入身份。 */
+export async function checkNodeCompletion(tx: DbExecutor, inst: typeof workflowInstances.$inferSelect, nodeKey: string, flowData?: WorkflowFlowData, activationId?: string): Promise<{ completed: boolean; failed: boolean; method: WorkflowResolvedApproveMethod | null }> {
+ const id = activationId ?? (await tx.select({ id: workflowNodeActivations.id }).from(workflowNodeActivations).innerJoin(workflowTokens, eq(workflowNodeActivations.tokenId, workflowTokens.id)).where(and(eq(workflowNodeActivations.instanceId, inst.id), eq(workflowNodeActivations.nodeKey, nodeKey), eq(workflowTokens.status, 'active'))).limit(1))[0]?.id;
  if (!id) throw new HTTPException(409, { message: '节点缺少显式激活轮次' });
  return reconcileApprovalActivation(tx, inst, id, { userId: 0, name: 'system:approval' }, flowData);
 }

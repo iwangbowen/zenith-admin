@@ -1,8 +1,7 @@
-import { createStandaloneActivation, cancelApprovalActivations } from './approval-state';
+import { createStandaloneActivation } from './approval-state';
 import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
 import { enqueueSubprocessJoin } from './async-jobs';
 // ─── 节点失败策略、Saga 回滚与补偿恢复（拆分自 workflow-instances.service.ts）───
-import { randomUUID } from 'node:crypto';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
 import { workflowJobs, workflowInstances, workflowTasks, workflowTokens, workflowCompensations } from '../../../db/schema';

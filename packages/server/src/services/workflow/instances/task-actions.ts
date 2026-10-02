@@ -311,7 +311,7 @@ export async function approveTaskCore(
 
     // 检查当前节点是否已足够推进（会签/或签/顺序会签）
     await recordSlotOutcome(tx, approvedTask, 'approved');
-    const { completed } = await checkNodeCompletion(tx, inst.id, task.nodeKey, flowData, activationId);
+    const { completed } = await checkNodeCompletion(tx, inst, task.nodeKey, flowData, activationId);
     if (!completed) {
       const [row] = await tx.update(workflowInstances)
         .set({ currentNodeKey: task.nodeKey })

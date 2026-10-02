@@ -28,6 +28,7 @@ import { bridgeReportFillWorkflowOutcome } from '../../report/report-fill-workfl
 import { submitReportFillSyncForWorkflowInstance } from '../../report/report-fill-task.service';
 import { requireRow } from '../../../lib/db-assert';
 import { requireTenantUser } from '../../../lib/user-nicknames';
+import { tenantCondition } from '../../../lib/tenant';
 
 /** 转办：将当前任务的处理人改为目标用户 */
 export async function transferTask(taskId: number, targetUserId: number, comment?: string, attachments?: WorkflowTaskAttachment[]) {
@@ -219,7 +220,7 @@ export async function addSignTask(taskId: number, targetUserIds: number[], posit
 /** 组级减签不依赖锚定人的任务仍为 pending；等待前签或原人已办后签都可操作。 */
 export async function reduceSignTask(groupId: number, targetSlotIds: number[], comment?: string) {
   const user = currentUser();
-  const [groupRow] = await db.select({ group: workflowSignGroups, instanceId: workflowNodeActivations.instanceId }).from(workflowSignGroups).innerJoin(workflowNodeActivations, eq(workflowSignGroups.activationId, workflowNodeActivations.id)).where(eq(workflowSignGroups.id, groupId)).limit(1);
+  const [groupRow] = await db.select({ group: workflowSignGroups, instanceId: workflowNodeActivations.instanceId }).from(workflowSignGroups).innerJoin(workflowNodeActivations, eq(workflowSignGroups.activationId, workflowNodeActivations.id)).where(and(eq(workflowSignGroups.id, groupId), tenantCondition(workflowSignGroups, user))).limit(1);
   requireRow(groupRow, '加签组不存在');
   const inst = await requireVisibleInstance(groupRow.instanceId);
   const actor = { userId: user.userId, name: user.username };
@@ -263,7 +264,7 @@ export async function reduceSignTask(groupId: number, targetSlotIds: number[], c
       throw new HTTPException(409, { message: '部分任务状态已变化，无法减签' });
     }
     // 复核节点完成状态（例如 ratio 比例会签减签后阈值已达成，需跳过余下任务并推进流程）
-    const { completed } = await checkNodeCompletion(tx, inst.id, task.nodeKey, flowData, group.activationId);
+    const { completed } = await checkNodeCompletion(tx, inst, task.nodeKey, flowData, group.activationId);
     if (!completed || !flowData) {
       return { removed: updated, advanced: false, finished: false, rejected: false, row: inst, newTasks: [] as typeof workflowTasks.$inferSelect[], fillBridge: null };
     }

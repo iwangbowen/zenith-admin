@@ -164,7 +164,7 @@ export async function recallTask(taskId: number, comment?: string) {
   }
   if (activation.signGroups.some((group) => group.slots.some((slot) => slot.currentTaskId !== task.id && (slot.status === 'approved' || slot.status === 'rejected')))) throw new HTTPException(400, { message: '补充审批已有正式意见，不能撤回其前置审批' });
   await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: '[撤回重审] 原审批链作废' }).where(and(eq(workflowTasks.instanceId, inst.id), inArray(workflowTasks.status, ['pending', 'waiting'])));
-  await tx.update(workflowTasks).set({ comment: `[已撤回] ${freshTask.comment ?? ''}` }).where(eq(workflowTasks.id, task.id));
+  await tx.update(workflowTasks).set({ comment: `[已撤回${comment ? `：${comment}` : ''}] ${freshTask.comment ?? ''}` }).where(eq(workflowTasks.id, task.id));
   await killInstanceTokens(tx, inst.id);
   const starter = await buildStarterContext(inst.initiatorId, tx);
   const materialized = await advanceAndMaterialize({ kind: 'enterNode', nodeKey: task.nodeKey }, { instanceId: inst.id, initiatorId: inst.initiatorId, executor: tx, flowData, formData: (inst.formData ?? {}) as Record<string, unknown>, starter, tenantId: inst.tenantId });

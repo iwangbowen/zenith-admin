@@ -1,6 +1,5 @@
 // ─── 催办与抄送（转发/已读）（拆分自 workflow-instances.service.ts）───
 import { uniquePositiveInts } from '@zenith/shared/core';
-import { randomUUID } from 'node:crypto';
 import { formatDateTime } from '../../../lib/datetime';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { db } from '../../../db';

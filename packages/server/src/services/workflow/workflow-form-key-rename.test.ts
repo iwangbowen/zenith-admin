@@ -60,6 +60,7 @@ function makeFlowData(): WorkflowFlowData {
     ],
     edges: [
       {
+        id: 'e1',
         source: 'n1',
         target: 'n2',
         condition: { field: 'amount', operator: 'gt', value: 100 },
@@ -74,33 +75,6 @@ function makeFlowData(): WorkflowFlowData {
         ],
       },
     ],
-    process: {
-      initiator: {
-        id: 'root',
-        type: 'initiator',
-        name: '发起人',
-        props: { fieldPermissions: { amount: 'edit' } },
-        children: {
-          id: 'branch',
-          type: 'conditionBranch',
-          name: '条件分支',
-          props: {},
-          branches: [
-            {
-              id: 'b1',
-              name: '分支1',
-              conditions: [{ type: 'and', rules: [{ field: 'amount', operator: 'gt', value: 100 }] }],
-              children: {
-                id: 'approver',
-                type: 'approver',
-                name: '审批人',
-                props: { formUserField: 'amount', fieldPermissions: { amount: 'read', days: 'edit' } },
-              },
-            },
-          ],
-        },
-      },
-    },
     settings: {
       allowWithdraw: true,
       allowResubmit: true,
@@ -108,7 +82,7 @@ function makeFlowData(): WorkflowFlowData {
       summaryFields: ['amount', 'days', 'other'],
       serialNo: { enabled: true, mode: 'template', template: 'BX-{FORM.amount}-{SEQ:4}' },
     },
-  } as unknown as WorkflowFlowData;
+  };
 }
 
 describe('renameWorkflowFormFieldKeys', () => {
@@ -152,22 +126,14 @@ describe('renameWorkflowFormFieldKeys', () => {
     expect(rules[1].field).toBe('user');
   });
 
-  it('递归重写流程树 props 与分支条件', () => {
-    const out = renameWorkflowFormFieldKeys(makeFlowData(), { amount: 'totalAmount' });
-    const initiator = out.process?.initiator as {
-      props: { fieldPermissions: Record<string, string> };
-      children: {
-        branches: Array<{
-          conditions: Array<{ rules: Array<{ field: string }> }>;
-          children: { props: { formUserField: string; fieldPermissions: Record<string, string> } };
-        }>;
-      };
-    };
-    expect(initiator.props.fieldPermissions).toEqual({ totalAmount: 'edit' });
-    const branch = initiator.children.branches[0];
-    expect(branch.conditions[0].rules[0].field).toBe('totalAmount');
-    expect(branch.children.props.formUserField).toBe('totalAmount');
-    expect(branch.children.props.fieldPermissions).toEqual({ totalAmount: 'read', days: 'edit' });
+  it('字段改名保留图节点与连线身份，不生成第二份流程结构', () => {
+    const original = makeFlowData();
+    const out = renameWorkflowFormFieldKeys(original, { amount: 'totalAmount' });
+    expect(out.nodes.map(node => ({ id: node.id, key: node.data.key, position: node.position })))
+      .toEqual(original.nodes.map(node => ({ id: node.id, key: node.data.key, position: node.position })));
+    expect(out.edges.map(edge => ({ id: edge.id, source: edge.source, target: edge.target })))
+      .toEqual(original.edges.map(edge => ({ id: edge.id, source: edge.source, target: edge.target })));
+    expect(out).not.toHaveProperty('process');
   });
 
   it('重写摘要字段与业务编号模板 {FORM.key} 占位', () => {
