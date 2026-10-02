@@ -28,7 +28,7 @@ export function mapDefinition(
     categoryName: row.category?.name ?? null,
     categoryColor: row.category?.color ?? null,
     categoryIcon: row.category?.icon ?? null,
-    flowData: (row.flowData ?? null) as WorkflowFlowData | null,
+    flowData: sanitizeFlowDataForRead(row.flowData),
     formId: row.formId ?? null,
     formName: row.form?.name ?? null,
     formFields: formSchema?.fields ?? null,
@@ -59,7 +59,7 @@ export function mapDefinitionVersion(
     version: row.version,
     name: row.name,
     description: row.description,
-    flowData: (row.flowData ?? null) as WorkflowFlowData | null,
+    flowData: sanitizeFlowDataForRead(row.flowData),
     formId: row.formId ?? null,
     formName: form?.name ?? null,
     formFields: formSchema?.fields ?? null,
@@ -80,7 +80,7 @@ import { pageOffset } from '../../lib/pagination';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
-import { applyFlowAssigneeNames, collectFlowAssigneeIds, normalizeDefinitionFlowData } from '../../lib/workflow-flow-normalize';
+import { applyFlowAssigneeNames, collectFlowAssigneeIds, normalizeDefinitionFlowData, sanitizeFlowDataForRead } from '../../lib/workflow-flow-normalize';
 import { analyzeWorkflowHealth } from '../../lib/workflow-health';
 import { buildVersionDiff } from '../../lib/workflow-version-diff';
 import type { WorkflowFlowData } from '@zenith/shared/workflow';
@@ -511,7 +511,7 @@ export async function exportDefinition(id: number) {
     name: row.name,
     description: row.description ?? null,
     categoryName: row.category?.name ?? null,
-    flowData: (row.flowData ?? null) as WorkflowFlowData | null,
+    flowData: sanitizeFlowDataForRead(row.flowData),
     formType: (row.formType ?? 'designer') as WorkflowFormType,
     customForm: (row.customForm ?? null) as WorkflowCustomFormConfig | null,
     form: row.form

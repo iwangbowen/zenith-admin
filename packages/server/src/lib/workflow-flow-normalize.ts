@@ -4,6 +4,14 @@ import type { WorkflowFlowData } from '@zenith/shared/workflow';
 export function normalizeDefinitionFlowData(flowData: unknown): WorkflowFlowData | null {
  return flowData == null ? null : workflowFlowDataSchema.parse(flowData);
 }
+
+/** 读路径统一剔除遗留顶层字段（如旧 process 树结构）：不校验不抛错，保证旧行可读，
+ * 且读出结果可直接回写 PUT（避免 GET 返回 process 而 PUT 严格拒绝的读写不对称）。 */
+export function sanitizeFlowDataForRead(flowData: unknown): WorkflowFlowData | null {
+ if (flowData == null || typeof flowData !== 'object') return null;
+ const { process: _legacy, ...rest } = flowData as Record<string, unknown>;
+ return rest as unknown as WorkflowFlowData;
+}
 export function collectFlowAssigneeIds(flowData: unknown): number[] {
  const graph = normalizeDefinitionFlowData(flowData);
  const ids = new Set<number>();
