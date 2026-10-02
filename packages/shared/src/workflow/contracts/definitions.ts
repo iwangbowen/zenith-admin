@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { auditFieldsSchema, batchIdsBody, idParam, keywordQuery, paginated, paginationQuery, queryEnum, idQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
-import { WORKFLOW_DEFINITION_STATUSES, WORKFLOW_FORM_TYPES, WORKFLOW_FORM_TYPE_OPTIONS, WORKFLOW_SIMULATION_HEALTH_LEVELS, WORKFLOW_SIMULATION_NODE_STATE_STATUSES, WORKFLOW_SIMULATION_RESULT_STATUSES, WORKFLOW_SIMULATION_TIMELINE_STATUSES, WORKFLOW_DEFINITION_STATUS_OPTIONS } from '../constants';
+import { WORKFLOW_DEFINITION_STATUSES, WORKFLOW_FORM_TYPES, WORKFLOW_FORM_TYPE_OPTIONS, WORKFLOW_SIMULATION_HEALTH_LEVELS, WORKFLOW_SIMULATION_NODE_STATE_STATUSES, WORKFLOW_SIMULATION_RESULT_STATUSES, WORKFLOW_SIMULATION_TIMELINE_STATUSES, WORKFLOW_DEFINITION_STATUS_OPTIONS, WORKFLOW_PATH_STATUSES } from '../constants';
 import {
   createWorkflowDefinitionSchema,
   importWorkflowDefinitionSchema,
@@ -163,6 +163,9 @@ export const workflowApproverPreviewNodeSchema = z.object({
   nodeName: z.string(),
   nodeType: z.string(),
   approvers: z.array(approverRefSchema).meta({ description: '解析出的处理人（已转换为真实姓名）' }),
+  status: z.enum(WORKFLOW_PATH_STATUSES).optional().meta({ description: '预计经过、不经过或待条件确认' }),
+  reason: z.string().optional().meta({ description: '路径预测依据或尚不能确定的原因' }),
+  approverReason: z.string().nullable().optional().meta({ description: '处理人预测依据或运行时才能确定的原因' }),
   selectableApprovers: z.array(approverRefSchema).optional().meta({ description: '发起人 / 审批人自选节点的可选候选人' }),
   selectionRequired: z.boolean().optional(),
   approveMethod: z.string().nullable().optional().meta({ description: '多人审批方式（and/or/sequential/ratio）' }),

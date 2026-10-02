@@ -1,20 +1,20 @@
-/**
- * 提交前审批链路预览（T1-1）
- *
- * 对已发布流程做"干跑"遍历：从 start 沿正常边走，按节点 assigneeType 解析出真实审批人姓名，
- * 供发起页在提交前展示「审批人：张三 → 李四 → …」。条件/并行分支会标注分支名并展开所有分支。
- */
+/** 提交前只读预览：与发起校验共用路径规划，不执行节点副作用或随机选人。 */
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { planWorkflowPath } from '@zenith/shared/workflow';
+import type { WorkflowFlowData, WorkflowApproverPreviewNode, WorkflowFormField, WorkflowPredictedPathNode } from '@zenith/shared/workflow';
 import { db } from '../../db';
 import { workflowDefinitions } from '../../db/schema';
 import { tenantCondition } from '../../lib/tenant';
 import { currentUser } from '../../lib/context';
-import { listSelectableApprovers, resolveAssigneeIds } from './workflow-assignee-resolver.service';
-import type { WorkflowFlowData, WorkflowApproverPreviewNode } from '@zenith/shared/workflow';
+import { buildStarterContext, listSelectableApprovers, resolveAssigneeIds } from './workflow-assignee-resolver.service';
 import { requireRow } from '../../lib/db-assert';
 import { buildWhere } from '../../lib/where-helpers';
 import { resolveUserNames } from '../../lib/user-nicknames';
+import { resolveFormSnapshot } from './workflow-forms.service';
+import { assertWorkflowInitiatorScope } from './workflow-launch-access';
+import { enrichPredictedApprovers } from './workflow-path-prediction';
+import { sanitizeFormByStartPerms } from './instances/initiator-select';
 
 const APPROVER_TYPES = new Set(['approve', 'handler']);
 const INITIATOR_SELECT_TYPES = new Set(['initiatorSelect', 'initiatorSelectScope']);
@@ -25,103 +25,76 @@ export async function previewFlow(
 ): Promise<WorkflowApproverPreviewNode[]> {
   const user = currentUser();
   const [def] = await db.select().from(workflowDefinitions)
-    .where(buildWhere(eq(workflowDefinitions.id, definitionId), tenantCondition(workflowDefinitions, user))).limit(1);
-  requireRow(def, '流程定义不存在');
+    .where(buildWhere(eq(workflowDefinitions.id, definitionId), eq(workflowDefinitions.status, 'published'), tenantCondition(workflowDefinitions, user))).limit(1);
+  requireRow(def, '流程定义不存在或未发布');
+  await assertWorkflowInitiatorScope(def, user);
   const flowData = def.flowData as WorkflowFlowData | null;
   if (!flowData?.nodes?.length) throw new HTTPException(400, { message: '流程未配置，无法预览' });
-
-  return previewFlowData(flowData, formData);
+  const snapshot = def.formType === 'designer' ? await resolveFormSnapshot(def.formId) : null;
+  return previewFlowData(flowData, formData, snapshot?.fields);
 }
 
-/** 业务预览与普通流程共享审批人解析；业务调用方先授权已发布定义。 */
+/** 业务调用方先授权已发布定义；业务变量无表单快照时不推算派生字段。 */
 export async function previewFlowData(
   flowData: WorkflowFlowData,
   formData?: Record<string, unknown> | null,
+  formFields?: WorkflowFormField[],
 ): Promise<WorkflowApproverPreviewNode[]> {
   const user = currentUser();
-  const nodeById = new Map(flowData.nodes.map((n) => [n.id, n]));
-  const outEdges = new Map<string, WorkflowFlowData['edges']>();
-  const inDegree = new Map<string, number>();
-  for (const e of flowData.edges) {
-    if (e.isException) continue;
-    if (nodeById.get(e.target)?.data.type === 'catchNode') continue;
-    (outEdges.get(e.source) ?? outEdges.set(e.source, []).get(e.source)!).push(e);
-    inDegree.set(e.target, (inDegree.get(e.target) ?? 0) + 1);
+  if (!flowData.nodes.some(node => node.data.type === 'start')) {
+    throw new HTTPException(400, { message: '流程缺少开始节点' });
   }
-  const maybeStartNode = flowData.nodes.find((n) => n.data.type === 'start');
-  const startNode = requireRow(maybeStartNode, '流程缺少开始节点', 400);
-
-  const fd = (formData ?? {}) as Record<string, unknown>;
-  const pendingIds = new Set<number>();
-  const entries: Array<{
-    nodeKey: string;
-    nodeName: string;
-    nodeType: string;
-    ids: number[];
-    approveMethod: string | null;
-    branchLabel: string | null;
-    selectableApprovers?: WorkflowApproverPreviewNode['selectableApprovers'];
-    selectionRequired?: boolean;
-  }> = [];
-  const visited = new Set<string>();
-
-  // 发起人节点：始终作为链路第一个节点，展示当前发起人
-  entries.push({ nodeKey: '__initiator__', nodeName: '发起人', nodeType: 'start', ids: [user.userId], approveMethod: null, branchLabel: null });
-  pendingIds.add(user.userId);
-
-  const walk = async (nodeId: string, branchLabel: string | null): Promise<void> => {
-    if (visited.has(nodeId)) return;
-    visited.add(nodeId);
-    const node = nodeById.get(nodeId);
-    if (!node) return;
-    const type = node.data.type;
-    if (APPROVER_TYPES.has(type) || type === 'ccNode' || type === 'subProcess') {
-      let ids: number[] = [];
-      if (type !== 'subProcess') {
-        try {
-          ids = await resolveAssigneeIds(node.data, { initiatorId: user.userId, formData: fd });
-        } catch {
-          ids = [];
-        }
-      }
-      const isInitiatorSelect = INITIATOR_SELECT_TYPES.has(node.data.assigneeType ?? '');
-      const selectableApprovers = isInitiatorSelect
-        ? await listSelectableApprovers(node.data)
-        : undefined;
-      ids.forEach((id) => pendingIds.add(id));
-      selectableApprovers?.forEach((item) => pendingIds.add(item.id));
-      entries.push({
-        nodeKey: node.data.key,
-        nodeName: node.data.label,
-        nodeType: type,
-        ids,
-        approveMethod: node.data.approveMethod ?? null,
-        branchLabel,
-        selectableApprovers,
-        selectionRequired: isInitiatorSelect,
-      });
-    }
-    const outs = outEdges.get(nodeId) ?? [];
-    const isBranch = outs.length > 1;
-    for (const e of outs) {
-      const targetMerge = (inDegree.get(e.target) ?? 0) > 1;
-      const nextLabel = targetMerge ? null : (isBranch ? (e.label || '分支') : branchLabel);
-      await walk(e.target, nextLabel);
-    }
-  };
-  await walk(startNode.id, null);
-
-  const nameMap = await resolveUserNames(pendingIds);
-
-  return entries.map((e) => ({
-    nodeKey: e.nodeKey,
-    nodeName: e.nodeName,
-    nodeType: e.nodeType,
-    approvers: e.ids.map((id) => ({ id, name: nameMap.get(id) ?? `用户#${id}` })),
-    selectableApprovers: e.selectableApprovers,
-    selectionRequired: e.selectionRequired,
-    approveMethod: e.approveMethod,
-    branchLabel: e.branchLabel,
-    empty: APPROVER_TYPES.has(e.nodeType) && e.ids.length === 0,
+  const starter = await buildStarterContext(user.userId);
+  const plan = planWorkflowPath(flowData, {
+    formData: sanitizeFormByStartPerms(flowData, formData ?? {}),
+    formFields,
+    starter,
+    recomputeDerivedValues: true,
+  });
+  const configs = new Map(flowData.nodes.map(node => [node.data.key, node.data]));
+  const planned = plan.nodes.filter(node => APPROVER_TYPES.has(node.nodeType) || node.nodeType === 'ccNode' || node.nodeType === 'subProcess');
+  const path: WorkflowPredictedPathNode[] = planned.filter(node => node.nodeType !== 'subProcess').map(node => ({
+    key: node.nodeKey,
+    name: node.nodeName,
+    type: node.nodeType === 'ccNode' ? 'cc' : node.nodeType as 'approve' | 'handler',
+    status: node.status,
+    reason: node.reason,
   }));
+  const predicted = await enrichPredictedApprovers(path, flowData, {
+    resolve: config => INITIATOR_SELECT_TYPES.has(config.assigneeType ?? '')
+      ? Promise.resolve([])
+      : resolveAssigneeIds(config, { initiatorId: user.userId, formData: { ...plan.formData } }),
+    names: resolveUserNames,
+  });
+  const byKey = new Map(predicted.map(node => [node.key, node]));
+  const initiatorNames = await resolveUserNames([user.userId]);
+  const nodes = await Promise.all(planned.map(async (node): Promise<WorkflowApproverPreviewNode> => {
+    const config = configs.get(node.nodeKey)!;
+    const prediction = byKey.get(node.nodeKey);
+    const isInitiatorSelect = INITIATOR_SELECT_TYPES.has(config.assigneeType ?? '');
+    const selectionRequired = isInitiatorSelect && node.status !== 'excluded';
+    const approvers = prediction?.estimatedApprovers ?? [];
+    return {
+      nodeKey: node.nodeKey,
+      nodeName: node.nodeName,
+      nodeType: node.nodeType,
+      status: node.status,
+      reason: node.reason,
+      approvers,
+      approverReason: node.status === 'excluded' ? null : selectionRequired
+        ? (node.status === 'unknown' ? '路径待确认，请预选审批人；仅进入该节点时生效' : '请由发起人选择审批人')
+        : node.nodeType === 'subProcess' ? '子流程进入后按其流程配置确定' : prediction?.approverReason ?? null,
+      selectableApprovers: selectionRequired ? await listSelectableApprovers(config) : undefined,
+      selectionRequired,
+      approveMethod: config.approveMethod ?? null,
+      branchLabel: plan.branches.find(branch => branch.target === node.nodeId)?.label ?? null,
+      empty: node.status !== 'excluded' && APPROVER_TYPES.has(node.nodeType) && !approvers.length && !selectionRequired,
+    };
+  }));
+  return [{
+    nodeKey: '__initiator__', nodeName: '发起人', nodeType: 'start',
+    approvers: [{ id: user.userId, name: initiatorNames.get(user.userId) ?? user.username }],
+    status: 'matched', reason: '当前发起人', approverReason: null,
+    approveMethod: null, branchLabel: null, empty: false,
+  }, ...nodes];
 }

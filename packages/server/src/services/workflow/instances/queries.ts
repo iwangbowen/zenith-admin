@@ -13,7 +13,7 @@ import { workflowInstances, workflowTasks, workflowTaskConsults, workflowDefinit
 import { tenantCondition } from '../../../lib/tenant';
 import { getDataScopeCondition } from '../../../lib/data-scope';
 import type { WorkflowFlowData, WorkflowFormField } from '@zenith/shared/workflow';
-import { buildWorkflowSummaryItems, findNextApproverSelectNodes } from '@zenith/shared/workflow';
+import { buildWorkflowSummaryItems, findNextApproverSelectNodes, normalizeWorkflowFormSnapshot } from '@zenith/shared/workflow';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser, hasPermission } from '../../../lib/context';
 import { isSuperAdmin, getUserPermissions } from '../../../lib/permissions';
@@ -589,7 +589,9 @@ async function loadInstanceDetail(id: number, business?: { bizType: string; bizI
       try {
         const starter = await buildStarterContext(row.initiatorId);
         const formData = (row.formData ?? {}) as Record<string, unknown>;
-        const path = predictRemainingPath(snapshot.flowData, fromKeys, formData, starter, { formFields: snapshot.formFields ?? [] });
+        const path = predictRemainingPath(snapshot.flowData, fromKeys, formData, starter, {
+          formFields: normalizeWorkflowFormSnapshot(row.formSnapshot)?.fields ?? [],
+        });
         const deptTree = createDeptTree(db);
         predictedPath = await enrichPredictedApprovers(path, snapshot.flowData, {
           resolve: config => resolveAssigneeIds(config, { initiatorId: row.initiatorId, instanceId: id, formData, deptTree }),

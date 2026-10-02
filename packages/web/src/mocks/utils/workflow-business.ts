@@ -9,7 +9,7 @@ import type { WorkflowBusinessContext, WorkflowBusinessPreview, WorkflowDefiniti
 import { mockBizLeaves } from '../data/biz-leave';
 import { mockCmsChannels, mockCmsContents, mockCmsSites } from '../data/cms';
 import { mockUsers } from '../data/users';
-import { buildFirstApproveTask, getNextInstanceId, mockWorkflowDefinitions, mockWorkflowInstances, mockWorkflowTasks } from '../data/workflow';
+import { advanceMockWorkflowGraph, getNextInstanceId, mockWorkflowDefinitions, mockWorkflowInstances, mockWorkflowTasks } from '../data/workflow';
 import { MockHttpError } from './contract';
 import { requireItem } from './crud';
 import { mockDateTime } from './date';
@@ -70,18 +70,17 @@ export function startMockBusinessWorkflow(input: { definition: WorkflowDefinitio
   const { definition } = input;
   const now = mockDateTime();
   const id = getNextInstanceId();
-  const task = buildFirstApproveTask(definition, id, now);
   const instance: WorkflowInstance = {
     id, definitionId: definition.id, definitionName: definition.name, title: input.title,
     formData: { ...input.variables },
     formSnapshot: { formType: 'external', formId: null, formName: null, fields: [], settings: null, customForm: structuredClone(definition.customForm) },
     definitionSnapshot: structuredClone(definition),
-    status: task ? 'running' : 'approved', currentNodeKey: task?.nodeKey ?? null,
+    status: 'running', currentNodeKey: null,
     initiatorId: input.initiatorId ?? 1, initiatorName: input.initiatorName ?? '管理员', initiatorAvatar: null,
-    tenantId: input.tenantId, bizType: input.bizType, bizId: String(input.bizId), tasks: task ? [task] : [], createdAt: now, updatedAt: now,
+    tenantId: input.tenantId, bizType: input.bizType, bizId: String(input.bizId), tasks: [], createdAt: now, updatedAt: now,
   };
   mockWorkflowInstances.push(instance);
-  if (task) mockWorkflowTasks.push(task);
+  advanceMockWorkflowGraph(instance, now);
   return instance;
 }
 

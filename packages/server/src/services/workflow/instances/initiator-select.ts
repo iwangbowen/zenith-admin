@@ -1,8 +1,8 @@
 // ─── 发起人自选审批人与表单起始权限（拆分自 workflow-instances.service.ts）───
 import { uniquePositiveInts } from '@zenith/shared/core';
 import { advanceTokens } from '../../../lib/workflow-token-engine';
-import type { WorkflowFlowData, WorkflowStarterContext } from '@zenith/shared/workflow';
-import { findNextApproverSelectNodes } from '@zenith/shared/workflow';
+import type { WorkflowFlowData, WorkflowStarterContext, WorkflowPathPlanOptions } from '@zenith/shared/workflow';
+import { findNextApproverSelectNodes, planWorkflowPath } from '@zenith/shared/workflow';
 import { HTTPException } from 'hono/http-exception';
 import { filterSelectedApproverIds } from '../workflow-assignee-resolver.service';
 import type { DbExecutor } from '../../../db/types';
@@ -40,14 +40,19 @@ function normalizeSelectedApproverMap(input?: SelectedApproverMap | null): Selec
 export async function applyInitiatorSelectedApprovers(
   flowData: WorkflowFlowData,
   selected: SelectedApproverMap | null | undefined,
+  context: Pick<WorkflowPathPlanOptions, 'formData' | 'formFields' | 'starter'> = {},
   executor?: DbExecutor,
 ): Promise<WorkflowFlowData> {
   const normalized = normalizeSelectedApproverMap(selected);
   const selectNodes = (flowData.nodes ?? []).filter((node) => INITIATOR_SELECT_ASSIGNEE_TYPES.has(node.data.assigneeType ?? ''));
   if (selectNodes.length === 0) return flowData;
 
+  // 与发起预览同源：未命中的分支无需选人；未来可变分支仍需预选，避免抵达时无人可办。
+  const path = planWorkflowPath(flowData, { ...context, recomputeDerivedValues: true });
+  const statuses = new Map(path.nodes.map(node => [node.nodeKey, node.status]));
   const selectedByNode = new Map<string, number[]>();
   for (const node of selectNodes) {
+    if (statuses.get(node.data.key) === 'excluded') continue;
     const picked = await filterSelectedApproverIds(node.data, normalized[node.data.key] ?? [], executor);
     if (picked.length === 0) {
       throw new HTTPException(400, { message: `请选择节点「${node.data.label || node.data.key}」的审批人` });

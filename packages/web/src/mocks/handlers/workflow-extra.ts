@@ -17,6 +17,8 @@ import {
   workflowTaskContract,
   workflowTemplateContract,
   clearWorkflowFormSignaturesData,
+  computeWorkflowDerivedValues,
+  planWorkflowPath,
   workflowTaskActivationKey,
   workflowTaskActivationRounds,
   type WorkflowAnalytics,
@@ -46,7 +48,7 @@ import {
   type WorkflowVersionNodeChange,
 } from '@zenith/shared/workflow';
 import { SEED_WORKFLOW_TEMPLATES } from '@zenith/shared/seed';
-import { buildMockApprovalTasks, getNextTaskId, mockWorkflowInstances, mockWorkflowTasks, mockWorkflowDefinitions, getNextInstanceId, getNextDefinitionId } from '@/mocks/data/workflow';
+import { advanceMockWorkflowGraph, applyMockInitiatorSelections, buildMockApprovalTasks, getNextTaskId, mockWorkflowInstances, mockWorkflowTasks, mockWorkflowDefinitions, getNextInstanceId, getNextDefinitionId, mockWorkflowSelectionCandidates, mockWorkflowStarter, resetMockWorkflowGraph, resolveMockWorkflowAssignees } from '@/mocks/data/workflow';
 import { mockUsers } from '@/mocks/data/users';
 import { mockDateTime } from '@/mocks/utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
@@ -130,10 +132,7 @@ function cleanupExtraApprovalWork(inst: WorkflowInstance, now: string, reason: s
 function syncInstanceApprovedIfComplete(instanceId: number, now: string) {
   const inst = mockWorkflowInstances.find(item => item.id === instanceId);
   if (!inst || inst.status !== 'running') return;
-  if (getMockApprovalActivations(instanceId).some(activation => activation.status === 'active')) return;
-  // Non-human barriers are not votes, but still prevent a terminal instance.
-  if (mockWorkflowTasks.some(task => task.instanceId === instanceId && task.taskKind === 'system' && (task.status === 'pending' || task.status === 'waiting'))) return;
-  inst.status = 'approved'; inst.currentNodeKey = null; inst.updatedAt = now; syncMockWorkflowBusinessResult(inst);
+  advanceMockWorkflowGraph(inst, now); syncMockWorkflowBusinessResult(inst);
 }
 function settleExtraTask(task: WorkflowTask, decision: 'approved' | 'rejected', now: string, comment?: string) {
   const inst = requireItem(mockWorkflowInstances, task.instanceId, '流程实例不存在');
@@ -329,25 +328,19 @@ function buildOverdueList(): WorkflowOverdueTask[] {
 }
 
 /** 按实际定义展示可解析的处理人；只有真实的发起人自选节点要求填写，不额外制造审批节点。 */
-function configuredApproverPreview(definition: WorkflowDefinition, initiatorId: number): WorkflowApproverPreviewNode[] {
+function configuredApproverPreview(definition: WorkflowDefinition, initiatorId: number, formData: Record<string, unknown>): WorkflowApproverPreviewNode[] {
   const users = mockUsers.filter((user) => user.status === 'enabled');
   const refs = (ids: number[]) => users.filter((user) => ids.includes(user.id)).map((user) => ({ id: user.id, name: user.nickname ?? user.username }));
+  if (!definition.flowData) return [];
+  const plan = planWorkflowPath(definition.flowData, { formData, formFields: definition.formFields ?? [], starter: mockWorkflowStarter(initiatorId), recomputeDerivedValues: true });
   return (definition.flowData?.nodes ?? []).filter(({ data }) => ['start', 'approve', 'handler', 'ccNode', 'subProcess'].includes(data.type)).map(({ data }) => {
-    let ids = data.type === 'start' || data.assigneeType === 'initiator' ? [initiatorId]
-      : data.userIds ?? data.assigneeIds ?? (data.assigneeId == null ? [] : [data.assigneeId]);
-    if (data.assigneeType === 'role') ids = users.filter((user) => user.roles.some((role) => data.roleIds?.includes(role.id))).map((user) => user.id);
-    if (data.assigneeType === 'deptMember') ids = users.filter((user) => user.departmentId != null && data.deptMemberDeptIds?.includes(user.departmentId)).map((user) => user.id);
-    const selectionRequired = data.assigneeType === 'initiatorSelect' || data.assigneeType === 'initiatorSelectScope';
-    const scopeIds = data.selectScopeIds ?? [];
-    const candidates = users.filter((user) => {
-      if (scopeIds.length === 0) return true;
-      if (data.selectScopeType === 'role') return user.roles.some((role) => scopeIds.includes(role.id));
-      if (data.selectScopeType === 'department') return user.departmentId != null && scopeIds.includes(user.departmentId);
-      if (data.selectScopeType === 'userGroup') return false;
-      return scopeIds.includes(user.id);
-    });
-    const approvers = refs(ids);
+    const planned = plan.nodes.find(node => node.nodeKey === data.key);
+    const selectionRequired = planned?.status !== 'excluded' && (data.assigneeType === 'initiatorSelect' || data.assigneeType === 'initiatorSelectScope');
+    const candidates = mockWorkflowSelectionCandidates(data);
+    const approvers = data.approveMethod === 'random' || selectionRequired ? [] : refs(resolveMockWorkflowAssignees(data, initiatorId));
     return { nodeKey: data.key, nodeName: data.label, nodeType: data.type, approvers,
+      status: planned?.status ?? 'excluded', reason: planned?.reason ?? '不在本次路径中',
+      approverReason: data.approveMethod === 'random' ? '到达节点后随机分配，当前不预选' : selectionRequired ? '发起前预选审批人，实际经过时启用' : approvers.length ? '按当前人员配置解析' : '处理人将在到达节点时确定',
       approveMethod: data.approveMethod ?? null, empty: approvers.length === 0,
       ...(selectionRequired ? { selectionRequired: true, selectableApprovers: candidates.map((user) => ({ id: user.id, name: user.nickname ?? user.username })) } : {}),
     };
@@ -517,9 +510,9 @@ export const workflowExtraHandlers = [
   }),
 
   // ── 提交前审批链路预览 ──
-  mock(workflowDefinitionContract.preview, ({ params, request, ok }) => {
+  mock(workflowDefinitionContract.preview, ({ params, body, request, ok }) => {
     const definition = requireItem(mockWorkflowDefinitions, params.id, '流程定义不存在');
-    return ok(configuredApproverPreview(definition, currentMockSession(request)?.user.id ?? 1));
+    return ok(configuredApproverPreview(definition, currentMockSession(request)?.user.id ?? 1, body.formData ?? {}));
   }),
 
   // ── 主动抄送 / 转发 ──
@@ -681,6 +674,7 @@ export const workflowExtraHandlers = [
     if (!config) return badRequest('流程节点快照不存在');
     const now = mockDateTime(); cleanupExtraApprovalWork(inst, now, '[撤回重审] 原轮次未办审批作废');
     task.comment = '[已撤回] '+(task.comment ?? '');
+    resetMockWorkflowGraph(inst, [config.key]);
     mockWorkflowTasks.push(...buildMockApprovalTasks(config, inst.id, now, inst.initiatorId ?? 1));
     inst.currentNodeKey = task.nodeKey; inst.updatedAt = now;
     return ok(extraApprovalView(inst), '已创建重新审批轮次');
@@ -729,17 +723,18 @@ export const workflowExtraHandlers = [
     inst.updatedAt = mockDateTime();
     return ok(inst, '草稿已保存');
   }),
-  mock(workflowInstanceContract.submitDraft, async ({ params, ok, request }) => {
+  mock(workflowInstanceContract.submitDraft, async ({ params, body, ok, request }) => {
     const inst = requireItem(mockWorkflowInstances, params.id, '流程实例不存在');
     if (inst.status !== 'draft' && inst.status !== 'returned') return badRequest('仅草稿或已退回的申请可提交');
-    inst.formData = await resolveMockWorkflowFormSignatures(request, inst.formSnapshot?.fields ?? [], inst.formData ?? {}, inst.formData ?? {});
+    inst.formData = computeWorkflowDerivedValues(inst.formSnapshot?.fields ?? [], await resolveMockWorkflowFormSignatures(request, inst.formSnapshot?.fields ?? [], inst.formData ?? {}, inst.formData ?? {}));
     const definition = mockWorkflowDefinitions.find((item) => item.id === inst.definitionId);
+    if (!definition) return notFound('流程定义不存在');
+    let flowData: WorkflowFlowData | null;
+    try { flowData = applyMockInitiatorSelections(definition, inst.formData ?? {}, inst.initiatorId ?? 1, body.selectedInitiatorApprovers); }
+    catch (error) { return badRequest(error instanceof Error ? error.message : '审批人选择不完整'); }
     const now = mockDateTime(); cleanupExtraApprovalWork(inst, now, '[重新提交] 原轮次未办审批取消');
-    const firstNode = definition?.flowData?.nodes.find(node => node.data.type === 'approve' || node.data.type === 'handler');
-    const tasks = firstNode ? buildMockApprovalTasks(firstNode.data, inst.id, now, inst.initiatorId ?? 1) : [];
-    mockWorkflowTasks.push(...tasks); inst.currentNodeKey = tasks[0]?.nodeKey ?? null; inst.tasks = mockWorkflowTasks.filter(task => task.instanceId === inst.id);
-    if (definition) inst.definitionSnapshot = structuredClone({ ...definition, formFields: definition.formFields ?? null });
-    inst.status = tasks.length ? 'running' : 'approved'; inst.updatedAt = now; syncMockWorkflowBusinessResult(inst);
+    inst.definitionSnapshot = structuredClone({ ...definition, flowData, formFields: definition.formFields ?? null });
+    inst.status = 'running'; resetMockWorkflowGraph(inst); advanceMockWorkflowGraph(inst, now); syncMockWorkflowBusinessResult(inst);
     return ok(extraApprovalView(inst), '申请已提交');
   }),
   mock(workflowInstanceContract.resubmit, ({ params, ok }) => {
@@ -822,6 +817,7 @@ export const workflowExtraHandlers = [
     const target = flow?.nodes.find(node => node.data.key === body.targetNodeKey && (node.data.type === 'approve' || node.data.type === 'handler'));
     if (!target) return badRequest('只能跳转至审批或办理节点');
     const now = mockDateTime(); cleanupExtraApprovalWork(inst, now, '[强制跳转] 原轮次未办审批作废');
+    resetMockWorkflowGraph(inst, [target.data.key]);
     mockWorkflowTasks.push(...buildMockApprovalTasks(target.data, inst.id, now, inst.initiatorId ?? 1));
     inst.currentNodeKey = target.data.key; inst.updatedAt = now;
     return ok(extraApprovalView(inst), '已跳转并创建新审批轮次');

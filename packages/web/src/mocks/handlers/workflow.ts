@@ -48,8 +48,10 @@ import {
   buildWorkflowEngineQueueSnapshot,
   buildWorkflowSummaryItems,
   collectReferencedFormFieldKeys,
+  computeWorkflowDerivedValues,
   countWorkflowJobStatuses,
   findNextApproverSelectNodes,
+  planWorkflowPath,
   renderWorkflowSerialNo,
   resolveNodeFieldPermissions,
   resolveSerialPeriodKey,
@@ -69,7 +71,13 @@ import {
   workflowTaskContract,
 } from '@zenith/shared/workflow';
 import {
+  advanceMockWorkflowGraph,
+  applyMockInitiatorSelections,
   buildMockApprovalTasks,
+  mockWorkflowSelectionCandidates,
+  mockWorkflowStarter,
+  resolveMockWorkflowAssignees,
+  resetMockWorkflowGraph,
   mockWorkflowDefinitions,
   mockWorkflowInstances,
   mockWorkflowTasks,
@@ -160,6 +168,7 @@ function buildMockSimulationResult(
   flowData: WorkflowFlowData | null | undefined,
   starterUserId?: number,
   decisions: WorkflowSimulationDecision[] = [],
+  formData: Record<string, unknown> = {},
 ): WorkflowSimulationResult {
   if (!flowData?.nodes?.length) {
     return {
@@ -179,8 +188,10 @@ function buildMockSimulationResult(
   const visited = new Set<string>();
   const timeline: WorkflowSimulationResult['timeline'] = [];
   let result: WorkflowSimulationResult['result'] = 'finished';
-  const starterName = starterUserId ? `用户${starterUserId}` : '当前用户';
-  const sortedNodes = flowData.nodes.filter((node) => node.data.type !== 'end');
+  const starterName = mockUsers.find(user => user.id === (starterUserId ?? 1))?.nickname ?? '当前用户';
+  const plan = planWorkflowPath(flowData, { formData, starter: mockWorkflowStarter(starterUserId ?? 1) });
+  const sortedNodes = plan.nodes.filter(node => node.status !== 'excluded' && node.nodeType !== 'end')
+    .map(planned => flowData.nodes.find(node => node.data.key === planned.nodeKey)!);
   for (const [index, node] of sortedNodes.entries()) {
     const key = node.data.key;
     visited.add(key);
@@ -198,9 +209,11 @@ function buildMockSimulationResult(
       nodeStates[key] = { status: 'done' };
       continue;
     }
-    const assigneeIds = node.data.assigneeIds ?? (node.data.assigneeId ? [node.data.assigneeId] : []);
-    const assignees = assigneeIds.map((id) => ({ id, name: node.data.assigneeNames?.[0] ?? node.data.assigneeName ?? `用户${id}` }));
-    const waiting = node.data.type === 'delay' || node.data.type === 'trigger' || node.data.type === 'subProcess';
+    const assigneeIds = node.data.approveMethod === 'random' ? [] : resolveMockWorkflowAssignees(node.data, starterUserId ?? 1);
+    const assignees = assigneeIds.map((id) => ({ id, name: mockUsers.find(user => user.id === id)?.nickname ?? '未知用户' }));
+    const path = plan.nodes.find(item => item.nodeKey === key)!;
+    const waiting = path.status === 'unknown' || ['delay', 'trigger', 'subProcess'].includes(node.data.type)
+      || (node.data.type === 'routeGateway' && !!node.data.decisionRuleKey) || node.data.externalApproval?.enabled;
     const decision = decisions.find((item) => item.nodeKey === key);
     if (decision?.action === 'reject') {
       timeline.push({
@@ -242,15 +255,16 @@ function buildMockSimulationResult(
       status: decision?.action === 'skip' ? 'skipped' : waiting ? 'waiting' : index === 0 ? 'entered' : 'approved',
       assignees,
       decision: decision?.action === 'skip' ? 'skip' : waiting ? undefined : 'approve',
-      reason: decision?.action === 'skip' ? 'Demo 调试器手动跳过' : waiting ? 'Demo 模式模拟等待后继续' : decision?.action === 'approve' ? 'Demo 调试器手动通过' : 'Demo 模式默认通过',
+      reason: decision?.action === 'skip' ? 'Demo 调试器手动跳过' : waiting ? path.status === 'unknown' ? path.reason : 'Demo 等待外部或自动处理结果' : decision?.action === 'approve' ? 'Demo 调试器手动通过' : 'Demo 模式默认通过',
       detail: decision ? 'Demo 模式按预设动作重放' : undefined,
-      nextNodeKeys: sortedNodes[index + 1]?.data.key ? [sortedNodes[index + 1].data.key] : undefined,
+      nextNodeKeys: plan.edges.filter(edge => edge.source === node.id && edge.status === 'matched').map(edge => flowData.nodes.find(item => item.id === edge.target)!.data.key),
     });
-    nodeStates[key] = { status: decision?.action === 'skip' ? 'skipped' : 'done', message: waiting ? 'Demo 模式模拟继续' : undefined };
+    nodeStates[key] = { status: decision?.action === 'skip' ? 'skipped' : waiting ? 'active' : 'done', message: waiting ? path.reason : undefined };
+    if (waiting) { result = 'waiting'; break; }
   }
   flowData.nodes
     .filter((node) => !nodeStates[node.data.key])
-    .forEach((node) => { nodeStates[node.data.key] = { status: node.data.type === 'end' ? 'done' : 'skipped' }; });
+    .forEach((node) => { nodeStates[node.data.key] = { status: node.data.type === 'end' && result === 'finished' && plan.nodes.find(item => item.nodeKey === node.data.key)?.status === 'matched' ? 'done' : 'skipped' }; });
   const nodeById = new Map(flowData.nodes.map((node) => [node.id, node.data]));
   // Demo 预估耗时：approve/handler≈480 分钟、delay≈120、subProcess≈480，其余瞬时
   const estMinutes = (t: string): number => (t === 'approve' || t === 'handler' ? 480 : t === 'subProcess' ? 480 : t === 'delay' ? 120 : 0);
@@ -276,7 +290,8 @@ function buildMockSimulationResult(
     edgeResults: flowData.edges.map((edge) => {
       const source = nodeById.get(edge.source);
       const target = nodeById.get(edge.target);
-      const taken = !!source?.key && !!target?.key && visited.has(source.key) && (target.type === 'end' || visited.has(target.key));
+      const planned = plan.edges.find(item => item.edgeId === edge.id);
+      const taken = planned?.status === 'matched' && !!source?.key && !!target?.key && visited.has(source.key) && (target.type === 'end' || visited.has(target.key));
       return {
         edgeId: edge.id,
         source: edge.source,
@@ -285,8 +300,8 @@ function buildMockSimulationResult(
         targetKey: target?.key,
         label: edge.label ?? null,
         taken,
-        reason: edge.conditions?.length || edge.condition ? (taken ? 'Demo 条件命中' : 'Demo 条件未命中') : (taken ? 'Demo 仿真路径经过此连线' : 'Demo 仿真未经过此连线'),
-        conditionMatched: edge.conditions?.length || edge.condition ? taken : null,
+        reason: planned?.reason ?? 'Demo 仿真未经过此连线',
+        conditionMatched: planned?.status === 'unknown' ? null : edge.conditions?.length || edge.condition ? taken : null,
         conditionSummary: edge.label ?? null,
         actualValue: null,
       };
@@ -1443,7 +1458,7 @@ export const workflowHandlers = [
     const definition = body.definitionId ? mockWorkflowDefinitions.find((item) => item.id === body.definitionId) : undefined;
     // 契约仅约束 flowData 为宽松对象，设计器传入的即为流程图结构
     const flowData = (body.flowData as WorkflowFlowData | null | undefined) ?? definition?.flowData ?? null;
-    return ok(buildMockSimulationResult(flowData, body.starterUserId, body.decisions ?? []));
+    return ok(buildMockSimulationResult(flowData, body.starterUserId, body.decisions ?? [], body.formData ?? {}));
   }),
 
   // 发布前体检（评分 + 分支覆盖）
@@ -2234,7 +2249,7 @@ export const workflowHandlers = [
     const isDraft = body.asDraft === true;
     const formSnapshot = resolveDefinitionFormSnapshot(def);
     const signed = body.formData == null ? null : await resolveMockWorkflowFormSignatures(request, formSnapshot?.fields ?? [], body.formData);
-    const formData = signed == null ? null : await bindMockWorkflowFormAttachments(request, instanceId, formSnapshot?.fields ?? [], signed);
+    const formData = signed == null ? null : await bindMockWorkflowFormAttachments(request, instanceId, formSnapshot?.fields ?? [], computeWorkflowDerivedValues(formSnapshot?.fields ?? [], signed));
 
     // 业务编号：仅正式发起时生成（用内存计数器模拟按定义+周期自增）
     const serialCfg = (def.flowData?.settings as { serialNo?: WorkflowSerialNoConfig } | undefined)?.serialNo;
@@ -2253,10 +2268,11 @@ export const workflowHandlers = [
       });
     }
 
-    // 创建初始审批任务（取第一个 approve 节点）；草稿不创建任务
-    const firstNode = def.flowData?.nodes.find(node => node.data.type === 'approve' || node.data.type === 'handler');
-    const newTasks: WorkflowTask[] = isDraft || !firstNode ? [] : buildMockApprovalTasks(firstNode.data, instanceId, now, initiator.id);
-    const firstTask = newTasks[0] ?? null;
+    let selectedFlow = def.flowData;
+    if (!isDraft) {
+      try { selectedFlow = applyMockInitiatorSelections(def, formData ?? {}, initiator.id, body.selectedInitiatorApprovers); }
+      catch (error) { return mockApprovalError(error); }
+    }
 
     const newInstance: WorkflowInstance = {
       id: instanceId,
@@ -2268,19 +2284,20 @@ export const workflowHandlers = [
       formData,
       formSnapshot,
       status: isDraft ? 'draft' : 'running',
-      currentNodeKey: isDraft ? null : (firstTask?.nodeKey ?? null),
+      currentNodeKey: null,
       initiatorId: initiator.id,
       initiatorName: initiator.nickname ?? initiator.username,
       initiatorAvatar: null,
       tenantId: currentMockSession(request)?.viewingTenantId ?? initiator.tenantId ?? null,
-      tasks: newTasks,
+      tasks: [],
       createdAt: now,
       updatedAt: now,
     };
 
     newInstance.definitionSnapshot = structuredClone(withDefinitionSnapshot(newInstance).definitionSnapshot ?? null);
+    if (newInstance.definitionSnapshot) newInstance.definitionSnapshot.flowData = selectedFlow;
     mockWorkflowInstances.push(newInstance);
-    for (const task of newTasks) mockWorkflowTasks.push(task);
+    if (!isDraft) advanceMockWorkflowGraph(newInstance, now);
 
     return ok(withActiveNodes(newInstance));
   }),
@@ -2512,32 +2529,29 @@ export const workflowHandlers = [
       // 可编辑字段写回：与服务端一致，按节点 fieldPermissions 白名单过滤后合并进实例 formData
       beforeSettle: async (current, now) => {
         const instForUpdate = mockWorkflowInstances.find(i => i.id === current.instanceId);
-        if (!body.formUpdates || !instForUpdate) return;
+        if (!instForUpdate) return;
         const flow = instForUpdate.definitionSnapshot?.flowData
           ?? mockWorkflowDefinitions.find(d => d.id === instForUpdate.definitionId)?.flowData;
+        for (const [key, ids] of Object.entries(body.selectedNextApprovers ?? {})) {
+          const node = flow?.nodes.find(item => item.data.key === key && item.data.assigneeType === 'approverSelect');
+          if (!node) continue;
+          const candidates = mockWorkflowSelectionCandidates(node.data);
+          if (!ids.length || ids.some(id => !candidates.some(user => user.id === id))) throw new Error(`请选择节点「${node.data.label}」范围内的审批人`);
+          node.data.userIds = [...new Set(ids)]; node.data.assigneeIds = node.data.userIds;
+        }
+        if (!body.formUpdates) return;
         const permitted = sanitizeFormUpdatesByNodePerms(resolveNodeFieldPermissions(flow, current.nodeKey), body.formUpdates);
         const sanitized = await resolveMockWorkflowFormSignatures(request, instForUpdate.formSnapshot?.fields ?? [], permitted, instForUpdate.formData ?? {});
         if (Object.keys(sanitized).length > 0) {
-          instForUpdate.formData = await bindMockWorkflowFormAttachments(request, instForUpdate.id, instForUpdate.formSnapshot?.fields ?? [], { ...(instForUpdate.formData ?? {}), ...sanitized });
+          instForUpdate.formData = await bindMockWorkflowFormAttachments(request, instForUpdate.id, instForUpdate.formSnapshot?.fields ?? [], computeWorkflowDerivedValues(instForUpdate.formSnapshot?.fields ?? [], { ...(instForUpdate.formData ?? {}), ...sanitized }));
           instForUpdate.updatedAt = now;
         }
       },
       taskPatch: (current) => resolveMockTaskSignature(request, current, body.signature),
-      // 无其它 pending 任务即流程完成
+      // 正式席位与补充审批均满足后，沿实际图继续物化后续节点。
       advanceInstance: (task, now) => {
-        const remainingPending = mockWorkflowTasks.filter(
-          t => t.instanceId === task.instanceId && (t.status === 'pending' || t.status === 'waiting') && t.id !== task.id
-        );
-        if (remainingPending.length > 0 || getMockApprovalActivations(task.instanceId).some(activation => activation.status === 'active')) return;
-        const instIdx = mockWorkflowInstances.findIndex(i => i.id === task.instanceId);
-        if (instIdx !== -1) {
-          mockWorkflowInstances[instIdx] = {
-            ...mockWorkflowInstances[instIdx],
-            status: 'approved',
-            currentNodeKey: null,
-            updatedAt: now,
-          };
-        }
+        const inst = mockWorkflowInstances.find(item => item.id === task.instanceId);
+        if (inst) advanceMockWorkflowGraph(inst, now);
       },
     },
   )),
@@ -2633,8 +2647,8 @@ export const workflowHandlers = [
       const result = reduceMockSignGroup(params.groupId, body.targetSlotIds, { actorId: currentMockSession(request)?.user.id ?? 1, comment: body.comment });
       const inst = mockWorkflowInstances.find(item => getMockApprovalActivations(item.id).some(activation => activation.id === result.activation.id));
       if (!inst) return notFound('流程实例不存在');
-      if (result.completed && !mockWorkflowTasks.some(task => task.instanceId === inst.id && (task.status === 'pending' || task.status === 'waiting'))) {
-        inst.status = 'approved'; inst.currentNodeKey = null; inst.updatedAt = mockDateTime(); syncMockWorkflowBusinessResult(inst);
+      if (result.completed) {
+        advanceMockWorkflowGraph(inst, mockDateTime()); syncMockWorkflowBusinessResult(inst);
       }
       return ok({ group: result.group, removed: result.removed, instance: withActiveNodes(inst) });
     } catch (error) { return mockApprovalError(error); }
@@ -2771,6 +2785,7 @@ export const workflowHandlers = [
       decision: { action: returned ? 'returnInitiator' : 'returnNode', targetNodeKey: returned ? null : body.targetNodeKeys[0], targetNodeName: returned ? null : targets[0]?.data.label ?? null } });
     cleanupMockApprovalWork(inst.id, now, returned ? '[退回发起人] 未办审批已取消' : '[节点退回] 原轮次未办审批已取消');
     Object.assign(inst, { status: returned ? 'returned' : 'running', currentNodeKey: returned ? null : body.targetNodeKeys[0], updatedAt: now });
+    if (!returned) resetMockWorkflowGraph(inst, body.targetNodeKeys);
     for (const target of targets) if (target) mockWorkflowTasks.push(...buildMockApprovalTasks(target.data, inst.id, now, inst.initiatorId ?? 1));
     syncMockWorkflowBusinessResult(inst); return ok(withActiveNodes(inst));
   }),

@@ -1,7 +1,8 @@
 import dayjs from 'dayjs';
+import type { WorkflowPathStatus } from './constants';
 import type { WorkflowConditionGroup, WorkflowEdge, WorkflowEdgeCondition, WorkflowStarterContext } from './types';
 
-export type WorkflowConditionStatus = 'matched' | 'excluded' | 'unknown';
+export type WorkflowConditionStatus = WorkflowPathStatus;
 export type WorkflowConditionResult = { status: WorkflowConditionStatus; reason: string };
 export type WorkflowConditionStateContext = {
   formData: Readonly<Record<string, unknown>>;

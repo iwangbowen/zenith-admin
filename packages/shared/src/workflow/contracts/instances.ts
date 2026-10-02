@@ -3,7 +3,7 @@ import { workflowSignaturePolicySchema } from '../validation';
 import * as z from 'zod';
 import { auditFieldsSchema, idParam, idQuery, keywordQuery, paginated, paginationQuery, queryEnum } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
-import { WORKFLOW_INSTANCE_PRIORITIES, WORKFLOW_INSTANCE_PRIORITY_OPTIONS, WORKFLOW_INSTANCE_STATUSES, WORKFLOW_INSTANCE_STATUS_OPTIONS, WORKFLOW_SLA_LEVELS, WORKFLOW_TASK_CONSULT_STATUSES, WORKFLOW_TASK_STATUSES, WORKFLOW_INSTANCE_STATUS_FILTERS, WORKFLOW_INSTANCE_PRINT_SOURCES, WORKFLOW_TASK_DECISION_ACTIONS } from '../constants';
+import { WORKFLOW_INSTANCE_PRIORITIES, WORKFLOW_INSTANCE_PRIORITY_OPTIONS, WORKFLOW_INSTANCE_STATUSES, WORKFLOW_INSTANCE_STATUS_OPTIONS, WORKFLOW_SLA_LEVELS, WORKFLOW_TASK_CONSULT_STATUSES, WORKFLOW_TASK_STATUSES, WORKFLOW_INSTANCE_STATUS_FILTERS, WORKFLOW_INSTANCE_PRINT_SOURCES, WORKFLOW_TASK_DECISION_ACTIONS, WORKFLOW_PATH_STATUSES } from '../constants';
 import {
   addInstanceCcSchema,
   batchUrgeWorkflowInstanceSchema,
@@ -160,7 +160,7 @@ export const workflowPredictedPathNodeSchema = z.object({
   name: z.string(),
   type: z.enum(['approve', 'handler', 'cc']),
   branchLabel: z.string().nullable().optional().meta({ description: '进入该节点经过的条件分支标签' }),
-  status: z.enum(['matched', 'excluded', 'unknown']).optional(),
+  status: z.enum(WORKFLOW_PATH_STATUSES).optional(),
   reason: z.string().optional(),
   estimatedApprovers: z.array(z.object({ id: z.number().int(), name: z.string() })).optional(),
   approverReason: z.string().nullable().optional(),

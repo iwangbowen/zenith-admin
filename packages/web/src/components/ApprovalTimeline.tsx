@@ -4,9 +4,9 @@ import FileAttachment from '@/components/FileAttachment';
 import { uploadedFileToAttachment } from '@/components/FileAttachment/utils';
 import { timelineDot } from '@/components/workflow/timeline-dot';
 import { TASK_STATUS_MAP } from '@/components/workflow/workflow-runtime';
-import { WORKFLOW_INSTANCE_STATUS_LABELS, WORKFLOW_ACTIVE_INSTANCE_STATUSES, WORKFLOW_APPROVE_METHOD_LABELS, WORKFLOW_SIGN_POSITION_LABELS, WORKFLOW_TASK_WAIT_REASON_LABELS, workflowExternalCallbackContract } from '@zenith/shared/workflow';
+import { WORKFLOW_INSTANCE_STATUS_LABELS, WORKFLOW_ACTIVE_INSTANCE_STATUSES, WORKFLOW_APPROVE_METHOD_LABELS, WORKFLOW_SIGN_POSITION_LABELS, WORKFLOW_TASK_WAIT_REASON_LABELS, WORKFLOW_PATH_STATUS_LABELS, workflowExternalCallbackContract } from '@zenith/shared/workflow';
 import { Bot, CheckCircle2, Clock, CornerUpLeft, Flag, Mail, RotateCcw, XCircle, ExternalLink, Copy, Forward, UserCog, Send, type LucideIcon } from 'lucide-react';
-import type { WorkflowTask, WorkflowInstanceStatus, WorkflowNodeActivation, WorkflowChildInstanceSummary } from '@zenith/shared/workflow';
+import type { WorkflowTask, WorkflowInstanceStatus, WorkflowNodeActivation, WorkflowChildInstanceSummary, WorkflowPredictedPathNode } from '@zenith/shared/workflow';
 import type { FlowNodeBrief } from '@/components/workflow/workflow-runtime';
 import { formatDurationBetween } from '@/utils/date';
 import DateTimeText from '@/components/DateTimeText';
@@ -35,8 +35,8 @@ interface ApprovalTimelineProps {
   tasks: WorkflowTask[];
   approvalActivations?: WorkflowNodeActivation[];
   childInstances?: WorkflowChildInstanceSummary[];
-  /** 流程后续节点（优先传服务端预测路径 predictedPath：仅将执行的节点，含分支标签；缺省回退全量线性化） */
-  flowNodes?: Array<FlowNodeBrief & { branchLabel?: string | null }>;
+  /** 服务端按当前活动节点预测的剩余路径；无预测时可传全量线性化节点。 */
+  flowNodes?: Array<FlowNodeBrief & Omit<WorkflowPredictedPathNode, 'key' | 'name' | 'type'>>;
   /** 发起人信息（用于顶部「发起申请」节点） */
   initiator?: { name?: string | null; avatar?: string | null; submittedAt?: string | null };
   /** 实例状态（终态时展示底部「流程结束」节点） */
@@ -314,18 +314,30 @@ export default function ApprovalTimeline({ tasks, approvalActivations = [], chil
         );
       })}
       {!finish && (() => {
-        // 展示流程后续将要执行的节点（无对应 task）：flowNodes 传入服务端预测路径时
-        // 已按实例表单求值条件分支，未命中分支不再出现
+        // 预测路径从当前执行位置出发；历史审批记录不能遮掉返工后将再次经过的节点。
+        // 只有没有预测状态的全量结构回退才按已有任务去重。
         const doneKeys = new Set(tasks.map((t) => t.nodeKey));
         return (flowNodes ?? [])
-          .filter((n) => !doneKeys.has(n.key))
+          .filter((n) => n.status !== 'excluded' && (n.status != null || !doneKeys.has(n.key)))
           .map((n) => (
             <Timeline.Item key={`future-${n.key}`} dot={timelineDot(Clock, 'var(--semi-color-tertiary)')}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Space spacing={8} wrap>
                 <Typography.Text strong style={{ fontSize: 13, color: 'var(--semi-color-text-2)' }}>{n.name}</Typography.Text>
-                <Tag color="grey" size="small">{n.type === 'cc' ? '待抄送' : (n.type === 'handler' ? '待办理' : '待审批')}</Tag>
+                <Tag color="grey" size="small">{n.type === 'cc' || n.type === 'ccNode' ? '待抄送' : (n.type === 'handler' ? '待办理' : '待审批')}</Tag>
+                {n.status && <Tag color={n.status === 'unknown' ? 'orange' : 'blue'} size="small">{WORKFLOW_PATH_STATUS_LABELS[n.status]}</Tag>}
                 {n.branchLabel && <Tag color="violet" size="small">{n.branchLabel}</Tag>}
-              </div>
+              </Space>
+              {(n.estimatedApprovers?.length ?? 0) > 0 && (
+                <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginTop: 4 }}>
+                  预计处理人：{n.estimatedApprovers?.map((approver) => approver.name).join('、')}
+                </Typography.Text>
+              )}
+              {n.reason && (
+                <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginTop: 4 }}>{n.reason}</Typography.Text>
+              )}
+              {n.approverReason && (
+                <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginTop: 4 }}>{n.approverReason}</Typography.Text>
+              )}
             </Timeline.Item>
           ));
       })()}

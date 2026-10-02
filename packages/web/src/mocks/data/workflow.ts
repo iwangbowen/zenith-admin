@@ -1,11 +1,11 @@
 import { fillPath } from '@zenith/shared/core';
-import { workflowAttachmentContract } from '@zenith/shared/workflow';
+import { planWorkflowPath, selectWorkflowPathBranches, workflowAttachmentContract } from '@zenith/shared/workflow';
 import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowInstance, WorkflowTask, WorkflowFormField, WorkflowInstanceFormSnapshot, WorkflowFlowData } from '@zenith/shared/workflow';
 import { SEED_WORKFLOW_DEFINITIONS, SEED_DATE } from '@zenith/shared/seed';
 import { nextIdFrom } from '@/mocks/utils/handlers';
 import { mockUsers } from './users';
 import { mockWorkflowForms } from './workflow-forms';
-import { createMockActivation } from '@/mocks/utils/workflow-approval';
+import { createMockActivation, getMockApprovalActivations } from '@/mocks/utils/workflow-approval';
 
 /** 流程定义版本的派生字段：表单字段数组 */
 function cloneWorkflowFormFields(formId: number | null | undefined): WorkflowFormField[] | null {
@@ -768,13 +768,11 @@ export function getNextTaskId() { return nextTaskId++; }
 export function getNextDefinitionId() { return nextDefinitionId++; }
 
 /**
- * Demo 发起实例时的首个待办：取流程图第一个 approve 节点生成 pending 任务；
- * 无审批节点返回 null。工作流发起与业务系统（请假）提交共用。
+ * 到达人工节点时物化该轮次的全部正式席位。后续激活与计票复用共享审批语义。
  */
 export function buildMockApprovalTasks(node: WorkflowFlowData['nodes'][number]['data'], instanceId: number, now: string, initiatorId = 1): WorkflowTask[] {
-  const candidates = node.assigneeType === 'initiator' ? [initiatorId]
-    : node.userIds?.length ? node.userIds : node.assigneeIds?.length ? node.assigneeIds : [node.assigneeId ?? null];
-  const selected = node.approveMethod === 'random' ? candidates.slice(0, 1) : candidates;
+  const candidates = resolveMockWorkflowAssignees(node, initiatorId);
+  const selected = node.approveMethod === 'random' && candidates.length ? [candidates[Math.floor(Math.random() * candidates.length)]] : candidates;
   const rows = [...new Set(selected)].map((assigneeId): WorkflowTask => ({
     id: getNextTaskId(), instanceId, nodeKey: node.key, nodeName: node.label, nodeType: node.type,
     assigneeId, signaturePolicy: node.signaturePolicy ?? 'none', actionButtons: node.actionButtons,
@@ -782,16 +780,129 @@ export function buildMockApprovalTasks(node: WorkflowFlowData['nodes'][number]['
     assigneeAvatar: null, status: 'pending', comment: null, actionAt: null, createdAt: now,
     activationId: null, slotId: null, taskKind: 'approval', waitReason: null, activatedAt: null, signPosition: null,
   }));
-  createMockActivation({ id: instanceId }, node, rows, { now });
+  if (rows.length) createMockActivation({ id: instanceId }, node, rows, { now });
   return rows;
 }
-export function buildFirstApproveTask(def: Pick<WorkflowDefinition, 'flowData'>, instanceId: number, now: string, initiatorId = 1): WorkflowTask | null {
-  const firstApproveNode = def.flowData?.nodes.find(node => node.data.type === 'approve' || node.data.type === 'handler');
-  if (!firstApproveNode) return null;
-  const rows = buildMockApprovalTasks(firstApproveNode.data, instanceId, now, initiatorId);
-  // Legacy business callers append the returned first row; keep every other formal seat visible too.
-  mockWorkflowTasks.push(...rows.slice(1));
-  return rows[0] ?? null;
+
+export function mockWorkflowStarter(userId: number) {
+  const user = mockUsers.find(row => row.id === userId);
+  return { userId, deptIds: user?.departmentId == null ? [] : [user.departmentId], roleIds: user?.roles.map(role => role.id) ?? [], postIds: user?.positionIds ?? [] };
+}
+
+export function mockWorkflowSelectionCandidates(node: WorkflowFlowData['nodes'][number]['data']) {
+  const scope = node.selectScopeIds ?? [];
+  return mockUsers.filter(user => user.status === 'enabled' && (!scope.length || (node.selectScopeType === 'role'
+    ? user.roles.some(role => scope.includes(role.id)) : node.selectScopeType === 'department'
+      ? user.departmentId != null && scope.includes(user.departmentId) : node.selectScopeType === 'userGroup' ? false : scope.includes(user.id))));
+}
+
+export function resolveMockWorkflowAssignees(node: WorkflowFlowData['nodes'][number]['data'], initiatorId: number): number[] {
+  const users = mockUsers.filter(user => user.status === 'enabled');
+  if (node.type === 'start' || node.assigneeType === 'initiator') return users.filter(user => user.id === initiatorId).map(user => user.id);
+  if (node.assigneeType === 'role') return users.filter(user => user.roles.some(role => node.roleIds?.includes(role.id))).map(user => user.id);
+  if (node.assigneeType === 'deptMember') return users.filter(user => user.departmentId != null && node.deptMemberDeptIds?.includes(user.departmentId)).map(user => user.id);
+  const configured = node.userIds?.length ? node.userIds : node.assigneeIds?.length ? node.assigneeIds : node.assigneeId == null ? [] : [node.assigneeId];
+  return [...new Set(configured)].filter(id => users.some(user => user.id === id));
+}
+
+/** Excluded branches require no selection. An uncertain branch must be preselected before launch. */
+export function applyMockInitiatorSelections(definition: WorkflowDefinition, formData: Record<string, unknown>, initiatorId: number, selected: Record<string, number[]> = {}): WorkflowFlowData | null {
+  if (!definition.flowData) return null;
+  const flow = structuredClone(definition.flowData);
+  const plan = planWorkflowPath(flow, { formData, formFields: definition.formFields ?? [], starter: mockWorkflowStarter(initiatorId), recomputeDerivedValues: true });
+  for (const node of flow.nodes) {
+    if (!['initiatorSelect', 'initiatorSelectScope'].includes(node.data.assigneeType ?? '')) continue;
+    if (plan.nodes.find(item => item.nodeKey === node.data.key)?.status === 'excluded') continue;
+    const candidates = mockWorkflowSelectionCandidates(node.data), ids = [...new Set(selected[node.data.key] ?? [])];
+    if (!ids.length || ids.some(id => !candidates.some(user => user.id === id))) throw new Error(`请选择节点「${node.data.label}」范围内的审批人`);
+    node.data.userIds = ids; node.data.assigneeIds = ids; node.data.assigneeId = ids.length === 1 ? ids[0] : null;
+  }
+  return flow;
+}
+
+type MockGraphState = { nodes: Map<string, 'done' | 'excluded' | 'active'>; edges: Map<string, boolean>; roots?: string[]; priorActivations?: Set<string> };
+const mockGraphStates = new WeakMap<WorkflowInstance, MockGraphState>();
+
+export function resetMockWorkflowGraph(instance: WorkflowInstance, roots?: string[]): void {
+  mockGraphStates.set(instance, { nodes: new Map(), edges: new Map(), roots, priorActivations: new Set(getMockApprovalActivations(instance.id).map(activation => activation.id)) });
+}
+
+/** Demo supports acyclic human/condition/parallel graphs. Unsupported effects stay explicitly suspended. */
+export function advanceMockWorkflowGraph(instance: WorkflowInstance, now: string): void {
+  if (instance.status !== 'running') return;
+  const flow = instance.definitionSnapshot?.flowData ?? mockWorkflowDefinitions.find(def => def.id === instance.definitionId)?.flowData;
+  if (!flow) { instance.status = 'suspended'; instance.suspendReason = 'Demo 无可执行流程图'; return; }
+  let state = mockGraphStates.get(instance);
+  if (!state) { state = { nodes: new Map(), edges: new Map() }; mockGraphStates.set(instance, state); }
+  const graph = state;
+  const edges = flow.edges.filter(edge => !edge.isException && flow.nodes.some(node => node.id === edge.target && node.data.type !== 'catchNode'));
+  const incoming = (id: string) => edges.filter(edge => edge.target === id);
+  const outgoing = (id: string) => edges.filter(edge => edge.source === id);
+  const explicitRoots = graph.roots?.map(key => flow.nodes.find(node => node.data.key === key)?.id).filter((id): id is string => !!id);
+  const roots = explicitRoots ?? flow.nodes.filter(node => node.data.type === 'start' || !incoming(node.id).length).map(node => node.id);
+  const reachable = new Set<string>(), visiting = new Set<string>();
+  let cyclic = false;
+  const visit = (id: string) => {
+    if (visiting.has(id)) { cyclic = true; return; }
+    if (reachable.has(id)) return;
+    reachable.add(id); visiting.add(id); outgoing(id).forEach(edge => visit(edge.target)); visiting.delete(id);
+  };
+  roots.forEach(visit);
+  const suspend = (reason: string, key: string | null = null) => { instance.status = 'suspended'; instance.currentNodeKey = key; instance.suspendReason = reason; instance.updatedAt = now; };
+  if (cyclic) { suspend('Demo 暂不执行循环流程，请在正式环境运行'); return; }
+  const finish = (node: WorkflowFlowData['nodes'][number], excluded = false) => {
+    const next = outgoing(node.id);
+    const choices = selectWorkflowPathBranches(node.data, next, { formData: instance.formData ?? {}, starter: mockWorkflowStarter(instance.initiatorId ?? 1) });
+    if (!excluded && choices.some(choice => choice.status === 'unknown')) {
+      suspend(`Demo 等待条件确认：${choices.find(choice => choice.status === 'unknown')!.reason}`, node.data.key); return;
+    }
+    graph.nodes.set(node.id, excluded ? 'excluded' : 'done');
+    next.forEach((edge, index) => graph.edges.set(edge.id, !excluded && choices[index].status === 'matched'));
+  };
+  for (let pass = 0; pass <= flow.nodes.length && instance.status === 'running'; pass++) {
+    let changed = false;
+    for (const node of flow.nodes) {
+      if (!reachable.has(node.id) || ['done', 'excluded'].includes(graph.nodes.get(node.id) ?? '')) continue;
+      const parents = incoming(node.id).filter(edge => reachable.has(edge.source));
+      if (!roots.includes(node.id) && parents.some(edge => !graph.edges.has(edge.id))) continue;
+      if (!roots.includes(node.id) && !parents.some(edge => graph.edges.get(edge.id))) { finish(node, true); changed = true; continue; }
+      const config = node.data;
+      if (['subProcess', 'trigger', 'delay', 'catchNode'].includes(config.type) || config.externalApproval?.enabled || (config.type === 'routeGateway' && config.decisionRuleKey)) {
+        suspend(`Demo 暂不执行「${config.label}」的外部或自动处理，请在正式环境运行`, config.key); break;
+      }
+      if (config.type === 'approve' || config.type === 'handler') {
+        if (config.approvalType === 'autoReject') { instance.status = 'rejected'; instance.currentNodeKey = null; break; }
+        if (config.approvalType !== 'autoApprove' && config.approveMethod !== 'auto') {
+          const activation = getMockApprovalActivations(instance.id).filter(item => item.nodeKey === config.key && item.status !== 'cancelled' && !graph.priorActivations?.has(item.id)).at(-1);
+          if (activation?.status === 'rejected') { instance.status = 'rejected'; instance.currentNodeKey = null; break; }
+          if (activation?.status !== 'approved') {
+            if (!activation) {
+              const tasks = buildMockApprovalTasks(config, instance.id, now, instance.initiatorId ?? 1);
+              if (!tasks.length) { suspend(`Demo 无法确定「${config.label}」的审批人，请补充审批人配置`, config.key); break; }
+              mockWorkflowTasks.push(...tasks); changed = true;
+            }
+            graph.nodes.set(node.id, 'active'); continue;
+          }
+        }
+      } else if (config.type === 'ccNode') {
+        for (const assigneeId of resolveMockWorkflowAssignees(config, instance.initiatorId ?? 1)) mockWorkflowTasks.push({
+          id: getNextTaskId(), instanceId: instance.id, nodeKey: config.key, nodeName: config.label, nodeType: 'ccNode', assigneeId,
+          assigneeName: mockUsers.find(user => user.id === assigneeId)?.nickname ?? null, assigneeAvatar: null, status: 'approved', taskKind: 'cc',
+          activationId: null, slotId: null, waitReason: null, signPosition: null, activatedAt: now, actionAt: now, comment: null, createdAt: now,
+        });
+      }
+      finish(node); changed = true;
+    }
+    if (!changed) break;
+  }
+  instance.tasks = mockWorkflowTasks.filter(task => task.instanceId === instance.id);
+  instance.updatedAt = now;
+  if (instance.status !== 'running') return;
+  const active = getMockApprovalActivations(instance.id).filter(item => item.status === 'active');
+  instance.currentNodeKey = active[0]?.nodeKey ?? null;
+  const externalPending = instance.tasks.some(task => task.taskKind === 'system' && (task.status === 'pending' || task.status === 'waiting'));
+  if (!active.length && !externalPending && [...reachable].every(id => graph.nodes.get(id) === 'done' || graph.nodes.get(id) === 'excluded')) instance.status = 'approved';
+  else if (!active.length) suspend('Demo 流程未到达结束，存在未完成的分支');
 }
 
 // ─── 流程定义历史版本 ─────────────────────────────────────────────────────

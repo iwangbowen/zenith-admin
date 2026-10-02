@@ -10,10 +10,10 @@
  */
 /* eslint-disable react-refresh/only-export-components */
 import { uniquePositiveInts } from '@zenith/shared/core';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { Button, Empty, Select, Space, Spin, Tag, Timeline, Typography } from '@douyinfe/semi-ui';
 import { Clock, Flag, Mail, Send, UserPlus, type LucideIcon } from 'lucide-react';
-import { WORKFLOW_APPROVE_METHOD_LABELS as METHOD_LABEL } from '@zenith/shared/workflow';
+import { WORKFLOW_APPROVE_METHOD_LABELS as METHOD_LABEL, WORKFLOW_PATH_STATUS_LABELS } from '@zenith/shared/workflow';
 import type { WorkflowApproverPreviewNode } from '@zenith/shared/workflow';
 import { UserAvatar } from '@/components/UserAvatar';
 import { timelineDot } from '@/components/workflow/timeline-dot';
@@ -117,9 +117,11 @@ export function WorkflowApprovalChain({
   error?: boolean;
   onRetry?: () => void;
 }>) {
+  const [showAllBranches, setShowAllBranches] = useState(false);
+  const nodeLabelId = useId();
   const selectNodes = useMemo<InitiatorApproverSelectNode[]>(
     () => nodes
-      .filter((node) => node.selectionRequired)
+      .filter((node) => node.status !== 'excluded' && node.selectionRequired)
       .map((node) => ({
         nodeKey: node.nodeKey,
         nodeName: node.nodeName,
@@ -135,7 +137,10 @@ export function WorkflowApprovalChain({
 
   // 发起人（开始节点）与审批节点拆分
   const startNode = nodes.find((n) => n.nodeType === 'start');
-  const flowNodes = nodes.filter((n) => n.nodeType !== 'start');
+  const structureNodes = nodes.filter((n) => n.nodeType !== 'start');
+  const flowNodes = structureNodes.filter((n) => n.status !== 'excluded');
+  const visibleNodes = showAllBranches ? structureNodes : flowNodes;
+  const hasExcludedBranches = structureNodes.length !== flowNodes.length;
   const initiatorName = startNode?.approvers[0]?.name ?? '发起人';
 
   // 链路摘要：审批步数 + 去重审批人数（自选节点单列标注）
@@ -143,8 +148,10 @@ export function WorkflowApprovalChain({
   const approverIdSet = new Set<number>();
   approvalNodes.forEach((n) => n.approvers.forEach((a) => approverIdSet.add(a.id)));
   const hasSelectNode = approvalNodes.some((n) => n.selectionRequired);
+  const unknownStepCount = approvalNodes.filter((n) => n.status === 'unknown').length;
   const summaryText = [
-    `共 ${approvalNodes.length} 步`,
+    `${unknownStepCount ? '预计' : '共'} ${approvalNodes.length} 步`,
+    unknownStepCount ? `${unknownStepCount} 步待条件确认` : null,
     approverIdSet.size > 0 ? `约 ${approverIdSet.size} 人审批` : null,
     hasSelectNode ? '含自选' : null,
   ].filter(Boolean).join(' · ');
@@ -155,13 +162,20 @@ export function WorkflowApprovalChain({
   };
 
   const renderApprovers = (n: WorkflowApproverPreviewNode) => {
+    if (n.status === 'excluded') return null;
     const isSelectableNode = selectable && n.selectionRequired;
     if (isSelectableNode) {
       const selected = pickSelected(value, n.nodeKey);
       const missing = highlightMissing && selected.length === 0;
       return (
         <div style={{ marginTop: 2 }}>
+          {n.status === 'unknown' && (
+            <Typography.Text type="warning" size="small" style={{ display: 'block', marginBottom: 4 }}>
+              条件未定，请预选可能需要的审批人
+            </Typography.Text>
+          )}
           <Select
+            aria-labelledby={`${nodeLabelId}-${n.nodeKey}`}
             multiple
             filter
             showClear
@@ -170,7 +184,7 @@ export function WorkflowApprovalChain({
               width: '100%',
               ...(missing ? { boxShadow: '0 0 0 1px var(--semi-color-danger)', borderRadius: 'var(--semi-border-radius-medium)' } : null),
             }}
-            placeholder="请选择审批人"
+            placeholder={n.status === 'unknown' ? '请预选审批人' : '请选择审批人'}
             emptyContent="暂无可选审批人"
             optionList={(n.selectableApprovers ?? []).map((u) => ({ value: u.id, label: u.name }))}
             value={selected}
@@ -201,7 +215,7 @@ export function WorkflowApprovalChain({
     }
     return (
       <Typography.Text size="small" type="warning">
-        {n.empty ? '审批人将在运行时确定（自选/上级/空处理）' : '—'}
+        {n.approverReason ?? (n.empty ? '审批人将在运行时确定' : '—')}
       </Typography.Text>
     );
   };
@@ -217,10 +231,21 @@ export function WorkflowApprovalChain({
           </Typography.Text>
           <Button size="small" onClick={onRetry}>重试</Button>
         </div>
-      ) : flowNodes.length === 0 ? (
+      ) : structureNodes.length === 0 ? (
         <Empty description="该流程无需审批，提交后自动通过" style={{ padding: 24 }} />
       ) : (
         <>
+          {hasExcludedBranches && (
+            <Button size="small" theme="borderless" aria-pressed={showAllBranches}
+              onClick={() => setShowAllBranches((current) => !current)}>
+              {showAllBranches ? '预计路径' : '全部结构'}
+            </Button>
+          )}
+          {flowNodes.length === 0 && (
+            <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginBottom: 8 }}>
+              按当前条件无需审批，提交后自动通过
+            </Typography.Text>
+          )}
           {approvalNodes.length > 0 && (
             <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--semi-color-text-2)' }}>
               {summaryText}
@@ -240,28 +265,38 @@ export function WorkflowApprovalChain({
           </Timeline.Item>
 
           {/* 审批节点（提交前预测态） */}
-          {flowNodes.map((n, idx) => {
+          {visibleNodes.map((n, idx) => {
             const meta = NODE_META[n.nodeType] ?? NODE_META.approve;
-            const isSelectableNode = selectable && n.selectionRequired;
+            const isExcluded = n.status === 'excluded';
+            const isSelectableNode = !isExcluded && selectable && n.selectionRequired;
             const dotIcon = isSelectableNode ? UserPlus : meta.icon;
-            const dotColor = isSelectableNode ? 'var(--semi-color-warning)' : meta.color;
+            const dotColor = isExcluded ? 'var(--semi-color-tertiary)' : isSelectableNode ? 'var(--semi-color-warning)' : meta.color;
             return (
               <Timeline.Item key={`${n.nodeKey}-${idx}`} dot={timelineDot(dotIcon, dotColor)}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-                  <Typography.Text strong style={{ fontSize: 13 }}>{n.nodeName}</Typography.Text>
+                  <Typography.Text id={`${nodeLabelId}-${n.nodeKey}`} strong type={isExcluded ? 'tertiary' : undefined} style={{ fontSize: 13 }}>{n.nodeName}</Typography.Text>
                   {isSelectableNode ? (
                     <Tag color="orange" size="small">
                       自选审批人{n.selectionRequired ? ' *' : ''}
                     </Tag>
-                  ) : (
+                  ) : !isExcluded && (
                     <Tag color={meta.statusColor} size="small">{meta.status}</Tag>
                   )}
-                  {n.approveMethod && METHOD_LABEL[n.approveMethod] && (
+                  {!isExcluded && n.approveMethod && METHOD_LABEL[n.approveMethod] && (
                     <Tag color="light-blue" size="small">{METHOD_LABEL[n.approveMethod]}</Tag>
+                  )}
+                  {n.status && (
+                    <Tag color={isExcluded ? 'grey' : n.status === 'unknown' ? 'orange' : 'blue'} size="small">{WORKFLOW_PATH_STATUS_LABELS[n.status]}</Tag>
                   )}
                   {n.branchLabel && <Tag color="violet" size="small">{n.branchLabel}</Tag>}
                 </div>
+                {n.reason && (
+                  <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginBottom: 4 }}>{n.reason}</Typography.Text>
+                )}
                 {renderApprovers(n)}
+                {!isExcluded && n.approverReason && (isSelectableNode || n.approvers.length > 0) && (
+                  <Typography.Text size="small" type="tertiary" style={{ display: 'block', marginTop: 4 }}>{n.approverReason}</Typography.Text>
+                )}
               </Timeline.Item>
             );
           })}

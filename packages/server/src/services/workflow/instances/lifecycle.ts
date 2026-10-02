@@ -3,7 +3,6 @@ import { lockUnchangedWorkflowDraft } from './signature-concurrency';
 import { clearWorkflowFormSignatures, resolveWorkflowFormSignatures } from './signatures';
 // ─── 实例生命周期：创建/撤回/取消/删除/草稿/重新提交（拆分自 workflow-instances.service.ts）───
 import { uniquePositiveInts } from '@zenith/shared/core';
-import { randomUUID } from 'node:crypto';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
 import { releaseManagedFiles } from '../../files/file-gc.service';
@@ -81,13 +80,9 @@ export async function createInstance(data: { definitionId: number; title: string
   if (!skipScopeCheck) await assertWorkflowInitiatorScope(def, user);
   const baseFlowData = def.flowData as WorkflowFlowData;
   if (!baseFlowData?.nodes?.length) throw new HTTPException(400, { message: '流程定义无效' });
-  const flowData = data.asDraft
-    ? baseFlowData
-    : await applyInitiatorSelectedApprovers(baseFlowData, data.selectedInitiatorApprovers);
-  const definitionSnapshot = toDefinitionSnapshot(def, data.asDraft ? undefined : flowData);
-  const validation = validateFlowData(flowData);
+  const validation = validateFlowData(baseFlowData);
   if (!validation.valid) throw new HTTPException(400, { message: validation.errors[0] });
-  let formData: Record<string, unknown> = sanitizeFormByStartPerms(flowData, data.formData ?? {});
+  let formData: Record<string, unknown> = sanitizeFormByStartPerms(baseFlowData, data.formData ?? {});
   const resolvedFormSnapshot = await resolveFormSnapshot(def.formId);
   const formSnapshot = buildInstanceFormSnapshot(def, resolvedFormSnapshot);
 
@@ -96,6 +91,11 @@ export async function createInstance(data: { definitionId: number; title: string
   formData = await resolveWorkflowFormSignatures(formSnapshot, formData, {}, callerOverride ? { userId: user.userId, tenantId: user.tenantId ?? null } : undefined);
   // 服务端权威派生值：公式/天数/明细聚合在入库前重算（客户端提交值不可信，条件分级依赖它）
   formData = normalizeInstanceFormData(formSnapshot, formData);
+  const starter = data.asDraft ? undefined : await buildStarterContext(user.userId);
+  const flowData = data.asDraft ? baseFlowData : await applyInitiatorSelectedApprovers(
+    baseFlowData, data.selectedInitiatorApprovers, { formData, formFields: formSnapshot?.fields, starter },
+  );
+  const definitionSnapshot = toDefinitionSnapshot(def, data.asDraft ? undefined : flowData);
 
   // 草稿：仅保存表单，不进入流转、不生成业务编号、不触发事件
   if (data.asDraft) {
@@ -121,7 +121,6 @@ export async function createInstance(data: { definitionId: number; title: string
     return mapInstance(draft);
   }
 
-  const starter = await buildStarterContext(user.userId);
   if (!hasExecutableEntry(flowData, formData, starter)) {
     throw new HTTPException(400, { message: '流程定义中无可执行节点' });
   }
@@ -392,11 +391,9 @@ export async function submitDraftInstance(id: number, input: { selectedInitiator
   requireRow(def, '流程定义不存在或已停用，无法提交', 400);
   const baseFlowData = def.flowData as WorkflowFlowData;
   if (!baseFlowData?.nodes?.length) throw new HTTPException(400, { message: '流程定义无效' });
-  const flowData = await applyInitiatorSelectedApprovers(baseFlowData, input.selectedInitiatorApprovers);
-  const definitionSnapshot = toDefinitionSnapshot(def, flowData);
-  const validation = validateFlowData(flowData);
+  const validation = validateFlowData(baseFlowData);
   if (!validation.valid) throw new HTTPException(400, { message: validation.errors[0] });
-  let formData = sanitizeFormByStartPerms(flowData, (inst.formData ?? {}) as Record<string, unknown>);
+  let formData = sanitizeFormByStartPerms(baseFlowData, (inst.formData ?? {}) as Record<string, unknown>);
   assertLaunchMatchesFormType(def, { bizType: inst.bizType, bizId: inst.bizId, formData: (inst.formData ?? {}) as Record<string, unknown> });
   const resolvedFormSnapshot = await resolveFormSnapshot(def.formId);
   const formSnapshot = buildInstanceFormSnapshot(def, resolvedFormSnapshot);
@@ -404,6 +401,10 @@ export async function submitDraftInstance(id: number, input: { selectedInitiator
   // 提交与重提同样在入库前重算派生值：草稿期内客户端可能未计算或未提交公式字段
   formData = normalizeInstanceFormData(formSnapshot, formData);
   const starter = await buildStarterContext(user.userId);
+  const flowData = await applyInitiatorSelectedApprovers(
+    baseFlowData, input.selectedInitiatorApprovers, { formData, formFields: formSnapshot?.fields, starter },
+  );
+  const definitionSnapshot = toDefinitionSnapshot(def, flowData);
   if (!hasExecutableEntry(flowData, formData, starter)) {
     throw new HTTPException(400, { message: '流程定义中无可执行节点' });
   }

@@ -22,6 +22,14 @@ import type {
 
 export const WORKFLOW_DEFINITION_STATUSES = ['draft', 'published', 'disabled'] as const;
 
+export const WORKFLOW_PATH_STATUSES = ['matched', 'excluded', 'unknown'] as const;
+export type WorkflowPathStatus = (typeof WORKFLOW_PATH_STATUSES)[number];
+export const WORKFLOW_PATH_STATUS_LABELS: Record<WorkflowPathStatus, string> = {
+  matched: '预计经过',
+  excluded: '不经过',
+  unknown: '待条件确认',
+};
+
 export const WORKFLOW_DEFINITION_STATUS_LABELS: Record<(typeof WORKFLOW_DEFINITION_STATUSES)[number], string> = {
   draft: '草稿',
   published: '已发布',
