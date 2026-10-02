@@ -145,22 +145,11 @@ function mapSeedNodeType(t: 'approver' | 'handler' | 'cc'): string {
 }
 
 /**
- * 构造线性流程的 flowData（含设计器 process 树 + 引擎 nodes/edges 扁平结构）。
+ * 构造 canonical nodes/edges 线性流程；设计器投影只在编辑时生成。
  * 与 packages/web 的 designer/utils.ts treeToFlat() 对线性链的输出保持一致：
  * nodes 顺序固定为 [start, end, ...审批节点]，data.key 即节点 key。
  */
 function buildLinearFlow(steps: SeedFlowStep[], settings?: Record<string, unknown>): Record<string, unknown> {
-  let child: Record<string, unknown> | undefined;
-  for (let i = steps.length - 1; i >= 0; i--) {
-    const s = steps[i];
-    const nodeType = s.nodeType ?? 'approver';
-    const props = nodeType === 'approver' ? { ...APPROVER_DEFAULT_PROPS, ...(s.props ?? {}) } : { ...(s.props ?? {}) };
-    child = { id: s.key, key: s.key, type: nodeType, name: s.name, props, children: child };
-  }
-  const process = {
-    initiator: { id: 'initiator', type: 'initiator', name: '发起人', props: { fieldPermissions: {} }, children: child },
-  };
-
   const nodes: Array<Record<string, unknown>> = [
     { id: 'node-start', type: 'workflowNode', position: { x: 0, y: 0 }, data: { key: 'start', type: 'start', label: '发起' } },
     { id: 'node-end', type: 'workflowNode', position: { x: 0, y: 0 }, data: { key: 'end', type: 'end', label: '结束' } },
@@ -177,7 +166,7 @@ function buildLinearFlow(steps: SeedFlowStep[], settings?: Record<string, unknow
   }
   edges.push({ id: `e-${prevId}-node-end`, source: prevId, target: 'node-end' });
 
-  const flow: Record<string, unknown> = { process, nodes, edges };
+  const flow: Record<string, unknown> = { nodes, edges };
   if (settings) flow.settings = settings;
   return flow;
 }

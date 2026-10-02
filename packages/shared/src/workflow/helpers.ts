@@ -441,28 +441,6 @@ function renameNodeProps(props: Record<string, unknown>, renames: Record<string,
 }
 
 /** 递归重写钉钉风格流程树节点（props + 分支条件 + 子节点） */
-function renameProcessNode(node: Record<string, unknown>, renames: Record<string, string>): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...node };
-  if (out.props && typeof out.props === 'object') {
-    out.props = renameNodeProps(out.props as Record<string, unknown>, renames);
-  }
-  if (Array.isArray(out.branches)) {
-    out.branches = out.branches.map((b) => {
-      if (!b || typeof b !== 'object') return b;
-      const branch = { ...(b as Record<string, unknown>) };
-      if (branch.conditions) branch.conditions = renameConditionGroups(branch.conditions, renames);
-      if (branch.children && typeof branch.children === 'object') {
-        branch.children = renameProcessNode(branch.children as Record<string, unknown>, renames);
-      }
-      return branch;
-    });
-  }
-  if (out.children && typeof out.children === 'object') {
-    out.children = renameProcessNode(out.children as Record<string, unknown>, renames);
-  }
-  return out;
-}
-
 /**
  * 表单字段 key 批量重命名后，级联重写流程定义 flowData 中的所有表单字段引用。
  *
@@ -470,7 +448,6 @@ function renameProcessNode(node: Record<string, unknown>, renames: Record<string
  * - 扁平 nodes[].data：fieldPermissions 键、formUserField/formDeptField、延迟节点 targetDate、
  *   子流程 multiSource/initiatorField/出参映射键/入参映射 {{form.x}}、触发器 bodyTemplate/fieldKeys/fieldValues、routeFieldKey
  * - edges[].condition / conditions[]：source≠'starter' 的 rules[].field 与 aggregateField
- * - process 流程树（设计器结构）：同构 props + branches[].conditions 递归
  * - settings.summaryFields 摘要字段、settings.serialNo.template 中 {FORM.key} 占位
  *
  * 返回新对象，不修改入参；renames 为空时原样返回。
@@ -495,14 +472,6 @@ export function renameWorkflowFormFieldKeys(
   }));
 
   const out: WorkflowFlowData = { ...flowData, nodes, edges };
-
-  if (flowData.process && typeof flowData.process === 'object') {
-    const process = { ...flowData.process };
-    if (process.initiator && typeof process.initiator === 'object') {
-      process.initiator = renameProcessNode(process.initiator as Record<string, unknown>, map);
-    }
-    out.process = process;
-  }
 
   if (flowData.settings) {
     const settings = { ...flowData.settings };

@@ -182,66 +182,184 @@ export const mockWorkflowDefinitions: WorkflowDefinition[] = [
     initiatorScopeType: 'all',
     initiatorScopeIds: null,
     flowData: {
-      nodes: [],
-      edges: [],
-      process: {
-        id: 'root',
-        type: 'initiator',
-        name: '发起人',
-        config: { assigneeType: 'self' },
-        next: {
-          id: 'manager',
-          type: 'approver',
-          name: '直属主管审批',
-          config: { assigneeType: 'manager', approvalType: 'sequential', approveMethod: 'or', emptyAssignee: 'auto-skip', rejectStrategy: 'end' },
-          next: {
-            id: 'branch_amount',
-            type: 'conditionBranch',
-            name: '金额条件分支',
-            config: {},
-            branches: [
-              {
-                id: 'b1',
-                name: '金额 ≤ 5000',
-                conditions: [{ field: 'totalAmount', operator: 'lte', value: 5000 }],
-                next: {
-                  id: 'dept_head',
-                  type: 'approver',
-                  name: '部门经理',
-                  config: { assigneeType: 'role', assigneeId: 2, assigneeName: '部门经理', approvalType: 'sequential', approveMethod: 'or' },
-                  next: null,
-                },
-              },
-              {
-                id: 'b2',
-                name: '金额 > 5000',
-                conditions: [{ field: 'totalAmount', operator: 'gt', value: 5000 }],
-                next: {
-                  id: 'gm',
-                  type: 'approver',
-                  name: '总经理审批',
-                  config: { assigneeType: 'user', assigneeId: 1, assigneeName: '张三', approvalType: 'sequential', approveMethod: 'or' },
-                  next: null,
-                },
-              },
-            ],
-            next: {
-              id: 'finance',
-              type: 'approver',
-              name: '财务审核',
-              config: { assigneeType: 'user', assigneeId: 4, assigneeName: '赵六', approvalType: 'sequential', approveMethod: 'or' },
-              next: {
-                id: 'cc_hr',
-                type: 'cc',
-                name: '抄送 HR',
-                config: { assigneeType: 'user', assigneeIds: [3], assigneeNames: ['王五'] },
-                next: null,
-              },
-            },
-          },
-        },
+  "nodes": [
+    {
+      "id": "root",
+      "position": {
+        "x": 300,
+        "y": 0
       },
+      "data": {
+        "key": "root",
+        "type": "start",
+        "label": "发起人"
+      }
     },
+    {
+      "id": "manager",
+      "position": {
+        "x": 300,
+        "y": 140
+      },
+      "data": {
+        "key": "manager",
+        "type": "approve",
+        "label": "直属主管审批",
+        "assigneeType": "manager",
+        "managerLevel": 1,
+        "approveMethod": "or"
+      }
+    },
+    {
+      "id": "branch_amount",
+      "position": {
+        "x": 300,
+        "y": 280
+      },
+      "data": {
+        "key": "branch_amount",
+        "type": "exclusiveGateway",
+        "label": "金额条件分支"
+      }
+    },
+    {
+      "id": "dept_head",
+      "position": {
+        "x": 300,
+        "y": 420
+      },
+      "data": {
+        "key": "dept_head",
+        "type": "approve",
+        "label": "部门经理",
+        "assigneeType": "role",
+        "roleIds": [2],
+        "approveMethod": "or"
+      }
+    },
+    {
+      "id": "gm",
+      "position": {
+        "x": 300,
+        "y": 560
+      },
+      "data": {
+        "key": "gm",
+        "type": "approve",
+        "label": "总经理审批",
+        "assigneeType": "user",
+        "assigneeIds": [
+          1
+        ],
+        "assigneeNames": [
+          "张三"
+        ],
+        "approveMethod": "or"
+      }
+    },
+    {
+      "id": "finance",
+      "position": {
+        "x": 300,
+        "y": 700
+      },
+      "data": {
+        "key": "finance",
+        "type": "approve",
+        "label": "财务审核",
+        "assigneeType": "user",
+        "assigneeIds": [
+          4
+        ],
+        "assigneeNames": [
+          "赵六"
+        ],
+        "approveMethod": "or"
+      }
+    },
+    {
+      "id": "cc_hr",
+      "position": {
+        "x": 300,
+        "y": 840
+      },
+      "data": {
+        "key": "cc_hr",
+        "type": "ccNode",
+        "label": "抄送 HR",
+        "assigneeType": "user",
+        "assigneeIds": [
+          3
+        ],
+        "assigneeNames": [
+          "王五"
+        ]
+      }
+    },
+    {
+      "id": "end",
+      "position": {
+        "x": 300,
+        "y": 980
+      },
+      "data": {
+        "key": "end",
+        "type": "end",
+        "label": "结束"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "travel_e0",
+      "source": "root",
+      "target": "manager"
+    },
+    {
+      "id": "travel_e1",
+      "source": "manager",
+      "target": "branch_amount"
+    },
+    {
+      "id": "travel_e2",
+      "source": "branch_amount",
+      "target": "dept_head",
+      "label": "金额 ≤ 5000",
+      "condition": {
+        "field": "totalAmount",
+        "operator": "lte",
+        "value": 5000
+      }
+    },
+    {
+      "id": "travel_e3",
+      "source": "branch_amount",
+      "target": "gm",
+      "label": "金额 > 5000",
+      "isDefault": true
+    },
+    {
+      "id": "travel_e4",
+      "source": "dept_head",
+      "target": "finance"
+    },
+    {
+      "id": "travel_e5",
+      "source": "gm",
+      "target": "finance"
+    },
+    {
+      "id": "travel_e6",
+      "source": "finance",
+      "target": "cc_hr"
+    },
+    {
+      "id": "travel_e7",
+      "source": "cc_hr",
+      "target": "end"
+    }
+  ]
+},
     formId: 2,
     formFields: null,
     formType: 'designer',

@@ -2,15 +2,16 @@
  * 流程节点列表 —— 线性化展示流程中所有节点，并叠加运行态（状态 + 处理人 + 时间）。
  */
 import { List, Tag, Typography } from '@douyinfe/semi-ui';
-import type { WorkflowTask } from '@zenith/shared/workflow';
-import type { FlowNode, FlowProcess } from '@/pages/workflow/designer/types';
+import { projectWorkflowGraph, type WorkflowFlowData, type WorkflowTask } from '@zenith/shared/workflow';
+import WorkflowGraphView from './WorkflowGraphView';
+import type { FlowNode } from '@/pages/workflow/designer/types';
 import { ADDABLE_NODE_TYPES } from '@/pages/workflow/designer/constants';
 import { UserAvatar } from '@/components/UserAvatar';
 import DateTimeText from '@/components/DateTimeText';
 import { buildNodeRuntimeMap, NODE_RT_STATUS_COLOR, approverActionLabel, nodeStatusDisplay } from './workflow-runtime';
 
 interface Props {
-  flowData: { process?: unknown } | null | undefined;
+  flowData: WorkflowFlowData | null | undefined;
   tasks?: WorkflowTask[];
   /** 实例发起人（详情场景传入真实发起人；发起预览场景传入当前用户作为预期发起人） */
   initiator?: { name?: string | null; avatar?: string | null; submittedAt?: string | null };
@@ -40,7 +41,9 @@ function getNodeMeta(type: FlowNode['type']) {
 }
 
 export default function WorkflowNodeListView({ flowData, tasks = [], initiator }: Readonly<Props>) {
-  const process = flowData?.process as FlowProcess | undefined;
+  const projection = flowData ? projectWorkflowGraph(flowData) : null;
+  if (projection?.kind === 'graph') return <WorkflowGraphView flowData={flowData} tasks={tasks} />;
+  const process = projection?.kind === 'tree' ? projection.process : null;
   if (!process?.initiator) {
     return (
       <div style={{ padding: 24, textAlign: 'center', color: 'var(--semi-color-text-2)' }}>

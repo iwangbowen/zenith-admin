@@ -1,3 +1,4 @@
+import type { WorkflowDesignerBranch, WorkflowDesignerNode, WorkflowDesignerProcess } from '@zenith/shared/workflow/designer-graph';
 /**
  * 钉钉/飞书风格流程设计器 — 数据模型
  *
@@ -292,35 +293,15 @@ export interface ConditionGroup {
 
 // ─── 分支 ────────────────────────────────────────────────────────────
 
-export interface FlowBranch {
-  id: string;
-  name: string;
-  priority?: number;
-  conditions?: ConditionGroup[];
-  /** 路由分支专用：与父节点 props.routeFieldKey 字段做相等匹配的值 */
-  caseValue?: string;
-  isDefault?: boolean;
-  children?: FlowNode;
-}
+export interface FlowBranch extends WorkflowDesignerBranch {}
 
 // ─── 节点 ────────────────────────────────────────────────────────────
 
-export interface FlowNode {
-  id: string;
-  /** 用户可编辑的稳定业务标识；运行时事件 nodeKey 优先使用此字段，未设置则回退到 id */
-  key?: string;
-  type: FlowNodeType;
-  name: string;
-  props: Record<string, unknown>;
-  children?: FlowNode;        // 下一个节点（链表）
-  branches?: FlowBranch[];    // 分支节点专用
-}
+export interface FlowNode extends WorkflowDesignerNode {}
 
 // ─── 流程定义顶层 ────────────────────────────────────────────────────
 
-export interface FlowProcess {
-  initiator: FlowNode;  // 根节点（发起人）
-}
+export interface FlowProcess extends WorkflowDesignerProcess {}
 
 // ─── 运行态（实例详情流程图）渲染辅助类型 ───────────────────────────
 

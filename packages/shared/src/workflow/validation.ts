@@ -2,197 +2,11 @@ import { signatureInputSchema, signaturePolicySchema } from '../core/signatures'
 import * as z from 'zod';
 import { dateRangeBound, entityStatusSchema } from '../core/api-schemas';
 import { httpUrl, lazyRecursive, linkUrl, partialForUpdate } from '../core/validation';
-import { isHttpUrl } from '../core/url';
-import { WORKFLOW_SIGNATURE_POLICIES, WORKFLOW_EVENT_SIGN_MODES, WORKFLOW_EVENT_TYPES, WORKFLOW_JOB_TYPES } from './constants';
+import { WORKFLOW_EVENT_SIGN_MODES, WORKFLOW_EVENT_TYPES, WORKFLOW_JOB_TYPES } from './constants';
 import type { WorkflowFieldVisibilityRuleGroup, WorkflowFormCascaderNode, WorkflowFormField } from './types';
 
-export const workflowSignaturePolicySchema = z.enum(WORKFLOW_SIGNATURE_POLICIES);
-
-// ─── 工作流引擎 Schema ────────────────────────────────────────────────────────
-export const workflowConditionOperatorSchema = z.enum(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'in', 'notIn', 'contains', 'isEmpty', 'isNotEmpty', 'between', 'withinDays', 'beforeDays']);
-
-export const workflowEdgeConditionSchema = z.object({
-  field: z.string().min(1),
-  operator: workflowConditionOperatorSchema,
-  value: z.union([z.string(), z.number(), z.boolean()]),
-  source: z.enum(['form', 'starter']).optional(),
-  aggregate: z.enum(['sum', 'count', 'avg']).optional(),
-  aggregateField: z.string().optional(),
-});
-
-export const workflowConditionGroupSchema = z.object({
-  type: z.enum(['and', 'or']),
-  rules: z.array(workflowEdgeConditionSchema).min(1),
-});
-
-export const workflowNodeTypeSchema = z.enum([
-  'start',
-  'approve',
-  'handler',
-  'end',
-  'exclusiveGateway',
-  'parallelGateway',
-  'inclusiveGateway',
-  'routeGateway',
-  'ccNode',
-  'delay',
-  'trigger',
-  'subProcess',
-  'catchNode',
-]);
-
-export const workflowAssigneeTypeSchema = z.enum([
-  'user', 'role', 'department', 'userGroup', 'post', 'deptMember',
-  'initiator', 'initiatorLeader', 'initiatorDept', 'startUserDeptResponsible',
-  'manager', 'multiLevelManager', 'multiLevelDeptHead',
-  'formUser', 'formDepartment', 'nodeApprover',
-  'initiatorSelect', 'initiatorSelectScope', 'approverSelect',
-  'decision', 'expression',
-]);
-
-export const workflowApproveMethodSchema = z.enum(['and', 'or', 'sequential', 'ratio', 'random', 'auto']);
-
-export const workflowApprovalTypeSchema = z.enum(['manual', 'autoApprove', 'autoReject']);
-
-export const workflowEmptyAssigneeStrategySchema = z.enum(['autoApprove', 'assignToAdmin', 'reject', 'assignTo']);
-
-export const workflowSameInitiatorStrategySchema = z.enum(['selfApprove', 'autoSkip', 'toDirectManager', 'toDeptHead']);
-
-export const workflowDeduplicateStrategySchema = z.enum(['autoSkip', 'repeatApprove']);
-
-export const workflowOperationPermissionSchema = z.enum([
-  'opinionRequired',
-]);
-
-export const workflowFieldPermissionSchema = z.enum(['read', 'edit', 'hidden']);
-
-export const workflowActionButtonKeySchema = z.enum([
-  'approve', 'reject', 'transfer', 'delegate', 'addSign', 'reduceSign', 'return',
-]);
-
-export const workflowActionButtonConfigSchema = z.object({
-  enabled: z.boolean(),
-  displayName: z.string().max(32).optional(),
-  opinionName: z.string().max(32).optional(),
-  jumpToNodeKey: z.string().optional(),
-  /** 附件配置：不显示/选填/必填，默认 hidden */
-  uploadMode: z.enum(['hidden', 'optional', 'required']).optional(),
-});
-
-export const workflowTimeoutConfigSchema = z.object({
-  enabled: z.boolean(),
-  duration: z.number().int().min(1),
-  unit: z.enum(['minutes', 'hours', 'days']).optional(),
-  action: z.enum(['remind', 'autoApprove', 'autoReject']),
-  remindCount: z.number().int().min(1).optional(),
-  escalateAction: z.enum(['none', 'autoApprove', 'autoReject', 'transferToManager']).optional(),
-  escalateManagerLevel: z.number().int().min(1).optional(),
-  escalateFallbackAction: z.enum(['none', 'autoApprove', 'autoReject']).optional(),
-});
-
-export const workflowCompensationActionSchema = z.object({
-  type: z.enum(['none', 'http', 'connector', 'sms', 'email', 'updateData']),
-  connectorId: z.number().int().optional(),
-  /** http：绝对 http(s) URL（路径 / 查询可含 {{模板}}）；connector：相对 baseUrl 的路径 */
-  url: z.string().max(1000).optional(),
-  httpMethod: z.enum(['GET', 'POST', 'PUT', 'DELETE']).optional(),
-  headers: z.record(z.string(), z.string()).optional(),
-  bodyTemplate: z.string().max(8000).optional(),
-  templateId: z.number().int().optional(),
-  recipients: z.array(z.string().max(200)).optional(),
-  fieldKeys: z.array(z.string()).optional(),
-  fieldValues: z.record(z.string(), z.string()).optional(),
-  idempotencyKeyTemplate: z.string().max(200).optional(),
-  maxRetries: z.number().int().min(0).max(10).optional(),
-  timeoutMs: z.number().int().min(0).max(600000).optional(),
-}).superRefine((value, ctx) => {
-  if (value.type === 'http' && value.url && !isHttpUrl(value.url.replace(/\{\{[^}]*\}\}/g, 'x'))) {
-    ctx.addIssue({ code: 'custom', path: ['url'], message: 'HTTP 补偿动作的 URL 需为 http(s) 地址（主机部分不能是模板）' });
-  }
-});
-
-export const workflowNodeFailurePolicySchema = z.object({
-  action: z.enum(['continue', 'retry', 'compensate', 'fallback', 'notify', 'terminate']),
-  maxRetries: z.number().int().min(0).max(10).optional(),
-  fallbackNodeKey: z.string().optional(),
-  fallbackAction: workflowCompensationActionSchema.optional(),
-  compensation: workflowCompensationActionSchema.optional(),
-  notifyUserIds: z.array(z.number().int()).nullable().optional(),
-  continueAfter: z.boolean().optional(),
-  sagaRollback: z.boolean().optional(),
-});
-
-export const workflowNodeConfigSchema = z.looseObject({
-  key: z.string().min(1),
-  type: workflowNodeTypeSchema,
-  label: z.string().min(1),
-  assigneeId: z.number().int().nullable().optional(),
-  assigneeName: z.string().nullable().optional(),
-  assigneeIds: z.array(z.number().int()).nullable().optional(),
-  assigneeNames: z.array(z.string()).nullable().optional(),
-  isDefault: z.boolean().optional(),
-  assigneeType: workflowAssigneeTypeSchema.optional(),
-  approvalType: workflowApprovalTypeSchema.optional(),
-  excludeFromStats: z.boolean().optional(),
-  userIds: z.array(z.number().int()).nullable().optional(),
-  roleIds: z.array(z.number().int()).nullable().optional(),
-  deptIds: z.array(z.number().int()).nullable().optional(),
-  userGroupIds: z.array(z.number().int()).nullable().optional(),
-  postIds: z.array(z.number().int()).nullable().optional(),
-  postNames: z.array(z.string()).nullable().optional(),
-  deptMemberDeptIds: z.array(z.number().int()).nullable().optional(),
-  deptMemberDeptNames: z.array(z.string()).nullable().optional(),
-  deptMemberIncludeChildren: z.boolean().optional(),
-  selectScopeType: z.enum(['user', 'role', 'department', 'userGroup']).optional(),
-  selectScopeIds: z.array(z.number().int()).nullable().optional(),
-  assigneeExpression: z.string().max(2000).optional(),
-  approveMethod: workflowApproveMethodSchema.optional(),
-  approveRatio: z.number().int().min(1).max(100).optional(),
-  emptyStrategy: workflowEmptyAssigneeStrategySchema.optional(),
-  emptyAssignToIds: z.array(z.number().int()).nullable().optional(),
-  emptyAssignToNames: z.array(z.string()).nullable().optional(),
-  sameInitiatorStrategy: workflowSameInitiatorStrategySchema.optional(),
-  deduplicateStrategy: workflowDeduplicateStrategySchema.optional(),
-  operations: z.array(workflowOperationPermissionSchema).optional(),
-  signaturePolicy: workflowSignaturePolicySchema.default('none'),
-  actionButtons: z.record(workflowActionButtonKeySchema, workflowActionButtonConfigSchema).optional(),
-  fieldPermissions: z.record(z.string(), workflowFieldPermissionSchema).optional(),
-  timeout: workflowTimeoutConfigSchema.optional(),
-  managerLevel: z.number().int().min(1).optional(),
-  multiLevelEndType: z.enum(['topLevel', 'level', 'role']).optional(),
-  multiLevelEndLevel: z.number().int().min(1).optional(),
-  multiLevelEndRoleId: z.number().int().optional(),
-  formUserField: z.string().optional(),
-  formDeptField: z.string().optional(),
-  formDeptHeadLevel: z.number().int().min(1).optional(),
-  nodeApproverNodeId: z.string().optional(),
-  onlyOnApprove: z.boolean().optional(),
-  subProcessId: z.number().int().optional(),
-  subProcessName: z.string().optional(),
-  subProcessFieldMapping: z.record(z.string(), z.string()).optional(),
-  subProcessOutputMapping: z.record(z.string(), z.string()).optional(),
-  subProcessWaitChild: z.boolean().optional(),
-  subProcessMode: z.enum(['single', 'multi']).optional(),
-  subProcessMultiSource: z.string().optional(),
-  subProcessMultiExecution: z.enum(['parallel', 'serial']).optional(),
-  subProcessMultiItemKey: z.string().optional(),
-  subProcessOnChildReject: z.enum(['abort', 'continue']).optional(),
-  subProcessInitiator: z.enum(['parentInitiator', 'formField', 'specifiedUser']).optional(),
-  subProcessInitiatorField: z.string().optional(),
-  subProcessInitiatorUserId: z.number().int().optional(),
-  subProcessIgnoreReject: z.boolean().optional(),
-  catchAction: z.enum(['toAdmin', 'notify', 'terminate']).optional(),
-  catchNotifyUserIds: z.array(z.number().int()).nullable().optional(),
-  failurePolicy: workflowNodeFailurePolicySchema.optional(),
-  isAsync: z.boolean().optional(),
-  nodeListeners: z.array(z.object({
-    type: z.literal('webhook'),
-    url: httpUrl().max(1000),
-    method: z.enum(['GET', 'POST']).optional(),
-    headers: z.record(z.string(), z.string()).optional(),
-    events: z.array(z.enum(['onCreate', 'onApprove', 'onReject'])).min(1, '至少选择一个事件'),
-  })).optional(),
-});
+export * from './graph-schema';
+import { workflowFlowDataSchema } from './graph-schema';
 
 export const workflowFieldVisibilityConditionSchema = z.object({
   field: z.string().min(1),
@@ -471,7 +285,7 @@ export const createWorkflowDefinitionSchema = z.object({
   categoryId: z.number().int().nullable().optional(),
   initiatorScopeType: z.enum(['all', 'users', 'departments', 'roles']).default('all'),
   initiatorScopeIds: z.array(z.number().int()).nullable().optional(),
-  flowData: z.record(z.string(), z.unknown()).nullable().optional(),
+  flowData: workflowFlowDataSchema.nullable().optional(),
   formId: z.number().int().positive().nullable().optional(),
   formType: workflowFormTypeSchema.default('designer'),
   customForm: workflowCustomFormConfigSchema.nullable().optional(),
@@ -600,7 +414,7 @@ export const workflowSimulationOptionsSchema = z.object({
 
 export const simulateWorkflowSchema = z.object({
   definitionId: z.number().int().positive().optional(),
-  flowData: z.looseObject({}).nullable().optional(),
+  flowData: workflowFlowDataSchema.nullable().optional(),
   formData: z.record(z.string(), z.unknown()).nullable().optional(),
   starterUserId: z.number().int().positive().optional(),
   decisions: z.array(workflowSimulationDecisionSchema).max(200).optional(),
@@ -624,7 +438,7 @@ export type SaveWorkflowSimulationCaseInput = z.input<typeof saveWorkflowSimulat
 
 export const workflowHealthCheckSchema = z.object({
   definitionId: z.number().int().positive().optional(),
-  flowData: z.looseObject({}).nullable().optional(),
+  flowData: workflowFlowDataSchema.nullable().optional(),
   /** 设计器草稿：当前绑定表单的字段（key + 类型），用于条件/表达式字段引用与类型兼容性实时校验 */
   formFields: z.array(z.object({ key: z.string(), type: z.string().optional() })).optional(),
 }).refine((v) => v.definitionId || v.flowData, {
@@ -769,7 +583,7 @@ export const importWorkflowDefinitionSchema = z.object({
   name: z.string().min(1, '流程名称不能为空').max(128),
   description: z.string().max(512).nullable().optional(),
   categoryName: z.string().max(64).nullable().optional(),
-  flowData: z.unknown(),
+  flowData: workflowFlowDataSchema.nullable(),
   formType: workflowFormTypeSchema.optional(),
   customForm: workflowCustomFormConfigSchema.nullable().optional(),
   form: z.object({
@@ -849,7 +663,7 @@ export const createWorkflowTemplateSchema = z.object({
   categoryName: z.string().max(64).nullable().optional(),
   icon: z.string().max(64).nullable().optional(),
   color: z.string().max(16).nullable().optional(),
-  flowData: z.record(z.string(), z.unknown()).nullable().optional(),
+  flowData: workflowFlowDataSchema.nullable().optional(),
   formSchema: z.record(z.string(), z.unknown()).nullable().optional(),
   sort: z.number().int().nonnegative().default(0),
 });

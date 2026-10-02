@@ -602,8 +602,6 @@ export interface WorkflowFlowData {
     data: WorkflowNodeConfig;
   }>;
   edges: WorkflowEdge[];
-  /** 钉钉/飞书风格流程树结构（新版设计器使用） */
-  process?: Record<string, unknown>;
   settings?: WorkflowAdvancedSettings;
 }
 

@@ -160,6 +160,10 @@ export const workflowPredictedPathNodeSchema = z.object({
   name: z.string(),
   type: z.enum(['approve', 'handler', 'cc']),
   branchLabel: z.string().nullable().optional().meta({ description: '进入该节点经过的条件分支标签' }),
+  status: z.enum(['matched', 'excluded', 'unknown']).optional(),
+  reason: z.string().optional(),
+  estimatedApprovers: z.array(z.object({ id: z.number().int(), name: z.string() })).optional(),
+  approverReason: z.string().nullable().optional(),
 }).meta({ id: 'WorkflowPredictedPathNode' });
 
 export type WorkflowPredictedPathNode = z.infer<typeof workflowPredictedPathNodeSchema>;

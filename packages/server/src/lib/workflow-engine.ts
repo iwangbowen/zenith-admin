@@ -23,9 +23,8 @@
  * - delay / trigger     —— 自动节点，由统一作业账本（workflow-jobs）调度
  * - subProcess          —— 子实例发起 / 多实例展开 / 汇聚由 instances/subprocess.ts 接管
  */
-import type { WorkflowFlowData, WorkflowNodeConfig, WorkflowEdge, WorkflowEdgeCondition, WorkflowConditionGroup, WorkflowStarterContext, WorkflowApproveMethod, WorkflowResolvedApproveMethod } from '@zenith/shared/workflow';
-import { WORKFLOW_SCHEMA_VERSION } from '@zenith/shared/workflow';
-import dayjs from 'dayjs';
+import type { WorkflowFlowData, WorkflowNodeConfig, WorkflowEdge, WorkflowStarterContext, WorkflowApproveMethod, WorkflowResolvedApproveMethod, WorkflowFormField, WorkflowPredictedPathNode } from '@zenith/shared/workflow';
+import { WORKFLOW_SCHEMA_VERSION, evaluateWorkflowCondition, evaluateWorkflowConditionGroup, evaluateWorkflowConditionGroups, workflowEdgeHasCondition, workflowEdgeMatchesCondition, planWorkflowPath } from '@zenith/shared/workflow';
 
 /**
  * 将不同 schema 版本的 flowData 迁移到当前引擎 schema（运行时兼容迁移）。
@@ -64,19 +63,6 @@ function upgradeFlowDataV1ToV2(flowData: WorkflowFlowData): WorkflowFlowData {
   for (const n of next.nodes ?? []) {
     if (n.data) sanitizeOperationsV2(n.data as unknown as Record<string, unknown>);
   }
-  const visitProcessNode = (node: unknown): void => {
-    if (!node || typeof node !== 'object') return;
-    const rec = node as Record<string, unknown>;
-    const props = rec.props;
-    if (props && typeof props === 'object') sanitizeOperationsV2(props as Record<string, unknown>);
-    if (Array.isArray(rec.branches)) {
-      for (const b of rec.branches) {
-        if (b && typeof b === 'object') visitProcessNode((b as Record<string, unknown>).children);
-      }
-    }
-    visitProcessNode(rec.children);
-  };
-  visitProcessNode((next.process as Record<string, unknown> | undefined)?.initiator);
   return next;
 }
 
@@ -134,206 +120,12 @@ export function buildAdjacency(flowData: WorkflowFlowData) {
   return { nodeMap, outEdges, inEdges };
 }
 
-/** 将条件值解析为 ID 数组（支持数字 / 逗号分隔字符串） */
-function parseIdList(value: string | number | boolean): number[] {
-  if (typeof value === 'number') return Number.isFinite(value) ? [value] : [];
-  if (typeof value === 'string') {
-    return value.split(',')
-      .map((s) => s.trim())
-      .filter((s) => s !== '')
-      .map(Number)
-      .filter((n) => Number.isFinite(n));
-  }
-  return [];
-}
-
-/** 求值「发起人维度」条件（source='starter'，field=user|dept|role|post，operator=in|notIn） */
-function evaluateStarterCondition(
-  condition: WorkflowEdgeCondition,
-  starter: WorkflowStarterContext | undefined,
-): boolean {
-  if (!starter) return false;
-  const targetIds = parseIdList(condition.value);
-  let actual: number[];
-  switch (condition.field) {
-    case 'user': actual = [starter.userId]; break;
-    case 'dept': actual = starter.deptIds; break;
-    case 'role': actual = starter.roleIds; break;
-    case 'post': actual = starter.postIds; break;
-    default: return false;
-  }
-  const hit = actual.some((id) => targetIds.includes(id));
-  return condition.operator === 'notIn' ? !hit : hit;
-}
-
-/** 解析区间值 "a,b" / "a~b" → [min, max] */
-function parseRange(value: string | number | boolean): [number, number] | null {
-  if (typeof value !== 'string') return null;
-  const parts = value.split(/[,~]/).map((s) => Number(s.trim()));
-  if (parts.length === 2 && parts.every((n) => Number.isFinite(n))) {
-    return [Math.min(parts[0], parts[1]), Math.max(parts[0], parts[1])];
-  }
-  return null;
-}
-
-/** 数值比较（供聚合结果复用） */
-function compareNumber(fv: number, operator: WorkflowEdgeCondition['operator'], target: string | number | boolean): boolean {
-  const t = Number(target);
-  switch (operator) {
-    case 'eq': return fv === t;
-    case 'neq': return fv !== t;
-    case 'gt': return fv > t;
-    case 'gte': return fv >= t;
-    case 'lt': return fv < t;
-    case 'lte': return fv <= t;
-    case 'between': { const r = parseRange(target); return r ? fv >= r[0] && fv <= r[1] : false; }
-    default: return false;
-  }
-}
-
-function isPrimitiveConditionValue(value: unknown): value is string | number | boolean | null | undefined {
-  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || value == null;
-}
-
-function parseTargetList(target: string | number | boolean | Array<string | number | boolean>): string[] {
-  // 契约上条件值是多值也行（string|number|boolean，多值用逗号串），写入入口已归一；
-  // 这里仍接受数组作为防御：历史/外部导入可能带来数组，不应表现为"条件恒不成立"。
-  if (Array.isArray(target)) {
-    return target.map((v) => String(v ?? '').trim()).filter(Boolean);
-  }
-  return typeof target === 'string'
-    ? target.split(',').map((s) => s.trim()).filter(Boolean)
-    : [String(target)];
-}
-
-/** 求值条件表达式 */
-export function evaluateCondition(
-  condition: WorkflowEdgeCondition,
-  formData: Record<string, unknown>,
-  starter?: WorkflowStarterContext,
-): boolean {
-  // 发起人维度条件：与表单数据无关，按发起人上下文求值
-  if (condition.source === 'starter') {
-    return evaluateStarterCondition(condition, starter);
-  }
-
-  const fieldValue = formData[condition.field];
-  const target = condition.value;
-
-  // 明细子表聚合：对数组型字段按 aggregateField 列聚合后比较
-  if (condition.aggregate) {
-    const arr = Array.isArray(fieldValue) ? fieldValue : [];
-    let agg: number;
-    if (condition.aggregate === 'count') {
-      agg = arr.length;
-    } else {
-      const nums = arr
-        .map((row) => Number(condition.aggregateField ? (row as Record<string, unknown>)?.[condition.aggregateField] : row))
-        .filter((n) => Number.isFinite(n));
-      const sum = nums.reduce((a, b) => a + b, 0);
-      agg = condition.aggregate === 'sum' ? sum : (nums.length ? sum / nums.length : 0);
-    }
-    return compareNumber(agg, condition.operator, target);
-  }
-
-  // 相对日期：withinDays 距今 N 天内；beforeDays 早于 N 天前
-  if (condition.operator === 'withinDays' || condition.operator === 'beforeDays') {
-    if (fieldValue == null || fieldValue === '') return false;
-    const d = dayjs(fieldValue as string);
-    if (!d.isValid()) return false;
-    const days = Number(target);
-    if (!Number.isFinite(days)) return false;
-    const diff = dayjs().diff(d, 'day'); // 正数 = field 在过去
-    return condition.operator === 'withinDays' ? Math.abs(diff) <= days : diff > days;
-  }
-
-  if (condition.operator === 'isEmpty' || condition.operator === 'isNotEmpty') {
-    const empty = fieldValue == null
-      || fieldValue === ''
-      || (Array.isArray(fieldValue) && fieldValue.length === 0)
-      || (typeof fieldValue === 'object' && fieldValue !== null && !Array.isArray(fieldValue) && Object.keys(fieldValue).length === 0);
-    return condition.operator === 'isEmpty' ? empty : !empty;
-  }
-
-  if (Array.isArray(fieldValue)) {
-    const values = fieldValue.filter(isPrimitiveConditionValue).map((v) => String(v ?? ''));
-    if (condition.operator === 'contains') return values.includes(String(target));
-    if (condition.operator === 'in' || condition.operator === 'notIn') {
-      const targets = parseTargetList(target);
-      const hit = values.some((value) => targets.includes(value));
-      return condition.operator === 'notIn' ? !hit : hit;
-    }
-    return false;
-  }
-
-  if (!isPrimitiveConditionValue(fieldValue)) return false;
-  const fv = fieldValue;
-
-  switch (condition.operator) {
-    case 'eq':
-      return fv === target || String(fv ?? '') === String(target);
-    case 'neq':
-      return fv !== target && String(fv ?? '') !== String(target);
-    case 'gt':
-      return Number(fv) > Number(target);
-    case 'gte':
-      return Number(fv) >= Number(target);
-    case 'lt':
-      return Number(fv) < Number(target);
-    case 'lte':
-      return Number(fv) <= Number(target);
-    case 'between': {
-      const r = parseRange(target);
-      return r ? Number(fv) >= r[0] && Number(fv) <= r[1] : false;
-    }
-    case 'in':
-    case 'notIn': {
-      // target 可能是逗号分隔字符串，也可能是单个数字/布尔（如从下拉条件直接存数值）
-      const arr = parseTargetList(target);
-      const inList = arr.includes(String(fv ?? ''));
-      return condition.operator === 'notIn' ? !inList : inList;
-    }
-    case 'contains':
-      return typeof fv === 'string' && fv.includes(String(target));
-    default:
-      return false;
-  }
-}
-
-export function evaluateConditionGroup(
-  group: WorkflowConditionGroup,
-  formData: Record<string, unknown>,
-  starter?: WorkflowStarterContext,
-): boolean {
-  if (group.rules.length === 0) return false;
-  if (group.type === 'or') {
-    return group.rules.some((rule) => evaluateCondition(rule, formData, starter));
-  }
-  return group.rules.every((rule) => evaluateCondition(rule, formData, starter));
-}
-
-export function evaluateConditionGroups(
-  groups: WorkflowConditionGroup[],
-  formData: Record<string, unknown>,
-  starter?: WorkflowStarterContext,
-): boolean {
-  if (groups.length === 0) return false;
-  return groups.some((group) => evaluateConditionGroup(group, formData, starter));
-}
-
-export function edgeHasCondition(edge: WorkflowEdge): boolean {
-  return !!edge.condition || !!edge.conditions?.length;
-}
-
-export function edgeMatchesCondition(
-  edge: WorkflowEdge,
-  formData: Record<string, unknown>,
-  starter?: WorkflowStarterContext,
-): boolean {
-  if (edge.conditions?.length) return evaluateConditionGroups(edge.conditions, formData, starter);
-  if (edge.condition) return evaluateCondition(edge.condition, formData, starter);
-  return false;
-}
+/** Runtime and preview share one condition evaluator. Keep the server names for callers. */
+export const evaluateCondition = evaluateWorkflowCondition;
+export const evaluateConditionGroup = evaluateWorkflowConditionGroup;
+export const evaluateConditionGroups = evaluateWorkflowConditionGroups;
+export const edgeHasCondition = workflowEdgeHasCondition;
+export const edgeMatchesCondition = workflowEdgeMatchesCondition;
 
 export function isDefaultEdge(edge: WorkflowEdge, targetNode?: FlowNode): boolean {
   return !!edge.isDefault || !!targetNode?.data.isDefault || !edgeHasCondition(edge);
@@ -403,111 +195,29 @@ export function findReturnPrevTarget(
   return ancestorMatch ?? approvedApproveNodeKeysByRecency[0];
 }
 
-/** 预测剩余路径节点（沿快照前向求值条件后将会执行的人工/抄送节点） */
-export interface PredictedPathNode {
-  key: string;
-  name: string;
-  type: 'approve' | 'handler' | 'cc';
-  branchLabel?: string | null;
-}
+export type PredictedPathNode = WorkflowPredictedPathNode;
 
-/**
- * 预测实例的剩余执行路径：从当前活动节点的出边前向遍历，
- * 网关语义与 token 引擎一致（排他/路由=首个命中条件边否则默认边；并行=全部；包容=命中集合否则默认），
- * 只返回将会执行的 approve/handler/cc 节点（不含当前活动节点自身）。
- * 表单已提交、条件求值确定，用于详情时间线未来段——替代"罗列全部节点"的误导展示。
- * 环路（returnMode 回边等）通过 visited 截断，遇到已访问节点停止该方向。
- */
+/** Predict from the real execution frontier without modifying the submitted form snapshot. */
 export function predictRemainingPath(
   flowData: WorkflowFlowData,
   fromNodeKeys: string[],
   formData: Record<string, unknown>,
   starter?: WorkflowStarterContext,
+  options: { formFields?: WorkflowFormField[]; completedNodeKeys?: string[] } = {},
 ): PredictedPathNode[] {
-  const { nodeMap, outEdges } = buildAdjacency(flowData);
-  const keyToId = new Map<string, string>();
-  for (const n of flowData.nodes) keyToId.set(n.data.key, n.id);
-
-  const out: PredictedPathNode[] = [];
-  const emitted = new Set<string>();
-  const visited = new Set<string>();
-  interface Arrival { nodeId: string; branchLabel: string | null; record: boolean }
-  const queue: Arrival[] = fromNodeKeys
-    .map((k) => keyToId.get(k))
-    .filter((id): id is string => !!id)
-    // record=false：当前活动节点自身不计入（其任务已在时间线中）
-    .map((id) => ({ nodeId: id, branchLabel: null, record: false }));
-
-  const pushOuts = (nodeId: string, branchLabel: string | null) => {
-    for (const { target, edge } of outEdges.get(nodeId) ?? []) {
-      queue.push({ nodeId: target, branchLabel: edge.label ?? branchLabel, record: true });
-    }
-  };
-
-  while (queue.length > 0) {
-    const arrival = queue.shift();
-    if (!arrival) continue;
-    const { nodeId, branchLabel, record } = arrival;
-    if (visited.has(nodeId)) continue;
-    visited.add(nodeId);
-    const node = nodeMap.get(nodeId);
-    if (!node) continue;
-    const type = node.data.type;
-
-    if (type === 'end') continue;
-
-    if (type === 'exclusiveGateway' || type === 'routeGateway') {
-      let chosen: { target: string; label: string | null } | null = null;
-      let fallback: { target: string; label: string | null } | null = null;
-      for (const { target, edge } of outEdges.get(nodeId) ?? []) {
-        const tgt = nodeMap.get(target);
-        if (!tgt) continue;
-        if (edgeHasCondition(edge)) {
-          if (edgeMatchesCondition(edge, formData, starter)) { chosen = { target, label: edge.label ?? null }; break; }
-        } else if (isDefaultEdge(edge, tgt) && !fallback) {
-          fallback = { target, label: edge.label ?? null };
-        }
-      }
-      const next = chosen ?? fallback;
-      if (next) queue.push({ nodeId: next.target, branchLabel: next.label ?? branchLabel, record: true });
-      continue;
-    }
-
-    if (type === 'parallelGateway' || type === 'inclusiveGateway') {
-      if (type === 'inclusiveGateway') {
-        const matched: Array<{ target: string; label: string | null }> = [];
-        let defaultTarget: { target: string; label: string | null } | null = null;
-        for (const { target, edge } of outEdges.get(nodeId) ?? []) {
-          const tgt = nodeMap.get(target);
-          if (!tgt) continue;
-          if (edgeHasCondition(edge)) {
-            if (edgeMatchesCondition(edge, formData, starter)) matched.push({ target, label: edge.label ?? null });
-          } else if (isDefaultEdge(edge, tgt) || !defaultTarget) {
-            defaultTarget = { target, label: edge.label ?? null };
-          }
-        }
-        const targets = matched.length > 0 ? matched : (defaultTarget ? [defaultTarget] : []);
-        for (const t of targets) queue.push({ nodeId: t.target, branchLabel: t.label ?? branchLabel, record: true });
-      } else {
-        pushOuts(nodeId, branchLabel);
-      }
-      continue;
-    }
-
-    // 人工/抄送节点：记录后继续前向（当前活动节点自身不记录）
-    if (record && (type === 'approve' || type === 'handler' || type === 'ccNode') && !emitted.has(node.data.key)) {
-      emitted.add(node.data.key);
-      out.push({
-        key: node.data.key,
-        name: node.data.label || node.data.key,
-        type: type === 'ccNode' ? 'cc' : type,
-        branchLabel,
-      });
-    }
-    // start / delay / trigger / subProcess / catchNode 等其余节点直接穿过
-    pushOuts(nodeId, branchLabel);
-  }
-  return out;
+  const active = new Set(fromNodeKeys);
+  const plan = planWorkflowPath(flowData, { formData, starter, activeNodeKeys: fromNodeKeys, ...options });
+  return plan.nodes.filter(node => !active.has(node.nodeKey) && !options.completedNodeKeys?.includes(node.nodeKey)
+    && ['approve', 'handler', 'ccNode'].includes(node.nodeType)).map(node => ({
+    key: node.nodeKey,
+    name: node.nodeName || node.nodeKey,
+    type: node.nodeType === 'ccNode' ? 'cc' : node.nodeType as 'approve' | 'handler',
+    branchLabel: plan.branches.find(branch => branch.target === node.nodeId)?.label ?? null,
+    status: node.status,
+    reason: node.reason,
+    estimatedApprovers: [],
+    approverReason: null,
+  }));
 }
 
 /**

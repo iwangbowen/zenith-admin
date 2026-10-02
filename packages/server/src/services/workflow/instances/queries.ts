@@ -9,7 +9,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { keywordCondition, withPagination, dateRangeConditions, buildWhere } from '../../../lib/where-helpers';
 import { db } from '../../../db';
 import { pageOffset } from '../../../lib/pagination';
-import { workflowInstances, workflowTasks, workflowTaskConsults, workflowDefinitions, workflowCategories, workflowNodeActivations, workflowSignGroups, users } from '../../../db/schema';
+import { workflowInstances, workflowTasks, workflowTaskConsults, workflowDefinitions, workflowCategories, workflowNodeActivations, workflowSignGroups, workflowTokens, users } from '../../../db/schema';
 import { tenantCondition } from '../../../lib/tenant';
 import { getDataScopeCondition } from '../../../lib/data-scope';
 import type { WorkflowFlowData, WorkflowFormField } from '@zenith/shared/workflow';
@@ -18,7 +18,8 @@ import { HTTPException } from 'hono/http-exception';
 import { currentUser, hasPermission } from '../../../lib/context';
 import { isSuperAdmin, getUserPermissions } from '../../../lib/permissions';
 import { predictRemainingPath } from '../../../lib/workflow-engine';
-import { buildStarterContext } from '../workflow-assignee-resolver.service';
+import { buildStarterContext, resolveAssigneeIds, createDeptTree } from '../workflow-assignee-resolver.service';
+import { enrichPredictedApprovers } from '../workflow-path-prediction';
 import { loadInstanceCommentsForDetail } from '../workflow-comments.service';
 import { loadInstanceConsultsForDetail } from '../workflow-consults.service';
 import { loadInstanceTransfersByTask } from './transfers';
@@ -578,23 +579,23 @@ async function loadInstanceDetail(id: number, business?: { bizType: string; bizI
   const sanitizedRow = isMonitor ? row : { ...row, formData: sanitizeDetailFormDataForViewer({ ...row,
     additionalViewerNodeKeys: createdGroupNodes.map((node) => node.nodeKey),
   }, user.userId) };
-  // 运行中实例的预测剩余路径：从当前活动节点按实例表单求值条件，时间线未来段只展示将会执行的节点
+  // Tokens are the execution frontier; task rows may describe earlier rounds or non-blocking CC.
   let predictedPath: ReturnType<typeof predictRemainingPath> | null = null;
   if ((row.status === 'running' || row.status === 'suspended') && snapshot?.flowData) {
-    const activeKeys = [...new Set(row.tasks
-      .filter((t) => t.status === 'pending' || t.status === 'waiting')
-      .map((t) => t.nodeKey))];
-    const fromKeys = activeKeys.length > 0 ? activeKeys : (row.currentNodeKey ? [row.currentNodeKey] : []);
+    const activeTokens = await db.select({ nodeKey: workflowTokens.nodeKey }).from(workflowTokens)
+      .where(and(eq(workflowTokens.instanceId, id), eq(workflowTokens.status, 'active')));
+    const fromKeys = [...new Set(activeTokens.map(token => token.nodeKey))];
     if (fromKeys.length > 0) {
       try {
         const starter = await buildStarterContext(row.initiatorId);
-        predictedPath = predictRemainingPath(
-          snapshot.flowData,
-          fromKeys,
-          (row.formData ?? {}) as Record<string, unknown>,
-          starter,
-        );
-      } catch { predictedPath = null; /* 预测失败不影响详情主体 */ }
+        const formData = (row.formData ?? {}) as Record<string, unknown>;
+        const path = predictRemainingPath(snapshot.flowData, fromKeys, formData, starter, { formFields: snapshot.formFields ?? [] });
+        const deptTree = createDeptTree(db);
+        predictedPath = await enrichPredictedApprovers(path, snapshot.flowData, {
+          resolve: config => resolveAssigneeIds(config, { initiatorId: row.initiatorId, instanceId: id, formData, deptTree }),
+          names: resolveUserNames,
+        });
+      } catch { predictedPath = null; /* Read-only prediction cannot block detail retrieval. */ }
     }
   }
   return {

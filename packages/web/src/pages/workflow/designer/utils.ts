@@ -1,3 +1,4 @@
+import { compileWorkflowTree } from '@zenith/shared/workflow/designer-graph';
 /**
  * 钉钉/飞书风格流程设计器 — 工具函数
  */
@@ -619,36 +620,7 @@ export function validateBranchChildren(process: FlowProcess): string[] {
 }
 
 /** 将树结构转换为扁平 nodes + edges（用于后端保存） */
-export function treeToFlat(process: FlowProcess): { nodes: FlatNode[]; edges: FlatEdge[] } {
-  const nodes: FlatNode[] = [];
-  const edges: FlatEdge[] = [];
-
-  // 添加 start 节点（保留发起人节点的 props，如字段权限 fieldPermissions / 发起人说明）
-  const startId = 'node-start';
-  nodes.push({
-    id: startId,
-    type: 'workflowNode',
-    position: { x: 0, y: 0 },
-    data: { ...(process.initiator.props ?? {}), key: 'start', type: 'start', label: '发起' },
-  });
-
-  // 添加 end 节点
-  const endId = 'node-end';
-  nodes.push({
-    id: endId,
-    type: 'workflowNode',
-    position: { x: 0, y: 0 },
-    data: { key: 'end', type: 'end', label: '结束' },
-  });
-
-  // 递归处理
-  const lastIds = flattenNode(process.initiator.children, startId, nodes, edges);
-  for (const lid of lastIds) {
-    edges.push({ id: `e-${lid}-${endId}`, source: lid, target: endId });
-  }
-
-  return { nodes, edges };
-}
+export function treeToFlat(process: FlowProcess) { return compileWorkflowTree(process); }
 
 function flattenNode(
   node: FlowNode | undefined,

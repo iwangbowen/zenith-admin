@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  predictRemainingPath,
   evaluateCondition,
   evaluateConditionGroups,
   validateFlowData,
@@ -428,33 +429,40 @@ describe('normalizeFlowData (schema 版本兼容迁移)', () => {
     expect(normalizeFlowData(flow, 0)).toEqual(flow);
   });
 
-  it('v1→v2 清洗 operations 中的按钮值，仅保留审批要求（nodes + process 树）', () => {
+  it('v1→v2 清洗 operations 中的按钮值，仅保留审批要求（canonical nodes）', () => {
     const v1 = {
       nodes: [
         { id: 'n1', position: { x: 0, y: 0 }, data: { key: 'a', type: 'approve', label: '审批', operations: ['approve', 'reject', 'comment', 'signature'] } },
         { id: 'n2', position: { x: 0, y: 0 }, data: { key: 'b', type: 'approve', label: '审批2', operations: ['approve', 'reject'] } },
       ],
       edges: [],
-      process: {
-        initiator: {
-          id: 'initiator', type: 'initiator',
-          children: {
-            id: 'a', key: 'a', type: 'approver',
-            props: { operations: ['approve', 'opinionRequired'] },
-            branches: [{ children: { id: 'c', key: 'c', type: 'approver', props: { operations: ['comment'] } } }],
-          },
-        },
-      },
     } as unknown as WorkflowFlowData;
     const v2 = normalizeFlowData(v1, 1);
     expect(v2).not.toBe(v1);
     expect((v2.nodes[0].data as Record<string, unknown>).operations).toEqual(['signature']);
     expect('operations' in (v2.nodes[1].data as Record<string, unknown>)).toBe(false);
-    const proc = (v2 as unknown as { process: { initiator: { children: { props: Record<string, unknown>; branches: Array<{ children: { props: Record<string, unknown> } }> } } } }).process;
-    expect(proc.initiator.children.props.operations).toEqual(['opinionRequired']);
-    expect('operations' in proc.initiator.children.branches[0].children.props).toBe(false);
     // 源对象不被修改
     expect((v1.nodes[0].data as Record<string, unknown>).operations).toEqual(['approve', 'reject', 'comment', 'signature']);
   });
 });
 
+
+
+describe('remaining path prediction', () => {
+  it('uses the token frontier rather than repeating its current node', () => {
+    const flow = makeLinearFlow();
+    const result = predictRemainingPath(flow, ['a1'], {});
+    expect(result.filter(node => node.status !== 'excluded').map(node => node.key)).toEqual(['a2']);
+    expect(result.find(node => node.key === 'a2')?.status).toBe('matched');
+  });
+  it('keeps future editable conditions uncertain and does not recompute saved formula values', () => {
+    const flow = makeLinearFlow();
+    flow.nodes[1].data.fieldPermissions = { amount: 'edit' };
+    flow.nodes.splice(2, 0, { id: 'gateway', position: { x: 0, y: 0 }, data: { key: 'gate', type: 'exclusiveGateway', label: '金额分支' } });
+    flow.edges = [{ id: 'a', source: 'n2', target: 'gateway' }, { id: 'b', source: 'gateway', target: 'n3', condition: { field: 'amount', operator: 'gt', value: 100 } }, { id: 'c', source: 'gateway', target: 'n4' }];
+    const values = { amount: 150, total: 999 };
+    const result = predictRemainingPath(flow, ['a1'], values, undefined, { formFields: [{ key: 'amount', label: '金额', type: 'amount' }, { key: 'total', label: '合计', type: 'formula', formula: '{amount} * 2' }] });
+    expect(result.find(node => node.key === 'a2')?.status).toBe('unknown');
+    expect(values).toEqual({ amount: 150, total: 999 });
+  });
+});

@@ -353,7 +353,7 @@ export default function WorkflowInstanceDetailPanel({
   const formType = resolveWorkflowFormType(instance, effectiveDefinition);
   const customForm = resolveWorkflowCustomForm(instance, effectiveDefinition);
   const hasFormFields = visibleFormFields.length > 0;
-  const flowData = (resolveWorkflowFlowData(instance, effectiveDefinition) ?? null) as { process?: import('@/pages/workflow/designer/types').FlowProcess } | null;
+  const flowData = resolveWorkflowFlowData(instance, effectiveDefinition) ?? null;
   const childInstances = instance.childInstances ?? [];
   const activeNodeNames = (instance.currentNodeNames && instance.currentNodeNames.length > 0)
     ? instance.currentNodeNames

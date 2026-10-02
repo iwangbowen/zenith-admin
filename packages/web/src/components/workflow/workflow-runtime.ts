@@ -2,9 +2,9 @@
  * 流程实例运行态聚合工具 —— 由 tasks 计算每个节点的状态与处理人。
  * 供「流程图」「节点列表」共用。
  */
-import type { WorkflowTask } from '@zenith/shared/workflow';
+import type { WorkflowFlowData, WorkflowTask } from '@zenith/shared/workflow';
 import { WORKFLOW_INSTANCE_STATUS_LABELS, WORKFLOW_TASK_STATUS_LABELS } from '@zenith/shared/workflow';
-import type { FlowNode, FlowProcess, NodeRuntimeInfo } from '@/pages/workflow/designer/types';
+import type { NodeRuntimeInfo } from '@/pages/workflow/designer/types';
 
 /** 线性化后的审批节点简要信息（用于展示流程全部节点，含未到达节点） */
 export interface FlowNodeBrief {
@@ -13,7 +13,7 @@ export interface FlowNodeBrief {
   type: string;
 }
 
-const APPROVAL_NODE_TYPES = new Set(['approver', 'handler', 'cc']);
+const APPROVAL_NODE_TYPES = new Set(['approve', 'handler', 'ccNode']);
 
 /** 流程实例状态标签颜色（Semi Tag color 子集） */
 export type InstanceStatusTagColor = 'amber' | 'blue' | 'green' | 'grey' | 'orange' | 'purple' | 'red';
@@ -44,20 +44,22 @@ export const TASK_STATUS_MAP: Record<string, { text: string; color: InstanceStat
  * 用于审批时间线展示完整链路，而非只展示已创建任务对应的节点。
  */
 export function linearizeApprovalNodes(
-  flowData: { process?: unknown } | null | undefined,
+  flowData: WorkflowFlowData | null | undefined,
 ): FlowNodeBrief[] {
-  const process = flowData?.process as FlowProcess | undefined;
-  if (!process?.initiator) return [];
+  if (!flowData) return [];
+  const byId = new Map(flowData.nodes.map(node => [node.id, node]));
+  const visited = new Set<string>();
+  const queue = flowData.nodes.filter(node => node.data.type === 'start').map(node => node.id);
   const out: FlowNodeBrief[] = [];
-  const visit = (node: FlowNode | undefined) => {
-    if (!node) return;
-    if (APPROVAL_NODE_TYPES.has(node.type)) {
-      out.push({ key: node.key ?? node.id, name: node.name || node.key || node.id, type: node.type });
-    }
-    node.branches?.forEach((b) => visit(b.children));
-    visit(node.children);
-  };
-  visit(process.initiator.children);
+  for (let index = 0; index < queue.length; index++) {
+    const id = queue[index];
+    if (visited.has(id)) continue;
+    visited.add(id);
+    const node = byId.get(id);
+    if (!node) continue;
+    if (APPROVAL_NODE_TYPES.has(node.data.type)) out.push({ key: node.data.key, name: node.data.label, type: node.data.type });
+    for (const edge of flowData.edges) if (edge.source === id && !edge.isException) queue.push(edge.target);
+  }
   return out;
 }
 

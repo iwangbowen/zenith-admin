@@ -1,9 +1,11 @@
+import { projectWorkflowGraph, workflowFlowDataSchema } from '@zenith/shared/workflow';
+import WorkflowGraphView from '@/components/workflow/WorkflowGraphView';
 /**
  * 工作流设计器页面 — 钉钉/飞书风格垂直流程设计器
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
-import { Button, Divider, Modal, RadioGroup, Radio, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { Button, Divider, Modal, RadioGroup, Radio, TextArea, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import PageLoading from '@/components/PageLoading';
 import { ArrowLeft, Check, Download, Eye, History, Minus, Play, Plus, Redo2, RotateCcw, Save, Send, Stethoscope, TriangleAlert, Undo2, Upload } from 'lucide-react';
 import type { WorkflowDefinition, WorkflowDefinitionSnapshot, WorkflowFlowData, WorkflowFormField, WorkflowFormType, WorkflowCustomFormConfig } from '@zenith/shared/workflow';
@@ -102,6 +104,9 @@ export default function WorkflowDesignerPage({
   const isNew = !presetDefinition && id === 'new';
 
   const [definition, setDefinition] = useState<WorkflowDefinition | null>(null);
+  const [graphOnly, setGraphOnly] = useState<WorkflowFlowData | null>(null);
+  const [graphJson, setGraphJson] = useState('');
+  const [graphReason, setGraphReason] = useState('');
   const [process, setProcess, history] = useHistoryState<FlowProcess>(createDefaultProcess());
 
   // 节点编辑抽屉
@@ -148,6 +153,13 @@ export default function WorkflowDesignerPage({
 
   // 更多设置
   const [advancedSettings, setAdvancedSettings] = useState<AdvancedSettingsData>(DEFAULT_ADVANCED_SETTINGS);
+  const loadGraph = (fd: WorkflowFlowData | null | undefined) => {
+    if (!fd) { setGraphOnly(null); history.reset(createDefaultProcess()); return; }
+    const projection = projectWorkflowGraph(fd);
+    if (projection.kind === 'tree') { setGraphOnly(null); history.reset(projection.process); }
+    else { setGraphOnly(fd); setGraphJson(JSON.stringify(fd, null, 2)); setGraphReason(projection.reason); }
+  };
+
   // 审批单打印模板（流程定义列，与 flowData.settings 分离）
   const [printTemplateId, setPrintTemplateId] = useState<number | null>(null);
   const createPrintTemplateMutation = useSaveReportPrintTemplate();
@@ -247,9 +259,7 @@ export default function WorkflowDesignerPage({
       setPrintTemplateId(data.printTemplateId ?? null);
       if (data.formFields) setLocalFormFields(data.formFields);
       const fd = data.flowData;
-      if (fd && 'process' in fd && (fd as unknown as Record<string, unknown>).process) {
-        history.reset((fd as unknown as Record<string, unknown>).process);
-      }
+      loadGraph(fd);
       if (fd && 'settings' in fd && (fd as unknown as Record<string, unknown>).settings) {
         const loaded = (fd as unknown as Record<string, unknown>).settings as Partial<AdvancedSettingsData>;
         setAdvancedSettings({
@@ -283,7 +293,7 @@ export default function WorkflowDesignerPage({
     setPrintTemplateId((d as WorkflowDefinition).printTemplateId ?? null);
     if (d.formFields) setLocalFormFields(d.formFields);
     const fd = d.flowData;
-    if (fd?.process) history.reset(fd.process as unknown as FlowProcess);
+    loadGraph(fd);
     if (fd?.settings) {
       const loaded = fd.settings as unknown as Partial<AdvancedSettingsData>;
       setAdvancedSettings({
@@ -423,9 +433,9 @@ export default function WorkflowDesignerPage({
   // ─── 导入导出 ─────────────────────────────────────────────────────
 
   const handleExport = useCallback(() => {
-    const jsonStr = JSON.stringify(process, null, 2);
+    const jsonStr = JSON.stringify(graphOnly ?? { ...treeToFlat(process), settings: advancedSettings }, null, 2);
     downloadBlob(new Blob([jsonStr], { type: 'application/json' }), `flow-${definition?.name ?? 'untitled'}-${Date.now()}.json`);
-  }, [process, definition]);
+  }, [process, definition, graphOnly, advancedSettings]);
 
   const handleImport = useCallback(() => {
     const input = document.createElement('input');
@@ -436,19 +446,16 @@ export default function WorkflowDesignerPage({
       if (!file) return;
       try {
         const text = await file.text();
-        const data = JSON.parse(text) as FlowProcess;
-        if (data?.initiator) {
-          setProcess(data);
-          Toast.success('导入成功');
-        } else {
-          Toast.error('无效的流程数据');
-        }
+        const data = workflowFlowDataSchema.parse(JSON.parse(text));
+        loadGraph(data);
+        if (data.settings) setAdvancedSettings({ ...DEFAULT_ADVANCED_SETTINGS, ...data.settings });
+        Toast.success('导入成功');
       } catch {
         Toast.error('JSON 解析失败');
       }
     };
     input.click();
-  }, [setProcess]);
+  }, [loadGraph]);
 
   // ─── 保存 ─────────────────────────────────────────────────────────
 
@@ -461,9 +468,9 @@ export default function WorkflowDesignerPage({
   });
 
   const buildCurrentFlowData = useCallback((): WorkflowFlowData => {
-    const flat = treeToFlat(process);
-    return { ...flat, process, settings: advancedSettings } as unknown as WorkflowFlowData;
-  }, [advancedSettings, process]);
+    const flat = graphOnly ?? treeToFlat(process);
+    return { ...flat, settings: advancedSettings };
+  }, [advancedSettings, process, graphOnly]);
 
   // ─── 未保存更改守卫（返回列表前快照比对）────────────────────────────
   const serializeDesignerState = () => JSON.stringify({
@@ -489,7 +496,7 @@ export default function WorkflowDesignerPage({
   });
 
   const handleBack = () => {
-    if (baselineRef.current !== null && serializeDesignerState() !== baselineRef.current) {
+    if (baselineRef.current !== null && (serializeDesignerState() !== baselineRef.current || (graphOnly && graphJson !== JSON.stringify(graphOnly, null, 2)))) {
       confirmDanger({
         title: '有未保存的更改',
         content: '离开后当前流程设计的改动将丢失，确定返回列表吗？',
@@ -515,6 +522,7 @@ export default function WorkflowDesignerPage({
       setCurrentStep(1);
       return false;
     }
+    if (graphOnly) return workflowFlowDataSchema.safeParse(buildCurrentFlowData()).success;
     const routeErrors = validateRouteBranches(process);
     if (routeErrors.length > 0) {
       Toast.warning(`路由分支配置不完整：${routeErrors[0]}`);
@@ -1020,7 +1028,16 @@ export default function WorkflowDesignerPage({
             </div>
           </div>
           <div style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top center' }}>
-            {readOnly ? (
+            {graphOnly ? (
+              <div style={{ padding: 20 }}>
+                <Typography.Paragraph>{graphReason}。图数据完整保留，可通过 JSON 编辑。</Typography.Paragraph>
+                <WorkflowGraphView flowData={buildCurrentFlowData()} height={480} />
+                {!readOnly && <>
+                  <TextArea value={graphJson} onChange={setGraphJson} rows={12} aria-label="流程图 JSON" />
+                  <Button onClick={() => { try { const next = workflowFlowDataSchema.parse(JSON.parse(graphJson)); loadGraph(next); if (next.settings) setAdvancedSettings({ ...DEFAULT_ADVANCED_SETTINGS, ...next.settings }); Toast.success('图数据已应用'); } catch { Toast.error('流程图 JSON 格式或契约无效'); } }}>应用 JSON</Button>
+                </>}
+              </div>
+            ) : readOnly ? (
               <FlowRenderer
                 process={process}
                 readOnly

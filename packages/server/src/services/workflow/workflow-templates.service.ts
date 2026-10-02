@@ -1,3 +1,4 @@
+import { normalizeDefinitionFlowData } from '../../lib/workflow-flow-normalize';
 import { asc, desc, eq } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowTemplates, workflowDefinitions, workflowForms } from '../../db/schema';
@@ -50,7 +51,7 @@ export async function createWorkflowTemplate(input: CreateWorkflowTemplateInput)
       categoryName: input.categoryName ?? null,
       icon: input.icon ?? null,
       color: input.color ?? null,
-      flowData: input.flowData ?? null,
+      flowData: normalizeDefinitionFlowData(input.flowData),
       formSchema: input.formSchema ?? null,
       sort: input.sort ?? 0,
       builtin: false,
@@ -71,7 +72,7 @@ export async function updateWorkflowTemplate(id: number, input: UpdateWorkflowTe
   if (input.categoryName !== undefined) patch.categoryName = input.categoryName ?? null;
   if (input.icon !== undefined) patch.icon = input.icon ?? null;
   if (input.color !== undefined) patch.color = input.color ?? null;
-  if (input.flowData !== undefined) patch.flowData = input.flowData ?? null;
+  if (input.flowData !== undefined) patch.flowData = normalizeDefinitionFlowData(input.flowData);
   if (input.formSchema !== undefined) patch.formSchema = input.formSchema ?? null;
   if (input.sort !== undefined) patch.sort = input.sort;
   try {
@@ -129,7 +130,7 @@ export async function saveAsTemplate(input: SaveAsTemplateInput): Promise<Workfl
       categoryName: null,
       icon: input.icon ?? null,
       color: input.color ?? null,
-      flowData: def.flowData ?? null,
+      flowData: normalizeDefinitionFlowData(def.flowData),
       formSchema,
       sort: 0,
       builtin: false,
