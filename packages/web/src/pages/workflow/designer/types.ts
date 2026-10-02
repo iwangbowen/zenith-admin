@@ -294,15 +294,15 @@ export interface ConditionGroup {
 
 // ─── 分支 ────────────────────────────────────────────────────────────
 
-export interface FlowBranch extends WorkflowDesignerBranch {}
+export type FlowBranch = WorkflowDesignerBranch;
 
 // ─── 节点 ────────────────────────────────────────────────────────────
 
-export interface FlowNode extends WorkflowDesignerNode {}
+export type FlowNode = WorkflowDesignerNode;
 
 // ─── 流程定义顶层 ────────────────────────────────────────────────────
 
-export interface FlowProcess extends WorkflowDesignerProcess {}
+export type FlowProcess = WorkflowDesignerProcess;
 
 // ─── 运行态（实例详情流程图）渲染辅助类型 ───────────────────────────
 
