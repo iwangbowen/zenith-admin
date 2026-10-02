@@ -19,6 +19,15 @@ vi.mock('../lib/pg-boss-scheduler', () => ({
 }));
 vi.mock('../lib/storage-topology', () => ({ assertWorkerStorageTopology: async () => { if (mocks.topologyError) throw mocks.topologyError; } }));
 vi.mock('../lib/metrics-sampler', () => ({ metricsSampler: { getLatest: () => null, http: { totals: () => ({ total: 0, total4xx: 0, total5xx: 0 }) } } }));
+vi.mock('../services/workflow/workflow-jobs.service', () => ({
+  // /metrics 的账本 Gauge collect 时动态导入本模块；打桩避免在测试环境拖入整棵服务依赖图（曾导致用例超 15s 默认超时）
+  getWorkflowJobRuntimeStatus: async () => ({
+    activeWorkers: 0, totalWorkers: 0, totalSlots: 0, activeSlots: 0, workers: [],
+    runningJobs: 0, stuckRunningJobs: 0, backlog: 0, oldestDueSeconds: null,
+    queueP95Ms: null, queueP99Ms: null, deadLetter: 0, lastClaimedAt: null,
+    failureRate: 0, avgDurationMs: null, recentExecutions: 0,
+  }),
+}));
 vi.mock('../lib/ws-manager', async (importOriginal) => ({
   ...await importOriginal<typeof import('../lib/ws-manager')>(),
   getWsSnapshot: () => ({ currentConnections: 0, currentUsers: 0 }),
