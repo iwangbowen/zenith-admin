@@ -45,22 +45,18 @@ export const addSignRoute = defineContractRoute(workflowTaskContract.addSign, {
     const r = await addSignTask(taskId, targetUserIds, position, comment, signMode, attachments);
     const after = await getWorkflowTaskBeforeAudit(taskId);
     setAuditAfterData(c, after ?? redactWorkflowSignatureImages(r));
-    return c.json(okBody(null, r.message), 200);
+    return c.json(okBody(r, r.message), 200);
   },
 });
 
 export const reduceSignRoute = defineContractRoute(workflowTaskContract.reduceSign, {
-  middleware: [idempotencyGuard({ ttlSeconds: 10 })],
-  handler: async (c) => {
-    const { taskId } = c.req.valid('param');
-    const { targetTaskIds, comment } = c.req.valid('json');
-    const before = await getWorkflowTaskBeforeAudit(taskId);
-    if (before) setAuditBeforeData(c, before);
-    const r = await reduceSignTask(taskId, targetTaskIds, comment);
-    const after = await getWorkflowTaskBeforeAudit(taskId);
-    setAuditAfterData(c, after ?? redactWorkflowSignatureImages(r));
-    return c.json(okBody(null, r.message), 200);
-  },
+ middleware: [idempotencyGuard({ ttlSeconds: 10 })],
+ handler: async (c) => {
+  const { groupId } = c.req.valid('param'); const { targetSlotIds, comment } = c.req.valid('json');
+  const result = await reduceSignTask(groupId, targetSlotIds, comment);
+  setAuditAfterData(c, redactWorkflowSignatureImages(result));
+  return c.json(okBody(result, result.message), 200);
+ },
 });
 
 export const returnRoute = defineContractRoute(workflowTaskContract.returnTask, {

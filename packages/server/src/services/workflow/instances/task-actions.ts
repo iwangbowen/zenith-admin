@@ -20,12 +20,15 @@ import { buildStarterContext, searchSelectableApprovers } from '../workflow-assi
 import type { WorkflowSelectableNextApproverGroup } from '@zenith/shared/workflow';
 import logger from '../../../lib/logger';
 import { cancelJobs, WORKFLOW_ADVANCING_JOB_TYPES } from '../../../lib/workflow-jobs/engine';
+import { armTaskAsyncJobs } from './async-jobs';
 import { enqueueSubprocessJoin } from './async-jobs';
 import { assertSelectedNextApprovers } from './initiator-select';
 import { mapInstance, mapTask } from './mapping';
-import { advanceAndMaterialize, checkNodeCompletion, filterCurrentActivation, killInstanceTokens } from './materialize';
+import { advanceAndMaterialize, checkNodeCompletion, killInstanceTokens } from './materialize';
 import { normalizeInstanceFormData } from './form-derived';
 import type { MaterializeTrigger } from './materialize';
+import { recordSlotOutcome, reconcileApprovalActivation, cancelApprovalActivations } from './approval-state';
+import { workflowApprovalSlots, workflowNodeActivations } from '../../../db/schema';
 import { emitInstanceEvent, emitNodeEvent, emitTaskEvent, emitTasksEnteredEvents, lockInstanceExpecting, requireCallbackTaskContext } from './shared';
 import { hasUserHandledTask } from './transfers';
 import { bridgeReportFillWorkflowOutcome } from '../../report/report-fill-workflow-bridge.service';
@@ -260,6 +263,7 @@ export async function approveTaskCore(
   options?: { selectedNextApprovers?: Record<string, number[]>; signature?: SignatureSnapshot; attachments?: WorkflowTaskAttachment[]; formUpdates?: Record<string, unknown> },
 ): Promise<ApproveResult> {
   assertIndependentReconApproval(inst.bizType, inst.initiatorId, actor.userId);
+  const activationId = requireRow(task.activationId, '任务缺少显式节点轮次', 409);
   const taskId = task.id;
   const snapshot = inst.definitionSnapshot;
   const flowData = snapshot?.flowData;
@@ -306,7 +310,8 @@ export async function approveTaskCore(
     }
 
     // 检查当前节点是否已足够推进（会签/或签/顺序会签）
-    const { completed } = await checkNodeCompletion(tx, inst.id, task.nodeKey, flowData);
+    await recordSlotOutcome(tx, approvedTask, 'approved');
+    const { completed } = await checkNodeCompletion(tx, inst.id, task.nodeKey, flowData, activationId);
     if (!completed) {
       const [row] = await tx.update(workflowInstances)
         .set({ currentNodeKey: task.nodeKey })
@@ -476,27 +481,6 @@ async function resolveRejectRoute(
   return { strategy, targetNodeKey, currentNodeCfg };
 }
 
-/**
- * 比例会签部分驳回判定：本任务驳回后若通过阈值仍可达成，节点保持活动。
- * 必须在实例行级锁内基于最新状态判定，避免并发驳回都不触发整节点驳回而使节点卡死。
- */
-async function keepRatioNodeAliveAfterReject(
-  tx: DbExecutor,
-  instanceId: number,
-  nodeKey: string,
-): Promise<boolean> {
-  const allRows = await tx.select().from(workflowTasks)
-    .where(and(eq(workflowTasks.instanceId, instanceId), eq(workflowTasks.nodeKey, nodeKey)));
-  // 只统计当前激活轮，历史轮任务不参与阈值分母；前加签任务是前置关卡、excluded 是运行时排除留痕行，同样不参与（与 checkNodeCompletion 口径一致）
-  const ratioSiblings = filterCurrentActivation(allRows).filter((t) => t.signType !== 'before' && t.signType !== 'excluded');
-  const ratioPct = ratioSiblings.find((t) => t.approveRatio)?.approveRatio ?? 51;
-  const required = Math.ceil(ratioSiblings.length * ratioPct / 100);
-  const maxPossibleApproved = ratioSiblings
-    .filter((t) => t.status === 'approved' || t.status === 'pending' || t.status === 'waiting')
-    .length;
-  return maxPossibleApproved >= required;
-}
-
 export async function rejectTaskCore(
   task: typeof workflowTasks.$inferSelect,
   inst: typeof workflowInstances.$inferSelect,
@@ -504,6 +488,7 @@ export async function rejectTaskCore(
   actor: WorkflowEventActor,
   attachments?: WorkflowTaskAttachment[],
 ): Promise<ApproveResult> {
+  const activationId = requireRow(task.activationId, '任务缺少显式节点轮次', 409);
   const taskId = task.id;
   const flowData = inst.definitionSnapshot?.flowData;
   const { strategy, targetNodeKey, currentNodeCfg } = await resolveRejectRoute(task, inst);
@@ -520,7 +505,9 @@ export async function rejectTaskCore(
     requireRow(rejectedTask, '任务已被处理，请刷新后重试', 409);
 
     // 比例会签：本任务驳回后若阈值仍可达成，仅记录该任务驳回、节点保持活动。
-    if (rejectedTask.approveMethod === 'ratio' && await keepRatioNodeAliveAfterReject(tx, inst.id, task.nodeKey)) {
+    await recordSlotOutcome(tx, rejectedTask, 'rejected');
+    const completion = await reconcileApprovalActivation(tx, inst, activationId, actor, flowData ?? undefined);
+    if (!completion.failed) {
       return {
         row: inst,
         terminated: false as const,
@@ -533,6 +520,8 @@ export async function rejectTaskCore(
       };
     }
 
+    await cancelApprovalActivations(tx, inst.id, activationId);
+    await tx.update(workflowNodeActivations).set({ status: 'rejected', settledAt: new Date() }).where(eq(workflowNodeActivations.id, activationId));
     // 同节点其他 pending / waiting 任务跳过
     const skipped = await tx.update(workflowTasks)
       .set({ status: 'skipped', actionAt: new Date(), comment: '[同节点联动] 本节点已有审批人拒绝，其余待办作废' })
@@ -676,12 +665,13 @@ export async function getOwnPendingTask(taskId: number) {
     .where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.assigneeId, user.userId)))
     .limit(1);
   requireRow(task, '任务不存在或无权操作');
-  if (task.status !== 'pending') throw new HTTPException(400, { message: '任务已处理' });
+  if ((task.taskKind !== 'approval' && task.taskKind !== 'suggestion') || task.slotId == null || task.activationId == null) throw new HTTPException(400, { message: '该任务没有正式审批席位，不能人工办理' });
+  if (task.status !== 'pending') throw new HTTPException(400, { message: '任务尚未激活或已处理' });
   const [inst] = await db.select().from(workflowInstances)
     .where(eq(workflowInstances.id, task.instanceId)).limit(1);
   if (!inst) throw new HTTPException(500, { message: '流程数据异常' });
   if (inst.status !== 'running') throw new HTTPException(400, { message: inst.status === 'suspended' ? '流程已挂起，暂不可处理' : '流程实例不在进行中' });
-  return { task, inst, actor: { userId: user.userId, name: user.username } };
+  return { task: { ...task, activationId: task.activationId, slotId: task.slotId, taskKind: task.taskKind }, inst, actor: { userId: user.userId, name: user.username } };
 }
 
 /** 委派回执：当委派人对任务做出反馈（同意/拒绝）时，原委派人接手并继续审批 */
@@ -695,6 +685,7 @@ async function processDelegatedReceipt(
   formUpdates?: Record<string, unknown>,
   signature?: SignatureSnapshot,
 ): Promise<ApproveResult> {
+  const activationId = requireRow(task.activationId, '委派任务缺少显式节点轮次', 409);
   const delegatorId = task.delegatedFromId;
   if (!delegatorId) throw new HTTPException(500, { message: '委派回执缺失原始审批人' });
   const verb = action === 'approved' ? '同意' : '拒绝';
@@ -702,6 +693,7 @@ async function processDelegatedReceipt(
   const receiptComment = `[委派回执] ${actor.name ?? '系统'} 建议${verb}${tail}`;
 
   const result = await workflowTransaction(async (tx) => {
+    await lockInstanceExpecting(tx, inst.id, 'running', '流程状态已变化，无法反馈委派意见');
     const [closedTask] = await tx.update(workflowTasks).set({
       status: action,
       decision: { action: action === 'approved' ? (task.nodeType === 'handler' ? 'complete' : 'approve') : 'reject', targetNodeKey: null, targetNodeName: null },
@@ -731,13 +723,11 @@ async function processDelegatedReceipt(
       .where(and(
         eq(workflowTasks.instanceId, task.instanceId),
         eq(workflowTasks.nodeKey, task.nodeKey),
-        eq(workflowTasks.activationId, task.activationId),
+        eq(workflowTasks.activationId, activationId),
         eq(workflowTasks.assigneeId, delegatorId),
         inArray(workflowTasks.status, ['pending', 'waiting']),
       )).limit(1);
-    if (delegatorActive) {
-      return { closedTask, newTask: null };
-    }
+    if (delegatorActive) throw new HTTPException(409, { message: '原审批人已有本轮活动任务，请先处理或调整，不能合并不同审批席位' });
     const [newTask] = await tx.insert(workflowTasks).values({
       instanceId: task.instanceId,
       nodeKey: task.nodeKey,
@@ -745,29 +735,22 @@ async function processDelegatedReceipt(
       nodeType: task.nodeType,
       assigneeId: delegatorId,
       status: 'pending',
-      taskOrder: task.taskOrder,
-      approveMethod: task.approveMethod,
-      approveRatio: task.approveRatio,
+      slotId: task.slotId, taskKind: 'approval', waitReason: null, activatedAt: new Date(),
       activationId: task.activationId,
       // 回执任务继承加签类型：before 加签任务被委派后，其回执确认仍参与「前加签全部完成」判定
-      signType: task.signType,
       originalAssigneeId: delegatorId,
       delegatedFromId: null,
       comment: receiptComment,
     }).returning();
+    if (task.slotId == null) throw new HTTPException(409, { message: '委派任务缺少正式审批席位' });
+    await tx.update(workflowApprovalSlots).set({ currentTaskId: newTask.id, currentAssigneeId: delegatorId }).where(eq(workflowApprovalSlots.id, task.slotId));
+    await armTaskAsyncJobs(newTask, { id: inst.id, flowData: inst.definitionSnapshot?.flowData ?? null, formData: inst.formData as Record<string, unknown> | null, tenantId: inst.tenantId }, tx);
+    const meta = { definitionId: inst.definitionId, tenantId: inst.tenantId, actor };
+    await emitTaskEvent(action === 'approved' ? 'task.approved' : 'task.rejected', mapTask(closedTask), { ...meta, comment }, tx);
+    await emitTasksEnteredEvents(inst.id, [newTask], meta, tx);
     return { closedTask, newTask };
   });
 
-  const meta = { definitionId: inst.definitionId, tenantId: inst.tenantId, actor };
-  if (action === 'approved') {
-    emitTaskEvent('task.approved', mapTask(result.closedTask), { ...meta, comment });
-  } else {
-    emitTaskEvent('task.rejected', mapTask(result.closedTask), { ...meta, comment });
-  }
-  if (result.newTask) {
-    emitTaskEvent('task.created', mapTask(result.newTask), meta);
-    emitTaskEvent('task.assigned', mapTask(result.newTask), meta);
-  }
 
   return {
     instance: mapInstance(inst),

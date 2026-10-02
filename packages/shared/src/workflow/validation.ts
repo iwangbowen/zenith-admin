@@ -696,16 +696,16 @@ export const delegateWorkflowTaskSchema = z.object({
 });
 
 export const addSignWorkflowTaskSchema = z.object({
-  targetUserIds: z.array(z.number().int().positive()).min(1, '请选择加签人'),
+  targetUserIds: z.array(z.number().int().positive()).min(1, '请选择加签人').refine((ids) => new Set(ids).size === ids.length, '加签人不可重复'),
   position: z.enum(['before', 'after', 'parallel']).default('parallel'),
-  /** 多加签人时的会签/或签模式：and=全部通过(会签), or=任一通过(或签)。仅 parallel 生效 */
-  signMode: z.enum(['and', 'or']).optional(),
+  /** 仅本次新增组的意见汇总方式，三个位置均生效，不覆盖节点基础策略。 */
+  signMode: z.enum(['and', 'or']).default('and'),
   comment: z.string().max(500).optional(),
   attachments: workflowTaskAttachmentsSchema.optional(),
 });
 
 export const reduceSignWorkflowTaskSchema = z.object({
-  targetTaskIds: z.array(z.number().int().positive()).min(1, '请选择要减签的任务'),
+  targetSlotIds: z.array(z.number().int().positive()).min(1, '请选择要减签的席位').refine((ids) => new Set(ids).size === ids.length, '席位不可重复'),
   comment: z.string().max(500).optional(),
 });
 

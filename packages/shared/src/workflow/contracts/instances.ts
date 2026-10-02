@@ -20,6 +20,8 @@ import {
 import { workflowDefinitionSnapshotSchema, workflowInstanceFormSnapshotSchema } from './flow-data';
 import { workflowDefinitionOptionSchema } from './definitions';
 import { workflowAttachmentSchema } from './attachments';
+import { workflowNodeActivationSchema } from './approval-state';
+import { WORKFLOW_TASK_KINDS, WORKFLOW_TASK_WAIT_REASONS } from '../constants';
 
 // ─── 任务 ────────────────────────────────────────────────────────────────────
 
@@ -59,7 +61,12 @@ export const workflowTaskSchema = z.object({
   nodeKey: z.string(),
   nodeName: z.string(),
   nodeType: z.string().nullable(),
-  activationId: z.string().optional().meta({ description: '同一次进入节点的任务共享激活轮次 ID' }),
+  activationId: z.string().nullable().meta({ description: '正式审批关联显式节点轮次，非控制流抄送/留痕可为空' }),
+  slotId: z.int().nullable(),
+  taskKind: z.enum(WORKFLOW_TASK_KINDS),
+  waitReason: z.enum(WORKFLOW_TASK_WAIT_REASONS).nullable(),
+  activatedAt: z.string().nullable(),
+  signPosition: z.enum(['before', 'after', 'parallel']).nullable().meta({ description: '由所属加签组派生的展示位置' }),
   assigneeId: z.int().nullable(),
   assigneeName: z.string().nullable().optional(),
   assigneeAvatar: z.string().nullable().optional(),
@@ -75,9 +82,6 @@ export const workflowTaskSchema = z.object({
   transfers: z.array(workflowTaskTransferSchema).nullable().optional().meta({ description: '转办明细（详情场景填充）' }),
   delegatedFromId: z.int().nullable().optional().meta({ description: '委派来源（仅委派期间设置；回执任务为 null）' }),
   delegationMode: z.enum(['full', 'suggest']).nullable().optional().meta({ description: '委派模式快照：full=直接代批；suggest=建议制回执' }),
-  signType: z.enum(['before', 'after', 'parallel', 'excluded']).nullable().optional().meta({ description: '加签类型；excluded=运行时被排除留痕行' }),
-  approveMethod: z.enum(['and', 'or', 'sequential', 'ratio']).nullable().optional().meta({ description: '多人节点的审批方式（单人任务为 null）' }),
-  approveRatio: z.int().nullable().optional().meta({ description: '比例会签通过阈值百分比（仅 ratio 节点）' }),
   externalCallbackId: z.string().nullable().optional().meta({ description: '外部审批回调 ID（waiting + externalApproval 启用时生效）' }),
   actionButtons: z.partialRecord(workflowActionButtonKeySchema, workflowActionButtonConfigSchema).nullable().optional().meta({ description: '当前节点配置中的操作按钮设置（仅审批节点）' }),
   createdAt: z.string(),
@@ -144,6 +148,7 @@ export const workflowChildInstanceSummarySchema = z.object({
   title: z.string(),
   status: z.enum(WORKFLOW_INSTANCE_STATUSES),
   parentTaskNodeKey: z.string().nullable().optional().meta({ description: '触发该子实例的父任务节点 key' }),
+  parentTaskId: z.int().nullable(),
   createdAt: z.string(),
 }).meta({ id: 'WorkflowChildInstanceSummary' });
 
@@ -212,6 +217,7 @@ export const workflowInstanceSchema = z.object({
   suspendReason: z.string().nullable().optional(),
   childInstances: z.array(workflowChildInstanceSummarySchema).nullable().optional(),
   tasks: z.array(workflowTaskSchema).nullable().optional(),
+  approvalActivations: z.array(workflowNodeActivationSchema).optional().meta({ description: '详情中的显式轮次、正式意见席位和补充加签组' }),
   comments: z.array(workflowCommentSchema).optional().meta({ description: '沟通评论（详情场景填充）' }),
   consults: z.array(workflowTaskConsultSchema).optional().meta({ description: '协办意见（详情场景填充）' }),
   myTaskStatus: z.enum(WORKFLOW_TASK_STATUSES).nullable().optional().meta({ description: '已办视图：我在该实例处理过的任务状态' }),
@@ -263,7 +269,7 @@ export const workflowHandledInstanceItemSchema = workflowInstanceListItemSchema.
     nodeKey: z.string(),
     nodeName: z.string(),
     nodeType: z.string().nullable(),
-    activationId: z.string(),
+    activationId: z.string().nullable(),
     round: z.int().positive(),
     status: z.enum(['approved', 'rejected']),
     actionAt: z.string().nullable(),

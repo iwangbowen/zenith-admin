@@ -14,6 +14,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import WorkflowPriorityTag from '@/components/workflow/WorkflowPriorityTag';
 import WorkflowSLATag from '@/components/workflow/WorkflowSLATag';
 import WorkflowApprovalDetailSheet from '@/components/workflow/WorkflowApprovalDetailSheet';
+import { WorkflowMySignGroupsModal } from '@/components/workflow/WorkflowMySignGroupsModal';
 import SavedViewsBar from '@/components/workflow/SavedViewsBar';
 import { useListSearch } from '@/hooks/useListSearch';
 import { useQuickPhrases } from '@/hooks/useQuickPhrases';
@@ -44,7 +45,7 @@ interface SearchParams {
 const defaultSearchParams: SearchParams = { keyword: '', definitionId: undefined };
 
 type PendingItem = PendingWorkflowItem;
-type SheetState = { instanceId: number; taskId: number; action: 'approve' | 'reject' | null };
+type SheetState = { instanceId: number; taskId: number | null; action: 'approve' | 'reject' | null };
 /** 批量审批交互状态（模式与意见总是一起出现/重置） */
 type BatchMode = 'approve' | 'signedApprove' | 'reject';
 type BatchState = { mode: BatchMode; comment: string } | null;
@@ -60,6 +61,7 @@ export default function PendingApprovalsPage() {
     handleSearch, applySearch, handleReset,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: workflowTaskKeys.pendingLists });
   const [sheet, setSheet] = useState<SheetState | null>(null);
+  const [mySignGroupsVisible, setMySignGroupsVisible] = useState(false);
   // 深链：/workflow/pending?instanceId=&taskId= 自动弹出对应审批详情；?consults=1 打开「我的协办」抽屉（发起工作台概览卡片）——消费后清掉参数
   const [urlParams, setUrlParams] = useSearchParams();
   useEffect(() => {
@@ -287,6 +289,7 @@ export default function PendingApprovalsPage() {
         actions={(
           <>
             <Button type="tertiary" onClick={openMyConsults}>我的协办</Button>
+            <Button type="tertiary" onClick={() => setMySignGroupsVisible(true)}>我的加签</Button>
             {selectedRowKeys.length > 0 ? (
               <>
                 <Button type="primary" theme="solid" icon={<Plus size={14} />} disabled={selectedRequiresSignature} onClick={() => openBatch('approve')}>
@@ -318,6 +321,8 @@ export default function PendingApprovalsPage() {
         visible={!!sheet}
         onClose={() => setSheet(null)}
       />
+      <WorkflowMySignGroupsModal visible={mySignGroupsVisible} onClose={() => setMySignGroupsVisible(false)}
+        onOpenInstance={(instanceId) => setSheet({ instanceId, taskId: null, action: null })} />
 
       <AppModal
         title={batch?.mode === 'signedApprove' ? `使用我的签名并批量同意（${selectedRowKeys.length}）` : batch?.mode === 'approve' ? `批量同意（${selectedRowKeys.length}）` : `批量拒绝（${selectedRowKeys.length}）`}

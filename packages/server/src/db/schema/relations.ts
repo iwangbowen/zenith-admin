@@ -16,7 +16,7 @@ import { directorySyncConflicts, directorySyncDeptLinks, directorySyncRunItems, 
 import { dictItems, dicts } from './dicts';
 import { analyticsEventMeta, analyticsEventOverrides, analyticsExperiments, analyticsSegmentCampaigns, analyticsSites, analyticsSegmentMembers, analyticsUserProfiles, analyticsUserSegments, errorEvents, errorGroups } from './analytics';
 import { announcementReads, announcementRecipients, announcements } from './announcements';
-import { workflowAttachmentLinks, workflowAttachmentUploads, workflowAutomations, workflowCategories, workflowComments, workflowDefinitions, workflowDefinitionVersions, workflowDelegations, workflowForms, workflowInstances, workflowJobExecutions, workflowJobs, workflowQuickPhrases, workflowTaskConsults, workflowTasks, workflowTaskUrges, workflowTokens } from './workflow';
+import { workflowNodeActivations, workflowApprovalSlots, workflowSignGroups, workflowAttachmentLinks, workflowAttachmentUploads, workflowAutomations, workflowCategories, workflowComments, workflowDefinitions, workflowDefinitionVersions, workflowDelegations, workflowForms, workflowInstances, workflowJobExecutions, workflowJobs, workflowQuickPhrases, workflowTaskConsults, workflowTasks, workflowTaskUrges, workflowTokens } from './workflow';
 import { broadcastCampaigns, emailSendLogs, emailTemplates, inAppMessages, inAppTemplates, notificationOutbox, notificationOutboxSubjects, pushConfigs, pushSendLogs, smsConfigs, smsSendLogs, smsTemplates } from './messaging';
 import { dbBackups } from './db-admin';
 import { ruleDecisionTables, ruleDecisionTableVersions, ruleTestCases } from './rules';
@@ -777,9 +777,12 @@ export const workflowInstancesRelations = relations(workflowInstances, ({ one, m
   tenant: one(tenants, { fields: [workflowInstances.tenantId], references: [tenants.id] }),
   tasks: many(workflowTasks),
   tokens: many(workflowTokens),
+  approvalActivations: many(workflowNodeActivations),
 }));
 
 export const workflowTasksRelations = relations(workflowTasks, ({ one, many }) => ({
+  activation: one(workflowNodeActivations, { fields: [workflowTasks.activationId], references: [workflowNodeActivations.id] }),
+  slot: one(workflowApprovalSlots, { fields: [workflowTasks.slotId], references: [workflowApprovalSlots.id], relationName: 'taskSlot' }),
   instance: one(workflowInstances, { fields: [workflowTasks.instanceId], references: [workflowInstances.id] }),
   assignee: one(users, { fields: [workflowTasks.assigneeId], references: [users.id] }),
   urges: many(workflowTaskUrges),
@@ -2215,4 +2218,21 @@ export const workflowAttachmentLinksRelations = relations(workflowAttachmentLink
   task: one(workflowTasks, { fields: [workflowAttachmentLinks.taskId, workflowAttachmentLinks.instanceId], references: [workflowTasks.id, workflowTasks.instanceId] }),
   comment: one(workflowComments, { fields: [workflowAttachmentLinks.commentId, workflowAttachmentLinks.instanceId], references: [workflowComments.id, workflowComments.instanceId] }),
   tenant: one(tenants, { fields: [workflowAttachmentLinks.tenantId], references: [tenants.id] }),
+}));
+
+export const workflowNodeActivationsRelations = relations(workflowNodeActivations, ({ one, many }) => ({
+ instance: one(workflowInstances, { fields: [workflowNodeActivations.instanceId], references: [workflowInstances.id] }),
+ token: one(workflowTokens, { fields: [workflowNodeActivations.tokenId], references: [workflowTokens.id] }),
+ slots: many(workflowApprovalSlots), signGroups: many(workflowSignGroups), tasks: many(workflowTasks),
+}));
+export const workflowApprovalSlotsRelations = relations(workflowApprovalSlots, ({ one, many }) => ({
+ activation: one(workflowNodeActivations, { fields: [workflowApprovalSlots.activationId], references: [workflowNodeActivations.id] }),
+ group: one(workflowSignGroups, { fields: [workflowApprovalSlots.groupId], references: [workflowSignGroups.id], relationName: 'groupMembers' }),
+ anchoredGroups: many(workflowSignGroups, { relationName: 'groupAnchor' }),
+ tasks: many(workflowTasks, { relationName: 'taskSlot' }),
+}));
+export const workflowSignGroupsRelations = relations(workflowSignGroups, ({ one, many }) => ({
+ activation: one(workflowNodeActivations, { fields: [workflowSignGroups.activationId], references: [workflowNodeActivations.id] }),
+ anchorSlot: one(workflowApprovalSlots, { fields: [workflowSignGroups.anchorSlotId], references: [workflowApprovalSlots.id], relationName: 'groupAnchor' }),
+ slots: many(workflowApprovalSlots, { relationName: 'groupMembers' }),
 }));

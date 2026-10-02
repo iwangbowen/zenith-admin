@@ -117,7 +117,6 @@ export default function WorkflowApprovalDetailSheet({
   const transferFormApi = useRef<FormApi | null>(null);
   const delegateFormApi = useRef<FormApi | null>(null);
   const addSignFormApi = useRef<FormApi | null>(null);
-  const reduceSignFormApi = useRef<FormApi | null>(null);
   const returnFormApi = useRef<FormApi | null>(null);
   const initialActionKeyRef = useRef<string | null>(null);
 
@@ -126,7 +125,6 @@ export default function WorkflowApprovalDetailSheet({
   const [transferVisible, setTransferVisible] = useState(false);
   const [delegateVisible, setDelegateVisible] = useState(false);
   const [addSignVisible, setAddSignVisible] = useState(false);
-  const [reduceSignVisible, setReduceSignVisible] = useState(false);
   const [returnVisible, setReturnVisible] = useState(false);
   const [viewId, setViewId] = useState<number | null>(instanceId);
   const [rejectInstance, setRejectInstance] = useState<WorkflowInstance | null>(null);
@@ -205,7 +203,6 @@ export default function WorkflowApprovalDetailSheet({
       setTransferVisible(false);
       setDelegateVisible(false);
       setAddSignVisible(false);
-      setReduceSignVisible(false);
       setReturnVisible(false);
       resetActionAttachments();
       setApproveSignature(null);
@@ -229,18 +226,11 @@ export default function WorkflowApprovalDetailSheet({
   const btnTransfer = useMemo(() => resolveButton(actionButtons, 'transfer'), [actionButtons]);
   const btnDelegate = useMemo(() => resolveButton(actionButtons, 'delegate'), [actionButtons]);
   const btnAddSign = useMemo(() => resolveButton(actionButtons, 'addSign'), [actionButtons]);
-  const btnReduceSign = useMemo(() => resolveButton(actionButtons, 'reduceSign'), [actionButtons]);
   const btnReturn = useMemo(() => resolveButton(actionButtons, 'return'), [actionButtons]);
 
-  const reduceSignCandidates = useMemo(() => {
-    if (!detail || !currentTask) return [] as WorkflowTask[];
-    return (detail.tasks ?? []).filter((t) =>
-      t.id !== currentTask.id
-      && t.nodeKey === currentTask.nodeKey
-      && (t.status === 'pending' || t.status === 'waiting')
-      && Boolean(t.signType),
-    );
-  }, [detail, currentTask]);
+  const canAddSign = currentTask?.taskKind === 'approval' && (detail?.approvalActivations ?? []).some((activation) =>
+    activation.slots.some((slot) => slot.id === currentTask.slotId && slot.origin === 'base'),
+  );
 
   const returnTargetOptions = useMemo(() => {
     if (!currentDetailDefinition || !currentTask || !detail) return [] as Array<{ label: string; value: string }>;
@@ -532,7 +522,7 @@ export default function WorkflowApprovalDetailSheet({
             position,
             comment,
             attachments: attachmentsPayload('addSign'),
-            ...(position === 'parallel' ? { signMode } : {}),
+            signMode,
           },
         }),
         '已加签',
@@ -542,13 +532,6 @@ export default function WorkflowApprovalDetailSheet({
           setAttachmentsFor('addSign', []);
         },
       );
-    } catch { /* validation */ }
-  };
-
-  const handleReduceSign = async () => {
-    try {
-      const values = await reduceSignFormApi.current?.validate() as { targetTaskIds: number[]; comment?: string };
-      await submitSimpleAction((id) => ({ taskId: id, action: 'reduce-sign', body: values }), '已减签', () => setReduceSignVisible(false));
     } catch { /* validation */ }
   };
 
@@ -594,15 +577,15 @@ export default function WorkflowApprovalDetailSheet({
   const moreActions: Array<{ key: string; label: string; onClick: () => void }> = [];
   if (btnTransfer.enabled) moreActions.push({ key: 'transfer', label: btnTransfer.displayName ?? '转办', onClick: () => openUserPickerModal(() => setTransferVisible(true)) });
   if (btnDelegate.enabled) moreActions.push({ key: 'delegate', label: btnDelegate.displayName ?? '委派', onClick: () => openUserPickerModal(() => setDelegateVisible(true)) });
-  if (btnAddSign.enabled) moreActions.push({ key: 'addSign', label: btnAddSign.displayName ?? '加签', onClick: openAddSignModal });
-  if (btnAddSign.enabled && reduceSignCandidates.length > 0) moreActions.push({ key: 'reduceSign', label: btnReduceSign.displayName ?? '减签', onClick: () => setReduceSignVisible(true) });
+  if (btnAddSign.enabled && canAddSign) moreActions.push({ key: 'addSign', label: btnAddSign.displayName ?? '加签', onClick: openAddSignModal });
   if (btnReturn.enabled) moreActions.push({ key: 'return', label: btnReturn.displayName ?? '退回', onClick: () => setReturnVisible(true) });
 
   const isHandlerTask = currentTask?.nodeType === 'handler';
   const signaturePolicy = currentTask?.signaturePolicy ?? 'none';
-  const approveActionLabel = resolveTaskActionLabel(btnApprove.displayName, 'approve', isHandlerTask);
+  const isSuggestionTask = currentTask?.taskKind === 'suggestion';
+  const approveActionLabel = isSuggestionTask ? '提交同意建议' : resolveTaskActionLabel(btnApprove.displayName, 'approve', isHandlerTask);
   const approveLabel = signaturePolicy === 'none' ? approveActionLabel : `签名并${approveActionLabel}`;
-  const rejectLabel = resolveTaskActionLabel(btnReject.displayName, 'reject', isHandlerTask);
+  const rejectLabel = isSuggestionTask ? '提交拒绝建议' : resolveTaskActionLabel(btnReject.displayName, 'reject', isHandlerTask);
   // 仅当前 pending 任务显示操作按钮（深链打开已处理任务时只读查看）
   const extraActions = taskId != null && detail?.id === instanceId && currentTask?.status === 'pending' ? (
     <Space>
@@ -896,44 +879,20 @@ export default function WorkflowApprovalDetailSheet({
             <Form.Radio value="parallel">并加签（与自己同时审批）</Form.Radio>
             <Form.Radio value="after">后加签（自己之后再审批）</Form.Radio>
           </Form.RadioGroup>
-          {addSignPosition === 'parallel' && (
             <Form.RadioGroup
               field="signMode"
-              label="会签方式"
+              label="新增组审批方式"
               onChange={(e) => setSignMode((e.target as HTMLInputElement).value as AddSignMode)}
             >
               <Form.Radio value="and">会签（全部通过）</Form.Radio>
               <Form.Radio value="or">或签（一人通过）</Form.Radio>
             </Form.RadioGroup>
-          )}
+          <Banner type="info" closeIcon={null} description={addSignPosition === 'parallel'
+            ? '本组为必办补充意见，不改变原节点的会签方式或比例分母。'
+            : '前/后加签会要求你形成正式意见，即使原节点已达到或签或比例阈值。后加签在你正式同意后才能办理。'} />
           <Form.TextArea field="comment" label={btnAddSign.opinionName ?? '加签说明'} rows={3} />
         </Form>
         {renderAttachmentField(btnAddSign, 'addSign')}
-      </AppModal>
-
-      <AppModal
-        title={btnReduceSign.displayName ?? '减签'}
-        fullscreenable={false}
-        visible={reduceSignVisible}
-        onCancel={() => setReduceSignVisible(false)}
-        onOk={() => void handleReduceSign()}
-        okButtonProps={{ loading: submitting, type: 'primary' }}
-        okText="确认"
-        style={{ width: 480 }}
-      >
-        <Form getFormApi={api => { reduceSignFormApi.current = api; }}>
-          <Form.CheckboxGroup
-            field="targetTaskIds"
-            label="选择要减签的加签人"
-            rules={[{ required: true, message: '请至少选择一项' }]}
-            options={reduceSignCandidates.map((t) => {
-              const who = t.assigneeName ?? `用户${t.assigneeId ?? ''}`;
-              const note = t.comment?.replace(/^\[加签-?\w*\]\s*/, '') ?? '';
-              return { label: `${who}（${note}）`, value: t.id };
-            })}
-          />
-          <Form.TextArea field="comment" label={btnReduceSign.opinionName ?? '减签说明'} rows={3} />
-        </Form>
       </AppModal>
 
       <AppModal

@@ -1,3 +1,4 @@
+import { cancelJobs } from '../../../lib/workflow-jobs/engine';
 import { bindWorkflowAttachments } from '../workflow-attachments.service';
 import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
 import { enqueueSubprocessJoin } from './async-jobs';
@@ -5,7 +6,7 @@ import { enqueueSubprocessJoin } from './async-jobs';
 import { eq, and, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
 import type { DbExecutor } from '../../../db/types';
-import { workflowInstances, workflowTasks, users } from '../../../db/schema';
+import { workflowInstances, workflowTasks, users, workflowApprovalSlots, workflowSignGroups, workflowNodeActivations } from '../../../db/schema';
 import { getAncestorNodeKeys } from '../../../lib/workflow-engine';
 import { HTTPException } from 'hono/http-exception';
 import { buildStarterContext } from '../workflow-assignee-resolver.service';
@@ -15,6 +16,12 @@ import { emitInstanceEvent, emitNodeEvent, emitTaskEvent, lockInstanceExpecting 
 import { assertActionButtonEnabled, assertActionUploadRequirement, getOwnPendingTask, rejectTaskCore } from './task-actions';
 import type { WorkflowTaskAttachment } from './task-actions';
 import { WORKFLOW_RETURN_TO_INITIATOR_KEY } from '@zenith/shared/workflow';
+import { currentUser } from '../../../lib/context';
+import { getUserPermissions, isSuperAdmin } from '../../../lib/permissions';
+import { loadApprovalActivations, loadApprovalActivation, reconcileApprovalActivation } from './approval-state';
+import { requireVisibleInstance, emitTasksEnteredEvents } from './shared';
+import { getInstanceDetail } from './queries';
+import { armTaskAsyncJobs } from './async-jobs';
 import { loadTaskHandledUserIds, recordTaskTransfer, assertAssigneesNotActiveOnNode } from './transfers';
 import logger from '../../../lib/logger';
 import { bridgeReportFillWorkflowOutcome } from '../../report/report-fill-workflow-bridge.service';
@@ -57,6 +64,7 @@ export async function transferTask(taskId: number, targetUserId: number, comment
       .where(and(eq(workflowTasks.id, task.id), eq(workflowTasks.status, 'pending')))
       .returning();
     requireRow(row, '任务状态已变化，无法转办', 409);
+    if (task.slotId != null) await tx.update(workflowApprovalSlots).set({ currentAssigneeId: targetUserId }).where(eq(workflowApprovalSlots.id, task.slotId));
     await recordTaskTransfer(tx, {
       taskId: task.id, instanceId: inst.id, fromUserId: task.assigneeId, toUserId: targetUserId,
       action: 'transfer', reason: comment ?? null, operatorId: actor.userId, tenantId: inst.tenantId,
@@ -104,6 +112,7 @@ export async function systemTransferTaskToManagerInTransaction(
       .where(and(eq(workflowTasks.id, task.id), eq(workflowTasks.status, 'pending')))
       .returning();
     if (!row) return false;
+    if (task.slotId != null) await tx.update(workflowApprovalSlots).set({ currentAssigneeId: managerId }).where(eq(workflowApprovalSlots.id, task.slotId));
     await recordTaskTransfer(tx, {
       taskId: task.id, instanceId: inst.id, fromUserId: task.assigneeId, toUserId: managerId,
       action: 'timeout', reason: comment, operatorId: null, tenantId: inst.tenantId,
@@ -151,11 +160,12 @@ export async function delegateTask(taskId: number, targetUserId: number, comment
         originalAssigneeId: task.originalAssigneeId ?? task.assigneeId ?? null,
         delegatedFromId,
         // 手动委派保持建议制语义：受托人意见回执给原审批人确认（区别于规则委托的 full 直接代批）
-        delegationMode: 'suggest',
+        delegationMode: 'suggest', taskKind: 'suggestion',
       })
       .where(and(eq(workflowTasks.id, task.id), eq(workflowTasks.status, 'pending')))
       .returning();
     requireRow(row, '任务状态已变化，无法委派', 409);
+    if (task.slotId != null) await tx.update(workflowApprovalSlots).set({ currentAssigneeId: targetUserId }).where(eq(workflowApprovalSlots.id, task.slotId));
     await recordTaskTransfer(tx, {
       taskId: task.id, instanceId: inst.id, fromUserId: task.assigneeId, toUserId: targetUserId,
       action: 'delegate', reason: comment ?? null, operatorId: actor.userId, tenantId: inst.tenantId,
@@ -167,124 +177,79 @@ export async function delegateTask(taskId: number, targetUserId: number, comment
   return mapTask(updated, target.nickname);
 }
 
-/** 加签：在当前节点新增若干同节点 pending 任务（与原任务一并参与节点完成判定） */
-export async function addSignTask(
-  taskId: number,
-  targetUserIds: number[],
-  position: 'before' | 'after' | 'parallel',
-  comment?: string,
-  signMode?: 'and' | 'or',
-  attachments?: WorkflowTaskAttachment[],
-) {
+/** 基础席位创建独立必办加签组；禁止嵌套，基础策略不变。 */
+export async function addSignTask(taskId: number, targetUserIds: number[], position: 'before' | 'after' | 'parallel', comment?: string, signMode: 'and' | 'or' = 'and', attachments?: WorkflowTaskAttachment[]) {
   const { task, inst, actor } = await getOwnPendingTask(taskId);
   assertActionButtonEnabled(inst, task.nodeKey, 'addSign');
   assertActionUploadRequirement(inst, task.nodeKey, 'addSign', attachments);
-  if (targetUserIds.length === 0) throw new HTTPException(400, { message: '请选择加签人' });
-  // 与现有同节点任务共用 approveMethod（保证完成判定一致）
-  const [sibling] = await db.select().from(workflowTasks)
-    .where(and(eq(workflowTasks.instanceId, inst.id), eq(workflowTasks.nodeKey, task.nodeKey)))
-    .limit(1);
-  // 并行加签可指定会签(and)/或签(or)模式，覆盖本节点完成判定；其余沿用同节点既有方式
-  const overrideMethod = position === 'parallel' && signMode ? signMode : null;
-  const approveMethod = overrideMethod ?? sibling?.approveMethod ?? 'and';
-  const posLabelMap = { before: '前', after: '后', parallel: '并' } as const;
-  const posLabel = posLabelMap[position];
-  const modeLabel = overrideMethod ? (overrideMethod === 'or' ? '或签' : '会签') : '';
-  const addSignSuffix = comment ? `：${comment}` : '';
-  const addSignComment = `[加签-${posLabel}${modeLabel}] 由 ${actor.name ?? '系统'} 发起${addSignSuffix}`;
-
-  const created = await workflowTransaction(async (tx) => {
-    // 实例行级锁 + 锁内重校验：避免与并发审批（节点已完成/任务被跳过）竞态产生悬挂加签任务
+  if (task.slotId == null || task.taskKind !== 'approval') throw new HTTPException(400, { message: '只有基础正式审批席位可加签' });
+  if (targetUserIds.length === 0 || new Set(targetUserIds).size !== targetUserIds.length) throw new HTTPException(400, { message: '请选择不重复的加签人' });
+  if (targetUserIds.includes(task.assigneeId!)) throw new HTTPException(400, { message: '不能给自己加签' });
+  for (const userId of targetUserIds) await requireTenantUser(userId, '加签人不存在', { enabledOnly: true });
+  const result = await workflowTransaction(async (tx) => {
     await lockInstanceExpecting(tx, inst.id, 'running', '流程状态已变化，无法加签');
-    const [freshTask] = await tx.select({ status: workflowTasks.status })
-      .from(workflowTasks).where(eq(workflowTasks.id, task.id)).limit(1);
-    if (!freshTask || freshTask.status !== 'pending') {
-      throw new HTTPException(409, { message: '任务状态已变化，无法加签' });
-    }
-    // 加签人已在本节点同轮持有活动任务时给出友好 409（否则撞 wf_tasks_active_uniq 唯一索引）
-    await assertAssigneesNotActiveOnNode(tx, {
-      instanceId: inst.id, nodeKey: task.nodeKey, activationId: task.activationId,
-      userIds: targetUserIds,
-    });
-    // before：原任务先转为 waiting，加签任务为 pending；待加签人审批通过后由完成回调推进
-    // after / parallel：原任务保持 pending，加签任务以 pending 与之并行（共享 approveMethod 判定完成）
-    if (position === 'before') {
-      await tx.update(workflowTasks).set({ status: 'waiting' }).where(eq(workflowTasks.id, task.id));
-    }
-    // 并行加签指定会签/或签时，同步本节点全部未结束任务的 approveMethod，保证完成判定一致
-    if (overrideMethod) {
-      await tx.update(workflowTasks).set({ approveMethod: overrideMethod })
-        .where(and(
-          eq(workflowTasks.instanceId, inst.id),
-          eq(workflowTasks.nodeKey, task.nodeKey),
-          inArray(workflowTasks.status, ['pending', 'waiting']),
-        ));
-    }
-    const newRows = await tx.insert(workflowTasks).values(
-      targetUserIds.map((uid) => ({
-        instanceId: inst.id,
-        nodeKey: task.nodeKey,
-        nodeName: task.nodeName,
-        nodeType: task.nodeType,
-        assigneeId: uid,
-        status: 'pending' as const,
-        comment: addSignComment,
-        attachments: [],
-        approveMethod,
-        // 加签类型专用列：before 挂起原任务的恢复判定依赖它（comment 会被审批/委派回执覆盖，不能作为判定依据）
-        signType: position,
-        // 加签任务加入目标任务所在激活轮，参与同轮完成判定
-        activationId: task.activationId,
-      })),
-    ).returning();
-    for (const row of newRows) {
-      row.attachments = await bindWorkflowAttachments(tx, inst, { source: 'task', taskId: row.id }, attachments, actor.userId ?? undefined);
+    const [fresh] = await tx.select().from(workflowTasks).where(and(eq(workflowTasks.id, task.id), eq(workflowTasks.status, 'pending'), eq(workflowTasks.assigneeId, actor.userId))).limit(1);
+    requireRow(fresh, '任务状态已变化，无法加签', 409);
+    const activation = await loadApprovalActivation(tx, inst.id, task.activationId);
+    const anchor = activation.slots.find((slot) => slot.id === task.slotId);
+    if (activation.status !== 'active' || anchor?.origin !== 'base' || anchor.currentTaskId !== task.id || anchor.status !== 'pending') throw new HTTPException(400, { message: '只有本轮待办基础席位可加签，加签席位不可再次加签' });
+    await assertAssigneesNotActiveOnNode(tx, { instanceId: inst.id, nodeKey: task.nodeKey, activationId: task.activationId, userIds: targetUserIds });
+    const [group] = await tx.insert(workflowSignGroups).values({ activationId: task.activationId, anchorSlotId: anchor.id, position, signMode, status: position === 'after' ? 'waiting' : 'active', tenantId: inst.tenantId }).returning();
+    const created: typeof workflowTasks.$inferSelect[] = [];
+    for (const assigneeId of targetUserIds) {
+      const [slot] = await tx.insert(workflowApprovalSlots).values({ activationId: task.activationId, origin: 'addSign', groupId: group.id, originalAssigneeId: assigneeId, currentAssigneeId: assigneeId, tenantId: inst.tenantId }).returning();
+      const [row] = await tx.insert(workflowTasks).values({ instanceId: inst.id, nodeKey: task.nodeKey, nodeName: task.nodeName, nodeType: task.nodeType, activationId: task.activationId, slotId: slot.id, taskKind: 'approval', assigneeId, originalAssigneeId: assigneeId, status: position === 'after' ? 'waiting' : 'pending', waitReason: position === 'after' ? 'afterSign' : null, activatedAt: position === 'after' ? null : new Date(), comment: comment ?? null, attachments: [] }).returning();
+      row.attachments = await bindWorkflowAttachments(tx, inst, { source: 'task', taskId: row.id }, attachments, actor.userId);
       if (row.attachments.length) await tx.update(workflowTasks).set({ attachments: row.attachments }).where(eq(workflowTasks.id, row.id));
+      await tx.update(workflowApprovalSlots).set({ currentTaskId: row.id }).where(eq(workflowApprovalSlots.id, slot.id));
+      if (row.status === 'pending') await armTaskAsyncJobs(row, { id: inst.id, flowData: inst.definitionSnapshot?.flowData ?? null, formData: inst.formData as Record<string, unknown> | null, tenantId: inst.tenantId }, tx);
+      created.push(row);
     }
-    return newRows;
+    await reconcileApprovalActivation(tx, inst, task.activationId, actor);
+    const meta = { definitionId: inst.definitionId, tenantId: inst.tenantId, actor };
+    await emitTasksEnteredEvents(inst.id, created, meta, tx);
+    for (const row of created) await emitTaskEvent('task.addSigned', mapTask(row, undefined, undefined, undefined, undefined, undefined, position), { ...meta, comment }, tx);
+    return { groupId: group.id, created };
   });
-
-  const meta = { definitionId: inst.definitionId, tenantId: inst.tenantId, actor };
-  for (const t of created) {
-    emitTaskEvent('task.created', mapTask(t), meta);
-    if (t.assigneeId) emitTaskEvent('task.assigned', mapTask(t), meta);
-    emitTaskEvent('task.addSigned', mapTask(t), { ...meta, comment: addSignComment });
-  }
-  return { created: created.map((t) => mapTask(t)), message: `已加签 ${created.length} 人` };
+  const instance = await getInstanceDetail(inst.id);
+  const group = instance.approvalActivations!.flatMap((activation) => activation.signGroups).find((entry) => entry.id === result.groupId)!;
+  return { group, created: result.created.map((row) => mapTask(row, undefined, undefined, undefined, undefined, undefined, position)), instance, message: `已加签 ${result.created.length} 人` };
 }
 
-/** 减签：取消同节点上以加签方式创建的其他 pending 任务（仅限加签产生的任务，不能减去原始审批人） */
-export async function reduceSignTask(taskId: number, targetTaskIds: number[], comment?: string) {
-  const { task, inst, actor } = await getOwnPendingTask(taskId);
-  assertActionButtonEnabled(inst, task.nodeKey, 'reduceSign');
-  if (targetTaskIds.length === 0) throw new HTTPException(400, { message: '请选择要减签的任务' });
-  if (targetTaskIds.includes(task.id)) throw new HTTPException(400, { message: '不能减去自己' });
-
-  const targets = await db.select().from(workflowTasks).where(and(
-    eq(workflowTasks.instanceId, inst.id),
-    eq(workflowTasks.nodeKey, task.nodeKey),
-    inArray(workflowTasks.id, targetTaskIds),
-  ));
-  if (targets.length !== targetTaskIds.length) throw new HTTPException(400, { message: '部分任务不存在或不同节点' });
-  for (const t of targets) {
-    if (t.status !== 'pending' && t.status !== 'waiting') {
-      throw new HTTPException(400, { message: '仅可减签未处理的任务' });
-    }
-    if (!t.signType) {
-      throw new HTTPException(400, { message: '仅可减去加签产生的任务，原始审批人不可移除' });
-    }
-  }
-
+/** 组级减签不依赖锚定人的任务仍为 pending；等待前签或原人已办后签都可操作。 */
+export async function reduceSignTask(groupId: number, targetSlotIds: number[], comment?: string) {
+  const user = currentUser();
+  const [groupRow] = await db.select({ group: workflowSignGroups, instanceId: workflowNodeActivations.instanceId }).from(workflowSignGroups).innerJoin(workflowNodeActivations, eq(workflowSignGroups.activationId, workflowNodeActivations.id)).where(eq(workflowSignGroups.id, groupId)).limit(1);
+  requireRow(groupRow, '加签组不存在');
+  const inst = await requireVisibleInstance(groupRow.instanceId);
+  const actor = { userId: user.userId, name: user.username };
+  const administrator = isSuperAdmin(user) || (await getUserPermissions(user.userId)).includes('workflow:instance:cancel');
+  const activation = requireRow((await loadApprovalActivations(db, inst.id, user.userId, administrator)).find((entry) => entry.id === groupRow.group.activationId), '节点轮次不存在');
+  const group = requireRow(activation.signGroups.find((entry) => entry.id === groupId), '加签组不存在');
+  if (!group.canReduce) throw new HTTPException(403, { message: '无权减签或加签组已结束' });
+  assertActionButtonEnabled(inst, activation.nodeKey, 'reduceSign');
+  if (targetSlotIds.length === 0 || new Set(targetSlotIds).size !== targetSlotIds.length) throw new HTTPException(400, { message: '请选择不重复的加签席位' });
+  const targets = group.slots.filter((slot) => targetSlotIds.includes(slot.id));
+  if (targets.length !== targetSlotIds.length || targets.some((slot) => slot.status !== 'pending' || slot.currentTaskId == null)) throw new HTTPException(400, { message: '只能取消本组尚未形成正式意见的席位' });
+  const task = requireRow((await db.select().from(workflowTasks).where(eq(workflowTasks.id, targets[0].currentTaskId!)).limit(1))[0], '加签任务不存在');
+  const targetTaskIds = targets.map((slot) => slot.currentTaskId!);
   const snapshot = inst.definitionSnapshot;
   const flowData = snapshot?.flowData ?? undefined;
   const suffix = comment ? `：${comment}` : '';
   const reduceComment = `[减签] 由 ${actor.name ?? '系统'} 发起${suffix}`;
 
   const result = await workflowTransaction(async (tx) => {
+    const outcome = await (async () => {
     // 实例行级锁：序列化与并发审批/驳回，确保减签后的节点完成判定与推进原子一致
     await lockInstanceExpecting(tx, inst.id, 'running', '流程状态已变化，无法减签');
+    const current = await loadApprovalActivation(tx, inst.id, group.activationId);
+    const currentGroup = current.signGroups.find((entry) => entry.id === groupId);
+    if (!currentGroup || (currentGroup.status !== 'active' && currentGroup.status !== 'waiting') || current.status !== 'active') throw new HTTPException(409, { message: '加签组已结束' });
+    const freshTargets = currentGroup.slots.filter((slot) => targetSlotIds.includes(slot.id));
+    if (freshTargets.length !== targetSlotIds.length || freshTargets.some((slot) => slot.status !== 'pending' || !targetTaskIds.includes(slot.currentTaskId!))) throw new HTTPException(409, { message: '加签席位已变化' });
+    await tx.update(workflowApprovalSlots).set({ status: 'cancelled' }).where(inArray(workflowApprovalSlots.id, targetSlotIds));
     const updated = await tx.update(workflowTasks).set({
-      status: 'skipped',
+      status: 'skipped', waitReason: null,
       actionAt: new Date(),
       comment: reduceComment,
     }).where(and(
@@ -293,11 +258,12 @@ export async function reduceSignTask(taskId: number, targetTaskIds: number[], co
       eq(workflowTasks.nodeKey, task.nodeKey),
       inArray(workflowTasks.status, ['pending', 'waiting']),
     )).returning();
+    for (const removedTask of updated) await cancelJobs({ taskId: removedTask.id, jobTypes: ['task_timeout'] }, tx);
     if (updated.length !== targetTaskIds.length) {
       throw new HTTPException(409, { message: '部分任务状态已变化，无法减签' });
     }
     // 复核节点完成状态（例如 ratio 比例会签减签后阈值已达成，需跳过余下任务并推进流程）
-    const { completed } = await checkNodeCompletion(tx, inst.id, task.nodeKey, flowData);
+    const { completed } = await checkNodeCompletion(tx, inst.id, task.nodeKey, flowData, group.activationId);
     if (!completed || !flowData) {
       return { removed: updated, advanced: false, finished: false, rejected: false, row: inst, newTasks: [] as typeof workflowTasks.$inferSelect[], fillBridge: null };
     }
@@ -344,6 +310,17 @@ export async function reduceSignTask(taskId: number, targetTaskIds: number[], co
       .where(eq(workflowInstances.id, inst.id))
       .returning();
     return { removed: updated, advanced: true, finished: false, rejected: false, row, newTasks: materialized.createdTasks, fillBridge: null };
+    })();
+    const meta = { definitionId: inst.definitionId, tenantId: inst.tenantId, actor };
+    for (const row of outcome.removed) {
+      await emitTaskEvent('task.skipped', mapTask(row), meta, tx);
+      await emitTaskEvent('task.reduceSigned', mapTask(row), { ...meta, comment: reduceComment }, tx);
+    }
+    if (outcome.advanced) await emitNodeEvent('node.left', { instanceId: inst.id, ...meta, nodeKey: task.nodeKey, nodeName: task.nodeName, nodeType: task.nodeType }, tx);
+    await emitTasksEnteredEvents(inst.id, outcome.newTasks, meta, tx);
+    if (outcome.finished) await emitInstanceEvent('instance.approved', mapInstance(outcome.row), actor, tx);
+    if (outcome.rejected) await emitInstanceEvent('instance.rejected', mapInstance(outcome.row), actor, tx);
+    return outcome;
   });
 
   if (result.fillBridge?.approved) {
@@ -355,24 +332,11 @@ export async function reduceSignTask(taskId: number, targetTaskIds: number[], co
     });
   }
 
-  const { removed, row: instRow } = result;
-  const meta = { definitionId: inst.definitionId, tenantId: inst.tenantId, actor };
-  for (const t of removed) {
-    emitTaskEvent('task.skipped', mapTask(t), meta);
-    emitTaskEvent('task.reduceSigned', mapTask(t), { ...meta, comment: reduceComment });
-  }
-  if (result.advanced) {
-    emitNodeEvent('node.left', { instanceId: inst.id, ...meta, nodeKey: task.nodeKey, nodeName: task.nodeName, nodeType: task.nodeType });
-    for (const t of result.newTasks) {
-      emitNodeEvent('node.entered', { instanceId: inst.id, ...meta, nodeKey: t.nodeKey, nodeName: t.nodeName, nodeType: t.nodeType });
-      emitTaskEvent('task.created', mapTask(t), meta);
-      if (t.assigneeId && t.status === 'pending') emitTaskEvent('task.assigned', mapTask(t), meta);
-    }
-    if (result.finished) emitInstanceEvent('instance.approved', mapInstance(instRow), actor);
-    if (result.rejected) emitInstanceEvent('instance.rejected', mapInstance(instRow), actor);
-  }
+  const { removed } = result;
   const advanceNote = result.finished ? '，流程已完成' : (result.advanced ? '，流程已推进' : '');
-  return { removed: removed.map((t) => mapTask(t)), message: `已减签 ${removed.length} 人${advanceNote}` };
+  const instance = await getInstanceDetail(inst.id);
+  const updatedGroup = instance.approvalActivations!.flatMap((entry) => entry.signGroups).find((entry) => entry.id === groupId)!;
+  return { group: updatedGroup, instance, removed: removed.map((t) => mapTask(t)), message: `已减签 ${removed.length} 人${advanceNote}` };
 }
 
 /** 退回：将当前任务驳回到一个或多个前序节点（多节点取流程定义中最早出现的节点作为执行目标） */

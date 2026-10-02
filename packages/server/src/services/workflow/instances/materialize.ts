@@ -11,14 +11,14 @@ import { createDeptTree, resolveAssigneeIds } from '../workflow-assignee-resolve
 import { decide } from '../../platform/rules-runtime.service';
 import type { DbExecutor } from '../../../db/types';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { enqueueJob } from '../../../lib/workflow-jobs/engine';
-import { computeTimeoutAt } from '../../../lib/workflow-timeout';
 import { resolveActiveDelegate } from '../workflow-delegations.service';
 import { resolveAdminUserId } from '../workflow-assignee-resolver.service';
 import { notifyWithin } from '../../messaging/notification-outbox.service';
 import { applyAssigneeRuntimeStrategies } from './assignees';
 import { armTaskAsyncJobs } from './async-jobs';
 import { findExceptionCatchNode } from './mapping';
+import { workflowNodeActivations, workflowApprovalSlots } from '../../../db/schema';
+import { cancelApprovalActivations, reconcileApprovalActivation } from './approval-state';
 
 /**
  * 将引擎输出的 TaskAction[] 展开为实际需插入的 workflow_tasks 行。
@@ -26,7 +26,7 @@ import { findExceptionCatchNode } from './mapping';
  * - ccNode / delay / trigger / subProcess：保持原样
  * activationId 不在展开阶段赋值——插入前由 advanceAndMaterialize 按节点统一分配激活轮次
  */
-type ExpandedTaskRow = Omit<typeof workflowTasks.$inferInsert, 'activationId'>;
+type ExpandedTaskRow = Omit<typeof workflowTasks.$inferInsert, 'activationId' | 'taskKind'> & { taskKind?: typeof workflowTasks.$inferInsert['taskKind']; taskOrder?: number | null; approveMethod?: WorkflowResolvedApproveMethod | null; approveRatio?: number | null };
 
 interface ExpandedTaskRows {
   rows: ExpandedTaskRow[];
@@ -367,7 +367,7 @@ async function expandTasksToRows(
         nodeType: t.nodeType,
         assigneeId: ex.userId,
         status: 'skipped' as const,
-        signType: 'excluded' as const,
+        taskKind: 'excluded' as const,
         actionAt: new Date(),
         comment: ex.reason === 'sameInitiator'
           ? '与发起人为同一人，已按规则自动跳过'
@@ -407,22 +407,10 @@ async function expandTasksToRows(
  * 历史轮（重入前）的 approved 同样不参与，与 checkNodeCompletion 口径一致。
  */
 async function getCompletedNodeKeys(exec: DbExecutor, instanceId: number): Promise<Set<string>> {
-  const rows = await exec.select({ id: workflowTasks.id, nodeKey: workflowTasks.nodeKey, status: workflowTasks.status, activationId: workflowTasks.activationId, nodeType: workflowTasks.nodeType, signType: workflowTasks.signType })
-    .from(workflowTasks)
-    .where(eq(workflowTasks.instanceId, instanceId));
-  const byNode = new Map<string, typeof rows>();
-  for (const row of rows) {
-    const group = byNode.get(row.nodeKey);
-    if (group) group.push(row);
-    else byNode.set(row.nodeKey, [row]);
-  }
-  const keys = new Set<string>();
-  for (const [nodeKey, group] of byNode) {
-    const current = filterCurrentActivation(group);
-    if (current.some((t) => t.status === 'approved')) keys.add(nodeKey);
-  }
-  keys.add('start');
-  return keys;
+ const rows = await exec.select().from(workflowNodeActivations).where(eq(workflowNodeActivations.instanceId, instanceId)).orderBy(workflowNodeActivations.createdAt);
+ const latest = new Map<string, typeof rows[number]>();
+ for (const row of rows) latest.set(row.nodeKey, row);
+ return new Set(['start', ...[...latest.values()].filter((row) => row.status === 'approved').map((row) => row.nodeKey)]);
 }
 
 type WorkflowTokenSnapshot = { id: number; nodeKey: string; branchPath: BranchPath };
@@ -437,6 +425,7 @@ export async function loadLiveTokens(exec: DbExecutor, instanceId: number): Prom
 
 /** 终止实例所有 active token（驳回 / 取消 / 撤销 / 强制跳转前清场） */
 export async function killInstanceTokens(exec: DbExecutor, instanceId: number): Promise<void> {
+ await cancelApprovalActivations(exec, instanceId);
   await exec.update(workflowTokens)
     .set({ status: 'dead', consumedAt: new Date() })
     .where(and(eq(workflowTokens.instanceId, instanceId), eq(workflowTokens.status, 'active')));
@@ -486,12 +475,16 @@ export async function advanceAndMaterialize(
     const live = await loadLiveTokens(exec, ctx.instanceId);
     const tk = live.find((t) => t.nodeKey === trigger.nodeKey);
     if (!tk) throw new HTTPException(500, { message: `节点「${trigger.nodeKey}」缺少执行 Token，实例 token 状态异常` });
-    engineTriggers.push({ type: 'advance', tokenId: tk.id, nodeKey: tk.nodeKey, branchPath: tk.branchPath });
+    await exec.update(workflowNodeActivations).set({ status: 'approved', settledAt: new Date() }).where(eq(workflowNodeActivations.tokenId, tk.id));
+ engineTriggers.push({ type: 'advance', tokenId: tk.id, nodeKey: tk.nodeKey, branchPath: tk.branchPath });
   } else {
     if (trigger.consumeNodeKey) {
       const live = await loadLiveTokens(exec, ctx.instanceId);
       const tk = live.find((t) => t.nodeKey === trigger.consumeNodeKey);
-      if (tk) await exec.update(workflowTokens).set({ status: 'consumed', consumedAt: new Date() }).where(eq(workflowTokens.id, tk.id));
+      if (tk) {
+        await exec.update(workflowNodeActivations).set({ status: 'approved', settledAt: new Date() }).where(eq(workflowNodeActivations.tokenId, tk.id));
+        await exec.update(workflowTokens).set({ status: 'consumed', consumedAt: new Date() }).where(eq(workflowTokens.id, tk.id));
+      }
     }
     engineTriggers.push({ type: 'enter', nodeKey: trigger.nodeKey, branchPath: [] });
   }
@@ -516,52 +509,40 @@ export async function advanceAndMaterialize(
         .where(and(eq(workflowTokens.instanceId, ctx.instanceId), inArray(workflowTokens.id, res.ops.consume)));
     }
 
-    // 2) 展开并落库任务行（人员解析 / 委托 / 加签 / cc / 外部审批 / delay / trigger / subProcess）
-    let autoApprovedNodeKeys: string[] = [];
-    let autoRejected = false;
-    if (res.tasksToCreate.length > 0) {
-      const expanded = await expandTasksToRows(res.tasksToCreate, ctx);
-      if (expanded.rows.length > 0) {
-        // 节点激活轮次：同一次进入节点创建的一批任务共享一个 activationId；
-        // 重入（驳回回退/退回重审后再次到达）生成新值，完成判定只统计当前轮，
-        // 避免历史 rejected 任务卡死 and 判定 / 污染 ratio 分母
-        const activationByNode = new Map<string, string>();
-        const rowsWithActivation = expanded.rows.map((row) => {
-          let activation = activationByNode.get(row.nodeKey);
-          if (!activation) {
-            activation = randomUUID();
-            activationByNode.set(row.nodeKey, activation);
-          }
-          return { ...row, activationId: activation };
-        });
-        const inserted = await exec.insert(workflowTasks).values(rowsWithActivation).returning();
-        createdTasks.push(...inserted);
-        // 事务内装配异步作业（延时/超时/触发器/外部派发/子流程发起），与任务行同生共死，避免提交后进程崩溃丢作业
-        for (const t of inserted) {
-          await armTaskAsyncJobs(t, { id: ctx.instanceId, flowData: ctx.flowData, formData: ctx.formData, tenantId: ctx.tenantId ?? null }, exec);
-        }
-      }
-      autoApprovedNodeKeys = expanded.autoApprovedNodeKeys;
-      autoRejected = !!expanded.autoRejectedNodeKey;
-    }
-
-    // 3) 落库新建 token；expand 已自动通过的 frontier 不落 token，改为续接推进
-    const autoSet = new Set(autoApprovedNodeKeys);
+    const expanded = res.tasksToCreate.length > 0 ? await expandTasksToRows(res.tasksToCreate, ctx) : { rows: [], autoApprovedNodeKeys: [], autoRejectedNodeKey: undefined };
+    const autoSet = new Set(expanded.autoApprovedNodeKeys);
+    const tokenByNode = new Map<string, number>();
     for (const spec of res.ops.create) {
-      if (autoSet.has(spec.nodeKey)) {
-        engineTriggers.push({ type: 'continue', nodeKey: spec.nodeKey, branchPath: spec.branchPath, parentTokenId: spec.parentTokenId });
-      } else {
-        await exec.insert(workflowTokens).values({
-          instanceId: ctx.instanceId,
-          nodeKey: spec.nodeKey,
-          status: 'active',
-          branchPath: spec.branchPath,
-          parentTokenId: spec.parentTokenId,
-          scopeKey: ctx.scopeKey ?? null,
-          tenantId: ctx.tenantId ?? null,
-        });
+      if (autoSet.has(spec.nodeKey)) engineTriggers.push({ type: 'continue', nodeKey: spec.nodeKey, branchPath: spec.branchPath, parentTokenId: spec.parentTokenId });
+      else {
+        const [token] = await exec.insert(workflowTokens).values({ instanceId: ctx.instanceId, nodeKey: spec.nodeKey, status: 'active', branchPath: spec.branchPath, parentTokenId: spec.parentTokenId, scopeKey: ctx.scopeKey ?? null, tenantId: ctx.tenantId ?? null }).returning();
+        tokenByNode.set(spec.nodeKey, token.id);
       }
     }
+    const rowsByNode = new Map<string, ExpandedTaskRow[]>();
+    for (const row of expanded.rows) { const bucket = rowsByNode.get(row.nodeKey) ?? []; bucket.push(row); rowsByNode.set(row.nodeKey, bucket); }
+    for (const [nodeKey, rows] of rowsByNode) {
+      const activationId = randomUUID();
+      const basis = rows.filter((row) => (row.nodeType === 'approve' || row.nodeType === 'handler') && row.taskKind !== 'excluded');
+      const method = basis.find((row) => row.approveMethod)?.approveMethod ?? (basis.length > 0 ? 'and' : null);
+      const ratio = method === 'ratio' ? basis.find((row) => row.approveRatio != null)?.approveRatio ?? 51 : null;
+      const required = method === 'or' ? Math.min(1, basis.length) : method === 'ratio' ? Math.ceil(basis.length * ratio! / 100) : basis.length;
+      await exec.insert(workflowNodeActivations).values({ id: activationId, instanceId: ctx.instanceId, tokenId: tokenByNode.get(nodeKey) ?? null, nodeKey, nodeName: rows[0].nodeName, status: tokenByNode.has(nodeKey) ? 'active' : 'approved', approveMethod: method, approveRatio: ratio, baseTotal: basis.length, baseRequired: required, tenantId: ctx.tenantId ?? null });
+      for (const expandedRow of rows) {
+        const { taskOrder, approveMethod: _method, approveRatio: _ratio, taskKind: specifiedKind, ...row } = expandedRow;
+        const kind = specifiedKind ?? (row.nodeType === 'ccNode' ? 'cc' : row.nodeType === 'approve' || row.nodeType === 'handler' ? 'approval' : 'system');
+        let slotId: number | null = null;
+        if (kind === 'approval') {
+          const [slot] = await exec.insert(workflowApprovalSlots).values({ activationId, origin: 'base', originalAssigneeId: row.delegatedFromId ?? row.assigneeId ?? null, currentAssigneeId: row.assigneeId ?? null, status: row.status === 'approved' ? 'approved' : row.status === 'rejected' ? 'rejected' : 'pending', order: taskOrder ?? null, tenantId: ctx.tenantId ?? null }).returning(); slotId = slot.id;
+        }
+        const taskKind = kind === 'approval' && row.delegationMode === 'suggest' ? 'suggestion' : kind;
+        const waitReason = row.status !== 'waiting' ? null : row.externalCallbackId ? 'external' : method === 'sequential' && kind === 'approval' ? 'sequence' : row.nodeType === 'subProcess' ? 'subprocess' : row.nodeType === 'delay' ? 'delay' : row.nodeType === 'trigger' ? 'trigger' : null;
+        const [task] = await exec.insert(workflowTasks).values({ ...row, activationId, slotId, taskKind, waitReason, activatedAt: row.status === 'pending' ? new Date() : null }).returning();
+        if (slotId != null) await exec.update(workflowApprovalSlots).set({ currentTaskId: task.id }).where(eq(workflowApprovalSlots.id, slotId));
+        createdTasks.push(task); await armTaskAsyncJobs(task, { id: ctx.instanceId, flowData: ctx.flowData, formData: ctx.formData, tenantId: ctx.tenantId ?? null }, exec);
+      }
+    }
+    const autoRejected = !!expanded.autoRejectedNodeKey;
 
     if (res.finished) finished = true;
     if (res.rejected || autoRejected) rejected = true;
@@ -585,152 +566,11 @@ export async function advanceAndMaterialize(
   return { createdTasks, finished, rejected: false, currentNodeKeys };
 }
 
-/**
- * 过滤出节点"当前激活轮"的任务：以最新**参与判定**任务行的 activationId 为当前轮标识。
- * 重入节点（驳回回退/退回重审后再次到达）会生成新 activationId，历史轮的
- * rejected/skipped 任务不再参与完成判定与 ratio 分母。
- * activation_id 已收紧为 NOT NULL（所有写入路径必须显式赋值），不再兼容空值回退。
- *
- * ⚠️ 轮次只能由「审批/办理任务行」推断：抄送行（nodeType='ccNode'，含转发抄送 / 动态补加抄送）
- * 与运行时排除留痕（signType='excluded'）不是节点控制流的一部分，却可能因同 nodeKey 且 id
- * 更大而把轮次带偏（曾导致加签任务遗留 pending、甚至节点被提前判定完成）。
- * 仅当节点下不存在任何审批行时才退化为按全部行推断（保持对纯抄送节点的既有语义）。
- */
-export function filterCurrentActivation<T extends { id: number; activationId: string; nodeType?: string | null; signType?: string | null }>(rows: T[]): T[] {
-  if (rows.length === 0) return rows;
-  const judgedRows = rows.filter((t) => t.nodeType !== 'ccNode' && t.signType !== 'excluded');
-  const pool = judgedRows.length > 0 ? judgedRows : rows;
-  const latest = pool.reduce((a, b) => (b.id > a.id ? b : a));
-  return rows.filter((t) => t.activationId === latest.activationId);
-}
-
-/** 节点结算兜底清场：把同节点当前轮未结束的审批/办理任务置 skipped（留痕），保证完成节点无残留待办 */
-async function settleNodeRemainder(
-  tx: DbExecutor,
-  instanceId: number,
-  nodeKey: string,
-  activationId: string | null | undefined,
-  comment: string,
-): Promise<void> {
-  if (!activationId) return;
-  await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment })
-    .where(and(
-      eq(workflowTasks.instanceId, instanceId),
-      eq(workflowTasks.nodeKey, nodeKey),
-      eq(workflowTasks.activationId, activationId),
-      inArray(workflowTasks.status, ['pending', 'waiting']),
-    ));
-}
-
-/**
- * 检查同一 (instanceId, nodeKey) 下的全部任务是否已达成完成条件。
- * - and （会签）：所有人 approved 才完成
- * - or  （或签）：任一人 approved 即完成，其余 pending 任务自动 skipped
- * - sequential（顺序会签）：逐个转换 waiting -> pending，全部 approved 后完成
- */
-export async function checkNodeCompletion(
-  tx: DbExecutor,
-  instanceId: number,
-  nodeKey: string,
-  flowData?: WorkflowFlowData,
-): Promise<{ completed: boolean; method: WorkflowResolvedApproveMethod | null }> {
-  const allRows = await tx.select().from(workflowTasks)
-    .where(and(eq(workflowTasks.instanceId, instanceId), eq(workflowTasks.nodeKey, nodeKey)));
-  if (allRows.length === 0) return { completed: true, method: null };
-  const siblings = filterCurrentActivation(allRows);
-  const method = siblings.find((t) => t.approveMethod)?.approveMethod ?? null;
-  // 本节点当前轮标识：兜底清场按轮次收敛，不误伤其它轮次的任务
-  const currentActivationId = siblings.find((t) => t.nodeType !== 'ccNode' && t.signType !== 'excluded')?.activationId
-    ?? siblings[0]?.activationId
-    ?? null;
-
-  // before-加签恢复：如果同节点存在挂起原任务（status=waiting且非顺序会签）且所有前加签任务都已处理，则将原任务升回 pending，让节点能够继续流转。
-  const beforeSuspended = siblings.filter((t) => t.status === 'waiting' && t.taskOrder == null);
-  if (beforeSuspended.length > 0) {
-    // 判定依据是 signType 专用列——comment 会被审批意见 / 委派回执覆盖，不能作为控制流依据
-    const beforeSignTasks = siblings.filter((t) => t.signType === 'before');
-    const allBeforeResolved = beforeSignTasks.length > 0
-      && beforeSignTasks.every((t) => t.status === 'approved' || t.status === 'skipped');
-    if (allBeforeResolved) {
-      const restoredIds = beforeSuspended.map((t) => t.id);
-      await tx.update(workflowTasks).set({ status: 'pending' })
-        .where(inArray(workflowTasks.id, restoredIds));
-      for (const t of beforeSuspended) {
-        siblings[siblings.findIndex((s) => s.id === t.id)] = { ...t, status: 'pending' };
-      }
-    } else {
-      // 原任务仍需等待加签人完成，节点不可能完成
-      return { completed: false, method };
-    }
-  }
-
-  // 前加签任务是「先于原审批人」的前置关卡：全部处理完后即失去话语权，不参与本节点的
-  // and/or/sequential/ratio 完成判定——or 模式下若不排除，加签人通过会立即完成节点并跳过刚恢复的原审批人。
-  // excluded 是运行时排除留痕行（同发起人/去重具名记录），同样不参与判定与 ratio 分母；
-  // ccNode 行（转发抄送 / 动态补加抄送）恒为 skipped，不是审批意见，也不参与判定。
-  const judged = siblings.filter((t) => t.signType !== 'before' && t.signType !== 'excluded' && t.nodeType !== 'ccNode');
-
-  if (!method || method === 'and') {
-    const allDone = judged.every((t) => t.status === 'approved' || t.status === 'skipped');
-    if (allDone) {
-      await settleNodeRemainder(tx, instanceId, nodeKey, currentActivationId, '[会签完成] 本节点已完成，其余未处理待办作废');
-      return { completed: true, method };
-    }
-    return { completed: false, method };
-  }
-  if (method === 'or') {
-    const anyApproved = judged.some((t) => t.status === 'approved');
-    if (anyApproved) {
-      // 其余 pending / waiting 任务跳过（限本节点当前轮，避免误伤重入轮次）
-      await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: '[或签联动] 本节点已有审批人通过，其余待办作废' })
-        .where(buildWhere(
-          eq(workflowTasks.instanceId, instanceId),
-          eq(workflowTasks.nodeKey, nodeKey),
-          inArray(workflowTasks.status, ['pending', 'waiting']),
-          currentActivationId ? eq(workflowTasks.activationId, currentActivationId) : undefined,
-        ));
-      return { completed: true, method };
-    }
-    return { completed: false, method };
-  }
-  if (method === 'sequential') {
-    const allApproved = judged.every((t) => t.status === 'approved');
-    if (allApproved) {
-      await settleNodeRemainder(tx, instanceId, nodeKey, currentActivationId, '[顺序会签完成] 本节点已完成，其余未处理待办作废');
-      return { completed: true, method };
-    }
-    // 将下一个 waiting 按 taskOrder 提升为 pending
-    const nextWaiting = judged
-      .filter((t) => t.status === 'waiting')
-      .sort((a, b) => (a.taskOrder ?? 0) - (b.taskOrder ?? 0))[0];
-    if (nextWaiting) {
-      const nextTimeoutCfg = flowData?.nodes.find((n) => n.data.key === nodeKey)?.data.timeout;
-      const nextTimeoutAt = computeTimeoutAt(nextTimeoutCfg);
-      await tx.update(workflowTasks).set({ status: 'pending' })
-        .where(eq(workflowTasks.id, nextWaiting.id));
-      if (nextTimeoutAt) {
-        await enqueueJob({ jobType: 'task_timeout', taskId: nextWaiting.id, instanceId, nodeKey, payload: { taskId: nextWaiting.id }, runAt: nextTimeoutAt, maxAttempts: 3, idempotencyKey: `task_timeout:${nextWaiting.id}` }, tx);
-      }
-    }
-    return { completed: false, method };
-  }
-  if (method === 'ratio') {
-    const total = judged.length;
-    const ratioPct = judged.find((t) => t.approveRatio)?.approveRatio ?? 51;
-    const required = Math.ceil(total * ratioPct / 100);
-    const approvedCount = judged.filter((t) => t.status === 'approved').length;
-    if (approvedCount >= required) {
-      // 剩余 pending/waiting 任务跳过（限本节点当前轮）
-      await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: '[比例会签联动] 已达通过比例，其余待办作废' })
-        .where(buildWhere(
-          eq(workflowTasks.instanceId, instanceId),
-          eq(workflowTasks.nodeKey, nodeKey),
-          or(eq(workflowTasks.status, 'pending'), eq(workflowTasks.status, 'waiting')),
-          currentActivationId ? eq(workflowTasks.activationId, currentActivationId) : undefined,
-        ));
-      return { completed: true, method };
-    }
-    return { completed: false, method };
-  }
-  return { completed: false, method };
+/** 完成判定仅使用对应 token 的显式节点进入身份。 */
+export async function checkNodeCompletion(tx: DbExecutor, instanceId: number, nodeKey: string, flowData?: WorkflowFlowData, activationId?: string): Promise<{ completed: boolean; failed: boolean; method: WorkflowResolvedApproveMethod | null }> {
+ const [inst] = await tx.select().from(workflowInstances).where(eq(workflowInstances.id, instanceId)).limit(1);
+ if (!inst) throw new HTTPException(409, { message: '流程实例不存在' });
+ const id = activationId ?? (await tx.select({ id: workflowNodeActivations.id }).from(workflowNodeActivations).innerJoin(workflowTokens, eq(workflowNodeActivations.tokenId, workflowTokens.id)).where(and(eq(workflowNodeActivations.instanceId, instanceId), eq(workflowNodeActivations.nodeKey, nodeKey), eq(workflowTokens.status, 'active'))).limit(1))[0]?.id;
+ if (!id) throw new HTTPException(409, { message: '节点缺少显式激活轮次' });
+ return reconcileApprovalActivation(tx, inst, id, { userId: 0, name: 'system:approval' }, flowData);
 }

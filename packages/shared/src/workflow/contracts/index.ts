@@ -1,4 +1,5 @@
 export * from './attachments';
+export * from './approval-state';
 export * from './business';
 export * from './automations';
 export * from './callbacks';

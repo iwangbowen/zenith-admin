@@ -8,6 +8,11 @@ import { renderWorkflowInstancePdf, loadPrintVerifyView } from '../../../service
 import { renderPrintVerifyPage } from './print-verify-page';
 import { getWorkflowAnalytics, listOverdueTasks } from '../../../services/workflow/workflow-analytics.service';
 import { listWorkflowSelectableUsers } from '../../../services/workflow/workflow-selectable-users.service';
+import { listMyWorkflowSignGroups } from '../../../services/workflow/workflow-sign-groups.service';
+
+export const mySignGroupsRoute = defineContractRoute(workflowTaskContract.mySignGroups, {
+  handler: async (c) => c.json(okBody(await listMyWorkflowSignGroups(c.req.valid('query'))), 200),
+});
 
 /**
  * 工作流协作选人（转办/委派/加签/协办/转发/抄送共用）。

@@ -1,3 +1,5 @@
+import { workflowNodeActivations, workflowApprovalSlots } from '../../../db/schema';
+import { loadApprovalActivation } from './approval-state';
 // ─── 管理员强制操作与令牌运维恢复（拆分自 workflow-instances.service.ts）───
 import { eq, and, asc, lte, inArray, gt } from 'drizzle-orm';
 import { db } from '../../../db';
@@ -125,105 +127,51 @@ export async function reassignTask(taskId: number, targetUserId: number, comment
     userIds: [targetUserId], excludeTaskId: task.id,
   });
   const note = action === 'handover' ? (comment ?? '[离职交接]') : `[管理员改派]${comment ? ' ' + comment : ''}`;
-  const [updated] = await db.update(workflowTasks).set({
-    assigneeId: targetUserId,
-    delegatedFromId: null,
-    comment: note,
-  }).where(and(eq(workflowTasks.id, taskId), inArray(workflowTasks.status, ['pending', 'waiting']))).returning();
-  requireRow(updated, '任务状态已变化，无法改派', 409);
-  await recordTaskTransfer(db, {
-    taskId, instanceId: inst.id, fromUserId: task.assigneeId, toUserId: targetUserId,
-    action, reason: comment ?? null, operatorId: user.userId, tenantId: inst.tenantId,
+  const updated = await workflowTransaction(async (tx) => {
+    await lockInstanceExpecting(tx, inst.id, inst.status, '流程状态已变化，无法改派');
+    await assertAssigneesNotActiveOnNode(tx, { instanceId: inst.id, nodeKey: task.nodeKey, activationId: task.activationId, userIds: [targetUserId], excludeTaskId: task.id });
+    const [row] = await tx.update(workflowTasks).set({ assigneeId: targetUserId, delegatedFromId: null, delegationMode: null, taskKind: task.slotId == null ? task.taskKind : 'approval', comment: note }).where(and(eq(workflowTasks.id, taskId), inArray(workflowTasks.status, ['pending', 'waiting']))).returning();
+    requireRow(row, '任务状态已变化，无法改派', 409);
+    if (task.slotId != null) await tx.update(workflowApprovalSlots).set({ currentAssigneeId: targetUserId }).where(eq(workflowApprovalSlots.id, task.slotId));
+    await recordTaskTransfer(tx, { taskId, instanceId: inst.id, fromUserId: task.assigneeId, toUserId: targetUserId, action, reason: comment ?? null, operatorId: user.userId, tenantId: inst.tenantId });
+    await emitTaskEvent('task.transferred', mapTask(row), { definitionId: inst.definitionId, tenantId: inst.tenantId, actor: { userId: user.userId, name: user.username } }, tx);
+    return row;
   });
-  const actor = { userId: user.userId, name: user.username };
-  emitTaskEvent('task.transferred', mapTask(updated), { definitionId: inst.definitionId, tenantId: inst.tenantId, actor });
   return mapTask(updated);
 }
 
 /** 审批人撤回刚做的通过/驳回：要求后续节点均未被处理，流程仍可回退 */
 export async function recallTask(taskId: number, comment?: string) {
-  const user = currentUser();
-  const [task] = await db.select().from(workflowTasks).where(eq(workflowTasks.id, taskId)).limit(1);
-  requireRow(task, '任务不存在');
-  if (task.assigneeId !== user.userId) throw new HTTPException(403, { message: '只能撤回自己处理的任务' });
-  if (task.status !== 'approved' && task.status !== 'rejected') {
-    throw new HTTPException(400, { message: '只有已处理的任务可撤回' });
+ const user = currentUser();
+ const [task] = await db.select().from(workflowTasks).where(and(eq(workflowTasks.id, taskId), eq(workflowTasks.assigneeId, user.userId))).limit(1);
+ requireRow(task, '任务不存在或无权撤回');
+ if (task.status !== 'approved' && task.status !== 'rejected') throw new HTTPException(400, { message: '只有已处理意见可撤回' });
+ if (task.taskKind === 'suggestion') throw new HTTPException(400, { message: '委派建议不形成正式意见，不能撤回正式审批' });
+ const inst = await requireVisibleInstance(task.instanceId);
+ const flowData = requireRow(inst.definitionSnapshot?.flowData, '流程快照数据异常', 409);
+ const actor = { userId: user.userId, name: user.username };
+ await workflowTransaction(async (tx) => {
+  await lockInstanceExpecting(tx, inst.id, 'running', '流程已结束或状态变化，无法撤回');
+  const activation = await loadApprovalActivation(tx, inst.id, requireRow(task.activationId, '该意见没有正式审批轮次，不可撤回', 409));
+  const [freshTask] = await tx.select().from(workflowTasks).where(eq(workflowTasks.id, task.id)).limit(1);
+  if (!freshTask || (freshTask.status !== 'approved' && freshTask.status !== 'rejected')) throw new HTTPException(409, { message: '任务状态已变化' });
+  const [entered] = await tx.select().from(workflowNodeActivations).where(eq(workflowNodeActivations.id, activation.id)).limit(1);
+  const later = await tx.select().from(workflowNodeActivations).where(and(eq(workflowNodeActivations.instanceId, inst.id), gt(workflowNodeActivations.createdAt, entered.createdAt)));
+  const laterIds = later.map((entry) => entry.id);
+  if (laterIds.length > 0) {
+   const [actioned] = await tx.select({ id: workflowTasks.id }).from(workflowTasks).where(and(inArray(workflowTasks.activationId, laterIds), inArray(workflowTasks.status, ['approved', 'rejected']))).limit(1);
+   if (actioned) throw new HTTPException(400, { message: '后续节点已被处理，无法撤回' });
   }
-  const inst = await requireVisibleInstance(task.instanceId, '任务不存在或无权操作');
-  if (inst.status === 'withdrawn' || inst.status === 'cancelled' || inst.status === 'approved' || inst.status === 'rejected') {
-    throw new HTTPException(400, { message: '流程已结束，无法撤回' });
-  }
-  // 本任务之后创建的任务：若已有被处理（approved/rejected）的，则不允许撤回
-  const laterTasks = await db.select().from(workflowTasks)
-    .where(and(eq(workflowTasks.instanceId, task.instanceId), gt(workflowTasks.id, task.id)));
-  const actionedLater = laterTasks.filter((t) => t.status === 'approved' || t.status === 'rejected');
-  if (actionedLater.length > 0) {
-    throw new HTTPException(400, { message: '后续节点已被处理，无法撤回' });
-  }
-
-  const reopened = await db.transaction(async (tx) => {
-    // 实例行级锁 + 锁内重校验：防止与并发审批/驳回竞态（撤回时后续任务正被处理）
-    const [lockedInst] = await tx.select({ status: workflowInstances.status })
-      .from(workflowInstances).where(eq(workflowInstances.id, task.instanceId)).for('update').limit(1);
-    if (!lockedInst || lockedInst.status === 'withdrawn' || lockedInst.status === 'cancelled' || lockedInst.status === 'approved' || lockedInst.status === 'rejected') {
-      throw new HTTPException(400, { message: '流程已结束，无法撤回' });
-    }
-    const [freshTask] = await tx.select().from(workflowTasks).where(eq(workflowTasks.id, task.id)).limit(1);
-    if (!freshTask || (freshTask.status !== 'approved' && freshTask.status !== 'rejected')) {
-      throw new HTTPException(409, { message: '任务状态已变化，无法撤回' });
-    }
-    const laterInTx = await tx.select().from(workflowTasks)
-      .where(and(eq(workflowTasks.instanceId, task.instanceId), gt(workflowTasks.id, task.id)));
-    if (laterInTx.some((t) => t.status === 'approved' || t.status === 'rejected')) {
-      throw new HTTPException(400, { message: '后续节点已被处理，无法撤回' });
-    }
-    // 审计链保留：后续未处理任务作废为 skipped（不物理删除），撤回轨迹可追溯
-    const laterOpenIds = laterInTx.filter((t) => t.status === 'pending' || t.status === 'waiting').map((t) => t.id);
-    if (laterOpenIds.length > 0) {
-      await tx.update(workflowTasks)
-        .set({ status: 'skipped', actionAt: new Date(), comment: '[撤回作废] 上游审批撤回重审' })
-        .where(inArray(workflowTasks.id, laterOpenIds));
-    }
-    // 原任务保留终态与原始意见/签名（仅标记已撤回），新建同轮重审行承接后续审批：
-    // 继承 activationId 保证与同节点其他任务共同参与会签/或签/比例完成判定；
-    // 原行转 skipped 使 or 签不再因旧 approved 误判节点完成
-    await tx.update(workflowTasks).set({
-      status: 'skipped',
-      comment: `[已撤回]${freshTask.comment ? ' ' + freshTask.comment : ''}`,
-    }).where(eq(workflowTasks.id, task.id));
-    const [row] = await tx.insert(workflowTasks).values({
-      instanceId: task.instanceId,
-      nodeKey: task.nodeKey,
-      nodeName: task.nodeName,
-      nodeType: task.nodeType,
-      assigneeId: task.assigneeId,
-      status: 'pending',
-      comment: comment ? `[撤回重审] ${comment}` : '[撤回重审]',
-      taskOrder: task.taskOrder,
-      approveMethod: task.approveMethod,
-      approveRatio: task.approveRatio,
-      activationId: task.activationId,
-      originalAssigneeId: task.originalAssigneeId ?? task.assigneeId,
-    }).returning();
-    await tx.update(workflowInstances).set({ status: 'running', currentNodeKey: task.nodeKey }).where(eq(workflowInstances.id, task.instanceId));
-    // Token 一致性：撤回重审清场后，在被重开节点重建单一 active token（后续路径 token 已随作废/清场失效）
-    await killInstanceTokens(tx, task.instanceId);
-    await tx.insert(workflowTokens).values({
-      instanceId: task.instanceId,
-      nodeKey: task.nodeKey,
-      status: 'active',
-      branchPath: [],
-      parentTokenId: null,
-      tenantId: inst.tenantId,
-    });
-    return row;
-  });
-
-  const actor = { userId: user.userId, name: user.username };
-  const meta = { definitionId: inst.definitionId, tenantId: inst.tenantId, actor };
-  emitTaskEvent('task.created', mapTask(reopened), meta);
-  if (reopened.assigneeId) emitTaskEvent('task.assigned', mapTask(reopened), meta);
-  return getInstanceDetail(task.instanceId);
+  if (activation.signGroups.some((group) => group.slots.some((slot) => slot.currentTaskId !== task.id && (slot.status === 'approved' || slot.status === 'rejected')))) throw new HTTPException(400, { message: '补充审批已有正式意见，不能撤回其前置审批' });
+  await tx.update(workflowTasks).set({ status: 'skipped', actionAt: new Date(), comment: '[撤回重审] 原审批链作废' }).where(and(eq(workflowTasks.instanceId, inst.id), inArray(workflowTasks.status, ['pending', 'waiting'])));
+  await tx.update(workflowTasks).set({ comment: `[已撤回] ${freshTask.comment ?? ''}` }).where(eq(workflowTasks.id, task.id));
+  await killInstanceTokens(tx, inst.id);
+  const starter = await buildStarterContext(inst.initiatorId, tx);
+  const materialized = await advanceAndMaterialize({ kind: 'enterNode', nodeKey: task.nodeKey }, { instanceId: inst.id, initiatorId: inst.initiatorId, executor: tx, flowData, formData: (inst.formData ?? {}) as Record<string, unknown>, starter, tenantId: inst.tenantId });
+  await tx.update(workflowInstances).set({ currentNodeKey: materialized.currentNodeKeys[0] ?? task.nodeKey }).where(eq(workflowInstances.id, inst.id));
+  await emitMaterializedAdvanceEvents(mapInstance(inst), inst, materialized.createdTasks, actor, tx);
+ });
+ return getInstanceDetail(inst.id);
 }
 
 /** 加载指定 Token 及其所属实例（含租户校验），供运营恢复操作复用 */

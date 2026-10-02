@@ -90,9 +90,10 @@ export async function armTaskAsyncJobs(
     return;
   }
   if ((task.nodeType === 'approve' || task.nodeType === 'handler') && task.status === 'pending') {
-    const timeoutAt = computeTimeoutAt(cfg.timeout);
+    if (!task.activatedAt) throw new Error('活动审批任务缺少激活时间');
+    const timeoutAt = computeTimeoutAt(cfg.timeout, task.activatedAt);
     if (timeoutAt) {
-      await enqueueJob({ ...base, jobType: 'task_timeout', runAt: timeoutAt, maxAttempts: 3, idempotencyKey: `task_timeout:${task.id}` }, executor);
+      await enqueueJob({ ...base, jobType: 'task_timeout', runAt: timeoutAt, maxAttempts: 3, idempotencyKey: `task_timeout:${task.id}:${task.activatedAt.getTime()}` }, executor);
     }
   }
 }

@@ -3,7 +3,8 @@ import { resolveNodeFieldPermissions, type WorkflowFieldPermission, type Workflo
 export interface WorkflowFormViewerContext {
   initiatorId: number;
   definitionSnapshot?: { flowData?: WorkflowFlowData | null } | null;
-  tasks: Array<{ assigneeId: number | null; nodeKey: string }>;
+  tasks: Array<{ assigneeId: number | null; nodeKey: string; originalAssigneeId?: number | null; delegatedFromId?: number | null }>;
+  additionalViewerNodeKeys?: string[];
 }
 
 /** A field is hidden only when every node available to this viewer hides it. */
@@ -16,7 +17,8 @@ export function hiddenWorkflowFieldKeys(row: WorkflowFormViewerContext, userId: 
     if (!permissions) return new Set();
     maps.push(permissions);
   }
-  for (const key of new Set(row.tasks.filter((task) => task.assigneeId === userId).map((task) => task.nodeKey))) {
+  const participantKeys = row.tasks.filter((task) => task.assigneeId === userId || task.originalAssigneeId === userId || task.delegatedFromId === userId).map((task) => task.nodeKey);
+  for (const key of new Set([...participantKeys, ...(row.additionalViewerNodeKeys ?? [])])) {
     const permissions = resolveNodeFieldPermissions(flowData, key);
     if (!permissions) return new Set();
     maps.push(permissions);

@@ -3,7 +3,7 @@
 // 同时支撑「禁止折返」校验与详情页转办时间线。
 import { uniquePositiveInts } from '@zenith/shared/core';
 import { and, eq, inArray, ne, or } from 'drizzle-orm';
-import { buildWhere } from '../../../lib/where-helpers';
+import { nullableEq, buildWhere } from '../../../lib/where-helpers';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../../db';
 import { workflowTaskTransfers, workflowTasks } from '../../../db/schema';
@@ -21,14 +21,14 @@ export type WorkflowTaskTransferAction = 'transfer' | 'delegate' | 'reassign' | 
  */
 export async function assertAssigneesNotActiveOnNode(
   exec: DbExecutor,
-  args: { instanceId: number; nodeKey: string; activationId: string; userIds: number[]; excludeTaskId?: number },
+  args: { instanceId: number; nodeKey: string; activationId: string | null; userIds: number[]; excludeTaskId?: number },
 ): Promise<void> {
   const ids = uniquePositiveInts(args.userIds);
   if (ids.length === 0) return;
   const where = buildWhere(
     eq(workflowTasks.instanceId, args.instanceId),
     eq(workflowTasks.nodeKey, args.nodeKey),
-    eq(workflowTasks.activationId, args.activationId),
+    nullableEq(workflowTasks.activationId, args.activationId),
     inArray(workflowTasks.status, ['pending', 'waiting']),
     inArray(workflowTasks.assigneeId, ids),
     args.excludeTaskId != null ? ne(workflowTasks.id, args.excludeTaskId) : undefined,

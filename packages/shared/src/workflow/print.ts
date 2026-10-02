@@ -15,12 +15,14 @@
 import type { ReportPrintCell, ReportPrintCellStyle, ReportPrintContent, ReportPrintMerge, ReportPrintPageConfig, ReportPrintSheet } from '../report/contracts/print';
 import type { ReportPrintDatasetRows } from '../report/types';
 import type { WorkflowInstance, WorkflowTask } from './contracts/instances';
+import type { WorkflowNodeActivation } from './contracts/approval-state';
 import type { WorkflowFormField } from './types';
 import {
   WORKFLOW_APPROVE_METHOD_LABELS,
   WORKFLOW_INSTANCE_PRIORITY_LABELS,
   WORKFLOW_INSTANCE_STATUS_LABELS,
   WORKFLOW_TASK_STATUS_LABELS,
+  WORKFLOW_SIGN_POSITION_LABELS,
 } from './constants';
 
 type Row = Record<string, unknown>;
@@ -386,23 +388,23 @@ function formatBytes(size: unknown): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-const TASK_SIGN_TYPE_LABELS: Record<string, string> = {
-  before: '前加签', after: '后加签', parallel: '并行加签', excluded: '已排除',
-};
-
 const TRANSFER_ACTION_LABELS: Record<string, string> = {
   transfer: '转办', delegate: '委派', reassign: '改派', handover: '交接', timeout: '超时升级',
 };
 
 /** 真实审批环节：排除运行时留痕行与抄送节点（与详情面板「流转记录」口径一致） */
 export function selectWorkflowPrintTasks(tasks: WorkflowTask[] | null | undefined): WorkflowTask[] {
-  return (tasks ?? []).filter((task) => task.signType !== 'excluded' && task.nodeType !== 'ccNode');
+  return (tasks ?? []).filter((task) => task.taskKind !== 'excluded' && task.taskKind !== 'cc');
 }
 
-function taskRow(task: WorkflowTask): Row {
+function taskRow(task: WorkflowTask, activations: WorkflowNodeActivation[]): Row {
+  const activation = activations.find((item) => item.id === task.activationId);
+  const slot = activation?.slots.find((item) => item.id === task.slotId);
+  const group = slot?.groupId == null ? undefined : activation?.signGroups.find((item) => item.id === slot.groupId);
+  const method = group?.signMode ?? activation?.approveMethod;
   const transfers = (task.transfers ?? []).map((t) => `${TRANSFER_ACTION_LABELS[t.action] ?? t.action}→${t.toUserName ?? `用户#${t.toUserId}`}`);
   const signParts = [
-    task.signType && task.signType !== 'excluded' ? TASK_SIGN_TYPE_LABELS[task.signType] : '',
+    task.signPosition ? WORKFLOW_SIGN_POSITION_LABELS[task.signPosition] : '',
     task.delegatedFromId != null ? (task.delegationMode === 'suggest' ? '委派（建议）' : '委派') : '',
     ...transfers,
   ].filter(Boolean);
@@ -413,11 +415,13 @@ function taskRow(task: WorkflowTask): Row {
     nodeType: task.nodeType ?? '',
     assigneeName: task.assigneeName ?? (task.assigneeId != null ? `用户#${task.assigneeId}` : ''),
     status: task.status,
-    statusText: WORKFLOW_TASK_STATUS_LABELS[task.status] ?? task.status,
+    statusText: task.taskKind === 'suggestion'
+      ? task.status === 'approved' ? '建议同意' : task.status === 'rejected' ? '建议拒绝' : '委派建议'
+      : WORKFLOW_TASK_STATUS_LABELS[task.status] ?? task.status,
     comment: task.comment ?? '',
     actionAt: task.actionAt ?? '',
     createdAt: task.createdAt,
-    approveMethodText: task.approveMethod ? (WORKFLOW_APPROVE_METHOD_LABELS[task.approveMethod] ?? task.approveMethod) : '',
+    approveMethodText: method ? WORKFLOW_APPROVE_METHOD_LABELS[method] : '',
     signTypeText: signParts.join('；'),
     signature: task.signature ?? '',
     attachmentNames: (task.attachments ?? []).map((a) => a.name).join('、'),
@@ -433,7 +437,7 @@ export function buildWorkflowPrintDatasets(input: WorkflowPrintDatasetInput): Re
     || instance.status === 'withdrawn' || instance.status === 'cancelled';
 
   const approvalTasks = selectWorkflowPrintTasks(instance.tasks);
-  const ccTasks = (instance.tasks ?? []).filter((task) => task.nodeType === 'ccNode' && task.signType !== 'excluded');
+  const ccTasks = (instance.tasks ?? []).filter((task) => task.taskKind === 'cc');
   const ccNames = [...new Set(ccTasks.map((task) => task.assigneeName ?? '').filter(Boolean))].join('、');
 
   const attachments: Row[] = [];
@@ -520,7 +524,7 @@ export function buildWorkflowPrintDatasets(input: WorkflowPrintDatasetInput): Re
   datasets.instance = [instanceRow];
   datasets.form = [formRow];
   datasets.form_fields = formFieldRows;
-  datasets.tasks = approvalTasks.map(taskRow);
+  datasets.tasks = approvalTasks.map((task) => taskRow(task, instance.approvalActivations ?? []));
   datasets.cc = ccTasks.map((task) => ({
     nodeName: task.nodeName,
     assigneeName: task.assigneeName ?? '',

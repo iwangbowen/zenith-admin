@@ -192,17 +192,16 @@ export async function createInstance(data: { definitionId: number; title: string
       const existingSet = new Set(existing.map((r) => r.assigneeId).filter((v): v is number => typeof v === 'number'));
       const toAdd = ccIds.filter((uid) => validSet.has(uid) && !existingSet.has(uid));
       if (toAdd.length > 0) {
-        const initiatorCcActivation = randomUUID();
         await db.insert(workflowTasks).values(toAdd.map((uid) => ({
           instanceId: instance.id,
           nodeKey: '__initiator_cc__',
           nodeName: '发起抄送',
-          nodeType: 'ccNode' as const,
+          nodeType: 'ccNode' as const, taskKind: 'cc' as const,
           assigneeId: uid,
           status: 'skipped' as const,
           comment: `[发起抄送] 由 ${user.username ?? '系统'} 指定`,
           actionAt: null,
-          activationId: initiatorCcActivation,
+          activationId: null,
         })));
       }
     } catch (err) {

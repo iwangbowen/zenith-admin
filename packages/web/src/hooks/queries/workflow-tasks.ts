@@ -17,6 +17,7 @@ export const workflowTaskKeys = {
   pendingList: (params: PendingWorkflowListParams) => contractKey(workflowInstanceContract.pendingMine, { query: params }),
   pendingCount: contractKey(workflowInstanceContract.pendingMineCount),
   consultsMine: contractKey(workflowTaskContract.myConsults),
+  signGroupsMine: contractKey(workflowTaskContract.mySignGroups),
 };
 
 export function fetchPendingWorkflowTasks(params: PendingWorkflowListParams) {
@@ -35,6 +36,12 @@ export function useMyWorkflowConsults(enabled = true) {
   return useApiQuery(workflowTaskContract.myConsults, { query: { pageSize: 50 } }, { enabled });
 }
 
+export function useMyWorkflowSignGroups(page: number, pageSize: number, enabled = true) {
+  return useApiQuery(workflowTaskContract.mySignGroups, { query: { page, pageSize } }, {
+    enabled, placeholderData: keepPreviousData, refetchInterval: enabled ? 5000 : false,
+  });
+}
+
 /**
  * 待办侧查询：待办列表、待办计数、我的协办、发起工作台概览。任务被创建 / 完成 / 改派（含 WebSocket 推送）时回源；
  * 不碰实例列表与监控，那些由 invalidateAfterTaskAction 在动作成功后处理。
@@ -44,6 +51,7 @@ export function invalidateWorkflowPendingViews(qc: QueryClient): void {
   void qc.invalidateQueries({ queryKey: workflowTaskKeys.pendingLists });
   void qc.invalidateQueries({ queryKey: workflowTaskKeys.pendingCount });
   void qc.invalidateQueries({ queryKey: workflowTaskKeys.consultsMine });
+  void qc.invalidateQueries({ queryKey: workflowTaskKeys.signGroupsMine });
   void qc.invalidateQueries({ queryKey: workflowInstanceKeys.workbenchSummary });
 }
 
@@ -56,6 +64,7 @@ export function invalidateWorkflowPendingViews(qc: QueryClient): void {
  */
 export function invalidateAfterTaskAction(qc: QueryClient, instanceId?: number): void {
   invalidateAfterInstanceChange(qc, instanceId);
+  void qc.invalidateQueries({ queryKey: workflowTaskKeys.signGroupsMine });
 }
 
 /** 每次明确确认生成独立意图；请求内部重试仍复用该键，换签名版本后可重新处理失败项。 */
@@ -129,7 +138,6 @@ export type WorkflowTaskActionVariables =
   | WorkflowTaskDecisionVariables
   | { taskId: number; action: 'delegate'; body: BodyOf<typeof workflowTaskContract.delegate> }
   | { taskId: number; action: 'add-sign'; body: BodyOf<typeof workflowTaskContract.addSign> }
-  | { taskId: number; action: 'reduce-sign'; body: BodyOf<typeof workflowTaskContract.reduceSign> }
   | { taskId: number; action: 'return'; body: BodyOf<typeof workflowTaskContract.returnTask> };
 
 /**
@@ -151,20 +159,29 @@ export function runWorkflowTaskAction(vars: WorkflowTaskActionVariables, options
       return api(workflowTaskContract.delegate, { params, body: vars.body }, options);
     case 'add-sign':
       return api(workflowTaskContract.addSign, { params, body: vars.body }, options);
-    case 'reduce-sign':
-      return api(workflowTaskContract.reduceSign, { params, body: vars.body }, options);
     case 'return':
       return api(workflowTaskContract.returnTask, { params, body: vars.body }, options);
   }
 }
 
 /**
- * H5：按动作分发到七个契约操作，且幂等键按「动作 + 任务」派生进请求头（契约未声明 headers 段）。
+ * H5：按动作分发，明确确认生成独立幂等意图；请求适配器内部重试复用同一请求头。
  * 缓存失效由审批面板在动作完成关闭时统一走 invalidateAfterTaskAction（面板内连续动作只回源一次）。
  */
 export function useWorkflowTaskAction() {
   return useMutation({
     mutationFn: (vars: WorkflowTaskActionVariables) =>
-      runWorkflowTaskAction(vars, { headers: { 'X-Idempotency-Key': `workflow-${vars.action}-${vars.taskId}` } }),
+      runWorkflowTaskAction(vars, { headers: { 'X-Idempotency-Key': `workflow-${vars.action}-${vars.taskId}-${crypto.randomUUID()}` } }),
+  });
+}
+
+/** 组级减签可发生在原席位等待或已办之后；确认意图的幂等头不属于契约 body。 */
+export function useReduceWorkflowSignGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: InputOf<typeof workflowTaskContract.reduceSign>) => api(workflowTaskContract.reduceSign, input, {
+      headers: { 'X-Idempotency-Key': `workflow-reduce-group-${crypto.randomUUID()}` },
+    }),
+    onSuccess: (result) => invalidateAfterTaskAction(qc, result.instance.id),
   });
 }

@@ -2,6 +2,7 @@ import type { SignatureSnapshot } from '@zenith/shared/core';
 import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, unique, text, uniqueIndex, index, jsonb, smallint, real, foreignKey, check, uuid as pgUuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import type { WorkflowAutomationAction, WorkflowDefinitionSnapshot, WorkflowInstanceFormSnapshot, WorkflowAttachment, WorkflowTaskDecision } from '@zenith/shared/workflow';
+import { WORKFLOW_TASK_KINDS, WORKFLOW_TASK_WAIT_REASONS, WORKFLOW_APPROVAL_ACTIVATION_STATUSES, WORKFLOW_APPROVAL_SLOT_ORIGINS, WORKFLOW_APPROVAL_SLOT_STATUSES, WORKFLOW_SIGN_POSITIONS, WORKFLOW_SIGN_MODES, WORKFLOW_SIGN_GROUP_STATUSES } from '@zenith/shared/workflow';
 import { timestampColumns, idColumn, statusColumn, sortColumn, remarkColumn } from './common';
 import { auditColumns, users, tenantIdColumn } from './core';
 import { managedFiles } from './files';
@@ -41,6 +42,14 @@ export const workflowTaskStatusEnum = pgEnum('workflow_task_status', ['pending',
 export const workflowEventSignModeEnum = pgEnum('workflow_event_sign_mode', ['hmacSha256', 'none']);
 
 export const workflowApproveMethodEnum = pgEnum('workflow_approve_method', ['and', 'or', 'sequential', 'ratio']);
+export const workflowTaskKindEnum = pgEnum('workflow_task_kind', WORKFLOW_TASK_KINDS);
+export const workflowTaskWaitReasonEnum = pgEnum('workflow_task_wait_reason', WORKFLOW_TASK_WAIT_REASONS);
+export const workflowApprovalActivationStatusEnum = pgEnum('workflow_approval_activation_status', WORKFLOW_APPROVAL_ACTIVATION_STATUSES);
+export const workflowApprovalSlotOriginEnum = pgEnum('workflow_approval_slot_origin', WORKFLOW_APPROVAL_SLOT_ORIGINS);
+export const workflowApprovalSlotStatusEnum = pgEnum('workflow_approval_slot_status', WORKFLOW_APPROVAL_SLOT_STATUSES);
+export const workflowSignPositionEnum = pgEnum('workflow_sign_position', WORKFLOW_SIGN_POSITIONS);
+export const workflowSignModeEnum = pgEnum('workflow_sign_mode', WORKFLOW_SIGN_MODES);
+export const workflowSignGroupStatusEnum = pgEnum('workflow_sign_group_status', WORKFLOW_SIGN_GROUP_STATUSES);
 
 // 统一作业账本枚举
 export const workflowJobTypeEnum = pgEnum('workflow_job_type', [
@@ -497,14 +506,12 @@ export const workflowTasks = pgTable('workflow_tasks', {
   /** 审批附件元数据快照；身份与授权来源由 workflowAttachmentLinks 持有。 */
   attachments: jsonb().$type<WorkflowAttachment[]>(),
   actionAt: timestamp({ withTimezone: true }),
+  activatedAt: timestamp({ withTimezone: true }),
   /** 当次处理事实：退回目标和动作不可由节点当前配置或意见文本推断。 */
   decision: jsonb().$type<WorkflowTaskDecision>(),
-  /** 顺序会签中的顺序（0-based），非顺序场景为 null */
-  taskOrder: integer(),
-  /** 多人审批方式（仅同一 nodeKey 多 task 时生效） */
-  approveMethod: workflowApproveMethodEnum(),
-  /** 比例会签阈值（1–100 百分比），仅 approveMethod='ratio' 时有意义 */
-  approveRatio: integer(),
+  slotId: integer().references((): AnyPgColumn => workflowApprovalSlots.id, { onDelete: 'cascade' }),
+  taskKind: workflowTaskKindEnum().notNull(),
+  waitReason: workflowTaskWaitReasonEnum(),
   /** 外部审批：回调 ID（task.status='waiting' 期间有效；派发/恢复由 workflow_jobs 接管） */
   externalCallbackId: varchar({ length: 64 }).unique('workflow_tasks_external_callback_id_unique'),
   /** 子流程（multi 多实例）：期望子实例总数（仅 subProcess 多实例 waiting 任务有值；单实例/非子流程为 null） */
@@ -517,17 +524,17 @@ export const workflowTasks = pgTable('workflow_tasks', {
   delegatedFromId: integer().references(() => users.id, { onDelete: 'set null' }),
   /** 委派模式快照（分派时固化）：full=代理人直接代批；suggest=建议制回执；非委派任务为 null */
   delegationMode: varchar({ length: 16 }).$type<'full' | 'suggest'>(),
-  /** 加签类型（before/after/parallel，非加签任务为 null）；before 挂起原任务的恢复判定依赖此列，禁止用 comment 前缀判定 */
-  signType: varchar({ length: 8 }).$type<'before' | 'after' | 'parallel' | 'excluded'>(),
   /** 退回模式 backToOrigin：被退回任务记录发起退回的来源节点 key，通过后直接跳回该节点 */
   returnOriginNodeKey: varchar({ length: 64 }),
   /** 节点激活轮次 ID（同一次进入节点创建的一批任务共享；重入节点生成新值，完成判定只统计当前轮） */
-  activationId: varchar({ length: 36 }).notNull(),
+  activationId: varchar({ length: 36 }).references((): AnyPgColumn => workflowNodeActivations.id, { onDelete: 'cascade' }),
   /** 抄送已读时间（仅 ccNode 任务有意义；null 表示未读） */
   ccReadAt: timestamp({ withTimezone: true }),
   createdAt: timestamp().defaultNow().notNull(),
 }, (t) => [
   unique('workflow_tasks_id_instance_unique').on(t.id, t.instanceId),
+  check('workflow_tasks_formal_slot_check', sql`${t.taskKind} not in ('approval', 'suggestion') or (${t.slotId} is not null and ${t.activationId} is not null)`),
+  foreignKey({ name: 'workflow_tasks_slot_activation_fk', columns: [t.slotId, t.activationId], foreignColumns: [workflowApprovalSlots.id, workflowApprovalSlots.activationId] }),
   // 会签完成检查 / 详情任务加载 / 待办扫描的高频组合条件
   index('workflow_tasks_instance_status_idx').on(t.instanceId, t.status),
   // 待我审批 / 我已办按处理人过滤的高频组合条件
@@ -601,6 +608,51 @@ export const workflowTokens = pgTable('workflow_tokens', {
     .on(t.instanceId, t.nodeKey, t.branchPath)
     .where(sql`${t.status} = 'active'`),
 ]);
+
+/** 显式节点进入身份；token 关联和基础票阈值在物化时冻结。 */
+export const workflowNodeActivations = pgTable('workflow_node_activations', {
+  id: varchar({ length: 36 }).primaryKey(),
+  instanceId: integer().notNull().references(() => workflowInstances.id, { onDelete: 'cascade' }),
+  tokenId: integer().references(() => workflowTokens.id, { onDelete: 'cascade' }).unique('workflow_node_activations_token_id_unique'),
+  nodeKey: varchar({ length: 64 }).notNull(),
+  nodeName: varchar({ length: 64 }).notNull(),
+  status: workflowApprovalActivationStatusEnum().notNull().default('active'),
+  approveMethod: workflowApproveMethodEnum(),
+  approveRatio: integer(),
+  baseTotal: integer().notNull(),
+  baseRequired: integer().notNull(),
+  settledAt: timestamp({ withTimezone: true }),
+  tenantId: tenantIdColumn(),
+  ...auditColumns(), ...timestampColumns(),
+}, (t) => [index('workflow_node_activations_instance_node_idx').on(t.instanceId, t.nodeKey), check('workflow_node_activations_base_votes_check', sql`${t.baseRequired} >= 0 and ${t.baseRequired} <= ${t.baseTotal}`)]);
+
+/** 一份正式意见的稳定席位。建议委派和回执属于同一席位。 */
+export const workflowApprovalSlots = pgTable('workflow_approval_slots', {
+  id: idColumn(),
+  activationId: varchar({ length: 36 }).notNull().references(() => workflowNodeActivations.id, { onDelete: 'cascade' }),
+  origin: workflowApprovalSlotOriginEnum().notNull(),
+  groupId: integer().references((): AnyPgColumn => workflowSignGroups.id, { onDelete: 'cascade' }),
+  originalAssigneeId: integer().references(() => users.id, { onDelete: 'set null' }),
+  currentAssigneeId: integer().references(() => users.id, { onDelete: 'set null' }),
+  status: workflowApprovalSlotStatusEnum().notNull().default('pending'),
+  order: integer(),
+  mandatory: boolean().notNull().default(false),
+  currentTaskId: integer().references((): AnyPgColumn => workflowTasks.id, { onDelete: 'set null' }),
+  tenantId: tenantIdColumn(),
+  ...auditColumns(), ...timestampColumns(),
+}, (t) => [unique('workflow_approval_slots_id_activation_unique').on(t.id, t.activationId), index('workflow_approval_slots_activation_idx').on(t.activationId), index('workflow_approval_slots_group_idx').on(t.groupId), check('workflow_approval_slots_origin_group_check', sql`(${t.origin} = 'base' and ${t.groupId} is null) or (${t.origin} = 'addSign' and ${t.groupId} is not null)`)]);
+
+/** 仅汇总新增席位，所有未取消组都是节点必办关卡。 */
+export const workflowSignGroups = pgTable('workflow_sign_groups', {
+  id: idColumn(),
+  activationId: varchar({ length: 36 }).notNull().references(() => workflowNodeActivations.id, { onDelete: 'cascade' }),
+  anchorSlotId: integer().notNull().references(() => workflowApprovalSlots.id, { onDelete: 'cascade' }),
+  position: workflowSignPositionEnum().notNull(),
+  signMode: workflowSignModeEnum().notNull(),
+  status: workflowSignGroupStatusEnum().notNull(),
+  tenantId: tenantIdColumn(),
+  ...auditColumns(), ...timestampColumns(),
+}, (t) => [index('workflow_sign_groups_activation_idx').on(t.activationId), index('workflow_sign_groups_anchor_idx').on(t.anchorSlotId)]);
 
 export type WorkflowTokenRow = typeof workflowTokens.$inferSelect;
 

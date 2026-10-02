@@ -26,6 +26,7 @@ import { formatDateTime, formatDurationBetween } from '@/utils/date';
 import DateTimeText from '@/components/DateTimeText';
 import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import ApprovalTimeline from '@/components/ApprovalTimeline';
+import { WorkflowApprovalGroupsPanel } from './WorkflowApprovalGroupsPanel';
 import FileAttachment from '@/components/FileAttachment';
 import { workflowFileToAttachment, type WorkflowUploadedFile } from '@/components/FileAttachment/utils';
 import WorkflowFormRenderer from '@/pages/workflow/designer/components/WorkflowFormRenderer';
@@ -63,7 +64,7 @@ const FLOW_RECORD_COLUMNS: ColumnProps<WorkflowTask>[] = [
     width: 160,
     render: (v: string | null, r: WorkflowTask) => renderEllipsis(v ?? (r.assigneeId != null ? `#${r.assigneeId}` : null)),
   },
-  dateTimeColumn('开始时间', 'createdAt', { className: 'table-cell-muted' }),
+  dateTimeColumn('激活时间', 'activatedAt', { className: 'table-cell-muted' }),
   dateTimeColumn('结束时间', 'actionAt', { className: 'table-cell-muted' }),
   {
     title: '审批状态',
@@ -81,7 +82,7 @@ const FLOW_RECORD_COLUMNS: ColumnProps<WorkflowTask>[] = [
     dataIndex: 'actionAt',
     key: 'duration',
     width: 100,
-    render: (_: unknown, r: WorkflowTask) => (r.actionAt ? formatDurationBetween(r.createdAt, r.actionAt) || '0秒' : EMPTY_PLACEHOLDER),
+    render: (_: unknown, r: WorkflowTask) => (r.actionAt && r.activatedAt ? formatDurationBetween(r.activatedAt, r.actionAt) || '0秒' : EMPTY_PLACEHOLDER),
   },
 ];
 
@@ -123,7 +124,7 @@ function FlowRecords({ tasks }: Readonly<{ tasks: WorkflowTask[] }>) {
   const [scope, setScope] = useState<FlowRecordScope>('approval');
   const filtered = tasks.filter((t) => {
     if (scope === 'all') return true;
-    if (t.signType === 'excluded') return false;
+    if (t.taskKind === 'excluded') return false;
     return scope === 'with-cc' || t.nodeType !== 'ccNode';
   });
   return (
@@ -342,7 +343,7 @@ export default function WorkflowInstanceDetailPanel({
   };
   const consults = instance.consults ?? [];
   // 流转记录：真实审批任务（排除运行时留痕行与抄送节点），口径与审批链徽标一致
-  const flowTasks = (instance.tasks ?? []).filter((t) => t.signType !== 'excluded' && t.nodeType !== 'ccNode');
+  const flowTasks = (instance.tasks ?? []).filter((t) => t.taskKind !== 'excluded' && t.taskKind !== 'cc');
   const effectiveDefinition = resolveWorkflowDetailDefinition(instance, definition);
   // 历史实例渲染冻结快照（发起时绑定），不受表单后续修改影响；无快照时回退到当前表单
   const formFields = resolveWorkflowFormFields(instance, effectiveDefinition);
@@ -497,6 +498,8 @@ export default function WorkflowInstanceDetailPanel({
 
   const chainContent = (
     <ApprovalTimeline
+      approvalActivations={instance.approvalActivations}
+      childInstances={instance.childInstances ?? []}
       tasks={instance.tasks ?? []}
       flowNodes={instance.predictedPath ?? linearizeApprovalNodes(flowData)}
       initiator={{ name: instance.initiatorName, avatar: instance.initiatorAvatar, submittedAt: instance.createdAt }}
@@ -586,6 +589,9 @@ export default function WorkflowInstanceDetailPanel({
         <TabPane tab={`流转记录${flowTasks.length > 0 ? ` (${flowTasks.length})` : ''}`} itemKey="flow-records">
           <FlowRecords key={instance.id} tasks={instance.tasks ?? []} />
         </TabPane>
+        {!!instance.approvalActivations?.length && <TabPane tab="审批明细" itemKey="approval-groups">
+          <WorkflowApprovalGroupsPanel activations={instance.approvalActivations} allowActions={!readOnly} />
+        </TabPane>}
         <TabPane tab="关联信息" itemKey="relations">
           <EntityContextView entityType="workflow.instance" entityKey={String(instance.id)} />
         </TabPane>

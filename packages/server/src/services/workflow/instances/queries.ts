@@ -1,3 +1,4 @@
+import { loadApprovalActivations } from './approval-state';
 import { sanitizeDetailFormDataForViewer } from '../workflow-form-access';
 import { workflowInstanceContract, workflowTaskContract, WORKFLOW_INSTANCE_STATUSES, workflowTaskActivationKey, workflowTaskActivationRounds, type WorkflowWorkbenchSummary, type WorkflowHandledInstanceItem } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
@@ -8,7 +9,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { keywordCondition, withPagination, dateRangeConditions, buildWhere } from '../../../lib/where-helpers';
 import { db } from '../../../db';
 import { pageOffset } from '../../../lib/pagination';
-import { workflowInstances, workflowTasks, workflowTaskConsults, workflowDefinitions, workflowCategories, users } from '../../../db/schema';
+import { workflowInstances, workflowTasks, workflowTaskConsults, workflowDefinitions, workflowCategories, workflowNodeActivations, workflowSignGroups, users } from '../../../db/schema';
 import { tenantCondition } from '../../../lib/tenant';
 import { getDataScopeCondition } from '../../../lib/data-scope';
 import type { WorkflowFlowData, WorkflowFormField } from '@zenith/shared/workflow';
@@ -208,7 +209,7 @@ export async function listPendingMine(query: QueryOutputOf<typeof workflowInstan
       const pendingSignaturePolicy = node?.signaturePolicy ?? 'none';
       // 紧邻下一节点为「审批人自选」的任务无法批量审批（需逐个指定下一节点审批人），列表提前标注
       const requiresIndividual = pendingSignaturePolicy === 'handwritten' || node?.actionButtons?.approve?.uploadMode === 'required' || (flow ? findNextApproverSelectNodes(flow, r.task.nodeKey).length > 0 : false);
-      const sla = computeTaskSla(node?.timeout, r.task.createdAt);
+      const sla = computeTaskSla(node?.timeout, r.task.activatedAt ?? r.task.createdAt);
       const summary = resolveInstanceSummary(r.inst, flow);
       const pendingDelegatedFromName = r.task.delegatedFromId ? (delegatorNames.get(r.task.delegatedFromId) ?? `#${r.task.delegatedFromId}`) : null;
       return { ...mapInstance(r.inst, { ...r, currentNodeKeys: activeNodeKeys.get(r.inst.id) }), pendingTaskId: r.task.id, pendingTaskNodeType: r.task.nodeType ?? null, pendingSignaturePolicy, requiresIndividual, summary, pendingDelegatedFromName, pendingDelegationMode: r.task.delegationMode ?? null, ...sla };
@@ -517,12 +518,15 @@ async function loadInstanceDetail(id: number, business?: { bizType: string; bizI
     throw new HTTPException(404, { message: '该审批实例不属于当前业务记录' });
   }
   const isInitiator = row.initiatorId === user.userId;
-  const isAssignee = row.tasks.some((t) => t.assigneeId === user.userId);
+  const isAssignee = row.tasks.some((t) => t.assigneeId === user.userId || t.originalAssigneeId === user.userId || t.delegatedFromId === user.userId);
+  const createdGroupNodes = await db.select({ nodeKey: workflowNodeActivations.nodeKey }).from(workflowSignGroups)
+    .innerJoin(workflowNodeActivations, eq(workflowSignGroups.activationId, workflowNodeActivations.id))
+    .where(and(eq(workflowNodeActivations.instanceId, row.id), eq(workflowSignGroups.createdBy, user.userId)));
   // 流程监控管理员（workflow:instance:monitor）可查看租户可见范围内的任意实例详情，
   // 与「全局流程实例列表」权限口径一致（列表能看到却打不开详情属契约断裂）
   const isMonitor = isSuperAdmin(user)
     || (await getUserPermissions(user.userId)).includes('workflow:instance:monitor');
-  let allowed = !!business || isInitiator || isAssignee || isMonitor;
+  let allowed = !!business || isInitiator || isAssignee || isMonitor || createdGroupNodes.length > 0;
   if (!allowed && row.parentInstanceId) {
     // 子流程实例：若用户是任一祖先实例的发起人，允许查看（支持嵌套子流程）
     let pid: number | null = row.parentInstanceId;
@@ -538,7 +542,7 @@ async function loadInstanceDetail(id: number, business?: { bizType: string; bizI
   if (!allowed) throw new HTTPException(403, { message: '无权查看' });
   const snapshot = row.definitionSnapshot;
   // 转办明细 / 子实例 / 评论 / 征询相互独立，权限判定通过后并行加载
-  const [transfersByTask, childRows, comments, consults] = await Promise.all([
+  const [transfersByTask, childRows, comments, consults, approvalActivations] = await Promise.all([
     loadInstanceTransfersByTask(id),
     db.select({
       id: workflowInstances.id,
@@ -551,23 +555,29 @@ async function loadInstanceDetail(id: number, business?: { bizType: string; bizI
       .orderBy(workflowInstances.id),
     loadInstanceCommentsForDetail(id),
     loadInstanceConsultsForDetail(id),
+    loadApprovalActivations(db, id, user.userId, isMonitor || (await getUserPermissions(user.userId)).includes('workflow:instance:cancel')),
   ]);
   const tasks = row.tasks.map((t) => {
     const cfg = snapshot?.flowData?.nodes.find((n) => n.data.key === t.nodeKey)?.data;
     const actionButtons = cfg?.actionButtons;
     const signaturePolicy = cfg?.signaturePolicy ?? 'none';
-    return mapTask(t, t.assignee?.nickname, t.assignee?.avatar, actionButtons ?? null, signaturePolicy, transfersByTask.get(t.id) ?? null);
+    const slot = approvalActivations.flatMap((entry) => entry.slots).find((entry) => entry.id === t.slotId);
+    const position = approvalActivations.flatMap((entry) => entry.signGroups).find((entry) => entry.id === slot?.groupId)?.position ?? null;
+    return mapTask(t, t.assignee?.nickname, t.assignee?.avatar, actionButtons ?? null, signaturePolicy, transfersByTask.get(t.id) ?? null, position);
   });
   const taskNodeKeyById = new Map(row.tasks.map((t) => [t.id, t.nodeKey]));
   const childInstances = childRows.map((c) => ({
     id: c.id,
     title: c.title,
     status: c.status,
+    parentTaskId: c.parentTaskId,
     parentTaskNodeKey: c.parentTaskId != null ? (taskNodeKeyById.get(c.parentTaskId) ?? null) : null,
     createdAt: formatDateTime(c.createdAt),
   }));
   // 读侧字段脱敏：非监控身份按查看者的节点字段权限剔除 hidden 字段（配置缺失时全量，兼容旧流程）
-  const sanitizedRow = isMonitor ? row : { ...row, formData: sanitizeDetailFormDataForViewer(row, user.userId) };
+  const sanitizedRow = isMonitor ? row : { ...row, formData: sanitizeDetailFormDataForViewer({ ...row,
+    additionalViewerNodeKeys: createdGroupNodes.map((node) => node.nodeKey),
+  }, user.userId) };
   // 运行中实例的预测剩余路径：从当前活动节点按实例表单求值条件，时间线未来段只展示将会执行的节点
   let predictedPath: ReturnType<typeof predictRemainingPath> | null = null;
   if ((row.status === 'running' || row.status === 'suspended') && snapshot?.flowData) {
@@ -593,6 +603,7 @@ async function loadInstanceDetail(id: number, business?: { bizType: string; bizI
       initiatorName: row.initiator?.nickname ?? null,
       initiatorAvatar: row.initiator?.avatar ?? null,
       tasks,
+      approvalActivations,
       childInstances,
       comments,
       consults,

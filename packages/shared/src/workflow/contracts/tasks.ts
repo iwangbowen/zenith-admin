@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { dateRangeQuery, idParam, keywordQuery, paginated, paginationQuery, queryEnum, idQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
-import { WORKFLOW_TASK_MONITOR_NODE_TYPES, WORKFLOW_TASK_STATUSES, WORKFLOW_TASK_CONSULT_STATUSES } from '../constants';
+import { WORKFLOW_TASK_MONITOR_NODE_TYPES, WORKFLOW_TASK_STATUSES, WORKFLOW_TASK_CONSULT_STATUSES, WORKFLOW_INSTANCE_STATUSES } from '../constants';
 import {
   addSignWorkflowTaskSchema,
   approveWorkflowTaskSchema,
@@ -20,6 +20,17 @@ import {
   workflowHandoverSchema,
 } from '../validation';
 import { workflowInstanceSchema, workflowTaskConsultSchema, workflowTaskSchema, workflowTaskUrgeSchema } from './instances';
+import { workflowSignGroupSchema } from './approval-state';
+
+export const workflowAddSignResultSchema = z.object({ group: workflowSignGroupSchema, created: z.array(workflowTaskSchema), instance: workflowInstanceSchema }).meta({ id: 'WorkflowAddSignResult' });
+export type WorkflowAddSignResult = z.infer<typeof workflowAddSignResultSchema>;
+export const workflowReduceSignResultSchema = z.object({ group: workflowSignGroupSchema, removed: z.array(workflowTaskSchema), instance: workflowInstanceSchema }).meta({ id: 'WorkflowReduceSignResult' });
+export type WorkflowReduceSignResult = z.infer<typeof workflowReduceSignResultSchema>;
+export const workflowSignGroupIdParam = z.object({ groupId: z.coerce.number().int().positive().meta({ description: '加签组 ID' }) });
+export const workflowMySignGroupItemSchema = workflowSignGroupSchema.extend({
+  instanceId: z.int(), title: z.string(), nodeName: z.string(), instanceStatus: z.enum(WORKFLOW_INSTANCE_STATUSES),
+}).meta({ id: 'WorkflowMySignGroupItem' });
+export type WorkflowMySignGroupItem = z.infer<typeof workflowMySignGroupItemSchema>;
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
@@ -155,6 +166,7 @@ export const workflowHandoverPreviewQuery = z.object({
 
 /** 审批任务动作 / 流转 / 协办 / 批量审批 / 任务监控 / 离职交接（与实例契约共用工作流资源根） */
 export const workflowTaskContract = defineContract('/api/workflows', {
+  mySignGroups: op.get('/sign-groups/mine', { access: { permission: 'workflow:task:handle' }, query: paginationQuery, response: paginated(workflowMySignGroupItemSchema), summary: '我创建或负责的未完成加签组' }),
   taskMonitor: op.get('/tasks/monitor', { access: { permission: 'workflow:instance:monitor' }, query: workflowTaskMonitorQuery, response: workflowTaskMonitorResultSchema, summary: '全局任务监控列表' }),
   myConsults: op.get('/instances/consults/mine', { access: { permission: 'workflow:task:handle' }, query: workflowMyConsultsQuery, response: paginated(workflowTaskConsultSchema), summary: '我的协办列表' }),
   handoverPreview: op.get('/tasks/handover-preview', { access: { permission: 'workflow:task:handover' }, query: workflowHandoverPreviewQuery, response: workflowHandoverPreviewSchema, summary: '离职交接影响范围预览' }),
@@ -170,8 +182,8 @@ export const workflowTaskContract = defineContract('/api/workflows', {
   consult: op.post('/tasks/{taskId}/consult', { access: { permission: 'workflow:task:handle' }, audit: '发起协办', params: workflowTaskIdParam, body: createWorkflowConsultSchema, response: z.array(workflowTaskConsultSchema), summary: '发起协办' }),
   replyConsult: op.post('/instances/consults/{id}/reply', { access: { permission: 'workflow:task:handle' }, audit: '回复协办意见', params: idParam, body: replyWorkflowConsultSchema, response: workflowTaskConsultSchema, summary: '回复协办意见' }),
   delegate: op.post('/tasks/{taskId}/delegate', { access: { permission: 'workflow:task:handle' }, audit: { description: '委派任务', recordResponseBody: false }, params: workflowTaskIdParam, body: delegateWorkflowTaskSchema, response: workflowTaskSchema, summary: '委派' }),
-  addSign: op.post('/tasks/{taskId}/add-sign', { access: { permission: 'workflow:task:handle' }, audit: '加签任务', params: workflowTaskIdParam, body: addSignWorkflowTaskSchema, summary: '加签' }),
-  reduceSign: op.post('/tasks/{taskId}/reduce-sign', { access: { permission: 'workflow:task:handle' }, audit: '减签任务', params: workflowTaskIdParam, body: reduceSignWorkflowTaskSchema, summary: '减签' }),
+  addSign: op.post('/tasks/{taskId}/add-sign', { access: { permission: 'workflow:task:handle' }, audit: { description: '创建补充加签组', recordResponseBody: false }, params: workflowTaskIdParam, body: addSignWorkflowTaskSchema, response: workflowAddSignResultSchema, summary: '创建补充加签组' }),
+  reduceSign: op.post('/sign-groups/{groupId}/reduce', { access: { permission: ['workflow:task:handle', 'workflow:instance:cancel'] }, audit: { description: '移除未办加签席位', recordResponseBody: false }, params: workflowSignGroupIdParam, body: reduceSignWorkflowTaskSchema, response: workflowReduceSignResultSchema, summary: '组级减签' }),
   returnTask: op.post('/tasks/{taskId}/return', { access: { permission: 'workflow:task:handle' }, audit: { description: '退回任务', recordResponseBody: false }, params: workflowTaskIdParam, body: returnWorkflowTaskSchema, response: workflowInstanceSchema, summary: '退回' }),
   urgeTask: op.post('/tasks/{taskId}/urge', { access: { permission: 'workflow:instance:create' }, audit: '催办任务', params: workflowTaskIdParam, body: urgeWorkflowTaskSchema, response: workflowTaskUrgeSchema, summary: '催办' }),
   taskUrges: op.get('/tasks/{taskId}/urges', { access: { permission: 'workflow:instance:list' }, params: workflowTaskIdParam, response: z.array(workflowTaskUrgeSchema), summary: '查询任务催办历史' }),

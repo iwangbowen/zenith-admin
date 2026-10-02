@@ -1,3 +1,4 @@
+import { createStandaloneActivation, cancelApprovalActivations } from './approval-state';
 import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
 import { enqueueSubprocessJoin } from './async-jobs';
 // ─── 节点失败策略、Saga 回滚与补偿恢复（拆分自 workflow-instances.service.ts）───
@@ -130,16 +131,19 @@ async function insertCatchTask(tx: DbExecutor, args: {
   instanceId: number; nodeKey: string; nodeName: string; assigneeId: number | null;
   status: 'pending' | 'approved' | 'rejected'; comment: string; actionAt?: Date;
 }) {
+  const [parent] = await tx.select().from(workflowInstances).where(eq(workflowInstances.id, args.instanceId)).limit(1);
+  const [token] = await tx.select().from(workflowTokens).where(and(eq(workflowTokens.instanceId, args.instanceId), eq(workflowTokens.nodeKey, args.nodeKey), eq(workflowTokens.status, 'active'))).limit(1);
+  const activationId = await createStandaloneActivation(tx, { instanceId: args.instanceId, nodeKey: args.nodeKey, nodeName: args.nodeName, tenantId: parent.tenantId, tokenId: token?.id ?? null, status: args.status === 'pending' ? 'active' : 'approved' });
   const [task] = await tx.insert(workflowTasks).values({
     instanceId: args.instanceId,
     nodeKey: args.nodeKey,
     nodeName: args.nodeName,
-    nodeType: 'catchNode',
+    nodeType: 'catchNode', taskKind: 'system', activatedAt: args.status === 'pending' ? new Date() : null,
     assigneeId: args.assigneeId,
     status: args.status,
     comment: args.comment,
     ...(args.actionAt ? { actionAt: args.actionAt } : {}),
-    activationId: randomUUID(),
+    activationId,
   }).returning();
   return task;
 }

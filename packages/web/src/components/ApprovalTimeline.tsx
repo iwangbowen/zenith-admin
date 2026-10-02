@@ -4,9 +4,9 @@ import FileAttachment from '@/components/FileAttachment';
 import { uploadedFileToAttachment } from '@/components/FileAttachment/utils';
 import { timelineDot } from '@/components/workflow/timeline-dot';
 import { TASK_STATUS_MAP } from '@/components/workflow/workflow-runtime';
-import { WORKFLOW_INSTANCE_STATUS_LABELS, workflowExternalCallbackContract } from '@zenith/shared/workflow';
+import { WORKFLOW_INSTANCE_STATUS_LABELS, WORKFLOW_ACTIVE_INSTANCE_STATUSES, WORKFLOW_APPROVE_METHOD_LABELS, WORKFLOW_SIGN_POSITION_LABELS, WORKFLOW_TASK_WAIT_REASON_LABELS, workflowExternalCallbackContract } from '@zenith/shared/workflow';
 import { Bot, CheckCircle2, Clock, CornerUpLeft, Flag, Mail, RotateCcw, XCircle, ExternalLink, Copy, Forward, UserCog, Send, type LucideIcon } from 'lucide-react';
-import type { WorkflowTask, WorkflowInstanceStatus } from '@zenith/shared/workflow';
+import type { WorkflowTask, WorkflowInstanceStatus, WorkflowNodeActivation, WorkflowChildInstanceSummary } from '@zenith/shared/workflow';
 import type { FlowNodeBrief } from '@/components/workflow/workflow-runtime';
 import { formatDurationBetween } from '@/utils/date';
 import DateTimeText from '@/components/DateTimeText';
@@ -33,6 +33,8 @@ const FINISH_MAP: Partial<Record<WorkflowInstanceStatus, { text: string; color: 
 
 interface ApprovalTimelineProps {
   tasks: WorkflowTask[];
+  approvalActivations?: WorkflowNodeActivation[];
+  childInstances?: WorkflowChildInstanceSummary[];
   /** 流程后续节点（优先传服务端预测路径 predictedPath：仅将执行的节点，含分支标签；缺省回退全量线性化） */
   flowNodes?: Array<FlowNodeBrief & { branchLabel?: string | null }>;
   /** 发起人信息（用于顶部「发起申请」节点） */
@@ -45,66 +47,38 @@ interface ApprovalTimelineProps {
   currentUserId?: number | null;
 }
 
-const METHOD_PROGRESS_LABEL: Record<string, string> = {
-  and: '会签',
-  sequential: '顺序会签',
-  ratio: '比例会签',
-  or: '或签',
-};
-
-/**
- * 多人节点进度徽标：按 nodeKey 分组统计当前轮任务（排除 excluded 留痕行），
- * 在该节点第一条任务行展示「会签 · 已同意 x/y（比例附 需n%）」。
- */
-function buildNodeProgress(tasks: WorkflowTask[]): Map<number, string> {
-  const byNode = new Map<string, WorkflowTask[]>();
-  for (const t of tasks) {
-    if (t.nodeType === 'ccNode' || t.signType === 'excluded') continue;
-    const arr = byNode.get(t.nodeKey) ?? [];
-    arr.push(t);
-    byNode.set(t.nodeKey, arr);
-  }
+/** 计票只读取服务端的冻结席位结果，不把任务行、建议或加签人数当作基础票。 */
+function buildNodeProgress(tasks: WorkflowTask[], activations: WorkflowNodeActivation[]): Map<number, string> {
   const out = new Map<number, string>();
-  for (const group of byNode.values()) {
-    const judged = group.filter((t) => t.signType !== 'before');
-    const method = judged.find((t) => t.approveMethod)?.approveMethod;
-    if (!method || judged.length < 2) continue;
-    // 节点已整体完结（无 pending/waiting）时不再显示进度
-    const active = judged.some((t) => t.status === 'pending' || t.status === 'waiting');
-    if (!active) continue;
-    const approved = judged.filter((t) => t.status === 'approved').length;
-    const ratio = method === 'ratio' ? (judged.find((t) => t.approveRatio)?.approveRatio ?? 51) : null;
-    const label = `${METHOD_PROGRESS_LABEL[method] ?? method} · 已同意 ${approved}/${judged.length}${ratio ? ` · 需${ratio}%` : ''}`;
-    const first = group.reduce((a, b) => (b.id < a.id ? b : a));
-    out.set(first.id, label);
+  for (const activation of activations) {
+    if (activation.status !== 'active' || !activation.approveMethod || activation.baseTotal < 2) continue;
+    const baseIds = new Set(activation.slots.filter((slot) => slot.origin === 'base').map((slot) => slot.id));
+    const first = tasks.find((task) => task.activationId === activation.id && task.taskKind === 'approval' && task.slotId != null && baseIds.has(task.slotId));
+    if (first) out.set(first.id, `${WORKFLOW_APPROVE_METHOD_LABELS[activation.approveMethod]} · 正式同意 ${activation.baseApproved}/${activation.baseTotal} · 需${activation.baseRequired}票`);
   }
   return out;
 }
 
 /** 审批流时间线，使用 Semi Design Timeline 组件统一渲染 */
-export default function ApprovalTimeline({ tasks, flowNodes, initiator, instanceStatus, finishedAt, currentUserId }: Readonly<ApprovalTimelineProps>) {
+export default function ApprovalTimeline({ tasks, approvalActivations = [], childInstances = [], flowNodes, initiator, instanceStatus, finishedAt, currentUserId }: Readonly<ApprovalTimelineProps>) {
   const sorted = [...tasks].sort((a, b) => a.id - b.id);
-  const nodeProgress = buildNodeProgress(sorted);
+  const nodeProgress = buildNodeProgress(sorted, approvalActivations);
 
-  // 为每个 rejected 任务定位"已回退至"的目标节点：取 id 严格大于当前任务、且非抄送节点的第一条后续任务
+  // 退回目标来自当次决策事实，比例会签的部分拒绝不代表发生退回。
   const returnTargetMap = new Map<number, string>();
   for (const t of sorted) {
-    if (t.status !== 'rejected') continue;
-    const next = sorted.find(n => n.id > t.id && n.nodeType !== 'ccNode' && n.nodeKey !== t.nodeKey);
-    if (next) returnTargetMap.set(t.id, next.nodeName);
+    if (t.decision?.action !== 'returnNode' && t.decision?.action !== 'returnInitiator') continue;
+    if (t.decision.targetNodeName) returnTargetMap.set(t.id, t.decision.targetNodeName);
   }
 
-  // 标记"被驳回回退后重新推进"的任务：当存在 rejected 任务，且后续出现的同 nodeKey 或初始节点任务视为重新审批
+  // 显式新轮才是重新审批，同轮的委派回执和其它基础席位不是新一轮。
   const regeneratedIds = new Set<number>();
-  const seenNodeKeys = new Set<string>();
-  let hasRejection = false;
+  const firstActivationByNode = new Map<string, string>();
   for (const t of sorted) {
-    if (t.status === 'rejected') {
-      hasRejection = true;
-    } else if (hasRejection && seenNodeKeys.has(t.nodeKey)) {
-      regeneratedIds.add(t.id);
-    }
-    seenNodeKeys.add(t.nodeKey);
+    if (t.taskKind === 'cc' || t.taskKind === 'excluded' || !t.activationId) continue;
+    const first = firstActivationByNode.get(t.nodeKey);
+    if (first && first !== t.activationId) regeneratedIds.add(t.id);
+    else if (!first) firstActivationByNode.set(t.nodeKey, t.activationId);
   }
 
   const finish = instanceStatus ? FINISH_MAP[instanceStatus] : undefined;
@@ -158,11 +132,18 @@ export default function ApprovalTimeline({ tasks, flowNodes, initiator, instance
         else if (isApproved) actionText = isSystemAuto ? '自动通过' : '已同意';
         else if (isRejected) actionText = isSystemAuto ? '自动拒绝' : '已驳回';
         else if (isSkipped) actionText = '已跳过';
-        else actionText = '待处理';
+        else actionText = task.waitReason ? WORKFLOW_TASK_WAIT_REASON_LABELS[task.waitReason] : '待处理';
+        if (task.taskKind === 'suggestion') actionText = isApproved ? '建议同意' : isRejected ? '建议拒绝' : '待提交建议';
+        if (task.status === 'waiting' && task.waitReason === 'subprocess') {
+          const children = childInstances.filter((child) => child.parentTaskId === task.id);
+          actionText = !children.length ? '等待后台创建子流程'
+            : children.some((child) => WORKFLOW_ACTIVE_INSTANCE_STATUSES.some((status) => status === child.status)) ? '等待子流程办理'
+              : '等待后台汇聚子流程';
+        }
 
         // 节点耗时：从任务生成（节点激活）到处理完成，仅对已同意/已驳回的处理节点展示
-        const duration = (isApproved || isRejected) && task.actionAt
-          ? formatDurationBetween(task.createdAt, task.actionAt)
+        const duration = (isApproved || isRejected) && task.actionAt && task.activatedAt
+          ? formatDurationBetween(task.activatedAt, task.actionAt)
           : '';
 
         const dot = (
@@ -202,6 +183,7 @@ export default function ApprovalTimeline({ tasks, flowNodes, initiator, instance
               {isRegenerated && (
                 <Tag color="orange" size="small" style={{ flexShrink: 0 }}>重新审批</Tag>
               )}
+              {task.signPosition && <Tag size="small">{WORKFLOW_SIGN_POSITION_LABELS[task.signPosition]}</Tag>}
               {nodeProgress.has(task.id) && (
                 <Tag color="light-blue" size="small" style={{ flexShrink: 0 }}>{nodeProgress.get(task.id)}</Tag>
               )}

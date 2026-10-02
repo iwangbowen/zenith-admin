@@ -1,4 +1,5 @@
-import type { WorkflowSignaturePolicy } from '@zenith/shared/workflow';
+import { workflowTaskSchema, type WorkflowSignaturePolicy, type WorkflowSignGroup } from '@zenith/shared/workflow';
+import { pickEntity } from '../../../lib/entity-map';
 // ─── 实例/任务数据映射与定义快照辅助（拆分自 workflow-instances.service.ts）───
 import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../../lib/datetime';
 import { workflowInstances, workflowTasks, workflowDefinitions } from '../../../db/schema';
@@ -26,36 +27,13 @@ export function mapTask(
   actionButtons?: Partial<Record<WorkflowActionButtonKey, WorkflowActionButtonConfig>> | null,
   signaturePolicy?: WorkflowSignaturePolicy,
   transfers?: import('@zenith/shared').WorkflowTaskTransfer[] | null,
+  signPosition: WorkflowSignGroup['position'] | null = null,
 ) {
-  return {
-    id: row.id,
-    instanceId: row.instanceId,
-    nodeKey: row.nodeKey,
-    nodeName: row.nodeName,
-    nodeType: row.nodeType ?? null,
-    activationId: row.activationId,
-    assigneeId: row.assigneeId,
-    assigneeName: assigneeName ?? null,
-    assigneeAvatar: assigneeAvatar ?? null,
-    status: row.status,
-    comment: row.comment,
-    signature: row.signature ?? null,
-    signatureEvidence: row.signatureEvidence ?? null,
-    attachments: Array.isArray(row.attachments) ? row.attachments : [],
-    signaturePolicy: signaturePolicy ?? 'none',
-    actionAt: formatNullableDateTime(row.actionAt),
-    decision: row.decision ?? null,
-    originalAssigneeId: row.originalAssigneeId ?? null,
-    transfers: transfers ?? null,
-    delegatedFromId: row.delegatedFromId ?? null,
-    delegationMode: row.delegationMode ?? null,
-    signType: row.signType ?? null,
-    approveMethod: row.approveMethod ?? null,
-    approveRatio: row.approveRatio ?? null,
-    actionButtons: actionButtons ?? null,
-    externalCallbackId: row.externalCallbackId ?? null,
-    createdAt: formatDateTime(row.createdAt),
-  };
+  return pickEntity(workflowTaskSchema, row, {
+    assigneeName: assigneeName ?? null, assigneeAvatar: assigneeAvatar ?? null,
+    attachments: Array.isArray(row.attachments) ? row.attachments : [], signaturePolicy: signaturePolicy ?? 'none',
+    transfers: transfers ?? null, signPosition, actionButtons: actionButtons ?? null,
+  });
 }
 
 export function mapInstance(
@@ -70,7 +48,8 @@ export function mapInstance(
     currentNodeKeys?: string[];
     currentNodeNames?: string[];
     tasks?: ReturnType<typeof mapTask>[];
-    childInstances?: Array<{ id: number; title: string; status: typeof workflowInstances.$inferSelect['status']; parentTaskNodeKey?: string | null; createdAt: string }>;
+    approvalActivations?: import('@zenith/shared/workflow').WorkflowNodeActivation[];
+    childInstances?: Array<{ id: number; title: string; status: typeof workflowInstances.$inferSelect['status']; parentTaskId: number | null; parentTaskNodeKey?: string | null; createdAt: string }>;
     comments?: import('@zenith/shared').WorkflowComment[];
     consults?: import('@zenith/shared').WorkflowTaskConsult[];
     myTaskStatus?: typeof workflowTasks.$inferSelect['status'] | null;
@@ -124,6 +103,7 @@ export function mapInstance(
     suspendReason: row.suspendReason ?? null,
     childInstances: extras.childInstances ?? null,
     tasks: extras.tasks ?? null,
+    approvalActivations: extras.approvalActivations,
     comments: extras.comments,
     consults: extras.consults,
     myTaskStatus: extras.myTaskStatus ?? null,

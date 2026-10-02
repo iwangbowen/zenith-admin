@@ -6,7 +6,7 @@ import { validationHook } from '../../lib/openapi-schemas';
 import {
   listRoute, pendingMineRoute, pendingMineCountRoute, allRoute, ccMineRoute, handledMineRoute,
   ccUnreadCountRoute, workbenchSummaryRoute, relationOptionsRoute, detailRoute, printRoute, printVerifyRoute, analyticsRoute, overdueRoute, selectableUsersRoute,
-  tasksMonitorRoute, pendingDefinitionOptionsRoute,
+  tasksMonitorRoute, pendingDefinitionOptionsRoute, mySignGroupsRoute,
 } from './instances/queries';
 import {
   createInstanceRoute, withdrawRoute, cancelInstanceRoute, deleteInstanceRoute,
@@ -35,6 +35,7 @@ import {
 } from './instances/compensation';
 
 const router = new OpenAPIHono({ defaultHook: validationHook });
+router.openapiRoutes([mySignGroupsRoute] as const);
 
 router.openapiRoutes([listRoute, pendingMineRoute, pendingMineCountRoute, pendingDefinitionOptionsRoute, allRoute, ccMineRoute, handledMineRoute, ccUnreadCountRoute, workbenchSummaryRoute, relationOptionsRoute, analyticsRoute, overdueRoute, tasksMonitorRoute, selectableUsersRoute, myConsultsRoute, batchWithdrawRoute, batchUrgeRoute, ccReadRoute, diagnosticsRoute, traceRoute, tokensRoute, diagnosticBundleRoute, detailRoute, printRoute, printVerifyRoute, listCommentsRoute, addCommentRoute, createInstanceRoute, updateDraftRoute, submitDraftRoute, resubmitRoute] as const);
 router.openapiRoutes([withdrawRoute, forwardRoute, cancelInstanceRoute, jumpInstanceRoute, suspendInstanceRoute, resumeInstanceRoute, handoverPreviewRoute, handoverRoute, tokenSkipRoute, tokenReplayRoute, batchSkipStuckRoute, deleteInstanceRoute, batchApproveRoute, batchRejectRoute, approveRoute, selectableNextApproversRoute, rejectRoute, transferRoute, reassignRoute, recallRoute, consultRoute, replyConsultRoute, delegateRoute, addSignRoute, reduceSignRoute, returnRoute, urgeRoute, listTaskUrgesRoute, listInstanceUrgesRoute, urgeInstanceRoute, addInstanceCcRoute] as const);

@@ -44,6 +44,23 @@ export const WORKFLOW_SIGNATURE_POLICY_OPTIONS = createLabelOptions(WORKFLOW_SIG
 
 export const WORKFLOW_TASK_STATUSES = ['pending', 'approved', 'rejected', 'skipped', 'waiting'] as const;
 
+export const WORKFLOW_TASK_KINDS = ['approval', 'suggestion', 'cc', 'excluded', 'system'] as const;
+export const WORKFLOW_TASK_WAIT_REASONS = ['sequence', 'beforeSign', 'afterSign', 'external', 'subprocess', 'delay', 'trigger'] as const;
+export const WORKFLOW_APPROVAL_ACTIVATION_STATUSES = ['active', 'approved', 'rejected', 'cancelled'] as const;
+export const WORKFLOW_APPROVAL_SLOT_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const;
+export const WORKFLOW_APPROVAL_SLOT_ORIGINS = ['base', 'addSign'] as const;
+export const WORKFLOW_SIGN_POSITIONS = ['before', 'after', 'parallel'] as const;
+export const WORKFLOW_SIGN_MODES = ['and', 'or'] as const;
+export const WORKFLOW_SIGN_GROUP_STATUSES = ['waiting', 'active', 'approved', 'rejected', 'cancelled'] as const;
+export const WORKFLOW_TASK_WAIT_REASON_LABELS = { sequence: '等待上一审批人', beforeSign: '等待前加签意见', afterSign: '等待原审批人正式同意', external: '等待外部审批', subprocess: '等待子流程', delay: '等待指定时间', trigger: '等待自动办理' } as const;
+export const WORKFLOW_SIGN_POSITION_LABELS = { before: '前加签', after: '后加签', parallel: '并加签' } as const;
+export const WORKFLOW_SIGN_GROUP_STATUS_LABELS = { waiting: '等待原审批人', active: '办理中', approved: '已通过', rejected: '未通过', cancelled: '已取消' } as const;
+export const WORKFLOW_APPROVAL_SLOT_STATUS_LABELS = { pending: '待形成正式意见', approved: '已同意', rejected: '已拒绝', cancelled: '已取消' } as const;
+export const WORKFLOW_TASK_WAIT_REASON_OPTIONS = createLabelOptions(WORKFLOW_TASK_WAIT_REASONS, WORKFLOW_TASK_WAIT_REASON_LABELS);
+export const WORKFLOW_SIGN_POSITION_OPTIONS = createLabelOptions(WORKFLOW_SIGN_POSITIONS, WORKFLOW_SIGN_POSITION_LABELS);
+export const WORKFLOW_SIGN_GROUP_STATUS_OPTIONS = createLabelOptions(WORKFLOW_SIGN_GROUP_STATUSES, WORKFLOW_SIGN_GROUP_STATUS_LABELS);
+export const WORKFLOW_APPROVAL_SLOT_STATUS_OPTIONS = createLabelOptions(WORKFLOW_APPROVAL_SLOT_STATUSES, WORKFLOW_APPROVAL_SLOT_STATUS_LABELS);
+
 /** 当次任务处理动作，与引擎任务状态分别记录（退回的任务状态仍为 rejected）。 */
 export const WORKFLOW_TASK_DECISION_ACTIONS = ['approve', 'complete', 'reject', 'returnInitiator', 'returnNode'] as const;
 export const WORKFLOW_TASK_DECISION_LABELS: Record<(typeof WORKFLOW_TASK_DECISION_ACTIONS)[number], string> = {

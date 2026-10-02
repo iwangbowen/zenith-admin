@@ -12,7 +12,7 @@ const recorder = new ApiRecorder();
 vi.mock('@/utils/request', () => ({ request: createRequestMock(() => recorder) }));
 
 import { urlOf } from '@/lib/contract-query';
-import { invalidateAfterTaskAction, runWorkflowBatchApprove, useBatchApproveWorkflowTasks, useConsultWorkflowTask, usePendingWorkflowTasks, workflowTaskKeys } from './workflow-tasks';
+import { invalidateAfterTaskAction, runWorkflowBatchApprove, useBatchApproveWorkflowTasks, useConsultWorkflowTask, usePendingWorkflowTasks, useReduceWorkflowSignGroup, workflowTaskKeys } from './workflow-tasks';
 import { useWorkflowInstanceDetail, useWorkflowMonitorList } from './workflow-monitor';
 import { usePublishedWorkflowDefinitions, workflowDefinitionKeys } from './workflow-definitions';
 import { workflowInstanceKeys } from './workflow-instances';
@@ -39,6 +39,27 @@ beforeEach(() => {
 });
 
 describe('workflow task action cache', () => {
+  it('group reduction refetches its instance and pending views without refreshing unrelated details or published lookups', async () => {
+    const groupUrl = urlOf(workflowTaskContract.reduceSign, { params: { groupId: 20 } });
+    recorder.on('POST', groupUrl, { group: { id: 20 }, removed: [], instance: { id: 1 } });
+    const qc = createTestQueryClient();
+    const { result } = renderHook(() => ({
+      first: useWorkflowInstanceDetail(1), second: useWorkflowInstanceDetail(2),
+      pending: usePendingWorkflowTasks({ page: 1, pageSize: 10 }), published: usePublishedWorkflowDefinitions(),
+      reduce: useReduceWorkflowSignGroup(),
+    }), { wrapper: createWrapper(qc) });
+    await waitFor(() => expect(result.current.first.isSuccess && result.current.second.isSuccess
+      && result.current.pending.isSuccess && result.current.published.isSuccess).toBe(true));
+    recorder.resetCalls();
+    await result.current.reduce.mutateAsync({ params: { groupId: 20 }, body: { targetSlotIds: [12] } });
+    await waitFor(() => expect(recorder.countOf('GET', DETAIL_1_URL)).toBe(1));
+    await waitFor(() => expect(recorder.countOf('GET', PENDING_URL)).toBe(1));
+    expect(recorder.countOf('GET', DETAIL_2_URL)).toBe(0);
+    expect(recorder.countOf('GET', PUBLISHED_URL)).toBe(0);
+    expect(recorder.calls.find((call) => call.method === 'POST')?.body).toEqual({ targetSlotIds: [12] });
+    expect(recorder.calls.find((call) => call.method === 'POST')?.headers?.['x-idempotency-key']).toMatch(/^workflow-reduce-group-[\da-f-]{36}$/);
+  });
+
   it('batch approve drops succeeded rows at once, refetches pending + monitor lists and leaves the published lookup fresh', async () => {
     const qc = createTestQueryClient();
     const params = { page: 1, pageSize: 10 };

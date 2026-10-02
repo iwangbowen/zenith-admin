@@ -1,5 +1,5 @@
 /** 按节点实际激活顺序编号；同轮会签、转办、加签任务共享轮次。 */
-export function workflowTaskActivationRounds(rows: ReadonlyArray<{ instanceId: number; nodeKey: string; activationId: string }>): Map<string, number> {
+export function workflowTaskActivationRounds(rows: ReadonlyArray<{ instanceId: number; nodeKey: string; activationId: string | null }>): Map<string, number> {
   const rounds = new Map<string, number>();
   const counts = new Map<string, number>();
   for (const row of rows) {
@@ -13,6 +13,6 @@ export function workflowTaskActivationRounds(rows: ReadonlyArray<{ instanceId: n
   return rounds;
 }
 
-export function workflowTaskActivationKey(row: { instanceId: number; nodeKey: string; activationId: string }): string {
+export function workflowTaskActivationKey(row: { instanceId: number; nodeKey: string; activationId: string | null }): string {
   return JSON.stringify([row.instanceId, row.nodeKey, row.activationId]);
 }

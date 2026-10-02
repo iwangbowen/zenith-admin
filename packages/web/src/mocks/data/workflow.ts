@@ -1,10 +1,11 @@
 import { fillPath } from '@zenith/shared/core';
 import { workflowAttachmentContract } from '@zenith/shared/workflow';
-import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowInstance, WorkflowTask, WorkflowFormField, WorkflowInstanceFormSnapshot } from '@zenith/shared/workflow';
+import type { WorkflowDefinition, WorkflowDefinitionVersion, WorkflowInstance, WorkflowTask, WorkflowFormField, WorkflowInstanceFormSnapshot, WorkflowFlowData } from '@zenith/shared/workflow';
 import { SEED_WORKFLOW_DEFINITIONS, SEED_DATE } from '@zenith/shared/seed';
 import { nextIdFrom } from '@/mocks/utils/handlers';
 import { mockUsers } from './users';
 import { mockWorkflowForms } from './workflow-forms';
+import { createMockActivation } from '@/mocks/utils/workflow-approval';
 
 /** 流程定义版本的派生字段：表单字段数组 */
 function cloneWorkflowFormFields(formId: number | null | undefined): WorkflowFormField[] | null {
@@ -286,7 +287,8 @@ export const mockWorkflowDefinitions: WorkflowDefinition[] = [
 
 // ─── 流程任务 ──────────────────────────────────────────────────────────────
 
-export const mockWorkflowTasks: WorkflowTask[] = [
+type LegacyMockTask = Omit<WorkflowTask, 'activationId' | 'slotId' | 'taskKind' | 'waitReason' | 'activatedAt' | 'signPosition'>;
+const initialWorkflowTasks: LegacyMockTask[] = [
   // 实例 1 的任务（已审批完成）
   {
     id: 1,
@@ -463,6 +465,11 @@ export const mockWorkflowTasks: WorkflowTask[] = [
     createdAt: '2026-06-25 11:30:00',
   },
 ];
+
+export const mockWorkflowTasks: WorkflowTask[] = initialWorkflowTasks.map(task => ({
+  ...task, activationId: null, slotId: null, taskKind: task.nodeType === 'ccNode' ? 'cc' : task.nodeType === 'approve' || task.nodeType === 'handler' ? 'approval' : 'system',
+  waitReason: null, activatedAt: task.status === 'pending' ? task.createdAt : null, signPosition: null,
+}));
 
 // ─── 流程实例 ──────────────────────────────────────────────────────────────
 
@@ -646,30 +653,27 @@ export function getNextDefinitionId() { return nextDefinitionId++; }
  * Demo 发起实例时的首个待办：取流程图第一个 approve 节点生成 pending 任务；
  * 无审批节点返回 null。工作流发起与业务系统（请假）提交共用。
  */
+export function buildMockApprovalTasks(node: WorkflowFlowData['nodes'][number]['data'], instanceId: number, now: string, initiatorId = 1): WorkflowTask[] {
+  const candidates = node.assigneeType === 'initiator' ? [initiatorId]
+    : node.userIds?.length ? node.userIds : node.assigneeIds?.length ? node.assigneeIds : [node.assigneeId ?? null];
+  const selected = node.approveMethod === 'random' ? candidates.slice(0, 1) : candidates;
+  const rows = [...new Set(selected)].map((assigneeId): WorkflowTask => ({
+    id: getNextTaskId(), instanceId, nodeKey: node.key, nodeName: node.label, nodeType: node.type,
+    assigneeId, signaturePolicy: node.signaturePolicy ?? 'none', actionButtons: node.actionButtons,
+    assigneeName: mockUsers.find(user => user.id === assigneeId)?.nickname ?? node.assigneeName ?? null,
+    assigneeAvatar: null, status: 'pending', comment: null, actionAt: null, createdAt: now,
+    activationId: null, slotId: null, taskKind: 'approval', waitReason: null, activatedAt: null, signPosition: null,
+  }));
+  createMockActivation({ id: instanceId }, node, rows, { now });
+  return rows;
+}
 export function buildFirstApproveTask(def: Pick<WorkflowDefinition, 'flowData'>, instanceId: number, now: string, initiatorId = 1): WorkflowTask | null {
-  const firstApproveNode = def.flowData?.nodes.find((node) => node.data.type === 'approve');
+  const firstApproveNode = def.flowData?.nodes.find(node => node.data.type === 'approve' || node.data.type === 'handler');
   if (!firstApproveNode) return null;
-  const assigneeId = firstApproveNode.data.assigneeType === 'initiator' ? initiatorId
-    : firstApproveNode.data.assigneeId ?? firstApproveNode.data.assigneeIds?.[0] ?? null;
-  return {
-    id: getNextTaskId(),
-    instanceId,
-    nodeKey: firstApproveNode.data.key,
-    nodeName: firstApproveNode.data.label,
-    nodeType: 'approve',
-    assigneeId,
-    signaturePolicy: firstApproveNode.data.signaturePolicy ?? 'none',
-    actionButtons: firstApproveNode.data.actionButtons,
-    assigneeName: firstApproveNode.data.assigneeName
-      ?? mockUsers.find((user) => user.id === assigneeId)?.nickname
-      ?? null,
-    assigneeAvatar: null,
-    status: 'pending',
-    comment: null,
-    actionAt: null,
-    createdAt: now,
-    activationId: crypto.randomUUID(),
-  };
+  const rows = buildMockApprovalTasks(firstApproveNode.data, instanceId, now, initiatorId);
+  // Legacy business callers append the returned first row; keep every other formal seat visible too.
+  mockWorkflowTasks.push(...rows.slice(1));
+  return rows[0] ?? null;
 }
 
 // ─── 流程定义历史版本 ─────────────────────────────────────────────────────
