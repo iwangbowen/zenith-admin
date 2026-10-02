@@ -84,7 +84,7 @@ export default function WorkflowGraphCanvas({ flowData, nodeRuntime, height = 48
     }));
     const uniquePositions = new Set(graphNodes.map((node) => `${node.position.x},${node.position.y}`));
     return {
-      nodes: uniquePositions.size <= 1 && graphNodes.length > 1
+      nodes: uniquePositions.size < graphNodes.length
         ? layoutWithDagre(graphNodes, graphEdges, { rankdir: 'TB', nodesep: 72, ranksep: 80, nodeSize: { width: 240, height: 132 } })
         : graphNodes,
       edges: graphEdges,
