@@ -19,8 +19,18 @@ import { SubmitAborted } from '@/lib/abort-submit';
  * - `ApiError`：统一响应业务错误，request 层已自动弹出错误 Toast
  * - `SubmitAborted`：提交中断标记，页面已自行提示（表单内联错误 / Toast），由 `abortSubmit()` 抛出
  *
+ * 框架内部可恢复噪声（React ViewTransition 导航抢占超时等）同样静默放行，见 isBenignFrameworkNoise。
  * 除上述类型外的一切 rejection（含单词消息如 `NetworkError` / `timeout`）都视为真实错误上报。
  */
+/** 框架内部的可恢复噪声：不影响功能与渲染，不值得打扰用户或污染错误监控。
+ * 与 ResizeObserver loop 同类，按约定静默放行。 */
+function isBenignFrameworkNoise(message: string): boolean {
+  // React <ViewTransition>：导航在新过渡完成前被另一导航抢占（快速切页签/连续路由跳转），
+  // 过渡动画中止但页面照常渲染；连打字机的 React 内部计时也统一归为此噪声
+  return message.includes('ViewTransition timed out')
+    || message.includes('A ViewTransition timed out');
+}
+
 export function useGlobalErrorHandler() {
   const recentRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const countRef = useRef(0);
@@ -51,6 +61,7 @@ export function useGlobalErrorHandler() {
       // 提交中断标记：由 abortSubmit() 抛出，页面已自行提示
       if (reason instanceof SubmitAborted) return;
       const message = reason instanceof Error ? reason.message : String(reason || '发生了未处理的异步错误');
+      if (isBenignFrameworkNoise(message)) return;
       console.error('[GlobalErrorHandler] 未处理的 Promise rejection:', reason);
       showToast(`操作失败：${message}`);
       reportError('promise_rejection', message, { stack: reason instanceof Error ? reason.stack : undefined });
@@ -71,6 +82,7 @@ export function useGlobalErrorHandler() {
       const filename = event.filename ?? '';
       if (filename.startsWith('chrome-extension://') || filename.startsWith('moz-extension://')) return;
       if (event.message.includes('ResizeObserver loop')) return;
+      if (isBenignFrameworkNoise(event.message)) return;
 
       console.error('[GlobalErrorHandler] 未捕获的运行时错误:', event.error ?? event.message);
       showToast(`页面发生错误：${event.message}`);

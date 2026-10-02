@@ -107,4 +107,14 @@ describe('未处理拒绝的分类', () => {
     expect(reportError).toHaveBeenCalledTimes(2);
     unmount();
   });
+
+  it('React ViewTransition 导航抢占超时属框架噪声：不弹 Toast、不上报', () => {
+    const { unmount } = renderHook(() => useGlobalErrorHandler());
+
+    emitRejection(new Error('A ViewTransition timed out because a Navigation stalled. This can happen if a Navigation is blocked on React itself.'));
+
+    expect(toastError).not.toHaveBeenCalled();
+    expect(reportError).not.toHaveBeenCalled();
+    unmount();
+  });
 });
