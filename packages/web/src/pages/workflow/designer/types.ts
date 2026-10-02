@@ -87,6 +87,7 @@ export type ActionButtonKey =
   | 'transfer'
   | 'delegate'
   | 'addSign'
+  | 'reduceSign'
   | 'return';
 
 /**

@@ -15,6 +15,7 @@ export const ACTION_BUTTON_META: ActionButtonMeta[] = [
   { key: 'transfer', label: '转办', defaultDisplayName: '转办', defaultOpinionName: '转办', supportsJump: false, defaultEnabled: true },
   { key: 'delegate', label: '委派', defaultDisplayName: '委派', defaultOpinionName: '委派', supportsJump: false, defaultEnabled: true },
   { key: 'addSign',  label: '加签', defaultDisplayName: '加签', defaultOpinionName: '加签', supportsJump: false, defaultEnabled: true },
+  { key: 'reduceSign', label: '减签', defaultDisplayName: '减签', defaultOpinionName: '减签说明', supportsJump: false, defaultEnabled: false },
   { key: 'return',   label: '退回', defaultDisplayName: '退回', defaultOpinionName: '退回', supportsJump: true,  defaultEnabled: true },
 ];
 
