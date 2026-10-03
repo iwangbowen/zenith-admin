@@ -20,7 +20,7 @@ export async function assertCmsDeploymentCapacityAccess(siteId: number) { await 
 export async function readCmsDeploymentRetentionPolicy(siteId: number, executor: DbExecutor = db): Promise<CmsDeploymentRetentionPolicy> {
   const [policy] = await executor.select().from(cmsDeploymentRetentionPolicies).where(eq(cmsDeploymentRetentionPolicies.siteId, siteId)).limit(1);
   return { siteId, version: policy?.version ?? 0, retainCount: policy?.retainCount ?? CMS_DEFAULT_DEPLOYMENT_RETENTION.retainCount,
-    retainDays: policy?.retainDays ?? CMS_DEFAULT_DEPLOYMENT_RETENTION.retainDays, failedRetainDays: policy?.failedRetainDays ?? CMS_DEFAULT_DEPLOYMENT_RETENTION.failedRetainDays, automatic: policy?.automatic ?? false };
+    retainDays: policy?.retainDays ?? CMS_DEFAULT_DEPLOYMENT_RETENTION.retainDays, failedRetainDays: policy?.failedRetainDays ?? CMS_DEFAULT_DEPLOYMENT_RETENTION.failedRetainDays, automatic: policy?.automatic ?? CMS_DEFAULT_DEPLOYMENT_RETENTION.automatic };
 }
 
 export async function cmsDeploymentReferences(siteId: number, executor: DbExecutor = db) {

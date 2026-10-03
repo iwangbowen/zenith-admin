@@ -11,7 +11,7 @@ import { registerSystemRecurringJob } from './pg-boss-scheduler';
 export async function registerSystemTasks(): Promise<void> {
   const { dispatchCmsDeploymentRetention } = await import('../services/cms/cms-deployment-retention-tasks');
   await registerSystemRecurringJob({ name: 'cms-deployment-retention', title: 'CMS 部署存储保留治理', module: 'CMS内容管理', cronExpression: '30 3 * * *', allowManualRun: true,
-    description: '仅对主动启用自动回收的站点提交存储治理任务，执行时重新保护在线、重要、构建基础及交付引用的代次。', run: dispatchCmsDeploymentRetention });
+    description: '对启用自动回收的站点（默认启用，可在发布中心「部署容量」按站点关闭）提交存储治理任务，执行时重新保护在线、重要、构建基础及交付引用的代次。', run: dispatchCmsDeploymentRetention });
   const { dispatchCmsContentReviewScans } = await import('../services/cms/cms-content-review-tasks');
   await registerSystemRecurringJob({
     name: 'cms-content-review-scan', title: 'CMS 内容定期复核巡检', module: 'CMS内容管理', cronExpression: '10 * * * *', allowManualRun: true,

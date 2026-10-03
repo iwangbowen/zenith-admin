@@ -1,5 +1,5 @@
 import { bigint, boolean, index, integer, pgEnum, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core';
-import { CMS_DEPLOYMENT_STORAGE_STATES } from '@zenith/shared/cms';
+import { CMS_DEFAULT_DEPLOYMENT_RETENTION, CMS_DEPLOYMENT_STORAGE_STATES } from '@zenith/shared/cms';
 import { auditColumns } from './core';
 import { timestampColumns } from './common';
 import { cmsSites } from './cms';
@@ -10,7 +10,8 @@ export const cmsDeploymentStorageStateEnum = pgEnum('cms_deployment_storage_stat
 
 export const cmsDeploymentRetentionPolicies = pgTable('cms_deployment_retention_policies', {
   siteId: integer().primaryKey().references(() => cmsSites.id, { onDelete: 'cascade' }), version: integer().notNull().default(1),
-  retainCount: integer().notNull().default(10), retainDays: integer().notNull().default(30), failedRetainDays: integer().notNull().default(7), automatic: boolean().notNull().default(false),
+  retainCount: integer().notNull().default(CMS_DEFAULT_DEPLOYMENT_RETENTION.retainCount), retainDays: integer().notNull().default(CMS_DEFAULT_DEPLOYMENT_RETENTION.retainDays),
+  failedRetainDays: integer().notNull().default(CMS_DEFAULT_DEPLOYMENT_RETENTION.failedRetainDays), automatic: boolean().notNull().default(CMS_DEFAULT_DEPLOYMENT_RETENTION.automatic),
   ...auditColumns(), ...timestampColumns({ withTimezone: true }),
 });
 /** Storage lifecycle is independent from deployment/activation audit history. */

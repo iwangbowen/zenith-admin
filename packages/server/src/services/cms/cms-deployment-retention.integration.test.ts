@@ -12,9 +12,15 @@ import type { TaskRunContext } from '../../lib/task-center';
 import { cmsDeploymentDirectory } from './cms-deployment-files';
 import { CMS_STATIC_ROOT, isStrictlyWithin } from './cms-static-path';
 import { getCmsDeploymentCapacitySummary, previewCmsDeploymentCleanup } from './cms-deployment-retention.service';
-import { purgeCmsDeploymentStorage } from './cms-deployment-retention-tasks';
+import { dispatchCmsDeploymentRetention, purgeCmsDeploymentStorage, registerCmsDeploymentRetentionTasks } from './cms-deployment-retention-tasks';
 import { assertCmsDeploymentStorageAvailable } from './cms-deployment-storage-state';
 
+const mocks = vi.hoisted(() => ({ enqueueAsyncTask: vi.fn(async () => undefined) }));
+// The fixture transaction is never committed, so queue delivery is observed instead of sent to pg-boss.
+vi.mock('../../lib/task-center', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../lib/task-center')>(),
+  enqueueAsyncTask: mocks.enqueueAsyncTask,
+}));
 const connection = process.env.TEST_DATABASE_URL;
 const client = connection ? postgres(connection, { max: 1, onnotice: () => undefined }) : null;
 afterAll(async () => { await client?.end(); });
@@ -104,4 +110,37 @@ describe.skipIf(!connection)('CMS deployment storage PostgreSQL recovery', () =>
     } catch (error) { if (error !== rollback) throw error; }
     finally { await fs.rm(fixtureRoot, { recursive: true, force: true }); }
   }, 180_000);
+  it('submits the daily cleanup for sites without a saved policy and skips explicit opt-outs', async () => {
+    const target = new URL(connection!);
+    if (!['localhost', '127.0.0.1', '[::1]'].includes(target.hostname) || target.pathname !== '/zenith_review') throw new Error('Requires disposable local zenith_review database');
+    const testDb = drizzle(client!, { schema, casing: 'snake_case' }); const rollback = new Error('rollback deployment retention dispatch fixture');
+    registerCmsDeploymentRetentionTasks();
+    try {
+      await testDb.transaction(async tx => withDbExecutor(tx, async () => {
+        const seedSite = async (label: string) => {
+          const [site] = await tx.insert(schema.cmsSites).values({ name: `QA dispatch ${label}`, code: `qa-dispatch-${label}-${randomUUID().slice(0, 8)}` }).returning();
+          const generations: number[] = [];
+          for (let index = 0; index < 12; index++) {
+            const active = index === 11;
+            const [release] = await tx.insert(schema.cmsReleases).values({ siteId: site.id, name: `QA dispatch ${label} ${index}`, status: active ? 'active' : 'superseded' }).returning();
+            const [deployment] = await tx.insert(schema.cmsDeployments).values({ siteId: site.id, releaseId: release.id, status: active ? 'active' : 'retired', createdAt: new Date(Date.now() - (80 - index) * 86400000) }).returning();
+            generations.push(deployment.id);
+          }
+          await tx.insert(schema.cmsSiteGenerations).values({ siteId: site.id, activeGenerationId: generations[11] });
+          return { siteId: site.id, generations };
+        };
+        const defaults = await seedSite('default'); const optedOut = await seedSite('opt-out');
+        await tx.insert(schema.cmsDeploymentRetentionPolicies).values({ siteId: optedOut.siteId, automatic: false });
+        await dispatchCmsDeploymentRetention();
+        const submitted = (await tx.select({ payload: schema.asyncTasks.payload }).from(schema.asyncTasks).where(eq(schema.asyncTasks.taskType, 'cms-deployment-cleanup')))
+          .filter(task => [defaults.siteId, optedOut.siteId].includes(Number(task.payload.siteId)));
+        expect(submitted).toHaveLength(1);
+        expect(submitted[0].payload).toMatchObject({ siteId: defaults.siteId, automatic: true });
+        // Ten most recent deployments (including the active one) stay; only the two oldest are eligible.
+        expect([...submitted[0].payload.deploymentIds as number[]].sort((a, b) => a - b)).toEqual(defaults.generations.slice(0, 2));
+        expect(mocks.enqueueAsyncTask).toHaveBeenCalled();
+        throw rollback;
+      }));
+    } catch (error) { if (error !== rollback) throw error; }
+  }, 60_000);
 });

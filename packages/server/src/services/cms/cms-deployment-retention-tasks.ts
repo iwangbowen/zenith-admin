@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { desc, eq, gt, sql } from 'drizzle-orm';
+import { and, desc, eq, exists, gt, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { BodyOf } from '@zenith/shared/core';
-import { cmsDeploymentRetentionContract, cmsDeploymentRetentionReasons } from '@zenith/shared/cms';
+import { CMS_DEFAULT_DEPLOYMENT_RETENTION, cmsDeploymentRetentionContract, cmsDeploymentRetentionReasons } from '@zenith/shared/cms';
 import { db } from '../../db';
 import type { DbTransaction } from '../../db/types';
 import { asyncTasks, cmsDeployments, cmsDeploymentRetentionPolicies, cmsDeploymentStorage, cmsReleases, cmsSites } from '../../db/schema';
@@ -169,15 +169,21 @@ export function registerCmsDeploymentRetentionTasks() {
   });
 }
 export async function dispatchCmsDeploymentRetention(): Promise<string> {
-  const policies = await db.select({ siteId: cmsDeploymentRetentionPolicies.siteId }).from(cmsDeploymentRetentionPolicies).where(eq(cmsDeploymentRetentionPolicies.automatic, true));
+  // Sites without a saved policy follow the default rules; only explicit opt-outs are skipped.
+  const sites = await db.select({ siteId: cmsSites.id }).from(cmsSites)
+    .leftJoin(cmsDeploymentRetentionPolicies, eq(cmsDeploymentRetentionPolicies.siteId, cmsSites.id))
+    .where(and(
+      sql`coalesce(${cmsDeploymentRetentionPolicies.automatic}, ${CMS_DEFAULT_DEPLOYMENT_RETENTION.automatic})`,
+      exists(db.select({ id: cmsDeployments.id }).from(cmsDeployments).where(eq(cmsDeployments.siteId, cmsSites.id))),
+    )).orderBy(cmsSites.id);
   let submitted = 0;
-  for (const policy of policies) {
+  for (const { siteId } of sites) {
     const task = await db.transaction(async tx => {
-      await acquireCmsSitePublishLock(tx, policy.siteId);
-      if (!(await readCmsDeploymentRetentionPolicy(policy.siteId, tx)).automatic) return null;
-      const preview = await previewCmsDeploymentCleanup(policy.siteId, { executor: tx, skipAccess: true });
+      await acquireCmsSitePublishLock(tx, siteId);
+      if (!(await readCmsDeploymentRetentionPolicy(siteId, tx)).automatic) return null;
+      const preview = await previewCmsDeploymentCleanup(siteId, { executor: tx, skipAccess: true });
       if (!preview.candidates.length) return null;
-      return persistSystemAsyncTask(tx, { taskType: CMS_DEPLOYMENT_CLEANUP_TASK, title: 'CMS 自动部署存储回收', payload: { siteId: policy.siteId, deploymentIds: preview.candidates.map(row => row.id), automatic: true }, idempotencyKey: `cms-retention:${policy.siteId}:${preview.fingerprint.slice(0, 48)}` }, null);
+      return persistSystemAsyncTask(tx, { taskType: CMS_DEPLOYMENT_CLEANUP_TASK, title: 'CMS 自动部署存储回收', payload: { siteId, deploymentIds: preview.candidates.map(row => row.id), automatic: true }, idempotencyKey: `cms-retention:${siteId}:${preview.fingerprint.slice(0, 48)}` }, null);
     });
     if (task) { await enqueueAsyncTask(task.id); submitted++; }
   }

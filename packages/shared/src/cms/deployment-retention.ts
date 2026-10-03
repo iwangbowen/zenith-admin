@@ -6,7 +6,8 @@ export const saveCmsDeploymentRetentionSchema = z.object({ expectedVersion: z.in
 export const pinCmsDeploymentSchema = z.object({ expectedVersion: z.int().min(0), pinned: z.boolean(), reason: z.string().trim().max(500).nullable().default(null) });
 export const cleanupCmsDeploymentsSchema = z.object({ fingerprint: z.string().length(64), deploymentIds: z.array(z.int().positive()).min(1).max(1000) });
 export type CmsDeploymentRetentionRules = Omit<z.output<typeof saveCmsDeploymentRetentionSchema>, 'expectedVersion'>;
-export const CMS_DEFAULT_DEPLOYMENT_RETENTION: CmsDeploymentRetentionRules = { retainCount: 10, retainDays: 30, failedRetainDays: 7, automatic: false };
+/** Sites without a saved policy use these rules, including the daily automatic cleanup. */
+export const CMS_DEFAULT_DEPLOYMENT_RETENTION: CmsDeploymentRetentionRules = { retainCount: 10, retainDays: 30, failedRetainDays: 7, automatic: true };
 export type CmsDeploymentRetentionFacts = {
   id: number; status: typeof CMS_DEPLOYMENT_STATUSES[number]; releaseStatus: typeof CMS_RELEASE_STATUSES[number]; pinned: boolean;
   storageState: typeof CMS_DEPLOYMENT_STORAGE_STATES[number]; ageFrom: string; protectedBy: string[];
