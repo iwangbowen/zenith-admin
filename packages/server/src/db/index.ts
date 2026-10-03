@@ -20,6 +20,7 @@ const client = instrumentPostgresClient(postgres(config.databaseUrl, {
   idle_timeout: config.database.idleTimeoutSeconds,
   connect_timeout: config.database.connectTimeoutSeconds,
   ssl: config.database.ssl,
+  options: `-c TimeZone=${process.env.APP_TIME_ZONE || process.env.TZ || 'Asia/Shanghai'}`,
 }));
 
 const rawDb = drizzle(client, {
