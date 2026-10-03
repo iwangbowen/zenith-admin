@@ -756,7 +756,7 @@ export default function SystemSchedulerPage() {
         {detailRun && (
           <Space vertical align="start" spacing={16} style={{ width: '100%' }}>
             <Descriptions
-              align="plain"
+              align="left"
               layout="horizontal"
               column={2}
               size="small"
@@ -776,9 +776,8 @@ export default function SystemSchedulerPage() {
                 {
                   key: 'Job ID',
                   value: detailRun.jobId
-                    ? <Typography.Text copyable={{ content: detailRun.jobId }}>{detailRun.jobId}</Typography.Text>
+                    ? <Typography.Text copyable={{ content: detailRun.jobId }} style={{ overflowWrap: 'anywhere' }}>{detailRun.jobId}</Typography.Text>
                     : EMPTY_PLACEHOLDER,
-                  span: 2,
                 },
               ]}
             />
