@@ -427,7 +427,7 @@ export default function TaskCenterPage() {
       ),
     },
     // 类型标识（注册键）：接口路径 /types/{taskType}/config 与列表筛选都用它，等宽字体单行省略
-    { title: '类型标识', dataIndex: 'taskType', width: 200, render: renderCodeEllipsis },
+    { title: '类型标识', dataIndex: 'taskType', width: 260, render: renderCodeEllipsis },
     // 模块：最长注册模块名「CMS内容管理」约 79px，140 定宽（可用 108）单行容纳；超长仍单行省略
     { title: '模块', dataIndex: 'module', width: 140, render: renderEllipsis },
     { title: '说明', dataIndex: 'description', minWidth: 260, render: renderEllipsis },
@@ -441,7 +441,7 @@ export default function TaskCenterPage() {
       title: '成功率',
       align: 'right',
       key: 'successRate',
-      width: 110,
+      width: 160,
       render: (_: unknown, record: TaskTypeRow) => {
         const rate = record.stat?.successRate ?? null;
         if (rate === null) return <Typography.Text type="tertiary">—</Typography.Text>;
