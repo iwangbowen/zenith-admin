@@ -169,24 +169,21 @@ export default function ApprovalTimeline({ tasks, approvalActivations = [], chil
               borderRadius: 'var(--semi-border-radius-medium)',
               padding: '8px 10px',
             } : undefined}>
-            {/* 节点名称 + 状态 Tag */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            {/* 节点名称 + 状态 Tag：放不下时标签整体折到下一行，不挤压节点名称 */}
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px 8px', marginBottom: 6 }}>
               <Typography.Text strong style={{ fontSize: 13 }}>{task.nodeName}</Typography.Text>
               {isMine && (
-                <Tag color="amber" size="small" style={{ flexShrink: 0 }}>待你处理</Tag>
+                <Tag color="amber" size="small">待你处理</Tag>
               )}
               {actionText && (
-                <Tag color={TASK_STATUS_MAP[task.status]?.color ?? 'grey'} size="small" style={{ flexShrink: 0 }}>
+                <Tag color={TASK_STATUS_MAP[task.status]?.color ?? 'grey'} size="small">
                   {actionText}
                 </Tag>
               )}
               {isRegenerated && (
-                <Tag color="orange" size="small" style={{ flexShrink: 0 }}>重新审批</Tag>
+                <Tag color="orange" size="small">重新审批</Tag>
               )}
               {task.signPosition && <Tag size="small">{WORKFLOW_SIGN_POSITION_LABELS[task.signPosition]}</Tag>}
-              {nodeProgress.has(task.id) && (
-                <Tag color="light-blue" size="small" style={{ flexShrink: 0 }}>{nodeProgress.get(task.id)}</Tag>
-              )}
               {duration && (
                 <Typography.Text
                   size="small"
@@ -197,6 +194,13 @@ export default function ApprovalTimeline({ tasks, approvalActivations = [], chil
                 </Typography.Text>
               )}
             </div>
+
+            {/* 会签计票是节点级汇总，单独成行，不与任务状态争抢标题行宽度 */}
+            {nodeProgress.has(task.id) && (
+              <div style={{ marginBottom: 6 }}>
+                <Tag color="light-blue" size="small" style={{ maxWidth: '100%' }}>{nodeProgress.get(task.id)}</Tag>
+              </div>
+            )}
 
             {/* 审批人 + 时间：姓名弹性省略，时间定长保单行不换行 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, marginBottom: task.comment ? 6 : 0 }}>
