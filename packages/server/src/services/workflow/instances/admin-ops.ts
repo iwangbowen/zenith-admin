@@ -1,7 +1,7 @@
 import { workflowNodeActivations, workflowApprovalSlots } from '../../../db/schema';
 import { loadApprovalActivation } from './approval-state';
 // ─── 管理员强制操作与令牌运维恢复（拆分自 workflow-instances.service.ts）───
-import { eq, and, asc, lte, inArray, gt } from 'drizzle-orm';
+import { eq, and, asc, lte, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
 import { workflowInstances, workflowTasks, workflowTokens, workflowDefinitions, workflowDelegations, users } from '../../../db/schema';
 import { tenantCondition } from '../../../lib/tenant';
@@ -19,6 +19,7 @@ import { emitMaterializedAdvanceEvents } from './lifecycle';
 import { mapInstance, mapTask } from './mapping';
 import { recordTaskTransfer, assertAssigneesNotActiveOnNode } from './transfers';
 import { advanceAndMaterialize, killInstanceTokens } from './materialize';
+import { laterActivationsWhere } from './activation-order';
 import { getInstanceDetail } from './queries';
 import { emitInstanceEvent, emitNodeEvent, emitTaskEvent, lockInstanceExpecting, requireVisibleInstance } from './shared';
 import { requireRow } from '../../../lib/db-assert';
@@ -155,8 +156,8 @@ export async function recallTask(taskId: number, comment?: string) {
   const activation = await loadApprovalActivation(tx, inst.id, requireRow(task.activationId, '该意见没有正式审批轮次，不可撤回', 409));
   const [freshTask] = await tx.select().from(workflowTasks).where(eq(workflowTasks.id, task.id)).limit(1);
   if (!freshTask || (freshTask.status !== 'approved' && freshTask.status !== 'rejected')) throw new HTTPException(409, { message: '任务状态已变化' });
-  const [entered] = await tx.select().from(workflowNodeActivations).where(eq(workflowNodeActivations.id, activation.id)).limit(1);
-  const later = await tx.select().from(workflowNodeActivations).where(and(eq(workflowNodeActivations.instanceId, inst.id), gt(workflowNodeActivations.createdAt, entered.createdAt)));
+  const later = await tx.select({ id: workflowNodeActivations.id }).from(workflowNodeActivations)
+    .where(laterActivationsWhere(inst.id, activation.id));
   const laterIds = later.map((entry) => entry.id);
   if (laterIds.length > 0) {
    const [actioned] = await tx.select({ id: workflowTasks.id }).from(workflowTasks).where(and(inArray(workflowTasks.activationId, laterIds), inArray(workflowTasks.status, ['approved', 'rejected']))).limit(1);
