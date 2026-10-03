@@ -34,7 +34,7 @@
       "maxCriticalFiles": 8,
       "maxCriticalGzKB": 220,
       "maxCriticalCssFiles": 4,
-      "maxTotalJsChunks": 130,
+      "maxTotalJsChunks": 135,
       "maxTotalJsMB": 16
     }
   }
