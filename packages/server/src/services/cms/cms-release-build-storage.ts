@@ -2,7 +2,9 @@ import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
 import { db, withDbExecutor, withoutDbExecutor } from '../../db';
 import type { DbTransaction } from '../../db/types';
+import logger from '../../lib/logger';
 import { cmsGenerationSchemaName, CMS_GENERATION_TABLES } from './cms-generation-storage.service';
+import { assertNoExternalCmsSchemaDependencies } from './cms-deployment-storage-state';
 import { withCmsGenerationContext } from './cms-generation-context';
 import { readCmsGenerationDelivery } from './cms-generation-delivery';
 import { cmsBuildDigest, type CmsBuildTarget, type CmsBuildContentDependencies } from './cms-release-build-artifacts';
@@ -36,6 +38,25 @@ export async function createCmsBuildStorage(tx: DbTransaction, siteId: number, i
   }
   // A derived artifact index, not a task queue. Its primary key is the deterministic render target.
   await tx.execute(sql.raw(`CREATE TABLE "${generation}".cms_build_targets (key text PRIMARY KEY, fingerprint varchar(64) NOT NULL, artifacts jsonb NOT NULL, completed_at timestamptz NOT NULL DEFAULT now())`));
+}
+
+/**
+ * Nothing reads the staging copy once its generation has gone live or been replaced. Failed builds keep it,
+ * because resuming re-reads the frozen runtime rows; retention removes any leftover with the generation.
+ */
+export async function dropCmsBuildStorage(generationId: number): Promise<void> {
+  const schema = cmsBuildSchema(generationId);
+  try {
+    await db.transaction(async (tx) => {
+      const [ownership] = await tx.execute<{ acquired: boolean }>(sql`select pg_try_advisory_xact_lock(hashtext('cms-generation-build'), ${generationId}) AS acquired`);
+      if (!ownership?.acquired) return;
+      await tx.execute(sql`select set_config('lock_timeout', '5s', true)`);
+      await assertNoExternalCmsSchemaDependencies(tx, [schema]);
+      await tx.execute(sql`drop schema if exists ${sql.identifier(schema)} cascade`);
+    });
+  } catch (error) {
+    logger.warn(`[CMS] 部署 ${generationId} 的构建暂存 schema 清理失败，将随保留策略回收`, error);
+  }
 }
 
 export async function withCmsBuildTransaction<T>(siteId: number, generationId: number, buildAt: Date, fn: (tx: DbTransaction) => Promise<T>, isolationLevel: 'repeatable read' | 'read committed' = 'repeatable read'): Promise<T> {

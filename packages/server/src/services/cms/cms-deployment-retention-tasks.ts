@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { and, desc, eq, exists, gt, sql } from 'drizzle-orm';
+import { and, desc, eq, exists, gt, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { BodyOf } from '@zenith/shared/core';
-import { CMS_DEFAULT_DEPLOYMENT_RETENTION, cmsDeploymentRetentionContract, cmsDeploymentRetentionReasons } from '@zenith/shared/cms';
+import { CMS_DEFAULT_DEPLOYMENT_RETENTION, CMS_RETAINED_VERSION_STATUSES, cmsDeploymentRetentionContract, cmsDeploymentRetentionReasons, isCmsPendingCandidate } from '@zenith/shared/cms';
 import { db } from '../../db';
 import type { DbTransaction } from '../../db/types';
 import { asyncTasks, cmsDeployments, cmsDeploymentRetentionPolicies, cmsDeploymentStorage, cmsReleases, cmsSites } from '../../db/schema';
@@ -13,6 +13,7 @@ import { enqueueAsyncTask, persistAsyncTask, persistSystemAsyncTask, registerTas
 import { acquireCmsSitePublishLock } from './cms-site-publish-lock.service';
 import { cmsGenerationSchemaName } from './cms-generation-storage.service';
 import { inspectCmsDeploymentDirectory, removeCmsDeploymentDirectory } from './cms-deployment-files';
+import { assertNoExternalCmsSchemaDependencies } from './cms-deployment-storage-state';
 import { assertCmsDeploymentCapacityAccess, CMS_DEPLOYMENT_CLEANUP_TASK, CMS_DEPLOYMENT_MEASURE_TASK, cmsDeploymentReferences, previewCmsDeploymentCleanup, readCmsDeploymentRetentionPolicy } from './cms-deployment-retention.service';
 
 async function ownTask(tx: DbTransaction, ctx: TaskRunContext) {
@@ -26,7 +27,8 @@ async function assertTaskAccess(ctx: TaskRunContext, siteId: number) {
 }
 async function assertUncancelled(ctx: TaskRunContext) { if (await ctx.isCancelRequested()) throw new TaskCancelledError('已停止剩余部署的回收；已完成步骤保留，可从断点继续'); }
 async function readDeployment(siteId: number, id: number, tx = db as typeof db | DbTransaction) {
-  const [row] = await tx.select({ deployment: { id: cmsDeployments.id, siteId: cmsDeployments.siteId, status: cmsDeployments.status, createdAt: cmsDeployments.createdAt, updatedAt: cmsDeployments.updatedAt, activatedAt: cmsDeployments.activatedAt }, storage: cmsDeploymentStorage, releaseStatus: cmsReleases.status,
+  const [row] = await tx.select({ deployment: { id: cmsDeployments.id, siteId: cmsDeployments.siteId, status: cmsDeployments.status, createdAt: cmsDeployments.createdAt, updatedAt: cmsDeployments.updatedAt, activatedAt: cmsDeployments.activatedAt }, storage: cmsDeploymentStorage,
+    release: { status: cmsReleases.status, deploymentId: cmsReleases.deploymentId, baseGenerationId: cmsReleases.baseGenerationId },
     siteCode: sql<string>`coalesce(${cmsDeploymentStorage.siteCode},nullif(${cmsDeployments.snapshot}->>'siteCode',''),${cmsSites.code})`,
   }).from(cmsDeployments).innerJoin(cmsReleases, eq(cmsReleases.id, cmsDeployments.releaseId)).innerJoin(cmsSites, eq(cmsSites.id, cmsDeployments.siteId)).leftJoin(cmsDeploymentStorage, eq(cmsDeploymentStorage.deploymentId, cmsDeployments.id)).where(buildWhere(eq(cmsDeployments.id, id), eq(cmsDeployments.siteId, siteId))).limit(1);
   return requireRow(row, '部署不存在或不属于所选站点');
@@ -34,9 +36,10 @@ async function readDeployment(siteId: number, id: number, tx = db as typeof db |
 async function cleanupReasons(tx: DbTransaction, siteId: number, id: number, ctx: TaskRunContext) {
   const row = await readDeployment(siteId, id, tx);
   const policy = await readCmsDeploymentRetentionPolicy(siteId, tx);
-  const { references, tasks } = await cmsDeploymentReferences(siteId, tx);
-  const recent = await tx.select({ id: cmsDeployments.id }).from(cmsDeployments).leftJoin(cmsDeploymentStorage, eq(cmsDeploymentStorage.deploymentId, cmsDeployments.id)).where(buildWhere(eq(cmsDeployments.siteId, siteId), sql`${cmsDeployments.status}<>'failed'`, sql`coalesce(${cmsDeploymentStorage.storageState},'available')='available'`)).orderBy(sql`coalesce(${cmsDeployments.activatedAt},${cmsDeployments.createdAt}) desc`, desc(cmsDeployments.id)).limit(policy.retainCount);
-  const reasons = cmsDeploymentRetentionReasons({ id, status: row.deployment.status, releaseStatus: row.releaseStatus, storageState: row.storage?.storageState ?? 'available', pinned: row.storage?.pinned ?? false,
+  const { references, tasks, activeGenerationId } = await cmsDeploymentReferences(siteId, tx);
+  const recent = await tx.select({ id: cmsDeployments.id }).from(cmsDeployments).leftJoin(cmsDeploymentStorage, eq(cmsDeploymentStorage.deploymentId, cmsDeployments.id)).where(buildWhere(eq(cmsDeployments.siteId, siteId), inArray(cmsDeployments.status, [...CMS_RETAINED_VERSION_STATUSES]), sql`coalesce(${cmsDeploymentStorage.storageState},'available')='available'`)).orderBy(sql`coalesce(${cmsDeployments.activatedAt},${cmsDeployments.createdAt}) desc`, desc(cmsDeployments.id)).limit(policy.retainCount);
+  const reasons = cmsDeploymentRetentionReasons({ id, status: row.deployment.status, releaseStatus: row.release.status, storageState: row.storage?.storageState ?? 'available', pinned: row.storage?.pinned ?? false,
+    pendingCandidate: isCmsPendingCandidate(id, row.release, activeGenerationId),
     ageFrom: (row.deployment.status === 'failed' ? row.deployment.updatedAt : row.deployment.activatedAt ?? row.deployment.createdAt).toISOString(),
     protectedBy: [...references.get(id) ?? [], ...(row.storage?.cleanupTaskId && row.storage.cleanupTaskId !== ctx.taskId && tasks.some(task => task.id === row.storage!.cleanupTaskId) ? ['另一回收任务正在处理'] : [])],
   }, policy, recent.some(item => item.id === id));
@@ -46,19 +49,6 @@ async function schemaBytes(tx: DbTransaction, id: number) {
   const names = [cmsGenerationSchemaName(id), `${cmsGenerationSchemaName(id)}_build`];
   const [row] = await tx.execute<{ bytes: number }>(sql`select coalesce(sum(pg_total_relation_size(c.oid)),0)::double precision as bytes from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in (${names[0]},${names[1]}) and c.relkind in ('r','m')`);
   return Number(row.bytes);
-}
-/** Never cascade into an unrelated schema, even if someone manually added a view on a retained generation. */
-async function assertNoExternalDependencies(tx: DbTransaction, names: string[]) {
-  const [dependency] = await tx.execute<{ identity: string }>(sql`select identified.identity from pg_depend d
-    join pg_class target on d.refclassid='pg_class'::regclass and target.oid=d.refobjid
-    join pg_namespace target_ns on target_ns.oid=target.relnamespace
-    left join pg_rewrite rewrite on d.classid='pg_rewrite'::regclass and rewrite.oid=d.objid
-    left join pg_class dependent on dependent.oid=rewrite.ev_class
-    left join pg_namespace dependent_ns on dependent_ns.oid=dependent.relnamespace
-    cross join lateral pg_identify_object(d.classid,d.objid,d.objsubid) identified
-    where target_ns.nspname in (${names[0]},${names[1]}) and coalesce(identified.schema,dependent_ns.nspname) is not null
-      and coalesce(identified.schema,dependent_ns.nspname) not in (${names[0]},${names[1]},'pg_catalog','pg_toast') limit 1`);
-  if (dependency) throw new Error(`部署仍被数据库对象引用，未回收：${dependency.identity}`);
 }
 
 export async function purgeCmsDeploymentStorage(siteId: number, id: number, ctx: TaskRunContext): Promise<string> {
@@ -73,7 +63,7 @@ export async function purgeCmsDeploymentStorage(siteId: number, id: number, ctx:
     if (reasons.length) return { reason: reasons.join('；') };
     const bytes = await schemaBytes(tx, id);
     const names = [cmsGenerationSchemaName(id), `${cmsGenerationSchemaName(id)}_build`];
-    await assertNoExternalDependencies(tx, names);
+    await assertNoExternalCmsSchemaDependencies(tx, names);
     await tx.insert(cmsDeploymentStorage).values({ deploymentId: id, siteCode: initial.siteCode, storageState: 'purging', cleanupTaskId: ctx.taskId, schemaBytes: bytes, fileBytes: files.bytes, fileCount: files.files, measuredAt: new Date() })
       .onConflictDoUpdate({ target: cmsDeploymentStorage.deploymentId, set: { siteCode: initial.siteCode, storageState: 'purging', cleanupTaskId: ctx.taskId, version: (row.storage?.version ?? 0) + 1, error: null, updatedAt: new Date() } });
     return { reason: null };
@@ -88,7 +78,7 @@ export async function purgeCmsDeploymentStorage(siteId: number, id: number, ctx:
         const [lock] = await tx.execute<{ acquired: boolean }>(sql`select pg_try_advisory_xact_lock(hashtext('cms-generation-build'),${id}) as acquired`);
         if (!lock.acquired) throw new Error('部署构建进程尚未退出，暂不回收');
         const names = [cmsGenerationSchemaName(id), `${cmsGenerationSchemaName(id)}_build`];
-        await assertNoExternalDependencies(tx, names);
+        await assertNoExternalCmsSchemaDependencies(tx, names);
         await tx.execute(sql`drop schema if exists ${sql.identifier(names[1])} cascade`);
         await tx.execute(sql`drop schema if exists ${sql.identifier(names[0])} cascade`);
         await tx.update(cmsDeploymentStorage).set({ schemaPurgedAt: new Date(), schemaBytes: 0 }).where(eq(cmsDeploymentStorage.deploymentId, id));

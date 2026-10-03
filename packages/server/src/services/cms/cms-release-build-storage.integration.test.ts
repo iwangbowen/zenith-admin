@@ -2,15 +2,16 @@ import { randomUUID } from 'node:crypto';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { eq, sql } from 'drizzle-orm';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { cmsCollectionDefinitionSchema } from '@zenith/shared/cms';
 import * as schema from '../../db/schema';
 import { withDbExecutor } from '../../db';
+import logger from '../../lib/logger';
 import { withCmsGenerationContext } from './cms-generation-context';
 import { createCmsGenerationStorage, cmsGenerationSchemaName, hasCmsGenerationTable, readCmsGenerationConfigurationRows, sealCmsGenerationStorage } from './cms-generation-storage.service';
 import { readPublicCmsCollection, resolveCmsCollection } from './cms-content-collections.service';
 import { inspectCmsReleaseReadiness } from './cms-release-readiness.service';
-import { cmsBuildSchema, createCmsBuildStorage, cmsBuildDependencyHashes } from './cms-release-build-storage';
+import { cmsBuildSchema, createCmsBuildStorage, cmsBuildDependencyHashes, dropCmsBuildStorage } from './cms-release-build-storage';
 
 const connection = process.env.TEST_DATABASE_URL;
 const client = connection ? postgres(connection, { max: 1, onnotice: () => undefined }) : null;
@@ -132,4 +133,33 @@ describe.skipIf(!connection)('CMS frozen release build inputs', () => {
       });
     } catch (error) { if (error !== rollback) throw error; }
   }, 90_000);
+  it('drops only the staging copy and never cascades into objects outside it', async () => {
+    const url = new URL(connection!);
+    if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.pathname !== '/zenith_review') throw new Error('Requires a migrated disposable local zenith_review database');
+    const testDb = drizzle(client!, { schema, casing: 'snake_case' });
+    const rollback = new Error('rollback staging drop fixtures');
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    try {
+      await testDb.transaction(async (tx) => withDbExecutor(tx, async () => {
+        const [site] = await tx.insert(schema.cmsSites).values({ name: 'Staging drop fixture', code: `qa-stage-${randomUUID().slice(0, 8)}` }).returning();
+        const [release] = await tx.insert(schema.cmsReleases).values({ siteId: site.id, name: 'Staging drop fixture' }).returning();
+        const [deployment] = await tx.insert(schema.cmsDeployments).values({ siteId: site.id, releaseId: release.id }).returning();
+        await createCmsGenerationStorage(tx, site.id, deployment.id);
+        await createCmsBuildStorage(tx, site.id, deployment.id);
+        const staging = cmsBuildSchema(deployment.id);
+        const present = async () => (await tx.execute<{ present: boolean }>(sql`select exists(select 1 from pg_namespace where nspname=${staging}) as present`))[0].present;
+        const external = sql.identifier(`qa_stage_dependency_${deployment.id}`);
+        await tx.execute(sql`create view public.${external} as select * from ${sql.identifier(staging)}.cms_comments`);
+        await dropCmsBuildStorage(deployment.id);
+        expect(await present()).toBe(true);
+        expect(warn).toHaveBeenCalledOnce();
+        await tx.execute(sql`drop view public.${external}`);
+        await dropCmsBuildStorage(deployment.id);
+        expect(await present()).toBe(false);
+        expect(await hasCmsGenerationTable(tx, deployment.id, 'cms_contents')).toBe(true);
+        throw rollback;
+      }));
+    } catch (error) { if (error !== rollback) throw error; }
+    finally { warn.mockRestore(); }
+  }, 60_000);
 });

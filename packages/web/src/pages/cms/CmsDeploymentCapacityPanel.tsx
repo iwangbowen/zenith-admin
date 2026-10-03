@@ -49,7 +49,7 @@ export default function CmsDeploymentCapacityPanel() {
       <Button disabled={!siteId} onClick={() => { invalidateCmsDeploymentRetention(qc); void taskState.refresh(); }}>刷新列表</Button>
     </Space>
     {summary.data ? <><StatGrid><StatCard title="保留部署" value={summary.data.retained} /><StatCard title="受保护部署" value={summary.data.protected} /><StatCard title="可回收部署" value={summary.data.eligible} /><StatCard title="已测量占用" value={formatBytes(summary.data.schemaBytes + summary.data.fileBytes)} /></StatGrid>
-      <Typography.Paragraph type="tertiary">当前策略：保留最近 {summary.data.policy.retainCount} 个版本或 {summary.data.policy.retainDays} 天内的部署；失败部署保留 {summary.data.policy.failedRetainDays} 天。自动回收{summary.data.policy.automatic ? '已启用' : '未启用'}。</Typography.Paragraph>
+      <Typography.Paragraph type="tertiary">当前策略：保留最近 {summary.data.policy.retainCount} 个上线版本或 {summary.data.policy.retainDays} 天内的部署；失败部署保留 {summary.data.policy.failedRetainDays} 天。自动回收{summary.data.policy.automatic ? '已启用' : '未启用'}。</Typography.Paragraph>
       {summary.data.unmeasured ? <Banner type="info" closeIcon={null} description={`还有 ${summary.data.unmeasured} 个部署尚未测量，占用合计仅包含已测量数据。点击“刷新容量”在后台计算。`} /> : null}</> : null}
     {summary.isError || list.isError ? <Banner type="danger" description={summary.error?.message ?? list.error?.message} /> : null}
     {tasks.map(task => <Space key={task.id} wrap style={{ marginBlock: 8 }}><Typography.Text>{task.title} #{task.id}</Typography.Text><AsyncTaskProgress task={task} />
@@ -67,7 +67,7 @@ export default function CmsDeploymentCapacityPanel() {
     ]} {...listTableProps(list, { rowKey: 'id', pagination: pagination.buildPagination, empty: siteId ? '当前站点尚无部署' : '请选择站点' })} />
     <AppModal title="部署存储保留策略" visible={!!policyEditor} onCancel={() => setPolicyEditor(null)} footer={<ModalFooter onCancel={() => setPolicyEditor(null)} onOk={() => policyForm.current?.submitForm()} okText="保存策略" loading={save.isPending} />}>
       {policyEditor ? <Form<BodyOf<typeof cmsDeploymentRetentionContract.savePolicy>> key={`${policyEditor.siteId}:${policyEditor.version}`} getFormApi={api => { policyForm.current = api; }} initValues={{ ...policyEditor, expectedVersion: policyEditor.version }} onSubmit={async values => { await save.mutateAsync({ params: { id: policyEditor.siteId }, body: values }); setPolicyEditor(null); }}>
-        <Form.InputNumber field="retainCount" label="至少保留最近版本数" min={1} max={1000} rules={[{ required: true }]} />
+        <Form.InputNumber field="retainCount" label="至少保留最近上线版本数" min={1} max={1000} rules={[{ required: true }]} />
         <Form.InputNumber field="retainDays" label="已完成部署保留天数" min={1} max={3650} rules={[{ required: true }]} />
         <Form.InputNumber field="failedRetainDays" label="失败部署保留天数" min={0} max={3650} rules={[{ required: true }]} />
         <Form.Switch field="automatic" label="每日自动回收符合策略的部署" />

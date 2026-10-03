@@ -21,6 +21,7 @@ import { acquireCmsSitePublishLock } from './cms-site-publish-lock.service';
 import { invalidateCmsSiteCaches } from './cms-cache.service';
 import { applyCmsRevisionProjection, loadCmsPublishableRevision, markCmsRevisionPublished, requireCmsWorkingCopy } from './cms-content-revisions.service';
 import { buildCmsReleaseCandidate, newCmsDeploymentBuildPlan } from './cms-release-build.service';
+import { dropCmsBuildStorage } from './cms-release-build-storage';
 import { cmsGenerationSchemaName, hashCmsDeploymentManifest, verifyCmsGenerationArtifacts, withCmsGenerationTransaction } from './cms-generation-storage.service';
 import { ensureSiteThemeCssAsset, renderSitePath } from './cms-render.service';
 import { stripCmsPreviewScripts } from './cms-preview';
@@ -248,7 +249,7 @@ export async function activateCmsRelease(id: number, expectedGenerationId: numbe
     const [locked] = await tx.select().from(cmsReleases).where(eq(cmsReleases.id, id)).for('update').limit(1);
     if (!locked?.deploymentId) throw new HTTPException(409, { message: '发布单尚未生成候选部署' });
     const current = await activeGeneration(locked.siteId, tx);
-    if (current === locked.deploymentId && locked.status === 'active') return { release: locked, webhooks: [], notifications: [], effects: [], cdnTaskId: null };
+    if (current === locked.deploymentId && locked.status === 'active') return { release: locked, webhooks: [], notifications: [], effects: [], cdnTaskId: null, previousGenerationId: null };
     if (current !== expectedGenerationId || (!rollback && current !== locked.baseGenerationId)) throw new HTTPException(409, { message: '公开代次已变化，本次激活没有覆盖其他发布' });
     const allowed = rollback ? ['active', 'superseded'] : ['ready', 'scheduled'];
     if (!allowed.includes(locked.status)) throw new HTTPException(409, { message: '发布单状态不允许激活' });
@@ -331,7 +332,7 @@ export async function activateCmsRelease(id: number, expectedGenerationId: numbe
     ] });
     const deliveryIds = [...webhooks, ...notifications, ...effects].flatMap((task) => task ? [task.id] : []).concat(delivery.taskId);
     await tx.update(cmsDeployments).set({ taskIds: [...new Set([...(deployment.taskIds ?? []), ...deliveryIds])] }).where(eq(cmsDeployments.id, deployment.id));
-    return { release: updated, webhooks, notifications, effects, cdnTaskId: delivery.taskId };
+    return { release: updated, webhooks, notifications, effects, cdnTaskId: delivery.taskId, previousGenerationId: current };
   });
   invalidateSiteCache();
   await invalidateCmsSiteCaches(release.siteId);
@@ -339,6 +340,7 @@ export async function activateCmsRelease(id: number, expectedGenerationId: numbe
   await Promise.all(result.notifications.map(enqueueCmsSubscriptionNotification));
   await Promise.all(result.effects.map((task) => enqueueAsyncTask(task.id).catch(() => undefined)));
   if (result.cdnTaskId) await enqueueAsyncTask(result.cdnTaskId).catch(() => undefined);
+  for (const generationId of new Set([result.release.deploymentId, result.previousGenerationId])) if (generationId) await dropCmsBuildStorage(generationId);
   return mapRelease(result.release);
 }
 

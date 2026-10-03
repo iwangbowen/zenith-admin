@@ -143,4 +143,38 @@ describe.skipIf(!connection)('CMS deployment storage PostgreSQL recovery', () =>
       }));
     } catch (error) { if (error !== rollback) throw error; }
   }, 60_000);
+  it('stops protecting candidates that can no longer go live', async () => {
+    const target = new URL(connection!);
+    if (!['localhost', '127.0.0.1', '[::1]'].includes(target.hostname) || target.pathname !== '/zenith_review') throw new Error('Requires disposable local zenith_review database');
+    const testDb = drizzle(client!, { schema, casing: 'snake_case' }); const rollback = new Error('rollback deployment candidate fixture');
+    const siteCode = `qa-candidates-${randomUUID().slice(0, 8)}`; const fixtureRoot = path.resolve(CMS_STATIC_ROOT, siteCode);
+    if (!isStrictlyWithin(CMS_STATIC_ROOT, fixtureRoot)) throw new Error('Fixture storage boundary rejected');
+    try {
+      await testDb.transaction(async tx => withDbExecutor(tx, async () => {
+        const [site] = await tx.insert(schema.cmsSites).values({ name: 'QA candidates', code: siteCode }).returning();
+        const deploy = async (releaseStatus: typeof schema.cmsReleases.$inferInsert.status, status: typeof schema.cmsDeployments.$inferInsert.status, baseGenerationId: number | null) => {
+          const [release] = await tx.insert(schema.cmsReleases).values({ siteId: site.id, name: `QA ${releaseStatus} ${status}`, status: releaseStatus, baseGenerationId }).returning();
+          const [deployment] = await tx.insert(schema.cmsDeployments).values({ siteId: site.id, releaseId: release.id, status, createdAt: new Date(Date.now() - 60 * 86400000) }).returning();
+          await tx.update(schema.cmsReleases).set({ deploymentId: deployment.id }).where(eq(schema.cmsReleases.id, release.id));
+          return deployment.id;
+        };
+        const retired = await deploy('superseded', 'retired', null);
+        const active = await deploy('active', 'active', retired);
+        await tx.insert(schema.cmsSiteGenerations).values({ siteId: site.id, activeGenerationId: active });
+        const stale = await deploy('ready', 'ready', retired);
+        const cancelled = await deploy('cancelled', 'building', active);
+        const pending = await deploy('ready', 'ready', active);
+        const preview = await previewCmsDeploymentCleanup(site.id, { skipAccess: true });
+        expect(preview.candidates.map(row => row.id).sort((a, b) => a - b)).toEqual([stale, cancelled]);
+        const directory = cmsDeploymentDirectory(siteCode, stale); await fs.mkdir(directory, { recursive: true }); await fs.writeFile(path.join(directory, 'index.html'), 'stale candidate');
+        const [task] = await tx.insert(schema.asyncTasks).values({ taskType: 'cms-deployment-cleanup', title: 'QA candidate cleanup', status: 'running', retryDelayMs: 1000, payload: { siteId: site.id, deploymentIds: [pending, stale] } }).returning();
+        const ctx: TaskRunContext = { taskId: task.id, dispatchToken: task.dispatchToken, payload: task.payload, checkpoint: null, attempt: 1, progress: async () => ({ cancelRequested: false }), reportItems: async () => undefined, isCancelRequested: async () => false };
+        expect(await purgeCmsDeploymentStorage(site.id, pending, ctx)).toContain('待激活候选部署');
+        expect(await purgeCmsDeploymentStorage(site.id, stale, ctx)).toContain('审计记录保留');
+        await expect(fs.stat(directory)).rejects.toMatchObject({ code: 'ENOENT' });
+        throw rollback;
+      }));
+    } catch (error) { if (error !== rollback) throw error; }
+    finally { await fs.rm(fixtureRoot, { recursive: true, force: true }); }
+  }, 60_000);
 });

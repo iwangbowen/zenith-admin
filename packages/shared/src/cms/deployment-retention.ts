@@ -11,20 +11,34 @@ export const CMS_DEFAULT_DEPLOYMENT_RETENTION: CmsDeploymentRetentionRules = { r
 export type CmsDeploymentRetentionFacts = {
   id: number; status: typeof CMS_DEPLOYMENT_STATUSES[number]; releaseStatus: typeof CMS_RELEASE_STATUSES[number]; pinned: boolean;
   storageState: typeof CMS_DEPLOYMENT_STORAGE_STATES[number]; ageFrom: string; protectedBy: string[];
+  /** See isCmsPendingCandidate: false once the candidate can no longer be activated as-is. */
+  pendingCandidate: boolean;
 };
-/** Keep recent count OR recent age; incomplete, active and referenced generations always win over retention rules. */
+/** Only versions that have been online are rollback targets, so only they occupy the "recent N" slots. */
+export const CMS_RETAINED_VERSION_STATUSES = ['active', 'retired'] as const satisfies readonly (typeof CMS_DEPLOYMENT_STATUSES[number])[];
+/**
+ * Activation requires the release to still target this deployment and its base to be the live generation;
+ * a cancelled, re-targeted or stale-base candidate can never go online and is retained only by count/age rules.
+ */
+export function isCmsPendingCandidate(deploymentId: number, release: { status: typeof CMS_RELEASE_STATUSES[number]; deploymentId: number | null; baseGenerationId: number | null }, activeGenerationId: number | null): boolean {
+  if (release.deploymentId !== deploymentId) return false;
+  if (release.status === 'building') return true;
+  return (release.status === 'ready' || release.status === 'scheduled') && release.baseGenerationId === activeGenerationId;
+}
+/** Keep recent count OR recent age; active, pending and referenced generations always win over retention rules. */
 export function cmsDeploymentRetentionDecisions(rows: CmsDeploymentRetentionFacts[], policy: CmsDeploymentRetentionRules, now = new Date()): Map<number, string[]> {
-  const recent = new Set(rows.filter(row => row.status !== 'failed' && row.storageState === 'available').sort((a, b) => Date.parse(b.ageFrom) - Date.parse(a.ageFrom) || b.id - a.id).slice(0, policy.retainCount).map(row => row.id));
+  const versions: readonly string[] = CMS_RETAINED_VERSION_STATUSES;
+  const recent = new Set(rows.filter(row => versions.includes(row.status) && row.storageState === 'available').sort((a, b) => Date.parse(b.ageFrom) - Date.parse(a.ageFrom) || b.id - a.id).slice(0, policy.retainCount).map(row => row.id));
   return new Map(rows.map(row => [row.id, cmsDeploymentRetentionReasons(row, policy, recent.has(row.id), now)]));
 }
 export function cmsDeploymentRetentionReasons(row: CmsDeploymentRetentionFacts, policy: CmsDeploymentRetentionRules, retainedByCount: boolean, now = new Date()): string[] {
     const reasons = [...row.protectedBy];
     if (row.storageState === 'purged') reasons.push('存储已回收');
     if (row.pinned) reasons.push('已设为重要版本');
-    if (['active', 'ready', 'building'].includes(row.status)) reasons.push(row.status === 'active' ? '当前在线部署' : row.status === 'ready' ? '待激活候选部署' : '正在构建');
-    if (['building', 'ready', 'scheduled'].includes(row.releaseStatus)) reasons.push('发布单仍在构建或等待激活');
+    if (row.status === 'active') reasons.push('当前在线部署');
+    else if (row.pendingCandidate) reasons.push(row.releaseStatus === 'building' ? '正在构建' : '待激活候选部署');
     if (row.storageState === 'available') {
-      if (row.status !== 'failed' && retainedByCount) reasons.push(`保留最近 ${policy.retainCount} 个版本`);
+      if (retainedByCount) reasons.push(`保留最近 ${policy.retainCount} 个上线版本`);
       const days = row.status === 'failed' ? policy.failedRetainDays : policy.retainDays;
       if (Date.parse(row.ageFrom) + days * 86400000 > now.getTime()) reasons.push(`仍在 ${days} 天保留期内`);
     }

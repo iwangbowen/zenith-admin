@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { desc, eq, inArray, like, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { BodyOf, QueryOutputOf } from '@zenith/shared/core';
-import { CMS_DEFAULT_DEPLOYMENT_RETENTION, cmsDeploymentRetentionContract, cmsDeploymentRetentionDecisions, cmsTaskDeploymentReferences, type CmsDeploymentCapacityRow, type CmsDeploymentRetentionPolicy } from '@zenith/shared/cms';
+import { CMS_DEFAULT_DEPLOYMENT_RETENTION, cmsDeploymentRetentionContract, cmsDeploymentRetentionDecisions, cmsTaskDeploymentReferences, isCmsPendingCandidate, type CmsDeploymentCapacityRow, type CmsDeploymentRetentionPolicy } from '@zenith/shared/cms';
 import { db, readSnapshot } from '../../db';
 import type { DbExecutor } from '../../db/types';
 import { asyncTasks, cmsDeployments, cmsDeploymentStorage, cmsDeploymentRetentionPolicies, cmsReleases, cmsSiteGenerations } from '../../db/schema';
@@ -39,20 +39,22 @@ export async function cmsDeploymentReferences(siteId: number, executor: DbExecut
       for (const generation of generations) protect(generation.id, `站点交付任务 #${task.id} 尚未完成`);
     }
   }
-  return { references, tasks };
+  return { references, tasks, activeGenerationId: pointer?.activeGenerationId ?? null };
 }
 
 /** Only compact identity/state facts are read across the site; manifests are never parsed in online queries. */
 async function capacityContext(siteId: number, executor: DbExecutor, ownCleanupTaskId?: number) {
   const rows = await executor.select({ id: cmsDeployments.id, status: cmsDeployments.status, releaseStatus: cmsReleases.status,
+    releaseDeploymentId: cmsReleases.deploymentId, releaseBaseGenerationId: cmsReleases.baseGenerationId,
     createdAt: cmsDeployments.createdAt, updatedAt: cmsDeployments.updatedAt, activatedAt: cmsDeployments.activatedAt,
     pinned: cmsDeploymentStorage.pinned, storageState: cmsDeploymentStorage.storageState, cleanupTaskId: cmsDeploymentStorage.cleanupTaskId,
     version: cmsDeploymentStorage.version, measuredAt: cmsDeploymentStorage.measuredAt,
   }).from(cmsDeployments).innerJoin(cmsReleases, eq(cmsReleases.id, cmsDeployments.releaseId)).leftJoin(cmsDeploymentStorage, eq(cmsDeploymentStorage.deploymentId, cmsDeployments.id)).where(eq(cmsDeployments.siteId, siteId)).orderBy(desc(cmsDeployments.id));
-  const { references, tasks } = await cmsDeploymentReferences(siteId, executor);
+  const { references, tasks, activeGenerationId } = await cmsDeploymentReferences(siteId, executor);
   const policy = await readCmsDeploymentRetentionPolicy(siteId, executor);
   const facts = rows.map(row => ({ id: row.id, status: row.status, releaseStatus: row.releaseStatus,
     pinned: row.pinned ?? false, storageState: row.storageState ?? 'available' as const,
+    pendingCandidate: isCmsPendingCandidate(row.id, { status: row.releaseStatus, deploymentId: row.releaseDeploymentId, baseGenerationId: row.releaseBaseGenerationId }, activeGenerationId),
     ageFrom: (row.status === 'failed' ? row.updatedAt : row.activatedAt ?? row.createdAt).toISOString(),
     protectedBy: [...references.get(row.id) ?? [], ...(row.cleanupTaskId && row.cleanupTaskId !== ownCleanupTaskId && tasks.some(task => task.id === row.cleanupTaskId) ? [`回收任务 #${row.cleanupTaskId} 正在执行`] : [])],
   }));

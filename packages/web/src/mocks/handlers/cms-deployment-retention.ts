@@ -1,4 +1,4 @@
-import { CMS_DEFAULT_DEPLOYMENT_RETENTION, cmsDeploymentRetentionContract, cmsDeploymentRetentionDecisions, cmsTaskDeploymentReferences, type CmsDeploymentCapacityRow, type CmsDeploymentRetentionPolicy } from '@zenith/shared/cms';
+import { CMS_DEFAULT_DEPLOYMENT_RETENTION, cmsDeploymentRetentionContract, cmsDeploymentRetentionDecisions, cmsTaskDeploymentReferences, isCmsPendingCandidate, type CmsDeploymentCapacityRow, type CmsDeploymentRetentionPolicy } from '@zenith/shared/cms';
 import { mock, MockHttpError } from '../utils/contract';
 import { requireItem } from '../utils/crud';
 import { conflict } from '../utils/handlers';
@@ -16,7 +16,7 @@ function rows(siteId: number): CmsDeploymentCapacityRow[] {
   const references = new Map<number, string[]>(); const protect = (id: number | null, reason: string) => { if (id) references.set(id, [...references.get(id) ?? [], reason]); };
   protect(context.activeId, '站点当前生效版本'); context.pendingBases.forEach(release => protect(release.base, `发布单 #${release.id} 的构建基础`));
   for (const task of getMockActiveAsyncTasks()) if (!['cms-deployment-cleanup', 'cms-deployment-measure'].includes(task.taskType)) for (const id of cmsTaskDeploymentReferences(task.payload)) protect(id, `执行中的任务 #${task.id} 引用`);
-  const decisions = cmsDeploymentRetentionDecisions(context.records.map(({ deployment, release }) => ({ id: deployment.id, status: deployment.status, releaseStatus: release.status, storageState: deployment.storageState, pinned: storage.get(deployment.id)?.pinned ?? false, ageFrom: deployment.activatedAt ?? deployment.createdAt, protectedBy: references.get(deployment.id) ?? [] })), rules);
+  const decisions = cmsDeploymentRetentionDecisions(context.records.map(({ deployment, release }) => ({ id: deployment.id, status: deployment.status, releaseStatus: release.status, storageState: deployment.storageState, pinned: storage.get(deployment.id)?.pinned ?? false, ageFrom: deployment.activatedAt ?? deployment.createdAt, protectedBy: references.get(deployment.id) ?? [], pendingCandidate: isCmsPendingCandidate(deployment.id, release, context.activeId) })), rules);
   return context.records.map(({ deployment, release }) => ({ id: deployment.id, siteId, releaseId: release.id, releaseName: release.name, releaseStatus: release.status, status: deployment.status, storageState: deployment.storageState,
     ...storage.get(deployment.id) ?? emptyStorage(), createdAt: deployment.createdAt, activatedAt: deployment.activatedAt, protectedReasons: decisions.get(deployment.id)!, eligible: decisions.get(deployment.id)!.length === 0,
   })).sort((a, b) => b.id - a.id);
