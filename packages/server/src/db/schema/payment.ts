@@ -265,7 +265,11 @@ export const paymentEvents = pgTable('payment_events', {
   tenantId: tenantIdColumn(),
   createdAt: timestamp().defaultNow().notNull(),
   processedAt: timestamp({ withTimezone: true }),
-}, (t) => [index('payment_events_tenant_idx').on(t.tenantId), index('payment_events_status_idx').on(t.status)]);
+}, (t) => [
+  index('payment_events_tenant_idx').on(t.tenantId), index('payment_events_status_idx').on(t.status),
+  index('payment_events_status_created_idx').on(t.status, t.createdAt),
+  index('payment_events_status_processed_idx').on(t.status, t.processedAt),
+]);
 
 export type PaymentEventRow = typeof paymentEvents.$inferSelect;
 

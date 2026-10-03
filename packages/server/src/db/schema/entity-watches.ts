@@ -27,6 +27,6 @@ export const entityWatchEvents = pgTable('entity_watch_events', {
   nextAttemptAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   attempts: integer().notNull().default(0),
   lastError: varchar({ length: 500 }),
-}, (t) => [index('entity_watch_events_due_idx').on(t.nextAttemptAt, t.claimedAt)]);
+}, (t) => [index('entity_watch_events_due_idx').on(t.nextAttemptAt, t.claimedAt), index('entity_watch_events_claimed_idx').on(t.claimedAt)]);
 
 export type EntityWatchRow = typeof entityWatches.$inferSelect;

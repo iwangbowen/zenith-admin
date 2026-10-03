@@ -1,4 +1,4 @@
-import { and, eq, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, gte, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { cmsTelemetryAdminContract, cmsTelemetryDeliverySchema } from '@zenith/shared/cms';
 import type { QueryOutputOf } from '@zenith/shared/core';
@@ -9,6 +9,52 @@ import { pickEntity } from '../../lib/entity-map';
 import { requireRow } from '../../lib/db-assert';
 import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 import { assertAllCmsSiteChannelsAccess } from './cms-channels.service';
+import { formatNullableDateTime } from '../../lib/datetime';
+import type { JobStuckItem } from '@zenith/shared/platform';
+import type { JobSourceRawSummary } from '../../lib/job-monitor/registry';
+
+export function stuckCmsTelemetryOutboxCondition(asOf = new Date()) {
+  return and(isNull(cmsTelemetryOutbox.deliveredAt), isNull(cmsTelemetryOutbox.deadLetterAt),
+    lt(cmsTelemetryOutbox.leaseExpiresAt, new Date(asOf.getTime() - 60_000)));
+}
+
+/** 供平台作业监控采集全部站点，独立于受单站点权限约束的运营查询。 */
+export async function getCmsTelemetryOutboxHealth(): Promise<JobSourceRawSummary> {
+  const now = new Date();
+  const since = new Date(now.getTime() - 86_400_000);
+  const hour = new Date(now.getTime() - 3_600_000);
+  const unfinished = and(isNull(cmsTelemetryOutbox.deliveredAt), isNull(cmsTelemetryOutbox.deadLetterAt));
+  const due = and(unfinished, lte(cmsTelemetryOutbox.nextAttemptAt, now), or(isNull(cmsTelemetryOutbox.leaseExpiresAt), lte(cmsTelemetryOutbox.leaseExpiresAt, now)));
+  const [row] = await db.select({
+    pending: sql<number>`count(*) filter (where ${due})::int`,
+    running: sql<number>`count(*) filter (where ${unfinished} and ${cmsTelemetryOutbox.leaseExpiresAt} > ${now})::int`,
+    stuck: sql<number>`count(*) filter (where ${stuckCmsTelemetryOutboxCondition(now)})::int`,
+    dead: sql<number>`count(*) filter (where ${cmsTelemetryOutbox.deliveredAt} is null and ${cmsTelemetryOutbox.deadLetterAt} is not null)::int`,
+    failed24h: sql<number>`count(*) filter (where ${cmsTelemetryOutbox.deadLetterAt} >= ${since})::int`,
+    succeeded24h: sql<number>`count(*) filter (where ${cmsTelemetryOutbox.deliveredAt} >= ${since})::int`,
+    failed1h: sql<number>`count(*) filter (where ${cmsTelemetryOutbox.deadLetterAt} >= ${hour})::int`,
+    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${now}::timestamptz - min(${cmsTelemetryOutbox.nextAttemptAt}) filter (where ${due}))))::int`,
+  }).from(cmsTelemetryOutbox).where(or(isNull(cmsTelemetryOutbox.deliveredAt), gte(cmsTelemetryOutbox.deliveredAt, since)));
+  return {
+    counts: { pending: row?.pending ?? 0, running: row?.running ?? 0, stuck: row?.stuck ?? 0, dead: row?.dead ?? 0, failed24h: row?.failed24h ?? 0, succeeded24h: row?.succeeded24h ?? 0 },
+    oldestPendingAgeSec: row?.oldestPendingAgeSec ?? null, failed1h: row?.failed1h ?? 0, issues: [],
+  };
+}
+
+export async function listStuckCmsTelemetryOutbox(limit: number): Promise<JobStuckItem[]> {
+  const now = new Date();
+  const rows = await db.select({ id: cmsTelemetryOutbox.id, siteId: cmsTelemetryOutbox.siteId,
+    lastAttemptAt: cmsTelemetryOutbox.lastAttemptAt, leaseExpiresAt: cmsTelemetryOutbox.leaseExpiresAt,
+    lastError: cmsTelemetryOutbox.lastError,
+  }).from(cmsTelemetryOutbox).where(stuckCmsTelemetryOutboxCondition(now))
+    .orderBy(asc(cmsTelemetryOutbox.leaseExpiresAt), asc(cmsTelemetryOutbox.id)).limit(limit);
+  return rows.map(row => ({
+    source: 'cms-telemetry-outbox', refId: String(row.id), title: `站点 #${row.siteId} 转化投递`, status: 'lease-expired',
+    startedAt: formatNullableDateTime(row.lastAttemptAt), lastSeenAt: formatNullableDateTime(row.lastAttemptAt),
+    ageSec: row.lastAttemptAt ? Math.max(0, Math.floor((now.getTime() - row.lastAttemptAt.getTime()) / 1000)) : 0,
+    nodeId: null, detail: row.lastError ?? '投递租约到期后仍未被回收', drillDown: null,
+  }));
+}
 
 async function assertDeliveryAccess(siteId: number) {
   await ensureCmsSiteExists(siteId); await assertSiteAccess(siteId); await assertAllCmsSiteChannelsAccess(siteId);

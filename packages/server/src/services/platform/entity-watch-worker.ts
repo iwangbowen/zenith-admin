@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, exists, gt, isNull, lt, lte, or, sql } from 'drizzle-orm';
+import { and, asc, eq, exists, gt, gte, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import { ENTITY_TIMELINE_EVENT_LABELS, isWatchableDomainEvent } from '@zenith/shared/platform';
 import { db } from '../../db';
 import type { DbTransaction } from '../../db/types';
@@ -8,9 +8,49 @@ import { exactTenantCondition } from '../../lib/tenant';
 import logger from '../../lib/logger';
 import { authorizeWatchedEvent, getCurrentWatch } from './entity-watch-access';
 import { notifyWithin } from '../messaging/notification-outbox.service';
+import { formatNullableDateTime } from '../../lib/datetime';
+import type { JobStuckItem } from '@zenith/shared/platform';
+import type { JobSourceRawSummary } from '../../lib/job-monitor/registry';
 
 const BATCH_SIZE = 20;
 const LEASE_MS = 120_000;
+
+export function stuckEntityWatchEventCondition(asOf = new Date()) {
+  return lt(entityWatchEvents.claimedAt, new Date(asOf.getTime() - 2 * LEASE_MS));
+}
+
+/** 已完成关注事件从 outbox 删除；仅统计存量投递，不伪造成功/失败历史。 */
+export async function getEntityWatchDeliveryHealth(): Promise<JobSourceRawSummary> {
+  const now = new Date();
+  const leaseCutoff = new Date(now.getTime() - LEASE_MS);
+  const due = and(lte(entityWatchEvents.nextAttemptAt, now), or(isNull(entityWatchEvents.claimedAt), lt(entityWatchEvents.claimedAt, leaseCutoff)));
+  const [row] = await db.select({
+    pending: sql<number>`count(*) filter (where ${due})::int`,
+    running: sql<number>`count(*) filter (where ${entityWatchEvents.claimedAt} >= ${leaseCutoff})::int`,
+    stuck: sql<number>`count(*) filter (where ${stuckEntityWatchEventCondition(now)})::int`,
+    repeatedFailures: sql<number>`count(*) filter (where ${isNotNull(entityWatchEvents.lastError)} and ${gte(entityWatchEvents.attempts, 5)})::int`,
+    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${now}::timestamptz - min(${entityWatchEvents.nextAttemptAt}) filter (where ${due}))))::int`,
+  }).from(entityWatchEvents);
+  return {
+    counts: { pending: row?.pending ?? 0, running: row?.running ?? 0, stuck: row?.stuck ?? 0, dead: null, failed24h: 0, succeeded24h: 0 },
+    oldestPendingAgeSec: row?.oldestPendingAgeSec ?? null, failed1h: 0,
+    issues: row?.repeatedFailures ? [{ level: 'warn', message: `${row.repeatedFailures} 个对象关注事件已连续尝试至少 5 次，仍在自动重试` }] : [],
+  };
+}
+
+export async function listStuckEntityWatchEvents(limit: number): Promise<JobStuckItem[]> {
+  const now = new Date();
+  const rows = await db.select({ eventId: entityWatchEvents.eventId, eventType: domainEvents.eventType,
+    claimedAt: entityWatchEvents.claimedAt, lastError: entityWatchEvents.lastError, attempts: entityWatchEvents.attempts,
+  }).from(entityWatchEvents).leftJoin(domainEvents, eq(domainEvents.id, entityWatchEvents.eventId))
+    .where(stuckEntityWatchEventCondition(now)).orderBy(asc(entityWatchEvents.claimedAt), asc(entityWatchEvents.eventId)).limit(limit);
+  return rows.map(row => ({
+    source: 'entity-watch-delivery', refId: String(row.eventId), title: row.eventType ?? `对象关注事件 #${row.eventId}`, status: 'claimed',
+    startedAt: formatNullableDateTime(row.claimedAt), lastSeenAt: formatNullableDateTime(row.claimedAt),
+    ageSec: row.claimedAt ? Math.max(0, Math.floor((now.getTime() - row.claimedAt.getTime()) / 1000)) : 0,
+    nodeId: null, detail: row.lastError ?? `已尝试 ${row.attempts} 次；完成后自动删除投递记录`, drillDown: null,
+  }));
+}
 
 export function matchingWatchCondition(event: typeof domainEvents.$inferSelect) {
   return and(exactTenantCondition(entityWatches.tenantId, event.tenantId), lte(entityWatches.createdAt, event.occurredAt), or(

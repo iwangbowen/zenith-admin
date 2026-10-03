@@ -1,10 +1,11 @@
 import { directorySyncContract, directorySyncSourceContract, type DirectorySyncSource } from '@zenith/shared/identity';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem, removeByIds } from '@/mocks/utils/crud';
-import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
 import { mockDateTime } from '@/mocks/utils/date';
 import { createImmediateMockTask } from './async-tasks';
 import { filterByKeyword } from '@/mocks/utils/filter';
+import { isDirectorySyncRunStuck } from '@/utils/stuck-jobs';
 import {
   mockDirectorySyncSources, getNextDirectorySyncSourceId,
   mockDirectorySyncRuns, mockDirectorySyncRunItems, mockDirectorySyncConflicts,
@@ -157,6 +158,20 @@ export const directorySyncHandlers = [
       maxAttempts: 1,
     });
     return ok(task, '重试任务已提交');
+  }),
+
+  mock(directorySyncContract.markRunFailed, ({ params, ok }) => {
+    const run = requireItem(mockDirectorySyncRuns, params.id, '同步记录不存在', { status: 404 });
+    if (!isDirectorySyncRunStuck(run)) return conflict('仅可标记运行超过一小时且尚未结束的同步记录', { status: 409 });
+    const now = mockDateTime();
+    const message = '管理员手动标记卡死同步为失败';
+    Object.assign(run, { status: 'failed', message, errorMessage: message, finishedAt: now });
+    const source = findSource(run.sourceId);
+    if (source && !run.dryRun) {
+      source.lastRunAt = run.startedAt;
+      source.lastRunStatus = 'failed';
+    }
+    return ok(run, '卡死同步已标记为失败');
   }),
 
   // ─── 冲突处理 ───────────────────────────────────────────────────────────

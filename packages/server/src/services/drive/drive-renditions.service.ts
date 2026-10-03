@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, isNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { driveNodes, driveNodeRenditions, driveNodeTexts, type DriveNodeRow } from '../../db/schema';
 import { readStoredFile } from '../../lib/file-storage';
@@ -7,6 +7,9 @@ import { getRestrictedFileForRead, saveGeneratedManagedFile } from '../files/fil
 import { releaseManagedFiles, retainManagedFiles } from '../files/file-gc.service';
 import { getDriveSettings } from './drive-settings.service';
 import { sharp } from '../../lib/sharp-loader';
+import type { JobStuckItem } from '@zenith/shared/platform';
+import type { JobSourceRawSummary } from '../../lib/job-monitor/registry';
+import { formatDateTime } from '../../lib/datetime';
 
 const QUEUE = 'drive-renditions';
 const THUMBNAIL_MAX_BYTES = 40 * 1024 * 1024;
@@ -17,6 +20,40 @@ const TEXT_MIMES = new Set(['application/json', 'application/xml', 'application/
 const TEXT_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'xml', 'yaml', 'yml', 'log', 'ini', 'conf', 'cfg', 'js', 'ts', 'tsx', 'jsx', 'py', 'java', 'go', 'rs', 'c', 'h', 'cpp', 'cs', 'sql', 'sh', 'bat', 'ps1', 'html', 'htm', 'css', 'scss', 'less', 'vue', 'toml', 'properties']);
 
 type RenditionJob = { nodeId: number; version: number; kind: 'thumbnail' | 'text' };
+
+export function stuckDriveRenditionCondition(asOf = new Date()) {
+  return and(eq(driveNodeRenditions.status, 'pending'), lt(driveNodeRenditions.updatedAt, new Date(asOf.getTime() - 15 * 60_000)));
+}
+
+/** 执行队列由 scheduler-queue 统计；这里仅补充超过多个补投周期未推进的产物。 */
+export async function getDriveRenditionHealth(): Promise<JobSourceRawSummary> {
+  const now = new Date();
+  const since = new Date(now.getTime() - 86_400_000);
+  const hour = new Date(now.getTime() - 3_600_000);
+  const [row] = await db.select({
+    stuck: sql<number>`count(*) filter (where ${stuckDriveRenditionCondition(now)})::int`,
+    failed24h: sql<number>`count(*) filter (where ${driveNodeRenditions.status} = 'failed' and ${driveNodeRenditions.updatedAt} >= ${since})::int`,
+    succeeded24h: sql<number>`count(*) filter (where ${driveNodeRenditions.status} = 'ready' and ${driveNodeRenditions.updatedAt} >= ${since})::int`,
+    failed1h: sql<number>`count(*) filter (where ${driveNodeRenditions.status} = 'failed' and ${driveNodeRenditions.updatedAt} >= ${hour})::int`,
+  }).from(driveNodeRenditions).where(or(eq(driveNodeRenditions.status, 'pending'), gte(driveNodeRenditions.updatedAt, since)));
+  return {
+    counts: { pending: 0, running: 0, stuck: row?.stuck ?? 0, dead: null, failed24h: row?.failed24h ?? 0, succeeded24h: row?.succeeded24h ?? 0 },
+    oldestPendingAgeSec: null, failed1h: row?.failed1h ?? 0, issues: [],
+  };
+}
+
+export async function listStuckDriveRenditions(limit: number): Promise<JobStuckItem[]> {
+  const now = new Date();
+  const rows = await db.select({ id: driveNodeRenditions.id, nodeId: driveNodeRenditions.nodeId, kind: driveNodeRenditions.kind,
+    createdAt: driveNodeRenditions.createdAt, updatedAt: driveNodeRenditions.updatedAt, error: driveNodeRenditions.error,
+  }).from(driveNodeRenditions).where(stuckDriveRenditionCondition(now)).orderBy(asc(driveNodeRenditions.updatedAt), asc(driveNodeRenditions.id)).limit(limit);
+  return rows.map(row => ({
+    source: 'drive-rendition', refId: String(row.id), title: `网盘节点 #${row.nodeId} / ${row.kind}`, status: 'pending',
+    startedAt: formatDateTime(row.createdAt), lastSeenAt: formatDateTime(row.updatedAt),
+    ageSec: Math.max(0, Math.floor((now.getTime() - row.updatedAt.getTime()) / 1000)),
+    nodeId: null, detail: row.error ?? '产物状态超过三个补投周期仍未推进', drillDown: null,
+  }));
+}
 
 export function isThumbnailCandidate(node: Pick<DriveNodeRow, 'type' | 'mimeType' | 'size'>): boolean {
   return node.type === 'file' && IMAGE_MIMES.has(node.mimeType?.toLowerCase() ?? '') && node.size > 0 && node.size <= THUMBNAIL_MAX_BYTES;

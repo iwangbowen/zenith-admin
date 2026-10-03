@@ -4,7 +4,7 @@ import { type SQL } from 'drizzle-orm';
 import { jobStuckItemSchema } from '@zenith/shared/platform';
 
 const { select, execute, getQueueDepths } = vi.hoisted(() => ({ select: vi.fn(), execute: vi.fn(), getQueueDepths: vi.fn() }));
-vi.mock('../../db', () => ({ db: { select, execute } }));
+vi.mock('../../db', () => ({ db: { select, execute }, readSnapshot: (fn: (tx: unknown) => unknown) => fn({ select, execute }) }));
 vi.mock('../../lib/pg-boss-scheduler', async (importOriginal) => ({
   ...await importOriginal<Record<string, unknown>>(), getQueueDepths,
 }));
@@ -20,7 +20,7 @@ function query(fragment: SQL) { return dialect.sqlToQuery(fragment); }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function chain(rows: unknown[]): any {
   const result: Record<string, unknown> = {};
-  for (const method of ['from', 'where', 'innerJoin', 'leftJoin', 'orderBy', 'limit']) result[method] = vi.fn(() => result);
+  for (const method of ['from', 'where', 'innerJoin', 'leftJoin', 'orderBy', 'limit', 'groupBy']) result[method] = vi.fn(() => result);
   result.then = (resolve: (value: unknown) => unknown) => Promise.resolve(rows).then(resolve);
   return result;
 }
@@ -39,7 +39,8 @@ describe('core job source health semantics', () => {
   });
 
   it('task backlog excludes future nextRunAt and failures use completedAt rather than submission time', async () => {
-    select.mockReturnValue(chain([{ pending: 2, running: 1, stuck: 0, failed24h: 3, succeeded24h: 7, failed1h: 1, oldestPendingAgeSec: 90 }]));
+    select.mockReturnValueOnce(chain([{ pending: 2, running: 1, stuck: 0, failed24h: 3, succeeded24h: 7, failed1h: 1, oldestPendingAgeSec: 90 }]))
+      .mockReturnValueOnce(chain([{ taskType: 'qa-task', pending: 2, running: 1, stuck: 0, failed24h: 3 }]));
     const result = await getAsyncTaskHealth();
     const projection = select.mock.calls[0][0];
     expect(query(projection.pending).sql).toMatch(/"next_run_at" is null.*"next_run_at" <=/);
@@ -47,6 +48,7 @@ describe('core job source health semantics', () => {
     expect(query(projection.failed24h).sql).not.toContain('"created_at"');
     expect(result.counts).toEqual({ pending: 2, running: 1, stuck: 0, dead: null, failed24h: 3, succeeded24h: 7 });
     expect(result.failed1h).toBe(1);
+    expect(result.breakdown?.[0]).toMatchObject({ key: 'qa-task', pending: 2, running: 1 });
   });
 
   it('exports use thirty minutes without relying on an unavailable heartbeat', async () => {

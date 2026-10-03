@@ -1,9 +1,16 @@
 import { MONITOR_HISTORY_RANGE_CONFIG, type JobMonitorOverview, type JobMonitorTrend, type JobMonitorTrendRange, type JobSourceKey, type JobSourceSummary, type JobStuckItem } from '@zenith/shared/platform';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
+import { sumJobMonitorCounts } from '@zenith/shared/platform';
+import { mockDirectorySyncRuns } from './directory-sync';
+import { mockBackups } from './db-admin-backups';
+import { isDirectorySyncRunStuck, isDbBackupStuck } from '@/utils/stuck-jobs';
+import { parseDateTimeParam } from '@/utils/date';
+
+const ageSec = (value: string | null) => Math.max(0, Math.floor((Date.now() - (parseDateTimeParam(value)?.getTime() ?? Date.now())) / 1000));
 
 function source(summary: Pick<JobSourceSummary, 'key' | 'title' | 'module' | 'drillDown'> & Partial<JobSourceSummary>): JobSourceSummary {
   return {
-    health: 'ok', reason: null,
+    health: 'ok', reason: null, category: 'runtime',
     counts: { pending: 0, running: 0, stuck: 0, dead: null, failed24h: 0, succeeded24h: 0 },
     oldestPendingAgeSec: null, failureRate24h: null, issues: [], supportsStuckList: true,
     ...summary,
@@ -11,6 +18,16 @@ function source(summary: Pick<JobSourceSummary, 'key' | 'title' | 'module' | 'dr
 }
 
 export function createDemoStuckJobs(key: JobSourceKey): JobStuckItem[] {
+  if (key === 'directory-sync') return mockDirectorySyncRuns.filter(run => isDirectorySyncRunStuck(run)).map(run => ({
+    source: key, refId: String(run.id), title: run.sourceName ?? '目录同步', status: run.status, startedAt: run.startedAt,
+    lastSeenAt: run.startedAt, ageSec: ageSec(run.startedAt), nodeId: null, detail: run.errorMessage,
+    drillDown: { path: '/system/directory-sync/logs?status=running', label: '前往处理' },
+  }));
+  if (key === 'db-backup') return mockBackups.filter(run => isDbBackupStuck(run)).map(run => ({
+    source: key, refId: String(run.id), title: run.name, status: run.status, startedAt: run.startedAt,
+    lastSeenAt: run.updatedAt, ageSec: ageSec(run.startedAt ?? run.createdAt), nodeId: null, detail: run.errorMessage,
+    drillDown: { path: `/system/db-admin?tab=backups&status=${run.status}`, label: '前往处理' },
+  }));
   if (key === 'notification-outbox') return [{
     source: key, refId: 'outbox-91', title: '审批提醒派发', status: 'claimed', startedAt: mockDateTimeOffset(-600000),
     lastSeenAt: mockDateTimeOffset(-600000), ageSec: 600, nodeId: 'demo-worker-2', detail: '领取后超过两倍回收窗口仍未完成', drillDown: null,
@@ -42,14 +59,37 @@ export function createDemoJobMonitorOverview(): JobMonitorOverview {
       counts: { pending: 3, running: 2, stuck: 0, dead: 2, failed24h: 4, succeeded24h: 196 }, oldestPendingAgeSec: 200, failureRate24h: 0.02,
       issues: [{ level: 'warn', message: '存在 2 个死信作业，请前往流程监控处理' }],
       drillDown: { path: '/workflow/monitor?tab=jobs&status=dead', label: '前往处理' } }),
-    source({ key: 'notification-outbox', title: '通知派发 Outbox', module: 'messaging', health: 'unavailable', reason: '通知派发探测超时', drillDown: null }),
-    source({ key: 'webhook-delivery', title: 'Webhook 投递', module: 'open-platform',
+    source({ key: 'notification-outbox', title: '通知派发 Outbox', category: 'delivery', module: 'messaging', health: 'unavailable', reason: '通知派发探测超时', drillDown: null }),
+    source({ key: 'webhook-delivery', title: 'Webhook 投递', category: 'delivery', module: 'open-platform',
       counts: { pending: 2, running: 0, stuck: 0, dead: null, failed24h: 1, succeeded24h: 19 }, oldestPendingAgeSec: 45, failureRate24h: 0.05,
       supportsStuckList: false, drillDown: { path: '/open-platform/webhooks', label: '前往处理' } }),
+    source({ key: 'directory-sync', title: '目录同步', module: 'identity', drillDown: { path: '/system/directory-sync/logs?status=running', label: '前往处理' } }),
+    source({ key: 'db-backup', title: '数据库备份', module: 'ops', drillDown: { path: '/system/db-admin?tab=backups', label: '前往处理' } }),
+    source({ key: 'entity-watch-delivery', title: '对象关注通知', category: 'delivery', module: 'platform', drillDown: null }),
+    source({ key: 'cms-telemetry-outbox', title: 'CMS 转化事件投递', category: 'delivery', module: 'cms', drillDown: null }),
+    source({ key: 'payment-event-outbox', title: '支付事件派发', category: 'delivery', module: 'payment', drillDown: { path: '/payment/events?status=failed', label: '前往处理' } }),
+    source({ key: 'drive-rendition', title: '网盘渲染', category: 'delivery', module: 'drive', drillDown: null }),
   ];
+  sources.find(item => item.key === 'async-task')!.breakdown = Array.from({ length: 6 }, (_, index) => ({
+    key: `demo-type-${index}`, label: `演示任务类型 ${index + 1}`, pending: index === 0 ? 4 : 0,
+    running: index === 0 ? 3 : 0, stuck: index === 0 ? 1 : 0, failed24h: index === 0 ? 3 : 0,
+    drillDown: { path: `/system/task-center?tab=tasks&taskType=demo-type-${index}`, label: '查看任务' },
+  }));
+  const directory = sources.find(item => item.key === 'directory-sync')!;
+  directory.counts.running = mockDirectorySyncRuns.filter(run => run.status === 'running').length;
+  directory.counts.stuck = createDemoStuckJobs('directory-sync').length;
+  directory.counts.failed24h = mockDirectorySyncRuns.filter(run => run.status === 'failed' && run.finishedAt && ageSec(run.finishedAt) < 86400).length;
+  directory.health = directory.counts.stuck > 0 ? 'critical' : directory.counts.failed24h > 0 ? 'warn' : 'ok';
+  const backup = sources.find(item => item.key === 'db-backup')!;
+  backup.counts.pending = mockBackups.filter(run => run.status === 'pending').length;
+  backup.counts.running = mockBackups.filter(run => run.status === 'running').length;
+  backup.counts.stuck = createDemoStuckJobs('db-backup').length;
+  backup.counts.failed24h = mockBackups.filter(run => run.status === 'failed' && run.completedAt && ageSec(run.completedAt) < 86400).length;
+  backup.health = backup.counts.stuck > 0 ? 'critical' : backup.counts.failed24h > 0 ? 'warn' : 'ok';
+  backup.oldestPendingAgeSec = mockBackups.filter(run => run.status === 'pending').reduce<number | null>((oldest, run) => Math.max(oldest ?? 0, ageSec(run.createdAt)), null);
   return {
     health: 'critical', generatedAt: mockDateTime(),
-    totals: { backlog: 23, running: 9, stuck: 1, dead: 2, failed24h: 9 },
+    totals: sumJobMonitorCounts(sources.map(item => ({ ...item, stuckOnly: item.key === 'drive-rendition' || item.category === 'business' }))),
     workers: { available: true, reason: null, data: {
       total: 3, active: 2, stale: 1, workerRoleActive: 1,
       nodes: [

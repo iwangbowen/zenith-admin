@@ -12,3 +12,7 @@ it('marks incomplete samples missing so active alerts cannot falsely recover', a
   state.sources = [{ key: 'failed', collect: async () => { throw new Error('offline'); } }];
   expect(await getJobMonitorAlertMetrics()).toEqual({ jobsBacklog: null, jobsStuck: null, jobsDead: null, jobsFailed1h: null });
 });
+it('includes only stuck counts from sources whose executor is already monitored', async () => {
+  state.sources = [{ totalsMode: 'stuck-only', collect: async () => ({ counts: { pending: 20, stuck: 2, dead: 3 }, failed1h: 4 }) }];
+  expect(await getJobMonitorAlertMetrics()).toEqual({ jobsBacklog: 0, jobsStuck: 2, jobsDead: 0, jobsFailed1h: 0 });
+});

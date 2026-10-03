@@ -44,3 +44,9 @@ it('keeps missing history as missing and enforces the platform boundary on trend
   state.tenantId = 3;
   await expect(getJobMonitorTrend('24h')).rejects.toMatchObject({ status: 403 });
 });
+it('counts only stuck records from a business mirror to avoid duplicate execution totals', async () => {
+  state.sources = [{ ...source(async () => ({ counts: { pending: 50, running: 20, stuck: 2, dead: 3, failed24h: 9, succeeded24h: 1 }, oldestPendingAgeSec: 0, issues: [] })), totalsMode: 'stuck-only', category: 'business' }];
+  const overview = await getJobMonitorOverview();
+  expect(overview.totals).toEqual({ backlog: 0, running: 0, stuck: 2, dead: 0, failed24h: 0 });
+  expect(overview.sources[0].category).toBe('business');
+});

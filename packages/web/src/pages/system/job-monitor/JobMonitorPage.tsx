@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Banner, Col, Empty, Row, Select, Space, Tag, Typography } from '@douyinfe/semi-ui';
+import { Banner, Col, Divider, Empty, Row, Select, Space, Tag, Typography } from '@douyinfe/semi-ui';
 import { useNavigate } from 'react-router-dom';
-import { JOB_HEALTH_LABELS, type JobSourceSummary } from '@zenith/shared/platform';
+import { JOB_HEALTH_LABELS, JOB_SOURCE_CATEGORIES, JOB_SOURCE_CATEGORY_LABELS, type JobSourceSummary } from '@zenith/shared/platform';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import DateTimeText from '@/components/DateTimeText';
 import PageLoading from '@/components/PageLoading';
@@ -58,9 +58,12 @@ export default function JobMonitorPage() {
         <StatCard title="近 24h 失败" value={data.totals.failed24h} />
       </StatGrid>
       <WorkerNodesStrip workers={data.workers} />
-      <Row gutter={[16, 16]}>
-        {sources.map((source) => <Col key={source.key} xs={24} md={12} xl={8}><JobSourceCard source={source} onStuck={setStuckSource} /></Col>)}
-      </Row>
+      {JOB_SOURCE_CATEGORIES.filter(category => sources.some(source => source.category === category)).map(category => <div key={category}>
+        <Divider align="left">{JOB_SOURCE_CATEGORY_LABELS[category]}</Divider>
+        <Row gutter={[16, 16]}>
+          {sources.filter(source => source.category === category).map(source => <Col key={source.key} xs={24} md={12} xl={8}><JobSourceCard source={source} onStuck={setStuckSource} /></Col>)}
+        </Row>
+      </div>)}
       <QueueBacklogTable queues={data.queues} refreshing={overview.isFetching} onRefresh={refresh} />
       <JobTrendChart />
       <StuckJobsDrawer source={stuckSource} onClose={() => setStuckSource(null)} />

@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../db';
 import { dbBackups, managedFiles, fileStorageConfigs } from '../db/schema';
 import { config } from '../config';
@@ -55,13 +55,15 @@ async function uploadBackupToStorage(filePath: string, filename: string, mimeTyp
 }
 
 /** 备份任务统一执行器：置 running → 生成备份文件 → 上传登记 → 置 success/failed 并记录耗时 */
-async function runBackupJob(
+export async function runBackupJob(
   backupId: number,
   label: string,
   produce: () => Promise<{ filename: string; filePath: string; mimeType: string }>,
 ): Promise<void> {
   const startedAt = new Date();
-  await db.update(dbBackups).set({ status: 'running', startedAt }).where(eq(dbBackups.id, backupId));
+  const [claimed] = await db.update(dbBackups).set({ status: 'running', startedAt })
+    .where(and(eq(dbBackups.id, backupId), eq(dbBackups.status, 'pending'))).returning({ id: dbBackups.id });
+  if (!claimed) return;
 
   try {
     await ensureBackupDir();
@@ -70,7 +72,7 @@ async function runBackupJob(
     const fileId = await uploadBackupToStorage(filePath, filename, mimeType);
 
     const completedAt = new Date();
-    await db
+    const [completed] = await db
       .update(dbBackups)
       .set({
         status: 'success',
@@ -79,7 +81,15 @@ async function runBackupJob(
         completedAt,
         durationMs: completedAt.getTime() - startedAt.getTime(),
       })
-      .where(eq(dbBackups.id, backupId));
+      .where(and(eq(dbBackups.id, backupId), eq(dbBackups.status, 'running'), eq(dbBackups.startedAt, startedAt)))
+      .returning({ id: dbBackups.id });
+
+    // 人工结案 / 删除已撤销记录的产物所有权，迟到上传的文件交回现有 GC。
+    if (!completed) {
+      if (fileId) await db.update(managedFiles).set({ gcState: 'orphan', orphanedAt: completedAt }).where(eq(managedFiles.id, fileId));
+      logger.warn(`${label}结果未接纳：备份记录已结束或删除`);
+      return;
+    }
 
     logger.info(`${label}完成: ${filename} (${stat.size} bytes)`);
   } catch (err: unknown) {
@@ -92,7 +102,7 @@ async function runBackupJob(
         completedAt,
         durationMs: completedAt.getTime() - startedAt.getTime(),
       })
-      .where(eq(dbBackups.id, backupId));
+      .where(and(eq(dbBackups.id, backupId), eq(dbBackups.status, 'running'), eq(dbBackups.startedAt, startedAt)));
     logger.error(`${label}失败`, err);
     throw err;
   }

@@ -533,6 +533,7 @@ export const driveNodeRenditions = pgTable('drive_node_renditions', {
   unique('drive_node_renditions_node_kind_unique').on(t.nodeId, t.kind),
   index('drive_node_renditions_file_idx').on(t.fileId),
   index('drive_node_renditions_status_idx').on(t.status, t.kind),
+  index('drive_node_renditions_status_updated_idx').on(t.status, t.updatedAt),
 ]);
 
 export type DriveNodeRenditionRow = typeof driveNodeRenditions.$inferSelect;

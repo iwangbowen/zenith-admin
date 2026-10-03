@@ -1,5 +1,6 @@
 import { JOB_SOURCE_KEYS, jobMonitorContract, type JobMonitorTrendRange, type JobSourceKey } from '@zenith/shared/platform';
 import { contractKey, useApiQuery } from '@/lib/contract-query';
+import type { QueryClient } from '@tanstack/react-query';
 
 export type { JobMonitorTrendRange } from '@zenith/shared/platform';
 
@@ -8,6 +9,11 @@ export const jobMonitorKeys = {
   stuck: (key: JobSourceKey) => contractKey(jobMonitorContract.stuck, { params: { key } }),
   trend: (range: JobMonitorTrendRange) => contractKey(jobMonitorContract.trend, { query: { range } }),
 };
+
+export function invalidateJobMonitorAfterSourceChange(qc: QueryClient, key: JobSourceKey) {
+  void qc.invalidateQueries({ queryKey: jobMonitorKeys.overview });
+  void qc.invalidateQueries({ queryKey: jobMonitorKeys.stuck(key) });
+}
 
 export function useJobMonitorOverview({ refetchInterval = 30_000 }: {
   refetchInterval?: number | false;

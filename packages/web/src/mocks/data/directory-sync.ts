@@ -66,6 +66,13 @@ export const mockDirectorySyncRuns: DirectorySyncRun[] = [
   },
 ];
 
+mockDirectorySyncRuns.unshift({
+  ...mockDirectorySyncRuns[0], id: 3, status: 'running', totalFetched: 0,
+  deptCreated: 0, deptUpdated: 0, userCreated: 0, userLinked: 0, userUpdated: 0, userDisabled: 0,
+  skipped: 0, conflictCount: 0, failedCount: 0, message: '同步进程停止后遗留的运行记录',
+  startedAt: mockDateTimeOffset(-90 * 60_000), finishedAt: null, createdAt: mockDateTimeOffset(-90 * 60_000),
+});
+
 let nextRunId = nextIdFrom(mockDirectorySyncRuns);
 export function getNextDirectorySyncRunId(): number {
   return nextRunId++;

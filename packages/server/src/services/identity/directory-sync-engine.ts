@@ -10,6 +10,7 @@ import {
   directorySyncSources, directorySyncRuns, directorySyncRunItems,
   directorySyncConflicts, directorySyncUserLinks, directorySyncDeptLinks,
   type DirectorySyncSourceRow, type DirectorySyncUserLinkRow, type DirectorySyncDeptLinkRow,
+  type DirectorySyncRunRow,
   type NewDirectorySyncRunItem,
 } from '../../db/schema';
 import type { DirectorySyncRunStatus, DirectorySyncTriggerType } from '@zenith/shared/identity';
@@ -50,6 +51,30 @@ export interface DirectorySyncEngineResult {
   runId: number;
   status: DirectorySyncRunStatus;
   message: string;
+}
+
+/** 原子收尾：人工结案或其他执行器已结束该行时，保留既有结果且不再更新同步源。 */
+export async function finalizeDirectorySyncRun(
+  run: Pick<DirectorySyncRunRow, 'id' | 'sourceId' | 'dryRun' | 'startedAt'>,
+  cronExpression: string | null,
+  status: DirectorySyncRunStatus,
+  patch: Partial<typeof directorySyncRuns.$inferInsert>,
+  message: string,
+): Promise<DirectorySyncEngineResult> {
+  return db.transaction(async (tx) => {
+    const [changed] = await tx.update(directorySyncRuns).set({ ...patch, status, message, finishedAt: new Date() })
+      .where(and(eq(directorySyncRuns.id, run.id), eq(directorySyncRuns.status, 'running')))
+      .returning({ id: directorySyncRuns.id });
+    if (!changed) {
+      const existing = await tx.query.directorySyncRuns.findFirst({ where: eq(directorySyncRuns.id, run.id), columns: { status: true, message: true } });
+      return { runId: run.id, status: existing?.status ?? 'failed', message: existing?.message ?? '同步记录已结束或删除' };
+    }
+    if (!run.dryRun) {
+      await tx.update(directorySyncSources).set({ lastRunAt: run.startedAt, lastRunStatus: status, nextRunAt: computeNextRunAt(cronExpression) })
+        .where(eq(directorySyncSources.id, run.sourceId));
+    }
+    return { runId: run.id, status, message };
+  });
 }
 
 interface PlannedDept {
@@ -229,17 +254,8 @@ export async function runDirectorySync(sourceId: number, opts: RunOptions): Prom
     message: '同步中',
   }).returning();
 
-  const finalize = async (status: DirectorySyncRunStatus, patch: Partial<typeof directorySyncRuns.$inferInsert>, message: string) => {
-    await db.update(directorySyncRuns).set({ ...patch, status, message, finishedAt: new Date() }).where(eq(directorySyncRuns.id, run.id));
-    if (!dryRun) {
-      await db.update(directorySyncSources).set({
-        lastRunAt: startedAt,
-        lastRunStatus: status,
-        nextRunAt: computeNextRunAt(source.cronExpression),
-      }).where(eq(directorySyncSources.id, sourceId));
-    }
-    return { runId: run.id, status, message };
-  };
+  const finalize = (status: DirectorySyncRunStatus, patch: Partial<typeof directorySyncRuns.$inferInsert>, message: string) =>
+    finalizeDirectorySyncRun(run, source.cronExpression, status, patch, message);
 
   try {
     if (await opts.onProgress?.('正在从源侧拉取组织与人员…')) {

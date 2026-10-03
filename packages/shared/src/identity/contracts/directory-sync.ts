@@ -189,6 +189,7 @@ export const directorySyncContract = defineContract('/api/directory-sync', {
   runDetail: op.get('/runs/{id}', { access: { permission: 'system:dirsync-log:list' }, params: idParam, response: directorySyncRunSchema, summary: '同步记录详情' }),
   listRunItems: op.get('/runs/{id}/items', { access: { permission: 'system:dirsync-log:detail' }, params: idParam, query: directorySyncRunItemListQuery, response: paginated(directorySyncRunItemSchema), summary: '同步记录差异明细' }),
   retryRun: op.post('/runs/{id}/retry', { access: { permission: 'system:dirsync-log:retry' }, audit: '重试通讯录同步', params: idParam, response: asyncTaskSchema, summary: '失败重试（对所属源重新执行同步）' }),
+  markRunFailed: op.post('/runs/{id}/mark-failed', { access: { permission: 'system:dirsync-log:retry' }, audit: '标记卡死通讯录同步为失败', params: idParam, response: directorySyncRunSchema, summary: '人工结束卡死同步记录' }),
   listConflicts: op.get('/conflicts', { access: { permission: 'system:dirsync-conflict:list' }, query: directorySyncConflictListQuery, response: paginated(directorySyncConflictSchema), summary: '冲突列表' }),
   ignoreConflicts: op.post('/conflicts/ignore', { access: { permission: 'system:dirsync-conflict:ignore' }, audit: '批量忽略通讯录同步冲突', body: batchIdsBody, summary: '批量忽略冲突' }),
   resolveConflict: op.post('/conflicts/{id}/resolve', { access: { permission: 'system:dirsync-conflict:resolve' }, audit: '裁决通讯录同步冲突', params: idParam, body: resolveDirectorySyncConflictSchema, response: directorySyncConflictSchema, summary: '裁决冲突' }),

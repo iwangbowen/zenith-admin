@@ -728,7 +728,13 @@ export const TRACE_NODE_STATUS_LABELS: Record<TraceNodeStatus, string> = {
   running: '进行中',
   pending: '待处理',
 };
-export const JOB_SOURCE_KEYS = ['scheduler-queue', 'async-task', 'export-job', 'cron-job', 'workflow-job', 'notification-outbox', 'webhook-delivery'] as const;
+export const JOB_SOURCE_KEYS = ['scheduler-queue', 'async-task', 'export-job', 'cron-job', 'workflow-job', 'notification-outbox', 'webhook-delivery', 'directory-sync', 'db-backup', 'entity-watch-delivery', 'cms-telemetry-outbox', 'payment-event-outbox', 'drive-rendition'] as const;
+export const JOB_SOURCE_CATEGORIES = ['runtime', 'delivery', 'business', 'schedule'] as const;
+export type JobSourceCategory = typeof JOB_SOURCE_CATEGORIES[number];
+export const JOB_SOURCE_CATEGORY_LABELS = { runtime: '执行运行时', delivery: '事件与内容投递', business: '业务作业', schedule: '到期调度' } as const;
+export const JOB_MONITOR_DIRECTORY_STUCK_MS = 60 * 60_000;
+export const JOB_MONITOR_BACKUP_STUCK_MS = 2 * 60 * 60_000;
+export const JOB_MONITOR_BACKUP_PENDING_STUCK_MS = 10 * 60_000;
 export type JobSourceKey = typeof JOB_SOURCE_KEYS[number];
 export const JOB_HEALTH_LEVELS = ['ok', 'warn', 'critical', 'unavailable'] as const;
 export type JobHealthLevel = typeof JOB_HEALTH_LEVELS[number];

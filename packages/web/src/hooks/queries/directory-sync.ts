@@ -2,6 +2,7 @@ import { keepPreviousData } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { directorySyncContract, directorySyncSourceContract, type DirectorySyncRun } from '@zenith/shared/identity';
 import { contractKey, createResourceQueries, useApiMutation, useApiQuery, type PageOf } from '@/lib/contract-query';
+import { invalidateJobMonitorAfterSourceChange } from './job-monitor';
 
 // ─── 同步源（标准 CRUD）────────────────────────────────────────────────────────
 export const {
@@ -74,6 +75,21 @@ export function useDirectorySyncRunItems(runId: number | undefined, params: Dire
 export function useRetryDirectorySyncRun() {
   return useApiMutation(directorySyncContract.retryRun, {
     invalidate: (qc) => void qc.invalidateQueries({ queryKey: directorySyncRunKeys.lists }),
+  });
+}
+
+/** 人工结束卡死同步：返回实体与详情同源；同步源的最近结果也会更新。 */
+export function useMarkDirectorySyncRunFailed() {
+  return useApiMutation(directorySyncContract.markRunFailed, {
+    invalidate: (qc, run) => {
+      qc.setQueryData(directorySyncRunKeys.detail(run.id), run);
+      void qc.invalidateQueries({ queryKey: directorySyncRunKeys.lists });
+      if (!run.dryRun) {
+        void qc.invalidateQueries({ queryKey: directorySyncSourceKeys.lists });
+        void qc.invalidateQueries({ queryKey: directorySyncSourceKeys.detail(run.sourceId) });
+      }
+      invalidateJobMonitorAfterSourceChange(qc, 'directory-sync');
+    },
   });
 }
 

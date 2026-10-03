@@ -1,4 +1,5 @@
 import { Banner, Button, Card, Space, Tag, Typography } from '@douyinfe/semi-ui';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { JOB_HEALTH_LABELS, type JobSourceSummary } from '@zenith/shared/platform';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
@@ -8,6 +9,8 @@ import { formatAge, JOB_HEALTH_COLORS } from './job-monitor-shared';
 export default function JobSourceCard({ source, onStuck }: Readonly<{ source: JobSourceSummary; onStuck: (source: JobSourceSummary) => void }>) {
   const navigate = useNavigate();
   const { counts } = source;
+  const [expanded, setExpanded] = useState(false);
+  const breakdown = source.breakdown ?? [];
   return (
     <section aria-label={source.title} data-job-source={source.key} style={{ height: '100%' }}>
       <Card title={<Space wrap style={{ width: '100%', justifyContent: 'space-between' }}><span>{source.title}</span><Tag color={JOB_HEALTH_COLORS[source.health]}>{JOB_HEALTH_LABELS[source.health]}</Tag></Space>}>
@@ -29,6 +32,15 @@ export default function JobSourceCard({ source, onStuck }: Readonly<{ source: Jo
                 <Typography.Text key={`${issue.level}-${index}`} type={issue.level === 'critical' ? 'danger' : 'warning'} size="small">{issue.message}</Typography.Text>
               ))}
             </Space>
+            {breakdown.length > 0 && <Space vertical align="start" spacing={8} style={{ width: '100%', marginTop: 12 }}>
+              {(expanded ? breakdown : breakdown.slice(0, 5)).map(item => <div key={item.key} style={{ width: '100%' }}>
+                <Space wrap>
+                  {item.drillDown ? <Button theme="borderless" size="small" onClick={() => navigate(item.drillDown!.path)}>{item.label}</Button> : <Typography.Text size="small">{item.label}</Typography.Text>}
+                  <Typography.Text size="small" type={item.stuck > 0 ? 'danger' : 'tertiary'}>待处理 {item.pending} · 运行 {item.running} · 卡死 {item.stuck} · 24h 失败 {item.failed24h}</Typography.Text>
+                </Space>
+              </div>)}
+              {breakdown.length > 5 && <Button theme="borderless" size="small" onClick={() => setExpanded(value => !value)}>{expanded ? '收起明细' : `展开全部 ${breakdown.length} 项`}</Button>}
+            </Space>}
           </>
         )}
         {(source.drillDown || (source.supportsStuckList && counts.stuck > 0)) && (

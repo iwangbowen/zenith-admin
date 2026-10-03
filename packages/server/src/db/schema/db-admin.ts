@@ -22,7 +22,11 @@ export const dbBackups = pgTable('db_backups', {
   errorMessage: text(),
   ...auditColumns(),
   ...timestampColumns(),
-});
+}, (t) => [
+  index('db_backups_status_started_idx').on(t.status, t.startedAt),
+  index('db_backups_status_created_idx').on(t.status, t.createdAt),
+  index('db_backups_status_completed_idx').on(t.status, t.completedAt),
+]);
 
 export type DbBackupRow = typeof dbBackups.$inferSelect;
 

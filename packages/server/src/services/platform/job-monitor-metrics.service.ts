@@ -14,8 +14,12 @@ export async function getJobMonitorAlertMetrics(): Promise<JobMonitorAlertMetric
     return { jobsBacklog: null, jobsStuck: null, jobsDead: null, jobsFailed1h: null };
   }
   const totals = { jobsBacklog: 0, jobsStuck: 0, jobsDead: 0, jobsFailed1h: 0 };
-  for (const result of results) {
+  for (const [index, result] of results.entries()) {
     if (!result.data) continue;
+    if (sources[index].totalsMode === 'stuck-only') {
+      totals.jobsStuck += result.data.counts.stuck;
+      continue;
+    }
     totals.jobsBacklog += result.data.counts.pending;
     totals.jobsStuck += result.data.counts.stuck;
     totals.jobsDead += result.data.counts.dead ?? 0;

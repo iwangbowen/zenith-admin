@@ -2,6 +2,7 @@ import { keepPreviousData } from '@tanstack/react-query';
 import type { QueryOf } from '@zenith/shared/core';
 import { dbAdminContract, type DbAdminSqlExportMode, type DbBackupStatus } from '@zenith/shared/ops';
 import { api, useSaveMutation, contractKey, urlOf, useApiMutation, useApiQuery } from '@/lib/contract-query';
+import { invalidateJobMonitorAfterSourceChange } from './job-monitor';
 
 export type DbAdminHistoryParams = NonNullable<QueryOf<typeof dbAdminContract.history>>;
 
@@ -244,6 +245,15 @@ export function useDeleteDbBackup() {
   return useApiMutation(dbAdminContract.removeBackup, {
     invalidate: (qc) => {
       void qc.invalidateQueries({ queryKey: dbAdminKeys.backupLists });
+    },
+  });
+}
+
+export function useMarkDbBackupFailed() {
+  return useApiMutation(dbAdminContract.markBackupFailed, {
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: dbAdminKeys.backupLists });
+      invalidateJobMonitorAfterSourceChange(qc, 'db-backup');
     },
   });
 }

@@ -1,4 +1,5 @@
 import { HTTPException } from 'hono/http-exception';
+import { sumJobMonitorCounts } from '@zenith/shared/platform';
 import type { JobMonitorOverview, JobSourceSummary, JobQueueRow, JobSourceKey } from '@zenith/shared/platform';
 import { currentUser } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
@@ -20,6 +21,7 @@ export async function collectJobSource(source: JobSourceRegistration): Promise<J
   const sample = raw ? raw.counts.failed24h + raw.counts.succeeded24h : 0;
   return {
     key: source.key, title: source.title, module: source.module,
+    category: source.category ?? 'runtime', breakdown: raw?.breakdown,
     health: raw ? deriveSourceHealth(raw, source.thresholds) : 'unavailable', reason: result.reason,
     counts: raw?.counts ?? { pending: 0, running: 0, stuck: 0, dead: null, failed24h: 0, succeeded24h: 0 },
     oldestPendingAgeSec: raw?.oldestPendingAgeSec ?? null,
@@ -61,15 +63,7 @@ export async function getJobMonitorOverview(): Promise<JobMonitorOverview> {
   const [workers, queues, sources] = await Promise.all([
     section(collectWorkers), section(collectQueues), Promise.all(listJobSources().map(collectJobSource)),
   ]);
-  const totals = { backlog: 0, running: 0, stuck: 0, dead: 0, failed24h: 0 };
-  for (const source of sources) {
-    if (source.health === 'unavailable') continue;
-    totals.backlog += source.counts.pending;
-    totals.running += source.counts.running;
-    totals.stuck += source.counts.stuck;
-    totals.dead += source.counts.dead ?? 0;
-    totals.failed24h += source.counts.failed24h;
-  }
+  const totals = sumJobMonitorCounts(sources.map(source => ({ ...source, stuckOnly: getJobSource(source.key)?.totalsMode === 'stuck-only' })));
   return { health: deriveOverallHealth(sources, workers), generatedAt: formatDateTime(new Date()), totals, workers, queues, sources };
 }
 

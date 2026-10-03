@@ -53,6 +53,7 @@ import {
   createDbBackup,
   deleteDbBackup,
   getDbBackupBeforeAudit,
+  markDbBackupFailed,
   getDbBackupFileForDownload,
   listDbBackups,
 } from '../../services/ops/db-admin-backups.service';
@@ -384,6 +385,17 @@ const deleteBackupRoute = defineContractRoute(dbAdminContract.removeBackup, {
   },
 });
 
+const markBackupFailedRoute = defineContractRoute(dbAdminContract.markBackupFailed, {
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const before = await getDbBackupBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    const row = await markDbBackupFailed(id);
+    setAuditAfterData(c, row);
+    return c.json(okBody(row, '已标记为失败'), 200);
+  },
+});
+
 router.openapiRoutes([
   listTablesRoute,
   overviewRoute,
@@ -425,6 +437,7 @@ router.openapiRoutes([
   createBackupRoute,
   downloadBackupRoute,
   deleteBackupRoute,
+  markBackupFailedRoute,
 ] as const);
 
 export default router;

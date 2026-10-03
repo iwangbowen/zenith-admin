@@ -8,11 +8,13 @@ import { DateRangeFilter, FilterSelect, StatusSelect } from '@/components/search
 import { dateTimeColumn, renderEllipsis, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
 import { useListSearch } from '@/hooks/useListSearch';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { usePagination } from '@/hooks/usePagination';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import {
   directorySyncRunKeys, useDirectorySyncRunList, useDirectorySyncRunItems,
   useRetryDirectorySyncRun, useDirectorySyncSourceList,
+  useMarkDirectorySyncRunFailed,
 } from '@/hooks/queries/directory-sync';
 import type { DirectorySyncRun, DirectorySyncRunItem } from '@zenith/shared/identity';
 import { enumValueOf } from '@zenith/shared/core';
@@ -23,6 +25,8 @@ import {
   DIRECTORY_SYNC_ENTITY_TYPE_LABELS,
 } from '@zenith/shared/identity';
 import { DIRECTORY_SYNC_RUN_STATUS_TAG_COLOR } from './directory-sync-tag-colors';
+import { isDirectorySyncRunStuck } from '@/utils/stuck-jobs';
+import { confirmDanger } from '@/utils/confirm';
 
 interface SearchParams {
   sourceId?: number;
@@ -63,8 +67,9 @@ export default function DirectorySyncLogsPage() {
   const {
     page, pageSize, buildPagination,
     bind, submittedParams,
-    handleSearch, handleReset,
+    handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: directorySyncRunKeys.lists });
+  useListDeepLink(['status'], (params) => applySearch({ ...defaultSearchParams, status: enumValueOf(DIRECTORY_SYNC_RUN_STATUSES, params.status) }));
 
   const listQuery = useDirectorySyncRunList({
     page,
@@ -82,6 +87,7 @@ export default function DirectorySyncLogsPage() {
   );
 
   const retryMutation = useRetryDirectorySyncRun();
+  const markFailedMutation = useMarkDirectorySyncRunFailed();
 
   // ─── 差异明细抽屉 ─────────────────────────────────────────────────────────
   const [detailRun, setDetailRun] = useState<DirectorySyncRun | null>(null);
@@ -102,6 +108,19 @@ export default function DirectorySyncLogsPage() {
   function handleRetry(run: DirectorySyncRun) {
     retryMutation.mutate({ params: { id: run.id } }, {
       onSuccess: () => Toast.success('重试任务已提交，将对该源重新执行一次同步'),
+    });
+  }
+
+  function handleMarkFailed(run: DirectorySyncRun) {
+    confirmDanger({
+      title: `将卡死同步 #${run.id} 标记为失败？`,
+      content: '该同步记录已运行超过一小时。确认后结束该记录并更新同步源结果，请先确认执行进程已停止。',
+      okText: '标记为失败',
+      onOk: async () => {
+        const updated = await markFailedMutation.mutateAsync({ params: { id: run.id } });
+        setDetailRun((current) => current?.id === updated.id ? updated : current);
+        Toast.success('卡死同步已标记为失败');
+      },
     });
   }
 
@@ -137,6 +156,7 @@ export default function DirectorySyncLogsPage() {
     },
     createOperationColumn<DirectorySyncRun>({
       width: 220,
+      desktopInlineKeys: ['detail', 'retry'],
       actions: (record) => [
         ...(hasPermission('system:dirsync-log:detail') ? [{
           key: 'detail', label: '查看差异', onClick: () => openDetail(record),
@@ -144,6 +164,12 @@ export default function DirectorySyncLogsPage() {
         ...(hasPermission('system:dirsync-log:retry') && record.failedCount > 0 && record.status !== 'running' ? [{
           key: 'retry', label: '重试失败项', onClick: () => handleRetry(record),
         }] : []),
+        {
+          key: 'mark-failed', label: '标记为失败', danger: true,
+          hidden: !hasPermission('system:dirsync-log:retry') || !isDirectorySyncRunStuck(record),
+          loading: markFailedMutation.isPending && markFailedMutation.variables?.params.id === record.id,
+          onClick: () => handleMarkFailed(record),
+        },
       ],
     }),
   ];

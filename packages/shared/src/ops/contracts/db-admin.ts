@@ -470,4 +470,5 @@ export const dbAdminContract = defineContract('/api/db-admin', {
   downloadBackup: op.get('/backups/{id}/download', { access: { permission: 'system:db-admin:view' }, params: idParam, kind: 'file', summary: '下载数据库备份文件' }),
   createBackup: op.post('/backups', { access: { permission: 'system:db-admin:maintain' }, audit: '创建数据库备份', body: createDbBackupSchema, response: dbBackupCreatedSchema, summary: '创建数据库备份' }),
   removeBackup: op.delete('/backups/{id}', { access: { permission: 'system:db-admin:maintain' }, audit: '删除数据库备份', params: idParam, summary: '删除数据库备份记录' }),
+  markBackupFailed: op.post('/backups/{id}/mark-failed', { access: { permission: 'system:db-admin:maintain' }, audit: '标记卡死数据库备份为失败', params: idParam, response: dbBackupSchema, summary: '人工结束卡死备份记录' }),
 }, { auditModule: '数据库管理', tags: ['DbAdmin'] });

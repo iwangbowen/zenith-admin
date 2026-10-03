@@ -20,12 +20,14 @@ import { FilterSelect, StatusSelect } from '@/components/search-filters';
 import { CreateButton } from '@/components/toolbar-controls';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
-import { dbAdminKeys, useCreateDbBackup, useDbBackups, useDeleteDbBackup } from '@/hooks/queries/db-admin';
+import { dbAdminKeys, useCreateDbBackup, useDbBackups, useDeleteDbBackup, useMarkDbBackupFailed } from '@/hooks/queries/db-admin';
 import { urlOf } from '@/lib/contract-query';
 import { formatDurationMs } from '@/utils/format';
 import { request } from '@/utils/request';
 import { createdAtColumn, EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { EditFormModal } from '@/components/EditFormModal';
+import { isDbBackupStuck } from '@/utils/stuck-jobs';
+import { confirmDanger } from '@/utils/confirm';
 
 const { Text } = Typography;
 
@@ -61,6 +63,7 @@ export function BackupsPanel({ canMaintain, active }: Readonly<{ canMaintain: bo
   const listQuery = useDbBackups({ page, pageSize, status: submittedParams.status, type: submittedParams.type }, active);
   const createMutation = useCreateDbBackup();
   const deleteMutation = useDeleteDbBackup();
+  const markFailedMutation = useMarkDbBackupFailed();
   const createModal = useEditModal<DbBackupCreated, Partial<CreateDbBackupInput>>({
     save: {
       isPending: createMutation.isPending,
@@ -79,6 +82,18 @@ export function BackupsPanel({ canMaintain, active }: Readonly<{ canMaintain: bo
     // 备份产物是 restricted 托管文件，通用 /files/{id}/content 对它返回 404，
     // 只能走带 system:db-admin:view 的专用下载路由
     await request.download(urlOf(dbAdminContract.downloadBackup, { params: { id: record.id } }), record.name || `backup-${record.id}`);
+  };
+
+  const handleMarkFailed = (record: DbBackup) => {
+    confirmDanger({
+      title: `将卡死备份「${record.name}」标记为失败？`,
+      content: '仅能结束运行超过两小时或等待超过十分钟的备份记录。请先确认执行进程已停止，之后可重新创建备份。',
+      okText: '标记为失败',
+      onOk: async () => {
+        await markFailedMutation.mutateAsync({ params: { id: record.id } });
+        Toast.success('卡死备份已标记为失败');
+      },
+    });
   };
 
   const columns = [
@@ -120,6 +135,7 @@ export function BackupsPanel({ canMaintain, active }: Readonly<{ canMaintain: bo
     },
     createOperationColumn<DbBackup>({
       width: 150,
+      desktopInlineKeys: ['download', 'delete'],
       actions: (record) => [
         {
           key: 'download',
@@ -134,6 +150,12 @@ export function BackupsPanel({ canMaintain, active }: Readonly<{ canMaintain: bo
           run: () => deleteMutation.mutateAsync({ params: { id: record.id } }),
           successMessage: '已删除',
         }),
+        {
+          key: 'mark-failed', label: '标记为失败', danger: true,
+          hidden: !canMaintain || !isDbBackupStuck(record),
+          loading: markFailedMutation.isPending && markFailedMutation.variables?.params.id === record.id,
+          onClick: () => handleMarkFailed(record),
+        },
       ],
     }),
   ];

@@ -1,10 +1,11 @@
 import { buildListResult, listRows } from '../../lib/list-query';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lt, or, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import crypto from 'node:crypto';
 import { db } from '../../db';
+import type { DbExecutor } from '../../db/types';
 import {
   directorySyncSources, directorySyncRuns, directorySyncRunItems, directorySyncConflicts,
   directorySyncUserLinks, tenantIdentityProviders, users,
@@ -12,6 +13,7 @@ import {
 } from '../../db/schema';
 import { directorySyncSourceSchema, directorySyncRunSchema, directorySyncRunItemSchema, directorySyncConflictSchema, type CreateDirectorySyncSourceInput, type UpdateDirectorySyncSourceInput, type ResolveDirectorySyncConflictInput, type DirectorySyncEntityType, type DirectorySyncTriggerType, type DirectorySyncItemAction, type DirectorySyncMatchKey, type DirectorySyncConflictPolicy, type DirectorySyncConflictType, type DirectorySyncResolution, type directorySyncSourceContract, type directorySyncContract } from '@zenith/shared/identity';
 import type { QueryOutputOf } from '@zenith/shared/core';
+import { JOB_MONITOR_DIRECTORY_STUCK_MS, type JobStuckItem } from '@zenith/shared/platform';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
@@ -21,6 +23,58 @@ import { buildDirectoryConnector, type DirectoryConnectorTestResult } from './di
 import { computeNextRunAt, DIRECTORY_SYNC_TASK_TYPE } from './directory-sync-engine';
 import { assertDefaultRolesGrantable } from './role-grant';
 import { pickEntity } from '../../lib/entity-map';
+import { formatDateTime } from '../../lib/datetime';
+import type { JobSourceRawSummary } from '../../lib/job-monitor/registry';
+
+export const DIRECTORY_SYNC_STUCK_MS = JOB_MONITOR_DIRECTORY_STUCK_MS;
+
+export function stuckDirectorySyncRunCondition(asOf = new Date()) {
+  return and(eq(directorySyncRuns.status, 'running'), lt(directorySyncRuns.startedAt, new Date(asOf.getTime() - DIRECTORY_SYNC_STUCK_MS)));
+}
+
+/** 目录运行没有租约回收，超过一小时仍运行需要在同步日志中人工结案。 */
+export async function getDirectorySyncHealth(): Promise<JobSourceRawSummary> {
+  const now = new Date();
+  const since = new Date(now.getTime() - 86_400_000);
+  const hour = new Date(now.getTime() - 3_600_000);
+  const late = new Date(now.getTime() - 10 * 60_000);
+  const [[row], lateCount, failedSources] = await Promise.all([
+    db.select({
+      running: sql<number>`count(*) filter (where ${directorySyncRuns.status} = 'running')::int`,
+      stuck: sql<number>`count(*) filter (where ${stuckDirectorySyncRunCondition(now)})::int`,
+      failed24h: sql<number>`count(*) filter (where ${directorySyncRuns.status} in ('failed', 'aborted') and ${directorySyncRuns.finishedAt} >= ${since})::int`,
+      succeeded24h: sql<number>`count(*) filter (where ${directorySyncRuns.status} = 'success' and ${directorySyncRuns.finishedAt} >= ${since})::int`,
+      partial24h: sql<number>`count(*) filter (where ${directorySyncRuns.status} = 'partial' and ${directorySyncRuns.finishedAt} >= ${since})::int`,
+      failed1h: sql<number>`count(*) filter (where ${directorySyncRuns.status} in ('failed', 'aborted') and ${directorySyncRuns.finishedAt} >= ${hour})::int`,
+    }).from(directorySyncRuns).where(or(eq(directorySyncRuns.status, 'running'), and(inArray(directorySyncRuns.status, ['success', 'partial', 'failed', 'aborted']), gte(directorySyncRuns.finishedAt, since)))),
+    db.$count(directorySyncSources, and(eq(directorySyncSources.status, 'enabled'), sql`${directorySyncSources.type} <> 'scim' and nullif(trim(${directorySyncSources.cronExpression}), '') is not null`, lt(directorySyncSources.nextRunAt, late))),
+    db.$count(directorySyncSources, and(eq(directorySyncSources.status, 'enabled'), eq(directorySyncSources.lastRunStatus, 'failed'))),
+  ]);
+  const issues: JobSourceRawSummary['issues'] = [];
+  if (lateCount > 0) issues.push({ level: 'warn', message: `${lateCount} 个同步源的计划已超期 10 分钟` });
+  if (failedSources > 0) issues.push({ level: 'warn', message: `${failedSources} 个启用同步源最近一次运行失败` });
+  if ((row?.partial24h ?? 0) > 0) issues.push({ level: 'warn', message: `近 24 小时 ${row.partial24h} 次目录同步部分失败` });
+  return {
+    counts: { pending: 0, running: row?.running ?? 0, stuck: row?.stuck ?? 0, dead: null, failed24h: row?.failed24h ?? 0, succeeded24h: row?.succeeded24h ?? 0 },
+    oldestPendingAgeSec: null, failed1h: row?.failed1h ?? 0, issues,
+  };
+}
+
+export async function listStuckDirectorySyncRuns(limit: number): Promise<JobStuckItem[]> {
+  const now = new Date();
+  const rows = await db.select({
+    id: directorySyncRuns.id, status: directorySyncRuns.status, startedAt: directorySyncRuns.startedAt,
+    message: directorySyncRuns.message, errorMessage: directorySyncRuns.errorMessage, sourceName: directorySyncSources.name,
+  }).from(directorySyncRuns).innerJoin(directorySyncSources, eq(directorySyncSources.id, directorySyncRuns.sourceId))
+    .where(stuckDirectorySyncRunCondition(now)).orderBy(directorySyncRuns.startedAt, directorySyncRuns.id).limit(limit);
+  return rows.map((row) => ({
+    source: 'directory-sync', refId: String(row.id), title: row.sourceName, status: row.status,
+    startedAt: formatDateTime(row.startedAt), lastSeenAt: formatDateTime(row.startedAt),
+    ageSec: Math.max(0, Math.floor((now.getTime() - row.startedAt.getTime()) / 1000)),
+    nodeId: null, detail: row.errorMessage ?? row.message,
+    drillDown: { path: '/system/directory-sync/logs?status=running', label: '查看同步日志' },
+  }));
+}
 
 const SOURCE_TENANT_SCOPE_MESSAGE = '无权为其他租户或平台配置同步源';
 
@@ -28,10 +82,10 @@ const SOURCE_TENANT_SCOPE_MESSAGE = '无权为其他租户或平台配置同步�
  * 运行记录 / 冲突等子资源没有 tenantId 列，通过「所属同步源落在调用者租户作用域内」限定；
  * 无需隔离（单租户 / 平台全局视角）时返回 undefined。
  */
-function manageableSourceScope(sourceIdColumn: AnyPgColumn) {
+function manageableSourceScope(sourceIdColumn: AnyPgColumn, executor: DbExecutor = db) {
   const scope = tenantScope(directorySyncSources);
   if (!scope) return undefined;
-  return inArray(sourceIdColumn, db.select({ id: directorySyncSources.id }).from(directorySyncSources).where(scope));
+  return inArray(sourceIdColumn, executor.select({ id: directorySyncSources.id }).from(directorySyncSources).where(scope));
 }
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
@@ -305,6 +359,25 @@ async function ensureRunManageable(runId: number): Promise<DirectorySyncRunRow> 
       .limit(1),
     '同步记录不存在',
   );
+}
+
+/** 仅结案监控判定卡死的记录；状态比较与写入在同一语句，迟到执行器不能改回成功。 */
+export async function markDirectorySyncRunFailed(runId: number) {
+  const run = await ensureRunManageable(runId);
+  const source = await ensureDirectorySyncSourceExists(run.sourceId);
+  const now = new Date();
+  const message = '管理员手动标记卡死同步为失败';
+  const changed = await db.transaction(async (tx) => {
+    const [row] = await tx.update(directorySyncRuns).set({ status: 'failed', message, errorMessage: message, finishedAt: now })
+      .where(and(eq(directorySyncRuns.id, runId), stuckDirectorySyncRunCondition(now), manageableSourceScope(directorySyncRuns.sourceId, tx))).returning();
+    if (!row) throw new HTTPException(409, { message: '仅可标记运行超过一小时且尚未结束的同步记录' });
+    if (!row.dryRun) {
+      await tx.update(directorySyncSources).set({ lastRunAt: row.startedAt, lastRunStatus: 'failed', nextRunAt: computeNextRunAt(source.cronExpression, now) })
+        .where(and(eq(directorySyncSources.id, row.sourceId), tenantScope(directorySyncSources)));
+    }
+    return row;
+  });
+  return mapDirectorySyncRun({ ...changed, source: { name: source.name } });
 }
 
 export async function listDirectorySyncRunItems(runId: number, q: QueryOutputOf<typeof directorySyncContract.listRunItems>) {

@@ -110,6 +110,8 @@ export const directorySyncRuns = pgTable('directory_sync_runs', {
 }, (t) => [
   index('directory_sync_runs_source_idx').on(t.sourceId),
   index('directory_sync_runs_status_idx').on(t.status),
+  index('directory_sync_runs_status_started_idx').on(t.status, t.startedAt),
+  index('directory_sync_runs_status_finished_idx').on(t.status, t.finishedAt),
 ]);
 
 export type DirectorySyncRunRow = typeof directorySyncRuns.$inferSelect;

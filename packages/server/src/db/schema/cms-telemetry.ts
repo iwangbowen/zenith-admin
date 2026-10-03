@@ -21,7 +21,12 @@ export const cmsTelemetryOutbox = pgTable('cms_telemetry_outbox', {
   leaseOwner: uuid(), leaseExpiresAt: timestamp({ withTimezone: true }), deadLetterAt: timestamp({ withTimezone: true }),
   deliveredAt: timestamp({ withTimezone: true }),
   createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-}, (t) => [index('cms_telemetry_outbox_pending_idx').on(t.deliveredAt, t.deadLetterAt, t.nextAttemptAt, t.id)]);
+}, (t) => [
+  index('cms_telemetry_outbox_pending_idx').on(t.deliveredAt, t.deadLetterAt, t.nextAttemptAt, t.id),
+  index('cms_telemetry_outbox_lease_idx').on(t.deliveredAt, t.deadLetterAt, t.leaseExpiresAt),
+  index('cms_telemetry_outbox_delivered_idx').on(t.deliveredAt),
+  index('cms_telemetry_outbox_dead_idx').on(t.deadLetterAt),
+]);
 
 /** Recomputable attribution; immutable business events are never rewritten by late client events. */
 export const cmsTelemetryAttributions = pgTable('cms_telemetry_attributions', {

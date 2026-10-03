@@ -10,21 +10,18 @@ import {
   appWebhookDeliveries,
   oauth2Clients,
   paymentApps,
-  paymentEvents,
   paymentOrders,
   paymentReconCases,
 } from '../../db/schema';
 import { buildWhere } from '../../lib/where-helpers';
 import { metricTenantFilter, ratePercent } from '../../lib/alert-metrics';
+import { getPaymentEventHealth } from './payment-events.service';
 
 /** 比率型指标的统计窗口 */
 const RECENT_WINDOW_MS = 60 * 60_000;
 
 /** 进入「支付中」后多久没有终态就算卡单 */
 const STUCK_PAYING_GRACE_MS = 30 * 60_000;
-
-/** 支付事件待派发多久算积压（正常派发在秒级完成） */
-const EVENT_BACKLOG_GRACE_MS = 5 * 60_000;
 
 export interface PaymentAlertMetrics {
   /** 近 60 分钟支付失败率（%） */
@@ -49,10 +46,8 @@ export async function getPaymentAlertMetrics(tenantId: number | null): Promise<P
   const now = Date.now();
   const recentCutoff = new Date(now - RECENT_WINDOW_MS);
   const stuckCutoff = new Date(now - STUCK_PAYING_GRACE_MS);
-  const backlogCutoff = new Date(now - EVENT_BACKLOG_GRACE_MS);
 
   const orderTenant = metricTenantFilter(paymentOrders.tenantId, tenantId);
-  const eventTenant = metricTenantFilter(paymentEvents.tenantId, tenantId);
   const paymentClientIds = db
     .select({ clientId: oauth2Clients.clientId })
     .from(paymentApps)
@@ -66,16 +61,13 @@ export async function getPaymentAlertMetrics(tenantId: number | null): Promise<P
 
   const [
     paidCount, failedCount, stuckPaying, reconDiff,
-    eventStalled, eventDropped, webhookSuccess, webhookFailed,
+    eventHealth, webhookSuccess, webhookFailed,
   ] = await Promise.all([
     db.$count(paymentOrders, buildWhere(eq(paymentOrders.status, 'success'), gte(paymentOrders.updatedAt, recentCutoff), orderTenant)),
     db.$count(paymentOrders, buildWhere(eq(paymentOrders.status, 'failed'), gte(paymentOrders.updatedAt, recentCutoff), orderTenant)),
     db.$count(paymentOrders, buildWhere(eq(paymentOrders.status, 'paying'), lte(paymentOrders.updatedAt, stuckCutoff), orderTenant)),
     db.$count(paymentReconCases, buildWhere(inArray(paymentReconCases.status, ['open', 'investigating', 'suspended']), reconTenant)),
-    // 待派发超过宽限期：派发链路阻塞
-    db.$count(paymentEvents, buildWhere(eq(paymentEvents.status, 'pending'), lte(paymentEvents.createdAt, backlogCutoff), eventTenant)),
-    // 重试耗尽置 failed：已彻底未送达，必须人工介入
-    db.$count(paymentEvents, buildWhere(eq(paymentEvents.status, 'failed'), eventTenant)),
+    getPaymentEventHealth(tenantId ?? undefined),
     db.$count(appWebhookDeliveries, buildWhere(eq(appWebhookDeliveries.status, 'success'), gte(appWebhookDeliveries.createdAt, recentCutoff), paymentWebhook)),
     db.$count(appWebhookDeliveries, buildWhere(eq(appWebhookDeliveries.status, 'failed'), gte(appWebhookDeliveries.createdAt, recentCutoff), paymentWebhook)),
   ]);
@@ -84,7 +76,7 @@ export async function getPaymentAlertMetrics(tenantId: number | null): Promise<P
     paymentFailureRate: ratePercent(failedCount, paidCount + failedCount),
     paymentStuckPaying: stuckPaying,
     paymentReconDiff: reconDiff,
-    paymentEventBacklog: eventStalled + eventDropped,
+    paymentEventBacklog: eventHealth.counts.stuck + (eventHealth.counts.dead ?? 0),
     paymentWebhookFailureRate: ratePercent(webhookFailed, webhookSuccess + webhookFailed),
   };
 }

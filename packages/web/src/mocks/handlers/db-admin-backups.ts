@@ -1,63 +1,11 @@
 import { HttpResponse } from 'msw';
 import { dbAdminContract, type DbBackup } from '@zenith/shared/ops';
 import { mock } from '@/mocks/utils/contract';
-import { nextIdFrom, notFound } from '@/mocks/utils/handlers';
+import { mockBackups } from '@/mocks/data/db-admin-backups';
+import { conflict, nextIdFrom, notFound } from '@/mocks/utils/handlers';
 import { mockDateTime, mockFileTimestamp } from '@/mocks/utils/date';
-
-const mockBackups: DbBackup[] = [
-  {
-    id: 1,
-    name: 'pg_dump-20250601_120000',
-    type: 'pg_dump',
-    fileId: '018f6f8a-0001-7000-8000-000000000001',
-    fileSize: 1048576,
-    status: 'success',
-    tables: null,
-    startedAt: '2025-06-01 12:00:00',
-    completedAt: '2025-06-01 12:00:05',
-    durationMs: 5000,
-    errorMessage: null,
-    createdBy: 1,
-    createdByName: '管理员',
-    createdAt: '2025-06-01 12:00:00',
-    updatedAt: '2025-06-01 12:00:05',
-  },
-  {
-    id: 2,
-    name: 'drizzle-export-20250602_083000',
-    type: 'drizzle_export',
-    fileId: '018f6f8a-0002-7000-8000-000000000002',
-    fileSize: 524288,
-    status: 'success',
-    tables: null,
-    startedAt: '2025-06-02 08:30:00',
-    completedAt: '2025-06-02 08:30:03',
-    durationMs: 3000,
-    errorMessage: null,
-    createdBy: 1,
-    createdByName: '管理员',
-    createdAt: '2025-06-02 08:30:00',
-    updatedAt: '2025-06-02 08:30:03',
-  },
-  {
-    id: 3,
-    name: 'cron-pg_dump-20250603_030000',
-    type: 'pg_dump',
-    fileId: null,
-    fileSize: null,
-    status: 'failed',
-    tables: null,
-    startedAt: '2025-06-03 03:00:00',
-    completedAt: '2025-06-03 03:00:01',
-    durationMs: 1200,
-    errorMessage: 'pg_dump: command not found',
-    createdBy: null,
-    createdByName: null,
-    createdAt: '2025-06-03 03:00:00',
-    updatedAt: '2025-06-03 03:00:01',
-  },
-];
-
+import { isDbBackupStuck } from '@/utils/stuck-jobs';
+import { parseDateTimeParam } from '@/utils/date';
 export const dbAdminBackupsHandlers = [
   mock(dbAdminContract.backups, ({ query, ok, paginate }) => {
     let filtered = [...mockBackups];
@@ -110,5 +58,15 @@ export const dbAdminBackupsHandlers = [
     if (idx === -1) return notFound('备份记录不存在');
     mockBackups.splice(idx, 1);
     return ok(null, '已删除');
+  }),
+
+  mock(dbAdminContract.markBackupFailed, ({ params, ok }) => {
+    const backup = mockBackups.find((item) => item.id === params.id);
+    if (!backup) return notFound('备份记录不存在', { status: 404 });
+    if (!isDbBackupStuck(backup)) return conflict('仅可标记运行超过两小时或等待超过十分钟且尚未结束的备份', { status: 409 });
+    const now = mockDateTime();
+    Object.assign(backup, { status: 'failed', completedAt: now, updatedAt: now, errorMessage: '管理员手动标记卡死备份为失败',
+      durationMs: Math.min(2_147_483_647, Math.max(0, Date.now() - (parseDateTimeParam(backup.startedAt ?? backup.createdAt)?.getTime() ?? Date.now()))) });
+    return ok(backup, '卡死备份已标记为失败');
   }),
 ];

@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { sectionOf } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
-import { JOB_HEALTH_LEVELS, JOB_SOURCE_KEYS, JOB_MONITOR_TREND_RANGES, PROCESS_ROLES } from '../constants';
+import { JOB_HEALTH_LEVELS, JOB_SOURCE_KEYS, JOB_SOURCE_CATEGORIES, JOB_MONITOR_TREND_RANGES, PROCESS_ROLES } from '../constants';
 
 export const jobDrillDownSchema = z.object({ path: z.string(), label: z.string() });
 export type JobDrillDown = z.infer<typeof jobDrillDownSchema>;
@@ -10,7 +10,13 @@ export const jobSourceCountsSchema = z.object({
   pending: z.int().nonnegative(), running: z.int().nonnegative(), stuck: z.int().nonnegative(),
   dead: z.int().nonnegative().nullable(), failed24h: z.int().nonnegative(), succeeded24h: z.int().nonnegative(),
 });
+export const jobSourceBreakdownSchema = z.object({
+  key: z.string(), label: z.string(), pending: z.int().nonnegative(), running: z.int().nonnegative(),
+  stuck: z.int().nonnegative(), failed24h: z.int().nonnegative(), drillDown: jobDrillDownSchema.nullable(),
+});
+export type JobSourceBreakdown = z.infer<typeof jobSourceBreakdownSchema>;
 export const jobSourceSummarySchema = z.object({
+  category: z.enum(JOB_SOURCE_CATEGORIES), breakdown: z.array(jobSourceBreakdownSchema).optional(),
   key: z.enum(JOB_SOURCE_KEYS), title: z.string(), module: z.string(), health: z.enum(JOB_HEALTH_LEVELS),
   reason: z.string().nullable(), counts: jobSourceCountsSchema, oldestPendingAgeSec: z.int().nonnegative().nullable(),
   failureRate24h: z.number().min(0).max(1).nullable(), issues: z.array(jobSourceIssueSchema),

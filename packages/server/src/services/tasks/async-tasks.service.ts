@@ -7,7 +7,7 @@ import { HTTPException } from 'hono/http-exception';
 import dayjs from 'dayjs';
 import { ASYNC_TASK_TERMINAL_STATUSES, asyncTaskContract, isAsyncTaskTerminal, type AsyncTaskStats } from '@zenith/shared/tasks';
 import type { JobStuckItem } from '@zenith/shared/platform';
-import { db } from '../../db';
+import { db, readSnapshot } from '../../db';
 import { asyncTaskItems, asyncTasks, users } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
@@ -19,6 +19,7 @@ import {
   cleanupAsyncTasks,
   asyncTaskStatusCondition,
   getTaskTypePolicy,
+  getTaskTypeMeta,
   HEARTBEAT_STALE_MS,
   listTaskHandlers,
   listTaskTypeConfigs,
@@ -43,11 +44,13 @@ export function stuckAsyncTaskCondition(asOf = new Date()) {
 
 /** 平台作业监控：仅统计已到期任务，重试退避期间不算积压。 */
 export async function getAsyncTaskHealth(): Promise<JobSourceRawSummary> {
+  return readSnapshot(async executor => {
   const now = new Date();
   const since = new Date(now.getTime() - 86_400_000);
   const hour = new Date(now.getTime() - 3_600_000);
   const due = and(eq(asyncTasks.status, 'pending'), or(isNull(asyncTasks.nextRunAt), lte(asyncTasks.nextRunAt, now)));
-  const [row] = await db.select({
+  const scope = or(inArray(asyncTasks.status, ['pending', 'running']), and(inArray(asyncTasks.status, ['success', 'failed']), gte(asyncTasks.completedAt, since)));
+  const [row] = await executor.select({
     pending: sql<number>`count(*) filter (where ${due})::int`,
     running: sql<number>`count(*) filter (where ${asyncTasks.status} = 'running')::int`,
     stuck: sql<number>`count(*) filter (where ${stuckAsyncTaskCondition(now)})::int`,
@@ -55,13 +58,28 @@ export async function getAsyncTaskHealth(): Promise<JobSourceRawSummary> {
     succeeded24h: sql<number>`count(*) filter (where ${asyncTasks.status} = 'success' and ${asyncTasks.completedAt} >= ${since})::int`,
     failed1h: sql<number>`count(*) filter (where ${asyncTasks.status} = 'failed' and ${asyncTasks.completedAt} >= ${hour})::int`,
     oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${now}::timestamp - min(coalesce(${asyncTasks.nextRunAt}, ${asyncTasks.createdAt})) filter (where ${due}))))::int`,
-  }).from(asyncTasks).where(or(inArray(asyncTasks.status, ['pending', 'running']), and(inArray(asyncTasks.status, ['success', 'failed']), gte(asyncTasks.completedAt, since))));
+  }).from(asyncTasks).where(scope);
+  const breakdown = await executor.select({
+    taskType: asyncTasks.taskType,
+    pending: sql<number>`count(*) filter (where ${due})::int`,
+    running: sql<number>`count(*) filter (where ${asyncTasks.status} = 'running')::int`,
+    stuck: sql<number>`count(*) filter (where ${stuckAsyncTaskCondition(now)})::int`,
+    failed24h: sql<number>`count(*) filter (where ${asyncTasks.status} = 'failed' and ${asyncTasks.completedAt} >= ${since})::int`,
+  }).from(asyncTasks).where(scope).groupBy(asyncTasks.taskType)
+    .orderBy(sql`count(*) filter (where ${stuckAsyncTaskCondition(now)}) desc`, sql`count(*) filter (where ${due} or ${asyncTasks.status} = 'running') desc`, asyncTasks.taskType).limit(10);
   return {
     counts: { pending: row?.pending ?? 0, running: row?.running ?? 0, stuck: row?.stuck ?? 0, dead: null, failed24h: row?.failed24h ?? 0, succeeded24h: row?.succeeded24h ?? 0 },
     oldestPendingAgeSec: row?.oldestPendingAgeSec ?? null,
     failed1h: row?.failed1h ?? 0,
     issues: [],
+    breakdown: breakdown.map(item => {
+      const meta = getTaskTypeMeta(item.taskType);
+      return { key: item.taskType, label: meta ? `${meta.module} / ${meta.title}` : item.taskType,
+        pending: item.pending, running: item.running, stuck: item.stuck, failed24h: item.failed24h,
+        drillDown: { path: `/system/task-center?tab=tasks&taskType=${encodeURIComponent(item.taskType)}`, label: '查看任务类型' } };
+    }),
   };
+  });
 }
 
 export async function listStuckAsyncTasks(limit: number): Promise<JobStuckItem[]> {

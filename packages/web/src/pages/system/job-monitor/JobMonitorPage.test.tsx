@@ -18,7 +18,7 @@ vi.mock('@douyinfe/semi-ui', () => {
     Button: ({ children, onClick }: { children?: ReactNode; onClick?: () => void }) => <button onClick={onClick}>{children}</button>,
     Banner: ({ description }: { description: string }) => <div role="alert">{description}</div>,
     Empty: ({ title, description }: { title?: string; description?: string }) => <div>{title}{description}</div>,
-    Tag: Box, Space: Box, Row: Box, Col: Box,
+    Tag: Box, Space: Box, Row: Box, Col: Box, Divider: Box,
     SideSheet: ({ title, children, visible, onCancel }: { title: string; children?: ReactNode; visible: boolean; onCancel: () => void }) => visible ? <div role="dialog" aria-label={title}><button onClick={onCancel}>关闭</button>{children}</div> : null,
     Typography: { Text: Box, Title: Box },
     Select: ({ value, optionList, onChange }: { value: string; optionList: { value: string; label: string }[]; onChange: (value: string) => void }) => (
@@ -53,6 +53,18 @@ beforeEach(() => {
 });
 
 describe('JobMonitorPage', () => {
+  it('groups execution mechanisms and expands type details beyond the first five rows', () => {
+    show();
+    expect(screen.getByText('执行运行时')).toBeInTheDocument();
+    expect(screen.getByText('事件与内容投递')).toBeInTheDocument();
+    const tasks = within(screen.getByRole('region', { name: '异步任务' }));
+    expect(tasks.queryByRole('button', { name: '演示任务类型 6' })).not.toBeInTheDocument();
+    fireEvent.click(tasks.getByRole('button', { name: '展开全部 6 项' }));
+    fireEvent.click(tasks.getByRole('button', { name: '演示任务类型 6' }));
+    expect(screen.getByLabelText('当前位置')).toHaveTextContent('taskType=demo-type-5');
+    fireEvent.click(tasks.getByRole('button', { name: '收起明细' }));
+    expect(tasks.queryByRole('button', { name: '演示任务类型 6' })).not.toBeInTheDocument();
+  });
   it('prioritizes critical and warning sources while retaining the isolated unavailable reason', () => {
     const data = createDemoJobMonitorOverview();
     const exportSource = data.sources.find((source) => source.key === 'export-job')!;
@@ -60,8 +72,10 @@ describe('JobMonitorPage', () => {
     exportSource.reason = '导出作业探测超时';
     setOverview(data);
     show();
-    expect(screen.getAllByRole('region').map((element) => element.getAttribute('aria-label')))
-      .toEqual(['异步任务', '流程作业', '系统调度队列', '定时任务', 'Webhook 投递', '导出作业', '通知派发 Outbox']);
+    const order = screen.getAllByRole('region').map(element => element.getAttribute('aria-label'));
+    expect(order.indexOf('异步任务')).toBeLessThan(order.indexOf('流程作业'));
+    expect(order.indexOf('流程作业')).toBeLessThan(order.indexOf('系统调度队列'));
+    expect(order.indexOf('Webhook 投递')).toBeLessThan(order.indexOf('通知派发 Outbox'));
     expect(screen.getByText('导出作业探测超时')).toBeInTheDocument();
     expect(screen.getByText('部分作业源探测不可用，顶部汇总仅包含可用来源。')).toBeInTheDocument();
     expect(screen.getByText('心跳失联')).toBeInTheDocument();

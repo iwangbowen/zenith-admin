@@ -1,12 +1,13 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { directorySyncContract } from '@zenith/shared/identity';
-import { setAuditBeforeData } from '../../middleware/guard';
+import { setAuditAfterData, setAuditBeforeData } from '../../middleware/guard';
 import { defineContractRoute } from '../../lib/contract-route';
 import { validationHook, okBody, errBody } from '../../lib/openapi-schemas';
 import {
   listDirectorySyncRuns, getDirectorySyncRun, listDirectorySyncRunItems, retryDirectorySyncRun,
   listDirectorySyncConflicts, resolveDirectorySyncConflict, ignoreDirectorySyncConflicts,
   ensureDirectorySyncConflictExists,
+  markDirectorySyncRunFailed,
 } from '../../services/identity/directory-sync.service';
 import { currentUserId } from '../../lib/context';
 
@@ -29,6 +30,16 @@ const retryRunRoute = defineContractRoute(directorySyncContract.retryRun, {
   handler: async (c) => {
     const task = await retryDirectorySyncRun(c.req.valid('param').id);
     return c.json(okBody(task, '重试任务已提交'), 200);
+  },
+});
+
+const markRunFailedRoute = defineContractRoute(directorySyncContract.markRunFailed, {
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    setAuditBeforeData(c, await getDirectorySyncRun(id));
+    const row = await markDirectorySyncRunFailed(id);
+    setAuditAfterData(c, row);
+    return c.json(okBody(row, '已标记为失败'), 200);
   },
 });
 
@@ -60,6 +71,7 @@ directorySyncRouter.openapiRoutes([
   getRunRoute,
   listRunItemsRoute,
   retryRunRoute,
+  markRunFailedRoute,
   listConflictsRoute,
   ignoreConflictsRoute,
   resolveConflictRoute,
