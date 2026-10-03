@@ -23,7 +23,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { useEditModal } from '@/hooks/useEditModal';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { formatDurationMs as formatDuration } from '@/utils/format';
-import { EMPTY_PLACEHOLDER, dateTimeColumn, overflowTagColumn, renderCodeEllipsis, renderEllipsis } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, copyableNoColumn, dateTimeColumn, overflowTagColumn, renderCodeEllipsis, renderEllipsis } from '@/utils/table-columns';
 import {
   systemSchedulerKeys,
   useAcknowledgeSystemSchedulerAlert,
@@ -523,18 +523,8 @@ export default function SystemSchedulerPage() {
   ];
 
   const nodeColumns: ColumnProps<SystemSchedulerNode>[] = [
-    {
-      title: '节点',
-      dataIndex: 'nodeId',
-      width: 260,
-      fixed: 'left',
-      render: (_: unknown, record) => (
-        <Space vertical align="start" spacing={2}>
-          <Typography.Text strong copyable={{ content: record.nodeId }}>{record.nodeId}</Typography.Text>
-          <Typography.Text type="tertiary" size="small">{renderNode(record.hostname, record.pid)}</Typography.Text>
-        </Space>
-      ),
-    },
+    // nodeId 即 hostname:pid（process-identity.ts），第二行 hostname / pid 与之重复，只保留单行可复制 ID
+    copyableNoColumn<SystemSchedulerNode>('节点', 'nodeId', { width: 260, fixed: 'left' }),
     { title: '状态', dataIndex: 'active', width: 120, render: (_: unknown, record) => <Tag color={record.active && !record.stale ? 'green' : 'red'}>{record.active && !record.stale ? '在线' : '离线'}</Tag> },
     // 只含 api 的节点仅声明任务、投递作业；执行由 worker 节点承担
     overflowTagColumn<SystemSchedulerNode>({
