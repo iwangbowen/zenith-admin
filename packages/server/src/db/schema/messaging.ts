@@ -424,6 +424,8 @@ export const notificationOutbox = pgTable('notification_outbox', {
   lastError: varchar({ length: 500 }),
   /** 认领时间戳：并发实例据此避免重复派发，超时后可被重新认领 */
   claimedAt: timestamp({ withTimezone: true }),
+  /** 实际完成展开或重试耗尽的时间；历史记录保持空值，不以创建时间代替完成时间。 */
+  finishedAt: timestamp({ withTimezone: true }),
   /** 免打扰延后或摘要聚合的目标时间；为空表示立即可派发 */
   scheduledAt: timestamp({ withTimezone: true }),
   /**
@@ -442,6 +444,8 @@ export const notificationOutbox = pgTable('notification_outbox', {
   index('notification_outbox_pending_idx').on(t.status, t.scheduledAt).where(sql`${t.status} = 'pending'`),
   index('notification_outbox_digest_idx').on(t.digestKey, t.scheduledAt).where(sql`${t.digestKey} is not null`),
   index('notification_outbox_event_idx').on(t.eventKey, t.createdAt),
+  index('notification_outbox_claimed_idx').on(t.status, t.claimedAt),
+  index('notification_outbox_finished_idx').on(t.status, t.finishedAt),
   index('notification_outbox_tenant_idx').on(t.tenantId),
   // 链路追踪查看器按 trace_id 定位通知锚点
   index('notification_outbox_trace_idx').on(t.traceId),

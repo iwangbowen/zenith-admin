@@ -6,6 +6,9 @@ import { section } from '../../lib/probe-section';
 import { deriveOverallHealth, deriveSourceHealth } from '../../lib/job-monitor/health';
 import { getJobSource, listJobSources, type JobSourceRegistration } from '../../lib/job-monitor/registry';
 import { listSystemSchedulerNodes, listSystemSchedulerTasks } from '../tasks/system-scheduler.service';
+import { getMonitorHistory } from './monitor-history.service';
+import type { QueryOutputOf } from '@zenith/shared/core';
+import type { jobMonitorContract } from '@zenith/shared/platform';
 
 export function requireJobMonitorPlatformUser() {
   if (currentUser().tenantId != null) throw new HTTPException(403, { message: '作业监控仅限平台用户访问' });
@@ -75,4 +78,10 @@ export async function listJobMonitorStuck(key: JobSourceKey, limit: number) {
   const source = getJobSource(key);
   if (!source?.listStuck) throw new HTTPException(400, { message: '该作业源不支持卡死明细' });
   return source.listStuck(limit);
+}
+
+export async function getJobMonitorTrend(range: QueryOutputOf<typeof jobMonitorContract.trend>['range']) {
+  requireJobMonitorPlatformUser();
+  const history = await getMonitorHistory(range);
+  return { points: history.points.map(point => ({ time: point.t, backlog: point.jobsBacklog, stuck: point.jobsStuck, dead: point.jobsDead, failed1h: point.jobsFailed1h })) };
 }

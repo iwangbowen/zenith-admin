@@ -329,6 +329,9 @@ export const appWebhookDeliveries = pgTable('app_webhook_deliveries', {
   index('app_webhook_deliveries_sub_idx').on(t.subscriptionId),
   index('app_webhook_deliveries_tenant_client_idx').on(t.tenantId, t.clientId),
   index('app_webhook_deliveries_status_idx').on(t.status),
+  index('app_webhook_deliveries_status_retry_idx').on(t.status, t.nextRetryAt),
+  index('app_webhook_deliveries_status_started_idx').on(t.status, t.startedAt),
+  index('app_webhook_deliveries_status_finished_idx').on(t.status, t.finishedAt),
   index('app_webhook_deliveries_next_retry_idx').on(t.nextRetryAt),
   index('app_webhook_deliveries_created_idx').on(t.createdAt),
 ]);

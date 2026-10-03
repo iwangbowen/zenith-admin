@@ -26,7 +26,7 @@ vi.mock('./notification-delivery-events', () => ({ recordNotificationOutcome: vi
 
 import { db } from '../../db';
 import { deliverOutboxRow } from '../../lib/notification/dispatch';
-import { dispatchPendingNotifications, processNotificationOutbox, notify } from './notification-outbox.service';
+import { aggregateNotificationDigests, dispatchPendingNotifications, processNotificationOutbox, notify } from './notification-outbox.service';
 import { recordNotificationOutcome } from './notification-delivery-events';
 
 const dbMock = vi.mocked(db);
@@ -63,6 +63,7 @@ function makeRow(id: number, overrides: Partial<NotificationOutboxRow> = {}): No
     attempts: 0,
     lastError: null,
     claimedAt: null,
+    finishedAt: null,
     scheduledAt: null,
     digestKey: null,
     traceId: null,
@@ -123,6 +124,7 @@ describe('dispatchPendingNotifications', () => {
     expect(peak).toBeLessThanOrEqual(8);
     expect(statusWrites).toHaveLength(37);
     expect(statusWrites.every((w) => w.status === 'done')).toBe(true);
+    expect(statusWrites.every((w) => w.finishedAt instanceof Date)).toBe(true);
   });
 
   it('单行派发失败只影响该行：attempts+1、保留认领时间作为重试间隔，同批其余行照常置 done', async () => {
@@ -142,6 +144,7 @@ describe('dispatchPendingNotifications', () => {
     // 第 5 次失败达到上限 → failed 终态；重试间隔由 claimedAt 承担，不再清空
     expect(failed).toMatchObject({ attempts: 5, lastError: 'webhook 503' });
     expect(failed?.claimedAt).toBeInstanceOf(Date);
+    expect(failed?.finishedAt).toBeInstanceOf(Date);
   });
 
   it('未到上限的失败保持 pending 且带认领时间，不会在同一轮被立刻重打', async () => {
@@ -153,6 +156,7 @@ describe('dispatchPendingNotifications', () => {
     expect(statusWrites).toHaveLength(1);
     expect(statusWrites[0]).toMatchObject({ status: 'pending', attempts: 2, lastError: 'smtp timeout' });
     expect(statusWrites[0].claimedAt).toBeInstanceOf(Date);
+    expect(statusWrites[0].finishedAt).toBeNull();
   });
 
   it('时间预算耗尽时结束本轮，即使仍有整批可认领', async () => {
@@ -184,13 +188,24 @@ describe('processNotificationOutbox', () => {
     const { statusWrites } = installUpdateMock([[makeRow(9)]]);
     await processNotificationOutbox(9);
     expect(deliverMock).toHaveBeenCalledTimes(1);
-    expect(statusWrites).toEqual([{ status: 'done' }]);
+    expect(statusWrites).toEqual([{ status: 'done', finishedAt: expect.any(Date) }]);
     expect(recordNotificationOutcome).toHaveBeenCalledWith(db, expect.objectContaining({ id: 9, status: 'done' }), 'done', { sent: 1, failed: 0, deferred: 0, suppressed: 0 });
   });
 
   it('认领未命中（已被他人占用 / 非 pending）时不派发', async () => {
     installUpdateMock([[]]);
     await processNotificationOutbox(9);
+    expect(deliverMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('aggregateNotificationDigests completion time', () => {
+  it('records real completion when due digest rows are merged, including groups without a valid recipient', async () => {
+    const rows = [makeRow(17, { digestKey: 'user:7:hour', recipients: [] })];
+    dbMock.select.mockImplementation(() => createChain(() => rows));
+    const { statusWrites } = installUpdateMock([rows]);
+    await expect(aggregateNotificationDigests()).resolves.toEqual({ groups: 0, items: 0 });
+    expect(statusWrites).toEqual([{ status: 'done', claimedAt: expect.any(Date), finishedAt: expect.any(Date) }]);
     expect(deliverMock).not.toHaveBeenCalled();
   });
 });

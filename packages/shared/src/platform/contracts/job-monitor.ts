@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { sectionOf } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
-import { JOB_HEALTH_LEVELS, JOB_SOURCE_KEYS, PROCESS_ROLES } from '../constants';
+import { JOB_HEALTH_LEVELS, JOB_SOURCE_KEYS, JOB_MONITOR_TREND_RANGES, PROCESS_ROLES } from '../constants';
 
 export const jobDrillDownSchema = z.object({ path: z.string(), label: z.string() });
 export type JobDrillDown = z.infer<typeof jobDrillDownSchema>;
@@ -40,7 +40,12 @@ export const jobStuckItemSchema = z.object({
   nodeId: z.string().nullable(), detail: z.string().nullable(), drillDown: jobDrillDownSchema.nullable(),
 }).meta({ id: 'JobStuckItem' });
 export type JobStuckItem = z.infer<typeof jobStuckItemSchema>;
+export const jobMonitorTrendSchema = z.object({ points: z.array(z.object({
+  time: z.string(), backlog: z.number().nullable(), stuck: z.number().nullable(), dead: z.number().nullable(), failed1h: z.number().nullable(),
+})) }).meta({ id: 'JobMonitorTrend' });
+export type JobMonitorTrend = z.infer<typeof jobMonitorTrendSchema>;
 export const jobMonitorContract = defineContract('/api/job-monitor', {
   overview: op.get('/overview', { access: { permission: 'system:job-monitor:view' }, response: jobMonitorOverviewSchema, summary: '平台作业健康总览' }),
   stuck: op.get('/sources/{key}/stuck', { access: { permission: 'system:job-monitor:view' }, params: z.object({ key: z.enum(JOB_SOURCE_KEYS) }), query: z.object({ limit: z.coerce.number().int().min(1).max(200).default(50) }), response: z.array(jobStuckItemSchema), summary: '作业源卡死明细' }),
+  trend: op.get('/trend', { access: { permission: 'system:job-monitor:view' }, query: z.object({ range: z.enum(JOB_MONITOR_TREND_RANGES).default('24h') }), response: jobMonitorTrendSchema, summary: '作业监控历史趋势' }),
 }, { tags: ['JobMonitor'] });

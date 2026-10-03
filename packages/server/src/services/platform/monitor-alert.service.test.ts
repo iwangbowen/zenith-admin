@@ -319,6 +319,13 @@ describe('handleEvent', () => {
 });
 
 describe('evaluateMonitorAlerts 指标子集', () => {
+  it('作业指标采集失败时不触发也不恢复已有告警', async () => {
+    dbMock.select.mockReturnValueOnce(createChain([alertRule({ id: 21, metric: 'jobsStuck', state: 'firing', threshold: 0 })]));
+    vi.mocked(getMetricSnapshotsByTenant).mockResolvedValue(new Map([[null, { jobsStuck: null } as never]]));
+    expect(await evaluateMonitorAlerts()).toEqual({ evaluated: 0, fired: 0, resolved: 0 });
+    expect(dbMock.update).not.toHaveBeenCalled();
+    expect(dispatchAlertChannels).not.toHaveBeenCalled();
+  });
   it('传入 metrics 时只评估这些指标的启用规则（api 侧 worker watchdog 只碰 schedulerWorkerNodes）', async () => {
     const cpuRule = alertRule({ id: 1, metric: 'cpu', state: 'ok', breachingSince: null, lastTriggeredAt: null });
     const workerRule = alertRule({

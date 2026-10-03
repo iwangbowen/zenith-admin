@@ -20,11 +20,12 @@ import { getWorkflowJobAlertMetrics } from '../workflow/workflow-jobs.service';
 import { getPaymentAlertMetrics, type PaymentAlertMetrics } from '../payment/payment-alert-metrics.service';
 import { getOpenPlatformAlertMetrics } from '../open-platform/open-platform-alert-metrics.service';
 import { getSchedulerAlertMetrics } from './scheduler-alert-metrics.service';
+import { getJobMonitorAlertMetrics, type JobMonitorMetricKey, type JobMonitorAlertMetrics } from './job-monitor-metrics.service';
 import { getReplayStorageMbMetric } from '../analytics/session-replays.service';
 import { getLogAlertMetrics } from '../../lib/log-metrics';
 import { MONITOR_HISTORY_RANGE_CONFIG, type MonitorHistoryRange, type MonitorMetric } from '@zenith/shared/platform';
 
-export type MetricSnapshot = Record<MonitorMetric, number>;
+export type MetricSnapshot = Record<Exclude<MonitorMetric, JobMonitorMetricKey>, number> & JobMonitorAlertMetrics;
 
 /** 基础设施指标（宿主机 / 进程级），全部来自本地采样器，不查数据库。 */
 type InfraMetricSnapshot = Pick<
@@ -68,18 +69,20 @@ type GlobalMetricSnapshot = Omit<MetricSnapshot, keyof PaymentAlertMetrics>;
 
 /** 采集全部 scope 为 'global' 的指标。 */
 async function getGlobalMetricSnapshot(): Promise<GlobalMetricSnapshot> {
-  const [infra, engineHealth, jobMetrics, openMetrics, replayStorageMb, schedulerMetrics] = await Promise.all([
+  const [infra, engineHealth, jobMetrics, openMetrics, replayStorageMb, schedulerMetrics, jobs] = await Promise.all([
     getInfraMetricSnapshot(),
     getLatestEngineHealthMetrics(),
     getWorkflowJobAlertMetrics(),
     getOpenPlatformAlertMetrics(),
     getReplayStorageMbMetric(),
     getSchedulerAlertMetrics(),
+    getJobMonitorAlertMetrics(),
   ]);
   return {
     ...infra,
     ...getLogAlertMetrics(),
     ...schedulerMetrics,
+    ...jobs,
     workflowHealth: engineHealth.workflowHealth,
     workflowBacklog: engineHealth.workflowBacklog,
     workflowDeadLetter: jobMetrics.workflowDeadLetter,
@@ -200,7 +203,7 @@ export async function persistMetricSample(): Promise<{ systemMetricStored: boole
   let systemMetricStored = false;
   if (metricsSampler.getLatest()) {
     // 采样表只存基础设施列，无需为此触发各业务域的派生指标查询
-    const s = await getInfraMetricSnapshot();
+    const [s, jobs] = await Promise.all([getInfraMetricSnapshot(), getJobMonitorAlertMetrics()]);
     await db.insert(systemMetricSamples).values({
       cpu: s.cpu,
       memory: s.memory,
@@ -216,6 +219,7 @@ export async function persistMetricSample(): Promise<{ systemMetricStored: boole
       netTxBps: s.netTxBps,
       diskReadBps: s.diskReadBps,
       diskWriteBps: s.diskWriteBps,
+      ...jobs,
     });
     systemMetricStored = true;
   }
@@ -233,6 +237,10 @@ export async function getMonitorHistory(range: string) {
   const rows = await db
     .select({
       bucket: bucketExpr,
+      jobsBacklog: avg(systemMetricSamples.jobsBacklog),
+      jobsStuck: avg(systemMetricSamples.jobsStuck),
+      jobsDead: avg(systemMetricSamples.jobsDead),
+      jobsFailed1h: avg(systemMetricSamples.jobsFailed1h),
       cpu: avg(systemMetricSamples.cpu),
       memory: avg(systemMetricSamples.memory),
       disk: avg(systemMetricSamples.disk),
@@ -273,6 +281,10 @@ export async function getMonitorHistory(range: string) {
   const round2 = (n: number) => Math.round(Number(n) * 100) / 100;
   const points = rows.map((r) => ({
     t: formatDateTime(new Date(Number(r.bucket) * cfg.bucketSec * 1000)),
+    jobsBacklog: r.jobsBacklog == null ? null : round1(r.jobsBacklog),
+    jobsStuck: r.jobsStuck == null ? null : round1(r.jobsStuck),
+    jobsDead: r.jobsDead == null ? null : round1(r.jobsDead),
+    jobsFailed1h: r.jobsFailed1h == null ? null : round1(r.jobsFailed1h),
     cpu: round1(r.cpu),
     memory: round1(r.memory),
     disk: round1(r.disk),

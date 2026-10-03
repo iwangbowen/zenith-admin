@@ -275,6 +275,10 @@ export const monitorTimeseriesSchema = z.object({
 export type MonitorTimeseries = z.infer<typeof monitorTimeseriesSchema>;
 
 export const monitorHistoryPointSchema = z.object({
+  jobsBacklog: z.number().nullable().optional(),
+  jobsStuck: z.number().nullable().optional(),
+  jobsDead: z.number().nullable().optional(),
+  jobsFailed1h: z.number().nullable().optional(),
   t: z.string(),
   cpu: z.number(),
   memory: z.number(),

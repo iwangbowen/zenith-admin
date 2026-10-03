@@ -467,6 +467,7 @@ export const MONITOR_METRICS = [
   'logErrorPerMin', 'logWarnPerMin',
   // 后台调度（api / worker 拆分部署的执行面健康）
   'schedulerWorkerNodes', 'schedulerQueueBacklog',
+  'jobsBacklog', 'jobsStuck', 'jobsDead', 'jobsFailed1h',
   // 流程引擎
   'workflowHealth', 'workflowBacklog', 'workflowDeadLetter', 'workflowFailureRate', 'workflowStuckRunning',
   // 支付
@@ -480,6 +481,10 @@ export const MONITOR_METRICS = [
 export type MonitorMetric = (typeof MONITOR_METRICS)[number];
 
 export const MONITOR_METRIC_META: Record<MonitorMetric, MonitorMetricMeta> = {
+  jobsBacklog: { label: '作业总积压', group: 'scheduler', unit: 'count', scope: 'global', description: '已到期未领取的作业数；业务镜像行不重复计数' },
+  jobsStuck: { label: '作业卡死数', group: 'scheduler', unit: 'count', scope: 'global', description: '超过各域自动推进或回收窗口仍未推进的作业数' },
+  jobsDead: { label: '作业死信数', group: 'scheduler', unit: 'count', scope: 'global', description: '各作业源重试耗尽的死信总数' },
+  jobsFailed1h: { label: '近 1h 作业失败', group: 'scheduler', unit: 'count', scope: 'global', description: '按各域执行结束时间统计近一小时失败数' },
   cpu: { label: 'CPU 使用率', group: 'infra', unit: 'percent', scope: 'global', description: '宿主机 CPU 使用率' },
   memory: { label: '内存使用率', group: 'infra', unit: 'percent', scope: 'global', description: '宿主机物理内存使用率' },
   disk: { label: '磁盘使用率', group: 'infra', unit: 'percent', scope: 'global', description: '所有挂载点中最高的磁盘使用率' },
@@ -738,3 +743,6 @@ export type JobMonitorThresholds = Omit<typeof JOB_MONITOR_DEFAULT_THRESHOLDS, '
   deadLevel: 'warn' | 'critical'; stuckLevel: 'warn' | 'critical';
 };
 export const JOB_MONITOR_TREND_RANGES = ['1h', '6h', '24h', '7d'] as const;
+export type JobMonitorTrendRange = typeof JOB_MONITOR_TREND_RANGES[number];
+export const JOB_MONITOR_TREND_RANGE_LABELS = { '1h': '近 1 小时', '6h': '近 6 小时', '24h': '近 24 小时', '7d': '近 7 天' } as const;
+export const JOB_MONITOR_TREND_RANGE_OPTIONS = JOB_MONITOR_TREND_RANGES.map(value => ({ value, label: JOB_MONITOR_TREND_RANGE_LABELS[value] }));

@@ -1,7 +1,7 @@
 import { randomBytes, createHmac, randomUUID } from 'node:crypto';
 import { listRows } from '../../lib/list-query';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
-import { eq, and, or, desc, inArray, isNotNull, isNull, lte, sql, arrayContained, type SQL } from 'drizzle-orm';
+import { eq, and, or, desc, gt, gte, inArray, isNotNull, isNull, lt, lte, sql, arrayContained, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
 import { appWebhookSubscriptions, appWebhookDeliveries, cmsOpenAppGrants, oauth2Clients, users } from '../../db/schema';
 import type { AppWebhookSubscriptionRow, AppWebhookDeliveryRow } from '../../db/schema';
@@ -21,11 +21,49 @@ import { assertSafeOutboundUrl } from '../../lib/outbound-url';
 import { notify } from '../messaging/notification-outbox.service';
 import { currentUser } from '../../lib/context';
 import { getCreateTenantId, exactTenantCondition, optionalExactTenantCondition } from '../../lib/tenant';
+import type { JobSourceRawSummary } from '../../lib/job-monitor/registry';
 
 const TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_BODY_BYTES = 4096;
 const PENDING_RECOVERY_AFTER_MS = 2 * 60_000;
 const RETRY_CONCURRENCY = 10;
+const WEBHOOK_OVERDUE_GRACE_MS = 10 * 60_000;
+
+/** 同时覆盖已到期重试和派发进程崩溃后应由补投器回收的 pending。 */
+export function stuckWebhookDeliveryCondition(asOf = new Date()) {
+  const retryCutoff = new Date(asOf.getTime() - WEBHOOK_OVERDUE_GRACE_MS);
+  const recoveryCutoff = new Date(retryCutoff.getTime() - PENDING_RECOVERY_AFTER_MS);
+  return or(
+    and(eq(appWebhookDeliveries.status, 'retrying'), lt(appWebhookDeliveries.nextRetryAt, retryCutoff)),
+    and(eq(appWebhookDeliveries.status, 'pending'), lt(appWebhookDeliveries.createdAt, recoveryCutoff),
+      or(isNull(appWebhookDeliveries.startedAt), lt(appWebhookDeliveries.startedAt, recoveryCutoff))),
+  );
+}
+
+export async function getWebhookDeliveryHealth(): Promise<JobSourceRawSummary> {
+  const now = new Date();
+  const since = new Date(now.getTime() - 86_400_000);
+  const hour = new Date(now.getTime() - 3_600_000);
+  const recoveryCutoff = new Date(now.getTime() - PENDING_RECOVERY_AFTER_MS);
+  const due = or(
+    and(eq(appWebhookDeliveries.status, 'retrying'), lte(appWebhookDeliveries.nextRetryAt, now)),
+    and(eq(appWebhookDeliveries.status, 'pending'), or(isNull(appWebhookDeliveries.startedAt), lte(appWebhookDeliveries.startedAt, recoveryCutoff))),
+  );
+  const [row] = await db.select({
+    pending: sql<number>`count(*) filter (where ${due})::int`,
+    running: sql<number>`count(*) filter (where ${appWebhookDeliveries.status} = 'pending' and ${gt(appWebhookDeliveries.startedAt, recoveryCutoff)})::int`,
+    stuck: sql<number>`count(*) filter (where ${stuckWebhookDeliveryCondition(now)})::int`,
+    dead: sql<number>`count(*) filter (where ${appWebhookDeliveries.status} = 'failed')::int`,
+    failed24h: sql<number>`count(*) filter (where ${appWebhookDeliveries.status} = 'failed' and ${appWebhookDeliveries.finishedAt} >= ${since})::int`,
+    succeeded24h: sql<number>`count(*) filter (where ${appWebhookDeliveries.status} = 'success' and ${appWebhookDeliveries.finishedAt} >= ${since})::int`,
+    failed1h: sql<number>`count(*) filter (where ${appWebhookDeliveries.status} = 'failed' and ${appWebhookDeliveries.finishedAt} >= ${hour})::int`,
+    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${now}::timestamptz - min(case when ${appWebhookDeliveries.status} = 'retrying' then ${appWebhookDeliveries.nextRetryAt} else coalesce(${appWebhookDeliveries.startedAt}, ${appWebhookDeliveries.createdAt}) end) filter (where ${due}))))::int`,
+  }).from(appWebhookDeliveries).where(or(inArray(appWebhookDeliveries.status, ['pending', 'retrying', 'failed']), and(eq(appWebhookDeliveries.status, 'success'), gte(appWebhookDeliveries.finishedAt, since))));
+  return {
+    counts: { pending: row?.pending ?? 0, running: row?.running ?? 0, stuck: row?.stuck ?? 0, dead: row?.dead ?? 0, failed24h: row?.failed24h ?? 0, succeeded24h: row?.succeeded24h ?? 0 },
+    oldestPendingAgeSec: row?.oldestPendingAgeSec ?? null, failed1h: row?.failed1h ?? 0, issues: [],
+  };
+}
 /** 必须 HMAC 签名的事件：支付 / 退款，以及携带内部文件元数据的网盘事件 */
 const SENSITIVE_WEBHOOK_EVENTS = new Set<string>([...PAYMENT_WEBHOOK_EVENTS, ...DRIVE_OPEN_EVENTS]);
 

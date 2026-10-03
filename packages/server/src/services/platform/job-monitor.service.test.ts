@@ -1,12 +1,13 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({ tenantId: null as number | null, sources: [] as unknown[] }));
 vi.mock('../../lib/context', () => ({ currentUser: () => ({ tenantId: state.tenantId }) }));
+vi.mock('./monitor-history.service', () => ({ getMonitorHistory: vi.fn(async () => ({ points: [{ t: '2026-10-03T08:00:00Z', jobsBacklog: null, jobsStuck: 1, jobsDead: 2, jobsFailed1h: 3 }] })) }));
 vi.mock('../../lib/job-monitor/registry', () => ({ listJobSources: () => state.sources, getJobSource: (key: string) => (state.sources as JobSourceRegistration[]).find(s => s.key === key) }));
 vi.mock('../tasks/system-scheduler.service', () => ({
   listSystemSchedulerNodes: vi.fn(async () => ({ list: [{ nodeId: 'node', hostname: 'host', pid: 1, roles: ['worker'], version: null, lastHeartbeatAt: '2026-10-03T00:00:00Z', runningJobCount: 0, stale: false, active: true }], total: 1 })),
   listSystemSchedulerTasks: vi.fn(async () => []),
 }));
-import { collectJobSource, getJobMonitorOverview, listJobMonitorStuck } from './job-monitor.service';
+import { collectJobSource, getJobMonitorOverview, listJobMonitorStuck, getJobMonitorTrend } from './job-monitor.service';
 import type { JobSourceRegistration } from '../../lib/job-monitor/registry';
 const source = (collect: JobSourceRegistration['collect']): JobSourceRegistration => ({ key: 'async-task', title: 'tasks', module: 'tasks', order: 1, collect });
 beforeEach(() => { state.tenantId = null; state.sources = []; });
@@ -37,4 +38,9 @@ it('rejects unsupported stuck lists and passes a bounded request to the source',
   expect(listStuck).toHaveBeenCalledWith(20);
   state.tenantId = 2;
   await expect(listJobMonitorStuck('async-task', 20)).rejects.toMatchObject({ status: 403 });
+});
+it('keeps missing history as missing and enforces the platform boundary on trends', async () => {
+  expect(await getJobMonitorTrend('24h')).toEqual({ points: [{ time: '2026-10-03T08:00:00Z', backlog: null, stuck: 1, dead: 2, failed1h: 3 }] });
+  state.tenantId = 3;
+  await expect(getJobMonitorTrend('24h')).rejects.toMatchObject({ status: 403 });
 });

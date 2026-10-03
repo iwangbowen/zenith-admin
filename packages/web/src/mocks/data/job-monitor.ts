@@ -1,4 +1,4 @@
-import type { JobMonitorOverview, JobSourceKey, JobSourceSummary, JobStuckItem } from '@zenith/shared/platform';
+import { MONITOR_HISTORY_RANGE_CONFIG, type JobMonitorOverview, type JobMonitorTrend, type JobMonitorTrendRange, type JobSourceKey, type JobSourceSummary, type JobStuckItem } from '@zenith/shared/platform';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 
 function source(summary: Pick<JobSourceSummary, 'key' | 'title' | 'module' | 'drillDown'> & Partial<JobSourceSummary>): JobSourceSummary {
@@ -11,6 +11,10 @@ function source(summary: Pick<JobSourceSummary, 'key' | 'title' | 'module' | 'dr
 }
 
 export function createDemoStuckJobs(key: JobSourceKey): JobStuckItem[] {
+  if (key === 'notification-outbox') return [{
+    source: key, refId: 'outbox-91', title: '审批提醒派发', status: 'claimed', startedAt: mockDateTimeOffset(-600000),
+    lastSeenAt: mockDateTimeOffset(-600000), ageSec: 600, nodeId: 'demo-worker-2', detail: '领取后超过两倍回收窗口仍未完成', drillDown: null,
+  }];
   return key === 'async-task' ? [{
     source: key, refId: '731', title: '历史数据导入', status: 'running',
     startedAt: mockDateTimeOffset(-1200000), lastSeenAt: mockDateTimeOffset(-900000), ageSec: 1200,
@@ -38,10 +42,14 @@ export function createDemoJobMonitorOverview(): JobMonitorOverview {
       counts: { pending: 3, running: 2, stuck: 0, dead: 2, failed24h: 4, succeeded24h: 196 }, oldestPendingAgeSec: 200, failureRate24h: 0.02,
       issues: [{ level: 'warn', message: '存在 2 个死信作业，请前往流程监控处理' }],
       drillDown: { path: '/workflow/monitor?tab=jobs&status=dead', label: '前往处理' } }),
+    source({ key: 'notification-outbox', title: '通知派发 Outbox', module: 'messaging', health: 'unavailable', reason: '通知派发探测超时', drillDown: null }),
+    source({ key: 'webhook-delivery', title: 'Webhook 投递', module: 'open-platform',
+      counts: { pending: 2, running: 0, stuck: 0, dead: null, failed24h: 1, succeeded24h: 19 }, oldestPendingAgeSec: 45, failureRate24h: 0.05,
+      supportsStuckList: false, drillDown: { path: '/open-platform/webhooks', label: '前往处理' } }),
   ];
   return {
     health: 'critical', generatedAt: mockDateTime(),
-    totals: { backlog: 21, running: 9, stuck: 1, dead: 2, failed24h: 8 },
+    totals: { backlog: 23, running: 9, stuck: 1, dead: 2, failed24h: 9 },
     workers: { available: true, reason: null, data: {
       total: 3, active: 2, stale: 1, workerRoleActive: 1,
       nodes: [
@@ -57,4 +65,17 @@ export function createDemoJobMonitorOverview(): JobMonitorOverview {
     ] },
     sources,
   };
+}
+
+export function createDemoJobMonitorTrend(range: JobMonitorTrendRange): JobMonitorTrend {
+  const { windowSec, bucketSec } = MONITOR_HISTORY_RANGE_CONFIG[range];
+  const count = Math.min(120, Math.floor(windowSec / bucketSec));
+  const step = windowSec * 1000 / count;
+  return { points: Array.from({ length: count }, (_, index) => ({
+    time: mockDateTimeOffset(-(count - 1 - index) * step),
+    backlog: index === 10 ? null : Math.max(0, Math.round(22 + Math.sin(index / 6) * 14)),
+    stuck: index === 10 ? null : (index > count / 2 ? 1 : 0),
+    dead: index === 10 ? null : (index > count / 3 ? 2 : 0),
+    failed1h: index === 10 ? null : Math.max(0, Math.round(2 + Math.cos(index / 10) * 2)),
+  })) };
 }

@@ -1,15 +1,22 @@
-import { JOB_SOURCE_KEYS, jobMonitorContract, type JobSourceKey } from '@zenith/shared/platform';
+import { JOB_SOURCE_KEYS, jobMonitorContract, type JobMonitorTrendRange, type JobSourceKey } from '@zenith/shared/platform';
 import { contractKey, useApiQuery } from '@/lib/contract-query';
+
+export type { JobMonitorTrendRange } from '@zenith/shared/platform';
 
 export const jobMonitorKeys = {
   overview: contractKey(jobMonitorContract.overview),
   stuck: (key: JobSourceKey) => contractKey(jobMonitorContract.stuck, { params: { key } }),
+  trend: (range: JobMonitorTrendRange) => contractKey(jobMonitorContract.trend, { query: { range } }),
 };
 
 export function useJobMonitorOverview({ refetchInterval = 30_000 }: {
   refetchInterval?: number | false;
 } = {}) {
   return useApiQuery(jobMonitorContract.overview, undefined, { refetchInterval });
+}
+
+export function useJobMonitorTrend(range: JobMonitorTrendRange) {
+  return useApiQuery(jobMonitorContract.trend, { query: { range } }, { refetchInterval: 60_000 });
 }
 
 export function useJobMonitorStuck(key: JobSourceKey | undefined, enabled: boolean) {

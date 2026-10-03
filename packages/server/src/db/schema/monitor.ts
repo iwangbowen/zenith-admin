@@ -23,6 +23,10 @@ export const systemMetricSamples = pgTable('system_metric_samples', {
   netTxBps: real().notNull().default(0),
   diskReadBps: real().notNull().default(0),
   diskWriteBps: real().notNull().default(0),
+  jobsBacklog: real(),
+  jobsStuck: real(),
+  jobsDead: real(),
+  jobsFailed1h: real(),
 }, (t) => [
   index('system_metric_samples_at_idx').on(t.sampledAt),
 ]);

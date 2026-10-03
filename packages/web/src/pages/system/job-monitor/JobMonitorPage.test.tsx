@@ -8,6 +8,7 @@ import { createDemoJobMonitorOverview, createDemoStuckJobs } from '@/mocks/data/
 const state = vi.hoisted(() => ({ query: vi.fn(), stuck: vi.fn(), refetch: vi.fn() }));
 vi.mock('@/hooks/queries/job-monitor', () => ({ useJobMonitorOverview: (...args: unknown[]) => state.query(...args), useJobMonitorStuck: (...args: unknown[]) => state.stuck(...args) }));
 vi.mock('@/components/PageLoading', () => ({ default: () => <div role="status">正在加载</div> }));
+vi.mock('./JobTrendChart', () => ({ default: () => <div role="img" aria-label="作业趋势" /> }));
 vi.mock('@/components/DateTimeText', () => ({ default: ({ value }: { value: string }) => <span>{value}</span> }));
 vi.mock('@/components/toolbar-controls', () => ({ RefreshButton: ({ onClick }: { onClick: () => void }) => <button onClick={onClick}>刷新</button> }));
 vi.mock('@douyinfe/semi-ui', () => {
@@ -60,10 +61,12 @@ describe('JobMonitorPage', () => {
     setOverview(data);
     show();
     expect(screen.getAllByRole('region').map((element) => element.getAttribute('aria-label')))
-      .toEqual(['异步任务', '流程作业', '系统调度队列', '定时任务', '导出作业']);
+      .toEqual(['异步任务', '流程作业', '系统调度队列', '定时任务', 'Webhook 投递', '导出作业', '通知派发 Outbox']);
     expect(screen.getByText('导出作业探测超时')).toBeInTheDocument();
     expect(screen.getByText('部分作业源探测不可用，顶部汇总仅包含可用来源。')).toBeInTheDocument();
     expect(screen.getByText('心跳失联')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: '通知派发 Outbox' })).getByText('通知派发探测超时')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: '通知派发 Outbox' })).queryByText('待处理')).not.toBeInTheDocument();
   });
 
   it('navigates to the source processing page with its status filter', () => {

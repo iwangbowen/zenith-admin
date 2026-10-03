@@ -5,7 +5,7 @@
  * 渠道选择、偏好、免打扰、幂等与留痕全部由派发层负责。
  * 这样新增一个渠道或改一次偏好规则，不需要回头去改任何业务代码。
  */
-import { and, asc, eq, inArray, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import type {
   NotificationChannelOptions,
   NotificationChannelPolicy,
@@ -33,6 +33,8 @@ import { isCanonicalEntityType } from '@zenith/shared/platform';
 import { recordDomainEvent } from '../platform/relations/events.service';
 import { recordNotificationOutcome } from './notification-delivery-events';
 import { exactTenantCondition } from '../../lib/tenant';
+import type { JobStuckItem } from '@zenith/shared/platform';
+import type { JobSourceRawSummary } from '../../lib/job-monitor/registry';
 
 const MAX_ATTEMPTS = 5;
 /**
@@ -48,6 +50,51 @@ const ROW_CONCURRENCY = 8;
 /** 单次补投的时间预算：任务每分钟触发一次，留出余量避免与下一轮重叠 */
 const DRAIN_BUDGET_MS = 45_000;
 
+/** 已超过一次正常回收窗口仍持有旧认领，说明补投链路未能自动推进。 */
+export function stuckNotificationOutboxCondition(asOf = new Date()) {
+  return and(eq(notificationOutbox.status, 'pending'), lt(notificationOutbox.claimedAt, new Date(asOf.getTime() - 2 * CLAIM_TIMEOUT_MS)));
+}
+
+/** 包括到期摘要；将可回收认领计入积压，免打扰尚未到期的通知不计入。 */
+function pendingNotificationOutboxCondition(asOf: Date) {
+  return and(eq(notificationOutbox.status, 'pending'), lt(notificationOutbox.attempts, MAX_ATTEMPTS),
+    or(isNull(notificationOutbox.scheduledAt), lte(notificationOutbox.scheduledAt, asOf)),
+    or(isNull(notificationOutbox.claimedAt), lte(notificationOutbox.claimedAt, new Date(asOf.getTime() - CLAIM_TIMEOUT_MS))));
+}
+
+export async function getNotificationOutboxHealth(): Promise<JobSourceRawSummary> {
+  const now = new Date();
+  const since = new Date(now.getTime() - 86_400_000);
+  const hour = new Date(now.getTime() - 3_600_000);
+  const due = pendingNotificationOutboxCondition(now);
+  const [row] = await db.select({
+    pending: sql<number>`count(*) filter (where ${due})::int`,
+    running: sql<number>`count(*) filter (where ${notificationOutbox.status} = 'pending' and ${gt(notificationOutbox.claimedAt, new Date(now.getTime() - CLAIM_TIMEOUT_MS))})::int`,
+    stuck: sql<number>`count(*) filter (where ${stuckNotificationOutboxCondition(now)})::int`,
+    dead: sql<number>`count(*) filter (where ${notificationOutbox.status} = 'failed')::int`,
+    failed24h: sql<number>`count(*) filter (where ${notificationOutbox.status} = 'failed' and ${notificationOutbox.finishedAt} >= ${since})::int`,
+    succeeded24h: sql<number>`count(*) filter (where ${notificationOutbox.status} = 'done' and ${notificationOutbox.finishedAt} >= ${since})::int`,
+    failed1h: sql<number>`count(*) filter (where ${notificationOutbox.status} = 'failed' and ${notificationOutbox.finishedAt} >= ${hour})::int`,
+    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${now}::timestamptz - min(coalesce(${notificationOutbox.scheduledAt}, ${notificationOutbox.createdAt})) filter (where ${due}))))::int`,
+  }).from(notificationOutbox).where(or(inArray(notificationOutbox.status, ['pending', 'failed']), and(eq(notificationOutbox.status, 'done'), gte(notificationOutbox.finishedAt, since))));
+  return {
+    counts: { pending: row?.pending ?? 0, running: row?.running ?? 0, stuck: row?.stuck ?? 0, dead: row?.dead ?? 0, failed24h: row?.failed24h ?? 0, succeeded24h: row?.succeeded24h ?? 0 },
+    oldestPendingAgeSec: row?.oldestPendingAgeSec ?? null, failed1h: row?.failed1h ?? 0, issues: [],
+  };
+}
+
+export async function listStuckOutbox(limit: number): Promise<JobStuckItem[]> {
+  const now = new Date();
+  const rows = await db.select({ id: notificationOutbox.id, eventKey: notificationOutbox.eventKey, status: notificationOutbox.status,
+    claimedAt: notificationOutbox.claimedAt, attempts: notificationOutbox.attempts, lastError: notificationOutbox.lastError,
+  }).from(notificationOutbox).where(stuckNotificationOutboxCondition(now)).orderBy(asc(notificationOutbox.claimedAt), asc(notificationOutbox.id)).limit(limit);
+  return rows.map(row => ({
+    source: 'notification-outbox', refId: String(row.id), title: row.eventKey, status: row.status,
+    startedAt: row.claimedAt ? formatDateTime(row.claimedAt) : null, lastSeenAt: row.claimedAt ? formatDateTime(row.claimedAt) : null,
+    ageSec: row.claimedAt ? Math.max(0, Math.floor((now.getTime() - row.claimedAt.getTime()) / 1000)) : 0,
+    nodeId: null, detail: row.lastError ?? `已尝试 ${row.attempts} 次`, drillDown: null,
+  }));
+}
 export interface NotifyInput<K extends NotificationEventKey> {
   /** 收件人列表；空数组直接跳过，不产生 outbox 行 */
   recipients: readonly NotificationRecipient[];
@@ -198,7 +245,7 @@ async function deliverClaimedRow(row: NotificationOutboxRow): Promise<void> {
     const lastError = (err instanceof Error ? err.message : String(err)).slice(0, 500);
     // 保留认领时间：下一次重试要等认领超时，而不是被紧接着的补投轮次立刻再打一遍
     await db.transaction(async (tx) => {
-      const [updated] = await tx.update(notificationOutbox).set({ attempts, status, lastError, claimedAt: new Date() })
+      const [updated] = await tx.update(notificationOutbox).set({ attempts, status, lastError, claimedAt: new Date(), finishedAt: status === 'failed' ? new Date() : null })
         .where(claimedRowCondition(row)).returning();
       if (updated && status === 'failed') await recordNotificationOutcome(tx, updated, 'failed', { sent: 0, failed: 0, deferred: 0, suppressed: 0 });
     });
@@ -207,7 +254,7 @@ async function deliverClaimedRow(row: NotificationOutboxRow): Promise<void> {
   }
   // Do not turn a failed state/event commit into a delivery failure: the claim expires and retries safely.
   await db.transaction(async (tx) => {
-    const [updated] = await tx.update(notificationOutbox).set({ status: 'done' }).where(claimedRowCondition(row)).returning();
+    const [updated] = await tx.update(notificationOutbox).set({ status: 'done', finishedAt: new Date() }).where(claimedRowCondition(row)).returning();
     if (updated) await recordNotificationOutcome(tx, updated, 'done', summary);
   });
   if (summary.failed > 0) {
@@ -318,7 +365,7 @@ export async function aggregateNotificationDigests(): Promise<{ groups: number; 
       // 否则被置 done 的行既没有摘要也没有留痕，延后的邮件会静默丢失
       const summary = await db.transaction(async (tx) => {
         const claimed = await tx.update(notificationOutbox)
-          .set({ status: 'done', claimedAt: new Date() })
+          .set({ status: 'done', claimedAt: new Date(), finishedAt: new Date() })
           .where(and(
             inArrayIds(rows.map((r) => r.id)),
             eq(notificationOutbox.status, 'pending'),

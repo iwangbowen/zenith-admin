@@ -139,3 +139,5 @@ const { tasks, loading, refresh } = useMyAsyncTasks({ taskTypes: ['xxx-batch-imp
 | 系统级周期任务（清理/扫描/采集，cron 触发） | `registerSystemRecurringJob`（`lib/system-tasks.registry.ts`） |
 | 用户可自定义 cron 的定时任务 | 定时任务模块（`cron_jobs`） |
 | 工作流节点的延迟/补偿/外呼作业 | `workflow_jobs`（`lib/workflow-jobs/`） |
+
+新增作业型表或队列时需登记 JobSource，接入步骤与统计口径见[作业监控](../../../../docs/backend/job-monitor.md)。

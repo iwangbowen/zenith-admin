@@ -12,6 +12,7 @@ import JobSourceCard from './JobSourceCard';
 import QueueBacklogTable from './QueueBacklogTable';
 import WorkerNodesStrip from './WorkerNodesStrip';
 import StuckJobsDrawer from './StuckJobsDrawer';
+import JobTrendChart from './JobTrendChart';
 import { JOB_HEALTH_COLORS, JOB_REFRESH_OPTIONS, sortJobSources } from './job-monitor-shared';
 
 export default function JobMonitorPage() {
@@ -61,6 +62,7 @@ export default function JobMonitorPage() {
         {sources.map((source) => <Col key={source.key} xs={24} md={12} xl={8}><JobSourceCard source={source} onStuck={setStuckSource} /></Col>)}
       </Row>
       <QueueBacklogTable queues={data.queues} refreshing={overview.isFetching} onRefresh={refresh} />
+      <JobTrendChart />
       <StuckJobsDrawer source={stuckSource} onClose={() => setStuckSource(null)} />
     </div>
   );

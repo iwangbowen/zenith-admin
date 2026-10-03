@@ -6,12 +6,13 @@ import { ApiRecorder, createRequestMock, createTestQueryClient, createWrapper } 
 const recorder = new ApiRecorder();
 vi.mock('@/utils/request', () => ({ request: createRequestMock(() => recorder) }));
 
-import { useJobMonitorStuck } from './job-monitor';
+import { useJobMonitorStuck, useJobMonitorTrend, type JobMonitorTrendRange } from './job-monitor';
 
 beforeEach(() => {
   recorder.reset();
   recorder.on('GET', '/api/job-monitor/sources/async-task/stuck', []);
   recorder.on('GET', '/api/job-monitor/sources/workflow-job/stuck', []);
+  recorder.on('GET', '/api/job-monitor/trend', { points: [] });
 });
 
 describe('job monitor stuck query', () => {
@@ -38,5 +39,14 @@ describe('job monitor stuck query', () => {
     hook.rerender({ key: 'workflow-job' });
     await waitFor(() => expect(recorder.countOf('GET', '/api/job-monitor/sources/workflow-job/stuck')).toBe(1));
     expect(recorder.countOf('GET', '/api/job-monitor/sources/async-task/stuck')).toBe(1);
+  });
+
+  it('fetches the requested trend range when the range changes', async () => {
+    const hook = renderHook(({ range }) => useJobMonitorTrend(range), {
+      initialProps: { range: '24h' as JobMonitorTrendRange }, wrapper: createWrapper(createTestQueryClient()),
+    });
+    await waitFor(() => expect(hook.result.current.isSuccess).toBe(true));
+    hook.rerender({ range: '1h' });
+    await waitFor(() => expect(recorder.urls()).toEqual(['/api/job-monitor/trend?range=24h', '/api/job-monitor/trend?range=1h']));
   });
 });
