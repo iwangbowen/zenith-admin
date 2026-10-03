@@ -211,10 +211,11 @@ async function observeSla(rule: SlaRuleRow, now: Date): Promise<{ value: number;
   return { value: total ? successful / total * 100 : 0, detail: `窗口内成功 ${successful} / 总计 ${total} 次` };
 }
 
-async function notifySla(rule: SlaRuleRow, violation: SlaViolationRow, now: Date): Promise<void> {
+async function notifySla(rule: SlaRuleRow, violation: SlaViolationRow, now: Date, taskId?: number): Promise<void> {
   if (!rule.channels.length || !shouldNotifySlaViolation(rule.lastNotifiedAt, rule.silenceMins, now)) return;
   const idempotencyKey = `sla:${rule.id}:${violation.id}:${dayjs(now).startOf('minute').valueOf()}`;
   const delivery = await ensureDeliveryRun({
+    taskId,
     tenantId: rule.tenantId,
     targetType: 'sla',
     triggerType: 'scheduled',
@@ -227,6 +228,7 @@ async function notifySla(rule: SlaRuleRow, violation: SlaViolationRow, now: Date
   });
   if (delivery.status === 'success') return;
   const running = await startManualDeliveryRun({
+    taskId,
     runId: delivery.id,
     attempt: Math.max(1, delivery.attempt || 1),
     maxAttempts: delivery.maxAttempts,
@@ -257,7 +259,7 @@ async function notifySla(rule: SlaRuleRow, violation: SlaViolationRow, now: Date
   }
 }
 
-export async function evaluateReportSlaRule(id: number, now = new Date()): Promise<{
+export async function evaluateReportSlaRule(id: number, now = new Date(), taskId?: number): Promise<{
   violated: boolean;
   observedValue: number;
   violation: ReportSlaViolation | null;
@@ -292,7 +294,7 @@ export async function evaluateReportSlaRule(id: number, now = new Date()): Promi
         detail: observation.detail,
       }).returning();
     }
-    await notifySla(rule, violation!, now);
+    await notifySla(rule, violation!, now, taskId);
   } else if (active) {
     [violation] = await db.update(reportSlaViolations).set({
       status: 'resolved',

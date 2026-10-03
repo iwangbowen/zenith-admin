@@ -258,6 +258,8 @@ export const broadcastCampaigns = pgTable('broadcast_campaigns', {
 }, (t) => [
   index('broadcast_campaigns_status_idx').on(t.status),
   index('broadcast_campaigns_created_at_idx').on(t.createdAt),
+  index('broadcast_campaigns_status_updated_idx').on(t.status, t.updatedAt),
+  index('broadcast_campaigns_task_idx').on(t.taskId),
 ]);
 
 export type BroadcastCampaignRow = typeof broadcastCampaigns.$inferSelect;

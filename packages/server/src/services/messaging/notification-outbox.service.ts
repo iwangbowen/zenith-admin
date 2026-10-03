@@ -72,10 +72,10 @@ export async function getNotificationOutboxHealth(): Promise<JobSourceRawSummary
     running: sql<number>`count(*) filter (where ${notificationOutbox.status} = 'pending' and ${gt(notificationOutbox.claimedAt, new Date(now.getTime() - CLAIM_TIMEOUT_MS))})::int`,
     stuck: sql<number>`count(*) filter (where ${stuckNotificationOutboxCondition(now)})::int`,
     dead: sql<number>`count(*) filter (where ${notificationOutbox.status} = 'failed')::int`,
-    failed24h: sql<number>`count(*) filter (where ${notificationOutbox.status} = 'failed' and ${notificationOutbox.finishedAt} >= ${since})::int`,
-    succeeded24h: sql<number>`count(*) filter (where ${notificationOutbox.status} = 'done' and ${notificationOutbox.finishedAt} >= ${since})::int`,
-    failed1h: sql<number>`count(*) filter (where ${notificationOutbox.status} = 'failed' and ${notificationOutbox.finishedAt} >= ${hour})::int`,
-    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${now}::timestamptz - min(coalesce(${notificationOutbox.scheduledAt}, ${notificationOutbox.createdAt})) filter (where ${due}))))::int`,
+    failed24h: sql<number>`count(*) filter (where ${notificationOutbox.status} = 'failed' and ${notificationOutbox.finishedAt} >= ${sql.param(since, notificationOutbox.finishedAt)})::int`,
+    succeeded24h: sql<number>`count(*) filter (where ${notificationOutbox.status} = 'done' and ${notificationOutbox.finishedAt} >= ${sql.param(since, notificationOutbox.finishedAt)})::int`,
+    failed1h: sql<number>`count(*) filter (where ${notificationOutbox.status} = 'failed' and ${notificationOutbox.finishedAt} >= ${sql.param(hour, notificationOutbox.finishedAt)})::int`,
+    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${sql.param(now, notificationOutbox.scheduledAt)}::timestamptz - min(coalesce(${notificationOutbox.scheduledAt}, ${notificationOutbox.createdAt})) filter (where ${due}))))::int`,
   }).from(notificationOutbox).where(or(inArray(notificationOutbox.status, ['pending', 'failed']), and(eq(notificationOutbox.status, 'done'), gte(notificationOutbox.finishedAt, since))));
   return {
     counts: { pending: row?.pending ?? 0, running: row?.running ?? 0, stuck: row?.stuck ?? 0, dead: row?.dead ?? 0, failed24h: row?.failed24h ?? 0, succeeded24h: row?.succeeded24h ?? 0 },

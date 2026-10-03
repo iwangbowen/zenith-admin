@@ -12,6 +12,7 @@ import { buildListResult, listRows } from '../../lib/list-query';
 import { exactTenantCondition, requireTenantScopeId, tenantCondition } from '../../lib/tenant';
 import { buildWhere, withPagination } from '../../lib/where-helpers';
 import { requireTenantUser } from '../../lib/user-nicknames';
+import { getReconStatusGroups, reconAttentionCounts } from './payment-recon-health-summary';
 
 export const mapStatementPeriod = (row: PaymentStatementPeriodRow) => pickEntity(paymentStatementPeriodSchema, row);
 export const mapStatement = (row: PaymentStatementRow) => pickEntity(paymentStatementSchema, row);
@@ -127,8 +128,9 @@ export async function getReconSummary(q: QueryOutputOf<typeof paymentReconContra
       bank ? eq(paymentStatementPeriods.type, 'bank') : inArray(paymentStatementPeriods.type, ['trade', 'fund']),
       eq(paymentStatementPeriods.currentStatementId, paymentStatements.id), eq(paymentStatements.status, 'validated'), eq(paymentStatementPeriods.currency, paymentStatementEntries.currency)))),
     sql`${paymentStatementEntries.amount} > coalesce((select sum(m.amount) from payment_bank_matches m where ${bank ? sql`m.bank_entry_id` : sql`m.settlement_entry_id`} = ${paymentStatementEntries.id} and m.tenant_id is not distinct from ${paymentStatementEntries.tenantId}), 0)`));
-  const periods = await tx.select({ status: paymentStatementPeriods.status, count: sql<number>`count(*)::int` }).from(paymentStatementPeriods).where(periodWhere).groupBy(paymentStatementPeriods.status);
-  const cases = await tx.select({ status: paymentReconCases.status, count: sql<number>`count(*)::int`, overdue: sql<number>`count(*) filter (where ${paymentReconCases.dueAt} < now())::int` }).from(paymentReconCases).where(caseWhere).groupBy(paymentReconCases.status);
+  const groups = await getReconStatusGroups(tx, { periodWhere, caseWhere });
+  const { periods, cases } = groups;
+  const { failedPeriods, overdueCases } = reconAttentionCounts(groups);
   const pendingAdjustments = await tx.$count(paymentReconAdjustments, buildWhere(tenantCondition(paymentReconAdjustments, user), inArray(paymentReconAdjustments.status, ['pending', 'approved']), accountCases ? inArray(paymentReconAdjustments.caseId, accountCases) : undefined));
   const unmatchedBankEntries = await unmatched(true);
   const unmatchedSettlementEntries = await unmatched(false);
@@ -143,9 +145,9 @@ export async function getReconSummary(q: QueryOutputOf<typeof paymentReconContra
   const runRevision = runs.map((row) => `${row.status}:${row.count}:${row.changedAt}`).join('|');
   const periodCount = (status: string) => periods.find((row) => row.status === status)?.count ?? 0;
   const caseCount = (status: string) => cases.find((row) => row.status === status)?.count ?? 0;
-  return { activeRuns, runRevision, expectedPeriods: periodCount('expected'), waitingPeriods: periodCount('waiting'), readyPeriods: periodCount('ready'), failedPeriods: periodCount('failed'),
+  return { activeRuns, runRevision, expectedPeriods: periodCount('expected'), waitingPeriods: periodCount('waiting'), readyPeriods: periodCount('ready'), failedPeriods,
     openCases: caseCount('open') + caseCount('investigating'), suspendedCases: caseCount('suspended'),
-    overdueCases: cases.filter((row) => ['open', 'investigating', 'suspended'].includes(row.status)).reduce((total, row) => total + row.overdue, 0),
+    overdueCases,
     pendingAdjustments, unmatchedBankEntries, unmatchedSettlementEntries, differenceAmounts: differences };
   });
 }

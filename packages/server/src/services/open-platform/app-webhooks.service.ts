@@ -54,10 +54,10 @@ export async function getWebhookDeliveryHealth(): Promise<JobSourceRawSummary> {
     running: sql<number>`count(*) filter (where ${appWebhookDeliveries.status} = 'pending' and ${gt(appWebhookDeliveries.startedAt, recoveryCutoff)})::int`,
     stuck: sql<number>`count(*) filter (where ${stuckWebhookDeliveryCondition(now)})::int`,
     dead: sql<number>`count(*) filter (where ${appWebhookDeliveries.status} = 'failed')::int`,
-    failed24h: sql<number>`count(*) filter (where ${appWebhookDeliveries.status} = 'failed' and ${appWebhookDeliveries.finishedAt} >= ${since})::int`,
-    succeeded24h: sql<number>`count(*) filter (where ${appWebhookDeliveries.status} = 'success' and ${appWebhookDeliveries.finishedAt} >= ${since})::int`,
-    failed1h: sql<number>`count(*) filter (where ${appWebhookDeliveries.status} = 'failed' and ${appWebhookDeliveries.finishedAt} >= ${hour})::int`,
-    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${now}::timestamptz - min(case when ${appWebhookDeliveries.status} = 'retrying' then ${appWebhookDeliveries.nextRetryAt} else coalesce(${appWebhookDeliveries.startedAt}, ${appWebhookDeliveries.createdAt}) end) filter (where ${due}))))::int`,
+    failed24h: sql<number>`count(*) filter (where ${appWebhookDeliveries.status} = 'failed' and ${appWebhookDeliveries.finishedAt} >= ${sql.param(since, appWebhookDeliveries.finishedAt)})::int`,
+    succeeded24h: sql<number>`count(*) filter (where ${appWebhookDeliveries.status} = 'success' and ${appWebhookDeliveries.finishedAt} >= ${sql.param(since, appWebhookDeliveries.finishedAt)})::int`,
+    failed1h: sql<number>`count(*) filter (where ${appWebhookDeliveries.status} = 'failed' and ${appWebhookDeliveries.finishedAt} >= ${sql.param(hour, appWebhookDeliveries.finishedAt)})::int`,
+    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${sql.param(now, appWebhookDeliveries.nextRetryAt)}::timestamptz - min(case when ${appWebhookDeliveries.status} = 'retrying' then ${appWebhookDeliveries.nextRetryAt} else coalesce(${appWebhookDeliveries.startedAt}, ${appWebhookDeliveries.createdAt}) end) filter (where ${due}))))::int`,
   }).from(appWebhookDeliveries).where(or(inArray(appWebhookDeliveries.status, ['pending', 'retrying', 'failed']), and(eq(appWebhookDeliveries.status, 'success'), gte(appWebhookDeliveries.finishedAt, since))));
   return {
     counts: { pending: row?.pending ?? 0, running: row?.running ?? 0, stuck: row?.stuck ?? 0, dead: row?.dead ?? 0, failed24h: row?.failed24h ?? 0, succeeded24h: row?.succeeded24h ?? 0 },

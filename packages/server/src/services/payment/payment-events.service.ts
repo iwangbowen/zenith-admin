@@ -21,10 +21,10 @@ export async function getPaymentEventHealth(tenantId?: number | null): Promise<J
     pending: sql<number>`count(*) filter (where ${paymentEvents.status} = 'pending')::int`,
     stuck: sql<number>`count(*) filter (where ${stuckPaymentEventCondition(now)})::int`,
     dead: sql<number>`count(*) filter (where ${paymentEvents.status} = 'failed')::int`,
-    failed24h: sql<number>`count(*) filter (where ${paymentEvents.status} = 'failed' and ${paymentEvents.processedAt} >= ${since})::int`,
-    succeeded24h: sql<number>`count(*) filter (where ${paymentEvents.status} = 'done' and ${paymentEvents.processedAt} >= ${since})::int`,
-    failed1h: sql<number>`count(*) filter (where ${paymentEvents.status} = 'failed' and ${paymentEvents.processedAt} >= ${hour})::int`,
-    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${now}::timestamptz - min(${paymentEvents.createdAt}) filter (where ${paymentEvents.status} = 'pending'))))::int`,
+    failed24h: sql<number>`count(*) filter (where ${paymentEvents.status} = 'failed' and ${paymentEvents.processedAt} >= ${sql.param(since, paymentEvents.processedAt)})::int`,
+    succeeded24h: sql<number>`count(*) filter (where ${paymentEvents.status} = 'done' and ${paymentEvents.processedAt} >= ${sql.param(since, paymentEvents.processedAt)})::int`,
+    failed1h: sql<number>`count(*) filter (where ${paymentEvents.status} = 'failed' and ${paymentEvents.processedAt} >= ${sql.param(hour, paymentEvents.processedAt)})::int`,
+    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${sql.param(now, paymentEvents.processedAt)}::timestamptz - min(${paymentEvents.createdAt}) filter (where ${paymentEvents.status} = 'pending'))))::int`,
   }).from(paymentEvents).where(and(optionalExactTenantCondition(paymentEvents.tenantId, tenantId),
     or(inArray(paymentEvents.status, ['pending', 'failed']), and(eq(paymentEvents.status, 'done'), gte(paymentEvents.processedAt, since)))));
   return {

@@ -1,10 +1,12 @@
 import type { QueryOf } from '@zenith/shared/core';
+import { keepPreviousData } from '@tanstack/react-query';
 import { reportDeliveryRunContract, reportSubscriptionContract } from '@zenith/shared/report';
 import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 import { asyncTaskKeys } from './async-tasks';
 import { useReportLookup } from './report-lookups';
 
 export type ReportSubscriptionListParams = NonNullable<QueryOf<typeof reportSubscriptionContract.list>>;
+export type ReportDeliveryRunListParams = NonNullable<QueryOf<typeof reportDeliveryRunContract.list>>;
 
 /** 订阅的投递历史（投递记录契约按目标筛选） */
 const historyQuery = (id: number) => ({
@@ -63,4 +65,8 @@ export function useBatchReportSubscriptionEnabled() {
 
 export function useReportSubscriptionHistory(id: number | undefined, enabled = true) {
   return useApiQuery(reportDeliveryRunContract.list, { query: historyQuery(id ?? 0) }, { enabled: enabled && !!id });
+}
+
+export function useReportDeliveryRunList(params: ReportDeliveryRunListParams, enabled = true) {
+  return useApiQuery(reportDeliveryRunContract.list, { query: params }, { enabled, placeholderData: keepPreviousData });
 }

@@ -7,6 +7,7 @@ import type { WorkflowFormSchema } from '@zenith/shared/workflow';
 import { timestampColumns, idColumn, statusColumn } from './common';
 import { auditColumns, users, tenantIdColumn } from './core';
 import { managedFiles } from './files';
+import { asyncTasks } from './tasks';
 import {
   reportDatasets,
   reportDashboards,
@@ -215,6 +216,7 @@ export const reportDqRules = pgTable('report_dq_rules', {
 
 export const reportDqRuns = pgTable('report_dq_runs', {
   id: idColumn(),
+  taskId: integer().references(() => asyncTasks.id, { onDelete: 'set null' }),
   tenantId: tenantIdColumn('set null'),
   ruleId: integer().notNull().references(() => reportDqRules.id, { onDelete: 'cascade' }),
   datasetId: integer().notNull().references(() => reportDatasets.id, { onDelete: 'cascade' }),
@@ -237,6 +239,9 @@ export const reportDqRuns = pgTable('report_dq_runs', {
   index('report_dq_runs_rule_time_idx').on(t.ruleId, t.createdAt),
   index('report_dq_runs_dataset_status_time_idx').on(t.datasetId, t.status, t.createdAt),
   index('report_dq_runs_tenant_time_idx').on(t.tenantId, t.createdAt),
+  index('report_dq_runs_task_idx').on(t.taskId),
+  index('report_dq_runs_status_started_idx').on(t.status, t.startedAt),
+  index('report_dq_runs_status_completed_idx').on(t.status, t.completedAt),
 ]);
 
 export const reportDqScores = pgTable('report_dq_scores', {

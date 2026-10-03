@@ -728,7 +728,8 @@ export const TRACE_NODE_STATUS_LABELS: Record<TraceNodeStatus, string> = {
   running: '进行中',
   pending: '待处理',
 };
-export const JOB_SOURCE_KEYS = ['scheduler-queue', 'async-task', 'export-job', 'cron-job', 'workflow-job', 'notification-outbox', 'webhook-delivery', 'directory-sync', 'db-backup', 'entity-watch-delivery', 'cms-telemetry-outbox', 'payment-event-outbox', 'drive-rendition'] as const;
+export const JOB_SOURCE_KEYS = ['scheduler-queue', 'async-task', 'export-job', 'cron-job', 'workflow-job', 'notification-outbox', 'webhook-delivery', 'directory-sync', 'db-backup', 'entity-watch-delivery', 'cms-telemetry-outbox', 'payment-event-outbox', 'drive-rendition', 'report-delivery', 'report-dq', 'payment-recon', 'deploy-run', 'broadcast', 'cms-pipeline', 'scheduled-dispatch'] as const;
+export const JOB_MONITOR_SCHEDULE_GRACE_MS = 3 * 60_000;
 export const JOB_SOURCE_CATEGORIES = ['runtime', 'delivery', 'business', 'schedule'] as const;
 export type JobSourceCategory = typeof JOB_SOURCE_CATEGORIES[number];
 export const JOB_SOURCE_CATEGORY_LABELS = { runtime: '执行运行时', delivery: '事件与内容投递', business: '业务作业', schedule: '到期调度' } as const;

@@ -146,6 +146,8 @@ export const paymentReconRuns = pgTable('payment_recon_runs', {
 }, (t) => [
   index('payment_recon_runs_statement_idx').on(t.statementId),
   index('payment_recon_runs_tenant_idx').on(t.tenantId),
+  index('payment_recon_runs_status_started_idx').on(t.status, t.startedAt),
+  index('payment_recon_runs_status_finished_idx').on(t.status, t.finishedAt),
   uniqueIndex('payment_recon_runs_active_statement_unique').on(t.statementId).where(sql`${t.status} in ('pending', 'running')`),
 ]);
 export type PaymentReconRunRow = typeof paymentReconRuns.$inferSelect;

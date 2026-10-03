@@ -37,6 +37,9 @@ export const cmsDeliveryRuns = pgTable('cms_delivery_runs', {
   uniqueIndex('cms_delivery_runs_site_event_uq').on(t.siteId, t.eventKey),
   index('cms_delivery_runs_site_id_idx').on(t.siteId, t.id),
   index('cms_delivery_runs_release_idx').on(t.releaseId),
+  index('cms_delivery_runs_status_started_idx').on(t.status, t.startedAt),
+  index('cms_delivery_runs_purge_created_idx').on(t.purgeStatus, t.createdAt),
+  index('cms_delivery_runs_status_completed_idx').on(t.status, t.completedAt),
 ]);
 
 /** One receipt for each resource's most recently handled natural expiration. */

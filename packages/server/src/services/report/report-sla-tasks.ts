@@ -13,7 +13,7 @@ export function registerReportSlaTaskHandlers(): void {
       const ruleId = Number(ctx.payload.ruleId);
       const state = await ctx.progress({ note: '开始评估 SLA', checkpoint: { stage: 'evaluating', ruleId } });
       if (state.cancelRequested) return { cancelled: true, message: '任务已取消' };
-      const result = await evaluateReportSlaRule(ruleId);
+      const result = await evaluateReportSlaRule(ruleId, new Date(), ctx.taskId);
       await ctx.progress({
         processed: 1,
         total: 1,

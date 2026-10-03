@@ -332,7 +332,7 @@ function detectMissedRun(job: JobRow, now: Date): Date | null {
 }
 
 export function stuckCronRunCondition(asOf = new Date()) {
-  return and(eq(cronJobLogs.status, 'running'), sql`${cronJobs.monitorTimeout} > 0 and ${cronJobLogs.startedAt} + ${cronJobs.monitorTimeout} * interval '1 second' < ${asOf}`);
+  return and(eq(cronJobLogs.status, 'running'), sql`${cronJobs.monitorTimeout} > 0 and ${cronJobLogs.startedAt} + ${cronJobs.monitorTimeout} * interval '1 second' < ${sql.param(asOf, cronJobLogs.startedAt)}`);
 }
 
 /** 轻量监控读数；待执行请求由 pg-boss 来源统计，Cron 本域只检查运行和调度问题。 */
@@ -344,9 +344,9 @@ export async function getCronJobHealth(): Promise<JobSourceRawSummary> {
     db.select({
       running: sql<number>`count(*) filter (where ${cronJobLogs.status} = 'running')::int`,
       stuck: sql<number>`count(*) filter (where ${stuckCronRunCondition(now)})::int`,
-      failed24h: sql<number>`count(*) filter (where ${cronJobLogs.status} in ('fail', 'timeout') and ${cronJobLogs.endedAt} >= ${since})::int`,
-      succeeded24h: sql<number>`count(*) filter (where ${cronJobLogs.status} = 'success' and ${cronJobLogs.endedAt} >= ${since})::int`,
-      failed1h: sql<number>`count(*) filter (where ${cronJobLogs.status} in ('fail', 'timeout') and ${cronJobLogs.endedAt} >= ${hour})::int`,
+      failed24h: sql<number>`count(*) filter (where ${cronJobLogs.status} in ('fail', 'timeout') and ${cronJobLogs.endedAt} >= ${sql.param(since, cronJobLogs.startedAt)})::int`,
+      succeeded24h: sql<number>`count(*) filter (where ${cronJobLogs.status} = 'success' and ${cronJobLogs.endedAt} >= ${sql.param(since, cronJobLogs.startedAt)})::int`,
+      failed1h: sql<number>`count(*) filter (where ${cronJobLogs.status} in ('fail', 'timeout') and ${cronJobLogs.endedAt} >= ${sql.param(hour, cronJobLogs.startedAt)})::int`,
     }).from(cronJobLogs).innerJoin(cronJobs, eq(cronJobs.id, cronJobLogs.jobId))
       .where(or(eq(cronJobLogs.status, 'running'), and(inArray(cronJobLogs.status, ['success', 'fail', 'timeout']), gte(cronJobLogs.endedAt, since)))),
     db.select({

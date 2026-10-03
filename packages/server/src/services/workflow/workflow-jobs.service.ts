@@ -24,7 +24,7 @@ export function stuckWorkflowJobCondition(asOf = new Date()) {
   return and(eq(workflowJobs.status, 'running'), or(
     lt(workflowJobs.leaseUntil, cutoff),
     lt(workflowJobs.executionDeadline, cutoff),
-    and(isNull(workflowJobs.leaseUntil), lt(sql`coalesce(${workflowJobs.lockedAt}, ${workflowJobs.updatedAt})`, cutoff)),
+    and(isNull(workflowJobs.leaseUntil), lt(sql`coalesce(${workflowJobs.lockedAt}, ${workflowJobs.updatedAt})`, sql.param(cutoff, workflowJobs.updatedAt))),
   ));
 }
 
@@ -40,12 +40,12 @@ export async function getWorkflowJobHealth(): Promise<JobSourceRawSummary> {
       running: sql<number>`count(*) filter (where ${workflowJobs.status} = 'running')::int`,
       stuck: sql<number>`count(*) filter (where ${stuckWorkflowJobCondition(now)})::int`,
       dead: sql<number>`count(*) filter (where ${workflowJobs.status} = 'dead')::int`,
-      oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${now}::timestamptz - min(${workflowJobs.runAt}) filter (where ${due}))))::int`,
+      oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${sql.param(now, workflowJobs.runAt)}::timestamptz - min(${workflowJobs.runAt}) filter (where ${due}))))::int`,
     }).from(workflowJobs).where(inArray(workflowJobs.status, ['pending', 'running', 'dead'])),
     db.select({
       failed24h: sql<number>`count(*) filter (where ${workflowJobExecutions.status} = 'failed')::int`,
       succeeded24h: sql<number>`count(*) filter (where ${workflowJobExecutions.status} = 'succeeded')::int`,
-      failed1h: sql<number>`count(*) filter (where ${workflowJobExecutions.status} = 'failed' and ${workflowJobExecutions.finishedAt} >= ${hour})::int`,
+      failed1h: sql<number>`count(*) filter (where ${workflowJobExecutions.status} = 'failed' and ${workflowJobExecutions.finishedAt} >= ${sql.param(hour, workflowJobs.runAt)})::int`,
     }).from(workflowJobExecutions).where(and(inArray(workflowJobExecutions.status, ['failed', 'succeeded']), gte(workflowJobExecutions.finishedAt, since))),
   ]);
   return {

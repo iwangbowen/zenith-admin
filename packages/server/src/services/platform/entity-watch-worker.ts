@@ -26,10 +26,10 @@ export async function getEntityWatchDeliveryHealth(): Promise<JobSourceRawSummar
   const due = and(lte(entityWatchEvents.nextAttemptAt, now), or(isNull(entityWatchEvents.claimedAt), lt(entityWatchEvents.claimedAt, leaseCutoff)));
   const [row] = await db.select({
     pending: sql<number>`count(*) filter (where ${due})::int`,
-    running: sql<number>`count(*) filter (where ${entityWatchEvents.claimedAt} >= ${leaseCutoff})::int`,
+    running: sql<number>`count(*) filter (where ${entityWatchEvents.claimedAt} >= ${sql.param(leaseCutoff, entityWatchEvents.claimedAt)})::int`,
     stuck: sql<number>`count(*) filter (where ${stuckEntityWatchEventCondition(now)})::int`,
     repeatedFailures: sql<number>`count(*) filter (where ${isNotNull(entityWatchEvents.lastError)} and ${gte(entityWatchEvents.attempts, 5)})::int`,
-    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${now}::timestamptz - min(${entityWatchEvents.nextAttemptAt}) filter (where ${due}))))::int`,
+    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${sql.param(now, entityWatchEvents.nextAttemptAt)}::timestamptz - min(${entityWatchEvents.nextAttemptAt}) filter (where ${due}))))::int`,
   }).from(entityWatchEvents);
   return {
     counts: { pending: row?.pending ?? 0, running: row?.running ?? 0, stuck: row?.stuck ?? 0, dead: null, failed24h: 0, succeeded24h: 0 },

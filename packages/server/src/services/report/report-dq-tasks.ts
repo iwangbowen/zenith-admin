@@ -22,6 +22,7 @@ export function registerReportDqTaskHandlers(): void {
       });
       if (state.cancelRequested) return { cancelled: true, message: '任务已取消' };
       const run = await executeReportDqRule(ruleId, {
+        taskId: ctx.taskId,
         sampleLimit,
         triggerType,
         runId: checkpointRunId,

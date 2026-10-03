@@ -40,6 +40,9 @@ import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { FilterSelect } from '@/components/search-filters';
 import { useListPage } from '@/hooks/useListPage';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
+import { enumValueOf } from '@zenith/shared/core';
+import { REPORT_DQ_RUN_STATUSES } from '@zenith/shared/report';
 import { EditFormModal } from '@/components/EditFormModal';
 const ruleTypeOptions: { value: ReportDqRuleType; label: string }[] = [
   { value: 'not_null', label: '非空' },
@@ -121,6 +124,7 @@ export default function QualityPage() {
     }),
     table: { empty: <Empty title="暂无质量规则" /> },
   });
+  useListDeepLink(['status'], (picked) => applyParams({ ...defaultSearchParams, runStatus: enumValueOf(REPORT_DQ_RUN_STATUSES, picked.status) }));
   const [formRuleType, setFormRuleType] = useState<ReportDqRuleType>('not_null');
   const [cronExprValue, setCronExprValue] = useState('');
   const [historyRule, setHistoryRule] = useState<ReportDqRule | null>(null);

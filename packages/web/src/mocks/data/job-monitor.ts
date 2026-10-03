@@ -17,7 +17,46 @@ function source(summary: Pick<JobSourceSummary, 'key' | 'title' | 'module' | 'dr
   };
 }
 
+const BUSINESS_SOURCE_DEMOS: JobSourceSummary[] = [
+  source({ key: 'report-delivery', title: '报表投递', category: 'business', module: 'report', health: 'critical',
+    counts: { pending: 2, running: 1, stuck: 1, dead: null, failed24h: 1, succeeded24h: 12 },
+    issues: [{ level: 'critical', message: '1 条投递记录与任务中心状态不一致' }],
+    drillDown: { path: '/report/subscriptions?tab=runs&status=failed', label: '前往处理' } }),
+  source({ key: 'report-dq', title: '报表数据质量', category: 'business', module: 'report', health: 'critical',
+    counts: { pending: 0, running: 1, stuck: 1, dead: null, failed24h: 2, succeeded24h: 18 },
+    issues: [{ level: 'critical', message: '1 条质量检测记录关联的任务已结束' }],
+    drillDown: { path: '/report/quality?tab=runs&status=failed', label: '前往处理' } }),
+  source({ key: 'payment-recon', title: '支付对账', category: 'business', module: 'payment', health: 'critical',
+    counts: { pending: 1, running: 2, stuck: 1, dead: null, failed24h: 1, succeeded24h: 6 },
+    issues: [{ level: 'critical', message: '1 条对账记录超过执行时限' }, { level: 'warn', message: '存在失败对账期间' }],
+    drillDown: { path: '/payment/recon', label: '前往处理' } }),
+  source({ key: 'deploy-run', title: '应用部署', category: 'business', module: 'ops', health: 'critical',
+    counts: { pending: 0, running: 1, stuck: 1, dead: null, failed24h: 1, succeeded24h: 3 },
+    issues: [{ level: 'critical', message: '1 条部署记录或主机执行未被关联任务推进' }],
+    drillDown: { path: '/system/deploy?tab=records&status=running', label: '前往处理' } }),
+  source({ key: 'broadcast', title: '运营群发', category: 'business', module: 'messaging', health: 'critical',
+    counts: { pending: 0, running: 1, stuck: 1, dead: null, failed24h: 0, succeeded24h: 4 },
+    issues: [{ level: 'critical', message: '群发任务已结束，但仍有收件人未入队' }],
+    drillDown: { path: '/system/broadcasts?status=sending', label: '前往处理' } }),
+  source({ key: 'cms-pipeline', title: 'CMS 构建发布', category: 'business', module: 'cms', health: 'critical',
+    counts: { pending: 2, running: 1, stuck: 2, dead: null, failed24h: 1, succeeded24h: 15 },
+    issues: [{ level: 'critical', message: 'CMS 构建和媒体处理存在未被任务推进的记录' }],
+    breakdown: [
+      { key: 'deployment', label: '站点构建', pending: 0, running: 1, stuck: 1, failed24h: 0, drillDown: { path: '/cms/publishing', label: '前往处理' } },
+      { key: 'delivery', label: '交付与缓存刷新', pending: 1, running: 0, stuck: 0, failed24h: 1, drillDown: { path: '/cms/publishing', label: '前往处理' } },
+      { key: 'media-processing', label: '媒体处理', pending: 1, running: 0, stuck: 1, failed24h: 0, drillDown: { path: '/cms/media', label: '前往处理' } },
+    ],
+    drillDown: { path: '/cms/publishing', label: '前往处理' } }),
+];
+
 export function createDemoStuckJobs(key: JobSourceKey): JobStuckItem[] {
+  const business = BUSINESS_SOURCE_DEMOS.find(item => item.key === key);
+  if (business) return Array.from({ length: business.counts.stuck }, (_, index) => ({
+    source: key, refId: `${key}-${index + 1}`, title: `${business.title} · ${key === 'cms-pipeline' ? (index === 0 ? '站点构建' : '媒体处理') : '异常执行记录'}`,
+    status: key === 'broadcast' ? 'sending' : key === 'cms-pipeline' && index === 0 ? 'building' : 'running',
+    startedAt: mockDateTimeOffset(-3 * 3600_000), lastSeenAt: mockDateTimeOffset(-90 * 60_000), ageSec: 3 * 3600,
+    nodeId: 'demo-worker-2', detail: '业务记录仍在进行态，关联任务已终态或超过执行时限', drillDown: business.drillDown,
+  }));
   if (key === 'directory-sync') return mockDirectorySyncRuns.filter(run => isDirectorySyncRunStuck(run)).map(run => ({
     source: key, refId: String(run.id), title: run.sourceName ?? '目录同步', status: run.status, startedAt: run.startedAt,
     lastSeenAt: run.startedAt, ageSec: ageSec(run.startedAt), nodeId: null, detail: run.errorMessage,
@@ -69,6 +108,7 @@ export function createDemoJobMonitorOverview(): JobMonitorOverview {
     source({ key: 'cms-telemetry-outbox', title: 'CMS 转化事件投递', category: 'delivery', module: 'cms', drillDown: null }),
     source({ key: 'payment-event-outbox', title: '支付事件派发', category: 'delivery', module: 'payment', drillDown: { path: '/payment/events?status=failed', label: '前往处理' } }),
     source({ key: 'drive-rendition', title: '网盘渲染', category: 'delivery', module: 'drive', drillDown: null }),
+    ...BUSINESS_SOURCE_DEMOS.map(item => structuredClone(item)),
   ];
   sources.find(item => item.key === 'async-task')!.breakdown = Array.from({ length: 6 }, (_, index) => ({
     key: `demo-type-${index}`, label: `演示任务类型 ${index + 1}`, pending: index === 0 ? 4 : 0,

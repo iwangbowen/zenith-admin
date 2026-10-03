@@ -27,7 +27,7 @@ export const DB_BACKUP_PENDING_STUCK_MS = JOB_MONITOR_BACKUP_PENDING_STUCK_MS;
 export function stuckDbBackupCondition(asOf = new Date()) {
   return or(
     and(eq(dbBackups.status, 'pending'), lt(dbBackups.createdAt, new Date(asOf.getTime() - DB_BACKUP_PENDING_STUCK_MS))),
-    and(eq(dbBackups.status, 'running'), lt(sql`coalesce(${dbBackups.startedAt}, ${dbBackups.createdAt})`, new Date(asOf.getTime() - DB_BACKUP_STUCK_MS))),
+    and(eq(dbBackups.status, 'running'), lt(sql`coalesce(${dbBackups.startedAt}, ${dbBackups.createdAt})`, sql.param(new Date(asOf.getTime() - DB_BACKUP_STUCK_MS), dbBackups.createdAt))),
   );
 }
 
@@ -39,10 +39,10 @@ export async function getDbBackupHealth(): Promise<JobSourceRawSummary> {
     pending: sql<number>`count(*) filter (where ${dbBackups.status} = 'pending')::int`,
     running: sql<number>`count(*) filter (where ${dbBackups.status} = 'running')::int`,
     stuck: sql<number>`count(*) filter (where ${stuckDbBackupCondition(now)})::int`,
-    failed24h: sql<number>`count(*) filter (where ${dbBackups.status} = 'failed' and ${dbBackups.completedAt} >= ${since})::int`,
-    succeeded24h: sql<number>`count(*) filter (where ${dbBackups.status} = 'success' and ${dbBackups.completedAt} >= ${since})::int`,
-    failed1h: sql<number>`count(*) filter (where ${dbBackups.status} = 'failed' and ${dbBackups.completedAt} >= ${hour})::int`,
-    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${now}::timestamp - min(${dbBackups.createdAt}) filter (where ${dbBackups.status} = 'pending'))))::int`,
+    failed24h: sql<number>`count(*) filter (where ${dbBackups.status} = 'failed' and ${dbBackups.completedAt} >= ${sql.param(since, dbBackups.createdAt)})::int`,
+    succeeded24h: sql<number>`count(*) filter (where ${dbBackups.status} = 'success' and ${dbBackups.completedAt} >= ${sql.param(since, dbBackups.createdAt)})::int`,
+    failed1h: sql<number>`count(*) filter (where ${dbBackups.status} = 'failed' and ${dbBackups.completedAt} >= ${sql.param(hour, dbBackups.createdAt)})::int`,
+    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${sql.param(now, dbBackups.createdAt)}::timestamp - min(${dbBackups.createdAt}) filter (where ${dbBackups.status} = 'pending'))))::int`,
   }).from(dbBackups).where(or(inArray(dbBackups.status, ['pending', 'running']), and(inArray(dbBackups.status, ['success', 'failed']), gte(dbBackups.completedAt, since))));
   return {
     counts: { pending: row?.pending ?? 0, running: row?.running ?? 0, stuck: row?.stuck ?? 0, dead: null, failed24h: row?.failed24h ?? 0, succeeded24h: row?.succeeded24h ?? 0 },

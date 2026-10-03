@@ -605,6 +605,8 @@ export const asyncTasksRelations = relations(asyncTasks, ({ one, many }) => ({
   items: many(asyncTaskItems),
   subjects: many(asyncTaskSubjects),
   cmsPublishArtifacts: many(cmsPublishArtifacts),
+  reportDeliveryRuns: many(reportDeliveryRuns),
+  reportDqRuns: many(reportDqRuns),
 }));
 
 export const asyncTaskItemsRelations = relations(asyncTaskItems, ({ one }) => ({
@@ -1271,6 +1273,7 @@ export const reportDashboardSubscriptionsRelations = relations(reportDashboardSu
 }));
 
 export const reportDeliveryRunsRelations = relations(reportDeliveryRuns, ({ one, many }) => ({
+  task: one(asyncTasks, { fields: [reportDeliveryRuns.taskId], references: [asyncTasks.id] }),
   tenant: one(tenants, { fields: [reportDeliveryRuns.tenantId], references: [tenants.id] }),
   subscription: one(reportDashboardSubscriptions, { fields: [reportDeliveryRuns.subscriptionId], references: [reportDashboardSubscriptions.id] }),
   alertRule: one(reportAlertRules, { fields: [reportDeliveryRuns.alertRuleId], references: [reportAlertRules.id] }),
@@ -1346,6 +1349,7 @@ export const reportDqRulesRelations = relations(reportDqRules, ({ one, many }) =
 }));
 
 export const reportDqRunsRelations = relations(reportDqRuns, ({ one, many }) => ({
+  task: one(asyncTasks, { fields: [reportDqRuns.taskId], references: [asyncTasks.id] }),
   tenant: one(tenants, { fields: [reportDqRuns.tenantId], references: [tenants.id] }),
   rule: one(reportDqRules, { fields: [reportDqRuns.ruleId], references: [reportDqRules.id] }),
   dataset: one(reportDatasets, { fields: [reportDqRuns.datasetId], references: [reportDatasets.id] }),

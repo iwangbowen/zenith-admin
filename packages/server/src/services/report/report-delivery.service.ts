@@ -1,7 +1,7 @@
 import { reportDeliveryRunContract } from '@zenith/shared/report';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { requireRow } from '../../lib/db-assert';
-import { and, desc, eq, inArray, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, lt, lte, or, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { CronExpressionParser } from 'cron-parser';
 import * as z from 'zod';
@@ -20,6 +20,52 @@ import { reportScopedWhere, reportTenantScope } from './report-access';
 import { resolveReportSecret } from './report-secrets';
 import type { ReportAlertRule, ReportDashboardSubscription, ReportDeliveryAttempt, ReportDeliveryRun, ReportDeliveryStatus, ReportDeliveryTriggerType, ReportNotifyChannel, ReportScheduleMisfirePolicy } from '@zenith/shared/report';
 import { buildWhere, dateRangeConditions, withPagination } from '../../lib/where-helpers';
+import type { JobStuckItem } from '@zenith/shared/platform';
+import type { JobSourceRawSummary } from '../../lib/job-monitor/registry';
+import { orphanRunCondition } from '../../lib/job-monitor/orphan';
+
+/** 同步计划投递没有任务中心 taskId；异步手动来源保留标识，FK清理后仍能发现孤儿。 */
+export function taskManagedReportDeliveryCondition() {
+  return or(isNotNull(reportDeliveryRuns.taskId), eq(reportDeliveryRuns.triggerType, 'manual'), sql`coalesce(${reportDeliveryRuns.payloadSummary}->>'source', '') = 'manual'`);
+}
+
+export function stuckReportDeliveryRunCondition(asOf = new Date()) {
+  return or(
+    and(taskManagedReportDeliveryCondition(), orphanRunCondition({ table: reportDeliveryRuns, statusColumn: reportDeliveryRuns.status, activeStatuses: ['pending', 'running'], taskIdColumn: reportDeliveryRuns.taskId, startedAtColumn: sql`coalesce(${reportDeliveryRuns.startedAt}, ${reportDeliveryRuns.createdAt})`, asOf })),
+    and(eq(reportDeliveryRuns.status, 'running'), lt(reportDeliveryRuns.startedAt, new Date(asOf.getTime() - 30 * 60_000))),
+  );
+}
+
+export async function getReportDeliveryHealth(): Promise<JobSourceRawSummary> {
+  const now = new Date();
+  const since = new Date(now.getTime() - 86_400_000);
+  const hour = new Date(now.getTime() - 3_600_000);
+  const [row] = await db.select({
+    stuck: sql<number>`count(*) filter (where ${stuckReportDeliveryRunCondition(now)})::int`,
+    failed24h: sql<number>`count(*) filter (where ${reportDeliveryRuns.status} = 'failed' and ${reportDeliveryRuns.completedAt} >= ${sql.param(since, reportDeliveryRuns.completedAt)})::int`,
+    succeeded24h: sql<number>`count(*) filter (where ${reportDeliveryRuns.status} = 'success' and ${reportDeliveryRuns.completedAt} >= ${sql.param(since, reportDeliveryRuns.completedAt)})::int`,
+    partial24h: sql<number>`count(*) filter (where ${reportDeliveryRuns.status} = 'partial' and ${reportDeliveryRuns.completedAt} >= ${sql.param(since, reportDeliveryRuns.completedAt)})::int`,
+    failed1h: sql<number>`count(*) filter (where ${reportDeliveryRuns.status} = 'failed' and ${reportDeliveryRuns.completedAt} >= ${sql.param(hour, reportDeliveryRuns.completedAt)})::int`,
+  }).from(reportDeliveryRuns).where(or(inArray(reportDeliveryRuns.status, ['pending', 'running']), and(inArray(reportDeliveryRuns.status, ['success', 'partial', 'failed']), gte(reportDeliveryRuns.completedAt, since))));
+  return {
+    counts: { pending: 0, running: 0, stuck: row?.stuck ?? 0, dead: null, failed24h: row?.failed24h ?? 0, succeeded24h: row?.succeeded24h ?? 0 },
+    oldestPendingAgeSec: null, failed1h: row?.failed1h ?? 0,
+    issues: row?.partial24h ? [{ level: 'warn', message: `近 24 小时 ${row.partial24h} 次报表投递仅部分通道成功` }] : [],
+  };
+}
+
+export async function listStuckReportDeliveryRuns(limit: number): Promise<JobStuckItem[]> {
+  const now = new Date();
+  const rows = await db.select({ id: reportDeliveryRuns.id, targetName: reportDeliveryRuns.targetName, targetType: reportDeliveryRuns.targetType, status: reportDeliveryRuns.status,
+    startedAt: reportDeliveryRuns.startedAt, createdAt: reportDeliveryRuns.createdAt, updatedAt: reportDeliveryRuns.updatedAt, errorMessage: reportDeliveryRuns.errorMessage,
+  }).from(reportDeliveryRuns).where(stuckReportDeliveryRunCondition(now)).orderBy(reportDeliveryRuns.createdAt, reportDeliveryRuns.id).limit(limit);
+  return rows.map(row => ({
+    source: 'report-delivery', refId: String(row.id), title: row.targetName ?? `${row.targetType} #${row.id}`, status: row.status,
+    startedAt: formatNullableDateTime(row.startedAt), lastSeenAt: formatDateTime(row.updatedAt), ageSec: Math.max(0, Math.floor((now.getTime() - (row.startedAt ?? row.createdAt).getTime()) / 1000)),
+    nodeId: null, detail: row.errorMessage ?? '关联任务已失联或运行超过 30 分钟',
+    drillDown: { path: `/report/subscriptions?tab=runs&status=${row.status}`, label: '查看投递记录' },
+  }));
+}
 
 const emailSchema = z.email('邮箱格式不正确');
 
@@ -136,6 +182,7 @@ function mapDeliveryAttempt(row: typeof reportDeliveryAttempts.$inferSelect): Re
 function mapDeliveryRun(row: DeliveryRunQueryRow, attempts?: ReportDeliveryAttempt[]): ReportDeliveryRun {
   return {
     id: row.id,
+    taskId: row.taskId ?? null,
     targetType: row.targetType,
     subscriptionId: row.subscriptionId ?? null,
     alertRuleId: row.alertRuleId ?? null,
@@ -321,6 +368,7 @@ async function pendingEmailRecipients(
 }
 
 export async function ensureDeliveryRun(input: {
+  taskId?: number | null;
   tenantId: number | null;
   targetType: 'subscription' | 'alert' | 'sla';
   triggerType: ReportDeliveryTriggerType;
@@ -336,6 +384,7 @@ export async function ensureDeliveryRun(input: {
   maxAttempts?: number;
 }): Promise<typeof reportDeliveryRuns.$inferSelect> {
   const [inserted] = await db.insert(reportDeliveryRuns).values({
+    taskId: input.taskId ?? null,
     tenantId: input.tenantId,
     targetType: input.targetType,
     triggerType: input.triggerType,
@@ -359,6 +408,7 @@ export async function ensureDeliveryRun(input: {
 }
 
 export async function startManualDeliveryRun(input: {
+  taskId?: number | null;
   runId: number;
   attempt: number;
   maxAttempts: number;
@@ -367,6 +417,7 @@ export async function startManualDeliveryRun(input: {
 }): Promise<typeof reportDeliveryRuns.$inferSelect> {
   const [rowOrUndefined] = await db.update(reportDeliveryRuns)
     .set({
+      ...(input.taskId !== undefined ? { taskId: input.taskId } : {}),
       triggerType: input.triggerType,
       status: 'running',
       attempt: input.attempt,

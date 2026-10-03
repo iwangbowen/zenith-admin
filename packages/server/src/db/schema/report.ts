@@ -5,6 +5,7 @@ import type { ReportDatasourceConfig, ReportDatasetContent, ReportField, ReportG
 import { REPORT_PRINT_SOURCE_TYPES, REPORT_RESOURCE_TYPES } from '@zenith/shared/report';
 import { timestampColumns, idColumn, statusColumn, sortColumn, remarkColumn } from './common';
 import { auditColumns, users, tenantIdColumn } from './core';
+import { asyncTasks } from './tasks';
 
 // ════════════════════════════════════════════════════════════════════════════
 // 报表中心（Report Center）—— 通用报表设计器 / 数据大屏
@@ -444,6 +445,7 @@ export type NewReportDashboardSubscription = typeof reportDashboardSubscriptions
 
 export const reportDeliveryRuns = pgTable('report_delivery_runs', {
   id: idColumn(),
+  taskId: integer().references(() => asyncTasks.id, { onDelete: 'set null' }),
   tenantId: tenantIdColumn('set null'),
   targetType: reportDeliveryTargetTypeEnum().$type<ReportDeliveryTargetType>().notNull(),
   subscriptionId: integer().references((): AnyPgColumn => reportDashboardSubscriptions.id, { onDelete: 'set null' }),
@@ -477,6 +479,9 @@ export const reportDeliveryRuns = pgTable('report_delivery_runs', {
   index('report_delivery_runs_alert_idx').on(t.alertRuleId, t.id),
   index('report_delivery_runs_retry_idx').on(t.status, t.nextRetryAt),
   index('report_delivery_runs_tenant_idx').on(t.tenantId),
+  index('report_delivery_runs_task_idx').on(t.taskId),
+  index('report_delivery_runs_status_started_idx').on(t.status, t.startedAt),
+  index('report_delivery_runs_status_completed_idx').on(t.status, t.completedAt),
 ]);
 
 export type ReportDeliveryRunRow = typeof reportDeliveryRuns.$inferSelect;

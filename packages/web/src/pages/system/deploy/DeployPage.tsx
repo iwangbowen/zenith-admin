@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Descriptions, Divider, Form, Modal, SideSheet, Spin, TabPane, Tabs, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { DEPLOY_HEALTH_CHECK_TYPE_OPTIONS, DEPLOY_RESTART_MODE_OPTIONS, DEPLOY_RUN_KIND_LABELS, DEPLOY_RUN_STATUS_LABELS, DEPLOY_STRATEGY_OPTIONS, type AppRelease, type ClientApp, type DeployRelease, type DeployRun, type DeployTarget, type DeployTargetHost, type DeployRunKind, type CreateDeployTargetInput } from '@zenith/shared/ops';
+import { DEPLOY_HEALTH_CHECK_TYPE_OPTIONS, DEPLOY_RESTART_MODE_OPTIONS, DEPLOY_RUN_KIND_LABELS, DEPLOY_RUN_STATUS_LABELS, DEPLOY_RUN_STATUSES, DEPLOY_STRATEGY_OPTIONS, type AppRelease, type ClientApp, type DeployRelease, type DeployRun, type DeployTarget, type DeployTargetHost, type DeployRunKind, type CreateDeployTargetInput } from '@zenith/shared/ops';
 import { deployRunContract, deployReleaseContract } from '@zenith/shared/ops';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { CreateButton, RefreshButton } from '@/components/toolbar-controls';
@@ -20,7 +20,8 @@ import { useAllClientApps, useAppReleaseList } from '@/hooks/queries/app-release
 import { useOpsHosts } from '@/hooks/queries/ops-hosts';
 import { useCreateDeployRun, useDeleteDeployTarget, useDeployReleaseList, useDeployRunDetail, useDeployRunList, useDeployRunLogs, useDeployTargetList, useSaveDeployTarget, useSyncDeployTarget, deployKeys } from '@/hooks/queries/deploy';
 import { dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
-import { formatBytes } from '@zenith/shared/core';
+import { enumValueOf, formatBytes } from '@zenith/shared/core';
+import { useSearchParams } from 'react-router-dom';
 import './DeployPage.css';
 
 const { Text } = Typography;
@@ -103,8 +104,13 @@ function RunDetail({ runId, onClose }: { runId: number | null; onClose: () => vo
 
 function RunsTab({ onOpen }: { active: boolean; onOpen: (id: number) => void }) {
   const page = useListPage({ contract: deployRunContract, useList: useDeployRunList, table: { rowKey: 'id', empty: '暂无部署记录' } });
-  useListDeepLink(['run'], (picked) => { if (picked.run) onOpen(Number(picked.run)); });
-  useListDeepLink(['release'], (picked) => { if (picked.release) page.applySearch({ releaseId: Number(picked.release) }); });
+  useListDeepLink(['run', 'release', 'status'], (picked) => {
+    if (picked.run) onOpen(Number(picked.run));
+    if (picked.release || picked.status) page.applySearch({
+      releaseId: picked.release ? Number(picked.release) : undefined,
+      status: enumValueOf(DEPLOY_RUN_STATUSES, picked.status),
+    });
+  });
   const columns: ColumnProps<DeployRun>[] = [{ title: '记录', dataIndex: 'id', width: 80 }, { title: '应用', dataIndex: 'appName', minWidth: 150, render: renderEllipsis }, { title: '目标', dataIndex: 'targetName', width: 120 }, { title: '类型', dataIndex: 'kind', width: 90, render: (v: DeployRunKind) => DEPLOY_RUN_KIND_LABELS[v] }, { title: '版本', dataIndex: 'version', width: 100, render: (v) => v ?? EMPTY_PLACEHOLDER }, { title: '状态', dataIndex: 'status', width: 100, fixed: 'right', render: runStatus }, { title: '进度', dataIndex: 'hostSucceeded', width: 110, render: (_v, r) => `${r.hostSucceeded}/${r.hostTotal} 成功` }, dateTimeColumn('发起时间', 'createdAt'), createOperationColumn<DeployRun>({ width: 110, actions: (r) => [{ key: 'detail', label: '详情', onClick: () => onOpen(r.id) }] })];
   return <><ListSearchToolbar page={page} filters={['appId', 'targetId', 'releaseId', 'kind', 'status', 'keyword', ['startTime', 'endTime']]} actions={<RefreshButton onClick={() => void page.listQuery.refetch()} loading={page.listQuery.isFetching} />} /><ConfigurableTable columns={columns} {...page.tableProps} /></>;
 }
@@ -116,7 +122,9 @@ function ReleasesTab({ onRollback }: { active: boolean; onRollback: (r: DeployRe
 }
 
 export default function DeployPage() {
-  const [activeTab, setActiveTab] = useUrlTabState(['targets', 'records', 'releases'] as const, 'targets'); const [runId, setRunId] = useState<number | null>(null); const [target, setTarget] = useState<DeployTarget | null>(null); const [release, setRelease] = useState<AppRelease | null>(null); const create = useCreateDeployRun(); const qc = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const defaultTab = enumValueOf(DEPLOY_RUN_STATUSES, searchParams.get('status')) ? 'records' : 'targets';
+  const [activeTab, setActiveTab] = useUrlTabState(['targets', 'records', 'releases'] as const, defaultTab); const [runId, setRunId] = useState<number | null>(null); const [target, setTarget] = useState<DeployTarget | null>(null); const [release, setRelease] = useState<AppRelease | null>(null); const create = useCreateDeployRun(); const qc = useQueryClient();
   const handleRollback = (r: DeployRelease) => { if (r.isCurrent) return; Modal.confirm({ title: `确认回滚到 v${r.version}？`, content: `目标：${r.targetName ?? r.targetId} / 主机：${r.hostName ?? r.hostId}`, onOk: async () => { await create.mutateAsync({ body: { kind: 'rollback', targetId: r.targetId, releaseName: r.releaseName } }); Toast.success('回滚任务已提交'); void qc.invalidateQueries({ queryKey: deployKeys.runs }); } }); };
   return <div className="page-container page-tabs-page zx-flat-panels"><Tabs collapsible="auto" activeKey={activeTab} onChange={(k) => setActiveTab(k as typeof activeTab)} type="line" lazyRender keepDOM={false}><TabPane tab="部署目标" itemKey="targets"><TargetTab active={activeTab === 'targets'} onDeploy={setTarget} /></TabPane><TabPane tab="部署记录" itemKey="records"><RunsTab active={activeTab === 'records'} onOpen={setRunId} /></TabPane><TabPane tab="发布备份" itemKey="releases"><ReleasesTab active={activeTab === 'releases'} onRollback={handleRollback} /></TabPane></Tabs><DeployModal target={target} release={release} onClose={() => { setTarget(null); setRelease(null); }} /><RunDetail runId={runId} onClose={() => setRunId(null)} /></div>;
 }

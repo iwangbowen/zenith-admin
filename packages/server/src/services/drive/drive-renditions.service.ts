@@ -32,9 +32,9 @@ export async function getDriveRenditionHealth(): Promise<JobSourceRawSummary> {
   const hour = new Date(now.getTime() - 3_600_000);
   const [row] = await db.select({
     stuck: sql<number>`count(*) filter (where ${stuckDriveRenditionCondition(now)})::int`,
-    failed24h: sql<number>`count(*) filter (where ${driveNodeRenditions.status} = 'failed' and ${driveNodeRenditions.updatedAt} >= ${since})::int`,
-    succeeded24h: sql<number>`count(*) filter (where ${driveNodeRenditions.status} = 'ready' and ${driveNodeRenditions.updatedAt} >= ${since})::int`,
-    failed1h: sql<number>`count(*) filter (where ${driveNodeRenditions.status} = 'failed' and ${driveNodeRenditions.updatedAt} >= ${hour})::int`,
+    failed24h: sql<number>`count(*) filter (where ${driveNodeRenditions.status} = 'failed' and ${driveNodeRenditions.updatedAt} >= ${sql.param(since, driveNodeRenditions.updatedAt)})::int`,
+    succeeded24h: sql<number>`count(*) filter (where ${driveNodeRenditions.status} = 'ready' and ${driveNodeRenditions.updatedAt} >= ${sql.param(since, driveNodeRenditions.updatedAt)})::int`,
+    failed1h: sql<number>`count(*) filter (where ${driveNodeRenditions.status} = 'failed' and ${driveNodeRenditions.updatedAt} >= ${sql.param(hour, driveNodeRenditions.updatedAt)})::int`,
   }).from(driveNodeRenditions).where(or(eq(driveNodeRenditions.status, 'pending'), gte(driveNodeRenditions.updatedAt, since)));
   return {
     counts: { pending: 0, running: 0, stuck: row?.stuck ?? 0, dead: null, failed24h: row?.failed24h ?? 0, succeeded24h: row?.succeeded24h ?? 0 },

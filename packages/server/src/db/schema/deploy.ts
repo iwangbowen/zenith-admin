@@ -112,6 +112,8 @@ export const deployRuns = pgTable('deploy_runs', {
 }, (t) => [
   index('deploy_runs_target_created_idx').on(t.targetId, t.createdAt),
   index('deploy_runs_app_created_idx').on(t.appId, t.createdAt),
+  index('deploy_runs_status_started_idx').on(t.status, t.startedAt),
+  index('deploy_runs_status_finished_idx').on(t.status, t.finishedAt),
   // 目标级互斥：同一目标同时只允许一个未结束的 run
   uniqueIndex('deploy_runs_target_active_unique').on(t.targetId).where(sql`${t.status} in ('pending', 'running')`),
 ]);
@@ -134,6 +136,7 @@ export const deployRunHosts = pgTable('deploy_run_hosts', {
   error: text(),
 }, (t) => [
   unique('deploy_run_hosts_run_host_unique').on(t.runId, t.hostId),
+  index('deploy_run_hosts_status_started_idx').on(t.status, t.startedAt),
 ]);
 
 export type DeployRunHostRow = typeof deployRunHosts.$inferSelect;

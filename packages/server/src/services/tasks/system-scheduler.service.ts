@@ -25,7 +25,7 @@ import type { JobSourceRawSummary } from '../../lib/job-monitor/registry';
 
 /** 超时策略来自任务配置，未设阈值时按半小时识别未收尾运行。 */
 export function overdueSchedulerRunCondition(asOf = new Date()) {
-  return and(eq(systemSchedulerRuns.status, 'running'), sql`${systemSchedulerRuns.startedAt} + coalesce(${systemSchedulerTaskConfigs.timeoutMs}, 1800000) * interval '1 millisecond' < ${asOf}`);
+  return and(eq(systemSchedulerRuns.status, 'running'), sql`${systemSchedulerRuns.startedAt} + coalesce(${systemSchedulerTaskConfigs.timeoutMs}, 1800000) * interval '1 millisecond' < ${sql.param(asOf, systemSchedulerRuns.startedAt)}`);
 }
 
 /** 队列真实积压使用 ready；运行留痕成败按结束时间，避免把历史失败当24h失败。 */
@@ -38,16 +38,16 @@ export async function getSchedulerRunHealth(): Promise<JobSourceRawSummary> {
     db.select({
       running: sql<number>`count(*) filter (where ${systemSchedulerRuns.status} = 'running')::int`,
       stuck: sql<number>`count(*) filter (where ${overdueSchedulerRunCondition(now)})::int`,
-      failed24h: sql<number>`count(*) filter (where ${systemSchedulerRuns.status} = 'failed' and ${systemSchedulerRuns.endedAt} >= ${since})::int`,
-      succeeded24h: sql<number>`count(*) filter (where ${systemSchedulerRuns.status} = 'success' and ${systemSchedulerRuns.endedAt} >= ${since})::int`,
-      failed1h: sql<number>`count(*) filter (where ${systemSchedulerRuns.status} = 'failed' and ${systemSchedulerRuns.endedAt} >= ${hour})::int`,
+      failed24h: sql<number>`count(*) filter (where ${systemSchedulerRuns.status} = 'failed' and ${systemSchedulerRuns.endedAt} >= ${sql.param(since, systemSchedulerRuns.startedAt)})::int`,
+      succeeded24h: sql<number>`count(*) filter (where ${systemSchedulerRuns.status} = 'success' and ${systemSchedulerRuns.endedAt} >= ${sql.param(since, systemSchedulerRuns.startedAt)})::int`,
+      failed1h: sql<number>`count(*) filter (where ${systemSchedulerRuns.status} = 'failed' and ${systemSchedulerRuns.endedAt} >= ${sql.param(hour, systemSchedulerRuns.startedAt)})::int`,
     }).from(systemSchedulerRuns)
       .leftJoin(systemSchedulerTaskConfigs, eq(systemSchedulerTaskConfigs.taskName, systemSchedulerRuns.taskName))
       .where(or(eq(systemSchedulerRuns.status, 'running'), and(inArray(systemSchedulerRuns.status, ['success', 'failed']), gte(systemSchedulerRuns.endedAt, since)))),
     db.execute<{ age: number | null }>(sql`
-      select floor(extract(epoch from (${now}::timestamptz - min(start_after))))::int as age
+      select floor(extract(epoch from (${sql.param(now, systemSchedulerRuns.startedAt)}::timestamptz - min(start_after))))::int as age
       from pgboss.job
-      where state in ('created', 'retry') and start_after <= ${now}
+      where state in ('created', 'retry') and start_after <= ${sql.param(now, systemSchedulerRuns.startedAt)}
         and left(name, 10) <> '__pgboss__'
     `),
   ]);

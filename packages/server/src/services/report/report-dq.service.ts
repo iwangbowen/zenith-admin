@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { CronExpressionParser } from 'cron-parser';
 import dayjs from 'dayjs';
 import { HTTPException } from 'hono/http-exception';
-import { and, desc, eq, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import type { CreateReportDqRuleInput, ReportDqAnomaly, ReportDqRule, ReportDqRuleConfig, ReportDqRuleType, ReportDqRun, ReportDqScore, ReportField, RunReportDqRuleInput, UpdateReportDqAnomalyStatusInput, UpdateReportDqRuleInput } from '@zenith/shared/report';
 import { db } from '../../db';
 import {
@@ -27,6 +27,46 @@ import { ensureReportResourceAccess, accessibleReportResourceCondition } from '.
 import { dueCronFireTime, loadScheduleActor } from './report-schedule-shared';
 import { buildWhere, withPagination } from '../../lib/where-helpers';
 import { pickEntity } from '../../lib/entity-map';
+import type { JobStuckItem } from '@zenith/shared/platform';
+import type { JobSourceRawSummary } from '../../lib/job-monitor/registry';
+import { orphanRunCondition } from '../../lib/job-monitor/orphan';
+import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+
+export function stuckReportDqRunCondition(asOf = new Date()) {
+  return or(orphanRunCondition({ table: reportDqRuns, statusColumn: reportDqRuns.status, activeStatuses: ['pending', 'running'],
+    taskIdColumn: reportDqRuns.taskId, startedAtColumn: sql`coalesce(${reportDqRuns.startedAt}, ${reportDqRuns.createdAt})`, asOf }),
+  and(eq(reportDqRuns.status, 'running'), lt(reportDqRuns.startedAt, new Date(asOf.getTime() - 30 * 60_000))));
+}
+
+export async function getReportDqHealth(): Promise<JobSourceRawSummary> {
+  const now = new Date();
+  const since = new Date(now.getTime() - 86_400_000);
+  const hour = new Date(now.getTime() - 3_600_000);
+  const [row] = await db.select({
+    stuck: sql<number>`count(*) filter (where ${stuckReportDqRunCondition(now)})::int`,
+    failed24h: sql<number>`count(*) filter (where ${reportDqRuns.status} = 'failed' and ${reportDqRuns.completedAt} >= ${sql.param(since, reportDqRuns.completedAt)})::int`,
+    succeeded24h: sql<number>`count(*) filter (where ${reportDqRuns.status} = 'succeeded' and ${reportDqRuns.completedAt} >= ${sql.param(since, reportDqRuns.completedAt)})::int`,
+    failed1h: sql<number>`count(*) filter (where ${reportDqRuns.status} = 'failed' and ${reportDqRuns.completedAt} >= ${sql.param(hour, reportDqRuns.completedAt)})::int`,
+  }).from(reportDqRuns).where(or(inArray(reportDqRuns.status, ['pending', 'running']), and(inArray(reportDqRuns.status, ['succeeded', 'failed']), gte(reportDqRuns.completedAt, since))));
+  return {
+    counts: { pending: 0, running: 0, stuck: row?.stuck ?? 0, dead: null, failed24h: row?.failed24h ?? 0, succeeded24h: row?.succeeded24h ?? 0 },
+    oldestPendingAgeSec: null, failed1h: row?.failed1h ?? 0, issues: [],
+  };
+}
+
+export async function listStuckReportDqRuns(limit: number): Promise<JobStuckItem[]> {
+  const now = new Date();
+  const rows = await db.select({ id: reportDqRuns.id, status: reportDqRuns.status, startedAt: reportDqRuns.startedAt, createdAt: reportDqRuns.createdAt,
+    updatedAt: reportDqRuns.updatedAt, errorMessage: reportDqRuns.errorMessage, ruleName: reportDqRules.name,
+  }).from(reportDqRuns).innerJoin(reportDqRules, eq(reportDqRules.id, reportDqRuns.ruleId))
+    .where(stuckReportDqRunCondition(now)).orderBy(reportDqRuns.createdAt, reportDqRuns.id).limit(limit);
+  return rows.map(row => ({
+    source: 'report-dq', refId: String(row.id), title: row.ruleName, status: row.status,
+    startedAt: formatNullableDateTime(row.startedAt), lastSeenAt: formatDateTime(row.updatedAt), ageSec: Math.max(0, Math.floor((now.getTime() - (row.startedAt ?? row.createdAt).getTime()) / 1000)),
+    nodeId: null, detail: row.errorMessage ?? '关联任务已失联或运行超过 30 分钟',
+    drillDown: { path: `/report/quality?tab=runs&status=${row.status}`, label: '查看质量检查记录' },
+  }));
+}
 
 const DQ_QUERY_LIMIT = 10_000;
 const MAX_SAMPLE_ROWS = 100;
@@ -381,6 +421,7 @@ async function recomputeDatasetScore(datasetId: number, tenantId: number | null,
 export async function executeReportDqRule(
   ruleId: number,
   input: {
+    taskId: number;
     sampleLimit?: number;
     triggerType: 'manual' | 'scheduled' | 'dataset_refresh';
     runId?: number;
@@ -400,6 +441,7 @@ export async function executeReportDqRule(
   )) return mapReportDqRun(run);
   if (!run) {
     [run] = await db.insert(reportDqRuns).values({
+      taskId: input.taskId,
       tenantId: rule.tenantId,
       ruleId: rule.id,
       datasetId: rule.datasetId,
@@ -410,7 +452,7 @@ export async function executeReportDqRule(
     await input.onRunStarted?.(run!.id);
   }
   const startedAt = new Date();
-  [run] = await db.update(reportDqRuns).set({ status: 'running', startedAt, errorMessage: null })
+  [run] = await db.update(reportDqRuns).set({ status: 'running', taskId: input.taskId, startedAt, errorMessage: null })
     .where(eq(reportDqRuns.id, run!.id)).returning();
   const cancelRun = async (): Promise<ReportDqRun> => {
     const completedAt = new Date();

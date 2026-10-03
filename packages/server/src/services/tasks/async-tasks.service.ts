@@ -54,17 +54,17 @@ export async function getAsyncTaskHealth(): Promise<JobSourceRawSummary> {
     pending: sql<number>`count(*) filter (where ${due})::int`,
     running: sql<number>`count(*) filter (where ${asyncTasks.status} = 'running')::int`,
     stuck: sql<number>`count(*) filter (where ${stuckAsyncTaskCondition(now)})::int`,
-    failed24h: sql<number>`count(*) filter (where ${asyncTasks.status} = 'failed' and ${asyncTasks.completedAt} >= ${since})::int`,
-    succeeded24h: sql<number>`count(*) filter (where ${asyncTasks.status} = 'success' and ${asyncTasks.completedAt} >= ${since})::int`,
-    failed1h: sql<number>`count(*) filter (where ${asyncTasks.status} = 'failed' and ${asyncTasks.completedAt} >= ${hour})::int`,
-    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${now}::timestamp - min(coalesce(${asyncTasks.nextRunAt}, ${asyncTasks.createdAt})) filter (where ${due}))))::int`,
+    failed24h: sql<number>`count(*) filter (where ${asyncTasks.status} = 'failed' and ${asyncTasks.completedAt} >= ${sql.param(since, asyncTasks.createdAt)})::int`,
+    succeeded24h: sql<number>`count(*) filter (where ${asyncTasks.status} = 'success' and ${asyncTasks.completedAt} >= ${sql.param(since, asyncTasks.createdAt)})::int`,
+    failed1h: sql<number>`count(*) filter (where ${asyncTasks.status} = 'failed' and ${asyncTasks.completedAt} >= ${sql.param(hour, asyncTasks.createdAt)})::int`,
+    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${sql.param(now, asyncTasks.createdAt)}::timestamp - min(coalesce(${asyncTasks.nextRunAt}, ${asyncTasks.createdAt})) filter (where ${due}))))::int`,
   }).from(asyncTasks).where(scope);
   const breakdown = await executor.select({
     taskType: asyncTasks.taskType,
     pending: sql<number>`count(*) filter (where ${due})::int`,
     running: sql<number>`count(*) filter (where ${asyncTasks.status} = 'running')::int`,
     stuck: sql<number>`count(*) filter (where ${stuckAsyncTaskCondition(now)})::int`,
-    failed24h: sql<number>`count(*) filter (where ${asyncTasks.status} = 'failed' and ${asyncTasks.completedAt} >= ${since})::int`,
+    failed24h: sql<number>`count(*) filter (where ${asyncTasks.status} = 'failed' and ${asyncTasks.completedAt} >= ${sql.param(since, asyncTasks.createdAt)})::int`,
   }).from(asyncTasks).where(scope).groupBy(asyncTasks.taskType)
     .orderBy(sql`count(*) filter (where ${stuckAsyncTaskCondition(now)}) desc`, sql`count(*) filter (where ${due} or ${asyncTasks.status} = 'running') desc`, asyncTasks.taskType).limit(10);
   return {

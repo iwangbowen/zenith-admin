@@ -87,6 +87,12 @@ describe('reconciliation summary run monitoring', () => {
     expect(params).toEqual([7, 23, 7]);
     expect(sql).toContain('"payment_statements"."id" = "payment_recon_runs"."statement_id"');
     expect(sql).toContain('"payment_statement_periods"."id" = "payment_statements"."period_id"');
+    for (const table of ['payment_statement_periods', 'payment_recon_cases']) {
+      const grouped = state.queries.find(entry => entry.sql.includes(`from "${table}"`) && entry.sql.includes(' group by '));
+      expect(grouped?.params).toEqual([7, 23]);
+      expect(grouped?.sql).toContain(`"${table}"."tenant_id"`);
+      expect(grouped?.sql).toContain(`"${table}"."account_id"`);
+    }
   });
 
   it('uses a platform administrator\'s selected tenant rather than the platform scope', async () => {

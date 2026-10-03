@@ -632,7 +632,8 @@ export const reportHandlers = [
     const list = mockDeliveryRuns.filter((item) =>
       matchesFilter(item.targetType, query.targetType)
       && matchesFilter(item.subscriptionId, query.subscriptionId)
-      && matchesFilter(item.alertRuleId, query.alertRuleId));
+      && matchesFilter(item.alertRuleId, query.alertRuleId)
+      && matchesFilter(item.status, query.status));
     return ok(paginate(list));
   }),
   mock(reportDeliveryRunContract.acknowledge, ({ params, body, ok }) => {

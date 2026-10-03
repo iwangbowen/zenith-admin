@@ -40,6 +40,7 @@ export type ReportDqRule = z.infer<typeof reportDqRuleSchema>;
 
 export const reportDqRunSchema = z.object({
   id: z.int(),
+  taskId: z.int().nullable().optional(),
   tenantId: z.int().nullable(),
   ruleId: z.int(),
   ruleName: z.string().nullable().optional(),

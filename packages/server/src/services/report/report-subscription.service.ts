@@ -362,6 +362,7 @@ export async function runSubscriptionTask(
   const row = await ensureSubscriptionExists(id);
   validateNotifyChannels((row.channels ?? []) as ReportNotifyChannel[], row.recipients, row.webhookUrl, row.createdBy);
   const run = await ensureDeliveryRun({
+    taskId: context.taskId,
     tenantId: row.tenantId ?? null,
     targetType: 'subscription',
     triggerType: 'manual',
@@ -378,6 +379,7 @@ export async function runSubscriptionTask(
     maxAttempts: context.maxAttempts,
   });
   const runningRun = await startManualDeliveryRun({
+    taskId: context.taskId,
     runId: run.id,
     attempt: context.attempt,
     maxAttempts: context.maxAttempts,

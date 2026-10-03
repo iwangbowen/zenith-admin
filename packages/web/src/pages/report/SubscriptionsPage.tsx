@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Form, Tag, Toast, Modal, SideSheet, Typography } from '@douyinfe/semi-ui';
+import { Button, Form, Tag, Toast, Modal, SideSheet, Typography, Tabs, TabPane } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
@@ -29,6 +29,8 @@ import { deleteAction, ListSearchToolbar, useRowSelection } from '@/components/l
 import { DEFAULT_TIMEZONE } from '@/utils/timezones';
 import { useListPage } from '@/hooks/useListPage';
 import { EditFormModal } from '@/components/EditFormModal';
+import { useUrlTabState } from '@/hooks/useUrlTabState';
+import SubscriptionRunsView from './SubscriptionRunsView';
 
 const deliveryStatusColorMap: Record<string, 'green' | 'red' | 'orange' | 'grey' | 'blue' | 'amber'> = {
   success: 'green',
@@ -40,6 +42,7 @@ const deliveryStatusColorMap: Record<string, 'green' | 'red' | 'orange' | 'grey'
 };
 
 export default function SubscriptionsPage() {
+  const [activeTab, setActiveTab] = useUrlTabState(['subscriptions', 'runs'] as const, 'subscriptions');
   const { options: statusOptions } = useDictItems('common_status');
   const { hasPermission } = usePermission();
   const queryClient = useQueryClient();
@@ -48,6 +51,7 @@ export default function SubscriptionsPage() {
   const page = useListPage({
     contract: reportSubscriptionContract,
     useList: useReportSubscriptionList,
+    enabled: activeTab === 'subscriptions',
     table: { empty: '暂无订阅', rowSelection: hasPermission('report:subscription:update') ? rowSelection : undefined },
   });
   const { tableProps } = page;
@@ -169,7 +173,9 @@ export default function SubscriptionsPage() {
   const renderBatchDisable = () => selectedRowKeys.length > 0 && hasPermission('report:subscription:update') ? <Button type="danger" onClick={() => handleBatchEnabled(false)}>批量停用</Button> : null;
 
   return (
-    <div className="page-container">
+    <div className="page-container page-tabs-page">
+      <Tabs collapsible="auto" type="line" activeKey={activeTab} onChange={(key) => setActiveTab(key as typeof activeTab)} lazyRender>
+        <TabPane tab="订阅配置" itemKey="subscriptions">
       <ListSearchToolbar
         page={page}
         filters={['keyword']}
@@ -180,6 +186,9 @@ export default function SubscriptionsPage() {
         columns={columns}
         {...tableProps}
       />
+        </TabPane>
+        <TabPane tab="投递记录" itemKey="runs"><SubscriptionRunsView active={activeTab === 'runs'} /></TabPane>
+      </Tabs>
 
       <EditFormModal modal={subscriptionModal} width={560} formProps={{ onValueChange: (v: Record<string, unknown>) => {
             if (typeof v.cron === 'string') setCronExprValue(v.cron);

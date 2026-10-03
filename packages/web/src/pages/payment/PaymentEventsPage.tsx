@@ -14,6 +14,7 @@ import { KeywordInput, StatusSelect } from '@/components/search-filters';
 import { copyableNoColumn, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { enumValueOf } from '@zenith/shared/core';
 import { useListPage } from '@/hooks/useListPage';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
 
 const EVENT_STATUS_COLOR = { pending: 'blue', done: 'green', failed: 'red' } as const satisfies Record<PaymentOutboxEvent['status'], string>;
 const HEALTH_LABELS = [
@@ -46,6 +47,7 @@ export default function PaymentEventsPage() {
     bindKeyword,
     handleSearch,
     handleReset,
+    applySearch,
     tableProps,
   } = useListPage({
     defaults: defaultSearch,
@@ -53,6 +55,7 @@ export default function PaymentEventsPage() {
     useList: usePaymentEventList,
     toQuery: (s) => ({ keyword: s.keyword, status: enumValueOf(PAYMENT_OUTBOX_EVENT_STATUSES, s.status), type: s.type }),
   });
+  useListDeepLink(['status'], (picked) => applySearch({ ...defaultSearch, status: enumValueOf(PAYMENT_OUTBOX_EVENT_STATUSES, picked.status) }));
   const healthQuery = usePaymentOpsHealth();
   const health = healthQuery.data ?? null;
   const redispatchMutation = useRedispatchPaymentEvent();

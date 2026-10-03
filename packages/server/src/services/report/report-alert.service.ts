@@ -462,9 +462,11 @@ async function finalizeNoopAlertRun(
     hitCount: number;
     requestedBy: number | null;
     idempotencyKey: string;
+    taskId?: number;
   },
 ): Promise<ReportDeliveryRunRow> {
   const run = await ensureDeliveryRun({
+    taskId: input.taskId,
     tenantId: row.tenantId ?? null,
     targetType: 'alert',
     triggerType: input.source,
@@ -484,6 +486,7 @@ async function finalizeNoopAlertRun(
     maxAttempts: 1,
   });
   const running = await startManualDeliveryRun({
+    taskId: input.taskId,
     runId: run.id,
     attempt: 1,
     maxAttempts: 1,
@@ -512,7 +515,7 @@ async function evaluateAndMaybeNotify(
   source: 'manual' | 'scheduled',
   idempotencyKey: string,
   requestedBy: number | null,
-  options?: { isCancelRequested?: () => Promise<boolean>; maxAttempts?: number; taskAttempt?: number },
+  options?: { isCancelRequested?: () => Promise<boolean>; maxAttempts?: number; taskAttempt?: number; taskId?: number },
 ): Promise<ReportAlertEvalResult> {
   validateNotifyChannels((row.channels ?? []) as ReportNotifyChannel[], row.recipients, row.webhookUrl, row.createdBy);
   const evaluation = await evaluateAlertState(row);
@@ -530,6 +533,7 @@ async function evaluateAndMaybeNotify(
 
   if (!shouldNotify) {
     const run = await finalizeNoopAlertRun(row, {
+      taskId: options?.taskId,
       source,
       checkedAt: now,
       value: evaluation.value,
@@ -558,6 +562,7 @@ async function evaluateAndMaybeNotify(
 
   const eventType: AlertEventType = evaluation.triggered ? 'trigger' : 'recover';
   const run = await ensureDeliveryRun({
+    taskId: options?.taskId,
     tenantId: row.tenantId ?? null,
     targetType: 'alert',
     triggerType: eventType,
@@ -567,6 +572,7 @@ async function evaluateAndMaybeNotify(
     idempotencyKey,
     requestedBy,
     payloadSummary: {
+      source,
       checkedAt: formatDateTime(now),
       eventType,
       value: evaluation.value,
@@ -576,6 +582,7 @@ async function evaluateAndMaybeNotify(
     maxAttempts: options?.maxAttempts ?? 1,
   });
   const running = await startManualDeliveryRun({
+    taskId: options?.taskId,
     runId: run.id,
     attempt: options?.taskAttempt ?? 1,
     maxAttempts: options?.maxAttempts ?? 1,
@@ -630,7 +637,7 @@ export async function runAlertTask(
       'manual',
       buildRunIdempotencyKey(['report-alert-evaluate', context.taskId]),
       requestedByUserId(),
-      { isCancelRequested: context.isCancelRequested, maxAttempts: context.maxAttempts, taskAttempt: context.attempt },
+      { isCancelRequested: context.isCancelRequested, maxAttempts: context.maxAttempts, taskAttempt: context.attempt, taskId: context.taskId },
     );
     if (result.status !== 'success') {
       const retryRow = await markDeliveryRunRetryable({

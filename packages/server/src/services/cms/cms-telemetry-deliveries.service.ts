@@ -27,13 +27,13 @@ export async function getCmsTelemetryOutboxHealth(): Promise<JobSourceRawSummary
   const due = and(unfinished, lte(cmsTelemetryOutbox.nextAttemptAt, now), or(isNull(cmsTelemetryOutbox.leaseExpiresAt), lte(cmsTelemetryOutbox.leaseExpiresAt, now)));
   const [row] = await db.select({
     pending: sql<number>`count(*) filter (where ${due})::int`,
-    running: sql<number>`count(*) filter (where ${unfinished} and ${cmsTelemetryOutbox.leaseExpiresAt} > ${now})::int`,
+    running: sql<number>`count(*) filter (where ${unfinished} and ${cmsTelemetryOutbox.leaseExpiresAt} > ${sql.param(now, cmsTelemetryOutbox.leaseExpiresAt)})::int`,
     stuck: sql<number>`count(*) filter (where ${stuckCmsTelemetryOutboxCondition(now)})::int`,
     dead: sql<number>`count(*) filter (where ${cmsTelemetryOutbox.deliveredAt} is null and ${cmsTelemetryOutbox.deadLetterAt} is not null)::int`,
-    failed24h: sql<number>`count(*) filter (where ${cmsTelemetryOutbox.deadLetterAt} >= ${since})::int`,
-    succeeded24h: sql<number>`count(*) filter (where ${cmsTelemetryOutbox.deliveredAt} >= ${since})::int`,
-    failed1h: sql<number>`count(*) filter (where ${cmsTelemetryOutbox.deadLetterAt} >= ${hour})::int`,
-    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${now}::timestamptz - min(${cmsTelemetryOutbox.nextAttemptAt}) filter (where ${due}))))::int`,
+    failed24h: sql<number>`count(*) filter (where ${cmsTelemetryOutbox.deadLetterAt} >= ${sql.param(since, cmsTelemetryOutbox.deadLetterAt)})::int`,
+    succeeded24h: sql<number>`count(*) filter (where ${cmsTelemetryOutbox.deliveredAt} >= ${sql.param(since, cmsTelemetryOutbox.deadLetterAt)})::int`,
+    failed1h: sql<number>`count(*) filter (where ${cmsTelemetryOutbox.deadLetterAt} >= ${sql.param(hour, cmsTelemetryOutbox.deadLetterAt)})::int`,
+    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${sql.param(now, cmsTelemetryOutbox.leaseExpiresAt)}::timestamptz - min(${cmsTelemetryOutbox.nextAttemptAt}) filter (where ${due}))))::int`,
   }).from(cmsTelemetryOutbox).where(or(isNull(cmsTelemetryOutbox.deliveredAt), gte(cmsTelemetryOutbox.deliveredAt, since)));
   return {
     counts: { pending: row?.pending ?? 0, running: row?.running ?? 0, stuck: row?.stuck ?? 0, dead: row?.dead ?? 0, failed24h: row?.failed24h ?? 0, succeeded24h: row?.succeeded24h ?? 0 },

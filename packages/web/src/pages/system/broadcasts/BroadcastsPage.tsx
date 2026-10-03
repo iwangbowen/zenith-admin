@@ -12,6 +12,7 @@ import {
   BROADCAST_AUDIENCE_TYPE_OPTIONS,
   BROADCAST_CHANNELS,
   BROADCAST_STATUS_LABELS,
+  BROADCAST_STATUSES,
   NOTIFICATION_CHANNEL_LABELS,
   type BroadcastAudienceType,
   type BroadcastCampaign,
@@ -40,6 +41,8 @@ import {
 } from '@/hooks/queries/broadcasts';
 import { useQueryClient } from '@tanstack/react-query';
 import { useListPage } from '@/hooks/useListPage';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
+import { enumValueOf } from '@zenith/shared/core';
 import { EditFormModal } from '@/components/EditFormModal';
 
 const { Text } = Typography;
@@ -76,6 +79,7 @@ export default function BroadcastsPage() {
     useList: useBroadcastList,
   });
   const { tableProps } = page;
+  useListDeepLink(['status'], (picked) => page.applySearch({ status: enumValueOf(BROADCAST_STATUSES, picked.status) }));
 
   // 群发任务实时进度;任务结束时刷新列表让状态列落定
   const { tasks } = useMyAsyncTasks({ taskTypes: ['messaging-broadcast'] });

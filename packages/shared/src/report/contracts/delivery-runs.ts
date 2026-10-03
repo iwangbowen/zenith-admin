@@ -31,6 +31,7 @@ export type ReportDeliveryAttempt = z.infer<typeof reportDeliveryAttemptSchema>;
 
 export const reportDeliveryRunSchema = z.object({
   id: z.int(),
+  taskId: z.int().nullable().optional(),
   targetType: reportDeliveryTargetTypeSchema,
   subscriptionId: z.int().nullable().optional(),
   alertRuleId: z.int().nullable().optional(),

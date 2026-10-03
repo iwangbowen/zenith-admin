@@ -46,10 +46,10 @@ export async function getExportJobHealth(): Promise<JobSourceRawSummary> {
     pending: sql<number>`count(*) filter (where ${exportJobs.status} = 'pending')::int`,
     running: sql<number>`count(*) filter (where ${exportJobs.status} = 'running')::int`,
     stuck: sql<number>`count(*) filter (where ${stuckExportJobCondition(now)})::int`,
-    failed24h: sql<number>`count(*) filter (where ${exportJobs.status} = 'failed' and ${exportJobs.completedAt} >= ${since})::int`,
-    succeeded24h: sql<number>`count(*) filter (where ${exportJobs.status} = 'success' and ${exportJobs.completedAt} >= ${since})::int`,
-    failed1h: sql<number>`count(*) filter (where ${exportJobs.status} = 'failed' and ${exportJobs.completedAt} >= ${hour})::int`,
-    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${now}::timestamp - min(${exportJobs.createdAt}) filter (where ${exportJobs.status} = 'pending'))))::int`,
+    failed24h: sql<number>`count(*) filter (where ${exportJobs.status} = 'failed' and ${exportJobs.completedAt} >= ${sql.param(since, exportJobs.createdAt)})::int`,
+    succeeded24h: sql<number>`count(*) filter (where ${exportJobs.status} = 'success' and ${exportJobs.completedAt} >= ${sql.param(since, exportJobs.createdAt)})::int`,
+    failed1h: sql<number>`count(*) filter (where ${exportJobs.status} = 'failed' and ${exportJobs.completedAt} >= ${sql.param(hour, exportJobs.createdAt)})::int`,
+    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${sql.param(now, exportJobs.createdAt)}::timestamp - min(${exportJobs.createdAt}) filter (where ${exportJobs.status} = 'pending'))))::int`,
   }).from(exportJobs).where(or(inArray(exportJobs.status, ['pending', 'running']), and(inArray(exportJobs.status, ['success', 'failed']), gte(exportJobs.completedAt, since))));
   return {
     counts: { pending: row?.pending ?? 0, running: row?.running ?? 0, stuck: row?.stuck ?? 0, dead: null, failed24h: row?.failed24h ?? 0, succeeded24h: row?.succeeded24h ?? 0 },

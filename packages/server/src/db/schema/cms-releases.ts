@@ -40,7 +40,7 @@ export const cmsDeployments = pgTable('cms_deployments', {
   buildPlan: jsonb().$type<CmsDeploymentBuildPlan>().notNull().default({ version: 1, phases: [] }),
   buildMetrics: jsonb().$type<CmsDeploymentBuildMetrics>().notNull().default({}),
   ...auditColumns(), ...timestampColumns(),
-}, (t) => [index('cms_deployments_site_idx').on(t.siteId)]);
+}, (t) => [index('cms_deployments_site_idx').on(t.siteId), index('cms_deployments_status_created_idx').on(t.status, t.createdAt)]);
 export const cmsSiteGenerations = pgTable('cms_site_generations', {
   siteId: integer().primaryKey().references(() => cmsSites.id, { onDelete: 'cascade' }),
   activeGenerationId: integer().references(() => cmsDeployments.id, { onDelete: 'restrict' }),

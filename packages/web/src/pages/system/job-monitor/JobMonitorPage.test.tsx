@@ -57,6 +57,10 @@ describe('JobMonitorPage', () => {
     show();
     expect(screen.getByText('执行运行时')).toBeInTheDocument();
     expect(screen.getByText('事件与内容投递')).toBeInTheDocument();
+    expect(screen.getByText('业务作业')).toBeInTheDocument();
+    const cms = within(screen.getByRole('region', { name: 'CMS 构建发布' }));
+    expect(cms.getByRole('button', { name: '站点构建' })).toBeInTheDocument();
+    expect(cms.getByRole('button', { name: '媒体处理' })).toBeInTheDocument();
     const tasks = within(screen.getByRole('region', { name: '异步任务' }));
     expect(tasks.queryByRole('button', { name: '演示任务类型 6' })).not.toBeInTheDocument();
     fireEvent.click(tasks.getByRole('button', { name: '展开全部 6 项' }));
@@ -134,5 +138,27 @@ describe('JobMonitorPage', () => {
     expect(screen.getByLabelText('当前位置')).toHaveTextContent('/system/task-center?tab=tasks&status=running&taskId=731');
     fireEvent.click(within(drawer).getByRole('button', { name: '关闭' }));
     expect(state.stuck).toHaveBeenLastCalledWith(undefined, false);
+  });
+
+  it('opens an orphan business-job list and links to the target run filter', () => {
+    state.stuck.mockReturnValue({ data: createDemoStuckJobs('report-dq'), isPending: false, isFetching: false, isError: false, refetch: vi.fn() });
+    show();
+    fireEvent.click(within(screen.getByRole('region', { name: '报表数据质量' })).getByRole('button', { name: '卡死明细' }));
+    expect(state.stuck).toHaveBeenLastCalledWith('report-dq', true);
+    const drawer = screen.getByRole('dialog', { name: '报表数据质量 · 卡死明细' });
+    fireEvent.click(within(drawer).getByRole('button', { name: '前往处理' }));
+    expect(screen.getByLabelText('当前位置')).toHaveTextContent('/report/quality?tab=runs&status=failed');
+  });
+
+  it('counts mirrored business rows only toward stuck totals in the Demo overview', () => {
+    const data = createDemoJobMonitorOverview();
+    const business = data.sources.filter(source => source.category === 'business');
+    expect(business).toHaveLength(6);
+    expect(business.reduce((sum, source) => sum + source.counts.pending, 0)).toBeGreaterThan(0);
+    const fullSources = data.sources.filter(source => source.category !== 'business' && source.key !== 'drive-rendition' && source.health !== 'unavailable');
+    expect(data.totals.backlog).toBe(fullSources.reduce((sum, source) => sum + source.counts.pending, 0));
+    expect(data.totals.running).toBe(fullSources.reduce((sum, source) => sum + source.counts.running, 0));
+    expect(data.totals.failed24h).toBe(fullSources.reduce((sum, source) => sum + source.counts.failed24h, 0));
+    expect(data.totals.stuck).toBe(data.sources.filter(source => source.health !== 'unavailable').reduce((sum, source) => sum + source.counts.stuck, 0));
   });
 });

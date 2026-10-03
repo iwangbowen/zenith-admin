@@ -21,4 +21,4 @@ export const cmsMediaProcessing = pgTable('cms_media_processing', {
   result: jsonb().$type<CmsMediaResult>(),
   errorMessage: text(),
   ...auditColumns(), ...timestampColumns(),
-}, (t) => [index('cms_media_processing_version_idx').on(t.assetVersionId, t.id), index('cms_media_processing_task_idx').on(t.taskId)]);
+}, (t) => [index('cms_media_processing_version_idx').on(t.assetVersionId, t.id), index('cms_media_processing_task_idx').on(t.taskId), index('cms_media_processing_status_updated_idx').on(t.status, t.updatedAt)]);
