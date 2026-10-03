@@ -1,7 +1,7 @@
 # 作业监控实施与验收
 
 本次按 job-monitor-plan.md 的六个批次在 master 实施，未创建新分支。
-验收日期：2026-10-04。真实验证入口为 http://localhost:5373，账号 admin；Demo 验证入口为本地 5374。
+验收日期：2026-10-04。真实验证入口为 `http://localhost:5373`，账号 admin；Demo 验证入口为本地 5374。
 
 ## 分阶段提交
 
