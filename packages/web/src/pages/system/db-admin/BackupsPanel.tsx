@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Form, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
-import { formatBytes } from '@zenith/shared/core';
+import { enumValueOf, formatBytes } from '@zenith/shared/core';
 import {
   DB_BACKUP_STATUS_LABELS,
+  DB_BACKUP_STATUSES,
   DB_BACKUP_STATUS_OPTIONS,
   DB_BACKUP_TYPE_LABELS,
   DB_BACKUP_TYPE_OPTIONS,
@@ -20,6 +21,7 @@ import { FilterSelect, StatusSelect } from '@/components/search-filters';
 import { CreateButton } from '@/components/toolbar-controls';
 import { useEditModal } from '@/hooks/useEditModal';
 import { useListSearch } from '@/hooks/useListSearch';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { dbAdminKeys, useCreateDbBackup, useDbBackups, useDeleteDbBackup, useMarkDbBackupFailed } from '@/hooks/queries/db-admin';
 import { urlOf } from '@/lib/contract-query';
 import { formatDurationMs } from '@/utils/format';
@@ -58,8 +60,9 @@ export function BackupsPanel({ canMaintain, active }: Readonly<{ canMaintain: bo
   const {
     page, pageSize, setPage, buildPagination,
     bind, submittedParams,
-    handleSearch, handleReset,
+    handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: dbAdminKeys.backupLists });
+  useListDeepLink(['status'], params => applySearch({ ...defaultSearchParams, status: enumValueOf(DB_BACKUP_STATUSES, params.status) }));
   const listQuery = useDbBackups({ page, pageSize, status: submittedParams.status, type: submittedParams.type }, active);
   const createMutation = useCreateDbBackup();
   const deleteMutation = useDeleteDbBackup();

@@ -53,6 +53,17 @@ beforeEach(() => {
 });
 
 describe('JobMonitorPage', () => {
+  it('keeps a large node history compact and prioritizes the live node', () => {
+    const data = createDemoJobMonitorOverview();
+    const node = data.workers.data!.nodes[0];
+    data.workers.data!.nodes = Array.from({ length: 100 }, (_, index) => ({ ...node, nodeId: `history-${index}`, hostname: `history-${index}`, pid: index, stale: true }));
+    data.workers.data!.nodes.push({ ...node, nodeId: 'live', hostname: 'live-worker', pid: 99999, stale: false });
+    setOverview(data);
+    show();
+    expect(screen.getByText('live-worker / 99999')).toBeInTheDocument();
+    expect(screen.queryByText('history-99 / 99')).not.toBeInTheDocument();
+    expect(screen.getByText('显示最近 6 个节点，共 101 个；完整状态可在系统调度查看。')).toBeInTheDocument();
+  });
   it('renders all four groups and the overdue schedule breakdown and list', () => {
     show();
     expect(screen.getByText('到期调度')).toBeInTheDocument();

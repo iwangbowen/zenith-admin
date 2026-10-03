@@ -1,6 +1,8 @@
-import { and, eq, sql, type SQL } from 'drizzle-orm';
+import { eq, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../../db';
 import { workflowNodeActivations } from '../../../db/schema';
+import { tenantScope } from '../../../lib/tenant';
+import { buildWhere } from '../../../lib/where-helpers';
 
 /**
  * 「在本 activation 之后进入的节点轮次」判定条件：与 activation 自身的 created_at 做 SQL 侧同列比较。
@@ -11,10 +13,12 @@ import { workflowNodeActivations } from '../../../db/schema';
  * 400「后续节点已被处理」；原始驱动读回还会按进程本地时区解析该列，回传 Date 再叠加时区偏移。
  */
 export function laterActivationsWhere(instanceId: number, activationId: string): SQL {
+  const scope = tenantScope(workflowNodeActivations);
   const enteredAt = db.select({ at: workflowNodeActivations.createdAt }).from(workflowNodeActivations)
-    .where(eq(workflowNodeActivations.id, activationId));
-  return and(
+    .where(buildWhere(eq(workflowNodeActivations.id, activationId), eq(workflowNodeActivations.instanceId, instanceId), scope));
+  return buildWhere(
     eq(workflowNodeActivations.instanceId, instanceId),
+    scope,
     sql`${workflowNodeActivations.createdAt} > ${enteredAt}`,
   ) as SQL;
 }

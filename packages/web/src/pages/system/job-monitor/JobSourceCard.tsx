@@ -19,7 +19,7 @@ export default function JobSourceCard({ source, onStuck }: Readonly<{ source: Jo
           <Banner type="warning" closeIcon={null} description={source.reason ?? '作业源探测不可用'} />
         ) : (
           <>
-            <StatGrid minItemWidth={80} gap={8}>
+            <StatGrid minItemWidth={90} gap={8} style={{ ['--zx-stat-pad' as string]: '8px' }}>
               <StatCard title="待处理" value={executionIsElsewhere ? EMPTY_PLACEHOLDER : counts.pending} />
               <StatCard title="运行中" value={executionIsElsewhere ? EMPTY_PLACEHOLDER : counts.running} />
               <StatCard title="卡死" value={counts.stuck} accent={counts.stuck > 0 ? `var(--semi-color-${source.health === 'critical' ? 'danger' : 'warning'})` : undefined} />

@@ -24,7 +24,7 @@ describe('database backup monitoring and manual finalization', () => {
   it('pending has ten minutes to start and running has two hours to complete', () => {
     const compiled = dialect.sqlToQuery(stuckDbBackupCondition(now)!);
     expect(compiled.params).toContain(new Date(now.getTime() - 600_000).toISOString());
-    expect(compiled.params).toContainEqual(new Date(now.getTime() - 7_200_000));
+    expect(compiled.params).toContain(new Date(now.getTime() - 7_200_000).toISOString());
     expect(compiled.sql).toContain('"created_at" <');
     expect(compiled.sql).toContain('coalesce("db_backups"."started_at", "db_backups"."created_at")');
   });

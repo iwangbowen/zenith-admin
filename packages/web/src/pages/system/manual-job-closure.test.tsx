@@ -36,7 +36,7 @@ vi.mock('@/hooks/queries/directory-sync', () => ({
 }));
 vi.mock('@/hooks/queries/db-admin', () => ({
   dbAdminKeys: { backupLists: ['db-admin', 'backups'] },
-  useDbBackups: () => ({ data: { list: state.backups }, isFetching: false }),
+  useDbBackups: (query: unknown) => { state.list(query); return { data: { list: state.backups }, isFetching: false }; },
   useCreateDbBackup: () => ({ isPending: false }), useDeleteDbBackup: () => ({ mutateAsync: vi.fn() }),
   useMarkDbBackupFailed: () => ({ mutateAsync: state.markBackup, isPending: false }),
 }));
@@ -58,6 +58,11 @@ beforeEach(() => {
 });
 
 describe('manual stuck-job closure controls', () => {
+  it('consumes the backup status from a monitor drill-down', async () => {
+    show(<BackupsPanel canMaintain active />, '/system/db-admin?tab=backups&status=running');
+    await waitFor(() => expect(state.list).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'running' })));
+    expect(screen.getByLabelText('地址')).toHaveTextContent('?tab=backups');
+  });
   it('offers sync closure only for an overdue running record and consumes its status deep link', async () => {
     show(<DirectorySyncLogsPage />, '/system/directory-sync/logs?status=running');
     expect(within(screen.getByRole('region', { name: '记录 3' })).getByRole('button', { name: '标记为失败' })).toBeInTheDocument();

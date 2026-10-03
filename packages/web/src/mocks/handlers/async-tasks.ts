@@ -5,7 +5,7 @@ import { asyncTaskContract, taskDemoContract, isAsyncTaskTerminal } from '@zenit
 import type { AsyncTask, AsyncTaskItem, AsyncTaskStats, AsyncTaskStatus, AsyncTaskTypeMeta } from '@zenith/shared/tasks';
 import dayjs from 'dayjs';
 import { mock } from '@/mocks/utils/contract';
-import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { badRequest, nextIdFrom, notFound } from '@/mocks/utils/handlers';
 import { mockDateOffset, mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 import { includesKeyword, matchesFilter } from '@/mocks/utils/filter';
 import { removeByIds, requireItem } from '../utils/crud';
@@ -291,7 +291,6 @@ interface SimState {
   stageDelayMs: number;
 }
 
-let nextId = 3;
 let nextItemId = 1;
 const sims = new Map<number, SimState>();
 /** 等待自动重试的任务：taskId → 重试时间戳 */
@@ -400,7 +399,7 @@ export function createImmediateMockTask(input: {
   }
   const now = mockDateTime();
   const task: AsyncTask = {
-    id: nextId++,
+    id: nextIdFrom(tasks),
     taskType: input.taskType,
     title: input.title,
     module: input.module ?? '报表中心',
@@ -446,7 +445,7 @@ export function createProgressingMockTask(input: {
   const totalItems = Math.max(1, input.totalItems ?? 5);
   const now = mockDateTime();
   const task: AsyncTask = {
-    id: nextId++,
+    id: nextIdFrom(tasks),
     taskType: input.taskType,
     title: input.title,
     module: meta.module,
@@ -906,7 +905,7 @@ export const asyncTasksHandlers = [
         return badRequest(`已有进行中的「${meta.title}」任务，请等待其结束后再提交`, { status: 400 });
       }
     }
-    const id = nextId++;
+    const id = nextIdFrom(tasks);
     const totalItems = Math.min(Math.max(Number(body.totalItems ?? 100), 1), 10000);
     const task: AsyncTask = {
       id,
