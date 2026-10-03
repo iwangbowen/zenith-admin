@@ -348,17 +348,25 @@ export default function SystemSchedulerPage() {
       render: (_: unknown, record) => renderQueue(record),
     },
     {
-      title: '告警统计',
+      title: '告警',
       dataIndex: 'alertCount',
-      width: 150,
-      render: (_: unknown, record) => (
-        <Space vertical align="start" spacing={2}>
-          {record.lastAlertMessage
-            ? <Tag color="red" prefixIcon={<AlertTriangle size={12} />}>{record.alertCount}</Tag>
-            : <Tag color="grey">无</Tag>}
-          <Typography.Text type="tertiary" size="small">{record.alertEnabled ? record.alertChannels.map((item) => alertChannelMap[item]).join(' / ') : '未启用'}</Typography.Text>
-        </Space>
-      ),
+      width: 90,
+      render: (_: unknown, record) => (record.lastAlertMessage
+        ? <Tag color="red" prefixIcon={<AlertTriangle size={12} />}>{record.alertCount}</Tag>
+        : <Tag color="grey">无</Tag>),
+    },
+    {
+      title: '告警渠道',
+      dataIndex: 'alertChannels',
+      width: 140,
+      render: (_: unknown, record) => {
+        const text = record.alertEnabled ? record.alertChannels.map((item) => alertChannelMap[item]).join(' / ') : '未启用';
+        return (
+          <Typography.Text ellipsis={{ showTooltip: true }} type="tertiary" size="small" style={{ maxWidth: '100%', whiteSpace: 'nowrap' }}>
+            {text}
+          </Typography.Text>
+        );
+      },
     },
     {
       title: '最近告警',
@@ -376,12 +384,15 @@ export default function SystemSchedulerPage() {
     {
       title: '阈值',
       dataIndex: 'timeoutMs',
-      width: 160,
+      width: 210,
       render: (_: unknown, record) => (
-        <Space vertical align="start" spacing={2}>
-          <Typography.Text size="small">失败 {record.failureAlertThreshold} 次</Typography.Text>
-          <Typography.Text type="tertiary" size="small">{record.timeoutMs ? formatDuration(record.timeoutMs) : '无超时阈值'}</Typography.Text>
-        </Space>
+        <Typography.Text
+          ellipsis={{ showTooltip: true }}
+          size="small"
+          style={{ maxWidth: '100%', whiteSpace: 'nowrap' }}
+        >
+          {`失败 ${record.failureAlertThreshold} 次 / ${record.timeoutMs ? formatDuration(record.timeoutMs) : '无超时阈值'}`}
+        </Typography.Text>
       ),
     },
     { title: '注册节点', dataIndex: 'registeredHostname', width: 220, render: (_: unknown, record) => renderEllipsis(renderNode(record.registeredHostname, record.registeredPid)) },
