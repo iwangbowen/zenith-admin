@@ -18,7 +18,7 @@ import * as schema from './schema';
 
 const MIGRATIONS_FOLDER = './drizzle';
 
-const client = postgres(config.databaseUrl, { max: 1 });
+const client = postgres(config.databaseUrl, { max: 1, options: `-c TimeZone=${process.env.APP_TIME_ZONE || process.env.TZ || 'Asia/Shanghai'}` });
 const db = drizzle(client, { schema, casing: 'snake_case' });
 
 try {
