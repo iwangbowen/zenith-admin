@@ -6,11 +6,12 @@ import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql, type SQL } from 
 import { HTTPException } from 'hono/http-exception';
 import dayjs from 'dayjs';
 import { ASYNC_TASK_TERMINAL_STATUSES, asyncTaskContract, isAsyncTaskTerminal, type AsyncTaskStats } from '@zenith/shared/tasks';
+import type { JobStuckItem } from '@zenith/shared/platform';
 import { db } from '../../db';
 import { asyncTaskItems, asyncTasks, users } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
-import { APP_TIME_ZONE } from '../../lib/datetime';
+import { APP_TIME_ZONE, formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { currentUser, hasPermission } from '../../lib/context';
 import type { JobSourceRawSummary } from '../../lib/job-monitor/registry';
 import {
@@ -61,6 +62,24 @@ export async function getAsyncTaskHealth(): Promise<JobSourceRawSummary> {
     failed1h: row?.failed1h ?? 0,
     issues: [],
   };
+}
+
+export async function listStuckAsyncTasks(limit: number): Promise<JobStuckItem[]> {
+  const now = new Date();
+  const rows = await db.select({
+    id: asyncTasks.id, title: asyncTasks.title, status: asyncTasks.status,
+    startedAt: asyncTasks.startedAt, createdAt: asyncTasks.createdAt,
+    heartbeatAt: asyncTasks.heartbeatAt, updatedAt: asyncTasks.updatedAt,
+    nodeId: asyncTasks.nodeId, errorMessage: asyncTasks.errorMessage, progressNote: asyncTasks.progressNote,
+  }).from(asyncTasks).where(stuckAsyncTaskCondition(now))
+    .orderBy(sql`coalesce(${asyncTasks.heartbeatAt}, ${asyncTasks.updatedAt})`, asyncTasks.id).limit(limit);
+  return rows.map((row) => ({
+    source: 'async-task', refId: String(row.id), title: row.title, status: row.status,
+    startedAt: formatNullableDateTime(row.startedAt), lastSeenAt: formatDateTime(row.heartbeatAt ?? row.updatedAt),
+    ageSec: Math.max(0, Math.floor((now.getTime() - (row.startedAt ?? row.createdAt).getTime()) / 1000)),
+    nodeId: row.nodeId, detail: row.errorMessage ?? row.progressNote,
+    drillDown: { path: `/system/task-center?tab=tasks&status=running&taskId=${row.id}`, label: '查看任务' },
+  }));
 }
 
 type AsyncTaskListFilter = Omit<QueryOutputOf<typeof asyncTaskContract.list>, 'page' | 'pageSize'>;

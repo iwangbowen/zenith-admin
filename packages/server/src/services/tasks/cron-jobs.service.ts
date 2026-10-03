@@ -12,6 +12,7 @@ import type {
   CronJobStatsPerJob,
   CronJobUpcomingRun,
   CronRunStatus,
+  JobStuckItem,
 } from '@zenith/shared/platform';
 import {
   cronJobContract,
@@ -376,6 +377,23 @@ export async function getCronJobHealth(): Promise<JobSourceRawSummary> {
     failed1h: row?.failed1h ?? 0,
     issues,
   };
+}
+
+export async function listStuckCronRuns(limit: number): Promise<JobStuckItem[]> {
+  const now = new Date();
+  const rows = await db.select({
+    id: cronJobLogs.id, jobName: cronJobLogs.jobName, status: cronJobLogs.status,
+    startedAt: cronJobLogs.startedAt, nodeId: cronJobLogs.nodeId, errorMessage: cronJobLogs.errorMessage,
+    monitorTimeout: cronJobs.monitorTimeout,
+  }).from(cronJobLogs).innerJoin(cronJobs, eq(cronJobs.id, cronJobLogs.jobId))
+    .where(stuckCronRunCondition(now)).orderBy(cronJobLogs.startedAt, cronJobLogs.id).limit(limit);
+  return rows.map((row) => ({
+    source: 'cron-job', refId: String(row.id), title: row.jobName, status: row.status,
+    startedAt: formatDateTime(row.startedAt), lastSeenAt: formatDateTime(row.startedAt),
+    ageSec: Math.max(0, Math.floor((now.getTime() - row.startedAt.getTime()) / 1000)),
+    nodeId: row.nodeId, detail: row.errorMessage ?? `超过任务监控超时 ${row.monitorTimeout} 秒`,
+    drillDown: { path: '/system/cron-jobs?tab=dashboard', label: '查看定时任务' },
+  }));
 }
 
 const ALERT_LEVEL_ORDER = { danger: 0, warning: 1, info: 2 } as const;

@@ -16,6 +16,7 @@ import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { ListSearchToolbar, listTableProps } from '@/components/list-page';
 import { usePagination } from '@/hooks/usePagination';
 import { useListSearch } from '@/hooks/useListSearch';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { usePinyinReady } from '@/hooks/usePinyinReady';
 import { textMatches } from '@/utils/pinyin';
 import { usePermission } from '@/hooks/usePermission';
@@ -144,6 +145,10 @@ export default function SystemSchedulerPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['tasks', 'runs', 'nodes'] as const, 'tasks');
   const [taskSearch, setTaskSearch] = useState<TaskSearchParams>(defaultTaskSearch);
   const runSearch = useListSearch<RunSearchParams>({ defaults: defaultRunSearch, listKey: systemSchedulerKeys.runs, pageSize: 20 });
+  useListDeepLink(['keyword', 'status'], (params) => {
+    if (params.keyword) setTaskSearch({ ...defaultTaskSearch, keyword: params.keyword });
+    if (params.status) runSearch.applySearch({ ...defaultRunSearch, status: enumValueOf(SYSTEM_SCHEDULER_RUN_STATUSES, params.status) });
+  });
   const { page, pageSize, buildPagination, submittedParams: submittedRunSearch } = runSearch;
   const [detailRun, setDetailRun] = useState<SystemSchedulerRun | null>(null);
   const { page: nodesPage, pageSize: nodesPageSize, buildPagination: buildNodesPagination } = usePagination(10);

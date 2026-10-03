@@ -4,8 +4,8 @@ import { Button, Descriptions, Modal, Progress, SideSheet, Space, Spin, Tag, Toa
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { exportJobContract, type ExportEntityMeta, type ExportJob, type ExportJobDownload, type ExportJobFormat, type ExportJobStatus } from '@zenith/shared/tasks';
-import { formatBytes } from '@zenith/shared/core';
+import { EXPORT_JOB_STATUSES, exportJobContract, type ExportEntityMeta, type ExportJob, type ExportJobDownload, type ExportJobFormat, type ExportJobStatus } from '@zenith/shared/tasks';
+import { enumValueOf, formatBytes } from '@zenith/shared/core';
 import { urlOf } from '@/lib/contract-query';
 import { request } from '@/utils/request';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -29,6 +29,7 @@ import { BatchDeleteButton } from '@/components/toolbar-controls';
 import { FilterSelect, StatusSelect } from '@/components/search-filters';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { useListPage } from '@/hooks/useListPage';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
 const EMPTY_ENTITIES: ExportEntityMeta[] = [];
 const EMPTY_EXPORT_JOBS: ExportJob[] = [];
 
@@ -79,6 +80,7 @@ export default function ExportJobsPage() {
     table: { rowSelection, empty: '暂无导出任务' },
   });
   const { tableProps, listQuery } = page;
+  useListDeepLink(['status'], (params) => page.applySearch({ status: enumValueOf(EXPORT_JOB_STATUSES, params.status) }));
   const entitiesQuery = useExportEntities();
   const entities = entitiesQuery.data ?? EMPTY_ENTITIES;
 

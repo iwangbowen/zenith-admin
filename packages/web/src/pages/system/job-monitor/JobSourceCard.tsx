@@ -5,7 +5,7 @@ import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import { formatAge, JOB_HEALTH_COLORS } from './job-monitor-shared';
 
-export default function JobSourceCard({ source }: Readonly<{ source: JobSourceSummary }>) {
+export default function JobSourceCard({ source, onStuck }: Readonly<{ source: JobSourceSummary; onStuck: (source: JobSourceSummary) => void }>) {
   const navigate = useNavigate();
   const { counts } = source;
   return (
@@ -31,9 +31,10 @@ export default function JobSourceCard({ source }: Readonly<{ source: JobSourceSu
             </Space>
           </>
         )}
-        {source.drillDown && (
+        {(source.drillDown || (source.supportsStuckList && counts.stuck > 0)) && (
           <Space wrap style={{ marginTop: 12 }}>
-            <Button theme="borderless" onClick={() => navigate(source.drillDown!.path)}>{source.drillDown.label}</Button>
+            {source.supportsStuckList && counts.stuck > 0 && <Button theme="borderless" onClick={() => onStuck(source)}>卡死明细</Button>}
+            {source.drillDown && <Button theme="borderless" onClick={() => navigate(source.drillDown!.path)}>{source.drillDown.label}</Button>}
           </Space>
         )}
       </Card>

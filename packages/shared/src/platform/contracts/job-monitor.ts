@@ -42,4 +42,5 @@ export const jobStuckItemSchema = z.object({
 export type JobStuckItem = z.infer<typeof jobStuckItemSchema>;
 export const jobMonitorContract = defineContract('/api/job-monitor', {
   overview: op.get('/overview', { access: { permission: 'system:job-monitor:view' }, response: jobMonitorOverviewSchema, summary: '平台作业健康总览' }),
+  stuck: op.get('/sources/{key}/stuck', { access: { permission: 'system:job-monitor:view' }, params: z.object({ key: z.enum(JOB_SOURCE_KEYS) }), query: z.object({ limit: z.coerce.number().int().min(1).max(200).default(50) }), response: z.array(jobStuckItemSchema), summary: '作业源卡死明细' }),
 }, { tags: ['JobMonitor'] });

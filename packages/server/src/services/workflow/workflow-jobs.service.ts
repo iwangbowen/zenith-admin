@@ -1,5 +1,6 @@
 import { workflowEngineContract, type WorkflowJobRuntimeStatus } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
+import type { JobStuckItem } from '@zenith/shared/platform';
 import { percentOf } from '@zenith/shared/core';
 import { WORKFLOW_JOB_TYPES, summarizeWorkflowJobChain } from '@zenith/shared/workflow';
 import { and, asc, avg, count, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, max, min, or, sql } from 'drizzle-orm';
@@ -53,6 +54,24 @@ export async function getWorkflowJobHealth(): Promise<JobSourceRawSummary> {
     failed1h: executions?.failed1h ?? 0,
     issues: [],
   };
+}
+
+export async function listStuckWorkflowJobs(limit: number): Promise<JobStuckItem[]> {
+  const now = new Date();
+  const rows = await db.select({
+    id: workflowJobs.id, jobType: workflowJobs.jobType, status: workflowJobs.status,
+    lockedAt: workflowJobs.lockedAt, updatedAt: workflowJobs.updatedAt, createdAt: workflowJobs.createdAt,
+    lockedBy: workflowJobs.lockedBy, lastError: workflowJobs.lastError, nodeKey: workflowJobs.nodeKey,
+    instanceTitle: workflowInstances.title,
+  }).from(workflowJobs).leftJoin(workflowInstances, eq(workflowInstances.id, workflowJobs.instanceId))
+    .where(stuckWorkflowJobCondition(now)).orderBy(workflowJobs.lockedAt, workflowJobs.id).limit(limit);
+  return rows.map((row) => ({
+    source: 'workflow-job', refId: String(row.id), title: row.instanceTitle ? `${row.instanceTitle} / ${row.jobType}` : row.jobType, status: row.status,
+    startedAt: formatNullableDateTime(row.lockedAt), lastSeenAt: formatDateTime(row.updatedAt),
+    ageSec: Math.max(0, Math.floor((now.getTime() - (row.lockedAt ?? row.createdAt).getTime()) / 1000)),
+    nodeId: row.lockedBy, detail: row.lastError ?? row.nodeKey,
+    drillDown: { path: '/workflow/monitor?tab=jobs&status=running', label: '查看流程作业' },
+  }));
 }
 
 function mapJob(row: WorkflowJobRow, extra?: { instanceTitle?: string | null; definitionName?: string | null }) {

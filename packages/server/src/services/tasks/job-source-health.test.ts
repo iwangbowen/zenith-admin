@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { type SQL } from 'drizzle-orm';
+import { jobStuckItemSchema } from '@zenith/shared/platform';
 
 const { select, execute, getQueueDepths } = vi.hoisted(() => ({ select: vi.fn(), execute: vi.fn(), getQueueDepths: vi.fn() }));
 vi.mock('../../db', () => ({ db: { select, execute } }));
@@ -8,10 +9,10 @@ vi.mock('../../lib/pg-boss-scheduler', async (importOriginal) => ({
   ...await importOriginal<Record<string, unknown>>(), getQueueDepths,
 }));
 
-import { getAsyncTaskHealth, stuckAsyncTaskCondition } from './async-tasks.service';
-import { getExportJobHealth, stuckExportJobCondition } from './export-jobs.service';
-import { getSchedulerRunHealth, overdueSchedulerRunCondition } from './system-scheduler.service';
-import { getCronJobHealth, stuckCronRunCondition } from './cron-jobs.service';
+import { getAsyncTaskHealth, listStuckAsyncTasks, stuckAsyncTaskCondition } from './async-tasks.service';
+import { getExportJobHealth, listStuckExportJobs, stuckExportJobCondition } from './export-jobs.service';
+import { getSchedulerRunHealth, listOverdueSchedulerRuns, overdueSchedulerRunCondition } from './system-scheduler.service';
+import { getCronJobHealth, listStuckCronRuns, stuckCronRunCondition } from './cron-jobs.service';
 
 const dialect = new PgDialect({ casing: 'snake_case' });
 const now = new Date('2026-10-03T08:00:00Z');
@@ -19,7 +20,7 @@ function query(fragment: SQL) { return dialect.sqlToQuery(fragment); }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function chain(rows: unknown[]): any {
   const result: Record<string, unknown> = {};
-  for (const method of ['from', 'where', 'innerJoin', 'leftJoin']) result[method] = vi.fn(() => result);
+  for (const method of ['from', 'where', 'innerJoin', 'leftJoin', 'orderBy', 'limit']) result[method] = vi.fn(() => result);
   result.then = (resolve: (value: unknown) => unknown) => Promise.resolve(rows).then(resolve);
   return result;
 }
@@ -76,5 +77,27 @@ describe('core job source health semantics', () => {
     expect(query(stuckCronRunCondition(now)!).sql).toContain("interval '1 second'");
     expect(query(select.mock.calls[0][0].failed24h).sql).toContain("in ('fail', 'timeout')");
     expect(result.counts.pending).toBe(0);
+  });
+
+  it.each([
+    { source: 'async-task', list: listStuckAsyncTasks, condition: stuckAsyncTaskCondition,
+      row: { id: 7, title: '批量导入', status: 'running', startedAt: new Date(now.getTime() - 600_000), createdAt: new Date(now.getTime() - 900_000), heartbeatAt: null, updatedAt: new Date(now.getTime() - 300_000), nodeId: 'worker-a', errorMessage: null, progressNote: '导入中' } },
+    { source: 'export-job', list: listStuckExportJobs, condition: stuckExportJobCondition,
+      row: { id: 7, entity: 'users', moduleName: '用户', filename: null, status: 'running', startedAt: new Date(now.getTime() - 600_000), updatedAt: new Date(now.getTime() - 300_000), errorMessage: null } },
+    { source: 'scheduler-queue', list: listOverdueSchedulerRuns, condition: overdueSchedulerRunCondition,
+      row: { id: 7, taskTitle: '系统扫描', status: 'running', startedAt: new Date(now.getTime() - 600_000), nodeId: 'worker-a', errorMessage: '连接中断', resultMessage: null } },
+    { source: 'cron-job', list: listStuckCronRuns, condition: stuckCronRunCondition,
+      row: { id: 7, jobName: '定时巡检', status: 'running', startedAt: new Date(now.getTime() - 600_000), nodeId: 'worker-a', errorMessage: null, monitorTimeout: 300 } },
+  ])('$source stuck lists reuse health conditions, enforce requested limits and omit heavy payloads', async ({ source, list, condition, row }) => {
+    const builder = chain([row]);
+    select.mockReturnValue(builder);
+    const [item] = await list(17);
+    expect(query(builder.where.mock.calls[0][0])).toEqual(query(condition(now)!));
+    expect(builder.limit).toHaveBeenCalledWith(17);
+    expect(item).toMatchObject({ source, refId: '7', status: 'running', ageSec: 600 });
+    expect(jobStuckItemSchema.safeParse(item).success).toBe(true);
+    expect(select.mock.calls[0][0]).not.toHaveProperty('payload');
+    expect(select.mock.calls[0][0]).not.toHaveProperty('query');
+    if (source === 'async-task') expect(item.drillDown?.path).toContain('taskId=7');
   });
 });

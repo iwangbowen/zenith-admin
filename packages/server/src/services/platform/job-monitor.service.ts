@@ -1,10 +1,10 @@
 import { HTTPException } from 'hono/http-exception';
-import type { JobMonitorOverview, JobSourceSummary, JobQueueRow } from '@zenith/shared/platform';
+import type { JobMonitorOverview, JobSourceSummary, JobQueueRow, JobSourceKey } from '@zenith/shared/platform';
 import { currentUser } from '../../lib/context';
 import { formatDateTime } from '../../lib/datetime';
 import { section } from '../../lib/probe-section';
 import { deriveOverallHealth, deriveSourceHealth } from '../../lib/job-monitor/health';
-import { listJobSources, type JobSourceRegistration } from '../../lib/job-monitor/registry';
+import { getJobSource, listJobSources, type JobSourceRegistration } from '../../lib/job-monitor/registry';
 import { listSystemSchedulerNodes, listSystemSchedulerTasks } from '../tasks/system-scheduler.service';
 
 export function requireJobMonitorPlatformUser() {
@@ -68,4 +68,11 @@ export async function getJobMonitorOverview(): Promise<JobMonitorOverview> {
     totals.failed24h += source.counts.failed24h;
   }
   return { health: deriveOverallHealth(sources, workers), generatedAt: formatDateTime(new Date()), totals, workers, queues, sources };
+}
+
+export async function listJobMonitorStuck(key: JobSourceKey, limit: number) {
+  requireJobMonitorPlatformUser();
+  const source = getJobSource(key);
+  if (!source?.listStuck) throw new HTTPException(400, { message: '该作业源不支持卡死明细' });
+  return source.listStuck(limit);
 }

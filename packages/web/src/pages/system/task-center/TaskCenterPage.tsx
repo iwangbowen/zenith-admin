@@ -112,7 +112,11 @@ export default function TaskCenterPage() {
     handleSearch, handleReset,
     applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: asyncTaskKeys.lists });
-  useListDeepLink(['keyword'], (params) => applySearch({ ...defaultSearchParams, keyword: params.keyword ?? '' }));
+  useListDeepLink(['keyword', 'status'], (params) => applySearch({
+    ...defaultSearchParams,
+    keyword: params.keyword ?? '',
+    status: enumValueOf(ASYNC_TASK_STATUSES, params.status),
+  }));
   const [selectedTask, setDetailTask] = useState<AsyncTask | null>(null);
   const selectedTaskQuery = useAsyncTaskDetail(selectedTask?.id, selectedTask !== null);
   const detailTask = selectedTask ? selectedTaskQuery.data ?? selectedTask : null;

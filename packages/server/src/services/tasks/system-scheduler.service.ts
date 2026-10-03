@@ -1,6 +1,6 @@
 import { uniquePositiveInts } from '@zenith/shared/core';
 import type { QueryOutputOf } from '@zenith/shared/core';
-import { systemSchedulerContract } from '@zenith/shared/platform';
+import { systemSchedulerContract, type JobStuckItem } from '@zenith/shared/platform';
 import { buildListResult, listRows } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { and, desc, eq, gte, inArray, isNotNull, or, sql, type SQL } from 'drizzle-orm';
@@ -57,6 +57,24 @@ export async function getSchedulerRunHealth(): Promise<JobSourceRawSummary> {
     failed1h: row?.failed1h ?? 0,
     issues: [],
   };
+}
+
+export async function listOverdueSchedulerRuns(limit: number): Promise<JobStuckItem[]> {
+  const now = new Date();
+  const rows = await db.select({
+    id: systemSchedulerRuns.id, taskTitle: systemSchedulerRuns.taskTitle, status: systemSchedulerRuns.status,
+    startedAt: systemSchedulerRuns.startedAt, nodeId: systemSchedulerRuns.nodeId,
+    errorMessage: systemSchedulerRuns.errorMessage, resultMessage: systemSchedulerRuns.resultMessage,
+  }).from(systemSchedulerRuns)
+    .leftJoin(systemSchedulerTaskConfigs, eq(systemSchedulerTaskConfigs.taskName, systemSchedulerRuns.taskName))
+    .where(overdueSchedulerRunCondition(now)).orderBy(systemSchedulerRuns.startedAt, systemSchedulerRuns.id).limit(limit);
+  return rows.map((row) => ({
+    source: 'scheduler-queue', refId: String(row.id), title: row.taskTitle, status: row.status,
+    startedAt: formatDateTime(row.startedAt), lastSeenAt: formatDateTime(row.startedAt),
+    ageSec: Math.max(0, Math.floor((now.getTime() - row.startedAt.getTime()) / 1000)),
+    nodeId: row.nodeId, detail: row.errorMessage ?? row.resultMessage,
+    drillDown: { path: '/system/scheduler?tab=runs&status=running', label: '查看运行记录' },
+  }));
 }
 
 export interface UpdateSystemSchedulerTaskConfigInput {

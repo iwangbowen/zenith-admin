@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
-import type { JobMonitorOverview, JobQueueRow } from '@zenith/shared/platform';
-import { createDemoJobMonitorOverview } from '@/mocks/data/job-monitor';
+import type { JobMonitorOverview, JobQueueRow, JobStuckItem } from '@zenith/shared/platform';
+import { createDemoJobMonitorOverview, createDemoStuckJobs } from '@/mocks/data/job-monitor';
 
-const state = vi.hoisted(() => ({ query: vi.fn(), refetch: vi.fn() }));
-vi.mock('@/hooks/queries/job-monitor', () => ({ useJobMonitorOverview: (...args: unknown[]) => state.query(...args) }));
+const state = vi.hoisted(() => ({ query: vi.fn(), stuck: vi.fn(), refetch: vi.fn() }));
+vi.mock('@/hooks/queries/job-monitor', () => ({ useJobMonitorOverview: (...args: unknown[]) => state.query(...args), useJobMonitorStuck: (...args: unknown[]) => state.stuck(...args) }));
 vi.mock('@/components/PageLoading', () => ({ default: () => <div role="status">正在加载</div> }));
 vi.mock('@/components/DateTimeText', () => ({ default: ({ value }: { value: string }) => <span>{value}</span> }));
 vi.mock('@/components/toolbar-controls', () => ({ RefreshButton: ({ onClick }: { onClick: () => void }) => <button onClick={onClick}>刷新</button> }));
@@ -18,6 +18,7 @@ vi.mock('@douyinfe/semi-ui', () => {
     Banner: ({ description }: { description: string }) => <div role="alert">{description}</div>,
     Empty: ({ title, description }: { title?: string; description?: string }) => <div>{title}{description}</div>,
     Tag: Box, Space: Box, Row: Box, Col: Box,
+    SideSheet: ({ title, children, visible, onCancel }: { title: string; children?: ReactNode; visible: boolean; onCancel: () => void }) => visible ? <div role="dialog" aria-label={title}><button onClick={onCancel}>关闭</button>{children}</div> : null,
     Typography: { Text: Box, Title: Box },
     Select: ({ value, optionList, onChange }: { value: string; optionList: { value: string; label: string }[]; onChange: (value: string) => void }) => (
       <select aria-label="自动刷新" value={value} onChange={(event) => onChange(event.target.value)}>{optionList.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
@@ -25,9 +26,9 @@ vi.mock('@douyinfe/semi-ui', () => {
   };
 });
 vi.mock('@/components/ConfigurableTable', () => ({ default: ({ dataSource, columns }: {
-  dataSource: JobQueueRow[];
-  columns: { render?: (value: unknown, row: JobQueueRow) => ReactNode }[];
-}) => <div>{dataSource.map((row) => <div key={row.name}>{columns[0].render?.(row.title, row)}</div>)}</div> }));
+  dataSource: (JobQueueRow | JobStuckItem)[];
+  columns: { dataIndex?: string; render?: (value: unknown, row: JobQueueRow | JobStuckItem) => ReactNode }[];
+}) => <div>{dataSource.map((row) => <div key={'name' in row ? row.name : row.refId}>{columns.map((column, index) => <div key={index}>{column.render?.((row as unknown as Record<string, unknown>)[column.dataIndex ?? ''], row)}</div>)}</div>)}</div> }));
 
 import JobMonitorPage from './JobMonitorPage';
 
@@ -47,6 +48,7 @@ function setOverview(data: JobMonitorOverview | undefined, error?: Error) {
 beforeEach(() => {
   vi.clearAllMocks();
   setOverview(createDemoJobMonitorOverview());
+  state.stuck.mockReturnValue({ data: createDemoStuckJobs('async-task'), isPending: false, isFetching: false, isError: false, refetch: vi.fn() });
 });
 
 describe('JobMonitorPage', () => {
@@ -102,5 +104,18 @@ describe('JobMonitorPage', () => {
     expect(screen.getByText('作业监控加载失败无访问权限')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '刷新' }));
     expect(state.refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the stuck list on demand and navigates from a stuck row', () => {
+    show();
+    expect(state.stuck).toHaveBeenLastCalledWith(undefined, false);
+    fireEvent.click(within(screen.getByRole('region', { name: '异步任务' })).getByRole('button', { name: '卡死明细' }));
+    expect(state.stuck).toHaveBeenLastCalledWith('async-task', true);
+    const drawer = screen.getByRole('dialog', { name: '异步任务 · 卡死明细' });
+    expect(within(drawer).getByText('历史数据导入')).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole('button', { name: '前往处理' }));
+    expect(screen.getByLabelText('当前位置')).toHaveTextContent('/system/task-center?tab=tasks&status=running&taskId=731');
+    fireEvent.click(within(drawer).getByRole('button', { name: '关闭' }));
+    expect(state.stuck).toHaveBeenLastCalledWith(undefined, false);
   });
 });

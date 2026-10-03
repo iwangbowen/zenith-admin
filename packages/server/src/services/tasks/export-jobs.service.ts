@@ -7,6 +7,7 @@ import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql, type SQL } from 
 import { HTTPException } from 'hono/http-exception';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { exportJobContract } from '@zenith/shared/tasks';
+import type { JobStuckItem } from '@zenith/shared/platform';
 import { db } from '../../db';
 import { exportJobDownloads, exportJobs, fileStorageConfigs, managedFiles, users } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
@@ -56,6 +57,22 @@ export async function getExportJobHealth(): Promise<JobSourceRawSummary> {
     failed1h: row?.failed1h ?? 0,
     issues: [],
   };
+}
+
+export async function listStuckExportJobs(limit: number): Promise<JobStuckItem[]> {
+  const now = new Date();
+  const rows = await db.select({
+    id: exportJobs.id, entity: exportJobs.entity, moduleName: exportJobs.moduleName,
+    filename: exportJobs.filename, status: exportJobs.status, startedAt: exportJobs.startedAt,
+    updatedAt: exportJobs.updatedAt, errorMessage: exportJobs.errorMessage,
+  }).from(exportJobs).where(stuckExportJobCondition(now)).orderBy(exportJobs.startedAt, exportJobs.id).limit(limit);
+  return rows.map((row) => ({
+    source: 'export-job', refId: String(row.id), title: row.filename ?? `${row.moduleName} / ${row.entity}`, status: row.status,
+    startedAt: formatNullableDateTime(row.startedAt), lastSeenAt: formatDateTime(row.updatedAt),
+    ageSec: row.startedAt ? Math.max(0, Math.floor((now.getTime() - row.startedAt.getTime()) / 1000)) : 0,
+    nodeId: null, detail: row.errorMessage,
+    drillDown: { path: '/system/export-jobs?status=running', label: '查看导出任务' },
+  }));
 }
 
 export interface CreateExportJobInput {

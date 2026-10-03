@@ -5,7 +5,7 @@ import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form/interface';
 import { Download, FileText, UserRoundCog } from 'lucide-react';
 import dayjs from 'dayjs';
-import { WORKFLOW_APPROVE_METHOD_LABELS, WORKFLOW_INSTANCE_PRIORITIES, WORKFLOW_INSTANCE_STATUSES, type WorkflowAssigneeType, type WorkflowCategory, type WorkflowExecutionToken, type WorkflowFlowData, type WorkflowInstanceListItem, type WorkflowNodeConfig, type WorkflowRuntimeDiagnostics, type WorkflowRuntimeIssue, type WorkflowRuntimeOutboxEvent, type WorkflowTask, type WorkflowTriggerExecution } from '@zenith/shared/workflow';
+import { WORKFLOW_APPROVE_METHOD_LABELS, WORKFLOW_INSTANCE_PRIORITIES, WORKFLOW_INSTANCE_STATUSES, WORKFLOW_JOB_STATUSES, type WorkflowAssigneeType, type WorkflowCategory, type WorkflowExecutionToken, type WorkflowFlowData, type WorkflowInstanceListItem, type WorkflowJobStatus, type WorkflowNodeConfig, type WorkflowRuntimeDiagnostics, type WorkflowRuntimeIssue, type WorkflowRuntimeOutboxEvent, type WorkflowTask, type WorkflowTriggerExecution } from '@zenith/shared/workflow';
 import { enumValueOf } from '@zenith/shared/core';
 import { WORKFLOW_ISSUE_SEVERITY_META as ISSUE_SEVERITY_MAP } from './constants';
 import { downloadBlob } from '@/utils/download';
@@ -20,6 +20,7 @@ import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import { useListSearch } from '@/hooks/useListSearch';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { usePermission } from '@/hooks/usePermission';
 import WorkflowInstanceDetailPanel from '@/components/workflow/WorkflowInstanceDetailPanel';
 import WorkflowGraphView from '@/components/workflow/WorkflowGraphView';
@@ -352,6 +353,10 @@ function buildFocusDiagnosis(diagnostics: WorkflowRuntimeDiagnostics, diagNodes:
 /** 状态统计卡片 */
 export default function WorkflowMonitorPage() {
   const [activeTab, setActiveTab] = useUrlTabState(['list', 'tasks', 'analytics', 'engine', 'jobs', 'compensations'] as const, 'list');
+  const [initialJobStatus, setInitialJobStatus] = useState<WorkflowJobStatus | undefined>();
+  useListDeepLink(['status'], (params) => {
+    if (activeTab === 'jobs') setInitialJobStatus(enumValueOf(WORKFLOW_JOB_STATUSES, params.status));
+  });
   const queryClient = useQueryClient();
   interface SearchParams { keyword: string; initiator: string; status?: string; categoryId?: number; definitionId?: number; priority?: string }
   const defaultSearchParams: SearchParams = { keyword: '', initiator: '', status: undefined, categoryId: undefined, definitionId: undefined, priority: undefined };
@@ -1155,7 +1160,7 @@ export default function WorkflowMonitorPage() {
           <WorkflowEngineDiagnosticsView onOpenInstanceDiagnostics={openDiagnosticsById} />
         </TabPane>
         <TabPane tab="作业账本" itemKey="jobs">
-          <WorkflowJobsView />
+          <WorkflowJobsView initialStatus={initialJobStatus} />
         </TabPane>
         <TabPane tab="补偿工单" itemKey="compensations">
           <WorkflowCompensationsView />

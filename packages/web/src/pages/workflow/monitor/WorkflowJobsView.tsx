@@ -192,9 +192,10 @@ interface JobTypePanelProps {
   onMutated: () => void;
   /** 运行状态栏「死信」下钻信号：值变化时打开失败聚类弹窗 */
   clustersSignal?: number;
+  initialStatus?: WorkflowJobStatus;
 }
 
-function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePanelProps) {
+function JobTypePanel({ jobType, summary, onMutated, clustersSignal, initialStatus }: JobTypePanelProps) {
   const { hasPermission } = usePermission();
   const canOperate = hasPermission('workflow:engine:operate');
 
@@ -218,6 +219,9 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal }: JobTypePa
       onSearch: clearSelection,
       onReset: clearSelection,
     });
+  useEffect(() => {
+    if (initialStatus !== undefined) applySearch({ ...JOB_SEARCH_DEFAULTS, status: initialStatus });
+  }, [initialStatus, applySearch]);
   // 已提交筛选 → 契约查询参数：只映射一次
   const filterQuery = useFilterQuery({
     status: submittedParams.status,
@@ -916,7 +920,7 @@ function RuntimeStatusBar({ onDeadClick }: Readonly<{ onDeadClick?: () => void }
   );
 }
 
-export default function WorkflowJobsView() {
+export default function WorkflowJobsView({ initialStatus }: Readonly<{ initialStatus?: WorkflowJobStatus }> = {}) {
   const [activeType, setActiveType] = useState<WorkflowJobType>(JOB_TYPES[0]);
   const [clustersSignal, setClustersSignal] = useState(0);
   const summaryQuery = useWorkflowJobSummary();
@@ -955,7 +959,7 @@ export default function WorkflowJobsView() {
                 </Space>
               )}
             >
-              {activeType === t && <JobTypePanel jobType={t} summary={item} onMutated={() => void summaryQuery.refetch()} clustersSignal={clustersSignal} />}
+              {activeType === t && <JobTypePanel jobType={t} summary={item} onMutated={() => void summaryQuery.refetch()} clustersSignal={clustersSignal} initialStatus={initialStatus} />}
             </TabPane>
           );
         })}

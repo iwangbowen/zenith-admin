@@ -1,13 +1,22 @@
-import type { JobMonitorOverview, JobSourceSummary } from '@zenith/shared/platform';
+import type { JobMonitorOverview, JobSourceKey, JobSourceSummary, JobStuckItem } from '@zenith/shared/platform';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 
 function source(summary: Pick<JobSourceSummary, 'key' | 'title' | 'module' | 'drillDown'> & Partial<JobSourceSummary>): JobSourceSummary {
   return {
     health: 'ok', reason: null,
     counts: { pending: 0, running: 0, stuck: 0, dead: null, failed24h: 0, succeeded24h: 0 },
-    oldestPendingAgeSec: null, failureRate24h: null, issues: [], supportsStuckList: false,
+    oldestPendingAgeSec: null, failureRate24h: null, issues: [], supportsStuckList: true,
     ...summary,
   };
+}
+
+export function createDemoStuckJobs(key: JobSourceKey): JobStuckItem[] {
+  return key === 'async-task' ? [{
+    source: key, refId: '731', title: '历史数据导入', status: 'running',
+    startedAt: mockDateTimeOffset(-1200000), lastSeenAt: mockDateTimeOffset(-900000), ageSec: 1200,
+    nodeId: 'demo-worker-2', detail: '超过心跳回收窗口，等待任务中心回收',
+    drillDown: { path: '/system/task-center?tab=tasks&status=running&taskId=731', label: '前往处理' },
+  }] : [];
 }
 
 export function createDemoJobMonitorOverview(): JobMonitorOverview {

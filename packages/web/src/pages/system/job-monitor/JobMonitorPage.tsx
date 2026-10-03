@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Banner, Col, Empty, Row, Select, Space, Tag, Typography } from '@douyinfe/semi-ui';
 import { useNavigate } from 'react-router-dom';
-import { JOB_HEALTH_LABELS } from '@zenith/shared/platform';
+import { JOB_HEALTH_LABELS, type JobSourceSummary } from '@zenith/shared/platform';
 import { StatCard, StatGrid } from '@/components/charts/StatCard';
 import DateTimeText from '@/components/DateTimeText';
 import PageLoading from '@/components/PageLoading';
@@ -11,11 +11,13 @@ import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
 import JobSourceCard from './JobSourceCard';
 import QueueBacklogTable from './QueueBacklogTable';
 import WorkerNodesStrip from './WorkerNodesStrip';
+import StuckJobsDrawer from './StuckJobsDrawer';
 import { JOB_HEALTH_COLORS, JOB_REFRESH_OPTIONS, sortJobSources } from './job-monitor-shared';
 
 export default function JobMonitorPage() {
   const navigate = useNavigate();
   const [refreshValue, setRefreshValue] = useState('30000');
+  const [stuckSource, setStuckSource] = useState<JobSourceSummary | null>(null);
   const overview = useJobMonitorOverview({ refetchInterval: refreshValue === 'off' ? false : Number(refreshValue) });
   const data = overview.data;
   const refresh = () => { void overview.refetch(); };
@@ -56,9 +58,10 @@ export default function JobMonitorPage() {
       </StatGrid>
       <WorkerNodesStrip workers={data.workers} />
       <Row gutter={[16, 16]}>
-        {sources.map((source) => <Col key={source.key} xs={24} md={12} xl={8}><JobSourceCard source={source} /></Col>)}
+        {sources.map((source) => <Col key={source.key} xs={24} md={12} xl={8}><JobSourceCard source={source} onStuck={setStuckSource} /></Col>)}
       </Row>
       <QueueBacklogTable queues={data.queues} refreshing={overview.isFetching} onRefresh={refresh} />
+      <StuckJobsDrawer source={stuckSource} onClose={() => setStuckSource(null)} />
     </div>
   );
 }
