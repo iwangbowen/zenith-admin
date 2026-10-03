@@ -324,7 +324,7 @@ export default function SystemSchedulerPage() {
       fixed: 'left',
       render: renderCodeEllipsis,
     },
-    { title: '模块', dataIndex: 'module', width: 110 },
+    { title: '模块', dataIndex: 'module', width: 140, render: renderEllipsis },
     {
       title: '类型',
       dataIndex: 'taskType',
@@ -465,7 +465,7 @@ export default function SystemSchedulerPage() {
       fixed: 'left',
       render: renderCodeEllipsis,
     },
-    { title: '模块', dataIndex: 'module', width: 110 },
+    { title: '模块', dataIndex: 'module', width: 140, render: renderEllipsis },
     {
       title: '类型',
       dataIndex: 'taskType',
