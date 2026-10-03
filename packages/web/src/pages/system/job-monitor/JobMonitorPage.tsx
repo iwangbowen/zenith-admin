@@ -53,7 +53,7 @@ export default function JobMonitorPage() {
         <StatCard title="在线 Worker" value={workers?.workerRoleActive ?? EMPTY_PLACEHOLDER} sub={workers ? `失联节点 ${workers.stale}` : '节点探测不可用'} accent={workers?.workerRoleActive === 0 ? 'var(--semi-color-danger)' : undefined} onClick={() => navigate('/system/scheduler?tab=nodes')} />
         <StatCard title="总积压" value={data.totals.backlog} />
         <StatCard title="运行中" value={data.totals.running} />
-        <StatCard title="卡死" value={data.totals.stuck} accent={data.totals.stuck > 0 ? 'var(--semi-color-danger)' : undefined} />
+        <StatCard title="卡死" value={data.totals.stuck} accent={data.totals.stuck > 0 ? `var(--semi-color-${sources.some(source => source.counts.stuck > 0 && source.health === 'critical') ? 'danger' : 'warning'})` : undefined} />
         <StatCard title="死信" value={data.totals.dead} accent={data.totals.dead > 0 ? 'var(--semi-color-warning)' : undefined} />
         <StatCard title="近 24h 失败" value={data.totals.failed24h} />
       </StatGrid>

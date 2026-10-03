@@ -23,6 +23,9 @@ describe('source health', () => {
     expect(deriveSourceHealth(raw({ counts: { ...raw().counts, failed24h: 7, succeeded24h: 13 } }))).toBe('critical');
   });
   it('keeps domain issues authoritative', () => expect(deriveSourceHealth(raw({ issues: [{ level: 'critical', message: '错过调度' }] }))).toBe('critical'));
+  it('does not invent a failure percentage for a source without a complete success denominator', () => {
+    expect(deriveSourceHealth({ ...raw({ counts: { ...raw().counts, failed24h: 30 } }), failureRate24h: null })).toBe('ok');
+  });
 });
 describe('overall health', () => {
   const workers = { available: true, reason: null, data: { total: 1, active: 1, stale: 0, workerRoleActive: 1, nodes: [] } };

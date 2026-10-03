@@ -1,6 +1,6 @@
 import type { JobSourceKey, JobSourceSummary, JobMonitorThresholds, JobDrillDown, JobStuckItem, JobSourceCategory } from '@zenith/shared/platform';
 
-export type JobSourceRawSummary = Pick<JobSourceSummary, 'counts' | 'oldestPendingAgeSec' | 'issues' | 'breakdown'> & { failed1h?: number };
+export type JobSourceRawSummary = Pick<JobSourceSummary, 'counts' | 'oldestPendingAgeSec' | 'issues' | 'breakdown'> & { failed1h?: number; failureRate24h?: number | null };
 export interface JobSourceRegistration {
   key: JobSourceKey; title: string; module: string; order: number;
   category?: JobSourceCategory;

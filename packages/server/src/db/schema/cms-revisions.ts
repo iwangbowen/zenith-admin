@@ -26,6 +26,7 @@ export const cmsContentRevisions = pgTable('cms_content_revisions', {
 }, (t) => [
   uniqueIndex('cms_content_revisions_content_version_uq').on(t.contentId, t.version),
   index('cms_content_revisions_content_hash_idx').on(t.contentId, t.hash),
+  index('cms_content_revisions_scheduled_candidate_idx').on(t.id).where(sql`${t.snapshot}->>'scheduledAt' is not null`),
 ]);
 
 /** Mutable editorial state. A published pointer here is only a trace of the active generation projection. */

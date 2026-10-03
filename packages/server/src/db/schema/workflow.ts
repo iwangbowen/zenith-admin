@@ -244,7 +244,9 @@ export const workflowSchedules = pgTable('workflow_schedules', {
   tenantId: tenantIdColumn(),
   ...auditColumns(),
   ...timestampColumns(),
-}, (t) => [index('workflow_schedules_definition_idx').on(t.definitionId), index('workflow_schedules_tenant_idx').on(t.tenantId)]);
+}, (t) => [index('workflow_schedules_definition_idx').on(t.definitionId), index('workflow_schedules_tenant_idx').on(t.tenantId),
+  index('workflow_schedules_due_idx').on(t.nextRunAt).where(sql`${t.status} = 'enabled' and ${t.nextRunAt} is not null`),
+]);
 
 export type WorkflowScheduleRow = typeof workflowSchedules.$inferSelect;
 

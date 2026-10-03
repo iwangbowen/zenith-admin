@@ -50,6 +50,11 @@ const BUSINESS_SOURCE_DEMOS: JobSourceSummary[] = [
 ];
 
 export function createDemoStuckJobs(key: JobSourceKey): JobStuckItem[] {
+  if (key === 'scheduled-dispatch') return ['chat-message', 'channel-message'].map((kind, index) => ({
+    source: key, refId: `${kind}:demo-${index + 1}`, title: index === 0 ? '聊天定时消息示例' : '渠道定时消息示例', status: 'scheduled',
+    startedAt: null, lastSeenAt: mockDateTimeOffset(-600_000), ageSec: 600, nodeId: null, detail: '已到期超过 3 分钟仍未被扫描处理',
+    drillDown: { path: index === 0 ? '/chat' : '/system/channels', label: '前往处理' },
+  }));
   const business = BUSINESS_SOURCE_DEMOS.find(item => item.key === key);
   if (business) return Array.from({ length: business.counts.stuck }, (_, index) => ({
     source: key, refId: `${key}-${index + 1}`, title: `${business.title} · ${key === 'cms-pipeline' ? (index === 0 ? '站点构建' : '媒体处理') : '异常执行记录'}`,
@@ -108,6 +113,18 @@ export function createDemoJobMonitorOverview(): JobMonitorOverview {
     source({ key: 'cms-telemetry-outbox', title: 'CMS 转化事件投递', category: 'delivery', module: 'cms', drillDown: null }),
     source({ key: 'payment-event-outbox', title: '支付事件派发', category: 'delivery', module: 'payment', drillDown: { path: '/payment/events?status=failed', label: '前往处理' } }),
     source({ key: 'drive-rendition', title: '网盘渲染', category: 'delivery', module: 'drive', drillDown: null }),
+    source({ key: 'scheduled-dispatch', title: '到期调度扫描', category: 'schedule', module: 'platform', health: 'warn',
+      counts: { pending: 6, running: 0, stuck: 2, dead: null, failed24h: 0, succeeded24h: 0 }, oldestPendingAgeSec: 600,
+      issues: [{ level: 'warn', message: '2 条调度已超期 3 分钟仍未处理' }], drillDown: null,
+      breakdown: [
+        ['chat-message', '聊天定时消息', '/chat'], ['channel-message', '渠道定时消息', '/system/channels'],
+        ['cms-content', 'CMS 定时发布', '/cms/contents'], ['cms-release', 'CMS 定时上线版本', '/cms/publishing'],
+        ['cms-distribution', 'CMS 分发规则', '/cms/distribution'], ['mp-broadcast', '公众号定时群发', '/mp/broadcasts'],
+        ['workflow-schedule', '流程定时触发', '/workflow/schedules'], ['iot-schedule', 'IoT 设备定时', '/iot/schedules'],
+        ['report-subscription', '报表订阅', '/report/subscriptions'], ['report-alert', '报表预警', '/report/alerts'],
+        ['directory-schedule', '目录同步计划', '/system/directory-sync/sources'],
+      ].map(([key, label, path], index) => ({ key, label, pending: index < 2 ? 3 : 0, running: 0, stuck: index < 2 ? 1 : 0, failed24h: 0, drillDown: { path, label: '查看调度条目' } })),
+    }),
     ...BUSINESS_SOURCE_DEMOS.map(item => structuredClone(item)),
   ];
   sources.find(item => item.key === 'async-task')!.breakdown = Array.from({ length: 6 }, (_, index) => ({

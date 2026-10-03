@@ -53,6 +53,17 @@ beforeEach(() => {
 });
 
 describe('JobMonitorPage', () => {
+  it('renders all four groups and the overdue schedule breakdown and list', () => {
+    show();
+    expect(screen.getByText('到期调度')).toBeInTheDocument();
+    const schedule = within(screen.getByRole('region', { name: '到期调度扫描' }));
+    expect(schedule.getByRole('button', { name: 'CMS 定时发布' })).toBeInTheDocument();
+    expect(schedule.queryByRole('button', { name: '目录同步计划' })).not.toBeInTheDocument();
+    fireEvent.click(schedule.getByRole('button', { name: '展开全部 11 项' }));
+    expect(schedule.getByRole('button', { name: '目录同步计划' })).toBeInTheDocument();
+    fireEvent.click(schedule.getByRole('button', { name: '卡死明细' }));
+    expect(state.stuck).toHaveBeenLastCalledWith('scheduled-dispatch', true);
+  });
   it('groups execution mechanisms and expands type details beyond the first five rows', () => {
     show();
     expect(screen.getByText('执行运行时')).toBeInTheDocument();

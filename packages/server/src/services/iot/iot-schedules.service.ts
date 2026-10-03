@@ -27,6 +27,21 @@ import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import logger from '../../lib/logger';
 import { pickEntity } from '../../lib/entity-map';
+import { collectScheduledJobs, listOverdueScheduledJobs, type ScheduledMonitorQuery } from '../../lib/job-monitor/scheduled';
+
+export function iotScheduleDueCondition(asOf: Date) {
+  return and(eq(iotSchedules.status, 'enabled'), lte(iotSchedules.nextRunAt, asOf));
+}
+
+const scheduledMonitor: ScheduledMonitorQuery = {
+  key: 'iot-schedule', label: 'IoT 设备定时', table: iotSchedules, due: iotScheduleDueCondition,
+  id: iotSchedules.id, title: iotSchedules.name, status: iotSchedules.status,
+  dueAt: iotSchedules.nextRunAt, dateColumn: iotSchedules.nextRunAt,
+  drillDown: { path: '/iot/schedules', label: '查看设备计划' },
+};
+
+export function getIotScheduledHealth() { return collectScheduledJobs(scheduledMonitor); }
+export function listOverdueIotScheduled(limit: number) { return listOverdueScheduledJobs(scheduledMonitor, limit); }
 
 // ─── 映射与 CRUD ──────────────────────────────────────────────────────────────
 export function mapIotSchedule(
@@ -253,10 +268,7 @@ export async function dispatchDueIotSchedules(): Promise<string> {
   }
 
   const due = await db.select().from(iotSchedules)
-    .where(and(
-      eq(iotSchedules.status, 'enabled'),
-      lte(iotSchedules.nextRunAt, now),
-    ));
+    .where(iotScheduleDueCondition(now));
   if (due.length === 0) return '无到期计划';
 
   let executed = 0;

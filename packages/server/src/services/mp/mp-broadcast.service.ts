@@ -1,4 +1,4 @@
-import { desc, eq, inArray, isNotNull, lte } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { mpBroadcastContract, mpBroadcastSchema } from '@zenith/shared/mp';
 import { db } from '../../db';
@@ -13,6 +13,21 @@ import { ensureMpAccountExists } from './mp-account.service';
 import { assertContentSafe } from './mp-security.service';
 import { massSend, previewMassSend, getMassSendResult, WechatApiError } from '../../lib/wechat';
 import { mapWechatError } from '../../lib/wechat-error';
+import { collectScheduledJobs, listOverdueScheduledJobs, type ScheduledMonitorQuery } from '../../lib/job-monitor/scheduled';
+
+export function mpBroadcastDueCondition(asOf: Date) {
+  return and(eq(mpBroadcasts.status, 'draft'), isNotNull(mpBroadcasts.scheduledAt), lte(mpBroadcasts.scheduledAt, asOf));
+}
+
+const scheduledMonitor: ScheduledMonitorQuery = {
+  key: 'mp-broadcast', label: '公众号定时群发', table: mpBroadcasts, due: mpBroadcastDueCondition,
+  id: mpBroadcasts.id, title: sql`'公众号群发 #' || ${mpBroadcasts.id}`, status: mpBroadcasts.status,
+  dueAt: mpBroadcasts.scheduledAt, dateColumn: mpBroadcasts.scheduledAt,
+  drillDown: { path: '/mp/broadcasts', label: '查看公众号群发' },
+};
+
+export function getMpScheduledHealth() { return collectScheduledJobs(scheduledMonitor); }
+export function listOverdueMpScheduled(limit: number) { return listOverdueScheduledJobs(scheduledMonitor, limit); }
 
 export const mapMpBroadcast = entityMapper(mpBroadcastSchema);
 
@@ -143,7 +158,7 @@ export async function getMpBroadcastResult(id: number) {
 /** 定时群发扫描：发送所有到期（scheduledAt<=now）且仍为草稿的群发。供 mp-broadcast-tick 调用（无登录上下文）。 */
 export async function runDueMpBroadcasts(): Promise<{ sent: number; failed: number }> {
   const due = await db.select().from(mpBroadcasts)
-    .where(buildWhere(eq(mpBroadcasts.status, 'draft'), isNotNull(mpBroadcasts.scheduledAt), lte(mpBroadcasts.scheduledAt, new Date())));
+    .where(mpBroadcastDueCondition(new Date()));
   if (due.length === 0) return { sent: 0, failed: 0 };
   // 批量预取账号与标签，避免循环内逐条查询（N+1）
   const accountIds = [...new Set(due.map((b) => b.accountId))];

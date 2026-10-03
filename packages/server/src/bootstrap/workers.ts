@@ -24,8 +24,8 @@ import { registerReportSlaTaskHandlers } from '../services/report/report-sla-tas
 
 /** 启动 pg-boss 并完成全部后台作业声明；返回是否成功（失败已记日志，调用方据此决定是否继续执行期收尾） */
 export async function declareBackgroundJobs(): Promise<boolean> {
-  registerJobSources();
   try {
+    registerJobSources();
     await initCronScheduler();
     const { registerExportJobWorker } = await import('../services/tasks/export-jobs.service');
     const { registerSystemTasks } = await import('../lib/system-tasks.registry');

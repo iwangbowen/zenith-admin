@@ -60,6 +60,7 @@ export const channelMessages = pgTable('channel_messages', {
   createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
 }, (t) => [
   index('channel_messages_channel_idx').on(t.channelId),
+  index('channel_messages_scheduled_due_idx').on(t.scheduledAt).where(sql`${t.status} = 'scheduled'`),
   uniqueIndex('channel_messages_dedupe_uq').on(t.dedupeKey).where(sql`${t.dedupeKey} is not null`),
 ]);
 

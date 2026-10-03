@@ -1,10 +1,12 @@
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { JOB_MONITOR_SCHEDULE_GRACE_MS, type JobStuckItem } from '@zenith/shared/platform';
 import { db } from '../../db';
 import { cmsContents, cmsContentWorkingCopies, cmsContentRevisions } from '../../db/schema';
 import { config } from '../../config';
 import redis from '../../lib/redis';
 import logger from '../../lib/logger';
-import { APP_TIME_ZONE } from '../../lib/datetime';
+import { APP_TIME_ZONE, formatDateTime } from '../../lib/datetime';
+import type { JobSourceRawSummary } from '../../lib/job-monitor/registry';
 import { offlineExpiredCmsContents, cancelExpiredTopContents } from './cms-contents.service';
 import { publishCmsContent } from './cms-contents.service';
 import { activateScheduledCmsReleases } from './cms-releases.service';
@@ -12,6 +14,54 @@ import { scheduleCmsExpiredDelivery } from './cms-delivery-expiry';
 
 const LOCK_KEY = `${config.redis.keyPrefix}cms:scheduled-publish-lock`;
 const LOCK_TTL_SECONDS = 300;
+
+/** 修订快照保存业务墙上时间，沿用发布器的 APP_TIME_ZONE 解释，不能按数据库会话时区解析。 */
+export function cmsContentScheduledTime() {
+  return sql<Date>`((${cmsContentRevisions.snapshot}->>'scheduledAt')::timestamp AT TIME ZONE ${APP_TIME_ZONE})`;
+}
+
+export function cmsContentScheduledDueCondition(asOf: Date) {
+  return and(
+    sql`${cmsContentRevisions.snapshot}->>'scheduledAt' is not null`,
+    sql`${cmsContentScheduledTime()} <= ${asOf.toISOString()}::timestamptz`,
+    sql`${cmsContentWorkingCopies.publishedRevisionId} is distinct from ${cmsContentRevisions.id}`,
+    isNull(cmsContents.deletedAt), isNull(cmsContents.lockedAt),
+  );
+}
+
+export async function getCmsContentScheduledHealth(): Promise<JobSourceRawSummary> {
+  const now = new Date();
+  const grace = new Date(now.getTime() - JOB_MONITOR_SCHEDULE_GRACE_MS);
+  const [row] = await db.select({
+    pending: sql<number>`count(*)::int`,
+    stuck: sql<number>`count(*) filter (where ${cmsContentScheduledDueCondition(grace)})::int`,
+    oldestPendingAgeSec: sql<number | null>`greatest(0, floor(${now.getTime() / 1000} - extract(epoch from min(${cmsContentScheduledTime()}))))::int`,
+  }).from(cmsContentWorkingCopies)
+    .innerJoin(cmsContents, eq(cmsContents.id, cmsContentWorkingCopies.contentId))
+    .innerJoin(cmsContentRevisions, eq(cmsContentRevisions.id, cmsContentWorkingCopies.approvedRevisionId))
+    .where(cmsContentScheduledDueCondition(now));
+  return {
+    counts: { pending: row?.pending ?? 0, running: 0, stuck: row?.stuck ?? 0, dead: null, failed24h: 0, succeeded24h: 0 },
+    oldestPendingAgeSec: row?.pending ? row.oldestPendingAgeSec : null, failed1h: 0, issues: [],
+  };
+}
+
+export async function listOverdueCmsContentScheduled(limit: number): Promise<JobStuckItem[]> {
+  const now = new Date();
+  const rows = await db.select({ id: cmsContents.id, siteId: cmsContents.siteId, title: cmsContentRevisions.title, status: cmsContentWorkingCopies.editorialStatus,
+    scheduledAt: cmsContentScheduledTime().mapWith(cmsContentWorkingCopies.createdAt),
+  }).from(cmsContentWorkingCopies)
+    .innerJoin(cmsContents, eq(cmsContents.id, cmsContentWorkingCopies.contentId))
+    .innerJoin(cmsContentRevisions, eq(cmsContentRevisions.id, cmsContentWorkingCopies.approvedRevisionId))
+    .where(cmsContentScheduledDueCondition(new Date(now.getTime() - JOB_MONITOR_SCHEDULE_GRACE_MS)))
+    .orderBy(asc(cmsContentScheduledTime()), asc(cmsContents.id)).limit(limit);
+  return rows.map(row => ({
+    source: 'scheduled-dispatch', refId: `cms-content:${row.id}`, title: row.title, status: row.status,
+    startedAt: null, lastSeenAt: formatDateTime(row.scheduledAt), ageSec: Math.max(0, Math.floor((now.getTime() - row.scheduledAt.getTime()) / 1000)),
+    nodeId: null, detail: '已审批修订的定时发布超过调度宽限期，尚未发布',
+    drillDown: { path: `/cms/contents/edit?id=${row.id}&siteId=${row.siteId}`, label: '查看内容' },
+  }));
+}
 
 /**
  * CMS 定时发布 + 过期下线（系统周期任务，每分钟执行）：
@@ -29,12 +79,7 @@ export async function publishScheduledCmsContents(): Promise<string> {
       .from(cmsContentWorkingCopies)
       .innerJoin(cmsContents, eq(cmsContents.id, cmsContentWorkingCopies.contentId))
       .innerJoin(cmsContentRevisions, eq(cmsContentRevisions.id, cmsContentWorkingCopies.approvedRevisionId))
-      .where(and(
-        sql`${cmsContentRevisions.snapshot}->>'scheduledAt' is not null`,
-        sql`((${cmsContentRevisions.snapshot}->>'scheduledAt')::timestamp AT TIME ZONE ${APP_TIME_ZONE}) <= ${now.toISOString()}::timestamptz`,
-        sql`${cmsContentWorkingCopies.publishedRevisionId} is distinct from ${cmsContentRevisions.id}`,
-        isNull(cmsContents.deletedAt), isNull(cmsContents.lockedAt),
-      )).limit(200);
+      .where(cmsContentScheduledDueCondition(now)).limit(200);
 
     let published = 0;
     for (const row of due) {

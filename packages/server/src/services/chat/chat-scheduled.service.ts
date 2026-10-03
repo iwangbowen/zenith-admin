@@ -1,4 +1,4 @@
-import { and, desc, eq, lte, ne, inArray } from 'drizzle-orm';
+import { and, desc, eq, lte, ne, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import dayjs from 'dayjs';
 import { db } from '../../db';
@@ -11,6 +11,21 @@ import logger from '../../lib/logger';
 import { sendMessage } from './chat.service';
 import type { ChatMessageExtra, ChatScheduledMessage, SendChatMessageInput } from '@zenith/shared/chat';
 import { buildWhere } from '../../lib/where-helpers';
+import { collectScheduledJobs, listOverdueScheduledJobs, type ScheduledMonitorQuery } from '../../lib/job-monitor/scheduled';
+
+export function chatScheduledMessageDueCondition(asOf: Date) {
+  return and(eq(chatScheduledMessages.status, 'pending'), lte(chatScheduledMessages.scheduledAt, asOf));
+}
+
+const scheduledMonitor: ScheduledMonitorQuery = {
+  key: 'chat-message', label: '聊天定时消息', table: chatScheduledMessages, due: chatScheduledMessageDueCondition,
+  id: chatScheduledMessages.id, title: sql`'聊天定时消息 #' || ${chatScheduledMessages.id}`, status: chatScheduledMessages.status,
+  dueAt: chatScheduledMessages.scheduledAt, dateColumn: chatScheduledMessages.scheduledAt,
+  drillDown: { path: '/chat', label: '查看会话中心' },
+};
+
+export function getChatScheduledHealth() { return collectScheduledJobs(scheduledMonitor); }
+export function listOverdueChatScheduled(limit: number) { return listOverdueScheduledJobs(scheduledMonitor, limit); }
 
 const MAX_PENDING_PER_USER = 20;
 const MAX_AHEAD_DAYS = 30;
@@ -136,10 +151,7 @@ export async function cancelScheduledMessage(id: number): Promise<void> {
  */
 export async function dispatchDueScheduledMessages(): Promise<void> {
   const due = await db.query.chatScheduledMessages.findMany({
-    where: and(
-      eq(chatScheduledMessages.status, 'pending'),
-      lte(chatScheduledMessages.scheduledAt, new Date()),
-    ),
+    where: chatScheduledMessageDueCondition(new Date()),
     orderBy: [chatScheduledMessages.scheduledAt],
     limit: 50,
     with: { sender: { columns: { id: true, username: true, tenantId: true } } },

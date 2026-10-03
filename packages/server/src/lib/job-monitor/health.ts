@@ -15,9 +15,9 @@ export function deriveSourceHealth(raw: JobSourceRawSummary, overrides: Partial<
   }
   const sample = raw.counts.failed24h + raw.counts.succeeded24h;
   if (sample >= t.failureRateMinSample) {
-    const rate = raw.counts.failed24h / sample;
-    if (rate > t.failureRateCritical) raise('critical');
-    else if (rate > t.failureRateWarn) raise('warn');
+    const rate = raw.failureRate24h === undefined ? raw.counts.failed24h / sample : raw.failureRate24h;
+    if (rate !== null && rate > t.failureRateCritical) raise('critical');
+    else if (rate !== null && rate > t.failureRateWarn) raise('warn');
   }
   return health;
 }

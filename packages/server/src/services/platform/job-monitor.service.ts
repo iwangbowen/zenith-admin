@@ -25,7 +25,7 @@ export async function collectJobSource(source: JobSourceRegistration): Promise<J
     health: raw ? deriveSourceHealth(raw, source.thresholds) : 'unavailable', reason: result.reason,
     counts: raw?.counts ?? { pending: 0, running: 0, stuck: 0, dead: null, failed24h: 0, succeeded24h: 0 },
     oldestPendingAgeSec: raw?.oldestPendingAgeSec ?? null,
-    failureRate24h: raw && sample > 0 ? raw.counts.failed24h / sample : null,
+    failureRate24h: raw?.failureRate24h !== undefined ? raw.failureRate24h : raw && sample > 0 ? raw.counts.failed24h / sample : null,
     issues: raw?.issues ?? [], drillDown: source.drillDown ?? null, supportsStuckList: source.listStuck != null,
   };
 }

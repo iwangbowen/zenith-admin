@@ -1,4 +1,5 @@
 import { boolean, index, integer, jsonb, pgEnum, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { CMS_DEPLOYMENT_STATUSES, CMS_RELEASE_STATUSES } from '@zenith/shared/cms';
 import type { CmsRelease, CmsConfigurationSnapshot, CmsDeploymentBuildPlan, CmsDeploymentBuildMetrics } from '@zenith/shared/cms';
 import { idColumn, timestampColumns } from './common';
@@ -28,7 +29,9 @@ export const cmsReleases = pgTable('cms_releases', {
   activateAt: timestamp({ withTimezone: true }), timeZone: varchar({ length: 80 }).notNull().default('Asia/Shanghai'),
   autoActivate: boolean().notNull().default(false), error: text(),
   ...auditColumns(), ...timestampColumns(),
-}, (t) => [index('cms_releases_site_status_idx').on(t.siteId, t.status), index('cms_releases_schedule_idx').on(t.activateAt)]);
+}, (t) => [index('cms_releases_site_status_idx').on(t.siteId, t.status), index('cms_releases_schedule_idx').on(t.activateAt),
+  index('cms_releases_scheduled_due_idx').on(t.activateAt).where(sql`${t.status} = 'scheduled' and ${t.activateAt} is not null`),
+]);
 export const cmsDeployments = pgTable('cms_deployments', {
   id: idColumn(), siteId: integer().notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
   releaseId: integer().notNull().references(() => cmsReleases.id, { onDelete: 'restrict' }),

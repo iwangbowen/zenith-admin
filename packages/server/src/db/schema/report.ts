@@ -238,6 +238,7 @@ export const reportAlertRules = pgTable('report_alert_rules', {
   index('report_alert_rules_dataset_idx').on(t.datasetId),
   index('report_alert_rules_metric_idx').on(t.metricId),
   index('report_alert_rules_next_run_idx').on(t.nextRunAt),
+  index('report_alert_rules_enabled_due_idx').on(t.nextRunAt).where(sql`${t.enabled} = true and ${t.nextRunAt} is not null`),
   check('report_alert_rules_source_check', sql`(${t.datasetId} IS NOT NULL) <> (${t.metricId} IS NOT NULL)`),
 ]);
 
@@ -437,6 +438,7 @@ export const reportDashboardSubscriptions = pgTable('report_dashboard_subscripti
   index('report_dashboard_subscriptions_tenant_idx').on(t.tenantId),
   index('report_dashboard_subscriptions_dashboard_idx').on(t.dashboardId),
   index('report_dashboard_subscriptions_next_run_idx').on(t.nextRunAt),
+  index('report_dashboard_subscriptions_enabled_due_idx').on(t.nextRunAt).where(sql`${t.enabled} = true and ${t.nextRunAt} is not null`),
 ]);
 
 export type ReportDashboardSubscriptionRow = typeof reportDashboardSubscriptions.$inferSelect;

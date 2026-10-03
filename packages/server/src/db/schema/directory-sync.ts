@@ -1,4 +1,5 @@
 import { pgTable, varchar, timestamp, pgEnum, integer, boolean, unique, text, index, jsonb } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { timestampColumns, idColumn, statusColumn } from './common';
 import { auditColumns, users, departments, tenantIdColumn } from './core';
 import { tenantIdentityProviders } from './identity-providers';
@@ -77,6 +78,7 @@ export const directorySyncSources = pgTable('directory_sync_sources', {
   unique('directory_sync_sources_tenant_name_unique').on(t.tenantId, t.name),
   unique('directory_sync_sources_callback_key_unique').on(t.callbackUrlKey),
   index('directory_sync_sources_status_idx').on(t.status),
+  index('directory_sync_sources_scheduled_due_idx').on(t.nextRunAt).where(sql`${t.status} = 'enabled' and ${t.type} <> 'scim' and nullif(trim(${t.cronExpression}), '') is not null`),
 ]);
 
 export type DirectorySyncSourceRow = typeof directorySyncSources.$inferSelect;

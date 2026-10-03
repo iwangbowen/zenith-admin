@@ -30,6 +30,21 @@ import { broadcast, scheduleBroadcast, scheduleSendToUsers } from '../../lib/ws-
 import { keywordCondition, withPagination, buildWhere } from '../../lib/where-helpers';
 import { sanitizeCmsHtml } from '../cms/cms-html-sanitizer';
 import logger from '../../lib/logger';
+import { collectScheduledJobs, listOverdueScheduledJobs, type ScheduledMonitorQuery } from '../../lib/job-monitor/scheduled';
+
+export function channelScheduledMessageDueCondition(asOf: Date) {
+  return and(eq(channelMessages.status, 'scheduled'), lte(channelMessages.scheduledAt, asOf));
+}
+
+const scheduledMonitor: ScheduledMonitorQuery = {
+  key: 'channel-message', label: '频道定时消息', table: channelMessages, due: channelScheduledMessageDueCondition,
+  id: channelMessages.id, title: sql`coalesce(nullif(${channelMessages.title}, ''), '频道定时消息 #' || ${channelMessages.id})`, status: channelMessages.status,
+  dueAt: channelMessages.scheduledAt, dateColumn: channelMessages.scheduledAt,
+  drillDown: { path: '/system/channels', label: '查看频道管理' },
+};
+
+export function getChannelScheduledHealth() { return collectScheduledJobs(scheduledMonitor); }
+export function listOverdueChannelScheduled(limit: number) { return listOverdueScheduledJobs(scheduledMonitor, limit); }
 
 interface PublishInput {
   type: ChannelMessageType;
@@ -600,7 +615,7 @@ async function deliverDeferredRow(row: ChannelMessageRow): Promise<void> {
 /** 系统定时任务：扫描到期的定时消息并发布（registerSystemRecurringJob 每分钟触发） */
 export async function publishDueScheduledMessages(): Promise<void> {
   const due = await db.query.channelMessages.findMany({
-    where: and(eq(channelMessages.status, 'scheduled'), lte(channelMessages.scheduledAt, new Date())),
+    where: channelScheduledMessageDueCondition(new Date()),
     orderBy: [channelMessages.scheduledAt],
     limit: 50,
   });

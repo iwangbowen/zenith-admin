@@ -55,6 +55,8 @@ export async function getCmsPipelineHealth(): Promise<JobSourceRawSummary> {
     counts: { pending: 0, running: 0, stuck: breakdown.reduce((total, row) => total + row.stuck, 0), dead: null,
       failed24h: breakdown.reduce((total, row) => total + row.failed24h, 0), succeeded24h: (deliveries[0]?.succeeded24h ?? 0) + (media[0]?.succeeded24h ?? 0) },
     oldestPendingAgeSec: null, failed1h: entries.reduce((total, { row }) => total + (row?.failed1h ?? 0), 0), issues: [], breakdown,
+    // Build successes do not have a durable completion timestamp; mixing subtype denominators would overstate failure rate.
+    failureRate24h: null,
   };
   });
 }

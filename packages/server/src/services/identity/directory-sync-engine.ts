@@ -1,6 +1,7 @@
 import { requireRow } from '../../lib/db-assert';
 import { HTTPException } from 'hono/http-exception';
-import { and, desc, eq, inArray, isNull, lte } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { collectScheduledJobs, listOverdueScheduledJobs, type ScheduledMonitorQuery } from '../../lib/job-monitor/scheduled';
 import { CronExpressionParser } from 'cron-parser';
 import { hashPassword } from '../../lib/password';
 import crypto from 'node:crypto';
@@ -664,9 +665,22 @@ export async function runDirectorySync(sourceId: number, opts: RunOptions): Prom
 }
 
 /** 系统调度 tick：扫描到期（cron 到点或收到平台回调事件）的启用同步源并顺序执行 */
+export function directorySyncScheduledDueCondition(asOf: Date) {
+  return and(eq(directorySyncSources.status, 'enabled'), sql`${directorySyncSources.type} <> 'scim'`,
+    sql`nullif(trim(${directorySyncSources.cronExpression}), '') is not null`, lte(directorySyncSources.nextRunAt, asOf));
+}
+const directoryMonitorQuery: ScheduledMonitorQuery = {
+  key: 'directory-schedule', label: '目录同步计划', table: directorySyncSources, due: directorySyncScheduledDueCondition,
+  id: directorySyncSources.id, title: directorySyncSources.name, status: directorySyncSources.status,
+  dueAt: directorySyncSources.nextRunAt, dateColumn: directorySyncSources.nextRunAt,
+  drillDown: { path: '/system/directory-sync/sources', label: '查看同步计划' },
+};
+export const getDirectoryScheduledHealth = () => collectScheduledJobs(directoryMonitorQuery);
+export const listOverdueDirectoryScheduled = (limit: number) => listOverdueScheduledJobs(directoryMonitorQuery, limit);
+
 export async function scanDueDirectorySyncSources(): Promise<string> {
   const now = new Date();
-  const candidates = await db.select().from(directorySyncSources)
+  const candidates = await db.select({ ...getTableColumns(directorySyncSources), scheduleDue: sql<boolean>`coalesce(${directorySyncScheduledDueCondition(now)}, false)` }).from(directorySyncSources)
     .where(eq(directorySyncSources.status, 'enabled'));
   const due: Array<{ source: DirectorySyncSourceRow; trigger: 'schedule' | 'callback' }> = [];
   for (const source of candidates) {
@@ -679,7 +693,7 @@ export async function scanDueDirectorySyncSources(): Promise<string> {
         await db.update(directorySyncSources)
           .set({ nextRunAt: computeNextRunAt(source.cronExpression) })
           .where(and(eq(directorySyncSources.id, source.id), isNull(directorySyncSources.nextRunAt)));
-      } else if (source.nextRunAt <= now) {
+      } else if (source.scheduleDue) {
         cronDue = true;
       }
     }

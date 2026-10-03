@@ -29,6 +29,22 @@ import { assertSiteAccess, getAccessibleSiteIds } from './cms-sites.service';
 import { DISTRIBUTION_TASK_TYPE, nextSchedule, SYSTEM_USER } from './cms-distributions-shared';
 import { submitCmsDistributionRun } from './cms-distributions-sync.service';
 import { mapAsyncTaskItem } from '../../lib/task-center';
+import { collectScheduledJobs, listOverdueScheduledJobs, type ScheduledMonitorQuery } from '../../lib/job-monitor/scheduled';
+
+export function cmsDistributionDueCondition(asOf: Date) {
+  return and(eq(cmsDistributionRules.mode, 'scheduled'), eq(cmsDistributionRules.status, 'enabled'),
+    isNotNull(cmsDistributionRules.nextRunAt), lte(cmsDistributionRules.nextRunAt, asOf));
+}
+
+const scheduledMonitor: ScheduledMonitorQuery = {
+  key: 'cms-distribution', label: 'CMS 分发规则', table: cmsDistributionRules, due: cmsDistributionDueCondition,
+  id: cmsDistributionRules.id, title: cmsDistributionRules.name, status: cmsDistributionRules.status,
+  dueAt: cmsDistributionRules.nextRunAt, dateColumn: cmsDistributionRules.nextRunAt,
+  drillDown: { path: '/cms/distribution', label: '查看内容分发' },
+};
+
+export function getCmsDistributionScheduledHealth() { return collectScheduledJobs(scheduledMonitor); }
+export function listOverdueCmsDistributionScheduled(limit: number) { return listOverdueScheduledJobs(scheduledMonitor, limit); }
 
 export type CmsDistributionRunListFilter = Omit<QueryOutputOf<typeof cmsDistributionContract.runs>, 'page' | 'pageSize'>;
 
@@ -171,12 +187,8 @@ export async function loadCmsDistributionExportRows(query: Record<string, unknow
 
 export async function dispatchDueCmsDistributionRules(): Promise<string> {
   const now = new Date();
-  const due = await db.select({ id: cmsDistributionRules.id }).from(cmsDistributionRules).where(and(
-    eq(cmsDistributionRules.mode, 'scheduled'),
-    eq(cmsDistributionRules.status, 'enabled'),
-    isNotNull(cmsDistributionRules.nextRunAt),
-    lte(cmsDistributionRules.nextRunAt, now),
-  )).orderBy(asc(cmsDistributionRules.nextRunAt)).limit(100);
+  const due = await db.select({ id: cmsDistributionRules.id }).from(cmsDistributionRules).where(cmsDistributionDueCondition(now))
+    .orderBy(asc(cmsDistributionRules.nextRunAt)).limit(100);
   let submitted = 0;
   let failures = 0;
   for (const { id } of due) {
@@ -185,10 +197,7 @@ export async function dispatchDueCmsDistributionRules(): Promise<string> {
       if (!(lock[0] as { locked?: boolean } | undefined)?.locked) return null;
       const [rule] = await tx.select().from(cmsDistributionRules).where(and(
         eq(cmsDistributionRules.id, id),
-        eq(cmsDistributionRules.mode, 'scheduled'),
-        eq(cmsDistributionRules.status, 'enabled'),
-        isNotNull(cmsDistributionRules.nextRunAt),
-        lte(cmsDistributionRules.nextRunAt, now),
+        cmsDistributionDueCondition(now),
       )).for('update').limit(1);
       if (!rule) return null;
       const slot = formatDateTime(rule.nextRunAt!);

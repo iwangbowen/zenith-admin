@@ -20,6 +20,21 @@ import type { WorkflowSchedule, CreateWorkflowScheduleInput, UpdateWorkflowSched
 import { buildWhere, withPagination } from '../../lib/where-helpers';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
+import { collectScheduledJobs, listOverdueScheduledJobs, type ScheduledMonitorQuery } from '../../lib/job-monitor/scheduled';
+
+export function workflowScheduleDueCondition(asOf: Date) {
+  return and(eq(workflowSchedules.status, 'enabled'), sql`${workflowSchedules.nextRunAt} is not null`, lte(workflowSchedules.nextRunAt, asOf));
+}
+
+const scheduledMonitor: ScheduledMonitorQuery = {
+  key: 'workflow-schedule', label: '流程定时触发', table: workflowSchedules, due: workflowScheduleDueCondition,
+  id: workflowSchedules.id, title: workflowSchedules.name, status: workflowSchedules.status,
+  dueAt: workflowSchedules.nextRunAt, dateColumn: workflowSchedules.nextRunAt,
+  drillDown: { path: '/workflow/schedules', label: '查看定时发起' },
+};
+
+export function getWorkflowScheduledHealth() { return collectScheduledJobs(scheduledMonitor); }
+export function listOverdueWorkflowScheduled(limit: number) { return listOverdueScheduledJobs(scheduledMonitor, limit); }
 
 type Row = typeof workflowSchedules.$inferSelect;
 
@@ -210,11 +225,7 @@ export async function runDueWorkflowSchedules(): Promise<void> {
   // 分布式 claim：SKIP LOCKED 锁定到期行并在锁内先推进 nextRunAt 占位，
   // 多副本部署 / 单副本 tick 重叠（执行慢于 1 分钟）时同一规则不会被重复发起
   const claimed = await db.transaction(async (tx) => {
-    const due = await tx.select().from(workflowSchedules).where(and(
-      eq(workflowSchedules.status, 'enabled'),
-      sql`${workflowSchedules.nextRunAt} is not null`,
-      lte(workflowSchedules.nextRunAt, now),
-    )).for('update', { skipLocked: true });
+    const due = await tx.select().from(workflowSchedules).where(workflowScheduleDueCondition(now)).for('update', { skipLocked: true });
     for (const s of due) {
       await tx.update(workflowSchedules)
         .set({ nextRunAt: computeNextRun(s.cronExpression, s.timezone, new Date()) })

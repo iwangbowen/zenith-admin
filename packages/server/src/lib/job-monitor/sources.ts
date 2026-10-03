@@ -17,6 +17,7 @@ import { getCmsPipelineHealth, listStuckCmsPipelineJobs } from '../../services/c
 import { getReportDeliveryHealth, listStuckReportDeliveryRuns } from '../../services/report/report-delivery.service';
 import { getReportDqHealth, listStuckReportDqRuns } from '../../services/report/report-dq.service';
 import { getPaymentReconHealth, listStuckPaymentReconRuns } from '../../services/payment/payment-recon-job-monitor.service';
+import { getScheduledDispatchHealth, listStuckScheduledDispatch } from '../../services/platform/scheduled-dispatch-monitor.service';
 import { getJobSource, registerJobSource } from './registry';
 
 /** Called in every process role; repeated bootstrap calls do not duplicate declarations. */
@@ -41,6 +42,9 @@ export function registerJobSources() {
     { key: 'deploy-run', category: 'business', totalsMode: 'stuck-only', title: '应用部署', module: 'ops', order: 170, collect: getDeployRunHealth, listStuck: listStuckDeployRuns, drillDown: { path: '/system/deploy?tab=records&status=running', label: '前往处理' } },
     { key: 'broadcast', category: 'business', totalsMode: 'stuck-only', title: '运营群发', module: 'messaging', order: 180, collect: getBroadcastHealth, listStuck: listStuckBroadcasts, drillDown: { path: '/system/broadcasts?status=sending', label: '前往处理' } },
     { key: 'cms-pipeline', category: 'business', totalsMode: 'stuck-only', title: 'CMS 构建与发布', module: 'cms', order: 190, collect: getCmsPipelineHealth, listStuck: listStuckCmsPipelineJobs, drillDown: { path: '/cms/publishing', label: '前往处理' } },
+    { key: 'scheduled-dispatch', category: 'schedule', title: '到期调度扫描', module: 'platform', order: 200,
+      collect: getScheduledDispatchHealth, listStuck: listStuckScheduledDispatch,
+      thresholds: { stuckLevel: 'warn', oldestPendingWarnSec: 180, oldestPendingCriticalSec: 900 } },
   ] as const;
   for (const entry of entries) if (!getJobSource(entry.key)) registerJobSource(entry);
 }

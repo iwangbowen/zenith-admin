@@ -1,8 +1,9 @@
 import { requireRow } from '../../lib/db-assert';
+import { collectScheduledJobs, listOverdueScheduledJobs, type ScheduledMonitorQuery } from '../../lib/job-monitor/scheduled';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { aggregateReportRows, compare as compareReportValue, reportAlertContract, reportAlertRuleSchema } from '@zenith/shared/report';
-import { and, desc, eq, inArray, isNotNull, lte } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, lte, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { reportAlertRules, reportDeliveryRuns } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
@@ -764,13 +765,21 @@ async function retryAlertRun(runId: number): Promise<boolean> {
   return Boolean(running.triggered);
 }
 
+export function reportAlertDueCondition(asOf: Date) {
+  return and(eq(reportAlertRules.enabled, true), isNotNull(reportAlertRules.nextRunAt), lte(reportAlertRules.nextRunAt, asOf));
+}
+const alertMonitorQuery: ScheduledMonitorQuery = {
+  key: 'report-alert', label: '报表预警', table: reportAlertRules, due: reportAlertDueCondition,
+  id: reportAlertRules.id, title: reportAlertRules.name, status: sql<string>`'scheduled'`,
+  dueAt: reportAlertRules.nextRunAt, dateColumn: reportAlertRules.nextRunAt,
+  drillDown: { path: '/report/alerts', label: '查看报表预警' },
+};
+export const getReportAlertScheduledHealth = () => collectScheduledJobs(alertMonitorQuery);
+export const listOverdueReportAlertScheduled = (limit: number) => listOverdueScheduledJobs(alertMonitorQuery, limit);
+
 export async function dispatchDueAlerts(): Promise<{ checked: number; triggered: number }> {
   const now = new Date();
-  const baseWhere = and(
-    eq(reportAlertRules.enabled, true),
-    isNotNull(reportAlertRules.nextRunAt),
-    lte(reportAlertRules.nextRunAt, now),
-  )!;
+  const baseWhere = reportAlertDueCondition(now)!;
   const dueWhere = reportScopedWhere(reportAlertRules, baseWhere) ?? baseWhere;
   const rows = await db.select().from(reportAlertRules)
     .where(dueWhere);

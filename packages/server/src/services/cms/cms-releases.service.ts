@@ -41,6 +41,21 @@ import { isCmsRevisionAssetVisible } from './cms-asset-rights.service';
 import { APP_TIME_ZONE, formatDateTime } from '../../lib/datetime';
 import { formatCmsReleaseActivationTime, resolveCmsReleaseActivationTime } from './cms-release-time';
 import type { TaskRunContext } from '../../lib/task-center/types';
+import { collectScheduledJobs, listOverdueScheduledJobs, type ScheduledMonitorQuery } from '../../lib/job-monitor/scheduled';
+
+export function cmsReleaseDueCondition(asOf: Date) {
+  return and(eq(cmsReleases.status, 'scheduled'), isNotNull(cmsReleases.activateAt), lte(cmsReleases.activateAt, asOf));
+}
+
+const scheduledMonitor: ScheduledMonitorQuery = {
+  key: 'cms-release', label: 'CMS 定时上线版本', table: cmsReleases, due: cmsReleaseDueCondition,
+  id: cmsReleases.id, title: cmsReleases.name, status: cmsReleases.status,
+  dueAt: cmsReleases.activateAt, dateColumn: cmsReleases.activateAt,
+  drillDown: { path: '/cms/publishing', label: '查看发布中心' },
+};
+
+export function getCmsReleaseScheduledHealth() { return collectScheduledJobs(scheduledMonitor); }
+export function listOverdueCmsReleaseScheduled(limit: number) { return listOverdueScheduledJobs(scheduledMonitor, limit); }
 
 const mapRelease = entityMapper(cmsReleaseSchema, (row: CmsReleaseRow) => ({ activateAt: formatCmsReleaseActivationTime(row.activateAt, row.timeZone) }));
 const mapDeployment = entityMapper(cmsDeploymentSchema);
@@ -379,7 +394,7 @@ export async function activateScheduledCmsReleases(): Promise<number> {
   for (const row of abandoned) {
     await db.update(cmsReleases).set({ status: 'failed', error: '构建任务已结束但尚未完成发布准备，可重新构建' }).where(and(eq(cmsReleases.id, row.id), eq(cmsReleases.status, 'building')));
   }
-  const due = await db.select().from(cmsReleases).where(and(eq(cmsReleases.status, 'scheduled'), isNotNull(cmsReleases.activateAt), lte(cmsReleases.activateAt, new Date()))).orderBy(asc(cmsReleases.activateAt)).limit(100);
+  const due = await db.select().from(cmsReleases).where(cmsReleaseDueCondition(new Date())).orderBy(asc(cmsReleases.activateAt)).limit(100);
   let activated = 0;
   for (const row of due) {
     try {

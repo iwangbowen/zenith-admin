@@ -376,6 +376,7 @@ export const mpBroadcasts = pgTable('mp_broadcasts', {
 }, (t) => [index('mp_broadcasts_tenant_idx').on(t.tenantId), 
   index('mp_broadcasts_account_idx').on(t.accountId),
   index('mp_broadcasts_account_status_idx').on(t.accountId, t.status),
+  index('mp_broadcasts_scheduled_due_idx').on(t.scheduledAt).where(sql`${t.status} = 'draft' and ${t.scheduledAt} is not null`),
 ]);
 
 export type MpBroadcastRow = typeof mpBroadcasts.$inferSelect;

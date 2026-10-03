@@ -1,4 +1,5 @@
 import { requireRow } from '../../lib/db-assert';
+import { collectScheduledJobs, listOverdueScheduledJobs, type ScheduledMonitorQuery } from '../../lib/job-monitor/scheduled';
 import { buildListResult } from '../../lib/list-query';
 import { HTTPException } from 'hono/http-exception';
 import { and, desc, eq, inArray, lte, isNotNull, sql } from 'drizzle-orm';
@@ -513,13 +514,21 @@ async function processScheduledRun(runId: number, row: ReportDashboardSubscripti
   }
 }
 
+export function reportSubscriptionDueCondition(asOf: Date) {
+  return and(eq(reportDashboardSubscriptions.enabled, true), isNotNull(reportDashboardSubscriptions.nextRunAt), lte(reportDashboardSubscriptions.nextRunAt, asOf));
+}
+const subscriptionMonitorQuery: ScheduledMonitorQuery = {
+  key: 'report-subscription', label: '报表订阅', table: reportDashboardSubscriptions, due: reportSubscriptionDueCondition,
+  id: reportDashboardSubscriptions.id, title: sql<string>`'报表订阅 #' || ${reportDashboardSubscriptions.id}::text`, status: sql<string>`'scheduled'`,
+  dueAt: reportDashboardSubscriptions.nextRunAt, dateColumn: reportDashboardSubscriptions.nextRunAt,
+  drillDown: { path: '/report/subscriptions', label: '查看报表订阅' },
+};
+export const getReportSubscriptionScheduledHealth = () => collectScheduledJobs(subscriptionMonitorQuery);
+export const listOverdueReportSubscriptionScheduled = (limit: number) => listOverdueScheduledJobs(subscriptionMonitorQuery, limit);
+
 export async function dispatchDueSubscriptions(): Promise<{ checked: number; pushed: number }> {
   const now = new Date();
-  const baseWhere = and(
-    eq(reportDashboardSubscriptions.enabled, true),
-    isNotNull(reportDashboardSubscriptions.nextRunAt),
-    lte(reportDashboardSubscriptions.nextRunAt, now),
-  )!;
+  const baseWhere = reportSubscriptionDueCondition(now)!;
   const dueWhere = reportScopedWhere(reportDashboardSubscriptions, baseWhere) ?? baseWhere;
   const dueSubscriptions = await db.select()
     .from(reportDashboardSubscriptions)
