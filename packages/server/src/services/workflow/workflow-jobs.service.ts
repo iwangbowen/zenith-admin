@@ -2,7 +2,7 @@ import { workflowEngineContract, type WorkflowJobRuntimeStatus } from '@zenith/s
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { percentOf } from '@zenith/shared/core';
 import { WORKFLOW_JOB_TYPES, summarizeWorkflowJobChain } from '@zenith/shared/workflow';
-import { and, asc, avg, count, desc, eq, gte, inArray, isNotNull, lte, max, min, sql } from 'drizzle-orm';
+import { and, asc, avg, count, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, max, min, or, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowJobs, workflowJobExecutions, workflowInstances, workflowDefinitions, systemSchedulerNodes } from '../../db/schema';
 import type { WorkflowJobRow, WorkflowJobExecutionRow } from '../../db/schema';
@@ -13,6 +13,47 @@ import { expiredWorkflowJobCondition } from '../../lib/workflow-jobs/engine';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { WORKFLOW_JOB_QUEUE, WORKFLOW_OUTBOUND_JOB_QUEUE } from '../../lib/workflow-jobs/types';
+import type { JobSourceRawSummary } from '../../lib/job-monitor/registry';
+
+export const WORKFLOW_JOB_STUCK_GRACE_MS = 60_000;
+
+/** 租约 / 执行截止到期后再给回收器一分钟，避免正常回收被判卡死。 */
+export function stuckWorkflowJobCondition(asOf = new Date()) {
+  const cutoff = new Date(asOf.getTime() - WORKFLOW_JOB_STUCK_GRACE_MS);
+  return and(eq(workflowJobs.status, 'running'), or(
+    lt(workflowJobs.leaseUntil, cutoff),
+    lt(workflowJobs.executionDeadline, cutoff),
+    and(isNull(workflowJobs.leaseUntil), lt(sql`coalesce(${workflowJobs.lockedAt}, ${workflowJobs.updatedAt})`, cutoff)),
+  ));
+}
+
+/** 成败按执行尝试结束时间统计，账本的 updatedAt 会被重试和人工操作修改。 */
+export async function getWorkflowJobHealth(): Promise<JobSourceRawSummary> {
+  const now = new Date();
+  const since = new Date(now.getTime() - 86_400_000);
+  const hour = new Date(now.getTime() - 3_600_000);
+  const due = and(eq(workflowJobs.status, 'pending'), lte(workflowJobs.runAt, now));
+  const [[jobs], [executions]] = await Promise.all([
+    db.select({
+      pending: sql<number>`count(*) filter (where ${due})::int`,
+      running: sql<number>`count(*) filter (where ${workflowJobs.status} = 'running')::int`,
+      stuck: sql<number>`count(*) filter (where ${stuckWorkflowJobCondition(now)})::int`,
+      dead: sql<number>`count(*) filter (where ${workflowJobs.status} = 'dead')::int`,
+      oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${now}::timestamptz - min(${workflowJobs.runAt}) filter (where ${due}))))::int`,
+    }).from(workflowJobs).where(inArray(workflowJobs.status, ['pending', 'running', 'dead'])),
+    db.select({
+      failed24h: sql<number>`count(*) filter (where ${workflowJobExecutions.status} = 'failed')::int`,
+      succeeded24h: sql<number>`count(*) filter (where ${workflowJobExecutions.status} = 'succeeded')::int`,
+      failed1h: sql<number>`count(*) filter (where ${workflowJobExecutions.status} = 'failed' and ${workflowJobExecutions.finishedAt} >= ${hour})::int`,
+    }).from(workflowJobExecutions).where(and(inArray(workflowJobExecutions.status, ['failed', 'succeeded']), gte(workflowJobExecutions.finishedAt, since))),
+  ]);
+  return {
+    counts: { pending: jobs?.pending ?? 0, running: jobs?.running ?? 0, stuck: jobs?.stuck ?? 0, dead: jobs?.dead ?? 0, failed24h: executions?.failed24h ?? 0, succeeded24h: executions?.succeeded24h ?? 0 },
+    oldestPendingAgeSec: jobs?.oldestPendingAgeSec ?? null,
+    failed1h: executions?.failed1h ?? 0,
+    issues: [],
+  };
+}
 
 function mapJob(row: WorkflowJobRow, extra?: { instanceTitle?: string | null; definitionName?: string | null }) {
   return {

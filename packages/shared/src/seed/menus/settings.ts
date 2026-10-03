@@ -20,6 +20,7 @@ export const SEED_MENUS_SETTINGS: Menu[] = [
   // 系统监控：本系统自身的运行状态与可观测性数据（服务监控 / 链路追踪 / 日志文件 / 异常日志），
   // 与「审计日志」（谁在什么时候做了什么）和「系统运维」（主机级工具箱）分开
   { id: 2750, parentId: 2000, title: '系统监控', name: 'SystemMonitoring', icon: 'Activity', type: 'directory', sort: 5, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
+  { id: 2800, parentId: 2750, title: '作业监控', name: 'SystemJobMonitor', path: '/system/job-monitor', component: 'system/job-monitor/JobMonitorPage', icon: 'Workflow', type: 'menu', sort: 2, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 2080, parentId: 2750, title: '服务监控', name: 'SystemMonitor', path: '/system/monitor', component: 'system/monitor/MonitorPage', icon: 'Gauge', type: 'menu', sort: 1, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 2790, parentId: 2750, title: 'WebSocket 连接', name: 'SystemWebSocketMonitor', path: '/system/monitor/websocket', component: 'system/monitor/WebSocketMonitorPage', icon: 'RadioTower', type: 'menu', sort: 2, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },
   { id: 2780, parentId: 2750, title: 'SQL 监控', name: 'SystemSqlMonitor', path: '/system/sql-monitor', component: 'system/sql-monitor/SqlMonitorPage', icon: 'ChartNoAxesCombined', type: 'menu', sort: 2, status: 'enabled', visible: true, createdAt: SEED_DATE, updatedAt: SEED_DATE },

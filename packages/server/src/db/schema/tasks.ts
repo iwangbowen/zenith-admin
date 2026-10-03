@@ -52,6 +52,8 @@ export const exportJobs = pgTable('export_jobs', {
 }, (t) => [
   index('export_jobs_entity_idx').on(t.entity),
   index('export_jobs_status_idx').on(t.status),
+  index('export_jobs_status_started_idx').on(t.status, t.startedAt),
+  index('export_jobs_status_completed_idx').on(t.status, t.completedAt),
   index('export_jobs_created_by_idx').on(t.createdBy),
   index('export_jobs_tenant_idx').on(t.tenantId),
   index('export_jobs_expires_at_idx').on(t.expiresAt),
@@ -117,6 +119,9 @@ export const asyncTasks = pgTable('async_tasks', {
 }, (t) => [
   index('async_tasks_type_idx').on(t.taskType),
   index('async_tasks_status_idx').on(t.status),
+  index('async_tasks_status_heartbeat_idx').on(t.status, t.heartbeatAt),
+  index('async_tasks_status_next_run_idx').on(t.status, t.nextRunAt),
+  index('async_tasks_status_completed_idx').on(t.status, t.completedAt),
   index('async_tasks_created_by_idx').on(t.createdBy),
   index('async_tasks_created_at_idx').on(t.createdAt),
   index('async_tasks_trace_idx').on(t.traceId),

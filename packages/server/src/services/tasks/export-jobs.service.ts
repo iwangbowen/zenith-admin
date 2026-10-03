@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { requireRow } from '../../lib/db-assert';
-import { and, desc, eq, inArray, isNull, lt, lte, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { exportJobContract } from '@zenith/shared/tasks';
@@ -27,8 +27,36 @@ import { getExportMaskRuleMap } from '../platform/data-mask.service';
 import { notify } from '../messaging/notification-outbox.service';
 import logger from '../../lib/logger';
 import type { JwtPayload } from '../../middleware/auth';
+import type { JobSourceRawSummary } from '../../lib/job-monitor/registry';
 
 export const EXPORT_JOB_QUEUE = 'export-jobs';
+export const EXPORT_JOB_STUCK_MS = 30 * 60_000;
+
+export function stuckExportJobCondition(asOf = new Date()) {
+  return and(eq(exportJobs.status, 'running'), lt(exportJobs.startedAt, new Date(asOf.getTime() - EXPORT_JOB_STUCK_MS)));
+}
+
+/** 导出没有执行心跳，按开始时间和导出域的超时阈值监控。 */
+export async function getExportJobHealth(): Promise<JobSourceRawSummary> {
+  const now = new Date();
+  const since = new Date(now.getTime() - 86_400_000);
+  const hour = new Date(now.getTime() - 3_600_000);
+  const [row] = await db.select({
+    pending: sql<number>`count(*) filter (where ${exportJobs.status} = 'pending')::int`,
+    running: sql<number>`count(*) filter (where ${exportJobs.status} = 'running')::int`,
+    stuck: sql<number>`count(*) filter (where ${stuckExportJobCondition(now)})::int`,
+    failed24h: sql<number>`count(*) filter (where ${exportJobs.status} = 'failed' and ${exportJobs.completedAt} >= ${since})::int`,
+    succeeded24h: sql<number>`count(*) filter (where ${exportJobs.status} = 'success' and ${exportJobs.completedAt} >= ${since})::int`,
+    failed1h: sql<number>`count(*) filter (where ${exportJobs.status} = 'failed' and ${exportJobs.completedAt} >= ${hour})::int`,
+    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${now}::timestamp - min(${exportJobs.createdAt}) filter (where ${exportJobs.status} = 'pending'))))::int`,
+  }).from(exportJobs).where(or(inArray(exportJobs.status, ['pending', 'running']), and(inArray(exportJobs.status, ['success', 'failed']), gte(exportJobs.completedAt, since))));
+  return {
+    counts: { pending: row?.pending ?? 0, running: row?.running ?? 0, stuck: row?.stuck ?? 0, dead: null, failed24h: row?.failed24h ?? 0, succeeded24h: row?.succeeded24h ?? 0 },
+    oldestPendingAgeSec: row?.oldestPendingAgeSec ?? null,
+    failed1h: row?.failed1h ?? 0,
+    issues: [],
+  };
+}
 
 export interface CreateExportJobInput {
   entity: string;

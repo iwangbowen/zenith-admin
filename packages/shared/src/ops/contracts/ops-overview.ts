@@ -1,16 +1,10 @@
 import * as z from 'zod';
 import { defineContract, op } from '../../core/contract';
+import { sectionOf } from '../../core/api-schemas';
 
 // ─── 实体 ────────────────────────────────────────────────────────────────────
 
 /** 分区包装：单项探测失败只标记不可用，不影响其他分区 */
-function sectionOf<T extends z.ZodType>(data: T) {
-  return z.object({
-    available: z.boolean(),
-    reason: z.string().nullable(),
-    data: data.nullable(),
-  });
-}
 
 export const opsOverviewHostSnapshotSchema = z.object({
   hostname: z.string(),

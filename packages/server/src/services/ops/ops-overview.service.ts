@@ -5,6 +5,7 @@
  * 单项失败或超时只标记该分区 unavailable,绝不拖垮整个概览。
  * 各分区数据复用对应领域服务的既有函数,不重复实现采集逻辑。
  */
+import { section } from '../../lib/probe-section';
 import { getMonitorStatus } from '../platform/monitor.service';
 import { listContainers } from './docker.service';
 import { isSystemdAvailable, listServices } from './systemd.service';
@@ -23,26 +24,9 @@ export interface OpsOverviewSection<T> {
 }
 
 /** 单分区探测超时;超时按不可用处理,不阻塞整体响应 */
-const SECTION_TIMEOUT_MS = 8000;
 /** 主机快照聚合了磁盘 / DB / Redis / 温度等多路采集,Windows 下子命令较慢,单独放宽 */
 const HOST_SECTION_TIMEOUT_MS = 20000;
 
-async function section<T>(probe: () => Promise<T>, timeoutMs = SECTION_TIMEOUT_MS): Promise<OpsOverviewSection<T>> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const data = await Promise.race([
-      probe(),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('探测超时')), timeoutMs);
-      }),
-    ]);
-    return { available: true, reason: null, data };
-  } catch (err) {
-    return { available: false, reason: err instanceof Error ? err.message : String(err), data: null };
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
 
 export interface HostSnapshot {
   hostname: string;

@@ -754,6 +754,7 @@ export const workflowJobs = pgTable('workflow_jobs', {
   index('workflow_jobs_due_idx').on(t.status, t.runAt),
   index('workflow_jobs_claim_idx').on(t.priority, t.runAt, t.id).where(sql`${t.status} = 'pending'`),
   index('workflow_jobs_lease_idx').on(t.status, t.leaseUntil),
+  index('workflow_jobs_deadline_idx').on(t.status, t.executionDeadline),
   index('workflow_jobs_type_status_idx').on(t.jobType, t.status),
   index('workflow_jobs_trace_idx').on(t.traceId),
   index('workflow_jobs_instance_idx').on(t.instanceId),
@@ -791,6 +792,7 @@ export const workflowJobExecutions = pgTable('workflow_job_executions', {
   uniqueIndex('workflow_job_executions_lease_token_unique').on(t.leaseToken),
   index('workflow_job_executions_type_idx').on(t.jobType, t.status),
   index('workflow_job_executions_started_idx').on(t.startedAt),
+  index('workflow_job_executions_status_finished_idx').on(t.status, t.finishedAt),
 ]);
 
 export type WorkflowJobExecutionRow = typeof workflowJobExecutions.$inferSelect;

@@ -1,0 +1,33 @@
+import { Banner, Button, Card, Col, Empty, Row, Space, Tag, Typography } from '@douyinfe/semi-ui';
+import { useNavigate } from 'react-router-dom';
+import type { JobMonitorOverview } from '@zenith/shared/platform';
+import DateTimeText from '@/components/DateTimeText';
+
+export default function WorkerNodesStrip({ workers }: Readonly<{ workers: JobMonitorOverview['workers'] }>) {
+  const navigate = useNavigate();
+  const nodes = workers.data?.nodes ?? [];
+  return (
+    <Card title={<Space wrap style={{ width: '100%', justifyContent: 'space-between' }}><span>Worker 节点</span><Button theme="borderless" onClick={() => navigate('/system/scheduler?tab=nodes')}>查看全部</Button></Space>}>
+      {!workers.available ? (
+        <Banner type="warning" closeIcon={null} description={`节点探测不可用：${workers.reason ?? '未知原因'}`} />
+      ) : nodes.length === 0 ? (
+        <Empty description="暂无 Worker 节点" />
+      ) : (
+        <Row gutter={[16, 16]}>
+          {nodes.map((node) => (
+            <Col key={node.nodeId} xs={24} md={12} xl={8}>
+              <Space vertical align="start" spacing={6} style={{ width: '100%', minWidth: 0 }}>
+                <Space wrap>
+                  <Typography.Text strong type={node.stale ? 'danger' : undefined}>{node.hostname} / {node.pid}</Typography.Text>
+                  <Tag color={node.stale ? 'red' : 'green'}>{node.stale ? '心跳失联' : '在线'}</Tag>
+                </Space>
+                <Typography.Text type="tertiary" size="small">角色：{node.roles.join(' / ')} · 运行中 {node.runningJobCount}</Typography.Text>
+                <Typography.Text type="tertiary" size="small">最近心跳：<DateTimeText value={node.lastHeartbeatAt} /></Typography.Text>
+              </Space>
+            </Col>
+          ))}
+        </Row>
+      )}
+    </Card>
+  );
+}

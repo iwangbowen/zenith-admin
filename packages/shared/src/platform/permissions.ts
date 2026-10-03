@@ -6,6 +6,7 @@ import { definePermissions } from '../core/permissions';
  * `uiOnly` = 服务端没有任何接口检查该码（纯前端门控或待清理）。
  */
 export const PLATFORM_PERMISSIONS = definePermissions({
+  'system:job-monitor:view': { label: '查询', menu: 'SystemJobMonitor' },
   'system:relation:manage': { label: '维护对象关联', menu: 'GlobalSearch' },
   'system:dict:list': { label: '查询', menu: 'SystemDicts' },
   'system:dict:create': { label: '新增字典', menu: 'SystemDicts' },

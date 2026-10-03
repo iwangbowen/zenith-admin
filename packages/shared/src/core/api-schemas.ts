@@ -194,3 +194,10 @@ export const apiErrorEnvelope = z.object({
   message: z.string(),
   data: z.null().optional().nullable(),
 });
+
+/** Independent probes retain useful sections when another source is unavailable. */
+export function sectionOf<T extends z.ZodType>(data: T) {
+  return z.object({ available: z.boolean(), reason: z.string().nullable(), data: data.nullable() });
+}
+
+export type ProbeSection<T> = { available: boolean; reason: string | null; data: T | null };

@@ -10,6 +10,7 @@
  * 与角色绑定的启动步骤不在此：终端会话持久化见 run-api.ts，孤儿对账 / 启动期补齐见 run-worker.ts。
  */
 import logger from '../lib/logger';
+import { registerJobSources } from '../lib/job-monitor/sources';
 import { initCronScheduler } from '../lib/pg-boss-scheduler';
 import { registerTaskDemoHandlers } from '../routes/tasks/task-demo';
 import { registerAnalyticsTaskHandlers } from '../services/analytics/analytics-tasks';
@@ -23,6 +24,7 @@ import { registerReportSlaTaskHandlers } from '../services/report/report-sla-tas
 
 /** 启动 pg-boss 并完成全部后台作业声明；返回是否成功（失败已记日志，调用方据此决定是否继续执行期收尾） */
 export async function declareBackgroundJobs(): Promise<boolean> {
+  registerJobSources();
   try {
     await initCronScheduler();
     const { registerExportJobWorker } = await import('../services/tasks/export-jobs.service');

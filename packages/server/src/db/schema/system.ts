@@ -108,6 +108,7 @@ export const cronJobLogs = pgTable('cron_job_logs', {
   index('cron_job_logs_job_idx').on(t.jobId),
   index('cron_job_logs_job_started_idx').on(t.jobId, t.startedAt.desc()),
   index('cron_job_logs_status_started_idx').on(t.status, t.startedAt.desc()),
+  index('cron_job_logs_status_ended_idx').on(t.status, t.endedAt),
 ]);
 
 export type CronJobLogRow = typeof cronJobLogs.$inferSelect;
@@ -146,6 +147,8 @@ export const systemSchedulerRuns = pgTable('system_scheduler_runs', {
   // 前缀 task_name 同时覆盖等值过滤，无需再保留单列索引
   index('system_scheduler_runs_task_started_idx').on(t.taskName, t.startedAt, t.id),
   index('system_scheduler_runs_status_idx').on(t.status),
+  index('system_scheduler_runs_status_started_idx').on(t.status, t.startedAt),
+  index('system_scheduler_runs_status_ended_idx').on(t.status, t.endedAt),
   index('system_scheduler_runs_started_at_idx').on(t.startedAt),
   index('system_scheduler_runs_triggered_by_idx').on(t.triggeredBy),
   index('system_scheduler_runs_alert_ack_by_idx').on(t.alertAckBy),

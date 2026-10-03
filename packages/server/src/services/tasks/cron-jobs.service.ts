@@ -1,6 +1,6 @@
 import { buildListResult, listRows } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
-import { eq, and, desc, gte, inArray, lt, sql, type SQL } from 'drizzle-orm';
+import { eq, and, desc, gte, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
 import { CronExpressionParser } from 'cron-parser';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import type {
@@ -48,6 +48,7 @@ import { currentUserOrNull } from '../../lib/context';
 import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { defineCrudService } from '../../lib/crud-service';
 import { entityMapper } from '../../lib/entity-map';
+import type { JobSourceRawSummary } from '../../lib/job-monitor/registry';
 
 export const mapCronJob = entityMapper(cronJobSchema);
 
@@ -327,6 +328,54 @@ function detectMissedRun(job: JobRow, now: Date): Date | null {
   if (expected.getTime() <= configuredAt) return null;
   if (job.lastRunAt && job.lastRunAt.getTime() >= expected.getTime()) return null;
   return expected;
+}
+
+export function stuckCronRunCondition(asOf = new Date()) {
+  return and(eq(cronJobLogs.status, 'running'), sql`${cronJobs.monitorTimeout} > 0 and ${cronJobLogs.startedAt} + ${cronJobs.monitorTimeout} * interval '1 second' < ${asOf}`);
+}
+
+/** 轻量监控读数；待执行请求由 pg-boss 来源统计，Cron 本域只检查运行和调度问题。 */
+export async function getCronJobHealth(): Promise<JobSourceRawSummary> {
+  const now = new Date();
+  const since = new Date(now.getTime() - 86_400_000);
+  const hour = new Date(now.getTime() - 3_600_000);
+  const [[row], jobs, recentRows] = await Promise.all([
+    db.select({
+      running: sql<number>`count(*) filter (where ${cronJobLogs.status} = 'running')::int`,
+      stuck: sql<number>`count(*) filter (where ${stuckCronRunCondition(now)})::int`,
+      failed24h: sql<number>`count(*) filter (where ${cronJobLogs.status} in ('fail', 'timeout') and ${cronJobLogs.endedAt} >= ${since})::int`,
+      succeeded24h: sql<number>`count(*) filter (where ${cronJobLogs.status} = 'success' and ${cronJobLogs.endedAt} >= ${since})::int`,
+      failed1h: sql<number>`count(*) filter (where ${cronJobLogs.status} in ('fail', 'timeout') and ${cronJobLogs.endedAt} >= ${hour})::int`,
+    }).from(cronJobLogs).innerJoin(cronJobs, eq(cronJobs.id, cronJobLogs.jobId))
+      .where(or(eq(cronJobLogs.status, 'running'), and(inArray(cronJobLogs.status, ['success', 'fail', 'timeout']), gte(cronJobLogs.endedAt, since)))),
+    db.select({
+      id: cronJobs.id, name: cronJobs.name, handler: cronJobs.handler,
+      cronExpression: cronJobs.cronExpression, status: cronJobs.status,
+      monitorTimeout: cronJobs.monitorTimeout, lastRunAt: cronJobs.lastRunAt,
+      lastRunStatus: cronJobs.lastRunStatus, createdAt: cronJobs.createdAt, updatedAt: cronJobs.updatedAt,
+    }).from(cronJobs).where(eq(cronJobs.status, 'enabled')),
+    // 每任务仅探测最近 N 次，利用已有 (job_id, started_at) 索引，不扫描全部历史。
+    db.execute<{ jobId: number; statuses: CronRunStatus[] }>(sql`
+      select j.id as "jobId", array(
+        select l.status from ${cronJobLogs} l where l.job_id = j.id and l.status <> 'running'
+        order by l.started_at desc, l.id desc limit ${CRON_HEALTH_RULES.consecutiveFailThreshold}
+      ) as statuses from ${cronJobs} j where j.status = 'enabled'
+    `),
+  ]);
+  const recentByJob = new Map(recentRows.map((item) => [item.jobId, item.statuses]));
+  const issues: JobSourceRawSummary['issues'] = [];
+  for (const job of jobs) {
+    const missedAt = detectMissedRun(job, now);
+    if (missedAt) issues.push({ level: 'warn', message: `${job.name} 应于 ${formatDateTime(missedAt)} 执行，至今无执行记录` });
+    const consecutive = countConsecutiveFails([...(recentByJob.get(job.id) ?? [])].reverse());
+    if (consecutive >= CRON_HEALTH_RULES.consecutiveFailThreshold) issues.push({ level: 'critical', message: `${job.name} 连续失败 ${consecutive} 次` });
+  }
+  return {
+    counts: { pending: 0, running: row?.running ?? 0, stuck: row?.stuck ?? 0, dead: null, failed24h: row?.failed24h ?? 0, succeeded24h: row?.succeeded24h ?? 0 },
+    oldestPendingAgeSec: null,
+    failed1h: row?.failed1h ?? 0,
+    issues,
+  };
 }
 
 const ALERT_LEVEL_ORDER = { danger: 0, warning: 1, info: 2 } as const;

@@ -7,6 +7,7 @@ import {
   dictContract,
   exceptionLogContract,
   healthContract,
+  jobMonitorContract,
   ipAccessLogContract,
   monitorAlertContract,
   monitorContract,
@@ -35,6 +36,7 @@ import dataMaskRoutes from './data-mask';
 import dictsRoutes from './dicts';
 import exceptionLogsRoutes from './exception-logs';
 import healthRoutes from './health';
+import jobMonitorRoutes from './job-monitor';
 import ipAccessLogsRoutes from './ip-access-logs';
 import monitorAlertsRoutes from './monitor-alerts';
 import monitorRoutes from './monitor';
@@ -90,5 +92,6 @@ export default defineRouteDomain({
     [rateLimitContract.basePath, rateLimitRoutes],
     ['/api/ws', createWsRoute(upgradeWebSocket)],
     [healthContract.basePath, healthRoutes],
+    [jobMonitorContract.basePath, jobMonitorRoutes],
   ],
 });

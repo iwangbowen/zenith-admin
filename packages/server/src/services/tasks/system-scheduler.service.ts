@@ -3,7 +3,7 @@ import type { QueryOutputOf } from '@zenith/shared/core';
 import { systemSchedulerContract } from '@zenith/shared/platform';
 import { buildListResult, listRows } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
-import { and, desc, eq, inArray, isNotNull, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { CronExpressionParser } from 'cron-parser';
 import { db } from '../../db';
@@ -13,6 +13,7 @@ import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../
 import {
   getSchedulerIntrospection,
   getSystemQueueMetrics,
+  getQueueDepths,
   runSystemRecurringJobNow,
   updateSystemTaskRuntimePolicy,
   type SystemSchedulerAlertChannel,
@@ -20,6 +21,43 @@ import {
   type SystemSchedulerTaskInfo,
 } from '../../lib/pg-boss-scheduler';
 import { buildWhere, dateRangeConditions, withPagination } from '../../lib/where-helpers';
+import type { JobSourceRawSummary } from '../../lib/job-monitor/registry';
+
+/** 超时策略来自任务配置，未设阈值时按半小时识别未收尾运行。 */
+export function overdueSchedulerRunCondition(asOf = new Date()) {
+  return and(eq(systemSchedulerRuns.status, 'running'), sql`${systemSchedulerRuns.startedAt} + coalesce(${systemSchedulerTaskConfigs.timeoutMs}, 1800000) * interval '1 millisecond' < ${asOf}`);
+}
+
+/** 队列真实积压使用 ready；运行留痕成败按结束时间，避免把历史失败当24h失败。 */
+export async function getSchedulerRunHealth(): Promise<JobSourceRawSummary> {
+  const now = new Date();
+  const since = new Date(now.getTime() - 86_400_000);
+  const hour = new Date(now.getTime() - 3_600_000);
+  const [depths, [row], oldestRows] = await Promise.all([
+    getQueueDepths(),
+    db.select({
+      running: sql<number>`count(*) filter (where ${systemSchedulerRuns.status} = 'running')::int`,
+      stuck: sql<number>`count(*) filter (where ${overdueSchedulerRunCondition(now)})::int`,
+      failed24h: sql<number>`count(*) filter (where ${systemSchedulerRuns.status} = 'failed' and ${systemSchedulerRuns.endedAt} >= ${since})::int`,
+      succeeded24h: sql<number>`count(*) filter (where ${systemSchedulerRuns.status} = 'success' and ${systemSchedulerRuns.endedAt} >= ${since})::int`,
+      failed1h: sql<number>`count(*) filter (where ${systemSchedulerRuns.status} = 'failed' and ${systemSchedulerRuns.endedAt} >= ${hour})::int`,
+    }).from(systemSchedulerRuns)
+      .leftJoin(systemSchedulerTaskConfigs, eq(systemSchedulerTaskConfigs.taskName, systemSchedulerRuns.taskName))
+      .where(or(eq(systemSchedulerRuns.status, 'running'), and(inArray(systemSchedulerRuns.status, ['success', 'failed']), gte(systemSchedulerRuns.endedAt, since)))),
+    db.execute<{ age: number | null }>(sql`
+      select floor(extract(epoch from (${now}::timestamptz - min(start_after))))::int as age
+      from pgboss.job
+      where state in ('created', 'retry') and start_after <= ${now}
+        and left(name, 10) <> '__pgboss__'
+    `),
+  ]);
+  return {
+    counts: { pending: depths.reduce((sum, queue) => sum + queue.ready, 0), running: row?.running ?? 0, stuck: row?.stuck ?? 0, dead: null, failed24h: row?.failed24h ?? 0, succeeded24h: row?.succeeded24h ?? 0 },
+    oldestPendingAgeSec: oldestRows[0]?.age ?? null,
+    failed1h: row?.failed1h ?? 0,
+    issues: [],
+  };
+}
 
 export interface UpdateSystemSchedulerTaskConfigInput {
   enabled: boolean;

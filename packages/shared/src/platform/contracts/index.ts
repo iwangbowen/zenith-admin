@@ -23,3 +23,4 @@ export * from './trace';
 export * from './user-feedbacks';
 
 export * from './entity-watches';
+export * from './job-monitor';

@@ -723,3 +723,18 @@ export const TRACE_NODE_STATUS_LABELS: Record<TraceNodeStatus, string> = {
   running: '进行中',
   pending: '待处理',
 };
+export const JOB_SOURCE_KEYS = ['scheduler-queue', 'async-task', 'export-job', 'cron-job', 'workflow-job', 'notification-outbox', 'webhook-delivery'] as const;
+export type JobSourceKey = typeof JOB_SOURCE_KEYS[number];
+export const JOB_HEALTH_LEVELS = ['ok', 'warn', 'critical', 'unavailable'] as const;
+export type JobHealthLevel = typeof JOB_HEALTH_LEVELS[number];
+export const JOB_HEALTH_LABELS = { ok: '正常', warn: '警告', critical: '严重', unavailable: '不可用' } as const;
+export const JOB_HEALTH_OPTIONS = JOB_HEALTH_LEVELS.map(value => ({ value, label: JOB_HEALTH_LABELS[value] }));
+export const JOB_MONITOR_DEFAULT_THRESHOLDS = {
+  oldestPendingWarnSec: 300, oldestPendingCriticalSec: 1800,
+  failureRateWarn: 0.1, failureRateCritical: 0.3, failureRateMinSample: 20,
+  deadLevel: 'warn' as const, stuckLevel: 'critical' as const,
+};
+export type JobMonitorThresholds = Omit<typeof JOB_MONITOR_DEFAULT_THRESHOLDS, 'deadLevel' | 'stuckLevel'> & {
+  deadLevel: 'warn' | 'critical'; stuckLevel: 'warn' | 'critical';
+};
+export const JOB_MONITOR_TREND_RANGES = ['1h', '6h', '24h', '7d'] as const;

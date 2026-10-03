@@ -2,7 +2,7 @@ import { percentOf } from '@zenith/shared/core';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { buildListResult, emptyListResult, listRows } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
-import { and, desc, eq, gte, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import dayjs from 'dayjs';
 import { ASYNC_TASK_TERMINAL_STATUSES, asyncTaskContract, isAsyncTaskTerminal, type AsyncTaskStats } from '@zenith/shared/tasks';
@@ -12,11 +12,13 @@ import { pageOffset } from '../../lib/pagination';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import { APP_TIME_ZONE } from '../../lib/datetime';
 import { currentUser, hasPermission } from '../../lib/context';
+import type { JobSourceRawSummary } from '../../lib/job-monitor/registry';
 import {
   buildTaskTypeMeta,
   cleanupAsyncTasks,
   asyncTaskStatusCondition,
   getTaskTypePolicy,
+  HEARTBEAT_STALE_MS,
   listTaskHandlers,
   listTaskTypeConfigs,
   mapAsyncTask,
@@ -28,6 +30,38 @@ import {
   updateTaskTypePolicy,
   type UpdateTaskTypePolicyInput,
 } from '../../lib/task-center';
+
+/** 超过正常心跳回收窗口后仍运行，才作为监控卡死上报。 */
+export function stuckAsyncTaskCondition(asOf = new Date()) {
+  const cutoff = new Date(asOf.getTime() - 2 * HEARTBEAT_STALE_MS);
+  return and(eq(asyncTasks.status, 'running'), or(
+    lt(asyncTasks.heartbeatAt, cutoff),
+    and(isNull(asyncTasks.heartbeatAt), lt(asyncTasks.updatedAt, cutoff)),
+  ));
+}
+
+/** 平台作业监控：仅统计已到期任务，重试退避期间不算积压。 */
+export async function getAsyncTaskHealth(): Promise<JobSourceRawSummary> {
+  const now = new Date();
+  const since = new Date(now.getTime() - 86_400_000);
+  const hour = new Date(now.getTime() - 3_600_000);
+  const due = and(eq(asyncTasks.status, 'pending'), or(isNull(asyncTasks.nextRunAt), lte(asyncTasks.nextRunAt, now)));
+  const [row] = await db.select({
+    pending: sql<number>`count(*) filter (where ${due})::int`,
+    running: sql<number>`count(*) filter (where ${asyncTasks.status} = 'running')::int`,
+    stuck: sql<number>`count(*) filter (where ${stuckAsyncTaskCondition(now)})::int`,
+    failed24h: sql<number>`count(*) filter (where ${asyncTasks.status} = 'failed' and ${asyncTasks.completedAt} >= ${since})::int`,
+    succeeded24h: sql<number>`count(*) filter (where ${asyncTasks.status} = 'success' and ${asyncTasks.completedAt} >= ${since})::int`,
+    failed1h: sql<number>`count(*) filter (where ${asyncTasks.status} = 'failed' and ${asyncTasks.completedAt} >= ${hour})::int`,
+    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${now}::timestamp - min(coalesce(${asyncTasks.nextRunAt}, ${asyncTasks.createdAt})) filter (where ${due}))))::int`,
+  }).from(asyncTasks).where(or(inArray(asyncTasks.status, ['pending', 'running']), and(inArray(asyncTasks.status, ['success', 'failed']), gte(asyncTasks.completedAt, since))));
+  return {
+    counts: { pending: row?.pending ?? 0, running: row?.running ?? 0, stuck: row?.stuck ?? 0, dead: null, failed24h: row?.failed24h ?? 0, succeeded24h: row?.succeeded24h ?? 0 },
+    oldestPendingAgeSec: row?.oldestPendingAgeSec ?? null,
+    failed1h: row?.failed1h ?? 0,
+    issues: [],
+  };
+}
 
 type AsyncTaskListFilter = Omit<QueryOutputOf<typeof asyncTaskContract.list>, 'page' | 'pageSize'>;
 
