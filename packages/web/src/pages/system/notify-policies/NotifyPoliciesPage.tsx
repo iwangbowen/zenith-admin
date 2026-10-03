@@ -346,10 +346,10 @@ export default function NotifyPoliciesPage() {
       </Tabs>
       <SideSheet title="通知事件详情" visible={detailId !== undefined} onCancel={closeDetail} width={720} closeOnEsc>
         {detailQuery.data && <>
-          <Descriptions column={2} data={[
+          <Descriptions align="left" layout="horizontal" column={2} style={{ width: '100%', overflowWrap: 'anywhere' }} data={[
             { key: '事件', value: detailQuery.data.eventKey }, { key: '状态', value: detailQuery.data.status },
             { key: '投递次数', value: detailQuery.data.attempts }, { key: '创建时间', value: detailQuery.data.createdAt },
-            { key: '计划时间', value: detailQuery.data.scheduledAt ?? EMPTY_PLACEHOLDER }, { key: '错误', value: detailQuery.data.lastError ?? EMPTY_PLACEHOLDER, span: 2 },
+            { key: '计划时间', value: detailQuery.data.scheduledAt ?? EMPTY_PLACEHOLDER, span: 2 }, { key: '错误', value: detailQuery.data.lastError ?? EMPTY_PLACEHOLDER, span: 2 },
             { key: '跳转地址', value: detailQuery.data.link ?? EMPTY_PLACEHOLDER, span: 2 },
           ]} />
           <EntityContextView entityType="notification.outbox" entityKey={String(detailQuery.data.id)} />

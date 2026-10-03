@@ -421,7 +421,7 @@ export default function PaymentSharingPage() {
 
       <SideSheet title="分账接收方详情" visible={!!receiverDetailTarget} onCancel={closeReceiverDetail} width={680} closeOnEsc>
         {receiverDetailTarget && <>
-          <Descriptions column={2} data={[
+          <Descriptions align="left" layout="horizontal" column={2} style={{ width: '100%', overflowWrap: 'anywhere' }} data={[
             { key: '名称', value: receiverDetailTarget.name },
             { key: '类型', value: PAYMENT_SHARING_RECEIVER_TYPE_LABELS[receiverDetailTarget.receiverType] },
             { key: '账号', value: receiverDetailTarget.account },
@@ -436,7 +436,7 @@ export default function PaymentSharingPage() {
 
       <SideSheet title="分账单详情" visible={!!orderDetailTarget} onCancel={closeOrderDetail} width={760} closeOnEsc>
         {orderDetailTarget && <>
-          <Descriptions column={2} data={[
+          <Descriptions align="left" layout="horizontal" column={2} style={{ width: '100%', overflowWrap: 'anywhere' }} data={[
             { key: '分账单号', value: orderDetailTarget.sharingNo },
             { key: '订单号', value: orderDetailTarget.orderNo },
             { key: '接收方', value: orderDetailTarget.receiverName ?? `接收方 #${orderDetailTarget.receiverId}` },

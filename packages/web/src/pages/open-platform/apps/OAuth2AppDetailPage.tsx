@@ -236,7 +236,7 @@ export default function OAuth2AppDetailPage() {
             align="plain"
             layout="horizontal"
             column={2}
-            style={{ width: '100%' }}
+            style={{ width: '100%', overflowWrap: 'anywhere' }}
             data={[
               { key: '应用名称', value: app.name },
               { key: '客户端类型', value: app.isPublic ? '公开客户端（PKCE）' : '机密客户端' },
@@ -246,7 +246,7 @@ export default function OAuth2AppDetailPage() {
               { key: 'AppKey 签名通道', value: app.signEnabled ? '已开启（强制签名）' : '未开启（仅 Bearer）' },
               { key: '旧密钥有效期', value: app.previousSecretExpiresAt || EMPTY_PLACEHOLDER },
               { key: '创建时间', value: app.createdAt },
-              { key: '更新时间', value: app.updatedAt },
+              { key: '更新时间', value: app.updatedAt, span: 2 },
               { key: '审核意见', value: app.reviewComment || EMPTY_PLACEHOLDER, span: 2 },
               { key: '授权类型', value: app.grantTypes.join('、'), span: 2 },
               { key: '允许 Scope', value: app.allowedScopes.join('、'), span: 2 },

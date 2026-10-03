@@ -210,7 +210,7 @@ export default function PaymentRefundsPage() {
             align="plain"
             layout="horizontal"
             column={2}
-            style={{ width: '100%' }}
+            style={{ width: '100%', overflowWrap: 'anywhere' }}
             data={[
               { key: '退款单号', value: refundDetail.refundNo },
               { key: '渠道退款号', value: refundDetail.channelRefundNo ?? EMPTY_PLACEHOLDER },
@@ -222,7 +222,7 @@ export default function PaymentRefundsPage() {
               { key: '审批状态', value: <Tag color={APPROVAL_COLOR[refundDetail.approvalStatus]}>{PAYMENT_REFUND_APPROVAL_STATUS_LABELS[refundDetail.approvalStatus]}</Tag> },
               { key: '审批时间', value: refundDetail.approvedAt ? formatDateTime(refundDetail.approvedAt) : EMPTY_PLACEHOLDER },
               { key: '退款时间', value: refundDetail.refundedAt ? formatDateTime(refundDetail.refundedAt) : EMPTY_PLACEHOLDER },
-              { key: '创建时间', value: formatDateTime(refundDetail.createdAt) },
+              { key: '创建时间', value: formatDateTime(refundDetail.createdAt), span: 2 },
               { key: '退款原因', value: refundDetail.reason ?? EMPTY_PLACEHOLDER, span: 2 },
               { key: '审批意见', value: refundDetail.approvalRemark ?? EMPTY_PLACEHOLDER, span: 2 },
               { key: '错误信息', value: refundDetail.errorMessage ?? EMPTY_PLACEHOLDER, span: 2 },
