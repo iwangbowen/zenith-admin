@@ -4,6 +4,57 @@
 
 ---
 
+## v2.65.0 - 2026-10-04
+
+本版本完成时间与时区标准化：全库 520 张表的时间列统一为 `timestamptz` 并重置迁移基线，业务时区只由 `APP_TIME_ZONE`
+决定，统计分桶与跨时区比较全部改走统一 helper。**破坏性变更**：迁移链已重置为单一基线，既有环境必须
+`DROP DATABASE` 后由新版本重新迁移与 seed，不能在旧库上增量执行。
+
+### Changed
+
+#### 数据库与迁移
+
+- **时间列统一为 `timestamptz`**：749 个无时区时间列按 timezone-aware 口径改写，基线中 1165 处时间列全部带时区，
+  不再存在「库内两种时间口径混存」。表文件写 `timestamptz()`，创建 / 更新时间展开 `...timestampColumns()`，
+  只有 `created_at` 的追加型表单独声明 `createdAt: timestamptz().defaultNow().notNull()`。
+- **迁移链重置**：删除 `0002`–`0037` 共 36 个历史迁移与 35 份快照，重新生成 `0000_baseline.sql` 与
+  `0001_extensions.sql`（手写 DDL：条件启用 pgvector、`iot_telemetry` 与网盘日志分区、跨实例缓存失效触发器、
+  CMS 不可变事实函数、只读执行角色、条件启用 `pg_stat_statements`）。
+- **连接入口收敛**：新增 `db/client.ts` 的 `createPgClient()` 作为主库唯一入口，会话 `TimeZone` 固定 UTC，
+  不再受 `postgresql.conf`、`ALTER DATABASE`、`ALTER ROLE` 与宿主机时区影响；删除无引用的 `db/cleanup.ts`。
+
+#### 业务时区与 SQL 分桶
+
+- **业务时区单一来源**：`APP_TIME_ZONE`（IANA 名，默认 `Asia/Shanghai`，启动时校验）是唯一业务时区，
+  不再回退进程 `TZ`；「今日 / 近 N 天」窗口按业务时区自然日计算。
+- **新增 `lib/datetime-sql.ts`**：`localDate` / `localFormat` / `localTime` / `localTrunc` / `localDayStart`
+  五个 helper，时区字面量内联，同一表达式可同时用于 SELECT / GROUP BY / ORDER BY。
+- **面向人的 SQL**：数据库控制台、数据浏览 / 编辑 / 导入、psql 终端、报表 SQL 数据集与数据质量自定义 SQL
+  在 `APP_TIME_ZONE` 会话下执行，结果与日期函数按业务时区呈现。
+
+### Fixed
+
+- **列表时间多 8 小时**：数据库服务端时区为 `Asia/Shanghai` 时创建 / 更新时间整体偏移，且编辑后
+  `updated_at` 早于 `created_at`（#30）——根因是无时区列混存两种口径，现已消除。
+- **统计分桶错位**：约 25 处统计 service 的日 / 小时 / 星期分桶改为业务时区口径，涉及登录与操作日志、会员、
+  公众号、短链、文件、网盘、工作流、Wiki、AI 用量、监控告警、终端录像、应用发布、定时任务等看板。
+- **CMS 时间判断晚 8 小时**：内容「逾期」「待发布」筛选与看板计数不再把快照中的北京时间文本当作 UTC 解释。
+- **数据保留与任务边界提前 8 小时**：数据保留策略、报表推送耗时、流程 Token 清理、决策表命中分析的时间窗口
+  改用 ISO 文本比较，消除提前删除与统计不一致。
+- **报表与控制台时间显示为 UTC**：报表 SQL 数据集、数据库控制台、数据浏览与 `datetime` 字段格式化统一按业务时区呈现。
+- **容器部署下的时差**：聊天投票截止、全局搜索公告日期、AI 评测实验默认名称、IoT 在线率桶标签不再随进程时区漂移。
+- **多实例生效延迟**：重置基线时漏并的 `users` / `tenants` / `members` / `user_api_tokens` /
+  `tenant_packages` / `tenant_package_features` 缓存失效触发器已补齐，禁用用户等变更跨实例即时生效，不再等 TTL。
+
+### 测试与文档
+
+- **新增 4 个守卫测试**：时间列必须带时区（对照 `scripts/schema-catalog.sql`）、主库连接必须经 `createPgClient`、
+  统计 SQL 不得绕开 `datetime-sql` helper、跨实例缓存失效订阅表必须挂触发器。
+- `docs/backend/database.md` 新增「时间与时区」章节与重建基线流程；`deployment`、`api-conventions`、
+  `data-platform`、`report/datasets` 等同步新口径；Zenith Skill 补充时间列规则、SQL 分桶与缓存失效约束。
+
+---
+
 ## v2.64.0 - 2026-10-04
 
 本版本以作业监控为主线：新增系统设置下的作业监控页，聚合核心作业健康、卡死明细下钻、投递健康趋势与告警、
