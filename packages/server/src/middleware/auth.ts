@@ -131,7 +131,7 @@ async function loadTenantRow(tenantId: number): Promise<TenantLivenessRow | null
  *
  * - 副本只放令牌行本身与所属用户的角色码（tokenHash 键）；用户 / 租户活性复用上面的 subjectRows +
  *   checkSubjectLiveness，禁用 / 移出租户 / 租户停用的即时性与 JWT 路径完全一致（同一失效链路）；
- * - 令牌创建 / 删除 / 过期改写经 user_api_tokens 触发器广播（迁移 0016），副本无 id 反向索引，收到即整段清空；
+ * - 令牌创建 / 删除 / 过期改写经 `0001_extensions.sql` 的 user_api_tokens 触发器广播，副本无 id 反向索引，收到即整段清空；
  *   角色变更走管理端更新用户时同事务写 users 行 → users 广播，只改 user_roles 的路径在 TTL 内收敛；
  * - 缓存的是原始行：expiresAt 到点在请求时求值，不受 TTL 影响；不存在的 hash 也缓存为 null，防伪造令牌反复回源。
  */

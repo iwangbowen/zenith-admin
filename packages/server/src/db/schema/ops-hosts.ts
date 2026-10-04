@@ -1,5 +1,5 @@
-import { timestampColumns, idColumn, remarkColumn } from './common';
-import { pgTable, varchar, timestamp, pgEnum, integer, text, jsonb, boolean, index } from 'drizzle-orm/pg-core';
+import { timestampColumns, idColumn, remarkColumn, timestamptz } from './common';
+import { pgTable, varchar, pgEnum, integer, text, jsonb, boolean, index } from 'drizzle-orm/pg-core';
 import { OPS_HOST_AUTH_TYPES, OPS_HOST_STATUSES } from '@zenith/shared/ops';
 import type { OpsHostSnapshot } from '@zenith/shared/ops';
 import { auditColumns } from './core';
@@ -34,7 +34,7 @@ export const opsHosts = pgTable('ops_hosts', {
   hostKeyFingerprint: varchar({ length: 64 }),
   status: opsHostStatusEnum().notNull().default('unknown'),
   snapshot: jsonb().$type<OpsHostSnapshot>(),
-  probedAt: timestamp(),
+  probedAt: timestamptz(),
   probeError: text(),
   enabled: boolean().notNull().default(true),
   remark: remarkColumn(500),

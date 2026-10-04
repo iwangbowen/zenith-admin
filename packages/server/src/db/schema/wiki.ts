@@ -1,5 +1,5 @@
-import { pgTable, varchar, timestamp, pgEnum, integer, boolean, primaryKey, unique, index, text, type AnyPgColumn } from 'drizzle-orm/pg-core';
-import { timestampColumns, idColumn, statusColumn, sortColumn } from './common';
+import { pgTable, varchar, pgEnum, integer, boolean, primaryKey, unique, index, text, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { timestampColumns, idColumn, statusColumn, sortColumn, timestamptz } from './common';
 import { auditColumns, users, tenantIdColumn } from './core';
 
 // ─── 枚举 ─────────────────────────────────────────────────────────────────────
@@ -41,7 +41,7 @@ export const wikiSpaceMembers = pgTable('wiki_space_members', {
   spaceId: integer().notNull().references(() => wikiSpaces.id, { onDelete: 'cascade' }),
   userId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
   role: wikiSpaceMemberRoleEnum().notNull().default('viewer'),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [primaryKey({ columns: [t.spaceId, t.userId] })]);
 
 export type WikiSpaceMemberRow = typeof wikiSpaceMembers.$inferSelect;
@@ -73,16 +73,16 @@ export const wikiDocs = pgTable('wiki_docs', {
   /** 内容负责人；null = 无负责人（治理清单跟进），创建时默认为作者 */
   ownerId: integer().references(() => users.id, { onDelete: 'set null' }),
   /** 有效期；过期后进入治理「已过期」清单 */
-  expireAt: timestamp(),
+  expireAt: timestamptz(),
   /** 复审周期（天）；0/null = 不复审 */
   reviewCycleDays: integer(),
   /** 下次复审时间；到期进入治理「待复审」清单 */
-  nextReviewAt: timestamp(),
+  nextReviewAt: timestamptz(),
   /** 归档：默认从目录树/列表/搜索隐藏，仅治理页可见 */
   isArchived: boolean().notNull().default(false),
-  publishedAt: timestamp(),
+  publishedAt: timestamptz(),
   /** 软删除时间；非 null 表示在回收站 */
-  deletedAt: timestamp(),
+  deletedAt: timestamptz(),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
   ...timestampColumns(),
@@ -90,7 +90,7 @@ export const wikiDocs = pgTable('wiki_docs', {
   index('wiki_docs_space_idx').on(t.spaceId),
   index('wiki_docs_parent_idx').on(t.parentId),
   index('wiki_docs_status_idx').on(t.status),
-  // pg_trgm：加速标题/正文 ILIKE 模糊检索（扩展在 0001_extensions.sql 已启用）
+  // pg_trgm：加速标题/正文 ILIKE 模糊检索（扩展在 0000_baseline.sql 顶部创建）
   index('wiki_docs_title_trgm_idx').using('gin', t.title.op('gin_trgm_ops')),
   index('wiki_docs_content_trgm_idx').using('gin', t.content.op('gin_trgm_ops')),
 ]);
@@ -107,7 +107,7 @@ export const wikiDocVersions = pgTable('wiki_doc_versions', {
   content: text().notNull().default(''),
   changeNote: varchar({ length: 300 }),
   authorId: integer().references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [unique('wiki_doc_versions_doc_version_uk').on(t.docId, t.version)]);
 
 export type WikiDocVersionRow = typeof wikiDocVersions.$inferSelect;
@@ -159,9 +159,9 @@ export const wikiComments = pgTable('wiki_comments', {
   mentionedUserIds: integer().array().notNull().default([]),
   /** 标记为「问题」的评论可被解决 */
   isQuestion: boolean().notNull().default(false),
-  resolvedAt: timestamp(),
+  resolvedAt: timestamptz(),
   authorId: integer().references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('wiki_comments_doc_idx').on(t.docId)]);
 
 export type WikiCommentRow = typeof wikiComments.$inferSelect;
@@ -170,7 +170,7 @@ export type WikiCommentRow = typeof wikiComments.$inferSelect;
 export const wikiDocFavorites = pgTable('wiki_doc_favorites', {
   docId: integer().notNull().references(() => wikiDocs.id, { onDelete: 'cascade' }),
   userId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [primaryKey({ columns: [t.docId, t.userId] })]);
 
 /** 浏览记录（追加型日志，统计用） */
@@ -178,7 +178,7 @@ export const wikiDocViews = pgTable('wiki_doc_views', {
   id: idColumn(),
   docId: integer().notNull().references(() => wikiDocs.id, { onDelete: 'cascade' }),
   userId: integer().references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('wiki_doc_views_doc_idx').on(t.docId),
   index('wiki_doc_views_created_idx').on(t.createdAt),
@@ -195,7 +195,7 @@ export const wikiSearchLogs = pgTable('wiki_search_logs', {
   clickedDocId: integer().references(() => wikiDocs.id, { onDelete: 'set null' }),
   userId: integer().references(() => users.id, { onDelete: 'set null' }),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('wiki_search_logs_created_idx').on(t.createdAt),
   index('wiki_search_logs_keyword_idx').on(t.keyword),
@@ -209,7 +209,7 @@ export type WikiSearchLogRow = typeof wikiSearchLogs.$inferSelect;
 export const wikiDocSubscriptions = pgTable('wiki_doc_subscriptions', {
   docId: integer().notNull().references(() => wikiDocs.id, { onDelete: 'cascade' }),
   userId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [primaryKey({ columns: [t.docId, t.userId] })]);
 
 /** 审核时间线（追加型）：提交 / 通过 / 驳回 / 撤回全记录 */
@@ -221,7 +221,7 @@ export const wikiReviewRecords = pgTable('wiki_review_records', {
   action: wikiReviewActionEnum().notNull(),
   actorId: integer().references(() => users.id, { onDelete: 'set null' }),
   reason: varchar({ length: 500 }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('wiki_review_records_doc_idx').on(t.docId),
   index('wiki_review_records_actor_idx').on(t.actorId),
@@ -233,5 +233,5 @@ export type WikiReviewRecordRow = typeof wikiReviewRecords.$inferSelect;
 export const wikiDocReadReceipts = pgTable('wiki_doc_read_receipts', {
   docId: integer().notNull().references(() => wikiDocs.id, { onDelete: 'cascade' }),
   userId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [primaryKey({ columns: [t.docId, t.userId] })]);

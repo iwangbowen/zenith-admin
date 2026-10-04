@@ -1,9 +1,9 @@
-import { pgTable, varchar, timestamp, pgEnum, integer, boolean, primaryKey, uniqueIndex, index, jsonb, real, check, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, pgEnum, integer, boolean, primaryKey, uniqueIndex, index, jsonb, real, check, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 // 报表中心 jsonb 列形态（前后端共享契约；type-only 导入，编译期即擦除）
 import type { ReportDatasourceConfig, ReportDatasetContent, ReportField, ReportGridItem, ReportWidget, ReportDatasetParam, ReportFilter, ReportDashboardConfig, ReportComputedField, ReportCanvasItem, ReportPrintContent, ReportPrintPageConfig, ReportDatasetMaterialize, ReportNotifyChannel, ReportRowRule, ReportScheduleMisfirePolicy, ReportDeliveryStatus, ReportDeliveryTargetType, ReportDeliveryTriggerType, ReportDashboardLifecycleStatus, ReportDashboardVersionSource, ReportDashboardSnapshot, ReportResourceType } from '@zenith/shared/report';
 import { REPORT_PRINT_SOURCE_TYPES, REPORT_RESOURCE_TYPES } from '@zenith/shared/report';
-import { timestampColumns, idColumn, statusColumn, sortColumn, remarkColumn } from './common';
+import { timestampColumns, idColumn, statusColumn, sortColumn, remarkColumn, timestamptz } from './common';
 import { auditColumns, users, tenantIdColumn } from './core';
 import { asyncTasks } from './tasks';
 
@@ -60,7 +60,7 @@ export const reportDatasources = pgTable('report_datasources', {
   /** 连接配置：api→{url,method,headers}；sql→{connection:'internal'} */
   config: jsonb().$type<ReportDatasourceConfig>().notNull().default(sql`'{}'::jsonb`),
   status: statusColumn(),
-  lastTestAt: timestamp({ withTimezone: true }),
+  lastTestAt: timestamptz(),
   lastTestStatus: varchar({ length: 16 }),
   lastTestLatencyMs: integer(),
   lastTestError: varchar({ length: 512 }),
@@ -140,7 +140,7 @@ export const reportDatasetExecutionLogs = pgTable('report_dataset_execution_logs
   errorCode: integer(),
   errorMessage: varchar({ length: 512 }),
   paramKeys: jsonb().$type<string[]>().notNull().default(sql`'[]'::jsonb`),
-  executedAt: timestamp().defaultNow().notNull(),
+  executedAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('report_dataset_execution_logs_tenant_idx').on(t.tenantId), 
   index('report_dataset_execution_logs_dataset_idx').on(t.datasetId),
   index('report_dataset_execution_logs_datasource_idx').on(t.datasourceId),
@@ -211,7 +211,7 @@ export const reportAlertRules = pgTable('report_alert_rules', {
   cron: varchar({ length: 64 }),
   timezone: varchar({ length: 64 }).notNull().default('Asia/Shanghai'),
   misfirePolicy: reportScheduleMisfirePolicyEnum().$type<ReportScheduleMisfirePolicy>().notNull().default('fire_once'),
-  nextRunAt: timestamp({ withTimezone: true }),
+  nextRunAt: timestamptz(),
   /** 通知渠道：email / inApp / webhook */
   channels: jsonb().$type<ReportNotifyChannel[]>().notNull().default(sql`'[]'::jsonb`),
   recipients: varchar({ length: 512 }),
@@ -222,12 +222,12 @@ export const reportAlertRules = pgTable('report_alert_rules', {
   /** 从触发恢复正常时是否发送恢复通知 */
   notifyOnRecover: boolean().notNull().default(false),
   enabled: boolean().notNull().default(true),
-  lastCheckedAt: timestamp(),
+  lastCheckedAt: timestamptz(),
   lastTriggered: boolean(),
   lastValue: real(),
   /** 最近一次发送通知时间（静默窗口基准） */
-  lastNotifiedAt: timestamp(),
-  lastDeliveryAt: timestamp({ withTimezone: true }),
+  lastNotifiedAt: timestamptz(),
+  lastDeliveryAt: timestamptz(),
   lastDeliveryStatus: reportDeliveryStatusEnum().$type<ReportDeliveryStatus>(),
   lastDeliveryError: varchar({ length: 512 }),
   remark: remarkColumn(),
@@ -255,9 +255,9 @@ export const reportDashboardComments = pgTable('report_dashboard_comments', {
   parentId: integer().references((): AnyPgColumn => reportDashboardComments.id, { onDelete: 'set null' }),
   content: varchar({ length: 1000 }).notNull(),
   userId: integer().references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
-  resolvedAt: timestamp(),
+  resolvedAt: timestamptz(),
   resolvedBy: integer().references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
-  deletedAt: timestamp(),
+  deletedAt: timestamptz(),
   deletedBy: integer().references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
   ...timestampColumns(),
 }, (t) => [index('report_dashboard_comments_user_idx').on(t.userId), 
@@ -293,7 +293,7 @@ export const reportDashboards = pgTable('report_dashboards', {
   lifecycleInitialized: boolean().notNull().default(false),
   revision: integer().notNull().default(1),
   publishedSnapshot: jsonb().$type<ReportDashboardSnapshot | null>(),
-  publishedAt: timestamp(),
+  publishedAt: timestamptz(),
   publishedBy: integer().references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
   remark: remarkColumn(),
   ...auditColumns(),
@@ -350,7 +350,7 @@ export const reportDashboardShares = pgTable('report_dashboard_shares', {
   tokenEncrypted: varchar({ length: 256 }),
   passwordHash: varchar({ length: 100 }),
   enabled: boolean().notNull().default(true),
-  expireAt: timestamp({ withTimezone: true }),
+  expireAt: timestamptz(),
   maxAccessCount: integer(),
   accessCount: integer().notNull().default(0),
   sessionVersion: integer().notNull().default(1),
@@ -372,8 +372,8 @@ export const reportDashboardEmbedTokens = pgTable('report_dashboard_embed_tokens
   tokenEncrypted: varchar({ length: 256 }),
   allowedFilterIds: jsonb().$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   fixedFilters: jsonb().$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
-  expireAt: timestamp({ withTimezone: true }),
-  revokedAt: timestamp({ withTimezone: true }),
+  expireAt: timestamptz(),
+  revokedAt: timestamptz(),
   remark: remarkColumn(),
   ...auditColumns(),
   ...timestampColumns(),
@@ -394,7 +394,7 @@ export const reportShareAccessLogs = pgTable('report_share_access_logs', {
   clientIp: varchar({ length: 64 }),
   /** 是否通过校验（false=密码错误/链接过期被拒） */
   ok: boolean().notNull().default(true),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('report_share_access_logs_share_idx').on(t.shareId),
   index('report_share_access_logs_created_idx').on(t.createdAt),
@@ -406,7 +406,7 @@ export type ReportShareAccessLogRow = typeof reportShareAccessLogs.$inferSelect;
 export const reportDashboardFavorites = pgTable('report_dashboard_favorites', {
   userId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
   dashboardId: integer().notNull().references(() => reportDashboards.id, { onDelete: 'cascade' }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [primaryKey({ columns: [t.userId, t.dashboardId] })]);
 
 export type ReportDashboardFavoriteRow = typeof reportDashboardFavorites.$inferSelect;
@@ -419,15 +419,15 @@ export const reportDashboardSubscriptions = pgTable('report_dashboard_subscripti
   cron: varchar({ length: 64 }).notNull(),
   timezone: varchar({ length: 64 }).notNull().default('Asia/Shanghai'),
   misfirePolicy: reportScheduleMisfirePolicyEnum().$type<ReportScheduleMisfirePolicy>().notNull().default('fire_once'),
-  nextRunAt: timestamp({ withTimezone: true }),
+  nextRunAt: timestamptz(),
   channels: jsonb().$type<ReportNotifyChannel[]>().notNull().default(sql`'[]'::jsonb`),
   recipients: varchar({ length: 512 }),
   /** Webhook 通知地址（企微/钉钉机器人或通用 JSON 端点） */
   webhookUrl: varchar({ length: 1024 }),
   enabled: boolean().notNull().default(true),
   remark: remarkColumn(),
-  lastRunAt: timestamp({ withTimezone: true }),
-  lastDeliveryAt: timestamp({ withTimezone: true }),
+  lastRunAt: timestamptz(),
+  lastDeliveryAt: timestamptz(),
   lastDeliveryStatus: reportDeliveryStatusEnum().$type<ReportDeliveryStatus>(),
   lastDeliveryError: varchar({ length: 512 }),
   /** 上次推送的 KPI 快照（widgetId → 数值），用于下次推送计算环比趋势 */
@@ -466,12 +466,12 @@ export const reportDeliveryRuns = pgTable('report_delivery_runs', {
   payloadSummary: jsonb().$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
   lastValue: real(),
   triggered: boolean(),
-  acknowledgedAt: timestamp({ withTimezone: true }),
+  acknowledgedAt: timestamptz(),
   acknowledgedBy: integer().references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
   acknowledgeNote: varchar({ length: 500 }),
-  startedAt: timestamp({ withTimezone: true }),
-  completedAt: timestamp({ withTimezone: true }),
-  nextRetryAt: timestamp({ withTimezone: true }),
+  startedAt: timestamptz(),
+  completedAt: timestamptz(),
+  nextRetryAt: timestamptz(),
   requestedBy: integer().references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
   ...timestampColumns(),
 }, (t) => [
@@ -498,8 +498,8 @@ export const reportDeliveryAttempts = pgTable('report_delivery_attempts', {
   durationMs: integer(),
   errorMessage: varchar({ length: 512 }),
   payloadSummary: jsonb().$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
-  startedAt: timestamp({ withTimezone: true }),
-  completedAt: timestamp({ withTimezone: true }),
+  startedAt: timestamptz(),
+  completedAt: timestamptz(),
   ...timestampColumns(),
 }, (t) => [
   uniqueIndex('report_delivery_attempts_run_channel_attempt_uq').on(t.runId, t.channel, t.attempt),

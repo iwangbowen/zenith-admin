@@ -1,8 +1,8 @@
-import { boolean, index, integer, jsonb, pgEnum, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, jsonb, pgEnum, pgTable, text, varchar } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { CMS_DEPLOYMENT_STATUSES, CMS_RELEASE_STATUSES } from '@zenith/shared/cms';
 import type { CmsRelease, CmsConfigurationSnapshot, CmsDeploymentBuildPlan, CmsDeploymentBuildMetrics } from '@zenith/shared/cms';
-import { idColumn, timestampColumns } from './common';
+import { idColumn, timestampColumns, timestamptz } from './common';
 import { auditColumns } from './core';
 import { cmsContents, cmsSites } from './cms';
 
@@ -26,7 +26,7 @@ export const cmsReleases = pgTable('cms_releases', {
   items: jsonb().$type<CmsRelease['items']>().notNull().default([]),
   configurationItems: jsonb().$type<CmsRelease['configurationItems']>().notNull().default([]),
   configurationSnapshot: jsonb().$type<CmsConfigurationSnapshot>().notNull().default({ tables: {}, replaceAll: [] }),
-  activateAt: timestamp({ withTimezone: true }), timeZone: varchar({ length: 80 }).notNull().default('Asia/Shanghai'),
+  activateAt: timestamptz(), timeZone: varchar({ length: 80 }).notNull().default('Asia/Shanghai'),
   autoActivate: boolean().notNull().default(false), error: text(),
   ...auditColumns(), ...timestampColumns(),
 }, (t) => [index('cms_releases_site_status_idx').on(t.siteId, t.status), index('cms_releases_schedule_idx').on(t.activateAt),
@@ -38,7 +38,7 @@ export const cmsDeployments = pgTable('cms_deployments', {
   status: cmsDeploymentStatusEnum().notNull().default('building'),
   visibilityEpoch: integer().notNull().default(0),
   snapshot: jsonb().$type<CmsDeploymentSnapshot>(), manifestHash: varchar({ length: 64 }),
-  artifactCount: integer().notNull().default(0), error: text(), activatedAt: timestamp({ withTimezone: true }),
+  artifactCount: integer().notNull().default(0), error: text(), activatedAt: timestamptz(),
   taskIds: jsonb().$type<number[]>().notNull().default([]),
   buildPlan: jsonb().$type<CmsDeploymentBuildPlan>().notNull().default({ version: 1, phases: [] }),
   buildMetrics: jsonb().$type<CmsDeploymentBuildMetrics>().notNull().default({}),
@@ -61,7 +61,7 @@ export const cmsReleaseActivations = pgTable('cms_release_activations', {
   fromGenerationId: integer(), toGenerationId: integer().notNull().references(() => cmsDeployments.id, { onDelete: 'restrict' }),
   action: varchar({ length: 20 }).$type<'activate' | 'rollback'>().notNull(),
   operatorId: integer(), operatorName: varchar({ length: 100 }).notNull(),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamptz().notNull().defaultNow(),
 }, (t) => [index('cms_release_activations_site_idx').on(t.siteId, t.id)]);
 export type CmsReleaseRow = typeof cmsReleases.$inferSelect;
 export type CmsDeploymentRow = typeof cmsDeployments.$inferSelect;

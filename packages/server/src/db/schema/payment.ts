@@ -1,7 +1,7 @@
-import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, unique, uniqueIndex, text, index, jsonb, check, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, pgEnum, integer, bigint, boolean, unique, uniqueIndex, text, index, jsonb, check, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import type { CreatePaymentResult } from '@zenith/shared/payment';
-import { timestampColumns, idColumn, statusColumn, sortColumn, remarkColumn } from './common';
+import { timestampColumns, idColumn, statusColumn, sortColumn, remarkColumn, timestamptz } from './common';
 import { auditColumns, departments, users, tenantIdColumn } from './core';
 import { oauth2Clients } from './open-platform';
 
@@ -112,7 +112,7 @@ export const paymentChannelCredentialVersions = pgTable('payment_channel_credent
   encryptedSnapshot: text().notNull(),
   operatorId: integer().references(() => users.id, { onDelete: 'set null' }),
   tenantId: tenantIdColumn('restrict'),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [unique('payment_channel_credential_versions_config_version_uq').on(t.channelConfigId, t.version)]);
 
 // ─── 支付订单表（核心交易表）──────────────────────────────────────────────────
@@ -148,8 +148,8 @@ export const paymentOrders = pgTable('payment_orders', {
   discountAmount: integer(),
   /** 支付使用的会员券（member_coupons.id；跨域松耦合不建 FK，核销/释放由事件订阅者按状态原子流转） */
   memberCouponId: integer(),
-  paidAt: timestamp({ withTimezone: true }),
-  expiredAt: timestamp({ withTimezone: true }),
+  paidAt: timestamptz(),
+  expiredAt: timestamptz(),
   returnUrl: varchar({ length: 512 }),
   notifyData: text(),
   errorMessage: varchar({ length: 512 }),
@@ -196,10 +196,10 @@ export const paymentRefunds = pgTable('payment_refunds', {
   approvalStatus: paymentRefundApprovalStatusEnum().notNull().default('none'),
   appliedById: integer().references(() => users.id, { onDelete: 'set null' }),
   approverId: integer().references(() => users.id, { onDelete: 'set null' }),
-  approvedAt: timestamp({ withTimezone: true }),
+  approvedAt: timestamptz(),
   approvalRemark: varchar({ length: 256 }),
   operatorId: integer().references(() => users.id, { onDelete: 'set null' }),
-  refundedAt: timestamp({ withTimezone: true }),
+  refundedAt: timestamptz(),
   notifyData: text(),
   errorMessage: varchar({ length: 512 }),
   idempotencyKey: varchar({ length: 128 }),
@@ -240,7 +240,7 @@ export const paymentNotifyLogs = pgTable('payment_notify_logs', {
   message: varchar({ length: 512 }),
   ip: varchar({ length: 64 }),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('payment_notify_logs_tenant_idx').on(t.tenantId),
   index('payment_notify_logs_config_idx').on(t.channelConfigId),
   uniqueIndex('payment_notify_logs_provider_event_uq').on(t.channelConfigId, t.providerEventId).where(sql`${t.providerEventId} is not null`),
@@ -263,8 +263,8 @@ export const paymentEvents = pgTable('payment_events', {
   attempts: integer().notNull().default(0),
   lastError: varchar({ length: 512 }),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp().defaultNow().notNull(),
-  processedAt: timestamp({ withTimezone: true }),
+  createdAt: timestamptz().defaultNow().notNull(),
+  processedAt: timestamptz(),
 }, (t) => [
   index('payment_events_tenant_idx').on(t.tenantId), index('payment_events_status_idx').on(t.status),
   index('payment_events_status_created_idx').on(t.status, t.createdAt),
@@ -319,7 +319,7 @@ export const paymentSettlementBatches = pgTable('payment_settlement_batches', {
   /** 账期内分账支出合计（分），净额已扣除 */
   sharingAmount: integer().notNull().default(0),
   netAmount: integer().notNull().default(0),
-  settledAt: timestamp({ withTimezone: true }),
+  settledAt: timestamptz(),
   failureReason: varchar({ length: 512 }),
   payoutReference: varchar({ length: 128 }),
   version: integer().notNull().default(0),
@@ -375,7 +375,7 @@ export const paymentSharingOrders = pgTable('payment_sharing_orders', {
   /** 渠道分账已尝试次数（失败重试用，达上限后不再自动重试） */
   attempts: integer().notNull().default(0),
   version: integer().notNull().default(0),
-  finishedAt: timestamp({ withTimezone: true }),
+  finishedAt: timestamptz(),
   remark: remarkColumn(),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
@@ -401,7 +401,7 @@ export const paymentSharingReversals = pgTable('payment_sharing_reversals', {
   queryAttempts: integer().notNull().default(0),
   version: integer().notNull().default(0),
   errorMessage: varchar({ length: 512 }),
-  finishedAt: timestamp({ withTimezone: true }),
+  finishedAt: timestamptz(),
   tenantId: tenantIdColumn('restrict'),
   ...auditColumns(),
   ...timestampColumns(),
@@ -431,7 +431,7 @@ export const paymentLinks = pgTable('payment_links', {
   maxUses: integer(),
   usedCount: integer().notNull().default(0),
   reservedCount: integer().notNull().default(0),
-  expiredAt: timestamp({ withTimezone: true }),
+  expiredAt: timestamptz(),
   status: paymentLinkStatusEnum().notNull().default('active'),
   remark: remarkColumn(),
   tenantId: tenantIdColumn(),
@@ -449,7 +449,7 @@ export const paymentLinkRedemptions = pgTable('payment_link_redemptions', {
   linkId: integer().notNull().references(() => paymentLinks.id, { onDelete: 'cascade' }),
   orderNo: varchar({ length: 64 }).notNull().unique('payment_link_redemptions_order_no_unique'),
   tenantId: tenantIdColumn(),
-  redeemedAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  redeemedAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('payment_link_redemptions_link_idx').on(t.linkId),
   index('payment_link_redemptions_tenant_idx').on(t.tenantId),
@@ -491,7 +491,7 @@ export const paymentCashierSessions = pgTable('payment_cashier_sessions', {
   payParams: jsonb().$type<CreatePaymentResult>(),
   returnUrl: varchar({ length: 512 }).notNull(),
   errorMessage: varchar({ length: 512 }),
-  expiresAt: timestamp({ withTimezone: true }).notNull(),
+  expiresAt: timestamptz().notNull(),
   version: integer().notNull().default(0),
   tenantId: tenantIdColumn(),
   ...timestampColumns(),
@@ -562,7 +562,7 @@ export const paymentRiskHits = pgTable('payment_risk_hits', {
   userId: integer().references(() => users.id, { onDelete: 'set null' }),
   clientIp: varchar({ length: 64 }),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('payment_risk_hits_user_idx').on(t.userId), index('payment_risk_hits_tenant_idx').on(t.tenantId), 
   index('payment_risk_hits_created_idx').on(t.createdAt),
   index('payment_risk_hits_rule_idx').on(t.ruleId),
@@ -591,7 +591,7 @@ export const paymentRiskReviews = pgTable('payment_risk_reviews', {
   reason: varchar({ length: 256 }).notNull(),
   status: paymentRiskReviewStatusEnum().notNull().default('pending'),
   reviewerId: integer().references(() => users.id, { onDelete: 'set null' }),
-  reviewedAt: timestamp({ withTimezone: true }),
+  reviewedAt: timestamptz(),
   reviewRemark: varchar({ length: 256 }),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
@@ -640,9 +640,9 @@ export const paymentPreauths = pgTable('payment_preauths', {
   unknownOperation: paymentPreauthOperationEnum(),
   version: integer().notNull().default(0),
   errorMessage: varchar({ length: 512 }),
-  frozenAt: timestamp({ withTimezone: true }),
+  frozenAt: timestamptz(),
   /** 终态时间（captured / released / failed） */
-  finishedAt: timestamp({ withTimezone: true }),
+  finishedAt: timestamptz(),
   remark: remarkColumn(),
   operatorId: integer().references(() => users.id, { onDelete: 'set null' }),
   tenantId: tenantIdColumn(),
@@ -685,7 +685,7 @@ export const paymentTransfers = pgTable('payment_transfers', {
   approvalStatus: paymentTransferApprovalStatusEnum().notNull().default('none'),
   appliedById: integer().references(() => users.id, { onDelete: 'set null' }),
   approverId: integer().references(() => users.id, { onDelete: 'set null' }),
-  approvedAt: timestamp({ withTimezone: true }),
+  approvedAt: timestamptz(),
   approvalRemark: varchar({ length: 256 }),
   channelTransferNo: varchar({ length: 128 }),
   failReason: varchar({ length: 512 }),
@@ -697,7 +697,7 @@ export const paymentTransfers = pgTable('payment_transfers', {
   version: integer().notNull().default(0),
   bizType: varchar({ length: 64 }),
   bizId: varchar({ length: 128 }),
-  finishedAt: timestamp({ withTimezone: true }),
+  finishedAt: timestamptz(),
   operatorId: integer().references(() => users.id, { onDelete: 'set null' }),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
@@ -806,16 +806,16 @@ export const paymentContracts = pgTable('payment_contracts', {
   bizType: varchar({ length: 64 }).notNull(),
   bizId: varchar({ length: 128 }).notNull(),
   /** 下次扣款时间（signed 状态下由 cron 扫描执行） */
-  nextDeductAt: timestamp({ withTimezone: true }),
-  lastDeductAt: timestamp({ withTimezone: true }),
+  nextDeductAt: timestamptz(),
+  lastDeductAt: timestamptz(),
   /** 当前期连续扣款失败次数（成功后清零，达到计划 maxRetries 自动暂停） */
   failCount: integer().notNull().default(0),
   /** 累计成功扣款期数 */
   totalDeductCount: integer().notNull().default(0),
   /** 最近一期扣款订单号 */
   lastOrderNo: varchar({ length: 64 }),
-  signedAt: timestamp({ withTimezone: true }),
-  terminatedAt: timestamp({ withTimezone: true }),
+  signedAt: timestamptz(),
+  terminatedAt: timestamptz(),
   remark: remarkColumn(),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
@@ -869,11 +869,11 @@ export const paymentDisputes = pgTable('payment_disputes', {
   /** 分流建议 SLA（小时，写入 deadline 的依据留痕） */
   slaHours: integer(),
   /** 处理时效（超过未完结视为超时，触发预警） */
-  deadline: timestamp({ withTimezone: true }),
+  deadline: timestamptz(),
   /** 关联退款单号（投诉退款后回填） */
   refundNo: varchar({ length: 64 }),
   /** 完结时间（resolved / refunded） */
-  resolvedAt: timestamp({ withTimezone: true }),
+  resolvedAt: timestamptz(),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
   ...timestampColumns(),
@@ -895,7 +895,7 @@ export const paymentDisputeReplies = pgTable('payment_dispute_replies', {
   author: paymentDisputeReplyAuthorEnum().notNull().default('merchant'),
   content: text().notNull(),
   operatorId: integer().references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('payment_dispute_replies_operator_idx').on(t.operatorId), index('payment_dispute_replies_dispute_idx').on(t.disputeId)]);
 
 export type PaymentDisputeReplyRow = typeof paymentDisputeReplies.$inferSelect;
@@ -958,8 +958,8 @@ export const paymentJournals = pgTable('payment_journals', {
   reversalOfJournalId: integer().references((): AnyPgColumn => paymentJournals.id, { onDelete: 'restrict' }),
   operatorId: integer().references(() => users.id, { onDelete: 'set null' }),
   tenantId: tenantIdColumn('restrict'),
-  postedAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  createdAt: timestamp().defaultNow().notNull(),
+  postedAt: timestamptz().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   uniqueIndex('payment_journals_source_scope_uq')
     .on(sql`coalesce(${t.tenantId}, 0)`, t.appId, t.channelAccountId, t.currency, t.sourceType, t.sourceId),
@@ -981,7 +981,7 @@ export const paymentJournalLines = pgTable('payment_journal_lines', {
   debitAmount: bigint({ mode: 'bigint' }).notNull().default(sql`0`),
   creditAmount: bigint({ mode: 'bigint' }).notNull().default(sql`0`),
   memo: varchar({ length: 256 }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   unique('payment_journal_lines_journal_line_unique').on(t.journalId, t.lineNo),
   index('payment_journal_lines_account_idx').on(t.accountId),
@@ -1018,8 +1018,8 @@ export const paymentFundReservations = pgTable('payment_fund_reservations', {
   channelConfigId: integer().notNull().references(() => paymentChannelConfigs.id, { onDelete: 'restrict' }),
   currency: varchar({ length: 8 }).notNull(),
   tenantId: tenantIdColumn('restrict'),
-  expiresAt: timestamp({ withTimezone: true }),
-  finalizedAt: timestamp({ withTimezone: true }),
+  expiresAt: timestamptz(),
+  finalizedAt: timestamptz(),
   ...auditColumns(),
   ...timestampColumns(),
 }, (t) => [
@@ -1045,7 +1045,7 @@ export const paymentSettlementItems = pgTable('payment_settlement_items', {
   channelConfigId: integer().notNull().references(() => paymentChannelConfigs.id, { onDelete: 'restrict' }),
   currency: varchar({ length: 8 }).notNull(),
   tenantId: tenantIdColumn('restrict'),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   unique('payment_settlement_items_journal_line_unique').on(t.journalLineId),
   unique('payment_settlement_items_batch_line_unique').on(t.batchId, t.journalLineId),

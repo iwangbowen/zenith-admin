@@ -1,8 +1,8 @@
-import { check, integer, index, pgEnum, pgTable, primaryKey, smallint, text, timestamp, varchar } from 'drizzle-orm/pg-core';
+import { check, integer, index, pgEnum, pgTable, primaryKey, smallint, text, varchar } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { LOGIN_EVENT_TYPES } from '@zenith/shared/identity';
 import { tenantIdColumn } from './core';
-import { idColumn } from './common';
+import { idColumn, timestamptz } from './common';
 import { entitySubjectRoleEnum } from './entity-relations';
 
 // ─── 登录日志表 ─────────────────────────────────────────────────────────────────
@@ -30,7 +30,7 @@ export const loginLogs = pgTable('login_logs', {
   gpu: varchar({ length: 256 }),
   cpuCores: smallint(),
   memoryGb: varchar({ length: 8 }),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamptz().notNull().defaultNow(),
 }, (t) => [
   // 列表 / 统计 / 仪表盘的热过滤都是「租户 + 时间范围（按时间倒序）」：
   // 复合索引同时覆盖单独按 tenant_id 的查找与外键级联，不再另留单列 tenant 索引
@@ -65,7 +65,7 @@ export const operationLogs = pgTable('operation_logs', {
   os: varchar({ length: 64 }),
   browser: varchar({ length: 64 }),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamptz().notNull().defaultNow(),
 }, (t) => [
   // 同 login_logs：租户 + 时间范围复合索引取代单列 tenant 索引
   index('operation_logs_tenant_created_idx').on(t.tenantId, t.createdAt),
@@ -75,7 +75,7 @@ export const operationLogs = pgTable('operation_logs', {
   index('operation_logs_module_idx').on(t.module),
   // 链路追踪查看器按 request_id（= traceId）定位请求锚点
   index('operation_logs_request_idx').on(t.requestId),
-  // pg_trgm：加速「变更内容包含」ILIKE 模糊检索（扩展在 0001_extensions.sql 已启用）
+  // pg_trgm：加速「变更内容包含」ILIKE 模糊检索（扩展在 0000_baseline.sql 顶部创建）
   index('operation_logs_before_trgm_idx').using('gin', t.beforeData.op('gin_trgm_ops')),
   index('operation_logs_after_trgm_idx').using('gin', t.afterData.op('gin_trgm_ops')),
   index('operation_logs_reqbody_trgm_idx').using('gin', t.requestBody.op('gin_trgm_ops')),
@@ -117,7 +117,7 @@ export const ipAccessLogs = pgTable('ip_access_logs', {
   method: varchar({ length: 16 }).notNull(),
   blockType: varchar({ length: 16 }).notNull(), // 'blacklist' | 'whitelist'
   userAgent: varchar({ length: 512 }),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamptz().notNull().defaultNow(),
 }, (t) => [
   index('ip_access_logs_created_at_idx').on(t.createdAt),
   index('ip_access_logs_ip_idx').on(t.ip),

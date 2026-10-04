@@ -1,6 +1,6 @@
-import { pgTable, varchar, timestamp, pgEnum, integer, boolean, primaryKey, text, jsonb, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, pgEnum, integer, boolean, primaryKey, text, jsonb, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import { timestampColumns, idColumn, statusColumn, sortColumn } from './common';
+import { timestampColumns, idColumn, statusColumn, sortColumn, timestamptz } from './common';
 import { auditColumns, users, tenantIdColumn } from './core';
 
 // ─── Channel（站内公众号 / 系统号）────────────────────────────────────────────
@@ -52,12 +52,12 @@ export const channelMessages = pgTable('channel_messages', {
   direction: channelMessageDirectionEnum().notNull().default('out'),
   senderUserId: integer().references(() => users.id, { onDelete: 'set null' }),
   status: channelMessageStatusEnum().notNull().default('sent'),
-  scheduledAt: timestamp({ withTimezone: true }),
-  retractedAt: timestamp({ withTimezone: true }),
+  scheduledAt: timestamptz(),
+  retractedAt: timestamptz(),
   targetSpec: jsonb(),
   /** Durable source-event key for retry-safe system card publication. */
   dedupeKey: varchar({ length: 192 }),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('channel_messages_channel_idx').on(t.channelId),
   index('channel_messages_scheduled_due_idx').on(t.scheduledAt).where(sql`${t.status} = 'scheduled'`),
@@ -71,9 +71,9 @@ export type NewChannelMessage = typeof channelMessages.$inferInsert;
 export const channelSubscriptions = pgTable('channel_subscriptions', {
   channelId: integer().notNull().references(() => channels.id, { onDelete: 'cascade' }),
   userId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
-  lastReadAt: timestamp({ withTimezone: true }),
+  lastReadAt: timestamptz(),
   isMuted: boolean().notNull().default(false),
-  subscribedAt: timestamp().defaultNow().notNull(),
+  subscribedAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('channel_subscriptions_user_idx').on(t.userId), primaryKey({ columns: [t.channelId, t.userId] })]);
 
 export type ChannelSubscriptionRow = typeof channelSubscriptions.$inferSelect;
@@ -81,7 +81,7 @@ export type ChannelSubscriptionRow = typeof channelSubscriptions.$inferSelect;
 export const channelMessageTargets = pgTable('channel_message_targets', {
   messageId: integer().notNull().references(() => channelMessages.id, { onDelete: 'cascade' }),
   userId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
-  readAt: timestamp({ withTimezone: true }),
+  readAt: timestamptz(),
 }, (t) => [index('channel_message_targets_user_idx').on(t.userId), primaryKey({ columns: [t.messageId, t.userId] })]);
 
 export type ChannelMessageTargetRow = typeof channelMessageTargets.$inferSelect;
@@ -140,10 +140,10 @@ export const channelConversations = pgTable('channel_conversations', {
   status: channelConversationStatusEnum().notNull().default('open'),
   assigneeId: integer().references(() => users.id, { onDelete: 'set null' }),
   tags: jsonb().$type<string[]>().notNull().default([]),
-  resolvedAt: timestamp({ withTimezone: true }),
+  resolvedAt: timestamptz(),
   rating: integer(),
   ratingComment: text(),
-  ratedAt: timestamp({ withTimezone: true }),
+  ratedAt: timestamptz(),
   ...auditColumns(),
   ...timestampColumns(),
 }, (t) => [index('channel_conversations_user_idx').on(t.userId), primaryKey({ columns: [t.channelId, t.userId] })]);

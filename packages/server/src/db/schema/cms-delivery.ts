@@ -1,5 +1,5 @@
-import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, varchar, type AnyPgColumn } from 'drizzle-orm/pg-core';
-import { idColumn, timestampColumns } from './common';
+import { index, integer, jsonb, pgTable, text, uniqueIndex, varchar, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { idColumn, timestampColumns, timestamptz } from './common';
 import { cmsResources, cmsSites } from './cms';
 import { cmsDeployments, cmsReleaseActivations, cmsReleases } from './cms-releases';
 import { asyncTasks } from './tasks';
@@ -31,7 +31,7 @@ export const cmsDeliveryRuns = pgTable('cms_delivery_runs', {
   purgeHttpStatus: integer(), purgeMessage: text(),
   paths: jsonb().$type<CmsDeliveryPathExpectation[]>().notNull(),
   observations: jsonb().$type<CmsDeliveryObservation[]>().notNull().default([]),
-  error: text(), startedAt: timestamp(), completedAt: timestamp(),
+  error: text(), startedAt: timestamptz(), completedAt: timestamptz(),
   ...timestampColumns(),
 }, t => [
   uniqueIndex('cms_delivery_runs_site_event_uq').on(t.siteId, t.eventKey),
@@ -45,7 +45,7 @@ export const cmsDeliveryRuns = pgTable('cms_delivery_runs', {
 /** One receipt for each resource's most recently handled natural expiration. */
 export const cmsDeliveryExpiryReceipts = pgTable('cms_delivery_expiry_receipts', {
   resourceId: integer().primaryKey().references(() => cmsResources.id, { onDelete: 'cascade' }),
-  expiresAt: timestamp().notNull(),
+  expiresAt: timestamptz().notNull(),
   ...timestampColumns(),
 });
 export type CmsDeliveryRunRow = typeof cmsDeliveryRuns.$inferSelect;

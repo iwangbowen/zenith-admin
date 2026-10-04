@@ -1,1 +1,0 @@
-CREATE UNIQUE INDEX "user_events_cms_page_view_uq" ON "user_events" USING btree (("properties"->>'cmsSiteId'),("properties"->>'pageViewId')) WHERE "user_events"."properties" @> '{"cmsSchemaVersion":2,"trustedCms":true}'::jsonb and "user_events"."event_name"='cms.page_view';

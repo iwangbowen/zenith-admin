@@ -1,5 +1,5 @@
-import { timestampColumns, idColumn } from './common';
-import { pgTable, varchar, timestamp, pgEnum, integer, boolean, text, uuid as pgUuid, index } from 'drizzle-orm/pg-core';
+import { timestampColumns, idColumn, timestamptz } from './common';
+import { pgTable, varchar, pgEnum, integer, boolean, text, uuid as pgUuid, index } from 'drizzle-orm/pg-core';
 import { auditColumns, users } from './core';
 import { managedFiles } from './files';
 
@@ -16,8 +16,8 @@ export const dbBackups = pgTable('db_backups', {
   fileSize: integer(),
   status: backupStatusEnum().notNull().default('pending'),
   tables: text(),
-  startedAt: timestamp({ withTimezone: true }),
-  completedAt: timestamp({ withTimezone: true }),
+  startedAt: timestamptz(),
+  completedAt: timestamptz(),
   durationMs: integer(),
   errorMessage: text(),
   ...auditColumns(),
@@ -41,7 +41,7 @@ export const dbAdminQueryHistory = pgTable('db_admin_query_history', {
   rowCount: integer().notNull().default(0),
   success: boolean().notNull().default(true),
   errorMessage: text(),
-  executedAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  executedAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('db_admin_query_history_executed_at_idx').on(t.executedAt),
   index('db_admin_query_history_user_idx').on(t.userId),

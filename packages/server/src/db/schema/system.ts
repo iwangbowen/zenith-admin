@@ -1,7 +1,7 @@
-import { pgTable, varchar, timestamp, pgEnum, integer, boolean, unique, text, index, jsonb, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, pgEnum, integer, boolean, unique, text, index, jsonb, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { PROCESS_ROLES } from '@zenith/shared/platform';
-import { timestampColumns, idColumn, statusColumn, sortColumn } from './common';
+import { timestampColumns, idColumn, statusColumn, sortColumn, timestamptz } from './common';
 import { auditColumns, users, tenantIdColumn } from './core';
 
 export const systemSchedulerTaskTypeEnum = pgEnum('system_scheduler_task_type', ['recurring', 'queue']);
@@ -43,7 +43,7 @@ export type SystemSettingsRow = typeof systemSettings.$inferSelect;
 export const systemRuntimeState = pgTable('system_runtime_state', {
   key: varchar({ length: 128 }).primaryKey(),
   value: jsonb().$type<unknown>().notNull(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  updatedAt: timestamptz().defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 
 export type SystemRuntimeStateRow = typeof systemRuntimeState.$inferSelect;
@@ -68,7 +68,7 @@ export const cronJobs = pgTable('cron_jobs', {
   /** 是否启用指数退避重试（每次翻倍延迟） */
   retryBackoff: boolean().notNull().default(false),
   monitorTimeout: integer(),
-  lastRunAt: timestamp({ withTimezone: true }),
+  lastRunAt: timestamptz(),
   lastRunStatus: cronRunStatusEnum(),
   lastRunMessage: varchar({ length: 1024 }),
   ...auditColumns(),
@@ -85,8 +85,8 @@ export const cronJobLogs = pgTable('cron_job_logs', {
   jobId:          integer().notNull().references(() => cronJobs.id, { onDelete: 'cascade' }),
   jobName:        varchar({ length: 64 }).notNull(),
   executionCount: integer().notNull().default(1),
-  startedAt:      timestamp({ withTimezone: true }).defaultNow().notNull(),
-  endedAt:        timestamp({ withTimezone: true }),
+  startedAt:      timestamptz().defaultNow().notNull(),
+  endedAt:        timestamptz(),
   durationMs:     integer(),
   status:         cronRunStatusEnum().notNull().default('running'),
   /** 正常输出（handler 返回的结果文案）；失败信息见 errorMessage */
@@ -95,7 +95,7 @@ export const cronJobLogs = pgTable('cron_job_logs', {
   /** pg-boss 重试序号，0 = 首次执行 */
   attempt:        integer().notNull().default(0),
   /** 计划触发时刻（pg-boss 任务的 startAfter）；与 startedAt 之差即调度延迟 */
-  scheduledAt:    timestamp({ withTimezone: true }),
+  scheduledAt:    timestamptz(),
   /** 调度延迟（毫秒）= startedAt − scheduledAt，由数据库生成，无计划时刻时为 null */
   latencyMs:      integer().generatedAlwaysAs(sql`CAST(EXTRACT(EPOCH FROM (started_at - scheduled_at)) * 1000 AS integer)`),
   errorMessage:   text(),
@@ -129,19 +129,19 @@ export const systemSchedulerRuns = pgTable('system_scheduler_runs', {
   nodeHostname: varchar({ length: 128 }),
   nodePid: integer(),
   triggeredBy: integer().references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
-  startedAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  endedAt: timestamp({ withTimezone: true }),
+  startedAt: timestamptz().defaultNow().notNull(),
+  endedAt: timestamptz(),
   durationMs: integer(),
   resultMessage: text(),
   errorMessage: text(),
-  alertedAt: timestamp({ withTimezone: true }),
+  alertedAt: timestamptz(),
   alertMessage: text(),
-  alertSentAt: timestamp({ withTimezone: true }),
+  alertSentAt: timestamptz(),
   alertChannels: jsonb().$type<Array<'inapp' | 'email' | 'webhook'>>().notNull().default([]),
-  alertAckAt: timestamp({ withTimezone: true }),
+  alertAckAt: timestamptz(),
   alertAckBy: integer().references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
   alertAckNote: text(),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   // 「某任务最近 N 次运行」是本表的主访问路径（任务面板 latest / latestAlert、连续失败判定、按数量保留清理的窗口排名），
   // 前缀 task_name 同时覆盖等值过滤，无需再保留单列索引
@@ -172,7 +172,7 @@ export const systemSchedulerTaskConfigs = pgTable('system_scheduler_task_configs
   alertEmails: jsonb().$type<string[]>().notNull().default([]),
   alertWebhookUrl: varchar({ length: 512 }),
   manualSingleton: boolean().notNull().default(true),
-  ...timestampColumns({ withTimezone: true }),
+  ...timestampColumns(),
 });
 
 export type SystemSchedulerTaskConfigRow = typeof systemSchedulerTaskConfigs.$inferSelect;
@@ -187,13 +187,13 @@ export const systemSchedulerNodes = pgTable('system_scheduler_nodes', {
   /** 该进程承担的角色（ZENITH_ROLES）；只含 api 的节点仅声明任务，不执行 */
   roles: processRoleEnum().array().notNull(),
   version: varchar({ length: 64 }),
-  startedAt: timestamp({ withTimezone: true }).notNull(),
-  lastHeartbeatAt: timestamp({ withTimezone: true }).notNull(),
+  startedAt: timestamptz().notNull(),
+  lastHeartbeatAt: timestamptz().notNull(),
   registeredTaskCount: integer().notNull().default(0),
   runningJobCount: integer().notNull().default(0),
   active: boolean().notNull().default(true),
   metadata: jsonb().$type<Record<string, unknown>>().notNull().default({}),
-  ...timestampColumns({ withTimezone: true }),
+  ...timestampColumns(),
 }, (t) => [
   index('system_scheduler_nodes_active_idx').on(t.active),
   index('system_scheduler_nodes_last_heartbeat_idx').on(t.lastHeartbeatAt),
@@ -214,9 +214,9 @@ export const retentionPolicies = pgTable('retention_policies', {
   retentionDays: integer().notNull(),
   /** 单批删除行数上限 */
   batchSize: integer().notNull().default(5000),
-  lastRunAt: timestamp({ withTimezone: true }),
+  lastRunAt: timestamptz(),
   lastDeleted: integer().notNull().default(0),
-  ...timestampColumns({ withTimezone: true }),
+  ...timestampColumns(),
 });
 
 export type RetentionPolicyRow = typeof retentionPolicies.$inferSelect;
@@ -235,8 +235,8 @@ export const regions = pgTable('regions', {
   sort:       sortColumn(),
   status:     statusColumn(),
   ...auditColumns(),
-  createdAt:  timestamp().defaultNow().notNull(),
-  updatedAt:  timestamp().defaultNow().notNull(),
+  createdAt:  timestamptz().defaultNow().notNull(),
+  updatedAt:  timestamptz().defaultNow().notNull(),
 });
 
 export type RegionRow = typeof regions.$inferSelect;
@@ -248,10 +248,10 @@ export const maintenanceMode = pgTable('maintenance_mode', {
   id: idColumn(),
   enabled: boolean().notNull().default(false),
   message: varchar({ length: 512 }).notNull().default('系统维护中，请稍后重试'),
-  estimatedEndAt: timestamp(),
-  startedAt: timestamp(),
+  estimatedEndAt: timestamptz(),
+  startedAt: timestamptz(),
   startedByName: varchar({ length: 64 }),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  updatedAt: timestamptz().defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 
 export type MaintenanceModeRow = typeof maintenanceMode.$inferSelect;
@@ -262,15 +262,15 @@ export type NewMaintenanceMode = typeof maintenanceMode.$inferInsert;
 export const maintenanceLogs = pgTable('maintenance_logs', {
   id: idColumn(),
   message: varchar({ length: 512 }).notNull(),
-  estimatedEndAt: timestamp(),
-  startedAt: timestamp().notNull(),
+  estimatedEndAt: timestamptz(),
+  startedAt: timestamptz().notNull(),
   startedById: integer(),
   startedByName: varchar({ length: 64 }),
-  endedAt: timestamp(),
+  endedAt: timestamptz(),
   endedById: integer(),
   endedByName: varchar({ length: 64 }),
   durationSeconds: integer(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('maintenance_logs_started_at_idx').on(t.startedAt),
   index('maintenance_logs_ended_at_idx').on(t.endedAt),
@@ -299,7 +299,7 @@ export const userFeedbacks = pgTable('user_feedbacks', {
   status:       userFeedbackStatusEnum().notNull().default('pending'),
   handleRemark: varchar({ length: 500 }),
   handledBy:    integer().references(() => users.id, { onDelete: 'set null' }),
-  handledAt:    timestamp(),
+  handledAt:    timestamptz(),
   ...timestampColumns(),
 }, (t) => [
   index('user_feedbacks_status_idx').on(t.status),

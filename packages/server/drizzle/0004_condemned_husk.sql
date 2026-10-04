@@ -1,1 +1,0 @@
-ALTER TABLE "users" ADD COLUMN "birth_date" varchar(20);

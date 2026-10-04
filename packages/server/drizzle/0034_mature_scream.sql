@@ -1,1 +1,0 @@
-ALTER TABLE "cms_deployment_retention_policies" ALTER COLUMN "automatic" SET DEFAULT true;

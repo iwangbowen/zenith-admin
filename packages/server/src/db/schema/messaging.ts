@@ -1,4 +1,4 @@
-import { check, pgTable, varchar, timestamp, pgEnum, integer, boolean, text, unique, index, jsonb, uniqueIndex, primaryKey, smallint } from 'drizzle-orm/pg-core';
+import { check, pgTable, varchar, pgEnum, integer, boolean, text, unique, index, jsonb, uniqueIndex, primaryKey, smallint } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import {
   NOTIFICATION_CHANNELS,
@@ -12,7 +12,7 @@ import type {
   NotificationChannelPolicy,
   NotificationRecipient,
 } from '@zenith/shared/messaging';
-import { pushProviderEnum, timestampColumns, idColumn, statusColumn } from './common';
+import { pushProviderEnum, timestampColumns, idColumn, statusColumn, timestamptz } from './common';
 import { auditColumns, users, tenantIdColumn } from './core';
 import { clientApps } from './app-releases';
 import { entitySubjectRoleEnum } from './entity-relations';
@@ -80,8 +80,8 @@ export const emailSendLogs = pgTable('email_send_logs', {
   userId: integer().references(() => users.id, { onDelete: 'set null' }),
   ip: varchar({ length: 64 }),
   tenantId: tenantIdColumn(),
-  sentAt: timestamp({ withTimezone: true }),
-  createdAt: timestamp().defaultNow().notNull(),
+  sentAt: timestamptz(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('email_send_logs_user_idx').on(t.userId), index('email_send_logs_tenant_idx').on(t.tenantId), 
   index('email_send_logs_created_at_idx').on(t.createdAt),
   index('email_send_logs_status_idx').on(t.status),
@@ -145,13 +145,13 @@ export const smsSendLogs = pgTable('sms_send_logs', {
   errorMsg: text(),
   bizId: varchar({ length: 128 }),
   deliveryStatus: varchar({ length: 32 }),
-  deliveredAt: timestamp({ withTimezone: true }),
+  deliveredAt: timestamptz(),
   source: sendSourceEnum().default('manual').notNull(),
   userId: integer().references(() => users.id, { onDelete: 'set null' }),
   ip: varchar({ length: 64 }),
   tenantId: tenantIdColumn(),
-  sentAt: timestamp({ withTimezone: true }),
-  createdAt: timestamp().defaultNow().notNull(),
+  sentAt: timestamptz(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('sms_send_logs_user_idx').on(t.userId), index('sms_send_logs_tenant_idx').on(t.tenantId), 
   index('sms_send_logs_created_at_idx').on(t.createdAt),
   index('sms_send_logs_status_idx').on(t.status),
@@ -206,13 +206,13 @@ export const pushSendLogs = pgTable('push_send_logs', {
   providerMsgId: varchar({ length: 128 }),
   /** 送达回执（供应商回调写入）:delivered=已送达,clicked=已点击 */
   deliveryStatus: varchar({ length: 32 }),
-  deliveredAt: timestamp({ withTimezone: true }),
-  clickedAt: timestamp({ withTimezone: true }),
+  deliveredAt: timestamptz(),
+  clickedAt: timestamptz(),
   errorMsg: text(),
   source: sendSourceEnum().default('system').notNull(),
   tenantId: tenantIdColumn(),
-  sentAt: timestamp({ withTimezone: true }),
-  createdAt: timestamp().defaultNow().notNull(),
+  sentAt: timestamptz(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('push_send_logs_created_at_idx').on(t.createdAt),
   index('push_send_logs_status_idx').on(t.status),
@@ -250,7 +250,7 @@ export const broadcastCampaigns = pgTable('broadcast_campaigns', {
   enqueuedCount: integer().notNull().default(0),
   /** 任务中心任务 ID(发送后回填) */
   taskId: integer(),
-  sentAt: timestamp({ withTimezone: true }),
+  sentAt: timestamptz(),
   remark: text(),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
@@ -295,7 +295,7 @@ export const inAppMessages = pgTable('in_app_messages', {
   content: text().notNull(),
   type: inAppMessageTypeEnum().default('info').notNull(),
   isRead: boolean().notNull().default(false),
-  readAt: timestamp({ withTimezone: true }),
+  readAt: timestamptz(),
   source: sendSourceEnum().default('system').notNull(),
   senderId: integer().references(() => users.id, { onDelete: 'set null' }),
   /** 深链地址（站内路由，如 /workflow/pending?instanceId=1，点击消息跳转） */
@@ -303,7 +303,7 @@ export const inAppMessages = pgTable('in_app_messages', {
   /** 系统消息幂等键；按收件人拼接后唯一 */
   dedupeKey: varchar({ length: 192 }),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('in_app_messages_tenant_idx').on(t.tenantId), 
   unique('in_app_messages_dedupe_key_unique').on(t.dedupeKey),
   index('in_app_messages_user_created_idx').on(t.userId, t.createdAt),
@@ -425,11 +425,11 @@ export const notificationOutbox = pgTable('notification_outbox', {
   attempts: integer().notNull().default(0),
   lastError: varchar({ length: 500 }),
   /** 认领时间戳：并发实例据此避免重复派发，超时后可被重新认领 */
-  claimedAt: timestamp({ withTimezone: true }),
+  claimedAt: timestamptz(),
   /** 实际完成展开或重试耗尽的时间；历史记录保持空值，不以创建时间代替完成时间。 */
-  finishedAt: timestamp({ withTimezone: true }),
+  finishedAt: timestamptz(),
   /** 免打扰延后或摘要聚合的目标时间；为空表示立即可派发 */
-  scheduledAt: timestamp({ withTimezone: true }),
+  scheduledAt: timestamptz(),
   /**
    * 摘要分组键（`{recipientType}:{recipientId}:{窗口时间戳}`）。
    * 非空的行不走常规逐条派发，由摘要聚合任务按键合并成一封汇总邮件。
@@ -440,7 +440,7 @@ export const notificationOutbox = pgTable('notification_outbox', {
   /** 因果父引用（`kind:refId` 或 `request`），链路时间线树形展示的触发源 */
   parentRef: varchar({ length: 32 }),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   uniqueIndex('notification_outbox_dedupe_uq').on(t.dedupeKey).where(sql`${t.dedupeKey} is not null`),
   index('notification_outbox_pending_idx').on(t.status, t.scheduledAt).where(sql`${t.status} = 'pending'`),
@@ -499,7 +499,7 @@ export const notificationDispatches = pgTable('notification_dispatches', {
   /** 幂等键：`${outboxDedupeKey}:${recipient}:${channel}` */
   dedupeKey: varchar({ length: 256 }),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   uniqueIndex('notification_dispatches_dedupe_uq').on(t.dedupeKey).where(sql`${t.dedupeKey} is not null`),
   index('notification_dispatches_recipient_idx').on(t.recipientType, t.recipientId, t.createdAt),

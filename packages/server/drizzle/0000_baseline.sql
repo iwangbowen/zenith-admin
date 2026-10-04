@@ -1,4 +1,4 @@
--- gin_trgm_ops 索引需要的扩展，必须先于本基线中的索引创建。
+-- pg_trgm：trigram 索引依赖（索引本身由 schema DSL 生成）
 CREATE EXTENSION IF NOT EXISTS pg_trgm;--> statement-breakpoint
 CREATE TYPE "public"."push_provider" AS ENUM('jpush');--> statement-breakpoint
 CREATE TYPE "public"."status" AS ENUM('enabled', 'disabled');--> statement-breakpoint
@@ -44,6 +44,7 @@ CREATE TYPE "public"."directory_sync_run_status" AS ENUM('running', 'success', '
 CREATE TYPE "public"."directory_sync_source_type" AS ENUM('ldap', 'dingtalk', 'wechat_work', 'feishu', 'scim');--> statement-breakpoint
 CREATE TYPE "public"."login_event_type" AS ENUM('login', 'logout', 'impersonate', 'impersonate_end', 'kicked');--> statement-breakpoint
 CREATE TYPE "public"."login_status" AS ENUM('success', 'fail');--> statement-breakpoint
+CREATE TYPE "public"."entity_subject_role" AS ENUM('primary', 'related', 'source', 'target');--> statement-breakpoint
 CREATE TYPE "public"."analytics_campaign_channel" AS ENUM('email', 'in_app', 'webhook', 'sms');--> statement-breakpoint
 CREATE TYPE "public"."analytics_campaign_status" AS ENUM('draft', 'running', 'completed', 'failed');--> statement-breakpoint
 CREATE TYPE "public"."analytics_device_type" AS ENUM('desktop', 'mobile', 'tablet', 'bot', 'unknown');--> statement-breakpoint
@@ -60,6 +61,9 @@ CREATE TYPE "public"."frontend_error_type" AS ENUM('js_error', 'promise_rejectio
 CREATE TYPE "public"."replay_mode" AS ENUM('buffer', 'stream');--> statement-breakpoint
 CREATE TYPE "public"."replay_status" AS ENUM('recording', 'completed', 'expired');--> statement-breakpoint
 CREATE TYPE "public"."user_behavior_event_type" AS ENUM('page_view', 'page_leave', 'feature_use', 'area_click', 'custom', 'perf', 'api_request', 'identify');--> statement-breakpoint
+CREATE TYPE "public"."workflow_approval_activation_status" AS ENUM('active', 'approved', 'rejected', 'cancelled');--> statement-breakpoint
+CREATE TYPE "public"."workflow_approval_slot_origin" AS ENUM('base', 'addSign');--> statement-breakpoint
+CREATE TYPE "public"."workflow_approval_slot_status" AS ENUM('pending', 'approved', 'rejected', 'cancelled');--> statement-breakpoint
 CREATE TYPE "public"."workflow_approve_method" AS ENUM('and', 'or', 'sequential', 'ratio');--> statement-breakpoint
 CREATE TYPE "public"."workflow_automation_trigger" AS ENUM('approved', 'rejected', 'withdrawn', 'created');--> statement-breakpoint
 CREATE TYPE "public"."workflow_connector_invocation_source" AS ENUM('test', 'trigger', 'external', 'webhook', 'manual');--> statement-breakpoint
@@ -72,14 +76,19 @@ CREATE TYPE "public"."workflow_job_execution_status" AS ENUM('running', 'succeed
 CREATE TYPE "public"."workflow_job_status" AS ENUM('pending', 'running', 'paused', 'succeeded', 'failed', 'dead', 'canceled');--> statement-breakpoint
 CREATE TYPE "public"."workflow_job_type" AS ENUM('delay_wake', 'task_timeout', 'trigger_dispatch', 'external_dispatch', 'subprocess_spawn', 'subprocess_join', 'event_dispatch', 'webhook_delivery', 'compensation_action');--> statement-breakpoint
 CREATE TYPE "public"."workflow_node_type" AS ENUM('start', 'approve', 'handler', 'end', 'exclusiveGateway', 'parallelGateway', 'inclusiveGateway', 'routeGateway', 'ccNode', 'delay', 'trigger', 'subProcess', 'catchNode');--> statement-breakpoint
+CREATE TYPE "public"."workflow_sign_group_status" AS ENUM('waiting', 'active', 'approved', 'rejected', 'cancelled');--> statement-breakpoint
+CREATE TYPE "public"."workflow_sign_mode" AS ENUM('and', 'or');--> statement-breakpoint
+CREATE TYPE "public"."workflow_sign_position" AS ENUM('before', 'after', 'parallel');--> statement-breakpoint
 CREATE TYPE "public"."workflow_task_consult_status" AS ENUM('pending', 'replied', 'revoked');--> statement-breakpoint
+CREATE TYPE "public"."workflow_task_kind" AS ENUM('approval', 'suggestion', 'cc', 'excluded', 'system');--> statement-breakpoint
 CREATE TYPE "public"."workflow_task_status" AS ENUM('pending', 'approved', 'rejected', 'skipped', 'waiting');--> statement-breakpoint
 CREATE TYPE "public"."workflow_task_transfer_action" AS ENUM('transfer', 'delegate', 'reassign', 'handover', 'timeout');--> statement-breakpoint
+CREATE TYPE "public"."workflow_task_wait_reason" AS ENUM('sequence', 'beforeSign', 'afterSign', 'external', 'subprocess', 'delay', 'trigger');--> statement-breakpoint
 CREATE TYPE "public"."workflow_token_status" AS ENUM('active', 'consumed', 'dead');--> statement-breakpoint
 CREATE TYPE "public"."broadcast_audience" AS ENUM('all_users', 'all_members', 'user_ids', 'member_ids');--> statement-breakpoint
 CREATE TYPE "public"."broadcast_status" AS ENUM('draft', 'sending', 'sent', 'failed', 'cancelled');--> statement-breakpoint
 CREATE TYPE "public"."email_encryption" AS ENUM('none', 'ssl', 'tls');--> statement-breakpoint
-CREATE TYPE "public"."in_app_message_type" AS ENUM('info', 'success', 'warning', 'error');--> statement-breakpoint
+CREATE TYPE "public"."in_app_message_type" AS ENUM('info', 'success', 'warning', 'error', 'resolved');--> statement-breakpoint
 CREATE TYPE "public"."notification_channel" AS ENUM('inapp', 'email', 'sms', 'push', 'webhook', 'chat');--> statement-breakpoint
 CREATE TYPE "public"."notification_decision" AS ENUM('sent', 'suppressed', 'deferred', 'deduped', 'failed');--> statement-breakpoint
 CREATE TYPE "public"."notification_digest_mode" AS ENUM('realtime', 'hourly', 'daily');--> statement-breakpoint
@@ -110,6 +119,7 @@ CREATE TYPE "public"."channel_type" AS ENUM('system', 'business');--> statement-
 CREATE TYPE "public"."payment_cashier_session_status" AS ENUM('ready', 'creating', 'awaiting', 'processing', 'unknown', 'succeeded', 'failed', 'expired');--> statement-breakpoint
 CREATE TYPE "public"."payment_cashier_use_slot_status" AS ENUM('none', 'reserved', 'consumed', 'released');--> statement-breakpoint
 CREATE TYPE "public"."payment_channel" AS ENUM('wechat', 'alipay', 'unionpay');--> statement-breakpoint
+CREATE TYPE "public"."payment_channel_environment" AS ENUM('sandbox', 'production');--> statement-breakpoint
 CREATE TYPE "public"."payment_contract_operation" AS ENUM('sign', 'terminate');--> statement-breakpoint
 CREATE TYPE "public"."payment_contract_status" AS ENUM('pending', 'unknown', 'signed', 'paused', 'terminated', 'failed');--> statement-breakpoint
 CREATE TYPE "public"."payment_deduct_period" AS ENUM('daily', 'weekly', 'monthly', 'custom');--> statement-breakpoint
@@ -125,10 +135,6 @@ CREATE TYPE "public"."payment_method" AS ENUM('wechat_native', 'wechat_jsapi', '
 CREATE TYPE "public"."payment_order_status" AS ENUM('pending', 'paying', 'unknown', 'success', 'closed', 'refunding', 'refunded', 'failed');--> statement-breakpoint
 CREATE TYPE "public"."payment_preauth_operation" AS ENUM('freeze', 'capture', 'release');--> statement-breakpoint
 CREATE TYPE "public"."payment_preauth_status" AS ENUM('pending', 'unknown', 'frozen', 'captured', 'released', 'failed');--> statement-breakpoint
-CREATE TYPE "public"."payment_recon_handle_status" AS ENUM('pending', 'adjusted', 'suspended', 'ignored');--> statement-breakpoint
-CREATE TYPE "public"."payment_recon_result" AS ENUM('matched', 'local_only', 'channel_only', 'amount_diff', 'status_diff');--> statement-breakpoint
-CREATE TYPE "public"."payment_recon_source" AS ENUM('manual_upload', 'sandbox_generated', 'provider_download');--> statement-breakpoint
-CREATE TYPE "public"."payment_recon_status" AS ENUM('pending', 'comparing', 'done', 'failed');--> statement-breakpoint
 CREATE TYPE "public"."payment_refund_approval_status" AS ENUM('none', 'pending', 'approved', 'rejected');--> statement-breakpoint
 CREATE TYPE "public"."payment_refund_status" AS ENUM('pending', 'processing', 'unknown', 'success', 'failed');--> statement-breakpoint
 CREATE TYPE "public"."payment_risk_action" AS ENUM('block', 'review');--> statement-breakpoint
@@ -141,6 +147,16 @@ CREATE TYPE "public"."payment_sharing_receiver_type" AS ENUM('merchant', 'person
 CREATE TYPE "public"."payment_sharing_reversal_status" AS ENUM('processing', 'unknown', 'success', 'failed');--> statement-breakpoint
 CREATE TYPE "public"."payment_transfer_approval_status" AS ENUM('none', 'pending', 'approved', 'rejected');--> statement-breakpoint
 CREATE TYPE "public"."payment_transfer_status" AS ENUM('pending', 'processing', 'unknown', 'success', 'failed');--> statement-breakpoint
+CREATE TYPE "public"."payment_recon_adjustment_status" AS ENUM('draft', 'pending', 'approved', 'rejected', 'executed', 'reversed');--> statement-breakpoint
+CREATE TYPE "public"."payment_recon_case_status" AS ENUM('open', 'investigating', 'suspended', 'resolved', 'ignored');--> statement-breakpoint
+CREATE TYPE "public"."payment_recon_case_type" AS ENUM('local_only', 'channel_only', 'amount_diff', 'status_diff', 'identity_diff', 'summary_diff', 'balance_diff');--> statement-breakpoint
+CREATE TYPE "public"."payment_recon_direction" AS ENUM('in', 'out');--> statement-breakpoint
+CREATE TYPE "public"."payment_recon_run_status" AS ENUM('pending', 'running', 'completed', 'failed');--> statement-breakpoint
+CREATE TYPE "public"."payment_statement_entry_type" AS ENUM('payment', 'refund', 'fee', 'settlement', 'transfer', 'adjustment');--> statement-breakpoint
+CREATE TYPE "public"."payment_statement_period_status" AS ENUM('expected', 'waiting', 'ready', 'failed');--> statement-breakpoint
+CREATE TYPE "public"."payment_statement_source" AS ENUM('provider_download', 'manual_upload', 'sandbox_generated');--> statement-breakpoint
+CREATE TYPE "public"."payment_statement_status" AS ENUM('archived', 'validated', 'rejected', 'superseded');--> statement-breakpoint
+CREATE TYPE "public"."payment_statement_type" AS ENUM('trade', 'fund', 'bank');--> statement-breakpoint
 CREATE TYPE "public"."ai_feedback_status" AS ENUM('pending', 'resolved', 'ignored');--> statement-breakpoint
 CREATE TYPE "public"."ai_message_role" AS ENUM('system', 'user', 'assistant');--> statement-breakpoint
 CREATE TYPE "public"."ai_prompt_scope" AS ENUM('system', 'user');--> statement-breakpoint
@@ -167,7 +183,7 @@ CREATE TYPE "public"."monitor_alert_level" AS ENUM('info', 'warning', 'critical'
 CREATE TYPE "public"."monitor_alert_notify_status" AS ENUM('skipped', 'success', 'partial', 'failed');--> statement-breakpoint
 CREATE TYPE "public"."monitor_alert_operator" AS ENUM('gt', 'gte', 'lt', 'lte');--> statement-breakpoint
 CREATE TYPE "public"."monitor_alert_state" AS ENUM('ok', 'firing');--> statement-breakpoint
-CREATE TYPE "public"."monitor_metric" AS ENUM('cpu', 'memory', 'disk', 'swap', 'load1', 'procCpu', 'heap', 'loopLag', 'qps', 'errorRate', 'netRxBps', 'netTxBps', 'diskReadBps', 'diskWriteBps', 'logErrorPerMin', 'logWarnPerMin', 'schedulerWorkerNodes', 'schedulerQueueBacklog', 'workflowHealth', 'workflowBacklog', 'workflowDeadLetter', 'workflowFailureRate', 'workflowStuckRunning', 'paymentFailureRate', 'paymentStuckPaying', 'paymentReconDiff', 'paymentEventBacklog', 'paymentWebhookFailureRate', 'openApiErrorRate', 'openApiAppErrorRate', 'openWebhookFailureRate', 'openWebhookDisabledSubs', 'replayStorageMb');--> statement-breakpoint
+CREATE TYPE "public"."monitor_metric" AS ENUM('cpu', 'memory', 'disk', 'swap', 'load1', 'procCpu', 'heap', 'loopLag', 'qps', 'errorRate', 'netRxBps', 'netTxBps', 'diskReadBps', 'diskWriteBps', 'logErrorPerMin', 'logWarnPerMin', 'schedulerWorkerNodes', 'schedulerQueueBacklog', 'jobsBacklog', 'jobsStuck', 'jobsDead', 'jobsFailed1h', 'workflowHealth', 'workflowBacklog', 'workflowDeadLetter', 'workflowFailureRate', 'workflowStuckRunning', 'paymentFailureRate', 'paymentStuckPaying', 'paymentReconDiff', 'paymentEventBacklog', 'paymentWebhookFailureRate', 'openApiErrorRate', 'openApiAppErrorRate', 'openWebhookFailureRate', 'openWebhookDisabledSubs', 'replayStorageMb');--> statement-breakpoint
 CREATE TYPE "public"."ssl_cert_status" AS ENUM('valid', 'expiring', 'expired', 'invalid');--> statement-breakpoint
 CREATE TYPE "public"."ssl_cert_type" AS ENUM('self_signed', 'uploaded', 'letsencrypt');--> statement-breakpoint
 CREATE TYPE "public"."app_arch" AS ENUM('x64', 'arm64', 'universal');--> statement-breakpoint
@@ -249,7 +265,7 @@ CREATE TYPE "public"."cms_device_type" AS ENUM('pc', 'mobile', 'bot');--> statem
 CREATE TYPE "public"."cms_distribution_conflict_strategy" AS ENUM('skip', 'overwrite', 'create-new');--> statement-breakpoint
 CREATE TYPE "public"."cms_distribution_mode" AS ENUM('copy', 'mapping', 'scheduled');--> statement-breakpoint
 CREATE TYPE "public"."cms_field_option_source" AS ENUM('manual', 'dict');--> statement-breakpoint
-CREATE TYPE "public"."cms_field_type" AS ENUM('text', 'textarea', 'richtext', 'number', 'date', 'datetime', 'image', 'file', 'select', 'radio', 'checkbox', 'switch');--> statement-breakpoint
+CREATE TYPE "public"."cms_field_type" AS ENUM('text', 'textarea', 'richtext', 'number', 'date', 'datetime', 'image', 'file', 'select', 'radio', 'checkbox', 'switch', 'reference', 'references', 'object', 'array', 'blocks');--> statement-breakpoint
 CREATE TYPE "public"."cms_form_captcha_provider" AS ENUM('inherit', 'none', 'math', 'turnstile');--> statement-breakpoint
 CREATE TYPE "public"."cms_interaction_captcha_policy" AS ENUM('inherit', 'none', 'math', 'turnstile');--> statement-breakpoint
 CREATE TYPE "public"."cms_interaction_kind" AS ENUM('survey', 'poll');--> statement-breakpoint
@@ -261,7 +277,7 @@ CREATE TYPE "public"."cms_interaction_status" AS ENUM('draft', 'published', 'clo
 CREATE TYPE "public"."cms_page_block_acl_subject_type" AS ENUM('user', 'role');--> statement-breakpoint
 CREATE TYPE "public"."cms_publish_artifact_status" AS ENUM('generated', 'deleted', 'failed');--> statement-breakpoint
 CREATE TYPE "public"."cms_publish_target_type" AS ENUM('content', 'contents', 'channel', 'site', 'theme', 'page');--> statement-breakpoint
-CREATE TYPE "public"."cms_resource_owner_type" AS ENUM('site', 'content', 'contentVersion', 'channel', 'friendLink', 'ad', 'page', 'widget', 'form');--> statement-breakpoint
+CREATE TYPE "public"."cms_resource_owner_type" AS ENUM('site', 'content', 'contentVersion', 'channel', 'friendLink', 'ad', 'page', 'widget', 'form', 'release', 'page_preset_version');--> statement-breakpoint
 CREATE TYPE "public"."cms_resource_type" AS ENUM('image', 'video', 'audio', 'document', 'other');--> statement-breakpoint
 CREATE TYPE "public"."cms_search_word_type" AS ENUM('extension', 'stop');--> statement-breakpoint
 CREATE TYPE "public"."cms_static_mode" AS ENUM('dynamic', 'hybrid', 'static');--> statement-breakpoint
@@ -270,6 +286,14 @@ CREATE TYPE "public"."cms_widget_ref_owner_type" AS ENUM('page', 'theme_slot');-
 CREATE TYPE "public"."cms_widget_source_type" AS ENUM('content', 'channel');--> statement-breakpoint
 CREATE TYPE "public"."cms_widget_status" AS ENUM('draft', 'published', 'offline');--> statement-breakpoint
 CREATE TYPE "public"."cms_widget_type" AS ENUM('manual-list');--> statement-breakpoint
+CREATE TYPE "public"."cms_media_processing_status" AS ENUM('pending', 'running', 'success', 'failed', 'cancelled');--> statement-breakpoint
+CREATE TYPE "public"."cms_editorial_status" AS ENUM('draft', 'pending', 'rejected', 'approved', 'clean');--> statement-breakpoint
+CREATE TYPE "public"."cms_revision_kind" AS ENUM('checkpoint', 'submission', 'publication', 'restore', 'preview');--> statement-breakpoint
+CREATE TYPE "public"."cms_editorial_task_source" AS ENUM('manual', 'search', 'submission', 'review');--> statement-breakpoint
+CREATE TYPE "public"."cms_editorial_task_status" AS ENUM('open', 'in_progress', 'edit_done', 'online', 'observing', 'verified', 'cancelled');--> statement-breakpoint
+CREATE TYPE "public"."cms_feedback_status" AS ENUM('new', 'processing', 'resolved', 'closed');--> statement-breakpoint
+CREATE TYPE "public"."cms_deployment_status" AS ENUM('building', 'ready', 'active', 'retired', 'failed');--> statement-breakpoint
+CREATE TYPE "public"."cms_release_status" AS ENUM('draft', 'building', 'ready', 'scheduled', 'active', 'failed', 'cancelled', 'superseded');--> statement-breakpoint
 CREATE TYPE "public"."wiki_comment_status" AS ENUM('visible', 'hidden');--> statement-breakpoint
 CREATE TYPE "public"."wiki_doc_status" AS ENUM('draft', 'pending', 'published', 'rejected');--> statement-breakpoint
 CREATE TYPE "public"."wiki_review_action" AS ENUM('submit', 'approve', 'reject', 'withdraw');--> statement-breakpoint
@@ -310,6 +334,7 @@ CREATE TYPE "public"."drive_share_kind" AS ENUM('share', 'collect');--> statemen
 CREATE TYPE "public"."drive_space_type" AS ENUM('personal', 'department', 'team');--> statement-breakpoint
 CREATE TYPE "public"."drive_subject_type" AS ENUM('user', 'department', 'role', 'user_group');--> statement-breakpoint
 CREATE TYPE "public"."drive_upload_conflict_policy" AS ENUM('rename', 'version', 'fail');--> statement-breakpoint
+CREATE TYPE "public"."cms_deployment_storage_state" AS ENUM('available', 'purging', 'purged');--> statement-breakpoint
 CREATE TABLE "departments" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "departments_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"parent_id" integer DEFAULT 0 NOT NULL,
@@ -324,8 +349,8 @@ CREATE TABLE "departments" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "departments_tenant_code_unique" UNIQUE("tenant_id","code")
 );
 --> statement-breakpoint
@@ -349,8 +374,8 @@ CREATE TABLE "menus" (
 	"feature_key" varchar(50),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "positions" (
@@ -363,8 +388,8 @@ CREATE TABLE "positions" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "positions_tenant_code_unique" UNIQUE("tenant_id","code")
 );
 --> statement-breakpoint
@@ -390,8 +415,8 @@ CREATE TABLE "roles" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "roles_tenant_code_unique" UNIQUE("tenant_id","code")
 );
 --> statement-breakpoint
@@ -409,8 +434,8 @@ CREATE TABLE "tenant_packages" (
 	"remark" text,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "tenant_packages_name_unique" UNIQUE("name")
 );
 --> statement-breakpoint
@@ -428,8 +453,8 @@ CREATE TABLE "tenants" (
 	"remark" text,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "tenants_code_unique" UNIQUE("code")
 );
 --> statement-breakpoint
@@ -442,7 +467,7 @@ CREATE TABLE "user_dept_scopes" (
 CREATE TABLE "user_group_members" (
 	"group_id" integer NOT NULL,
 	"user_id" integer NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "user_group_members_group_id_user_id_pk" PRIMARY KEY("group_id","user_id")
 );
 --> statement-breakpoint
@@ -460,13 +485,13 @@ CREATE TABLE "user_groups" (
 	"owner_id" integer,
 	"member_mode" varchar(10) DEFAULT 'static' NOT NULL,
 	"member_rule" jsonb,
-	"rule_synced_at" timestamp,
+	"rule_synced_at" timestamp with time zone,
 	"status" "status" DEFAULT 'enabled' NOT NULL,
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "user_groups_tenant_code_unique" UNIQUE("tenant_id","code")
 );
 --> statement-breakpoint
@@ -499,16 +524,17 @@ CREATE TABLE "users" (
 	"department_id" integer,
 	"tenant_id" integer,
 	"gender" varchar(20),
+	"birth_date" varchar(20),
 	"status" "status" DEFAULT 'enabled' NOT NULL,
 	"preferences" jsonb,
 	"favorite_menus" jsonb,
 	"user_data_scope" "data_scope",
-	"password_updated_at" timestamp DEFAULT now() NOT NULL,
-	"last_login_at" timestamp,
+	"password_updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"last_login_at" timestamp with time zone,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "users_tenant_username_unique" UNIQUE("tenant_id","username"),
 	CONSTRAINT "users_tenant_email_unique" UNIQUE("tenant_id","email"),
 	CONSTRAINT "users_tenant_phone_unique" UNIQUE("tenant_id","phone")
@@ -519,7 +545,7 @@ CREATE TABLE "license_events" (
 	"license_id" integer,
 	"type" varchar(40) NOT NULL,
 	"detail" text,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "licenses" (
@@ -532,11 +558,11 @@ CREATE TABLE "licenses" (
 	"edition" varchar(20) NOT NULL,
 	"customer_name" varchar(200) NOT NULL,
 	"features" jsonb NOT NULL,
-	"expires_at" timestamp NOT NULL,
-	"grace_until" timestamp NOT NULL,
-	"activated_at" timestamp DEFAULT now() NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL,
+	"grace_until" timestamp with time zone NOT NULL,
+	"activated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"activated_by" integer,
-	"last_verified_at" timestamp,
+	"last_verified_at" timestamp with time zone,
 	"invalid_reason" text,
 	"replaced_by_id" integer,
 	CONSTRAINT "licenses_license_id_unique" UNIQUE("license_id")
@@ -546,7 +572,7 @@ CREATE TABLE "system_installations" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "system_installations_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"installation_id" varchar(64) NOT NULL,
 	"license_epoch" integer DEFAULT 0 NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "system_installations_installation_id_unique" UNIQUE("installation_id")
 );
 --> statement-breakpoint
@@ -559,7 +585,7 @@ CREATE TABLE "business_files" (
 	"category" varchar(64),
 	"sort_order" smallint DEFAULT 0,
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "uniq_business_file" UNIQUE("business_type","business_id","file_id")
 );
 --> statement-breakpoint
@@ -617,8 +643,8 @@ CREATE TABLE "file_storage_configs" (
 	"remark" varchar(256),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "managed_files" (
@@ -637,12 +663,12 @@ CREATE TABLE "managed_files" (
 	"content_hash" varchar(64),
 	"ref_count" integer DEFAULT 0 NOT NULL,
 	"gc_state" "file_gc_state" DEFAULT 'live' NOT NULL,
-	"orphaned_at" timestamp,
+	"orphaned_at" timestamp with time zone,
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "upload_chunks" (
@@ -651,7 +677,7 @@ CREATE TABLE "upload_chunks" (
 	"index" integer NOT NULL,
 	"size" integer NOT NULL,
 	"etag" varchar(256),
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "uniq_upload_chunk" UNIQUE("upload_session_id","index")
 );
 --> statement-breakpoint
@@ -663,8 +689,8 @@ CREATE TABLE "upload_session_bindings" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "upload_session_bindings_upload_id_unique" UNIQUE("upload_id")
 );
 --> statement-breakpoint
@@ -686,8 +712,8 @@ CREATE TABLE "upload_sessions" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "upload_sessions_upload_id_unique" UNIQUE("upload_id")
 );
 --> statement-breakpoint
@@ -702,8 +728,8 @@ CREATE TABLE "data_mask_policies" (
 	"remark" varchar(256),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "data_mask_policies_entity_field_unique" UNIQUE("entity","field")
 );
 --> statement-breakpoint
@@ -716,9 +742,20 @@ CREATE TABLE "async_task_items" (
 	"message" text,
 	"data" jsonb,
 	"attempt" integer DEFAULT 1 NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "uniq_async_task_item" UNIQUE("task_id","item_key")
+);
+--> statement-breakpoint
+CREATE TABLE "async_task_subjects" (
+	"task_id" integer NOT NULL,
+	"tenant_id" integer,
+	"entity_type" varchar(96) NOT NULL,
+	"entity_key" varchar(512) NOT NULL,
+	"role" "entity_subject_role" DEFAULT 'related' NOT NULL,
+	CONSTRAINT "async_task_subjects_task_id_entity_type_entity_key_role_pk" PRIMARY KEY("task_id","entity_type","entity_key","role"),
+	CONSTRAINT "async_task_subjects_entity_type_check" CHECK (length("async_task_subjects"."entity_type") > 0),
+	CONSTRAINT "async_task_subjects_entity_key_check" CHECK (length("async_task_subjects"."entity_key") > 0)
 );
 --> statement-breakpoint
 CREATE TABLE "async_task_type_configs" (
@@ -728,8 +765,8 @@ CREATE TABLE "async_task_type_configs" (
 	"max_attempts" integer DEFAULT 1 NOT NULL,
 	"retry_delay_ms" integer DEFAULT 5000 NOT NULL,
 	"retention_days" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "async_tasks" (
@@ -749,19 +786,20 @@ CREATE TABLE "async_tasks" (
 	"attempts" integer DEFAULT 0 NOT NULL,
 	"max_attempts" integer DEFAULT 1 NOT NULL,
 	"retry_delay_ms" integer NOT NULL,
-	"next_run_at" timestamp,
+	"next_run_at" timestamp with time zone,
+	"dispatch_token" uuid DEFAULT gen_random_uuid() NOT NULL,
 	"idempotency_key" varchar(128),
-	"heartbeat_at" timestamp,
+	"heartbeat_at" timestamp with time zone,
 	"trace_id" varchar(64),
 	"parent_ref" varchar(32),
 	"node_id" varchar(128),
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"started_at" timestamp,
-	"completed_at" timestamp,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"started_at" timestamp with time zone,
+	"completed_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "export_job_downloads" (
@@ -771,7 +809,7 @@ CREATE TABLE "export_job_downloads" (
 	"tenant_id" integer,
 	"ip" varchar(64),
 	"user_agent" varchar(512),
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "export_jobs" (
@@ -784,6 +822,8 @@ CREATE TABLE "export_jobs" (
 	"query" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"columns" jsonb,
 	"row_count" integer,
+	"processed_rows" integer DEFAULT 0 NOT NULL,
+	"total_rows" integer,
 	"file_id" uuid,
 	"filename" varchar(256),
 	"file_size" integer,
@@ -792,18 +832,18 @@ CREATE TABLE "export_jobs" (
 	"sensitive" boolean DEFAULT false NOT NULL,
 	"watermark" boolean DEFAULT true NOT NULL,
 	"error_message" text,
-	"expires_at" timestamp,
-	"file_deleted_at" timestamp,
+	"expires_at" timestamp with time zone,
+	"file_deleted_at" timestamp with time zone,
 	"delete_reason" "export_job_delete_reason",
 	"download_count" integer DEFAULT 0 NOT NULL,
-	"last_downloaded_at" timestamp,
+	"last_downloaded_at" timestamp with time zone,
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"started_at" timestamp,
-	"completed_at" timestamp,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"started_at" timestamp with time zone,
+	"completed_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cron_job_logs" (
@@ -842,33 +882,33 @@ CREATE TABLE "cron_jobs" (
 	"last_run_message" varchar(1024),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "cron_jobs_name_unique" UNIQUE("name")
 );
 --> statement-breakpoint
 CREATE TABLE "maintenance_logs" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "maintenance_logs_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"message" varchar(512) NOT NULL,
-	"estimated_end_at" timestamp,
-	"started_at" timestamp NOT NULL,
+	"estimated_end_at" timestamp with time zone,
+	"started_at" timestamp with time zone NOT NULL,
 	"started_by_id" integer,
 	"started_by_name" varchar(64),
-	"ended_at" timestamp,
+	"ended_at" timestamp with time zone,
 	"ended_by_id" integer,
 	"ended_by_name" varchar(64),
 	"duration_seconds" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "maintenance_mode" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "maintenance_mode_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"enabled" boolean DEFAULT false NOT NULL,
 	"message" varchar(512) DEFAULT '系统维护中，请稍后重试' NOT NULL,
-	"estimated_end_at" timestamp,
-	"started_at" timestamp,
+	"estimated_end_at" timestamp with time zone,
+	"started_at" timestamp with time zone,
 	"started_by_name" varchar(64),
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "regions" (
@@ -881,8 +921,8 @@ CREATE TABLE "regions" (
 	"status" "status" DEFAULT 'enabled' NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "regions_code_unique" UNIQUE("code")
 );
 --> statement-breakpoint
@@ -900,7 +940,7 @@ CREATE TABLE "retention_policies" (
 CREATE TABLE "system_runtime_state" (
 	"key" varchar(128) PRIMARY KEY NOT NULL,
 	"value" jsonb NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "system_scheduler_nodes" (
@@ -972,8 +1012,8 @@ CREATE TABLE "system_settings" (
 	"version" integer DEFAULT 1 NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "system_settings_module_tenant_unique" UNIQUE NULLS NOT DISTINCT("module","tenant_id")
 );
 --> statement-breakpoint
@@ -988,9 +1028,9 @@ CREATE TABLE "user_feedbacks" (
 	"status" "user_feedback_status" DEFAULT 'pending' NOT NULL,
 	"handle_remark" varchar(500),
 	"handled_by" integer,
-	"handled_at" timestamp,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"handled_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "impersonation_sessions" (
@@ -1040,8 +1080,8 @@ CREATE TABLE "oauth_configs" (
 	"auto_link_by_email" boolean DEFAULT false NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "oauth_configs_provider_unique" UNIQUE("provider")
 );
 --> statement-breakpoint
@@ -1051,7 +1091,7 @@ CREATE TABLE "password_reset_tokens" (
 	"token" varchar(128) NOT NULL,
 	"expires_at" timestamp with time zone NOT NULL,
 	"used_at" timestamp with time zone,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "password_reset_tokens_token_unique" UNIQUE("token")
 );
 --> statement-breakpoint
@@ -1072,8 +1112,8 @@ CREATE TABLE "rate_limit_rules" (
 	"path_patterns" text[] DEFAULT '{}' NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "rate_limit_rules_name_unique" UNIQUE("name")
 );
 --> statement-breakpoint
@@ -1087,8 +1127,8 @@ CREATE TABLE "user_api_tokens" (
 	"expires_at" timestamp with time zone,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "user_api_tokens_token_hash_unique" UNIQUE("token_hash")
 );
 --> statement-breakpoint
@@ -1118,8 +1158,8 @@ CREATE TABLE "user_oauth_accounts" (
 	"refresh_token" varchar(512),
 	"expires_at" timestamp with time zone,
 	"raw" text,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "uniq_provider_open_id" UNIQUE("provider","open_id")
 );
 --> statement-breakpoint
@@ -1131,8 +1171,8 @@ CREATE TABLE "user_signatures" (
 	"version" integer DEFAULT 1 NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "user_signatures_user_tenant_unique" UNIQUE NULLS NOT DISTINCT("user_id","tenant_id")
 );
 --> statement-breakpoint
@@ -1204,8 +1244,8 @@ CREATE TABLE "tenant_identity_providers" (
 	"remark" text,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "tenant_identity_providers_tenant_code_unique" UNIQUE("tenant_id","code")
 );
 --> statement-breakpoint
@@ -1240,8 +1280,8 @@ CREATE TABLE "directory_sync_conflicts" (
 	"resolution" varchar(16),
 	"resolved_by" integer,
 	"resolved_at" timestamp with time zone,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "directory_sync_dept_links" (
@@ -1250,8 +1290,8 @@ CREATE TABLE "directory_sync_dept_links" (
 	"external_id" varchar(256) NOT NULL,
 	"department_id" integer NOT NULL,
 	"last_seen_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "directory_sync_dept_links_source_external_unique" UNIQUE("source_id","external_id")
 );
 --> statement-breakpoint
@@ -1265,7 +1305,7 @@ CREATE TABLE "directory_sync_run_items" (
 	"applied" boolean DEFAULT false NOT NULL,
 	"diff" jsonb,
 	"message" text,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "directory_sync_runs" (
@@ -1289,7 +1329,7 @@ CREATE TABLE "directory_sync_runs" (
 	"triggered_by" integer,
 	"started_at" timestamp with time zone NOT NULL,
 	"finished_at" timestamp with time zone,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "directory_sync_sources" (
@@ -1320,8 +1360,8 @@ CREATE TABLE "directory_sync_sources" (
 	"remark" text,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "directory_sync_sources_tenant_name_unique" UNIQUE("tenant_id","name"),
 	CONSTRAINT "directory_sync_sources_callback_key_unique" UNIQUE("callback_url_key")
 );
@@ -1333,8 +1373,8 @@ CREATE TABLE "directory_sync_user_links" (
 	"user_id" integer NOT NULL,
 	"external_data" jsonb,
 	"last_seen_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "directory_sync_user_links_source_external_unique" UNIQUE("source_id","external_id"),
 	CONSTRAINT "directory_sync_user_links_source_user_unique" UNIQUE("source_id","user_id")
 );
@@ -1352,8 +1392,8 @@ CREATE TABLE "dict_items" (
 	"metadata" jsonb,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "dicts" (
@@ -1365,8 +1405,8 @@ CREATE TABLE "dicts" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "dicts_tenant_code_unique" UNIQUE("tenant_id","code")
 );
 --> statement-breakpoint
@@ -1402,6 +1442,17 @@ CREATE TABLE "login_logs" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "operation_log_subjects" (
+	"operation_log_id" integer NOT NULL,
+	"tenant_id" integer,
+	"entity_type" varchar(96) NOT NULL,
+	"entity_key" varchar(512) NOT NULL,
+	"role" "entity_subject_role" DEFAULT 'primary' NOT NULL,
+	CONSTRAINT "operation_log_subjects_operation_log_id_entity_type_entity_key_role_pk" PRIMARY KEY("operation_log_id","entity_type","entity_key","role"),
+	CONSTRAINT "operation_log_subjects_entity_type_check" CHECK (length("operation_log_subjects"."entity_type") > 0),
+	CONSTRAINT "operation_log_subjects_entity_key_check" CHECK (length("operation_log_subjects"."entity_key") > 0)
+);
+--> statement-breakpoint
 CREATE TABLE "operation_logs" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "operation_logs_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"user_id" integer,
@@ -1426,6 +1477,55 @@ CREATE TABLE "operation_logs" (
 	"browser" varchar(64),
 	"tenant_id" integer,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "domain_event_subjects" (
+	"event_id" integer NOT NULL,
+	"tenant_id" integer,
+	"entity_type" varchar(96) NOT NULL,
+	"entity_key" varchar(512) NOT NULL,
+	"role" "entity_subject_role" DEFAULT 'related' NOT NULL,
+	CONSTRAINT "domain_event_subjects_event_id_entity_type_entity_key_role_pk" PRIMARY KEY("event_id","entity_type","entity_key","role"),
+	CONSTRAINT "domain_event_subjects_entity_type_check" CHECK (length("domain_event_subjects"."entity_type") > 0),
+	CONSTRAINT "domain_event_subjects_entity_key_check" CHECK (length("domain_event_subjects"."entity_key") > 0)
+);
+--> statement-breakpoint
+CREATE TABLE "domain_events" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "domain_events_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"tenant_id" integer,
+	"event_type" varchar(128) NOT NULL,
+	"schema_version" integer DEFAULT 1 NOT NULL,
+	"payload" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"actor_type" varchar(96),
+	"actor_key" varchar(512),
+	"source_type" varchar(96),
+	"source_key" varchar(512),
+	"trace_id" varchar(128),
+	"parent_ref" varchar(256),
+	"dedupe_key" varchar(192),
+	"occurred_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "domain_events_event_type_check" CHECK (length("domain_events"."event_type") > 0),
+	CONSTRAINT "domain_events_schema_version_check" CHECK ("domain_events"."schema_version" > 0),
+	CONSTRAINT "domain_events_actor_ref_pair_check" CHECK (("domain_events"."actor_type" is null) = ("domain_events"."actor_key" is null)),
+	CONSTRAINT "domain_events_source_ref_pair_check" CHECK (("domain_events"."source_type" is null) = ("domain_events"."source_key" is null))
+);
+--> statement-breakpoint
+CREATE TABLE "entity_relation_edges" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "entity_relation_edges_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"tenant_id" integer,
+	"source_type" varchar(96) NOT NULL,
+	"source_key" varchar(512) NOT NULL,
+	"relation_key" varchar(128) NOT NULL,
+	"target_type" varchar(96) NOT NULL,
+	"target_key" varchar(512) NOT NULL,
+	"metadata" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"created_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "entity_relation_edges_source_type_check" CHECK (length("entity_relation_edges"."source_type") > 0),
+	CONSTRAINT "entity_relation_edges_source_key_check" CHECK (length("entity_relation_edges"."source_key") > 0),
+	CONSTRAINT "entity_relation_edges_relation_key_check" CHECK (length("entity_relation_edges"."relation_key") > 0),
+	CONSTRAINT "entity_relation_edges_target_type_check" CHECK (length("entity_relation_edges"."target_type") > 0),
+	CONSTRAINT "entity_relation_edges_target_key_check" CHECK (length("entity_relation_edges"."target_key") > 0)
 );
 --> statement-breakpoint
 CREATE TABLE "analytics_daily_rollup" (
@@ -1586,37 +1686,6 @@ CREATE TABLE "analytics_sessions" (
 	"app_id" varchar(64) DEFAULT 'admin' NOT NULL,
 	"environment" varchar(32) DEFAULT 'production' NOT NULL,
 	"member_id" integer,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
-);
---> statement-breakpoint
-CREATE TABLE "analytics_settings" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "analytics_settings_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
-	"tenant_id" integer,
-	"enabled" boolean DEFAULT true NOT NULL,
-	"sample_rate" real DEFAULT 1 NOT NULL,
-	"track_pageviews" boolean DEFAULT true NOT NULL,
-	"track_clicks" boolean DEFAULT true NOT NULL,
-	"track_performance" boolean DEFAULT true NOT NULL,
-	"track_errors" boolean DEFAULT true NOT NULL,
-	"track_api" boolean DEFAULT true NOT NULL,
-	"mask_inputs" boolean DEFAULT true NOT NULL,
-	"respect_dnt" boolean DEFAULT false NOT NULL,
-	"anonymize_ip" boolean DEFAULT false NOT NULL,
-	"blacklist_paths" jsonb DEFAULT '[]'::jsonb NOT NULL,
-	"error_ignore_patterns" jsonb DEFAULT '[]'::jsonb NOT NULL,
-	"retention_days" integer DEFAULT 180 NOT NULL,
-	"error_retention_days" integer DEFAULT 90 NOT NULL,
-	"session_timeout_minutes" integer DEFAULT 30 NOT NULL,
-	"track_replay" boolean DEFAULT false NOT NULL,
-	"replay_session_sample_rate" real DEFAULT 0 NOT NULL,
-	"replay_on_error" boolean DEFAULT true NOT NULL,
-	"replay_mask_all_text" boolean DEFAULT false NOT NULL,
-	"replay_block_selector" varchar(256) DEFAULT '' NOT NULL,
-	"replay_retention_days" integer DEFAULT 30 NOT NULL,
-	"replay_storage_quota_mb" integer DEFAULT 4096 NOT NULL,
-	"created_by" integer,
-	"updated_by" integer,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -1942,6 +2011,48 @@ CREATE TABLE "announcements" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "workflow_approval_slots" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "workflow_approval_slots_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"activation_id" varchar(36) NOT NULL,
+	"origin" "workflow_approval_slot_origin" NOT NULL,
+	"group_id" integer,
+	"original_assignee_id" integer,
+	"current_assignee_id" integer,
+	"status" "workflow_approval_slot_status" DEFAULT 'pending' NOT NULL,
+	"order" integer,
+	"mandatory" boolean DEFAULT false NOT NULL,
+	"current_task_id" integer,
+	"tenant_id" integer,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "workflow_approval_slots_id_activation_unique" UNIQUE("id","activation_id"),
+	CONSTRAINT "workflow_approval_slots_origin_group_check" CHECK (("workflow_approval_slots"."origin" = 'base' and "workflow_approval_slots"."group_id" is null) or ("workflow_approval_slots"."origin" = 'addSign' and "workflow_approval_slots"."group_id" is not null))
+);
+--> statement-breakpoint
+CREATE TABLE "workflow_attachment_links" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "workflow_attachment_links_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"instance_id" integer NOT NULL,
+	"task_id" integer,
+	"comment_id" integer,
+	"file_id" uuid NOT NULL,
+	"source" varchar(16) NOT NULL,
+	"source_key" varchar(512) NOT NULL,
+	"field_keys" text[] DEFAULT '{}'::text[] NOT NULL,
+	"tenant_id" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "workflow_attachment_links_source_file_unique" UNIQUE("instance_id","source","source_key","file_id"),
+	CONSTRAINT "workflow_attachment_links_source_check" CHECK (("workflow_attachment_links"."source" = 'form' and "workflow_attachment_links"."task_id" is null and "workflow_attachment_links"."comment_id" is null and cardinality("workflow_attachment_links"."field_keys") > 0) or ("workflow_attachment_links"."source" = 'task' and "workflow_attachment_links"."task_id" is not null and "workflow_attachment_links"."comment_id" is null and "workflow_attachment_links"."source_key" = "workflow_attachment_links"."task_id"::text and cardinality("workflow_attachment_links"."field_keys") = 0) or ("workflow_attachment_links"."source" = 'comment' and "workflow_attachment_links"."comment_id" is not null and "workflow_attachment_links"."task_id" is null and "workflow_attachment_links"."source_key" = "workflow_attachment_links"."comment_id"::text and cardinality("workflow_attachment_links"."field_keys") = 0))
+);
+--> statement-breakpoint
+CREATE TABLE "workflow_attachment_uploads" (
+	"file_id" uuid PRIMARY KEY NOT NULL,
+	"user_id" integer NOT NULL,
+	"tenant_id" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "workflow_automation_runs" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "workflow_automation_runs_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"rule_id" integer,
@@ -1955,7 +2066,7 @@ CREATE TABLE "workflow_automation_runs" (
 	"error" varchar(512),
 	"duration_ms" integer,
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "workflow_automations" (
@@ -1969,8 +2080,8 @@ CREATE TABLE "workflow_automations" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "workflow_categories" (
@@ -1984,8 +2095,8 @@ CREATE TABLE "workflow_categories" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "workflow_categories_code_uniq" UNIQUE("tenant_id","code")
 );
 --> statement-breakpoint
@@ -1999,7 +2110,8 @@ CREATE TABLE "workflow_comments" (
 	"mentions" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"attachments" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "workflow_comments_id_instance_unique" UNIQUE("id","instance_id")
 );
 --> statement-breakpoint
 CREATE TABLE "workflow_compensation_logs" (
@@ -2010,7 +2122,7 @@ CREATE TABLE "workflow_compensation_logs" (
 	"attachments" jsonb,
 	"operator_id" integer,
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "workflow_compensations" (
@@ -2028,7 +2140,7 @@ CREATE TABLE "workflow_compensations" (
 	"resolved_by" integer,
 	"resolved_at" timestamp with time zone,
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "workflow_connector_invocations" (
@@ -2064,8 +2176,8 @@ CREATE TABLE "workflow_connectors" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "workflow_connectors_code_uniq" UNIQUE("tenant_id","code")
 );
 --> statement-breakpoint
@@ -2083,8 +2195,8 @@ CREATE TABLE "workflow_data_sources" (
 	"remark" varchar(256),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "workflow_data_sources_name_unique" UNIQUE("name")
 );
 --> statement-breakpoint
@@ -2122,8 +2234,8 @@ CREATE TABLE "workflow_definitions" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "workflow_delegations" (
@@ -2139,8 +2251,8 @@ CREATE TABLE "workflow_delegations" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "workflow_engine_health_snapshots" (
@@ -2170,8 +2282,8 @@ CREATE TABLE "workflow_event_subscriptions" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "workflow_forms" (
@@ -2186,8 +2298,8 @@ CREATE TABLE "workflow_forms" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "workflow_forms_code_uniq" UNIQUE("tenant_id","code")
 );
 --> statement-breakpoint
@@ -2202,7 +2314,7 @@ CREATE TABLE "workflow_instance_migrations" (
 	"note" text,
 	"created_by" integer,
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "workflow_instances" (
@@ -2224,7 +2336,7 @@ CREATE TABLE "workflow_instances" (
 	"parent_task_item_index" integer,
 	"biz_type" varchar(64),
 	"biz_id" varchar(64),
-	"suspended_at" timestamp,
+	"suspended_at" timestamp with time zone,
 	"suspend_reason" varchar(500),
 	"archive_file_id" uuid,
 	"archive_sha256" varchar(64),
@@ -2232,8 +2344,8 @@ CREATE TABLE "workflow_instances" (
 	"archived_at" timestamp with time zone,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "workflow_job_executions" (
@@ -2251,10 +2363,11 @@ CREATE TABLE "workflow_job_executions" (
 	"response_body" text,
 	"error_message" text,
 	"duration_ms" integer,
+	"scheduled_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"started_at" timestamp with time zone,
 	"finished_at" timestamp with time zone,
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "workflow_jobs" (
@@ -2286,9 +2399,30 @@ CREATE TABLE "workflow_jobs" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "workflow_jobs_idempotency_key_unique" UNIQUE("idempotency_key")
+);
+--> statement-breakpoint
+CREATE TABLE "workflow_node_activations" (
+	"id" varchar(36) PRIMARY KEY NOT NULL,
+	"instance_id" integer NOT NULL,
+	"token_id" integer,
+	"node_key" varchar(64) NOT NULL,
+	"node_name" varchar(64) NOT NULL,
+	"status" "workflow_approval_activation_status" DEFAULT 'active' NOT NULL,
+	"approve_method" "workflow_approve_method",
+	"approve_ratio" integer,
+	"base_total" integer NOT NULL,
+	"base_required" integer NOT NULL,
+	"settled_at" timestamp with time zone,
+	"tenant_id" integer,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "workflow_node_activations_token_id_unique" UNIQUE("token_id"),
+	CONSTRAINT "workflow_node_activations_base_votes_check" CHECK ("workflow_node_activations"."base_required" >= 0 and "workflow_node_activations"."base_required" <= "workflow_node_activations"."base_total")
 );
 --> statement-breakpoint
 CREATE TABLE "workflow_quick_phrases" (
@@ -2297,8 +2431,8 @@ CREATE TABLE "workflow_quick_phrases" (
 	"content" varchar(255) NOT NULL,
 	"sort" integer DEFAULT 0 NOT NULL,
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "workflow_saved_views" (
@@ -2310,8 +2444,8 @@ CREATE TABLE "workflow_saved_views" (
 	"is_default" boolean DEFAULT false NOT NULL,
 	"sort" integer DEFAULT 0 NOT NULL,
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "workflow_schedules" (
@@ -2331,8 +2465,8 @@ CREATE TABLE "workflow_schedules" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "workflow_serial_counters" (
@@ -2341,6 +2475,20 @@ CREATE TABLE "workflow_serial_counters" (
 	"period_key" varchar(16) NOT NULL,
 	"seq" integer DEFAULT 0 NOT NULL,
 	CONSTRAINT "workflow_serial_counters_def_period_uniq" UNIQUE("definition_id","period_key")
+);
+--> statement-breakpoint
+CREATE TABLE "workflow_sign_groups" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "workflow_sign_groups_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"activation_id" varchar(36) NOT NULL,
+	"anchor_slot_id" integer NOT NULL,
+	"position" "workflow_sign_position" NOT NULL,
+	"sign_mode" "workflow_sign_mode" NOT NULL,
+	"status" "workflow_sign_group_status" NOT NULL,
+	"tenant_id" integer,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "workflow_simulation_cases" (
@@ -2353,8 +2501,8 @@ CREATE TABLE "workflow_simulation_cases" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "workflow_simulation_cases_name_uniq" UNIQUE("definition_id","name")
 );
 --> statement-breakpoint
@@ -2369,7 +2517,7 @@ CREATE TABLE "workflow_task_consults" (
 	"status" "workflow_task_consult_status" DEFAULT 'pending' NOT NULL,
 	"replied_at" timestamp with time zone,
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "workflow_task_transfers" (
@@ -2382,7 +2530,7 @@ CREATE TABLE "workflow_task_transfers" (
 	"reason" varchar(500),
 	"operator_id" integer,
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "workflow_task_urges" (
@@ -2392,7 +2540,7 @@ CREATE TABLE "workflow_task_urges" (
 	"urger_id" integer,
 	"urger_name" varchar(64),
 	"message" varchar(256),
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "workflow_tasks" (
@@ -2408,21 +2556,24 @@ CREATE TABLE "workflow_tasks" (
 	"signature_evidence" jsonb,
 	"attachments" jsonb,
 	"action_at" timestamp with time zone,
-	"task_order" integer,
-	"approve_method" "workflow_approve_method",
-	"approve_ratio" integer,
+	"activated_at" timestamp with time zone,
+	"decision" jsonb,
+	"slot_id" integer,
+	"task_kind" "workflow_task_kind" NOT NULL,
+	"wait_reason" "workflow_task_wait_reason",
 	"external_callback_id" varchar(64),
 	"sub_total" integer,
 	"sub_done" integer DEFAULT 0 NOT NULL,
 	"original_assignee_id" integer,
 	"delegated_from_id" integer,
 	"delegation_mode" varchar(16),
-	"sign_type" varchar(8),
 	"return_origin_node_key" varchar(64),
-	"activation_id" varchar(36) NOT NULL,
+	"activation_id" varchar(36),
 	"cc_read_at" timestamp with time zone,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	CONSTRAINT "workflow_tasks_external_callback_id_unique" UNIQUE("external_callback_id")
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "workflow_tasks_external_callback_id_unique" UNIQUE("external_callback_id"),
+	CONSTRAINT "workflow_tasks_id_instance_unique" UNIQUE("id","instance_id"),
+	CONSTRAINT "workflow_tasks_formal_slot_check" CHECK ("workflow_tasks"."task_kind" not in ('approval', 'suggestion') or ("workflow_tasks"."slot_id" is not null and "workflow_tasks"."activation_id" is not null))
 );
 --> statement-breakpoint
 CREATE TABLE "workflow_templates" (
@@ -2440,8 +2591,8 @@ CREATE TABLE "workflow_templates" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "workflow_templates_code_uniq" UNIQUE("code")
 );
 --> statement-breakpoint
@@ -2454,9 +2605,9 @@ CREATE TABLE "workflow_tokens" (
 	"parent_token_id" integer,
 	"scope_key" varchar(128),
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
-	"consumed_at" timestamp
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"consumed_at" timestamp with time zone
 );
 --> statement-breakpoint
 CREATE TABLE "workflow_job_effects" (
@@ -2486,8 +2637,8 @@ CREATE TABLE "broadcast_campaigns" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "email_configs" (
@@ -2502,8 +2653,8 @@ CREATE TABLE "email_configs" (
 	"status" "status" DEFAULT 'enabled' NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "email_send_logs" (
@@ -2519,7 +2670,7 @@ CREATE TABLE "email_send_logs" (
 	"ip" varchar(64),
 	"tenant_id" integer,
 	"sent_at" timestamp with time zone,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "email_templates" (
@@ -2534,8 +2685,8 @@ CREATE TABLE "email_templates" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "email_templates_code_unique" UNIQUE("code")
 );
 --> statement-breakpoint
@@ -2553,7 +2704,7 @@ CREATE TABLE "in_app_messages" (
 	"link" varchar(512),
 	"dedupe_key" varchar(192),
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "in_app_messages_dedupe_key_unique" UNIQUE("dedupe_key")
 );
 --> statement-breakpoint
@@ -2570,8 +2721,8 @@ CREATE TABLE "in_app_templates" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "in_app_templates_code_unique" UNIQUE("code")
 );
 --> statement-breakpoint
@@ -2589,7 +2740,7 @@ CREATE TABLE "notification_dispatches" (
 	"provider_msg_id" varchar(128),
 	"dedupe_key" varchar(256),
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "notification_event_overrides" (
@@ -2601,8 +2752,8 @@ CREATE TABLE "notification_event_overrides" (
 	"locked" boolean DEFAULT false NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "notification_outbox" (
@@ -2618,12 +2769,24 @@ CREATE TABLE "notification_outbox" (
 	"attempts" integer DEFAULT 0 NOT NULL,
 	"last_error" varchar(500),
 	"claimed_at" timestamp with time zone,
+	"finished_at" timestamp with time zone,
 	"scheduled_at" timestamp with time zone,
 	"digest_key" varchar(128),
 	"trace_id" varchar(64),
 	"parent_ref" varchar(32),
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "notification_outbox_subjects" (
+	"outbox_id" integer NOT NULL,
+	"tenant_id" integer,
+	"entity_type" varchar(96) NOT NULL,
+	"entity_key" varchar(512) NOT NULL,
+	"role" "entity_subject_role" DEFAULT 'related' NOT NULL,
+	CONSTRAINT "notification_outbox_subjects_outbox_id_entity_type_entity_key_role_pk" PRIMARY KEY("outbox_id","entity_type","entity_key","role"),
+	CONSTRAINT "notification_outbox_subjects_entity_type_check" CHECK (length("notification_outbox_subjects"."entity_type") > 0),
+	CONSTRAINT "notification_outbox_subjects_entity_key_check" CHECK (length("notification_outbox_subjects"."entity_key") > 0)
 );
 --> statement-breakpoint
 CREATE TABLE "notification_preferences" (
@@ -2633,8 +2796,8 @@ CREATE TABLE "notification_preferences" (
 	"event_key" varchar(100) NOT NULL,
 	"channel" "notification_channel" NOT NULL,
 	"enabled" boolean NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "notification_recipient_settings" (
@@ -2647,8 +2810,8 @@ CREATE TABLE "notification_recipient_settings" (
 	"quiet_end" varchar(5),
 	"digest_mode" "notification_digest_mode" DEFAULT 'realtime' NOT NULL,
 	"digest_hour" smallint DEFAULT 9 NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "push_configs" (
@@ -2663,8 +2826,8 @@ CREATE TABLE "push_configs" (
 	"remark" text,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "push_configs_app_unique" UNIQUE("app_id")
 );
 --> statement-breakpoint
@@ -2689,7 +2852,7 @@ CREATE TABLE "push_send_logs" (
 	"source" "send_source" DEFAULT 'system' NOT NULL,
 	"tenant_id" integer,
 	"sent_at" timestamp with time zone,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "sms_configs" (
@@ -2706,8 +2869,8 @@ CREATE TABLE "sms_configs" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "sms_send_logs" (
@@ -2727,7 +2890,7 @@ CREATE TABLE "sms_send_logs" (
 	"ip" varchar(64),
 	"tenant_id" integer,
 	"sent_at" timestamp with time zone,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "sms_templates" (
@@ -2744,8 +2907,8 @@ CREATE TABLE "sms_templates" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "sms_templates_code_unique" UNIQUE("code")
 );
 --> statement-breakpoint
@@ -2774,8 +2937,8 @@ CREATE TABLE "db_backups" (
 	"error_message" text,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "db_query_favorites" (
@@ -2785,8 +2948,8 @@ CREATE TABLE "db_query_favorites" (
 	"sql" text NOT NULL,
 	"description" text,
 	"tags" text[] DEFAULT '{}' NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "tags" (
@@ -2799,8 +2962,8 @@ CREATE TABLE "tags" (
 	"sort_order" integer DEFAULT 0 NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "tags_name_unique" UNIQUE("name")
 );
 --> statement-breakpoint
@@ -2829,8 +2992,8 @@ CREATE TABLE "rule_decision_flows" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "rule_decision_flows_key_uniq" UNIQUE("tenant_id","key")
 );
 --> statement-breakpoint
@@ -2875,8 +3038,8 @@ CREATE TABLE "rule_decision_tables" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "rule_decision_tables_key_uniq" UNIQUE("tenant_id","key")
 );
 --> statement-breakpoint
@@ -2896,7 +3059,7 @@ CREATE TABLE "rule_executions" (
 	"matched_row_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"created_by" integer,
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "rule_list_items" (
@@ -2908,7 +3071,7 @@ CREATE TABLE "rule_list_items" (
 	"expires_at" timestamp with time zone,
 	"remark" varchar(255),
 	"created_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "rule_list_items_value_uniq" UNIQUE("list_id","value")
 );
 --> statement-breakpoint
@@ -2922,8 +3085,8 @@ CREATE TABLE "rule_lists" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "rule_lists_key_uniq" UNIQUE("tenant_id","key")
 );
 --> statement-breakpoint
@@ -2942,8 +3105,8 @@ CREATE TABLE "rule_scorecards" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "rule_scorecards_key_uniq" UNIQUE("tenant_id","key")
 );
 --> statement-breakpoint
@@ -2956,8 +3119,8 @@ CREATE TABLE "rule_test_cases" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "rule_test_cases_name_uniq" UNIQUE("table_id","name")
 );
 --> statement-breakpoint
@@ -2974,8 +3137,8 @@ CREATE TABLE "biz_leaves" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "biz_pay_demos" (
@@ -2990,8 +3153,8 @@ CREATE TABLE "biz_pay_demos" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "chat_conversation_members" (
@@ -3004,7 +3167,7 @@ CREATE TABLE "chat_conversation_members" (
 	"is_archived" boolean DEFAULT false NOT NULL,
 	"muted_until" timestamp with time zone,
 	"last_read_at" timestamp with time zone,
-	"joined_at" timestamp DEFAULT now() NOT NULL,
+	"joined_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "chat_conversation_members_conversation_id_user_id_pk" PRIMARY KEY("conversation_id","user_id")
 );
 --> statement-breakpoint
@@ -3018,8 +3181,8 @@ CREATE TABLE "chat_conversations" (
 	"created_by" integer,
 	"updated_by" integer,
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "chat_custom_emojis" (
@@ -3030,7 +3193,7 @@ CREATE TABLE "chat_custom_emojis" (
 	"name" varchar(64),
 	"width" integer,
 	"height" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "chat_group_invites" (
@@ -3042,8 +3205,8 @@ CREATE TABLE "chat_group_invites" (
 	"max_uses" integer,
 	"used_count" integer DEFAULT 0 NOT NULL,
 	"enabled" boolean DEFAULT true NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "chat_group_invites_token_unique" UNIQUE("token")
 );
 --> statement-breakpoint
@@ -3056,8 +3219,8 @@ CREATE TABLE "chat_group_join_requests" (
 	"message" varchar(255),
 	"handled_by" integer,
 	"handled_at" timestamp with time zone,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "chat_message_favorites" (
@@ -3096,8 +3259,8 @@ CREATE TABLE "chat_quick_replies" (
 	"user_id" integer NOT NULL,
 	"content" varchar(500) NOT NULL,
 	"sort" integer DEFAULT 0 NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "chat_scheduled_messages" (
@@ -3111,8 +3274,8 @@ CREATE TABLE "chat_scheduled_messages" (
 	"status" "chat_scheduled_status" DEFAULT 'pending' NOT NULL,
 	"fail_reason" varchar(255),
 	"sent_message_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "chat_webhooks" (
@@ -3127,8 +3290,8 @@ CREATE TABLE "chat_webhooks" (
 	"created_by" integer,
 	"updated_by" integer,
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "chat_webhooks_token_unique" UNIQUE("token")
 );
 --> statement-breakpoint
@@ -3144,8 +3307,8 @@ CREATE TABLE "channel_auto_replies" (
 	"hit_count" integer DEFAULT 0 NOT NULL,
 	"status" "status" DEFAULT 'enabled' NOT NULL,
 	"sort" integer DEFAULT 0 NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "channel_conversations" (
@@ -3160,8 +3323,8 @@ CREATE TABLE "channel_conversations" (
 	"rated_at" timestamp with time zone,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "channel_conversations_channel_id_user_id_pk" PRIMARY KEY("channel_id","user_id")
 );
 --> statement-breakpoint
@@ -3173,8 +3336,8 @@ CREATE TABLE "channel_menus" (
 	"type" "channel_menu_type" DEFAULT 'click' NOT NULL,
 	"value" varchar(500),
 	"sort" integer DEFAULT 0 NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "channel_message_targets" (
@@ -3193,8 +3356,8 @@ CREATE TABLE "channel_message_templates" (
 	"extra" jsonb,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "channel_messages" (
@@ -3224,8 +3387,8 @@ CREATE TABLE "channel_quick_replies" (
 	"sort" integer DEFAULT 0 NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "channel_subscriptions" (
@@ -3233,7 +3396,7 @@ CREATE TABLE "channel_subscriptions" (
 	"user_id" integer NOT NULL,
 	"last_read_at" timestamp with time zone,
 	"is_muted" boolean DEFAULT false NOT NULL,
-	"subscribed_at" timestamp DEFAULT now() NOT NULL,
+	"subscribed_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "channel_subscriptions_channel_id_user_id_pk" PRIMARY KEY("channel_id","user_id")
 );
 --> statement-breakpoint
@@ -3249,8 +3412,8 @@ CREATE TABLE "channels" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "channels_code_unique" UNIQUE("code")
 );
 --> statement-breakpoint
@@ -3266,8 +3429,8 @@ CREATE TABLE "payment_apps" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "payment_apps_open_client_unique" UNIQUE("open_client_id")
 );
 --> statement-breakpoint
@@ -3287,13 +3450,31 @@ CREATE TABLE "payment_cashier_sessions" (
 	"expires_at" timestamp with time zone NOT NULL,
 	"version" integer DEFAULT 0 NOT NULL,
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "payment_cashier_sessions_session_token_unique" UNIQUE("session_token")
+);
+--> statement-breakpoint
+CREATE TABLE "payment_channel_accounts" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_channel_accounts_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"name" varchar(128) NOT NULL,
+	"channel" "payment_channel" NOT NULL,
+	"environment" "payment_channel_environment" NOT NULL,
+	"merchant_id" varchar(128) NOT NULL,
+	"sub_merchant_id" varchar(128) DEFAULT '' NOT NULL,
+	"bill_timezone" varchar(64) DEFAULT 'Asia/Shanghai' NOT NULL,
+	"status" "status" DEFAULT 'enabled' NOT NULL,
+	"tenant_id" integer,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "payment_channel_configs" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_channel_configs_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"channel_account_id" integer NOT NULL,
+	"credential_version" integer DEFAULT 1 NOT NULL,
 	"name" varchar(64) NOT NULL,
 	"channel" "payment_channel" NOT NULL,
 	"status" "status" DEFAULT 'enabled' NOT NULL,
@@ -3323,13 +3504,27 @@ CREATE TABLE "payment_channel_configs" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "payment_channel_configs_callback_token_unique" UNIQUE("callback_token")
+);
+--> statement-breakpoint
+CREATE TABLE "payment_channel_credential_versions" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_channel_credential_versions_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"channel_config_id" integer NOT NULL,
+	"channel_account_id" integer NOT NULL,
+	"version" integer NOT NULL,
+	"encrypted_snapshot" text NOT NULL,
+	"operator_id" integer,
+	"tenant_id" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "payment_channel_credential_versions_config_version_uq" UNIQUE("channel_config_id","version")
 );
 --> statement-breakpoint
 CREATE TABLE "payment_contracts" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_contracts_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"credential_version" integer DEFAULT 1 NOT NULL,
+	"channel_account_id" integer NOT NULL,
 	"contract_no" varchar(64) NOT NULL,
 	"channel" "payment_channel" NOT NULL,
 	"channel_config_id" integer NOT NULL,
@@ -3356,8 +3551,8 @@ CREATE TABLE "payment_contracts" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "payment_contracts_contract_no_unique" UNIQUE("contract_no")
 );
 --> statement-breakpoint
@@ -3373,8 +3568,8 @@ CREATE TABLE "payment_deduct_plans" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "payment_dispute_replies" (
@@ -3383,7 +3578,7 @@ CREATE TABLE "payment_dispute_replies" (
 	"author" "payment_dispute_reply_author" DEFAULT 'merchant' NOT NULL,
 	"content" text NOT NULL,
 	"operator_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "payment_disputes" (
@@ -3407,8 +3602,8 @@ CREATE TABLE "payment_disputes" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "payment_disputes_dispute_no_unique" UNIQUE("dispute_no")
 );
 --> statement-breakpoint
@@ -3421,7 +3616,7 @@ CREATE TABLE "payment_events" (
 	"attempts" integer DEFAULT 0 NOT NULL,
 	"last_error" varchar(512),
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"processed_at" timestamp with time zone
 );
 --> statement-breakpoint
@@ -3440,12 +3635,13 @@ CREATE TABLE "payment_fee_rules" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "payment_fund_reservations" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_fund_reservations_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"channel_account_id" integer NOT NULL,
 	"reservation_no" varchar(64) NOT NULL,
 	"account_id" integer NOT NULL,
 	"source_type" varchar(64) NOT NULL,
@@ -3463,8 +3659,8 @@ CREATE TABLE "payment_fund_reservations" (
 	"finalized_at" timestamp with time zone,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "payment_fund_reservations_reservation_no_unique" UNIQUE("reservation_no"),
 	CONSTRAINT "payment_fund_reservations_amount_positive_check" CHECK ("payment_fund_reservations"."amount" > 0)
 );
@@ -3477,13 +3673,15 @@ CREATE TABLE "payment_journal_lines" (
 	"debit_amount" bigint DEFAULT 0 NOT NULL,
 	"credit_amount" bigint DEFAULT 0 NOT NULL,
 	"memo" varchar(256),
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "payment_journal_lines_journal_line_unique" UNIQUE("journal_id","line_no"),
 	CONSTRAINT "payment_journal_lines_single_side_check" CHECK ((("payment_journal_lines"."debit_amount" > 0 and "payment_journal_lines"."credit_amount" = 0) or ("payment_journal_lines"."credit_amount" > 0 and "payment_journal_lines"."debit_amount" = 0)))
 );
 --> statement-breakpoint
 CREATE TABLE "payment_journals" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_journals_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"credential_version" integer DEFAULT 1 NOT NULL,
+	"channel_account_id" integer NOT NULL,
 	"journal_no" varchar(64) NOT NULL,
 	"source_type" varchar(64) NOT NULL,
 	"source_id" varchar(128) NOT NULL,
@@ -3496,12 +3694,13 @@ CREATE TABLE "payment_journals" (
 	"operator_id" integer,
 	"tenant_id" integer,
 	"posted_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "payment_journals_journal_no_unique" UNIQUE("journal_no")
 );
 --> statement-breakpoint
 CREATE TABLE "payment_ledger_accounts" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_ledger_accounts_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"channel_account_id" integer NOT NULL,
 	"account_no" varchar(64) NOT NULL,
 	"name" varchar(128) NOT NULL,
 	"code" "payment_ledger_account_code" NOT NULL,
@@ -3513,8 +3712,8 @@ CREATE TABLE "payment_ledger_accounts" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "payment_ledger_accounts_account_no_unique" UNIQUE("account_no")
 );
 --> statement-breakpoint
@@ -3545,8 +3744,8 @@ CREATE TABLE "payment_links" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "payment_links_link_no_unique" UNIQUE("link_no"),
 	CONSTRAINT "payment_links_token_unique" UNIQUE("token")
 );
@@ -3562,8 +3761,8 @@ CREATE TABLE "payment_method_configs" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "payment_notify_logs" (
@@ -3585,11 +3784,13 @@ CREATE TABLE "payment_notify_logs" (
 	"message" varchar(512),
 	"ip" varchar(64),
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "payment_orders" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_orders_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"credential_version" integer DEFAULT 1 NOT NULL,
+	"channel_account_id" integer NOT NULL,
 	"order_no" varchar(64) NOT NULL,
 	"out_trade_no" varchar(64) NOT NULL,
 	"channel_trade_no" varchar(128),
@@ -3625,14 +3826,16 @@ CREATE TABLE "payment_orders" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "payment_orders_order_no_unique" UNIQUE("order_no"),
-	CONSTRAINT "payment_orders_config_out_trade_no_uq" UNIQUE("channel_config_id","out_trade_no")
+	CONSTRAINT "payment_orders_account_out_trade_no_uq" UNIQUE("channel_account_id","out_trade_no")
 );
 --> statement-breakpoint
 CREATE TABLE "payment_preauths" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_preauths_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"credential_version" integer DEFAULT 1 NOT NULL,
+	"channel_account_id" integer NOT NULL,
 	"preauth_no" varchar(64) NOT NULL,
 	"channel" "payment_channel" NOT NULL,
 	"channel_config_id" integer NOT NULL,
@@ -3657,56 +3860,15 @@ CREATE TABLE "payment_preauths" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "payment_preauths_preauth_no_unique" UNIQUE("preauth_no")
-);
---> statement-breakpoint
-CREATE TABLE "payment_recon_batches" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_recon_batches_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
-	"batch_no" varchar(64) NOT NULL,
-	"channel" "payment_channel" NOT NULL,
-	"app_id" integer NOT NULL,
-	"channel_config_id" integer NOT NULL,
-	"currency" varchar(8) DEFAULT 'CNY' NOT NULL,
-	"bill_date" varchar(10) NOT NULL,
-	"source" "payment_recon_source" DEFAULT 'manual_upload' NOT NULL,
-	"status" "payment_recon_status" DEFAULT 'pending' NOT NULL,
-	"local_count" integer DEFAULT 0 NOT NULL,
-	"local_amount" integer DEFAULT 0 NOT NULL,
-	"channel_count" integer DEFAULT 0 NOT NULL,
-	"channel_amount" integer DEFAULT 0 NOT NULL,
-	"matched_count" integer DEFAULT 0 NOT NULL,
-	"diff_count" integer DEFAULT 0 NOT NULL,
-	"remark" varchar(256),
-	"tenant_id" integer,
-	"created_by" integer,
-	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
-	CONSTRAINT "payment_recon_batches_batch_no_unique" UNIQUE("batch_no")
-);
---> statement-breakpoint
-CREATE TABLE "payment_recon_items" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_recon_items_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
-	"batch_id" integer NOT NULL,
-	"order_no" varchar(64),
-	"channel_trade_no" varchar(128),
-	"local_amount" integer,
-	"channel_amount" integer,
-	"local_status" varchar(32),
-	"channel_status" varchar(32),
-	"result" "payment_recon_result" NOT NULL,
-	"handle_status" "payment_recon_handle_status",
-	"handle_remark" varchar(256),
-	"handled_at" timestamp with time zone,
-	"handled_by_id" integer,
-	"remark" varchar(256),
-	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "payment_refunds" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_refunds_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"credential_version" integer DEFAULT 1 NOT NULL,
+	"channel_account_id" integer NOT NULL,
 	"refund_no" varchar(64) NOT NULL,
 	"out_refund_no" varchar(64) NOT NULL,
 	"order_no" varchar(64) NOT NULL,
@@ -3732,8 +3894,8 @@ CREATE TABLE "payment_refunds" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "payment_refunds_refund_no_unique" UNIQUE("refund_no")
 );
 --> statement-breakpoint
@@ -3753,7 +3915,7 @@ CREATE TABLE "payment_risk_hits" (
 	"user_id" integer,
 	"client_ip" varchar(64),
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "payment_risk_reviews" (
@@ -3775,8 +3937,8 @@ CREATE TABLE "payment_risk_reviews" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "payment_risk_reviews_review_no_unique" UNIQUE("review_no")
 );
 --> statement-breakpoint
@@ -3797,12 +3959,14 @@ CREATE TABLE "payment_risk_rules" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "payment_settlement_batches" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_settlement_batches_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"credential_version" integer DEFAULT 1 NOT NULL,
+	"channel_account_id" integer NOT NULL,
 	"batch_no" varchar(64) NOT NULL,
 	"channel" "payment_channel" NOT NULL,
 	"app_id" integer NOT NULL,
@@ -3825,13 +3989,14 @@ CREATE TABLE "payment_settlement_batches" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "payment_settlement_batches_batch_no_unique" UNIQUE("batch_no")
 );
 --> statement-breakpoint
 CREATE TABLE "payment_settlement_items" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_settlement_items_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"channel_account_id" integer NOT NULL,
 	"batch_id" integer NOT NULL,
 	"journal_line_id" integer NOT NULL,
 	"amount" bigint NOT NULL,
@@ -3839,7 +4004,7 @@ CREATE TABLE "payment_settlement_items" (
 	"channel_config_id" integer NOT NULL,
 	"currency" varchar(8) NOT NULL,
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "payment_settlement_items_journal_line_unique" UNIQUE("journal_line_id"),
 	CONSTRAINT "payment_settlement_items_batch_line_unique" UNIQUE("batch_id","journal_line_id"),
 	CONSTRAINT "payment_settlement_items_amount_nonzero_check" CHECK ("payment_settlement_items"."amount" <> 0)
@@ -3860,8 +4025,8 @@ CREATE TABLE "payment_sharing_orders" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "payment_sharing_orders_sharing_no_unique" UNIQUE("sharing_no")
 );
 --> statement-breakpoint
@@ -3877,8 +4042,8 @@ CREATE TABLE "payment_sharing_receivers" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "payment_sharing_reversals" (
@@ -3899,14 +4064,16 @@ CREATE TABLE "payment_sharing_reversals" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "payment_sharing_reversals_reversal_no_unique" UNIQUE("reversal_no"),
 	CONSTRAINT "payment_sharing_reversals_sharing_order_unique" UNIQUE("sharing_order_id")
 );
 --> statement-breakpoint
 CREATE TABLE "payment_transfers" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_transfers_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"credential_version" integer DEFAULT 1 NOT NULL,
+	"channel_account_id" integer NOT NULL,
 	"transfer_no" varchar(64) NOT NULL,
 	"out_transfer_no" varchar(64) NOT NULL,
 	"channel" "payment_channel" NOT NULL,
@@ -3937,10 +4104,206 @@ CREATE TABLE "payment_transfers" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "payment_transfers_transfer_no_unique" UNIQUE("transfer_no"),
 	CONSTRAINT "payment_transfers_config_out_no_uq" UNIQUE("channel_config_id","out_transfer_no")
+);
+--> statement-breakpoint
+CREATE TABLE "payment_bank_matches" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_bank_matches_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"account_id" integer NOT NULL,
+	"bank_entry_id" integer NOT NULL,
+	"settlement_entry_id" integer NOT NULL,
+	"amount" bigint NOT NULL,
+	"tenant_id" integer,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "payment_bank_matches_pair_unique" UNIQUE("bank_entry_id","settlement_entry_id"),
+	CONSTRAINT "payment_bank_matches_positive_amount" CHECK ("payment_bank_matches"."amount" > 0),
+	CONSTRAINT "payment_bank_matches_distinct_entries" CHECK ("payment_bank_matches"."bank_entry_id" <> "payment_bank_matches"."settlement_entry_id")
+);
+--> statement-breakpoint
+CREATE TABLE "payment_recon_adjustments" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_recon_adjustments_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"case_id" integer NOT NULL,
+	"case_version" integer NOT NULL,
+	"application_id" integer NOT NULL,
+	"channel_config_id" integer NOT NULL,
+	"amount" bigint NOT NULL,
+	"direction" "payment_recon_direction" NOT NULL,
+	"reason" text NOT NULL,
+	"evidence" jsonb NOT NULL,
+	"status" "payment_recon_adjustment_status" DEFAULT 'draft' NOT NULL,
+	"workflow_instance_id" integer,
+	"journal_id" integer,
+	"reversal_of_id" integer,
+	"applicant_id" integer NOT NULL,
+	"approver_id" integer,
+	"approved_at" timestamp with time zone,
+	"executed_at" timestamp with time zone,
+	"tenant_id" integer,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "payment_recon_adjustments_journal_unique" UNIQUE("journal_id"),
+	CONSTRAINT "payment_recon_adjustments_positive_amount" CHECK ("payment_recon_adjustments"."amount" > 0),
+	CONSTRAINT "payment_recon_adjustments_four_eyes" CHECK ("payment_recon_adjustments"."approver_id" is null or "payment_recon_adjustments"."approver_id" <> "payment_recon_adjustments"."applicant_id"),
+	CONSTRAINT "payment_recon_adjustments_execution_journal" CHECK ("payment_recon_adjustments"."status" not in ('executed', 'reversed') or ("payment_recon_adjustments"."journal_id" is not null and "payment_recon_adjustments"."executed_at" is not null))
+);
+--> statement-breakpoint
+CREATE TABLE "payment_recon_case_events" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_recon_case_events_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"case_id" integer NOT NULL,
+	"action" varchar(64) NOT NULL,
+	"actor_id" integer,
+	"remark" text,
+	"before" jsonb,
+	"after" jsonb,
+	"tenant_id" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "payment_recon_cases" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_recon_cases_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"account_id" integer NOT NULL,
+	"period_id" integer NOT NULL,
+	"case_key" varchar(320) NOT NULL,
+	"entry_key" varchar(256) NOT NULL,
+	"type" "payment_recon_case_type" NOT NULL,
+	"stage" "payment_statement_type" NOT NULL,
+	"status" "payment_recon_case_status" DEFAULT 'open' NOT NULL,
+	"version" integer DEFAULT 1 NOT NULL,
+	"last_run_id" integer NOT NULL,
+	"application_id" integer,
+	"order_id" integer,
+	"refund_id" integer,
+	"local_amount" bigint,
+	"channel_amount" bigint,
+	"currency" varchar(3) NOT NULL,
+	"evidence" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"assigned_to" integer,
+	"due_at" timestamp with time zone,
+	"resolution" text,
+	"tenant_id" integer,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "payment_recon_cases_period_key_unique" UNIQUE("period_id","case_key"),
+	CONSTRAINT "payment_recon_cases_positive_version" CHECK ("payment_recon_cases"."version" > 0)
+);
+--> statement-breakpoint
+CREATE TABLE "payment_recon_runs" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_recon_runs_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"statement_id" integer NOT NULL,
+	"rule_version" varchar(64) NOT NULL,
+	"status" "payment_recon_run_status" DEFAULT 'pending' NOT NULL,
+	"local_snapshot" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"snapshot_context" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"matched_count" integer DEFAULT 0 NOT NULL,
+	"diff_count" integer DEFAULT 0 NOT NULL,
+	"total_count" integer DEFAULT 0 NOT NULL,
+	"task_id" integer,
+	"started_at" timestamp with time zone,
+	"finished_at" timestamp with time zone,
+	"error" text,
+	"tenant_id" integer,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "payment_statement_entries" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_statement_entries_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"statement_id" integer NOT NULL,
+	"entry_key" varchar(256) NOT NULL,
+	"type" "payment_statement_entry_type" NOT NULL,
+	"merchant_order_no" varchar(128),
+	"merchant_refund_no" varchar(128),
+	"provider_transaction_id" varchar(128),
+	"provider_refund_id" varchar(128),
+	"reference" varchar(256),
+	"currency" varchar(3) NOT NULL,
+	"amount" bigint NOT NULL,
+	"direction" "payment_recon_direction" NOT NULL,
+	"status" varchar(64) NOT NULL,
+	"occurred_at" timestamp with time zone NOT NULL,
+	"application_id" integer,
+	"raw" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"line_no" integer NOT NULL,
+	"fee_amount" bigint,
+	"net_amount" bigint,
+	"balance" bigint,
+	"tenant_id" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "payment_statement_entries_statement_key_unique" UNIQUE("statement_id","entry_key"),
+	CONSTRAINT "payment_statement_entries_nonnegative_amount" CHECK ("payment_statement_entries"."amount" >= 0),
+	CONSTRAINT "payment_statement_entries_positive_line" CHECK ("payment_statement_entries"."line_no" > 0)
+);
+--> statement-breakpoint
+CREATE TABLE "payment_statement_files" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_statement_files_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"statement_id" integer NOT NULL,
+	"storage_key" varchar(1024) NOT NULL,
+	"storage_config_id" integer,
+	"storage_provider" varchar(32) NOT NULL,
+	"bucket_name" varchar(256),
+	"filename" varchar(255) NOT NULL,
+	"mime_type" varchar(128) NOT NULL,
+	"sha256" varchar(64) NOT NULL,
+	"provider_hash" varchar(256),
+	"byte_length" integer NOT NULL,
+	"tenant_id" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "payment_statement_files_identity_unique" UNIQUE("statement_id","sha256","filename"),
+	CONSTRAINT "payment_statement_files_nonnegative_length" CHECK ("payment_statement_files"."byte_length" >= 0)
+);
+--> statement-breakpoint
+CREATE TABLE "payment_statement_periods" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_statement_periods_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"account_id" integer NOT NULL,
+	"bill_date" date NOT NULL,
+	"type" "payment_statement_type" NOT NULL,
+	"currency" varchar(3) DEFAULT 'CNY' NOT NULL,
+	"status" "payment_statement_period_status" DEFAULT 'expected' NOT NULL,
+	"next_attempt_at" timestamp with time zone,
+	"deadline_at" timestamp with time zone,
+	"last_error" text,
+	"current_statement_id" integer,
+	"task_id" integer,
+	"generation" integer DEFAULT 0 NOT NULL,
+	"completed_at" timestamp with time zone,
+	"tenant_id" integer,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "payment_statement_periods_scope_unique" UNIQUE("account_id","bill_date","type","currency")
+);
+--> statement-breakpoint
+CREATE TABLE "payment_statements" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "payment_statements_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"period_id" integer NOT NULL,
+	"version" integer NOT NULL,
+	"source" "payment_statement_source" NOT NULL,
+	"content_hash" varchar(64) NOT NULL,
+	"parser_version" varchar(64) NOT NULL,
+	"status" "payment_statement_status" DEFAULT 'archived' NOT NULL,
+	"summary" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"verification" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"tenant_id" integer,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "payment_statements_period_source_hash_unique" UNIQUE("period_id","source","content_hash"),
+	CONSTRAINT "payment_statements_period_version_unique" UNIQUE("period_id","version"),
+	CONSTRAINT "payment_statements_positive_version" CHECK ("payment_statements"."version" > 0)
 );
 --> statement-breakpoint
 CREATE TABLE "ai_agents" (
@@ -3960,8 +4323,8 @@ CREATE TABLE "ai_agents" (
 	"suggested_questions" text[],
 	"usage_count" integer DEFAULT 0 NOT NULL,
 	"is_enabled" boolean DEFAULT true NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "ai_arena_votes" (
@@ -3971,7 +4334,7 @@ CREATE TABLE "ai_arena_votes" (
 	"model_a" varchar(100) NOT NULL,
 	"model_b" varchar(100) NOT NULL,
 	"winner" varchar(10) NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "ai_conversations" (
@@ -3987,8 +4350,8 @@ CREATE TABLE "ai_conversations" (
 	"agent_id" integer,
 	"tags" text[],
 	"active_leaf_msg_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "ai_http_tools" (
@@ -4002,8 +4365,8 @@ CREATE TABLE "ai_http_tools" (
 	"is_enabled" boolean DEFAULT true NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "ai_kb_chunks" (
@@ -4023,7 +4386,7 @@ CREATE TABLE "ai_kb_documents" (
 	"chunk_count" integer DEFAULT 0 NOT NULL,
 	"char_count" integer DEFAULT 0 NOT NULL,
 	"error" varchar(500),
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "ai_knowledge_bases" (
@@ -4032,8 +4395,8 @@ CREATE TABLE "ai_knowledge_bases" (
 	"description" varchar(300),
 	"user_id" integer NOT NULL,
 	"embedding_model" varchar(100),
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "ai_messages" (
@@ -4052,12 +4415,12 @@ CREATE TABLE "ai_messages" (
 	"feedback_reason" varchar(200),
 	"feedback_status" "ai_feedback_status",
 	"feedback_remark" varchar(500),
-	"feedback_handled_at" timestamp,
+	"feedback_handled_at" timestamp with time zone,
 	"trace" jsonb,
 	"tool_calls" jsonb,
 	"kb_references" jsonb,
 	"images" jsonb,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "ai_prompt_template_versions" (
@@ -4067,7 +4430,7 @@ CREATE TABLE "ai_prompt_template_versions" (
 	"name" varchar(100) NOT NULL,
 	"content" text NOT NULL,
 	"created_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "ai_prompt_templates" (
@@ -4084,8 +4447,8 @@ CREATE TABLE "ai_prompt_templates" (
 	"is_enabled" boolean DEFAULT true NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "ai_provider_configs" (
@@ -4108,8 +4471,8 @@ CREATE TABLE "ai_provider_configs" (
 	"max_concurrent" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "ai_shared_conversations" (
@@ -4117,16 +4480,16 @@ CREATE TABLE "ai_shared_conversations" (
 	"token" varchar(64) NOT NULL,
 	"conversation_id" integer NOT NULL,
 	"user_id" integer NOT NULL,
-	"expires_at" timestamp,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"expires_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "ai_user_settings" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "ai_user_settings_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"user_id" integer NOT NULL,
 	"settings" jsonb DEFAULT '{}'::jsonb NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "user_ai_configs" (
@@ -4144,8 +4507,8 @@ CREATE TABLE "user_ai_configs" (
 	"capabilities" jsonb,
 	"system_prompt" text,
 	"is_enabled" boolean DEFAULT true NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "api_scopes" (
@@ -4157,8 +4520,8 @@ CREATE TABLE "api_scopes" (
 	"status" "status" DEFAULT 'enabled' NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "api_scopes_code_unique" UNIQUE("code")
 );
 --> statement-breakpoint
@@ -4180,7 +4543,7 @@ CREATE TABLE "app_webhook_deliveries" (
 	"next_retry_at" timestamp with time zone,
 	"started_at" timestamp with time zone,
 	"finished_at" timestamp with time zone,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "app_webhook_deliveries_subscription_event_unique" UNIQUE("subscription_id","event_id")
 );
 --> statement-breakpoint
@@ -4202,8 +4565,8 @@ CREATE TABLE "app_webhook_subscriptions" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "app_webhook_subscriptions_identity_check" CHECK ((("app_webhook_subscriptions"."internal" = true and "app_webhook_subscriptions"."client_id" is null) or ("app_webhook_subscriptions"."internal" = false and "app_webhook_subscriptions"."client_id" is not null)))
 );
 --> statement-breakpoint
@@ -4216,9 +4579,9 @@ CREATE TABLE "oauth2_authorization_codes" (
 	"scopes" text[] DEFAULT '{}' NOT NULL,
 	"code_challenge" varchar(256),
 	"code_challenge_method" varchar(10),
-	"expires_at" timestamp NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL,
 	"used" boolean DEFAULT false NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "oauth2_authorization_codes_code_hash_unique" UNIQUE("code_hash")
 );
 --> statement-breakpoint
@@ -4252,8 +4615,8 @@ CREATE TABLE "oauth2_clients" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "oauth2_clients_client_id_unique" UNIQUE("client_id")
 );
 --> statement-breakpoint
@@ -4263,8 +4626,8 @@ CREATE TABLE "oauth2_token_families" (
 	"user_id" integer,
 	"compromised" boolean DEFAULT false NOT NULL,
 	"revoked" boolean DEFAULT false NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "oauth2_tokens" (
@@ -4276,9 +4639,9 @@ CREATE TABLE "oauth2_tokens" (
 	"client_id" varchar(64) NOT NULL,
 	"user_id" integer,
 	"scopes" text[] DEFAULT '{}' NOT NULL,
-	"expires_at" timestamp,
+	"expires_at" timestamp with time zone,
 	"revoked" boolean DEFAULT false NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "oauth2_tokens_token_hash_unique" UNIQUE("token_hash")
 );
 --> statement-breakpoint
@@ -4287,8 +4650,8 @@ CREATE TABLE "oauth2_user_grants" (
 	"user_id" integer NOT NULL,
 	"client_id" varchar(64) NOT NULL,
 	"scopes" text[] DEFAULT '{}' NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "oauth2_user_grants_user_client_unique" UNIQUE("user_id","client_id")
 );
 --> statement-breakpoint
@@ -4309,7 +4672,7 @@ CREATE TABLE "open_api_call_logs" (
 	"error_message" varchar(512),
 	"request_id" varchar(64),
 	"environment" "open_app_environment" DEFAULT 'production' NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "open_api_call_stats_daily" (
@@ -4324,8 +4687,8 @@ CREATE TABLE "open_api_call_stats_daily" (
 	"failed_calls" bigint DEFAULT 0 NOT NULL,
 	"duration_sum_ms" bigint DEFAULT 0 NOT NULL,
 	"max_duration_ms" integer DEFAULT 0 NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "open_api_call_stats_daily_unique" UNIQUE("stat_date","client_id","path","environment")
 );
 --> statement-breakpoint
@@ -4344,7 +4707,7 @@ CREATE TABLE "open_quota_alerts" (
 	"started_at" timestamp with time zone,
 	"sent_at" timestamp with time zone,
 	"last_error" text,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "open_quota_alerts_dedupe_unique" UNIQUE("client_id","dimension","period","threshold")
 );
 --> statement-breakpoint
@@ -4360,8 +4723,8 @@ CREATE TABLE "rate_plans" (
 	"status" "status" DEFAULT 'enabled' NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "rate_plans_code_unique" UNIQUE("code")
 );
 --> statement-breakpoint
@@ -4381,8 +4744,8 @@ CREATE TABLE "ssh_profiles" (
 	"group_name" varchar(128),
 	"tags" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"order_num" integer DEFAULT 0 NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "terminal_recordings" (
@@ -4395,8 +4758,8 @@ CREATE TABLE "terminal_recordings" (
 	"rows" integer DEFAULT 24 NOT NULL,
 	"duration" real DEFAULT 0 NOT NULL,
 	"events" jsonb DEFAULT '[]'::jsonb NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "terminal_sessions" (
@@ -4411,12 +4774,12 @@ CREATE TABLE "terminal_sessions" (
 	"state" "terminal_session_state" DEFAULT 'active' NOT NULL,
 	"cols" integer DEFAULT 80 NOT NULL,
 	"rows" integer DEFAULT 24 NOT NULL,
-	"started_at" timestamp DEFAULT now() NOT NULL,
-	"last_activity_at" timestamp DEFAULT now() NOT NULL,
-	"ended_at" timestamp,
+	"started_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"last_activity_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"ended_at" timestamp with time zone,
 	"end_reason" varchar(32),
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "ops_hosts" (
@@ -4433,12 +4796,12 @@ CREATE TABLE "ops_hosts" (
 	"host_key_fingerprint" varchar(64),
 	"status" "ops_host_status" DEFAULT 'unknown' NOT NULL,
 	"snapshot" jsonb,
-	"probed_at" timestamp,
+	"probed_at" timestamp with time zone,
 	"probe_error" text,
 	"enabled" boolean DEFAULT true NOT NULL,
 	"remark" varchar(500),
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
 	CONSTRAINT "ops_hosts_name_unique" UNIQUE("name")
@@ -4455,8 +4818,8 @@ CREATE TABLE "checkin_milestones" (
 	"remark" varchar(256),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "checkin_milestones_cumulative_days_unique" UNIQUE("cumulative_days")
 );
 --> statement-breakpoint
@@ -4468,8 +4831,8 @@ CREATE TABLE "checkin_rules" (
 	"remark" varchar(256),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "checkin_rules_day_number_unique" UNIQUE("day_number")
 );
 --> statement-breakpoint
@@ -4480,7 +4843,7 @@ CREATE TABLE "checkin_settings" (
 	"makeup_max_days" integer DEFAULT 7 NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "coupons" (
@@ -4503,8 +4866,8 @@ CREATE TABLE "coupons" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "member_checkin_milestone_awards" (
@@ -4516,7 +4879,7 @@ CREATE TABLE "member_checkin_milestone_awards" (
 	"reward_points" integer DEFAULT 0 NOT NULL,
 	"coupon_id" integer,
 	"member_coupon_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "member_checkin_milestone_awards_member_id_milestone_id_unique" UNIQUE("member_id","milestone_id")
 );
 --> statement-breakpoint
@@ -4529,7 +4892,7 @@ CREATE TABLE "member_checkins" (
 	"experience_awarded" integer DEFAULT 0 NOT NULL,
 	"is_makeup" boolean DEFAULT false NOT NULL,
 	"remark" varchar(256),
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "member_checkins_member_id_checkin_date_unique" UNIQUE("member_id","checkin_date")
 );
 --> statement-breakpoint
@@ -4544,8 +4907,8 @@ CREATE TABLE "member_coupons" (
 	"expire_at" timestamp with time zone,
 	"biz_type" varchar(64),
 	"biz_id" varchar(128),
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "member_coupons_code_unique" UNIQUE("code")
 );
 --> statement-breakpoint
@@ -4562,8 +4925,8 @@ CREATE TABLE "member_levels" (
 	"status" "status" DEFAULT 'enabled' NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "member_levels_level_unique" UNIQUE("level")
 );
 --> statement-breakpoint
@@ -4588,7 +4951,7 @@ CREATE TABLE "member_notifications" (
 	"content" varchar(512),
 	"biz_id" varchar(128),
 	"read_at" timestamp with time zone,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "member_point_accounts" (
@@ -4599,8 +4962,8 @@ CREATE TABLE "member_point_accounts" (
 	"total_earned" integer DEFAULT 0 NOT NULL,
 	"total_spent" integer DEFAULT 0 NOT NULL,
 	"version" integer DEFAULT 0 NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "member_point_transactions" (
@@ -4613,14 +4976,14 @@ CREATE TABLE "member_point_transactions" (
 	"biz_id" varchar(128),
 	"remark" varchar(256),
 	"operator_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "member_tag_bindings" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "member_tag_bindings_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"member_id" integer NOT NULL,
 	"tag_id" integer NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "member_tag_bindings_unique" UNIQUE("member_id","tag_id")
 );
 --> statement-breakpoint
@@ -4633,8 +4996,8 @@ CREATE TABLE "member_tags" (
 	"status" "status" DEFAULT 'enabled' NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "member_tags_name_unique" UNIQUE("name")
 );
 --> statement-breakpoint
@@ -4645,7 +5008,7 @@ CREATE TABLE "member_vip_renewals" (
 	"contract_no" varchar(64),
 	"amount" integer NOT NULL,
 	"vip_expire_after" timestamp with time zone NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "member_vip_renewals_order_no_unique" UNIQUE("order_no")
 );
 --> statement-breakpoint
@@ -4661,7 +5024,7 @@ CREATE TABLE "member_wallet_transactions" (
 	"payment_event_id" varchar(128),
 	"remark" varchar(256),
 	"operator_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "member_wallets" (
@@ -4672,8 +5035,8 @@ CREATE TABLE "member_wallets" (
 	"total_recharge" integer DEFAULT 0 NOT NULL,
 	"total_consume" integer DEFAULT 0 NOT NULL,
 	"version" integer DEFAULT 0 NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "members" (
@@ -4702,8 +5065,8 @@ CREATE TABLE "members" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "monitor_alert_events" (
@@ -4811,7 +5174,11 @@ CREATE TABLE "system_metric_samples" (
 	"net_rx_bps" real DEFAULT 0 NOT NULL,
 	"net_tx_bps" real DEFAULT 0 NOT NULL,
 	"disk_read_bps" real DEFAULT 0 NOT NULL,
-	"disk_write_bps" real DEFAULT 0 NOT NULL
+	"disk_write_bps" real DEFAULT 0 NOT NULL,
+	"jobs_backlog" real,
+	"jobs_stuck" real,
+	"jobs_dead" real,
+	"jobs_failed1h" real
 );
 --> statement-breakpoint
 CREATE TABLE "app_artifacts" (
@@ -4828,8 +5195,8 @@ CREATE TABLE "app_artifacts" (
 	"download_count" integer DEFAULT 0 NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "app_artifacts_release_filename_unique" UNIQUE("release_id","file_name")
 );
 --> statement-breakpoint
@@ -4844,7 +5211,7 @@ CREATE TABLE "app_release_events" (
 	"arch" "app_arch",
 	"version" varchar(32),
 	"device_id" varchar(64),
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "app_releases" (
@@ -4857,11 +5224,11 @@ CREATE TABLE "app_releases" (
 	"mandatory" boolean DEFAULT false NOT NULL,
 	"min_version" varchar(32),
 	"rollout_percent" smallint DEFAULT 100 NOT NULL,
-	"published_at" timestamp,
+	"published_at" timestamp with time zone,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "app_releases_app_channel_version_unique" UNIQUE("app_id","channel","version")
 );
 --> statement-breakpoint
@@ -4874,8 +5241,8 @@ CREATE TABLE "client_apps" (
 	"status" "status" DEFAULT 'enabled' NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "client_apps_app_key_unique" UNIQUE("app_key")
 );
 --> statement-breakpoint
@@ -4893,8 +5260,8 @@ CREATE TABLE "client_devices" (
 	"push_provider" "push_provider",
 	"push_registration_id" varchar(128),
 	"push_enabled" boolean DEFAULT true NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"last_active_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"last_active_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "client_devices_device_id_unique" UNIQUE("device_id")
 );
 --> statement-breakpoint
@@ -4909,10 +5276,10 @@ CREATE TABLE "deploy_releases" (
 	"artifact_id" integer,
 	"run_id" integer,
 	"is_current" boolean DEFAULT false NOT NULL,
-	"current_since" timestamp,
+	"current_since" timestamp with time zone,
 	"size_bytes" bigint,
-	"removed_at" timestamp,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"removed_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "deploy_releases_target_host_name_unique" UNIQUE("target_id","host_id","release_name")
 );
 --> statement-breakpoint
@@ -4924,8 +5291,8 @@ CREATE TABLE "deploy_run_hosts" (
 	"step" "deploy_step",
 	"release_name" varchar(80),
 	"previous_release_name" varchar(80),
-	"started_at" timestamp,
-	"finished_at" timestamp,
+	"started_at" timestamp with time zone,
+	"finished_at" timestamp with time zone,
 	"error" text,
 	CONSTRAINT "deploy_run_hosts_run_host_unique" UNIQUE("run_id","host_id")
 );
@@ -4938,7 +5305,7 @@ CREATE TABLE "deploy_run_logs" (
 	"level" "deploy_log_level" DEFAULT 'info' NOT NULL,
 	"step" "deploy_step",
 	"line" text NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "deploy_run_logs_run_seq_unique" UNIQUE("run_id","seq")
 );
 --> statement-breakpoint
@@ -4959,12 +5326,12 @@ CREATE TABLE "deploy_runs" (
 	"host_failed" smallint DEFAULT 0 NOT NULL,
 	"error" text,
 	"remark" varchar(500),
-	"started_at" timestamp,
-	"finished_at" timestamp,
+	"started_at" timestamp with time zone,
+	"finished_at" timestamp with time zone,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "deploy_target_hosts" (
@@ -4995,8 +5362,8 @@ CREATE TABLE "deploy_targets" (
 	"remark" varchar(500),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "deploy_targets_app_name_unique" UNIQUE("app_id","name")
 );
 --> statement-breakpoint
@@ -5019,8 +5386,8 @@ CREATE TABLE "mp_accounts" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "mp_accounts_app_id_unique" UNIQUE("app_id")
 );
 --> statement-breakpoint
@@ -5040,8 +5407,8 @@ CREATE TABLE "mp_auto_replies" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "mp_broadcasts" (
@@ -5054,14 +5421,14 @@ CREATE TABLE "mp_broadcasts" (
 	"media_id" varchar(128),
 	"status" "mp_broadcast_status" DEFAULT 'draft' NOT NULL,
 	"wechat_msg_id" varchar(64),
-	"scheduled_at" timestamp,
+	"scheduled_at" timestamp with time zone,
 	"error_msg" text,
-	"sent_at" timestamp,
+	"sent_at" timestamp with time zone,
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "mp_conditional_menus" (
@@ -5076,8 +5443,8 @@ CREATE TABLE "mp_conditional_menus" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "mp_drafts" (
@@ -5090,8 +5457,8 @@ CREATE TABLE "mp_drafts" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "mp_fans" (
@@ -5115,8 +5482,8 @@ CREATE TABLE "mp_fans" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "mp_kf_accounts" (
@@ -5132,8 +5499,8 @@ CREATE TABLE "mp_kf_accounts" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "mp_kf_routing_configs" (
@@ -5149,8 +5516,8 @@ CREATE TABLE "mp_kf_routing_configs" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "mp_kf_session_events" (
@@ -5163,7 +5530,7 @@ CREATE TABLE "mp_kf_session_events" (
 	"operator_id" integer,
 	"detail" varchar(255),
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "mp_kf_sessions" (
@@ -5175,12 +5542,12 @@ CREATE TABLE "mp_kf_sessions" (
 	"priority" integer DEFAULT 0 NOT NULL,
 	"source" varchar(32),
 	"unread_count" integer DEFAULT 0 NOT NULL,
-	"last_fan_msg_at" timestamp,
-	"last_kf_msg_at" timestamp,
-	"last_msg_at" timestamp DEFAULT now() NOT NULL,
-	"waiting_since" timestamp,
-	"accepted_at" timestamp,
-	"closed_at" timestamp,
+	"last_fan_msg_at" timestamp with time zone,
+	"last_kf_msg_at" timestamp with time zone,
+	"last_msg_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"waiting_since" timestamp with time zone,
+	"accepted_at" timestamp with time zone,
+	"closed_at" timestamp with time zone,
 	"close_reason" "mp_kf_session_close_reason",
 	"rating" integer,
 	"rating_remark" varchar(255),
@@ -5188,8 +5555,8 @@ CREATE TABLE "mp_kf_sessions" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "mp_materials" (
@@ -5203,8 +5570,8 @@ CREATE TABLE "mp_materials" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "mp_menus" (
@@ -5216,8 +5583,8 @@ CREATE TABLE "mp_menus" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "mp_menus_account_id_unique" UNIQUE("account_id")
 );
 --> statement-breakpoint
@@ -5231,8 +5598,8 @@ CREATE TABLE "mp_message_templates" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "mp_messages" (
@@ -5249,7 +5616,7 @@ CREATE TABLE "mp_messages" (
 	"status" "mp_message_status" DEFAULT 'received' NOT NULL,
 	"error_msg" text,
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "mp_qrcodes" (
@@ -5266,8 +5633,8 @@ CREATE TABLE "mp_qrcodes" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "mp_tags" (
@@ -5279,8 +5646,8 @@ CREATE TABLE "mp_tags" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "mp_template_send_logs" (
@@ -5294,7 +5661,7 @@ CREATE TABLE "mp_template_send_logs" (
 	"error_msg" text,
 	"msg_id" varchar(64),
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "mp_unmatched_keywords" (
@@ -5302,9 +5669,9 @@ CREATE TABLE "mp_unmatched_keywords" (
 	"account_id" integer NOT NULL,
 	"keyword" varchar(128) NOT NULL,
 	"count" integer DEFAULT 1 NOT NULL,
-	"last_at" timestamp DEFAULT now() NOT NULL,
+	"last_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "report_alert_rules" (
@@ -5328,18 +5695,18 @@ CREATE TABLE "report_alert_rules" (
 	"silence_mins" integer DEFAULT 60 NOT NULL,
 	"notify_on_recover" boolean DEFAULT false NOT NULL,
 	"enabled" boolean DEFAULT true NOT NULL,
-	"last_checked_at" timestamp,
+	"last_checked_at" timestamp with time zone,
 	"last_triggered" boolean,
 	"last_value" real,
-	"last_notified_at" timestamp,
+	"last_notified_at" timestamp with time zone,
 	"last_delivery_at" timestamp with time zone,
 	"last_delivery_status" "report_delivery_status",
 	"last_delivery_error" varchar(512),
 	"remark" varchar(256),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "report_alert_rules_source_check" CHECK (("report_alert_rules"."dataset_id" IS NOT NULL) <> ("report_alert_rules"."metric_id" IS NOT NULL))
 );
 --> statement-breakpoint
@@ -5351,8 +5718,8 @@ CREATE TABLE "report_dashboard_categories" (
 	"remark" varchar(256),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "report_dashboard_categories_name_unique" UNIQUE("name")
 );
 --> statement-breakpoint
@@ -5363,12 +5730,12 @@ CREATE TABLE "report_dashboard_comments" (
 	"parent_id" integer,
 	"content" varchar(1000) NOT NULL,
 	"user_id" integer,
-	"resolved_at" timestamp,
+	"resolved_at" timestamp with time zone,
 	"resolved_by" integer,
-	"deleted_at" timestamp,
+	"deleted_at" timestamp with time zone,
 	"deleted_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "report_dashboard_embed_tokens" (
@@ -5383,15 +5750,15 @@ CREATE TABLE "report_dashboard_embed_tokens" (
 	"remark" varchar(256),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "report_dashboard_embed_tokens_token_unique" UNIQUE("token")
 );
 --> statement-breakpoint
 CREATE TABLE "report_dashboard_favorites" (
 	"user_id" integer NOT NULL,
 	"dashboard_id" integer NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "report_dashboard_favorites_user_id_dashboard_id_pk" PRIMARY KEY("user_id","dashboard_id")
 );
 --> statement-breakpoint
@@ -5410,8 +5777,8 @@ CREATE TABLE "report_dashboard_shares" (
 	"allowed_ips" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "report_dashboard_shares_token_unique" UNIQUE("token")
 );
 --> statement-breakpoint
@@ -5435,8 +5802,8 @@ CREATE TABLE "report_dashboard_subscriptions" (
 	"last_summary" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "report_dashboard_versions" (
@@ -5448,8 +5815,8 @@ CREATE TABLE "report_dashboard_versions" (
 	"remark" varchar(256),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "report_dashboards" (
@@ -5469,13 +5836,13 @@ CREATE TABLE "report_dashboards" (
 	"lifecycle_initialized" boolean DEFAULT false NOT NULL,
 	"revision" integer DEFAULT 1 NOT NULL,
 	"published_snapshot" jsonb,
-	"published_at" timestamp,
+	"published_at" timestamp with time zone,
 	"published_by" integer,
 	"remark" varchar(256),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "report_dataset_execution_logs" (
@@ -5496,7 +5863,7 @@ CREATE TABLE "report_dataset_execution_logs" (
 	"error_code" integer,
 	"error_message" varchar(512),
 	"param_keys" jsonb DEFAULT '[]'::jsonb NOT NULL,
-	"executed_at" timestamp DEFAULT now() NOT NULL
+	"executed_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "report_datasets" (
@@ -5518,8 +5885,8 @@ CREATE TABLE "report_datasets" (
 	"remark" varchar(256),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "report_datasources" (
@@ -5539,8 +5906,8 @@ CREATE TABLE "report_datasources" (
 	"remark" varchar(256),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "report_delivery_attempts" (
@@ -5555,12 +5922,13 @@ CREATE TABLE "report_delivery_attempts" (
 	"payload_summary" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"started_at" timestamp with time zone,
 	"completed_at" timestamp with time zone,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "report_delivery_runs" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "report_delivery_runs_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"task_id" integer,
 	"tenant_id" integer,
 	"target_type" "report_delivery_target_type" NOT NULL,
 	"subscription_id" integer,
@@ -5586,8 +5954,8 @@ CREATE TABLE "report_delivery_runs" (
 	"completed_at" timestamp with time zone,
 	"next_retry_at" timestamp with time zone,
 	"requested_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "report_folders" (
@@ -5601,8 +5969,8 @@ CREATE TABLE "report_folders" (
 	"status" "status" DEFAULT 'enabled' NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "report_print_templates" (
@@ -5622,8 +5990,8 @@ CREATE TABLE "report_print_templates" (
 	"remark" varchar(256),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "report_share_access_logs" (
@@ -5633,7 +6001,7 @@ CREATE TABLE "report_share_access_logs" (
 	"action" varchar(16) NOT NULL,
 	"client_ip" varchar(64),
 	"ok" boolean DEFAULT true NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "report_asset_templates" (
@@ -5777,6 +6145,7 @@ CREATE TABLE "report_dq_rules" (
 --> statement-breakpoint
 CREATE TABLE "report_dq_runs" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "report_dq_runs_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"task_id" integer,
 	"tenant_id" integer,
 	"rule_id" integer NOT NULL,
 	"dataset_id" integer NOT NULL,
@@ -6106,7 +6475,7 @@ CREATE TABLE "cms_ad_events" (
 	"ad_id" integer NOT NULL,
 	"slot_id" integer NOT NULL,
 	"event_type" "cms_ad_event_type" NOT NULL,
-	"occurred_at" timestamp DEFAULT now() NOT NULL,
+	"occurred_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"visitor_hash" varchar(64) NOT NULL,
 	"ip_hash" varchar(64) NOT NULL,
 	"user_agent" varchar(500),
@@ -6125,8 +6494,8 @@ CREATE TABLE "cms_ad_slots" (
 	"remark" varchar(200),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_ad_stats" (
@@ -6143,16 +6512,16 @@ CREATE TABLE "cms_ads" (
 	"name" varchar(100) NOT NULL,
 	"image" varchar(500),
 	"link_url" varchar(500),
-	"start_at" timestamp,
-	"end_at" timestamp,
+	"start_at" timestamp with time zone,
+	"end_at" timestamp with time zone,
 	"click_count" integer DEFAULT 0 NOT NULL,
 	"view_count" integer DEFAULT 0 NOT NULL,
 	"sort" integer DEFAULT 0 NOT NULL,
 	"status" "status" DEFAULT 'enabled' NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_channel_users" (
@@ -6188,8 +6557,8 @@ CREATE TABLE "cms_channels" (
 	"settings" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_collect_items" (
@@ -6200,7 +6569,7 @@ CREATE TABLE "cms_collect_items" (
 	"status" "cms_collect_item_status" NOT NULL,
 	"content_id" integer,
 	"error" varchar(500),
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_collect_rules" (
@@ -6221,12 +6590,12 @@ CREATE TABLE "cms_collect_rules" (
 	"localize_images" boolean DEFAULT false NOT NULL,
 	"max_items" integer DEFAULT 50 NOT NULL,
 	"status" "status" DEFAULT 'enabled' NOT NULL,
-	"last_run_at" timestamp,
+	"last_run_at" timestamp with time zone,
 	"remark" varchar(200),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_comments" (
@@ -6242,8 +6611,8 @@ CREATE TABLE "cms_comments" (
 	"risk_flag" varchar(32),
 	"ip" varchar(64),
 	"user_agent" varchar(255),
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_content_channels" (
@@ -6255,14 +6624,14 @@ CREATE TABLE "cms_content_channels" (
 CREATE TABLE "cms_content_favorites" (
 	"member_id" integer NOT NULL,
 	"content_id" integer NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "cms_content_favorites_member_id_content_id_pk" PRIMARY KEY("member_id","content_id")
 );
 --> statement-breakpoint
 CREATE TABLE "cms_content_likes" (
 	"member_id" integer NOT NULL,
 	"content_id" integer NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "cms_content_likes_member_id_content_id_pk" PRIMARY KEY("member_id","content_id")
 );
 --> statement-breakpoint
@@ -6273,7 +6642,7 @@ CREATE TABLE "cms_content_op_logs" (
 	"detail" varchar(500),
 	"operator_id" integer,
 	"operator_name" varchar(50) DEFAULT '系统' NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_content_relations" (
@@ -6293,7 +6662,7 @@ CREATE TABLE "cms_content_tombstones" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_content_tombstones_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"site_id" integer NOT NULL,
 	"content_id" integer NOT NULL,
-	"deleted_at" timestamp DEFAULT now() NOT NULL
+	"deleted_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_content_versions" (
@@ -6305,16 +6674,23 @@ CREATE TABLE "cms_content_versions" (
 	"remark" varchar(200),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_contents" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_contents_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"model_version_id" integer,
+	"owner_id" integer,
+	"locale" varchar(35) DEFAULT 'zh-CN' NOT NULL,
+	"translation_of_id" integer,
+	"source_revision_id" integer,
+	"due_at" timestamp with time zone,
 	"site_id" integer NOT NULL,
 	"channel_id" integer NOT NULL,
 	"model_id" integer,
 	"content_type" "cms_content_type" DEFAULT 'article' NOT NULL,
 	"media_data" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"media" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"title" varchar(255) NOT NULL,
 	"title_style" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"sub_title" varchar(255),
@@ -6336,7 +6712,7 @@ CREATE TABLE "cms_contents" (
 	"static_path" varchar(255),
 	"is_top" boolean DEFAULT false NOT NULL,
 	"top_weight" integer DEFAULT 0 NOT NULL,
-	"top_expire_at" timestamp,
+	"top_expire_at" timestamp with time zone,
 	"is_recommend" boolean DEFAULT false NOT NULL,
 	"is_hot" boolean DEFAULT false NOT NULL,
 	"has_image" boolean DEFAULT false NOT NULL,
@@ -6344,9 +6720,9 @@ CREATE TABLE "cms_contents" (
 	"has_attachment" boolean DEFAULT false NOT NULL,
 	"status" "cms_content_status" DEFAULT 'draft' NOT NULL,
 	"reject_reason" varchar(500),
-	"published_at" timestamp,
-	"scheduled_at" timestamp,
-	"expire_at" timestamp,
+	"published_at" timestamp with time zone,
+	"scheduled_at" timestamp with time zone,
+	"expire_at" timestamp with time zone,
 	"view_count" integer DEFAULT 0 NOT NULL,
 	"like_count" integer DEFAULT 0 NOT NULL,
 	"favorite_count" integer DEFAULT 0 NOT NULL,
@@ -6358,21 +6734,21 @@ CREATE TABLE "cms_contents" (
 	"social_image_alt" varchar(255),
 	"twitter_creator" varchar(100),
 	"search_vector" "tsvector",
-	"deleted_at" timestamp,
-	"archived_at" timestamp,
+	"deleted_at" timestamp with time zone,
+	"archived_at" timestamp with time zone,
 	"mapping_source_id" integer,
 	"distribution_rule_id" integer,
 	"distribution_source_id" integer,
 	"distribution_source_version" integer,
 	"member_id" integer,
 	"dept_id" integer,
-	"locked_at" timestamp,
+	"locked_at" timestamp with time zone,
 	"locked_by" integer,
 	"lock_reason" varchar(500),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_distribution_rules" (
@@ -6386,15 +6762,15 @@ CREATE TABLE "cms_distribution_rules" (
 	"conflict_strategy" "cms_distribution_conflict_strategy" DEFAULT 'skip' NOT NULL,
 	"filters" jsonb DEFAULT '{"statuses":["published"],"contentTypes":[],"keyword":null,"publishedFrom":null,"publishedTo":null}'::jsonb NOT NULL,
 	"schedule_cron" varchar(100),
-	"next_run_at" timestamp,
-	"last_run_at" timestamp,
+	"next_run_at" timestamp with time zone,
+	"last_run_at" timestamp with time zone,
 	"status" "status" DEFAULT 'enabled' NOT NULL,
 	"revision" integer DEFAULT 1 NOT NULL,
 	"remark" varchar(500),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_error_prone_words" (
@@ -6405,8 +6781,8 @@ CREATE TABLE "cms_error_prone_words" (
 	"remark" varchar(200),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "cms_error_prone_words_word_unique" UNIQUE("word")
 );
 --> statement-breakpoint
@@ -6416,7 +6792,7 @@ CREATE TABLE "cms_form_submissions" (
 	"data" jsonb NOT NULL,
 	"ip" varchar(64),
 	"user_agent" varchar(255),
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_forms" (
@@ -6433,8 +6809,8 @@ CREATE TABLE "cms_forms" (
 	"status" "status" DEFAULT 'enabled' NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_friend_link_groups" (
@@ -6447,8 +6823,8 @@ CREATE TABLE "cms_friend_link_groups" (
 	"remark" text,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_friend_links" (
@@ -6463,8 +6839,8 @@ CREATE TABLE "cms_friend_links" (
 	"remark" text,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_hotword_groups" (
@@ -6475,8 +6851,8 @@ CREATE TABLE "cms_hotword_groups" (
 	"status" "status" DEFAULT 'enabled' NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_hotwords" (
@@ -6488,8 +6864,8 @@ CREATE TABLE "cms_hotwords" (
 	"status" "status" DEFAULT 'enabled' NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_interaction_answers" (
@@ -6525,7 +6901,7 @@ CREATE TABLE "cms_interaction_responses" (
 	"ip_hash" varchar(64) NOT NULL,
 	"repeat_key" varchar(80),
 	"request_key" varchar(64),
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_interactions" (
@@ -6543,13 +6919,13 @@ CREATE TABLE "cms_interactions" (
 	"turnstile_site_key" varchar(200),
 	"turnstile_secret" varchar(500),
 	"thank_you_message" varchar(500) DEFAULT '感谢您的参与！' NOT NULL,
-	"start_at" timestamp,
-	"end_at" timestamp,
+	"start_at" timestamp with time zone,
+	"end_at" timestamp with time zone,
 	"response_count" integer DEFAULT 0 NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_link_words" (
@@ -6561,8 +6937,8 @@ CREATE TABLE "cms_link_words" (
 	"status" "status" DEFAULT 'enabled' NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_member_subscriptions" (
@@ -6575,9 +6951,9 @@ CREATE TABLE "cms_member_subscriptions" (
 	"subject_label" varchar(255) NOT NULL,
 	"notification_enabled" boolean DEFAULT true NOT NULL,
 	"active" boolean DEFAULT true NOT NULL,
-	"points_awarded_at" timestamp,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"points_awarded_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_member_view_history" (
@@ -6586,8 +6962,8 @@ CREATE TABLE "cms_member_view_history" (
 	"content_id" integer NOT NULL,
 	"site_id" integer NOT NULL,
 	"view_count" integer DEFAULT 1 NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_model_fields" (
@@ -6596,6 +6972,7 @@ CREATE TABLE "cms_model_fields" (
 	"name" varchar(50) NOT NULL,
 	"label" varchar(100) NOT NULL,
 	"field_type" "cms_field_type" DEFAULT 'text' NOT NULL,
+	"configuration" jsonb,
 	"required" boolean DEFAULT false NOT NULL,
 	"searchable" boolean DEFAULT false NOT NULL,
 	"show_in_list" boolean DEFAULT false NOT NULL,
@@ -6610,12 +6987,14 @@ CREATE TABLE "cms_model_fields" (
 	"sort" integer DEFAULT 0 NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_models" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_models_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"published_version_id" integer,
+	"has_unpublished_changes" boolean DEFAULT false NOT NULL,
 	"owner_site_id" integer,
 	"name" varchar(100) NOT NULL,
 	"code" varchar(50) NOT NULL,
@@ -6625,8 +7004,8 @@ CREATE TABLE "cms_models" (
 	"sort" integer DEFAULT 0 NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "cms_models_code_unique" UNIQUE("code")
 );
 --> statement-breakpoint
@@ -6640,8 +7019,8 @@ CREATE TABLE "cms_open_app_grants" (
 	"remark" varchar(200),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_page_block_acls" (
@@ -6650,7 +7029,33 @@ CREATE TABLE "cms_page_block_acls" (
 	"block_id" varchar(100) NOT NULL,
 	"subject_type" "cms_page_block_acl_subject_type" NOT NULL,
 	"subject_id" integer NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_page_preset_versions" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_page_preset_versions_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"preset_id" integer NOT NULL,
+	"site_id" integer NOT NULL,
+	"version" integer NOT NULL,
+	"name" varchar(100) NOT NULL,
+	"description" varchar(500),
+	"blocks" jsonb NOT NULL,
+	"parameters" jsonb NOT NULL,
+	"note" varchar(500),
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_page_presets" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_page_presets_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"site_id" integer NOT NULL,
+	"name" varchar(100) NOT NULL,
+	"description" varchar(500),
+	"current_version" integer DEFAULT 1 NOT NULL,
+	"block_count" integer NOT NULL,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_pages" (
@@ -6669,8 +7074,8 @@ CREATE TABLE "cms_pages" (
 	"remark" varchar(200),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_publish_artifacts" (
@@ -6689,9 +7094,9 @@ CREATE TABLE "cms_publish_artifacts" (
 	"public_revision" integer DEFAULT 0 NOT NULL,
 	"status" "cms_publish_artifact_status" NOT NULL,
 	"error" text,
-	"generated_at" timestamp,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"generated_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_push_logs" (
@@ -6702,7 +7107,7 @@ CREATE TABLE "cms_push_logs" (
 	"success" boolean NOT NULL,
 	"status_code" integer,
 	"response" text,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_redirects" (
@@ -6715,8 +7120,8 @@ CREATE TABLE "cms_redirects" (
 	"remark" varchar(200),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_resource_folders" (
@@ -6727,8 +7132,8 @@ CREATE TABLE "cms_resource_folders" (
 	"sort" integer DEFAULT 0 NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_resource_refs" (
@@ -6738,7 +7143,7 @@ CREATE TABLE "cms_resource_refs" (
 	"owner_type" "cms_resource_owner_type" NOT NULL,
 	"owner_id" integer NOT NULL,
 	"field" varchar(64) NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_resources" (
@@ -6758,8 +7163,8 @@ CREATE TABLE "cms_resources" (
 	"remark" varchar(200),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_search_logs" (
@@ -6769,13 +7174,14 @@ CREATE TABLE "cms_search_logs" (
 	"result_count" integer DEFAULT 0 NOT NULL,
 	"ip" varchar(64),
 	"device_type" "cms_device_type" DEFAULT 'pc' NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_search_words" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_search_words_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"site_id" integer NOT NULL,
 	"word" varchar(50) NOT NULL,
+	"synonyms" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"type" "cms_search_word_type" DEFAULT 'extension' NOT NULL,
 	"group_name" varchar(100) DEFAULT '默认分组' NOT NULL,
 	"weight" integer DEFAULT 1000 NOT NULL,
@@ -6783,8 +7189,8 @@ CREATE TABLE "cms_search_words" (
 	"remark" varchar(200),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_sensitive_words" (
@@ -6794,8 +7200,8 @@ CREATE TABLE "cms_sensitive_words" (
 	"status" "status" DEFAULT 'enabled' NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "cms_sensitive_words_word_unique" UNIQUE("word")
 );
 --> statement-breakpoint
@@ -6814,8 +7220,8 @@ CREATE TABLE "cms_site_inheritances" (
 	"revision" integer DEFAULT 0 NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_site_users" (
@@ -6853,8 +7259,8 @@ CREATE TABLE "cms_sites" (
 	"remark" text,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "cms_sites_code_unique" UNIQUE("code")
 );
 --> statement-breakpoint
@@ -6864,11 +7270,15 @@ CREATE TABLE "cms_tags" (
 	"name" varchar(50) NOT NULL,
 	"slug" varchar(100) NOT NULL,
 	"group_name" varchar(50),
+	"vocabulary_id" integer,
+	"parent_id" integer,
+	"aliases" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"locale_labels" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"content_count" integer DEFAULT 0 NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_visit_logs" (
@@ -6881,7 +7291,24 @@ CREATE TABLE "cms_visit_logs" (
 	"ip" varchar(64),
 	"device_type" "cms_device_type" DEFAULT 'pc' NOT NULL,
 	"referrer_host" varchar(255),
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_vocabularies" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_vocabularies_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"site_id" integer NOT NULL,
+	"name" varchar(100) NOT NULL,
+	"code" varchar(80) NOT NULL,
+	"description" text,
+	"model_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"required" boolean DEFAULT false NOT NULL,
+	"max_selections" integer DEFAULT 10 NOT NULL,
+	"status" "status" DEFAULT 'enabled' NOT NULL,
+	"sort" integer DEFAULT 0 NOT NULL,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_widget_refs" (
@@ -6893,8 +7320,8 @@ CREATE TABLE "cms_widget_refs" (
 	"field" varchar(100) NOT NULL,
 	"renderer_key" varchar(50) NOT NULL,
 	"style_props" jsonb DEFAULT '{}'::jsonb NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_widget_source_refs" (
@@ -6904,7 +7331,7 @@ CREATE TABLE "cms_widget_source_refs" (
 	"item_id" varchar(100) NOT NULL,
 	"source_type" "cms_widget_source_type" NOT NULL,
 	"source_id" integer NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "cms_widgets" (
@@ -6924,8 +7351,457 @@ CREATE TABLE "cms_widgets" (
 	"remark" varchar(200),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_asset_rights" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_asset_rights_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"resource_id" integer NOT NULL,
+	"source" varchar(500),
+	"license" varchar(500),
+	"expires_at" timestamp with time zone,
+	"revoked" boolean DEFAULT false NOT NULL,
+	"tags" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"alt" text,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_asset_versions" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_asset_versions_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"resource_id" integer NOT NULL,
+	"site_id" integer NOT NULL,
+	"version" integer NOT NULL,
+	"url" varchar(500) NOT NULL,
+	"thumb_url" varchar(500),
+	"file_id" uuid,
+	"mime_type" varchar(128),
+	"width" integer,
+	"height" integer,
+	"size" integer NOT NULL,
+	"content_hash" varchar(64) NOT NULL,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_distribution_sync_states" (
+	"content_id" integer PRIMARY KEY NOT NULL,
+	"source_version" integer NOT NULL,
+	"baseline" jsonb NOT NULL,
+	"target_owned_fields" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"pending" jsonb,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_editorial_note_replies" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_editorial_note_replies_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"note_id" integer NOT NULL,
+	"message" text NOT NULL,
+	"mentioned_user_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_editorial_notes" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_editorial_notes_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"content_id" integer NOT NULL,
+	"revision_id" integer,
+	"field_path" varchar(200),
+	"message" text NOT NULL,
+	"anchor" jsonb,
+	"mentioned_user_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"resolved_by" integer,
+	"resolved_at" timestamp with time zone,
+	"resolved" boolean DEFAULT false NOT NULL,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_model_unique_values" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_model_unique_values_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"site_id" integer NOT NULL,
+	"model_id" integer NOT NULL,
+	"content_id" integer NOT NULL,
+	"field" varchar(500) NOT NULL,
+	"value_hash" varchar(64) NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_model_versions" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_model_versions_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"model_id" integer NOT NULL,
+	"version" integer NOT NULL,
+	"fields" jsonb NOT NULL,
+	"content_hash" varchar(64) NOT NULL,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_component_versions" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_component_versions_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"component_id" integer NOT NULL,
+	"version" integer NOT NULL,
+	"fields" jsonb NOT NULL,
+	"component_version_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"content_hash" varchar(64) NOT NULL,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_components" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_components_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"owner_site_id" integer,
+	"code" varchar(50) NOT NULL,
+	"name" varchar(100) NOT NULL,
+	"description" text,
+	"status" "status" DEFAULT 'enabled' NOT NULL,
+	"fields" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"version" integer DEFAULT 1 NOT NULL,
+	"published_version_id" integer,
+	"has_unpublished_changes" boolean DEFAULT true NOT NULL,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "cms_components_code_unique" UNIQUE("code")
+);
+--> statement-breakpoint
+CREATE TABLE "cms_media_processing" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_media_processing_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"asset_version_id" integer NOT NULL,
+	"subtitle_version_id" integer,
+	"task_id" integer,
+	"status" "cms_media_processing_status" DEFAULT 'pending' NOT NULL,
+	"focal_point" jsonb NOT NULL,
+	"poster_time" real DEFAULT 0 NOT NULL,
+	"subtitle_language" varchar(64) DEFAULT 'zh' NOT NULL,
+	"subtitle_label" varchar(80) DEFAULT '中文字幕' NOT NULL,
+	"result" jsonb,
+	"error_message" text,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_telemetry_attributions" (
+	"event_id" uuid PRIMARY KEY NOT NULL,
+	"site_id" integer NOT NULL,
+	"status" varchar(32) NOT NULL,
+	"origin" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"computed_at" timestamp with time zone NOT NULL,
+	"next_recompute_at" timestamp with time zone,
+	"settled_at" timestamp with time zone
+);
+--> statement-breakpoint
+CREATE TABLE "cms_telemetry_outbox" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_telemetry_outbox_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"site_id" integer NOT NULL,
+	"event_id" uuid NOT NULL,
+	"payload" jsonb NOT NULL,
+	"attempts" integer DEFAULT 0 NOT NULL,
+	"last_error" text,
+	"consecutive_failures" integer DEFAULT 0 NOT NULL,
+	"replay_count" integer DEFAULT 0 NOT NULL,
+	"next_attempt_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"last_attempt_at" timestamp with time zone,
+	"lease_owner" uuid,
+	"lease_expires_at" timestamp with time zone,
+	"dead_letter_at" timestamp with time zone,
+	"delivered_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "cms_telemetry_outbox_event_id_unique" UNIQUE("event_id")
+);
+--> statement-breakpoint
+CREATE TABLE "cms_telemetry_receipts" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_telemetry_receipts_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"site_id" integer NOT NULL,
+	"accepted" integer DEFAULT 0 NOT NULL,
+	"rejected" integer DEFAULT 0 NOT NULL,
+	"duplicates" integer DEFAULT 0 NOT NULL,
+	"reason" varchar(64),
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_collection_states" (
+	"site_id" integer PRIMARY KEY NOT NULL,
+	"enabled" boolean NOT NULL,
+	"known_since" timestamp with time zone DEFAULT now() NOT NULL,
+	"purged_through" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_collection_transitions" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_collection_transitions_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"site_id" integer NOT NULL,
+	"enabled" boolean NOT NULL,
+	"reason" varchar(40) NOT NULL,
+	"deployment_id" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_content_preview_grants" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_content_preview_grants_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"token" varchar(36) NOT NULL,
+	"content_id" integer NOT NULL,
+	"revision_id" integer NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL,
+	"revoked_at" timestamp with time zone,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "cms_content_preview_grants_token_unique" UNIQUE("token")
+);
+--> statement-breakpoint
+CREATE TABLE "cms_content_review_revisions" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_content_review_revisions_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"content_id" integer NOT NULL,
+	"workflow_instance_id" integer NOT NULL,
+	"revision_id" integer NOT NULL,
+	"hash" varchar(64) NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_content_revision_approvals" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_content_revision_approvals_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"revision_id" integer NOT NULL,
+	"hash" varchar(64) NOT NULL,
+	"workflow_instance_id" integer,
+	"created_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_content_revisions" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_content_revisions_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"content_id" integer NOT NULL,
+	"version" integer NOT NULL,
+	"source_version" integer NOT NULL,
+	"schema_version" integer DEFAULT 1 NOT NULL,
+	"kind" "cms_revision_kind" NOT NULL,
+	"hash" varchar(64) NOT NULL,
+	"title" varchar(255) NOT NULL,
+	"snapshot" jsonb NOT NULL,
+	"remark" varchar(200),
+	"created_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_content_working_copies" (
+	"content_id" integer PRIMARY KEY NOT NULL,
+	"version" integer DEFAULT 1 NOT NULL,
+	"editorial_status" "cms_editorial_status" DEFAULT 'draft' NOT NULL,
+	"snapshot" jsonb NOT NULL,
+	"publication_hash" varchar(32) GENERATED ALWAYS AS (md5(( snapshot  - ARRAY['ownerId','dueAt','scheduledAt','translationOfId','sourceRevisionId','bodyDocument']::text[])::text)) STORED,
+	"published_hash" varchar(32),
+	"submitted_revision_id" integer,
+	"approved_revision_id" integer,
+	"published_revision_id" integer,
+	"reject_reason" varchar(500),
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_editorial_task_history" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_editorial_task_history_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"task_id" integer NOT NULL,
+	"round_no" integer NOT NULL,
+	"version" integer NOT NULL,
+	"action" varchar(40) NOT NULL,
+	"note" text,
+	"actor_id" integer,
+	"actor_name" varchar(100),
+	"snapshot" jsonb NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_editorial_task_observations" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_editorial_task_observations_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"task_id" integer NOT NULL,
+	"round_id" integer NOT NULL,
+	"window_days" integer NOT NULL,
+	"due_at" timestamp with time zone NOT NULL,
+	"settles_at" timestamp with time zone NOT NULL,
+	"outcome" varchar(40) DEFAULT 'pending' NOT NULL,
+	"before" jsonb,
+	"after" jsonb,
+	"other_activation_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"computed_at" timestamp with time zone
+);
+--> statement-breakpoint
+CREATE TABLE "cms_editorial_task_rounds" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_editorial_task_rounds_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"task_id" integer NOT NULL,
+	"round_no" integer NOT NULL,
+	"source_evidence" jsonb NOT NULL,
+	"goal" jsonb,
+	"solution_revision_id" integer,
+	"solution_hash" varchar(64),
+	"release_id" integer,
+	"deployment_id" integer,
+	"activation_id" integer,
+	"activated_at" timestamp with time zone,
+	"interrupted_at" timestamp with time zone,
+	"interruption_reason" text,
+	"verified_at" timestamp with time zone,
+	"closed_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_editorial_tasks" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_editorial_tasks_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"site_id" integer NOT NULL,
+	"title" varchar(255) NOT NULL,
+	"description" text DEFAULT '' NOT NULL,
+	"source" "cms_editorial_task_source" DEFAULT 'manual' NOT NULL,
+	"source_key" varchar(100),
+	"source_keyword" varchar(64),
+	"feedback_id" integer,
+	"owner_id" integer,
+	"due_at" timestamp with time zone,
+	"content_id" integer,
+	"status" "cms_editorial_task_status" DEFAULT 'open' NOT NULL,
+	"version" integer DEFAULT 1 NOT NULL,
+	"round_no" integer DEFAULT 1 NOT NULL,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_feedback_cases" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_feedback_cases_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"site_id" integer NOT NULL,
+	"form_id" integer NOT NULL,
+	"submission_id" integer NOT NULL,
+	"title" varchar(255) NOT NULL,
+	"form_name" varchar(100) NOT NULL,
+	"fields" jsonb NOT NULL,
+	"status" "cms_feedback_status" DEFAULT 'new' NOT NULL,
+	"version" integer DEFAULT 1 NOT NULL,
+	"owner_id" integer,
+	"due_at" timestamp with time zone,
+	"resolution" text,
+	"workflow_definition_id" integer,
+	"workflow_instance_id" integer,
+	"workflow_subject_version" integer,
+	"workflow_status" varchar(30),
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_feedback_history" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_feedback_history_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"feedback_id" integer NOT NULL,
+	"version" integer NOT NULL,
+	"action" varchar(40) NOT NULL,
+	"note" text,
+	"actor_id" integer,
+	"actor_name" varchar(100),
+	"snapshot" jsonb NOT NULL,
+	"previous_hash" varchar(64),
+	"hash" varchar(64) NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_form_handling_policies" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_form_handling_policies_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"form_id" integer NOT NULL,
+	"version" integer DEFAULT 1 NOT NULL,
+	"workflow_definition_id" integer,
+	"default_owner_id" integer,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_content_suppressions" (
+	"content_id" integer PRIMARY KEY NOT NULL,
+	"site_id" integer NOT NULL,
+	"reason" text NOT NULL,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_deployments" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_deployments_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"site_id" integer NOT NULL,
+	"release_id" integer NOT NULL,
+	"status" "cms_deployment_status" DEFAULT 'building' NOT NULL,
+	"visibility_epoch" integer DEFAULT 0 NOT NULL,
+	"snapshot" jsonb,
+	"manifest_hash" varchar(64),
+	"artifact_count" integer DEFAULT 0 NOT NULL,
+	"error" text,
+	"activated_at" timestamp with time zone,
+	"task_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"build_plan" jsonb DEFAULT '{"version":1,"phases":[]}'::jsonb NOT NULL,
+	"build_metrics" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_release_activations" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_release_activations_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"site_id" integer NOT NULL,
+	"release_id" integer NOT NULL,
+	"from_generation_id" integer,
+	"to_generation_id" integer NOT NULL,
+	"action" varchar(20) NOT NULL,
+	"operator_id" integer,
+	"operator_name" varchar(100) NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_releases" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_releases_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"site_id" integer NOT NULL,
+	"name" varchar(200) NOT NULL,
+	"status" "cms_release_status" DEFAULT 'draft' NOT NULL,
+	"source" varchar(24) DEFAULT 'manual' NOT NULL,
+	"base_generation_id" integer,
+	"deployment_id" integer,
+	"items" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"configuration_items" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"configuration_snapshot" jsonb DEFAULT '{"tables":{},"replaceAll":[]}'::jsonb NOT NULL,
+	"activate_at" timestamp with time zone,
+	"time_zone" varchar(80) DEFAULT 'Asia/Shanghai' NOT NULL,
+	"auto_activate" boolean DEFAULT false NOT NULL,
+	"error" text,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_site_generations" (
+	"site_id" integer PRIMARY KEY NOT NULL,
+	"active_generation_id" integer,
+	"revision" integer DEFAULT 0 NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "wiki_comments" (
@@ -6936,29 +7812,29 @@ CREATE TABLE "wiki_comments" (
 	"status" "wiki_comment_status" DEFAULT 'visible' NOT NULL,
 	"mentioned_user_ids" integer[] DEFAULT '{}' NOT NULL,
 	"is_question" boolean DEFAULT false NOT NULL,
-	"resolved_at" timestamp,
+	"resolved_at" timestamp with time zone,
 	"author_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "wiki_doc_favorites" (
 	"doc_id" integer NOT NULL,
 	"user_id" integer NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "wiki_doc_favorites_doc_id_user_id_pk" PRIMARY KEY("doc_id","user_id")
 );
 --> statement-breakpoint
 CREATE TABLE "wiki_doc_read_receipts" (
 	"doc_id" integer NOT NULL,
 	"user_id" integer NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "wiki_doc_read_receipts_doc_id_user_id_pk" PRIMARY KEY("doc_id","user_id")
 );
 --> statement-breakpoint
 CREATE TABLE "wiki_doc_subscriptions" (
 	"doc_id" integer NOT NULL,
 	"user_id" integer NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "wiki_doc_subscriptions_doc_id_user_id_pk" PRIMARY KEY("doc_id","user_id")
 );
 --> statement-breakpoint
@@ -6976,7 +7852,7 @@ CREATE TABLE "wiki_doc_versions" (
 	"content" text DEFAULT '' NOT NULL,
 	"change_note" varchar(300),
 	"author_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "wiki_doc_versions_doc_version_uk" UNIQUE("doc_id","version")
 );
 --> statement-breakpoint
@@ -6984,7 +7860,7 @@ CREATE TABLE "wiki_doc_views" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "wiki_doc_views_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"doc_id" integer NOT NULL,
 	"user_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "wiki_docs" (
@@ -7003,17 +7879,17 @@ CREATE TABLE "wiki_docs" (
 	"revision" integer DEFAULT 1 NOT NULL,
 	"require_read_receipt" boolean DEFAULT false NOT NULL,
 	"owner_id" integer,
-	"expire_at" timestamp,
+	"expire_at" timestamp with time zone,
 	"review_cycle_days" integer,
-	"next_review_at" timestamp,
+	"next_review_at" timestamp with time zone,
 	"is_archived" boolean DEFAULT false NOT NULL,
-	"published_at" timestamp,
-	"deleted_at" timestamp,
+	"published_at" timestamp with time zone,
+	"deleted_at" timestamp with time zone,
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "wiki_review_records" (
@@ -7023,7 +7899,7 @@ CREATE TABLE "wiki_review_records" (
 	"action" "wiki_review_action" NOT NULL,
 	"actor_id" integer,
 	"reason" varchar(500),
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "wiki_search_logs" (
@@ -7033,14 +7909,14 @@ CREATE TABLE "wiki_search_logs" (
 	"clicked_doc_id" integer,
 	"user_id" integer,
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "wiki_space_members" (
 	"space_id" integer NOT NULL,
 	"user_id" integer NOT NULL,
 	"role" "wiki_space_member_role" DEFAULT 'viewer' NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "wiki_space_members_space_id_user_id_pk" PRIMARY KEY("space_id","user_id")
 );
 --> statement-breakpoint
@@ -7056,8 +7932,8 @@ CREATE TABLE "wiki_spaces" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "wiki_tags" (
@@ -7066,8 +7942,8 @@ CREATE TABLE "wiki_tags" (
 	"color" varchar(20),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "wiki_tags_name_unique" UNIQUE("name")
 );
 --> statement-breakpoint
@@ -7080,8 +7956,8 @@ CREATE TABLE "wiki_templates" (
 	"sort" integer DEFAULT 0 NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "short_link_clicks" (
@@ -7097,7 +7973,7 @@ CREATE TABLE "short_link_clicks" (
 	"browser" varchar(64),
 	"referer" varchar(512),
 	"is_bot" boolean DEFAULT false NOT NULL,
-	"clicked_at" timestamp DEFAULT now() NOT NULL
+	"clicked_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "short_link_daily_stats" (
@@ -7115,7 +7991,7 @@ CREATE TABLE "short_links" (
 	"title" varchar(128),
 	"redirect_type" "short_link_redirect_type" DEFAULT '302' NOT NULL,
 	"status" "status" DEFAULT 'enabled' NOT NULL,
-	"expires_at" timestamp,
+	"expires_at" timestamp with time zone,
 	"max_visits" integer,
 	"password" varchar(32),
 	"utm_source" varchar(128),
@@ -7127,12 +8003,12 @@ CREATE TABLE "short_links" (
 	"biz_ref" varchar(64),
 	"remark" varchar(256),
 	"total_pv" integer DEFAULT 0 NOT NULL,
-	"last_visit_at" timestamp,
+	"last_visit_at" timestamp with time zone,
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "short_links_code_unique" UNIQUE("code")
 );
 --> statement-breakpoint
@@ -7141,8 +8017,8 @@ CREATE TABLE "marketing_campaigns" (
 	"name" varchar(128) NOT NULL,
 	"type" "marketing_campaign_type" DEFAULT 'lottery' NOT NULL,
 	"status" "marketing_campaign_status" DEFAULT 'draft' NOT NULL,
-	"start_at" timestamp NOT NULL,
-	"end_at" timestamp NOT NULL,
+	"start_at" timestamp with time zone NOT NULL,
+	"end_at" timestamp with time zone NOT NULL,
 	"per_member_limit" integer DEFAULT 1 NOT NULL,
 	"daily_per_member_limit" integer,
 	"landing_url" varchar(2048),
@@ -7150,8 +8026,8 @@ CREATE TABLE "marketing_campaigns" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "marketing_participations" (
@@ -7162,7 +8038,7 @@ CREATE TABLE "marketing_participations" (
 	"prize_name" varchar(128),
 	"grant_status" "marketing_grant_status" DEFAULT 'none' NOT NULL,
 	"grant_note" varchar(256),
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "marketing_prizes" (
@@ -7176,8 +8052,8 @@ CREATE TABLE "marketing_prizes" (
 	"total_stock" integer DEFAULT 0 NOT NULL,
 	"weight" integer DEFAULT 1 NOT NULL,
 	"sort" integer DEFAULT 0 NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_alarm_rules" (
@@ -7200,8 +8076,8 @@ CREATE TABLE "iot_alarm_rules" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_alarms" (
@@ -7214,15 +8090,15 @@ CREATE TABLE "iot_alarms" (
 	"status" "iot_alarm_status" DEFAULT 'firing' NOT NULL,
 	"message" varchar(512) NOT NULL,
 	"context" jsonb,
-	"fired_at" timestamp DEFAULT now() NOT NULL,
-	"acknowledged_at" timestamp,
+	"fired_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"acknowledged_at" timestamp with time zone,
 	"acknowledged_by" integer,
-	"escalated_at" timestamp,
-	"resolved_at" timestamp,
+	"escalated_at" timestamp with time zone,
+	"resolved_at" timestamp with time zone,
 	"resolved_by" integer,
 	"resolve_note" varchar(512),
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_automation_runs" (
@@ -7233,7 +8109,7 @@ CREATE TABLE "iot_automation_runs" (
 	"trigger_context" jsonb NOT NULL,
 	"results" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"success" boolean DEFAULT true NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_automations" (
@@ -7253,8 +8129,8 @@ CREATE TABLE "iot_automations" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_commands" (
@@ -7263,15 +8139,15 @@ CREATE TABLE "iot_commands" (
 	"service" varchar(64) NOT NULL,
 	"params" jsonb,
 	"status" "iot_command_status" DEFAULT 'pending' NOT NULL,
-	"expire_at" timestamp NOT NULL,
-	"sent_at" timestamp,
-	"acked_at" timestamp,
+	"expire_at" timestamp with time zone NOT NULL,
+	"sent_at" timestamp with time zone,
+	"acked_at" timestamp with time zone,
 	"response" jsonb,
 	"error_msg" varchar(256),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_device_events" (
@@ -7282,8 +8158,8 @@ CREATE TABLE "iot_device_events" (
 	"name" varchar(64) NOT NULL,
 	"level" "iot_event_level" DEFAULT 'info' NOT NULL,
 	"payload" jsonb,
-	"reported_at" timestamp DEFAULT now() NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"reported_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_device_group_members" (
@@ -7299,8 +8175,8 @@ CREATE TABLE "iot_device_groups" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_device_logs" (
@@ -7309,19 +8185,19 @@ CREATE TABLE "iot_device_logs" (
 	"level" "iot_log_level" DEFAULT 'info' NOT NULL,
 	"tag" varchar(64),
 	"content" varchar(1024) NOT NULL,
-	"reported_at" timestamp NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"reported_at" timestamp with time zone NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_device_state" (
 	"device_id" integer PRIMARY KEY NOT NULL,
 	"reported" jsonb DEFAULT '{}'::jsonb NOT NULL,
-	"reported_at" timestamp,
+	"reported_at" timestamp with time zone,
 	"desired" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"desired_version" integer DEFAULT 0 NOT NULL,
-	"desired_at" timestamp,
+	"desired_at" timestamp with time zone,
 	"online" boolean DEFAULT false NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_device_whitelist" (
@@ -7329,14 +8205,14 @@ CREATE TABLE "iot_device_whitelist" (
 	"product_id" integer NOT NULL,
 	"sn" varchar(64) NOT NULL,
 	"used" boolean DEFAULT false NOT NULL,
-	"used_at" timestamp,
+	"used_at" timestamp with time zone,
 	"device_id" integer,
 	"remark" varchar(256),
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "iot_device_whitelist_sn_unique" UNIQUE("sn")
 );
 --> statement-breakpoint
@@ -7353,14 +8229,14 @@ CREATE TABLE "iot_devices" (
 	"longitude" double precision,
 	"address" varchar(256),
 	"firmware_version" varchar(32),
-	"activated_at" timestamp,
-	"last_seen_at" timestamp,
+	"activated_at" timestamp with time zone,
+	"last_seen_at" timestamp with time zone,
 	"remark" varchar(256),
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "iot_devices_sn_unique" UNIQUE("sn")
 );
 --> statement-breakpoint
@@ -7377,8 +8253,8 @@ CREATE TABLE "iot_firmwares" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_forward_logs" (
@@ -7392,7 +8268,7 @@ CREATE TABLE "iot_forward_logs" (
 	"response_status" integer,
 	"error_message" varchar(512),
 	"duration_ms" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_forward_rules" (
@@ -7406,12 +8282,12 @@ CREATE TABLE "iot_forward_rules" (
 	"headers" jsonb,
 	"status" "status" DEFAULT 'enabled' NOT NULL,
 	"consecutive_failures" integer DEFAULT 0 NOT NULL,
-	"auto_disabled_at" timestamp,
+	"auto_disabled_at" timestamp with time zone,
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_maintenance_windows" (
@@ -7420,21 +8296,21 @@ CREATE TABLE "iot_maintenance_windows" (
 	"product_id" integer,
 	"group_id" integer,
 	"device_id" integer,
-	"start_at" timestamp NOT NULL,
-	"end_at" timestamp NOT NULL,
+	"start_at" timestamp with time zone NOT NULL,
+	"end_at" timestamp with time zone NOT NULL,
 	"reason" varchar(256),
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_online_snapshots" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "iot_online_snapshots_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"total_count" integer NOT NULL,
 	"online_count" integer NOT NULL,
-	"sampled_at" timestamp DEFAULT now() NOT NULL
+	"sampled_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_ota_task_devices" (
@@ -7446,10 +8322,10 @@ CREATE TABLE "iot_ota_task_devices" (
 	"from_version" varchar(32),
 	"batch_index" integer DEFAULT 1 NOT NULL,
 	"error_msg" varchar(256),
-	"notified_at" timestamp,
-	"finished_at" timestamp,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"notified_at" timestamp with time zone,
+	"finished_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_ota_tasks" (
@@ -7469,8 +8345,8 @@ CREATE TABLE "iot_ota_tasks" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_product_events" (
@@ -7484,8 +8360,8 @@ CREATE TABLE "iot_product_events" (
 	"description" varchar(256),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_product_properties" (
@@ -7505,8 +8381,8 @@ CREATE TABLE "iot_product_properties" (
 	"description" varchar(256),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_product_services" (
@@ -7520,8 +8396,8 @@ CREATE TABLE "iot_product_services" (
 	"description" varchar(256),
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_products" (
@@ -7534,8 +8410,8 @@ CREATE TABLE "iot_products" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_schedule_runs" (
@@ -7546,7 +8422,7 @@ CREATE TABLE "iot_schedule_runs" (
 	"success_count" integer DEFAULT 0 NOT NULL,
 	"failed_count" integer DEFAULT 0 NOT NULL,
 	"errors" jsonb DEFAULT '[]'::jsonb NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_schedules" (
@@ -7554,7 +8430,7 @@ CREATE TABLE "iot_schedules" (
 	"name" varchar(128) NOT NULL,
 	"schedule_type" "iot_schedule_type" NOT NULL,
 	"cron_expression" varchar(64),
-	"run_at" timestamp,
+	"run_at" timestamp with time zone,
 	"product_id" integer NOT NULL,
 	"group_id" integer,
 	"device_id" integer,
@@ -7563,32 +8439,32 @@ CREATE TABLE "iot_schedules" (
 	"params" jsonb,
 	"desired" jsonb,
 	"status" "status" DEFAULT 'enabled' NOT NULL,
-	"next_run_at" timestamp,
-	"last_run_at" timestamp,
+	"next_run_at" timestamp with time zone,
+	"last_run_at" timestamp with time zone,
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_telemetry" (
 	"device_id" integer NOT NULL,
 	"metrics" jsonb NOT NULL,
-	"reported_at" timestamp DEFAULT now() NOT NULL
+	"reported_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "iot_telemetry_hourly" (
 	"id" bigint PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "iot_telemetry_hourly_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854775807 START WITH 1 CACHE 1),
 	"device_id" integer NOT NULL,
 	"property" varchar(64) NOT NULL,
-	"bucket" timestamp NOT NULL,
+	"bucket" timestamp with time zone NOT NULL,
 	"min_value" double precision NOT NULL,
 	"max_value" double precision NOT NULL,
 	"avg_value" double precision NOT NULL,
 	"last_value" double precision NOT NULL,
 	"count" integer NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "drive_access_requests" (
@@ -7600,13 +8476,13 @@ CREATE TABLE "drive_access_requests" (
 	"reason" varchar(500),
 	"status" "drive_access_request_status" DEFAULT 'pending' NOT NULL,
 	"granted_role" "drive_role",
-	"granted_expire_at" timestamp,
+	"granted_expire_at" timestamp with time zone,
 	"decided_by" integer,
-	"decided_at" timestamp,
+	"decided_at" timestamp with time zone,
 	"decision_note" varchar(200),
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "drive_activities" (
@@ -7621,7 +8497,7 @@ CREATE TABLE "drive_activities" (
 	"detail" jsonb,
 	"client_ip" varchar(64),
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "drive_collect_submissions" (
@@ -7633,7 +8509,7 @@ CREATE TABLE "drive_collect_submissions" (
 	"submitter_name" varchar(50),
 	"submitter_note" varchar(200),
 	"client_ip" varchar(64),
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "drive_file_versions" (
@@ -7645,7 +8521,7 @@ CREATE TABLE "drive_file_versions" (
 	"content_hash" varchar(64),
 	"comment" varchar(500),
 	"author_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "drive_file_versions_node_version_unique" UNIQUE("node_id","version")
 );
 --> statement-breakpoint
@@ -7656,13 +8532,13 @@ CREATE TABLE "drive_legal_holds" (
 	"reason" varchar(500) NOT NULL,
 	"active" boolean DEFAULT true NOT NULL,
 	"released_by" integer,
-	"released_at" timestamp,
+	"released_at" timestamp with time zone,
 	"release_note" varchar(200),
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "drive_node_comments" (
@@ -7673,8 +8549,8 @@ CREATE TABLE "drive_node_comments" (
 	"mention_user_ids" integer[] DEFAULT '{}' NOT NULL,
 	"author_id" integer,
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "drive_node_permissions" (
@@ -7683,12 +8559,12 @@ CREATE TABLE "drive_node_permissions" (
 	"subject_type" "drive_subject_type" NOT NULL,
 	"subject_id" integer NOT NULL,
 	"role" "drive_role" NOT NULL,
-	"expire_at" timestamp,
+	"expire_at" timestamp with time zone,
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "drive_node_permissions_node_subject_unique" UNIQUE("node_id","subject_type","subject_id")
 );
 --> statement-breakpoint
@@ -7698,8 +8574,8 @@ CREATE TABLE "drive_node_profiles" (
 	"metadata" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "drive_node_renditions" (
@@ -7711,15 +8587,15 @@ CREATE TABLE "drive_node_renditions" (
 	"file_id" uuid,
 	"meta" jsonb,
 	"error" varchar(500),
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "drive_node_renditions_node_kind_unique" UNIQUE("node_id","kind")
 );
 --> statement-breakpoint
 CREATE TABLE "drive_node_stars" (
 	"user_id" integer NOT NULL,
 	"node_id" integer NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "drive_node_stars_user_id_node_id_pk" PRIMARY KEY("user_id","node_id")
 );
 --> statement-breakpoint
@@ -7727,7 +8603,7 @@ CREATE TABLE "drive_node_subscriptions" (
 	"user_id" integer NOT NULL,
 	"node_id" integer NOT NULL,
 	"last_activity_id" integer DEFAULT 0 NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "drive_node_subscriptions_user_id_node_id_pk" PRIMARY KEY("user_id","node_id")
 );
 --> statement-breakpoint
@@ -7742,7 +8618,7 @@ CREATE TABLE "drive_node_texts" (
 	"version" integer NOT NULL,
 	"content" text DEFAULT '' NOT NULL,
 	"search_vector" "tsvector",
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "drive_nodes" (
@@ -7763,16 +8639,16 @@ CREATE TABLE "drive_nodes" (
 	"acl_chain_ids" integer[] DEFAULT '{}' NOT NULL,
 	"acl_open" boolean DEFAULT true NOT NULL,
 	"locked_by" integer,
-	"locked_at" timestamp,
-	"lock_expires_at" timestamp,
-	"deleted_at" timestamp,
+	"locked_at" timestamp with time zone,
+	"lock_expires_at" timestamp with time zone,
+	"deleted_at" timestamp with time zone,
 	"deleted_by" integer,
 	"deleted_root_id" integer,
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "drive_nodes_id_space_unique" UNIQUE("id","space_id")
 );
 --> statement-breakpoint
@@ -7786,8 +8662,8 @@ CREATE TABLE "drive_open_app_grants" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "drive_quota_requests" (
@@ -7801,18 +8677,18 @@ CREATE TABLE "drive_quota_requests" (
 	"status" "drive_access_request_status" DEFAULT 'pending' NOT NULL,
 	"approved_gb" integer,
 	"decided_by" integer,
-	"decided_at" timestamp,
+	"decided_at" timestamp with time zone,
 	"decision_note" varchar(200),
 	"tenant_id" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "drive_recent_access" (
 	"user_id" integer NOT NULL,
 	"node_id" integer NOT NULL,
 	"action" "drive_activity_action" NOT NULL,
-	"last_access_at" timestamp DEFAULT now() NOT NULL,
+	"last_access_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "drive_recent_access_user_id_node_id_pk" PRIMARY KEY("user_id","node_id")
 );
 --> statement-breakpoint
@@ -7823,7 +8699,7 @@ CREATE TABLE "drive_share_access_logs" (
 	"action" varchar(16) NOT NULL,
 	"client_ip" varchar(64),
 	"ok" boolean DEFAULT true NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "drive_share_links" (
@@ -7835,7 +8711,7 @@ CREATE TABLE "drive_share_links" (
 	"password_hash" varchar(100),
 	"capabilities" "drive_share_capability"[] DEFAULT '{"preview"}' NOT NULL,
 	"enabled" boolean DEFAULT true NOT NULL,
-	"expire_at" timestamp,
+	"expire_at" timestamp with time zone,
 	"max_access_count" integer,
 	"access_count" integer DEFAULT 0 NOT NULL,
 	"max_download_count" integer,
@@ -7845,13 +8721,13 @@ CREATE TABLE "drive_share_links" (
 	"watermark" boolean DEFAULT false NOT NULL,
 	"collect_policy" jsonb,
 	"session_version" integer DEFAULT 1 NOT NULL,
-	"revoked_at" timestamp,
+	"revoked_at" timestamp with time zone,
 	"remark" varchar(256),
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "drive_share_links_token_unique" UNIQUE("token")
 );
 --> statement-breakpoint
@@ -7860,7 +8736,7 @@ CREATE TABLE "drive_space_members" (
 	"subject_type" "drive_subject_type" NOT NULL,
 	"subject_id" integer NOT NULL,
 	"role" "drive_role" DEFAULT 'viewer' NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "drive_space_members_space_id_subject_type_subject_id_pk" PRIMARY KEY("space_id","subject_type","subject_id")
 );
 --> statement-breakpoint
@@ -7878,13 +8754,13 @@ CREATE TABLE "drive_spaces" (
 	"max_versions" integer,
 	"allow_external_share" boolean DEFAULT true NOT NULL,
 	"status" "status" DEFAULT 'enabled' NOT NULL,
-	"archived_at" timestamp,
+	"archived_at" timestamp with time zone,
 	"sort" integer DEFAULT 0 NOT NULL,
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "drive_tags" (
@@ -7895,8 +8771,8 @@ CREATE TABLE "drive_tags" (
 	"tenant_id" integer,
 	"created_by" integer,
 	"updated_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "drive_tags_space_name_unique" UNIQUE("space_id","name")
 );
 --> statement-breakpoint
@@ -7912,10 +8788,169 @@ CREATE TABLE "drive_upload_bindings" (
 	"expected_hash" varchar(64),
 	"tenant_id" integer,
 	"created_by" integer,
-	"created_at" timestamp DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "drive_upload_bindings_upload_id_unique" UNIQUE("upload_id")
 );
 --> statement-breakpoint
+CREATE TABLE "entity_watch_events" (
+	"event_id" integer PRIMARY KEY NOT NULL,
+	"watcher_cursor" integer DEFAULT 0 NOT NULL,
+	"lease_token" uuid,
+	"claimed_at" timestamp with time zone,
+	"next_attempt_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"attempts" integer DEFAULT 0 NOT NULL,
+	"last_error" varchar(500)
+);
+--> statement-breakpoint
+CREATE TABLE "entity_watches" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "entity_watches_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"user_id" integer NOT NULL,
+	"tenant_id" integer,
+	"entity_type" varchar(96) NOT NULL,
+	"entity_key" varchar(128) NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_content_review_policies" (
+	"content_id" integer PRIMARY KEY NOT NULL,
+	"site_id" integer NOT NULL,
+	"version" integer DEFAULT 1 NOT NULL,
+	"enabled" boolean DEFAULT true NOT NULL,
+	"owner_id" integer,
+	"interval_days" integer DEFAULT 90 NOT NULL,
+	"next_review_at" timestamp with time zone,
+	"valid_until" timestamp with time zone,
+	"notice_days" integer DEFAULT 30 NOT NULL,
+	"check_links" boolean DEFAULT true NOT NULL,
+	"check_asset_rights" boolean DEFAULT true NOT NULL,
+	"last_reviewed_at" timestamp with time zone,
+	"last_reviewed_revision_id" integer,
+	"last_checked_at" timestamp with time zone,
+	"next_check_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"last_check_task_id" integer,
+	"issues" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"issue_cycles" jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_content_review_records" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_content_review_records_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"content_id" integer NOT NULL,
+	"revision_id" integer NOT NULL,
+	"generation_id" integer NOT NULL,
+	"note" text NOT NULL,
+	"actor_id" integer,
+	"actor_name" varchar(100) NOT NULL,
+	"next_review_at" timestamp with time zone NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_deployment_retention_policies" (
+	"site_id" integer PRIMARY KEY NOT NULL,
+	"version" integer DEFAULT 1 NOT NULL,
+	"retain_count" integer DEFAULT 10 NOT NULL,
+	"retain_days" integer DEFAULT 30 NOT NULL,
+	"failed_retain_days" integer DEFAULT 7 NOT NULL,
+	"automatic" boolean DEFAULT true NOT NULL,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_deployment_storage" (
+	"deployment_id" integer PRIMARY KEY NOT NULL,
+	"site_code" varchar(50),
+	"version" integer DEFAULT 1 NOT NULL,
+	"storage_state" "cms_deployment_storage_state" DEFAULT 'available' NOT NULL,
+	"pinned" boolean DEFAULT false NOT NULL,
+	"pin_reason" text,
+	"schema_bytes" bigint,
+	"file_bytes" bigint,
+	"file_count" integer,
+	"measured_at" timestamp with time zone,
+	"cleanup_task_id" integer,
+	"schema_purged_at" timestamp with time zone,
+	"files_purged_at" timestamp with time zone,
+	"purged_at" timestamp with time zone,
+	"error" text,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_delivery_expiry_receipts" (
+	"resource_id" integer PRIMARY KEY NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_delivery_runs" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_delivery_runs_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"site_id" integer NOT NULL,
+	"release_id" integer,
+	"generation_id" integer,
+	"activation_id" integer,
+	"visibility_epoch" integer NOT NULL,
+	"config_version" integer NOT NULL,
+	"event_key" varchar(240) NOT NULL,
+	"cause" varchar(24) NOT NULL,
+	"status" varchar(24) DEFAULT 'activated' NOT NULL,
+	"task_id" integer,
+	"source_base_url" varchar(1000),
+	"public_base_url" varchar(1000),
+	"source_host" varchar(255),
+	"purge_status" varchar(24) DEFAULT 'pending' NOT NULL,
+	"purge_http_status" integer,
+	"purge_message" text,
+	"paths" jsonb NOT NULL,
+	"observations" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"error" text,
+	"started_at" timestamp with time zone,
+	"completed_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_delivery_states" (
+	"site_id" integer PRIMARY KEY NOT NULL,
+	"visibility_epoch" integer DEFAULT 0 NOT NULL,
+	"latest_run_id" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_content_collection_versions" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_content_collection_versions_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"collection_id" integer NOT NULL,
+	"site_id" integer NOT NULL,
+	"version" integer NOT NULL,
+	"name" varchar(100) NOT NULL,
+	"definition" jsonb NOT NULL,
+	"created_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "cms_content_collections" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "cms_content_collections_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"site_id" integer NOT NULL,
+	"name" varchar(100) NOT NULL,
+	"code" varchar(80) NOT NULL,
+	"description" text,
+	"definition" jsonb NOT NULL,
+	"version" integer DEFAULT 1 NOT NULL,
+	"created_by" integer,
+	"updated_by" integer,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX "user_events_event_id_uq" ON "user_events" USING btree ("event_id");--> statement-breakpoint
 ALTER TABLE "departments" ADD CONSTRAINT "departments_leader_id_users_id_fk" FOREIGN KEY ("leader_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "departments" ADD CONSTRAINT "departments_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "departments" ADD CONSTRAINT "departments_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -7978,6 +9013,8 @@ ALTER TABLE "upload_sessions" ADD CONSTRAINT "upload_sessions_updated_by_users_i
 ALTER TABLE "data_mask_policies" ADD CONSTRAINT "data_mask_policies_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "data_mask_policies" ADD CONSTRAINT "data_mask_policies_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "async_task_items" ADD CONSTRAINT "async_task_items_task_id_async_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."async_tasks"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "async_task_subjects" ADD CONSTRAINT "async_task_subjects_task_id_async_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."async_tasks"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "async_task_subjects" ADD CONSTRAINT "async_task_subjects_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "async_tasks" ADD CONSTRAINT "async_tasks_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "async_tasks" ADD CONSTRAINT "async_tasks_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "async_tasks" ADD CONSTRAINT "async_tasks_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -8051,7 +9088,14 @@ ALTER TABLE "dicts" ADD CONSTRAINT "dicts_tenant_id_tenants_id_fk" FOREIGN KEY (
 ALTER TABLE "dicts" ADD CONSTRAINT "dicts_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "dicts" ADD CONSTRAINT "dicts_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "login_logs" ADD CONSTRAINT "login_logs_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "operation_log_subjects" ADD CONSTRAINT "operation_log_subjects_operation_log_id_operation_logs_id_fk" FOREIGN KEY ("operation_log_id") REFERENCES "public"."operation_logs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "operation_log_subjects" ADD CONSTRAINT "operation_log_subjects_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "operation_logs" ADD CONSTRAINT "operation_logs_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "domain_event_subjects" ADD CONSTRAINT "domain_event_subjects_event_id_domain_events_id_fk" FOREIGN KEY ("event_id") REFERENCES "public"."domain_events"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "domain_event_subjects" ADD CONSTRAINT "domain_event_subjects_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "domain_events" ADD CONSTRAINT "domain_events_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "entity_relation_edges" ADD CONSTRAINT "entity_relation_edges_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "entity_relation_edges" ADD CONSTRAINT "entity_relation_edges_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "analytics_event_meta" ADD CONSTRAINT "analytics_event_meta_owner_id_users_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "analytics_event_meta" ADD CONSTRAINT "analytics_event_meta_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "analytics_event_meta" ADD CONSTRAINT "analytics_event_meta_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -8071,8 +9115,6 @@ ALTER TABLE "analytics_segment_members" ADD CONSTRAINT "analytics_segment_member
 ALTER TABLE "analytics_segment_members" ADD CONSTRAINT "analytics_segment_members_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "analytics_sessions" ADD CONSTRAINT "analytics_sessions_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "analytics_sessions" ADD CONSTRAINT "analytics_sessions_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "analytics_settings" ADD CONSTRAINT "analytics_settings_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "analytics_settings" ADD CONSTRAINT "analytics_settings_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "analytics_sites" ADD CONSTRAINT "analytics_sites_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "analytics_sites" ADD CONSTRAINT "analytics_sites_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "analytics_sites" ADD CONSTRAINT "analytics_sites_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -8108,6 +9150,22 @@ ALTER TABLE "announcement_recipients" ADD CONSTRAINT "announcement_recipients_an
 ALTER TABLE "announcements" ADD CONSTRAINT "announcements_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "announcements" ADD CONSTRAINT "announcements_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "announcements" ADD CONSTRAINT "announcements_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_approval_slots" ADD CONSTRAINT "workflow_approval_slots_activation_id_workflow_node_activations_id_fk" FOREIGN KEY ("activation_id") REFERENCES "public"."workflow_node_activations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_approval_slots" ADD CONSTRAINT "workflow_approval_slots_group_id_workflow_sign_groups_id_fk" FOREIGN KEY ("group_id") REFERENCES "public"."workflow_sign_groups"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_approval_slots" ADD CONSTRAINT "workflow_approval_slots_original_assignee_id_users_id_fk" FOREIGN KEY ("original_assignee_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_approval_slots" ADD CONSTRAINT "workflow_approval_slots_current_assignee_id_users_id_fk" FOREIGN KEY ("current_assignee_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_approval_slots" ADD CONSTRAINT "workflow_approval_slots_current_task_id_workflow_tasks_id_fk" FOREIGN KEY ("current_task_id") REFERENCES "public"."workflow_tasks"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_approval_slots" ADD CONSTRAINT "workflow_approval_slots_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_approval_slots" ADD CONSTRAINT "workflow_approval_slots_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_approval_slots" ADD CONSTRAINT "workflow_approval_slots_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_attachment_links" ADD CONSTRAINT "workflow_attachment_links_instance_id_workflow_instances_id_fk" FOREIGN KEY ("instance_id") REFERENCES "public"."workflow_instances"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_attachment_links" ADD CONSTRAINT "workflow_attachment_links_file_id_managed_files_id_fk" FOREIGN KEY ("file_id") REFERENCES "public"."managed_files"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_attachment_links" ADD CONSTRAINT "workflow_attachment_links_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_attachment_links" ADD CONSTRAINT "workflow_attachment_links_task_instance_fk" FOREIGN KEY ("task_id","instance_id") REFERENCES "public"."workflow_tasks"("id","instance_id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_attachment_links" ADD CONSTRAINT "workflow_attachment_links_comment_instance_fk" FOREIGN KEY ("comment_id","instance_id") REFERENCES "public"."workflow_comments"("id","instance_id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_attachment_uploads" ADD CONSTRAINT "workflow_attachment_uploads_file_id_managed_files_id_fk" FOREIGN KEY ("file_id") REFERENCES "public"."managed_files"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_attachment_uploads" ADD CONSTRAINT "workflow_attachment_uploads_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_attachment_uploads" ADD CONSTRAINT "workflow_attachment_uploads_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_automation_runs" ADD CONSTRAINT "workflow_automation_runs_rule_id_workflow_automations_id_fk" FOREIGN KEY ("rule_id") REFERENCES "public"."workflow_automations"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_automation_runs" ADD CONSTRAINT "workflow_automation_runs_instance_id_workflow_instances_id_fk" FOREIGN KEY ("instance_id") REFERENCES "public"."workflow_instances"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_automation_runs" ADD CONSTRAINT "workflow_automation_runs_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -8175,6 +9233,11 @@ ALTER TABLE "workflow_jobs" ADD CONSTRAINT "workflow_jobs_task_id_workflow_tasks
 ALTER TABLE "workflow_jobs" ADD CONSTRAINT "workflow_jobs_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_jobs" ADD CONSTRAINT "workflow_jobs_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_jobs" ADD CONSTRAINT "workflow_jobs_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_node_activations" ADD CONSTRAINT "workflow_node_activations_instance_id_workflow_instances_id_fk" FOREIGN KEY ("instance_id") REFERENCES "public"."workflow_instances"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_node_activations" ADD CONSTRAINT "workflow_node_activations_token_id_workflow_tokens_id_fk" FOREIGN KEY ("token_id") REFERENCES "public"."workflow_tokens"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_node_activations" ADD CONSTRAINT "workflow_node_activations_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_node_activations" ADD CONSTRAINT "workflow_node_activations_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_node_activations" ADD CONSTRAINT "workflow_node_activations_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_quick_phrases" ADD CONSTRAINT "workflow_quick_phrases_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_quick_phrases" ADD CONSTRAINT "workflow_quick_phrases_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_saved_views" ADD CONSTRAINT "workflow_saved_views_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -8185,6 +9248,11 @@ ALTER TABLE "workflow_schedules" ADD CONSTRAINT "workflow_schedules_tenant_id_te
 ALTER TABLE "workflow_schedules" ADD CONSTRAINT "workflow_schedules_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_schedules" ADD CONSTRAINT "workflow_schedules_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_serial_counters" ADD CONSTRAINT "workflow_serial_counters_definition_id_workflow_definitions_id_fk" FOREIGN KEY ("definition_id") REFERENCES "public"."workflow_definitions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_sign_groups" ADD CONSTRAINT "workflow_sign_groups_activation_id_workflow_node_activations_id_fk" FOREIGN KEY ("activation_id") REFERENCES "public"."workflow_node_activations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_sign_groups" ADD CONSTRAINT "workflow_sign_groups_anchor_slot_id_workflow_approval_slots_id_fk" FOREIGN KEY ("anchor_slot_id") REFERENCES "public"."workflow_approval_slots"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_sign_groups" ADD CONSTRAINT "workflow_sign_groups_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_sign_groups" ADD CONSTRAINT "workflow_sign_groups_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_sign_groups" ADD CONSTRAINT "workflow_sign_groups_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_simulation_cases" ADD CONSTRAINT "workflow_simulation_cases_definition_id_workflow_definitions_id_fk" FOREIGN KEY ("definition_id") REFERENCES "public"."workflow_definitions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_simulation_cases" ADD CONSTRAINT "workflow_simulation_cases_starter_user_id_users_id_fk" FOREIGN KEY ("starter_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_simulation_cases" ADD CONSTRAINT "workflow_simulation_cases_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -8206,8 +9274,11 @@ ALTER TABLE "workflow_task_urges" ADD CONSTRAINT "workflow_task_urges_instance_i
 ALTER TABLE "workflow_task_urges" ADD CONSTRAINT "workflow_task_urges_urger_id_users_id_fk" FOREIGN KEY ("urger_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_tasks" ADD CONSTRAINT "workflow_tasks_instance_id_workflow_instances_id_fk" FOREIGN KEY ("instance_id") REFERENCES "public"."workflow_instances"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_tasks" ADD CONSTRAINT "workflow_tasks_assignee_id_users_id_fk" FOREIGN KEY ("assignee_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_tasks" ADD CONSTRAINT "workflow_tasks_slot_id_workflow_approval_slots_id_fk" FOREIGN KEY ("slot_id") REFERENCES "public"."workflow_approval_slots"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_tasks" ADD CONSTRAINT "workflow_tasks_original_assignee_id_users_id_fk" FOREIGN KEY ("original_assignee_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_tasks" ADD CONSTRAINT "workflow_tasks_delegated_from_id_users_id_fk" FOREIGN KEY ("delegated_from_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_tasks" ADD CONSTRAINT "workflow_tasks_activation_id_workflow_node_activations_id_fk" FOREIGN KEY ("activation_id") REFERENCES "public"."workflow_node_activations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workflow_tasks" ADD CONSTRAINT "workflow_tasks_slot_activation_fk" FOREIGN KEY ("slot_id","activation_id") REFERENCES "public"."workflow_approval_slots"("id","activation_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_templates" ADD CONSTRAINT "workflow_templates_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_templates" ADD CONSTRAINT "workflow_templates_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_templates" ADD CONSTRAINT "workflow_templates_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -8238,6 +9309,8 @@ ALTER TABLE "notification_event_overrides" ADD CONSTRAINT "notification_event_ov
 ALTER TABLE "notification_event_overrides" ADD CONSTRAINT "notification_event_overrides_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "notification_event_overrides" ADD CONSTRAINT "notification_event_overrides_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "notification_outbox" ADD CONSTRAINT "notification_outbox_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "notification_outbox_subjects" ADD CONSTRAINT "notification_outbox_subjects_outbox_id_notification_outbox_id_fk" FOREIGN KEY ("outbox_id") REFERENCES "public"."notification_outbox"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "notification_outbox_subjects" ADD CONSTRAINT "notification_outbox_subjects_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "push_configs" ADD CONSTRAINT "push_configs_app_id_client_apps_id_fk" FOREIGN KEY ("app_id") REFERENCES "public"."client_apps"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "push_configs" ADD CONSTRAINT "push_configs_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "push_configs" ADD CONSTRAINT "push_configs_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -8351,9 +9424,18 @@ ALTER TABLE "payment_apps" ADD CONSTRAINT "payment_apps_updated_by_users_id_fk" 
 ALTER TABLE "payment_cashier_sessions" ADD CONSTRAINT "payment_cashier_sessions_link_id_payment_links_id_fk" FOREIGN KEY ("link_id") REFERENCES "public"."payment_links"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_cashier_sessions" ADD CONSTRAINT "payment_cashier_sessions_app_id_payment_apps_id_fk" FOREIGN KEY ("app_id") REFERENCES "public"."payment_apps"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_cashier_sessions" ADD CONSTRAINT "payment_cashier_sessions_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_channel_accounts" ADD CONSTRAINT "payment_channel_accounts_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_channel_accounts" ADD CONSTRAINT "payment_channel_accounts_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_channel_accounts" ADD CONSTRAINT "payment_channel_accounts_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_channel_configs" ADD CONSTRAINT "payment_channel_configs_channel_account_id_payment_channel_accounts_id_fk" FOREIGN KEY ("channel_account_id") REFERENCES "public"."payment_channel_accounts"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_channel_configs" ADD CONSTRAINT "payment_channel_configs_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_channel_configs" ADD CONSTRAINT "payment_channel_configs_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_channel_configs" ADD CONSTRAINT "payment_channel_configs_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_channel_credential_versions" ADD CONSTRAINT "payment_channel_credential_versions_channel_config_id_payment_channel_configs_id_fk" FOREIGN KEY ("channel_config_id") REFERENCES "public"."payment_channel_configs"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_channel_credential_versions" ADD CONSTRAINT "payment_channel_credential_versions_channel_account_id_payment_channel_accounts_id_fk" FOREIGN KEY ("channel_account_id") REFERENCES "public"."payment_channel_accounts"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_channel_credential_versions" ADD CONSTRAINT "payment_channel_credential_versions_operator_id_users_id_fk" FOREIGN KEY ("operator_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_channel_credential_versions" ADD CONSTRAINT "payment_channel_credential_versions_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_contracts" ADD CONSTRAINT "payment_contracts_channel_account_id_payment_channel_accounts_id_fk" FOREIGN KEY ("channel_account_id") REFERENCES "public"."payment_channel_accounts"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_contracts" ADD CONSTRAINT "payment_contracts_channel_config_id_payment_channel_configs_id_fk" FOREIGN KEY ("channel_config_id") REFERENCES "public"."payment_channel_configs"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_contracts" ADD CONSTRAINT "payment_contracts_app_id_payment_apps_id_fk" FOREIGN KEY ("app_id") REFERENCES "public"."payment_apps"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_contracts" ADD CONSTRAINT "payment_contracts_plan_id_payment_deduct_plans_id_fk" FOREIGN KEY ("plan_id") REFERENCES "public"."payment_deduct_plans"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
@@ -8372,6 +9454,7 @@ ALTER TABLE "payment_events" ADD CONSTRAINT "payment_events_tenant_id_tenants_id
 ALTER TABLE "payment_fee_rules" ADD CONSTRAINT "payment_fee_rules_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_fee_rules" ADD CONSTRAINT "payment_fee_rules_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_fee_rules" ADD CONSTRAINT "payment_fee_rules_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_fund_reservations" ADD CONSTRAINT "payment_fund_reservations_channel_account_id_payment_channel_accounts_id_fk" FOREIGN KEY ("channel_account_id") REFERENCES "public"."payment_channel_accounts"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_fund_reservations" ADD CONSTRAINT "payment_fund_reservations_account_id_payment_ledger_accounts_id_fk" FOREIGN KEY ("account_id") REFERENCES "public"."payment_ledger_accounts"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_fund_reservations" ADD CONSTRAINT "payment_fund_reservations_app_id_payment_apps_id_fk" FOREIGN KEY ("app_id") REFERENCES "public"."payment_apps"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_fund_reservations" ADD CONSTRAINT "payment_fund_reservations_channel_config_id_payment_channel_configs_id_fk" FOREIGN KEY ("channel_config_id") REFERENCES "public"."payment_channel_configs"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
@@ -8380,11 +9463,13 @@ ALTER TABLE "payment_fund_reservations" ADD CONSTRAINT "payment_fund_reservation
 ALTER TABLE "payment_fund_reservations" ADD CONSTRAINT "payment_fund_reservations_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_journal_lines" ADD CONSTRAINT "payment_journal_lines_journal_id_payment_journals_id_fk" FOREIGN KEY ("journal_id") REFERENCES "public"."payment_journals"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_journal_lines" ADD CONSTRAINT "payment_journal_lines_account_id_payment_ledger_accounts_id_fk" FOREIGN KEY ("account_id") REFERENCES "public"."payment_ledger_accounts"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_journals" ADD CONSTRAINT "payment_journals_channel_account_id_payment_channel_accounts_id_fk" FOREIGN KEY ("channel_account_id") REFERENCES "public"."payment_channel_accounts"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_journals" ADD CONSTRAINT "payment_journals_app_id_payment_apps_id_fk" FOREIGN KEY ("app_id") REFERENCES "public"."payment_apps"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_journals" ADD CONSTRAINT "payment_journals_channel_config_id_payment_channel_configs_id_fk" FOREIGN KEY ("channel_config_id") REFERENCES "public"."payment_channel_configs"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_journals" ADD CONSTRAINT "payment_journals_reversal_of_journal_id_payment_journals_id_fk" FOREIGN KEY ("reversal_of_journal_id") REFERENCES "public"."payment_journals"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_journals" ADD CONSTRAINT "payment_journals_operator_id_users_id_fk" FOREIGN KEY ("operator_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_journals" ADD CONSTRAINT "payment_journals_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_ledger_accounts" ADD CONSTRAINT "payment_ledger_accounts_channel_account_id_payment_channel_accounts_id_fk" FOREIGN KEY ("channel_account_id") REFERENCES "public"."payment_channel_accounts"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_ledger_accounts" ADD CONSTRAINT "payment_ledger_accounts_app_id_payment_apps_id_fk" FOREIGN KEY ("app_id") REFERENCES "public"."payment_apps"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_ledger_accounts" ADD CONSTRAINT "payment_ledger_accounts_channel_config_id_payment_channel_configs_id_fk" FOREIGN KEY ("channel_config_id") REFERENCES "public"."payment_channel_configs"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_ledger_accounts" ADD CONSTRAINT "payment_ledger_accounts_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
@@ -8402,6 +9487,7 @@ ALTER TABLE "payment_method_configs" ADD CONSTRAINT "payment_method_configs_upda
 ALTER TABLE "payment_notify_logs" ADD CONSTRAINT "payment_notify_logs_channel_config_id_payment_channel_configs_id_fk" FOREIGN KEY ("channel_config_id") REFERENCES "public"."payment_channel_configs"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_notify_logs" ADD CONSTRAINT "payment_notify_logs_app_id_payment_apps_id_fk" FOREIGN KEY ("app_id") REFERENCES "public"."payment_apps"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_notify_logs" ADD CONSTRAINT "payment_notify_logs_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_orders" ADD CONSTRAINT "payment_orders_channel_account_id_payment_channel_accounts_id_fk" FOREIGN KEY ("channel_account_id") REFERENCES "public"."payment_channel_accounts"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_orders" ADD CONSTRAINT "payment_orders_channel_config_id_payment_channel_configs_id_fk" FOREIGN KEY ("channel_config_id") REFERENCES "public"."payment_channel_configs"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_orders" ADD CONSTRAINT "payment_orders_app_id_payment_apps_id_fk" FOREIGN KEY ("app_id") REFERENCES "public"."payment_apps"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_orders" ADD CONSTRAINT "payment_orders_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -8409,19 +9495,14 @@ ALTER TABLE "payment_orders" ADD CONSTRAINT "payment_orders_department_id_depart
 ALTER TABLE "payment_orders" ADD CONSTRAINT "payment_orders_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_orders" ADD CONSTRAINT "payment_orders_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_orders" ADD CONSTRAINT "payment_orders_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_preauths" ADD CONSTRAINT "payment_preauths_channel_account_id_payment_channel_accounts_id_fk" FOREIGN KEY ("channel_account_id") REFERENCES "public"."payment_channel_accounts"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_preauths" ADD CONSTRAINT "payment_preauths_channel_config_id_payment_channel_configs_id_fk" FOREIGN KEY ("channel_config_id") REFERENCES "public"."payment_channel_configs"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_preauths" ADD CONSTRAINT "payment_preauths_app_id_payment_apps_id_fk" FOREIGN KEY ("app_id") REFERENCES "public"."payment_apps"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_preauths" ADD CONSTRAINT "payment_preauths_operator_id_users_id_fk" FOREIGN KEY ("operator_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_preauths" ADD CONSTRAINT "payment_preauths_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_preauths" ADD CONSTRAINT "payment_preauths_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_preauths" ADD CONSTRAINT "payment_preauths_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "payment_recon_batches" ADD CONSTRAINT "payment_recon_batches_app_id_payment_apps_id_fk" FOREIGN KEY ("app_id") REFERENCES "public"."payment_apps"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "payment_recon_batches" ADD CONSTRAINT "payment_recon_batches_channel_config_id_payment_channel_configs_id_fk" FOREIGN KEY ("channel_config_id") REFERENCES "public"."payment_channel_configs"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "payment_recon_batches" ADD CONSTRAINT "payment_recon_batches_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "payment_recon_batches" ADD CONSTRAINT "payment_recon_batches_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "payment_recon_batches" ADD CONSTRAINT "payment_recon_batches_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "payment_recon_items" ADD CONSTRAINT "payment_recon_items_batch_id_payment_recon_batches_id_fk" FOREIGN KEY ("batch_id") REFERENCES "public"."payment_recon_batches"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "payment_recon_items" ADD CONSTRAINT "payment_recon_items_handled_by_id_users_id_fk" FOREIGN KEY ("handled_by_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_refunds" ADD CONSTRAINT "payment_refunds_channel_account_id_payment_channel_accounts_id_fk" FOREIGN KEY ("channel_account_id") REFERENCES "public"."payment_channel_accounts"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_refunds" ADD CONSTRAINT "payment_refunds_order_id_payment_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."payment_orders"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_refunds" ADD CONSTRAINT "payment_refunds_applied_by_id_users_id_fk" FOREIGN KEY ("applied_by_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_refunds" ADD CONSTRAINT "payment_refunds_approver_id_users_id_fk" FOREIGN KEY ("approver_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -8441,11 +9522,13 @@ ALTER TABLE "payment_risk_reviews" ADD CONSTRAINT "payment_risk_reviews_updated_
 ALTER TABLE "payment_risk_rules" ADD CONSTRAINT "payment_risk_rules_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_risk_rules" ADD CONSTRAINT "payment_risk_rules_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_risk_rules" ADD CONSTRAINT "payment_risk_rules_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_settlement_batches" ADD CONSTRAINT "payment_settlement_batches_channel_account_id_payment_channel_accounts_id_fk" FOREIGN KEY ("channel_account_id") REFERENCES "public"."payment_channel_accounts"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_settlement_batches" ADD CONSTRAINT "payment_settlement_batches_app_id_payment_apps_id_fk" FOREIGN KEY ("app_id") REFERENCES "public"."payment_apps"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_settlement_batches" ADD CONSTRAINT "payment_settlement_batches_channel_config_id_payment_channel_configs_id_fk" FOREIGN KEY ("channel_config_id") REFERENCES "public"."payment_channel_configs"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_settlement_batches" ADD CONSTRAINT "payment_settlement_batches_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_settlement_batches" ADD CONSTRAINT "payment_settlement_batches_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_settlement_batches" ADD CONSTRAINT "payment_settlement_batches_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_settlement_items" ADD CONSTRAINT "payment_settlement_items_channel_account_id_payment_channel_accounts_id_fk" FOREIGN KEY ("channel_account_id") REFERENCES "public"."payment_channel_accounts"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_settlement_items" ADD CONSTRAINT "payment_settlement_items_batch_id_payment_settlement_batches_id_fk" FOREIGN KEY ("batch_id") REFERENCES "public"."payment_settlement_batches"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_settlement_items" ADD CONSTRAINT "payment_settlement_items_journal_line_id_payment_journal_lines_id_fk" FOREIGN KEY ("journal_line_id") REFERENCES "public"."payment_journal_lines"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_settlement_items" ADD CONSTRAINT "payment_settlement_items_app_id_payment_apps_id_fk" FOREIGN KEY ("app_id") REFERENCES "public"."payment_apps"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
@@ -8462,6 +9545,7 @@ ALTER TABLE "payment_sharing_reversals" ADD CONSTRAINT "payment_sharing_reversal
 ALTER TABLE "payment_sharing_reversals" ADD CONSTRAINT "payment_sharing_reversals_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_sharing_reversals" ADD CONSTRAINT "payment_sharing_reversals_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_sharing_reversals" ADD CONSTRAINT "payment_sharing_reversals_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_transfers" ADD CONSTRAINT "payment_transfers_channel_account_id_payment_channel_accounts_id_fk" FOREIGN KEY ("channel_account_id") REFERENCES "public"."payment_channel_accounts"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_transfers" ADD CONSTRAINT "payment_transfers_app_id_payment_apps_id_fk" FOREIGN KEY ("app_id") REFERENCES "public"."payment_apps"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_transfers" ADD CONSTRAINT "payment_transfers_channel_config_id_payment_channel_configs_id_fk" FOREIGN KEY ("channel_config_id") REFERENCES "public"."payment_channel_configs"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_transfers" ADD CONSTRAINT "payment_transfers_applied_by_id_users_id_fk" FOREIGN KEY ("applied_by_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -8471,6 +9555,56 @@ ALTER TABLE "payment_transfers" ADD CONSTRAINT "payment_transfers_operator_id_us
 ALTER TABLE "payment_transfers" ADD CONSTRAINT "payment_transfers_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_transfers" ADD CONSTRAINT "payment_transfers_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "payment_transfers" ADD CONSTRAINT "payment_transfers_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_bank_matches" ADD CONSTRAINT "payment_bank_matches_account_id_payment_channel_accounts_id_fk" FOREIGN KEY ("account_id") REFERENCES "public"."payment_channel_accounts"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_bank_matches" ADD CONSTRAINT "payment_bank_matches_bank_entry_id_payment_statement_entries_id_fk" FOREIGN KEY ("bank_entry_id") REFERENCES "public"."payment_statement_entries"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_bank_matches" ADD CONSTRAINT "payment_bank_matches_settlement_entry_id_payment_statement_entries_id_fk" FOREIGN KEY ("settlement_entry_id") REFERENCES "public"."payment_statement_entries"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_bank_matches" ADD CONSTRAINT "payment_bank_matches_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_bank_matches" ADD CONSTRAINT "payment_bank_matches_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_bank_matches" ADD CONSTRAINT "payment_bank_matches_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_adjustments" ADD CONSTRAINT "payment_recon_adjustments_case_id_payment_recon_cases_id_fk" FOREIGN KEY ("case_id") REFERENCES "public"."payment_recon_cases"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_adjustments" ADD CONSTRAINT "payment_recon_adjustments_application_id_payment_apps_id_fk" FOREIGN KEY ("application_id") REFERENCES "public"."payment_apps"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_adjustments" ADD CONSTRAINT "payment_recon_adjustments_channel_config_id_payment_channel_configs_id_fk" FOREIGN KEY ("channel_config_id") REFERENCES "public"."payment_channel_configs"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_adjustments" ADD CONSTRAINT "payment_recon_adjustments_workflow_instance_id_workflow_instances_id_fk" FOREIGN KEY ("workflow_instance_id") REFERENCES "public"."workflow_instances"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_adjustments" ADD CONSTRAINT "payment_recon_adjustments_journal_id_payment_journals_id_fk" FOREIGN KEY ("journal_id") REFERENCES "public"."payment_journals"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_adjustments" ADD CONSTRAINT "payment_recon_adjustments_reversal_of_id_payment_recon_adjustments_id_fk" FOREIGN KEY ("reversal_of_id") REFERENCES "public"."payment_recon_adjustments"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_adjustments" ADD CONSTRAINT "payment_recon_adjustments_applicant_id_users_id_fk" FOREIGN KEY ("applicant_id") REFERENCES "public"."users"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_adjustments" ADD CONSTRAINT "payment_recon_adjustments_approver_id_users_id_fk" FOREIGN KEY ("approver_id") REFERENCES "public"."users"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_adjustments" ADD CONSTRAINT "payment_recon_adjustments_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_adjustments" ADD CONSTRAINT "payment_recon_adjustments_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_adjustments" ADD CONSTRAINT "payment_recon_adjustments_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_case_events" ADD CONSTRAINT "payment_recon_case_events_case_id_payment_recon_cases_id_fk" FOREIGN KEY ("case_id") REFERENCES "public"."payment_recon_cases"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_case_events" ADD CONSTRAINT "payment_recon_case_events_actor_id_users_id_fk" FOREIGN KEY ("actor_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_case_events" ADD CONSTRAINT "payment_recon_case_events_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_cases" ADD CONSTRAINT "payment_recon_cases_account_id_payment_channel_accounts_id_fk" FOREIGN KEY ("account_id") REFERENCES "public"."payment_channel_accounts"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_cases" ADD CONSTRAINT "payment_recon_cases_period_id_payment_statement_periods_id_fk" FOREIGN KEY ("period_id") REFERENCES "public"."payment_statement_periods"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_cases" ADD CONSTRAINT "payment_recon_cases_last_run_id_payment_recon_runs_id_fk" FOREIGN KEY ("last_run_id") REFERENCES "public"."payment_recon_runs"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_cases" ADD CONSTRAINT "payment_recon_cases_application_id_payment_apps_id_fk" FOREIGN KEY ("application_id") REFERENCES "public"."payment_apps"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_cases" ADD CONSTRAINT "payment_recon_cases_order_id_payment_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."payment_orders"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_cases" ADD CONSTRAINT "payment_recon_cases_refund_id_payment_refunds_id_fk" FOREIGN KEY ("refund_id") REFERENCES "public"."payment_refunds"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_cases" ADD CONSTRAINT "payment_recon_cases_assigned_to_users_id_fk" FOREIGN KEY ("assigned_to") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_cases" ADD CONSTRAINT "payment_recon_cases_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_cases" ADD CONSTRAINT "payment_recon_cases_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_cases" ADD CONSTRAINT "payment_recon_cases_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_runs" ADD CONSTRAINT "payment_recon_runs_statement_id_payment_statements_id_fk" FOREIGN KEY ("statement_id") REFERENCES "public"."payment_statements"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_runs" ADD CONSTRAINT "payment_recon_runs_task_id_async_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."async_tasks"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_runs" ADD CONSTRAINT "payment_recon_runs_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_runs" ADD CONSTRAINT "payment_recon_runs_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_recon_runs" ADD CONSTRAINT "payment_recon_runs_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_statement_entries" ADD CONSTRAINT "payment_statement_entries_statement_id_payment_statements_id_fk" FOREIGN KEY ("statement_id") REFERENCES "public"."payment_statements"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_statement_entries" ADD CONSTRAINT "payment_statement_entries_application_id_payment_apps_id_fk" FOREIGN KEY ("application_id") REFERENCES "public"."payment_apps"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_statement_entries" ADD CONSTRAINT "payment_statement_entries_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_statement_files" ADD CONSTRAINT "payment_statement_files_statement_id_payment_statements_id_fk" FOREIGN KEY ("statement_id") REFERENCES "public"."payment_statements"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_statement_files" ADD CONSTRAINT "payment_statement_files_storage_config_id_file_storage_configs_id_fk" FOREIGN KEY ("storage_config_id") REFERENCES "public"."file_storage_configs"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_statement_files" ADD CONSTRAINT "payment_statement_files_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_statement_periods" ADD CONSTRAINT "payment_statement_periods_account_id_payment_channel_accounts_id_fk" FOREIGN KEY ("account_id") REFERENCES "public"."payment_channel_accounts"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_statement_periods" ADD CONSTRAINT "payment_statement_periods_task_id_async_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."async_tasks"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_statement_periods" ADD CONSTRAINT "payment_statement_periods_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_statement_periods" ADD CONSTRAINT "payment_statement_periods_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_statement_periods" ADD CONSTRAINT "payment_statement_periods_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_statements" ADD CONSTRAINT "payment_statements_period_id_payment_statement_periods_id_fk" FOREIGN KEY ("period_id") REFERENCES "public"."payment_statement_periods"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_statements" ADD CONSTRAINT "payment_statements_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_statements" ADD CONSTRAINT "payment_statements_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payment_statements" ADD CONSTRAINT "payment_statements_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ai_agents" ADD CONSTRAINT "ai_agents_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ai_arena_votes" ADD CONSTRAINT "ai_arena_votes_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ai_conversations" ADD CONSTRAINT "ai_conversations_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -8722,6 +9856,7 @@ ALTER TABLE "report_datasources" ADD CONSTRAINT "report_datasources_created_by_u
 ALTER TABLE "report_datasources" ADD CONSTRAINT "report_datasources_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "report_delivery_attempts" ADD CONSTRAINT "report_delivery_attempts_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "report_delivery_attempts" ADD CONSTRAINT "report_delivery_attempts_run_id_report_delivery_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."report_delivery_runs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "report_delivery_runs" ADD CONSTRAINT "report_delivery_runs_task_id_async_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."async_tasks"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "report_delivery_runs" ADD CONSTRAINT "report_delivery_runs_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "report_delivery_runs" ADD CONSTRAINT "report_delivery_runs_subscription_id_report_dashboard_subscriptions_id_fk" FOREIGN KEY ("subscription_id") REFERENCES "public"."report_dashboard_subscriptions"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "report_delivery_runs" ADD CONSTRAINT "report_delivery_runs_alert_rule_id_report_alert_rules_id_fk" FOREIGN KEY ("alert_rule_id") REFERENCES "public"."report_alert_rules"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -8772,6 +9907,7 @@ ALTER TABLE "report_dq_rules" ADD CONSTRAINT "report_dq_rules_tenant_id_tenants_
 ALTER TABLE "report_dq_rules" ADD CONSTRAINT "report_dq_rules_dataset_id_report_datasets_id_fk" FOREIGN KEY ("dataset_id") REFERENCES "public"."report_datasets"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "report_dq_rules" ADD CONSTRAINT "report_dq_rules_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "report_dq_rules" ADD CONSTRAINT "report_dq_rules_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "report_dq_runs" ADD CONSTRAINT "report_dq_runs_task_id_async_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."async_tasks"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "report_dq_runs" ADD CONSTRAINT "report_dq_runs_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "report_dq_runs" ADD CONSTRAINT "report_dq_runs_rule_id_report_dq_rules_id_fk" FOREIGN KEY ("rule_id") REFERENCES "public"."report_dq_rules"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "report_dq_runs" ADD CONSTRAINT "report_dq_runs_dataset_id_report_datasets_id_fk" FOREIGN KEY ("dataset_id") REFERENCES "public"."report_datasets"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -8891,6 +10027,8 @@ ALTER TABLE "cms_content_tombstones" ADD CONSTRAINT "cms_content_tombstones_site
 ALTER TABLE "cms_content_versions" ADD CONSTRAINT "cms_content_versions_content_id_cms_contents_id_fk" FOREIGN KEY ("content_id") REFERENCES "public"."cms_contents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cms_content_versions" ADD CONSTRAINT "cms_content_versions_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cms_content_versions" ADD CONSTRAINT "cms_content_versions_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_contents" ADD CONSTRAINT "cms_contents_owner_id_users_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_contents" ADD CONSTRAINT "cms_contents_translation_of_id_cms_contents_id_fk" FOREIGN KEY ("translation_of_id") REFERENCES "public"."cms_contents"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cms_contents" ADD CONSTRAINT "cms_contents_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cms_contents" ADD CONSTRAINT "cms_contents_channel_id_cms_channels_id_fk" FOREIGN KEY ("channel_id") REFERENCES "public"."cms_channels"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cms_contents" ADD CONSTRAINT "cms_contents_model_id_cms_models_id_fk" FOREIGN KEY ("model_id") REFERENCES "public"."cms_models"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -8954,6 +10092,11 @@ ALTER TABLE "cms_open_app_grants" ADD CONSTRAINT "cms_open_app_grants_site_id_cm
 ALTER TABLE "cms_open_app_grants" ADD CONSTRAINT "cms_open_app_grants_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cms_open_app_grants" ADD CONSTRAINT "cms_open_app_grants_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cms_page_block_acls" ADD CONSTRAINT "cms_page_block_acls_page_id_cms_pages_id_fk" FOREIGN KEY ("page_id") REFERENCES "public"."cms_pages"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_page_preset_versions" ADD CONSTRAINT "cms_page_preset_versions_preset_id_cms_page_presets_id_fk" FOREIGN KEY ("preset_id") REFERENCES "public"."cms_page_presets"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_page_preset_versions" ADD CONSTRAINT "cms_page_preset_versions_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_page_presets" ADD CONSTRAINT "cms_page_presets_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_page_presets" ADD CONSTRAINT "cms_page_presets_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_page_presets" ADD CONSTRAINT "cms_page_presets_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cms_pages" ADD CONSTRAINT "cms_pages_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cms_pages" ADD CONSTRAINT "cms_pages_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cms_pages" ADD CONSTRAINT "cms_pages_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -8992,9 +10135,14 @@ ALTER TABLE "cms_sites" ADD CONSTRAINT "cms_sites_model_id_cms_models_id_fk" FOR
 ALTER TABLE "cms_sites" ADD CONSTRAINT "cms_sites_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cms_sites" ADD CONSTRAINT "cms_sites_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cms_tags" ADD CONSTRAINT "cms_tags_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_tags" ADD CONSTRAINT "cms_tags_vocabulary_id_cms_vocabularies_id_fk" FOREIGN KEY ("vocabulary_id") REFERENCES "public"."cms_vocabularies"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_tags" ADD CONSTRAINT "cms_tags_parent_id_cms_tags_id_fk" FOREIGN KEY ("parent_id") REFERENCES "public"."cms_tags"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cms_tags" ADD CONSTRAINT "cms_tags_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cms_tags" ADD CONSTRAINT "cms_tags_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cms_visit_logs" ADD CONSTRAINT "cms_visit_logs_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_vocabularies" ADD CONSTRAINT "cms_vocabularies_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_vocabularies" ADD CONSTRAINT "cms_vocabularies_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_vocabularies" ADD CONSTRAINT "cms_vocabularies_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cms_widget_refs" ADD CONSTRAINT "cms_widget_refs_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cms_widget_refs" ADD CONSTRAINT "cms_widget_refs_widget_id_cms_widgets_id_fk" FOREIGN KEY ("widget_id") REFERENCES "public"."cms_widgets"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cms_widget_source_refs" ADD CONSTRAINT "cms_widget_source_refs_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -9002,6 +10150,107 @@ ALTER TABLE "cms_widget_source_refs" ADD CONSTRAINT "cms_widget_source_refs_widg
 ALTER TABLE "cms_widgets" ADD CONSTRAINT "cms_widgets_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cms_widgets" ADD CONSTRAINT "cms_widgets_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cms_widgets" ADD CONSTRAINT "cms_widgets_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_asset_rights" ADD CONSTRAINT "cms_asset_rights_resource_id_cms_resources_id_fk" FOREIGN KEY ("resource_id") REFERENCES "public"."cms_resources"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_asset_rights" ADD CONSTRAINT "cms_asset_rights_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_asset_rights" ADD CONSTRAINT "cms_asset_rights_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_asset_versions" ADD CONSTRAINT "cms_asset_versions_resource_id_cms_resources_id_fk" FOREIGN KEY ("resource_id") REFERENCES "public"."cms_resources"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_asset_versions" ADD CONSTRAINT "cms_asset_versions_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_asset_versions" ADD CONSTRAINT "cms_asset_versions_file_id_managed_files_id_fk" FOREIGN KEY ("file_id") REFERENCES "public"."managed_files"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_asset_versions" ADD CONSTRAINT "cms_asset_versions_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_asset_versions" ADD CONSTRAINT "cms_asset_versions_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_distribution_sync_states" ADD CONSTRAINT "cms_distribution_sync_states_content_id_cms_contents_id_fk" FOREIGN KEY ("content_id") REFERENCES "public"."cms_contents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_distribution_sync_states" ADD CONSTRAINT "cms_distribution_sync_states_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_distribution_sync_states" ADD CONSTRAINT "cms_distribution_sync_states_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_editorial_note_replies" ADD CONSTRAINT "cms_editorial_note_replies_note_id_cms_editorial_notes_id_fk" FOREIGN KEY ("note_id") REFERENCES "public"."cms_editorial_notes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_editorial_note_replies" ADD CONSTRAINT "cms_editorial_note_replies_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_editorial_note_replies" ADD CONSTRAINT "cms_editorial_note_replies_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_editorial_notes" ADD CONSTRAINT "cms_editorial_notes_content_id_cms_contents_id_fk" FOREIGN KEY ("content_id") REFERENCES "public"."cms_contents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_editorial_notes" ADD CONSTRAINT "cms_editorial_notes_revision_id_cms_content_revisions_id_fk" FOREIGN KEY ("revision_id") REFERENCES "public"."cms_content_revisions"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_editorial_notes" ADD CONSTRAINT "cms_editorial_notes_resolved_by_users_id_fk" FOREIGN KEY ("resolved_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_editorial_notes" ADD CONSTRAINT "cms_editorial_notes_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_editorial_notes" ADD CONSTRAINT "cms_editorial_notes_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_model_unique_values" ADD CONSTRAINT "cms_model_unique_values_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_model_unique_values" ADD CONSTRAINT "cms_model_unique_values_model_id_cms_models_id_fk" FOREIGN KEY ("model_id") REFERENCES "public"."cms_models"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_model_versions" ADD CONSTRAINT "cms_model_versions_model_id_cms_models_id_fk" FOREIGN KEY ("model_id") REFERENCES "public"."cms_models"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_model_versions" ADD CONSTRAINT "cms_model_versions_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_model_versions" ADD CONSTRAINT "cms_model_versions_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_component_versions" ADD CONSTRAINT "cms_component_versions_component_id_cms_components_id_fk" FOREIGN KEY ("component_id") REFERENCES "public"."cms_components"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_component_versions" ADD CONSTRAINT "cms_component_versions_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_component_versions" ADD CONSTRAINT "cms_component_versions_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_components" ADD CONSTRAINT "cms_components_owner_site_id_cms_sites_id_fk" FOREIGN KEY ("owner_site_id") REFERENCES "public"."cms_sites"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_components" ADD CONSTRAINT "cms_components_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_components" ADD CONSTRAINT "cms_components_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_media_processing" ADD CONSTRAINT "cms_media_processing_asset_version_id_cms_asset_versions_id_fk" FOREIGN KEY ("asset_version_id") REFERENCES "public"."cms_asset_versions"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_media_processing" ADD CONSTRAINT "cms_media_processing_subtitle_version_id_cms_asset_versions_id_fk" FOREIGN KEY ("subtitle_version_id") REFERENCES "public"."cms_asset_versions"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_media_processing" ADD CONSTRAINT "cms_media_processing_task_id_async_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."async_tasks"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_media_processing" ADD CONSTRAINT "cms_media_processing_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_media_processing" ADD CONSTRAINT "cms_media_processing_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_telemetry_attributions" ADD CONSTRAINT "cms_telemetry_attributions_event_id_user_events_event_id_fk" FOREIGN KEY ("event_id") REFERENCES "public"."user_events"("event_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_telemetry_attributions" ADD CONSTRAINT "cms_telemetry_attributions_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_telemetry_outbox" ADD CONSTRAINT "cms_telemetry_outbox_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_telemetry_receipts" ADD CONSTRAINT "cms_telemetry_receipts_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_collection_states" ADD CONSTRAINT "cms_collection_states_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_collection_transitions" ADD CONSTRAINT "cms_collection_transitions_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_preview_grants" ADD CONSTRAINT "cms_content_preview_grants_content_id_cms_contents_id_fk" FOREIGN KEY ("content_id") REFERENCES "public"."cms_contents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_preview_grants" ADD CONSTRAINT "cms_content_preview_grants_revision_id_cms_content_revisions_id_fk" FOREIGN KEY ("revision_id") REFERENCES "public"."cms_content_revisions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_preview_grants" ADD CONSTRAINT "cms_content_preview_grants_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_preview_grants" ADD CONSTRAINT "cms_content_preview_grants_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_review_revisions" ADD CONSTRAINT "cms_content_review_revisions_content_id_cms_contents_id_fk" FOREIGN KEY ("content_id") REFERENCES "public"."cms_contents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_review_revisions" ADD CONSTRAINT "cms_content_review_revisions_revision_id_cms_content_revisions_id_fk" FOREIGN KEY ("revision_id") REFERENCES "public"."cms_content_revisions"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_revision_approvals" ADD CONSTRAINT "cms_content_revision_approvals_revision_id_cms_content_revisions_id_fk" FOREIGN KEY ("revision_id") REFERENCES "public"."cms_content_revisions"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_revision_approvals" ADD CONSTRAINT "cms_content_revision_approvals_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_revisions" ADD CONSTRAINT "cms_content_revisions_content_id_cms_contents_id_fk" FOREIGN KEY ("content_id") REFERENCES "public"."cms_contents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_revisions" ADD CONSTRAINT "cms_content_revisions_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_working_copies" ADD CONSTRAINT "cms_content_working_copies_content_id_cms_contents_id_fk" FOREIGN KEY ("content_id") REFERENCES "public"."cms_contents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_working_copies" ADD CONSTRAINT "cms_content_working_copies_submitted_revision_id_cms_content_revisions_id_fk" FOREIGN KEY ("submitted_revision_id") REFERENCES "public"."cms_content_revisions"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_working_copies" ADD CONSTRAINT "cms_content_working_copies_approved_revision_id_cms_content_revisions_id_fk" FOREIGN KEY ("approved_revision_id") REFERENCES "public"."cms_content_revisions"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_working_copies" ADD CONSTRAINT "cms_content_working_copies_published_revision_id_cms_content_revisions_id_fk" FOREIGN KEY ("published_revision_id") REFERENCES "public"."cms_content_revisions"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_working_copies" ADD CONSTRAINT "cms_content_working_copies_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_working_copies" ADD CONSTRAINT "cms_content_working_copies_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_editorial_task_history" ADD CONSTRAINT "cms_editorial_task_history_task_id_cms_editorial_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."cms_editorial_tasks"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_editorial_task_observations" ADD CONSTRAINT "cms_editorial_task_observations_task_id_cms_editorial_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."cms_editorial_tasks"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_editorial_task_observations" ADD CONSTRAINT "cms_editorial_task_observations_round_id_cms_editorial_task_rounds_id_fk" FOREIGN KEY ("round_id") REFERENCES "public"."cms_editorial_task_rounds"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_editorial_task_rounds" ADD CONSTRAINT "cms_editorial_task_rounds_task_id_cms_editorial_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."cms_editorial_tasks"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_editorial_task_rounds" ADD CONSTRAINT "cms_editorial_task_rounds_solution_revision_id_cms_content_revisions_id_fk" FOREIGN KEY ("solution_revision_id") REFERENCES "public"."cms_content_revisions"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_editorial_task_rounds" ADD CONSTRAINT "cms_editorial_task_rounds_release_id_cms_releases_id_fk" FOREIGN KEY ("release_id") REFERENCES "public"."cms_releases"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_editorial_task_rounds" ADD CONSTRAINT "cms_editorial_task_rounds_deployment_id_cms_deployments_id_fk" FOREIGN KEY ("deployment_id") REFERENCES "public"."cms_deployments"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_editorial_task_rounds" ADD CONSTRAINT "cms_editorial_task_rounds_activation_id_cms_release_activations_id_fk" FOREIGN KEY ("activation_id") REFERENCES "public"."cms_release_activations"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_editorial_tasks" ADD CONSTRAINT "cms_editorial_tasks_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_editorial_tasks" ADD CONSTRAINT "cms_editorial_tasks_feedback_id_cms_feedback_cases_id_fk" FOREIGN KEY ("feedback_id") REFERENCES "public"."cms_feedback_cases"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_editorial_tasks" ADD CONSTRAINT "cms_editorial_tasks_owner_id_users_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_editorial_tasks" ADD CONSTRAINT "cms_editorial_tasks_content_id_cms_contents_id_fk" FOREIGN KEY ("content_id") REFERENCES "public"."cms_contents"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_editorial_tasks" ADD CONSTRAINT "cms_editorial_tasks_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_editorial_tasks" ADD CONSTRAINT "cms_editorial_tasks_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_feedback_cases" ADD CONSTRAINT "cms_feedback_cases_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_feedback_cases" ADD CONSTRAINT "cms_feedback_cases_form_id_cms_forms_id_fk" FOREIGN KEY ("form_id") REFERENCES "public"."cms_forms"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_feedback_cases" ADD CONSTRAINT "cms_feedback_cases_submission_id_cms_form_submissions_id_fk" FOREIGN KEY ("submission_id") REFERENCES "public"."cms_form_submissions"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_feedback_cases" ADD CONSTRAINT "cms_feedback_cases_owner_id_users_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_feedback_cases" ADD CONSTRAINT "cms_feedback_cases_workflow_definition_id_workflow_definitions_id_fk" FOREIGN KEY ("workflow_definition_id") REFERENCES "public"."workflow_definitions"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_feedback_cases" ADD CONSTRAINT "cms_feedback_cases_workflow_instance_id_workflow_instances_id_fk" FOREIGN KEY ("workflow_instance_id") REFERENCES "public"."workflow_instances"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_feedback_cases" ADD CONSTRAINT "cms_feedback_cases_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_feedback_cases" ADD CONSTRAINT "cms_feedback_cases_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_feedback_history" ADD CONSTRAINT "cms_feedback_history_feedback_id_cms_feedback_cases_id_fk" FOREIGN KEY ("feedback_id") REFERENCES "public"."cms_feedback_cases"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_form_handling_policies" ADD CONSTRAINT "cms_form_handling_policies_form_id_cms_forms_id_fk" FOREIGN KEY ("form_id") REFERENCES "public"."cms_forms"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_form_handling_policies" ADD CONSTRAINT "cms_form_handling_policies_workflow_definition_id_workflow_definitions_id_fk" FOREIGN KEY ("workflow_definition_id") REFERENCES "public"."workflow_definitions"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_form_handling_policies" ADD CONSTRAINT "cms_form_handling_policies_default_owner_id_users_id_fk" FOREIGN KEY ("default_owner_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_form_handling_policies" ADD CONSTRAINT "cms_form_handling_policies_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_form_handling_policies" ADD CONSTRAINT "cms_form_handling_policies_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_suppressions" ADD CONSTRAINT "cms_content_suppressions_content_id_cms_contents_id_fk" FOREIGN KEY ("content_id") REFERENCES "public"."cms_contents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_suppressions" ADD CONSTRAINT "cms_content_suppressions_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_suppressions" ADD CONSTRAINT "cms_content_suppressions_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_suppressions" ADD CONSTRAINT "cms_content_suppressions_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_deployments" ADD CONSTRAINT "cms_deployments_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_deployments" ADD CONSTRAINT "cms_deployments_release_id_cms_releases_id_fk" FOREIGN KEY ("release_id") REFERENCES "public"."cms_releases"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_deployments" ADD CONSTRAINT "cms_deployments_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_deployments" ADD CONSTRAINT "cms_deployments_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_release_activations" ADD CONSTRAINT "cms_release_activations_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_release_activations" ADD CONSTRAINT "cms_release_activations_release_id_cms_releases_id_fk" FOREIGN KEY ("release_id") REFERENCES "public"."cms_releases"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_release_activations" ADD CONSTRAINT "cms_release_activations_to_generation_id_cms_deployments_id_fk" FOREIGN KEY ("to_generation_id") REFERENCES "public"."cms_deployments"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_releases" ADD CONSTRAINT "cms_releases_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_releases" ADD CONSTRAINT "cms_releases_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_releases" ADD CONSTRAINT "cms_releases_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_site_generations" ADD CONSTRAINT "cms_site_generations_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_site_generations" ADD CONSTRAINT "cms_site_generations_active_generation_id_cms_deployments_id_fk" FOREIGN KEY ("active_generation_id") REFERENCES "public"."cms_deployments"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "wiki_comments" ADD CONSTRAINT "wiki_comments_doc_id_wiki_docs_id_fk" FOREIGN KEY ("doc_id") REFERENCES "public"."wiki_docs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "wiki_comments" ADD CONSTRAINT "wiki_comments_parent_id_wiki_comments_id_fk" FOREIGN KEY ("parent_id") REFERENCES "public"."wiki_comments"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "wiki_comments" ADD CONSTRAINT "wiki_comments_author_id_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -9207,6 +10456,39 @@ ALTER TABLE "drive_upload_bindings" ADD CONSTRAINT "drive_upload_bindings_parent
 ALTER TABLE "drive_upload_bindings" ADD CONSTRAINT "drive_upload_bindings_node_id_drive_nodes_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."drive_nodes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "drive_upload_bindings" ADD CONSTRAINT "drive_upload_bindings_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "drive_upload_bindings" ADD CONSTRAINT "drive_upload_bindings_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "entity_watch_events" ADD CONSTRAINT "entity_watch_events_event_id_domain_events_id_fk" FOREIGN KEY ("event_id") REFERENCES "public"."domain_events"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "entity_watches" ADD CONSTRAINT "entity_watches_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "entity_watches" ADD CONSTRAINT "entity_watches_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_review_policies" ADD CONSTRAINT "cms_content_review_policies_content_id_cms_contents_id_fk" FOREIGN KEY ("content_id") REFERENCES "public"."cms_contents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_review_policies" ADD CONSTRAINT "cms_content_review_policies_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_review_policies" ADD CONSTRAINT "cms_content_review_policies_owner_id_users_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_review_policies" ADD CONSTRAINT "cms_content_review_policies_last_reviewed_revision_id_cms_content_revisions_id_fk" FOREIGN KEY ("last_reviewed_revision_id") REFERENCES "public"."cms_content_revisions"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_review_policies" ADD CONSTRAINT "cms_content_review_policies_last_check_task_id_async_tasks_id_fk" FOREIGN KEY ("last_check_task_id") REFERENCES "public"."async_tasks"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_review_policies" ADD CONSTRAINT "cms_content_review_policies_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_review_policies" ADD CONSTRAINT "cms_content_review_policies_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_review_records" ADD CONSTRAINT "cms_content_review_records_content_id_cms_contents_id_fk" FOREIGN KEY ("content_id") REFERENCES "public"."cms_contents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_review_records" ADD CONSTRAINT "cms_content_review_records_revision_id_cms_content_revisions_id_fk" FOREIGN KEY ("revision_id") REFERENCES "public"."cms_content_revisions"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_deployment_retention_policies" ADD CONSTRAINT "cms_deployment_retention_policies_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_deployment_retention_policies" ADD CONSTRAINT "cms_deployment_retention_policies_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_deployment_retention_policies" ADD CONSTRAINT "cms_deployment_retention_policies_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_deployment_storage" ADD CONSTRAINT "cms_deployment_storage_deployment_id_cms_deployments_id_fk" FOREIGN KEY ("deployment_id") REFERENCES "public"."cms_deployments"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_deployment_storage" ADD CONSTRAINT "cms_deployment_storage_cleanup_task_id_async_tasks_id_fk" FOREIGN KEY ("cleanup_task_id") REFERENCES "public"."async_tasks"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_deployment_storage" ADD CONSTRAINT "cms_deployment_storage_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_deployment_storage" ADD CONSTRAINT "cms_deployment_storage_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_delivery_expiry_receipts" ADD CONSTRAINT "cms_delivery_expiry_receipts_resource_id_cms_resources_id_fk" FOREIGN KEY ("resource_id") REFERENCES "public"."cms_resources"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_delivery_runs" ADD CONSTRAINT "cms_delivery_runs_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_delivery_runs" ADD CONSTRAINT "cms_delivery_runs_release_id_cms_releases_id_fk" FOREIGN KEY ("release_id") REFERENCES "public"."cms_releases"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_delivery_runs" ADD CONSTRAINT "cms_delivery_runs_generation_id_cms_deployments_id_fk" FOREIGN KEY ("generation_id") REFERENCES "public"."cms_deployments"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_delivery_runs" ADD CONSTRAINT "cms_delivery_runs_activation_id_cms_release_activations_id_fk" FOREIGN KEY ("activation_id") REFERENCES "public"."cms_release_activations"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_delivery_runs" ADD CONSTRAINT "cms_delivery_runs_task_id_async_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."async_tasks"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_delivery_states" ADD CONSTRAINT "cms_delivery_states_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_delivery_states" ADD CONSTRAINT "cms_delivery_states_latest_run_id_cms_delivery_runs_id_fk" FOREIGN KEY ("latest_run_id") REFERENCES "public"."cms_delivery_runs"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_collection_versions" ADD CONSTRAINT "cms_content_collection_versions_collection_id_cms_content_collections_id_fk" FOREIGN KEY ("collection_id") REFERENCES "public"."cms_content_collections"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_collection_versions" ADD CONSTRAINT "cms_content_collection_versions_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_collection_versions" ADD CONSTRAINT "cms_content_collection_versions_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_collections" ADD CONSTRAINT "cms_content_collections_site_id_cms_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."cms_sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_collections" ADD CONSTRAINT "cms_content_collections_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cms_content_collections" ADD CONSTRAINT "cms_content_collections_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "role_dept_scopes_dept_idx" ON "role_dept_scopes" USING btree ("dept_id");--> statement-breakpoint
 CREATE INDEX "role_menus_menu_idx" ON "role_menus" USING btree ("menu_id");--> statement-breakpoint
 CREATE INDEX "user_dept_scopes_dept_idx" ON "user_dept_scopes" USING btree ("dept_id");--> statement-breakpoint
@@ -9228,20 +10510,27 @@ CREATE INDEX "upload_sessions_created_at_idx" ON "upload_sessions" USING btree (
 CREATE INDEX "upload_sessions_status_idx" ON "upload_sessions" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "async_task_items_task_idx" ON "async_task_items" USING btree ("task_id");--> statement-breakpoint
 CREATE INDEX "async_task_items_task_status_idx" ON "async_task_items" USING btree ("task_id","status");--> statement-breakpoint
+CREATE INDEX "async_task_subjects_entity_idx" ON "async_task_subjects" USING btree ("tenant_id","entity_type","entity_key","task_id");--> statement-breakpoint
+CREATE INDEX "async_task_subjects_task_idx" ON "async_task_subjects" USING btree ("task_id");--> statement-breakpoint
 CREATE INDEX "async_tasks_type_idx" ON "async_tasks" USING btree ("task_type");--> statement-breakpoint
 CREATE INDEX "async_tasks_status_idx" ON "async_tasks" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "async_tasks_status_heartbeat_idx" ON "async_tasks" USING btree ("status","heartbeat_at");--> statement-breakpoint
+CREATE INDEX "async_tasks_status_next_run_idx" ON "async_tasks" USING btree ("status","next_run_at");--> statement-breakpoint
+CREATE INDEX "async_tasks_status_completed_idx" ON "async_tasks" USING btree ("status","completed_at");--> statement-breakpoint
 CREATE INDEX "async_tasks_created_by_idx" ON "async_tasks" USING btree ("created_by");--> statement-breakpoint
 CREATE INDEX "async_tasks_created_at_idx" ON "async_tasks" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "async_tasks_trace_idx" ON "async_tasks" USING btree ("trace_id");--> statement-breakpoint
 CREATE INDEX "async_tasks_payload_trgm_idx" ON "async_tasks" USING gin (("payload"::text) gin_trgm_ops);--> statement-breakpoint
 CREATE INDEX "async_tasks_result_trgm_idx" ON "async_tasks" USING gin (("result"::text) gin_trgm_ops);--> statement-breakpoint
-CREATE UNIQUE INDEX "async_tasks_idem_tenant_uq" ON "async_tasks" USING btree ("tenant_id","created_by","task_type","idempotency_key") WHERE "async_tasks"."idempotency_key" is not null and "async_tasks"."tenant_id" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "async_tasks_idem_platform_uq" ON "async_tasks" USING btree ("created_by","task_type","idempotency_key") WHERE "async_tasks"."idempotency_key" is not null and "async_tasks"."tenant_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "async_tasks_idem_tenant_uq" ON "async_tasks" USING btree ("tenant_id",coalesce("created_by", 0),"task_type","idempotency_key") WHERE "async_tasks"."idempotency_key" is not null and "async_tasks"."tenant_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "async_tasks_idem_platform_uq" ON "async_tasks" USING btree (coalesce("created_by", 0),"task_type","idempotency_key") WHERE "async_tasks"."idempotency_key" is not null and "async_tasks"."tenant_id" is null;--> statement-breakpoint
 CREATE INDEX "export_job_downloads_tenant_idx" ON "export_job_downloads" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "export_job_downloads_job_idx" ON "export_job_downloads" USING btree ("job_id");--> statement-breakpoint
 CREATE INDEX "export_job_downloads_downloaded_by_idx" ON "export_job_downloads" USING btree ("downloaded_by");--> statement-breakpoint
 CREATE INDEX "export_jobs_entity_idx" ON "export_jobs" USING btree ("entity");--> statement-breakpoint
 CREATE INDEX "export_jobs_status_idx" ON "export_jobs" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "export_jobs_status_started_idx" ON "export_jobs" USING btree ("status","started_at");--> statement-breakpoint
+CREATE INDEX "export_jobs_status_completed_idx" ON "export_jobs" USING btree ("status","completed_at");--> statement-breakpoint
 CREATE INDEX "export_jobs_created_by_idx" ON "export_jobs" USING btree ("created_by");--> statement-breakpoint
 CREATE INDEX "export_jobs_tenant_idx" ON "export_jobs" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "export_jobs_expires_at_idx" ON "export_jobs" USING btree ("expires_at");--> statement-breakpoint
@@ -9249,12 +10538,15 @@ CREATE INDEX "cron_job_logs_started_at_idx" ON "cron_job_logs" USING btree ("sta
 CREATE INDEX "cron_job_logs_job_idx" ON "cron_job_logs" USING btree ("job_id");--> statement-breakpoint
 CREATE INDEX "cron_job_logs_job_started_idx" ON "cron_job_logs" USING btree ("job_id","started_at" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "cron_job_logs_status_started_idx" ON "cron_job_logs" USING btree ("status","started_at" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX "cron_job_logs_status_ended_idx" ON "cron_job_logs" USING btree ("status","ended_at");--> statement-breakpoint
 CREATE INDEX "maintenance_logs_started_at_idx" ON "maintenance_logs" USING btree ("started_at");--> statement-breakpoint
 CREATE INDEX "maintenance_logs_ended_at_idx" ON "maintenance_logs" USING btree ("ended_at");--> statement-breakpoint
 CREATE INDEX "system_scheduler_nodes_active_idx" ON "system_scheduler_nodes" USING btree ("active");--> statement-breakpoint
 CREATE INDEX "system_scheduler_nodes_last_heartbeat_idx" ON "system_scheduler_nodes" USING btree ("last_heartbeat_at");--> statement-breakpoint
 CREATE INDEX "system_scheduler_runs_task_started_idx" ON "system_scheduler_runs" USING btree ("task_name","started_at","id");--> statement-breakpoint
 CREATE INDEX "system_scheduler_runs_status_idx" ON "system_scheduler_runs" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "system_scheduler_runs_status_started_idx" ON "system_scheduler_runs" USING btree ("status","started_at");--> statement-breakpoint
+CREATE INDEX "system_scheduler_runs_status_ended_idx" ON "system_scheduler_runs" USING btree ("status","ended_at");--> statement-breakpoint
 CREATE INDEX "system_scheduler_runs_started_at_idx" ON "system_scheduler_runs" USING btree ("started_at");--> statement-breakpoint
 CREATE INDEX "system_scheduler_runs_triggered_by_idx" ON "system_scheduler_runs" USING btree ("triggered_by");--> statement-breakpoint
 CREATE INDEX "system_scheduler_runs_alert_ack_by_idx" ON "system_scheduler_runs" USING btree ("alert_ack_by");--> statement-breakpoint
@@ -9290,7 +10582,10 @@ CREATE INDEX "directory_sync_run_items_run_idx" ON "directory_sync_run_items" US
 CREATE INDEX "directory_sync_run_items_action_idx" ON "directory_sync_run_items" USING btree ("action");--> statement-breakpoint
 CREATE INDEX "directory_sync_runs_source_idx" ON "directory_sync_runs" USING btree ("source_id");--> statement-breakpoint
 CREATE INDEX "directory_sync_runs_status_idx" ON "directory_sync_runs" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "directory_sync_runs_status_started_idx" ON "directory_sync_runs" USING btree ("status","started_at");--> statement-breakpoint
+CREATE INDEX "directory_sync_runs_status_finished_idx" ON "directory_sync_runs" USING btree ("status","finished_at");--> statement-breakpoint
 CREATE INDEX "directory_sync_sources_status_idx" ON "directory_sync_sources" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "directory_sync_sources_scheduled_due_idx" ON "directory_sync_sources" USING btree ("next_run_at") WHERE "directory_sync_sources"."status" = 'enabled' and "directory_sync_sources"."type" <> 'scim' and nullif(trim("directory_sync_sources"."cron_expression"), '') is not null;--> statement-breakpoint
 CREATE INDEX "directory_sync_user_links_user_idx" ON "directory_sync_user_links" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "dict_items_parent_idx" ON "dict_items" USING btree ("parent_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "dict_items_dict_id_value_unique" ON "dict_items" USING btree ("dict_id","value");--> statement-breakpoint
@@ -9300,6 +10595,8 @@ CREATE INDEX "login_logs_tenant_created_idx" ON "login_logs" USING btree ("tenan
 CREATE INDEX "login_logs_created_at_idx" ON "login_logs" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "login_logs_user_idx" ON "login_logs" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "login_logs_status_idx" ON "login_logs" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "operation_log_subjects_entity_idx" ON "operation_log_subjects" USING btree ("tenant_id","entity_type","entity_key","operation_log_id");--> statement-breakpoint
+CREATE INDEX "operation_log_subjects_log_idx" ON "operation_log_subjects" USING btree ("operation_log_id");--> statement-breakpoint
 CREATE INDEX "operation_logs_tenant_created_idx" ON "operation_logs" USING btree ("tenant_id","created_at");--> statement-breakpoint
 CREATE INDEX "operation_logs_created_at_idx" ON "operation_logs" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "operation_logs_user_idx" ON "operation_logs" USING btree ("user_id");--> statement-breakpoint
@@ -9309,6 +10606,17 @@ CREATE INDEX "operation_logs_request_idx" ON "operation_logs" USING btree ("requ
 CREATE INDEX "operation_logs_before_trgm_idx" ON "operation_logs" USING gin ("before_data" gin_trgm_ops);--> statement-breakpoint
 CREATE INDEX "operation_logs_after_trgm_idx" ON "operation_logs" USING gin ("after_data" gin_trgm_ops);--> statement-breakpoint
 CREATE INDEX "operation_logs_reqbody_trgm_idx" ON "operation_logs" USING gin ("request_body" gin_trgm_ops);--> statement-breakpoint
+CREATE INDEX "domain_event_subjects_entity_idx" ON "domain_event_subjects" USING btree ("tenant_id","entity_type","entity_key","event_id");--> statement-breakpoint
+CREATE INDEX "domain_event_subjects_event_idx" ON "domain_event_subjects" USING btree ("event_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "domain_events_tenant_dedupe_uq" ON "domain_events" USING btree ("tenant_id","dedupe_key") WHERE "domain_events"."tenant_id" is not null and "domain_events"."dedupe_key" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "domain_events_platform_dedupe_uq" ON "domain_events" USING btree ("dedupe_key") WHERE "domain_events"."tenant_id" is null and "domain_events"."dedupe_key" is not null;--> statement-breakpoint
+CREATE INDEX "domain_events_tenant_occurred_idx" ON "domain_events" USING btree ("tenant_id","occurred_at");--> statement-breakpoint
+CREATE INDEX "domain_events_type_occurred_idx" ON "domain_events" USING btree ("event_type","occurred_at");--> statement-breakpoint
+CREATE INDEX "domain_events_trace_idx" ON "domain_events" USING btree ("trace_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "entity_relation_edges_tenant_uq" ON "entity_relation_edges" USING btree ("tenant_id","source_type","source_key","relation_key","target_type","target_key") WHERE "entity_relation_edges"."tenant_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "entity_relation_edges_platform_uq" ON "entity_relation_edges" USING btree ("source_type","source_key","relation_key","target_type","target_key") WHERE "entity_relation_edges"."tenant_id" is null;--> statement-breakpoint
+CREATE INDEX "entity_relation_edges_source_idx" ON "entity_relation_edges" USING btree ("tenant_id","source_type","source_key","relation_key");--> statement-breakpoint
+CREATE INDEX "entity_relation_edges_target_idx" ON "entity_relation_edges" USING btree ("tenant_id","target_type","target_key","relation_key");--> statement-breakpoint
 CREATE UNIQUE INDEX "analytics_rollup_uq" ON "analytics_daily_rollup" USING btree ("tenant_id","stat_date","metric","dim_type","dim_value");--> statement-breakpoint
 CREATE INDEX "analytics_rollup_date_idx" ON "analytics_daily_rollup" USING btree ("stat_date");--> statement-breakpoint
 CREATE INDEX "analytics_rollup_metric_idx" ON "analytics_daily_rollup" USING btree ("metric");--> statement-breakpoint
@@ -9338,7 +10646,6 @@ CREATE INDEX "analytics_sessions_user_idx" ON "analytics_sessions" USING btree (
 CREATE INDEX "analytics_sessions_tenant_idx" ON "analytics_sessions" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "analytics_sessions_member_idx" ON "analytics_sessions" USING btree ("member_id");--> statement-breakpoint
 CREATE INDEX "analytics_sessions_tenant_started_idx" ON "analytics_sessions" USING btree ("tenant_id","started_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "analytics_settings_tenant_uq" ON "analytics_settings" USING btree (coalesce("tenant_id", 0));--> statement-breakpoint
 CREATE UNIQUE INDEX "analytics_sites_site_key_uq" ON "analytics_sites" USING btree ("site_key");--> statement-breakpoint
 CREATE INDEX "analytics_sites_tenant_idx" ON "analytics_sites" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "analytics_user_profiles_tenant_idx" ON "analytics_user_profiles" USING btree ("tenant_id");--> statement-breakpoint
@@ -9385,7 +10692,6 @@ CREATE INDEX "replay_sessions_user_idx" ON "replay_sessions" USING btree ("user_
 CREATE INDEX "replay_sessions_member_idx" ON "replay_sessions" USING btree ("member_id");--> statement-breakpoint
 CREATE INDEX "source_maps_release_idx" ON "source_maps" USING btree ("release","file_name");--> statement-breakpoint
 CREATE INDEX "source_maps_tenant_idx" ON "source_maps" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "user_events_event_id_uq" ON "user_events" USING btree ("event_id");--> statement-breakpoint
 CREATE INDEX "user_events_created_idx" ON "user_events" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "user_events_type_idx" ON "user_events" USING btree ("event_type");--> statement-breakpoint
 CREATE INDEX "user_events_name_idx" ON "user_events" USING btree ("event_name");--> statement-breakpoint
@@ -9401,8 +10707,18 @@ CREATE INDEX "user_events_source_created_idx" ON "user_events" USING btree ("sou
 CREATE INDEX "user_events_app_created_idx" ON "user_events" USING btree ("app_id","created_at");--> statement-breakpoint
 CREATE INDEX "user_events_perf_metric_idx" ON "user_events" USING btree ("metric_name","created_at") WHERE "user_events"."event_type" = 'perf';--> statement-breakpoint
 CREATE INDEX "user_events_properties_gin_idx" ON "user_events" USING gin ("properties");--> statement-breakpoint
+CREATE INDEX "user_events_cms_site_created_idx" ON "user_events" USING btree (("properties"->>'cmsSiteId'),"created_at") WHERE "user_events"."properties" @> '{"cmsSchemaVersion":2,"trustedCms":true}'::jsonb;--> statement-breakpoint
+CREATE INDEX "user_events_cms_page_created_idx" ON "user_events" USING btree (("properties"->>'pageViewId'),"created_at") WHERE "user_events"."properties" @> '{"cmsSchemaVersion":2,"trustedCms":true}'::jsonb;--> statement-breakpoint
+CREATE UNIQUE INDEX "user_events_cms_page_view_uq" ON "user_events" USING btree (("properties"->>'cmsSiteId'),("properties"->>'pageViewId')) WHERE "user_events"."properties" @> '{"cmsSchemaVersion":2,"trustedCms":true}'::jsonb and "user_events"."event_name"='cms.page_view';--> statement-breakpoint
 CREATE INDEX "user_events_anon_pending_idx" ON "user_events" USING btree ("anonymous_id") WHERE "user_events"."user_id" IS NULL AND "user_events"."member_id" IS NULL AND "user_events"."anonymous_id" IS NOT NULL;--> statement-breakpoint
 CREATE INDEX "announcements_tenant_idx" ON "announcements" USING btree ("tenant_id");--> statement-breakpoint
+CREATE INDEX "workflow_approval_slots_activation_idx" ON "workflow_approval_slots" USING btree ("activation_id");--> statement-breakpoint
+CREATE INDEX "workflow_approval_slots_group_idx" ON "workflow_approval_slots" USING btree ("group_id");--> statement-breakpoint
+CREATE INDEX "workflow_attachment_links_instance_id_idx" ON "workflow_attachment_links" USING btree ("instance_id","id");--> statement-breakpoint
+CREATE INDEX "workflow_attachment_links_task_id_idx" ON "workflow_attachment_links" USING btree ("task_id","id");--> statement-breakpoint
+CREATE INDEX "workflow_attachment_links_file_id_idx" ON "workflow_attachment_links" USING btree ("file_id");--> statement-breakpoint
+CREATE INDEX "workflow_attachment_links_tenant_idx" ON "workflow_attachment_links" USING btree ("tenant_id");--> statement-breakpoint
+CREATE INDEX "workflow_attachment_uploads_tenant_idx" ON "workflow_attachment_uploads" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "workflow_automation_runs_rule_idx" ON "workflow_automation_runs" USING btree ("rule_id");--> statement-breakpoint
 CREATE INDEX "workflow_automation_runs_instance_idx" ON "workflow_automation_runs" USING btree ("instance_id");--> statement-breakpoint
 CREATE INDEX "workflow_automation_runs_created_idx" ON "workflow_automation_runs" USING btree ("created_at");--> statement-breakpoint
@@ -9439,19 +10755,27 @@ CREATE INDEX "workflow_job_executions_tenant_idx" ON "workflow_job_executions" U
 CREATE INDEX "workflow_job_executions_job_idx" ON "workflow_job_executions" USING btree ("job_id","attempt");--> statement-breakpoint
 CREATE UNIQUE INDEX "workflow_job_executions_lease_token_unique" ON "workflow_job_executions" USING btree ("lease_token");--> statement-breakpoint
 CREATE INDEX "workflow_job_executions_type_idx" ON "workflow_job_executions" USING btree ("job_type","status");--> statement-breakpoint
+CREATE INDEX "workflow_job_executions_started_idx" ON "workflow_job_executions" USING btree ("started_at");--> statement-breakpoint
+CREATE INDEX "workflow_job_executions_status_finished_idx" ON "workflow_job_executions" USING btree ("status","finished_at");--> statement-breakpoint
 CREATE INDEX "workflow_jobs_task_idx" ON "workflow_jobs" USING btree ("task_id");--> statement-breakpoint
 CREATE INDEX "workflow_jobs_tenant_idx" ON "workflow_jobs" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "workflow_jobs_due_idx" ON "workflow_jobs" USING btree ("status","run_at");--> statement-breakpoint
+CREATE INDEX "workflow_jobs_claim_idx" ON "workflow_jobs" USING btree ("priority","run_at","id") WHERE "workflow_jobs"."status" = 'pending';--> statement-breakpoint
 CREATE INDEX "workflow_jobs_lease_idx" ON "workflow_jobs" USING btree ("status","lease_until");--> statement-breakpoint
+CREATE INDEX "workflow_jobs_deadline_idx" ON "workflow_jobs" USING btree ("status","execution_deadline");--> statement-breakpoint
 CREATE INDEX "workflow_jobs_type_status_idx" ON "workflow_jobs" USING btree ("job_type","status");--> statement-breakpoint
 CREATE INDEX "workflow_jobs_trace_idx" ON "workflow_jobs" USING btree ("trace_id");--> statement-breakpoint
 CREATE INDEX "workflow_jobs_instance_idx" ON "workflow_jobs" USING btree ("instance_id");--> statement-breakpoint
+CREATE INDEX "workflow_node_activations_instance_node_idx" ON "workflow_node_activations" USING btree ("instance_id","node_key");--> statement-breakpoint
 CREATE INDEX "workflow_quick_phrases_user_idx" ON "workflow_quick_phrases" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "workflow_quick_phrases_tenant_idx" ON "workflow_quick_phrases" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "workflow_saved_views_user_idx" ON "workflow_saved_views" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "workflow_saved_views_tenant_idx" ON "workflow_saved_views" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "workflow_schedules_definition_idx" ON "workflow_schedules" USING btree ("definition_id");--> statement-breakpoint
 CREATE INDEX "workflow_schedules_tenant_idx" ON "workflow_schedules" USING btree ("tenant_id");--> statement-breakpoint
+CREATE INDEX "workflow_schedules_due_idx" ON "workflow_schedules" USING btree ("next_run_at") WHERE "workflow_schedules"."status" = 'enabled' and "workflow_schedules"."next_run_at" is not null;--> statement-breakpoint
+CREATE INDEX "workflow_sign_groups_activation_idx" ON "workflow_sign_groups" USING btree ("activation_id");--> statement-breakpoint
+CREATE INDEX "workflow_sign_groups_anchor_idx" ON "workflow_sign_groups" USING btree ("anchor_slot_id");--> statement-breakpoint
 CREATE INDEX "workflow_simulation_cases_tenant_idx" ON "workflow_simulation_cases" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "workflow_task_consults_task_idx" ON "workflow_task_consults" USING btree ("task_id");--> statement-breakpoint
 CREATE INDEX "workflow_task_consults_instance_idx" ON "workflow_task_consults" USING btree ("instance_id");--> statement-breakpoint
@@ -9473,6 +10797,8 @@ CREATE UNIQUE INDEX "wf_tokens_active_uniq" ON "workflow_tokens" USING btree ("i
 CREATE INDEX "workflow_job_effects_job_idx" ON "workflow_job_effects" USING btree ("job_id");--> statement-breakpoint
 CREATE INDEX "broadcast_campaigns_status_idx" ON "broadcast_campaigns" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "broadcast_campaigns_created_at_idx" ON "broadcast_campaigns" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX "broadcast_campaigns_status_updated_idx" ON "broadcast_campaigns" USING btree ("status","updated_at");--> statement-breakpoint
+CREATE INDEX "broadcast_campaigns_task_idx" ON "broadcast_campaigns" USING btree ("task_id");--> statement-breakpoint
 CREATE INDEX "email_send_logs_user_idx" ON "email_send_logs" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "email_send_logs_tenant_idx" ON "email_send_logs" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "email_send_logs_created_at_idx" ON "email_send_logs" USING btree ("created_at");--> statement-breakpoint
@@ -9495,8 +10821,12 @@ CREATE UNIQUE INDEX "notification_outbox_dedupe_uq" ON "notification_outbox" USI
 CREATE INDEX "notification_outbox_pending_idx" ON "notification_outbox" USING btree ("status","scheduled_at") WHERE "notification_outbox"."status" = 'pending';--> statement-breakpoint
 CREATE INDEX "notification_outbox_digest_idx" ON "notification_outbox" USING btree ("digest_key","scheduled_at") WHERE "notification_outbox"."digest_key" is not null;--> statement-breakpoint
 CREATE INDEX "notification_outbox_event_idx" ON "notification_outbox" USING btree ("event_key","created_at");--> statement-breakpoint
+CREATE INDEX "notification_outbox_claimed_idx" ON "notification_outbox" USING btree ("status","claimed_at");--> statement-breakpoint
+CREATE INDEX "notification_outbox_finished_idx" ON "notification_outbox" USING btree ("status","finished_at");--> statement-breakpoint
 CREATE INDEX "notification_outbox_tenant_idx" ON "notification_outbox" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "notification_outbox_trace_idx" ON "notification_outbox" USING btree ("trace_id");--> statement-breakpoint
+CREATE INDEX "notification_outbox_subjects_entity_idx" ON "notification_outbox_subjects" USING btree ("tenant_id","entity_type","entity_key","outbox_id");--> statement-breakpoint
+CREATE INDEX "notification_outbox_subjects_outbox_idx" ON "notification_outbox_subjects" USING btree ("outbox_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "notification_preferences_uq" ON "notification_preferences" USING btree ("recipient_type","recipient_id","event_key","channel");--> statement-breakpoint
 CREATE INDEX "notification_preferences_recipient_idx" ON "notification_preferences" USING btree ("recipient_type","recipient_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "notification_recipient_settings_uq" ON "notification_recipient_settings" USING btree ("recipient_type","recipient_id");--> statement-breakpoint
@@ -9512,6 +10842,9 @@ CREATE INDEX "sms_send_logs_status_idx" ON "sms_send_logs" USING btree ("status"
 CREATE INDEX "sms_templates_tenant_idx" ON "sms_templates" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "db_admin_query_history_executed_at_idx" ON "db_admin_query_history" USING btree ("executed_at");--> statement-breakpoint
 CREATE INDEX "db_admin_query_history_user_idx" ON "db_admin_query_history" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX "db_backups_status_started_idx" ON "db_backups" USING btree ("status","started_at");--> statement-breakpoint
+CREATE INDEX "db_backups_status_created_idx" ON "db_backups" USING btree ("status","created_at");--> statement-breakpoint
+CREATE INDEX "db_backups_status_completed_idx" ON "db_backups" USING btree ("status","completed_at");--> statement-breakpoint
 CREATE INDEX "db_query_favorites_user_idx" ON "db_query_favorites" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "rule_asset_versions_tenant_idx" ON "rule_asset_versions" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "rule_decision_table_versions_tenant_idx" ON "rule_decision_table_versions" USING btree ("tenant_id");--> statement-breakpoint
@@ -9545,6 +10878,7 @@ CREATE INDEX "channel_conversations_user_idx" ON "channel_conversations" USING b
 CREATE INDEX "channel_menus_channel_idx" ON "channel_menus" USING btree ("channel_id");--> statement-breakpoint
 CREATE INDEX "channel_message_targets_user_idx" ON "channel_message_targets" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "channel_messages_channel_idx" ON "channel_messages" USING btree ("channel_id");--> statement-breakpoint
+CREATE INDEX "channel_messages_scheduled_due_idx" ON "channel_messages" USING btree ("scheduled_at") WHERE "channel_messages"."status" = 'scheduled';--> statement-breakpoint
 CREATE UNIQUE INDEX "channel_messages_dedupe_uq" ON "channel_messages" USING btree ("dedupe_key") WHERE "channel_messages"."dedupe_key" is not null;--> statement-breakpoint
 CREATE INDEX "channel_quick_replies_channel_idx" ON "channel_quick_replies" USING btree ("channel_id");--> statement-breakpoint
 CREATE INDEX "channel_subscriptions_user_idx" ON "channel_subscriptions" USING btree ("user_id");--> statement-breakpoint
@@ -9555,6 +10889,8 @@ CREATE INDEX "payment_cashier_sessions_link_idx" ON "payment_cashier_sessions" U
 CREATE INDEX "payment_cashier_sessions_link_slot_idx" ON "payment_cashier_sessions" USING btree ("link_id","use_slot_status","expires_at");--> statement-breakpoint
 CREATE INDEX "payment_cashier_sessions_status_expiry_idx" ON "payment_cashier_sessions" USING btree ("status","expires_at");--> statement-breakpoint
 CREATE INDEX "payment_cashier_sessions_tenant_idx" ON "payment_cashier_sessions" USING btree ("tenant_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_channel_accounts_identity_uq" ON "payment_channel_accounts" USING btree (coalesce("tenant_id", 0),"channel","environment","merchant_id","sub_merchant_id");--> statement-breakpoint
+CREATE INDEX "payment_channel_accounts_tenant_idx" ON "payment_channel_accounts" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "payment_channel_configs_tenant_idx" ON "payment_channel_configs" USING btree ("tenant_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "payment_channel_configs_default_tenant_channel_uq" ON "payment_channel_configs" USING btree ("tenant_id","channel") WHERE "payment_channel_configs"."is_default" = true and "payment_channel_configs"."tenant_id" is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "payment_channel_configs_default_global_channel_uq" ON "payment_channel_configs" USING btree ("channel") WHERE "payment_channel_configs"."is_default" = true and "payment_channel_configs"."tenant_id" is null;--> statement-breakpoint
@@ -9574,17 +10910,19 @@ CREATE INDEX "payment_disputes_deadline_idx" ON "payment_disputes" USING btree (
 CREATE INDEX "payment_disputes_route_idx" ON "payment_disputes" USING btree ("route");--> statement-breakpoint
 CREATE INDEX "payment_events_tenant_idx" ON "payment_events" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "payment_events_status_idx" ON "payment_events" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "payment_events_status_created_idx" ON "payment_events" USING btree ("status","created_at");--> statement-breakpoint
+CREATE INDEX "payment_events_status_processed_idx" ON "payment_events" USING btree ("status","processed_at");--> statement-breakpoint
 CREATE INDEX "payment_fee_rules_tenant_idx" ON "payment_fee_rules" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "payment_fee_rules_channel_idx" ON "payment_fee_rules" USING btree ("channel");--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_fund_reservations_source_scope_uq" ON "payment_fund_reservations" USING btree (coalesce("tenant_id", 0),"app_id","channel_config_id","currency","source_type","source_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_fund_reservations_source_scope_uq" ON "payment_fund_reservations" USING btree (coalesce("tenant_id", 0),"app_id","channel_account_id","currency","source_type","source_id");--> statement-breakpoint
 CREATE INDEX "payment_fund_reservations_active_account_idx" ON "payment_fund_reservations" USING btree ("account_id","status","expires_at");--> statement-breakpoint
-CREATE INDEX "payment_fund_reservations_scope_idx" ON "payment_fund_reservations" USING btree ("tenant_id","app_id","channel_config_id","currency");--> statement-breakpoint
+CREATE INDEX "payment_fund_reservations_scope_idx" ON "payment_fund_reservations" USING btree ("tenant_id","app_id","channel_account_id","currency");--> statement-breakpoint
 CREATE INDEX "payment_journal_lines_account_idx" ON "payment_journal_lines" USING btree ("account_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_journals_source_scope_uq" ON "payment_journals" USING btree (coalesce("tenant_id", 0),"app_id","channel_config_id","currency","source_type","source_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_journals_source_scope_uq" ON "payment_journals" USING btree (coalesce("tenant_id", 0),"app_id","channel_account_id","currency","source_type","source_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "payment_journals_reversal_once_uq" ON "payment_journals" USING btree ("reversal_of_journal_id") WHERE "payment_journals"."reversal_of_journal_id" is not null;--> statement-breakpoint
-CREATE INDEX "payment_journals_scope_posted_idx" ON "payment_journals" USING btree ("tenant_id","app_id","channel_config_id","currency","posted_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_ledger_accounts_scope_code_uq" ON "payment_ledger_accounts" USING btree (coalesce("tenant_id", 0),"app_id","channel_config_id","currency","code");--> statement-breakpoint
-CREATE INDEX "payment_ledger_accounts_scope_idx" ON "payment_ledger_accounts" USING btree ("tenant_id","app_id","channel_config_id","currency");--> statement-breakpoint
+CREATE INDEX "payment_journals_scope_posted_idx" ON "payment_journals" USING btree ("tenant_id","app_id","channel_account_id","currency","posted_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_ledger_accounts_scope_code_uq" ON "payment_ledger_accounts" USING btree (coalesce("tenant_id", 0),"app_id","channel_account_id","currency","code");--> statement-breakpoint
+CREATE INDEX "payment_ledger_accounts_scope_idx" ON "payment_ledger_accounts" USING btree ("tenant_id","app_id","channel_account_id","currency");--> statement-breakpoint
 CREATE INDEX "payment_link_redemptions_link_idx" ON "payment_link_redemptions" USING btree ("link_id");--> statement-breakpoint
 CREATE INDEX "payment_link_redemptions_tenant_idx" ON "payment_link_redemptions" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "payment_links_tenant_idx" ON "payment_links" USING btree ("tenant_id");--> statement-breakpoint
@@ -9607,11 +10945,6 @@ CREATE INDEX "payment_preauths_tenant_idx" ON "payment_preauths" USING btree ("t
 CREATE UNIQUE INDEX "payment_preauths_active_biz_uq" ON "payment_preauths" USING btree (coalesce("tenant_id", 0),"app_id","biz_type","biz_id","currency") WHERE "payment_preauths"."status" in ('pending', 'unknown', 'frozen');--> statement-breakpoint
 CREATE INDEX "payment_preauths_status_idx" ON "payment_preauths" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "payment_preauths_biz_idx" ON "payment_preauths" USING btree ("tenant_id","app_id","biz_type","biz_id","currency");--> statement-breakpoint
-CREATE INDEX "payment_recon_batches_tenant_idx" ON "payment_recon_batches" USING btree ("tenant_id");--> statement-breakpoint
-CREATE INDEX "payment_recon_batches_date_idx" ON "payment_recon_batches" USING btree ("bill_date");--> statement-breakpoint
-CREATE INDEX "payment_recon_batches_app_idx" ON "payment_recon_batches" USING btree ("app_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_recon_scope_date_uq" ON "payment_recon_batches" USING btree (coalesce("tenant_id", 0),"app_id","channel_config_id","currency","bill_date");--> statement-breakpoint
-CREATE INDEX "payment_recon_items_batch_idx" ON "payment_recon_items" USING btree ("batch_id");--> statement-breakpoint
 CREATE INDEX "payment_refunds_order_idx" ON "payment_refunds" USING btree ("order_id");--> statement-breakpoint
 CREATE INDEX "payment_refunds_operator_idx" ON "payment_refunds" USING btree ("operator_id");--> statement-breakpoint
 CREATE INDEX "payment_refunds_tenant_idx" ON "payment_refunds" USING btree ("tenant_id");--> statement-breakpoint
@@ -9633,7 +10966,7 @@ CREATE INDEX "payment_settlement_batches_tenant_idx" ON "payment_settlement_batc
 CREATE INDEX "payment_settlement_batches_app_idx" ON "payment_settlement_batches" USING btree ("app_id");--> statement-breakpoint
 CREATE INDEX "payment_settlement_batches_status_idx" ON "payment_settlement_batches" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "payment_settlement_items_batch_idx" ON "payment_settlement_items" USING btree ("batch_id");--> statement-breakpoint
-CREATE INDEX "payment_settlement_items_scope_idx" ON "payment_settlement_items" USING btree ("tenant_id","app_id","channel_config_id","currency");--> statement-breakpoint
+CREATE INDEX "payment_settlement_items_scope_idx" ON "payment_settlement_items" USING btree ("tenant_id","app_id","channel_account_id","currency");--> statement-breakpoint
 CREATE INDEX "payment_sharing_orders_tenant_idx" ON "payment_sharing_orders" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "payment_sharing_orders_order_no_idx" ON "payment_sharing_orders" USING btree ("order_no");--> statement-breakpoint
 CREATE INDEX "payment_sharing_orders_receiver_idx" ON "payment_sharing_orders" USING btree ("receiver_id");--> statement-breakpoint
@@ -9645,6 +10978,30 @@ CREATE INDEX "payment_transfers_tenant_idx" ON "payment_transfers" USING btree (
 CREATE UNIQUE INDEX "payment_transfers_idempotency_scope_uq" ON "payment_transfers" USING btree (coalesce("tenant_id", 0),"app_id","idempotency_key");--> statement-breakpoint
 CREATE INDEX "payment_transfers_status_idx" ON "payment_transfers" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "payment_transfers_biz_idx" ON "payment_transfers" USING btree ("biz_type","biz_id");--> statement-breakpoint
+CREATE INDEX "payment_bank_matches_account_idx" ON "payment_bank_matches" USING btree ("account_id");--> statement-breakpoint
+CREATE INDEX "payment_bank_matches_tenant_idx" ON "payment_bank_matches" USING btree ("tenant_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_recon_adjustments_active_case_unique" ON "payment_recon_adjustments" USING btree ("case_id") WHERE "payment_recon_adjustments"."reversal_of_id" is null and "payment_recon_adjustments"."status" in ('draft', 'pending', 'approved', 'executed');--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_recon_adjustments_active_reversal_unique" ON "payment_recon_adjustments" USING btree ("reversal_of_id") WHERE "payment_recon_adjustments"."reversal_of_id" is not null and "payment_recon_adjustments"."status" <> 'rejected';--> statement-breakpoint
+CREATE INDEX "payment_recon_adjustments_case_idx" ON "payment_recon_adjustments" USING btree ("case_id");--> statement-breakpoint
+CREATE INDEX "payment_recon_adjustments_tenant_status_idx" ON "payment_recon_adjustments" USING btree ("tenant_id","status");--> statement-breakpoint
+CREATE INDEX "payment_recon_case_events_case_idx" ON "payment_recon_case_events" USING btree ("case_id","id");--> statement-breakpoint
+CREATE INDEX "payment_recon_case_events_tenant_idx" ON "payment_recon_case_events" USING btree ("tenant_id");--> statement-breakpoint
+CREATE INDEX "payment_recon_cases_account_status_idx" ON "payment_recon_cases" USING btree ("account_id","status");--> statement-breakpoint
+CREATE INDEX "payment_recon_cases_due_idx" ON "payment_recon_cases" USING btree ("due_at","status");--> statement-breakpoint
+CREATE INDEX "payment_recon_cases_tenant_idx" ON "payment_recon_cases" USING btree ("tenant_id");--> statement-breakpoint
+CREATE INDEX "payment_recon_runs_statement_idx" ON "payment_recon_runs" USING btree ("statement_id");--> statement-breakpoint
+CREATE INDEX "payment_recon_runs_tenant_idx" ON "payment_recon_runs" USING btree ("tenant_id");--> statement-breakpoint
+CREATE INDEX "payment_recon_runs_status_started_idx" ON "payment_recon_runs" USING btree ("status","started_at");--> statement-breakpoint
+CREATE INDEX "payment_recon_runs_status_finished_idx" ON "payment_recon_runs" USING btree ("status","finished_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_recon_runs_active_statement_unique" ON "payment_recon_runs" USING btree ("statement_id") WHERE "payment_recon_runs"."status" in ('pending', 'running');--> statement-breakpoint
+CREATE INDEX "payment_statement_entries_order_idx" ON "payment_statement_entries" USING btree ("merchant_order_no");--> statement-breakpoint
+CREATE INDEX "payment_statement_entries_refund_idx" ON "payment_statement_entries" USING btree ("merchant_refund_no");--> statement-breakpoint
+CREATE INDEX "payment_statement_entries_reference_idx" ON "payment_statement_entries" USING btree ("reference");--> statement-breakpoint
+CREATE INDEX "payment_statement_entries_tenant_idx" ON "payment_statement_entries" USING btree ("tenant_id");--> statement-breakpoint
+CREATE INDEX "payment_statement_files_tenant_idx" ON "payment_statement_files" USING btree ("tenant_id");--> statement-breakpoint
+CREATE INDEX "payment_statement_periods_due_idx" ON "payment_statement_periods" USING btree ("status","next_attempt_at");--> statement-breakpoint
+CREATE INDEX "payment_statement_periods_tenant_idx" ON "payment_statement_periods" USING btree ("tenant_id");--> statement-breakpoint
+CREATE INDEX "payment_statements_tenant_idx" ON "payment_statements" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "ai_agents_user_idx" ON "ai_agents" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "ai_arena_votes_user_idx" ON "ai_arena_votes" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "ai_conversations_user_idx" ON "ai_conversations" USING btree ("user_id");--> statement-breakpoint
@@ -9662,6 +11019,9 @@ CREATE INDEX "user_ai_configs_user_idx" ON "user_ai_configs" USING btree ("user_
 CREATE INDEX "app_webhook_deliveries_sub_idx" ON "app_webhook_deliveries" USING btree ("subscription_id");--> statement-breakpoint
 CREATE INDEX "app_webhook_deliveries_tenant_client_idx" ON "app_webhook_deliveries" USING btree ("tenant_id","client_id");--> statement-breakpoint
 CREATE INDEX "app_webhook_deliveries_status_idx" ON "app_webhook_deliveries" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "app_webhook_deliveries_status_retry_idx" ON "app_webhook_deliveries" USING btree ("status","next_retry_at");--> statement-breakpoint
+CREATE INDEX "app_webhook_deliveries_status_started_idx" ON "app_webhook_deliveries" USING btree ("status","started_at");--> statement-breakpoint
+CREATE INDEX "app_webhook_deliveries_status_finished_idx" ON "app_webhook_deliveries" USING btree ("status","finished_at");--> statement-breakpoint
 CREATE INDEX "app_webhook_deliveries_next_retry_idx" ON "app_webhook_deliveries" USING btree ("next_retry_at");--> statement-breakpoint
 CREATE INDEX "app_webhook_deliveries_created_idx" ON "app_webhook_deliveries" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "app_webhook_subscriptions_tenant_client_idx" ON "app_webhook_subscriptions" USING btree ("tenant_id","client_id");--> statement-breakpoint
@@ -9734,8 +11094,11 @@ CREATE INDEX "client_devices_subject_idx" ON "client_devices" USING btree ("subj
 CREATE UNIQUE INDEX "client_devices_push_reg_unique" ON "client_devices" USING btree ("push_provider","push_registration_id");--> statement-breakpoint
 CREATE INDEX "deploy_releases_target_host_idx" ON "deploy_releases" USING btree ("target_id","host_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "deploy_releases_current_unique" ON "deploy_releases" USING btree ("target_id","host_id") WHERE "deploy_releases"."is_current" = true;--> statement-breakpoint
+CREATE INDEX "deploy_run_hosts_status_started_idx" ON "deploy_run_hosts" USING btree ("status","started_at");--> statement-breakpoint
 CREATE INDEX "deploy_runs_target_created_idx" ON "deploy_runs" USING btree ("target_id","created_at");--> statement-breakpoint
 CREATE INDEX "deploy_runs_app_created_idx" ON "deploy_runs" USING btree ("app_id","created_at");--> statement-breakpoint
+CREATE INDEX "deploy_runs_status_started_idx" ON "deploy_runs" USING btree ("status","started_at");--> statement-breakpoint
+CREATE INDEX "deploy_runs_status_finished_idx" ON "deploy_runs" USING btree ("status","finished_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "deploy_runs_target_active_unique" ON "deploy_runs" USING btree ("target_id") WHERE "deploy_runs"."status" in ('pending', 'running');--> statement-breakpoint
 CREATE INDEX "deploy_target_hosts_host_idx" ON "deploy_target_hosts" USING btree ("host_id");--> statement-breakpoint
 CREATE INDEX "mp_accounts_tenant_idx" ON "mp_accounts" USING btree ("tenant_id");--> statement-breakpoint
@@ -9744,6 +11107,7 @@ CREATE INDEX "mp_auto_replies_account_type_idx" ON "mp_auto_replies" USING btree
 CREATE INDEX "mp_broadcasts_tenant_idx" ON "mp_broadcasts" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "mp_broadcasts_account_idx" ON "mp_broadcasts" USING btree ("account_id");--> statement-breakpoint
 CREATE INDEX "mp_broadcasts_account_status_idx" ON "mp_broadcasts" USING btree ("account_id","status");--> statement-breakpoint
+CREATE INDEX "mp_broadcasts_scheduled_due_idx" ON "mp_broadcasts" USING btree ("scheduled_at") WHERE "mp_broadcasts"."status" = 'draft' and "mp_broadcasts"."scheduled_at" is not null;--> statement-breakpoint
 CREATE INDEX "mp_conditional_menus_tenant_idx" ON "mp_conditional_menus" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "mp_conditional_menus_account_idx" ON "mp_conditional_menus" USING btree ("account_id");--> statement-breakpoint
 CREATE INDEX "mp_drafts_tenant_idx" ON "mp_drafts" USING btree ("tenant_id");--> statement-breakpoint
@@ -9788,6 +11152,7 @@ CREATE INDEX "report_alert_rules_tenant_idx" ON "report_alert_rules" USING btree
 CREATE INDEX "report_alert_rules_dataset_idx" ON "report_alert_rules" USING btree ("dataset_id");--> statement-breakpoint
 CREATE INDEX "report_alert_rules_metric_idx" ON "report_alert_rules" USING btree ("metric_id");--> statement-breakpoint
 CREATE INDEX "report_alert_rules_next_run_idx" ON "report_alert_rules" USING btree ("next_run_at");--> statement-breakpoint
+CREATE INDEX "report_alert_rules_enabled_due_idx" ON "report_alert_rules" USING btree ("next_run_at") WHERE "report_alert_rules"."enabled" = true and "report_alert_rules"."next_run_at" is not null;--> statement-breakpoint
 CREATE INDEX "report_dashboard_categories_tenant_idx" ON "report_dashboard_categories" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "report_dashboard_comments_user_idx" ON "report_dashboard_comments" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "report_dashboard_comments_dashboard_idx" ON "report_dashboard_comments" USING btree ("dashboard_id");--> statement-breakpoint
@@ -9796,6 +11161,7 @@ CREATE INDEX "report_dashboard_embed_tokens_dashboard_idx" ON "report_dashboard_
 CREATE INDEX "report_dashboard_subscriptions_tenant_idx" ON "report_dashboard_subscriptions" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "report_dashboard_subscriptions_dashboard_idx" ON "report_dashboard_subscriptions" USING btree ("dashboard_id");--> statement-breakpoint
 CREATE INDEX "report_dashboard_subscriptions_next_run_idx" ON "report_dashboard_subscriptions" USING btree ("next_run_at");--> statement-breakpoint
+CREATE INDEX "report_dashboard_subscriptions_enabled_due_idx" ON "report_dashboard_subscriptions" USING btree ("next_run_at") WHERE "report_dashboard_subscriptions"."enabled" = true and "report_dashboard_subscriptions"."next_run_at" is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "report_dashboard_versions_dash_ver_uq" ON "report_dashboard_versions" USING btree ("dashboard_id","version");--> statement-breakpoint
 CREATE UNIQUE INDEX "report_dashboards_tenant_name_uq" ON "report_dashboards" USING btree ("tenant_id","name") WHERE "report_dashboards"."tenant_id" is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "report_dashboards_global_name_uq" ON "report_dashboards" USING btree ("name") WHERE "report_dashboards"."tenant_id" is null;--> statement-breakpoint
@@ -9829,6 +11195,9 @@ CREATE INDEX "report_delivery_runs_subscription_idx" ON "report_delivery_runs" U
 CREATE INDEX "report_delivery_runs_alert_idx" ON "report_delivery_runs" USING btree ("alert_rule_id","id");--> statement-breakpoint
 CREATE INDEX "report_delivery_runs_retry_idx" ON "report_delivery_runs" USING btree ("status","next_retry_at");--> statement-breakpoint
 CREATE INDEX "report_delivery_runs_tenant_idx" ON "report_delivery_runs" USING btree ("tenant_id");--> statement-breakpoint
+CREATE INDEX "report_delivery_runs_task_idx" ON "report_delivery_runs" USING btree ("task_id");--> statement-breakpoint
+CREATE INDEX "report_delivery_runs_status_started_idx" ON "report_delivery_runs" USING btree ("status","started_at");--> statement-breakpoint
+CREATE INDEX "report_delivery_runs_status_completed_idx" ON "report_delivery_runs" USING btree ("status","completed_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "report_folders_tenant_root_name_uq" ON "report_folders" USING btree ("tenant_id","resource_type","name") WHERE "report_folders"."tenant_id" is not null and "report_folders"."parent_id" is null;--> statement-breakpoint
 CREATE UNIQUE INDEX "report_folders_tenant_child_name_uq" ON "report_folders" USING btree ("tenant_id","parent_id","resource_type","name") WHERE "report_folders"."tenant_id" is not null and "report_folders"."parent_id" is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "report_folders_global_root_name_uq" ON "report_folders" USING btree ("resource_type","name") WHERE "report_folders"."tenant_id" is null and "report_folders"."parent_id" is null;--> statement-breakpoint
@@ -9870,6 +11239,9 @@ CREATE INDEX "report_dq_rules_schedule_idx" ON "report_dq_rules" USING btree ("e
 CREATE INDEX "report_dq_runs_rule_time_idx" ON "report_dq_runs" USING btree ("rule_id","created_at");--> statement-breakpoint
 CREATE INDEX "report_dq_runs_dataset_status_time_idx" ON "report_dq_runs" USING btree ("dataset_id","status","created_at");--> statement-breakpoint
 CREATE INDEX "report_dq_runs_tenant_time_idx" ON "report_dq_runs" USING btree ("tenant_id","created_at");--> statement-breakpoint
+CREATE INDEX "report_dq_runs_task_idx" ON "report_dq_runs" USING btree ("task_id");--> statement-breakpoint
+CREATE INDEX "report_dq_runs_status_started_idx" ON "report_dq_runs" USING btree ("status","started_at");--> statement-breakpoint
+CREATE INDEX "report_dq_runs_status_completed_idx" ON "report_dq_runs" USING btree ("status","completed_at");--> statement-breakpoint
 CREATE INDEX "report_dq_scores_dataset_time_idx" ON "report_dq_scores" USING btree ("dataset_id","measured_at");--> statement-breakpoint
 CREATE INDEX "report_dq_scores_tenant_time_idx" ON "report_dq_scores" USING btree ("tenant_id","measured_at");--> statement-breakpoint
 CREATE INDEX "report_environment_promotions_resource_idx" ON "report_environment_promotions" USING btree ("tenant_id","resource_type","resource_id","created_at");--> statement-breakpoint
@@ -9999,6 +11371,9 @@ CREATE INDEX "cms_open_app_grants_site_idx" ON "cms_open_app_grants" USING btree
 CREATE UNIQUE INDEX "cms_page_block_acls_grant_uq" ON "cms_page_block_acls" USING btree ("page_id","block_id","subject_type","subject_id");--> statement-breakpoint
 CREATE INDEX "cms_page_block_acls_block_idx" ON "cms_page_block_acls" USING btree ("page_id","block_id");--> statement-breakpoint
 CREATE INDEX "cms_page_block_acls_subject_idx" ON "cms_page_block_acls" USING btree ("subject_type","subject_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_page_preset_versions_preset_version_uq" ON "cms_page_preset_versions" USING btree ("preset_id","version");--> statement-breakpoint
+CREATE INDEX "cms_page_preset_versions_site_idx" ON "cms_page_preset_versions" USING btree ("site_id");--> statement-breakpoint
+CREATE INDEX "cms_page_presets_site_idx" ON "cms_page_presets" USING btree ("site_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "cms_pages_site_slug_uq" ON "cms_pages" USING btree ("site_id","slug");--> statement-breakpoint
 CREATE UNIQUE INDEX "cms_pages_site_path_uq" ON "cms_pages" USING btree ("site_id","path") WHERE "cms_pages"."path" IS NOT NULL;--> statement-breakpoint
 CREATE INDEX "cms_pages_site_idx" ON "cms_pages" USING btree ("site_id");--> statement-breakpoint
@@ -10034,6 +11409,7 @@ CREATE UNIQUE INDEX "cms_tags_site_name_uq" ON "cms_tags" USING btree ("site_id"
 CREATE UNIQUE INDEX "cms_tags_site_slug_uq" ON "cms_tags" USING btree ("site_id","slug");--> statement-breakpoint
 CREATE INDEX "cms_visit_logs_site_time_idx" ON "cms_visit_logs" USING btree ("site_id","created_at");--> statement-breakpoint
 CREATE INDEX "cms_visit_logs_content_idx" ON "cms_visit_logs" USING btree ("content_id") WHERE "cms_visit_logs"."content_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_vocabularies_site_code_uq" ON "cms_vocabularies" USING btree ("site_id","code");--> statement-breakpoint
 CREATE UNIQUE INDEX "cms_widget_refs_owner_field_uq" ON "cms_widget_refs" USING btree ("owner_type","owner_id","field");--> statement-breakpoint
 CREATE INDEX "cms_widget_refs_widget_idx" ON "cms_widget_refs" USING btree ("widget_id");--> statement-breakpoint
 CREATE INDEX "cms_widget_refs_site_owner_idx" ON "cms_widget_refs" USING btree ("site_id","owner_type","owner_id");--> statement-breakpoint
@@ -10042,6 +11418,51 @@ CREATE INDEX "cms_widget_source_refs_source_idx" ON "cms_widget_source_refs" USI
 CREATE INDEX "cms_widget_source_refs_site_idx" ON "cms_widget_source_refs" USING btree ("site_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "cms_widgets_site_code_uq" ON "cms_widgets" USING btree ("site_id","code");--> statement-breakpoint
 CREATE INDEX "cms_widgets_site_status_idx" ON "cms_widgets" USING btree ("site_id","status");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_asset_rights_resource_uq" ON "cms_asset_rights" USING btree ("resource_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_asset_versions_resource_version_uq" ON "cms_asset_versions" USING btree ("resource_id","version");--> statement-breakpoint
+CREATE INDEX "cms_asset_versions_file_idx" ON "cms_asset_versions" USING btree ("file_id");--> statement-breakpoint
+CREATE INDEX "cms_editorial_note_replies_note_idx" ON "cms_editorial_note_replies" USING btree ("note_id","id");--> statement-breakpoint
+CREATE INDEX "cms_editorial_notes_content_idx" ON "cms_editorial_notes" USING btree ("content_id","id");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_model_unique_value_uq" ON "cms_model_unique_values" USING btree ("site_id","model_id","field","value_hash");--> statement-breakpoint
+CREATE INDEX "cms_model_unique_content_idx" ON "cms_model_unique_values" USING btree ("content_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_model_versions_model_version_uq" ON "cms_model_versions" USING btree ("model_id","version");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_component_versions_component_version_uq" ON "cms_component_versions" USING btree ("component_id","version");--> statement-breakpoint
+CREATE INDEX "cms_media_processing_version_idx" ON "cms_media_processing" USING btree ("asset_version_id","id");--> statement-breakpoint
+CREATE INDEX "cms_media_processing_task_idx" ON "cms_media_processing" USING btree ("task_id");--> statement-breakpoint
+CREATE INDEX "cms_media_processing_status_updated_idx" ON "cms_media_processing" USING btree ("status","updated_at");--> statement-breakpoint
+CREATE INDEX "cms_telemetry_attributions_due_idx" ON "cms_telemetry_attributions" USING btree ("next_recompute_at");--> statement-breakpoint
+CREATE INDEX "cms_telemetry_attributions_site_idx" ON "cms_telemetry_attributions" USING btree ("site_id");--> statement-breakpoint
+CREATE INDEX "cms_telemetry_outbox_pending_idx" ON "cms_telemetry_outbox" USING btree ("delivered_at","dead_letter_at","next_attempt_at","id");--> statement-breakpoint
+CREATE INDEX "cms_telemetry_outbox_lease_idx" ON "cms_telemetry_outbox" USING btree ("delivered_at","dead_letter_at","lease_expires_at");--> statement-breakpoint
+CREATE INDEX "cms_telemetry_outbox_delivered_idx" ON "cms_telemetry_outbox" USING btree ("delivered_at");--> statement-breakpoint
+CREATE INDEX "cms_telemetry_outbox_dead_idx" ON "cms_telemetry_outbox" USING btree ("dead_letter_at");--> statement-breakpoint
+CREATE INDEX "cms_telemetry_receipts_site_created_idx" ON "cms_telemetry_receipts" USING btree ("site_id","created_at");--> statement-breakpoint
+CREATE INDEX "cms_collection_transitions_site_created_idx" ON "cms_collection_transitions" USING btree ("site_id","created_at","id");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_content_review_revisions_instance_uq" ON "cms_content_review_revisions" USING btree ("workflow_instance_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_content_revision_approvals_revision_uq" ON "cms_content_revision_approvals" USING btree ("revision_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_content_revisions_content_version_uq" ON "cms_content_revisions" USING btree ("content_id","version");--> statement-breakpoint
+CREATE INDEX "cms_content_revisions_content_hash_idx" ON "cms_content_revisions" USING btree ("content_id","hash");--> statement-breakpoint
+CREATE INDEX "cms_content_revisions_scheduled_candidate_idx" ON "cms_content_revisions" USING btree ("id") WHERE "cms_content_revisions"."snapshot"->>'scheduledAt' is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_working_translation_locale_uq" ON "cms_content_working_copies" USING btree (("snapshot"->>'translationOfId'),("snapshot"->>'locale')) WHERE "cms_content_working_copies"."snapshot"->>'translationOfId' is not null;--> statement-breakpoint
+CREATE INDEX "cms_editorial_history_task_idx" ON "cms_editorial_task_history" USING btree ("task_id","id");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_editorial_observations_round_window_uq" ON "cms_editorial_task_observations" USING btree ("round_id","window_days");--> statement-breakpoint
+CREATE INDEX "cms_editorial_observations_due_idx" ON "cms_editorial_task_observations" USING btree ("outcome","settles_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_editorial_task_rounds_task_round_uq" ON "cms_editorial_task_rounds" USING btree ("task_id","round_no");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_editorial_tasks_source_uq" ON "cms_editorial_tasks" USING btree ("site_id","source","source_key");--> statement-breakpoint
+CREATE INDEX "cms_editorial_tasks_site_status_idx" ON "cms_editorial_tasks" USING btree ("site_id","status","id");--> statement-breakpoint
+CREATE INDEX "cms_editorial_tasks_owner_due_idx" ON "cms_editorial_tasks" USING btree ("owner_id","due_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_feedback_cases_submission_uq" ON "cms_feedback_cases" USING btree ("submission_id");--> statement-breakpoint
+CREATE INDEX "cms_feedback_cases_site_status_idx" ON "cms_feedback_cases" USING btree ("site_id","status","id");--> statement-breakpoint
+CREATE INDEX "cms_feedback_cases_owner_due_idx" ON "cms_feedback_cases" USING btree ("owner_id","due_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_feedback_history_version_uq" ON "cms_feedback_history" USING btree ("feedback_id","version");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_form_handling_policies_form_uq" ON "cms_form_handling_policies" USING btree ("form_id");--> statement-breakpoint
+CREATE INDEX "cms_content_suppressions_site_idx" ON "cms_content_suppressions" USING btree ("site_id");--> statement-breakpoint
+CREATE INDEX "cms_deployments_site_idx" ON "cms_deployments" USING btree ("site_id");--> statement-breakpoint
+CREATE INDEX "cms_deployments_status_created_idx" ON "cms_deployments" USING btree ("status","created_at");--> statement-breakpoint
+CREATE INDEX "cms_release_activations_site_idx" ON "cms_release_activations" USING btree ("site_id","id");--> statement-breakpoint
+CREATE INDEX "cms_releases_site_status_idx" ON "cms_releases" USING btree ("site_id","status");--> statement-breakpoint
+CREATE INDEX "cms_releases_schedule_idx" ON "cms_releases" USING btree ("activate_at");--> statement-breakpoint
+CREATE INDEX "cms_releases_scheduled_due_idx" ON "cms_releases" USING btree ("activate_at") WHERE "cms_releases"."status" = 'scheduled' and "cms_releases"."activate_at" is not null;--> statement-breakpoint
 CREATE INDEX "wiki_comments_doc_idx" ON "wiki_comments" USING btree ("doc_id");--> statement-breakpoint
 CREATE INDEX "wiki_doc_views_doc_idx" ON "wiki_doc_views" USING btree ("doc_id");--> statement-breakpoint
 CREATE INDEX "wiki_doc_views_created_idx" ON "wiki_doc_views" USING btree ("created_at");--> statement-breakpoint
@@ -10117,6 +11538,7 @@ CREATE INDEX "drive_node_comments_node_idx" ON "drive_node_comments" USING btree
 CREATE INDEX "drive_node_permissions_subject_idx" ON "drive_node_permissions" USING btree ("subject_type","subject_id");--> statement-breakpoint
 CREATE INDEX "drive_node_renditions_file_idx" ON "drive_node_renditions" USING btree ("file_id");--> statement-breakpoint
 CREATE INDEX "drive_node_renditions_status_idx" ON "drive_node_renditions" USING btree ("status","kind");--> statement-breakpoint
+CREATE INDEX "drive_node_renditions_status_updated_idx" ON "drive_node_renditions" USING btree ("status","updated_at");--> statement-breakpoint
 CREATE INDEX "drive_node_stars_node_idx" ON "drive_node_stars" USING btree ("node_id");--> statement-breakpoint
 CREATE INDEX "drive_node_subscriptions_cursor_idx" ON "drive_node_subscriptions" USING btree ("last_activity_id");--> statement-breakpoint
 CREATE INDEX "drive_node_tags_tag_idx" ON "drive_node_tags" USING btree ("tag_id");--> statement-breakpoint
@@ -10142,4 +11564,21 @@ CREATE INDEX "drive_share_links_tenant_idx" ON "drive_share_links" USING btree (
 CREATE INDEX "drive_space_members_subject_idx" ON "drive_space_members" USING btree ("subject_type","subject_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "drive_spaces_personal_owner_uq" ON "drive_spaces" USING btree ("owner_id") WHERE "drive_spaces"."type" = 'personal';--> statement-breakpoint
 CREATE UNIQUE INDEX "drive_spaces_department_uq" ON "drive_spaces" USING btree ("department_id") WHERE "drive_spaces"."type" = 'department';--> statement-breakpoint
-CREATE INDEX "drive_spaces_tenant_idx" ON "drive_spaces" USING btree ("tenant_id");
+CREATE INDEX "drive_spaces_tenant_idx" ON "drive_spaces" USING btree ("tenant_id");--> statement-breakpoint
+CREATE INDEX "entity_watch_events_due_idx" ON "entity_watch_events" USING btree ("next_attempt_at","claimed_at");--> statement-breakpoint
+CREATE INDEX "entity_watch_events_claimed_idx" ON "entity_watch_events" USING btree ("claimed_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "entity_watches_user_tenant_object_uq" ON "entity_watches" USING btree ("user_id","tenant_id","entity_type","entity_key") WHERE "entity_watches"."tenant_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "entity_watches_user_platform_object_uq" ON "entity_watches" USING btree ("user_id","entity_type","entity_key") WHERE "entity_watches"."tenant_id" is null;--> statement-breakpoint
+CREATE INDEX "entity_watches_object_idx" ON "entity_watches" USING btree ("tenant_id","entity_type","entity_key","id");--> statement-breakpoint
+CREATE INDEX "cms_content_review_policies_due_idx" ON "cms_content_review_policies" USING btree ("enabled","next_check_at");--> statement-breakpoint
+CREATE INDEX "cms_content_review_policies_owner_idx" ON "cms_content_review_policies" USING btree ("site_id","owner_id","next_review_at");--> statement-breakpoint
+CREATE INDEX "cms_content_review_records_content_idx" ON "cms_content_review_records" USING btree ("content_id","id");--> statement-breakpoint
+CREATE INDEX "cms_deployment_storage_state_idx" ON "cms_deployment_storage" USING btree ("storage_state");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_delivery_runs_site_event_uq" ON "cms_delivery_runs" USING btree ("site_id","event_key");--> statement-breakpoint
+CREATE INDEX "cms_delivery_runs_site_id_idx" ON "cms_delivery_runs" USING btree ("site_id","id");--> statement-breakpoint
+CREATE INDEX "cms_delivery_runs_release_idx" ON "cms_delivery_runs" USING btree ("release_id");--> statement-breakpoint
+CREATE INDEX "cms_delivery_runs_status_started_idx" ON "cms_delivery_runs" USING btree ("status","started_at");--> statement-breakpoint
+CREATE INDEX "cms_delivery_runs_purge_created_idx" ON "cms_delivery_runs" USING btree ("purge_status","created_at");--> statement-breakpoint
+CREATE INDEX "cms_delivery_runs_status_completed_idx" ON "cms_delivery_runs" USING btree ("status","completed_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_collection_versions_collection_version_uq" ON "cms_content_collection_versions" USING btree ("collection_id","version");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_content_collections_site_code_uq" ON "cms_content_collections" USING btree ("site_id","code");

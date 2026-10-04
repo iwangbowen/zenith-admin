@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
-import { bigint, boolean, check, date, index, integer, jsonb, pgEnum, pgTable, text, timestamp, unique, varchar, type AnyPgColumn } from 'drizzle-orm/pg-core';
-import { timestampColumns, idColumn, statusColumn } from './common';
+import { bigint, boolean, check, date, index, integer, jsonb, pgEnum, pgTable, text, unique, varchar, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { timestampColumns, idColumn, statusColumn, timestamptz } from './common';
 import { auditColumns, users, tenantIdColumn } from './core';
 import { cmsSites } from './cms';
 
@@ -21,7 +21,7 @@ export const oauth2Clients = pgTable('oauth2_clients', {
   clientSecretEncrypted: text(),
   previousClientSecretHash: varchar({ length: 128 }),
   previousClientSecretEncrypted: text(),
-  previousSecretExpiresAt: timestamp({ withTimezone: true }),
+  previousSecretExpiresAt: timestamptz(),
   /** secret 前缀，用于列表页展示（前 8 位 + ...）*/
   clientSecretPrefix: varchar({ length: 20 }),
   name: varchar({ length: 100 }).notNull(),
@@ -44,8 +44,8 @@ export const oauth2Clients = pgTable('oauth2_clients', {
   environment: openAppEnvironmentEnum().notNull().default('production'),
   reviewStatus: openAppReviewStatusEnum().notNull().default('approved'),
   reviewComment: text(),
-  submittedAt: timestamp({ withTimezone: true }),
-  reviewedAt: timestamp({ withTimezone: true }),
+  submittedAt: timestamptz(),
+  reviewedAt: timestamptz(),
   reviewedBy: integer().references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
   status: statusColumn(),
   /** 应用归属用户 */
@@ -76,9 +76,9 @@ export const oauth2AuthorizationCodes = pgTable('oauth2_authorization_codes', {
   codeChallenge: varchar({ length: 256 }),
   /** OAuth 2.1 仅允许 S256 */
   codeChallengeMethod: varchar({ length: 10 }),
-  expiresAt: timestamp().notNull(),
+  expiresAt: timestamptz().notNull(),
   used: boolean().notNull().default(false),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('oauth2_authorization_codes_user_idx').on(t.userId)]);
 
 export type OAuth2AuthorizationCodeRow = typeof oauth2AuthorizationCodes.$inferSelect;
@@ -117,9 +117,9 @@ export const oauth2Tokens = pgTable('oauth2_tokens', {
   /** client_credentials 流程时为 null */
   userId: integer().references(() => users.id, { onDelete: 'cascade' }),
   scopes: text().array().notNull().default([]),
-  expiresAt: timestamp(),
+  expiresAt: timestamptz(),
   revoked: boolean().notNull().default(false),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('oauth2_tokens_user_idx').on(t.userId), 
   index('oauth2_tokens_client_idx').on(t.clientId),
   index('oauth2_tokens_family_idx').on(t.familyId),
@@ -222,7 +222,7 @@ export const openApiCallLogs = pgTable('open_api_call_logs', {
   errorMessage: varchar({ length: 512 }),
   requestId: varchar({ length: 64 }),
   environment: openAppEnvironmentEnum().notNull().default('production'),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('open_api_call_logs_client_idx').on(t.clientId),
   index('open_api_call_logs_created_idx').on(t.createdAt),
@@ -283,9 +283,9 @@ export const appWebhookSubscriptions = pgTable('app_webhook_subscriptions', {
   /** 自定义请求头 */
   headers: jsonb().$type<Record<string, string>>(),
   status: statusColumn(),
-  lastDeliveryAt: timestamp({ withTimezone: true }),
+  lastDeliveryAt: timestamptz(),
   consecutiveFailures: integer().notNull().default(0),
-  autoDisabledAt: timestamp({ withTimezone: true }),
+  autoDisabledAt: timestamptz(),
   /** 外部订阅与 OAuth2 客户端保持同一租户；内部 CMS 订阅为平台级 null。 */
   tenantId: tenantIdColumn(),
   ...auditColumns(),
@@ -320,10 +320,10 @@ export const appWebhookDeliveries = pgTable('app_webhook_deliveries', {
   responseBody: text(),
   errorMessage: text(),
   durationMs: integer(),
-  nextRetryAt: timestamp({ withTimezone: true }),
-  startedAt: timestamp({ withTimezone: true }),
-  finishedAt: timestamp({ withTimezone: true }),
-  createdAt: timestamp().defaultNow().notNull(),
+  nextRetryAt: timestamptz(),
+  startedAt: timestamptz(),
+  finishedAt: timestamptz(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   unique('app_webhook_deliveries_subscription_event_unique').on(t.subscriptionId, t.eventId),
   index('app_webhook_deliveries_sub_idx').on(t.subscriptionId),
@@ -353,10 +353,10 @@ export const openQuotaAlerts = pgTable('open_quota_alerts', {
   eventId: varchar({ length: 64 }).notNull(),
   status: varchar({ length: 20 }).notNull().default('pending'),
   attempt: integer().notNull().default(0),
-  startedAt: timestamp({ withTimezone: true }),
-  sentAt: timestamp({ withTimezone: true }),
+  startedAt: timestamptz(),
+  sentAt: timestamptz(),
   lastError: text(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   unique('open_quota_alerts_dedupe_unique').on(t.clientId, t.dimension, t.period, t.threshold),
   index('open_quota_alerts_status_idx').on(t.status, t.startedAt),

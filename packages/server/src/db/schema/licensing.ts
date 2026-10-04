@@ -1,6 +1,6 @@
-import { pgTable, varchar, timestamp, integer, text, jsonb, index } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, integer, text, jsonb, index } from 'drizzle-orm/pg-core';
 import type { LicenseFeatureKey, LicensePayload } from '@zenith/shared/licensing';
-import { idColumn } from './common';
+import { idColumn, timestamptz } from './common';
 
 // ─── 部署安装身份 ─────────────────────────────────────────────────────────────
 // 单行表：首次启动时生成 installationId（License 绑定目标）。
@@ -10,7 +10,7 @@ export const systemInstallations = pgTable('system_installations', {
   id: idColumn(),
   installationId: varchar({ length: 64 }).notNull().unique('system_installations_installation_id_unique'),
   licenseEpoch: integer().notNull().default(0),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 });
 
 export type SystemInstallationRow = typeof systemInstallations.$inferSelect;
@@ -32,11 +32,11 @@ export const licenses = pgTable('licenses', {
   edition: varchar({ length: 20 }).notNull(),
   customerName: varchar({ length: 200 }).notNull(),
   features: jsonb().$type<LicenseFeatureKey[]>().notNull(),
-  expiresAt: timestamp().notNull(),
-  graceUntil: timestamp().notNull(),
-  activatedAt: timestamp().defaultNow().notNull(),
+  expiresAt: timestamptz().notNull(),
+  graceUntil: timestamptz().notNull(),
+  activatedAt: timestamptz().defaultNow().notNull(),
   activatedBy: integer(),
-  lastVerifiedAt: timestamp(),
+  lastVerifiedAt: timestamptz(),
   invalidReason: text(),
   /** 被新 License 替换时指向新记录 */
   replacedById: integer(),
@@ -50,7 +50,7 @@ export const licenseEvents = pgTable('license_events', {
   licenseId: integer(),
   type: varchar({ length: 40 }).notNull(),
   detail: text(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('license_events_created_idx').on(t.createdAt)]);
 
 export type LicenseEventRow = typeof licenseEvents.$inferSelect;

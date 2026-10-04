@@ -1,5 +1,5 @@
-import { timestampColumns, idColumn } from './common';
-import { pgTable, varchar, timestamp, pgEnum, integer, text, jsonb, real, uuid as pgUuid, index } from 'drizzle-orm/pg-core';
+import { timestampColumns, idColumn, timestamptz } from './common';
+import { pgTable, varchar, pgEnum, integer, text, jsonb, real, uuid as pgUuid, index } from 'drizzle-orm/pg-core';
 import { v7 as uuidv7 } from 'uuid';
 import { TERMINAL_SESSION_KINDS, TERMINAL_SESSION_STATES } from '@zenith/shared/ops';
 import { users, tenantIdColumn } from './core';
@@ -32,9 +32,9 @@ export const terminalSessions = pgTable('terminal_sessions', {
   state: terminalSessionStateEnum().notNull().default('active'),
   cols: integer().notNull().default(80),
   rows: integer().notNull().default(24),
-  startedAt: timestamp().defaultNow().notNull(),
-  lastActivityAt: timestamp().defaultNow().notNull(),
-  endedAt: timestamp(),
+  startedAt: timestamptz().defaultNow().notNull(),
+  lastActivityAt: timestamptz().defaultNow().notNull(),
+  endedAt: timestamptz(),
   /** 结束原因，取值见 @zenith/shared/ops 的 TERMINAL_END_REASONS */
   endReason: varchar({ length: 32 }),
   ...timestampColumns(),

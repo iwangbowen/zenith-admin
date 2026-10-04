@@ -1,5 +1,5 @@
-import { timestampColumns, idColumn } from './common';
-import { pgTable, varchar, timestamp, pgEnum, integer, text, real, index } from 'drizzle-orm/pg-core';
+import { timestampColumns, idColumn, timestamptz } from './common';
+import { pgTable, varchar, pgEnum, integer, text, real, index } from 'drizzle-orm/pg-core';
 import { auditColumns, tenantIdColumn } from './core';
 
 // ─── 业务接入示例：请假（业务模块自有实体，通过 businessKey 关联工作流）──────────
@@ -8,8 +8,8 @@ export const bizLeaveStatusEnum = pgEnum('biz_leave_status', ['draft', 'pending'
 export const bizLeaves = pgTable('biz_leaves', {
   id: idColumn(),
   leaveType: varchar({ length: 32 }).notNull(),
-  startDate: timestamp({ withTimezone: true }).notNull(),
-  endDate: timestamp({ withTimezone: true }).notNull(),
+  startDate: timestamptz().notNull(),
+  endDate: timestamptz().notNull(),
   days: real().notNull().default(1),
   reason: text(),
   status: bizLeaveStatusEnum().notNull().default('draft'),
@@ -41,7 +41,7 @@ export const bizPayDemos = pgTable('biz_pay_demos', {
   /** 关联支付中心订单号（发起支付后回填，用于查单/对账/履约幂等） */
   paymentOrderNo: varchar({ length: 64 }),
   /** 支付成功时间（履约时回写） */
-  paidAt: timestamp({ withTimezone: true }),
+  paidAt: timestamptz(),
   /** 履约备注（演示：支付成功后自动发放示例权益） */
   fulfillRemark: varchar({ length: 255 }),
   tenantId: tenantIdColumn(),

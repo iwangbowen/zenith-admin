@@ -8,7 +8,7 @@
  * 主机上的布局：`{deployPath}/releases/<yyyyMMddHHmmss-version>/`、`shared/`、`current -> releases/<x>`、`tmp/`。
  * 平台级资源：不挂 tenant_id。
  */
-import { pgTable, pgEnum, varchar, text, integer, smallint, bigint, boolean, timestamp, jsonb, unique, index, uniqueIndex, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, varchar, text, integer, smallint, bigint, boolean, jsonb, unique, index, uniqueIndex, primaryKey } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import {
   DEPLOY_HOST_STATUSES,
@@ -20,7 +20,7 @@ import {
   DEPLOY_STRATEGIES,
 } from '@zenith/shared/ops';
 import type { DeployHealthCheck, DeployRunSnapshot, DeployScripts } from '@zenith/shared/ops';
-import { timestampColumns, idColumn, remarkColumn } from './common';
+import { timestampColumns, idColumn, remarkColumn, timestamptz } from './common';
 import { auditColumns } from './core';
 import { appArtifacts, appReleases, clientApps } from './app-releases';
 import { opsHosts } from './ops-hosts';
@@ -105,8 +105,8 @@ export const deployRuns = pgTable('deploy_runs', {
   /** 主机之外的整体失败原因（制品读取 / 任务投递等） */
   error: text(),
   remark: remarkColumn(500),
-  startedAt: timestamp(),
-  finishedAt: timestamp(),
+  startedAt: timestamptz(),
+  finishedAt: timestamptz(),
   ...auditColumns(),
   ...timestampColumns(),
 }, (t) => [
@@ -131,8 +131,8 @@ export const deployRunHosts = pgTable('deploy_run_hosts', {
   releaseName: varchar({ length: 80 }),
   /** 切换前的 current；自动回滚即切回它 */
   previousReleaseName: varchar({ length: 80 }),
-  startedAt: timestamp(),
-  finishedAt: timestamp(),
+  startedAt: timestamptz(),
+  finishedAt: timestamptz(),
   error: text(),
 }, (t) => [
   unique('deploy_run_hosts_run_host_unique').on(t.runId, t.hostId),
@@ -152,7 +152,7 @@ export const deployRunLogs = pgTable('deploy_run_logs', {
   level: deployLogLevelEnum().notNull().default('info'),
   step: deployStepEnum(),
   line: text().notNull(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   unique('deploy_run_logs_run_seq_unique').on(t.runId, t.seq),
 ]);
@@ -176,11 +176,11 @@ export const deployReleases = pgTable('deploy_releases', {
   /** 镜像主机上 current 软链的指向；每个 (target, host) 至多一个 */
   isCurrent: boolean().notNull().default(false),
   /** 最近一次成为 current 的时间（部署 / 回滚切换时刻；回滚回来会刷新） */
-  currentSince: timestamp(),
+  currentSince: timestamptz(),
   sizeBytes: bigint({ mode: 'number' }),
   /** 已从主机清理（保留策略 / 手动删除 / 对账发现缺失） */
-  removedAt: timestamp(),
-  createdAt: timestamp().defaultNow().notNull(),
+  removedAt: timestamptz(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   unique('deploy_releases_target_host_name_unique').on(t.targetId, t.hostId, t.releaseName),
   index('deploy_releases_target_host_idx').on(t.targetId, t.hostId),

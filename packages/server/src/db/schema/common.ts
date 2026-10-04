@@ -19,18 +19,15 @@ export const sortColumn = () => integer().notNull().default(0);
 /** 备注列，默认 256 字符：`remark: remarkColumn()` / `remarkColumn(500)`；长文本备注用 `text()` */
 export const remarkColumn = (length = 256) => varchar({ length });
 
-export interface TimestampColumnsOptions {
-  /** `timestamptz`；缺省为不带时区的 `timestamp`（与历史多数表一致） */
-  withTimezone?: boolean;
-}
+/** 时刻列（timestamptz）。表文件的时间列一律用它，禁止直写 drizzle 的 timestamp() */
+export const timestamptz = () => timestamp({ withTimezone: true });
 
 /**
- * 创建 / 更新时间列：`created_at` 默认 now()，`updated_at` 默认 now() 且由 `$onUpdate` 在更新时自动刷新
- * （业务代码禁止手动传 `updatedAt`）。
- * 用法：在 pgTable 列定义末尾展开 `...timestampColumns()` / `...timestampColumns({ withTimezone: true })`；
- * 只有 `created_at` 的追加型表（日志 / 事件）继续单独声明。
+ * 创建 / 更新时间列（timestamptz）：created_at 默认 now()，updated_at 默认 now() 且由 $onUpdate
+ * 在每次更新时刷新（业务代码禁止手动传 updatedAt）。在 pgTable 列定义末尾展开 ...timestampColumns()；
+ * 只有 created_at 的追加型表单独声明 createdAt: timestamptz().defaultNow().notNull()。
  */
-export const timestampColumns = (options: TimestampColumnsOptions = {}) => ({
-  createdAt: timestamp(options).defaultNow().notNull(),
-  updatedAt: timestamp(options).defaultNow().$onUpdate(() => new Date()).notNull(),
+export const timestampColumns = () => ({
+  createdAt: timestamptz().defaultNow().notNull(),
+  updatedAt: timestamptz().defaultNow().$onUpdate(() => new Date()).notNull(),
 });

@@ -1,5 +1,5 @@
-import { timestampColumns, idColumn } from './common';
-import { check, pgTable, varchar, timestamp, pgEnum, integer, boolean, unique, uniqueIndex, primaryKey, text, index, jsonb, uuid as pgUuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { timestampColumns, idColumn, timestamptz } from './common';
+import { check, pgTable, varchar, pgEnum, integer, boolean, unique, uniqueIndex, primaryKey, text, index, jsonb, uuid as pgUuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { auditColumns, users, tenantIdColumn } from './core';
 import { managedFiles } from './files';
@@ -39,15 +39,15 @@ export const exportJobs = pgTable('export_jobs', {
   sensitive: boolean().notNull().default(false),
   watermark: boolean().notNull().default(true),
   errorMessage: text(),
-  expiresAt: timestamp(),
-  fileDeletedAt: timestamp(),
+  expiresAt: timestamptz(),
+  fileDeletedAt: timestamptz(),
   deleteReason: exportJobDeleteReasonEnum(),
   downloadCount: integer().notNull().default(0),
-  lastDownloadedAt: timestamp(),
+  lastDownloadedAt: timestamptz(),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
-  startedAt: timestamp(),
-  completedAt: timestamp(),
+  startedAt: timestamptz(),
+  completedAt: timestamptz(),
   ...timestampColumns(),
 }, (t) => [
   index('export_jobs_entity_idx').on(t.entity),
@@ -92,7 +92,7 @@ export const asyncTasks = pgTable('async_tasks', {
   /** 提交时的重试退避基数；恢复与自动重试沿用，重新开始才更新。 */
   retryDelayMs: integer().notNull(),
   /** 下次允许执行时间（自动重试退避）；null = 立即可执行 */
-  nextRunAt: timestamp(),
+  nextRunAt: timestamptz(),
   /** One durable queue-message identity per execution round; changed on retry/recovery/restart. */
   dispatchToken: pgUuid().notNull().defaultRandom(),
   /**
@@ -104,7 +104,7 @@ export const asyncTasks = pgTable('async_tasks', {
    */
   idempotencyKey: varchar({ length: 128 }),
   /** 执行心跳（progress 更新时刷新），兜底扫描据此回收卡死任务 */
-  heartbeatAt: timestamp(),
+  heartbeatAt: timestamptz(),
   /** 链路关联 ID（= 提交请求的 requestId），串起任务与其触发源/后续副作用 */
   traceId: varchar({ length: 64 }),
   /** 因果父引用（`kind:refId` 或 `request`），链路时间线树形展示的触发源 */
@@ -113,8 +113,8 @@ export const asyncTasks = pgTable('async_tasks', {
   nodeId: varchar({ length: 128 }),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
-  startedAt: timestamp(),
-  completedAt: timestamp(),
+  startedAt: timestamptz(),
+  completedAt: timestamptz(),
   ...timestampColumns(),
 }, (t) => [
   index('async_tasks_type_idx').on(t.taskType),
@@ -210,7 +210,7 @@ export const exportJobDownloads = pgTable('export_job_downloads', {
   tenantId: tenantIdColumn(),
   ip: varchar({ length: 64 }),
   userAgent: varchar({ length: 512 }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('export_job_downloads_tenant_idx').on(t.tenantId), 
   index('export_job_downloads_job_idx').on(t.jobId),
   index('export_job_downloads_downloaded_by_idx').on(t.downloadedBy),

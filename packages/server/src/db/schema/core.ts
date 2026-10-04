@@ -1,7 +1,7 @@
-import { pgTable, varchar, timestamp, pgEnum, integer, boolean, primaryKey, unique, index, text, jsonb, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, pgEnum, integer, boolean, primaryKey, unique, index, text, jsonb, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { TenantPackageQuotas } from '@zenith/shared/licensing';
 import type { UserGroupMemberRule } from '@zenith/shared/identity';
-import { timestampColumns, idColumn, statusColumn, sortColumn, remarkColumn } from './common';
+import { timestampColumns, idColumn, statusColumn, sortColumn, remarkColumn, timestamptz } from './common';
 
 export const menuTypeEnum = pgEnum('menu_type', ['directory', 'menu', 'button']);
 
@@ -34,7 +34,7 @@ export const tenants = pgTable('tenants', {
   contactName: varchar({ length: 50 }),
   contactPhone: varchar({ length: 20 }),
   status: statusColumn(),
-  expireAt: timestamp({ withTimezone: true }),
+  expireAt: timestamptz(),
   maxUsers: integer(),
   /** 租户套餐（菜单白名单）；为空表示不限制。应用层禁止删除在用套餐，restrict 兜底防 fail-open */
   packageId: integer().references((): AnyPgColumn => tenantPackages.id, { onDelete: 'restrict' }),
@@ -127,8 +127,8 @@ export const users = pgTable('users', {
   /** 用户收藏的菜单 ID 列表（有序） */
   favoriteMenus: jsonb().$type<number[]>(),
   userDataScope: dataScopeEnum(),
-  passwordUpdatedAt: timestamp().defaultNow().notNull(),
-  lastLoginAt: timestamp(),
+  passwordUpdatedAt: timestamptz().defaultNow().notNull(),
+  lastLoginAt: timestamptz(),
   ...auditColumns(),
   ...timestampColumns(),
 }, (t) => [
@@ -224,7 +224,7 @@ export const userGroups = pgTable('user_groups', {
   /** 动态组成员规则（static 组为 null）；语义见 shared/identity UserGroupMemberRule */
   memberRule: jsonb().$type<UserGroupMemberRule>(),
   /** 动态组最近一次成员同步时间 */
-  ruleSyncedAt: timestamp(),
+  ruleSyncedAt: timestamptz(),
   status: statusColumn(),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),
@@ -239,7 +239,7 @@ export type NewUserGroup = typeof userGroups.$inferInsert;
 export const userGroupMembers = pgTable('user_group_members', {
   groupId: integer().notNull().references(() => userGroups.id, { onDelete: 'cascade' }),
   userId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   primaryKey({ columns: [t.groupId, t.userId] }),
   // 权限解析（lib/permissions.ts）与数据权限（lib/data-scope.ts）都按 user_id 反查用户组，

@@ -1,6 +1,6 @@
-import { pgTable, varchar, timestamp, pgEnum, integer, boolean, primaryKey, text, jsonb, uniqueIndex, index, customType, uuid as pgUuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, pgEnum, integer, boolean, primaryKey, text, jsonb, uniqueIndex, index, customType, uuid as pgUuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import { timestampColumns, idColumn, statusColumn, sortColumn, remarkColumn } from './common';
+import { timestampColumns, idColumn, statusColumn, sortColumn, remarkColumn, timestamptz } from './common';
 import { auditColumns, users, departments } from './core';
 import { members } from './member';
 import { asyncTasks } from './tasks';
@@ -258,8 +258,8 @@ export const cmsDistributionRules = pgTable('cms_distribution_rules', {
     publishedTo: null,
   }),
   scheduleCron: varchar({ length: 100 }),
-  nextRunAt: timestamp(),
-  lastRunAt: timestamp(),
+  nextRunAt: timestamptz(),
+  lastRunAt: timestamptz(),
   status: statusColumn(),
   /** 规则变更 fence；每次编辑/启停 +1，旧任务协作取消。 */
   revision: integer().notNull().default(1),
@@ -283,7 +283,7 @@ export const cmsContents = pgTable('cms_contents', {
   locale: varchar({ length: 35 }).notNull().default('zh-CN'),
   translationOfId: integer().references((): AnyPgColumn => cmsContents.id, { onDelete: 'restrict' }),
   sourceRevisionId: integer(),
-  dueAt: timestamp(),
+  dueAt: timestamptz(),
   siteId: integer().notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
   channelId: integer().notNull().references(() => cmsChannels.id, { onDelete: 'restrict' }),
   modelId: integer().references(() => cmsModels.id, { onDelete: 'set null' }),
@@ -334,7 +334,7 @@ export const cmsContents = pgTable('cms_contents', {
   /** 置顶权重（数值越大越靠前，isTop=true 时生效） */
   topWeight: integer().notNull().default(0),
   /** 置顶到期时间（到期由周期任务自动取消置顶；空 = 永久置顶） */
-  topExpireAt: timestamp(),
+  topExpireAt: timestamptz(),
   isRecommend: boolean().notNull().default(false),
   isHot: boolean().notNull().default(false),
   /** 内容属性自动标记（保存时按正文/形态数据/封面自动检测，列表展示图标） */
@@ -343,11 +343,11 @@ export const cmsContents = pgTable('cms_contents', {
   hasAttachment: boolean().notNull().default(false),
   status: cmsContentStatusEnum().notNull().default('draft'),
   rejectReason: varchar({ length: 500 }),
-  publishedAt: timestamp(),
+  publishedAt: timestamptz(),
   /** 定时发布时间（P2 调度使用，先建列） */
-  scheduledAt: timestamp(),
+  scheduledAt: timestamptz(),
   /** 过期自动下线时间（到期由周期任务下线，空 = 永不过期） */
-  expireAt: timestamp(),
+  expireAt: timestamptz(),
   viewCount: integer().notNull().default(0),
   /** 会员点赞数（cms_content_likes 冗余计数，原子回写） */
   likeCount: integer().notNull().default(0),
@@ -366,9 +366,9 @@ export const cmsContents = pgTable('cms_contents', {
   /** 全文检索向量（应用层 jieba 分词后写入，'simple' parser + setweight A/B/C） */
   searchVector: tsvector('search_vector'),
   /** 回收站：非空表示已进回收站 */
-  deletedAt: timestamp(),
+  deletedAt: timestamptz(),
   /** 归档：非空表示已归档（前台详情保留，不参与列表聚合；仅已发布/已下线内容可归档） */
-  archivedAt: timestamp(),
+  archivedAt: timestamptz(),
   /** 映射来源内容 id：非空表示本内容为“映射”（正文/扩展字段共享来源内容，禁止独立编辑） */
   mappingSourceId: integer().references((): AnyPgColumn => cmsContents.id, { onDelete: 'set null' }),
   /** 规则物化来源，用于同步幂等和冲突处理；规则删除后保留内容并清空规则引用。 */
@@ -380,7 +380,7 @@ export const cmsContents = pgTable('cms_contents', {
   /** 部门归属（P5 部门数据权限：创建时快照创建人部门；投稿/导入为 null） */
   deptId: integer().references(() => departments.id, { onDelete: 'set null' }),
   /** 管理员持久化合规锁（与 Redis 120s 编辑协作锁、version 乐观锁相互独立） */
-  lockedAt: timestamp(),
+  lockedAt: timestamptz(),
   lockedBy: integer().references(() => users.id, { onDelete: 'set null' }),
   lockReason: varchar({ length: 500 }),
   ...auditColumns(),
@@ -424,7 +424,7 @@ export const cmsContentOpLogs = pgTable('cms_content_op_logs', {
   operatorId: integer().references(() => users.id, { onDelete: 'set null' }),
   /** 冗余操作人昵称（防用户删除后时间线失名；系统任务为“系统”） */
   operatorName: varchar({ length: 50 }).notNull().default('系统'),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('cms_content_op_logs_operator_idx').on(t.operatorId), 
   index('cms_content_op_logs_content_idx').on(t.contentId, t.createdAt),
 ]);
@@ -451,7 +451,7 @@ export type CmsErrorProneWordRow = typeof cmsErrorProneWords.$inferSelect;
 export const cmsContentLikes = pgTable('cms_content_likes', {
   memberId: integer().notNull().references(() => members.id, { onDelete: 'cascade' }),
   contentId: integer().notNull().references(() => cmsContents.id, { onDelete: 'cascade' }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   primaryKey({ columns: [t.memberId, t.contentId] }),
   index('cms_content_likes_content_idx').on(t.contentId),
@@ -463,7 +463,7 @@ export type CmsContentLikeRow = typeof cmsContentLikes.$inferSelect;
 export const cmsContentFavorites = pgTable('cms_content_favorites', {
   memberId: integer().notNull().references(() => members.id, { onDelete: 'cascade' }),
   contentId: integer().notNull().references(() => cmsContents.id, { onDelete: 'cascade' }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   primaryKey({ columns: [t.memberId, t.contentId] }),
   index('cms_content_favorites_content_idx').on(t.contentId),
@@ -503,7 +503,7 @@ export const cmsMemberSubscriptions = pgTable('cms_member_subscriptions', {
   notificationEnabled: boolean().notNull().default(true),
   active: boolean().notNull().default(true),
   /** 首次有效订阅积分已发放的持久化标记；取消/重新关注不会清除。 */
-  pointsAwardedAt: timestamp(),
+  pointsAwardedAt: timestamptz(),
   ...timestampColumns(),
 }, (t) => [
   uniqueIndex('cms_member_subscriptions_subject_uq').on(t.memberId, t.siteId, t.subjectType, t.subjectKey),
@@ -530,8 +530,8 @@ export const cmsInteractions = pgTable('cms_interactions', {
   turnstileSiteKey: varchar({ length: 200 }),
   turnstileSecret: varchar({ length: 500 }),
   thankYouMessage: varchar({ length: 500 }).notNull().default('感谢您的参与！'),
-  startAt: timestamp(),
-  endAt: timestamp(),
+  startAt: timestamptz(),
+  endAt: timestamptz(),
   responseCount: integer().notNull().default(0),
   ...auditColumns(),
   ...timestampColumns(),
@@ -579,7 +579,7 @@ export const cmsInteractionResponses = pgTable('cms_interaction_responses', {
   repeatKey: varchar({ length: 80 }),
   /** 显式请求幂等键的摘要；同一互动内唯一。 */
   requestKey: varchar({ length: 64 }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('cms_interaction_responses_parent_time_idx').on(t.interactionId, t.createdAt, t.id),
   index('cms_interaction_responses_member_idx').on(t.memberId, t.createdAt),
@@ -621,7 +621,7 @@ export const cmsVisitLogs = pgTable('cms_visit_logs', {
   deviceType: cmsDeviceTypeEnum().notNull().default('pc'),
   /** 来源页 Host（referrer 域名；直达为空） */
   referrerHost: varchar({ length: 255 }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('cms_visit_logs_site_time_idx').on(t.siteId, t.createdAt),
   index('cms_visit_logs_content_idx').on(t.contentId).where(sql`${t.contentId} is not null`),
@@ -651,7 +651,7 @@ export const cmsAdEvents = pgTable('cms_ad_events', {
   adId: integer().notNull(),
   slotId: integer().notNull(),
   eventType: cmsAdEventTypeEnum().notNull(),
-  occurredAt: timestamp().defaultNow().notNull(),
+  occurredAt: timestamptz().defaultNow().notNull(),
   /** 服务端加盐 SHA-256；绝不保存明文 IP。 */
   visitorHash: varchar({ length: 64 }).notNull(),
   ipHash: varchar({ length: 64 }).notNull(),
@@ -680,7 +680,7 @@ export const cmsSearchLogs = pgTable('cms_search_logs', {
   resultCount: integer().notNull().default(0),
   ip: varchar({ length: 64 }),
   deviceType: cmsDeviceTypeEnum().notNull().default('pc'),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('cms_search_logs_site_time_idx').on(t.siteId, t.createdAt),
   index('cms_search_logs_keyword_idx').on(t.siteId, t.keyword),
@@ -801,7 +801,7 @@ export const cmsContentVersions = pgTable('cms_content_versions', {
   snapshot: jsonb().$type<Record<string, unknown>>().notNull(),
   remark: remarkColumn(200),
   ...auditColumns(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   uniqueIndex('cms_content_versions_content_ver_uq').on(t.contentId, t.version),
 ]);
@@ -894,8 +894,8 @@ export const cmsAds = pgTable('cms_ads', {
   image: varchar({ length: 500 }),
   linkUrl: varchar({ length: 500 }),
   /** 投放时间窗（空 = 不限） */
-  startAt: timestamp(),
-  endAt: timestamp(),
+  startAt: timestamptz(),
+  endAt: timestamptz(),
   /** 点击计数（前台经由公开广告点击中转累加） */
   clickCount: integer().notNull().default(0),
   /** 曝光计数（前台页面加载 beacon 批量上报累加） */
@@ -941,7 +941,7 @@ export const cmsFormSubmissions = pgTable('cms_form_submissions', {
   data: jsonb().$type<Record<string, unknown>>().notNull(),
   ip: varchar({ length: 64 }),
   userAgent: varchar({ length: 255 }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('cms_form_submissions_form_idx').on(t.formId),
 ]);
@@ -971,7 +971,7 @@ export const cmsPushLogs = pgTable('cms_push_logs', {
   success: boolean().notNull(),
   statusCode: integer(),
   response: text(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('cms_push_logs_site_idx').on(t.siteId, t.createdAt),
 ]);
@@ -1082,7 +1082,7 @@ export const cmsCollectRules = pgTable('cms_collect_rules', {
   /** 单次执行最大采集条数 */
   maxItems: integer().notNull().default(50),
   status: statusColumn(),
-  lastRunAt: timestamp(),
+  lastRunAt: timestamptz(),
   remark: remarkColumn(200),
   ...auditColumns(),
   ...timestampColumns(),
@@ -1102,7 +1102,7 @@ export const cmsCollectItems = pgTable('cms_collect_items', {
   /** 成功入库的内容 id */
   contentId: integer().references(() => cmsContents.id, { onDelete: 'set null' }),
   error: varchar({ length: 500 }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('cms_collect_items_content_idx').on(t.contentId), 
   uniqueIndex('cms_collect_items_rule_url_uq').on(t.ruleId, t.url),
   index('cms_collect_items_rule_idx').on(t.ruleId, t.createdAt),
@@ -1170,7 +1170,7 @@ export const cmsWidgetSourceRefs = pgTable('cms_widget_source_refs', {
   itemId: varchar({ length: 100 }).notNull(),
   sourceType: cmsWidgetSourceTypeEnum().notNull(),
   sourceId: integer().notNull(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   uniqueIndex('cms_widget_source_refs_widget_item_uq').on(t.widgetId, t.itemId),
   index('cms_widget_source_refs_source_idx').on(t.sourceType, t.sourceId),
@@ -1243,7 +1243,7 @@ export const cmsPagePresetVersions = pgTable('cms_page_preset_versions', {
   blocks: jsonb().$type<CmsPageBlock[]>().notNull(),
   parameters: jsonb().$type<CmsPagePresetParameter[]>().notNull(),
   note: varchar({ length: 500 }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, t => [
   uniqueIndex('cms_page_preset_versions_preset_version_uq').on(t.presetId, t.version),
   index('cms_page_preset_versions_site_idx').on(t.siteId),
@@ -1257,7 +1257,7 @@ export const cmsPageBlockAcls = pgTable('cms_page_block_acls', {
   blockId: varchar({ length: 100 }).notNull(),
   subjectType: cmsPageBlockAclSubjectTypeEnum().notNull(),
   subjectId: integer().notNull(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   uniqueIndex('cms_page_block_acls_grant_uq').on(t.pageId, t.blockId, t.subjectType, t.subjectId),
   index('cms_page_block_acls_block_idx').on(t.pageId, t.blockId),
@@ -1284,7 +1284,7 @@ export const cmsPublishArtifacts = pgTable('cms_publish_artifacts', {
   publicRevision: integer().notNull().default(0),
   status: cmsPublishArtifactStatusEnum().notNull(),
   error: text(),
-  generatedAt: timestamp(),
+  generatedAt: timestamptz(),
   ...timestampColumns(),
 }, (t) => [index('cms_publish_artifacts_content_idx').on(t.contentId), index('cms_publish_artifacts_channel_idx').on(t.channelId), 
   uniqueIndex('cms_publish_artifacts_task_path_uq').on(t.taskId, t.path),
@@ -1370,7 +1370,7 @@ export const cmsResourceRefs = pgTable('cms_resource_refs', {
   ownerId: integer().notNull(),
   /** 承载引用的字段路径，如 coverImage / body / extend.photos */
   field: varchar({ length: 64 }).notNull(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   uniqueIndex('cms_resource_refs_uq').on(t.resourceId, t.ownerType, t.ownerId, t.field),
   index('cms_resource_refs_resource_idx').on(t.resourceId),
@@ -1417,7 +1417,7 @@ export const cmsContentTombstones = pgTable('cms_content_tombstones', {
   id: idColumn(),
   siteId: integer().notNull().references(() => cmsSites.id, { onDelete: 'cascade' }),
   contentId: integer().notNull(),
-  deletedAt: timestamp().defaultNow().notNull(),
+  deletedAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   uniqueIndex('cms_content_tombstones_content_uq').on(t.contentId),
   index('cms_content_tombstones_sync_idx').on(t.siteId, t.deletedAt, t.contentId),

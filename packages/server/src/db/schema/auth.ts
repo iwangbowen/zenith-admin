@@ -1,5 +1,5 @@
-import { timestampColumns, idColumn } from './common';
-import { pgTable, varchar, timestamp, pgEnum, integer, boolean, unique, text, uniqueIndex, index, jsonb, uuid } from 'drizzle-orm/pg-core';
+import { timestampColumns, idColumn, timestamptz } from './common';
+import { pgTable, varchar, pgEnum, integer, boolean, unique, text, uniqueIndex, index, jsonb, uuid } from 'drizzle-orm/pg-core';
 import { OAUTH_PROVIDERS, IMPERSONATION_END_REASONS } from '@zenith/shared/identity';
 import { auditColumns, users, tenantIdColumn } from './core';
 import { managedFiles } from './files';
@@ -25,7 +25,7 @@ export const userOauthAccounts = pgTable('user_oauth_accounts', {
   avatar: varchar({ length: 512 }),
   accessToken: varchar({ length: 512 }),
   refreshToken: varchar({ length: 512 }),
-  expiresAt: timestamp({ withTimezone: true }),
+  expiresAt: timestamptz(),
   raw: text(),
   ...timestampColumns(),
 }, (t) => [index('user_oauth_accounts_user_idx').on(t.userId), unique('uniq_provider_open_id').on(t.provider, t.openId)]);
@@ -64,8 +64,8 @@ export const userApiTokens = pgTable('user_api_tokens', {
    */
   tokenHash: varchar({ length: 64 }).unique('user_api_tokens_token_hash_unique'),
   tokenPrefix: varchar({ length: 20 }),
-  lastUsedAt: timestamp({ withTimezone: true }),
-  expiresAt: timestamp({ withTimezone: true }),
+  lastUsedAt: timestamptz(),
+  expiresAt: timestamptz(),
   ...auditColumns(),
   ...timestampColumns(),
 }, (t) => [index('user_api_tokens_user_idx').on(t.userId)]);
@@ -79,9 +79,9 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
   id: idColumn(),
   userId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
   token: varchar({ length: 128 }).notNull().unique(),
-  expiresAt: timestamp({ withTimezone: true }).notNull(),
-  usedAt: timestamp({ withTimezone: true }),
-  createdAt: timestamp().defaultNow().notNull(),
+  expiresAt: timestamptz().notNull(),
+  usedAt: timestamptz(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('password_reset_tokens_user_idx').on(t.userId)]);
 
 export type PasswordResetTokenRow = typeof passwordResetTokens.$inferSelect;
@@ -97,9 +97,9 @@ export const userMfaFactors = pgTable('user_mfa_factors', {
   secretEncrypted: text(),
   credentialJson: jsonb().$type<Record<string, unknown> | null>(),
   status: mfaFactorStatusEnum().notNull().default('pending'),
-  verifiedAt: timestamp({ withTimezone: true }),
-  lastUsedAt: timestamp({ withTimezone: true }),
-  ...timestampColumns({ withTimezone: true }),
+  verifiedAt: timestamptz(),
+  lastUsedAt: timestamptz(),
+  ...timestampColumns(),
 }, (t) => [
   index('user_mfa_factors_user_idx').on(t.userId),
   index('user_mfa_factors_status_idx').on(t.status),
@@ -117,9 +117,9 @@ export const userTrustedDevices = pgTable('user_trusted_devices', {
   deviceName: varchar({ length: 128 }),
   ip: varchar({ length: 64 }),
   userAgent: varchar({ length: 512 }),
-  trustedUntil: timestamp({ withTimezone: true }).notNull(),
-  lastSeenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  trustedUntil: timestamptz().notNull(),
+  lastSeenAt: timestamptz().notNull().defaultNow(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   uniqueIndex('user_trusted_devices_user_device_uq').on(t.userId, t.deviceIdHash),
   index('user_trusted_devices_user_idx').on(t.userId),
@@ -143,7 +143,7 @@ export const loginRiskEvents = pgTable('login_risk_events', {
   location: varchar({ length: 128 }),
   userAgent: varchar({ length: 512 }),
   deviceIdHash: varchar({ length: 128 }),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('login_risk_events_user_idx').on(t.userId),
   index('login_risk_events_tenant_created_id_idx').on(t.tenantId, t.createdAt.desc(), t.id.desc()),
@@ -175,9 +175,9 @@ export const impersonationSessions = pgTable('impersonation_sessions', {
   location: varchar({ length: 128 }),
   browser: varchar({ length: 64 }),
   os: varchar({ length: 64 }),
-  startedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  expiresAt: timestamp({ withTimezone: true }).notNull(),
-  endedAt: timestamp({ withTimezone: true }),
+  startedAt: timestamptz().notNull().defaultNow(),
+  expiresAt: timestamptz().notNull(),
+  endedAt: timestamptz(),
   endReason: impersonationEndReasonEnum(),
   endedBy: integer().references(() => users.id, { onDelete: 'set null' }),
 }, (t) => [

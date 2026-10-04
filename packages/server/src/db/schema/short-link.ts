@@ -5,8 +5,8 @@
  * - short_link_clicks      点击明细（追加型日志，供统计与审计，保留策略管控）
  * - short_link_daily_stats 按日聚合（P2 起由定时任务物化，长周期趋势与明细瘦身后的数据源）
  */
-import { pgTable, pgEnum, varchar, timestamp, integer, text, boolean, date, index, uniqueIndex, bigint } from 'drizzle-orm/pg-core';
-import { timestampColumns, idColumn, statusColumn, remarkColumn } from './common';
+import { pgTable, pgEnum, varchar, integer, text, boolean, date, index, uniqueIndex, bigint } from 'drizzle-orm/pg-core';
+import { timestampColumns, idColumn, statusColumn, remarkColumn, timestamptz } from './common';
 import { auditColumns, tenantIdColumn } from './core';
 
 /** 跳转方式：302 临时（默认，可统计可改址）/ 301 永久（浏览器缓存，改址不生效） */
@@ -21,7 +21,7 @@ export const shortLinks = pgTable('short_links', {
   redirectType: shortLinkRedirectTypeEnum().notNull().default('302'),
   status:       statusColumn(),
   /** 过期时间，null = 永久有效 */
-  expiresAt:    timestamp(),
+  expiresAt:    timestamptz(),
   /** 访问次数上限，null = 不限 */
   maxVisits:    integer(),
   /** 访问密码（提取码语义，需在管理端可见可复制），null = 无需密码 */
@@ -38,7 +38,7 @@ export const shortLinks = pgTable('short_links', {
   remark:       remarkColumn(),
   /** 累计访问次数（不含爬虫，异步点击落库时递增，maxVisits 判定依据） */
   totalPv:      integer().notNull().default(0),
-  lastVisitAt:  timestamp(),
+  lastVisitAt:  timestamptz(),
   tenantId:     tenantIdColumn(),
   ...auditColumns(),
   ...timestampColumns(),
@@ -65,7 +65,7 @@ export const shortLinkClicks = pgTable('short_link_clicks', {
   browser:    varchar({ length: 64 }),
   referer:    varchar({ length: 512 }),
   isBot:      boolean().notNull().default(false),
-  clickedAt:  timestamp().defaultNow().notNull(),
+  clickedAt:  timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('idx_short_link_clicks_link_time').on(t.linkId, t.clickedAt),
 ]);

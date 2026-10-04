@@ -1,5 +1,5 @@
-import { timestampColumns, idColumn, sortColumn } from './common';
-import { pgTable, varchar, timestamp, pgEnum, integer, boolean, primaryKey, unique, text, jsonb, index } from 'drizzle-orm/pg-core';
+import { timestampColumns, idColumn, sortColumn, timestamptz } from './common';
+import { pgTable, varchar, pgEnum, integer, boolean, primaryKey, unique, text, jsonb, index } from 'drizzle-orm/pg-core';
 import { auditColumns, users, tenantIdColumn } from './core';
 
 // ─── 聊天会话表 ───────────────────────────────────────────────────────────────
@@ -36,9 +36,9 @@ export const chatConversationMembers = pgTable('chat_conversation_members', {
   /** 会话归档（收进「已归档」折叠分组，不影响未读计数） */
   isArchived: boolean().notNull().default(false),
   /** 被禁言至（null = 未禁言；9999 年 = 永久禁言） */
-  mutedUntil: timestamp({ withTimezone: true }),
-  lastReadAt: timestamp({ withTimezone: true }),
-  joinedAt: timestamp().defaultNow().notNull(),
+  mutedUntil: timestamptz(),
+  lastReadAt: timestamptz(),
+  joinedAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   primaryKey({ columns: [t.conversationId, t.userId] }),
   // 反查“我参与的所有会话”（listConversations），PK 前缀无法覆盖 user_id 查询
@@ -60,7 +60,7 @@ export const chatMessages = pgTable('chat_messages', {
   isRecalled: boolean().notNull().default(false),
   isEdited: boolean().notNull().default(false),
   extra: jsonb(),
-  ...timestampColumns({ withTimezone: true }),
+  ...timestampColumns(),
 }, (t) => [
   // 会话消息游标分页（WHERE conversation_id = ? AND id < ? ORDER BY id DESC）及最新消息聚合
   index('chat_messages_conversation_id_idx').on(t.conversationId, t.id),
@@ -79,7 +79,7 @@ export const chatMessageReactions = pgTable('chat_message_reactions', {
   messageId: integer().notNull().references(() => chatMessages.id, { onDelete: 'cascade' }),
   userId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
   emoji: varchar({ length: 10 }).notNull(),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (table) => [index('chat_message_reactions_user_idx').on(table.userId), 
   unique('chat_message_reactions_message_id_user_id_emoji_unique').on(table.messageId, table.userId, table.emoji),
 ]);
@@ -91,7 +91,7 @@ export const chatMessageFavorites = pgTable('chat_message_favorites', {
   id: idColumn(),
   messageId: integer().notNull().references(() => chatMessages.id, { onDelete: 'cascade' }),
   userId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   // 全局收藏列表按收藏时间倒序分页
   index('chat_message_favorites_user_idx').on(t.userId, t.createdAt),
@@ -111,7 +111,7 @@ export const chatWebhooks = pgTable('chat_webhooks', {
   /** 消息投递的目标会话 */
   conversationId: integer().notNull().references(() => chatConversations.id, { onDelete: 'cascade' }),
   enabled: boolean().notNull().default(true),
-  lastUsedAt: timestamp({ withTimezone: true }),
+  lastUsedAt: timestamptz(),
   ...auditColumns(),
   tenantId: tenantIdColumn(),
   ...timestampColumns(),
@@ -145,7 +145,7 @@ export const chatScheduledMessages = pgTable('chat_scheduled_messages', {
   content: text().notNull(),
   extra: jsonb(),
   /** 计划发送时间 */
-  scheduledAt: timestamp({ withTimezone: true }).notNull(),
+  scheduledAt: timestamptz().notNull(),
   status: chatScheduledStatusEnum().notNull().default('pending'),
   failReason: varchar({ length: 255 }),
   /** 发送成功后关联的正式消息 ID */
@@ -170,7 +170,7 @@ export const chatCustomEmojis = pgTable('chat_custom_emojis', {
   name: varchar({ length: 64 }),
   width: integer(),
   height: integer(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('chat_custom_emojis_user_idx').on(t.userId),
 ]);
@@ -185,7 +185,7 @@ export const chatGroupInvites = pgTable('chat_group_invites', {
   token: varchar({ length: 64 }).notNull().unique(),
   createdBy: integer().references(() => users.id, { onDelete: 'set null' }),
   /** 过期时间（null = 永久有效） */
-  expiresAt: timestamp({ withTimezone: true }),
+  expiresAt: timestamptz(),
   /** 最大使用次数（null = 不限） */
   maxUses: integer(),
   usedCount: integer().notNull().default(0),
@@ -209,7 +209,7 @@ export const chatGroupJoinRequests = pgTable('chat_group_join_requests', {
   /** 申请附言 */
   message: varchar({ length: 255 }),
   handledBy: integer().references(() => users.id, { onDelete: 'set null' }),
-  handledAt: timestamp({ withTimezone: true }),
+  handledAt: timestamptz(),
   ...timestampColumns(),
 }, (t) => [
   index('chat_group_join_requests_conv_status_idx').on(t.conversationId, t.status),

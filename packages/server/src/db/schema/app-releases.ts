@@ -5,9 +5,9 @@
  * 桌面 / 移动 / Web 只是不同的平台与制品类型，共用同一套发布与灰度模型。
  * app_release_events 是追加型日志（检查 / 下载 / 安装回执），供升级看板统计。
  */
-import { pgTable, pgEnum, varchar, text, integer, smallint, bigint, boolean, timestamp, unique, index, uuid, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, varchar, text, integer, smallint, bigint, boolean, unique, index, uuid, uniqueIndex } from 'drizzle-orm/pg-core';
 import { APP_ARCHES, APP_ARTIFACT_KINDS, APP_KINDS, APP_PLATFORMS, APP_RELEASE_CHANNELS, APP_RELEASE_STATUSES } from '@zenith/shared/ops';
-import { pushProviderEnum, timestampColumns, idColumn, statusColumn } from './common';
+import { pushProviderEnum, timestampColumns, idColumn, statusColumn, timestamptz } from './common';
 import { auditColumns } from './core';
 import { managedFiles } from './files';
 
@@ -53,7 +53,7 @@ export const appReleases = pgTable('app_releases', {
   minVersion: varchar({ length: 32 }),
   /** 灰度比例 0-100，按 deviceId 哈希放量；100 = 全量 */
   rolloutPercent: smallint().notNull().default(100),
-  publishedAt: timestamp(),
+  publishedAt: timestamptz(),
   ...auditColumns(),
   ...timestampColumns(),
 }, (t) => [unique('app_releases_app_channel_version_unique').on(t.appId, t.channel, t.version)]);
@@ -102,7 +102,7 @@ export const appReleaseEvents = pgTable('app_release_events', {
   version: varchar({ length: 32 }),
   /** 客户端自生成的匿名设备标识，用于灰度命中与设备数统计 */
   deviceId: varchar({ length: 64 }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('app_release_events_app_time_idx').on(t.appId, t.createdAt)]);
 
 export type AppReleaseEventRow = typeof appReleaseEvents.$inferSelect;
@@ -129,8 +129,8 @@ export const clientDevices = pgTable('client_devices', {
   pushProvider: pushProviderEnum(),
   pushRegistrationId: varchar({ length: 128 }),
   pushEnabled: boolean().notNull().default(true),
-  createdAt: timestamp().defaultNow().notNull(),
-  lastActiveAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
+  lastActiveAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('client_devices_app_active_idx').on(t.appId, t.lastActiveAt),
   index('client_devices_subject_idx').on(t.subjectType, t.subjectId),

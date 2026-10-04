@@ -12,7 +12,7 @@ import { onInvalidate, onInvalidationReset } from './invalidation-bus';
  * 权限树加载、`getMySettings` 对每个带 feature 门控的设置模块、菜单 / 角色 / 用户的套餐校验都要读它，
  * 一次壳层加载在多租户模式下曾触发十余次「租户 → 套餐 → 功能」三段查询。
  * - 失效以 `tenants`（改绑套餐）/ `tenant_packages` / `tenant_package_features` 表触发器经 `cache_invalidate`
- *   总线广播为准（迁移 `0005` / `0013`），TTL 只是 NOTIFY 不可用时的兜底；
+ *   总线广播为准（`0001_extensions.sql` 的 tenants / tenant_packages / tenant_package_features 触发器），TTL 只是 NOTIFY 不可用时的兜底；
  * - 关闭 stale-while-revalidate：套餐禁用 / 降级是 fail-closed 语义，过期即同步回源；
  * - 副本按 tenantId 键、没有套餐 → 租户的反向索引，套餐侧广播整段清空（套餐改动极少）。
  */

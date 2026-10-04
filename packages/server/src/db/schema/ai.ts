@@ -1,5 +1,5 @@
-import { timestampColumns, idColumn, sortColumn } from './common';
-import { pgTable, varchar, timestamp, pgEnum, integer, boolean, text, jsonb, uniqueIndex, index } from 'drizzle-orm/pg-core';
+import { timestampColumns, idColumn, sortColumn, timestamptz } from './common';
+import { pgTable, varchar, pgEnum, integer, boolean, text, jsonb, uniqueIndex, index } from 'drizzle-orm/pg-core';
 import type { AiModelSettings, AiModelFallbackRef, AiUserSettingsPatch } from '@zenith/shared/ai';
 import { auditColumns, users, tenantIdColumn } from './core';
 
@@ -110,7 +110,7 @@ export const aiMessages = pgTable('ai_messages', {
   /** 管理员处理备注 */
   feedbackRemark: varchar({ length: 500 }),
   /** 反馈处理时间 */
-  feedbackHandledAt: timestamp(),
+  feedbackHandledAt: timestamptz(),
   /** 生成调用链 trace（assistant 消息：检索/工具/LLM 轮次耗时明细） */
   trace: jsonb().$type<AiTraceStep[]>(),
   /** 工具调用过程（assistant 消息:名称/参数/结果,刷新后仍可展示） */
@@ -119,7 +119,7 @@ export const aiMessages = pgTable('ai_messages', {
   kbReferences: jsonb().$type<{ docName: string; content: string; score: number }[]>(),
   /** 用户消息附带的图片（managed file id 数组，内容经文件中心 `fileContract.content` 访问） */
   images: jsonb().$type<string[]>(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('ai_messages_conversation_idx').on(t.conversationId, t.createdAt),
   index('ai_messages_created_at_idx').on(t.createdAt),
@@ -198,8 +198,8 @@ export const aiSharedConversations = pgTable('ai_shared_conversations', {
   conversationId: integer().notNull().references(() => aiConversations.id, { onDelete: 'cascade' }),
   userId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
   /** 过期时间，null = 永久有效 */
-  expiresAt: timestamp(),
-  createdAt: timestamp().defaultNow().notNull(),
+  expiresAt: timestamptz(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('ai_shared_conversations_conversation_idx').on(t.conversationId), index('ai_shared_conversations_user_idx').on(t.userId), uniqueIndex('ai_shared_conversations_token_uq').on(t.token)]);
 
 export type AiSharedConversationRow = typeof aiSharedConversations.$inferSelect;
@@ -213,7 +213,7 @@ export const aiArenaVotes = pgTable('ai_arena_votes', {
   modelB: varchar({ length: 100 }).notNull(),
   /** a / b / tie */
   winner: varchar({ length: 10 }).notNull(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('ai_arena_votes_user_idx').on(t.userId)]);
 
 /** 知识库 */
@@ -241,7 +241,7 @@ export const aiKbDocuments = pgTable('ai_kb_documents', {
   chunkCount: integer().notNull().default(0),
   charCount: integer().notNull().default(0),
   error: varchar({ length: 500 }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 });
 
 export type AiKbDocumentRow = typeof aiKbDocuments.$inferSelect;
@@ -335,7 +335,7 @@ export const aiPromptTemplateVersions = pgTable('ai_prompt_template_versions', {
   name: varchar({ length: 100 }).notNull(),
   content: text().notNull(),
   createdBy: integer().references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 });
 
 export type AiPromptTemplateVersionRow = typeof aiPromptTemplateVersions.$inferSelect;

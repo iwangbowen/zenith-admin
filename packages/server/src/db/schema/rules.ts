@@ -1,7 +1,7 @@
-import { pgTable, varchar, timestamp, pgEnum, integer, boolean, unique, text, index, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, pgEnum, integer, boolean, unique, text, index, jsonb } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { auditColumns, users, tenantIdColumn } from './core';
-import { timestampColumns, idColumn, statusColumn, remarkColumn } from './common';
+import { timestampColumns, idColumn, statusColumn, remarkColumn, timestamptz } from './common';
 import { workflowCategories, workflowDefinitionStatusEnum } from './workflow';
 
 // ─── 规则中心：决策表 ────────────────────────────────────────────────────────────
@@ -23,7 +23,7 @@ export const ruleDecisionTables = pgTable('rule_decision_tables', {
   rules: jsonb().notNull().default(sql`'[]'::jsonb`),     // RuleDecisionRow[]
   settings: jsonb().notNull().default(sql`'{}'::jsonb`), // RuleDecisionTableSettings
   version: integer().default(1).notNull(),
-  publishedAt: timestamp({ withTimezone: true }),
+  publishedAt: timestamptz(),
   // 灰度发布：grayPercent 非空即灰度中——新版本(grayVersion)按主体哈希分桶生效，其余流量走上一版本
   grayPercent: integer(),
   grayDimension: varchar({ length: 200 }),
@@ -31,7 +31,7 @@ export const ruleDecisionTables = pgTable('rule_decision_tables', {
   // 发布审批（四眼）：pending=待审批；批准/驳回后清空
   reviewStatus: varchar({ length: 16 }),
   reviewRequestedBy: integer().references(() => users.id, { onDelete: 'set null' }),
-  reviewRequestedAt: timestamp({ withTimezone: true }),
+  reviewRequestedAt: timestamptz(),
   reviewComment: varchar({ length: 255 }),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
@@ -54,7 +54,7 @@ export const ruleDecisionTableVersions = pgTable('rule_decision_table_versions',
   outputs: jsonb().notNull().default(sql`'[]'::jsonb`),
   rules: jsonb().notNull().default(sql`'[]'::jsonb`),
   settings: jsonb().notNull().default(sql`'{}'::jsonb`),
-  publishedAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  publishedAt: timestamptz().defaultNow().notNull(),
   publishedBy: integer().references(() => users.id, { onDelete: 'set null' }),
   tenantId: tenantIdColumn(),
 }, (t) => [index('rule_decision_table_versions_tenant_idx').on(t.tenantId), unique('rule_decision_table_versions_uniq').on(t.tableId, t.version)]);
@@ -97,7 +97,7 @@ export const ruleExecutions = pgTable('rule_executions', {
   matchedRowIds: jsonb().notNull().default(sql`'[]'::jsonb`),
   createdBy: integer().references(() => users.id, { onDelete: 'set null' }),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('rule_executions_tenant_idx').on(t.tenantId),
   index('rule_executions_ref_idx').on(t.refKind, t.refId),
@@ -118,7 +118,7 @@ export const ruleAssetVersions = pgTable('rule_asset_versions', {
   version: integer().notNull(),
   snapshot: jsonb().notNull().default(sql`'{}'::jsonb`),
   publishedBy: integer().references(() => users.id, { onDelete: 'set null' }),
-  publishedAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  publishedAt: timestamptz().defaultNow().notNull(),
   tenantId: tenantIdColumn(),
 }, (t) => [
   index('rule_asset_versions_tenant_idx').on(t.tenantId),
@@ -139,7 +139,7 @@ export const ruleDecisionFlows = pgTable('rule_decision_flows', {
   steps: jsonb().notNull().default(sql`'[]'::jsonb`),          // RuleFlowStep[]（编辑态）
   publishedSteps: jsonb(),                            // RuleFlowStep[]（发布快照，运行时执行）
   version: integer().default(1).notNull(),
-  publishedAt: timestamp({ withTimezone: true }),
+  publishedAt: timestamptz(),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
   ...timestampColumns(),
@@ -172,10 +172,10 @@ export const ruleListItems = pgTable('rule_list_items', {
   value: varchar({ length: 128 }).notNull(),
   label: varchar({ length: 64 }),
   matchMode: varchar({ length: 8 }).notNull().default('exact'), // exact | prefix | regex
-  expiresAt: timestamp({ withTimezone: true }),
+  expiresAt: timestamptz(),
   remark: remarkColumn(255),
   createdBy: integer().references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [unique('rule_list_items_value_uniq').on(t.listId, t.value), index('rule_list_items_list_idx').on(t.listId)]);
 
 export type RuleListItemRow = typeof ruleListItems.$inferSelect;
@@ -196,7 +196,7 @@ export const ruleScorecards = pgTable('rule_scorecards', {
   grades: jsonb().notNull().default(sql`'[]'::jsonb`),       // RuleScorecardGrade[]
   publishedSnapshot: jsonb(),                    // { baseScore, variables, grades }
   version: integer().default(1).notNull(),
-  publishedAt: timestamp({ withTimezone: true }),
+  publishedAt: timestamptz(),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
   ...timestampColumns(),

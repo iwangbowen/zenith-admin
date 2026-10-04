@@ -1,5 +1,5 @@
-import { timestampColumns, idColumn } from './common';
-import { pgTable, varchar, timestamp, integer, unique, text, index } from 'drizzle-orm/pg-core';
+import { timestampColumns, idColumn, timestamptz } from './common';
+import { pgTable, varchar, integer, unique, text, index } from 'drizzle-orm/pg-core';
 import { auditColumns, tenantIdColumn } from './core';
 
 // ─── 公告表 ─────────────────────────────────────────────────────────────────
@@ -11,12 +11,12 @@ export const announcements = pgTable('announcements', {
   publishStatus: varchar({ length: 32 }).notNull().default('draft'),
   priority: varchar({ length: 32 }).notNull().default('medium'),
   targetType: varchar({ length: 16 }).notNull().default('all'),
-  publishTime: timestamp({ withTimezone: true }),
+  publishTime: timestamptz(),
   createById: integer(),
   createByName: varchar({ length: 32 }),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
-  ...timestampColumns({ withTimezone: true }),
+  ...timestampColumns(),
 }, (t) => [index('announcements_tenant_idx').on(t.tenantId)]);
 
 export type AnnouncementRow = typeof announcements.$inferSelect;
@@ -28,7 +28,7 @@ export const announcementReads = pgTable('announcement_reads', {
   id: idColumn(),
   announcementId: integer().notNull().references(() => announcements.id, { onDelete: 'cascade' }),
   userId: integer().notNull(),
-  readAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  readAt: timestamptz().notNull().defaultNow(),
 }, (t) => [unique('uniq_announcement_user').on(t.announcementId, t.userId)]);
 
 export type AnnouncementReadRow = typeof announcementReads.$inferSelect;

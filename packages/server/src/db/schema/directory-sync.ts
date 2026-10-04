@@ -1,6 +1,6 @@
-import { pgTable, varchar, timestamp, pgEnum, integer, boolean, unique, text, index, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, pgEnum, integer, boolean, unique, text, index, jsonb } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import { timestampColumns, idColumn, statusColumn } from './common';
+import { timestampColumns, idColumn, statusColumn, timestamptz } from './common';
 import { auditColumns, users, departments, tenantIdColumn } from './core';
 import { tenantIdentityProviders } from './identity-providers';
 
@@ -49,7 +49,7 @@ export const directorySyncSources = pgTable('directory_sync_sources', {
   callbackUrlKey: varchar({ length: 64 }),
   /** 收到平台回调事件后置位，由调度 tick 消费并触发一次同步 */
   pendingCallbackSync: boolean().notNull().default(false),
-  callbackLastEventAt: timestamp({ withTimezone: true }),
+  callbackLastEventAt: timestamptz(),
   /** 匹配键：未建立绑定的外部用户按此字段匹配本地账号 */
   matchKey: varchar({ length: 16 }).notNull().default('phone'),
   /** 字段映射覆盖（外部字段 → 本地字段），为空使用连接器默认映射 */
@@ -68,8 +68,8 @@ export const directorySyncSources = pgTable('directory_sync_sources', {
   cronExpression: varchar({ length: 64 }),
   /** 熔断阈值：单次计划禁用人数占已绑定人数的百分比超过该值时中止同步 */
   circuitBreakerPercent: integer().notNull().default(30),
-  nextRunAt: timestamp({ withTimezone: true }),
-  lastRunAt: timestamp({ withTimezone: true }),
+  nextRunAt: timestamptz(),
+  lastRunAt: timestamptz(),
   lastRunStatus: directorySyncRunStatusEnum(),
   remark: text(),
   ...auditColumns(),
@@ -106,9 +106,9 @@ export const directorySyncRuns = pgTable('directory_sync_runs', {
   message: text(),
   errorMessage: text(),
   triggeredBy: integer().references(() => users.id, { onDelete: 'set null' }),
-  startedAt: timestamp({ withTimezone: true }).notNull(),
-  finishedAt: timestamp({ withTimezone: true }),
-  createdAt: timestamp().defaultNow().notNull(),
+  startedAt: timestamptz().notNull(),
+  finishedAt: timestamptz(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('directory_sync_runs_source_idx').on(t.sourceId),
   index('directory_sync_runs_status_idx').on(t.status),
@@ -133,7 +133,7 @@ export const directorySyncRunItems = pgTable('directory_sync_run_items', {
   /** 字段级差异：{ 字段: { from, to } } */
   diff: jsonb().$type<Record<string, { from: unknown; to: unknown }> | null>(),
   message: text(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('directory_sync_run_items_run_idx').on(t.runId),
   index('directory_sync_run_items_action_idx').on(t.action),
@@ -161,7 +161,7 @@ export const directorySyncConflicts = pgTable('directory_sync_conflicts', {
   /** 裁决方式：source / local / manual / ignored */
   resolution: varchar({ length: 16 }),
   resolvedBy: integer().references(() => users.id, { onDelete: 'set null' }),
-  resolvedAt: timestamp({ withTimezone: true }),
+  resolvedAt: timestamptz(),
   ...timestampColumns(),
 }, (t) => [
   index('directory_sync_conflicts_source_idx').on(t.sourceId),
@@ -179,7 +179,7 @@ export const directorySyncUserLinks = pgTable('directory_sync_user_links', {
   externalId: varchar({ length: 256 }).notNull(),
   userId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
   externalData: jsonb().$type<Record<string, unknown> | null>(),
-  lastSeenAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  lastSeenAt: timestamptz().defaultNow().notNull(),
   ...timestampColumns(),
 }, (t) => [
   unique('directory_sync_user_links_source_external_unique').on(t.sourceId, t.externalId),
@@ -197,7 +197,7 @@ export const directorySyncDeptLinks = pgTable('directory_sync_dept_links', {
   sourceId: integer().notNull().references(() => directorySyncSources.id, { onDelete: 'cascade' }),
   externalId: varchar({ length: 256 }).notNull(),
   departmentId: integer().notNull().references(() => departments.id, { onDelete: 'cascade' }),
-  lastSeenAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  lastSeenAt: timestamptz().defaultNow().notNull(),
   ...timestampColumns(),
 }, (t) => [
   unique('directory_sync_dept_links_source_external_unique').on(t.sourceId, t.externalId),

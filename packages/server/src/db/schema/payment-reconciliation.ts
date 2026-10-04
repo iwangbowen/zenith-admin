@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
-import { bigint, check, date, index, integer, jsonb, pgEnum, pgTable, text, timestamp, unique, uniqueIndex, varchar, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { bigint, check, date, index, integer, jsonb, pgEnum, pgTable, text, unique, uniqueIndex, varchar, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { PAYMENT_RECON_ADJUSTMENT_STATUSES, PAYMENT_RECON_CASE_STATUSES, PAYMENT_RECON_CASE_TYPES, PAYMENT_RECON_DIRECTIONS, PAYMENT_RECON_RUN_STATUSES, PAYMENT_STATEMENT_ENTRY_TYPES, PAYMENT_STATEMENT_PERIOD_STATUSES, PAYMENT_STATEMENT_SOURCES, PAYMENT_STATEMENT_STATUSES, PAYMENT_STATEMENT_TYPES } from '@zenith/shared/payment';
-import { idColumn, timestampColumns } from './common';
+import { idColumn, timestampColumns, timestamptz } from './common';
 import { auditColumns, tenantIdColumn, users } from './core';
 import { fileStorageConfigs } from './files';
 import { paymentApps, paymentChannelAccounts, paymentChannelConfigs, paymentJournals, paymentOrders, paymentRefunds } from './payment';
@@ -27,17 +27,17 @@ export const paymentStatementPeriods = pgTable('payment_statement_periods', {
   type: paymentStatementTypeEnum().notNull(),
   currency: varchar({ length: 3 }).notNull().default('CNY'),
   status: paymentStatementPeriodStatusEnum().notNull().default('expected'),
-  nextAttemptAt: timestamp({ withTimezone: true }),
-  deadlineAt: timestamp({ withTimezone: true }),
+  nextAttemptAt: timestamptz(),
+  deadlineAt: timestamptz(),
   lastError: text(),
   /** 与 statement.periodId 形成环，由服务在同一事务内写入。 */
   currentStatementId: integer(),
   taskId: integer().references(() => asyncTasks.id, { onDelete: 'set null' }),
   generation: integer().notNull().default(0),
-  completedAt: timestamp({ withTimezone: true }),
+  completedAt: timestamptz(),
   tenantId: tenantIdColumn('restrict'),
   ...auditColumns(),
-  ...timestampColumns({ withTimezone: true }),
+  ...timestampColumns(),
 }, (t) => [
   unique('payment_statement_periods_scope_unique').on(t.accountId, t.billDate, t.type, t.currency),
   index('payment_statement_periods_due_idx').on(t.status, t.nextAttemptAt),
@@ -59,7 +59,7 @@ export const paymentStatements = pgTable('payment_statements', {
   verification: jsonb().$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
   tenantId: tenantIdColumn('restrict'),
   ...auditColumns(),
-  ...timestampColumns({ withTimezone: true }),
+  ...timestampColumns(),
 }, (t) => [
   unique('payment_statements_period_source_hash_unique').on(t.periodId, t.source, t.contentHash),
   unique('payment_statements_period_version_unique').on(t.periodId, t.version),
@@ -82,7 +82,7 @@ export const paymentStatementFiles = pgTable('payment_statement_files', {
   providerHash: varchar({ length: 256 }),
   byteLength: integer().notNull(),
   tenantId: tenantIdColumn('restrict'),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamptz().notNull().defaultNow(),
 }, (t) => [
   unique('payment_statement_files_identity_unique').on(t.statementId, t.sha256, t.filename),
   check('payment_statement_files_nonnegative_length', sql`${t.byteLength} >= 0`),
@@ -105,7 +105,7 @@ export const paymentStatementEntries = pgTable('payment_statement_entries', {
   amount: bigint({ mode: 'bigint' }).notNull(),
   direction: paymentReconDirectionEnum().notNull(),
   status: varchar({ length: 64 }).notNull(),
-  occurredAt: timestamp({ withTimezone: true }).notNull(),
+  occurredAt: timestamptz().notNull(),
   applicationId: integer().references(() => paymentApps.id, { onDelete: 'restrict' }),
   raw: jsonb().$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
   lineNo: integer().notNull(),
@@ -113,7 +113,7 @@ export const paymentStatementEntries = pgTable('payment_statement_entries', {
   netAmount: bigint({ mode: 'bigint' }),
   balance: bigint({ mode: 'bigint' }),
   tenantId: tenantIdColumn('restrict'),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamptz().notNull().defaultNow(),
 }, (t) => [
   unique('payment_statement_entries_statement_key_unique').on(t.statementId, t.entryKey),
   index('payment_statement_entries_order_idx').on(t.merchantOrderNo),
@@ -137,12 +137,12 @@ export const paymentReconRuns = pgTable('payment_recon_runs', {
   diffCount: integer().notNull().default(0),
   totalCount: integer().notNull().default(0),
   taskId: integer().references(() => asyncTasks.id, { onDelete: 'set null' }),
-  startedAt: timestamp({ withTimezone: true }),
-  finishedAt: timestamp({ withTimezone: true }),
+  startedAt: timestamptz(),
+  finishedAt: timestamptz(),
   error: text(),
   tenantId: tenantIdColumn('restrict'),
   ...auditColumns(),
-  ...timestampColumns({ withTimezone: true }),
+  ...timestampColumns(),
 }, (t) => [
   index('payment_recon_runs_statement_idx').on(t.statementId),
   index('payment_recon_runs_tenant_idx').on(t.tenantId),
@@ -172,11 +172,11 @@ export const paymentReconCases = pgTable('payment_recon_cases', {
   currency: varchar({ length: 3 }).notNull(),
   evidence: jsonb().$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
   assignedTo: integer().references(() => users.id, { onDelete: 'set null' }),
-  dueAt: timestamp({ withTimezone: true }),
+  dueAt: timestamptz(),
   resolution: text(),
   tenantId: tenantIdColumn('restrict'),
   ...auditColumns(),
-  ...timestampColumns({ withTimezone: true }),
+  ...timestampColumns(),
 }, (t) => [
   unique('payment_recon_cases_period_key_unique').on(t.periodId, t.caseKey),
   index('payment_recon_cases_account_status_idx').on(t.accountId, t.status),
@@ -196,7 +196,7 @@ export const paymentReconCaseEvents = pgTable('payment_recon_case_events', {
   before: jsonb().$type<Record<string, unknown>>(),
   after: jsonb().$type<Record<string, unknown>>(),
   tenantId: tenantIdColumn('restrict'),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamptz().notNull().defaultNow(),
 }, (t) => [index('payment_recon_case_events_case_idx').on(t.caseId, t.id), index('payment_recon_case_events_tenant_idx').on(t.tenantId)]);
 export type PaymentReconCaseEventRow = typeof paymentReconCaseEvents.$inferSelect;
 export type NewPaymentReconCaseEvent = typeof paymentReconCaseEvents.$inferInsert;
@@ -217,11 +217,11 @@ export const paymentReconAdjustments = pgTable('payment_recon_adjustments', {
   reversalOfId: integer().references((): AnyPgColumn => paymentReconAdjustments.id, { onDelete: 'restrict' }),
   applicantId: integer().notNull().references(() => users.id, { onDelete: 'restrict' }),
   approverId: integer().references(() => users.id, { onDelete: 'restrict' }),
-  approvedAt: timestamp({ withTimezone: true }),
-  executedAt: timestamp({ withTimezone: true }),
+  approvedAt: timestamptz(),
+  executedAt: timestamptz(),
   tenantId: tenantIdColumn('restrict'),
   ...auditColumns(),
-  ...timestampColumns({ withTimezone: true }),
+  ...timestampColumns(),
 }, (t) => [
   uniqueIndex('payment_recon_adjustments_active_case_unique').on(t.caseId).where(sql`${t.reversalOfId} is null and ${t.status} in ('draft', 'pending', 'approved', 'executed')`),
   uniqueIndex('payment_recon_adjustments_active_reversal_unique').on(t.reversalOfId).where(sql`${t.reversalOfId} is not null and ${t.status} <> 'rejected'`),
@@ -244,7 +244,7 @@ export const paymentBankMatches = pgTable('payment_bank_matches', {
   amount: bigint({ mode: 'bigint' }).notNull(),
   tenantId: tenantIdColumn('restrict'),
   ...auditColumns(),
-  ...timestampColumns({ withTimezone: true }),
+  ...timestampColumns(),
 }, (t) => [
   unique('payment_bank_matches_pair_unique').on(t.bankEntryId, t.settlementEntryId),
   check('payment_bank_matches_positive_amount', sql`${t.amount} > 0`),

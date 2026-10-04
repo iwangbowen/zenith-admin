@@ -1,6 +1,6 @@
-import { pgTable, varchar, timestamp, pgEnum, integer, boolean, text, uniqueIndex, index, jsonb, smallint, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, pgEnum, integer, boolean, text, uniqueIndex, index, jsonb, smallint, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import { timestampColumns, idColumn, statusColumn, sortColumn, remarkColumn } from './common';
+import { timestampColumns, idColumn, statusColumn, sortColumn, remarkColumn, timestamptz } from './common';
 import { auditColumns, users, tenantIdColumn } from './core';
 import { members } from './member';
 
@@ -87,7 +87,7 @@ export const mpFans = pgTable('mp_fans', {
   city: varchar({ length: 64 }),
   language: varchar({ length: 16 }),
   subscribe: mpFanSubscribeEnum().notNull().default('subscribed'),
-  subscribeTime: timestamp({ withTimezone: true }),
+  subscribeTime: timestamptz(),
   /** 本地备注 */
   remark: remarkColumn(128),
   /** 本地标签 id 列表（指向 mp_tags.id） */
@@ -138,7 +138,7 @@ export const mpMessages = pgTable('mp_messages', {
   status: mpMessageStatusEnum().notNull().default('received'),
   errorMsg: text(),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('mp_messages_tenant_idx').on(t.tenantId), 
   index('mp_messages_account_openid_idx').on(t.accountId, t.openid),
   index('mp_messages_account_idx').on(t.accountId),
@@ -194,9 +194,9 @@ export const mpUnmatchedKeywords = pgTable('mp_unmatched_keywords', {
   accountId: integer().notNull().references((): AnyPgColumn => mpAccounts.id, { onDelete: 'cascade' }),
   keyword: varchar({ length: 128 }).notNull(),
   count: integer().notNull().default(1),
-  lastAt: timestamp().defaultNow().notNull(),
+  lastAt: timestamptz().defaultNow().notNull(),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('mp_unmatched_keywords_tenant_idx').on(t.tenantId), 
   uniqueIndex('mp_unmatched_keywords_account_kw_uq').on(t.accountId, t.keyword),
 ]);
@@ -214,7 +214,7 @@ export const mpMenus = pgTable('mp_menus', {
   /** 微信菜单按钮树（最多 3 个一级，每个最多 5 个二级） */
   buttons: jsonb().$type<unknown[]>().notNull().default([]),
   status: mpMenuStatusEnum().notNull().default('draft'),
-  publishedAt: timestamp({ withTimezone: true }),
+  publishedAt: timestamptz(),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
   ...timestampColumns(),
@@ -237,7 +237,7 @@ export const mpConditionalMenus = pgTable('mp_conditional_menus', {
   /** 微信返回的 menuid（发布后写入） */
   menuId: varchar({ length: 64 }),
   status: mpMenuStatusEnum().notNull().default('draft'),
-  publishedAt: timestamp({ withTimezone: true }),
+  publishedAt: timestamptz(),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
   ...timestampColumns(),
@@ -335,7 +335,7 @@ export const mpTemplateSendLogs = pgTable('mp_template_send_logs', {
   /** 微信返回的 msgid */
   msgId: varchar({ length: 64 }),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('mp_template_send_logs_tenant_idx').on(t.tenantId), 
   index('mp_template_send_logs_account_idx').on(t.accountId),
 ]);
@@ -367,9 +367,9 @@ export const mpBroadcasts = pgTable('mp_broadcasts', {
   /** 微信返回的群发 msg_id（发送成功后回填） */
   wechatMsgId: varchar({ length: 64 }),
   /** 定时群发时间（为空表示立即发送，由 mp-broadcast-tick 扫描到期发送） */
-  scheduledAt: timestamp(),
+  scheduledAt: timestamptz(),
   errorMsg: text(),
-  sentAt: timestamp(),
+  sentAt: timestamptz(),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
   ...timestampColumns(),
@@ -466,13 +466,13 @@ export const mpKfSessions = pgTable('mp_kf_sessions', {
   source: varchar({ length: 32 }),
   /** 未读（粉丝发来但客服未回复）条数 */
   unreadCount: integer().notNull().default(0),
-  lastFanMsgAt: timestamp(),
-  lastKfMsgAt: timestamp(),
-  lastMsgAt: timestamp().defaultNow().notNull(),
+  lastFanMsgAt: timestamptz(),
+  lastKfMsgAt: timestamptz(),
+  lastMsgAt: timestamptz().defaultNow().notNull(),
   /** 进入排队的时间（用于等待超时计算） */
-  waitingSince: timestamp(),
-  acceptedAt: timestamp(),
-  closedAt: timestamp(),
+  waitingSince: timestamptz(),
+  acceptedAt: timestamptz(),
+  closedAt: timestamptz(),
   closeReason: mpKfSessionCloseReasonEnum(),
   /** 满意度评分（1-5，结束后由粉丝/客服记录） */
   rating: integer(),
@@ -504,7 +504,7 @@ export const mpKfSessionEvents = pgTable('mp_kf_session_events', {
   operatorId: integer().references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
   detail: varchar({ length: 255 }),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('mp_kf_session_events_operator_idx').on(t.operatorId), index('mp_kf_session_events_tenant_idx').on(t.tenantId), 
   index('mp_kf_session_events_session_idx').on(t.sessionId),
 ]);

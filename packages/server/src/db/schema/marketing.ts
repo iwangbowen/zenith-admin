@@ -5,8 +5,8 @@
  * - marketing_prizes          奖品（按权重抽取，库存原子扣减；prize_type=none 为「谢谢参与」不占库存）
  * - marketing_participations  参与记录（追加型：prizeId 为 null 表示未中奖，中奖时带发放状态）
  */
-import { timestampColumns, idColumn, sortColumn } from './common';
-import { pgTable, pgEnum, varchar, timestamp, integer, text, index } from 'drizzle-orm/pg-core';
+import { timestampColumns, idColumn, sortColumn, timestamptz } from './common';
+import { pgTable, pgEnum, varchar, integer, text, index } from 'drizzle-orm/pg-core';
 import { auditColumns, tenantIdColumn } from './core';
 import { coupons } from './member';
 
@@ -23,8 +23,8 @@ export const marketingCampaigns = pgTable('marketing_campaigns', {
   name:                varchar({ length: 128 }).notNull(),
   type:                marketingCampaignTypeEnum().notNull().default('lottery'),
   status:              marketingCampaignStatusEnum().notNull().default('draft'),
-  startAt:             timestamp().notNull(),
-  endAt:               timestamp().notNull(),
+  startAt:             timestamptz().notNull(),
+  endAt:               timestamptz().notNull(),
   /** 每位会员总参与次数上限 */
   perMemberLimit:      integer().notNull().default(1),
   /** 每位会员每日参与次数上限，null = 不限 */
@@ -77,7 +77,7 @@ export const marketingParticipations = pgTable('marketing_participations', {
   prizeName:   varchar({ length: 128 }),
   grantStatus: marketingGrantStatusEnum().notNull().default('none'),
   grantNote:   varchar({ length: 256 }),
-  createdAt:   timestamp().defaultNow().notNull(),
+  createdAt:   timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('idx_marketing_participations_campaign_member').on(t.campaignId, t.memberId),
   index('idx_marketing_participations_campaign_time').on(t.campaignId, t.createdAt),

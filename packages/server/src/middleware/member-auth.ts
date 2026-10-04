@@ -50,7 +50,7 @@ type MemberJwtCheck =
  * 都要重读会员 / 所属租户权威行，此前是会员请求链上唯一未缓存的每请求 PG 查询。
  *
  * - 失效以 `members` / `tenants` 表触发器经 `cache_invalidate` 总线广播为准
- *   （迁移 `0010_member_subject_cache_invalidate.sql`），TTL 只是 NOTIFY 不可用时的兜底；
+ *   （`0001_extensions.sql` 的 members 触发器），TTL 只是 NOTIFY 不可用时的兜底；
  * - 关闭 stale-while-revalidate：鉴权不能拿过期值放行，过期即同步回源；单飞让并发未命中只发一条查询；
  * - 缓存的是原始行：租户 `expireAt` 到点在请求时求值，不受 TTL 影响；
  * - 封禁 / 删除 / 改密本身还会吊销 `jti`，黑名单检查不经本缓存，这些操作的「立即失效」不依赖 NOTIFY 时效。

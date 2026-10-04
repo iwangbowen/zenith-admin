@@ -1,9 +1,9 @@
 import type { SignatureSnapshot } from '@zenith/shared/core';
-import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, unique, text, uniqueIndex, index, jsonb, smallint, real, foreignKey, check, uuid as pgUuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, pgEnum, integer, bigint, boolean, unique, text, uniqueIndex, index, jsonb, smallint, real, foreignKey, check, uuid as pgUuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import type { WorkflowAutomationAction, WorkflowDefinitionSnapshot, WorkflowInstanceFormSnapshot, WorkflowAttachment, WorkflowTaskDecision } from '@zenith/shared/workflow';
 import { WORKFLOW_TASK_KINDS, WORKFLOW_TASK_WAIT_REASONS, WORKFLOW_APPROVAL_ACTIVATION_STATUSES, WORKFLOW_APPROVAL_SLOT_ORIGINS, WORKFLOW_APPROVAL_SLOT_STATUSES, WORKFLOW_SIGN_POSITIONS, WORKFLOW_SIGN_MODES, WORKFLOW_SIGN_GROUP_STATUSES } from '@zenith/shared/workflow';
-import { timestampColumns, idColumn, statusColumn, sortColumn, remarkColumn } from './common';
+import { timestampColumns, idColumn, statusColumn, sortColumn, remarkColumn, timestamptz } from './common';
 import { auditColumns, users, tenantIdColumn } from './core';
 import { managedFiles } from './files';
 import { reportPrintTemplates } from './report';
@@ -22,7 +22,7 @@ export const workflowEngineHealthSnapshots = pgTable('workflow_engine_health_sna
   criticalCount: integer().notNull().default(0),
   warningCount: integer().notNull().default(0),
   runningInstances: integer().notNull().default(0),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('workflow_engine_health_snapshots_created_at_idx').on(t.createdAt),
 ]);
@@ -163,7 +163,7 @@ export const workflowDefinitionVersions = pgTable('workflow_definition_versions'
   customForm: jsonb(), // 发布时的自定义业务表单配置快照
   /** 发布时冻结的表单 schema 快照（{ name, schema }）；表单库后续编辑不影响已发布版本的历史查看 */
   formSchema: jsonb().$type<{ name: string | null; schema: unknown } | null>(),
-  publishedAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  publishedAt: timestamptz().defaultNow().notNull(),
   publishedBy: integer().references(() => users.id, { onDelete: 'set null' }),
   tenantId: tenantIdColumn(),
 }, (t) => [index('workflow_definition_versions_tenant_idx').on(t.tenantId), unique('workflow_def_versions_def_ver_uniq').on(t.definitionId, t.version)]);
@@ -211,7 +211,7 @@ export const workflowAutomationRuns = pgTable('workflow_automation_runs', {
   error: varchar({ length: 512 }),
   durationMs: integer(),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('workflow_automation_runs_rule_idx').on(t.ruleId),
   index('workflow_automation_runs_instance_idx').on(t.instanceId),
@@ -236,11 +236,11 @@ export const workflowSchedules = pgTable('workflow_schedules', {
   /** 自动发起时预填的表单数据 */
   formData: jsonb().$type<Record<string, unknown>>(),
   status: statusColumn(),
-  lastRunAt: timestamp({ withTimezone: true }),
+  lastRunAt: timestamptz(),
   lastRunStatus: varchar({ length: 16 }),
   lastRunMessage: varchar({ length: 512 }),
   /** 下次触发时间（调度器扫描 nextRunAt <= now 的启用规则执行） */
-  nextRunAt: timestamp({ withTimezone: true }),
+  nextRunAt: timestamptz(),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
   ...timestampColumns(),
@@ -350,7 +350,7 @@ export const workflowConnectorInvocations = pgTable('workflow_connector_invocati
   requestUrl: varchar({ length: 1024 }),
   error: varchar({ length: 1024 }),
   tenantId: integer(),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('workflow_connector_invocations_conn_idx').on(t.connectorId, t.createdAt)]);
 
 export type WorkflowConnectorInvocationRow = typeof workflowConnectorInvocations.$inferSelect;
@@ -385,7 +385,7 @@ export const workflowInstanceMigrations = pgTable('workflow_instance_migrations'
   note: text(),
   createdBy: integer().references(() => users.id, { onDelete: 'set null' }),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('workflow_instance_migrations_tenant_idx').on(t.tenantId), index('wf_inst_migration_idx').on(t.instanceId)]);
 
 export type WorkflowInstanceMigrationRow = typeof workflowInstanceMigrations.$inferSelect;
@@ -409,9 +409,9 @@ export const workflowCompensations = pgTable('workflow_compensations', {
   actionPayload: jsonb(),
   resolution: text(),
   resolvedBy: integer().references(() => users.id, { onDelete: 'set null' }),
-  resolvedAt: timestamp({ withTimezone: true }),
+  resolvedAt: timestamptz(),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('workflow_compensations_tenant_idx').on(t.tenantId), index('wf_compensation_instance_idx').on(t.instanceId), index('wf_compensation_status_idx').on(t.status)]);
 
 /** 补偿工单处理历史（时间线：备注 / 附件 / 自动动作结果 / 恢复续跑 / 放行终止） */
@@ -425,7 +425,7 @@ export const workflowCompensationLogs = pgTable('workflow_compensation_logs', {
   attachments: jsonb(),
   operatorId: integer().references(() => users.id, { onDelete: 'set null' }),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('workflow_compensation_logs_operator_idx').on(t.operatorId), index('workflow_compensation_logs_tenant_idx').on(t.tenantId), index('wf_compensation_log_cid_idx').on(t.compensationId)]);
 
 export type WorkflowCompensationRow = typeof workflowCompensations.$inferSelect;
@@ -461,7 +461,7 @@ export const workflowInstances = pgTable('workflow_instances', {
   /** 业务实体接入：业务记录主键（字符串，兼容各类业务 PK），与 bizType 组成 businessKey */
   bizId: varchar({ length: 64 }),
   /** 挂起时间（status=suspended 时有值，恢复后清空） */
-  suspendedAt: timestamp(),
+  suspendedAt: timestamptz(),
   /** 挂起原因（管理员填写） */
   suspendReason: varchar({ length: 500 }),
   // ─── 审批单归档件：终态时按流程设置自动生成的 PDF（不可变存证），文件删除时解绑 ───
@@ -470,7 +470,7 @@ export const workflowInstances = pgTable('workflow_instances', {
   archiveSha256: varchar({ length: 64 }),
   /** 归档时使用的打印模板；null = 按表单快照自动版式 */
   archiveTemplateId: integer(),
-  archivedAt: timestamp({ withTimezone: true }),
+  archivedAt: timestamptz(),
   ...auditColumns(),
   ...timestampColumns(),
 }, (t) => [index('workflow_instances_definition_idx').on(t.definitionId), 
@@ -507,8 +507,8 @@ export const workflowTasks = pgTable('workflow_tasks', {
   signatureEvidence: jsonb().$type<Omit<SignatureSnapshot, 'dataUrl'>>(),
   /** 审批附件元数据快照；身份与授权来源由 workflowAttachmentLinks 持有。 */
   attachments: jsonb().$type<WorkflowAttachment[]>(),
-  actionAt: timestamp({ withTimezone: true }),
-  activatedAt: timestamp({ withTimezone: true }),
+  actionAt: timestamptz(),
+  activatedAt: timestamptz(),
   /** 当次处理事实：退回目标和动作不可由节点当前配置或意见文本推断。 */
   decision: jsonb().$type<WorkflowTaskDecision>(),
   slotId: integer().references((): AnyPgColumn => workflowApprovalSlots.id, { onDelete: 'cascade' }),
@@ -531,8 +531,8 @@ export const workflowTasks = pgTable('workflow_tasks', {
   /** 节点激活轮次 ID（同一次进入节点创建的一批任务共享；重入节点生成新值，完成判定只统计当前轮） */
   activationId: varchar({ length: 36 }).references((): AnyPgColumn => workflowNodeActivations.id, { onDelete: 'cascade' }),
   /** 抄送已读时间（仅 ccNode 任务有意义；null 表示未读） */
-  ccReadAt: timestamp({ withTimezone: true }),
-  createdAt: timestamp().defaultNow().notNull(),
+  ccReadAt: timestamptz(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   unique('workflow_tasks_id_instance_unique').on(t.id, t.instanceId),
   check('workflow_tasks_formal_slot_check', sql`${t.taskKind} not in ('approval', 'suggestion') or (${t.slotId} is not null and ${t.activationId} is not null)`),
@@ -570,7 +570,7 @@ export const workflowTaskTransfers = pgTable('workflow_task_transfers', {
   /** 操作人（本人转办=fromUserId；管理员改派/交接=管理员；系统超时=null） */
   operatorId: integer().references(() => users.id, { onDelete: 'set null' }),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('workflow_task_transfers_operator_idx').on(t.operatorId), index('workflow_task_transfers_tenant_idx').on(t.tenantId), 
   index('wf_task_transfers_task_idx').on(t.taskId),
   index('wf_task_transfers_instance_idx').on(t.instanceId),
@@ -600,7 +600,7 @@ export const workflowTokens = pgTable('workflow_tokens', {
   scopeKey: varchar({ length: 128 }),
   tenantId: tenantIdColumn(),
   ...timestampColumns(),
-  consumedAt: timestamp(),
+  consumedAt: timestamptz(),
 }, (t) => [index('workflow_tokens_tenant_idx').on(t.tenantId), 
   index('workflow_tokens_instance_status_idx').on(t.instanceId, t.status),
   index('workflow_tokens_parent_idx').on(t.parentTokenId),
@@ -623,7 +623,7 @@ export const workflowNodeActivations = pgTable('workflow_node_activations', {
   approveRatio: integer(),
   baseTotal: integer().notNull(),
   baseRequired: integer().notNull(),
-  settledAt: timestamp({ withTimezone: true }),
+  settledAt: timestamptz(),
   tenantId: tenantIdColumn(),
   ...auditColumns(), ...timestampColumns(),
 }, (t) => [index('workflow_node_activations_instance_node_idx').on(t.instanceId, t.nodeKey), check('workflow_node_activations_base_votes_check', sql`${t.baseRequired} >= 0 and ${t.baseRequired} <= ${t.baseTotal}`)]);
@@ -668,7 +668,7 @@ export const workflowTaskUrges = pgTable('workflow_task_urges', {
   urgerId: integer().references(() => users.id, { onDelete: 'set null' }),
   urgerName: varchar({ length: 64 }),
   message: varchar({ length: 256 }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('workflow_task_urges_task_idx').on(t.taskId), index('workflow_task_urges_instance_idx').on(t.instanceId)]);
 
 export type WorkflowTaskUrgeRow = typeof workflowTaskUrges.$inferSelect;
@@ -696,8 +696,8 @@ export const workflowEventSubscriptions = pgTable('workflow_event_subscriptions'
   tenantId: tenantIdColumn(),
   createdBy: integer().references(() => users.id, { onDelete: 'set null' }),
   updatedBy: integer().references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp().defaultNow().notNull(),
-  updatedAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
+  updatedAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('workflow_event_subscriptions_definition_idx').on(t.definitionId), index('workflow_event_subscriptions_tenant_idx').on(t.tenantId)]);
 
 export type WorkflowEventSubscriptionRow = typeof workflowEventSubscriptions.$inferSelect;
@@ -736,14 +736,14 @@ export const workflowJobs = pgTable('workflow_jobs', {
   operationKey: varchar({ length: 64 }).notNull().default(sql`gen_random_uuid()::text`),
   executionTimeoutMs: integer().notNull().default(600_000),
   /** 何时应执行（delay=wakeAt、timeout=timeoutAt、retry=退避时间） */
-  runAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  runAt: timestamptz().notNull().defaultNow(),
   /** 领取锁定时间（FOR UPDATE SKIP LOCKED 领取后写入，用于识别卡死 running） */
-  lockedAt: timestamp({ withTimezone: true }),
+  lockedAt: timestamptz(),
   /** 领取者标识（worker/进程） */
   lockedBy: varchar({ length: 64 }),
   leaseToken: varchar({ length: 64 }),
-  leaseUntil: timestamp({ withTimezone: true }),
-  executionDeadline: timestamp({ withTimezone: true }),
+  leaseUntil: timestamptz(),
+  executionDeadline: timestamptz(),
   pausedRemainingMs: bigint({ mode: 'number' }),
   /** 最近一次错误 */
   lastError: text(),
@@ -784,11 +784,11 @@ export const workflowJobExecutions = pgTable('workflow_job_executions', {
   errorMessage: text(),
   durationMs: integer(),
   /** This attempt's due time, retained independently of retries for queue latency. */
-  scheduledAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  startedAt: timestamp({ withTimezone: true }),
-  finishedAt: timestamp({ withTimezone: true }),
+  scheduledAt: timestamptz().notNull().defaultNow(),
+  startedAt: timestamptz(),
+  finishedAt: timestamptz(),
   tenantId: tenantIdColumn('set null'),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('workflow_job_executions_tenant_idx').on(t.tenantId), 
   index('workflow_job_executions_job_idx').on(t.jobId, t.attempt),
   uniqueIndex('workflow_job_executions_lease_token_unique').on(t.leaseToken),
@@ -817,7 +817,7 @@ export const workflowComments = pgTable('workflow_comments', {
   /** 附件元数据快照；输入只接收 fileId。 */
   attachments: jsonb().$type<WorkflowAttachment[]>().default([]).notNull(),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [unique('workflow_comments_id_instance_unique').on(t.id, t.instanceId), index('workflow_comments_task_idx').on(t.taskId), index('workflow_comments_parent_idx').on(t.parentId), index('workflow_comments_instance_idx').on(t.instanceId), index('workflow_comments_user_idx').on(t.userId), index('workflow_comments_tenant_idx').on(t.tenantId)]);
 
 export type WorkflowCommentRow = typeof workflowComments.$inferSelect;
@@ -853,9 +853,9 @@ export const workflowDelegations = pgTable('workflow_delegations', {
   mode: varchar({ length: 16 }).$type<'full' | 'suggest'>().notNull().default('full'),
   reason: varchar({ length: 255 }),
   /** 生效开始时间（为 null 表示立即生效） */
-  startAt: timestamp({ withTimezone: true }),
+  startAt: timestamptz(),
   /** 生效结束时间（为 null 表示长期有效） */
-  endAt: timestamp({ withTimezone: true }),
+  endAt: timestamptz(),
   enabled: boolean().default(true).notNull(),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
@@ -918,9 +918,9 @@ export const workflowTaskConsults = pgTable('workflow_task_consults', {
   question: varchar({ length: 500 }),
   opinion: text(),
   status: workflowTaskConsultStatusEnum().default('pending').notNull(),
-  repliedAt: timestamp({ withTimezone: true }),
+  repliedAt: timestamptz(),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('workflow_task_consults_task_idx').on(t.taskId), index('workflow_task_consults_instance_idx').on(t.instanceId), index('workflow_task_consults_tenant_idx').on(t.tenantId)]);
 
 export type WorkflowTaskConsultRow = typeof workflowTaskConsults.$inferSelect;
@@ -932,7 +932,7 @@ export const workflowAttachmentUploads = pgTable('workflow_attachment_uploads', 
   fileId: pgUuid().primaryKey().references(() => managedFiles.id, { onDelete: 'cascade' }),
   userId: integer().notNull().references(() => users.id, { onDelete: 'restrict' }),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('workflow_attachment_uploads_tenant_idx').on(t.tenantId)]);
 
 /** Files are retained once per concrete source; the source is never inferred from a URL. */
@@ -946,7 +946,7 @@ export const workflowAttachmentLinks = pgTable('workflow_attachment_links', {
   sourceKey: varchar({ length: 512 }).notNull(),
   fieldKeys: text().array().notNull().default(sql`'{}'::text[]`),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   foreignKey({ name: 'workflow_attachment_links_task_instance_fk', columns: [t.taskId, t.instanceId], foreignColumns: [workflowTasks.id, workflowTasks.instanceId] }).onDelete('restrict'),
   foreignKey({ name: 'workflow_attachment_links_comment_instance_fk', columns: [t.commentId, t.instanceId], foreignColumns: [workflowComments.id, workflowComments.instanceId] }).onDelete('restrict'),

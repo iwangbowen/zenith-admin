@@ -1,7 +1,7 @@
-import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, unique, text, smallint, uuid as pgUuid, index, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, pgEnum, integer, bigint, boolean, unique, text, smallint, uuid as pgUuid, index, jsonb } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { v7 as uuidv7 } from 'uuid';
-import { timestampColumns, idColumn, statusColumn, remarkColumn } from './common';
+import { timestampColumns, idColumn, statusColumn, remarkColumn, timestamptz } from './common';
 import { auditColumns, tenantIdColumn } from './core';
 
 export const fileStorageProviderEnum = pgEnum('file_storage_provider', ['local', 'oss', 's3', 'cos', 'obs', 'kodo', 'bos', 'azure', 'sftp']);
@@ -115,7 +115,7 @@ export const managedFiles = pgTable('managed_files', {
   refCount: integer().notNull().default(0),
   gcState: fileGcStateEnum().notNull().default('live'),
   /** 引用计数归零的时间；非 null = 待 GC（超过宽限期由 files-gc 任务删除对象与记录，期间可被重新引用复活） */
-  orphanedAt: timestamp(),
+  orphanedAt: timestamptz(),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
   ...timestampColumns(),
@@ -172,7 +172,7 @@ export const uploadChunks = pgTable('upload_chunks', {
   index: integer().notNull(),
   size: integer().notNull(),
   etag: varchar({ length: 256 }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   unique('uniq_upload_chunk').on(t.uploadSessionId, t.index),
 ]);
@@ -215,7 +215,7 @@ export const businessFiles = pgTable('business_files', {
   category: varchar({ length: 64 }),
   sortOrder: smallint().default(0),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('business_files_tenant_idx').on(t.tenantId), 
   unique('uniq_business_file').on(t.businessType, t.businessId, t.fileId),
 ]);

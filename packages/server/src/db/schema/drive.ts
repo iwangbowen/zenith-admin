@@ -1,7 +1,7 @@
-import { pgTable, varchar, timestamp, pgEnum, integer, bigint, boolean, primaryKey, foreignKey, unique, index, uniqueIndex, text, jsonb, smallint, uuid as pgUuid, customType, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, pgEnum, integer, bigint, boolean, primaryKey, foreignKey, unique, index, uniqueIndex, text, jsonb, smallint, uuid as pgUuid, customType, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import type { DriveCollectPolicy } from '@zenith/shared/drive';
-import { timestampColumns, idColumn, statusColumn, sortColumn, remarkColumn } from './common';
+import { timestampColumns, idColumn, statusColumn, sortColumn, remarkColumn, timestamptz } from './common';
 import { auditColumns, departments, users, tenantIdColumn } from './core';
 import { managedFiles } from './files';
 
@@ -63,7 +63,7 @@ export const driveSpaces = pgTable('drive_spaces', {
   allowExternalShare: boolean().notNull().default(true),
   status: statusColumn(),
   /** 归档时间；非空即只读（不可上传 / 修改 / 分享），空间 manager 可恢复 */
-  archivedAt: timestamp(),
+  archivedAt: timestamptz(),
   sort: sortColumn(),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
@@ -83,7 +83,7 @@ export const driveSpaceMembers = pgTable('drive_space_members', {
   subjectType: driveSubjectTypeEnum().notNull(),
   subjectId: integer().notNull(),
   role: driveRoleEnum().notNull().default('viewer'),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   primaryKey({ columns: [t.spaceId, t.subjectType, t.subjectId] }),
   index('drive_space_members_subject_idx').on(t.subjectType, t.subjectId),
@@ -121,10 +121,10 @@ export const driveNodes = pgTable('drive_nodes', {
   aclOpen: boolean().notNull().default(true),
   /** 签出锁 */
   lockedBy: integer().references(() => users.id, { onDelete: 'set null' }),
-  lockedAt: timestamp(),
-  lockExpiresAt: timestamp(),
+  lockedAt: timestamptz(),
+  lockExpiresAt: timestamptz(),
   /** 软删除；非 null 表示在回收站 */
-  deletedAt: timestamp(),
+  deletedAt: timestamptz(),
   deletedBy: integer().references(() => users.id, { onDelete: 'set null' }),
   /** 同一次删除的子树根节点 id；回收站只展示 deletedRootId = id 的根项 */
   deletedRootId: integer(),
@@ -159,7 +159,7 @@ export const driveNodePermissions = pgTable('drive_node_permissions', {
   subjectId: integer().notNull(),
   role: driveRoleEnum().notNull(),
   /** 到期自动失效；null = 长期 */
-  expireAt: timestamp(),
+  expireAt: timestamptz(),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
   ...timestampColumns(),
@@ -180,7 +180,7 @@ export const driveFileVersions = pgTable('drive_file_versions', {
   contentHash: varchar({ length: 64 }),
   comment: varchar({ length: 500 }),
   authorId: integer().references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   unique('drive_file_versions_node_version_unique').on(t.nodeId, t.version),
   index('drive_file_versions_file_idx').on(t.fileId),
@@ -202,7 +202,7 @@ export const driveShareLinks = pgTable('drive_share_links', {
   /** 能力位集合（preview / download / upload） */
   capabilities: driveShareCapabilityEnum().array().notNull().default(['preview']),
   enabled: boolean().notNull().default(true),
-  expireAt: timestamp(),
+  expireAt: timestamptz(),
   maxAccessCount: integer(),
   accessCount: integer().notNull().default(0),
   /** 下载次数上限；null = 不限 */
@@ -218,7 +218,7 @@ export const driveShareLinks = pgTable('drive_share_links', {
   collectPolicy: jsonb().$type<DriveCollectPolicy>(),
   /** 访问会话版本；+1 即让所有已签发会话失效 */
   sessionVersion: integer().notNull().default(1),
-  revokedAt: timestamp(),
+  revokedAt: timestamptz(),
   remark: remarkColumn(),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
@@ -240,7 +240,7 @@ export const driveCollectSubmissions = pgTable('drive_collect_submissions', {
   submitterName: varchar({ length: 50 }),
   submitterNote: varchar({ length: 200 }),
   clientIp: varchar({ length: 64 }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('drive_collect_submissions_share_idx').on(t.shareId, t.createdAt)]);
 
 export type DriveCollectSubmissionRow = typeof driveCollectSubmissions.$inferSelect;
@@ -259,9 +259,9 @@ export const driveAccessRequests = pgTable('drive_access_requests', {
   reason: varchar({ length: 500 }),
   status: driveAccessRequestStatusEnum().notNull().default('pending'),
   grantedRole: driveRoleEnum(),
-  grantedExpireAt: timestamp(),
+  grantedExpireAt: timestamptz(),
   decidedBy: integer().references(() => users.id, { onDelete: 'set null' }),
-  decidedAt: timestamp(),
+  decidedAt: timestamptz(),
   decisionNote: varchar({ length: 200 }),
   tenantId: tenantIdColumn(),
   ...timestampColumns(),
@@ -287,7 +287,7 @@ export const driveLegalHolds = pgTable('drive_legal_holds', {
   reason: varchar({ length: 500 }).notNull(),
   active: boolean().notNull().default(true),
   releasedBy: integer().references(() => users.id, { onDelete: 'set null' }),
-  releasedAt: timestamp(),
+  releasedAt: timestamptz(),
   releaseNote: varchar({ length: 200 }),
   tenantId: tenantIdColumn(),
   ...auditColumns(),
@@ -313,7 +313,7 @@ export const driveQuotaRequests = pgTable('drive_quota_requests', {
   status: driveAccessRequestStatusEnum().notNull().default('pending'),
   approvedGb: integer(),
   decidedBy: integer().references(() => users.id, { onDelete: 'set null' }),
-  decidedAt: timestamp(),
+  decidedAt: timestamptz(),
   decisionNote: varchar({ length: 200 }),
   tenantId: tenantIdColumn(),
   ...timestampColumns(),
@@ -363,7 +363,7 @@ export const driveShareAccessLogs = pgTable('drive_share_access_logs', {
   clientIp: varchar({ length: 64 }),
   /** 是否通过校验（false=密码错误 / 已过期 / 超次数） */
   ok: boolean().notNull().default(true),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('drive_share_access_logs_share_idx').on(t.shareId, t.createdAt),
   index('drive_share_access_logs_created_brin_idx').using('brin', t.createdAt),
@@ -389,7 +389,7 @@ export const driveActivities = pgTable('drive_activities', {
   detail: jsonb().$type<Record<string, unknown>>(),
   clientIp: varchar({ length: 64 }),
   tenantId: tenantIdColumn(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('drive_activities_node_idx').on(t.nodeId, t.createdAt),
   index('drive_activities_space_idx').on(t.spaceId, t.createdAt),
@@ -404,7 +404,7 @@ export type DriveActivityRow = typeof driveActivities.$inferSelect;
 export const driveNodeStars = pgTable('drive_node_stars', {
   userId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
   nodeId: integer().notNull().references(() => driveNodes.id, { onDelete: 'cascade' }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   primaryKey({ columns: [t.userId, t.nodeId] }),
   index('drive_node_stars_node_idx').on(t.nodeId),
@@ -415,7 +415,7 @@ export const driveRecentAccess = pgTable('drive_recent_access', {
   userId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
   nodeId: integer().notNull().references(() => driveNodes.id, { onDelete: 'cascade' }),
   action: driveActivityActionEnum().notNull(),
-  lastAccessAt: timestamp().defaultNow().notNull(),
+  lastAccessAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   primaryKey({ columns: [t.userId, t.nodeId] }),
   index('drive_recent_access_user_time_idx').on(t.userId, t.lastAccessAt),
@@ -435,7 +435,7 @@ export const driveUploadBindings = pgTable('drive_upload_bindings', {
   expectedHash: varchar({ length: 64 }),
   tenantId: tenantIdColumn(),
   createdBy: integer().references(() => users.id, { onDelete: 'cascade' }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 });
 
 // ─── 标签 / 评论 / 全文索引（P2）─────────────────────────────────────────────
@@ -486,7 +486,7 @@ export const driveNodeSubscriptions = pgTable('drive_node_subscriptions', {
   userId: integer().notNull().references(() => users.id, { onDelete: 'cascade' }),
   nodeId: integer().notNull().references(() => driveNodes.id, { onDelete: 'cascade' }),
   lastActivityId: integer().notNull().default(0),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   primaryKey({ columns: [t.userId, t.nodeId] }),
   index('drive_node_subscriptions_cursor_idx').on(t.lastActivityId),
@@ -505,7 +505,7 @@ export const driveNodeTexts = pgTable('drive_node_texts', {
   version: integer().notNull(),
   content: text().notNull().default(''),
   searchVector: tsvector(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  updatedAt: timestamptz().defaultNow().$onUpdate(() => new Date()).notNull(),
 }, (t) => [
   index('drive_node_texts_search_idx').using('gin', t.searchVector),
   // CJK 关键词走子串匹配：pg_trgm 让 ILIKE 命中索引而非全表扫

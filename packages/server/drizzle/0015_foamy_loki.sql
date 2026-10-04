@@ -1,1 +1,0 @@
-ALTER TABLE "cms_deployments" ADD COLUMN "task_ids" jsonb DEFAULT '[]'::jsonb NOT NULL;

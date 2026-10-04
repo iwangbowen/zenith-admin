@@ -1,3 +1,0 @@
-ALTER TABLE "workflow_job_executions" ADD COLUMN "scheduled_at" timestamp with time zone DEFAULT now() NOT NULL;--> statement-breakpoint
-CREATE INDEX "workflow_job_executions_started_idx" ON "workflow_job_executions" USING btree ("started_at");--> statement-breakpoint
-CREATE INDEX "workflow_jobs_claim_idx" ON "workflow_jobs" USING btree ("priority","run_at","id") WHERE "workflow_jobs"."status" = 'pending';

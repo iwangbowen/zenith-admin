@@ -7,11 +7,10 @@ import {
   pgEnum,
   pgTable,
   primaryKey,
-  timestamp,
   uniqueIndex,
   varchar,
 } from 'drizzle-orm/pg-core';
-import { idColumn } from './common';
+import { idColumn, timestamptz } from './common';
 import { tenantIdColumn, users } from './core';
 
 /**
@@ -46,7 +45,7 @@ export const entityRelationEdges = pgTable('entity_relation_edges', {
   targetKey: varchar({ length: 512 }).notNull(),
   metadata: jsonb().$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
   createdBy: integer().references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamptz().notNull().defaultNow(),
 }, (t) => [
   check('entity_relation_edges_source_type_check', sql`length(${t.sourceType}) > 0`),
   check('entity_relation_edges_source_key_check', sql`length(${t.sourceKey}) > 0`),
@@ -89,7 +88,7 @@ export const domainEvents = pgTable('domain_events', {
   traceId: varchar({ length: 128 }),
   parentRef: varchar({ length: 256 }),
   dedupeKey: varchar({ length: 192 }),
-  occurredAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  occurredAt: timestamptz().notNull().defaultNow(),
 }, (t) => [
   check('domain_events_event_type_check', sql`length(${t.eventType}) > 0`),
   check('domain_events_schema_version_check', sql`${t.schemaVersion} > 0`),

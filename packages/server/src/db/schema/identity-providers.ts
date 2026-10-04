@@ -1,5 +1,5 @@
-import { timestampColumns, idColumn } from './common';
-import { pgTable, varchar, timestamp, pgEnum, integer, boolean, unique, text, index, jsonb } from 'drizzle-orm/pg-core';
+import { timestampColumns, idColumn, timestamptz } from './common';
+import { pgTable, varchar, pgEnum, integer, boolean, unique, text, index, jsonb } from 'drizzle-orm/pg-core';
 import { auditColumns, users, tenantIdColumn } from './core';
 
 export const identityProviderTypeEnum = pgEnum('identity_provider_type', ['oidc', 'saml', 'ldap', 'ad']);
@@ -71,8 +71,8 @@ export const userIdentityAccounts = pgTable('user_identity_accounts', {
   username: varchar({ length: 64 }),
   displayName: varchar({ length: 128 }),
   rawProfile: jsonb().$type<Record<string, unknown> | null>(),
-  lastLoginAt: timestamp({ withTimezone: true }),
-  ...timestampColumns({ withTimezone: true }),
+  lastLoginAt: timestamptz(),
+  ...timestampColumns(),
 }, (t) => [
   unique('user_identity_accounts_provider_subject_unique').on(t.providerId, t.subject),
   unique('user_identity_accounts_user_provider_unique').on(t.userId, t.providerId),
@@ -98,9 +98,9 @@ export const identityProviderSyncLogs = pgTable('identity_provider_sync_logs', {
   message: text(),
   errorMessage: text(),
   details: jsonb().$type<Array<Record<string, unknown>> | null>(),
-  startedAt: timestamp({ withTimezone: true }).notNull(),
-  completedAt: timestamp({ withTimezone: true }),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  startedAt: timestamptz().notNull(),
+  completedAt: timestamptz(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('identity_provider_sync_logs_provider_idx').on(t.providerId),
   index('identity_provider_sync_logs_status_idx').on(t.status),

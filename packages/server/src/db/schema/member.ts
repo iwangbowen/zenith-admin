@@ -1,6 +1,6 @@
-import { pgTable, varchar, timestamp, pgEnum, integer, boolean, unique, uniqueIndex, index, jsonb, date, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, varchar, pgEnum, integer, boolean, unique, uniqueIndex, index, jsonb, date, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import { timestampColumns, idColumn, statusColumn, sortColumn, remarkColumn } from './common';
+import { timestampColumns, idColumn, statusColumn, sortColumn, remarkColumn, timestamptz } from './common';
 import { auditColumns, users, tenantIdColumn } from './core';
 import { loginStatusEnum } from './logs';
 
@@ -61,18 +61,18 @@ export const members = pgTable('members', {
   status: memberStatusEnum().notNull().default('active'),
   levelId: integer().references((): AnyPgColumn => memberLevels.id, { onDelete: 'set null' }),
   /** 付费会员（VIP）有效期，null = 未开通；由自动续费扣款成功延长 */
-  vipExpireAt: timestamp({ withTimezone: true }),
+  vipExpireAt: timestamptz(),
   /** 成长值（决定会员等级）*/
   growthValue: integer().notNull().default(0),
   experience: integer().notNull().default(0),
   /** 注册来源：web / h5 / app / admin */
   registerSource: varchar({ length: 32 }).notNull().default('web'),
   registerIp: varchar({ length: 64 }),
-  lastLoginAt: timestamp({ withTimezone: true }),
+  lastLoginAt: timestamptz(),
   lastLoginIp: varchar({ length: 64 }),
   remark: remarkColumn(),
   /** 软删除时间（非 null 即已删除；资金流水/券码等历史数据保留）*/
-  deletedAt: timestamp({ withTimezone: true }),
+  deletedAt: timestamptz(),
   /** 邀请码（懒生成，全局唯一）*/
   inviteCode: varchar({ length: 16 }),
   /** 邀请人会员 ID */
@@ -104,8 +104,8 @@ export const memberVipRenewals = pgTable('member_vip_renewals', {
   /** 实扣金额（分） */
   amount: integer().notNull(),
   /** 本次续费后的 VIP 到期时间 */
-  vipExpireAfter: timestamp({ withTimezone: true }).notNull(),
-  createdAt: timestamp().defaultNow().notNull(),
+  vipExpireAfter: timestamptz().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('member_vip_renewals_member_idx').on(t.memberId)]);
 
 export type MemberVipRenewalRow = typeof memberVipRenewals.$inferSelect;
@@ -134,7 +134,7 @@ export const memberTagBindings = pgTable('member_tag_bindings', {
   id: idColumn(),
   memberId: integer().notNull().references(() => members.id, { onDelete: 'cascade' }),
   tagId: integer().notNull().references(() => memberTags.id, { onDelete: 'cascade' }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   unique('member_tag_bindings_unique').on(t.memberId, t.tagId),
   index('member_tag_bindings_tag_idx').on(t.tagId),
@@ -180,7 +180,7 @@ export const memberPointTransactions = pgTable('member_point_transactions', {
   remark: remarkColumn(),
   /** 后台操作人（管理员手动调整时记录）*/
   operatorId: integer().references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('member_point_transactions_operator_idx').on(t.operatorId), 
   index('member_point_tx_member_idx').on(t.memberId),
   index('member_point_tx_biz_idx').on(t.bizType, t.bizId),
@@ -227,7 +227,7 @@ export const memberWalletTransactions = pgTable('member_wallet_transactions', {
   paymentEventId: varchar({ length: 128 }),
   remark: remarkColumn(),
   operatorId: integer().references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [index('member_wallet_transactions_operator_idx').on(t.operatorId), 
   index('member_wallet_tx_member_idx').on(t.memberId),
   index('member_wallet_tx_biz_idx').on(t.bizType, t.bizId),
@@ -258,8 +258,8 @@ export const coupons = pgTable('coupons', {
   perLimit: integer().notNull().default(1),
   /** 有效期类型：fixed=固定起止日期，relative=领取后 N 天 */
   validType: couponValidTypeEnum().notNull().default('fixed'),
-  validStart: timestamp({ withTimezone: true }),
-  validEnd: timestamp({ withTimezone: true }),
+  validStart: timestamptz(),
+  validEnd: timestamptz(),
   /** relative 型：领取后有效天数 */
   validDays: integer(),
   /** 积分兑换所需积分（0 = 不可积分兑换）*/
@@ -283,10 +283,10 @@ export const memberCoupons = pgTable('member_coupons', {
   /** 券码（全局唯一）*/
   code: varchar({ length: 32 }).notNull().unique(),
   status: memberCouponStatusEnum().notNull().default('unused'),
-  receivedAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
-  usedAt: timestamp({ withTimezone: true }),
+  receivedAt: timestamptz().defaultNow().notNull(),
+  usedAt: timestamptz(),
   /** 实际过期时间（领取时按模板计算并固化）*/
-  expireAt: timestamp({ withTimezone: true }),
+  expireAt: timestamptz(),
   /** 核销业务类型 / 单号（预留给未来订单系统）*/
   bizType: varchar({ length: 64 }),
   bizId: varchar({ length: 128 }),
@@ -312,7 +312,7 @@ export const memberLoginLogs = pgTable('member_login_logs', {
   userAgent: varchar({ length: 512 }),
   status: loginStatusEnum().notNull(),
   message: varchar({ length: 256 }),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamptz().notNull().defaultNow(),
 }, (t) => [
   // 后台按会员查询登录轨迹 + 清理任务按时间扫描
   index('member_login_logs_member_created_idx').on(t.memberId, t.createdAt),
@@ -350,7 +350,7 @@ export const memberCheckins = pgTable('member_checkins', {
   isMakeup: boolean().notNull().default(false),
   /** 备注（管理端补签时记录补签原因）*/
   remark: remarkColumn(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   unique('member_checkins_member_id_checkin_date_unique').on(t.memberId, t.checkinDate),
 ]);
@@ -366,7 +366,7 @@ export const checkinSettings = pgTable('checkin_settings', {
   makeupCostPoints: integer().notNull().default(20),
   makeupMaxDays: integer().notNull().default(7),
   ...auditColumns(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()).notNull(),
+  updatedAt: timestamptz().defaultNow().$onUpdate(() => new Date()).notNull(),
 });
 
 export type CheckinSettingsRow = typeof checkinSettings.$inferSelect;
@@ -405,7 +405,7 @@ export const memberCheckinMilestoneAwards = pgTable('member_checkin_milestone_aw
   rewardPoints: integer().notNull().default(0),
   couponId: integer(),
   memberCouponId: integer(),
-  createdAt: timestamp().defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   unique('member_checkin_milestone_awards_member_id_milestone_id_unique').on(t.memberId, t.milestoneId),
 ]);
@@ -424,8 +424,8 @@ export const memberNotifications = pgTable('member_notifications', {
   content: varchar({ length: 512 }),
   /** 业务标识（配合 type 做防重，如券记录 ID / 年份）*/
   bizId: varchar({ length: 128 }),
-  readAt: timestamp({ withTimezone: true }),
-  createdAt: timestamp().defaultNow().notNull(),
+  readAt: timestamptz(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   index('member_notifications_member_idx').on(t.memberId, t.createdAt),
   index('member_notifications_biz_idx').on(t.type, t.bizId),

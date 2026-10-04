@@ -1,8 +1,8 @@
-import { pgTable, pgEnum, integer, jsonb, varchar, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, integer, jsonb, varchar, uniqueIndex, index } from 'drizzle-orm/pg-core';
 import { CMS_EDITORIAL_STATUSES, CMS_REVISION_KINDS, type CmsContentRevisionSnapshot } from '@zenith/shared/cms';
 import { cmsContents } from './cms';
 import { auditColumns, users } from './core';
-import { idColumn, timestampColumns } from './common';
+import { idColumn, timestampColumns, timestamptz } from './common';
 import { sql } from 'drizzle-orm';
 import { cmsPublicationDigestSql } from '../cms-content-hash';
 
@@ -22,7 +22,7 @@ export const cmsContentRevisions = pgTable('cms_content_revisions', {
   snapshot: jsonb().$type<CmsContentRevisionSnapshot>().notNull(),
   remark: varchar({ length: 200 }),
   createdBy: integer().references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [
   uniqueIndex('cms_content_revisions_content_version_uq').on(t.contentId, t.version),
   index('cms_content_revisions_content_hash_idx').on(t.contentId, t.hash),
@@ -42,7 +42,7 @@ export const cmsContentWorkingCopies = pgTable('cms_content_working_copies', {
   publishedRevisionId: integer().references(() => cmsContentRevisions.id, { onDelete: 'restrict' }),
   rejectReason: varchar({ length: 500 }),
   ...auditColumns(),
-  ...timestampColumns({ withTimezone: true }),
+  ...timestampColumns(),
 }, (t) => [uniqueIndex('cms_working_translation_locale_uq').on(sql`(${t.snapshot}->>'translationOfId')`, sql`(${t.snapshot}->>'locale')`).where(sql`${t.snapshot}->>'translationOfId' is not null`)]);
 
 /** Every approval round has one immutable subject, including historical rounds. */
@@ -52,7 +52,7 @@ export const cmsContentReviewRevisions = pgTable('cms_content_review_revisions',
   workflowInstanceId: integer().notNull(),
   revisionId: integer().notNull().references(() => cmsContentRevisions.id, { onDelete: 'restrict' }),
   hash: varchar({ length: 64 }).notNull(),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [uniqueIndex('cms_content_review_revisions_instance_uq').on(t.workflowInstanceId)]);
 
 export type CmsContentRevisionRow = typeof cmsContentRevisions.$inferSelect;
@@ -65,7 +65,7 @@ export const cmsContentRevisionApprovals = pgTable('cms_content_revision_approva
   hash: varchar({ length: 64 }).notNull(),
   workflowInstanceId: integer(),
   createdBy: integer().references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamptz().defaultNow().notNull(),
 }, (t) => [uniqueIndex('cms_content_revision_approvals_revision_uq').on(t.revisionId)]);
 
 /** Revocable grants name one frozen revision and never follow subsequent saves. */
@@ -74,8 +74,8 @@ export const cmsContentPreviewGrants = pgTable('cms_content_preview_grants', {
   token: varchar({ length: 36 }).notNull().unique(),
   contentId: integer().notNull().references(() => cmsContents.id, { onDelete: 'cascade' }),
   revisionId: integer().notNull().references(() => cmsContentRevisions.id, { onDelete: 'cascade' }),
-  expiresAt: timestamp({ withTimezone: true }).notNull(),
-  revokedAt: timestamp({ withTimezone: true }),
+  expiresAt: timestamptz().notNull(),
+  revokedAt: timestamptz(),
   ...auditColumns(),
-  ...timestampColumns({ withTimezone: true }),
+  ...timestampColumns(),
 });

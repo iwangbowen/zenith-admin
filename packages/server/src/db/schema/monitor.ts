@@ -1,5 +1,5 @@
-import { timestampColumns, idColumn } from './common';
-import { pgTable, varchar, timestamp, pgEnum, integer, boolean, text, index, jsonb, real, bigint, doublePrecision, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { timestampColumns, idColumn, timestamptz } from './common';
+import { pgTable, varchar, pgEnum, integer, boolean, text, index, jsonb, real, bigint, doublePrecision, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { MONITOR_ALERT_HANDLE_STATUSES, MONITOR_ALERT_NOTIFY_STATUSES, MONITOR_METRICS } from '@zenith/shared/platform';
 import { auditColumns, users, tenantIdColumn } from './core';
 
@@ -8,7 +8,7 @@ import { auditColumns, users, tenantIdColumn } from './core';
 // 各百分比字段范围 0-100；*Bps 字段为字节/秒。
 export const systemMetricSamples = pgTable('system_metric_samples', {
   id: idColumn(),
-  sampledAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  sampledAt: timestamptz().notNull().defaultNow(),
   cpu: real().notNull().default(0),
   memory: real().notNull().default(0),
   disk: real().notNull().default(0),
@@ -40,7 +40,7 @@ export type NewSystemMetricSample = typeof systemMetricSamples.$inferInsert;
 // 原始明细保留期较短，历史趋势由采样快照的相邻差值计算。
 export const sqlQuerySamples = pgTable('sql_query_samples', {
   id: bigint({ mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
-  sampledAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  sampledAt: timestamptz().notNull().defaultNow(),
   databaseName: varchar({ length: 128 }).notNull(),
   /** PostgreSQL pg_stat_statements.queryid，使用字符串避免 64 位值丢失精度。 */
   queryId: varchar({ length: 64 }).notNull(),
@@ -111,11 +111,11 @@ export const monitorAlertRules = pgTable('monitor_alert_rules', {
   enabled: boolean().notNull().default(true),
   /** 运行态：ok / firing */
   state: monitorAlertStateEnum().notNull().default('ok'),
-  breachingSince: timestamp({ withTimezone: true }),
-  lastTriggeredAt: timestamp({ withTimezone: true }),
+  breachingSince: timestamptz(),
+  lastTriggeredAt: timestamptz(),
   lastValue: real(),
   ...auditColumns(),
-  ...timestampColumns({ withTimezone: true }),
+  ...timestampColumns(),
 }, (t) => [
   index('monitor_alert_rules_tenant_idx').on(t.tenantId),
   index('monitor_alert_rules_enabled_idx').on(t.enabled),
@@ -144,16 +144,16 @@ export const monitorAlertEvents = pgTable('monitor_alert_events', {
   notifyChannels: jsonb().$type<string[]>().notNull().default([]),
   /** 失败渠道的原因摘要，全部成功时为空 */
   notifyError: text(),
-  notifiedAt: timestamp({ withTimezone: true }),
+  notifiedAt: timestamptz(),
   /** 人工处理状态；与 status 正交，系统自动恢复不代表有人处理过 */
   handleStatus: monitorAlertHandleStatusEnum().notNull().default('pending'),
   /** 首次认领时间，用于 MTTA 与「最久未确认」统计；撤销认领会清空 */
-  acknowledgedAt: timestamp({ withTimezone: true }),
+  acknowledgedAt: timestamptz(),
   handledBy: integer().references(() => users.id, { onDelete: 'set null' }),
-  handledAt: timestamp({ withTimezone: true }),
+  handledAt: timestamptz(),
   handleNote: varchar({ length: 500 }),
-  triggeredAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-  resolvedAt: timestamp({ withTimezone: true }),
+  triggeredAt: timestamptz().notNull().defaultNow(),
+  resolvedAt: timestamptz(),
 }, (t) => [
   index('monitor_alert_events_rule_idx').on(t.ruleId),
   index('monitor_alert_events_status_idx').on(t.status),
@@ -183,14 +183,14 @@ export const sslCertificates = pgTable('ssl_certificates', {
   keyContent: text(),
   issuer: varchar({ length: 256 }),
   subject: varchar({ length: 256 }),
-  validFrom: timestamp({ withTimezone: true }),
-  validTo: timestamp({ withTimezone: true }),
+  validFrom: timestamptz(),
+  validTo: timestamptz(),
   fingerprint: varchar({ length: 128 }),
   serialNumber: varchar({ length: 128 }),
   status: sslCertStatusEnum().notNull().default('valid'),
   autoRenew: boolean().notNull().default(false),
   ...auditColumns(),
-  ...timestampColumns({ withTimezone: true }),
+  ...timestampColumns(),
 });
 
 export type SslCertificateRow = typeof sslCertificates.$inferSelect;

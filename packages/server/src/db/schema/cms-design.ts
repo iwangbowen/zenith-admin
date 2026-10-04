@@ -1,6 +1,6 @@
-import { integer, pgTable, jsonb, varchar, timestamp, uuid, uniqueIndex, index, boolean, text } from 'drizzle-orm/pg-core';
+import { integer, pgTable, jsonb, varchar, uuid, uniqueIndex, index, boolean, text } from 'drizzle-orm/pg-core';
 import type { CmsModelField, CmsFieldConfiguration, CmsDocumentAnchor } from '@zenith/shared/cms';
-import { idColumn, timestampColumns } from './common';
+import { idColumn, timestampColumns, timestamptz } from './common';
 import { auditColumns, users } from './core';
 import { cmsModels, cmsResources, cmsSites, cmsContents } from './cms';
 import { cmsContentRevisions } from './cms-revisions';
@@ -11,7 +11,7 @@ export const cmsModelVersions = pgTable('cms_model_versions', {
   id: idColumn(), modelId: integer().notNull().references(() => cmsModels.id, { onDelete: 'restrict' }),
   version: integer().notNull(), fields: jsonb().$type<CmsModelField[]>().notNull(),
   contentHash: varchar({ length: 64 }).notNull(), ...auditColumns(),
-  createdAt: timestamp().notNull().defaultNow(),
+  createdAt: timestamptz().notNull().defaultNow(),
 }, (t) => [uniqueIndex('cms_model_versions_model_version_uq').on(t.modelId, t.version)]);
 
 /** A file version remains reachable even when the logical resource is replaced. */
@@ -21,12 +21,12 @@ export const cmsAssetVersions = pgTable('cms_asset_versions', {
   version: integer().notNull(), url: varchar({ length: 500 }).notNull(), thumbUrl: varchar({ length: 500 }),
   fileId: uuid().references(() => managedFiles.id, { onDelete: 'restrict' }),
   mimeType: varchar({ length: 128 }), width: integer(), height: integer(), size: integer().notNull(),
-  contentHash: varchar({ length: 64 }).notNull(), ...auditColumns(), createdAt: timestamp().notNull().defaultNow(),
+  contentHash: varchar({ length: 64 }).notNull(), ...auditColumns(), createdAt: timestamptz().notNull().defaultNow(),
 }, (t) => [uniqueIndex('cms_asset_versions_resource_version_uq').on(t.resourceId, t.version), index('cms_asset_versions_file_idx').on(t.fileId)]);
 
 export const cmsAssetRights = pgTable('cms_asset_rights', {
   id: idColumn(), resourceId: integer().notNull().references(() => cmsResources.id, { onDelete: 'cascade' }),
-  source: varchar({ length: 500 }), license: varchar({ length: 500 }), expiresAt: timestamp(), revoked: boolean().notNull().default(false),
+  source: varchar({ length: 500 }), license: varchar({ length: 500 }), expiresAt: timestamptz(), revoked: boolean().notNull().default(false),
   tags: jsonb().$type<string[]>().notNull().default([]), alt: text(), ...auditColumns(), ...timestampColumns(),
 }, (t) => [uniqueIndex('cms_asset_rights_resource_uq').on(t.resourceId)]);
 
@@ -45,7 +45,7 @@ export const cmsEditorialNotes = pgTable('cms_editorial_notes', {
   fieldPath: varchar({ length: 200 }), message: text().notNull(),
   anchor: jsonb().$type<CmsDocumentAnchor>(),
   mentionedUserIds: jsonb().$type<number[]>().notNull().default([]),
-  resolvedBy: integer().references(() => users.id, { onDelete: 'set null' }), resolvedAt: timestamp(),
+  resolvedBy: integer().references(() => users.id, { onDelete: 'set null' }), resolvedAt: timestamptz(),
   resolved: boolean().notNull().default(false), ...auditColumns(), ...timestampColumns(),
 }, (t) => [index('cms_editorial_notes_content_idx').on(t.contentId, t.id)]);
 
