@@ -1,6 +1,6 @@
 import { eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import postgres from 'postgres';
+import { createPgClient } from '../../db/client';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { afterAll, describe, expect, it } from 'vitest';
 import { cmsStatReportQuery, cmsStatsQuery } from '@zenith/shared/cms';
@@ -10,7 +10,7 @@ import { runWithCurrentUser } from '../../lib/context';
 import { getCmsStatsOverview, getCmsStatsReport, getCmsStatsQuality } from './cms-stats-query';
 
 const connection=process.env.TEST_DATABASE_URL;
-const client=connection?postgres(connection,{max:1,onnotice:()=>undefined}):null;
+const client=connection?createPgClient(connection,{max:1,onnotice:()=>undefined}):null;
 afterAll(async()=>{await client?.end();});
 describe.skipIf(!connection)('CMS v2 statistics PostgreSQL reconciliation',()=>{
   it('reconciles identities, time zones, engagement snapshots, bot/preview exclusions and complete pagination',async()=>{

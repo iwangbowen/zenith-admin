@@ -25,7 +25,7 @@ import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
 import { pageOffset } from '../../lib/pagination';
-import { applyReadonlyTransactionGuards } from '../../lib/db-readonly-role';
+import { applyAppTimeZoneSession, applyReadonlyTransactionGuards, withAppTimeZoneSession } from '../../lib/db-readonly-role';
 import logger from '../../lib/logger';
 import { assertNoDangerousSqlFunctions } from '../../lib/report-sql-safety';
 
@@ -734,11 +734,12 @@ export async function insertTableRow(
   const full = sql.raw(`${quoteIdent(schema)}.${quoteIdent(name)}`);
 
   try {
-    const inserted = await db.execute(sql`
+    // 数据浏览的时间输入按业务时区解释：会话时区切到 APP_TIME_ZONE
+    const inserted = await withAppTimeZoneSession(async (tx) => tx.execute(sql`
       INSERT INTO ${full} (${sql.join(cols, sql.raw(', '))})
       VALUES (${sql.join(vals, sql.raw(', '))})
       RETURNING *
-    `);
+    `));
     const row = (inserted as unknown as Array<Record<string, unknown>>)[0];
     return serializeRow(row ?? {});
   } catch (err) {
@@ -774,11 +775,11 @@ export async function updateTableRow(
     ([c, v]) => sql`${sql.raw(quoteIdent(c))} = ${toBoundSql(v, colMap.get(c)!.dataType)}`,
   );
   try {
-    const updated = await db.execute(sql`
+    const updated = await withAppTimeZoneSession(async (tx) => tx.execute(sql`
       UPDATE ${full} SET ${sql.join(sets, sql.raw(', '))}
       WHERE ${sql.join(wheres, sql.raw(' AND '))}
       RETURNING *
-    `);
+    `));
     const row = requireRow((updated as unknown as Array<Record<string, unknown>>)[0], '记录不存在或未更新');
     return serializeRow(row);
   } catch (err) {
@@ -832,11 +833,11 @@ export async function getTableRowBeforeAudit(
     pkValues,
     '该表没有主键，无法定位记录',
   );
-  const rows = await db.execute(sql`
+  const rows = await withAppTimeZoneSession(async (tx) => tx.execute(sql`
     SELECT * FROM ${full}
     WHERE ${sql.join(wheres, sql.raw(' AND '))}
     LIMIT 1
-  `);
+  `));
   const row = (rows as unknown as Array<Record<string, unknown>>)[0];
   return row ? serializeRow(row) : null;
 }
@@ -920,6 +921,7 @@ export async function batchMutateTableRows(
 
   try {
     await db.transaction(async (tx) => {
+      await applyAppTimeZoneSession((statement) => tx.execute(sql.raw(statement)));
       for (const [i, entries] of preparedInserts.entries()) {
         const cols = entries.map(([c]) => sql.raw(quoteIdent(c)));
         const vals = entries.map(([c, v]) => toBoundSql(v, colMap.get(c)!.dataType));
@@ -984,10 +986,10 @@ export async function deleteTableRow(
   );
 
   try {
-    const deleted = await db.execute(sql`
+    const deleted = await withAppTimeZoneSession(async (tx) => tx.execute(sql`
       DELETE FROM ${full} WHERE ${sql.join(wheres, sql.raw(' AND '))}
       RETURNING 1
-    `);
+    `));
     if ((deleted as unknown as Array<unknown>).length === 0) {
       throw new HTTPException(404, { message: '记录不存在' });
     }
@@ -1034,6 +1036,7 @@ export async function importTableData(
   let inserted = 0;
   try {
     await db.transaction(async (tx) => {
+      await applyAppTimeZoneSession((statement) => tx.execute(sql.raw(statement)));
       for (let i = 0; i < rows.length; i += batchSize) {
         const slice = rows.slice(i, i + batchSize);
         const valuesSql = slice.map((row) => {

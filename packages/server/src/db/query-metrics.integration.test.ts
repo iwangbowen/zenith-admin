@@ -1,11 +1,11 @@
-import postgres from 'postgres';
+import { createPgClient } from './client';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { sql } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
 import { instrumentPostgresClient, withDbQueryObserver } from './query-metrics';
 
 const connection = process.env.TEST_DATABASE_URL;
-const client = connection ? instrumentPostgresClient(postgres(connection, { max: 2, onnotice: () => undefined })) : null;
+const client = connection ? instrumentPostgresClient(createPgClient(connection, { max: 2, onnotice: () => undefined })) : null;
 afterAll(async () => { await client?.end(); });
 describe.skipIf(!connection)('postgres query execution metrics integration', () => {
   it('measures real driver latency through Drizzle raw queries, transactions and savepoints', async () => {

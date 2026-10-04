@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import postgres from 'postgres';
+import { createPgClient } from '../../db/client';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
@@ -9,7 +9,7 @@ import type { DbTransaction } from '../../db/types';
 import { CmsGenerationReadUnavailable, pinCmsGenerationRead, readCmsGenerationSnapshot } from './cms-generation-read';
 
 const connection = process.env.TEST_DATABASE_URL;
-const client = connection ? postgres(connection, { max: 3, onnotice: () => undefined }) : null;
+const client = connection ? createPgClient(connection, { max: 3, onnotice: () => undefined }) : null;
 afterAll(async () => { await client?.end(); });
 describe.skipIf(!connection)('CMS retained generation read lifetime', () => {
   it('prevents reclamation during reads and retries a stale pointer without falling back to working tables', async () => {

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
+import { createPgClient } from '../../db/client';
 import { afterAll, describe, expect, it } from 'vitest';
 import * as schema from '../../db/schema';
 import { withDbExecutor } from '../../db';
@@ -9,7 +9,7 @@ import { runWithCurrentUser } from '../../lib/context';
 import { prepareCmsStatisticsExportQuery, withCmsStatisticsExportSnapshot } from './cms-stats-export-query';
 
 const connection = process.env.TEST_DATABASE_URL;
-const client = connection ? postgres(connection, { max: 1, onnotice: () => undefined }) : null;
+const client = connection ? createPgClient(connection, { max: 1, onnotice: () => undefined }) : null;
 afterAll(async () => { await client?.end(); });
 
 describe.skipIf(!connection)('CMS statistics export PostgreSQL snapshot', () => {

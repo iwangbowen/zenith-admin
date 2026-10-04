@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import postgres from 'postgres';
+import { createPgClient } from '../../db/client';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, describe, expect, it, vi } from 'vitest';
@@ -14,7 +14,7 @@ import { inspectCmsReleaseReadiness } from './cms-release-readiness.service';
 import { cmsBuildSchema, createCmsBuildStorage, cmsBuildDependencyHashes, dropCmsBuildStorage } from './cms-release-build-storage';
 
 const connection = process.env.TEST_DATABASE_URL;
-const client = connection ? postgres(connection, { max: 1, onnotice: () => undefined }) : null;
+const client = connection ? createPgClient(connection, { max: 1, onnotice: () => undefined }) : null;
 afterAll(async () => { await client?.end(); });
 
 describe.skipIf(!connection)('CMS frozen release build inputs', () => {

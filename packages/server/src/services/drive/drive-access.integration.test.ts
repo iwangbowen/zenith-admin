@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it, vi } from 'vitest';
-import postgres from 'postgres';
+import { createPgClient } from '../../db/client';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { sql } from 'drizzle-orm';
 import { DRIVE_ROLES, driveRoleAtLeast } from '@zenith/shared/drive';
@@ -12,7 +12,7 @@ import { retainManagedFiles, releaseManagedFiles } from '../files/file-gc.servic
 vi.mock('../../lib/pg-boss-scheduler', () => ({ registerSystemRecurringJob: vi.fn(), sendSystemJob: vi.fn() }));
 
 // Uses only connection-local TEMP tables; it never modifies application data.
-const client = postgres(config.databaseUrl, { max: 1, onnotice: () => undefined });
+const client = createPgClient(config.databaseUrl, { max: 1, onnotice: () => undefined });
 const testDb = drizzle(client, { schema, casing: 'snake_case' });
 afterAll(() => client.end());
 

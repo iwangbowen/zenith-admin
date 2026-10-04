@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
+import { createPgClient } from '../../db/client';
 import { afterAll, describe, expect, it } from 'vitest';
 import { cmsModelFieldViewSchema } from '@zenith/shared/cms';
 import * as schema from '../../db/schema';
@@ -13,7 +13,7 @@ import { freezeCmsContentRevision, loadCmsRevision, requireCmsWorkingCopy } from
 import { cmsSnapshotHash } from './cms-design-versions.service';
 
 const connection = process.env.TEST_DATABASE_URL;
-const client = connection ? postgres(connection, { max: 1, onnotice: () => undefined }) : null;
+const client = connection ? createPgClient(connection, { max: 1, onnotice: () => undefined }) : null;
 afterAll(async () => { await client?.end(); });
 
 describe.skipIf(!connection)('CMS translation frozen source PostgreSQL lifecycle', () => {

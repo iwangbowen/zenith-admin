@@ -15,6 +15,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { config } from '../../config';
+import { APP_TIME_ZONE } from '../../lib/datetime';
 import { DB_READONLY_ROLE, isDbReadonlyRoleAvailable } from '../../lib/db-readonly-role';
 import { parseDatabaseUrl, pgClientEnv, pgConnectionArgs, type DbConnectionParams } from '../../lib/pg-client';
 
@@ -45,11 +46,13 @@ export function buildPsqlLaunch(
   options: { readonlyRole?: boolean } = {},
 ): PsqlLaunch {
   const env = pgClientEnv(params, 'zenith_db_terminal');
+  // 面向人的终端：会话时区固定为业务时区，时间按 APP_TIME_ZONE 呈现
+  const opts = [`-c TimeZone=${APP_TIME_ZONE}`];
   if (mode === 'ro') {
-    const opts = ['-c default_transaction_read_only=on'];
+    opts.push('-c default_transaction_read_only=on');
     if (options.readonlyRole) opts.push(`-c role=${DB_READONLY_ROLE}`);
-    env.PGOPTIONS = opts.join(' ');
   }
+  env.PGOPTIONS = opts.join(' ');
   return {
     file: binaryPath,
     args: pgConnectionArgs(params),

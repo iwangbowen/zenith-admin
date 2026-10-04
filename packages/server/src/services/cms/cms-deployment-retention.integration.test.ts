@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
+import { createPgClient } from '../../db/client';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import * as schema from '../../db/schema';
 import { withDbExecutor } from '../../db';
@@ -22,7 +22,7 @@ vi.mock('../../lib/task-center', async (importOriginal) => ({
   enqueueAsyncTask: mocks.enqueueAsyncTask,
 }));
 const connection = process.env.TEST_DATABASE_URL;
-const client = connection ? postgres(connection, { max: 1, onnotice: () => undefined }) : null;
+const client = connection ? createPgClient(connection, { max: 1, onnotice: () => undefined }) : null;
 afterAll(async () => { await client?.end(); });
 describe.skipIf(!connection)('CMS deployment storage PostgreSQL recovery', () => {
   it('protects active/pinned/base/delivery references and resumes after the schema step without losing audit records', async () => {

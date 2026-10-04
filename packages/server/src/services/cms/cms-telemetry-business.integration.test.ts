@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import postgres from 'postgres';
+import { createPgClient } from '../../db/client';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -10,7 +10,7 @@ import { signCmsTelemetryPage } from './cms-telemetry-context';
 import { drainCmsTelemetryOutbox, drainCmsTelemetryAttributions, enqueueCmsTelemetryConversion, cmsTelemetryRetryDelayMs } from './cms-telemetry-business';
 
 const connection=process.env.TEST_DATABASE_URL;
-const client=connection?postgres(connection,{max:1,onnotice:()=>undefined}):null;
+const client=connection?createPgClient(connection,{max:1,onnotice:()=>undefined}):null;
 afterAll(async()=>{await client?.end();});
 describe.skipIf(!connection)('CMS business telemetry transactional outbox',()=>{
   it('rolls back with the business transaction, retries failures, deduplicates delivery and derives the last trusted origin',async()=>{

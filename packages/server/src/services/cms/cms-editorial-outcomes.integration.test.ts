@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import postgres from 'postgres';
+import { createPgClient } from '../../db/client';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -12,7 +12,7 @@ import { approveCmsContentForRelease } from './cms-contents-write.service';
 import { createCmsEditorialTask, getCmsEditorialTaskDetail } from './cms-editorial-tasks.service';
 import { completeCmsEditorialTask, recordCmsEditorialActivation, refreshCmsEditorialObservations, reopenCmsEditorialTask, verifyCmsEditorialTask } from './cms-editorial-outcomes.service';
 const connection=process.env.TEST_DATABASE_URL;
-const client=connection?postgres(connection,{max:1,onnotice:()=>undefined}):null;
+const client=connection?createPgClient(connection,{max:1,onnotice:()=>undefined}):null;
 afterAll(async()=>{await client?.end();});
 const goal:CmsEditorialGoal={metric:'no_result_rate',targetValue:20,minSample:30,description:'搜索无结果率降至20%以下'};
 describe.skipIf(!connection)('CMS editorial solution and evidence lifecycle',()=>{

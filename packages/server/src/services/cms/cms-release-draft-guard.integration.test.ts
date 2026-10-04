@@ -1,17 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import postgres from 'postgres';
+import { createPgClient } from '../../db/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const connection = process.env.TEST_DATABASE_URL;
 const suite = connection ? describe : describe.skip;
 suite('configuration draft database guard', () => {
-  let sql: ReturnType<typeof postgres>;
+  let sql: ReturnType<typeof createPgClient>;
   const namespace = `release_guard_${randomUUID().replaceAll('-', '')}`;
   beforeAll(async () => {
     const url = new URL(connection!);
     if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.pathname !== '/zenith_review') throw new Error('Requires a disposable local zenith_review database');
-    sql = postgres(connection!, { max: 1 });
+    sql = createPgClient(connection!, { max: 1 });
     await sql.unsafe(`CREATE SCHEMA "${namespace}"`);
     await sql.unsafe(`SET search_path TO "${namespace}", public`);
     await sql`CREATE TABLE cms_releases (id integer PRIMARY KEY, site_id integer NOT NULL, source text NOT NULL, status text NOT NULL, deployment_id integer, base_generation_id integer, items jsonb NOT NULL DEFAULT '[]', configuration_items jsonb NOT NULL DEFAULT '[]', configuration_snapshot jsonb NOT NULL DEFAULT '{}')`;

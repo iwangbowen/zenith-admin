@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
-import postgres from 'postgres';
+import { createPgClient } from '../../db/client';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import type { DbTransaction } from '../../db/types';
 import type { JwtPayload } from '../../middleware/auth';
@@ -20,7 +20,7 @@ integration('task-center real PostgreSQL transaction ownership', () => {
   let context: typeof import('../context');
   let policyConfig: typeof import('./config');
   let actor: JwtPayload;
-  let otherClient: ReturnType<typeof postgres> | undefined;
+  let otherClient: ReturnType<typeof createPgClient> | undefined;
 
   beforeAll(async () => {
     const url = new URL(testDatabaseUrl!);
@@ -107,7 +107,7 @@ integration('task-center real PostgreSQL transaction ownership', () => {
 
   it('atomically admits only one non-concurrent task across independent connections', async () => {
     await database.db.update(schema.asyncTaskTypeConfigs).set({ allowConcurrent: false }).where(eq(schema.asyncTaskTypeConfigs.taskType, taskType));
-    otherClient = postgres(testDatabaseUrl!, { max: 1 });
+    otherClient = createPgClient(testDatabaseUrl!, { max: 1 });
     const otherDb = drizzle(otherClient, { schema, casing: 'snake_case' });
     const barrier = Promise.withResolvers<void>();
     let entered = 0;

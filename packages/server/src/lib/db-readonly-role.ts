@@ -3,7 +3,7 @@
  *
  * 应用自身通常以库 owner 甚至 superuser 连接；READ ONLY 事务只挡 DML，挡不住
  * `COPY ... TO PROGRAM`、`pg_read_file`、`lo_export` 这类服务器端文件 / 程序函数，也挡不住
- * `set_config('role', ...)`。迁移 0007 创建 NOLOGIN 角色 zenith_readonly（仅 SELECT，无
+ * `set_config('role', ...)`。`0001_extensions.sql` 创建 NOLOGIN 角色 zenith_readonly（仅 SELECT，无
  * pg_read_server_files / pg_execute_server_program 等特权）并把应用用户加入其中；执行用户 SQL 的
  * 事务里先 `SET LOCAL ROLE zenith_readonly`，让 PostgreSQL 自己拒绝越权，白名单 / 黑名单只是第一道闸。
  *
@@ -12,6 +12,8 @@
  */
 import { sql } from 'drizzle-orm';
 import { db } from '../db';
+import type { DbTransaction } from '../db/types';
+import { APP_TIME_ZONE_LITERAL } from './datetime-sql';
 import logger from './logger';
 
 export const DB_READONLY_ROLE = 'zenith_readonly';
@@ -55,7 +57,7 @@ async function probe(): Promise<boolean> {
     `) as unknown as Array<{ member: boolean }>;
     const ok = rows.length > 0 && rows[0].member === true;
     if (!ok) {
-      logger.warn(`[db-readonly-role] 角色 ${DB_READONLY_ROLE} 不存在或当前数据库用户不是其成员，用户 SQL 将仅依赖只读事务 + 白名单执行；请确认迁移 0007 已执行且应用用户具备 CREATEROLE`);
+      logger.warn(`[db-readonly-role] 角色 ${DB_READONLY_ROLE} 不存在或当前数据库用户不是其成员，用户 SQL 将仅依赖只读事务 + 白名单执行；请确认 0001_extensions.sql 已执行且应用用户具备 CREATEROLE`);
       return false;
     }
     await ensureSchemaGrants();
@@ -89,8 +91,20 @@ export interface ReadonlyTransactionGuardOptions {
   idleTimeout?: boolean;
 }
 
+/** 面向人的 SQL：事务内把会话时区切到 APP_TIME_ZONE（SET LOCAL，事务结束自动还原） */
+export function applyAppTimeZoneSession(run: (statement: string) => Promise<unknown>): Promise<unknown> {
+  return run(`SET LOCAL TimeZone = ${APP_TIME_ZONE_LITERAL}`);
+}
+
+export function withAppTimeZoneSession<T>(fn: (tx: DbTransaction) => Promise<T>): Promise<T> {
+  return db.transaction(async (tx) => {
+    await applyAppTimeZoneSession((statement) => tx.execute(sql.raw(statement)));
+    return fn(tx);
+  });
+}
+
 /**
- * 在已开启的事务内应用用户 SQL 执行护栏：READ ONLY + 超时 + SET LOCAL ROLE zenith_readonly。
+ * 在已开启的事务内应用用户 SQL 执行护栏：会话时区 + READ ONLY + 超时 + SET LOCAL ROLE zenith_readonly。
  * 调用方传入「执行一条原始 SQL」的函数，兼容 drizzle 事务（tx.execute(sql.raw(...))）与
  * postgres-js 事务（tx.unsafe(...)）。SET LOCAL 随事务结束自动还原，不污染连接池。
  */
@@ -98,6 +112,7 @@ export async function applyReadonlyTransactionGuards(
   run: (statement: string) => Promise<unknown>,
   options: ReadonlyTransactionGuardOptions,
 ): Promise<void> {
+  await applyAppTimeZoneSession(run);
   await run('SET LOCAL TRANSACTION READ ONLY');
   const timeout = typeof options.timeout === 'number' ? `${options.timeout}ms` : options.timeout;
   await run(`SET LOCAL statement_timeout = '${timeout}'`);

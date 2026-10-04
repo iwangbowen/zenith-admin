@@ -1,6 +1,5 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import type { Logger } from 'drizzle-orm/logger';
-import postgres from 'postgres';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { config } from '../config';
 import logger from '../lib/logger';
@@ -8,6 +7,7 @@ import { currentAuditUserId } from '../lib/audit-context';
 import type { DbTransaction } from './types';
 import * as schema from './schema';
 import { instrumentPostgresClient } from './query-metrics';
+import { createPgClient } from './client';
 
 class DrizzleLogger implements Logger {
   logQuery(query: string, params: unknown[]): void {
@@ -15,7 +15,7 @@ class DrizzleLogger implements Logger {
   }
 }
 
-const client = instrumentPostgresClient(postgres(config.databaseUrl, {
+const client = instrumentPostgresClient(createPgClient(config.databaseUrl, {
   max: config.database.maxConnections,
   idle_timeout: config.database.idleTimeoutSeconds,
   connect_timeout: config.database.connectTimeoutSeconds,
