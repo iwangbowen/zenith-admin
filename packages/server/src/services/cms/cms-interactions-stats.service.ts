@@ -24,6 +24,7 @@ import { keywordCondition } from '../../lib/where-helpers';
 import { buildListResult } from '../../lib/list-query';
 import { assertSiteAccess } from './cms-sites.service';
 import { ensureCmsInteractionExists, isOtherAnswer } from './cms-interactions-shared';
+import { localDate, localDayStart } from "../../lib/datetime-sql";
 
 /** 可做交叉分析的题型：需要离散且有限的选项集合 */
 const CROSS_ANALYZABLE_TYPES = new Set<CmsInteractionQuestionType>(['single', 'multiple']);
@@ -396,11 +397,11 @@ export async function getCmsInteractionTrend(
   await assertSiteAccess(current.siteId);
   const span = Math.min(Math.max(days, 1), 180);
   const rows = await db.execute(sql`
-    SELECT to_char(date_trunc('day', ${cmsInteractionResponses.createdAt}), 'YYYY-MM-DD') AS day,
+    SELECT ${localDate(cmsInteractionResponses.createdAt)} AS day,
            COUNT(*)::int AS cnt
     FROM ${cmsInteractionResponses}
     WHERE ${cmsInteractionResponses.interactionId} = ${interactionId}
-      AND ${cmsInteractionResponses.createdAt} >= (CURRENT_DATE - ${span - 1} * INTERVAL '1 day')
+      AND ${cmsInteractionResponses.createdAt} >= ${localDayStart(span - 1)}
     GROUP BY 1
     ORDER BY 1
   `) as unknown as { day: string; cnt: number }[];

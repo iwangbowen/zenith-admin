@@ -10,7 +10,7 @@ export function driveLogMonth(date: Date) {
   if (!Number.isFinite(date.getTime())) throw new Error('Invalid drive log date');
   const year = date.getUTCFullYear();
   const month = date.getUTCMonth();
-  const literal = (value: Date) => `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, '0')}-01 00:00:00`;
+  const literal = (value: Date) => `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, '0')}-01 00:00:00+00`;
   return {
     suffix: `${year}${String(month + 1).padStart(2, '0')}`,
     from: literal(new Date(Date.UTC(year, month, 1))),

@@ -150,8 +150,8 @@ const TIME_SORT_FIELDS = new Set<CmsOpenSortRule['field']>(['publishedAt', 'crea
 /** 时间列 → 微秒整数（文本返回，避免 bigint 精度在驱动层被截断） */
 const microsOf = (column: PgColumn) => sql<string>`((extract(epoch from ${column}) * 1000000)::bigint)::text`;
 
-/** 微秒 → 与 timestamp 列同基准的 UTC 墙钟时间 */
-const microsToTimestamp = (micros: number) => sql`(to_timestamp(${micros} / 1000000.0) at time zone 'UTC')`;
+/** 微秒 → 时刻（timestamptz） */
+const microsToTimestamp = (micros: number) => sql`to_timestamp(${micros} / 1000000.0)`;
 
 /**
  * ORDER BY 一律 `NULLS LAST`。

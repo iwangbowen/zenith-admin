@@ -57,8 +57,8 @@ export async function runWorkflowEngineHealthCapture(): Promise<string> {
  * 超期后分批删除（每批 batchLimit），避免长事务锁表。返回删除总数。
  */
 export async function cleanupTerminalInstanceTokens(retentionDays = 90, batchLimit = 5000, maxBatches = 20): Promise<number> {
-  // sql 模板裸插值 Date 无列编码器会导致驱动序列化失败，需绑定格式化串并显式 cast
-  const cutoffText = formatDateTime(new Date(Date.now() - retentionDays * 24 * 60 * 60_000));
+  // 原生 SQL 的时刻参数以 ISO 字符串绑定并显式 ::timestamptz
+  const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60_000).toISOString();
   let total = 0;
   for (let i = 0; i < maxBatches; i++) {
     const res = await db.execute(sql`
@@ -67,7 +67,7 @@ export async function cleanupTerminalInstanceTokens(retentionDays = 90, batchLim
         SELECT wt.id FROM workflow_tokens wt
         JOIN workflow_instances wi ON wi.id = wt.instance_id
         WHERE wi.status IN ('approved', 'rejected', 'withdrawn', 'cancelled')
-          AND wi.updated_at < ${cutoffText}::timestamp
+          AND wi.updated_at < ${cutoff}::timestamptz
         LIMIT ${batchLimit}
       )
     `);
@@ -80,13 +80,13 @@ export async function cleanupTerminalInstanceTokens(retentionDays = 90, batchLim
 
 /** 待清理的终态实例 Token 数量（供数据保留策略预览） */
 export async function countTerminalInstanceTokens(retentionDays: number): Promise<number> {
-  const cutoffText = formatDateTime(new Date(Date.now() - retentionDays * 24 * 60 * 60_000));
+  const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60_000).toISOString();
   const res = await db.execute(sql`
     SELECT count(*)::int AS pending
     FROM workflow_tokens wt
     JOIN workflow_instances wi ON wi.id = wt.instance_id
     WHERE wi.status IN ('approved', 'rejected', 'withdrawn', 'cancelled')
-      AND wi.updated_at < ${cutoffText}::timestamp
+      AND wi.updated_at < ${cutoff}::timestamptz
   `);
   const rows = res as unknown as Array<{ pending: number }>;
   return Number(rows[0]?.pending ?? 0);

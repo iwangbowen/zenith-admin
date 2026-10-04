@@ -20,6 +20,7 @@ import { diffDecisionSnapshots } from '../../lib/rules-version-diff';
 import { cachedRuleRuntime, invalidateRuleRuntimeCache } from './rules-runtime-cache';
 import { recordRuleExecution, flushRuleExecutionQueue, snapshotRuleScope } from './rules-executions.service';
 import { pickEntity } from '../../lib/entity-map';
+import { localDate } from "../../lib/datetime-sql";
 
 type TableRow = typeof ruleDecisionTables.$inferSelect;
 type VersionRow = typeof ruleDecisionTableVersions.$inferSelect;
@@ -675,8 +676,6 @@ export async function getDecisionTableStats(id: number, days = 30): Promise<Rule
   await flushRuleExecutionQueue();
   const span = Number.isFinite(days) && days > 0 ? Math.min(days, 365) : 30;
   const cutoff = new Date(Date.now() - span * 24 * 60 * 60 * 1000);
-  // 原生 SQL 无列类型编码器，Date 参数无法被驱动序列化（ERR_INVALID_ARG_TYPE），改绑格式化时间串再显式 cast
-  const cutoffText = formatDateTime(cutoff);
   const where = and(eq(ruleExecutions.refKind, 'table'), eq(ruleExecutions.refId, row.id), gte(ruleExecutions.createdAt, cutoff));
   const [totals, byDay, rowHits, bySource] = await Promise.all([
     db.select({
@@ -684,16 +683,16 @@ export async function getDecisionTableStats(id: number, days = 30): Promise<Rule
       matched: sql<number>`count(*) filter (where ${ruleExecutions.matched})::int`,
     }).from(ruleExecutions).where(where),
     db.select({
-      date: sql<string>`to_char(${ruleExecutions.createdAt}, 'YYYY-MM-DD')`,
+      date: localDate(ruleExecutions.createdAt),
       total: sql<number>`count(*)::int`,
       matched: sql<number>`count(*) filter (where ${ruleExecutions.matched})::int`,
     }).from(ruleExecutions).where(where)
-      .groupBy(sql`to_char(${ruleExecutions.createdAt}, 'YYYY-MM-DD')`)
-      .orderBy(sql`to_char(${ruleExecutions.createdAt}, 'YYYY-MM-DD')`),
+      .groupBy(localDate(ruleExecutions.createdAt))
+      .orderBy(localDate(ruleExecutions.createdAt)),
     db.execute(sql`
       SELECT elem AS row_id, count(*)::int AS cnt
       FROM ${ruleExecutions}, jsonb_array_elements_text(${ruleExecutions.matchedRowIds}) AS elem
-      WHERE ${ruleExecutions.refKind} = 'table' AND ${ruleExecutions.refId} = ${row.id} AND ${ruleExecutions.createdAt} >= ${cutoffText}::timestamp
+      WHERE ${ruleExecutions.refKind} = 'table' AND ${ruleExecutions.refId} = ${row.id} AND ${ruleExecutions.createdAt} >= ${sql.param(cutoff, ruleExecutions.createdAt)}
       GROUP BY elem ORDER BY cnt DESC LIMIT 50
     `),
     db.select({

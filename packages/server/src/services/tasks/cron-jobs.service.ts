@@ -50,6 +50,7 @@ import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { defineCrudService } from '../../lib/crud-service';
 import { entityMapper } from '../../lib/entity-map';
 import type { JobSourceRawSummary } from '../../lib/job-monitor/registry';
+import { localDate, localDayStart, localTime } from "../../lib/datetime-sql";
 
 export const mapCronJob = entityMapper(cronJobSchema);
 
@@ -225,9 +226,9 @@ type JobRow = Pick<
   'id' | 'name' | 'handler' | 'cronExpression' | 'status' | 'monitorTimeout' | 'lastRunAt' | 'lastRunStatus' | 'createdAt' | 'updatedAt'
 >;
 
-/** `CURRENT_DATE - n 天` 的日期边界（沿用数据库会话时区，与每日分桶口径一致） */
+/** APP_TIME_ZONE「n 天前」零点 */
 function dateBefore(days: number) {
-  return sql`(CURRENT_DATE - make_interval(days => ${days}))`;
+  return localDayStart(days);
 }
 
 const startedAt = cronJobLogs.startedAt;
@@ -469,7 +470,7 @@ function periodWindows(days: number): PeriodWindows {
     days,
     inPeriod: sql`${startedAt} >= ${dateBefore(days - 1)}`,
     inPrev: sql`${startedAt} >= ${dateBefore(2 * days - 1)} AND ${startedAt} < ${dateBefore(days - 1)}`,
-    inToday: sql`${startedAt} >= CURRENT_DATE`,
+    inToday: sql`${startedAt} >= ${localDayStart(0)}`,
   };
 }
 
@@ -612,7 +613,7 @@ function mapDailyRow(r: { date: string; total: number; successCount: number; fai
 
 function dailyStatsQuery(tx: DbTransaction, where: SQL | undefined) {
   return tx.select({
-    date: sql<string>`to_char(date(${startedAt}), 'YYYY-MM-DD')`,
+    date: localDate(startedAt),
     total: sql<number>`CAST(COUNT(*) AS int)`,
     successCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${runStatus} = 'success') AS int)`,
     failCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${runStatus} = 'fail') AS int)`,
@@ -621,8 +622,8 @@ function dailyStatsQuery(tx: DbTransaction, where: SQL | undefined) {
     p95DurationMs: sql<number | null>`CAST(ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY ${durationMs}) FILTER (WHERE ${durationMs} IS NOT NULL)) AS int)`,
   }).from(cronJobLogs)
     .where(where)
-    .groupBy(sql`date(${startedAt})`)
-    .orderBy(sql`date(${startedAt})`);
+    .groupBy(localDate(startedAt))
+    .orderBy(localDate(startedAt));
 }
 
 export async function getCronJobStats(q: QueryOutputOf<typeof cronJobContract.stats>): Promise<CronJobStats> {
@@ -650,13 +651,13 @@ export async function getCronJobStats(q: QueryOutputOf<typeof cronJobContract.st
     const dailyRows = await dailyStatsQuery(tx, periodWindow);
 
     const dowHourRows = await tx.select({
-      dow: sql<number>`CAST(EXTRACT(ISODOW FROM ${startedAt}) AS int)`,
-      hour: sql<number>`CAST(EXTRACT(HOUR FROM ${startedAt}) AS int)`,
+      dow: sql<number>`CAST(EXTRACT(ISODOW FROM ${localTime(startedAt)}) AS int)`,
+      hour: sql<number>`CAST(EXTRACT(HOUR FROM ${localTime(startedAt)}) AS int)`,
       total: sql<number>`CAST(COUNT(*) AS int)`,
       failCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${runStatus} IN ('fail', 'timeout')) AS int)`,
     }).from(cronJobLogs)
       .where(periodWindow)
-      .groupBy(sql`EXTRACT(ISODOW FROM ${startedAt})`, sql`EXTRACT(HOUR FROM ${startedAt})`);
+      .groupBy(sql`EXTRACT(ISODOW FROM ${localTime(startedAt)})`, sql`EXTRACT(HOUR FROM ${localTime(startedAt)})`);
 
     // 失败原因归一化聚合：数字（ID / 时间 / 行数）替换为 # 后再分组，让同类错误合并
     const normalizedError = sql`left(regexp_replace(coalesce(${failureMessage}, ''), '[0-9]+', '#', 'g'), 200)`;

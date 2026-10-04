@@ -10,6 +10,7 @@ import { buildListResult } from '../../lib/list-query';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { assertSiteAccess } from './cms-sites.service';
 import { buildCmsContentListWhere } from './cms-contents-query.service';
+import { cmsWallClockAt } from './cms-wall-clock';
 import { cmsWorkingHasUnpublishedChanges } from './cms-content-change-state';
 import { cmsEditorialTaskVisibility } from './cms-editorial-tasks.service';
 
@@ -25,7 +26,7 @@ export async function getCmsEditorialWorkspace(q: QueryOutputOf<typeof cmsOperat
   const due = sql<string | null>`${cmsContentWorkingCopies.snapshot}->>'dueAt'`;
   const queueConditions: Record<Queue, SQL | undefined> = {
     mine: or(eq(workingOwner, actor), and(isNull(workingOwner), eq(cmsContents.createdBy, actor))), review: eq(cmsContentWorkingCopies.editorialStatus, 'pending'),
-    overdue: and(ne(cmsContentWorkingCopies.editorialStatus, 'clean'), sql`nullif(${due},'')::timestamp < (now() at time zone ${APP_TIME_ZONE})`),
+    overdue: and(ne(cmsContentWorkingCopies.editorialStatus, 'clean'), sql`${cmsWallClockAt(due)} < now()`),
     notes: sql`exists (select 1 from ${cmsEditorialNotes} where ${cmsEditorialNotes.contentId}=${cmsContents.id} and ${cmsEditorialNotes.resolved}=false)`,
     unpublished: cmsWorkingHasUnpublishedChanges(), feedback: undefined, tasks: undefined,
     reviews: buildWhere(eq(cmsContents.status, 'published'), sql`exists(select 1 from ${cmsContentReviewPolicies} where ${cmsContentReviewPolicies.contentId}=${cmsContents.id}

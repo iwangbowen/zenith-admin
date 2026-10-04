@@ -1,5 +1,6 @@
 import { ilike } from 'drizzle-orm';
 import { hasPermission, currentUser } from '../../../../lib/context';
+import { formatDate } from '../../../../lib/datetime';
 import { tenantCondition } from '../../../../lib/tenant';
 import { buildWhere } from '../../../../lib/where-helpers';
 import { db } from '../../../../db';
@@ -31,7 +32,7 @@ export const announcementSearchAdapter: GlobalSearchAdapter = {
       id: String(row.id),
       title: row.title,
       subtitle: [row.type, row.priority].filter(Boolean).join(' · '),
-      description: [row.publishStatus, row.publishTime?.toISOString().slice(0, 10)].filter(Boolean).join(' · '),
+      description: [row.publishStatus, row.publishTime ? formatDate(row.publishTime) : null].filter(Boolean).join(' · '),
       icon: 'Megaphone',
       route: `/system/announcements?title=${encodeURIComponent(row.title)}`,
       highlights: [{ field: 'title', text: row.title }],

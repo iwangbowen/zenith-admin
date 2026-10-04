@@ -34,6 +34,7 @@ import logger from '../../lib/logger';
 import type { MpKfSession, MpKfSessionDetail, MpKfSessionEvent, MpKfRoutingConfig, MpKfSessionStats, MpKfSessionEventType, MpKfSessionCloseReason, MpKfRoutingStrategy, MpMessageType, TransferMpKfSessionInput, UpdateMpKfRoutingConfigInput, mpKfSessionContract } from '@zenith/shared/mp';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import type { AcceptMpKfSessionInput, CloseMpKfSessionInput, ReplyMpKfSessionInput } from '@zenith/shared/platform';
+import { localDate } from "../../lib/datetime-sql";
 
 // ─── 映射 ────────────────────────────────────────────────────────────────────
 interface SessionJoinRow {
@@ -465,19 +466,19 @@ export async function getMpKfSessionReport(accountId: number, days: number): Pro
   const base = (extra: SQL) => buildWhere(tenant ? and(extra, tenant) : extra);
 
   const [createdRows, closedRows] = await Promise.all([
-    db.select({ d: sql<string>`to_char(${mpKfSessions.createdAt}, 'YYYY-MM-DD')`, n: sql<number>`count(*)::int` })
+    db.select({ d: localDate(mpKfSessions.createdAt), n: sql<number>`count(*)::int` })
       .from(mpKfSessions)
       .where(base(and(eq(mpKfSessions.accountId, accountId), gte(mpKfSessions.createdAt, since))!))
-      .groupBy(sql`to_char(${mpKfSessions.createdAt}, 'YYYY-MM-DD')`),
+      .groupBy(localDate(mpKfSessions.createdAt)),
     db.select({
-      d: sql<string>`to_char(${mpKfSessions.closedAt}, 'YYYY-MM-DD')`,
+      d: localDate(mpKfSessions.closedAt),
       n: sql<number>`count(*)::int`,
       avgWait: sql<number>`coalesce(avg(extract(epoch from (${mpKfSessions.acceptedAt} - ${mpKfSessions.createdAt}))), 0)::float`,
       avgRating: sql<number>`coalesce(avg(${mpKfSessions.rating}), 0)::float`,
     })
       .from(mpKfSessions)
       .where(base(and(eq(mpKfSessions.accountId, accountId), eq(mpKfSessions.status, 'closed'), gte(mpKfSessions.closedAt, since))!))
-      .groupBy(sql`to_char(${mpKfSessions.closedAt}, 'YYYY-MM-DD')`),
+      .groupBy(localDate(mpKfSessions.closedAt)),
   ]);
 
   const createdMap = new Map(createdRows.map((r) => [r.d, r.n]));

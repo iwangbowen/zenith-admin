@@ -16,8 +16,7 @@ import { ensureIotDeviceExists } from './iot-devices.service';
 /**
  * 增量聚合：重算 [now - 2h 的小时桶起点, now) 覆盖窗口。
  * 跨小时边界的晚到数据会被下一轮重算收敛；服务重启漏跑由下次调度补齐近窗。
- * 窗口下界显式换算成 UTC 挂钟 timestamp（与写入口径一致），保持纯 timestamp 比较，
- * 分区裁剪与 BRIN 范围扫描都能直接命中，且不受数据库 TimeZone 设置影响。
+ * 小时桶与窗口下界按 UTC 整点（三参数 date_trunc），不受会话时区影响。
  */
 export async function rollupIotTelemetryHourly(): Promise<string> {
   const result = await db.execute(sql`
@@ -25,7 +24,7 @@ export async function rollupIotTelemetryHourly(): Promise<string> {
     SELECT
       t.device_id,
       m.key AS property,
-      date_trunc('hour', t.reported_at) AS bucket,
+      date_trunc('hour', t.reported_at, 'UTC') AS bucket,
       min((m.value)::text::double precision),
       max((m.value)::text::double precision),
       avg((m.value)::text::double precision),
@@ -33,9 +32,9 @@ export async function rollupIotTelemetryHourly(): Promise<string> {
       count(*)::int
     FROM iot_telemetry t
     CROSS JOIN LATERAL jsonb_each(t.metrics) AS m(key, value)
-    WHERE t.reported_at >= date_trunc('hour', (now() AT TIME ZONE 'UTC') - interval '2 hours')
+    WHERE t.reported_at >= date_trunc('hour', now() - interval '2 hours', 'UTC')
       AND jsonb_typeof(m.value) = 'number'
-    GROUP BY t.device_id, m.key, date_trunc('hour', t.reported_at)
+    GROUP BY t.device_id, m.key, date_trunc('hour', t.reported_at, 'UTC')
     ON CONFLICT (device_id, property, bucket) DO UPDATE SET
       min_value = EXCLUDED.min_value,
       max_value = EXCLUDED.max_value,

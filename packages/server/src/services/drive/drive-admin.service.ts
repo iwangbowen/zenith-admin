@@ -7,6 +7,7 @@ import { formatDateTime, startOfToday } from '../../lib/datetime';
 import { tenantCondition } from '../../lib/tenant';
 import { buildWhere } from '../../lib/where-helpers';
 import { effectiveQuotaBytes, getDriveSettings } from './drive-settings.service';
+import { localDate } from "../../lib/datetime-sql";
 
 function categoryExpr() {
   return sql<string>`case
@@ -53,12 +54,12 @@ export async function getDriveAdminStats(): Promise<DriveAdminStats> {
       tx.select({ category: categoryExpr(), count: sql<number>`count(*)::int`, bytes: sql<number>`coalesce(sum(${driveNodes.size}), 0)::bigint` })
         .from(driveNodes).where(buildWhere(eq(driveNodes.type, 'file'), isNull(driveNodes.deletedAt), nodeTenant)).groupBy(categoryExpr()),
       tx.select({
-        day: sql<string>`to_char(${driveActivities.createdAt}, 'YYYY-MM-DD')`,
+        day: localDate(driveActivities.createdAt),
         uploads: sql<number>`count(*) filter (where ${driveActivities.action} = 'upload')::int`,
         downloads: sql<number>`count(*) filter (where ${driveActivities.action} = 'download')::int`,
       }).from(driveActivities)
         .where(buildWhere(gte(driveActivities.createdAt, weekAgo), tenantCondition(driveActivities, user)))
-        .groupBy(sql`to_char(${driveActivities.createdAt}, 'YYYY-MM-DD')`),
+        .groupBy(localDate(driveActivities.createdAt)),
     ]);
     const byType: Record<DriveSpaceType, number> = { personal: 0, department: 0, team: 0 };
     for (const r of spaceRows) byType[r.type] = r.count;

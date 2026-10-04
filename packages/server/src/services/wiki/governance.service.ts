@@ -19,6 +19,7 @@ import { notify } from '../messaging/notification-outbox.service';
 import { wikiSpaceAccessCondition } from './access';
 import { ensureSpaceRole } from './spaces.service';
 import { nextWikiDocSort } from './doc-order';
+import { localDate } from "../../lib/datetime-sql";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -247,12 +248,12 @@ export async function getWikiOpsStats() {
   const [trendRows, spaceRows, searchCount30d, noResultCount30d, reviewCounts,
     pendingBacklog, expiredCount, reviewDueCount, noOwnerCount, archivedCount] = await Promise.all([
     db.select({
-      date: sql<string>`to_char(${wikiDocs.createdAt}, 'YYYY-MM-DD')`,
+      date: localDate(wikiDocs.createdAt),
       count: sql<number>`count(*)::int`,
     }).from(wikiDocs)
       .where(buildWhere(gte(wikiDocs.createdAt, since30d), scope))
-      .groupBy(sql`to_char(${wikiDocs.createdAt}, 'YYYY-MM-DD')`)
-      .orderBy(sql`to_char(${wikiDocs.createdAt}, 'YYYY-MM-DD')`),
+      .groupBy(localDate(wikiDocs.createdAt))
+      .orderBy(localDate(wikiDocs.createdAt)),
     db.select({
       spaceName: wikiSpaces.name,
       count: sql<number>`count(*)::int`,

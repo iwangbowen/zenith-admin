@@ -14,6 +14,7 @@ import { clampDays } from '../../lib/analytics-helpers';
 import { currentUser } from '../../lib/context';
 import { tenantCondition } from '../../lib/tenant';
 import { buildWhere } from '../../lib/where-helpers';
+import { localDate } from "../../lib/datetime-sql";
 
 const ROWS_LIMIT = 20;
 
@@ -42,7 +43,7 @@ export async function getChannelAnalysis(q: QueryOutputOf<typeof channelAnalysis
     and(eq(shortLinkClicks.isBot, false), gte(shortLinkClicks.clickedAt, since)),
     tenantCondition(shortLinks, user),
   );
-  const dateExpr = sql<string>`to_char(${shortLinkClicks.clickedAt}, 'YYYY-MM-DD')`;
+  const dateExpr = localDate(shortLinkClicks.clickedAt);
 
   const [dimRows, trendRows, totalsRow] = await Promise.all([
     db

@@ -9,6 +9,7 @@ import { buildListResult } from '../../lib/list-query';
 import { requireFirstRow } from '../../lib/db-assert';
 import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { getSettings } from '../../lib/settings';
+import { localDate } from "../../lib/datetime-sql";
 
 export interface CreateRecordingInput {
   title: string;
@@ -241,14 +242,14 @@ export async function getRecordingStats() {
       .orderBy(desc(sql`count(*)`)),
     db
       .select({
-        date: sql<string>`to_char(${terminalRecordings.createdAt}, 'YYYY-MM-DD')`,
+        date: localDate(terminalRecordings.createdAt),
         count: sql<number>`count(*)::int`,
         sizeBytes: sql<string>`coalesce(sum(length(${terminalRecordings.events}::text)), 0)::bigint`,
       })
       .from(terminalRecordings)
       .where(gte(terminalRecordings.createdAt, sql`now() - interval '30 days'`))
-      .groupBy(sql`to_char(${terminalRecordings.createdAt}, 'YYYY-MM-DD')`)
-      .orderBy(sql`to_char(${terminalRecordings.createdAt}, 'YYYY-MM-DD')`),
+      .groupBy(localDate(terminalRecordings.createdAt))
+      .orderBy(localDate(terminalRecordings.createdAt)),
     getSettings('terminal').then((s) => s.recordingRetainDays),
     getSettings('terminal').then((s) => s.recordingMaxSizeMb),
   ]);

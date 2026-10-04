@@ -12,6 +12,7 @@ import { formatDateTime, resolveStatsWindow } from '../../lib/datetime';
 import { getNicknameMap, findUsernamesByNickname } from '../../lib/user-nicknames';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
+import { localDate, localTime } from "../../lib/datetime-sql";
 
 export type OperationLogsListFilter = Omit<QueryOutputOf<typeof operationLogContract.list>, 'page' | 'pageSize'>;
 
@@ -117,18 +118,18 @@ async function computeOperationLogStats(user: JwtPayload, daysRaw?: number) {
       count: moduleTimingCount,
     }).from(operationLogs).where(and(baseWhere, sql`${operationLogs.durationMs} is not null`)).groupBy(operationLogs.module).orderBy(desc(sql<number>`round(avg(${operationLogs.durationMs}))`)).limit(15),
     db.select({
-      date: sql<string>`to_char(date(${operationLogs.createdAt}), 'YYYY-MM-DD')`,
+      date: localDate(operationLogs.createdAt),
       count: count(),
       successCount: sql<number>`(count(case when ${operationLogs.responseCode} >= 200 and ${operationLogs.responseCode} < 400 then 1 end))::integer`,
       failCount: sql<number>`(count(case when ${operationLogs.responseCode} >= 400 then 1 end))::integer`,
       avgMs: sql<number | null>`round(avg(${operationLogs.durationMs}))::float`,
-    }).from(operationLogs).where(baseWhere).groupBy(sql`date(${operationLogs.createdAt})`).orderBy(sql`date(${operationLogs.createdAt})`),
+    }).from(operationLogs).where(baseWhere).groupBy(localDate(operationLogs.createdAt)).orderBy(localDate(operationLogs.createdAt)),
     db.select({ username: operationLogs.username, count: userCount }).from(operationLogs).where(baseWhere).groupBy(operationLogs.username).orderBy(desc(userCount)).limit(10),
     db.select({ method: operationLogs.method, count: methodCount }).from(operationLogs).where(baseWhere).groupBy(operationLogs.method).orderBy(desc(methodCount)),
     db.select({
-      hour: sql<number>`(extract(hour from ${operationLogs.createdAt}))::integer`,
+      hour: sql<number>`(extract(hour from ${localTime(operationLogs.createdAt)}))::integer`,
       count: hourlyCount,
-    }).from(operationLogs).where(baseWhere).groupBy(sql`extract(hour from ${operationLogs.createdAt})`).orderBy(sql`extract(hour from ${operationLogs.createdAt})`),
+    }).from(operationLogs).where(baseWhere).groupBy(sql`extract(hour from ${localTime(operationLogs.createdAt)})`).orderBy(sql`extract(hour from ${localTime(operationLogs.createdAt)})`),
     db.select({
       statusClass: sql<string>`(floor(${operationLogs.responseCode} / 100)::text || 'xx')`,
       cnt: count(),

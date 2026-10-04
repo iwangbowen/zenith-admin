@@ -1,7 +1,7 @@
 import { HTTPException } from 'hono/http-exception';
 import { requireRow } from '../../lib/db-assert';
 import { getMastra } from '../../lib/mastra';
-import { formatDateTime } from '../../lib/datetime';
+import { currentDateTime, formatDateTime } from '../../lib/datetime';
 import logger from '../../lib/logger';
 import { AI_EVAL_SCORERS } from '@zenith/shared/ai';
 import type {
@@ -268,7 +268,7 @@ export async function runEvalExperiment(
   }
   requireRow(agent, '评测目标智能体不存在或未注册', 400);
 
-  const name = input.name?.trim() || `exp-${new Date().toISOString().slice(0, 16).replace('T', ' ')}`;
+  const name = input.name?.trim() || `exp-${currentDateTime().slice(0, 16)}`;
   const scorers = input.scorers && input.scorers.length > 0 ? [...new Set(input.scorers)] : [DEFAULT_SCORER];
 
   // llm 类打分器:发起前以当前默认服务商刷新注册(评审模型跟随配置);无可用配置时明确报错

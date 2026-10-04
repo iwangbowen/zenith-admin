@@ -6,14 +6,16 @@
  */
 import { sql } from 'drizzle-orm';
 import { db } from '../../db';
+import { localDayStart, localTime } from '../../lib/datetime-sql';
 
 export async function rollupShortLinkDailyStats(): Promise<number> {
+  const statDate = sql`(${localTime(sql`clicked_at`)})::date`;
   const res = await db.execute(sql`
     INSERT INTO short_link_daily_stats (link_id, stat_date, pv, uv)
-    SELECT link_id, date(clicked_at), count(*), count(DISTINCT visitor_id)
+    SELECT link_id, ${statDate}, count(*), count(DISTINCT visitor_id)
     FROM short_link_clicks
-    WHERE is_bot = false AND clicked_at < date_trunc('day', now())
-    GROUP BY link_id, date(clicked_at)
+    WHERE is_bot = false AND clicked_at < ${localDayStart(0)}
+    GROUP BY link_id, ${statDate}
     ON CONFLICT (link_id, stat_date)
     DO UPDATE SET pv = excluded.pv, uv = excluded.uv
   `);

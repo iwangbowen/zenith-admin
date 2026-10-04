@@ -6,11 +6,10 @@ import { db } from '../../db';
 import { openApiCallLogs, openApiCallStatsDaily } from '../../db/schema';
 import { buildListResult } from '../../lib/list-query';
 import { APP_TIME_ZONE, formatDate, formatDateTime, parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
+import { localDate, localFormat } from '../../lib/datetime-sql';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
 import { getPolicyRetentionDays } from '../../lib/retention';
 import { HTTPException } from 'hono/http-exception';
-
-const APP_TIME_ZONE_SQL = sql.raw(`'${APP_TIME_ZONE.replaceAll("'", "''")}'`);
 
 type OpenApiStatsRangeInput = QueryOutputOf<typeof openApiStatsContract.overview>;
 
@@ -145,6 +144,7 @@ export async function getOpenApiStatsTrend(opts: QueryOutputOf<typeof openApiSta
     assertAggregateBoundaryCompatible(opts, watermark);
     const dailyWhere = dailyRangeWhere(opts, watermark);
     const rawWhere = rawTailWhere(opts, watermark);
+    const dayBucket = localDate(openApiCallLogs.createdAt);
     const [dailyRows, rawRows] = await Promise.all([
       db.select({
         time: openApiCallStatsDaily.statDate,
@@ -156,12 +156,12 @@ export async function getOpenApiStatsTrend(opts: QueryOutputOf<typeof openApiSta
         .groupBy(openApiCallStatsDaily.statDate)
         .orderBy(openApiCallStatsDaily.statDate),
       db.select({
-        time: sql<string>`to_char(${openApiCallLogs.createdAt} at time zone 'UTC' at time zone ${APP_TIME_ZONE_SQL}, 'YYYY-MM-DD')`,
+        time: dayBucket,
         total: count(),
         success: successFilter,
       }).from(openApiCallLogs)
         .where(rawWhere)
-        .groupBy(sql`to_char(${openApiCallLogs.createdAt} at time zone 'UTC' at time zone ${APP_TIME_ZONE_SQL}, 'YYYY-MM-DD')`),
+        .groupBy(dayBucket),
     ]);
     return [...dailyRows.map((row) => ({
       time: row.time,
@@ -185,8 +185,7 @@ export async function getOpenApiStatsTrend(opts: QueryOutputOf<typeof openApiSta
       message: `按小时统计仅支持最近 ${logRetentionDays} 天`,
     });
   }
-  const bucket =
-    sql<string>`to_char(${openApiCallLogs.createdAt} at time zone 'UTC' at time zone ${APP_TIME_ZONE_SQL}, 'YYYY-MM-DD HH24:00:00')`;
+  const bucket = localFormat(openApiCallLogs.createdAt, 'YYYY-MM-DD HH24:00:00');
 
   const rows = await db
     .select({ time: bucket, total: count(), success: successFilter })

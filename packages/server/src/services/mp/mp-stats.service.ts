@@ -9,6 +9,7 @@ import { ensureMpAccountExists } from './mp-account.service';
 import { getUserSummary, getUserCumulate, getUpstreamMsg, getArticleSummary, getUserShare, getInterfaceSummary, DATACUBE_MAX_SPAN_DAYS } from '../../lib/wechat';
 import { mapWechatError } from '../../lib/wechat-error';
 import type { MpStats, MpDatacube } from '@zenith/shared/mp';
+import { localDate } from "../../lib/datetime-sql";
 
 /** 公众号数据统计（基于本地数据聚合，近 7 日趋势） */
 export async function getMpStats(accountId: number): Promise<MpStats> {
@@ -37,14 +38,14 @@ export async function getMpStats(accountId: number): Promise<MpStats> {
   const since = startOfRecentDays(7);
 
   const [fanRows, msgRows] = await Promise.all([
-    db.select({ d: sql<string>`to_char(${mpFans.createdAt}, 'YYYY-MM-DD')`, n: sql<number>`count(*)::int` })
+    db.select({ d: localDate(mpFans.createdAt), n: sql<number>`count(*)::int` })
       .from(mpFans)
       .where(buildWhere(and(eq(mpFans.accountId, accountId), gte(mpFans.createdAt, since), tenantScope(mpFans))))
-      .groupBy(sql`to_char(${mpFans.createdAt}, 'YYYY-MM-DD')`),
-    db.select({ d: sql<string>`to_char(${mpMessages.createdAt}, 'YYYY-MM-DD')`, dir: mpMessages.direction, n: sql<number>`count(*)::int` })
+      .groupBy(localDate(mpFans.createdAt)),
+    db.select({ d: localDate(mpMessages.createdAt), dir: mpMessages.direction, n: sql<number>`count(*)::int` })
       .from(mpMessages)
       .where(buildWhere(and(eq(mpMessages.accountId, accountId), gte(mpMessages.createdAt, since), tenantScope(mpMessages))))
-      .groupBy(sql`to_char(${mpMessages.createdAt}, 'YYYY-MM-DD')`, mpMessages.direction),
+      .groupBy(localDate(mpMessages.createdAt), mpMessages.direction),
   ]);
 
   const fanMap = new Map(fanRows.map((r) => [r.d, r.n]));

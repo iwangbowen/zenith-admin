@@ -12,6 +12,7 @@ import { asyncTaskItems, asyncTasks, users } from '../../db/schema';
 import { pageOffset } from '../../lib/pagination';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import { APP_TIME_ZONE, formatDateTime, formatNullableDateTime } from '../../lib/datetime';
+import { localDate, localFormat } from '../../lib/datetime-sql';
 import { currentUser, hasPermission } from '../../lib/context';
 import type { JobSourceRawSummary } from '../../lib/job-monitor/registry';
 import {
@@ -57,7 +58,7 @@ export async function getAsyncTaskHealth(): Promise<JobSourceRawSummary> {
     failed24h: sql<number>`count(*) filter (where ${asyncTasks.status} = 'failed' and ${asyncTasks.completedAt} >= ${sql.param(since, asyncTasks.createdAt)})::int`,
     succeeded24h: sql<number>`count(*) filter (where ${asyncTasks.status} = 'success' and ${asyncTasks.completedAt} >= ${sql.param(since, asyncTasks.createdAt)})::int`,
     failed1h: sql<number>`count(*) filter (where ${asyncTasks.status} = 'failed' and ${asyncTasks.completedAt} >= ${sql.param(hour, asyncTasks.createdAt)})::int`,
-    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${sql.param(now, asyncTasks.createdAt)}::timestamp - min(coalesce(${asyncTasks.nextRunAt}, ${asyncTasks.createdAt})) filter (where ${due}))))::int`,
+    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${sql.param(now, asyncTasks.createdAt)}::timestamptz - min(coalesce(${asyncTasks.nextRunAt}, ${asyncTasks.createdAt})) filter (where ${due}))))::int`,
   }).from(asyncTasks).where(scope);
   const breakdown = await executor.select({
     taskType: asyncTasks.taskType,
@@ -285,11 +286,9 @@ export async function getAsyncTaskStats(): Promise<AsyncTaskStats> {
   const dayMs = 24 * 60 * 60 * 1000;
   const since24h = new Date(Date.now() - dayMs);
   const since30d = new Date(Date.now() - 30 * dayMs);
-  // 时间列存的是 UTC 裸时间，按应用时区出日期/小时桶（与 open-api-stats 同一手法），
-  // 窗口起点对齐本地整天/整点，与前端的补桶逻辑一致
-  const tzSql = sql.raw(`'${APP_TIME_ZONE.replaceAll("'", "''")}'`);
-  const localCreatedAt = sql`${asyncTasks.createdAt} at time zone 'UTC' at time zone ${tzSql}`;
   const nowLocal = dayjs().tz(APP_TIME_ZONE);
+  const dailyBucket = localDate(asyncTasks.createdAt);
+  const hourlyBucket = localFormat(asyncTasks.createdAt, 'YYYY-MM-DD HH24:00');
   const dailyStart = nowLocal.startOf('day').subtract(13, 'day').toDate();
   const hourlyStart = nowLocal.startOf('hour').subtract(23, 'hour').toDate();
   const todayStart = nowLocal.startOf('day').toDate();
@@ -311,22 +310,22 @@ export async function getAsyncTaskStats(): Promise<AsyncTaskStats> {
     }).from(asyncTasks)
       .where(and(eq(asyncTasks.status, 'success'), gte(asyncTasks.completedAt, since24h))),
     db.select({
-      date: sql<string>`to_char(${localCreatedAt}, 'YYYY-MM-DD')`,
+      date: dailyBucket,
       submitted: sql<number>`count(*)::int`,
       success: sql<number>`count(*) filter (where ${asyncTasks.status} = 'success')::int`,
       failed: sql<number>`count(*) filter (where ${asyncTasks.status} = 'failed')::int`,
     }).from(asyncTasks)
       .where(gte(asyncTasks.createdAt, dailyStart))
-      .groupBy(sql`to_char(${localCreatedAt}, 'YYYY-MM-DD')`)
-      .orderBy(sql`to_char(${localCreatedAt}, 'YYYY-MM-DD')`),
+      .groupBy(dailyBucket)
+      .orderBy(dailyBucket),
     db.select({
-      hour: sql<string>`to_char(date_trunc('hour', ${localCreatedAt}), 'YYYY-MM-DD HH24:00')`,
+      hour: hourlyBucket,
       submitted: sql<number>`count(*)::int`,
       failed: sql<number>`count(*) filter (where ${asyncTasks.status} = 'failed')::int`,
     }).from(asyncTasks)
       .where(gte(asyncTasks.createdAt, hourlyStart))
-      .groupBy(sql`date_trunc('hour', ${localCreatedAt})`)
-      .orderBy(sql`date_trunc('hour', ${localCreatedAt})`),
+      .groupBy(hourlyBucket)
+      .orderBy(hourlyBucket),
     db.select({
       submitted: sql<number>`count(*) filter (where ${asyncTasks.createdAt} >= ${todayStartParam})::int`,
       success: sql<number>`count(*) filter (where ${asyncTasks.createdAt} >= ${todayStartParam} and ${asyncTasks.status} = 'success')::int`,

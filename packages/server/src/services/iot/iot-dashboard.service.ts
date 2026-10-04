@@ -17,6 +17,7 @@ import { tenantCondition } from '../../lib/tenant';
 import { mapIotAlarm } from './iot-alarms.service';
 import { mapIotDeviceEvent } from './iot-events.service';
 import { getIotTelemetryTodayCount } from './iot-telemetry-counter';
+import { localDate, localFormat } from "../../lib/datetime-sql";
 
 export async function getIotDashboard(): Promise<IotDashboard> {
   const user = currentUser();
@@ -46,7 +47,7 @@ export async function getIotDashboard(): Promise<IotDashboard> {
     db.$count(iotProducts, tenantCondition(iotProducts, user)),
     // 在线趋势：近 24h 按 10 分钟桶取平均
     db.select({
-      bucket: sql<string>`to_char(to_timestamp(floor(extract(epoch FROM ${iotOnlineSnapshots.sampledAt}) / 600) * 600), 'YYYY-MM-DD HH24:MI:SS')`,
+      bucket: localFormat(sql`to_timestamp(floor(extract(epoch FROM ${iotOnlineSnapshots.sampledAt}) / 600) * 600)`, 'YYYY-MM-DD HH24:MI:SS'),
       total: sql<number>`round(avg(${iotOnlineSnapshots.totalCount}))::int`,
       online: sql<number>`round(avg(${iotOnlineSnapshots.onlineCount}))::int`,
     })
@@ -56,7 +57,7 @@ export async function getIotDashboard(): Promise<IotDashboard> {
       .orderBy(sql`1`),
     // 告警趋势：近 7 天按日分级
     db.select({
-      date: sql<string>`to_char(${iotAlarms.firedAt}, 'YYYY-MM-DD')`,
+      date: localDate(iotAlarms.firedAt),
       level: iotAlarms.level,
       cnt: count(),
     })

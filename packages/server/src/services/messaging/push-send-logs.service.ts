@@ -12,6 +12,7 @@ import { pageOffset } from '../../lib/pagination';
 import { buildListResult } from '../../lib/list-query';
 import { resolveUserNames } from '../../lib/user-nicknames';
 import { pickEntity } from '../../lib/entity-map';
+import { localDate } from "../../lib/datetime-sql";
 
 export function mapPushSendLog(row: PushSendLogRow & { app?: { name: string } | null }, subjectName?: string | null) {
   return pickEntity(pushSendLogSchema, row, {
@@ -98,7 +99,7 @@ export async function applyPushReceipt(event: PushReceiptEvent): Promise<boolean
 export async function getPushSendLogStats(days = 14): Promise<PushSendLogStats> {
   const since = startOfRecentDays(days);
 
-  const dateExpr = sql<string>`to_char(${pushSendLogs.createdAt}, 'YYYY-MM-DD')`;
+  const dateExpr = localDate(pushSendLogs.createdAt);
   const successExpr = sql<number>`count(*) filter (where ${pushSendLogs.status} = 'success')::int`;
   const failedExpr = sql<number>`count(*) filter (where ${pushSendLogs.status} = 'failed')::int`;
   const deliveredExpr = sql<number>`count(*) filter (where ${pushSendLogs.deliveredAt} is not null)::int`;

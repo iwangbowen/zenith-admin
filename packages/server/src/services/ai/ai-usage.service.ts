@@ -4,6 +4,7 @@ import { aiMessages, aiConversations, aiProviderConfigs, users } from '../../db/
 import { parseDateRangeStart, parseDateRangeEnd } from '../../lib/datetime';
 import { getAiReliability } from '../../lib/ai/reliability';
 import { buildWhere } from '../../lib/where-helpers';
+import { localDate } from "../../lib/datetime-sql";
 
 export interface UsageRange {
   startDate?: string;
@@ -141,7 +142,7 @@ export async function getUsageByUser(range: UsageRange, limit = 10) {
 }
 
 export async function getUsageTrend(range: UsageRange) {
-  const dateExpr = sql<string>`to_char(${aiMessages.createdAt}, 'YYYY-MM-DD')`;
+  const dateExpr = localDate(aiMessages.createdAt);
   const rows = await db
     .select({
       date: dateExpr,

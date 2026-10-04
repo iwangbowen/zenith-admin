@@ -10,6 +10,7 @@ import {
   memberPointTransactions, memberCheckins, memberCoupons, memberWalletTransactions,
 } from '../../db/schema';
 import { formatDate, startOfToday } from '../../lib/datetime';
+import { localDate } from "../../lib/datetime-sql";
 
 function shiftDays(base: Date, delta: number): Date {
   const d = new Date(base);
@@ -88,13 +89,13 @@ export async function getMemberCharts() {
 
   const [registerRows, levelRows, pointRows, checkinRows, activityRows, rechargeRows, walletRows, sourceRows, couponRows] = await Promise.all([
     db.select({
-      date: sql<string>`to_char(date(${members.createdAt}), 'YYYY-MM-DD')`,
+      date: localDate(members.createdAt),
       count: count(),
     })
       .from(members)
       .where(and(isNull(members.deletedAt), gte(members.createdAt, days30Ago)))
-      .groupBy(sql`date(${members.createdAt})`)
-      .orderBy(sql`date(${members.createdAt})`),
+      .groupBy(localDate(members.createdAt))
+      .orderBy(localDate(members.createdAt)),
     db.select({
       levelId: members.levelId,
       name: memberLevels.name,
@@ -105,14 +106,14 @@ export async function getMemberCharts() {
       .where(isNull(members.deletedAt))
       .groupBy(members.levelId, memberLevels.name),
     db.select({
-      date: sql<string>`to_char(date(${memberPointTransactions.createdAt}), 'YYYY-MM-DD')`,
+      date: localDate(memberPointTransactions.createdAt),
       earned: sql<number>`coalesce(sum(case when ${memberPointTransactions.amount} > 0 then ${memberPointTransactions.amount} else 0 end), 0)::int`,
       spent: sql<number>`coalesce(sum(case when ${memberPointTransactions.amount} < 0 then -${memberPointTransactions.amount} else 0 end), 0)::int`,
     })
       .from(memberPointTransactions)
       .where(gte(memberPointTransactions.createdAt, days30Ago))
-      .groupBy(sql`date(${memberPointTransactions.createdAt})`)
-      .orderBy(sql`date(${memberPointTransactions.createdAt})`),
+      .groupBy(localDate(memberPointTransactions.createdAt))
+      .orderBy(localDate(memberPointTransactions.createdAt)),
     db.select({
       date: memberCheckins.checkinDate,
       count: count(),
@@ -150,14 +151,14 @@ export async function getMemberCharts() {
       .groupBy(sql`1`),
     // 近30天钱包收支（单位分）
     db.select({
-      date: sql<string>`to_char(date(${memberWalletTransactions.createdAt}), 'YYYY-MM-DD')`,
+      date: localDate(memberWalletTransactions.createdAt),
       income: sql<number>`coalesce(sum(case when ${memberWalletTransactions.amount} > 0 then ${memberWalletTransactions.amount} else 0 end), 0)::int`,
       expense: sql<number>`coalesce(sum(case when ${memberWalletTransactions.amount} < 0 then -${memberWalletTransactions.amount} else 0 end), 0)::int`,
     })
       .from(memberWalletTransactions)
       .where(gte(memberWalletTransactions.createdAt, days30Ago))
-      .groupBy(sql`date(${memberWalletTransactions.createdAt})`)
-      .orderBy(sql`date(${memberWalletTransactions.createdAt})`),
+      .groupBy(localDate(memberWalletTransactions.createdAt))
+      .orderBy(localDate(memberWalletTransactions.createdAt)),
     // 注册来源分布
     db.select({ source: members.registerSource, count: count() })
       .from(members)

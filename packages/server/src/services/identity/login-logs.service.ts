@@ -11,6 +11,7 @@ import { formatDateTime, resolveStatsWindow } from '../../lib/datetime';
 import { getNicknameMap, findUsernamesByNickname } from '../../lib/user-nicknames';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import type { loginLogContract } from '@zenith/shared/identity';
+import { localDate, localTime } from "../../lib/datetime-sql";
 
 export type LoginLogListFilter = Omit<QueryOutputOf<typeof loginLogContract.list>, 'page' | 'pageSize'>;
 
@@ -72,6 +73,7 @@ async function computeLoginLogStats(user: JwtPayload, daysRaw?: number) {
     failCount: sql<number>`(count(case when ${loginLogs.status} = 'fail' then 1 end))::integer`,
   };
 
+  const loginDay = localDate(loginLogs.createdAt);
   const [
     summaryRows, prevSummaryRows, dailyStats, userStats, ipStats, ipFailStats, browserStats, osStats, hourlyRaw,
     failReasonStats, locationStats, dowHourRaw, resolutionStats, gpuStats,
@@ -79,28 +81,28 @@ async function computeLoginLogStats(user: JwtPayload, daysRaw?: number) {
     db.select(summarySelect).from(loginLogs).where(baseWhere),
     db.select(summarySelect).from(loginLogs).where(prevWhere),
     db.select({
-      date: sql<string>`to_char(date(${loginLogs.createdAt}), 'YYYY-MM-DD')`,
+      date: loginDay,
       count: count(),
       successCount: sql<number>`(count(case when ${loginLogs.status} = 'success' then 1 end))::integer`,
       failCount: sql<number>`(count(case when ${loginLogs.status} = 'fail' then 1 end))::integer`,
-    }).from(loginLogs).where(baseWhere).groupBy(sql`date(${loginLogs.createdAt})`).orderBy(sql`date(${loginLogs.createdAt})`),
+    }).from(loginLogs).where(baseWhere).groupBy(loginDay).orderBy(loginDay),
     db.select({ username: loginLogs.username, cnt: count() }).from(loginLogs).where(baseWhere).groupBy(loginLogs.username).orderBy(desc(count())).limit(10),
     db.select({ ip: loginLogs.ip, cnt: count() }).from(loginLogs).where(and(baseWhere, sql`${loginLogs.ip} is not null`)).groupBy(loginLogs.ip).orderBy(desc(count())).limit(10),
     db.select({ ip: loginLogs.ip, cnt: count() }).from(loginLogs).where(and(baseWhere, eq(loginLogs.status, 'fail'), sql`${loginLogs.ip} is not null`)).groupBy(loginLogs.ip).orderBy(desc(count())).limit(10),
     db.select({ browser: loginLogs.browser, cnt: count() }).from(loginLogs).where(and(baseWhere, sql`${loginLogs.browser} is not null`)).groupBy(loginLogs.browser).orderBy(desc(count())).limit(10),
     db.select({ os: loginLogs.os, cnt: count() }).from(loginLogs).where(and(baseWhere, sql`${loginLogs.os} is not null`)).groupBy(loginLogs.os).orderBy(desc(count())).limit(10),
     db.select({
-      hour: sql<number>`(extract(hour from ${loginLogs.createdAt}))::integer`,
+      hour: sql<number>`(extract(hour from ${localTime(loginLogs.createdAt)}))::integer`,
       cnt: count(),
-    }).from(loginLogs).where(baseWhere).groupBy(sql`extract(hour from ${loginLogs.createdAt})`).orderBy(sql`extract(hour from ${loginLogs.createdAt})`),
+    }).from(loginLogs).where(baseWhere).groupBy(sql`extract(hour from ${localTime(loginLogs.createdAt)})`).orderBy(sql`extract(hour from ${localTime(loginLogs.createdAt)})`),
     db.select({ message: loginLogs.message, cnt: count() }).from(loginLogs).where(and(baseWhere, eq(loginLogs.status, 'fail'), sql`${loginLogs.message} is not null`)).groupBy(loginLogs.message).orderBy(desc(count())).limit(8),
     db.select({ location: loginLogs.location, cnt: count() }).from(loginLogs).where(and(baseWhere, sql`${loginLogs.location} is not null`)).groupBy(loginLogs.location).orderBy(desc(count())).limit(10),
     db.select({
-      dow: sql<number>`(extract(isodow from ${loginLogs.createdAt}))::integer`,
-      hour: sql<number>`(extract(hour from ${loginLogs.createdAt}))::integer`,
+      dow: sql<number>`(extract(isodow from ${localTime(loginLogs.createdAt)}))::integer`,
+      hour: sql<number>`(extract(hour from ${localTime(loginLogs.createdAt)}))::integer`,
       cnt: count(),
     }).from(loginLogs).where(baseWhere)
-      .groupBy(sql`extract(isodow from ${loginLogs.createdAt})`, sql`extract(hour from ${loginLogs.createdAt})`),
+      .groupBy(sql`extract(isodow from ${localTime(loginLogs.createdAt)})`, sql`extract(hour from ${localTime(loginLogs.createdAt)})`),
     db.select({
       resolution: sql<string>`(${loginLogs.screenWidth} || '×' || ${loginLogs.screenHeight})`,
       cnt: count(),

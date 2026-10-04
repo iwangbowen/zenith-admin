@@ -44,6 +44,7 @@ import { runAsUser } from '../../lib/audit-context';
 import { attachmentDisposition } from '../../lib/content-disposition';
 import { resolveUserNames } from '../../lib/user-nicknames';
 import { pickEntity } from '../../lib/entity-map';
+import { localDayStart, localFormat, localTrunc } from "../../lib/datetime-sql";
 
 /** 全量存储配置 id→row 映射（配置表行数极少），供列表映射直链使用 */
 export async function getStorageConfigMap(): Promise<Map<number, FileStorageConfigRow>> {
@@ -524,8 +525,8 @@ export async function getFileStats() {
       docCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${managedFiles.mimeType} LIKE 'text/%' OR ${managedFiles.mimeType} LIKE 'application/pdf%' OR ${managedFiles.mimeType} LIKE '%msword%' OR ${managedFiles.mimeType} LIKE '%wordprocessingml%' OR ${managedFiles.mimeType} LIKE '%spreadsheetml%' OR ${managedFiles.mimeType} LIKE '%presentationml%') AS int)`,
       videoCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${managedFiles.mimeType} LIKE 'video/%') AS int)`,
       audioCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${managedFiles.mimeType} LIKE 'audio/%') AS int)`,
-      todayCount: sql<number>`CAST(COUNT(*) FILTER (WHERE DATE(${managedFiles.createdAt}) = CURRENT_DATE) AS int)`,
-      thisMonthCount: sql<number>`CAST(COUNT(*) FILTER (WHERE DATE_TRUNC('month', ${managedFiles.createdAt}) = DATE_TRUNC('month', CURRENT_DATE)) AS int)`,
+      todayCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${managedFiles.createdAt} >= ${localDayStart(0)}) AS int)`,
+      thisMonthCount: sql<number>`CAST(COUNT(*) FILTER (WHERE ${managedFiles.createdAt} >= ${localTrunc('month', sql`now()`)}) AS int)`,
     }).from(managedFiles).where(tc),
 
     // 全量文件（用于按类型/provider/大小分区统计）
@@ -543,12 +544,12 @@ export async function getFileStats() {
 
     // 近 12 个月每月新增数量
     db.select({
-      month: sql<string>`to_char(date_trunc('month', ${managedFiles.createdAt}), 'YYYY-MM')`,
+      month: localFormat(managedFiles.createdAt, 'YYYY-MM'),
       count: sql<number>`CAST(COUNT(*) AS int)`,
     }).from(managedFiles)
       .where(buildWhere(gte(managedFiles.createdAt, sql`NOW() - INTERVAL '12 months'`), tc))
-      .groupBy(sql`date_trunc('month', ${managedFiles.createdAt})`)
-      .orderBy(sql`date_trunc('month', ${managedFiles.createdAt})`),
+      .groupBy(localFormat(managedFiles.createdAt, 'YYYY-MM'))
+      .orderBy(localFormat(managedFiles.createdAt, 'YYYY-MM')),
   ]);
 
   // 文件类型分布

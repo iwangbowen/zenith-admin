@@ -2,9 +2,8 @@
  * IoT 遥测明细分区维护（PostgreSQL 原生 RANGE 日分区，不依赖 pg_partman / TimescaleDB）。
  *
  * 分区口径：
- * - 命名 iot_telemetry_pYYYYMMDD，边界 [UTC 日 00:00, 次日 00:00)——与驱动写入 timestamp 列的
- *   UTC 挂钟口径一致（drizzle 以 toISOString() 落库，不经 session 时区换算），因此边界在 JS 侧计算、
- *   以字面量下发，不受数据库 TimeZone 设置影响
+ * - 命名 iot_telemetry_pYYYYMMDD，边界为 UTC 日 [00:00, 次日 00:00)，在 JS 侧计算，
+ *   以带 `+00` 的 timestamptz 字面量下发，不受会话时区影响
  * - 预建：启动 + 每小时任务确保 [今天 - 1, 今天 + PARTITION_AHEAD_DAYS] 存在
  * - 按需：写入命中「无分区」错误（乱序回填、任务漏跑）时按批次内日期补建后重试
  * - 清理：保留策略按分区上界 <= cutoff 整表 DROP；写入侧丢弃早于保留窗口的点，保证 DROP 过的区间不再回填
@@ -48,20 +47,26 @@ export function iotTelemetryPartitionName(day: Date): string {
   return `${PARTITION_PREFIX}${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}`;
 }
 
-/** timestamp 字面量（UTC 挂钟，无时区后缀） */
+/** timestamptz 字面量（带 +00，与分区键列类型一致） */
 function boundLiteral(date: Date): string {
-  return date.toISOString().slice(0, 19).replace('T', ' ');
+  return `${date.toISOString().slice(0, 19).replace('T', ' ')}+00`;
 }
 
-/** 解析 pg_get_expr(relpartbound)：FOR VALUES FROM ('2026-09-03 00:00:00') TO ('2026-09-04 00:00:00') */
+/** 解析 pg_get_expr(relpartbound)：FOR VALUES FROM ('2026-09-03 00:00:00+00') TO (...)；偏移随会话时区渲染 */
 export function parsePartitionBound(expr: string): { from: Date; to: Date } | null {
   const m = /FROM \('([^']+)'\) TO \('([^']+)'\)/.exec(expr);
   if (!m) return null;
-  const parse = (s: string) => new Date(`${s.replace(' ', 'T')}Z`);
-  const from = parse(m[1]);
-  const to = parse(m[2]);
-  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return null;
-  return { from, to };
+  const from = parseTimestamptzText(m[1]);
+  const to = parseTimestamptzText(m[2]);
+  return from && to ? { from, to } : null;
+}
+
+/** PostgreSQL timestamptz 文本：2026-09-03 08:00:00+08 / 2026-09-03 05:30:00+05:30 */
+function parseTimestamptzText(text: string): Date | null {
+  const m = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}(?:\.\d+)?)([+-]\d{2})(?::(\d{2}))?$/.exec(text);
+  if (!m) return null;
+  const date = new Date(`${m[1]}T${m[2]}${m[3]}:${m[4] ?? '00'}`);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 /** 覆盖 [from, to] 闭区间的全部 UTC 日起点 */

@@ -11,6 +11,7 @@ import { cmsContents, cmsContentTags, cmsContentChannels, cmsContentRelations, c
 import type { CmsContentRow, CmsTagRow } from '../../db/schema';
 import dayjs from 'dayjs';
 import { DATE_FORMAT, formatDate, formatTimestamps, parseDateRangeStart, parseDateRangeEnd, APP_TIME_ZONE } from '../../lib/datetime';
+import { cmsWallClockAt } from './cms-wall-clock';
 import { pickEntity } from '../../lib/entity-map';
 import { buildWhere, dateRangeConditions, withPagination, keywordCondition } from '../../lib/where-helpers';
 import { getAccessibleChannelIds, assertChannelAccess } from './cms-channels.service';
@@ -144,7 +145,7 @@ export async function buildCmsContentListWhere(q: CmsContentListFilter): Promise
   const workingCondition = buildWhere(
     eq(cmsContentWorkingCopies.contentId, cmsContents.id),
     q.calendarFrom || q.calendarTo ? or(...['scheduledAt', 'expireAt', 'dueAt'].map((field) => {
-      const at = sql`nullif(${cmsContentWorkingCopies.snapshot}->>${field}, '')::timestamp AT TIME ZONE ${APP_TIME_ZONE}`;
+      const at = cmsWallClockAt(sql`${cmsContentWorkingCopies.snapshot}->>${field}`);
       return buildWhere(calendarStart ? sql`(${at}) >= ${calendarStart}::timestamptz` : undefined, calendarEnd ? sql`(${at}) <= ${calendarEnd}::timestamptz` : undefined);
     })) : undefined,
     q.channelId ? eq(workingChannel, q.channelId) : undefined,
@@ -162,11 +163,11 @@ export async function buildCmsContentListWhere(q: CmsContentListFilter): Promise
     q.isOriginal !== undefined ? sql`(${cmsContentWorkingCopies.snapshot}->>'isOriginal')::boolean = ${q.isOriginal}` : undefined,
     // 待办口径与内容生产指标（getCmsEditorialMetrics）一致：比較用服务端 now()，保证看板数字与列表结果对得上
     q.overdue !== undefined ? (q.overdue
-      ? and(ne(cmsContentWorkingCopies.editorialStatus, 'clean'), sql`(${cmsContentWorkingCopies.snapshot}->>'dueAt')::timestamp < now()`)
-      : or(eq(cmsContentWorkingCopies.editorialStatus, 'clean'), sql`(${cmsContentWorkingCopies.snapshot}->>'dueAt')::timestamp >= now()`, sql`nullif(${cmsContentWorkingCopies.snapshot}->>'dueAt', '') is null`)) : undefined,
+      ? and(ne(cmsContentWorkingCopies.editorialStatus, 'clean'), sql`${cmsWallClockAt(sql`${cmsContentWorkingCopies.snapshot}->>'dueAt'`)} < now()`)
+      : or(eq(cmsContentWorkingCopies.editorialStatus, 'clean'), sql`${cmsWallClockAt(sql`${cmsContentWorkingCopies.snapshot}->>'dueAt'`)} >= now()`, sql`nullif(${cmsContentWorkingCopies.snapshot}->>'dueAt', '') is null`)) : undefined,
     q.scheduled !== undefined ? (q.scheduled
-      ? sql`(${cmsContentWorkingCopies.snapshot}->>'scheduledAt')::timestamp > now()`
-      : or(sql`(${cmsContentWorkingCopies.snapshot}->>'scheduledAt')::timestamp <= now()`, sql`nullif(${cmsContentWorkingCopies.snapshot}->>'scheduledAt', '') is null`)) : undefined,
+      ? sql`${cmsWallClockAt(sql`${cmsContentWorkingCopies.snapshot}->>'scheduledAt'`)} > now()`
+      : or(sql`${cmsWallClockAt(sql`${cmsContentWorkingCopies.snapshot}->>'scheduledAt'`)} <= now()`, sql`nullif(${cmsContentWorkingCopies.snapshot}->>'scheduledAt', '') is null`)) : undefined,
     q.hasUnresolvedNotes !== undefined ? (q.hasUnresolvedNotes
       ? sql`exists (select 1 from ${cmsEditorialNotes} where ${cmsEditorialNotes.contentId} = ${cmsContents.id} and ${cmsEditorialNotes.resolved} = false)`
       : sql`not exists (select 1 from ${cmsEditorialNotes} where ${cmsEditorialNotes.contentId} = ${cmsContents.id} and ${cmsEditorialNotes.resolved} = false)`) : undefined,
@@ -290,9 +291,9 @@ export async function getCmsContentCalendar(q: QueryOutputOf<typeof cmsContentCo
     join ${cmsContentWorkingCopies} on ${cmsContentWorkingCopies.contentId} = ${cmsContents.id}
     join lateral (values
       ('published', ${cmsContents.publishedAt}),
-      ('scheduled', nullif(${cmsContentWorkingCopies.snapshot}->>'scheduledAt', '')::timestamp at time zone ${APP_TIME_ZONE}),
-      ('due', nullif(${cmsContentWorkingCopies.snapshot}->>'dueAt', '')::timestamp at time zone ${APP_TIME_ZONE}),
-      ('expire', nullif(${cmsContentWorkingCopies.snapshot}->>'expireAt', '')::timestamp at time zone ${APP_TIME_ZONE})
+      ('scheduled', ${cmsWallClockAt(sql`${cmsContentWorkingCopies.snapshot}->>'scheduledAt'`)}),
+      ('due', ${cmsWallClockAt(sql`${cmsContentWorkingCopies.snapshot}->>'dueAt'`)}),
+      ('expire', ${cmsWallClockAt(sql`${cmsContentWorkingCopies.snapshot}->>'expireAt'`)})
     ) as calendar_event(kind, at)
       on calendar_event.at >= ${start}::timestamptz and calendar_event.at < ${end}::timestamptz
     where ${where}

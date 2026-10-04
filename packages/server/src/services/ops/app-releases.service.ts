@@ -38,6 +38,7 @@ import { bindUploadSession, requireUploadBinding } from '../files/upload-binding
 import { abortChunkUpload, completeChunkUpload, getUploadStatus, initChunkUpload, uploadChunk } from '../files/upload-sessions.service';
 import { countActiveDevices, getDeviceVersionDistribution, upsertDeviceHeartbeat } from './client-devices.service';
 import { pickEntity } from '../../lib/entity-map';
+import { localDate } from "../../lib/datetime-sql";
 
 // ─── semver 比较（无依赖实现；仅服务本模块的版本新旧判断）────────────────────
 
@@ -729,7 +730,7 @@ export async function getAppReleaseStats(appId: number, days: number): Promise<A
   await ensureClientAppExists(appId);
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   const baseWhere = and(eq(appReleaseEvents.appId, appId), gte(appReleaseEvents.createdAt, since));
-  const dateExpr = sql<string>`to_char(${appReleaseEvents.createdAt}, 'YYYY-MM-DD')`;
+  const dateExpr = localDate(appReleaseEvents.createdAt);
 
   const [typeTotals, activeDevices, trendRows, platformRows, versionRows] = await Promise.all([
     db

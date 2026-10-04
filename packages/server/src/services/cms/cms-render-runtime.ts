@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
  * New renderer dependencies must be registered here; unknown themes retain conservative data hashes.
  */
 export const CMS_RENDER_RUNTIME_MODULES = new Set([
-  'cms-render.service', 'cms-render-pagination', 'cms-render-runtime', 'cms-contents.service', 'cms-contents-query.service', 'cms-contents-internal',
+  'cms-render.service', 'cms-render-pagination', 'cms-render-runtime', 'cms-contents.service', 'cms-contents-query.service', 'cms-contents-internal', 'cms-wall-clock',
   'cms-content-columns', 'cms-channels.service', 'cms-channel-visibility.service', 'cms-urls', 'cms-link.service',
   'cms-resource-refs.service', 'cms-model-field-values', 'cms-models.service', 'cms-friend-links.service',
   'cms-search.service', 'cms-link-words.service', 'cms-interactions.service', 'cms-captcha.service', 'cms-form-captcha.service',

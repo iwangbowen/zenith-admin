@@ -23,6 +23,7 @@ import { assertSiteAccess, ensureCmsSiteExists } from './cms-sites.service';
 import { hashCmsRequestKey, hashCmsVisitor, hashCmsIp } from './cms-visitor';
 import { pickEntity } from '../../lib/entity-map';
 import { resolveCmsLink } from './cms-link.service';
+import { localDate } from "../../lib/datetime-sql";
 
 const EVENT_DEDUPE_SECONDS: Record<CmsAdEventType, number> = {
   impression: 60,
@@ -277,7 +278,7 @@ export async function getCmsAdEventStats(q: CmsAdEventListFilter) {
   await ensureCmsSiteExists(q.siteId);
   await assertSiteAccess(q.siteId);
   const where = buildCmsAdEventWhere(q);
-  const date = sql<string>`to_char(${cmsAdEvents.occurredAt}, 'YYYY-MM-DD')`;
+  const date = localDate(cmsAdEvents.occurredAt);
   const rows = await db.select({
     date,
     impressions: sql<number>`count(*) filter (where ${cmsAdEvents.eventType} = 'impression')::int`,

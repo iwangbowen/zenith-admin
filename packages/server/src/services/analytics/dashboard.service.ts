@@ -1,4 +1,4 @@
-import { count, sql, and, gte, lt, eq, desc } from 'drizzle-orm';
+import { count, and, gte, lt, eq, desc } from 'drizzle-orm';
 import { db } from '../../db';
 import { users, loginLogs, operationLogs } from '../../db/schema';
 import { isSuperAdmin } from '../../lib/permissions';
@@ -8,6 +8,7 @@ import { HTTPException } from 'hono/http-exception';
 import type { JwtPayload } from '../../middleware/auth';
 import { currentUser } from '../../lib/context';
 import { formatDate, startOfDayAgo, startOfToday } from '../../lib/datetime';
+import { localDate } from "../../lib/datetime-sql";
 
 function ensureSuperAdmin(user: JwtPayload) {
   if (!isSuperAdmin(user)) throw new HTTPException(403, { message: '无权限' });
@@ -61,17 +62,18 @@ export async function getDashboardCharts() {
 
   const loginTrendCount = count();
   const operationTypeCount = count();
+  const loginDay = localDate(loginLogs.createdAt);
   const [loginTrendRows, operationTypeRows] = await Promise.all([
     db
       .select({
-        date: sql<string>`to_char(date(${loginLogs.createdAt}), 'YYYY-MM-DD')`,
+        date: loginDay,
         status: loginLogs.status,
         count: loginTrendCount,
       })
       .from(loginLogs)
       .where(loginRangeWhere)
-      .groupBy(sql`date(${loginLogs.createdAt})`, loginLogs.status)
-      .orderBy(sql`date(${loginLogs.createdAt})`),
+      .groupBy(loginDay, loginLogs.status)
+      .orderBy(loginDay),
     db
       .select({ module: operationLogs.module, count: operationTypeCount })
       .from(operationLogs)

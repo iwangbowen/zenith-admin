@@ -3,6 +3,7 @@ import { db } from '../../db';
 import { chatMessages, users, chatMessageReactions } from '../../db/schema';
 import { scheduleSendToUsers } from '../../lib/ws-manager';
 import { currentUser } from '../../lib/context';
+import { parseDateTimeInput } from '../../lib/datetime';
 import { HTTPException } from 'hono/http-exception';
 import type { ChatMessage, ChatMessageExtra, ChatReactionGroup, ChatVoteData } from '@zenith/shared/chat';
 import { mapChatMessage, fetchUserBrief, listConversationMemberIds, ensureMessageAccessible } from './chat-shared';
@@ -79,8 +80,8 @@ export async function submitVote(messageId: number, optionIds: string[]): Promis
   // 检查是否已关闭或过期
   if (voteData.isClosed) throw new HTTPException(400, { message: '投票已关闭' });
   if (voteData.expireAt) {
-    const expireDate = new Date(voteData.expireAt.replace(' ', 'T'));
-    if (Date.now() > expireDate.getTime()) throw new HTTPException(400, { message: '投票已结束' });
+    const expireDate = parseDateTimeInput(voteData.expireAt);
+    if (expireDate && Date.now() > expireDate.getTime()) throw new HTTPException(400, { message: '投票已结束' });
   }
 
   // 校验 optionIds

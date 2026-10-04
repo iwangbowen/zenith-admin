@@ -24,6 +24,7 @@ import { getMetricSnapshotsByTenant } from './monitor-history.service';
 import { validateAlertDelivery } from '../../lib/alert-validation';
 import { dispatchAlertChannels, type AlertDispatchResult } from '../../lib/alert-dispatch';
 import type { DbExecutor } from '../../db/types';
+import { localDate } from "../../lib/datetime-sql";
 
 const OPERATOR_SYMBOL: Record<MonitorAlertOperator, string> = { gt: '>', gte: '≥', lt: '<', lte: '≤' };
 
@@ -606,14 +607,14 @@ export async function getAlertOverview(range: MonitorAlertOverviewRange): Promis
       .where(rangeWhere),
     db
       .select({
-        date: sql<string>`to_char(${monitorAlertEvents.triggeredAt}, 'YYYY-MM-DD')`,
+        date: localDate(monitorAlertEvents.triggeredAt),
         fired: sql<number>`count(*)::int`,
         resolved: sql<number>`count(*) filter (where ${monitorAlertEvents.status} = 'resolved')::int`,
       })
       .from(monitorAlertEvents)
       .where(rangeWhere)
-      .groupBy(sql`to_char(${monitorAlertEvents.triggeredAt}, 'YYYY-MM-DD')`)
-      .orderBy(sql`to_char(${monitorAlertEvents.triggeredAt}, 'YYYY-MM-DD')`),
+      .groupBy(localDate(monitorAlertEvents.triggeredAt))
+      .orderBy(localDate(monitorAlertEvents.triggeredAt)),
     db
       .select({
         ruleId: monitorAlertEvents.ruleId,

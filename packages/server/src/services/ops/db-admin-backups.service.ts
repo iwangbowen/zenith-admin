@@ -42,7 +42,7 @@ export async function getDbBackupHealth(): Promise<JobSourceRawSummary> {
     failed24h: sql<number>`count(*) filter (where ${dbBackups.status} = 'failed' and ${dbBackups.completedAt} >= ${sql.param(since, dbBackups.createdAt)})::int`,
     succeeded24h: sql<number>`count(*) filter (where ${dbBackups.status} = 'success' and ${dbBackups.completedAt} >= ${sql.param(since, dbBackups.createdAt)})::int`,
     failed1h: sql<number>`count(*) filter (where ${dbBackups.status} = 'failed' and ${dbBackups.completedAt} >= ${sql.param(hour, dbBackups.createdAt)})::int`,
-    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${sql.param(now, dbBackups.createdAt)}::timestamp - min(${dbBackups.createdAt}) filter (where ${dbBackups.status} = 'pending'))))::int`,
+    oldestPendingAgeSec: sql<number | null>`floor(extract(epoch from (${sql.param(now, dbBackups.createdAt)}::timestamptz - min(${dbBackups.createdAt}) filter (where ${dbBackups.status} = 'pending'))))::int`,
   }).from(dbBackups).where(or(inArray(dbBackups.status, ['pending', 'running']), and(inArray(dbBackups.status, ['success', 'failed']), gte(dbBackups.completedAt, since))));
   return {
     counts: { pending: row?.pending ?? 0, running: row?.running ?? 0, stuck: row?.stuck ?? 0, dead: null, failed24h: row?.failed24h ?? 0, succeeded24h: row?.succeeded24h ?? 0 },

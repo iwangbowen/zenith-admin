@@ -3,8 +3,7 @@ import { and, eq, lt, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { oauth2Clients, openApiCallLogs, openApiCallStatsDaily, openQuotaAlerts } from '../../db/schema';
 import { APP_TIME_ZONE } from '../../lib/datetime';
-
-const APP_TIME_ZONE_SQL = sql.raw(`'${APP_TIME_ZONE.replaceAll("'", "''")}'`);
+import { localTime } from '../../lib/datetime-sql';
 
 /**
  * 按日聚合开放 API 调用统计，并回收过期的客户端旧密钥与已发送配额告警。
@@ -14,7 +13,6 @@ export async function rollupOpenApiCallLogs(): Promise<{ statDate: string }> {
   const now = dayjs().tz(APP_TIME_ZONE);
   const statDate = now.subtract(1, 'day').format('YYYY-MM-DD');
   const todayStart = now.startOf('day').toDate();
-  const databaseTodayStart = dayjs(todayStart).utc().format('YYYY-MM-DD HH:mm:ss');
 
   await db.execute(sql`
     insert into ${openApiCallStatsDaily} (
@@ -42,7 +40,7 @@ export async function rollupOpenApiCallLogs(): Promise<{ statDate: string }> {
       coalesce(max(source.duration_ms), 0)::integer
     from (
       select
-        (${openApiCallLogs.createdAt} at time zone 'UTC' at time zone ${APP_TIME_ZONE_SQL})::date as stat_date,
+        (${localTime(openApiCallLogs.createdAt)})::date as stat_date,
         ${openApiCallLogs.clientId} as client_id,
         ${openApiCallLogs.appName} as app_name,
         ${openApiCallLogs.path} as path,
@@ -50,7 +48,7 @@ export async function rollupOpenApiCallLogs(): Promise<{ statDate: string }> {
         ${openApiCallLogs.success} as success,
         ${openApiCallLogs.durationMs} as duration_ms
       from ${openApiCallLogs}
-      where ${openApiCallLogs.createdAt} < ${databaseTodayStart}::timestamp
+      where ${openApiCallLogs.createdAt} < ${todayStart.toISOString()}::timestamptz
     ) source
     group by
       source.stat_date,

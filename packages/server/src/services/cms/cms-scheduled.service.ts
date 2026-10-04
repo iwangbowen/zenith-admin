@@ -5,9 +5,10 @@ import { cmsContents, cmsContentWorkingCopies, cmsContentRevisions } from '../..
 import { config } from '../../config';
 import redis from '../../lib/redis';
 import logger from '../../lib/logger';
-import { APP_TIME_ZONE, formatDateTime } from '../../lib/datetime';
+import { formatDateTime } from '../../lib/datetime';
 import type { JobSourceRawSummary } from '../../lib/job-monitor/registry';
 import { offlineExpiredCmsContents, cancelExpiredTopContents } from './cms-contents.service';
+import { cmsWallClockAt } from './cms-wall-clock';
 import { publishCmsContent } from './cms-contents.service';
 import { activateScheduledCmsReleases } from './cms-releases.service';
 import { scheduleCmsExpiredDelivery } from './cms-delivery-expiry';
@@ -15,9 +16,9 @@ import { scheduleCmsExpiredDelivery } from './cms-delivery-expiry';
 const LOCK_KEY = `${config.redis.keyPrefix}cms:scheduled-publish-lock`;
 const LOCK_TTL_SECONDS = 300;
 
-/** 修订快照保存业务墙上时间，沿用发布器的 APP_TIME_ZONE 解释，不能按数据库会话时区解析。 */
+/** 修订快照保存业务墙上时间，按 APP_TIME_ZONE 解释为时刻，不能按数据库会话时区解析。 */
 export function cmsContentScheduledTime() {
-  return sql<Date>`((${cmsContentRevisions.snapshot}->>'scheduledAt')::timestamp AT TIME ZONE ${APP_TIME_ZONE})`;
+  return cmsWallClockAt(sql`${cmsContentRevisions.snapshot}->>'scheduledAt'`);
 }
 
 export function cmsContentScheduledDueCondition(asOf: Date) {

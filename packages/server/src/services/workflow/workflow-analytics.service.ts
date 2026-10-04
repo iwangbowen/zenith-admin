@@ -11,6 +11,7 @@ import { formatDateTime, formatTimestamps } from '../../lib/datetime';
 import { buildListResult } from '../../lib/list-query';
 import type { WorkflowAnalytics, WorkflowInstanceStatus, WorkflowAnalyticsTrendPoint, WorkflowOverdueTask } from '@zenith/shared/workflow';
 import { WORKFLOW_INSTANCE_STATUS_LABELS } from '@zenith/shared/workflow';
+import { localDate } from "../../lib/datetime-sql";
 
 const FINISHED: WorkflowInstanceStatus[] = ['approved', 'rejected', 'withdrawn', 'cancelled'];
 
@@ -107,15 +108,15 @@ export async function getWorkflowAnalytics(query: { definitionId?: number } = {}
       .orderBy(desc(sql`count(*) filter (where ${workflowTasks.status}::text = 'pending')`), desc(sql`count(*)`))
       .limit(10),
     // 8a. 近 14 天发起趋势
-    db.select({ d: sql<string>`to_char(${workflowInstances.createdAt}, 'YYYY-MM-DD')`, c: sql<number>`count(*)::int` })
+    db.select({ d: localDate(workflowInstances.createdAt), c: sql<number>`count(*)::int` })
       .from(workflowInstances)
       .where(buildWhere(instTenant, instDefinition, gte(workflowInstances.createdAt, since14)))
-      .groupBy(sql`to_char(${workflowInstances.createdAt}, 'YYYY-MM-DD')`),
+      .groupBy(localDate(workflowInstances.createdAt)),
     // 8b. 近 14 天完结趋势
-    db.select({ d: sql<string>`to_char(${workflowInstances.updatedAt}, 'YYYY-MM-DD')`, c: sql<number>`count(*)::int` })
+    db.select({ d: localDate(workflowInstances.updatedAt), c: sql<number>`count(*)::int` })
       .from(workflowInstances)
       .where(buildWhere(instTenant, instDefinition, inArray(workflowInstances.status, FINISHED), gte(workflowInstances.updatedAt, since14)))
-      .groupBy(sql`to_char(${workflowInstances.updatedAt}, 'YYYY-MM-DD')`),
+      .groupBy(localDate(workflowInstances.updatedAt)),
     // 9. 已超时挂起任务数：仍 pending 且其 task_timeout 作业已到期未执行
     db.select({ count: sql<number>`count(*)::int` })
       .from(workflowTasks)

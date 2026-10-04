@@ -17,6 +17,7 @@ import type {
   ChannelDashboardRatingDist, ChannelDashboardAutoReplyMatchDistItem,
 } from '@zenith/shared/messaging';
 import { formatDate, startOfToday } from '../../lib/datetime';
+import { localDate, localTime } from "../../lib/datetime-sql";
 
 function daysAgo(n: number): Date {
   const d = startOfToday();
@@ -152,11 +153,11 @@ async function buildChannelRank(): Promise<ChannelDashboardChannelRank[]> {
 async function buildSubscriptionTrend(): Promise<ChannelDashboardSubscriptionTrendPoint[]> {
   const since = daysAgo(29);
   const rows = await db.select({
-    date: sql<string>`to_char(date(${channelSubscriptions.subscribedAt}), 'YYYY-MM-DD')`,
+    date: localDate(channelSubscriptions.subscribedAt),
     count: sql<number>`count(*)::int`,
   }).from(channelSubscriptions)
     .where(gte(channelSubscriptions.subscribedAt, since))
-    .groupBy(sql`date(${channelSubscriptions.subscribedAt})`);
+    .groupBy(localDate(channelSubscriptions.subscribedAt));
 
   const counts = new Map(rows.map((r) => [r.date, Number(r.count)]));
   const points: ChannelDashboardSubscriptionTrendPoint[] = [];
@@ -181,11 +182,11 @@ async function buildMessageTypeDist(): Promise<ChannelDashboardMessageTypeDistIt
 async function buildHourlyDist(): Promise<ChannelDashboardHourlyPoint[]> {
   const since = daysAgo(6);
   const rows = await db.select({
-    hour: sql<number>`extract(hour from ${channelMessages.createdAt})::int`,
+    hour: sql<number>`extract(hour from ${localTime(channelMessages.createdAt)})::int`,
     count: sql<number>`count(*)::int`,
   }).from(channelMessages)
     .where(and(gte(channelMessages.createdAt, since), eq(channelMessages.status, 'sent'), isNull(channelMessages.retractedAt)))
-    .groupBy(sql`extract(hour from ${channelMessages.createdAt})`);
+    .groupBy(sql`extract(hour from ${localTime(channelMessages.createdAt)})`);
 
   const counts = new Map(rows.map((r) => [Number(r.hour), Number(r.count)]));
   return Array.from({ length: 24 }, (_, hour) => ({ hour, count: counts.get(hour) ?? 0 }));

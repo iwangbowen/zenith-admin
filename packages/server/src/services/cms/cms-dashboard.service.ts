@@ -10,6 +10,7 @@ import { assertSiteAccess } from './cms-sites.service';
 import { ensureCmsSiteExists } from './cms-sites.service';
 import { getAccessibleChannelIds } from './cms-channels.service';
 import type { CmsContentType } from '@zenith/shared/cms';
+import { localDate } from "../../lib/datetime-sql";
 
 export interface CmsDashboardStats {
   totals: {
@@ -68,12 +69,12 @@ export async function getCmsDashboardStats(siteId: number): Promise<CmsDashboard
     db.select({ total: sql<number>`coalesce(sum(${cmsContents.viewCount}), 0)::int` })
       .from(cmsContents).where(activeWhere),
     db.select({
-      day: sql<string>`to_char(${cmsContents.publishedAt}, 'YYYY-MM-DD')`,
+      day: localDate(cmsContents.publishedAt),
       count: sql<number>`count(*)::int`,
     })
       .from(cmsContents)
       .where(and(activeWhere, eq(cmsContents.status, 'published'), gte(cmsContents.publishedAt, trendStart)))
-      .groupBy(sql`to_char(${cmsContents.publishedAt}, 'YYYY-MM-DD')`),
+      .groupBy(localDate(cmsContents.publishedAt)),
     db.select({ content: cmsContents, channelName: cmsChannels.name })
       .from(cmsContents)
       .leftJoin(cmsChannels, and(

@@ -128,9 +128,9 @@ export async function mergeIotReportedBatch(patches: IotReportedPatch[]): Promis
   const results = new Map<number, IotReportedMergeResult>();
   const entries = patches.filter((p) => Object.keys(p.metrics).length > 0);
   if (entries.length === 0) return results;
-  // 与 drizzle timestamp 列写入口径一致：ISO 串直接落 timestamp（不经 session 时区换算）
+  // ISO 时刻直接写入 timestamptz 列
   const values = sql.join(
-    entries.map((p) => sql`(${p.deviceId}, ${JSON.stringify(p.metrics)}::jsonb, ${p.reportedAt.toISOString()}::timestamp)`),
+    entries.map((p) => sql`(${p.deviceId}, ${JSON.stringify(p.metrics)}::jsonb, ${p.reportedAt.toISOString()}::timestamptz)`),
     sql`, `,
   );
   const merged = sql`CASE

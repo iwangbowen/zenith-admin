@@ -8,6 +8,7 @@ import { cmsEditorialNotes, cmsEditorialNoteReplies, cmsDistributionSyncStates, 
 import { requireCmsContentAccess } from './cms-content-access.service';
 import { requireCmsWorkingCopy, writeCmsSystemWorkingCopy, assertCmsContentVersion, cmsRevisionHash, freezeCmsContentRevision } from './cms-content-revisions.service';
 import { buildCmsContentListWhere } from './cms-contents-query.service';
+import { cmsWallClockAt } from './cms-wall-clock';
 import { createCmsContent } from './cms-contents-write.service';
 import { pickEntity } from '../../lib/entity-map';
 import { requireRow } from '../../lib/db-assert';
@@ -184,8 +185,8 @@ export async function getCmsEditorialMetrics(siteId: number) {
     total: sql<number>`count(*)::integer`,
     working: sql<number>`count(*) filter (where ${cmsContentWorkingCopies.editorialStatus} = 'draft')::integer`,
     pending: sql<number>`count(*) filter (where ${cmsContentWorkingCopies.editorialStatus} = 'pending')::integer`,
-    overdue: sql<number>`count(*) filter (where (${cmsContentWorkingCopies.snapshot}->>'dueAt')::timestamp < now() and ${cmsContentWorkingCopies.editorialStatus} != 'clean')::integer`,
-    scheduled: sql<number>`count(*) filter (where (${cmsContentWorkingCopies.snapshot}->>'scheduledAt')::timestamp > now())::integer`,
+    overdue: sql<number>`count(*) filter (where ${cmsWallClockAt(sql`${cmsContentWorkingCopies.snapshot}->>'dueAt'`)} < now() and ${cmsContentWorkingCopies.editorialStatus} != 'clean')::integer`,
+    scheduled: sql<number>`count(*) filter (where ${cmsWallClockAt(sql`${cmsContentWorkingCopies.snapshot}->>'scheduledAt'`)} > now())::integer`,
     unpublishedChanges: sql<number>`count(*) filter (where ${cmsWorkingHasUnpublishedChanges()})::integer`,
   }).from(cmsContents).innerJoin(cmsContentWorkingCopies, eq(cmsContentWorkingCopies.contentId, cmsContents.id)).where(where);
   const unresolvedNotes = await tx.$count(cmsEditorialNotes, and(eq(cmsEditorialNotes.resolved, false), inArray(cmsEditorialNotes.contentId, tx.select({ id: cmsContents.id }).from(cmsContents).where(where))));

@@ -12,6 +12,7 @@ import { shortLinkClicks, shortLinkDailyStats } from '../../db/schema';
 import { formatDate, startOfRecentDays, startOfToday } from '../../lib/datetime';
 import { clampDays } from '../../lib/analytics-helpers';
 import { ensureShortLinkExists } from './short-link.service';
+import { localDate } from "../../lib/datetime-sql";
 
 /** 维度分布查询（非爬虫口径，窗口内 Top N；数据源为点击明细） */
 async function dimensionBreakdown(linkId: number, since: Date, column: 'deviceType' | 'os' | 'browser' | 'province') {
@@ -56,7 +57,7 @@ export async function computeShortLinkStats(id: number, days?: number): Promise<
   const since = startOfRecentDays(windowDays);
   const notBot = and(eq(shortLinkClicks.linkId, id), eq(shortLinkClicks.isBot, false));
 
-  const dateExpr = sql<string>`to_char(${shortLinkClicks.clickedAt}, 'YYYY-MM-DD')`;
+  const dateExpr = localDate(shortLinkClicks.clickedAt);
 
   const [clickDays, rolledDays, devices, browsers, regions, referers] = await Promise.all([
     // 明细按日聚合（含今天；保留策略裁剪后仅剩近期天）
