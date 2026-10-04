@@ -15,6 +15,7 @@ import WorkerNodesStrip from './WorkerNodesStrip';
 import StuckJobsDrawer from './StuckJobsDrawer';
 import JobTrendChart from './JobTrendChart';
 import { JOB_HEALTH_COLORS, JOB_REFRESH_OPTIONS, sortJobSources } from './job-monitor-shared';
+import './job-monitor.css';
 
 export default function JobMonitorPage() {
   const navigate = useNavigate();
@@ -37,7 +38,7 @@ export default function JobMonitorPage() {
   const workers = data.workers.data;
   const sources = sortJobSources(data.sources);
   return (
-    <div className="page-container page-tabs-page zx-flat-panels" style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingTop: 12 }}>
+    <div className="page-container page-tabs-page zx-flat-panels job-monitor-page" style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingTop: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
         <Space wrap>
           <Typography.Title heading={5} style={{ margin: 0 }}>作业监控</Typography.Title>
@@ -62,7 +63,7 @@ export default function JobMonitorPage() {
       <WorkerNodesStrip workers={data.workers} />
       <Tabs collapsible="auto" type="line" activeKey={activeCategory} onChange={key => setActiveCategory(key as typeof activeCategory)} lazyRender keepDOM={false}>
         {JOB_SOURCE_CATEGORIES.map(category => <Tabs.TabPane key={category} itemKey={category} tab={JOB_SOURCE_CATEGORY_LABELS[category]}>
-          {sources.some(source => source.category === category) ? <Row gutter={[16, 16]}>
+          {sources.some(source => source.category === category) ? <Row type="flex" align="top" gutter={[16, 16]}>
             {sources.filter(source => source.category === category).map(source => <Col key={source.key} xs={24} md={12} xl={8}><JobSourceCard source={source} onStuck={setStuckSource} /></Col>)}
           </Row> : <Empty title="暂无作业源" />}
         </Tabs.TabPane>)}

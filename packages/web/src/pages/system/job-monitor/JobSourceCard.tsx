@@ -14,7 +14,7 @@ export default function JobSourceCard({ source, onStuck }: Readonly<{ source: Jo
   const executionIsElsewhere = source.category === 'business' || source.key === 'drive-rendition';
   return (
     <section aria-label={source.title} data-job-source={source.key} style={{ height: '100%' }}>
-      <Card title={<Space wrap style={{ width: '100%', justifyContent: 'space-between' }}><Typography.Text strong>{source.title}</Typography.Text><Tag color={JOB_HEALTH_COLORS[source.health]}>{JOB_HEALTH_LABELS[source.health]}</Tag></Space>}>
+      <Card title={<Typography.Text strong>{source.title}</Typography.Text>} headerExtraContent={<Tag color={JOB_HEALTH_COLORS[source.health]}>{JOB_HEALTH_LABELS[source.health]}</Tag>}>
         {source.health === 'unavailable' ? (
           <Banner type="warning" closeIcon={null} description={source.reason ?? '作业源探测不可用'} />
         ) : (

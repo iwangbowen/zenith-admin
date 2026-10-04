@@ -1,0 +1,35 @@
+/* 页面已有 gap，避免全局相邻面板的 margin 再叠加一层间距。 */
+.job-monitor-page > .semi-card + .semi-card {
+  margin-top: 0;
+}
+
+.job-monitor-page .semi-card-header-wrapper {
+  align-items: center;
+}
+
+.job-monitor-page > .semi-card .semi-card-header-wrapper {
+  min-height: 32px;
+}
+
+.job-monitor-page .zx-chart-card__title {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.job-monitor-page .job-monitor-queue-link {
+  height: auto;
+  min-height: 24px;
+  padding: 0;
+  font-weight: 400;
+  text-align: left;
+}
+
+.job-monitor-page .job-monitor-queue-link .semi-button-content {
+  justify-content: flex-start;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.job-monitor-page .job-monitor-queue-number {
+  font-variant-numeric: tabular-nums;
+}

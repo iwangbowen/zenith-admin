@@ -14,7 +14,7 @@ vi.mock('@/components/toolbar-controls', () => ({ RefreshButton: ({ onClick }: {
 vi.mock('@douyinfe/semi-ui', () => {
   const Box = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
   return {
-    Card: ({ title, extra, children }: { title?: ReactNode; extra?: ReactNode; children?: ReactNode }) => <div><div>{title}{extra}</div>{children}</div>,
+    Card: ({ title, headerExtraContent, children }: { title?: ReactNode; headerExtraContent?: ReactNode; children?: ReactNode }) => <div><div>{title}{headerExtraContent}</div>{children}</div>,
     Button: ({ children, onClick, 'aria-label': ariaLabel }: { children?: ReactNode; onClick?: () => void; 'aria-label'?: string }) => <button aria-label={ariaLabel} onClick={onClick}>{children}</button>,
     Banner: ({ description }: { description: string }) => <div role="alert">{description}</div>,
     Empty: ({ title, description }: { title?: string; description?: string }) => <div>{title}{description}</div>,
