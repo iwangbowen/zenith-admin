@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
+import { createPgClient } from '../../db/client';
 import { db } from '../../db';
 import type { DbTransaction } from '../../db/types';
 import { jobSourceCountsSchema, jobStuckItemSchema } from '@zenith/shared/platform';
@@ -93,7 +93,7 @@ describe.skipIf(process.env.RUN_JOB_MONITOR_DB_TESTS !== '1')('CMS pipeline orph
       { id: 3, status: 'running', task_id: 2, updated_at: old },
       { id: 4, status: 'pending', task_id: 3, updated_at: old },
     ];
-    const client = postgres(process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/zenith_admin', { max: 1, onnotice: () => undefined });
+    const client = createPgClient(process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/zenith_admin', { max: 1, onnotice: () => undefined });
     try {
       const executor = drizzle(client, { casing: 'snake_case' });
       const rows = await executor.execute<{ kind: string; id: number }>(sql`

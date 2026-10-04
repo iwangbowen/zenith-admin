@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
+import { createPgClient } from '../../db/client';
 import { jobStuckItemSchema } from '@zenith/shared/platform';
 
 const state = vi.hoisted(() => ({
@@ -31,7 +31,8 @@ import {
 
 const asOf = new Date('2026-10-03T08:00:00.000Z');
 const timestampAtAge = (ageMs: number) => new Date(asOf.getTime() - ageMs).toISOString();
-const timestampWithoutZoneAtAge = (ageMs: number) => timestampAtAge(ageMs).replace('T', ' ').replace('Z', '');
+// timestamptz 列在 UTC 会话下返回带偏移的时刻文本（驱动按偏移解析）
+const timestampWithoutZoneAtAge = (ageMs: number) => timestampAtAge(ageMs).replace('T', ' ').replace('Z', '+00');
 
 beforeEach(() => {
   state.queries = [];
@@ -138,7 +139,7 @@ function runFixture(id: number, overrides: Partial<ReportRunFixture> = {}): Repo
 }
 
 async function evaluateRuns(runs: ReportRunFixture[], tasks: TaskFixture[] = []) {
-  const client = postgres(process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/zenith_admin', {
+  const client = createPgClient(process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/zenith_admin', {
     max: 1, onnotice: () => undefined,
   });
   try {

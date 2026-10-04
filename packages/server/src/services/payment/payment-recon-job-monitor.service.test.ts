@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
+import { createPgClient } from '../../db/client';
 import { jobStuckItemSchema } from '@zenith/shared/platform';
 const state = vi.hoisted(() => ({ queries: [] as { sql: string; params: unknown[] }[], snapshots: 0 }));
 vi.mock('../../db', async () => {
@@ -65,7 +65,7 @@ describe.skipIf(process.env.RUN_JOB_MONITOR_DB_TESTS !== '1')('payment reconcili
       { id: 6, status: 'pending', task_id: 999, started_at: null, created_at: fresh },
       { id: 7, status: 'completed', task_id: 999, started_at: old, created_at: old },
     ];
-    const client = postgres(process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/zenith_admin', { max: 1, onnotice: () => undefined });
+    const client = createPgClient(process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/zenith_admin', { max: 1, onnotice: () => undefined });
     try {
       const executor = drizzle(client, { casing: 'snake_case' });
       const rows = await executor.execute<{ id: number }>(sql`

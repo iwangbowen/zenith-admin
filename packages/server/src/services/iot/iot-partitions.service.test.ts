@@ -46,10 +46,16 @@ describe('分区命名与边界', () => {
     expect(days.map((d) => d.toISOString().slice(0, 10))).toEqual(['2026-09-01', '2026-09-02', '2026-09-03']);
   });
 
-  it('解析 relpartbound 表达式', () => {
-    const bound = parsePartitionBound("FOR VALUES FROM ('2026-09-03 00:00:00') TO ('2026-09-04 00:00:00')");
-    expect(bound?.from.toISOString()).toBe('2026-09-03T00:00:00.000Z');
-    expect(bound?.to.toISOString()).toBe('2026-09-04T00:00:00.000Z');
+  it('解析 relpartbound 表达式（偏移随会话时区渲染）', () => {
+    for (const expr of [
+      "FOR VALUES FROM ('2026-09-03 00:00:00+00') TO ('2026-09-04 00:00:00+00')",
+      "FOR VALUES FROM ('2026-09-03 08:00:00+08') TO ('2026-09-04 08:00:00+08')",
+      "FOR VALUES FROM ('2026-09-03 05:30:00+05:30') TO ('2026-09-04 05:30:00+05:30')",
+    ]) {
+      const bound = parsePartitionBound(expr);
+      expect(bound?.from.toISOString()).toBe('2026-09-03T00:00:00.000Z');
+      expect(bound?.to.toISOString()).toBe('2026-09-04T00:00:00.000Z');
+    }
     expect(parsePartitionBound('DEFAULT')).toBeNull();
   });
 
@@ -80,7 +86,7 @@ describe('ensureIotTelemetryPartitionsFor', () => {
     expect(execute).toHaveBeenCalledTimes(3);
     const ddl = sqlText(execute.mock.calls[1]);
     expect(ddl).toContain('CREATE TABLE IF NOT EXISTS "iot_telemetry_p20260903" PARTITION OF "iot_telemetry"');
-    expect(ddl).toContain("FROM ('2026-09-03 00:00:00') TO ('2026-09-04 00:00:00')");
+    expect(ddl).toContain("FROM ('2026-09-03 00:00:00+00') TO ('2026-09-04 00:00:00+00')");
 
     // 已确认的分区不再发 DDL
     execute.mockClear();
@@ -108,9 +114,9 @@ describe('dropExpiredIotTelemetryPartitions', () => {
     try {
       execute
         .mockResolvedValueOnce([
-          { name: 'iot_telemetry_p20260801', bound: "FOR VALUES FROM ('2026-08-01 00:00:00') TO ('2026-08-02 00:00:00')" },
-          { name: 'iot_telemetry_p20260804', bound: "FOR VALUES FROM ('2026-08-04 00:00:00') TO ('2026-08-05 00:00:00')" },
-          { name: 'iot_telemetry_p20260903', bound: "FOR VALUES FROM ('2026-09-03 00:00:00') TO ('2026-09-04 00:00:00')" },
+          { name: 'iot_telemetry_p20260801', bound: "FOR VALUES FROM ('2026-08-01 00:00:00+00') TO ('2026-08-02 00:00:00+00')" },
+          { name: 'iot_telemetry_p20260804', bound: "FOR VALUES FROM ('2026-08-04 00:00:00+00') TO ('2026-08-05 00:00:00+00')" },
+          { name: 'iot_telemetry_p20260903', bound: "FOR VALUES FROM ('2026-09-03 00:00:00+00') TO ('2026-09-04 00:00:00+00')" },
         ])
         .mockResolvedValueOnce([{ cnt: 1200 }]) // count p20260801
         .mockResolvedValueOnce([]);             // drop p20260801

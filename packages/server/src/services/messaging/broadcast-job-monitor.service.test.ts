@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
+import { createPgClient } from '../../db/client';
 import { db } from '../../db';
 import { jobStuckItemSchema } from '@zenith/shared/platform';
 import { getBroadcastHealth, listStuckBroadcasts, stuckBroadcastCondition } from './broadcast-job-monitor.service';
@@ -59,7 +59,7 @@ describe.skipIf(process.env.RUN_JOB_MONITOR_DB_TESTS !== '1')('broadcast orphan 
       { id: 5, status: 'sending', task_id: 3, updated_at: old, enqueued_count: 0, total_recipients: 10 },
       { id: 6, status: 'sent', task_id: 999, updated_at: old, enqueued_count: 10, total_recipients: 10 },
     ];
-    const client = postgres(process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/zenith_admin', { max: 1, onnotice: () => undefined });
+    const client = createPgClient(process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/zenith_admin', { max: 1, onnotice: () => undefined });
     try {
       const executor = drizzle(client, { casing: 'snake_case' });
       const rows = await executor.execute<{ id: number }>(sql`

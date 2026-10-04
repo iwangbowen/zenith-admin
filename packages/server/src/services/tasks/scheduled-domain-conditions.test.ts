@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
+import { createPgClient } from '../../db/client';
 import { sql } from 'drizzle-orm';
 import { JOB_MONITOR_SCHEDULE_GRACE_MS } from '@zenith/shared/platform';
 import { config } from '../../config';
@@ -33,7 +33,7 @@ describe('domain due conditions shared by dispatcher and monitor', () => {
 
 describe.skipIf(process.env.RUN_JOB_MONITOR_DB_TESTS !== '1')('scheduled domain conditions on PostgreSQL fixtures without writes', () => {
   it('separates all due rows from overdue rows and rejects future, inactive and null dates in all five domains', async () => {
-    const client = postgres(config.databaseUrl, { max: 1, connect_timeout: 5, onnotice: () => undefined });
+    const client = createPgClient(config.databaseUrl, { max: 1, connect_timeout: 5, onnotice: () => undefined });
     const executor = drizzle(client, { casing: 'snake_case' });
     try {
       for (const domain of domains) {

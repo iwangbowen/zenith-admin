@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
+import { createPgClient } from '../../db/client';
 import { jobSourceCountsSchema, jobStuckItemSchema } from '@zenith/shared/platform';
 import { getReportDqHealth, listStuckReportDqRuns, stuckReportDqRunCondition } from './report-dq.service';
 import { getReportDeliveryHealth, listStuckReportDeliveryRuns } from './report-delivery.service';
@@ -27,7 +27,7 @@ describe.skipIf(process.env.RUN_JOB_MONITOR_DB_TESTS !== '1')('report collectors
       { id: 6, status: 'pending', task_id: 4, started_at: null, created_at: old },
       { id: 7, status: 'running', task_id: 3, started_at: new Date(now.getTime() - 1_800_001).toISOString(), created_at: old },
     ];
-    const client = postgres(process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/zenith_admin', { max: 1, onnotice: () => undefined });
+    const client = createPgClient(process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/zenith_admin', { max: 1, onnotice: () => undefined });
     try {
       const executor = drizzle(client, { casing: 'snake_case' });
       const rows = await executor.execute<{ id: number }>(sql`

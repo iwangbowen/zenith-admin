@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
+import { createPgClient } from '../../db/client';
 import { db } from '../../db';
 import { jobStuckItemSchema } from '@zenith/shared/platform';
 import { getDeployRunHealth, listStuckDeployRuns, stuckDeployRunCondition } from './deploy-job-monitor.service';
@@ -56,7 +56,7 @@ describe.skipIf(process.env.RUN_JOB_MONITOR_DB_TESTS !== '1')('deploy orphan and
       { id: 21, run_id: 2, status: 'running', started_at: old }, { id: 22, run_id: 2, status: 'running', started_at: old },
       { id: 31, run_id: 3, status: 'running', started_at: fresh }, { id: 51, run_id: 5, status: 'running', started_at: old },
     ];
-    const client = postgres(process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/zenith_admin', { max: 1, onnotice: () => undefined });
+    const client = createPgClient(process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/zenith_admin', { max: 1, onnotice: () => undefined });
     try {
       const executor = drizzle(client, { casing: 'snake_case' });
       const result = await executor.execute<{ id: number }>(sql`

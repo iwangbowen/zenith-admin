@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import postgres from 'postgres';
+import { createPgClient } from '../../db/client';
 import { orphanRunCondition, ORPHAN_GRACE_MS } from './orphan';
 
 const fixture = pgTable('job_monitor_fixture_runs', { id: integer(), status: text(), taskId: integer(), startedAt: timestamp({ withTimezone: true }) });
@@ -30,7 +30,7 @@ describe.skipIf(process.env.RUN_JOB_MONITOR_DB_TESTS !== '1')('orphan conditions
       { id: 9, status: 'running', task_id: null, started_at: old },
       { id: 10, status: 'running', task_id: 999, started_at: new Date(now.getTime() - ORPHAN_GRACE_MS).toISOString() },
     ];
-    const client = postgres(process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/zenith_admin', { max: 1, onnotice: () => undefined });
+    const client = createPgClient(process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/zenith_admin', { max: 1, onnotice: () => undefined });
     try {
       const executor = drizzle(client, { casing: 'snake_case' });
       const condition = orphanRunCondition({ table: fixture, statusColumn: fixture.status, activeStatuses: ['pending', 'running'], taskIdColumn: fixture.taskId, startedAtColumn: fixture.startedAt, asOf: now });

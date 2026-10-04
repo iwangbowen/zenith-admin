@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { db } from '../../db';
 import { reportAssetUsageLogs } from '../../db/schema';
+import { APP_TIME_ZONE } from '../../lib/datetime';
 import { reportTimeBucketExpression } from './report-time-bucket';
 
 describe('report time bucket SQL', () => {
@@ -13,6 +14,7 @@ describe('report time bucket SQL', () => {
       .toSQL();
 
     expect(query.sql.match(new RegExp(`date_trunc\\('${bucket}'`, 'g'))).toHaveLength(3);
+    expect(query.sql).toContain(`'${APP_TIME_ZONE}'`);
     expect(query.params).toEqual([]);
   });
 });

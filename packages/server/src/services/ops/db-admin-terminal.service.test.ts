@@ -32,12 +32,12 @@ describe('buildPsqlLaunch', () => {
     expect(launch.env.PGCLIENTENCODING).toBe('UTF8');
   });
 
-  it('只读模式注入 default_transaction_read_only，角色可用时同时切换到只读角色', () => {
-    expect(buildPsqlLaunch('ro', 'psql', params).env.PGOPTIONS).toBe('-c default_transaction_read_only=on');
+  it('会话时区固定为业务时区；只读模式注入 default_transaction_read_only，角色可用时同时切换到只读角色', () => {
+    expect(buildPsqlLaunch('ro', 'psql', params).env.PGOPTIONS).toBe('-c TimeZone=Asia/Shanghai -c default_transaction_read_only=on');
     expect(buildPsqlLaunch('ro', 'psql', params, { readonlyRole: true }).env.PGOPTIONS)
-      .toBe('-c default_transaction_read_only=on -c role=zenith_readonly');
-    expect(buildPsqlLaunch('rw', 'psql', params).env.PGOPTIONS).toBeUndefined();
-    expect(buildPsqlLaunch('rw', 'psql', params, { readonlyRole: true }).env.PGOPTIONS).toBeUndefined();
+      .toBe('-c TimeZone=Asia/Shanghai -c default_transaction_read_only=on -c role=zenith_readonly');
+    expect(buildPsqlLaunch('rw', 'psql', params).env.PGOPTIONS).toBe('-c TimeZone=Asia/Shanghai');
+    expect(buildPsqlLaunch('rw', 'psql', params, { readonlyRole: true }).env.PGOPTIONS).toBe('-c TimeZone=Asia/Shanghai');
   });
 
   it('标签区分只读与读写', () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { sql } from 'drizzle-orm';
-import postgres from 'postgres';
+import { createPgClient } from '../../db/client';
 import { jobSourceCountsSchema, jobStuckItemSchema } from '@zenith/shared/platform';
 import { getScheduledDispatchHealth, listStuckScheduledDispatch } from './scheduled-dispatch-monitor.service';
 import { reportSubscriptionDueCondition } from '../report/report-subscription.service';
@@ -40,7 +40,7 @@ describe.skipIf(process.env.RUN_JOB_MONITOR_DB_TESTS !== '1')('remaining schedul
       { id: 7, enabled: true, next_run_at: old, status: 'enabled', type: 'ldap', cron_expression: ' ', mode: 'manual' },
     ];
     const releases = [{ id: 1, status: 'scheduled', activate_at: old }, { id: 2, status: 'scheduled', activate_at: future }, { id: 3, status: 'active', activate_at: old }, { id: 4, status: 'scheduled', activate_at: null }];
-    const client = postgres(process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/zenith_admin', { max: 1, onnotice: () => undefined });
+    const client = createPgClient(process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/zenith_admin', { max: 1, onnotice: () => undefined });
     try {
       const executor = drizzle(client, { casing: 'snake_case' });
       for (const domain of [
