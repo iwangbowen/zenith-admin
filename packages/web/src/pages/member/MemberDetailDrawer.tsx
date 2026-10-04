@@ -105,7 +105,7 @@ export function MemberDetailDrawer({ memberId, onClose }: Readonly<Props>) {
                 data={[
                   { key: '用户名', value: m?.username ?? '—' },
                   { key: '手机', value: m?.phone ?? '—' },
-                  { key: '邮箱', value: <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 220 }}>{m?.email ?? '—'}</Text> },
+                  { key: '邮箱', value: <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{m?.email ?? '—'}</Text> },
                   { key: '注册来源', value: m?.registerSource ?? '—' },
                   { key: '最后登录', value: m?.lastLoginAt ?? '—' },
                   { key: '成长值', value: `${m?.growthValue ?? 0}（经验 ${m?.experience ?? 0}）` },

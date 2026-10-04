@@ -225,7 +225,7 @@ export default function OAuth2AppDetailPage() {
     <div className="page-container page-tabs-page">
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
         <Button theme="borderless" icon={<ArrowLeft size={16} />} onClick={() => navigate('/system/oauth2-apps')}>返回</Button>
-        <Title heading={4} style={{ margin: 0 }}>{app.name}</Title>
+        <Title heading={4} style={{ margin: 0, minWidth: 0, maxWidth: '100%', overflowWrap: 'anywhere' }}>{app.name}</Title>
         {/* eslint-disable-next-line no-restricted-syntax -- 页头标签与标题同排，保留默认尺寸（renderEnabledStatusTag 为表格用的 small） */}
         <Tag color={app.status === 'enabled' ? 'green' : 'grey'}>{app.status === 'enabled' ? '启用' : '禁用'}</Tag>
         <Text type="tertiary" copyable={{ content: app.clientId }}>{app.clientId}</Text>
@@ -250,8 +250,8 @@ export default function OAuth2AppDetailPage() {
               { key: '审核意见', value: app.reviewComment || EMPTY_PLACEHOLDER, span: 2 },
               { key: '授权类型', value: app.grantTypes.join('、'), span: 2 },
               { key: '允许 Scope', value: app.allowedScopes.join('、'), span: 2 },
-              { key: '回调 URL', value: app.redirectUris.length ? app.redirectUris.join('\n') : EMPTY_PLACEHOLDER, span: 2 },
-              { key: 'IP 白名单', value: app.ipAllowlist.length ? app.ipAllowlist.join('\n') : '不限制', span: 2 },
+              { key: '回调 URL', value: <span style={{ whiteSpace: 'pre-wrap' }}>{app.redirectUris.length ? app.redirectUris.join('\n') : EMPTY_PLACEHOLDER}</span>, span: 2 },
+              { key: 'IP 白名单', value: <span style={{ whiteSpace: 'pre-wrap' }}>{app.ipAllowlist.length ? app.ipAllowlist.join('\n') : '不限制'}</span>, span: 2 },
               { key: '描述', value: app.description || EMPTY_PLACEHOLDER, span: 2 },
             ]}
           />

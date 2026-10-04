@@ -137,7 +137,7 @@ export default function SubscriptionsPage() {
 
       <SideSheet title="订阅详情" visible={!!detail} onCancel={() => setDetail(null)} width={420}>
         {detail ? (
-          <dl style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: 12, margin: 0 }}>
+          <dl className="detail-fields">
             <dt>会员</dt><dd>{detail.memberDisplay}</dd>
             <dt>站点</dt><dd>{detail.siteName}</dd>
             <dt>对象类型</dt><dd>{CMS_SUBSCRIPTION_SUBJECT_TYPE_LABELS[detail.subjectType]}</dd>

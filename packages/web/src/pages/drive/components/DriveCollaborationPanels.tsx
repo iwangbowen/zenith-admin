@@ -52,7 +52,7 @@ export function DriveProfilePanel({ node }: { readonly node: DriveNode }) {
   return <div className="drive-panel">
     <Spin spinning={query.isFetching}>
       {query.isError ? <Empty title="属性读取失败"><Button onClick={() => void query.refetch()}>重试</Button></Empty> : <>
-        <Typography.Paragraph style={{ whiteSpace: 'pre-wrap' }}>{profile?.description || '尚未填写文件说明'}</Typography.Paragraph>
+        <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{profile?.description || '尚未填写文件说明'}</Typography.Paragraph>
         <Descriptions align="left" data={Object.entries(profile?.metadata ?? {}).map(([key, value]) => ({ key, value: String(value ?? '') }))} />
         {profile && roleAtLeast(node.myRole, 'editor') && hasPermission('drive:node:edit')
           && <Button onClick={() => modal.openEdit({ ...profile, id: node.id })}>编辑说明与属性</Button>}

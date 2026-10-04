@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
+import type { CSSProperties } from 'react';
 import { Button, Form, Tag, Tabs, TabPane, SideSheet, Typography, withField } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ChevronsDownUp, ChevronsUpDown, LayoutGrid, List as ListIcon, ListTree, Trash2 } from 'lucide-react';
@@ -465,7 +466,7 @@ function EventsTab({ siteId, setSiteId }: Readonly<{
       />
       <SideSheet title="广告事件详情" visible={!!detail} onCancel={() => setDetail(null)} width={520}>
         {detail ? (
-          <dl style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: 12, margin: 0 }}>
+          <dl className="detail-fields" style={{ '--detail-label-width': '110px' } as CSSProperties}>
             <dt>事件</dt><dd>{CMS_AD_EVENT_TYPE_LABELS[detail.eventType]}</dd>
             <dt>发生时间</dt><dd>{detail.occurredAt}</dd>
             <dt>广告</dt><dd>{detail.adName}</dd>

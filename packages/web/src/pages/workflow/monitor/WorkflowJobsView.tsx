@@ -675,7 +675,12 @@ function JobTypePanel({ jobType, summary, onMutated, clustersSignal, initialStat
                 { key: '计划执行', value: formatDateTime(detail.runAt) },
                 { key: '幂等键', value: detail.idempotencyKey ?? EMPTY_PLACEHOLDER },
                 { key: 'TraceId', value: detail.traceId
-                  ? <Button theme="borderless" size="small" style={{ padding: 0, height: 'auto' }} onClick={() => detail.traceId && void openChain(detail.traceId)}>{detail.traceId} · 查看链路</Button>
+                  ? (
+                      <Space spacing={4} wrap>
+                        <Typography.Text copyable style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{detail.traceId}</Typography.Text>
+                        <Button theme="borderless" size="small" style={{ padding: 0, height: 'auto' }} onClick={() => detail.traceId && void openChain(detail.traceId)}>查看链路</Button>
+                      </Space>
+                    )
                   : EMPTY_PLACEHOLDER },
                 { key: '锁定', value: detail.lockedBy ? `${detail.lockedBy}（${detail.lockedAt ? formatDateTime(detail.lockedAt) : EMPTY_PLACEHOLDER}）` : EMPTY_PLACEHOLDER },
                 { key: '租约到期', value: detail.leaseUntil ? formatDateTime(detail.leaseUntil) : EMPTY_PLACEHOLDER },

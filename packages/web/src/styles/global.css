@@ -170,6 +170,93 @@ body {
    特异性相同且值一致，不受影响。 */
 .semi-sidesheet .semi-sidesheet-body {
   padding-bottom: 16px;
+  overflow-wrap: anywhere;
+}
+
+.semi-modal-body {
+  overflow-wrap: anywhere;
+}
+
+/* 详情中的连续标识、路径和自定义字段必须在可用宽度内换行；
+   标签同样允许换行，避免窄屏或长字段名把值列挤出容器。 */
+.semi-descriptions {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.semi-descriptions table {
+  max-width: 100%;
+}
+
+/* 单列详情也使用固定表格布局，省略文本不能反向撑大值列。 */
+.semi-descriptions-vertical:not(.semi-descriptions-double) table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.semi-descriptions-key,
+.semi-descriptions-value {
+  overflow-wrap: anywhere;
+}
+
+.semi-descriptions-key {
+  white-space: normal;
+}
+
+.semi-descriptions-plain .semi-descriptions-key,
+.semi-descriptions-plain .semi-descriptions-value {
+  vertical-align: top;
+}
+
+.semi-descriptions-vertical:not(.semi-descriptions-double) .semi-descriptions-item-th {
+  width: var(--description-label-width, 96px);
+  min-width: 96px;
+}
+
+.semi-descriptions-double tr,
+.semi-descriptions-value .semi-space {
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* 省略文本的宽度跟随值格，而不是其内容的固有宽度。 */
+.semi-descriptions-value .semi-typography-ellipsis-overflow-ellipsis {
+  width: 100%;
+  min-width: 0;
+}
+
+/* 原生 SideSheet 标题默认不收缩，长标题会把关闭按钮推出视口。 */
+.semi-sidesheet-header .semi-sidesheet-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.semi-sidesheet-header > .semi-button {
+  flex-shrink: 0;
+}
+
+/* 手写的只读标签 / 值详情与 Descriptions 保持相同的宽度约束。 */
+.detail-fields {
+  display: grid;
+  grid-template-columns: var(--detail-label-width, 100px) minmax(0, 1fr);
+  gap: 12px;
+  margin: 0;
+}
+
+.detail-fields > dt,
+.detail-fields > dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* 兼容已有的 dl 详情，避免自动最小宽度把网格值列撑出弹层。 */
+.semi-modal-body dl > dd,
+.semi-sidesheet-body dl > dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* 窄屏 Modal 宽度自适应，防止溢出屏幕 */

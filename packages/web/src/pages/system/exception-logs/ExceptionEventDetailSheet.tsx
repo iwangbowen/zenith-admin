@@ -74,7 +74,7 @@ export function ExceptionEventDetailSheet({ event, onClose }: ExceptionEventDeta
               { key: '链路 ID', value: <TraceActions traceId={event.traceId} /> },
               { key: '路由', value: event.route ? <Text code>{event.httpMethod ? `${event.httpMethod} ` : ''}{event.route}</Text> : EMPTY_PLACEHOLDER },
               { key: 'HTTP 状态', value: event.httpStatus ?? EMPTY_PLACEHOLDER },
-              { key: '请求地址', value: event.httpUrl ? <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: 520 }}>{event.httpUrl}</Text> : EMPTY_PLACEHOLDER },
+              { key: '请求地址', value: event.httpUrl ? <Text ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{event.httpUrl}</Text> : EMPTY_PLACEHOLDER },
               { key: '任务 / 作业', value: event.jobType ? <Text code>{event.jobType}{event.jobId ? ` #${event.jobId}` : ''}</Text> : EMPTY_PLACEHOLDER },
               { key: '进程', value: `${event.hostname ?? EMPTY_PLACEHOLDER} · pid ${event.pid ?? EMPTY_PLACEHOLDER} · ${event.processRole ?? EMPTY_PLACEHOLDER}` },
               { key: '版本 / 环境', value: `${event.release ?? EMPTY_PLACEHOLDER} · ${ANALYTICS_ENVIRONMENT_LABELS[event.environment] ?? event.environment}` },
