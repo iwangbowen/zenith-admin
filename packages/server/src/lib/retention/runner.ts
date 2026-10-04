@@ -17,11 +17,10 @@ function cutoffFor(days: number): Date {
 }
 
 /**
- * sql 模板裸插值 Date 无列编码器会导致驱动序列化失败，
- * 统一绑定格式化串并在 SQL 中显式 cast。
+ * 原生 SQL 的时刻参数以 ISO 字符串绑定并显式 ::timestamptz。
  */
 function cutoffLiteral(days: number) {
-  return sql`${formatDateTime(cutoffFor(days))}::timestamptz`;
+  return sql`${cutoffFor(days).toISOString()}::timestamptz`;
 }
 
 /** 启动时把代码声明的策略登记进库；已存在的行保留管理员调整值，不回写默认值。 */

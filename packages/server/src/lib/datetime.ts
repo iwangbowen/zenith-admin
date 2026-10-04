@@ -11,7 +11,18 @@ export const DATE_TIME_FORMAT = 'YYYY-MM-DD HH:mm:ss';
 export const DATE_FORMAT = 'YYYY-MM-DD';
 export const FILE_TIMESTAMP_FORMAT = 'YYYYMMDD_HHmmss';
 
-const APP_TIME_ZONE = process.env.APP_TIME_ZONE || process.env.TZ || 'Asia/Shanghai';
+/** 校验并解析业务时区：缺省 `Asia/Shanghai`；非法 IANA 名称直接拒绝启动 */
+export function resolveAppTimeZone(raw: string | undefined): string {
+  const zone = raw?.trim() || 'Asia/Shanghai';
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+  } catch {
+    throw new Error(`APP_TIME_ZONE 不是有效的 IANA 时区：${zone}`);
+  }
+  return zone;
+}
+
+const APP_TIME_ZONE = resolveAppTimeZone(process.env.APP_TIME_ZONE);
 export { APP_TIME_ZONE };
 const DATE_TIME_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -158,22 +169,18 @@ export function isDateTimeString(value: unknown): value is string {
   return typeof value === 'string' && DATE_TIME_PATTERN.test(value);
 }
 
-// ─── 本地日界（统计窗口起点）───────────────────────────────────────────────────
-// 统计类 service 的「今日 / 近 N 天」窗口起点。刻意沿用进程本地时区的 setHours(0,0,0,0)
-// 而非 APP_TIME_ZONE：与各统计口径此前的实现逐毫秒一致（部署时 TZ 与 APP_TIME_ZONE 应保持相同）。
+// ─── 统计窗口起点（APP_TIME_ZONE 自然日）─────────────────────────────────────
 
-/** 今日 00:00:00.000（进程本地时区）。 */
-export function startOfToday(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
+/** APP_TIME_ZONE 下「今天往前 daysAgo 天」的 00:00:00.000；startOfDayAgo(0) 即今日零点 */
+export function startOfDayAgo(daysAgo: number): Date {
+  const today = dayjs().tz(APP_TIME_ZONE).format(DATE_FORMAT);
+  const day = dayjs.utc(today).subtract(daysAgo, 'day').format(DATE_FORMAT);
+  return dayjs.tz(day, DATE_FORMAT, APP_TIME_ZONE).toDate();
 }
 
-/** `daysAgo` 天前的 00:00:00.000（进程本地时区）；`startOfDayAgo(0)` 即今日起点。 */
-export function startOfDayAgo(daysAgo: number): Date {
-  const d = startOfToday();
-  d.setDate(d.getDate() - daysAgo);
-  return d;
+/** APP_TIME_ZONE 今日 00:00:00.000 */
+export function startOfToday(): Date {
+  return startOfDayAgo(0);
 }
 
 /** 「近 N 天（含今日）」窗口起点，即 `days - 1` 天前的 00:00:00。 */
