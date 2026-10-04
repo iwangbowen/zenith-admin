@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter, useLocation } from 'react-router-dom';
-import type { ReactNode } from 'react';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { Children, type ReactElement, type ReactNode } from 'react';
 import type { JobMonitorOverview, JobQueueRow, JobStuckItem } from '@zenith/shared/platform';
 import { createDemoJobMonitorOverview, createDemoStuckJobs } from '@/mocks/data/job-monitor';
 
@@ -15,10 +15,14 @@ vi.mock('@douyinfe/semi-ui', () => {
   const Box = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
   return {
     Card: ({ title, extra, children }: { title?: ReactNode; extra?: ReactNode; children?: ReactNode }) => <div><div>{title}{extra}</div>{children}</div>,
-    Button: ({ children, onClick }: { children?: ReactNode; onClick?: () => void }) => <button onClick={onClick}>{children}</button>,
+    Button: ({ children, onClick, 'aria-label': ariaLabel }: { children?: ReactNode; onClick?: () => void; 'aria-label'?: string }) => <button aria-label={ariaLabel} onClick={onClick}>{children}</button>,
     Banner: ({ description }: { description: string }) => <div role="alert">{description}</div>,
     Empty: ({ title, description }: { title?: string; description?: string }) => <div>{title}{description}</div>,
-    Tag: Box, Space: Box, Row: Box, Col: Box, Divider: Box,
+    Tag: Box, Space: Box, Row: Box, Col: Box,
+    Tabs: Object.assign(({ children, activeKey, onChange }: { children: ReactNode; activeKey: string; onChange: (key: string) => void }) => {
+      const panes = Children.toArray(children) as ReactElement<{ tab: string; itemKey: string; children: ReactNode }>[];
+      return <div><div role="tablist">{panes.map(pane => <button key={pane.props.itemKey} role="tab" aria-selected={pane.props.itemKey === activeKey} onClick={() => onChange(pane.props.itemKey)}>{pane.props.tab}</button>)}</div>{panes.find(pane => pane.props.itemKey === activeKey)?.props.children}</div>;
+    }, { TabPane: Box }),
     SideSheet: ({ title, children, visible, onCancel }: { title: string; children?: ReactNode; visible: boolean; onCancel: () => void }) => visible ? <div role="dialog" aria-label={title}><button onClick={onCancel}>关闭</button>{children}</div> : null,
     Typography: { Text: Box, Title: Box },
     Select: ({ value, optionList, onChange }: { value: string; optionList: { value: string; label: string }[]; onChange: (value: string) => void }) => (
@@ -38,8 +42,8 @@ function Location() {
   return <output aria-label="当前位置">{location.pathname}{location.search}</output>;
 }
 
-function show() {
-  render(<MemoryRouter initialEntries={['/system/job-monitor']}><JobMonitorPage /><Location /></MemoryRouter>);
+function show(path = '/system/job-monitor') {
+  render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/system/job-monitor" element={<JobMonitorPage />} /><Route path="*" element={null} /></Routes><Location /></MemoryRouter>);
 }
 
 function setOverview(data: JobMonitorOverview | undefined, error?: Error) {
@@ -64,32 +68,59 @@ describe('JobMonitorPage', () => {
     expect(screen.queryByText('history-99 / 99')).not.toBeInTheDocument();
     expect(screen.getByText('显示最近 6 个节点，共 101 个；完整状态可在系统调度查看。')).toBeInTheDocument();
   });
-  it('renders all four groups and the overdue schedule breakdown and list', () => {
+  it('shows one source category at a time and opens the overdue schedule breakdown and list', () => {
     show();
-    expect(screen.getByText('到期调度')).toBeInTheDocument();
+    expect(screen.getAllByRole('tab')).toHaveLength(4);
+    expect(screen.getByRole('tab', { name: '执行运行时' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('region', { name: '到期调度扫描' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: '到期调度' }));
+    expect(screen.queryByRole('region', { name: '异步任务' })).not.toBeInTheDocument();
     const schedule = within(screen.getByRole('region', { name: '到期调度扫描' }));
-    expect(schedule.getByRole('button', { name: 'CMS 定时发布' })).toBeInTheDocument();
-    expect(schedule.queryByRole('button', { name: '目录同步计划' })).not.toBeInTheDocument();
+    expect(schedule.getByText('CMS 定时发布')).toBeInTheDocument();
+    expect(schedule.getByRole('button', { name: '查看CMS 定时发布' })).toBeInTheDocument();
+    expect(schedule.queryByText('目录同步计划')).not.toBeInTheDocument();
     fireEvent.click(schedule.getByRole('button', { name: '展开全部 11 项' }));
-    expect(schedule.getByRole('button', { name: '目录同步计划' })).toBeInTheDocument();
+    expect(schedule.getByRole('button', { name: '查看目录同步计划' })).toBeInTheDocument();
     fireEvent.click(schedule.getByRole('button', { name: '卡死明细' }));
     expect(state.stuck).toHaveBeenLastCalledWith('scheduled-dispatch', true);
+  });
+  it('restores the category from a deep link and unmounts it when switching', () => {
+    show('/system/job-monitor?tab=business');
+    expect(screen.getByRole('tab', { name: '业务作业' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('region', { name: 'CMS 构建发布' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '异步任务' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: '执行运行时' }));
+    expect(screen.queryByRole('region', { name: 'CMS 构建发布' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('当前位置')).toHaveTextContent('/system/job-monitor');
+    expect(screen.getByLabelText('当前位置')).not.toHaveTextContent('tab=');
+  });
+  it('falls back to the runtime category for an invalid deep link', () => {
+    show('/system/job-monitor?tab=invalid');
+    expect(screen.getByRole('tab', { name: '执行运行时' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('region', { name: '异步任务' })).toBeInTheDocument();
+    expect(screen.getByLabelText('当前位置')).not.toHaveTextContent('tab=');
   });
   it('groups execution mechanisms and expands type details beyond the first five rows', () => {
     show();
     expect(screen.getByText('执行运行时')).toBeInTheDocument();
     expect(screen.getByText('事件与内容投递')).toBeInTheDocument();
     expect(screen.getByText('业务作业')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: '业务作业' }));
     const cms = within(screen.getByRole('region', { name: 'CMS 构建发布' }));
-    expect(cms.getByRole('button', { name: '站点构建' })).toBeInTheDocument();
-    expect(cms.getByRole('button', { name: '媒体处理' })).toBeInTheDocument();
+    expect(cms.getByText('站点构建')).toBeInTheDocument();
+    expect(cms.getByRole('button', { name: '查看站点构建' })).toBeInTheDocument();
+    expect(cms.getByRole('button', { name: '查看媒体处理' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: '执行运行时' }));
     const tasks = within(screen.getByRole('region', { name: '异步任务' }));
-    expect(tasks.queryByRole('button', { name: '演示任务类型 6' })).not.toBeInTheDocument();
+    expect(tasks.queryByText('演示任务类型 6')).not.toBeInTheDocument();
     fireEvent.click(tasks.getByRole('button', { name: '展开全部 6 项' }));
-    fireEvent.click(tasks.getByRole('button', { name: '演示任务类型 6' }));
-    expect(screen.getByLabelText('当前位置')).toHaveTextContent('taskType=demo-type-5');
-    fireEvent.click(tasks.getByRole('button', { name: '收起明细' }));
+    expect(tasks.getByText('演示任务类型 6')).toBeInTheDocument();
     expect(tasks.queryByRole('button', { name: '演示任务类型 6' })).not.toBeInTheDocument();
+    fireEvent.click(tasks.getByRole('button', { name: '收起明细' }));
+    expect(tasks.queryByText('演示任务类型 6')).not.toBeInTheDocument();
+    fireEvent.click(tasks.getByRole('button', { name: '展开全部 6 项' }));
+    fireEvent.click(tasks.getByRole('button', { name: '查看演示任务类型 6' }));
+    expect(screen.getByLabelText('当前位置')).toHaveTextContent('taskType=demo-type-5');
   });
   it('prioritizes critical and warning sources while retaining the isolated unavailable reason', () => {
     const data = createDemoJobMonitorOverview();
@@ -101,10 +132,12 @@ describe('JobMonitorPage', () => {
     const order = screen.getAllByRole('region').map(element => element.getAttribute('aria-label'));
     expect(order.indexOf('异步任务')).toBeLessThan(order.indexOf('流程作业'));
     expect(order.indexOf('流程作业')).toBeLessThan(order.indexOf('系统调度队列'));
-    expect(order.indexOf('Webhook 投递')).toBeLessThan(order.indexOf('通知派发 Outbox'));
     expect(screen.getByText('导出作业探测超时')).toBeInTheDocument();
     expect(screen.getByText('部分作业源探测不可用，顶部汇总仅包含可用来源。')).toBeInTheDocument();
     expect(screen.getByText('心跳失联')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: '事件与内容投递' }));
+    const deliveryOrder = screen.getAllByRole('region').map(element => element.getAttribute('aria-label'));
+    expect(deliveryOrder.indexOf('Webhook 投递')).toBeLessThan(deliveryOrder.indexOf('通知派发 Outbox'));
     expect(within(screen.getByRole('region', { name: '通知派发 Outbox' })).getByText('通知派发探测超时')).toBeInTheDocument();
     expect(within(screen.getByRole('region', { name: '通知派发 Outbox' })).queryByText('待处理')).not.toBeInTheDocument();
   });
@@ -156,15 +189,17 @@ describe('JobMonitorPage', () => {
     expect(state.stuck).toHaveBeenLastCalledWith('async-task', true);
     const drawer = screen.getByRole('dialog', { name: '异步任务 · 卡死明细' });
     expect(within(drawer).getByText('历史数据导入')).toBeInTheDocument();
-    fireEvent.click(within(drawer).getByRole('button', { name: '前往处理' }));
-    expect(screen.getByLabelText('当前位置')).toHaveTextContent('/system/task-center?tab=tasks&status=running&taskId=731');
     fireEvent.click(within(drawer).getByRole('button', { name: '关闭' }));
     expect(state.stuck).toHaveBeenLastCalledWith(undefined, false);
+    fireEvent.click(within(screen.getByRole('region', { name: '异步任务' })).getByRole('button', { name: '卡死明细' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: '异步任务 · 卡死明细' })).getByRole('button', { name: '前往处理' }));
+    expect(screen.getByLabelText('当前位置')).toHaveTextContent('/system/task-center?tab=tasks&status=running&taskId=731');
   });
 
   it('opens an orphan business-job list and links to the target run filter', () => {
     state.stuck.mockReturnValue({ data: createDemoStuckJobs('report-dq'), isPending: false, isFetching: false, isError: false, refetch: vi.fn() });
     show();
+    fireEvent.click(screen.getByRole('tab', { name: '业务作业' }));
     fireEvent.click(within(screen.getByRole('region', { name: '报表数据质量' })).getByRole('button', { name: '卡死明细' }));
     expect(state.stuck).toHaveBeenLastCalledWith('report-dq', true);
     const drawer = screen.getByRole('dialog', { name: '报表数据质量 · 卡死明细' });

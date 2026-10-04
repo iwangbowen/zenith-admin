@@ -14,7 +14,7 @@ export default function JobSourceCard({ source, onStuck }: Readonly<{ source: Jo
   const executionIsElsewhere = source.category === 'business' || source.key === 'drive-rendition';
   return (
     <section aria-label={source.title} data-job-source={source.key} style={{ height: '100%' }}>
-      <Card title={<Space wrap style={{ width: '100%', justifyContent: 'space-between' }}><span>{source.title}</span><Tag color={JOB_HEALTH_COLORS[source.health]}>{JOB_HEALTH_LABELS[source.health]}</Tag></Space>}>
+      <Card title={<Space wrap style={{ width: '100%', justifyContent: 'space-between' }}><Typography.Text strong>{source.title}</Typography.Text><Tag color={JOB_HEALTH_COLORS[source.health]}>{JOB_HEALTH_LABELS[source.health]}</Tag></Space>}>
         {source.health === 'unavailable' ? (
           <Banner type="warning" closeIcon={null} description={source.reason ?? '作业源探测不可用'} />
         ) : (
@@ -35,20 +35,21 @@ export default function JobSourceCard({ source, onStuck }: Readonly<{ source: Jo
               ))}
             </Space>
             {breakdown.length > 0 && <Space vertical align="start" spacing={8} style={{ width: '100%', marginTop: 12 }}>
-              {(expanded ? breakdown : breakdown.slice(0, 5)).map(item => <div key={item.key} style={{ width: '100%' }}>
-                <Space wrap>
-                  {item.drillDown ? <Button theme="borderless" size="small" onClick={() => navigate(item.drillDown!.path)}>{item.label}</Button> : <Typography.Text size="small">{item.label}</Typography.Text>}
+              {(expanded ? breakdown : breakdown.slice(0, 5)).map(item => <div key={item.key} style={{ width: '100%', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                <Space vertical align="start" spacing={4} style={{ flex: 1, minWidth: 0 }}>
+                  <Typography.Text size="small" style={{ overflowWrap: 'anywhere' }}>{item.label}</Typography.Text>
                   <Typography.Text size="small" type={item.stuck > 0 ? 'danger' : 'tertiary'}>待处理 {item.pending} · 运行 {item.running} · 卡死 {item.stuck} · 24h 失败 {item.failed24h}</Typography.Text>
                 </Space>
+                {item.drillDown && <Button theme="light" type="tertiary" size="small" aria-label={`查看${item.label}`} style={{ flexShrink: 0 }} onClick={() => navigate(item.drillDown!.path)}>查看</Button>}
               </div>)}
-              {breakdown.length > 5 && <Button theme="borderless" size="small" onClick={() => setExpanded(value => !value)}>{expanded ? '收起明细' : `展开全部 ${breakdown.length} 项`}</Button>}
+              {breakdown.length > 5 && <Button theme="borderless" type="tertiary" size="small" onClick={() => setExpanded(value => !value)}>{expanded ? '收起明细' : `展开全部 ${breakdown.length} 项`}</Button>}
             </Space>}
           </>
         )}
         {(source.drillDown || (source.supportsStuckList && counts.stuck > 0)) && (
           <Space wrap style={{ marginTop: 12 }}>
             {source.supportsStuckList && counts.stuck > 0 && <Button theme="borderless" onClick={() => onStuck(source)}>卡死明细</Button>}
-            {source.drillDown && <Button theme="borderless" onClick={() => navigate(source.drillDown!.path)}>{source.drillDown.label}</Button>}
+            {source.drillDown && <Button theme="light" onClick={() => navigate(source.drillDown!.path)}>{source.drillDown.label}</Button>}
           </Space>
         )}
       </Card>
