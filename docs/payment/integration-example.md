@@ -48,7 +48,7 @@ export const bizPayDemos = pgTable('biz_pay_demos', {
   payMethod: varchar({ length: 32 }),
   status: bizPayDemoStatusEnum().notNull().default('pending'),
   paymentOrderNo: varchar({ length: 64 }),
-  paidAt: timestamp({ withTimezone: true }),
+  paidAt: timestamptz(),
   fulfillRemark: varchar({ length: 255 }),
   tenantId: integer().references(() => tenants.id, { onDelete: 'cascade' }),
   ...auditColumns(),

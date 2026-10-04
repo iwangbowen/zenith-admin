@@ -37,9 +37,10 @@
   派生结果即蛇形，可省略
 - **审计列必加**：业务主表必须展开 `...auditColumns()`。例外（不要加）：纯关联表（`xxx_yyys`）、
   追加型日志（`*_logs`）、临时凭证（`*_tokens`）、IM 消息等「作者天然就是当前用户」的实体
-- **时间戳列用积木**：`created_at` / `updated_at` 一律展开 `...timestampColumns()`（`db/schema/common.ts`；
-  `timestamptz` 传 `{ withTimezone: true }`），**禁止**逐表手写 `timestamp().defaultNow()…$onUpdate(...)` 两行；
-  只有 `created_at` 的追加型表单独声明
+- **时间列一律 timestamptz**：`created_at` / `updated_at` 展开 `...timestampColumns()`，其它时刻列写 `timestamptz()`（均在 `db/schema/common.ts`），
+  **禁止**直写 drizzle 的 `timestamp()`（`db/schema-time-columns.test.ts` 守卫）；只有 `created_at` 的追加型表单独声明
+  `createdAt: timestamptz().defaultNow().notNull()`；纯日期用 `date({ mode: 'string' })`；按 IANA 时区解释的当地钟点（排期）不建时间列，
+  以 `YYYY-MM-DD HH:mm:ss` 文本与时区字段一起存放，见 [docs/backend/database.md](../../../../docs/backend/database.md)「时间与时区」
 - **通用列用积木**：自增主键 `id: idColumn()`、启用 / 禁用 `status: statusColumn()`（`statusColumn('disabled')` 改默认）、
   排序 `sort: sortColumn()`、备注 `remark: remarkColumn()`（`remarkColumn(500)` 改长度）——均在 `db/schema/common.ts`；
   租户归属 `tenantId: tenantIdColumn()`（`core.ts`，缺省 `cascade`，可传 `'set null' | 'restrict'`）。
@@ -368,6 +369,18 @@
 - **后端解析**：范围端点**必须**走 `parseDateRangeStart()` / `parseDateRangeEnd()`（或直接用 `dateRangeConditions()`），
   纯日期时起点取 `00:00:00`、终点取 `23:59:59.999`；`parseDateTimeInput()` **只**用于单点时间
   （`scheduledAt` / `expireAt` 等实体字段）——它把 `2026-08-01` 解析成 `00:00:00`，用作范围终点会漏掉整天数据
+- **业务时区**：只认 `APP_TIME_ZONE`（`lib/datetime.ts` 导出）；**禁止**读 `process.env.TZ`，
+  **禁止**用进程本地时区算日界（`setHours(0, 0, 0, 0)`、`new Date('YYYY-MM-DD HH:mm:ss')`）
+- **SQL 时区**：按日 / 月 / 小时分桶与「今日 / n 天前」边界只用 `lib/datetime-sql.ts` 的
+  `localDate` / `localFormat` / `localTime` / `localTrunc` / `localDayStart`；时间参数传 `Date`（列映射 / `sql.param(date, column)`）
+  或 `toISOString()` + `::timestamptz`。**禁止** `CURRENT_DATE`、`::timestamp`（当地钟点文本须紧跟 `AT TIME ZONE`）、
+  `AT TIME ZONE 'UTC' AT TIME ZONE …`、`formatDateTime()` 文本当 SQL 参数、对时间列直接 `date()` / `to_char()` / 两参 `date_trunc()` / `extract()`
+  （`lib/datetime-sql.guard.test.ts` 扫描）——这些写法按会话时区（UTC）而非业务时区切分
+- **数据库连接**：连接主库只用 `db/client.ts` 的 `createPgClient()`（会话时区固定 UTC），**禁止**直接 `postgres(url)`
+  （`db/pg-client-usage.test.ts` 守卫）；执行用户手写 SQL 走 `applyReadonlyTransactionGuards()`，数据库管理的数据读写走
+  `withAppTimeZoneSession()`（会话切到 `APP_TIME_ZONE`）
+- **跨实例缓存失效**：新增 `onInvalidate(topic)` 订阅时，必须在 `drizzle/0001_extensions.sql` 给该表挂 `notify_cache_invalidate` 触发器
+  （`lib/invalidation-triggers.test.ts` 守卫）
 - **范围端点查询参数必须校验格式**：契约查询参数标准 `startTime` / `endTime` 用 `...dateRangeQuery('说明')`，
   其它键名用 `dateRangeBound('说明', 'start' | 'end')`（均来自 `@zenith/shared/core`），
   同时接受 `YYYY-MM-DD` 与 `YYYY-MM-DD HH:mm:ss`；**禁止**裸 `z.string().optional()`——
@@ -415,7 +428,8 @@
 | --- | --- | --- |
 | 文件下载 / 预览响应头 | `content-disposition.ts`：`attachmentDisposition(filename)`（RFC 5987 `filename*=UTF-8''` + ASCII 回退）、`inlineOrAttachmentDisposition(filename, mimeType)`（仅 `SAFE_INLINE_MIME_TYPES` 允许 inline） | 手拼 `attachment; filename="…"`、各处自维护可内联 MIME 白名单 |
 | 无状态 HMAC 签名令牌（事件令牌、渲染凭证、退订链接…） | `signed-token.ts`：`createSignedTokenCodec<T>({ version })`（`<v>.<data>.<sig>`）或 `({ purpose })`（`<data>.<sig>`），`decode` 返回 `null` 后由调用方做载荷校验与错误语义；非 JSON 载荷的签名用 `hmacSha256(input, 'hex' \| 'base64url')` + `constantTimeEqual(a, b)` | 手写 `createHmac` + `timingSafeEqual` + base64url 拆包；新令牌自创线格式 |
-| 统计类 service 的「今日 / 近 N 天 / 环比窗口」起点 | `datetime.ts`：`startOfToday()`、`startOfDayAgo(n)`、`startOfRecentDays(days)`（近 N 天含今日）、`resolveStatsWindow(daysRaw, { fallback, min, max })`（夹紧天数 + 本期 / 上期起点 + 日期标签） | 逐 service 手写 `new Date()` + `setHours(0,0,0,0)` + `setDate(...)`、各自的 `startOfToday` / `windowStart` / `sinceDate` |
+| 统计类 service 的「今日 / 近 N 天 / 环比窗口」起点 | `datetime.ts`（`APP_TIME_ZONE` 自然日）：`startOfToday()`、`startOfDayAgo(n)`、`startOfRecentDays(days)`（近 N 天含今日）、`resolveStatsWindow(daysRaw, { fallback, min, max })`（夹紧天数 + 本期 / 上期起点 + 日期标签） | 逐 service 手写 `new Date()` + `setHours(0,0,0,0)` + `setDate(...)`、各自的 `startOfToday` / `windowStart` / `sinceDate` |
+| SQL 中按业务时区分桶 / 取日界 | `datetime-sql.ts`：`localDate(col)`、`localFormat(col, pattern)`、`localTime(col)`、`localTrunc(unit, col)`、`localDayStart(n)` | `to_char(col, 'YYYY-MM-DD')`、`date(col)`、两参 `date_trunc(…)`、`extract(hour from col)`、`CURRENT_DATE`、各自拼 `timezone(...)` |
 | 用户 id → 展示名（昵称 \|\| 用户名）批量解析 | `user-nicknames.ts` 的 `resolveUserNames(ids, executor?)`（drive 域经 `drive-common.ts` re-export） | 手写 `select({ id, nickname, username }).from(users).where(inArray(...))` + `Map` |
 | 探针的基础设施检查 | `health-checks.ts`：`checkInfraHealth()`（database / redis / invalidationBus）+ `overallHealthStatus(checks)`，角色特有项由调用方追加 | 在 api / worker 探针各写一份 `SELECT 1` / `redis.ping()` 三件套 |
 | 通知模板变量归一化 | `notification/template-vars.ts` 的 `normalizeTemplateVars(vars)` | 派发 / 摘要各写一份 `String(value)` 循环 |

@@ -7,7 +7,7 @@
 | --- | --- |
 | 迁移 / Swagger / 路由 404 | [后端结构](#后端结构) |
 | 类型不匹配、共享包找不到、`z.enum` 崩溃 | [类型与共享包](#类型与共享包) |
-| 分页 total、日期筛选、关键字搜索异常 | [数据库查询](#数据库查询) |
+| 分页 total、日期筛选、按天统计错位 / 时差 8 小时、关键字搜索异常 | [数据库查询](#数据库查询) |
 | 403、页面可见但请求被拒 | [权限](#权限) |
 | 外呼流式响应 / SSE 约 5 分钟断开 | [外呼 HTTP](#外呼-http) |
 | 数据不刷新、弹窗数据丢失、重复提示、表格列宽异常 | [前端缓存与表单](#前端缓存与表单) |
@@ -22,6 +22,11 @@
 
 对已有数据的列做了不兼容修改（如给有数据的表加 NOT NULL 列）。
 分三步：先设为 nullable 执行迁移 → 更新已有数据 → 再改为 NOT NULL。
+
+### 多实例下改了用户 / 租户 / 设置，其它实例迟迟不生效
+
+`onInvalidate(topic)` 订阅的表缺少 `notify_cache_invalidate` 触发器，只剩 TTL 兜底。在 `drizzle/0001_extensions.sql` 补触发器；
+`lib/invalidation-triggers.test.ts` 会列出缺失的表。重建迁移基线时按 `docs/backend/database.md`「重建基线」做结构比对。
 
 ### pgEnum 添加新值失败
 
@@ -141,6 +146,12 @@ ESM 值环导致 TDZ：某域 `validation.ts` 引用了另一域 `validation.ts`
 1. `db/schema/relations.ts` 中是否已声明 `xxxRelations`？
 2. `db` 实例创建时是否传入了 `schema`？
 3. `with:` 中的关联名是否与 relations 中定义的一致？
+
+### 按天统计错位 / 时间差 8 小时
+
+时间列不是 `timestamptz`、SQL 依赖会话时区（`CURRENT_DATE`、`date(col)`、`to_char(col, …)`、`extract(hour from col)`），
+或把 `formatDateTime()` 文本当 SQL 参数。按 [constraints.md → 时间格式](./constraints.md#时间格式) 改用 `timestamptz()` 与
+`lib/datetime-sql.ts`；`npm run test -w @zenith/server` 的守卫测试会指出具体位置。
 
 ---
 

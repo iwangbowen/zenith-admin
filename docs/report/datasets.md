@@ -21,7 +21,7 @@ GROUP BY type
 ORDER BY value DESC
 ```
 
-支持任意 `SELECT` / `WITH`（CTE）、JOIN、聚合、子查询。系统会自动限制返回行数并设置语句超时。
+支持任意 `SELECT` / `WITH`（CTE）、JOIN、聚合、子查询。系统会自动限制返回行数并设置语句超时。内置库 SQL 在 `APP_TIME_ZONE` 会话下执行，`now()`、日期截断与结果中的时间均按业务时区。
 
 ### 可视化建模（零 SQL 生成）
 

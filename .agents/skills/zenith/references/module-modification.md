@@ -12,6 +12,7 @@
 **后端**
 
 1. **Schema**（Step 1）：在 `db/schema/{业务域}.ts` 的 `xxxs` 表中添加字段
+   （时刻列写 `timestamptz()`，纯日期 `date({ mode: 'string' })`）
 2. **迁移**（Step 2）：`npm run db:generate && npm run db:migrate`
 3. **Zod Schema**（Step 3）：在 `shared/src/{业务域}/validation.ts` 的 `createXxxSchema` 中添加
    （`updateXxxSchema` 由 `partialForUpdate(createXxxSchema)` 自动派生，新字段的 `.default()` 只作用于创建）

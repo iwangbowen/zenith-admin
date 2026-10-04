@@ -11,7 +11,7 @@ DATABASE_URL=postgres://postgres:postgres@localhost:5432/zenith_admin
 ```
 
 运行时连接池参数由 `config.database` 控制（`DATABASE_MAX_CONNECTIONS` 默认 20、`DATABASE_IDLE_TIMEOUT_SECONDS` 默认 20、
-`DATABASE_CONNECT_TIMEOUT_SECONDS` 默认 10），`db/index.ts` 使用 `postgres` + `drizzle-orm/postgres-js` 创建单例连接池。
+`DATABASE_CONNECT_TIMEOUT_SECONDS` 默认 10），`db/index.ts` 经 `db/client.ts` 的 `createPgClient()` 创建单例连接池（会话时区固定 UTC，见「时间与时区」）。
 这一个池由 HTTP、WebSocket、任务 worker、事件订阅、指标采样与 CMS SSR 同进程共用；pg-boss 与 Mastra 各自另开独立连接池，
 容量核算与多实例部署的取值见 [部署指南](../guide/deployment.md)。
 
@@ -50,38 +50,40 @@ npm run db:seed
 
 `packages/server/drizzle/` 包含 `0000_baseline.sql`、`0001_extensions.sql` 和后续增量迁移，执行顺序由 `drizzle/meta/_journal.json` 管理。全新数据库执行 `npm run db:migrate` 会按该顺序建库。
 
-`0001_extensions.sql` 收口维护 Drizzle schema 无法表达的手写 DDL，当前七项：
+`0001_extensions.sql` 收口维护 Drizzle schema 无法表达的手写 DDL：
 
-- 条件启用 pgvector：`CREATE EXTENSION IF NOT EXISTS vector`（扩展可用才建，否则静默跳过；扩展创建与条件 DDL 均超出 Drizzle 表达范围）。它服务于 Mastra PgVector——知识库向量存放在 `mastra` schema（索引 `kb_{kbId}`），`ai_kb_chunks` 只存分块文本，业务表上没有任何 `vector` 列；无 pgvector 的部署除知识库向量化外照常工作。
+- 条件启用 pgvector（原文保留）。
 - `iot_telemetry` 的 RANGE 日分区建表与初始分区（见下文「分区表」）。
 - `drive_activities` / `drive_share_access_logs` 的 RANGE 月分区建表与初始分区（见下文「分区表：企业网盘日志」）。
-- 跨实例缓存失效广播：通用触发器函数 `notify_cache_invalidate()`（以表名为 topic、可选以某列为 key 向 `cache_invalidate` 频道 `pg_notify`）与 `system_settings` 上的触发器；服务端 `lib/invalidation-bus.ts` 监听该频道，见[运行时设置](./settings.md)。新增需跨实例失效的进程内缓存只需再挂一个触发器。
-- `data_mask_policies` 上的同类触发器（数据脱敏策略的进程内缓存跨实例失效）。
-- 只读执行角色 `zenith_readonly`（NOLOGIN，仅 SELECT），供用户手写 SQL 在事务内 `SET LOCAL ROLE` 切换；无 CREATEROLE 权限的部署跳过创建并告警，服务端降级为白名单 + READ ONLY，见[数据平台 · 安全边界](../ops/data-platform.md#安全边界)。
-- 条件启用 `pg_stat_statements`：扩展可用时创建数据库扩展；PostgreSQL 仍必须在启动配置中预加载 `pg_stat_statements`，否则 SQL 监控保留降级提示。
+- 跨实例缓存失效广播：通用触发器函数 `notify_cache_invalidate()`，以及 `system_settings`、`data_mask_policies`、`users`、`tenants`、`members`、`user_api_tokens`、`tenant_packages`、`tenant_package_features` 上的触发器；服务端 `lib/invalidation-bus.ts` 监听该频道，见[运行时设置](./settings.md)。`onInvalidate(topic)` 订阅的每张表都必须在此挂触发器（`invalidation-triggers.test.ts` 守卫）。
+- CMS 不可变事实：`cms_immutable_revision()`（修订、审批、复审、模型 / 资源 / 组件 / 页面预设 / 集合版本、发布激活）、`cms_release_configuration_immutable()`（发布单输入）、`cms_feedback_history_immutable()` 与 `cms_editorial_history_immutable()`（只追加历史）及其触发器。
+- 只读执行角色 `zenith_readonly`（原文保留）。
+- 条件启用 `pg_stat_statements`（原文保留）。
 
 分区表在基线中先按普通表生成，`0001_extensions.sql` 再删除重建为分区表——其中列 / 外键 / 索引与 `0000_baseline.sql` 对应表的定义逐字一致，schema 改动这三张表后必须同步更新 `0001_extensions.sql`。
 
 `pg_trgm` 扩展在 `0000_baseline.sql` 顶部创建；trigram 索引（含 `async_tasks.payload/result` 的「表达式 + gin_trgm_ops」形态）已全部收进 schema DSL，由 `drizzle-kit generate` 随基线生成。
 
 后续新增无法表达的 DDL 时，用 `drizzle-kit generate --custom` 建独立迁移；重建基线时将其内容并回 `0001_extensions.sql`。
-历史增量中的认证主体、会员主体和租户套餐缓存失效触发器已经并入当前 `0001_extensions.sql`；后续重建基线时继续将这类无法由 schema 表达的 DDL 收口到该文件。
 
 ### 重建基线
 
 基线重建（删除全部增量迁移、由当前 schema 重新生成 `0000_baseline`）只在大版本或迁移链过长时进行，
 **不提供从旧基线的增量升级**——既有数据库必须重建（`DROP DATABASE` 后 `npm run db:migrate && npm run db:seed`）。步骤：
 
-1. 删除 `packages/server/drizzle/` 下全部文件；`npx drizzle-kit generate --name baseline` 生成 `0000_baseline.sql` 与快照。
-2. 在 `0000_baseline.sql` 顶部补回 `CREATE EXTENSION IF NOT EXISTS pg_trgm;--> statement-breakpoint` 及其注释。
-3. `npx drizzle-kit generate --custom --name extensions` 生成空的 `0001_extensions.sql`，写入上述七项手写 DDL；
-   分区表的建表 / 外键 / 索引语句从新基线中原样拷贝再加 `PARTITION BY`；增量迁移里新增的手写 DDL（触发器等）一并并入，
-   数据回填类语句（`UPDATE` / 菜单修正）对全新库无意义，不保留。
-4. 全新库跑 `npm run db:migrate && npm run db:seed`，再执行一次 `drizzle-kit generate` 确认输出 `No schema changes`。
+1. 结构快照：重建前用现有迁移链建一个空库，执行 `packages/server/scripts/schema-catalog.sql` 保存结构清单。
+2. 收集手写 DDL：在增量迁移中检索 `CREATE FUNCTION|CREATE TRIGGER|CREATE VIEW|DO \$\$|PARTITION|CREATE ROLE|GRANT|CREATE EXTENSION`，结构类语句并入 `0001_extensions.sql`；数据回填类语句（`INSERT` / `UPDATE` / 菜单修正）对全新库无意义，不保留。
+3. 删除 `packages/server/drizzle/` 下全部文件；`npx drizzle-kit generate --name baseline` 生成 `0000_baseline.sql` 与快照。
+4. 在 `0000_baseline.sql` 顶部补回 `CREATE EXTENSION IF NOT EXISTS pg_trgm;--> statement-breakpoint` 及其注释。
+5. `npx drizzle-kit generate --custom --name extensions` 生成空的 `0001_extensions.sql`，写入手写 DDL；分区表的建表 / 外键 / 索引语句从新基线中原样拷贝再加 `PARTITION BY`。
+6. 全新库跑 `npm run db:migrate && npm run db:seed`，再执行一次 `drizzle-kit generate` 确认输出 `No schema changes`。
+7. 结构比对：对新库执行同一查询，与第 1 步的清单比对；除本次 schema 有意的改动外不得有差异（缺失的行通常是漏并的触发器 / 函数）。
 
 ### 分区表：`iot_telemetry`
 
-`0001_extensions.sql` 把 IoT 遥测明细建为 PostgreSQL 原生 **RANGE 日分区表**（按 `reported_at`，UTC 日边界，分区命名 `iot_telemetry_pYYYYMMDD`）。约定如下：
+`0001_extensions.sql` 把 IoT 遥测明细建为 PostgreSQL 原生 **RANGE 日分区表**（按 `reported_at`（timestamptz）的 UTC 日边界，分区命名 `iot_telemetry_pYYYYMMDD`）。约定如下：
+
+- 分区边界一律写带 `+00` 的字面量（初始分区与 `iot-partitions.service.ts` 同口径）；`pg_get_expr(relpartbound)` 按会话时区渲染偏移，解析时按带偏移的时刻处理。
 
 - Drizzle schema 仍以普通表描述列 / 索引 / 外键（父表定义自动继承到每个分区），`PARTITION BY` 与初始分区只存在于 `0001_extensions.sql`；重建基线时必须一并保留。
 - 表没有代理主键：明细只按 `(device_id, reported_at)` 范围读取，主键索引纯属写放大，且分区键必须进主键的限制让 `id` 失去意义。
@@ -91,7 +93,7 @@ npm run db:seed
 ### 分区表：企业网盘日志
 
 企业网盘的 `drive_activities` 与 `drive_share_access_logs` 同样使用原生 RANGE 分区，
-但按 `created_at` 的 **UTC 月边界**划分，保留 `id` 作为无主键的 identity 展示序号。
+但按 `created_at`（timestamptz）的 **UTC 月边界**划分，保留 `id` 作为无主键的 identity 展示序号。
 建表 DDL 与初始分区在 `0001_extensions.sql`；生命周期由
 `services/drive/drive-partitions.service.ts` 维护，保留策略只删除完整过期月份。
 模型与运行规则见[企业网盘](../drive/reference.md)。
@@ -120,7 +122,7 @@ keywordCondition(pathPrefix, [managedFiles.objectKey], 'like', 'prefix');
 
 ## Schema 组织（按业务域拆分）
 
-全库约 375 张表，schema 按业务域拆分在 `packages/server/src/db/schema/`。`src/db/schema.ts` 是 barrel，业务代码导入方式保持：
+全库约 520 张表，schema 按业务域拆分在 `packages/server/src/db/schema/`。`src/db/schema.ts` 是 barrel，业务代码导入方式保持：
 
 ```ts
 import { users, roles } from '../db/schema';
@@ -188,11 +190,27 @@ await runAsUser(adminId, async () => {
 
 典型不加审计列的表：纯关联表、追加型日志、临时凭证、IM 消息、天然已有操作者语义的运行时表。
 
-### 时间戳列（`created_at` / `updated_at`）
+### 时间与时区
 
-`db/schema/common.ts` 的 `timestampColumns({ withTimezone? })` 展开 `created_at`（默认 `now()`）与 `updated_at`
-（默认 `now()`，由 drizzle `$onUpdate` 在每次 UPDATE 时自动刷新），业务代码不手动传 `updatedAt`。
-与 `auditColumns()` 一样在列定义末尾展开；只有 `created_at` 的追加型表单独声明该列。
+**存储**：表示时刻的列一律 `timestamptz`。表文件写 `timestamptz()`，创建 / 更新时间展开 `...timestampColumns()`（`created_at` 默认 `now()`，`updated_at` 默认 `now()` 并由 drizzle `$onUpdate` 在每次 UPDATE 时刷新，业务代码不手动传 `updatedAt`）；只有 `created_at` 的追加型表单独声明 `createdAt: timestamptz().defaultNow().notNull()`。纯日期用 `date({ mode: 'string' })`；按某个 IANA 时区解释的当地钟点（如排期）以 `YYYY-MM-DD HH:mm:ss` 文本与时区一起存放，SQL 中用 `(文本)::timestamp AT TIME ZONE <时区>` 换成时刻。`db/schema-time-columns.test.ts` 保证全部时间列带时区。
+
+**会话时区**：连接主库只用 `db/client.ts` 的 `createPgClient()`，会话 `TimeZone` 固定为 `UTC`（连接启动参数，优先于 `postgresql.conf`、`ALTER DATABASE` 与 `ALTER ROLE`），数据库服务端与宿主机的时区设置不影响应用。用户手写 SQL（数据库控制台、导出、报表 SQL 数据集、数据质量自定义 SQL）、数据库管理的数据浏览 / 编辑 / 导入与 psql 终端在 `APP_TIME_ZONE` 会话下执行，结果与日期函数按业务时区呈现。
+
+**业务时区**：`APP_TIME_ZONE`（IANA 名，默认 `Asia/Shanghai`，启动时校验）是唯一的业务时区，与进程 `TZ`、数据库时区无关。入参用 `parseDateTimeInput()` / `parseDateRangeStart()` / `parseDateRangeEnd()` 解析为 `Date`，出参用 `formatDateTime()` / `formatDate()`，统计窗口用 `startOfToday()` / `startOfDayAgo(n)` / `resolveStatsWindow()`。
+
+**SQL 分桶与日界**（`lib/datetime-sql.ts`，时区字面量内联、不占参数，同一表达式可同时用于 SELECT / GROUP BY / ORDER BY）：
+
+| 场景 | 写法 |
+| --- | --- |
+| 按自然日分组 | `localDate(col)` → `'YYYY-MM-DD'` |
+| 按月 / 整点等其它格式 | `localFormat(col, 'YYYY-MM')`、`localFormat(col, 'YYYY-MM-DD HH24:00')` |
+| 小时 / 星期分布 | `extract(hour from ${localTime(col)})` |
+| 截断到当地整点 / 零点 / 月初（结果仍是时刻） | `localTrunc('day', col)` |
+| 「今日 / n 天前」零点 | `localDayStart(n)` |
+
+**SQL 时间参数**：经列映射传 `Date`（drizzle 条件、`sql.param(date, column)`），或 `date.toISOString()` 加 `::timestamptz`。
+
+**禁止**（`lib/datetime-sql.guard.test.ts` 扫描）：`CURRENT_DATE`；`::timestamp`（当地钟点文本换算除外，且须紧跟 `AT TIME ZONE`）；`AT TIME ZONE 'UTC' AT TIME ZONE …`；把 `formatDateTime()` 文本当 SQL 时间参数；对时间列直接 `date()`、`to_char()`、两参 `date_trunc()`、`extract(hour | isodow …)`——这些写法依赖会话时区，结果按 UTC 而非业务时区切分。
 
 ## 数据库备份
 

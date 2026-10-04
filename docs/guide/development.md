@@ -91,7 +91,7 @@ npm run docs:preview   # 预览构建产物，http://localhost:4178
 
 ### 时间格式
 
-API 响应、入参、前端显示、MSW Mock 统一使用 `YYYY-MM-DD HH:mm:ss`。后端使用 `packages/server/src/lib/datetime.ts`，前端使用 `packages/web/src/utils/date.ts`。
+API 响应、入参、前端显示、MSW Mock 统一使用 `YYYY-MM-DD HH:mm:ss`。后端使用 `packages/server/src/lib/datetime.ts`，前端使用 `packages/web/src/utils/date.ts`。数据库时间列与 SQL 时区写法见[数据库与迁移 → 时间与时区](../backend/database.md#时间与时区)。
 
 ### 图标
 

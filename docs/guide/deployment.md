@@ -60,6 +60,7 @@ ALLOWED_ORIGINS=https://admin.example.com
 | --- | --- |
 | `DATABASE_MAX_CONNECTIONS` | 单个进程的业务连接池上限，默认 `20`。连接预算按角色累计：业务池 + pg-boss 池（worker 约 10，api send-only 约 2）+ 1 条 LISTEN 连接；api 还包含 Mastra 10 + 5。所有 api / worker 进程总和必须低于 PostgreSQL `max_connections`，超出时前置 pgBouncer（会话池模式，事务池无法透传 LISTEN/NOTIFY）或调低该值 |
 | `ZENITH_ROLES` | 进程角色，逗号分隔：`api` / `worker` / `all`（等于两者）。非 `NODE_ENV=development` 环境必填；单机全量部署显式设为 `all` |
+| `APP_TIME_ZONE` | 业务时区（IANA 名，默认 `Asia/Shanghai`）：接口时间、自然日统计与「今日」窗口按它计算。应用连接数据库时固定会话时区为 UTC，数据库服务端、容器与宿主机的时区设置不影响数据与统计 |
 | `WORKER_HEALTH_PORT` | 纯 worker 探针端口，默认 `3301`，提供 `/health`、`/ready`、`/metrics` |
 | `SHUTDOWN_GRACE_MS` | 优雅停机硬截止；默认 api/all `15000`，纯 worker `120000`。worker 把该预算（扣除收尾步骤的 10s）传给 pg-boss 等待在飞作业收尾，超时的作业被标记失败、由任务中心兜底扫描按断点恢复。容器 `stop_grace_period` / K8s `terminationGracePeriodSeconds` 必须大于该值 |
 | `STORAGE_SHARED` | 默认 `false`。纯 worker 使用本地磁盘相关存储或 CMS 静态化时，设为 `true` 表示 `storage/` 由 api 与 worker 共享 |
@@ -331,6 +332,7 @@ Docker 构建会自动执行该步骤。手动部署时需先 `npm run build`，
 2. 停止 worker，等待其在 `SHUTDOWN_GRACE_MS` 内完成在飞作业的收尾。
 3. 切换到目标 tag 并安装依赖：`git fetch --tags && git checkout vX.Y.Z && npm ci`。
 4. 显式执行迁移：源码部署用 `npm run db:migrate`，dist 产物用 `npm run start:migrate -w @zenith/server`。
+   目标版本重建了迁移基线（见[数据库与迁移 → 重建基线](../backend/database.md#重建基线)）时不提供增量升级：备份后删除并重建数据库，再执行迁移与 `db:seed`。
 5. 启动 worker。
 6. 滚动重启 api；api 只承载接入面，重启不影响 worker 上的后台作业。
 7. 重新构建或替换 `packages/web/dist/`，Nginx 无需重启。

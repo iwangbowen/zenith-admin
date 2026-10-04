@@ -63,6 +63,7 @@
 - 范围端点使用 `parseDateRangeStart()` / `parseDateRangeEnd()`，或直接使用 `dateRangeConditions()`。
 - 路由查询 schema 中的范围端点用 `...dateRangeQuery('说明')`（标准 `startTime` / `endTime`）或 `dateRangeBound('说明', 'start' | 'end')`（自定义键名），接受 `YYYY-MM-DD` 与 `YYYY-MM-DD HH:mm:ss`。
 - 业务接口契约不要使用 ISO datetime，数据映射不要直接 `toISOString()`。
+- 数据库存储、会话时区与 SQL 写法见[数据库与迁移 → 时间与时区](./database.md#时间与时区)。
 
 ## 认证方式
 
