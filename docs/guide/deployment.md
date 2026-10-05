@@ -328,12 +328,27 @@ Docker 构建会自动执行该步骤。手动部署时需先 `npm run build`，
 
 ## 升级版本
 
+先确认目标版本是否重建了迁移基线（见[数据库与迁移 → 重建基线](../backend/database.md#重建基线)）；重建基线必须走下方的停机重建流程。
+
+### 普通增量升级
+
 1. 可选：在发布前执行 `npm run verify:split` 验证本地 api / worker 拆分链路（需要可用的 PostgreSQL 与 Redis）。
 2. 停止 worker，等待其在 `SHUTDOWN_GRACE_MS` 内完成在飞作业的收尾。
 3. 切换到目标 tag 并安装依赖：`git fetch --tags && git checkout vX.Y.Z && npm ci`。
 4. 显式执行迁移：源码部署用 `npm run db:migrate`，dist 产物用 `npm run start:migrate -w @zenith/server`。
-   目标版本重建了迁移基线（见[数据库与迁移 → 重建基线](../backend/database.md#重建基线)）时不提供增量升级：备份后删除并重建数据库，再执行迁移与 `db:seed`。
 5. 启动 worker。
 6. 滚动重启 api；api 只承载接入面，重启不影响 worker 上的后台作业。
 7. 重新构建或替换 `packages/web/dist/`，Nginx 无需重启。
 8. Electron 客户端可通过「系统设置 → 应用版本」发布热更新包或安装包，详见 [Electron 桌面客户端](./electron.md)。
+
+### 迁移基线重建
+
+重建基线不提供从旧数据库的增量升级，必须安排停机窗口；不能沿用上方保留旧 api 在线的滚动升级流程。
+
+1. 备份数据库，暂停外部流量接入。
+2. 停止连接此数据库的全部 api、worker 与 `all` 进程，包括所有副本；等待优雅停机完成、在飞作业收尾并释放数据库连接。
+3. 切换到目标 tag 并安装依赖；部署编译产物时，先按上文「启动后端」构建并准备新版本产物。
+4. 使用连接到 `postgres` 等管理库的管理员连接删除旧数据库，再显式创建空数据库并恢复其所有者。例如依次执行 `DROP DATABASE zenith_admin;` 和 `CREATE DATABASE zenith_admin OWNER zenith;`，库名与角色名按 `DATABASE_URL` 的实际配置替换。
+5. 在新空库中显式执行迁移与 seed，任一步失败都保持应用停机并修复后重跑：源码部署执行 `npm run db:migrate`、`npm run db:seed`；dist 部署先执行 `npm run start:migrate -w @zenith/server`，再进入 `packages/server` 执行 `node dist/db/seed.js`。Docker 部署分别执行 `docker compose run --rm migrate`、`docker compose run --rm migrate node dist/db/seed.js`。
+6. 迁移与 seed 成功后，启动新版本 worker 和 api（单进程部署启动 `all`）；确认 worker `/ready` 与 api `/api/health` 正常，再恢复外部流量。不得让旧版本进程连接重建后的数据库。
+7. 重新构建或替换前端静态文件，并验证管理员登录、业务查询、任务执行与实时通知。
