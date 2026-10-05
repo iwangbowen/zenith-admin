@@ -38,7 +38,7 @@ npm run db:seed
 | `npm run db:migrate` | `npm run db:migrate -w @zenith/server` → `tsx src/db/migrate.ts` |
 | `npm run db:seed` | `npm run db:seed -w @zenith/server` → `tsx src/db/seed.ts` |
 
-迁移入口 `packages/server/src/db/migrate.ts` 使用 Drizzle migrator 执行 `./drizzle`。开发、生产和容器启动链路都会先执行迁移再启动服务；迁移失败以非零码退出，阻断服务启动。
+迁移入口 `packages/server/src/db/migrate.ts` 使用 Drizzle migrator 执行 `./drizzle`。开发启动脚本 `scripts/dev.mjs` 依次执行迁移、seed 与服务，任一步失败都会阻断后续启动。生产 `npm start` 只启动服务，部署时必须先显式执行 `npm run db:migrate`（源码）或 `npm run start:migrate -w @zenith/server`（编译产物）；初始化内置数据时另行执行 seed。Docker Compose 由一次性 `migrate` 服务执行迁移，api / worker 等待其成功完成后启动，seed 仍需显式执行。具体命令见[部署指南](../guide/deployment.md)与[Docker 部署](../guide/docker.md)。
 
 ## 重要约定
 
@@ -52,13 +52,13 @@ npm run db:seed
 
 `0001_extensions.sql` 收口维护 Drizzle schema 无法表达的手写 DDL：
 
-- 条件启用 pgvector（原文保留）。
+- 条件启用 pgvector：`CREATE EXTENSION IF NOT EXISTS vector`（扩展可用才建，否则静默跳过；扩展创建与条件 DDL 均超出 Drizzle 表达范围）。它服务于 Mastra PgVector——知识库向量存放在 `mastra` schema（索引 `kb_{kbId}`），`ai_kb_chunks` 只存分块文本，业务表上没有任何 `vector` 列；无 pgvector 的部署除知识库向量化外照常工作。
 - `iot_telemetry` 的 RANGE 日分区建表与初始分区（见下文「分区表」）。
 - `drive_activities` / `drive_share_access_logs` 的 RANGE 月分区建表与初始分区（见下文「分区表：企业网盘日志」）。
 - 跨实例缓存失效广播：通用触发器函数 `notify_cache_invalidate()`，以及 `system_settings`、`data_mask_policies`、`users`、`tenants`、`members`、`user_api_tokens`、`tenant_packages`、`tenant_package_features` 上的触发器；服务端 `lib/invalidation-bus.ts` 监听该频道，见[运行时设置](./settings.md)。`onInvalidate(topic)` 订阅的每张表都必须在此挂触发器（`invalidation-triggers.test.ts` 守卫）。
 - CMS 不可变事实：`cms_immutable_revision()`（修订、审批、复审、模型 / 资源 / 组件 / 页面预设 / 集合版本、发布激活）、`cms_release_configuration_immutable()`（发布单输入）、`cms_feedback_history_immutable()` 与 `cms_editorial_history_immutable()`（只追加历史）及其触发器。
-- 只读执行角色 `zenith_readonly`（原文保留）。
-- 条件启用 `pg_stat_statements`（原文保留）。
+- 只读执行角色 `zenith_readonly`（NOLOGIN，仅 SELECT），供用户手写 SQL 在事务内 `SET LOCAL ROLE` 切换；无 CREATEROLE 权限的部署跳过创建并告警，服务端降级为白名单 + READ ONLY，见[数据平台 · 安全边界](../ops/data-platform.md#安全边界)。
+- 条件启用 `pg_stat_statements`：扩展可用时创建数据库扩展；PostgreSQL 仍必须在启动配置中预加载 `pg_stat_statements`，否则 SQL 监控保留降级提示。
 
 分区表在基线中先按普通表生成，`0001_extensions.sql` 再删除重建为分区表——其中列 / 外键 / 索引与 `0000_baseline.sql` 对应表的定义逐字一致，schema 改动这三张表后必须同步更新 `0001_extensions.sql`。
 
@@ -69,7 +69,7 @@ npm run db:seed
 ### 重建基线
 
 基线重建（删除全部增量迁移、由当前 schema 重新生成 `0000_baseline`）只在大版本或迁移链过长时进行，
-**不提供从旧基线的增量升级**——既有数据库必须重建（`DROP DATABASE` 后 `npm run db:migrate && npm run db:seed`）。步骤：
+**不提供从旧基线的增量升级**——既有数据库必须停止全部 api / worker / `all` 进程，删除旧数据库并显式创建空库，再执行迁移与 seed；部署步骤见[部署指南 → 迁移基线重建](../guide/deployment.md#迁移基线重建)。下面的步骤用于生成与验证新迁移链：
 
 1. 结构快照：重建前用现有迁移链建一个空库，执行 `packages/server/scripts/schema-catalog.sql` 保存结构清单。
 2. 收集手写 DDL：在增量迁移中检索 `CREATE FUNCTION|CREATE TRIGGER|CREATE VIEW|DO \$\$|PARTITION|CREATE ROLE|GRANT|CREATE EXTENSION`，结构类语句并入 `0001_extensions.sql`；数据回填类语句（`INSERT` / `UPDATE` / 菜单修正）对全新库无意义，不保留。
