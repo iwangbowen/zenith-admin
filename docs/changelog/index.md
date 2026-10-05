@@ -4,6 +4,59 @@
 
 ---
 
+## v2.66.0 - 2026-10-05
+
+本版本收尾 v2.65.0 的时间与时区标准化：会员、推送、应用发布与工作流四处统计仍用进程本地 `Date` 运算构造
+业务自然日窗口与趋势轴，在 UTC 进程下整体偏移，且固定 24 小时步长在夏令时切换日会重复或跳过日期；容器
+部署此前也不会把 `APP_TIME_ZONE` 传给服务端。本版本将这些残余路径统一到 `datetime.ts` 的业务日历 helper，
+并补齐容器时区透传与迁移基线重建的部署说明。
+
+### Fixed
+
+#### 统计口径
+
+- **会员统计的业务月边界错位**：`new Date(todayStart.getFullYear(), todayStart.getMonth(), 1)` 用的是进程
+  本地时区的取值方法、却作用在业务时区日期上，月度口径随进程 `TZ` 漂移，现改走 `startOfMonth()`；
+  「近 30 天」「近 7 天」「活跃 90 天」等窗口统一改用 `startOfDayAgo()`。
+- **推送发送日志趋势轴错位**：`new Date(since.getTime() + i * 24h)` 配 `getFullYear()` / `getMonth()` /
+  `getDate()` 生成日期标签，在 UTC 进程下与 `localDate()` 的分桶键对不上，曲线出现空桶或整体偏移。
+- **应用发布统计窗口不完整**：`Date.now() - days * 24h` 是滚动小时窗口而非完整自然日，与 `localDate()` 分桶
+  不对齐；一天报表会漏掉请求时刻之前的当日事件。现改用 `startOfRecentDays()`，使事件统计、设备活跃与趋势
+  轴共用同一组完整业务自然日。
+- **工作流分析趋势起点漂移**：`dayjs().subtract(13, 'day').startOf('day')` 取的是进程本地零点，与业务自然日
+  不符，14 天趋势与积压基线随之偏移；现改用 `startOfRecentDays(14)` 与 `buildDateAxis()`。7 天 KPI 需要保持
+  滚动 168 小时，单独保留 `Date.now() - 168h` 口径，两种窗口各自明确、不再互相串味。
+
+#### 容器部署
+
+- **容器内自定义业务时区不生效**：`docker-compose.yml` 的 `x-server-env` 未透传 `APP_TIME_ZONE`，容器内的
+  服务端回退默认 `Asia/Shanghai`，非默认时区部署的自然日统计与时间呈现与预期不符。现新增
+  `APP_TIME_ZONE: ${APP_TIME_ZONE:-Asia/Shanghai}`，api / worker / migrate 统一透传，
+  `.env.docker` 同步补充该项说明。
+
+### Changed
+
+- **`lib/datetime.ts` 新增两个业务日历 helper**：`startOfMonth()` 返回所属业务自然月首日 00:00:00，
+  独立于进程时区；`buildDateAxis()` 按日历递增生成连续日期标签，跨夏令时不重复也不跳过日期。
+  四处统计服务删除各自的 `shiftDays` / `buildDateAxis` / 固定 24 小时补零循环，改用统一实现。
+
+### 测试与文档
+
+- **新增 5 组守卫测试**（`datetime-calendar`、`member-stats`、`push-send-logs`、`app-releases`、
+  `workflow-analytics`）：覆盖业务日历与进程时区隔离、UTC 进程中上海零点记录仍归入当日分桶、
+  纽约秋季换钟后日期轴连续不重复、滚动 7 天 KPI 恰为 168 小时；数据库控制台终端断言改为遵循
+  `APP_TIME_ZONE` 而非宿主机时区。
+- **`docs/guide/deployment.md` 升级章节拆分为两条路径**：「普通增量升级」与「迁移基线重建」。后者明确
+  不提供从旧库的增量升级，必须安排停机窗口——停止全部 api / worker / `all` 进程并等待优雅停机，
+  再删库建空库、执行迁移与 seed，确认 worker `/ready` 与 api `/api/health` 正常后才恢复流量，
+  不得让旧版本进程连接重建后的数据库。
+- **`docs/backend/database.md` 恢复扩展启用说明**：补回 pgvector（服务 Mastra PgVector，向量存放在
+  `mastra` schema，无 pgvector 时除知识库向量化外照常工作）、只读角色 `zenith_readonly`
+  （NOLOGIN，无 CREATEROLE 权限时跳过创建并降级）与 `pg_stat_statements`（仍需在启动配置中预加载）
+  的完整说明；同时澄清迁移入口职责——生产 `npm start` 只启动服务，迁移与 seed 须显式执行。
+
+---
+
 ## v2.65.0 - 2026-10-04
 
 本版本完成时间与时区标准化：全库 520 张表的时间列统一为 `timestamptz` 并重置迁移基线，业务时区只由 `APP_TIME_ZONE`
