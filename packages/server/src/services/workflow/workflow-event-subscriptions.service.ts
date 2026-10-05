@@ -1,6 +1,7 @@
-import { workflowEventSubscriptionContract } from '@zenith/shared/workflow';
+import { workflowEventSubscriptionContract, workflowEventDeliveryState } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { and, desc, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { randomUUID } from 'node:crypto';
 import { db } from '../../db';
 import {
@@ -236,12 +237,13 @@ export async function findMatchingSubscriptions(params: {
 
 // ─── 投递记录 ──────────────────────────────────────────────────────────────
 
-type WebhookDeliveryStatus = 'pending' | 'success' | 'failed' | 'retrying';
-
 type WebhookDeliveryRow = {
   execution: typeof workflowJobExecutions.$inferSelect;
   job: typeof workflowJobs.$inferSelect;
   subscriptionName?: string | null;
+  subscriptionEnabled: boolean | null;
+  latestExecutionId: number;
+  latestExecutionStatus: typeof workflowJobExecutions.$inferSelect['status'];
 };
 
 function payloadNumber(payload: unknown, key: string): number | null {
@@ -259,18 +261,17 @@ function payloadWorkflowEvent(payload: unknown) {
   return value ?? null;
 }
 
-function mapDeliveryStatus(row: WebhookDeliveryRow): WebhookDeliveryStatus {
-  if (row.execution.status === 'succeeded' || row.job.status === 'succeeded') return 'success';
-  if (row.job.status === 'failed' && row.job.attempts < row.job.maxAttempts) return 'retrying';
-  if (row.execution.status === 'failed' || row.job.status === 'failed' || row.job.status === 'dead') return 'failed';
-  return 'pending';
-}
-
 export function mapDelivery(row: WebhookDeliveryRow, subscriptionName?: string | null) {
   // webhook_delivery 作业 payload 形如 { subscriptionId, event }，事件类型/ID 取自嵌套 event
   const event = payloadRecord(payloadRecord(row.job.payload).event);
+  const state = workflowEventDeliveryState({
+    executionId: row.execution.id, executionStatus: row.execution.status,
+    latestExecutionId: row.latestExecutionId, latestExecutionStatus: row.latestExecutionStatus,
+    jobStatus: row.job.status, jobAttempts: row.job.attempts, subscriptionEnabled: row.subscriptionEnabled === true,
+  });
   return {
     id: row.execution.id,
+    jobId: row.job.id,
     subscriptionId: payloadNumber(row.job.payload, 'subscriptionId') ?? 0,
     subscriptionName: subscriptionName ?? row.subscriptionName ?? null,
     instanceId: row.job.instanceId ?? null,
@@ -279,14 +280,14 @@ export function mapDelivery(row: WebhookDeliveryRow, subscriptionName?: string |
     eventType: (typeof event.type === 'string' ? event.type : null) ?? payloadString(row.job.payload, 'eventType') ?? 'workflow.event',
     payload: payloadWorkflowEvent(row.job.payload),
     attempt: row.execution.attempt,
-    status: mapDeliveryStatus(row),
+    ...state,
     requestUrl: row.execution.requestUrl,
     requestHeaders: null,
     responseStatus: row.execution.responseStatus,
     responseBody: row.execution.responseBody,
-    errorMessage: row.execution.errorMessage ?? row.job.lastError,
+    errorMessage: row.execution.errorMessage,
     durationMs: row.execution.durationMs,
-    nextRetryAt: row.job.status === 'failed' ? formatNullableDateTime(row.job.runAt) : null,
+    nextRetryAt: state.jobStatus === 'retrying' ? formatNullableDateTime(row.job.runAt) : null,
     startedAt: formatNullableDateTime(row.execution.startedAt),
     finishedAt: formatNullableDateTime(row.execution.finishedAt),
     tenantId: row.execution.tenantId ?? row.job.tenantId,
@@ -294,10 +295,26 @@ export function mapDelivery(row: WebhookDeliveryRow, subscriptionName?: string |
   };
 }
 
+const latestExecutionAlias = 'event_delivery_latest_execution';
+const latestExecution = alias(workflowJobExecutions, latestExecutionAlias);
+const latestExecutionId = sql<number>`(select ${latestExecution.id} from ${workflowJobExecutions} as ${sql.identifier(latestExecutionAlias)} where ${latestExecution.jobId} = ${workflowJobs.id} order by ${latestExecution.id} desc limit 1)`;
+const latestExecutionStatus = sql<typeof workflowJobExecutions.$inferSelect['status']>`(select ${latestExecution.status} from ${workflowJobExecutions} as ${sql.identifier(latestExecutionAlias)} where ${latestExecution.jobId} = ${workflowJobs.id} order by ${latestExecution.id} desc limit 1)`;
+/** SQL filters use the same outcome and scheduling vocabulary as the response. */
+const deliveryStatusSql = sql<string>`case ${workflowJobExecutions.status} when 'succeeded' then 'success' when 'canceled' then 'cancelled' else ${workflowJobExecutions.status}::text end`;
+const deliveryJobStatusSql = sql<string>`case
+  when ${workflowJobs.status} = 'pending' and ${workflowJobs.attempts} > 0 then 'retrying'
+  when ${workflowJobs.status} = 'succeeded' and ${latestExecutionStatus} = 'skipped' then 'skipped'
+  when ${workflowJobs.status} = 'succeeded' then 'success'
+  when ${workflowJobs.status} = 'canceled' then 'cancelled'
+  else ${workflowJobs.status}::text end`;
+
 const DELIVERY_SELECTION = {
   execution: workflowJobExecutions,
   job: workflowJobs,
   subscriptionName: workflowEventSubscriptions.name,
+  subscriptionEnabled: workflowEventSubscriptions.enabled,
+  latestExecutionId,
+  latestExecutionStatus,
 } as const;
 
 /** 投递记录查询：执行记录 ⋈ 父作业，并按 payload.subscriptionId 关联订阅名 */
@@ -315,26 +332,13 @@ function deliveryConditions(...extra: (SQL | undefined)[]): SQL | undefined {
   );
 }
 
-/** 按投递记录 id 定位父作业 id（重试入口用） */
-function findDeliveryJobIds(idCondition: SQL): Promise<{ jobId: number }[]> {
-  return jobExecutionsWithJob({ jobId: workflowJobs.id }).where(deliveryConditions(idCondition));
-}
-
 export async function listDeliveries(q: QueryOutputOf<typeof workflowEventSubscriptionContract.deliveries>) {
   const { page, pageSize } = q;
-  const statusCondition = (): SQL | undefined => {
-    switch (q.status) {
-      case 'success': return eq(workflowJobExecutions.status, 'succeeded');
-      case 'failed': return or(eq(workflowJobExecutions.status, 'failed'), eq(workflowJobs.status, 'dead'));
-      case 'retrying': return and(eq(workflowJobExecutions.status, 'failed'), sql`${workflowJobs.attempts} < ${workflowJobs.maxAttempts}`);
-      case 'pending': return inArray(workflowJobs.status, ['pending', 'running']);
-      default: return undefined;
-    }
-  };
   const where = deliveryConditions(
     q.subscriptionId ? sql`(${workflowJobs.payload}->>'subscriptionId')::int = ${q.subscriptionId}` : undefined,
     q.instanceId ? eq(workflowJobs.instanceId, q.instanceId) : undefined,
-    statusCondition(),
+    q.status ? sql`${deliveryStatusSql} = ${q.status}` : undefined,
+    q.jobStatus ? sql`${deliveryJobStatusSql} = ${q.jobStatus}` : undefined,
   );
   return buildListResult({
     page,
@@ -368,22 +372,47 @@ export async function getDeliveriesBeforeAudit(ids: number[]) {
   return rows.map((r) => mapDelivery(r, r.subscriptionName));
 }
 
-/** 手动重置投递为 retrying 立即重试 */
+/** Only the latest execution of an enabled subscription can retry a terminal job. */
 export async function retryDelivery(id: number) {
-  const [row] = await findDeliveryJobIds(eq(workflowJobExecutions.id, id));
-  requireRow(row, '投递记录不存在');
-  if (!await retryJob(row.jobId)) throw new HTTPException(409, { message: '仅失败或已取消的投递可以重试' });
+  const row = await getDelivery(id);
+  if (!row.canRetry) throw new HTTPException(409, { message: '仅启用订阅的最新失败、死信或取消作业可以重试；等待自动重试的作业无需手动重试' });
+  if (!await retryJob(row.jobId)) throw new HTTPException(409, { message: '作业状态已改变，请刷新投递记录' });
   return getDelivery(id);
 }
 
 /** 批量重试（按 ids） */
 export async function retryDeliveries(ids: number[]) {
   if (ids.length === 0) return 0;
-  const rows = await findDeliveryJobIds(inArray(workflowJobExecutions.id, ids));
+  const rows = await getDeliveriesBeforeAudit(ids);
   if (rows.length === 0) return 0;
   let retried = 0;
-  for (const jobId of new Set(rows.map((row) => row.jobId))) if (await retryJob(jobId)) retried++;
+  for (const jobId of new Set(rows.filter((row) => row.canRetry).map((row) => row.jobId))) if (await retryJob(jobId)) retried++;
   return retried;
+}
+
+async function enqueueDeliveryReplay(job: typeof workflowJobs.$inferSelect) {
+  return enqueueJob({
+    jobType: job.jobType, payload: (job.payload ?? {}) as Record<string, unknown>,
+    instanceId: job.instanceId, taskId: job.taskId, nodeKey: job.nodeKey,
+    idempotencyKey: `replay:${job.id}:${randomUUID()}`, traceId: job.traceId,
+    priority: job.priority, maxAttempts: job.maxAttempts, executionTimeoutMs: job.executionTimeoutMs,
+    tenantId: job.tenantId,
+  });
+}
+
+export async function replayDelivery(id: number): Promise<{ count: number }> {
+  const delivery = await getDelivery(id);
+  if (!delivery.canReplay) throw new HTTPException(409, { message: '仅启用订阅的最新终态作业可以重新投递' });
+  if (delivery.canRetry) {
+    if (!await retryJob(delivery.jobId)) throw new HTTPException(409, { message: '作业状态已改变，请刷新投递记录' });
+  } else {
+    const [job] = await db.select().from(workflowJobs).where(buildWhere(
+      eq(workflowJobs.id, delivery.jobId), eq(workflowJobs.status, 'succeeded'), tenantCondition(workflowJobs, currentUser()),
+    )).limit(1);
+    if (!job) throw new HTTPException(409, { message: '作业状态已改变，请刷新投递记录' });
+    await enqueueDeliveryReplay(job);
+  }
+  return { count: 1 };
 }
 
 /** 按筛选批量重放投递的最大条数（防止误操作一次重投海量历史投递） */
@@ -407,7 +436,7 @@ export interface ReplayDeliveriesFilter {
 export async function replayDeliveriesByFilter(f: ReplayDeliveriesFilter): Promise<{ count: number }> {
   const statusCondition = (): SQL | undefined => {
     switch (f.status) {
-      case 'success': return eq(workflowJobs.status, 'succeeded');
+      case 'success': return and(eq(workflowJobs.status, 'succeeded'), sql`${latestExecutionStatus} = 'succeeded'`);
       case 'failed': return inArray(workflowJobs.status, ['failed', 'dead']);
       case 'pending': return eq(workflowJobs.status, 'pending');
       default: return undefined;
@@ -417,8 +446,9 @@ export async function replayDeliveriesByFilter(f: ReplayDeliveriesFilter): Promi
     .where(buildWhere(
       eq(workflowJobs.jobType, 'webhook_delivery'),
       tenantCondition(workflowJobs, currentUser()),
+      sql`exists (select 1 from ${workflowEventSubscriptions} where ${workflowEventSubscriptions.id} = (${workflowJobs.payload}->>'subscriptionId')::int and ${workflowEventSubscriptions.enabled} = true)`,
       f.subscriptionId ? sql`(${workflowJobs.payload}->>'subscriptionId')::int = ${f.subscriptionId}` : undefined,
-      f.eventType ? sql`${workflowJobs.payload}->>'eventType' = ${f.eventType}` : undefined,
+      f.eventType ? sql`${workflowJobs.payload}->'event'->>'type' = ${f.eventType}` : undefined,
       statusCondition(),
       ...dateRangeConditions(workflowJobs.createdAt, f.startAt, f.endAt),
     ))
@@ -433,19 +463,7 @@ export async function replayDeliveriesByFilter(f: ReplayDeliveriesFilter): Promi
     } else if (job.status === 'failed' || job.status === 'dead' || job.status === 'canceled') {
       if (await retryJob(job.id)) count++;
     } else if (job.status === 'succeeded') {
-      const replay = await enqueueJob({
-        jobType: job.jobType,
-        payload: (job.payload ?? {}) as Record<string, unknown>,
-        instanceId: job.instanceId,
-        taskId: job.taskId,
-        nodeKey: job.nodeKey,
-        idempotencyKey: `replay:${job.id}:${randomUUID()}`,
-        traceId: job.traceId,
-        priority: job.priority,
-        maxAttempts: job.maxAttempts,
-        executionTimeoutMs: job.executionTimeoutMs,
-        tenantId: job.tenantId,
-      });
+      const replay = await enqueueDeliveryReplay(job);
       if (replay) count++;
     }
   }

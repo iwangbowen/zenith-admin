@@ -123,7 +123,6 @@ export const WORKFLOW_AUTOMATION_TRIGGER_LABELS: Record<WorkflowAutomationTrigge
 export const WORKFLOW_AUTOMATION_TRIGGER_OPTIONS: Array<{ value: WorkflowAutomationTrigger; label: string }> =
   createLabelOptions(WORKFLOW_AUTOMATION_TRIGGERS, WORKFLOW_AUTOMATION_TRIGGER_LABELS);
 
-export const WORKFLOW_AUTOMATION_RUN_STATUSES = ['success', 'failed', 'skipped'] as const;
 
 /** 流程事件总线事件类型（事件订阅 / 投递记录 / 引擎事件监听共用） */
 export const WORKFLOW_EVENT_TYPES = [
@@ -156,17 +155,26 @@ export const WORKFLOW_EVENT_TYPE_OPTIONS: Array<{ value: WorkflowEventType; labe
 
 export const WORKFLOW_EVENT_SIGN_MODES = ['hmacSha256', 'none'] as const;
 
-export const WORKFLOW_EVENT_DELIVERY_STATUSES = ['pending', 'success', 'failed', 'retrying'] as const;
+/** 单次投递尝试的结果，不随父作业后续重试或结束而改变。 */
+export const WORKFLOW_EVENT_DELIVERY_STATUSES = ['running', 'success', 'failed', 'skipped', 'cancelled'] as const;
 
 export const WORKFLOW_EVENT_DELIVERY_STATUS_LABELS: Record<WorkflowEventDeliveryStatus, string> = {
-  pending: '待发送',
+  running: '投递中',
   success: '成功',
   failed: '失败',
-  retrying: '重试中',
+  skipped: '已跳过',
+  cancelled: '已取消',
 };
 
 export const WORKFLOW_EVENT_DELIVERY_STATUS_OPTIONS: Array<{ value: WorkflowEventDeliveryStatus; label: string }> =
   createLabelOptions(WORKFLOW_EVENT_DELIVERY_STATUSES, WORKFLOW_EVENT_DELIVERY_STATUS_LABELS);
+
+export const WORKFLOW_EVENT_DELIVERY_JOB_STATUSES = ['pending', 'running', 'retrying', 'success', 'failed', 'skipped', 'cancelled', 'dead', 'paused'] as const;
+export const WORKFLOW_EVENT_DELIVERY_JOB_STATUS_LABELS: Record<(typeof WORKFLOW_EVENT_DELIVERY_JOB_STATUSES)[number], string> = {
+  pending: '待发送', running: '投递中', retrying: '等待重试', success: '已完成', failed: '失败',
+  skipped: '已跳过', cancelled: '已取消', dead: '死信', paused: '已暂停',
+};
+export const WORKFLOW_EVENT_DELIVERY_JOB_STATUS_OPTIONS = createLabelOptions(WORKFLOW_EVENT_DELIVERY_JOB_STATUSES, WORKFLOW_EVENT_DELIVERY_JOB_STATUS_LABELS);
 
 export const WORKFLOW_TRIGGER_TYPES = ['webhook', 'callback', 'updateData', 'deleteData'] as const;
 
@@ -197,7 +205,7 @@ export const WORKFLOW_TRIGGER_EXECUTION_STATUS_OPTIONS: Array<{ value: WorkflowT
 export const WORKFLOW_JOB_TYPES = [
   'delay_wake', 'task_timeout', 'trigger_dispatch', 'external_dispatch',
   'subprocess_spawn', 'subprocess_join', 'event_dispatch', 'webhook_delivery',
-  'compensation_action',
+  'compensation_action', 'automation_action', 'schedule_launch',
 ] as const;
 
 export const WORKFLOW_JOB_TYPE_LABELS: Record<WorkflowJobType, string> = {
@@ -210,19 +218,25 @@ export const WORKFLOW_JOB_TYPE_LABELS: Record<WorkflowJobType, string> = {
   event_dispatch: '事件派发',
   webhook_delivery: 'Webhook 投递',
   compensation_action: '补偿动作',
+  automation_action: '自动化动作',
+  schedule_launch: '定时发起',
 };
 
 export const WORKFLOW_JOB_TYPE_OPTIONS: Array<{ value: WorkflowJobType; label: string }> =
   createLabelOptions(WORKFLOW_JOB_TYPES, WORKFLOW_JOB_TYPE_LABELS);
 
 export const WORKFLOW_JOB_STATUSES = ['pending', 'running', 'paused', 'succeeded', 'failed', 'dead', 'canceled'] as const;
+export const WORKFLOW_AUTOMATION_RUN_STATUSES = WORKFLOW_JOB_STATUSES;
+export const WORKFLOW_SCHEDULE_RUN_TRIGGERS = ['scheduled', 'manual'] as const;
+export const WORKFLOW_SCHEDULE_RUN_TRIGGER_LABELS = { scheduled: '定时触发', manual: '手动运行' } as const;
+export const WORKFLOW_SCHEDULE_RUN_TRIGGER_OPTIONS = createLabelOptions(WORKFLOW_SCHEDULE_RUN_TRIGGERS, WORKFLOW_SCHEDULE_RUN_TRIGGER_LABELS);
 export const WORKFLOW_ADVANCING_JOB_TYPES = ['delay_wake', 'task_timeout', 'external_dispatch', 'subprocess_spawn', 'subprocess_join'] as const;
 export const WORKFLOW_TIMER_JOB_TYPES = ['task_timeout', 'delay_wake'] as const;
 export const WORKFLOW_SUSPENDABLE_JOB_TYPES = [
   'delay_wake', 'task_timeout', 'trigger_dispatch', 'external_dispatch', 'subprocess_spawn', 'subprocess_join',
 ] as const;
 
-export const WORKFLOW_JOB_EXECUTION_STATUSES = ['running', 'succeeded', 'failed'] as const;
+export const WORKFLOW_JOB_EXECUTION_STATUSES = ['running', 'succeeded', 'failed', 'skipped', 'canceled'] as const;
 
 /** 引擎运维恢复动作（全部为幂等的恢复扫描） */
 export const WORKFLOW_ENGINE_ACTION_KEYS = [

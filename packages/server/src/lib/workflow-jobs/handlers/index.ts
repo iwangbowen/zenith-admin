@@ -11,3 +11,5 @@ import './subprocess-join';
 import './event-dispatch';
 import './webhook-delivery';
 import './compensation-action';
+import './automation-action';
+import './schedule-launch';

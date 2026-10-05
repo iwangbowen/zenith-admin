@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { auditFieldsSchema, batchIdsBody, idParam, keywordQuery, paginated, paginationQuery, queryBool, queryEnum, idQuery } from '../../core/api-schemas';
 import { defineContract, op } from '../../core/contract';
-import { WORKFLOW_EVENT_DELIVERY_STATUSES, WORKFLOW_EVENT_SIGN_MODES, WORKFLOW_EVENT_TYPES } from '../constants';
+import { WORKFLOW_EVENT_DELIVERY_STATUSES, WORKFLOW_EVENT_DELIVERY_STATUS_OPTIONS, WORKFLOW_EVENT_DELIVERY_JOB_STATUSES, WORKFLOW_EVENT_DELIVERY_JOB_STATUS_OPTIONS, WORKFLOW_EVENT_SIGN_MODES, WORKFLOW_EVENT_TYPES } from '../constants';
 import {
   createWorkflowEventSubscriptionSchema,
   replayWorkflowEventDeliveriesSchema,
@@ -54,6 +54,7 @@ export type WorkflowEventSubscriptionTestResult = z.infer<typeof workflowEventSu
 
 export const workflowEventDeliverySchema = z.object({
   id: z.int(),
+  jobId: z.int(),
   subscriptionId: z.int(),
   subscriptionName: z.string().nullable().optional(),
   instanceId: z.int().nullable(),
@@ -63,6 +64,10 @@ export const workflowEventDeliverySchema = z.object({
   payload: z.unknown().nullable().meta({ description: '投递的事件体（WorkflowEvent）' }),
   attempt: z.int(),
   status: z.enum(WORKFLOW_EVENT_DELIVERY_STATUSES),
+  jobStatus: z.enum(WORKFLOW_EVENT_DELIVERY_JOB_STATUSES).meta({ description: '父作业当前调度状态，独立于本次执行结果' }),
+  isLatestExecution: z.boolean(),
+  canRetry: z.boolean().meta({ description: '最新执行、订阅启用且作业失败/死信/取消时可重试' }),
+  canReplay: z.boolean().meta({ description: '最新执行、订阅启用且作业已终结时可重新投递' }),
   requestUrl: z.string().nullable(),
   requestHeaders: z.record(z.string(), z.string()).nullable(),
   responseStatus: z.int().nullable(),
@@ -91,7 +96,8 @@ export const workflowEventSubscriptionListQuery = paginationQuery.extend({
 export const workflowEventDeliveryListQuery = paginationQuery.extend({
   subscriptionId: idQuery(),
   instanceId: idQuery(),
-  status: queryEnum(WORKFLOW_EVENT_DELIVERY_STATUSES),
+  status: queryEnum(WORKFLOW_EVENT_DELIVERY_STATUSES, { description: '本次结果', options: WORKFLOW_EVENT_DELIVERY_STATUS_OPTIONS }),
+  jobStatus: queryEnum(WORKFLOW_EVENT_DELIVERY_JOB_STATUSES, { description: '当前作业', options: WORKFLOW_EVENT_DELIVERY_JOB_STATUS_OPTIONS }),
 });
 
 export const workflowEventSubscriptionContract = defineContract('/api/workflows/event-subscriptions', {
@@ -106,6 +112,7 @@ export const workflowEventSubscriptionContract = defineContract('/api/workflows/
   deliveries: op.get('/deliveries/list', { access: { permission: 'workflow:event-delivery:view' }, query: workflowEventDeliveryListQuery, response: paginated(workflowEventDeliverySchema), summary: '事件投递记录列表' }),
   deliveryDetail: op.get('/deliveries/{id}', { access: { permission: 'workflow:event-delivery:view' }, params: idParam, response: workflowEventDeliverySchema, summary: '投递记录详情' }),
   retryDelivery: op.post('/deliveries/{id}/retry', { access: { permission: 'workflow:event-delivery:retry' }, audit: '重试事件投递', params: idParam, response: workflowEventDeliverySchema, summary: '重试投递' }),
+  replayDelivery: op.post('/deliveries/{id}/replay', { access: { permission: 'workflow:event-delivery:retry' }, audit: '重新投递事件', params: idParam, response: workflowEventDeliveryCountSchema, summary: '重新投递启用订阅的最新终态作业，保留原执行记录' }),
   batchRetryDeliveries: op.post('/deliveries/batch-retry', { access: { permission: 'workflow:event-delivery:retry' }, audit: '批量重试事件投递', body: batchIdsBody, response: workflowEventDeliveryCountSchema, summary: '批量重试投递' }),
   replayDeliveries: op.post('/deliveries/replay', { access: { permission: 'workflow:event-delivery:retry' }, audit: '按筛选批量重放事件投递', body: replayWorkflowEventDeliveriesSchema, response: workflowEventDeliveryCountSchema, summary: '按筛选批量重放投递（含补发已成功，支持订阅/事件类型/时间范围）' }),
 }, { auditModule: '工作流管理', tags: ['WorkflowEventSubscriptions'] });

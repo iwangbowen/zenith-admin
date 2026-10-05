@@ -6,6 +6,7 @@ import { WorkflowJobPermanentError } from '../errors';
 import type { WorkflowJobContext } from '../types';
 import { workflowEventBus } from '../../workflow-event-bus';
 import { workflowTransaction } from '../lease';
+import { enqueueWorkflowAutomationsForEvent } from '../../../services/workflow/workflow-automation-runtime';
 
 /** webhook 投递最大尝试次数（对齐旧的 5 段退避） */
 const WEBHOOK_MAX_ATTEMPTS = 5;
@@ -26,6 +27,9 @@ async function handle({ payload }: WorkflowJobContext): Promise<void> {
 
   // ① 进程内订阅者（durable）：best-effort，单个订阅失败不影响其它，也不使作业失败
   await workflowEventBus.dispatchInProcess(event);
+
+  // Automatic actions are durable fan-out, never best-effort in-process side effects.
+  await enqueueWorkflowAutomationsForEvent(event);
 
   // ② Webhook 持久化扇出
   const subs = await findMatchingSubscriptions({

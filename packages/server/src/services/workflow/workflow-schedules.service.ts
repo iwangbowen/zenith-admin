@@ -6,21 +6,23 @@ import type { QueryOutputOf } from '@zenith/shared/core';
  * 按 cron 周期自动以指定发起人身份发起流程实例。
  * 调度由系统启动任务 workflow-schedule-tick 每分钟触发 runDueWorkflowSchedules() 扫描执行。
  */
-import { and, desc, eq, lte, sql } from 'drizzle-orm';
-import { CronExpressionParser } from 'cron-parser';
+import { randomUUID } from 'node:crypto';
+import { and, asc, desc, eq, lte, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { workflowSchedules, workflowDefinitions, users } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { formatDate, formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
-import logger from '../../lib/logger';
-import { createInstance } from './workflow-instances.service';
 import type { WorkflowSchedule, CreateWorkflowScheduleInput, UpdateWorkflowScheduleInput } from '@zenith/shared/workflow';
 import { buildWhere, withPagination } from '../../lib/where-helpers';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
 import { collectScheduledJobs, listOverdueScheduledJobs, type ScheduledMonitorQuery } from '../../lib/job-monitor/scheduled';
+import type { DbExecutor } from '../../db/types';
+import { enqueueJob } from '../../lib/workflow-jobs/engine';
+import { workflowTransaction } from '../../lib/workflow-jobs/lease';
+import { computeWorkflowScheduleNextRun as computeNextRun, planWorkflowScheduleUpdate } from './workflow-schedule-planning';
 
 export function workflowScheduleDueCondition(asOf: Date) {
   return and(eq(workflowSchedules.status, 'enabled'), sql`${workflowSchedules.nextRunAt} is not null`, lte(workflowSchedules.nextRunAt, asOf));
@@ -37,8 +39,6 @@ export function getWorkflowScheduledHealth() { return collectScheduledJobs(sched
 export function listOverdueWorkflowScheduled(limit: number) { return listOverdueScheduledJobs(scheduledMonitor, limit); }
 
 type Row = typeof workflowSchedules.$inferSelect;
-
-const DEFAULT_TZ = 'Asia/Shanghai';
 
 function mapSchedule(row: Row, extras: { definitionName?: string | null; initiatorName?: string | null } = {}): WorkflowSchedule {
   return {
@@ -62,20 +62,11 @@ function mapSchedule(row: Row, extras: { definitionName?: string | null; initiat
   };
 }
 
-function computeNextRun(cron: string, timezone?: string | null, from: Date = new Date()): Date | null {
-  try {
-    return CronExpressionParser.parse(cron.trim(), { currentDate: from, tz: timezone?.trim() || DEFAULT_TZ }).next().toDate();
-  } catch {
-    return null;
-  }
-}
-
-function renderTitle(template: string | null | undefined, fallback: string): string {
-  const now = new Date();
+function renderTitle(template: string | null | undefined, fallback: string, scheduledAt: Date): string {
   const base = template?.trim() || fallback;
   return base
-    .replace(/\{\{\s*datetime\s*\}\}/g, formatDateTime(now))
-    .replace(/\{\{\s*date\s*\}\}/g, formatDate(now));
+    .replace(/\{\{\s*datetime\s*\}\}/g, formatDateTime(scheduledAt))
+    .replace(/\{\{\s*date\s*\}\}/g, formatDate(scheduledAt));
 }
 
 async function ensureScheduleDefinitionLaunchable(definitionId: number): Promise<void> {
@@ -151,31 +142,18 @@ export async function createSchedule(input: CreateWorkflowScheduleInput): Promis
 }
 
 export async function updateSchedule(id: number, input: UpdateWorkflowScheduleInput): Promise<WorkflowSchedule> {
-  const [existing] = await db.select().from(workflowSchedules).where(findSchedule(id)).limit(1);
-  requireRow(existing, '定时规则不存在');
-  const patch: Partial<typeof workflowSchedules.$inferInsert> = {};
   if (input.definitionId !== undefined) {
     await ensureScheduleDefinitionLaunchable(input.definitionId);
-    patch.definitionId = input.definitionId;
   }
-  if (input.name !== undefined) patch.name = input.name;
-  if (input.initiatorId !== undefined) patch.initiatorId = input.initiatorId;
-  if (input.titleTemplate !== undefined) patch.titleTemplate = input.titleTemplate ?? null;
-  if (input.formData !== undefined) patch.formData = input.formData ?? null;
-  const nextCron = input.cronExpression ?? existing.cronExpression;
-  const nextTz = input.timezone !== undefined ? (input.timezone?.trim() || null) : existing.timezone;
-  if (input.timezone !== undefined) patch.timezone = nextTz;
-  if (input.cronExpression !== undefined) patch.cronExpression = input.cronExpression;
-  if ((input.cronExpression !== undefined || input.timezone !== undefined)
-    && computeNextRun(nextCron, nextTz) === null) {
-    throw new HTTPException(400, { message: 'cron 表达式或时区无效' });
-  }
-  const nextStatus = input.status ?? existing.status;
-  if (input.status !== undefined) patch.status = input.status;
-  // 重新计算 nextRunAt：启用时按（可能更新的）cron/时区计算，停用时清空
-  patch.nextRunAt = nextStatus === 'enabled' ? computeNextRun(nextCron, nextTz) : null;
-  const [row] = await db.update(workflowSchedules).set(patch).where(eq(workflowSchedules.id, id)).returning();
-  return getWorkflowSchedule(row.id);
+  // Share the same row lock as the due scanner: a stale form save cannot undo a claim.
+  await workflowTransaction(async (tx) => {
+    const [existing] = await tx.select().from(workflowSchedules).where(findSchedule(id)).limit(1).for('update');
+    requireRow(existing, '定时规则不存在');
+    const { patch, preserveDue } = planWorkflowScheduleUpdate(existing, input);
+    if (preserveDue) await enqueueScheduleOccurrence(existing, existing.nextRunAt!, 'scheduled', tx);
+    if (Object.keys(patch).length) await tx.update(workflowSchedules).set(patch).where(eq(workflowSchedules.id, id));
+  });
+  return getWorkflowSchedule(id);
 }
 
 export async function deleteSchedule(id: number): Promise<void> {
@@ -186,54 +164,49 @@ export async function deleteSchedule(id: number): Promise<void> {
 
 /** 立即执行一次（手动触发，不影响 nextRunAt） */
 export async function runScheduleNow(id: number): Promise<WorkflowSchedule> {
-  const [s] = await db.select().from(workflowSchedules).where(findSchedule(id)).limit(1);
-  requireRow(s, '定时规则不存在');
-  await fireSchedule(s);
+  await workflowTransaction(async (tx) => {
+    const [s] = await tx.select().from(workflowSchedules).where(findSchedule(id)).limit(1).for('update');
+    requireRow(s, '定时规则不存在');
+    await enqueueScheduleOccurrence(s, new Date(), 'manual', tx);
+  });
   return getWorkflowSchedule(id);
 }
 
-/** 单条定时规则执行：以 initiator 身份发起实例，并回写运行状态 */
-async function fireSchedule(s: Row): Promise<void> {
-  const now = new Date();
-  try {
-    const [u] = await db.select({ username: users.username, tenantId: users.tenantId }).from(users).where(eq(users.id, s.initiatorId)).limit(1);
-    if (!u) throw new Error('发起人不存在');
-    const title = renderTitle(s.titleTemplate, s.name);
-    await createInstance(
-      { definitionId: s.definitionId, title, formData: (s.formData ?? {}) as Record<string, unknown> },
-      { userId: s.initiatorId, username: u.username, tenantId: s.tenantId ?? u.tenantId ?? null, roles: [] },
-    );
-    await db.update(workflowSchedules).set({
-      lastRunAt: now,
-      lastRunStatus: 'success',
-      lastRunMessage: `已发起：${title}`,
-    }).where(eq(workflowSchedules.id, s.id));
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    logger.error('[workflow-schedule] fire failed', { scheduleId: s.id, err: msg });
-    await db.update(workflowSchedules).set({
-      lastRunAt: now,
-      lastRunStatus: 'fail',
-      lastRunMessage: msg.slice(0, 512),
-    }).where(eq(workflowSchedules.id, s.id));
-  }
+/** Immutable occurrence snapshot; retries keep the original date/title/form/initiator. */
+export async function enqueueScheduleOccurrence(s: Row, scheduledAt: Date, trigger: 'scheduled' | 'manual', executor: DbExecutor) {
+  return enqueueJob({
+    jobType: 'schedule_launch',
+    idempotencyKey: trigger === 'scheduled' ? `schedule:${s.id}:${scheduledAt.toISOString()}` : `schedule:${s.id}:manual:${randomUUID()}`,
+    payload: { scheduleId: s.id, definitionId: s.definitionId, initiatorId: s.initiatorId,
+      title: renderTitle(s.titleTemplate, s.name, scheduledAt), formData: s.formData ?? {},
+      scheduledAt: scheduledAt.toISOString(), trigger },
+    tenantId: s.tenantId, maxAttempts: 5, runAt: scheduledAt,
+  }, executor);
 }
 
-/** 调度器每分钟调用：扫描到期的启用规则并发起，随后推进 nextRunAt */
+/** Atomically journal each due occurrence and advance its plan. Execution belongs to the ledger worker. */
 export async function runDueWorkflowSchedules(): Promise<void> {
   const now = new Date();
-  // 分布式 claim：SKIP LOCKED 锁定到期行并在锁内先推进 nextRunAt 占位，
-  // 多副本部署 / 单副本 tick 重叠（执行慢于 1 分钟）时同一规则不会被重复发起
-  const claimed = await db.transaction(async (tx) => {
-    const due = await tx.select().from(workflowSchedules).where(workflowScheduleDueCondition(now)).for('update', { skipLocked: true });
-    for (const s of due) {
-      await tx.update(workflowSchedules)
-        .set({ nextRunAt: computeNextRun(s.cronExpression, s.timezone, new Date()) })
-        .where(eq(workflowSchedules.id, s.id));
-    }
-    return due;
-  });
-  for (const s of claimed) {
-    await fireSchedule(s);
+  const deadline = Date.now() + 5000;
+  let remaining = 100;
+  // Small rounds give every selected rule an occurrence before revisiting a backlog.
+  // Retain a finite occurrence/time budget even after a long worker outage.
+  while (remaining > 0 && Date.now() < deadline) {
+    const processed = await workflowTransaction(async (tx) => {
+      const due = await tx.select().from(workflowSchedules).where(workflowScheduleDueCondition(now))
+        .orderBy(asc(workflowSchedules.nextRunAt), asc(workflowSchedules.id)).limit(Math.min(20, remaining)).for('update', { skipLocked: true });
+      let count = 0;
+      for (const s of due) {
+        if (Date.now() >= deadline) break;
+        await enqueueScheduleOccurrence(s, s.nextRunAt!, 'scheduled', tx);
+        await tx.update(workflowSchedules)
+          .set({ nextRunAt: computeNextRun(s.cronExpression, s.timezone, s.nextRunAt!) })
+          .where(eq(workflowSchedules.id, s.id));
+        count += 1;
+      }
+      return count;
+    });
+    if (!processed) break;
+    remaining -= processed;
   }
 }

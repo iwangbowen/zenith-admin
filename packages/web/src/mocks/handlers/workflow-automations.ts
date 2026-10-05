@@ -1,13 +1,14 @@
 import { workflowAutomationContract } from '@zenith/shared/workflow';
-import type { WorkflowAutomation } from '@zenith/shared/workflow';
+import type { WorkflowAutomation, WorkflowAutomationRun } from '@zenith/shared/workflow';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem, removeByIds } from '@/mocks/utils/crud';
-import { badRequest, notFound } from '@/mocks/utils/handlers';
+import { badRequest, conflict, notFound } from '@/mocks/utils/handlers';
 import { mockWorkflowDefinitions } from '@/mocks/data/workflow';
 import { mockDateTime } from '@/mocks/utils/date';
 
 let nextId = 1;
 const automations: WorkflowAutomation[] = [];
+export const mockWorkflowAutomationRuns: WorkflowAutomationRun[] = [];
 
 function fillDefinitionName(a: WorkflowAutomation): WorkflowAutomation {
   const def = mockWorkflowDefinitions.find((d) => d.id === a.definitionId);
@@ -15,6 +16,19 @@ function fillDefinitionName(a: WorkflowAutomation): WorkflowAutomation {
 }
 
 export const workflowAutomationsHandlers = [
+  mock(workflowAutomationContract.runs, ({ query, ok, paginate }) => {
+    let list = [...mockWorkflowAutomationRuns];
+    if (query.ruleId) list = list.filter((run) => run.ruleId === query.ruleId);
+    if (query.instanceId) list = list.filter((run) => run.instanceId === query.instanceId);
+    if (query.status) list = list.filter((run) => run.status === query.status);
+    return ok(paginate(list.sort((a, b) => b.id - a.id)));
+  }),
+  mock(workflowAutomationContract.retryRun, ({ params, ok }) => {
+    const run = requireItem(mockWorkflowAutomationRuns, params.id, '自动化动作不存在');
+    if (!run.canRetry || run.externalOutcomeUncertain) return conflict('仅结果确定的失败或死信动作可以重试', { status: 409 });
+    Object.assign(run, { status: 'pending', attempts: 0, error: null, canRetry: false, nextRetryAt: null });
+    return ok(run, '已提交动作重试');
+  }),
   mock(workflowAutomationContract.list, ({ query, ok, paginate }) => {
     let list = automations.map(fillDefinitionName);
     if (query.definitionId) list = list.filter((a) => a.definitionId === query.definitionId);

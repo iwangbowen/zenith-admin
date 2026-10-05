@@ -8,8 +8,8 @@ import { Button, Col, Form, Modal, Row, SideSheet, Switch, Tag, Toast, Typograph
 
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw } from 'lucide-react';
-import { WORKFLOW_EVENT_DELIVERY_STATUS_LABELS, WORKFLOW_EVENT_TYPE_LABELS, WORKFLOW_EVENT_TYPE_OPTIONS, type CreateWorkflowEventSubscriptionInput, type WorkflowDefinition, type WorkflowEventDelivery, type WorkflowEventDeliveryStatus, type WorkflowEventSubscription, type WorkflowEventType, workflowEventSubscriptionContract } from '@zenith/shared/workflow';
-import { isPlainObject } from '@zenith/shared/core';
+import { WORKFLOW_EVENT_DELIVERY_STATUS_LABELS, WORKFLOW_EVENT_DELIVERY_STATUSES, WORKFLOW_EVENT_DELIVERY_STATUS_OPTIONS, WORKFLOW_EVENT_DELIVERY_JOB_STATUSES, WORKFLOW_EVENT_DELIVERY_JOB_STATUS_LABELS, WORKFLOW_EVENT_DELIVERY_JOB_STATUS_OPTIONS, WORKFLOW_EVENT_TYPE_LABELS, WORKFLOW_EVENT_TYPE_OPTIONS, type CreateWorkflowEventSubscriptionInput, type WorkflowDefinition, type WorkflowEventDelivery, type WorkflowEventDeliveryStatus, type WorkflowEventSubscription, type WorkflowEventType, workflowEventSubscriptionContract } from '@zenith/shared/workflow';
+import { enumValueOf, isPlainObject } from '@zenith/shared/core';
 import { formatDateTimeRangeValuesForApi } from '@/utils/date';
 import { AppModal } from '@/components/AppModal';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -20,6 +20,7 @@ import { useWorkflowDefinitionList } from '@/hooks/queries/workflow-definitions'
 import {
   useDeleteWorkflowEventSubscriptions,
   useReplayWorkflowEventDeliveries,
+  useReplayWorkflowEventDelivery,
   useRetryWorkflowEventDelivery,
   useSaveWorkflowEventSubscription,
   useTestWorkflowEventSubscription,
@@ -40,12 +41,14 @@ import { DateRangeFilter, FilterSelect, StatusSelect } from '@/components/search
 import { useListPage } from '@/hooks/useListPage';
 import { EditFormSheet } from '@/components/EditFormModal';
 
-const DELIVERY_STATUS_COLORS: Record<WorkflowEventDeliveryStatus, 'green' | 'red' | 'orange' | 'grey'> = {
-  pending: 'grey',
+const DELIVERY_STATUS_COLORS: Record<WorkflowEventDeliveryStatus, 'green' | 'red' | 'grey' | 'blue'> = {
+  running: 'blue',
   success: 'green',
   failed: 'red',
-  retrying: 'orange',
+  skipped: 'grey',
+  cancelled: 'grey',
 };
+const DELIVERY_JOB_STATUS_COLORS = { pending: 'grey', running: 'blue', retrying: 'orange', success: 'green', failed: 'red', skipped: 'grey', cancelled: 'grey', dead: 'red', paused: 'orange' } as const;
 
 interface FormValues {
   name: string;
@@ -62,7 +65,8 @@ interface FormValues {
 
 export default function WorkflowEventSubscriptionsPage() {
   const { hasPermission } = usePermission();
-  const canManageEventSubscription = hasPermission('workflow:event-subscription:view');
+  const canManageEventSubscription = hasPermission('workflow:event-subscription:edit');
+  const canRetryEventDelivery = hasPermission('workflow:event-delivery:retry');
   const page = useListPage({
     contract: workflowEventSubscriptionContract,
     useList: useWorkflowEventSubscriptionList,
@@ -109,14 +113,19 @@ export default function WorkflowEventSubscriptionsPage() {
   // 投递抽屉
   const [deliveryVisible, setDeliveryVisible] = useState(false);
   const [deliverySubId, setDeliverySubId] = useState<number | null>(null);
+  const [deliveryStatus, setDeliveryStatus] = useState<WorkflowEventDeliveryStatus>();
+  const [deliveryJobStatus, setDeliveryJobStatus] = useState<WorkflowEventDelivery['jobStatus']>();
   const { page: deliveryPage, pageSize: deliveryPageSize, setPage: setDeliveryPage, buildPagination: buildDeliveryPagination } = usePagination();
   const deliveriesQuery = useWorkflowEventDeliveries({
     page: deliveryPage,
     pageSize: deliveryPageSize,
     subscriptionId: deliverySubId ?? undefined,
+    status: deliveryStatus,
+    jobStatus: deliveryJobStatus,
   }, deliveryVisible);
   const retryDeliveryMutation = useRetryWorkflowEventDelivery();
   const replayDeliveriesMutation = useReplayWorkflowEventDeliveries();
+  const replayDeliveryMutation = useReplayWorkflowEventDelivery();
 
   const eventSubscriptionModal = useEditModal<WorkflowEventSubscription, FormValues, Partial<CreateWorkflowEventSubscriptionInput>>({
     entityName: '订阅',
@@ -170,12 +179,16 @@ export default function WorkflowEventSubscriptionsPage() {
   };
 
   const openDeliveries = (row: WorkflowEventSubscription) => {
-    setDeliverySubId(row.id); setDeliveryPage(1); setDeliveryVisible(true);
+    setDeliverySubId(row.id); setDeliveryStatus(undefined); setDeliveryJobStatus(undefined); setDeliveryPage(1); setDeliveryVisible(true);
   };
 
   const handleRetryDelivery = async (id: number) => {
     await retryDeliveryMutation.mutateAsync({ params: { id } });
     Toast.success('已加入重试');
+  };
+  const handleReplayDelivery = async (id: number) => {
+    await replayDeliveryMutation.mutateAsync({ params: { id } });
+    Toast.success('已加入投递队列');
   };
 
   // 4B 按筛选批量重放（订阅内：事件类型 + 状态 + 时间范围，含补发已成功）
@@ -207,7 +220,7 @@ export default function WorkflowEventSubscriptionsPage() {
   const operationColumn = useCrudOperationColumn<WorkflowEventSubscription>({
     edit: openEdit,
     remove: deleteMutation,
-    allow: { edit: canManageEventSubscription, remove: canManageEventSubscription },
+    allow: { edit: canManageEventSubscription, remove: hasPermission('workflow:event-subscription:delete') },
     title: '确定要删除该订阅吗？',
     successMessage: '已删除',
     extraBetween: (record) => [
@@ -217,11 +230,11 @@ export default function WorkflowEventSubscriptionsPage() {
         hidden: !canManageEventSubscription,
         onClick: () => handleTestDelivery(record),
       },
-      { key: 'deliveries', label: '投递', onClick: () => openDeliveries(record) },
+      { key: 'deliveries', label: '投递', hidden: !hasPermission('workflow:event-delivery:view'), onClick: () => openDeliveries(record) },
       {
         key: 'secret',
         label: '密钥',
-        hidden: !canManageEventSubscription,
+        hidden: !hasPermission('workflow:event-subscription:view'),
         onClick: () => handleViewSecret(record.id),
       },
     ],
@@ -265,7 +278,8 @@ export default function WorkflowEventSubscriptionsPage() {
   ];
 
   // 投递详情
-  const [deliveryDetail, setDeliveryDetail] = useState<WorkflowEventDelivery | null>(null);
+  const [selectedDelivery, setDeliveryDetail] = useState<WorkflowEventDelivery | null>(null);
+  const deliveryDetail = selectedDelivery ? deliveriesQuery.data?.list.find((row) => row.id === selectedDelivery.id) ?? selectedDelivery : null;
 
   const deliveryColumns: ColumnProps<WorkflowEventDelivery>[] = [
     { title: 'ID', dataIndex: 'id', width: 70 },
@@ -278,16 +292,21 @@ export default function WorkflowEventSubscriptionsPage() {
     { title: '耗时', dataIndex: 'durationMs', width: 90, align: 'right', render: (v: number | null) => v == null ? EMPTY_PLACEHOLDER : `${v}ms` },
     { title: '错误', dataIndex: 'errorMessage', minWidth: 220, ellipsis: { showTitle: true } },
     dateTimeColumn('时间', 'createdAt'),
+    dateTimeColumn('下次重试', 'nextRetryAt'),
     {
-      title: '状态', dataIndex: 'status', width: 90, fixed: 'right',
+      title: '本次结果', dataIndex: 'status', width: 100, fixed: 'right',
       render: (v: string) => {
         const status = v as WorkflowEventDeliveryStatus;
         return <Tag color={DELIVERY_STATUS_COLORS[status] ?? 'grey'}>{WORKFLOW_EVENT_DELIVERY_STATUS_LABELS[status] ?? v}</Tag>;
       },
     },
+    {
+      title: '当前作业', dataIndex: 'jobStatus', width: 110, fixed: 'right',
+      render: (value: WorkflowEventDelivery['jobStatus']) => <Tag color={DELIVERY_JOB_STATUS_COLORS[value]}>{WORKFLOW_EVENT_DELIVERY_JOB_STATUS_LABELS[value]}</Tag>,
+    },
     createOperationColumn<WorkflowEventDelivery>({
       width: 180,
-      desktopInlineKeys: ['detail', 'retry'],
+      desktopInlineKeys: ['detail', 'retry', 'replay'],
       actions: (record) => [
         {
           key: 'detail',
@@ -296,9 +315,13 @@ export default function WorkflowEventSubscriptionsPage() {
         },
         {
           key: 'retry',
-          label: record.status === 'success' ? '重新投递' : '重试',
-          hidden: !canManageEventSubscription || record.status === 'pending',
+          label: '重试',
+          hidden: !canRetryEventDelivery || !record.canRetry,
           onClick: () => handleRetryDelivery(record.id),
+        },
+        {
+          key: 'replay', label: '重新投递', hidden: !canRetryEventDelivery || record.canRetry || !record.canReplay,
+          onClick: () => handleReplayDelivery(record.id),
         },
       ],
     }),
@@ -319,11 +342,7 @@ export default function WorkflowEventSubscriptionsPage() {
             />
           ),
         }}
-        create={(
-          canManageEventSubscription ? (
-            <CreateButton onClick={openCreate} />
-          ) : null
-        )}
+        create={<CreateButton permission="workflow:event-subscription:create" onClick={openCreate} />}
         filterTitle="订阅筛选"
       />
 
@@ -413,13 +432,13 @@ export default function WorkflowEventSubscriptionsPage() {
         title="投递记录"
         visible={deliveryVisible}
         onCancel={() => setDeliveryVisible(false)}
-        width={1000}
+        width={1200}
       >
-        {canManageEventSubscription && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-            <Button size="small" icon={<RotateCcw size={13} />} onClick={openReplay}>批量重放</Button>
-          </div>
-        )}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+          <FilterSelect placeholder="全部本次结果" items={WORKFLOW_EVENT_DELIVERY_STATUS_OPTIONS} value={deliveryStatus} onChange={(value) => { setDeliveryStatus(enumValueOf(WORKFLOW_EVENT_DELIVERY_STATUSES, value)); setDeliveryPage(1); }} />
+          <FilterSelect placeholder="全部当前作业" items={WORKFLOW_EVENT_DELIVERY_JOB_STATUS_OPTIONS} value={deliveryJobStatus} onChange={(value) => { setDeliveryJobStatus(enumValueOf(WORKFLOW_EVENT_DELIVERY_JOB_STATUSES, value)); setDeliveryPage(1); }} />
+          {canRetryEventDelivery && <Button size="small" icon={<RotateCcw size={13} />} onClick={openReplay}>批量重放</Button>}
+        </div>
         <ConfigurableTable<WorkflowEventDelivery>
           columns={deliveryColumns}
           {...listTableProps(deliveriesQuery, { pagination: buildDeliveryPagination })}
@@ -443,10 +462,11 @@ export default function WorkflowEventSubscriptionsPage() {
                 <Typography.Text>{WORKFLOW_EVENT_TYPE_LABELS[deliveryDetail.eventType as WorkflowEventType] ?? deliveryDetail.eventType}</Typography.Text>
               </Col>
               <Col span={12}>
-                <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>状态</Typography.Text>
+                <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>本次结果 / 当前作业</Typography.Text>
                 <Tag color={DELIVERY_STATUS_COLORS[deliveryDetail.status] ?? 'grey'}>
                   {WORKFLOW_EVENT_DELIVERY_STATUS_LABELS[deliveryDetail.status] ?? deliveryDetail.status}
                 </Tag>
+                <Tag color={DELIVERY_JOB_STATUS_COLORS[deliveryDetail.jobStatus]} style={{ marginLeft: 4 }}>{WORKFLOW_EVENT_DELIVERY_JOB_STATUS_LABELS[deliveryDetail.jobStatus]}</Tag>
               </Col>
               <Col span={12}>
                 <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>事件 ID</Typography.Text>
@@ -518,7 +538,7 @@ export default function WorkflowEventSubscriptionsPage() {
               items={[
                 { value: 'failed', label: '失败 / 死信' },
                 { value: 'success', label: '已成功（补发）' },
-                { value: 'pending', label: '排队 / 进行中' },
+                { value: 'pending', label: '排队（补投）' },
               ]}
               value={replayStatus}
               onChange={setReplayStatus}

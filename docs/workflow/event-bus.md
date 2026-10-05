@@ -73,22 +73,26 @@ X-Zenith-Signature: t={timestamp},v1={hex_hmac}
 
 ## 投递记录与重放
 
-事件订阅页面提供投递记录抽屉。记录来自 `workflow_job_executions` 中的 `webhook_delivery` 作业尝试，包含请求 URL、响应码、响应体、错误、耗时和下次重试时间；订阅列表同时展示投递次数、最近 HTTP 状态、耗时与错误信息。
+事件订阅页面提供投递记录抽屉。每行来自 `workflow_job_executions` 中的一次 `webhook_delivery` 尝试，包含请求 URL、响应码、响应体、错误和耗时。“本次结果”保持该次执行的事实；“当前作业”独立展示父作业的最新调度状态及下次自动重试时间。后续成功、取消或跳过不会改写此前失败记录，两列可分别筛选。
 
 投递状态含义：
 
 | 状态 | 说明 |
 | --- | --- |
-| `pending` | 等待投递或正在投递 |
-| `success` | 投递成功 |
-| `retrying` | 投递失败但仍有重试预算 |
-| `failed` | 重试耗尽或进入死信 |
+| 本次结果 `running` / `success` / `failed` | 本次请求正在执行、成功或失败 |
+| 本次结果 `skipped` | 本次未发送，例如执行时订阅已被停用或删除；不计为投递成功 |
+| 本次结果 `cancelled` | 执行被取消 |
+| 当前作业 `pending` / `running` | 等待首次投递或正在执行 |
+| 当前作业 `retrying` | 已失败，系统正等待自动重试；同时展示计划时间 |
+| 当前作业 `dead` | 已进入死信，需核查后人工处理 |
+| 当前作业 `success` / `skipped` / `cancelled` | 已成功完成、未投递跳过或已取消 |
 
 | 操作 | 说明 |
 | --- | --- |
-| 重试单条 | 仅失败或已取消作业可重试；创建新的执行轮次并补投唤醒，保留历史尝试 |
-| 批量重试 | 按选中记录重试 |
-| 按筛选重放 | 按订阅、事件类型、状态和时间范围补发，包含已成功投递 |
+| 重试单条 | 订阅需启用，仅最新记录关联的失败、死信或取消作业可重试；创建新的执行轮次，保留历史尝试。自动重试中的作业无需手工重试 |
+| 重新投递 | 订阅需启用，可对最新终态作业补发；已完成作业生成新的独立作业，原记录保持不变 |
+| 批量重试 | 按选中记录的实际操作条件重试，每个作业只处理一次 |
+| 按筛选重放 | 按订阅、事件类型、当前作业状态和作业创建时间筛选；仅启用订阅参与，成功补发仅包含真实投递成功，排队补投仅提交唤醒 |
 
 重放有数量上限，适合外部系统恢复后补发一段时间内的事件。
 
@@ -107,5 +111,6 @@ X-Zenith-Signature: t={timestamp},v1={hex_hmac}
 | `GET` | `/api/workflows/event-subscriptions/deliveries/list` | 投递记录 |
 | `GET` | `/api/workflows/event-subscriptions/deliveries/{id}` | 投递记录详情 |
 | `POST` | `/api/workflows/event-subscriptions/deliveries/{id}/retry` | 重试投递 |
+| `POST` | `/api/workflows/event-subscriptions/deliveries/{id}/replay` | 重新投递最新终态作业 |
 | `POST` | `/api/workflows/event-subscriptions/deliveries/batch-retry` | 批量重试投递 |
 | `POST` | `/api/workflows/event-subscriptions/deliveries/replay` | 按筛选重放 |

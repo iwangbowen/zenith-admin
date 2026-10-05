@@ -40,6 +40,7 @@ import {
   type WorkflowQuickPhrase,
   type WorkflowSavedView,
   type WorkflowSchedule,
+  type WorkflowScheduleRunDetail,
   type WorkflowTask,
   type WorkflowTaskConsult,
   type WorkflowTemplate,
@@ -195,8 +196,62 @@ async function runBatchTaskAction(taskIds: number[], act: (task: WorkflowTask, n
 // ── 抄送已读 / 保存视图 / 定时发起 内存态 ──
 const ccReadState = new Set<number>();
 const mockSavedViews: WorkflowSavedView[] = [];
-const mockSchedules: WorkflowSchedule[] = [];
+export const mockSchedules: WorkflowSchedule[] = [];
+export const mockScheduleRuns: WorkflowScheduleRunDetail[] = [];
 let nextScheduleId = 1;
+let nextScheduleRunId = 1;
+
+function createScheduleRun(schedule: WorkflowSchedule): WorkflowScheduleRunDetail {
+  const now = mockDateTime();
+  const title = (schedule.titleTemplate || schedule.name).replace(/\{\{\s*date\s*\}\}/g, now.slice(0, 10)).replace(/\{\{\s*datetime\s*\}\}/g, now);
+  const run: WorkflowScheduleRunDetail = {
+    id: nextScheduleRunId++, jobType: 'schedule_launch', status: 'pending', instanceId: null, instanceTitle: null,
+    definitionName: schedule.definitionName ?? null, taskId: null, nodeKey: null, idempotencyKey: null, traceId: null,
+    payload: { scheduleId: schedule.id, definitionId: schedule.definitionId, initiatorId: schedule.initiatorId, title,
+      formData: structuredClone(schedule.formData ?? {}), scheduledAt: now, trigger: 'manual' },
+    priority: 100, attempts: 0, maxAttempts: 5, generation: 0, executionTimeoutMs: 600000, runAt: now,
+    lockedAt: null, lockedBy: null, leaseUntil: null, executionDeadline: null, lastError: null, result: null,
+    tenantId: schedule.tenantId, createdAt: now, updatedAt: now, scheduleId: schedule.id, scheduledAt: now, trigger: 'manual', executions: [],
+  };
+  mockScheduleRuns.push(run);
+  return run;
+}
+
+/** Demo executes queued work on observation; it keeps the frozen occurrence and all attempt records. */
+function observeScheduleRun(run: WorkflowScheduleRunDetail): void {
+  if (run.status !== 'pending' || Date.parse(run.runAt.replace(' ', 'T')) > Date.now()) return;
+  const now = mockDateTime();
+  const definition = mockWorkflowDefinitions.find((d) => d.id === run.payload.definitionId);
+  const starter = mockUsers.find((u) => u.id === run.payload.initiatorId);
+  run.attempts += 1;
+  run.updatedAt = now;
+  const error = !definition || definition.status !== 'published' ? '流程定义不存在或未发布' : !starter ? '发起人不存在' : null;
+  run.executions.push({ id: run.id * 100 + run.executions.length, jobId: run.id, jobType: 'schedule_launch', attempt: run.attempts,
+    generation: run.generation, status: error ? 'failed' : 'succeeded', requestUrl: null, requestMethod: null, requestBody: null,
+    responseStatus: null, responseBody: null, errorMessage: error, durationMs: 10, startedAt: now, finishedAt: now, createdAt: now });
+  run.lastError = error;
+  if (error) {
+    run.status = run.attempts < run.maxAttempts ? 'pending' : 'dead';
+    run.runAt = mockDateTime(new Date(Date.now() + Math.min(900000, 30000 * 2 ** (run.attempts - 1))));
+  } else {
+    if (run.instanceId === null && definition && starter) {
+      const instance: WorkflowInstance = { id: getNextInstanceId(), definitionId: definition.id, definitionName: definition.name,
+        title: String(run.payload.title), formData: structuredClone(run.payload.formData as Record<string, unknown>), formSnapshot: null,
+        status: 'running', currentNodeKey: null, initiatorId: starter.id, initiatorName: starter.nickname ?? starter.username,
+        initiatorAvatar: null, tenantId: run.tenantId, tasks: [], createdAt: now, updatedAt: now,
+        definitionSnapshot: { id: definition.id, name: definition.name, description: definition.description,
+          categoryId: definition.categoryId ?? null, formId: definition.formId ?? null, flowData: definition.flowData,
+          formType: definition.formType, customForm: definition.customForm, status: definition.status, version: definition.version, tenantId: definition.tenantId } };
+      mockWorkflowInstances.push(instance);
+      advanceMockWorkflowGraph(instance, now);
+      run.instanceId = instance.id; run.instanceTitle = instance.title;
+    }
+    run.status = 'succeeded';
+    run.result = { instanceId: run.instanceId, title: run.payload.title, scheduledAt: run.payload.scheduledAt };
+  }
+  const schedule = mockSchedules.find((s) => s.id === run.scheduleId);
+  if (schedule) { schedule.lastRunAt = now; schedule.lastRunStatus = error ? 'fail' : 'success'; schedule.lastRunMessage = error ?? `已发起：${run.payload.title}`; }
+}
 
 // ── 补偿 / 人工修复工单 内存态 ──
 const mockCompensations: WorkflowCompensation[] = [
@@ -549,14 +604,18 @@ export const workflowExtraHandlers = [
       id: nextScheduleId++, definitionId: body.definitionId, definitionName: def?.name ?? null,
       name: body.name, cronExpression: body.cronExpression, timezone: body.timezone ?? null, initiatorId: body.initiatorId, initiatorName: `用户#${body.initiatorId}`,
       titleTemplate: body.titleTemplate ?? null, formData: body.formData ?? null, status: body.status,
-      lastRunAt: null, lastRunStatus: null, lastRunMessage: null, nextRunAt: mockDateTime(), tenantId: null, createdAt: now, updatedAt: now,
+      lastRunAt: null, lastRunStatus: null, lastRunMessage: null, nextRunAt: body.status === 'disabled' ? null : mockDateTime(), tenantId: null, createdAt: now, updatedAt: now,
     };
     mockSchedules.push(s);
     return ok(s, '已创建');
   }),
   mock(workflowScheduleContract.update, ({ params, body, ok }) => {
     const s = requireItem(mockSchedules, params.id, '定时规则不存在');
+    const reschedule = (body.status !== undefined && body.status !== s.status)
+      || (body.cronExpression !== undefined && body.cronExpression.trim() !== s.cronExpression.trim())
+      || (body.timezone !== undefined && body.timezone !== s.timezone);
     Object.assign(s, body, { updatedAt: mockDateTime() });
+    if (reschedule) s.nextRunAt = s.status === 'disabled' ? null : mockDateTime();
     if (body.definitionId) s.definitionName = mockWorkflowDefinitions.find((d) => d.id === body.definitionId)?.name ?? null;
     return ok(s, '已更新');
   }),
@@ -567,8 +626,30 @@ export const workflowExtraHandlers = [
   }),
   mock(workflowScheduleContract.run, ({ params, ok }) => {
     const s = requireItem(mockSchedules, params.id, '定时规则不存在');
-    s.lastRunAt = mockDateTime(); s.lastRunStatus = 'success'; s.lastRunMessage = `已发起：${s.name}`;
-    return ok(s, '已触发一次执行');
+    createScheduleRun(s);
+    return ok(s, '已加入执行队列');
+  }),
+  mock(workflowScheduleContract.runs, ({ params, ok, paginate }) => {
+    requireItem(mockSchedules, params.id, '定时规则不存在');
+    const runs = mockScheduleRuns.filter((r) => r.scheduleId === params.id);
+    runs.forEach(observeScheduleRun);
+    return ok(paginate([...runs].reverse()));
+  }),
+  mock(workflowScheduleContract.runDetail, ({ params, ok }) => {
+    requireItem(mockSchedules, params.id, '定时规则不存在');
+    const run = mockScheduleRuns.find((r) => r.id === params.jobId && r.scheduleId === params.id);
+    if (!run) return notFound('定时执行记录不存在', { status: 404 });
+    observeScheduleRun(run);
+    return ok(run);
+  }),
+  mock(workflowScheduleContract.retryRun, ({ params, ok }) => {
+    requireItem(mockSchedules, params.id, '定时规则不存在');
+    const run = mockScheduleRuns.find((r) => r.id === params.jobId && r.scheduleId === params.id);
+    if (!run) return notFound('定时执行记录不存在', { status: 404 });
+    if (!['failed', 'dead', 'canceled'].includes(run.status)) return badRequest('仅失败、死信或已取消的定时执行可补发', { status: 400 });
+    run.status = 'pending'; run.generation += 1; run.attempts = 0; run.runAt = mockDateTime();
+    run.lastError = null; run.updatedAt = mockDateTime();
+    return ok(run, '已补发原周期');
   }),
 
   // ── 我的协办（必须在 /instances/:id 之前注册）──

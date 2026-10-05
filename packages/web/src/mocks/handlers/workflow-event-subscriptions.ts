@@ -1,5 +1,5 @@
-import { workflowEventSubscriptionContract } from '@zenith/shared/workflow';
-import type { WorkflowEventDelivery, WorkflowEventSubscription } from '@zenith/shared/workflow';
+import { workflowEventSubscriptionContract, workflowEventDeliveryState } from '@zenith/shared/workflow';
+import type { WorkflowEventDelivery, WorkflowEventSubscription, WorkflowJobStatus, WorkflowJobExecutionStatus } from '@zenith/shared/workflow';
 import { maskSecret as maskSecretValue } from '@zenith/shared/core';
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, fail } from '@/mocks/utils/handlers';
@@ -11,7 +11,7 @@ import { removeByIds, requireItem } from '../utils/crud';
 type StoredSubscription = WorkflowEventSubscription & { secret: string | null };
 
 const now = mockDateTime();
-const mockSubscriptions: StoredSubscription[] = [
+export const mockSubscriptions: StoredSubscription[] = [
   {
     id: 1,
     name: '审批事件回调',
@@ -52,9 +52,10 @@ const mockSubscriptions: StoredSubscription[] = [
 
 let nextSubscriptionId = 3;
 
-const mockDeliveries: WorkflowEventDelivery[] = [
+export const mockDeliveries: WorkflowEventDelivery[] = [
   {
     id: 1,
+    jobId: 1,
     subscriptionId: 1,
     subscriptionName: '审批事件回调',
     instanceId: 1,
@@ -64,6 +65,7 @@ const mockDeliveries: WorkflowEventDelivery[] = [
     payload: null,
     attempt: 1,
     status: 'success',
+    jobStatus: 'success', isLatestExecution: true, canRetry: false, canReplay: true,
     requestUrl: 'https://example.com/workflow/webhook',
     requestHeaders: { 'X-Source': 'zenith-demo' },
     responseStatus: 200,
@@ -78,6 +80,7 @@ const mockDeliveries: WorkflowEventDelivery[] = [
   },
   {
     id: 2,
+    jobId: 2,
     subscriptionId: 2,
     subscriptionName: '全局任务事件订阅',
     instanceId: 2,
@@ -87,19 +90,60 @@ const mockDeliveries: WorkflowEventDelivery[] = [
     payload: null,
     attempt: 2,
     status: 'failed',
+    jobStatus: 'dead', isLatestExecution: true, canRetry: false, canReplay: false,
     requestUrl: 'https://ops.example.com/workflow/events',
     requestHeaders: null,
     responseStatus: 500,
     responseBody: '{"error":"temporary unavailable"}',
     errorMessage: '外部服务暂不可用',
     durationMs: 315,
-    nextRetryAt: mockDateTimeOffset(5 * 60 * 1000),
+    nextRetryAt: null,
     startedAt: mockDateTimeOffset(-10 * 60 * 1000),
     finishedAt: mockDateTimeOffset(-10 * 60 * 1000 + 315),
     tenantId: 1,
     createdAt: mockDateTimeOffset(-10 * 60 * 1000),
   },
 ];
+
+type MockDeliveryJob = {
+  id: number; subscriptionId: number; eventType: string; status: WorkflowJobStatus;
+  attempts: number; runAt: string; createdAt: string;
+};
+export const mockDeliveryJobs = new Map<number, MockDeliveryJob>(mockDeliveries.map((row) => [row.jobId, {
+  id: row.jobId, subscriptionId: row.subscriptionId, eventType: row.eventType,
+  status: row.status === 'success' ? 'succeeded' : 'dead', attempts: row.attempt,
+  runAt: row.createdAt, createdAt: row.createdAt,
+}]));
+const executionStatuses: Record<WorkflowEventDelivery['status'], WorkflowJobExecutionStatus> = {
+  running: 'running', success: 'succeeded', failed: 'failed', skipped: 'skipped', cancelled: 'canceled',
+};
+function latestDelivery(jobId: number) {
+  return mockDeliveries.filter((row) => row.jobId === jobId).sort((a, b) => b.id - a.id)[0];
+}
+function publicDelivery(row: WorkflowEventDelivery): WorkflowEventDelivery {
+  const job = mockDeliveryJobs.get(row.jobId)!;
+  const latest = latestDelivery(row.jobId);
+  const state = workflowEventDeliveryState({
+    executionId: row.id, executionStatus: executionStatuses[row.status],
+    latestExecutionId: latest.id, latestExecutionStatus: executionStatuses[latest.status],
+    jobStatus: job.status, jobAttempts: job.attempts,
+    subscriptionEnabled: mockSubscriptions.some((sub) => sub.id === row.subscriptionId && sub.enabled),
+  });
+  return { ...row, ...state, nextRetryAt: state.jobStatus === 'retrying' ? job.runAt : null };
+}
+function retryDeliveryJob(job: MockDeliveryJob) {
+  job.status = 'pending'; job.attempts = 0; job.runAt = mockDateTime();
+}
+function replayDeliveryJob(job: MockDeliveryJob): boolean {
+  if (job.status === 'pending') return true;
+  if (job.status === 'failed' || job.status === 'dead' || job.status === 'canceled') {
+    retryDeliveryJob(job); return true;
+  }
+  if (job.status !== 'succeeded') return false;
+  const id = Math.max(0, ...mockDeliveryJobs.keys()) + 1;
+  mockDeliveryJobs.set(id, { ...job, id, status: 'pending', attempts: 0, runAt: mockDateTime(), createdAt: mockDateTime() });
+  return true;
+}
 
 /** 与服务端一致：订阅密钥保留头尾 4 位（`@zenith/shared/core` 默认口径） */
 function maskSecret(secret: string | null | undefined): string | null {
@@ -122,21 +166,23 @@ function toPublicSubscription(row: StoredSubscription): WorkflowEventSubscriptio
 
 export const workflowEventSubscriptionsHandlers = [
   mock(workflowEventSubscriptionContract.deliveries, ({ query, ok, paginate }) => {
-    let list = [...mockDeliveries];
+    let list = mockDeliveries.map(publicDelivery);
     if (query.subscriptionId) list = list.filter((item) => item.subscriptionId === query.subscriptionId);
     if (query.instanceId) list = list.filter((item) => item.instanceId === query.instanceId);
     if (query.status) list = list.filter((item) => item.status === query.status);
+    if (query.jobStatus) list = list.filter((item) => item.jobStatus === query.jobStatus);
     list.sort((a, b) => b.id - a.id);
     return ok(paginate(list));
   }),
 
   mock(workflowEventSubscriptionContract.batchRetryDeliveries, ({ body, ok }) => {
     let count = 0;
+    const seen = new Set<number>();
     for (const id of body.ids) {
       const row = mockDeliveries.find((item) => item.id === id);
-      if (row && (row.status === 'failed' || row.status === 'retrying')) {
-        row.status = 'retrying';
-        row.nextRetryAt = mockDateTime();
+      if (row && publicDelivery(row).canRetry && !seen.has(row.jobId)) {
+        retryDeliveryJob(mockDeliveryJobs.get(row.jobId)!);
+        seen.add(row.jobId);
         count += 1;
       }
     }
@@ -145,29 +191,37 @@ export const workflowEventSubscriptionsHandlers = [
 
   // 按筛选批量重放（含补发已成功）
   mock(workflowEventSubscriptionContract.replayDeliveries, ({ body, ok }) => {
-    let targets = mockDeliveries.slice();
-    if (body.subscriptionId) targets = targets.filter((d) => d.subscriptionId === body.subscriptionId);
-    if (body.eventType) targets = targets.filter((d) => d.eventType === body.eventType);
-    if (body.status === 'success') targets = targets.filter((d) => d.status === 'success');
-    else if (body.status === 'failed') targets = targets.filter((d) => d.status === 'failed' || d.status === 'retrying');
-    else if (body.status === 'pending') targets = targets.filter((d) => d.status === 'pending');
-    for (const d of targets) { d.status = 'retrying'; d.nextRetryAt = mockDateTime(); }
-    return ok({ count: targets.length }, `已重放 ${targets.length} 条投递`);
+    let targets = [...mockDeliveryJobs.values()].filter((job) => mockSubscriptions.some((sub) => sub.id === job.subscriptionId && sub.enabled));
+    if (body.subscriptionId) targets = targets.filter((job) => job.subscriptionId === body.subscriptionId);
+    if (body.eventType) targets = targets.filter((job) => job.eventType === body.eventType);
+    if (body.status === 'success') targets = targets.filter((job) => job.status === 'succeeded' && latestDelivery(job.id)?.status === 'success');
+    else if (body.status === 'failed') targets = targets.filter((job) => job.status === 'failed' || job.status === 'dead');
+    else if (body.status === 'pending') targets = targets.filter((job) => job.status === 'pending');
+    if (body.startAt) targets = targets.filter((job) => job.createdAt >= body.startAt!);
+    if (body.endAt) targets = targets.filter((job) => job.createdAt <= body.endAt!);
+    const count = targets.slice(0, 500).filter(replayDeliveryJob).length;
+    return ok({ count }, `已重放 ${count} 条投递`);
   }),
 
   mock(workflowEventSubscriptionContract.retryDelivery, ({ params, ok }) => {
     const row = mockDeliveries.find((item) => item.id === params.id);
     if (!row) return fail(404, '投递记录不存在');
-    row.status = 'retrying';
-    row.nextRetryAt = mockDateTime();
-    row.attempt += 1;
-    return ok(row, '已加入重试队列');
+    if (!publicDelivery(row).canRetry) return fail(409, '仅启用订阅的最新失败、死信或取消作业可以重试', { status: 409 });
+    retryDeliveryJob(mockDeliveryJobs.get(row.jobId)!);
+    return ok(publicDelivery(row), '已加入重试队列');
+  }),
+
+  mock(workflowEventSubscriptionContract.replayDelivery, ({ params, ok }) => {
+    const row = mockDeliveries.find((item) => item.id === params.id);
+    if (!row) return fail(404, '投递记录不存在');
+    if (!publicDelivery(row).canReplay) return fail(409, '仅启用订阅的最新终态作业可以重新投递', { status: 409 });
+    return ok({ count: replayDeliveryJob(mockDeliveryJobs.get(row.jobId)!) ? 1 : 0 }, '已加入投递队列');
   }),
 
   mock(workflowEventSubscriptionContract.deliveryDetail, ({ params, ok }) => {
     const row = mockDeliveries.find((item) => item.id === params.id);
     if (!row) return fail(404, '投递记录不存在');
-    return ok(row);
+    return ok(publicDelivery(row));
   }),
 
   mock(workflowEventSubscriptionContract.list, ({ query, ok, paginate }) => {

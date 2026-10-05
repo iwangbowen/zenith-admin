@@ -1,13 +1,13 @@
 import type { QueryOf } from '@zenith/shared/core';
 import { workflowAutomationContract } from '@zenith/shared/workflow';
-import { contractKey, createResourceQueries, useApiQuery } from '@/lib/contract-query';
+import { contractKey, createResourceQueries, useApiMutation, useApiQuery } from '@/lib/contract-query';
 
 export type WorkflowAutomationListParams = QueryOf<typeof workflowAutomationContract.list>;
 
 export type WorkflowAutomationRunListParams = QueryOf<typeof workflowAutomationContract.runs>;
 
 const resource = createResourceQueries(workflowAutomationContract, {
-  // 删除自动化会级联清理其执行记录；执行记录抽屉按 automationId 筛选，整组失效
+  // 冻结动作记录保留，删除规则后刷新打开中的规则记录抽屉。
   onDeleted: (qc) => void qc.invalidateQueries({ queryKey: workflowAutomationKeys.runs }),
 });
 
@@ -25,5 +25,9 @@ export const useDeleteWorkflowAutomations = resource.useDelete;
 
 /** 自动化动作执行记录（打开执行记录抽屉时启用） */
 export function useWorkflowAutomationRunList(params: WorkflowAutomationRunListParams, enabled = true) {
-  return useApiQuery(workflowAutomationContract.runs, { query: params }, { enabled });
+  return useApiQuery(workflowAutomationContract.runs, { query: params }, { enabled, refetchInterval: enabled ? 3000 : false });
 }
+
+export const useRetryWorkflowAutomationRun = () => useApiMutation(workflowAutomationContract.retryRun, {
+  invalidate: (qc) => qc.invalidateQueries({ queryKey: workflowAutomationKeys.runs }),
+});

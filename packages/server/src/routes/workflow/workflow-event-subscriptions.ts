@@ -15,6 +15,7 @@ import {
   listDeliveries,
   getDelivery,
   retryDelivery,
+  replayDelivery,
   retryDeliveries,
   replayDeliveriesByFilter,
   getDeliveryBeforeAudit,
@@ -68,6 +69,15 @@ const retryDeliveryRoute = defineContractRoute(workflowEventSubscriptionContract
   },
 });
 
+const replayDeliveryRoute = defineContractRoute(workflowEventSubscriptionContract.replayDelivery, {
+  handler: async (c) => {
+    const { id } = c.req.valid('param');
+    const before = await getDeliveryBeforeAudit(id);
+    if (before) setAuditBeforeData(c, before);
+    return c.json(okBody(await replayDelivery(id), '已加入投递队列'), 200);
+  },
+});
+
 const batchRetryRoute = defineContractRoute(workflowEventSubscriptionContract.batchRetryDeliveries, {
   handler: async (c) => {
     const { ids } = c.req.valid('json');
@@ -105,6 +115,7 @@ mountCrud(router, workflowEventSubscriptionContract,
     listDeliveriesRoute,
     getDeliveryRoute,
     retryDeliveryRoute,
+    replayDeliveryRoute,
     batchRetryRoute,
     replayDeliveriesRoute,
   ],

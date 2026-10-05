@@ -30,15 +30,18 @@ export function useWorkflowEventDeliveries(params: WorkflowEventDeliveryListPara
   return useApiQuery(workflowEventSubscriptionContract.deliveries, { query: params }, {
     enabled: enabled && params.subscriptionId !== undefined,
     placeholderData: keepPreviousData,
+    // Replayed jobs have no execution row until the worker claims them; keep an open log live even when empty.
+    refetchInterval: enabled ? 2000 : false,
   });
 }
 
 export function useToggleWorkflowEventSubscription() {
   return useApiMutation(workflowEventSubscriptionContract.toggle, {
-    // 启停只改订阅自身的 enabled：列表状态列与该订阅详情回源，投递记录不变
+    // 启停影响投递操作门禁，详情和投递记录同时回源。
     invalidate: (qc, _saved, { params }) => {
       void qc.invalidateQueries({ queryKey: workflowEventSubscriptionKeys.lists });
       void qc.invalidateQueries({ queryKey: workflowEventSubscriptionKeys.detail(params.id) });
+      void qc.invalidateQueries({ queryKey: workflowEventSubscriptionKeys.deliveries });
     },
   });
 }
@@ -56,6 +59,12 @@ export function useRetryWorkflowEventDelivery() {
 
 export function useReplayWorkflowEventDeliveries() {
   return useApiMutation(workflowEventSubscriptionContract.replayDeliveries, {
+    invalidate: (qc) => void qc.invalidateQueries({ queryKey: workflowEventSubscriptionKeys.deliveries }),
+  });
+}
+
+export function useReplayWorkflowEventDelivery() {
+  return useApiMutation(workflowEventSubscriptionContract.replayDelivery, {
     invalidate: (qc) => void qc.invalidateQueries({ queryKey: workflowEventSubscriptionKeys.deliveries }),
   });
 }

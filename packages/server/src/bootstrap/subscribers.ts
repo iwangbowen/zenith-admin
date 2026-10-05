@@ -24,7 +24,6 @@ import { registerPaymentJournalSubscribers } from '../services/payment/payment-j
 import { registerSharingSubscribers } from '../services/payment/payment-sharing.service';
 import { registerPaymentSubscribers } from '../services/payment/payment-subscribers';
 import { registerPaymentOpenWebhookBridge } from '../services/payment/payment-open-webhook-bridge.service';
-import { registerWorkflowAutomationSubscribers } from '../services/workflow/workflow-automations.service';
 import { registerWorkflowPrintArchiveSubscriber } from '../services/workflow/workflow-print-archive';
 import { registerDriveOwnershipSubscriber } from '../services/drive/drive-handoff.service';
 
@@ -34,7 +33,6 @@ export function registerEventSubscribers(): void {
   registerNodeListenersSubscriber();
   registerNotificationWorkflowSubscriber();
   registerChatWorkflowSubscriber();
-  registerWorkflowAutomationSubscribers();
   registerWorkflowPrintArchiveSubscriber(); // 流程终态 → 投递审批单归档件生成作业
   initPaymentAdapters();
   registerPaymentSubscribers();

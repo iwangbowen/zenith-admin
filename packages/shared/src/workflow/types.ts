@@ -1022,6 +1022,15 @@ export type WorkflowTriggerType = (typeof WORKFLOW_TRIGGER_TYPES)[number];
 
 // ─── 统一作业账本（workflow_jobs）────────────────────────────────────────────
 export type WorkflowJobType = (typeof WORKFLOW_JOB_TYPES)[number];
+export interface WorkflowScheduleLaunchPayload {
+  scheduleId: number;
+  definitionId: number;
+  initiatorId: number;
+  title: string;
+  formData: Record<string, unknown>;
+  scheduledAt: string;
+  trigger: 'scheduled' | 'manual';
+}
 
 export type WorkflowJobStatus = (typeof WORKFLOW_JOB_STATUSES)[number];
 

@@ -50,6 +50,8 @@ const JOB_TYPE_META: Record<WorkflowJobType, { text: string; color: TagColor }> 
   subprocess_spawn: { text: '子流程派生', color: 'green' },
   subprocess_join: { text: '子流程汇聚', color: 'green' },
   event_dispatch: { text: '事件派发', color: 'orange' },
+  automation_action: { text: '自动化动作', color: 'blue' },
+  schedule_launch: { text: '定时发起', color: 'cyan' },
   webhook_delivery: { text: 'Webhook 投递', color: 'orange' },
   compensation_action: { text: '补偿动作', color: 'red' },
 };
@@ -89,12 +91,16 @@ const EXEC_STATUS_META: Record<WorkflowJobExecution['status'], { text: string; c
   running: { text: '执行中', color: 'blue' },
   succeeded: { text: '成功', color: 'green' },
   failed: { text: '失败', color: 'red' },
+  skipped: { text: '已跳过', color: 'grey' },
+  canceled: { text: '已取消', color: 'grey' },
 };
 
-const EXEC_TIMELINE_TYPE: Record<WorkflowJobExecution['status'], 'ongoing' | 'success' | 'error'> = {
+const EXEC_TIMELINE_TYPE: Record<WorkflowJobExecution['status'], 'ongoing' | 'success' | 'error' | 'default'> = {
   running: 'ongoing',
   succeeded: 'success',
   failed: 'error',
+  skipped: 'default',
+  canceled: 'default',
 };
 
 /** 执行记录时间线：按尝试次序升序，请求/响应/错误仅在有值时内联 */

@@ -6,6 +6,7 @@ import { okBody, validationHook } from '../../lib/openapi-schemas';
 import {
   listWorkflowAutomations,
   listWorkflowAutomationRuns,
+  retryWorkflowAutomationRun,
   getWorkflowAutomation,
   createWorkflowAutomation,
   updateWorkflowAutomation,
@@ -19,6 +20,9 @@ const router = new OpenAPIHono({ defaultHook: validationHook });
 
 const listRunsRoute = defineContractRoute(workflowAutomationContract.runs, {
   handler: async (c) => c.json(okBody(await listWorkflowAutomationRuns(c.req.valid('query'))), 200),
+});
+const retryRunRoute = defineContractRoute(workflowAutomationContract.retryRun, {
+  handler: async (c) => c.json(okBody(await retryWorkflowAutomationRun(c.req.valid('param').id), '已提交动作重试'), 200),
 });
 const batchDeleteRoute = defineContractRoute(workflowAutomationContract.batchDelete, {
   handler: async (c) => {
@@ -39,7 +43,7 @@ mountCrud(router, workflowAutomationContract,
     remove: deleteWorkflowAutomation,
   },
   {},
-  [listRunsRoute, batchDeleteRoute],
+  [listRunsRoute, retryRunRoute, batchDeleteRoute],
 );
 
 export default router;

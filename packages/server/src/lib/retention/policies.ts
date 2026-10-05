@@ -578,15 +578,6 @@ export const RETENTION_POLICIES: readonly RetentionPolicyDefinition[] = [
     description: '流程节点补偿动作的执行记录。',
   },
   {
-    key: 'workflow_automation_runs',
-    title: '流程自动化执行记录',
-    module: '工作流',
-    tableName: 'workflow_automation_runs',
-    timeColumn: 'created_at',
-    defaultDays: 90,
-    description: '自动化规则动作（站内信 / Webhook / 发起流程 / 回写字段）的执行留痕。',
-  },
-  {
     key: 'workflow_connector_invocations',
     title: '流程连接器调用记录',
     module: '工作流',

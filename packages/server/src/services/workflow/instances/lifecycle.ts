@@ -6,9 +6,10 @@ import { uniquePositiveInts } from '@zenith/shared/core';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { db } from '../../../db';
 import { releaseManagedFiles } from '../../files/file-gc.service';
-import { workflowTransaction } from '../../../lib/workflow-jobs/lease';
+import { currentWorkflowJobContext, workflowTransaction } from '../../../lib/workflow-jobs/lease';
+import { readWorkflowJobStepResult, runWorkflowJobStep } from '../../../lib/workflow-jobs/steps';
 import { enqueueSubprocessJoin } from './async-jobs';
-import { workflowInstances, workflowTasks, workflowDefinitions, users } from '../../../db/schema';
+import { workflowInstances, workflowTasks, workflowDefinitions, workflowJobs, users } from '../../../db/schema';
 import { tenantCondition, getCreateTenantId } from '../../../lib/tenant';
 import { buildWhere } from '../../../lib/where-helpers';
 import { validateFlowData } from '../../../lib/workflow-engine';
@@ -60,10 +61,17 @@ function assertRequiredFormFields(
   throw new HTTPException(400, { message: `${errors[0].message}${rest}` });
 }
 
-export async function createInstance(data: { definitionId: number; title: string; formData?: Record<string, unknown> | null; asDraft?: boolean; priority?: import('@zenith/shared').WorkflowInstancePriority; ccUserIds?: number[]; selectedInitiatorApprovers?: SelectedApproverMap; bizType?: string | null; bizId?: string | null }, callerOverride?: { userId: number; username: string; tenantId: number | null; roles?: string[] }, copyAttachmentSourceIds: readonly number[] = []) {
+export async function createInstance(data: { definitionId: number; title: string; formData?: Record<string, unknown> | null; asDraft?: boolean; priority?: import('@zenith/shared/workflow').WorkflowInstancePriority; ccUserIds?: number[]; selectedInitiatorApprovers?: SelectedApproverMap; bizType?: string | null; bizId?: string | null }, callerOverride?: { userId: number; username: string; tenantId: number | null; roles?: string[] }, copyAttachmentSourceIds: readonly number[] = [], creationStepKey?: string) {
   const user = callerOverride
     ? { userId: callerOverride.userId, username: callerOverride.username, roles: callerOverride.roles ?? [], tenantId: callerOverride.tenantId }
     : currentUser();
+  if (creationStepKey) {
+    const receipt = await readWorkflowJobStepResult<{ instanceId: number }>(creationStepKey);
+    if (receipt) {
+      const [existing] = await db.select().from(workflowInstances).where(buildWhere(eq(workflowInstances.id, receipt.instanceId), tenantCondition(workflowInstances, user))).limit(1);
+      return mapInstance(requireRow(existing, '已发起的流程实例不存在'));
+    }
+  }
   const skipScopeCheck = !!callerOverride;
   // 租户隔离：定义查询强制限定当前身份可见租户（多租户关闭时无过滤，行为不变）。
   // callerOverride（定时发起/自动化/子流程）同样生效——其 tenantId 来自所属租户配置行。
@@ -128,9 +136,9 @@ export async function createInstance(data: { definitionId: number; title: string
   if (!skipScopeCheck) assertRequiredFormFields(formSnapshot, formData, flowData);
   const serialConfig = flowData.settings?.serialNo;
   const serialCtx = await buildSerialNoContext(serialConfig, formData);
-  let txResult: { instance: typeof workflowInstances.$inferSelect; createdTasks: typeof workflowTasks.$inferSelect[] };
+  let instanceId: number;
   try {
-    txResult = await workflowTransaction(async (tx) => {
+    const create = async (tx: import('../../../db/types').DbTransaction) => {
       const serialNo = await generateSerialNo(tx, def.id, serialConfig, serialCtx);
       const [createdInstance] = await tx.insert(workflowInstances).values({
         definitionId: def.id,
@@ -166,8 +174,14 @@ export async function createInstance(data: { definitionId: number; title: string
       // 事务性 outbox：发起事件在同一事务内入队，与实例/任务插入原子提交（崩溃不丢）
       await enqueueSubprocessJoin(updatedInstance, tx);
       await emitInstanceStartEvents(mapInstance(updatedInstance), updatedInstance, materialized.createdTasks, { userId: user.userId, name: user.username }, tx);
-      return { instance: updatedInstance, createdTasks: materialized.createdTasks };
-    });
+      const jobContext = currentWorkflowJobContext();
+      if (creationStepKey && jobContext?.job.jobType === 'schedule_launch') {
+        await tx.update(workflowJobs).set({ instanceId: updatedInstance.id }).where(eq(workflowJobs.id, jobContext.job.id));
+      }
+      return { instanceId: updatedInstance.id };
+    };
+    const created = creationStepKey ? await runWorkflowJobStep(creationStepKey, create) : await workflowTransaction(create);
+    instanceId = created.instanceId;
   } catch (err) {
     if (normalizedBizType && normalizedBizId && isPgUniqueViolation(err)) {
       const existing = await findInstanceByBusinessKey(normalizedBizType, normalizedBizId);
@@ -175,7 +189,8 @@ export async function createInstance(data: { definitionId: number; title: string
     }
     throw err;
   }
-  const { instance } = txResult;
+  const [instance] = await db.select().from(workflowInstances).where(buildWhere(eq(workflowInstances.id, instanceId), tenantCondition(workflowInstances, user))).limit(1);
+  requireRow(instance, '流程实例不存在');
   const instanceDto = mapInstance(instance);
   // 事件与异步作业均已在事务内入队（outbox + 在库作业）
   // 发起时自选抄送：插入 ccNode 任务（best-effort，失败不影响发起结果；接收人通过「抄送我的」查看）

@@ -25,6 +25,7 @@ import { DEFAULT_TIMEZONE } from '@/utils/timezones';
 import { FilterSelect } from '@/components/search-filters';
 import { useListPage } from '@/hooks/useListPage';
 import { EditFormSheet } from '@/components/EditFormModal';
+import WorkflowScheduleRunsSheet from './WorkflowScheduleRunsSheet';
 
 type ScheduleStatus = WorkflowSchedule['status'];
 
@@ -82,6 +83,7 @@ export default function WorkflowSchedulesPage() {
   const saveMutation = useSaveWorkflowSchedule();
   const deleteMutation = useDeleteWorkflowSchedules();
   const runMutation = useRunWorkflowSchedule();
+  const [runsSchedule, setRunsSchedule] = useState<WorkflowSchedule | null>(null);
   const canCreate = hasPermission('workflow:schedule:create');
   const canEdit = hasPermission('workflow:schedule:edit');
   const canDelete = hasPermission('workflow:schedule:delete');
@@ -145,8 +147,9 @@ export default function WorkflowSchedulesPage() {
   const openEdit = (row: WorkflowSchedule) => { setCronExprValue(row.cronExpression ?? ''); setModalDefinitionId(row.definitionId); scheduleModal.openEdit(row); };
 
   const handleRunOnce = async (row: WorkflowSchedule) => {
-    await runMutation.mutateAsync({ params: { id: row.id } });
-    Toast.success('已触发');
+    const queued = await runMutation.mutateAsync({ params: { id: row.id } });
+    setRunsSchedule(queued);
+    Toast.success('已加入执行队列');
   };
 
   const operationColumn = useCrudOperationColumn<WorkflowSchedule>({
@@ -156,6 +159,7 @@ export default function WorkflowSchedulesPage() {
     title: '确定要删除该定时发起规则吗？',
     successMessage: '已删除',
     extraBetween: (record) => [
+      { key: 'runs', label: '执行记录', onClick: () => setRunsSchedule(record) },
       {
         key: 'run-once',
         label: '立即执行',
@@ -165,8 +169,8 @@ export default function WorkflowSchedulesPage() {
         onClick: () => handleRunOnce(record),
       },
     ],
-    width: 240,
-    desktopInlineKeys: ['edit', 'run-once', 'delete'],
+    width: 300,
+    desktopInlineKeys: ['edit', 'runs', 'run-once', 'delete'],
   });
 
   const columns: ColumnProps<WorkflowSchedule>[] = [
@@ -281,7 +285,7 @@ export default function WorkflowSchedulesPage() {
         />
         <FormTimezoneSelect
           required={false}
-          extraText={`Cron 按该 IANA 时区计算触发时间；留空使用 ${DEFAULT_TIMEZONE}`}
+          extraText="Cron 按该 IANA 时区计算触发时间；留空使用系统业务时区"
         />
         <Form.Select
           field="initiatorId"
@@ -326,6 +330,7 @@ export default function WorkflowSchedulesPage() {
           initValue="enabled"
         />
       </EditFormSheet>
+      {runsSchedule && <WorkflowScheduleRunsSheet key={runsSchedule.id} schedule={runsSchedule} onClose={() => setRunsSchedule(null)} />}
     </div>
   );
 }

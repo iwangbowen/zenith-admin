@@ -109,11 +109,11 @@ vi.mock('../context', () => ({ currentTraceId: () => null, currentParentRef: () 
 vi.mock('../pg-boss-scheduler', () => ({ registerSystemLedgerWorker: vi.fn(), sendSystemJob: model.send }));
 vi.mock('../logger', () => ({ default: { warn: vi.fn(), error: vi.fn() } }));
 vi.mock('../datetime', () => ({ formatDateTime: (date: Date) => date.toISOString() }));
-vi.mock('./registry', () => ({ getJobHandler: () => model.handler }));
+vi.mock('./registry', () => ({ getJobHandler: () => model.handler, runJobSettlement: vi.fn(async () => undefined) }));
 
 import { cancelJobs, claimDueWorkflowJobs, drainWorkflowJobs, enqueueJob, pauseInstanceJobs, resumeInstanceJobs, retryJob, runJob } from './engine';
 import { workflowTransaction } from './lease';
-import { WorkflowJobError } from './errors';
+import { WorkflowJobError, WorkflowJobSkip } from './errors';
 import { deferWorkflowJobEffect } from './execution-context';
 import type { DbExecutor } from '../../db/types';
 import type { WorkflowJobContext } from './types';
@@ -202,7 +202,14 @@ describe('workflow execution leases', () => {
     seed(); const wait = deferred(); model.handler.mockReturnValue(wait.promise);
     const run = runJob(1); await flush(); await cancelJobs({ instanceId: 7 }); wait.resolve(); await run;
     expect(model.state.jobs[0]).toMatchObject({ status: 'canceled', generation: 1, leaseToken: null });
-    expect(model.state.executions[0].status).toBe('failed');
+    expect(model.state.executions[0].status).toBe('canceled');
+  });
+  it('finishes a no-op job without counting its skipped attempt as successful execution', async () => {
+    seed(); model.handler.mockRejectedValue(new WorkflowJobSkip('subscription disabled'));
+    await runJob(1);
+    expect(model.state.jobs[0]).toMatchObject({ status: 'succeeded', attempts: 1 });
+    expect(model.state.executions[0]).toMatchObject({ status: 'skipped', errorMessage: 'subscription disabled' });
+    expect(model.send).not.toHaveBeenCalled();
   });
   it('a recovered old attempt cannot overwrite a newer successful owner', async () => {
     seed(); const old = deferred(); model.handler.mockReturnValueOnce(old.promise).mockResolvedValueOnce({ result: { owner: 'new' } });
@@ -249,6 +256,16 @@ describe('workflow execution leases', () => {
     expect(await drainWorkflowJobs()).toEqual({ recovered: 1, requeued: 0, dead: 1 });
     wait.resolve(); await running;
     expect(model.state.jobs[0].status).toBe('dead'); expect(model.state.jobs[0].lastError).toContain('外部操作结果待确认');
+  });
+  it('recovers a persisted successful HTTP response without misclassifying its result as uncertain', async () => {
+    seed(); const wait = deferred(); model.handler.mockReturnValueOnce(wait.promise).mockResolvedValueOnce({ result: { receipt: 'reused' } });
+    const running = runJob(1); await flush();
+    model.state.executions[0].requestMethod = 'POST';
+    model.state.executions[0].responseStatus = 200;
+    model.state.jobs[0].leaseUntil = new Date(Date.now() - 1);
+    expect(await drainWorkflowJobs()).toEqual({ recovered: 1, requeued: 1, dead: 0 });
+    await runJob(1); wait.resolve(); await running;
+    expect(model.state.jobs[0]).toMatchObject({ status: 'succeeded', result: { receipt: 'reused' }, attempts: 2 });
   });
   it('instance completion cancels other jobs but preserves the executing owner fence', async () => {
     seed(2); model.handler.mockImplementation(async (_context: WorkflowJobContext) => {

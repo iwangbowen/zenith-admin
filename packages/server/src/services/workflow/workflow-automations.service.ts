@@ -1,5 +1,4 @@
-import { bindWorkflowFormAttachments } from './workflow-attachments.service';
-import { workflowAutomationContract } from '@zenith/shared/workflow';
+import { workflowAutomationContract, workflowAutomationSchema, workflowAutomationRunSchema } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
 /**
  * 流程级自动化规则 service
@@ -7,51 +6,34 @@ import type { QueryOutputOf } from '@zenith/shared/core';
  * 当某个流程定义的实例进入终结状态（approved/rejected/withdrawn）时，
  * 触发其上配置的自动化动作（如发起新审批流程、发送站内消息）。
  */
-import { uniquePositiveInts } from '@zenith/shared/core';
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import {
   workflowAutomations,
-  workflowAutomationRuns,
+  workflowJobs,
+  workflowJobExecutions,
   workflowDefinitions,
-  workflowInstances,
-  workflowTasks,
-  users,
   type WorkflowAutomationRow,
   type WorkflowAutomationActionConfig,
+  type WorkflowJobRow,
+  type WorkflowJobExecutionRow,
 } from '../../db/schema';
 import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { currentUser } from '../../lib/context';
 import { pageOffset } from '../../lib/pagination';
-import { formatDateTime, formatTimestamps } from '../../lib/datetime';
-import { workflowEventBus } from '../../lib/workflow-event-bus';
-import { createInstance } from './workflow-instances.service';
-import { assertSafeWorkflowUrl, renderUrlTemplate, workflowHttp } from '../../lib/workflow-outbound';
-import redis from '../../lib/redis';
-import { config } from '../../config';
-import logger from '../../lib/logger';
-import { notify } from '../messaging/notification-outbox.service';
-import type { WorkflowAutomationTrigger, WorkflowInstance } from '@zenith/shared/workflow';
+import { formatDateTime } from '../../lib/datetime';
+import { assertSafeWorkflowUrl } from '../../lib/workflow-outbound';
+import type { CreateWorkflowAutomationInput, UpdateWorkflowAutomationInput } from '@zenith/shared/workflow';
 import { buildWhere } from '../../lib/where-helpers';
-import { buildListResult, listRows } from '../../lib/list-query';
+import { buildListResult } from '../../lib/list-query';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
+import { pickEntity } from '../../lib/entity-map';
+import { retryJob } from '../../lib/workflow-jobs/engine';
+import { parseAutomationActionPayload } from './workflow-automation-runtime';
 
 export function mapAutomation(row: WorkflowAutomationRow, definitionName?: string | null) {
-  return {
-    id: row.id,
-    definitionId: row.definitionId,
-    definitionName: definitionName ?? null,
-    name: row.name,
-    trigger: row.trigger,
-    actions: row.actions ?? [],
-    status: row.status,
-    sort: row.sort,
-    tenantId: row.tenantId,
-    createdBy: row.createdBy ?? null,
-    updatedBy: row.updatedBy ?? null,
-    ...formatTimestamps(row),
-  };
+  return pickEntity(workflowAutomationSchema, row, { definitionName: definitionName ?? null, actions: row.actions ?? [] });
 }
 
 async function ensureAutomationExists(id: number) {
@@ -132,33 +114,42 @@ export async function listWorkflowAutomations(q: QueryOutputOf<typeof workflowAu
 export async function listWorkflowAutomationRuns(q: QueryOutputOf<typeof workflowAutomationContract.runs>) {
   const { page, pageSize } = q;
   const where = buildWhere(
-    tenantCondition(workflowAutomationRuns, currentUser()),
-    q.ruleId ? eq(workflowAutomationRuns.ruleId, q.ruleId) : undefined,
-    q.instanceId ? eq(workflowAutomationRuns.instanceId, q.instanceId) : undefined,
-    q.status ? eq(workflowAutomationRuns.status, q.status) : undefined,
+    eq(workflowJobs.jobType, 'automation_action'),
+    tenantCondition(workflowJobs, currentUser()),
+    q.ruleId ? sql`${workflowJobs.payload}->>'ruleId' = ${String(q.ruleId)}` : undefined,
+    q.instanceId ? eq(workflowJobs.instanceId, q.instanceId) : undefined,
+    q.status ? eq(workflowJobs.status, q.status) : undefined,
   );
-  return listRows({
-    page,
-    pageSize,
-    table: workflowAutomationRuns,
-    where,
-    orderBy: [desc(workflowAutomationRuns.id)],
-    map: (r) => ({
-      id: r.id,
-      ruleId: r.ruleId,
-      ruleName: r.ruleName,
-      instanceId: r.instanceId,
-      instanceTitle: r.instanceTitle,
-      trigger: r.trigger,
-      actionIndex: r.actionIndex,
-      actionType: r.actionType,
-      status: r.status as 'success' | 'failed' | 'skipped',
-      error: r.error,
-      durationMs: r.durationMs,
-      tenantId: r.tenantId,
-      createdAt: formatDateTime(r.createdAt),
-    }),
+  return buildListResult({
+    page, pageSize, count: () => db.$count(workflowJobs, where),
+    rows: () => db.query.workflowJobs.findMany({ where, orderBy: [desc(workflowJobs.id)], limit: pageSize,
+      offset: pageOffset(page, pageSize), with: { executions: { orderBy: [desc(workflowJobExecutions.id)], limit: 1 } } }),
+    map: mapAutomationRun,
   });
+}
+
+export function mapAutomationRun(row: WorkflowJobRow & { executions?: WorkflowJobExecutionRow[] }) {
+  const payload = parseAutomationActionPayload(row.payload as Record<string, unknown>);
+  const externalOutcomeUncertain = row.lastError?.startsWith('外部操作结果待确认') ?? false;
+  return pickEntity(workflowAutomationRunSchema, row, {
+    ruleId: payload.ruleId, ruleName: payload.ruleName, instanceTitle: payload.context.instance.title,
+    trigger: payload.trigger, actionIndex: payload.actionIndex, actionType: payload.action.type, eventId: payload.eventId,
+    error: row.lastError, durationMs: row.executions?.[0]?.durationMs ?? null,
+    nextRetryAt: row.status === 'pending' && row.attempts > 0 ? formatDateTime(row.runAt) : null,
+    canRetry: ['failed', 'dead'].includes(row.status) && !externalOutcomeUncertain, externalOutcomeUncertain,
+  });
+}
+
+export async function retryWorkflowAutomationRun(id: number) {
+  const row = await db.query.workflowJobs.findFirst({ where: buildWhere(eq(workflowJobs.id, id),
+    eq(workflowJobs.jobType, 'automation_action'), tenantCondition(workflowJobs, currentUser())),
+  with: { executions: { orderBy: [desc(workflowJobExecutions.id)], limit: 1 } } });
+  requireRow(row, '自动化动作不存在');
+  const run = mapAutomationRun(row);
+  if (!run.canRetry) throw new HTTPException(409, { message: run.externalOutcomeUncertain
+    ? '外部操作结果待确认，请先核对下游执行结果，不能直接重发' : '仅失败或死信的自动化动作可以重试' });
+  const retried = requireRow(await retryJob(id), '动作状态已变化，请刷新后重试', 409);
+  return mapAutomationRun(retried);
 }
 
 export async function getWorkflowAutomation(id: number) {
@@ -167,14 +158,7 @@ export async function getWorkflowAutomation(id: number) {
   return mapAutomation(row, def?.name ?? null);
 }
 
-export interface CreateWorkflowAutomationInput {
-  definitionId: number;
-  name: string;
-  trigger: WorkflowAutomationTrigger;
-  actions: WorkflowAutomationActionConfig[];
-  status?: 'enabled' | 'disabled';
-  sort?: number;
-}
+export type { CreateWorkflowAutomationInput, UpdateWorkflowAutomationInput } from '@zenith/shared/workflow';
 
 export async function createWorkflowAutomation(input: CreateWorkflowAutomationInput) {
   await ensureDefinitionExists(input.definitionId);
@@ -190,8 +174,6 @@ export async function createWorkflowAutomation(input: CreateWorkflowAutomationIn
   }).returning();
   return mapAutomation(row);
 }
-
-export type UpdateWorkflowAutomationInput = Partial<CreateWorkflowAutomationInput>;
 
 export async function updateWorkflowAutomation(id: number, input: UpdateWorkflowAutomationInput) {
   await ensureAutomationExists(id);
@@ -221,301 +203,4 @@ export async function batchDeleteWorkflowAutomations(ids: number[]) {
     .where(buildWhere(inArray(workflowAutomations.id, ids), tenantCondition(workflowAutomations, currentUser())))
     .returning({ id: workflowAutomations.id });
   return result.length;
-}
-
-// ─── 执行器 ─────────────────────────────────────────────────────────────────
-
-interface AutomationContext {
-  instance: WorkflowInstance;
-  initiatorId: number;
-  initiatorName: string;
-  formData: Record<string, unknown>;
-  currentApproverIds: number[];
-}
-
-function renderTemplate(tpl: string, vars: Record<string, unknown>): string {
-  return tpl.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key: string) => {
-    const v = vars[key];
-    if (v == null) return '';
-    if (typeof v === 'string') return v;
-    if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'bigint') return String(v);
-    if (typeof v === 'object') return JSON.stringify(v);
-    return '';
-  });
-}
-
-function buildTemplateVars(ctx: AutomationContext): Record<string, unknown> {
-  return {
-    instanceId: ctx.instance.id,
-    title: ctx.instance.title,
-    status: ctx.instance.status,
-    initiator: ctx.initiatorName,
-    initiatorId: ctx.initiatorId,
-    ...ctx.formData,
-  };
-}
-
-async function runStartWorkflowAction(
-  action: Extract<WorkflowAutomationActionConfig, { type: 'startWorkflow' }>,
-  ctx: AutomationContext,
-) {
-  const vars = buildTemplateVars(ctx);
-  const title = action.titleTemplate ? renderTemplate(action.titleTemplate, vars) : `由「${ctx.instance.title}」触发`;
-  const formData: Record<string, unknown> = {};
-  if (action.formMapping) {
-    for (const [targetField, sourceExpr] of Object.entries(action.formMapping)) {
-      formData[targetField] = renderTemplate(sourceExpr, vars);
-    }
-  }
-  const tenantId = ctx.instance.tenantId;
-  await createInstance(
-    { definitionId: action.definitionId, title, formData },
-    { userId: ctx.initiatorId, username: ctx.initiatorName, tenantId, roles: [] },
-  );
-}
-
-async function runSendMessageAction(
-  action: Extract<WorkflowAutomationActionConfig, { type: 'sendMessage' }>,
-  ctx: AutomationContext,
-) {
-  let recipientIds: number[] = [];
-  if (!action.recipients || action.recipients === 'initiator') {
-    recipientIds = [ctx.initiatorId];
-  } else if (typeof action.recipients === 'object' && Array.isArray(action.recipients.userIds)) {
-    recipientIds = action.recipients.userIds;
-  }
-  recipientIds = uniquePositiveInts(recipientIds);
-  if (!recipientIds.length) return;
-  const vars = buildTemplateVars(ctx);
-  const title = renderTemplate(action.title, vars);
-  let content = renderTemplate(action.content, vars);
-  if (action.buttons?.length) {
-    const lines = action.buttons.slice(0, 3).map((b) => `[${b.text}](${b.url})`);
-    content = `${content}\n\n${lines.join('  ')}`;
-  }
-  // 统一走通知中心：标题正文由规则配置决定，事件模板原样透传；
-  // 消息视觉类型通过渠道参数指定，投递留痕与 WS 推送由派发层负责
-  await notify('workflow.automation.message', {
-    recipients: recipientIds.map((id) => ({ type: 'user' as const, id })),
-    vars: { instanceId: ctx.instance.id, title, content },
-    tenantId: ctx.instance.tenantId,
-    channelOptions: { inapp: { type: action.messageType ?? 'info' } },
-  });
-}
-
-async function runWebhookAction(
-  action: Extract<WorkflowAutomationActionConfig, { type: 'webhook' }>,
-  ctx: AutomationContext,
-) {
-  const vars = buildTemplateVars(ctx);
-  // URL 里的占位值（含发起人填写的表单字段）百分号编码，只能落成一个值而不能改写路径 / 主机
-  const url = renderUrlTemplate(action.url, (key) => vars[key]);
-  if (!url) return;
-  const method = action.method ?? 'POST';
-  let body: Record<string, unknown> | string | undefined;
-  if (method !== 'GET') {
-    if (action.bodyTemplate) {
-      const rendered = renderTemplate(action.bodyTemplate, vars);
-      try {
-        body = JSON.parse(rendered) as Record<string, unknown>;
-      } catch {
-        body = rendered;
-      }
-    } else {
-      body = {
-        instanceId: ctx.instance.id,
-        title: ctx.instance.title,
-        status: ctx.instance.status,
-        initiatorId: ctx.initiatorId,
-        initiator: ctx.initiatorName,
-        formData: ctx.formData,
-      };
-    }
-  }
-  await workflowHttp(url, {
-    method,
-    headers: action.headers,
-    body,
-    timeout: 10000,
-    retries: 1,
-  });
-}
-
-async function runUpdateFieldAction(
-  action: Extract<WorkflowAutomationActionConfig, { type: 'updateField' }>,
-  ctx: AutomationContext,
-) {
-  const entries = Object.entries(action.fields ?? {});
-  if (!entries.length) return;
-  const vars = buildTemplateVars(ctx);
-  const patch: Record<string, unknown> = {};
-  for (const [key, expr] of entries) {
-    patch[key] = renderTemplate(expr, vars);
-  }
-  ctx.formData = await db.transaction(async (tx) => {
-    const [instance] = await tx.select().from(workflowInstances).where(eq(workflowInstances.id, ctx.instance.id)).for('update').limit(1);
-    requireRow(instance, '流程实例不存在');
-    const next = await bindWorkflowFormAttachments(tx, instance, instance.formSnapshot, { ...(instance.formData as Record<string, unknown>), ...patch }, 0);
-    await tx.update(workflowInstances).set({ formData: next }).where(eq(workflowInstances.id, instance.id));
-    return next;
-  });
-}
-
-async function loadAutomationContext(instance: WorkflowInstance): Promise<AutomationContext> {
-  const [initiator] = await db
-    .select({ id: users.id, username: users.username, nickname: users.nickname })
-    .from(users)
-    .where(eq(users.id, instance.initiatorId))
-    .limit(1);
-  const initiatorName = initiator?.nickname ?? initiator?.username ?? `user#${instance.initiatorId}`;
-  const taskRows = await db
-    .select({ assigneeId: workflowTasks.assigneeId })
-    .from(workflowTasks)
-    .where(and(eq(workflowTasks.instanceId, instance.id), eq(workflowTasks.status, 'pending')));
-  const currentApproverIds = Array.from(
-    new Set(taskRows.map((r) => r.assigneeId).filter((v): v is number => v != null)),
-  );
-  return {
-    instance,
-    initiatorId: instance.initiatorId,
-    initiatorName,
-    formData: (instance.formData as Record<string, unknown>) ?? {},
-    currentApproverIds,
-  };
-}
-
-/** 动作执行留痕：写入失败仅告警，不影响动作本身的执行结果 */
-async function recordAutomationRun(entry: {
-  rule: WorkflowAutomationRow;
-  instance: WorkflowInstance;
-  trigger: WorkflowAutomationTrigger;
-  actionIndex: number;
-  actionType: string;
-  status: 'success' | 'failed' | 'skipped';
-  error?: string | null;
-  durationMs?: number | null;
-}) {
-  try {
-    await db.insert(workflowAutomationRuns).values({
-      ruleId: entry.rule.id,
-      ruleName: entry.rule.name,
-      instanceId: entry.instance.id,
-      instanceTitle: entry.instance.title?.slice(0, 256) ?? null,
-      trigger: entry.trigger,
-      actionIndex: entry.actionIndex,
-      actionType: entry.actionType,
-      status: entry.status,
-      error: entry.error ? String(entry.error).slice(0, 512) : null,
-      durationMs: entry.durationMs ?? null,
-      tenantId: entry.rule.tenantId,
-    });
-  } catch (err) {
-    logger.warn('[workflow-automation] record run failed', { ruleId: entry.rule.id, err });
-  }
-}
-
-export async function executeAutomationsForInstance(
-  instance: WorkflowInstance,
-  trigger: WorkflowAutomationTrigger,
-  /** 触发事件 ID；提供时按 (事件, 规则, 动作) 幂等去重，防止事件重试/重放导致动作重复执行 */
-  eventId?: string,
-) {
-  const rules = await db
-    .select()
-    .from(workflowAutomations)
-    .where(
-      and(
-        eq(workflowAutomations.definitionId, instance.definitionId),
-        eq(workflowAutomations.trigger, trigger),
-        eq(workflowAutomations.status, 'enabled'),
-      ),
-    )
-    .orderBy(asc(workflowAutomations.sort), asc(workflowAutomations.id));
-  if (!rules.length) return;
-  const ctx = await loadAutomationContext(instance);
-  for (const rule of rules) {
-    const actions = rule.actions ?? [];
-    for (const [actionIndex, action] of actions.entries()) {
-      const dedupKey = eventId ? buildAutomationDedupKey(eventId, rule.id, actionIndex) : null;
-      if (dedupKey && !(await acquireAutomationDedup(dedupKey))) {
-        logger.info('[workflow-automation] action skipped (already executed)', {
-          ruleId: rule.id, instanceId: instance.id, actionType: action.type, eventId,
-        });
-        await recordAutomationRun({ rule, instance, trigger, actionIndex, actionType: action.type, status: 'skipped' });
-        continue;
-      }
-      const startedAt = Date.now();
-      try {
-        if (action.type === 'startWorkflow') {
-          await runStartWorkflowAction(action, ctx);
-        } else if (action.type === 'sendMessage') {
-          await runSendMessageAction(action, ctx);
-        } else if (action.type === 'webhook') {
-          await runWebhookAction(action, ctx);
-        } else if (action.type === 'updateField') {
-          await runUpdateFieldAction(action, ctx);
-        }
-        await recordAutomationRun({
-          rule, instance, trigger, actionIndex, actionType: action.type,
-          status: 'success', durationMs: Date.now() - startedAt,
-        });
-      } catch (err) {
-        // 执行失败释放幂等占位，允许事件作业层重试时再次执行该动作
-        if (dedupKey) await releaseAutomationDedup(dedupKey);
-        await recordAutomationRun({
-          rule, instance, trigger, actionIndex, actionType: action.type,
-          status: 'failed', durationMs: Date.now() - startedAt,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        logger.error('[workflow-automation] action failed', {
-          ruleId: rule.id,
-          instanceId: instance.id,
-          actionType: action.type,
-          err,
-        });
-      }
-    }
-  }
-}
-
-const AUTOMATION_DEDUP_PREFIX = `${config.redis.keyPrefix}wf:automation:`;
-/** 幂等键 TTL：覆盖 event_dispatch 作业重试窗口与人工重放（replay-outbox）的常见时间范围 */
-const AUTOMATION_DEDUP_TTL_SECONDS = 3 * 24 * 60 * 60;
-
-function buildAutomationDedupKey(eventId: string, ruleId: number, actionIndex: number): string {
-  return `${AUTOMATION_DEDUP_PREFIX}${eventId}:${ruleId}:${actionIndex}`;
-}
-
-/** SET NX 抢占动作执行权；Redis 异常时放行（fail-open）并记警告，避免自动化被基础设施故障阻断 */
-async function acquireAutomationDedup(key: string): Promise<boolean> {
-  try {
-    const result = await redis.set(key, '1', 'EX', AUTOMATION_DEDUP_TTL_SECONDS, 'NX');
-    return result === 'OK';
-  } catch (err) {
-    logger.warn('[workflow-automation] dedup acquire failed, executing anyway', { key, err });
-    return true;
-  }
-}
-
-async function releaseAutomationDedup(key: string): Promise<void> {
-  try {
-    await redis.del(key);
-  } catch (err) {
-    logger.warn('[workflow-automation] dedup release failed', { key, err });
-  }
-}
-
-/** 在应用启动时调用，订阅工作流终结事件 */
-export function registerWorkflowAutomationSubscribers() {
-  const handleTriggerEvent = (trigger: WorkflowAutomationTrigger) => async (e: { eventId: string; instance: WorkflowInstance }) => {
-    try {
-      await executeAutomationsForInstance(e.instance, trigger, e.eventId);
-    } catch (err) {
-      logger.error('[workflow-automation] subscriber error', { trigger, instanceId: e.instance?.id, err });
-    }
-  };
-  workflowEventBus.on('instance.approved', handleTriggerEvent('approved'));
-  workflowEventBus.on('instance.rejected', handleTriggerEvent('rejected'));
-  workflowEventBus.on('instance.withdrawn', handleTriggerEvent('withdrawn'));
-  workflowEventBus.on('instance.created', handleTriggerEvent('created'));
 }

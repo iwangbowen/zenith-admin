@@ -308,6 +308,7 @@ const JOB_TYPE_LABELS: Record<WorkflowJobType, string> = {
   delay_wake: '延时唤醒', task_timeout: '任务超时', trigger_dispatch: '触发器调度', external_dispatch: '外部审批',
   subprocess_spawn: '子流程派生', subprocess_join: '子流程汇聚', event_dispatch: '事件派发', webhook_delivery: 'Webhook 投递',
   compensation_action: '补偿动作',
+  automation_action: '自动化动作', schedule_launch: '定时发起',
 };
 
 function humanizeMinutes(min: number): string {

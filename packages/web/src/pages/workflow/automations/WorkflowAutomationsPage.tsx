@@ -8,7 +8,7 @@ import { useDictItems } from '@/hooks/useDictItems';
  *   - Webhook 回调 / 回写表单字段
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Col, Divider, Empty, Form, Input, Row, Select, SideSheet, Space, Spin, Tag, TextArea, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { Button, Col, Divider, Empty, Form, Input, Modal, Row, Select, SideSheet, Space, Spin, Tag, TextArea, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag/interface';
 import { Plus, Trash2 } from 'lucide-react';
@@ -24,6 +24,7 @@ import {
   useWorkflowAutomationDetail,
   useWorkflowAutomationList,
   useWorkflowAutomationRunList,
+  useRetryWorkflowAutomationRun,
 } from '@/hooks/queries/workflow-automations';
 import { CreateButton } from '@/components/toolbar-controls';
 import { ListSearchToolbar, listTableProps, useCrudOperationColumn } from '@/components/list-page';
@@ -107,9 +108,13 @@ function createDefaultActionDraft(type: ActionType): ActionDraft {
 type JsonRecordParseResult = { ok: true; value: Record<string, string> } | { ok: false; message: string };
 
 const RUN_STATUS_META: Record<WorkflowAutomationRun['status'], { label: string; color: TagColor }> = {
-  success: { label: '成功', color: 'green' },
+  pending: { label: '待执行', color: 'blue' },
+  running: { label: '执行中', color: 'blue' },
+  paused: { label: '已暂停', color: 'grey' },
+  succeeded: { label: '成功', color: 'green' },
   failed: { label: '失败', color: 'red' },
-  skipped: { label: '已去重', color: 'grey' },
+  dead: { label: '死信', color: 'red' },
+  canceled: { label: '已取消', color: 'grey' },
 };
 
 /** 单条规则的动作执行记录抽屉 */
@@ -117,6 +122,8 @@ function AutomationRunsSheet({ rule, onClose }: { rule: WorkflowAutomation | nul
   const { page, pageSize, buildPagination } = usePagination(20);
   const runsQuery = useWorkflowAutomationRunList({ ruleId: rule?.id, page, pageSize }, !!rule);
   const total = runsQuery.data?.total ?? 0;
+  const retry = useRetryWorkflowAutomationRun();
+  const { hasPermission } = usePermission();
 
   const columns: ColumnProps<WorkflowAutomationRun>[] = [
     dateTimeColumn('时间', 'createdAt'),
@@ -144,14 +151,23 @@ function AutomationRunsSheet({ rule, onClose }: { rule: WorkflowAutomation | nul
       title: '结果', dataIndex: 'status', width: 90,
       render: (v: WorkflowAutomationRun['status'], r) => {
         const meta = RUN_STATUS_META[v];
-        const tag = <Tag color={meta.color} size="small">{meta.label}</Tag>;
+        const label = r.externalOutcomeUncertain ? '结果待确认' : v === 'pending' && r.attempts > 0 ? '等待重试' : meta.label;
+        const tag = <Tag color={meta.color} size="small">{label}</Tag>;
         return r.error ? <Tooltip content={r.error}>{tag}</Tooltip> : tag;
       },
     },
+    { title: '尝试', dataIndex: 'attempts', width: 80, render: (v: number, r) => `${v}/${r.maxAttempts}` },
+    dateTimeColumn('下次重试', 'nextRetryAt'),
     {
       title: '耗时', dataIndex: 'durationMs', width: 80,
       render: (v: number | null) => (v == null ? EMPTY_PLACEHOLDER : v < 1000 ? `${v}ms` : `${(v / 1000).toFixed(1)}s`),
     },
+    { title: '操作', width: 90, render: (_v, r) => r.canRetry && hasPermission('workflow:definition:edit') ? (
+      <Button theme="borderless" size="small" loading={retry.isPending && retry.variables?.params.id === r.id} onClick={() => Modal.confirm({
+        title: '重试这个自动化动作？', content: '使用本次事件冻结的配置与输入。已成功的其他动作不会重新执行。',
+        onOk: async () => { await retry.mutateAsync({ params: { id: r.id } }); Toast.success('已提交动作重试'); },
+      })}>重试</Button>
+    ) : null },
   ];
 
   return (
@@ -509,7 +525,7 @@ export default function WorkflowAutomationsPage() {
         <Typography.Text type="tertiary" size="small">
           支持模板变量：<code>{'{{title}}'}</code> <code>{'{{initiator}}'}</code> <code>{'{{instanceId}}'}</code> <code>{'{{status}}'}</code> 以及 <code>{'{{formData.xxx}}'}</code>
           <br />
-          动作在流程事件后台作业中异步执行，失败会随事件重试，重复触发自动去重；结果见「执行记录」。
+          每个动作由后台独立执行和重试，失败不阻断后继动作；配置与输入在触发时冻结，重复事件不会重复执行成功动作。结果和失败重试见「执行记录」。
         </Typography.Text>
 
         <div style={{ marginTop: 12 }}>

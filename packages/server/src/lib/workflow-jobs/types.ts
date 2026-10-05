@@ -43,7 +43,7 @@ export interface WorkflowJobContext {
 /**
  * 单个 jobType 的处理器。
  * - 正常返回 → 作业成功（succeeded）。
- * - throw WorkflowJobSkip → 视为成功的 no-op（工作已被其它路径完成，不重试）。
+ * - throw WorkflowJobSkip → 作业完成、执行记录 skipped（未执行，不重试）。
  * - throw WorkflowJobPermanentError → 直接进死信（dead，不重试）。
  * - throw 其它错误 → 失败：attempts < maxAttempts 时按退避重试，否则进死信。
  */

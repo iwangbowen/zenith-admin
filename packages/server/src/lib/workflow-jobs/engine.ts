@@ -12,7 +12,7 @@ import { formatDateTime } from '../datetime';
 import { WORKFLOW_JOB_QUEUE, WORKFLOW_OUTBOUND_JOB_QUEUE, WORKFLOW_JOB_LEASE_MS, WORKFLOW_JOB_HEARTBEAT_MS, WORKFLOW_JOB_EXECUTION_TIMEOUT_MS, type WorkflowJobContext, type WorkflowJobResult } from './types';
 import { WorkflowJobSkip, WorkflowJobPermanentError, WorkflowJobError, WorkflowJobLeaseLostError, WorkflowJobDeadlineError } from './errors';
 import { computeBackoffMs } from './backoff';
-import { getJobHandler } from './registry';
+import { getJobHandler, runJobSettlement } from './registry';
 import { isIndeterminateExternalStatus } from './external-effects';
 import { currentWorkflowJobContext, ownedJobCondition, runWithWorkflowJobContext } from './lease';
 import { flushWorkflowJobEffects } from './execution-context';
@@ -61,7 +61,7 @@ export async function enqueueJob(input: EnqueueJobInput, executor: DbExecutor = 
 }
 
 
-async function closeExecution(tx: DbExecutor, token: string | null, status: 'succeeded' | 'failed', detail: WorkflowJobResult & { errorMessage?: string | null } = {}) {
+async function closeExecution(tx: DbExecutor, token: string | null, status: 'succeeded' | 'failed' | 'skipped' | 'canceled', detail: WorkflowJobResult & { errorMessage?: string | null } = {}) {
   if (!token) return;
   await tx.update(workflowJobExecutions).set({
     status, finishedAt: dbNow,
@@ -77,11 +77,11 @@ async function closeExecution(tx: DbExecutor, token: string | null, status: 'suc
 
 async function hasUncertainExternalEffect(tx: DbExecutor, token: string | null, responseStatus?: number | null): Promise<boolean> {
   if (!token) return false;
-  const [execution] = await tx.select({ method: workflowJobExecutions.requestMethod }).from(workflowJobExecutions)
+  const [execution] = await tx.select({ method: workflowJobExecutions.requestMethod, responseStatus: workflowJobExecutions.responseStatus }).from(workflowJobExecutions)
     .where(eq(workflowJobExecutions.leaseToken, token)).limit(1);
   return !!execution?.method
     && !['GET', 'HEAD', 'OPTIONS'].includes(execution.method.toUpperCase())
-    && isIndeterminateExternalStatus(responseStatus);
+    && isIndeterminateExternalStatus(responseStatus ?? execution.responseStatus);
 }
 
 export async function cancelJobs(
@@ -103,7 +103,7 @@ export async function cancelJobs(
   if (!jobs.length) return 0;
   await executor.update(workflowJobs).set({ status: 'canceled', generation: sql`${workflowJobs.generation} + 1`, pausedRemainingMs: null, ...clearedLease })
     .where(inArray(workflowJobs.id, jobs.map((job) => job.id)));
-  for (const job of jobs) await closeExecution(executor, job.leaseToken, 'failed', { errorMessage: 'Job canceled' });
+  for (const job of jobs) await closeExecution(executor, job.leaseToken, 'canceled', { errorMessage: 'Job canceled' });
   return jobs.length;
 }
 
@@ -163,7 +163,7 @@ export async function skipJob(id: number): Promise<WorkflowJobRow | null> {
     if (!job || !['pending', 'running', 'paused', 'failed', 'dead'].includes(job.status)) return null;
     const [row] = await tx.update(workflowJobs).set({ status: 'canceled', generation: sql`${workflowJobs.generation} + 1`, pausedRemainingMs: null, ...clearedLease })
       .where(eq(workflowJobs.id, id)).returning();
-    await closeExecution(tx, job.leaseToken, 'failed', { errorMessage: 'Job canceled by operator' });
+    await closeExecution(tx, job.leaseToken, 'canceled', { errorMessage: 'Job canceled by operator' });
     return row;
   });
 }
@@ -174,7 +174,7 @@ export interface ClaimedJob { job: WorkflowJobRow; executionId: number }
 /** Weighted lanes isolate flow advancement from slow outbound/event work. Every fourth
  * claim takes the oldest due row regardless of priority, so continuous urgent traffic
  * cannot permanently starve ordinary jobs. No ID cursor: retries and timers can move back. */
-const FLOW_JOB_TYPES: WorkflowJobType[] = ['subprocess_spawn', 'subprocess_join', 'delay_wake', 'task_timeout'];
+const FLOW_JOB_TYPES: WorkflowJobType[] = ['subprocess_spawn', 'subprocess_join', 'delay_wake', 'task_timeout', 'schedule_launch'];
 const claimTurns = { flow: 0, outbound: 0, all: 0 };
 export async function claimDueWorkflowJobs(available: number, lane?: 'flow' | 'outbound'): Promise<ClaimedJob[]> {
   if (available <= 0) return [];
@@ -233,7 +233,8 @@ async function finishJob(context: WorkflowJobContext, error: unknown, result: Wo
       ...(retry ? { runAt: sql`clock_timestamp() + ${computeBackoffMs(context.attempt)} * interval '1 millisecond'` } : {}),
     }).where(ownedJobCondition(context, !(error instanceof WorkflowJobDeadlineError))).returning();
     if (!updated) return null;
-    await closeExecution(tx, context.leaseToken, succeeded ? 'succeeded' : 'failed', detail);
+    await closeExecution(tx, context.leaseToken, error instanceof WorkflowJobSkip ? 'skipped' : succeeded ? 'succeeded' : 'failed', detail);
+    await runJobSettlement(tx, updated);
     return updated;
   });
   if (row?.status === 'pending') scheduleJobPickup(row.id, row.runAt);
@@ -333,10 +334,11 @@ async function recoverExpiredJobs(tx: DbTransaction, filter: DrainableFilter, li
       status: exhausted ? 'dead' : 'pending', pausedRemainingMs: null,
       ...clearedLease, runAt: dbNow, lastError: message,
     }).where(and(eq(workflowJobs.id, job.id), eq(workflowJobs.generation, job.generation), expiredWorkflowJobCondition()))
-      .returning({ id: workflowJobs.id, status: workflowJobs.status, runAt: workflowJobs.runAt });
+      .returning();
     if (!updated) continue;
     recovered++;
     await closeExecution(tx, job.leaseToken, 'failed', { errorMessage: message });
+    await runJobSettlement(tx, updated);
     if (updated.status === 'dead') dead++;
     else wakeups.push({ id: updated.id, runAt: updated.runAt });
   }

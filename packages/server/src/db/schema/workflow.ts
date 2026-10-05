@@ -55,12 +55,12 @@ export const workflowSignGroupStatusEnum = pgEnum('workflow_sign_group_status', 
 export const workflowJobTypeEnum = pgEnum('workflow_job_type', [
   'delay_wake', 'task_timeout', 'trigger_dispatch', 'external_dispatch',
   'subprocess_spawn', 'subprocess_join', 'event_dispatch', 'webhook_delivery',
-  'compensation_action',
+  'compensation_action', 'automation_action', 'schedule_launch',
 ]);
 
 export const workflowJobStatusEnum = pgEnum('workflow_job_status', ['pending', 'running', 'paused', 'succeeded', 'failed', 'dead', 'canceled']);
 
-export const workflowJobExecutionStatusEnum = pgEnum('workflow_job_execution_status', ['running', 'succeeded', 'failed']);
+export const workflowJobExecutionStatusEnum = pgEnum('workflow_job_execution_status', ['running', 'succeeded', 'failed', 'skipped', 'canceled']);
 
 export const workflowNodeTypeEnum = pgEnum('workflow_node_type', [
   'start',
@@ -194,31 +194,6 @@ export const workflowAutomations = pgTable('workflow_automations', {
 export type WorkflowAutomationRow = typeof workflowAutomations.$inferSelect;
 
 export type NewWorkflowAutomation = typeof workflowAutomations.$inferInsert;
-
-// 自动化动作执行留痕：每个动作执行一次记一行（成功/失败/跳过），供管理员核对 Webhook 等副作用是否生效
-export const workflowAutomationRuns = pgTable('workflow_automation_runs', {
-  id: idColumn(),
-  /** 规则删除后保留历史记录（置空），靠 ruleName 冗余追溯 */
-  ruleId: integer().references(() => workflowAutomations.id, { onDelete: 'set null' }),
-  ruleName: varchar({ length: 128 }).notNull(),
-  instanceId: integer().references(() => workflowInstances.id, { onDelete: 'set null' }),
-  instanceTitle: varchar({ length: 256 }),
-  trigger: workflowAutomationTriggerEnum().notNull(),
-  actionIndex: integer().notNull(),
-  actionType: varchar({ length: 32 }).notNull(),
-  /** success | failed | skipped（幂等去重命中） */
-  status: varchar({ length: 16 }).notNull(),
-  error: varchar({ length: 512 }),
-  durationMs: integer(),
-  tenantId: tenantIdColumn(),
-  createdAt: timestamptz().defaultNow().notNull(),
-}, (t) => [
-  index('workflow_automation_runs_rule_idx').on(t.ruleId),
-  index('workflow_automation_runs_instance_idx').on(t.instanceId),
-  index('workflow_automation_runs_created_idx').on(t.createdAt),
-]);
-
-export type WorkflowAutomationRunRow = typeof workflowAutomationRuns.$inferSelect;
 
 // 流程定时发起：按 cron 周期自动发起流程实例
 export const workflowSchedules = pgTable('workflow_schedules', {
