@@ -1,4 +1,5 @@
 import type { SignaturePolicy } from '../core/signatures';
+import type { output } from 'zod';
 import type { WorkflowSignaturePolicy } from './constants';
 import type {
   WORKFLOW_AUTOMATION_TRIGGERS,
@@ -831,16 +832,9 @@ export type WorkflowConnectorBreakerState = (typeof WORKFLOW_CONNECTOR_BREAKER_S
 export type WorkflowConnectorInvocationSource = (typeof WORKFLOW_CONNECTOR_INVOCATION_SOURCES)[number];
 
 /** HTTP 连接器调用配置（存于 connector.config） */
-export interface WorkflowConnectorHttpConfig {
-  baseUrl: string;
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-  headers?: Record<string, string>;
-  query?: Record<string, string>;
-  contentType?: 'json' | 'form';
-  authType?: 'none' | 'bearer' | 'basic' | 'apiKey';
-  /** apiKey 模式：放入请求头的键名（默认 X-API-Key） */
-  apiKeyHeader?: string;
-}
+export type WorkflowConnectorHttpConfig = output<typeof import('./validation').workflowConnectorHttpConfigSchema>;
+export type WorkflowConnectorEmailConfig = output<typeof import('./validation').workflowConnectorEmailConfigSchema>;
+export type WorkflowConnectorSmsConfig = output<typeof import('./validation').workflowConnectorSmsConfigSchema>;
 
 /** 连接器凭据明文（落库前整体 AES 加密，绝不回传） */
 export interface WorkflowConnectorCredentials {

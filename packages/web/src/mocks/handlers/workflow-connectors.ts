@@ -1,8 +1,8 @@
-import { workflowConnectorContract } from '@zenith/shared/workflow';
+import { isWorkflowHttpConnector, validateWorkflowConnectorConfig, workflowConnectorContract } from '@zenith/shared/workflow';
 import type { WorkflowConnector, WorkflowConnectorInvocation } from '@zenith/shared/workflow';
 import { mock } from '@/mocks/utils/contract';
 import { requireItem } from '@/mocks/utils/crud';
-import { notFound } from '@/mocks/utils/handlers';
+import { badRequest, notFound } from '@/mocks/utils/handlers';
 import { mockWorkflowConnectors, getNextConnectorId } from '@/mocks/data/workflow-connectors';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
@@ -20,8 +20,13 @@ export const workflowConnectorsHandlers = [
   }),
 
   // 测试调用（demo 返回成功探测结果）
-  mock(workflowConnectorContract.test, ({ ok }) =>
-    ok({ ok: true, status: 200, durationMs: 42, responseSnippet: '{"demo":true,"args":{}}', error: null })),
+  mock(workflowConnectorContract.test, ({ params, ok }) => {
+    const connector = requireItem(mockWorkflowConnectors, params.id, '连接器不存在', { status: 404 });
+    if (connector.status !== 'enabled') return ok({ ok: false, status: null, durationMs: 0, responseSnippet: null, error: '连接器已禁用' });
+    const config = validateWorkflowConnectorConfig(connector.type, connector.config);
+    if (!config.success) return ok({ ok: false, status: null, durationMs: 0, responseSnippet: null, error: config.error.issues[0].message });
+    return ok({ ok: true, status: 200, durationMs: 42, responseSnippet: '{"demo":true,"args":{}}', error: null });
+  }),
 
   // 调用统计（demo）
   mock(workflowConnectorContract.stats, ({ params, query, ok }) => {
@@ -63,11 +68,14 @@ export const workflowConnectorsHandlers = [
   mock(workflowConnectorContract.create, ({ body, ok }) => {
     const now = mockDateTime();
     const { credentials, ...rest } = body;
+    const config = validateWorkflowConnectorConfig(rest.type, rest.config);
+    if (!config.success) return badRequest(config.error.issues[0].message, { status: 400 });
     const item: WorkflowConnector = {
       id: getNextConnectorId(),
       ...rest,
+      config: config.data,
       description: rest.description ?? null,
-      hasCredentials: hasCred(credentials),
+      hasCredentials: isWorkflowHttpConnector(rest.type) && hasCred(credentials),
       breakerState: 'closed',
       tenantId: null,
       createdBy: null,
@@ -82,11 +90,16 @@ export const workflowConnectorsHandlers = [
   mock(workflowConnectorContract.update, ({ params, body, ok }) => {
     const cur = requireItem(mockWorkflowConnectors, params.id, '连接器不存在', { status: 404 });
     const { credentials, clearCredentials, ...patch } = body;
+    const type = patch.type ?? cur.type;
+    const changedConfig = patch.config !== undefined || patch.type !== undefined;
+    const parsed = changedConfig || patch.status === 'enabled' ? validateWorkflowConnectorConfig(type, patch.config ?? cur.config) : null;
+    if (parsed && !parsed.success) return badRequest(parsed.error.issues[0].message, { status: 400 });
     const next: WorkflowConnector = {
       ...cur,
       ...patch,
+      config: changedConfig && parsed?.success ? parsed.data : cur.config,
       description: patch.description !== undefined ? patch.description ?? null : cur.description,
-      hasCredentials: clearCredentials ? false : (hasCred(credentials) || cur.hasCredentials),
+      hasCredentials: !isWorkflowHttpConnector(type) || clearCredentials ? false : (hasCred(credentials) || cur.hasCredentials),
       updatedAt: mockDateTime(),
     };
     Object.assign(cur, next);

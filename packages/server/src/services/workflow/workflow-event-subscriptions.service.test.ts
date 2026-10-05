@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({ select: vi.fn(), retryJob: vi.fn(), enqueueJob
 vi.mock('../../db', () => ({ db: { select: mocks.select } }));
 vi.mock('../../lib/context', () => ({ currentUser: () => ({ userId: 1, roles: ['super_admin'], tenantId: null }) }));
 vi.mock('../../lib/workflow-jobs/engine', () => ({ retryJob: mocks.retryJob, enqueueJob: mocks.enqueueJob, scheduleJobPickup: mocks.scheduleJobPickup }));
-vi.mock('./workflow-connectors.service', () => ({ invokeConnector: vi.fn(), getConnectorRowById: vi.fn() }));
+vi.mock('./workflow-connectors.service', () => ({ invokeConnector: vi.fn(), getConnectorRowById: vi.fn(), ensureConnector: vi.fn() }));
 
 import { mapDelivery, replayDeliveriesByFilter, retryDelivery } from './workflow-event-subscriptions.service';
 

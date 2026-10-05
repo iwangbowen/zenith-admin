@@ -22,6 +22,9 @@ export * from './form-attachments';
 export * from './task-history';
 export * from './event-delivery-state';
 export * from './automation-template';
+export * from './connector-config';
+export * from './subscription-url';
+export * from './subscription-secret';
 export * from './form-derived-values';
 
 export * from './designer-graph';

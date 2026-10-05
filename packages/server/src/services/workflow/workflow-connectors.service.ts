@@ -1,4 +1,4 @@
-import { workflowConnectorContract } from '@zenith/shared/workflow';
+import { validateWorkflowConnectorConfig, workflowConnectorContract, workflowConnectorSchema } from '@zenith/shared/workflow';
 /**
  * 流程连接器服务：统一外部集成注册中心（首期 http）。
  * - CRUD + 凭据 AES 加密落库 / 脱敏返回
@@ -10,9 +10,9 @@ import { db } from '../../db';
 import { workflowConnectors, workflowConnectorInvocations, smsConfigs, smsTemplates } from '../../db/schema';
 import type { WorkflowConnectorRow } from '../../db/schema';
 import { currentUser } from '../../lib/context';
-import { tenantCondition } from '../../lib/tenant';
+import { tenantCondition, currentCreateTenantId, inheritedTenantCondition } from '../../lib/tenant';
 import { buildWhere, keywordCondition } from '../../lib/where-helpers';
-import { formatDateTime, formatTimestamps } from '../../lib/datetime';
+import { formatDateTime } from '../../lib/datetime';
 import { encryptField, decryptField } from '../../lib/encryption';
 import { assertSafeWorkflowUrl, buildConnectorUrl, workflowHttp } from '../../lib/workflow-outbound';
 import { markWorkflowExternalEffect } from '../../lib/workflow-jobs/external-effects';
@@ -21,8 +21,10 @@ import { sendMail } from '../../lib/email';
 import { sendSmsByProvider, renderTemplate } from '../../lib/sms-sender';
 import { breakerAllow, breakerSuccess, breakerFailure, breakerState, breakerReset } from '../../lib/workflow-connector-breaker';
 import { rateLimitAcquire, rateLimitReset } from '../../lib/workflow-connector-rate-limit';
-import type { WorkflowConnector, WorkflowConnectorType, WorkflowConnectorHttpConfig, WorkflowConnectorCredentials, WorkflowConnectorInvokeResult, TestWorkflowConnectorInput } from '@zenith/shared/workflow';
+import type { WorkflowConnector, WorkflowConnectorHttpConfig, WorkflowConnectorCredentials, WorkflowConnectorInvokeResult, TestWorkflowConnectorInput } from '@zenith/shared/workflow';
 import { defineCrudService } from '../../lib/crud-service';
+import { pickEntity } from '../../lib/entity-map';
+import { HTTPException } from 'hono/http-exception';
 
 // ─── 凭据编解码 ───────────────────────────────────────────────────────────────
 function encodeCredentials(creds: WorkflowConnectorCredentials | undefined): string | null {
@@ -40,39 +42,29 @@ function decodeCredentials(enc: string | null): WorkflowConnectorCredentials {
 
 // ─── 映射（脱敏，绝不回传凭据明文）──────────────────────────────────────────────
 export async function mapConnector(row: WorkflowConnectorRow): Promise<WorkflowConnector> {
-  return {
-    id: row.id,
-    name: row.name,
-    code: row.code,
-    description: row.description ?? null,
-    type: row.type as WorkflowConnectorType,
+  return pickEntity(workflowConnectorSchema, row, {
     config: (row.config ?? {}) as Record<string, unknown>,
-    timeoutMs: row.timeoutMs,
-    retryMax: row.retryMax,
-    circuitBreakerEnabled: row.circuitBreakerEnabled,
-    failureThreshold: row.failureThreshold,
-    cooldownSec: row.cooldownSec,
-    rateLimitEnabled: row.rateLimitEnabled,
-    rateLimitWindowSec: row.rateLimitWindowSec,
-    rateLimitMax: row.rateLimitMax,
-    status: row.status as 'enabled' | 'disabled',
     hasCredentials: !!row.credentialsEncrypted,
     breakerState: await breakerState(row.id, row.circuitBreakerEnabled),
-    tenantId: row.tenantId ?? null,
-    createdBy: row.createdBy ?? null,
-    updatedBy: row.updatedBy ?? null,
-    ...formatTimestamps(row),
-  };
+  });
 }
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 /** HTTP 类连接器（http / webhook / IM 机器人）的基地址在保存时就要通过出站地址校验 */
 const HTTP_CONNECTOR_TYPES = new Set<string>(['http', 'webhook', 'wecom', 'dingtalk', 'feishu']);
 
-async function assertConnectorConfigSafe(type: string | undefined, cfg: Record<string, unknown> | undefined): Promise<void> {
-  if (!cfg || !HTTP_CONNECTOR_TYPES.has(type ?? 'http')) return;
-  const baseUrl = typeof cfg.baseUrl === 'string' ? cfg.baseUrl.trim() : '';
-  if (baseUrl) await assertSafeWorkflowUrl(baseUrl);
+async function normalizeConnectorConfig(type: string, cfg: unknown, tenantId: number | null): Promise<Record<string, unknown>> {
+  const parsed = validateWorkflowConnectorConfig(type, cfg);
+  if (!parsed.success) throw new HTTPException(400, { message: parsed.error.issues.map(issue => issue.message).join('；') });
+  const config: Record<string, unknown> = parsed.data;
+  if (HTTP_CONNECTOR_TYPES.has(type)) await assertSafeWorkflowUrl(String(config.baseUrl));
+  if (type === 'sms') {
+    const [template] = await db.select({ id: smsTemplates.id }).from(smsTemplates).where(buildWhere(
+      eq(smsTemplates.code, String(config.templateCode)), eq(smsTemplates.status, 'enabled'), inheritedTenantCondition(smsTemplates.tenantId, tenantId),
+    )).limit(1);
+    if (!template) throw new HTTPException(400, { message: '短信模板不存在、未启用或不属于当前租户' });
+  }
+  return config;
 }
 
 export const workflowConnectorService = defineCrudService(workflowConnectorContract, {
@@ -90,14 +82,16 @@ export const workflowConnectorService = defineCrudService(workflowConnectorContr
     orderBy: [desc(workflowConnectors.id)],
   }),
   create: {
-    before: (input) => assertConnectorConfigSafe(input.type ?? 'http', input.config as Record<string, unknown> | undefined),
+    before: async (input) => {
+      input.config = await normalizeConnectorConfig(input.type ?? 'http', input.config ?? {}, currentCreateTenantId());
+    },
     toRow: (input) => ({
       name: input.name,
       code: input.code,
       description: input.description ?? null,
       type: input.type ?? 'http',
       config: (input.config ?? {}) as Record<string, unknown>,
-      credentialsEncrypted: encodeCredentials(input.credentials),
+      credentialsEncrypted: HTTP_CONNECTOR_TYPES.has(input.type ?? 'http') ? encodeCredentials(input.credentials) : null,
       timeoutMs: input.timeoutMs ?? 10000,
       retryMax: input.retryMax ?? 0,
       circuitBreakerEnabled: input.circuitBreakerEnabled ?? true,
@@ -110,10 +104,13 @@ export const workflowConnectorService = defineCrudService(workflowConnectorContr
     }),
   },
   update: {
-    before: (input, existing) => input.config !== undefined
-      ? assertConnectorConfigSafe(input.type ?? existing.type, input.config as Record<string, unknown> | undefined)
-      : undefined,
-    toRow: (input) => {
+    before: async (input, existing) => {
+      if (input.config !== undefined || input.type !== undefined || input.status === 'enabled') {
+        const normalized = await normalizeConnectorConfig(input.type ?? existing.type, input.config ?? existing.config ?? {}, existing.tenantId);
+        if (input.config !== undefined || input.type !== undefined) input.config = normalized;
+      }
+    },
+    toRow: (input, existing) => {
       const patch: Partial<typeof workflowConnectors.$inferInsert> = {};
       if (input.name !== undefined) patch.name = input.name;
       if (input.code !== undefined) patch.code = input.code;
@@ -129,7 +126,7 @@ export const workflowConnectorService = defineCrudService(workflowConnectorContr
       if (input.rateLimitWindowSec !== undefined) patch.rateLimitWindowSec = input.rateLimitWindowSec;
       if (input.rateLimitMax !== undefined) patch.rateLimitMax = input.rateLimitMax;
       if (input.status !== undefined) patch.status = input.status;
-      if (input.clearCredentials) patch.credentialsEncrypted = null;
+      if (!HTTP_CONNECTOR_TYPES.has(input.type ?? existing.type) || input.clearCredentials) patch.credentialsEncrypted = null;
       else if (input.credentials !== undefined) patch.credentialsEncrypted = encodeCredentials(input.credentials);
       return patch;
     },
@@ -212,7 +209,7 @@ function buildImRequest(connector: WorkflowConnectorRow, opts: ConnectorInvokeOp
   return {
     url: buildUrl(cfg.baseUrl, opts.path, { ...(cfg.query ?? {}), ...(opts.query ?? {}) }),
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(cfg.headers ?? {}), ...(opts.headers ?? {}) },
+    headers: { 'Content-Type': 'application/json', ...buildHeaders(cfg, decodeCredentials(connector.credentialsEncrypted), opts.headers) },
     body,
   };
 }
@@ -223,11 +220,21 @@ function buildHttpRequest(connector: WorkflowConnectorRow, opts: ConnectorInvoke
   const creds = decodeCredentials(connector.credentialsEncrypted);
   const method = (opts.method ?? cfg.method ?? 'GET').toUpperCase();
   const hasBody = method !== 'GET' && method !== 'DELETE' && opts.body != null;
+  const headers = buildHeaders(cfg, creds, opts.headers);
+  let body = hasBody ? opts.body : undefined;
+  if (body != null && cfg.contentType === 'form') {
+    if (typeof body === 'object' && !Array.isArray(body)) {
+      body = new URLSearchParams(Object.entries(body).map(([key, value]) => [key,
+        value == null ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value),
+      ])).toString();
+    } else if (typeof body !== 'string') throw new Error('表单请求数据需为对象或编码后的字符串');
+    headers['Content-Type'] = 'application/x-www-form-urlencoded';
+  }
   return {
     url: buildUrl(cfg.baseUrl, opts.path, { ...(cfg.query ?? {}), ...(opts.query ?? {}) }),
     method,
-    headers: buildHeaders(cfg, creds, opts.headers),
-    body: hasBody ? opts.body : undefined,
+    headers,
+    body,
   };
 }
 
@@ -300,10 +307,14 @@ async function invokeSms(connector: WorkflowConnectorRow, opts: ConnectorInvokeO
   const cfg = (connector.config ?? {}) as Record<string, unknown>;
   const phone = (opts.headers?.phone as string) || (cfg.phone as string) || '';
   if (!phone) return fail('sms 连接器缺少手机号（config.phone 或 headers.phone）');
-  const [smsCfg] = await db.select().from(smsConfigs).where(eq(smsConfigs.status, 'enabled')).limit(1);
-  if (!smsCfg) return fail('无启用的短信配置');
-  const [tpl] = await db.select().from(smsTemplates).where(eq(smsTemplates.code, String(cfg.templateCode ?? ''))).limit(1);
-  if (!tpl) return fail(`短信模板不存在：${String(cfg.templateCode ?? '')}`);
+  const [tpl] = await db.select().from(smsTemplates).where(buildWhere(
+    eq(smsTemplates.code, String(cfg.templateCode ?? '')), eq(smsTemplates.status, 'enabled'), inheritedTenantCondition(smsTemplates.tenantId, connector.tenantId),
+  )).limit(1);
+  if (!tpl) return fail(`短信模板不存在、未启用或不属于当前租户：${String(cfg.templateCode ?? '')}`);
+  const [smsCfg] = await db.select().from(smsConfigs).where(buildWhere(
+    eq(smsConfigs.status, 'enabled'), eq(smsConfigs.provider, tpl.provider), inheritedTenantCondition(smsConfigs.tenantId, connector.tenantId),
+  )).orderBy(sql`${smsConfigs.tenantId} asc nulls last`, desc(smsConfigs.id)).limit(1);
+  if (!smsCfg) return fail('所选模板没有可用的短信服务商配置');
   const vars = (opts.body && typeof opts.body === 'object' ? opts.body : {}) as Record<string, string>;
   const started = Date.now();
   currentWorkflowJobContext()?.signal.throwIfAborted();

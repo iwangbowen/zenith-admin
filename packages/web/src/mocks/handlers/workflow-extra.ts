@@ -197,6 +197,15 @@ async function runBatchTaskAction(taskIds: number[], act: (task: WorkflowTask, n
 const ccReadState = new Set<number>();
 const mockSavedViews: WorkflowSavedView[] = [];
 export const mockSchedules: WorkflowSchedule[] = [];
+function requireMockScheduleConfiguration(definitionId: number, initiatorId: number) {
+  const definition = requireItem(mockWorkflowDefinitions, definitionId, '流程定义不存在', { status: 404 });
+  if (definition.status !== 'published' || definition.formType === 'external') {
+    throw new MockHttpError(badRequest('定时发起只能选择已发布的普通流程', { status: 400 }));
+  }
+  const initiator = mockUsers.find(user => user.id === initiatorId && user.status === 'enabled');
+  if (!initiator) throw new MockHttpError(badRequest('发起人不存在或已停用', { status: 400 }));
+  return { definition, initiator };
+}
 export const mockScheduleRuns: WorkflowScheduleRunDetail[] = [];
 let nextScheduleId = 1;
 let nextScheduleRunId = 1;
@@ -225,7 +234,7 @@ function observeScheduleRun(run: WorkflowScheduleRunDetail): void {
   const starter = mockUsers.find((u) => u.id === run.payload.initiatorId);
   run.attempts += 1;
   run.updatedAt = now;
-  const error = !definition || definition.status !== 'published' ? '流程定义不存在或未发布' : !starter ? '发起人不存在' : null;
+  const error = run.instanceId !== null ? null : !definition || definition.status !== 'published' ? '流程定义不存在或未发布' : !starter ? '发起人不存在' : starter.status !== 'enabled' ? '发起人已停用' : null;
   run.executions.push({ id: run.id * 100 + run.executions.length, jobId: run.id, jobType: 'schedule_launch', attempt: run.attempts,
     generation: run.generation, status: error ? 'failed' : 'succeeded', requestUrl: null, requestMethod: null, requestBody: null,
     responseStatus: null, responseBody: null, errorMessage: error, durationMs: 10, startedAt: now, finishedAt: now, createdAt: now });
@@ -598,11 +607,11 @@ export const workflowExtraHandlers = [
   // ── 定时发起 ──
   mock(workflowScheduleContract.list, ({ ok, paginate }) => ok(paginate(mockSchedules))),
   mock(workflowScheduleContract.create, ({ body, ok }) => {
-    const def = mockWorkflowDefinitions.find((d) => d.id === body.definitionId);
+    const { definition: def, initiator } = requireMockScheduleConfiguration(body.definitionId, body.initiatorId);
     const now = mockDateTime();
     const s: WorkflowSchedule = {
       id: nextScheduleId++, definitionId: body.definitionId, definitionName: def?.name ?? null,
-      name: body.name, cronExpression: body.cronExpression, timezone: body.timezone ?? null, initiatorId: body.initiatorId, initiatorName: `用户#${body.initiatorId}`,
+      name: body.name, cronExpression: body.cronExpression, timezone: body.timezone ?? null, initiatorId: body.initiatorId, initiatorName: initiator.nickname ?? initiator.username,
       titleTemplate: body.titleTemplate ?? null, formData: body.formData ?? null, status: body.status,
       lastRunAt: null, lastRunStatus: null, lastRunMessage: null, nextRunAt: body.status === 'disabled' ? null : mockDateTime(), tenantId: null, createdAt: now, updatedAt: now,
     };
@@ -611,6 +620,9 @@ export const workflowExtraHandlers = [
   }),
   mock(workflowScheduleContract.update, ({ params, body, ok }) => {
     const s = requireItem(mockSchedules, params.id, '定时规则不存在');
+    if (body.status !== 'disabled' && (body.initiatorId !== undefined || body.status === 'enabled' || body.definitionId !== undefined)) {
+      requireMockScheduleConfiguration(body.definitionId ?? s.definitionId, body.initiatorId ?? s.initiatorId);
+    }
     const reschedule = (body.status !== undefined && body.status !== s.status)
       || (body.cronExpression !== undefined && body.cronExpression.trim() !== s.cronExpression.trim())
       || (body.timezone !== undefined && body.timezone !== s.timezone);
@@ -626,6 +638,7 @@ export const workflowExtraHandlers = [
   }),
   mock(workflowScheduleContract.run, ({ params, ok }) => {
     const s = requireItem(mockSchedules, params.id, '定时规则不存在');
+    requireMockScheduleConfiguration(s.definitionId, s.initiatorId);
     createScheduleRun(s);
     return ok(s, '已加入执行队列');
   }),

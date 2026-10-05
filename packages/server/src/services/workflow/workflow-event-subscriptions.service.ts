@@ -1,8 +1,8 @@
-import { workflowEventSubscriptionContract, workflowEventDeliveryState } from '@zenith/shared/workflow';
+import { workflowEventSubscriptionContract, workflowEventSubscriptionSchema, workflowEventDeliveryState, isWorkflowSubscriptionConnector, isWorkflowSubscriptionUrl, resolveWorkflowSubscriptionSecret } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { and, desc, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { db } from '../../db';
 import {
   workflowEventSubscriptions,
@@ -15,17 +15,18 @@ import { currentUser } from '../../lib/context';
 import { inheritedTenantCondition, tenantCondition, getCreateTenantId } from '../../lib/tenant';
 import { buildWhere, dateRangeConditions, keywordCondition, nullableEq, withPagination } from '../../lib/where-helpers';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
-import { formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
+import { formatDateTime, formatNullableDateTime } from '../../lib/datetime';
 import { buildListResult } from '../../lib/list-query';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
+import { pickEntity } from '../../lib/entity-map';
 import { decryptSecret, encryptSecret } from '../../lib/secret-crypto';
-import { assertSafeWorkflowUrl, workflowHttpPost } from '../../lib/workflow-outbound';
+import { assertSafeWorkflowUrl, buildConnectorUrl, workflowHttpPost } from '../../lib/workflow-outbound';
 import { payloadRecord, payloadString } from './payload-utils';
 import { countJobExecutions, jobExecutionsWithJob } from './workflow-job-execution-helpers';
 import { signHmac } from '../../lib/workflow-jobs/handlers/shared';
 import { enqueueJob, retryJob, scheduleJobPickup } from '../../lib/workflow-jobs/engine';
-import { invokeConnector, getConnectorRowById } from './workflow-connectors.service';
-import type { WorkflowEventType } from '@zenith/shared/workflow';
+import { invokeConnector, getConnectorRowById, ensureConnector } from './workflow-connectors.service';
+import type { WorkflowEventType, CreateWorkflowEventSubscriptionInput, UpdateWorkflowEventSubscriptionInput } from '@zenith/shared/workflow';
 import { maskSecret } from '@zenith/shared/core';
 
 /** 订阅密钥展示：保留头尾 4 位（`@zenith/shared/core` 默认口径），空值返回 null */
@@ -41,6 +42,45 @@ export function decryptSubscriptionSecret(encrypted: string | null | undefined):
   } catch {
     return null;
   }
+}
+
+/** Never silently turn an HMAC subscription into an unsigned request. */
+export function requireSubscriptionSigningSecret(encrypted: string | null | undefined): string {
+  const secret = decryptSubscriptionSecret(encrypted);
+  if (!secret?.trim()) throw new Error('HMAC 签名密钥缺失或无法解密，已拒绝发送；请编辑保存订阅重新生成密钥');
+  return secret;
+}
+
+async function assertSubscriptionTarget(url: string, connectorId: number | null): Promise<void> {
+  if (!isWorkflowSubscriptionUrl(url, connectorId)) {
+    throw new HTTPException(400, { message: '未选择连接器时必须填写完整的 HTTP/HTTPS 地址；清除连接器前请先修改相对路径' });
+  }
+  if (connectorId === null) {
+    await assertSafeWorkflowUrl(url);
+    return;
+  }
+  const connector = await ensureConnector(connectorId);
+  if (!isWorkflowSubscriptionConnector(connector.type)) {
+    throw new HTTPException(400, { message: '事件订阅仅支持 HTTP 或 Webhook 连接器，其他类型不会保留完整事件 JSON' });
+  }
+  const config = (connector.config ?? {}) as Record<string, unknown>;
+  if (typeof config.baseUrl !== 'string' || !config.baseUrl) {
+    throw new HTTPException(400, { message: '事件订阅连接器缺少基础地址' });
+  }
+  let target: string;
+  try {
+    target = buildConnectorUrl(config.baseUrl, url, (config.query ?? {}) as Record<string, string>);
+  } catch (error) {
+    throw new HTTPException(400, { message: error instanceof Error ? error.message : '连接器投递地址无效' });
+  }
+  await assertSafeWorkflowUrl(target);
+}
+
+function subscriptionSecretEncrypted(mode: 'hmacSha256' | 'none', supplied?: string | null, previousEncrypted?: string | null): string | null {
+  const previous = decryptSubscriptionSecret(previousEncrypted);
+  const secret = resolveWorkflowSubscriptionSecret(mode, supplied, previous, () => randomBytes(32).toString('base64url'));
+  if (secret === previous && previousEncrypted) return previousEncrypted;
+  return secret ? encryptSecret(secret) : null;
 }
 
 function parseHeaders(raw: string | null | undefined): Record<string, string> | null {
@@ -62,24 +102,12 @@ export function mapSubscription(
   row: typeof workflowEventSubscriptions.$inferSelect,
   definitionName?: string | null,
 ) {
-  return {
-    id: row.id,
-    name: row.name,
-    description: row.description ?? null,
-    definitionId: row.definitionId,
+  return pickEntity(workflowEventSubscriptionSchema, row, {
     definitionName: definitionName ?? null,
     events: (Array.isArray(row.events) ? row.events : []) as WorkflowEventType[],
-    url: row.url,
     secretMasked: maskSubscriptionSecret(decryptSubscriptionSecret(row.secretEncrypted)),
-    signMode: row.signMode,
     headers: parseHeaders(row.headers),
-    connectorId: row.connectorId ?? null,
-    enabled: row.enabled,
-    tenantId: row.tenantId,
-    createdBy: row.createdBy ?? null,
-    updatedBy: row.updatedBy ?? null,
-    ...formatTimestamps(row),
-  };
+  });
 }
 
 /** 按 id 定位当前租户可见的订阅 */
@@ -136,23 +164,11 @@ export async function getSubscriptionSecret(id: number) {
   return { id: row.id, secret: decryptSubscriptionSecret(row.secretEncrypted) };
 }
 
-export interface UpsertSubscriptionInput {
-  name: string;
-  description?: string | null;
-  definitionId?: number | null;
-  events: WorkflowEventType[];
-  url: string;
-  secret?: string | null;
-  signMode?: 'hmacSha256' | 'none';
-  headers?: Record<string, string> | null;
-  connectorId?: number | null;
-  enabled?: boolean;
-}
+export type UpsertSubscriptionInput = CreateWorkflowEventSubscriptionInput;
 
 export async function createSubscription(input: UpsertSubscriptionInput) {
   if (input.events.length === 0) throw new HTTPException(400, { message: '至少订阅一个事件类型' });
-  // 直连 URL 保存时即校验；走连接器时 url 只是相对路径（同源约束由 buildConnectorUrl 保证）
-  if (!input.connectorId && input.url) await assertSafeWorkflowUrl(input.url);
+  await assertSubscriptionTarget(input.url, input.connectorId ?? null);
   try {
     const user = currentUser();
     const [row] = await db.insert(workflowEventSubscriptions).values({
@@ -161,14 +177,12 @@ export async function createSubscription(input: UpsertSubscriptionInput) {
       definitionId: input.definitionId ?? null,
       events: input.events,
       url: input.url,
-      secretEncrypted: input.secret ? encryptSecret(input.secret) : null,
+      secretEncrypted: subscriptionSecretEncrypted(input.signMode ?? 'hmacSha256', input.secret),
       signMode: input.signMode ?? 'hmacSha256',
       headers: input.headers ? JSON.stringify(input.headers) : null,
       connectorId: input.connectorId ?? null,
       enabled: input.enabled ?? true,
       tenantId: getCreateTenantId(user),
-      createdBy: user.userId,
-      updatedBy: user.userId,
     }).returning();
     return mapSubscription(row);
   } catch (err) {
@@ -176,15 +190,14 @@ export async function createSubscription(input: UpsertSubscriptionInput) {
   }
 }
 
-export async function updateSubscription(id: number, input: Partial<UpsertSubscriptionInput>) {
+export async function updateSubscription(id: number, input: UpdateWorkflowEventSubscriptionInput) {
   const existing = await ensureSubscriptionExists(id);
   const nextConnectorId = input.connectorId !== undefined ? input.connectorId : existing.connectorId;
   const nextUrl = input.url !== undefined ? input.url : existing.url;
-  if ((input.url !== undefined || input.connectorId !== undefined) && !nextConnectorId && nextUrl) {
-    await assertSafeWorkflowUrl(nextUrl);
-  }
-  const user = currentUser();
-  const patch: Partial<typeof workflowEventSubscriptions.$inferInsert> = { updatedBy: user.userId, updatedAt: new Date() };
+  await assertSubscriptionTarget(nextUrl, nextConnectorId);
+  const nextMode = input.signMode ?? existing.signMode;
+  const secretEncrypted = subscriptionSecretEncrypted(nextMode, input.secret, existing.secretEncrypted);
+  const patch: Partial<typeof workflowEventSubscriptions.$inferInsert> = {};
   if (input.name !== undefined) patch.name = input.name;
   if (input.description !== undefined) patch.description = input.description;
   if (input.definitionId !== undefined) patch.definitionId = input.definitionId;
@@ -193,11 +206,12 @@ export async function updateSubscription(id: number, input: Partial<UpsertSubscr
     patch.events = input.events;
   }
   if (input.url !== undefined) patch.url = input.url;
-  if (input.secret !== undefined) patch.secretEncrypted = input.secret ? encryptSecret(input.secret) : null;
+  if (secretEncrypted !== existing.secretEncrypted) patch.secretEncrypted = secretEncrypted;
   if (input.signMode !== undefined) patch.signMode = input.signMode;
   if (input.headers !== undefined) patch.headers = input.headers ? JSON.stringify(input.headers) : null;
   if (input.connectorId !== undefined) patch.connectorId = input.connectorId;
   if (input.enabled !== undefined) patch.enabled = input.enabled;
+  if (Object.keys(patch).length === 0) return mapSubscription(existing);
   try {
     const [row] = await db.update(workflowEventSubscriptions).set(patch).where(findSubscription(id)).returning();
     return mapSubscription(requireRow(row, '事件订阅不存在'));
@@ -510,11 +524,6 @@ export async function testSubscriptionDelivery(id: number): Promise<TestDelivery
     'X-Zenith-Test': '1',
     ...(parseHeaders(row.headers) ?? {}),
   };
-  if (row.signMode === 'hmacSha256' && row.secretEncrypted) {
-    const secret = decryptSubscriptionSecret(row.secretEncrypted);
-    if (secret) headers['X-Zenith-Signature'] = `t=${timestamp},v1=${signHmac(secret, timestamp, bodyStr)}`;
-  }
-
   const startedAt = Date.now();
   const base: Omit<TestDeliveryResult, 'ok' | 'httpStatus' | 'responseSnippet' | 'error'> = {
     durationMs: 0,
@@ -522,10 +531,16 @@ export async function testSubscriptionDelivery(id: number): Promise<TestDelivery
     eventType,
   };
   try {
+    if (row.signMode === 'hmacSha256') {
+      headers['X-Zenith-Signature'] = `t=${timestamp},v1=${signHmac(requireSubscriptionSigningSecret(row.secretEncrypted), timestamp, bodyStr)}`;
+    }
     if (row.connectorId) {
       const connector = await getConnectorRowById(row.connectorId);
       if (!connector) {
         return { ...base, durationMs: Date.now() - startedAt, ok: false, httpStatus: null, responseSnippet: null, error: `投递连接器 #${row.connectorId} 不存在` };
+      }
+      if (!isWorkflowSubscriptionConnector(connector.type)) {
+        return { ...base, durationMs: Date.now() - startedAt, ok: false, httpStatus: null, responseSnippet: null, error: '事件订阅仅支持 HTTP 或 Webhook 连接器' };
       }
       base.requestUrl = `[connector:${connector.code}] ${row.url ?? ''}`.trim();
       const r = await invokeConnector(connector, { path: row.url || undefined, method: 'POST', headers, body: bodyStr, source: 'webhook' });

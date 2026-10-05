@@ -32,9 +32,10 @@ export async function handleScheduleLaunch(context: WorkflowJobContext): Promise
     const committed = await readWorkflowJobStepResult<{ instanceId: number }>('schedule-launch');
     let instanceId = committed?.instanceId;
     if (instanceId === undefined) {
-      const [initiator] = await db.select({ username: users.username }).from(users)
+      const [initiator] = await db.select({ username: users.username, status: users.status }).from(users)
         .where(buildWhere(eq(users.id, payload.initiatorId), exactTenantCondition(users.tenantId, context.job.tenantId))).limit(1);
       if (!initiator) throw new Error('发起人不存在');
+      if (initiator.status !== 'enabled') throw new Error('发起人已停用，不能创建新的流程申请');
       const instance = await createInstance({ definitionId: payload.definitionId, title: payload.title, formData: payload.formData },
         { userId: payload.initiatorId, username: initiator.username, tenantId: context.job.tenantId, roles: [] }, [], 'schedule-launch');
       instanceId = instance.id;

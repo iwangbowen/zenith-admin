@@ -8,7 +8,7 @@ import { Button, Col, Form, Modal, Row, SideSheet, Switch, Tag, Toast, Typograph
 
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { RotateCcw } from 'lucide-react';
-import { WORKFLOW_EVENT_DELIVERY_STATUS_LABELS, WORKFLOW_EVENT_DELIVERY_STATUSES, WORKFLOW_EVENT_DELIVERY_STATUS_OPTIONS, WORKFLOW_EVENT_DELIVERY_JOB_STATUSES, WORKFLOW_EVENT_DELIVERY_JOB_STATUS_LABELS, WORKFLOW_EVENT_DELIVERY_JOB_STATUS_OPTIONS, WORKFLOW_EVENT_TYPE_LABELS, WORKFLOW_EVENT_TYPE_OPTIONS, type CreateWorkflowEventSubscriptionInput, type WorkflowDefinition, type WorkflowEventDelivery, type WorkflowEventDeliveryStatus, type WorkflowEventSubscription, type WorkflowEventType, workflowEventSubscriptionContract } from '@zenith/shared/workflow';
+import { WORKFLOW_EVENT_DELIVERY_STATUS_LABELS, WORKFLOW_EVENT_DELIVERY_STATUSES, WORKFLOW_EVENT_DELIVERY_STATUS_OPTIONS, WORKFLOW_EVENT_DELIVERY_JOB_STATUSES, WORKFLOW_EVENT_DELIVERY_JOB_STATUS_LABELS, WORKFLOW_EVENT_DELIVERY_JOB_STATUS_OPTIONS, WORKFLOW_EVENT_TYPE_LABELS, WORKFLOW_EVENT_TYPE_OPTIONS, isWorkflowSubscriptionConnector, isWorkflowSubscriptionUrl, type CreateWorkflowEventSubscriptionInput, type WorkflowDefinition, type WorkflowEventDelivery, type WorkflowEventDeliveryStatus, type WorkflowEventSubscription, type WorkflowEventType, workflowEventSubscriptionContract } from '@zenith/shared/workflow';
 import { enumValueOf, isPlainObject } from '@zenith/shared/core';
 import { formatDateTimeRangeValuesForApi } from '@/utils/date';
 import { AppModal } from '@/components/AppModal';
@@ -75,8 +75,10 @@ export default function WorkflowEventSubscriptionsPage() {
 
   const definitionsQuery = useWorkflowDefinitionList({ page: 1, pageSize: 200 });
   const defs: WorkflowDefinition[] = definitionsQuery.data?.list ?? [];
-  const connectorsQuery = useWorkflowConnectorList({ page: 1, pageSize: 100, status: 'enabled' });
-  const connectorOptions = (connectorsQuery.data?.list ?? []).map((cn) => ({ value: cn.id, label: `${cn.name}（${cn.type}）` }));
+  const connectorsQuery = useWorkflowConnectorList({ page: 1, pageSize: 100 });
+  const connectorOptions = (connectorsQuery.data?.list ?? []).filter((cn) => isWorkflowSubscriptionConnector(cn.type)).map((cn) => ({
+    value: cn.id, label: `${cn.name}（${cn.type}${cn.status === 'disabled' ? '，已停用' : ''}）`,
+  }));
 
   // 编辑弹窗
   const saveMutation = useSaveWorkflowEventSubscription();
@@ -137,6 +139,10 @@ export default function WorkflowEventSubscriptionsPage() {
       signMode: row.signMode, headers: row.headers ? JSON.stringify(row.headers, null, 2) : '', connectorId: row.connectorId, enabled: row.enabled,
     }),
     beforeSave: (vals) => {
+    if (!isWorkflowSubscriptionUrl(vals.url?.trim() ?? '', vals.connectorId)) {
+      Toast.error('未选择连接器时必须填写完整的 HTTP/HTTPS 地址；清除连接器前请先修改相对路径');
+      abortSubmit('validation');
+    }
     let headers: Record<string, string> | null = null;
     if (vals.headers?.trim()) {
       try {
@@ -152,7 +158,7 @@ export default function WorkflowEventSubscriptionsPage() {
       description: vals.description ?? null,
       definitionId: vals.definitionId ?? null,
       events: vals.events,
-      url: vals.url,
+      url: vals.url.trim(),
       ...(vals.secret ? { secret: vals.secret } : {}),
       signMode: vals.signMode,
       headers,
@@ -353,10 +359,10 @@ export default function WorkflowEventSubscriptionsPage() {
 
       <EditFormSheet modal={eventSubscriptionModal} placement="right" width={680} bodyStyle={{ paddingBottom: 16 }} okText={eventSubscriptionModal.isEdit ? '保存' : '创建'}>
         <Row gutter={16}>
-          <Col span={12}>
+          <Col xs={24} sm={12}>
             <Form.Input field="name" label="名称" maxLength={64} rules={[{ required: true, message: '请输入名称' }]} />
           </Col>
-          <Col span={12}>
+          <Col xs={24} sm={12}>
             <Form.Select
               field="definitionId" label="所属流程" showClear
               style={{ width: '100%' }}
@@ -377,20 +383,22 @@ export default function WorkflowEventSubscriptionsPage() {
         </Row>
         <Row gutter={16}>
           <Col span={24}>
-            <Form.Input field="url" label="回调 URL" placeholder="https://example.com/webhook"
-              rules={[{ required: true, message: '请输入 URL' }, { pattern: /^https?:\/\//i, message: '必须以 http:// 或 https:// 开头' }]} />
+            <Form.Input field="url" label="回调 URL" placeholder="https://example.com/webhook 或 /erp/events"
+              helpText="直连需完整 HTTP/HTTPS 地址；选择连接器后可填相对路径，完整地址必须与连接器同源"
+              rules={[{ required: true, message: '请输入 URL' }]} />
           </Col>
         </Row>
         <Row gutter={16}>
-          <Col span={12}>
+          <Col xs={24} sm={12}>
             <Form.Input
               field="secret"
               label="签名密钥"
               placeholder={editing ? '留空保持不变' : '留空将自动生成'}
+              helpText="HMAC 模式自动生成未配置的密钥；编辑留空保留已有密钥"
               maxLength={256}
             />
           </Col>
-          <Col span={12}>
+          <Col xs={24} sm={12}>
             <Form.Select field="signMode" label="签名模式" style={{ width: '100%' }} optionList={[
               { value: 'hmacSha256', label: 'HMAC-SHA256' },
               { value: 'none', label: '不签名' },
@@ -398,14 +406,14 @@ export default function WorkflowEventSubscriptionsPage() {
           </Col>
         </Row>
         <Row gutter={16}>
-          <Col span={12}>
+          <Col xs={24} sm={12}>
             <Form.Switch field="enabled" label="启用" />
           </Col>
-          <Col span={12}>
+          <Col xs={24} sm={12}>
             <Form.Select
               field="connectorId" label="连接器" showClear
               style={{ width: '100%' }}
-              helpText="经连接器投递（鉴权/超时/重试/熔断），URL 仍为完整地址"
+              helpText="仅支持保留完整事件 JSON 的 HTTP / Webhook 连接器；清除连接器前需将相对路径改为完整地址"
               optionList={connectorOptions}
             />
           </Col>
@@ -457,35 +465,35 @@ export default function WorkflowEventSubscriptionsPage() {
         {deliveryDetail && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <Row gutter={[12, 8]}>
-              <Col span={12}>
+              <Col xs={24} sm={12}>
                 <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>事件</Typography.Text>
                 <Typography.Text>{WORKFLOW_EVENT_TYPE_LABELS[deliveryDetail.eventType as WorkflowEventType] ?? deliveryDetail.eventType}</Typography.Text>
               </Col>
-              <Col span={12}>
+              <Col xs={24} sm={12}>
                 <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>本次结果 / 当前作业</Typography.Text>
                 <Tag color={DELIVERY_STATUS_COLORS[deliveryDetail.status] ?? 'grey'}>
                   {WORKFLOW_EVENT_DELIVERY_STATUS_LABELS[deliveryDetail.status] ?? deliveryDetail.status}
                 </Tag>
                 <Tag color={DELIVERY_JOB_STATUS_COLORS[deliveryDetail.jobStatus]} style={{ marginLeft: 4 }}>{WORKFLOW_EVENT_DELIVERY_JOB_STATUS_LABELS[deliveryDetail.jobStatus]}</Tag>
               </Col>
-              <Col span={12}>
+              <Col xs={24} sm={12}>
                 <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>事件 ID</Typography.Text>
                 <Typography.Text size="small" copyable>{deliveryDetail.eventId}</Typography.Text>
               </Col>
-              <Col span={12}>
+              <Col xs={24} sm={12}>
                 <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>实例 / 任务</Typography.Text>
                 <Typography.Text size="small">
                   {deliveryDetail.instanceId != null ? `#${deliveryDetail.instanceId}` : EMPTY_PLACEHOLDER}
                   {deliveryDetail.taskId != null ? ` / 任务 #${deliveryDetail.taskId}` : ''}
                 </Typography.Text>
               </Col>
-              <Col span={12}>
+              <Col xs={24} sm={12}>
                 <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>HTTP / 耗时 / 尝试</Typography.Text>
                 <Typography.Text size="small">
                   {deliveryDetail.responseStatus ?? EMPTY_PLACEHOLDER} · {deliveryDetail.durationMs != null ? `${deliveryDetail.durationMs}ms` : EMPTY_PLACEHOLDER} · 第 {deliveryDetail.attempt} 次
                 </Typography.Text>
               </Col>
-              <Col span={12}>
+              <Col xs={24} sm={12}>
                 <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>时间 / 下次重试</Typography.Text>
                 <Typography.Text size="small">{deliveryDetail.createdAt}{deliveryDetail.nextRetryAt ? ` · 重试于 ${deliveryDetail.nextRetryAt}` : ''}</Typography.Text>
               </Col>

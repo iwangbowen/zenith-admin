@@ -2,7 +2,8 @@ import { signatureInputSchema, signaturePolicySchema } from '../core/signatures'
 import * as z from 'zod';
 import { dateRangeBound, entityStatusSchema } from '../core/api-schemas';
 import { httpUrl, lazyRecursive, linkUrl, partialForUpdate } from '../core/validation';
-import { WORKFLOW_EVENT_SIGN_MODES, WORKFLOW_EVENT_TYPES, WORKFLOW_JOB_TYPES } from './constants';
+import { WORKFLOW_EVENT_SIGN_MODES, WORKFLOW_EVENT_TYPES, WORKFLOW_JOB_TYPES, WORKFLOW_CONNECTOR_RUNTIME_TYPES, WORKFLOW_CONNECTOR_HTTP_METHODS, WORKFLOW_CONNECTOR_AUTH_TYPES, WORKFLOW_CONNECTOR_CONTENT_TYPES } from './constants';
+import { isWorkflowSubscriptionRelativePath, isWorkflowSubscriptionUrl } from './subscription-url';
 import type { WorkflowFieldVisibilityRuleGroup, WorkflowFormCascaderNode, WorkflowFormField } from './types';
 
 export * from './graph-schema';
@@ -216,7 +217,37 @@ export type UpdateWorkflowDataSourceInput = z.input<typeof updateWorkflowDataSou
 
 // ── 流程连接器 ──
 /** 连接器类型（仅含运行时已实现调用的类型；mq/database 尚无 adapter，暂不开放创建） */
-export const workflowConnectorTypeSchema = z.enum(['http', 'webhook', 'email', 'sms', 'wecom', 'dingtalk', 'feishu']);
+export const workflowConnectorTypeSchema = z.enum(WORKFLOW_CONNECTOR_RUNTIME_TYPES);
+
+export const workflowConnectorHttpConfigSchema = z.object({
+  baseUrl: z.string().trim().regex(/^https?:\/\//i, '基础地址需以 HTTP/HTTPS 开头').pipe(httpUrl('基础地址需为有效的 HTTP/HTTPS 地址')),
+  method: z.enum(WORKFLOW_CONNECTOR_HTTP_METHODS).optional(),
+  authType: z.enum(WORKFLOW_CONNECTOR_AUTH_TYPES).optional(),
+  apiKeyHeader: z.string().trim().max(128).optional(),
+  contentType: z.enum(WORKFLOW_CONNECTOR_CONTENT_TYPES).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
+  query: z.record(z.string(), z.string()).optional(),
+});
+
+const splitConnectorRecipients = (value: string) => value.split(/[,;；，]/).map(part => part.trim()).filter(Boolean);
+export const workflowConnectorEmailConfigSchema = z.object({
+  to: z.string().trim().min(1, '请填写邮件收件人').refine(value => {
+    const recipients = splitConnectorRecipients(value);
+    return recipients.length > 0 && recipients.every(address => z.email().safeParse(address).success);
+  }, '邮件收件人需为有效邮箱，多人用逗号分隔').transform(value => splitConnectorRecipients(value).join(',')),
+  subject: z.string().trim().min(1, '请填写邮件主题').max(256),
+});
+
+export const workflowConnectorSmsConfigSchema = z.object({
+  phone: z.string().trim().regex(/^\+?\d{6,20}$/, '收件手机号格式不正确'),
+  templateCode: z.string().trim().min(1, '请选择短信模板').max(100),
+});
+
+export function validateWorkflowConnectorConfig(type: string, config: unknown) {
+  if (type === 'email') return workflowConnectorEmailConfigSchema.safeParse(config);
+  if (type === 'sms') return workflowConnectorSmsConfigSchema.safeParse(config);
+  return workflowConnectorHttpConfigSchema.safeParse(config);
+}
 
 /** 凭据明文（按 authType 解释；落库前整体 AES 加密，绝不回传） */
 export const workflowConnectorCredentialsSchema = z.object({
@@ -242,6 +273,11 @@ export const createWorkflowConnectorSchema = z.object({
   rateLimitWindowSec: z.number().int().min(1).max(3600).default(1),
   rateLimitMax: z.number().int().min(0).max(100000).default(0),
   status: entityStatusSchema.default('enabled'),
+}).superRefine((value, ctx) => {
+  const parsed = validateWorkflowConnectorConfig(value.type, value.config);
+  if (!parsed.success) for (const issue of parsed.error.issues) {
+    ctx.addIssue({ code: 'custom', path: ['config', ...issue.path], message: issue.message });
+  }
 });
 
 export const updateWorkflowConnectorSchema = partialForUpdate(createWorkflowConnectorSchema).extend({
@@ -356,10 +392,12 @@ export type CreateWorkflowAutomationInput = z.infer<typeof createWorkflowAutomat
 export type UpdateWorkflowAutomationInput = z.infer<typeof updateWorkflowAutomationSchema>;
 
 // ── 流程定时发起 ──
+export const workflowScheduleCronSchema = z.string().trim().min(1, '请输入 cron 表达式').max(64)
+  .refine(value => value.split(/\s+/).length === 5, '定时发起仅支持标准 5 段 Cron（分 时 日 月 周），不支持秒级周期');
 export const createWorkflowScheduleSchema = z.object({
   definitionId: z.number().int().positive('请选择流程'),
   name: z.string().min(1, '规则名称不能为空').max(128),
-  cronExpression: z.string().min(1, '请输入 cron 表达式').max(64),
+  cronExpression: workflowScheduleCronSchema,
   /** IANA 时区（如 Asia/Shanghai、America/New_York）；空 = 默认 Asia/Shanghai */
   timezone: z.string().max(64).nullable().optional(),
   initiatorId: z.number().int().positive('请选择发起人'),
@@ -787,12 +825,16 @@ export const createWorkflowEventSubscriptionSchema = z.object({
   description: z.string().max(256).nullish(),
   definitionId: z.number().int().nullish(),
   events: z.array(z.enum(WORKFLOW_EVENT_TYPES)).min(1),
-  url: z.string().min(1).regex(/^https?:\/\//i, '必须是 http:// 或 https:// 开头的 URL'),
+  url: z.string().trim().min(1).refine(value => isWorkflowSubscriptionUrl(value) || isWorkflowSubscriptionRelativePath(value), '请输入 HTTP/HTTPS 地址或连接器相对路径'),
   secret: z.string().max(256).nullish(),
   signMode: z.enum(WORKFLOW_EVENT_SIGN_MODES).optional(),
   headers: z.record(z.string(), z.string()).nullish(),
   connectorId: z.number().int().positive().nullish(),
   enabled: z.boolean().optional(),
+}).superRefine((value, ctx) => {
+  if (!isWorkflowSubscriptionUrl(value.url, value.connectorId)) {
+    ctx.addIssue({ code: 'custom', path: ['url'], message: '使用相对路径时必须选择 HTTP 或 Webhook 连接器' });
+  }
 });
 
 export const updateWorkflowEventSubscriptionSchema = partialForUpdate(createWorkflowEventSubscriptionSchema);

@@ -2,14 +2,63 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { fillPath, type AnyOperation, type ApiResponse, type InputOf, type OutputOf } from '@zenith/shared/core';
 import { workflowEventSubscriptionContract, workflowEventDeliverySchema } from '@zenith/shared/workflow';
 import { workflowEventSubscriptionsHandlers, mockSubscriptions, mockDeliveries, mockDeliveryJobs } from './handlers/workflow-event-subscriptions';
+import { mockWorkflowConnectors } from './data/workflow-connectors';
 
 const subscriptions = structuredClone(mockSubscriptions);
 const deliveries = structuredClone(mockDeliveries);
 const jobs = structuredClone([...mockDeliveryJobs.entries()]);
+const connectors = structuredClone(mockWorkflowConnectors);
 afterEach(() => {
   mockSubscriptions.splice(0, mockSubscriptions.length, ...structuredClone(subscriptions));
   mockDeliveries.splice(0, mockDeliveries.length, ...structuredClone(deliveries));
   mockDeliveryJobs.clear(); for (const [id, job] of structuredClone(jobs)) mockDeliveryJobs.set(id, job);
+  mockWorkflowConnectors.splice(0, mockWorkflowConnectors.length, ...structuredClone(connectors));
+});
+
+describe('event subscription Demo configuration', () => {
+  function connector(type: 'http' | 'webhook' | 'email' = 'http') {
+    mockWorkflowConnectors.push({ ...mockWorkflowConnectors[0], id: 999, type, code: 'test-erp', config: { baseUrl: 'https://1.1.1.1/v1' }, status: 'disabled' });
+  }
+  it('generates a random HMAC key without disclosing it in normal responses', async () => {
+    const created = await call(workflowEventSubscriptionContract.create, { body: { name: '合同归档', url: 'https://1.1.1.1/events', events: ['instance.approved'], secret: '', enabled: false } });
+    const id = created.body.data.id;
+    const secret = await call(workflowEventSubscriptionContract.secret, { params: { id } });
+    expect(secret.body.data.secret).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(JSON.stringify(created.body.data)).not.toContain(secret.body.data.secret);
+    const edited = await call(workflowEventSubscriptionContract.update, { params: { id }, body: { secret: '', description: '不更换密钥' } });
+    expect(edited.body.data.secretMasked).toBe(created.body.data.secretMasked);
+    expect((await call(workflowEventSubscriptionContract.secret, { params: { id } })).body.data.secret).toBe(secret.body.data.secret);
+  });
+  it('generates the first key when an unsigned subscription switches to HMAC', async () => {
+    const created = await call(workflowEventSubscriptionContract.create, { body: { name: '无签名归档', url: 'https://1.1.1.1/events', events: ['instance.approved'], signMode: 'none', enabled: false } });
+    expect(created.body.data.secretMasked).toBeNull();
+    const edited = await call(workflowEventSubscriptionContract.update, { params: { id: created.body.data.id }, body: { signMode: 'hmacSha256' } });
+    expect(edited.body.data.secretMasked).not.toBeNull();
+  });
+  it('supports connector paths and rejects clearing their origin without replacing the URL', async () => {
+    connector('webhook');
+    const created = await call(workflowEventSubscriptionContract.create, { body: { name: 'ERP归档', url: '/contracts', connectorId: 999, events: ['instance.approved'], enabled: false } });
+    expect(created.status).toBe(200);
+    const id = created.body.data.id;
+    expect((await call(workflowEventSubscriptionContract.update, { params: { id }, body: { url: '/archived-contracts' } })).status).toBe(200);
+    const cleared = await call(workflowEventSubscriptionContract.update, { params: { id }, body: { connectorId: null } });
+    expect(cleared.status).toBe(400);
+    expect(cleared.body.message).toContain('清除连接器');
+    expect((await call(workflowEventSubscriptionContract.update, { params: { id }, body: { connectorId: null, url: 'https://1.1.1.1/contracts' } })).status).toBe(200);
+  });
+  it('rejects cross-origin URLs and notification adapters before saving', async () => {
+    connector();
+    const crossOrigin = await call(workflowEventSubscriptionContract.create, { body: { name: '非法目标', url: 'https://8.8.8.8/events', connectorId: 999, events: ['instance.approved'] } });
+    expect(crossOrigin.status).toBe(400);
+    mockWorkflowConnectors.find((item) => item.id === 999)!.type = 'email';
+    const email = await call(workflowEventSubscriptionContract.create, { body: { name: '非法通道', url: '/events', connectorId: 999, events: ['instance.approved'] } });
+    expect(email.status).toBe(400);
+  });
+  it('refuses a test delivery when a HMAC key is absent', async () => {
+    mockSubscriptions[0].secret = null;
+    const result = await call(workflowEventSubscriptionContract.test, { params: { id: 1 } });
+    expect(result.body.data).toMatchObject({ ok: false, httpStatus: null, error: expect.stringContaining('已拒绝发送') });
+  });
 });
 
 async function call<Op extends AnyOperation>(operation: Op, input: InputOf<Op>) {

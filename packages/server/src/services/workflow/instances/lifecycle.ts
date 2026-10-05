@@ -10,7 +10,7 @@ import { currentWorkflowJobContext, workflowTransaction } from '../../../lib/wor
 import { readWorkflowJobStepResult, runWorkflowJobStep } from '../../../lib/workflow-jobs/steps';
 import { enqueueSubprocessJoin } from './async-jobs';
 import { workflowInstances, workflowTasks, workflowDefinitions, workflowJobs, users } from '../../../db/schema';
-import { tenantCondition, getCreateTenantId } from '../../../lib/tenant';
+import { tenantCondition, getCreateTenantId, exactTenantCondition } from '../../../lib/tenant';
 import { buildWhere } from '../../../lib/where-helpers';
 import { validateFlowData } from '../../../lib/workflow-engine';
 import { cancelJobs, WORKFLOW_ADVANCING_JOB_TYPES } from '../../../lib/workflow-jobs/engine';
@@ -139,6 +139,13 @@ export async function createInstance(data: { definitionId: number; title: string
   let instanceId: number;
   try {
     const create = async (tx: import('../../../db/types').DbTransaction) => {
+      const jobContext = currentWorkflowJobContext();
+      if (jobContext?.job.jobType === 'schedule_launch') {
+        const [initiator] = await tx.select({ status: users.status }).from(users)
+          .where(buildWhere(eq(users.id, user.userId), exactTenantCondition(users.tenantId, jobContext.job.tenantId)))
+          .limit(1).for('share');
+        if (initiator?.status !== 'enabled') throw new HTTPException(400, { message: '发起人不存在或已停用，不能创建新的流程申请' });
+      }
       const serialNo = await generateSerialNo(tx, def.id, serialConfig, serialCtx);
       const [createdInstance] = await tx.insert(workflowInstances).values({
         definitionId: def.id,
@@ -174,7 +181,6 @@ export async function createInstance(data: { definitionId: number; title: string
       // 事务性 outbox：发起事件在同一事务内入队，与实例/任务插入原子提交（崩溃不丢）
       await enqueueSubprocessJoin(updatedInstance, tx);
       await emitInstanceStartEvents(mapInstance(updatedInstance), updatedInstance, materialized.createdTasks, { userId: user.userId, name: user.username }, tx);
-      const jobContext = currentWorkflowJobContext();
       if (creationStepKey && jobContext?.job.jobType === 'schedule_launch') {
         await tx.update(workflowJobs).set({ instanceId: updatedInstance.id }).where(eq(workflowJobs.id, jobContext.job.id));
       }

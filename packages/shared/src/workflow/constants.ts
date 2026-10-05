@@ -318,6 +318,15 @@ export const WORKFLOW_HEALTH_ISSUE_TYPE_OPTIONS: Array<{ value: (typeof WORKFLOW
 
 /** 连接器类型（含尚未开放创建的 mq / database，历史数据可能存在） */
 export const WORKFLOW_CONNECTOR_TYPES = ['http', 'webhook', 'email', 'sms', 'wecom', 'dingtalk', 'feishu', 'mq', 'database'] as const;
+export const WORKFLOW_CONNECTOR_RUNTIME_TYPES = ['http', 'webhook', 'email', 'sms', 'wecom', 'dingtalk', 'feishu'] as const;
+export const WORKFLOW_CONNECTOR_HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'] as const;
+export const WORKFLOW_CONNECTOR_AUTH_TYPES = ['none', 'bearer', 'basic', 'apiKey'] as const;
+export const WORKFLOW_CONNECTOR_AUTH_LABELS = { none: '无', bearer: 'Bearer Token', basic: 'Basic', apiKey: 'API Key' };
+export const WORKFLOW_CONNECTOR_AUTH_OPTIONS = createLabelOptions(WORKFLOW_CONNECTOR_AUTH_TYPES, WORKFLOW_CONNECTOR_AUTH_LABELS);
+export const WORKFLOW_CONNECTOR_CONTENT_TYPES = ['json', 'form'] as const;
+export const WORKFLOW_CONNECTOR_CONTENT_LABELS = { json: 'JSON', form: '表单' };
+export const WORKFLOW_CONNECTOR_CONTENT_OPTIONS = createLabelOptions(WORKFLOW_CONNECTOR_CONTENT_TYPES, WORKFLOW_CONNECTOR_CONTENT_LABELS);
+export const WORKFLOW_CONNECTOR_HTTP_METHOD_OPTIONS = WORKFLOW_CONNECTOR_HTTP_METHODS.map(value => ({ value, label: value }));
 
 export const WORKFLOW_CONNECTOR_TYPE_LABELS: Record<WorkflowConnectorType, string> = {
   http: 'HTTP',
@@ -333,6 +342,7 @@ export const WORKFLOW_CONNECTOR_TYPE_LABELS: Record<WorkflowConnectorType, strin
 
 export const WORKFLOW_CONNECTOR_TYPE_OPTIONS: Array<{ value: WorkflowConnectorType; label: string }> =
   createLabelOptions(WORKFLOW_CONNECTOR_TYPES, WORKFLOW_CONNECTOR_TYPE_LABELS);
+export const WORKFLOW_CONNECTOR_RUNTIME_TYPE_OPTIONS = createLabelOptions(WORKFLOW_CONNECTOR_RUNTIME_TYPES, WORKFLOW_CONNECTOR_TYPE_LABELS);
 
 export const WORKFLOW_CONNECTOR_BREAKER_STATES = ['closed', 'open', 'halfOpen'] as const;
 

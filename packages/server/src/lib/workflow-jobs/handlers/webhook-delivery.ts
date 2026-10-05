@@ -1,9 +1,9 @@
 import { eq } from 'drizzle-orm';
-import type { WorkflowEvent } from '@zenith/shared/workflow';
+import { isWorkflowSubscriptionConnector, type WorkflowEvent } from '@zenith/shared/workflow';
 import { db } from '../../../db';
 import { workflowEventSubscriptions } from '../../../db/schema';
 import { invokeConnector, getConnectorRowById } from '../../../services/workflow/workflow-connectors.service';
-import { decryptSubscriptionSecret } from '../../../services/workflow/workflow-event-subscriptions.service';
+import { requireSubscriptionSigningSecret } from '../../../services/workflow/workflow-event-subscriptions.service';
 import { workflowHttpPost } from '../../workflow-outbound';
 import { registerJobHandler } from '../registry';
 import { WorkflowJobSkip, WorkflowJobError, WorkflowJobPermanentError } from '../errors';
@@ -49,9 +49,12 @@ async function handle({ payload, attempt, job }: WorkflowJobContext): Promise<Wo
     'X-Zenith-Attempt': String(attempt),
     ...parseHeaders(sub.headers),
   };
-  if (sub.signMode === 'hmacSha256' && sub.secretEncrypted) {
-    const secret = decryptSubscriptionSecret(sub.secretEncrypted);
-    if (secret) headers['X-Zenith-Signature'] = `t=${timestamp},v1=${signHmac(secret, timestamp, bodyStr)}`;
+  if (sub.signMode === 'hmacSha256') {
+    try {
+      headers['X-Zenith-Signature'] = `t=${timestamp},v1=${signHmac(requireSubscriptionSigningSecret(sub.secretEncrypted), timestamp, bodyStr)}`;
+    } catch (error) {
+      throw new WorkflowJobPermanentError(error instanceof Error ? error.message : 'HMAC 签名密钥不可用');
+    }
   }
 
   const detail: WorkflowJobResult = { requestUrl: sub.url, requestMethod: 'POST', requestBody: bodyStr };
@@ -59,6 +62,7 @@ async function handle({ payload, attempt, job }: WorkflowJobContext): Promise<Wo
     // 经连接器投递：统一鉴权/超时/重试/熔断（HMAC 签名仍由本节点附加在请求头，body 透传保证签名一致）
     const connector = await getConnectorRowById(sub.connectorId);
     if (!connector) throw new WorkflowJobError(`投递连接器 #${sub.connectorId} 不存在`, { detail, permanent: true });
+    if (!isWorkflowSubscriptionConnector(connector.type)) throw new WorkflowJobError('事件订阅仅支持 HTTP 或 Webhook 连接器', { detail, permanent: true });
     detail.requestUrl = `[connector:${connector.code}] ${sub.url ?? ''}`.trim();
     const r = await invokeConnector(connector, { path: sub.url || undefined, method: 'POST', headers, body: bodyStr, source: 'webhook' });
     if (r.ok) return { ...detail, responseStatus: r.status, responseBody: r.responseSnippet };

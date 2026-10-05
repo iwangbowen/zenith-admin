@@ -12,12 +12,13 @@ import { db } from '../../db';
 import { workflowSchedules, workflowDefinitions, users } from '../../db/schema';
 import { HTTPException } from 'hono/http-exception';
 import { currentUser } from '../../lib/context';
-import { tenantCondition, getCreateTenantId } from '../../lib/tenant';
+import { tenantCondition } from '../../lib/tenant';
 import { formatDate, formatDateTime, formatNullableDateTime, formatTimestamps } from '../../lib/datetime';
 import type { WorkflowSchedule, CreateWorkflowScheduleInput, UpdateWorkflowScheduleInput } from '@zenith/shared/workflow';
 import { buildWhere, withPagination } from '../../lib/where-helpers';
 import { buildListResult } from '../../lib/list-query';
 import { requireRow } from '../../lib/db-assert';
+import { requireTenantUser } from '../../lib/user-nicknames';
 import { collectScheduledJobs, listOverdueScheduledJobs, type ScheduledMonitorQuery } from '../../lib/job-monitor/scheduled';
 import type { DbExecutor } from '../../db/types';
 import { enqueueJob } from '../../lib/workflow-jobs/engine';
@@ -69,9 +70,9 @@ function renderTitle(template: string | null | undefined, fallback: string, sche
     .replace(/\{\{\s*date\s*\}\}/g, formatDate(scheduledAt));
 }
 
-async function ensureScheduleDefinitionLaunchable(definitionId: number): Promise<void> {
+async function ensureScheduleDefinitionLaunchable(definitionId: number) {
   const [def] = await db
-    .select({ id: workflowDefinitions.id, formType: workflowDefinitions.formType })
+    .select({ id: workflowDefinitions.id, formType: workflowDefinitions.formType, status: workflowDefinitions.status, tenantId: workflowDefinitions.tenantId })
     .from(workflowDefinitions)
     .where(buildWhere(eq(workflowDefinitions.id, definitionId), tenantCondition(workflowDefinitions, currentUser())))
     .limit(1);
@@ -79,6 +80,8 @@ async function ensureScheduleDefinitionLaunchable(definitionId: number): Promise
   if (def.formType === 'external') {
     throw new HTTPException(400, { message: '业务系统主导流程不能配置定时发起，请由业务模块按业务规则发起' });
   }
+  if (def.status !== 'published') throw new HTTPException(400, { message: '定时发起只能选择已发布的流程' });
+  return def;
 }
 
 /** 按 id 定位当前租户可见的定时规则 */
@@ -121,8 +124,8 @@ export async function getWorkflowSchedule(id: number): Promise<WorkflowSchedule>
 }
 
 export async function createSchedule(input: CreateWorkflowScheduleInput): Promise<WorkflowSchedule> {
-  const user = currentUser();
-  await ensureScheduleDefinitionLaunchable(input.definitionId);
+  const definition = await ensureScheduleDefinitionLaunchable(input.definitionId);
+  await requireTenantUser(input.initiatorId, '发起人不存在、已停用或不属于流程所在租户', { enabledOnly: true, tenantId: definition.tenantId });
   if (computeNextRun(input.cronExpression, input.timezone) === null) {
     throw new HTTPException(400, { message: 'cron 表达式或时区无效' });
   }
@@ -136,14 +139,20 @@ export async function createSchedule(input: CreateWorkflowScheduleInput): Promis
     formData: input.formData ?? null,
     status: input.status ?? 'enabled',
     nextRunAt: (input.status ?? 'enabled') === 'enabled' ? computeNextRun(input.cronExpression, input.timezone) : null,
-    tenantId: getCreateTenantId(user),
+    tenantId: definition.tenantId,
   }).returning();
   return getWorkflowSchedule(row.id);
 }
 
 export async function updateSchedule(id: number, input: UpdateWorkflowScheduleInput): Promise<WorkflowSchedule> {
-  if (input.definitionId !== undefined) {
-    await ensureScheduleDefinitionLaunchable(input.definitionId);
+  const current = await getWorkflowSchedule(id);
+  if (input.definitionId !== undefined && input.definitionId !== current.definitionId) {
+    const definition = await ensureScheduleDefinitionLaunchable(input.definitionId);
+    if (definition.tenantId !== current.tenantId) throw new HTTPException(400, { message: '不能将定时规则绑定到其他租户的流程' });
+  }
+  if (input.status !== 'disabled' && (input.initiatorId !== undefined || input.status === 'enabled')) {
+    await requireTenantUser(input.initiatorId ?? current.initiatorId, '发起人不存在、已停用或不属于流程所在租户', { enabledOnly: true, tenantId: current.tenantId });
+    await ensureScheduleDefinitionLaunchable(input.definitionId ?? current.definitionId);
   }
   // Share the same row lock as the due scanner: a stale form save cannot undo a claim.
   await workflowTransaction(async (tx) => {
@@ -164,9 +173,15 @@ export async function deleteSchedule(id: number): Promise<void> {
 
 /** 立即执行一次（手动触发，不影响 nextRunAt） */
 export async function runScheduleNow(id: number): Promise<WorkflowSchedule> {
+  const current = await getWorkflowSchedule(id);
+  await requireTenantUser(current.initiatorId, '发起人不存在、已停用或不属于流程所在租户', { enabledOnly: true, tenantId: current.tenantId });
+  await ensureScheduleDefinitionLaunchable(current.definitionId);
   await workflowTransaction(async (tx) => {
     const [s] = await tx.select().from(workflowSchedules).where(findSchedule(id)).limit(1).for('update');
     requireRow(s, '定时规则不存在');
+    if (s.initiatorId !== current.initiatorId || s.definitionId !== current.definitionId) {
+      throw new HTTPException(409, { message: '定时规则已变更，请刷新后重新执行' });
+    }
     await enqueueScheduleOccurrence(s, new Date(), 'manual', tx);
   });
   return getWorkflowSchedule(id);

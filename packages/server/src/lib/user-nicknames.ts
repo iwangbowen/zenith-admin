@@ -4,7 +4,7 @@ import { db } from '../db';
 import { users } from '../db/schema';
 import type { DbExecutor } from '../db/types';
 import { requireRow } from './db-assert';
-import { tenantScope } from './tenant';
+import { tenantScope, optionalExactTenantCondition } from './tenant';
 import { buildWhere, keywordCondition } from './where-helpers';
 
 /** 用户 id → 展示名（昵称，空则回退用户名） */
@@ -22,10 +22,10 @@ export interface TenantUserRef {
  * 只按 id 查 users 会让租户用户把任务、委托、归属指到别的租户的账号上。
  * `enabledOnly` 时停用账号一并按不存在处理。
  */
-export async function requireTenantUser(id: number, message: string, options: { enabledOnly?: boolean; status?: 400 | 404 } = {}): Promise<TenantUserRef> {
+export async function requireTenantUser(id: number, message: string, options: { enabledOnly?: boolean; status?: 400 | 404; tenantId?: number | null } = {}): Promise<TenantUserRef> {
   const [row] = await db.select({ id: users.id, username: users.username, nickname: users.nickname, status: users.status })
     .from(users)
-    .where(buildWhere(eq(users.id, id), tenantScope(users)))
+    .where(buildWhere(eq(users.id, id), tenantScope(users), options.tenantId !== undefined ? optionalExactTenantCondition(users.tenantId, options.tenantId) : undefined))
     .limit(1);
   const user = requireRow(row, message, options.status ?? 400);
   if (options.enabledOnly && user.status !== 'enabled') throw new HTTPException(options.status ?? 400, { message });

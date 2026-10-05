@@ -1,9 +1,10 @@
-import { workflowEventSubscriptionContract, workflowEventDeliveryState } from '@zenith/shared/workflow';
+import { workflowEventSubscriptionContract, workflowEventDeliveryState, isWorkflowSubscriptionConnector, isWorkflowSubscriptionUrl, resolveWorkflowSubscriptionSecret } from '@zenith/shared/workflow';
 import type { WorkflowEventDelivery, WorkflowEventSubscription, WorkflowJobStatus, WorkflowJobExecutionStatus } from '@zenith/shared/workflow';
 import { maskSecret as maskSecretValue } from '@zenith/shared/core';
 import { mock } from '@/mocks/utils/contract';
 import { badRequest, fail } from '@/mocks/utils/handlers';
 import { mockWorkflowDefinitions } from '@/mocks/data/workflow';
+import { mockWorkflowConnectors } from '@/mocks/data/workflow-connectors';
 import { mockDateTime, mockDateTimeOffset } from '@/mocks/utils/date';
 import { filterByKeyword } from '@/mocks/utils/filter';
 import { removeByIds, requireItem } from '../utils/crud';
@@ -51,6 +52,26 @@ export const mockSubscriptions: StoredSubscription[] = [
 ];
 
 let nextSubscriptionId = 3;
+
+function generatedSubscriptionSecret() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function subscriptionTargetError(url: string, connectorId: number | null): string | null {
+  if (!isWorkflowSubscriptionUrl(url, connectorId)) return '未选择连接器时必须填写完整的 HTTP/HTTPS 地址；清除连接器前请先修改相对路径';
+  if (connectorId === null) return null;
+  const connector = mockWorkflowConnectors.find((item) => item.id === connectorId);
+  if (!connector) return '连接器不存在';
+  if (!isWorkflowSubscriptionConnector(connector.type)) return '事件订阅仅支持 HTTP 或 Webhook 连接器';
+  const baseUrl = connector.config.baseUrl;
+  if (typeof baseUrl !== 'string' || !baseUrl) return '事件订阅连接器缺少基础地址';
+  try {
+    const base = new URL(baseUrl);
+    const target = new URL(url, base);
+    if (target.origin !== base.origin) return '连接器调用路径只能是相对路径或与连接器基地址同源的地址';
+  } catch { return '连接器投递地址无效'; }
+  return null;
+}
 
 export const mockDeliveries: WorkflowEventDelivery[] = [
   {
@@ -241,6 +262,8 @@ export const workflowEventSubscriptionsHandlers = [
   mock(workflowEventSubscriptionContract.create, ({ body, ok }) => {
     if (!body.name.trim()) return badRequest('请输入名称');
     if (!body.url.trim()) return badRequest('请输入回调 URL');
+    const targetError = subscriptionTargetError(body.url, body.connectorId ?? null);
+    if (targetError) return fail(400, targetError, { status: 400 });
 
     const createdAt = mockDateTime();
     const row: StoredSubscription = {
@@ -251,7 +274,7 @@ export const workflowEventSubscriptionsHandlers = [
       definitionName: resolveDefinitionName(body.definitionId ?? null),
       events: body.events,
       url: body.url.trim(),
-      secret: body.secret?.trim() || `workflow-secret-${nextSubscriptionId}`,
+      secret: resolveWorkflowSubscriptionSecret(body.signMode ?? 'hmacSha256', body.secret, null, generatedSubscriptionSecret),
       secretMasked: null,
       signMode: body.signMode ?? 'hmacSha256',
       headers: body.headers ?? null,
@@ -275,6 +298,9 @@ export const workflowEventSubscriptionsHandlers = [
   mock(workflowEventSubscriptionContract.toggle, ({ params, body, ok }) => {
     const row = mockSubscriptions.find((item) => item.id === params.id);
     if (!row) return fail(404, '事件订阅不存在');
+    const targetError = subscriptionTargetError(row.url, row.connectorId);
+    if (targetError) return fail(400, targetError, { status: 400 });
+    row.secret = resolveWorkflowSubscriptionSecret(row.signMode, undefined, row.secret, generatedSubscriptionSecret);
     row.enabled = body.enabled;
     row.updatedAt = mockDateTime();
     return ok(toPublicSubscription(row), '已切换');
@@ -290,7 +316,11 @@ export const workflowEventSubscriptionsHandlers = [
     const idx = mockSubscriptions.findIndex((item) => item.id === params.id);
     if (idx === -1) return fail(404, '事件订阅不存在');
     const current = mockSubscriptions[idx];
-    const nextSecret = body.secret?.trim() ? body.secret.trim() : current.secret;
+    const connectorId = body.connectorId !== undefined ? body.connectorId : current.connectorId;
+    const url = body.url?.trim() ?? current.url;
+    const targetError = subscriptionTargetError(url, connectorId);
+    if (targetError) return fail(400, targetError, { status: 400 });
+    const nextSecret = resolveWorkflowSubscriptionSecret(body.signMode ?? current.signMode, body.secret, current.secret, generatedSubscriptionSecret);
     const definitionId = body.definitionId !== undefined ? body.definitionId : current.definitionId;
     mockSubscriptions[idx] = {
       ...current,
@@ -299,16 +329,26 @@ export const workflowEventSubscriptionsHandlers = [
       definitionId,
       definitionName: resolveDefinitionName(definitionId),
       events: body.events ?? current.events,
-      url: body.url?.trim() ?? current.url,
+      url,
       secret: nextSecret,
       secretMasked: maskSecret(nextSecret),
       signMode: body.signMode ?? current.signMode,
       headers: body.headers !== undefined ? body.headers : current.headers,
-      connectorId: body.connectorId !== undefined ? body.connectorId : current.connectorId,
+      connectorId,
       enabled: body.enabled ?? current.enabled,
       updatedAt: mockDateTime(),
     };
     return ok(toPublicSubscription(mockSubscriptions[idx]), '已更新');
+  }),
+
+  mock(workflowEventSubscriptionContract.test, ({ params, ok }) => {
+    const row = mockSubscriptions.find((item) => item.id === params.id);
+    if (!row) return fail(404, '事件订阅不存在', { status: 404 });
+    const error = (row.signMode === 'hmacSha256' && !row.secret?.trim())
+      ? 'HMAC 签名密钥缺失，已拒绝发送'
+      : subscriptionTargetError(row.url, row.connectorId);
+    return ok({ ok: !error, httpStatus: error ? null : 200, durationMs: 0, responseSnippet: error ? null : '{"demo":true}', error,
+      requestUrl: row.url, eventType: row.events[0] ?? 'instance.approved' }, error ? '测试投递失败' : '测试投递成功');
   }),
 
   mock(workflowEventSubscriptionContract.remove, ({ params, ok }) => {

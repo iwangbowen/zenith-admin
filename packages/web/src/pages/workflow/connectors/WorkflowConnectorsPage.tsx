@@ -1,12 +1,12 @@
 import { FormPasswordInput } from '@/components/PasswordInput';
 import { useState } from 'react';
-import { Form, Input, Select, Spin, Toast, Row, Col, Typography, Tag, Banner, SideSheet, Table } from '@douyinfe/semi-ui';
+import { Form, Input, TextArea, Select, Spin, Toast, Row, Col, Typography, Tag, Banner, SideSheet, Table } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import AppModal from '@/components/AppModal';
 import { createdAtColumn, dateTimeColumn, EMPTY_PLACEHOLDER, renderEllipsis } from '@/utils/table-columns';
 import { usePermission } from '@/hooks/usePermission';
-import { WORKFLOW_CONNECTOR_BREAKER_STATE_LABELS, WORKFLOW_CONNECTOR_INVOCATION_SOURCE_LABELS, WORKFLOW_CONNECTOR_TYPE_LABELS, type WorkflowConnector, type WorkflowConnectorType, type WorkflowConnectorBreakerState, type WorkflowConnectorInvokeResult, type WorkflowConnectorHttpConfig, type WorkflowConnectorInvocation, workflowConnectorContract } from '@zenith/shared/workflow';
+import { WORKFLOW_CONNECTOR_BREAKER_STATE_LABELS, WORKFLOW_CONNECTOR_INVOCATION_SOURCE_LABELS, WORKFLOW_CONNECTOR_TYPE_LABELS, WORKFLOW_CONNECTOR_RUNTIME_TYPE_OPTIONS, WORKFLOW_CONNECTOR_HTTP_METHOD_OPTIONS, WORKFLOW_CONNECTOR_AUTH_OPTIONS, WORKFLOW_CONNECTOR_CONTENT_OPTIONS, isWorkflowHttpConnector, workflowConnectorConfigFields, workflowConnectorConfigFromFields, type WorkflowConnectorConfigFields, type WorkflowConnector, type WorkflowConnectorType, type WorkflowConnectorBreakerState, type WorkflowConnectorInvokeResult, type WorkflowConnectorHttpConfig, type WorkflowConnectorInvocation, workflowConnectorContract } from '@zenith/shared/workflow';
 import {
   useDeleteWorkflowConnectors,
   useSaveWorkflowConnector,
@@ -23,26 +23,19 @@ import { useEditModal } from '@/hooks/useEditModal';
 import { useListPage } from '@/hooks/useListPage';
 import { EditFormSheet } from '@/components/EditFormModal';
 import { TextBlock } from '@/components/TextBlock';
+import { abortSubmit } from '@/lib/abort-submit';
+import { useSmsTemplateList } from '@/hooks/queries/sms-templates';
 
 /** 可创建的连接器类型（与后端 workflowConnectorTypeSchema 对齐；mq/database 暂无运行时实现不开放） */
-const TYPE_OPTIONS: Array<{ value: WorkflowConnectorType; label: string }> = [
-  { value: 'http', label: 'HTTP' },
-  { value: 'webhook', label: 'Webhook' },
-  { value: 'email', label: '邮件' },
-  { value: 'sms', label: '短信' },
-  { value: 'wecom', label: '企业微信' },
-  { value: 'dingtalk', label: '钉钉' },
-  { value: 'feishu', label: '飞书' },
-];
+const TYPE_OPTIONS = WORKFLOW_CONNECTOR_RUNTIME_TYPE_OPTIONS;
 const BREAKER_COLORS: Record<WorkflowConnectorBreakerState, 'green' | 'red' | 'orange'> = {
   closed: 'green',
   open: 'red',
   halfOpen: 'orange',
 };
 
-interface ConnectorFormValues {
+interface ConnectorFormValues extends WorkflowConnectorConfigFields {
   name: string; code: string; description?: string; type: WorkflowConnectorType;
-  baseUrl: string; method: string; authType: 'none' | 'bearer' | 'basic' | 'apiKey'; apiKeyHeader?: string;
   headersText?: string; queryText?: string;
   token?: string; username?: string; password?: string; apiKey?: string; clearCredentials?: boolean;
   timeoutMs: number; retryMax: number; circuitBreakerEnabled: boolean; failureThreshold: number; cooldownSec: number;
@@ -75,9 +68,11 @@ export default function WorkflowConnectorsPage() {
   const [testVisible, setTestVisible] = useState(false);
   const [testTarget, setTestTarget] = useState<WorkflowConnector | null>(null);
   const [testPath, setTestPath] = useState('');
+  const [testBodyText, setTestBodyText] = useState('');
   const [testResult, setTestResult] = useState<WorkflowConnectorInvokeResult | null>(null);
 
   const [authType, setAuthType] = useState<ConnectorFormValues['authType']>('none');
+  const [connectorType, setConnectorType] = useState<WorkflowConnectorType>('http');
 
   const [monitorVisible, setMonitorVisible] = useState(false);
   const [monitorTarget, setMonitorTarget] = useState<WorkflowConnector | null>(null);
@@ -90,7 +85,7 @@ export default function WorkflowConnectorsPage() {
     entityName: '连接器',
     save: saveMutation,
     defaults: {
-      name: '', code: '', description: '', type: 'http', baseUrl: '', method: 'GET', authType: 'none', apiKeyHeader: '',
+      name: '', code: '', description: '', type: 'http', ...workflowConnectorConfigFields({ subject: '工作流通知' }),
       headersText: '', queryText: '', timeoutMs: 10000, retryMax: 0, circuitBreakerEnabled: true, failureThreshold: 5, cooldownSec: 60,
       rateLimitEnabled: false, rateLimitWindowSec: 1, rateLimitMax: 0, status: 'enabled',
     },
@@ -98,7 +93,7 @@ export default function WorkflowConnectorsPage() {
       const editCfg = (record.config ?? {}) as unknown as WorkflowConnectorHttpConfig;
       return {
         name: record.name, code: record.code, description: record.description ?? '', type: record.type,
-        baseUrl: editCfg.baseUrl ?? '', method: editCfg.method ?? 'GET', authType: editCfg.authType ?? 'none', apiKeyHeader: editCfg.apiKeyHeader ?? '',
+        ...workflowConnectorConfigFields(record.config),
         headersText: editCfg.headers && Object.keys(editCfg.headers).length ? JSON.stringify(editCfg.headers, null, 2) : '',
         queryText: editCfg.query && Object.keys(editCfg.query).length ? JSON.stringify(editCfg.query, null, 2) : '',
         clearCredentials: false,
@@ -109,20 +104,14 @@ export default function WorkflowConnectorsPage() {
       };
     },
     beforeSave: (values, { isEdit }) => {
-    const headers = parseHeadersJson(values.headersText, { toastMessage: '请求头需为 JSON 对象' });
+    const http = isWorkflowHttpConnector(values.type);
+    const headers = http ? parseHeadersJson(values.headersText, { toastMessage: '请求头需为 JSON 对象' }) : undefined;
     let query: Record<string, string> | undefined;
     try {
-      query = parseJsonObject(values.queryText, '查询参数');
-    } catch (e) { Toast.error((e as Error).message); throw e; }
+      query = http ? parseJsonObject(values.queryText, '查询参数') : undefined;
+    } catch (e) { Toast.error((e as Error).message); abortSubmit(); }
 
-    const config: WorkflowConnectorHttpConfig = {
-      baseUrl: values.baseUrl.trim(),
-      method: values.method as WorkflowConnectorHttpConfig['method'],
-      authType: values.authType,
-      ...(values.authType === 'apiKey' && values.apiKeyHeader?.trim() ? { apiKeyHeader: values.apiKeyHeader.trim() } : {}),
-      ...(headers ? { headers } : {}),
-      ...(query ? { query } : {}),
-    };
+    const config = workflowConnectorConfigFromFields(values.type, values, headers, query);
     const credEntries = { token: values.token, username: values.username, password: values.password, apiKey: values.apiKey };
     const hasCred = Object.values(credEntries).some((v) => v != null && v !== '');
     const payload: Record<string, unknown> = {
@@ -132,21 +121,24 @@ export default function WorkflowConnectorsPage() {
       rateLimitEnabled: values.rateLimitEnabled, rateLimitWindowSec: values.rateLimitWindowSec, rateLimitMax: values.rateLimitMax,
       status: values.status,
     };
-    if (hasCred) payload.credentials = credEntries;
-    if (isEdit && values.clearCredentials) payload.clearCredentials = true;
+    if (http && hasCred) payload.credentials = credEntries;
+    if (isEdit && (values.clearCredentials || !http)) payload.clearCredentials = true;
     return payload;
     },
     labelWidth: 120,
   });
   const editing = connectorModal.editing;
+  const templateQuery = useSmsTemplateList({ page: 1, pageSize: 100, status: 'enabled' }, connectorModal.visible && connectorType === 'sms' && hasPermission('system:sms-template:list'));
 
   function openCreate() {
     setAuthType('none');
+    setConnectorType('http');
     connectorModal.openCreate();
   }
   function openEdit(record: WorkflowConnector) {
     const cfg = (record.config ?? {}) as unknown as WorkflowConnectorHttpConfig;
     setAuthType(cfg.authType ?? 'none');
+    setConnectorType(record.type);
     connectorModal.openEdit(record);
   }
 
@@ -157,14 +149,25 @@ export default function WorkflowConnectorsPage() {
   });
 
   function openTest(record: WorkflowConnector) {
-    setTestTarget(record); setTestPath(''); setTestResult(null); setTestVisible(true);
+    setTestTarget(record); setTestPath(''); setTestBodyText(''); setTestResult(null); setTestVisible(true);
   }
   async function runTest() {
     if (!testTarget) return;
     setTestResult(null);
     try {
       const path = testPath.trim();
-      setTestResult(await testMutation.mutateAsync({ params: { id: testTarget.id }, body: path ? { path } : {} }));
+      let body: unknown;
+      if (testBodyText.trim()) {
+        if (testTarget.type === 'email' || ['wecom', 'dingtalk', 'feishu'].includes(testTarget.type)) body = testBodyText;
+        else {
+          try { body = JSON.parse(testBodyText); }
+          catch { Toast.error('测试数据需为有效 JSON'); return; }
+        }
+      }
+      setTestResult(await testMutation.mutateAsync({ params: { id: testTarget.id }, body: {
+        ...(isWorkflowHttpConnector(testTarget.type) && path ? { path } : {}),
+        ...(body !== undefined ? { body } : {}),
+      } }));
     } catch (err) {
       Toast.error((err as Error).message || '测试失败');
     }
@@ -191,7 +194,10 @@ export default function WorkflowConnectorsPage() {
     { title: '名称', dataIndex: 'name', minWidth: 160, render: renderEllipsis },
     { title: '编码', dataIndex: 'code', width: 140, render: (v: string) => <Typography.Text size="small" type="tertiary">{v}</Typography.Text> },
     { title: '类型', dataIndex: 'type', width: 100, render: (t: WorkflowConnectorType) => <Tag size="small" color={t === 'http' ? 'blue' : 'grey'}>{WORKFLOW_CONNECTOR_TYPE_LABELS[t] ?? t}</Tag> },
-    { title: '地址', dataIndex: 'config', width: 240, render: (_: unknown, r: WorkflowConnector) => renderEllipsis((r.config as unknown as WorkflowConnectorHttpConfig)?.baseUrl) },
+    { title: '目标', dataIndex: 'config', width: 240, render: (_: unknown, r: WorkflowConnector) => {
+      const target = r.type === 'email' ? r.config.to : r.type === 'sms' ? r.config.phone : r.config.baseUrl;
+      return renderEllipsis(typeof target === 'string' ? target : null);
+    } },
     { title: '凭据', dataIndex: 'hasCredentials', width: 80, render: (v: boolean) => v ? <Tag size="small" color="green">已配</Tag> : <Tag size="small" color="grey">无</Tag> },
     { title: '熔断', dataIndex: 'breakerState', width: 80, render: (s: WorkflowConnectorBreakerState) => { const color = BREAKER_COLORS[s] ?? BREAKER_COLORS.closed; return <Tag size="small" color={color}>{WORKFLOW_CONNECTOR_BREAKER_STATE_LABELS[s] ?? s}</Tag>; } },
     createdAtColumn,
@@ -225,37 +231,53 @@ export default function WorkflowConnectorsPage() {
       <EditFormSheet modal={connectorModal} width={780} formProps={{ onValueChange: (values) => {
             const next = (values as Partial<ConnectorFormValues>).authType;
             if (next && next !== authType) setAuthType(next);
+            const nextType = (values as Partial<ConnectorFormValues>).type;
+            if (nextType && nextType !== connectorType) setConnectorType(nextType);
           } }}>
         <Form.Section text="基础信息">
           <Row gutter={16}>
-            <Col span={12}><Form.Input field="name" label="名称" placeholder="请输入名称" rules={[{ required: true, message: '名称不能为空' }]} /></Col>
-            <Col span={12}><Form.Input field="code" label="编码" placeholder="如 crm_http" disabled={!!editing} rules={[{ required: true, message: '编码不能为空' }, { pattern: /^[a-zA-Z][a-zA-Z0-9_-]*$/, message: '以字母开头，仅含字母/数字/下划线/连字符' }]} /></Col>
+            <Col xs={24} sm={12}><Form.Input field="name" label="名称" placeholder="请输入名称" rules={[{ required: true, message: '名称不能为空' }]} /></Col>
+            <Col xs={24} sm={12}><Form.Input field="code" label="编码" placeholder="如 crm_http" disabled={!!editing} rules={[{ required: true, message: '编码不能为空' }, { pattern: /^[a-zA-Z][a-zA-Z0-9_-]*$/, message: '以字母开头，仅含字母/数字/下划线/连字符' }]} /></Col>
           </Row>
           <Row gutter={16}>
-            <Col span={12}><Form.Select field="type" label="类型" style={{ width: '100%' }} optionList={TYPE_OPTIONS} rules={[{ required: true, message: '请选择类型' }]} /></Col>
-            <Col span={12}><Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusOptions} /></Col>
+            <Col xs={24} sm={12}><Form.Select field="type" label="类型" style={{ width: '100%' }} optionList={TYPE_OPTIONS} rules={[{ required: true, message: '请选择类型' }]} /></Col>
+            <Col xs={24} sm={12}><Form.Select field="status" label="状态" style={{ width: '100%' }} optionList={statusOptions} /></Col>
           </Row>
           <Form.Input field="description" label="描述" placeholder="可选" />
         </Form.Section>
 
-        <Form.Section text="HTTP 调用配置">
+        {connectorType === 'email' && <Form.Section text="邮件发送配置">
+          <Form.Input field="emailTo" label="收件人" placeholder="如 finance@example.com，多人用逗号分隔" rules={[{ required: true, message: '请填写邮件收件人' }]} />
+          <Form.Input field="emailSubject" label="邮件主题" rules={[{ required: true, message: '请填写邮件主题' }]} />
+          <Typography.Text type="tertiary" size="small">正文由调用此连接器的流程提供，邮件通过系统启用的发信配置发送。</Typography.Text>
+        </Form.Section>}
+        {connectorType === 'sms' && <Form.Section text="短信发送配置">
+          <Form.Input field="smsPhone" label="收件手机号" placeholder="请输入手机号，可包含国际区号" rules={[{ required: true, message: '请填写收件手机号' }]} />
+          {hasPermission('system:sms-template:list') ? <Form.Select field="smsTemplateCode" label="短信模板" filter loading={templateQuery.isFetching}
+            optionList={(templateQuery.data?.list ?? []).map(template => ({ value: template.code, label: `${template.name}（${template.code}）` }))}
+            style={{ width: '100%' }} rules={[{ required: true, message: '请选择短信模板' }]} />
+            : <Form.Input field="smsTemplateCode" label="短信模板编码" rules={[{ required: true, message: '请填写短信模板编码' }]} />}
+          <Typography.Text type="tertiary" size="small">短信使用系统启用的服务商配置；流程传入的数据用于填充所选模板。</Typography.Text>
+        </Form.Section>}
+        {isWorkflowHttpConnector(connectorType) && <Form.Section text="HTTP 调用配置">
           <Form.Input field="baseUrl" label="基础地址" placeholder="https://api.example.com" rules={[{ required: true, message: '基础地址不能为空' }, { pattern: /^https?:\/\/.+/i, message: '需以 http:// 或 https:// 开头' }]} />
           <Row gutter={16}>
-            <Col span={12}><Form.Select field="method" label="默认方法" style={{ width: '100%' }} optionList={['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].map((m) => ({ value: m, label: m }))} /></Col>
-            <Col span={12}><Form.Select field="authType" label="鉴权方式" style={{ width: '100%' }} optionList={[{ value: 'none', label: '无' }, { value: 'bearer', label: 'Bearer Token' }, { value: 'basic', label: 'Basic' }, { value: 'apiKey', label: 'API Key' }]} /></Col>
+            <Col xs={24} sm={12}><Form.Select field="method" label="默认方法" style={{ width: '100%' }} optionList={WORKFLOW_CONNECTOR_HTTP_METHOD_OPTIONS} /></Col>
+            <Col xs={24} sm={12}><Form.Select field="authType" label="鉴权方式" style={{ width: '100%' }} optionList={WORKFLOW_CONNECTOR_AUTH_OPTIONS} /></Col>
           </Row>
+          <Form.Select field="contentType" label="请求格式" style={{ width: '100%' }} optionList={WORKFLOW_CONNECTOR_CONTENT_OPTIONS} />
           <Form.TextArea field="headersText" label="固定请求头" placeholder='可选，JSON 对象，如 {"X-Env":"prod"}' autosize={{ minRows: 1, maxRows: 4 }} />
           <Form.TextArea field="queryText" label="固定查询参数" placeholder='可选，JSON 对象，如 {"version":"v1"}' autosize={{ minRows: 1, maxRows: 4 }} />
-        </Form.Section>
+        </Form.Section>}
 
-        <Form.Section text={`凭据（${editing ? '留空保留原凭据；' : ''}AES 加密存储，不回显）`}>
+        {isWorkflowHttpConnector(connectorType) && <Form.Section text={`凭据（${editing ? '留空保留原凭据；' : ''}AES 加密存储，不回显）`}>
           {authType === 'none' && (
             <Typography.Text type="tertiary" size="small">当前鉴权方式为「无」，无需配置凭据。</Typography.Text>
           )}
           {authType === 'apiKey' && (
             <Row gutter={16}>
-              <Col span={12}><Form.Input field="apiKeyHeader" label="API Key 头名" placeholder="默认 X-API-Key" /></Col>
-              <Col span={12}><FormPasswordInput field="apiKey" label="API Key" /></Col>
+              <Col xs={24} sm={12}><Form.Input field="apiKeyHeader" label="API Key 头名" placeholder="默认 X-API-Key" /></Col>
+              <Col xs={24} sm={12}><FormPasswordInput field="apiKey" label="API Key" /></Col>
             </Row>
           )}
           {authType === 'bearer' && (
@@ -263,27 +285,27 @@ export default function WorkflowConnectorsPage() {
           )}
           {authType === 'basic' && (
             <Row gutter={16}>
-              <Col span={12}><Form.Input field="username" label="Basic 用户名" /></Col>
-              <Col span={12}><FormPasswordInput field="password" label="Basic 密码" /></Col>
+              <Col xs={24} sm={12}><Form.Input field="username" label="Basic 用户名" /></Col>
+              <Col xs={24} sm={12}><FormPasswordInput field="password" label="Basic 密码" /></Col>
             </Row>
           )}
           {editing && <Form.Checkbox field="clearCredentials" noLabel>清空已配置凭据</Form.Checkbox>}
-        </Form.Section>
+        </Form.Section>}
 
         <Form.Section text="调用策略 · 熔断 · 限流">
-          <Row gutter={16}>
-            <Col span={12}><Form.InputNumber field="timeoutMs" label="超时(ms)" min={100} max={120000} step={500} style={{ width: '100%' }} /></Col>
-            <Col span={12}><Form.InputNumber field="retryMax" label="重试次数" min={0} max={10} style={{ width: '100%' }} /></Col>
-          </Row>
+          {isWorkflowHttpConnector(connectorType) && <Row gutter={16}>
+            <Col xs={24} sm={12}><Form.InputNumber field="timeoutMs" label="超时(ms)" min={100} max={120000} step={500} style={{ width: '100%' }} /></Col>
+            <Col xs={24} sm={12}><Form.InputNumber field="retryMax" label="重试次数" min={0} max={10} style={{ width: '100%' }} /></Col>
+          </Row>}
           <Form.Switch field="circuitBreakerEnabled" label="启用熔断" />
           <Row gutter={16}>
-            <Col span={12}><Form.InputNumber field="failureThreshold" label="失败阈值" min={1} max={100} style={{ width: '100%' }} /></Col>
-            <Col span={12}><Form.InputNumber field="cooldownSec" label="冷却(秒)" min={1} max={3600} style={{ width: '100%' }} /></Col>
+            <Col xs={24} sm={12}><Form.InputNumber field="failureThreshold" label="失败阈值" min={1} max={100} style={{ width: '100%' }} /></Col>
+            <Col xs={24} sm={12}><Form.InputNumber field="cooldownSec" label="冷却(秒)" min={1} max={3600} style={{ width: '100%' }} /></Col>
           </Row>
           <Form.Switch field="rateLimitEnabled" label="启用限流" extraText="保护下游：滑动窗口内超过最大调用次数即快速失败（不计入熔断）" />
           <Row gutter={16}>
-            <Col span={12}><Form.InputNumber field="rateLimitWindowSec" label="时间窗(秒)" min={1} max={3600} style={{ width: '100%' }} /></Col>
-            <Col span={12}><Form.InputNumber field="rateLimitMax" label="窗口内上限" min={0} max={100000} style={{ width: '100%' }} extraText="0=不限制" /></Col>
+            <Col xs={24} sm={12}><Form.InputNumber field="rateLimitWindowSec" label="时间窗(秒)" min={1} max={3600} style={{ width: '100%' }} /></Col>
+            <Col xs={24} sm={12}><Form.InputNumber field="rateLimitMax" label="窗口内上限" min={0} max={100000} style={{ width: '100%' }} extraText="0=不限制" /></Col>
           </Row>
         </Form.Section>
       </EditFormSheet>
@@ -298,7 +320,12 @@ export default function WorkflowConnectorsPage() {
         width={560}
         closeOnEsc
       >
-        <Input prefix="路径" value={testPath} onChange={setTestPath} placeholder="可选，相对基础地址的路径，如 /health" style={{ marginBottom: 12 }} showClear />
+        {testTarget && isWorkflowHttpConnector(testTarget.type) && <Input prefix="路径" value={testPath} onChange={setTestPath} placeholder="可选，相对基础地址的路径，如 /health" style={{ marginBottom: 12 }} showClear />}
+        {testTarget && <TextArea value={testBodyText} onChange={setTestBodyText} autosize={{ minRows: 3, maxRows: 8 }}
+          placeholder={testTarget.type === 'email' || ['wecom', 'dingtalk', 'feishu'].includes(testTarget.type) ? '测试消息正文' : '可选，测试数据 JSON；短信填写模板变量'}
+          style={{ marginBottom: 12 }} />}
+        {testTarget && !isWorkflowHttpConnector(testTarget.type) && <Banner type="warning" fullMode={false} closeIcon={null}
+          description={testTarget.type === 'email' ? `测试将向 ${String(testTarget.config.to ?? '')} 发送邮件。` : `测试将向 ${String(testTarget.config.phone ?? '')} 发送短信。`} />}
         <Spin spinning={testMutation.isPending}>
           {!testResult ? (
             <Typography.Text type="tertiary" size="small">点击「发送测试」对连接器发起一次探测请求。</Typography.Text>

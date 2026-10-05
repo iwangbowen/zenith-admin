@@ -152,8 +152,7 @@ export async function retryWorkflowAutomationRun(id: number) {
   const row = await db.query.workflowJobs.findFirst({ where: buildWhere(eq(workflowJobs.id, id),
     eq(workflowJobs.jobType, 'automation_action'), tenantCondition(workflowJobs, currentUser())),
   with: { executions: { orderBy: [desc(workflowJobExecutions.id)], limit: 1 } } });
-  requireRow(row, '自动化动作不存在');
-  const run = mapAutomationRun(row);
+  const run = mapAutomationRun(requireRow(row, '自动化动作不存在'));
   if (!run.canRetry) throw new HTTPException(409, { message: run.externalOutcomeUncertain
     ? '外部操作结果待确认，请先核对下游执行结果，不能直接重发' : '仅失败或死信的自动化动作可以重试' });
   const retried = requireRow(await retryJob(id), '动作状态已变化，请刷新后重试', 409);

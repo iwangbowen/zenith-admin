@@ -27,7 +27,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   model.changes = []; model.owned = true; model.failSummary = false;
   model.receipt.mockResolvedValue(undefined);
-  model.select.mockImplementation(() => ({ from: () => ({ where: () => ({ limit: async () => [{ username: 'warehouse' }] }) }) }));
+  model.select.mockImplementation(() => ({ from: () => ({ where: () => ({ limit: async () => [{ username: 'warehouse', status: 'enabled' }] }) }) }));
   model.directUpdate.mockImplementation(() => { throw new Error('unfenced summary write'); });
   model.create.mockResolvedValue({ id: 31 });
   model.transaction.mockImplementation(async (ctx, callback) => {
@@ -41,6 +41,12 @@ beforeEach(() => {
 });
 
 describe('schedule occurrence execution', () => {
+  it('rejects a disabled initiator before creating a new instance', async () => {
+    model.select.mockImplementation(() => ({ from: () => ({ where: () => ({ limit: async () => [{ username: 'warehouse', status: 'disabled' }] }) }) }));
+    await expect(handleScheduleLaunch(context())).rejects.toThrow('发起人已停用');
+    expect(model.create).not.toHaveBeenCalled();
+    expect(model.changes[0]).toMatchObject({ lastRunStatus: 'fail' });
+  });
   it('launches the original frozen input and records an instance result', async () => {
     const result = await handleScheduleLaunch(context());
     expect(model.create).toHaveBeenCalledWith({ definitionId: 6, title: payload.title, formData: payload.formData },

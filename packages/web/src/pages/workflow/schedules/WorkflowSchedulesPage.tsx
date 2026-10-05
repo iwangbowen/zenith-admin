@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Form, Space, Tag, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
-import { workflowScheduleContract, type WorkflowSchedule } from '@zenith/shared/workflow';
+import { workflowScheduleContract, workflowScheduleCronSchema, type WorkflowSchedule } from '@zenith/shared/workflow';
 import DateTimeText from '@/components/DateTimeText';
 import { CronBuilderPopover } from '@/components/CronBuilderPopover';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -270,7 +270,10 @@ export default function WorkflowSchedulesPage() {
           field="cronExpression"
           label="Cron 表达式"
           maxLength={64}
-          rules={[{ required: true, message: '请输入 Cron 表达式' }]}
+          rules={[{ required: true, message: '请输入 Cron 表达式' }, {
+            validator: (_rule, value) => workflowScheduleCronSchema.safeParse(value).success,
+            message: '仅支持标准 5 段 Cron，不支持秒级周期',
+          }]}
           extraText="标准 5 段 cron，按下方时区解释，例：0 9 * * 1 表示每周一 9:00"
           addonAfter={
             <CronBuilderPopover
@@ -327,7 +330,6 @@ export default function WorkflowSchedulesPage() {
           style={{ width: '100%' }}
           optionList={statusOptions}
           rules={[{ required: true, message: '请选择状态' }]}
-          initValue="enabled"
         />
       </EditFormSheet>
       {runsSchedule && <WorkflowScheduleRunsSheet key={runsSchedule.id} schedule={runsSchedule} onClose={() => setRunsSchedule(null)} />}
