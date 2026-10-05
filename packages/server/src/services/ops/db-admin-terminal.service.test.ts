@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { APP_TIME_ZONE } from '../../lib/datetime';
 import {
   buildPsqlLaunch,
   parseDbTerminalShellType,
@@ -33,11 +34,12 @@ describe('buildPsqlLaunch', () => {
   });
 
   it('会话时区固定为业务时区；只读模式注入 default_transaction_read_only，角色可用时同时切换到只读角色', () => {
-    expect(buildPsqlLaunch('ro', 'psql', params).env.PGOPTIONS).toBe('-c TimeZone=Asia/Shanghai -c default_transaction_read_only=on');
+    const timeZoneOption = `-c TimeZone=${APP_TIME_ZONE}`;
+    expect(buildPsqlLaunch('ro', 'psql', params).env.PGOPTIONS).toBe(`${timeZoneOption} -c default_transaction_read_only=on`);
     expect(buildPsqlLaunch('ro', 'psql', params, { readonlyRole: true }).env.PGOPTIONS)
-      .toBe('-c TimeZone=Asia/Shanghai -c default_transaction_read_only=on -c role=zenith_readonly');
-    expect(buildPsqlLaunch('rw', 'psql', params).env.PGOPTIONS).toBe('-c TimeZone=Asia/Shanghai');
-    expect(buildPsqlLaunch('rw', 'psql', params, { readonlyRole: true }).env.PGOPTIONS).toBe('-c TimeZone=Asia/Shanghai');
+      .toBe(`${timeZoneOption} -c default_transaction_read_only=on -c role=zenith_readonly`);
+    expect(buildPsqlLaunch('rw', 'psql', params).env.PGOPTIONS).toBe(timeZoneOption);
+    expect(buildPsqlLaunch('rw', 'psql', params, { readonlyRole: true }).env.PGOPTIONS).toBe(timeZoneOption);
   });
 
   it('标签区分只读与读写', () => {
