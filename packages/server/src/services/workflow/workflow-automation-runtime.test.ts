@@ -19,9 +19,8 @@ vi.mock('../../lib/workflow-jobs/engine', () => ({ enqueueJob: model.enqueue }))
 vi.mock('./workflow-instances.service', () => ({ createInstance: model.create }));
 vi.mock('./workflow-attachments.service', () => ({ bindWorkflowFormAttachments: async (_tx: unknown, _instance: unknown, _snapshot: unknown, data: unknown) => data }));
 vi.mock('../messaging/notification-outbox.service', () => ({ notifyWithin: model.notify }));
-vi.mock('../../lib/workflow-outbound', () => ({
-  renderUrlTemplate: (tpl: string, get: (key: string) => unknown) => tpl.replace(/\{\{(\w+)\}\}/g, (_match, key) => String(get(key) ?? '')),
-  workflowHttp: model.http,
+vi.mock('../../lib/workflow-outbound', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../lib/workflow-outbound')>(), workflowHttp: model.http,
 }));
 import { readWorkflowJobStepResult, runWorkflowJobStep } from '../../lib/workflow-jobs/steps';
 import { enqueueWorkflowAutomationsForEvent, executeWorkflowAutomationAction, settleWorkflowAutomationAction } from './workflow-automation-runtime';
@@ -30,9 +29,10 @@ interface Receipt { jobId: number; operationKey: string; effectKey: string; resu
 interface State { receipts: Receipt[]; jobs: WorkflowJobRow[]; instance: { id: number; formData: Record<string, unknown>; formSnapshot: null }; launches: number[]; notifications: number[] }
 let state: State;
 let rules: Array<{ id: number; name: string; actions: Array<Record<string, unknown>> }>;
+let sourceForm: Record<string, unknown>;
 const dialect = new PgDialect();
 const event = () => ({ type: 'instance.approved', eventId: 'event-approved-7', tenantId: null, instanceId: 7, definitionId: 3,
-  instance: { id: 7, definitionId: 3, title: '采购通过', status: 'approved', initiatorId: 9, tenantId: null, formData: { note: '原始值' } } }) as WorkflowEvent;
+  instance: { id: 7, definitionId: 3, title: '采购通过', status: 'approved', initiatorId: 9, tenantId: null, formData: sourceForm } }) as WorkflowEvent;
 
 function executor(staged: State) {
   return {
@@ -69,6 +69,7 @@ async function seed(actions: Array<Record<string, unknown>>) {
 
 beforeEach(() => {
   vi.clearAllMocks(); model.failReceipt = undefined; model.launchAvailable = true;
+  sourceForm = { note: '原始值' };
   state = { receipts: [], jobs: [], instance: { id: 7, formData: { note: '原始值' }, formSnapshot: null }, launches: [], notifications: [] };
   rules = [{ id: 2, name: '采购后续', actions: [] }];
   model.context = { job: { id: 99 }, operationKey: 'event-operation' } as WorkflowJobContext;
@@ -83,15 +84,15 @@ beforeEach(() => {
       status: 'pending', attempts: 0 } as WorkflowJobRow;
     staged.jobs.push(job); return job;
   });
-  model.create.mockImplementation(async (_data, _caller, _attachments, stepKey) => {
+  model.create.mockImplementation(async (data, _caller, _attachments, stepKey) => {
     const receipt = await readWorkflowJobStepResult<{ instanceId: number }>(stepKey);
-    if (receipt) return { id: receipt.instanceId };
+    if (receipt) return { id: receipt.instanceId, title: data.title };
     if (!model.launchAvailable) throw new Error('目标未发布');
     const result = await runWorkflowJobStep(stepKey, async (tx) => {
       const staged = (tx as unknown as { _state: State })._state; const id = 100 + staged.launches.length;
       staged.launches.push(id); return { instanceId: id };
     });
-    return { id: result.instanceId };
+    return { id: result.instanceId, title: data.title };
   });
   model.notify.mockImplementation(async (tx) => {
     const staged = (tx as unknown as { _state: State })._state; staged.notifications.push(staged.notifications.length + 1); return staged.notifications.length;
@@ -101,7 +102,7 @@ beforeEach(() => {
 
 describe('durable automation actions', () => {
   it('freezes the whole chain and prevents a second chain on event replay or changed live rules', async () => {
-    await seed([{ type: 'updateField', fields: { note: '已登记' } }, { type: 'startWorkflow', definitionId: 4, titleTemplate: '{{note}}' }]);
+    await seed([{ type: 'updateField', fields: { note: '已登记' } }, { type: 'startWorkflow', definitionId: 4, titleTemplate: '{{formData.note}}' }]);
     rules[0].name = '后来改名'; rules[0].actions = [{ type: 'webhook', url: 'https://example.test/changed' }];
     model.context = { job: { id: 99 }, operationKey: 'replayed-event-operation' } as WorkflowJobContext;
     await enqueueWorkflowAutomationsForEvent(event());
@@ -110,7 +111,7 @@ describe('durable automation actions', () => {
   });
 
   it('passes committed field results to the next frozen input and does not reapply the successful step', async () => {
-    const first = await seed([{ type: 'updateField', fields: { note: '已登记' } }, { type: 'startWorkflow', definitionId: 4, titleTemplate: '{{note}}' }]);
+    const first = await seed([{ type: 'updateField', fields: { note: '已登记' } }, { type: 'startWorkflow', definitionId: 4, titleTemplate: '{{formData.note}}' }]);
     await executeWorkflowAutomationAction(actionJob(first));
     const next = state.jobs[1];
     expect(next.payload).toMatchObject({ context: { formData: { note: '已登记' } } });
@@ -178,5 +179,60 @@ describe('durable automation actions', () => {
     await model.transaction((tx) => settleWorkflowAutomationAction(tx, { ...first, status: 'canceled' }));
     expect(state.jobs).toHaveLength(1);
     expect(model.http).not.toHaveBeenCalled();
+  });
+
+  it('passes a typed procurement reviewer to the derived approval without shadowing system metadata', async () => {
+    sourceForm = { amount: 28000, reviewers: [9], purchased: false, nullable: null,
+      assets: [{ name: '国产电脑', quantity: 4 }], dates: ['2026-10-05', '2026-10-06'],
+      title: '表单内部标题', status: '业务已登记', nested: { buyer: { name: '张采购' } } };
+    const first = await seed([{ type: 'startWorkflow', definitionId: 4, titleTemplate: '{{title}} / {{system.status}}',
+      formMapping: { amount: '{{formData.amount}}', reviewers: '{{formData.reviewers}}', purchased: '{{formData.purchased}}',
+        nullable: '{{formData.nullable}}', assets: '{{formData.assets}}', dates: '{{formData.dates}}',
+        note: '{{formData.nested.buyer.name}} / {{formData.title}}' } }]);
+    await executeWorkflowAutomationAction(actionJob(first));
+    expect(model.create).toHaveBeenCalledWith({ definitionId: 4, title: '采购通过 / approved', formData: {
+      amount: 28000, reviewers: [9], purchased: false, nullable: null, assets: [{ name: '国产电脑', quantity: 4 }],
+      dates: ['2026-10-05', '2026-10-06'], note: '张采购 / 表单内部标题',
+    } }, expect.any(Object), [], 'automation-start-workflow');
+  });
+
+  it('keeps typed field writeback available to subsequent actions', async () => {
+    sourceForm = { amount: 28000, reviewers: [9], purchased: false };
+    const first = await seed([{ type: 'updateField', fields: { copiedAmount: '{{formData.amount}}',
+      copiedReviewers: '{{formData.reviewers}}', copiedFlag: '{{formData.purchased}}' } },
+    { type: 'startWorkflow', definitionId: 4, formMapping: { reviewers: '{{formData.copiedReviewers}}' } }]);
+    await executeWorkflowAutomationAction(actionJob(first));
+    expect(state.instance.formData).toMatchObject({ copiedAmount: 28000, copiedReviewers: [9], copiedFlag: false });
+    await executeWorkflowAutomationAction(actionJob(state.jobs[1]));
+    expect(model.create).toHaveBeenCalledWith(expect.objectContaining({ formData: { reviewers: [9] } }), expect.any(Object), [], 'automation-start-workflow');
+  });
+
+  it('fails a missing financial variable before creating an empty payment while continuing later actions', async () => {
+    const first = await seed([{ type: 'startWorkflow', definitionId: 4, formMapping: { amount: '{{formData.missingAmount}}' } },
+      { type: 'updateField', fields: { note: '失败已记录' } }]);
+    await expect(executeWorkflowAutomationAction(actionJob(first))).rejects.toMatchObject({ name: 'WorkflowJobPermanentError', message: '自动化变量不存在：formData.missingAmount' });
+    expect(model.create).not.toHaveBeenCalled();
+    expect(state.jobs).toHaveLength(2);
+    await executeWorkflowAutomationAction(actionJob(state.jobs[1]));
+    expect(state.instance.formData.note).toBe('失败已记录');
+  });
+
+  it('renders JSON, HTTP headers and encoded URL values through the same namespace resolver', async () => {
+    sourceForm = { reviewers: [9], amount: 28000, reason: '含"引号"和换行\n', vendor: '甲/乙?x=1', title: '业务标题' };
+    const first = await seed([{ type: 'webhook', url: 'https://example.test/erp/{{formData.vendor}}',
+      headers: { 'X-Instance': '{{system.instanceId}}' }, bodyTemplate: '{"amount":"{{formData.amount}}",'
+        + '"reviewers":"{{formData.reviewers}}","reason":"{{formData.reason}}","title":"{{title}}"}' }]);
+    await executeWorkflowAutomationAction(actionJob(first));
+    const [url, options] = model.http.mock.calls[0];
+    expect(url).toBe('https://example.test/erp/%E7%94%B2%2F%E4%B9%99%3Fx%3D1');
+    expect(options.headers.get('X-Instance')).toBe('7');
+    expect(options.headers.get('Content-Type')).toBe('application/json');
+    expect(JSON.parse(options.body)).toEqual({ amount: 28000, reviewers: [9], reason: '含"引号"和换行\n', title: '采购通过' });
+  });
+  it('records the created target for inspection even when its business approval is rejected', async () => {
+    const first = await seed([{ type: 'startWorkflow', definitionId: 4, titleTemplate: '{{system.title}}验收' }]);
+    model.create.mockResolvedValueOnce({ id: 108, title: '采购通过验收', status: 'rejected' });
+    const outcome = await executeWorkflowAutomationAction(actionJob(first));
+    expect(outcome.result).toEqual({ targetInstanceId: 108, targetTitle: '采购通过验收' });
   });
 });

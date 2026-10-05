@@ -45,19 +45,32 @@
 ::: v-pre
 | 变量 | 说明 |
 | --- | --- |
-| `{{instanceId}}` | 当前实例 ID |
-| `{{title}}` | 当前实例标题 |
-| `{{status}}` | 当前实例状态 |
-| `{{initiator}}` | 发起人显示名 |
-| `{{initiatorId}}` | 发起人用户 ID |
-| `{{字段key}}` | 当前实例表单字段 |
+| `{{system.instanceId}}` | 当前实例 ID；短名 `{{instanceId}}` 含义相同 |
+| `{{system.title}}` | 当前实例标题；短名 `{{title}}` 含义相同 |
+| `{{system.status}}` | 当前实例状态；短名 `{{status}}` 含义相同 |
+| `{{system.initiator}}` | 发起人显示名；短名 `{{initiator}}` 含义相同 |
+| `{{system.initiatorId}}` | 发起人用户 ID；短名 `{{initiatorId}}` 含义相同 |
+| `{{formData.amount}}` | 表单字段 amount |
+| `{{formData.vendor.contact.name}}` | 表单对象的自有属性点路径；数组项可使用数字段如 `{{formData.items.0.name}}` |
 :::
 
-未匹配变量渲染为空字符串。本节模板规则仍沿用现有字符串语义。
+::: v-pre
+
+表单字段必须使用 `formData` 命名空间，不再支持业务字段的平铺短名。系统命名空间及五个明确短名不会被同名业务字段覆盖，例如表单自身的 title 通过 `{{formData.title}}` 读取。缺失变量、非法路径或不完整占位符明确失败，不生成空金额等替代数据。模板只读取自有数据属性，不调用 getter、读取原型链或执行表达式。
+
+字段映射和字段回写中，完整变量引用保留数值、布尔、null、数组、对象和日期范围的原始类型，并复制对象值；嵌入普通文字时才转换成文本。静态字串仍为字串。例如金额 `"{{formData.amount}}"` 保留数值、人员 `"{{formData.reviewers}}"` 保留 ID 数组，而 `"来自 {{system.title}}"` 是普通文本。已有业务字段平铺模板不做兼容转换，应按新命名空间重新配置。
+
+Webhook 的请求体模板可以使用 JSON 或纯文本。JSON 先解析，再渲染各个字符串节点：完整变量字符串替换为原类型，嵌入文本仍为字符串，因此字段内容的引号和换行不会破坏 JSON，人员数组也不会变成 JSON 字符串。JSON 中占位符必须作为字符串节点编写，例如 `{"amount":"{{formData.amount}}","reviewers":"{{formData.reviewers}}"}`；未加引号的占位符不是合法 JSON，会明确报错。整个请求体也可引用 `{{formData.payload}}`。JSON 请求体使用 application/json，非 JSON 纯文本保持文本。
+
+URL 使用同一变量解析器，并继续对替换值做百分号编码，表单值不能改变 URL 的路径层级或追加查询参数。请求头的值、消息标题 / 正文和按钮文本使用文本渲染；按钮 URL 同样编码。引用值中自带的模板文字作为普通数据，不进行第二次执行。模板语法在 Server 与 Demo 使用同一 Shared 边界检查，冻结输入中缺少的变量在动作执行时明确留痕。
+
+:::
 
 ### 执行记录与恢复
 
 `GET /api/workflows/automations/runs` 直接读取动作作业及最近执行尝试，可按规则、来源实例和真实作业状态筛选。每行 ID 即动作作业 ID，显示 `pending` / `running` / `paused` / `succeeded` / `failed` / `dead` / `canceled`、尝试次数、最大次数、下一次重试时间和错误。`pending` 且已有失败尝试表示正在等待自动重试，不提供竞争性的手动重试。历史尝试保留在流程监控的对应作业详情中。
+
+发起流程的动作还返回 `targetInstanceId` / `targetTitle`，执行记录可直接打开目标审批详情，查看映射后的字段、审批人和实际业务状态。动作“成功创建”与目标审批的通过 / 拒绝是不同结果；目标被拒绝不改写创建动作的成功状态。
 
 失败动作最多尝试 5 次，耗尽后进入死信。具有流程定义编辑权限的管理员可在执行记录中独立重试，或调用 `POST /api/workflows/automations/runs/{id}/retry`；重试仍使用该次冻结配置和输入，已经成功的动作不会再运行。该接口核对租户和动作作业类型，拒绝成功、执行中、等待自动重试及已取消的动作。
 

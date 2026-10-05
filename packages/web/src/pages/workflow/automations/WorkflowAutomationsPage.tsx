@@ -33,6 +33,8 @@ import { EMPTY_PLACEHOLDER, dateTimeColumn, enabledStatusColumn, renderEllipsis 
 import { abortSubmit } from '@/lib/abort-submit';
 import { FilterSelect } from '@/components/search-filters';
 import ModalFooter from '@/components/ModalFooter';
+import WorkflowInstanceCell from '@/components/workflow/WorkflowInstanceCell';
+import WorkflowInstanceDetailSheet from '@/components/workflow/WorkflowInstanceDetailSheet';
 
 import { useListPage } from '@/hooks/useListPage';
 
@@ -124,6 +126,7 @@ function AutomationRunsSheet({ rule, onClose }: { rule: WorkflowAutomation | nul
   const total = runsQuery.data?.total ?? 0;
   const retry = useRetryWorkflowAutomationRun();
   const { hasPermission } = usePermission();
+  const [targetInstanceId, setTargetInstanceId] = useState<number | null>(null);
 
   const columns: ColumnProps<WorkflowAutomationRun>[] = [
     dateTimeColumn('时间', 'createdAt'),
@@ -147,6 +150,9 @@ function AutomationRunsSheet({ rule, onClose }: { rule: WorkflowAutomation | nul
         return <Tag color={meta?.color} size="small">{`${r.actionIndex + 1}. ${meta?.label ?? v}`}</Tag>;
       },
     },
+    { title: '目标审批单', dataIndex: 'targetInstanceId', width: 220, render: (_v, r) => (
+      <WorkflowInstanceCell instanceId={r.targetInstanceId} title={r.targetTitle} onOpen={setTargetInstanceId} />
+    ) },
     {
       title: '结果', dataIndex: 'status', width: 90,
       render: (v: WorkflowAutomationRun['status'], r) => {
@@ -174,8 +180,8 @@ function AutomationRunsSheet({ rule, onClose }: { rule: WorkflowAutomation | nul
     <SideSheet
       title={rule ? `执行记录 · ${rule.name}` : '执行记录'}
       visible={!!rule}
-      onCancel={onClose}
-      width={720}
+      onCancel={() => { setTargetInstanceId(null); onClose(); }}
+      width={1040}
       closeOnEsc
     >
       {total === 0 && !runsQuery.isFetching ? (
@@ -186,6 +192,7 @@ function AutomationRunsSheet({ rule, onClose }: { rule: WorkflowAutomation | nul
           {...listTableProps(runsQuery, { pagination: buildPagination })}
         />
       )}
+      <WorkflowInstanceDetailSheet instanceId={targetInstanceId} visible={targetInstanceId !== null} onClose={() => setTargetInstanceId(null)} />
     </SideSheet>
   );
 }
@@ -523,7 +530,9 @@ export default function WorkflowAutomationsPage() {
 
         <Typography.Title heading={6} style={{ marginTop: 16 }}>动作列表</Typography.Title>
         <Typography.Text type="tertiary" size="small">
-          支持模板变量：<code>{'{{title}}'}</code> <code>{'{{initiator}}'}</code> <code>{'{{instanceId}}'}</code> <code>{'{{status}}'}</code> 以及 <code>{'{{formData.xxx}}'}</code>
+          系统变量使用 <code>{'{{system.title}}'}</code>、<code>{'{{system.initiator}}'}</code>、<code>{'{{system.instanceId}}'}</code>、<code>{'{{system.status}}'}</code>；表单变量使用 <code>{'{{formData.xxx}}'}</code>，支持点路径。
+          <br />
+          完整变量引用保留数值、布尔、列表和对象类型，嵌入文字时转换为文本；缺少变量会明确失败。<code>{'{{title}}'}</code> 等短名仅表示系统值。
           <br />
           每个动作由后台独立执行和重试，失败不阻断后继动作；配置与输入在触发时冻结，重复事件不会重复执行成功动作。结果和失败重试见「执行记录」。
         </Typography.Text>
@@ -563,7 +572,7 @@ export default function WorkflowAutomationsPage() {
                     onChange={(v) => patchAction(idx, { titleTemplate: v })}
                   />
                   <TextArea
-                    placeholder={'表单映射（可选，JSON 对象）\n例：{\n  "amount": "{{formData.amount}}",\n  "remark": "来自 {{title}}"\n}'}
+                    placeholder={'表单映射（可选，JSON 对象）\n例：{\n  "amount": "{{formData.amount}}",\n  "remark": "来自 {{system.title}}"\n}'}
                     value={a.formMappingJson ?? ''}
                     onChange={(v: string) => patchAction(idx, { formMappingJson: v })}
                     autosize={{ minRows: 2, maxRows: 6 }}
@@ -634,13 +643,13 @@ export default function WorkflowAutomationsPage() {
                     ]}
                   />
                   <TextArea
-                    placeholder={'请求头（可选，JSON 对象）\n例：{\n  "X-Flow-Title": "{{title}}",\n  "Content-Type": "application/json"\n}'}
+                    placeholder={'请求头（可选，JSON 对象）\n例：{\n  "X-Flow-Id": "{{system.instanceId}}",\n  "Content-Type": "application/json"\n}'}
                     value={a.headersJson ?? ''}
                     onChange={(v: string) => patchAction(idx, { headersJson: v })}
                     autosize={{ minRows: 2, maxRows: 6 }}
                   />
                   <TextArea
-                    placeholder={'请求体模板（可选）\n支持 {{title}}、{{initiator}}、{{fieldKey}} 等变量'}
+                    placeholder={'请求体模板（可选，JSON 或纯文本）\n例：{\n  "amount": "{{formData.amount}}",\n  "title": "{{system.title}}"\n}\nJSON 中的完整变量字符串会保留原类型'}
                     value={a.bodyTemplate ?? ''}
                     onChange={(v: string) => patchAction(idx, { bodyTemplate: v })}
                     autosize={{ minRows: 2, maxRows: 6 }}
@@ -649,7 +658,7 @@ export default function WorkflowAutomationsPage() {
               ) : (
                 <Space vertical align="start" style={{ width: '100%' }}>
                   <TextArea
-                    placeholder={'回写字段（必填，JSON 对象）\n例：{\n  "status": "已处理",\n  "processedBy": "{{initiator}}",\n  "sourceTitle": "{{title}}"\n}'}
+                    placeholder={'回写字段（必填，JSON 对象）\n例：{\n  "status": "已处理",\n  "processedBy": "{{system.initiator}}",\n  "sourceTitle": "{{system.title}}"\n}'}
                     value={a.fieldsJson ?? ''}
                     onChange={(v: string) => patchAction(idx, { fieldsJson: v })}
                     autosize={{ minRows: 3, maxRows: 8 }}

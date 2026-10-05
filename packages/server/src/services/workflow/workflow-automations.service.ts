@@ -1,5 +1,5 @@
-import { workflowAutomationContract, workflowAutomationSchema, workflowAutomationRunSchema } from '@zenith/shared/workflow';
-import type { QueryOutputOf } from '@zenith/shared/core';
+import { workflowAutomationContract, workflowAutomationSchema, workflowAutomationRunSchema, assertWorkflowAutomationTemplateSyntax, WorkflowAutomationTemplateError } from '@zenith/shared/workflow';
+import { isPlainObject, type QueryOutputOf } from '@zenith/shared/core';
 /**
  * 流程级自动化规则 service
  *
@@ -77,6 +77,11 @@ async function ensureStartWorkflowActionTarget(definitionId: number) {
 }
 
 async function validateAutomationActions(actions: WorkflowAutomationActionConfig[]) {
+  try { actions.forEach(assertWorkflowAutomationTemplateSyntax); }
+  catch (error) {
+    if (error instanceof WorkflowAutomationTemplateError) throw new HTTPException(400, { message: error.message });
+    throw error;
+  }
   for (const action of actions) {
     if (action.type === 'startWorkflow') {
       await ensureStartWorkflowActionTarget(action.definitionId);
@@ -131,8 +136,11 @@ export async function listWorkflowAutomationRuns(q: QueryOutputOf<typeof workflo
 export function mapAutomationRun(row: WorkflowJobRow & { executions?: WorkflowJobExecutionRow[] }) {
   const payload = parseAutomationActionPayload(row.payload as Record<string, unknown>);
   const externalOutcomeUncertain = row.lastError?.startsWith('外部操作结果待确认') ?? false;
+  const result = isPlainObject(row.result) ? row.result : {};
   return pickEntity(workflowAutomationRunSchema, row, {
     ruleId: payload.ruleId, ruleName: payload.ruleName, instanceTitle: payload.context.instance.title,
+    targetInstanceId: typeof result.targetInstanceId === 'number' ? result.targetInstanceId : null,
+    targetTitle: typeof result.targetTitle === 'string' ? result.targetTitle : null,
     trigger: payload.trigger, actionIndex: payload.actionIndex, actionType: payload.action.type, eventId: payload.eventId,
     error: row.lastError, durationMs: row.executions?.[0]?.durationMs ?? null,
     nextRetryAt: row.status === 'pending' && row.attempts > 0 ? formatDateTime(row.runAt) : null,

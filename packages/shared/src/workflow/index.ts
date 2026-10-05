@@ -21,6 +21,7 @@ export * from './form-signatures';
 export * from './form-attachments';
 export * from './task-history';
 export * from './event-delivery-state';
+export * from './automation-template';
 export * from './form-derived-values';
 
 export * from './designer-graph';

@@ -31,6 +31,8 @@ export const workflowAutomationRunSchema = z.object({
   ruleName: z.string(),
   instanceId: z.int().nullable(),
   instanceTitle: z.string().nullable(),
+  targetInstanceId: z.int().nullable(),
+  targetTitle: z.string().nullable(),
   trigger: z.enum(WORKFLOW_AUTOMATION_TRIGGERS),
   actionIndex: z.int(),
   actionType: z.string(),

@@ -1,6 +1,8 @@
 import { and, asc, eq } from 'drizzle-orm';
 import { isPlainObject, uniquePositiveInts } from '@zenith/shared/core';
-import { workflowAutomationActionSchema, type WorkflowAutomationAction, type WorkflowAutomationTrigger, type WorkflowEvent, type WorkflowInstance } from '@zenith/shared/workflow';
+import { workflowAutomationActionSchema, assertWorkflowAutomationTemplateSyntax, renderWorkflowAutomationBody, renderWorkflowAutomationFields, renderWorkflowAutomationText,
+  resolveWorkflowAutomationVariable, WorkflowAutomationTemplateError, type WorkflowAutomationTemplateContext,
+  type WorkflowAutomationAction, type WorkflowAutomationTrigger, type WorkflowEvent, type WorkflowInstance } from '@zenith/shared/workflow';
 import { users, workflowAutomations, workflowInstances, workflowJobEffects, workflowJobExecutions, type WorkflowJobRow } from '../../db/schema';
 import type { DbTransaction } from '../../db/types';
 import { exactTenantCondition } from '../../lib/tenant';
@@ -51,19 +53,9 @@ export function parseAutomationActionPayload(raw: Record<string, unknown>): Auto
   return raw as AutomationActionPayload;
 }
 
-// Phase 1 preserves the existing template semantics; typed/namespaced mappings are a separate change.
-function renderTemplate(tpl: string, vars: Record<string, unknown>): string {
-  return tpl.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key: string) => {
-    const v = vars[key];
-    if (v == null) return '';
-    if (typeof v === 'string') return v;
-    if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'bigint') return String(v);
-    return typeof v === 'object' ? JSON.stringify(v) : '';
-  });
-}
-function buildTemplateVars(ctx: AutomationContext): Record<string, unknown> {
-  return { instanceId: ctx.instance.id, title: ctx.instance.title, status: ctx.instance.status,
-    initiator: ctx.initiatorName, initiatorId: ctx.initiatorId, ...ctx.formData };
+function templateContext(ctx: AutomationContext): WorkflowAutomationTemplateContext {
+  return { system: { instanceId: ctx.instance.id, title: ctx.instance.title, status: ctx.instance.status,
+    initiator: ctx.initiatorName, initiatorId: ctx.initiatorId }, formData: ctx.formData };
 }
 
 function enqueueAction(tx: DbTransaction, eventId: string, position: number, action: FrozenAutomationAction,
@@ -126,28 +118,27 @@ export async function settleWorkflowAutomationAction(tx: DbTransaction, job: Wor
 }
 
 async function startWorkflow(action: Extract<WorkflowAutomationAction, { type: 'startWorkflow' }>, ctx: AutomationContext) {
-  const vars = buildTemplateVars(ctx);
-  const formData: Record<string, unknown> = {};
-  for (const [key, expr] of Object.entries(action.formMapping ?? {})) formData[key] = renderTemplate(expr, vars);
+  const vars = templateContext(ctx);
+  const formData = renderWorkflowAutomationFields(action.formMapping ?? {}, vars);
   const instance = await createInstance({ definitionId: action.definitionId,
-    title: action.titleTemplate ? renderTemplate(action.titleTemplate, vars) : `由「${ctx.instance.title}」触发`, formData },
+    title: action.titleTemplate ? renderWorkflowAutomationText(action.titleTemplate, vars) : `由「${ctx.instance.title}」触发`, formData },
   { userId: ctx.initiatorId, username: ctx.initiatorName, tenantId: ctx.instance.tenantId, roles: [] }, [], 'automation-start-workflow');
-  return { targetInstanceId: instance.id };
+  return { targetInstanceId: instance.id, targetTitle: instance.title };
 }
 async function sendMessage(action: Extract<WorkflowAutomationAction, { type: 'sendMessage' }>, ctx: AutomationContext, operationKey: string) {
   const recipientIds = uniquePositiveInts(typeof action.recipients === 'object' ? action.recipients.userIds : [ctx.initiatorId]);
-  const vars = buildTemplateVars(ctx);
-  const title = renderTemplate(action.title, vars);
-  let content = renderTemplate(action.content, vars);
-  if (action.buttons?.length) content += `\n\n${action.buttons.slice(0, 3).map((b) => `[${b.text}](${b.url})`).join('  ')}`;
+  const vars = templateContext(ctx);
+  const title = renderWorkflowAutomationText(action.title, vars);
+  let content = renderWorkflowAutomationText(action.content, vars);
+  if (action.buttons?.length) content += `\n\n${action.buttons.slice(0, 3).map((b) =>
+    `[${renderWorkflowAutomationText(b.text, vars)}](${renderUrlTemplate(b.url, (key) => resolveWorkflowAutomationVariable(key, vars))})`).join('  ')}`;
   return runWorkflowJobStep('automation-send-message', async (tx) => ({ notificationId: await notifyWithin(tx, 'workflow.automation.message', {
     recipients: recipientIds.map((id) => ({ type: 'user' as const, id })), vars: { instanceId: ctx.instance.id, title, content },
     tenantId: ctx.instance.tenantId, dedupeKey: `automation:${operationKey}`, channelOptions: { inapp: { type: action.messageType ?? 'info' } },
   }) }));
 }
 async function updateField(action: Extract<WorkflowAutomationAction, { type: 'updateField' }>, ctx: AutomationContext) {
-  const vars = buildTemplateVars(ctx);
-  const patch = Object.fromEntries(Object.entries(action.fields).map(([key, expr]) => [key, renderTemplate(expr, vars)]));
+  const patch = renderWorkflowAutomationFields(action.fields, templateContext(ctx));
   const result = await runWorkflowJobStep(FIELD_STEP, async (tx) => {
     const scope = and(eq(workflowInstances.id, ctx.instance.id), exactTenantCondition(workflowInstances.tenantId, ctx.instance.tenantId));
     const [instance] = await tx.select().from(workflowInstances).where(scope).for('update').limit(1);
@@ -163,19 +154,23 @@ async function updateField(action: Extract<WorkflowAutomationAction, { type: 'up
 async function webhook(action: Extract<WorkflowAutomationAction, { type: 'webhook' }>, ctx: AutomationContext, jobContext: WorkflowJobContext): Promise<WorkflowJobResult> {
   const committed = await readWorkflowJobStepResult<WorkflowJobResult & Record<string, unknown>>(WEBHOOK_STEP);
   if (committed) return committed;
-  const vars = buildTemplateVars(ctx);
-  const url = renderUrlTemplate(action.url, (key) => vars[key]);
+  const vars = templateContext(ctx);
+  const url = renderUrlTemplate(action.url, (key) => resolveWorkflowAutomationVariable(key, vars));
   const method = action.method ?? 'POST';
-  let body: Record<string, unknown> | string | undefined;
+  const headers = new Headers(Object.fromEntries(Object.entries(action.headers ?? {}).map(([key, value]) =>
+    [key, renderWorkflowAutomationText(value, vars)])));
+  let body: string | undefined;
   if (method !== 'GET') {
-    if (action.bodyTemplate) { const rendered = renderTemplate(action.bodyTemplate, vars); try { body = JSON.parse(rendered) as Record<string, unknown>; } catch { body = rendered; } }
-    else body = { instanceId: ctx.instance.id, title: ctx.instance.title, status: ctx.instance.status,
-      initiatorId: ctx.initiatorId, initiator: ctx.initiatorName, formData: ctx.formData };
+    const rendered = action.bodyTemplate ? renderWorkflowAutomationBody(action.bodyTemplate, vars) : {
+      kind: 'json' as const, value: { instanceId: ctx.instance.id, title: ctx.instance.title, status: ctx.instance.status,
+        initiatorId: ctx.initiatorId, initiator: ctx.initiatorName, formData: ctx.formData },
+    };
+    body = rendered.kind === 'json' ? JSON.stringify(rendered.value) : rendered.value;
+    if (rendered.kind === 'json' && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   }
-  const detail: WorkflowJobResult = { requestUrl: url, requestMethod: method,
-    requestBody: body === undefined ? null : typeof body === 'string' ? body : JSON.stringify(body) };
+  const detail: WorkflowJobResult = { requestUrl: url, requestMethod: method, requestBody: body ?? null };
   try {
-    const response = await workflowHttp(url, { method, headers: action.headers, body, timeout: 10000 });
+    const response = await workflowHttp(url, { method, headers, body, timeout: 10000 });
     detail.responseStatus = response.status;
     detail.responseBody = (await response.text().catch(() => '')).slice(0, 4096);
     if (!response.ok) throw new WorkflowJobError(`HTTP ${response.status}`, { detail });
@@ -198,6 +193,7 @@ export async function executeWorkflowAutomationAction(jobContext: WorkflowJobCon
   let detail: WorkflowJobResult = {};
   let result: Record<string, unknown> = {};
   try {
+    assertWorkflowAutomationTemplateSyntax(payload.action);
     switch (payload.action.type) {
       case 'startWorkflow': result = await startWorkflow(payload.action, ctx); break;
       case 'sendMessage': result = await sendMessage(payload.action, ctx, jobContext.operationKey); break;
@@ -205,6 +201,9 @@ export async function executeWorkflowAutomationAction(jobContext: WorkflowJobCon
       case 'webhook': detail = await webhook(payload.action, ctx, jobContext); break;
     }
     return { ...detail, result };
+  } catch (error) {
+    if (error instanceof WorkflowAutomationTemplateError) throw new WorkflowJobPermanentError(error.message);
+    throw error;
   } finally {
     await runWorkflowJobStep(CONTINUATION_STEP, (tx) => enqueueContinuation(tx, payload, ctx.formData));
   }
