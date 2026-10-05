@@ -1,13 +1,12 @@
 import { workflowInstanceContract } from '@zenith/shared/workflow';
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { asc, eq, gte, desc, inArray, sql } from 'drizzle-orm';
-import dayjs from 'dayjs';
 import { db } from '../../db';
 import { workflowInstances, workflowTasks, workflowDefinitions, workflowCategories, workflowJobs, users } from '../../db/schema';
 import { currentUser } from '../../lib/context';
 import { tenantCondition } from '../../lib/tenant';
 import { buildWhere, keywordCondition, withPagination } from '../../lib/where-helpers';
-import { formatDateTime, formatTimestamps } from '../../lib/datetime';
+import { buildDateAxis, formatDateTime, formatTimestamps, startOfRecentDays } from '../../lib/datetime';
 import { buildListResult } from '../../lib/list-query';
 import type { WorkflowAnalytics, WorkflowInstanceStatus, WorkflowAnalyticsTrendPoint, WorkflowOverdueTask } from '@zenith/shared/workflow';
 import { WORKFLOW_INSTANCE_STATUS_LABELS } from '@zenith/shared/workflow';
@@ -22,8 +21,8 @@ export async function getWorkflowAnalytics(query: { definitionId?: number } = {}
   // 实例级筛选（监控可按流程定义过滤）；各统计项在 instConds 之上叠加自身条件
   const instWhere = buildWhere(instTenant, instDefinition);
 
-  const since14 = dayjs().subtract(13, 'day').startOf('day').toDate();
-  const since7 = dayjs().subtract(7, 'day').toDate();
+  const since14 = startOfRecentDays(14);
+  const since7 = new Date(Date.now() - 7 * 24 * 60 * 60_000);
 
   const durationExpr = sql<number | null>`avg(extract(epoch from (${workflowInstances.updatedAt} - ${workflowInstances.createdAt})))`;
 
@@ -165,10 +164,10 @@ export async function getWorkflowAnalytics(query: { definitionId?: number } = {}
   const completedMap = new Map(completedTrend.map((r) => [r.d, r.c]));
   const trend: WorkflowAnalyticsTrendPoint[] = [];
   const runningNow = statusCounts.find((s) => s.status === 'running')?.count ?? 0;
-  let net = 0; for (let i = 13; i >= 0; i--) { const d = dayjs().subtract(i, 'day').format('YYYY-MM-DD'); net += (createdMap.get(d) ?? 0) - (completedMap.get(d) ?? 0); }
+  const dates = buildDateAxis(since14, 14);
+  const net = dates.reduce((sum, d) => sum + (createdMap.get(d) ?? 0) - (completedMap.get(d) ?? 0), 0);
   let backlog = runningNow - net; // 14 天前的积压基线
-  for (let i = 13; i >= 0; i--) {
-    const d = dayjs().subtract(i, 'day').format('YYYY-MM-DD');
+  for (const d of dates) {
     backlog += (createdMap.get(d) ?? 0) - (completedMap.get(d) ?? 0);
     trend.push({ date: d, created: createdMap.get(d) ?? 0, completed: completedMap.get(d) ?? 0, pending: Math.max(0, backlog) });
   }

@@ -6,7 +6,7 @@ import { pushSendLogSchema, type PushDeliveryStatus, type PushProvider, type Pus
 import type { QueryOutputOf } from '@zenith/shared/core';
 import { db } from '../../db';
 import { pushSendLogs, type PushSendLogRow } from '../../db/schema';
-import { startOfRecentDays } from '../../lib/datetime';
+import { buildDateAxis, startOfRecentDays } from '../../lib/datetime';
 import { buildWhere, dateRangeConditions, keywordCondition } from '../../lib/where-helpers';
 import { pageOffset } from '../../lib/pagination';
 import { buildListResult } from '../../lib/list-query';
@@ -132,9 +132,7 @@ export async function getPushSendLogStats(days = 14): Promise<PushSendLogStats> 
 
   // 趋势补零:图表需要连续日期轴
   const trendMap = new Map<string, PushSendLogStats['trend'][number]>();
-  for (let i = 0; i < days; i++) {
-    const d = new Date(since.getTime() + i * 24 * 60 * 60 * 1000);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  for (const key of buildDateAxis(since, days)) {
     trendMap.set(key, { date: key, total: 0, success: 0, failed: 0, delivered: 0, clicked: 0 });
   }
   for (const row of trendRows) {

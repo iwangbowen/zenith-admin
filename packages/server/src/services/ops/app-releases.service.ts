@@ -27,7 +27,7 @@ import {
 } from '../../db/schema';
 import logger from '../../lib/logger';
 import { currentUser } from '../../lib/context';
-import { formatNullableDateTime } from '../../lib/datetime';
+import { buildDateAxis, formatNullableDateTime, startOfRecentDays } from '../../lib/datetime';
 import { rethrowPgUniqueViolation } from '../../lib/db-errors';
 import { requireFirstRow, requireRow } from '../../lib/db-assert';
 import { buildListResult } from '../../lib/list-query';
@@ -728,7 +728,7 @@ export async function reportAppReleaseEvent(input: ReportAppReleaseEventInput) {
 
 export async function getAppReleaseStats(appId: number, days: number): Promise<AppReleaseStats> {
   await ensureClientAppExists(appId);
-  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const since = startOfRecentDays(days);
   const baseWhere = and(eq(appReleaseEvents.appId, appId), gte(appReleaseEvents.createdAt, since));
   const dateExpr = localDate(appReleaseEvents.createdAt);
 
@@ -757,9 +757,7 @@ export async function getAppReleaseStats(appId: number, days: number): Promise<A
 
   // 趋势补零：图表需要连续日期轴
   const trendMap = new Map<string, { checks: number; downloads: number; installSuccess: number; installFail: number }>();
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  for (const key of buildDateAxis(since, days)) {
     trendMap.set(key, { checks: 0, downloads: 0, installSuccess: 0, installFail: 0 });
   }
   for (const row of trendRows) {
