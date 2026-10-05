@@ -27,6 +27,8 @@ name: zenith-admin
 # api / worker / migrate 共用的环境变量（角色相关项在各服务内覆盖）
 x-server-env: &server-env
   NODE_ENV: production
+  # 业务时区（自然日统计、时间输入输出及数据库终端），必须是有效 IANA 名称
+  APP_TIME_ZONE: ${APP_TIME_ZONE:-Asia/Shanghai}
   # ── Auth / Encryption（无默认值；生成：npm run secret:generate）────────
   JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required (run `npm run secret:generate`)}
   FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:?FIELD_ENCRYPTION_KEY is required (run `npm run secret:generate`)}
