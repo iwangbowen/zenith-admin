@@ -9,26 +9,14 @@ import {
   members, memberLevels, memberPointAccounts, memberWallets,
   memberPointTransactions, memberCheckins, memberCoupons, memberWalletTransactions,
 } from '../../db/schema';
-import { formatDate, startOfToday } from '../../lib/datetime';
+import { buildDateAxis, formatDate, startOfDayAgo, startOfMonth, startOfToday } from '../../lib/datetime';
 import { localDate } from "../../lib/datetime-sql";
-
-function shiftDays(base: Date, delta: number): Date {
-  const d = new Date(base);
-  d.setDate(d.getDate() + delta);
-  return d;
-}
-
-function buildDateAxis(start: Date, days: number): string[] {
-  const axis: string[] = [];
-  for (let i = 0; i < days; i++) axis.push(formatDate(shiftDays(start, i)));
-  return axis;
-}
 
 export async function getMemberStats() {
   const todayStart = startOfToday();
-  const todayEnd = shiftDays(todayStart, 1);
-  const monthStart = new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
-  const days30Ago = shiftDays(todayStart, -29);
+  const todayEnd = startOfDayAgo(-1);
+  const monthStart = startOfMonth(todayStart);
+  const days30Ago = startOfDayAgo(29);
   const todayStr = formatDate(todayStart);
 
   // 统计口径统一排除软删除会员；积分/余额为当前负债，随会员删除移出统计
@@ -80,12 +68,11 @@ export async function getMemberStats() {
 }
 
 export async function getMemberCharts() {
-  const todayStart = startOfToday();
-  const days30Ago = shiftDays(todayStart, -29);
-  const days7Ago = shiftDays(todayStart, -6);
-  const active7 = shiftDays(todayStart, -6);
-  const active30 = shiftDays(todayStart, -29);
-  const active90 = shiftDays(todayStart, -89);
+  const days30Ago = startOfDayAgo(29);
+  const days7Ago = startOfDayAgo(6);
+  const active7 = days7Ago;
+  const active30 = days30Ago;
+  const active90 = startOfDayAgo(89);
 
   const [registerRows, levelRows, pointRows, checkinRows, activityRows, rechargeRows, walletRows, sourceRows, couponRows] = await Promise.all([
     db.select({

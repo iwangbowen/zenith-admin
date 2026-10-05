@@ -183,6 +183,18 @@ export function startOfToday(): Date {
   return startOfDayAgo(0);
 }
 
+/** 所属业务自然月的首日 00:00:00，独立于进程时区。 */
+export function startOfMonth(date: DateInput = new Date()): Date {
+  const firstDay = `${formatDate(date).slice(0, 7)}-01`;
+  return dayjs.tz(firstDay, DATE_FORMAT, APP_TIME_ZONE).toDate();
+}
+
+/** 连续的业务日期标签；按日历递增，跨夏令时也不会重复或跳过日期。 */
+export function buildDateAxis(start: Date | string, days: number): string[] {
+  const firstDay = dayjs.utc(formatDate(start));
+  return Array.from({ length: days }, (_, index) => firstDay.add(index, 'day').format(DATE_FORMAT));
+}
+
 /** 「近 N 天（含今日）」窗口起点，即 `days - 1` 天前的 00:00:00。 */
 export function startOfRecentDays(days: number): Date {
   return startOfDayAgo(days - 1);
