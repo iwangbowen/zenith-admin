@@ -327,6 +327,7 @@ export const monitorWsConnectionSchema = z.object({
   nodeId: z.string(),
   tokenId: z.string(),
   userId: z.int(),
+  tenantId: z.int().nullable().meta({ description: '连接所属租户；为空表示平台侧用户，读取时按 userId 现解析' }),
   username: z.string().nullable(),
   nickname: z.string().nullable(),
   ip: z.string().nullable().meta({ description: '握手时采集的客户端 IP（经可信代理链判定）' }),
@@ -393,6 +394,49 @@ export const monitorWsTopicSchema = z.object({
 
 export type MonitorWsTopic = z.infer<typeof monitorWsTopicSchema>;
 
+/**
+ * Redis 扇出在单个节点上的投递画像。
+ *
+ * 跨进程推送是 at-most-once：订阅降级（`degraded`）期间发出的信封不会补发，
+ * 发布方也无法得知对端是否收到，因此每个节点的订阅状态与丢弃计数是「跨节点丢消息」
+ * 唯一可观测的痕迹。计数是进程级累计值，进程重启后归零（与累计收发同样会回退）。
+ */
+export const monitorWsFanoutNodeSchema = z.object({
+  nodeId: z.string(),
+  state: z.enum(['idle', 'subscribed', 'degraded']).meta({ description: '本进程到扇出频道的订阅状态' }),
+  published: z.int().meta({ description: '本进程发布的扇出信封数（含本进程自己跳过的那一封）' }),
+  publishFailed: z.int().meta({ description: '发布失败数（Redis 不可用等），对应本次推送其他进程收不到' }),
+  delivered: z.int().meta({ description: '本进程收到并成功投递的远端信封数' }),
+  dropped: z.int().meta({ description: '本进程丢弃的远端信封数（畸形 / 无处理器 / 处理器异常）' }),
+}).meta({ id: 'MonitorWsFanoutNode' });
+
+export type MonitorWsFanoutNode = z.infer<typeof monitorWsFanoutNodeSchema>;
+
+export const monitorWsFanoutSchema = z.object({
+  published: z.int(),
+  publishFailed: z.int(),
+  delivered: z.int(),
+  dropped: z.int(),
+  subscribedNodes: z.int().meta({ description: '订阅正常的节点数' }),
+  degradedNodes: z.int().meta({ description: '订阅降级的节点数；大于 0 时跨进程推送正在丢失' }),
+  nodes: z.array(monitorWsFanoutNodeSchema).meta({ description: '集群内各节点的扇出画像（含本进程）' }),
+}).meta({ id: 'MonitorWsFanout' });
+
+export type MonitorWsFanout = z.infer<typeof monitorWsFanoutSchema>;
+
+/** 按租户聚合的连接态与累计收发，由可见范围内的连接明细现算 */
+export const monitorWsTenantSchema = z.object({
+  tenantId: z.int().nullable().meta({ description: '租户 ID；为空表示平台侧用户' }),
+  tenantName: z.string().nullable().meta({ description: '租户名称；平台侧为空' }),
+  connections: z.int(),
+  users: z.int(),
+  sent: z.int(),
+  recv: z.int(),
+  idle: z.int().meta({ description: '其中空闲连接数（最后活动超过 120 秒）' }),
+}).meta({ id: 'MonitorWsTenant' });
+
+export type MonitorWsTenant = z.infer<typeof monitorWsTenantSchema>;
+
 export const monitorWsMetricsSchema = z.object({
   currentConnections: z.int().meta({ description: '当前连接数（受租户可见范围约束）' }),
   currentUsers: z.int().meta({ description: '当前在线用户数（受租户可见范围约束）' }),
@@ -405,6 +449,8 @@ export const monitorWsMetricsSchema = z.object({
   topics: z.array(monitorWsTopicSchema).meta({ description: '按 Topic 聚合的采样消息数与字节数，由可见明细现算' }),
   connections: z.array(monitorWsConnectionSchema).meta({ description: '在线连接明细，受限视角只含可见用户的连接' }),
   recentDisconnects: z.array(monitorWsDisconnectSchema).meta({ description: '最近断开记录，受限视角只含可见用户的记录' }),
+  tenants: z.array(monitorWsTenantSchema).meta({ description: '按租户聚合的连接态与收发，由可见明细现算，按连接数降序；平台级用户归入 tenantId 为空的一项' }),
+  fanout: monitorWsFanoutSchema.meta({ description: '平台级 Redis 扇出投递统计，不随可见范围过滤' }),
 }).meta({ id: 'MonitorWsMetrics' });
 
 export type MonitorWsMetrics = z.infer<typeof monitorWsMetricsSchema>;
@@ -440,6 +486,33 @@ export const monitorWsTrendSchema = z.object({
 
 export type MonitorWsTrend = z.infer<typeof monitorWsTrendSchema>;
 
+/**
+ * 持久化趋势的历史分桶点（每桶一行，时间升序）。
+ * 与实时点同名字段同口径，但聚合方式不同：瞬时列取桶内末值，增量列为桶内之和，
+ * 失败列取桶内峰值 —— 因此长窗口上不能用「增量 ÷ intervalSec」算速率，要用 `bucketSec`。
+ */
+export const monitorWsTrendHistoryPointSchema = z.object({
+  t: z.string().meta({ description: '分桶起始时间（服务端本地时间字符串）' }),
+  connections: z.int().meta({ description: '桶内末值：当前连接数' }),
+  users: z.int().meta({ description: '桶内末值：在线用户数' }),
+  idle: z.int().meta({ description: '桶内末值：空闲连接数' }),
+  connects: z.int().meta({ description: '桶内新建连接数合计' }),
+  disconnects: z.int().meta({ description: '桶内断开连接数合计' }),
+  sent: z.int().meta({ description: '桶内发送消息数合计' }),
+  recv: z.int().meta({ description: '桶内接收消息数合计' }),
+  failed: z.int().meta({ description: '桶内失败消息数峰值' }),
+}).meta({ id: 'MonitorWsTrendHistoryPoint' });
+
+export type MonitorWsTrendHistoryPoint = z.infer<typeof monitorWsTrendHistoryPointSchema>;
+
+export const monitorWsTrendHistorySchema = z.object({
+  range: z.string(),
+  bucketSec: z.int().meta({ description: '分桶秒数；换算速率时分母用它而不是实时采样的 intervalSec' }),
+  points: z.array(monitorWsTrendHistoryPointSchema),
+}).meta({ id: 'MonitorWsTrendHistory' });
+
+export type MonitorWsTrendHistory = z.infer<typeof monitorWsTrendHistorySchema>;
+
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const monitorContract = defineContract('/api/monitor', {
@@ -456,9 +529,18 @@ export const monitorContract = defineContract('/api/monitor', {
     access: { permission: 'system:monitor:view' },
     response: monitorWsTrendSchema,
     summary: '获取 WebSocket 连接趋势（最近 1 小时，10 秒/点）',
-    description: '采集自 api 进程的采样 tick（与系统指标采样器同一节拍），集群聚合并入库前不持久化：'
+    description: '来自 api 进程的采样 tick（与系统指标采样器同一节拍），读的是进程内环形缓冲，'
+      + '进程重启后重新累积；需要跨重启回溯请用 wsTrendHistory。'
       + '连接数 / 在线用户 / 空闲连接为瞬时值，连接、断开、收发为周期增量，失败为采样窗口口径；'
-      + '进程重启导致计数器回退时丢弃该帧，因此趋势中不出现负值，但会出现断点。',
+      + '计数器回退（节点重启）时丢弃该帧，因此趋势中不出现负值，但会出现断点。',
+  }),
+  wsTrendHistory: op.get('/ws/trend/history', {
+    access: { permission: 'system:monitor:view' },
+    query: monitorHistoryQuerySchema,
+    response: monitorWsTrendHistorySchema,
+    summary: '获取 WebSocket 连接趋势的持久化历史（按时间范围分桶聚合）',
+    description: '数据来自每分钟落库的 ws_metric_samples：瞬时列取桶内末值、增量列取桶内之和、'
+      + '失败列取桶内峰值，分桶窗口与系统指标历史一致；最长可回看 7 天，更早的采样由数据保留策略清理。',
   }),
   stream: op.get('/stream', {
     access: { permission: 'system:monitor:view' },

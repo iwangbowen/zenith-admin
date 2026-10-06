@@ -920,6 +920,8 @@ exports[`路由表快照 > 完整路由表保持不变 1`] = `
   "GET /api/monitor/stream",
   "GET /api/monitor/timeseries",
   "GET /api/monitor/ws",
+  "GET /api/monitor/ws/trend",
+  "GET /api/monitor/ws/trend/history",
   "GET /api/mp/accounts",
   "GET /api/mp/accounts/:id",
   "GET /api/mp/auto-replies",

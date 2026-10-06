@@ -25,7 +25,7 @@ vi.mock('../lib/ws-manager', () => ({
   getWsClusterSnapshot: () => snapshot,
 }));
 
-const { WS_TREND_CAPACITY, getWsTrend, recordWsTrendSample, resetWsTrend } = await import('./ws-trend');
+const { WS_TREND_CAPACITY, getWsTrend, recordWsTrendSample, resetWsTrend, takeWsTrendWindow } = await import('./ws-trend');
 
 describe('ws trend sampler', () => {
   beforeEach(() => {
@@ -78,6 +78,57 @@ describe('ws trend sampler', () => {
     // 回退帧已重建基线，本帧按新基线差分，不出现负值；丢弃的两帧不进缓冲
     expect(recordWsTrendSample(22_000)).toMatchObject({ sent: 20 });
     expect(getWsTrend().points).toHaveLength(1);
+  });
+
+  it('aggregates the buffered window into one persisted row and advances the cursor', () => {
+    // 不足一个采样周期：不下沉半截窗口，也不推进游标
+    recordWsTrendSample(1000);
+    expect(takeWsTrendWindow()).toBeNull();
+
+    snapshot.totalConnects = 12;
+    snapshot.totalDisconnects = 6;
+    snapshot.totalSent = 140;
+    snapshot.totalRecv = 50;
+    snapshot.messages = [{ success: true }];
+    recordWsTrendSample(11_000);
+    snapshot.totalSent = 200;
+    snapshot.messages = [{ success: false }, { success: false }, { success: true }];
+    recordWsTrendSample(21_000);
+
+    // 瞬时列取窗口末值，增量列取窗口内之和，失败列取窗口内峰值
+    expect(takeWsTrendWindow()).toMatchObject({
+      sampledAt: new Date(21_000),
+      connections: 2,
+      users: 2,
+      connects: 2,
+      disconnects: 2,
+      sent: 100,
+      recv: 10,
+      failed: 2,
+    });
+
+    // 游标已推进：没有新帧时不再重复下沉同一批点
+    expect(takeWsTrendWindow()).toBeNull();
+
+    snapshot.totalSent = 260;
+    recordWsTrendSample(31_000);
+    snapshot.totalSent = 300;
+    recordWsTrendSample(41_000);
+    expect(takeWsTrendWindow()).toMatchObject({ sampledAt: new Date(41_000), sent: 100 });
+  });
+
+  it('resets the persist cursor together with the buffer', () => {
+    recordWsTrendSample(1000);
+    recordWsTrendSample(11_000);
+    recordWsTrendSample(21_000);
+    expect(takeWsTrendWindow()).toMatchObject({ sampledAt: new Date(21_000) });
+    resetWsTrend();
+    recordWsTrendSample(1000);
+    recordWsTrendSample(11_000);
+    recordWsTrendSample(21_000);
+    // 清空后重新累积，游标一并归零，新一批点仍可下沉（而不是因为游标还停在过去而漏掉）
+    expect(takeWsTrendWindow()).toMatchObject({ sampledAt: new Date(21_000) });
+    expect(takeWsTrendWindow()).toBeNull();
   });
 
   it('keeps at most the ring capacity and returns points in ascending time order', () => {

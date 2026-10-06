@@ -3,7 +3,7 @@ import type { ChatPresence } from '@zenith/shared/chat';
 import { isWsControlMessage, type WsMessage } from '@zenith/shared/platform';
 import { formatDateTime } from './datetime';
 import { PROCESS_ID } from './process-identity';
-import { onWsFanout, publishWsFanout } from './ws-fanout';
+import { getWsFanoutCounters, onWsFanout, publishWsFanout, wsFanoutState, type WsFanoutState } from './ws-fanout';
 
 // ─── 连接登记 ──────────────────────────────────────────────────────────
 // 每个 socket 独立登记：同一 access token 在多个标签页各开一条连接、断网后新旧连接短暂并存时互不覆盖。
@@ -641,6 +641,31 @@ function buildWsAggregates(
   };
 }
 
+/**
+ * 本进程的 Redis 扇出投递画像：
+ * `state` 是本进程到扇出频道的订阅状态，计数是发布 / 投递 / 丢弃的累计值。
+ * 跨进程推送是 at-most-once，订阅降级期间的推送**不会补发**，所以 `dropped`
+ * 与 `state !== 'subscribed'` 是「跨节点丢消息」在监控页上唯一的可见证据。
+ */
+export interface WsFanoutNodeStats {
+  state: WsFanoutState;
+  published: number;
+  publishFailed: number;
+  delivered: number;
+  dropped: number;
+}
+
+function collectWsFanoutStats(): WsFanoutNodeStats {
+  const counters = getWsFanoutCounters();
+  return {
+    state: wsFanoutState(),
+    published: counters.published,
+    publishFailed: counters.publishFailed,
+    delivered: counters.delivered,
+    dropped: counters.dropped,
+  };
+}
+
 /** 跨进程 WS 监控快照的单节点载荷（本进程发布、远端镜像存储的都是它） */
 export interface WsNodeStats {
   nodeId: string;
@@ -651,6 +676,7 @@ export interface WsNodeStats {
   totalDisconnects: number;
   totalSent: number;
   totalRecv: number;
+  fanout: WsFanoutNodeStats;
   connections: WsConnectionSnapshot[];
   recentDisconnects: RecentDisconnect[];
   messages: WsMonitorMessage[];
@@ -684,6 +710,7 @@ function collectWsNodeStats(): WsNodeStats {
     totalDisconnects: counters.totalDisconnects,
     totalSent: counters.totalSent,
     totalRecv: counters.totalRecv,
+    fanout: collectWsFanoutStats(),
     connections: snapshot,
     recentDisconnects: [...recentDisconnects],
     messages: [...recentMessages],
@@ -700,6 +727,9 @@ function emptyWsNodeStats(): WsNodeStats {
     totalDisconnects: counters.totalDisconnects,
     totalSent: counters.totalSent,
     totalRecv: counters.totalRecv,
+    // 进程退出后的空快照：本节点不再持有连接也不再订阅，扇出计数按 0 上报，
+    // 否则其他节点的集群视图会一直保留一个已下线节点的历史计数
+    fanout: { state: 'idle', published: 0, publishFailed: 0, delivered: 0, dropped: 0 },
     connections: [],
     recentDisconnects: [],
     messages: [],
@@ -725,6 +755,10 @@ export function getWsClusterSnapshot() {
   let totalDisconnects = local.totalDisconnects;
   let totalSent = local.totalSent;
   let totalRecv = local.totalRecv;
+  const fanoutNodes = [
+    { nodeId: local.nodeId, ...local.fanout },
+    ...remotes.map((remote) => ({ nodeId: remote.nodeId, ...remote.fanout })),
+  ];
   const connections = [...local.connections];
   const disconnects = [...local.recentDisconnects];
   const sampled = [...local.messages];
@@ -752,6 +786,15 @@ export function getWsClusterSnapshot() {
     totalDisconnects,
     totalSent,
     totalRecv,
+    fanout: {
+      published: fanoutNodes.reduce((total, node) => total + node.published, 0),
+      publishFailed: fanoutNodes.reduce((total, node) => total + node.publishFailed, 0),
+      delivered: fanoutNodes.reduce((total, node) => total + node.delivered, 0),
+      dropped: fanoutNodes.reduce((total, node) => total + node.dropped, 0),
+      subscribedNodes: fanoutNodes.filter((node) => node.state === 'subscribed').length,
+      degradedNodes: fanoutNodes.filter((node) => node.state === 'degraded').length,
+      nodes: fanoutNodes,
+    },
     messages: sampled,
     nodes,
     topics,
@@ -786,6 +829,8 @@ export function filterWsClusterSnapshot(
     totalDisconnects: snap.totalDisconnects,
     totalSent: snap.totalSent,
     totalRecv: snap.totalRecv,
+    // 扇出投递是平台级进程指标，没有按用户的历史可回溯，与累计计数器同样不随可见范围裁剪
+    fanout: snap.fanout,
     messages,
     nodes,
     topics,

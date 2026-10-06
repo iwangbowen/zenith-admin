@@ -1,5 +1,6 @@
+/* 页面内边距由全局 .page-container 提供，这里只做本页样式作用域 */
 .ws-monitor-page {
-  padding: 24px;
+  min-width: 0;
 }
 
 .ws-monitor-header,
@@ -109,12 +110,37 @@
   min-width: 0;
 }
 
-/* 趋势卡片：复用看板 ChartCard，宽屏三列、窄屏单列；间距由栅格给，卡片自身不带外边距 */
+/* 趋势区：扁平排版（不用卡片），宽屏三列、窄屏单列；范围切换器与曲线同屏 */
 .ws-monitor-trends {
+  margin-bottom: 20px;
+}
+
+.ws-monitor-trends__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.ws-monitor-trends__range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ws-monitor-trends__grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
+  gap: 16px 24px;
+}
+
+.ws-monitor-trend {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 
 .ws-monitor-section {
@@ -164,10 +190,11 @@
   margin-bottom: 12px;
 }
 
+/* 分布筛选标签（断开原因 / 租户）：纯文本计数标签，不画进度条 */
 .ws-monitor-reasons button {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 4px 10px;
   border: 1px solid var(--semi-color-border);
   border-radius: var(--semi-border-radius-small);
@@ -185,24 +212,13 @@
   color: var(--semi-color-primary);
 }
 
-.ws-monitor-reasons i {
-  display: inline-block;
-  width: 80px;
-  height: 6px;
-  border-radius: var(--semi-border-radius-small);
-  background: var(--semi-color-fill-1);
-  overflow: hidden;
-}
-
-.ws-monitor-reasons b {
-  display: block;
-  height: 100%;
-  background: var(--semi-color-primary);
-}
-
 .ws-monitor-reasons em {
   font-style: normal;
   color: var(--semi-color-text-2);
+}
+
+.ws-monitor-reasons button.is-active em {
+  color: inherit;
 }
 
 .ws-monitor-connection-cell {
@@ -408,10 +424,6 @@
 }
 
 @media (max-width: 640px) {
-  .ws-monitor-page {
-    padding: 16px;
-  }
-
   .ws-monitor-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

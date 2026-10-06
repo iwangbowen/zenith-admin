@@ -35,6 +35,30 @@ export type SystemMetricSampleRow = typeof systemMetricSamples.$inferSelect;
 
 export type NewSystemMetricSample = typeof systemMetricSamples.$inferInsert;
 
+// ─── WebSocket 连接趋势采样（分钟级聚合，追加型）────────────────────────────────
+// 进程内环形缓冲只覆盖最近 1 小时（重启即清零），本表由「系统指标与采样落库」任务
+// 每分钟把该窗口聚合成一行，支撑 24 小时 / 7 天范围的历史趋势回溯。
+// 瞬时列（连接 / 用户 / 空闲）取窗口末值，增量列（新建 / 断开 / 收发）取窗口内之和，
+// 失败列取窗口内峰值（采样窗口口径，不是增量）；口径来源见 shared 契约 MonitorWsTrendPoint。
+export const wsMetricSamples = pgTable('ws_metric_samples', {
+  id: idColumn(),
+  sampledAt: timestamptz().notNull().defaultNow(),
+  connections: integer().notNull().default(0),
+  users: integer().notNull().default(0),
+  idle: integer().notNull().default(0),
+  connects: integer().notNull().default(0),
+  disconnects: integer().notNull().default(0),
+  sent: integer().notNull().default(0),
+  recv: integer().notNull().default(0),
+  failed: integer().notNull().default(0),
+}, (t) => [
+  index('ws_metric_samples_at_idx').on(t.sampledAt),
+]);
+
+export type WsMetricSampleRow = typeof wsMetricSamples.$inferSelect;
+
+export type NewWsMetricSample = typeof wsMetricSamples.$inferInsert;
+
 // ─── SQL 查询统计采样（追加型）──────────────────────────────────────────────────
 // 由系统指标采样任务按分钟记录 pg_stat_statements 的 Top SQL 累计快照；
 // 原始明细保留期较短，历史趋势由采样快照的相邻差值计算。

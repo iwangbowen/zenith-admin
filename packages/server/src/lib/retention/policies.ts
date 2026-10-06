@@ -304,6 +304,15 @@ export const RETENTION_POLICIES: readonly RetentionPolicyDefinition[] = [
     description: 'CPU / 内存 / 磁盘等指标采样点，驱动监控趋势图。',
   },
   {
+    key: 'ws_metric_samples',
+    title: 'WebSocket 连接趋势采样',
+    module: '监控告警',
+    tableName: 'ws_metric_samples',
+    timeColumn: 'sampled_at',
+    defaultDays: 30,
+    description: '每分钟一条的连接态与收发增量聚合，驱动「WebSocket 连接」页 1 小时 / 24 小时 / 7 天历史趋势；趋势页最长窗口为 7 天，保留 30 天留出回溯余量。',
+  },
+  {
     key: 'sql_query_samples',
     title: 'SQL 查询采样',
     module: '系统监控',

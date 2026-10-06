@@ -52,3 +52,14 @@ export function useMonitorWsTrend(refetchInterval: number | false = 10000) {
     refetchInterval,
   });
 }
+
+/**
+ * WebSocket 连接趋势的持久化历史（分钟级采样，支持 1h / 24h / 7d）。
+ * 只在切到历史范围时才请求（`enabled`），实时曲线不为此多打一次接口。
+ */
+export function useMonitorWsTrendHistory(range: MonitorHistoryRange, enabled = true) {
+  return useApiQuery(monitorContract.wsTrendHistory, { query: { range } }, {
+    enabled,
+    requestOptions: { silent: true },
+  });
+}

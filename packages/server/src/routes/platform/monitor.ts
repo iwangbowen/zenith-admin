@@ -4,7 +4,7 @@ import { monitorContract } from '@zenith/shared/platform';
 import { defineContractRoute } from '../../lib/contract-route';
 import { okBody, validationHook } from '../../lib/openapi-schemas';
 import { getMonitorStatus, getMonitorTimeseries, getWsMetrics } from '../../services/platform/monitor.service';
-import { getMonitorHistory } from '../../services/platform/monitor-history.service';
+import { getMonitorHistory, getWsTrendHistory } from '../../services/platform/monitor-history.service';
 import { metricsSampler } from '../../lib/metrics-sampler';
 import { getWsTrend } from '../../lib/ws-trend';
 import { currentUser, runWithCurrentUser } from '../../lib/context';
@@ -32,6 +32,13 @@ const wsRoute = defineContractRoute(monitorContract.ws, {
 
 const wsTrendRoute = defineContractRoute(monitorContract.wsTrend, {
   handler: (c) => c.json(okBody(getWsTrend(), 'success'), 200),
+});
+
+const wsTrendHistoryRoute = defineContractRoute(monitorContract.wsTrendHistory, {
+  handler: async (c) => {
+    const { range } = c.req.valid('query');
+    return c.json(okBody(await getWsTrendHistory(range), 'success'), 200);
+  },
 });
 
 /**
@@ -153,6 +160,6 @@ const streamRoute = defineContractRoute(monitorContract.stream, {
   },
 });
 
-monitorRouter.openapiRoutes([statusRoute, timeseriesRoute, historyRoute, wsRoute, wsTrendRoute, streamRoute] as const);
+monitorRouter.openapiRoutes([statusRoute, timeseriesRoute, historyRoute, wsRoute, wsTrendRoute, wsTrendHistoryRoute, streamRoute] as const);
 
 export default monitorRouter;

@@ -13,7 +13,9 @@
 | `GET /api/monitor` | 当前监控快照 |
 | `GET /api/monitor/timeseries` | 进程内最近 1 小时时序数据 |
 | `GET /api/monitor/history?range=...` | 持久化历史趋势，按时间范围分桶聚合 |
-| `GET /api/monitor/ws` | WebSocket 实时连接指标 |
+| `GET /api/monitor/ws` | WebSocket 实时连接指标（含租户分布与跨进程扇出统计） |
+| `GET /api/monitor/ws/trend` | WebSocket 连接趋势（进程内最近 1 小时，10 秒/点） |
+| `GET /api/monitor/ws/trend/history?range=...` | WebSocket 连接趋势的持久化历史，按时间范围分桶聚合 |
 | `GET /api/monitor/stream` | SSE 实时推送监控指标 |
 
 SSE 首帧推送完整 `metrics`、全量 `series` 和 `ws` 指标；后续采样 tick 推送 `metrics:diff`、`series:point` 与 `ws`。客户端按差量深合并，避免整页轮询。
@@ -23,6 +25,16 @@ SSE 首帧推送完整 `metrics`、全量 `series` 和 `ws` 指标；后续采�
 历史趋势显示本次查询成功时间与最新数据时段；数据时段是聚合桶的起点，并非精确采样时间。手动刷新未发现历史数据变化时提示“暂无新增采样”；查询失败保留已显示的同范围图表并提示重试。
 
 `system_metric_samples` 存储基础设施指标采样点，采样任务默认每分钟落库。`/history` 支持 `1h`、`6h`、`24h`、`7d`、`30d` 范围，每个范围使用不同分桶粒度并返回均值与峰值。
+
+## WebSocket 连接监控
+
+「WebSocket 连接」（`/system/monitor/websocket`，权限 `system:monitor:view`）聚合网关节点、连接明细、消息采样、断开记录与关系拓扑。
+
+**趋势口径分两段**：`/ws/trend` 读 api 进程的采样环形缓冲（10 秒/点、保留 1 小时，随系统指标采样同节拍采集，进程重启后重新累积）；`/ws/trend/history` 读每分钟落库的 `ws_metric_samples`，支持 `1h`、`6h`、`24h`、`7d`、`30d` 分桶。瞬时列（连接 / 在线用户 / 空闲）在两处都取窗口末值，增量列（新建 / 断开 / 收发）实时侧是相邻帧差分、历史侧是桶内求和，因此换算速率的窗口宽度不同：实时用 `intervalSec`、历史用 `bucketSec`。进程重启导致计数器回退时该帧直接丢弃（不写负值），趋势上表现为断点而非尖峰。`ws_metric_samples` 由数据保留策略按 30 天清理。
+
+**跨进程扇出统计**：`/api/monitor/ws` 的 `fanout` 是平台级口径（不随可见范围裁剪），按节点给出订阅状态与 publish / publishFailed / delivered / dropped 计数，页面顶部汇总一条、节点表逐节点展示。推送为 at-most-once，订阅降级期间发出的信封不补发，因此 `degradedNodes > 0`、`publishFailed` 与 `dropped` 是“跨节点丢消息”唯一可观测的证据；计数为进程级累计值，该节点重启后归零（与累计收发同样会回退）。
+
+**租户维度**：连接的 `tenantId` 由用户现解析，`tenants` 按可见连接聚合（平台侧用户归入 `tenantId` 为空的一组），页面据此提供租户筛选标签与「租户」列。可见范围与「在线用户」页一致：平台管理员在平台视角看全部，切到租户视角或非平台管理员只看本租户，且看不到绑定平台超管角色用户的连接。
 
 ## 指标口径
 

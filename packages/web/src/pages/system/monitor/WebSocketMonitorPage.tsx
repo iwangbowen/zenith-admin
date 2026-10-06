@@ -22,6 +22,7 @@ import {
   type MonitorWsConnection,
   type MonitorWsDisconnect,
   type MonitorWsMessage,
+  type MonitorWsFanoutNode,
   type MonitorWsNode,
   type WsTopicDirectionStat,
 } from '@zenith/shared/platform';
@@ -35,6 +36,25 @@ type ConnectionStatus = 'active' | 'idle';
 const numberFormatter = new Intl.NumberFormat('zh-CN');
 const formatNumber = (value: number) => numberFormatter.format(value);
 const formatRate = (value: number) => (Number.isInteger(value) ? formatNumber(value) : value.toFixed(1));
+
+/** 扇出订阅状态展示：只有 `subscribed` 才代表跨进程推送可达 */
+type WsFanoutState = MonitorWsFanoutNode['state'];
+
+const WS_FANOUT_STATE_LABELS: Record<WsFanoutState, string> = {
+  subscribed: '正常',
+  degraded: '降级',
+  idle: '未订阅',
+};
+
+const WS_FANOUT_STATE_COLORS: Record<WsFanoutState, 'green' | 'red' | 'grey'> = {
+  subscribed: 'green',
+  degraded: 'red',
+  idle: 'grey',
+};
+
+/** 租户分布的分组键：平台侧用户（tenantId 为空）单独一组 */
+const PLATFORM_TENANT_KEY = 'platform';
+const tenantKey = (tenantId: number | null) => (tenantId === null ? PLATFORM_TENANT_KEY : String(tenantId));
 
 function toStatus(connection: MonitorWsConnection, now: number): ConnectionStatus {
   return isWsConnectionActive(connection.lastActivityAt, now) ? 'active' : 'idle';
@@ -87,6 +107,7 @@ export default function WebSocketMonitorPage() {
   const [keyword, setKeyword] = useState('');
   const [status, setStatus] = useState<ConnectionStatus | 'all'>('all');
   const [nodeFilter, setNodeFilter] = useState<string>('all');
+  const [tenantFilter, setTenantFilter] = useState<string>('all');
   const [activeView, setActiveView] = useState('connections');
   const [messageDirection, setMessageDirection] = useState<'all' | MonitorWsMessage['direction']>('all');
   const [messageKeyword, setMessageKeyword] = useState('');
@@ -106,6 +127,17 @@ export default function WebSocketMonitorPage() {
 
   const messages = useMemo(() => metrics?.messages ?? [], [metrics]);
   const nodes = useMemo(() => metrics?.nodes ?? [], [metrics]);
+  /** 租户分布（服务端按可见连接现算），同时供表格列取租户名 */
+  const tenantStats = useMemo(() => metrics?.tenants ?? [], [metrics]);
+  const tenantNames = useMemo(
+    () => new Map(tenantStats.filter((t) => t.tenantId !== null).map((t) => [t.tenantId as number, t.tenantName ?? `#${t.tenantId}`])),
+    [tenantStats],
+  );
+  /** 扇出画像按节点索引：节点表要按 nodeId 取本节点的订阅状态与投递计数 */
+  const fanoutByNode = useMemo(
+    () => new Map((metrics?.fanout.nodes ?? []).map((node) => [node.nodeId, node])),
+    [metrics],
+  );
 
   const health = useMemo(
     () => (metrics ? summarizeWsHealth(metrics.connections, metrics.currentUsers, messages, now) : null),
@@ -195,9 +227,10 @@ export default function WebSocketMonitorPage() {
         matchesKeyword
         && (status === 'all' || toStatus(connection, now) === status)
         && (nodeFilter === 'all' || connection.nodeId === nodeFilter)
+        && (tenantFilter === 'all' || tenantKey(connection.tenantId) === tenantFilter)
       );
     });
-  }, [keyword, metrics, now, status, nodeFilter]);
+  }, [keyword, metrics, now, status, nodeFilter, tenantFilter]);
 
   const filteredMessages = useMemo(() => {
     const normalized = messageKeyword.trim().toLowerCase();
@@ -280,6 +313,45 @@ export default function WebSocketMonitorPage() {
     { title: '在线用户', dataIndex: 'users', width: 100, align: 'right' as const, render: (value: number) => formatNumber(value) },
     { title: '发送', dataIndex: 'sent', width: 100, align: 'right' as const, render: (value: number) => formatNumber(value) },
     { title: '接收', dataIndex: 'recv', width: 100, align: 'right' as const, render: (value: number) => formatNumber(value) },
+    // 扇出画像：跨进程推送是否可达、发出去多少、收到多少、丢了多少
+    {
+      title: '扇出订阅',
+      dataIndex: 'fanoutState',
+      key: 'fanoutState',
+      width: 110,
+      render: (_: unknown, record: MonitorWsNode) => (
+        <Tag size="small" color={WS_FANOUT_STATE_COLORS[fanoutByNode.get(record.nodeId)?.state ?? 'idle']}>
+          {WS_FANOUT_STATE_LABELS[fanoutByNode.get(record.nodeId)?.state ?? 'idle']}
+        </Tag>
+      ),
+    },
+    {
+      title: '扇出发布',
+      dataIndex: 'fanoutPublished',
+      key: 'fanoutPublished',
+      width: 110,
+      align: 'right' as const,
+      render: (_: unknown, record: MonitorWsNode) => formatNumber(fanoutByNode.get(record.nodeId)?.published ?? 0),
+    },
+    {
+      title: '跨进程投递',
+      dataIndex: 'fanoutDelivered',
+      key: 'fanoutDelivered',
+      width: 120,
+      align: 'right' as const,
+      render: (_: unknown, record: MonitorWsNode) => formatNumber(fanoutByNode.get(record.nodeId)?.delivered ?? 0),
+    },
+    {
+      title: '扇出丢弃',
+      dataIndex: 'fanoutDropped',
+      key: 'fanoutDropped',
+      width: 110,
+      align: 'right' as const,
+      render: (_: unknown, record: MonitorWsNode) => {
+        const dropped = fanoutByNode.get(record.nodeId)?.dropped ?? 0;
+        return dropped > 0 ? <Text type="danger" strong>{formatNumber(dropped)}</Text> : formatNumber(dropped);
+      },
+    },
   ];
 
   const topicColumns: ColumnProps<WsTopicDirectionStat>[] = [
@@ -314,6 +386,15 @@ export default function WebSocketMonitorPage() {
       ),
     },
     { title: '节点', dataIndex: 'nodeId', width: 180, render: (value: string | undefined) => value ?? EMPTY_PLACEHOLDER },
+    {
+      title: '租户',
+      dataIndex: 'tenantId',
+      width: 140,
+      ellipsis: { showTitle: true },
+      render: (_: unknown, record: MonitorWsConnection) => record.tenantId === null
+        ? <Text type="tertiary" size="small">平台</Text>
+        : (tenantNames.get(record.tenantId) ?? `#${record.tenantId}`),
+    },
     {
       title: '用户',
       dataIndex: 'userId',
@@ -418,13 +499,12 @@ export default function WebSocketMonitorPage() {
     { title: '接收', dataIndex: 'recv', width: 90, align: 'right' as const, render: (value: number) => formatNumber(value) },
   ];
 
-  const hasConnectionFilter = keyword !== '' || status !== 'all' || nodeFilter !== 'all';
+  const hasConnectionFilter = keyword !== '' || status !== 'all' || nodeFilter !== 'all' || tenantFilter !== 'all';
   const hasMessageFilter = messageKeyword !== '' || messageType !== 'all' || messageNode !== 'all' || messageResult !== 'all' || messageDirection !== 'all';
   const hasDisconnectFilter = reasonFilter !== 'all' || disconnectNode !== 'all';
-  const maxReasonCount = reasonStats[0]?.count ?? 0;
 
   return (
-    <div className="ws-monitor-page">
+    <div className="page-container ws-monitor-page">
       <div className="ws-monitor-header">
         <div className="ws-monitor-heading">
           <Title heading={5}><RadioTower size={18} />WebSocket 连接</Title>
@@ -456,6 +536,18 @@ export default function WebSocketMonitorPage() {
             </div>
           )}
 
+          {/* 跨进程扇出：本进程与其它 api 节点之间的推送可达性。
+              推送是 at-most-once，降级期间发出的信封不会补发，因此订阅状态与丢弃数是丢消息的唯一证据 */}
+          <div className="ws-monitor-health">
+            <span>
+              跨进程扇出 <strong>{metrics.fanout.degradedNodes > 0 ? '降级' : '正常'}</strong>
+              {`（${metrics.fanout.subscribedNodes}/${nodes.length} 个节点已订阅${metrics.fanout.degradedNodes > 0 ? `，${metrics.fanout.degradedNodes} 个降级` : ''}）`}
+            </span>
+            <span>发布信封 <strong>{formatNumber(metrics.fanout.published)}</strong> 封{metrics.fanout.publishFailed > 0 ? `（失败 ${formatNumber(metrics.fanout.publishFailed)}）` : ''}</span>
+            <span>跨进程投递 <strong>{formatNumber(metrics.fanout.delivered)}</strong> 封</span>
+            <span>丢弃 <strong>{formatNumber(metrics.fanout.dropped)}</strong> 封</span>
+          </div>
+
           <div className="ws-monitor-view-tabs" role="tablist" aria-label="WebSocket 监控视图">
             <button type="button" className={activeView === 'connections' ? 'is-active' : ''} onClick={() => setActiveView('connections')}>连接总览</button>
             <button type="button" className={activeView === 'messages' ? 'is-active' : ''} onClick={() => setActiveView('messages')}>消息流（{messages.length}）</button>
@@ -480,9 +572,37 @@ export default function WebSocketMonitorPage() {
                 <Button theme={status === 'all' ? 'solid' : 'light'} size="small" onClick={() => setStatus('all')}>全部</Button>
                 <Button theme={status === 'active' ? 'solid' : 'light'} size="small" onClick={() => setStatus('active')}>活跃</Button>
                 <Button theme={status === 'idle' ? 'solid' : 'light'} size="small" onClick={() => setStatus('idle')}>空闲</Button>
-                {hasConnectionFilter && <Button icon={<X size={14} />} theme="borderless" size="small" onClick={() => { setKeyword(''); setStatus('all'); setNodeFilter('all'); }}>清除</Button>}
+                {hasConnectionFilter && <Button icon={<X size={14} />} theme="borderless" size="small" onClick={() => { setKeyword(''); setStatus('all'); setNodeFilter('all'); setTenantFilter('all'); }}>清除</Button>}
               </div>
             </div>
+            {/* 租户分布：直接点击切换筛选，与「最近断开」的原因标签同一交互（纯文本计数，不画进度条） */}
+            {tenantStats.length > 0 && (
+              <div className="ws-monitor-reasons" aria-label="租户分布">
+                <button
+                  type="button"
+                  className={tenantFilter === 'all' ? 'is-active' : ''}
+                  onClick={() => setTenantFilter('all')}
+                >
+                  <span>全部租户</span>
+                  <em>{formatNumber(metrics.connections.length)} 条 · {formatNumber(metrics.currentUsers)} 人</em>
+                </button>
+                {tenantStats.map((tenant) => {
+                  const key = tenantKey(tenant.tenantId);
+                  const label = tenant.tenantId === null ? '平台' : (tenant.tenantName ?? `#${tenant.tenantId}`);
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className={tenantFilter === key ? 'is-active' : ''}
+                      onClick={() => setTenantFilter((prev) => (prev === key ? 'all' : key))}
+                    >
+                      <span>{label}</span>
+                      <em>{formatNumber(tenant.connections)} 条 · {formatNumber(tenant.users)} 人{tenant.idle > 0 ? ` · 空闲 ${formatNumber(tenant.idle)}` : ''}</em>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <ConfigurableTable<MonitorWsConnection>
               columnSettingsKey="ws-monitor-connections"
               columns={connectionColumns}
@@ -530,8 +650,7 @@ export default function WebSocketMonitorPage() {
                     title={`${r.reason}：${r.count} 次`}
                   >
                     <span>{r.reason}</span>
-                    <i><b style={{ width: `${maxReasonCount > 0 ? Math.max(4, Math.round((r.count / maxReasonCount) * 100)) : 0}%` }} /></i>
-                    <em>{formatNumber(r.count)}</em>
+                    <em>{formatNumber(r.count)} 次</em>
                   </button>
                 ))}
               </div>

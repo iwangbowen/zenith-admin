@@ -169,8 +169,10 @@ export async function stopWsFanoutSubscriber(): Promise<void> {
   }
 }
 
-/** 当前订阅状态：`subscribed` 正常；`degraded` 未建立 / 已断开；`idle` 本进程不持有连接（worker）或尚未启动 */
-export function wsFanoutState(): 'idle' | 'subscribed' | 'degraded' {
+/** 扇出订阅状态：`subscribed` 正常；`degraded` 未建立 / 已断开；`idle` 本进程不持有连接（worker）或尚未启动 */
+export type WsFanoutState = 'idle' | 'subscribed' | 'degraded';
+
+export function wsFanoutState(): WsFanoutState {
   return state;
 }
 

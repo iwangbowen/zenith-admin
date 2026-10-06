@@ -4,7 +4,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { db } from '../../db';
 import { sql, inArray } from 'drizzle-orm';
-import { users } from '../../db/schema';
+import { tenants, users } from '../../db/schema';
+import { isWsConnectionActive } from '@zenith/shared/platform';
 import redis from '../../lib/redis';
 import logger from '../../lib/logger';
 import { metricsSampler } from '../../lib/metrics-sampler';
@@ -672,7 +673,7 @@ export async function getWsMetrics() {
   // 消息明细也带 userId：当前无连接、无断开记录的用户仍可能出现在采样里，不纳入就无从判断其租户
   for (const m of snap.messages) if (m.userId !== null) userIds.add(m.userId);
 
-  const userMap = new Map<number, { username: string | null; nickname: string | null }>();
+  const userMap = new Map<number, { username: string | null; nickname: string | null; tenantId: number | null }>();
   const userScopes: Array<{ id: number; tenantId: number | null }> = [];
   if (userIds.size > 0) {
     const rows = await db
@@ -680,7 +681,7 @@ export async function getWsMetrics() {
       .from(users)
       .where(inArray(users.id, [...userIds]));
     for (const r of rows) {
-      userMap.set(r.id, { username: r.username ?? null, nickname: r.nickname ?? null });
+      userMap.set(r.id, { username: r.username ?? null, nickname: r.nickname ?? null, tenantId: r.tenantId ?? null });
       userScopes.push({ id: r.id, tenantId: r.tenantId ?? null });
     }
   }
@@ -697,6 +698,13 @@ export async function getWsMetrics() {
   });
   const visible = visibleUserIds ? filterWsClusterSnapshot(snap, visibleUserIds) : snap;
 
+  const connections = visible.connections.map((c) => ({
+    ...c,
+    tenantId: userMap.get(c.userId)?.tenantId ?? null,
+    username: userMap.get(c.userId)?.username ?? null,
+    nickname: userMap.get(c.userId)?.nickname ?? null,
+  }));
+
   return {
     currentConnections: visible.currentConnections,
     currentUsers: visible.currentUsers,
@@ -707,17 +715,56 @@ export async function getWsMetrics() {
     messages: visible.messages,
     nodes: visible.nodes,
     topics: visible.topics,
-    connections: visible.connections.map((c) => ({
-      ...c,
-      username: userMap.get(c.userId)?.username ?? null,
-      nickname: userMap.get(c.userId)?.nickname ?? null,
-    })),
+    connections,
     recentDisconnects: visible.recentDisconnects.map((d) => ({
       ...d,
       username: userMap.get(d.userId)?.username ?? null,
       nickname: userMap.get(d.userId)?.nickname ?? null,
     })),
+    tenants: await summarizeWsTenants(connections, Date.now()),
+    fanout: visible.fanout,
   };
+}
+
+/**
+ * 按租户聚合可见连接：连接态（连接数 / 在线用户 / 空闲）与累计收发。
+ *
+ * 平台侧用户（`tenantId` 为空）归入同一组并以 `tenantId: null` 展示；
+ * 租户名称只在确有跨租户连接需要区分时才查库，单租户部署下多一次查询没有收益。
+ */
+async function summarizeWsTenants(
+  connections: ReadonlyArray<{ userId: number; tenantId: number | null; sent: number; recv: number; lastActivityAt: number }>,
+  now: number,
+) {
+  const groups = new Map<number | null, { users: Set<number>; connections: number; sent: number; recv: number; idle: number }>();
+  for (const c of connections) {
+    const group = groups.get(c.tenantId) ?? { users: new Set<number>(), connections: 0, sent: 0, recv: 0, idle: 0 };
+    group.users.add(c.userId);
+    group.connections += 1;
+    group.sent += c.sent;
+    group.recv += c.recv;
+    if (!isWsConnectionActive(c.lastActivityAt, now)) group.idle += 1;
+    groups.set(c.tenantId, group);
+  }
+
+  const tenantIds = [...groups.keys()].filter((id): id is number => id !== null);
+  const names = new Map<number, string>();
+  if (tenantIds.length > 0) {
+    const rows = await db.select({ id: tenants.id, name: tenants.name }).from(tenants).where(inArray(tenants.id, tenantIds));
+    for (const row of rows) names.set(row.id, row.name);
+  }
+
+  return [...groups.entries()]
+    .map(([tenantId, group]) => ({
+      tenantId,
+      tenantName: tenantId === null ? null : (names.get(tenantId) ?? null),
+      connections: group.connections,
+      users: group.users.size,
+      sent: group.sent,
+      recv: group.recv,
+      idle: group.idle,
+    }))
+    .sort((a, b) => b.connections - a.connections);
 }
 
 // ─── 外部慢指标采集器（DB / Redis 时序） ─────────────────────────────

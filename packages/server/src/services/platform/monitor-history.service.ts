@@ -9,8 +9,9 @@
 import os from 'node:os';
 import { sql, gte, type AnyColumn } from 'drizzle-orm';
 import { db } from '../../db';
-import { sqlQuerySamples, systemMetricSamples } from '../../db/schema';
+import { sqlQuerySamples, systemMetricSamples, wsMetricSamples } from '../../db/schema';
 import { metricsSampler } from '../../lib/metrics-sampler';
+import { takeWsTrendWindow } from '../../lib/ws-trend';
 import { formatDateTime } from '../../lib/datetime';
 import logger from '../../lib/logger';
 import { getSettings } from '../../lib/settings';
@@ -198,8 +199,16 @@ export async function persistSqlQuerySamples(): Promise<number> {
   }
 }
 
-/** 落库一条系统指标和一批 SQL 查询采样（pg-boss 定时调用）。 */
-export async function persistMetricSample(): Promise<{ systemMetricStored: boolean; sqlQuerySamples: number }> {
+/**
+ * 落库一条系统指标、一批 SQL 查询采样与一条 WebSocket 连接趋势采样（pg-boss 定时调用，每分钟）。
+ * WS 采样取自进程内环形缓冲的增量窗口；窗口不足一个采样周期时 `takeWsTrendWindow` 返回 null，
+ * 不写空行，避免曲线被填成 0。
+ */
+export async function persistMetricSample(): Promise<{
+  systemMetricStored: boolean;
+  sqlQuerySamples: number;
+  wsTrendStored: boolean;
+}> {
   let systemMetricStored = false;
   if (metricsSampler.getLatest()) {
     // 采样表只存基础设施列，无需为此触发各业务域的派生指标查询
@@ -224,7 +233,58 @@ export async function persistMetricSample(): Promise<{ systemMetricStored: boole
     systemMetricStored = true;
   }
 
-  return { systemMetricStored, sqlQuerySamples: await persistSqlQuerySamples() };
+  const wsTrend = takeWsTrendWindow();
+  if (wsTrend) await db.insert(wsMetricSamples).values(wsTrend);
+  return { systemMetricStored, sqlQuerySamples: await persistSqlQuerySamples(), wsTrendStored: wsTrend !== null };
+}
+
+/**
+ * WebSocket 连接趋势的持久化历史：按时间范围分桶聚合。
+ *
+ * 瞬时列（连接 / 用户 / 空闲）取桶内**最后一个采样值**（用 max(sampled_at) 对应的行，
+ * 而非平均——在线连接数被平均后画出来是一个不存在的中间态）；
+ * 增量列取桶内之和，失败列取桶内峰值（该列本身已是采样窗口口径）。
+ * 分桶窗口与 `MONITOR_HISTORY_RANGE_CONFIG` 同源，与系统指标历史图保持一致的时间轴。
+ */
+export async function getWsTrendHistory(range: string) {
+  const cfg = MONITOR_HISTORY_RANGE_CONFIG[range as MonitorHistoryRange] ?? MONITOR_HISTORY_RANGE_CONFIG['1h'];
+  const since = new Date(Date.now() - cfg.windowSec * 1000);
+  const bucketExpr = sql<number>`floor(extract(epoch from ${wsMetricSamples.sampledAt}) / ${cfg.bucketSec})`;
+  /** 桶内最后一个采样值：按采样时间倒序取数组首元素 */
+  const last = (col: AnyColumn) => sql<number>`(array_agg(${col} order by ${wsMetricSamples.sampledAt} desc))[1]::float`;
+  const total = (col: AnyColumn) => sql<number>`sum(${col})::float`;
+  const rows = await db
+    .select({
+      bucket: bucketExpr,
+      connections: last(wsMetricSamples.connections),
+      users: last(wsMetricSamples.users),
+      idle: last(wsMetricSamples.idle),
+      connects: total(wsMetricSamples.connects),
+      disconnects: total(wsMetricSamples.disconnects),
+      sent: total(wsMetricSamples.sent),
+      recv: total(wsMetricSamples.recv),
+      failed: sql<number>`max(${wsMetricSamples.failed})::float`,
+    })
+    .from(wsMetricSamples)
+    .where(gte(wsMetricSamples.sampledAt, since))
+    // 与系统指标历史同样按输出第一列（分桶表达式）的序号分组 / 排序，避免 PG 42803
+    .groupBy(sql`1`)
+    .orderBy(sql`1`);
+
+  const round = (value: number) => Math.round(Number(value));
+  const points = rows.map((row) => ({
+    t: formatDateTime(new Date(Number(row.bucket) * cfg.bucketSec * 1000)),
+    connections: round(row.connections),
+    users: round(row.users),
+    idle: round(row.idle),
+    connects: round(row.connects),
+    disconnects: round(row.disconnects),
+    sent: round(row.sent),
+    recv: round(row.recv),
+    failed: round(row.failed),
+  }));
+
+  return { range, bucketSec: cfg.bucketSec, points };
 }
 
 /** 按时间范围分桶聚合查询历史趋势（每桶取平均值 + 峰值）。 */

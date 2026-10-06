@@ -8,6 +8,7 @@ import {
   type MonitorTimeseriesPoint,
   type MonitorWsMetrics,
   type MonitorWsTrend,
+  type MonitorWsTrendHistory,
   type MonitorWsTrendPoint,
 } from '@zenith/shared/platform';
 import { mock } from '@/mocks/utils/contract';
@@ -303,14 +304,29 @@ function buildWsMetrics(): MonitorWsMetrics {
       { id: 'm-2', at: now - 2600, direction: 'inbound', nodeId: 'demo-node', connId: '101', userId: 1, type: 'chat:typing', topic: 'chat', bytes: 96, success: true },
     ],
     nodes: [{ nodeId: 'demo-node', connections: 3, users: 2, sent: 4521, recv: 1023 }],
+    // 扇出：演示单节点部署下订阅正常、有一封被丢弃的远端信封
+    fanout: {
+      published: 386,
+      publishFailed: 0,
+      delivered: 12,
+      dropped: 1,
+      subscribedNodes: 1,
+      degradedNodes: 0,
+      nodes: [{ nodeId: 'demo-node', state: 'subscribed', published: 386, publishFailed: 0, delivered: 12, dropped: 1 }],
+    },
     topics: [
       { topic: 'in-app-message', messages: 1, bytes: 482 },
       { topic: 'chat', messages: 1, bytes: 96 },
     ],
     connections: [
-      { connId: '101', nodeId: 'demo-node', tokenId: 'a1b2c3d4e5f6', userId: 1, username: 'admin', nickname: '超级管理员', ip: '203.0.113.10', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', lastMessageType: 'in-app-message:new', lastMessageAt: now - 5_000, lastDirection: 'outbound', connectedAt: now - 1_200_000, lastActivityAt: now - 5_000, sent: 42, recv: 18 },
-      { connId: '102', nodeId: 'demo-node', tokenId: 'a1b2c3d4e5f6', userId: 1, username: 'admin', nickname: '超级管理员', ip: '203.0.113.10', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', lastMessageType: 'chat:typing', lastMessageAt: now - 1_200, lastDirection: 'inbound', connectedAt: now - 320_000, lastActivityAt: now - 1_200, sent: 11, recv: 3 },
-      { connId: '103', nodeId: 'demo-node', tokenId: '0123456789ab', userId: 2, username: 'demo', nickname: '演示账号', ip: '198.51.100.23', userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15', lastMessageType: 'chat:presence', lastMessageAt: now - 800, lastDirection: 'outbound', connectedAt: now - 60_000, lastActivityAt: now - 800, sent: 6, recv: 2 },
+      { connId: '101', nodeId: 'demo-node', tokenId: 'a1b2c3d4e5f6', userId: 1, tenantId: null, username: 'admin', nickname: '超级管理员', ip: '203.0.113.10', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', lastMessageType: 'in-app-message:new', lastMessageAt: now - 5_000, lastDirection: 'outbound', connectedAt: now - 1_200_000, lastActivityAt: now - 5_000, sent: 42, recv: 18 },
+      { connId: '102', nodeId: 'demo-node', tokenId: 'a1b2c3d4e5f6', userId: 1, tenantId: null, username: 'admin', nickname: '超级管理员', ip: '203.0.113.10', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', lastMessageType: 'chat:typing', lastMessageAt: now - 1_200, lastDirection: 'inbound', connectedAt: now - 320_000, lastActivityAt: now - 1_200, sent: 11, recv: 3 },
+      { connId: '103', nodeId: 'demo-node', tokenId: '0123456789ab', userId: 2, tenantId: 1, username: 'demo', nickname: '演示账号', ip: '198.51.100.23', userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15', lastMessageType: 'chat:presence', lastMessageAt: now - 800, lastDirection: 'outbound', connectedAt: now - 60_000, lastActivityAt: now - 800, sent: 6, recv: 2 },
+    ],
+    // 租户分布：平台侧（tenantId 为空）与「示例租户A」各一组
+    tenants: [
+      { tenantId: null, tenantName: null, connections: 2, users: 1, sent: 53, recv: 21, idle: 0 },
+      { tenantId: 1, tenantName: '示例租户A', connections: 1, users: 1, sent: 6, recv: 2, idle: 0 },
     ],
     recentDisconnects: [
       { connId: '99', nodeId: 'demo-node', tokenId: 'aaa11122233', userId: 2, username: 'demo', nickname: '演示账号', ip: '198.51.100.23', userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/17.0 Safari/605.1.15', at: now - 30_000, reason: 'client-close', duration: 240_000, sent: 8, recv: 4 },
@@ -344,12 +360,42 @@ function buildWsTrend(): MonitorWsTrend {
   return { intervalSec, capacity, points };
 }
 
+/**
+ * 落库趋势的演示数据：按范围分桶，瞬时列走波形、增量列按桶宽换算，
+ * 与真实实现的聚合口径一致（因而「1 小时」能看出与实时曲线同量级的形状）。
+ */
+function buildWsTrendHistory(range: MonitorHistoryRange): MonitorWsTrendHistory {
+  const cfg = MONITOR_HISTORY_RANGE_CONFIG[range];
+  const count = Math.floor(cfg.windowSec / cfg.bucketSec);
+  const now = Date.now();
+  const points: MonitorWsTrendHistory['points'] = [];
+  for (let i = count - 1; i >= 0; i -= 1) {
+    const phase = (count - i) / 18;
+    const connections = 6 + Math.round(Math.sin(phase) * 3) + (i % 7 === 0 ? 2 : 0);
+    const users = Math.max(1, connections - 2 - (i % 5 === 0 ? 1 : 0));
+    const perBucket = cfg.bucketSec / 10;
+    points.push({
+      t: fmtHistoryTime(new Date(now - i * cfg.bucketSec * 1000)),
+      connections,
+      users,
+      idle: i % 11 === 0 ? 2 : i % 6 === 0 ? 1 : 0,
+      connects: Math.round((i % 9 === 0 ? 2 : i % 4 === 0 ? 1 : 0) * perBucket),
+      disconnects: Math.round((i % 13 === 0 ? 2 : i % 5 === 0 ? 1 : 0) * perBucket),
+      sent: Math.round((20 + Math.abs(Math.sin(phase * 1.7)) * 60) * perBucket),
+      recv: Math.round((6 + Math.abs(Math.cos(phase * 1.3)) * 18) * perBucket),
+      failed: i % 23 === 0 ? 1 : 0,
+    });
+  }
+  return { range: range as string, bucketSec: cfg.bucketSec, points };
+}
+
 export const monitorHandlers = [
   mock(monitorContract.snapshot, ({ ok }) => ok(baseStatus, 'success')),
   mock(monitorContract.timeseries, ({ ok }) => ok({ intervalSec: 10, capacity: 360, points: buildSeries() }, 'success')),
   mock(monitorContract.history, ({ query, ok }) => ok(buildHistory(query.range ?? '1h'), 'success')),
   mock(monitorContract.ws, ({ ok }) => ok(buildWsMetrics(), 'success')),
   mock(monitorContract.wsTrend, ({ ok }) => ok(buildWsTrend(), 'success')),
+  mock(monitorContract.wsTrendHistory, ({ query, ok }) => ok(buildWsTrendHistory(query.range ?? '1h'), 'success')),
   // SSE 推送：首帧发送 metrics/series/ws 全量；后续每 10s 发送 metrics:diff + series:point + ws
   mock(monitorContract.stream, () => {
     const encoder = new TextEncoder();
