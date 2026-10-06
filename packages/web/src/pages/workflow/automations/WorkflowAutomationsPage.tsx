@@ -438,9 +438,10 @@ export default function WorkflowAutomationsPage() {
 
   const columns: ColumnProps<WorkflowAutomation>[] = [
     { title: 'ID', dataIndex: 'id', width: 70 },
-    { title: '所属流程', dataIndex: 'definitionName', width: 200,
+    // 所属流程 / 名称：单行省略（Semi 列级 ellipsis，悬停出原生 title），不换行撑高行高
+    { title: '所属流程', dataIndex: 'definitionName', width: 290, ellipsis: { showTitle: true },
       render: (_v, r) => r.definitionName ?? `#${r.definitionId}` },
-    { title: '名称', dataIndex: 'name', minWidth: 200 },
+    { title: '名称', dataIndex: 'name', minWidth: 220, ellipsis: { showTitle: true } },
     {
       title: '触发时机', dataIndex: 'trigger', width: 110,
       render: (v: WorkflowAutomationTrigger) => {

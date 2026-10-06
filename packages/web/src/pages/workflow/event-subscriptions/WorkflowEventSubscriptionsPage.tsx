@@ -410,7 +410,10 @@ export default function WorkflowEventSubscriptionsPage() {
           <Col xs={24} sm={12}>
             <Form.Switch field="enabled" label="启用" />
           </Col>
-          <Col xs={24} sm={12}>
+        </Row>
+        {/* 连接器选项带类型与停用标识、文案较长，单独占一行，避免半宽被截断 */}
+        <Row gutter={16}>
+          <Col span={24}>
             <Form.Select
               field="connectorId" label="连接器" showClear
               style={{ width: '100%' }}
