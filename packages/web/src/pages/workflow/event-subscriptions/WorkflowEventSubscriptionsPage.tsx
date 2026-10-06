@@ -250,12 +250,13 @@ export default function WorkflowEventSubscriptionsPage() {
 
   const columns: ColumnProps<WorkflowEventSubscription>[] = [
     { title: 'ID', dataIndex: 'id', width: 70 },
-    { title: '名称', dataIndex: 'name', width: 180 },
+    // 名称 / 范围：单行省略（Semi 列级 ellipsis，悬停出原生 title）
+    { title: '名称', dataIndex: 'name', width: 260, ellipsis: { showTitle: true } },
     {
-      title: '范围', dataIndex: 'definitionName', width: 160,
+      title: '范围', dataIndex: 'definitionName', width: 200, ellipsis: { showTitle: true },
       render: (_v, r) => r.definitionId === null
         ? <Tag color="blue">全局</Tag>
-        : <Typography.Text>{r.definitionName ?? `#${r.definitionId}`}</Typography.Text>,
+        : (r.definitionName ?? `#${r.definitionId}`),
     },
     overflowTagColumn<WorkflowEventSubscription>({
       title: '订阅事件',

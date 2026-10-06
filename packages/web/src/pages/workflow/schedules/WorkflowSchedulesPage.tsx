@@ -177,29 +177,34 @@ export default function WorkflowSchedulesPage() {
     {
       title: '规则名称',
       dataIndex: 'name',
-      minWidth: 180,
+      minWidth: 240,
+      ellipsis: { showTitle: true },
     },
     {
       title: '流程',
       dataIndex: 'definitionName',
-      width: 180,
+      width: 230,
+      ellipsis: { showTitle: true },
       render: (_value: unknown, record) => record.definitionName ?? `#${record.definitionId}`,
     },
     {
       title: '发起人',
       dataIndex: 'initiatorName',
-      width: 140,
+      width: 190,
+      ellipsis: { showTitle: true },
       render: (_value: unknown, record) => record.initiatorName ?? `#${record.initiatorId}`,
     },
     {
       title: 'Cron 表达式',
       dataIndex: 'cronExpression',
-      width: 180,
+      width: 240,
+      ellipsis: { showTitle: false },
+      // 表达式与可选时区标签固定同一行：超长时表达式末尾省略，标签不换行下移
       render: (value: string, record) => (
-        <Space spacing={6}>
-          <code style={{ fontFamily: 'var(--semi-font-family-monospace), monospace' }}>{value}</code>
-          {record.timezone && record.timezone !== DEFAULT_TIMEZONE ? <Tag size="small" color="blue">{record.timezone}</Tag> : null}
-        </Space>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, maxWidth: '100%' }}>
+          <code style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'var(--semi-font-family-monospace), monospace' }}>{value}</code>
+          {record.timezone && record.timezone !== DEFAULT_TIMEZONE ? <Tag size="small" color="blue" style={{ flexShrink: 0 }}>{record.timezone}</Tag> : null}
+        </span>
       ),
     },
     dateTimeColumn('下次执行', 'nextRunAt'),

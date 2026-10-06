@@ -34,7 +34,7 @@ export default function WorkflowScheduleRunsSheet({ schedule, onClose }: Readonl
     { title: '下次尝试', dataIndex: 'runAt', width: 180, render: (value: string, run) => run.status === 'pending' ? <DateTimeText value={value} /> : '—' },
     { title: '审批实例', dataIndex: 'instanceTitle', minWidth: 220, render: (_value, run) => (
       <WorkflowInstanceCell instanceId={run.instanceId} title={run.instanceTitle ?? (typeof run.payload.title === 'string' ? run.payload.title : null)}
-        onOpen={setInstanceId} emptyText="尚未发起" />
+        subLayout="inline" onOpen={setInstanceId} emptyText="尚未发起" />
     ) },
     { title: '失败原因', dataIndex: 'lastError', width: 180, render: (value: string | null) => (
       value ? <Typography.Text type="danger" ellipsis={{ showTooltip: true }} style={{ maxWidth: 165 }}>{value}</Typography.Text> : '—'

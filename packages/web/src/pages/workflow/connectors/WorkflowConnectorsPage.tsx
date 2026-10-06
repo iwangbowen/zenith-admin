@@ -191,8 +191,9 @@ export default function WorkflowConnectorsPage() {
   });
 
   const columns: ColumnProps<WorkflowConnector>[] = [
-    { title: '名称', dataIndex: 'name', minWidth: 160, render: renderEllipsis },
-    { title: '编码', dataIndex: 'code', width: 140, render: (v: string) => <Typography.Text size="small" type="tertiary">{v}</Typography.Text> },
+    // 名称 / 编码：单行省略（Semi 列级 ellipsis，悬停出原生 title），不换行撑高行高
+    { title: '名称', dataIndex: 'name', minWidth: 200, ellipsis: { showTitle: true }, render: (v: string) => v || EMPTY_PLACEHOLDER },
+    { title: '编码', dataIndex: 'code', width: 270, className: 'table-cell-muted', ellipsis: { showTitle: true } },
     { title: '类型', dataIndex: 'type', width: 100, render: (t: WorkflowConnectorType) => <Tag size="small" color={t === 'http' ? 'blue' : 'grey'}>{WORKFLOW_CONNECTOR_TYPE_LABELS[t] ?? t}</Tag> },
     { title: '目标', dataIndex: 'config', width: 240, render: (_: unknown, r: WorkflowConnector) => {
       const target = r.type === 'email' ? r.config.to : r.type === 'sms' ? r.config.phone : r.config.baseUrl;
