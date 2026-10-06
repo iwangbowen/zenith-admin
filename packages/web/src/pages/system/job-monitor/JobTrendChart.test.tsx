@@ -14,13 +14,9 @@ vi.mock('@/components/toolbar-controls', () => ({ RefreshButton: () => <button>�
 vi.mock('@douyinfe/semi-ui', () => {
   const Box = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
   return {
-    Card: ({ title, children }: { title: ReactNode; children: ReactNode }) => <div>{title}{children}</div>,
     Banner: ({ description }: { description: string }) => <div role="alert">{description}</div>,
-    Empty: ({ description }: { description: string }) => <div>{description}</div>,
-    Space: Box, Typography: { Text: Box }, Skeleton: Box,
-    Select: ({ value, optionList, onChange }: { value: string; optionList: { value: string; label: string }[]; onChange: (value: string) => void }) => (
-      <select aria-label="趋势时间范围" value={value} onChange={(event) => onChange(event.target.value)}>{optionList.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
-    ),
+    Button: ({ children, onClick }: { children?: ReactNode; onClick?: () => void }) => <button onClick={onClick}>{children}</button>,
+    Typography: { Text: Box },
   };
 });
 
@@ -35,8 +31,8 @@ describe('job trend chart', () => {
   it('switches between all four supported ranges', () => {
     render(<JobTrendChart />);
     expect(state.query).toHaveBeenLastCalledWith('24h');
-    for (const range of ['1h', '6h', '7d', '24h']) {
-      fireEvent.change(screen.getByLabelText('趋势时间范围'), { target: { value: range } });
+    for (const [range, label] of [['1h', '近 1 小时'], ['6h', '近 6 小时'], ['7d', '近 7 天'], ['24h', '近 24 小时']] as const) {
+      fireEvent.click(screen.getByRole('button', { name: label }));
       expect(state.query).toHaveBeenLastCalledWith(range);
     }
   });
@@ -47,18 +43,26 @@ describe('job trend chart', () => {
       { time: '2026-10-03 12:01:00', backlog: null, stuck: null, dead: null, failed1h: null },
     ]);
     render(<JobTrendChart />);
-    const spec = state.chart.mock.lastCall?.[0];
-    expect(spec.invalidType).toBe('break');
-    expect(spec.data[0].values.filter((point: { __x: string }) => point.__x === '2026-10-03 12:01:00').map((point: { __value: number | null }) => point.__value)).toEqual([null, null, null, null]);
-    expect(spec.data[0].values[0].__value).toBe(0);
-    expect(screen.getByRole('img', { name: '作业趋势折线图' })).toBeInTheDocument();
+    const specs = state.chart.mock.calls.map((call) => call[0]);
+    expect(specs).toHaveLength(3);
+    // 积压格：缺失样本保留断点，实测 0 不被抹掉
+    expect(specs[0].invalidType).toBe('break');
+    expect(specs[0].data[0].values.filter((point: { __x: string }) => point.__x === '2026-10-03 12:01:00').map((point: { __value: number | null }) => point.__value)).toEqual([null]);
+    expect(specs[0].data[0].values[0].__value).toBe(0);
+    // 卡死与死信同格：两条线都保留断点，实测值按线序排列
+    expect(specs[1].data[0].values.filter((point: { __x: string }) => point.__x === '2026-10-03 12:01:00').map((point: { __value: number | null }) => point.__value)).toEqual([null, null]);
+    expect(specs[1].data[0].values[0].__value).toBe(1);
+    expect(specs[1].data[0].values[1].__value).toBe(0);
+    expect(screen.getAllByRole('img', { name: '作业趋势折线图' })).toHaveLength(3);
+    expect(screen.getByText('卡死与死信')).toBeInTheDocument();
   });
 
-  it('shows an empty state when every metric lacks a historical fact', () => {
+  it('shows an empty state while keeping the range switcher', () => {
     setPoints([{ time: '2026-10-03 12:00:00', backlog: null, stuck: null, dead: null, failed1h: null }]);
     render(<JobTrendChart />);
     expect(screen.getByText('暂无可用的作业趋势样本')).toBeInTheDocument();
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '近 7 天' })).toBeInTheDocument();
   });
 
   it('explains a trend failure even when no historical sample is available', () => {

@@ -21,7 +21,7 @@ export default function QueueBacklogTable({ queues, refreshing, onRefresh }: Rea
           refreshLoading={refreshing}
           empty="暂无调度队列"
           columns={[
-            { title: '队列', dataIndex: 'title', minWidth: 240, ellipsis: true, render: (_: unknown, row: JobQueueRow) => (
+            { title: '队列', dataIndex: 'title', minWidth: 240, ellipsis: { showTitle: true }, render: (_: unknown, row: JobQueueRow) => (
               <Button className="job-monitor-queue-link" theme="borderless" size="small" onClick={() => navigate(`/system/scheduler?tab=tasks&keyword=${encodeURIComponent(row.name)}`)}>{row.title || row.name}</Button>
             ) },
             { title: '模块', dataIndex: 'module', width: 120 },

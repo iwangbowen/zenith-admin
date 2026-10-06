@@ -1,3 +1,8 @@
+/* 页面内边距由全局 .page-container 提供；面板留白统一走根容器 gap（默认 12px，本页用 16px）。 */
+.page-container.job-monitor-page {
+  gap: 16px;
+}
+
 /* 页面已有 gap，避免全局相邻面板的 margin 再叠加一层间距。 */
 .job-monitor-page > .semi-card + .semi-card {
   margin-top: 0;
@@ -11,9 +16,47 @@
   min-height: 32px;
 }
 
-.job-monitor-page .zx-chart-card__title {
+/* 趋势区：扁平排版（不用卡片），范围切换器与曲线同屏；宽屏三列、窄屏单列 */
+.job-monitor-trend__header {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   flex-wrap: wrap;
+}
+
+.job-monitor-trend__heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.job-monitor-trend__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.job-monitor-trend__range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.job-monitor-trend__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px 24px;
+}
+
+.job-monitor-trend__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 
 .job-monitor-page .job-monitor-queue-link {

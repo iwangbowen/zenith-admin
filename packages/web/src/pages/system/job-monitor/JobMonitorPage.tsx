@@ -38,7 +38,7 @@ export default function JobMonitorPage() {
   const workers = data.workers.data;
   const sources = sortJobSources(data.sources);
   return (
-    <div className="page-container page-tabs-page zx-flat-panels job-monitor-page" style={{ display: 'flex', flexDirection: 'column', gap: 16, paddingTop: 12 }}>
+    <div className="page-container zx-flat-panels job-monitor-page">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
         <Space wrap>
           <Typography.Title heading={5} style={{ margin: 0 }}>作业监控</Typography.Title>

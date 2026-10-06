@@ -1,52 +1,133 @@
-import { useMemo, useState } from 'react';
-import { Banner, Select, Space, Typography } from '@douyinfe/semi-ui';
-import { enumValueOf } from '@zenith/shared/core';
-import { JOB_MONITOR_TREND_RANGES, JOB_MONITOR_TREND_RANGE_OPTIONS } from '@zenith/shared/platform';
+import { useState } from 'react';
+import { Banner, Button, Typography } from '@douyinfe/semi-ui';
+import { JOB_MONITOR_TREND_RANGE_OPTIONS, type JobMonitorTrendRange } from '@zenith/shared/platform';
 import { LineChart, chartOptions, compactCount, makeLineSpec, useChartPalette } from '@/components/charts';
-import { ChartCard } from '@/components/charts/ChartCard';
 import { RefreshButton } from '@/components/toolbar-controls';
-import { useJobMonitorTrend, type JobMonitorTrendRange } from '@/hooks/queries/job-monitor';
+import { useJobMonitorTrend } from '@/hooks/queries/job-monitor';
+
+const { Text } = Typography;
 
 const EMPTY_POINTS: NonNullable<ReturnType<typeof useJobMonitorTrend>['data']>['points'] = [];
 
+/** 趋势点字段，与契约点位列同名 */
+type TrendField = 'backlog' | 'stuck' | 'dead' | 'failed1h';
+
+/** 单格图里的一条曲线 */
+interface TrendLine {
+  field: TrendField;
+  name: string;
+  color: string;
+}
+
+type ChartPalette = ReturnType<typeof useChartPalette>;
+
+/** 横轴标签：7 天范围带日期，其余只到分钟 */
+const axisLabel = (range: JobMonitorTrendRange) => (value: string) =>
+  range === '7d' ? value.slice(5, 16) : value.slice(11, 16);
+
+/**
+ * 按格子组装折线配置。
+ *
+ * 公共 builder 的默认数值归一会把 null 变成 0；作业历史里缺失的样本必须保留为断点，
+ * 否则「采集失败 / 尚无历史事实」会被画成「指标跌到 0」。
+ */
+function buildSpec(
+  points: typeof EMPTY_POINTS,
+  lines: TrendLine[],
+  palette: ChartPalette,
+  range: JobMonitorTrendRange,
+) {
+  const base = makeLineSpec({
+    data: points,
+    xField: 'time',
+    series: lines.map((line) => ({ field: line.field, name: line.name, color: line.color })),
+    palette,
+    smooth: false,
+    axis: { xLabel: axisLabel(range) },
+    tooltip: { value: (value, _name, datum) => (datum?.__value == null ? '未采集' : compactCount(value)) },
+  });
+  return {
+    ...base,
+    data: [{
+      id: 'series',
+      values: points.flatMap((point) => lines.map((line) => ({ ...point, __x: point.time, __type: line.name, __value: point[line.field] }))),
+    }],
+    invalidType: 'break' as const,
+  };
+}
+
+/**
+ * 作业趋势：扁平排版（不用卡片），范围切换器与曲线同屏。
+ *
+ * 点位来自每分钟随系统指标采集的历史分桶，支持 1h / 6h / 24h / 7d；
+ * 采集失败或尚未产生历史事实的样本为 null，图中保留断点，不插值成 0。
+ * 四个指标按量级拆成三格（积压、卡死与死信、近 1h 失败），避免大数量级把小指标压平。
+ */
 export default function JobTrendChart() {
   const [range, setRange] = useState<JobMonitorTrendRange>('24h');
   const query = useJobMonitorTrend(range);
   const points = query.data?.points ?? EMPTY_POINTS;
   const palette = useChartPalette();
-  const spec = useMemo(() => {
-    const series = [
-      { field: 'backlog' as const, name: '积压', color: palette.primary },
-      { field: 'stuck' as const, name: '卡死', color: palette.danger },
-      { field: 'dead' as const, name: '死信', color: palette.warning },
-      { field: 'failed1h' as const, name: '近 1h 失败', color: palette.risk },
-    ];
-    const base = makeLineSpec({
-      data: points, xField: 'time', series, palette, smooth: false,
-      axis: { xLabel: (value) => range === '7d' ? value.slice(5, 16) : value.slice(11, 16) },
-      tooltip: { value: (value, _name, datum) => datum?.__value == null ? '未采集' : compactCount(value) },
-    });
-    // 公共 builder 的默认数值归一会将 null 变为 0；作业历史的缺失点需要保留为断点。
-    return {
-      ...base,
-      data: [{ id: 'series', values: points.flatMap((point) => series.map((item) => ({ ...point, __x: point.time, __type: item.name, __value: point[item.field] }))) }],
-      invalidType: 'break' as const,
-    };
-  }, [points, palette, range]);
   const hasFacts = points.some((point) => point.backlog !== null || point.stuck !== null || point.dead !== null || point.failed1h !== null);
 
+  const cells: Array<{ title: string; lines: TrendLine[]; note: string }> = [
+    {
+      title: '积压',
+      lines: [{ field: 'backlog', name: '积压', color: palette.primary }],
+      note: '已到期未领取的作业数，取每分钟采样的瞬时值',
+    },
+    {
+      title: '卡死与死信',
+      lines: [
+        { field: 'stuck', name: '卡死', color: palette.danger },
+        { field: 'dead', name: '死信', color: palette.warning },
+      ],
+      note: '超阈值未推进与投递失败的存量，取每分钟采样的瞬时值',
+    },
+    {
+      title: '近 1h 失败',
+      lines: [{ field: 'failed1h', name: '失败', color: palette.risk }],
+      note: '滚动一小时的失败执行数，取每分钟采样的瞬时值',
+    },
+  ];
+
   return (
-    <>
+    <div className="job-monitor-trend">
+      <div className="job-monitor-trend__header">
+        <div className="job-monitor-trend__heading">
+          <Text strong>作业趋势</Text>
+          <Text type="tertiary" size="small">每分钟采集，图表每 60 秒刷新；采集失败或尚无历史事实的点位显示为断点。</Text>
+        </div>
+        <div className="job-monitor-trend__controls">
+          <div className="job-monitor-trend__range" aria-label="趋势范围">
+            {JOB_MONITOR_TREND_RANGE_OPTIONS.map((option) => (
+              <Button
+                key={option.value}
+                size="small"
+                theme={range === option.value ? 'solid' : 'light'}
+                onClick={() => setRange(option.value)}
+              >
+                {option.label}
+              </Button>
+            ))}
+          </div>
+          <RefreshButton onClick={() => { void query.refetch(); }} loading={query.isFetching} />
+        </div>
+      </div>
       {query.isError && <Banner type="warning" closeIcon={null} description={`趋势加载失败：${query.error?.message ?? '未知错误'}`} />}
-      <ChartCard title="作业趋势" height={280} loading={query.isPending} empty={!hasFacts ? '暂无可用的作业趋势样本' : null} extra={(
-      <Space wrap>
-        <Select aria-label="趋势时间范围" value={range} optionList={JOB_MONITOR_TREND_RANGE_OPTIONS} onChange={(value) => setRange(enumValueOf(JOB_MONITOR_TREND_RANGES, value) ?? '24h')} />
-        <RefreshButton onClick={() => { void query.refetch(); }} loading={query.isFetching} />
-      </Space>
-    )}>
-      <LineChart {...spec} options={chartOptions} height={280} />
-      <Typography.Text type="tertiary" size="small">每分钟采集，图表每 60 秒刷新；采集失败或尚无历史事实的点位显示为断点。</Typography.Text>
-      </ChartCard>
-    </>
+      {!hasFacts ? (
+        <Text type="tertiary" size="small">{query.isPending ? '趋势数据加载中…' : '暂无可用的作业趋势样本'}</Text>
+      ) : (
+        <div className="job-monitor-trend__grid">
+          {cells.map((cell) => (
+            <div className="job-monitor-trend__cell" key={cell.title}>
+              <Text strong size="small">{cell.title}</Text>
+              <LineChart {...buildSpec(points, cell.lines, palette, range)} options={chartOptions} height={170} />
+              <Text type="tertiary" size="small">{cell.note}</Text>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
