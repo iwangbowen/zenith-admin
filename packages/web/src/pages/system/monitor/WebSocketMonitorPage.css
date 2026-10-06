@@ -109,6 +109,14 @@
   min-width: 0;
 }
 
+/* 趋势卡片：复用看板 ChartCard，宽屏三列、窄屏单列；间距由栅格给，卡片自身不带外边距 */
+.ws-monitor-trends {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
 .ws-monitor-section {
   margin-bottom: 28px;
 }

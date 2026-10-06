@@ -409,6 +409,37 @@ export const monitorWsMetricsSchema = z.object({
 
 export type MonitorWsMetrics = z.infer<typeof monitorWsMetricsSchema>;
 
+/**
+ * WebSocket 趋势点（每个采样 tick 一帧，10 秒/点）。
+ *
+ * 口径混用是刻意为之，别把两类字段混同：
+ * - `connections` / `users` / `idle` 是瞬时值（该帧采样时刻的在线态）；
+ * - `connects` / `disconnects` / `sent` / `recv` 是**本采样周期的增量**（相邻两帧计数器之差），
+ *   进程重启导致计数器回退时该帧直接丢弃，不产生负值；
+ * - `failed` 是采样窗口（最近 200 条）内的失败条数，不是周期增量——失败明细没有累计计数器可差分。
+ */
+export const monitorWsTrendPointSchema = z.object({
+  t: z.number().meta({ description: '采样时间戳（毫秒）' }),
+  connections: z.int().meta({ description: '当前连接数（瞬时值）' }),
+  users: z.int().meta({ description: '当前在线用户数（瞬时值）' }),
+  idle: z.int().meta({ description: '空闲连接数（最后活动超过 120 秒，瞬时值）' }),
+  connects: z.int().meta({ description: '本周期新建连接数（增量）' }),
+  disconnects: z.int().meta({ description: '本周期断开连接数（增量）' }),
+  sent: z.int().meta({ description: '本周期发送消息数（增量）' }),
+  recv: z.int().meta({ description: '本周期接收消息数（增量）' }),
+  failed: z.int().meta({ description: '采样窗口内失败消息数（非增量）' }),
+}).meta({ id: 'MonitorWsTrendPoint' });
+
+export type MonitorWsTrendPoint = z.infer<typeof monitorWsTrendPointSchema>;
+
+export const monitorWsTrendSchema = z.object({
+  intervalSec: z.int().meta({ description: '采样间隔（秒）' }),
+  capacity: z.int().meta({ description: '环形缓冲容量（点数）' }),
+  points: z.array(monitorWsTrendPointSchema).meta({ description: '按时间升序的趋势点；服务启动初期不足容量' }),
+}).meta({ id: 'MonitorWsTrend' });
+
+export type MonitorWsTrend = z.infer<typeof monitorWsTrendSchema>;
+
 // ─── 契约 ────────────────────────────────────────────────────────────────────
 
 export const monitorContract = defineContract('/api/monitor', {
@@ -420,6 +451,14 @@ export const monitorContract = defineContract('/api/monitor', {
     response: monitorWsMetricsSchema,
     summary: '获取 WebSocket 实时连接监控',
     description: '可见范围与「在线用户」页一致：平台管理员在平台视角看全部，切到租户视角或非平台管理员只看本租户，且看不到绑定平台超管角色用户的连接；累计计数器为平台级，不受该范围约束。',
+  }),
+  wsTrend: op.get('/ws/trend', {
+    access: { permission: 'system:monitor:view' },
+    response: monitorWsTrendSchema,
+    summary: '获取 WebSocket 连接趋势（最近 1 小时，10 秒/点）',
+    description: '采集自 api 进程的采样 tick（与系统指标采样器同一节拍），集群聚合并入库前不持久化：'
+      + '连接数 / 在线用户 / 空闲连接为瞬时值，连接、断开、收发为周期增量，失败为采样窗口口径；'
+      + '进程重启导致计数器回退时丢弃该帧，因此趋势中不出现负值，但会出现断点。',
   }),
   stream: op.get('/stream', {
     access: { permission: 'system:monitor:view' },

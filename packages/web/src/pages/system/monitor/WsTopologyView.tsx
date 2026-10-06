@@ -10,6 +10,7 @@ import { useGraphSelectionHighlight } from '@/hooks/useGraphSelectionHighlight';
 import { EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
 import { formatSecondsHuman } from '@/utils/format';
 import {
+  WS_CLIENT_KIND_LABELS,
   buildWsTopology,
   type MonitorWsMetrics,
   type WsClientKind,
@@ -29,13 +30,6 @@ const TOPO_NODE_WIDTH = 230;
 const TOPO_NODE_HEIGHT = 88;
 /** 图节点过多时退化为纯表格（图形化只适合中小规模直观呈现） */
 const TOPO_GRAPH_MAX_NODES = 120;
-
-const KIND_LABEL: Record<WsClientKind, string> = {
-  web: '网页',
-  desktop: '桌面端',
-  mobile: '移动端',
-  unknown: '未知',
-};
 
 const EDGE_STYLE: Record<WsTopoEdgeKind, { stroke: string; dashed: boolean }> = {
   fanout: { stroke: 'var(--semi-color-text-3)', dashed: true },
@@ -76,7 +70,7 @@ const WsTopoNodeView = memo(({ data }: NodeProps) => {
       </div>
       <div className="ws-topo-node__sub">{t.sub}</div>
       <div className="ws-topo-node__meta">
-        {t.kind === 'user' && t.kinds.map((k) => <Tag key={k} size="small" color={k === 'unknown' ? 'grey' : 'blue'}>{KIND_LABEL[k]}</Tag>)}
+        {t.kind === 'user' && t.kinds.map((k) => <Tag key={k} size="small" color={k === 'unknown' ? 'grey' : 'blue'}>{WS_CLIENT_KIND_LABELS[k]}</Tag>)}
         {t.kind === 'user' && t.connections > 1 && <Tag size="small" color="violet">{t.connections} 连接</Tag>}
         {t.kind === 'user' && t.reconnected && <Tag size="small" color="orange">疑似重连</Tag>}
         {t.kind === 'gateway' && <Tag size="small" color="grey">{t.connections} 连接 · {t.users} 用户</Tag>}
@@ -264,13 +258,6 @@ function WsTopologyGraph({ metrics, nodeRates, onSelectUser, onInspectTopic, onS
   );
 }
 
-const KIND_ROW_LABEL: Record<WsClientKind, string> = {
-  web: '网页端',
-  desktop: '桌面端',
-  mobile: '移动端',
-  unknown: '未知端',
-};
-
 export default function WsTopologyView({ reconnects, clientStats, ...graphProps }: WsTopologyViewProps & {
   clientStats: WsClientStats;
 }) {
@@ -294,11 +281,11 @@ export default function WsTopologyView({ reconnects, clientStats, ...graphProps 
       <section className="ws-monitor-section">
         <div className="ws-monitor-section__header"><Title heading={6}>客户端类型分布</Title></div>
         <div className="ws-monitor-metrics ws-monitor-metrics--4">
-          {(Object.keys(KIND_ROW_LABEL) as WsClientKind[]).map((kind) => {
+          {(Object.keys(WS_CLIENT_KIND_LABELS) as WsClientKind[]).map((kind) => {
             const stat = clientStats.byKind.find((s) => s.kind === kind);
             return (
               <div key={kind}>
-                <Text type="tertiary" size="small">{KIND_ROW_LABEL[kind]}</Text>
+                <Text type="tertiary" size="small">{WS_CLIENT_KIND_LABELS[kind]}</Text>
                 <strong>{formatNumber(stat?.connections ?? 0)}</strong>
                 <Text type="tertiary" size="small">连接 · {formatNumber(stat?.users ?? 0)} 用户</Text>
               </div>

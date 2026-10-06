@@ -7,6 +7,8 @@ import {
   type MonitorSnapshot,
   type MonitorTimeseriesPoint,
   type MonitorWsMetrics,
+  type MonitorWsTrend,
+  type MonitorWsTrendPoint,
 } from '@zenith/shared/platform';
 import { mock } from '@/mocks/utils/contract';
 import dayjs from 'dayjs';
@@ -317,11 +319,37 @@ function buildWsMetrics(): MonitorWsMetrics {
   };
 }
 
+/** 趋势演示数据：10 秒/点、1 小时窗口，用平滑波形模拟连接态与吞吐的日间起伏 */
+function buildWsTrend(): MonitorWsTrend {
+  const now = Date.now();
+  const intervalSec = 10;
+  const capacity = 360;
+  const points: MonitorWsTrendPoint[] = [];
+  for (let i = capacity - 1; i >= 0; i -= 1) {
+    const phase = (capacity - i) / 18;
+    const connections = 6 + Math.round(Math.sin(phase) * 3) + (i % 7 === 0 ? 2 : 0);
+    const users = Math.max(1, connections - 2 - (i % 5 === 0 ? 1 : 0));
+    points.push({
+      t: now - i * intervalSec * 1000,
+      connections,
+      users,
+      idle: i % 11 === 0 ? 2 : i % 6 === 0 ? 1 : 0,
+      connects: i % 9 === 0 ? 2 : i % 4 === 0 ? 1 : 0,
+      disconnects: i % 13 === 0 ? 2 : i % 5 === 0 ? 1 : 0,
+      sent: 20 + Math.round(Math.abs(Math.sin(phase * 1.7)) * 60),
+      recv: 6 + Math.round(Math.abs(Math.cos(phase * 1.3)) * 18),
+      failed: i % 23 === 0 ? 1 : 0,
+    });
+  }
+  return { intervalSec, capacity, points };
+}
+
 export const monitorHandlers = [
   mock(monitorContract.snapshot, ({ ok }) => ok(baseStatus, 'success')),
   mock(monitorContract.timeseries, ({ ok }) => ok({ intervalSec: 10, capacity: 360, points: buildSeries() }, 'success')),
   mock(monitorContract.history, ({ query, ok }) => ok(buildHistory(query.range ?? '1h'), 'success')),
   mock(monitorContract.ws, ({ ok }) => ok(buildWsMetrics(), 'success')),
+  mock(monitorContract.wsTrend, ({ ok }) => ok(buildWsTrend(), 'success')),
   // SSE 推送：首帧发送 metrics/series/ws 全量；后续每 10s 发送 metrics:diff + series:point + ws
   mock(monitorContract.stream, () => {
     const encoder = new TextEncoder();

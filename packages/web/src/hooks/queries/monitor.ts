@@ -41,3 +41,14 @@ export function useMonitorWsMetrics(refetchInterval: number | false = 5000) {
     refetchInterval,
   });
 }
+
+/**
+ * WebSocket 连接趋势（10 秒/点、保留 1 小时）。
+ * 采集节拍与快照轮询不同频，默认 10 秒拉一次即可，无需跟随 5 秒的连接刷新。
+ */
+export function useMonitorWsTrend(refetchInterval: number | false = 10000) {
+  return useApiQuery(monitorContract.wsTrend, undefined, {
+    requestOptions: { silent: true },
+    refetchInterval,
+  });
+}

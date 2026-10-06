@@ -11,6 +11,7 @@ import { copyTextWithToast } from '@/utils/clipboard';
 import { formatSecondsHuman } from '@/utils/format';
 import { useNowTick } from '@/hooks/useNowTick';
 import {
+  WS_CLIENT_KIND_LABELS,
   describeWsClient,
   groupWsDisconnectReasons,
   inferWsReconnects,
@@ -25,6 +26,7 @@ import {
   type WsTopicDirectionStat,
 } from '@zenith/shared/platform';
 import WsTopologyView, { type WsNodeRate } from './WsTopologyView';
+import WsTrendCharts from './WsTrendCharts';
 import './WebSocketMonitorPage.css';
 
 const { Title, Text } = Typography;
@@ -320,6 +322,36 @@ export default function WebSocketMonitorPage() {
         <span>{record.nickname || record.username || EMPTY_PLACEHOLDER} <Text type="tertiary" size="small">#{record.userId}</Text></span>
       ),
     },
+    // 端形态 / IP / 最近消息：服务端一直在采集，之前只在详情面板与拓扑里可见，列表里补齐
+    {
+      title: '客户端',
+      dataIndex: 'userAgent',
+      width: 170,
+      ellipsis: { showTitle: true },
+      render: (_: unknown, record: MonitorWsConnection) => {
+        const client = describeWsClient(record.userAgent);
+        return `${WS_CLIENT_KIND_LABELS[client.kind]} · ${client.browser} · ${client.os}`;
+      },
+    },
+    {
+      title: 'IP',
+      dataIndex: 'ip',
+      width: 130,
+      className: 'table-cell-muted',
+      ellipsis: { showTitle: true },
+      render: (value: string | null) => value ?? EMPTY_PLACEHOLDER,
+    },
+    {
+      title: '最近消息',
+      dataIndex: 'lastMessageType',
+      width: 210,
+      ellipsis: { showTitle: true },
+      render: (_: unknown, record: MonitorWsConnection) => {
+        if (!record.lastMessageType) return EMPTY_PLACEHOLDER;
+        const ago = record.lastMessageAt === null ? '' : ` · ${formatSecondsHuman((now - record.lastMessageAt) / 1000)}前`;
+        return `${record.lastDirection === 'inbound' ? '入' : '出'} · ${record.lastMessageType}${ago}`;
+      },
+    },
     {
       title: '多端',
       dataIndex: 'presence',
@@ -432,6 +464,8 @@ export default function WebSocketMonitorPage() {
           </div>
           {activeView === 'connections' && (
             <div className="ws-monitor-view-pane">
+              {/* 连接趋势：与连接列表同屏，看趋势不必切页；暂停刷新时趋势也停下 */}
+              <WsTrendCharts refetchInterval={live ? 10_000 : false} />
               <section className="ws-monitor-section">
             <div className="ws-monitor-section__header">
               <div><Title heading={6}><Activity size={15} />在线连接 <Text type="tertiary">{filteredConnections.length} / {metrics.connections.length}</Text></Title></div>

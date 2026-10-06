@@ -99,6 +99,14 @@ export function isWsControlMessage(message: Pick<MonitorWsMessage, 'type'>): boo
 
 export type WsClientKind = 'desktop' | 'mobile' | 'web' | 'unknown';
 
+/** 端形态文案：连接表、客户端分布与关系拓扑共用，禁止各页面再写一份 */
+export const WS_CLIENT_KIND_LABELS: Record<WsClientKind, string> = {
+  web: '网页',
+  desktop: '桌面端',
+  mobile: '移动端',
+  unknown: '未知',
+};
+
 export interface WsClientInfo {
   browser: string;
   os: string;
