@@ -3,18 +3,18 @@ import { EntityContextView } from '@/components/entity-relations/EntityRelationB
 import { sameEntity, useEntityRelationNavigationSession } from '@/lib/entity-relation-navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  Banner, Button, Descriptions, Form, Popconfirm, Radio, RadioGroup, Select,
+  Banner, Button, Descriptions, Empty, Form, Popconfirm, Radio, RadioGroup, Select,
   SideSheet, Spin, TabPane, Tabs, Tag, Toast, Tooltip, Typography,
 } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
-import { AreaChart, EmptyChart, LineChart, chartOptions, makeAreaSpec, makeLineSpec, useChartPalette } from '@/components/charts';
+import { AreaChart, LineChart, chartOptions, makeAreaSpec, makeLineSpec, useChartPalette } from '@/components/charts';
 import AppModal from '@/components/AppModal';
 import { ConfigurableTable } from '@/components/ConfigurableTable';
 import { listTableProps } from '@/components/list-page';
 import { usePermission } from '@/hooks/usePermission';
 import { usePagination } from '@/hooks/usePagination';
-import { EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, renderEllipsis } from '@/utils/table-columns';
 import { confirmDanger } from '@/utils/confirm';
 import { abortSubmit } from '@/lib/abort-submit';
 import { enumValueOf } from '@zenith/shared/core';
@@ -180,12 +180,16 @@ export default function IotDeviceDetailDrawer({ device, onClose, visible = devic
 
   const propertyColumns: ColumnProps<PropertyRow>[] = [
     {
-      title: '属性', width: 180,
+      // 名称与标识符拆为两列，各自单行省略（标识符列同物模型抽屉写法）
+      title: '属性', width: 100,
+      render: (_: unknown, r: PropertyRow) => r.prop
+        ? renderEllipsis(r.prop.name)
+        : <Text type="tertiary">未声明</Text>,
+    },
+    {
+      title: '标识符', width: 140,
       render: (_: unknown, r: PropertyRow) => (
-        <div>
-          <div>{r.prop?.name ?? <Text type="tertiary">未声明</Text>}</div>
-          <Text type="tertiary" size="small" code>{r.identifier}</Text>
-        </div>
+        <Text code ellipsis={{ showTooltip: true }} style={{ maxWidth: '100%' }}>{r.identifier}</Text>
       ),
     },
     {
@@ -209,7 +213,8 @@ export default function IotDeviceDetailDrawer({ device, onClose, visible = devic
       },
     },
     {
-      title: '期望值（待确认）', width: 140,
+      // 8 字表头（112）+ 单元格 padding（32）→ 160 不换行
+      title: '期望值（待确认）', width: 160,
       render: (_: unknown, r: PropertyRow) => r.desired !== undefined
         ? <Tag size="small" color="orange">{formatValue(r.desired, r.prop?.unit)}</Tag>
         : EMPTY_PLACEHOLDER,
@@ -560,7 +565,11 @@ export default function IotDeviceDetailDrawer({ device, onClose, visible = devic
               </div>
               <Spin spinning={chartLoading}>
                 {chartEmpty
-                  ? <EmptyChart height={260} text="时间窗内暂无数值遥测" />
+                  ? (
+                    <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Empty description="时间窗内暂无数值遥测" />
+                    </div>
+                  )
                   : useAgg
                     ? <LineChart {...aggSpec} options={chartOptions} height={260} />
                     : <AreaChart {...chartSpec} options={chartOptions} height={260} />}
@@ -578,7 +587,7 @@ export default function IotDeviceDetailDrawer({ device, onClose, visible = devic
                   <Banner type="warning" closeIcon={null} style={{ margin: '8px 0' }}
                     description="产品物模型尚未声明服务；请先在产品管理的「物模型」中定义服务。" />
                 ) : (
-                  <div style={{ margin: '8px 0', padding: 12, background: 'var(--semi-color-fill-0)', borderRadius: 'var(--semi-border-radius-medium)' }}>
+                  <div style={{ margin: '8px 0' }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: (activeService?.params?.length ?? 0) > 0 ? 8 : 0 }}>
                       <Select
                         value={activeService?.identifier}
