@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { MiddlewareHandler } from 'hono';
 
-const seen = vi.hoisted(() => ({ guardCalls: [] as unknown[], platformCalls: [] as unknown[] }));
+const seen = vi.hoisted(() => ({ guardCalls: [] as unknown[], platformCalls: [] as unknown[], featureCalls: [] as string[] }));
 vi.mock('../middleware/auth', () => ({ authMiddleware: Object.assign(async () => {}, { __name: 'auth' }) }));
 vi.mock('../middleware/guard', () => ({
   guard: (options: unknown) => { seen.guardCalls.push(options); return Object.assign(async () => {}, { __name: 'guard' }); },
@@ -10,6 +10,9 @@ vi.mock('../middleware/platform-admin', () => ({
   platformAdminOnly: (options: unknown) => { seen.platformCalls.push(options); return Object.assign(async () => {}, { __name: 'platform' }); },
 }));
 vi.mock('./data-mask/boundary', () => ({ withDataMasking: (_op: unknown, handler: unknown) => handler }));
+vi.mock('./licensing', () => ({
+  licenseFeatureGate: (feature: string) => { seen.featureCalls.push(feature); return Object.assign(async () => {}, { __name: 'license' }); },
+}));
 
 import { defineContract, op } from '@zenith/shared/core';
 import { resolveRouteMiddleware } from './contract-route';
@@ -31,13 +34,24 @@ const contract = defineContract('/api/demo', {
 
 const memberContract = defineContract('/api/member/demo', {
   me: op.get('/me', { summary: '会员自视图' }),
+  campaign: op.get('/campaign', { feature: 'growth', summary: '会员营销' }),
 }, { security: 'member-bearer' });
 
 describe('resolveRouteMiddleware（契约 access → 门禁链装配）', () => {
-  it('非后台令牌操作（会员令牌 / 设备签名）：原样使用路由提供的中间件，不注入任何门禁；preAuth 无意义即报错', () => {
+  it('非后台令牌操作未声明 feature：保留凭证中间件；preAuth 无意义即报错', () => {
     expect(resolveRouteMiddleware(memberContract.me, { middleware: [custom] }).map(named)).toEqual(['custom']);
     expect(resolveRouteMiddleware(contract.device, { middleware: [custom] }).map(named)).toEqual(['custom']);
     expect(() => resolveRouteMiddleware(memberContract.me, { preAuth: [rate] })).toThrow(/preAuth/);
+  });
+
+  it('非 bearer 操作声明 feature：在凭证校验之后追加 License 门控，未知功能仍在装配期拒绝', () => {
+    seen.featureCalls.length = 0;
+    expect(resolveRouteMiddleware(memberContract.campaign, { middleware: [custom] }).map(named)).toEqual(['custom', 'license']);
+    expect(seen.featureCalls).toEqual(['growth']);
+    for (const security of ['none', 'member-bearer', 'device-signature', 'open-gateway'] as const) {
+      const bad = defineContract('/api/bad-feature', { x: op.get('/', { security, feature: 'no-such-feature', summary: 'x' }) });
+      expect(() => resolveRouteMiddleware(bad.x, { middleware: [custom] })).toThrow(/License 功能/);
+    }
   });
 
   it('绕过 defineContract 的裸 bearer 操作缺少 access：装配期报错', () => {

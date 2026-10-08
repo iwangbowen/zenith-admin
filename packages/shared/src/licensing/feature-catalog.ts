@@ -7,7 +7,7 @@
  * 不需要在几百条菜单种子上逐行标注，也不会与目录漂移。
  */
 import type { LicenseEdition, LicenseFeatureKey } from './constants';
-import { LICENSE_FEATURE_LABELS, LICENSE_FEATURES } from './constants';
+import { isLicenseFeatureKey, LICENSE_FEATURE_LABELS, LICENSE_FEATURES } from './constants';
 
 export interface LicenseFeatureDef {
   label: string;
@@ -92,12 +92,22 @@ export const LICENSE_FEATURE_CATALOG: Record<LicenseFeatureKey, LicenseFeatureDe
     description: '企业网盘：个人 / 部门 / 协作空间、权限、外链与版本',
     menuRoots: [19000],
   },
+  growth: {
+    label: LICENSE_FEATURE_LABELS.growth,
+    description: '短链管理、渠道分析与营销活动',
+    menuRoots: [17000],
+  },
+  iot: {
+    label: LICENSE_FEATURE_LABELS.iot,
+    description: '产品与设备管理、遥测、告警、固件升级与场景联动',
+    menuRoots: [18000],
+  },
 };
 
 /** 版本预设：签发 CLI 用它展开 features[]；运行时授权只看 License 载荷里的显式列表 */
 export const LICENSE_EDITION_PRESETS: Record<LicenseEdition, readonly LicenseFeatureKey[]> = {
   community: ['workflow', 'wiki', 'chat'],
-  pro: ['workflow', 'wiki', 'chat', 'analytics', 'report', 'cms', 'rules', 'ai', 'drive'],
+  pro: ['workflow', 'wiki', 'chat', 'analytics', 'report', 'cms', 'rules', 'ai', 'drive', 'growth'],
   enterprise: LICENSE_FEATURES,
 };
 
@@ -106,3 +116,97 @@ export const MENU_ROOT_FEATURE_MAP: ReadonlyMap<number, LicenseFeatureKey> = new
   (Object.entries(LICENSE_FEATURE_CATALOG) as Array<[LicenseFeatureKey, LicenseFeatureDef]>)
     .flatMap(([key, def]) => def.menuRoots.map((root) => [root, key] as const)),
 );
+
+export interface CoreMenuRootDef {
+  id: number;
+  reason: string;
+}
+
+/** 核心入口显式登记；系统设置里的已登记授权子树仍按对应功能控制。 */
+export const CORE_MENU_ROOTS: readonly CoreMenuRootDef[] = [
+  { id: 1, reason: '首页是登录后的基础工作台' },
+  { id: 11, reason: '个人中心负责账号与个人资料维护' },
+  { id: 12, reason: '公告中心属于基础消息触达' },
+  { id: 13, reason: '站内信属于基础消息触达' },
+  { id: 14, reason: '搜索中心是跨模块入口，结果仍受各模块权限约束' },
+  { id: 1000, reason: '系统管理负责身份、权限、租户与授权恢复' },
+  { id: 2000, reason: '系统设置提供基础治理；运维与机器人子树另行授权' },
+  { id: 11000, reason: '业务示例用于展示基础集成能力' },
+  { id: 15000, reason: '告警中心负责平台自身运行监控' },
+];
+
+/**
+ * 种子菜单必须归入授权功能或显式核心根，禁止把漏登记的新模块默认为核心。
+ * 授权根可以位于核心容器中（如系统设置），但授权根之间不可重复或嵌套。
+ */
+export function applyMenuFeatureKeys<T extends { id: number; parentId: number }>(
+  menus: readonly T[],
+  catalog: Readonly<Partial<Record<LicenseFeatureKey, Pick<LicenseFeatureDef, 'menuRoots'>>>> = LICENSE_FEATURE_CATALOG,
+  coreRoots: readonly CoreMenuRootDef[] = CORE_MENU_ROOTS,
+): Array<T & { featureKey: LicenseFeatureKey | null }> {
+  const menuById = new Map<number, T>();
+  const childrenByParent = new Map<number, T[]>();
+  for (const menu of menus) {
+    if (menuById.has(menu.id)) throw new Error(`菜单 ID ${menu.id} 重复`);
+    menuById.set(menu.id, menu);
+    const children = childrenByParent.get(menu.parentId) ?? [];
+    children.push(menu);
+    childrenByParent.set(menu.parentId, children);
+  }
+  for (const menu of menus) {
+    if (menu.parentId !== 0 && !menuById.has(menu.parentId)) {
+      throw new Error(`菜单 ${menu.id} 未覆盖：父节点 ${menu.parentId} 不存在`);
+    }
+  }
+
+  const featureRoots = new Map<number, LicenseFeatureKey>();
+  for (const [feature, definition] of Object.entries(catalog)) {
+    if (!isLicenseFeatureKey(feature)) throw new Error(`未登记的 License 功能 ${feature}`);
+    if (definition.menuRoots.length === 0) throw new Error(`License 功能 ${feature} 未登记菜单根`);
+    for (const rootId of definition.menuRoots) {
+      if (!menuById.has(rootId)) throw new Error(`授权菜单根 ${rootId} 不存在（${feature}）`);
+      if (featureRoots.has(rootId)) throw new Error(`授权菜单根 ${rootId} 重复登记`);
+      featureRoots.set(rootId, feature);
+    }
+  }
+  for (const rootId of featureRoots.keys()) {
+    const seen = new Set([rootId]);
+    let parentId = menuById.get(rootId)!.parentId;
+    while (parentId !== 0) {
+      if (seen.has(parentId)) throw new Error(`菜单 ${rootId} 的父级形成循环`);
+      if (featureRoots.has(parentId)) throw new Error(`授权菜单根 ${rootId} 与 ${parentId} 重叠`);
+      seen.add(parentId);
+      parentId = menuById.get(parentId)!.parentId;
+    }
+  }
+
+  const coreIds = new Set<number>();
+  for (const root of coreRoots) {
+    const menu = menuById.get(root.id);
+    if (!menu) throw new Error(`核心菜单根 ${root.id} 不存在`);
+    if (coreIds.has(root.id) || featureRoots.has(root.id)) throw new Error(`菜单根 ${root.id} 重复归类`);
+    if (menu.parentId !== 0) throw new Error(`核心菜单根 ${root.id} 必须是顶层入口`);
+    if (!root.reason.trim()) throw new Error(`核心菜单根 ${root.id} 缺少归类原因`);
+    coreIds.add(root.id);
+  }
+
+  const featuresById = new Map<number, LicenseFeatureKey | null>();
+  const pending: Array<{ id: number; feature: LicenseFeatureKey | null }> = [];
+  for (const root of childrenByParent.get(0) ?? []) {
+    if (!featureRoots.has(root.id) && !coreIds.has(root.id)) {
+      throw new Error(`顶层菜单 ${root.id} 未归类，请登记授权功能或核心原因`);
+    }
+    pending.push({ id: root.id, feature: featureRoots.get(root.id) ?? null });
+  }
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    const feature = featureRoots.get(current.id) ?? current.feature;
+    featuresById.set(current.id, feature);
+    for (const child of childrenByParent.get(current.id) ?? []) pending.push({ id: child.id, feature });
+  }
+  return menus.map((menu) => {
+    const featureKey = featuresById.get(menu.id);
+    if (featureKey === undefined) throw new Error(`菜单 ${menu.id} 未覆盖，请检查菜单树和根分类`);
+    return { ...menu, featureKey };
+  });
+}

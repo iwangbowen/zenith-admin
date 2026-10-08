@@ -118,18 +118,18 @@ export const iotAlarmContract = defineContract('/api/iot/alarms', {
     response: iotAlarmSchema,
     summary: '手动处理告警（标记已恢复，可附处理备注）',
   }),
-}, { auditModule: 'IoT 告警', tags: TAGS });
+}, { auditModule: 'IoT 告警', tags: TAGS, feature: 'iot' });
 
 export const iotAlarmRuleContract = defineContract('/api/iot/alarm-rules', {
   list: op.get('/', { access: { permission: 'iot:alarm:list' }, query: iotAlarmRuleListQuery, response: paginated(iotAlarmRuleSchema), summary: '告警规则列表' }),
   create: op.post('/', { access: { permission: 'iot:alarm:rule:create' }, audit: '创建 IoT 告警规则', body: createIotAlarmRuleSchema, response: iotAlarmRuleSchema, summary: '创建告警规则（阈值/离线/事件）' }),
   update: op.put('/{id}', { access: { permission: 'iot:alarm:rule:update' }, audit: '更新 IoT 告警规则', params: idParam, body: updateIotAlarmRuleSchema, response: iotAlarmRuleSchema, summary: '更新告警规则（规则类型与所属产品不可变更）' }),
   remove: op.delete('/{id}', { access: { permission: 'iot:alarm:rule:delete' }, audit: '删除 IoT 告警规则', params: idParam, summary: '删除告警规则（历史告警记录保留）' }),
-}, { auditModule: 'IoT 告警', tags: TAGS });
+}, { auditModule: 'IoT 告警', tags: TAGS, feature: 'iot' });
 
 export const iotMaintenanceWindowContract = defineContract('/api/iot/maintenance-windows', {
   list: op.get('/', { access: { permission: 'iot:alarm:list' }, query: iotMaintenanceWindowListQuery, response: paginated(iotMaintenanceWindowSchema), summary: '维护窗口列表（窗口内告警静默通知，仍记录）' }),
   create: op.post('/', { access: { permission: 'iot:alarm:rule:create' }, audit: '创建 IoT 维护窗口', body: createIotMaintenanceWindowSchema, response: iotMaintenanceWindowSchema, summary: '创建维护窗口' }),
   update: op.put('/{id}', { access: { permission: 'iot:alarm:rule:update' }, audit: '更新 IoT 维护窗口', params: idParam, body: createIotMaintenanceWindowSchema, response: iotMaintenanceWindowSchema, summary: '更新维护窗口' }),
   remove: op.delete('/{id}', { access: { permission: 'iot:alarm:rule:delete' }, audit: '删除 IoT 维护窗口', params: idParam, summary: '删除维护窗口' }),
-}, { auditModule: 'IoT 告警', tags: TAGS });
+}, { auditModule: 'IoT 告警', tags: TAGS, feature: 'iot' });

@@ -49,6 +49,7 @@ import paymentWebhookRoutes from './payment-webhooks';
 
 export default defineRouteDomain({
   name: 'payment',
+  licensing: { feature: 'payment' },
   mounts: () => [
     [paymentChannelAccountContract.basePath, paymentChannelAccountRoutes, { feature: 'payment' }],
     [paymentCapabilityContract.basePath, paymentCapabilityRoutes, { feature: 'payment' }],
@@ -72,8 +73,8 @@ export default defineRouteDomain({
     [paymentPreauthContract.basePath, paymentPreauthRoutes, { feature: 'payment' }],
     [paymentSigningContract.basePath, paymentContractRoutes, { feature: 'payment' }],
     // 渠道异步回调返回渠道约定的纯文本 ACK，不走 JSON 契约
-    ['/api/public/payment/notify', paymentPublicRoutes],
-    [paymentLinkPublicContract.basePath, paymentLinkPublicRoutes],
+    ['/api/public/payment/notify', paymentPublicRoutes, { licenseExempt: '支付渠道异步通知必须保持可达' }],
+    [paymentLinkPublicContract.basePath, paymentLinkPublicRoutes, { licenseExempt: '已签发支付链接的公开支付入口保持可达' }],
     [bizPayDemoContract.basePath, bizPayDemoRoutes, { feature: 'payment' }],
   ],
 });

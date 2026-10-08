@@ -10,6 +10,7 @@ import taskDemoRoutes from './task-demo';
 
 export default defineRouteDomain({
   name: 'tasks',
+  licensing: { core: '统一任务、调度与导入导出是基础能力' },
   mounts: () => [
     [exportJobContract.basePath, exportJobsRoutes],
     [importJobContract.basePath, importJobsRoutes],

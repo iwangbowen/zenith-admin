@@ -1,9 +1,9 @@
 -- 手写 DDL：Drizzle schema 无法表达、drizzle-kit generate 不会生成的结构，随迁移基线一起维护（唯一收口，
 -- 见 docs/backend/database.md「迁移目录」）。pg_trgm 扩展在 0000_baseline.sql 顶部创建。
--- 内容：pgvector（条件）、三张 RANGE 分区表与初始分区、跨实例缓存失效触发器、CMS 不可变事实触发器、
+-- 内容：pgvector（条件）、三张 RANGE 分区表的初始分区、跨实例缓存失效触发器、CMS 不可变事实触发器、
 -- 只读执行角色 zenith_readonly、pg_stat_statements（条件）。
--- 分区表的列 / 外键 / 索引与 0000_baseline.sql 中对应表逐字一致（基线先按普通表建，此处删除后重建为分区表），
--- schema 改动这三张表后需同步更新此处。分区边界一律写带 +00 的 timestamptz 字面量（UTC 日 / 月边界）。
+-- 三张分区父表及其列 / 外键 / 索引直接在 0000_baseline.sql 中创建；本文件只预建初始子分区，
+-- 不删除或重建父表。分区边界一律写带 +00 的 timestamptz 字面量（UTC 日 / 月边界）。
 
 -- ─── pgvector：Mastra PgVector 向量存储依赖（条件启用）──────────────────────────
 -- 知识库向量由 Mastra PgVector 存放在 mastra schema（索引 kb_{kbId}），ai_kb_chunks 只存分块文本，
@@ -16,18 +16,9 @@ BEGIN
   END IF;
 END $$;--> statement-breakpoint
 
--- ─── iot_telemetry：按 reported_at 的 RANGE 日分区表（Drizzle schema 无法表达分区）──────
+-- ─── iot_telemetry：按 reported_at 的 RANGE 日分区表的初始分区 ──────────────────────
 -- 最新值在设备影子（iot_device_state），长窗口图表与仪表盘读小时聚合表（iot_telemetry_hourly），明细只保留 30 天。
--- Drizzle 快照仍以普通表描述列 / 索引 / 外键（父表定义自动继承到每个分区）。
-DROP TABLE IF EXISTS "iot_telemetry";--> statement-breakpoint
-CREATE TABLE "iot_telemetry" (
-	"device_id" integer NOT NULL,
-	"metrics" jsonb NOT NULL,
-	"reported_at" timestamp with time zone DEFAULT now() NOT NULL
-) PARTITION BY RANGE ("reported_at");--> statement-breakpoint
-ALTER TABLE "iot_telemetry" ADD CONSTRAINT "iot_telemetry_device_id_iot_devices_id_fk" FOREIGN KEY ("device_id") REFERENCES "public"."iot_devices"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "idx_iot_telemetry_device_time" ON "iot_telemetry" USING btree ("device_id","reported_at");--> statement-breakpoint
-CREATE INDEX "idx_iot_telemetry_time_brin" ON "iot_telemetry" USING brin ("reported_at");--> statement-breakpoint
+-- Drizzle 快照描述列 / 索引 / 外键，基准 SQL 直接声明 PARTITION BY；父表定义自动继承到每个分区。
 -- 初始分区：UTC 日 [昨天, 今天 + 7]，命名 iot_telemetry_pYYYYMMDD（与 iot-partitions.service 口径一致）。
 -- 之后由系统任务「IoT 遥测分区维护」滚动预建，写入命中缺失分区时按需补建，保留策略按分区整表 DROP。
 DO $$
@@ -46,49 +37,11 @@ BEGIN
   END LOOP;
 END $$;--> statement-breakpoint
 
--- ─── 企业网盘日志：drive_activities / drive_share_access_logs 按 created_at 的 RANGE 月分区表 ──────
+-- ─── 企业网盘日志：drive_activities / drive_share_access_logs 的初始 RANGE 月分区 ──────
 -- 两表均为追加型高频日志，保留策略按分区整表 DROP。分区键必须进主键，因此不设代理主键，
 -- `id` 只是无约束的 identity 序号列，列表按 (created_at, id) 倒序。
 -- 分区命名 drive_activities_pYYYYMM / drive_share_access_logs_pYYYYMM（UTC 月边界），
 -- 由系统任务「网盘日志分区维护」滚动预建，写入命中缺失分区时按需补建（services/drive/drive-partitions.service.ts）。
-DROP TABLE IF EXISTS "drive_activities";--> statement-breakpoint
-CREATE TABLE "drive_activities" (
-	"id" integer GENERATED ALWAYS AS IDENTITY (sequence name "drive_activities_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
-	"space_id" integer NOT NULL,
-	"node_id" integer,
-	"node_name" varchar(255) NOT NULL,
-	"node_type" "drive_node_type" NOT NULL,
-	"action" "drive_activity_action" NOT NULL,
-	"actor_id" integer,
-	"share_id" integer,
-	"detail" jsonb,
-	"client_ip" varchar(64),
-	"tenant_id" integer,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
-) PARTITION BY RANGE ("created_at");--> statement-breakpoint
-ALTER TABLE "drive_activities" ADD CONSTRAINT "drive_activities_node_id_drive_nodes_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."drive_nodes"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "drive_activities" ADD CONSTRAINT "drive_activities_actor_id_users_id_fk" FOREIGN KEY ("actor_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "drive_activities" ADD CONSTRAINT "drive_activities_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "drive_activities_node_idx" ON "drive_activities" USING btree ("node_id","created_at");--> statement-breakpoint
-CREATE INDEX "drive_activities_space_idx" ON "drive_activities" USING btree ("space_id","created_at");--> statement-breakpoint
-CREATE INDEX "drive_activities_actor_idx" ON "drive_activities" USING btree ("actor_id","created_at");--> statement-breakpoint
-CREATE INDEX "drive_activities_id_idx" ON "drive_activities" USING btree ("id");--> statement-breakpoint
-CREATE INDEX "drive_activities_created_brin_idx" ON "drive_activities" USING brin ("created_at");--> statement-breakpoint
-
-DROP TABLE IF EXISTS "drive_share_access_logs";--> statement-breakpoint
-CREATE TABLE "drive_share_access_logs" (
-	"id" integer GENERATED ALWAYS AS IDENTITY (sequence name "drive_share_access_logs_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
-	"share_id" integer NOT NULL,
-	"node_id" integer NOT NULL,
-	"action" varchar(16) NOT NULL,
-	"client_ip" varchar(64),
-	"ok" boolean DEFAULT true NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
-) PARTITION BY RANGE ("created_at");--> statement-breakpoint
-ALTER TABLE "drive_share_access_logs" ADD CONSTRAINT "drive_share_access_logs_share_id_drive_share_links_id_fk" FOREIGN KEY ("share_id") REFERENCES "public"."drive_share_links"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "drive_share_access_logs_share_idx" ON "drive_share_access_logs" USING btree ("share_id","created_at");--> statement-breakpoint
-CREATE INDEX "drive_share_access_logs_created_brin_idx" ON "drive_share_access_logs" USING brin ("created_at");--> statement-breakpoint
-
 -- 初始分区：UTC 月 [上月, 下下月]，之后由系统任务滚动预建
 DO $$
 DECLARE

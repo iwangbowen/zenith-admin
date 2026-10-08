@@ -9,4 +9,4 @@ import { iotBatchCommandSchema, iotBatchDesiredSchema } from '../validation';
 export const iotBatchContract = defineContract('/api/iot/batch', {
   commands: op.post('/commands', { access: { permission: 'iot:device:batch' }, audit: '批量下发 IoT 指令', body: iotBatchCommandSchema, response: asyncTaskSchema, summary: '批量下发指令（任务中心执行，行级明细可见）' }),
   desired: op.post('/desired', { access: { permission: 'iot:device:batch' }, audit: '批量设置 IoT 期望属性', body: iotBatchDesiredSchema, response: asyncTaskSchema, summary: '批量设置期望属性（任务中心执行）' }),
-}, { auditModule: 'IoT 设备', tags: ['IoT 设备'] });
+}, { auditModule: 'IoT 设备', tags: ['IoT 设备'], feature: 'iot' });

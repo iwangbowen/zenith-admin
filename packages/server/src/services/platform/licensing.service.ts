@@ -109,7 +109,7 @@ export async function getLicensingStatus(): Promise<{
     : {
         mode: config.licenseMode,
         status: snapshot.status,
-        features: config.licenseMode === 'warn' ? [...LICENSE_FEATURES] : [...snapshot.features],
+        features: config.licenseMode === 'warn' ? [...LICENSE_FEATURES] : snapshot.restricted ? [] : [...snapshot.features],
         limits: snapshot.payload?.limits ?? null,
         expiresAt: license?.expiresAt ?? null,
         graceUntil: license?.graceUntil ?? null,

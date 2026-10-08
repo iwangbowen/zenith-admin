@@ -1,5 +1,7 @@
-import type { GlobalSearchType } from '@zenith/shared/platform';
+import { canonicalEntityTypeForSearchType, type GlobalSearchType } from '@zenith/shared/platform';
+import { isLicenseFeatureKey } from '@zenith/shared/licensing';
 import { hasPermission } from '../../../lib/context';
+import { isFeatureEnabled } from '../../../lib/licensing';
 import logger from '../../../lib/logger';
 import { createConcurrencyLimiter } from '../../../lib/concurrency';
 import { memberSearchAdapter } from './adapters/member.adapter';
@@ -111,6 +113,10 @@ export async function runGlobalSearch(
     const startedAt = Date.now();
     try {
       if (adapter.permissions !== 'authenticated' && !(await hasPermission(...adapter.permissions))) {
+        return { type: adapter.type, results: [], failed: false } as const;
+      }
+      const domain = canonicalEntityTypeForSearchType(adapter.type).split('.')[0];
+      if (isLicenseFeatureKey(domain) && !(await isFeatureEnabled(domain))) {
         return { type: adapter.type, results: [], failed: false } as const;
       }
       const results = await withTimeout(() => adapter.search(input), adapter.timeoutMs ?? timeoutMs);

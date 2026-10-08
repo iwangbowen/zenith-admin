@@ -1,11 +1,16 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GlobalSearchAdapter } from './types';
 
 vi.mock('../../../lib/context', () => ({
   hasPermission: vi.fn().mockResolvedValue(true),
 }));
 
+vi.mock('../../../lib/licensing', () => ({
+  isFeatureEnabled: vi.fn().mockResolvedValue(true),
+}));
+
 import { hasPermission } from '../../../lib/context';
+import { isFeatureEnabled } from '../../../lib/licensing';
 import { globalSearchAdapters, runGlobalSearch } from './registry';
 
 const item = (type: GlobalSearchAdapter['type'], id: string) => ({
@@ -21,6 +26,11 @@ function adapter(type: GlobalSearchAdapter['type'], search: GlobalSearchAdapter[
 }
 
 describe('global search adapter registry', () => {
+  beforeEach(() => {
+    vi.mocked(hasPermission).mockReset().mockResolvedValue(true);
+    vi.mocked(isFeatureEnabled).mockReset().mockResolvedValue(true);
+  });
+
   it('requires every registered adapter to declare a discovery permission', () => {
     expect(globalSearchAdapters.every((adapter) => adapter.permissions === 'authenticated' || adapter.permissions.length > 0)).toBe(true);
   });
@@ -62,6 +72,60 @@ describe('global search adapter registry', () => {
     expect(search).not.toHaveBeenCalled();
     expect(result.results).toEqual([]);
     expect(result.failedTypes).toEqual([]);
+  });
+
+  it.each([
+    ['iot-device', 'iot'], ['iot-alarm', 'iot'], ['member', 'member'], ['order', 'payment'],
+    ['workflow', 'workflow'], ['file', 'drive'], ['cms-content', 'cms'], ['wiki-document', 'wiki'],
+    ['chat-message', 'chat'], ['report-dashboard', 'report'], ['report-dataset', 'report'],
+    ['ai-knowledge-base', 'ai'],
+  ] as const)('skips unlicensed %s searches before querying business data', async (type, feature) => {
+    vi.mocked(isFeatureEnabled).mockResolvedValue(false);
+    const search = vi.fn().mockResolvedValue([item(type, 'hidden')]);
+    const result = await runGlobalSearch({ q: 'hidden', limit: 5 }, undefined, [adapter(type, search)]);
+
+    expect(isFeatureEnabled).toHaveBeenCalledWith(feature);
+    expect(search).not.toHaveBeenCalled();
+    expect(result).toEqual({ results: [], failedTypes: [] });
+  });
+
+  it('keeps licensed searches and core results while excluding unlicensed IoT results', async () => {
+    vi.mocked(isFeatureEnabled).mockImplementation(async (feature) => feature !== 'iot');
+    const iotSearch = vi.fn().mockResolvedValue([item('iot-device', 'hidden')]);
+    const result = await runGlobalSearch({ q: 'QA', limit: 5 }, undefined, [
+      adapter('user', async () => [item('user', '1')]),
+      adapter('iot-device', iotSearch),
+      adapter('order', async () => [item('order', '2')]),
+    ]);
+
+    expect(iotSearch).not.toHaveBeenCalled();
+    expect(result.results.map((row) => row.id)).toEqual(['1', '2']);
+    expect(result.failedTypes).toEqual([]);
+  });
+
+  it.each(['user', 'announcement', 'biz-leave', 'async-task', 'operation-log', 'exception-log'] as const)(
+    'keeps core %s search available without a License', async (type) => {
+      vi.mocked(isFeatureEnabled).mockResolvedValue(false);
+      const search = vi.fn().mockResolvedValue([item(type, 'core')]);
+      const result = await runGlobalSearch({ q: 'core', limit: 5 }, undefined, [adapter(type, search)]);
+
+      expect(isFeatureEnabled).not.toHaveBeenCalled();
+      expect(search).toHaveBeenCalled();
+      expect(result.results.map((row) => row.id)).toEqual(['core']);
+    },
+  );
+
+  it('fails closed on a License lookup failure and keeps core results', async () => {
+    vi.mocked(isFeatureEnabled).mockRejectedValueOnce(new Error('License store unavailable'));
+    const search = vi.fn().mockResolvedValue([item('iot-alarm', 'hidden')]);
+    const result = await runGlobalSearch({ q: 'QA', limit: 5 }, undefined, [
+      adapter('iot-alarm', search),
+      adapter('user', async () => [item('user', '1')]),
+    ]);
+
+    expect(search).not.toHaveBeenCalled();
+    expect(result.results.map((row) => row.id)).toEqual(['1']);
+    expect(result.failedTypes).toEqual(['iot-alarm']);
   });
 
   it('keeps other results when permission lookup itself fails', async () => {

@@ -5,6 +5,7 @@ import memberMarketingRoutes from './member-marketing';
 
 export default defineRouteDomain({
   name: 'marketing',
+  licensing: { feature: 'growth' },
   mounts: () => [
     [marketingCampaignContract.basePath, marketingCampaignsRoutes],
     [memberMarketingContract.basePath, memberMarketingRoutes],

@@ -30,6 +30,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { accessPermissions, accessPlatformOnly } from '@zenith/shared/core';
 import { listAllOperations } from '@zenith/shared/contracts';
+import { LICENSE_FEATURES } from '@zenith/shared/licensing';
 import {
   mockServerInfra,
   buildContractApp,
@@ -96,6 +97,14 @@ function producesJson(op: RouteOperation): boolean {
 }
 
 describe('路由装配', () => {
+  it('每个登记的授权功能都有实际 API 门控，新增功能不能只补矩阵', async () => {
+    const { ROUTE_DOMAINS } = await import('./routes');
+    const features = new Set(ROUTE_DOMAINS.flatMap((domain) =>
+      domain.mounts().flatMap(([, , options]) => options?.feature ? [options.feature] : []),
+    ));
+    expect(LICENSE_FEATURES.filter((feature) => !features.has(feature)), '以下功能只有授权登记、没有 API 门控').toEqual([]);
+  });
+
   it('OpenAPI 文档暴露了预期规模的操作', () => {
     // 下界防止「路由域整体没挂上」这类静默失败——曾经的 fallback 挂载顺序问题
     // 就属于这一类：CMS SSR 挂在 '/' 会吞掉一切未匹配路径。

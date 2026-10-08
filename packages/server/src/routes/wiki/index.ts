@@ -13,6 +13,7 @@ import wikiStatsRoutes from './wiki-stats';
 
 export default defineRouteDomain({
   name: 'wiki',
+  licensing: { feature: 'wiki' },
   mounts: () => [
     [wikiSpaceContract.basePath, wikiSpacesRoutes, { feature: 'wiki' }],
     [wikiDocContract.basePath, wikiDocsRoutes, { feature: 'wiki' }],

@@ -49,6 +49,7 @@ import usersRoutes from './users';
 
 export default defineRouteDomain({
   name: 'identity',
+  licensing: { core: '身份、组织与权限管理是基础能力' },
   mounts: () => [
     [authContract.basePath, authRoutes],
     [userContract.basePath, usersRoutes],

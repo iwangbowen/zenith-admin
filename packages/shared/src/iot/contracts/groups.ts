@@ -33,4 +33,4 @@ export const iotDeviceGroupContract = defineContract('/api/iot/groups', {
   create: op.post('/', { access: { permission: 'iot:group:manage' }, audit: '创建 IoT 设备分组', body: createIotDeviceGroupSchema, response: iotDeviceGroupSchema, summary: '创建分组' }),
   update: op.put('/{id}', { access: { permission: 'iot:group:manage' }, audit: '更新 IoT 设备分组', params: idParam, body: updateIotDeviceGroupSchema, response: iotDeviceGroupSchema, summary: '更新分组（含成员全量替换）' }),
   remove: op.delete('/{id}', { access: { permission: 'iot:group:manage' }, audit: '删除 IoT 设备分组', params: idParam, summary: '删除分组（设备本身不受影响）' }),
-}, { auditModule: 'IoT 设备', tags: ['IoT 分组'] });
+}, { auditModule: 'IoT 设备', tags: ['IoT 分组'], feature: 'iot' });

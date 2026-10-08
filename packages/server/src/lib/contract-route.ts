@@ -26,6 +26,7 @@ import { authMiddleware } from '../middleware/auth';
 import { guard, type AuditLogOptions } from '../middleware/guard';
 import { platformAdminOnly } from '../middleware/platform-admin';
 import { withDataMasking } from './data-mask/boundary';
+import { licenseFeatureGate } from './licensing';
 import { apiResponse, commonErrorResponses, jsonContent, okCsv, okExcel, okFile } from './openapi-schemas';
 
 /**
@@ -102,7 +103,7 @@ type ExtraResponses = Record<number, { description: string; content?: Record<str
 export type RouteOptions<M extends readonly MiddlewareHandler[], Extra extends ExtraResponses> = {
   /**
    * 路由级中间件。登录令牌（bearer）操作：自动门禁（认证 → 平台超管 → 功能门控 / 权限 / 审计）之后追加的中间件；
-   * 公开 / 会员令牌 / 设备签名 / 开放网关等非 bearer 操作：完整链（认证 / 验签 / 限流），顺序即执行顺序
+   * 公开 / 会员令牌 / 设备签名 / 开放网关等非 bearer 操作：凭证校验 / 限流链，随后自动追加契约声明的 License 门控
    */
   readonly middleware?: M;
   /** 认证之前执行的中间件（限流 / IP 白名单等）；仅对 bearer 操作的自动门禁生效 */
@@ -175,20 +176,21 @@ function toAuditLogOptions(audit: OperationAudit): AuditLogOptions {
 
 /**
  * 按契约 `access` 装配门禁链：preAuth → authMiddleware → [平台超管] → guard(权限 / 审计 / 功能门控) → 路由追加中间件。
- * 凭证不是后台登录令牌（公开 / 会员令牌 / 设备签名 / 开放网关）时，原样使用路由提供的 `middleware`。
+ * 非 bearer 操作先执行路由提供的凭证校验中间件，再追加契约声明的 License 门控。
  */
 export function resolveRouteMiddleware(op: AnyOperation, options: Pick<RouteOptions<readonly MiddlewareHandler[], ExtraResponses>, 'middleware' | 'preAuth'>): MiddlewareHandler[] {
   const explicit = [...(options.middleware ?? [])];
+  if (op.feature !== undefined && !isLicenseFeatureKey(op.feature)) {
+    throw new Error(`契约 feature 不是已登记的 License 功能：${op.feature}（${op.method.toUpperCase()} ${op.fullPath}）`);
+  }
   if (op.security !== 'bearer') {
     if (options.preAuth?.length) throw new Error(`preAuth 只对登录令牌（bearer）操作生效：${op.method.toUpperCase()} ${op.fullPath}`);
+    if (op.feature && isLicenseFeatureKey(op.feature)) explicit.push(licenseFeatureGate(op.feature));
     return explicit;
   }
   if (op.access === undefined) {
     // defineContract 已在构造期拒绝；这里兜底防止绕过契约组直接使用 op.xxx() 产物
     throw new Error(`登录令牌操作缺少 access 声明：${op.method.toUpperCase()} ${op.fullPath}`);
-  }
-  if (op.feature !== undefined && !isLicenseFeatureKey(op.feature)) {
-    throw new Error(`契约 feature 不是已登记的 License 功能：${op.feature}（${op.method.toUpperCase()} ${op.fullPath}）`);
   }
   const chain: MiddlewareHandler[] = [...(options.preAuth ?? []), authMiddleware];
   const platformOnly = accessPlatformOnly(op.access);

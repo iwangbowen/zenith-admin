@@ -40,6 +40,7 @@ import memberFulfillmentRoutes from './member-fulfillment';
 
 export default defineRouteDomain({
   name: 'member',
+  licensing: { feature: 'member' },
   mounts: () => [
     [memberAuthContract.basePath, memberAuthRoutes, { feature: 'member' }],
     [memberRenewalContract.basePath, memberRenewalRoutes, { feature: 'member' }],

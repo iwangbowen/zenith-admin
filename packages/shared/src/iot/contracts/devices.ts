@@ -235,4 +235,4 @@ export const iotDeviceContract = defineContract('/api/iot/devices', {
   create: op.post('/', { access: { permission: 'iot:device:create' }, audit: '注册 IoT 设备', body: createIotDeviceSchema, response: iotDeviceSchema, summary: '注册设备（自动生成 SN 与接入密钥）' }),
   update: op.put('/{id}', { access: { permission: 'iot:device:update' }, audit: '更新 IoT 设备', params: idParam, body: updateIotDeviceSchema, response: iotDeviceSchema, summary: '更新设备' }),
   remove: op.delete('/{id}', { access: { permission: 'iot:device:delete' }, audit: '删除 IoT 设备', params: idParam, summary: '删除设备（级联清除遥测与指令）' }),
-}, { auditModule: 'IoT 设备', tags: ['IoT 设备'] });
+}, { auditModule: 'IoT 设备', tags: ['IoT 设备'], feature: 'iot' });

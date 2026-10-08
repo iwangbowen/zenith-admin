@@ -1,5 +1,5 @@
 import type { Menu } from '../identity/contracts';
-import { MENU_ROOT_FEATURE_MAP } from '../licensing/feature-catalog';
+import { applyMenuFeatureKeys } from '../licensing/feature-catalog';
 import { ALL_PERMISSIONS } from '../permissions';
 import type { PermissionMeta } from '../core/permissions';
 import { SEED_DATE } from './_base';
@@ -109,30 +109,6 @@ export function expandPermissionButtons(pages: Menu[], registry: Readonly<Record
   }
 
   return pages.flatMap((page) => [page, ...(buttonsByPage.get(page.id) ?? [])]);
-}
-
-/**
- * 按功能目录的 menuRoots 为整棵子树派生 featureKey。
- * featureKey 为 null 的菜单属于核心能力（不可关闭）；分片文件无需逐行标注，
- * 目录（@zenith/shared/licensing 的 LICENSE_FEATURE_CATALOG）是唯一事实源。
- */
-function applyMenuFeatureKeys(menus: Menu[]): Menu[] {
-  const childrenByParent = new Map<number, Menu[]>();
-  for (const m of menus) {
-    const list = childrenByParent.get(m.parentId) ?? [];
-    list.push(m);
-    childrenByParent.set(m.parentId, list);
-  }
-  const featureById = new Map<number, string>();
-  for (const [rootId, featureKey] of MENU_ROOT_FEATURE_MAP) {
-    const queue = [rootId];
-    while (queue.length > 0) {
-      const id = queue.shift()!;
-      featureById.set(id, featureKey);
-      for (const child of childrenByParent.get(id) ?? []) queue.push(child.id);
-    }
-  }
-  return menus.map((m) => ({ ...m, featureKey: featureById.get(m.id) ?? null }));
 }
 
 // ─── 菜单派生工具（基于 SEED_MENUS 结构化推导，避免硬编码 ID 漂移）───────────────

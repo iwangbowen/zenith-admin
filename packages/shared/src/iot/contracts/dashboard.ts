@@ -57,4 +57,4 @@ export type IotDashboard = z.infer<typeof iotDashboardSchema>;
 
 export const iotDashboardContract = defineContract('/api/iot/dashboard', {
   overview: op.get('/', { access: { permission: 'iot:dashboard:view' }, response: iotDashboardSchema, summary: 'IoT 总览（统计卡 / 在线与告警趋势 / 产品分布 / 最近告警与事件）' }),
-}, { tags: ['IoT 仪表盘'] });
+}, { tags: ['IoT 仪表盘'], feature: 'iot' });

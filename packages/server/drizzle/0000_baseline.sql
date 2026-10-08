@@ -72,9 +72,9 @@ CREATE TYPE "public"."workflow_definition_status" AS ENUM('draft', 'published', 
 CREATE TYPE "public"."workflow_event_sign_mode" AS ENUM('hmacSha256', 'none');--> statement-breakpoint
 CREATE TYPE "public"."workflow_form_type" AS ENUM('designer', 'custom', 'external');--> statement-breakpoint
 CREATE TYPE "public"."workflow_instance_status" AS ENUM('draft', 'running', 'suspended', 'returned', 'approved', 'rejected', 'withdrawn', 'cancelled');--> statement-breakpoint
-CREATE TYPE "public"."workflow_job_execution_status" AS ENUM('running', 'succeeded', 'failed');--> statement-breakpoint
+CREATE TYPE "public"."workflow_job_execution_status" AS ENUM('running', 'succeeded', 'failed', 'skipped', 'canceled');--> statement-breakpoint
 CREATE TYPE "public"."workflow_job_status" AS ENUM('pending', 'running', 'paused', 'succeeded', 'failed', 'dead', 'canceled');--> statement-breakpoint
-CREATE TYPE "public"."workflow_job_type" AS ENUM('delay_wake', 'task_timeout', 'trigger_dispatch', 'external_dispatch', 'subprocess_spawn', 'subprocess_join', 'event_dispatch', 'webhook_delivery', 'compensation_action');--> statement-breakpoint
+CREATE TYPE "public"."workflow_job_type" AS ENUM('delay_wake', 'task_timeout', 'trigger_dispatch', 'external_dispatch', 'subprocess_spawn', 'subprocess_join', 'event_dispatch', 'webhook_delivery', 'compensation_action', 'automation_action', 'schedule_launch');--> statement-breakpoint
 CREATE TYPE "public"."workflow_node_type" AS ENUM('start', 'approve', 'handler', 'end', 'exclusiveGateway', 'parallelGateway', 'inclusiveGateway', 'routeGateway', 'ccNode', 'delay', 'trigger', 'subProcess', 'catchNode');--> statement-breakpoint
 CREATE TYPE "public"."workflow_sign_group_status" AS ENUM('waiting', 'active', 'approved', 'rejected', 'cancelled');--> statement-breakpoint
 CREATE TYPE "public"."workflow_sign_mode" AS ENUM('and', 'or');--> statement-breakpoint
@@ -2049,22 +2049,6 @@ CREATE TABLE "workflow_attachment_links" (
 CREATE TABLE "workflow_attachment_uploads" (
 	"file_id" uuid PRIMARY KEY NOT NULL,
 	"user_id" integer NOT NULL,
-	"tenant_id" integer,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
-);
---> statement-breakpoint
-CREATE TABLE "workflow_automation_runs" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "workflow_automation_runs_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
-	"rule_id" integer,
-	"rule_name" varchar(128) NOT NULL,
-	"instance_id" integer,
-	"instance_title" varchar(256),
-	"trigger" "workflow_automation_trigger" NOT NULL,
-	"action_index" integer NOT NULL,
-	"action_type" varchar(32) NOT NULL,
-	"status" varchar(16) NOT NULL,
-	"error" varchar(512),
-	"duration_ms" integer,
 	"tenant_id" integer,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -5179,6 +5163,19 @@ CREATE TABLE "system_metric_samples" (
 	"jobs_stuck" real,
 	"jobs_dead" real,
 	"jobs_failed1h" real
+);
+--> statement-breakpoint
+CREATE TABLE "ws_metric_samples" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "ws_metric_samples_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"sampled_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"connections" integer DEFAULT 0 NOT NULL,
+	"users" integer DEFAULT 0 NOT NULL,
+	"idle" integer DEFAULT 0 NOT NULL,
+	"connects" integer DEFAULT 0 NOT NULL,
+	"disconnects" integer DEFAULT 0 NOT NULL,
+	"sent" integer DEFAULT 0 NOT NULL,
+	"recv" integer DEFAULT 0 NOT NULL,
+	"failed" integer DEFAULT 0 NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "app_artifacts" (
@@ -8452,7 +8449,7 @@ CREATE TABLE "iot_telemetry" (
 	"device_id" integer NOT NULL,
 	"metrics" jsonb NOT NULL,
 	"reported_at" timestamp with time zone DEFAULT now() NOT NULL
-);
+) PARTITION BY RANGE ("reported_at");
 --> statement-breakpoint
 CREATE TABLE "iot_telemetry_hourly" (
 	"id" bigint PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "iot_telemetry_hourly_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854775807 START WITH 1 CACHE 1),
@@ -8498,7 +8495,7 @@ CREATE TABLE "drive_activities" (
 	"client_ip" varchar(64),
 	"tenant_id" integer,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
-);
+) PARTITION BY RANGE ("created_at");
 --> statement-breakpoint
 CREATE TABLE "drive_collect_submissions" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "drive_collect_submissions_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
@@ -8700,7 +8697,7 @@ CREATE TABLE "drive_share_access_logs" (
 	"client_ip" varchar(64),
 	"ok" boolean DEFAULT true NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
-);
+) PARTITION BY RANGE ("created_at");
 --> statement-breakpoint
 CREATE TABLE "drive_share_links" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "drive_share_links_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
@@ -8950,8 +8947,203 @@ CREATE TABLE "cms_content_collections" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE UNIQUE INDEX "async_tasks_idem_tenant_uq" ON "async_tasks" USING btree ("tenant_id",coalesce("created_by", 0),"task_type","idempotency_key") WHERE "async_tasks"."idempotency_key" is not null and "async_tasks"."tenant_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "async_tasks_idem_platform_uq" ON "async_tasks" USING btree (coalesce("created_by", 0),"task_type","idempotency_key") WHERE "async_tasks"."idempotency_key" is not null and "async_tasks"."tenant_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "impersonation_sessions_token_uq" ON "impersonation_sessions" USING btree ("token_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "user_trusted_devices_user_device_uq" ON "user_trusted_devices" USING btree ("user_id","device_id_hash");--> statement-breakpoint
+CREATE UNIQUE INDEX "dict_items_dict_id_value_unique" ON "dict_items" USING btree ("dict_id","value");--> statement-breakpoint
+CREATE UNIQUE INDEX "domain_events_tenant_dedupe_uq" ON "domain_events" USING btree ("tenant_id","dedupe_key") WHERE "domain_events"."tenant_id" is not null and "domain_events"."dedupe_key" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "domain_events_platform_dedupe_uq" ON "domain_events" USING btree ("dedupe_key") WHERE "domain_events"."tenant_id" is null and "domain_events"."dedupe_key" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "entity_relation_edges_tenant_uq" ON "entity_relation_edges" USING btree ("tenant_id","source_type","source_key","relation_key","target_type","target_key") WHERE "entity_relation_edges"."tenant_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "entity_relation_edges_platform_uq" ON "entity_relation_edges" USING btree ("source_type","source_key","relation_key","target_type","target_key") WHERE "entity_relation_edges"."tenant_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "analytics_rollup_uq" ON "analytics_daily_rollup" USING btree ("tenant_id","stat_date","metric","dim_type","dim_value");--> statement-breakpoint
+CREATE UNIQUE INDEX "analytics_event_meta_name_uq" ON "analytics_event_meta" USING btree ("event_name");--> statement-breakpoint
+CREATE UNIQUE INDEX "analytics_event_overrides_tenant_name_uq" ON "analytics_event_overrides" USING btree ("tenant_id","event_name");--> statement-breakpoint
+CREATE UNIQUE INDEX "analytics_event_quality_daily_uq" ON "analytics_event_quality_daily" USING btree ("tenant_id","stat_date","event_name","issue_type");--> statement-breakpoint
+CREATE UNIQUE INDEX "analytics_experiments_tenant_key_uq" ON "analytics_experiments" USING btree (coalesce("tenant_id", 0),"exp_key");--> statement-breakpoint
+CREATE UNIQUE INDEX "analytics_identity_map_tenant_anon_uq" ON "analytics_identity_map" USING btree (coalesce("tenant_id", 0),"anonymous_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "analytics_segment_members_segment_distinct_uq" ON "analytics_segment_members" USING btree ("segment_id","distinct_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "analytics_sessions_sid_uq" ON "analytics_sessions" USING btree ("session_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "analytics_sites_site_key_uq" ON "analytics_sites" USING btree ("site_key");--> statement-breakpoint
+CREATE UNIQUE INDEX "analytics_user_profiles_tenant_distinct_uq" ON "analytics_user_profiles" USING btree (coalesce("tenant_id", 0),"distinct_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "analytics_user_segments_tenant_name_uq" ON "analytics_user_segments" USING btree ("tenant_id","name") WHERE "analytics_user_segments"."tenant_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "analytics_user_segments_global_name_uq" ON "analytics_user_segments" USING btree ("name") WHERE "analytics_user_segments"."tenant_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "error_groups_fingerprint_uq" ON "error_groups" USING btree ("fingerprint");--> statement-breakpoint
+CREATE UNIQUE INDEX "replay_segments_replay_seq_uq" ON "replay_segments" USING btree ("replay_id","seq");--> statement-breakpoint
 CREATE UNIQUE INDEX "user_events_event_id_uq" ON "user_events" USING btree ("event_id");--> statement-breakpoint
-ALTER TABLE "departments" ADD CONSTRAINT "departments_leader_id_users_id_fk" FOREIGN KEY ("leader_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "user_events_cms_page_view_uq" ON "user_events" USING btree (("properties"->>'cmsSiteId'),("properties"->>'pageViewId')) WHERE "user_events"."properties" @> '{"cmsSchemaVersion":2,"trustedCms":true}'::jsonb and "user_events"."event_name"='cms.page_view';--> statement-breakpoint
+CREATE UNIQUE INDEX "workflow_instances_biz_key_uniq" ON "workflow_instances" USING btree (coalesce("tenant_id", 0),"biz_type","biz_id") WHERE "workflow_instances"."status" in ('draft', 'running', 'suspended', 'returned');--> statement-breakpoint
+CREATE UNIQUE INDEX "workflow_instances_parent_task_item_key_idx" ON "workflow_instances" USING btree ("parent_task_id","parent_task_item_key");--> statement-breakpoint
+CREATE UNIQUE INDEX "workflow_job_executions_lease_token_unique" ON "workflow_job_executions" USING btree ("lease_token");--> statement-breakpoint
+CREATE UNIQUE INDEX "wf_tasks_active_uniq" ON "workflow_tasks" USING btree ("instance_id","node_key","activation_id","assignee_id") WHERE "workflow_tasks"."status" in ('pending', 'waiting') and "workflow_tasks"."assignee_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "wf_tokens_active_uniq" ON "workflow_tokens" USING btree ("instance_id","node_key","branch_path") WHERE "workflow_tokens"."status" = 'active';--> statement-breakpoint
+CREATE UNIQUE INDEX "notification_dispatches_dedupe_uq" ON "notification_dispatches" USING btree ("dedupe_key") WHERE "notification_dispatches"."dedupe_key" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "notification_event_overrides_tenant_uq" ON "notification_event_overrides" USING btree ("tenant_id","event_key","channel") WHERE "notification_event_overrides"."tenant_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "notification_event_overrides_global_uq" ON "notification_event_overrides" USING btree ("event_key","channel") WHERE "notification_event_overrides"."tenant_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "notification_outbox_dedupe_uq" ON "notification_outbox" USING btree ("dedupe_key") WHERE "notification_outbox"."dedupe_key" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "notification_preferences_uq" ON "notification_preferences" USING btree ("recipient_type","recipient_id","event_key","channel");--> statement-breakpoint
+CREATE UNIQUE INDEX "notification_recipient_settings_uq" ON "notification_recipient_settings" USING btree ("recipient_type","recipient_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "channel_messages_dedupe_uq" ON "channel_messages" USING btree ("dedupe_key") WHERE "channel_messages"."dedupe_key" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_cashier_sessions_order_no_unique" ON "payment_cashier_sessions" USING btree ("order_no") WHERE "payment_cashier_sessions"."order_no" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_channel_accounts_identity_uq" ON "payment_channel_accounts" USING btree (coalesce("tenant_id", 0),"channel","environment","merchant_id","sub_merchant_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_channel_configs_default_tenant_channel_uq" ON "payment_channel_configs" USING btree ("tenant_id","channel") WHERE "payment_channel_configs"."is_default" = true and "payment_channel_configs"."tenant_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_channel_configs_default_global_channel_uq" ON "payment_channel_configs" USING btree ("channel") WHERE "payment_channel_configs"."is_default" = true and "payment_channel_configs"."tenant_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_contracts_active_biz_uq" ON "payment_contracts" USING btree (coalesce("tenant_id", 0),"app_id","biz_type","biz_id","currency") WHERE "payment_contracts"."status" in ('pending', 'unknown', 'signed', 'paused');--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_contracts_member_renewal_active_uq" ON "payment_contracts" USING btree (coalesce("tenant_id", 0),"biz_type","biz_id","currency") WHERE "payment_contracts"."biz_type" = 'member_renewal' and "payment_contracts"."status" in ('pending', 'unknown', 'signed', 'paused');--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_fund_reservations_source_scope_uq" ON "payment_fund_reservations" USING btree (coalesce("tenant_id", 0),"app_id","channel_account_id","currency","source_type","source_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_journals_source_scope_uq" ON "payment_journals" USING btree (coalesce("tenant_id", 0),"app_id","channel_account_id","currency","source_type","source_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_journals_reversal_once_uq" ON "payment_journals" USING btree ("reversal_of_journal_id") WHERE "payment_journals"."reversal_of_journal_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_ledger_accounts_scope_code_uq" ON "payment_ledger_accounts" USING btree (coalesce("tenant_id", 0),"app_id","channel_account_id","currency","code");--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_method_configs_tenant_method_uq" ON "payment_method_configs" USING btree (coalesce("tenant_id", 0),"method");--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_notify_logs_provider_event_uq" ON "payment_notify_logs" USING btree ("channel_config_id","provider_event_id") WHERE "payment_notify_logs"."provider_event_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_orders_active_biz_uq" ON "payment_orders" USING btree (coalesce("tenant_id", 0),coalesce("app_id", 0),"biz_type","biz_id","currency") WHERE "payment_orders"."status" in ('pending', 'paying', 'unknown');--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_orders_idempotency_scope_uq" ON "payment_orders" USING btree (coalesce("tenant_id", 0),coalesce("app_id", 0),"idempotency_key") WHERE "payment_orders"."idempotency_key" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_preauths_active_biz_uq" ON "payment_preauths" USING btree (coalesce("tenant_id", 0),"app_id","biz_type","biz_id","currency") WHERE "payment_preauths"."status" in ('pending', 'unknown', 'frozen');--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_refunds_idempotency_scope_uq" ON "payment_refunds" USING btree (coalesce("tenant_id", 0),"order_id","idempotency_key") WHERE "payment_refunds"."idempotency_key" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_risk_reviews_pending_biz_scope_uq" ON "payment_risk_reviews" USING btree (coalesce("tenant_id", 0),coalesce("app_id", 0),"biz_type","biz_id","currency") WHERE "payment_risk_reviews"."status" = 'pending';--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_sharing_reversals_idempotency_scope_uq" ON "payment_sharing_reversals" USING btree (coalesce("tenant_id", 0),"sharing_order_id","idempotency_key");--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_transfers_idempotency_scope_uq" ON "payment_transfers" USING btree (coalesce("tenant_id", 0),"app_id","idempotency_key");--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_recon_adjustments_active_case_unique" ON "payment_recon_adjustments" USING btree ("case_id") WHERE "payment_recon_adjustments"."reversal_of_id" is null and "payment_recon_adjustments"."status" in ('draft', 'pending', 'approved', 'executed');--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_recon_adjustments_active_reversal_unique" ON "payment_recon_adjustments" USING btree ("reversal_of_id") WHERE "payment_recon_adjustments"."reversal_of_id" is not null and "payment_recon_adjustments"."status" <> 'rejected';--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_recon_runs_active_statement_unique" ON "payment_recon_runs" USING btree ("statement_id") WHERE "payment_recon_runs"."status" in ('pending', 'running');--> statement-breakpoint
+CREATE UNIQUE INDEX "ai_http_tools_name_uq" ON "ai_http_tools" USING btree ("name");--> statement-breakpoint
+CREATE UNIQUE INDEX "ai_shared_conversations_token_uq" ON "ai_shared_conversations" USING btree ("token");--> statement-breakpoint
+CREATE UNIQUE INDEX "ai_user_settings_user_id_uq" ON "ai_user_settings" USING btree ("user_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "member_notifications_member_type_biz_uq" ON "member_notifications" USING btree ("member_id","type","biz_id") WHERE "member_notifications"."biz_id" is not null and "member_notifications"."type" = 'cms_content_published';--> statement-breakpoint
+CREATE UNIQUE INDEX "member_point_accounts_member_unique" ON "member_point_accounts" USING btree ("member_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "member_wallet_tx_payment_event_uq" ON "member_wallet_transactions" USING btree ("payment_event_id") WHERE "member_wallet_transactions"."payment_event_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "member_wallets_member_unique" ON "member_wallets" USING btree ("member_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "members_phone_unique" ON "members" USING btree ("phone") WHERE "members"."deleted_at" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "members_email_unique" ON "members" USING btree ("email") WHERE "members"."deleted_at" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "members_username_unique" ON "members" USING btree ("username") WHERE "members"."deleted_at" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "members_invite_code_unique" ON "members" USING btree ("invite_code") WHERE "members"."invite_code" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "client_devices_push_reg_unique" ON "client_devices" USING btree ("push_provider","push_registration_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "deploy_releases_current_unique" ON "deploy_releases" USING btree ("target_id","host_id") WHERE "deploy_releases"."is_current" = true;--> statement-breakpoint
+CREATE UNIQUE INDEX "deploy_runs_target_active_unique" ON "deploy_runs" USING btree ("target_id") WHERE "deploy_runs"."status" in ('pending', 'running');--> statement-breakpoint
+CREATE UNIQUE INDEX "mp_fans_account_openid_uq" ON "mp_fans" USING btree ("account_id","openid");--> statement-breakpoint
+CREATE UNIQUE INDEX "mp_kf_accounts_account_kf_uq" ON "mp_kf_accounts" USING btree ("account_id","kf_account");--> statement-breakpoint
+CREATE UNIQUE INDEX "mp_kf_routing_configs_account_uq" ON "mp_kf_routing_configs" USING btree ("account_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "mp_kf_sessions_open_uq" ON "mp_kf_sessions" USING btree ("account_id","openid") WHERE "mp_kf_sessions"."status" <> 'closed';--> statement-breakpoint
+CREATE UNIQUE INDEX "mp_materials_account_media_uq" ON "mp_materials" USING btree ("account_id","wechat_media_id") WHERE "mp_materials"."wechat_media_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "mp_message_templates_account_tpl_uq" ON "mp_message_templates" USING btree ("account_id","template_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "mp_messages_account_msgid_uq" ON "mp_messages" USING btree ("account_id","msg_id") WHERE "mp_messages"."msg_id" IS NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "mp_tags_account_name_uq" ON "mp_tags" USING btree ("account_id","name");--> statement-breakpoint
+CREATE UNIQUE INDEX "mp_unmatched_keywords_account_kw_uq" ON "mp_unmatched_keywords" USING btree ("account_id","keyword");--> statement-breakpoint
+CREATE UNIQUE INDEX "report_dashboard_versions_dash_ver_uq" ON "report_dashboard_versions" USING btree ("dashboard_id","version");--> statement-breakpoint
+CREATE UNIQUE INDEX "report_dashboards_tenant_name_uq" ON "report_dashboards" USING btree ("tenant_id","name") WHERE "report_dashboards"."tenant_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_dashboards_global_name_uq" ON "report_dashboards" USING btree ("name") WHERE "report_dashboards"."tenant_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_datasets_tenant_name_uq" ON "report_datasets" USING btree ("tenant_id","name") WHERE "report_datasets"."tenant_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_datasets_global_name_uq" ON "report_datasets" USING btree ("name") WHERE "report_datasets"."tenant_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_datasources_tenant_name_uq" ON "report_datasources" USING btree ("tenant_id","name") WHERE "report_datasources"."tenant_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_datasources_global_name_uq" ON "report_datasources" USING btree ("name") WHERE "report_datasources"."tenant_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_delivery_attempts_run_channel_attempt_uq" ON "report_delivery_attempts" USING btree ("run_id","channel","attempt");--> statement-breakpoint
+CREATE UNIQUE INDEX "report_delivery_runs_idempotency_uq" ON "report_delivery_runs" USING btree ("idempotency_key");--> statement-breakpoint
+CREATE UNIQUE INDEX "report_folders_tenant_root_name_uq" ON "report_folders" USING btree ("tenant_id","resource_type","name") WHERE "report_folders"."tenant_id" is not null and "report_folders"."parent_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_folders_tenant_child_name_uq" ON "report_folders" USING btree ("tenant_id","parent_id","resource_type","name") WHERE "report_folders"."tenant_id" is not null and "report_folders"."parent_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_folders_global_root_name_uq" ON "report_folders" USING btree ("resource_type","name") WHERE "report_folders"."tenant_id" is null and "report_folders"."parent_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_folders_global_child_name_uq" ON "report_folders" USING btree ("parent_id","resource_type","name") WHERE "report_folders"."tenant_id" is null and "report_folders"."parent_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_print_templates_tenant_name_uq" ON "report_print_templates" USING btree ("tenant_id","name") WHERE "report_print_templates"."tenant_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_print_templates_global_name_uq" ON "report_print_templates" USING btree ("name") WHERE "report_print_templates"."tenant_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_asset_templates_tenant_code_uq" ON "report_asset_templates" USING btree ("tenant_id","code") WHERE "report_asset_templates"."tenant_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_asset_templates_global_code_uq" ON "report_asset_templates" USING btree ("code") WHERE "report_asset_templates"."tenant_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_dq_rules_tenant_dataset_name_uq" ON "report_dq_rules" USING btree ("tenant_id","dataset_id","name") WHERE "report_dq_rules"."tenant_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_dq_rules_global_dataset_name_uq" ON "report_dq_rules" USING btree ("dataset_id","name") WHERE "report_dq_rules"."tenant_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_environments_tenant_code_uq" ON "report_environments" USING btree ("tenant_id","code") WHERE "report_environments"."tenant_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_environments_global_code_uq" ON "report_environments" USING btree ("code") WHERE "report_environments"."tenant_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_environments_tenant_default_uq" ON "report_environments" USING btree ("tenant_id") WHERE "report_environments"."tenant_id" is not null and "report_environments"."is_default" = true;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_environments_global_default_uq" ON "report_environments" USING btree ("is_default") WHERE "report_environments"."tenant_id" is null and "report_environments"."is_default" = true;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_fill_templates_tenant_code_uq" ON "report_fill_templates" USING btree ("tenant_id","code") WHERE "report_fill_templates"."tenant_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_fill_templates_global_code_uq" ON "report_fill_templates" USING btree ("code") WHERE "report_fill_templates"."tenant_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_materialization_snapshots_dataset_revision_uq" ON "report_materialization_snapshots" USING btree ("dataset_id","revision");--> statement-breakpoint
+CREATE UNIQUE INDEX "report_metrics_tenant_code_uq" ON "report_metrics" USING btree ("tenant_id","code") WHERE "report_metrics"."tenant_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_metrics_global_code_uq" ON "report_metrics" USING btree ("code") WHERE "report_metrics"."tenant_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_query_cost_logs_request_uq" ON "report_query_cost_logs" USING btree ("request_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "report_query_quotas_tenant_scope_uq" ON "report_query_quotas" USING btree ("tenant_id","scope") WHERE "report_query_quotas"."tenant_id" is not null and "report_query_quotas"."scope" = 'tenant' and "report_query_quotas"."user_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_query_quotas_global_scope_uq" ON "report_query_quotas" USING btree ("scope") WHERE "report_query_quotas"."tenant_id" is null and "report_query_quotas"."scope" = 'tenant' and "report_query_quotas"."user_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_query_quotas_tenant_user_uq" ON "report_query_quotas" USING btree ("tenant_id","user_id") WHERE "report_query_quotas"."tenant_id" is not null and "report_query_quotas"."scope" = 'user' and "report_query_quotas"."user_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_query_quotas_global_user_uq" ON "report_query_quotas" USING btree ("user_id") WHERE "report_query_quotas"."tenant_id" is null and "report_query_quotas"."scope" = 'user' and "report_query_quotas"."user_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_resource_acls_tenant_subject_uq" ON "report_resource_acls" USING btree ("tenant_id","resource_type","resource_id","subject_type","subject_id","inherit_from_folder") WHERE "report_resource_acls"."tenant_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_resource_acls_global_subject_uq" ON "report_resource_acls" USING btree ("resource_type","resource_id","subject_type","subject_id","inherit_from_folder") WHERE "report_resource_acls"."tenant_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_sla_rules_tenant_dataset_name_uq" ON "report_sla_rules" USING btree ("tenant_id","dataset_id","name") WHERE "report_sla_rules"."tenant_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "report_sla_rules_global_dataset_name_uq" ON "report_sla_rules" USING btree ("dataset_id","name") WHERE "report_sla_rules"."tenant_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_ad_events_dedupe_uq" ON "cms_ad_events" USING btree ("dedupe_key");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_ad_slots_site_code_uq" ON "cms_ad_slots" USING btree ("site_id","code");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_ad_stats_ad_date_uq" ON "cms_ad_stats" USING btree ("ad_id","stat_date");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_channels_site_path_uq" ON "cms_channels" USING btree ("site_id","path");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_channels_site_code_uq" ON "cms_channels" USING btree ("site_id","code");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_collect_items_rule_url_uq" ON "cms_collect_items" USING btree ("rule_id","url");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_content_tombstones_content_uq" ON "cms_content_tombstones" USING btree ("content_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_content_versions_content_ver_uq" ON "cms_content_versions" USING btree ("content_id","version");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_contents_distribution_materialization_uq" ON "cms_contents" USING btree ("distribution_rule_id","distribution_source_id") WHERE "cms_contents"."distribution_rule_id" is not null and "cms_contents"."distribution_source_id" is not null and "cms_contents"."deleted_at" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_contents_site_slug_uq" ON "cms_contents" USING btree ("site_id","slug") WHERE "cms_contents"."slug" is not null and "cms_contents"."deleted_at" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_contents_site_static_path_uq" ON "cms_contents" USING btree ("site_id","static_path") WHERE "cms_contents"."static_path" is not null and "cms_contents"."deleted_at" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_forms_site_code_uq" ON "cms_forms" USING btree ("site_id","code");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_friend_link_groups_site_code_uq" ON "cms_friend_link_groups" USING btree ("site_id","code");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_hotword_groups_site_name_uq" ON "cms_hotword_groups" USING btree ("site_id","name");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_hotwords_site_keyword_uq" ON "cms_hotwords" USING btree ("site_id","keyword");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_interaction_answers_response_question_uq" ON "cms_interaction_answers" USING btree ("response_id","question_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_interaction_responses_repeat_uq" ON "cms_interaction_responses" USING btree ("interaction_id","repeat_key") WHERE "cms_interaction_responses"."repeat_key" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_interaction_responses_request_uq" ON "cms_interaction_responses" USING btree ("interaction_id","request_key") WHERE "cms_interaction_responses"."request_key" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_interactions_site_code_uq" ON "cms_interactions" USING btree ("site_id","code");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_link_words_site_keyword_uq" ON "cms_link_words" USING btree ("site_id","keyword");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_member_subscriptions_subject_uq" ON "cms_member_subscriptions" USING btree ("member_id","site_id","subject_type","subject_key");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_member_view_history_uq" ON "cms_member_view_history" USING btree ("member_id","content_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_model_fields_model_name_uq" ON "cms_model_fields" USING btree ("model_id","name");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_open_app_grants_client_site_uq" ON "cms_open_app_grants" USING btree ("client_id","site_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_page_block_acls_grant_uq" ON "cms_page_block_acls" USING btree ("page_id","block_id","subject_type","subject_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_page_preset_versions_preset_version_uq" ON "cms_page_preset_versions" USING btree ("preset_id","version");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_pages_site_slug_uq" ON "cms_pages" USING btree ("site_id","slug");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_pages_site_path_uq" ON "cms_pages" USING btree ("site_id","path") WHERE "cms_pages"."path" IS NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_publish_artifacts_task_path_uq" ON "cms_publish_artifacts" USING btree ("task_id","path");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_redirects_site_from_uq" ON "cms_redirects" USING btree ("site_id","from_path");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_resource_folders_site_parent_name_uq" ON "cms_resource_folders" USING btree ("site_id","parent_id","name") WHERE "cms_resource_folders"."parent_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_resource_folders_site_root_name_uq" ON "cms_resource_folders" USING btree ("site_id","name") WHERE "cms_resource_folders"."parent_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_resource_refs_uq" ON "cms_resource_refs" USING btree ("resource_id","owner_type","owner_id","field");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_resources_site_url_uq" ON "cms_resources" USING btree ("site_id","url");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_search_words_site_type_word_uq" ON "cms_search_words" USING btree ("site_id","type","word");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_sites_domain_uq" ON "cms_sites" USING btree ("domain") WHERE "cms_sites"."domain" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_sites_default_uq" ON "cms_sites" USING btree ("is_default") WHERE "cms_sites"."is_default" = true;--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_tags_site_name_uq" ON "cms_tags" USING btree ("site_id","name");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_tags_site_slug_uq" ON "cms_tags" USING btree ("site_id","slug");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_vocabularies_site_code_uq" ON "cms_vocabularies" USING btree ("site_id","code");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_widget_refs_owner_field_uq" ON "cms_widget_refs" USING btree ("owner_type","owner_id","field");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_widget_source_refs_widget_item_uq" ON "cms_widget_source_refs" USING btree ("widget_id","item_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_widgets_site_code_uq" ON "cms_widgets" USING btree ("site_id","code");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_asset_rights_resource_uq" ON "cms_asset_rights" USING btree ("resource_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_asset_versions_resource_version_uq" ON "cms_asset_versions" USING btree ("resource_id","version");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_model_unique_value_uq" ON "cms_model_unique_values" USING btree ("site_id","model_id","field","value_hash");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_model_versions_model_version_uq" ON "cms_model_versions" USING btree ("model_id","version");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_component_versions_component_version_uq" ON "cms_component_versions" USING btree ("component_id","version");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_content_review_revisions_instance_uq" ON "cms_content_review_revisions" USING btree ("workflow_instance_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_content_revision_approvals_revision_uq" ON "cms_content_revision_approvals" USING btree ("revision_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_content_revisions_content_version_uq" ON "cms_content_revisions" USING btree ("content_id","version");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_working_translation_locale_uq" ON "cms_content_working_copies" USING btree (("snapshot"->>'translationOfId'),("snapshot"->>'locale')) WHERE "cms_content_working_copies"."snapshot"->>'translationOfId' is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_editorial_observations_round_window_uq" ON "cms_editorial_task_observations" USING btree ("round_id","window_days");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_editorial_task_rounds_task_round_uq" ON "cms_editorial_task_rounds" USING btree ("task_id","round_no");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_editorial_tasks_source_uq" ON "cms_editorial_tasks" USING btree ("site_id","source","source_key");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_feedback_cases_submission_uq" ON "cms_feedback_cases" USING btree ("submission_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_feedback_history_version_uq" ON "cms_feedback_history" USING btree ("feedback_id","version");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_form_handling_policies_form_uq" ON "cms_form_handling_policies" USING btree ("form_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "uq_short_link_daily_stats_link_date" ON "short_link_daily_stats" USING btree ("link_id","stat_date");--> statement-breakpoint
+CREATE UNIQUE INDEX "uq_iot_alarms_active" ON "iot_alarms" USING btree ("rule_id","device_id") WHERE status <> 'resolved';--> statement-breakpoint
+CREATE UNIQUE INDEX "uq_iot_firmwares_product_version" ON "iot_firmwares" USING btree ("product_id","version");--> statement-breakpoint
+CREATE UNIQUE INDEX "uq_iot_ota_task_devices" ON "iot_ota_task_devices" USING btree ("task_id","device_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "uq_iot_product_events_ident" ON "iot_product_events" USING btree ("product_id","identifier");--> statement-breakpoint
+CREATE UNIQUE INDEX "uq_iot_product_properties_ident" ON "iot_product_properties" USING btree ("product_id","identifier");--> statement-breakpoint
+CREATE UNIQUE INDEX "uq_iot_product_services_ident" ON "iot_product_services" USING btree ("product_id","identifier");--> statement-breakpoint
+CREATE UNIQUE INDEX "uq_iot_telemetry_hourly" ON "iot_telemetry_hourly" USING btree ("device_id","property","bucket");--> statement-breakpoint
+CREATE UNIQUE INDEX "drive_access_requests_pending_unique" ON "drive_access_requests" USING btree ("node_id","requester_id") WHERE "drive_access_requests"."status" = 'pending';--> statement-breakpoint
+CREATE UNIQUE INDEX "drive_legal_holds_active_node_uq" ON "drive_legal_holds" USING btree ("node_id") WHERE "drive_legal_holds"."active" = true;--> statement-breakpoint
+CREATE UNIQUE INDEX "drive_nodes_sibling_name_uq" ON "drive_nodes" USING btree ("space_id",coalesce("parent_id", 0),lower("name")) WHERE "drive_nodes"."deleted_at" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "drive_open_app_grants_client_space_uq" ON "drive_open_app_grants" USING btree ("client_id","space_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "drive_quota_requests_pending_unique" ON "drive_quota_requests" USING btree ("space_id") WHERE "drive_quota_requests"."status" = 'pending';--> statement-breakpoint
+CREATE UNIQUE INDEX "drive_spaces_personal_owner_uq" ON "drive_spaces" USING btree ("owner_id") WHERE "drive_spaces"."type" = 'personal';--> statement-breakpoint
+CREATE UNIQUE INDEX "drive_spaces_department_uq" ON "drive_spaces" USING btree ("department_id") WHERE "drive_spaces"."type" = 'department';--> statement-breakpoint
+CREATE UNIQUE INDEX "entity_watches_user_tenant_object_uq" ON "entity_watches" USING btree ("user_id","tenant_id","entity_type","entity_key") WHERE "entity_watches"."tenant_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "entity_watches_user_platform_object_uq" ON "entity_watches" USING btree ("user_id","entity_type","entity_key") WHERE "entity_watches"."tenant_id" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_delivery_runs_site_event_uq" ON "cms_delivery_runs" USING btree ("site_id","event_key");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_collection_versions_collection_version_uq" ON "cms_content_collection_versions" USING btree ("collection_id","version");--> statement-breakpoint
+CREATE UNIQUE INDEX "cms_content_collections_site_code_uq" ON "cms_content_collections" USING btree ("site_id","code");ALTER TABLE "departments" ADD CONSTRAINT "departments_leader_id_users_id_fk" FOREIGN KEY ("leader_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "departments" ADD CONSTRAINT "departments_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "departments" ADD CONSTRAINT "departments_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "departments" ADD CONSTRAINT "departments_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -9166,9 +9358,6 @@ ALTER TABLE "workflow_attachment_links" ADD CONSTRAINT "workflow_attachment_link
 ALTER TABLE "workflow_attachment_uploads" ADD CONSTRAINT "workflow_attachment_uploads_file_id_managed_files_id_fk" FOREIGN KEY ("file_id") REFERENCES "public"."managed_files"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_attachment_uploads" ADD CONSTRAINT "workflow_attachment_uploads_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_attachment_uploads" ADD CONSTRAINT "workflow_attachment_uploads_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "workflow_automation_runs" ADD CONSTRAINT "workflow_automation_runs_rule_id_workflow_automations_id_fk" FOREIGN KEY ("rule_id") REFERENCES "public"."workflow_automations"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "workflow_automation_runs" ADD CONSTRAINT "workflow_automation_runs_instance_id_workflow_instances_id_fk" FOREIGN KEY ("instance_id") REFERENCES "public"."workflow_instances"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "workflow_automation_runs" ADD CONSTRAINT "workflow_automation_runs_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_automations" ADD CONSTRAINT "workflow_automations_definition_id_workflow_definitions_id_fk" FOREIGN KEY ("definition_id") REFERENCES "public"."workflow_definitions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_automations" ADD CONSTRAINT "workflow_automations_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workflow_automations" ADD CONSTRAINT "workflow_automations_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
@@ -10522,8 +10711,6 @@ CREATE INDEX "async_tasks_created_at_idx" ON "async_tasks" USING btree ("created
 CREATE INDEX "async_tasks_trace_idx" ON "async_tasks" USING btree ("trace_id");--> statement-breakpoint
 CREATE INDEX "async_tasks_payload_trgm_idx" ON "async_tasks" USING gin (("payload"::text) gin_trgm_ops);--> statement-breakpoint
 CREATE INDEX "async_tasks_result_trgm_idx" ON "async_tasks" USING gin (("result"::text) gin_trgm_ops);--> statement-breakpoint
-CREATE UNIQUE INDEX "async_tasks_idem_tenant_uq" ON "async_tasks" USING btree ("tenant_id",coalesce("created_by", 0),"task_type","idempotency_key") WHERE "async_tasks"."idempotency_key" is not null and "async_tasks"."tenant_id" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "async_tasks_idem_platform_uq" ON "async_tasks" USING btree (coalesce("created_by", 0),"task_type","idempotency_key") WHERE "async_tasks"."idempotency_key" is not null and "async_tasks"."tenant_id" is null;--> statement-breakpoint
 CREATE INDEX "export_job_downloads_tenant_idx" ON "export_job_downloads" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "export_job_downloads_job_idx" ON "export_job_downloads" USING btree ("job_id");--> statement-breakpoint
 CREATE INDEX "export_job_downloads_downloaded_by_idx" ON "export_job_downloads" USING btree ("downloaded_by");--> statement-breakpoint
@@ -10553,7 +10740,6 @@ CREATE INDEX "system_scheduler_runs_alert_ack_by_idx" ON "system_scheduler_runs"
 CREATE INDEX "user_feedbacks_status_idx" ON "user_feedbacks" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "user_feedbacks_user_idx" ON "user_feedbacks" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "user_feedbacks_created_at_idx" ON "user_feedbacks" USING btree ("created_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "impersonation_sessions_token_uq" ON "impersonation_sessions" USING btree ("token_id");--> statement-breakpoint
 CREATE INDEX "impersonation_sessions_impersonator_idx" ON "impersonation_sessions" USING btree ("impersonator_id");--> statement-breakpoint
 CREATE INDEX "impersonation_sessions_target_idx" ON "impersonation_sessions" USING btree ("target_user_id");--> statement-breakpoint
 CREATE INDEX "impersonation_sessions_tenant_started_idx" ON "impersonation_sessions" USING btree ("tenant_id","started_at" DESC NULLS LAST);--> statement-breakpoint
@@ -10566,7 +10752,6 @@ CREATE INDEX "user_api_tokens_user_idx" ON "user_api_tokens" USING btree ("user_
 CREATE INDEX "user_mfa_factors_user_idx" ON "user_mfa_factors" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "user_mfa_factors_status_idx" ON "user_mfa_factors" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "user_oauth_accounts_user_idx" ON "user_oauth_accounts" USING btree ("user_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "user_trusted_devices_user_device_uq" ON "user_trusted_devices" USING btree ("user_id","device_id_hash");--> statement-breakpoint
 CREATE INDEX "user_trusted_devices_user_idx" ON "user_trusted_devices" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "user_trusted_devices_trusted_until_idx" ON "user_trusted_devices" USING btree ("trusted_until");--> statement-breakpoint
 CREATE INDEX "identity_provider_sync_logs_provider_idx" ON "identity_provider_sync_logs" USING btree ("provider_id");--> statement-breakpoint
@@ -10588,7 +10773,6 @@ CREATE INDEX "directory_sync_sources_status_idx" ON "directory_sync_sources" USI
 CREATE INDEX "directory_sync_sources_scheduled_due_idx" ON "directory_sync_sources" USING btree ("next_run_at") WHERE "directory_sync_sources"."status" = 'enabled' and "directory_sync_sources"."type" <> 'scim' and nullif(trim("directory_sync_sources"."cron_expression"), '') is not null;--> statement-breakpoint
 CREATE INDEX "directory_sync_user_links_user_idx" ON "directory_sync_user_links" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "dict_items_parent_idx" ON "dict_items" USING btree ("parent_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "dict_items_dict_id_value_unique" ON "dict_items" USING btree ("dict_id","value");--> statement-breakpoint
 CREATE INDEX "ip_access_logs_created_at_idx" ON "ip_access_logs" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "ip_access_logs_ip_idx" ON "ip_access_logs" USING btree ("ip");--> statement-breakpoint
 CREATE INDEX "login_logs_tenant_created_idx" ON "login_logs" USING btree ("tenant_id","created_at");--> statement-breakpoint
@@ -10608,54 +10792,38 @@ CREATE INDEX "operation_logs_after_trgm_idx" ON "operation_logs" USING gin ("aft
 CREATE INDEX "operation_logs_reqbody_trgm_idx" ON "operation_logs" USING gin ("request_body" gin_trgm_ops);--> statement-breakpoint
 CREATE INDEX "domain_event_subjects_entity_idx" ON "domain_event_subjects" USING btree ("tenant_id","entity_type","entity_key","event_id");--> statement-breakpoint
 CREATE INDEX "domain_event_subjects_event_idx" ON "domain_event_subjects" USING btree ("event_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "domain_events_tenant_dedupe_uq" ON "domain_events" USING btree ("tenant_id","dedupe_key") WHERE "domain_events"."tenant_id" is not null and "domain_events"."dedupe_key" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "domain_events_platform_dedupe_uq" ON "domain_events" USING btree ("dedupe_key") WHERE "domain_events"."tenant_id" is null and "domain_events"."dedupe_key" is not null;--> statement-breakpoint
 CREATE INDEX "domain_events_tenant_occurred_idx" ON "domain_events" USING btree ("tenant_id","occurred_at");--> statement-breakpoint
 CREATE INDEX "domain_events_type_occurred_idx" ON "domain_events" USING btree ("event_type","occurred_at");--> statement-breakpoint
 CREATE INDEX "domain_events_trace_idx" ON "domain_events" USING btree ("trace_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "entity_relation_edges_tenant_uq" ON "entity_relation_edges" USING btree ("tenant_id","source_type","source_key","relation_key","target_type","target_key") WHERE "entity_relation_edges"."tenant_id" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "entity_relation_edges_platform_uq" ON "entity_relation_edges" USING btree ("source_type","source_key","relation_key","target_type","target_key") WHERE "entity_relation_edges"."tenant_id" is null;--> statement-breakpoint
 CREATE INDEX "entity_relation_edges_source_idx" ON "entity_relation_edges" USING btree ("tenant_id","source_type","source_key","relation_key");--> statement-breakpoint
 CREATE INDEX "entity_relation_edges_target_idx" ON "entity_relation_edges" USING btree ("tenant_id","target_type","target_key","relation_key");--> statement-breakpoint
-CREATE UNIQUE INDEX "analytics_rollup_uq" ON "analytics_daily_rollup" USING btree ("tenant_id","stat_date","metric","dim_type","dim_value");--> statement-breakpoint
 CREATE INDEX "analytics_rollup_date_idx" ON "analytics_daily_rollup" USING btree ("stat_date");--> statement-breakpoint
 CREATE INDEX "analytics_rollup_metric_idx" ON "analytics_daily_rollup" USING btree ("metric");--> statement-breakpoint
-CREATE UNIQUE INDEX "analytics_event_meta_name_uq" ON "analytics_event_meta" USING btree ("event_name");--> statement-breakpoint
 CREATE INDEX "analytics_event_meta_status_idx" ON "analytics_event_meta" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "analytics_event_meta_owner_idx" ON "analytics_event_meta" USING btree ("owner_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "analytics_event_overrides_tenant_name_uq" ON "analytics_event_overrides" USING btree ("tenant_id","event_name");--> statement-breakpoint
 CREATE INDEX "analytics_event_overrides_status_idx" ON "analytics_event_overrides" USING btree ("status");--> statement-breakpoint
-CREATE UNIQUE INDEX "analytics_event_quality_daily_uq" ON "analytics_event_quality_daily" USING btree ("tenant_id","stat_date","event_name","issue_type");--> statement-breakpoint
 CREATE INDEX "analytics_event_quality_daily_date_idx" ON "analytics_event_quality_daily" USING btree ("stat_date");--> statement-breakpoint
 CREATE INDEX "analytics_event_quality_daily_tenant_idx" ON "analytics_event_quality_daily" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "analytics_experiments_tenant_key_uq" ON "analytics_experiments" USING btree (coalesce("tenant_id", 0),"exp_key");--> statement-breakpoint
 CREATE INDEX "analytics_experiments_tenant_idx" ON "analytics_experiments" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "analytics_experiments_status_idx" ON "analytics_experiments" USING btree ("status");--> statement-breakpoint
-CREATE UNIQUE INDEX "analytics_identity_map_tenant_anon_uq" ON "analytics_identity_map" USING btree (coalesce("tenant_id", 0),"anonymous_id");--> statement-breakpoint
 CREATE INDEX "analytics_saved_reports_tenant_idx" ON "analytics_saved_reports" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "analytics_saved_reports_type_idx" ON "analytics_saved_reports" USING btree ("report_type");--> statement-breakpoint
 CREATE INDEX "analytics_segment_campaigns_tenant_idx" ON "analytics_segment_campaigns" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "analytics_segment_campaigns_segment_idx" ON "analytics_segment_campaigns" USING btree ("segment_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "analytics_segment_members_segment_distinct_uq" ON "analytics_segment_members" USING btree ("segment_id","distinct_id");--> statement-breakpoint
 CREATE INDEX "analytics_segment_members_segment_idx" ON "analytics_segment_members" USING btree ("segment_id");--> statement-breakpoint
 CREATE INDEX "analytics_segment_members_tenant_idx" ON "analytics_segment_members" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "analytics_segment_members_member_idx" ON "analytics_segment_members" USING btree ("member_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "analytics_sessions_sid_uq" ON "analytics_sessions" USING btree ("session_id");--> statement-breakpoint
 CREATE INDEX "analytics_sessions_started_idx" ON "analytics_sessions" USING btree ("started_at");--> statement-breakpoint
 CREATE INDEX "analytics_sessions_user_idx" ON "analytics_sessions" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "analytics_sessions_tenant_idx" ON "analytics_sessions" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "analytics_sessions_member_idx" ON "analytics_sessions" USING btree ("member_id");--> statement-breakpoint
 CREATE INDEX "analytics_sessions_tenant_started_idx" ON "analytics_sessions" USING btree ("tenant_id","started_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "analytics_sites_site_key_uq" ON "analytics_sites" USING btree ("site_key");--> statement-breakpoint
 CREATE INDEX "analytics_sites_tenant_idx" ON "analytics_sites" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "analytics_user_profiles_tenant_idx" ON "analytics_user_profiles" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "analytics_user_profiles_tenant_distinct_uq" ON "analytics_user_profiles" USING btree (coalesce("tenant_id", 0),"distinct_id");--> statement-breakpoint
 CREATE INDEX "analytics_user_profiles_user_idx" ON "analytics_user_profiles" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "analytics_user_profiles_member_idx" ON "analytics_user_profiles" USING btree ("member_id");--> statement-breakpoint
 CREATE INDEX "analytics_user_profiles_last_seen_idx" ON "analytics_user_profiles" USING btree ("last_seen_at");--> statement-breakpoint
 CREATE INDEX "analytics_user_profiles_properties_gin_idx" ON "analytics_user_profiles" USING gin ("properties");--> statement-breakpoint
-CREATE UNIQUE INDEX "analytics_user_segments_tenant_name_uq" ON "analytics_user_segments" USING btree ("tenant_id","name") WHERE "analytics_user_segments"."tenant_id" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "analytics_user_segments_global_name_uq" ON "analytics_user_segments" USING btree ("name") WHERE "analytics_user_segments"."tenant_id" is null;--> statement-breakpoint
 CREATE INDEX "analytics_user_segments_tenant_status_idx" ON "analytics_user_segments" USING btree ("tenant_id","status");--> statement-breakpoint
 CREATE INDEX "error_alert_logs_created_idx" ON "error_alert_logs" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "error_alert_logs_rule_idx" ON "error_alert_logs" USING btree ("rule_id");--> statement-breakpoint
@@ -10669,7 +10837,6 @@ CREATE INDEX "error_events_member_idx" ON "error_events" USING btree ("member_id
 CREATE INDEX "error_events_group_created_idx" ON "error_events" USING btree ("group_id","created_at");--> statement-breakpoint
 CREATE INDEX "error_events_replay_idx" ON "error_events" USING btree ("replay_id");--> statement-breakpoint
 CREATE INDEX "error_events_trace_idx" ON "error_events" USING btree ("trace_id") WHERE "error_events"."trace_id" IS NOT NULL;--> statement-breakpoint
-CREATE UNIQUE INDEX "error_groups_fingerprint_uq" ON "error_groups" USING btree ("fingerprint");--> statement-breakpoint
 CREATE INDEX "error_groups_status_idx" ON "error_groups" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "error_groups_type_idx" ON "error_groups" USING btree ("error_type");--> statement-breakpoint
 CREATE INDEX "error_groups_last_seen_idx" ON "error_groups" USING btree ("last_seen_at");--> statement-breakpoint
@@ -10683,7 +10850,6 @@ CREATE INDEX "replay_access_logs_tenant_idx" ON "replay_access_logs" USING btree
 CREATE INDEX "replay_click_points_page_idx" ON "replay_click_points" USING btree ("page_path");--> statement-breakpoint
 CREATE INDEX "replay_click_points_created_idx" ON "replay_click_points" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "replay_click_points_tenant_idx" ON "replay_click_points" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "replay_segments_replay_seq_uq" ON "replay_segments" USING btree ("replay_id","seq");--> statement-breakpoint
 CREATE INDEX "replay_sessions_session_idx" ON "replay_sessions" USING btree ("session_id");--> statement-breakpoint
 CREATE INDEX "replay_sessions_started_idx" ON "replay_sessions" USING btree ("started_at");--> statement-breakpoint
 CREATE INDEX "replay_sessions_status_activity_idx" ON "replay_sessions" USING btree ("status","last_activity_at");--> statement-breakpoint
@@ -10709,7 +10875,6 @@ CREATE INDEX "user_events_perf_metric_idx" ON "user_events" USING btree ("metric
 CREATE INDEX "user_events_properties_gin_idx" ON "user_events" USING gin ("properties");--> statement-breakpoint
 CREATE INDEX "user_events_cms_site_created_idx" ON "user_events" USING btree (("properties"->>'cmsSiteId'),"created_at") WHERE "user_events"."properties" @> '{"cmsSchemaVersion":2,"trustedCms":true}'::jsonb;--> statement-breakpoint
 CREATE INDEX "user_events_cms_page_created_idx" ON "user_events" USING btree (("properties"->>'pageViewId'),"created_at") WHERE "user_events"."properties" @> '{"cmsSchemaVersion":2,"trustedCms":true}'::jsonb;--> statement-breakpoint
-CREATE UNIQUE INDEX "user_events_cms_page_view_uq" ON "user_events" USING btree (("properties"->>'cmsSiteId'),("properties"->>'pageViewId')) WHERE "user_events"."properties" @> '{"cmsSchemaVersion":2,"trustedCms":true}'::jsonb and "user_events"."event_name"='cms.page_view';--> statement-breakpoint
 CREATE INDEX "user_events_anon_pending_idx" ON "user_events" USING btree ("anonymous_id") WHERE "user_events"."user_id" IS NULL AND "user_events"."member_id" IS NULL AND "user_events"."anonymous_id" IS NOT NULL;--> statement-breakpoint
 CREATE INDEX "announcements_tenant_idx" ON "announcements" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "workflow_approval_slots_activation_idx" ON "workflow_approval_slots" USING btree ("activation_id");--> statement-breakpoint
@@ -10719,9 +10884,6 @@ CREATE INDEX "workflow_attachment_links_task_id_idx" ON "workflow_attachment_lin
 CREATE INDEX "workflow_attachment_links_file_id_idx" ON "workflow_attachment_links" USING btree ("file_id");--> statement-breakpoint
 CREATE INDEX "workflow_attachment_links_tenant_idx" ON "workflow_attachment_links" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "workflow_attachment_uploads_tenant_idx" ON "workflow_attachment_uploads" USING btree ("tenant_id");--> statement-breakpoint
-CREATE INDEX "workflow_automation_runs_rule_idx" ON "workflow_automation_runs" USING btree ("rule_id");--> statement-breakpoint
-CREATE INDEX "workflow_automation_runs_instance_idx" ON "workflow_automation_runs" USING btree ("instance_id");--> statement-breakpoint
-CREATE INDEX "workflow_automation_runs_created_idx" ON "workflow_automation_runs" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "workflow_automations_definition_idx" ON "workflow_automations" USING btree ("definition_id");--> statement-breakpoint
 CREATE INDEX "workflow_automations_tenant_idx" ON "workflow_automations" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "workflow_comments_task_idx" ON "workflow_comments" USING btree ("task_id");--> statement-breakpoint
@@ -10747,13 +10909,10 @@ CREATE INDEX "workflow_event_subscriptions_tenant_idx" ON "workflow_event_subscr
 CREATE INDEX "workflow_instance_migrations_tenant_idx" ON "workflow_instance_migrations" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "wf_inst_migration_idx" ON "workflow_instance_migrations" USING btree ("instance_id");--> statement-breakpoint
 CREATE INDEX "workflow_instances_definition_idx" ON "workflow_instances" USING btree ("definition_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "workflow_instances_biz_key_uniq" ON "workflow_instances" USING btree (coalesce("tenant_id", 0),"biz_type","biz_id") WHERE "workflow_instances"."status" in ('draft', 'running', 'suspended', 'returned');--> statement-breakpoint
-CREATE UNIQUE INDEX "workflow_instances_parent_task_item_key_idx" ON "workflow_instances" USING btree ("parent_task_id","parent_task_item_key");--> statement-breakpoint
 CREATE INDEX "workflow_instances_tenant_status_idx" ON "workflow_instances" USING btree ("tenant_id","status");--> statement-breakpoint
 CREATE INDEX "workflow_instances_initiator_status_idx" ON "workflow_instances" USING btree ("initiator_id","status");--> statement-breakpoint
 CREATE INDEX "workflow_job_executions_tenant_idx" ON "workflow_job_executions" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "workflow_job_executions_job_idx" ON "workflow_job_executions" USING btree ("job_id","attempt");--> statement-breakpoint
-CREATE UNIQUE INDEX "workflow_job_executions_lease_token_unique" ON "workflow_job_executions" USING btree ("lease_token");--> statement-breakpoint
 CREATE INDEX "workflow_job_executions_type_idx" ON "workflow_job_executions" USING btree ("job_type","status");--> statement-breakpoint
 CREATE INDEX "workflow_job_executions_started_idx" ON "workflow_job_executions" USING btree ("started_at");--> statement-breakpoint
 CREATE INDEX "workflow_job_executions_status_finished_idx" ON "workflow_job_executions" USING btree ("status","finished_at");--> statement-breakpoint
@@ -10788,12 +10947,10 @@ CREATE INDEX "workflow_task_urges_task_idx" ON "workflow_task_urges" USING btree
 CREATE INDEX "workflow_task_urges_instance_idx" ON "workflow_task_urges" USING btree ("instance_id");--> statement-breakpoint
 CREATE INDEX "workflow_tasks_instance_status_idx" ON "workflow_tasks" USING btree ("instance_id","status");--> statement-breakpoint
 CREATE INDEX "workflow_tasks_assignee_status_idx" ON "workflow_tasks" USING btree ("assignee_id","status");--> statement-breakpoint
-CREATE UNIQUE INDEX "wf_tasks_active_uniq" ON "workflow_tasks" USING btree ("instance_id","node_key","activation_id","assignee_id") WHERE "workflow_tasks"."status" in ('pending', 'waiting') and "workflow_tasks"."assignee_id" is not null;--> statement-breakpoint
 CREATE INDEX "workflow_templates_tenant_idx" ON "workflow_templates" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "workflow_tokens_tenant_idx" ON "workflow_tokens" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "workflow_tokens_instance_status_idx" ON "workflow_tokens" USING btree ("instance_id","status");--> statement-breakpoint
 CREATE INDEX "workflow_tokens_parent_idx" ON "workflow_tokens" USING btree ("parent_token_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "wf_tokens_active_uniq" ON "workflow_tokens" USING btree ("instance_id","node_key","branch_path") WHERE "workflow_tokens"."status" = 'active';--> statement-breakpoint
 CREATE INDEX "workflow_job_effects_job_idx" ON "workflow_job_effects" USING btree ("job_id");--> statement-breakpoint
 CREATE INDEX "broadcast_campaigns_status_idx" ON "broadcast_campaigns" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "broadcast_campaigns_created_at_idx" ON "broadcast_campaigns" USING btree ("created_at");--> statement-breakpoint
@@ -10809,15 +10966,11 @@ CREATE INDEX "in_app_messages_user_created_idx" ON "in_app_messages" USING btree
 CREATE INDEX "in_app_messages_created_at_idx" ON "in_app_messages" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "in_app_messages_user_unread_idx" ON "in_app_messages" USING btree ("user_id") WHERE "in_app_messages"."is_read" = false;--> statement-breakpoint
 CREATE INDEX "in_app_templates_tenant_idx" ON "in_app_templates" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "notification_dispatches_dedupe_uq" ON "notification_dispatches" USING btree ("dedupe_key") WHERE "notification_dispatches"."dedupe_key" is not null;--> statement-breakpoint
 CREATE INDEX "notification_dispatches_recipient_idx" ON "notification_dispatches" USING btree ("recipient_type","recipient_id","created_at");--> statement-breakpoint
 CREATE INDEX "notification_dispatches_event_idx" ON "notification_dispatches" USING btree ("event_key","created_at");--> statement-breakpoint
 CREATE INDEX "notification_dispatches_outbox_idx" ON "notification_dispatches" USING btree ("outbox_id");--> statement-breakpoint
 CREATE INDEX "notification_dispatches_decision_idx" ON "notification_dispatches" USING btree ("decision","created_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "notification_event_overrides_tenant_uq" ON "notification_event_overrides" USING btree ("tenant_id","event_key","channel") WHERE "notification_event_overrides"."tenant_id" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "notification_event_overrides_global_uq" ON "notification_event_overrides" USING btree ("event_key","channel") WHERE "notification_event_overrides"."tenant_id" is null;--> statement-breakpoint
 CREATE INDEX "notification_event_overrides_event_idx" ON "notification_event_overrides" USING btree ("event_key");--> statement-breakpoint
-CREATE UNIQUE INDEX "notification_outbox_dedupe_uq" ON "notification_outbox" USING btree ("dedupe_key") WHERE "notification_outbox"."dedupe_key" is not null;--> statement-breakpoint
 CREATE INDEX "notification_outbox_pending_idx" ON "notification_outbox" USING btree ("status","scheduled_at") WHERE "notification_outbox"."status" = 'pending';--> statement-breakpoint
 CREATE INDEX "notification_outbox_digest_idx" ON "notification_outbox" USING btree ("digest_key","scheduled_at") WHERE "notification_outbox"."digest_key" is not null;--> statement-breakpoint
 CREATE INDEX "notification_outbox_event_idx" ON "notification_outbox" USING btree ("event_key","created_at");--> statement-breakpoint
@@ -10827,9 +10980,7 @@ CREATE INDEX "notification_outbox_tenant_idx" ON "notification_outbox" USING btr
 CREATE INDEX "notification_outbox_trace_idx" ON "notification_outbox" USING btree ("trace_id");--> statement-breakpoint
 CREATE INDEX "notification_outbox_subjects_entity_idx" ON "notification_outbox_subjects" USING btree ("tenant_id","entity_type","entity_key","outbox_id");--> statement-breakpoint
 CREATE INDEX "notification_outbox_subjects_outbox_idx" ON "notification_outbox_subjects" USING btree ("outbox_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "notification_preferences_uq" ON "notification_preferences" USING btree ("recipient_type","recipient_id","event_key","channel");--> statement-breakpoint
 CREATE INDEX "notification_preferences_recipient_idx" ON "notification_preferences" USING btree ("recipient_type","recipient_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "notification_recipient_settings_uq" ON "notification_recipient_settings" USING btree ("recipient_type","recipient_id");--> statement-breakpoint
 CREATE INDEX "push_send_logs_created_at_idx" ON "push_send_logs" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "push_send_logs_status_idx" ON "push_send_logs" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "push_send_logs_subject_idx" ON "push_send_logs" USING btree ("subject_type","subject_id");--> statement-breakpoint
@@ -10879,24 +11030,17 @@ CREATE INDEX "channel_menus_channel_idx" ON "channel_menus" USING btree ("channe
 CREATE INDEX "channel_message_targets_user_idx" ON "channel_message_targets" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "channel_messages_channel_idx" ON "channel_messages" USING btree ("channel_id");--> statement-breakpoint
 CREATE INDEX "channel_messages_scheduled_due_idx" ON "channel_messages" USING btree ("scheduled_at") WHERE "channel_messages"."status" = 'scheduled';--> statement-breakpoint
-CREATE UNIQUE INDEX "channel_messages_dedupe_uq" ON "channel_messages" USING btree ("dedupe_key") WHERE "channel_messages"."dedupe_key" is not null;--> statement-breakpoint
 CREATE INDEX "channel_quick_replies_channel_idx" ON "channel_quick_replies" USING btree ("channel_id");--> statement-breakpoint
 CREATE INDEX "channel_subscriptions_user_idx" ON "channel_subscriptions" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "channels_tenant_idx" ON "channels" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "payment_apps_tenant_idx" ON "payment_apps" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_cashier_sessions_order_no_unique" ON "payment_cashier_sessions" USING btree ("order_no") WHERE "payment_cashier_sessions"."order_no" is not null;--> statement-breakpoint
 CREATE INDEX "payment_cashier_sessions_link_idx" ON "payment_cashier_sessions" USING btree ("link_id");--> statement-breakpoint
 CREATE INDEX "payment_cashier_sessions_link_slot_idx" ON "payment_cashier_sessions" USING btree ("link_id","use_slot_status","expires_at");--> statement-breakpoint
 CREATE INDEX "payment_cashier_sessions_status_expiry_idx" ON "payment_cashier_sessions" USING btree ("status","expires_at");--> statement-breakpoint
 CREATE INDEX "payment_cashier_sessions_tenant_idx" ON "payment_cashier_sessions" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_channel_accounts_identity_uq" ON "payment_channel_accounts" USING btree (coalesce("tenant_id", 0),"channel","environment","merchant_id","sub_merchant_id");--> statement-breakpoint
 CREATE INDEX "payment_channel_accounts_tenant_idx" ON "payment_channel_accounts" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "payment_channel_configs_tenant_idx" ON "payment_channel_configs" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_channel_configs_default_tenant_channel_uq" ON "payment_channel_configs" USING btree ("tenant_id","channel") WHERE "payment_channel_configs"."is_default" = true and "payment_channel_configs"."tenant_id" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_channel_configs_default_global_channel_uq" ON "payment_channel_configs" USING btree ("channel") WHERE "payment_channel_configs"."is_default" = true and "payment_channel_configs"."tenant_id" is null;--> statement-breakpoint
 CREATE INDEX "payment_contracts_tenant_idx" ON "payment_contracts" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_contracts_active_biz_uq" ON "payment_contracts" USING btree (coalesce("tenant_id", 0),"app_id","biz_type","biz_id","currency") WHERE "payment_contracts"."status" in ('pending', 'unknown', 'signed', 'paused');--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_contracts_member_renewal_active_uq" ON "payment_contracts" USING btree (coalesce("tenant_id", 0),"biz_type","biz_id","currency") WHERE "payment_contracts"."biz_type" = 'member_renewal' and "payment_contracts"."status" in ('pending', 'unknown', 'signed', 'paused');--> statement-breakpoint
 CREATE INDEX "payment_contracts_status_idx" ON "payment_contracts" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "payment_contracts_next_deduct_idx" ON "payment_contracts" USING btree ("next_deduct_at");--> statement-breakpoint
 CREATE INDEX "payment_contracts_biz_idx" ON "payment_contracts" USING btree ("tenant_id","app_id","biz_type","biz_id","currency");--> statement-breakpoint
@@ -10914,35 +11058,26 @@ CREATE INDEX "payment_events_status_created_idx" ON "payment_events" USING btree
 CREATE INDEX "payment_events_status_processed_idx" ON "payment_events" USING btree ("status","processed_at");--> statement-breakpoint
 CREATE INDEX "payment_fee_rules_tenant_idx" ON "payment_fee_rules" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "payment_fee_rules_channel_idx" ON "payment_fee_rules" USING btree ("channel");--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_fund_reservations_source_scope_uq" ON "payment_fund_reservations" USING btree (coalesce("tenant_id", 0),"app_id","channel_account_id","currency","source_type","source_id");--> statement-breakpoint
 CREATE INDEX "payment_fund_reservations_active_account_idx" ON "payment_fund_reservations" USING btree ("account_id","status","expires_at");--> statement-breakpoint
 CREATE INDEX "payment_fund_reservations_scope_idx" ON "payment_fund_reservations" USING btree ("tenant_id","app_id","channel_account_id","currency");--> statement-breakpoint
 CREATE INDEX "payment_journal_lines_account_idx" ON "payment_journal_lines" USING btree ("account_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_journals_source_scope_uq" ON "payment_journals" USING btree (coalesce("tenant_id", 0),"app_id","channel_account_id","currency","source_type","source_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_journals_reversal_once_uq" ON "payment_journals" USING btree ("reversal_of_journal_id") WHERE "payment_journals"."reversal_of_journal_id" is not null;--> statement-breakpoint
 CREATE INDEX "payment_journals_scope_posted_idx" ON "payment_journals" USING btree ("tenant_id","app_id","channel_account_id","currency","posted_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_ledger_accounts_scope_code_uq" ON "payment_ledger_accounts" USING btree (coalesce("tenant_id", 0),"app_id","channel_account_id","currency","code");--> statement-breakpoint
 CREATE INDEX "payment_ledger_accounts_scope_idx" ON "payment_ledger_accounts" USING btree ("tenant_id","app_id","channel_account_id","currency");--> statement-breakpoint
 CREATE INDEX "payment_link_redemptions_link_idx" ON "payment_link_redemptions" USING btree ("link_id");--> statement-breakpoint
 CREATE INDEX "payment_link_redemptions_tenant_idx" ON "payment_link_redemptions" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "payment_links_tenant_idx" ON "payment_links" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "payment_links_app_idx" ON "payment_links" USING btree ("app_id");--> statement-breakpoint
 CREATE INDEX "payment_method_configs_tenant_idx" ON "payment_method_configs" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_method_configs_tenant_method_uq" ON "payment_method_configs" USING btree (coalesce("tenant_id", 0),"method");--> statement-breakpoint
 CREATE INDEX "payment_notify_logs_tenant_idx" ON "payment_notify_logs" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "payment_notify_logs_config_idx" ON "payment_notify_logs" USING btree ("channel_config_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_notify_logs_provider_event_uq" ON "payment_notify_logs" USING btree ("channel_config_id","provider_event_id") WHERE "payment_notify_logs"."provider_event_id" is not null;--> statement-breakpoint
 CREATE INDEX "payment_notify_logs_order_no_idx" ON "payment_notify_logs" USING btree ("order_no");--> statement-breakpoint
 CREATE INDEX "payment_orders_user_idx" ON "payment_orders" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "payment_orders_tenant_idx" ON "payment_orders" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_orders_active_biz_uq" ON "payment_orders" USING btree (coalesce("tenant_id", 0),coalesce("app_id", 0),"biz_type","biz_id","currency") WHERE "payment_orders"."status" in ('pending', 'paying', 'unknown');--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_orders_idempotency_scope_uq" ON "payment_orders" USING btree (coalesce("tenant_id", 0),coalesce("app_id", 0),"idempotency_key") WHERE "payment_orders"."idempotency_key" is not null;--> statement-breakpoint
 CREATE INDEX "payment_orders_biz_idx" ON "payment_orders" USING btree ("tenant_id","app_id","biz_type","biz_id","currency");--> statement-breakpoint
 CREATE INDEX "payment_orders_status_idx" ON "payment_orders" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "payment_orders_expired_idx" ON "payment_orders" USING btree ("expired_at");--> statement-breakpoint
 CREATE INDEX "payment_preauths_operator_idx" ON "payment_preauths" USING btree ("operator_id");--> statement-breakpoint
 CREATE INDEX "payment_preauths_tenant_idx" ON "payment_preauths" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_preauths_active_biz_uq" ON "payment_preauths" USING btree (coalesce("tenant_id", 0),"app_id","biz_type","biz_id","currency") WHERE "payment_preauths"."status" in ('pending', 'unknown', 'frozen');--> statement-breakpoint
 CREATE INDEX "payment_preauths_status_idx" ON "payment_preauths" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "payment_preauths_biz_idx" ON "payment_preauths" USING btree ("tenant_id","app_id","biz_type","biz_id","currency");--> statement-breakpoint
 CREATE INDEX "payment_refunds_order_idx" ON "payment_refunds" USING btree ("order_id");--> statement-breakpoint
@@ -10950,13 +11085,11 @@ CREATE INDEX "payment_refunds_operator_idx" ON "payment_refunds" USING btree ("o
 CREATE INDEX "payment_refunds_tenant_idx" ON "payment_refunds" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "payment_refunds_order_no_idx" ON "payment_refunds" USING btree ("order_no");--> statement-breakpoint
 CREATE INDEX "payment_refunds_status_idx" ON "payment_refunds" USING btree ("status");--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_refunds_idempotency_scope_uq" ON "payment_refunds" USING btree (coalesce("tenant_id", 0),"order_id","idempotency_key") WHERE "payment_refunds"."idempotency_key" is not null;--> statement-breakpoint
 CREATE INDEX "payment_risk_hits_user_idx" ON "payment_risk_hits" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "payment_risk_hits_tenant_idx" ON "payment_risk_hits" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "payment_risk_hits_created_idx" ON "payment_risk_hits" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "payment_risk_hits_rule_idx" ON "payment_risk_hits" USING btree ("rule_id");--> statement-breakpoint
 CREATE INDEX "payment_risk_reviews_tenant_idx" ON "payment_risk_reviews" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_risk_reviews_pending_biz_scope_uq" ON "payment_risk_reviews" USING btree (coalesce("tenant_id", 0),coalesce("app_id", 0),"biz_type","biz_id","currency") WHERE "payment_risk_reviews"."status" = 'pending';--> statement-breakpoint
 CREATE INDEX "payment_risk_reviews_order_no_idx" ON "payment_risk_reviews" USING btree ("order_no");--> statement-breakpoint
 CREATE INDEX "payment_risk_reviews_status_idx" ON "payment_risk_reviews" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "payment_risk_reviews_biz_idx" ON "payment_risk_reviews" USING btree ("biz_type","biz_id");--> statement-breakpoint
@@ -10971,17 +11104,13 @@ CREATE INDEX "payment_sharing_orders_tenant_idx" ON "payment_sharing_orders" USI
 CREATE INDEX "payment_sharing_orders_order_no_idx" ON "payment_sharing_orders" USING btree ("order_no");--> statement-breakpoint
 CREATE INDEX "payment_sharing_orders_receiver_idx" ON "payment_sharing_orders" USING btree ("receiver_id");--> statement-breakpoint
 CREATE INDEX "payment_sharing_receivers_tenant_idx" ON "payment_sharing_receivers" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_sharing_reversals_idempotency_scope_uq" ON "payment_sharing_reversals" USING btree (coalesce("tenant_id", 0),"sharing_order_id","idempotency_key");--> statement-breakpoint
 CREATE INDEX "payment_sharing_reversals_tenant_status_idx" ON "payment_sharing_reversals" USING btree ("tenant_id","status");--> statement-breakpoint
 CREATE INDEX "payment_transfers_operator_idx" ON "payment_transfers" USING btree ("operator_id");--> statement-breakpoint
 CREATE INDEX "payment_transfers_tenant_idx" ON "payment_transfers" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_transfers_idempotency_scope_uq" ON "payment_transfers" USING btree (coalesce("tenant_id", 0),"app_id","idempotency_key");--> statement-breakpoint
 CREATE INDEX "payment_transfers_status_idx" ON "payment_transfers" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "payment_transfers_biz_idx" ON "payment_transfers" USING btree ("biz_type","biz_id");--> statement-breakpoint
 CREATE INDEX "payment_bank_matches_account_idx" ON "payment_bank_matches" USING btree ("account_id");--> statement-breakpoint
 CREATE INDEX "payment_bank_matches_tenant_idx" ON "payment_bank_matches" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_recon_adjustments_active_case_unique" ON "payment_recon_adjustments" USING btree ("case_id") WHERE "payment_recon_adjustments"."reversal_of_id" is null and "payment_recon_adjustments"."status" in ('draft', 'pending', 'approved', 'executed');--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_recon_adjustments_active_reversal_unique" ON "payment_recon_adjustments" USING btree ("reversal_of_id") WHERE "payment_recon_adjustments"."reversal_of_id" is not null and "payment_recon_adjustments"."status" <> 'rejected';--> statement-breakpoint
 CREATE INDEX "payment_recon_adjustments_case_idx" ON "payment_recon_adjustments" USING btree ("case_id");--> statement-breakpoint
 CREATE INDEX "payment_recon_adjustments_tenant_status_idx" ON "payment_recon_adjustments" USING btree ("tenant_id","status");--> statement-breakpoint
 CREATE INDEX "payment_recon_case_events_case_idx" ON "payment_recon_case_events" USING btree ("case_id","id");--> statement-breakpoint
@@ -10993,7 +11122,6 @@ CREATE INDEX "payment_recon_runs_statement_idx" ON "payment_recon_runs" USING bt
 CREATE INDEX "payment_recon_runs_tenant_idx" ON "payment_recon_runs" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "payment_recon_runs_status_started_idx" ON "payment_recon_runs" USING btree ("status","started_at");--> statement-breakpoint
 CREATE INDEX "payment_recon_runs_status_finished_idx" ON "payment_recon_runs" USING btree ("status","finished_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "payment_recon_runs_active_statement_unique" ON "payment_recon_runs" USING btree ("statement_id") WHERE "payment_recon_runs"."status" in ('pending', 'running');--> statement-breakpoint
 CREATE INDEX "payment_statement_entries_order_idx" ON "payment_statement_entries" USING btree ("merchant_order_no");--> statement-breakpoint
 CREATE INDEX "payment_statement_entries_refund_idx" ON "payment_statement_entries" USING btree ("merchant_refund_no");--> statement-breakpoint
 CREATE INDEX "payment_statement_entries_reference_idx" ON "payment_statement_entries" USING btree ("reference");--> statement-breakpoint
@@ -11006,15 +11134,12 @@ CREATE INDEX "ai_agents_user_idx" ON "ai_agents" USING btree ("user_id");--> sta
 CREATE INDEX "ai_arena_votes_user_idx" ON "ai_arena_votes" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "ai_conversations_user_idx" ON "ai_conversations" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "ai_conversations_tenant_idx" ON "ai_conversations" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "ai_http_tools_name_uq" ON "ai_http_tools" USING btree ("name");--> statement-breakpoint
 CREATE INDEX "ai_knowledge_bases_user_idx" ON "ai_knowledge_bases" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "ai_messages_conversation_idx" ON "ai_messages" USING btree ("conversation_id","created_at");--> statement-breakpoint
 CREATE INDEX "ai_messages_created_at_idx" ON "ai_messages" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "ai_prompt_templates_user_idx" ON "ai_prompt_templates" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "ai_shared_conversations_conversation_idx" ON "ai_shared_conversations" USING btree ("conversation_id");--> statement-breakpoint
 CREATE INDEX "ai_shared_conversations_user_idx" ON "ai_shared_conversations" USING btree ("user_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "ai_shared_conversations_token_uq" ON "ai_shared_conversations" USING btree ("token");--> statement-breakpoint
-CREATE UNIQUE INDEX "ai_user_settings_user_id_uq" ON "ai_user_settings" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "user_ai_configs_user_idx" ON "user_ai_configs" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "app_webhook_deliveries_sub_idx" ON "app_webhook_deliveries" USING btree ("subscription_id");--> statement-breakpoint
 CREATE INDEX "app_webhook_deliveries_tenant_client_idx" ON "app_webhook_deliveries" USING btree ("tenant_id","client_id");--> statement-breakpoint
@@ -11057,8 +11182,6 @@ CREATE INDEX "member_login_logs_member_created_idx" ON "member_login_logs" USING
 CREATE INDEX "member_notifications_member_idx" ON "member_notifications" USING btree ("member_id","created_at");--> statement-breakpoint
 CREATE INDEX "member_notifications_biz_idx" ON "member_notifications" USING btree ("type","biz_id");--> statement-breakpoint
 CREATE INDEX "member_notifications_member_unread_idx" ON "member_notifications" USING btree ("member_id") WHERE "member_notifications"."read_at" is null;--> statement-breakpoint
-CREATE UNIQUE INDEX "member_notifications_member_type_biz_uq" ON "member_notifications" USING btree ("member_id","type","biz_id") WHERE "member_notifications"."biz_id" is not null and "member_notifications"."type" = 'cms_content_published';--> statement-breakpoint
-CREATE UNIQUE INDEX "member_point_accounts_member_unique" ON "member_point_accounts" USING btree ("member_id");--> statement-breakpoint
 CREATE INDEX "member_point_transactions_operator_idx" ON "member_point_transactions" USING btree ("operator_id");--> statement-breakpoint
 CREATE INDEX "member_point_tx_member_idx" ON "member_point_transactions" USING btree ("member_id");--> statement-breakpoint
 CREATE INDEX "member_point_tx_biz_idx" ON "member_point_transactions" USING btree ("biz_type","biz_id");--> statement-breakpoint
@@ -11067,13 +11190,7 @@ CREATE INDEX "member_vip_renewals_member_idx" ON "member_vip_renewals" USING btr
 CREATE INDEX "member_wallet_transactions_operator_idx" ON "member_wallet_transactions" USING btree ("operator_id");--> statement-breakpoint
 CREATE INDEX "member_wallet_tx_member_idx" ON "member_wallet_transactions" USING btree ("member_id");--> statement-breakpoint
 CREATE INDEX "member_wallet_tx_biz_idx" ON "member_wallet_transactions" USING btree ("biz_type","biz_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "member_wallet_tx_payment_event_uq" ON "member_wallet_transactions" USING btree ("payment_event_id") WHERE "member_wallet_transactions"."payment_event_id" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "member_wallets_member_unique" ON "member_wallets" USING btree ("member_id");--> statement-breakpoint
 CREATE INDEX "members_tenant_idx" ON "members" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "members_phone_unique" ON "members" USING btree ("phone") WHERE "members"."deleted_at" is null;--> statement-breakpoint
-CREATE UNIQUE INDEX "members_email_unique" ON "members" USING btree ("email") WHERE "members"."deleted_at" is null;--> statement-breakpoint
-CREATE UNIQUE INDEX "members_username_unique" ON "members" USING btree ("username") WHERE "members"."deleted_at" is null;--> statement-breakpoint
-CREATE UNIQUE INDEX "members_invite_code_unique" ON "members" USING btree ("invite_code") WHERE "members"."invite_code" is not null;--> statement-breakpoint
 CREATE INDEX "members_status_idx" ON "members" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "members_invited_by_idx" ON "members" USING btree ("invited_by");--> statement-breakpoint
 CREATE INDEX "monitor_alert_events_rule_idx" ON "monitor_alert_events" USING btree ("rule_id");--> statement-breakpoint
@@ -11087,19 +11204,17 @@ CREATE INDEX "monitor_alert_rules_enabled_idx" ON "monitor_alert_rules" USING bt
 CREATE INDEX "sql_query_samples_at_idx" ON "sql_query_samples" USING btree ("sampled_at");--> statement-breakpoint
 CREATE INDEX "sql_query_samples_query_time_idx" ON "sql_query_samples" USING btree ("query_id","sampled_at");--> statement-breakpoint
 CREATE INDEX "system_metric_samples_at_idx" ON "system_metric_samples" USING btree ("sampled_at");--> statement-breakpoint
+CREATE INDEX "ws_metric_samples_at_idx" ON "ws_metric_samples" USING btree ("sampled_at");--> statement-breakpoint
 CREATE INDEX "app_artifacts_release_idx" ON "app_artifacts" USING btree ("release_id");--> statement-breakpoint
 CREATE INDEX "app_release_events_app_time_idx" ON "app_release_events" USING btree ("app_id","created_at");--> statement-breakpoint
 CREATE INDEX "client_devices_app_active_idx" ON "client_devices" USING btree ("app_id","last_active_at");--> statement-breakpoint
 CREATE INDEX "client_devices_subject_idx" ON "client_devices" USING btree ("subject_type","subject_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "client_devices_push_reg_unique" ON "client_devices" USING btree ("push_provider","push_registration_id");--> statement-breakpoint
 CREATE INDEX "deploy_releases_target_host_idx" ON "deploy_releases" USING btree ("target_id","host_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "deploy_releases_current_unique" ON "deploy_releases" USING btree ("target_id","host_id") WHERE "deploy_releases"."is_current" = true;--> statement-breakpoint
 CREATE INDEX "deploy_run_hosts_status_started_idx" ON "deploy_run_hosts" USING btree ("status","started_at");--> statement-breakpoint
 CREATE INDEX "deploy_runs_target_created_idx" ON "deploy_runs" USING btree ("target_id","created_at");--> statement-breakpoint
 CREATE INDEX "deploy_runs_app_created_idx" ON "deploy_runs" USING btree ("app_id","created_at");--> statement-breakpoint
 CREATE INDEX "deploy_runs_status_started_idx" ON "deploy_runs" USING btree ("status","started_at");--> statement-breakpoint
 CREATE INDEX "deploy_runs_status_finished_idx" ON "deploy_runs" USING btree ("status","finished_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "deploy_runs_target_active_unique" ON "deploy_runs" USING btree ("target_id") WHERE "deploy_runs"."status" in ('pending', 'running');--> statement-breakpoint
 CREATE INDEX "deploy_target_hosts_host_idx" ON "deploy_target_hosts" USING btree ("host_id");--> statement-breakpoint
 CREATE INDEX "mp_accounts_tenant_idx" ON "mp_accounts" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "mp_auto_replies_tenant_idx" ON "mp_auto_replies" USING btree ("tenant_id");--> statement-breakpoint
@@ -11113,41 +11228,32 @@ CREATE INDEX "mp_conditional_menus_account_idx" ON "mp_conditional_menus" USING 
 CREATE INDEX "mp_drafts_tenant_idx" ON "mp_drafts" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "mp_drafts_account_idx" ON "mp_drafts" USING btree ("account_id");--> statement-breakpoint
 CREATE INDEX "mp_fans_tenant_idx" ON "mp_fans" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "mp_fans_account_openid_uq" ON "mp_fans" USING btree ("account_id","openid");--> statement-breakpoint
 CREATE INDEX "mp_fans_account_idx" ON "mp_fans" USING btree ("account_id");--> statement-breakpoint
 CREATE INDEX "mp_fans_member_idx" ON "mp_fans" USING btree ("member_id");--> statement-breakpoint
 CREATE INDEX "mp_kf_accounts_tenant_idx" ON "mp_kf_accounts" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "mp_kf_accounts_account_kf_uq" ON "mp_kf_accounts" USING btree ("account_id","kf_account");--> statement-breakpoint
 CREATE INDEX "mp_kf_accounts_account_idx" ON "mp_kf_accounts" USING btree ("account_id");--> statement-breakpoint
 CREATE INDEX "mp_kf_routing_configs_tenant_idx" ON "mp_kf_routing_configs" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "mp_kf_routing_configs_account_uq" ON "mp_kf_routing_configs" USING btree ("account_id");--> statement-breakpoint
 CREATE INDEX "mp_kf_session_events_operator_idx" ON "mp_kf_session_events" USING btree ("operator_id");--> statement-breakpoint
 CREATE INDEX "mp_kf_session_events_tenant_idx" ON "mp_kf_session_events" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "mp_kf_session_events_session_idx" ON "mp_kf_session_events" USING btree ("session_id");--> statement-breakpoint
 CREATE INDEX "mp_kf_sessions_tenant_idx" ON "mp_kf_sessions" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "mp_kf_sessions_open_uq" ON "mp_kf_sessions" USING btree ("account_id","openid") WHERE "mp_kf_sessions"."status" <> 'closed';--> statement-breakpoint
 CREATE INDEX "mp_kf_sessions_account_status_idx" ON "mp_kf_sessions" USING btree ("account_id","status");--> statement-breakpoint
 CREATE INDEX "mp_kf_sessions_kf_idx" ON "mp_kf_sessions" USING btree ("kf_id");--> statement-breakpoint
 CREATE INDEX "mp_materials_tenant_idx" ON "mp_materials" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "mp_materials_account_type_idx" ON "mp_materials" USING btree ("account_id","type");--> statement-breakpoint
-CREATE UNIQUE INDEX "mp_materials_account_media_uq" ON "mp_materials" USING btree ("account_id","wechat_media_id") WHERE "mp_materials"."wechat_media_id" is not null;--> statement-breakpoint
 CREATE INDEX "mp_menus_tenant_idx" ON "mp_menus" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "mp_message_templates_tenant_idx" ON "mp_message_templates" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "mp_message_templates_account_tpl_uq" ON "mp_message_templates" USING btree ("account_id","template_id");--> statement-breakpoint
 CREATE INDEX "mp_messages_tenant_idx" ON "mp_messages" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "mp_messages_account_openid_idx" ON "mp_messages" USING btree ("account_id","openid");--> statement-breakpoint
 CREATE INDEX "mp_messages_account_idx" ON "mp_messages" USING btree ("account_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "mp_messages_account_msgid_uq" ON "mp_messages" USING btree ("account_id","msg_id") WHERE "mp_messages"."msg_id" IS NOT NULL;--> statement-breakpoint
 CREATE INDEX "mp_qrcodes_tenant_idx" ON "mp_qrcodes" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "mp_qrcodes_account_idx" ON "mp_qrcodes" USING btree ("account_id");--> statement-breakpoint
 CREATE INDEX "mp_qrcodes_account_scene_idx" ON "mp_qrcodes" USING btree ("account_id","scene_str");--> statement-breakpoint
 CREATE INDEX "mp_tags_tenant_idx" ON "mp_tags" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "mp_tags_account_name_uq" ON "mp_tags" USING btree ("account_id","name");--> statement-breakpoint
 CREATE INDEX "mp_tags_account_idx" ON "mp_tags" USING btree ("account_id");--> statement-breakpoint
 CREATE INDEX "mp_template_send_logs_tenant_idx" ON "mp_template_send_logs" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "mp_template_send_logs_account_idx" ON "mp_template_send_logs" USING btree ("account_id");--> statement-breakpoint
 CREATE INDEX "mp_unmatched_keywords_tenant_idx" ON "mp_unmatched_keywords" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "mp_unmatched_keywords_account_kw_uq" ON "mp_unmatched_keywords" USING btree ("account_id","keyword");--> statement-breakpoint
 CREATE INDEX "report_alert_rules_tenant_idx" ON "report_alert_rules" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "report_alert_rules_dataset_idx" ON "report_alert_rules" USING btree ("dataset_id");--> statement-breakpoint
 CREATE INDEX "report_alert_rules_metric_idx" ON "report_alert_rules" USING btree ("metric_id");--> statement-breakpoint
@@ -11162,9 +11268,6 @@ CREATE INDEX "report_dashboard_subscriptions_tenant_idx" ON "report_dashboard_su
 CREATE INDEX "report_dashboard_subscriptions_dashboard_idx" ON "report_dashboard_subscriptions" USING btree ("dashboard_id");--> statement-breakpoint
 CREATE INDEX "report_dashboard_subscriptions_next_run_idx" ON "report_dashboard_subscriptions" USING btree ("next_run_at");--> statement-breakpoint
 CREATE INDEX "report_dashboard_subscriptions_enabled_due_idx" ON "report_dashboard_subscriptions" USING btree ("next_run_at") WHERE "report_dashboard_subscriptions"."enabled" = true and "report_dashboard_subscriptions"."next_run_at" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "report_dashboard_versions_dash_ver_uq" ON "report_dashboard_versions" USING btree ("dashboard_id","version");--> statement-breakpoint
-CREATE UNIQUE INDEX "report_dashboards_tenant_name_uq" ON "report_dashboards" USING btree ("tenant_id","name") WHERE "report_dashboards"."tenant_id" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "report_dashboards_global_name_uq" ON "report_dashboards" USING btree ("name") WHERE "report_dashboards"."tenant_id" is null;--> statement-breakpoint
 CREATE INDEX "report_dashboards_tenant_lifecycle_idx" ON "report_dashboards" USING btree ("tenant_id","lifecycle_status");--> statement-breakpoint
 CREATE INDEX "report_dashboards_category_idx" ON "report_dashboards" USING btree ("category_id");--> statement-breakpoint
 CREATE INDEX "report_dashboards_folder_idx" ON "report_dashboards" USING btree ("folder_id");--> statement-breakpoint
@@ -11175,21 +11278,15 @@ CREATE INDEX "report_dataset_execution_logs_datasource_idx" ON "report_dataset_e
 CREATE INDEX "report_dataset_execution_logs_scene_idx" ON "report_dataset_execution_logs" USING btree ("scene");--> statement-breakpoint
 CREATE INDEX "report_dataset_execution_logs_user_idx" ON "report_dataset_execution_logs" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "report_dataset_execution_logs_executed_idx" ON "report_dataset_execution_logs" USING btree ("executed_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "report_datasets_tenant_name_uq" ON "report_datasets" USING btree ("tenant_id","name") WHERE "report_datasets"."tenant_id" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "report_datasets_global_name_uq" ON "report_datasets" USING btree ("name") WHERE "report_datasets"."tenant_id" is null;--> statement-breakpoint
 CREATE INDEX "report_datasets_tenant_status_idx" ON "report_datasets" USING btree ("tenant_id","status");--> statement-breakpoint
 CREATE INDEX "report_datasets_datasource_idx" ON "report_datasets" USING btree ("datasource_id");--> statement-breakpoint
 CREATE INDEX "report_datasets_folder_idx" ON "report_datasets" USING btree ("folder_id");--> statement-breakpoint
 CREATE INDEX "report_datasets_owner_idx" ON "report_datasets" USING btree ("owner_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "report_datasources_tenant_name_uq" ON "report_datasources" USING btree ("tenant_id","name") WHERE "report_datasources"."tenant_id" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "report_datasources_global_name_uq" ON "report_datasources" USING btree ("name") WHERE "report_datasources"."tenant_id" is null;--> statement-breakpoint
 CREATE INDEX "report_datasources_tenant_status_idx" ON "report_datasources" USING btree ("tenant_id","status");--> statement-breakpoint
 CREATE INDEX "report_datasources_folder_idx" ON "report_datasources" USING btree ("folder_id");--> statement-breakpoint
 CREATE INDEX "report_datasources_owner_idx" ON "report_datasources" USING btree ("owner_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "report_delivery_attempts_run_channel_attempt_uq" ON "report_delivery_attempts" USING btree ("run_id","channel","attempt");--> statement-breakpoint
 CREATE INDEX "report_delivery_attempts_run_idx" ON "report_delivery_attempts" USING btree ("run_id","id");--> statement-breakpoint
 CREATE INDEX "report_delivery_attempts_tenant_idx" ON "report_delivery_attempts" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "report_delivery_runs_idempotency_uq" ON "report_delivery_runs" USING btree ("idempotency_key");--> statement-breakpoint
 CREATE INDEX "report_delivery_runs_target_idx" ON "report_delivery_runs" USING btree ("target_type","subscription_id","alert_rule_id","id");--> statement-breakpoint
 CREATE INDEX "report_delivery_runs_subscription_idx" ON "report_delivery_runs" USING btree ("subscription_id","id");--> statement-breakpoint
 CREATE INDEX "report_delivery_runs_alert_idx" ON "report_delivery_runs" USING btree ("alert_rule_id","id");--> statement-breakpoint
@@ -11198,23 +11295,15 @@ CREATE INDEX "report_delivery_runs_tenant_idx" ON "report_delivery_runs" USING b
 CREATE INDEX "report_delivery_runs_task_idx" ON "report_delivery_runs" USING btree ("task_id");--> statement-breakpoint
 CREATE INDEX "report_delivery_runs_status_started_idx" ON "report_delivery_runs" USING btree ("status","started_at");--> statement-breakpoint
 CREATE INDEX "report_delivery_runs_status_completed_idx" ON "report_delivery_runs" USING btree ("status","completed_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "report_folders_tenant_root_name_uq" ON "report_folders" USING btree ("tenant_id","resource_type","name") WHERE "report_folders"."tenant_id" is not null and "report_folders"."parent_id" is null;--> statement-breakpoint
-CREATE UNIQUE INDEX "report_folders_tenant_child_name_uq" ON "report_folders" USING btree ("tenant_id","parent_id","resource_type","name") WHERE "report_folders"."tenant_id" is not null and "report_folders"."parent_id" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "report_folders_global_root_name_uq" ON "report_folders" USING btree ("resource_type","name") WHERE "report_folders"."tenant_id" is null and "report_folders"."parent_id" is null;--> statement-breakpoint
-CREATE UNIQUE INDEX "report_folders_global_child_name_uq" ON "report_folders" USING btree ("parent_id","resource_type","name") WHERE "report_folders"."tenant_id" is null and "report_folders"."parent_id" is not null;--> statement-breakpoint
 CREATE INDEX "report_folders_tenant_type_status_idx" ON "report_folders" USING btree ("tenant_id","resource_type","status");--> statement-breakpoint
 CREATE INDEX "report_folders_parent_sort_idx" ON "report_folders" USING btree ("parent_id","sort");--> statement-breakpoint
 CREATE INDEX "report_folders_owner_idx" ON "report_folders" USING btree ("owner_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "report_print_templates_tenant_name_uq" ON "report_print_templates" USING btree ("tenant_id","name") WHERE "report_print_templates"."tenant_id" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "report_print_templates_global_name_uq" ON "report_print_templates" USING btree ("name") WHERE "report_print_templates"."tenant_id" is null;--> statement-breakpoint
 CREATE INDEX "report_print_templates_tenant_status_idx" ON "report_print_templates" USING btree ("tenant_id","status");--> statement-breakpoint
 CREATE INDEX "report_print_templates_folder_idx" ON "report_print_templates" USING btree ("folder_id");--> statement-breakpoint
 CREATE INDEX "report_print_templates_owner_idx" ON "report_print_templates" USING btree ("owner_id");--> statement-breakpoint
 CREATE INDEX "report_print_templates_entity_idx" ON "report_print_templates" USING btree ("entity_kind","entity_ref_id");--> statement-breakpoint
 CREATE INDEX "report_share_access_logs_share_idx" ON "report_share_access_logs" USING btree ("share_id");--> statement-breakpoint
 CREATE INDEX "report_share_access_logs_created_idx" ON "report_share_access_logs" USING btree ("created_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "report_asset_templates_tenant_code_uq" ON "report_asset_templates" USING btree ("tenant_id","code") WHERE "report_asset_templates"."tenant_id" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "report_asset_templates_global_code_uq" ON "report_asset_templates" USING btree ("code") WHERE "report_asset_templates"."tenant_id" is null;--> statement-breakpoint
 CREATE INDEX "report_asset_templates_tenant_type_status_idx" ON "report_asset_templates" USING btree ("tenant_id","type","status");--> statement-breakpoint
 CREATE INDEX "report_asset_templates_folder_idx" ON "report_asset_templates" USING btree ("folder_id");--> statement-breakpoint
 CREATE INDEX "report_asset_templates_owner_idx" ON "report_asset_templates" USING btree ("owner_id");--> statement-breakpoint
@@ -11232,8 +11321,6 @@ CREATE INDEX "report_deprecation_notices_effective_idx" ON "report_deprecation_n
 CREATE INDEX "report_dq_anomalies_dataset_status_idx" ON "report_dq_anomalies" USING btree ("dataset_id","status","created_at");--> statement-breakpoint
 CREATE INDEX "report_dq_anomalies_tenant_severity_status_idx" ON "report_dq_anomalies" USING btree ("tenant_id","severity","status");--> statement-breakpoint
 CREATE INDEX "report_dq_anomalies_run_idx" ON "report_dq_anomalies" USING btree ("run_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "report_dq_rules_tenant_dataset_name_uq" ON "report_dq_rules" USING btree ("tenant_id","dataset_id","name") WHERE "report_dq_rules"."tenant_id" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "report_dq_rules_global_dataset_name_uq" ON "report_dq_rules" USING btree ("dataset_id","name") WHERE "report_dq_rules"."tenant_id" is null;--> statement-breakpoint
 CREATE INDEX "report_dq_rules_dataset_enabled_idx" ON "report_dq_rules" USING btree ("dataset_id","enabled");--> statement-breakpoint
 CREATE INDEX "report_dq_rules_schedule_idx" ON "report_dq_rules" USING btree ("enabled","cron");--> statement-breakpoint
 CREATE INDEX "report_dq_runs_rule_time_idx" ON "report_dq_runs" USING btree ("rule_id","created_at");--> statement-breakpoint
@@ -11246,27 +11333,18 @@ CREATE INDEX "report_dq_scores_dataset_time_idx" ON "report_dq_scores" USING btr
 CREATE INDEX "report_dq_scores_tenant_time_idx" ON "report_dq_scores" USING btree ("tenant_id","measured_at");--> statement-breakpoint
 CREATE INDEX "report_environment_promotions_resource_idx" ON "report_environment_promotions" USING btree ("tenant_id","resource_type","resource_id","created_at");--> statement-breakpoint
 CREATE INDEX "report_environment_promotions_target_status_idx" ON "report_environment_promotions" USING btree ("target_environment_id","status","created_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "report_environments_tenant_code_uq" ON "report_environments" USING btree ("tenant_id","code") WHERE "report_environments"."tenant_id" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "report_environments_global_code_uq" ON "report_environments" USING btree ("code") WHERE "report_environments"."tenant_id" is null;--> statement-breakpoint
-CREATE UNIQUE INDEX "report_environments_tenant_default_uq" ON "report_environments" USING btree ("tenant_id") WHERE "report_environments"."tenant_id" is not null and "report_environments"."is_default" = true;--> statement-breakpoint
-CREATE UNIQUE INDEX "report_environments_global_default_uq" ON "report_environments" USING btree ("is_default") WHERE "report_environments"."tenant_id" is null and "report_environments"."is_default" = true;--> statement-breakpoint
 CREATE INDEX "report_environments_tenant_kind_status_idx" ON "report_environments" USING btree ("tenant_id","kind","status");--> statement-breakpoint
 CREATE INDEX "report_fill_records_template_status_time_idx" ON "report_fill_records" USING btree ("template_id","status","created_at");--> statement-breakpoint
 CREATE INDEX "report_fill_records_submitter_status_time_idx" ON "report_fill_records" USING btree ("tenant_id","submitter_id","status","created_at");--> statement-breakpoint
 CREATE INDEX "report_fill_records_workflow_idx" ON "report_fill_records" USING btree ("workflow_instance_id");--> statement-breakpoint
 CREATE INDEX "report_fill_records_dataset_idx" ON "report_fill_records" USING btree ("generated_dataset_id");--> statement-breakpoint
 CREATE INDEX "report_fill_records_sync_idx" ON "report_fill_records" USING btree ("tenant_id","sync_status","updated_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "report_fill_templates_tenant_code_uq" ON "report_fill_templates" USING btree ("tenant_id","code") WHERE "report_fill_templates"."tenant_id" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "report_fill_templates_global_code_uq" ON "report_fill_templates" USING btree ("code") WHERE "report_fill_templates"."tenant_id" is null;--> statement-breakpoint
 CREATE INDEX "report_fill_templates_tenant_status_idx" ON "report_fill_templates" USING btree ("tenant_id","status");--> statement-breakpoint
 CREATE INDEX "report_fill_templates_folder_idx" ON "report_fill_templates" USING btree ("folder_id");--> statement-breakpoint
 CREATE INDEX "report_fill_templates_owner_idx" ON "report_fill_templates" USING btree ("owner_id");--> statement-breakpoint
 CREATE INDEX "report_fill_templates_dataset_idx" ON "report_fill_templates" USING btree ("generated_dataset_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "report_materialization_snapshots_dataset_revision_uq" ON "report_materialization_snapshots" USING btree ("dataset_id","revision");--> statement-breakpoint
 CREATE INDEX "report_materialization_snapshots_dataset_status_idx" ON "report_materialization_snapshots" USING btree ("dataset_id","status","created_at");--> statement-breakpoint
 CREATE INDEX "report_materialization_snapshots_tenant_expiry_idx" ON "report_materialization_snapshots" USING btree ("tenant_id","expires_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "report_metrics_tenant_code_uq" ON "report_metrics" USING btree ("tenant_id","code") WHERE "report_metrics"."tenant_id" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "report_metrics_global_code_uq" ON "report_metrics" USING btree ("code") WHERE "report_metrics"."tenant_id" is null;--> statement-breakpoint
 CREATE INDEX "report_metrics_tenant_lifecycle_idx" ON "report_metrics" USING btree ("tenant_id","lifecycle_status");--> statement-breakpoint
 CREATE INDEX "report_metrics_dataset_idx" ON "report_metrics" USING btree ("dataset_id");--> statement-breakpoint
 CREATE INDEX "report_metrics_folder_idx" ON "report_metrics" USING btree ("folder_id");--> statement-breakpoint
@@ -11274,40 +11352,25 @@ CREATE INDEX "report_metrics_owner_idx" ON "report_metrics" USING btree ("owner_
 CREATE INDEX "report_publish_approvals_resource_idx" ON "report_publish_approvals" USING btree ("tenant_id","resource_type","resource_id");--> statement-breakpoint
 CREATE INDEX "report_publish_approvals_status_time_idx" ON "report_publish_approvals" USING btree ("tenant_id","status","requested_at");--> statement-breakpoint
 CREATE INDEX "report_publish_approvals_requester_idx" ON "report_publish_approvals" USING btree ("requested_by");--> statement-breakpoint
-CREATE UNIQUE INDEX "report_query_cost_logs_request_uq" ON "report_query_cost_logs" USING btree ("request_id");--> statement-breakpoint
 CREATE INDEX "report_query_cost_logs_tenant_time_idx" ON "report_query_cost_logs" USING btree ("tenant_id","occurred_at");--> statement-breakpoint
 CREATE INDEX "report_query_cost_logs_user_time_idx" ON "report_query_cost_logs" USING btree ("user_id","occurred_at");--> statement-breakpoint
 CREATE INDEX "report_query_cost_logs_dataset_time_idx" ON "report_query_cost_logs" USING btree ("dataset_id","occurred_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "report_query_quotas_tenant_scope_uq" ON "report_query_quotas" USING btree ("tenant_id","scope") WHERE "report_query_quotas"."tenant_id" is not null and "report_query_quotas"."scope" = 'tenant' and "report_query_quotas"."user_id" is null;--> statement-breakpoint
-CREATE UNIQUE INDEX "report_query_quotas_global_scope_uq" ON "report_query_quotas" USING btree ("scope") WHERE "report_query_quotas"."tenant_id" is null and "report_query_quotas"."scope" = 'tenant' and "report_query_quotas"."user_id" is null;--> statement-breakpoint
-CREATE UNIQUE INDEX "report_query_quotas_tenant_user_uq" ON "report_query_quotas" USING btree ("tenant_id","user_id") WHERE "report_query_quotas"."tenant_id" is not null and "report_query_quotas"."scope" = 'user' and "report_query_quotas"."user_id" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "report_query_quotas_global_user_uq" ON "report_query_quotas" USING btree ("user_id") WHERE "report_query_quotas"."tenant_id" is null and "report_query_quotas"."scope" = 'user' and "report_query_quotas"."user_id" is not null;--> statement-breakpoint
 CREATE INDEX "report_query_quotas_enabled_idx" ON "report_query_quotas" USING btree ("tenant_id","enabled");--> statement-breakpoint
-CREATE UNIQUE INDEX "report_resource_acls_tenant_subject_uq" ON "report_resource_acls" USING btree ("tenant_id","resource_type","resource_id","subject_type","subject_id","inherit_from_folder") WHERE "report_resource_acls"."tenant_id" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "report_resource_acls_global_subject_uq" ON "report_resource_acls" USING btree ("resource_type","resource_id","subject_type","subject_id","inherit_from_folder") WHERE "report_resource_acls"."tenant_id" is null;--> statement-breakpoint
 CREATE INDEX "report_resource_acls_resource_idx" ON "report_resource_acls" USING btree ("tenant_id","resource_type","resource_id");--> statement-breakpoint
 CREATE INDEX "report_resource_acls_subject_idx" ON "report_resource_acls" USING btree ("tenant_id","subject_type","subject_id");--> statement-breakpoint
 CREATE INDEX "report_resource_acls_expires_idx" ON "report_resource_acls" USING btree ("expires_at");--> statement-breakpoint
 CREATE INDEX "report_resource_transfers_resource_idx" ON "report_resource_transfers" USING btree ("tenant_id","resource_type","resource_id");--> statement-breakpoint
 CREATE INDEX "report_resource_transfers_owner_status_idx" ON "report_resource_transfers" USING btree ("to_owner_id","status","created_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "report_sla_rules_tenant_dataset_name_uq" ON "report_sla_rules" USING btree ("tenant_id","dataset_id","name") WHERE "report_sla_rules"."tenant_id" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "report_sla_rules_global_dataset_name_uq" ON "report_sla_rules" USING btree ("dataset_id","name") WHERE "report_sla_rules"."tenant_id" is null;--> statement-breakpoint
 CREATE INDEX "report_sla_rules_dataset_enabled_idx" ON "report_sla_rules" USING btree ("dataset_id","enabled");--> statement-breakpoint
 CREATE INDEX "report_sla_violations_rule_time_idx" ON "report_sla_violations" USING btree ("rule_id","created_at");--> statement-breakpoint
 CREATE INDEX "report_sla_violations_tenant_status_idx" ON "report_sla_violations" USING btree ("tenant_id","status","created_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_ad_events_dedupe_uq" ON "cms_ad_events" USING btree ("dedupe_key");--> statement-breakpoint
 CREATE INDEX "cms_ad_events_site_time_idx" ON "cms_ad_events" USING btree ("site_id","occurred_at","id");--> statement-breakpoint
 CREATE INDEX "cms_ad_events_ad_time_idx" ON "cms_ad_events" USING btree ("ad_id","occurred_at","id");--> statement-breakpoint
 CREATE INDEX "cms_ad_events_slot_time_idx" ON "cms_ad_events" USING btree ("slot_id","occurred_at","id");--> statement-breakpoint
 CREATE INDEX "cms_ad_events_type_device_time_idx" ON "cms_ad_events" USING btree ("event_type","device","occurred_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_ad_slots_site_code_uq" ON "cms_ad_slots" USING btree ("site_id","code");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_ad_stats_ad_date_uq" ON "cms_ad_stats" USING btree ("ad_id","stat_date");--> statement-breakpoint
 CREATE INDEX "cms_channel_users_user_idx" ON "cms_channel_users" USING btree ("user_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_channels_site_path_uq" ON "cms_channels" USING btree ("site_id","path");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_channels_site_code_uq" ON "cms_channels" USING btree ("site_id","code");--> statement-breakpoint
 CREATE INDEX "cms_channels_site_parent_idx" ON "cms_channels" USING btree ("site_id","parent_id");--> statement-breakpoint
 CREATE INDEX "cms_collect_items_content_idx" ON "cms_collect_items" USING btree ("content_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_collect_items_rule_url_uq" ON "cms_collect_items" USING btree ("rule_id","url");--> statement-breakpoint
 CREATE INDEX "cms_collect_items_rule_idx" ON "cms_collect_items" USING btree ("rule_id","created_at");--> statement-breakpoint
 CREATE INDEX "cms_collect_rules_channel_idx" ON "cms_collect_rules" USING btree ("channel_id");--> statement-breakpoint
 CREATE INDEX "cms_collect_rules_site_idx" ON "cms_collect_rules" USING btree ("site_id");--> statement-breakpoint
@@ -11319,9 +11382,7 @@ CREATE INDEX "cms_content_favorites_member_idx" ON "cms_content_favorites" USING
 CREATE INDEX "cms_content_likes_content_idx" ON "cms_content_likes" USING btree ("content_id");--> statement-breakpoint
 CREATE INDEX "cms_content_op_logs_operator_idx" ON "cms_content_op_logs" USING btree ("operator_id");--> statement-breakpoint
 CREATE INDEX "cms_content_op_logs_content_idx" ON "cms_content_op_logs" USING btree ("content_id","created_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_content_tombstones_content_uq" ON "cms_content_tombstones" USING btree ("content_id");--> statement-breakpoint
 CREATE INDEX "cms_content_tombstones_sync_idx" ON "cms_content_tombstones" USING btree ("site_id","deleted_at","content_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_content_versions_content_ver_uq" ON "cms_content_versions" USING btree ("content_id","version");--> statement-breakpoint
 CREATE INDEX "cms_contents_channel_idx" ON "cms_contents" USING btree ("channel_id");--> statement-breakpoint
 CREATE INDEX "cms_contents_site_channel_idx" ON "cms_contents" USING btree ("site_id","channel_id");--> statement-breakpoint
 CREATE INDEX "cms_contents_public_site_recent_idx" ON "cms_contents" USING btree ("site_id","published_at" DESC NULLS FIRST,"id" DESC NULLS FIRST) WHERE "cms_contents"."status" = 'published' and "cms_contents"."deleted_at" is null and "cms_contents"."archived_at" is null;--> statement-breakpoint
@@ -11333,100 +11394,60 @@ CREATE INDEX "cms_contents_mapping_source_idx" ON "cms_contents" USING btree ("m
 CREATE INDEX "cms_contents_distribution_source_idx" ON "cms_contents" USING btree ("distribution_rule_id","distribution_source_id");--> statement-breakpoint
 CREATE INDEX "cms_contents_locked_at_idx" ON "cms_contents" USING btree ("locked_at");--> statement-breakpoint
 CREATE INDEX "cms_contents_sync_idx" ON "cms_contents" USING btree ("site_id","updated_at","id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_contents_distribution_materialization_uq" ON "cms_contents" USING btree ("distribution_rule_id","distribution_source_id") WHERE "cms_contents"."distribution_rule_id" is not null and "cms_contents"."distribution_source_id" is not null and "cms_contents"."deleted_at" is null;--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_contents_site_slug_uq" ON "cms_contents" USING btree ("site_id","slug") WHERE "cms_contents"."slug" is not null and "cms_contents"."deleted_at" is null;--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_contents_site_static_path_uq" ON "cms_contents" USING btree ("site_id","static_path") WHERE "cms_contents"."static_path" is not null and "cms_contents"."deleted_at" is null;--> statement-breakpoint
 CREATE INDEX "cms_distribution_rules_source_idx" ON "cms_distribution_rules" USING btree ("source_site_id","source_channel_id","status");--> statement-breakpoint
 CREATE INDEX "cms_distribution_rules_target_idx" ON "cms_distribution_rules" USING btree ("target_site_id","target_channel_id","status");--> statement-breakpoint
 CREATE INDEX "cms_distribution_rules_due_idx" ON "cms_distribution_rules" USING btree ("mode","status","next_run_at");--> statement-breakpoint
 CREATE INDEX "cms_form_submissions_form_idx" ON "cms_form_submissions" USING btree ("form_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_forms_site_code_uq" ON "cms_forms" USING btree ("site_id","code");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_friend_link_groups_site_code_uq" ON "cms_friend_link_groups" USING btree ("site_id","code");--> statement-breakpoint
 CREATE INDEX "cms_friend_link_groups_site_sort_idx" ON "cms_friend_link_groups" USING btree ("site_id","sort","id");--> statement-breakpoint
 CREATE INDEX "cms_friend_links_site_group_idx" ON "cms_friend_links" USING btree ("site_id","group_id","sort","id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_hotword_groups_site_name_uq" ON "cms_hotword_groups" USING btree ("site_id","name");--> statement-breakpoint
 CREATE INDEX "cms_hotword_groups_site_sort_idx" ON "cms_hotword_groups" USING btree ("site_id","sort");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_hotwords_site_keyword_uq" ON "cms_hotwords" USING btree ("site_id","keyword");--> statement-breakpoint
 CREATE INDEX "cms_hotwords_site_group_sort_idx" ON "cms_hotwords" USING btree ("site_id","group_id","sort");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_interaction_answers_response_question_uq" ON "cms_interaction_answers" USING btree ("response_id","question_id");--> statement-breakpoint
 CREATE INDEX "cms_interaction_answers_question_idx" ON "cms_interaction_answers" USING btree ("question_id");--> statement-breakpoint
 CREATE INDEX "cms_interaction_questions_parent_idx" ON "cms_interaction_questions" USING btree ("interaction_id","sort");--> statement-breakpoint
 CREATE INDEX "cms_interaction_responses_parent_time_idx" ON "cms_interaction_responses" USING btree ("interaction_id","created_at","id");--> statement-breakpoint
 CREATE INDEX "cms_interaction_responses_member_idx" ON "cms_interaction_responses" USING btree ("member_id","created_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_interaction_responses_repeat_uq" ON "cms_interaction_responses" USING btree ("interaction_id","repeat_key") WHERE "cms_interaction_responses"."repeat_key" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_interaction_responses_request_uq" ON "cms_interaction_responses" USING btree ("interaction_id","request_key") WHERE "cms_interaction_responses"."request_key" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_interactions_site_code_uq" ON "cms_interactions" USING btree ("site_id","code");--> statement-breakpoint
 CREATE INDEX "cms_interactions_site_status_idx" ON "cms_interactions" USING btree ("site_id","status","kind");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_link_words_site_keyword_uq" ON "cms_link_words" USING btree ("site_id","keyword");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_member_subscriptions_subject_uq" ON "cms_member_subscriptions" USING btree ("member_id","site_id","subject_type","subject_key");--> statement-breakpoint
 CREATE INDEX "cms_member_subscriptions_member_idx" ON "cms_member_subscriptions" USING btree ("member_id","active","created_at");--> statement-breakpoint
 CREATE INDEX "cms_member_subscriptions_subject_idx" ON "cms_member_subscriptions" USING btree ("site_id","subject_type","subject_key","active");--> statement-breakpoint
 CREATE INDEX "cms_member_view_history_content_idx" ON "cms_member_view_history" USING btree ("content_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_member_view_history_uq" ON "cms_member_view_history" USING btree ("member_id","content_id");--> statement-breakpoint
 CREATE INDEX "cms_member_view_history_member_idx" ON "cms_member_view_history" USING btree ("member_id","updated_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_model_fields_model_name_uq" ON "cms_model_fields" USING btree ("model_id","name");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_open_app_grants_client_site_uq" ON "cms_open_app_grants" USING btree ("client_id","site_id");--> statement-breakpoint
 CREATE INDEX "cms_open_app_grants_client_idx" ON "cms_open_app_grants" USING btree ("client_id");--> statement-breakpoint
 CREATE INDEX "cms_open_app_grants_site_idx" ON "cms_open_app_grants" USING btree ("site_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_page_block_acls_grant_uq" ON "cms_page_block_acls" USING btree ("page_id","block_id","subject_type","subject_id");--> statement-breakpoint
 CREATE INDEX "cms_page_block_acls_block_idx" ON "cms_page_block_acls" USING btree ("page_id","block_id");--> statement-breakpoint
 CREATE INDEX "cms_page_block_acls_subject_idx" ON "cms_page_block_acls" USING btree ("subject_type","subject_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_page_preset_versions_preset_version_uq" ON "cms_page_preset_versions" USING btree ("preset_id","version");--> statement-breakpoint
 CREATE INDEX "cms_page_preset_versions_site_idx" ON "cms_page_preset_versions" USING btree ("site_id");--> statement-breakpoint
 CREATE INDEX "cms_page_presets_site_idx" ON "cms_page_presets" USING btree ("site_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_pages_site_slug_uq" ON "cms_pages" USING btree ("site_id","slug");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_pages_site_path_uq" ON "cms_pages" USING btree ("site_id","path") WHERE "cms_pages"."path" IS NOT NULL;--> statement-breakpoint
 CREATE INDEX "cms_pages_site_idx" ON "cms_pages" USING btree ("site_id");--> statement-breakpoint
 CREATE INDEX "cms_publish_artifacts_content_idx" ON "cms_publish_artifacts" USING btree ("content_id");--> statement-breakpoint
 CREATE INDEX "cms_publish_artifacts_channel_idx" ON "cms_publish_artifacts" USING btree ("channel_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_publish_artifacts_task_path_uq" ON "cms_publish_artifacts" USING btree ("task_id","path");--> statement-breakpoint
 CREATE INDEX "cms_publish_artifacts_site_time_idx" ON "cms_publish_artifacts" USING btree ("site_id","created_at");--> statement-breakpoint
 CREATE INDEX "cms_publish_artifacts_task_status_idx" ON "cms_publish_artifacts" USING btree ("task_id","status");--> statement-breakpoint
 CREATE INDEX "cms_publish_artifacts_target_idx" ON "cms_publish_artifacts" USING btree ("target_type","content_id","channel_id");--> statement-breakpoint
 CREATE INDEX "cms_push_logs_site_idx" ON "cms_push_logs" USING btree ("site_id","created_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_redirects_site_from_uq" ON "cms_redirects" USING btree ("site_id","from_path");--> statement-breakpoint
 CREATE INDEX "cms_resource_folders_parent_idx" ON "cms_resource_folders" USING btree ("parent_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_resource_folders_site_parent_name_uq" ON "cms_resource_folders" USING btree ("site_id","parent_id","name") WHERE "cms_resource_folders"."parent_id" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_resource_folders_site_root_name_uq" ON "cms_resource_folders" USING btree ("site_id","name") WHERE "cms_resource_folders"."parent_id" is null;--> statement-breakpoint
 CREATE INDEX "cms_resource_folders_site_parent_idx" ON "cms_resource_folders" USING btree ("site_id","parent_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_resource_refs_uq" ON "cms_resource_refs" USING btree ("resource_id","owner_type","owner_id","field");--> statement-breakpoint
 CREATE INDEX "cms_resource_refs_resource_idx" ON "cms_resource_refs" USING btree ("resource_id");--> statement-breakpoint
 CREATE INDEX "cms_resource_refs_site_idx" ON "cms_resource_refs" USING btree ("site_id");--> statement-breakpoint
 CREATE INDEX "cms_resource_refs_owner_idx" ON "cms_resource_refs" USING btree ("owner_type","owner_id");--> statement-breakpoint
 CREATE INDEX "cms_resources_site_type_idx" ON "cms_resources" USING btree ("site_id","type");--> statement-breakpoint
 CREATE INDEX "cms_resources_site_folder_idx" ON "cms_resources" USING btree ("site_id","folder_id");--> statement-breakpoint
 CREATE INDEX "cms_resources_file_idx" ON "cms_resources" USING btree ("file_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_resources_site_url_uq" ON "cms_resources" USING btree ("site_id","url");--> statement-breakpoint
 CREATE INDEX "cms_search_logs_site_time_idx" ON "cms_search_logs" USING btree ("site_id","created_at");--> statement-breakpoint
 CREATE INDEX "cms_search_logs_keyword_idx" ON "cms_search_logs" USING btree ("site_id","keyword");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_search_words_site_type_word_uq" ON "cms_search_words" USING btree ("site_id","type","word");--> statement-breakpoint
 CREATE INDEX "cms_search_words_site_group_idx" ON "cms_search_words" USING btree ("site_id","type","group_name");--> statement-breakpoint
 CREATE INDEX "cms_site_users_user_idx" ON "cms_site_users" USING btree ("user_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_sites_domain_uq" ON "cms_sites" USING btree ("domain") WHERE "cms_sites"."domain" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_sites_default_uq" ON "cms_sites" USING btree ("is_default") WHERE "cms_sites"."is_default" = true;--> statement-breakpoint
 CREATE INDEX "cms_sites_parent_idx" ON "cms_sites" USING btree ("parent_id","sort","id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_tags_site_name_uq" ON "cms_tags" USING btree ("site_id","name");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_tags_site_slug_uq" ON "cms_tags" USING btree ("site_id","slug");--> statement-breakpoint
 CREATE INDEX "cms_visit_logs_site_time_idx" ON "cms_visit_logs" USING btree ("site_id","created_at");--> statement-breakpoint
 CREATE INDEX "cms_visit_logs_content_idx" ON "cms_visit_logs" USING btree ("content_id") WHERE "cms_visit_logs"."content_id" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_vocabularies_site_code_uq" ON "cms_vocabularies" USING btree ("site_id","code");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_widget_refs_owner_field_uq" ON "cms_widget_refs" USING btree ("owner_type","owner_id","field");--> statement-breakpoint
 CREATE INDEX "cms_widget_refs_widget_idx" ON "cms_widget_refs" USING btree ("widget_id");--> statement-breakpoint
 CREATE INDEX "cms_widget_refs_site_owner_idx" ON "cms_widget_refs" USING btree ("site_id","owner_type","owner_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_widget_source_refs_widget_item_uq" ON "cms_widget_source_refs" USING btree ("widget_id","item_id");--> statement-breakpoint
 CREATE INDEX "cms_widget_source_refs_source_idx" ON "cms_widget_source_refs" USING btree ("source_type","source_id");--> statement-breakpoint
 CREATE INDEX "cms_widget_source_refs_site_idx" ON "cms_widget_source_refs" USING btree ("site_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_widgets_site_code_uq" ON "cms_widgets" USING btree ("site_id","code");--> statement-breakpoint
 CREATE INDEX "cms_widgets_site_status_idx" ON "cms_widgets" USING btree ("site_id","status");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_asset_rights_resource_uq" ON "cms_asset_rights" USING btree ("resource_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_asset_versions_resource_version_uq" ON "cms_asset_versions" USING btree ("resource_id","version");--> statement-breakpoint
 CREATE INDEX "cms_asset_versions_file_idx" ON "cms_asset_versions" USING btree ("file_id");--> statement-breakpoint
 CREATE INDEX "cms_editorial_note_replies_note_idx" ON "cms_editorial_note_replies" USING btree ("note_id","id");--> statement-breakpoint
 CREATE INDEX "cms_editorial_notes_content_idx" ON "cms_editorial_notes" USING btree ("content_id","id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_model_unique_value_uq" ON "cms_model_unique_values" USING btree ("site_id","model_id","field","value_hash");--> statement-breakpoint
 CREATE INDEX "cms_model_unique_content_idx" ON "cms_model_unique_values" USING btree ("content_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_model_versions_model_version_uq" ON "cms_model_versions" USING btree ("model_id","version");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_component_versions_component_version_uq" ON "cms_component_versions" USING btree ("component_id","version");--> statement-breakpoint
 CREATE INDEX "cms_media_processing_version_idx" ON "cms_media_processing" USING btree ("asset_version_id","id");--> statement-breakpoint
 CREATE INDEX "cms_media_processing_task_idx" ON "cms_media_processing" USING btree ("task_id");--> statement-breakpoint
 CREATE INDEX "cms_media_processing_status_updated_idx" ON "cms_media_processing" USING btree ("status","updated_at");--> statement-breakpoint
@@ -11438,24 +11459,14 @@ CREATE INDEX "cms_telemetry_outbox_delivered_idx" ON "cms_telemetry_outbox" USIN
 CREATE INDEX "cms_telemetry_outbox_dead_idx" ON "cms_telemetry_outbox" USING btree ("dead_letter_at");--> statement-breakpoint
 CREATE INDEX "cms_telemetry_receipts_site_created_idx" ON "cms_telemetry_receipts" USING btree ("site_id","created_at");--> statement-breakpoint
 CREATE INDEX "cms_collection_transitions_site_created_idx" ON "cms_collection_transitions" USING btree ("site_id","created_at","id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_content_review_revisions_instance_uq" ON "cms_content_review_revisions" USING btree ("workflow_instance_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_content_revision_approvals_revision_uq" ON "cms_content_revision_approvals" USING btree ("revision_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_content_revisions_content_version_uq" ON "cms_content_revisions" USING btree ("content_id","version");--> statement-breakpoint
 CREATE INDEX "cms_content_revisions_content_hash_idx" ON "cms_content_revisions" USING btree ("content_id","hash");--> statement-breakpoint
 CREATE INDEX "cms_content_revisions_scheduled_candidate_idx" ON "cms_content_revisions" USING btree ("id") WHERE "cms_content_revisions"."snapshot"->>'scheduledAt' is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_working_translation_locale_uq" ON "cms_content_working_copies" USING btree (("snapshot"->>'translationOfId'),("snapshot"->>'locale')) WHERE "cms_content_working_copies"."snapshot"->>'translationOfId' is not null;--> statement-breakpoint
 CREATE INDEX "cms_editorial_history_task_idx" ON "cms_editorial_task_history" USING btree ("task_id","id");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_editorial_observations_round_window_uq" ON "cms_editorial_task_observations" USING btree ("round_id","window_days");--> statement-breakpoint
 CREATE INDEX "cms_editorial_observations_due_idx" ON "cms_editorial_task_observations" USING btree ("outcome","settles_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_editorial_task_rounds_task_round_uq" ON "cms_editorial_task_rounds" USING btree ("task_id","round_no");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_editorial_tasks_source_uq" ON "cms_editorial_tasks" USING btree ("site_id","source","source_key");--> statement-breakpoint
 CREATE INDEX "cms_editorial_tasks_site_status_idx" ON "cms_editorial_tasks" USING btree ("site_id","status","id");--> statement-breakpoint
 CREATE INDEX "cms_editorial_tasks_owner_due_idx" ON "cms_editorial_tasks" USING btree ("owner_id","due_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_feedback_cases_submission_uq" ON "cms_feedback_cases" USING btree ("submission_id");--> statement-breakpoint
 CREATE INDEX "cms_feedback_cases_site_status_idx" ON "cms_feedback_cases" USING btree ("site_id","status","id");--> statement-breakpoint
 CREATE INDEX "cms_feedback_cases_owner_due_idx" ON "cms_feedback_cases" USING btree ("owner_id","due_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_feedback_history_version_uq" ON "cms_feedback_history" USING btree ("feedback_id","version");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_form_handling_policies_form_uq" ON "cms_form_handling_policies" USING btree ("form_id");--> statement-breakpoint
 CREATE INDEX "cms_content_suppressions_site_idx" ON "cms_content_suppressions" USING btree ("site_id");--> statement-breakpoint
 CREATE INDEX "cms_deployments_site_idx" ON "cms_deployments" USING btree ("site_id");--> statement-breakpoint
 CREATE INDEX "cms_deployments_status_created_idx" ON "cms_deployments" USING btree ("status","created_at");--> statement-breakpoint
@@ -11476,7 +11487,6 @@ CREATE INDEX "wiki_review_records_actor_idx" ON "wiki_review_records" USING btre
 CREATE INDEX "wiki_search_logs_created_idx" ON "wiki_search_logs" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "wiki_search_logs_keyword_idx" ON "wiki_search_logs" USING btree ("keyword");--> statement-breakpoint
 CREATE INDEX "idx_short_link_clicks_link_time" ON "short_link_clicks" USING btree ("link_id","clicked_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "uq_short_link_daily_stats_link_date" ON "short_link_daily_stats" USING btree ("link_id","stat_date");--> statement-breakpoint
 CREATE INDEX "idx_short_links_biz" ON "short_links" USING btree ("biz_type","biz_ref");--> statement-breakpoint
 CREATE INDEX "idx_short_links_tenant" ON "short_links" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "idx_marketing_campaigns_status" ON "marketing_campaigns" USING btree ("status");--> statement-breakpoint
@@ -11487,7 +11497,6 @@ CREATE INDEX "idx_marketing_prizes_campaign" ON "marketing_prizes" USING btree (
 CREATE INDEX "idx_iot_alarm_rules_product" ON "iot_alarm_rules" USING btree ("product_id");--> statement-breakpoint
 CREATE INDEX "idx_iot_alarms_device_time" ON "iot_alarms" USING btree ("device_id","fired_at");--> statement-breakpoint
 CREATE INDEX "idx_iot_alarms_status" ON "iot_alarms" USING btree ("status");--> statement-breakpoint
-CREATE UNIQUE INDEX "uq_iot_alarms_active" ON "iot_alarms" USING btree ("rule_id","device_id") WHERE status <> 'resolved';--> statement-breakpoint
 CREATE INDEX "idx_iot_automation_runs_automation" ON "iot_automation_runs" USING btree ("automation_id","created_at");--> statement-breakpoint
 CREATE INDEX "idx_iot_automation_runs_device" ON "iot_automation_runs" USING btree ("device_id","created_at");--> statement-breakpoint
 CREATE INDEX "idx_iot_automations_product" ON "iot_automations" USING btree ("product_id");--> statement-breakpoint
@@ -11501,28 +11510,21 @@ CREATE INDEX "idx_iot_device_whitelist_product" ON "iot_device_whitelist" USING 
 CREATE INDEX "idx_iot_devices_product" ON "iot_devices" USING btree ("product_id");--> statement-breakpoint
 CREATE INDEX "idx_iot_devices_tenant" ON "iot_devices" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "idx_iot_devices_gateway" ON "iot_devices" USING btree ("gateway_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "uq_iot_firmwares_product_version" ON "iot_firmwares" USING btree ("product_id","version");--> statement-breakpoint
 CREATE INDEX "idx_iot_forward_logs_rule" ON "iot_forward_logs" USING btree ("rule_id","created_at");--> statement-breakpoint
 CREATE INDEX "idx_iot_forward_rules_source" ON "iot_forward_rules" USING btree ("source");--> statement-breakpoint
 CREATE INDEX "idx_iot_forward_rules_tenant" ON "iot_forward_rules" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "idx_iot_maintenance_windows_time" ON "iot_maintenance_windows" USING btree ("start_at","end_at");--> statement-breakpoint
 CREATE INDEX "idx_iot_online_snapshots_time" ON "iot_online_snapshots" USING btree ("sampled_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "uq_iot_ota_task_devices" ON "iot_ota_task_devices" USING btree ("task_id","device_id");--> statement-breakpoint
 CREATE INDEX "idx_iot_ota_task_devices_device" ON "iot_ota_task_devices" USING btree ("device_id","status");--> statement-breakpoint
 CREATE INDEX "idx_iot_ota_tasks_product" ON "iot_ota_tasks" USING btree ("product_id");--> statement-breakpoint
 CREATE INDEX "idx_iot_ota_tasks_status" ON "iot_ota_tasks" USING btree ("status");--> statement-breakpoint
-CREATE UNIQUE INDEX "uq_iot_product_events_ident" ON "iot_product_events" USING btree ("product_id","identifier");--> statement-breakpoint
-CREATE UNIQUE INDEX "uq_iot_product_properties_ident" ON "iot_product_properties" USING btree ("product_id","identifier");--> statement-breakpoint
-CREATE UNIQUE INDEX "uq_iot_product_services_ident" ON "iot_product_services" USING btree ("product_id","identifier");--> statement-breakpoint
 CREATE INDEX "idx_iot_products_tenant" ON "iot_products" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "idx_iot_schedule_runs_schedule" ON "iot_schedule_runs" USING btree ("schedule_id","created_at");--> statement-breakpoint
 CREATE INDEX "idx_iot_schedules_next_run" ON "iot_schedules" USING btree ("status","next_run_at");--> statement-breakpoint
 CREATE INDEX "idx_iot_schedules_product" ON "iot_schedules" USING btree ("product_id");--> statement-breakpoint
 CREATE INDEX "idx_iot_telemetry_device_time" ON "iot_telemetry" USING btree ("device_id","reported_at");--> statement-breakpoint
 CREATE INDEX "idx_iot_telemetry_time_brin" ON "iot_telemetry" USING brin ("reported_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "uq_iot_telemetry_hourly" ON "iot_telemetry_hourly" USING btree ("device_id","property","bucket");--> statement-breakpoint
 CREATE INDEX "idx_iot_telemetry_hourly_bucket" ON "iot_telemetry_hourly" USING btree ("bucket");--> statement-breakpoint
-CREATE UNIQUE INDEX "drive_access_requests_pending_unique" ON "drive_access_requests" USING btree ("node_id","requester_id") WHERE "drive_access_requests"."status" = 'pending';--> statement-breakpoint
 CREATE INDEX "drive_access_requests_requester_idx" ON "drive_access_requests" USING btree ("requester_id","created_at");--> statement-breakpoint
 CREATE INDEX "drive_access_requests_space_status_idx" ON "drive_access_requests" USING btree ("space_id","status");--> statement-breakpoint
 CREATE INDEX "drive_activities_node_idx" ON "drive_activities" USING btree ("node_id","created_at");--> statement-breakpoint
@@ -11532,7 +11534,6 @@ CREATE INDEX "drive_activities_id_idx" ON "drive_activities" USING btree ("id");
 CREATE INDEX "drive_activities_created_brin_idx" ON "drive_activities" USING brin ("created_at");--> statement-breakpoint
 CREATE INDEX "drive_collect_submissions_share_idx" ON "drive_collect_submissions" USING btree ("share_id","created_at");--> statement-breakpoint
 CREATE INDEX "drive_file_versions_file_idx" ON "drive_file_versions" USING btree ("file_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "drive_legal_holds_active_node_uq" ON "drive_legal_holds" USING btree ("node_id") WHERE "drive_legal_holds"."active" = true;--> statement-breakpoint
 CREATE INDEX "drive_legal_holds_space_idx" ON "drive_legal_holds" USING btree ("space_id","active");--> statement-breakpoint
 CREATE INDEX "drive_node_comments_node_idx" ON "drive_node_comments" USING btree ("node_id");--> statement-breakpoint
 CREATE INDEX "drive_node_permissions_subject_idx" ON "drive_node_permissions" USING btree ("subject_type","subject_id");--> statement-breakpoint
@@ -11551,10 +11552,7 @@ CREATE INDEX "drive_nodes_file_idx" ON "drive_nodes" USING btree ("file_id");-->
 CREATE INDEX "drive_nodes_deleted_root_idx" ON "drive_nodes" USING btree ("deleted_root_id");--> statement-breakpoint
 CREATE INDEX "drive_nodes_content_hash_idx" ON "drive_nodes" USING btree ("content_hash");--> statement-breakpoint
 CREATE INDEX "drive_nodes_name_trgm_idx" ON "drive_nodes" USING gin ("name" gin_trgm_ops);--> statement-breakpoint
-CREATE UNIQUE INDEX "drive_nodes_sibling_name_uq" ON "drive_nodes" USING btree ("space_id",coalesce("parent_id", 0),lower("name")) WHERE "drive_nodes"."deleted_at" is null;--> statement-breakpoint
-CREATE UNIQUE INDEX "drive_open_app_grants_client_space_uq" ON "drive_open_app_grants" USING btree ("client_id","space_id");--> statement-breakpoint
 CREATE INDEX "drive_open_app_grants_space_idx" ON "drive_open_app_grants" USING btree ("space_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "drive_quota_requests_pending_unique" ON "drive_quota_requests" USING btree ("space_id") WHERE "drive_quota_requests"."status" = 'pending';--> statement-breakpoint
 CREATE INDEX "drive_quota_requests_status_idx" ON "drive_quota_requests" USING btree ("status","created_at");--> statement-breakpoint
 CREATE INDEX "drive_recent_access_user_time_idx" ON "drive_recent_access" USING btree ("user_id","last_access_at");--> statement-breakpoint
 CREATE INDEX "drive_share_access_logs_share_idx" ON "drive_share_access_logs" USING btree ("share_id","created_at");--> statement-breakpoint
@@ -11562,23 +11560,16 @@ CREATE INDEX "drive_share_access_logs_created_brin_idx" ON "drive_share_access_l
 CREATE INDEX "drive_share_links_node_idx" ON "drive_share_links" USING btree ("node_id");--> statement-breakpoint
 CREATE INDEX "drive_share_links_tenant_idx" ON "drive_share_links" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "drive_space_members_subject_idx" ON "drive_space_members" USING btree ("subject_type","subject_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "drive_spaces_personal_owner_uq" ON "drive_spaces" USING btree ("owner_id") WHERE "drive_spaces"."type" = 'personal';--> statement-breakpoint
-CREATE UNIQUE INDEX "drive_spaces_department_uq" ON "drive_spaces" USING btree ("department_id") WHERE "drive_spaces"."type" = 'department';--> statement-breakpoint
 CREATE INDEX "drive_spaces_tenant_idx" ON "drive_spaces" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "entity_watch_events_due_idx" ON "entity_watch_events" USING btree ("next_attempt_at","claimed_at");--> statement-breakpoint
 CREATE INDEX "entity_watch_events_claimed_idx" ON "entity_watch_events" USING btree ("claimed_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "entity_watches_user_tenant_object_uq" ON "entity_watches" USING btree ("user_id","tenant_id","entity_type","entity_key") WHERE "entity_watches"."tenant_id" is not null;--> statement-breakpoint
-CREATE UNIQUE INDEX "entity_watches_user_platform_object_uq" ON "entity_watches" USING btree ("user_id","entity_type","entity_key") WHERE "entity_watches"."tenant_id" is null;--> statement-breakpoint
 CREATE INDEX "entity_watches_object_idx" ON "entity_watches" USING btree ("tenant_id","entity_type","entity_key","id");--> statement-breakpoint
 CREATE INDEX "cms_content_review_policies_due_idx" ON "cms_content_review_policies" USING btree ("enabled","next_check_at");--> statement-breakpoint
 CREATE INDEX "cms_content_review_policies_owner_idx" ON "cms_content_review_policies" USING btree ("site_id","owner_id","next_review_at");--> statement-breakpoint
 CREATE INDEX "cms_content_review_records_content_idx" ON "cms_content_review_records" USING btree ("content_id","id");--> statement-breakpoint
 CREATE INDEX "cms_deployment_storage_state_idx" ON "cms_deployment_storage" USING btree ("storage_state");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_delivery_runs_site_event_uq" ON "cms_delivery_runs" USING btree ("site_id","event_key");--> statement-breakpoint
 CREATE INDEX "cms_delivery_runs_site_id_idx" ON "cms_delivery_runs" USING btree ("site_id","id");--> statement-breakpoint
 CREATE INDEX "cms_delivery_runs_release_idx" ON "cms_delivery_runs" USING btree ("release_id");--> statement-breakpoint
 CREATE INDEX "cms_delivery_runs_status_started_idx" ON "cms_delivery_runs" USING btree ("status","started_at");--> statement-breakpoint
 CREATE INDEX "cms_delivery_runs_purge_created_idx" ON "cms_delivery_runs" USING btree ("purge_status","created_at");--> statement-breakpoint
 CREATE INDEX "cms_delivery_runs_status_completed_idx" ON "cms_delivery_runs" USING btree ("status","completed_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_collection_versions_collection_version_uq" ON "cms_content_collection_versions" USING btree ("collection_id","version");--> statement-breakpoint
-CREATE UNIQUE INDEX "cms_content_collections_site_code_uq" ON "cms_content_collections" USING btree ("site_id","code");

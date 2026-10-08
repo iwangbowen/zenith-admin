@@ -65,4 +65,4 @@ export const iotForwardRuleContract = defineContract('/api/iot/forward-rules', {
   create: op.post('/', { access: { permission: 'iot:forward:create' }, audit: '创建 IoT 流转规则', body: createIotForwardRuleSchema, response: iotForwardRuleSchema, summary: '创建流转规则（HTTP 推送目的地，可选 HMAC 签名）' }),
   update: op.put('/{id}', { access: { permission: 'iot:forward:update' }, audit: '更新 IoT 流转规则', params: idParam, body: updateIotForwardRuleSchema, response: iotForwardRuleSchema, summary: '更新流转规则（数据源不可变更；启停会清零失败计数）' }),
   remove: op.delete('/{id}', { access: { permission: 'iot:forward:delete' }, audit: '删除 IoT 流转规则', params: idParam, summary: '删除流转规则（投递日志级联删除）' }),
-}, { auditModule: 'IoT 数据流转', tags: ['IoT 数据流转'] });
+}, { auditModule: 'IoT 数据流转', tags: ['IoT 数据流转'], feature: 'iot' });

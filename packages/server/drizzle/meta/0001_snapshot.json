@@ -1,6 +1,6 @@
 {
-  "id": "fa62add6-b638-4392-b8e5-786f7305ebae",
-  "prevId": "7bd447c0-937a-4ed1-8b0e-1876a969f16f",
+  "id": "c87e1a79-834a-48da-a7b9-c18e014ef0db",
+  "prevId": "9f792626-d84a-420e-bdda-d054a3584ac4",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -18280,196 +18280,6 @@
         "workflow_attachment_uploads_tenant_id_tenants_id_fk": {
           "name": "workflow_attachment_uploads_tenant_id_tenants_id_fk",
           "tableFrom": "workflow_attachment_uploads",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "tableTo": "tenants",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.workflow_automation_runs": {
-      "name": "workflow_automation_runs",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "identity": {
-            "name": "workflow_automation_runs_id_seq",
-            "increment": "1",
-            "minValue": "1",
-            "maxValue": "2147483647",
-            "startWith": "1",
-            "cache": "1",
-            "cycle": false,
-            "schema": "public",
-            "type": "always"
-          }
-        },
-        "rule_id": {
-          "name": "rule_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "rule_name": {
-          "name": "rule_name",
-          "type": "varchar(128)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "instance_id": {
-          "name": "instance_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "instance_title": {
-          "name": "instance_title",
-          "type": "varchar(256)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "trigger": {
-          "name": "trigger",
-          "type": "workflow_automation_trigger",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "action_index": {
-          "name": "action_index",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "action_type": {
-          "name": "action_type",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "varchar(16)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "error": {
-          "name": "error",
-          "type": "varchar(512)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "duration_ms": {
-          "name": "duration_ms",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "workflow_automation_runs_rule_idx": {
-          "name": "workflow_automation_runs_rule_idx",
-          "columns": [
-            {
-              "expression": "rule_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "with": {},
-          "method": "btree",
-          "concurrently": false
-        },
-        "workflow_automation_runs_instance_idx": {
-          "name": "workflow_automation_runs_instance_idx",
-          "columns": [
-            {
-              "expression": "instance_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "with": {},
-          "method": "btree",
-          "concurrently": false
-        },
-        "workflow_automation_runs_created_idx": {
-          "name": "workflow_automation_runs_created_idx",
-          "columns": [
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "with": {},
-          "method": "btree",
-          "concurrently": false
-        }
-      },
-      "foreignKeys": {
-        "workflow_automation_runs_rule_id_workflow_automations_id_fk": {
-          "name": "workflow_automation_runs_rule_id_workflow_automations_id_fk",
-          "tableFrom": "workflow_automation_runs",
-          "columnsFrom": [
-            "rule_id"
-          ],
-          "tableTo": "workflow_automations",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
-        },
-        "workflow_automation_runs_instance_id_workflow_instances_id_fk": {
-          "name": "workflow_automation_runs_instance_id_workflow_instances_id_fk",
-          "tableFrom": "workflow_automation_runs",
-          "columnsFrom": [
-            "instance_id"
-          ],
-          "tableTo": "workflow_instances",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
-        },
-        "workflow_automation_runs_tenant_id_tenants_id_fk": {
-          "name": "workflow_automation_runs_tenant_id_tenants_id_fk",
-          "tableFrom": "workflow_automation_runs",
           "columnsFrom": [
             "tenant_id"
           ],
@@ -53019,6 +52829,115 @@
       "indexes": {
         "system_metric_samples_at_idx": {
           "name": "system_metric_samples_at_idx",
+          "columns": [
+            {
+              "expression": "sampled_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ws_metric_samples": {
+      "name": "ws_metric_samples",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "name": "ws_metric_samples_id_seq",
+            "increment": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "startWith": "1",
+            "cache": "1",
+            "cycle": false,
+            "schema": "public",
+            "type": "always"
+          }
+        },
+        "sampled_at": {
+          "name": "sampled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "connections": {
+          "name": "connections",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "users": {
+          "name": "users",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "idle": {
+          "name": "idle",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "connects": {
+          "name": "connects",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "disconnects": {
+          "name": "disconnects",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "sent": {
+          "name": "sent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "recv": {
+          "name": "recv",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "failed": {
+          "name": "failed",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "ws_metric_samples_at_idx": {
+          "name": "ws_metric_samples_at_idx",
           "columns": [
             {
               "expression": "sampled_at",
@@ -99127,7 +99046,9 @@
       "values": [
         "running",
         "succeeded",
-        "failed"
+        "failed",
+        "skipped",
+        "canceled"
       ]
     },
     "public.workflow_job_status": {
@@ -99155,7 +99076,9 @@
         "subprocess_join",
         "event_dispatch",
         "webhook_delivery",
-        "compensation_action"
+        "compensation_action",
+        "automation_action",
+        "schedule_launch"
       ]
     },
     "public.workflow_node_type": {

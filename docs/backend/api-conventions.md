@@ -315,4 +315,4 @@ Server-Timing: total;dur=45.2;desc="Total Response Time"
 | IP 访问控制 | `ipAccessMiddleware` | 对 `/api/*` 生效 |
 | 限流 | `rate-limit.ts` | 登录、验证码、注册 / 找回 / 重置密码和路径绑定限流 |
 | 维护模式 | `maintenanceMiddleware` | 对 `/api/*` 生效，认证与公开维护接口除外 |
-| License 门控 | `licenseFeatureGate` | 域挂载声明 `feature` 时整体套功能授权 |
+| License 门控 | `licenseFeatureGate` | 挂载继承路由域的 `licensing.feature`；豁免需说明原因，见 [功能授权](./licensing.md) |

@@ -81,6 +81,7 @@ import { createCmsFrontendRoutes } from './frontend';
 
 export default defineRouteDomain({
   name: 'cms',
+  licensing: { feature: 'cms' },
   mounts: () => [
     [cmsSiteContract.basePath, cmsSitesRoutes, { feature: 'cms' }],
     [cmsModelContract.basePath, cmsModelsRoutes, { feature: 'cms' }],
@@ -120,10 +121,10 @@ export default defineRouteDomain({
     [cmsSubscriptionContract.basePath, cmsSubscriptionsRoutes, { feature: 'cms' }],
     // 站点级上传入口挂在各子资源之后，避免资源根前缀抢先匹配
     [cmsUploadContract.basePath, cmsUploadRoutes, { feature: 'cms' }],
-    [publicCmsContract.basePath, createCmsFrontPublicRoutes()],
+    [publicCmsContract.basePath, createCmsFrontPublicRoutes(), { licenseExempt: '已发布站点的公开内容入口保持可达' }],
   ],
   // 在全部域的 mounts 之后兜底注册
   fallback: () => [
-    ['/', createCmsFrontendRoutes()],
+    ['/', createCmsFrontendRoutes(), { licenseExempt: '已发布站点的前台渲染保持可达' }],
   ],
 });

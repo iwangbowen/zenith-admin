@@ -54,7 +54,7 @@ Service、导出定义和后台任务应优先复用这些工具，避免手写 
 结果放进进程内副本（`lib/ttl-cache.ts`，60s TTL、关闭 stale-while-revalidate、单飞）供权限加载、`getMySettings`
 的模块门控与菜单 / 角色 / 用户校验共用；失效由 `tenants`（改绑套餐，按租户键）、`tenant_packages` /
 `tenant_package_features`（整段清空）表上的 `notify_cache_invalidate` 触发器经 `invalidation-bus` 广播到全部实例
-（迁移 `0005` / `0013`），TTL 只是 NOTIFY 不可用时的兜底。返回的集合在调用方之间共享，只读。
+（`0001_extensions.sql`），TTL 只是 NOTIFY 不可用时的兜底。返回的集合在调用方之间共享，只读。
 
 ## 用户席位与 License
 

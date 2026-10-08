@@ -38,4 +38,4 @@ export const channelAnalysisQuery = z.object({
 
 export const channelAnalysisContract = defineContract('/api/growth/channel-analysis', {
   analyze: op.get('/', { access: { permission: 'shortlink:analysis:view' }, query: channelAnalysisQuery, response: channelAnalysisResultSchema, summary: '按 UTM 维度聚合短链点击与转化' }),
-}, { tags: ['渠道推广分析'] });
+}, { tags: ['渠道推广分析'], feature: 'growth' });

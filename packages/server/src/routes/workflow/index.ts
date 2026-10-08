@@ -45,6 +45,7 @@ import workflowTriggerExecutionsRoutes from './workflow-trigger-executions';
 // 子资源前缀先挂载，资源根路径（实例 / 任务 / 运维契约共用）最后挂载
 export default defineRouteDomain({
   name: 'workflow',
+  licensing: { feature: 'workflow' },
   mounts: () => [
     [workflowDefinitionContract.basePath, workflowDefinitionsRoutes, { feature: 'workflow' }],
     [workflowCategoryContract.basePath, workflowCategoriesRoutes, { feature: 'workflow' }],
@@ -63,8 +64,8 @@ export default defineRouteDomain({
     [workflowAttachmentContract.basePath, workflowAttachmentsRoutes, { feature: 'workflow' }],
     [workflowHealthContract.basePath, workflowHealthRoutes, { feature: 'workflow' }],
     [workflowEngineContract.basePath, workflowEngineRoutes, { feature: 'workflow' }],
-    [workflowExternalCallbackContract.basePath, workflowExternalCallbackRoutes],
-    [workflowTriggerCallbackContract.basePath, workflowTriggerCallbackRoutes],
+    [workflowExternalCallbackContract.basePath, workflowExternalCallbackRoutes, { licenseExempt: '外部业务审批回调必须保持可达' }],
+    [workflowTriggerCallbackContract.basePath, workflowTriggerCallbackRoutes, { licenseExempt: '外部自动化触发入口保留自身密钥鉴权' }],
     [workflowInstanceContract.basePath, workflowInstancesRoutes, { feature: 'workflow' }],
   ],
 });

@@ -62,6 +62,7 @@ import { createWsRoute } from './ws';
 
 export default defineRouteDomain({
   name: 'platform',
+  licensing: { core: '平台配置、监控、审计与授权管理是基础能力；授权子功能在挂载上单独声明' },
   mounts: () => [
     [dictContract.basePath, dictsRoutes],
     [monitorContract.basePath, monitorRoutes],

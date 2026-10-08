@@ -36,13 +36,14 @@ import userAiConfigRoutes from './user-ai-config';
 
 export default defineRouteDomain({
   name: 'ai',
+  licensing: { feature: 'ai' },
   mounts: () => [
     [aiProviderContract.basePath, aiProvidersRoutes, { feature: 'ai' }],
     [aiChatModelContract.basePath, aiModelsRoutes, { feature: 'ai' }],
     [aiSettingsContract.basePath, aiSettingsRoutes, { feature: 'ai' }],
     // 对话根路径挂载三个路由器：扩展能力 → 基础 CRUD → SSE 流式对话，顺序是语义的一部分
     [aiConversationContract.basePath, aiConversationExtrasRoutes, { feature: 'ai' }],
-    [aiPublicContract.basePath, aiPublicRoutes],
+    [aiPublicContract.basePath, aiPublicRoutes, { licenseExempt: '外部 AI 调用入口保留自身凭证与限流，不随管理面授权关闭' }],
     [aiKnowledgeBaseContract.basePath, aiKnowledgeRoutes, { feature: 'ai' }],
     [aiAgentContract.basePath, aiAgentsRoutes, { feature: 'ai' }],
     [aiGenerationContract.basePath, aiGenerationsRoutes, { feature: 'ai' }],

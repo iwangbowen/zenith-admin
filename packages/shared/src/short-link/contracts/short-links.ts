@@ -107,4 +107,4 @@ export const shortLinkContract = defineContract('/api/short-links', {
   create: op.post('/', { access: { permission: 'shortlink:link:create' }, audit: '创建短链', body: createShortLinkSchema, response: shortLinkSchema, summary: '创建短链' }),
   update: op.put('/{id}', { access: { permission: 'shortlink:link:update' }, audit: '更新短链', params: idParam, body: updateShortLinkSchema, response: shortLinkSchema, summary: '更新短链' }),
   remove: op.delete('/{id}', { access: { permission: 'shortlink:link:delete' }, audit: '删除短链', params: idParam, summary: '删除短链' }),
-}, { auditModule: '短链管理', tags: ['短链管理'] });
+}, { auditModule: '短链管理', tags: ['短链管理'], feature: 'growth' });

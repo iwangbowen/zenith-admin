@@ -20,6 +20,7 @@ import { createIotWsRoute } from './ws';
 
 export default defineRouteDomain({
   name: 'iot',
+  licensing: { feature: 'iot' },
   mounts: () => [
     [iotDashboardContract.basePath, iotDashboardRouter],
     [iotProductContract.basePath, iotProductsRoutes],
@@ -36,7 +37,7 @@ export default defineRouteDomain({
     [iotFirmwareContract.basePath, iotFirmwaresRouter],
     [iotOtaTaskContract.basePath, iotOtaTasksRouter],
     // 设备侧接入通道（HMAC 鉴权，无管理端 token）
-    [iotIngestContract.basePath, ingestRoutes],
-    ['/api/iot/ws', createIotWsRoute(upgradeWebSocket)],
+    [iotIngestContract.basePath, ingestRoutes, { licenseExempt: '设备侧接入通道保留 HMAC 鉴权与现有持续接入行为' }],
+    ['/api/iot/ws', createIotWsRoute(upgradeWebSocket), { licenseExempt: '设备侧 WebSocket 接入保留设备鉴权' }],
   ],
 });

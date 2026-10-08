@@ -68,8 +68,9 @@ import { createWsTerminalRoute, createWsTerminalMonitorRoute } from './ws-termin
 
 export default defineRouteDomain({
   name: 'ops',
+  licensing: { feature: 'ops' },
   mounts: () => [
-    [maintenanceContract.basePath, maintenanceRoutes],
+    [maintenanceContract.basePath, maintenanceRoutes, { licenseExempt: '维护状态与恢复入口属于基础能力' }],
     [sslCertificateContract.basePath, sslCertificatesRoutes, { feature: 'ops' }],
     [dbAdminContract.basePath, dbAdminRoutes, { feature: 'ops' }],
     ['/api/ws/terminal', createWsTerminalRoute(upgradeWebSocket), { feature: 'ops' }],
@@ -93,18 +94,18 @@ export default defineRouteDomain({
     [logFileContract.basePath, logFilesRoutes, { feature: 'ops' }],
     [retentionPolicyContract.basePath, retentionRoutes, { feature: 'ops' }],
     // 应用版本管理：静态子资源前缀先挂载，再挂载资源根（看板统计）
-    [clientAppContract.basePath, clientAppsRouter],
-    [appReleaseContract.basePath, appReleasesRouter],
-    [appArtifactContract.basePath, appArtifactsRouter],
-    [clientDeviceContract.basePath, clientDevicesRouter],
-    [appReleaseStatsContract.basePath, appReleaseStatsRouter],
+    [clientAppContract.basePath, clientAppsRouter, { licenseExempt: '客户端应用目录属于基础发布能力' }],
+    [appReleaseContract.basePath, appReleasesRouter, { licenseExempt: '客户端版本管理属于基础发布能力' }],
+    [appArtifactContract.basePath, appArtifactsRouter, { licenseExempt: '客户端制品管理属于基础发布能力' }],
+    [clientDeviceContract.basePath, clientDevicesRouter, { licenseExempt: '客户端设备管理属于基础发布能力' }],
+    [appReleaseStatsContract.basePath, appReleaseStatsRouter, { licenseExempt: '客户端发布统计属于基础发布能力' }],
     // 应用部署（服务端应用推送到运维主机）：目标 / 记录 / 发布目录
     [deployTargetContract.basePath, deployTargetsRouter, { feature: 'ops' }],
     [deployRunContract.basePath, deployRunsRouter, { feature: 'ops' }],
     [deployReleaseContract.basePath, deployReleasesRouter, { feature: 'ops' }],
     // 公开面（客户端检查更新 / 制品分发）不声明 feature：在网客户端必须始终可达
-    [publicAppReleaseContract.basePath, publicAppReleasesRoutes],
+    [publicAppReleaseContract.basePath, publicAppReleasesRoutes, { licenseExempt: '在网客户端更新检查和制品分发必须保持可达' }],
     // 设备推送绑定（管理端 App，登录态即可）
-    [pushDeviceContract.basePath, adminPushDevicesRouter],
+    [pushDeviceContract.basePath, adminPushDevicesRouter, { licenseExempt: '管理端设备推送绑定属于基础消息能力' }],
   ],
 });

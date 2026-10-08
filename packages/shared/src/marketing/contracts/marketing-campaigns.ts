@@ -108,4 +108,4 @@ export const marketingCampaignContract = defineContract('/api/marketing/campaign
   create: op.post('/', { access: { permission: 'marketing:campaign:create' }, audit: '创建营销活动', body: createMarketingCampaignSchema, response: marketingCampaignSchema, summary: '创建营销活动' }),
   update: op.put('/{id}', { access: { permission: 'marketing:campaign:update' }, audit: '更新营销活动', params: idParam, body: updateMarketingCampaignSchema, response: marketingCampaignSchema, summary: '更新营销活动' }),
   remove: op.delete('/{id}', { access: { permission: 'marketing:campaign:delete' }, audit: '删除营销活动', params: idParam, summary: '删除营销活动' }),
-}, { auditModule: '营销活动', tags: ['营销活动'] });
+}, { auditModule: '营销活动', tags: ['营销活动'], feature: 'growth' });

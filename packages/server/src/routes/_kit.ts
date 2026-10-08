@@ -20,7 +20,7 @@
  *    挂载在表里无法区分。约束 1 只能靠人工保证，调整顺序时请自行核对匹配结果。
  */
 import type { Hono } from 'hono';
-import type { LicenseFeatureKey } from '@zenith/shared/licensing';
+import { isLicenseFeatureKey, type LicenseFeatureKey } from '@zenith/shared/licensing';
 
 /**
  * 可挂载的子路由器。
@@ -36,17 +36,20 @@ export type MountableRouter = Hono<any, any, any>;
 /** 一条挂载：[挂载路径, 子路由器, 可选挂载配置] */
 export type Mount = readonly [path: string, router: MountableRouter, options?: MountOptions];
 
-export interface MountOptions {
-  /**
-   * 该挂载所属的可授权功能。声明后整个子路由器被 License 功能门控包裹
-   * （off 模式零开销放行）。公开面（回调 / 前台渲染 / OAuth 等）不要声明。
-   */
-  feature?: LicenseFeatureKey;
-}
+export type MountOptions =
+  | { feature: LicenseFeatureKey; licenseExempt?: never }
+  | { licenseExempt: string; feature?: never };
+
+/** 每个域必须明确默认授权分类；公开入口的例外必须在挂载上注明原因。 */
+export type RouteLicensePolicy =
+  | { feature: LicenseFeatureKey; core?: never }
+  | { core: string; feature?: never };
 
 export interface RouteDomain {
   /** 域名，用于日志与按域裁剪装载 */
   name: string;
+  /** 新挂载继承此分类，避免新增 API 忘记接入 License 门控。 */
+  licensing: RouteLicensePolicy;
   /** 常规挂载，按数组顺序注册 */
   mounts: () => Mount[];
   /** 兜底挂载，在**全部**域的 mounts 与文档路由之后注册 */
@@ -54,5 +57,34 @@ export interface RouteDomain {
 }
 
 export function defineRouteDomain(domain: RouteDomain): RouteDomain {
-  return domain;
+  const policy = domain.licensing;
+  if (!policy || (policy.feature === undefined && !policy.core?.trim())) {
+    throw new Error(`路由域「${domain.name}」必须声明 License 功能或核心能力原因`);
+  }
+  if (policy.feature !== undefined && (!isLicenseFeatureKey(policy.feature) || policy.core !== undefined)) {
+    throw new Error(`路由域「${domain.name}」的 License 分类无效：${policy.feature}`);
+  }
+
+  const classify = (mounts: Mount[], fallback = false): Mount[] => mounts.map(([path, router, options]) => {
+    if (options?.licenseExempt !== undefined) {
+      if (!options.licenseExempt.trim() || options.feature !== undefined) {
+        throw new Error(`路由挂载「${domain.name}:${path}」必须提供明确且独立的 License 豁免原因`);
+      }
+      return [path, router, options];
+    }
+    if (options?.feature !== undefined && !isLicenseFeatureKey(options.feature)) {
+      throw new Error(`路由挂载「${domain.name}:${path}」的 License 功能未登记：${options.feature}`);
+    }
+    if (fallback && (options?.feature || policy.feature)) {
+      throw new Error(`兜底挂载「${domain.name}:${path}」必须明确声明 License 豁免原因`);
+    }
+    const feature = options?.feature ?? policy.feature;
+    return feature ? [path, router, { feature }] : [path, router];
+  });
+
+  return {
+    ...domain,
+    mounts: () => classify(domain.mounts()),
+    ...(domain.fallback ? { fallback: () => classify(domain.fallback!(), true) } : {}),
+  };
 }

@@ -350,7 +350,7 @@ export type DriveOpenAppGrantRow = typeof driveOpenAppGrants.$inferSelect;
 
 /**
  * 外链访问留痕（含被拒绝的尝试）。
- * 按 created_at 月度 RANGE 分区（分区 DDL 在 0001_extensions.sql，Drizzle 仍以普通表描述列 / 索引 / 外键）；
+ * 按 created_at 月度 RANGE 分区（0000_baseline.sql 直接创建分区父表，0001_extensions.sql 初始化子分区）；
  * 没有代理主键：分区键必须进主键，`id` 只作展示序号。保留策略按分区整表 DROP。
  */
 export const driveShareAccessLogs = pgTable('drive_share_access_logs', {

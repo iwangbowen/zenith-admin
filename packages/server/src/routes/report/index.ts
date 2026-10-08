@@ -52,6 +52,7 @@ import reportSubscriptionsRoutes from './report-subscriptions';
 
 export default defineRouteDomain({
   name: 'report',
+  licensing: { feature: 'report' },
   mounts: () => [
     [reportDatasourceContract.basePath, reportDatasourcesRoutes, { feature: 'report' }],
     [reportDatasetContract.basePath, reportDatasetsRoutes, { feature: 'report' }],
@@ -60,7 +61,7 @@ export default defineRouteDomain({
     [reportDashboardOpsContract.basePath, reportDashboardOpsRoutes, { feature: 'report' }],
     [reportCategoryContract.basePath, reportCategoriesRoutes, { feature: 'report' }],
     [reportSubscriptionContract.basePath, reportSubscriptionsRoutes, { feature: 'report' }],
-    [reportPublicContract.basePath, reportPublicRoutes],
+    [reportPublicContract.basePath, reportPublicRoutes, { licenseExempt: '已发布报表的公开访问入口保持可达' }],
     [reportPrintContract.basePath, reportPrintRoutes, { feature: 'report' }],
     [reportAiContract.basePath, reportAiRoutes, { feature: 'report' }],
     [reportAlertContract.basePath, reportAlertsRoutes, { feature: 'report' }],

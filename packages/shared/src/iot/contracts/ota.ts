@@ -122,7 +122,7 @@ export const iotFirmwareContract = defineContract('/api/iot/firmwares', {
   uploadAbort: op.delete('/upload/{uploadId}', { access: { permission: 'iot:ota:firmware:manage' }, audit: '中止 IoT 固件分片上传', params: firmwareUploadIdParam, summary: '中止固件分片上传' }),
   update: op.put('/{id}', { access: { permission: 'iot:ota:firmware:manage' }, audit: '更新 IoT 固件', params: idParam, body: updateIotFirmwareSchema, response: iotFirmwareSchema, summary: '更新固件（仅发布说明与状态；版本与文件不可变更）' }),
   remove: op.delete('/{id}', { access: { permission: 'iot:ota:firmware:manage' }, audit: '删除 IoT 固件', params: idParam, summary: '删除固件（存在升级任务时拒绝，托管文件一并回收）' }),
-}, { auditModule: 'IoT 固件', tags: TAGS });
+}, { auditModule: 'IoT 固件', tags: TAGS, feature: 'iot' });
 
 export const iotOtaTaskContract = defineContract('/api/iot/ota-tasks', {
   deviceDetail: op.get('/device-results/{id}', { access: { permission: 'iot:ota:list' }, params: idParam, response: iotOtaTaskDeviceSchema, summary: '单设备升级结果详情' }),
@@ -133,4 +133,4 @@ export const iotOtaTaskContract = defineContract('/api/iot/ota-tasks', {
   cancel: op.post('/{id}/cancel', { access: { permission: 'iot:ota:task:create' }, audit: '取消 IoT 升级任务', params: idParam, response: iotOtaTaskSchema, summary: '取消升级任务（未终态设备一并取消）' }),
   releaseNextBatch: op.post('/{id}/release-next-batch', { access: { permission: 'iot:ota:task:create' }, audit: '放量 IoT 升级批次', params: idParam, response: iotOtaTaskSchema, summary: '放量下一批（灰度任务；暂停中的任务放量即恢复）' }),
   resume: op.post('/{id}/resume', { access: { permission: 'iot:ota:task:create' }, audit: '恢复 IoT 升级任务', params: idParam, response: iotOtaTaskSchema, summary: '恢复被熔断暂停的任务（继续当前批，不放量）' }),
-}, { auditModule: 'IoT 固件', tags: TAGS });
+}, { auditModule: 'IoT 固件', tags: TAGS, feature: 'iot' });

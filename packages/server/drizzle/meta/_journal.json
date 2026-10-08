@@ -5,29 +5,15 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1791105689960,
+      "when": 1791430812089,
       "tag": "0000_baseline",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1791105739371,
+      "when": 1791432780373,
       "tag": "0001_extensions",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1791226797241,
-      "tag": "0002_cuddly_puck",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1791290454076,
-      "tag": "0003_long_mauler",
       "breakpoints": true
     }
   ]

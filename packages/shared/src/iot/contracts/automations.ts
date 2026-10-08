@@ -92,4 +92,4 @@ export const iotAutomationContract = defineContract('/api/iot/automations', {
   create: op.post('/', { access: { permission: 'iot:automation:create' }, audit: '创建 IoT 场景联动', body: createIotAutomationSchema, response: iotAutomationSchema, summary: '创建联动规则（触发器 + 动作编排）' }),
   update: op.put('/{id}', { access: { permission: 'iot:automation:update' }, audit: '更新 IoT 场景联动', params: idParam, body: updateIotAutomationSchema, response: iotAutomationSchema, summary: '更新联动规则（触发类型与所属产品不可变更）' }),
   remove: op.delete('/{id}', { access: { permission: 'iot:automation:delete' }, audit: '删除 IoT 场景联动', params: idParam, summary: '删除联动规则（执行记录级联删除）' }),
-}, { auditModule: 'IoT 场景联动', tags: ['IoT 场景联动'] });
+}, { auditModule: 'IoT 场景联动', tags: ['IoT 场景联动'], feature: 'iot' });

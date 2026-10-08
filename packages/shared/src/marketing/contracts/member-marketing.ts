@@ -41,4 +41,4 @@ export const memberMarketingContract = defineContract('/api/member/marketing', {
   campaign: op.get('/campaigns/{id}', { params: idParam, response: marketingPublicCampaignSchema, summary: '活动信息（含奖品展示，不含权重与库存）' }),
   draw: op.post('/campaigns/{id}/draw', { params: idParam, response: marketingDrawResultSchema, summary: '参与抽奖（次数限制 + 库存原子扣减 + 中奖自动发放）' }),
   myRecords: op.get('/campaigns/{id}/my-records', { params: idParam, response: z.array(marketingParticipationSchema), summary: '我的参与记录（最近 50 条）' }),
-}, { tags: ['营销活动（会员端）'], security: 'member-bearer' });
+}, { tags: ['营销活动（会员端）'], security: 'member-bearer', feature: 'growth' });

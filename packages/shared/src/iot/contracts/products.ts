@@ -157,4 +157,4 @@ export const iotProductContract = defineContract('/api/iot/products', {
   create: op.post('/', { access: { permission: 'iot:product:create' }, audit: '创建 IoT 产品', body: createIotProductSchema, response: iotProductSchema, summary: '创建产品' }),
   update: op.put('/{id}', { access: { permission: 'iot:product:update' }, audit: '更新 IoT 产品', params: idParam, body: updateIotProductSchema, response: iotProductSchema, summary: '更新产品' }),
   remove: op.delete('/{id}', { access: { permission: 'iot:product:delete' }, audit: '删除 IoT 产品', params: idParam, summary: '删除产品（有设备时拒绝）' }),
-}, { auditModule: 'IoT 产品', tags: ['IoT 产品'] });
+}, { auditModule: 'IoT 产品', tags: ['IoT 产品'], feature: 'iot' });

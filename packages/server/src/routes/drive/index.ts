@@ -21,6 +21,7 @@ import driveAccessRequestRoutes from './drive-access-requests';
 
 export default defineRouteDomain({
   name: 'drive',
+  licensing: { feature: 'drive' },
   mounts: () => [
     [driveSpaceContract.basePath, driveSpacesRoutes, { feature: 'drive' }],
     // 静态路径路由器先于单节点 /{id} 路由器挂载在同一路径

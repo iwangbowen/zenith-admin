@@ -68,4 +68,4 @@ export const iotWhitelistContract = defineContract('/api/iot/whitelist', {
     summary: '开启/重置产品注册密钥（明文仅本次返回）',
   }),
   disableRegistration: op.delete('/products/{id}/registration-secret', { access: { permission: 'iot:register:manage' }, audit: '关闭 IoT 产品动态注册', params: idParam, summary: '关闭产品动态注册（已注册设备不受影响）' }),
-}, { auditModule: 'IoT 动态注册', tags: ['IoT 动态注册'] });
+}, { auditModule: 'IoT 动态注册', tags: ['IoT 动态注册'], feature: 'iot' });

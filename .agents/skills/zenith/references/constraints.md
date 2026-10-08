@@ -276,6 +276,10 @@
 - **批量路由顺序**：`DELETE /batch` 必须注册在 `DELETE /{id}` **之前**，否则 `/batch` 被匹配为 `id="batch"`；
   静态 `/all` 同理早于 `/{id}`（`mountCrud` / `orderRoutes` 已按「静态路径先于参数路径」自动排序）
 - **挂载路径取契约**：`routes/{业务域}/index.ts` 的挂载写 `[xxxContract.basePath, xxxRoutes]`，**禁止**路径字面量
+- **路由域必须分类授权**：`defineRouteDomain` 必填 `licensing`（授权 `feature` 或带原因的 `core`），
+  域内新挂载自动继承；需要放行的公开 / 持续服务入口必须用 `licenseExempt` 注明原因，禁止隐式绕过。
+  契约组 / op 同步声明 `feature`，非后台凭证的明确授权项也在凭证校验之后执行门控；接入步骤见
+  [功能授权](../../../../docs/backend/licensing.md)
 - **设置类接口不另开端点**：模块级设置的读写只经 `routes/platform/settings.ts` 循环注册表生成的 `GET/PUT /api/settings/{module-path}`，
   **禁止**在业务域路由再暴露 `/settings` / `/policy` 之类的独立设置端点；读写权限与 License 门控由 `settingsContract`
   直接取模块定义的 `readPermission` / `writePermission` / `feature`，平台作用域在多租户模式下仅平台管理员可写
@@ -311,6 +315,9 @@
   （`npx drizzle-kit generate --custom` 建独立迁移写 UPDATE），否则已初始化的环境不会跟随代码变化；新增菜单只需维护 `SEED_MENUS`。
   角色 / 套餐引用菜单 ID 用 `collectMenuSubtreeIds()` 等结构化推导，**禁止**硬编码魔法数字
 - **手工菜单 ID 从 100000 起**（seed.ts `MENU_CUSTOM_ID_START`），`SEED_MENUS` 的 id **禁止**进入该区间
+- **新菜单模块必须归类授权**：新顶层入口在 `LICENSE_FEATURE_CATALOG.menuRoots` 或带原因的
+  `CORE_MENU_ROOTS` 登记，禁止将未登记模块默认为核心；变更既有 `featureKey` 必须提供数据迁移。
+  `menu-features.test.ts`、`feature-catalog.test.ts` 与 `app.contract.test.ts` 检查菜单覆盖及实际 API 门控
 
 ## MSW Mock 层（Step 11）
 

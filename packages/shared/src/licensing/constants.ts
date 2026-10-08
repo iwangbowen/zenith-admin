@@ -30,6 +30,8 @@ export const LICENSE_FEATURES = [
   'rules',
   'ops',
   'drive',
+  'growth',
+  'iot',
 ] as const;
 
 export type LicenseFeatureKey = (typeof LICENSE_FEATURES)[number];
@@ -49,6 +51,8 @@ export const LICENSE_FEATURE_LABELS: Record<LicenseFeatureKey, string> = {
   rules: '规则中心',
   ops: '系统运维',
   drive: '企业网盘',
+  growth: '运营中心',
+  iot: 'IoT 设备',
 };
 
 export const LICENSE_FEATURE_OPTIONS: Array<{ value: LicenseFeatureKey; label: string }> =

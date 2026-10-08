@@ -37,6 +37,7 @@ import broadcastsRoutes from './broadcasts';
 
 export default defineRouteDomain({
   name: 'messaging',
+  licensing: { core: '通知、公告与消息投递是基础能力' },
   mounts: () => [
     [announcementContract.basePath, announcementsRoutes],
     [emailConfigContract.basePath, emailConfigRoutes],

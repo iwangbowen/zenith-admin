@@ -44,23 +44,23 @@ npm run db:seed
 
 ### 迁移文件来源
 
-结构变更先改 `src/db/schema/`，再由 `drizzle-kit generate` 生成迁移 SQL。不要手工改写已生成迁移来适配代码。仅 Drizzle schema 无法表达的 DDL 可使用 custom migration，例如扩展、表达式索引、条件 DDL。
+结构变更先改 `src/db/schema/`，再由 `drizzle-kit generate` 生成迁移 SQL。不要手工改写已生成迁移来适配代码。仅 Drizzle schema 无法表达的 DDL 可使用 custom migration，例如扩展、条件 DDL。重建基线时允许补齐前置 `pg_trgm`、三张分区父表的 `PARTITION BY`，并将唯一索引排在依赖它的外键之前；列、外键与索引仍由当前 schema 生成，具体步骤见下方「重建基线」。
 
 ### 迁移目录
 
-`packages/server/drizzle/` 包含 `0000_baseline.sql`、`0001_extensions.sql` 和后续增量迁移，执行顺序由 `drizzle/meta/_journal.json` 管理。全新数据库执行 `npm run db:migrate` 会按该顺序建库。
+当前 `packages/server/drizzle/` 以 `0000_baseline.sql` 与 `0001_extensions.sql` 为迁移基线，执行顺序由 `drizzle/meta/_journal.json` 管理。此前增量的结构变更已合入当前基线，旧结构转换与历史数据回填不再保留。全新数据库执行 `npm run db:migrate` 会按该顺序建库，再由 `npm run db:seed` 初始化当前菜单与内置数据。
 
 `0001_extensions.sql` 收口维护 Drizzle schema 无法表达的手写 DDL：
 
 - 条件启用 pgvector：`CREATE EXTENSION IF NOT EXISTS vector`（扩展可用才建，否则静默跳过；扩展创建与条件 DDL 均超出 Drizzle 表达范围）。它服务于 Mastra PgVector——知识库向量存放在 `mastra` schema（索引 `kb_{kbId}`），`ai_kb_chunks` 只存分块文本，业务表上没有任何 `vector` 列；无 pgvector 的部署除知识库向量化外照常工作。
-- `iot_telemetry` 的 RANGE 日分区建表与初始分区（见下文「分区表」）。
-- `drive_activities` / `drive_share_access_logs` 的 RANGE 月分区建表与初始分区（见下文「分区表：企业网盘日志」）。
+- `iot_telemetry` 的 RANGE 日分区初始子分区（见下文「分区表」）。
+- `drive_activities` / `drive_share_access_logs` 的 RANGE 月分区初始子分区（见下文「分区表：企业网盘日志」）。
 - 跨实例缓存失效广播：通用触发器函数 `notify_cache_invalidate()`，以及 `system_settings`、`data_mask_policies`、`users`、`tenants`、`members`、`user_api_tokens`、`tenant_packages`、`tenant_package_features` 上的触发器；服务端 `lib/invalidation-bus.ts` 监听该频道，见[运行时设置](./settings.md)。`onInvalidate(topic)` 订阅的每张表都必须在此挂触发器（`invalidation-triggers.test.ts` 守卫）。
 - CMS 不可变事实：`cms_immutable_revision()`（修订、审批、复审、模型 / 资源 / 组件 / 页面预设 / 集合版本、发布激活）、`cms_release_configuration_immutable()`（发布单输入）、`cms_feedback_history_immutable()` 与 `cms_editorial_history_immutable()`（只追加历史）及其触发器。
 - 只读执行角色 `zenith_readonly`（NOLOGIN，仅 SELECT），供用户手写 SQL 在事务内 `SET LOCAL ROLE` 切换；无 CREATEROLE 权限的部署跳过创建并告警，服务端降级为白名单 + READ ONLY，见[数据平台 · 安全边界](../ops/data-platform.md#安全边界)。
 - 条件启用 `pg_stat_statements`：扩展可用时创建数据库扩展；PostgreSQL 仍必须在启动配置中预加载 `pg_stat_statements`，否则 SQL 监控保留降级提示。
 
-分区表在基线中先按普通表生成，`0001_extensions.sql` 再删除重建为分区表——其中列 / 外键 / 索引与 `0000_baseline.sql` 对应表的定义逐字一致，schema 改动这三张表后必须同步更新 `0001_extensions.sql`。
+三张分区父表直接在 `0000_baseline.sql` 中以 `PARTITION BY RANGE` 创建，列、外键与索引只在基线中定义一次。`0001_extensions.sql` 只预建初始子分区，不删除或重建父表；修改这些表后，按当前 schema 生成结构变更，并保留各自的分区键与 UTC 边界。
 
 `pg_trgm` 扩展在 `0000_baseline.sql` 顶部创建；trigram 索引（含 `async_tasks.payload/result` 的「表达式 + gin_trgm_ops」形态）已全部收进 schema DSL，由 `drizzle-kit generate` 随基线生成。
 
@@ -68,24 +68,24 @@ npm run db:seed
 
 ### 重建基线
 
-基线重建（删除全部增量迁移、由当前 schema 重新生成 `0000_baseline`）只在大版本或迁移链过长时进行，
-**不提供从旧基线的增量升级**——既有数据库必须停止全部 api / worker / `all` 进程，删除旧数据库并显式创建空库，再执行迁移与 seed；部署步骤见[部署指南 → 迁移基线重建](../guide/deployment.md#迁移基线重建)。下面的步骤用于生成与验证新迁移链：
+基线重建删除旧迁移链，由当前 schema 重新生成 `0000_baseline`，再收口仍需手写的 DDL。
+当前基线**不提供旧结构或历史数据兼容**：既有数据库必须停止全部 api / worker / `all` 进程，删除旧数据库并显式创建空库，再执行迁移与 seed；部署步骤见[部署指南 → 迁移基线重建](../guide/deployment.md#迁移基线重建)。下面的步骤用于生成与验证新迁移链：
 
 1. 结构快照：重建前用现有迁移链建一个空库，执行 `packages/server/scripts/schema-catalog.sql` 保存结构清单。
-2. 收集手写 DDL：在增量迁移中检索 `CREATE FUNCTION|CREATE TRIGGER|CREATE VIEW|DO \$\$|PARTITION|CREATE ROLE|GRANT|CREATE EXTENSION`，结构类语句并入 `0001_extensions.sql`；数据回填类语句（`INSERT` / `UPDATE` / 菜单修正）对全新库无意义，不保留。
+2. 收集手写 DDL：在旧链中检索 `CREATE FUNCTION|CREATE TRIGGER|CREATE VIEW|DO \$\$|PARTITION|CREATE ROLE|GRANT|CREATE EXTENSION`，保留当前 schema 无法表达且仍需使用的能力；数据回填、旧表转换与菜单兼容修正不保留。
 3. 删除 `packages/server/drizzle/` 下全部文件；`npx drizzle-kit generate --name baseline` 生成 `0000_baseline.sql` 与快照。
-4. 在 `0000_baseline.sql` 顶部补回 `CREATE EXTENSION IF NOT EXISTS pg_trgm;--> statement-breakpoint` 及其注释。
-5. `npx drizzle-kit generate --custom --name extensions` 生成空的 `0001_extensions.sql`，写入手写 DDL；分区表的建表 / 外键 / 索引语句从新基线中原样拷贝再加 `PARTITION BY`。
+4. 补齐生成基线中的必要 DDL：在首个依赖 trigram 的索引之前创建 `pg_trgm`；为 `iot_telemetry` 声明 `PARTITION BY RANGE ("reported_at")`，为 `drive_activities` 和 `drive_share_access_logs` 声明 `PARTITION BY RANGE ("created_at")`；将唯一索引排在外键之前，确保引用唯一索引列的外键能成功创建。保留由 schema 生成的列、外键和索引定义，运行 `migration-baseline.test.ts` 检查这些约束。
+5. `npx drizzle-kit generate --custom --name extensions` 生成空的 `0001_extensions.sql`，仅写入扩展、初始子分区、触发器、函数与执行角色等手写能力，不重复定义父表、外键或索引，不执行旧结构或历史数据转换。
 6. 全新库跑 `npm run db:migrate && npm run db:seed`，再执行一次 `drizzle-kit generate` 确认输出 `No schema changes`。
 7. 结构比对：对新库执行同一查询，与第 1 步的清单比对；除本次 schema 有意的改动外不得有差异（缺失的行通常是漏并的触发器 / 函数）。
 
 ### 分区表：`iot_telemetry`
 
-`0001_extensions.sql` 把 IoT 遥测明细建为 PostgreSQL 原生 **RANGE 日分区表**（按 `reported_at`（timestamptz）的 UTC 日边界，分区命名 `iot_telemetry_pYYYYMMDD`）。约定如下：
+`0000_baseline.sql` 直接把 IoT 遥测明细建为 PostgreSQL 原生 **RANGE 日分区表**，`0001_extensions.sql` 预建初始子分区（按 `reported_at`（timestamptz）的 UTC 日边界，分区命名 `iot_telemetry_pYYYYMMDD`）。约定如下：
 
 - 分区边界一律写带 `+00` 的字面量（初始分区与 `iot-partitions.service.ts` 同口径）；`pg_get_expr(relpartbound)` 按会话时区渲染偏移，解析时按带偏移的时刻处理。
 
-- Drizzle schema 仍以普通表描述列 / 索引 / 外键（父表定义自动继承到每个分区），`PARTITION BY` 与初始分区只存在于 `0001_extensions.sql`；重建基线时必须一并保留。
+- Drizzle schema 与快照仍描述列 / 索引 / 外键（父表定义自动继承到每个分区）；`PARTITION BY` 保留在 `0000_baseline.sql`，初始子分区保留在 `0001_extensions.sql`，重建基线时必须一并保留。
 - 表没有代理主键：明细只按 `(device_id, reported_at)` 范围读取，主键索引纯属写放大，且分区键必须进主键的限制让 `id` 失去意义。
 - 分区生命周期由 `services/iot/iot-partitions.service.ts` 负责：启动与每小时任务「IoT 遥测分区维护」滚动预建未来 7 天；写入命中「无分区」错误时按批次内日期补建后重试；保留策略 `iot_telemetry` 走 `custom` 模式，按分区上界整表 `DROP`（秒级、零膨胀），写入侧同时丢弃早于保留窗口的回填点。
 - `drizzle-kit generate` 不会感知子分区（它只对比 schema 与快照），因此新增 / 删除分区无需迁移；但**不要**在 schema 中给该表加回 `id` 或改分区键列，否则生成的 `ALTER` 会作用于分区父表并破坏分区布局。
@@ -94,7 +94,7 @@ npm run db:seed
 
 企业网盘的 `drive_activities` 与 `drive_share_access_logs` 同样使用原生 RANGE 分区，
 但按 `created_at`（timestamptz）的 **UTC 月边界**划分，保留 `id` 作为无主键的 identity 展示序号。
-建表 DDL 与初始分区在 `0001_extensions.sql`；生命周期由
+分区父表、外键与索引直接在 `0000_baseline.sql` 创建，初始子分区在 `0001_extensions.sql`；生命周期由
 `services/drive/drive-partitions.service.ts` 维护，保留策略只删除完整过期月份。
 模型与运行规则见[企业网盘](../drive/reference.md)。
 

@@ -263,7 +263,7 @@ export type NewIotDeviceEvent = typeof iotDeviceEvents.$inferInsert;
 /**
  * 遥测明细：PostgreSQL 原生 RANGE 日分区表（按 reported_at，UTC 日边界）。
  *
- * - 分区 DDL 超出 Drizzle 表达范围，`PARTITION BY` 与初始分区在迁移中手写，本处只描述列 / 索引 / 外键
+ * - 分区 DDL 超出 Drizzle 表达范围；0000 基准直接声明 PARTITION BY，0001 初始化子分区，本处描述列 / 索引 / 外键
  *   （父表上的索引与外键自动继承到每个分区）；重建迁移基线时必须一并保留
  * - 无代理主键：明细只按 (device_id, reported_at) 范围读取，主键索引纯属写放大；
  *   分区键必须进主键的约束也让 bigint id 失去意义

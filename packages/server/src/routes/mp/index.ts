@@ -43,10 +43,11 @@ import mpTemplatesRoutes from './mp-templates';
 
 export default defineRouteDomain({
   name: 'mp',
+  licensing: { feature: 'mp' },
   mounts: () => [
     // 微信服务器回调按渠道协议返回 XML / 纯文本 ACK，不走 JSON 契约
-    ['/api/public/mp/callback', mpCallbackRoutes],
-    [mpOAuthPublicContract.basePath, mpOAuthPublicRoutes],
+    ['/api/public/mp/callback', mpCallbackRoutes, { licenseExempt: '微信服务器回调必须保持可达' }],
+    [mpOAuthPublicContract.basePath, mpOAuthPublicRoutes, { licenseExempt: '微信 OAuth 回调不随管理面授权关闭' }],
     [mpAccountContract.basePath, mpAccountsRoutes, { feature: 'mp' }],
     [mpTagContract.basePath, mpTagsRoutes, { feature: 'mp' }],
     [mpFanContract.basePath, mpFansRoutes, { feature: 'mp' }],

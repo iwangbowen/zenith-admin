@@ -138,6 +138,7 @@ export default withMermaid(defineConfig({
         items: [
           { text: 'API 规范', link: '/backend/api-conventions' },
           { text: 'Swagger / OpenAPI', link: '/backend/swagger' },
+          { text: '功能授权与防漏检查', link: '/backend/licensing' },
           { text: '请求上下文与当前用户', link: '/backend/request-context' },
           { text: '任务中心', link: '/backend/task-center' },
           { text: '导出中心', link: '/backend/export-center' },
