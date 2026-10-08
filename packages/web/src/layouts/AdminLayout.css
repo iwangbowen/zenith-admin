@@ -993,23 +993,29 @@
   background: var(--semi-color-fill-1);
 }
 
-/* Double: narrow icon rail + sub sidebar + content */
+/* Double: 窄图标轨 + 宽子导航列 + 内容区。
+   宽度比例对齐实际双列布局（--sidebar-collapsed-width : --sidebar-double-sub-width），
+   次列用 repeating-linear-gradient 画出子菜单条目，避免与实际「空空如也」的两条竖条混淆。 */
 .layout-picker__preview--double::before {
   content: '';
   position: absolute;
   left: 0;
   top: 0;
   bottom: 0;
-  width: 14px;
-  background: var(--semi-color-fill-2);
-  box-shadow: 19px 0 0 0 var(--semi-color-fill-1);
+  width: 32px;
+  background:
+    /* 次列子菜单条目 */
+    repeating-linear-gradient(to bottom, var(--semi-color-fill-2) 0 3px, transparent 3px 9px) no-repeat 11px 8px / 18px calc(100% - 16px),
+    /* 首列图标轨 */
+    linear-gradient(var(--semi-color-fill-2), var(--semi-color-fill-2)) no-repeat 0 0 / 8px 100%;
+  background-color: var(--semi-color-fill-1);
 }
 .layout-picker__preview--double::after {
   content: '';
   position: absolute;
-  left: 4px;
+  left: 2px;
   top: 8px;
-  width: 6px;
+  width: 4px;
   height: 3px;
   border-radius: var(--semi-border-radius-small);
   background: var(--semi-color-primary);
