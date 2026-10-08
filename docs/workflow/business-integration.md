@@ -12,13 +12,14 @@
 
 ## 后端桥接 API
 
-`packages/server/src/lib/workflow-biz-bridge.ts` 提供三类函数：
+`packages/server/src/lib/workflow-biz-bridge.ts` 提供以下入口：
 
 | 函数 | 说明 |
 | --- | --- |
 | `startWorkflowForBiz` | 保存业务数据后发起流程，并写入 `bizType`、`bizId`、路由变量和优先级 |
-| `onWorkflowResult` | 监听指定 `bizType` 的创建、通过、驳回、撤回、退回事件，回写业务状态 |
+| `onWorkflowResult` | 监听指定 `bizType` 的创建、通过、驳回、撤回事件，回写业务状态 |
 | `getWorkflowStatusByBiz` | 按业务键批量查询工作流状态（每个 bizId 取最新一条实例） |
+| `resolveBizDefinitionId` | 按名称、已发布状态和表单类型解析定义；多条匹配时选 ID 最大的定义并记录警告 |
 
 幂等与重新发起语义：
 
@@ -41,7 +42,7 @@
 ### 2. 提交时发起流程
 
 ```ts
-import { startWorkflowForBiz } from '../lib/workflow-biz-bridge';
+import { startWorkflowForBiz } from '../../lib/workflow-biz-bridge';
 
 const instance = await startWorkflowForBiz({
   definitionId,
@@ -61,7 +62,7 @@ const instance = await startWorkflowForBiz({
 ### 3. 订阅流程结果
 
 ```ts
-import { onWorkflowResult } from '../lib/workflow-biz-bridge';
+import { onWorkflowResult } from '../../lib/workflow-biz-bridge';
 
 export function registerBizLeaveSubscribers() {
   onWorkflowResult('biz_leave', {
@@ -73,6 +74,8 @@ export function registerBizLeaveSubscribers() {
 ```
 
 订阅器在服务启动时注册，与其它事件订阅者一起响应 `instance.*` 事件。
+
+`onWorkflowResult` 的回调只有 `onCreated`、`onApproved`、`onRejected`、`onWithdrawn`。需要订阅 `instance.returned` 时直接使用工作流事件总线。业务桥接属于进程内 best-effort 消费方，业务模块应自行保证幂等并提供失败后的状态对账，不能把订阅回写与提交事务视为同一次提交。
 
 ### 4. 配置流程定义
 
@@ -87,7 +90,7 @@ export function registerBizLeaveSubscribers() {
 
 ### 5. 在业务表单内展示流程
 
-统一使用 `components/workflow/BusinessWorkflowPanel.tsx`，传入业务表单 `formContent`、预览 `preview`、实际流程上下文 `context` 和轮次选择状态。公共组件复用普通流程的 `WorkflowProcessLayout`、`WorkflowApprovalChain`、`WorkflowInstanceDetailPanel` 和流程图；业务页面负责业务表单、取数和保存/提交动作。
+统一使用 `components/workflow/BusinessWorkflowPanel.tsx`，传入业务表单 `formContent`、预览 `preview`、实际流程上下文 `context` 和轮次选择状态。公共组件复用普通流程的 `WorkflowProcessLayout`、`WorkflowApprovalChainPanel`、`WorkflowInstanceDetailPanel` 和流程图；业务页面负责业务表单、取数和保存/提交动作。
 
 | 状态 | 展示与操作 |
 | --- | --- |
@@ -129,10 +132,12 @@ export function registerBizLeaveSubscribers() {
 
 审批上传使用 `workflowAttachmentContract.upload`。文件以 `restricted` 保存，对象存储强制 private ACL；`workflow_attachment_uploads` 记录专用上传来源、上传人和租户，禁止用其它模块的任意文件 ID 冒充审批附件。
 
-提交附件的格式统一为 `[{ fileId }]`。任务动作、评论和设计器表单均由服务端读取文件元数据，保存 `{ id, fileId, name, size, mimeType, url }` 展示快照。`id` 是具体附件绑定 ID；`url` 是工作流专属受控读取地址，不是文件身份或授权凭据。没有历史 URL 解析、回填或双读兼容。
+提交附件的格式统一为 `[{ fileId }]`。任务动作、评论和设计器表单均由服务端读取文件元数据，保存 `{ id, fileId, name, size, mimeType, url }` 展示快照。`id` 是具体附件绑定 ID；`url` 是工作流专属受控读取地址，不是文件身份或授权凭据。
 
 `workflow_attachment_links` 记录实例、任务或评论、表单字段路径与文件 FK；任务/评论使用含实例 ID 的复合 FK，数据库禁止来源串实例。附件绑定、去重、旧引用释放和文件引用计数与原业务写入在同一事务中提交。未绑定上传进入孤儿文件宽限期；绑定后上传者预览入口失效，后续读取必须从具体审批来源重新授权。删除流程先释放附件引用，引用归零后由统一 GC 回收文件。
 
 设计器只遍历声明的 `attachment` / `image` 字段及明细、布局容器，不从任意 JSON 或 URL 字符串推测附件。同一明细字段内重排行可复用有权读取的现存文件；跨实例复制仅接受服务端确认的业务重提或父子流程来源，并建立新的绑定。
 
 附件列表、详情与内容下载校验有效租户、流程参与关系及节点字段权限；隐藏表单字段不会经通用关联视图泄漏。归档原件继续使用实例的 `archiveFileId + archiveSha256`，明确通过 `workflowInstanceContract.print` 的 `source=archive` 读取，校验原件摘要；存在隐藏或需脱敏字段的查看者不能读取完整原件。
+
+归档生成、打印来源与验真统一见[审批单打印与存证](./print-and-archive.md)。

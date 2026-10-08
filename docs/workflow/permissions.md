@@ -48,7 +48,7 @@
 | --- | --- | --- |
 | `GET /api/workflows/categories/all` | `workflow:definition:list` / `workflow:instance:create` / `workflow:task:handle` | 发起工作台分组、待办筛选读取全部分类 |
 | `GET /api/workflows/definitions/published` | `workflow:instance:create` | 发起工作台与发起深链读取「已发布定义」（按发起范围过滤），整页发起 `/workflow/launch/:id` 同源取数，不调用管理端定义详情接口 |
-| `GET /api/workflows/instances/workbench-summary` | `workflow:task:handle` / `workflow:instance:list` / `workflow:instance:create` | 发起工作台顶部「我的审批概览」七项计数；每项再按其对应列表的权限门控（待我审批 / 超时 / 协办 → `task:handle`，抄送未读 / 审批中 → `instance:list`，退回 / 草稿 → `instance:create`），缺权限返回 `null`、前端不渲染该卡片 |
+| `GET /api/workflows/instances/workbench-summary` | `workflow:task:handle` / `workflow:instance:list` / `workflow:instance:create` | 七个统计字段渲染为六张卡片，超时计数放在待办卡片内；各项按对应列表权限门控（待办 / 超时 / 协办 → `task:handle`，抄送未读 / 审批中 → `instance:list`，退回 / 草稿 → `instance:create`），缺权限返回 `null`，前端隐藏对应卡片 |
 
 ### 文件上传
 
@@ -61,7 +61,7 @@
 
 | 权限点 | 说明 |
 | --- | --- |
-| `workflow:instance:monitor` | 全局实例监控、数据分析、诊断、运行轨迹、Token 跳过、批量推进卡死实例、补偿工单查看 |
+| `workflow:instance:monitor` | 实例监控、跨实例任务监控与催办、数据分析、诊断、运行轨迹、Token 跳过、批量推进卡死实例、补偿工单查看；查询仍受租户和数据范围控制 |
 | `workflow:instance:cancel` | 取消流程、强制跳转（原因必填并留痕）、改派处理人、Token 重放等高危操作 |
 | `workflow:instance:delete` | 删除流程实例 |
 | `workflow:engine:operate` | 引擎恢复动作、实例迁移、补偿工单处理、挂起/恢复实例 |
@@ -97,6 +97,8 @@
 
 路由分支引用的决策表、评分卡和决策流由规则中心权限控制；工作流权限只负责流程定义本身的保存、发布和运行。
 
+打印在实例可见性之上检查独立权限，归档原件还检查脱敏边界，详见[审批单打印与存证](./print-and-archive.md)。运行角色、健康阈值与出站地址配置见[引擎诊断、健康与运行配置](./engine-health.md)。
+
 ## 实例详情可见性
 
 用户可查看以下实例：
@@ -111,7 +113,7 @@
 
 ## 数据范围与租户
 
-工作流数据带 `tenantId`。普通租户用户按当前租户过滤；平台超级管理员可跨租户查看或按当前查看租户过滤。
+实例、定义、任务等工作流业务数据带 `tenantId`。普通租户用户的业务查询按当前租户过滤；平台超级管理员可跨租户查看或按当前查看租户过滤。作业账本和引擎运行状态为运维整体视图；远程数据源使用全局登记表，运行时拉取只要求登录，具体入口见[远程数据源](./data-sources.md)。
 
 流程监控还叠加角色数据范围：
 

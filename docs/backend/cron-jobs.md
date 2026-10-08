@@ -118,15 +118,17 @@
 - `system:scheduler:cleanup`
 - `system:scheduler:alert`
 
-系统任务分两类，都在启动时由代码注册，运行日志写入 `system_scheduler_runs`，节点心跳写入 `system_scheduler_nodes`：
+系统任务在启动时由代码注册，运行日志写入 `system_scheduler_runs`，节点心跳写入 `system_scheduler_nodes`。周期任务与普通队列任务由 pg-boss 执行，持久账本还可接入独立执行池：
 
 | 类型 | 注册方式 | pg-boss 载体 | 说明 |
 | --- | --- | --- | --- |
 | 周期任务（recurring） | `registerSystemRecurringJob()`，入口 `packages/server/src/lib/system-tasks.registry.ts`，网盘 / 文件等模块在各自 service 内注册 | `system-recurring` 队列上 `key = 任务名` 的 schedule | 5 段 cron，`retryLimit: 0`，`stately` 不重叠；`timeoutMs` 是耗时告警阈值，不打断执行；`manualSingleton` 控制有运行中实例时是否接受手动触发 |
-| 队列型 worker（queue） | `registerSystemQueueWorker()` | 以任务名命名的独立队列，参数由注册方 `queueOptions` 声明 | 由业务代码 `sendSystemJob()` 投递，例如导出任务、工作流作业、异步任务 |
+| 队列型 worker（queue） | `registerSystemQueueWorker()` | 以任务名命名的独立队列，参数由注册方 `queueOptions` 声明 | 由业务代码 `sendSystemJob()` 投递，例如导出任务、异步任务、审批单归档件生成 |
+| 账本执行池 | `registerSystemLedgerWorker()` | 以执行池名注册短保留、无重试的合并唤醒队列；系统调度中仍按 queue 类型展示 | 有空闲槽时直接领取业务账本，由账本管理租约、时限、重试与结果；pg-boss 消息只唤醒扫描，短轮询和执行完成后补位兜底 |
 
 页面上每个任务的「待 / 跑 / 延 / 败」读数来自 pg-boss 作业表：周期任务按 `system-recurring` 队列内的 `singletonKey`
-统计，队列型任务按队列名统计。
+统计，普通队列型任务按队列名统计。账本执行池的 pg-boss 读数只反映唤醒提示，不代表业务作业量；
+工作流业务积压、在途、死信与执行槽使用[作业账本运行状态](../workflow/jobs.md#运行状态面板)。
 
 注册的周期任务：
 
@@ -175,19 +177,25 @@
 | `iot-telemetry-rollup` | IoT 遥测小时聚合 | IoT 设备 | `*/10 * * * *` |
 | `iot-telemetry-partition-maintain` | IoT 遥测分区维护 | IoT 设备 | `20 * * * *` |
 
-注册的队列型 worker：
+部分已注册的队列型 worker 与账本执行池：
 
-| name | 标题 | 模块 |
-| --- | --- | --- |
-| `async-tasks` | 异步任务执行 Worker | 任务中心 |
-| `export-jobs` | 导出任务执行 Worker | 导出中心 |
-| `workflow-jobs` | 工作流作业 Worker | 工作流 |
-| `drive-renditions` | 网盘渲染产物 | 企业网盘 |
-| `drive-open-events` | 网盘开放事件外推 | 企业网盘 |
+| name | 标题 | 模块 | 载体 |
+| --- | --- | --- | --- |
+| `async-tasks` | 异步任务执行 Worker | 任务中心 | 普通队列 |
+| `export-jobs` | 导出任务执行 Worker | 导出中心 | 普通队列 |
+| `workflow-ledger` | 工作流推进 Worker | 工作流 | 账本执行池，4 槽、2 秒轮询 |
+| `workflow-ledger-outbound` | 工作流事件与外呼 Worker | 工作流 | 账本执行池，4 槽、2 秒轮询 |
+| `workflow-print-archive` | 审批单归档件生成 | 工作流 | 独立普通队列，生成 PDF 存证 |
+| `drive-renditions` | 网盘渲染产物 | 企业网盘 | 普通队列 |
+| `drive-open-events` | 网盘开放事件外推 | 企业网盘 | 普通队列 |
+
+工作流执行池共享 `workflow_jobs` 账本，按类型分别领取到期记录；分池、优先级公平领取、轮次 / 租约与重试回执见[作业执行与恢复](../workflow/jobs.md)。
+`workflow-jobs-drain` 每分钟回收失效租约并补投唤醒，不执行业务 handler。
+`workflow-print-archive` 由通过 / 驳回终态事件按定义的自动归档设置投递，复用 pg-boss 队列重试；它不计入工作流的 11 种账本作业类型，见[审批单打印与存证](../workflow/print-and-archive.md)。
 ## 开发建议
 
 - 新增业务可配置任务时，先注册 handler，再通过种子或管理端创建 `cron_jobs`。
-- 新增平台级固定任务时，使用 `registerSystemRecurringJob()`；只有需要由业务代码按需投递作业的场景才用 `registerSystemQueueWorker()` 建独立队列。
+- 新增平台级固定任务时，使用 `registerSystemRecurringJob()`；需要直接投递队列作业时用 `registerSystemQueueWorker()`，已有持久账本、由业务管理租约和重试时用 `registerSystemLedgerWorker()` 声明执行池。
 - 长耗时、可重试、需要进度的批处理优先接入任务中心；定时任务只负责触发。
 - 不要为周期任务另建 pg-boss 队列或直接调用 `work()`：全部走两条调度队列的 keyed schedule，
   每个 worker 角色进程对每条队列只有一个 worker；队列参数（心跳、保留期、policy）只在 `pg-boss-scheduler.ts` 中声明，

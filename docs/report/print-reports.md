@@ -70,7 +70,7 @@
 并在 `content.entityDatasets[]` 登记渲染时会注入的数据集键（如 `instance` / `form` / `tasks`），单元格与重复块即可用 `datasetKey` 引用这些数据集。
 
 - 实体模板不走数据集取数与报表资源 ACL：能访问实体（如能看审批实例详情）即能用其绑定的模板打印，访问控制由实体所属域负责。
-- 流程定义在「更多设置」绑定实体模板（`printTemplateId`）；未绑定时服务端按表单快照自动生成版式，见[审批单打印](../workflow/approval.md#审批单打印)。
+- 流程定义在「更多设置」绑定实体模板（`printTemplateId`）；未绑定时服务端按表单快照自动生成版式，见[审批单打印](../workflow/print-and-archive.md)。
 
 设计器中的实体模式：
 
