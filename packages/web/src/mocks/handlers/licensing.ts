@@ -6,7 +6,7 @@ import { mockDateTime } from '@/mocks/utils/date';
 /** Demo 模式固定为 off 模式未激活状态：展示页面结构即可，激活动作给出友好提示 */
 const mockStatus: LicensingStatus = {
   installation: {
-    installationId: 'demo-0000-0000-0000-000000000000',
+    installationId: '00000000-0000-4000-8000-000000000000',
     licenseEpoch: 0,
     createdAt: '2025-01-01 00:00:00',
     mode: 'off',

@@ -7,5 +7,6 @@
 export * from './constants';
 export * from './contracts';
 export * from './feature-catalog';
+export * from './issuance';
 export * from './types';
 export * from './validation';

@@ -20,15 +20,17 @@
  */
 import { createPrivateKey, randomUUID, sign as edSign, generateKeyPairSync } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
+import * as z from 'zod';
 import {
+  createLicensePayload,
   LICENSE_ALGORITHM,
-  LICENSE_AUDIENCE,
   LICENSE_ENVELOPE_VERSION,
   LICENSE_FEATURES,
   LICENSE_EDITIONS,
   LICENSE_EDITION_PRESETS,
+  licenseEnvelopeSchema,
   type LicenseEdition,
-  type LicenseFeatureKey,
+  type LicenseIssuanceInput,
   type LicensePayload,
 } from '@zenith/shared/licensing';
 
@@ -60,6 +62,17 @@ function fail(message: string): never {
 
 const args = parseArgs(process.argv.slice(2));
 
+function stringArg(name: string, fallback?: string): string | undefined {
+  const value = args.get(name);
+  if (value === true) fail(`--${name} 缺少参数值`);
+  return value ?? fallback;
+}
+
+function numberArg(name: string): number | undefined {
+  const value = stringArg(name);
+  return value === undefined ? undefined : Number(value);
+}
+
 if (args.get('gen-keys')) {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519');
   console.log('已生成 Ed25519 密钥对（base64 DER）：\n');
@@ -70,65 +83,75 @@ if (args.get('gen-keys')) {
   process.exit(0);
 }
 
-const installationId = args.get('installation-id');
+const installationId = stringArg('installation-id');
 if (typeof installationId !== 'string') {
   fail('缺少 --installation-id（在管理后台「系统设置 → License 授权」页复制）；或使用 --gen-keys 生成密钥对');
 }
 
-const edition = (args.get('edition') as string) || 'pro';
+const edition = stringArg('edition', 'pro')!;
 if (!(LICENSE_EDITIONS as readonly string[]).includes(edition)) {
   fail(`--edition 必须是 ${LICENSE_EDITIONS.join(' / ')}`);
 }
 
-let features: LicenseFeatureKey[];
-const featuresArg = args.get('features');
+let features: string[];
+const featuresArg = stringArg('features');
 if (typeof featuresArg === 'string' && featuresArg !== 'preset') {
   const requested = featuresArg.split(',').map((f) => f.trim()).filter(Boolean);
   const invalid = requested.filter((f) => !(LICENSE_FEATURES as readonly string[]).includes(f));
   if (invalid.length > 0) fail(`无效的功能标识：${invalid.join(', ')}（可用：${LICENSE_FEATURES.join(', ')}）`);
-  features = requested as LicenseFeatureKey[];
+  features = requested;
 } else {
   features = [...LICENSE_EDITION_PRESETS[edition as LicenseEdition]];
 }
 
-const days = Number(args.get('days') ?? 365);
-if (!Number.isInteger(days) || days < 1) fail('--days 必须是正整数');
-const graceDays = Number(args.get('grace-days') ?? 30);
-
-const now = new Date();
-const expiresAt = new Date(now.getTime() + days * 86_400_000);
-const graceUntil = new Date(expiresAt.getTime() + graceDays * 86_400_000);
-
-const maxUsersArg = args.get('max-users');
-const maxTenantsArg = args.get('max-tenants');
-
-const payload: LicensePayload = {
-  licenseId: (args.get('license-id') as string) || `lic_${randomUUID().replaceAll('-', '').slice(0, 20)}`,
-  audience: LICENSE_AUDIENCE,
+const issuanceInput = {
+  licenseId: stringArg('license-id'),
   installationId,
-  customerId: (args.get('customer-id') as string) || `cus_${randomUUID().slice(0, 8)}`,
-  customerName: (args.get('customer') as string) || '评估客户',
+  customerId: stringArg('customer-id'),
+  customerName: stringArg('customer', '评估客户')!,
   edition: edition as LicenseEdition,
-  features,
+  features: features as LicenseIssuanceInput['features'],
   limits: {
-    maxUsers: typeof maxUsersArg === 'string' ? Number(maxUsersArg) : null,
-    maxTenants: typeof maxTenantsArg === 'string' ? Number(maxTenantsArg) : null,
-    maxNodes: null,
+    maxUsers: numberArg('max-users') ?? null,
+    maxTenants: numberArg('max-tenants') ?? null,
+    maxNodes: numberArg('max-nodes') ?? null,
   },
-  issuedAt: now.toISOString(),
-  notBefore: now.toISOString(),
-  expiresAt: expiresAt.toISOString(),
-  graceUntil: graceUntil.toISOString(),
-  maintenanceUntil: null,
+  validDays: numberArg('days'),
+  graceDays: numberArg('grace-days'),
+  notBefore: stringArg('not-before'),
+  maintenanceUntil: stringArg('maintenance-until') ?? null,
 };
 
-const privateKeyBase64 = (args.get('private-key') as string) || TEST_PRIVATE_KEY_BASE64;
-const keyId = (args.get('key-id') as string) || TEST_KEY_ID;
+let payload: LicensePayload;
+try {
+  payload = createLicensePayload(issuanceInput, {
+    now: new Date(),
+    licenseId: `lic_${randomUUID().replaceAll('-', '').slice(0, 20)}`,
+    customerId: `cus_${randomUUID().slice(0, 8)}`,
+  });
+} catch (error) {
+  if (error instanceof z.ZodError) {
+    fail(`签发参数无效：${error.issues.map((issue) => `${issue.path.join('.') || '参数'}：${issue.message}`).join('；')}`);
+  }
+  fail('无法构造 License 载荷，请检查签发参数');
+}
+
+const privateKeyBase64 = stringArg('private-key', TEST_PRIVATE_KEY_BASE64)!;
+const keyId = stringArg('key-id', TEST_KEY_ID)!;
+if (!licenseEnvelopeSchema.shape.keyId.safeParse(keyId).success) fail('--key-id 必须为 1–64 个字符');
 if (privateKeyBase64 === TEST_PRIVATE_KEY_BASE64) {
   console.warn('⚠ 正在使用内置测试私钥签发（keyId=test-2026），仅供开发/评估。\n');
 }
 
-const privateKey = createPrivateKey({ key: Buffer.from(privateKeyBase64, 'base64'), format: 'der', type: 'pkcs8' });
+const privateKey = (() => {
+  try {
+    const key = createPrivateKey({ key: Buffer.from(privateKeyBase64, 'base64'), format: 'der', type: 'pkcs8' });
+    if (key.asymmetricKeyType !== 'ed25519') fail('私钥必须使用 Ed25519 算法');
+    return key;
+  } catch {
+    fail('私钥格式无效，请提供 Ed25519 私钥的 base64 DER PKCS8 内容');
+  }
+})();
 const payloadBytes = Buffer.from(JSON.stringify(payload), 'utf8');
 const signature = edSign(null, payloadBytes, privateKey);
 
@@ -141,7 +164,7 @@ const envelope = {
 };
 
 const output = JSON.stringify(envelope, null, 2);
-const outFile = args.get('out');
+const outFile = stringArg('out');
 if (typeof outFile === 'string') {
   writeFileSync(outFile, output, 'utf8');
   console.log(`✓ License 已写入 ${outFile}`);
@@ -150,6 +173,6 @@ if (typeof outFile === 'string') {
 }
 console.log(`\n  licenseId : ${payload.licenseId}`);
 console.log(`  客户      : ${payload.customerName}（${payload.edition}）`);
-console.log(`  功能      : ${features.join(', ') || '（无增值功能）'}`);
+console.log(`  功能      : ${payload.features.join(', ') || '（无增值功能）'}`);
 console.log(`  到期      : ${payload.expiresAt}（宽限至 ${payload.graceUntil}）`);
 console.log(`  绑定安装  : ${installationId}`);

@@ -18,7 +18,8 @@ export const licensePayloadSchema = z.strictObject({
   customerId: z.string().min(1).max(64),
   customerName: z.string().min(1).max(128),
   edition: z.enum(LICENSE_EDITIONS),
-  features: z.array(z.enum(LICENSE_FEATURES)).max(LICENSE_FEATURES.length),
+  features: z.array(z.enum(LICENSE_FEATURES)).max(LICENSE_FEATURES.length)
+    .refine((features) => new Set(features).size === features.length, '授权功能不能重复'),
   limits: z.object({
     maxUsers: z.number().int().positive().nullable(),
     maxTenants: z.number().int().positive().nullable(),
@@ -29,6 +30,32 @@ export const licensePayloadSchema = z.strictObject({
   expiresAt: isoDateTime,
   graceUntil: isoDateTime,
   maintenanceUntil: isoDateTime.nullable(),
+}).superRefine((payload, ctx) => {
+  if (Date.parse(payload.notBefore) > Date.parse(payload.expiresAt)) {
+    ctx.addIssue({ code: 'custom', path: ['expiresAt'], message: '到期时间不能早于生效时间' });
+  }
+  if (Date.parse(payload.expiresAt) > Date.parse(payload.graceUntil)) {
+    ctx.addIssue({ code: 'custom', path: ['graceUntil'], message: '宽限截止时间不能早于到期时间' });
+  }
+});
+
+/** 浏览器与 CLI 共用的签发参数；密钥始终留在各自签名边界。 */
+export const licenseIssuanceSchema = z.strictObject({
+  installationId: licensePayloadSchema.shape.installationId.trim(),
+  customerName: licensePayloadSchema.shape.customerName.trim().min(1, '客户名称不能为空'),
+  edition: licensePayloadSchema.shape.edition,
+  features: licensePayloadSchema.shape.features,
+  licenseId: licensePayloadSchema.shape.licenseId.trim().optional(),
+  customerId: licensePayloadSchema.shape.customerId.trim().optional(),
+  limits: z.strictObject({
+    maxUsers: licensePayloadSchema.shape.limits.shape.maxUsers.default(null),
+    maxTenants: licensePayloadSchema.shape.limits.shape.maxTenants.default(null),
+    maxNodes: licensePayloadSchema.shape.limits.shape.maxNodes.default(null),
+  }).default({ maxUsers: null, maxTenants: null, maxNodes: null }),
+  validDays: z.number().int().min(1, '有效天数至少为 1').max(36500, '有效天数不能超过 36500').default(365),
+  graceDays: z.number().int().min(0, '宽限天数不能为负数').max(36500, '宽限天数不能超过 36500').default(30),
+  notBefore: licensePayloadSchema.shape.notBefore.optional(),
+  maintenanceUntil: licensePayloadSchema.shape.maintenanceUntil.default(null),
 });
 
 export const licenseEnvelopeSchema = z.strictObject({
@@ -63,6 +90,7 @@ export const listLicenseEventsQuerySchema = z.object({
 });
 
 export type LicensePayloadInput = z.infer<typeof licensePayloadSchema>;
+export type LicenseIssuanceInput = z.input<typeof licenseIssuanceSchema>;
 export type LicenseEnvelopeInput = z.infer<typeof licenseEnvelopeSchema>;
 export type ActivateLicenseInput = z.infer<typeof activateLicenseSchema>;
 export type TenantPackageQuotasInput = z.infer<typeof tenantPackageQuotasSchema>;

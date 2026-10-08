@@ -12,6 +12,7 @@ import { useActivateLicense, useDeactivateLicense, useLicenseEvents, useLicensin
 import { usePagination } from '@/hooks/usePagination';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
+import GenerateLicenseTab from './GenerateLicenseTab';
 
 const { Text, Paragraph } = Typography;
 
@@ -264,7 +265,7 @@ function EventsTab() {
   );
 }
 
-const LICENSE_TABS = ['overview', 'activate', 'events'] as const;
+const LICENSE_TABS = ['overview', 'activate', 'generate', 'events'] as const;
 
 export default function LicensePage() {
   const [activeTab, setActiveTab] = useUrlTabState(LICENSE_TABS, 'overview');
@@ -281,6 +282,7 @@ export default function LicensePage() {
       >
         <Tabs.TabPane tab="授权概览" itemKey="overview"><OverviewTab /></Tabs.TabPane>
         <Tabs.TabPane tab="激活" itemKey="activate"><ActivateTab /></Tabs.TabPane>
+        <Tabs.TabPane tab="生成授权文件" itemKey="generate"><GenerateLicenseTab /></Tabs.TabPane>
         <Tabs.TabPane tab="事件日志" itemKey="events"><EventsTab /></Tabs.TabPane>
       </Tabs>
     </div>
