@@ -7,7 +7,7 @@
  * 采样数据的保留由 `data-retention` 任务按 `system_metric_samples` 策略统一清理。
  */
 import os from 'node:os';
-import { sql, gte, type AnyColumn } from 'drizzle-orm';
+import { sql, gte, desc, type AnyColumn } from 'drizzle-orm';
 import { db } from '../../db';
 import { sqlQuerySamples, systemMetricSamples, wsMetricSamples } from '../../db/schema';
 import { metricsSampler } from '../../lib/metrics-sampler';
@@ -233,9 +233,17 @@ export async function persistMetricSample(): Promise<{
     systemMetricStored = true;
   }
 
-  const wsTrend = takeWsTrendWindow();
-  if (wsTrend) await db.insert(wsMetricSamples).values(wsTrend);
-  return { systemMetricStored, sqlQuerySamples: await persistSqlQuerySamples(), wsTrendStored: wsTrend !== null };
+  const wsTrendStored = await db.transaction(async (tx) => {
+    // 手工采样 / Cron / 多 worker 共用同一边界；先锁后读，避免轮换节点重复消费自己的整段缓冲。
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended('zenith:ws-metric-samples', 0))`);
+    const [latest] = await tx.select({ sampledAt: wsMetricSamples.sampledAt })
+      .from(wsMetricSamples).orderBy(desc(wsMetricSamples.sampledAt)).limit(1);
+    const wsTrend = takeWsTrendWindow(latest?.sampledAt.getTime() ?? 0);
+    if (!wsTrend) return false;
+    await tx.insert(wsMetricSamples).values(wsTrend);
+    return true;
+  });
+  return { systemMetricStored, sqlQuerySamples: await persistSqlQuerySamples(), wsTrendStored };
 }
 
 /**

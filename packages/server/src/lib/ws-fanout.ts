@@ -4,7 +4,7 @@
  * `ws-manager` / IoT 网关的连接表都是进程内存，推送在哪个进程发生就只能到达该进程持有的 socket。
  * 多 api 副本、以及 api / worker 角色拆分后（作业进度、站内信、工作流通知全部在 worker 进程产生），
  * 发出方与持有连接的进程通常不是同一个。所有推送因此改为「本地投递 + 发布信封」，
- * 每个持有连接的进程订阅本频道，收到后投给自己的本地 socket；发布方自己的信封按 `from` 跳过。
+ * api 订阅后投给自己的本地 socket；纯 worker 也订阅以接收 WS 监控镜像，发布方自己的信封按 `from` 跳过。
  *
  * 可靠性语义（与失效总线一致，都是提示性消息）：
  * - at-most-once：订阅断线期间的信封丢失；客户端重连后按需 refetch，不做补偿；
@@ -124,7 +124,7 @@ export async function dispatchWsFanout(raw: string): Promise<void> {
 }
 
 /**
- * 建立订阅（持有 WS 连接的进程调用，即 api 角色）。
+ * 建立订阅（api 接收跨进程推送，纯 worker 接收 api 监控镜像）。
  * 幂等；连接失败不抛出——ioredis 按 retryStrategy 重连，`ready` 时补订阅。
  */
 export async function startWsFanoutSubscriber(): Promise<void> {
@@ -169,7 +169,7 @@ export async function stopWsFanoutSubscriber(): Promise<void> {
   }
 }
 
-/** 扇出订阅状态：`subscribed` 正常；`degraded` 未建立 / 已断开；`idle` 本进程不持有连接（worker）或尚未启动 */
+/** 扇出订阅状态：`subscribed` 正常；`degraded` 未建立 / 已断开；`idle` 尚未启动或已停止订阅 */
 export type WsFanoutState = 'idle' | 'subscribed' | 'degraded';
 
 export function wsFanoutState(): WsFanoutState {

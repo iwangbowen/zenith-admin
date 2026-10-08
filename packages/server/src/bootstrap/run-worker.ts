@@ -19,10 +19,12 @@ import { errBody, okBody } from '../lib/openapi-schemas';
 import { getSchedulerIntrospection } from '../lib/pg-boss-scheduler';
 import { registerZenithMetrics } from '../lib/prometheus-metrics';
 import { assertWorkerStorageTopology } from '../lib/storage-topology';
+import { startWsFanoutSubscriber, stopWsFanoutSubscriber } from '../lib/ws-fanout';
+import { startWsTrendSampling, stopWsTrendSampling } from '../lib/ws-trend';
 import { withTimeout } from './shutdown';
 
 export interface WorkerRoleHandle {
-  /** 关闭健康端点监听（若有） */
+  /** 关闭健康端点监听与纯 worker 的 WS 镜像订阅 / 采样（若有） */
   stopIngress(): Promise<void>;
 }
 
@@ -58,13 +60,25 @@ export async function startWorkerRole(): Promise<WorkerRoleHandle> {
   if (!config.roles.api) {
     server = serve({ fetch: createWorkerApp().fetch, port: config.workerHealthPort });
     logger.info(`Worker health endpoint at http://localhost:${config.workerHealthPort}/health`);
+    // 纯 worker 从 api 的 wsStats 镜像采集落库窗口；不启动 presence，避免发布空的接入节点。
+    await startWsFanoutSubscriber();
+    startWsTrendSampling();
   }
 
+  let stopped = false;
   return {
     async stopIngress() {
-      if (!server) return;
-      const s = server;
-      await withTimeout('closeWorkerHealthServer', new Promise<void>((resolve) => s.close(() => resolve())), 3_000);
+      if (stopped) return;
+      stopped = true;
+      if (!config.roles.api) {
+        stopWsTrendSampling();
+        await withTimeout('stopWorkerWsFanoutSubscriber', stopWsFanoutSubscriber(), 3_000);
+      }
+      if (server) {
+        const s = server;
+        server = null;
+        await withTimeout('closeWorkerHealthServer', new Promise<void>((resolve) => s.close(() => resolve())), 3_000);
+      }
     },
   };
 }

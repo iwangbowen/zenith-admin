@@ -2,7 +2,21 @@
  * WS 趋势采样测试：增量差分、计数器回退丢弃、容量上限。
  * 采集器直接读集群快照，因此这里注册 / 移除假连接来制造计数器变化。
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const sampling = vi.hoisted(() => ({
+  roles: { api: true },
+  listeners: new Set<() => void>(),
+}));
+vi.mock('../config', () => ({ config: { roles: sampling.roles } }));
+vi.mock('./logger', () => ({ default: { warn: vi.fn() } }));
+vi.mock('./metrics-sampler', () => ({ metricsSampler: {
+  subscribe: vi.fn((fn: () => void) => {
+    sampling.listeners.add(fn);
+    return () => sampling.listeners.delete(fn);
+  }),
+} }));
+vi.mock('./process-identity', () => ({ PROCESS_ID: 'worker:1' }));
 
 const snapshot = {
   currentConnections: 2,
@@ -19,17 +33,22 @@ const snapshot = {
     { lastActivityAt: 0 },
   ],
   recentDisconnects: [],
+  fanout: { nodes: [] as Array<{ nodeId: string; state: 'idle' | 'subscribed' | 'degraded' }> },
 };
 
 vi.mock('../lib/ws-manager', () => ({
   getWsClusterSnapshot: () => snapshot,
 }));
 
-const { WS_TREND_CAPACITY, getWsTrend, recordWsTrendSample, resetWsTrend, takeWsTrendWindow } = await import('./ws-trend');
+const { WS_TREND_CAPACITY, getWsTrend, recordWsTrendSample, resetWsTrend, takeWsTrendWindow, startWsTrendSampling, stopWsTrendSampling } = await import('./ws-trend');
+
+afterEach(() => stopWsTrendSampling());
 
 describe('ws trend sampler', () => {
   beforeEach(() => {
     resetWsTrend();
+    sampling.roles.api = true;
+    snapshot.fanout.nodes = [];
     snapshot.currentConnections = 2;
     snapshot.currentUsers = 2;
     snapshot.totalConnects = 10;
@@ -129,6 +148,60 @@ describe('ws trend sampler', () => {
     // 清空后重新累积，游标一并归零，新一批点仍可下沉（而不是因为游标还停在过去而漏掉）
     expect(takeWsTrendWindow()).toMatchObject({ sampledAt: new Date(21_000) });
     expect(takeWsTrendWindow()).toBeNull();
+  });
+
+  it('uses an external persisted boundary without consuming the window before a successful database commit', () => {
+    recordWsTrendSample(1000);
+    snapshot.totalSent = 120;
+    recordWsTrendSample(11_000);
+    snapshot.totalSent = 150;
+    recordWsTrendSample(21_000);
+    const retry = takeWsTrendWindow(0);
+    expect(retry).toMatchObject({ sampledAt: new Date(21_000), sent: 50 });
+    // 失败不推进任何游标，同一数据库边界可重试原窗口。
+    expect(takeWsTrendWindow(0)).toEqual(retry);
+    snapshot.totalSent = 170;
+    recordWsTrendSample(31_000);
+    expect(takeWsTrendWindow(21_000)).toBeNull();
+    snapshot.totalSent = 210;
+    recordWsTrendSample(41_000);
+    expect(takeWsTrendWindow(21_000)).toMatchObject({ sampledAt: new Date(41_000), sent: 60 });
+    expect(takeWsTrendWindow(41_000)).toBeNull();
+  });
+
+  it('pure worker skips missing API mirrors and degraded subscriptions, rebuilding baseline after recovery', () => {
+    sampling.roles.api = false;
+    snapshot.fanout.nodes = [{ nodeId: 'worker:1', state: 'subscribed' }];
+    expect(recordWsTrendSample(1000)).toBeNull();
+    expect(takeWsTrendWindow()).toBeNull();
+    snapshot.fanout.nodes.push({ nodeId: 'api:1', state: 'subscribed' });
+    expect(recordWsTrendSample(11_000)).toBeNull();
+    snapshot.totalSent += 20;
+    expect(recordWsTrendSample(21_000)).toMatchObject({ sent: 20 });
+    snapshot.fanout.nodes[0].state = 'degraded';
+    snapshot.totalSent += 50;
+    expect(recordWsTrendSample(31_000)).toBeNull();
+    snapshot.fanout.nodes[0].state = 'subscribed';
+    expect(recordWsTrendSample(41_000)).toBeNull();
+    snapshot.totalSent += 10;
+    expect(recordWsTrendSample(51_000)).toMatchObject({ sent: 10 });
+    snapshot.fanout.nodes.pop();
+    expect(recordWsTrendSample(61_000)).toBeNull();
+    expect(getWsTrend().points).toHaveLength(2);
+  });
+
+  it('starts one tick subscriber, stops it idempotently, and can restart', () => {
+    startWsTrendSampling();
+    startWsTrendSampling();
+    expect(sampling.listeners.size).toBe(1);
+    for (const tick of sampling.listeners) tick();
+    for (const tick of sampling.listeners) tick();
+    expect(getWsTrend().points).toHaveLength(1);
+    stopWsTrendSampling();
+    stopWsTrendSampling();
+    expect(sampling.listeners.size).toBe(0);
+    startWsTrendSampling();
+    expect(sampling.listeners.size).toBe(1);
   });
 
   it('keeps at most the ring capacity and returns points in ascending time order', () => {

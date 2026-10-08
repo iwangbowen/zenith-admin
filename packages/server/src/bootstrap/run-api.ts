@@ -67,7 +67,7 @@ export async function startApiRole(): Promise<ApiRoleHandle> {
   await startWsFanoutSubscriber();
   // 在线状态跨进程同步：立即广播本进程持有情况，并周期快照 / 淘汰失联节点镜像
   startPresenceSync();
-  // 连接趋势采样：与系统指标采样器同节拍（10 秒/点，留 1 小时），只由 api 采集
+  // 连接趋势采样：与系统指标采样器同节拍（10 秒/点，留 1 小时）；纯 worker 另采 api 镜像供历史落库
   startWsTrendSampling();
   // 会话主体索引补挂（一次 SCAN）：索引之前登录的会话 / 恢复的 Redis 数据也能参与并发限制与按用户强退；失败只告警
   void Promise.all([rebuildUserSessionIndex(), rebuildMemberSessionIndex()])
