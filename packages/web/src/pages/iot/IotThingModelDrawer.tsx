@@ -324,9 +324,10 @@ export default function IotThingModelDrawer({ product, onClose }: Readonly<IotTh
       render: (v: boolean) => v ? <Tag size="small" color="purple">开启</Tag> : EMPTY_PLACEHOLDER,
     },
     ...(canEdit ? [{
-      title: '操作', width: 120, fixed: 'right' as const,
+      // 编辑（52）+ 删除（52）+ 间距 4 = 108 内容宽 → 150
+      title: '操作', width: 150, fixed: 'right' as const,
       render: (_: unknown, r: IotProductProperty) => (
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 4 }}>
           <Button theme="borderless" size="small" onClick={() => propertyModal.openEdit(r)}>编辑</Button>
           <Button theme="borderless" size="small" type="danger" onClick={() => {
             confirmAndDelete({
@@ -349,9 +350,10 @@ export default function IotThingModelDrawer({ product, onClose }: Readonly<IotTh
       render: (v: boolean) => v ? <Tag size="small" color="red">高危</Tag> : EMPTY_PLACEHOLDER,
     },
     ...(canEdit ? [{
-      title: '操作', width: 120, fixed: 'right' as const,
+      // 编辑（52）+ 删除（52）+ 间距 4 = 108 内容宽 → 150
+      title: '操作', width: 150, fixed: 'right' as const,
       render: (_: unknown, r: IotProductService) => (
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 4 }}>
           <Button theme="borderless" size="small" onClick={() => serviceModal.openEdit(r)}>编辑</Button>
           <Button theme="borderless" size="small" type="danger" onClick={() => {
             confirmAndDelete({
@@ -376,9 +378,10 @@ export default function IotThingModelDrawer({ product, onClose }: Readonly<IotTh
     },
     paramsColumn<IotProductEvent>(),
     ...(canEdit ? [{
-      title: '操作', width: 120, fixed: 'right' as const,
+      // 编辑（52）+ 删除（52）+ 间距 4 = 108 内容宽 → 150
+      title: '操作', width: 150, fixed: 'right' as const,
       render: (_: unknown, r: IotProductEvent) => (
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 4 }}>
           <Button theme="borderless" size="small" onClick={() => eventModal.openEdit(r)}>编辑</Button>
           <Button theme="borderless" size="small" type="danger" onClick={() => {
             confirmAndDelete({
