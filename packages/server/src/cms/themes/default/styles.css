@@ -143,7 +143,9 @@ section > .section-title:first-child, .home-grid .section-title:first-child { ma
 .article .body ul, .article .body ol { padding-left: 1.6em; margin: 0 0 1em; }
 .article .body li { margin: .3em 0; }
 .article .tags { margin-top: 26px; display: flex; gap: 8px; flex-wrap: wrap; }
-.article .tags span, .article .tags a { font-size: 12.5px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 3px; padding: 3px 12px; color: var(--text-2); transition: all .15s ease; }
+.article .tags a { font-size: 12.5px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 3px; padding: 3px 12px; color: var(--text-2); transition: all .15s ease; }
+/* 胶囊样式只落在 a 上；wrapName 包裹的内层 span 重置，避免出现双层边框的「框中框」 */
+.article .tags a span { font-size: inherit; background: none; border: 0; padding: 0; color: inherit; }
 .article .tags a:hover { border-color: var(--primary); color: var(--primary); }
 .article-nav { max-width: 860px; margin: 26px auto 0; padding: 14px 18px; border-radius: var(--radius-sm); background: var(--bg-2); font-size: 14px; color: var(--text-2); display: flex; flex-direction: column; gap: 8px; }
 .related-articles { max-width: 860px; margin: 26px auto 0; }
