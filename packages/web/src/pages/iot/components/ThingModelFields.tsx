@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { Form } from '@douyinfe/semi-ui';
+import { Col, Form, Row } from '@douyinfe/semi-ui';
 import { IOT_COMPARE_OP_OPTIONS } from '@zenith/shared/iot';
 import { useIotThingModel } from '@/hooks/queries/iot-products';
 
@@ -40,17 +40,26 @@ export function IotPropertyConditionFields({
         rules={[{ required: true, message: '请选择监控属性' }]}
         emptyContent={productId ? '该产品物模型没有数值型属性' : '请先选择产品'}
       />
-      <div style={{ display: 'flex', gap: 12 }}>
-        <Form.Select field={operatorField} label="比较符" style={{ width: 110 }}
-          optionList={IOT_COMPARE_OP_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-          rules={[{ required: true, message: '必选' }]} />
-        <Form.InputNumber field={thresholdField} label="阈值" hideButtons style={{ width: 140 }}
-          rules={[{ required: true, message: '必填' }]} />
-        {includeConsecutiveCount && (
-          <Form.InputNumber field={consecutiveCountField} label="连续次数" min={1} max={60} style={{ width: 110 }}
-            extraText="连续 N 个点满足才触发" />
-        )}
-      </div>
+      {/* 窄抽屉内一行最多两个控件，避免三控件挤压下拉框；连续次数独占一行 */}
+      <Row gutter={12}>
+        <Col span={12}>
+          <Form.Select field={operatorField} label="比较符" style={{ width: '100%' }}
+            optionList={IOT_COMPARE_OP_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+            rules={[{ required: true, message: '必选' }]} />
+        </Col>
+        <Col span={12}>
+          <Form.InputNumber field={thresholdField} label="阈值" hideButtons style={{ width: '100%' }}
+            rules={[{ required: true, message: '必填' }]} />
+        </Col>
+      </Row>
+      {includeConsecutiveCount && (
+        <Row gutter={12}>
+          <Col span={12}>
+            <Form.InputNumber field={consecutiveCountField} label="连续次数" min={1} max={60} style={{ width: '100%' }}
+              extraText="连续 N 个点满足才触发" />
+          </Col>
+        </Row>
+      )}
     </>
   );
 }

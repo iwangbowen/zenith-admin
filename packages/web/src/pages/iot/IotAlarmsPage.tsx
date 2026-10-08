@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Descriptions, Form, Modal, Spin, TabPane, Tabs, Tag, TextArea, Toast, Tooltip, Typography, withField } from '@douyinfe/semi-ui';
+import { Button, Descriptions, Form, Modal, SideSheet, Spin, TabPane, Tabs, Tag, TextArea, Toast, Tooltip, Typography, withField } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
-import { createOperationColumn, ResponsiveTableActions, type ResponsiveTableAction } from '@/components/ResponsiveTableActions';
+import { createOperationColumn, type ResponsiveTableAction } from '@/components/ResponsiveTableActions';
 import { FilterSelect, KeywordInput, StatusSelect } from '@/components/search-filters';
 import { CreateButton } from '@/components/toolbar-controls';
-import AppModal from '@/components/AppModal';
 import { EntityContextView } from '@/components/entity-relations/EntityRelationButton';
 import UserSelect from '@/components/UserSelect';
 import { EMPTY_PLACEHOLDER, createdAtColumn, dateTimeColumn, renderEllipsis, enabledStatusColumn } from '@/utils/table-columns';
@@ -40,7 +39,7 @@ import {
 } from '@/hooks/queries/iot-alarms';
 import { IOT_ALARM_LEVEL_COLORS } from './iot-tag-colors';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
-import { EditFormModal } from '@/components/EditFormModal';
+import { EditFormModal, EditFormSheet } from '@/components/EditFormModal';
 
 const { Text } = Typography;
 
@@ -179,8 +178,8 @@ function AlarmRecordsTab({ detailId, onOpenDetail, onCloseDetail }: {
       ),
     },
     createOperationColumn<IotAlarm>({
-      // 告警中：认领 / 处理（52 + 4 + 52 = 108）；已恢复：处理详情（80）→ 150
-      width: 150,
+      // 告警中：认领（52）+ 处理（52）+ 查看详情（80）+ 间距 8 = 192 内容宽 → 240；其余状态取子集
+      width: 240,
       actions: alarmActions,
     }),
   ];
@@ -266,19 +265,43 @@ function AlarmRecordsTab({ detailId, onOpenDetail, onCloseDetail }: {
         />
       </Modal>
 
-      {/* 处理详情：只读查看认领 / 处理 / 升级链路与备注 */}
-      <AppModal
-        title={detailTarget ? `告警详情「${detailTarget.ruleName}」` : ''}
+      {/* 告警详情：只读查看认领 / 处理 / 升级链路与备注（内容多，用 SideSheet 承载；动作用页脚按钮） */}
+      <SideSheet
+        title={detailTarget ? `告警详情「${detailTarget.ruleName}」` : '告警详情'}
         visible={detailId !== undefined}
         onCancel={onCloseDetail}
-        footer={null}
-        width={620}
+        width={640}
         closeOnEsc
+        footer={detailTarget && (hasPermission('iot:alarm:resolve') && detailTarget.status !== 'resolved') ? (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            {detailTarget.status === 'firing' && (
+              <Button
+                loading={acknowledgeMutation.isPending}
+                onClick={() => {
+                  void acknowledgeMutation.mutateAsync({ params: { id: detailTarget.id } }).then(() => {
+                    Toast.success('已认领，升级计时停止');
+                  });
+                }}
+              >
+                认领
+              </Button>
+            )}
+            <Button
+              type="primary"
+              theme="solid"
+              onClick={() => {
+                setResolveNote('');
+                setResolveTarget(detailTarget);
+              }}
+            >
+              处理
+            </Button>
+          </div>
+        ) : null}
       >
         {detailQuery.isLoading && <Spin />}
         {detailTarget && (
           <>
-            <ResponsiveTableActions actions={alarmActions(detailTarget).filter((action) => action.key !== 'detail')} />
             <Descriptions
               align="plain"
               layout="horizontal"
@@ -319,7 +342,7 @@ function AlarmRecordsTab({ detailId, onOpenDetail, onCloseDetail }: {
             <EntityContextView entityType="iot.alarm" entityKey={String(detailTarget.id)} />
           </>
         )}
-      </AppModal>
+      </SideSheet>
     </>
   );
 }
@@ -391,7 +414,8 @@ function AlarmRulesTab() {
       escalateUserIds: values.escalateUserIds ?? [],
       status: values.status,
     }),
-    labelWidth: 110,
+    // 「升级时长（分钟）」「离线时长（分钟）」8 字标签不换行
+    labelWidth: 130,
   });
 
   const deleteMutation = useDeleteIotAlarmRules();
@@ -485,14 +509,14 @@ function AlarmRulesTab() {
         {...listTableProps(listQuery, { pagination: buildPagination, empty: '暂无告警规则，点击「新增规则」创建第一条' })}
       />
 
-      <EditFormModal modal={modal} width={640}>
+      <EditFormSheet modal={modal} width={640}>
         {({ formState }) => (
           <RuleFormBody
             isEdit={modal.isEdit}
             values={formState.values as Record<string, unknown>}
           />
         )}
-      </EditFormModal>
+      </EditFormSheet>
     </>
   );
 }
