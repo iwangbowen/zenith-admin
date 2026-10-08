@@ -972,7 +972,8 @@
   box-shadow: 18px 0 0 var(--semi-color-fill-2), 32px 0 0 var(--semi-color-fill-2);
 }
 
-/* Mixed: top bar + left sidebar + content */
+/* Mixed: 顶部条（一级分类导航条目）+ 左侧栏（所选模块的子菜单条目）+ 内容区，
+   条目画法与 vertical / horizontal 预览一致（首项主色，其余 fill-2）。 */
 .layout-picker__preview--mixed::before {
   content: '';
   position: absolute;
@@ -980,8 +981,11 @@
   right: 0;
   top: 0;
   height: 14px;
-  background: var(--semi-color-fill-1);
-  box-shadow: inset -50px 0 0 0 var(--semi-color-fill-0);
+  background:
+    linear-gradient(var(--semi-color-primary), var(--semi-color-primary)) no-repeat 6px 4px / 10px 4px,
+    linear-gradient(var(--semi-color-fill-2), var(--semi-color-fill-2)) no-repeat 24px 4px / 10px 4px,
+    linear-gradient(var(--semi-color-fill-2), var(--semi-color-fill-2)) no-repeat 38px 4px / 10px 4px;
+  background-color: var(--semi-color-fill-1);
 }
 .layout-picker__preview--mixed::after {
   content: '';
@@ -989,8 +993,12 @@
   left: 0;
   top: 14px;
   bottom: 0;
-  width: 20px;
-  background: var(--semi-color-fill-1);
+  width: 22px;
+  background:
+    linear-gradient(var(--semi-color-primary), var(--semi-color-primary)) no-repeat 4px 6px / 14px 4px,
+    linear-gradient(var(--semi-color-fill-2), var(--semi-color-fill-2)) no-repeat 4px 12px / 14px 4px,
+    linear-gradient(var(--semi-color-fill-2), var(--semi-color-fill-2)) no-repeat 4px 18px / 14px 4px;
+  background-color: var(--semi-color-fill-1);
 }
 
 /* Double: 窄图标轨 + 宽子导航列 + 内容区。
