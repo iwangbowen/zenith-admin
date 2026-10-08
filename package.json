@@ -3,7 +3,8 @@
   "version": "2.69.0",
   "private": true,
   "engines": {
-    "node": ">=24 <25"
+    "node": ">=24.15.0 <25",
+    "npm": ">=12.2.0"
   },
   "workspaces": [
     "packages/*"
@@ -38,6 +39,23 @@
     "test:web": "npm run test -w @zenith/web",
     "lint": "npm run lint -w @zenith/shared && npm run lint -w @zenith/server && npm run lint -w @zenith/analytics-sdk && npm run lint -w @zenith/web",
     "lint:fix": "npm run lint:fix -w @zenith/shared && npm run lint:fix -w @zenith/server && npm run lint:fix -w @zenith/analytics-sdk && npm run lint:fix -w @zenith/web"
+  },
+  "overrides": {
+    "@mastra/evals": {
+      "vitest": "^5.0.3"
+    }
+  },
+  "allowScripts": {
+    "@alicloud/openapi-core": true,
+    "cpu-features": true,
+    "electron-winstaller": true,
+    "es5-ext": true,
+    "esbuild": true,
+    "fsevents": true,
+    "msw": true,
+    "node-pty": true,
+    "protobufjs": true,
+    "ssh2": true
   },
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2",

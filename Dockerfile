@@ -3,6 +3,9 @@ FROM node:24-alpine AS builder
 
 WORKDIR /app
 
+# Use the same dependency resolver and install-script policy as local development / CI.
+RUN npm install --global npm@12.2.0
+
 # node-pty (packages/server dependency, used by the web terminal feature) ships
 # no prebuilt binary for Linux and must be compiled via node-gyp, which needs
 # Python + a C/C++ toolchain. This stage is discarded after build, so no cleanup
@@ -55,6 +58,8 @@ RUN node docker/patch-shared-exports.mjs packages/shared
 FROM node:24-alpine AS server
 
 WORKDIR /app
+
+RUN npm install --global npm@12.2.0
 
 # Copy workspace manifests for production dependency install
 COPY package.json package-lock.json ./

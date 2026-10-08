@@ -65,7 +65,13 @@ for (const entry of ['dist', 'drizzle', 'assets', 'package.json']) {
 
 fs.cpSync(path.join(SERVER_ROOT, 'dist'), path.join(outDir, 'dist'), { recursive: true });
 fs.cpSync(path.join(SERVER_ROOT, 'drizzle'), path.join(outDir, 'drizzle'), { recursive: true });
-fs.copyFileSync(path.join(SERVER_ROOT, 'package.json'), path.join(outDir, 'package.json'));
+// 部署目录成为安装根时，npm 只读取这里的安装策略；保留仓库的工具链与 peer / lifecycle 配置。
+const repoPackage = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));
+const serverPackage = JSON.parse(fs.readFileSync(path.join(SERVER_ROOT, 'package.json'), 'utf8'));
+for (const field of ['engines', 'overrides', 'allowScripts']) {
+  if (repoPackage[field]) serverPackage[field] = repoPackage[field];
+}
+fs.writeFileSync(path.join(outDir, 'package.json'), `${JSON.stringify(serverPackage, null, 2)}\n`);
 
 const outFontDir = path.join(outDir, 'assets', 'fonts');
 fs.mkdirSync(outFontDir, { recursive: true });

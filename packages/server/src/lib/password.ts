@@ -15,10 +15,7 @@ import logger from './logger';
 
 export const PASSWORD_HASH_COST = 10;
 
-interface NativeBcrypt {
-  hash(password: string | Buffer, round?: number): Promise<string>;
-  verify(password: string | Buffer, hash: string | Buffer): Promise<boolean>;
-}
+type NativeBcrypt = Pick<typeof import('@node-rs/bcrypt'), 'hash' | 'verify'>;
 
 const require = createRequire(import.meta.url);
 
@@ -30,7 +27,7 @@ try {
 }
 
 export async function hashPassword(plain: string): Promise<string> {
-  return native ? native.hash(plain, PASSWORD_HASH_COST) : bcryptjs.hash(plain, PASSWORD_HASH_COST);
+  return native ? native.hash(plain, { cost: PASSWORD_HASH_COST }) : bcryptjs.hash(plain, PASSWORD_HASH_COST);
 }
 
 export async function verifyPassword(plain: string, hash: string): Promise<boolean> {

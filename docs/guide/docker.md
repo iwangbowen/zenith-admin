@@ -74,6 +74,7 @@ api ⇄ api_storage ⇄ worker       （本地文件、上传暂存、CMS 静态
 | `web` | `nginx:1.30-alpine` | 复制 `packages/web/dist` 与 `docker/nginx.conf` |
 
 `node-pty` 在 Linux 下需要编译，构建阶段安装 `python3 make g++`；server 阶段保留 `libstdc++` 并移除编译工具链。
+两个 Node 阶段都先安装 npm 12.2.0，再执行 `npm ci`；根 `package.json` 的 `allowScripts` 显式允许 `node-pty` 等依赖的安装脚本，原生模块编译随依赖安装完成。
 
 ::: details 为什么产物可以用纯 Node 运行？
 源码中的相对导入不带扩展名（依赖 tsx / Vite 解析），而 Node.js 原生 ESM 要求显式 `.js` 扩展名。

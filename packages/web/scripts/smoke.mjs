@@ -72,7 +72,10 @@ await check('后台登录 → 仪表盘 → 用户管理', `${baseUrl}/login`, a
   await page.fill('input[placeholder="请输入用户名/手机号"]', demoUser);
   await page.fill('input[placeholder="请输入密码"]', demoPassword);
   await page.click('button[type="submit"]');
-  await page.waitForSelector('.admin-sidebar__nav', { timeout: 60_000 });
+  // 已登录壳层的主内容区域在所有导航布局中都存在；分组 / 顶部导航没有普通侧栏。
+  await page.waitForSelector('.admin-main', { timeout: 60_000 });
+  // 登录落地页受默认首页偏好控制，单独访问仪表盘以验证这个场景。
+  await page.goto(`${baseUrl}/`, { waitUntil: 'load' });
   await page.waitForSelector('.dashboard-page', { timeout: 60_000 });
   await page.goto(`${baseUrl}/system/users`, { waitUntil: 'load' });
   await page.waitForSelector('.semi-table, .page-container', { timeout: 60_000 });

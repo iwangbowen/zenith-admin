@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
 import { createPgClient } from '../../db/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -15,8 +14,8 @@ suite('configuration draft database guard', () => {
     await sql.unsafe(`CREATE SCHEMA "${namespace}"`);
     await sql.unsafe(`SET search_path TO "${namespace}", public`);
     await sql`CREATE TABLE cms_releases (id integer PRIMARY KEY, site_id integer NOT NULL, source text NOT NULL, status text NOT NULL, deployment_id integer, base_generation_id integer, items jsonb NOT NULL DEFAULT '[]', configuration_items jsonb NOT NULL DEFAULT '[]', configuration_snapshot jsonb NOT NULL DEFAULT '{}')`;
-    await sql.unsafe(await readFile(new URL('../../../drizzle/0014_cms_release_draft_guard.sql', import.meta.url), 'utf8'));
-    await sql`CREATE TRIGGER release_guard BEFORE UPDATE ON cms_releases FOR EACH ROW EXECUTE FUNCTION cms_release_configuration_immutable()`;
+    // Exercise the guard installed by migrations rather than a historical migration filename.
+    await sql`CREATE TRIGGER release_guard BEFORE UPDATE ON cms_releases FOR EACH ROW EXECUTE FUNCTION public.cms_release_configuration_immutable()`;
   });
   afterAll(async () => { if (sql) { await sql.unsafe(`DROP SCHEMA "${namespace}" CASCADE`); await sql.end(); } });
   it('allows consecutive draft saves but freezes a built configuration even after failure', async () => {

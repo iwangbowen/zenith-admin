@@ -85,6 +85,17 @@ npm run docs:preview   # 预览构建产物，http://localhost:4178
 
 ## 常见注意事项
 
+### 服务端依赖兼容
+
+`packages/server/package.json` 的外部依赖以 npm 最新稳定版为升级目标，本地 `@zenith/*` 包继续使用工作区引用。
+当前依赖要求 Node.js 24.15.0 或更新的 24.x，以及 npm 12.2.0 或更新版本。npm 11.4 无法正确应用工作区内的 peer override，可能报冲突或漏装 `@mastra/evals`；安装与依赖树校验使用 npm 12，已有旧版 npm 时可执行 `npx --yes npm@12.2.0 install`。
+
+npm 12 默认阻止依赖安装脚本。根 `package.json` 的 `allowScripts` 按包名允许当前 lockfile 中所需的安装脚本，包括 `node-pty` / `ssh2` 的原生模块和 `esbuild` 安装步骤，适用于全部工作区与嵌套版本。升级依赖后在仓库根目录执行 `npm install-scripts ls` 检查新增脚本，再按实际需要更新此列表，详见 [npm 安装脚本策略](https://docs.npmjs.com/cli/v12/commands/npm-install-scripts/)。CI、Pages、Release 与 Docker 均先安装 npm 12.2.0。
+
+- `@node-rs/bcrypt` 2 的 `hash` 使用 `{ cost }` 参数；密码统一入口保持成本 10，并通过升级前的固定哈希样本验证存量密码。
+- TypeScript 保留两个别名：`@typescript/native` 使用 TypeScript 7 原生 CLI，`typescript` 使用 `@typescript/typescript6` 提供 ESLint 与 `tsc-alias` 所需的 JavaScript API。
+- `@mastra/evals` 1.10.5 的可选 Vitest peer 尚未声明支持 Vitest 5。项目仅使用 `scorers/prebuilt`，根 `overrides` 将该 peer 对齐到 Vitest 5；真实工厂注册与打分器替换由 `scorers.test.ts` 验证。项目未使用 `@mastra/evals/vitest`，新增该入口前需单独确认兼容性。上游支持 Vitest 5 后移除此 override。
+
 ### 数据库迁移
 
 不要手改已有迁移 SQL。修改 `packages/server/src/db/schema/` 后通过 Drizzle 生成新迁移。

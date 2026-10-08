@@ -23,9 +23,12 @@ jobs:
           node-version: 24
           cache: npm
 
+      - name: Setup npm
+        run: npm install --global npm@12.2.0
+
       # 缓存 node_modules 本体（含 workspace 符号链接与 web 的 .vite/deps 预打包产物）。
       # setup-node 的 npm 缓存只存下载包，105s 大头在 npm ci 的解压与链接；
-      # key 精确到 lockfile 哈希，命中即整跳 Install（无 postinstall 依赖，跳过安全）。
+      # key 包含 npm 版本与安装策略 / lockfile，命中复用已完成安装脚本的依赖。
       - name: Cache node_modules
         id: modules-cache
         uses: actions/cache@v4
@@ -33,7 +36,7 @@ jobs:
           path: |
             node_modules
             packages/*/node_modules
-          key: modules-${{ runner.os }}-node24-${{ hashFiles('package-lock.json') }}
+          key: modules-${{ runner.os }}-node24-npm12.2.0-${{ hashFiles('package.json', 'package-lock.json') }}
 
       - name: Install dependencies
         if: steps.modules-cache.outputs.cache-hit != 'true'
@@ -67,6 +70,9 @@ jobs:
           node-version: 24
           cache: npm
 
+      - name: Setup npm
+        run: npm install --global npm@12.2.0
+
       - name: Cache node_modules
         id: modules-cache
         uses: actions/cache@v4
@@ -74,7 +80,7 @@ jobs:
           path: |
             node_modules
             packages/*/node_modules
-          key: modules-${{ runner.os }}-node24-${{ hashFiles('package-lock.json') }}
+          key: modules-${{ runner.os }}-node24-npm12.2.0-${{ hashFiles('package.json', 'package-lock.json') }}
 
       - name: Install dependencies
         if: steps.modules-cache.outputs.cache-hit != 'true'

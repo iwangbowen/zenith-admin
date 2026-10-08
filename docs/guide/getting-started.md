@@ -4,8 +4,8 @@ Zenith Admin 是基于 **Hono v4 + React 19 + Drizzle ORM** 的 npm monorepo 项
 
 ## 环境要求
 
-- Node.js 24.x（根 `package.json` 限定 `>=24 <25`，CI 与 Docker 也使用 Node 24）
-- npm
+- Node.js 24.15.0 或更新的 24.x（根 `package.json` 限定 `>=24.15.0 <25`，CI 与 Docker 也使用 Node 24）
+- npm 12.2.0 或更新版本（旧版 npm 不会正确应用工作区内的依赖 override）
 - PostgreSQL
 - Redis（会话、限流、幂等、黑名单等运行时状态）
 
@@ -26,6 +26,7 @@ npm install
 ```
 
 CI、Docker 和发布流程使用 `npm ci`；本地首次开发或更新依赖时使用 `npm install` 更方便。
+CI 与 Docker 会先安装 npm 12.2.0。npm 12 默认跳过依赖的安装脚本，根 `package.json` 的 `allowScripts` 显式允许当前依赖树需要的原生编译与安装步骤；在仓库根目录运行 `npm install-scripts ls` 可查看尚未允许的脚本。
 
 ## 配置环境变量
 

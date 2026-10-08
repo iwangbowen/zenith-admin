@@ -6,8 +6,8 @@
 
 | 依赖 | 版本 / 说明 |
 | --- | --- |
-| Node.js | 24.x |
-| npm | 使用仓库 `package-lock.json` |
+| Node.js | 24.15.0 或更新的 24.x |
+| npm | 12.2.0 或更新版本，使用仓库 `package-lock.json` 与根 `allowScripts` |
 | PostgreSQL | 生产主数据库 |
 | Redis | 会话、限流、幂等、黑名单等运行时状态 |
 | Nginx | 托管前端静态文件并反向代理 API / WebSocket |
@@ -25,8 +25,11 @@
 git clone https://github.com/iwangbowen/zenith-admin.git
 cd zenith-admin
 git checkout vX.Y.Z
+npm install --global npm@12.2.0
 npm ci
 ```
+
+npm 12 的依赖安装脚本由根 `package.json` 的 `allowScripts` 控制，确保 `node-pty` 等原生模块完成编译。`package:server` 生成的归档 manifest 也携带根 `engines`、`overrides` 与 `allowScripts`，部署目录的安装策略与仓库保持一致；归档仍需配套工作区包。
 
 ### 2. 配置 `packages/server/.env`
 
@@ -322,9 +325,11 @@ Docker 构建会自动执行该步骤。手动部署时需先 `npm run build`，
 
 | 工作流 | 触发 | 行为 |
 | --- | --- | --- |
-| `.github/workflows/ci.yml` | `master` push、pull request | Node 24、`npm ci`、`npm run lint`、`npm run test`、`npm run build` |
+| `.github/workflows/ci.yml` | `master` push、pull request | Node 24、npm 12.2.0、`npm ci`、`npm run lint`、`npm run test`、`npm run build` |
 | `.github/workflows/pages.yml` | 文档 / Web / shared / lockfile 变更、手动触发 | 构建 VitePress 文档与 Demo 站，把 Demo 合并到 `/demo/` 后发布 GitHub Pages |
 | `.github/workflows/release.yml` | `v*.*.*` tag、手动指定 tag | 构建全部包，用 `npm run package:server` 组装 server 目录（子集字体）并打包 server / web zip，从 changelog 提取 Release Notes，创建 GitHub Release |
+
+三个构建工作流都在 `setup-node` 后安装 npm 12.2.0，再执行 `npm ci`，安装脚本策略复用根 `allowScripts`。
 
 ## 升级版本
 
