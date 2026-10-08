@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrayField, Banner, Button, Col, Form, Row, SideSheet, Spin, Tabs, TabPane, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
+import { ArrayField, Banner, Button, Col, Divider, Form, Row, SideSheet, Spin, Tabs, TabPane, Tag, TextArea, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Download, Plus, Upload } from 'lucide-react';
 import AppModal from '@/components/AppModal';
@@ -105,19 +105,44 @@ function ArrayParamRows() {
     <ArrayField field="params">
       {({ add, arrayFields }: { add: () => void; arrayFields: ArrayFieldRow[] }) => (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {arrayFields.map(({ field, key, remove }) => (
-            <div key={key} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-              <Form.Input field={`${field}[identifier]`} noLabel placeholder="标识符" style={{ width: 120 }}
-                rules={[{ required: true, message: '必填' }, { pattern: /^[a-zA-Z][a-zA-Z0-9_]*$/, message: '字母开头' }]} />
-              <Form.Input field={`${field}[name]`} noLabel placeholder="名称" style={{ width: 100 }}
-                rules={[{ required: true, message: '必填' }]} />
-              <Form.Select field={`${field}[dataType]`} noLabel placeholder="类型" style={{ width: 90 }}
-                optionList={IOT_PROPERTY_TYPE_OPTIONS} initValue="number" />
-              <Form.Input field={`${field}[unit]`} noLabel placeholder="单位" style={{ width: 70 }} />
-              <Form.InputNumber field={`${field}[minValue]`} noLabel placeholder="下限" style={{ width: 84 }} hideButtons />
-              <Form.InputNumber field={`${field}[maxValue]`} noLabel placeholder="上限" style={{ width: 84 }} hideButtons />
-              <Form.Switch field={`${field}[required]`} noLabel checkedText="必填" uncheckedText="选填" />
-              <Button type="danger" theme="borderless" size="small" onClick={remove}>删除</Button>
+          {arrayFields.map(({ field, key, remove }, index) => (
+            // 8 个控件一行在弹窗内放不下会折行错位，拆为两行：标识/名称/类型 + 单位/上下限/必填/删除；多参数间用分隔线区分
+            <div key={key}>
+              {index > 0 && <Divider style={{ margin: '4px 0 12px' }} />}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <Row gutter={8}>
+                  <Col span={9}>
+                    <Form.Input field={`${field}[identifier]`} noLabel placeholder="标识符" style={{ width: '100%' }}
+                      rules={[{ required: true, message: '必填' }, { pattern: /^[a-zA-Z][a-zA-Z0-9_]*$/, message: '字母开头' }]} />
+                  </Col>
+                  <Col span={8}>
+                    <Form.Input field={`${field}[name]`} noLabel placeholder="名称" style={{ width: '100%' }}
+                      rules={[{ required: true, message: '必填' }]} />
+                  </Col>
+                  <Col span={7}>
+                    <Form.Select field={`${field}[dataType]`} noLabel placeholder="类型" style={{ width: '100%' }}
+                      optionList={IOT_PROPERTY_TYPE_OPTIONS} initValue="number" />
+                  </Col>
+                </Row>
+                <Row gutter={8}>
+                  <Col span={6}>
+                    <Form.Input field={`${field}[unit]`} noLabel placeholder="单位" style={{ width: '100%' }} />
+                  </Col>
+                  <Col span={6}>
+                    <Form.InputNumber field={`${field}[minValue]`} noLabel placeholder="下限" style={{ width: '100%' }} hideButtons />
+                  </Col>
+                  <Col span={6}>
+                    <Form.InputNumber field={`${field}[maxValue]`} noLabel placeholder="上限" style={{ width: '100%' }} hideButtons />
+                  </Col>
+                  {/* 开关在此过窄会被挤压换行，改用复选框（同 AI 工具参数行写法）：勾选 = 必填 */}
+                  <Col span={6}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 32, whiteSpace: 'nowrap' }}>
+                      <Form.Checkbox field={`${field}[required]`} noLabel>必填</Form.Checkbox>
+                      <Button type="danger" theme="borderless" size="small" onClick={remove}>删除</Button>
+                    </div>
+                  </Col>
+                </Row>
+              </div>
             </div>
           ))}
           <div>
