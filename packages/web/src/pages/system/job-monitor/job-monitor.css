@@ -59,6 +59,24 @@
   min-width: 0;
 }
 
+/* 无样本时仍保留折线图的坐标区域，空态覆盖在图心，避免趋势区塌缩成一行文字。 */
+.job-monitor-trend__chart {
+  position: relative;
+  min-height: 170px;
+}
+
+.job-monitor-trend__empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  color: var(--semi-color-text-2);
+  font-size: 13px;
+  pointer-events: none;
+}
+
 .job-monitor-page .job-monitor-queue-link {
   height: auto;
   min-height: 24px;

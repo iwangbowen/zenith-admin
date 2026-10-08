@@ -9,6 +9,15 @@ const { Text } = Typography;
 
 const EMPTY_POINTS: NonNullable<ReturnType<typeof useJobMonitorTrend>['data']>['points'] = [];
 
+/** 查询尚未返回点位时，也给图表一个 x 轴分类，避免整块图表塌缩成纯文本。 */
+const EMPTY_POINT: (typeof EMPTY_POINTS)[number] = {
+  time: '',
+  backlog: null,
+  stuck: null,
+  dead: null,
+  failed1h: null,
+};
+
 /** 趋势点字段，与契约点位列同名 */
 type TrendField = 'backlog' | 'stuck' | 'dead' | 'failed1h';
 
@@ -68,7 +77,6 @@ export default function JobTrendChart() {
   const query = useJobMonitorTrend(range);
   const points = query.data?.points ?? EMPTY_POINTS;
   const palette = useChartPalette();
-  const hasFacts = points.some((point) => point.backlog !== null || point.stuck !== null || point.dead !== null || point.failed1h !== null);
 
   const cells: Array<{ title: string; lines: TrendLine[]; note: string }> = [
     {
@@ -115,19 +123,30 @@ export default function JobTrendChart() {
         </div>
       </div>
       {query.isError && <Banner type="warning" closeIcon={null} description={`趋势加载失败：${query.error?.message ?? '未知错误'}`} />}
-      {!hasFacts ? (
-        <Text type="tertiary" size="small">{query.isPending ? '趋势数据加载中…' : '暂无可用的作业趋势样本'}</Text>
-      ) : (
-        <div className="job-monitor-trend__grid">
-          {cells.map((cell) => (
+      <div className="job-monitor-trend__grid">
+        {cells.map((cell) => {
+          const hasCellFacts = points.some((point) => cell.lines.some((line) => point[line.field] !== null));
+          const chartPoints = points.length > 0 ? points : [EMPTY_POINT];
+          return (
             <div className="job-monitor-trend__cell" key={cell.title}>
               <Text strong size="small">{cell.title}</Text>
-              <LineChart {...buildSpec(points, cell.lines, palette, range)} options={chartOptions} height={170} />
+              <div className="job-monitor-trend__chart" data-empty={!hasCellFacts || undefined}>
+                <LineChart {...buildSpec(chartPoints, cell.lines, palette, range)} options={chartOptions} height={170} />
+                {!hasCellFacts && (
+                  <div
+                    className="job-monitor-trend__empty"
+                    role="status"
+                    aria-label={query.isPending ? '趋势数据加载中…' : '暂无可用的作业趋势样本'}
+                  >
+                    {query.isPending ? '趋势数据加载中…' : '暂无可用的作业趋势样本'}
+                  </div>
+                )}
+              </div>
               <Text type="tertiary" size="small">{cell.note}</Text>
             </div>
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
     </div>
   );
 }
