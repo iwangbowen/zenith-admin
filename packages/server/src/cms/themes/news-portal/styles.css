@@ -14,6 +14,15 @@ img { max-width: 100%; }
 .paper-title { font-size: 40px; font-weight: 900; letter-spacing: 8px; color: var(--primary); font-family: 'STZhongsong', 'SimSun', serif; }
 .paper-slogan { margin-top: 8px; font-size: 13px; color: var(--text-2); letter-spacing: 4px; }
 .paper-slogan::before, .paper-slogan::after { content: '——'; margin: 0 10px; opacity: .4; }
+/* 顶栏会员区（islands/member.ts）：报头右侧；未登录「登录」，已登录「昵称 + 退出」；空容器不占位 */
+.paper-head { position: relative; }
+.paper-head .site-topbar-member { position: absolute; right: 16px; top: 26px; display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.paper-head .site-topbar-member:empty { display: none; }
+.cms-member__login { border: 1px solid var(--border); border-radius: 3px; background: #fff; color: var(--text-2); padding: 5px 14px; font-size: 12px; text-decoration: none; white-space: nowrap; transition: all .15s ease; }
+.cms-member__login:hover { border-color: var(--primary); color: var(--primary); }
+.cms-member__name { color: var(--text-2); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cms-member__logout { background: none; border: none; padding: 0; color: var(--text-2); font-size: 12.5px; cursor: pointer; white-space: nowrap; transition: color .15s ease; }
+.cms-member__logout:hover { color: var(--primary); }
 
 /* ── 主导航：固定高度，高亮与导航条严格重叠 ─────────────────── */
 .news-nav { background: var(--primary); position: sticky; top: 0; z-index: 50; box-shadow: 0 2px 8px color-mix(in srgb, var(--primary) 30%, transparent); }
@@ -148,6 +157,7 @@ footer.news-footer .extra { white-space: pre-line; }
 
 @media (max-width: 900px) {
   .paper-title { font-size: 28px; letter-spacing: 4px; }
+  .paper-head .site-topbar-member { position: static; justify-content: center; margin-top: 8px; }
   .news-nav .w1200 { overflow-x: auto; scrollbar-width: none; }
   .news-nav .nav-search { display: none; }
   .news-grid, .col-blocks { grid-template-columns: 1fr; }

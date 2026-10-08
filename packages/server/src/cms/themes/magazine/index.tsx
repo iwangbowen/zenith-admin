@@ -46,6 +46,8 @@ function MagLayout({ ctx, currentUrl, children }: { ctx: CmsBaseContext; current
               <input type="search" name="q" placeholder="搜索游戏 / 文章" />
               <button type="submit">搜索</button>
             </form>
+            {/* 会员区：未登录「登录」，已登录「昵称 + 退出」；交互由 islands/member.ts 挂载 */}
+            <span className="site-topbar-member" data-island="member" />
           </div>
         </header>
         <main>

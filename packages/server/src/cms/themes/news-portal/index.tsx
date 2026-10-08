@@ -35,6 +35,8 @@ function NewsLayout({ ctx, currentUrl, children }: { ctx: CmsBaseContext; curren
             <span className="paper-title">{site.name}</span>
           </a>
           {slogan ? <div className="paper-slogan">{slogan}</div> : null}
+          {/* 会员区：未登录「登录」，已登录「昵称 + 退出」；交互由 islands/member.ts 挂载 */}
+          <span className="site-topbar-member" data-island="member" />
         </header>
         <nav className="news-nav">
           <div className="w1200">

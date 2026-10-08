@@ -75,7 +75,6 @@ export function Layout({ ctx, currentUrl, children }: LayoutProps) {
                 {site.logo ? <img src={site.logo} alt={site.name} /> : null}
                 <span>{site.name}</span>
               </a>
-              <CmsFollowButton siteId={site.id} subjectType="site" subjectId={site.id} label={site.name} />
               <span className="site-topbar-spacer" />
               {contactPhone ? <span className="site-contact">☎ {contactPhone}</span> : null}
               {ctx.langAlternates.length > 0 ? (

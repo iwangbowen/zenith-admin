@@ -14,6 +14,14 @@ img { max-width: 100%; }
 .masthead-search { display: flex; }
 .masthead-search input { border: 1px solid var(--border); border-right: none; border-radius: 4px 0 0 4px; padding: 9px 14px; font-size: 14px; width: 240px; outline: none; }
 .masthead-search button { background: var(--primary); color: #fff; border: none; border-radius: 0 4px 4px 0; padding: 0 20px; font-size: 14px; cursor: pointer; }
+/* 顶栏会员区（islands/member.ts）：搜索右侧；未登录「登录」，已登录「昵称 + 退出」；空容器不占位 */
+.site-topbar-member { display: flex; align-items: center; gap: 10px; flex-shrink: 0; font-size: 14px; }
+.site-topbar-member:empty { display: none; }
+.cms-member__login { border: 1px solid var(--primary); border-radius: 3px; background: transparent; color: var(--primary); padding: 7px 18px; font-size: 13px; text-decoration: none; white-space: nowrap; transition: all .15s ease; }
+.cms-member__login:hover { background: var(--primary); color: #fff; }
+.cms-member__name { color: var(--text-2); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cms-member__logout { background: none; border: none; padding: 0; color: var(--text-2); font-size: 13px; cursor: pointer; white-space: nowrap; transition: color .15s ease; }
+.cms-member__logout:hover { color: var(--primary); }
 .main-nav { background: var(--primary); }
 .main-nav .w1200 { display: flex; align-items: stretch; }
 .main-nav > .w1200 > .nav-item > a { color: #fff; font-size: 16px; height: 52px; line-height: 52px; padding: 0 26px; white-space: nowrap; display: block; }
