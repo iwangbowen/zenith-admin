@@ -17,3 +17,13 @@ export function readMemberToken(): string | null {
 export function goToMemberLogin(): void {
   location.href = MEMBER_LOGIN_URL;
 }
+
+/** 清除本地会员身份（退出 / 会话失效时调用；与会员 SPA 的键约定一致，见 shared/core/constants） */
+export function clearMemberTokens(): void {
+  try {
+    localStorage.removeItem(MEMBER_TOKEN_KEY);
+    localStorage.removeItem('zenith_member_refresh_token');
+  } catch {
+    /* localStorage 不可用时无需清理 */
+  }
+}

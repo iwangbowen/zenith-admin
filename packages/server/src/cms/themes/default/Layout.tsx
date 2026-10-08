@@ -94,6 +94,8 @@ export function Layout({ ctx, currentUrl, children }: LayoutProps) {
               {ctx.assets.darkMode !== 'light' ? (
                 <button type="button" className="theme-toggle" title="切换明暗主题" aria-label="切换明暗主题">◑</button>
               ) : null}
+              {/* 会员区：未登录「登录」，已登录「昵称 + 退出」；交互由 islands/member.ts 挂载 */}
+              <span className="site-topbar-member" data-island="member" />
             </div>
           </div>
           <div className="main-nav">

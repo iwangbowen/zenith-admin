@@ -259,6 +259,14 @@ section > .section-title:first-child, .home-grid .section-title:first-child { ma
 .cms-follow:disabled { cursor: wait; opacity: .6; }
 .lang-switch { display: flex; gap: 8px; font-size: 13px; }
 .lang-switch a { color: var(--text-2); text-decoration: none; }
+/* 顶栏会员区（islands/member.ts）：未登录「登录」，已登录「昵称 + 退出」；容器为空时不占位 */
+.site-topbar-member { display: flex; align-items: center; gap: 10px; flex-shrink: 0; font-size: 13px; }
+.site-topbar-member:empty { display: none; }
+.cms-member__login { border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--text-2); padding: 5px 16px; font-size: 12px; text-decoration: none; white-space: nowrap; transition: all .15s ease; }
+.cms-member__login:hover { border-color: var(--primary); color: var(--primary); }
+.cms-member__name { color: var(--text-2); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cms-member__logout { background: none; border: none; padding: 0; color: var(--text-2); font-size: 12.5px; cursor: pointer; white-space: nowrap; transition: color .15s ease; }
+.cms-member__logout:hover { color: var(--primary); }
 .lang-switch a:hover { color: var(--primary); }
 .lang-switch .active { color: var(--primary); font-weight: 600; }
 
