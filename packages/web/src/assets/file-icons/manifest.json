@@ -1,11 +1,11 @@
 {
   "$comment": "由 scripts/gen-iconify-assets.mjs 生成：图标来源包版本与产出清单，守卫测试据此校验生成物与源码引用 / 安装版本一致。",
   "sources": {
-    "@iconify-json/vscode-icons": "1.2.77",
+    "@iconify-json/vscode-icons": "1.2.86",
     "@iconify-json/ant-design": "1.2.9",
-    "@iconify-json/codicon": "1.2.72",
+    "@iconify-json/codicon": "1.2.74",
     "@iconify-json/icon-park-outline": "1.2.4",
-    "@iconify-json/simple-icons": "1.2.96"
+    "@iconify-json/simple-icons": "1.2.99"
   },
   "fileIcons": [
     "default-file",

@@ -7,7 +7,7 @@ import { mockAccessToken } from './utils/auth';
 
 const server = setupServer(...authHandlers);
 const original = structuredClone(mockUsers[0]);
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
 afterEach(() => Object.assign(mockUsers[0], structuredClone(original)));
 afterAll(() => server.close());
 

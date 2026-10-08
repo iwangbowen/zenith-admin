@@ -8,7 +8,7 @@ import { deleteMockMySignature, resolveMockUserSignature } from './utils/persona
 import { SIGNATURE_TEST_PNG } from '@/test-utils/signature';
 
 const server = setupServer(...authHandlers);
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
 afterAll(() => server.close());
 const endpoint = `${window.location.origin}${authContract.mySignature.fullPath}`;
 const token = (tenantId?: number) => mockAccessToken('admin', tenantId);

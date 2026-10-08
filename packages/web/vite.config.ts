@@ -3,7 +3,7 @@ import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileViewerRenderers } from '@file-viewer/vite-plugin';
 import { VitePWA } from 'vite-plugin-pwa';
-import entriesManifest from './entries.json';
+import entriesManifest from './entries.json' with { type: 'json' };
 
 /**
  * 三个 SPA 入口的内容安全策略（构建期注入 <meta http-equiv="Content-Security-Policy">）。
@@ -152,7 +152,6 @@ export default defineConfig(({ command, mode }) => {
       ...(pwaEnabled ? [VitePWA({
         registerType: 'autoUpdate',
         scope: base,
-        cacheId: `zenith-${deploymentId}`,
         // 预缓存 Vite 构建产物中的静态资源
         includeAssets: ['favicon.svg', 'icons/*.png'],
         manifest: {
@@ -174,6 +173,7 @@ export default defineConfig(({ command, mode }) => {
           ],
         },
         workbox: {
+          cacheId: `zenith-${deploymentId}`,
           // 只缓存静态资源（JS/CSS/字体/图片），API 请求完全走网络
           globPatterns: ['**/*.{js,css,woff2,png,svg,ico}'],
           // 超大懒加载文档引擎（univerjs/rtf 等）超过 workbox 2MiB 上限，排除出预缓存，按需经网络加载

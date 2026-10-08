@@ -3,7 +3,7 @@ import { fail } from '@/mocks/utils/handlers';
 /**
  * 兜底 handler（必须注册在所有具体 handler 之后）。
  *
- * 背景：demo 模式下 MSW 配置 `onUnhandledRequest: 'bypass'`，未被任何 handler 命中的
+ * 背景：demo 模式下 MSW 配置 `onUnhandledFrame: 'bypass'`，未被任何 handler 命中的
  * `/api/*` 请求会被放行到网络层。在 `dev:demo`（本地带后端代理）场景下，这些请求会被
  * 代理到真实后端，后端不认 mock token → 返回 401 → `request.ts` 触发跳转登录页。
  *

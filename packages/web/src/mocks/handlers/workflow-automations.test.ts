@@ -4,7 +4,7 @@ import { workflowAutomationContract, workflowAutomationRunSchema, type WorkflowA
 import { workflowAutomationsHandlers, mockWorkflowAutomationRuns } from './workflow-automations';
 
 const server = setupServer(...workflowAutomationsHandlers);
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 beforeEach(() => { mockWorkflowAutomationRuns.length = 0; });
