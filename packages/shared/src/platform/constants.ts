@@ -10,6 +10,21 @@ import type { FileObjectAcl } from './types';
  */
 export const WS_AUTH_SUBPROTOCOL = 'zenith-auth';
 
+/** 消息采样分别限额，避免高频心跳或业务洪流挤掉其他诊断数据。 */
+export const WS_BUSINESS_MESSAGE_SAMPLE_LIMIT = 200;
+export const WS_CONTROL_MESSAGE_SAMPLE_LIMIT = 100;
+export const WS_EXCEPTION_MESSAGE_SAMPLE_LIMIT = 100;
+
+export const WS_CONTROL_MESSAGE_TYPES = ['ping', 'pong'] as const;
+export const WS_MESSAGE_STREAM_SCOPES = ['business', 'exceptions', 'heartbeats', 'all'] as const;
+export type WsMessageStreamScope = (typeof WS_MESSAGE_STREAM_SCOPES)[number];
+export const WS_MESSAGE_STREAM_SCOPE_LABELS: Record<WsMessageStreamScope, string> = {
+  business: '业务消息',
+  exceptions: '异常',
+  heartbeats: '心跳',
+  all: '全部',
+};
+
 /** 构造浏览器 WebSocket 构造函数的 protocols 参数 */
 export function wsAuthProtocols(accessToken: string): string[] {
   return [WS_AUTH_SUBPROTOCOL, accessToken];

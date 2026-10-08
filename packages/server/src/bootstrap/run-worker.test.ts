@@ -162,7 +162,7 @@ describe('startWorkerRole', () => {
           totalConnects: 1, totalDisconnects: 0, totalSent: sent, totalRecv: 4,
           fanout: { state: 'subscribed', published: 1, publishFailed: 0, delivered: 0, dropped: 0 },
           connections: [{ connId: 'remote-1', nodeId: 'api-peer:1', userId: 9, lastActivityAt: Date.now(), sent, recv: 4 }],
-          messages: [], recentDisconnects: [],
+          messages: [], controlMessages: [], exceptionMessages: [], heartbeats: [], recentDisconnects: [],
         },
       }));
     };

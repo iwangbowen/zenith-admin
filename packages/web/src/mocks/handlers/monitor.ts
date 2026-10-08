@@ -2,11 +2,14 @@ import { HttpResponse } from 'msw';
 import {
   MONITOR_HISTORY_RANGE_CONFIG,
   monitorContract,
+  isWsMessageException,
+  statWsTopicDirections,
   type MonitorHistory,
   type MonitorHistoryRange,
   type MonitorSnapshot,
   type MonitorTimeseriesPoint,
   type MonitorWsMetrics,
+  type MonitorWsMessage,
   type MonitorWsTrend,
   type MonitorWsTrendHistory,
   type MonitorWsTrendPoint,
@@ -292,6 +295,17 @@ function buildHistory(range: MonitorHistoryRange): MonitorHistory {
 
 function buildWsMetrics(): MonitorWsMetrics {
   const now = Date.now();
+  const messages: MonitorWsMessage[] = [
+    { id: 'm-1', at: now - 1200, direction: 'outbound', nodeId: 'demo-node', connId: '101', userId: 1, type: 'in-app-message:new', topic: 'in-app-message', bytes: 482, success: true },
+    { id: 'm-2', at: now - 2600, direction: 'inbound', nodeId: 'demo-node', connId: '102', userId: 1, type: 'chat:typing', topic: 'chat', bytes: 96, success: true },
+    { id: 'm-3', at: now - 5400, direction: 'outbound', nodeId: 'demo-node', connId: '103', userId: 2, type: 'chat:presence', topic: 'chat', bytes: 72, success: false },
+  ];
+  const controlMessages: MonitorWsMessage[] = [
+    { id: 'h-1', at: now - 500, direction: 'outbound', nodeId: 'demo-node', connId: '101', userId: 1, type: 'pong', topic: null, bytes: 15, success: true },
+    { id: 'h-2', at: now - 510, direction: 'inbound', nodeId: 'demo-node', connId: '101', userId: 1, type: 'ping', topic: null, bytes: 15, success: true },
+    { id: 'h-3', at: now - 800, direction: 'outbound', nodeId: 'demo-node', connId: '103', userId: 2, type: 'pong', topic: null, bytes: 15, success: false },
+    { id: 'h-4', at: now - 810, direction: 'inbound', nodeId: 'demo-node', connId: '103', userId: 2, type: 'ping', topic: null, bytes: 15, success: true },
+  ];
   return {
     currentConnections: 3,
     currentUsers: 2,
@@ -299,9 +313,13 @@ function buildWsMetrics(): MonitorWsMetrics {
     totalDisconnects: 125,
     totalSent: 4521,
     totalRecv: 1023,
-    messages: [
-      { id: 'm-1', at: now - 1200, direction: 'outbound', nodeId: 'demo-node', connId: '101', userId: 1, type: 'in-app-message:new', topic: 'in-app-message', bytes: 482, success: true },
-      { id: 'm-2', at: now - 2600, direction: 'inbound', nodeId: 'demo-node', connId: '101', userId: 1, type: 'chat:typing', topic: 'chat', bytes: 96, success: true },
+    messages,
+    controlMessages,
+    exceptionMessages: [...messages, ...controlMessages].filter(isWsMessageException),
+    heartbeats: [
+      { nodeId: 'demo-node', connId: '101', userId: 1, pingCount: 40, pongCount: 40, failedCount: 0, lastPingAt: now - 510, lastPongAt: now - 500, lastFailureAt: null },
+      { nodeId: 'demo-node', connId: '102', userId: 1, pingCount: 10, pongCount: 10, failedCount: 0, lastPingAt: now - 1000, lastPongAt: now - 990, lastFailureAt: null },
+      { nodeId: 'demo-node', connId: '103', userId: 2, pingCount: 2, pongCount: 1, failedCount: 1, lastPingAt: now - 810, lastPongAt: now - 30_000, lastFailureAt: now - 800 },
     ],
     nodes: [{ nodeId: 'demo-node', connections: 3, users: 2, sent: 4521, recv: 1023 }],
     // 扇出：演示单节点部署下订阅正常、有一封被丢弃的远端信封
@@ -314,10 +332,7 @@ function buildWsMetrics(): MonitorWsMetrics {
       degradedNodes: 0,
       nodes: [{ nodeId: 'demo-node', state: 'subscribed', published: 386, publishFailed: 0, delivered: 12, dropped: 1 }],
     },
-    topics: [
-      { topic: 'in-app-message', messages: 1, bytes: 482 },
-      { topic: 'chat', messages: 1, bytes: 96 },
-    ],
+    topics: statWsTopicDirections(messages).map((s) => ({ topic: s.topic, messages: s.inbound + s.outbound, bytes: s.bytes })),
     connections: [
       { connId: '101', nodeId: 'demo-node', tokenId: 'a1b2c3d4e5f6', userId: 1, tenantId: null, username: 'admin', nickname: '超级管理员', ip: '203.0.113.10', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', lastMessageType: 'in-app-message:new', lastMessageAt: now - 5_000, lastDirection: 'outbound', connectedAt: now - 1_200_000, lastActivityAt: now - 5_000, sent: 42, recv: 18 },
       { connId: '102', nodeId: 'demo-node', tokenId: 'a1b2c3d4e5f6', userId: 1, tenantId: null, username: 'admin', nickname: '超级管理员', ip: '203.0.113.10', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', lastMessageType: 'chat:typing', lastMessageAt: now - 1_200, lastDirection: 'inbound', connectedAt: now - 320_000, lastActivityAt: now - 1_200, sent: 11, recv: 3 },

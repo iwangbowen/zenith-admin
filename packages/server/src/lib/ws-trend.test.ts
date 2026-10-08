@@ -26,6 +26,9 @@ const snapshot = {
   totalSent: 100,
   totalRecv: 40,
   messages: [] as Array<{ success: boolean }>,
+  controlMessages: [] as Array<{ success: boolean }>,
+  exceptionMessages: [] as Array<{ success: boolean }>,
+  heartbeats: [],
   nodes: [],
   topics: [],
   connections: [
@@ -56,6 +59,8 @@ describe('ws trend sampler', () => {
     snapshot.totalSent = 100;
     snapshot.totalRecv = 40;
     snapshot.messages = [];
+    snapshot.controlMessages = [];
+    snapshot.exceptionMessages = [];
     snapshot.connections = [{ lastActivityAt: 0 }, { lastActivityAt: 0 }];
   });
 
@@ -73,6 +78,7 @@ describe('ws trend sampler', () => {
     // 第二条停留在上一帧的活动时间：超 120 秒空闲阈值
     snapshot.connections = [{ lastActivityAt: 130_000 }, { lastActivityAt: 1000 }];
     snapshot.messages = [{ success: true }, { success: false }];
+    snapshot.exceptionMessages = [{ success: false }];
 
     const point = recordWsTrendSample(130_000);
     expect(point).toMatchObject({
@@ -112,6 +118,7 @@ describe('ws trend sampler', () => {
     recordWsTrendSample(11_000);
     snapshot.totalSent = 200;
     snapshot.messages = [{ success: false }, { success: false }, { success: true }];
+    snapshot.exceptionMessages = [{ success: false }, { success: false }];
     recordWsTrendSample(21_000);
 
     // 瞬时列取窗口末值，增量列取窗口内之和，失败列取窗口内峰值
@@ -148,6 +155,19 @@ describe('ws trend sampler', () => {
     // 清空后重新累积，游标一并归零，新一批点仍可下沉（而不是因为游标还停在过去而漏掉）
     expect(takeWsTrendWindow()).toMatchObject({ sampledAt: new Date(21_000) });
     expect(takeWsTrendWindow()).toBeNull();
+  });
+
+  it('失败趋势来自独立异常窗口，成功业务洪流不抹除失败心跳，分钟落库取窗口峰值', () => {
+    recordWsTrendSample(1000);
+    snapshot.messages = Array.from({ length: 200 }, () => ({ success: true }));
+    snapshot.controlMessages = Array.from({ length: 100 }, () => ({ success: true }));
+    snapshot.exceptionMessages = [{ success: false }];
+    expect(recordWsTrendSample(11_000)).toMatchObject({ failed: 1 });
+    snapshot.exceptionMessages = [{ success: false }, { success: false }];
+    expect(recordWsTrendSample(21_000)).toMatchObject({ failed: 2 });
+    // 同一异常仍在窗口中，不能冒充本tick新增或在持久化里重复求和。
+    expect(recordWsTrendSample(31_000)).toMatchObject({ failed: 2 });
+    expect(takeWsTrendWindow()).toMatchObject({ failed: 2 });
   });
 
   it('uses an external persisted boundary without consuming the window before a successful database commit', () => {

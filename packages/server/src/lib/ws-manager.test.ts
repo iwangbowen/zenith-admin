@@ -6,7 +6,7 @@ type WsManager = typeof import('./ws-manager');
 function fakeWs() {
   const send = vi.fn();
   const close = vi.fn();
-  return { ws: { send, close } as unknown as WSContext, send, close };
+  return { ws: { send, close, readyState: 1 } as unknown as WSContext, send, close };
 }
 
 function framesOf(send: ReturnType<typeof vi.fn>, type: string) {
@@ -194,6 +194,77 @@ describe('同一 token 多条连接', () => {
 });
 
 describe('连接元数据与最近消息画像', () => {
+  it('心跳洪流不会挤出业务窗口或覆盖最近业务画像，全帧计数与保活仍更新', () => {
+    vi.setSystemTime(1000);
+    const a = fakeWs();
+    m.registerConnection(1, 'jti-1', a.ws);
+    for (let i = 0; i < 200; i += 1) m.sendToUser(1, PING);
+    const before = m.getWsSnapshot().connections[0];
+    for (let i = 0; i < 300; i += 1) {
+      vi.setSystemTime(2000 + i);
+      m.incWsRecv(a.ws, JSON.stringify({ type: 'ping' }), true);
+      m.sendWsControl(a.ws, { type: 'pong' });
+    }
+    const snap = m.getWsSnapshot();
+    expect(snap.messages).toHaveLength(200);
+    expect(snap.messages.every((message) => message.type === PING.type)).toBe(true);
+    expect(snap.controlMessages).toHaveLength(100);
+    expect(snap.exceptionMessages).toEqual([]);
+    expect(snap.connections[0]).toMatchObject({
+      lastMessageType: before.lastMessageType, lastMessageAt: before.lastMessageAt,
+      lastDirection: before.lastDirection, lastActivityAt: 2299, sent: 500, recv: 300,
+    });
+    expect(snap).toMatchObject({ totalSent: 500, totalRecv: 300 });
+    expect(snap.heartbeats).toEqual([{ nodeId: before.nodeId, connId: before.connId, userId: 1,
+      pingCount: 300, pongCount: 300, failedCount: 0, lastPingAt: 2299, lastPongAt: 2299, lastFailureAt: null }]);
+    expect(snap.messages[0]).not.toHaveProperty('payload');
+  });
+
+  it('失败心跳独立保留，不被成功业务或心跳洪流挤出；断开释放心跳摘要', () => {
+    const a = fakeWs();
+    m.registerConnection(1, 'jti-1', a.ws);
+    a.send.mockImplementationOnce(() => { throw new Error('closed transport'); });
+    m.sendWsControl(a.ws, { type: 'pong' });
+    const failure = m.getWsSnapshot().exceptionMessages[0];
+    expect(failure).toMatchObject({ type: 'pong', success: false, userId: 1 });
+    for (let i = 0; i < 250; i += 1) {
+      m.sendToUser(1, PING);
+      m.incWsRecv(a.ws, JSON.stringify({ type: 'ping' }), true);
+      m.sendWsControl(a.ws, { type: 'pong' });
+    }
+    const snap = m.getWsSnapshot();
+    expect(snap.exceptionMessages).toEqual([failure]);
+    expect(snap.controlMessages.some((message) => message.id === failure.id)).toBe(false);
+    expect(snap.heartbeats[0]).toMatchObject({ pongCount: 250, failedCount: 1, lastFailureAt: failure.at });
+    m.removeConnection(a.ws, 'transport-failed');
+    expect(m.getWsSnapshot().heartbeats).toEqual([]);
+    expect(m.getWsSnapshot().exceptionMessages).toEqual([failure]);
+    expect(m.getWsSnapshot().recentDisconnects[0].reason).toBe('transport-failed');
+  });
+
+  it('关闭状态与send抛错如实记录失败，仅实际写出增加sent；入站拒绝仍增加recv', () => {
+    const a = fakeWs();
+    m.registerConnection(1, 'jti-1', a.ws);
+    m.sendToUser(1, PING);
+    a.send.mockImplementationOnce(() => { throw new Error('send failed'); });
+    m.sendToUser(1, PING);
+    Object.defineProperty(a.ws, 'readyState', { value: 3 });
+    m.sendWsControl(a.ws, { type: 'pong' });
+    m.incWsRecv(a.ws, JSON.stringify({ type: 'ping' }), false);
+    m.incWsRecv(a.ws, '{}', false);
+    m.incWsRecv(a.ws, 'broken-json', false);
+    const snap = m.getWsSnapshot();
+    expect(a.send).toHaveBeenCalledTimes(2);
+    expect(snap).toMatchObject({ totalSent: 1, totalRecv: 3 });
+    expect(snap.messages.map((message) => [message.type, message.success])).toEqual([
+      ['invalid', false], ['unknown', false], [PING.type, false], [PING.type, true],
+    ]);
+    expect(snap.exceptionMessages).toHaveLength(5);
+    expect(snap.heartbeats[0]).toMatchObject({ pingCount: 1, pongCount: 0, failedCount: 2 });
+    for (let i = 0; i < 125; i += 1) m.incWsRecv(a.ws, 'invalid', false);
+    expect(m.getWsSnapshot().exceptionMessages).toHaveLength(100);
+  });
+
   it('握手期采集的 IP / UA 进入快照；收发更新最近消息画像', () => {
     const a = fakeWs();
     m.registerConnection(1, 'jti-1', a.ws, { ip: '203.0.113.7', userAgent: 'test-ua' });
@@ -367,6 +438,52 @@ describe('跨进程 WS 监控集群合并', () => {
     return peer;
   }
 
+  it('集群分别裁剪三类采样并保留各连接心跳，节点前缀避免同毫秒同序号ID冲突', async () => {
+    vi.setSystemTime(1000);
+    await (await import('./ws-fanout')).startWsFanoutSubscriber();
+    const local = fakeWs();
+    m.registerConnection(1, 'local', local.ws);
+    m.sendToUser(1, PING);
+    const firstLocalId = m.getWsSnapshot().messages[0].id;
+    const peer = await loadPeer('node-b');
+    const remote = fakeWs();
+    peer.registerConnection(20, 'remote', remote.ws);
+    peer.sendToUser(20, PING);
+    expect(peer.getWsSnapshot().messages[0].id).not.toBe(firstLocalId);
+    for (let i = 0; i < 130; i += 1) {
+      vi.setSystemTime(1100 + i);
+      m.sendToUser(1, PING);
+      peer.sendToUser(20, PING);
+    }
+    local.send.mockImplementation(() => { throw new Error('failed local pong'); });
+    remote.send.mockImplementation(() => { throw new Error('failed remote pong'); });
+    for (let i = 0; i < 80; i += 1) {
+      vi.setSystemTime(2000 + i);
+      m.incWsRecv(local.ws, JSON.stringify({ type: 'ping' }), true);
+      m.sendWsControl(local.ws, { type: 'pong' });
+      peer.incWsRecv(remote.ws, JSON.stringify({ type: 'ping' }), true);
+      peer.sendWsControl(remote.ws, { type: 'pong' });
+    }
+    peer.publishWsStatsSnapshot();
+    await vi.waitFor(() => expect(m.getWsClusterSnapshot().heartbeats).toHaveLength(2));
+    const snap = m.getWsClusterSnapshot();
+    expect(snap.messages).toHaveLength(200);
+    expect(snap.controlMessages).toHaveLength(100);
+    expect(snap.exceptionMessages).toHaveLength(100);
+    expect(snap.heartbeats.map((heartbeat) => heartbeat.failedCount)).toEqual([80, 80]);
+    const all = [...snap.messages, ...snap.controlMessages, ...snap.exceptionMessages];
+    expect(new Set(all.map((message) => message.id)).size).toBeGreaterThan(snap.messages.length);
+    const scoped = m.filterWsClusterSnapshot(snap, new Set([20]));
+    expect(scoped.messages.every((message) => message.userId === 20)).toBe(true);
+    expect(scoped.controlMessages.length).toBeGreaterThan(0);
+    expect(scoped.exceptionMessages.length).toBeGreaterThan(0);
+    expect(scoped.controlMessages.every((message) => message.userId === 20)).toBe(true);
+    expect(scoped.exceptionMessages.every((message) => message.userId === 20)).toBe(true);
+    expect(scoped.heartbeats.map((heartbeat) => heartbeat.userId)).toEqual([20]);
+    const none = m.filterWsClusterSnapshot(snap, new Set());
+    expect(none).toMatchObject({ messages: [], controlMessages: [], exceptionMessages: [], heartbeats: [] });
+  });
+
   it('远端快照合并为集群视图：连接相加、用户去重、计数求和；本进程快照不受影响', async () => {
     await (await import('./ws-fanout')).startWsFanoutSubscriber();
     const local = fakeWs();
@@ -480,10 +597,14 @@ describe('集群快照按可见用户裁剪', () => {
     m.registerConnection(1, 't1', ws.ws);
     // 未登记 socket 的收包：userId 为空
     m.incWsRecv(fakeWs().ws, JSON.stringify({ type: 'chat:message' }));
+    m.incWsRecv(fakeWs().ws, JSON.stringify({ type: 'ping' }), false);
 
     const full = m.getWsClusterSnapshot();
     expect(full.messages.some((x) => x.userId === null)).toBe(true);
     expect(m.filterWsClusterSnapshot(full, new Set([1])).messages).toEqual([]);
+    expect(full.controlMessages.some((x) => x.userId === null)).toBe(true);
+    expect(full.exceptionMessages.some((x) => x.userId === null)).toBe(true);
+    expect(m.filterWsClusterSnapshot(full, new Set([1]))).toMatchObject({ controlMessages: [], exceptionMessages: [] });
   });
 });
 

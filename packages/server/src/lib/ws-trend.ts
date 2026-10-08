@@ -86,8 +86,8 @@ export function recordWsTrendSample(now: number = Date.now()): WsTrendPoint | nu
     disconnects: counters.disconnects - prev.disconnects,
     sent: counters.sent - prev.sent,
     recv: counters.recv - prev.recv,
-    // 失败明细没有累计计数器可差分，取采样窗口内的失败条数（口径见契约）
-    failed: snap.messages.filter((m) => !m.success).length,
+    // 独立异常窗口含失败心跳 / 无效帧；是窗口条数，不是本 tick 新增失败，落库时取峰值。
+    failed: snap.exceptionMessages.length,
   };
   points.push(point);
   if (points.length > WS_TREND_CAPACITY) points.shift();

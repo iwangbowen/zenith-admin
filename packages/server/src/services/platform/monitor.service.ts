@@ -672,6 +672,9 @@ export async function getWsMetrics() {
   for (const d of snap.recentDisconnects) userIds.add(d.userId);
   // 消息明细也带 userId：当前无连接、无断开记录的用户仍可能出现在采样里，不纳入就无从判断其租户
   for (const m of snap.messages) if (m.userId !== null) userIds.add(m.userId);
+  for (const m of snap.controlMessages) if (m.userId !== null) userIds.add(m.userId);
+  for (const m of snap.exceptionMessages) if (m.userId !== null) userIds.add(m.userId);
+  for (const heartbeat of snap.heartbeats) userIds.add(heartbeat.userId);
 
   const userMap = new Map<number, { username: string | null; nickname: string | null; tenantId: number | null }>();
   const userScopes: Array<{ id: number; tenantId: number | null }> = [];
@@ -713,6 +716,9 @@ export async function getWsMetrics() {
     totalSent: visible.totalSent,
     totalRecv: visible.totalRecv,
     messages: visible.messages,
+    controlMessages: visible.controlMessages,
+    exceptionMessages: visible.exceptionMessages,
+    heartbeats: visible.heartbeats,
     nodes: visible.nodes,
     topics: visible.topics,
     connections,

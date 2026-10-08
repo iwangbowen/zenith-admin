@@ -9,6 +9,8 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WSContext } from 'hono/ws';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
 
 const state = {
   scope: undefined as number | null | undefined,
@@ -17,6 +19,7 @@ const state = {
   rows: [] as Array<{ id: number; username: string; nickname: string; tenantId: number | null }>,
   /** 持平台超管角色的用户 */
   superUserIds: new Set<number>(),
+  queriedUserIds: [] as number[],
 };
 
 vi.mock('../../lib/context', () => ({ currentUser: () => ({ userId: 1 }) }));
@@ -32,7 +35,11 @@ vi.mock('../../db', () => ({
   db: {
     select: () => ({
       from: () => ({
-        where: async () => state.rows,
+        where: async (condition: SQL) => {
+          const ids = new PgDialect().sqlToQuery(condition).params as number[];
+          state.queriedUserIds.push(...ids);
+          return state.rows.filter((row) => ids.includes(row.id));
+        },
       }),
     }),
   },
@@ -45,7 +52,7 @@ let m: WsManager;
 let service: MonitorService;
 
 function fakeWs() {
-  return { send: vi.fn(), close: vi.fn() } as unknown as WSContext;
+  return { send: vi.fn(), close: vi.fn(), readyState: 1 } as unknown as WSContext;
 }
 
 /** 平台超管（租户为空）、无租户的普通管理员、租户 1 的两人（其一持平台超管角色）、租户 2 一人 */
@@ -70,6 +77,7 @@ beforeAll(loadMonitor, 120_000);
 
 beforeEach(async () => {
   state.rows = [...USER_ROWS];
+  state.queriedUserIds = [];
   state.superUserIds = new Set([1, 11]);
   state.scope = undefined;
   state.platformAdmin = true;
@@ -115,6 +123,38 @@ describe('resolveVisibleWsUserIds（可见范围判定）', () => {
 });
 
 describe('getWsMetrics 可见范围裁剪', () => {
+  it('三类消息与在线心跳统一按租户过滤，包括只剩独立异常采样的历史用户', async () => {
+    const own = fakeWs();
+    const hidden = fakeWs();
+    m.registerConnection(10, 'own', own);
+    m.registerConnection(20, 'hidden', hidden);
+    m.incWsRecv(own, JSON.stringify({ type: 'ping' }), true);
+    m.sendWsControl(own, { type: 'pong' });
+    m.incWsRecv(hidden, JSON.stringify({ type: 'ping' }), false);
+    m.removeConnection(hidden);
+    // 刷掉旧用户的断开和心跳窗口，独立异常仍保留他的userId，需要单独查询身份再裁剪。
+    for (let i = 0; i < 60; i += 1) {
+      const transient = fakeWs();
+      m.registerConnection(10, `transient-${i}`, transient);
+      m.removeConnection(transient);
+    }
+    for (let i = 0; i < 150; i += 1) {
+      m.incWsRecv(own, JSON.stringify({ type: 'ping' }), true);
+      m.sendWsControl(own, { type: 'pong' });
+    }
+    m.incWsRecv(own, JSON.stringify({ type: 'chat:typing' }), true);
+    m.incWsRecv(fakeWs(), 'unknown-json', false);
+    expect(m.getWsSnapshot().connections.map((c) => c.userId)).toEqual([10]);
+    expect(m.getWsSnapshot().recentDisconnects.every((c) => c.userId === 10)).toBe(true);
+    state.scope = 1;
+    state.platformAdmin = false;
+    const metrics = await service.getWsMetrics();
+    expect(state.queriedUserIds).toEqual(expect.arrayContaining([10, 20]));
+    expect(metrics.messages.every((message) => message.userId === 10)).toBe(true);
+    expect(metrics.controlMessages.every((message) => message.userId === 10)).toBe(true);
+    expect(metrics.exceptionMessages).toEqual([]);
+    expect(metrics.heartbeats.map((heartbeat) => heartbeat.userId)).toEqual([10]);
+  });
   /** 每个用例都重新登记连接：beforeEach 已隔离模块，连接表为空 */
   function seedConnections() {
     for (const id of [1, 2, 10, 20]) m.registerConnection(id, `jti-${id}`, fakeWs());

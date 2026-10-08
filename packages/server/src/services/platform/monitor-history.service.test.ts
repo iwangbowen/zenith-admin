@@ -4,7 +4,7 @@ import type { SQL } from 'drizzle-orm';
 import type { WsTrendSample } from '../../lib/ws-trend';
 
 const state = vi.hoisted(() => ({
-  snapshot: { currentConnections: 2, currentUsers: 1, totalConnects: 2, totalDisconnects: 0, totalSent: 0, totalRecv: 0, connections: [], messages: [] },
+  snapshot: { currentConnections: 2, currentUsers: 1, totalConnects: 2, totalDisconnects: 0, totalSent: 0, totalRecv: 0, connections: [], messages: [], controlMessages: [], exceptionMessages: [], heartbeats: [] },
   stored: [] as WsTrendSample[],
   failNextWrite: false,
   transaction: vi.fn(),

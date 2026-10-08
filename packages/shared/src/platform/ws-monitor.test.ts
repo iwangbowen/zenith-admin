@@ -9,6 +9,9 @@ import {
   groupWsDisconnectReasons,
   inferWsReconnects,
   isWsConnectionActive,
+  isWsControlMessage,
+  isWsMessageException,
+  selectWsMessageSamples,
   statWsClients,
   statWsTopicDirections,
   summarizeWsHealth,
@@ -22,6 +25,7 @@ const connection = (overrides: Partial<MonitorWsConnection> = {}): MonitorWsConn
   nodeId: 'n1',
   tokenId: 't1',
   userId: 1,
+  tenantId: null,
   username: 'admin',
   nickname: null,
   ip: null,
@@ -148,6 +152,40 @@ describe('summarizeWsHealth', () => {
       avgDurationSec: null,
     });
   });
+
+  it('心跳数量不会稀释业务失败率，只有心跳时没有业务成功率', () => {
+    const controls = Array.from({ length: 100 }, (_, i) => message({ id: `p${i}`, type: 'pong', topic: null }));
+    expect(summarizeWsHealth([], 0, [message(), message({ success: false }), ...controls], NOW).successRate).toBe(50);
+    expect(summarizeWsHealth([], 0, controls, NOW).successRate).toBeNull();
+  });
+});
+
+describe('消息流采样选择', () => {
+  it('仅 ping / pong 归类心跳，失败和非法帧归类异常', () => {
+    expect(isWsControlMessage(message({ type: 'ping' }))).toBe(true);
+    expect(isWsControlMessage(message({ type: 'chat:typing' }))).toBe(false);
+    expect(isWsMessageException(message({ type: 'pong', success: false }))).toBe(true);
+    expect(isWsMessageException(message({ type: 'invalid' }))).toBe(true);
+    expect(isWsMessageException(message({ type: 'unknown' }))).toBe(true);
+    expect(isWsMessageException(message())).toBe(false);
+  });
+
+  it('各窗口独立选择，全部视图跨窗口去重且保留跨节点同 ID', () => {
+    const failed = message({ id: 'failed', success: false, at: NOW - 5 });
+    const pong = message({ id: 'pong', type: 'pong', at: NOW + 5 });
+    const agedError = message({ id: 'aged', success: false, at: NOW - 10 });
+    const sources = {
+      messages: [failed, message({ id: 'same' }), message({ id: 'same', nodeId: 'n2' })],
+      controlMessages: [pong],
+      exceptionMessages: [failed, agedError],
+    };
+    expect(selectWsMessageSamples(sources, 'business').map((m) => m.type)).not.toContain('pong');
+    expect(selectWsMessageSamples(sources, 'control')).toEqual([pong]);
+    expect(selectWsMessageSamples(sources, 'exceptions')).toEqual([failed, agedError]);
+    expect(selectWsMessageSamples(sources, 'all').map((m) => `${m.nodeId}:${m.id}`)).toEqual([
+      'n1:pong', 'n1:same', 'n2:same', 'n1:failed', 'n1:aged',
+    ]);
+  });
 });
 
 describe('describeWsClient', () => {
@@ -179,6 +217,9 @@ const metricsOf = (overrides: Partial<MonitorWsMetrics> = {}): MonitorWsMetrics 
   totalSent: 0,
   totalRecv: 0,
   messages: [],
+  controlMessages: [],
+  exceptionMessages: [],
+  heartbeats: [],
   nodes: [],
   topics: [],
   connections: [],
@@ -217,6 +258,11 @@ describe('buildWsTopology', () => {
 });
 
 describe('inferWsReconnects', () => {
+  it('同一进程内连接排除，跨节点同 connId 仍能推断重连', () => {
+    const live = connection({ connId: '1', nodeId: 'n2', tokenId: 't1', connectedAt: NOW });
+    expect(inferWsReconnects([live], [disconnect({ connId: '1', nodeId: 'n1', tokenId: 't1', at: NOW - 1000 })])).toMatchObject([{ crossNode: true }]);
+    expect(inferWsReconnects([live], [disconnect({ connId: '1', nodeId: 'n2', tokenId: 't1', at: NOW - 1000 })])).toEqual([]);
+  });
   it('同 token 窗口内配对为重连并按断开时间倒序；超窗与同连接排除', () => {
     const out = inferWsReconnects(
       [

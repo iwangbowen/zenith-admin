@@ -332,7 +332,7 @@ export const monitorWsConnectionSchema = z.object({
   nickname: z.string().nullable(),
   ip: z.string().nullable().meta({ description: '握手时采集的客户端 IP（经可信代理链判定）' }),
   userAgent: z.string().nullable().meta({ description: '握手时的 User-Agent 原文（截断 512 字符），前端据此派生浏览器 / 系统 / 端形态' }),
-  lastMessageType: z.string().nullable().meta({ description: '该连接最近一条消息的类型（含收发方向由 lastDirection 给出）' }),
+  lastMessageType: z.string().nullable().meta({ description: '该连接最近一条业务消息的类型，不含 ping / pong；方向由 lastDirection 给出' }),
   lastMessageAt: z.number().nullable(),
   lastDirection: z.enum(['inbound', 'outbound']).nullable(),
   connectedAt: z.number(),
@@ -371,10 +371,25 @@ export const monitorWsMessageSchema = z.object({
   type: z.string(),
   topic: z.string().nullable(),
   bytes: z.int(),
-  success: z.boolean(),
+  success: z.boolean().meta({ description: '本节点帧解析 / 写出是否成功；不代表业务处理结果或客户端已确认收到' }),
 }).meta({ id: 'MonitorWsMessage' });
 
 export type MonitorWsMessage = z.infer<typeof monitorWsMessageSchema>;
+
+/** 在线连接的心跳累计信息，不保存帧载荷、不推断客户端收到 pong 或 RTT。 */
+export const monitorWsHeartbeatSchema = z.object({
+  nodeId: z.string(),
+  connId: z.string(),
+  userId: z.int(),
+  pingCount: z.int().nonnegative().meta({ description: '自连接建立以来收到的 ping 次数' }),
+  pongCount: z.int().nonnegative().meta({ description: '自连接建立以来成功写出的 pong 次数' }),
+  failedCount: z.int().nonnegative(),
+  lastPingAt: z.number().nullable(),
+  lastPongAt: z.number().nullable(),
+  lastFailureAt: z.number().nullable(),
+}).meta({ id: 'MonitorWsHeartbeat' });
+
+export type MonitorWsHeartbeat = z.infer<typeof monitorWsHeartbeatSchema>;
 
 export const monitorWsNodeSchema = z.object({
   nodeId: z.string(),
@@ -444,7 +459,10 @@ export const monitorWsMetricsSchema = z.object({
   totalDisconnects: z.int().meta({ description: '平台级累计断开次数，跨进程求和；不随可见范围过滤' }),
   totalSent: z.int().meta({ description: '平台级累计发送消息数，跨进程求和；不随可见范围过滤（节点重启后计数归零，该值会回退）' }),
   totalRecv: z.int().meta({ description: '平台级累计接收消息数，跨进程求和；不随可见范围过滤（节点重启后计数归零，该值会回退）' }),
-  messages: z.array(monitorWsMessageSchema).meta({ description: '最近业务消息采样（含收发方向与失败标记，不含业务载荷），受限视角只含可见用户的消息' }),
+  messages: z.array(monitorWsMessageSchema).meta({ description: '独立保留最近 200 条非心跳业务消息元数据，受限视角只含可见用户消息，不含业务载荷' }),
+  controlMessages: z.array(monitorWsMessageSchema).meta({ description: '独立保留最近 100 条 ping / pong 元数据，受限视角只含可见用户消息' }),
+  exceptionMessages: z.array(monitorWsMessageSchema).meta({ description: '独立保留最近 100 条解析 / 写出异常，包括失败心跳，受限视角只含可见用户消息' }),
+  heartbeats: z.array(monitorWsHeartbeatSchema).meta({ description: '在线连接的累计心跳摘要，受限视角只含可见用户连接' }),
   nodes: z.array(monitorWsNodeSchema).meta({ description: '按网关节点聚合的连接 / 收发统计，由可见明细现算' }),
   topics: z.array(monitorWsTopicSchema).meta({ description: '按 Topic 聚合的采样消息数与字节数，由可见明细现算' }),
   connections: z.array(monitorWsConnectionSchema).meta({ description: '在线连接明细，受限视角只含可见用户的连接' }),

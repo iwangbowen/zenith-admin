@@ -83,6 +83,55 @@
   min-height: 40px;
   margin-bottom: 16px;
   border-bottom: 1px solid var(--semi-color-border);
+  overflow-x: auto;
+}
+
+.ws-message-flow__summary,
+.ws-message-flow__scopes,
+.ws-message-flow__directions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ws-message-flow__summary {
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.ws-message-flow__summary--secondary {
+  margin-top: 20px;
+  margin-bottom: 8px;
+}
+
+.ws-message-flow__scopes {
+  margin-bottom: 12px;
+}
+
+.ws-message-flow__scopes button {
+  padding: 6px 12px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: var(--semi-border-radius-small);
+  background: transparent;
+  color: var(--semi-color-text-2);
+  cursor: pointer;
+  font: inherit;
+}
+
+.ws-message-flow__scopes button.is-active {
+  color: var(--semi-color-primary);
+  border-color: var(--semi-color-primary);
+  background: var(--semi-color-primary-light-default);
+}
+
+.ws-message-flow__filters {
+  margin-bottom: 12px;
+}
+
+.ws-message-flow__hint {
+  display: block;
+  margin: 8px 0;
 }
 
 .ws-monitor-view-tabs button {

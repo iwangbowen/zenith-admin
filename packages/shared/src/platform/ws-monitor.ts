@@ -3,6 +3,7 @@
  * 服务端快照合并 / 前端监控页 / Mock 共用，禁止在 server 与 web 各写一份「对齐」的实现。
  */
 import { percentOf } from '../core/math';
+import { WS_CONTROL_MESSAGE_TYPES } from './constants';
 import type {
   MonitorWsConnection,
   MonitorWsDisconnect,
@@ -59,7 +60,7 @@ export function statWsTopicDirections(messages: MonitorWsMessage[]): WsTopicDire
 }
 
 export interface WsHealthSummary {
-  /** 消息采样成功率（采样为空时为 null，由调用方渲染占位） */
+  /** 非心跳采样的本地处理成功率（采样为空时为 null） */
   successRate: number | null;
   idleCount: number;
   /** 空闲占比（无在线连接时为 null） */
@@ -77,10 +78,11 @@ export function summarizeWsHealth(
   now: number = Date.now(),
 ): WsHealthSummary {
   const idleCount = connections.filter((c) => !isWsConnectionActive(c.lastActivityAt, now)).length;
-  const succeeded = messages.filter((m) => m.success).length;
+  const business = messages.filter((message) => !isWsControlMessage(message));
+  const succeeded = business.filter((message) => message.success).length;
   const totalDurationSec = connections.reduce((sum, c) => sum + Math.max(0, (now - c.connectedAt) / 1000), 0);
   return {
-    successRate: percentOf(succeeded, messages.length),
+    successRate: percentOf(succeeded, business.length),
     idleCount,
     idleRatio: percentOf(idleCount, connections.length),
     avgConnsPerUser: currentUsers > 0
@@ -90,11 +92,35 @@ export function summarizeWsHealth(
   };
 }
 
-/** WebSocket 控制帧不代表业务投递，不进入 Topic / 拓扑关系统计。 */
-export const WS_CONTROL_MESSAGE_TYPES = ['ping', 'pong'] as const;
-
 export function isWsControlMessage(message: Pick<MonitorWsMessage, 'type'>): boolean {
   return (WS_CONTROL_MESSAGE_TYPES as readonly string[]).includes(message.type);
+}
+
+/** 异常采样独立保留；格式无效或缺少类型的入站帧也属于异常。 */
+export function isWsMessageException(message: Pick<MonitorWsMessage, 'type' | 'success'>): boolean {
+  return !message.success || message.type === 'invalid' || message.type === 'unknown';
+}
+
+type WsMessageSampleSources = Pick<MonitorWsMetrics, 'messages' | 'controlMessages' | 'exceptionMessages'>;
+
+/** 按时间合并独立采样窗口；同一异常可能同时出现在业务或心跳窗口，仅展示一次。 */
+export function selectWsMessageSamples(
+  sources: WsMessageSampleSources,
+  scope: 'business' | 'exceptions' | 'all' | 'control',
+): MonitorWsMessage[] {
+  let candidates: MonitorWsMessage[];
+  switch (scope) {
+    case 'all': candidates = [...sources.messages, ...sources.controlMessages, ...sources.exceptionMessages]; break;
+    case 'business': candidates = sources.messages.filter((message) => !isWsControlMessage(message)); break;
+    case 'control': candidates = sources.controlMessages; break;
+    case 'exceptions': candidates = sources.exceptionMessages; break;
+  }
+  const byId = new Map<string, MonitorWsMessage>();
+  for (const message of candidates) {
+    // nodeId 一并参与，旧节点镜像中相同的进程内序号也不会互相覆盖。
+    byId.set(`${message.nodeId}:${message.id}`, message);
+  }
+  return [...byId.values()].sort((a, b) => b.at - a.at || a.nodeId.localeCompare(b.nodeId) || b.id.localeCompare(a.id, undefined, { numeric: true }));
 }
 
 export type WsClientKind = 'desktop' | 'mobile' | 'web' | 'unknown';
@@ -358,7 +384,7 @@ export function inferWsReconnects(
   const out: WsReconnectLink[] = [];
   for (const c of connections) {
     const d = latestByToken.get(c.tokenId);
-    if (!d || d.connId === c.connId) continue;
+    if (!d || (d.connId === c.connId && d.nodeId === c.nodeId)) continue;
     if (Math.abs(c.connectedAt - d.at) > windowMs) continue;
     const first = connections.find((x) => x.userId === c.userId);
     out.push({
