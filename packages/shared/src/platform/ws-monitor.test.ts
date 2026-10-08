@@ -224,6 +224,8 @@ const metricsOf = (overrides: Partial<MonitorWsMetrics> = {}): MonitorWsMetrics 
   topics: [],
   connections: [],
   recentDisconnects: [],
+  tenants: [],
+  fanout: { published: 0, publishFailed: 0, delivered: 0, dropped: 0, subscribedNodes: 0, degradedNodes: 0, nodes: [] },
   ...overrides,
 });
 

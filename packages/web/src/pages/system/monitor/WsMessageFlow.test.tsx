@@ -24,6 +24,7 @@ const metrics: MonitorWsMetrics = {
   exceptionMessages: [failedPong, message('old', 'invalid', false)],
   heartbeats: [{ nodeId: 'node-1', connId: '1', userId: 1, pingCount: 500, pongCount: 499, failedCount: 1, lastPingAt: 1_700_000_000_000, lastPongAt: 1_700_000_000_000, lastFailureAt: 1_700_000_000_000 }],
   connections: [], recentDisconnects: [], nodes: [], topics: [],
+  tenants: [],
   fanout: { published: 0, publishFailed: 0, delivered: 0, dropped: 0, subscribedNodes: 0, degradedNodes: 0, nodes: [] },
 };
 
@@ -44,7 +45,11 @@ describe('WebSocket 消息流', () => {
   it('心跳直接展示原始 ping / pong，连接摘要作为辅助信息', () => {
     render(<WsMessageFlow metrics={metrics} refreshing={false} onRefresh={vi.fn()} />);
     fireEvent.click(screen.getByRole('tab', { name: '心跳（2）' }));
-    expect(screen.getByTestId('samples')).toHaveTextContent('心跳 1 500');
+    const tables = screen.getAllByTestId('samples');
+    expect(tables).toHaveLength(2);
+    expect(tables[0]).toHaveTextContent('ping');
+    expect(tables[0]).toHaveTextContent('pong');
+    expect(tables[1]).toHaveTextContent('心跳 1 500');
     expect(screen.getByText('ping', { exact: true })).toBeInTheDocument();
     expect(screen.getByText('pong', { exact: true })).toBeInTheDocument();
     expect(screen.getByText('在线连接心跳摘要（1 / 1）')).toBeInTheDocument();
