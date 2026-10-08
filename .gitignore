@@ -34,3 +34,5 @@ release_artifacts/
 .freebuff/
 
 .tmp/
+
+output/
