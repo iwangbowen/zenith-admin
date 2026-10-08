@@ -26,6 +26,7 @@
   npm 12 正确应用工作区中的 Mastra / Vitest peer override，避免旧版 npm 的依赖冲突或漏装。
 - **安装与打包策略统一**：CI、Pages、Release 和 Docker 使用 npm 12.2.0，根 `allowScripts` 显式允许所需的安装脚本；
   CI 缓存纳入 npm 版本与安装策略，服务端部署包携带 `engines`、`overrides` 和 `allowScripts`。
+  锁文件统一使用官方 npm 下载地址，保留原完整性校验值，避免不同环境将镜像地址判为远程包并拒绝安装。
 - **密码哈希兼容**：适配 bcrypt 2 的 `{ cost }` 参数，保持哈希成本 10；
   使用升级前固定样本覆盖普通密码、超过 72 字节的 UTF-8 密码和含 NUL 的密码，存量密码继续有效。
 
