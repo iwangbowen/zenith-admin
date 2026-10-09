@@ -37,9 +37,9 @@ export function DriveUploadQueue({ items, activeCount, conflict, onCancel, onCle
         closeOnEsc
         onCancel={() => conflict?.resolve(null)}
         footer={(
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <Checkbox checked={applyAll} onChange={(e) => setApplyAll(!!e.target.checked)}>对本批次其余冲突应用相同选择</Checkbox>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <Button type="tertiary" onClick={() => conflict?.resolve(null)}>跳过</Button>
               <Button onClick={() => conflict?.resolve({ policy: 'version', applyAll })}>覆盖为新版本</Button>
               <Button type="primary" theme="solid" onClick={() => conflict?.resolve({ policy: 'rename', applyAll })}>保留两者</Button>
