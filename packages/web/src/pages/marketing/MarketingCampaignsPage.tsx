@@ -105,17 +105,16 @@ export default function MarketingCampaignsPage() {
   const columns: ColumnProps<MarketingCampaign>[] = [
     { title: '活动名称', dataIndex: 'name', minWidth: 200 },
     {
-      title: '活动时间', width: 200,
+      title: '活动时间', width: 320,
       render: (_: unknown, r: MarketingCampaign) => (
-        <div>
-          <div>{r.startAt}</div>
-          <Text type="tertiary" size="small">至 {r.endAt}</Text>
-        </div>
+        <span style={{ whiteSpace: 'nowrap' }}>{r.startAt} <Text type="tertiary" size="small">至 {r.endAt}</Text></span>
       ),
     },
     {
-      title: '每人次数', width: 110, align: 'right',
-      render: (_: unknown, r: MarketingCampaign) => `${r.perMemberLimit} 次${r.dailyPerMemberLimit ? ` / 日限 ${r.dailyPerMemberLimit}` : ''}`,
+      title: '每人次数', width: 140, align: 'right',
+      render: (_: unknown, r: MarketingCampaign) => (
+        <span style={{ whiteSpace: 'nowrap' }}>{r.perMemberLimit} 次{r.dailyPerMemberLimit ? ` / 日限 ${r.dailyPerMemberLimit}` : ''}</span>
+      ),
     },
     { title: '参与', dataIndex: 'participationCount', width: 80, align: 'right' },
     { title: '中奖', dataIndex: 'awardCount', width: 80, align: 'right' },
