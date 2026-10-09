@@ -49,22 +49,18 @@ export default function MarketingPrizesDrawer({ campaign, onClose }: MarketingPr
         : updateMutation.mutateAsync({ params: { campaignId: campaignId!, prizeId: id }, body: values })),
       isPending: createMutation.isPending || updateMutation.isPending,
     },
-    defaults: () => {
-      setPrizeType('points');
-      return { prizeType: 'points', stock: 100, weight: 10, sort: 0 };
-    },
-    toValues: (r) => {
-      setPrizeType(r.prizeType);
-      return {
-        name: r.name,
-        prizeType: r.prizeType,
-        points: r.points ?? undefined,
-        couponId: r.couponId ?? undefined,
-        stock: r.totalStock,
-        weight: r.weight,
-        sort: r.sort,
-      };
-    },
+    // toValues / defaults 必须保持纯函数：useEditModal 在 useMemo 里调用它们，
+    // 渲染期 setState 会触发无限重渲染。类型联动状态只在打开入口与下拉 onChange 处同步
+    defaults: () => ({ prizeType: 'points', stock: 100, weight: 10, sort: 0 }),
+    toValues: (r) => ({
+      name: r.name,
+      prizeType: r.prizeType,
+      points: r.points ?? undefined,
+      couponId: r.couponId ?? undefined,
+      stock: r.totalStock,
+      weight: r.weight,
+      sort: r.sort,
+    }),
     beforeSave: (values) => ({
       name: values.name ?? '',
       prizeType: values.prizeType ?? prizeType,
@@ -105,7 +101,7 @@ export default function MarketingPrizesDrawer({ campaign, onClose }: MarketingPr
       width: 150,
       desktopInlineKeys: ['edit', 'delete'],
       actions: (record) => canEdit ? [
-        { key: 'edit', label: '编辑', onClick: () => { modal.openEdit(record); } },
+        { key: 'edit', label: '编辑', onClick: () => { setPrizeType(record.prizeType); modal.openEdit(record); } },
         // eslint-disable-next-line no-restricted-syntax -- 按权限条件拼装的动作数组，保留 createOperationColumn
         deleteAction({
           disabledReason: campaign?.status === 'published' ? '进行中不可删' : undefined,
@@ -129,7 +125,7 @@ export default function MarketingPrizesDrawer({ campaign, onClose }: MarketingPr
       <div style={{ display: 'grid', gap: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Text type="tertiary">按权重抽取；「谢谢参与」不占库存。中奖后积分/优惠券自动发放，实物线下发放。</Text>
-          {canEdit && <CreateButton onClick={modal.openCreate}>新增奖品</CreateButton>}
+          {canEdit && <CreateButton onClick={() => { setPrizeType('points'); modal.openCreate(); }}>新增奖品</CreateButton>}
         </div>
         <ConfigurableTable<MarketingPrize>
           columns={columns}
