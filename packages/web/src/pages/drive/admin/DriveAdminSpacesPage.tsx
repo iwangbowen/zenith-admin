@@ -158,16 +158,16 @@ export default function DriveAdminSpacesPage() {
     driveSpaceDefaultRoleColumn,
     { title: '成员 / 节点', width: 110, render: (_: unknown, s: DriveSpace) => <span className="drive-nowrap">{`${s.memberCount ?? 0} / ${s.nodeCount ?? 0}`}</span> },
     driveSpaceUsageColumn({ width: 240, customQuotaMark: true }),
-    { title: '趋势（30 天）', width: 150, render: (_: unknown, s: DriveSpace) => {
+    { title: '趋势（30 天）', width: 200, render: (_: unknown, s: DriveSpace) => {
       if (s.dailyGrowthBytes === null || s.dailyGrowthBytes === undefined) return EMPTY_PLACEHOLDER;
       const urgent = s.daysUntilFull !== null && s.daysUntilFull !== undefined && s.daysUntilFull <= 30;
       return (
-        <div className="drive-nowrap" style={{ fontSize: 12, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span>日增 {s.dailyGrowthBytes > 0 ? formatBytes(s.dailyGrowthBytes) : '0 B'}</span>
+        <span className="drive-nowrap" style={{ fontSize: 12 }}>
+          日增 {s.dailyGrowthBytes > 0 ? formatBytes(s.dailyGrowthBytes) : '0 B'}
           {s.daysUntilFull !== null && s.daysUntilFull !== undefined && (
-            <Typography.Text type={urgent ? 'danger' : 'tertiary'} size="small">预计 {s.daysUntilFull} 天用满</Typography.Text>
+            <Typography.Text type={urgent ? 'danger' : 'tertiary'} size="small"> · 预计 {s.daysUntilFull} 天用满</Typography.Text>
           )}
-        </div>
+        </span>
       );
     } },
     { title: '状态', dataIndex: 'status', width: 130, fixed: 'right', render: (v: string, s: DriveSpace) => (
