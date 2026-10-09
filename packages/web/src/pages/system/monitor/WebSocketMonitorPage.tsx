@@ -6,7 +6,7 @@ import { useMonitorWsMetrics } from '@/hooks/queries/monitor';
 import { usePagination } from '@/hooks/usePagination';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import DateTimeText from '@/components/DateTimeText';
-import { EMPTY_PLACEHOLDER, dateTimeColumn } from '@/utils/table-columns';
+import { EMPTY_PLACEHOLDER, dateTimeColumn, overflowTagColumn } from '@/utils/table-columns';
 import { copyTextWithToast } from '@/utils/clipboard';
 import { formatSecondsHuman } from '@/utils/format';
 import { useNowTick } from '@/hooks/useNowTick';
@@ -415,23 +415,23 @@ export default function WebSocketMonitorPage() {
         return `${record.lastDirection === 'inbound' ? '入' : '出'} · ${record.lastMessageType}${ago}`;
       },
     },
-    {
+    overflowTagColumn<MonitorWsConnection>({
       title: '多端',
       dataIndex: 'presence',
-      key: 'presence',
       width: 130,
-      render: (_: unknown, record: MonitorWsConnection) => {
+      contentWidth: 98,
+      getItems: (_: unknown, record: MonitorWsConnection) => {
         const tokenCount = siblingCounts.byToken.get(record.tokenId) ?? 0;
         const userCount = siblingCounts.byUser.get(record.userId) ?? 0;
-        if (tokenCount <= 1 && userCount <= 1) return <Text type="tertiary" size="small">单端</Text>;
-        return (
-          <span className="ws-monitor-badges">
-            {tokenCount > 1 && <Tag color="blue" size="small">{tokenCount} 标签页</Tag>}
-            {userCount > 1 && <Tag color="violet" size="small">{userCount} 连接</Tag>}
-          </span>
-        );
+        const items: { key: string; label: string; color: 'blue' | 'violet' }[] = [];
+        if (tokenCount > 1) items.push({ key: 'token', label: `${tokenCount} 标签页`, color: 'blue' });
+        if (userCount > 1) items.push({ key: 'user', label: `${userCount} 连接`, color: 'violet' });
+        return items;
       },
-    },
+      tagSize: 'small',
+      popoverWidth: 200,
+      empty: <Text type="tertiary" size="small">单端</Text>,
+    }),
     { title: '状态', dataIndex: 'connectionStatus', key: 'connectionStatus', width: 80, render: (_: unknown, record: MonitorWsConnection) => <StatusTag status={toStatus(record, now)} /> },
     dateTimeColumn('建立时间', 'connectedAt'),
     dateTimeColumn('最近活动', 'lastActivityAt'),

@@ -226,12 +226,6 @@
   width: 190px;
 }
 
-.ws-monitor-badges {
-  display: inline-flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
 .ws-monitor-reasons {
   display: flex;
   flex-wrap: wrap;
