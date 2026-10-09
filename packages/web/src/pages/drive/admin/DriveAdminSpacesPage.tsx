@@ -157,7 +157,7 @@ export default function DriveAdminSpacesPage() {
     driveSpaceOwnerColumn({ orphanTag: true }),
     driveSpaceDefaultRoleColumn,
     { title: '成员 / 节点', width: 110, render: (_: unknown, s: DriveSpace) => <span className="drive-nowrap">{`${s.memberCount ?? 0} / ${s.nodeCount ?? 0}`}</span> },
-    driveSpaceUsageColumn({ width: 200, customQuotaMark: true }),
+    driveSpaceUsageColumn({ width: 240, customQuotaMark: true }),
     { title: '趋势（30 天）', width: 150, render: (_: unknown, s: DriveSpace) => {
       if (s.dailyGrowthBytes === null || s.dailyGrowthBytes === undefined) return EMPTY_PLACEHOLDER;
       const urgent = s.daysUntilFull !== null && s.daysUntilFull !== undefined && s.daysUntilFull <= 30;

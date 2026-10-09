@@ -172,7 +172,7 @@ export default function DriveSpacesPage() {
     { title: '我的角色', dataIndex: 'myRole', width: 90, render: (v: DriveRole | null | undefined) => (v ? DRIVE_ROLE_LABELS[v] : EMPTY_PLACEHOLDER) },
     driveSpaceDefaultRoleColumn,
     { title: '成员', dataIndex: 'memberCount', width: 70, render: (v?: number) => v ?? EMPTY_PLACEHOLDER },
-    driveSpaceUsageColumn({ width: 170 }),
+    driveSpaceUsageColumn({ width: 210 }),
     { title: '状态', dataIndex: 'status', width: 110, fixed: 'right', render: (v: string, s: DriveSpace) => (
       s.archivedAt ? <Tag size="small" color="grey">已归档 · 只读</Tag> : renderEnabledStatusTag(v)
     ) },
