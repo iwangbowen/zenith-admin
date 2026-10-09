@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Col, Form, Row, SideSheet, Tag, Typography } from '@douyinfe/semi-ui';
+import { Form, SideSheet, Tag, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { deleteAction, listTableProps } from '@/components/list-page';
@@ -154,21 +154,15 @@ export default function MarketingPrizesDrawer({ campaign, onClose }: MarketingPr
             rules={[{ required: true, message: '请选择优惠券' }]}
           />
         )}
-        <Row gutter={16}>
-          {prizeType !== 'none' && (
-            <Col span={12}>
-              <Form.InputNumber field="stock" label="库存" style={{ width: '100%' }} min={0}
-                rules={[{ required: true, message: '请填写库存' }]} />
-            </Col>
-          )}
-          <Col span={12}>
-            <Form.InputNumber
-              field="weight" label="权重" style={{ width: '100%' }} min={1}
-              extraText="数值越大越易抽中，占比 = 权重 / 全部奖品权重和"
-              rules={[{ required: true, message: '请填写权重' }]}
-            />
-          </Col>
-        </Row>
+        {prizeType !== 'none' && (
+          <Form.InputNumber field="stock" label="库存" style={{ width: '100%' }} min={0}
+            rules={[{ required: true, message: '请填写库存' }]} />
+        )}
+        <Form.InputNumber
+          field="weight" label="权重" style={{ width: '100%' }} min={1}
+          extraText="数值越大越易抽中，占比 = 权重 / 全部奖品权重和"
+          rules={[{ required: true, message: '请填写权重' }]}
+        />
       </EditFormModal>
     </SideSheet>
   );
