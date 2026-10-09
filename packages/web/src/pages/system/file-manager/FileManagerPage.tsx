@@ -19,7 +19,8 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, ImagePreview, Progress, Spin, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { Button, ImagePreview, Spin, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { UploadQueuePanel } from '@/components/UploadQueuePanel';
 import { FolderOpen, Home, UploadCloud } from 'lucide-react';
 import { useTerminalExtract, useTerminalFileOperation, useTerminalSearch } from '@/hooks/queries/terminal-files';
 import FilePreviewModal from '@/components/FilePreviewModal';
@@ -396,26 +397,12 @@ function LocalFileManagerPage() {
                   <Typography.Text type="tertiary" size="small">{currentPath}</Typography.Text>
                 </div>
               )}
-              {upload.uploading.length > 0 && (
-                <div className="fm-upload-progress">
-                  <Typography.Text size="small" strong>
-                    上传中（{upload.uploading.filter((u) => u.progress >= 100).length}/{upload.uploading.length}）
-                  </Typography.Text>
-                  {upload.uploading.map((u) => (
-                    <div key={u.name} style={{ marginTop: 4 }}>
-                      <Typography.Text size="small" ellipsis style={{ display: 'block' }}>{u.name}</Typography.Text>
-                      <Progress
-                        percent={Math.min(100, u.progress)}
-                        size="small"
-                        showInfo={false}
-                        strokeWidth={4}
-                        style={{ marginTop: 3 }}
-                        aria-label={`${u.name} 上传进度`}
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
+              <UploadQueuePanel
+                items={upload.uploading.map((u) => ({ id: u.id, name: u.name, status: u.status, percent: u.progress, error: u.error }))}
+                activeCount={upload.activeCount}
+                onCancel={upload.cancelUpload}
+                onClear={upload.clearFinished}
+              />
             </div>
           </MasterDetailLayout.Body>
 

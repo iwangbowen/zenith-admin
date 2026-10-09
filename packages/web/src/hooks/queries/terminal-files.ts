@@ -149,14 +149,15 @@ interface UploadVariables {
   formData: FormData;
   onProgress?: (percent: number) => void;
   silent?: boolean;
+  signal?: AbortSignal;
 }
 
 /** 上传带进度，走 XHR 表单通道而非 api()（H5：带进度回调的上传） */
 export function useHostFileUpload(hostId: number) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ formData, onProgress }: UploadVariables) =>
-      request.postForm<OutputOf<typeof hostFileContract.upload>>(urlOf(hostFileContract.upload, { params: { hostId } }), formData, { onProgress }).then(unwrap),
+    mutationFn: ({ formData, onProgress, signal }: UploadVariables) =>
+      request.postForm<OutputOf<typeof hostFileContract.upload>>(urlOf(hostFileContract.upload, { params: { hostId } }), formData, { onProgress, signal }).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: terminalFileKeys.hostBrowsePrefix(hostId) }),
   });
 }
@@ -342,8 +343,8 @@ export function useLocalFileMutation() {
 export function useLocalFileUpload() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ formData, onProgress, silent }: UploadVariables) =>
-      request.postForm<OutputOf<typeof terminalFileContract.upload>>(urlOf(terminalFileContract.upload), formData, { onProgress, silent }).then(unwrap),
+    mutationFn: ({ formData, onProgress, silent, signal }: UploadVariables) =>
+      request.postForm<OutputOf<typeof terminalFileContract.upload>>(urlOf(terminalFileContract.upload), formData, { onProgress, silent, signal }).then(unwrap),
     onSuccess: () => qc.invalidateQueries({ queryKey: terminalFileKeys.localBrowsePrefix }),
   });
 }

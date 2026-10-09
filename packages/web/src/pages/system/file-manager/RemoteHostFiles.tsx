@@ -4,6 +4,7 @@ import { abortSubmit } from '@/lib/abort-submit';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { ArrowUp, FolderPlus, RefreshCw, Upload, FilePlus } from 'lucide-react';
 import AppModal from '@/components/AppModal';
+import { UploadQueuePanel, type UploadQueueItem } from '@/components/UploadQueuePanel';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
 import PageLoading from '@/components/PageLoading';
@@ -42,6 +43,41 @@ export function RemoteHostFiles({ hostId }: Readonly<{ hostId: number }>) {
   const mutation = useHostFileMutation(hostId);
   const uploadMutation = useHostFileUpload(hostId);
   const uploadRef = useRef<HTMLInputElement>(null);
+  const [uploadItems, setUploadItems] = useState<UploadQueueItem[]>([]);
+  const uploadControllerRef = useRef<AbortController | null>(null);
+
+  const handleRemoteUpload = (file: File) => {
+    if (!currentPath) return;
+    const controller = new AbortController();
+    uploadControllerRef.current = controller;
+    const id = crypto.randomUUID();
+    setUploadItems([{ id, name: file.name, size: file.size, status: 'uploading', percent: 0 }]);
+    const formData = new FormData();
+    formData.append('path', currentPath);
+    formData.append('file', file);
+    void uploadMutation.mutateAsync({
+      formData,
+      signal: controller.signal,
+      onProgress: (pct) => setUploadItems((prev) => prev.map((it) => (it.id === id ? { ...it, percent: pct } : it))),
+    }).then(
+      () => {
+        setUploadItems((prev) => prev.map((it) => (it.id === id ? { ...it, percent: 100, status: 'success' } : it)));
+        Toast.success('上传成功');
+      },
+      (error: unknown) => {
+        setUploadItems((prev) => prev.map((it) => (it.id === id
+          ? (controller.signal.aborted
+            ? { ...it, status: 'cancelled' }
+            : { ...it, status: 'error', error: error instanceof Error ? error.message : '上传失败' })
+          : it)));
+      },
+    );
+  };
+
+  const handleCancelRemoteUpload = (id: string) => {
+    uploadControllerRef.current?.abort();
+    setUploadItems((prev) => prev.map((it) => (it.id === id && it.status === 'uploading' ? { ...it, status: 'cancelled' } : it)));
+  };
   const [dialog, setDialog] = useState<ActionDialog>(null);
   const [dialogValue, setDialogValue] = useState('');
   const [modeValue, setModeValue] = useState(0o644);
@@ -189,13 +225,12 @@ export function RemoteHostFiles({ hostId }: Readonly<{ hostId: number }>) {
             const file = event.target.files?.[0];
             event.target.value = '';
             if (!file) return;
-            const formData = new FormData();
-            formData.append('path', currentPath);
-            formData.append('file', file);
-            void uploadMutation.mutateAsync({ formData }).then(() => Toast.success('上传成功'));
+            handleRemoteUpload(file);
           }}
         />
       </Space>
+
+      <UploadQueuePanel items={uploadItems} onCancel={handleCancelRemoteUpload} onClear={() => setUploadItems([])} />
 
       <ConfigurableTable
         bordered

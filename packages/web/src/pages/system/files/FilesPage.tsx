@@ -1,16 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { AppModal } from '@/components/AppModal';
 import { FileDetailModal } from '@/components/FileDetailModal';
-import { Button, Checkbox, List, Pagination, Progress, Space, Tabs, TabPane, Toast, Tooltip, Typography } from '@douyinfe/semi-ui';
-import { Plus, FolderDown, LayoutGrid, List as ListIcon, CheckCircle2, XCircle, X } from 'lucide-react';
+import { UploadQueuePanel, type UploadQueueItem } from '@/components/UploadQueuePanel';
+import { Button, Checkbox, List, Pagination, Space, Tabs, TabPane, Toast, Typography } from '@douyinfe/semi-ui';
+import { Plus, FolderDown, LayoutGrid, List as ListIcon, X } from 'lucide-react';
 import type { ManagedFile } from '@zenith/shared/platform';
 import { FILE_STORAGE_PROVIDERS, FILE_STORAGE_PROVIDER_OPTIONS, FILE_TYPE_FILTERS, FILE_TYPE_FILTER_OPTIONS, fileContract } from '@zenith/shared/platform';
 import { enumValueOf } from '@zenith/shared/core';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { formatDateTimeRangeForApi } from '@/utils/date';
 import { downloadBlob } from '@/utils/download';
-import { getFileTypeIcon, fetchManagedFileBlob, getFileFullUrl, canPreviewFile } from '@/utils/file-utils';
+import { fetchManagedFileBlob, getFileFullUrl, canPreviewFile } from '@/utils/file-utils';
 import { buildManagedFileActions } from '@/utils/managed-file-actions';
 import { chunkedUpload, CHUNKED_UPLOAD_CANCELLED } from '@/utils/chunked-upload';
 import { FilePreviewLayer } from '@/components/FilePreviewLayer';
@@ -49,13 +49,6 @@ const FILE_LIST_PAGE_SIZE = 20;
 const FILE_GRID_PAGE_SIZE = 60;
 const FILE_LIST_PAGE_SIZE_OPTIONS = [20, 50, 100];
 const FILE_GRID_PAGE_SIZE_OPTIONS = [60, 120, 240];
-
-function getProgressStroke(status: UploadItem['status']): string | undefined {
-  if (status === 'success') return 'var(--semi-color-success)';
-  if (status === 'error') return 'var(--semi-color-danger)';
-  if (status === 'cancelled') return 'var(--semi-color-disabled-text)';
-  return undefined;
-}
 
 function uploadSingleFile(
   file: File,
@@ -126,8 +119,9 @@ export default function FilesPage() {
   /** 区分"页面内点击切换"与"偏好面板外部修改"，防止双重请求 */
   const isInternalToggleRef = useRef(false);
   const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
-  const [uploadProgressVisible, setUploadProgressVisible] = useState(false);
   const uploadControllersRef = useRef(new Map<string, AbortController>());
+  /** 本批上传的完成提示只发一次（面板常驻不再靠关闭弹窗去重） */
+  const uploadNotifiedRef = useRef(false);
   const {
     bind, bindKeyword, submittedParams,
     handleSearch, handleReset,
@@ -219,19 +213,25 @@ export default function FilesPage() {
   }, [detailQuery.data]);
 
   useEffect(() => {
-    if (uploadProgressVisible && uploadItems.length > 0 && uploadItems.every(isUploadFinished)) {
+    if (uploadItems.length > 0 && uploadItems.every(isUploadFinished) && !uploadNotifiedRef.current) {
+      uploadNotifiedRef.current = true;
       const successCount = uploadItems.filter(item => item.status === 'success').length;
-      const timer = setTimeout(() => {
-        setUploadProgressVisible(false);
-        if (successCount > 0) {
-          Toast.success(successCount > 1 ? `成功上传 ${successCount} 个文件` : '文件上传成功');
-          setPage(1);
-          invalidateAfterFilesAdded(queryClient);
-        }
-      }, 1000);
-      return () => clearTimeout(timer);
+      if (successCount > 0) {
+        Toast.success(successCount > 1 ? `成功上传 ${successCount} 个文件` : '文件上传成功');
+        setPage(1);
+        invalidateAfterFilesAdded(queryClient);
+      }
     }
-  }, [uploadItems, uploadProgressVisible, queryClient, setPage]);
+  }, [uploadItems, queryClient, setPage]);
+
+  const queueItems: UploadQueueItem[] = useMemo(() => uploadItems.map((item) => ({
+    id: item.uid,
+    name: item.name,
+    size: item.size,
+    status: item.status,
+    percent: item.progress,
+    error: item.errorMsg,
+  })), [uploadItems]);
 
   const handlePickFile = () => {
     fileInputRef.current?.click();
@@ -243,8 +243,8 @@ export default function FilesPage() {
     if (files.length === 0) return;
     const items: UploadItem[] = files.map((f, i) => ({ uid: `${f.name}-${Date.now()}-${i}`, name: f.name, size: f.size, progress: 0, status: 'pending' as const }));
     uploadControllersRef.current.clear();
+    uploadNotifiedRef.current = false;
     setUploadItems(items);
-    setUploadProgressVisible(true);
     for (const [i, file] of files.entries()) {
       const controller = new AbortController();
       uploadControllersRef.current.set(items[i].uid, controller);
@@ -392,7 +392,7 @@ export default function FilesPage() {
           <Button
             type="primary"
             icon={<Plus size={14} />}
-            loading={uploadProgressVisible && uploadItems.some(item => item.status === 'uploading' || item.status === 'pending')}
+            loading={uploadItems.some(item => item.status === 'uploading' || item.status === 'pending')}
             disabled={!defaultConfig}
             onClick={handlePickFile}
           >
@@ -447,72 +447,7 @@ export default function FilesPage() {
         </Space>}
       </div>
 
-      <AppModal
-        title="上传进度"
-        visible={uploadProgressVisible}
-        onCancel={() => setUploadProgressVisible(false)}
-        footer={
-          uploadItems.every(isUploadFinished)
-            ? <Button type="primary" onClick={() => setUploadProgressVisible(false)}>关闭</Button>
-            : null
-        }
-        width={480}
-        keepDOM={false}
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '4px 0' }}>
-          {uploadItems.map((item) => (
-            <div key={item.uid}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                <Space spacing={6} style={{ overflow: 'hidden', flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                    {getFileTypeIcon(undefined, 14, item.name)}
-                  </span>
-                  <Typography.Text ellipsis={{ showTooltip: true }} style={{ fontSize: 13, flex: 1, minWidth: 0 }}>
-                    {item.name}
-                  </Typography.Text>
-                </Space>
-                <Space spacing={6} style={{ flexShrink: 0, marginLeft: 8 }}>
-                  <Typography.Text type="tertiary" size="small">{formatBytes(item.size)}</Typography.Text>
-                  {item.status === 'uploading' && (
-                    <Typography.Text size="small">{item.progress}%</Typography.Text>
-                  )}
-                  {item.status === 'success' && (
-                    <CheckCircle2 size={14} color="var(--semi-color-success)" />
-                  )}
-                  {item.status === 'error' && (
-                    <Tooltip content={item.errorMsg}>
-                      <XCircle size={14} color="var(--semi-color-danger)" />
-                    </Tooltip>
-                  )}
-                  {item.status === 'cancelled' && (
-                    <Typography.Text type="tertiary" size="small">已取消</Typography.Text>
-                  )}
-                  {!isUploadFinished(item) && (
-                    <Tooltip content="取消上传">
-                      <Button
-                        theme="borderless"
-                        type="tertiary"
-                        size="small"
-                        icon={<X size={14} />}
-                        aria-label={`取消上传 ${item.name}`}
-                        onClick={() => handleCancelUpload(item.uid)}
-                      />
-                    </Tooltip>
-                  )}
-                </Space>
-              </div>
-              <Progress
-                percent={item.progress}
-                type="line"
-                size="small"
-                stroke={getProgressStroke(item.status)}
-                showInfo={false}
-                style={{ margin: 0 }}
-              />
-            </div>
-          ))}
-        </div>
-      </AppModal>
+      <UploadQueuePanel items={queueItems} onCancel={handleCancelUpload} onClear={() => setUploadItems([])} />
 
       <FilePreviewLayer preview={preview} />
 

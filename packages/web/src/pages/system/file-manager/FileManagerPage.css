@@ -308,17 +308,4 @@
   color: var(--semi-color-text-2);
 }
 
-/* ── 上传进度 ── */
-.fm-upload-progress {
-  position: absolute;
-  bottom: 12px;
-  right: 12px;
-  min-width: 240px;
-  max-width: 320px;
-  background: var(--semi-color-bg-2);
-  border: 1px solid var(--semi-color-border);
-  border-radius: var(--semi-border-radius-medium);
-  padding: 10px 12px;
-  box-shadow: var(--semi-shadow-elevated);
-  z-index: 10;
-}
+/* 上传进度由共享 UploadQueuePanel 承载（见 components/UploadQueuePanel.css） */
