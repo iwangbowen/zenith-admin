@@ -94,11 +94,11 @@ export default function MarketingPrizesDrawer({ campaign, onClose }: MarketingPr
           : r.prizeType === 'physical' ? '线下发放' : EMPTY_PLACEHOLDER,
     },
     {
-      title: '库存（剩余/总量）', width: 140, align: 'right',
+      title: <span style={{ whiteSpace: 'nowrap' }}>库存（剩余/总量）</span>, width: 160, align: 'right',
       render: (_: unknown, r: MarketingPrize) => r.prizeType === 'none' ? '不限' : `${r.stock} / ${r.totalStock}`,
     },
     {
-      title: '权重（中奖率）', width: 130, align: 'right',
+      title: <span style={{ whiteSpace: 'nowrap' }}>权重（中奖率）</span>, width: 150, align: 'right',
       render: (_: unknown, r: MarketingPrize) => `${r.weight}${totalWeight > 0 ? `（${((r.weight / totalWeight) * 100).toFixed(1)}%）` : ''}`,
     },
     createOperationColumn<MarketingPrize>({
