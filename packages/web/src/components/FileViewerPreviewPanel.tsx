@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import FileViewer from '@file-viewer/react';
 import { archiveRenderer } from '@file-viewer/renderer-archive';
 import { presentationRenderer } from '@file-viewer/renderer-presentation';
+import pptxWorkerUrl from '@file-viewer/pptx/worker/pptx.worker.js?url';
 import archiveWorkerUrl from 'libarchive.js/dist/worker-bundle.js?url';
 import archiveWasmUrl from 'libarchive.js/dist/libarchive.wasm?url';
 import { configuredFileViewerRenderers } from 'virtual:file-viewer-renderers';
@@ -50,6 +51,10 @@ export default function FileViewerPreviewPanel({ file, style }: FileViewerPrevie
     docx: {
       worker: true,
       visualPagination: true,
+    },
+    presentation: {
+      workerUrl: pptxWorkerUrl,
+      workerType: 'module',
     },
     spreadsheet: {
       worker: 'auto',
