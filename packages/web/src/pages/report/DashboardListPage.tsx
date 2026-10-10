@@ -321,7 +321,7 @@ export default function DashboardListPage() {
           columns={[
             { title: '名称', dataIndex: 'name', width: 180, render: renderEllipsis },
             { title: '排序', dataIndex: 'sort', width: 80 },
-            { title: '引用仪表盘', dataIndex: 'dashboardCount', width: 100, align: 'right', render: (value: number) => value ?? 0 },
+            { title: '引用仪表盘', dataIndex: 'dashboardCount', width: 120, align: 'right', render: (value: number) => value ?? 0 },
             { title: '备注', dataIndex: 'remark', render: renderEllipsis },
             createOperationColumn<(typeof categories)[number]>({
               width: 120,
