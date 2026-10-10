@@ -12,6 +12,7 @@ import { SensitiveFormInput, SensitiveText } from '@/components/sensitive';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { createdAtColumn, dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
 import { useDictItems } from '@/hooks/useDictItems';
+import { MetricMeter } from '@/components/data-viz/MetricMeter';
 import { useAllTenantPackages } from '@/hooks/queries/tenant-packages';
 import {
   useDeleteTenants,
