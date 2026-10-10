@@ -115,13 +115,15 @@ export default function RatePlansPage() {
           </Col>
         </Row>
         <Row gutter={16}>
-          <Col span={8}>
+          <Col span={12}>
             <Form.InputNumber field="qpsLimit" label="QPS" min={0} style={{ width: '100%' }} extraText="0=不限" rules={[{ required: true, message: '必填' }]} />
           </Col>
-          <Col span={8}>
+          <Col span={12}>
             <Form.InputNumber field="dailyQuota" label="每日配额" min={0} style={{ width: '100%' }} extraText="0=不限" rules={[{ required: true, message: '必填' }]} />
           </Col>
-          <Col span={8}>
+        </Row>
+        <Row gutter={16}>
+          <Col span={12}>
             <Form.InputNumber field="monthlyQuota" label="每月配额" min={0} style={{ width: '100%' }} extraText="0=不限" rules={[{ required: true, message: '必填' }]} />
           </Col>
         </Row>
