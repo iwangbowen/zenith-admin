@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button, Form, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { Copy } from 'lucide-react';
 import { chatBotContract, type ChatWebhook } from '@zenith/shared/chat';
 import { maskSecret } from '@zenith/shared/core';
 import { UserAvatar } from '@/components/UserAvatar';
+import { ImageUploadField } from '@/components/ImageUploadField';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { ListSearchToolbar, useCrudOperationColumn } from '@/components/list-page';
 import { AppModal } from '@/components/AppModal';
@@ -101,6 +102,16 @@ export default function ChatBotsPage() {
     },
   });
   const editingBot = botModal.editing;
+  // 头像上传预览与表单 avatar 字段双向同步：打开弹窗时取记录值，手动改 URL 时跟随更新
+  const [avatarPreview, setAvatarPreview] = useState('');
+  useEffect(() => {
+    if (botModal.visible) setAvatarPreview(editingBot?.avatar ?? '');
+  }, [botModal.visible, editingBot]);
+
+  function handleAvatarUploaded(url: string) {
+    setAvatarPreview(url);
+    botModal.formApi.current?.setValue('avatar', url);
+  }
   const groupConversationsQuery = useChatBotGroupConversations(botModal.visible);
   const groupConversations = useMemo(() => groupConversationsQuery.data ?? [], [groupConversationsQuery.data]);
   const regenerateMutation = useRegenerateChatBotToken();
@@ -208,7 +219,10 @@ export default function ChatBotsPage() {
         {...tableProps}
       />
 
-      <EditFormModal modal={botModal} width={520}>
+      <EditFormModal modal={botModal} width={520} formProps={{ onValueChange: (values) => {
+        const avatar = (values as BotFormValues).avatar;
+        if (typeof avatar === 'string') setAvatarPreview(avatar);
+      } }}>
         <Form.Input field="name" label="名称" placeholder="请输入机器人名称" rules={[{ required: true, message: '请输入机器人名称' }]} />
         <Form.Select
           field="conversationId"
@@ -221,7 +235,10 @@ export default function ChatBotsPage() {
           filter
           style={{ width: '100%' }}
         />
-        <Form.Input field="avatar" label="头像" placeholder="请输入头像 URL（可选）" />
+        <Form.Slot label="头像上传">
+          <ImageUploadField value={avatarPreview} onChange={handleAvatarUploaded} label="头像" />
+        </Form.Slot>
+        <Form.Input field="avatar" label="头像 URL" placeholder="请输入头像 URL（可选），上传后自动回填" />
         <Form.TextArea field="description" label="描述" placeholder="请输入描述（可选）" autosize={{ minRows: 3, maxRows: 5 }} />
         <Form.Switch field="enabled" label="状态" />
       </EditFormModal>
