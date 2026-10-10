@@ -228,7 +228,7 @@ export default function RuleScorecardsPage() {
 
             <Divider align="left" style={{ margin: '14px 0 10px' }}>变量与分段</Divider>
             {editor.variables.map((variable, vi) => (
-              <div key={vi} style={{ border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', padding: 10, marginBottom: 10 }}>
+              <div key={vi} style={{ marginBottom: 10 }}>
                 <div className="auto-grid" style={{ '--auto-grid-cols': 6 } as React.CSSProperties}>
                   <Input prefix="key" size="small" value={variable.key} onChange={(v) => patchVariable(vi, { key: v })} />
                   <Input prefix="名称" size="small" value={variable.label} onChange={(v) => patchVariable(vi, { label: v })} />

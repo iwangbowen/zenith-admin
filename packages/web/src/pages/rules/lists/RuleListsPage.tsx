@@ -187,7 +187,7 @@ export default function RuleListsPage() {
 
       <SideSheet title={`条目管理 · ${itemsRow?.name ?? ''}`} visible={!!itemsRow} onCancel={() => setItemsRow(null)} width={680}>
         <div style={{ display: 'grid', gap: 12 }}>
-          <div style={{ padding: 10, border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)' }}>
+          <div>
             <Text strong size="small">命中测试</Text>
             <Space spacing={8} style={{ marginTop: 6, width: '100%' }}>
               <Input size="small" value={checkValue} onChange={setCheckValue} placeholder="输入要检测的值" style={{ flex: 1 }} onEnterPress={runCheck} />
@@ -195,7 +195,7 @@ export default function RuleListsPage() {
               {checkResult && <Tag color={checkResult.hit ? 'red' : 'green'}>{checkResult.hit ? `命中${TYPE_META[checkResult.listType ?? '']?.text ?? ''}` : '未命中'}</Tag>}
             </Space>
           </div>
-          <div style={{ padding: 10, border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)' }}>
+          <div>
             <Text strong size="small">新增条目</Text>
             <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
               <Input size="small" value={itemForm.value} onChange={(v) => setItemForm((p) => ({ ...p, value: v }))} placeholder="值（必填）" style={{ width: 170 }} />
