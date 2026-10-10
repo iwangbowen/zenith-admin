@@ -28,7 +28,7 @@ import { CreateButton } from '@/components/toolbar-controls';
 import { deleteAction, ListSearchToolbar, useRowSelection } from '@/components/list-page';
 import { DEFAULT_TIMEZONE } from '@/utils/timezones';
 import { useListPage } from '@/hooks/useListPage';
-import { EditFormModal } from '@/components/EditFormModal';
+import { EditFormSheet } from '@/components/EditFormModal';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import SubscriptionRunsView from './SubscriptionRunsView';
 
@@ -190,7 +190,7 @@ export default function SubscriptionsPage() {
         <TabPane tab="投递记录" itemKey="runs"><SubscriptionRunsView active={activeTab === 'runs'} /></TabPane>
       </Tabs>
 
-      <EditFormModal modal={subscriptionModal} width={560} formProps={{ onValueChange: (v: Record<string, unknown>) => {
+      <EditFormSheet modal={subscriptionModal} width={720} formProps={{ onValueChange: (v: Record<string, unknown>) => {
             if (typeof v.cron === 'string') setCronExprValue(v.cron);
             if (Array.isArray(v.channels)) setSelectedChannels(v.channels as string[]);
           } }}>
@@ -212,7 +212,7 @@ export default function SubscriptionsPage() {
         )}
         <Form.Select field="enabled" label="状态" style={{ width: '100%' }} optionList={statusOptions} />
         <Form.TextArea field="remark" label="备注" maxLength={256} autosize={{ minRows: 1, maxRows: 3 }} />
-      </EditFormModal>
+      </EditFormSheet>
 
       <SideSheet
         title={historyTarget ? `订阅历史 · ${historyTarget.dashboardName}` : '订阅历史'}
