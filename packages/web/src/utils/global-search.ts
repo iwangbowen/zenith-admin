@@ -7,6 +7,7 @@ export const GLOBAL_SEARCH_TYPE_LABELS: Record<GlobalSearchType, string> = {
   order: '订单',
   workflow: '流程',
   file: '文件',
+  'managed-file': '系统文件',
   'iot-device': '设备',
   'iot-alarm': '告警',
   'cms-content': 'CMS 内容',

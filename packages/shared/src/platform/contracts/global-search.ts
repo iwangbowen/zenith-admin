@@ -9,6 +9,7 @@ export const globalSearchTypes = [
   'order',
   'workflow',
   'file',
+  'managed-file',
   'iot-device',
   'iot-alarm',
   'cms-content',

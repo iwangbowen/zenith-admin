@@ -12,6 +12,7 @@ import { mockMembers } from '@/mocks/data/members';
 import { mockIotDevices, mockIotAlarms } from '@/mocks/data/iot';
 import { mockWorkflowDefinitions, mockWorkflowInstances, mockWorkflowTasks } from '@/mocks/data/workflow';
 import { mockDriveNodes } from '@/mocks/data/drive';
+import { mockManagedFiles } from '@/mocks/handlers/files';
 import { mockWikiDocs } from '@/mocks/data/wiki';
 import { mockCmsContents } from '@/mocks/data/cms';
 import { mockOperationLogs } from '@/mocks/data/logs';
@@ -320,12 +321,13 @@ export const entityRelationsHandlers = [
   mock(globalSearchContract.search, ({ query, request, ok }) => {
     const session = currentMockSession(request);
     if (!session) return unauthorized('请先登录', { status: 401 });
-    const groups: Array<[GlobalSearchType, Array<{ id: number; title: string; subtitle?: string | null }>]> = [
+    const groups: Array<[GlobalSearchType, Array<{ id: number | string; title: string; subtitle?: string | null }>]> = [
       ['user', mockUsers.map((row) => ({ id: row.id, title: row.nickname || row.username, subtitle: row.username }))],
       ['member', mockMembers.map((row) => ({ id: row.id, title: row.nickname || row.username || `会员 #${row.id}`, subtitle: row.username }))],
       ['order', mockPaymentOrders.map((row) => ({ id: row.id, title: row.orderNo, subtitle: row.subject }))],
       ['workflow', mockWorkflowInstances.map((row) => ({ id: row.id, title: row.title }))],
       ['file', mockDriveNodes.map((row) => ({ id: row.id, title: row.name }))],
+      ['managed-file', mockManagedFiles.map((row) => ({ id: row.id, title: row.originalName, subtitle: row.storageName }))],
       ['iot-device', mockIotDevices.map((row) => ({ id: row.id, title: row.name, subtitle: row.sn }))],
       ['iot-alarm', mockIotAlarms.map((row) => ({ id: row.id, title: row.ruleName, subtitle: row.message }))],
       ['cms-content', mockCmsContents.map((row) => ({ id: row.id, title: row.title }))],
@@ -340,7 +342,9 @@ export const entityRelationsHandlers = [
         && resolveAnchor({ type: SEARCH_TYPE_ENTITY_TYPES[type], key: String(row.id) }, session)).slice(0, query.limit).map((row) => {
         const ref = { type: SEARCH_TYPE_ENTITY_TYPES[type], key: String(row.id) };
         return { type, id: String(row.id), title: row.title, subtitle: row.subtitle, highlights: [], actions: { view: true, download: false },
-          route: entityDetailRoute(ref) ?? `/search?entityType=${encodeURIComponent(ref.type)}&entityKey=${encodeURIComponent(ref.key)}` };
+          route: type === 'managed-file'
+            ? `/system/files?keyword=${encodeURIComponent(row.title)}`
+            : entityDetailRoute(ref) ?? `/search?entityType=${encodeURIComponent(ref.type)}&entityKey=${encodeURIComponent(ref.key)}` };
       });
     });
     return ok({ results, partial: false, failedTypes: [] });

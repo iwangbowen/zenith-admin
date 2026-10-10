@@ -131,6 +131,7 @@ export const SEARCH_TYPE_ENTITY_TYPES = {
   order: 'payment.order',
   workflow: 'workflow.instance',
   file: 'drive.file',
+  'managed-file': 'platform.managed-file',
   'iot-device': 'iot.device',
   'iot-alarm': 'iot.alarm',
   'cms-content': 'cms.content',

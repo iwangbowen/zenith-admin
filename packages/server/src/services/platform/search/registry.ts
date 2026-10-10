@@ -10,6 +10,7 @@ import { userSearchAdapter } from './adapters/user.adapter';
 import { workflowSearchAdapter } from './adapters/workflow.adapter';
 import { iotAlarmSearchAdapter, iotDeviceSearchAdapter } from './adapters/iot.adapter';
 import { driveSearchAdapter } from './adapters/drive.adapter';
+import { managedFileSearchAdapter } from './adapters/managed-file.adapter';
 import { announcementSearchAdapter } from './adapters/announcement.adapter';
 import { cmsContentSearchAdapter } from './adapters/cms.adapter';
 import { wikiDocumentSearchAdapter } from './adapters/wiki.adapter';
@@ -33,6 +34,7 @@ export const globalSearchAdapters: readonly GlobalSearchAdapter[] = [
   iotDeviceSearchAdapter,
   iotAlarmSearchAdapter,
   driveSearchAdapter,
+  managedFileSearchAdapter,
   cmsContentSearchAdapter,
   wikiDocumentSearchAdapter,
   announcementSearchAdapter,

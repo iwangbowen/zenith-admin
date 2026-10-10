@@ -33,6 +33,7 @@ import { copyTextWithToast } from '@/utils/clipboard';
 import './FilesPage.css';
 
 import { useUrlTabState } from '@/hooks/useUrlTabState';
+import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { urlOf } from '@/lib/contract-query';
 import { request } from '@/utils/request';
 import { formatBytes } from '@zenith/shared/core';
@@ -124,8 +125,10 @@ export default function FilesPage() {
   const uploadNotifiedRef = useRef(false);
   const {
     bind, bindKeyword, submittedParams,
-    handleSearch, handleReset,
+    handleSearch, handleReset, applySearch,
   } = useListSearch<SearchParams>({ defaults: defaultSearchParams, listKey: fileKeys.lists });
+  // 全局搜索深链：?keyword= 消费即焚，落到文件列表筛选
+  useListDeepLink(['keyword'], (picked) => applySearch({ ...defaultSearchParams, keyword: picked.keyword ?? '' }));
   const { page, pageSize, setPage, setPageSize, buildPagination } = usePagination({
     pageSize: (preferences.filesViewMode ?? 'list') === 'grid' ? FILE_GRID_PAGE_SIZE : FILE_LIST_PAGE_SIZE,
     pageSizeOpts: FILE_LIST_PAGE_SIZE_OPTIONS,
