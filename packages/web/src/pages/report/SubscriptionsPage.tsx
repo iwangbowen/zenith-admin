@@ -71,7 +71,7 @@ export default function SubscriptionsPage() {
     entityName: '订阅',
     save: saveMutation,
     defaults: { cron: '0 0 9 * * *', timezone: DEFAULT_TIMEZONE, misfirePolicy: 'fire_once', channels: ['inApp'], enabled: 'enabled' },
-    labelWidth: 110,
+    labelWidth: 140,
     toValues: (editing) => ({
       dashboardId: editing.dashboardId,
       cron: editing.cron,
