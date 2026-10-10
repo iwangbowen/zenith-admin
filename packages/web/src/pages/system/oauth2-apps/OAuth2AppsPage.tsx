@@ -378,7 +378,7 @@ export default function OAuth2AppsPage() {
             </Col>
           )}
         </Row>
-        {/* 开放平台：限流套餐 + 签名验签 */}
+        {/* 开放平台：限流套餐 */}
         <Row gutter={16}>
           <Col span={12}>
             <Form.Select
@@ -393,7 +393,10 @@ export default function OAuth2AppsPage() {
               }))}
             />
           </Col>
-          <Col span={12}>
+        </Row>
+        {/* 开放平台：签名通道（单独一行） */}
+        <Row gutter={16}>
+          <Col span={24}>
             <Form.Switch
               field="signEnabled"
               label="AppKey 签名通道"
