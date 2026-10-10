@@ -152,7 +152,7 @@ export default function TaskDemoPage() {
       width: 130,
       render: (value: string) => <Tag color={value === 'demo-batch' ? 'blue' : 'purple'}>{value}</Tag>,
     },
-    { title: '进度', dataIndex: 'processedCount', width: 220, render: (_: number, record: AsyncTask) => <AsyncTaskProgress task={record} /> },
+    { title: '进度', dataIndex: 'processedCount', width: 190, render: (_: number, record: AsyncTask) => <AsyncTaskProgress task={record} noteDisplay="tooltip" /> },
     {
       title: '执行次数',
       align: 'right',

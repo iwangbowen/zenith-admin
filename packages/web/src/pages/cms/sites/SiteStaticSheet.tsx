@@ -31,7 +31,7 @@ function SiteStaticPanel({ site, canBuild }: { site: CmsSite; canBuild: boolean 
 
   const columns: ColumnProps<AsyncTask>[] = [
     { title: '任务', dataIndex: 'title', width: 200, render: renderEllipsis },
-    { title: '进度', width: 230, render: (_: unknown, record) => <AsyncTaskProgress task={record} /> },
+    { title: '进度', width: 190, render: (_: unknown, record) => <AsyncTaskProgress task={record} noteDisplay="tooltip" /> },
     dateTimeColumn('提交时间', 'createdAt'),
     dateTimeColumn('完成时间', 'completedAt'),
   ];

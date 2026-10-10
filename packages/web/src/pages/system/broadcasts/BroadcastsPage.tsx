@@ -172,11 +172,11 @@ export default function BroadcastsPage() {
       ),
     },
     {
-      title: '进度', dataIndex: 'enqueuedCount', width: 180,
+      title: '进度', dataIndex: 'enqueuedCount', width: 190,
       render: (_: unknown, record: BroadcastCampaign) => {
         const task = record.taskId ? tasks.find((t) => t.id === record.taskId) : undefined;
         if (task && (task.status === 'pending' || task.status === 'running')) {
-          return <AsyncTaskProgress task={task} />;
+          return <AsyncTaskProgress task={task} noteDisplay="tooltip" />;
         }
         if (record.totalRecipients === null) return EMPTY_PLACEHOLDER;
         return <Text size="small">{record.enqueuedCount}/{record.totalRecipients} 人</Text>;

@@ -66,7 +66,7 @@ function recordStatusTag(status: ReportFillRecordStatus) {
 
 function syncStatus(record: ReportFillRecord, task?: AsyncTask) {
   if (task && (task.status === 'pending' || task.status === 'running')) {
-    return <AsyncTaskProgress task={task} />;
+    return <AsyncTaskProgress task={task} noteDisplay="tooltip" />;
   }
   const color = record.syncStatus === 'succeeded' ? 'green' : record.syncStatus === 'failed' ? 'red' : 'grey';
   return <Tag size="small" color={color}>{REPORT_FILL_SYNC_STATUS_LABELS[record.syncStatus]}</Tag>;
@@ -215,7 +215,7 @@ export default function FillRecordsPage() {
     {
       title: '消费同步',
       dataIndex: 'syncStatus',
-      width: 150,
+      width: 190,
       render: (_value: string, record) => syncStatus(
         record,
         record.syncTaskId ? taskMap.get(record.syncTaskId) : undefined,

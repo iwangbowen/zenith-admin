@@ -222,7 +222,7 @@ export default function PaymentReconPage() {
   ];
   const taskColumns: ColumnProps<AsyncTask>[] = [
     { title: '任务', dataIndex: 'title', width: 250 }, asyncTaskStatusColumn<AsyncTask>(),
-    { title: '进度', key: 'progress', width: 210, render: (_: unknown, item) => <AsyncTaskProgress task={item} /> },
+    { title: '进度', key: 'progress', width: 190, render: (_: unknown, item) => <AsyncTaskProgress task={item} noteDisplay="tooltip" /> },
     { title: '执行次数', key: 'attempts', width: 90, render: (_: unknown, item) => `${item.attempts}/${item.maxAttempts}` },
     createOperationColumn<AsyncTask>({ width: 140, actions: (item) => [
       { key: 'cancel', label: '取消', hidden: !['pending', 'running'].includes(item.status), onClick: async () => { await cancelTask.mutateAsync({ params: { id: item.id } }); void refreshTasks(); } },

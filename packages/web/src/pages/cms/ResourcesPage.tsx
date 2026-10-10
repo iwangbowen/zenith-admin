@@ -822,7 +822,7 @@ export default function ResourcesPage() {
                 {siteId ? <ConfigurableTable
                   columns={[
                     { title: '任务', dataIndex: 'title', width: 240 },
-                    { title: '进度', width: 280, render: (_: unknown, record) => <AsyncTaskProgress task={record} /> },
+                    { title: '进度', width: 190, render: (_: unknown, record) => <AsyncTaskProgress task={record} noteDisplay="tooltip" /> },
                     {
                       title: '结果',
                       width: 220,

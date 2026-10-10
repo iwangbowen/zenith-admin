@@ -260,7 +260,7 @@ function DeadlinkTab({ siteId }: Readonly<{ siteId: number | undefined }>) {
 
   const columns: ColumnProps[] = [
     { title: '任务', dataIndex: 'title', width: 260 },
-    { title: '进度', width: 280, render: (_: unknown, record) => <AsyncTaskProgress task={record} /> },
+    { title: '进度', width: 190, render: (_: unknown, record) => <AsyncTaskProgress task={record} noteDisplay="tooltip" /> },
     dateTimeColumn('提交时间', 'createdAt'),
     dateTimeColumn('完成时间', 'completedAt'),
   ];

@@ -4,7 +4,6 @@ import type { CronJobStatsPerJob } from '@zenith/shared/platform';
 import { CRON_HEALTH_RULES, isCronSlowTail } from '@zenith/shared/platform';
 import ConfigurableTable from '@/components/ConfigurableTable';
 import { createOperationColumn } from '@/components/ResponsiveTableActions';
-import { DataBar } from '@/components/data-viz/DataBar';
 import { formatDurationMs } from '@/utils/format';
 import { formatRelativeTime } from '@/utils/date';
 import { EMPTY_PLACEHOLDER } from '@/utils/table-columns';
@@ -81,17 +80,10 @@ export function CronJobHealthTable({ rows, loading, now, onRefresh, canExecute, 
       render: (_: unknown, r: CronJobStatsPerJob) => {
         if (r.successRate == null) return <span style={{ color: 'var(--semi-color-text-3)' }}>{EMPTY_PLACEHOLDER}</span>;
         return (
-          <div className="cron-cell">
-            <div className="cron-rate">
-              <DataBar className="cron-rate__bar" value={r.successRate} max={100} color={rateColor(r.successRate)} height={6} />
-              <span className="cron-rate__value" style={{ color: rateColor(r.successRate) }}>{r.successRate}%</span>
-            </div>
-            <span className="cron-cell__sub">
-              {r.successCount}/{r.runs} 次
-              {' '}
-              <TrendMark current={r.successRate} previous={r.prevSuccessRate} format={(d) => `${d} pt`} />
-            </span>
-          </div>
+          <span style={{ whiteSpace: 'nowrap', color: rateColor(r.successRate), fontSize: 12 }}>
+            {r.successRate}% · {r.successCount}/{r.runs} 次{' '}
+            <TrendMark current={r.successRate} previous={r.prevSuccessRate} format={(d) => `${d} pt`} />
+          </span>
         );
       },
     },

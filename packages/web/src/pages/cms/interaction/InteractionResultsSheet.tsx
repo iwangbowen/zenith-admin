@@ -223,7 +223,11 @@ function TrendView({ interactionId }: Readonly<{ interactionId: number }>) {
     {
       title: '分布',
       dataIndex: 'distribution',
-      render: (_: unknown, record: { count: number }) => <DataBar value={record.count} max={max} />,
+      width: 80,
+      align: 'right' as const,
+      render: (_: unknown, record: { count: number }) => (
+        <span style={{ whiteSpace: 'nowrap' }}>{Math.round((record.count / max) * 100)}%</span>
+      ),
     },
   ];
   return (

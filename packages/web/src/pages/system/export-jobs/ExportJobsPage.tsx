@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Descriptions, Modal, Progress, SideSheet, Space, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
+import { Button, Descriptions, Modal, SideSheet, Space, Spin, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
@@ -60,7 +60,7 @@ function renderProgress(record: ExportJob) {
   if (record.status === 'pending') return <Typography.Text type="tertiary">排队中</Typography.Text>;
   if (record.status === 'running') return record.totalRows == null
     ? <Space><Spin size="small" /><Typography.Text type="secondary">准备导出</Typography.Text></Space>
-    : <Space vertical align="start" spacing={2} style={{ width: '100%' }}><Progress percent={record.totalRows ? Math.min(100, record.processedRows / record.totalRows * 100) : 100} showInfo={false} style={{ width: '100%' }} /><Typography.Text type="secondary">{record.processedRows} / {record.totalRows} 行</Typography.Text></Space>;
+    : <Typography.Text type="secondary" style={{ whiteSpace: 'nowrap' }}>{record.processedRows} / {record.totalRows} 行 · {record.totalRows ? Math.min(100, Math.round(record.processedRows / record.totalRows * 100)) : 100}%</Typography.Text>;
   if (record.status === 'success') return <Typography.Text type="success">{record.rowCount == null ? '已完成' : `${record.rowCount} 行`}</Typography.Text>;
   if (record.status === 'failed') return <Typography.Text type="danger">失败</Typography.Text>;
   if (record.status === 'cancelled') return <Typography.Text type="tertiary">已取消</Typography.Text>;
@@ -186,7 +186,7 @@ export default function ExportJobsPage() {
     { title: '文件名', dataIndex: 'filename', minWidth: 260, render: renderEllipsis },
     { title: '格式', dataIndex: 'format', width: 80, render: (value: ExportJobFormat) => value.toUpperCase() },
     { title: '模式', dataIndex: 'executionMode', width: 90, render: (value: string) => (value === 'sync' ? '同步' : '异步') },
-    { title: '进度', dataIndex: 'rowCount', width: 120, render: (_: number | null, record: ExportJob) => renderProgress(record) },
+    { title: '进度', dataIndex: 'rowCount', width: 180, render: (_: number | null, record: ExportJob) => renderProgress(record) },
     { title: '大小', dataIndex: 'fileSize', width: 110, align: 'right', render: (size: number | null) => (size == null ? EMPTY_PLACEHOLDER : formatBytes(size)) },
     {
       title: '安全',

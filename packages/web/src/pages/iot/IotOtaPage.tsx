@@ -4,7 +4,7 @@ import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { useIotOtaTaskDetail } from '@/hooks/queries/iot-ota';
 import { IotFirmwareDetail, IotOtaDeviceDetail } from './IotOtaRecordDetails';
 import { useRef, useState } from 'react';
-import { Button, Form, Progress, SideSheet, TabPane, Tabs, Tag, Toast, Typography, Upload, Spin } from '@douyinfe/semi-ui';
+import { Button, Form, SideSheet, TabPane, Tabs, Tag, Toast, Typography, Upload, Spin } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { FormApi } from '@douyinfe/semi-ui/lib/es/form';
 import { FileUp } from 'lucide-react';
@@ -285,19 +285,20 @@ function OtaTasksTab({ detailTask, onOpenDetail }: Readonly<{
         : <Text size="small" type="tertiary">全量</Text>,
     },
     {
-      title: '进度', width: 220,
+      title: '进度', width: 80, align: 'right',
       render: (_: unknown, r: IotOtaTask) => {
         const done = r.succeededCount + r.failedCount;
         const percent = r.totalCount > 0 ? Math.round((done / r.totalCount) * 100) : 0;
-        return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Progress percent={percent} style={{ width: 100 }} aria-label="任务进度" />
-            <Text size="small" type="tertiary" style={{ whiteSpace: 'nowrap' }}>
-              成功 {r.succeededCount} · 失败 {r.failedCount} / {r.totalCount}
-            </Text>
-          </div>
-        );
+        return <span style={{ whiteSpace: 'nowrap' }}>{percent}%</span>;
       },
+    },
+    {
+      title: '成功 / 失败', width: 190,
+      render: (_: unknown, r: IotOtaTask) => (
+        <Text size="small" type="tertiary" style={{ whiteSpace: 'nowrap' }}>
+          成功 {r.succeededCount} · 失败 {r.failedCount} / {r.totalCount}
+        </Text>
+      ),
     },
     { title: '超时(分)', dataIndex: 'timeoutMinutes', width: 90, align: 'right' },
     createdAtColumn,
@@ -386,9 +387,9 @@ function OtaTaskDetailDrawer({ task: initialTask, onClose }: Readonly<{ task: Io
       ),
     },
     {
-      title: '进度', width: 140,
+      title: '进度', width: 90, align: 'right',
       render: (_: unknown, r: IotOtaTaskDevice) => (
-        <Progress percent={r.progress} showInfo style={{ width: 110 }} aria-label="设备升级进度" />
+        <span style={{ whiteSpace: 'nowrap' }}>{r.progress}%</span>
       ),
     },
     {
