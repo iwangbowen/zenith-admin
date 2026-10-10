@@ -12,7 +12,6 @@ import { SensitiveFormInput, SensitiveText } from '@/components/sensitive';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import { createdAtColumn, dateTimeColumn, renderEllipsis } from '../../../utils/table-columns';
 import { useDictItems } from '@/hooks/useDictItems';
-import { MetricMeter, type MetricMeterTone } from '@/components/data-viz/MetricMeter';
 import { useAllTenantPackages } from '@/hooks/queries/tenant-packages';
 import {
   useDeleteTenants,
@@ -156,18 +155,11 @@ export default function TenantsPage() {
     { title: '租户编码', dataIndex: 'code', width: 140, render: renderEllipsis },
     { title: '联系人', dataIndex: 'contactName', width: 120, render: renderEllipsis },
     { title: '联系电话', dataIndex: 'contactPhone', width: 160, render: (v: string | null | undefined, record: Tenant) => <SensitiveText entity="Tenant" id={record.id} field="contactPhone" value={v} /> },
-    { title: '用户数', dataIndex: 'userCount', width: 150, align: 'right', render: (v: number | undefined, record: Tenant) => {
+    { title: '用户数', dataIndex: 'userCount', width: 120, align: 'right', render: (v: number | undefined, record: Tenant) => {
         const used = v ?? 0;
         const max = record.maxUsers;
         if (max == null) return <span>{used} / 不限</span>;
-        const percent = max > 0 ? Math.min(100, Math.round((used / max) * 100)) : 0;
-        const tone: MetricMeterTone = percent >= 100 ? 'danger' : percent >= 80 ? 'warning' : 'primary';
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ fontSize: 12 }}>{used} / {max}</span>
-            <MetricMeter value={percent} label="用户数占用" valueText={`${used} / ${max}，${percent}%`} tone={tone} height={6} />
-          </div>
-        );
+        return <span>{used} / {max}</span>;
       },
     },
     { title: '套餐', dataIndex: 'packageName', width: 140, render: (v) => renderEllipsis(v || '未分配') },
