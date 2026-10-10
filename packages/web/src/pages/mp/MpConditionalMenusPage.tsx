@@ -23,7 +23,7 @@ import {
 } from '@/hooks/queries/mp-menu';
 import { CreateButton, RefreshButton } from '@/components/toolbar-controls';
 import { abortSubmit } from '@/lib/abort-submit';
-import { EditFormModal } from '@/components/EditFormModal';
+import { EditFormSheet } from '@/components/EditFormModal';
 
 const { Text } = Typography;
 
@@ -72,7 +72,7 @@ function ButtonEditor({ value, onChange }: { value: EditableButton[]; onChange: 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {value.map((b, i) => (
-        <div key={i} style={{ border: '1px solid var(--semi-color-border)', borderRadius: 'var(--semi-border-radius-medium)', padding: 8 }}>
+        <div key={i}>
           <Space wrap align="center">
             <Input size="small" style={{ width: 130 }} placeholder="一级菜单名" value={b.name} onChange={(v) => update(i, { name: v })} />
             <Select size="small" style={{ width: 160 }} value={b.type ?? ''} optionList={BTN_TYPES} onChange={(v) => update(i, { type: v as string })} />
@@ -222,7 +222,7 @@ export default function MpConditionalMenusPage() {
         {...listTableProps(listQuery, { pagination: buildPagination })}
       />
 
-      <EditFormModal modal={modal} width={680}>
+      <EditFormSheet modal={modal} width={680}>
         <Form.Input field="name" label="名称" rules={[{ required: true, message: '请输入名称' }]} placeholder="便于识别，如：女性用户菜单" />
         <Divider margin="8px" align="left"><Text type="tertiary" size="small">匹配规则（至少一项）</Text></Divider>
         <Form.Input field="tagId" label="标签ID" placeholder="微信标签 id（可在标签管理查看）" />
@@ -236,7 +236,7 @@ export default function MpConditionalMenusPage() {
         <Form.Input field="language" label="语言" placeholder="zh_CN" />
         <Divider margin="8px" align="left"><Text type="tertiary" size="small">菜单按钮（最多 3 个一级，每个最多 5 个子菜单）</Text></Divider>
         <ButtonEditor value={buttons} onChange={setButtons} />
-      </EditFormModal>
+      </EditFormSheet>
 
       <AppModal title="个性化菜单匹配测试" visible={matchVisible} onOk={() => void handleTryMatch()} okText="测试"
         confirmLoading={matching} onCancel={() => setMatchVisible(false)} width={480}>
