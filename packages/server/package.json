@@ -81,7 +81,7 @@
     "mysql2": "^3.24.5",
     "node-ip2region": "^1.0.2",
     "node-pty": "^1.1.0",
-    "nodemailer": "^10.0.16",
+    "nodemailer": "^10.1.4",
     "pdfkit": "^0.20.2",
     "pg-boss": "^12.37.0",
     "pino": "^10.4.0",
@@ -96,7 +96,7 @@
     "re2js": "^2.8.6",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "sanitize-html": "^2.18.0",
+    "sanitize-html": "^2.18.1",
     "sharp": "^0.35.5",
     "source-map": "^0.8.0",
     "ssh2": "^1.17.0",
@@ -104,9 +104,9 @@
     "svg-captcha": "^1.4.0",
     "tencentcloud-sdk-nodejs-sms": "^4.1.306",
     "ua-parser-js": "^2.0.10",
-    "uuid": "^14.0.2",
+    "uuid": "^14.0.3",
     "ws": "^8.22.0",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
