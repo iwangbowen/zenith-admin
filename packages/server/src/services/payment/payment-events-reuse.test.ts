@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PgDialect } from 'drizzle-orm/pg-core';
 const mocks = vi.hoisted(() => ({ health: vi.fn(), select: vi.fn(), count: vi.fn(), scope: vi.fn(), user: vi.fn() }));
 vi.mock('../../db', () => ({ db: { select: mocks.select, $count: mocks.count } }));
 vi.mock('./payment-events.service', () => ({ getPaymentEventHealth: mocks.health }));
@@ -8,6 +9,8 @@ vi.mock('./payment.service', () => ({ buildAdapterContext: vi.fn(), handleNotify
 vi.mock('./payment-outbox.service', () => ({ processEvent: vi.fn() }));
 import { getPaymentAlertMetrics } from './payment-alert-metrics.service';
 import { getPaymentHealth } from './payment-ops.service';
+
+const dialect = new PgDialect({ casing: 'snake_case' });
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -31,5 +34,13 @@ describe('payment event health reuse', () => {
     expect(mocks.scope).toHaveBeenCalledWith(mocks.user.mock.results[0].value);
     expect(mocks.health).toHaveBeenCalledWith(scope);
     expect(result).toMatchObject({ outboxPending: 8, outboxFailed: 2 });
+  });
+
+  it('counts payment webhook failures by delivery completion time and event type', async () => {
+    await getPaymentHealth();
+    const failedWebhookWhere = dialect.sqlToQuery(mocks.count.mock.calls[1][1]).sql;
+    expect(failedWebhookWhere).toContain('"event_type" like');
+    expect(failedWebhookWhere).toContain('"finished_at" >=');
+    expect(failedWebhookWhere).not.toContain('"client_id" in');
   });
 });

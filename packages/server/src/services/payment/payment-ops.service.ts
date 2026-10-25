@@ -9,7 +9,7 @@ import { and, desc, eq, gte, inArray, like, or, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { listRows } from '../../lib/list-query';
-import { appWebhookDeliveries, oauth2Clients, paymentApps, paymentEventAttempts, paymentEvents, paymentOrders, paymentReconCases, paymentSharingOrders, paymentTransfers, type PaymentEventAttemptRow, type PaymentEventRow } from '../../db/schema';
+import { appWebhookDeliveries, paymentEventAttempts, paymentEvents, paymentOrders, paymentReconCases, paymentSharingOrders, paymentTransfers, type PaymentEventAttemptRow, type PaymentEventRow } from '../../db/schema';
 import { requireRow } from '../../lib/db-assert';
 import { currentUser } from '../../lib/context';
 import { getTenantScopeId, tenantCondition } from '../../lib/tenant';
@@ -48,19 +48,14 @@ export async function getPaymentHealth(): Promise<PaymentHealth> {
   const sharingTenant = tenantCondition(paymentSharingOrders, user);
   const transferTenant = tenantCondition(paymentTransfers, user);
   const reconTenant = tenantCondition(paymentReconCases, user);
-  const paymentClientIds = db
-    .select({ clientId: oauth2Clients.clientId })
-    .from(paymentApps)
-    .innerJoin(oauth2Clients, eq(oauth2Clients.id, paymentApps.openClientId))
-    .where(tenantCondition(paymentApps, user));
   const paymentWebhook = and(
-    inArray(appWebhookDeliveries.clientId, paymentClientIds),
+    tenantCondition(appWebhookDeliveries, user),
     or(like(appWebhookDeliveries.eventType, 'payment.%'), like(appWebhookDeliveries.eventType, 'refund.%')),
   );
   const [eventHealth, webhookPending, webhookFailed24h, sharingProcessing, transferProcessing, reconPendingDiff] = await Promise.all([
     getPaymentEventHealth(getTenantScopeId(user)),
     db.$count(appWebhookDeliveries, and(paymentWebhook, inArray(appWebhookDeliveries.status, ['pending', 'retrying']))),
-    db.$count(appWebhookDeliveries, and(paymentWebhook, eq(appWebhookDeliveries.status, 'failed'), gte(appWebhookDeliveries.createdAt, since24h))),
+    db.$count(appWebhookDeliveries, and(paymentWebhook, eq(appWebhookDeliveries.status, 'failed'), gte(appWebhookDeliveries.finishedAt, since24h))),
     db.$count(paymentSharingOrders, buildWhere(eq(paymentSharingOrders.status, 'processing'), sharingTenant)),
     db.$count(paymentTransfers, buildWhere(inArray(paymentTransfers.status, ['processing', 'unknown']), transferTenant)),
     db.$count(paymentReconCases, buildWhere(inArray(paymentReconCases.status, ['open', 'investigating', 'suspended']), reconTenant)),

@@ -8,8 +8,6 @@ import { and, eq, gte, inArray, like, lte, or } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   appWebhookDeliveries,
-  oauth2Clients,
-  paymentApps,
   paymentOrders,
   paymentReconCases,
 } from '../../db/schema';
@@ -48,13 +46,8 @@ export async function getPaymentAlertMetrics(tenantId: number | null): Promise<P
   const stuckCutoff = new Date(now - STUCK_PAYING_GRACE_MS);
 
   const orderTenant = metricTenantFilter(paymentOrders.tenantId, tenantId);
-  const paymentClientIds = db
-    .select({ clientId: oauth2Clients.clientId })
-    .from(paymentApps)
-    .innerJoin(oauth2Clients, eq(oauth2Clients.id, paymentApps.openClientId))
-    .where(metricTenantFilter(paymentApps.tenantId, tenantId));
   const paymentWebhook = and(
-    inArray(appWebhookDeliveries.clientId, paymentClientIds),
+    metricTenantFilter(appWebhookDeliveries.tenantId, tenantId),
     or(like(appWebhookDeliveries.eventType, 'payment.%'), like(appWebhookDeliveries.eventType, 'refund.%')),
   );
   const reconTenant = metricTenantFilter(paymentReconCases.tenantId, tenantId);
@@ -68,8 +61,8 @@ export async function getPaymentAlertMetrics(tenantId: number | null): Promise<P
     db.$count(paymentOrders, buildWhere(eq(paymentOrders.status, 'paying'), lte(paymentOrders.updatedAt, stuckCutoff), orderTenant)),
     db.$count(paymentReconCases, buildWhere(inArray(paymentReconCases.status, ['open', 'investigating', 'suspended']), reconTenant)),
     getPaymentEventHealth(tenantId ?? undefined),
-    db.$count(appWebhookDeliveries, buildWhere(eq(appWebhookDeliveries.status, 'success'), gte(appWebhookDeliveries.createdAt, recentCutoff), paymentWebhook)),
-    db.$count(appWebhookDeliveries, buildWhere(eq(appWebhookDeliveries.status, 'failed'), gte(appWebhookDeliveries.createdAt, recentCutoff), paymentWebhook)),
+    db.$count(appWebhookDeliveries, buildWhere(eq(appWebhookDeliveries.status, 'success'), gte(appWebhookDeliveries.finishedAt, recentCutoff), paymentWebhook)),
+    db.$count(appWebhookDeliveries, buildWhere(eq(appWebhookDeliveries.status, 'failed'), gte(appWebhookDeliveries.finishedAt, recentCutoff), paymentWebhook)),
   ]);
 
   return {
