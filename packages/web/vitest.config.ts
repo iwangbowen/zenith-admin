@@ -42,8 +42,10 @@ export default defineConfig({
     // import 1306s → 551s），用例行为不变。
     deps: {
       optimizer: {
-        web: {
-          enabled: true,
+        client: {
+          // Vitest 5.0.5 emits raw C:\\ paths from the client optimizer on Windows,
+          // which Node's ESM loader rejects. Keep the optimization on other platforms.
+          enabled: process.platform !== 'win32',
           include: ['@douyinfe/semi-ui', '@douyinfe/semi-icons', '@douyinfe/semi-illustrations', 'lucide-react'],
         },
       },

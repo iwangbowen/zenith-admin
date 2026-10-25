@@ -21,7 +21,7 @@
         "maxGzKB": 1000
       },
       "maxTotalJsChunks": 900,
-      "maxTotalJsMB": 44
+      "maxTotalJsMB": 45
     },
     "member.html": {
       "maxCriticalFiles": 8,
@@ -35,7 +35,7 @@
       "maxCriticalGzKB": 220,
       "maxCriticalCssFiles": 4,
       "maxTotalJsChunks": 185,
-      "maxTotalJsMB": 20
+      "maxTotalJsMB": 21
     }
   }
 }

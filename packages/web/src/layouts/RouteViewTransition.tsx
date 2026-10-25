@@ -36,6 +36,10 @@ type Props = Readonly<{
  * - 浏览器不支持 View Transitions（含 jsdom）时 React 直接跳过动画，功能不受影响
  */
 export default function RouteViewTransition({ animation, children }: Props) {
+  // The browser rejects View Transitions in background tabs; navigation must still render normally.
+  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+    return children;
+  }
   if (!animation || animation === 'none') {
     return <ViewTransition default="none">{children}</ViewTransition>;
   }

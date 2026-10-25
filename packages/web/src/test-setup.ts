@@ -1,5 +1,9 @@
-import '@testing-library/jest-dom/vitest';
 import { configure } from '@testing-library/react';
+import * as jestDomMatchers from '@testing-library/jest-dom/matchers';
+import { expect } from 'vitest';
+
+// Bind matchers to this workspace's Vitest instance; the monorepo root may use another patch version.
+expect.extend(jestDomMatchers);
 
 // findBy* / waitFor 默认只等 1s。发布流程四路并行（lint / test / build / docs）抢满 CPU 时，
 // 「mock 请求解析 + React 渲染」实测可放大到 1s 以上，于是一次元件已经会在的用例也会偶发

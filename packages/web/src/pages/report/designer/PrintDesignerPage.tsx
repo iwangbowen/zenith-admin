@@ -308,11 +308,12 @@ export default function PrintDesignerPage() {
     workbook.setEditable(true);
     setActiveSheetId(workbook.getActiveSheet()?.getSheetId() ?? null);
     return () => {
-      bundle.univer.dispose();
       if (bundleRef.current === bundle) {
         bundleRef.current = null;
         univerAPIRef.current = null;
       }
+      // Univer owns an internal React root; dispose after the parent commit finishes.
+      queueMicrotask(() => bundle.univer.dispose());
     };
   }, [containerEl, workbookSeed, isDark]);
 

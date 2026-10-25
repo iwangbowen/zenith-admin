@@ -46,7 +46,8 @@ export function SpreadsheetPasteTab({ onData }: Readonly<SpreadsheetPasteTabProp
     apiRef.current = univerAPI;
     return () => {
       apiRef.current = null;
-      univer.dispose();
+      // Univer owns an internal React root; dispose after the parent commit finishes.
+      queueMicrotask(() => univer.dispose());
     };
   }, [isDark]);
 

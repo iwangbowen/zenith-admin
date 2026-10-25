@@ -11,6 +11,19 @@ import { render, screen } from '@testing-library/react';
 import RouteViewTransition from './RouteViewTransition';
 
 describe('RouteViewTransition', () => {
+  it('文档不可见时跳过 View Transition，子树仍正常渲染', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+    const child = <div>后台页</div>;
+
+    try {
+      expect(RouteViewTransition({ animation: 'fade', children: child })).toBe(child);
+    } finally {
+      if (descriptor) Object.defineProperty(document, 'visibilityState', descriptor);
+      else Reflect.deleteProperty(document, 'visibilityState');
+    }
+  });
+
   it('包在 <Activity> 内：hidden 保留 DOM 且不可见，visible 后恢复', () => {
     const { rerender } = render(
       <Activity mode="hidden">
