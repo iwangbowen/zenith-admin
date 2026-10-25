@@ -1,5 +1,6 @@
 import { bizPayDemoContract } from '@zenith/shared/biz';
 import { paymentWebhookContract } from '@zenith/shared/open-platform';
+import { config } from '../../config';
 import {
   paymentAppContract,
   paymentChannelAccountContract,
@@ -46,6 +47,7 @@ import paymentSettlementRoutes from './payment-settlements';
 import paymentSharingRoutes from './payment-sharing';
 import paymentTransferRoutes from './payment-transfers';
 import paymentWebhookRoutes from './payment-webhooks';
+import paymentTestRoutes from './payment-test';
 
 export default defineRouteDomain({
   name: 'payment',
@@ -76,5 +78,8 @@ export default defineRouteDomain({
     ['/api/public/payment/notify', paymentPublicRoutes, { licenseExempt: '支付渠道异步通知必须保持可达' }],
     [paymentLinkPublicContract.basePath, paymentLinkPublicRoutes, { licenseExempt: '已签发支付链接的公开支付入口保持可达' }],
     [bizPayDemoContract.basePath, bizPayDemoRoutes, { feature: 'payment' }],
+    ...(config.isDevelopment
+      ? [['/test/payment-webhook', paymentTestRoutes, { licenseExempt: '仅开发环境本地支付沙箱 Webhook 接收器' }] as const]
+      : []),
   ],
 });
