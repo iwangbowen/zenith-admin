@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import type { PaymentApp, PaymentChannelConfig } from '@zenith/shared/payment';
-import { PAYMENT_PREAUTH_METHOD_LABELS, PAYMENT_PREAUTH_METHODS, paymentAppBoundConfigIds } from '@zenith/shared/payment';
+import { PAYMENT_DEDUCT_METHODS, PAYMENT_PREAUTH_METHOD_LABELS, PAYMENT_PREAUTH_METHODS, paymentAppBoundConfigIds } from '@zenith/shared/payment';
 import { useAppBoundConfigOptions, useAppPaymentMethodOptions, useEnabledPaymentAppLookup } from './payment-app-options';
 
 const mocks = vi.hoisted(() => ({
@@ -82,5 +82,33 @@ describe('payment app options', () => {
       currency: 'CNY',
     }, true);
     expect(result.current.options).toEqual([{ value: 'alipay_preauth', label: '支付宝预授权' }]);
+  });
+
+  it('按签约能力隐藏已停用的代扣方式', () => {
+    mocks.methods.mockReturnValue({
+      data: [
+        { method: 'wechat_papay', enabled: false },
+        { method: 'alipay_cycle', enabled: true },
+      ],
+    });
+    mocks.capabilities.mockReturnValue({
+      data: {
+        engineMode: 'sandbox',
+        configs: [{
+          channelConfigId: 10,
+          environment: 'sandbox',
+          capabilities: [
+            { paymentMethod: 'wechat_papay', supported: false },
+            { paymentMethod: 'alipay_cycle', supported: true },
+          ],
+        }],
+      },
+      isError: false,
+      isFetching: false,
+    });
+    const selectedApp = { ...apps[0], alipayConfigId: 11 } as PaymentApp;
+    const { result } = renderHook(() => useAppPaymentMethodOptions(selectedApp, PAYMENT_DEDUCT_METHODS, { operation: 'contract.sign' }));
+
+    expect(result.current.options).toEqual([{ value: 'alipay_cycle', label: '支付宝周期扣款' }]);
   });
 });
