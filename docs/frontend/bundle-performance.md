@@ -68,7 +68,7 @@ lucide 图标全表（615 KB / 153 KB gz）在任何口径下都是运行时按�
 
 ### 分层为什么安全
 
-- **关系失效不导入关系运行时**：业务 mutation 只引用 `lib/entity-relation-cache.ts`，通过查询 meta 标记失效；不能为了失效缓存静态导入包含全部关系契约和 UI 的 hooks。搜索面板由轻量 `MenuSearchInput` 首次打开时加载，Ctrl/Cmd+K 监听保留在触发器中。2026-09-20 实测：总 JS 1008 个、主入口 815 个、认证首屏 59 个文件 / 996.0 KB gzip，均在原预算内，未上调预算。
+- **关系失效不导入关系运行时**：业务 mutation 只引用 `lib/entity-relation-cache.ts`，通过查询 meta 标记失效；不能为了失效缓存静态导入包含全部关系契约和 UI 的 hooks。搜索面板由轻量 `MenuSearchInput` 首次打开时加载，Ctrl/Cmd+K 监听保留在触发器中；总量与认证首屏由现行 bundle 预算守住。
 
 - **Shared 契约与 Web hooks 分离**：`workflow/graph-schema.ts` 在模块顶层读取工作流枚举，查询 hooks 也在顶层读取契约操作生成 key。
   把 Shared schema、常量与 Web hooks 一并强制塞进 `app-shared` 会制造跨 chunk 初始化环，Demo 审批入口可能读取到尚未初始化的枚举或契约。
@@ -92,8 +92,8 @@ lucide 图标全表（615 KB / 153 KB gz）在任何口径下都是运行时按�
 | 把 Semi 按组件拆散或与 semi-foundation 分开 | 跨 chunk 环 → TDZ（`reading 'PREFIX'`）白屏 |
 | 把 prismjs 与 Semi codeHighlight 分开 | 语言组件依赖 core 先设置全局 `Prism`，跨 chunk 后求值顺序丢失（`Prism is not defined`） |
 | 含组件的 commons 组 | 组件的重型依赖随之进入壳层（见「公共层只收纯逻辑」） |
-| 重库只动态 `import()` JS、却在同一页面静态 `import` 它的 CSS | CSS 模块按 `HEAVY_LIBRARIES` 规则与 JS 同进 `vendor-<lib>`，对 CSS 的静态边即对整个 JS chunk 的静态边，动态 import 形同虚设（IotMapPage 曾因此静态多带 2 MB maplibre）；JS 与 CSS 放进同一个 `lazy()` 子组件 |
-| 只用 `StatCard` 的页面 import `@/components/charts` 桶文件 | 桶文件顶层的 vchart 主题注册副作用让 ~600 KB gz 的 vendor-visactor 成为无图表页面的静态依赖（IoT 告警 / 注册、会话回放曾各多带 617 KB gz）；轻量导出按文件路径导入，`charts-barrel-imports.test.ts` 守住 |
+| 重库只动态 `import()` JS、却在同一页面静态 `import` 它的 CSS | CSS 模块按 `HEAVY_LIBRARIES` 规则与 JS 同进 `vendor-<lib>`，对 CSS 的静态边即对整个 JS chunk 的静态边，动态 import 形同虚设，并会静态带入约 2 MB 的 maplibre；JS 与 CSS 放进同一个 `lazy()` 子组件 |
+| 只用 `StatCard` 的页面 import `@/components/charts` 桶文件 | 桶文件顶层的 vchart 主题注册副作用会让约 600 KB gz 的 vendor-visactor 成为无图表页面的静态依赖；轻量导出按文件路径导入，`charts-barrel-imports.test.ts` 守住 |
 | 三入口共建 | `$initial` 取并集，关键路径无法收敛 |
 
 ## 启动链路
@@ -150,121 +150,43 @@ nginx 侧的 `gzip_static`、HTML `no-cache`、静态资源一年 immutable 与 
 | `npm run smoke` | 自起 `vite preview` 用系统 Chrome 真实启动全部入口 + 登录 → 仪表盘 → 用户管理，控制台错误 / 错误边界即失败（CI `smoke` job 基于 demo 产物）。`-- --url <url> --no-serve` 复用已有服务 | 系统 Chrome；非 demo 产物需要可用的 API |
 | `npm run bench:runtime` | 冷缓存首屏基准：匿名 `/login` 与已登录 `/` 的请求数 / 字节 / 可交互 / LCP，取多次中位数；`-- --latency 50 --download 10` 经 CDP 注入网络条件；`-- --json out.json` 落盘 | 另一终端 `npm run preview`；API 可用 |
 
-`bundle-budget.json` 的阈值 = 当前实测留约 10% 余量。分包改动或新增首屏依赖导致超限时，先证明必要性再上调，并同步更新下方记录表。
+`bundle-budget.json` 的阈值以当前实测为基线并保留经过评估的余量。分包改动或新增首屏依赖导致超限时，先证明必要性再上调，并同步覆盖下方当前基准。
 
-## 基准记录
-
-测量条件：Windows 11 / Node 24 / Chrome（Playwright `channel: chrome`，headless）；产物由 `vite preview` 托管（HTTP/1.1、无压缩），
-`/api` 代理到本机开发 API；运行时指标为 3 次冷缓存中位数；限速档为 CDP 注入 50 ms RTT / 10 Mbps。
-原始数据在 [`docs/frontend/perf/`](https://github.com/iwangbowen/zenith-admin/tree/master/docs/frontend/perf)
-（`baseline-*` 取自 `fe5c8e628`，`current-*` 为当前分层）。
+## 当前基准
 
 ### 产物（静态口径）
 
-「登录页轻量化」列为登录页移除 Semi Form / Tabs / Modal 并拆出 `vendor-semi-form` 后的实测（`npm run analyze:bundle`），
-关键路径 −41%，认证首屏合计持平：原先随登录页进入关键路径的 Semi 核心控件（DatePicker + date-fns、Select …）
-改由壳层增量承接。
+以下数据来自当前生产构建的 `npm run analyze:bundle`；预算取自 `bundle-budget.json`。
 
-| 指标 | 基线 | 当前 | 登录页轻量化 |
-| --- | --- | --- | --- |
-| 后台 critical JS | 85 个 / 368.7 KB gz | 5 个 / 469.8 KB gz | 5 个 / 293.6 KB gz |
-| 后台 critical CSS | 14 个 / 20.6 KB gz | 2 个 / 53.4 KB gz | 2 个 / 22.6 KB gz |
-| 后台 modulepreload 提示 | 84 | 0 | 0 |
-| 登录页 incremental | 91 个 / 255.4 KB gz | 0（静态在关键路径内） | 0（静态在关键路径内） |
-| 匿名首屏合计（critical + 登录页） | 176 个 / 624.1 KB gz | 5 个 / 469.8 KB gz | 5 个 / 293.6 KB gz |
-| incremental(AdminLayout) | 154 个 / 379.1 KB gz | 29 个 / 402.2 KB gz | 40 个 / 597.5 KB gz |
-| incremental(DashboardPage) | 79 个 / 165.7 KB gz | 16 个 / 370.2 KB gz | 26 个 / 618.7 KB gz |
-| 认证首屏（并集） | 278 个 / 843.0 KB gz | 44 个 / 896.2 KB gz | 56 个 / 968.7 KB gz |
-| 会员端 critical | 94 个 / 329.9 KB gz | 5 个 / 237.5 KB gz | 5 个 / 254.9 KB gz |
-| 审批端 critical | 55 个 / 258.3 KB gz | 5 个 / 191.6 KB gz | 5 个 / 202.5 KB gz |
-| 注册表动态入口 | 544 | 276 | 276 |
-| JS chunk 总数（其中 < 4 KB） | 1,711（922） | 904（438） | 967（502） |
-| dist JS 总量 | 38.5 MB | 53.1 MB | 53.9 MB |
-
-认证首屏的 gz 体积 +6%（Semi 核心整包、公共层一次装载）换来文件数 −84%。dist JS 总量中约 4 MB 是会员 / 审批入口各自的按需 chunk
-（分入口构建的固定成本，单个用户只下载自己入口的部分）；发布 zip 约 33 MB（不含预压缩副本）。
-
-### 2026-10-09 全依赖升级
-
-本次要求 Web 的全部公开依赖升级到 npm `latest`，包括 Univer 1、MSW 3 与 PWA 插件 2。
-文件预览继续保留所有格式：`@file-viewer/renderer-geo` 3.1.2 新增本地离线 MapLibre Worker
-（包内 `dist/maplibre-worker-source.js` 为 524,882 字节；3.0.2 无此文件），并使用 MapLibre 6.9。
-这是新版预览的运行时代码，仍随文件预览懒加载。
-
-| 生产产物指标 | 升级后实测 | 预算决定 |
+| 指标 | 当前实测 | 当前预算 |
 | --- | --- | --- |
-| 审批入口全部 JS | 125 个 chunk / 16.2 MB（16,972,105 字节） | 为保留最新版离线地理预览，将总量预算由 16 调至 16.5 MB |
-| 审批入口 critical JS | 5 个 / 100.9 KB gz | 8 个 / 220 KB gz，保持原预算 |
-| 后台 critical JS | 5 个 / 328.8 KB gz | 8 个 / 330 KB gz，保持原预算 |
-| 后台认证首屏 | 51 个 / 973.5 KB gz | 60 个 / 1,000 KB gz，保持原预算 |
-| 会员入口 critical JS | 5 个 / 269.7 KB gz | 8 个 / 270 KB gz，保持原预算 |
+| 全部入口 JS | 1,100 个 chunk / 67.2 MB | chunk ≤ 1,160 |
+| 后台 critical JS | 5 个 / 326.7 KB gz | ≤ 8 个 / 330 KB gz |
+| 后台 critical CSS | 2 个 / 31.6 KB gz | ≤ 4 个 |
+| incremental(AdminLayout) | 46 个 / 646.8 KB gz | ≤ 48 个 / 670 KB gz |
+| incremental(DashboardPage) | 24 个 / 587.4 KB gz | ≤ 30 个 / 680 KB gz |
+| 后台认证首屏 | 56 个 / 980.6 KB gz | ≤ 60 个 / 1,000 KB gz |
+| 后台入口全部 JS | 869 个 / 44.8 MB | ≤ 900 个 / 45 MB |
+| 会员端 critical JS | 5 个 / 270.6 KB gz | ≤ 8 个 / 280 KB gz |
+| 会员端 critical CSS | 2 个 / 23.9 KB gz | ≤ 4 个 |
+| 会员入口全部 JS | 74 个 / 1.9 MB | ≤ 75 个 / 2 MB |
+| 审批端 critical JS | 5 个 / 208.0 KB gz | ≤ 8 个 / 220 KB gz |
+| 审批端 critical CSS | 2 个 / 18.3 KB gz | ≤ 4 个 |
+| 审批入口全部 JS | 157 个 / 20.5 MB | ≤ 185 个 / 21 MB |
 
-入口注册与分包规则保持不变，其余总量和关键路径预算均未上调。验收仍要求生产构建的
-`check:bundle`、Demo 三入口 smoke 与真实开发环境检查。
-
-### 2026-10-11 编号校验的模块边界
-
-通用业务编号最初从 `platform/validation.ts` 静态导入模板校验，连带将编号渲染器和业务场景注册表放进后台入口的
-`initial-app`。编号配置只在对应业务页面使用，因此改为同域 `numbering-validation.ts` 叶子模块，由编号契约直接引用；
-`@zenith/shared/platform` 继续提供原有公开导出，通用 `validation.ts` 不再转导出编号校验。
-
-| 正式构建指标 | 拆分前 | 拆分后 | 既有预算 |
-| --- | --- | --- | --- |
-| 后台 critical JS gzip | 332.3 KB | 329.2 KB | 330 KB |
-| 后台认证首屏 gzip | 977.0 KB | 973.8 KB | 1,000 KB |
-| 会员 critical JS gzip | 270.0 KB | 269.8 KB | 270 KB |
-| 审批 critical JS gzip | 100.9 KB | 100.9 KB | 220 KB |
-
-三入口正式构建与 `check:bundle` 通过，分包配置与预算均未改变。Demo 构建及 `smoke` 的后台、会员、审批入口和后台登录链路均通过。
-校验规则和类型仍只维护一份。
-
-### 2026-10-19 权限治理与自助申请
-
-v2.88.0 增加本人权限入口、完整审批图与通用业务动作表单。根据本次正式产物实测，按用户决定适度调整三项预算；
-后台关键路径、认证首屏及各入口体积预算继续保持原门限。
-
-| 正式构建指标 | 实测 | 预算决定 |
-| --- | --- | --- |
-| 总 JS chunk 数 | 1142 | 1130 → 1160 |
-| 会员 critical JS gzip | 270.1 KB | 270 → 280 KB |
-| 审批入口全部 JS chunk 数 | 178 | 170 → 185 |
-| 后台 critical JS gzip | 326.0 KB | 330 KB，保持 |
-| 后台认证首屏 | 53 个文件 / 990.6 KB gz | 60 个 / 1,000 KB，保持 |
-| 后台 AdminLayout 增量 | 43 个文件 / 657.4 KB gz | 44 个 / 670 KB，保持 |
-| 审批 critical JS gzip | 142.5 KB | 220 KB，保持 |
-
-上述结果包含将 Shared 与 Web hooks 拆为独立公共包的初始化修复。只移除 Shared 强制分组、完全依赖自动拆包时，
-后台首屏会变为 113 个文件；高复用 Shared 模块收敛为 `shared-common` 后降至 53 个，满足原文件数与体积门限。
-预算检查与 Demo 启动冒烟分别把关产物体积和真实启动，调整预算不改变冒烟要求。
-
-### 2026-10-25 Web 依赖升级
-
-Web 直接依赖再次全部对齐 npm `latest`，包括 file-viewer 3.2、Univer 1.2、
-Visactor 2.2、Semi 2.104、React 19.3.1 与 Vite 8.3.5。重型预览、表格和图表能力仍位于
-页面懒加载 chunk，匿名与登录后首屏预算均未放宽；最新版依赖只增加了入口的按需加载总量。
-
-| 正式构建指标 | 升级后实测 | 预算决定 |
-| --- | --- | --- |
-| 后台入口全部 JS | 869 个 chunk / 44.8 MB | 总量预算 44 -> 45 MB |
-| 审批入口全部 JS | 157 个 chunk / 20.5 MB | 总量预算 20 -> 21 MB |
-| 后台 critical JS | 5 个 / 326.5 KB gz | 330 KB，保持 |
-| 后台认证首屏 | 56 个文件 / 980.5 KB gz | 60 个 / 1,000 KB，保持 |
-| 审批 critical JS | 5 个 / 208.0 KB gz | 220 KB，保持 |
-
-总 chunk 数、各入口 chunk 数、会员入口和全部关键路径指标均继续满足原预算；预算调整只覆盖
-用户明确要求保留的最新版依赖产物，不改变分包边界。
+登录页静态位于后台关键路径；AdminLayout、DashboardPage 与各重型库继续按需加载。三个入口的关键路径、
+认证首屏和入口总量均满足现行预算。
 
 ### 运行时（冷缓存中位数）
 
-| 链路 | 指标 | 基线 | 当前 |
-| --- | --- | --- | --- |
-| 匿名 `/login` | 请求数 | 230 | 17 |
-| | 传输（其中 JS） | 784 KB（690） | 542 KB（482） |
-| | 可交互 / LCP | 2,214 ms / 2,064 ms | 633 ms / 580 ms |
-| | 可交互 @50 ms RTT · 10 Mbps | 3,818 ms | 1,303 ms |
-| 已登录 `/` → 仪表盘 | 请求数 | 412 | 89 |
-| | 传输（其中 JS） | 2,042 KB（1,871） | 1,955 KB（1,842） |
-| | 可交互 / LCP | 2,809 ms / 3,232 ms | 1,310 ms / 1,176 ms |
-| | 可交互 / LCP @50 ms RTT · 10 Mbps | 5,888 ms / 6,124 ms | 2,363 ms / 2,356 ms |
+测量条件：Windows 11 / Node 24 / Chrome（Playwright `channel: chrome`，headless）；产物由 `vite preview`
+托管（HTTP/1.1、无压缩），`/api` 代理到本机开发 API；每条链路取 3 次冷缓存中位数，限速档为
+CDP 注入 50 ms RTT / 10 Mbps。当前原始数据位于
+[`docs/frontend/perf/`](https://github.com/iwangbowen/zenith-admin/tree/master/docs/frontend/perf) 的 `current-runtime-*.json`。
 
-两条链路的控制台错误均为 0。仪表盘链路的 JS 字节几乎不变而耗时减半：收益来自请求数（−78%）与串行等待的消除，而非字节数。
+| 链路 | 请求数 | 传输（其中 JS） | 可交互 / LCP | 限速可交互 / LCP |
+| --- | ---: | ---: | ---: | ---: |
+| 匿名 `/login` | 17 | 542 KB（482 KB） | 633 ms / 580 ms | 1,303 ms / — |
+| 已登录 `/` → 仪表盘 | 89 | 1,955 KB（1,842 KB） | 1,310 ms / 1,176 ms | 2,363 ms / 2,356 ms |
+
+两条链路的控制台错误均为 0。代码、依赖、分包或启动链路变化后，应重新测量并直接覆盖本节。
