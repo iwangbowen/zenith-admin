@@ -47,7 +47,7 @@
   },
   "dependencies": {
     "dayjs": "^1.11.23",
-    "zod": "^4.6.4"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "tsc-alias": "^1.9.4",
