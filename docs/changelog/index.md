@@ -4,6 +4,16 @@
 
 ---
 
+## v2.99.0 - 2026-10-25
+
+### Changed
+
+- 前端依赖升级至最新版本：Semi Design 2.104、file-viewer 3.2、TanStack Query 5.104.5、VChart 2.2、Univerjs 1.2、lucide-react、maplibre-gl、rrweb-player 等，React 同步 19.3.1。
+- 测试基建随 Vitest 5.0.5 适配：jest-dom matchers 显式绑定工作区 Vitest 实例；客户端依赖预打包仅在非 Windows 平台开启（规避 5.0.5 的 Windows 原始路径 bug）。
+- bundle 体积预算按新依赖的体积影响调整 main / member 入口上限，并重写基线文档 docs/frontend/bundle-performance.md。
+
+---
+
 ## v2.98.0 - 2026-10-25
 
 ### Added
