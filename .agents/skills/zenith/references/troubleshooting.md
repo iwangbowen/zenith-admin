@@ -309,7 +309,7 @@ CPU 被抢后直接撞破；普通秒级用例（exceljs 渲染、Semi 浮层交
 | --- | --- |
 | 单独跑 `npm test` 就超时 | 调低两包 `vitest.config.ts` 的 `maxWorkers`——它是**上限**不是目标值，核数少的机器不受影响 |
 | 只在发布流程的四路并行下超时 | 放宽两包 `vitest.config.ts` 的 `testTimeout`，或 `src/app.contract.test.ts` `beforeAll` 的超时——它们与 lint / build / docs 争抢同一种（转译 + CPU）资源 |
-| web 全量明显变慢 | 确认 `packages/web/vitest.config.ts` 的 `deps.optimizer.web` 还在：Semi 的 CJS 里 require CSS，走不了原生加载，只能靠 esbuild 预打包（缓存于 `node_modules/.vite/deps`） |
+| web 全量明显变慢 | 注意 `packages/web/vitest.config.ts` 的依赖预打包当前因 Vitest 双平台回归关闭（见文件注释）：Semi 的 CJS 里 require CSS，只能走 Vite 逐模块转译；恢复 `deps.optimizer.client` 前需在 Windows 与 Linux 同时验证 |
 
 放宽超时前先确认它属于「慢但有效」——独占跑能过、且失败是超时而非断言失败；
 真卡死（如顶层 await 死锁）仍应快速失败。不要把发布流程的四路并行改成串行（单独跑 `npm test` 同样会超时，

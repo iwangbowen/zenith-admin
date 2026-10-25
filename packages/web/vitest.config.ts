@@ -37,15 +37,16 @@ export default defineConfig({
     isolate: true,
     // Semi 的 CJS 产物里直接 require CSS，node_modules 无法走原生加载，只能进
     // vite 管线逐模块转译+执行；隔离模式下每个测试文件的 worker 都要重复执行
-    // 这几千个包装模块。esbuild 预打包把它们压成单一 chunk（缓存在
-    // node_modules/.vite/deps），22 核实测全量从 288.6s 降到 139.4s（累计
-    // import 1306s → 551s），用例行为不变。
+    // 这几千个包装模块。esbuild 预打包本可把它们压成单一 chunk（缓存在
+    // node_modules/.vite/deps），22 核实测全量从 288.6s 降到 139.4s，但 Vitest 5
+    // 的 client 预打包有双平台回归：Windows 会生成 Node ESM 加载器拒绝的原始 C:\
+    // 路径，5.0.5 在 Linux 还会把 Semi CJS 内 require 的 CSS 外部化并报
+    // ERR_UNKNOWN_FILE_EXTENSION。Vitest 例外固定在 5.0.3（见 package.json），
+    // 预打包暂时关闭、Semi 走 Vite 逐模块转译；恢复前需在 Windows 与 Linux 同时验证。
     deps: {
       optimizer: {
         client: {
-          // Vitest 5.0.5 emits raw C:\\ paths from the client optimizer on Windows,
-          // which Node's ESM loader rejects. Keep the optimization on other platforms.
-          enabled: process.platform !== 'win32',
+          enabled: false,
           include: ['@douyinfe/semi-ui', '@douyinfe/semi-icons', '@douyinfe/semi-illustrations', 'lucide-react'],
         },
       },
