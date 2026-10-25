@@ -121,6 +121,52 @@ export interface GenerateSettlementInput {
   remark?: string;
 }
 
+export interface SettlementAggregationLine {
+  debitAmount: bigint;
+  creditAmount: bigint;
+  sourceType: string;
+  sourceId: string;
+}
+
+export interface SettlementAggregation {
+  grossAmount: number;
+  feeAmount: number;
+  refundAmount: number;
+  sharingAmount: number;
+  netAmount: number;
+  orderCount: number;
+}
+
+const SETTLEMENT_MAX_AMOUNT = 2_147_483_647;
+
+function settlementAmount(value: bigint): number {
+  const numberValue = Number(value);
+  if (!Number.isSafeInteger(numberValue) || numberValue > SETTLEMENT_MAX_AMOUNT || numberValue < -SETTLEMENT_MAX_AMOUNT - 1) {
+    throw new HTTPException(400, { message: '结算汇总超出当前批次金额上限' });
+  }
+  return numberValue;
+}
+
+export function summarizeSettlementLines(lines: readonly SettlementAggregationLine[]): SettlementAggregation {
+  const signedAmounts = lines.map((line) => line.creditAmount - line.debitAmount);
+  const netBigInt = signedAmounts.reduce((sum, amount) => sum + amount, 0n);
+  if (netBigInt <= 0n) throw new HTTPException(400, { message: '该账期可结算净额不大于 0，请先处理资金差异' });
+
+  const sumBy = (predicate: (line: SettlementAggregationLine) => bigint): number => (
+    settlementAmount(lines.reduce((sum, line) => sum + predicate(line), 0n))
+  );
+
+  return {
+    grossAmount: sumBy((line) => line.sourceType === 'payment.capture' || line.sourceType === 'payment.preauth.capture' ? line.creditAmount - line.debitAmount : 0n),
+    // A fee refund credits merchant_available, so it must reduce the fee total.
+    feeAmount: sumBy((line) => line.sourceType === 'payment.fee' || line.sourceType === 'payment.fee_refund' ? line.debitAmount - line.creditAmount : 0n),
+    refundAmount: sumBy((line) => line.sourceType === 'payment.refund' ? line.debitAmount - line.creditAmount : 0n),
+    sharingAmount: sumBy((line) => line.sourceType === 'payment.sharing' || line.sourceType === 'payment.sharing_reversal' ? line.debitAmount - line.creditAmount : 0n),
+    netAmount: settlementAmount(netBigInt),
+    orderCount: new Set(lines.filter((line) => line.sourceType === 'payment.capture' || line.sourceType === 'payment.preauth.capture').map((line) => line.sourceId)).size,
+  };
+}
+
 /** 生成结算批次：逐条认领 merchant_available 分录的带符号净额贡献；同一账期允许增量批次，分录行不可重复认领。 */
 export async function generateSettlement(input: GenerateSettlementInput, tenantIdOverride?: number | null): Promise<PaymentSettlementBatch> {
   const tenantId = tenantIdOverride === undefined ? requireTenantScopeId(currentUser()) : tenantIdOverride;
@@ -195,25 +241,7 @@ export async function generateSettlement(input: GenerateSettlementInput, tenantI
     .where(and(...scopeConditions, between(paymentJournals.postedAt, start, end)));
   if (lines.length === 0) throw new HTTPException(400, { message: '该账期没有未结算的可用资金分录' });
   const signedAmounts = lines.map((line) => line.creditAmount - line.debitAmount);
-  const netBigInt = signedAmounts.reduce((sum, amount) => sum + amount, 0n);
-  if (netBigInt <= 0n) throw new HTTPException(400, { message: '该账期可结算净额不大于 0，请先处理资金差异' });
-  const netAmount = Number(netBigInt);
-  if (!Number.isSafeInteger(netAmount) || netAmount > 2_147_483_647) {
-    throw new HTTPException(400, { message: '结算净额超出当前批次金额上限，请缩小账期' });
-  }
-  const sumBy = (predicate: (line: typeof lines[number]) => bigint): number => {
-    const value = lines.reduce((sum, line) => sum + predicate(line), 0n);
-    const numberValue = Number(value);
-    if (!Number.isSafeInteger(numberValue) || numberValue > 2_147_483_647 || numberValue < -2_147_483_648) {
-      throw new HTTPException(400, { message: '结算汇总超出当前批次金额上限' });
-    }
-    return numberValue;
-  };
-  const grossAmount = sumBy((line) => line.sourceType === 'payment.capture' || line.sourceType === 'payment.preauth.capture' ? line.creditAmount - line.debitAmount : 0n);
-  const feeAmount = sumBy((line) => line.sourceType === 'payment.fee' ? line.debitAmount - line.creditAmount : line.sourceType === 'payment.fee_refund' ? line.creditAmount - line.debitAmount : 0n);
-  const refundAmount = sumBy((line) => line.sourceType === 'payment.refund' ? line.debitAmount - line.creditAmount : 0n);
-  const sharingAmount = sumBy((line) => line.sourceType === 'payment.sharing' ? line.debitAmount - line.creditAmount : line.sourceType === 'payment.sharing_reversal' ? line.creditAmount - line.debitAmount : 0n);
-  const orderCount = new Set(lines.filter((line) => line.sourceType === 'payment.capture' || line.sourceType === 'payment.preauth.capture').map((line) => line.sourceId)).size;
+  const { grossAmount, feeAmount, refundAmount, sharingAmount, netAmount, orderCount } = summarizeSettlementLines(lines);
   const allocationKey = `request:${randomUUID()}`;
   try {
     const row = await db.transaction(async (tx) => {
