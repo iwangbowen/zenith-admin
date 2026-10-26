@@ -48,7 +48,7 @@ export function clearInactiveAssigneeProps(
   assigneeType: AssigneeType,
 ): Record<string, unknown> {
   const active = new Set(sourceFieldsFor(assigneeType));
-  const next = { ...props, assigneeType };
+  const next: Record<string, unknown> = { ...props, assigneeType };
   for (const field of SOURCE_FIELDS) {
     if (!active.has(field)) delete next[field];
   }
@@ -60,7 +60,7 @@ export function resetAssigneePropsForType(
   props: Record<string, unknown>,
   assigneeType: AssigneeType,
 ): Record<string, unknown> {
-  const next = { ...props, assigneeType };
+  const next: Record<string, unknown> = { ...props, assigneeType };
   for (const field of SOURCE_FIELDS) delete next[field];
   return next;
 }
