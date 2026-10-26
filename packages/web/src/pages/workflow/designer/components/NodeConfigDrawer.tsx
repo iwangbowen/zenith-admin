@@ -22,6 +22,7 @@ import {
   TRIGGER_TYPE_OPTIONS,
 } from '../constants';
 import ApproverSettingsTab from './tabs/ApproverSettingsTab';
+import { resetAssigneePropsForType, sanitizeAssigneePropsForWrite } from '../assignee-props';
 import FormPermissionTab from './tabs/FormPermissionTab';
 import ApprovalRequirementsTab from './tabs/ApprovalRequirementsTab';
 import ActionButtonsTab from './tabs/ActionButtonsTab';
@@ -237,7 +238,12 @@ export default function NodeConfigDrawer({
   }, [visible, node]);
 
   const handlePropsChange = (updates: Record<string, unknown>) => {
-    setProps(prev => ({ ...prev, ...updates }));
+    setProps(prev => {
+      if (typeof updates.assigneeType === 'string' && updates.assigneeType !== prev.assigneeType) {
+        return resetAssigneePropsForType({ ...prev, ...updates }, updates.assigneeType as AssigneeType);
+      }
+      return { ...prev, ...updates };
+    });
   };
 
   const handleSave = () => {
@@ -259,9 +265,10 @@ export default function NodeConfigDrawer({
       }
     }
     setNodeKeyError('');
+    const normalizedProps = typeof props.assigneeType === 'string' ? sanitizeAssigneePropsForWrite(props) : props;
     const nextProps = node.type === 'approver'
-      ? { ...props, actionButtons: normalizeActionButtons(props.actionButtons as ActionButtonsConfig | undefined) }
-      : props;
+      ? { ...normalizedProps, actionButtons: normalizeActionButtons(normalizedProps.actionButtons as ActionButtonsConfig | undefined) }
+      : normalizedProps;
     onSave(node.id, { name, key: trimmedKey, props: nextProps });
   };
 
