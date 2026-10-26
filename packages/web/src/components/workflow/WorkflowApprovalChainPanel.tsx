@@ -102,15 +102,18 @@ interface Props {
   highlightMissing?: boolean;
   /** 受控刷新信号：变化时按当前表单重新预测链路（发起页防抖 / 手动刷新） */
   reloadKey?: number;
+  /** 业务表单尚未准备好时跳过通用预览请求，由业务表单展示自己的未就绪状态。 */
+  previewEnabled?: boolean;
 }
 
 export default function WorkflowApprovalChainPanel({
   definitionId,
   getFormData,
   reloadKey,
+  previewEnabled = true,
   ...props
 }: Readonly<Props>) {
-  const previewQuery = useWorkflowApprovalPreview(definitionId, reloadKey, getFormData);
+  const previewQuery = useWorkflowApprovalPreview(definitionId, reloadKey, getFormData, previewEnabled);
   if (!definitionId) return null;
   return <WorkflowApprovalChain {...props} nodes={previewQuery.data ?? EMPTY_NODES}
     loading={previewQuery.isLoading} error={previewQuery.error?.message ?? false}

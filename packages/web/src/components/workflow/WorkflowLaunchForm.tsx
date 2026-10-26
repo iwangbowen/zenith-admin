@@ -193,6 +193,13 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
         : (dynamicFormApi.current?.getValues?.() as Record<string, unknown>) ?? {}
     );
 
+    // 权限申请有自己的审批计划预览。通用工作流预览在权限尚未选择时会被业务适配器
+    // 视为不完整请求；跳过这一次请求，避免把预期中的「待选择」变成浏览器 409。
+    const previewFormData = getPreviewFormData();
+    const accessPreviewReady = def.customForm?.businessType !== 'identity.access_request'
+      || (Array.isArray(previewFormData.roleIds) && previewFormData.roleIds.length > 0)
+      || (Array.isArray(previewFormData.permissionCodes) && previewFormData.permissionCodes.length > 0);
+
     // 动态默认值（${currentUser}/${today} 等）按发起人解析，被草稿/编辑回填覆盖
     const dynamicDefaults = useMemo(() => (
       def.formFields && def.formFields.length > 0
@@ -342,6 +349,7 @@ const WorkflowLaunchForm = forwardRef<WorkflowLaunchFormHandle, WorkflowLaunchFo
             onNodesChange={setInitiatorSelectNodes}
             highlightMissing={highlightMissing}
             reloadKey={chainReloadKey}
+            previewEnabled={accessPreviewReady}
           />
         )}
         graph={<WorkflowGraphView flowData={def.flowData} formFields={graphFields} height="calc(100vh - 160px)" />}

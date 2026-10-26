@@ -49,6 +49,7 @@ export function useWorkflowApprovalPreview(
   definitionId: number | null | undefined,
   reloadKey: number | undefined,
   getFormData?: () => Record<string, unknown>,
+  enabled = true,
 ) {
   return useQuery({
     queryKey: workflowSharedKeys.approvalPreview(definitionId, reloadKey),
@@ -58,7 +59,7 @@ export function useWorkflowApprovalPreview(
         { params: { id: definitionId as number }, body: { formData: getFormData ? getFormData() : null } },
         { silent: true },
       ),
-    enabled: !!definitionId,
+    enabled: enabled && !!definitionId,
     placeholderData: (previousData, previousQuery) =>
       previousQuery && previewDefinitionIdOf(previousQuery.queryKey) === definitionId ? previousData : undefined,
   });
