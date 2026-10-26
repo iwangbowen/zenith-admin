@@ -1,6 +1,6 @@
 {
   "name": "@zenith/server",
-  "version": "2.99.0",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -52,8 +52,8 @@
     "@types/dockerode": "^4.0.2",
     "@types/pdfkit": "^0.17.6",
     "@types/ssh2": "^1.15.6",
-    "@zenith/analytics-sdk": "^2.0.0",
-    "@zenith/shared": "^2.0.0",
+    "@zenith/analytics-sdk": "^3.0.0",
+    "@zenith/shared": "^3.0.0",
     "ali-oss": "^6.23.0",
     "archiver": "^8.0.0",
     "bcryptjs": "^3.0.3",

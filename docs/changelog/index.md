@@ -4,6 +4,12 @@
 
 ---
 
+## v3.0.0 - 2026-10-26
+
+### Changed
+
+- 服务端运行时与开发依赖升级至 npm 最新稳定版，覆盖 AWS SDK、Mastra、OpenTelemetry、Hono、pg-boss、Vitest 等，并同步 npm 12 锁文件。
+
 ## v2.99.0 - 2026-10-25
 
 ### Changed

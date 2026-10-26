@@ -1,6 +1,6 @@
 {
   "name": "@zenith/analytics-sdk",
-  "version": "2.99.0",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
   "sideEffects": false,
@@ -16,7 +16,7 @@
     "./*": "./src/*.ts"
   },
   "dependencies": {
-    "@zenith/shared": "^2.0.0",
+    "@zenith/shared": "^3.0.0",
     "rrweb": "^2.1.4",
     "web-vitals": "^6.2.1"
   }

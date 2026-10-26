@@ -1,6 +1,6 @@
 {
   "name": "@zenith/web",
-  "version": "2.99.0",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -59,8 +59,8 @@
     "@xterm/addon-webgl": "^0.19.0",
     "@xterm/xterm": "^6.0.0",
     "@xyflow/react": "^12.12.0",
-    "@zenith/analytics-sdk": "^2.0.0",
-    "@zenith/shared": "^2.0.0",
+    "@zenith/analytics-sdk": "^3.0.0",
+    "@zenith/shared": "^3.0.0",
     "cron-parser": "^5.10.2",
     "dagre": "^0.8.5",
     "dayjs": "^1.11.23",
