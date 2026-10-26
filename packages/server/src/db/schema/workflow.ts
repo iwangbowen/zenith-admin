@@ -266,7 +266,7 @@ export type WorkflowDataSourceRow = typeof workflowDataSources.$inferSelect;
 export type NewWorkflowDataSource = typeof workflowDataSources.$inferInsert;
 
 // 流程连接器：统一外部集成（HTTP / Webhook / IM / 邮件 / 短信 / MQ / DB）注册中心
-export const workflowConnectorTypeEnum = pgEnum('workflow_connector_type', ['http', 'webhook', 'email', 'sms', 'wecom', 'dingtalk', 'feishu', 'mq', 'database']);
+export const workflowConnectorTypeEnum = pgEnum('workflow_connector_type', ['http', 'webhook', 'mock', 'email', 'sms', 'wecom', 'dingtalk', 'feishu', 'mq', 'database']);
 
 export const workflowConnectors = pgTable('workflow_connectors', {
   id: idColumn(),

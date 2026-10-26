@@ -151,7 +151,7 @@ export default function WorkflowDataSourcesPage() {
             <Form.Select field="method" label="请求方法" style={{ width: '100%' }} optionList={[{ value: 'GET', label: 'GET' }, { value: 'POST', label: 'POST' }]} rules={[{ required: true, message: '请选择请求方法' }]} />
           </Col>
         </Row>
-        <Form.Input field="url" label="接口地址" placeholder="https://..." rules={[{ required: true, message: 'URL 不能为空' }, { pattern: /^https?:\/\/.+/i, message: 'URL 需以 http:// 或 https:// 开头' }]} />
+        <Form.Input field="url" label="接口地址" placeholder="https://... 或 mock://workflow/users" rules={[{ required: true, message: 'URL 不能为空' }, { pattern: /^(https?|mock):\/\/.+/i, message: 'URL 需以 http://、https:// 或 mock:// 开头' }]} />
         <Row gutter={16}>
           <Col span={12}>
             <Form.Input field="valueField" label="取值字段" placeholder="如 id" rules={[{ required: true, message: '取值字段不能为空' }]} />
