@@ -192,17 +192,18 @@ export default function AdminLayout({ user, onLogout, menus: menuTree }: AdminLa
   // Fullscreen
   const { isFullscreen, toggleFullscreen } = useFullscreen();
 
-  // 每次 App 会话只弹一次：见过一次后不再重复
-  const evictToastShownRef = useRef(false);
+  // 自动回收是页签上限策略，不作为错误；相邻回收合并提示，避免高频导航刷屏。
+  const evictToastAtRef = useRef(0);
   const { tabs, activeKey, setActiveKey, addTab, setTabMeta, removeTab, closeOthers, closeLeft, closeRight, closeAll, reorderTabs, pinTab, unpinTab } = useTabsStore(
     preferences.tabsMaxCount,
     (evicted) => {
-      if (evictToastShownRef.current) return;
-      evictToastShownRef.current = true;
+      const now = Date.now();
+      if (now - evictToastAtRef.current < 3000) return;
+      evictToastAtRef.current = now;
       const names = evicted.map((t) => `「${t.title}」`).join('、');
-      Toast.warning({
-        content: `已达到最大标签数 (${preferences.tabsMaxCount})，自动关闭了 ${names}`,
-        duration: 3,
+      Toast.info({
+        content: `页签已达到上限 (${preferences.tabsMaxCount})，已按回收策略关闭 ${names}`,
+        duration: 4,
       });
     },
     preferences.enableTabs && (preferences.keepTabs ?? true),
