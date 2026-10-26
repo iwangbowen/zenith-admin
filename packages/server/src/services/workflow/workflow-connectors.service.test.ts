@@ -66,6 +66,14 @@ beforeEach(() => {
 });
 
 describe('connector channel adapters', () => {
+  it('runs the deterministic mock connector without making a network request', async () => {
+    const result = await invokeConnector(connector('mock', { scenario: 'echo' }), { body: { orderNo: 'PO-202610' }, source: 'test' });
+    expect(result).toMatchObject({ ok: true, status: 200 });
+    expect(result.responseSnippet).toContain('PO-202610');
+    expect(mocks.http).not.toHaveBeenCalled();
+    expect(mocks.insertValues).toHaveBeenCalledWith(expect.objectContaining({ connectorId: 42, source: 'test', ok: true }));
+  });
+
   it('uses email channel settings and caller message without an HTTP request', async () => {
     const result = await invokeConnector(connector('email', { to: 'finance@example.com', subject: '付款审批通过' }), { body: '报销单已批准', source: 'test' });
     expect(result.ok).toBe(true);

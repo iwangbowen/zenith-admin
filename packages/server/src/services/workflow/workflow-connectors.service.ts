@@ -283,7 +283,7 @@ async function executeHttp(connector: WorkflowConnectorRow, req: BuiltRequest, c
   return result;
 }
 
-const RUNTIME_SUPPORTED = new Set<string>(['http', 'webhook', 'wecom', 'dingtalk', 'feishu', 'email', 'sms']);
+const RUNTIME_SUPPORTED = new Set<string>(['http', 'webhook', 'mock', 'wecom', 'dingtalk', 'feishu', 'email', 'sms']);
 
 /** email 连接器 adapter：复用 lib/email.sendMail；收件人/主题取 config，正文取 message/body */
 async function invokeEmail(connector: WorkflowConnectorRow, opts: ConnectorInvokeOptions): Promise<WorkflowConnectorInvokeResult> {
@@ -336,6 +336,15 @@ export async function invokeConnector(connector: WorkflowConnectorRow, opts: Con
   }
   if (!RUNTIME_SUPPORTED.has(connector.type)) {
     return fail(`连接器类型「${connector.type}」暂未支持运行时调用`);
+  }
+  if (connector.type === 'mock') {
+    const scenario = String((connector.config as Record<string, unknown> | null)?.scenario ?? '');
+    const started = Date.now();
+    const result = scenario === 'echo'
+      ? { ok: true, status: 200, durationMs: Date.now() - started, responseSnippet: JSON.stringify({ ok: true, scenario, body: opts.body ?? null }), error: null }
+      : fail(`未知 Mock 场景：${scenario || '未配置'}`);
+    await recordInvocation(connector, `mock://${scenario}`, result, source);
+    return result;
   }
   const cbCfg = { enabled: connector.circuitBreakerEnabled, failureThreshold: connector.failureThreshold, cooldownSec: connector.cooldownSec };
   const gate = await breakerAllow(connector.id, cbCfg);

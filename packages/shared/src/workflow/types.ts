@@ -786,6 +786,7 @@ export type WorkflowConnectorInvocationSource = (typeof WORKFLOW_CONNECTOR_INVOC
 export type WorkflowConnectorHttpConfig = output<typeof import('./validation').workflowConnectorHttpConfigSchema>;
 export type WorkflowConnectorEmailConfig = output<typeof import('./validation').workflowConnectorEmailConfigSchema>;
 export type WorkflowConnectorSmsConfig = output<typeof import('./validation').workflowConnectorSmsConfigSchema>;
+export type WorkflowConnectorMockConfig = output<typeof import('./validation').workflowConnectorMockConfigSchema>;
 
 /** 连接器凭据明文（落库前整体 AES 加密，绝不回传） */
 export interface WorkflowConnectorCredentials {

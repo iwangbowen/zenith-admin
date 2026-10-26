@@ -196,7 +196,7 @@ export default function WorkflowConnectorsPage() {
     { title: '编码', dataIndex: 'code', width: 270, className: 'table-cell-muted', ellipsis: { showTitle: true } },
     { title: '类型', dataIndex: 'type', width: 100, render: (t: WorkflowConnectorType) => <Tag size="small" color={t === 'http' ? 'blue' : 'grey'}>{WORKFLOW_CONNECTOR_TYPE_LABELS[t] ?? t}</Tag> },
     { title: '目标', dataIndex: 'config', width: 240, render: (_: unknown, r: WorkflowConnector) => {
-      const target = r.type === 'email' ? r.config.to : r.type === 'sms' ? r.config.phone : r.config.baseUrl;
+      const target = r.type === 'email' ? r.config.to : r.type === 'sms' ? r.config.phone : r.type === 'mock' ? r.config.scenario : r.config.baseUrl;
       return renderEllipsis(typeof target === 'string' ? target : null);
     } },
     { title: '凭据', dataIndex: 'hasCredentials', width: 80, render: (v: boolean) => v ? <Tag size="small" color="green">已配</Tag> : <Tag size="small" color="grey">无</Tag> },
@@ -259,6 +259,10 @@ export default function WorkflowConnectorsPage() {
             style={{ width: '100%' }} rules={[{ required: true, message: '请选择短信模板' }]} />
             : <Form.Input field="smsTemplateCode" label="短信模板编码" rules={[{ required: true, message: '请填写短信模板编码' }]} />}
           <Typography.Text type="tertiary" size="small">短信使用系统启用的服务商配置；流程传入的数据用于填充所选模板。</Typography.Text>
+        </Form.Section>}
+        {connectorType === 'mock' && <Form.Section text="演示 Mock 配置">
+          <Form.Input field="mockScenario" label="场景" placeholder="echo" rules={[{ required: true, message: '请填写 Mock 场景' }]} />
+          <Typography.Text type="tertiary" size="small">Mock 场景不访问网络，仅用于本地演示和浏览器回归。</Typography.Text>
         </Form.Section>}
         {isWorkflowHttpConnector(connectorType) && <Form.Section text="HTTP 调用配置">
           <Form.Input field="baseUrl" label="基础地址" placeholder="https://api.example.com" rules={[{ required: true, message: '基础地址不能为空' }, { pattern: /^https?:\/\/.+/i, message: '需以 http:// 或 https:// 开头' }]} />
@@ -325,8 +329,8 @@ export default function WorkflowConnectorsPage() {
         {testTarget && <TextArea value={testBodyText} onChange={setTestBodyText} autosize={{ minRows: 3, maxRows: 8 }}
           placeholder={testTarget.type === 'email' || ['wecom', 'dingtalk', 'feishu'].includes(testTarget.type) ? '测试消息正文' : '可选，测试数据 JSON；短信填写模板变量'}
           style={{ marginBottom: 12 }} />}
-        {testTarget && !isWorkflowHttpConnector(testTarget.type) && <Banner type="warning" fullMode={false} closeIcon={null}
-          description={testTarget.type === 'email' ? `测试将向 ${String(testTarget.config.to ?? '')} 发送邮件。` : `测试将向 ${String(testTarget.config.phone ?? '')} 发送短信。`} />}
+        {testTarget && !isWorkflowHttpConnector(testTarget.type) && <Banner type={testTarget.type === 'mock' ? 'info' : 'warning'} fullMode={false} closeIcon={null}
+          description={testTarget.type === 'mock' ? `测试将运行内置 Mock 场景「${String(testTarget.config.scenario ?? '')}」，不会访问网络。` : testTarget.type === 'email' ? `测试将向 ${String(testTarget.config.to ?? '')} 发送邮件。` : `测试将向 ${String(testTarget.config.phone ?? '')} 发送短信。`} />}
         <Spin spinning={testMutation.isPending}>
           {!testResult ? (
             <Typography.Text type="tertiary" size="small">点击「发送测试」对连接器发起一次探测请求。</Typography.Text>

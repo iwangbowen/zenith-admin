@@ -319,8 +319,8 @@ export const WORKFLOW_HEALTH_ISSUE_TYPE_OPTIONS: Array<{ value: (typeof WORKFLOW
   createLabelOptions(WORKFLOW_HEALTH_ISSUE_TYPES, WORKFLOW_HEALTH_ISSUE_TYPE_LABELS);
 
 /** 连接器类型（含尚未开放创建的 mq / database，历史数据可能存在） */
-export const WORKFLOW_CONNECTOR_TYPES = ['http', 'webhook', 'email', 'sms', 'wecom', 'dingtalk', 'feishu', 'mq', 'database'] as const;
-export const WORKFLOW_CONNECTOR_RUNTIME_TYPES = ['http', 'webhook', 'email', 'sms', 'wecom', 'dingtalk', 'feishu'] as const;
+export const WORKFLOW_CONNECTOR_TYPES = ['http', 'webhook', 'mock', 'email', 'sms', 'wecom', 'dingtalk', 'feishu', 'mq', 'database'] as const;
+export const WORKFLOW_CONNECTOR_RUNTIME_TYPES = ['http', 'webhook', 'mock', 'email', 'sms', 'wecom', 'dingtalk', 'feishu'] as const;
 export const WORKFLOW_CONNECTOR_HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'] as const;
 export const WORKFLOW_CONNECTOR_AUTH_TYPES = ['none', 'bearer', 'basic', 'apiKey'] as const;
 export const WORKFLOW_CONNECTOR_AUTH_LABELS = { none: '无', bearer: 'Bearer Token', basic: 'Basic', apiKey: 'API Key' };
@@ -333,6 +333,7 @@ export const WORKFLOW_CONNECTOR_HTTP_METHOD_OPTIONS = WORKFLOW_CONNECTOR_HTTP_ME
 export const WORKFLOW_CONNECTOR_TYPE_LABELS: Record<WorkflowConnectorType, string> = {
   http: 'HTTP',
   webhook: 'Webhook',
+  mock: '演示 Mock',
   email: '邮件',
   sms: '短信',
   wecom: '企业微信',

@@ -198,7 +198,10 @@ export type UpdateWorkflowFormInput = z.input<typeof updateWorkflowFormSchema>;
 export const createWorkflowDataSourceSchema = z.object({
   name: z.string().min(1, '名称不能为空').max(64),
   method: z.enum(['GET', 'POST']).default('GET'),
-  url: httpUrl('URL 需以 http:// 或 https:// 开头').max(1024),
+  url: z.union([
+    httpUrl('URL 需以 http:// 或 https:// 开头'),
+    z.string().trim().regex(/^mock:\/\/[a-z][a-z0-9/_-]*$/i, 'Mock 地址需为 mock://<场景>'),
+  ]).pipe(z.string().max(1024)),
   headers: z.record(z.string(), z.string()).optional(),
   itemsPath: z.string().max(128).optional(),
   valueField: z.string().min(1, '取值字段不能为空').max(64),
@@ -228,6 +231,10 @@ export const workflowConnectorHttpConfigSchema = z.object({
   query: z.record(z.string(), z.string()).optional(),
 });
 
+export const workflowConnectorMockConfigSchema = z.object({
+  scenario: z.string().trim().min(1, 'Mock 场景不能为空').max(128),
+});
+
 const splitConnectorRecipients = (value: string) => value.split(/[,;；，]/).map(part => part.trim()).filter(Boolean);
 export const workflowConnectorEmailConfigSchema = z.object({
   to: z.string().trim().min(1, '请填写邮件收件人').refine(value => {
@@ -243,6 +250,7 @@ export const workflowConnectorSmsConfigSchema = z.object({
 });
 
 export function validateWorkflowConnectorConfig(type: string, config: unknown) {
+  if (type === 'mock') return workflowConnectorMockConfigSchema.safeParse(config);
   if (type === 'email') return workflowConnectorEmailConfigSchema.safeParse(config);
   if (type === 'sms') return workflowConnectorSmsConfigSchema.safeParse(config);
   return workflowConnectorHttpConfigSchema.safeParse(config);

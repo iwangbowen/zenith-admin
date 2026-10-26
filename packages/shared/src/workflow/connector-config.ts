@@ -11,10 +11,11 @@ export interface WorkflowConnectorConfigFields {
   emailSubject: string;
   smsPhone: string;
   smsTemplateCode: string;
+  mockScenario: string;
 }
 
 export function isWorkflowHttpConnector(type: WorkflowConnectorType): boolean {
-  return type !== 'email' && type !== 'sms';
+  return ['http', 'webhook', 'wecom', 'dingtalk', 'feishu'].includes(type);
 }
 
 export function workflowConnectorConfigFields(config: Record<string, unknown>): WorkflowConnectorConfigFields {
@@ -30,6 +31,7 @@ export function workflowConnectorConfigFields(config: Record<string, unknown>): 
     emailSubject: text('subject'),
     smsPhone: text('phone'),
     smsTemplateCode: text('templateCode'),
+    mockScenario: text('scenario'),
   };
 }
 
@@ -41,6 +43,7 @@ export function workflowConnectorConfigFromFields(
 ): Record<string, unknown> {
   if (type === 'email') return { to: fields.emailTo.trim(), subject: fields.emailSubject.trim() };
   if (type === 'sms') return { phone: fields.smsPhone.trim(), templateCode: fields.smsTemplateCode.trim() };
+  if (type === 'mock') return { scenario: fields.mockScenario.trim() };
   return {
     baseUrl: fields.baseUrl.trim(),
     method: fields.method,

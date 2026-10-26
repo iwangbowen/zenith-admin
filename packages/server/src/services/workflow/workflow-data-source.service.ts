@@ -77,7 +77,7 @@ export const workflowDataSourceService = defineCrudService(workflowDataSourceCon
   }),
   create: {
     before: async (input) => {
-      await assertSafeWorkflowUrl(input.url);
+      if (!input.url.startsWith('mock://')) await assertSafeWorkflowUrl(input.url);
     },
     toRow: (input) => ({
       name: input.name,
@@ -94,7 +94,7 @@ export const workflowDataSourceService = defineCrudService(workflowDataSourceCon
   },
   update: {
     before: async (input) => {
-      if (input.url !== undefined) await assertSafeWorkflowUrl(input.url);
+      if (input.url !== undefined && !input.url.startsWith('mock://')) await assertSafeWorkflowUrl(input.url);
     },
     toRow: (input, existing) => ({
       name: input.name,
@@ -138,6 +138,16 @@ async function fetchDataSourceRawItems(id: number, keyword?: string): Promise<Ar
 
   const src = await ensureDataSourceExists(id);
   if (src.status !== 'enabled') throw new HTTPException(400, { message: '数据源已停用' });
+
+  if (src.url.startsWith('mock://workflow/users')) {
+    const items = [
+      { id: 1, name: '演示用户' },
+      { id: 2, name: '演示审批人' },
+      { id: 3, name: '演示财务' },
+    ].filter((item) => !keyword || item.name.includes(keyword));
+    rawItemsCache.set(cacheKey, { data: items, expire: Date.now() + OPTIONS_CACHE_TTL });
+    return items;
+  }
 
   const method = src.method === 'POST' ? 'POST' : 'GET';
   let url = src.url;
