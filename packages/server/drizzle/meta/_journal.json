@@ -36,6 +36,13 @@
       "when": 1793030553357,
       "tag": "0004_previous_scarecrow",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793119794560,
+      "tag": "0005_spicy_dagger",
+      "breakpoints": true
     }
   ]
 }

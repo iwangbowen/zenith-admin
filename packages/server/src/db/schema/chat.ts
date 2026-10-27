@@ -35,6 +35,8 @@ export const chatConversationMembers = pgTable('chat_conversation_members', {
   isMuted: boolean().notNull().default(false),
   /** 会话归档（收进「已归档」折叠分组，不影响未读计数） */
   isArchived: boolean().notNull().default(false),
+  /** 仅对当前用户隐藏的会话记录；保留成员关系以维持对端身份与消息路由 */
+  isHidden: boolean().notNull().default(false),
   /** 被禁言至（null = 未禁言；9999 年 = 永久禁言） */
   mutedUntil: timestamptz(),
   lastReadAt: timestamptz(),

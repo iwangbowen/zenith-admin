@@ -31,7 +31,10 @@ export async function listConversations(): Promise<ChatConversation[]> {
       mutedUntil: chatConversationMembers.mutedUntil,
     })
     .from(chatConversationMembers)
-    .where(eq(chatConversationMembers.userId, me.userId));
+    .where(and(
+      eq(chatConversationMembers.userId, me.userId),
+      eq(chatConversationMembers.isHidden, false),
+    ));
 
   if (memberRows.length === 0) return [];
 
@@ -244,6 +247,12 @@ export async function getOrCreateDirectConversation(targetUserId: number): Promi
       .limit(1);
 
     if (existing) {
+      await db.update(chatConversationMembers)
+        .set({ isHidden: false })
+        .where(and(
+          eq(chatConversationMembers.conversationId, existing.conversationId),
+          eq(chatConversationMembers.userId, me.userId),
+        ));
       const all = await listConversations();
       const found = all.find((c) => c.id === existing.conversationId);
       if (found) return found;
@@ -397,6 +406,17 @@ export async function removeConversation(conversationId: number): Promise<void> 
     if (otherCount > 0) {
       throw new HTTPException(400, { message: '你是群主，请先转让群主或解散群聊' });
     }
+  }
+
+  if (conversation.type === 'direct') {
+    await db.update(chatConversationMembers)
+      .set({ isHidden: true, isPinned: false, isStarred: false, isMuted: false, isArchived: false })
+      .where(and(
+        eq(chatConversationMembers.conversationId, conversationId),
+        eq(chatConversationMembers.userId, me.userId),
+      ));
+    invalidateConversationMembers(conversationId);
+    return;
   }
 
   await db.delete(chatConversationMembers).where(and(
