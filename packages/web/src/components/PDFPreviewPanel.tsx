@@ -218,10 +218,13 @@ export function PDFPreviewPanel({ file, onClose, fullscreen, onToggleFullscreen,
             // 本地 npm 资源（绝对 URL），替代默认的 jsDelivr CDN wasm
             wasmUrl: pdfiumWasmAbsUrl,
             zoom: { defaultZoomLevel: ZoomMode.FitWidth },
+            // 电子签章通常是 /FT /Sig 表单的外观流，必须由 PDFium 绘制；
+            // 隐藏表单编辑工具不应同时丢掉原文档中的公章、签名和骑缝章。
+            render: { withForms: true },
             i18n: { defaultLocale: 'zh-CN' },
             tabBar: 'never',
             disabledCategories: ['annotation', 'form', 'redaction', 'insert', 'signature'],
-            // 只读预览不使用印章/批注，禁用默认印章清单，避免从 jsDelivr CDN
+            // 只读预览不新增印章/批注，禁用默认印章清单，避免从 jsDelivr CDN
             // 拉取 default-stamps 的 manifest.json 与 stamps.pdf。
             stamp: { manifests: [] },
             // 关闭查看器 UI 默认从 Google Fonts 加载的 Open Sans 字体（国内被墙会导致
