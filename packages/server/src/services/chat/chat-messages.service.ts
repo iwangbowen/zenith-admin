@@ -24,12 +24,16 @@ async function fetchReplySnapshotMap(
 ): Promise<Map<number, ChatMessage['replyToMessage']>> {
   const replyIds = [...new Set(rows.map((r) => r.replyToId).filter((id): id is number => id !== null))];
   if (replyIds.length === 0) return new Map();
+  const me = currentUser();
 
   const replyRows = await db
     .select({ msg: chatMessages, nickname: users.nickname })
     .from(chatMessages)
     .leftJoin(users, eq(chatMessages.senderId, users.id))
-    .where(inArray(chatMessages.id, replyIds));
+    .where(and(
+      inArray(chatMessages.id, replyIds),
+      notHiddenFor(me.userId),
+    ));
 
   const map = new Map<number, ChatMessage['replyToMessage']>();
   for (const r of replyRows) {
@@ -411,6 +415,7 @@ export async function getMessageContext(
     .where(and(
       eq(chatMessages.conversationId, conversationId),
       eq(chatMessages.id, messageId),
+      notHiddenFor(me.userId),
     ))
     .limit(1);
 
@@ -424,6 +429,7 @@ export async function getMessageContext(
       .where(and(
         eq(chatMessages.conversationId, conversationId),
         lt(chatMessages.id, messageId),
+        notHiddenFor(me.userId),
       ))
       .orderBy(desc(chatMessages.id))
       .limit(before),
@@ -434,6 +440,7 @@ export async function getMessageContext(
       .where(and(
         eq(chatMessages.conversationId, conversationId),
         gt(chatMessages.id, messageId),
+        notHiddenFor(me.userId),
       ))
       .orderBy(asc(chatMessages.id))
       .limit(after),
@@ -460,8 +467,16 @@ export async function getMessageContext(
   )), favIds);
 
   const [beforeCount, afterCount] = await Promise.all([
-    db.$count(chatMessages, and(eq(chatMessages.conversationId, conversationId), lt(chatMessages.id, messageId))),
-    db.$count(chatMessages, and(eq(chatMessages.conversationId, conversationId), gt(chatMessages.id, messageId))),
+    db.$count(chatMessages, and(
+      eq(chatMessages.conversationId, conversationId),
+      lt(chatMessages.id, messageId),
+      notHiddenFor(me.userId),
+    )),
+    db.$count(chatMessages, and(
+      eq(chatMessages.conversationId, conversationId),
+      gt(chatMessages.id, messageId),
+      notHiddenFor(me.userId),
+    )),
   ]);
 
   return {
