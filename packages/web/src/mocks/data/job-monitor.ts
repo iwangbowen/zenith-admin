@@ -144,9 +144,13 @@ export function createDemoJobMonitorOverview(): JobMonitorOverview {
   backup.counts.failed24h = mockBackups.filter(run => run.status === 'failed' && run.completedAt && ageSec(run.completedAt) < 86400).length;
   backup.health = backup.counts.stuck > 0 ? 'critical' : backup.counts.failed24h > 0 ? 'warn' : 'ok';
   backup.oldestPendingAgeSec = mockBackups.filter(run => run.status === 'pending').reduce<number | null>((oldest, run) => Math.max(oldest ?? 0, ageSec(run.createdAt)), null);
+  const incidents = sources.flatMap((item) => item.counts.stuck > 0 ? createDemoStuckJobs(item.key) : [])
+    .sort((a, b) => b.ageSec - a.ageSec || a.title.localeCompare(b.title))
+    .slice(0, 20);
   return {
     health: 'critical', generatedAt: mockDateTime(),
     totals: sumJobMonitorCounts(sources.map(item => ({ ...item, stuckOnly: item.key === 'drive-rendition' || item.category === 'business' }))),
+    incidents,
     workers: { available: true, reason: null, data: {
       total: 3, active: 2, stale: 1, workerRoleActive: 1,
       nodes: [

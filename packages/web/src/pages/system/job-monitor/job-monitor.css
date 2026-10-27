@@ -1,22 +1,295 @@
-/* 页面内边距由全局 .page-container 提供；面板留白统一走根容器 gap（默认 12px，本页用 16px）。 */
 .page-container.job-monitor-page {
+  gap: 0;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.job-monitor-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--semi-color-border);
 }
 
-/* 页面已有 gap，避免全局相邻面板的 margin 再叠加一层间距。 */
-.job-monitor-page > .semi-card + .semi-card {
-  margin-top: 0;
+.job-monitor-page__header > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 
-.job-monitor-page .semi-card-header-wrapper {
+.job-monitor-inline-notice {
+  margin-top: 12px;
+  padding: 8px 0;
+  color: var(--semi-color-text-2);
+  font-size: 12px;
+  border-top: 1px solid var(--semi-color-border);
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.job-monitor-inline-notice--warning {
+  color: var(--semi-color-warning);
+}
+
+.job-monitor-page > .zx-stat-wrap {
+  margin-top: 8px;
+}
+
+.job-monitor-section {
+  min-width: 0;
+  margin-top: 24px;
+  padding-top: 14px;
+  border-top: 1px solid var(--semi-color-border);
+}
+
+.job-monitor-section__header {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 28px;
+  margin-bottom: 8px;
 }
 
-.job-monitor-page > .semi-card .semi-card-header-wrapper {
-  min-height: 32px;
+.job-monitor-issues__list {
+  display: flex;
+  flex-direction: column;
 }
 
-/* 趋势区：扁平排版（不用卡片），范围切换器与曲线同屏；宽屏三列、窄屏单列 */
+.job-monitor-issue-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.1fr) minmax(220px, 1.6fr) auto;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.job-monitor-issue-row:last-child {
+  border-bottom: 0;
+}
+
+.job-monitor-issue-row__title,
+.job-monitor-issue-row__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.job-monitor-issue-row__title > .semi-typography {
+  min-width: 0;
+}
+
+.job-monitor-issue-row__meta {
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+.job-monitor-health-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--semi-color-success);
+}
+
+.job-monitor-health-dot--warn { background: var(--semi-color-warning); }
+.job-monitor-health-dot--critical { background: var(--semi-color-danger); }
+.job-monitor-health-dot--unavailable { background: var(--semi-color-text-3); }
+
+.job-monitor-workers__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 24px;
+}
+
+.job-monitor-worker {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.job-monitor-worker > .semi-space,
+.job-monitor-worker > .semi-typography {
+  max-width: 100%;
+}
+
+.job-monitor-source-list {
+  border-top: 1px solid var(--semi-color-border);
+  background: transparent;
+}
+
+.job-monitor-source-list .semi-collapse-item {
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.job-monitor-source-list__group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+}
+
+.job-monitor-source-list .semi-collapse-header {
+  padding: 12px 0;
+}
+
+.job-monitor-source-list .semi-collapse-content {
+  padding: 0;
+}
+
+.job-monitor-source-list__row {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.1fr) minmax(460px, 2fr) minmax(170px, .8fr) 300px;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.job-monitor-source-list__identity,
+.job-monitor-source-list__meta,
+.job-monitor-source-list__actions,
+.job-monitor-source-list__metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(70px, 1fr));
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.job-monitor-source-list__identity > .semi-typography:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.job-monitor-source-list__metrics {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.job-monitor-source-list__metric {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 48px;
+}
+
+.job-monitor-source-list__metric > .semi-typography:last-child {
+  font-variant-numeric: tabular-nums;
+}
+
+.job-monitor-source-list__meta {
+  justify-content: flex-start;
+  gap: 4px 12px;
+}
+
+.job-monitor-source-list__actions {
+  justify-content: flex-start;
+  width: 300px;
+  min-width: 300px;
+  white-space: nowrap;
+}
+
+.job-monitor-source-list__drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 0;
+}
+
+.job-monitor-stuck-table__duration {
+  display: block;
+  max-width: 150px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.job-monitor-stuck-table .semi-table-tbody .semi-table-row-cell,
+.job-monitor-stuck-table .semi-table-thead .semi-table-row-head {
+  white-space: nowrap;
+}
+
+.job-monitor-stuck-table .semi-table-tbody .semi-table-row-cell:nth-child(8) {
+  white-space: normal;
+}
+
+.job-monitor-source-list__breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--semi-color-border);
+}
+
+.job-monitor-source-list__breakdown-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(0, 1.5fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--semi-color-border);
+}
+
+.job-monitor-source-list__breakdown-row:last-child {
+  border-bottom: 0;
+}
+
+.job-monitor-source-list__drawer .semi-space {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 8px;
+}
+
+.job-monitor-queues {
+  margin-top: 24px;
+}
+
+.job-monitor-queues .semi-table-wrapper {
+  border-top: 1px solid var(--semi-color-border);
+}
+
+.job-monitor-page .job-monitor-queue-link {
+  height: auto;
+  min-height: 24px;
+  padding: 0;
+  font-weight: 400;
+  text-align: left;
+}
+
+.job-monitor-page .job-monitor-queue-link .semi-button-content {
+  justify-content: flex-start;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.job-monitor-page .job-monitor-queue-number {
+  font-variant-numeric: tabular-nums;
+}
+
+.job-monitor-trend {
+  margin-top: 24px;
+  padding-top: 14px;
+  border-top: 1px solid var(--semi-color-border);
+}
+
 .job-monitor-trend__header {
   display: flex;
   align-items: center;
@@ -48,8 +321,9 @@
 
 .job-monitor-trend__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 16px 24px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 24px;
+  margin-top: 12px;
 }
 
 .job-monitor-trend__cell {
@@ -57,9 +331,9 @@
   flex-direction: column;
   gap: 4px;
   min-width: 0;
+  padding: 0 0 12px;
 }
 
-/* 无样本时仍保留折线图的坐标区域，空态覆盖在图心，避免趋势区塌缩成一行文字。 */
 .job-monitor-trend__chart {
   position: relative;
   min-height: 170px;
@@ -77,20 +351,71 @@
   pointer-events: none;
 }
 
-.job-monitor-page .job-monitor-queue-link {
-  height: auto;
-  min-height: 24px;
-  padding: 0;
-  font-weight: 400;
-  text-align: left;
+@media (--xl-down) {
+  .job-monitor-trend__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .job-monitor-workers__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
-.job-monitor-page .job-monitor-queue-link .semi-button-content {
-  justify-content: flex-start;
-  white-space: normal;
-  overflow-wrap: anywhere;
+@media (--md-down) {
+  .job-monitor-page__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .job-monitor-page__header > .semi-space {
+    justify-content: space-between;
+  }
+
+  .job-monitor-issue-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .job-monitor-issue-row > .semi-typography:nth-child(2) {
+    grid-column: 1 / -1;
+  }
+
+  .job-monitor-issue-row__meta {
+    justify-content: flex-start;
+  }
 }
 
-.job-monitor-page .job-monitor-queue-number {
-  font-variant-numeric: tabular-nums;
+@media (--sm-down) {
+  .job-monitor-trend__grid,
+  .job-monitor-workers__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .job-monitor-source-list__row {
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+  }
+
+  .job-monitor-source-list__identity,
+  .job-monitor-source-list__metrics,
+  .job-monitor-source-list__meta {
+    grid-column: 1 / -1;
+  }
+
+  .job-monitor-source-list__actions {
+    grid-column: 2;
+    width: auto;
+    min-width: 0;
+  }
+
+  .job-monitor-source-list__metrics {
+    grid-template-columns: repeat(5, minmax(58px, 1fr));
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .job-monitor-source-list__breakdown-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .job-monitor-source-list__breakdown-row > .semi-typography:nth-child(2) {
+    grid-column: 1 / -1;
+  }
 }

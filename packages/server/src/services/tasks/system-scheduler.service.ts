@@ -28,6 +28,12 @@ export function overdueSchedulerRunCondition(asOf = new Date()) {
   return and(eq(systemSchedulerRuns.status, 'running'), sql`${systemSchedulerRuns.startedAt} + coalesce(${systemSchedulerTaskConfigs.timeoutMs}, 1800000) * interval '1 millisecond' < ${sql.param(asOf, systemSchedulerRuns.startedAt)}`);
 }
 
+function formatTimeoutMs(timeoutMs: number) {
+  const minutes = Math.max(1, Math.round(timeoutMs / 60_000));
+  if (minutes >= 60) return `${Math.round(minutes / 60)} 小时`;
+  return `${minutes} 分钟`;
+}
+
 /** 队列真实积压使用 ready；运行留痕成败按结束时间，避免把历史失败当24h失败。 */
 export async function getSchedulerRunHealth(): Promise<JobSourceRawSummary> {
   const now = new Date();
@@ -62,9 +68,10 @@ export async function getSchedulerRunHealth(): Promise<JobSourceRawSummary> {
 export async function listOverdueSchedulerRuns(limit: number): Promise<JobStuckItem[]> {
   const now = new Date();
   const rows = await db.select({
-    id: systemSchedulerRuns.id, taskTitle: systemSchedulerRuns.taskTitle, status: systemSchedulerRuns.status,
+    id: systemSchedulerRuns.id, taskName: systemSchedulerRuns.taskName, taskTitle: systemSchedulerRuns.taskTitle, status: systemSchedulerRuns.status,
     startedAt: systemSchedulerRuns.startedAt, nodeId: systemSchedulerRuns.nodeId,
     errorMessage: systemSchedulerRuns.errorMessage, resultMessage: systemSchedulerRuns.resultMessage,
+    timeoutMs: systemSchedulerTaskConfigs.timeoutMs,
   }).from(systemSchedulerRuns)
     .leftJoin(systemSchedulerTaskConfigs, eq(systemSchedulerTaskConfigs.taskName, systemSchedulerRuns.taskName))
     .where(overdueSchedulerRunCondition(now)).orderBy(systemSchedulerRuns.startedAt, systemSchedulerRuns.id).limit(limit);
@@ -72,8 +79,9 @@ export async function listOverdueSchedulerRuns(limit: number): Promise<JobStuckI
     source: 'scheduler-queue', refId: String(row.id), title: row.taskTitle, status: row.status,
     startedAt: formatDateTime(row.startedAt), lastSeenAt: formatDateTime(row.startedAt),
     ageSec: Math.max(0, Math.floor((now.getTime() - row.startedAt.getTime()) / 1000)),
-    nodeId: row.nodeId, detail: row.errorMessage ?? row.resultMessage,
-    drillDown: { path: '/system/scheduler?tab=runs&status=running', label: '查看运行记录' },
+    nodeId: row.nodeId,
+    detail: row.errorMessage ?? row.resultMessage ?? `运行已超过任务超时阈值 ${formatTimeoutMs(Number(row.timeoutMs ?? 1800000))}`,
+    drillDown: { path: `/system/scheduler?tab=runs&status=running&taskName=${encodeURIComponent(row.taskName)}`, label: '查看运行记录' },
   }));
 }
 

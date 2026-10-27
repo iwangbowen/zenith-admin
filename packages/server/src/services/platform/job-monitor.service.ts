@@ -64,7 +64,15 @@ export async function getJobMonitorOverview(): Promise<JobMonitorOverview> {
     section(collectWorkers), section(collectQueues), Promise.all(listJobSources().map(collectJobSource)),
   ]);
   const totals = sumJobMonitorCounts(sources.map(source => ({ ...source, stuckOnly: getJobSource(source.key)?.totalsMode === 'stuck-only' })));
-  return { health: deriveOverallHealth(sources, workers), generatedAt: formatDateTime(new Date()), totals, workers, queues, sources };
+  const stuckSources = sources.filter((source) => source.counts.stuck > 0 && source.supportsStuckList);
+  const incidentResults = await Promise.allSettled(stuckSources.map(async (source) => {
+    const registration = getJobSource(source.key);
+    return registration?.listStuck ? registration.listStuck(Math.min(20, Math.max(1, source.counts.stuck))) : [];
+  }));
+  const incidents = incidentResults.flatMap((result) => result.status === 'fulfilled' ? result.value : [])
+    .sort((a, b) => b.ageSec - a.ageSec || a.title.localeCompare(b.title))
+    .slice(0, 20);
+  return { health: deriveOverallHealth(sources, workers), generatedAt: formatDateTime(new Date()), totals, workers, queues, sources, incidents };
 }
 
 export async function listJobMonitorStuck(key: JobSourceKey, limit: number) {

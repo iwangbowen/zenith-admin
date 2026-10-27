@@ -21,6 +21,7 @@ export default function StuckJobsDrawer({ source, onClose }: Readonly<{
           {query.isError && <Banner type="warning" closeIcon={null} description={`卡死明细加载失败：${query.error?.message ?? '未知错误'}`} />}
         </Space>
         <ConfigurableTable<JobStuckItem>
+          className="job-monitor-stuck-table"
           rowKey="refId"
           pagination={false}
           dataSource={query.data ?? []}
@@ -34,11 +35,11 @@ export default function StuckJobsDrawer({ source, onClose }: Readonly<{
             { title: '状态', dataIndex: 'status', width: 100 },
             dateTimeColumn('开始时间', 'startedAt'),
             dateTimeColumn('最后活动', 'lastSeenAt'),
-            { title: '已持续', dataIndex: 'ageSec', width: 120, render: (value: number) => formatAge(value) },
+            { title: '已持续', dataIndex: 'ageSec', width: 170, render: (value: number) => <Typography.Text className="job-monitor-stuck-table__duration" ellipsis={{ showTooltip: true }}>{formatAge(value)}</Typography.Text> },
             { title: '节点', dataIndex: 'nodeId', width: 160, render: renderEllipsis },
-            { title: '详情', dataIndex: 'detail', width: 240, render: renderEllipsis },
+            { title: '详情', dataIndex: 'detail', width: 320, render: renderEllipsis },
             createOperationColumn<JobStuckItem>({
-              width: 110,
+              width: 140,
               emptyContent: EMPTY_PLACEHOLDER,
               actions: (item) => [{ key: 'process', label: '前往处理', hidden: item.drillDown === null, onClick: () => { if (item.drillDown) navigate(item.drillDown.path); } }],
             }),

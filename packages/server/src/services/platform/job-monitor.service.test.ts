@@ -50,3 +50,15 @@ it('counts only stuck records from a business mirror to avoid duplicate executio
   expect(overview.totals).toEqual({ backlog: 0, running: 0, stuck: 2, dead: 0, failed24h: 0 });
   expect(overview.sources[0].category).toBe('business');
 });
+it('collects a bounded incident list for stuck sources in the overview', async () => {
+  const listStuck = vi.fn(async (limit: number) => Array.from({ length: limit + 2 }, (_, index) => ({
+    source: 'async-task' as const, refId: String(index), title: `task-${index}`, status: 'running',
+    startedAt: '2026-10-03T00:00:00Z', lastSeenAt: '2026-10-03T00:00:00Z', ageSec: index,
+    nodeId: 'node', detail: null, drillDown: null,
+  })));
+  state.sources = [{ ...source(async () => ({ counts: { pending: 0, running: 2, stuck: 2, dead: null, failed24h: 0, succeeded24h: 1 }, oldestPendingAgeSec: null, issues: [] })), listStuck }];
+  const overview = await getJobMonitorOverview();
+  expect(overview.incidents).toHaveLength(4);
+  expect(overview.incidents[0].title).toBe('task-3');
+  expect(listStuck).toHaveBeenCalledWith(2);
+});

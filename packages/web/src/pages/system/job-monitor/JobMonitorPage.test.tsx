@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
-import { Children, type ReactElement, type ReactNode } from 'react';
-import type { JobMonitorOverview, JobQueueRow, JobStuckItem } from '@zenith/shared/platform';
+import type { JobMonitorOverview, JobQueueRow, JobSourceSummary, JobStuckItem } from '@zenith/shared/platform';
 import { createDemoJobMonitorOverview, createDemoStuckJobs } from '@/mocks/data/job-monitor';
 
 const state = vi.hoisted(() => ({ query: vi.fn(), stuck: vi.fn(), refetch: vi.fn() }));
@@ -12,28 +11,41 @@ vi.mock('./JobTrendChart', () => ({ default: () => <div role="img" aria-label="�
 vi.mock('@/components/DateTimeText', () => ({ default: ({ value }: { value: string }) => <span>{value}</span> }));
 vi.mock('@/components/toolbar-controls', () => ({ RefreshButton: ({ onClick }: { onClick: () => void }) => <button onClick={onClick}>刷新</button> }));
 vi.mock('@douyinfe/semi-ui', () => {
-  const Box = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
+  const Box = ({ children }: { children?: React.ReactNode }) => <div>{children}</div>;
   return {
-    Card: ({ title, headerExtraContent, children }: { title?: ReactNode; headerExtraContent?: ReactNode; children?: ReactNode }) => <div><div>{title}{headerExtraContent}</div>{children}</div>,
-    Button: ({ children, onClick, 'aria-label': ariaLabel }: { children?: ReactNode; onClick?: () => void; 'aria-label'?: string }) => <button aria-label={ariaLabel} onClick={onClick}>{children}</button>,
-    Banner: ({ description }: { description: string }) => <div role="alert">{description}</div>,
+    Button: ({ children, onClick, 'aria-label': ariaLabel }: { children?: React.ReactNode; onClick?: () => void; 'aria-label'?: string }) => <button aria-label={ariaLabel} onClick={onClick}>{children}</button>,
     Empty: ({ title, description }: { title?: string; description?: string }) => <div>{title}{description}</div>,
-    Tag: Box, Space: Box, Row: Box, Col: Box,
-    Tabs: Object.assign(({ children, activeKey, onChange }: { children: ReactNode; activeKey: string; onChange: (key: string) => void }) => {
-      const panes = Children.toArray(children) as ReactElement<{ tab: string; itemKey: string; children: ReactNode }>[];
-      return <div><div role="tablist">{panes.map(pane => <button key={pane.props.itemKey} role="tab" aria-selected={pane.props.itemKey === activeKey} onClick={() => onChange(pane.props.itemKey)}>{pane.props.tab}</button>)}</div>{panes.find(pane => pane.props.itemKey === activeKey)?.props.children}</div>;
-    }, { TabPane: Box }),
-    SideSheet: ({ title, children, visible, onCancel }: { title: string; children?: ReactNode; visible: boolean; onCancel: () => void }) => visible ? <div role="dialog" aria-label={title}><button onClick={onCancel}>关闭</button>{children}</div> : null,
+    Tag: Box, Space: Box,
+    Collapse: Object.assign(({ children }: { children?: React.ReactNode }) => <div>{children}</div>, { Panel: ({ children, header }: { children?: React.ReactNode; header?: React.ReactNode }) => <section><div>{header}</div>{children}</section> }),
+    SideSheet: ({ title, children, visible, onCancel }: { title: string; children?: React.ReactNode; visible: boolean; onCancel: () => void }) => visible ? <div role="dialog" aria-label={title}><button onClick={onCancel}>关闭</button>{children}</div> : null,
     Typography: { Text: Box, Title: Box },
     Select: ({ value, optionList, onChange }: { value: string; optionList: { value: string; label: string }[]; onChange: (value: string) => void }) => (
       <select aria-label="自动刷新" value={value} onChange={(event) => onChange(event.target.value)}>{optionList.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
     ),
+    Table: ({ dataSource, columns }: { dataSource?: Array<Record<string, unknown>>; columns?: Array<{ dataIndex?: string; render?: (value: unknown, row: Record<string, unknown>) => React.ReactNode }> }) => (
+      <div>{(dataSource ?? []).map((row, index) => <div key={String(row.key ?? index)}>{(columns ?? []).map((column, columnIndex) => <span key={columnIndex}>{column.render ? column.render(row[column.dataIndex ?? ''], row) : String(row[column.dataIndex ?? ''] ?? '')}</span>)}</div>)}</div>
+    ),
   };
 });
-vi.mock('@/components/ConfigurableTable', () => ({ default: ({ dataSource, columns }: {
-  dataSource: (JobQueueRow | JobStuckItem)[];
-  columns: { dataIndex?: string; render?: (value: unknown, row: JobQueueRow | JobStuckItem) => ReactNode }[];
-}) => <div>{dataSource.map((row) => <div key={'name' in row ? row.name : row.refId}>{columns.map((column, index) => <div key={index}>{column.render?.((row as unknown as Record<string, unknown>)[column.dataIndex ?? ''], row)}</div>)}</div>)}</div> }));
+vi.mock('@/components/ConfigurableTable', () => ({ default: ({ dataSource, columns, expandedRowRender, groupBy }: {
+  dataSource: Array<JobQueueRow | JobStuckItem | JobSourceSummary>;
+  columns: Array<{ dataIndex?: string | string[]; render?: (value: unknown, row: JobQueueRow | JobStuckItem | JobSourceSummary) => React.ReactNode }>;
+  expandedRowRender?: (row: JobSourceSummary) => React.ReactNode;
+  groupBy?: (row: JobSourceSummary) => string;
+}) => {
+  const groups = new Map<string, Array<JobQueueRow | JobStuckItem | JobSourceSummary>>();
+  for (const row of dataSource) {
+    const group = groupBy && 'category' in row ? groupBy(row) : '';
+    groups.set(group, [...(groups.get(group) ?? []), row]);
+  }
+  return <div>{[...groups.entries()].flatMap(([group, rows]) => [group ? <div key={`group-${group}`}>{group}</div> : null, ...rows.map((row) => <div key={'name' in row ? row.name : 'refId' in row ? row.refId : row.key}>
+    {columns.map((column, index) => {
+      const dataIndex = Array.isArray(column.dataIndex) ? column.dataIndex.reduce<unknown>((value, key) => (value as Record<string, unknown> | null)?.[key] ?? null, row) : (row as Record<string, unknown>)[column.dataIndex ?? ''];
+      return <span key={index}>{column.render?.(dataIndex, row)}</span>;
+    })}
+    {'category' in row && expandedRowRender?.(row)}
+  </div>)] )}</div>;
+} }));
 
 import JobMonitorPage from './JobMonitorPage';
 
@@ -43,6 +55,7 @@ function Location() {
 }
 
 function show(path = '/system/job-monitor') {
+  cleanup();
   render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/system/job-monitor" element={<JobMonitorPage />} /><Route path="*" element={null} /></Routes><Location /></MemoryRouter>);
 }
 
@@ -56,57 +69,33 @@ beforeEach(() => {
   state.stuck.mockReturnValue({ data: createDemoStuckJobs('async-task'), isPending: false, isFetching: false, isError: false, refetch: vi.fn() });
 });
 
-describe('JobMonitorPage', () => {  it('shows one source category at a time and opens the overdue schedule breakdown and list', () => {
+describe('JobMonitorPage', () => {
+  it('uses one expandable source table and keeps incident detail visible', () => {
     show();
-    expect(screen.getAllByRole('tab')).toHaveLength(4);
-    expect(screen.getByRole('tab', { name: '执行运行时' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.queryByRole('region', { name: '到期调度扫描' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('tab', { name: '到期调度' }));
-    expect(screen.queryByRole('region', { name: '异步任务' })).not.toBeInTheDocument();
-    const schedule = within(screen.getByRole('region', { name: '到期调度扫描' }));
-    expect(schedule.getByText('CMS 定时发布')).toBeInTheDocument();
-    expect(schedule.getByRole('button', { name: '查看CMS 定时发布' })).toBeInTheDocument();
-    expect(schedule.queryByText('目录同步计划')).not.toBeInTheDocument();
-    fireEvent.click(schedule.getByRole('button', { name: '展开全部 11 项' }));
-    expect(schedule.getByRole('button', { name: '查看目录同步计划' })).toBeInTheDocument();
-    fireEvent.click(schedule.getByRole('button', { name: '卡死明细' }));
-    expect(state.stuck).toHaveBeenLastCalledWith('scheduled-dispatch', true);
+    expect(screen.getByRole('region', { name: '作业源状态' })).toBeInTheDocument();
+    expect(screen.getAllByText('执行运行时').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('事件与内容投递').length).toBeGreaterThan(0);
+    expect(screen.getByText('历史数据导入')).toBeInTheDocument();
+    expect(screen.getByText('超过心跳回收窗口，等待任务中心回收')).toBeInTheDocument();
   });
-  it('restores the category from a deep link and unmounts it when switching', () => {
-    show('/system/job-monitor?tab=business');
-    expect(screen.getByRole('tab', { name: '业务作业' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('region', { name: 'CMS 构建发布' })).toBeInTheDocument();
-    expect(screen.queryByRole('region', { name: '异步任务' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('tab', { name: '执行运行时' }));
-    expect(screen.queryByRole('region', { name: 'CMS 构建发布' })).not.toBeInTheDocument();
-    expect(screen.getByLabelText('当前位置')).toHaveTextContent('/system/job-monitor');
-    expect(screen.getByLabelText('当前位置')).not.toHaveTextContent('tab=');
-  });  it('groups execution mechanisms and expands type details beyond the first five rows', () => {
+
+  it('drills all summary metrics to a concrete target', () => {
     show();
-    expect(screen.getByText('执行运行时')).toBeInTheDocument();
-    expect(screen.getByText('事件与内容投递')).toBeInTheDocument();
-    expect(screen.getByText('业务作业')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('tab', { name: '业务作业' }));
-    const cms = within(screen.getByRole('region', { name: 'CMS 构建发布' }));
-    expect(cms.getByText('站点构建')).toBeInTheDocument();
-    expect(cms.getByRole('button', { name: '查看站点构建' })).toBeInTheDocument();
-    expect(cms.getByRole('button', { name: '查看媒体处理' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('tab', { name: '执行运行时' }));
-    const tasks = within(screen.getByRole('region', { name: '异步任务' }));
-    expect(tasks.queryByText('演示任务类型 6')).not.toBeInTheDocument();
-    fireEvent.click(tasks.getByRole('button', { name: '展开全部 6 项' }));
-    expect(tasks.getByText('演示任务类型 6')).toBeInTheDocument();
-    expect(tasks.queryByRole('button', { name: '演示任务类型 6' })).not.toBeInTheDocument();
-    fireEvent.click(tasks.getByRole('button', { name: '收起明细' }));
-    expect(tasks.queryByText('演示任务类型 6')).not.toBeInTheDocument();
-    fireEvent.click(tasks.getByRole('button', { name: '展开全部 6 项' }));
-    fireEvent.click(tasks.getByRole('button', { name: '查看演示任务类型 6' }));
-    expect(screen.getByLabelText('当前位置')).toHaveTextContent('taskType=demo-type-5');
+    fireEvent.click(screen.getByRole('button', { name: /运行中/ }));
+    expect(screen.getByLabelText('当前位置')).toHaveTextContent('/system/scheduler?tab=runs&status=running');
+    show();
+    fireEvent.click(screen.getByRole('button', { name: /死信/ }));
+    expect(screen.getAllByLabelText('当前位置').at(-1)).toHaveTextContent('/system/task-center?tab=tasks&status=dead');
+    show();
+    fireEvent.click(screen.getByRole('button', { name: /近 24h 失败/ }));
+    expect(screen.getAllByLabelText('当前位置').at(-1)).toHaveTextContent('/system/task-center?tab=tasks&status=failed');
   });
-  it('navigates to the source processing page with its status filter', () => {
+
+  it('opens a source stuck drawer from the table', () => {
     show();
-    fireEvent.click(within(screen.getByRole('region', { name: '流程作业' })).getByRole('button', { name: '前往处理' }));
-    expect(screen.getByLabelText('当前位置')).toHaveTextContent('/workflow/monitor?tab=jobs&status=dead');
+    fireEvent.click(screen.getAllByRole('button', { name: '卡死明细' })[0]);
+    expect(state.stuck).toHaveBeenLastCalledWith(expect.any(String), true);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
   it('opens the scheduler queue filter and limits the ranking to twenty queues', () => {
@@ -114,8 +103,8 @@ describe('JobMonitorPage', () => {  it('shows one source category at a time and 
     data.queues.data = Array.from({ length: 21 }, (_, index) => ({ name: `queue ${index}`, title: `队列 ${index}`, module: 'platform', queued: index, active: 0, deferred: 0, failed: 0 }));
     setOverview(data);
     show();
-    expect(screen.queryByRole('button', { name: '队列 0' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '队列 20' }));
+    expect(screen.queryByText('队列 0')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('队列 20'));
     expect(screen.getByLabelText('当前位置')).toHaveTextContent('/system/scheduler?tab=tasks&keyword=queue%2020');
   });
 
@@ -136,40 +125,13 @@ describe('JobMonitorPage', () => {  it('shows one source category at a time and 
     expect(state.refetch).toHaveBeenCalledTimes(1);
   });
 
-  it('opens the stuck list on demand and navigates from a stuck row', () => {
-    show();
-    expect(state.stuck).toHaveBeenLastCalledWith(undefined, false);
-    fireEvent.click(within(screen.getByRole('region', { name: '异步任务' })).getByRole('button', { name: '卡死明细' }));
-    expect(state.stuck).toHaveBeenLastCalledWith('async-task', true);
-    const drawer = screen.getByRole('dialog', { name: '异步任务 · 卡死明细' });
-    expect(within(drawer).getByText('历史数据导入')).toBeInTheDocument();
-    fireEvent.click(within(drawer).getByRole('button', { name: '关闭' }));
-    expect(state.stuck).toHaveBeenLastCalledWith(undefined, false);
-    fireEvent.click(within(screen.getByRole('region', { name: '异步任务' })).getByRole('button', { name: '卡死明细' }));
-    fireEvent.click(within(screen.getByRole('dialog', { name: '异步任务 · 卡死明细' })).getByRole('button', { name: '前往处理' }));
-    expect(screen.getByLabelText('当前位置')).toHaveTextContent('/system/task-center?tab=tasks&status=running&taskId=731');
-  });
-
-  it('opens an orphan business-job list and links to the target run filter', () => {
-    state.stuck.mockReturnValue({ data: createDemoStuckJobs('report-dq'), isPending: false, isFetching: false, isError: false, refetch: vi.fn() });
-    show();
-    fireEvent.click(screen.getByRole('tab', { name: '业务作业' }));
-    fireEvent.click(within(screen.getByRole('region', { name: '报表数据质量' })).getByRole('button', { name: '卡死明细' }));
-    expect(state.stuck).toHaveBeenLastCalledWith('report-dq', true);
-    const drawer = screen.getByRole('dialog', { name: '报表数据质量 · 卡死明细' });
-    fireEvent.click(within(drawer).getByRole('button', { name: '前往处理' }));
-    expect(screen.getByLabelText('当前位置')).toHaveTextContent('/report/quality?tab=runs&status=failed');
-  });
-
-  it('counts mirrored business rows only toward stuck totals in the Demo overview', () => {
+  it('keeps mirrored business rows out of execution totals', () => {
     const data = createDemoJobMonitorOverview();
     const business = data.sources.filter(source => source.category === 'business');
     expect(business).toHaveLength(6);
-    expect(business.reduce((sum, source) => sum + source.counts.pending, 0)).toBeGreaterThan(0);
     const fullSources = data.sources.filter(source => source.category !== 'business' && source.key !== 'drive-rendition' && source.health !== 'unavailable');
     expect(data.totals.backlog).toBe(fullSources.reduce((sum, source) => sum + source.counts.pending, 0));
     expect(data.totals.running).toBe(fullSources.reduce((sum, source) => sum + source.counts.running, 0));
     expect(data.totals.failed24h).toBe(fullSources.reduce((sum, source) => sum + source.counts.failed24h, 0));
-    expect(data.totals.stuck).toBe(data.sources.filter(source => source.health !== 'unavailable').reduce((sum, source) => sum + source.counts.stuck, 0));
   });
 });

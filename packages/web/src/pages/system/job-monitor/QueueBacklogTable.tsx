@@ -1,4 +1,4 @@
-import { Banner, Button, Card, Typography } from '@douyinfe/semi-ui';
+import { Button, Typography } from '@douyinfe/semi-ui';
 import { useNavigate } from 'react-router-dom';
 import type { JobMonitorOverview, JobQueueRow } from '@zenith/shared/platform';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -9,10 +9,14 @@ export default function QueueBacklogTable({ queues, refreshing, onRefresh }: Rea
   onRefresh: () => void;
 }>) {
   const navigate = useNavigate();
-  const rows = [...(queues.data ?? [])].sort((a, b) => b.queued - a.queued).slice(0, 20);
+  const rows = [...(queues.data ?? [])].sort((a, b) => b.queued - a.queued || b.active - a.active || b.failed - a.failed).slice(0, 20);
   return (
-    <Card title={<Typography.Text strong>队列积压</Typography.Text>} headerExtraContent={<Typography.Text type="tertiary" size="small">积压最多的前 20 个队列</Typography.Text>}>
-      {!queues.available ? <Banner type="warning" closeIcon={null} description={`队列探测不可用：${queues.reason ?? '未知原因'}`} /> : (
+    <section className="job-monitor-section job-monitor-queues" aria-label="队列积压">
+      <div className="job-monitor-section__header">
+        <Typography.Text strong>队列积压</Typography.Text>
+        <Typography.Text type="tertiary" size="small">积压最多的前 20 个队列</Typography.Text>
+      </div>
+      {!queues.available ? <div className="job-monitor-inline-notice job-monitor-inline-notice--warning">队列探测不可用：{queues.reason ?? '未知原因'}</div> : (
         <ConfigurableTable<JobQueueRow>
           rowKey="name"
           pagination={false}
@@ -32,6 +36,6 @@ export default function QueueBacklogTable({ queues, refreshing, onRefresh }: Rea
           ]}
         />
       )}
-    </Card>
+    </section>
   );
 }
