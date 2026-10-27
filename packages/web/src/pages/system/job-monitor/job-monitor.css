@@ -161,7 +161,14 @@
 
 .job-monitor-source-list__identity,
 .job-monitor-source-list__meta,
-.job-monitor-source-list__actions,
+.job-monitor-source-list__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
 .job-monitor-source-list__metrics {
   display: grid;
   grid-template-columns: repeat(5, minmax(70px, 1fr));
@@ -171,6 +178,8 @@
 }
 
 .job-monitor-source-list__identity > .semi-typography:nth-child(2) {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
