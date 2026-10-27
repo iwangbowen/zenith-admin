@@ -37,7 +37,7 @@ function sourceMessage(id: number, sec: number, overrides: Record<string, unknow
   };
 }
 
-/** select().from().where() 依次返回：目标会话成员资格 → 各会话成员 id 列表 */
+/** select().from().where() 依次返回：目标会话成员资格 → 源会话成员资格 → 各会话成员 id 列表 */
 function stubSelects(...results: unknown[][]) {
   const queue = [...results];
   mocks.select.mockImplementation(() => {
@@ -87,6 +87,7 @@ describe('forwardMessages —— 逐条转发', () => {
   it('每个目标会话一次 insert，行序即源消息时间序，WS 仍逐条推送', async () => {
     stubSelects(
       [{ conversationId: 20 }, { conversationId: 30 }],
+      [{ conversationId: 10 }],
       [{ userId: 1 }, { userId: 5 }],
       [{ userId: 1 }, { userId: 6 }],
     );
@@ -116,7 +117,8 @@ describe('forwardMessages —— 逐条转发', () => {
   });
 
   it('某个目标会话被禁言：该会话不写入、错误上抛，其它会话仍完成', async () => {
-    stubSelects([{ conversationId: 20 }, { conversationId: 30 }], [{ userId: 1 }]);
+    stubSelects([{ conversationId: 20 }, { conversationId: 30 }], [{ conversationId: 10 }], [{ userId: 1 }]);
+    mocks.query.chatMessages.findMany.mockResolvedValue([sourceMessage(1, 10)]);
     const values = stubInsertReturning();
     // 会话间并行启动顺序即数组顺序：第一次成员查询对应会话 20，第二次对应会话 30（个人禁言中）。
     // 禁言截止必须相对真实当前时间（服务用 new Date() 比较），写成固定时刻会在过期后静默变绿 / 变红
@@ -132,7 +134,7 @@ describe('forwardMessages —— 逐条转发', () => {
 
 describe('forwardMessages —— 合并转发', () => {
   it('每个目标会话一条 forward 聚合消息，预览取前三条，来源会话名随载荷', async () => {
-    stubSelects([{ conversationId: 20 }], [{ userId: 1 }]);
+    stubSelects([{ conversationId: 20 }], [{ conversationId: 10 }], [{ userId: 1 }]);
     const values = stubInsertReturning();
 
     await forwardMessages({ messageIds: [1, 2, 3, 9], targetConversationIds: [20], mode: 'merge' });
@@ -146,5 +148,15 @@ describe('forwardMessages —— 合并转发', () => {
     expect(extra.forwardedMessages.map((m) => m.type)).toEqual(['text', 'image', 'text']);
     expect(String(rows[0].content).split('\n')).toEqual(['张三：消息 1', '张三：[图片]', '张三：消息 3']);
     expect(mocks.scheduleSendToUsers).toHaveBeenCalledTimes(1);
+  });
+
+  it('源消息所在会话不是当前用户成员时拒绝转发', async () => {
+    stubSelects([{ conversationId: 20 }], []);
+    mocks.query.chatMessages.findMany.mockResolvedValue([sourceMessage(1, 10)]);
+    const values = stubInsertReturning();
+
+    await expect(forwardMessages({ messageIds: [1], targetConversationIds: [20], mode: 'items' }))
+      .rejects.toThrow('无权转发所选消息');
+    expect(values).not.toHaveBeenCalled();
   });
 });

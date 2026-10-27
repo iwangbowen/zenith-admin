@@ -583,11 +583,27 @@ export async function forwardMessages(input: ForwardMessagesInput): Promise<void
   const forbidden = input.targetConversationIds.find((id) => !accessibleIds.has(id));
   if (forbidden) throw new HTTPException(403, { message: `无权向会话 ${forbidden} 发送消息` });
 
-  // 获取原始消息列表（按时间升序）
+  // 获取原始消息列表（按时间升序）。源消息必须对当前用户可见；
+  // 不能仅校验目标会话，否则知道消息 ID 的用户可以跨会话转发他无权读取的内容。
+  const requestedMessageIds = [...new Set(input.messageIds)];
   const sourceMsgs = await db.query.chatMessages.findMany({
-    where: inArray(chatMessages.id, input.messageIds),
+    where: and(inArray(chatMessages.id, requestedMessageIds), notHiddenFor(me.userId)),
   });
-  if (sourceMsgs.length === 0) throw new HTTPException(400, { message: '未找到要转发的消息' });
+  if (sourceMsgs.length !== requestedMessageIds.length) {
+    throw new HTTPException(403, { message: '无权转发所选消息' });
+  }
+
+  const sourceConversationIds = [...new Set(sourceMsgs.map((message) => message.conversationId))];
+  const sourceMemberships = await db
+    .select({ conversationId: chatConversationMembers.conversationId })
+    .from(chatConversationMembers)
+    .where(and(
+      inArray(chatConversationMembers.conversationId, sourceConversationIds),
+      eq(chatConversationMembers.userId, me.userId),
+    ));
+  if (sourceMemberships.length !== sourceConversationIds.length) {
+    throw new HTTPException(403, { message: '无权转发所选消息' });
+  }
 
   // 按时间升序排列
   const ordered = [...sourceMsgs].sort(
