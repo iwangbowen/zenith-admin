@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import type { PaymentApp, PaymentChannelConfig } from '@zenith/shared/payment';
 import { PAYMENT_DEDUCT_METHODS, PAYMENT_PREAUTH_METHOD_LABELS, PAYMENT_PREAUTH_METHODS, paymentAppBoundConfigIds } from '@zenith/shared/payment';
-import { useAppBoundConfigOptions, useAppPaymentMethodOptions, useEnabledPaymentAppLookup } from './payment-app-options';
+import { paymentCapabilityReason, useAppBoundConfigOptions, useAppPaymentMethodOptions, useEnabledPaymentAppLookup } from './payment-app-options';
 
 const mocks = vi.hoisted(() => ({
   capabilities: vi.fn(),
@@ -110,5 +110,23 @@ describe('payment app options', () => {
     const { result } = renderHook(() => useAppPaymentMethodOptions(selectedApp, PAYMENT_DEDUCT_METHODS, { operation: 'contract.sign' }));
 
     expect(result.current.options).toEqual([{ value: 'alipay_cycle', label: '支付宝周期扣款' }]);
+  });
+
+  it('exposes the server reason for an empty capability state', () => {
+    expect(paymentCapabilityReason({
+      engineMode: 'sandbox',
+      configs: [{
+        channelConfigId: 10,
+        tenantId: null,
+        configName: '微信沙箱',
+        channel: 'wechat',
+        environment: 'sandbox',
+        configStatus: 'enabled',
+        providerName: '微信支付',
+        supported: false,
+        reason: '支付方式 wechat_papay 已停用',
+        capabilities: [],
+      }],
+    })).toBe('支付方式 wechat_papay 已停用');
   });
 });

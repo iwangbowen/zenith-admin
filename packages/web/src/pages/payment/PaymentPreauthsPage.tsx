@@ -27,6 +27,7 @@ import { listTableProps, ListSearchToolbar } from '@/components/list-page';
 import { PaymentChannelTag, paymentMoneyColumn } from './payment-display';
 import { useAppPaymentMethodOptions, useEnabledPaymentAppLookup } from './payment-app-options';
 import { PaymentAppField, PaymentAppFilterSelect, PaymentCurrencyField } from './payment-form-fields';
+import { PaymentCapabilityNotice } from './PaymentCapabilityNotice';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
 import { abortSubmit } from '@/lib/abort-submit';
 
@@ -253,9 +254,11 @@ export default function PaymentPreauthsPage() {
         {selectedAppId != null && capabilitiesQuery.isError && (
           <Banner type="warning" closeIcon={null} style={{ marginBottom: 16 }} description="实时支付能力加载失败，已按当前配置提供可选方式；提交时仍会由服务端校验。" />
         )}
-        {selectedAppId != null && !capabilitiesQuery.isFetching && !capabilitiesQuery.isError && preauthMethodOptions.length === 0 && (
-          <Banner type="warning" closeIcon={null} style={{ marginBottom: 16 }} description="所选应用暂无可用预授权方式，请检查支付方式启停、商户配置与运行环境。" />
-        )}
+        <PaymentCapabilityNotice
+          visible={selectedAppId != null && !capabilitiesQuery.isFetching && !capabilitiesQuery.isError && preauthMethodOptions.length === 0}
+          operationLabel="预授权"
+          capabilities={capabilitiesQuery.data}
+        />
         <Row gutter={16}>
           <Col span={12}>
             <PaymentCurrencyField disabled />

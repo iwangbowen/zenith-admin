@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { formatYuan } from '@/utils/payment';
-import { Col, Form, Modal, Row, Tag, Toast } from '@douyinfe/semi-ui';
+import { Banner, Col, Form, Modal, Row, Tag, Toast } from '@douyinfe/semi-ui';
 import { Tabs, TabPane } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -37,6 +37,7 @@ import { useUrlTabState } from '@/hooks/useUrlTabState';
 import { compactParams } from '@/lib/query';
 import { useFilterQuery } from '@/hooks/useFilterQuery';
 import { EditFormModal } from '@/components/EditFormModal';
+import { PaymentCapabilityNotice } from './PaymentCapabilityNotice';
 const yuan = formatYuan;
 const CONTRACT_STATUS_COLOR = { pending: 'grey', unknown: 'orange', signed: 'green', paused: 'orange', terminated: 'red', failed: 'red' } as const satisfies Record<PaymentContractStatus, string>;
 const contractStatusOptions = PAYMENT_CONTRACT_STATUS_OPTIONS;
@@ -103,11 +104,15 @@ export default function PaymentContractsPage() {
   const allPlansQuery = useAllDeductPlans();
   const allPlans = allPlansQuery.data ?? [];
   const selectedContractApp = selectedAppId == null ? undefined : appById.get(selectedAppId);
-  const { options: deductMethodOptions } = useAppPaymentMethodOptions(
+  const { options: deductMethodOptions, canReadCapabilities, capabilitiesQuery } = useAppPaymentMethodOptions(
     selectedContractApp,
     PAYMENT_DEDUCT_METHODS,
     { operation: 'contract.sign' },
   );
+  const noDeductCapability = selectedAppId != null
+    && !capabilitiesQuery.isFetching
+    && !capabilitiesQuery.isError
+    && deductMethodOptions.length === 0;
 
   const createContractMutation = useCreatePaymentContract();
   const terminateMutation = useTerminatePaymentContract();
@@ -383,7 +388,13 @@ export default function PaymentContractsPage() {
         <Form.TextArea field="remark" label="备注" autosize rows={1} placeholder="可选" />
       </EditFormModal>
 
-      <EditFormModal modal={signModal} title="新增签约（演示/测试）" width={660} formProps={{ initValues: { ...signModal.formProps.initValues, currency: 'CNY' } }}>
+      <EditFormModal
+        modal={signModal}
+        title="新增签约（演示/测试）"
+        width={660}
+        okButtonProps={{ disabled: noDeductCapability }}
+        formProps={{ initValues: { ...signModal.formProps.initValues, currency: 'CNY' } }}
+      >
         <Row gutter={16}>
           <Col span={12}>
             <PaymentAppField optionList={appOptions} loading={appsFetching}
@@ -396,12 +407,25 @@ export default function PaymentContractsPage() {
         </Row>
         <Row gutter={16}>
           <Col span={12}>
-            <Form.Select field="payMethod" label="代扣方式" style={{ width: '100%' }} optionList={deductMethodOptions} disabled={selectedAppId == null} rules={[{ required: true, message: '请选择代扣方式' }]} />
+            <Form.Select
+              field="payMethod"
+              label="代扣方式"
+              style={{ width: '100%' }}
+              optionList={deductMethodOptions}
+              loading={canReadCapabilities && capabilitiesQuery.isFetching}
+              disabled={selectedAppId == null || (canReadCapabilities && capabilitiesQuery.isFetching) || deductMethodOptions.length === 0}
+              placeholder={selectedAppId == null ? '请先选择支付应用' : deductMethodOptions.length === 0 ? '该应用暂无可用代扣方式' : '请选择代扣方式'}
+              rules={[{ required: true, message: '请选择代扣方式' }]}
+            />
           </Col>
           <Col span={12}>
             <PaymentCurrencyField disabled />
           </Col>
         </Row>
+        {selectedAppId != null && capabilitiesQuery.isError && (
+          <Banner type="warning" closeIcon={null} style={{ marginBottom: 16 }} description="实时支付能力加载失败，提交时仍会由服务端校验。" />
+        )}
+        <PaymentCapabilityNotice visible={noDeductCapability} operationLabel="代扣" capabilities={capabilitiesQuery.data} />
         {/* 签约账号 / 签约人独占整行：半列宽度装不下占位文案，placeholder 被截断 */}
         <Form.Input field="signerAccount" label="签约账号" placeholder="微信 openid / 支付宝账号" rules={[{ required: true, message: '签约账号不能为空' }]} />
         <Form.Input field="signerName" label="签约人" placeholder="可选" />

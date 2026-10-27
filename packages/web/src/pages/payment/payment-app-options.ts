@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Toast } from '@douyinfe/semi-ui';
-import type { PaymentApp, PaymentChannel, PaymentChannelConfig, PaymentMethod, PaymentProviderOperation } from '@zenith/shared/payment';
+import type { PaymentApp, PaymentCapabilitiesResponse, PaymentChannel, PaymentChannelConfig, PaymentMethod, PaymentProviderOperation } from '@zenith/shared/payment';
 import { PAYMENT_CHANNEL_LABELS, PAYMENT_METHOD_CHANNEL, PAYMENT_METHOD_LABELS, paymentAppBoundConfigIds } from '@zenith/shared/payment';
 import { usePaymentAppList } from '@/hooks/queries/payment-apps';
 import { usePaymentCapabilities } from '@/hooks/queries/payment-capabilities';
@@ -10,6 +10,16 @@ import { usePermission } from '@/hooks/usePermission';
 import { abortSubmit } from '@/lib/abort-submit';
 
 export type PaymentAppOption = { value: number; label: string };
+
+/** Return the first server-provided reason for an unavailable payment capability. */
+export function paymentCapabilityReason(capabilities: PaymentCapabilitiesResponse | undefined): string | null {
+  if (!capabilities) return null;
+  const reasons = capabilities.configs.flatMap((config) => [
+    config.reason,
+    ...config.capabilities.map((capability) => capability.reason),
+  ]).filter((reason): reason is string => Boolean(reason));
+  return reasons[0] ?? null;
+}
 
 /** 应用在某渠道绑定的商户配置 id（未绑定为 null） */
 export function paymentAppConfigId(app: Pick<PaymentApp, 'wechatConfigId' | 'alipayConfigId' | 'unionpayConfigId'>, channel: PaymentChannel): number | null {
