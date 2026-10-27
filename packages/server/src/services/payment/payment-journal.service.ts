@@ -310,6 +310,32 @@ function journalRequestHash(input: PostPaymentJournalInput, reversalOfJournalId:
   })).digest('hex');
 }
 
+/**
+ * System journal idempotency is based on immutable financial facts only.
+ * Human-readable descriptions and line memos can legitimately change on a
+ * replay (for example, the fee rule name is only available on the first fee
+ * claim) and must not turn an at-least-once delivery into a conflict.
+ */
+export function systemJournalRequestHash(
+  input: PostSystemPaymentJournalInput,
+  reversalOfJournalId: number | null,
+  channelAccountId: number,
+): string {
+  return createHash('sha256').update(JSON.stringify({
+    sourceType: input.sourceType,
+    sourceId: input.sourceId,
+    appId: input.appId,
+    channelAccountId,
+    currency: input.currency,
+    reversalOfJournalId,
+    lines: input.lines.map((line) => ({
+      accountCode: line.accountCode,
+      debitAmount: line.debitAmount ?? '0',
+      creditAmount: line.creditAmount ?? '0',
+    })),
+  })).digest('hex');
+}
+
 function journalSourceWhere(scope: PaymentMoneyScope, sourceType: string, sourceId: string) {
   return and(
     exactTenantCondition(paymentJournals.tenantId, scope.tenantId),
@@ -547,7 +573,7 @@ async function postSystemJournalWithExecutor(
   };
   const normalized = normalizeBalancedLines(journalInput.lines);
   const reversalOfJournalId = input.reversalOfJournalId ?? null;
-  const requestHash = journalRequestHash(journalInput, reversalOfJournalId, scope.channelAccountId!);
+  const requestHash = systemJournalRequestHash(input, reversalOfJournalId, scope.channelAccountId!);
   const posted = await findPostedJournalId(executor, scope, input, requestHash);
   if (posted !== undefined) return posted;
   if (reversalOfJournalId != null) {
