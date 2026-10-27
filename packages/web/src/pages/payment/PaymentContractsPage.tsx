@@ -392,7 +392,10 @@ export default function PaymentContractsPage() {
         modal={signModal}
         title="新增签约（演示/测试）"
         width={660}
-        okButtonProps={{ disabled: noDeductCapability }}
+        okButtonProps={{
+          ...(signModal.modalProps.okButtonProps ?? {}),
+          disabled: noDeductCapability || signModal.modalProps.okButtonProps?.disabled,
+        }}
         formProps={{ initValues: { ...signModal.formProps.initValues, currency: 'CNY' } }}
       >
         <Row gutter={16}>
