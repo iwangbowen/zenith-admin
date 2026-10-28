@@ -2,6 +2,7 @@
  * 行为分析入口：仅负责页面级 Tab 编排与统计天数上下文，各 Tab 实现见同目录 AnalyticsXxxTab.tsx，
  * 共用格式化 / 小组件见 analytics-format.ts 与 analytics-shared.tsx。
  */
+import { useEffect, useRef } from 'react';
 import { TabPane, Tabs } from '@douyinfe/semi-ui';
 import { useUrlTabState } from '@/hooks/useUrlTabState';
 import AnalyticsEventQueryTab from './AnalyticsEventQueryTab';
@@ -23,6 +24,16 @@ const BEHAVIOR_TABS = ['overview', 'realtime', 'event-query', 'experiments', 'dw
 
 export default function AnalyticsPage() {
   const [activeTab, setActiveTab] = useUrlTabState(BEHAVIOR_TABS, 'overview');
+  const previousTab = useRef(activeTab);
+
+  // Semi 的 Select / DatePicker 浮层挂在 body portal；页签切换不会卸载 portal，
+  // 先关闭旧浮层，避免它残留在新页签上遮挡内容。
+  useEffect(() => {
+    if (previousTab.current === activeTab) return;
+    previousTab.current = activeTab;
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
+  }, [activeTab]);
+
   return (
     <div className="page-container page-tabs-page zx-flat-panels">
       <BehaviorDaysProvider>
