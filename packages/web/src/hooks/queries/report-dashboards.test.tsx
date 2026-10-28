@@ -67,7 +67,7 @@ describe('useReportDashboardWidgetData', () => {
     const qc = createTestQueryClient();
     const widget = { i: 'metric', type: 'kpi', title: '销售净额', metricId: 2, options: {} } as ReportWidget;
     const { result } = renderHook(
-      () => useReportDashboardWidgetData(1, [widget]),
+      () => useReportDashboardWidgetData(1, [widget], {}),
       { wrapper: createWrapper(qc) },
     );
 

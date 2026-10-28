@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Banner, Button, Col, Empty, Form, Modal, Row, SideSheet, Space, Tag, Toast, Typography } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
 import type { ReportMetric, ReportMetricType } from '@zenith/shared/report';
@@ -89,9 +89,6 @@ export default function MetricsPage() {
   // 表单内选中的数据集：用其字段渲染 来源/维度/时间字段 下拉，避免手输字段名拼错
   const [formDatasetId, setFormDatasetId] = useState<number | undefined>();
   const formDatasetDetailQuery = useReportDatasetDetail(formDatasetId, !!formDatasetId);
-  useEffect(() => {
-    setFormDatasetId(metricModal.editing?.datasetId);
-  }, [metricModal.editing?.datasetId]);
   const formFieldOptions = (formDatasetDetailQuery.data?.fields ?? []).map((field) => ({
     value: field.name,
     label: field.label ? `${field.label}（${field.name}）` : field.name,
