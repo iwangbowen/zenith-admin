@@ -134,6 +134,27 @@ function normalizeDatasetQueryOptions(query?: DatasetQueryArg): NormalizedQueryO
   };
 }
 
+const POSTGRES_NUMERIC_OIDS = new Set([20, 21, 23, 700, 701, 790, 1700]);
+
+export interface ReportSqlColumnMetadata {
+  name: string;
+  type: number;
+}
+
+/** PostgreSQL NUMERIC/整数列默认以字符串返回；按数据库列类型恢复为报表数值，避免字段被误判为字符串。 */
+export function coercePostgresNumericRows(
+  rows: Record<string, unknown>[],
+  columns: ReportSqlColumnMetadata[],
+): Record<string, unknown>[] {
+  const numericNames = new Set(columns.filter((column) => POSTGRES_NUMERIC_OIDS.has(column.type)).map((column) => column.name));
+  if (numericNames.size === 0) return rows;
+  return rows.map((row) => Object.fromEntries(Object.entries(row).map(([name, value]) => {
+    if (!numericNames.has(name) || typeof value !== 'string' || !value.trim()) return [name, value];
+    const parsed = Number(value);
+    return [name, Number.isFinite(parsed) ? parsed : value];
+  })));
+}
+
 function inferFieldType(value: unknown): ReportFieldType {
   if (typeof value === 'number') return 'number';
   if (typeof value === 'boolean') return 'boolean';
@@ -246,7 +267,9 @@ async function runReadonlySql(text: string, params: Record<string, unknown>, opt
       const dataRows = await tx.execute(sql`SELECT * FROM (${inner}) AS _sub ${sql.raw(suffix)}`);
       return { countRows, dataRows };
     });
-    const arr = (result.dataRows as unknown as Record<string, unknown>[]) ?? [];
+    const rawRows = (result.dataRows as unknown as Record<string, unknown>[]) ?? [];
+    const metadata = ((result.dataRows as unknown as { columns?: ReportSqlColumnMetadata[] }).columns ?? []);
+    const arr = coercePostgresNumericRows(rawRows, metadata);
     const columns = arr.length ? Object.keys(arr[0]) : [];
     const total = Number((result.countRows as unknown as Array<{ total?: number }>)[0]?.total ?? arr.length);
     return { columns, rows: arr, total: Number.isFinite(total) ? total : arr.length };

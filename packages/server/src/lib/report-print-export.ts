@@ -687,8 +687,15 @@ async function drawPdfGrid(doc: PDFKit.PDFDocument, pageResult: ReportPrintRende
   for (let col = 0; col < Math.max(grid.cols, 1); col++) {
     xPositions[col + 1] = xPositions[col] + sourceWidths[col] * widthScale;
   }
+  const rowHeights = Array.from({ length: Math.max(grid.rows, 1) }, (_, row) => {
+    const configured = pxToPt(grid.rowHeights?.[row] ?? 24);
+    const largestFont = grid.cells
+      .filter((cell) => cell.row === row)
+      .reduce((max, cell) => Math.max(max, cell.s?.fontSize ?? 10), 10);
+    return Math.max(configured, largestFont * 1.65);
+  });
   const yPositions: number[] = [originY];
-  for (let row = 0; row < Math.max(grid.rows, 1); row++) yPositions[row + 1] = yPositions[row] + pxToPt(grid.rowHeights?.[row] ?? 24);
+  for (let row = 0; row < Math.max(grid.rows, 1); row++) yPositions[row + 1] = yPositions[row] + rowHeights[row]!;
 
   for (let row = 0; row < Math.max(grid.rows, 1); row++) {
     for (let col = 0; col < Math.max(grid.cols, 1); col++) {

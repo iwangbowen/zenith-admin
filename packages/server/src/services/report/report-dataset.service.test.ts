@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { HTTPException } from 'hono/http-exception';
 import { resolveDatasetParams, buildExternalParamSql, applyRowRulesToSql, buildSystemParams } from './report-dataset.service';
+import { coercePostgresNumericRows } from './report-dataset-execution.service';
 import { runWithCurrentUser } from '../../lib/context';
 import { config } from '../../config';
 import type { ReportDatasetParam } from '@zenith/shared/report';
@@ -39,6 +40,15 @@ describe('resolveDatasetParams', () => {
   it('剥离 __ 前缀的客户端伪造系统变量', () => {
     const defs: ReportDatasetParam[] = [{ name: 'ok', label: 'ok', type: 'number' }];
     expect(resolveDatasetParams(defs, { __userId: 999, ok: 1 })).toEqual({ ok: 1 });
+  });
+});
+
+describe('coercePostgresNumericRows', () => {
+  it('restores PostgreSQL numeric columns while preserving text identifiers', () => {
+    expect(coercePostgresNumericRows(
+      [{ amount: '20000.00', orderNo: '00123' }],
+      [{ name: 'amount', type: 1700 }, { name: 'orderNo', type: 25 }],
+    )).toEqual([{ amount: 20000, orderNo: '00123' }]);
   });
 });
 

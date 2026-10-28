@@ -241,8 +241,8 @@ function snapshotSheetToGrid(sheet: SheetSnapshot, styles: IWorkbookData['styles
   const cells: ReportPrintGrid['cells'] = [];
   const colWidths: number[] = [];
   const rowHeights: number[] = [];
-  let maxRow = Math.max((sheet.rowCount ?? 1) - 1, 0);
-  let maxCol = Math.max((sheet.columnCount ?? 1) - 1, 0);
+  let maxRow = -1;
+  let maxCol = -1;
 
   Object.entries(sheet.cellData ?? {}).forEach(([rowKey, rowCells]) => {
     const row = Number(rowKey);
@@ -290,8 +290,8 @@ function snapshotSheetToGrid(sheet: SheetSnapshot, styles: IWorkbookData['styles
   });
 
   return {
-    rows: Math.max(maxRow + 1, sheet.rowCount ?? 20),
-    cols: Math.max(maxCol + 1, sheet.columnCount ?? 8),
+    rows: Math.max(maxRow + 1, 1),
+    cols: Math.max(maxCol + 1, 1),
     ...(colWidths.length ? { colWidths } : {}),
     ...(rowHeights.length ? { rowHeights } : {}),
     cells,

@@ -13,6 +13,31 @@ const loadExcelJS = () => require('exceljs') as typeof import('exceljs');
 
 const MAX_ROWS = 5000;
 
+function normalizeColumnKey(label: string, index: number, used: Set<string>): string {
+  const trimmed = label.trim();
+  let key = trimmed.replace(/[^A-Za-z0-9_]/g, '_');
+  if (!/^[A-Za-z_]/.test(key)) key = `col${index + 1}`;
+  if (!key.replace(/_/g, '')) key = `col${index + 1}`;
+  if (!key) key = `col${index + 1}`;
+  const base = key;
+  let suffix = 1;
+  while (used.has(key)) {
+    suffix += 1;
+    key = `${base}_${suffix}`;
+  }
+  used.add(key);
+  return key;
+}
+
+function normalizeHeaders(labels: string[]): { columns: string[]; labels: string[] } {
+  const used = new Set<string>();
+  const normalizedLabels = labels.map((label, index) => label.trim() || `第 ${index + 1} 列`);
+  return {
+    columns: labels.map((label, index) => normalizeColumnKey(label.trim() || `col${index + 1}`, index, used)),
+    labels: normalizedLabels,
+  };
+}
+
 /** 解析一行 CSV（处理引号包裹与转义双引号） */
 function parseCsvLine(line: string): string[] {
   const out: string[] = [];
@@ -36,7 +61,8 @@ function parseCsv(text: string): ReportDataResult {
   const clean = text.replace(/^\uFEFF/, '');
   const lines = clean.split(/\r\n|\n|\r/).filter((l) => l.length > 0);
   if (lines.length === 0) return { columns: [], fields: [], rows: [], total: 0 };
-  const headers = parseCsvLine(lines[0]).map((h, i) => h.trim() || `col${i + 1}`);
+  const headerInfo = normalizeHeaders(parseCsvLine(lines[0]));
+  const headers = headerInfo.columns;
   const rows: Record<string, unknown>[] = [];
   for (let i = 1; i < lines.length && rows.length < MAX_ROWS; i++) {
     const cells = parseCsvLine(lines[i]);
@@ -48,7 +74,7 @@ function parseCsv(text: string): ReportDataResult {
     });
     rows.push(row);
   }
-  return { columns: headers, fields: headers.map((name) => ({ name, label: name, type: 'string', source: 'inferred' as const })), rows, total: rows.length };
+  return { columns: headers, fields: headers.map((name, index) => ({ name, label: headerInfo.labels[index] ?? name, type: 'string', source: 'inferred' as const })), rows, total: rows.length };
 }
 
 async function parseExcel(buffer: Buffer): Promise<ReportDataResult> {
@@ -57,10 +83,12 @@ async function parseExcel(buffer: Buffer): Promise<ReportDataResult> {
   const ws = wb.worksheets[0];
   if (!ws) return { columns: [], fields: [], rows: [], total: 0 };
   const headerRow = ws.getRow(1);
-  const headers: string[] = [];
+  const labels: string[] = [];
   headerRow.eachCell({ includeEmpty: true }, (cell, col) => {
-    headers[col - 1] = String(cell.value ?? `col${col}`).trim() || `col${col}`;
+    labels[col - 1] = String(cell.value ?? '').trim();
   });
+  const headerInfo = normalizeHeaders(labels);
+  const headers = headerInfo.columns;
   const cols = headers.length;
   const rows: Record<string, unknown>[] = [];
   for (let r = 2; r <= ws.rowCount && rows.length < MAX_ROWS; r++) {
@@ -76,7 +104,7 @@ async function parseExcel(buffer: Buffer): Promise<ReportDataResult> {
     }
     if (hasValue) rows.push(row);
   }
-  return { columns: headers, fields: headers.map((name) => ({ name, label: name, type: 'string', source: 'inferred' as const })), rows, total: rows.length };
+  return { columns: headers, fields: headers.map((name, index) => ({ name, label: headerInfo.labels[index] ?? name, type: 'string', source: 'inferred' as const })), rows, total: rows.length };
 }
 
 /** 按文件名后缀分派解析；返回归一化结果 */

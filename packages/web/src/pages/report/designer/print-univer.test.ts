@@ -89,4 +89,13 @@ describe('print-univer', () => {
     });
     expect(roundtrip.sheets?.[1]?.grid.cells[0]?.kind).toBe('barcode');
   });
+
+  it('保存时按最后一个有内容的单元格裁剪空白视口', () => {
+    const workbook = printContentToUniver({
+      sheets: [{ id: 'sheet-01', name: 'Sheet1', grid: { rows: 20, cols: 8, cells: [{ row: 1, col: 2, v: '数据' }] } }],
+    });
+    const content = univerToPrintContent(workbook);
+    expect(content.sheets?.[0]?.grid.rows).toBe(2);
+    expect(content.sheets?.[0]?.grid.cols).toBe(3);
+  });
 });

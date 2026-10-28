@@ -30,6 +30,17 @@ describe('parseDataFile - CSV', () => {
     expect(res.columns).toEqual(['a', 'col2', 'c']);
   });
 
+  it('中文和重复表头生成合法字段名，同时保留显示标签', async () => {
+    const res = await parseDataFile(Buffer.from('门店名称,销售额,销售额\n杭州店,12,13', 'utf-8'), 'cn.csv');
+    expect(res.columns).toEqual(['col1', 'col2', 'col3']);
+    expect(res.fields.map((field) => [field.name, field.label])).toEqual([
+      ['col1', '门店名称'],
+      ['col2', '销售额'],
+      ['col3', '销售额'],
+    ]);
+    expect(res.rows[0]).toEqual({ col1: '杭州店', col2: '12', col3: '13' });
+  });
+
   it('空文件抛 400', async () => {
     await expect(parseDataFile(Buffer.from(''), 'x.csv')).rejects.toThrow();
   });

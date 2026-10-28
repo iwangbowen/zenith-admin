@@ -22,7 +22,7 @@ import {
   useSaveReportDataset,
 } from '@/hooks/queries/report-datasets';
 import { REPORT_DATASOURCE_TYPE_LABELS, REPORT_FIELD_TYPE_OPTIONS, reportDatasetContract } from '@zenith/shared/report';
-import type { ReportDataset, ReportDatasourceType, ReportField, ReportDataResult, ReportApiDatasetContent, ReportSqlDatasetContent, ReportComputedField, ReportStaticDatasetContent, ReportFieldFormat, ReportDatasetParam, ReportLookupOption, ReportRowRule, ReportVisualModel } from '@zenith/shared/report';
+import type { ReportDataset, ReportDatasourceType, ReportField, ReportDataResult, ReportApiDatasetContent, ReportSqlDatasetContent, ReportComputedField, ReportStaticDatasetContent, ReportFieldFormat, ReportDatasetParam, ReportLookupOption, ReportRowRule, ReportVisualModel, ReportMaterializationStrategy } from '@zenith/shared/report';
 import { useAllRoles } from '@/hooks/queries/roles';
 import VisualModelBuilder from './components/VisualModelBuilder';
 import { useDictItems } from '@/hooks/useDictItems';
@@ -111,7 +111,7 @@ export default function DatasetsPage() {
   const [visualModel, setVisualModel] = useState<ReportVisualModel | null>(null);
   const [refsTarget, setRefsTarget] = useState<ReportDataset | null>(null);
   const [refsMounted, setRefsMounted] = useState(false);
-  const [materialize, setMaterialize] = useState<{ enabled: boolean; cron?: string }>({ enabled: false, cron: '' });
+  const [materialize, setMaterialize] = useState<{ enabled: boolean; cron: string; strategy: ReportMaterializationStrategy; keyField: string; deltaWindowMinutes?: number }>({ enabled: false, cron: '', strategy: 'full', keyField: '', deltaWindowMinutes: undefined });
   const [staticJsonText, setStaticJsonText] = useState('[]');
   const [staticColumns, setStaticColumns] = useState<string[]>([]);
   const [preview, setPreview] = useState<ReportDataResult | null>(null);
@@ -156,7 +156,13 @@ export default function DatasetsPage() {
     setRowRules(ds?.rowRules ?? []);
     setVisualVisible(false);
     setVisualModel(((ds?.content ?? {}) as ReportSqlDatasetContent).visual ?? null);
-    setMaterialize({ enabled: ds?.materialize?.enabled ?? false, cron: ds?.materialize?.cron ?? '' });
+    setMaterialize({
+      enabled: ds?.materialize?.enabled ?? false,
+      cron: ds?.materialize?.cron ?? '',
+      strategy: ds?.materialize?.strategy ?? 'full',
+      keyField: ds?.materialize?.keyField ?? '',
+      deltaWindowMinutes: ds?.materialize?.deltaWindowMinutes ?? undefined,
+    });
     setAiAskVisible(false);
     setAiQuestion('');
     if (ds?.type === 'static') {
@@ -221,7 +227,10 @@ export default function DatasetsPage() {
         cacheTtl: Number(values.cacheTtl) || 0,
         materialize: {
           enabled: materialize.enabled,
-          ...(materialize.cron?.trim() ? { cron: materialize.cron.trim() } : {}),
+          strategy: materialize.strategy,
+          keyField: materialize.strategy === 'incremental' ? (materialize.keyField.trim() || null) : null,
+          deltaWindowMinutes: materialize.strategy === 'incremental' ? (materialize.deltaWindowMinutes ?? null) : null,
+          ...(materialize.cron.trim() ? { cron: materialize.cron.trim() } : {}),
         },
         status: values.status,
         remark: values.remark || undefined,
@@ -256,12 +265,12 @@ export default function DatasetsPage() {
     }
   }
 
-  function applyStaticPreview(rows: Record<string, unknown>[], columns?: string[]) {
+  function applyStaticPreview(rows: Record<string, unknown>[], columns?: string[], metadata?: ReportField[]) {
     const cols = columns?.length ? columns : inferColumns(rows);
     setStaticColumns(cols);
     setPreview({
       columns: cols,
-      fields: cols.map((name) => ({ name, label: name, type: 'string' as const, source: 'inferred' as const })),
+      fields: metadata ?? cols.map((name) => ({ name, label: name, type: 'string' as const, source: 'inferred' as const })),
       rows: rows.slice(0, 50),
       total: rows.length,
     });
@@ -279,8 +288,9 @@ export default function DatasetsPage() {
     try {
       const res = await parseFileMutation.mutateAsync({ body: formData });
       setStaticJsonText(JSON.stringify(res.rows, null, 2));
-      applyStaticPreview(res.rows, res.columns);
-      setFields(fieldsFromColumns(res.columns, res.rows));
+      const fields = res.fields.map((field) => ({ name: field.name, label: field.label, type: field.type, ...(field.format ? { format: field.format } : {}) }));
+      applyStaticPreview(res.rows, res.columns, fields);
+      setFields(fields);
       Toast.success(`解析成功，共 ${res.total} 行`);
     } catch (error) {
       Toast.error(error instanceof Error ? error.message : '文件解析失败');
@@ -865,6 +875,35 @@ export default function DatasetsPage() {
               <Form.Slot label="物化快照">
                 <Space vertical align="start" style={{ width: '100%' }}>
                   <Switch checked={materialize.enabled} onChange={(enabled) => setMaterialize((prev) => ({ ...prev, enabled }))} />
+                  <Select
+                    value={materialize.strategy}
+                    optionList={[{ value: 'full', label: '全量刷新' }, { value: 'incremental', label: '增量刷新' }]}
+                    onChange={(strategy) => setMaterialize((prev) => ({ ...prev, strategy: strategy as ReportMaterializationStrategy }))}
+                    style={{ width: '100%' }}
+                    disabled={!materialize.enabled}
+                  />
+                  {materialize.enabled && materialize.strategy === 'incremental' && (
+                    <Space align="start" style={{ width: '100%' }}>
+                      <Select
+                        value={materialize.keyField || undefined}
+                        placeholder="选择增量键"
+                        filter
+                        showClear
+                        optionList={fields.map((field) => ({ value: field.name, label: field.label ? `${field.label}（${field.name}）` : field.name }))}
+                        onChange={(keyField) => setMaterialize((prev) => ({ ...prev, keyField: String(keyField ?? '') }))}
+                        style={{ flex: 1 }}
+                      />
+                      <InputNumber
+                        value={materialize.deltaWindowMinutes}
+                        min={1}
+                        max={525600}
+                        suffix="分钟"
+                        placeholder="增量窗口"
+                        onChange={(deltaWindowMinutes) => setMaterialize((prev) => ({ ...prev, deltaWindowMinutes: deltaWindowMinutes == null ? undefined : Number(deltaWindowMinutes) }))}
+                        style={{ width: 160 }}
+                      />
+                    </Space>
+                  )}
                   {materialize.enabled && (
                     <Input
                       value={materialize.cron ?? ''}
@@ -874,7 +913,7 @@ export default function DatasetsPage() {
                       style={{ width: '100%' }}
                     />
                   )}
-                  <Typography.Text type="tertiary" size="small">启用后取数优先返回快照（忽略运行时参数），适合大屏降压；Cron 留空=仅手动。</Typography.Text>
+                  <Typography.Text type="tertiary" size="small">物化是全局快照，含参数或行级权限的数据集不能启用；Cron 留空=仅手动。增量刷新需要选择唯一递增键和窗口。</Typography.Text>
                 </Space>
               </Form.Slot>
 
