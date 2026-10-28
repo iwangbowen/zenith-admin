@@ -103,10 +103,9 @@ function StructuredAnswer({
 
   return (
     <div className="chatbi-answer">
-      <MarkdownPreviewPanel content={message.content} style={{ height: 'auto', overflow: 'visible' }} />
-      {message.errorMessage && message.errorMessage !== message.content.trim() && (
-        <Banner type="danger" closeIcon={null} description={message.errorMessage} />
-      )}
+      {message.errorMessage
+        ? <Banner type="danger" closeIcon={null} description={message.errorMessage} />
+        : <MarkdownPreviewPanel content={message.content} style={{ height: 'auto', overflow: 'visible' }} />}
       {message.generatedSql && (
         <Collapse>
           <Collapse.Panel itemKey="sql" header="查看生成的只读 SQL">
@@ -173,6 +172,7 @@ export default function ChatBiPage() {
   const [question, setQuestion] = useState('');
   const [pendingQuestion, setPendingQuestion] = useState('');
   const [askError, setAskError] = useState<string | null>(null);
+  const [failedQuestion, setFailedQuestion] = useState('');
   const [lastSaved, setLastSaved] = useState<ReportChatbiSavedResource | null>(null);
   const [targetDashboardId, setTargetDashboardId] = useState<number>();
   const [saveResourceType, setSaveResourceType] = useState<'dataset' | 'dashboard'>('dataset');
@@ -240,6 +240,7 @@ export default function ChatBiPage() {
     setQuestion('');
     setPendingQuestion(content);
     setAskError(null);
+    setFailedQuestion('');
     try {
       await askMutation.mutateAsync({
         sessionId: activeSessionId,
@@ -248,6 +249,7 @@ export default function ChatBiPage() {
       });
     } catch (error) {
       setAskError(chatbiRequestErrorMessage(error, controller.signal.aborted));
+      if (!controller.signal.aborted) setFailedQuestion(content);
     } finally {
       setPendingQuestion('');
       abortRef.current = null;
@@ -472,7 +474,18 @@ export default function ChatBiPage() {
               </div>
             </>
           )}
-          {askError && <Banner type={askError.includes('取消') ? 'warning' : 'danger'} closeIcon={null} description={askError} />}
+          {askError && (
+            <Banner
+              type={askError.includes('取消') ? 'warning' : 'danger'}
+              closeIcon={null}
+              description={(
+                <Space>
+                  <span>{askError}</span>
+                  {failedQuestion && <Button size="small" theme="borderless" onClick={() => { setQuestion(failedQuestion); setAskError(null); }}>重试</Button>}
+                </Space>
+              )}
+            />
+          )}
           {lastSaved && (
             <div>
               <Banner type="success" closeIcon={null} description={`已保存「${lastSaved.name}」`} />

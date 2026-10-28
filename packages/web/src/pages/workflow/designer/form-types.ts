@@ -148,6 +148,7 @@ export const CURRENCY_OPTIONS = [
 
 // 日期格式选项（date-fns token：yyyy=年, MM=月, dd=日, HH=时, mm=分, ss=秒）
 export const DATE_FORMAT_OPTIONS = [
+  { value: 'yyyy-MM',              label: '年-月' },
   { value: 'yyyy-MM-dd',          label: '年-月-日' },
   { value: 'yyyy-MM-dd HH:mm',    label: '年-月-日 时:分' },
   { value: 'yyyy-MM-dd HH:mm:ss', label: '年-月-日 时:分:秒' },

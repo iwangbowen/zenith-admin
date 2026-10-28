@@ -62,13 +62,19 @@ export default function FillEntryPage() {
     && (!record || canRunFillRecordAction(record, 'submit'));
   const pending = createMutation.isPending || updateMutation.isPending || submitMutation.isPending;
 
-  async function collectValues() {
+  async function collectValues(): Promise<Record<string, unknown> | null> {
     setOperationError('');
-    const values = await formApi.current?.validate();
-    if (!values || typeof values !== 'object' || Array.isArray(values)) {
-      throw new Error('表单内容无效，请检查必填项');
+    try {
+      const values = await formApi.current?.validate();
+      if (!values || typeof values !== 'object' || Array.isArray(values)) {
+        setOperationError('表单内容无效，请检查必填项');
+        return null;
+      }
+      return values as Record<string, unknown>;
+    } catch {
+      setOperationError('请先完善表单中的必填项或格式错误');
+      return null;
     }
-    return values as Record<string, unknown>;
   }
 
   async function persistDraft(values: Record<string, unknown>) {
@@ -84,7 +90,9 @@ export default function FillEntryPage() {
 
   async function handleSave() {
     try {
-      const next = await persistDraft(await collectValues());
+      const values = await collectValues();
+      if (!values) return;
+      const next = await persistDraft(values);
       setSavedRecord(next);
       Toast.success('草稿已保存');
     } catch (error) {
@@ -96,8 +104,10 @@ export default function FillEntryPage() {
 
   async function handleSubmit() {
     try {
+      const values = await collectValues();
+      if (!values) return;
       const submitted = await submitFillEntryValues(
-        await collectValues(),
+        values,
         persistDraft,
         (id, expectedRevision) => submitMutation.mutateAsync({
           params: { id },

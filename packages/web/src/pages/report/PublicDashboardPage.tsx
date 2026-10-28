@@ -81,7 +81,7 @@ export default function PublicDashboardPage() {
       setBootstrapDashboard(null);
       if (err instanceof ApiError && err.code === 401) {
         setNeedPwd(true);
-        Toast.error('访问密码错误');
+        if (pwd) Toast.error('访问密码错误');
         return;
       }
       setError(err instanceof Error ? err.message : '链接不存在或已失效');

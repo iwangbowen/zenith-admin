@@ -140,7 +140,11 @@ export async function listAdminReportFillRecords(query: QueryOutputOf<typeof rep
 }
 
 export async function getReportFillRecord(id: number): Promise<ReportFillRecord> {
-  return mapReportFillRecord(await ensureVisibleRecord(id));
+  const row = await ensureVisibleRecord(id);
+  const [joined] = await selectRecordListRows()
+    .where(eq(reportFillRecords.id, row.id))
+    .limit(1);
+  return joined ? mapRecordListRow(joined) : mapReportFillRecord(row);
 }
 
 export async function createReportFillRecord(
