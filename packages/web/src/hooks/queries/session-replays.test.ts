@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { useApiMutationMock, contract } = vi.hoisted(() => ({
-  useApiMutationMock: vi.fn(() => ({})),
+  useApiMutationMock: vi.fn((..._args: unknown[]) => ({})),
   contract: {
     basePath: '/api/session-replays', list: {}, detail: {}, stats: {}, heatmapPages: {}, heatmap: {},
     accessLogs: {}, removeBatch: {}, segmentData: {},
@@ -25,7 +25,8 @@ describe('useBatchDeleteReplays', () => {
 
   it('invalidates both the replay list and storage stats after deletion', () => {
     useBatchDeleteReplays();
-    const options = useApiMutationMock.mock.calls[0]?.[1] as { invalidate: (qc: { invalidateQueries: (input: { queryKey: readonly unknown[] }) => void }) => void };
+    const call = useApiMutationMock.mock.calls[0] as unknown[] | undefined;
+    const options = call?.[1] as { invalidate: (qc: { invalidateQueries: (input: { queryKey: readonly unknown[] }) => void }) => void };
     const invalidateQueries = vi.fn();
 
     options.invalidate({ invalidateQueries });
