@@ -327,7 +327,7 @@ export function useReportDashboardWidgetData(
   });
 
   const get = useCallback((widget: ReportWidget): DashboardWidgetDataState => {
-    if (!widget.datasetId) return EMPTY_WIDGET_STATE;
+    if (!widget.datasetId && !widget.metricId) return EMPTY_WIDGET_STATE;
     const item = dataQuery.data?.[widget.i];
     return {
       data: item?.data ?? null,

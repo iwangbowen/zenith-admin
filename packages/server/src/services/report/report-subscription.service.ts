@@ -40,7 +40,7 @@ import {
   prepareReportSecret,
 } from './report-secrets';
 import type { ReportDashboardSubscriptionRow, ReportDeliveryRunRow } from '../../db/schema';
-import type { ReportDashboardSubscription, ReportWidget, ReportNotifyChannel, CreateReportSubscriptionInput, UpdateReportSubscriptionInput, ReportDeliveryStatus } from '@zenith/shared/report';
+import type { ReportDashboardSubscription, ReportWidget, ReportNotifyChannel, CreateReportSubscriptionInput, UpdateReportSubscriptionInput, ReportDeliveryStatus, ReportDataResult } from '@zenith/shared/report';
 import {
   buildReportFieldMetadataMap,
   isNumericReportField,
@@ -58,6 +58,18 @@ interface SummaryLine {
   value: number;
   unit: string;
   deltaPct: number | null;
+}
+
+function resolveMetricSummaryValue(widget: ReportWidget, data: ReportDataResult): { value: number; unit: string } {
+  const row = data.rows[0] ?? {};
+  const value = typeof row.value === 'number' ? row.value : Number(row.value);
+  if (!Number.isFinite(value)) {
+    throw new HTTPException(400, { message: `订阅组件「${widget.title || widget.i}」的指标结果不是有效数值` });
+  }
+  return {
+    value,
+    unit: String(row.unit ?? widget.options?.unit ?? ''),
+  };
 }
 
 const SCHEDULE_MAX_ATTEMPTS = 3;
@@ -262,9 +274,17 @@ async function buildSummary(row: ReportDashboardSubscriptionRow): Promise<{
   const lines: SummaryLine[] = [];
   const snapshot: Record<string, number> = {};
   for (const widget of widgets) {
-    if (widget.type !== 'kpi' || !widget.datasetId) continue;
+    if (widget.type !== 'kpi' || (!widget.datasetId && !widget.metricId)) continue;
     const widgetData = data[widget.i]?.data;
     if (!widgetData) continue;
+    if (widget.metricId) {
+      const metric = resolveMetricSummaryValue(widget, widgetData);
+      const prev = prevSnapshot[widget.i];
+      const deltaPct = typeof prev === 'number' && prev !== 0 ? ((metric.value - prev) / Math.abs(prev)) * 100 : null;
+      lines.push({ title: widget.title, value: metric.value, unit: metric.unit, deltaPct });
+      snapshot[widget.i] = metric.value;
+      continue;
+    }
     const aggregate = String(widget.options?.aggregate ?? 'sum');
     const valueField = widget.options?.valueField as string | undefined;
     const compareField = widget.options?.compareField as string | undefined;

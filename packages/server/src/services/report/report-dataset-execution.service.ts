@@ -13,6 +13,7 @@ import { config as appConfig } from '../../config';
 import redis from '../../lib/redis';
 import logger from '../../lib/logger';
 import { pageOffset } from '../../lib/pagination';
+import { currentUserOrNull } from '../../lib/context';
 import { httpRequest } from '../../lib/http-client';
 import { applyComputedFields } from '../../lib/report-formula';
 import { runExternalQuery } from '../../lib/report-external-db';
@@ -362,6 +363,7 @@ export async function executeGovernedReportSql(input: {
   maxRows: number;
   sourceRefId: string;
 }): Promise<ReportDataResult> {
+  if (input.datasetId) await ensureReportResourceAccess('dataset', input.datasetId, 'viewer');
   await ensureReportResourceAccess('datasource', input.datasourceId, 'viewer');
   const source = await ensureDatasourceExists(input.datasourceId);
   ensureDatasourceEnabled(source);
@@ -671,6 +673,7 @@ export async function getDatasetDataExecution(
     columns: { id: true, tenantId: true, datasourceId: true },
   });
   const source = requireRow(sourceOrUndefined, '数据集不存在');
+  if (currentUserOrNull()) await ensureReportResourceAccess('dataset', id, 'viewer');
   const identity = resolveReportQueryIdentity(source.tenantId, runtime);
   const requestId = runtime?.requestId ?? newReportQueryRequestId();
   const startedAt = Date.now();

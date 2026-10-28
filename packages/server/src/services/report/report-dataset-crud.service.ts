@@ -156,6 +156,7 @@ export async function getDataset(id: number): Promise<ReportDataset> {
     },
   });
   const row = requireRow(rowOrUndefined, '数据集不存在');
+  if (currentUserOrNull()) await ensureReportResourceAccess('dataset', id, 'viewer');
   return mapDataset(row);
 }
 

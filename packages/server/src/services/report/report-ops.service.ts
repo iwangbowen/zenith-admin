@@ -722,13 +722,13 @@ export async function createPublicAccessSession(
   password?: string,
 ): Promise<ReportPublicAccessSession> {
   const share = await findShareByToken(token);
+  const { dashboard, clientIp } = await ensureShareAccessAllowed(share, 'access');
   if (share.passwordHash) {
     if (!password || !(await verifyPassword(password, share.passwordHash))) {
       logShareAccess(share, 'access', false);
       throw new HTTPException(401, { message: '访问密码错误' });
     }
   }
-  const { dashboard, clientIp } = await ensureShareAccessAllowed(share, 'access');
   const publicDashboard = toPublicDashboard(dashboard);
   assertPublicDashboardProjection(publicDashboard.widgets);
   const filterData = await getDashboardFilterOptionData(publicDashboard.filters, share.dashboardId);

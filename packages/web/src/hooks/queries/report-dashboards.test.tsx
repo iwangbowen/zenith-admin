@@ -5,6 +5,7 @@
  * 避免触发整屏图表背后的数据集查询。删除则移除该看板详情、数据、版本与分享缓存。
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { ReportWidget } from '@zenith/shared/report';
 import { renderHook, waitFor } from '@testing-library/react';
 import {
   ApiRecorder,
@@ -24,6 +25,7 @@ import {
   useCloneReportDashboard,
   useDeleteReportDashboard,
   useDeleteReportDashboardShare,
+  useReportDashboardWidgetData,
   useReportDashboardList,
   useReportDashboardShares,
   useToggleReportDashboardFavorite,
@@ -44,7 +46,34 @@ beforeEach(() => {
     .on('DELETE', '/api/report/dashboards/1', null)
     .on('GET', '/api/report/dashboards/1/shares', [])
     .on('GET', '/api/report/dashboards/2/shares', [])
-    .on('DELETE', '/api/report/dashboards/shares/9', null);
+    .on('DELETE', '/api/report/dashboards/shares/9', null)
+    .on('POST', /\/api\/report\/dashboards\/1\/data/, {
+      metric: {
+        data: {
+          columns: ['value'],
+          fields: [{ name: 'value', label: '销售净额', type: 'number' }],
+          rows: [{ value: 36000.75, formattedValue: '36,000.75', unit: '元' }],
+          total: 1,
+        },
+        error: null,
+        durationMs: 3,
+        cacheHit: false,
+      },
+    });
+});
+
+describe('useReportDashboardWidgetData', () => {
+  it('returns metric-backed KPI data even when the widget has no dataset id', async () => {
+    const qc = createTestQueryClient();
+    const widget = { i: 'metric', type: 'kpi', title: '销售净额', metricId: 2, options: {} } as ReportWidget;
+    const { result } = renderHook(
+      () => useReportDashboardWidgetData(1, [widget]),
+      { wrapper: createWrapper(qc) },
+    );
+
+    await waitFor(() => expect(result.current.query.isSuccess).toBe(true));
+    expect(result.current.get(widget).data?.rows[0]).toMatchObject({ value: 36000.75, unit: '元' });
+  });
 });
 
 describe('useDeleteReportDashboardShare', () => {

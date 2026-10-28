@@ -50,7 +50,7 @@ export default function GovernanceResourceTab() {
   const folders = flattenReportFolders(foldersQuery.data ?? []);
   const assetsQuery = useReportAssetCatalog({ page: 1, pageSize: 100, types: resourceType });
   const usersQuery = useAllUsers();
-  const aclsQuery = useReportResourceAcls({ resourceType, resourceId: resourceId ?? 0, inheritFromFolder: true }, aclVisible);
+  const aclsQuery = useReportResourceAcls({ resourceType, resourceId: resourceId ?? 0, inheritFromFolder: false }, aclVisible);
   const saveFolderMutation = useSaveReportFolder();
   const deleteFolderMutation = useDeleteReportFolder();
   const grantAclMutation = useGrantReportResourceAcl();
