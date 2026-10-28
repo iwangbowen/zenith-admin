@@ -61,7 +61,10 @@ export function useReplayDetail(id: string | null, enabled = true) {
 
 export function useBatchDeleteReplays() {
   return useApiMutation(sessionReplayContract.removeBatch, {
-    invalidate: (qc) => void qc.invalidateQueries({ queryKey: replayKeys.lists }),
+    invalidate: (qc) => {
+      void qc.invalidateQueries({ queryKey: replayKeys.lists });
+      void qc.invalidateQueries({ queryKey: replayKeys.stats });
+    },
   });
 }
 

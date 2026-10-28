@@ -17,6 +17,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db';
 import { replaySessions, replaySegments, replayClickPoints, replayAccessLogs, errorEvents, userEvents } from '../../db/schema';
 import type { ReplaySessionRow, ReplaySegmentRow } from '../../db/schema';
+import type { DbExecutor } from '../../db/types';
 import { replaySessionSchema, type ReplaySegmentUploadMetaInput } from '@zenith/shared/analytics';
 import { sessionReplayContract } from '@zenith/shared/analytics';
 import type { QueryOutputOf } from '@zenith/shared/core';
@@ -45,6 +46,22 @@ const QUOTA_LOW_WATERMARK = 0.9;
 const QUOTA_HARD_LIMIT = 1.2;
 
 export interface ReplayReqCtx { ua: string; siteKey?: string | null; origin?: string | null }
+
+/**
+ * 错误上报与回放首分片是两个独立请求，错误可能先落库，导致异步 bump 找不到会话。
+ * 每次分片落地时用已关联错误数做幂等校正，避免竞态下列表计数落后于详情。
+ */
+export async function reconcileReplayErrorCount(executor: Pick<DbExecutor, 'update'>, replayId: string): Promise<void> {
+  await executor
+    .update(replaySessions)
+    .set({
+      errorCount: sql`GREATEST(${replaySessions.errorCount}, (
+        SELECT COUNT(*)::int FROM ${errorEvents}
+        WHERE ${errorEvents.replayId} = ${replaySessions.id}
+      ))`,
+    })
+    .where(eq(replaySessions.id, replayId));
+}
 
 export function mapReplaySession(row: ReplaySessionRow) {
   return pickEntity(replaySessionSchema, row, {
@@ -187,6 +204,7 @@ export async function ingestReplaySegment(meta: ReplaySegmentUploadMetaInput, da
       }
       bumpUsageCache(tenantId, data.byteLength);
     }
+    await reconcileReplayErrorCount(tx, meta.replayId);
   });
 }
 
