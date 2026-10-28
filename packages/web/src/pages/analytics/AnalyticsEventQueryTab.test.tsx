@@ -163,3 +163,29 @@ describe('AnalyticsEventQueryTab — 属性过滤条件', () => {
     expect(propertyFilterInputs().count).toBe(10);
   });
 });
+
+describe('AnalyticsEventQueryTab — 指标展示精度', () => {
+  it('preserves fractional values for average-style metrics in the table', () => {
+    useAnalyticsEventQueryMock.mockReturnValue({
+      data: {
+        list: [{ dimensions: { date: '2026-10-27', pagePath: '/' }, value: 9.33 }],
+        total: 1,
+        page: 1,
+        pageSize: 10,
+        queryMeta: {
+          metric: 'eventsPerUser',
+          metricProperty: null,
+          groupBy: ['date', 'pagePath'],
+          startDate: '2026-09-29',
+          endDate: '2026-10-29',
+        },
+      },
+      isFetching: false,
+      isError: false,
+    });
+
+    renderWithPreferences(<AnalyticsEventQueryTab />);
+
+    expect(screen.getByText('9.33')).toBeInTheDocument();
+  });
+});

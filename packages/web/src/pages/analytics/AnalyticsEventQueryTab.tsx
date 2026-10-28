@@ -101,6 +101,16 @@ function rowKey(row?: AnalyticsEventQueryRow, index?: number): string {
   return `${Object.values(row.dimensions).join('|')}-${index ?? 0}`;
 }
 
+/**
+ * 事件次数 / UV 是计数指标，其余指标可能是人均、均值或百分位，不能统一取整。
+ * 统一 formatter 供表格与图表 tooltip 共用，避免同一查询在两处显示不同口径。
+ */
+function formatMetricValue(value: number, metric: AnalyticsEventQueryMetric): string {
+  if (!Number.isFinite(value)) return EMPTY_PLACEHOLDER;
+  if (metric === 'events' || metric === 'uv') return Math.round(value).toLocaleString();
+  return Number(value.toFixed(2)).toLocaleString();
+}
+
 export default function AnalyticsEventQueryTab() {
   const {
     page, pageSize, buildPagination,
@@ -155,7 +165,8 @@ export default function AnalyticsEventQueryTab() {
   };
 
   const primaryDim = result?.queryMeta.groupBy[0];
-  const metricLabel = ANALYTICS_EVENT_QUERY_METRIC_OPTIONS.find((o) => o.value === (result?.queryMeta.metric ?? draft.metric))?.label ?? '指标值';
+  const resultMetric = result?.queryMeta.metric ?? draft.metric;
+  const metricLabel = ANALYTICS_EVENT_QUERY_METRIC_OPTIONS.find((o) => o.value === resultMetric)?.label ?? '指标值';
 
   const chartData = useMemo(
     () => (result?.list ?? []).map((row) => ({ __label: primaryDim ? row.dimensions[primaryDim] ?? EMPTY_PLACEHOLDER : EMPTY_PLACEHOLDER, value: row.value })),
@@ -167,8 +178,8 @@ export default function AnalyticsEventQueryTab() {
     xField: '__label',
     series: [{ field: 'value', name: metricLabel, color: palette.primary }],
     palette,
-    tooltip: { value: (v) => String(Math.round(Number(v))) },
-  }), [chartData, metricLabel, palette]);
+    tooltip: { value: (v) => formatMetricValue(Number(v), resultMetric) },
+  }), [chartData, metricLabel, palette, resultMetric]);
 
   const columns: ColumnProps<AnalyticsEventQueryRow>[] = useMemo(() => {
     const groupBy = result?.queryMeta.groupBy ?? draft.groupBy;
@@ -179,9 +190,9 @@ export default function AnalyticsEventQueryTab() {
     }));
     return [
       ...dimCols,
-      { title: metricLabel, dataIndex: 'value', width: 140, render: (value: number) => Math.round(value).toLocaleString() },
+      { title: metricLabel, dataIndex: 'value', width: 140, render: (value: number) => formatMetricValue(value, resultMetric) },
     ];
-  }, [result?.queryMeta.groupBy, draft.groupBy, metricLabel]);
+  }, [result?.queryMeta.groupBy, draft.groupBy, metricLabel, resultMetric]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

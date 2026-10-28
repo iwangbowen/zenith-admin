@@ -124,6 +124,7 @@ export function DrillUsersSheet({ context, title, description, onClose }: DrillU
           columns={[
             {
               title: '用户',
+              key: 'user',
               dataIndex: 'distinctId',
               render: (value: string, record) => (
                 <Space spacing={4}>
@@ -132,7 +133,7 @@ export function DrillUsersSheet({ context, title, description, onClose }: DrillU
                 </Space>
               ),
             },
-            { title: 'Distinct ID', dataIndex: 'distinctId', render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
+            { title: 'Distinct ID', key: 'distinctId', dataIndex: 'distinctId', render: (v: string) => <Typography.Text code>{v}</Typography.Text> },
             dateTimeColumn('首次出现', 'firstSeenAt'),
             dateTimeColumn('最近活跃', 'lastSeenAt'),
           ]}
