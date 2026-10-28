@@ -48,6 +48,8 @@ describe('report data-quality evaluators', () => {
       .toContain('dataset');
     expect(validateCustomDqSql("select d.row from dataset as d where lower(d.row->>'name') = 'alice'"))
       .toContain('dataset');
+    expect(validateCustomDqSql("select row from dataset where (row->>'id')::int > 0"))
+      .toContain('where');
     expect(() => validateCustomDqSql('select * from users')).toThrow('当前数据集');
     expect(() => validateCustomDqSql('select row from dataset d, users u')).toThrow('dataset');
     expect(() => validateCustomDqSql('select row from dataset where row->>\'id\' in (select id from users)')).toThrow('dataset');

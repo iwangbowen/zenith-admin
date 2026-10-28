@@ -45,7 +45,7 @@ export default function GovernanceEnvironmentTab() {
 
   const environmentsQuery = useReportEnvironmentList();
   const promotionsQuery = useReportPromotionList({ page, pageSize });
-  const assetsQuery = useReportAssetCatalog({ page: 1, pageSize: 100, types: promotionType });
+  const assetsQuery = useReportAssetCatalog({ page: 1, pageSize: 100, types: promotionType }, hasPermission('report:asset:list'));
   const saveEnvironmentMutation = useSaveReportEnvironment();
   const deleteEnvironmentMutation = useDeleteReportEnvironment();
   const createPromotionMutation = useCreateReportPromotion();

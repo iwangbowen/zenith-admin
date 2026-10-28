@@ -219,7 +219,7 @@ export default function DashboardListPage() {
       actions: (record) => [
         ...(hasPermission('report:dashboard:update') ? [{ key: 'design', label: '设计', onClick: () => navigate(`/report/dashboards/${record.id}/design`, { state: { tabTitle: `设计·${record.name}` } }) }] : []),
         { key: 'view', label: '预览', onClick: () => navigate(`/report/dashboards/${record.id}/view`, { state: { tabTitle: `预览·${record.name}` } }) },
-        ...(hasPermission('report:dashboard:update') && record.lifecycleStatus !== 'published' ? [{ key: 'publish', label: '发布', onClick: () => void handlePublish(record) }] : []),
+        ...(hasPermission('report:dashboard:update') ? [{ key: 'publish', label: record.lifecycleStatus === 'published' ? '重新发布' : '发布', onClick: () => void handlePublish(record) }] : []),
         ...(hasPermission('report:dashboard:update') && record.lifecycleStatus === 'published' ? [{ key: 'offline', label: '下线', onClick: () => void handleOffline(record) }] : []),
         ...(hasPermission('report:dashboard:update') ? [{ key: 'share', label: '分享', onClick: () => setShareTarget(record.id) }] : []),
         ...(hasPermission('report:dashboard:update') ? [{ key: 'version', label: '版本', onClick: () => setVersionTarget(record.id) }] : []),

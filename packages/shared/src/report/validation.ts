@@ -447,8 +447,8 @@ export const createReportVersionSchema = z.object({ remark: z.string().max(256).
 export type CreateReportVersionInput = z.input<typeof createReportVersionSchema>;
 
 export const reportVersionDiffQuerySchema = z.object({
-  left: z.number().int().min(0),
-  right: z.number().int().min(0),
+  left: z.coerce.number().int().min(0),
+  right: z.coerce.number().int().min(0),
 });
 
 export const restoreReportVersionSchema = z.object({
@@ -862,8 +862,8 @@ export const resolveReportCommentSchema = z.object({
 });
 
 export const reportCommentListQuerySchema = z.object({
-  page: z.number().int().min(1).default(1),
-  pageSize: z.number().int().min(1).max(100).default(20),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
   widgetId: z.string().max(64).optional(),
 });
 

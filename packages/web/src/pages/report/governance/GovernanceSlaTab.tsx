@@ -46,7 +46,7 @@ export default function GovernanceSlaTab() {
   const [type, setType] = useState<ReportSlaType | undefined>();
   const [violationStatus, setViolationStatus] = useState<ReportSlaViolationStatus | undefined>();
 
-  const datasetsQuery = useEnabledReportDatasets();
+  const datasetsQuery = useEnabledReportDatasets(undefined, hasPermission('report:dataset:list'));
   const datasetOptions = (datasetsQuery.data ?? []).map((item) => ({ value: item.id, label: item.name }));
   const datasetNameMap = new Map(datasetOptions.map((item) => [item.value, item.label]));
   const rulesQuery = useReportSlaRuleList({ page, pageSize, datasetId, type });

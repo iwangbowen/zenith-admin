@@ -1,6 +1,6 @@
 import { createLabelOptionsFromMap } from '../core/enum-options';
 import { NUMERIC_COMPARE_OPS } from '../core/compare';
-import type { ReportAlertAggregate, ReportChatbiSessionStatus, ReportDatasourceType, ReportDeliveryStatus, ReportDeliveryTriggerType, ReportFieldType, ReportFillRecordStatus, ReportFillSyncStatus, ReportFillTemplateStatus, ReportScheduleMisfirePolicy } from './types';
+import type { ReportAlertAggregate, ReportApprovalStatus, ReportChatbiSessionStatus, ReportDatasourceType, ReportDeliveryStatus, ReportDeliveryTriggerType, ReportFieldType, ReportFillRecordStatus, ReportFillSyncStatus, ReportFillTemplateStatus, ReportScheduleMisfirePolicy, ReportTransferStatus } from './types';
 
 /** 数据集字段（列）数据类型 */
 export const REPORT_FIELD_TYPES = ['string', 'number', 'date', 'boolean'] as const;
@@ -28,6 +28,26 @@ export const REPORT_ALERT_OPS = NUMERIC_COMPARE_OPS;
 export const REPORT_ALERT_AGGREGATES = ['sum', 'avg', 'max', 'min', 'count', 'first'] as const;
 
 export const REPORT_APPROVAL_ACTIONS = ['publish', 'promote', 'deprecate'] as const;
+
+export const REPORT_APPROVAL_STATUS_LABELS: Record<ReportApprovalStatus, string> = {
+  pending: '待审批',
+  approved: '已通过',
+  rejected: '已拒绝',
+  cancelled: '已取消',
+};
+
+export const REPORT_TRANSFER_STATUS_LABELS: Record<ReportTransferStatus, string> = {
+  pending: '待处理',
+  accepted: '已接受',
+  rejected: '已拒绝',
+  cancelled: '已取消',
+};
+
+export const REPORT_APPROVAL_ACTION_LABELS = {
+  publish: '发布',
+  promote: '环境晋级',
+  deprecate: '废弃',
+} as const;
 
 export const REPORT_DQ_TRIGGER_TYPES = ['manual', 'scheduled', 'dataset_refresh'] as const;
 

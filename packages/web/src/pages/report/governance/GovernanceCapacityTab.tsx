@@ -63,7 +63,7 @@ export default function GovernanceCapacityTab() {
   const costsQuery = useReportQueryCostLogs({ ...costParams, page: costs.page, pageSize: costs.pageSize });
   const statsQuery = useReportQueryCostStats(costParams);
   const trendQuery = useReportQueryCostTrend({ ...costParams, bucket: 'day' });
-  const usersQuery = useAllUsers();
+  const usersQuery = useAllUsers({ enabled: hasPermission('system:user:list') });
   const saveMutation = useSaveReportQueryQuota();
   const deleteMutation = useDeleteReportQueryQuota();
   const resetMutation = useResetReportQueryQuota();

@@ -194,8 +194,10 @@ export function validateCustomDqSql(input: string): string {
     'jsonb_typeof', 'length', 'lower', 'ltrim', 'nullif', 'replace', 'round',
     'rtrim', 'substring', 'trim', 'upper',
   ]);
+  const sqlKeywords = new Set(['and', 'as', 'case', 'else', 'end', 'from', 'is', 'not', 'or', 'select', 'then', 'when', 'where']);
   const unsafeFunction = [...masked.matchAll(/\b([A-Za-z_][\w$]*)\s*\(/g)]
     .map((match) => match[1].toLowerCase())
+    .filter((name) => !sqlKeywords.has(name))
     .find((name) => !allowedFunctions.has(name));
   if (unsafeFunction) {
     throw new HTTPException(400, { message: `自定义质量 SQL 包含未允许的函数：${unsafeFunction}` });

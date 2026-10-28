@@ -83,9 +83,10 @@ export default function AssetsPage() {
   const [usageTarget, setUsageTarget] = useState<ReportAssetCatalogItem | null>(null);
   const [previewTemplate, setPreviewTemplate] = useState<ReportAssetTemplate | null>(null);
   const [usageDays, setUsageDays] = useState(30);
+  const [noticeResourceType, setNoticeResourceType] = useState<ReportResourceType>('dashboard');
 
   const { userOptions, folders } = useReportOwnerFolderOptions();
-  const templateFoldersQuery = useReportFolderTree({ resourceType: 'asset_template' });
+  const templateFoldersQuery = useReportFolderTree({ resourceType: 'asset_template' }, hasPermission('report:folder:list'));
   const templateFolders = flattenReportFolders(templateFoldersQuery.data ?? []);
   // 已提交筛选 → 契约查询参数：只映射一次，列表与导出共用
   const submitted = catalog.submittedParams;
@@ -104,6 +105,7 @@ export default function AssetsPage() {
     type: templates.submittedParams.type,
   });
   const catalogQuery = useReportAssetCatalog({ page: catalog.page, pageSize: catalog.pageSize, ...catalogFilterQuery });
+  const noticeAssetsQuery = useReportAssetCatalog({ page: 1, pageSize: 200, types: noticeResourceType }, hasPermission('report:asset:list'));
   const usageQuery = useReportAssetUsage(usageTarget?.resourceType, usageTarget?.resourceId, usageDays, !!usageTarget);
   const templatesQuery = useReportAssetTemplateList({ page: templates.page, pageSize: templates.pageSize, ...templateFilterQuery });
   const { page, pageSize, buildPagination } = usagePagination;
@@ -185,6 +187,7 @@ export default function AssetsPage() {
     successMessage: ({ isEdit }) => isEdit ? '弃用公告已更新' : '弃用公告已创建',
   });
   const openNotice = (record?: ReportDeprecationNotice) => {
+    setNoticeResourceType(record?.resourceType ?? 'dashboard');
     if (record) deprecationModal.openEdit(record);
     else deprecationModal.openCreate();
   };
@@ -381,8 +384,8 @@ export default function AssetsPage() {
 
       <EditFormModal modal={deprecationModal} width={680}>
         <Row gutter={16}>
-          <Col xs={24} md={12}><Form.Select field="resourceType" label="资源类型" disabled={deprecationModal.isEdit} style={{ width: '100%' }} optionList={resourceTypeOptions} rules={[{ required: true }]} /></Col>
-          <Col xs={24} md={12}><Form.InputNumber field="resourceId" label="资源 ID" disabled={deprecationModal.isEdit} min={1} style={{ width: '100%' }} rules={[{ required: true }]} /></Col>
+          <Col xs={24} md={12}><Form.Select field="resourceType" label="资源类型" disabled={deprecationModal.isEdit} style={{ width: '100%' }} optionList={resourceTypeOptions} rules={[{ required: true }]} onChange={(value) => { setNoticeResourceType(value as ReportResourceType); deprecationModal.formApi.current?.setValue('resourceId', undefined); }} /></Col>
+          <Col xs={24} md={12}><Form.Select field="resourceId" label="资源" disabled={deprecationModal.isEdit} filter style={{ width: '100%' }} optionList={(noticeAssetsQuery.data?.list ?? []).map((item) => ({ value: item.resourceId, label: item.name }))} rules={[{ required: true }]} /></Col>
           <Col xs={24} md={12}><Form.DatePicker field="effectiveAt" label="生效时间" type="dateTime" style={{ width: '100%' }} rules={[{ required: true }]} /></Col>
           <Col xs={24} md={12}><Form.DatePicker field="expiresAt" label="到期时间" type="dateTime" style={{ width: '100%' }} /></Col>
           <Col xs={24} md={12}><Form.Select field="replacementResourceType" label="替代资源类型" showClear style={{ width: '100%' }} optionList={resourceTypeOptions} /></Col>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Banner, Button, Col, Empty, Form, Modal, Row, Tag, Toast } from '@douyinfe/semi-ui';
 import type { ColumnProps } from '@douyinfe/semi-ui/lib/es/table';
+import { REPORT_APPROVAL_ACTION_LABELS, REPORT_APPROVAL_STATUS_LABELS, REPORT_TRANSFER_STATUS_LABELS } from '@zenith/shared/report';
 import type { ReportApprovalStatus, ReportPublishApproval, ReportResourceTransfer, ReportResourceType, ReportTransferStatus } from '@zenith/shared/report';
 import { Plus } from 'lucide-react';
 import ConfigurableTable from '@/components/ConfigurableTable';
@@ -41,7 +42,7 @@ export function GovernanceApprovalTab() {
   const [status, setStatus] = useState<ReportApprovalStatus | undefined>();
   const [resourceType, setResourceType] = useState<ReportResourceType | undefined>();
   const listQuery = useReportApprovalList({ page, pageSize, status, resourceType });
-  const assetsQuery = useReportAssetCatalog({ page: 1, pageSize: 100, types: resourceType });
+  const assetsQuery = useReportAssetCatalog({ page: 1, pageSize: 100, types: resourceType }, hasPermission('report:asset:list'));
   const createMutation = useCreateReportApproval();
   const decideMutation = useDecideReportApproval();
   const cancelMutation = useCancelReportApproval();
@@ -81,12 +82,12 @@ export function GovernanceApprovalTab() {
 
   const columns: ColumnProps<ReportPublishApproval>[] = [
     { title: '资源', dataIndex: 'resourceName', minWidth: 200, render: (v, r) => renderEllipsis(v || `${reportResourceTypeLabel(r.resourceType)} #${r.resourceId}`) },
-    { title: '动作', dataIndex: 'action', width: 100 },
+    { title: '动作', dataIndex: 'action', width: 100, render: (v) => REPORT_APPROVAL_ACTION_LABELS[v as keyof typeof REPORT_APPROVAL_ACTION_LABELS] ?? v },
     { title: '修订', dataIndex: 'requestedRevision', width: 80 },
     { title: '申请人', dataIndex: 'requestedByName', width: 120, render: (v) => v || EMPTY_PLACEHOLDER },
     dateTimeColumn('申请时间', 'requestedAt'),
     { title: '处理人', dataIndex: 'decidedByName', width: 120, render: (v) => v || EMPTY_PLACEHOLDER },
-    { title: '状态', dataIndex: 'status', width: 100, fixed: 'right', render: (v) => <Tag color={statusColor[v]}>{v}</Tag> },
+    { title: '状态', dataIndex: 'status', width: 100, fixed: 'right', render: (v: ReportApprovalStatus) => <Tag color={statusColor[v]}>{REPORT_APPROVAL_STATUS_LABELS[v] ?? v}</Tag> },
     createOperationColumn<ReportPublishApproval>({
       width: 120,
       desktopInlineKeys: ['approve'],
@@ -109,7 +110,7 @@ export function GovernanceApprovalTab() {
       <SearchToolbar>
         <FilterSelect
           placeholder="全部审批状态"
-          items={approvalStatuses.map((value) => ({ value, label: value }))}
+          items={approvalStatuses.map((value) => ({ value, label: REPORT_APPROVAL_STATUS_LABELS[value] }))}
           value={status}
           onChange={(v) => { setPage(1); setStatus(v as ReportApprovalStatus | undefined); }}
           width={140}
@@ -145,8 +146,8 @@ export function GovernanceTransferTab() {
   const [status, setStatus] = useState<ReportTransferStatus | undefined>();
   const [resourceType, setResourceType] = useState<ReportResourceType | undefined>();
   const listQuery = useReportTransferList({ page, pageSize, status, resourceType });
-  const assetsQuery = useReportAssetCatalog({ page: 1, pageSize: 100, types: resourceType });
-  const usersQuery = useAllUsers();
+  const assetsQuery = useReportAssetCatalog({ page: 1, pageSize: 100, types: resourceType }, hasPermission('report:asset:list'));
+  const usersQuery = useAllUsers({ enabled: hasPermission('system:user:list') });
   const createMutation = useCreateReportTransfer();
   const decideMutation = useDecideReportTransfer();
   const cancelMutation = useCancelReportTransfer();
@@ -182,7 +183,7 @@ export function GovernanceTransferTab() {
     { title: '新负责人', dataIndex: 'toOwnerName', width: 130, render: (v, r) => v || `用户 #${r.toOwnerId}` },
     { title: '原因', dataIndex: 'reason', minWidth: 220, render: renderEllipsis },
     dateTimeColumn('申请时间', 'createdAt'),
-    { title: '状态', dataIndex: 'status', width: 100, fixed: 'right', render: (v) => <Tag color={statusColor[v]}>{v}</Tag> },
+    { title: '状态', dataIndex: 'status', width: 100, fixed: 'right', render: (v: ReportTransferStatus) => <Tag color={statusColor[v]}>{REPORT_TRANSFER_STATUS_LABELS[v] ?? v}</Tag> },
     createOperationColumn<ReportResourceTransfer>({
       width: 120,
       desktopInlineKeys: ['accept'],
@@ -204,7 +205,7 @@ export function GovernanceTransferTab() {
       <SearchToolbar>
         <FilterSelect
           placeholder="全部转移状态"
-          items={transferStatuses.map((value) => ({ value, label: value }))}
+          items={transferStatuses.map((value) => ({ value, label: REPORT_TRANSFER_STATUS_LABELS[value] }))}
           value={status}
           onChange={(v) => { setPage(1); setStatus(v as ReportTransferStatus | undefined); }}
           width={140}

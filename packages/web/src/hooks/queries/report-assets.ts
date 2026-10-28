@@ -28,8 +28,8 @@ export const reportAssetKeys = {
 
 const silent = { requestOptions: { silent: true } } as const;
 
-export function useReportAssetCatalog(params: ReportAssetCatalogParams) {
-  return useApiQuery(reportAssetContract.catalog, { query: params }, { placeholderData: keepPreviousData });
+export function useReportAssetCatalog(params: ReportAssetCatalogParams, enabled = true) {
+  return useApiQuery(reportAssetContract.catalog, { query: params }, { placeholderData: keepPreviousData, enabled });
 }
 
 export function useReportAssetUsage(resourceType: ReportResourceType | undefined, id: number | undefined, days = 30, enabled = true) {

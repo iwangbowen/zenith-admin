@@ -44,6 +44,7 @@ import { useListDeepLink } from '@/hooks/useListDeepLink';
 import { enumValueOf } from '@zenith/shared/core';
 import { REPORT_DQ_RUN_STATUSES } from '@zenith/shared/report';
 import { EditFormModal } from '@/components/EditFormModal';
+import { JsonBlock } from '@/components/JsonBlock';
 const ruleTypeOptions: { value: ReportDqRuleType; label: string }[] = [
   { value: 'not_null', label: '非空' },
   { value: 'uniqueness', label: '唯一性' },
@@ -116,6 +117,7 @@ export default function QualityPage() {
   } = useListPage({
     defaults: defaultSearchParams,
     listKey: reportDqKeys.lists,
+    extraKeys: [reportDqKeys.runLists, reportDqKeys.anomalyLists, reportDqKeys.scoreLists, reportDqKeys.currentScores],
     useList: useReportDqRuleList,
     toQuery: (s) => ({
       datasetId: s.datasetId,
@@ -128,6 +130,7 @@ export default function QualityPage() {
   const [formRuleType, setFormRuleType] = useState<ReportDqRuleType>('not_null');
   const [cronExprValue, setCronExprValue] = useState('');
   const [historyRule, setHistoryRule] = useState<ReportDqRule | null>(null);
+  const [sampleAnomaly, setSampleAnomaly] = useState<ReportDqAnomaly | null>(null);
 
   const datasetsQuery = useEnabledReportDatasets();
   const datasetOptions = (datasetsQuery.data ?? []).map((item) => ({ value: item.id, label: item.name }));
@@ -186,13 +189,13 @@ export default function QualityPage() {
       Toast.error(error instanceof Error ? error.message : '质量任务提交失败');
     }
   };
-  const updateAnomaly = (record: ReportDqAnomaly, status: 'acknowledged' | 'resolved') => {
+  const updateAnomaly = (record: ReportDqAnomaly, status: 'acknowledged' | 'resolved' | 'ignored') => {
     Modal.confirm({
-      title: status === 'acknowledged' ? '确认已知悉该异常？' : '确认该异常已解决？',
+      title: status === 'acknowledged' ? '确认已知悉该异常？' : status === 'resolved' ? '确认该异常已解决？' : '忽略该质量异常？',
       content: record.title,
       onOk: async () => {
         await anomalyMutation.mutateAsync({ params: { id: record.id }, body: { status } });
-        Toast.success(status === 'acknowledged' ? '异常已确认' : '异常已解决');
+        Toast.success(status === 'acknowledged' ? '异常已确认' : status === 'resolved' ? '异常已解决' : '异常已忽略');
       },
     });
   };
@@ -244,20 +247,23 @@ export default function QualityPage() {
     dateTimeColumn('发现时间', 'createdAt'),
     { title: '状态', dataIndex: 'status', width: 110, fixed: 'right', render: (v: ReportDqAnomalyStatus) => <Tag>{REPORT_DQ_ANOMALY_STATUS_LABELS[v] ?? v}</Tag> },
     createOperationColumn<ReportDqAnomaly>({
-      width: 150,
+      width: 220,
       actions: (record) => [
+        { key: 'sample', label: '失败样本', hidden: !record.sample || Object.keys(record.sample).length === 0, onClick: () => setSampleAnomaly(record) },
         { key: 'ack', label: '确认', hidden: !hasPermission('report:dq:update') || record.status !== 'open', onClick: () => updateAnomaly(record, 'acknowledged') },
         { key: 'resolve', label: '解决', hidden: !hasPermission('report:dq:update') || !['open', 'acknowledged'].includes(record.status), onClick: () => updateAnomaly(record, 'resolved') },
+        { key: 'ignore', label: '忽略', hidden: !hasPermission('report:dq:update') || !['open', 'acknowledged'].includes(record.status), onClick: () => updateAnomaly(record, 'ignored') },
       ],
     }),
   ];
   const scoreColumns: ColumnProps<ReportDqScore>[] = [
     { title: '评分', dataIndex: 'score', width: 160, render: (v) => {
       const score = Number(v);
+      const displayScore = Number.isFinite(score) ? score.toFixed(2) : EMPTY_PLACEHOLDER;
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ minWidth: 28 }}>{score}</span>
-          <MetricMeter value={score} label="数据质量评分" valueText={`${score} 分`} tone={score >= 80 ? 'success' : score >= 60 ? 'warning' : 'danger'} style={{ flex: 1 }} />
+          <span style={{ minWidth: 42 }}>{displayScore}</span>
+          <MetricMeter value={score} label="数据质量评分" valueText={`${displayScore} 分`} tone={score >= 80 ? 'success' : score >= 60 ? 'warning' : 'danger'} style={{ flex: 1 }} />
         </div>
       );
     } },
@@ -410,6 +416,15 @@ export default function QualityPage() {
       <SideSheet title={`运行历史：${historyRule?.name ?? ''}`} visible={!!historyRule} width={980} onCancel={() => setHistoryRule(null)}>
         {historyQuery.isError && <Banner type="danger" description="规则运行历史加载失败" />}
         <ConfigurableTable columns={runColumns} {...listTableProps(historyQuery, { empty: <Empty title="暂无运行记录" /> })} />
+      </SideSheet>
+
+      <SideSheet title={`失败样本：${sampleAnomaly?.title ?? ''}`} visible={!!sampleAnomaly} width={720} onCancel={() => setSampleAnomaly(null)}>
+        {sampleAnomaly && (
+          <Space vertical align="start" style={{ width: '100%' }}>
+            {sampleAnomaly.detail && <Typography.Text>{sampleAnomaly.detail}</Typography.Text>}
+            <JsonBlock value={sampleAnomaly.sample} maxHeight={560} style={{ width: '100%' }} />
+          </Space>
+        )}
       </SideSheet>
     </div>
   );

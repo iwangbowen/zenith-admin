@@ -396,7 +396,8 @@ export async function listInactiveReportAssets(query: QueryOutputOf<typeof repor
     const catalog = await listReportAssetCatalog({ page: catalogPage, pageSize: catalogPageSize });
     for (const row of catalog.list) {
       const last = map.get(`${row.resourceType}:${row.resourceId}`);
-      if (last && last >= cutoff) continue;
+      const lastTime = last ? new Date(last instanceof Date ? last : String(last)).getTime() : Number.NaN;
+      if (Number.isFinite(lastTime) && lastTime >= cutoff.getTime()) continue;
       if (total >= offset && list.length < pageSize) list.push(row);
       total++;
     }
@@ -746,7 +747,7 @@ export async function applyReportAssetTemplate(id: number, input: ApplyReportAss
     const parsed = createReportDashboardSchema.parse({
       ...template.content,
       name: input.name ?? template.name,
-      folderId: input.folderId ?? template.folderId,
+      folderId: input.folderId ?? null,
       ownerId: defaultReportOwnerId(),
     });
     resource = await createDashboard(parsed);
@@ -754,7 +755,7 @@ export async function applyReportAssetTemplate(id: number, input: ApplyReportAss
     const parsed = createReportPrintTemplateSchema.parse({
       ...template.content,
       name: input.name ?? template.name,
-      folderId: input.folderId ?? template.folderId,
+      folderId: input.folderId ?? null,
       ownerId: defaultReportOwnerId(),
     });
     resource = await createPrintTemplate(parsed);
@@ -762,7 +763,7 @@ export async function applyReportAssetTemplate(id: number, input: ApplyReportAss
     const parsed = createReportDatasetSchema.parse({
       ...template.content,
       name: input.name ?? template.name,
-      folderId: input.folderId ?? template.folderId,
+      folderId: input.folderId ?? null,
       ownerId: defaultReportOwnerId(),
     });
     resource = await createDataset(parsed);

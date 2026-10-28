@@ -8,6 +8,7 @@ import type { ReportResourceType } from '@zenith/shared/report';
 import type { FilterOption } from '@/components/search-filters';
 import { flattenReportFolders, useReportFolderTree } from '@/hooks/queries/report-folders';
 import { toUserOptions, useAllUsers } from '@/hooks/queries/users';
+import { usePermission } from '@/hooks/usePermission';
 
 /** 目录下拉选项：标签取目录名 */
 export function toFolderOptions(folders: readonly { id: number; name: string }[]): FilterOption<number>[] {
@@ -19,7 +20,8 @@ export function toFolderOptions(folders: readonly { id: number; name: string }[]
  * `users` / `folders` 保留原始记录供表单或标签渲染使用。
  */
 export function useReportOwnerFolderOptions(resourceType?: ReportResourceType) {
-  const users = useAllUsers().data ?? [];
-  const folders = flattenReportFolders(useReportFolderTree(resourceType ? { resourceType } : {}).data ?? []);
+  const { hasPermission } = usePermission();
+  const users = useAllUsers({ enabled: hasPermission('system:user:list') }).data ?? [];
+  const folders = flattenReportFolders(useReportFolderTree(resourceType ? { resourceType } : {}, hasPermission('report:folder:list')).data ?? []);
   return { users, folders, userOptions: toUserOptions(users), folderOptions: toFolderOptions(folders) };
 }

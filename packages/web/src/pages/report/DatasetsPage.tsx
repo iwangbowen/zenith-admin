@@ -886,7 +886,7 @@ export default function DatasetsPage() {
                   </Space>
                   <div>
                     <Typography.Text type="tertiary" size="small">
-                      命中规则的用户仅能看到满足条件的行（多条命中规则按「或」合并）；未命中任何规则或超级管理员不受限。
+                      命中规则的用户仅能看到满足条件的行（多条命中规则按「或」合并）；未命中任何规则默认拒绝全部数据，超级管理员不受限。
                       WHERE 片段可用 {'${__userId}'} / {'${__deptId}'} 等系统变量，如 dept_id = {'${__deptId}'}。
                     </Typography.Text>
                   </div>
