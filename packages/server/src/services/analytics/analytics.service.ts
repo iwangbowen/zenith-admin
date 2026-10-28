@@ -1130,9 +1130,9 @@ export async function getPathAnalysis(input: { days?: number; limit?: number; st
   `)) as unknown as Array<{ source: string; target: string; value: number }>;
 
   const allLinks = rows.map((r) => ({ source: r.source, target: r.target, value: Number(r.value) }));
-  const totalTransitions = allLinks.reduce((sum, l) => sum + l.value, 0);
-
   const scoped = input.startPage ? reachableFrom(allLinks, input.startPage) : allLinks;
+  // The page filter defines the visible subgraph; keep the summary card on the same scope.
+  const totalTransitions = scoped.reduce((sum, l) => sum + l.value, 0);
   const kept = scoped.slice(0, limit);
   const cyclicSet = findFeedbackArcs(kept);
 

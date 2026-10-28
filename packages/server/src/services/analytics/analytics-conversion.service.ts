@@ -331,7 +331,7 @@ function buildRetentionCohorts(axis: string[], periods: number[], matrix: Map<st
       const targetStr = axis[ci + p];
       if (targetStr === undefined) return null;
       const active = matrix.get(`${cohortDate}\u0001${targetStr}`) ?? 0;
-      return percentOf(active, size) ?? 0;
+      return size === 0 ? null : percentOf(active, size);
     });
     return { cohortDate, cohortSize: size, values };
   });

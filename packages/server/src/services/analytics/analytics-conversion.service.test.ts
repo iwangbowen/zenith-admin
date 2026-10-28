@@ -26,7 +26,7 @@ vi.mock('../../db', () => ({ db: { execute } }));
 vi.mock('./analytics-segments.service', () => ({ ensureSegmentAccessible, segmentMemberDistinctIdSubquery }));
 vi.mock('../../lib/tenant', () => ({ tenantScope }));
 
-import { getFunnel, getRetention } from './analytics-conversion.service';
+import { getFunnel, getRetention, retentionPeriodAxis } from './analytics-conversion.service';
 
 const dialect = new PgDialect();
 function renderLastExecuteCall(): { sqlText: string; params: unknown[] } {
@@ -191,5 +191,16 @@ describe('getRetention — 双口径留存（first_seen 全历史真实首访 vs
     await getRetention({ days: 14, mode: 'first_seen' });
     // activityWhere + historyWhere 各调用一次 tenantScope(userEvents)
     expect(tenantScope).toHaveBeenCalledTimes(2);
+  });
+
+  it('represents empty cohorts as null values instead of zero-percent retention', async () => {
+    const axis = retentionPeriodAxis('day', 14);
+    execute.mockResolvedValue([{ cohort_date: axis.at(-1), day: axis.at(-1), active: 1 }]);
+
+    const result = await getRetention({ days: 14, mode: 'first_seen', maxPeriods: 2 });
+    const emptyCohort = result.series[0]?.cohorts.find((cohort) => cohort.cohortSize === 0);
+
+    expect(emptyCohort).toBeDefined();
+    expect(emptyCohort?.values).toEqual([null, null]);
   });
 });

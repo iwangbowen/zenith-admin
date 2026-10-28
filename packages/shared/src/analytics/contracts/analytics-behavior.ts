@@ -285,7 +285,7 @@ export type PathLink = z.infer<typeof pathLinkSchema>;
 export const pathResultSchema = z.object({
   nodes: z.array(pathNodeSchema),
   links: z.array(pathLinkSchema),
-  totalTransitions: z.int().meta({ description: '全部相邻跳转次数（含被 limit 截断与回边的部分）' }),
+  totalTransitions: z.int().meta({ description: '当前筛选范围内全部相邻跳转次数（含被 limit 截断与回边的部分）' }),
   cyclicValue: z.int().meta({ description: '因破环而未进入桑基图的跳转次数' }),
 }).meta({ id: 'PathResult' });
 
