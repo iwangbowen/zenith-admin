@@ -1,6 +1,6 @@
 import type { RouteDomain } from '../routes/_kit';
 import { loadRouteDomain, type ServerDomainName } from '../routes/domain-loaders';
-import { resetCachedOpenApiDocForTest } from '../lib/openapi-doc-cache';
+import { collectRouteAccessFacts, type RouteAccessFacts } from './route-facts';
 import { listOperations, type AppLike, type OpenAPIDoc, type RouteOperation } from './contract';
 
 export interface DomainContractApp {
@@ -9,6 +9,7 @@ export interface DomainContractApp {
   readonly doc: OpenAPIDoc;
   readonly operations: RouteOperation[];
   readonly routes: Array<{ method: string; path: string }>;
+  readonly accessFacts: Map<string, RouteAccessFacts>;
 }
 
 /**
@@ -17,7 +18,6 @@ export interface DomainContractApp {
  * 调用方必须先执行 `mockServerInfra()`，确保 app-core 的动态 import 发生在基础设施替身注册之后。
  */
 export async function buildDomainContractApp(name: ServerDomainName): Promise<DomainContractApp> {
-  resetCachedOpenApiDocForTest();
   const domain = await loadRouteDomain(name);
   const { createAppWithDomains } = await import('../app-core');
   const { app } = createAppWithDomains([domain]);
@@ -32,5 +32,6 @@ export async function buildDomainContractApp(name: ServerDomainName): Promise<Do
     doc,
     operations: listOperations(doc),
     routes: app.routes.map((route) => ({ method: route.method, path: route.path })),
+    accessFacts: collectRouteAccessFacts(app.routes),
   };
 }

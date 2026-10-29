@@ -7,9 +7,10 @@
  * 相关规范见 .agents/skills/zenith/references/constraints.md 的 Route 层。
  */
 import { describe, it, expect, beforeAll } from 'vitest';
-import { accessPermissions, accessPlatformOnly } from '@zenith/shared/core';
 import { listAllOperations } from '@zenith/shared/contracts';
 import { LICENSE_FEATURES } from '@zenith/shared/licensing';
+import { FULL_REPLACE_OPERATIONS } from './test-utils/contract-exceptions';
+import { accessMismatches } from './test-utils/contract-checks';
 import {
   mockServerInfra,
   buildContractApp,
@@ -224,28 +225,9 @@ describe('权限契约：契约 access 与运行时门禁必须一致', () => {
    * 权限矩阵、Demo Mock 与前端按钮都从契约读取访问要求，这条断言保证它们读到的与线上生效的是同一份。
    */
   it('每个后台登录令牌操作生效的门禁等于契约声明', () => {
-    const toHonoPath = (fullPath: string) => fullPath.replace(/\{([^}]+)\}/g, ':$1');
-    const mismatches: string[] = [];
-    let checked = 0;
-    for (const { op } of listAllOperations()) {
-      if (op.security !== 'bearer') continue;
-      const key = `${op.method.toUpperCase()} ${toHonoPath(op.fullPath)}`;
-      const fact = accessFacts.get(key);
-      if (!fact) continue; // 契约存在但未挂载的操作由路由表快照 / crud-coverage 负责
-      checked++;
-      const problems: string[] = [];
-      if (!fact.auth) problems.push('未挂认证');
-      const expectedPermission = [...accessPermissions(op.access)].sort();
-      const actualPermission = [...new Set(fact.permission ?? [])].sort();
-      if (JSON.stringify(expectedPermission) !== JSON.stringify(actualPermission)) problems.push(`权限码 ${JSON.stringify(actualPermission)} ≠ 契约 ${JSON.stringify(expectedPermission)}`);
-      if (fact.platformOnly !== accessPlatformOnly(op.access)) problems.push(`platformOnly ${String(fact.platformOnly)} ≠ 契约 ${String(accessPlatformOnly(op.access))}`);
-      if ((fact.audit?.description ?? null) !== (op.audit?.description ?? null)) problems.push(`审计 ${String(fact.audit?.description)} ≠ 契约 ${String(op.audit?.description)}`);
-      if ((fact.feature ?? null) !== (op.feature ?? null)) problems.push(`feature ${String(fact.feature)} ≠ 契约 ${String(op.feature)}`);
-      if (fact.gateCounts.auth > 1 || fact.gateCounts.platform > 1 || fact.gateCounts.guard > 1) problems.push(`门禁重复挂载 ${JSON.stringify(fact.gateCounts)}（路由里不得手写 authMiddleware / guard / platformAdminOnly）`);
-      if (problems.length) mismatches.push(`${key}: ${problems.join('；')}`);
-    }
-    expect(checked).toBeGreaterThan(2000);
-    expect(mismatches).toEqual([]);
+    const result = accessMismatches(listAllOperations().map(({ op }) => op), accessFacts);
+    expect(result.checked).toBeGreaterThan(2000);
+    expect(result.violations).toEqual([]);
   });
 });
 
@@ -321,18 +303,7 @@ describe('部分更新契约', () => {
    * 此时 `default` 是该记录的创建默认值而非对既有字段的静默改写。
    * 新增例外必须在此登记并写明理由；条目一旦不再命中会被下方断言清理。
    */
-  const FULL_REPLACE_OPERATIONS = new Map<string, string>([
-    ['PUT /api/broadcasts/{id}', '群发活动编辑复用创建 schema，标题 / 内容 / 渠道 / 受众类型必填'],
-    ['PUT /api/channels/admin/messages/{id}', '草稿 / 定时消息编辑即整体重写消息内容与投递配置'],
-    ['PUT /api/cms/deployment-retention/deployments/{id}/pin', '保留 / 解除重要版本时客户端整体提交标记与原因（原因可为 null），服务端按提交值整字段写入'],
-    ['PUT /api/cms/sites/{id}/open-grants', '按 clientId upsert 开放应用授权记录'],
-    ['PUT /api/cms/widgets/slots/{slotKey}', '绑定 / 清空主题插槽，siteId 与 widgetId 必填'],
-    ['PUT /api/data-mask/fields/{entity}/{field}', '按契约敏感字段 upsert 脱敏策略，每次提交完整策略（类型 / 规则 / 豁免 / 启用）'],
-    ['PUT /api/email-config', '单例邮件配置表单整体保存（upsert）'],
-    ['PUT /api/marketing/campaigns/{campaignId}/prizes/{prizeId}', '奖品保存与创建共用 schema，名称 / 类型必填'],
-    ['PUT /api/notification-policies/overrides', '按 eventKey + channel upsert 渠道覆盖记录'],
-    ['PUT /api/system-scheduler/tasks/{name}/config', '任务策略表单整体保存，开关 / 保留策略 / 阈值必填'],
-  ]);
+
 
   it('PUT / PATCH 请求体的顶层属性不得声明 default', () => {
     const violations = operations

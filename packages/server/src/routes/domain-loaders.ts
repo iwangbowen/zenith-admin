@@ -5,33 +5,10 @@
  * 目标领域，避免为了验证单个领域而把完整路由图加入测试模块图。
  */
 import type { RouteDomain } from './_kit';
+import manifest from '../domain-manifest.json';
 
-export const SERVER_DOMAIN_NAMES = [
-  'ops',
-  'identity',
-  'member',
-  'platform',
-  'files',
-  'tasks',
-  'analytics',
-  'report',
-  'messaging',
-  'payment',
-  'open-platform',
-  'workflow',
-  'chat',
-  'mp',
-  'biz-demo',
-  'ai',
-  'short-link',
-  'marketing',
-  'iot',
-  'cms',
-  'wiki',
-  'drive',
-] as const;
-
-export type ServerDomainName = (typeof SERVER_DOMAIN_NAMES)[number];
+export type ServerDomainName = keyof typeof manifest.domains;
+export const SERVER_DOMAIN_NAMES = Object.keys(manifest.domains) as ServerDomainName[];
 
 const DOMAIN_LOADERS: Record<ServerDomainName, () => Promise<{ default: RouteDomain }>> = {
   ops: () => import('./ops'),

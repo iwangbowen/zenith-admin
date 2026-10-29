@@ -17,18 +17,25 @@ export interface CachedOpenApiDoc {
   gzip: Uint8Array;
 }
 
-let cached: CachedOpenApiDoc | null = null;
+export function createOpenApiDocCache() {
+  let cached: CachedOpenApiDoc | null = null;
+  return {
+    get: (): CachedOpenApiDoc | null => cached,
+    set: (json: string, gzip?: Uint8Array): void => {
+      cached = { json, gzip: gzip ?? gzipSync(json) };
+    },
+  };
+}
+
+export type OpenApiDocCache = ReturnType<typeof createOpenApiDocCache>;
+/** Production app and its warmup worker share this cache; partial apps get their own cache. */
+export const productionOpenApiDocCache = createOpenApiDocCache();
 
 export function getCachedOpenApiDoc(): CachedOpenApiDoc | null {
-  return cached;
+  return productionOpenApiDocCache.get();
 }
 
 /** 写入缓存；未提供预压缩字节时同步压缩一次（~50ms，仅懒生成兜底路径） */
 export function setCachedOpenApiDoc(json: string, gzip?: Uint8Array): void {
-  cached = { json, gzip: gzip ?? gzipSync(json) };
-}
-
-/** 仅供领域契约测试在同一进程连续装配多个路由子集时清理全局缓存。 */
-export function resetCachedOpenApiDocForTest(): void {
-  cached = null;
+  productionOpenApiDocCache.set(json, gzip);
 }

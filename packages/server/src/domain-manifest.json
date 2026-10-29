@@ -1,0 +1,35 @@
+{
+  "domains": {
+    "ops": { "shared": ["ops"], "paths": ["src/routes/ops/**", "src/services/ops/**"] },
+    "identity": { "shared": ["identity"], "paths": ["src/routes/identity/**", "src/services/identity/**"] },
+    "member": { "shared": ["member"], "paths": ["src/routes/member/**", "src/services/member/**"] },
+    "platform": { "shared": ["platform", "rules", "settings", "licensing"], "paths": ["src/routes/platform/**", "src/services/platform/**", "src/lib/job-monitor/**"] },
+    "files": { "shared": [], "paths": ["src/routes/files/**", "src/services/files/**"] },
+    "tasks": { "shared": ["tasks"], "paths": ["src/routes/tasks/**", "src/services/tasks/**", "src/lib/task-center/**", "src/lib/import-center/**", "src/lib/export-center/**"] },
+    "analytics": { "shared": ["analytics"], "paths": ["src/routes/analytics/**", "src/services/analytics/**"] },
+    "report": { "shared": ["report"], "paths": ["src/routes/report/**", "src/services/report/**"] },
+    "messaging": { "shared": ["messaging"], "paths": ["src/routes/messaging/**", "src/services/messaging/**", "src/lib/notification/**"] },
+    "payment": { "shared": ["payment"], "paths": ["src/routes/payment/**", "src/services/payment/**", "src/lib/payment/**", "src/lib/payment-*.ts"] },
+    "open-platform": { "shared": ["open-platform"], "paths": ["src/routes/open-platform/**", "src/services/open-platform/**"] },
+    "workflow": { "shared": ["workflow"], "paths": ["src/routes/workflow/**", "src/services/workflow/**", "src/lib/workflow*/**", "src/lib/workflow*.ts"] },
+    "chat": { "shared": ["chat"], "paths": ["src/routes/chat/**", "src/services/chat/**"] },
+    "mp": { "shared": ["mp"], "paths": ["src/routes/mp/**", "src/services/mp/**"] },
+    "biz-demo": { "shared": ["biz"], "paths": ["src/routes/biz-demo/**", "src/services/biz-demo/**"] },
+    "ai": { "shared": ["ai"], "paths": ["src/routes/ai/**", "src/services/ai/**", "src/lib/mastra/**"] },
+    "short-link": { "shared": ["short-link"], "paths": ["src/routes/short-link/**", "src/services/short-link/**"] },
+    "marketing": { "shared": ["marketing"], "paths": ["src/routes/marketing/**", "src/services/marketing/**"] },
+    "iot": { "shared": ["iot"], "paths": ["src/routes/iot/**", "src/services/iot/**"] },
+    "cms": { "shared": ["cms"], "paths": ["src/routes/cms/**", "src/services/cms/**", "src/cms/**"] },
+    "wiki": { "shared": ["wiki"], "paths": ["src/routes/wiki/**", "src/services/wiki/**"] },
+    "drive": { "shared": ["drive"], "paths": ["src/routes/drive/**", "src/services/drive/**"] }
+  },
+  "integrationGroups": {
+    "identity-workflow": { "domains": ["identity", "workflow"], "tests": ["src/services/identity/access-governance-overlap.test.ts", "src/lib/workflow-business.test.ts", "src/services/workflow/workflow-business-context.service.test.ts"] },
+    "payment-member": { "domains": ["payment", "member"], "tests": ["src/services/member/member-wallet.service.test.ts", "src/services/payment/payment-outbox.service.test.ts"] },
+    "cms-workflow": { "domains": ["cms", "workflow"], "tests": ["src/services/cms/cms-workflow-context.test.ts", "src/services/workflow/workflow-business-context.service.test.ts"] },
+    "messaging-tasks": { "domains": ["messaging", "tasks"], "tests": ["src/services/messaging/notification-outbox.service.test.ts", "src/lib/task-center/transaction-submit.test.ts"] }
+  },
+  "structuralTests": ["src/services/tenant-isolation.test.ts", "src/permission-registry.test.ts", "src/routes/crud-coverage.test.ts", "src/index.import-order.test.ts"],
+  "fullAppTests": ["src/app.contract.test.ts"],
+  "domainContractTest": "src/domain-contract.test.ts"
+}

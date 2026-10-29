@@ -36,6 +36,10 @@
     "test": "npm run test -w @zenith/shared && npm run test -w @zenith/server && npm run test -w @zenith/web",
     "test:shared": "npm run test -w @zenith/shared",
     "test:server": "npm run test -w @zenith/server",
+    "test:server:domain": "npm run test:domain -w @zenith/server --",
+    "test:server:affected": "npm run test:affected -w @zenith/server --",
+    "test:server:graph": "npm run test:graph -w @zenith/server",
+    "test:server:benchmark": "npm run test:benchmark -w @zenith/server --",
     "test:web": "npm run test -w @zenith/web",
     "lint": "npm run lint -w @zenith/shared && npm run lint -w @zenith/server && npm run lint -w @zenith/analytics-sdk && npm run lint -w @zenith/web",
     "lint:fix": "npm run lint:fix -w @zenith/shared && npm run lint:fix -w @zenith/server && npm run lint:fix -w @zenith/analytics-sdk && npm run lint:fix -w @zenith/web"

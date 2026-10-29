@@ -1,12 +1,8 @@
 /**
  * 应用装配核心——纯函数，无副作用。
  *
- * 与 src/index.ts 的分工：本文件只负责"把 app 组装出来"；生产入口由 app.ts 传入全部路由域，领域契约测试可传入子集（中间件栈 → 路由挂载
- * → 文档 → 兜底与错误处理），不启动服务器、不注册后台 worker、不订阅事件总线、
- * 不启动采样器，供测试直接构造应用。
- *
- * 路由由 src/routes/index.ts 的 routeDomains 按域装配，
- * 详见 src/routes/_kit.ts。路由表由 src/app.contract.test.ts 快照锁定。
+ * 生产入口传入完整领域集合；领域契约测试传入子集，两者复用同一中间件、门禁和错误处理。
+ * 此处不启动服务器、worker、subscriber 或采样器。每个子集 App 持有独立的 OpenAPI 缓存。
  */
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { cors } from 'hono/cors';
@@ -46,7 +42,7 @@ import { createCsrfMiddleware } from './middleware/csrf';
 import { guard } from './middleware/guard';
 import type { RouteDomain } from './routes/_kit';
 import { licenseFeatureGate } from './lib/licensing';
-import { getCachedOpenApiDoc, setCachedOpenApiDoc } from './lib/openapi-doc-cache';
+import { createOpenApiDocCache, type OpenApiDocCache } from './lib/openapi-doc-cache';
 
 declare module 'hono' {
   interface ContextVariableMap {
@@ -55,7 +51,7 @@ declare module 'hono' {
   }
 }
 
-export function createAppWithDomains(routeDomains: readonly RouteDomain[]) {
+export function createAppWithDomains(routeDomains: readonly RouteDomain[], docCache: OpenApiDocCache = createOpenApiDocCache()) {
   const app = new OpenAPIHono();
   const promRegistry = new Registry();
   const { printMetrics, registerMetrics } = prometheus({ collectDefaultMetrics: true, registry: promRegistry });
@@ -258,10 +254,10 @@ export function createAppWithDomains(routeDomains: readonly RouteDomain[]) {
   // 在 worker 线程完成，预热完成前的首个请求走懒生成兜底。
   const buildOpenApiDocJson = () => JSON.stringify(app.getOpenAPI31Document(openApiDocConfig));
   app.get('/api/openapi.json', (c) => {
-    let doc = getCachedOpenApiDoc();
+    let doc = docCache.get();
     if (!doc) {
-      setCachedOpenApiDoc(buildOpenApiDocJson());
-      doc = getCachedOpenApiDoc() as NonNullable<typeof doc>;
+      docCache.set(buildOpenApiDocJson());
+      doc = docCache.get() as NonNullable<typeof doc>;
     }
     // 直接吐预压缩字节，跳过压缩中间件对 4.5MB 的每请求 gzip
     if (c.req.header('accept-encoding')?.includes('gzip')) {

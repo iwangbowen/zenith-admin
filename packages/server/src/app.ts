@@ -7,7 +7,8 @@
  */
 import { ROUTE_DOMAINS } from './routes';
 import { createAppWithDomains } from './app-core';
+import { productionOpenApiDocCache } from './lib/openapi-doc-cache';
 
 export function createApp() {
-  return createAppWithDomains(ROUTE_DOMAINS);
+  return createAppWithDomains(ROUTE_DOMAINS, productionOpenApiDocCache);
 }

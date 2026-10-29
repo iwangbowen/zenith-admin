@@ -5,9 +5,8 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['src/**/*.test.ts'],
-    // 领域契约测试由 `npm run test:domain` 按受影响域显式运行，避免默认全量套件重复装配
-    // identity / workflow / payment 的轻量 App。完整门禁会在 CI 的 domain/full 阶段分别执行。
-    exclude: process.env.ZENITH_TEST_DOMAINS ? [] : ['src/domain-contract.test.ts'],
+    // 全量套件用 app.contract 验证完整装配；领域项目单独运行同源的领域契约断言。
+    exclude: ['src/domain-contract.test.ts'],
     // 运行时密钥：config 在非 development 环境不再有内置默认值（vitest 的 NODE_ENV=test）。
     // 这里给一组固定的测试值，让未 mock config 的用例（如 encryption / secret-crypto 闭环）可用；
     // 值本身在 lib/secrets 的占位检测里被视为不安全，不会流入任何真实部署。

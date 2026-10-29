@@ -1,46 +1,32 @@
 #!/usr/bin/env node
-import { execFileSync, spawnSync } from 'node:child_process';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { buildDomainGraph, resolveAffectedDomains } from './test-graph.mjs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { collectChangedFiles } from './test-changes.mjs';
+import { buildFileGraph, resolveAffectedDomains, workspaceRoot } from './test-graph.mjs';
+import { runTestPlan } from './test-runner.mjs';
 
-const serverRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
-const dryRun = args.includes('--dry-run');
-const contractOnly = args.includes('--contract-only');
-const baseIndex = args.indexOf('--base');
-
-function git(args) {
-  return execFileSync('git', args, { cwd: resolve(serverRoot, '../..'), encoding: 'utf8' }).trim();
+const options = {};
+for (let i = 0; i < args.length; i++) {
+  const arg = args[i];
+  if (['--dry-run', '--json', '--full'].includes(arg)) options[arg.slice(2)] = true;
+  else if (['--base', '--plan-out', '--plan'].includes(arg)) {
+    const value = args[++i];
+    if (!value || value.startsWith('--')) throw new Error(`Missing value for ${arg}`);
+    options[arg.slice(2)] = value;
+  } else throw new Error(`Unknown option: ${arg}`);
 }
-
-function detectBase() {
-  if (baseIndex >= 0 && args[baseIndex + 1]) return args[baseIndex + 1];
-  try { return git(['merge-base', 'HEAD', 'origin/master']); } catch { return 'HEAD~1'; }
+let plan;
+if (options.plan) plan = JSON.parse(readFileSync(resolve(workspaceRoot, options.plan), 'utf8'));
+else {
+  const diff = collectChangedFiles({ base: options.base });
+  plan = { base: diff.base, ...resolveAffectedDomains(diff.files, buildFileGraph(), { forceFull: options.full, uncertainDiff: diff.uncertainDiff }) };
+  if (diff.error) plan.reasons.push(diff.error);
 }
-
-const base = detectBase();
-let committed = [];
-try { committed = git(['diff', '--name-only', `${base}...HEAD`]).split(/\r?\n/).filter(Boolean); } catch { /* local shallow checkout */ }
-let working = [];
-try { working = git(['diff', '--name-only']).split(/\r?\n/).filter(Boolean); } catch { /* ignore */ }
-let untracked = [];
-try { untracked = git(['ls-files', '--others', '--exclude-standard']).split(/\r?\n/).filter(Boolean); } catch { /* ignore */ }
-
-const plan = resolveAffectedDomains([...new Set([...committed, ...working, ...untracked])], buildDomainGraph());
-console.log(JSON.stringify({ base, ...plan }, null, 2));
-
-if (dryRun) process.exit(0);
-
-if (plan.noServerChanges) {
-  console.log('No Server/shared changes; Server tests are not required.');
-  process.exit(0);
+if (options['plan-out']) writeFileSync(resolve(workspaceRoot, options['plan-out']), `${JSON.stringify(plan, null, 2)}\n`);
+if (options.json) console.log(JSON.stringify(plan, null, 2));
+else {
+  console.log(`Server test plan: ${plan.mode}; ${plan.tests.length} files; domains: ${plan.affectedDomains.join(', ') || '(none)'}`);
+  for (const reason of plan.reasons ?? []) console.log(`- ${reason}`);
 }
-
-const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const command = contractOnly ? ['run', 'test:domain', '-w', '@zenith/server', '--', '--contract-only', 'all']
-  : plan.global
-    ? ['run', 'test', '-w', '@zenith/server']
-    : ['run', 'test:domain', '-w', '@zenith/server', '--', ...plan.affectedDomains];
-const result = spawnSync(npmBin, command, { cwd: resolve(serverRoot, '../..'), stdio: 'inherit', env: process.env });
-process.exit(result.status ?? 1);
+if (!options['dry-run']) process.exitCode = runTestPlan(plan);
