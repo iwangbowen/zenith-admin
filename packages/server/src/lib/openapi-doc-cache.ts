@@ -27,3 +27,8 @@ export function getCachedOpenApiDoc(): CachedOpenApiDoc | null {
 export function setCachedOpenApiDoc(json: string, gzip?: Uint8Array): void {
   cached = { json, gzip: gzip ?? gzipSync(json) };
 }
+
+/** 仅供领域契约测试在同一进程连续装配多个路由子集时清理全局缓存。 */
+export function resetCachedOpenApiDocForTest(): void {
+  cached = null;
+}
