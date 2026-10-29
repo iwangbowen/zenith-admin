@@ -29,3 +29,10 @@
 - 修复元数据装配和二次预算检查丢失截断信息的问题，已有截断在缓存往返后仍保留。
 - `npm run test -w @zenith/server -- report-result-processing.test.ts report-dataset.service.test.ts report-materialization.service.test.ts report-security.test.ts report-dashboard-runtime.test.ts`：5 个文件、42 项通过；改动文件 ESLint 通过。
 - Node 24.21，5000 行合成数据，直接调用修改后的函数，对照从基线提交提取的原函数；各运行 7 次、去除前 2 次预热。排序中位耗时 826.79 → 21.04 ms；体积截断 74.88 → 2.84 ms；返回行与字节数一致。此处仅度量同步算法，不代表接口端到端提升。
+
+### 阶段 2
+
+- 列表、收藏、最近访问和 `includeSnippet: false` 搜索统一使用无正文的投影；需要 snippet 的搜索仍读取正文，召回和排序条件保持一致。
+- 相关 Server 回归 5 个文件、53 项通过；投影调整后复跑文档与片段测试 10 项通过；Server TypeScript 与改动文件 ESLint 通过。
+- `NODE_ENV=development LOG_LEVEL=warn node --import tsx scripts/verify-wiki-projection.ts`：在本地 PostgreSQL 事务临时表中验证实际服务列表、正文召回、关闭 snippet 和生成 snippet。20 篇约 200 KiB 正文的文档，全行结果 4,106,323 bytes，元数据投影 9,763 bytes；元数据逐字段一致。临时表自动删除，未写入业务表。
+- 浏览器 `localhost:5373/wiki/docs`：正文详情、正文关键词“工牌”搜索及片段、收藏空态与添加/移除、最近访问均通过；收藏恢复原状。

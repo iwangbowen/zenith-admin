@@ -45,6 +45,7 @@ import { ensureSpaceRole, getMySpaceRole, spaceRoleAtLeast } from './spaces.serv
 import { nextWikiDocSort } from './doc-order';
 import { buildTree } from '@zenith/shared/core';
 import { resolveUserNames } from '../../lib/user-nicknames';
+import { wikiDocListColumns, type WikiDocListRow } from './wiki-doc-columns';
 
 // ─── 数据映射 ─────────────────────────────────────────────────────────────────
 
@@ -55,7 +56,7 @@ const wikiDocRowSchema = wikiDocSchema.omit({
   readConfirmed: true, readReceiptCount: true,
 });
 
-export function mapWikiDoc(row: WikiDocRow) {
+export function mapWikiDoc(row: WikiDocListRow) {
   return pickEntity(wikiDocRowSchema, row);
 }
 
@@ -96,7 +97,7 @@ function buildWikiDocWhere(q: WikiDocWhereInput) {
   );
 }
 
-async function attachDocExtras(rows: WikiDocRow[], opts: { spaceName?: boolean } = {}) {
+async function attachDocExtras(rows: WikiDocListRow[], opts: { spaceName?: boolean } = {}) {
   const ids = rows.map((r) => r.id);
   if (ids.length === 0) return [];
 
@@ -148,7 +149,7 @@ export async function listWikiDocs(q: WikiDocListQuery) {
     pageSize,
     count: () => db.$count(wikiDocs, where),
     rows: async () => attachDocExtras(await withPagination(
-      db.select().from(wikiDocs).where(where)
+      db.select(wikiDocListColumns).from(wikiDocs).where(where)
         .orderBy(desc(wikiDocs.isPinned), asc(wikiDocs.sort), desc(wikiDocs.updatedAt)).$dynamic(),
       page,
       pageSize,
@@ -773,7 +774,7 @@ export async function listMyFavoriteWikiDocs(q: QueryOutputOf<typeof wikiDocCont
     pageSize,
     count: () => db.$count(wikiDocs, where),
     rows: async () => attachDocExtras(await withPagination(
-      db.select().from(wikiDocs).where(where).orderBy(desc(wikiDocs.updatedAt)).$dynamic(),
+      db.select(wikiDocListColumns).from(wikiDocs).where(where).orderBy(desc(wikiDocs.updatedAt)).$dynamic(),
       page,
       pageSize,
     ), { spaceName: true }),
@@ -841,14 +842,19 @@ export async function searchWikiDocs(q: QueryOutputOf<typeof wikiDocContract.sea
     pageSize,
     count: () => db.$count(wikiDocs, where),
     rows: async () => {
-      const rows = await withPagination(
-      db.select().from(wikiDocs).where(where)
-        .orderBy(desc(rank), desc(wikiDocs.updatedAt)).$dynamic(),
-      page,
-      pageSize,
-      );
+      let rows: WikiDocListRow[];
+      let snippets: string[] | undefined;
+      if (options.includeSnippet === false) {
+        rows = await withPagination(db.select(wikiDocListColumns).from(wikiDocs).where(where)
+          .orderBy(desc(rank), desc(wikiDocs.updatedAt)).$dynamic(), page, pageSize);
+      } else {
+        const fullRows = await withPagination(db.select({ ...wikiDocListColumns, content: wikiDocs.content }).from(wikiDocs).where(where)
+          .orderBy(desc(rank), desc(wikiDocs.updatedAt)).$dynamic(), page, pageSize);
+        rows = fullRows;
+        snippets = fullRows.map((row) => extractSnippet(row.content, kw));
+      }
       const docs = await attachDocExtras(rows, { spaceName: true });
-      return docs.map((doc, i) => ({ ...doc, snippet: options.includeSnippet === false ? undefined : extractSnippet(rows[i].content, kw) }));
+      return docs.map((doc, i) => ({ ...doc, snippet: snippets?.[i] }));
     },
   });
 
@@ -889,7 +895,7 @@ export async function listRecentWikiDocs(limit = 20) {
   if (recent.length === 0) return [];
 
   const ids = recent.map((r) => r.docId);
-  const rows = await db.select().from(wikiDocs)
+  const rows = await db.select(wikiDocListColumns).from(wikiDocs)
     .where(buildWhere(inArray(wikiDocs.id, ids), buildWikiDocWhere({})));
   const orderMap = new Map(ids.map((id, i) => [id, i]));
   const sorted = [...rows].sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
