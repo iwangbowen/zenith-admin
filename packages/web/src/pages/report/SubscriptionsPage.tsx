@@ -142,14 +142,14 @@ export default function SubscriptionsPage() {
       dataIndex: 'lastDeliveryStatus',
       width: 220,
       render: (_: unknown, record) => (
-        <div>
-          <Tag color={deliveryStatusColorMap[record.lastDeliveryStatus ?? 'cancelled'] ?? 'grey'} size="small">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, maxWidth: '100%', whiteSpace: 'nowrap' }}>
+          <Tag color={deliveryStatusColorMap[record.lastDeliveryStatus ?? 'cancelled'] ?? 'grey'} size="small" style={{ flexShrink: 0 }}>
             {record.lastDeliveryStatus ? REPORT_DELIVERY_STATUS_LABELS[record.lastDeliveryStatus] : EMPTY_PLACEHOLDER}
           </Tag>
-          <Typography.Text type="tertiary" size="small" style={{ display: 'block', marginTop: 4 }}>
+          <Typography.Text type="tertiary" size="small" ellipsis={{ showTooltip: true }} style={{ minWidth: 0, flex: 1 }}>
             {record.lastDeliveryAt || '未投递'}
           </Typography.Text>
-          {record.lastDeliveryError ? <Typography.Text type="danger" size="small">{record.lastDeliveryError}</Typography.Text> : null}
+          {record.lastDeliveryError ? <Typography.Text type="danger" size="small" ellipsis={{ showTooltip: true }} style={{ minWidth: 0, flex: 1 }}>{record.lastDeliveryError}</Typography.Text> : null}
         </div>
       ),
     },
