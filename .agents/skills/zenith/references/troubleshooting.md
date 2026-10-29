@@ -293,27 +293,23 @@ mock 初始数据应从 `@zenith/shared/seed` 的 `SEED_XXXS` 派生，而非另
 
 ## 性能
 
-### `npm test` 报超时，但单独跑那几个文件却能通过
+### Server 测试反馈慢或超时
 
-耗时结构的根源是 vitest 的**隔离税**，而不是用例本身慢：`isolate: true` 下每个测试文件
-都在全新 worker 里重新转译 + 重新执行自己那条模块图，累计 import 时间远大于断言时间。
-装配整个 app 的重用例（`app.contract.test.ts`：一次装配同时喂给契约断言与路由表快照）本就贴近超时线，
-CPU 被抢后直接撞破；普通秒级用例（exceljs 渲染、Semi 浮层交互）在发布流程四路并行下也会被成倍放大。
+先用 `npm run test:server:affected -- --base <commit> --dry-run` 检查范围，确认领域用例没有直接导入完整 App 或全局契约目录。
+`test:server:domain` 提供开发反馈，`test:server` 保留完整应用门禁；规则见 [后端测试工作流](./testing.md)。
 
-**据此与真 bug 区分**：失败全是**超时**而非断言失败；单独跑同样的文件能过；
-`Duration` 里 transform / import 累计远大于墙钟。
+耗时报告需区分文件收集、transform / import、断言执行和外部基础设施等待。单个文件的传递依赖也可能很大，
+不能仅凭测试行数判断成本。用基准脚本固定 Node、依赖、进程参数和用例集合，独占采集；不要与 lint、build 并发。
 
-按症状出现的场景调对应旋钮（取值以配置文件为准，理由见文件内注释）：
-
-| 场景 | 旋钮 |
+| 现象 | 处理 |
 | --- | --- |
-| 单独跑 `npm test` 就超时 | 调低两包 `vitest.config.ts` 的 `maxWorkers`——它是**上限**不是目标值，核数少的机器不受影响 |
-| 只在发布流程的四路并行下超时 | 放宽两包 `vitest.config.ts` 的 `testTimeout`，或 `src/app.contract.test.ts` `beforeAll` 的超时——它们与 lint / build / docs 争抢同一种（转译 + CPU）资源 |
-| web 全量明显变慢 | 注意 `packages/web/vitest.config.ts` 的依赖预打包当前因 Vitest 双平台回归关闭（见文件注释）：Semi 的 CJS 里 require CSS，只能走 Vite 逐模块转译；恢复 `deps.optimizer.client` 前需在 Windows 与 Linux 同时验证 |
+| dry-run 显示全量 | 检查全局文件、未知路径、删除 / 重命名或宽闭包的原因；不要删依赖边来缩小范围 |
+| 领域命令收集到全量文件 | 核对 `vitest.selected.config.ts` 的项目继承、精确 include 和计划中的 `contractDomains`，运行 `test:graph` |
+| 文件加载占比大 | 检查 barrel、跨域聚合与重型静态导入；保持领域 fixture 轻量 |
+| 独占能过、重负载时超时 | 先核对 CPU / 内存和 worker 上限，再判断超时预算；断言失败按行为问题处理 |
+| Web 全量慢 | 保持现行隔离策略，恢复依赖预打包前在 Windows 与 Linux 验证 Semi CJS / CSS 加载 |
 
-放宽超时前先确认它属于「慢但有效」——独占跑能过、且失败是超时而非断言失败；
-真卡死（如顶层 await 死锁）仍应快速失败。不要把发布流程的四路并行改成串行（单独跑 `npm test` 同样会超时，
-外层并行不是根因），也不要改 `pool` / `isolate` 换速度——两份 `vitest.config.ts` 的注释写明了原因。
+`pool`、`isolate`、worker 上限和超时以各包配置为准。不要通过关闭隔离或弱化安全断言来换速度。
 
 ### 测试输出出现真实的 `[Redis] 连接成功` / worker 退出期 unhandled rejection
 

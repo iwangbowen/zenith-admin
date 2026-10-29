@@ -3,7 +3,7 @@ import { after, test } from 'node:test';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { buildFileGraph, domainFromPath, listSourceFiles, manifest, readModuleReferences, resolveAffectedDomains, serverRoot, planDomainTests } from '../test-graph.mjs';
+import { buildFileGraph, buildDomainGraph, undeclaredDomainDependencies, domainFromPath, listSourceFiles, manifest, readModuleReferences, resolveAffectedDomains, serverRoot, planDomainTests } from '../test-graph.mjs';
 import { collectChangedFiles } from '../test-changes.mjs';
 import { collectPlanFiles } from '../test-runner.mjs';
 import { shardTestPlan } from '../test-ci-plan.mjs';
@@ -124,4 +124,15 @@ test('CI shards preserve every selected file and contract domain exactly once', 
   assert.deepEqual(shards.flatMap((shard) => shard.contractDomains).sort(), [...plan.affectedDomains].sort());
   assert.deepEqual(shardTestPlan({ mode: 'none' }), []);
   assert.deepEqual(shardTestPlan({ ...plan, mode: 'full' }).flatMap((shard) => shard.contractDomains), []);
+});
+
+test('production cross-domain dependencies must be explicitly declared', () => {
+  assert.deepEqual(undeclaredDomainDependencies({ forward: { identity: ['workflow'] } }, { identity: { dependsOn: [] } }), ['identity -> workflow']);
+  assert.deepEqual(undeclaredDomainDependencies({ forward: { identity: ['workflow'] } }, { identity: { dependsOn: ['workflow'] } }), []);
+  for (const [name, definition] of Object.entries(manifest.domains)) {
+    assert.ok(Array.isArray(definition.dependsOn), name);
+    assert.equal(new Set(definition.dependsOn).size, definition.dependsOn.length, name);
+    assert.ok(definition.dependsOn.every((target) => target !== name && manifest.domains[target]), name);
+  }
+  assert.deepEqual(undeclaredDomainDependencies(buildDomainGraph()), []);
 });

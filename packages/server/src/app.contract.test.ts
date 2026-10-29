@@ -45,16 +45,14 @@ beforeAll(async () => {
   for (const op of operations) {
     unauthenticatedStatus.set(op.id, await requestWithoutCredentials(app, op));
   }
-  // 超时放宽到 480 秒：耗时几乎全在 buildContractApp() 转译整套 app，
-  // 而发布流程的四路并行（lint / test / build / docs）抢的正是同一种转译资源。
-  // 独占跑约 60-90 秒，并行下曾贴着 300 秒撞破——属「慢但有效」，不是卡死。
-  // 见 .agents/skills/zenith/references/troubleshooting.md → 性能
+  // 完整 App 装配、OpenAPI 转换和逐端点探测共用一次准备过程；
+  // CI 资源受限时保留独立的装配预算，领域项目使用各自的较小预算。
 }, 480_000);
 
 describe('路由表快照', () => {
   /**
    * 锁定全部 method + path，捕获误删、误改路径、以及子路由器忘记挂载。
-   * 路由文件没有任何路由级单元测试，这是「接口被静默删掉」的唯一防线。
+   * 完整库存与领域路径快照互补，检测全量组合中端点被静默删除或遗漏挂载。
    */
   it('完整路由表保持不变', () => {
     // routes 含中间件条目（method 为 ALL），只取真正的端点；

@@ -28,8 +28,12 @@ npm run build:electron         # Electron 当前平台安装包
 npm run build:electron:win     # Windows NSIS 安装包
 npm run build:electron:mac     # macOS dmg + zip
 npm run build:electron:linux   # Linux AppImage
-npm run test                   # server + web vitest
-npm run test:server            # 后端测试
+npm run test                   # shared + server + web
+npm run test:server            # 选择器守卫 + Server 全量测试
+npm run test:server:domain -- identity       # 领域用例、相关跨域组与领域契约
+npm run test:server:affected -- --base <commit> --dry-run
+npm run test:server:affected -- --base <commit>
+npm run test:server:graph      # 测试选择器与分片守卫
 npm run test:web               # 前端测试
 npm run lint                   # shared + server + analytics-sdk + web
 npm run lint:fix               # 四个包自动修复
@@ -37,6 +41,8 @@ npm run verify:split           # 本地端到端校验 api/worker 拆分部署�
 ```
 
 前端 `lint` 同时运行 ESLint 与 Stylelint：`eslint src && stylelint "src/**/*.css"`。
+
+Server 的测试层次、领域归属、路由快照、真实数据库用例和基准采集见 [后端测试](../backend/testing.md)。
 
 ### 数据库相关
 
@@ -74,6 +80,7 @@ npm run docs:preview   # 预览构建产物，http://localhost:4178
 4. 前端服务端状态通过 `packages/web/src/hooks/queries/` 的 TanStack Query hooks 管理。
 5. 涉及 Demo 的接口同步更新 `packages/web/src/mocks/`。
 6. 变更会影响使用方式时同步更新 `docs/`。
+7. Server 用例放在对应模块旁；跨域用例登记实际测试组，并通过 affected 计划核对验证范围，详见[后端测试](../backend/testing.md#新增用例)。
 
 ## 开发约束入口
 

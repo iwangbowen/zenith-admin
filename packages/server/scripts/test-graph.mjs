@@ -126,6 +126,12 @@ export function buildDomainGraph(graph = buildFileGraph()) {
   return { forward: Object.fromEntries(Object.entries(forward).map(([key, value]) => [key, [...value].sort()])), reverse };
 }
 
+export function undeclaredDomainDependencies(graph, definitions = manifest.domains) {
+  return Object.entries(graph.forward).flatMap(([source, targets]) => targets
+    .filter((target) => !(definitions[source]?.dependsOn ?? []).includes(target))
+    .map((target) => `${source} -> ${target}`));
+}
+
 function relevant(path) {
   return /^(?:package(?:-lock)?\.json|tsconfig\.base\.json|vitest\.config\.mts)$/.test(path)
     || path === '.github/workflows/ci.yml' || /^packages\/(?:server|shared|analytics-sdk)\//.test(path);

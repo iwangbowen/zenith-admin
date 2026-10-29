@@ -78,17 +78,18 @@ CI 绿灯后才打；CI 红了就修复再推，tag 未推送就不会产生 Rel
 git diff --name-only <上一版本tag>..HEAD
 ```
 
-按依赖图归类（shared 被 server / analytics-sdk / web 依赖，analytics-sdk 被 web 依赖）：
+按依赖图归类（shared 被 server / analytics-sdk / web 依赖，analytics-sdk 被 server / web 依赖）：
 
 | 变更路径 | 需本地验证的包 |
 | --- | --- |
 | `packages/shared/**` | 全部（等价全量，直接走 5c） |
-| `packages/analytics-sdk/**` | analytics-sdk + web |
+| `packages/analytics-sdk/**` | analytics-sdk + server + web |
 | `packages/server/**` | server |
 | `packages/web/**` | web |
 | `packages/electron/**` | 无独立测试，跟随 web（仅打包 web 产物） |
 | `docs/**` | `npm run docs:build`（Step 4 的 changelog 属于此类，docs 路必跑） |
-| 其余（`.github/`、`.agents/`、根配置） | 无需本地验证 |
+| CI 与根依赖 / TypeScript 配置 | Server 全量及对应 lint / build；无法判定影响时走 5c |
+| `.agents/**` 等规范文件 | 校验规范与引用；涉及文档站时执行 docs 构建 |
 
 ### 5b. 本地快验（仅受影响包）
 
@@ -105,6 +106,9 @@ npx concurrently --group --timings -n lint,test,docs \
 
 通过标准：lint **0 error**（warning 不阻塞）、test 全部通过、docs 输出 `build complete`。
 多包受影响时按包各加一对 lint / test 命令。
+
+Server 的本地快验可使用 `npm run test:server:affected -- --base <上一版本提交>`；领域 / 全局判定和新增用例归属见
+[后端测试工作流](./testing.md)。推送 `master` 后的 CI 保留完整 App 门禁。测试性能基准独占执行，不与发布校验并行。
 
 ### 5c. 全量路径（回退用）
 
@@ -145,7 +149,7 @@ vitest 的并发度、超时与隔离策略已在 `packages/server/vitest.config
 各路的通过标准：
 
 - **lint**：`npm run lint` 依次跑 shared / server / analytics-sdk / web 四包 eslint，**0 error**（warning 不阻塞）
-- **test**：`npm test` 依次跑 server 与 web 全部 vitest，全部通过
+- **test**：`npm test` 依次跑 Shared、Server（含选择器守卫）与 Web，全部通过
 - **build**：`npm run build`（shared → analytics-sdk → server → web，依赖链**必须**串行）成功后接 `npm run build:demo`。
   ⚠️ `build` 与 `build:demo` 都写 `packages/web/dist` 与 tsbuildinfo，**两者之间禁止并行**，只能如上串联在同一路里
 - **docs**：`npm run docs:build` 输出 `build complete`

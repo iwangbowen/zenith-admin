@@ -7,6 +7,12 @@
       "paths": [
         "src/routes/ops/**",
         "src/services/ops/**"
+      ],
+      "dependsOn": [
+        "files",
+        "messaging",
+        "platform",
+        "tasks"
       ]
     },
     "identity": {
@@ -16,6 +22,15 @@
       "paths": [
         "src/routes/identity/**",
         "src/services/identity/**"
+      ],
+      "dependsOn": [
+        "ai",
+        "files",
+        "messaging",
+        "mp",
+        "platform",
+        "tasks",
+        "workflow"
       ]
     },
     "member": {
@@ -29,6 +44,15 @@
       "contracts": [
         "member",
         "cms"
+      ],
+      "dependsOn": [
+        "analytics",
+        "cms",
+        "identity",
+        "messaging",
+        "ops",
+        "payment",
+        "platform"
       ]
     },
     "platform": {
@@ -42,6 +66,27 @@
         "src/routes/platform/**",
         "src/services/platform/**",
         "src/lib/job-monitor/**"
+      ],
+      "dependsOn": [
+        "ai",
+        "analytics",
+        "biz-demo",
+        "chat",
+        "cms",
+        "drive",
+        "files",
+        "identity",
+        "iot",
+        "member",
+        "messaging",
+        "mp",
+        "open-platform",
+        "ops",
+        "payment",
+        "report",
+        "tasks",
+        "wiki",
+        "workflow"
       ]
     },
     "files": {
@@ -52,6 +97,11 @@
       ],
       "contracts": [
         "platform"
+      ],
+      "dependsOn": [
+        "cms",
+        "platform",
+        "wiki"
       ]
     },
     "tasks": {
@@ -68,6 +118,23 @@
       "contracts": [
         "tasks",
         "platform"
+      ],
+      "dependsOn": [
+        "analytics",
+        "cms",
+        "drive",
+        "files",
+        "identity",
+        "iot",
+        "member",
+        "messaging",
+        "open-platform",
+        "ops",
+        "payment",
+        "platform",
+        "report",
+        "short-link",
+        "workflow"
       ]
     },
     "analytics": {
@@ -77,6 +144,15 @@
       "paths": [
         "src/routes/analytics/**",
         "src/services/analytics/**"
+      ],
+      "dependsOn": [
+        "cms",
+        "messaging",
+        "open-platform",
+        "payment",
+        "short-link",
+        "tasks",
+        "workflow"
       ]
     },
     "report": {
@@ -86,6 +162,15 @@
       "paths": [
         "src/routes/report/**",
         "src/services/report/**"
+      ],
+      "dependsOn": [
+        "ai",
+        "cms",
+        "files",
+        "messaging",
+        "platform",
+        "tasks",
+        "workflow"
       ]
     },
     "messaging": {
@@ -96,6 +181,15 @@
         "src/routes/messaging/**",
         "src/services/messaging/**",
         "src/lib/notification/**"
+      ],
+      "dependsOn": [
+        "chat",
+        "cms",
+        "files",
+        "mp",
+        "ops",
+        "platform",
+        "tasks"
       ]
     },
     "payment": {
@@ -112,6 +206,15 @@
         "payment",
         "biz",
         "open-platform"
+      ],
+      "dependsOn": [
+        "biz-demo",
+        "member",
+        "messaging",
+        "open-platform",
+        "platform",
+        "tasks",
+        "workflow"
       ]
     },
     "open-platform": {
@@ -128,6 +231,16 @@
         "drive",
         "iot",
         "payment"
+      ],
+      "dependsOn": [
+        "cms",
+        "drive",
+        "identity",
+        "iot",
+        "messaging",
+        "payment",
+        "platform",
+        "short-link"
       ]
     },
     "workflow": {
@@ -139,6 +252,15 @@
         "src/services/workflow/**",
         "src/lib/workflow*/**",
         "src/lib/workflow*.ts"
+      ],
+      "dependsOn": [
+        "chat",
+        "files",
+        "identity",
+        "messaging",
+        "payment",
+        "platform",
+        "report"
       ]
     },
     "chat": {
@@ -148,6 +270,10 @@
       "paths": [
         "src/routes/chat/**",
         "src/services/chat/**"
+      ],
+      "dependsOn": [
+        "messaging",
+        "platform"
       ]
     },
     "mp": {
@@ -157,6 +283,12 @@
       "paths": [
         "src/routes/mp/**",
         "src/services/mp/**"
+      ],
+      "dependsOn": [
+        "identity",
+        "member",
+        "messaging",
+        "platform"
       ]
     },
     "biz-demo": {
@@ -166,6 +298,12 @@
       "paths": [
         "src/routes/biz-demo/**",
         "src/services/biz-demo/**"
+      ],
+      "dependsOn": [
+        "ai",
+        "payment",
+        "platform",
+        "workflow"
       ]
     },
     "ai": {
@@ -176,6 +314,11 @@
         "src/routes/ai/**",
         "src/services/ai/**",
         "src/lib/mastra/**"
+      ],
+      "dependsOn": [
+        "biz-demo",
+        "files",
+        "iot"
       ]
     },
     "short-link": {
@@ -185,6 +328,10 @@
       "paths": [
         "src/routes/short-link/**",
         "src/services/short-link/**"
+      ],
+      "dependsOn": [
+        "analytics",
+        "messaging"
       ]
     },
     "marketing": {
@@ -194,6 +341,11 @@
       "paths": [
         "src/routes/marketing/**",
         "src/services/marketing/**"
+      ],
+      "dependsOn": [
+        "member",
+        "messaging",
+        "short-link"
       ]
     },
     "iot": {
@@ -203,6 +355,14 @@
       "paths": [
         "src/routes/iot/**",
         "src/services/iot/**"
+      ],
+      "dependsOn": [
+        "ai",
+        "files",
+        "messaging",
+        "platform",
+        "tasks",
+        "workflow"
       ]
     },
     "cms": {
@@ -213,6 +373,17 @@
         "src/routes/cms/**",
         "src/services/cms/**",
         "src/cms/**"
+      ],
+      "dependsOn": [
+        "analytics",
+        "files",
+        "member",
+        "messaging",
+        "platform",
+        "report",
+        "short-link",
+        "tasks",
+        "workflow"
       ]
     },
     "wiki": {
@@ -222,6 +393,12 @@
       "paths": [
         "src/routes/wiki/**",
         "src/services/wiki/**"
+      ],
+      "dependsOn": [
+        "ai",
+        "files",
+        "messaging",
+        "platform"
       ]
     },
     "drive": {
@@ -231,6 +408,14 @@
       "paths": [
         "src/routes/drive/**",
         "src/services/drive/**"
+      ],
+      "dependsOn": [
+        "chat",
+        "files",
+        "messaging",
+        "platform",
+        "short-link",
+        "tasks"
       ]
     }
   },

@@ -48,16 +48,22 @@ VitePress 按环境切换：本地为 `/`，GitHub Pages 构建为 `/zenith-admi
 
 ## CI
 
-`.github/workflows/ci.yml` 在 `master` push 与 pull request 上运行：
+`.github/workflows/ci.yml` 支持 `master` push、pull request、手动执行和每日 UTC 19:00 调度。
 
 ```bash
 npm ci
 npm run lint
-npm run test
+npm run test:shared
+npm run test:web
 npm run build
 ```
 
-CI 使用 Node 24，并通过 concurrency 取消同一 ref 的旧任务。
+Server 由独立的计划、分片与汇总门禁执行：PR 按 affected 文件图选择测试，`master` push、手动与定时运行使用全量。
+计划阶段运行测试选择器守卫，最多三个分片执行精确文件清单；完整计划包含完整 App 契约与路由快照。
+汇总门禁要求计划及所需分片全部成功。详见 [后端测试 · CI](../backend/testing.md#ci)。
+
+CI 使用 Node 24 与 npm 12.2.0，通过 concurrency 取消同一 ref 的旧任务；构建后检查 bundle 预算，
+Demo 构建与三入口启动冒烟独立执行。
 
 ## 版本发布
 

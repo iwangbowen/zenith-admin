@@ -27,10 +27,14 @@ zenith-admin/
 
 | 目录 / 文件 | 职责 |
 | --- | --- |
-| `src/app.ts` | 创建 Hono 应用、装配中间件、领域路由、OpenAPI、CMS 兜底与全局错误处理 |
+| `src/app.ts` | 生产入口，向装配核心传入完整领域集合与生产 OpenAPI 缓存 |
+| `src/app-core.ts` | 公共中间件、领域路由、OpenAPI、CMS 兜底与全局错误处理；领域测试复用同一装配核心 |
 | `src/index.ts` | 进程启动编排：校验密钥与 `ZENITH_ROLES`、遥测、失效总线，按角色启动接入面 / 执行面，后台作业声明、事件订阅与优雅停机 |
 | `src/bootstrap/` | `run-api.ts`（监听、WebSocket、fan-out 订阅、终端会话）、`run-worker.ts`（存储拓扑自检、探针端点、对账与启动补齐）、`workers.ts`（角色无关的任务 / 队列 / 周期任务声明清单）、`subscribers.ts`（事件订阅者）、`shutdown.ts`、OpenAPI 预热 |
-| `src/routes/` | HTTP 协议边界，当前 18 个领域目录见下方清单 |
+| `src/routes/` | HTTP 协议边界，领域目录见下方清单；`domain-loaders.ts` 提供按需加载入口 |
+| `src/domain-manifest.json` | 测试领域归属、Shared 契约模块、跨域组与全局结构守卫 |
+| `src/test-utils/` | 领域 / 完整 App 契约测试、门禁断言与基础设施替身 |
+| `vitest.selected.config.ts` | 按精确测试计划装配普通用例与领域契约项目 |
 | `src/services/` | 业务规则、事务、数据映射、前置校验 |
 | `src/db/` | Drizzle schema、迁移、seed、数据库封装 |
 | `src/middleware/` | 认证、权限、限流、幂等、CSRF、维护模式、开放平台网关、HTTP 日志等 |
@@ -42,10 +46,12 @@ zenith-admin/
 `packages/server/src/routes/` 当前领域目录：
 
 ```text
-ai, analytics, biz-demo, chat, cms, drive, files, identity, member,
-messaging, mp, open-platform, ops, payment, platform, report,
-tasks, wiki, workflow
+ai, analytics, biz-demo, chat, cms, drive, files, identity, iot,
+marketing, member, messaging, mp, open-platform, ops, payment,
+platform, report, short-link, tasks, wiki, workflow
 ```
+
+Server 测试计划、领域 loader 和 CI 分片的用法见 [后端测试](../backend/testing.md)。
 
 ## `packages/web`
 
