@@ -51,7 +51,7 @@ export interface ReplayReqCtx { ua: string; siteKey?: string | null; origin?: st
  * 错误上报与回放首分片是两个独立请求，错误可能先落库，导致异步 bump 找不到会话。
  * 每次分片落地时用已关联错误数做幂等校正，避免竞态下列表计数落后于详情。
  */
-export async function reconcileReplayErrorCount(executor: Pick<DbExecutor, 'update'>, replayId: string): Promise<void> {
+export async function reconcileReplayErrorCount(executor: Pick<DbExecutor, 'update'>, replayId: string, tenantId: number | null): Promise<void> {
   await executor
     .update(replaySessions)
     .set({
@@ -60,7 +60,7 @@ export async function reconcileReplayErrorCount(executor: Pick<DbExecutor, 'upda
         WHERE ${errorEvents.replayId} = ${replaySessions.id}
       ))`,
     })
-    .where(eq(replaySessions.id, replayId));
+    .where(and(eq(replaySessions.id, replayId), exactTenantCondition(replaySessions.tenantId, tenantId)));
 }
 
 export function mapReplaySession(row: ReplaySessionRow) {
@@ -204,7 +204,7 @@ export async function ingestReplaySegment(meta: ReplaySegmentUploadMetaInput, da
       }
       bumpUsageCache(tenantId, data.byteLength);
     }
-    await reconcileReplayErrorCount(tx, meta.replayId);
+    await reconcileReplayErrorCount(tx, meta.replayId, tenantId);
   });
 }
 

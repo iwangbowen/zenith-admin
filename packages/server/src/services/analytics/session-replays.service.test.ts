@@ -18,7 +18,7 @@ describe('reconcileReplayErrorCount', () => {
   });
 
   it('uses an idempotent count of linked errors instead of a race-prone increment', async () => {
-    await reconcileReplayErrorCount({ update }, 'replay-1');
+    await reconcileReplayErrorCount({ update }, 'replay-1', 42);
 
     const set = update.mock.results[0]?.value.set as ReturnType<typeof vi.fn>;
     const values = set.mock.calls[0]?.[0] as { errorCount: unknown };
