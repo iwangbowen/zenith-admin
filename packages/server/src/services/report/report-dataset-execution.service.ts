@@ -63,59 +63,13 @@ import {
 import { isSqlLikeType, isExternalDbType } from '@zenith/shared/report';
 import { getByPath } from '@zenith/shared/core';
 import type { DatasetExecutionContext, DatasetExecutionResult } from './report-dataset-shared';
-import type { ReportDataResult, ReportField, ReportFieldType, ReportDatasetContent, ReportDatasetParam, ReportDatasourceType, ReportDatasourceConfig, ReportComputedField, ReportExternalDbConfig, ReportApiDatasourceConfig, ReportApiDatasetContent, ReportSqlDatasetContent, ReportStaticDatasetContent, ReportDatasetMaterialize, ReportRowRule, ReportDatasetQueryOptions, ReportResultField, ReportDatasetPreviewInput, ReportSortOrder } from '@zenith/shared/report';
+import type { ReportDataResult, ReportField, ReportFieldType, ReportDatasetContent, ReportDatasetParam, ReportDatasourceType, ReportDatasourceConfig, ReportComputedField, ReportExternalDbConfig, ReportApiDatasourceConfig, ReportApiDatasetContent, ReportSqlDatasetContent, ReportStaticDatasetContent, ReportDatasetMaterialize, ReportRowRule, ReportDatasetQueryOptions, ReportResultField, ReportDatasetPreviewInput } from '@zenith/shared/report';
+import { applyInMemoryQuery, governReportResult, type ReportResultQueryOptions as NormalizedQueryOptions } from './report-result-processing';
 
 type DatasetQueryArg = number | ReportDatasetQueryOptions | undefined;
 
-/** 数据集执行引擎的内部选项（仪表盘 / 组件取数），不是契约列表入参，分页缺省由引擎兜底 */
-interface NormalizedQueryOptions {
-  limit?: number;
-  page?: number;
-  // eslint-disable-next-line no-restricted-syntax -- 引擎内部选项，非契约 query
-  pageSize?: number;
-  sortField?: string;
-  sortOrder?: ReportSortOrder;
-}
-
 function applyDatasetGovernance(result: ReportDataResult): ReportDataResult {
-  const governance = getReportRuntimeGovernance();
-  const maxRows = Math.max(1, governance.datasetMaxRows);
-  const maxBytes = Math.max(1024, governance.datasetMaxBytes);
-  let rows = result.rows;
-  let truncated = false;
-  let truncatedReason: string | null = null;
-
-  if (rows.length > maxRows) {
-    rows = rows.slice(0, maxRows);
-    truncated = true;
-    truncatedReason = `结果行数超过上限（${maxRows} 行）`;
-  }
-
-  let bytes = estimateRowsBytes(rows);
-  if (bytes > maxBytes) {
-    let low = 0;
-    let high = rows.length;
-    while (low < high) {
-      const mid = Math.floor((low + high + 1) / 2);
-      const size = estimateRowsBytes(rows.slice(0, mid));
-      if (size <= maxBytes) low = mid;
-      else high = mid - 1;
-    }
-    rows = rows.slice(0, low);
-    bytes = estimateRowsBytes(rows);
-    truncated = true;
-    truncatedReason = truncatedReason
-      ? `${truncatedReason}，且结果体积超过上限（${maxBytes} bytes）`
-      : `结果体积超过上限（${maxBytes} bytes）`;
-  }
-
-  return {
-    ...result,
-    rows,
-    bytes,
-    truncated,
-    truncatedReason,
-  };
+  return governReportResult(result, getReportRuntimeGovernance());
 }
 
 function normalizeDatasetQueryOptions(query?: DatasetQueryArg): NormalizedQueryOptions {
@@ -197,10 +151,8 @@ function withFieldMetadata(
   computedFields: ReportComputedField[] | undefined,
 ): ReportDataResult {
   return {
-    columns: result.columns,
+    ...result,
     fields: buildResultFields(result.columns, declaredFields, computedFields, result.rows),
-    rows: result.rows,
-    total: result.total,
   };
 }
 
@@ -218,40 +170,6 @@ function buildSqlQueryParts(options: NormalizedQueryOptions): { limit: number; o
   const offset = usePaging ? pageOffset(options.page ?? 1, options.pageSize ?? limit) : 0;
   const orderBy = options.sortField ? ` ORDER BY ${quoteSortField(options.sortField)} ${(options.sortOrder === 'asc' ? 'ASC' : 'DESC')}` : '';
   return { limit, offset, orderBy };
-}
-
-function applyInMemoryQuery(
-  rows: Record<string, unknown>[],
-  columns: string[],
-  options: NormalizedQueryOptions,
-  totalOverride?: number | null,
-): Omit<ReportDataResult, 'fields'> {
-  const source = [...rows];
-  if (options.sortField) {
-    if (!columns.includes(options.sortField)) {
-      throw new HTTPException(400, { message: `排序字段不存在：${options.sortField}` });
-    }
-    const direction = options.sortOrder === 'asc' ? 1 : -1;
-    source.sort((left, right) => {
-      const a = left[options.sortField!];
-      const b = right[options.sortField!];
-      if (a === b) return 0;
-      if (a === null || a === undefined) return 1;
-      if (b === null || b === undefined) return -1;
-      if (typeof a === 'number' && typeof b === 'number') return (a - b) * direction;
-      return String(a).localeCompare(String(b), 'zh-CN', { numeric: true }) * direction;
-    });
-  }
-  const total = totalOverride ?? source.length;
-  if (options.page !== undefined && options.pageSize !== undefined) {
-    return {
-      columns,
-      rows: source.slice(pageOffset(options.page, options.pageSize), pageOffset(options.page, options.pageSize) + options.pageSize),
-      total,
-    };
-  }
-  const limit = Math.max(1, Math.min(options.limit ?? PREVIEW_LIMIT, MAX_LIMIT));
-  return { columns, rows: source.slice(0, limit), total };
 }
 
 /** 只读执行 SQL（READ ONLY 事务 + 超时 + 安全排序分页 + 参数绑定）*/

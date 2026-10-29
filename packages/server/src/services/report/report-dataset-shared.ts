@@ -14,8 +14,8 @@ import { isSqlLikeType } from '@zenith/shared/report';
 import type { ReportDatasetRow } from '../../db/schema';
 import type { ReportDataResult, ReportDatasetContent, ReportDatasetMaterialize, ReportDatasetParam, ReportDatasourceType, ReportRowRule, ReportRuntimeGovernance, ReportSqlDatasetContent } from '@zenith/shared/report';
 
-export const PREVIEW_LIMIT = 100;
-export const MAX_LIMIT = 5000;
+import { MAX_LIMIT } from './report-result-processing';
+export { PREVIEW_LIMIT, MAX_LIMIT } from './report-result-processing';
 export const QUERY_TIMEOUT = '15s';
 export const CACHE_PREFIX = `${appConfig.redis.keyPrefix}report:dataset:`;
 export const MATVIEW_PREFIX = `${appConfig.redis.keyPrefix}report:matview:`;
