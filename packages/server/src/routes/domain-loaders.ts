@@ -5,7 +5,7 @@
  * 目标领域，避免为了验证单个领域而把完整路由图加入测试模块图。
  */
 import type { RouteDomain } from './_kit';
-import manifest from '../domain-manifest.json';
+import manifest from '../domain-manifest.json' with { type: 'json' };
 
 export type ServerDomainName = keyof typeof manifest.domains;
 export const SERVER_DOMAIN_NAMES = Object.keys(manifest.domains) as ServerDomainName[];

@@ -1,6 +1,6 @@
 import { contractOperations, type AnyContract } from '@zenith/shared/core';
 import type { ServerDomainName } from '../routes/domain-loaders';
-import manifest from '../domain-manifest.json';
+import manifest from '../domain-manifest.json' with { type: 'json' };
 
 const loaders = {
   ops: () => import('@zenith/shared/ops'), identity: () => import('@zenith/shared/identity'),

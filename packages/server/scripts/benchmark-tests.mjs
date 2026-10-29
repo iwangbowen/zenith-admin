@@ -5,8 +5,8 @@ import { mkdirSync, openSync, closeSync, readFileSync, writeFileSync, existsSync
 import { cpus, totalmem } from 'node:os';
 import { resolve, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { serverRoot, workspaceRoot } from './test-graph.mjs';
-import { vitestBin } from './test-runner.mjs';
+import { serverRoot, workspaceRoot, buildFileGraph, planDomainTests } from './test-graph.mjs';
+import { vitestBin, withTestPlan } from './test-runner.mjs';
 
 const args = process.argv.slice(2);
 const options = {};
@@ -42,12 +42,16 @@ for (const suite of suites) {
     const fd = openSync(`${stem}.log`, 'w');
     const start = performance.now();
     console.log(`Benchmark ${label}/${suite} ${i + 1}/${repetitions}`);
-    const run = spawnSync(process.execPath, [vitestBin, 'run', '--config', join(serverRoot, 'vitest.benchmark.config.ts')], {
+    const domain = suite.startsWith('domain-') ? suite.slice('domain-'.length) : null;
+    if (domain && target !== serverRoot) throw new Error('Domain profiles require the current domain test infrastructure');
+    const execute = (planFile) => spawnSync(process.execPath, [vitestBin, 'run', '--config', join(serverRoot, 'vitest.benchmark.config.ts')], {
       cwd: target, stdio: ['ignore', fd, fd], env: { ...process.env, ZENITH_BENCH_SERVER_ROOT: target,
         DOTENV_CONFIG_PATH: join(output, '__benchmark_no_dotenv__.env'),
         REPORT_PDF_FONT_PATH: pdfFont,
+        ...(planFile ? { ZENITH_TEST_PLAN: planFile, ZENITH_BENCH_SELECTION: 'true' } : {}),
         ZENITH_BENCH_SUITE: suite, ZENITH_BENCH_JSON: jsonFile, ZENITH_BENCH_RESOURCES: resourcesFile },
     });
+    const run = domain ? withTestPlan(planDomainTests([domain], buildFileGraph()), execute) : execute();
     closeSync(fd);
     const wallSeconds = (performance.now() - start) / 1000;
     const result = existsSync(jsonFile) ? JSON.parse(readFileSync(jsonFile, 'utf8')) : {};
