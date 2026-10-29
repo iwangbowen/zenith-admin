@@ -19,6 +19,8 @@ const repetitions = Number(options.repeat ?? 1);
 if (!Number.isInteger(repetitions) || repetitions < 1) throw new Error('--repeat must be a positive integer');
 const target = resolve(workspaceRoot, options['server-root'] ?? serverRoot);
 const output = resolve(workspaceRoot, options.out ?? '.tmp/server-test-benchmarks');
+const pdfFont = join(target, 'assets/fonts/NotoSansSC-Regular.otf');
+if (!existsSync(pdfFont)) throw new Error('Benchmark requires the repository full PDF font');
 const label = options.label ?? 'current';
 if (!/^[a-zA-Z0-9_-]+$/.test(label)) throw new Error('--label must contain only letters, numbers, underscores or hyphens');
 mkdirSync(output, { recursive: true });
@@ -28,6 +30,7 @@ const manifest = { node: process.version, platform: process.platform, arch: proc
   lockHash: createHash('sha256').update(readFileSync(join(workspaceRoot, 'package-lock.json'))).digest('hex'),
   runnerCommit: sha, sourceCommit: options['source-ref'] ?? (target === serverRoot ? sha : null),
   fsModuleCache: false, dotenv: 'disabled for benchmark',
+  pdfFontSha256: createHash('sha256').update(readFileSync(pdfFont)).digest('hex'),
   target, label, startedAt: new Date().toISOString(), samples: [] };
 for (const suite of suites) {
   if (!/^[a-z-]+$/.test(suite)) throw new Error(`Invalid suite: ${suite}`);
@@ -42,6 +45,7 @@ for (const suite of suites) {
     const run = spawnSync(process.execPath, [vitestBin, 'run', '--config', join(serverRoot, 'vitest.benchmark.config.ts')], {
       cwd: target, stdio: ['ignore', fd, fd], env: { ...process.env, ZENITH_BENCH_SERVER_ROOT: target,
         DOTENV_CONFIG_PATH: join(output, '__benchmark_no_dotenv__.env'),
+        REPORT_PDF_FONT_PATH: pdfFont,
         ZENITH_BENCH_SUITE: suite, ZENITH_BENCH_JSON: jsonFile, ZENITH_BENCH_RESOURCES: resourcesFile },
     });
     closeSync(fd);
