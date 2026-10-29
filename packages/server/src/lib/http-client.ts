@@ -5,6 +5,7 @@ import { formatDateTime } from './datetime';
 import { config } from '../config';
 import logger from './logger';
 import { currentTraceId } from './trace-context';
+import { assertOutsideEventConsumer } from './domain-events/context';
 import { assertSafeOutboundUrl, createSafeOutboundLookup } from './outbound-url';
 import {
   resolveLevel,
@@ -241,6 +242,7 @@ export async function httpRequest(
   url: string,
   opts: HttpRequestOptions = {},
 ): Promise<HttpResponse> {
+  assertOutsideEventConsumer();
   const {
     baseURL,
     body,

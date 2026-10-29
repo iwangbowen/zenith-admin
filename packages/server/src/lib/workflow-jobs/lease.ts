@@ -6,6 +6,7 @@ import { WorkflowJobLeaseLostError } from './errors';
 import type { WorkflowJobContext } from './types';
 import { currentWorkflowJobContext } from './execution-context';
 import { flushWorkflowJobPickups } from './publication';
+import { flushTransactionEffects } from '../transaction-effects';
 export { currentWorkflowJobContext, runWithWorkflowJobContext } from './execution-context';
 
 export function ownedJobCondition(context: WorkflowJobContext, requireLive = true) {
@@ -49,6 +50,7 @@ async function commitWorkflowTransaction<T>(fn: (tx: DbTransaction) => Promise<T
   let committedExecutor: DbTransaction | undefined;
   const result = await db.transaction((tx) => { committedExecutor = tx; return fn(tx); });
   await flushWorkflowJobPickups(committedExecutor!);
+  await flushTransactionEffects(committedExecutor!);
   return result;
 }
 

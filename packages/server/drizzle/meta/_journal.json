@@ -43,6 +43,13 @@
       "when": 1793119794560,
       "tag": "0005_spicy_dagger",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793277695438,
+      "tag": "0006_true_senator_kelly",
+      "breakpoints": true
     }
   ]
 }
